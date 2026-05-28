@@ -231,20 +231,16 @@ export interface BuildSharedRuntimeOptions {
  */
 export function nativeHostFormatLLMError(
   reason: 'invalid-api-key' | 'network' | 'rate-limit' | 'endpoint-not-found' | 'bad-request',
-  err?: Error,
 ): string {
-  // Best-effort extract the provider's own error body. Bench-tuned regex
-  // matches `"message":"..."` / `"error":"..."` shapes — falls back to
-  // the raw error message.
-  const detail = err?.message?.match(/"(?:message|error)":\s*"([^"]+)"/)?.[1]
-    ?? err?.message?.slice(0, 180);
-  const suffix = detail ? ` — ${detail}` : '';
+  // Provider's own JSON error deliberately NOT inlined — it can be
+  // ugly, leak details, or vary wildly across providers. The reason
+  // class + actionable hint is enough.
   switch (reason) {
     case 'invalid-api-key':    return '[OpenCues: API key rejected (401/403) — re-export the provider\'s API key in your shell env (or ~/.cues/.env)]';
     case 'endpoint-not-found': return '[OpenCues: provider endpoint returned 404 — check `llm-endpoint:` in ~/.cues/OPENCUES.md]';
     case 'rate-limit':         return '[OpenCues: provider rate-limit hit (429) — wait a moment or switch `llm-provider:` in OPENCUES.md]';
     case 'network':            return '[OpenCues: network error — provider unreachable. Check connectivity, then retry.]';
-    case 'bad-request':        return `[OpenCues: provider returned 400 (bad request)${suffix}. Check the llm-model: you set in OPENCUES.md matches the chosen provider]`;
+    case 'bad-request':        return '[OpenCues: provider returned 400 (bad request) — check the llm-model: you set in OPENCUES.md matches the chosen provider]';
   }
 }
 

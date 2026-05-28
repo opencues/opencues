@@ -333,20 +333,16 @@ export function boot(host: HostInfo): BootResult {
       // user-actionable reason maps to a one-line in-buffer hint that
       // tells the user where to look in chrome. LLM-internal issues
       // (malformed JSON, no-span) stay silent regardless.
-      formatLLMErrorAsSubstitute: (reason, err) => {
-        // Try to extract the provider's own error message — it's usually
-        // the most useful disambiguator (model name typo'd, body field
-        // missing, etc.). Best-effort; the regex is loose so a wide
-        // variety of error-message shapes match.
-        const detail = err?.message?.match(/"(?:message|error)":\s*"([^"]+)"/)?.[1]
-          ?? err?.message?.slice(0, 180);
-        const suffix = detail ? ` — ${detail}` : '';
+      formatLLMErrorAsSubstitute: (reason) => {
+        // Provider's own JSON error deliberately NOT inlined — it can
+        // be ugly, leak details, or vary wildly across providers. The
+        // reason class + actionable hint is enough.
         switch (reason) {
           case 'invalid-api-key':    return '[OpenCues: API key rejected (401/403) — open the extension popup and re-enter it]';
           case 'endpoint-not-found': return '[OpenCues: provider endpoint returned 404 — check the API URL in the extension popup]';
           case 'rate-limit':         return '[OpenCues: provider rate-limit hit (429) — wait a moment or switch provider in the popup]';
           case 'network':            return '[OpenCues: network error — provider unreachable. Check connectivity, then retry.]';
-          case 'bad-request':        return `[OpenCues: provider returned 400 (bad request)${suffix}. Check the Model name matches the selected Provider in the popup]`;
+          case 'bad-request':        return '[OpenCues: provider returned 400 (bad request) — check the Model name matches the selected Provider in the popup]';
         }
       },
     }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState);
