@@ -354,13 +354,20 @@ async function main(): Promise<void> {
     });
   }
 
+  // `exitOnCtrlC: false` — opt out of OpenTUI's default SIGINT
+  // handler that calls process.exit(). Otherwise Ctrl+C kills the
+  // bun process, tmux holds an empty pane, runtime is dead, cues
+  // silently stop firing. See @opentui/core CliRenderer config.
+  // (Module-level `process.on('SIGINT', ...)` alone isn't enough
+  // because Node listeners are cumulative — OpenTUI's handler still
+  // fires alongside ours and exits the process anyway.)
   await render(() => <App
     initialText={args.initialText}
     outputPath={args.outputPath}
     keepAlive={args.keepAlive}
     targetPane={args.targetPane ?? undefined}
     restoreOnCancel={restoreOnCancel}
-  />);
+  />, { exitOnCtrlC: false });
 }
 
 main().catch((err) => {
