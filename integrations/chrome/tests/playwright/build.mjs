@@ -20,7 +20,6 @@ const commonOpts = {
   tsconfig: resolve(chromeRoot, 'tsconfig.json'),
   define: {
     __GROQ_API_KEY__: '""',
-    __FINNHUB_API_KEY__: '""',
     __DEFAULT_OPENCUES_MD__: '""',
     __DEFAULT_AUDITORS_MD__: '""',
     __DEFAULT_CUE_FOLDERS__: '{}',

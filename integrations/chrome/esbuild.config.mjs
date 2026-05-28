@@ -57,7 +57,6 @@ const envDefines = {
   // install the host. These defines keep the TS declarations valid
   // but always resolve to '' at runtime.
   '__GROQ_API_KEY__': JSON.stringify(''),
-  '__FINNHUB_API_KEY__': JSON.stringify(''),
   '__DEFAULT_OPENCUES_MD__': JSON.stringify(readOr(projectRoot + 'defaults/OPENCUES.md', '')),
   '__DEFAULT_AUDITORS_MD__': JSON.stringify(readOr(projectRoot + 'defaults/AUDITORS.md', '')),
   '__DEFAULT_CUE_FOLDERS__': JSON.stringify(cuesFolders),

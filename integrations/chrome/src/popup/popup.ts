@@ -1,4 +1,4 @@
-import { loadConfig, loadUserKeys, saveConfig, saveUserKeys, resetConfig } from '../adapters/chrome-storage-adapter';
+import { loadConfig, loadUserKeys, saveConfig, saveUserKeys, resetConfig, clearChromeHostState } from '../adapters/chrome-storage-adapter';
 
 // Popup = SETTINGS only. Cue / blank content lives in
 // ~/.cues/ on the host side and flows into the extension via
@@ -15,7 +15,6 @@ const fields = ['model', 'apiUrl', 'targetSelector', 'provider'] as const;
 // coercion (saveConfig stores them as the literal value, not as the
 // input.value string).
 const booleanFields = ['deferToChromeHost'] as const;
-const advancedFields = ['finnhubApiKey'] as const;
 
 // Models offered per provider. First entry = default (bench-recommended).
 // Subsequent entries are alternates the user may pick for different
@@ -158,7 +157,7 @@ async function init(): Promise<void> {
 
   const [config, userKeys] = await Promise.all([loadConfig(), loadUserKeys()]);
 
-  for (const id of [...fields, ...advancedFields]) {
+  for (const id of fields) {
     const el = document.getElementById(id) as HTMLInputElement;
     if (el && config[id as keyof typeof config]) el.value = config[id as keyof typeof config] as string;
   }
@@ -197,19 +196,20 @@ async function init(): Promise<void> {
   ttsEnabled.checked = config.ttsEnabled;
   ttsRate.value = String(config.ttsRate);
 
-  // Defer-to-chrome-host toggle. Always visible so users discover the
-  // option, but rendered greyed-out + disabled when chrome-host isn't
-  // connected — the label keeps the affordance + tooltip explaining
-  // how to enable. When the host comes back up the toggle becomes
-  // interactive without a popup-reopen.
+  // Defer-to-chrome-host toggle. Hidden by default; only shown once
+  // the SW confirms `connected: true`. A hostless user has no way to
+  // benefit from the toggle (defer-to-bundle when there's no bundle =
+  // empty config), so showing it greyed-out was footgun affordance.
+  // When the host comes up mid-session the toggle appears without a
+  // popup-reopen.
   const deferEl = document.getElementById('deferToChromeHost') as HTMLInputElement;
   const deferLabel = document.querySelector('label.defer-toggle') as HTMLLabelElement;
   deferEl.checked = !!config.deferToChromeHost;
+  deferLabel.style.display = 'none';
   void chrome.runtime.sendMessage({ type: 'opencues:host-status' }).then((reply: unknown) => {
     const connected = !!(reply && (reply as { connected?: boolean }).connected);
-    deferEl.disabled = !connected;
-    deferLabel.classList.toggle('disconnected', !connected);
     if (!connected) {
+      deferLabel.style.display = 'none';
       // Host is gone — force the toggle OFF so the user isn't trapped
       // with provider/model fields greyed and no host backing them.
       if (deferEl.checked) {
@@ -217,11 +217,12 @@ async function init(): Promise<void> {
         applyDeferUI();
         void saveConfig({ deferToChromeHost: false });
       }
-      deferLabel.title = 'Install chrome-host (`opencues install chrome-host`) and re-open the popup to enable this. Then your ~/.cues/OPENCUES.md drives config.';
-    } else {
-      deferLabel.title = 'When ON, the popup\'s Provider / Model / API URL fields are ignored — your ~/.cues/OPENCUES.md (pushed by `opencues install chrome-host`) drives config instead. Matches how CC / OC / gemini-cli work.';
+      return;
     }
-  }).catch(() => { /* no SW response — treat as disconnected */ });
+    deferLabel.style.display = '';
+    deferEl.disabled = false;
+    deferLabel.title = 'When ON, the popup\'s Provider / Model / API URL fields are ignored — your ~/.cues/OPENCUES.md (pushed by `opencues install chrome-host`) drives config instead. Matches how CC / OC / gemini-cli work.';
+  }).catch(() => { /* no SW response — treat as disconnected; toggle stays hidden */ });
   const applyDeferUI = (): void => {
     const provEl = document.getElementById('provider') as HTMLSelectElement;
     const modSel = document.getElementById('modelSelect') as HTMLSelectElement;
@@ -252,7 +253,7 @@ async function init(): Promise<void> {
     status.textContent = 'saving + verifying keys…';
 
     const update: Record<string, unknown> = {};
-    for (const id of [...fields, ...advancedFields]) {
+    for (const id of fields) {
       const el = document.getElementById(id) as HTMLInputElement;
       if (el) update[id] = el.value;
     }
@@ -266,6 +267,13 @@ async function init(): Promise<void> {
     }
 
     await Promise.all([saveConfig(update), saveUserKeys(keyUpdate)]);
+
+    // Toggle OFF means "I'm not using chrome-host" — wipe every
+    // storage surface the host can write into. See
+    // `clearChromeHostState` for the full layer list + rationale.
+    if (update.deferToChromeHost === false) {
+      await clearChromeHostState();
+    }
 
     // Re-validate every entered key against its provider's /v1/models
     // endpoint AND rebuild the Provider + Model dropdowns from the
@@ -299,7 +307,7 @@ async function init(): Promise<void> {
   document.getElementById('reset')!.addEventListener('click', async () => {
     await resetConfig();
     const [freshConfig, freshKeys] = await Promise.all([loadConfig(), loadUserKeys()]);
-    for (const id of [...fields, ...advancedFields]) {
+    for (const id of fields) {
       const el = document.getElementById(id) as HTMLInputElement;
       if (el) el.value = (freshConfig[id as keyof typeof freshConfig] as string) || '';
     }

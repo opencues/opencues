@@ -6,7 +6,6 @@
 // esbuild defines these at build time; tests need stand-ins so files
 // that read them at module-load (types.ts) don't ReferenceError.
 (globalThis as Record<string, unknown>).__GROQ_API_KEY__ ??= '';
-(globalThis as Record<string, unknown>).__FINNHUB_API_KEY__ ??= '';
 
 (globalThis as unknown as { Highlight: unknown }).Highlight =
   class { constructor(..._r: unknown[]) { /* shim — ranges ignored */ } };

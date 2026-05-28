@@ -30,26 +30,29 @@
 // in depth.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadConfig, loadUserKeys, saveConfig, saveUserKeys, resetConfig } from './chrome-storage-adapter';
+import { loadConfig, loadUserKeys, saveConfig, saveUserKeys, resetConfig, clearChromeHostState } from './chrome-storage-adapter';
 
-interface StorageBag {
-  opencues_config?: Record<string, unknown>;
-  opencues_host_keys?: Record<string, string>;
-  opencues_user_keys?: Record<string, string>;
-}
+// Loosened to Record<string, unknown> so per-file runtime caches
+// (`opencues_runtime:/chrome-storage/.cues/OPENCUES.md` etc.) can
+// live alongside the three known top-level keys.
+type StorageBag = Record<string, unknown>;
 
 function mockChromeStorage(initial: StorageBag): StorageBag {
   const state: StorageBag = { ...initial };
   (globalThis as unknown as { chrome: unknown }).chrome = {
     storage: {
       local: {
-        get: vi.fn((key: string | string[]) => {
+        get: vi.fn((key: string | string[] | null) => {
+          // `get(null)` returns the entire bag — used by
+          // `clearChromeHostState` to enumerate `opencues_runtime:*`
+          // keys it can't know up-front.
+          if (key === null) return Promise.resolve({ ...state });
           if (typeof key === 'string') {
-            return Promise.resolve(key in state ? { [key]: (state as Record<string, unknown>)[key] } : {});
+            return Promise.resolve(key in state ? { [key]: state[key] } : {});
           }
           const out: Record<string, unknown> = {};
           for (const k of key) {
-            if (k in state) out[k] = (state as Record<string, unknown>)[k];
+            if (k in state) out[k] = state[k];
           }
           return Promise.resolve(out);
         }),
@@ -59,7 +62,7 @@ function mockChromeStorage(initial: StorageBag): StorageBag {
         }),
         remove: vi.fn((keys: string | string[]) => {
           const arr = typeof keys === 'string' ? [keys] : keys;
-          for (const k of arr) delete (state as Record<string, unknown>)[k];
+          for (const k of arr) delete state[k];
           return Promise.resolve();
         }),
       },
@@ -98,10 +101,9 @@ describe('chrome storage adapter — multi-provider key forwarding', () => {
       OPENROUTER_API_KEY: 'openrouter-secret',
     });
     expect(config.llmApiKeys.FINNHUB_API_KEY).toBe('finnhub-secret');
-    expect(config.finnhubApiKey).toBe('finnhub-secret');
   });
 
-  it('keeps legacy single-field projection working for groq + finnhub', async () => {
+  it('keeps legacy single-field projection working for groq', async () => {
     mockChromeStorage({
       opencues_host_keys: {
         GROQ_API_KEY: 'groq-secret',
@@ -112,8 +114,11 @@ describe('chrome storage adapter — multi-provider key forwarding', () => {
     const config = await loadConfig();
 
     expect(config.apiKey).toBe('groq-secret');
-    expect(config.finnhubApiKey).toBe('finnhub-secret');
     expect(config.llmApiKeys.GROQ_API_KEY).toBe('groq-secret');
+    // FINNHUB_API_KEY survives in the multi-provider bag but is no
+    // longer projected onto a top-level field — the chrome bootstrap
+    // reads it from llmApiKeys directly when constructing StocksBlank.
+    expect(config.llmApiKeys.FINNHUB_API_KEY).toBe('finnhub-secret');
   });
 
   it('user-pasted keys win over host-pushed keys on collision', async () => {
@@ -336,5 +341,118 @@ describe('chrome storage adapter — ownership invariants', () => {
 
     const config = await loadConfig();
     expect(config.llmApiKeys).toEqual({ CEREBRAS_API_KEY: 'live-cerebras' });
+  });
+});
+
+// ─── clearChromeHostState ──────────────────────────────────────────────────
+//
+// Triggered by the popup's Save handler when `deferToChromeHost` flips
+// to OFF. The user is opting out of all chrome-host-derived state, so
+// every storage surface the host can write into must be wiped in one
+// shot — otherwise stale state surfaces as "weird persistence" (e.g.
+// the host's last-pushed OPENCUES.md keeps driving config after the
+// toggle was supposed to disable it).
+//
+// Three layers covered:
+//   1. opencues_bundle      — file map from the native-messaging host
+//   2. opencues_host_keys   — env-var keys pushed by the host
+//   3. opencues_runtime:*   — per-file caches populated from the
+//                             bundle by opencues-bootstrap.ts on
+//                             every push. Wildcard-prefix removal
+//                             is the only safe approach because the
+//                             cache key-space is unbounded (every
+//                             cue + blank file gets its own key).
+//
+// Popup-owned surfaces (opencues_config, opencues_user_keys) MUST be
+// preserved — they belong to the user, not the host. The defer toggle
+// itself lives inside opencues_config; wiping that would erase the
+// user's intent the moment they expressed it.
+
+describe('clearChromeHostState — toggle-OFF wipe', () => {
+  beforeEach(() => {
+    delete (globalThis as { chrome?: unknown }).chrome;
+  });
+
+  it('removes opencues_bundle + opencues_host_keys', async () => {
+    const state = mockChromeStorage({
+      opencues_bundle: { files: { 'OPENCUES.md': 'voice-mode: active' }, root: '/chrome-storage' },
+      opencues_host_keys: { GROQ_API_KEY: 'host-pushed' },
+    });
+
+    await clearChromeHostState();
+
+    expect(state.opencues_bundle).toBeUndefined();
+    expect(state.opencues_host_keys).toBeUndefined();
+  });
+
+  it('removes every opencues_runtime:* per-file cache', async () => {
+    // The bootstrap writes a key per config file it touches — both
+    // host-pushed (line 195 on every bundle push) AND chrome-side
+    // cycling writes (lines 1626, 1637). Indistinguishable at key
+    // level. Toggle-OFF must clear ALL of them because the host-
+    // pushed entries are exactly the "weird persistence" surface.
+    const state = mockChromeStorage({
+      'opencues_runtime:/chrome-storage/.cues/OPENCUES.md': 'voice-mode: active',
+      'opencues_runtime:/chrome-storage/.cues/CUES.md': '---\nname: foo\n---',
+      'opencues_runtime:/chrome-storage/.cues/cues/legal/CUE.md': 'priority: 70',
+      'opencues_runtime:/chrome-storage/.cues/blanks/volume/BLANK.md': 'blankKeywords: volume',
+    });
+
+    await clearChromeHostState();
+
+    expect(Object.keys(state).filter(k => k.startsWith('opencues_runtime:'))).toEqual([]);
+  });
+
+  it('preserves popup-owned surfaces (opencues_config, opencues_user_keys)', async () => {
+    // The defer toggle itself + popup-pasted API keys must survive.
+    // Wiping them would erase the user's intent at the exact moment
+    // they expressed it, and would invalidate any popup-pasted keys
+    // the user wants to keep using in local mode.
+    const state = mockChromeStorage({
+      opencues_config: { deferToChromeHost: false, provider: 'cerebras' },
+      opencues_user_keys: { CEREBRAS_API_KEY: 'popup-pasted' },
+      opencues_bundle: { files: {}, root: '/chrome-storage' },
+      opencues_host_keys: { GROQ_API_KEY: 'will-be-wiped' },
+    });
+
+    await clearChromeHostState();
+
+    expect(state.opencues_config).toEqual({ deferToChromeHost: false, provider: 'cerebras' });
+    expect(state.opencues_user_keys).toEqual({ CEREBRAS_API_KEY: 'popup-pasted' });
+    expect(state.opencues_bundle).toBeUndefined();
+    expect(state.opencues_host_keys).toBeUndefined();
+  });
+
+  it('is a no-op on an already-clean storage (idempotent)', async () => {
+    // The popup Save handler runs unconditionally on every OFF save;
+    // calling it when storage is already clean must not throw and
+    // must leave popup-owned state intact. Pins the no-stale-state
+    // case against future regressions where the wipe might
+    // accidentally write a sentinel value.
+    const state = mockChromeStorage({
+      opencues_config: { deferToChromeHost: false },
+      opencues_user_keys: { GROQ_API_KEY: 'popup' },
+    });
+
+    await clearChromeHostState();
+
+    expect(state.opencues_config).toEqual({ deferToChromeHost: false });
+    expect(state.opencues_user_keys).toEqual({ GROQ_API_KEY: 'popup' });
+  });
+
+  it('does not touch unrelated opencues_ keys (only the documented surfaces)', async () => {
+    // A future feature might add a new top-level `opencues_<x>` key
+    // that does NOT belong to the host. The wipe is explicit about
+    // its targets (bundle + host_keys + runtime: prefix) — any new
+    // key needs to be added by name. Pins that contract.
+    const state = mockChromeStorage({
+      opencues_bundle: { files: {}, root: '/chrome-storage' },
+      opencues_some_future_popup_setting: 'survives',
+    });
+
+    await clearChromeHostState();
+
+    expect(state.opencues_bundle).toBeUndefined();
+    expect(state.opencues_some_future_popup_setting).toBe('survives');
   });
 });

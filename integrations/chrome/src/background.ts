@@ -65,6 +65,21 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (DEBUG_MODE_KEY in changes && typeof changes[DEBUG_MODE_KEY].newValue === 'string') {
     _debugMode = parseDebugMode(changes[DEBUG_MODE_KEY].newValue);
   }
+  // Toggle ON → re-trigger a bundle push so storage refills without
+  // waiting for the next ~/.cues/ filesystem change. The host pushes
+  // an initial bundle on connect (host.cjs `buildAndPush('initial')`),
+  // so dropping the port and reconnecting is the cheapest re-sync.
+  const cfg = changes['opencues_config'];
+  if (cfg && cfg.oldValue && cfg.newValue) {
+    const wasOff = (cfg.oldValue as { deferToChromeHost?: unknown }).deferToChromeHost === false;
+    const nowOn = (cfg.newValue as { deferToChromeHost?: unknown }).deferToChromeHost !== false;
+    if (wasOff && nowOn && nativePort) {
+      dlog('[opencues] deferToChromeHost flipped ON — reconnecting native host to re-push bundle');
+      try { nativePort.disconnect(); } catch { /* already gone */ }
+      nativePort = null;
+      connectNativeHost();
+    }
+  }
 });
 function mirrorToNativeHost(level: 'info' | 'warn', args: unknown[]): void {
   // Fire-and-forget mirror to /tmp/opencues.log. Drops silently when the
@@ -156,8 +171,22 @@ chrome.runtime.onInstalled.addListener(() => {
 const NATIVE_HOST = 'com.opencues.sync';
 const BUNDLE_KEY = 'opencues_bundle';
 const HOST_KEYS_STORAGE = 'opencues_host_keys';
+const CONFIG_KEY = 'opencues_config';
 const RECONNECT_MS = 30_000;
 const EXEC_TIMEOUT_FALLBACK_MS = 15_000;
+
+// Is the user currently opted in to chrome-host data? The popup's
+// "use ~/.cues/ config (chrome-host)" toggle writes this. Default
+// true so first-time users with chrome-host installed get the
+// bundle / host keys without having to toggle anything; explicit
+// `false` (user un-ticked + saved) suppresses storing host pushes.
+async function isDeferEnabled(): Promise<boolean> {
+  try {
+    const r = await chrome.storage.local.get(CONFIG_KEY);
+    const stored = r[CONFIG_KEY] as { deferToChromeHost?: unknown } | undefined;
+    return stored?.deferToChromeHost !== false;
+  } catch { return true; }
+}
 
 interface BundleMessage {
   type: 'bundle';
@@ -258,9 +287,15 @@ function connectNativeHost(): void {
     if (!msg || typeof msg !== 'object') return;
     if (msg.type === 'bundle' && typeof msg.files === 'object') {
       const fileCount = Object.keys(msg.files).length;
-      chrome.storage.local.set({ [BUNDLE_KEY]: { files: msg.files, root: msg.root } })
-        .then(() => dlog(`[opencues] bundle stored (${fileCount} files, reason=${msg.reason ?? 'unknown'})`))
-        .catch((err) => dwarn('[opencues] bundle storage write failed', err));
+      void isDeferEnabled().then((enabled) => {
+        if (!enabled) {
+          dlog(`[opencues] bundle ignored (${fileCount} files) — deferToChromeHost is OFF`);
+          return;
+        }
+        return chrome.storage.local.set({ [BUNDLE_KEY]: { files: msg.files, root: msg.root } })
+          .then(() => dlog(`[opencues] bundle stored (${fileCount} files, reason=${msg.reason ?? 'unknown'})`))
+          .catch((err) => dwarn('[opencues] bundle storage write failed', err));
+      });
       return;
     }
     if (msg.type === 'config' && msg.apiKeys && typeof msg.apiKeys === 'object') {
@@ -269,9 +304,16 @@ function connectNativeHost(): void {
       // chrome-storage-adapter layers these between the empty
       // bake-time defaults and any popup-set user overrides.
       const keyNames = Object.keys(msg.apiKeys);
-      chrome.storage.local.set({ [HOST_KEYS_STORAGE]: msg.apiKeys })
-        .then(() => dlog(`[opencues] host API keys received (${keyNames.length} keys: ${keyNames.join(', ')})`))
-        .catch((err) => dwarn('[opencues] host-keys storage write failed', err));
+      const apiKeys = msg.apiKeys;
+      void isDeferEnabled().then((enabled) => {
+        if (!enabled) {
+          dlog(`[opencues] host API keys ignored (${keyNames.length} keys) — deferToChromeHost is OFF`);
+          return;
+        }
+        return chrome.storage.local.set({ [HOST_KEYS_STORAGE]: apiKeys })
+          .then(() => dlog(`[opencues] host API keys received (${keyNames.length} keys: ${keyNames.join(', ')})`))
+          .catch((err) => dwarn('[opencues] host-keys storage write failed', err));
+      });
       return;
     }
     if (msg.type === 'exec-result' && typeof msg.requestId === 'string') {

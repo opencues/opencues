@@ -34,8 +34,6 @@ export interface StoredConfig {
   ttsEnabled: boolean;
   /** TTS speech rate (1-5) */
   ttsRate: number;
-  /** Finnhub API key for stock prices */
-  finnhubApiKey: string;
   /** Multi-provider key bag, keyed by env-var name (GROQ_API_KEY,
    *  GEMINI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY,
    *  CEREBRAS_API_KEY, OPENROUTER_API_KEY). Forwarded straight to the
@@ -50,13 +48,6 @@ export interface StoredConfig {
    *  0 = identical to host text colour; 1 = invisible. Default 0.45. */
   dimMix: number;
 }
-
-// Build-time injection — esbuild replaces these with literals.
-// `__FINNHUB_API_KEY__` is kept inert for parity; secrets are never
-// baked into the published bundle (esbuild defines them as '' — see
-// `esbuild.config.mjs`). The TS declaration keeps the symbol
-// addressable for the type-checker.
-declare const __FINNHUB_API_KEY__: string;
 
 // In-memory fallback used by `loadConfig` when a field hasn't been
 // written to storage yet. **Never persisted** — writing a snapshot of
@@ -74,7 +65,6 @@ export const DEFAULT_CONFIG: StoredConfig = {
   deferToChromeHost: false,
   ttsEnabled: false,
   ttsRate: 2,
-  finnhubApiKey: __FINNHUB_API_KEY__,
   llmApiKeys: {},
   dimMix: 0.45,
 };

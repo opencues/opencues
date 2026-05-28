@@ -15,7 +15,6 @@ const USER_KEYS_STORAGE = 'opencues_user_keys';
 // load the stored single-groq bag overwrote the host's full bag.
 const HOST_KEY_LEGACY_FIELD_MAP: Record<string, keyof StoredConfig> = {
   GROQ_API_KEY: 'apiKey',
-  FINNHUB_API_KEY: 'finnhubApiKey',
 };
 
 interface KeyBags {
@@ -23,7 +22,7 @@ interface KeyBags {
   host: Record<string, string>;
   /** Pasted by the user into the popup. Overrides host on key collision. */
   user: Record<string, string>;
-  /** Legacy single-field projections (apiKey / finnhubApiKey) for popup back-compat. */
+  /** Legacy single-field projection (apiKey) for popup back-compat. */
   legacy: Partial<StoredConfig>;
 }
 
@@ -185,6 +184,38 @@ export async function loadUserKeys(): Promise<Record<string, string>> {
  *  slate. Host-pushed keys are untouched — they belong to the host. */
 export async function resetConfig(): Promise<void> {
   await chrome.storage.local.remove([STORAGE_KEY, USER_KEYS_STORAGE]);
+}
+
+/** Wipe every storage surface chrome-host can write into. Called by
+ *  the popup's Save handler when the user toggles `deferToChromeHost`
+ *  OFF — the user is explicitly opting out of chrome-host-derived
+ *  state, so any of it that lingered would surface as "weird
+ *  persistence" (e.g. OPENCUES.md scalars pushed by the host keep
+ *  driving config after the toggle was supposed to disable them).
+ *
+ *  Three layers in one shot:
+ *   1. `opencues_bundle`      — the host's file map
+ *   2. `opencues_host_keys`   — env-var keys pushed by the host
+ *   3. `opencues_runtime:*`   — per-file caches the bootstrap
+ *                               populates from each bundle push
+ *                               (`opencues-bootstrap.ts` writes
+ *                               OPENCUES.md / CUES.md / BLANK.md
+ *                               into per-file keys; readFile then
+ *                               reads them as a fallback layer
+ *                               below the bundle).
+ *
+ *  Hostless users never see the toggle (popup hides it when the SW
+ *  reports the host disconnected), so this wipe only fires when a
+ *  user who actively opted in once toggles back OFF. Chrome-side
+ *  cycled state on pure-hostless installs is therefore never
+ *  accidentally wiped by this path. */
+export async function clearChromeHostState(): Promise<void> {
+  const all = await chrome.storage.local.get(null);
+  const keysToRemove: string[] = ['opencues_bundle', 'opencues_host_keys'];
+  for (const k of Object.keys(all)) {
+    if (k.startsWith('opencues_runtime:')) keysToRemove.push(k);
+  }
+  await chrome.storage.local.remove(keysToRemove);
 }
 
 /** Listen for config changes. Fires on any of the three storage
