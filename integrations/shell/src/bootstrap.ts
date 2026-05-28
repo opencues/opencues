@@ -10,6 +10,7 @@ import { RGBA, SyntaxStyle } from '@opentui/core';
 import { boot, type BootResult } from '@opencues/runtime/dist/adapters/shell/v1/boot';
 import type { KeyEvent, LogLevel } from '@opencues/runtime/dist/src/adapter';
 import { createSourceReclassifier } from '@opencues/runtime/dist/src/boot-common';
+import { codeUnitsToCells } from '@opencues/runtime/dist/src/util/cell-width';
 import {
   createBlankInvoke,
   createDefaultBlanksRegistry,
@@ -548,13 +549,21 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
       case 'L': return styleIds.list;
     }
   };
+  // OpenTUI's extmark layer takes `start`/`end` as terminal CELL
+  // positions, not JS string code-unit offsets. For ASCII those are
+  // equal so the runtime can keep emitting code-unit offsets and we
+  // translate at the host boundary. For CJK (Japanese, Chinese,
+  // Korean, fullwidth ASCII) each glyph occupies 2 cells, so a span
+  // covering "日本語に翻訳" (6 code units) needs end=12 to cover the
+  // 12 cells the glyphs actually paint to.
+  const toCell = (offset: number): number => codeUnitsToCells(text, offset);
   for (const [key, spec] of desired) {
     if (ownedExtmarks.has(key)) continue;
     const styleId = styleFor(spec.kind);
     if (styleId === undefined) continue;
     const id = textarea.extmarks.create({
-      start: spec.start,
-      end: spec.end,
+      start: toCell(spec.start),
+      end: toCell(spec.end),
       styleId,
       typeId: styleIds.typeId,
     });
@@ -571,8 +580,8 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
       loadingColorIds.set(spec.hex, styleId);
     }
     const id = textarea.extmarks.create({
-      start: spec.start,
-      end: spec.end,
+      start: toCell(spec.start),
+      end: toCell(spec.end),
       styleId,
       typeId: styleIds.typeId,
     });
