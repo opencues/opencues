@@ -37,6 +37,56 @@ interface FetchResponse {
   text: string;
 }
 
+// ─── Logging gate ───────────────────────────────────────────────────────
+//
+// The service worker mirrors the content script's `debug-mode: on/off`
+// gate (see opencues-bootstrap.ts → `_readTrace`). Confirmations
+// (port-opened, bundle-stored, host-keys-received, ...) only surface
+// when debug-mode is on; warnings and errors are always visible.
+//
+// Keyed off the same chrome.storage entry the bootstrap reads
+// (`opencues_runtime:/chrome-storage/.cues/OPENCUES.md`); the
+// onChanged listener catches live cycling so no SW reload is needed
+// after `opencues settings _` flips the scalar.
+const DEBUG_MODE_KEY = 'opencues_runtime:/chrome-storage/.cues/OPENCUES.md';
+let _debugMode = false;
+function parseDebugMode(content: string | null | undefined): boolean {
+  return /debug-mode:\s*on\b/i.test(content ?? '');
+}
+async function refreshDebugMode(): Promise<void> {
+  try {
+    const result = await chrome.storage.local.get(DEBUG_MODE_KEY);
+    const v = result[DEBUG_MODE_KEY];
+    _debugMode = parseDebugMode(typeof v === 'string' ? v : null);
+  } catch { _debugMode = false; }
+}
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local') return;
+  if (DEBUG_MODE_KEY in changes && typeof changes[DEBUG_MODE_KEY].newValue === 'string') {
+    _debugMode = parseDebugMode(changes[DEBUG_MODE_KEY].newValue);
+  }
+});
+function mirrorToNativeHost(level: 'info' | 'warn', args: unknown[]): void {
+  // Fire-and-forget mirror to /tmp/opencues.log. Drops silently when the
+  // port isn't open yet (install-time / first-connect lines miss the
+  // mirror; that's acceptable — the host file is for steady-state).
+  try {
+    if (nativePort) {
+      const msg = args.map(a => typeof a === 'string' ? a : '').filter(Boolean).join(' ');
+      nativePort.postMessage({ type: 'log', level, msg });
+    }
+  } catch { /* port disconnected mid-write */ }
+}
+function dlog(...args: unknown[]): void {
+  if (_debugMode) console.log(...args);
+  mirrorToNativeHost('info', args);
+}
+function dwarn(...args: unknown[]): void {
+  if (_debugMode) console.warn(...args);
+  mirrorToNativeHost('warn', args);
+}
+void refreshDebugMode();
+
 const preconnected = new Set<string>();
 
 function preconnectOrigin(originUrl: string): void {
@@ -87,7 +137,7 @@ chrome.runtime.onMessage.addListener((message: FetchRequest, _sender, sendRespon
 });
 
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('OpenCues extension installed');
+  dlog('[opencues] extension installed');
 });
 
 // ─── Native-messaging bridge ────────────────────────────────────────────
@@ -197,11 +247,11 @@ function connectNativeHost(): void {
   try {
     nativePort = chrome.runtime.connectNative(NATIVE_HOST);
   } catch (err) {
-    console.warn('[opencues] native host connect threw — host not installed?', err);
+    dwarn('[opencues] native host connect threw — host not installed?', err);
     scheduleReconnect();
     return;
   }
-  console.log('[opencues] native host port opened');
+  dlog('[opencues] native host port opened');
 
   nativePort.onMessage.addListener((raw: unknown) => {
     const msg = raw as BundleMessage | ExecResultMessage | HostConfigMessage;
@@ -209,8 +259,8 @@ function connectNativeHost(): void {
     if (msg.type === 'bundle' && typeof msg.files === 'object') {
       const fileCount = Object.keys(msg.files).length;
       chrome.storage.local.set({ [BUNDLE_KEY]: { files: msg.files, root: msg.root } })
-        .then(() => console.log(`[opencues] bundle stored (${fileCount} files, reason=${msg.reason ?? 'unknown'})`))
-        .catch((err) => console.warn('[opencues] bundle storage write failed', err));
+        .then(() => dlog(`[opencues] bundle stored (${fileCount} files, reason=${msg.reason ?? 'unknown'})`))
+        .catch((err) => dwarn('[opencues] bundle storage write failed', err));
       return;
     }
     if (msg.type === 'config' && msg.apiKeys && typeof msg.apiKeys === 'object') {
@@ -220,8 +270,8 @@ function connectNativeHost(): void {
       // bake-time defaults and any popup-set user overrides.
       const keyNames = Object.keys(msg.apiKeys);
       chrome.storage.local.set({ [HOST_KEYS_STORAGE]: msg.apiKeys })
-        .then(() => console.log(`[opencues] host API keys received (${keyNames.length} keys: ${keyNames.join(', ')})`))
-        .catch((err) => console.warn('[opencues] host-keys storage write failed', err));
+        .then(() => dlog(`[opencues] host API keys received (${keyNames.length} keys: ${keyNames.join(', ')})`))
+        .catch((err) => dwarn('[opencues] host-keys storage write failed', err));
       return;
     }
     if (msg.type === 'exec-result' && typeof msg.requestId === 'string') {
@@ -254,7 +304,7 @@ function connectNativeHost(): void {
 
   nativePort.onDisconnect.addListener(() => {
     const err = chrome.runtime.lastError;
-    console.warn('[opencues] native host disconnected', err?.message);
+    dwarn('[opencues] native host disconnected', err?.message);
     nativePort = null;
     failPending('native host disconnected');
     scheduleReconnect();

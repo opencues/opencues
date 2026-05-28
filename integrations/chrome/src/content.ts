@@ -89,7 +89,7 @@ function clearDerivedColours(_el: HTMLElement): void {
 }
 
 async function init(): Promise<void> {
-  console.log('[OpenCues] Content script loaded');
+  log.info('[opencues] content script loaded');
   const config = await loadConfig();
 
   // Boot the runtime with config from chrome.storage. The runtime
