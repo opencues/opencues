@@ -30,7 +30,8 @@
  * on Chrome today; the italic rule is included as a forward-compat
  * hint and silently ignored when not supported. */
 
-/* Status bar — fixed bottom-right corner */
+/* Status bar — fixed bottom-right corner. Plain square box: no
+ * rounded corners, no shadow, no glow. */
 .oc-status-bar {
   position: fixed;
   bottom: 16px;
@@ -40,8 +41,8 @@
   color: #e2e8f0;
   font-family: system-ui, sans-serif;
   font-size: 13px;
-  border-radius: 6px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  border-radius: 0;
+  box-shadow: none;
   z-index: 99999;
   opacity: 0;
   transform: translateY(8px);
