@@ -772,4 +772,35 @@ as items are resolved.
 
 ---
 
+## Package version map (snapshot)
+
+Snapshot of `name` + `version` across every `package.json` in the repo
+(excluding `node_modules/` + worktrees). Regenerate with:
+
+```bash
+for f in package.json packages/*/package.json integrations/*/package.json; do
+  printf "%-50s " "$f"
+  node -e "const p=require('./$f'); console.log(p.name, p.version, p.private?'(private)':'')"
+done
+```
+
+| Path | Name | Version | Status |
+|---|---|---|---|
+| `package.json` (monorepo root) | `opencues` | 0.1.0 | private |
+| `packages/opencues-core/` | `@opencues/core` | 0.1.0 | private |
+| `packages/opencues-runtime/` | `@opencues/runtime` | 0.1.0 | private |
+| `packages/opencues-cli/` | `opencues` (real CLI) | 0.1.0 | private |
+| `packages/opencues-park/` | `opencues` (placeholder) | 0.0.1 | **PUBLISHED on npm** |
+| `integrations/claude-code/` | `@opencues/claude-code` | 0.1.0 | private |
+| `integrations/opencode/` | `@opencues/opencode` | 0.1.0 | private |
+| `integrations/chrome/` | `@opencues/chrome` | 0.1.0 | private |
+| `integrations/gemini-cli/` | `@opencues/gemini-cli` | 0.1.0 | private |
+| `integrations/shell/` | `@opencues/shell` | 0.1.0 | private |
+
+Two packages share the bare `opencues` name — the real CLI at `packages/opencues-cli/` (still private) and the parking placeholder at `packages/opencues-park/` (published as v0.0.1 to the public npm registry, owned by the `opencues` org via the `developers` team). Launch handover is described in the npm-name pre-launch checklist above; the real CLI's v0.1.0 cleanly supersedes the placeholder's v0.0.1 on first publish.
+
+Everything except the placeholder is currently `private: true`. Flipping a package to publishable requires removing `"private": true` AND repointing (or removing) its `publishConfig` block (most currently target `npm.pkg.github.com`).
+
+---
+
 *Last updated: May 2026*
