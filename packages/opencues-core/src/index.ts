@@ -138,6 +138,7 @@ export {
   withFallback,
   useStrictJson,
   buildJsonResponseFormat,
+  setCoreWarn,
   type EndpointValidation,
   type ProviderId,
   type ProviderAdapter,

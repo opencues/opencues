@@ -33,6 +33,7 @@ import { applyDirectives, clearDirectives } from './runtime-renderer';
 import { applyStatuslinePayload } from './runtime-statusbar';
 import { WebSpeechAdapter } from './adapters/web-speech-adapter';
 import { FetchHttpAdapter } from './adapters/fetch-http-adapter';
+import { setCoreWarn } from '@opencues/core';
 import { createBlanks, type BrowserBlank } from './blanks';
 import { walkPlainText, plainOffsetOfPosition, domPositionOfPlainOffset } from './dom-walk';
 
@@ -156,6 +157,15 @@ export const log = {
     mirrorToHostLog('error', args);
   },
 };
+
+// Route @opencues/core's host-agnostic warns (missing provider key,
+// unknown provider, custom endpoint, …) through chrome's debug-gated
+// logger. Default core behaviour is `console.warn`, which floods the
+// devtools console for every page-load with a misconfigured provider
+// — visible without any debug opt-in, confusing for users who didn't
+// ask for diagnostics. Routing through `log.warn` honours the
+// `debug-mode: on/off` scalar in OPENCUES.md.
+setCoreWarn((msg) => log.warn(msg));
 function parseDebugMode(content: string | null | undefined): boolean {
   return /debug-mode:\s*on\b/i.test(content ?? '');
 }
@@ -297,6 +307,20 @@ export function notifyBufferReplacedExternally(): void {
 export function updateRuntimeApiKeys(newKeys: Readonly<Record<string, string>>): void {
   if (!bootResult) return;
   bootResult.updateApiKeys(newKeys);
+}
+
+/** Real-time provider/model/endpoint update — called by content.ts
+ *  when the popup saves a change to those fields. Mirrors
+ *  `updateRuntimeApiKeys` (same in-place mutate + rebuildResolver
+ *  pattern on the runtime side). Pass empty strings to clear an
+ *  override and fall back to OPENCUES.md scalars. */
+export function updateRuntimeLlmConfig(patch: {
+  provider?: string;
+  model?: string;
+  endpoint?: string;
+}): void {
+  if (!bootResult) return;
+  bootResult.updateLlmConfig(patch);
 }
 
 /** Editors that own their contenteditable as a fully-managed surface
@@ -1735,8 +1759,6 @@ export interface RuntimeStartOptions {
    * right one based on CUES.md `llm-provider:` / `<feature>-provider:`.
    */
   llmApiKeys?: Readonly<Record<string, string | undefined>>;
-  /** Finnhub API key for the stocks blank. */
-  finnhubApiKey?: string;
   /** Custom ticker map for the stocks blank. */
   customTickers?: Record<string, string>;
 }
@@ -1967,8 +1989,14 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
   // CE.8 — build the chrome blank registry. The runtime's BlankFill
   // + Cycling dispatch into this via blankInvoke. Prompt-improver
   // is opt-in via llmConfig.
+  // Stocks is a non-LLM API blank backed by Finnhub. Chrome reads its
+  // key from the same multi-provider bag the LLM resolver uses
+  // (`opencues_host_keys.FINNHUB_API_KEY`, pushed by chrome-host); the
+  // popup never carries it. Without chrome-host installed there's no
+  // FINNHUB_API_KEY → StocksBlank factory returns null → keyword
+  // silently no-ops, same as native hosts without the env-var.
   const blanks = createBlanks({
-    finnhubApiKey: opts.finnhubApiKey,
+    finnhubApiKey: opts.llmApiKeys?.FINNHUB_API_KEY ?? undefined,
     customTickers: opts.customTickers,
     llmConfig: opts.llmApiKey ? {
       apiKey: opts.llmApiKey,
@@ -2065,17 +2093,23 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     statusSnapshotHook: (payload) => applyStatuslinePayload(payload as Parameters<typeof applyStatuslinePayload>[0]),
     // CE.6 — TTS via Web Speech, gated on host providing the speak fn.
     speakFn: (text, rate) => speech.speak(text, rate ? Number(rate) : 2),
-    // CE.7 — Resolver only constructs when llmApiKey is set. Pass our
-    // FetchHttpAdapter so the runtime doesn't try to load the
-    // node-http-adapter stub that throws.
+    // CE.7 — Resolver constructs ALWAYS (even keyless) so the
+    // MissingKeyFallbackSource can paint the "open the popup" hint
+    // in-buffer when the user types `_`. Pass FetchHttpAdapter
+    // unconditionally — the gate that previously withheld it when
+    // no keys were present caused rebuildResolver to lazy-load the
+    // NodeHttpAdapter stub (throws on chrome), which (a) spammed a
+    // confusing error log and (b) bailed out of rebuildResolver
+    // BEFORE the fallback source was registered, so the user-facing
+    // hint never appeared either. The adapter is a thin fetch
+    // wrapper; cost of always constructing is negligible.
     llmApiKey: opts.llmApiKey,
     llmApiKeys: opts.llmApiKeys,
     llmEndpoint: opts.llmEndpoint,
     llmDefaultModel: opts.llmDefaultModel,
     llmProvider: opts.llmProvider,
     llmDebounceMs: opts.llmDebounceMs,
-    httpAdapter: (opts.llmApiKey || (opts.llmApiKeys && Object.values(opts.llmApiKeys).some(Boolean)))
-      ? new FetchHttpAdapter() : undefined,
+    httpAdapter: new FetchHttpAdapter(),
     // CE.8 — blankInvoke routes blank-fill + cycle script calls to
     // the chrome blanks registry above (volume / stocks / weather /
     // hackernews / prompt-improver). Returns null for unknown
@@ -2114,9 +2148,29 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
               timeoutMs: spec.timeoutMs,
               sandbox: spec.sandbox,
             });
+          // When chrome-host isn't connected, the SW returns 127 with
+          // a known stderr. BlankFill's `res.exitCode !== 0 → return`
+          // path would otherwise drop this silently — the user types
+          // `volume _` and nothing happens. Translate into a successful
+          // stdout so BlankFill splices a user-visible hint instead.
+          // Same treatment for the upstream sendMessage-failed case
+          // (SW unreachable / extension reloaded mid-call).
+          if (reply.exitCode === 127 && /native host not connected/i.test(reply.stderr)) {
+            return {
+              exitCode: 0,
+              stdout: '[OpenCues: this blank requires chrome-host — install via `opencues install chrome-host`]',
+              stderr: '',
+              timedOut: false,
+            };
+          }
           return reply;
         } catch (err) {
-          return { exitCode: 127, stdout: '', stderr: 'sendMessage failed: ' + String(err), timedOut: false };
+          return {
+            exitCode: 0,
+            stdout: '[OpenCues: extension messaging failed — reload the tab and try again]',
+            stderr: '',
+            timedOut: false,
+          };
         }
       })();
       return { result, kill: () => { /* native host owns the lifecycle */ } };

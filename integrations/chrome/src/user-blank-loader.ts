@@ -78,6 +78,16 @@ export class ChromeUserBlank implements Blank {
       throw new Error(`user-blank "${this.name}" relay failed: ${String(err)}`);
     }
     if (!reply || !reply.ok) {
+      // When chrome-host isn't connected the background SW returns a
+      // known error string. Translate to a user-visible substitute
+      // string so BlankFill paints it in-buffer instead of the user
+      // seeing nothing. `set` callers ignore the return value, but a
+      // throw on `set` would also bubble silently — return a no-op
+      // marker the runtime won't render.
+      if (reply?.error && /native host not connected/i.test(reply.error)) {
+        if (method === 'set') return '';
+        return `[OpenCues: user-blank "${this.name}" requires chrome-host — install via \`opencues install chrome-host\`]`;
+      }
       throw new Error(reply?.error ?? `user-blank "${this.name}" invoke failed`);
     }
     // Sanitize at the host→content trust boundary. The host's loader

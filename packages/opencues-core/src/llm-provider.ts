@@ -1348,20 +1348,34 @@ function translateModelToFallback(fromProvider: ProviderId, toProvider: Provider
   return FALLBACK_MODEL_MAP[fromProvider]?.[model] ?? model;
 }
 
+// Host-injectable warning sink. Native hosts (CC/OC/gemini-cli) leave
+// this at the console.warn default — they have a real terminal and
+// the warns are user-actionable diagnostics. Chrome overrides it at
+// boot to route through its debug-gated logger so these one-time
+// warnings respect the `debug-mode: off` setting in OPENCUES.md.
+// Without the override, every page-load with a misconfigured provider
+// floods the devtools console (visible without any opt-in), which is
+// confusing for users who never asked for debug spam.
+type CoreWarnFn = (msg: string) => void;
+const _defaultCoreWarn: CoreWarnFn = (msg) => {
+  try { /* eslint-disable-next-line no-console */ console.warn(msg); } catch { /* host may have no console */ }
+};
+let _coreWarn: CoreWarnFn = _defaultCoreWarn;
+export function setCoreWarn(fn: CoreWarnFn | null): void {
+  _coreWarn = fn ?? _defaultCoreWarn;
+}
+
 // Dedup set for the one-time runtime warning. Keyed by `${id}|${url}`.
 const _warnedEndpoints = new Set<string>();
 function warnCustomEndpointOnce(providerId: string, endpoint: string): void {
   const key = `${providerId}|${endpoint}`;
   if (_warnedEndpoints.has(key)) return;
   _warnedEndpoints.add(key);
-  try {
-    // eslint-disable-next-line no-console
-    console.warn(
-      `[opencues] custom LLM endpoint in use: provider=${providerId} ` +
-      `endpoint=${endpoint} — draft is sent as prompt context. ` +
-      `Run "opencues validate" or check the source cue/blank to confirm trust.`,
-    );
-  } catch { /* host may have no console */ }
+  _coreWarn(
+    `[opencues] custom LLM endpoint in use: provider=${providerId} ` +
+    `endpoint=${endpoint} — draft is sent as prompt context. ` +
+    `Run "opencues validate" or check the source cue/blank to confirm trust.`,
+  );
 }
 
 // One-time warnings for misconfiguration that previously silent-no-op'd.
@@ -1378,31 +1392,25 @@ function warnMissingKeyOnce(providerId: string, envKeyName: string): void {
   const key = `missing|${providerId}|${envKeyName}`;
   if (_warnedMissingKeys.has(key)) return;
   _warnedMissingKeys.add(key);
-  try {
-    // eslint-disable-next-line no-console
-    console.warn(
-      `[opencues] provider "${providerId}" is configured but ${envKeyName} ` +
-      `is not set. Every LLM-driven cue/blank routed to this provider will ` +
-      `silently do nothing until the key is provided. Fix: set ${envKeyName} ` +
-      `in your env (CC/OC/gemini-cli read from process.env + ~/.cues/.env), ` +
-      `or in the OpenCues popup → Settings (chrome). To verify configured ` +
-      `keys: \`opencues check-keys\`.`,
-    );
-  } catch { /* host may have no console */ }
+  _coreWarn(
+    `[opencues] provider "${providerId}" is configured but ${envKeyName} ` +
+    `is not set. Every LLM-driven cue/blank routed to this provider will ` +
+    `silently do nothing until the key is provided. Fix: set ${envKeyName} ` +
+    `in your env (CC/OC/gemini-cli read from process.env + ~/.cues/.env), ` +
+    `or in the OpenCues popup → Settings (chrome). To verify configured ` +
+    `keys: \`opencues check-keys\`.`,
+  );
 }
 
 const _warnedUnknownProviders = new Set<string>();
 function warnUnknownProviderOnce(providerId: string): void {
   if (_warnedUnknownProviders.has(providerId)) return;
   _warnedUnknownProviders.add(providerId);
-  try {
-    // eslint-disable-next-line no-console
-    console.warn(
-      `[opencues] unknown provider "${providerId}" referenced in config. ` +
-      `Known providers: ${PROVIDER_IDS.join(', ')}. ` +
-      `Check your OPENCUES.md for typos in \`llm-provider:\` / \`<feature>-provider:\`.`,
-    );
-  } catch { /* host may have no console */ }
+  _coreWarn(
+    `[opencues] unknown provider "${providerId}" referenced in config. ` +
+    `Known providers: ${PROVIDER_IDS.join(', ')}. ` +
+    `Check your OPENCUES.md for typos in \`llm-provider:\` / \`<feature>-provider:\`.`,
+  );
 }
 
 /** Test-only — reset the warn dedup sets so each test sees a fresh

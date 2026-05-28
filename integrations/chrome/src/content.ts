@@ -18,6 +18,7 @@ import {
   isNormalInput,
   readTargetText,
   updateRuntimeApiKeys,
+  updateRuntimeLlmConfig,
   notifyBufferReplacedExternally,
 } from './opencues-bootstrap';
 import { clearStatusbar } from './runtime-statusbar';
@@ -115,11 +116,11 @@ async function init(): Promise<void> {
     llmEndpoint: deferred ? '' : config.apiUrl,
     llmDefaultModel: deferred ? '' : config.model,
     llmProvider: deferred ? '' : config.provider,
-    // finnhubApiKey deliberately omitted — stocks is a non-LLM API
-    // surface (Finnhub) and chrome doesn't try to register it. The
-    // StocksBlank factory in @opencues/runtime returns null when no
-    // key is supplied, so the blank silently skips on chrome while
-    // native hosts (CC/OC) continue to register it via their shell env.
+    // Finnhub key is no longer a dedicated field — the chrome
+    // bootstrap reads it from `llmApiKeys.FINNHUB_API_KEY` (pushed by
+    // chrome-host's env). When the host isn't connected, the key
+    // isn't present and StocksBlank silently skips. Matches the
+    // shell-env model used by native hosts.
   });
 
   let currentTarget: HTMLElement | null = null;
@@ -349,6 +350,20 @@ async function init(): Promise<void> {
   // into the runtime when the set actually changed (avoids spurious
   // rebuilds on every popup-save).
   let lastApiKeysFingerprint = Object.keys(config.llmApiKeys ?? {}).sort().join(',');
+  // Per-field snapshot for the LLM dispatch trio. When
+  // deferToChromeHost is ON these are passed as empty strings (the
+  // runtime then reads OPENCUES.md). The deferred flag is part of
+  // the comparison so flipping the toggle ALSO triggers a runtime
+  // update — same write at popup save time, no hard-refresh needed.
+  const llmFp = (cfg: typeof config): string => {
+    const deferred = !!cfg.deferToChromeHost;
+    return [
+      deferred ? '' : (cfg.provider ?? ''),
+      deferred ? '' : (cfg.model ?? ''),
+      deferred ? '' : (cfg.apiUrl ?? ''),
+    ].join('|');
+  };
+  let lastLlmFingerprint = llmFp(config);
 
   onConfigChange((newConfig) => {
     if (newConfig.targetSelector !== config.targetSelector) {
@@ -371,6 +386,30 @@ async function init(): Promise<void> {
       updateRuntimeApiKeys(newConfig.llmApiKeys ?? {});
       lastApiKeysFingerprint = fp;
       config.llmApiKeys = newConfig.llmApiKeys;
+    }
+
+    // Real-time provider/model/endpoint updates — popup save flips
+    // any of these (or toggles deferToChromeHost) → resolver rebuild.
+    // Avoids the previous hard-refresh requirement after switching
+    // provider in the popup.
+    const newLlmFp = llmFp(newConfig);
+    if (newLlmFp !== lastLlmFingerprint) {
+      const deferred = !!newConfig.deferToChromeHost;
+      log.info('[opencues] llmConfig delta — propagating to runtime', {
+        provider: deferred ? '(deferred to OPENCUES.md)' : newConfig.provider,
+        model: deferred ? '(deferred)' : newConfig.model,
+        apiUrl: deferred ? '(deferred)' : newConfig.apiUrl,
+      });
+      updateRuntimeLlmConfig({
+        provider: deferred ? '' : (newConfig.provider ?? ''),
+        model: deferred ? '' : (newConfig.model ?? ''),
+        endpoint: deferred ? '' : (newConfig.apiUrl ?? ''),
+      });
+      lastLlmFingerprint = newLlmFp;
+      config.provider = newConfig.provider;
+      config.model = newConfig.model;
+      config.apiUrl = newConfig.apiUrl;
+      config.deferToChromeHost = newConfig.deferToChromeHost;
     }
   });
 }
