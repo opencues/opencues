@@ -753,6 +753,20 @@ Full spec: `docs/features/chrome-sync.md`.
 
 - Switch `LICENSE` from "Proprietary. All rights reserved." to the chosen open-source license; the README license section will continue to render the new text without further changes.
 
+**Switch `opencues` npm name from parked placeholder to real CLI:**
+
+The `opencues` name on npmjs.com is currently held by `packages/opencues-park/` (a minimal "in private beta" placeholder published as v0.0.1). To hand the name over to the real CLI at launch:
+
+1. In `packages/opencues-cli/package.json`: remove `"private": true`, remove the `publishConfig` block (or repoint from GitHub Package Registry to public npm), and bump `version` to `0.1.0` (or higher — must be > 0.0.1 to supersede the placeholder).
+2. From `packages/opencues-cli/`: `npm publish --access public` (the bare name `opencues` is unscoped, so the `--access public` flag is implicit, but pass it explicitly to be safe). Publisher must be logged in as a member of the `opencues` npm org (the package is owned by the org via the `developers` team, granted via `npm access grant read-write opencues:developers opencues`).
+3. Verify on npmjs.com/package/opencues that v0.1.0 is now the latest and `npm install opencues` pulls the real CLI.
+4. Delete `packages/opencues-park/` from the repo (the published v0.0.1 stays on npm forever as a historical version, but the source is no longer needed).
+5. Remove this checklist item from CLAUDE.md.
+
+Caveats:
+- v0.0.1 can never be reused (npm permanently consumes versions). Don't unpublish the placeholder before publishing the real v0.1.0 — there's a 24-hour name lockout after unpublish that would block the handover.
+- The npm account currently used (`wkasekende`, admin of the `opencues` org) has security-key 2FA. Org-write commands (`npm access grant`, `npm owner add/rm`) don't accept security-key auth — they only take TOTP codes. To run those, either temporarily flip "Require 2FA for write actions" off in account settings (then back on), or add a TOTP authenticator app as a secondary 2FA method. Regular `npm publish` works fine with the security key via `--auth-type=web`.
+
 Tracked here so the launch pass doesn't miss them. Update this section
 as items are resolved.
 
