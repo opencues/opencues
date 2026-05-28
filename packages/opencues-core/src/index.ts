@@ -5,6 +5,9 @@
  * Platform-specific functionality is provided via adapters.
  */
 
+// Spec version
+export { SPEC_VERSION, type SpecVersion } from './spec-version';
+
 // Types
 export * from './types';
 
