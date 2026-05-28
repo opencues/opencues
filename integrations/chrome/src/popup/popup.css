@@ -105,6 +105,16 @@ label.defer-toggle input[type="checkbox"] {
   margin: 0;
 }
 
+/* Greyed-out variant — applied when chrome-host isn't connected.
+ * Toggle remains visible (so users discover the option) but inert. */
+label.defer-toggle.disconnected {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+label.defer-toggle.disconnected:hover {
+  color: #888;
+}
+
 /* Scrollable LLM-keys fieldset — height = ~3 visible key fields.
  * Override the global "hide scrollbar" rules so the bar IS visible
  * here (it's the affordance that tells the user "more keys below"). */

@@ -197,26 +197,29 @@ async function init(): Promise<void> {
   ttsEnabled.checked = config.ttsEnabled;
   ttsRate.value = String(config.ttsRate);
 
-  // Defer-to-chrome-host toggle. Only rendered when the SW reports
-  // that the native-messaging host is currently connected — otherwise
-  // it'd be a footgun (toggle ON, defer to nothing, get empty config).
-  // The label row's .defer-toggle is hidden until the SW responds.
+  // Defer-to-chrome-host toggle. Always visible so users discover the
+  // option, but rendered greyed-out + disabled when chrome-host isn't
+  // connected — the label keeps the affordance + tooltip explaining
+  // how to enable. When the host comes back up the toggle becomes
+  // interactive without a popup-reopen.
   const deferEl = document.getElementById('deferToChromeHost') as HTMLInputElement;
   const deferLabel = document.querySelector('label.defer-toggle') as HTMLLabelElement;
   deferEl.checked = !!config.deferToChromeHost;
-  deferLabel.style.display = 'none';
   void chrome.runtime.sendMessage({ type: 'opencues:host-status' }).then((reply: unknown) => {
     const connected = !!(reply && (reply as { connected?: boolean }).connected);
-    if (connected) {
-      deferLabel.style.display = '';
-    } else {
-      // If host is gone but the toggle was previously ON, force it OFF
-      // so the user isn't left in a broken state.
+    deferEl.disabled = !connected;
+    deferLabel.classList.toggle('disconnected', !connected);
+    if (!connected) {
+      // Host is gone — force the toggle OFF so the user isn't trapped
+      // with provider/model fields greyed and no host backing them.
       if (deferEl.checked) {
         deferEl.checked = false;
         applyDeferUI();
         void saveConfig({ deferToChromeHost: false });
       }
+      deferLabel.title = 'Install chrome-host (`opencues install chrome-host`) and re-open the popup to enable this. Then your ~/.cues/OPENCUES.md drives config.';
+    } else {
+      deferLabel.title = 'When ON, the popup\'s Provider / Model / API URL fields are ignored — your ~/.cues/OPENCUES.md (pushed by `opencues install chrome-host`) drives config instead. Matches how CC / OC / gemini-cli work.';
     }
   }).catch(() => { /* no SW response — treat as disconnected */ });
   const applyDeferUI = (): void => {
