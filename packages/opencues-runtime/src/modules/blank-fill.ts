@@ -295,8 +295,10 @@ export class BlankFill {
       });
       // Loading indicator — start animating the slot while the source
       // resolves. No-op when blank-loading-animation is 'off'. Stopped
-      // in the .then/.catch handlers below.
-      this._loadingAnimator().start(slot.index);
+      // in the .then/.catch handlers below. Owner tag keeps Resolver's
+      // own start/stop on the same slot from racing this one — the slot
+      // animates until BOTH owners release (refcounted in animator).
+      this._loadingAnimator().start(slot.index, 'blank-fill');
 
       // Try host-native blank invocation first (Chrome, Electron,
       // anything without shell access). Fall through to spawnProcess
@@ -312,8 +314,11 @@ export class BlankFill {
         if (!script) {
           // blankInvoke didn't recognise the blank AND there's no
           // shell fallback. Drop the dedup so a later state change can
-          // retry, and skip cleanly.
+          // retry, and skip cleanly. Release the loading claim we
+          // just took — without this, the slot would animate forever
+          // (no .then/.catch ever fires to stop it).
           this._pendingScripts.delete(dedupKey);
+          this._loadingAnimator().stop(slot.index, 'blank-fill');
           continue;
         }
         // OS-level sandbox config — populated when the blank's
@@ -355,7 +360,7 @@ export class BlankFill {
       }
       handle.result.then(res => {
         this._pendingScripts.delete(dedupKey);
-        this._loadingAnimator().stop(slot.index);
+        this._loadingAnimator().stop(slot.index, 'blank-fill');
         this.adapter.log('debug', `BlankFill: script result for ${slot.blankName}`, { exitCode: res.exitCode, timedOut: res.timedOut, stdoutLen: res.stdout?.length ?? 0, stdoutPreview: res.stdout?.slice(0, 80) });
         if (res.exitCode !== 0 || res.timedOut) return;
         const stdout = res.stdout.trim();
@@ -363,7 +368,7 @@ export class BlankFill {
         this.applyAsyncFill(slot, stdout);
       }).catch(err => {
         this._pendingScripts.delete(dedupKey);
-        this._loadingAnimator().stop(slot.index);
+        this._loadingAnimator().stop(slot.index, 'blank-fill');
         this.adapter.log('error', `BlankFill: script promise rejected for ${slot.blankName}`, err);
       });
     }
