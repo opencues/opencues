@@ -197,12 +197,28 @@ async function init(): Promise<void> {
   ttsEnabled.checked = config.ttsEnabled;
   ttsRate.value = String(config.ttsRate);
 
-  // Defer-to-chrome-host toggle. When ON, the Provider/Model/API URL
-  // fields don't override OPENCUES.md scalars — they go read-only as
-  // visual confirmation. Saving still persists the field values so
-  // toggling back doesn't lose state.
+  // Defer-to-chrome-host toggle. Only rendered when the SW reports
+  // that the native-messaging host is currently connected — otherwise
+  // it'd be a footgun (toggle ON, defer to nothing, get empty config).
+  // The label row's .defer-toggle is hidden until the SW responds.
   const deferEl = document.getElementById('deferToChromeHost') as HTMLInputElement;
+  const deferLabel = document.querySelector('label.defer-toggle') as HTMLLabelElement;
   deferEl.checked = !!config.deferToChromeHost;
+  deferLabel.style.display = 'none';
+  void chrome.runtime.sendMessage({ type: 'opencues:host-status' }).then((reply: unknown) => {
+    const connected = !!(reply && (reply as { connected?: boolean }).connected);
+    if (connected) {
+      deferLabel.style.display = '';
+    } else {
+      // If host is gone but the toggle was previously ON, force it OFF
+      // so the user isn't left in a broken state.
+      if (deferEl.checked) {
+        deferEl.checked = false;
+        applyDeferUI();
+        void saveConfig({ deferToChromeHost: false });
+      }
+    }
+  }).catch(() => { /* no SW response — treat as disconnected */ });
   const applyDeferUI = (): void => {
     const provEl = document.getElementById('provider') as HTMLSelectElement;
     const modSel = document.getElementById('modelSelect') as HTMLSelectElement;

@@ -355,6 +355,17 @@ chrome.runtime.onMessage.addListener((message: UserBlankInvokeRequestFromContent
 // in /tmp/opencues.log alongside CC/OC/gemini. Fire-and-forget — log
 // must never block the runtime keystroke path. Silently drops when
 // the host isn't connected.
+// Popup queries the SW to find out whether the native-messaging
+// host is currently connected. Drives the "use ~/.cues/ config
+// (chrome-host)" toggle's visibility — we only show the toggle when
+// there's actually a host pushing config; otherwise it'd be a footgun
+// (defer to a nonexistent source = empty config).
+chrome.runtime.onMessage.addListener((message: { type?: string }, _sender, sendResponse) => {
+  if (message?.type !== 'opencues:host-status') return false;
+  sendResponse({ connected: nativePort !== null });
+  return true;
+});
+
 chrome.runtime.onMessage.addListener((message: { type?: string; level?: string; msg?: string; data?: unknown }, _sender, sendResponse) => {
   if (message?.type !== 'opencues:log') return false;
   if (nativePort) {
