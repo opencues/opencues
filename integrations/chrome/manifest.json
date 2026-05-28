@@ -33,8 +33,20 @@
       "css": ["dist/content.css"]
     }
   ],
+  "icons": {
+    "16": "dist/icons/icon-16.png",
+    "32": "dist/icons/icon-32.png",
+    "48": "dist/icons/icon-48.png",
+    "128": "dist/icons/icon-128.png"
+  },
   "action": {
-    "default_popup": "dist/popup/popup.html"
+    "default_popup": "dist/popup/popup.html",
+    "default_icon": {
+      "16": "dist/icons/icon-16.png",
+      "32": "dist/icons/icon-32.png",
+      "48": "dist/icons/icon-48.png",
+      "128": "dist/icons/icon-128.png"
+    }
   },
   "web_accessible_resources": [
     {
