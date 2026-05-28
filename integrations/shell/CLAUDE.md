@@ -172,13 +172,25 @@ resolver's existing-def guard).
 | Cancel (Ctrl+Alt+Q / Alt+Shift+↓) | same path (finish with exitCode 130) | same |
 | Pane killed by tmux directly | n/a (process exits, fresh boot on next open) | n/a |
 
-**Ctrl+C is deliberately NOT bound.** An earlier attempt mapped
-it to in-session wipe + reset, but Ctrl+C interacts badly with
-the tmux + bun signal stack: `\x03` was sometimes delivered as
-SIGINT to bun before `useKeyboard` saw it, killing the runtime
-mid-session and silently disabling cues until a fresh oc-shell
-launch. The advertised cancel (Ctrl+Alt+Q) is the supported
-in-session reset path — it closes the pane, fresh open is clean.
+**Ctrl+C is deliberately a no-op.** The terminal driver translates
+`\x03` into SIGINT BEFORE OpenTUI's `useKeyboard` sees the byte;
+bun's default SIGINT handler then exits the process, leaving tmux
+holding a visually-intact pane with no runtime. Symptom: cues
+stop firing mid-session, no log line, no error — only fixed by
+closing + re-opening the pane.
+
+Fix lives at the top of `src/app.tsx`:
+```ts
+process.on('SIGINT', () => { /* no-op */ });
+```
+Binds a no-op listener so the signal is delivered to the process
+but doesn't trigger the default exit. SIGTERM is NOT swallowed —
+that path (e.g. `oc-shell` parent killing the pane on session
+end) is a legitimate shutdown signal.
+
+The advertised cancel (Ctrl+Alt+Q) is the supported in-session
+reset path — it closes the pane via `finish('', 130)` and the
+fresh re-open is clean.
 
 Bug history (2026-05-28): this wasn't wired on launch. Symptom
 was a prompt-improver in session N would silently block ALL

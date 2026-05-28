@@ -5,6 +5,19 @@
 // keybind) the current buffer is printed to stdout and the process
 // exits — same shape as $EDITOR-style invocations.
 
+// ─── Signal hygiene ─────────────────────────────────────────────────────
+// Swallow SIGINT so Ctrl+C doesn't kill the bun process. The terminal
+// driver translates Ctrl+C / `\x03` into SIGINT BEFORE our keyboard
+// handler sees the byte; bun's default SIGINT handler exits the
+// process, leaving tmux holding an empty pane while the runtime is
+// dead. Result: the input box "still works" visually but cues stop
+// firing (no runtime to respond) until the user closes + re-opens
+// the pane. We bind a no-op listener so the process survives and
+// Ctrl+C is effectively inert. `SIGTERM` is not swallowed — that
+// path (e.g. `oc-shell` parent killing the pane) is a legitimate
+// shutdown signal.
+process.on('SIGINT', () => { /* no-op — Ctrl+C must not kill the pane */ });
+
 import { render, useKeyboard, useRenderer } from '@opentui/solid';
 import { createSignal, onMount } from 'solid-js';
 import type { TextareaRenderable } from '@opentui/core';
