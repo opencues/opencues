@@ -57,13 +57,15 @@ const ROOT = '/chrome-storage';
 // the flag without an extension reload.
 // Logging gate — toggled by `debug-mode: on/off` in ~/.cues/OPENCUES.md
 // (settable from any host via `opencues settings _`). When off (the
-// default), the page console stays clean: only warnings and errors
-// surface. When on, per-keystroke trace logs (diffWriteText,
-// replaceAllText paths, readFile resolution) fire — useful when
-// debugging an editor that's misbehaving but noisy otherwise.
+// default), the page console stays clean: info, debug AND warn lines
+// are suppressed. The popup's self-check + connection indicators
+// surface the actionable subset (host status, runtime keys,
+// provider/model mismatches); raw console noise the user can't act
+// on is hidden. Every level still mirrors to /tmp/opencues.log via
+// the native host, so the durable record is intact regardless.
 //
-// Warnings and errors always go through, regardless of the flag —
-// they signal real failures (broken paste, host disconnect, etc.).
+// Only true errors (console.error) ignore the flag — they signal a
+// real failure that the popup can't already represent.
 let _readTrace = false;
 function tlog(msg: string): void { if (_readTrace) console.log(msg); }
 
@@ -74,7 +76,7 @@ function tlog(msg: string): void { if (_readTrace) console.log(msg); }
 //   [opencues] readFile ×24: bundle×18 baketime×4 storage×1 null×1 (avg 3.4KB)
 // `tlogRead` is the new per-readFile call site; the dedicated tlog
 // stays available for one-off paths that genuinely want a per-line
-// emit. Failures go through console.warn as before, never aggregated.
+// emit. Failures go through log.warn (gated like everything else), never aggregated.
 type ReadSource = 'bundle' | 'storage' | 'baketime' | 'merge' | 'null';
 const _readCounts: Record<ReadSource, { count: number; totalChars: number }> = {
   bundle: { count: 0, totalChars: 0 },
@@ -146,7 +148,7 @@ export const log = {
     mirrorToHostLog('debug', args);
   },
   warn(...args: unknown[]): void {
-    console.warn(...args);
+    if (_readTrace) console.warn(...args);
     mirrorToHostLog('warn', args);
   },
   error(...args: unknown[]): void {
@@ -194,7 +196,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
     }
     if (bootResult) {
       void bootResult.reloadConfig().catch(err => {
-        console.warn('[opencues] reloadConfig after bundle push failed', err);
+        log.warn('[opencues] reloadConfig after bundle push failed', err);
       });
     }
   }
@@ -986,7 +988,7 @@ export function replaceAllText(text: string): void {
           schedulePostReconcileRender();
           return;
         } catch (err) {
-          console.warn('[opencues] Lexical editor.update insert failed, falling back:', err);
+          log.warn('[opencues] Lexical editor.update insert failed, falling back:', err);
         }
       }
       // Fallback: Ctrl+A selection (NO history entry — selection only) +
@@ -1181,7 +1183,7 @@ async function readFile(path: string): Promise<string | null> {
       const result = await chrome.storage.local.get(storageKey);
       const v = result[storageKey];
       if (typeof v === 'string' && v.length > 0) stored = v as string;
-    } catch (err) { console.warn(`[opencues] readFile(${path}) threw:`, err); }
+    } catch (err) { log.warn(`[opencues] readFile(${path}) threw:`, err); }
     if (bundled !== null && stored !== null) {
       const merged = mergeOpencuesMd(bundled, stored);
       tlogRead('merge', merged.length);
@@ -1236,7 +1238,7 @@ async function readFile(path: string): Promise<string | null> {
       return v;
     }
   } catch (err) {
-    console.warn(`[opencues] readFile(${path}) threw:`, err);
+    log.warn(`[opencues] readFile(${path}) threw:`, err);
   }
   const bake = readBakeTimeDefault(path);
   if (bake !== null) {
@@ -1416,7 +1418,7 @@ async function registerUserBlanksFromBundle(
     if (!isRelative) continue;
 
     if (registeredUserNames.has(blankName)) {
-      console.warn(
+      log.warn(
         `[opencues] user blank name collision: "${blankName}" already registered ` +
         `from an earlier bundle entry; ignoring ${cfg.impl}. Rename one of the duplicates.`,
       );
@@ -1471,7 +1473,7 @@ function maybeReloadOnUrlChange(): void {
   _lastFilterScope = scope;
   _bundleIndexPromise = null;
   if (bootResult) {
-    void bootResult.reloadConfig().catch(err => console.warn('[opencues] reloadConfig on URL change failed', err));
+    void bootResult.reloadConfig().catch(err => log.warn('[opencues] reloadConfig on URL change failed', err));
   }
 }
 (() => {
@@ -1511,11 +1513,11 @@ function getBundleIndex(): Promise<{ files: Set<string>; storage: StoredBundle |
         result.files = new Set(Object.keys(filtered));
         result.loaded = true;
         const dropped = Object.keys(bundle.files).length - Object.keys(filtered).length;
-        console.log(`[opencues] storage bundle loaded: ${result.files.size} files (root=${bundle.root ?? 'unknown'}, scope=${location.hostname}${location.pathname}, dropped=${dropped})`);
+        log.info(`[opencues] storage bundle loaded: ${result.files.size} files (root=${bundle.root ?? 'unknown'}, scope=${location.hostname}${location.pathname}, dropped=${dropped})`);
         return result;
       }
     } catch (err) {
-      console.warn(`[opencues] storage bundle read failed: ${(err as Error).message}`);
+      log.warn(`[opencues] storage bundle read failed: ${(err as Error).message}`);
     }
 
     // 2. Bake-time bundle from dist/configs/.
@@ -1527,15 +1529,15 @@ function getBundleIndex(): Promise<{ files: Set<string>; storage: StoredBundle |
         if (data && Array.isArray(data.files)) {
           result.files = new Set(data.files.map(String));
           result.loaded = true;
-          console.log(`[opencues] bundled configs loaded: ${result.files.size} files from dist/configs/`);
+          log.info(`[opencues] bundled configs loaded: ${result.files.size} files from dist/configs/`);
         } else {
-          console.warn('[opencues] dist/configs/index.json malformed:', data);
+          log.warn('[opencues] dist/configs/index.json malformed:', data);
         }
       } else {
-        console.warn(`[opencues] dist/configs/index.json fetch returned ${res.status}`);
+        log.warn(`[opencues] dist/configs/index.json fetch returned ${res.status}`);
       }
     } catch (err) {
-      console.warn(`[opencues] dist/configs/index.json fetch failed: ${(err as Error).message}`);
+      log.warn(`[opencues] dist/configs/index.json fetch failed: ${(err as Error).message}`);
     }
     return result;
   })();
@@ -1802,7 +1804,7 @@ async function auditProvidersAgainstKeys(keys: Record<string, string>): Promise<
     }
   }
   if (problems.length === 0) return;
-  console.warn(
+  log.warn(
     `[opencues] CUES.md provider audit found ${problems.length} ` +
     `misconfigured ${problems.length === 1 ? 'directive' : 'directives'}:\n` +
     problems.join('\n') + '\n' +
@@ -1862,7 +1864,7 @@ async function verifyLlmKeyAtBoot(opts: RuntimeStartOptions): Promise<void> {
   }
 
   if (Object.keys(keys).length === 0) {
-    console.warn(
+    log.warn(
       '[opencues] no LLM provider key set — fluid-blank, transform-blank, ' +
       'and word-cues will silently do nothing. Open the OpenCues popup ' +
       'and paste a GROQ_API_KEY (free tier at https://console.groq.com/keys).',
@@ -1942,6 +1944,26 @@ async function verifyLlmKeyAtBoot(opts: RuntimeStartOptions): Promise<void> {
 export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
   if (bootResult) return bootResult;
 
+  // HostAdapter `log` callback — the runtime's primary logging channel.
+  // Declared early so the user-blank registration IIFE below (which
+  // may surface its failure via this callback) can reach it. Levels:
+  //   error           → always hit the page console
+  //   warn/info/debug → page console only when `debug-mode: on`
+  // The mirror to /tmp/opencues.log via the SW fires regardless of
+  // the gate, so the durable record is intact at every level.
+  const log = (level: LogLevel, msg: string, data?: unknown): void => {
+    const tag = `[opencues][${level}]`;
+    if (level === 'error') console.error(tag, msg, data ?? '');
+    else if (level === 'warn') { if (_readTrace) console.warn(tag, msg, data ?? ''); }
+    else if (level === 'debug') { if (_readTrace) console.debug(tag, msg, data ?? ''); }
+    else if (_readTrace) console.log(tag, msg, data ?? '');
+    try {
+      const safeData = serialiseLogData(data);
+      chrome.runtime.sendMessage({ type: 'opencues:log', level, msg, data: safeData })
+        .catch(() => { /* port closed or no listener — local console still has it */ });
+    } catch { /* ditto */ }
+  };
+
   // CE.8 — build the chrome blank registry. The runtime's BlankFill
   // + Cycling dispatch into this via blankInvoke. Prompt-improver
   // is opt-in via llmConfig.
@@ -1986,28 +2008,9 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
       }
       await registerUserBlanksFromBundle(blanks, llmApiKeys);
     } catch (err) {
-      console.warn('[opencues] user-blank registration failed', err);
+      log('warn', 'user-blank registration failed', err);
     }
   })();
-
-  const log = (level: LogLevel, msg: string, data?: unknown): void => {
-    const tag = `[opencues][${level}]`;
-    if (level === 'error') console.error(tag, msg, data ?? '');
-    else if (level === 'warn') console.warn(tag, msg, data ?? '');
-    else if (level === 'debug') console.debug(tag, msg, data ?? '');
-    else console.log(tag, msg, data ?? '');
-    // Mirror to the SW → native host → /tmp/opencues.log so chrome's
-    // runtime events land alongside CC/OC/gemini. Fire-and-forget;
-    // when the host isn't connected the SW drops silently. The
-    // page-console output above is the always-on local surface.
-    // Uses the shared serialiseLogData helper so Errors carry their
-    // message + stack into the log line (not `{}`).
-    try {
-      const safeData = serialiseLogData(data);
-      chrome.runtime.sendMessage({ type: 'opencues:log', level, msg, data: safeData })
-        .catch(() => { /* port closed or no listener — local console still has it */ });
-    } catch { /* ditto */ }
-  };
 
   // No seed step — readFile() resolves bake-time constants directly
   // for read-only paths, and writable paths (OPENCUES.md) persist
@@ -2166,27 +2169,22 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
   bootResult.onModuleEvent((type, body) => {
     if (type === 'markdown.styled' && body) {
       try { applyMarkdownStyling(body as unknown as MarkdownStyledPayload); }
-      catch (err) { console.warn('[opencues] applyMarkdownStyling failed', err); }
+      catch (err) { log('warn', 'applyMarkdownStyling failed', err); }
       return;
     }
     // Span-as-unit indication. The runtime tells us when a blank just
     // substituted a result that's clearOnEdit-flagged (the whole span
     // wipes when any char inside is edited) and when such a span got
-    // wiped. We surface both as visible-by-default console messages —
-    // the user sees one line on substitution ("✏︎ this fill wipes
-    // together if you edit inside it") and one when the wipe fires
-    // ("⌫ span wiped — Nchars dismissed as one unit"), so the
-    // 20-char-backspace behaviour is never a surprise.
+    // wiped. Both surface via `log.info` so they only appear when
+    // `debug-mode: on` — chrome devtools stays clean by default.
     if (type === 'blank.substituted' && body && (body as { spanAsUnit?: boolean }).spanAsUnit) {
       const b = body as { blankName?: string; output?: string };
-      // eslint-disable-next-line no-console
-      console.log(`[opencues] ✏︎ span-as-unit fill: "${b.blankName ?? '?'}" — editing inside it wipes the whole span`);
+      log('info', `✏︎ span-as-unit fill: "${b.blankName ?? '?'}" — editing inside it wipes the whole span`);
       return;
     }
     if (type === 'blank.span-wiped' && body) {
       const b = body as { reason?: string; wipedCharCount?: number };
-      // eslint-disable-next-line no-console
-      console.log(`[opencues] ⌫ span-as-unit wiped (${b.wipedCharCount ?? '?'} chars, reason: ${b.reason ?? '?'})`);
+      log('info', `⌫ span-as-unit wiped (${b.wipedCharCount ?? '?'} chars, reason: ${b.reason ?? '?'})`);
       return;
     }
   });
