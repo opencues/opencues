@@ -116,6 +116,11 @@ copyFileSync('src/popup/popup.html', 'dist/popup/popup.html');
 copyFileSync('src/popup/popup.css', 'dist/popup/popup.css');
 copyFileSync('src/content.css', 'dist/content.css');
 
+mkdirSync('dist/icons', { recursive: true });
+for (const size of [16, 32, 48, 128]) {
+  copyFileSync(`icons/icon-${size}.png`, `dist/icons/icon-${size}.png`);
+}
+
 // Ship a sentinel configs/index.json so the bake-time bundle fetch
 // in `getBundleIndex()` always gets a 200 on a fresh install (no
 // `opencues sync chrome` has run yet). Without it the bootstrap logs
