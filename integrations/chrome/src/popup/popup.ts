@@ -11,6 +11,10 @@ import { loadConfig, loadUserKeys, saveConfig, saveUserKeys, resetConfig } from 
 // merge with host-pushed keys (`opencues_host_keys`) at read time;
 // user-pasted keys win on collision.
 const fields = ['model', 'apiUrl', 'targetSelector', 'provider'] as const;
+// Boolean-shaped settings whose persistence needs explicit Boolean
+// coercion (saveConfig stores them as the literal value, not as the
+// input.value string).
+const booleanFields = ['deferToChromeHost'] as const;
 const advancedFields = ['finnhubApiKey'] as const;
 
 // Models offered per provider. First entry = default (bench-recommended).
@@ -193,6 +197,25 @@ async function init(): Promise<void> {
   ttsEnabled.checked = config.ttsEnabled;
   ttsRate.value = String(config.ttsRate);
 
+  // Defer-to-chrome-host toggle. When ON, the Provider/Model/API URL
+  // fields don't override OPENCUES.md scalars — they go read-only as
+  // visual confirmation. Saving still persists the field values so
+  // toggling back doesn't lose state.
+  const deferEl = document.getElementById('deferToChromeHost') as HTMLInputElement;
+  deferEl.checked = !!config.deferToChromeHost;
+  const applyDeferUI = (): void => {
+    const provEl = document.getElementById('provider') as HTMLSelectElement;
+    const modSel = document.getElementById('modelSelect') as HTMLSelectElement;
+    const apiEl = document.getElementById('apiUrl') as HTMLInputElement;
+    [provEl, modSel, apiEl].forEach(el => {
+      if (!el) return;
+      el.disabled = deferEl.checked;
+      el.style.opacity = deferEl.checked ? '0.4' : '';
+    });
+  };
+  applyDeferUI();
+  deferEl.addEventListener('change', applyDeferUI);
+
   const dimMix = document.getElementById('dimMix') as HTMLInputElement;
   const dimMixValue = document.getElementById('dimMixValue') as HTMLSpanElement;
   dimMix.value = String(Math.round(config.dimMix * 100));
@@ -216,6 +239,7 @@ async function init(): Promise<void> {
     }
     update.ttsEnabled = ttsEnabled.checked;
     update.ttsRate = parseInt(ttsRate.value, 10) || 2;
+    update.deferToChromeHost = (document.getElementById('deferToChromeHost') as HTMLInputElement).checked;
 
     const keyUpdate: Record<string, string> = {};
     for (const el of providerKeyInputs()) {
@@ -264,6 +288,8 @@ async function init(): Promise<void> {
       el.value = freshKeys[el.dataset.providerKey!] ?? '';
     }
     ttsEnabled.checked = freshConfig.ttsEnabled;
+    (document.getElementById('deferToChromeHost') as HTMLInputElement).checked = !!freshConfig.deferToChromeHost;
+    applyDeferUI();
     ttsRate.value = String(freshConfig.ttsRate);
     dimMix.value = String(Math.round(freshConfig.dimMix * 100));
     dimMixValue.textContent = `${dimMix.value}%`;

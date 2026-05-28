@@ -101,18 +101,20 @@ async function init(): Promise<void> {
   // `llm-provider:` to anything but groq in CUES.md silently no-op'd
   // on chrome — the resolver would look up the chosen provider's
   // env-key, not find it, and return null without any visible error.
+  // When deferToChromeHost is ON, the popup's Provider/Model/API URL
+  // fields are NOT forwarded as runtime overrides — OPENCUES.md scalars
+  // (pushed by chrome-host from ~/.cues/) become authoritative, matching
+  // CC/OC/gemini-cli behaviour. Keys still flow through; only the
+  // provider/model/endpoint dispatch trio is deferred. saveConfig
+  // continues to persist the field values, so toggling OFF later
+  // restores the user's previously-picked combo.
+  const deferred = !!config.deferToChromeHost;
   _bootResult = startOpenCues({
     llmApiKey: config.apiKey,
     llmApiKeys: config.llmApiKeys,
-    llmEndpoint: config.apiUrl,
-    llmDefaultModel: config.model,
-    // Popup's Provider dropdown — overrides the auto-route AND the
-    // OPENCUES.md `llm-provider:` scalar when set. Empty string means
-    // "no override; auto-pick whichever provider has a key" (the
-    // historical behaviour). Wiring this was needed because the popup
-    // pick was silently ignored before — users picked Groq with only a
-    // Cerebras key and nothing changed.
-    llmProvider: config.provider,
+    llmEndpoint: deferred ? '' : config.apiUrl,
+    llmDefaultModel: deferred ? '' : config.model,
+    llmProvider: deferred ? '' : config.provider,
     // finnhubApiKey deliberately omitted — stocks is a non-LLM API
     // surface (Finnhub) and chrome doesn't try to register it. The
     // StocksBlank factory in @opencues/runtime returns null when no
