@@ -56,6 +56,21 @@ export interface ResolverOptions {
    */
   readonly providerOverride?: string;
   /**
+   * Endpoint override from a host-level UI (chrome popup's API URL
+   * field). When non-empty, takes precedence over OPENCUES.md's
+   * `llm-endpoint:` scalar AND the legacy `endpoint` fallback.
+   * Empty / undefined falls through to the settings scalar then the
+   * static default. Mirrors providerOverride's role.
+   */
+  readonly endpointOverride?: string;
+  /**
+   * Default-model override from a host-level UI (chrome popup's Model
+   * dropdown). When non-empty, takes precedence over OPENCUES.md's
+   * `llm-model:` scalar AND the legacy `defaultModel` fallback.
+   * Mirrors providerOverride's role.
+   */
+  readonly modelOverride?: string;
+  /**
    * API keys keyed by provider env-var name. Populated by boot from
    * process.env (or settings UI). Lets CUES.md frontmatter pick a
    * non-Groq provider without rebuilding the patch.
@@ -418,8 +433,18 @@ export class Resolver {
       // sources that ship-defaulted to Groq before the abstraction.
       apiKeys: this.options.apiKeys,
       apiKey: this.options.apiKey,
-      endpoint: settings.get('llm-endpoint') ?? this.options.endpoint,
-      defaultModel: settings.get('llm-model') ?? this.options.defaultModel,
+      // Host UI override > OPENCUES.md scalar > host-supplied default.
+      // Chrome popup writes endpointOverride/modelOverride/providerOverride;
+      // native hosts leave them undefined so OPENCUES.md remains
+      // authoritative there. Lets a chrome user pick `cerebras + gpt-oss-120b`
+      // in the popup and have it WIN over a stale `llm-provider: groq` in
+      // their synced ~/.cues/OPENCUES.md.
+      endpoint: (this.options.endpointOverride && this.options.endpointOverride.length > 0
+        ? this.options.endpointOverride
+        : settings.get('llm-endpoint') ?? this.options.endpoint),
+      defaultModel: (this.options.modelOverride && this.options.modelOverride.length > 0
+        ? this.options.modelOverride
+        : settings.get('llm-model') ?? this.options.defaultModel),
       // Global tier (read once per build). Prose-bearing sources
       // (word-cues, sentence-cues, auditors, agent-rewrite) refuse to
       // dispatch through providers with `trainsOnInput: true` (today
@@ -427,10 +452,13 @@ export class Resolver {
       // time downstream, not here, because we still need to surface
       // the user's choice to blank sources (which CAN use it via
       // explicit `<feature>-llm-provider: opencode-zen` + `model: free`).
-      // Popup override > OPENCUES.md scalar > auto-route (undefined).
       globalProvider: this.options.providerOverride ?? settings.get('llm-provider'),
-      globalModel: settings.get('llm-model') ?? this.options.defaultModel,
-      globalEndpoint: settings.get('llm-endpoint') ?? this.options.endpoint,
+      globalModel: (this.options.modelOverride && this.options.modelOverride.length > 0
+        ? this.options.modelOverride
+        : settings.get('llm-model') ?? this.options.defaultModel),
+      globalEndpoint: (this.options.endpointOverride && this.options.endpointOverride.length > 0
+        ? this.options.endpointOverride
+        : settings.get('llm-endpoint') ?? this.options.endpoint),
       // Blank-class override tier — applies only to FluidBlank /
       // TransformBlank / ConfigIntent / keyword BlankSource (the
       // user-opt-in `_` surface). Cues + auditors never read these.

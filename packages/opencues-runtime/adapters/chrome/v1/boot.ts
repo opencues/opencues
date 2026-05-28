@@ -320,9 +320,12 @@ export function boot(host: HostInfo): BootResult {
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
       apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
-      // Popup's Provider dropdown — overrides OPENCUES.md `llm-provider:`
-      // when set. Empty string / undefined keeps the auto-route.
+      // Popup-supplied overrides win over OPENCUES.md scalars (chrome
+      // user's local intent beats the synced ~/.cues/ snapshot). Empty
+      // string / undefined falls through to the settings scalar.
       providerOverride: (host.llmProvider && host.llmProvider.length > 0) ? host.llmProvider : undefined,
+      endpointOverride: (host.llmEndpoint && host.llmEndpoint.length > 0) ? host.llmEndpoint : undefined,
+      modelOverride: (host.llmDefaultModel && host.llmDefaultModel.length > 0) ? host.llmDefaultModel : undefined,
       apiKeys,
       debounceMs: host.llmDebounceMs ?? 500,
       httpAdapter: host.httpAdapter,
