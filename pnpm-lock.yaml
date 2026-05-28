@@ -139,7 +139,11 @@ importers:
 
   packages/opencues-cli: {}
 
-  packages/opencues-core: {}
+  packages/opencues-core:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
 
   packages/opencues-runtime:
     dependencies:

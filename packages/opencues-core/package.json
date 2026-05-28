@@ -24,5 +24,8 @@
     "bench:websocket": "tsc --skipLibCheck --rootDir . --outDir dist-smoke scripts/bench-websocket-mode.ts && node dist-smoke/scripts/bench-websocket-mode.js"
   },
   "keywords": ["cues", "alternatives", "tips"],
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  }
 }
