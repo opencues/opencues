@@ -114,6 +114,26 @@ function App(props: AppOpts) {
       finish('', 130);
       return;
     }
+    // Ctrl+C — wipe the textarea in-session AND reset per-buffer
+    // runtime state (DynDefs, HighlightState, SpanFill, Selector-
+    // Satellite). Without the reset, the next blank typed in the
+    // same pane would silently no-op via the resolver's existing-
+    // def guard.
+    //
+    // Now safe to bind because render() was called with
+    // `exitOnCtrlC: false` — OpenTUI no longer installs the
+    // process.exit() handler on SIGINT, so the byte reaches us
+    // here intact.
+    if ((evt.ctrl && !evt.meta && evt.name === 'c') || evt.sequence === '\x03') {
+      try {
+        if (textarea) {
+          textarea.setText('');
+          textarea.cursorOffset = 0;
+        }
+        resetOpenCuesBufferState();
+      } catch { /* swallow */ }
+      return;
+    }
     // Forward to OpenCues first; only fall through to OpenTUI's own
     // textarea key handling if the runtime didn't consume it.
     dispatchOpenCuesKey(evt);

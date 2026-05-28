@@ -170,27 +170,36 @@ resolver's existing-def guard).
 |---|---|---|
 | Submit (Ctrl+Alt+S / Alt+Shift+→) | `app.tsx:finish()` → `resetOpenCuesBufferState()` | DynDefs, HighlightState, SpanFill, SelectorSatellite |
 | Cancel (Ctrl+Alt+Q / Alt+Shift+↓) | same path (finish with exitCode 130) | same |
+| **Ctrl+C** (hidden, un-advertised) | `app.tsx:useKeyboard` → wipe textarea + `resetOpenCuesBufferState()` | same — buffer text cleared in-place, pane stays open |
 | Pane killed by tmux directly | n/a (process exits, fresh boot on next open) | n/a |
 
-**Ctrl+C is deliberately a no-op.** The terminal driver translates
-`\x03` into SIGINT BEFORE OpenTUI's `useKeyboard` sees the byte;
-bun's default SIGINT handler then exits the process, leaving tmux
-holding a visually-intact pane with no runtime. Symptom: cues
-stop firing mid-session, no log line, no error — only fixed by
-closing + re-opening the pane.
+**Ctrl+C is a hidden in-pane clear shortcut.** Not advertised in
+the status bar (the published reset path is Ctrl+Alt+Q, which also
+closes the pane). Two structural hazards historically broke it:
 
-Fix lives at the top of `src/app.tsx`:
+1. The terminal driver translates `\x03` into SIGINT BEFORE
+   OpenTUI's `useKeyboard` sees the byte; bun's default SIGINT
+   handler then exits the process, leaving tmux holding a
+   visually-intact pane with no runtime. Symptom: cues stop firing
+   mid-session, no log line, no error — only fixed by closing +
+   re-opening the pane.
+2. OpenTUI's `CliRenderer` defaults `exitOnCtrlC: true` and
+   installs its OWN SIGINT listener that calls `process.exit()`.
+   Node listeners are cumulative, so a module-level
+   `process.on('SIGINT', noop)` is NOT sufficient — OpenTUI's
+   listener still fires.
+
+Fix is layered at the top of `src/app.tsx` + the `render()` call:
 ```ts
-process.on('SIGINT', () => { /* no-op */ });
+process.on('SIGINT', () => { /* no-op */ });   // belt
+// ...
+render(<App ... />, { exitOnCtrlC: false });    // braces — the real fix
 ```
-Binds a no-op listener so the signal is delivered to the process
-but doesn't trigger the default exit. SIGTERM is NOT swallowed —
-that path (e.g. `oc-shell` parent killing the pane on session
-end) is a legitimate shutdown signal.
-
-The advertised cancel (Ctrl+Alt+Q) is the supported in-session
-reset path — it closes the pane via `finish('', 130)` and the
-fresh re-open is clean.
+`exitOnCtrlC: false` stops OpenTUI from installing its SIGINT
+handler at all, so `\x03` reaches our `useKeyboard` intact and the
+clear-buffer branch runs. SIGTERM is NOT swallowed — that path
+(e.g. `oc-shell` parent killing the pane on session end) is a
+legitimate shutdown signal.
 
 Bug history (2026-05-28): this wasn't wired on launch. Symptom
 was a prompt-improver in session N would silently block ALL
