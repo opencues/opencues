@@ -482,6 +482,12 @@ export class BlankFill {
       output: primaryFill.slice(0, 200),
       altCount: lines.length,
       dismissible: isDismissible,
+      // True when the resulting span behaves as a single unit:
+      // editing any character inside it wipes the whole substituted
+      // region. Hosts use this to render a distinct visual treatment
+      // (dashed underline, status pill) so users aren't surprised
+      // when one backspace deletes 20+ chars at once.
+      spanAsUnit: blank?.blankClearOnEdit === true,
     });
 
     const { newText, newCursor } = clearEnd !== undefined || expansion != null
@@ -725,6 +731,17 @@ export class BlankFill {
       cleanupEnd: range.end,
       newLen: cleaned.length,
     });
+    // Surface the wipe as a module event — hosts subscribe to render
+    // a transient "span dismissed" indicator so the user understands
+    // why their typed keystroke wiped 20+ chars (rather than thinking
+    // backspace went haywire). Carries the same shape as
+    // blank.substituted's spanAsUnit for symmetry.
+    this.adapter.emitEvent?.('blank.span-wiped', {
+      reason: 'edit-inside-span',
+      pairStart,
+      pairEnd,
+      wipedCharCount: range.end - range.start,
+    });
     if (this.adapter.pushText) {
       this.adapter.pushText(cleaned, range.start);
     } else {
@@ -903,10 +920,20 @@ export class BlankFill {
     // through to no-op. blankDismissible appends `_` so cycling can dismiss.
     const dismissible = blank.blankDismissible === true;
     const altsForSpan = dismissible ? [...stepValues, '_'] : stepValues;
-    if (this.spanFillState && altsForSpan.length > 1) {
+    // blankClearOnEdit promotes single-alt blanks into a span entry too,
+    // so the wipe-on-edit machinery (maybePreserveBlankFillPair +
+    // applyClearOnEdit) has something to react against. Without this the
+    // sync stepValues path would silently lose the wipe behaviour the
+    // async / LLM-resolved path already supports.
+    const wantsClearOnEdit = (blank as { blankClearOnEdit?: boolean }).blankClearOnEdit === true;
+    const wantsSpan = altsForSpan.length > 1 || wantsClearOnEdit;
+    if (this.spanFillState && wantsSpan) {
       const fillStart = newCursor - fillValue.length;
       const newWords = splitWords(newText);
       const startWord = newWords.find(w => w.start === fillStart);
+      // Char range of the substituted region — anchored at the keyword's
+      // first char so a backspace inside the keyword counts as a touch.
+      const kwStartChar = newWords[slot.keywordStart]?.start ?? fillStart;
       if (startWord) {
         const spanLength = fillValue.split(/\s+/).filter(Boolean).length;
         this.spanFillState.set({
@@ -915,11 +942,26 @@ export class BlankFill {
           currentAltIndex: 0,
           spanLength: Math.max(1, spanLength),
           blankTip: blank.blankTip ?? blank.tip,
+          clearOnEdit: wantsClearOnEdit,
+          pairCharStart: wantsClearOnEdit ? kwStartChar : undefined,
+          pairCharEnd: wantsClearOnEdit ? newCursor : undefined,
         }, newText);
       }
     }
 
     this.adapter.log('info', `BlankFill: substituting "${slot.keyword} _" → "${preview(fillValue, 60)}" (blank=${slot.blankName}, sync stepValues, ${stepValues.length} alt(s)${dismissible ? ', dismissible' : ''})`);
+    // Emit the same `blank.substituted` event the async path emits so
+    // hosts have one consistent surface for the "span-as-unit"
+    // indication regardless of which fill path ran.
+    this.adapter.emitEvent?.('blank.substituted', {
+      blankName: slot.blankName,
+      keyword: slot.keyword,
+      input: `${slot.keyword} _`,
+      output: fillValue.slice(0, 200),
+      altCount: stepValues.length,
+      dismissible,
+      spanAsUnit: wantsClearOnEdit,
+    });
     this.adapter.setText(newText);
     this.adapter.setCursorOffset(newCursor);
     this.adapter.forceRender();

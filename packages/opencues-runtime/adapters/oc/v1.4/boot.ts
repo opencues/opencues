@@ -18,7 +18,7 @@ import { AgentRewrite } from '../../../src/modules/agent-rewrite';
 import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
-import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, resetSharedBufferState } from '../../../src/boot-common';
+import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { EventEmitter } from '../../../src/lib/event-emitter';
 import type {
   CommonHostInfo,
@@ -223,17 +223,22 @@ export function boot(host: HostInfo): BootResult {
   const apiKeys: Record<string, string | undefined> = { ...(host.llmApiKeys ?? {}) };
   if (host.llmApiKey && !apiKeys.GROQ_API_KEY) apiKeys.GROQ_API_KEY = host.llmApiKey;
   const hasAnyKey = Object.values(apiKeys).some(Boolean);
+  // Resolver constructed even with no keys so MissingKeyFallbackSource
+  // surfaces a visible in-buffer hint on `_` instead of silent no-op.
+  const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
+    endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
+    apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
+    defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
+    apiKeys,
+    debounceMs: host.llmDebounceMs ?? 500,
+    missingKeyFallbackMessage: hasAnyKey ? undefined : NATIVE_HOST_MISSING_KEY_MESSAGE,
+    formatLLMErrorAsSubstitute: nativeHostFormatLLMError,
+  }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState);
+  // Subscribe AFTER ConfigLoader.load — otherwise rebuildResolver sees
+  // no cuesConfig/blanksConfig and bails. Mirrors CC v2.1 boot.
+  configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
+
   if (hasAnyKey) {
-    const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
-      endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
-      apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
-      defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
-      apiKeys,
-      debounceMs: host.llmDebounceMs ?? 500,
-    }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState);
-    // Subscribe AFTER ConfigLoader.load — otherwise rebuildResolver sees
-    // no cuesConfig/blanksConfig and bails. Mirrors CC v2.1 boot.
-    configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
 
     // AgentRewrite — cadence-driven holistic rewrite with three-way
     // merge. Single agent path; the legacy AgentLoop / Judge were

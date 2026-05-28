@@ -104,6 +104,12 @@ export interface BuiltinBlankContext {
     readonly readFile: () => Promise<string | null>;
     readonly writeFile: (content: string) => Promise<void>;
   };
+  /**
+   * Host name passed through to OpenCuesSettingsBlank so the
+   * registry's host-scoped tunables (e.g. chrome's `dim-mix`) only
+   * surface in the cycling menu on their target host.
+   */
+  readonly hostName?: string;
 }
 
 /** One entry in BUILTIN_BLANKS. */
@@ -128,7 +134,14 @@ export interface BuiltinBlankSpec {
 export const BUILTIN_BLANKS: readonly BuiltinBlankSpec[] = [
   // ── HTTP fetch / external API ────────────────────────────────────
   { name: 'hackernews',    factory: () => new HackerNewsBlank() },
-  { name: 'stocks',        factory: ctx => new StocksBlank({ apiKey: ctx.finnhubApiKey, customTickers: ctx.customTickers }) },
+  // Stocks needs a non-LLM API key (Finnhub). Without it, every quote
+  // request would fail at runtime — so we skip registration entirely
+  // and the `stocks _` keyword falls through to fluid-blank (or no
+  // substitution at all). Decision is host-agnostic: any host that
+  // doesn't supply finnhubApiKey gets no stocks blank, regardless of
+  // which host it is. Chrome users without a Finnhub key, native hosts
+  // without FINNHUB_API_KEY in env — same behaviour.
+  { name: 'stocks',        factory: ctx => ctx.finnhubApiKey ? new StocksBlank({ apiKey: ctx.finnhubApiKey, customTickers: ctx.customTickers }) : null },
   { name: 'weather',       factory: () => new WeatherBlank() },
   { name: 'claude-status', factory: () => new ClaudeStatusBlank() },
 
@@ -142,7 +155,7 @@ export const BUILTIN_BLANKS: readonly BuiltinBlankSpec[] = [
   { name: 'prompt',        factory: ctx => ctx.llmConfig?.apiKey ? new PromptImproverBlank(ctx.llmConfig) : null },
 
   // ── Settings / selector-satellite (skip when no IO supplied) ─────
-  { name: 'opencues',      factory: ctx => ctx.opencuesMdIO ? new OpenCuesSettingsBlank(ctx.opencuesMdIO) : null },
+  { name: 'opencues',      factory: ctx => ctx.opencuesMdIO ? new OpenCuesSettingsBlank({ ...ctx.opencuesMdIO, hostName: ctx.hostName }) : null },
 ];
 
 /**

@@ -442,20 +442,66 @@ real failures the user should see immediately.
 
 ## Verified working sites (May 2026)
 
-| Site | Engine | Path used |
-|---|---|---|
-| Gmail compose | generic contenteditable | `execCommand('delete')` + paste with `<br>`-joined HTML |
-| Reddit | Lexical | editor API or keyboard sim + paste with `<p>` HTML |
-| Twitter/X | Draft.js | keyboard sim + paste with `text/plain` |
-| LinkedIn | ProseMirror | `execCommand('insertText')` |
-| ChatGPT | ProseMirror | `execCommand('insertText')` |
-| claude.ai | ProseMirror | `execCommand('insertText')` |
-| Luma | ProseMirror (outlier) | keyboard sim + paste with `<p>` HTML |
-| YouTube comments | generic contenteditable | `execCommand('delete')` + paste with `<br>`-joined HTML |
+| Site | Engine | Path used | Ctrl+Z entries |
+|---|---|---|---|
+| Gmail compose | generic contenteditable | `execCommand('insertHTML', false, html)` over select-all | 1 |
+| YouTube comments | generic contenteditable | same | 1 |
+| Reddit | Lexical | `editor.update(() => { root.clear(); insertNodes(...) })` — one transaction, OR fallback: Ctrl+A keydown + synthetic paste | 1 |
+| Twitter/X | Draft.js | Ctrl+A keydown + synthetic paste with `text/plain` | 1 |
+| LinkedIn | ProseMirror | `execCommand('insertHTML', false, '<p>...</p>')` over select-all | 1 |
+| ChatGPT | ProseMirror | same | 1 |
+| claude.ai | ProseMirror | same | 1 |
+| Luma | TipTap | Ctrl+A keydown + synthetic paste with `<p>` HTML — historically the "outlier", retained as its own branch but Luma's TipTap also accepts the default managed `insertHTML` path (May 2026 verified). The keyboard-sim path is left in for now until a broader TipTap regression sweep clears collapsing the branch. | 1 |
 
 If you regress one of these while fixing another, that's a structural
 problem with the change. Re-verify the full matrix after every write-path
 edit, not just the site you're targeting.
+
+### Undo behaviour — May 2026 fix
+
+The Verified-Working matrix above was originally tuned for "substitution
+lands cleanly" and ignored undo. A May 2026 user report (claude.ai,
+Gmail) showed every path was emitting 2–3 entries onto the host's undo
+stack, so the first `Ctrl+Z` reverted to an intermediate empty state
+("blank flash") and only the SECOND press restored the summon text.
+
+Per-engine root causes + fixes:
+
+- **Generic CE (Gmail/YouTube)**: was `execCommand('delete')` + synthetic
+  paste — 2 entries. Now a single `execCommand('insertHTML')` over a
+  `selectNodeContents` range — replaces in one entry.
+- **Lexical (Reddit) API path**: was `editor.update(root.clear())` then
+  a separate paste — 2 Lexical history entries. Now a single
+  `editor.update(() => { root.clear(); insertParagraphNodes(...) })`
+  transaction, one history entry. Falls back to Ctrl+A keydown
+  (selection-only, no entry) + paste (one entry) when the editor
+  instance isn't reachable on the DOM.
+- **Lexical fallback / Draft.js (Twitter)**: was Ctrl+A + Backspace +
+  paste — 2 entries (Backspace is its own history step in these
+  editors). Now Ctrl+A + paste; the paste handler does
+  replace-selection in one transaction.
+- **ProseMirror (LinkedIn / ChatGPT / claude.ai)**: was
+  `execCommand('insertText')`. Most PM-using sites handle that as one
+  transaction, but **claude.ai's PM intercepts `inputType: "insertText"`
+  with a custom handler that dispatches delete + insert as two
+  transactions** → 2 history entries. Switched to
+  `execCommand('insertHTML', false, '<p>...</p>')` which fires
+  `inputType: "insertReplacementText"` instead — that's processed by
+  PM's default replace-selection handler as a single transaction on
+  every PM site checked.
+- **Luma TipTap**: same Ctrl+A + paste pattern as Draft.js / Lexical
+  fallback. One entry.
+
+**Structural invariant the fix enforces**: every editor path now emits
+exactly ONE history-emitting operation per `replaceAllText` call. The
+contract is pinned by `src/replace-all-text-undo.test.ts` (jsdom unit
+tests of the call-shape) AND the Playwright suite in
+`tests/playwright/*.pw.test.ts` (real Chromium against real Lexical /
+PM / Draft.js engines).
+
+When adding a new engine carve-out, the rule: **never wipe-then-fill
+in two ops** — find a single replace-selection op the engine accepts,
+or use the engine's own API to wrap clear + insert in one transaction.
 
 ## Markdown styling — chrome support is hit-and-miss outside Gmail
 
@@ -546,11 +592,10 @@ trial and error. Don't unify it without testing every entry below.
 
 | Engine | Sites | Write path | Why this and not others |
 |---|---|---|---|
-| **Lexical** | Reddit | `__lexicalEditor.update($getRoot().clear())` (or keyboard sim Ctrl+A + Backspace fallback) → synthetic `paste` event with `<p>`-per-paragraph HTML in DataTransfer | Lexical's selection model doesn't sync from browser selection. Direct DOM mutations get reverted. Only its editor API or keydown-pipeline events are honored. Paste handler accepts text/html when paragraph blocks match the `<p><span data-lexical-text>` shape Lexical builds natively. |
-| **Draft.js** | Twitter/X | Keyboard sim Ctrl+A + Backspace → synthetic `paste` event with `text/plain` (NOT html) | Draft.js's keydown pipeline accepts synthetic Ctrl+A and Backspace. Its `onPaste` handler reads `e.clipboardData.getData('text')` only — html paste gets rejected. |
-| **ProseMirror/TipTap default** | LinkedIn, ChatGPT, claude.ai, and presumably most ProseMirror sites | `execCommand('insertText', false, text)` (text passed as-is) | These all reject programmatic paste events outright (paste filters / sanitization extensions). insertText routes through ProseMirror's plain-text-insertion command, which the paste filter doesn't intercept. With selection set to all (via `selectNodeContents` at top of `replaceAllText`), insertText replaces. Browser dispatches `inputType: insertParagraph` for each `\n`; LLM `\n\n` produces one paragraph break (web convention). |
-| **ProseMirror/TipTap exception** | Luma | Keyboard sim Ctrl+A + Backspace → synthetic `paste` event with `<p>`-per-paragraph HTML | Luma's TipTap config maps EACH `\n` (in insertText) to a hard paragraph break, so LLM `\n\n` becomes double-spacing. Their paste handler accepts the `<p>` HTML cleanly with correct single-paragraph spacing. |
-| **Generic contenteditable** | Gmail, plain `<div contenteditable>` | `execCommand('delete')` → synthetic `paste` event with `<br>`-joined HTML | Gmail's own Enter-key emits `<br>` per line, and its paste handler honors `<br>`-separated content. `<p>` per line would inherit extra paragraph margins. |
+| **Lexical** | Reddit | `__lexicalEditor.update(() => { root.clear(); $createParagraphNode + $createTextNode … })` — clear + insert in ONE transaction, single Lexical history entry. Falls back to Ctrl+A keydown (selection-only) + synthetic `paste` with `<p>`-per-paragraph HTML when the editor instance isn't reachable on the DOM. | Lexical's selection model doesn't sync from browser selection. Direct DOM mutations get reverted. Only its editor API or keydown-pipeline events are honored. **No Backspace step** — it'd land as a separate history entry; the paste's replace-selection semantics handle the wipe atomically. |
+| **Draft.js** | Twitter/X | Ctrl+A keydown → synthetic `paste` event with `text/plain` (NOT html) | Draft.js's keydown pipeline accepts synthetic Ctrl+A (sets internal selection to whole buffer). Its `onPaste` handler reads `e.clipboardData.getData('text')` and runs `replaceText` over the selection — one transaction. **No Backspace step** (May 2026): the prior pattern emitted Backspace before paste, which Draft recorded as its own history entry → first Ctrl+Z showed an empty buffer. |
+| **ProseMirror/TipTap default** | LinkedIn, ChatGPT, claude.ai, Luma, and presumably most ProseMirror/TipTap sites | `execCommand('insertHTML', false, '<p>...</p>...')` over a `selectNodeContents` range (May 2026) | The prior path used `execCommand('insertText')` whose `beforeinput` inputType (`"insertText"`) is intercepted by some PM custom handlers — claude.ai's split it into delete + insert as TWO transactions, producing a blank-flash on Ctrl+Z. `insertHTML` fires `inputType: "insertReplacementText"`, which PM's default replace-selection handler treats as one transaction. Verified atomic on claude.ai / ChatGPT / LinkedIn / Luma. |
+| **Generic contenteditable** | Gmail, YouTube, plain `<div contenteditable>` | `execCommand('insertHTML', false, '<div>...</div>...')` over a `selectNodeContents` range — single browser-level undo entry | The prior pattern was `execCommand('delete')` + synthetic paste — two undo entries (the delete landed its own), causing the blank-flash on the first Ctrl+Z. `<div>`-per-line block shape matches Gmail's native Enter emission. |
 
 ### Key learnings (do not re-discover)
 

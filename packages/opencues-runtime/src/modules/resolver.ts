@@ -49,6 +49,13 @@ export interface ResolverOptions {
   /** Legacy default model when no per-feature override is configured. */
   readonly defaultModel: string;
   /**
+   * Provider override from a host-level UI (chrome popup's Provider
+   * dropdown). When set, takes precedence over the `llm-provider:`
+   * scalar in OPENCUES.md. Empty / undefined → no override and the
+   * settings scalar (or auto-route) wins.
+   */
+  readonly providerOverride?: string;
+  /**
    * API keys keyed by provider env-var name. Populated by boot from
    * process.env (or settings UI). Lets CUES.md frontmatter pick a
    * non-Groq provider without rebuilding the patch.
@@ -61,6 +68,24 @@ export interface ResolverOptions {
   readonly httpAdapter?: unknown;
   /** Same — inject the resolver build directly (mostly for testing). */
   readonly resolverFactory?: (cuesConfig: unknown, blanksConfig: unknown, opts: unknown) => unknown;
+  /**
+   * Host-specific in-buffer message shown when no LLM source could be
+   * wired (no working API keys). Chrome passes "open the extension
+   * popup", native hosts (CC/OC) mention `~/.cues/.env`. Omit to keep
+   * the silent-no-op (e.g. when the host shows the warning elsewhere).
+   */
+  readonly missingKeyFallbackMessage?: string;
+  /**
+   * Host-specific formatter for user-actionable LLM call failures
+   * (401/404/429/network). Wired into FluidBlankSource so the buffer
+   * shows a useful message instead of silent no-op. Host decides the
+   * wording (chrome → "open the extension popup", native → "edit
+   * ~/.cues/.env"). Omit to keep the silent failure.
+   */
+  readonly formatLLMErrorAsSubstitute?: (
+    reason: 'invalid-api-key' | 'network' | 'rate-limit' | 'endpoint-not-found' | 'bad-request',
+    err?: Error,
+  ) => string;
 }
 
 interface CuesCoreLike {
@@ -402,7 +427,8 @@ export class Resolver {
       // time downstream, not here, because we still need to surface
       // the user's choice to blank sources (which CAN use it via
       // explicit `<feature>-llm-provider: opencode-zen` + `model: free`).
-      globalProvider: settings.get('llm-provider'),
+      // Popup override > OPENCUES.md scalar > auto-route (undefined).
+      globalProvider: this.options.providerOverride ?? settings.get('llm-provider'),
       globalModel: settings.get('llm-model') ?? this.options.defaultModel,
       globalEndpoint: settings.get('llm-endpoint') ?? this.options.endpoint,
       // Blank-class override tier — applies only to FluidBlank /
@@ -537,6 +563,14 @@ export class Resolver {
       // don't implement supportsCycling default to true — every
       // pre-existing host has cycling.
       supportsCycling: this.adapter.supportsCycling?.() ?? true,
+      // Host-specific in-buffer message shown when NO LLM source could
+      // be built (zero working keys). Hosts pass this via ResolverOptions
+      // — chrome sets "open the extension popup", native hosts (CC/OC)
+      // mention `~/.cues/.env`. Empty/undefined disables the fallback
+      // (regresses to silent no-op — only do this if the host surfaces
+      // the warning some other way, e.g. statusline).
+      missingKeyFallbackMessage: this.options.missingKeyFallbackMessage,
+      formatLLMErrorAsSubstitute: this.options.formatLLMErrorAsSubstitute,
     };
     let sources: unknown[];
     try {
@@ -940,8 +974,18 @@ export class Resolver {
       const isMultiWordSpan = typeof r.spanStart === 'number'
         && typeof r.spanEnd === 'number'
         && r.spanEnd > r.spanStart;
-      const isFluidBlank = r.source === 'fluid-blank';
+      // MissingKeyFallback emits the same shape as a fluid-blank
+      // substitute (alternatives = ['_', errorMessage]) — route through
+      // the fluid-blank applicator so the error text lands in the
+      // buffer (otherwise the user only sees it via cycling).
+      const isFluidBlank = r.source === 'fluid-blank' || r.source === 'missing-key-fallback';
       const isTransformBlank = r.source === 'transform-blank';
+      // Error substitutes (no-key fallback + FluidBlank's user-actionable
+      // HTTP failures) get registered as clearOnEdit spans so any edit
+      // INSIDE the message wipes the whole substitute back to `_` — the
+      // user can re-type their summon without manual backspace-spam.
+      const isErrorSubstitute = r.source === 'missing-key-fallback'
+        || (r.metadata as { fluidBlankErrorReason?: string } | undefined)?.fluidBlankErrorReason !== undefined;
       // ConfigIntent emits the same FluidBlank-style shape
       // (alternatives = ['_', confirmation]) — splice the
       // confirmation in at the `_`, register a DynDef for
@@ -996,7 +1040,24 @@ export class Resolver {
         this.dynDefs.set(newWordIndex, fluidDef);
         wrote++;
 
-        this.adapter.log('info', `FluidBlank: substituting "${text.slice(start, end)}" → "${answer}" (mode=${isMultiWordSpan ? 'WIPE' : 'FILL'}, range=[${start},${end}), defAt=${newWordIndex}, totalMs=${Date.now() - __resolveStart})`);
+        // Error substitutes wipe-on-edit. Register a spanFillState
+        // entry with clearOnEdit:true at the substituted range; the
+        // existing BlankFill.onTextChange → applyClearOnEdit
+        // pipeline handles the wipe when the user types or deletes
+        // inside the message. Mirrors ConfigIntent's pattern below.
+        if (isErrorSubstitute && this.spanFillState) {
+          this.spanFillState.set({
+            index: newWordIndex,
+            alternatives: ['_', ...alts],
+            currentAltIndex: 1,
+            spanLength: Math.max(1, alts[0].split(/\s+/).filter(Boolean).length),
+            clearOnEdit: true,
+            pairCharStart: start,
+            pairCharEnd: newSpanEnd,
+          }, newText);
+        }
+
+        this.adapter.log('info', `FluidBlank: substituting "${text.slice(start, end)}" → "${answer}" (mode=${isMultiWordSpan ? 'WIPE' : 'FILL'}, range=[${start},${end}), defAt=${newWordIndex}, errorSub=${isErrorSubstitute}, totalMs=${Date.now() - __resolveStart})`);
         continue; // skip the generic def-creation below
       }
 

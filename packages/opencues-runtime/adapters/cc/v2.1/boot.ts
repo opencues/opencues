@@ -32,7 +32,7 @@ import { createSourceReclassifier, resetSharedBufferState } from '../../../src/b
 import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import { AgentTaskState } from '../../../src/state/agent-task';
 import { applyDirectives } from '../../../src/render-directives';
-import { buildAgentLLMResolver } from '../../../src/boot-common';
+import { buildAgentLLMResolver, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { startEventBridge } from '../../../src/event-bridge';
 import type {
   BlankInvokeSpec,
@@ -582,14 +582,18 @@ export function boot(host: HostInfo): BootResult {
   const apiKeys: Record<string, string | undefined> = { ...(host.llmApiKeys ?? {}) };
   if (host.llmApiKey && !apiKeys.GROQ_API_KEY) apiKeys.GROQ_API_KEY = host.llmApiKey;
   const hasAnyKey = Object.values(apiKeys).some(Boolean);
+  // Resolver is constructed even with no keys so the MissingKeyFallbackSource
+  // can substitute a visible in-buffer hint on `_` instead of silent no-op.
+  const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
+    endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
+    apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
+    defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
+    apiKeys,
+    debounceMs: host.llmDebounceMs ?? 500,
+    missingKeyFallbackMessage: hasAnyKey ? undefined : NATIVE_HOST_MISSING_KEY_MESSAGE,
+    formatLLMErrorAsSubstitute: nativeHostFormatLLMError,
+  }, spanFillState, agentTaskState, blankLoading, markdownRender, selectorSatelliteState);
   if (hasAnyKey) {
-    const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
-      endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
-      apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
-      defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
-      apiKeys,
-      debounceMs: host.llmDebounceMs ?? 500,
-    }, spanFillState, agentTaskState, blankLoading, markdownRender, selectorSatelliteState);
     // AgentRewrite — cadence-driven holistic rewrite with three-way merge.
     const agentRewrite = new AgentRewrite(adapter, dynDefs, agentTaskState, {
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
@@ -617,8 +621,11 @@ export function boot(host: HostInfo): BootResult {
       maxConcurrentAuditors: () => parseInt(configLoader.opencuesState.settings.get('max-concurrent-auditors') ?? '', 10) || 0,
     });
     agentRewrite.start();
-    configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
   }
+  // resolver.subscribe() moved OUT of the hasAnyKey block so the
+  // MissingKeyFallbackSource can fire (registers via subscribe) even
+  // when no keys are configured.
+  configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
 
   // Fire-and-forget Runtime.create — capability validation + startup log.
   Runtime.create(adapter).catch(err => {

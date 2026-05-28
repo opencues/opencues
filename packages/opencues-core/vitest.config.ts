@@ -22,6 +22,7 @@ export default defineConfig({
       'src/feature-registry-menu.drift.test.ts',
       'src/llm-provider.drift.test.ts',
       'src/conformance.test.ts',
+      'src/sources/fluid-blank-error-substitute.test.ts',
     ],
   },
 });

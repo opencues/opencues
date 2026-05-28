@@ -34,6 +34,11 @@ export {
 } from './sources/fluid-blank-source';
 
 export {
+  MissingKeyFallbackSource,
+  type MissingKeyFallbackConfig,
+} from './sources/missing-key-fallback-source';
+
+export {
   TransformBlankSource,
   type TransformBlankSourceConfig,
   type TransformBlankEvent,

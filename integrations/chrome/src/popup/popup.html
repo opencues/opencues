@@ -6,67 +6,93 @@
 </head>
 <body>
   <div class="popup">
-    <h1>OpenCues</h1>
+    <div class="banner">
+      <div class="banner-line">
+        <span class="brand-badge">C_</span>
+        <span class="wordmark">OpenCues_</span>
+        <span class="version" id="version"></span>
+      </div>
+      <div class="tagline">LLM cues and <code>_</code>-gated blanks for any editor.</div>
+    </div>
 
-    <fieldset style="border:1px solid #333;padding:8px 10px 4px;margin:8px 0">
-      <legend style="font-size:12px;color:#888;padding:0 4px">LLM Provider Keys</legend>
-      <p style="font-size:11px;color:#888;margin:0 0 6px">
+    <div class="banner-gap"></div>
+
+    <label class="section-label" for="key_GROQ_API_KEY">llm provider keys</label>
+    <div class="scroll-keys">
+      <p class="section-hint">
         Leave blank if <code>opencues install chrome-host</code> is forwarding them from your shell env.
         Pasted keys win on collision.
       </p>
 
-      <label for="key_GROQ_API_KEY">Groq</label>
+      <label for="key_GROQ_API_KEY">groq</label>
       <input type="password" id="key_GROQ_API_KEY" data-provider-key="GROQ_API_KEY" placeholder="gsk_...">
 
-      <label for="key_CEREBRAS_API_KEY">Cerebras</label>
+      <label for="key_CEREBRAS_API_KEY">cerebras</label>
       <input type="password" id="key_CEREBRAS_API_KEY" data-provider-key="CEREBRAS_API_KEY" placeholder="csk-...">
 
-      <label for="key_OPENAI_API_KEY">OpenAI</label>
+      <label for="key_OPENAI_API_KEY">openai</label>
       <input type="password" id="key_OPENAI_API_KEY" data-provider-key="OPENAI_API_KEY" placeholder="sk-...">
 
-      <label for="key_ANTHROPIC_API_KEY">Anthropic</label>
+      <label for="key_ANTHROPIC_API_KEY">anthropic</label>
       <input type="password" id="key_ANTHROPIC_API_KEY" data-provider-key="ANTHROPIC_API_KEY" placeholder="sk-ant-...">
 
-      <label for="key_GEMINI_API_KEY">Gemini</label>
+      <label for="key_GEMINI_API_KEY">gemini</label>
       <input type="password" id="key_GEMINI_API_KEY" data-provider-key="GEMINI_API_KEY" placeholder="AI...">
 
-      <label for="key_OPENROUTER_API_KEY">OpenRouter</label>
+      <label for="key_OPENROUTER_API_KEY">openrouter</label>
       <input type="password" id="key_OPENROUTER_API_KEY" data-provider-key="OPENROUTER_API_KEY" placeholder="sk-or-...">
-    </fieldset>
-
-    <label for="model">Model</label>
-    <input type="text" id="model" placeholder="openai/gpt-oss-120b">
-
-    <label for="apiUrl">API URL</label>
-    <input type="text" id="apiUrl" placeholder="https://api.groq.com/openai/v1/chat/completions">
-
-    <label for="targetSelector">Target Selector</label>
-    <input type="text" id="targetSelector" placeholder='[contenteditable="true"]'>
-
-    <p style="font-size:12px;color:#888;margin:12px 0 4px">
-      To customize cues/blanks/controls, edit <code>~/.cues/</code> and run
-      <code>opencues sync chrome --wsl</code>. See
-      <a href="https://github.com/opencues/opencues/blob/master/docs/features/chrome-sync.md"
-         target="_blank" rel="noopener">chrome-sync.md</a>.
-    </p>
-
-    <details>
-      <summary style="font-size:12px;color:#888;cursor:pointer">Advanced</summary>
-      <label for="finnhubApiKey">Finnhub API Key (stocks)</label>
-      <input type="password" id="finnhubApiKey" placeholder="optional">
-    </details>
-
-    <div class="row">
-      <label><input type="checkbox" id="ttsEnabled"> TTS</label>
-      <label>Rate <input type="number" id="ttsRate" min="1" max="5" value="2" style="width:3em"></label>
     </div>
 
-    <label for="dimMix">Dim fade <span id="dimMixValue" style="color:#888"></span></label>
-    <input type="range" id="dimMix" min="0" max="100" step="5" value="45">
+    <label for="provider">provider</label>
+    <select id="provider" title="Hover for status. Only providers with a verified API key appear here.">
+      <option value="">— validating keys… —</option>
+    </select>
+    <!-- providerHint kept as an empty element so popup.ts's existing
+         getElementById call doesn't return null; the validation
+         message now lives on the <select>'s title attribute (hover). -->
+    <p id="providerHint" class="section-hint" style="display:none"></p>
 
-    <button id="save">Save</button>
-    <button id="reset" style="background:#dc2626;margin-top:4px">Reset to Defaults</button>
+    <label for="modelSelect">model</label>
+    <select id="modelSelect" title="Bench-validated models only. Picking a provider shows that provider's tested options. Models that scored badly in benchmarks aren't listed.">
+      <option value="">— pick a provider first —</option>
+    </select>
+    <input type="hidden" id="model" value="">
+
+    <!-- TTS hidden — Web Speech isn't wired through chrome's substitution
+         pipeline yet. Kept in storage so back-compat doesn't lose the
+         field, but no longer rendered. -->
+    <input type="checkbox" id="ttsEnabled" style="display:none">
+    <input type="number" id="ttsRate" min="1" max="5" value="2" style="display:none">
+
+    <!-- Dim fade moved to `opencues settings _` → cycle to `dim-mix`.
+         Chrome-only feature so it lives in the registry's MENU_TUNABLES
+         with hostScope: ['chrome']. The hidden elements below keep the
+         storage shape intact for back-compat with older configs. -->
+    <input type="hidden" id="dimMix" value="45">
+    <span id="dimMixValue" style="display:none"></span>
+
+    <button id="save">save</button>
+    <button id="reset">reset to defaults</button>
     <div id="status"></div>
+
+    <details>
+      <summary>advanced</summary>
+      <label for="apiUrl" title="Override the provider's default endpoint. Must match the provider's request schema (OpenAI / Anthropic / Gemini). Wrong shape = silent 400s.">api url</label>
+      <input type="text" id="apiUrl" placeholder="https://api.groq.com/openai/v1/chat/completions" title="Override the provider's default endpoint. Must match the provider's request schema (OpenAI / Anthropic / Gemini). Wrong shape = silent 400s.">
+
+      <!-- Target Selector hidden — default `[contenteditable="true"]`
+           works for every site we attach to. A non-default selector
+           silently breaks attach with no error surface. -->
+      <input type="hidden" id="targetSelector" value="">
+      <input type="hidden" id="finnhubApiKey" value="">
+    </details>
+
+    <label class="section-label">diagnostics</label>
+    <div class="diag-section-wrap">
+      <button id="diag-run">run self-check</button>
+      <button id="diag-probe">test api key</button>
+      <pre id="diag-out" style="display:none"></pre>
+    </div>
   </div>
 
   <script src="popup.js"></script>

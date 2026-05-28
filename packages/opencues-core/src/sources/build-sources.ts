@@ -24,6 +24,7 @@ import { ConfigSource } from './config-source';
 import { RoutedWordSourceGroup } from './routed-word-source-group';
 import { BlankSource, isBlankConfigCycleable } from './blank-source';
 import { FluidBlankSource, type FluidBlankSourceConfig } from './fluid-blank-source';
+import { MissingKeyFallbackSource } from './missing-key-fallback-source';
 import { TransformBlankSource, type TransformBlankSourceConfig } from './transform-blank-source';
 import { ConfigIntentSource, type ConfigIntentSourceConfig } from './config-intent-source';
 import { SentenceCueSource, type SentenceCueSourceConfig } from './sentence-cue-source';
@@ -186,6 +187,27 @@ export interface BuildSourcesOptions {
    * OPENCUES.md surfaces the trace. Silent when omitted.
    */
   log?: (msg: string) => void;
+  /**
+   * Host-specific text shown in the buffer when the user types `_` AND
+   * no LLM source could be wired (zero working API keys). Host overrides
+   * — chrome says "open the extension popup", native hosts (CC/OC) say
+   * "set CEREBRAS_API_KEY in ~/.cues/.env or your shell env". When
+   * omitted, the fallback source is NOT wired and the silent-no-op
+   * regression returns. Pass an empty string to suppress.
+   */
+  missingKeyFallbackMessage?: string;
+  /**
+   * Host-specific formatter for USER-ACTIONABLE LLM call failures
+   * (401, 404, 429, network unreachable). Returns the in-buffer
+   * substitute text. Empty return suppresses the substitute (silent
+   * — useful when the host has another error surface, e.g. native
+   * hosts with a statusline). LLM-internal issues (malformed JSON,
+   * no-span) stay silent regardless — those aren't actionable.
+   */
+  formatLLMErrorAsSubstitute?: (
+    reason: 'invalid-api-key' | 'network' | 'rate-limit' | 'endpoint-not-found' | 'bad-request',
+    err?: Error,
+  ) => string;
   /**
    * Optional info-level log sink. Used by FluidBlankSource for lines
    * that should land in chrome's default DevTools console (which
@@ -581,6 +603,7 @@ export function buildSourcesFromConfig(
         onEvent: options.onFluidBlankEvent,
         log: options.log,
         logInfo: options.logInfo,
+        formatErrorAsSubstitute: options.formatLLMErrorAsSubstitute,
       }));
     }
   }
@@ -609,6 +632,21 @@ export function buildSourcesFromConfig(
         onEvent: options.onTransformBlankEvent,
         mode: options.transformBlankMode as ('auto' | '3-pass' | 'fused' | undefined),
       }));
+    }
+  }
+
+  // Smart-failure fallback. If NO LLM-backed blank source was wired
+  // (zero working API keys), the user types `_` and gets nothing —
+  // a silent failure that looks identical to a broken extension. Wire
+  // a MissingKeyFallbackSource at the bottom so the next `_` substitutes
+  // with a visible, host-specific hint telling the user where to set
+  // a key. The runtime treats it as a regular substitute — cycling
+  // back to `_` dismisses the message.
+  if (options.missingKeyFallbackMessage && options.missingKeyFallbackMessage.length > 0) {
+    const hasLLMSource = sources.some(s => s.id === 'fluid-blank' || s.id === 'transform-blank' || s.id === 'config-intent');
+    if (!hasLLMSource) {
+      options.log?.(`buildSources: no LLM-backed source wired — installing MissingKeyFallbackSource (msg="${options.missingKeyFallbackMessage}")`);
+      sources.push(new MissingKeyFallbackSource({ message: options.missingKeyFallbackMessage }));
     }
   }
 

@@ -46,6 +46,22 @@ function ensureHighlightStyle(): HTMLStyleElement {
   return el;
 }
 
+// Captured at boot so the module-scope helpers below can read the
+// live opencuesState (cycled via `opencues settings _`).
+let _bootResult: ReturnType<typeof startOpenCues> | null = null;
+
+// Resolve the live dim-mix: runtime OPENCUES.md scalar (cycled via
+// `opencues settings _`) wins, fall back to the legacy popup-saved
+// config.dimMix for back-compat with older saved configs.
+function resolveLiveDimMix(fallback: number): number {
+  const raw = _bootResult?.getSetting?.('dim-mix');
+  if (raw !== undefined) {
+    const parsed = parseInt(raw, 10);
+    if (!Number.isNaN(parsed) && parsed >= 0 && parsed <= 100) return parsed / 100;
+  }
+  return fallback;
+}
+
 function applyDerivedColours(el: HTMLElement, dimMix: number): void {
   const { active, dim, activeBg } = deriveOpenCuesColours(el, dimMix);
 
@@ -85,12 +101,23 @@ async function init(): Promise<void> {
   // `llm-provider:` to anything but groq in CUES.md silently no-op'd
   // on chrome — the resolver would look up the chosen provider's
   // env-key, not find it, and return null without any visible error.
-  startOpenCues({
+  _bootResult = startOpenCues({
     llmApiKey: config.apiKey,
     llmApiKeys: config.llmApiKeys,
     llmEndpoint: config.apiUrl,
     llmDefaultModel: config.model,
-    finnhubApiKey: config.finnhubApiKey,
+    // Popup's Provider dropdown — overrides the auto-route AND the
+    // OPENCUES.md `llm-provider:` scalar when set. Empty string means
+    // "no override; auto-pick whichever provider has a key" (the
+    // historical behaviour). Wiring this was needed because the popup
+    // pick was silently ignored before — users picked Groq with only a
+    // Cerebras key and nothing changed.
+    llmProvider: config.provider,
+    // finnhubApiKey deliberately omitted — stocks is a non-LLM API
+    // surface (Finnhub) and chrome doesn't try to register it. The
+    // StocksBlank factory in @opencues/runtime returns null when no
+    // key is supplied, so the blank silently skips on chrome while
+    // native hosts (CC/OC) continue to register it via their shell env.
   });
 
   let currentTarget: HTMLElement | null = null;
@@ -119,7 +146,7 @@ async function init(): Promise<void> {
     //
     // Normal `<input>` / `<textarea>` don't render CSS Custom Highlights,
     // so we skip the colour derivation + style injection entirely.
-    if (!normalInput) applyDerivedColours(el, config.dimMix);
+    if (!normalInput) applyDerivedColours(el, resolveLiveDimMix(config.dimMix));
     publishTarget(el);
   };
 
@@ -167,7 +194,7 @@ async function init(): Promise<void> {
   // follow or they'll be inverted.
   const mq = window.matchMedia('(prefers-color-scheme: dark)');
   mq.addEventListener('change', () => {
-    if (currentTarget && !isNormalInput(currentTarget)) applyDerivedColours(currentTarget, config.dimMix);
+    if (currentTarget && !isNormalInput(currentTarget)) applyDerivedColours(currentTarget, resolveLiveDimMix(config.dimMix));
   });
 
   // SECURITY GATE — two layers to prevent hostile-page-triggered blanks.
@@ -330,7 +357,7 @@ async function init(): Promise<void> {
       // attachToFocused will fire again on next focusin.
     }
     config.dimMix = newConfig.dimMix;
-    if (currentTarget && !isNormalInput(currentTarget)) applyDerivedColours(currentTarget, config.dimMix);
+    if (currentTarget && !isNormalInput(currentTarget)) applyDerivedColours(currentTarget, resolveLiveDimMix(config.dimMix));
 
     // Real-time key updates — call into the runtime when the API-key
     // set changed. Fingerprint = sorted env-var names (no values,
@@ -358,3 +385,50 @@ function runtimeNotifyCursor(text: string, cursor: number): void {
 }
 
 init();
+
+// Diagnostic ping handler — popup's "Run Self-Check" button sends
+// { type: 'opencues:diagnostic-ping' } and expects a state snapshot
+// back. Lets the user verify "is the content script actually running
+// on this tab?" without opening devtools.
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type !== 'opencues:diagnostic-ping') return;
+  const active = document.activeElement;
+  const isCE = !!active && (active as HTMLElement).isContentEditable === true;
+  const isNI = !!active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
+
+  // Echo back the FIRST 8 + LAST 4 chars of each LLM key the LIVE
+  // runtime currently has loaded — by re-running loadConfig() so we
+  // see what the runtime would see RIGHT NOW (popup's last save +
+  // any host_keys push). Full keys never leave the content script
+  // (truncation prevents the popup screenshot from leaking the secret).
+  void loadConfig().then(liveConfig => {
+    const runtimeKeys: Record<string, string> = {};
+    for (const [name, value] of Object.entries(liveConfig.llmApiKeys ?? {})) {
+      if (typeof value !== 'string' || value.length === 0) continue;
+      if (value.length <= 12) {
+        runtimeKeys[name] = `${value.length} chars (too short to fingerprint safely)`;
+      } else {
+        runtimeKeys[name] = `${value.slice(0, 8)}…${value.slice(-4)} (${value.length} chars)`;
+      }
+    }
+    sendResponse({
+      bootVersion: chrome.runtime.getManifest().version,
+      href: location.href.slice(0, 120),
+      currentTarget: isCE ? 'contenteditable' : isNI ? `<${active.tagName.toLowerCase()}>` : null,
+      trustGateInstalled: typeof (window as unknown as { __opencuesTrustGate?: unknown }).__opencuesTrustGate !== 'undefined',
+      runtimeKeys,
+      // The actual provider/model the runtime would use NOW. Picks up
+      // the popup's overrides AND any OPENCUES.md scalar. Lets the
+      // Self-Check show "popup picked X but runtime is on Y" mismatches.
+      runtimeProvider: liveConfig.provider || '(auto-routing — no popup override)',
+      runtimeModel: liveConfig.model || '(provider default)',
+    });
+  }).catch(() => {
+    sendResponse({
+      bootVersion: chrome.runtime.getManifest().version,
+      runtimeKeys: {},
+      error: 'loadConfig threw',
+    });
+  });
+  return true; // async sendResponse — keep channel open
+});

@@ -23,6 +23,12 @@ export interface OpenCuesSettingsBlankOptions {
   readonly readFile: () => Promise<string | null>;
   /** Write the full OPENCUES.md content (atomic replace). */
   readonly writeFile: (content: string) => Promise<void>;
+  /**
+   * Host name (e.g. 'chrome', 'claude-code', 'opencode'). Passed through
+   * to `getMenuDefinitions(hostName)` so host-scoped tunables (e.g.
+   * chrome's `dim-mix`) only appear in the menu on their target host.
+   */
+  readonly hostName?: string;
 }
 
 export class OpenCuesSettingsBlank implements Blank {
@@ -30,10 +36,12 @@ export class OpenCuesSettingsBlank implements Blank {
   readonly readOnly = false;
   private readonly _read: () => Promise<string | null>;
   private readonly _write: (content: string) => Promise<void>;
+  private readonly _hostName?: string;
 
   constructor(opts: OpenCuesSettingsBlankOptions) {
     this._read = opts.readFile;
     this._write = opts.writeFile;
+    this._hostName = opts.hostName;
   }
 
   async get(keyword?: string): Promise<string> {
@@ -43,7 +51,7 @@ export class OpenCuesSettingsBlank implements Blank {
     // Menu schema: file overlay if present, else the @opencues/core
     // registry. Used both for the registry-driven default-value
     // fallback below AND the first-setting probe at the bottom.
-    const menu = getMenuDefinitions();
+    const menu = getMenuDefinitions(this._hostName);
 
     if (keyword) {
       const v = lookupSetting(text, keyword);
