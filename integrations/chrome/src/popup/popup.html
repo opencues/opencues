@@ -43,6 +43,11 @@
       <input type="password" id="key_OPENROUTER_API_KEY" data-provider-key="OPENROUTER_API_KEY" placeholder="sk-or-...">
     </div>
 
+    <label class="defer-toggle" title="When ON, the popup's Provider / Model / API URL fields are ignored — your ~/.cues/OPENCUES.md (pushed by `opencues install chrome-host`) drives config instead. Matches how CC / OC / gemini-cli work. Leave OFF unless you've installed chrome-host.">
+      <input type="checkbox" id="deferToChromeHost">
+      use ~/.cues/ config (chrome-host)
+    </label>
+
     <label for="provider">provider</label>
     <select id="provider" title="Hover for status. Only providers with a verified API key appear here.">
       <option value="">— validating keys… —</option>

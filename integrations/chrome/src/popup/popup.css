@@ -87,6 +87,24 @@ h1 {
   height: 12px;
 }
 
+/* defer-to-chrome-host toggle — inline checkbox row with the label. */
+label.defer-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 0 4px;
+  font-size: 11px;
+  color: #888;
+  cursor: pointer;
+  user-select: none;
+}
+label.defer-toggle:hover {
+  color: #ffffff;
+}
+label.defer-toggle input[type="checkbox"] {
+  margin: 0;
+}
+
 /* Scrollable LLM-keys fieldset — height = ~3 visible key fields.
  * Override the global "hide scrollbar" rules so the bar IS visible
  * here (it's the affordance that tells the user "more keys below"). */

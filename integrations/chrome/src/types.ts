@@ -22,6 +22,14 @@ export interface StoredConfig {
    *  model + apiUrl with the matching defaults on pick. Empty when
    *  the user has never selected — model/apiUrl are then taken as-is. */
   provider: string;
+  /** When true, the popup's Provider/Model/API URL fields are NOT
+   *  forwarded as runtime overrides — OPENCUES.md scalars in the
+   *  chrome-host-pushed bundle become authoritative. Use when running
+   *  `opencues install chrome-host` so your `~/.cues/OPENCUES.md` drives
+   *  config (matching how CC/OC/gemini-cli work). Default false:
+   *  popup overrides win, which is the right answer for users without
+   *  chrome-host. */
+  deferToChromeHost: boolean;
   /** Enable TTS */
   ttsEnabled: boolean;
   /** TTS speech rate (1-5) */
@@ -63,6 +71,7 @@ export const DEFAULT_CONFIG: StoredConfig = {
   model: 'openai/gpt-oss-120b',
   apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
   provider: '',
+  deferToChromeHost: false,
   ttsEnabled: false,
   ttsRate: 2,
   finnhubApiKey: __FINNHUB_API_KEY__,
