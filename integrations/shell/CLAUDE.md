@@ -170,6 +170,7 @@ resolver's existing-def guard).
 |---|---|---|
 | Submit (Alt+Shift+→ / Ctrl+Alt+S) | `app.tsx:finish()` → `resetOpenCuesBufferState()` | DynDefs, HighlightState, SpanFill, SelectorSatellite |
 | Cancel (Alt+Shift+↓ / Esc / Ctrl+Alt+Q) | same path (finish with exitCode 130) | same |
+| In-session buffer wipe (Ctrl+C) | `app.tsx:useKeyboard` Ctrl+C branch — `textarea.setText('')` + `resetOpenCuesBufferState()` | same |
 | Pane killed by tmux directly | n/a (process exits, fresh boot on next open) | n/a |
 
 Bug history (2026-05-28): this wasn't wired on launch. Symptom

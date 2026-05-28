@@ -124,6 +124,33 @@ function App(props: AppOpts) {
       finish('', 130);
       return;
     }
+    // Ctrl+C — wipe the buffer in-session without closing the pane.
+    // OpenTUI's textarea would clear the visible buffer on its own,
+    // but the runtime's per-buffer state (DynDefs, HighlightState,
+    // SpanFill, SelectorSatellite) would persist, leaving stale
+    // blank-attributed defs that silently block the NEXT blank
+    // substitute typed in the same session. Wipe both visible buffer
+    // and runtime state in one go so the next `_` starts clean.
+    if (evt.ctrl && !evt.meta && evt.name === 'c') {
+      try {
+        if (textarea) {
+          textarea.setText('');
+          textarea.cursorOffset = 0;
+        }
+        resetOpenCuesBufferState();
+      } catch { /* swallow */ }
+      return;
+    }
+    if (evt.sequence === '\x03' && !evt.meta) {  // Ctrl-C literal byte
+      try {
+        if (textarea) {
+          textarea.setText('');
+          textarea.cursorOffset = 0;
+        }
+        resetOpenCuesBufferState();
+      } catch { /* swallow */ }
+      return;
+    }
     // Forward to OpenCues first; only fall through to OpenTUI's own
     // textarea key handling if the runtime didn't consume it.
     dispatchOpenCuesKey(evt);
