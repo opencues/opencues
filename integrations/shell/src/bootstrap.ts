@@ -435,6 +435,21 @@ let loadingColorIds = new Map<string, number>();
 let _textareaRef: TextareaRenderable | null = null;
 let _syntaxRef: SyntaxStyle | null = null;
 
+/**
+ * Wipe every per-buffer runtime state object — DynDefs, HighlightState,
+ * SpanFill, SelectorSatellite. Called from app.tsx's `finish()` (submit
+ * + cancel) so the next time the slide-pane opens in this keep-alive
+ * bun process, OpenCues starts from a clean slate. Without this, a
+ * prompt-improver rewrite committed in session N stays in DynDefs at
+ * its old word index — session N+1's first keystroke can hit that
+ * stale def's `blankName` and silently no-op the new blank.
+ *
+ * Idempotent: no-op when boot hasn't happened or has been disposed.
+ */
+export function resetOpenCuesBufferState(): void {
+  bootResult?.resetBufferState?.();
+}
+
 export function triggerOpenCuesRender(text: string, cursor: number): void {
   if (!bootResult || !_textareaRef || !_syntaxRef) return;
   const syntax = _syntaxRef;

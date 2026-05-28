@@ -155,3 +155,33 @@ pnpm --filter @opencues/runtime build && bun --cwd integrations/shell src/app.ts
 - Set `DEBUG_OPENCUES=1` for verbose user-blank load tracing.
 - Set `OPENCUES_BRIDGE=1` to enable the event-bridge for off-process
   inspection (same protocol as OC).
+
+## Per-buffer state reset
+
+Shell's `oc-edit --keep-alive` keeps a single bun process alive
+across multiple slide-pane sessions. Each Alt+Shift+↑ is
+logically a fresh session but physically the SAME runtime
+instance — so we MUST clear per-buffer state at the session
+boundary or state from session N leaks into N+1 (DynDefs with
+`blankName` set silently block the next blank substitute via the
+resolver's existing-def guard).
+
+| Trigger | Call site | What clears |
+|---|---|---|
+| Submit (Alt+Shift+→ / Ctrl+Alt+S) | `app.tsx:finish()` → `resetOpenCuesBufferState()` | DynDefs, HighlightState, SpanFill, SelectorSatellite |
+| Cancel (Alt+Shift+↓ / Esc / Ctrl+Alt+Q) | same path (finish with exitCode 130) | same |
+| Pane killed by tmux directly | n/a (process exits, fresh boot on next open) | n/a |
+
+Bug history (2026-05-28): this wasn't wired on launch. Symptom
+was a prompt-improver in session N would silently block ALL
+blanks in session N+1 — bare `_`, `translate to french _`,
+`improve prompt _`, etc. — with no log line. The resolver's
+`if (existing && existing.blankName) continue` guard at the
+DynDef collision check was the culprit. See
+`docs/architecture/universal-integration.md` § "When to call
+`resetBufferState()` — the full trigger list" for the cross-host
+contract.
+
+`AgentTaskState` and `dismissedBlanks` deliberately persist
+across sessions per the chrome contract (an armed agent task
+should outlive a panel close + reopen).

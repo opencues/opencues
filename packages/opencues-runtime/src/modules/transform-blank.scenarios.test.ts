@@ -658,3 +658,77 @@ describe('TransformBlank fused / whole-buffer — duplication-bug structural fix
     expect(adapter.getText().endsWith('looked around')).toBe(true);
   });
 });
+
+// ─── Regression: tip entry for `_` must not block LLM blanks ───────────
+//
+// Bug history (2026-05-28): the resolver's tip-suppression filter (a
+// word-cue rule that defers to hand-curated tips over LLM synonyms)
+// was applied to every result including blank substitutions. The shell
+// integration's `tips-shell/CUE.md` contained an explanatory tip entry
+// for `_` itself (alts=["blank","fill","underscore"]). On every shell
+// session, EVERY TransformBlank / FluidBlank / ConfigIntent
+// substitution silently skipped with no log line — because
+// `target.word === "_"` had a cueMap entry with >1 alt, the resolver
+// `continue`'d before reaching the substitute branch.
+//
+// The fix exempts both LLM blank sources AND any target whose word is
+// `_` from the tip-suppression rule. These two tests pin both halves.
+// Don't relax either guard.
+describe('TransformBlank — tip entry for `_` must not block substitution', () => {
+  it('substitutes through even when the cueMap has a tip on `_` with multi-alt', async () => {
+    const { adapter, resolver } = setupTransformScenario({
+      originalText: 'draft an email _',
+      rewrittenText: 'hello landlord email body',
+      target: '',
+      instruction: 'draft an email',
+    });
+    // Plant a tip on `_` matching what tips-shell/CUE.md once shipped —
+    // the exact shape that bottomed the original silent-skip.
+    interface CueLoaderMutable { lookup(word: string): { alternatives: string[] } | null }
+    const loaderUnsafe = (resolver as unknown as { configLoader: CueLoaderMutable }).configLoader;
+    const realLookup = loaderUnsafe.lookup.bind(loaderUnsafe);
+    loaderUnsafe.lookup = (w: string) => {
+      if (w === '_') return { alternatives: ['_', 'blank', 'fill', 'underscore'] };
+      return realLookup(w);
+    };
+    await resolver.resolveAndApply(adapter.getText());
+    // Buffer must have been rewritten — no silent skip.
+    expect(adapter.getText()).toBe('hello landlord email body');
+  });
+
+  it('still suppresses LLM word-cue results when the target word has a hand-curated tip', async () => {
+    // The exemption is narrow: ONLY LLM blanks (and the `_` target)
+    // bypass tip-suppression. A word-cue claiming an unrelated word
+    // (e.g. "ultrathink") that the user has a tip for must still
+    // defer to the curated alts.
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': CUES_MD },
+    });
+    adapter.pushText('i want to ultrathink this');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    const resolver = new Resolver(adapter, hlState, dynDefs, loader, {
+      endpoint: 'http://test', apiKey: 'x', defaultModel: 'm', debounceMs: 10, httpAdapter: {},
+    });
+    interface CueLoaderMutable { lookup(word: string): { alternatives: string[] } | null }
+    const loaderUnsafe = loader as unknown as CueLoaderMutable;
+    loaderUnsafe.lookup = (w: string) =>
+      w === 'ultrathink' ? { alternatives: ['ultrathink', 'tab', 'think harder'] } : null;
+    (resolver as unknown as { _resolver: { resolve(ctx: unknown): Promise<{ results: unknown[] }> } })._resolver = {
+      resolve: async () => ({
+        results: [{
+          wordIndex: 3,
+          word: 'ultrathink',
+          alternatives: ['ultrathink', 'deeply consider', 'meticulously reason'],
+          source: 'word-cues',
+        }],
+      }),
+    };
+    await resolver.resolveAndApply(adapter.getText());
+    // Word-cue's LLM alternatives must NOT override the hand-curated
+    // tip — dynDefs should be empty at this index (suppression fired).
+    expect(dynDefs.get(3)).toBeUndefined();
+  });
+});

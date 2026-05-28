@@ -200,6 +200,71 @@ browser extension for a different browser, a desktop UI with
 multiple inputs) — the per-buffer state reset is a real
 correctness concern, not a chrome quirk.
 
+### When to call `resetBufferState()` — the full trigger list
+
+`supportsCycling: false` + multi-buffer is one trigger. Any host
+where the SAME runtime instance sees the buffer content swapped /
+discarded / replaced needs to fire `resetBufferState()` at the
+boundary. There are FOUR distinct triggers — a host needs to fire
+on whichever apply:
+
+| Trigger | Examples | Why |
+|---|---|---|
+| **Focus moved to a different field** | chrome tabbing between `<input>`s | per-buffer state keyed by word-index in the OLD buffer; corrupts the new one (the canonical bug above) |
+| **Same field, buffer replaced externally** | paste, undo, redo, IME commit, programmatic `.value =` from the page | offsets the runtime tracks point at chars that no longer exist; next cycle splices at stale positions |
+| **Session boundary in a keep-alive process** | shell's `oc-edit --keep-alive` between Alt+Shift+↑ opens, a hypothetical VS Code panel that re-opens, any "submit then re-open" lifecycle in one host process | state from session N leaks into session N+1; a prompt-improver from N's DynDef blocks N+1's first blank silently via `existing.blankName` guard |
+| **Buffer fully cleared by host UI** | shell's Ctrl+C wipe, a "new session" button, slash command like `/clear` (when the implementation doesn't go through `pushText`) | analogous to undo — the visible buffer no longer matches the offsets the runtime tracks |
+
+Hosts that hit ONE of these reliably need ONE call site. Hosts
+that hit multiple need multiple. Examples in the tree:
+
+| Host | Triggers handled | Call sites |
+|---|---|---|
+| chrome | focus change + buffer-replaced (paste/undo/redo/IME) | `publishTarget(el)`, `notifyBufferReplacedExternally()` |
+| shell (oc-edit) | session boundary (submit/cancel close the pane in keep-alive) | `app.tsx:finish()` → `resetOpenCuesBufferState()` |
+| claude-code / opencode / gemini-cli | none (single buffer per process; runtime restarts on session end) | n/a |
+
+### Symptom catalogue — when you've missed a reset
+
+When `resetBufferState()` should have fired but didn't, the
+failure mode is **silent**. No error log, no crash. The runtime
+just silently does the wrong thing. The two most common symptoms:
+
+| Symptom | Likely missing reset |
+|---|---|
+| Bare `_` returns nothing; `answer _` (or any `<keyword> _`) works fine | DynDef with `blankName` set still occupies wordIndex 0 from a prior session/buffer. Resolver's `if (existing && existing.blankName) continue` guard fires. **Add a reset on session boundary or focus change.** |
+| Cycling Ctrl+Alt+↑/↓ swaps in stale text from a previous cue | HighlightState or SelectorSatelliteState still pointing at the prior buffer's word indices |
+| Dim ranges paint over the wrong words | DynDefs from prior buffer with `spanStart/spanEnd` referring to old offsets |
+
+If you see any of these in a new integration, audit your reset
+call sites against the trigger table above. The runtime exposes
+exactly one primitive (`resetBufferState()`) — the integration is
+responsible for calling it at the right moments.
+
+### Checklist for any new integration
+
+Walk this before shipping:
+
+1. Does the runtime instance ever see more than one logical
+   buffer? (Multiple focusable fields, OR multiple sessions in one
+   process, OR an explicit "clear" UI that doesn't go through
+   `pushText`.)
+2. If yes — identify the boundary event(s). Wire each one to
+   `BootResult.resetBufferState()`.
+3. For each boundary type, write a scenario test that:
+   - Substitutes a blank in session A (registers a DynDef with
+     `blankName` set)
+   - Crosses the boundary
+   - Asserts that the SAME blank trigger in session B substitutes
+     correctly (i.e. the stale DynDef doesn't block it)
+4. Document in the integration's CLAUDE.md which boundary events
+   call reset — future maintainers should be able to grep for
+   "resetBufferState" or "reset state" and find them.
+
+The bug class this prevents is silent and only surfaces after the
+user has already used the integration for a real workflow. Cheap
+to wire up front, expensive to debug after.
+
 ## Chrome — what's NOT eligible for normal-input mode
 
 Even within the universal profile, chrome refuses to attach to

@@ -9,7 +9,7 @@ import { render, useKeyboard, useRenderer } from '@opentui/solid';
 import { createSignal, onMount } from 'solid-js';
 import type { TextareaRenderable } from '@opentui/core';
 import { SyntaxStyle, TextAttributes } from '@opentui/core';
-import { startOpenCues, dispatchOpenCuesKey } from './bootstrap';
+import { startOpenCues, dispatchOpenCuesKey, resetOpenCuesBufferState } from './bootstrap';
 
 interface AppOpts {
   initialText: string;
@@ -151,6 +151,14 @@ function App(props: AppOpts) {
           textarea.cursorOffset = 0;
         } catch { /* swallow */ }
       }
+      // Clear per-buffer runtime state (DynDefs, HighlightState, SpanFill,
+      // SelectorSatellite) so the next open of the slide-pane starts
+      // from zero. Without this, a prompt-improver rewrite committed
+      // this session leaves a blank-attributed DynDef in memory; the
+      // next `improve prompt _` keystroke hits the stale def, the
+      // resolver's `if (existing && existing.blankName) continue` guard
+      // fires, and the new substitute silently skips.
+      try { resetOpenCuesBufferState(); } catch { /* swallow */ }
       deactivate();
       return;
     }

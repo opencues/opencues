@@ -991,8 +991,23 @@ export class Resolver {
       // etc. would silently override the curated list. Mirrors the
       // legacy CC cue-engine's `skipFn: word => tipsMap.has(word)`
       // filter on the LLM source.
+      // Tip-having words own their own alternatives via the cueMap (the
+      // hand-curated `alts` array under CUES.md's `## Tips` JSON block).
+      // The LLM returning grammar synonyms for `ultrathink` etc. would
+      // silently override the curated list. Mirrors the legacy CC
+      // cue-engine's `skipFn: word => tipsMap.has(word)` filter on the
+      // LLM source.
+      //
+      // ⚠ LLM blank sources (transform-blank / fluid-blank /
+      // config-intent) are EXEMPT. They target `_`; if a user (or a
+      // shipped pack) has a tip entry for `_` — tips-shell/CUE.md once
+      // had `{ "_": { alts: ["blank","fill","underscore"] } }` — the
+      // tip-vs-LLM rule would silently block every blank substitution.
+      // Pinned by `transform-blank.scenarios.test.ts` § "tip entry
+      // for `_` must not block substitution" (2026-05-28 regression).
       const cueMapEntry = this.configLoader.lookup(target.word);
-      if (cueMapEntry && cueMapEntry.alternatives && cueMapEntry.alternatives.length > 1) continue;
+      const isLlmBlankSource = r.source === 'fluid-blank' || r.source === 'transform-blank' || r.source === 'config-intent';
+      if (!isLlmBlankSource && cueMapEntry && cueMapEntry.alternatives && cueMapEntry.alternatives.length > 1) continue;
       const alts = (r.alternatives ?? []).filter(a => a && a !== target.word);
       if (alts.length === 0) continue;
       // FluidBlankSource sets spanStart/spanEnd (character offsets) when
@@ -1388,6 +1403,7 @@ export class Resolver {
             // else: fall through to whole-body replace.
           }
         }
+
 
         // ── Two substitute paths ───────────────────────────────────────
         //

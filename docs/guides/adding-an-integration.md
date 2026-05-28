@@ -222,6 +222,21 @@ Four files:
 
 Critical for React/Ink hosts: **every wrapped setter must call `host.forceRender?.()`** so React schedules a re-render. Without it, pending state queues forever in interactive mode. See `feedback_react_render_kick.md` in memory.
 
+**Critical for hosts where the buffer lifecycle is non-trivial**
+(multiple focusable buffers, session boundaries in a keep-alive
+process, host-side buffer clears, paste / undo / IME): wire
+`BootResult.resetBufferState()` at every boundary. The failure
+mode is silent — a stale `DynDef` from a prior substitution
+blocks the next blank with no log line. Shell missed this on
+launch (2026-05-28) — prompt-improver state leaked across
+keep-alive sessions and silently broke every subsequent blank.
+
+Full trigger catalogue + symptom table + pre-ship checklist:
+[`docs/architecture/universal-integration.md`](../architecture/universal-integration.md)
+§ "When to call `resetBufferState()` — the full trigger list".
+Single-buffer CLI hosts (CC / OC / gemini-cli) don't need it —
+the runtime restarts per session.
+
 ### 8. Repair guide — `packages/opencues-runtime/adapters/<short>/REPAIR.md`
 
 Document host-specific known-fixes baked into the adapter. Entries should be: file, symptom, why, fix. Mirror `adapters/oc/REPAIR.md` or `adapters/gemini/REPAIR.md`. This is the page someone reads after an upstream version bump breaks something.
@@ -235,6 +250,7 @@ User-facing dev notes for the integration. Cover:
 - Things-that-look-like-bugs-but-aren't
 - Debug paths
 - Manual test pass
+- **Buffer-state reset call sites** — list every place this integration calls `resetBufferState()` and the trigger. Future maintainers should be able to grep `resetBufferState` and find them documented. Even if the host calls it zero times (single-buffer CLI), say so explicitly so the next contributor doesn't think it was forgotten.
 
 Mirror `integrations/gemini-cli/CLAUDE.md`.
 
