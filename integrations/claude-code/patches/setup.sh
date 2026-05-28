@@ -153,21 +153,43 @@ else
 fi
 end_step
 
-# ─── 2. Reinstall pinned cli.js into the fork ─────────────────────────
+# ─── 2. Reinstall pinned cli.js / native binary into the fork ────────
 # `npm install` reads the fork's package.json, which pins an EXACT CC
 # version (no caret) — so this always installs the same artifact bit-
-# for-bit. Skipped under --keep-state to preserve any in-progress edits.
+# for-bit. Skipped under --keep-state when the patched artifact already
+# exists.
+#
+# CC ships two distribution shapes within the 2.1.x line:
+#   - 2.1.111 and earlier → package/cli.js   (minified JS bundle)
+#   - 2.1.113 and later   → bin/claude.exe   (bun-compile ELF binary
+#                                             with the JS embedded in
+#                                             a .bun ELF section that
+#                                             tweakcc 4.0.13+ extracts +
+#                                             repacks)
+# CLI_JS is the path we hand to tweakcc; for native installs, point at
+# the binary and tweakcc handles the extract/patch/repack transparently.
 begin_step "Installing pinned @anthropic-ai/claude-code"
-if $KEEP_STATE && [ -f "$CC_FORK_DIR/node_modules/@anthropic-ai/claude-code/cli.js" ]; then
-  echo "  --keep-state: cli.js already present at $CC_FORK_DIR — skipping npm install"
+CC_PKG_DIR="$CC_FORK_DIR/node_modules/@anthropic-ai/claude-code"
+CLI_JS_PATH="$CC_PKG_DIR/cli.js"
+BIN_PATH="$CC_PKG_DIR/bin/claude.exe"
+if $KEEP_STATE && { [ -f "$CLI_JS_PATH" ] || [ -f "$BIN_PATH" ]; }; then
+  echo "  --keep-state: patched artifact already present at $CC_FORK_DIR — skipping npm install"
 else
   (cd "$CC_FORK_DIR" && rm -f package-lock.json && npm install --no-audit --no-fund 2>&1 | tail -5)
 fi
-CLI_JS="$CC_FORK_DIR/node_modules/@anthropic-ai/claude-code/cli.js"
-if [ ! -f "$CLI_JS" ]; then
-  echo "Error: cli.js still missing at $CLI_JS after npm install." >&4
+# Pick the right artifact for tweakcc. cli.js (legacy) wins when present;
+# otherwise fall back to the native binary.
+if [ -f "$CLI_JS_PATH" ]; then
+  CLI_JS="$CLI_JS_PATH"
+  CC_SHAPE="cli.js"
+elif [ -f "$BIN_PATH" ]; then
+  CLI_JS="$BIN_PATH"
+  CC_SHAPE="native-binary"
+  echo "  Native bun-binary install detected; tweakcc 4.0.13+ will extract/repack."
+else
+  echo "Error: neither cli.js ($CLI_JS_PATH) nor native binary ($BIN_PATH) found after npm install." >&4
   echo "  Pinned version: $PINNED_VERSION" >&4
-  echo "  Some CC versions ship as native binaries (no cli.js) — pin to a JS-cli version." >&4
+  echo "  Both distribution shapes are unsupported — check the version pin in package.json." >&4
   exit 1
 fi
 end_step
@@ -338,19 +360,32 @@ if ! grep -lq "writeOpenCuesRuntimeV2\|@opencues/runtime" "$TWEAKCC_DIR/dist/"*.
 fi
 end_step
 
-# ─── 8. Apply tweakcc to cli.js + verify v2 boot is present ───────────
-begin_step "Applying patches to cli.js"
+# ─── 8. Apply tweakcc to cli.js / native binary + verify v2 boot ─────
+begin_step "Applying patches to $CC_SHAPE"
 (cd "$TWEAKCC_DIR" && TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply 2>&1 | tail -10)
-node --check "$CLI_JS" 2>/dev/null || echo "Warning: syntax check failed on $CLI_JS" >&4
+# `node --check` is JS-only — skip on native binary.
+if [ "$CC_SHAPE" = "cli.js" ]; then
+  node --check "$CLI_JS" 2>/dev/null || echo "Warning: syntax check failed on $CLI_JS" >&4
+fi
 # VERIFICATION: tweakcc's --apply prints "Customizations applied with some
 # failures" even when individual patches miss seams. Confirm the v2 boot
 # actually landed — without this, an unsupported CC version would silently
 # leave cli.js unpatched but the installer would report success.
-if ! grep -q "@opencues/runtime" "$CLI_JS"; then
+#
+# For native-binary installs, the patched cli.js is repacked into the .bun
+# ELF section but tweakcc also writes the post-patch extract to
+# $TWEAKCC_CONFIG_DIR/native-claudejs-patched.js — grep that, not the binary
+# (the section is compressed so the binary itself isn't ASCII-greppable).
+if [ "$CC_SHAPE" = "cli.js" ]; then
+  VERIFY_TARGET="$CLI_JS"
+else
+  VERIFY_TARGET="$TWEAKCC_CONFIG_DIR/native-claudejs-patched.js"
+fi
+if ! grep -q "@opencues/runtime" "$VERIFY_TARGET" 2>/dev/null; then
   end_step
   echo "" >&4
-  echo "FATAL: cli.js was patched but contains no opencues v2 boot." >&4
-  echo "  cli.js: $CLI_JS" >&4
+  echo "FATAL: $CC_SHAPE was patched but contains no opencues v2 boot." >&4
+  echo "  Target: $VERIFY_TARGET" >&4
   echo "  Likely cause: writeOpenCuesRuntimeV2's S1/S3 seam regexes didn't" >&4
   echo "  match the cli.js content (unsupported CC version)." >&4
   echo "  Check packages/opencues-runtime/adapters/cc/ for a matching adapter band." >&4

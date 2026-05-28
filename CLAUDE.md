@@ -54,6 +54,29 @@ Two Claude Code installs exist on this machine. **OpenCues work targets `claude-
 - `claude` is never patched. Use it for unaffected Claude Code sessions during development.
 - Each patched fork is pegged to its declared version — do not upgrade without re-running the [UPGRADING runbook](integrations/claude-code/UPGRADING.md) to verify the five seam anchors (S1/S2/S3 required, S6/S7 optional).
 
+> ⚠ **Rebuild EVERY fork after a runtime/core fix.** `setup.sh` defaults to
+> `~/claude-code-cues/` (cli.js fork). The 150 fork needs an explicit
+> `OPENCUES_CC_TARGET=~/claude-code-cues-150/node_modules/@anthropic-ai/claude-code/cli.js`
+> override (or `--target` flag), otherwise it keeps running the stale bundled
+> runtime and silently diverges from the cli.js fork — even though source has
+> the fix.
+>
+> Concrete failure mode this rule prevents: a May-2026 resolver fix
+> (`isLlmBlankSource` exemption from the `_`-tip guard in
+> `packages/opencues-runtime/src/modules/resolver.ts`) landed in source and got
+> installed into the cli.js fork. The 150 fork was never re-run; users on
+> `claude-cues-150` had every TransformBlank substitute silently dropped for
+> hours before we noticed the version skew in `node_modules`. Re-applying the
+> bug fix structurally requires touching both forks; treat them as one
+> deployment unit, not two.
+>
+> The same "fix all relevant installs" rule applies anywhere multiple bundled
+> copies of `@opencues/{core,runtime}` exist (chrome's `dist/configs/` bake
+> bundle, OC's per-fork `node_modules/`, future forks). Symptom is always the
+> same: source has the fix, one runtime doesn't, behaviour diverges per host
+> in a way the test suite can't catch (it's testing the source, not each
+> bundled copy).
+
 ---
 
 ## Repository Structure

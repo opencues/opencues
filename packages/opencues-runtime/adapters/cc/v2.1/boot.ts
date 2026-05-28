@@ -745,9 +745,22 @@ export function boot(host: HostInfo): BootResult {
       checkTextDrift(text, cursorOffset);
       if (typeof rendered !== 'string') return rendered;
       if (renderHandlers.length === 0) return rendered;
+      // Strip ANSI for `visibleText` (used as the styling-application
+      // base via `out = applyDirectives(...)`). Strip ANSI *and* ZWS for
+      // `ctxText` (consumed by handlers: DimRender's splitWords,
+      // SentenceCue's segmenter, etc.). ZWS only exists in CC because
+      // __oc_pushHostText toggles it to defeat React's string-equality
+      // bail-out on forceRender — it's an internal render-kick marker,
+      // never a meaningful visible character. Letting it reach handlers
+      // makes splitWords emit a stray ZWS-word at the buffer tail; for
+      // multi-word spans that walks the dim end-word lookup off by one
+      // and dim disappears. checkTextDrift already strips ZWS for the
+      // text-change side; this is the symmetric strip for the render
+      // side. Keep the two boundaries in sync.
       const visibleText = rendered.replace(/\x1b\[[0-9;]*m/g, '');
+      const ctxText = visible(visibleText);
       const ctx: RenderContext = {
-        text: visibleText,
+        text: ctxText,
         cursor: cursorOffset,
         externalHighlights: [],
       };
@@ -765,10 +778,13 @@ export function boot(host: HostInfo): BootResult {
         }
       }
       if (isDebugEnabled()) {
+        const zwsStripped = visibleText.length - ctxText.length;
         log('debug', 'applyRender', {
           textLen: text.length,
           visibleLen: visibleText.length,
-          visiblePreview: visibleText.slice(0, 60),
+          ctxLen: ctxText.length,
+          zwsStripped,
+          visiblePreview: ctxText.slice(0, 60),
           hlActive: hlState.active,
           hlWordIdx: hlState.wordIndex,
           directives: debugDirectives,

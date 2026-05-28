@@ -204,6 +204,83 @@ Reverts `cli.js` from the backup in `~/claude-code-cues/.cues/patch-state/`, the
 
 ---
 
+## Known issues
+
+### ZWS render-kick — CC-only artifact, strip at every boundary
+
+CC's React string-equality check bails on `forceRender()` when the
+proposed buffer string is `===` the previous one. Three common cases
+hit this: a transform substitute that produced byte-identical output,
+a `BlankLoading` spinner frame that paints the same char, and any
+no-op repaint forced by the runtime. To defeat the bail-out, the
+patch's `__oc_pushHostText` toggles a `\u200B` (ZWS) or `\u200C`
+(ZWNJ) marker on every push so the string is always non-equal and
+React commits.
+
+**Only Claude Code adds these characters.** Any other host that sees
+them does so because *we* leaked them out of the CC adapter. The rule
+is: ZWS must be stripped at every boundary where buffer text crosses
+from CC into a runtime module.
+
+| Boundary | Strip site |
+|---|---|
+| `TextChangeEvent.text` (BlankFill, Navigation, AgentRewrite, Resolver, …) | `checkTextDrift` in `adapters/cc/v2.1/boot.ts` runs `visible(text)` before storing/emitting |
+| `adapter.getText()` → `lastSeenText` | Same `visible()` strip — `lastSeenText` is always the stripped copy |
+| `RenderContext.text` (DimRender, SentenceCue, Statusline, TTS) | `applyRender` runs `visible(visibleText)` before building the ctx |
+
+The render-side strip was the **third boundary** and was the last to
+land (May 2026). Symptom that gave it away: multi-word blank-fill
+spans lost their dim the moment the user typed any character after the
+substitute, because `splitWords(ctx.text)` was emitting a stray
+ZWS-only word at the buffer tail and the multi-word dim end-word
+lookup walked off by one.
+
+**If you add a new path that surfaces buffer text to a runtime
+module, route it through the adapter's `visible()` helper first.**
+Don't pass raw `host.getText()` or `iz.text` to a module — the patch's
+ZWS-toggle will leak through.
+
+**Diagnostic** — the post-May-2026 `applyRender` debug log includes
+`zwsStripped: N`. Non-zero values mean the render-kick path was
+active for that frame.
+
+```bash
+grep zwsStripped /tmp/opencues.log
+```
+
+If you suspect a ZWS-related regression (span-not-rendering,
+indexOf-failing, equality-mismatch), this is the first signal to
+check — it tells you the render-kick is firing and `visible()` is
+being asked to do work, which means the strip contract is what's
+keeping downstream sane.
+
+**Audit checklist when adding a new feature that consumes buffer text** — the
+risky patterns are:
+
+- `splitWords(x)` where `x` is NOT `event.text` / `ctx.text` / a runtime-
+  constructed string. (Constructed strings are clean by construction.)
+- `text.indexOf(needle)` / `lastIndexOf` / `slice` where `needle` is
+  guaranteed clean but `text` was sourced upstream of an adapter strip.
+- Prefix / suffix character-by-character comparisons against raw
+  buffer text.
+
+Each of those is `O(1)` to make safe — call the adapter's strip
+before consuming. Each is also `O(N)` painful to debug after the fact
+because the bug is silent (no exception, no wrong result the eye
+catches — just a span that doesn't render or a substitute that
+splices at offset 0). The strip-at-boundary contract is the only
+durable defence; tests don't catch this class because they pass
+clean text.
+
+This sat as a major issue from inception through May 2026 because the
+render-side leak was invisible: the visible buffer rendered correctly
+(host knew the ZWS), but every downstream calculation against `ctx.text`
+silently degraded. See `CLAUDE.md § ZWS render-kick — invariant: never
+escape the adapter` for the architectural rule + table of stripped
+boundaries.
+
+---
+
 ## See also
 
 - [`docs/architecture/repo-structure.md`](../../docs/architecture/repo-structure.md) — overall repo shape + stage tracker
