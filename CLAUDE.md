@@ -753,19 +753,7 @@ Full spec: `docs/features/chrome-sync.md`.
 
 - Switch `LICENSE` from "Proprietary. All rights reserved." to the chosen open-source license; the README license section will continue to render the new text without further changes.
 
-**Switch `opencues` npm name from parked placeholder to real CLI:**
-
-The `opencues` name on npmjs.com is currently held by `packages/opencues-park/` (a minimal "in private beta" placeholder published as v0.0.1). To hand the name over to the real CLI at launch:
-
-1. In `packages/opencues-cli/package.json`: remove `"private": true`, remove the `publishConfig` block (or repoint from GitHub Package Registry to public npm), and bump `version` to `0.1.0` (or higher — must be > 0.0.1 to supersede the placeholder).
-2. From `packages/opencues-cli/`: `npm publish --access public` (the bare name `opencues` is unscoped, so the `--access public` flag is implicit, but pass it explicitly to be safe). Publisher must be logged in as a member of the `opencues` npm org (the package is owned by the org via the `developers` team, granted via `npm access grant read-write opencues:developers opencues`).
-3. Verify on npmjs.com/package/opencues that v0.1.0 is now the latest and `npm install opencues` pulls the real CLI.
-4. Delete `packages/opencues-park/` from the repo (the published v0.0.1 stays on npm forever as a historical version, but the source is no longer needed).
-5. Remove this checklist item from CLAUDE.md.
-
-Caveats:
-- v0.0.1 can never be reused (npm permanently consumes versions). Don't unpublish the placeholder before publishing the real v0.1.0 — there's a 24-hour name lockout after unpublish that would block the handover.
-- The npm account currently used (`wkasekende`, admin of the `opencues` org) has security-key 2FA. Org-write commands (`npm access grant`, `npm owner add/rm`) don't accept security-key auth — they only take TOTP codes. To run those, either temporarily flip "Require 2FA for write actions" off in account settings (then back on), or add a TOTP authenticator app as a secondary 2FA method. Regular `npm publish` works fine with the security key via `--auth-type=web`.
+**Switch `opencues` npm name from parked placeholder to real CLI**: runbook at [docs/launch/npm-handover.md](docs/launch/npm-handover.md) — covers the 5-step handover, the version-can't-be-reused caveat, and the security-key/TOTP gotcha for org-write commands.
 
 Tracked here so the launch pass doesn't miss them. Update this section
 as items are resolved.
@@ -802,66 +790,9 @@ Two packages share the bare `opencues` name — the real CLI at `packages/opencu
 
 Everything except the placeholder is currently `private: true`. Flipping a package to publishable requires removing `"private": true` AND repointing (or removing) its `publishConfig` block (most currently target `npm.pkg.github.com`).
 
-## Versioning policy (from May 2026 onward)
+## Versioning policy
 
-Until May 2026 every internal package sat at `0.1.0` regardless of what
-landed — the version field was inert. That stops now. Going forward,
-treat versions as load-bearing and bump them on every shipping change.
-
-**Semver, applied per package:**
-
-- `0.x.y` = pre-stable. Minor (`0.1 → 0.2`) for breaking changes;
-  patch (`0.1.0 → 0.1.1`) for additive features, fixes, and refactors
-  that preserve the public API. We expect to stay <1.0 across all
-  packages until the first public launch.
-- `1.0.0` = the first version a package is committed to publish with
-  API stability guarantees. Don't reach for it before then. After 1.0,
-  standard semver: major for breaking, minor for additive, patch for fixes.
-
-**When to bump, by package class:**
-
-- **`@opencues/core`** — bump on any source change that ships externally
-  (resolver behaviour, source classes, parsers, registry shape, SPEC
-  parser surface). The version is what hosts and external readers will
-  depend on.
-- **`@opencues/runtime`** — bump on any change to public exports,
-  the `HostAdapter` contract, render-directive shape, state-class shape,
-  or per-host adapter band. Per-host bands count: a CC-only fix that
-  doesn't touch shared modules still bumps runtime.
-- **Integration packages** (`@opencues/claude-code`, `chrome`, …) — bump
-  when *the integration's own code* changes (patch source, host shim,
-  bootstrap). Don't bump just because core/runtime did — the integration
-  picks up the new versions via its `dependencies` field and the version
-  there reflects integration-level work.
-- **`opencues` CLI** (packages/opencues-cli) — bump on any change to the
-  command surface, install flow, or seed-configs behaviour.
-- **`SPEC_VERSION`** (the cues-spec) — bumps independently of packages.
-  Only move when the wire format of `CUES.md` / `CUE.md` / `BLANK.md` /
-  `OPENCUES.md` / `AUDITORS.md` changes, or when a documented frontmatter
-  key is added/removed/repurposed. Implementation-detail refactors in
-  the parsers don't bump the spec.
-
-**Discipline:**
-
-- Bump the version in the SAME commit/PR as the change. Don't batch
-  bumps separately — that disconnects the version from the diff that
-  motivated it and makes git blame less useful for "when did X become
-  available?"
-- When `@opencues/core` or `@opencues/runtime` bumps, integrations
-  that depend on it update their `dependencies` field in the same PR
-  (or the next one) so versions don't drift in lockfiles.
-- The version snapshot table above will go stale fast. Regenerate it
-  with the one-liner whenever versions matter for context; don't
-  treat the literal table as ground truth.
-
-**Why this matters here specifically:**
-
-OpenCues ships as multiple bundled copies (CC fork's `node_modules/`,
-chrome's bake bundle, OC's `node_modules/`, etc.). When source has a
-fix but one bundled copy is stale, debugging is brutal because every
-copy claims the same `0.1.0`. Real version bumps make "is this build
-current?" answerable by `cat package.json` instead of by inspecting
-the resolver internals.
+Semver per package, stay <1.0 until public launch, bump in the same commit as the change, integrations bump independently of core/runtime. `SPEC_VERSION` bumps only on wire-format changes. Full policy with per-package bump rules: [docs/architecture/versioning.md](docs/architecture/versioning.md).
 
 ---
 
