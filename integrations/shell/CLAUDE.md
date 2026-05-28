@@ -168,10 +168,17 @@ resolver's existing-def guard).
 
 | Trigger | Call site | What clears |
 |---|---|---|
-| Submit (Alt+Shift+→ / Ctrl+Alt+S) | `app.tsx:finish()` → `resetOpenCuesBufferState()` | DynDefs, HighlightState, SpanFill, SelectorSatellite |
-| Cancel (Alt+Shift+↓ / Esc / Ctrl+Alt+Q) | same path (finish with exitCode 130) | same |
-| In-session buffer wipe (Ctrl+C) | `app.tsx:useKeyboard` Ctrl+C branch — `textarea.setText('')` + `resetOpenCuesBufferState()` | same |
+| Submit (Ctrl+Alt+S / Alt+Shift+→) | `app.tsx:finish()` → `resetOpenCuesBufferState()` | DynDefs, HighlightState, SpanFill, SelectorSatellite |
+| Cancel (Ctrl+Alt+Q / Alt+Shift+↓) | same path (finish with exitCode 130) | same |
 | Pane killed by tmux directly | n/a (process exits, fresh boot on next open) | n/a |
+
+**Ctrl+C is deliberately NOT bound.** An earlier attempt mapped
+it to in-session wipe + reset, but Ctrl+C interacts badly with
+the tmux + bun signal stack: `\x03` was sometimes delivered as
+SIGINT to bun before `useKeyboard` saw it, killing the runtime
+mid-session and silently disabling cues until a fresh oc-shell
+launch. The advertised cancel (Ctrl+Alt+Q) is the supported
+in-session reset path — it closes the pane, fresh open is clean.
 
 Bug history (2026-05-28): this wasn't wired on launch. Symptom
 was a prompt-improver in session N would silently block ALL

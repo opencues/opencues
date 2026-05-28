@@ -64,91 +64,41 @@ function App(props: AppOpts) {
   });
 
   useKeyboard((evt: any) => {
-    // Unified shortcuts across both panels of `oc-shell`:
-    //   Ctrl+Alt+S — submit here, opens the popup from `oc-shell`.
-    //   Ctrl+Alt+Q — cancel here, exits `oc-shell` entirely.
-    // Same chord serves the same SEMANTIC action on both layers.
+    // Only ADVERTISED shortcuts are bound. The status bar lists them
+    // so the user sees every keystroke the input pane responds to:
     //
-    // The terminal encodes Ctrl+Alt+<letter> as ESC + Ctrl-<letter>,
-    // which OpenTUI surfaces as `{ ctrl: true, meta: true, name: 'x' }`.
-    // We also accept the raw byte sequences as a defensive fallback
-    // in case an emulator forwards them pre-decoded.
+    //   Ctrl+Alt+S — submit (paste textarea contents into shell pane)
+    //   Ctrl+Alt+Q — cancel (clear + slide back down)
+    //
+    // Same chord serves the same SEMANTIC action across both layers
+    // (the input pane and the outer oc-shell). The terminal encodes
+    // Ctrl+Alt+<letter> as ESC + Ctrl-<letter> — OpenTUI surfaces it
+    // as `{ ctrl: true, meta: true, name: 'x' }`. Raw byte sequences
+    // are accepted as a defensive fallback in case an emulator
+    // forwards them pre-decoded.
+    //
+    // ⚠ No silent / unadvertised aliases. We previously bound plain
+    // Ctrl+S, plain Ctrl+Q, plain Esc, and Ctrl+C as un-advertised
+    // synonyms. Ctrl+C in particular interacted badly with the
+    // tmux/bun signal stack — `\x03` was sometimes delivered as
+    // SIGINT to bun before useKeyboard saw it, breaking the runtime
+    // mid-session. If you want to wipe the buffer, use Ctrl+Alt+Q
+    // (cancel) and re-open with Alt+Shift+↑. If you need a new
+    // shortcut, add it AND announce it in the status bar.
     if (evt.ctrl && evt.meta && evt.name === 's') {
       finish(textarea?.plainText ?? '', 0);
       return;
     }
-    if (evt.sequence === '\x1b\x13') {  // ESC + Ctrl-S literal
+    if (evt.sequence === '\x1b\x13') {  // ESC + Ctrl-S literal — Ctrl+Alt+S byte form
       finish(textarea?.plainText ?? '', 0);
       return;
     }
-    // Plain Ctrl+S is an unadvertised alias for the submit chord.
-    // The status bar only shows "Ctrl+Alt+S" so we don't overload
-    // the user with synonyms, but the bare chord lands here too —
-    // useful for emulators that swallow Alt.
-    if (evt.ctrl && !evt.meta && evt.name === 's') {
-      finish(textarea?.plainText ?? '', 0);
-      return;
-    }
-    if (evt.sequence === '\x13' && !evt.meta) {  // Ctrl-S literal byte
-      finish(textarea?.plainText ?? '', 0);
-      return;
-    }
-    // M-C-q is cancel. In keep-alive mode the tmux root binding is
-    // context-aware: from the shell pane it kills the session, from
-    // the oc-input pane it forwards M-C-q here so we can clear the
-    // textarea + slide back down (no paste). In legacy popup mode it
-    // exits the popup with empty buffer.
     if (evt.ctrl && evt.meta && evt.name === 'q') {
       finish('', 130);
       return;
     }
-    if (evt.sequence === '\x1b\x11') {  // ESC + Ctrl-Q literal
+    if (evt.sequence === '\x1b\x11') {  // ESC + Ctrl-Q literal — Ctrl+Alt+Q byte form
       finish('', 130);
-      return;
-    }
-    // Plain Ctrl+Q — unadvertised cancel alias, same rationale as
-    // plain Ctrl+S above.
-    if (evt.ctrl && !evt.meta && evt.name === 'q') {
-      finish('', 130);
-      return;
-    }
-    if (evt.sequence === '\x11' && !evt.meta) {  // Ctrl-Q literal byte
-      finish('', 130);
-      return;
-    }
-    // Plain Escape — unadvertised cancel alias. In keep-alive mode
-    // this calls finish() (so the textarea clears + slides down,
-    // matching the cancel semantic). In legacy popup mode Esc falls
-    // through to the runtime (which uses it to dismiss tips, etc.).
-    if (props.keepAlive && (evt.name === 'escape' || evt.sequence === '\x1b')) {
-      finish('', 130);
-      return;
-    }
-    // Ctrl+C — wipe the buffer in-session without closing the pane.
-    // OpenTUI's textarea would clear the visible buffer on its own,
-    // but the runtime's per-buffer state (DynDefs, HighlightState,
-    // SpanFill, SelectorSatellite) would persist, leaving stale
-    // blank-attributed defs that silently block the NEXT blank
-    // substitute typed in the same session. Wipe both visible buffer
-    // and runtime state in one go so the next `_` starts clean.
-    if (evt.ctrl && !evt.meta && evt.name === 'c') {
-      try {
-        if (textarea) {
-          textarea.setText('');
-          textarea.cursorOffset = 0;
-        }
-        resetOpenCuesBufferState();
-      } catch { /* swallow */ }
-      return;
-    }
-    if (evt.sequence === '\x03' && !evt.meta) {  // Ctrl-C literal byte
-      try {
-        if (textarea) {
-          textarea.setText('');
-          textarea.cursorOffset = 0;
-        }
-        resetOpenCuesBufferState();
-      } catch { /* swallow */ }
       return;
     }
     // Forward to OpenCues first; only fall through to OpenTUI's own
