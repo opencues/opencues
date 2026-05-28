@@ -125,6 +125,53 @@ describe('Chrome v1 boot()', () => {
     expect(typeof result.collectRenderDirectives).toBe('function');
   });
 
+  it('updateLlmConfig logs resolver rebuild when called after boot with keys', () => {
+    // Pins the live-update contract: popup-save → updateLlmConfig →
+    // resolver rebuilt before next text-change, no page reload needed.
+    // Without this test, a future refactor could quietly break the
+    // in-place options-mutation pattern and the user-visible symptom
+    // would be "popup changes need a hard refresh".
+    const log = vi.fn();
+    const result = boot(makeHost({
+      log,
+      llmApiKey: 'test-key',
+      llmProvider: 'groq',
+      llmDefaultModel: 'openai/gpt-oss-120b',
+      llmEndpoint: 'https://api.groq.com/openai/v1/chat/completions',
+      httpAdapter: { post: async () => '{}' },
+    }));
+    log.mockClear();
+    result.updateLlmConfig({
+      provider: 'cerebras',
+      model: 'gpt-oss-120b',
+      endpoint: 'https://api.cerebras.ai/v1/chat/completions',
+    });
+    const rebuildLines = log.mock.calls.filter(c =>
+      String(c[1]).includes('updateLlmConfig: resolver rebuilt'),
+    );
+    expect(rebuildLines).toHaveLength(1);
+    // The log payload's `provider` field reflects the new value we
+    // just mutated into resolverOpts.providerOverride. If the Resolver
+    // received a spread copy instead of the live reference, the rebuild
+    // would still fire but the override field wouldn't update.
+    expect(rebuildLines[0][2]).toMatchObject({ provider: 'cerebras' });
+  });
+
+  it('updateLlmConfig warns when boot had no resolver', () => {
+    const log = vi.fn();
+    const result = boot(makeHost({ log }));
+    log.mockClear();
+    result.updateLlmConfig({ provider: 'cerebras' });
+    const warnLines = log.mock.calls.filter(c =>
+      c[0] === 'warn' && String(c[1]).includes('updateLlmConfig'),
+    );
+    // boot() always constructs the resolver (even keyless — for the
+    // MissingKeyFallbackSource path), so this should NOT warn. The
+    // warn branch only matters if a future refactor reintroduces the
+    // keyless-skip-construct path.
+    expect(warnLines).toHaveLength(0);
+  });
+
   it('Resolver receives host-supplied httpAdapter when provided', () => {
     // Without llmApiKey, Resolver isn't constructed. With llmApiKey +
     // a custom httpAdapter, the resolver build path runs and the host

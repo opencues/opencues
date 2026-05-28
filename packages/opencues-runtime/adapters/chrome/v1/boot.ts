@@ -137,6 +137,30 @@ export interface BootResult {
    */
   updateApiKeys(newKeys: Readonly<Record<string, string | undefined>>): void;
   /**
+   * Mutate the live LLM provider / model / endpoint overrides and
+   * rebuild the Resolver so the next dispatch picks them up — no page
+   * reload required. Mirrors `updateApiKeys`'s in-place mutation
+   * model. Used by the chrome popup's Save handler so flipping
+   * provider / model / API URL takes effect without a hard-refresh.
+   *
+   * Fields are independent — pass only the ones that changed. Empty
+   * string clears that override (so OPENCUES.md scalars take over);
+   * undefined leaves the existing override unchanged.
+   *
+   * AgentRewrite (when constructed) is not mutated here — its
+   * `resolveLLM` thunk already re-reads from `configLoader.opencuesState`
+   * on every tick, so OPENCUES.md edits hot-reload there separately.
+   * In `deferToChromeHost: false` mode the agentic feature continues
+   * to follow OPENCUES.md rather than the popup's three fields; if
+   * that gap matters in practice, plumb the overrides through
+   * AgentRewriteOptions in a follow-up.
+   */
+  updateLlmConfig(patch: {
+    provider?: string;
+    model?: string;
+    endpoint?: string;
+  }): void;
+  /**
    * Subscribe to module-emitted lifecycle events (markdown.styled,
    * blank.substituted, agent-rewrite.round-completed, etc.). The
    * content-script bootstrap uses this for `markdown.styled` payloads
@@ -315,20 +339,43 @@ export function boot(host: HostInfo): BootResult {
   // in-buffer hint — "open the extension popup". Without the resolver
   // being constructed at all, the fallback would never fire and the
   // user types `_` to silent nothing.
+  // Resolver options held as a named local so `updateLlmConfig` below
+  // can mutate provider/endpoint/model overrides in place — the
+  // Resolver holds this same object reference via `this.options` and
+  // re-reads the override fields on every `rebuildResolver()`. Same
+  // pattern as `apiKeys` (the live bag passed by reference).
+  const resolverOpts: {
+    endpoint: string;
+    apiKey: string;
+    defaultModel: string;
+    providerOverride?: string;
+    endpointOverride?: string;
+    modelOverride?: string;
+    apiKeys: Record<string, string | undefined>;
+    debounceMs: number;
+    httpAdapter: unknown;
+    missingKeyFallbackMessage?: string;
+    formatLLMErrorAsSubstitute?: (reason: 'invalid-api-key' | 'network' | 'rate-limit' | 'endpoint-not-found' | 'bad-request', err?: Error) => string;
+  } = {
+    endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
+    apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
+    defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
+    // Popup-supplied overrides win over OPENCUES.md scalars (chrome
+    // user's local intent beats the synced ~/.cues/ snapshot). Empty
+    // string / undefined falls through to the settings scalar.
+    providerOverride: (host.llmProvider && host.llmProvider.length > 0) ? host.llmProvider : undefined,
+    endpointOverride: (host.llmEndpoint && host.llmEndpoint.length > 0) ? host.llmEndpoint : undefined,
+    modelOverride: (host.llmDefaultModel && host.llmDefaultModel.length > 0) ? host.llmDefaultModel : undefined,
+    apiKeys,
+    debounceMs: host.llmDebounceMs ?? 500,
+    httpAdapter: host.httpAdapter,
+  };
   if (true) {
-    const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
-      endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
-      apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
-      defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
-      // Popup-supplied overrides win over OPENCUES.md scalars (chrome
-      // user's local intent beats the synced ~/.cues/ snapshot). Empty
-      // string / undefined falls through to the settings scalar.
-      providerOverride: (host.llmProvider && host.llmProvider.length > 0) ? host.llmProvider : undefined,
-      endpointOverride: (host.llmEndpoint && host.llmEndpoint.length > 0) ? host.llmEndpoint : undefined,
-      modelOverride: (host.llmDefaultModel && host.llmDefaultModel.length > 0) ? host.llmDefaultModel : undefined,
-      apiKeys,
-      debounceMs: host.llmDebounceMs ?? 500,
-      httpAdapter: host.httpAdapter,
+    // Pass resolverOpts by reference (NOT spread) so updateLlmConfig's
+    // in-place mutations propagate to this.options on every rebuild.
+    // Final two fields are inline because they're host-specific and
+    // never change after boot.
+    const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, Object.assign(resolverOpts, {
       // Chrome-specific user-facing message — points the user at the
       // extension popup, where the API-key inputs live.
       missingKeyFallbackMessage: hasAnyKey ? undefined : '[OpenCues: no API key — open the extension popup]',
@@ -336,7 +383,7 @@ export function boot(host: HostInfo): BootResult {
       // user-actionable reason maps to a one-line in-buffer hint that
       // tells the user where to look in chrome. LLM-internal issues
       // (malformed JSON, no-span) stay silent regardless.
-      formatLLMErrorAsSubstitute: (reason) => {
+      formatLLMErrorAsSubstitute: (reason: 'invalid-api-key' | 'network' | 'rate-limit' | 'endpoint-not-found' | 'bad-request'): string => {
         // Provider's own JSON error deliberately NOT inlined — it can
         // be ugly, leak details, or vary wildly across providers. The
         // reason class + actionable hint is enough.
@@ -348,7 +395,7 @@ export function boot(host: HostInfo): BootResult {
           case 'bad-request':        return '[OpenCues: provider returned 400 (bad request) — check the Model name matches the selected Provider in the popup]';
         }
       },
-    }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState);
+    }), spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState);
     configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
     liveResolver = resolver;
 
@@ -431,6 +478,35 @@ export function boot(host: HostInfo): BootResult {
         log('warn',
           '[opencues] updateApiKeys: no resolver to update (boot had no keys). ' +
           'Reload the tab to construct one from the new keys.');
+      }
+    },
+    updateLlmConfig(patch) {
+      // Mutate the same resolverOpts reference the Resolver holds.
+      // Empty string CLEARS the override (settings scalar takes over);
+      // undefined leaves the field unchanged.
+      if (patch.provider !== undefined) {
+        resolverOpts.providerOverride = patch.provider.length > 0 ? patch.provider : undefined;
+      }
+      if (patch.endpoint !== undefined) {
+        resolverOpts.endpointOverride = patch.endpoint.length > 0 ? patch.endpoint : undefined;
+        // Also update the legacy single-key endpoint fallback so
+        // sources that don't read endpointOverride still see the
+        // new value.
+        if (patch.endpoint.length > 0) resolverOpts.endpoint = patch.endpoint;
+      }
+      if (patch.model !== undefined) {
+        resolverOpts.modelOverride = patch.model.length > 0 ? patch.model : undefined;
+        if (patch.model.length > 0) resolverOpts.defaultModel = patch.model;
+      }
+      if (liveResolver) {
+        liveResolver.rebuildResolver();
+        log('info', '[opencues] updateLlmConfig: resolver rebuilt', {
+          provider: resolverOpts.providerOverride ?? '(settings)',
+          model: resolverOpts.modelOverride ?? '(settings)',
+          endpoint: resolverOpts.endpointOverride ?? '(settings)',
+        });
+      } else {
+        log('warn', '[opencues] updateLlmConfig: no resolver to update — reload tab');
       }
     },
     onModuleEvent(handler) {
