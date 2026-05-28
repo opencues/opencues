@@ -826,23 +826,28 @@ export class Resolver {
     }
 
     // Loading animation: start animating every `_` slot before dispatch
-    // and stop them all after the pipeline returns (success, error, or
-    // empty result). Idempotent: BlankFill may have already started
-    // animating a keyword-bound `_`, in which case start() is a no-op.
+    // and release the resolver's claim after the pipeline returns
+    // (success, error, or empty result). Refcounted by owner — when a
+    // keyword-bound `_` (stocks, weather, volume) is also being filled
+    // by BlankFill, both modules call start/stop with their own owner
+    // ID and the slot keeps animating until BOTH release. Without that,
+    // the resolver's typically-fast return on keyword-bound slots
+    // (no resolver-side source claims them) would kill BlankFill's
+    // still-pending animation before the first frame ever paints.
     // stop() restores each slot to `_` so the substitution path's
     // `target.word === '_'` check still passes.
     const animatedSlots: number[] = [];
     if (this.blankLoading) {
       for (let i = 0; i < cleanWords.length; i++) {
         if (cleanWords[i] === '_') {
-          this.blankLoading.start(i);
+          this.blankLoading.start(i, 'resolver');
           animatedSlots.push(i);
         }
       }
     }
     const stopAllAnimations = (): void => {
       if (!this.blankLoading) return;
-      for (const i of animatedSlots) this.blankLoading.stop(i);
+      for (const i of animatedSlots) this.blankLoading.stop(i, 'resolver');
     };
 
     // Capture resolve-start so we can surface end-to-end pipeline

@@ -281,15 +281,33 @@ interface ActiveSlot {
  * Per-buffer loading-animation manager. One instance per BlankFill;
  * created by the runtime once at boot.
  *
- *   start(wordIndex)  — claim a slot and begin animating.
- *   stop(wordIndex)   — release a slot and snap back to `_`.
- *   stopAll()         — release every active slot (used on adapter teardown).
+ *   start(wordIndex, owner)  — claim a slot and begin animating.
+ *   stop(wordIndex, owner)   — release this owner's claim; the slot
+ *                              stops only when the LAST owner releases.
+ *   stopAll(owner?)          — release every active slot (used on
+ *                              adapter teardown). With an owner, only
+ *                              that owner's claims are released.
+ *
+ * Owner-based refcounting matters because two modules independently
+ * animate the same slot:
+ *   - BlankFill animates keyword-bound `_` (stocks, weather, volume)
+ *     while its blankInvoke / spawnProcess call is in flight.
+ *   - Resolver animates every `_` for the duration of its source pass
+ *     (covers FluidBlank / TransformBlank LLM round-trips).
+ * Without refcounting, the Resolver — which returns within ~1ms for a
+ * `_` that no resolver-side source claims (the keyword-bound case) —
+ * would kill BlankFill's still-pending animation. The first frame
+ * never paints (tick interval is 150ms; resolver's stop fires before
+ * the timer ever ticks).
  *
  * Tests in `blank-loading.test.ts` exercise the frame state machine
  * against a mock adapter.
  */
 export class BlankLoadingAnimator {
   private readonly _active = new Map<number, ActiveSlot>();
+  /** Per-slot set of owner IDs. The slot stops animating only when
+   *  this set becomes empty. */
+  private readonly _owners = new Map<number, Set<string>>();
   private _timer: ReturnType<typeof setInterval> | null = null;
   private readonly _frameIntervalMsFn: () => number;
   private readonly _modeFn: () => BlankLoadingMode;
@@ -358,16 +376,25 @@ export class BlankLoadingAnimator {
 
   /**
    * Begin animating the `_` at the given word index. Honours the
-   * current mode — if `off`, this is a no-op. If already animating
-   * the same wordIndex, it's a no-op (avoids double-claim race
-   * between BlankFill's dedup and a stale call).
+   * current mode — if `off`, this is a no-op. The `owner` identifies
+   * which module is claiming the slot; the slot keeps animating until
+   * EVERY owner that called `start` has called `stop`. A second start
+   * from the SAME owner on an already-active slot is a no-op (avoids
+   * double-claim on dedup retries).
    */
-  start(wordIndex: number): void {
+  start(wordIndex: number, owner: string = 'default'): void {
     const mode = this._modeFn();
     const customFrames = mode === 'custom' ? this._customFramesFn() : null;
     const frames = framesFor(mode, customFrames);
     if (frames.length === 0) return;          // mode === 'off'
-    if (this._active.has(wordIndex)) return;
+    let owners = this._owners.get(wordIndex);
+    if (owners === undefined) {
+      owners = new Set();
+      this._owners.set(wordIndex, owners);
+    }
+    if (owners.has(owner)) return;
+    owners.add(owner);
+    if (this._active.has(wordIndex)) return;  // already animating for another owner
     const customFramesPresent = mode === 'custom' && customFrames !== null && customFrames.length > 0;
     this._active.set(wordIndex, {
       wordIndex,
@@ -379,33 +406,59 @@ export class BlankLoadingAnimator {
       ? (customFramesPresent ? 'custom' : 'custom→braille-rotate (fallback)')
       : mode;
     const framesPreview = frames.map(f => JSON.stringify(f)).join(',');
-    this._log(`BlankLoading: start wordIndex=${wordIndex} mode=${modeTag} frames=[${framesPreview}]`);
+    this._log(`BlankLoading: start wordIndex=${wordIndex} owner=${owner} mode=${modeTag} frames=[${framesPreview}]`);
     if (this._timer === null) {
       this._timer = setInterval(() => this._tick(), this._frameIntervalMsFn());
     }
   }
 
   /**
-   * Stop animating the slot and restore its character to `_`. Idempotent.
-   * The restore is best-effort: if the slot's current char isn't one of
-   * our frame characters (user typed over it, substitution already ran),
-   * the restore is skipped — we don't want to overwrite real content.
+   * Release this owner's claim on the slot. The slot actually stops
+   * (timer drops, `_` restored) only when the LAST owner releases.
+   * Idempotent: stopping with an unknown owner / unknown slot is a
+   * no-op. Restore is best-effort — if the slot's current char isn't
+   * one of our frame characters (user typed over it, substitution
+   * already ran), restore is skipped.
    */
-  stop(wordIndex: number): void {
+  stop(wordIndex: number, owner: string = 'default'): void {
+    const owners = this._owners.get(wordIndex);
+    if (owners === undefined) return;
+    if (!owners.delete(owner)) return;
+    if (owners.size > 0) return;              // other owners still animating
+    this._owners.delete(wordIndex);
     const slot = this._active.get(wordIndex);
     if (!slot) return;
     this._active.delete(wordIndex);
     this._restoreUnderscore(wordIndex, slot.frames);
-    this._log(`BlankLoading: stop wordIndex=${wordIndex}`);
+    this._log(`BlankLoading: stop wordIndex=${wordIndex} owner=${owner}`);
     if (this._active.size === 0 && this._timer !== null) {
       clearInterval(this._timer);
       this._timer = null;
     }
   }
 
-  /** Drop every active slot. Used on adapter teardown / explicit reset. */
-  stopAll(): void {
-    for (const idx of [...this._active.keys()]) this.stop(idx);
+  /**
+   * Drop every active slot. With an `owner`, releases only that
+   * owner's claims (other owners may keep slots alive). Without one,
+   * forcibly drops every slot regardless of owner — used on adapter
+   * teardown / explicit reset.
+   */
+  stopAll(owner?: string): void {
+    if (owner === undefined) {
+      this._owners.clear();
+      for (const idx of [...this._active.keys()]) {
+        const slot = this._active.get(idx);
+        if (!slot) continue;
+        this._active.delete(idx);
+        this._restoreUnderscore(idx, slot.frames);
+      }
+      if (this._timer !== null) {
+        clearInterval(this._timer);
+        this._timer = null;
+      }
+      return;
+    }
+    for (const idx of [...this._owners.keys()]) this.stop(idx, owner);
   }
 
   // ─── Internals ──────────────────────────────────────────────────────
@@ -486,6 +539,7 @@ export class BlankLoadingAnimator {
 
   private _dropQuiet(wordIndex: number): void {
     this._active.delete(wordIndex);
+    this._owners.delete(wordIndex);
     if (this._active.size === 0 && this._timer !== null) {
       clearInterval(this._timer);
       this._timer = null;

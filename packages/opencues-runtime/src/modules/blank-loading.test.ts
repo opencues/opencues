@@ -309,6 +309,105 @@ describe('BlankLoadingAnimator — start/stop lifecycle', () => {
   });
 });
 
+describe('BlankLoadingAnimator — owner refcount', () => {
+  // The scenario this guards: BlankFill animates a keyword-bound `_`
+  // (stocks, weather, volume) for the full duration of its async
+  // fetch (~200-500ms). The Resolver ALSO starts animation on every
+  // `_` slot and stops them when its own pipeline returns — which is
+  // ~1ms when no resolver-side source claims the slot. Without the
+  // refcount the resolver's stop killed BlankFill's animation before
+  // the first frame (150ms tick) ever painted.
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('two owners on the same slot: stop from one keeps animation alive', () => {
+    const { adapter, setTextCalls } = makeAdapter('nvda stock _');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
+    a.start(2, 'blank-fill');
+    a.start(2, 'resolver');
+    expect(a.active).toBe(true);
+    // Resolver's fast stop — animation should KEEP going (blank-fill
+    // still owns the slot).
+    a.stop(2, 'resolver');
+    expect(a.active).toBe(true);
+    vi.advanceTimersByTime(100);
+    expect(setTextCalls).toEqual(['nvda stock -']);   // tick happened
+    vi.advanceTimersByTime(100);
+    expect(setTextCalls).toEqual(['nvda stock -', 'nvda stock ‾']);
+    // blank-fill's fetch returns and releases its claim → finally stops.
+    a.stop(2, 'blank-fill');
+    expect(a.active).toBe(false);
+    expect(setTextCalls.at(-1)).toBe('nvda stock _');  // restored
+  });
+
+  it('symmetric: blank-fill stops first, resolver still animates', () => {
+    const { adapter, setTextCalls } = makeAdapter('foo _');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
+    a.start(1, 'blank-fill');
+    a.start(1, 'resolver');
+    a.stop(1, 'blank-fill');
+    expect(a.active).toBe(true);
+    vi.advanceTimersByTime(100);
+    expect(setTextCalls).toEqual(['foo -']);
+    a.stop(1, 'resolver');
+    expect(a.active).toBe(false);
+  });
+
+  it('same owner double-start is a no-op', () => {
+    const { adapter } = makeAdapter('foo _');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
+    a.start(1, 'blank-fill');
+    a.start(1, 'blank-fill');
+    a.stop(1, 'blank-fill');
+    // One stop matches both starts (idempotent for same owner).
+    expect(a.active).toBe(false);
+  });
+
+  it('stop with unknown owner is a no-op', () => {
+    const { adapter } = makeAdapter('foo _');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
+    a.start(1, 'blank-fill');
+    a.stop(1, 'resolver');     // resolver never started this slot
+    expect(a.active).toBe(true);
+    a.stop(1, 'blank-fill');
+    expect(a.active).toBe(false);
+  });
+
+  it('default owner used when none supplied (back-compat)', () => {
+    const { adapter, setTextCalls } = makeAdapter('foo _');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
+    a.start(1);
+    a.stop(1);
+    expect(a.active).toBe(false);
+    expect(setTextCalls).toEqual([]);  // never ticked before stop
+  });
+
+  it('stopAll(owner) only drops that owner\'s claims', () => {
+    const { adapter } = makeAdapter('a _ b _');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
+    a.start(1, 'resolver');
+    a.start(1, 'blank-fill');
+    a.start(3, 'resolver');           // only resolver on this slot
+    a.stopAll('resolver');
+    // Slot 1 still has blank-fill; slot 3 had only resolver → dropped.
+    expect(a.active).toBe(true);
+    expect(a.activeSlots.has(1)).toBe(true);
+    expect(a.activeSlots.has(3)).toBe(false);
+    a.stop(1, 'blank-fill');
+    expect(a.active).toBe(false);
+  });
+
+  it('stopAll() (no owner) hard-drops every slot regardless of owners', () => {
+    const { adapter } = makeAdapter('a _ b _');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', frameIntervalMs: () => 100 });
+    a.start(1, 'resolver');
+    a.start(1, 'blank-fill');
+    a.start(3, 'blank-fill');
+    a.stopAll();
+    expect(a.active).toBe(false);
+  });
+});
+
 describe('parseCustomFrames', () => {
   it('returns null for empty input', () => {
     expect(parseCustomFrames(undefined)).toBeNull();
