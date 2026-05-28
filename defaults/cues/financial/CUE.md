@@ -4,6 +4,11 @@ scope: words
 priority: 72
 match: equity|dividend|portfolio|amortization|liquidity|hedge|leverage|arbitrage|yield|depreciation|securities|derivative|collateral
 classify: Financial terminology, investment language, accounting terms, banking concepts
+# Default-on for prose-composing hosts (shell + chrome). Coding TUIs
+# (claude-code, opencode, gemini-cli) almost never write financial
+# prose, so the per-highlight LLM cost isn't worth it. Override at
+# the user level by editing this list.
+on-host: [shell, chrome]
 ---
 
 Suggest 3 alternatives for each highlighted financial term. Prefer

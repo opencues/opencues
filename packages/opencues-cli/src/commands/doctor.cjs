@@ -330,10 +330,10 @@ module.exports = function doctor(argv, ctx) {
 
   // ── Terminal install (standalone Bun + OpenTUI app) ──────────────────
   // No upstream fork — staged @opencues/{core,runtime} live inside the
-  // repo at integrations/terminal/node_modules/. Bun is a hard prereq.
+  // repo at integrations/shell/node_modules/. Bun is a hard prereq.
   {
     const s = section('Terminal (oc-edit)', 'standalone Bun + OpenTUI app');
-    const termDir = path.join(ctx.REPO_ROOT, 'integrations/terminal');
+    const termDir = path.join(ctx.REPO_ROOT, 'integrations/shell');
     const termRt = path.join(termDir, 'node_modules/@opencues/runtime');
     const termCore = path.join(termDir, 'node_modules/@opencues/core');
     const ocEditBin = path.join(termDir, 'bin/oc-edit');
@@ -345,12 +345,12 @@ module.exports = function doctor(argv, ctx) {
     if (!findOnPath('bun')) {
       findings.push({
         sev: 'warn',
-        msg: 'bun not on PATH — terminal integration needs Bun',
+        msg: 'bun not on PATH — shell integration needs Bun',
         fix: 'curl -fsSL https://bun.sh/install | bash   # then re-run setup',
       });
     }
     if (!fs.existsSync(termRt)) {
-      findings.push({ sev: 'info', msg: 'Terminal integration not installed', fix: 'opencues install terminal' });
+      findings.push({ sev: 'info', msg: 'Shell integration not installed', fix: 'opencues install shell' });
     }
     s.render();
   }

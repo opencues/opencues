@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# oc-popup — runs inside a tmux display-popup. Invokes oc-edit and,
+# on a successful commit, bracket-pastes the result into the
+# originating pane (the pane that was active when Ctrl+Alt+X fired).
+#
+# Usage: invoked by tmux display-popup with ORIGIN_PANE in env
+# (set via `-e ORIGIN_PANE=#{pane_id}` in the keybinding). Earlier
+# versions passed the pane id as $1, but tmux's `#{pane_id}` format
+# expansion isn't reliable inside quoted shell-command arguments —
+# `-e KEY=VALUE` expansion is. Kept reading from $1 too as fallback
+# for any local hand-invocations.
+#
+# Why bracket-paste (paste-buffer -p) instead of send-keys -l:
+#   - Preserves multi-line text without each newline triggering
+#     command execution in the shell.
+#   - Modern bash/zsh/fish respect bracketed paste — the pasted
+#     block lands at the prompt as a single editable chunk.
+#
+# Lifecycle:
+#   - tmux opens this script in a display-popup with `-E`, which
+#     closes the popup when oc-popup exits.
+#   - On Ctrl+S in oc-edit: text written to tmpfile, popup closes,
+#     bracket-paste fires.
+#   - On Ctrl+C / Esc / empty buffer: tmpfile is empty or missing,
+#     nothing is pasted.
+
+set -u
+
+# Prefer the env var set by `display-popup -e ORIGIN_PANE=#{pane_id}`.
+# Fall back to $1 for hand-invocations / tests.
+ORIGIN_PANE="${ORIGIN_PANE:-${1:-}}"
+TMPFILE="$(mktemp -t oc-popup.XXXXXX)"
+# Default cleanup — superseded below once TMUX_BIN is resolved so
+# the EXIT trap can also clear the @popup-open marker.
+trap 'rm -f "$TMPFILE"' EXIT
+
+# Resolve through symlinks so a symlinked oc-popup still finds its sibling oc-edit.
+SCRIPT="$(readlink -f -- "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+HERE="$(cd -- "$(dirname -- "$SCRIPT")" && pwd)"
+if [ -x "$HERE/oc-edit" ]; then
+  OC_EDIT="$HERE/oc-edit"
+else
+  OC_EDIT="$(command -v oc-edit 2>/dev/null || true)"
+fi
+
+if [ -z "${OC_EDIT:-}" ]; then
+  echo "oc-popup: oc-edit not found on PATH or in sibling bin/" >&2
+  sleep 2
+  exit 127
+fi
+
+# Use the same vendored tmux `oc-shell` exported. We must NOT
+# PATH-resolve `tmux` here — the system tmux's client speaks a
+# different protocol than our vendored server (different versions),
+# and the user explicitly opted out of system-tmux involvement.
+# Resolved BEFORE oc-edit runs so the diagnostic block below can
+# reference it (set -u would otherwise abort on an unbound ref).
+TMUX_BIN="${OPENCUES_TMUX:-$HOME/.opencues/vendor/tmux/bin/tmux}"
+if [ ! -x "$TMUX_BIN" ]; then
+  echo "oc-popup: vendored tmux not found at $TMUX_BIN" >&2
+  sleep 2
+  exit 1
+fi
+
+# Hide the outer status bar BEFORE launching oc-edit so the inner
+# UI doesn't trigger a redraw cascade by flipping `status off`
+# mid-render (caused a visible flash). EXIT trap restores it
+# regardless of how oc-edit exits.
+"$TMUX_BIN" set -g @popup-open 1 2>/dev/null || true
+"$TMUX_BIN" set -g status off 2>/dev/null || true
+trap '"$TMUX_BIN" set -g @popup-open 0 2>/dev/null || true; "$TMUX_BIN" set -g status on 2>/dev/null || true; rm -f "$TMPFILE"' EXIT
+
+"$OC_EDIT" --out "$TMPFILE" || true
+
+# Diagnostic — remove once stable. Lands in /tmp/opencues.log along
+# with the runtime logs from the same oc-edit run, so a tail of that
+# file shows the whole popup lifecycle.
+{
+  echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')][oc-popup] tmpfile=$TMPFILE size=$(stat -c %s "$TMPFILE" 2>/dev/null || echo NA) origin=$ORIGIN_PANE tmux=$TMUX_BIN"
+  if [ -s "$TMPFILE" ]; then
+    echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')][oc-popup] first-80-chars: $(head -c 80 "$TMPFILE" | tr '\n' ' ')"
+  fi
+} >> /tmp/opencues.log 2>&1 || true
+
+# Inject only if oc-edit committed text AND we have a pane target.
+#
+# Three paste modes via OPENCUES_POPUP_PASTE_MODE:
+#   - typed (default): literal characters via send-keys -l, with
+#     `C-j` (LF) between lines instead of letting `\n` collapse to
+#     Enter. TUIs that distinguish C-j from C-m (Claude Code, vim,
+#     emacs, etc.) treat C-j as a soft newline inside the current
+#     input — so the full multi-line draft lands inline without
+#     auto-submitting. Bare shells (bash/zsh) generally treat C-j
+#     the same as Enter, so each line will execute at a prompt —
+#     switch modes if that's not what you want.
+#   - bracketed: paste-buffer -p. Shell holds the block as one
+#     editable chunk; newlines do NOT execute. Best for multi-line
+#     drafts at a shell prompt — but rich TUIs (Claude Code, vim)
+#     detect the bracketed-paste sequence and collapse it to a
+#     "[paste]" placeholder instead of showing the text inline.
+#   - raw: paste-buffer (no -p). Like bracketed but each `\n` is
+#     Enter. Best for shell scripts you actually want line-execute.
+MODE="${OPENCUES_POPUP_PASTE_MODE:-typed}"
+if [ -n "$ORIGIN_PANE" ] && [ -s "$TMPFILE" ]; then
+  case "$MODE" in
+    typed)
+      # Send each line as literal keystrokes (-l) and use `C-j`
+      # between lines instead of letting the literal `\n` byte get
+      # interpreted as Enter. Most TUIs (Claude Code, vim, emacs,
+      # readline-shells with the right config) treat C-j (LF) as
+      # a soft newline inside the current input and C-m (CR) as
+      # submit — so this lands multi-line text inline without
+      # firing the submit handler on each newline.
+      #
+      # mapfile -t splits on `\n` and strips the trailing newline.
+      # Empty lines are preserved (the array has empty strings).
+      mapfile -t LINES < "$TMPFILE"
+      for ((i=0; i<${#LINES[@]}; i++)); do
+        if [ -n "${LINES[i]}" ]; then
+          "$TMUX_BIN" send-keys -t "$ORIGIN_PANE" -l "${LINES[i]}" 2>>/tmp/opencues.log || \
+            echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')][oc-popup] send-keys literal FAILED at line $i" >> /tmp/opencues.log
+        fi
+        if (( i < ${#LINES[@]} - 1 )); then
+          "$TMUX_BIN" send-keys -t "$ORIGIN_PANE" C-j 2>>/tmp/opencues.log || \
+            echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')][oc-popup] send-keys C-j FAILED at line $i" >> /tmp/opencues.log
+        fi
+      done
+      ;;
+    bracketed|raw|*)
+      if ! "$TMUX_BIN" load-buffer -b oc-popup "$TMPFILE" 2>>/tmp/opencues.log; then
+        echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')][oc-popup] load-buffer FAILED" >> /tmp/opencues.log
+      fi
+      PASTE_FLAGS=(-b oc-popup -t "$ORIGIN_PANE")
+      if [ "$MODE" != "raw" ]; then
+        PASTE_FLAGS=(-p "${PASTE_FLAGS[@]}")
+      fi
+      if ! "$TMUX_BIN" paste-buffer "${PASTE_FLAGS[@]}" 2>>/tmp/opencues.log; then
+        echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')][oc-popup] paste-buffer FAILED (origin=$ORIGIN_PANE)" >> /tmp/opencues.log
+      fi
+      "$TMUX_BIN" delete-buffer -b oc-popup 2>/dev/null || true
+      ;;
+  esac
+  echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')][oc-popup] paste sequence done (mode=$MODE)" >> /tmp/opencues.log
+else
+  echo "[$(date '+%Y-%m-%dT%H:%M:%S%z')][oc-popup] skipped paste (origin='$ORIGIN_PANE' file_empty=$([ -s "$TMPFILE" ] && echo no || echo yes))" >> /tmp/opencues.log
+fi

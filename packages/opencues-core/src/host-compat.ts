@@ -31,14 +31,14 @@
  */
 
 /** Every integration host. Keep alphabetical for stable equality checks. */
-export const HOSTS = ['chrome', 'claude-code', 'gemini-cli', 'opencode', 'terminal'] as const;
+export const HOSTS = ['chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell'] as const;
 export type Host = typeof HOSTS[number];
 
 /** Hosts that can spawn subprocesses + access the filesystem WITHOUT an
  *  auxiliary helper. Chrome can also spawn subprocesses, but only when
  *  chrome-host (the native-messaging bridge) is installed — so chrome's
  *  capability is runtime-detected, not a static property. */
-export const NATIVE_HOSTS: readonly Host[] = ['claude-code', 'gemini-cli', 'opencode', 'terminal'];
+export const NATIVE_HOSTS: readonly Host[] = ['claude-code', 'gemini-cli', 'opencode', 'shell'];
 
 /**
  * The subset of frontmatter fields host-compat resolution looks at. Accepts
@@ -160,8 +160,10 @@ export const HOST_ALIASES: Readonly<Record<string, Host>> = {
   'oc': 'opencode',
   'gemini': 'gemini-cli',
   'geminicli': 'gemini-cli',
-  'term': 'terminal',
-  'oc-edit': 'terminal',
+  'terminal': 'shell',   // back-compat: 'terminal' was the canonical name before May 2026
+  'term': 'shell',
+  'oc-shell': 'shell',
+  'oc-edit': 'shell',
 };
 
 /**

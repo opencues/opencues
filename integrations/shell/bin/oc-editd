@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# oc-editd — launch the OpenCues daemon process.
+#
+# Spawned by bin/oc-shell as a background process. Holds a hot
+# snapshot of the user's ~/.cues/ (and project .cues/) config files,
+# served over a unix socket. Popups consult it before falling
+# through to direct file I/O.
+#
+# Why a bash shim and not direct `bun src/daemon.ts`: bunfig.toml
+# discovery requires cwd to be integrations/terminal/. Mirrors
+# bin/oc-edit. See that file's header for the full rationale.
+
+set -u
+
+SCRIPT="$(readlink -f -- "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+HERE="$(cd -- "$(dirname -- "$SCRIPT")" && pwd)"
+TERM_DIR="$(cd -- "$HERE/.." && pwd)"
+DIST_DAEMON="$TERM_DIR/dist/daemon.js"
+SRC_DAEMON="$TERM_DIR/src/daemon.ts"
+
+if [ -f "$DIST_DAEMON" ]; then
+  ENTRY="$DIST_DAEMON"
+elif [ -f "$SRC_DAEMON" ]; then
+  ENTRY="$SRC_DAEMON"
+else
+  echo "oc-editd: no daemon entry found at $DIST_DAEMON or $SRC_DAEMON" >&2
+  exit 1
+fi
+
+if ! command -v bun >/dev/null 2>&1; then
+  echo "oc-editd: bun not on PATH. Install: https://bun.sh" >&2
+  exit 127
+fi
+
+# Capture the calling cwd so the daemon's snapshot includes the
+# right project-level .cues/. bin/oc-shell exports this; standalone
+# invocations pick up the current shell's cwd.
+export OPENCUES_USER_CWD="${OPENCUES_USER_CWD:-$PWD}"
+cd "$TERM_DIR"
+exec bun "$ENTRY" "$@"

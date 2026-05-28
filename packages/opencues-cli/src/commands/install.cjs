@@ -26,7 +26,7 @@ function loadHostResolver(ctx) {
   } catch {
     // Pre-build fallback — keep CLI usable.
     return {
-      HOSTS: ['chrome', 'claude-code', 'gemini-cli', 'opencode', 'terminal'],
+      HOSTS: ['chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell'],
       resolve: (name) => {
         const map = {
           'claude-code': 'claude-code', 'claudecode': 'claude-code',
@@ -35,7 +35,7 @@ function loadHostResolver(ctx) {
           'chrome': 'chrome', 'chrome-host': 'chrome',
           'gemini-cli': 'gemini-cli', 'geminicli': 'gemini-cli',
           'gemini': 'gemini-cli',
-          'terminal': 'terminal', 'term': 'terminal', 'oc-edit': 'terminal',
+          'shell': 'shell', 'term': 'shell', 'oc-edit': 'shell',
         };
         return map[name?.toLowerCase?.()] ?? null;
       },
@@ -404,7 +404,7 @@ function printHelp(ctx) {
   console.log('  opencode      Patches an OpenCode 1.4.x fork                 (alias: oc)');
   console.log('  chrome        Chrome MV3 extension');
   console.log('  gemini-cli    Patches a Gemini CLI 0.41.x fork               (aliases: geminicli, gemini)');
-  console.log('  terminal      Standalone Bun + OpenTUI app (oc-edit)         (aliases: term, oc-edit)');
+  console.log('  shell         Standalone Bun + OpenTUI shell wrapper        (aliases: term, terminal, oc-shell, oc-edit)');
   console.log('  --all         Install all five');
   console.log('');
   console.log('Special subcommands:');

@@ -31,7 +31,7 @@ function printLaunchBanner(ctx, host, rows) {
   // via the statusline + /tmp/opencues.log. Tell the user where to
   // look BEFORE that handoff so silent-failure looks like silent-
   // failure instead of "I guess it just doesn't do anything".
-  console.log(style.dim('  Try: type "the happy dog" then Ctrl+Alt+Right → Ctrl+Alt+Up'));
+  console.log(style.dim('  Try: `[Your prompt] improve prompt _` (the runtime rewrites it inline)'));
   console.log(style.dim(`  Logs: tail -f /tmp/opencues.log${host ? ` | grep '\\[${shortPrefix(host)}\\]'` : ''}`));
   console.log(style.dim('  Stuck? Run `opencues doctor` in another shell'));
   console.log('');
@@ -40,7 +40,7 @@ function printLaunchBanner(ctx, host, rows) {
 // Map full host name → the short prefix used in /tmp/opencues.log so the
 // printed `grep` filter actually matches the lines that host writes.
 function shortPrefix(host) {
-  return ({ 'claude-code': 'cc', 'opencode': 'oc', 'gemini-cli': 'gemini', 'terminal': 'term' })[host] ?? host;
+  return ({ 'claude-code': 'cc', 'opencode': 'oc', 'gemini-cli': 'gemini', 'shell': 'term' })[host] ?? host;
 }
 
 // Host name resolution — sourced from @opencues/core.
@@ -50,13 +50,13 @@ function loadHostResolver(ctx) {
     return { HOSTS: core.HOSTS.slice().sort(), resolve: core.resolveHost };
   } catch {
     return {
-      HOSTS: ['chrome', 'claude-code', 'gemini-cli', 'opencode', 'terminal'],
+      HOSTS: ['chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell'],
       resolve: (n) => ({
         'claude-code': 'claude-code', 'claudecode': 'claude-code', 'claude': 'claude-code', 'cc': 'claude-code',
         'opencode': 'opencode', 'oc': 'opencode',
         'chrome': 'chrome',
         'gemini-cli': 'gemini-cli', 'geminicli': 'gemini-cli', 'gemini': 'gemini-cli',
-        'terminal': 'terminal', 'term': 'terminal', 'oc-edit': 'terminal',
+        'shell': 'shell', 'term': 'shell', 'oc-edit': 'shell',
       })[n?.toLowerCase?.()] ?? null,
     };
   }
@@ -89,7 +89,7 @@ module.exports = function run(argv, ctx) {
   if (folder === 'opencode')    return runOC(passthrough, argv, ctx);
   if (folder === 'chrome') return runChrome(ctx);
   if (folder === 'gemini-cli') return runGemini(passthrough, argv, ctx);
-  if (folder === 'terminal') return runTerminal(passthrough, ctx);
+  if (folder === 'shell') return runShell(passthrough, ctx);
 };
 
 function runCC(passthrough, ctx) {
@@ -267,48 +267,32 @@ function runGemini(passthrough, fullArgv, ctx) {
   exitFromSpawn(result, 'node');
 }
 
-function runTerminal(passthrough, ctx) {
-  // Standalone Bun app — invoke bin/oc-edit directly. The shim chooses
-  // dist/app.js (if built) or falls through to src/app.tsx (Bun handles TSX).
-  const ocEdit = path.join(ctx.REPO_ROOT, 'integrations', 'terminal', 'bin', 'oc-edit');
-  if (!fs.existsSync(ocEdit)) {
-    console.error(`${style.tag('err')} oc-edit not found at ${ocEdit}`);
-    console.error(`     Install first: ${style.bold('opencues install terminal')}`);
+function runShell(passthrough, ctx) {
+  // `opencues run shell` launches `bin/oc-shell` — the bash script
+  // that wraps the user's $SHELL in a private tmux session and
+  // exposes the OpenCues input box on Alt+Shift+↑. NOT `oc-edit`
+  // (the internal Bun host that oc-shell lazy-spawns inside the
+  // tmux pane on activation — running it standalone via bun would
+  // try to read its bash-script bin/ shim as JS and error).
+  const ocShell = path.join(ctx.REPO_ROOT, 'integrations', 'shell', 'bin', 'oc-shell');
+  if (!fs.existsSync(ocShell)) {
+    console.error(`${style.tag('err')} oc-shell not found at ${ocShell}`);
+    console.error(`     Install first: ${style.bold('opencues install shell')}`);
     process.exit(1);
   }
-  printLaunchBanner(ctx, 'terminal', [
-    ['host', 'terminal  ' + style.dim('(standalone Bun + OpenTUI app)')],
-    ['command', `oc-edit ${passthrough.join(' ')}`.trim()],
-    ['bin', style.fileLink(ocEdit, ocEdit)],
+  printLaunchBanner(ctx, 'shell', [
+    ['host', 'shell  ' + style.dim('(standalone Bun + OpenTUI shell wrapper — slide-pane input box)')],
+    ['command', `oc-shell ${passthrough.join(' ')}`.trim()],
+    ['bin', style.fileLink(ocShell, ocShell)],
   ]);
-  // Bun is the runtime — exec bun directly rather than depending on the
-  // shebang resolving (which fails when bun isn't first on PATH).
-  const bunCheck = spawnSync('which', ['bun'], { stdio: ['ignore', 'pipe', 'ignore'] });
-  if (bunCheck.status !== 0) {
-    console.error(`${style.tag('err')} bun not found on PATH. Install: https://bun.sh`);
-    process.exit(127);
-  }
-  // Bun reads bunfig.toml from the cwd, NOT from the script's directory.
-  // The terminal app's bunfig.toml supplies `preload = ["@opentui/solid
-  // /preload"]` — without it the JSX runtime resolves to react/jsx-dev-
-  // runtime and the app dies on import. cwd-pin to integrations/terminal
-  // so bunfig is found regardless of where `opencues run terminal` was
-  // invoked from. Also pass --preload explicitly as a belt-and-braces
-  // guard in case bunfig discovery breaks in a future Bun release.
-  const termDir = path.join(ctx.REPO_ROOT, 'integrations', 'terminal');
-  // OPENCUES_USER_CWD: oc-edit / app.tsx / bootstrap read this to
-  // resolve the user's project .cues/ — same env var the standalone
-  // `oc-edit` shim sets, so direct invocation and `opencues run
-  // terminal` see the same cwd. Without this, process.cwd() inside
-  // the app is `integrations/terminal/` (the bunfig-discovery
-  // cwd-pin), not where the user typed the command.
+  // oc-shell handles its own prereq checks (vendored tmux at
+  // ~/.opencues/vendor/tmux/, bun availability) and prints actionable
+  // errors if anything's missing. Pass OPENCUES_USER_CWD so the
+  // runtime knows where the user actually invoked from — the script
+  // itself cds into integrations/shell/ for bunfig discovery.
   const env = { ...process.env, OPENCUES_USER_CWD: process.cwd() };
-  const result = spawnSync(
-    'bun',
-    ['--preload', '@opentui/solid/preload', ocEdit, ...passthrough],
-    { stdio: 'inherit', cwd: termDir, env },
-  );
-  exitFromSpawn(result, 'bun');
+  const result = spawnSync(ocShell, passthrough, { stdio: 'inherit', env });
+  exitFromSpawn(result, 'oc-shell');
 }
 
 function runChrome(ctx) {
@@ -335,7 +319,7 @@ function printHelp() {
   console.log('  opencode      cd into the fork dir + bun run dev');
   console.log('  chrome        print Chrome reload instructions (no programmatic launch)');
   console.log('  gemini-cli    node packages/cli/dist/index.js inside the fork (default: $HOME/gemini-cli-cues)');
-  console.log('  terminal      bun integrations/terminal/bin/oc-edit  (standalone Bun + OpenTUI app)');
+  console.log('  shell         integrations/shell/bin/oc-shell  (wraps $SHELL in tmux; Alt+Shift+↑ for the input box)');
   console.log('');
   console.log('Flags:');
   console.log('  --bin <name>      (claude-code only) override which binary to exec');

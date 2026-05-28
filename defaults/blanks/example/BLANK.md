@@ -25,6 +25,10 @@
 # Required — must match the folder name (the runtime keys on this).
 name: example
 
+# Shipped OFF — this pack is tutorial scaffolding to copy + edit,
+# not a default-on blank. Remove the line (or set true) to enable it.
+enabled: false
+
 # Discriminator. `blank` means `_`-triggered slot (vs cue sources,
 # which run on plain text). Cue sources omit this field.
 type: blank

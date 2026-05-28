@@ -6,7 +6,10 @@ Per-host installation, what each install does, where things land, and how to rec
 
 - **Node.js 18+** (`node --version`)
 - **pnpm 8+** (`pnpm --version`; `corepack enable pnpm` ships it with Node 16+)
-- An **LLM provider API key** (Groq's free tier covers every feature — [`docs/guides/llm-providers.md`](guides/llm-providers.md) covers the full provider table)
+- An **LLM provider API key.** Cerebras is the recommended default
+  ([cloud.cerebras.ai/platform/](https://cloud.cerebras.ai/platform/) → *Generate API Key*); Groq, OpenAI, Anthropic, Gemini, OpenRouter,
+  and OpenCode Zen are all supported. Full provider table + per-feature
+  routing: [`docs/guides/llm-providers.md`](guides/llm-providers.md).
 - The **host editor** you want to integrate with (see per-host requirements below)
 
 ### Recommended for full sandbox security

@@ -60,8 +60,8 @@ describe('opencues seed-configs', () => {
     expect(fs.existsSync(path.join(userDir, 'blanks/brightness/brightness-blank.sh'))).toBe(true);
     expect(fs.existsSync(path.join(userDir, 'scripts/speak.sh'))).toBe(true);
     expect(fs.existsSync(path.join(userDir, 'scripts/SpeakCtl.cs'))).toBe(true);
-    // Tips live in cues/tips/CUE.md (folder-only layout).
-    expect(fs.existsSync(path.join(userDir, 'cues/tips/CUE.md'))).toBe(true);
+    // Tip packs are per-platform: tips-claude-code, tips-opencode, tips-gemini-cli, tips-shell.
+    expect(fs.existsSync(path.join(userDir, 'cues/tips-claude-code/CUE.md'))).toBe(true);
   });
 
   it('SEED phase: merges user OPENCUES.md with defaults (preserves user scalar VALUES + body)', () => {
@@ -218,7 +218,7 @@ it('HEAL phase: renames legacy blanks/<name>/BLANK.md to BLANK.md', () => {
     }
     // Project-level: words/ + blanks/ are seeded under <cwd>/.cues/.
     // No OPENCUES.md at project level (settings are runtime-owned, user-only).
-    expect(fs.existsSync(path.join(projectDir, '.cues/cues/tips/CUE.md'))).toBe(true);
+    expect(fs.existsSync(path.join(projectDir, '.cues/cues/tips-claude-code/CUE.md'))).toBe(true);
     expect(fs.existsSync(path.join(projectDir, 'OPENCUES.md'))).toBe(false);
     // User-level untouched (no defaults seeded since this run was --project).
     expect(fs.existsSync(path.join(tmpHome, '.cues/OPENCUES.md'))).toBe(false);

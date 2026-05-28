@@ -24,6 +24,12 @@ export interface CuesMdFrontmatter {
    *  Project-level `disable:` skips the named source for this project
    *  without modifying the user-level library. */
   disable?: string[];
+  /** Host-compat allow-list. Folder discovery skips the whole pack when
+   *  the running host isn't in this list. See `discover.ts:isAllowedOnHost`. */
+  onHost?: string[];
+  /** Host-compat deny-list. Folder discovery skips the whole pack when
+   *  the running host is in this list. */
+  notOnHost?: string[];
 }
 
 /**
@@ -137,6 +143,10 @@ export type ActionConfig = BlankConfig;
 
 export interface BlankConfig {
   name: string;
+  /** When false, the blank is parsed but skipped at registration time so it
+   *  never claims a keyword. Mirrors the same field on SourceConfig + AuditorConfig.
+   *  Default (omitted) = enabled. */
+  enabled?: boolean;
   tip?: string;
   speak?: boolean;
   /** Context words that bind a blank (_) to this entry (e.g., ['volume', 'sound']) */
@@ -1076,6 +1086,7 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
         tip: frontmatter.tip,
         speak: frontmatter.speak,
       };
+      if (frontmatter.enabled !== undefined) blank.enabled = frontmatter.enabled;
       if (frontmatter.blankKeywords) {
         blank.blankKeywords = frontmatter.blankKeywords.split(',').map(k => k.trim().toLowerCase());
       }

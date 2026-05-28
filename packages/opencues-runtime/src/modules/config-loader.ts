@@ -772,6 +772,7 @@ export class ConfigLoader {
     for (const k of cueMap.keys()) navigableWords.add(k);
 
     const addBlank = (name: string, blank: BlankConfig): void => {
+      if (blank.enabled === false) return;
       const lcName = name.toLowerCase();
       navigableWords.add(lcName);
       blanksByWord.set(lcName, { name: lcName, blank });
@@ -914,6 +915,10 @@ export class ConfigLoader {
         basePath: cwd,
         readFile: (path: string) => fileCache.has(path) ? fileCache.get(path) ?? null : null,
         readDir: (path: string) => dirCache.has(path) ? (dirCache.get(path) ?? null) as CoreDirEntry[] | null : null,
+        // Drop folder packs whose frontmatter excludes the running host.
+        // Mirrors chrome's bundle-level on-site filter so the same on-host:
+        // declaration works uniformly across native hosts + chrome.
+        hostName: this.adapter.hostName,
       });
     } catch (err) {
       this.adapter.log('warn', 'ConfigLoader: folder discovery failed', err);

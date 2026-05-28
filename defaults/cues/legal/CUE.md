@@ -4,6 +4,11 @@ scope: words
 priority: 70
 match: contract|agreement|clause|indemnify|warrant|liability|shall|herein|whereas|stipulate
 classify: Legal terminology, contract drafting, statutory definitions, compliance language
+# Default-on for prose-composing hosts (shell + chrome). Coding TUIs
+# (claude-code, opencode, gemini-cli) frequently use words like
+# `contract` as identifiers; the per-highlight LLM cost isn't worth
+# it there. Override at the user level by editing this list.
+on-host: [shell, chrome]
 ---
 
 Suggest 3 alternatives for each highlighted legal term that preserve

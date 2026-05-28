@@ -431,3 +431,97 @@ describe('mergeConfigs', () => {
     assert.ok(result.ignoreWords!.includes('opencues'));
   });
 });
+
+// ============================================================================
+// Host-compat folder filter
+// ============================================================================
+
+describe('discoverFolderConfigs: hostName filter', () => {
+  const ccPack = `---
+name: tips-cc
+on-host: [claude-code]
+---
+
+\`\`\`json
+[{ "id": "cc", "words": { "/compact": { "tip": "claude only" } } }]
+\`\`\`
+`;
+  const ocPack = `---
+name: tips-oc
+on-host: [opencode]
+---
+
+\`\`\`json
+[{ "id": "oc", "words": { "/sessions": { "tip": "opencode only" } } }]
+\`\`\`
+`;
+  const universalPack = `---
+name: tips-all
+---
+
+\`\`\`json
+[{ "id": "u", "words": { "git": { "tip": "everyone" } } }]
+\`\`\`
+`;
+
+  const fs = {
+    '/project/cues/tips-cc/CUE.md': ccPack,
+    '/project/cues/tips-oc/CUE.md': ocPack,
+    '/project/cues/tips-all/CUE.md': universalPack,
+  };
+
+  it('keeps every pack when hostName is omitted (legacy callers)', () => {
+    const result = discoverFolderConfigs(mockFs(fs));
+    assert.strictEqual(result.cuesConfig!.tips!.length, 3);
+  });
+
+  it('drops on-host packs that exclude the running host', () => {
+    const result = discoverFolderConfigs({ ...mockFs(fs), hostName: 'claude-code' });
+    const tips = result.cuesConfig!.tips!;
+    const ids = tips.map(t => t.id);
+    assert.ok(ids.includes('cc'), 'tips-cc allow-listed for claude-code');
+    assert.ok(ids.includes('u'), 'universal pack always included');
+    assert.ok(!ids.includes('oc'), 'tips-oc dropped for claude-code');
+  });
+
+  it('drops the opposite pack when running on opencode', () => {
+    const result = discoverFolderConfigs({ ...mockFs(fs), hostName: 'opencode' });
+    const ids = result.cuesConfig!.tips!.map(t => t.id);
+    assert.ok(!ids.includes('cc'));
+    assert.ok(ids.includes('oc'));
+    assert.ok(ids.includes('u'));
+  });
+
+  it('honours not-on-host as a deny-list', () => {
+    const denyPack = `---
+name: deny-chrome
+not-on-host: [chrome]
+---
+
+\`\`\`json
+[{ "id": "d", "words": { "x": { "tip": "no chrome" } } }]
+\`\`\`
+`;
+    const result = discoverFolderConfigs({
+      ...mockFs({ '/project/cues/deny-chrome/CUE.md': denyPack }),
+      hostName: 'chrome',
+    });
+    assert.ok(!result.cuesConfig?.tips?.length, 'deny-chrome dropped on chrome');
+  });
+
+  it('drops auditor folders that exclude the host too', () => {
+    const ccAuditor = `---
+name: cc-only
+on-host: [claude-code]
+priority: 50
+---
+
+Audit body.
+`;
+    const result = discoverFolderConfigs({
+      ...mockFs({ '/project/auditors/cc-only/AUDITOR.md': ccAuditor }),
+      hostName: 'opencode',
+    });
+    assert.ok(!result.auditorOverrides || !result.auditorOverrides['cc-only']);
+  });
+});

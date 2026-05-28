@@ -1,5 +1,9 @@
 # OpenCues for Gemini CLI
 
+> Part of **[OpenCues](../../README.md)**. Other integrations:
+> [Claude Code](../claude-code/README.md) · [OpenCode](../opencode/README.md) ·
+> [Chrome](../chrome/README.md) · [Shell](../shell/README.md).
+
 `@opencues/gemini-cli` — patches a [Gemini CLI](https://github.com/google-gemini/gemini-cli) fork to add real-time word alternatives, blanks, and cue-blanks inline in your prompts. Native rendering via Ink's `<Text>` component honouring inline ANSI escapes.
 
 > **Shares user-level state with CC + OC**: `~/.cues/` (cue/blank configs) and `~/.cues/scripts/speak.sh` (TTS) are common across all native hosts. Brightness/volume cue-blanks, the opencues-settings selector/satellite, prompt-improver, stocks/weather/HackerNews blanks — all work identically on Gemini CLI because the runtime's `blanksRegistry` + spawn fallback are the same shape that CC and OC use. You can install Gemini CLI standalone (no CC or OC required) and TTS still works.
@@ -15,12 +19,20 @@
 
 ## Install
 
-Requires: Node.js 18+, [pnpm](https://pnpm.io), npm (Gemini CLI's build tool).
-From a fresh clone of the OpenCues repo:
+### Prerequisites
+
+You need the `opencues` CLI on PATH. If you haven't set that up yet,
+follow [Quickstart → Bootstrap the `opencues` CLI](../../README.md#2-bootstrap-the-opencues-cli)
+in the root README — that covers Node, pnpm, the clone, and the
+shell alias.
+
+This integration also needs **npm** (Gemini CLI's build tool) — it
+ships with Node.js, so if you've installed Node you're set.
+
+### Install command
 
 ```bash
-pnpm install
-opencues install gemini-cli       # or: pnpm exec opencues install gemini-cli
+opencues install gemini-cli
 ```
 
 That's the whole install — one command, end to end. The installer will:
@@ -49,7 +61,7 @@ Set `OPENCUES_INSTALL_VERBOSE=1` to stream every command's output. By default th
 ## Run
 
 ```bash
-opencues run gemini-cli           # or: pnpm exec opencues run gemini-cli
+opencues run gemini-cli
 ```
 
 Launches `node packages/cli/dist/index.js` inside the patched fork. Watch `/tmp/opencues.log` in a second shell for the boot line:
@@ -80,11 +92,13 @@ rm -rf ~/gemini-cli-cues
 
 | Test | What it checks |
 |---|---|
-| Type `5f`, position cursor on it, Up/Down | Numeric cycling: `5f → 5.5f → 6f` |
-| Type `opencues settings _`, cycle Up | Selector/satellite via the `OpenCuesSettingsBlank` runtime class |
-| Type `weather _ paris` | LLM/HTTP cue-blank: fills with current Paris weather |
-| Footer at bottom of the TUI shows tip when a word is highlighted | `useOpenCuesTip()` React hook wired into `Footer.tsx` |
-| Cued words appear dimmed; active word bright-white | Per-visual-line `decorateLine()` in `InputPrompt.tsx` |
+| Type `[Your prompt] improve prompt _` | **Prompt-improver blank** — the headline daily-driver: rewrites your rough prompt into a structured one before you send it to Gemini. |
+| Type `[Your prompt] add a paragraph about security _` | **Transform blank** — extends your existing draft with the requested addition, in place. |
+| Type `[your list] format as bullet points _` | **Transform blank** — formatting instruction following the body. |
+| Type `opencues settings _`, cycle Up | **Selector / satellite** — slide-out for runtime settings. |
+| Type `i want to ultrathink this`, navigate to `ultrathink` (Ctrl+Alt+Right), Ctrl+Alt+Up | **Word cycle** — local-lookup tip with no LLM round-trip. |
+| Footer at bottom of the TUI shows tip when a word is highlighted | `useOpenCuesTip()` React hook wired into `Footer.tsx`. |
+| Cued words appear dimmed; active word bright-white | Per-visual-line `decorateLine()` in `InputPrompt.tsx`. |
 
 If something fails, the runtime writes diagnostics to `/tmp/opencues.log`.
 

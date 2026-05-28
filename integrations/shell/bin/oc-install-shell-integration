@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+# oc-install-shell-integration — set up the shell-side hook that
+# captures the current readline buffer and elevates it into the
+# `oc-shell` input box when Alt+m is pressed at the prompt.
+#
+# What it installs:
+#   1. A snippet at ~/.opencues/shell-integration.{bash,zsh,fish}
+#      (depending on the user's $SHELL) that:
+#        - binds Alt+m to a function
+#        - the function captures the current line, clears it, writes
+#          it to $OPENCUES_LINE_BUF, then asks tmux to fire the
+#          existing oc-open-input helper
+#   2. One source line in the user's rc that loads the snippet only
+#      when `oc-shell` is active (gated on $OPENCUES_TMUX).
+#
+# Re-running is idempotent — the snippet is overwritten and the rc
+# source line is added only if missing (look for the marker comment).
+
+set -u
+
+DEST_DIR="$HOME/.opencues"
+mkdir -p "$DEST_DIR"
+
+# Detect shell from $SHELL (fall back to bash).
+SHELL_BIN="${SHELL:-/bin/bash}"
+SHELL_NAME="$(basename "$SHELL_BIN")"
+
+case "$SHELL_NAME" in
+  bash) RC="$HOME/.bashrc"; SNIPPET="$DEST_DIR/shell-integration.bash"; FLAVOR=bash ;;
+  zsh)  RC="$HOME/.zshrc";  SNIPPET="$DEST_DIR/shell-integration.zsh";  FLAVOR=zsh  ;;
+  fish) RC="$HOME/.config/fish/config.fish"; SNIPPET="$DEST_DIR/shell-integration.fish"; FLAVOR=fish ;;
+  *)
+    echo "oc-install-shell-integration: unsupported shell '$SHELL_NAME'." >&2
+    echo "Supported: bash, zsh, fish. Set \$SHELL or invoke from one of those." >&2
+    exit 1
+    ;;
+esac
+
+MARKER="# OpenCues shell-integration (managed by oc-install-shell-integration)"
+
+# ─── Write the snippet ──────────────────────────────────────────────
+case "$FLAVOR" in
+  bash)
+    cat > "$SNIPPET" <<'EOF'
+# OpenCues shell-integration (bash).
+# Loaded by .bashrc; only takes effect when running inside `oc-shell`
+# (i.e. $OPENCUES_TMUX is set).
+#
+# This binds an INTERNAL key (\em = Alt+m) to a capture function.
+# The user never presses Alt+m themselves — tmux's Alt+Shift+↑
+# binding sends it to the shell pane right before opening the input
+# box, so the function captures the current readline buffer and the
+# input box that opens next reads it from $OPENCUES_LINE_BUF as
+# initial text.
+
+if [ -n "${OPENCUES_TMUX:-}" ] && [ -n "${OPENCUES_OC_OPEN_INPUT:-}" ]; then
+  __opencues_xfer_line() {
+    local line="$READLINE_LINE"
+    READLINE_LINE=''
+    READLINE_POINT=0
+    if [ -n "$line" ] && [ -n "${OPENCUES_LINE_BUF:-}" ]; then
+      printf '%s' "$line" > "$OPENCUES_LINE_BUF"
+    fi
+    # Don't open the input box here — tmux's Alt+Shift+↑ binding
+    # already chains the open after sending us this key. Double-open
+    # would split the window twice.
+  }
+  bind -x '"\em": __opencues_xfer_line' 2>/dev/null
+fi
+EOF
+    ;;
+  zsh)
+    cat > "$SNIPPET" <<'EOF'
+# OpenCues shell-integration (zsh).
+# Internal capture hook — see the bash snippet header for the full
+# story. User-facing chord remains Alt+Shift+↑ (defined in tmux).
+
+if [ -n "${OPENCUES_TMUX:-}" ] && [ -n "${OPENCUES_OC_OPEN_INPUT:-}" ]; then
+  __opencues_xfer_line() {
+    local line="$BUFFER"
+    BUFFER=''
+    CURSOR=0
+    if [ -n "$line" ] && [ -n "${OPENCUES_LINE_BUF:-}" ]; then
+      printf '%s' "$line" > "$OPENCUES_LINE_BUF"
+    fi
+  }
+  zle -N __opencues_xfer_line
+  bindkey '\em' __opencues_xfer_line
+fi
+EOF
+    ;;
+  fish)
+    mkdir -p "$(dirname "$SNIPPET")"
+    cat > "$SNIPPET" <<'EOF'
+# OpenCues shell-integration (fish).
+# Internal capture hook — see the bash snippet header for the full
+# story. User-facing chord remains Alt+Shift+↑ (defined in tmux).
+
+if test -n "$OPENCUES_TMUX" -a -n "$OPENCUES_OC_OPEN_INPUT"
+  function __opencues_xfer_line
+    set -l line (commandline)
+    commandline -r ''
+    if test -n "$line" -a -n "$OPENCUES_LINE_BUF"
+      printf '%s' "$line" > $OPENCUES_LINE_BUF
+    end
+  end
+  bind \em __opencues_xfer_line
+end
+EOF
+    ;;
+esac
+echo "Wrote snippet: $SNIPPET"
+
+# ─── Add source line to rc (idempotent) ────────────────────────────
+case "$FLAVOR" in
+  bash|zsh)
+    SOURCE_LINE="[ -f $SNIPPET ] && source $SNIPPET   $MARKER"
+    ;;
+  fish)
+    SOURCE_LINE="test -f $SNIPPET; and source $SNIPPET   $MARKER"
+    ;;
+esac
+
+if [ -f "$RC" ] && grep -F -q "$MARKER" "$RC"; then
+  echo "Source line already present in $RC — nothing to do."
+else
+  if [ ! -f "$RC" ]; then
+    mkdir -p "$(dirname "$RC")"
+    touch "$RC"
+  fi
+  echo "" >> "$RC"
+  echo "$SOURCE_LINE" >> "$RC"
+  echo "Added source line to $RC"
+fi
+
+cat <<MSG
+
+Done. To activate in your current shell, either:
+  • open a new `oc-shell`, OR
+  • run: source $SNIPPET
+
+Inside `oc-shell`, pressing Alt+Shift+↑ at the prompt will now both
+open the OpenCues input box AND pre-fill it with whatever you were
+typing at the shell. No separate keystroke needed.
+MSG

@@ -9,6 +9,7 @@
  */
 
 import { CuesMdConfig, BlankConfig, AuditorConfig, parseSingleCueMd, parseSingleAuditorMd } from './cues-md';
+import { inferHostCompat } from './host-compat';
 
 // ============================================================================
 // Types
@@ -26,6 +27,12 @@ export interface DiscoverOptions {
   readFile: (path: string) => string | null;
   /** List directory entries. Returns null if directory doesn't exist. */
   readDir: (path: string) => DirEntry[] | null;
+  /** Current host name (e.g. 'claude-code'). When set, folder packs whose
+   *  frontmatter `on-host:` / `not-on-host:` excludes this host are skipped
+   *  at scan time so their cues/blanks/auditors never register on this host.
+   *  Mirrors chrome's bundle-level `applySiteCompatFilter`. Omit to disable
+   *  filtering (legacy callers + unit tests). */
+  hostName?: string;
 }
 
 export interface DiscoveredConfigs {
@@ -74,6 +81,14 @@ function scanDir(
 
     const config = parseSingleCueMd(content, configPath, inferredName);
 
+    // Host-compat filter — skip the whole folder when the current host
+    // isn't in the entry's allow-list (on-host) or is in its deny-list
+    // (not-on-host). Drops every contained source / blank / tip / auditor
+    // before merge so they never reach the cueMap.
+    if (opts.hostName && !isAllowedOnHost(config.frontmatter, opts.hostName)) {
+      continue;
+    }
+
     // Default frontmatter.name when not set; rename the source key
     // from 'unknown' if needed (parser uses 'unknown' as the
     // fallback source name when neither frontmatter nor nameOverride
@@ -115,10 +130,31 @@ function scanAuditorsDir(dirPath: string, opts: DiscoverOptions): CuesMdConfig[]
     if (!content) continue;
 
     const config = parseSingleAuditorMd(content, folderPath, inferredName);
+    if (opts.hostName && !isAllowedOnHost(config.frontmatter, opts.hostName)) {
+      continue;
+    }
     if (!config.frontmatter.name) config.frontmatter.name = inferredName;
     results.push(config);
   }
   return results;
+}
+
+/**
+ * Whether the given host satisfies an entry's frontmatter on-host / not-on-host
+ * scoping. Mirrors chrome's site-filter at the file level — non-matching
+ * folders are dropped before merge.
+ */
+function isAllowedOnHost(
+  frontmatter: { onHost?: string[]; notOnHost?: string[] },
+  hostName: string,
+): boolean {
+  // No on-host AND no not-on-host → universal, always allowed.
+  if (!frontmatter.onHost?.length && !frontmatter.notOnHost?.length) return true;
+  const compat = inferHostCompat({
+    onHost: frontmatter.onHost,
+    notOnHost: frontmatter.notOnHost,
+  });
+  return (compat.hosts as readonly string[]).includes(hostName);
 }
 
 /**

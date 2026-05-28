@@ -1,0 +1,35 @@
+{
+  "name": "@opencues/shell",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenCues for the terminal — `shell` wraps your interactive shell in a tmux session with an Alt+Shift+↑ input box that hosts the OpenCues TUI. Brings full cues, blanks, cycling, agent-rewrite to any shell.",
+  "type": "module",
+  "bin": {
+    "oc-shell": "./bin/oc-shell",
+    "oc-install-tmux": "./bin/oc-install-tmux",
+    "oc-install-shell-integration": "./bin/oc-install-shell-integration"
+  },
+  "scripts": {
+    "//comment-on-build": "Intentionally a no-op in CI. bin/oc-edit falls back to src/app.tsx when dist/app.js is absent (Bun handles TSX natively at run time), so a pre-bundled dist is purely a perf optimisation for warm starts — not required for correctness. CI runners don't have Bun installed; running `bun build` there fails. To produce a pre-bundled dist for a release, run `pnpm run bundle` locally with Bun on PATH.",
+    "build": "echo '@opencues/shell: skipping bundle (bin/oc-edit runs src/app.tsx directly; bundle is an optional perf optimisation)'",
+    "bundle": "bun run scripts/bundle.ts",
+    "dev": "bun --conditions=browser src/app.tsx"
+  },
+  "dependencies": {
+    "@opentui/core": "0.1.99",
+    "@opentui/solid": "0.1.99",
+    "solid-js": "1.9.10"
+  },
+  "//comment-on-opencues-deps": "@opencues/{core,runtime} are NOT npm-resolved deps here. setup.sh cp -r's the built dist into node_modules/@opencues/{core,runtime}/, mirroring the way integrations/opencode/patches/setup.sh wires the same packages into its fork. This keeps the install path identical across hosts and avoids workspace-resolution drift between pnpm (top-level) and bun (this integration).",
+  "devDependencies": {
+    "@tsconfig/bun": "1.0.9",
+    "@types/bun": "1.3.11",
+    "typescript": "5.8.2"
+  },
+  "files": [
+    "bin/",
+    "conf/",
+    "dist/",
+    "README.md"
+  ]
+}

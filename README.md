@@ -26,7 +26,7 @@ the publish target broadens. Star + Build are wireable today.
 [![GitHub stars](https://img.shields.io/github/stars/opencues/opencues?style=social)](https://github.com/opencues/opencues)
 -->
 
-**Real-time guidance as you type.** Define cues, blanks, and auditors in `.md` config files; the runtime turns them into inline alternatives, `_`-gated substitutions, and live rewrites. Install today in Claude Code, OpenCode, Gemini CLI, Chrome, and a standalone terminal app (`oc-edit`).
+**Real-time guidance as you type.** Define cues, blanks, and auditors in `.md` config files; the runtime turns them into inline alternatives, `_`-gated substitutions, and live rewrites. Install today in Claude Code, OpenCode, Gemini CLI, Chrome, and a standalone shell wrapper (`oc-shell`).
 
 The three file formats (Cues / Blanks / Auditors) are open standards — designed so a non-JS port or alternative runtime *could* ship — and the spec at [`spec/`](spec/) is the field reference for anyone authoring those files. Today only the reference runtime in this repo implements them, powering all five integrations as thin host adapters over a shared core.
 
@@ -51,40 +51,172 @@ The three file formats (Cues / Blanks / Auditors) are open standards — designe
 > **In 30 seconds — the vocabulary**
 >
 > - **Cue** — a word the runtime offers alternatives for. You navigate to it with Ctrl+Alt+arrow and cycle synonyms with Ctrl+Alt+Up/Down. The buffer stays as you typed it until you cycle.
-> - **Blank** — a `_` you type. The runtime auto-fills it (`volume _` → `70%`, `capital of france _` → `Paris`, `enable debug logging _` → `debug-mode on`). Each blank is gated by a keyword or by free-form lookup.
+> - **Blank** — a `_` you type. The runtime auto-fills it (`draft an email to my landlord _` → the email body, `hello world translate to french _` → `bonjour le monde`, `a b c format as bullet points _` → bullets). Each blank is gated by a keyword or by free-form lookup.
 > - **Auditor** — an inline rewriter that composes with other auditors (grammar, clarity, tone, ...) into one LLM call per agent tick.
 >
 > Everything else in this README assumes these three.
 
-## Quickstart (5 minutes)
+## Quickstart (beta)
 
-Quickest path to a patched Claude Code with cues live:
+> ⚠️ **Beta install — this section will shrink post-launch.**
+> Right now OpenCues isn't on npm, so you install from a clone of this
+> repo (steps 1-3 below). When `npm install -g opencues` ships, steps
+> 1 and 3 become one command and step 2 becomes a `set-key` subcommand.
+> Step 4 (the per-integration install) stays the same shape.
+
+### 1. System prerequisites (one-time per machine)
+
+Install Node + pnpm:
 
 ```bash
-# 1. Free LLM key — Groq's free tier covers every feature.
-#    https://console.groq.com/keys
-export GROQ_API_KEY="your-key"
+# Node.js 18+ — pick whichever installer you prefer
+curl -fsSL https://fnm.vercel.app/install | bash && exec $SHELL -l
+fnm install --lts && fnm use lts-latest
+# OR: brew install node, apt install nodejs, nvm, etc.
 
-# 2. Clone + bootstrap + patch Claude Code.
-git clone https://github.com/opencues/opencues ~/opencues && \
-  cd ~/opencues && pnpm install && pnpm build && \
-  pnpm exec opencues install claude-code
+# pnpm 8+
+npm install -g pnpm
 
-# 3. Launch the patched fork.
-claude-cues
+# verify
+node --version    # v18 or higher
+pnpm --version    # 8 or higher
 ```
 
-**Launch with `claude-cues`, not `claude`** — the patched fork runs alongside your native install at `~/claude-code-cues/`; your existing `claude` stays untouched.
+Some integrations have extra one-line prereqs — they're listed in their
+own READMEs. Heads-up: `bun` for [`shell`](integrations/shell/README.md)
+and [`opencode`](integrations/opencode/README.md); `npm` (ships with
+Node) for [`gemini-cli`](integrations/gemini-cli/README.md). Install
+those *when you pick an integration*, not now.
 
-### Your first three prompts
+### 2. Get an LLM API key
 
-Type these into `claude-cues` to confirm the three surfaces are live. Each should give a visible result inside 1-2 seconds.
+**Cerebras is the recommended default** — same `gpt-oss-120b` weights
+as Groq, lower latency on the free tier:
+
+1. Sign up at [cloud.cerebras.ai/platform/](https://cloud.cerebras.ai/platform/)
+2. Click *Generate API Key*
+3. Persist it in your shell rc:
+
+```bash
+echo 'export CEREBRAS_API_KEY="csk-..."' >> ~/.bashrc      # zsh → ~/.zshrc
+exec $SHELL -l
+```
+
+Groq, OpenAI, Anthropic, Gemini, OpenRouter, and OpenCode Zen are all
+supported too — see [LLM providers](#llm-providers) below for the env
+var names and how to switch.
+
+### 3. Bootstrap the `opencues` CLI
+
+```bash
+git clone https://github.com/opencues/opencues ~/opencues
+cd ~/opencues
+pnpm install
+pnpm build
+
+# Add an alias so you can type `opencues` from anywhere
+echo 'alias opencues="pnpm --silent -C ~/opencues exec opencues"' >> ~/.bashrc
+# zsh: ~/.zshrc instead. fish: `alias --save opencues "pnpm --silent -C ~/opencues exec opencues"`
+exec $SHELL -l
+
+# Verify
+opencues --version
+```
+
+### 4. Install an integration
+
+Pick one (or more — they share state and install order doesn't matter):
+
+#### Claude Code
+
+```bash
+opencues install claude-code
+claude-cues                  # launches the patched fork; native `claude` is untouched
+```
+
+Clones `@anthropic-ai/claude-code` (pinned) into `~/claude-code-cues/`
+and patches it via tweakcc. First run ~3-4 min, re-runs ~1 min. Full
+doc: [`integrations/claude-code/README.md`](integrations/claude-code/README.md).
+
+#### Chrome
+
+```bash
+opencues install chrome
+# WSL → Windows Chrome: add `-- --target /mnt/c/Users/<USERNAME>/Desktop/opencues-chrome`
+```
+
+Then in Chrome: `chrome://extensions` → enable **Developer mode** →
+**Load unpacked** → pick the dir the install command printed → hard-
+refresh your test page. Optionally install the native-messaging host
+for live `~/.cues/` sync + script execution:
+
+```bash
+# Copy the extension ID from chrome://extensions first
+opencues install chrome-host --extension-id <id>
+```
+
+Full doc: [`integrations/chrome/README.md`](integrations/chrome/README.md).
+
+#### Others
+
+| Integration | Install | Doc |
+|---|---|---|
+| OpenCode | `opencues install opencode` (needs `bun`) | [`integrations/opencode/README.md`](integrations/opencode/README.md) |
+| Gemini CLI | `opencues install gemini-cli` | [`integrations/gemini-cli/README.md`](integrations/gemini-cli/README.md) |
+| Shell (standalone) | `opencues install shell` (needs `bun`) | [`integrations/shell/README.md`](integrations/shell/README.md) |
+
+### Try it out
+
+OpenCues is **cues for the prompt you're giving an AI** — scaffolds that
+help you compose a better prompt without leaving the chat. The two
+surfaces are:
+
+- **Blanks** — type `_` and the runtime fills it. Use these to *write*
+  the prompt: ask the AI to improve it, draft an email, translate, format
+  a list, etc.
+- **Cues** — words you've already typed get inline alternatives. Use
+  these to *refine* the prompt: navigate to a cued word and cycle
+  synonyms or domain-aware replacements.
+
+#### Blanks — scaffolds for the prompt you're about to send
+
+The `_` underscore is the universal trigger — the runtime fills it
+with whatever the surrounding text asks for.
 
 | Type | What you should see |
 |---|---|
-| `the happy dog` | The word **happy** dims (cue marker). Press **Ctrl+Alt+Right** to navigate to it, then **Ctrl+Alt+Up** — the word swaps to `joyful` / `cheerful` / etc. |
-| `volume _` | The `_` becomes `70%` (or whatever your system volume is). Ctrl+Alt+Up steps it by 6% — and your OS volume actually changes. |
-| `enable debug logging _` | The whole phrase becomes `debug-mode on`. One backspace wipes both words. This proves fluid-config flipped `~/.cues/OPENCUES.md`. |
+| `[Your prompt] improve prompt _` | The whole sentence is rewritten into a structured, well-formed prompt. The **prompt-improver** blank (triggered by `improve prompt` / `enhance prompt` / `refine prompt`) — the daily-driver blank for any LLM CLI. |
+| `draft an email to my landlord asking for a rent reduction _` | The `_` is replaced with a polite, structured email body. **Fluid blank** — open-ended generation from a free-form query. |
+| `where is the nearest train station translate to french _` | The text is replaced with its French translation. **Transform blank** — `translate to <language>`. |
+| `apples bananas oranges grapes format as bullet points _` | The list is reformatted as bullets. **Transform blank** — `format as <style>` (also: `as a table`, `as JSON`, etc.). |
+| `he runs fast and jumps over the fence make past tense _` | The sentence is rewritten in past tense. Same transform-blank shape — the runtime reads the imperative, applies it, splices the result back. |
+| `what is the word for "happy at someone elses misfortune" _` | The query is replaced with `schadenfreude`. The **answer** blank — vocabulary lookup (triggered by `what is the word for` / `how to say`). |
+| `opencues settings _` | Slide-out **selector + satellite** view of every cycleable runtime setting (voice-mode, tips-mode, debug-mode, fluid-blank-mode, …). Ctrl+Alt+Right/Left swaps the *setting*; Ctrl+Alt+Up/Down cycles the *value*. Changes write through to `~/.cues/OPENCUES.md` live. |
+
+The `opencues settings _` selector covers cycleable *behaviour* scalars.
+It does **not** include LLM provider / model choice — those scalars have
+unbounded codomains (any provider, any model id), so cycling them
+through a satellite makes no sense. To change provider or model, edit
+`~/.cues/OPENCUES.md` directly — see [LLM providers](#llm-providers)
+below for the exact frontmatter keys.
+
+#### Cues — feedback on words you've already typed
+
+The shipped defaults include a "tips" pack that fires on real
+Claude / OpenCode / Gemini terms with inline alternatives + an
+explanatory tooltip. Try these:
+
+| Type | What happens |
+|---|---|
+| `i want to ultrathink this problem` | **`ultrathink`** dims (cue marker) + the status bar shows `Add ultrathink to prompt for max reasoning`. Press **Ctrl+Alt+Right** to navigate to it, **Ctrl+Alt+Up** to cycle to `deep thinking` / `think harder` / `Tab`. |
+| `i'll use --print to script this in ci` | Both **`--print`** and **`ci`** are cues (CI/CD tips). Navigate between them with Ctrl+Alt+Left/Right; cycle to see the related alternatives. |
+| `let me run /compact to clear context` | **`/compact`** dims + tooltip explains the slash command. Cycle to alternatives. |
+| Any sentence you've typed | The shipped **`more-formal`** sentence cue offers three formal rewrites of the whole sentence. Navigate into the sentence + cycle to swap the entire sentence with a more formal version. (Off by default — turn on with `sentence-cues-mode: on` via `opencues settings _`.) |
+
+You can add your own word cues by editing `~/.cues/CUES.md` or
+dropping a folder under `~/.cues/cues/<name>/CUE.md`. Hot-reload
+picks them up within ~2 seconds. Full authoring guide:
+[`docs/guides/adding-a-cue-blank.md`](docs/guides/adding-a-cue-blank.md).
 
 ### Stuck?
 
@@ -105,7 +237,7 @@ For per-host installs, deeper troubleshooting, and uninstall: [`docs/install.md`
 | **OpenCode** | Available | `opencues install opencode` | [`integrations/opencode/README.md`](integrations/opencode/README.md) |
 | **Gemini CLI** | Beta | `opencues install gemini-cli` | [`integrations/gemini-cli/README.md`](integrations/gemini-cli/README.md) |
 | **Chrome** | Beta | `opencues install chrome` | [`integrations/chrome/README.md`](integrations/chrome/README.md) |
-| **Terminal (`oc-edit`)** | Beta | `opencues install terminal` | [`integrations/terminal/README.md`](integrations/terminal/README.md) |
+| **Shell (`oc-shell`)** | Beta | `opencues install shell` | [`integrations/shell/README.md`](integrations/shell/README.md) |
 | **VS Code** | Planned | — | — |
 
 Each install pins a specific upstream version (e.g. Claude Code 2.1.110 or 2.1.150, OpenCode 1.14.17), clones it into its own dir (`~/claude-code-cues/`, `~/opencode-cues/`), and patches that copy. **Your native editor installs are never touched.** Uninstall is `opencues uninstall <host>`.
@@ -120,7 +252,7 @@ Each install pins a specific upstream version (e.g. Claude Code 2.1.110 or 2.1.1
 
 - **Word cues** — navigate to any word, cycle through LLM-suggested alternatives, keep typing.
 - **Sentence cues** — declare `scope: sentence` on a cue and the whole sentence becomes cyclable. The shipped `more-formal` cue rewrites informal sentences to formal register.
-- **Blanks** — type `_` and get a completion: keyword-bound (`volume _` → `70%`), free-form lookup (`capital of france _` → `Paris`), or imperative transform (`fix typos _ this is bad righting`).
+- **Blanks** — type `_` and get a completion: free-form generation (`draft an email about X _`), translation / formatting / past-tense / etc. (`translate to french _`, `format as bullet points _`), short factual answers (`what is the word for X _`), prompt rewrites (`improve prompt _`), and keyword-bound system actions (`volume _`, `brightness _`).
 - **Script-backed blanks** — `volume _` / `brightness _` call shell scripts so cycling actually changes your OS state.
 - **Selector + satellite** — `opencues settings _` becomes two linked words (the setting + its current value); cycling the selector swaps the satellite.
 - **Inline agent** — `agentically correct spelling _` arms a continuous rewrite loop until you `stop task _`.
@@ -163,9 +295,66 @@ Full config reference, scalar table, and authoring guide: [`docs/configuration.m
 
 ## LLM providers
 
-OpenCues supports **seven providers** out of the box: Groq (default — free tier), Cerebras, OpenAI, Anthropic, OpenRouter, Gemini, and OpenCode Zen. Set the env key for whichever you want; pick different providers per feature (word-cues vs fluid-blank vs transform-blank vs agent-rewrite) in `~/.cues/OPENCUES.md`.
+OpenCues supports **seven providers** out of the box: **Cerebras** (recommended
+default), Groq, OpenAI, Anthropic, OpenRouter, Gemini, and OpenCode Zen.
 
-Setting both `GROQ_API_KEY` and `CEREBRAS_API_KEY` enables automatic 429/5xx failover between them — same `gpt-oss-120b` weights mean no quality shift when one provider rate-limits.
+The recommendation rationale: Cerebras and Groq both serve `gpt-oss-120b`
+(the same weights OpenCues was tuned and benched against), so output quality
+is identical across them — but Cerebras's free tier currently has lower
+latency for the short responses every cue/blank emits. Set the env key for
+whichever you pick and you're done.
+
+```bash
+export CEREBRAS_API_KEY="csk-..."       # recommended (lowest latency)
+# or
+export GROQ_API_KEY="gsk-..."           # same weights, slightly slower
+# or any of: OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY /
+#            OPENROUTER_API_KEY / OPENCODE_ZEN_API_KEY
+```
+
+### Switching provider for the whole runtime
+
+The active provider is a scalar in `~/.cues/OPENCUES.md` frontmatter. Open
+the file with any editor and set `llm-provider`:
+
+```yaml
+---
+llm-provider: cerebras   # (default) cerebras | groq | openai | anthropic |
+                         #           gemini | openrouter | opencode-zen
+---
+```
+
+Hot-reload picks it up in ~2 seconds — no restart. The status line shows
+the resolved provider + model when a cue fires; tail `/tmp/opencues.log`
+if you want the full trace.
+
+### Switching the model within a provider
+
+Same file, `llm-model` scalar:
+
+```yaml
+---
+llm-provider: cerebras
+llm-model: openai/gpt-oss-120b   # whatever model name your provider exposes
+---
+```
+
+If unset, the runtime picks a sensible default per provider (cf.
+[`docs/guides/llm-providers.md`](docs/guides/llm-providers.md)).
+
+### Per-feature routing (advanced)
+
+Pick a different provider / model just for *blanks* (the `_` surface) via
+`blank-llm-provider` + `blank-llm-model`. Useful for routing blanks
+through a free or cheaper tier while keeping cues / auditors /
+agent-rewrite on a higher-quality model. Full per-feature table in the
+provider guide.
+
+### Failover
+
+Setting **both** `CEREBRAS_API_KEY` and `GROQ_API_KEY` enables automatic
+429/5xx failover between them — same `gpt-oss-120b` weights mean no
+quality shift when one provider rate-limits. Recommended for heavy use.
 
 ### Free mode (no API key)
 

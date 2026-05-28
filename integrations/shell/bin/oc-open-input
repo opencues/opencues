@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# oc-open-input — invoked by the M-S-Up / M-C-s tmux bindings to
+# create the input pane. Resolves the current pane id via tmux
+# display-message (the binding fires from the shell pane, so that's
+# what display-message returns) and passes it to oc-edit as the
+# target-pane for paste-on-submit.
+#
+# Why this exists: tmux does NOT format-expand `#{pane_id}` inside
+# the shell-command argument of `split-window` — it's passed
+# literally to the child process. Putting `--target-pane #{pane_id}`
+# directly in the binding fails silently (oc-edit's send-keys then
+# targets a pane that doesn't exist). Resolving the id in bash via
+# display-message works because the script's TMUX env var points at
+# the right server.
+
+set -u
+
+MAIN_PANE="$("$OPENCUES_TMUX" display-message -p '#{pane_id}' 2>/dev/null)"
+if [ -z "$MAIN_PANE" ]; then
+  echo "oc-open-input: could not resolve current pane id" >&2
+  exit 1
+fi
+
+"$OPENCUES_TMUX" split-window -v -l 15 \
+  "exec '$OPENCUES_OC_EDIT' --keep-alive --target-pane '$MAIN_PANE'"
+"$OPENCUES_TMUX" select-pane -T oc-input
