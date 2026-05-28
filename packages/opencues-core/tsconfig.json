@@ -22,5 +22,20 @@
     "rootDir": "./src"
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"]
+  // Vitest-style test files import from 'vitest' and crash under the
+  // node:test loader when compiled into dist. Exclude them from the
+  // build — vitest reads them directly from src/. Pattern matches the
+  // explicit list in vitest.config.ts include[]. node:test-style tests
+  // (import from 'node:test') are NOT excluded — they're compiled to
+  // dist and `npm test` (find dist -name '*.test.js' | xargs node --test)
+  // picks them up.
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/feature-registry.test.ts",
+    "src/feature-registry-menu.drift.test.ts",
+    "src/llm-provider.drift.test.ts",
+    "src/conformance.test.ts",
+    "src/sources/fluid-blank-error-substitute.test.ts"
+  ]
 }
