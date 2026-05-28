@@ -218,6 +218,46 @@ export interface BuildSharedRuntimeOptions {
 }
 
 /**
+ * Native-host error formatter shared by CC / OC / gemini-cli / terminal
+ * — chrome supplies its own (popup-specific phrasing). The messages
+ * mention `~/.cues/.env` + shell env because that's where native hosts
+ * read keys + scalars from. Returns the in-buffer text the runtime
+ * substitutes for the failed `_`.
+ *
+ * Wired by each non-chrome boot via `ResolverOptions.formatLLMErrorAsSubstitute`.
+ * Resolver hands every classified user-actionable HTTP failure
+ * (401/403/404/429/400/network) through this function; LLM-internal
+ * errors (no-span, malformed JSON, 5xx) stay silent unconditionally.
+ */
+export function nativeHostFormatLLMError(
+  reason: 'invalid-api-key' | 'network' | 'rate-limit' | 'endpoint-not-found' | 'bad-request',
+  err?: Error,
+): string {
+  // Best-effort extract the provider's own error body. Bench-tuned regex
+  // matches `"message":"..."` / `"error":"..."` shapes — falls back to
+  // the raw error message.
+  const detail = err?.message?.match(/"(?:message|error)":\s*"([^"]+)"/)?.[1]
+    ?? err?.message?.slice(0, 180);
+  const suffix = detail ? ` — ${detail}` : '';
+  switch (reason) {
+    case 'invalid-api-key':    return '[OpenCues: API key rejected (401/403) — re-export the provider\'s API key in your shell env (or ~/.cues/.env)]';
+    case 'endpoint-not-found': return '[OpenCues: provider endpoint returned 404 — check `llm-endpoint:` in ~/.cues/OPENCUES.md]';
+    case 'rate-limit':         return '[OpenCues: provider rate-limit hit (429) — wait a moment or switch `llm-provider:` in OPENCUES.md]';
+    case 'network':            return '[OpenCues: network error — provider unreachable. Check connectivity, then retry.]';
+    case 'bad-request':        return `[OpenCues: provider returned 400 (bad request)${suffix}. Check the llm-model: you set in OPENCUES.md matches the chosen provider]`;
+  }
+}
+
+/**
+ * Native-host no-key fallback message — wired by CC / OC / gemini-cli
+ * / terminal boots via `ResolverOptions.missingKeyFallbackMessage`. Used
+ * when the user types `_` AND no LLM source could be wired (zero keys).
+ * Chrome supplies its own (popup-specific phrasing).
+ */
+export const NATIVE_HOST_MISSING_KEY_MESSAGE =
+  '[OpenCues: no API key — set CEREBRAS_API_KEY (or another provider\'s key) in ~/.cues/.env or your shell env]';
+
+/**
  * Construct ConfigLoader, every state class, and subscribe the universal
  * modules (Navigation, DimRender, Cycling, BlankFill). Hosts call this
  * after building the adapter — the returned SharedRuntime is then handed

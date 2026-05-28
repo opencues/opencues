@@ -404,6 +404,14 @@ export interface MenuTunableSpec {
   readonly menuTip: string;
   /** Cyclable values. First entry is the recommended default for the menu's initial render. */
   readonly values: readonly ValueSpec[];
+  /**
+   * Host scope. When set, the tunable only appears in the cycling menu
+   * for the listed hosts. Use for host-specific knobs whose effect
+   * only exists on certain hosts (e.g. chrome's dim-mix — terminal
+   * hosts use ANSI dim escapes, not a per-channel mix). Omit for
+   * host-universal tunables.
+   */
+  readonly hostScope?: readonly string[];
 }
 
 export const MENU_TUNABLES: readonly MenuTunableSpec[] = [
@@ -447,6 +455,18 @@ export const MENU_TUNABLES: readonly MenuTunableSpec[] = [
       { id: '300', description: 'Slow — 300ms per frame, each colour holds twice as long' },
     ],
   },
+  {
+    scalar: 'dim-mix',
+    menuTip: 'How far the dim (unfocused) colour is mixed toward the page background. 0 = identical to host text colour; 100 = fully blended (invisible).',
+    hostScope: ['chrome'],
+    values: [
+      { id: '0',   description: 'Off — no dim; cue + non-cue words render identically' },
+      { id: '25',  description: 'Subtle — barely faded' },
+      { id: '45',  description: 'Default — moderate fade' },
+      { id: '65',  description: 'Strong — clearly faded' },
+      { id: '85',  description: 'Heavy — nearly invisible non-cue text' },
+    ],
+  },
 ];
 
 // ──────────────────────────────────────────────────────────────────────
@@ -477,7 +497,7 @@ export function getCyclableValues(spec: { values: readonly ValueSpec[] }): reado
  * Returned shape mirrors the legacy OpenCuesSettingDef so consumers
  * (Cycling.ts, OpenCuesSettingsBlank) don't need to change.
  */
-export function getMenuDefinitions(): Map<string, {
+export function getMenuDefinitions(hostName?: string): Map<string, {
   readonly tip?: string;
   readonly valueOrder: readonly string[];
   readonly valueTips: ReadonlyMap<string, string>;
@@ -499,6 +519,10 @@ export function getMenuDefinitions(): Map<string, {
     });
   }
   for (const t of MENU_TUNABLES) {
+    // Host-scope filter — when hostScope is set, only include the
+    // tunable if the current host matches one of the listed names.
+    // Omitted hostScope = universal (every host sees it).
+    if (t.hostScope && hostName && !t.hostScope.includes(hostName)) continue;
     const tips = new Map<string, string>();
     for (const v of t.values) tips.set(v.id, v.description);
     out.set(t.scalar, {

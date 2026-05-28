@@ -298,6 +298,14 @@ export interface CommonHostInfo {
   llmApiKey?: string;
   llmEndpoint?: string;
   llmDefaultModel?: string;
+  /**
+   * Provider override from a host-level UI (e.g. chrome popup's
+   * Provider dropdown). When set, overrides OPENCUES.md's
+   * `llm-provider:` scalar; empty string / undefined means "no
+   * override — runtime auto-routes via `pickAutoProvider`". Values:
+   * 'groq' | 'cerebras' | 'openai' | 'anthropic' | 'gemini' | 'openrouter'.
+   */
+  llmProvider?: string;
   llmDebounceMs?: number;
   /**
    * API keys keyed by provider env-var name (GROQ_API_KEY,

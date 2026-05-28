@@ -17,6 +17,11 @@ export interface StoredConfig {
   model: string;
   /** API endpoint URL */
   apiUrl: string;
+  /** LLM provider id (groq | cerebras | openai | anthropic | gemini |
+   *  openrouter). Set via the popup's Provider dropdown. Auto-fills
+   *  model + apiUrl with the matching defaults on pick. Empty when
+   *  the user has never selected — model/apiUrl are then taken as-is. */
+  provider: string;
   /** Enable TTS */
   ttsEnabled: boolean;
   /** TTS speech rate (1-5) */
@@ -57,6 +62,7 @@ export const DEFAULT_CONFIG: StoredConfig = {
   targetSelector: '[contenteditable="true"]',
   model: 'openai/gpt-oss-120b',
   apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
+  provider: '',
   ttsEnabled: false,
   ttsRate: 2,
   finnhubApiKey: __FINNHUB_API_KEY__,

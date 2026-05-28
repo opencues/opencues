@@ -98,6 +98,14 @@ export interface BootResult {
   notifyCursorChange(text: string, cursorOffset: number, source: 'user' | 'runtime'): void;
   collectRenderDirectives(text: string, cursor: number): RenderDirectives[];
   /**
+   * Read a current OPENCUES.md scalar value from the live opencuesState.
+   * Returns undefined when the loader isn't ready yet or the scalar
+   * isn't set. Hosts use this for host-scoped tunables (chrome reads
+   * `dim-mix` here so cycling it via `opencues settings _` takes
+   * effect without round-tripping through popup storage).
+   */
+  getSetting(scalar: string): string | undefined;
+  /**
    * Re-read configs from disk (or chrome.storage, whichever the adapter
    * backs readFile/readDir with). Used by the chrome extension to
    * hot-reload on `opencues sync chrome` — polls `dist/configs/.version`
@@ -301,34 +309,68 @@ export function boot(host: HostInfo): BootResult {
   if (host.llmApiKey && !apiKeys.GROQ_API_KEY) apiKeys.GROQ_API_KEY = host.llmApiKey;
   const hasAnyKey = Object.values(apiKeys).some(Boolean);
   let liveResolver: Resolver | null = null;
-  if (hasAnyKey) {
+  // Construct the Resolver even when no API keys are present. The
+  // MissingKeyFallbackSource (added by buildSourcesFromConfig when no
+  // LLM source could wire up) substitutes `_` with a host-specific
+  // in-buffer hint — "open the extension popup". Without the resolver
+  // being constructed at all, the fallback would never fire and the
+  // user types `_` to silent nothing.
+  if (true) {
     const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
       apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
+      // Popup's Provider dropdown — overrides OPENCUES.md `llm-provider:`
+      // when set. Empty string / undefined keeps the auto-route.
+      providerOverride: (host.llmProvider && host.llmProvider.length > 0) ? host.llmProvider : undefined,
       apiKeys,
       debounceMs: host.llmDebounceMs ?? 500,
       httpAdapter: host.httpAdapter,
+      // Chrome-specific user-facing message — points the user at the
+      // extension popup, where the API-key inputs live.
+      missingKeyFallbackMessage: hasAnyKey ? undefined : '[OpenCues: no API key — open the extension popup]',
+      // Chrome-specific formatter for runtime LLM failures. Every
+      // user-actionable reason maps to a one-line in-buffer hint that
+      // tells the user where to look in chrome. LLM-internal issues
+      // (malformed JSON, no-span) stay silent regardless.
+      formatLLMErrorAsSubstitute: (reason, err) => {
+        // Try to extract the provider's own error message — it's usually
+        // the most useful disambiguator (model name typo'd, body field
+        // missing, etc.). Best-effort; the regex is loose so a wide
+        // variety of error-message shapes match.
+        const detail = err?.message?.match(/"(?:message|error)":\s*"([^"]+)"/)?.[1]
+          ?? err?.message?.slice(0, 180);
+        const suffix = detail ? ` — ${detail}` : '';
+        switch (reason) {
+          case 'invalid-api-key':    return '[OpenCues: API key rejected (401/403) — open the extension popup and re-enter it]';
+          case 'endpoint-not-found': return '[OpenCues: provider endpoint returned 404 — check the API URL in the extension popup]';
+          case 'rate-limit':         return '[OpenCues: provider rate-limit hit (429) — wait a moment or switch provider in the popup]';
+          case 'network':            return '[OpenCues: network error — provider unreachable. Check connectivity, then retry.]';
+          case 'bad-request':        return `[OpenCues: provider returned 400 (bad request)${suffix}. Check the Model name matches the selected Provider in the popup]`;
+        }
+      },
     }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState);
     configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
     liveResolver = resolver;
 
-    const httpAdapter = host.httpAdapter as { post(url: string, body: string, headers: Record<string, string>): Promise<string> };
-    const agentRewrite = new AgentRewrite(adapter, dynDefs, agentTaskState, {
-      endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
-      apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
-      defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
-      httpAdapter,
-      resolveLLM: () => buildAgentLLMResolver(configLoader, apiKeys),
-      // Sliding-window mode (lazy thunk so OPENCUES.md edits take effect
-      // without a restart). 0 = full-buffer; useful for long docs in
-      // textareas where token cost dominates.
-      windowWords: () => parseInt(configLoader.opencuesState.settings.get('agent-window-words') ?? '0', 10) || 0,
-      cadenceMs: () => parseInt(configLoader.opencuesState.settings.get('agent-debounce-ms') ?? '', 10),
-      auditorPrompts: () => configLoader.composeAuditorPrompts(),
-      maxConcurrentAuditors: () => parseInt(configLoader.opencuesState.settings.get('max-concurrent-auditors') ?? '', 10) || 0,
-    });
-    agentRewrite.start();
+    if (hasAnyKey) {
+      const httpAdapter = host.httpAdapter as { post(url: string, body: string, headers: Record<string, string>): Promise<string> };
+      const agentRewrite = new AgentRewrite(adapter, dynDefs, agentTaskState, {
+        endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
+        apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
+        defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
+        httpAdapter,
+        resolveLLM: () => buildAgentLLMResolver(configLoader, apiKeys),
+        // Sliding-window mode (lazy thunk so OPENCUES.md edits take effect
+        // without a restart). 0 = full-buffer; useful for long docs in
+        // textareas where token cost dominates.
+        windowWords: () => parseInt(configLoader.opencuesState.settings.get('agent-window-words') ?? '0', 10) || 0,
+        cadenceMs: () => parseInt(configLoader.opencuesState.settings.get('agent-debounce-ms') ?? '', 10),
+        auditorPrompts: () => configLoader.composeAuditorPrompts(),
+        maxConcurrentAuditors: () => parseInt(configLoader.opencuesState.settings.get('max-concurrent-auditors') ?? '', 10) || 0,
+      });
+      agentRewrite.start();
+    }
   }
 
   log('info', 'OpenCues runtime starting (Chrome v1)', {
@@ -361,6 +403,14 @@ export function boot(host: HostInfo): BootResult {
       // fires onTextChange-style re-renders downstream. Used by the
       // chrome extension's .version polling loop.
       await shared.configLoader.load();
+    },
+    getSetting(scalar) {
+      // Read the live opencuesState scalar. Returns undefined when
+      // the loader hasn't run yet (chrome's first focus before
+      // configLoader.load() resolves) so callers can fall back to a
+      // host-side default cleanly.
+      if (!shared.configLoader.loaded) return undefined;
+      return shared.configLoader.opencuesState.settings.get(scalar);
     },
     updateApiKeys(newKeys) {
       // Mutate in place — the resolver holds the same reference via

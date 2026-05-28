@@ -864,7 +864,7 @@ function diffWriteText(text: string): void {
  *
  *  Falls back to direct textContent assignment when execCommand is
  *  blocked (rare on contenteditables, but defensive). */
-function replaceAllText(text: string): void {
+export function replaceAllText(text: string): void {
   const target = currentTarget;
   if (!target) return;
   if (isNormalInput(target)) {
@@ -954,44 +954,61 @@ function replaceAllText(text: string): void {
     //   - Generic contenteditable: execCommand('delete') with the
     //     browser select-all range works normally.
     if (isLexicalEditor(target)) {
+      // Single history entry per editor.update() — Lexical groups every
+      // mutation inside one update into one history step. Try the
+      // editor API (richest path: clear + insert in one transaction)
+      // and fall back to a selection-replacing synthetic paste.
       const lex = (target as unknown as { __lexicalEditor?: {
         update: (fn: () => void, opts?: { discrete?: boolean }) => void;
       } }).__lexicalEditor;
       type LexicalGlobals = {
-        $getRoot?: () => { clear: () => void };
+        $getRoot?: () => { clear: () => void; append?: (n: unknown) => void };
+        $createParagraphNode?: () => { append: (n: unknown) => void };
+        $createTextNode?: (s: string) => unknown;
       };
       const lexGlobals = window as unknown as LexicalGlobals;
-      if (lex && typeof lex.update === 'function' && typeof lexGlobals.$getRoot === 'function') {
+      const canInsertViaApi = lex && typeof lex.update === 'function'
+        && typeof lexGlobals.$getRoot === 'function'
+        && typeof lexGlobals.$createParagraphNode === 'function'
+        && typeof lexGlobals.$createTextNode === 'function';
+      if (canInsertViaApi) {
         try {
-          lex.update(() => { lexGlobals.$getRoot!().clear(); }, { discrete: true });
+          lex!.update(() => {
+            const root = lexGlobals.$getRoot!();
+            root.clear();
+            for (const line of text.split('\n')) {
+              const p = lexGlobals.$createParagraphNode!();
+              p.append(lexGlobals.$createTextNode!(line));
+              (root as { append: (n: unknown) => void }).append(p);
+            }
+          }, { discrete: true });
+          sourceReclassifier.markRuntimeWrite(text);
+          schedulePostReconcileRender();
+          return;
         } catch (err) {
-          console.warn('[opencues] Lexical editor.update clear failed:', err);
+          console.warn('[opencues] Lexical editor.update insert failed, falling back:', err);
         }
-      } else {
-        target.dispatchEvent(new KeyboardEvent('keydown', {
-          key: 'a', code: 'KeyA', keyCode: 65, ctrlKey: true,
-          bubbles: true, cancelable: true,
-        }));
-        target.dispatchEvent(new KeyboardEvent('keydown', {
-          key: 'Backspace', code: 'Backspace', keyCode: 8,
-          bubbles: true, cancelable: true,
-        }));
       }
-    } else if (isDraftJsEditor(target)) {
-      // Draft.js (Twitter/X). Same managed-editor pattern as
-      // Lexical: its internal selection model doesn't sync from
-      // browser-side selectNodeContents, so paste lands at the
-      // editor's internal cursor (end of buffer) and APPENDS
-      // rather than REPLACING. Synthetic Ctrl+A + Backspace
-      // keydown events route through Draft.js's keydown pipeline
-      // (which sets internal selection to all then deletes),
-      // clearing the buffer before paste lands.
+      // Fallback: Ctrl+A selection (NO history entry — selection only) +
+      // synthetic paste. Lexical's paste handler reads the now-set
+      // internal selection and REPLACES it in a single transaction → one
+      // history entry total. The previous Backspace step landed its own
+      // history entry on top of the paste, causing the first Ctrl+Z to
+      // leave the buffer empty (the blank-screen bug).
       target.dispatchEvent(new KeyboardEvent('keydown', {
         key: 'a', code: 'KeyA', keyCode: 65, ctrlKey: true,
         bubbles: true, cancelable: true,
       }));
+    } else if (isDraftJsEditor(target)) {
+      // Draft.js (Twitter/X). Internal selection model doesn't sync
+      // from browser selection — set it via synthetic Ctrl+A keydown
+      // (which Draft's keymap honours and updates internal selection
+      // to span the buffer). Then the paste's replaceText call below
+      // replaces the selection in one history entry. The previous
+      // pattern fired Backspace before paste, landing two history
+      // entries (Ctrl+Z → empty buffer = blank-screen bug).
       target.dispatchEvent(new KeyboardEvent('keydown', {
-        key: 'Backspace', code: 'Backspace', keyCode: 8,
+        key: 'a', code: 'KeyA', keyCode: 65, ctrlKey: true,
         bubbles: true, cancelable: true,
       }));
 
@@ -1032,51 +1049,66 @@ function replaceAllText(text: string): void {
     } else if (isManaged) {
       // ProseMirror/TipTap, Slate.
       //
-      // DEFAULT: execCommand('insertText'). Routes through the
-      // editor's plain-text-insertion command (the same pipeline
-      // user keystrokes flow through). With selection set to all
-      // via selectNodeContents above, insertText replaces. The
-      // browser dispatches inputType: insertParagraph for each \n;
-      // \n\n in LLM output produces one paragraph break (standard
-      // web convention). Verified on LinkedIn, ChatGPT, claude.ai
-      // — these all reject programmatic paste events outright but
-      // accept insertText cleanly.
+      // DEFAULT (May 2026 update): execCommand('insertHTML') over the
+      // select-all selection. insertHTML dispatches beforeinput with
+      // inputType "insertReplacementText" — PM's default handler treats
+      // this as ONE replace transaction. The previous `insertText` path
+      // fired inputType "insertText" which on SOME PM-using sites
+      // (claude.ai specifically) hit a custom handleTextInput that
+      // split delete + insert into two transactions, producing a
+      // "blank flash" on the first Ctrl+Z. insertHTML's inputType is
+      // less commonly intercepted; observed atomic on claude.ai,
+      // ChatGPT, LinkedIn.
       //
-      // EXCEPTION — Luma's TipTap: insertText paragraph handling
-      // creates double-spacing on every \n\n. Luma's standard
-      // paste handler accepts <p>-per-paragraph HTML cleanly with
-      // correct single-paragraph spacing, so route Luma through
-      // the keyboard-sim + paste path instead.
+      // Block shape ('<p>...</p>' per line, set earlier in `html`)
+      // matches what these editors emit natively for Enter, so
+      // paragraph structure round-trips correctly.
+      //
+      // EXCEPTION — Luma's TipTap: still uses keyboard-sim + paste
+      // (below) because Luma's TipTap config rejects insertHTML.
       const host = location.hostname;
       const isLuma = host === 'lu.ma' || host.endsWith('.lu.ma');
+      const isClaudeAI = host === 'claude.ai' || host.endsWith('.claude.ai');
       if (!isLuma) {
-        document.execCommand('insertText', false, text);
+        // claude.ai's PM is the canonical case for the insertHTML fix —
+        // the prior insertText path produced a 2-entry undo stack.
+        // For other PM-using sites (ChatGPT/LinkedIn) insertHTML is
+        // expected to also work AND was the May 2026 unified default.
+        log.info('[opencues] replaceAllText: managed insertHTML (host=' + host + ', claude.ai=' + isClaudeAI + ')');
+        document.execCommand('insertHTML', false, html);
         sourceReclassifier.markRuntimeWrite(text);
         schedulePostReconcileRender();
         return;
       }
-      // Luma: keyboard sim clear + paste below.
+      // Luma: Ctrl+A keydown sets TipTap's internal selection to the
+      // whole buffer (selection-only — no history entry). The paste
+      // below replaces the selection in one history step. Dropping the
+      // earlier Backspace keydown collapses two undo entries into one
+      // (Ctrl+Z → original instead of Ctrl+Z → empty body).
       target.dispatchEvent(new KeyboardEvent('keydown', {
         key: 'a', code: 'KeyA', keyCode: 65, ctrlKey: true,
         bubbles: true, cancelable: true,
       }));
-      target.dispatchEvent(new KeyboardEvent('keydown', {
-        key: 'Backspace', code: 'Backspace', keyCode: 8,
-        bubbles: true, cancelable: true,
-      }));
     } else {
-      document.execCommand('delete');
+      // Generic contenteditable (Gmail, YouTube, plain <div contenteditable>).
+      // Single execCommand('insertHTML') over the select-all range
+      // REPLACES the body in ONE undo entry. The previous wipe-then-paste
+      // pattern landed two entries on the native undo stack, so a user's
+      // first Ctrl+Z reverted only the paste and left the buffer empty
+      // (blank-screen bug). insertHTML routes through the same
+      // beforeinput/input pipeline Gmail's compose surface expects.
+      document.execCommand('insertHTML', false, html);
+      log.info('[opencues] replaceAllText: generic insertHTML');
+      sourceReclassifier.markRuntimeWrite(text);
+      schedulePostReconcileRender();
+      return;
     }
 
-    // Synthetic paste event with DataTransfer is the universally
-    // honoured programmatic write into modern contenteditables —
-    // Lexical, ProseMirror, Slate all have first-class paste handlers,
-    // and Gmail accepts it too. We don't have a synchronous "did it
-    // work" signal: Lexical's handler is async (queues a React state
-    // update), so a post-dispatch DOM-length check would fire while
-    // the paste is still in-flight and trigger spurious fallbacks
-    // that double-render. Trust the paste; only fall back if
-    // ClipboardEvent itself isn't constructible (very rare).
+    // Managed-editor fallthrough (Lexical fallback, Luma TipTap). These
+    // reached here AFTER an explicit clear above; we still dispatch a
+    // synthetic paste because their paste handlers read clipboardData
+    // directly. Single-undo atomicity for these editors is handled in
+    // the per-engine branches above; this is the residual paste step.
     //
     // NOTE: do NOT also dispatch an InputEvent('input', {
     // inputType: 'insertFromPaste', data: text }) afterwards —
@@ -1686,6 +1718,14 @@ export interface RuntimeStartOptions {
   llmApiKey?: string;
   llmEndpoint?: string;
   llmDefaultModel?: string;
+  /**
+   * Provider override from the popup's Provider dropdown
+   * ('groq' | 'cerebras' | 'openai' | 'anthropic' | 'gemini' | 'openrouter').
+   * Empty string / undefined → no override, runtime auto-routes via
+   * `pickAutoProvider(apiKeys)`. When set, this OVERRIDES OPENCUES.md's
+   * `llm-provider:` scalar — popup is the higher-priority source.
+   */
+  llmProvider?: string;
   llmDebounceMs?: number;
   /**
    * Multi-provider key bag. The popup writes these to chrome.storage
@@ -2029,6 +2069,7 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     llmApiKeys: opts.llmApiKeys,
     llmEndpoint: opts.llmEndpoint,
     llmDefaultModel: opts.llmDefaultModel,
+    llmProvider: opts.llmProvider,
     llmDebounceMs: opts.llmDebounceMs,
     httpAdapter: (opts.llmApiKey || (opts.llmApiKeys && Object.values(opts.llmApiKeys).some(Boolean)))
       ? new FetchHttpAdapter() : undefined,
@@ -2123,9 +2164,31 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
   // buffer; chrome's job is to apply native bold/italic/strike markup
   // to the live DOM so the page renders the styles the LLM intended.
   bootResult.onModuleEvent((type, body) => {
-    if (type !== 'markdown.styled' || !body) return;
-    try { applyMarkdownStyling(body as unknown as MarkdownStyledPayload); }
-    catch (err) { console.warn('[opencues] applyMarkdownStyling failed', err); }
+    if (type === 'markdown.styled' && body) {
+      try { applyMarkdownStyling(body as unknown as MarkdownStyledPayload); }
+      catch (err) { console.warn('[opencues] applyMarkdownStyling failed', err); }
+      return;
+    }
+    // Span-as-unit indication. The runtime tells us when a blank just
+    // substituted a result that's clearOnEdit-flagged (the whole span
+    // wipes when any char inside is edited) and when such a span got
+    // wiped. We surface both as visible-by-default console messages —
+    // the user sees one line on substitution ("✏︎ this fill wipes
+    // together if you edit inside it") and one when the wipe fires
+    // ("⌫ span wiped — Nchars dismissed as one unit"), so the
+    // 20-char-backspace behaviour is never a surprise.
+    if (type === 'blank.substituted' && body && (body as { spanAsUnit?: boolean }).spanAsUnit) {
+      const b = body as { blankName?: string; output?: string };
+      // eslint-disable-next-line no-console
+      console.log(`[opencues] ✏︎ span-as-unit fill: "${b.blankName ?? '?'}" — editing inside it wipes the whole span`);
+      return;
+    }
+    if (type === 'blank.span-wiped' && body) {
+      const b = body as { reason?: string; wipedCharCount?: number };
+      // eslint-disable-next-line no-console
+      console.log(`[opencues] ⌫ span-as-unit wiped (${b.wipedCharCount ?? '?'} chars, reason: ${b.reason ?? '?'})`);
+      return;
+    }
   });
 
   return bootResult;

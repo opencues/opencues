@@ -47,5 +47,6 @@ export function createBlanks(options?: {
     finnhubApiKey: options?.finnhubApiKey,
     customTickers: options?.customTickers,
     opencuesMdIO,
+    hostName: 'chrome',
   }) as Map<string, BrowserBlank>;
 }

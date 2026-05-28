@@ -548,6 +548,51 @@ export interface FluidBlankSourceConfig {
    * spam. Leave undefined to suppress.
    */
   logInfo?: (msg: string) => void;
+  /**
+   * When set, runtime failures (LLM error, 401, network, malformed JSON,
+   * no-span / no-answer) emit a substitute CueResult instead of returning
+   * empty. The function takes a structured reason + the raw error and
+   * returns the in-buffer string the user sees. Empty return suppresses
+   * the substitute (silent failure preserved). Recommended for hosts
+   * without a separate error surface (chrome) — native hosts (CC/OC) can
+   * keep silent + use the statusline instead.
+   */
+  formatErrorAsSubstitute?: (reason: FluidBlankErrorReason, err?: Error) => string;
+}
+
+/** Classified failure reasons for FluidBlank — limited to USER-ACTIONABLE
+ *  cases. LLM-internal issues (no-span, no-answer, malformed JSON) stay
+ *  silent so users aren't bothered by transient model misbehaviour they
+ *  can't do anything about. */
+export type FluidBlankErrorReason =
+  | 'invalid-api-key'   // 401 / 403 from the provider — user needs to fix the key
+  | 'network'           // fetch failed, timeout, DNS — user can check connection
+  | 'rate-limit'        // 429 — user can wait or upgrade tier
+  | 'endpoint-not-found' // 404 — endpoint misconfigured, user needs to check provider URL
+  | 'bad-request';       // 400 — model name typo, malformed request, mismatched provider/model
+
+/** Inspect a thrown error from the HTTP layer and decide whether it's
+ *  user-actionable (returns a reason) or internal (returns null, no
+ *  substitute emitted). Matches against HTTP-status patterns the chrome
+ *  fetch-http-adapter throws ("HTTP 401 …", "HTTP 404 …", etc.) and
+ *  common network-error shapes. */
+function classifyHttpError(err: Error): FluidBlankErrorReason | null {
+  const msg = err.message ?? '';
+  if (/\b40[13]\b/.test(msg)) return 'invalid-api-key';
+  if (/\b429\b/.test(msg)) return 'rate-limit';
+  if (/\b404\b/.test(msg)) return 'endpoint-not-found';
+  // 400 — bad request. Most commonly: wrong model name for the chosen
+  // provider, malformed body, or mismatched provider/model combo
+  // (e.g. `openai/gpt-oss-120b` sent to Cerebras). User-actionable.
+  if (/\b400\b/.test(msg)) return 'bad-request';
+  // Network-shape patterns: fetch threw before a response landed
+  // (DNS, refused, timeout). chrome's fetch throws "Failed to fetch",
+  // node-fetch throws "fetch failed" / ECONNREFUSED / ETIMEDOUT.
+  if (
+    /Failed to fetch|fetch failed|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|ECONNRESET|timeout/i.test(msg)
+  ) return 'network';
+  // Anything else (5xx, malformed response, etc.) — silent.
+  return null;
 }
 
 export class FluidBlankSource implements CueSource {
@@ -568,6 +613,7 @@ export class FluidBlankSource implements CueSource {
   private emit: (event: FluidBlankEvent) => void;
   private log: (msg: string) => void;
   private logInfo: (msg: string) => void;
+  private formatErrorAsSubstitute: ((reason: FluidBlankErrorReason, err?: Error) => string) | undefined;
 
   constructor(config: FluidBlankSourceConfig) {
     this.httpAdapter = config.httpAdapter;
@@ -582,6 +628,32 @@ export class FluidBlankSource implements CueSource {
     this.emit = config.onEvent ?? (() => { /* default: silent */ });
     this.log = config.log ?? (() => { /* default: silent */ });
     this.logInfo = config.logInfo ?? this.log;
+    this.formatErrorAsSubstitute = config.formatErrorAsSubstitute;
+  }
+
+  /** Build a substitute CueResult that puts the formatted error string
+   *  into the buffer at the `_` position. Returns null if the host
+   *  didn't supply a formatter OR if the formatter returned empty
+   *  (silent-failure opt-out). */
+  private buildErrorSubstitute(
+    blankIdx: number,
+    reason: FluidBlankErrorReason,
+    err?: Error,
+  ): CueResult | null {
+    if (!this.formatErrorAsSubstitute) return null;
+    const text = this.formatErrorAsSubstitute(reason, err);
+    if (!text || text.length === 0) return null;
+    return {
+      wordIndex: blankIdx,
+      word: '_',
+      // alternatives[0] = '_' so cycling back dismisses the message.
+      // alternatives[1] = the formatted error text.
+      alternatives: ['_', text],
+      source: this.id,
+      priority: this.priority,
+      cueTip: 'FluidBlank failed — message describes the cause',
+      metadata: { fluidBlankErrorReason: reason },
+    };
   }
 
   supports(context: CueContext): boolean {
@@ -696,10 +768,12 @@ export class FluidBlankSource implements CueSource {
       const { span, answer } = useJson ? parseFusedJson(fusedOut) : parseFused(fusedOut);
       this.emit({ type: 'pass-completed', pass: 'FUSED', latencyMs: Date.now() - fusedStart, span: span ?? '', answer: answer ?? '' });
       if (!span) {
+        // LLM internal — silent. Retry on next text-change.
         this.emit({ type: 'bailed', reason: 'FUSED-no-span', latencyMs: Date.now() - startTime });
         return { results: [], timing: Date.now() - startTime, model: this.model };
       }
       if (!answer) {
+        // LLM internal — silent. Retry on next text-change.
         this.emit({ type: 'bailed', reason: 'FUSED-no-answer', latencyMs: Date.now() - startTime });
         return { results: [], timing: Date.now() - startTime, model: this.model };
       }
@@ -768,9 +842,17 @@ export class FluidBlankSource implements CueSource {
       return { results: [result], timing: Date.now() - startTime, model: this.model };
     } catch (error) {
       this.emit({ type: 'bailed', reason: 'llm-error', latencyMs: Date.now() - startTime });
+      const err = error instanceof Error ? error : new Error(String(error));
+      const reason = classifyHttpError(err);
+      // Only USER-ACTIONABLE failures get an in-buffer substitute.
+      // Generic / transient LLM hiccups stay silent — retry on next change.
+      const blankIdx = context.words.indexOf('_');
+      const sub = reason !== null && blankIdx >= 0
+        ? this.buildErrorSubstitute(blankIdx, reason, err)
+        : null;
       return {
-        results: [],
-        error: error instanceof Error ? error.message : String(error),
+        results: sub ? [sub] : [],
+        error: err.message,
         timing: Date.now() - startTime,
       };
     }
