@@ -747,20 +747,6 @@ export class Resolver {
     });
 
     const wordSpans = splitWords(text);
-    // CJK diagnostic: splitWords is whitespace-based (/\S+/g), so CJK
-    // text without spaces collapses into 1–2 giant tokens even when
-    // the visible character count is large. DynDef placement, blank
-    // detection, cycling, and word-nav all key off these spans, so the
-    // drift surfaces as misaligned highlights or no-op cycles. Logs
-    // whenever the buffer contains CJK so we get a smoking gun next
-    // time someone reports "indexes feel off in Japanese".
-    if (/[\u3000-\u9fff\uff00-\uffef\u3040-\u309f\u30a0-\u30ff]/.test(text)) {
-      this.adapter.log(
-        'debug',
-        `Resolver.resolveAndApply: CJK buffer — textLen=${text.length} wordCount=${wordSpans.length} ` +
-        `boundaries=${JSON.stringify(wordSpans.slice(0, 6).map(w => ({ i: w.index, s: w.start, e: w.end, w: w.word.slice(0, 12) })))}`
-      );
-    }
     // Skip words we've already resolved. Empty strings get filtered out
     // by RoutedWordSourceGroup + every other CueSource — no LLM call.
     // Rules:
