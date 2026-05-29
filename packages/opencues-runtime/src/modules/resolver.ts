@@ -767,7 +767,19 @@ export class Resolver {
     const span = this.spanFillState?.current;
     const cleanWords = wordSpans.map((w, i) => {
       const cleaned = w.word.replace(/[\u200B\u200C]/g, '');
-      if (cleaned === '_') return cleaned;
+      // Blanks normally always re-resolve — context may have changed —
+      // BUT if the `_` is inside an existing DynDef's span the answer
+      // is already cached (typical case: user cycled the def back to
+      // currentIndex=0 to view the original query, then nudged the
+      // buffer with a space or extra char). Re-resolving here would
+      // burn another LLM round-trip for a cache hit. Cycling forward
+      // (Ctrl+Alt+Up) recovers the existing answer; explicit edits
+      // that materially change the trigger prune the DynDef via
+      // pruneStale, after which the `_` falls through to a real resolve.
+      if (cleaned === '_') {
+        if (this.dynDefs.findSpanContaining(i)) return '';
+        return cleaned;
+      }
       if (span && i >= span.index && i < span.index + span.spanLength) return '';
       if (this.dynDefs.findSpanContaining(i)) return '';
       const existing = this.dynDefs.get(i);
