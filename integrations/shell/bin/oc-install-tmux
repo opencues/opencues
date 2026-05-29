@@ -45,9 +45,13 @@ if [ ${#missing[@]} -gt 0 ]; then
   echo "  Arch:           sudo pacman -S --needed libevent ncurses bison gcc make pkgconf" >&2
   echo "  macOS:          brew install libevent ncurses bison pkg-config" >&2
   echo "" >&2
-  echo "These are libraries needed only to BUILD tmux — your system" >&2
+  echo "These are libraries needed only to BUILD a private tmux — your system" >&2
   echo "tmux (if any) is left untouched. After installing the deps," >&2
   echo "re-run: $0" >&2
+  echo "" >&2
+  echo "Tip (macOS): if you already have tmux via brew (brew install tmux)," >&2
+  echo "skip the build and point oc-shell at it directly:" >&2
+  echo "  OPENCUES_TMUX=\$(which tmux) oc-shell" >&2
   exit 1
 fi
 

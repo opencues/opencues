@@ -46,13 +46,16 @@ if [ ! -f "$CONF" ]; then
 fi
 
 if [ ! -x "$OC_TMUX" ]; then
-  echo "shell: vendored tmux not found at $OC_TMUX" >&2
+  echo "shell: tmux not found (looked for vendored copy at $OC_TMUX)" >&2
   echo "" >&2
-  echo "Build it (one-time, ~30s):" >&2
-  echo "  $HERE/oc-install-tmux" >&2
+  echo "Option 1 — install tmux, then build a private copy for oc-shell (recommended):" >&2
+  echo "  macOS:         brew install tmux && $HERE/oc-install-tmux" >&2
+  echo "  Debian/Ubuntu: sudo apt install tmux && $HERE/oc-install-tmux" >&2
+  echo "  Fedora:        sudo dnf install tmux && $HERE/oc-install-tmux" >&2
+  echo "  Arch:          sudo pacman -S tmux && $HERE/oc-install-tmux" >&2
   echo "" >&2
-  echo "Or point at an existing >=3.2 binary:" >&2
-  echo "  OPENCUES_TMUX=/path/to/tmux shell" >&2
+  echo "Option 2 — point oc-shell at your existing >=3.2 tmux:" >&2
+  echo "  OPENCUES_TMUX=\$(which tmux) oc-shell" >&2
   exit 1
 fi
 

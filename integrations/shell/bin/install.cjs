@@ -54,6 +54,21 @@ function doInstall() {
     if (!args.dryRun) process.exit(127);
   }
 
+  const vendoredTmux = path.join(require('os').homedir(), '.opencues', 'vendor', 'tmux', 'bin', 'tmux');
+  const hasTmux =
+    fs.existsSync(vendoredTmux) ||
+    spawnSync('which', ['tmux'], { stdio: ['ignore', 'pipe', 'ignore'] }).status === 0;
+  if (!hasTmux) {
+    console.error('\nNOTE: tmux is not installed. oc-shell requires tmux >= 3.2.');
+    console.error('  macOS:         brew install tmux');
+    console.error('  Debian/Ubuntu: sudo apt install tmux');
+    console.error('  Fedora:        sudo dnf install tmux');
+    console.error('  Arch:          sudo pacman -S tmux');
+    console.error('After installing, run oc-install-tmux to build a private copy for oc-shell,');
+    console.error('or set OPENCUES_TMUX=/path/to/tmux to use your system tmux directly.');
+    console.error('');
+  }
+
   if (args.dryRun) {
     console.log('\n[dry-run] Would build @opencues/{core,runtime}.');
     console.log('[dry-run] Would run `bun install` in:');
