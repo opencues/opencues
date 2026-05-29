@@ -20,6 +20,7 @@ import {
   updateRuntimeApiKeys,
   updateRuntimeLlmConfig,
   notifyBufferReplacedExternally,
+  notifyExternalReplaceUndo,
 } from './opencues-bootstrap';
 import { clearStatusbar } from './runtime-statusbar';
 import { deriveOpenCuesColours } from './derive-colours';
@@ -256,12 +257,14 @@ async function init(): Promise<void> {
   document.addEventListener('beforeinput', (e) => {
     if (!e.isTrusted) return;
     const t = (e as InputEvent).inputType;
-    if (
-      t === 'historyUndo' ||
-      t === 'historyRedo' ||
-      t === 'insertFromPaste' ||
-      t === 'insertCompositionText'
-    ) {
+    // Undo/redo additionally open a brief window during which input
+    // events get reclassified to 'runtime' — a restored `_` from a
+    // Ctrl+Z must not re-trigger blank fill. Paste and IME commit are
+    // intentional user edits; they stay 'user' and go through the
+    // trust gate normally.
+    if (t === 'historyUndo' || t === 'historyRedo') {
+      notifyExternalReplaceUndo();
+    } else if (t === 'insertFromPaste' || t === 'insertCompositionText') {
       notifyBufferReplacedExternally();
     }
   }, true);
@@ -286,7 +289,7 @@ async function init(): Promise<void> {
     const k = e.key.toLowerCase();
     // ctrl+z = undo; ctrl+y or ctrl+shift+z = redo (cross-platform).
     if (k === 'z' || k === 'y') {
-      notifyBufferReplacedExternally();
+      notifyExternalReplaceUndo();
     }
   }, true);
 

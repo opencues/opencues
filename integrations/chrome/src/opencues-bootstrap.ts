@@ -293,6 +293,34 @@ export function notifyBufferReplacedExternally(): void {
   bootResult.resetBufferState();
 }
 
+// Tracks an undo/redo edit window. When set, the next input event(s) within
+// EXTERNAL_REPLACE_WINDOW_MS are reclassified to source='runtime' so the
+// resolver and BlankFill skip them — restored `_` characters from a Ctrl+Z
+// must not fire the blank pipeline (the user didn't TYPE them; they came
+// back via history). Trust-gate baseline updates via the isRuntimeWrite
+// path so subsequent real user `_` typing is still gated correctly.
+//
+// Distinct from paste/IME (which stay source='user' — those ARE user
+// intent). Set by notifyExternalReplaceUndo, consumed in
+// notifyOpenCuesTextChange.
+const EXTERNAL_REPLACE_WINDOW_MS = 250;
+let _externalReplaceUntil = 0;
+
+/** Stronger sibling of notifyBufferReplacedExternally — wired to
+ *  historyUndo/historyRedo (beforeinput) and Ctrl+Z/Ctrl+Y keydown.
+ *  Resets per-buffer state AND opens a brief window during which input
+ *  events get reclassified to 'runtime' so a restored `_` does not
+ *  re-trigger blank fill. Also wipes pending trust-gate credits — any
+ *  credit the user earned with the original `_` keypress was already
+ *  consumed by the substitution they just undid; carrying it forward
+ *  would let the restored `_` fund itself. */
+export function notifyExternalReplaceUndo(): void {
+  if (!bootResult) return;
+  bootResult.resetBufferState();
+  trustGate.resetCredits();
+  _externalReplaceUntil = Date.now() + EXTERNAL_REPLACE_WINDOW_MS;
+}
+
 /** Real-time API-key update — called by content.ts when chrome.storage
  *  reports a host-push or popup-save changed the LLM key bag. The
  *  runtime's BootResult exposes `updateApiKeys` which mutates the
@@ -2430,7 +2458,16 @@ export function notifyOpenCuesTextChange(
   cursorOffset: number,
   source: 'user' | 'runtime' = 'user',
 ): void {
-  const actualSource = sourceReclassifier.reclassify(text, source);
+  let actualSource = sourceReclassifier.reclassify(text, source);
+
+  // Undo/redo window — if a recent historyUndo/historyRedo opened the
+  // window, reclassify to 'runtime' so the resolver and BlankFill skip
+  // (a restored `_` must not fire the blank pipeline). Trust gate then
+  // takes the runtime-write path and updates baseline without consuming
+  // credits.
+  if (actualSource === 'user' && Date.now() < _externalReplaceUntil) {
+    actualSource = 'runtime';
+  }
 
   // Trust gate. Only applies to user-classified changes; runtime
   // writes bypass + reset the baseline. See trust-gate.ts.
