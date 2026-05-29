@@ -14,5 +14,7 @@
 # match it (it's not at integrations/<name>/).
 
 packages:
-  - "packages/*"
+  - "packages/opencues-cli"
+  - "packages/opencues-core"
+  - "packages/opencues-runtime"
   - "integrations/*"

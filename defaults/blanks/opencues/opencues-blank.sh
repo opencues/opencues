@@ -6,6 +6,13 @@
 #   get <settingName>          → "<currentValue>"
 #   set <settingName> <value>  → (writes to OPENCUES.md frontmatter, no output)
 
+# BSD sed (macOS) requires '' after -i; GNU sed (Linux/WSL) does not.
+if sed --version 2>/dev/null | grep -q GNU; then
+  sedi() { sed -i "$@"; }
+else
+  sedi() { sed -i '' "$@"; }
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Settings live in the user-level OPENCUES.md (markdown with frontmatter,
 # system-wide, runtime-owned schema). This blank always lives at
@@ -23,7 +30,7 @@ get_value() {
 
 set_value() {
   if grep -qE "^${1}:" "$OPENCUES_MD" 2>/dev/null; then
-    sed -i "s|^${1}:.*|${1}: ${2}|" "$OPENCUES_MD"
+    sedi "s|^${1}:.*|${1}: ${2}|" "$OPENCUES_MD"
   fi
 }
 

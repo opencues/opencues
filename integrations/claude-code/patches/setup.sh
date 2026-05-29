@@ -37,6 +37,14 @@
 
 set -e
 
+# BSD sed (macOS) requires an explicit extension arg after -i (even empty '');
+# GNU sed (Linux/WSL) does not accept it as a separate argument.
+if sed --version 2>/dev/null | grep -q GNU; then
+  sedi() { sed -i "$@"; }
+else
+  sedi() { sed -i '' "$@"; }
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 CUES_CORE="$REPO_ROOT/packages/opencues-core"
@@ -216,8 +224,8 @@ cp "$SCRIPT_DIR/opencuesRuntime.ts" "$TWEAKCC_DIR/src/patches/"
 # 4a. Hide tweakcc's launch banner + patches-applied indicator. We
 # don't add new MiscConfig fields — the v2 patch is unconditional and
 # doesn't need its own settings.
-sed -i 's/showTweakccVersion: true/showTweakccVersion: false/g' "$TWEAKCC_DIR/src/defaultSettings.ts"
-sed -i 's/showPatchesApplied: true/showPatchesApplied: false/g' "$TWEAKCC_DIR/src/defaultSettings.ts"
+sedi 's/showTweakccVersion: true/showTweakccVersion: false/g' "$TWEAKCC_DIR/src/defaultSettings.ts"
+sedi 's/showPatchesApplied: true/showPatchesApplied: false/g' "$TWEAKCC_DIR/src/defaultSettings.ts"
 echo "Flipped showTweakccVersion + showPatchesApplied to false"
 
 # 4b. Patch patches/index.ts — import the v2 writer + wire it
@@ -336,8 +344,8 @@ chmod +x "$OC_INSTALL_ROOT/statusline.sh"
 SETTINGS_JSON="$HOME/.claude/settings.json"
 if [ -f "$SETTINGS_JSON" ] && grep -qE "highlight-statusline\.sh|\.claude/opencues/statusline\.sh" "$SETTINGS_JSON" 2>/dev/null; then
   cp "$SETTINGS_JSON" "$SETTINGS_JSON.bak.cues-statusline"
-  sed -i "s|$HOME/.claude/highlight-statusline.sh|$OC_INSTALL_ROOT/statusline.sh|g" "$SETTINGS_JSON"
-  sed -i "s|$HOME/.claude/opencues/statusline.sh|$OC_INSTALL_ROOT/statusline.sh|g" "$SETTINGS_JSON"
+  sedi "s|$HOME/.claude/highlight-statusline.sh|$OC_INSTALL_ROOT/statusline.sh|g" "$SETTINGS_JSON"
+  sedi "s|$HOME/.claude/opencues/statusline.sh|$OC_INSTALL_ROOT/statusline.sh|g" "$SETTINGS_JSON"
   echo "Updated statusLine.command in $SETTINGS_JSON"
 fi
 end_step
