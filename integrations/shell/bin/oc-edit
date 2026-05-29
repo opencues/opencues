@@ -18,9 +18,20 @@
 
 set -u
 
-# Resolve symlinks so a ~/.local/bin/oc-edit symlink still finds
-# ../src/app.tsx relative to the REAL script location.
-SCRIPT="$(readlink -f -- "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+# Portable symlink resolver — `readlink -f` is GNU-only (macOS readlink
+# lacks -f). Walk the chain by hand using only POSIX flags so a
+# ~/.local/bin/oc-edit symlink still finds ../src/app.tsx relative to
+# the REAL script location.
+resolve_link() {
+  local p="$1" dir
+  while [ -L "$p" ]; do
+    dir="$(cd "$(dirname "$p")" && pwd)"
+    p="$(readlink "$p")"
+    case "$p" in /*) ;; *) p="$dir/$p" ;; esac
+  done
+  printf '%s' "$p"
+}
+SCRIPT="$(resolve_link "${BASH_SOURCE[0]}")"
 HERE="$(cd -- "$(dirname -- "$SCRIPT")" && pwd)"
 TERM_DIR="$(cd -- "$HERE/.." && pwd)"
 DIST_APP="$TERM_DIR/dist/app.js"

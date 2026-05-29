@@ -101,6 +101,11 @@ module.exports = function install(argv, ctx) {
   const isChromeHost = target === 'chrome-host';
   const action = isChromeHost ? 'install-host' : 'install';
 
+  // Preflight: surface platform-specific gotchas BEFORE the install runs
+  // so the user isn't surprised by them after the install reports success.
+  // Today this is macOS-only — see preflightChecks for the rationale.
+  preflightChecks(folders);
+
   // Run seed-configs FIRST so the user-level ~/.cues/ tree is current
   // before any host installer runs. seed-configs handles all shared writes:
   // first-time copy, library-script sync, OPENCUES.md self-heal, .cs compile.
@@ -134,6 +139,98 @@ module.exports = function install(argv, ctx) {
   }
   process.exit(exitCode);
 };
+
+// Platform preflight — warns about runtime gotchas that the install
+// itself won't fail on but the user WILL hit the first time they use
+// the affected feature. Today macOS-only, because the two install-time
+// blockers a friend hit (sed -i BSD/GNU + pnpm workspace dup) are
+// fixed but the runtime path still has bash-4-only and /proc-only
+// patches that would silently degrade voice-mode / oc-popup / CC
+// statusline on a Mac. Warning here keeps the discovery path: "tried
+// to install" → "told about gotchas up front" instead of "install
+// looked fine" → "feature mysteriously broken weeks later".
+function preflightChecks(folders) {
+  const os = require('node:os');
+  if (os.platform() !== 'darwin') return;
+
+  const { execSync } = require('node:child_process');
+  const warnings = [];
+
+  // bash 4+ — voice-mode (defaults/scripts/speak.sh used to need it;
+  // now portable) and oc-popup (mapfile, now portable) and the shell
+  // helpers (resolve_link uses POSIX-only constructs). Still warn:
+  // user-installed shell snippets, future scripts, and any third-party
+  // blank script the user writes will likely assume bash 4 too.
+  try {
+    const out = execSync('/bin/bash --version 2>/dev/null', { encoding: 'utf8' });
+    const m = out.match(/version (\d+)\./);
+    const major = m ? parseInt(m[1], 10) : 0;
+    if (major > 0 && major < 4) {
+      warnings.push({
+        item: `/bin/bash is ${major}.x`,
+        impact: 'voice-mode, oc-popup, and custom user-blank scripts that use bash 4+ features (mapfile, declare -A, ${var^^}) will fail',
+        fix: 'brew install bash  (then optionally `sudo sh -c "echo /opt/homebrew/bin/bash >> /etc/shells; chsh -s /opt/homebrew/bin/bash"`)',
+      });
+    }
+  } catch { /* /bin/bash unavailable — unlikely on macOS; silent skip */ }
+
+  // tmux 3.2+ — only matters if installing the shell integration.
+  // `oc-shell` already checks at launch but warning up front saves
+  // the user a `brew install tmux` after the install reports success.
+  if (folders.includes('shell')) {
+    try {
+      const out = execSync('tmux -V 2>/dev/null', { encoding: 'utf8' });
+      const m = out.match(/tmux (\d+)\.(\d+)/);
+      if (m) {
+        const maj = parseInt(m[1], 10), min = parseInt(m[2], 10);
+        if (maj < 3 || (maj === 3 && min < 2)) {
+          warnings.push({
+            item: `tmux ${maj}.${min}`,
+            impact: 'oc-shell needs tmux 3.2+ for display-popup',
+            fix: 'brew install tmux',
+          });
+        }
+      } else {
+        warnings.push({
+          item: 'tmux not found on PATH',
+          impact: 'oc-shell needs tmux 3.2+',
+          fix: 'brew install tmux',
+        });
+      }
+    } catch {
+      warnings.push({
+        item: 'tmux not found on PATH',
+        impact: 'oc-shell needs tmux 3.2+',
+        fix: 'brew install tmux',
+      });
+    }
+  }
+
+  // bun — needed by shell (oc-edit, oc-editd) and opencode.
+  if (folders.includes('shell') || folders.includes('opencode')) {
+    try {
+      execSync('bun --version 2>/dev/null', { encoding: 'utf8' });
+    } catch {
+      warnings.push({
+        item: 'bun not found on PATH',
+        impact: `${folders.includes('shell') ? 'oc-edit / oc-editd' : 'opencode'} won't launch`,
+        fix: 'curl -fsSL https://bun.sh/install | bash',
+      });
+    }
+  }
+
+  if (warnings.length === 0) return;
+
+  console.log('');
+  console.log(`${tag('info')} macOS preflight — runtime notes for this install:`);
+  for (const w of warnings) {
+    console.log(`  ${bold('•')} ${w.item}`);
+    console.log(`    ${dim('impact:')} ${w.impact}`);
+    console.log(`    ${dim('fix:')}    ${w.fix}`);
+  }
+  console.log(`  ${dim('(install will continue — these affect runtime features, not the install itself)')}`);
+  console.log('');
+}
 
 function runHostInstaller(host, action, extraArgs, ctx) {
   const installer = path.join(ctx.REPO_ROOT, 'integrations', host, 'bin', 'install.cjs');

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Cues status line script for Claude Code
 # Shows: user@host:dir | highlighted word info + tip
 #
@@ -10,15 +10,31 @@
 #   - cmdline starting with `claude` (the native install or `claude-cues` shim)
 #   - cmdline containing `claude-code/cli.js` (when invoked as `node .../cli.js`,
 #     e.g. the local install used during integration development)
+#
+# Linux exposes per-PID cmdline + parent at /proc/$PID/{cmdline,stat}.
+# macOS has no /proc — fall back to `ps -o command=` for cmdline and
+# `ps -o ppid=` for the parent walk. Both branches yield the same
+# semantics; the Linux path is kept first because it's ~5× faster
+# (zero exec per probe) and statusline runs on every CC redraw.
 CLAUDE_PID=""
 WALK_PID=$$
+HAS_PROC=0
+[ -d /proc ] && HAS_PROC=1
 while [ "$WALK_PID" != "1" ] && [ -n "$WALK_PID" ]; do
-  CMDLINE=$(cat /proc/$WALK_PID/cmdline 2>/dev/null | tr '\0' ' ')
+  if [ "$HAS_PROC" = "1" ]; then
+    CMDLINE=$(cat /proc/$WALK_PID/cmdline 2>/dev/null | tr '\0' ' ')
+  else
+    CMDLINE=$(ps -o command= -p "$WALK_PID" 2>/dev/null)
+  fi
   if echo "$CMDLINE" | grep -qE '^claude|claude-code/cli\.js'; then
     CLAUDE_PID=$WALK_PID
     break
   fi
-  WALK_PID=$(awk '{print $4}' /proc/$WALK_PID/stat 2>/dev/null)
+  if [ "$HAS_PROC" = "1" ]; then
+    WALK_PID=$(awk '{print $4}' /proc/$WALK_PID/stat 2>/dev/null)
+  else
+    WALK_PID=$(ps -o ppid= -p "$WALK_PID" 2>/dev/null | tr -d ' ')
+  fi
 done
 
 # Canonical per-host status path — same filename every host adapter writes

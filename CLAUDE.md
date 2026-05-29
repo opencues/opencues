@@ -405,6 +405,43 @@ the table of regressions and which scenario test now pins each one.
 
 ---
 
+## Cross-platform shell scripts — bash 3.2 / BSD compat
+
+Any shell script that ships in this repo (`defaults/`, `integrations/*/bin/`,
+`integrations/*/patches/*.sh`) MUST be portable across:
+
+- **macOS** — `/bin/bash` is 3.2 (no bash 4 features), coreutils are BSD (different flags), no `/proc`.
+- **Linux / WSL** — GNU bash 4+, GNU coreutils, has `/proc`.
+
+A friend trying to install on a Mac (May 2026) hit two install-time blockers
+(`sed -i ''` BSD form + pnpm workspace dup) plus four runtime degradations
+(bash 3.2 `mapfile`, `[[ =~ ]]`, `(( ))`; `/proc` reads; `stat -c`; `readlink -f`).
+Install path is now hardened; runtime path was patched script-by-script.
+Future scripts that re-introduce non-portable constructs silently regress macOS users.
+
+**Defaults when writing a new `.sh`:**
+
+- Shebang: `#!/usr/bin/env bash` (not `#!/bin/bash` — picks up macOS 3.2 only)
+- No bash 4+ features: avoid `mapfile`, `declare -A`, `${var^^}` / `,,`, namerefs (`declare -n`)
+- Prefer POSIX over bashisms when equivalent: `grep -qE` over `[[ =~ ]]`, `[ -gt ]` / `[ -lt ]` over `(( ))`
+- `sed -i` → reuse the `sedi()` wrapper (see `integrations/claude-code/patches/setup.sh:42` or `defaults/blanks/opencues/opencues-blank.sh:10`)
+- `stat -c %s` → `stat_size()` (`stat -c` GNU / `stat -f` BSD — pattern in `integrations/shell/bin/oc-popup:43`)
+- `readlink -f X` → `resolve_link()` portable walker (pattern in `integrations/shell/bin/{oc-shell,oc-edit,oc-editd,oc-popup}`)
+- `/proc/$PID/...` → gate with `[ -d /proc ]`; fall back to `ps -o ppid= -p $PID` / `ps -o command= -p $PID` (pattern in `integrations/claude-code/patches/highlight-statusline.sh`)
+- `xargs -r` → use `[ -s file ] && xargs < file` or `find ... -print0 | xargs -0`
+- `find -printf` → use `stat` / `awk` equivalent
+
+**When a feature needs a new external tool** (tmux, bun, etc.): extend
+`preflightChecks` in `packages/opencues-cli/src/commands/install.cjs` so
+macOS users learn about the dependency at `opencues install` time, not
+the first time the feature fires. The preflight is darwin-only (Linux
+distros vary too much) and prints `impact:` / `fix:` per item without
+blocking the install.
+
+Bash-syntax-check every shell-script edit before handing back: `bash -n <file>`.
+
+---
+
 ## Environment
 
 - **API Key**: `GROQ_API_KEY` for Groq (default provider)
