@@ -18,7 +18,42 @@ const style = require('../lib/style.cjs');
 // styling so all CLI surfaces look like one product. The style module
 // degrades to plain text when stdout isn't a TTY (NO_COLOR / pipes),
 // so this is safe to always call.
-function printLaunchBanner(ctx, host, rows) {
+//
+// Banner is rendered into the **alt-screen buffer** (\x1b[?1049h) by
+// default so it never touches the user's main-screen scrollback.
+// clearScreenForHandoff exits alt-screen (\x1b[?1049l), restoring the
+// main screen to its pre-banner state right before the host TUI takes
+// over. The host then inherits a clean main screen and an empty
+// scrollback above it — same pattern vim / less / htop / tmux use for
+// transient full-screen UI that the user shouldn't be able to scroll
+// back to.
+//
+// Pass `{ persistent: true }` for paths that do NOT spawn a host
+// (chrome, which prints reload-the-extension instructions the user
+// needs to act on AFTER `opencues run chrome` exits). Persistent
+// banners go straight to the main screen — clearScreenForHandoff is a
+// no-op for them because no spawn handoff is happening.
+// Tracks whether we've entered alt-screen so the process-exit safety
+// net below knows to restore main. Without this, a throw between
+// printLaunchBanner and clearScreenForHandoff (or a future spawn path
+// that forgets to call the latter) would leave the user's terminal
+// stuck on an empty alt-screen — `reset` or terminal-close to recover.
+let _enteredAltScreen = false;
+process.on('exit', () => {
+  if (_enteredAltScreen) {
+    try { process.stdout.write('\x1b[?1049l'); } catch { /* terminal gone */ }
+  }
+});
+
+function printLaunchBanner(ctx, host, rows, opts = {}) {
+  const persistent = opts.persistent === true;
+  if (!persistent && process.stdout.isTTY && process.env.OPENCUES_NO_CLEAR !== '1') {
+    // Enter alt-screen and home the cursor in one write so the very
+    // first thing the user sees in the alt buffer is our banner — no
+    // flash of leftover content from before we started.
+    process.stdout.write('\x1b[?1049h\x1b[H');
+    _enteredAltScreen = true;
+  }
   console.log(style.banner({
     version: style.cliVersion(ctx),
     tagline: `launching ${host}`,
@@ -43,6 +78,40 @@ function shortPrefix(host) {
   return ({ 'claude-code': 'cc', 'opencode': 'oc', 'gemini-cli': 'gemini', 'shell': 'term' })[host] ?? host;
 }
 
+// Exit the alt-screen buffer we entered in printLaunchBanner, right
+// before spawning the host. The terminal restores the main-screen
+// contents that were there before \x1b[?1049h — so the host TUI
+// inherits a clean main screen and the user's original prompt is
+// what's underneath it.
+//
+// Timing: called *before* spawnSync, not after. The visibility window
+// for the banner is whatever natural latency exists between the alt-
+// screen enter (in printLaunchBanner) and the host's first render —
+// in practice that's tree-render time + sync printing + the spawn
+// syscall + the host's own boot (e.g. ~1s for opencode's bun startup,
+// shorter for claude). The brief banner flash is enough for "yes, we
+// started launching the right thing"; the host TUI is what the user
+// reads from there on.
+//
+// Why this ordering instead of "exit alt-screen *after* spawn":
+//   - It avoids nested alt-screen state. Hosts that call \x1b[?1049h
+//     themselves (tmux, vim-style) inside our alt-screen would stack
+//     two layers; older terminals don't handle that cleanly.
+//   - It keeps the host's render in the normal main-screen + its-own-
+//     alt-screen pattern it was designed for — no surprise that it's
+//     rendering inside someone else's transient buffer.
+//
+// Gated on isTTY so piped runs (`opencues run cc | tee log`) don't
+// have escape sequences smuggled into the captured output.
+// OPENCUES_NO_CLEAR=1 opts out (keeps banner inline on main screen —
+// useful for debugging or if the user's terminal mis-handles ?1049).
+function clearScreenForHandoff() {
+  if (process.env.OPENCUES_NO_CLEAR === '1') return;
+  if (!process.stdout.isTTY) return;
+  process.stdout.write('\x1b[?1049l');
+  _enteredAltScreen = false;
+}
+
 // Host name resolution — sourced from @opencues/core.
 function loadHostResolver(ctx) {
   try {
@@ -63,7 +132,17 @@ function loadHostResolver(ctx) {
 }
 
 module.exports = function run(argv, ctx) {
-  if (argv.includes('--help') || argv.includes('-h')) return printHelp();
+  // --help / -h is intercepted ONLY when it appears before the host
+  // name (or there is no host). Once a host has been named, every
+  // remaining flag — including --help, --version, --continue, --resume,
+  // --print, --model, etc. — is forwarded to the spawned binary so
+  // `opencues run claude-code --help` shows claude's help, not ours.
+  // This is the curl/git/sudo pattern: the wrapper owns its own flags
+  // until a positional appears, then it's a pure passthrough.
+  const firstPosIdx = argv.findIndex(a => !a.startsWith('-'));
+  const helpIdx = argv.findIndex(a => a === '--help' || a === '-h');
+  if (helpIdx >= 0 && (firstPosIdx < 0 || helpIdx < firstPosIdx)) return printHelp();
+
   const { HOSTS, resolve } = loadHostResolver(ctx);
 
   let target = null;
@@ -106,6 +185,7 @@ function runCC(passthrough, ctx) {
       ['host',    'claude-code  ' + style.dim('(--bin override)')],
       ['command', `${explicit} ${passthrough.join(' ')}`.trim()],
     ]);
+    clearScreenForHandoff();
     exitFromSpawn(spawnSync(explicit, passthrough, { stdio: 'inherit' }), explicit);
     return;
   }
@@ -119,6 +199,7 @@ function runCC(passthrough, ctx) {
       ['command', `claude.exe ${passthrough.join(' ')}`.trim()],
       ['fork',    style.fileLink(native150, native150)],
     ]);
+    clearScreenForHandoff();
     const result = spawnSync(native150, passthrough, { stdio: 'inherit' });
     exitFromSpawn(result, native150);
     return;
@@ -133,6 +214,7 @@ function runCC(passthrough, ctx) {
       ['command', `node cli.js ${passthrough.join(' ')}`.trim()],
       ['fork',    style.fileLink(patchedCli, patchedCli)],
     ]);
+    clearScreenForHandoff();
     const result = spawnSync('node', [patchedCli, ...passthrough], { stdio: 'inherit' });
     exitFromSpawn(result, patchedCli);
     return;
@@ -151,6 +233,7 @@ function runCC(passthrough, ctx) {
         ['host',    'claude-code  ' + style.yellow('(unpatched fallback)')],
         ['command', `${resolved} ${passthrough.join(' ')}`.trim()],
       ]);
+      clearScreenForHandoff();
       exitFromSpawn(spawnSync(resolved, passthrough, { stdio: 'inherit' }), resolved);
       return;
     }
@@ -210,6 +293,7 @@ function runOC(passthrough, fullArgv, ctx) {
     ['command', `bun run dev ${[...projectArgs, ...cleaned].join(' ')}`.trim()],
     ['cwd',     style.fileLink(userCwd, userCwd)],
   ]);
+  clearScreenForHandoff();
   // --silent suppresses bun's `$ bun run --cwd ... src/index.ts` echo
   // — we already printed the command above; the echo is just noise.
   const result = spawnSync('bun', ['run', '--silent', 'dev', ...projectArgs, ...cleaned], { cwd: fork, stdio: 'inherit', env });
@@ -263,6 +347,7 @@ function runGemini(passthrough, fullArgv, ctx) {
     ['fork',    style.fileLink(fork, fork)],
     ['cwd',     style.fileLink(process.cwd(), process.cwd())],
   ]);
+  clearScreenForHandoff();
   const result = spawnSync('node', [builtCli, ...cleaned], { stdio: 'inherit' });
   exitFromSpawn(result, 'node');
 }
@@ -285,6 +370,7 @@ function runShell(passthrough, ctx) {
     ['command', `oc-shell ${passthrough.join(' ')}`.trim()],
     ['bin', style.fileLink(ocShell, ocShell)],
   ]);
+  clearScreenForHandoff();
   // oc-shell handles its own prereq checks (vendored tmux at
   // ~/.opencues/vendor/tmux/, bun availability) and prints actionable
   // errors if anything's missing. Pass OPENCUES_USER_CWD so the
@@ -296,9 +382,14 @@ function runShell(passthrough, ctx) {
 }
 
 function runChrome(ctx) {
+  // Chrome's `run` doesn't spawn anything — we print instructions for
+  // the user to load the unpacked extension in their browser. Use the
+  // persistent banner mode so the banner + instructions stay visible
+  // on the main screen after `opencues run chrome` exits (alt-screen
+  // would yank them the moment we return to the shell).
   printLaunchBanner(ctx, 'chrome', [
     ['host', 'chrome  ' + style.dim('(extensions are loaded by chrome itself)')],
-  ]);
+  ], { persistent: true });
   console.log(style.bold('Load the extension in chrome://extensions:'));
   console.log('');
   console.log(`  ${style.dim('1.')} Open ${style.cyan('chrome://extensions')}`);
@@ -310,9 +401,14 @@ function runChrome(ctx) {
 }
 
 function printHelp() {
-  console.log('opencues run <host> [options]');
+  console.log('opencues run <host> [opencues-flags] [-- host-flags]');
   console.log('');
-  console.log('Launch the patched host integration.');
+  console.log('Launch the patched host integration. Any flag that follows the host');
+  console.log('name (and isn\'t one of the opencues-owned flags below) is forwarded');
+  console.log('to the spawned binary — so `opencues run claude-code --continue` runs');
+  console.log('`claude --continue`, `opencues run claude-code --help` shows claude\'s');
+  console.log('help (not ours), etc. To see opencues\'s help, put --help before the');
+  console.log('host name: `opencues run --help`.');
   console.log('');
   console.log('Hosts:');
   console.log('  claude-code   exec the patched CC binary (claude-cues or claude)');
@@ -321,13 +417,19 @@ function printHelp() {
   console.log('  gemini-cli    node packages/cli/dist/index.js inside the fork (default: $HOME/gemini-cli-cues)');
   console.log('  shell         integrations/shell/bin/oc-shell  (wraps $SHELL in tmux; Alt+Shift+↑ for the input box)');
   console.log('');
-  console.log('Flags:');
+  console.log('Opencues-owned flags (consumed by `opencues run`, NOT forwarded):');
   console.log('  --bin <name>      (claude-code only) override which binary to exec');
   console.log('  --target <path>   (opencode/gemini-cli) fork dir (defaults: $HOME/opencode-cues, $HOME/gemini-cli-cues)');
   console.log('');
   console.log('Examples:');
   console.log('  opencues run claude-code');
+  console.log('  opencues run claude-code --continue              # forwarded to claude');
+  console.log('  opencues run claude-code --resume <id> --print   # forwarded to claude');
   console.log('  opencues run claude --bin claude-cues');
   console.log('  opencues run opencode');
-  console.log('  opencues run opencode --target /custom/fork');
+  console.log('  opencues run opencode --target /custom/fork      # --target is ours');
+  console.log('  opencues run gemini-cli --model gemini-2.5-pro   # forwarded to gemini');
+  console.log('');
+  console.log('Env vars:');
+  console.log('  OPENCUES_NO_CLEAR=1   keep the launch banner visible (skip screen clear)');
 }
