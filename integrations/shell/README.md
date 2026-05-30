@@ -23,16 +23,11 @@ follow [Quickstart → Bootstrap the `opencues` CLI](../../README.md#2-bootstrap
 in the root README — that covers Node, pnpm, the clone, and the
 shell alias.
 
-This integration also needs:
-
-- **Bun** ≥ 1.0 — the input box is a Bun + OpenTUI app:
-  ```bash
-  curl -fsSL https://bun.sh/install | bash
-  ```
-- A C toolchain for building tmux 3.4 from source. The first run of
-  `oc-install-tmux` (below) probes for what's missing; install the
-  package manager equivalents of `gcc`, `make`, `pkg-config`,
-  `bison`, `libevent-dev`, `libncurses-dev`.
+This integration needs **Bun** (input box is a Bun + OpenTUI app) and
+**tmux 3.2+** (slide-pane uses `display-popup`). You don't have to
+install them yourself — the installer offers contained copies (`Y` to
+accept). If you'd rather use system versions: `brew install tmux` /
+`apt install tmux` / `curl -fsSL https://bun.sh/install | bash`.
 
 ### Install command
 
@@ -40,10 +35,15 @@ This integration also needs:
 opencues install shell
 ```
 
-That builds `@opencues/{core,runtime}`, stages them into the
-integration's local `node_modules`, installs OpenTUI via Bun, and
-(optionally) symlinks the user-facing commands into a `PATH`
-location.
+Walks this sequence:
+
+1. **Preflight** — detects missing Bun, tmux, system audio/brightness/TTS tools; offers to install in one batched prompt.
+2. **Builds** `@opencues/{core,runtime}` + stages into the integration's local `node_modules`.
+3. **`bun install`** for OpenTUI deps.
+4. **Auto-runs `oc-install-tmux`** if no usable tmux is on PATH — tries a prebuilt tarball first, falls back to a from-source build (needs gcc + libevent-dev + libncurses-dev + bison + pkg-config; the preflight surfaces this).
+5. Symlinks the user-facing commands into `--link` if you passed one.
+
+The auto-run means **you don't have to remember a second `oc-install-tmux` command** any more — fresh installs are one command, done.
 
 ### Putting commands on your `PATH`
 
@@ -65,13 +65,17 @@ own `PATH` to reach them, so they never appear on yours.
 
 ### First-time setup
 
-```bash
-# 1. Build the vendored tmux 3.4 (~30 seconds, one-time)
-oc-install-tmux
+Mostly handled by `opencues install shell` — `oc-install-tmux` runs
+automatically when needed. One optional manual step adds shell
+integration:
 
-# 2. (Optional) capture-current-line shell integration
-oc-install-shell-integration
+```bash
+oc-install-shell-integration   # optional — enables capture-current-line on Alt+Shift+↑
 ```
+
+That writes `~/.opencues/shell-integration.{bash,zsh,fish}` + appends
+one marked source line to your rc. Both are removed by
+`opencues uninstall shell`.
 
 ---
 

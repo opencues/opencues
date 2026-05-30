@@ -9,6 +9,13 @@
   "bin": {
     "opencues-gemini-cli": "./bin/install.cjs"
   },
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ],
   "scripts": {
     "dev-install": "node bin/install.cjs install",
     "dev-uninstall": "node bin/install.cjs uninstall",

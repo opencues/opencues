@@ -159,7 +159,16 @@ function doInstall() {
     process.exit(result.status || 1);
   }
   // Success — setup.sh already printed "Done. Restart Claude Code to
-  // activate." We stay silent.
+  // activate." Write the version marker AFTER setup.sh succeeded so
+  // doctor + `opencues update` can detect bundled-runtime drift.
+  // Marker write failure is non-fatal (we lose drift detection on
+  // this host but the install itself worked).
+  if (installRoot) {
+    try {
+      const { writeMarker } = require(path.join(REPO_ROOT, 'packages/opencues-cli/src/lib/version-markers.cjs'));
+      writeMarker('claude-code', installRoot, { pkg, REPO_ROOT });
+    } catch { /* non-fatal */ }
+  }
 }
 
 // --- UNINSTALL ------------------------------------------------------------

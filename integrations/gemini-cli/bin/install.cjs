@@ -107,6 +107,11 @@ function doInstall() {
     console.error(`\nInstall failed. To roll back: ${launchCommand()} uninstall gemini-cli`);
     process.exit(result.status || 1);
   }
+  // Version marker for drift detection — non-fatal on write failure.
+  try {
+    const { writeMarker } = require(path.join(REPO_ROOT, 'packages/opencues-cli/src/lib/version-markers.cjs'));
+    writeMarker('gemini-cli', path.join(fork, '.opencues'), { pkg, REPO_ROOT });
+  } catch { /* non-fatal */ }
 }
 
 // --- UNINSTALL ------------------------------------------------------------

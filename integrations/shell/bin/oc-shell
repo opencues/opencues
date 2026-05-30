@@ -39,6 +39,11 @@ resolve_link() {
 SCRIPT="$(resolve_link "${BASH_SOURCE[0]}")"
 HERE="$(cd -- "$(dirname -- "$SCRIPT")" && pwd)"
 CONF="$HERE/../conf/oc-shell.tmux.conf"
+
+# Vendored bun wins over system bun if present (parity with oc-edit /
+# oc-editd, which inherit this PATH when oc-shell spawns them).
+[ -d "$HOME/.opencues/vendor/bun/bin" ] && PATH="$HOME/.opencues/vendor/bun/bin:$PATH"
+
 VENDOR_TMUX="$HOME/.opencues/vendor/tmux/bin/tmux"
 # Resolution order: explicit override → vendored build → system tmux
 if [ -n "${OPENCUES_TMUX:-}" ]; then

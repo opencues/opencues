@@ -34,6 +34,11 @@ resolve_link() {
 SCRIPT="$(resolve_link "${BASH_SOURCE[0]}")"
 HERE="$(cd -- "$(dirname -- "$SCRIPT")" && pwd)"
 TERM_DIR="$(cd -- "$HERE/.." && pwd)"
+
+# Pick up our vendored bun if the user installed via the contained
+# install path (~/.opencues/vendor/bun/bin/bun). System bun still
+# wins if both exist — system PATH is appended after.
+[ -d "$HOME/.opencues/vendor/bun/bin" ] && PATH="$HOME/.opencues/vendor/bun/bin:$PATH"
 DIST_APP="$TERM_DIR/dist/app.js"
 SRC_APP="$TERM_DIR/src/app.tsx"
 

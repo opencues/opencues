@@ -164,12 +164,28 @@ module.exports = function run(argv, ctx) {
     process.exit(2);
   }
 
+  // Cached-only update notice — never blocks the launch. If the cache
+  // is empty or stale, the notice waits for the next `install`/`doctor`
+  // to refresh it. The point on `run` is just to surface what we
+  // already know, not to introduce latency before the integration spawns.
+  printCachedUpdateNotice(ctx);
+
   if (folder === 'claude-code') return runCC(passthrough, ctx);
   if (folder === 'opencode')    return runOC(passthrough, argv, ctx);
   if (folder === 'chrome') return runChrome(ctx);
   if (folder === 'gemini-cli') return runGemini(passthrough, argv, ctx);
   if (folder === 'shell') return runShell(passthrough, ctx);
 };
+
+function printCachedUpdateNotice(ctx) {
+  try {
+    const { getCachedNotice, formatNotice } = require('../lib/update-check.cjs');
+    const { tag, cliVersion } = require('../lib/style.cjs');
+    const notice = getCachedNotice(cliVersion(ctx));
+    const msg = formatNotice(notice);
+    if (msg) console.log(`${tag('info')} ${msg}`);
+  } catch { /* fail-silent */ }
+}
 
 function runCC(passthrough, ctx) {
   // Preferred binary: ~/claude-code-cues-150/.../bin/claude.exe — the

@@ -43,7 +43,7 @@ function loadHostResolver(ctx) {
   }
 }
 
-module.exports = function install(argv, ctx) {
+module.exports = async function install(argv, ctx) {
   // `opencues install skill <name> [--project] [--target <path>] [--force] [--link]`
   // is a separate code path from the host installers — skills aren't a
   // host integration, they're prompt-text files copied into Claude
@@ -69,12 +69,16 @@ module.exports = function install(argv, ctx) {
   const { HOSTS, resolve } = loadHostResolver(ctx);
 
   // Parse: first non-flag positional is the host. `--all` is a special
-  // pseudo-host. Everything else flows through to the per-host installer.
+  // pseudo-host. Top-level prompt flags (`--yes` / `--no-prompts`) are
+  // consumed here (they drive the preflight auto-install offer) — NOT
+  // forwarded to per-host installers, which would warn about them.
+  // Everything else flows through to the per-host installer.
   let target = null;
   const passthrough = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--all') { target = '--all'; continue; }
+    if (a === '--yes' || a === '-y' || a === '--no-prompts') { continue; }
     if (!a.startsWith('-') && !target) { target = a; continue; }
     passthrough.push(a);
   }
@@ -137,47 +141,85 @@ module.exports = function install(argv, ctx) {
       console.log(`${tag('ok')} ${folder}`);
     }
   }
+
+  // Surface `opencues doctor` so the user discovers it AT install time,
+  // not the first time a feature mysteriously no-ops. Doctor covers the
+  // gaps preflight can't (per-host runtime artefact checks, scalar/file
+  // alignment, native-messaging host parity, sandbox confiner state).
+  //
+  // The update-check is run AFTER the install completes so a missing or
+  // slow registry round-trip never blocks the real work. Failure-silent.
+  if (exitCode === 0) {
+    console.log('');
+    console.log(`${tag('info')} verify your environment supports every feature: ${bold('opencues doctor')}`);
+    await maybePrintUpdateNotice(ctx);
+  }
+
   process.exit(exitCode);
 };
 
+// Non-blocking, fail-silent. The 2s timeout inside checkForUpdate caps
+// the wait — and we run AFTER the install's primary output so a slow
+// registry doesn't gum up the user's terminal.
+async function maybePrintUpdateNotice(ctx) {
+  try {
+    const { checkForUpdate, formatNotice } = require('../lib/update-check.cjs');
+    const notice = await checkForUpdate(cliVersion(ctx));
+    const msg = formatNotice(notice);
+    if (msg) console.log(`${tag('info')} ${msg}`);
+  } catch { /* never let the notifier break a successful install */ }
+}
+
 // Platform preflight — warns about runtime gotchas that the install
 // itself won't fail on but the user WILL hit the first time they use
-// the affected feature. Today macOS-only, because the two install-time
-// blockers a friend hit (sed -i BSD/GNU + pnpm workspace dup) are
-// fixed but the runtime path still has bash-4-only and /proc-only
-// patches that would silently degrade voice-mode / oc-popup / CC
-// statusline on a Mac. Warning here keeps the discovery path: "tried
-// to install" → "told about gotchas up front" instead of "install
-// looked fine" → "feature mysteriously broken weeks later".
+// the affected feature.
+//
+// Pre-launch declarative gates (package.json `"os"` + `"engines"`) catch
+// the wrong-OS / wrong-Node case before this runs. This layer covers the
+// SOFTER gotchas:
+//   - the right OS but a missing optional tool (volume backend, TTS
+//     engine, sandbox confiner, bash version)
+//   - the right OS but a sub-version that breaks a feature (tmux <3.2
+//     on macOS / Linux)
+//
+// Warning here keeps the discovery path: "tried to install" → "told
+// about gotchas up front" instead of "install looked fine" → "feature
+// mysteriously broken weeks later".
 function preflightChecks(folders) {
   const os = require('node:os');
-  if (os.platform() !== 'darwin') return;
+  const platform = os.platform();
+  if (platform !== 'darwin' && platform !== 'linux') return;
 
   const { execSync } = require('node:child_process');
+  const fs = require('node:fs');
   const warnings = [];
 
-  // bash 4+ — voice-mode (defaults/scripts/speak.sh used to need it;
-  // now portable) and oc-popup (mapfile, now portable) and the shell
-  // helpers (resolve_link uses POSIX-only constructs). Still warn:
-  // user-installed shell snippets, future scripts, and any third-party
-  // blank script the user writes will likely assume bash 4 too.
-  try {
-    const out = execSync('/bin/bash --version 2>/dev/null', { encoding: 'utf8' });
-    const m = out.match(/version (\d+)\./);
-    const major = m ? parseInt(m[1], 10) : 0;
-    if (major > 0 && major < 4) {
-      warnings.push({
-        item: `/bin/bash is ${major}.x`,
-        impact: 'voice-mode, oc-popup, and custom user-blank scripts that use bash 4+ features (mapfile, declare -A, ${var^^}) will fail',
-        fix: 'brew install bash  (then optionally `sudo sh -c "echo /opt/homebrew/bin/bash >> /etc/shells; chsh -s /opt/homebrew/bin/bash"`)',
-      });
-    }
-  } catch { /* /bin/bash unavailable — unlikely on macOS; silent skip */ }
+  // ── macOS: bash 4+ ────────────────────────────────────────────────
+  // voice-mode (defaults/scripts/speak.sh used to need it; now portable)
+  // and oc-popup (mapfile, now portable) and the shell helpers
+  // (resolve_link uses POSIX-only constructs) all work on bash 3.2. But:
+  // user shell snippets, future scripts, and third-party blank scripts
+  // will likely assume bash 4 — warn upfront so the user knows.
+  if (platform === 'darwin') {
+    try {
+      const out = execSync('/bin/bash --version 2>/dev/null', { encoding: 'utf8' });
+      const m = out.match(/version (\d+)\./);
+      const major = m ? parseInt(m[1], 10) : 0;
+      if (major > 0 && major < 4) {
+        warnings.push({
+          item: `/bin/bash is ${major}.x`,
+          impact: 'third-party blank scripts that use bash 4+ features (mapfile, declare -A, ${var^^}) will fail',
+          fix: 'brew install bash  (then optionally `sudo sh -c "echo /opt/homebrew/bin/bash >> /etc/shells; chsh -s /opt/homebrew/bin/bash"`)',
+        });
+      }
+    } catch { /* /bin/bash unavailable — unlikely on macOS; silent skip */ }
+  }
 
-  // tmux 3.2+ — only matters if installing the shell integration.
-  // `oc-shell` already checks at launch but warning up front saves
-  // the user a `brew install tmux` after the install reports success.
+  // ── tmux 3.2+ (shell integration only) ────────────────────────────
   if (folders.includes('shell')) {
+    let tmuxInstall = platform === 'darwin' ? 'brew install tmux'
+      : 'apt install tmux  (or `dnf install tmux` / `pacman -S tmux`)';
+    const tmuxAuto = { apt: 'tmux', dnf: 'tmux', pacman: 'tmux', brew: 'tmux' };
     try {
       const out = execSync('tmux -V 2>/dev/null', { encoding: 'utf8' });
       const m = out.match(/tmux (\d+)\.(\d+)/);
@@ -187,42 +229,133 @@ function preflightChecks(folders) {
           warnings.push({
             item: `tmux ${maj}.${min}`,
             impact: 'oc-shell needs tmux 3.2+ for display-popup',
-            fix: 'brew install tmux',
+            fix: tmuxInstall,
+            autoInstall: tmuxAuto,
           });
         }
       } else {
         warnings.push({
           item: 'tmux not found on PATH',
           impact: 'oc-shell needs tmux 3.2+',
-          fix: 'brew install tmux',
+          fix: tmuxInstall,
+          autoInstall: tmuxAuto,
         });
       }
     } catch {
       warnings.push({
         item: 'tmux not found on PATH',
         impact: 'oc-shell needs tmux 3.2+',
-        fix: 'brew install tmux',
+        fix: tmuxInstall,
+        autoInstall: tmuxAuto,
       });
     }
   }
 
-  // bun — needed by shell (oc-edit, oc-editd) and opencode.
+  // ── bun — needed by shell (oc-edit, oc-editd) and opencode ────────
+  // We can install bun ourselves into ~/.opencues/vendor/bun/ (the
+  // contained model) — bun's official installer honours BUN_INSTALL.
+  // Uninstall then removes the dir cleanly. The host installers also
+  // get PATH-prepended with that bin dir below, so a fresh-install
+  // user who says "Y" to bun can immediately proceed without
+  // re-sourcing rc.
+  let needVendorBun = false;
   if (folders.includes('shell') || folders.includes('opencode')) {
-    try {
-      execSync('bun --version 2>/dev/null', { encoding: 'utf8' });
-    } catch {
+    const vendoredBun = path.join(os.homedir(), '.opencues', 'vendor', 'bun', 'bin', 'bun');
+    const haveSystem = (() => { try { execSync('bun --version 2>/dev/null', { encoding: 'utf8' }); return true; } catch { return false; } })();
+    const haveVendored = fs.existsSync(vendoredBun);
+    if (!haveSystem && !haveVendored) {
       warnings.push({
         item: 'bun not found on PATH',
         impact: `${folders.includes('shell') ? 'oc-edit / oc-editd' : 'opencode'} won't launch`,
-        fix: 'curl -fsSL https://bun.sh/install | bash',
+        fix: 'we can install bun to ~/.opencues/vendor/bun/ (contained — `opencues uninstall` removes it cleanly)',
+        // Marker for the post-warning offer below — not a regular pkg-mgr install.
+        vendorBun: true,
+      });
+      needVendorBun = true;
+    }
+  }
+
+  // ── Linux: sandbox confiner (bubblewrap) ──────────────────────────
+  // Scripted blanks with `sandbox: strict` fall back to unwrapped exec
+  // if bwrap is missing — features still work, sandbox doesn't.
+  if (platform === 'linux' && !onPath('bwrap')) {
+    warnings.push({
+      item: 'bubblewrap (bwrap) not on PATH',
+      impact: 'scripted blanks declared `sandbox: strict` will run unwrapped (no OS confinement)',
+      fix: 'apt install bubblewrap  (or `dnf install bubblewrap` / `pacman -S bubblewrap`)',
+      autoInstall: { apt: 'bubblewrap', dnf: 'bubblewrap', pacman: 'bubblewrap' },
+    });
+  }
+
+  // ── TTS engine (voice-mode feature) ───────────────────────────────
+  // macOS has built-in `say`; Linux needs espeak-ng or spd-say. Without
+  // either, voice-mode is a silent no-op.
+  if (platform === 'linux') {
+    if (!onPath('espeak-ng') && !onPath('spd-say')) {
+      warnings.push({
+        item: 'no Linux TTS engine on PATH',
+        impact: 'voice-mode is a silent no-op (no espeak-ng / spd-say found)',
+        fix: 'apt install espeak-ng  (or `dnf install espeak-ng` / `pacman -S espeak-ng`)',
+        autoInstall: { apt: 'espeak-ng', dnf: 'espeak-ng', pacman: 'espeak-ng' },
+      });
+    }
+  }
+
+  // ── volume blank backend ──────────────────────────────────────────
+  // macOS osascript is built-in; Linux needs wpctl / pactl / amixer.
+  // Without any, `volume _` reads + cycles to 50 silently.
+  if (platform === 'linux') {
+    if (!onPath('wpctl') && !onPath('pactl') && !onPath('amixer')) {
+      warnings.push({
+        item: 'no Linux audio control tool on PATH',
+        impact: 'the `volume _` blank can read/cycle the displayed value but won\'t change system volume',
+        fix: 'apt install pulseaudio-utils  (or wireplumber / alsa-utils — distro-dependent)',
+      });
+    }
+  }
+
+  // ── brightness blank backend ──────────────────────────────────────
+  // Linux laptop backlight via brightnessctl. Optional — most users
+  // never trigger `brightness _`. Linux-only check.
+  if (platform === 'linux' && !onPath('brightnessctl') && !onPath('ddcutil')) {
+    warnings.push({
+      item: 'no Linux brightness tool on PATH',
+      impact: 'the `brightness _` blank reads/cycles displayed value but won\'t change screen brightness',
+      fix: 'apt install brightnessctl  (laptops) or `apt install ddcutil` (external DDC/CI monitors)',
+      autoInstall: { apt: 'brightnessctl', dnf: 'brightnessctl', pacman: 'brightnessctl' },
+    });
+  }
+  if (platform === 'darwin' && !onPath('brightness')) {
+    warnings.push({
+      item: 'macOS `brightness` cli not on PATH',
+      impact: 'the `brightness _` blank reads/cycles displayed value but won\'t change screen brightness',
+      fix: 'brew install brightness',
+      autoInstall: { brew: 'brightness' },
+    });
+  }
+
+  // ── WSL: warn about Chrome target path when installing chrome ─────
+  if (folders.includes('chrome')) {
+    const isWsl = (() => {
+      if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) return true;
+      try {
+        return /microsoft|wsl/i.test(fs.readFileSync('/proc/sys/kernel/osrelease', 'utf8'));
+      } catch { return false; }
+    })();
+    if (isWsl) {
+      warnings.push({
+        item: 'WSL detected — Chrome is a Windows app',
+        impact: 'loading the extension from the WSL filesystem (\\\\wsl.localhost\\…) is slow + flaky',
+        fix: 're-run with: opencues install chrome -- --wsl  (mirrors dist/ to /mnt/c/Users/<you>/AppData/Local/opencues-chrome/)',
       });
     }
   }
 
   if (warnings.length === 0) return;
 
+  const label = platform === 'darwin' ? 'macOS' : 'Linux';
   console.log('');
-  console.log(`${tag('info')} macOS preflight — runtime notes for this install:`);
+  console.log(`${tag('info')} ${label} preflight — runtime notes for this install:`);
   for (const w of warnings) {
     console.log(`  ${bold('•')} ${w.item}`);
     console.log(`    ${dim('impact:')} ${w.impact}`);
@@ -230,6 +363,168 @@ function preflightChecks(folders) {
   }
   console.log(`  ${dim('(install will continue — these affect runtime features, not the install itself)')}`);
   console.log('');
+
+  // ── Interactive install offers ──────────────────────────────────
+  // Two passes:
+  //   1. System-package auto-install (sudo apt / brew / etc.) — one
+  //      command, one sudo prompt, batched across every dep with an
+  //      autoInstall map.
+  //   2. Vendored-bun install (curl|bash with BUN_INSTALL) — separate
+  //      because it's a custom installer, not a package manager.
+  //
+  // Both gated on TTY + `--yes` / `--no-prompts`. Why TTY-gate: in CI
+  // / scripts, blocking on prompts is a footgun — skip the offer
+  // there. Users running interactively get the full benefit;
+  // automation paths stay unblocked.
+  //
+  // What's NEVER auto-offered: audio tools (pactl/wpctl/amixer) —
+  // multiple competing audio stacks, user picks. They appear in the
+  // warning table only.
+  offerAutoInstall(warnings, platform);
+  if (needVendorBun) offerVendorBun();
+}
+
+function offerVendorBun() {
+  const argv = process.argv.slice(2);
+  if (argv.includes('--no-prompts')) return;
+  const autoYes = argv.includes('--yes') || argv.includes('-y');
+
+  const HOME = require('os').homedir();
+  const bunDir = path.join(HOME, '.opencues', 'vendor', 'bun');
+
+  console.log(`${tag('info')} ${bold('Install bun?')} (target: ~/.opencues/vendor/bun/ — \`opencues uninstall\` removes it)`);
+  console.log(`    ${dim('downloads:')} curl -fsSL https://bun.sh/install | BUN_INSTALL=~/.opencues/vendor/bun bash`);
+  console.log('');
+
+  let answer = 'y';
+  if (!autoYes) {
+    if (!process.stdin.isTTY) {
+      console.log(`    ${dim('(non-interactive shell — skipping. Re-run with `--yes` to install.)')}`);
+      console.log('');
+      return;
+    }
+    answer = (promptSync('  Install bun now? [Y/n] ', 'y') || 'y').trim().toLowerCase();
+  }
+
+  if (answer === '' || answer === 'y' || answer === 'yes') {
+    fs.mkdirSync(bunDir, { recursive: true });
+    const cmd = `curl -fsSL https://bun.sh/install | BUN_INSTALL="${bunDir}" bash`;
+    console.log(`  ${dim('running:')} ${cmd}`);
+    const result = spawnSync('sh', ['-c', cmd], { stdio: 'inherit' });
+    if (result.status === 0 && fs.existsSync(path.join(bunDir, 'bin', 'bun'))) {
+      console.log(`${tag('ok')} bun installed to ~/.opencues/vendor/bun/bin/bun`);
+      console.log(`  ${dim('the rest of this install + every future `opencues …` invocation will find it automatically')}`);
+    } else {
+      console.log(`${tag('warn')} bun install failed (exit ${result.status}). Continuing — see https://bun.sh/install for manual steps.`);
+    }
+    console.log('');
+  } else {
+    console.log(`  ${dim('skipped — install manually any time:')} curl -fsSL https://bun.sh/install | bash`);
+    console.log('');
+  }
+}
+
+function offerAutoInstall(warnings, platform) {
+  // Respect non-interactive markers.
+  const argv = process.argv.slice(2);
+  if (argv.includes('--no-prompts')) return;
+  const autoYes = argv.includes('--yes') || argv.includes('-y');
+
+  // Filter to installables that have a key for the detected package manager.
+  const pm = detectPackageManager(platform);
+  if (!pm) return;
+  const installable = warnings.filter(w => w.autoInstall && w.autoInstall[pm.name]);
+  if (installable.length === 0) return;
+  const packages = Array.from(new Set(installable.map(w => w.autoInstall[pm.name])));
+
+  const cmd = pm.name === 'brew'
+    ? `brew install ${packages.join(' ')}`
+    : `sudo ${pm.cmd} ${packages.join(' ')}`;
+
+  console.log(`${tag('info')} ${bold('I can install these for you')} (one command, one sudo prompt):`);
+  console.log(`    ${cmd}`);
+  console.log('');
+
+  let answer = 'y';
+  if (!autoYes) {
+    if (!process.stdin.isTTY) {
+      console.log(`    ${dim('(non-interactive shell — skipping. Re-run with `--yes` to install.)')}`);
+      console.log('');
+      return;
+    }
+    answer = (promptSync('  Install now? [Y/n/details] ', 'y') || 'y').trim().toLowerCase();
+    while (answer === 'd' || answer === 'details') {
+      for (const w of installable) {
+        console.log(`    ${bold('•')} ${w.item}`);
+        console.log(`      ${dim('package:')} ${w.autoInstall[pm.name]}`);
+        console.log(`      ${dim('impact: ')} ${w.impact}`);
+      }
+      answer = (promptSync('  Install now? [Y/n] ', 'y') || 'y').trim().toLowerCase();
+    }
+  }
+
+  if (answer === '' || answer === 'y' || answer === 'yes') {
+    console.log(`  ${dim('running:')} ${cmd}`);
+    const result = spawnSync('sh', ['-c', cmd], { stdio: 'inherit' });
+    if (result.status === 0) {
+      console.log(`${tag('ok')} system packages installed`);
+    } else {
+      console.log(`${tag('warn')} package install failed (exit ${result.status}). Continuing — re-run manually: ${cmd}`);
+    }
+    console.log('');
+  } else {
+    console.log(`  ${dim('skipped — re-run manually any time:')} ${cmd}`);
+    console.log('');
+  }
+}
+
+// Detect which OS package manager is available. Returns { name, cmd }
+// where `name` is the key used in autoInstall maps and `cmd` is the
+// install verb. Order matters — brew before apt (so a Linuxbrew install
+// on Linux still picks apt for system tools, but macOS picks brew).
+function detectPackageManager(platform) {
+  if (platform === 'darwin') {
+    if (onPath('brew')) return { name: 'brew', cmd: 'brew install' };
+    return null;
+  }
+  if (onPath('apt-get')) return { name: 'apt', cmd: 'apt-get install -y' };
+  if (onPath('dnf')) return { name: 'dnf', cmd: 'dnf install -y' };
+  if (onPath('pacman')) return { name: 'pacman', cmd: 'pacman -S --noconfirm' };
+  return null;
+}
+
+// Minimal synchronous prompt. Returns the user's typed line (without
+// newline) or `defaultValue` if they hit Enter immediately. Used for
+// the auto-install offer — small enough not to warrant a dep.
+function promptSync(question, defaultValue) {
+  process.stdout.write(question);
+  try {
+    const fd = require('fs').openSync('/dev/tty', 'rs');
+    const buf = Buffer.alloc(1024);
+    let bytes = 0;
+    let total = 0;
+    while ((bytes = require('fs').readSync(fd, buf, total, 1, null)) > 0) {
+      if (buf[total] === 0x0a /* \n */) break;
+      total += bytes;
+      if (total >= buf.length) break;
+    }
+    require('fs').closeSync(fd);
+    const line = buf.slice(0, total).toString('utf8').trim();
+    return line.length === 0 ? defaultValue : line;
+  } catch {
+    return defaultValue;
+  }
+}
+
+// `command -v <name>` returns 0 when the tool is on PATH. Quietly.
+function onPath(name) {
+  try {
+    const { execSync } = require('node:child_process');
+    execSync(`command -v ${name} >/dev/null 2>&1`, { shell: '/bin/sh' });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function runHostInstaller(host, action, extraArgs, ctx) {
@@ -238,8 +533,29 @@ function runHostInstaller(host, action, extraArgs, ctx) {
     console.error(`opencues install: installer not found for "${host}" (expected ${installer})`);
     return 1;
   }
-  const result = spawnSync('node', [installer, action, ...extraArgs], { stdio: 'inherit' });
+  // PATH-prepend any vendored binaries we own (currently bun; tmux
+  // when the prebuilt-binary scaffold lands). This is what makes the
+  // "we just installed bun for you" path work without re-sourcing rc —
+  // the per-host installer's `which bun` check finds our bun
+  // immediately. Future vendored tools (tmux prebuild) plug in here.
+  const env = vendoredPathEnv(process.env);
+  const result = spawnSync('node', [installer, action, ...extraArgs], { stdio: 'inherit', env });
   return result.status ?? 1;
+}
+
+// Build an env where PATH has ~/.opencues/vendor/<tool>/bin/ prepended
+// for every vendored tool that exists on disk. Safe to call when none
+// exist — returns env unchanged.
+function vendoredPathEnv(env) {
+  const HOME = require('os').homedir();
+  const vendorRoot = path.join(HOME, '.opencues', 'vendor');
+  const extras = [];
+  for (const tool of ['bun', 'tmux']) {
+    const binDir = path.join(vendorRoot, tool, 'bin');
+    if (fs.existsSync(binDir)) extras.push(binDir);
+  }
+  if (extras.length === 0) return env;
+  return { ...env, PATH: extras.concat(env.PATH || '').join(path.delimiter) };
 }
 
 // `opencues install skill <name> [--project] [--target <path>] [--force] [--link]`

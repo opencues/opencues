@@ -44,6 +44,12 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Test (CLI unit + integration)
+        run: |
+          cd packages/opencues-cli
+          npm test
+          npm run test:integration
         env:
           # Tests should never need a real LLM key. If a unit test
           # requires one, that's the bug — file it instead of unsetting
@@ -54,3 +60,17 @@ jobs:
           OPENAI_API_KEY: ''
           ANTHROPIC_API_KEY: ''
           GEMINI_API_KEY: ''
+
+  shell-portability:
+    name: shell portability lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    # Catches the macOS/BSD regressions the May 2026 sweep fixed before
+    # they re-land. Rules live in CLAUDE.md § "Cross-platform shell
+    # scripts"; the lint enforces the hard bans (bash-4 features,
+    # GNU-only coreutils flags, ungated /proc reads, raw sed -i).
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run portability lint
+        run: bash scripts/lint-shell-portability.sh

@@ -438,7 +438,7 @@ the first time the feature fires. The preflight is darwin-only (Linux
 distros vary too much) and prints `impact:` / `fix:` per item without
 blocking the install.
 
-Bash-syntax-check every shell-script edit before handing back: `bash -n <file>`.
+Bash-syntax-check every shell-script edit before handing back: `bash -n <file>`. The repo-wide lint at `scripts/lint-shell-portability.sh` (wired into CI as the `shell-portability` job) covers all the hard bans automatically — run it locally before pushing if you touched any `.sh`.
 
 ---
 

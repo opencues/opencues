@@ -82,11 +82,13 @@ node --version    # v18 or higher
 pnpm --version    # 8 or higher
 ```
 
-Some integrations have extra one-line prereqs — they're listed in their
-own READMEs. Heads-up: `bun` for [`shell`](integrations/shell/README.md)
-and [`opencode`](integrations/opencode/README.md); `npm` (ships with
-Node) for [`gemini-cli`](integrations/gemini-cli/README.md). Install
-those *when you pick an integration*, not now.
+**That's it for prereqs.** Anything else an integration needs (bun for
+opencode/shell, tmux for shell, bubblewrap/espeak-ng/brightnessctl on
+Linux) the installer detects + offers to install for you with a single
+prompt — `[Y]es / [n]o / [d]etails`. Contained tools (bun, tmux) land
+in `~/.opencues/vendor/` so `opencues uninstall <host>` cleans them
+up; system packages prompt for sudo once and stay where your package
+manager put them. Pass `--no-prompts` to skip every offer (CI mode).
 
 ### 2. Get an LLM API key
 
@@ -161,9 +163,14 @@ Full doc: [`integrations/chrome/README.md`](integrations/chrome/README.md).
 
 | Integration | Install | Doc |
 |---|---|---|
-| OpenCode | `opencues install opencode` (needs `bun`) | [`integrations/opencode/README.md`](integrations/opencode/README.md) |
+| OpenCode | `opencues install opencode` (offers a contained bun install) | [`integrations/opencode/README.md`](integrations/opencode/README.md) |
 | Gemini CLI | `opencues install gemini-cli` | [`integrations/gemini-cli/README.md`](integrations/gemini-cli/README.md) |
-| Shell (standalone) | `opencues install shell` (needs `bun`) | [`integrations/shell/README.md`](integrations/shell/README.md) |
+| Shell (standalone) | `opencues install shell` (offers contained bun + tmux) | [`integrations/shell/README.md`](integrations/shell/README.md) |
+
+After install, run `opencues doctor` to verify everything's wired
+(bundled-runtime versions, feature backends per platform, install
+boundaries). And `opencues update` later checks npm + rebuilds every
+detected integration in one command.
 
 ### Try it out
 
@@ -231,14 +238,18 @@ For per-host installs, deeper troubleshooting, and uninstall: [`docs/install.md`
 
 ## Supported editors
 
-| Editor | Status | Install | Per-host docs |
-|--------|--------|---------|----------------|
-| **Claude Code** | Available | `opencues install claude-code` | [`integrations/claude-code/README.md`](integrations/claude-code/README.md) |
-| **OpenCode** | Available | `opencues install opencode` | [`integrations/opencode/README.md`](integrations/opencode/README.md) |
-| **Gemini CLI** | Beta | `opencues install gemini-cli` | [`integrations/gemini-cli/README.md`](integrations/gemini-cli/README.md) |
-| **Chrome** | Beta | `opencues install chrome` | [`integrations/chrome/README.md`](integrations/chrome/README.md) |
-| **Shell (`oc-shell`)** | Beta | `opencues install shell` | [`integrations/shell/README.md`](integrations/shell/README.md) |
-| **VS Code** | Planned | — | — |
+| Editor | Status | macOS | Linux | WSL | Windows native | Install |
+|--------|--------|:---:|:---:|:---:|:---:|---|
+| **Claude Code** | Available | ✓ | ✓ | ✓ | — | `opencues install claude-code` |
+| **OpenCode** | Available | ✓ | ✓ | ✓ | — | `opencues install opencode` |
+| **Gemini CLI** | Beta | ✓ | ✓ | ✓ | — | `opencues install gemini-cli` |
+| **Chrome** | Beta | ✓ | ✓ | ✓ (target Windows Chrome via `--wsl`) | — (build on WSL) | `opencues install chrome` |
+| **Shell (`oc-shell`)** | Beta | ✓ | ✓ | ✓ | — | `opencues install shell` |
+| **VS Code** | Planned | — | — | — | — | — |
+
+Per-host READMEs: [Claude Code](integrations/claude-code/README.md) · [OpenCode](integrations/opencode/README.md) · [Gemini CLI](integrations/gemini-cli/README.md) · [Chrome](integrations/chrome/README.md) · [Shell](integrations/shell/README.md).
+
+**Platform notes.** Native Windows isn't supported — the installers are bash + POSIX coreutils. Windows users run via WSL2 (Chrome integration deploys to the Windows side via `--wsl`). `package.json` carries `"os": ["darwin", "linux"]` so `npm install` refuses up front on `win32` instead of failing mid-install. Per-feature platform support (volume / brightness / TTS / sandbox) is tabled in [`docs/install.md`](docs/install.md#per-feature-platform-support).
 
 Each install pins a specific upstream version (e.g. Claude Code 2.1.110 or 2.1.150, OpenCode 1.14.17), clones it into its own dir (`~/claude-code-cues/`, `~/opencode-cues/`), and patches that copy. **Your native editor installs are never touched.** Uninstall is `opencues uninstall <host>`.
 

@@ -162,11 +162,16 @@ Idempotent — copies any file that doesn't already exist at the destination.
 ## Update workflow
 
 ```bash
-cd ~/opencues && git pull
-pnpm install
-opencues install gemini-cli       # rebuilds + redeploys + reapplies patches into fork
-opencues run gemini-cli           # restart
+opencues update                  # pull + rebuild + redeploy every host you have installed
+opencues update gemini-cli       # this integration only
+opencues update --check          # report what's available, no changes
+opencues run gemini-cli          # restart
 ```
+
+Update takes a lock at `~/.opencues/.update.lock` so two concurrent
+runs can't race, and warns about running Gemini-CLI sessions before
+rewriting their patched sources. Old sessions keep working until you
+restart them.
 
 `.md` config files (`cues.md`, `blanks.md`, `cues/*`, `blanks/*`) hot-reload within ~2s on the next keystroke. Set `OPENCUES_HOME` to point at a non-default config root if you keep your configs separately from the repo.
 

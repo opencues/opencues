@@ -23,7 +23,7 @@ function section(title, description) {
   };
 }
 
-module.exports = function doctor(argv, ctx) {
+module.exports = async function doctor(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
 
   const HOME = os.homedir();
@@ -58,6 +58,240 @@ module.exports = function doctor(argv, ctx) {
     } else {
       s.ok(`@opencues/runtime built`, true);
     }
+    s.render();
+  }
+
+  // ── Platform tooling ──────────────────────────────────────────────────
+  // Pre-install gates (package.json `"os"` + `"engines"`) catch the
+  // wrong-OS / wrong-Node case at `npm install` time. This section
+  // surfaces the SOFT runtime tooling so the user can see what `opencues
+  // install` preflight warned about earlier without re-running install.
+  {
+    const s = section('Platform tooling', 'developer tools + shells the installers/runtime touch');
+
+    // Node version (declared in package.json engines as >=18).
+    const nodeMajor = parseInt(process.versions.node.split('.')[0], 10);
+    s.ok(`node ${process.versions.node}`, nodeMajor >= 18);
+    if (nodeMajor < 18) {
+      findings.push({
+        sev: 'warn',
+        msg: `Node ${process.versions.node} — opencues requires >=18`,
+        fix: 'install Node 18+ via fnm / nvm / brew / apt',
+      });
+    }
+
+    // git — every fork-cloning installer needs it (CC, OC, gemini).
+    s.ok('git on PATH', !!findOnPath('git'));
+    if (!findOnPath('git')) {
+      findings.push({
+        sev: 'warn',
+        msg: 'git not on PATH — every fork-cloning installer (CC, OC, gemini) will fail',
+        fix: process.platform === 'darwin' ? 'xcode-select --install (or brew install git)' :
+             'apt install git  (or `dnf install git` / `pacman -S git`)',
+      });
+    }
+
+    // pnpm — required for the workspace install + many integration builds.
+    s.ok('pnpm on PATH', !!findOnPath('pnpm'));
+    if (!findOnPath('pnpm')) {
+      findings.push({
+        sev: 'info',
+        msg: 'pnpm not on PATH — required for workspace install + several integration builds',
+        fix: 'corepack enable pnpm  (Node 16+ ships it) — or `npm install -g pnpm`',
+      });
+    }
+
+    // bash version — bash 3.2 (macOS default) works for everything we
+    // ship; bash 4+ is strongly recommended on macOS for third-party
+    // blank scripts (mapfile, declare -A, ${var^^}).
+    try {
+      const { execSync } = require('child_process');
+      const out = execSync('/bin/bash --version 2>/dev/null', { encoding: 'utf8' });
+      const m = out.match(/version (\d+)\.(\d+)/);
+      if (m) {
+        const maj = parseInt(m[1], 10), min = parseInt(m[2], 10);
+        s.ok(`bash ${maj}.${min}`, maj >= 3 && (maj > 3 || min >= 2));
+        if (process.platform === 'darwin' && maj < 4) {
+          findings.push({
+            sev: 'info',
+            msg: `bash is ${maj}.x — third-party blank scripts that use bash 4+ (mapfile, declare -A, \${var^^}) will fail`,
+            fix: 'brew install bash',
+          });
+        }
+      }
+    } catch { /* /bin/bash unavailable — skip */ }
+
+    // tmux — only matters for the shell integration. Always-display so
+    // users planning to install shell see it early.
+    try {
+      const { execSync } = require('child_process');
+      const out = execSync('tmux -V 2>/dev/null', { encoding: 'utf8' });
+      const m = out.match(/tmux (\d+)\.(\d+)/);
+      if (m) {
+        const maj = parseInt(m[1], 10), min = parseInt(m[2], 10);
+        const ok = maj > 3 || (maj === 3 && min >= 2);
+        s.ok(`tmux ${maj}.${min} (shell integration)`, ok);
+        if (!ok) {
+          findings.push({
+            sev: 'info',
+            msg: `tmux ${maj}.${min} — shell integration needs 3.2+ for display-popup`,
+            fix: process.platform === 'darwin' ? 'brew install tmux' :
+                 'apt install tmux  (or `dnf install tmux` / `pacman -S tmux`)',
+          });
+        }
+      } else {
+        s.info('tmux on PATH (shell integration)', dim('(not found — needed for `opencues install shell`)'));
+      }
+    } catch {
+      s.info('tmux on PATH (shell integration)', dim('(not found — needed for `opencues install shell`)'));
+    }
+
+    // bun — needed by both shell (oc-edit) AND opencode. Listed here so
+    // it surfaces before the per-host section flags it again.
+    const bunFound = !!findOnPath('bun');
+    s.ok('bun on PATH (shell + opencode)', bunFound);
+    if (!bunFound) {
+      findings.push({
+        sev: 'info',
+        msg: 'bun not on PATH — opencode and oc-shell both need it',
+        fix: 'curl -fsSL https://bun.sh/install | bash',
+      });
+    }
+
+    s.render();
+  }
+
+  // ── Feature backends (OS tools per feature) ───────────────────────────
+  // Each row maps to a runtime feature that silently degrades (no-op,
+  // default value, exit 127) if its backend tool is absent.
+  //
+  // WSL parity rule: on WSL the colocated .exe (VolCtl, BrightCtl,
+  // SpeakCtl) is the PRIMARY backend the bash scripts try first — see
+  // defaults/blanks/{volume,brightness}/*-blank.sh and
+  // defaults/scripts/speak.sh. The Linux tools (pactl, brightnessctl,
+  // espeak-ng) are fallbacks only. So a WSL user with the .exe present
+  // is FULLY covered and doctor must NOT emit a "no Linux tool"
+  // finding for the same feature — that's misleading.
+  {
+    const s = section('Feature backends', 'OS tools per runtime feature — missing = silent degrade, not crash');
+
+    const wslEnv = !!process.env.WSL_DISTRO_NAME || (function () {
+      try { return fs.readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft'); }
+      catch { return false; }
+    })();
+
+    const volExe = path.join(HOME, '.cues/blanks/volume/VolCtl.exe');
+    const brightExe = path.join(HOME, '.cues/blanks/brightness/BrightCtl.exe');
+    const speakExe = path.join(HOME, '.cues/scripts/SpeakCtl.exe');
+    const psShell = '/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe';
+    const brightPs1 = path.join(HOME, '.cues/blanks/brightness/brightness-set.ps1');
+
+    // ── volume blank ───────────────────────────────────────────────
+    {
+      const macOsa = process.platform === 'darwin' && !!findOnPath('osascript');
+      const linWp = process.platform === 'linux' && !!findOnPath('wpctl');
+      const linPa = process.platform === 'linux' && !!findOnPath('pactl');
+      const linAm = process.platform === 'linux' && !!findOnPath('amixer');
+      const wslExe = wslEnv && fs.existsSync(volExe);
+      const wslNircmd = wslEnv && fs.existsSync('/mnt/c/Windows/nircmd.exe');
+      const backends = [];
+      if (wslExe) backends.push('VolCtl.exe (WSL, primary)');
+      if (macOsa) backends.push('osascript (macOS built-in)');
+      if (linWp) backends.push('wpctl');
+      if (linPa) backends.push('pactl');
+      if (linAm) backends.push('amixer');
+      if (wslNircmd) backends.push('nircmd.exe (WSL fallback)');
+      const covered = backends.length > 0;
+      s.ok(`volume — ${covered ? backends.join(', ') : 'NONE'}`, covered);
+      if (!covered) {
+        findings.push({
+          sev: 'info',
+          msg: `\`volume _\` has no backend on this system — reads "50" + set is a no-op`,
+          fix: wslEnv ? 'opencues seed-configs  # auto-compiles VolCtl.cs on WSL' :
+               process.platform === 'darwin' ? 'unusual on macOS — osascript ships with the OS' :
+               'apt install pulseaudio-utils  (or wireplumber / alsa-utils)',
+        });
+      }
+    }
+
+    // ── brightness blank ───────────────────────────────────────────
+    {
+      const macBright = process.platform === 'darwin' && !!findOnPath('brightness');
+      const macDdc = process.platform === 'darwin' && !!findOnPath('ddcutil');
+      const linCtl = process.platform === 'linux' && !!findOnPath('brightnessctl');
+      const linDdc = process.platform === 'linux' && !!findOnPath('ddcutil');
+      const wslExe = wslEnv && fs.existsSync(brightExe);
+      const wslPs = wslEnv && fs.existsSync(psShell) && fs.existsSync(brightPs1);
+      const backends = [];
+      if (wslExe) backends.push('BrightCtl.exe (WSL, primary)');
+      if (macBright) backends.push('brightness (macOS)');
+      if (macDdc) backends.push('ddcutil');
+      if (linCtl) backends.push('brightnessctl');
+      if (linDdc) backends.push('ddcutil');
+      if (wslPs) backends.push('powershell + brightness-set.ps1 (WSL fallback)');
+      const covered = backends.length > 0;
+      s.ok(`brightness — ${covered ? backends.join(', ') : 'NONE'}`, covered);
+      if (!covered) {
+        findings.push({
+          sev: 'info',
+          msg: `\`brightness _\` has no backend on this system — reads "50" + set is a no-op`,
+          fix: wslEnv ? 'opencues seed-configs  # auto-compiles BrightCtl.cs on WSL' :
+               process.platform === 'darwin' ? 'brew install brightness  (laptops) or `brew install ddcutil` (external DDC/CI)' :
+               'apt install brightnessctl  (laptops) or `apt install ddcutil` (external DDC/CI)',
+        });
+      }
+    }
+
+    // ── voice-mode TTS ─────────────────────────────────────────────
+    {
+      const macSay = process.platform === 'darwin' && !!findOnPath('say');
+      const linEspeak = process.platform === 'linux' && !!findOnPath('espeak-ng');
+      const linSpd = process.platform === 'linux' && !!findOnPath('spd-say');
+      const wslExe = wslEnv && fs.existsSync(speakExe);
+      const wslPs = wslEnv && fs.existsSync(psShell); // SAPI fallback in speak.sh
+      const backends = [];
+      if (wslExe) backends.push('SpeakCtl.exe (WSL, primary)');
+      if (macSay) backends.push('say (macOS built-in)');
+      if (linEspeak) backends.push('espeak-ng');
+      if (linSpd) backends.push('spd-say');
+      if (wslPs) backends.push('powershell SAPI (WSL fallback)');
+      const covered = backends.length > 0;
+      s.ok(`TTS (voice-mode) — ${covered ? backends.join(', ') : 'NONE'}`, covered);
+      if (!covered) {
+        findings.push({
+          sev: 'info',
+          msg: 'TTS / voice-mode has no backend on this system — it\'s a silent no-op',
+          fix: wslEnv ? 'opencues seed-configs  # auto-compiles SpeakCtl.cs on WSL' :
+               process.platform === 'darwin' ? 'unusual on macOS — `say` ships with the OS' :
+               'apt install espeak-ng  (or `apt install speech-dispatcher` → spd-say)',
+        });
+      }
+    }
+
+    // ── WSL: per-helper rows (so users see WHICH backend the scripts
+    //    are using, and which fallback is available if the primary
+    //    .exe is somehow missing). Suppress entirely off WSL.
+    if (wslEnv) {
+      s.ok(`WSL: ${volExe}`, fs.existsSync(volExe));
+      s.ok(`WSL: ${brightExe}`, fs.existsSync(brightExe));
+      s.ok(`WSL: ${speakExe}`, fs.existsSync(speakExe));
+      const missing = [
+        fs.existsSync(volExe) ? null : 'VolCtl.exe',
+        fs.existsSync(brightExe) ? null : 'BrightCtl.exe',
+        fs.existsSync(speakExe) ? null : 'SpeakCtl.exe',
+      ].filter(Boolean);
+      // Only suggest the seed re-run when AT LEAST ONE feature has no
+      // WSL fallback either (otherwise the bash fallbacks handle it
+      // silently and the user doesn't need to act).
+      if (missing.length > 0) {
+        findings.push({
+          sev: 'info',
+          msg: `WSL: missing helper(s) — ${missing.join(', ')}. Features fall back to slower paths (powershell / nircmd).`,
+          fix: 'opencues seed-configs  # auto-compiles colocated .cs sources on WSL',
+        });
+      }
+    }
+
     s.render();
   }
 
@@ -376,21 +610,33 @@ module.exports = function doctor(argv, ctx) {
   }
 
   // ── OS-level sandbox ──────────────────────────────────────────────────
+  // Per-platform confiner used to wrap `sandbox: strict` user-blank
+  // script invocations. Mechanism:
+  //   - Linux / WSL2 → bubblewrap (`bwrap`) — needs `apt install bubblewrap`.
+  //   - macOS → `sandbox-exec` (Apple's seatbelt) — ships with the OS.
+  //   - Other → no confiner wired; falls through unwrapped.
+  // See packages/opencues-runtime/src/security/sandbox-runner.ts §
+  // wrapForPlatform for the dispatcher.
   {
     const s = section('OS-level sandbox', 'wraps `blankScript: sandbox: strict` runs in an OS confinement layer');
     if (process.platform === 'linux') {
       const bwrap = findOnPath('bwrap');
-      s.ok(`bwrap (bubblewrap) on PATH`, !!bwrap);
+      const wslEnv = !!process.env.WSL_DISTRO_NAME || (function () {
+        try { return fs.readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft'); }
+        catch { return false; }
+      })();
+      const platLabel = wslEnv ? 'WSL2 (Linux)' : 'Linux';
+      s.ok(`${platLabel}: bwrap (bubblewrap) on PATH`, !!bwrap);
       if (!bwrap) {
         findings.push({
           sev: 'warn',
-          msg: 'bubblewrap (bwrap) not installed — scripted blanks with `sandbox: strict` will run unwrapped',
+          msg: 'bubblewrap (bwrap) not installed — scripted blanks with `sandbox: strict` will run UNWRAPPED (no confinement)',
           fix: 'apt install bubblewrap   (Debian/Ubuntu)\n         dnf install bubblewrap   (Fedora/RHEL)\n         pacman -S bubblewrap     (Arch)',
         });
       }
     } else if (process.platform === 'darwin') {
       const sbx = fs.existsSync('/usr/bin/sandbox-exec');
-      s.ok(`sandbox-exec at /usr/bin/sandbox-exec`, sbx);
+      s.ok(`macOS: sandbox-exec at /usr/bin/sandbox-exec (Apple seatbelt)`, sbx);
       if (!sbx) {
         findings.push({
           sev: 'warn',
@@ -399,7 +645,12 @@ module.exports = function doctor(argv, ctx) {
         });
       }
     } else {
-      s.info(`platform ${process.platform}`, dim('no OS sandbox mechanism wired yet'));
+      s.info(`platform ${process.platform}`, dim('no OS sandbox mechanism wired — strict-sandbox blanks run unwrapped'));
+      findings.push({
+        sev: 'warn',
+        msg: `no OS sandbox available for platform "${process.platform}" — strict-sandbox blanks run unwrapped`,
+        fix: 'use macOS or Linux/WSL2 for confined blanks; otherwise treat `sandbox: strict` as documentation only',
+      });
     }
     s.render();
   }
@@ -514,9 +765,47 @@ module.exports = function doctor(argv, ctx) {
     s.render();
   }
 
+  // ── Bundled-runtime drift ─────────────────────────────────────────────
+  // Each host install writes a version.json marker recording the
+  // @opencues/runtime + @opencues/core versions that landed. We compare
+  // those against the current source build — any mismatch means the
+  // bundle is older than source and `opencues update` (or `opencues
+  // install <host>`) needs to run. This catches the May 2026 dual-CC-fork
+  // bug class: source has the fix, one fork's bundle doesn't.
+  {
+    const s = section('Bundled runtime', '<host>/.opencues/version.json vs current source @opencues/{core,runtime}');
+    const { enumerateInstalledHosts } = require('../lib/version-markers.cjs');
+    const installed = enumerateInstalledHosts(ctx);
+    if (installed.length === 0) {
+      s.info('no installed hosts detected', dim('(install a host to populate this section)'));
+    } else {
+      for (const { host, root, drift } of installed) {
+        if (drift.status === 'fresh') {
+          s.ok(`${host} — runtime ${drift.marker.runtime} / core ${drift.marker.core}`, true);
+        } else if (drift.status === 'stale') {
+          s.bad(`${host} — runtime ${drift.marker.runtime} (source ${drift.source.runtime || '?'})`, false);
+          findings.push({
+            sev: 'warn',
+            msg: `${host} has stale bundled runtime (${drift.marker.runtime}) vs source (${drift.source.runtime}). Caused the May 2026 dual-fork bug.`,
+            fix: `opencues install ${host}    # rebuild + re-deploy the runtime into ${root}`,
+          });
+        } else /* missing */ {
+          s.info(`${host}`, dim(`(no version marker — install pre-dates marker era OR install was external)`));
+          findings.push({
+            sev: 'info',
+            msg: `${host} has no version marker. Re-run install to write one so future updates can detect drift.`,
+            fix: `opencues install ${host}`,
+          });
+        }
+      }
+    }
+    s.render();
+  }
+
   // ── Summary ───────────────────────────────────────────────────────────
   if (findings.length === 0) {
     console.log(`${tag('ok')} no issues found.`);
+    await maybePrintUpdateNotice(ctx);
     return 0;
   }
   console.log(bold('## Suggested fixes'));
@@ -524,6 +813,7 @@ module.exports = function doctor(argv, ctx) {
     console.log(`  ${tag(f.sev === 'warn' ? 'warn' : 'info')} ${f.msg}`);
     console.log(`     ${dim(G.arrow)} ${f.fix}`);
   }
+  await maybePrintUpdateNotice(ctx);
   const errors = findings.filter(f => f.sev === 'warn').length;
   // Return the exit code instead of calling process.exit from a library
   // function. The CLI entry point (bin/cli.cjs) honours numeric return
@@ -531,6 +821,20 @@ module.exports = function doctor(argv, ctx) {
   // killing the runtime mid-assertion.
   return errors > 0 ? 1 : 0;
 };
+
+// Doctor does a network fetch to check the registry (acceptable —
+// inspection commands are expected to query things). Fail-silent.
+async function maybePrintUpdateNotice(ctx) {
+  try {
+    const { checkForUpdate, formatNotice } = require('../lib/update-check.cjs');
+    const notice = await checkForUpdate(cliVersion(ctx));
+    const msg = formatNotice(notice);
+    if (msg) {
+      console.log('');
+      console.log(`${tag('info')} ${msg}`);
+    }
+  } catch { /* fail-silent */ }
+}
 
 // Read OPENCUES.md (or CUES.md) frontmatter and return a flat
 // {scalar: value} map. Best-effort YAML — only top-level

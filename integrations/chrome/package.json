@@ -10,6 +10,13 @@
   "bin": {
     "opencues-chrome": "./bin/install.cjs"
   },
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

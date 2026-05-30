@@ -193,6 +193,15 @@ function doInstall() {
   // Mirror the same flag form on uninstall: --wsl ↔ --wsl, --target ↔ --target.
   const uninstallSuffix = args.wsl ? ' --wsl' : (args.target ? ` --target ${args.target}` : '');
   const displayPath = toWindowsPathIfPossible(loadPath);
+  // Version marker for drift detection. Marker sits inside dist/ —
+  // gets removed automatically by `opencues uninstall chrome` along
+  // with the rest of dist/.
+  try {
+    const { writeMarker } = require(path.join(REPO_ROOT, 'packages/opencues-cli/src/lib/version-markers.cjs'));
+    writeMarker('chrome', distDir, { pkg, REPO_ROOT });
+    if (args.target) writeMarker('chrome', loadPath, { pkg, REPO_ROOT });
+  } catch { /* non-fatal */ }
+
   console.log('');
   console.log('Done. Load it in Chrome:');
   console.log('  1. open chrome://extensions');

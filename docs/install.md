@@ -12,17 +12,46 @@ Per-host installation, what each install does, where things land, and how to rec
   routing: [`docs/guides/llm-providers.md`](guides/llm-providers.md).
 - The **host editor** you want to integrate with (see per-host requirements below)
 
-### Recommended for full sandbox security
+For the **complete dependency map** + the raw `npm install -g opencues` walk-through (tier 1 contained / tier 2 vendored / tier 3 system-with-consent / tier 4 daemon-clients), see [`docs/install/dependencies.md`](install/dependencies.md). It enumerates every dep, who owns its install, and who owns its uninstall.
 
-Scripted blanks (volume, brightness, anything that spawns a script) get OS-level confinement when [bubblewrap](https://github.com/containers/bubblewrap) is available.
+### Supported platforms
 
-| Platform | Install | Status if missing |
+| Platform | Status | Notes |
 |---|---|---|
-| Linux / WSL2 | `apt install bubblewrap` (Debian/Ubuntu) / `dnf install bubblewrap` (Fedora) / `pacman -S bubblewrap` (Arch) | Scripted blanks still run, but without confinement. `opencues doctor` flags it. |
-| macOS | Already installed (`/usr/bin/sandbox-exec` ships with macOS) | — |
-| Windows native | Not yet supported | Strict-sandbox blanks fall back unwrapped |
+| **Linux** | Supported | Primary dev platform. Optional tools (bwrap, espeak-ng, pactl/wpctl/amixer, brightnessctl) extend feature coverage — see per-feature table below. |
+| **macOS** (Intel + Apple Silicon) | Supported | Hardened May 2026 for bash 3.2 + BSD coreutils + sandbox-exec. macOS preflight runs at `opencues install` time. |
+| **WSL2** | Supported | Same as Linux. Chrome integration auto-targets Windows-side Chrome via `--wsl`. |
+| **Windows native** | Not supported | Installers are bash + POSIX coreutils. `package.json` carries `"os": ["darwin", "linux"]` — `npm install` refuses on `win32`. Use WSL2. |
 
-Run `opencues doctor` after install to confirm everything's wired.
+Run `opencues doctor` after every install — it cross-checks every install boundary and points at the specific fix for anything missing.
+
+### Per-feature platform support
+
+Each row is a feature that has a hard OS dependency outside `@opencues/{core,runtime}`. Missing the listed tool means the feature silently degrades (usually to a no-op or a default value) — not a hard failure. `opencues install` preflight + `opencues doctor` both surface the gap.
+
+| Feature | macOS | Linux | WSL | What it needs |
+|---|---|---|---|---|
+| **`volume _` blank** | built-in (`osascript`) | needs `wpctl` (PipeWire) / `pactl` (PulseAudio) / `amixer` (ALSA) | colocated `VolCtl.exe` or `nircmd.exe` | If none found: reads "50" on get; set is a no-op. |
+| **`brightness _` blank** | needs `brew install brightness` (laptop) or `ddcutil` (external) | needs `brightnessctl` (laptop) or `ddcutil` (external) | colocated `BrightCtl.exe` or PowerShell WMI | If none found: reads "50" on get; set is a no-op. |
+| **TTS (`voice-mode`)** | built-in (`say`) | needs `espeak-ng` or `spd-say` | `SpeakCtl.exe` (colocated) or `powershell.exe` | If none found: voice-mode is a silent no-op. |
+| **Strict sandbox** (`sandbox: strict` blanks) | built-in (`sandbox-exec`) | needs `bubblewrap` (`bwrap`) | Linux path (bwrap) | If missing: scripted blanks still run, just unwrapped. `doctor` flags it. |
+| **Chrome native-messaging host** (live `~/.cues/` sync + scripted blanks in Chrome) | supported | supported | supported (`.bat` shim → `wsl.exe`) | Bundled with `opencues install chrome-host`. |
+
+Quick-install commands per distro:
+
+```bash
+# Debian / Ubuntu — everything the preflight may suggest:
+sudo apt install bubblewrap espeak-ng pulseaudio-utils brightnessctl tmux
+
+# Fedora:
+sudo dnf install bubblewrap espeak-ng pulseaudio-utils brightnessctl tmux
+
+# Arch:
+sudo pacman -S bubblewrap espeak-ng libpulse brightnessctl tmux
+
+# macOS — everything brew can supply:
+brew install bash tmux brightness  # bash 4+ optional but recommended
+```
 
 ### Per-integration host requirements
 
@@ -115,7 +144,9 @@ If `opencues install <host>` exits non-zero, it's usually one of these:
 | `GROQ_API_KEY not set` warning at the end | Key isn't visible to the install shell | `opencues set-key groq <key>` (writes `~/.cues/.env`, no shell config needed) and re-run install |
 | Linux: Ctrl+Alt+arrow switches workspace instead of cycling cues | Your DE owns those keys | See the next section |
 | `claude-cues` launches but typing does nothing visible | Runtime didn't boot, or `voice-mode: inactive` and you expected TTS | `tail /tmp/opencues.log` for the boot lines; `opencues doctor` cross-checks every install boundary |
-| OpenCode install fails at `bun install` | Bun isn't installed | `curl -fsSL https://bun.sh/install \| bash` then re-run |
+| OpenCode/shell install fails at `bun install` | Bun isn't installed | Re-run `opencues install opencode` (or `shell`) and answer **Y** to the "Install bun?" preflight prompt — drops a contained copy in `~/.opencues/vendor/bun/`. Or install system-wide: `curl -fsSL https://bun.sh/install \| bash`. |
+| Shell install: `oc-install-tmux` fails on missing build deps | Source-build path needs gcc + libevent + ncurses + bison | `opencues install shell` runs the preflight first — answer **Y** to the system-package offer to apt/brew-install. Or install them yourself: `sudo apt install build-essential libevent-dev libncurses-dev pkg-config bison`. Prebuilt tmux tarballs (zero build deps) land when a `tmux-prebuilt-<ver>` GitHub release is published. |
+| doctor reports "missing version marker" on every host | Install pre-dates the version-marker era (introduced post-v0.1) | Re-run `opencues install <host>` once — writes the marker for future drift detection. One-time clear. |
 | Chrome extension loads but does nothing on a page | Bundle didn't sync or extension is stale | Hard-reload at `chrome://extensions` (reload icon on the OpenCues card) + hard-refresh the page |
 
 `opencues doctor` runs every one of these checks (and more) — if you're stuck on something else, start there.
@@ -193,16 +224,26 @@ Full reference: [`integrations/claude-code/docs/status-line.md`](../integrations
 
 ## Updating
 
+One command, handles every detected integration in lockstep:
+
 ```bash
-cd ~/opencues
-git pull
-pnpm install                   # picks up dep changes
-pnpm exec opencues update      # pulls, rebuilds, redeploys every detected install
+opencues update              # git pull + rebuild + redeploy every installed host
+opencues update --dry-run    # preview the plan first
+opencues update --check      # report what's available without changing anything
+opencues update claude-code  # update one host only (still pulls + builds the workspace)
 ```
 
-For a single host re-install: `pnpm exec opencues install <host>` re-runs the integration's full install pipeline.
+Internals:
+- Takes a lock at `~/.opencues/.update.lock` so two concurrent updates can't race.
+- Detects running CC/OC/Gemini sessions and warns (your running session keeps its old code until restart — safe).
+- Stale locks from a crashed prior run are reclaimed automatically.
+- `Ctrl+C` mid-update releases the lock cleanly.
 
-Per-integration upgrade runbooks (for upstream version bumps, not for OpenCues updates):
+OpenCues also passively notifies when a newer version is on npm — `install`, `run`, and `doctor` print a one-line hint when a fresh registry check returns a higher version. Set `OPENCUES_NO_UPDATE_CHECK=1` to disable.
+
+For a single host re-install (no workspace pull): `opencues install <host>` re-runs that integration's full install pipeline.
+
+Per-integration upgrade runbooks (for upstream Claude Code / OpenCode / Gemini version bumps, not for OpenCues updates):
 - [`integrations/claude-code/UPGRADING.md`](../integrations/claude-code/UPGRADING.md)
 - [`integrations/opencode/UPGRADING.md`](../integrations/opencode/UPGRADING.md)
 - [`integrations/gemini-cli/UPGRADING.md`](../integrations/gemini-cli/UPGRADING.md)

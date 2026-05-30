@@ -32,6 +32,8 @@ const HOST_ALIASES = {
 };
 const ALL_HOSTS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'shell'];
 
+// Internal helpers exposed for tests. The function itself is the
+// default export; lock primitives are reached via `_internal`.
 module.exports = async function update(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
 
@@ -64,7 +66,7 @@ module.exports = async function update(argv, ctx) {
 
 // ─── MODE 1: UPDATE ─────────────────────────────────────────────────────
 
-function doUpdate(host, { skipPull, dryRun }, ctx) {
+async function doUpdate(host, { skipPull, dryRun }, ctx) {
   const HOME = os.homedir();
   const installed = detectInstalled(HOME, ctx.REPO_ROOT);
   const targets = host
@@ -81,6 +83,36 @@ function doUpdate(host, { skipPull, dryRun }, ctx) {
     console.error(`${tag('err')} ${host} is not installed ${dim('(no install artefacts on disk)')}`);
     console.error(`     ${dim(`Run \`opencues install ${host}\` first, or run without a host to scan all.`)}`);
     process.exit(1);
+  }
+
+  // Detect concurrent runs. Two opencues update invocations racing the
+  // same fork = half-patched cli.js + corrupt bundled runtime. We lock
+  // before printing the plan; rejected races exit cleanly with a hint.
+  const lock = acquireLock();
+  if (!lock) return;          // process exited inside acquireLock with a message
+  // Release on every exit path. Lock-file content is the PID + start
+  // time so a stale lock from a crashed run can be diagnosed.
+  process.on('exit', () => releaseLock(lock));
+  process.on('SIGINT', () => { releaseLock(lock); process.exit(130); });
+  process.on('SIGTERM', () => { releaseLock(lock); process.exit(143); });
+
+  // Test hook: integration tests need an interruptible window in which
+  // the lock exists to verify SIGINT cleanup. Production never sets
+  // this. The await yields to the event loop so SIGINT is processable.
+  const hangMs = parseInt(process.env.OPENCUES_UPDATE_TEST_HANG_MS || '0', 10);
+  if (hangMs > 0) await new Promise(r => setTimeout(r, hangMs));
+
+  // Detect running host processes. Updating cli.js / opencode.ts / etc.
+  // while a session is open is SAFE for the running session (file's
+  // already in memory) but the user should know what they're doing.
+  const runningHosts = await detectRunningHosts(targets);
+  if (runningHosts.length > 0 && !dryRun) {
+    console.log(`${tag('info')} ${bold('Running sessions detected:')}`);
+    for (const r of runningHosts) {
+      console.log(`  ${bold('•')} ${r.host} (PID ${r.pid}) — will keep running its old code until you restart it`);
+    }
+    console.log(`  ${dim('Updates land on disk; existing sessions are unaffected until restart.')}`);
+    console.log('');
   }
 
   const targetRows = targets.length
@@ -375,6 +407,92 @@ function fixupRollbackHint(pkgPath, field, oldValue, host) {
 
 // ─── shared helpers ────────────────────────────────────────────────────
 
+// Lock file: ~/.opencues/.update.lock with { pid, startedAt, host? }.
+// Stale locks (process no longer running) are auto-released. Live locks
+// emit an error + exit. Returns the lock path on success, null on
+// rejection (caller exits cleanly).
+function acquireLock() {
+  const lockDir = path.join(os.homedir(), '.opencues');
+  const lockFile = path.join(lockDir, '.update.lock');
+  fs.mkdirSync(lockDir, { recursive: true });
+
+  // Existing lock?
+  if (fs.existsSync(lockFile)) {
+    let existing;
+    try { existing = JSON.parse(fs.readFileSync(lockFile, 'utf8')); }
+    catch { existing = null; }
+
+    if (existing && existing.pid && processAlive(existing.pid)) {
+      console.error(`${tag('err')} another \`opencues update\` is already running (PID ${existing.pid}, started ${existing.startedAt}).`);
+      console.error(`     If you're certain it's dead: rm ${lockFile}`);
+      process.exit(1);
+    }
+    // Stale — log + reclaim.
+    if (existing) {
+      console.log(`${tag('info')} ${dim(`reclaiming stale lock from PID ${existing.pid} (no longer running)`)}`);
+    }
+    try { fs.unlinkSync(lockFile); } catch {}
+  }
+
+  fs.writeFileSync(lockFile, JSON.stringify({
+    pid: process.pid,
+    startedAt: new Date().toISOString(),
+  }, null, 2));
+  return lockFile;
+}
+
+function releaseLock(lockFile) {
+  if (!lockFile) return;
+  try {
+    const data = JSON.parse(fs.readFileSync(lockFile, 'utf8'));
+    // Only release if it's OUR lock. Some other process might have
+    // claimed it after us — don't clobber theirs.
+    if (data && data.pid === process.pid) fs.unlinkSync(lockFile);
+  } catch { /* gone already */ }
+}
+
+function processAlive(pid) {
+  try { process.kill(pid, 0); return true; }
+  catch (e) { return e.code !== 'ESRCH'; }
+}
+
+// Detect running host processes by walking ps output. Best-effort —
+// false negatives are fine (we don't BLOCK; we only inform).
+// Returns [{ host, pid }] for each detected running process.
+async function detectRunningHosts(targets) {
+  const out = [];
+  // Map host → pattern to look for in `ps -o pid,command -A`.
+  // Patterns are loose — they catch the typical launch shape.
+  const PATTERNS = {
+    'claude-code': /claude-code\/cli\.js|claude-cues|claude-code-cues/,
+    'opencode':    /opencode-cues|bun.*opencode/,
+    'gemini-cli':  /gemini-cli-cues|packages\/cli\/dist\/index\.js/,
+    'shell':       /oc-edit|oc-editd|oc-shell/,
+    'chrome':      null,  // chrome processes are too generic to detect reliably
+  };
+  let psOutput;
+  try {
+    psOutput = require('child_process').execSync('ps -o pid,command -A 2>/dev/null', {
+      encoding: 'utf8', timeout: 1000,
+    });
+  } catch { return out; /* no ps, or timeout — silent skip */ }
+
+  const myPid = String(process.pid);
+  for (const target of targets) {
+    const pattern = PATTERNS[target.host];
+    if (!pattern) continue;
+    for (const line of psOutput.split('\n')) {
+      if (!pattern.test(line)) continue;
+      const m = line.trim().match(/^(\d+)\s/);
+      if (!m) continue;
+      if (m[1] === myPid) continue;  // ignore self
+      out.push({ host: target.host, pid: parseInt(m[1], 10) });
+      break; // one detection per host is enough for the message
+    }
+  }
+  return out;
+}
+
 function detectInstalled(HOME, REPO_ROOT) {
   const out = [];
   const ccFork = path.join(HOME, 'claude-code-cues');
@@ -430,3 +548,7 @@ function printHelp() {
   console.log('');
   console.log('Stops at the first failure. After this finishes, restart your editor integrations.');
 }
+
+// Test surface — exported under a private-by-convention key. Not part
+// of the CLI's public command API.
+module.exports._internal = { acquireLock, releaseLock, processAlive, detectRunningHosts };

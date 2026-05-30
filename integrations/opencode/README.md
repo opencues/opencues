@@ -28,7 +28,11 @@ shell alias.
 
 This integration also needs **[bun](https://bun.sh/)** — OpenCode
 itself is a Bun app, so the fork's own dependencies install via
-`bun install`.
+`bun install`. You don't have to install it yourself: the installer's
+preflight offers a contained copy at `~/.opencues/vendor/bun/`
+(removed cleanly by `opencues uninstall opencode`). Press **Y** to
+accept, or **n** + install bun system-wide via
+`curl -fsSL https://bun.sh/install | bash`.
 
 ### Install command
 

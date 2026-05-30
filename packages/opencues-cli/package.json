@@ -6,8 +6,17 @@
   "bin": {
     "opencues": "./bin/cli.cjs"
   },
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ],
   "scripts": {
     "_": "node bin/cli.cjs",
+    "test": "node --test src/lib/*.test.cjs src/commands/*.test.cjs",
+    "test:integration": "node --test src/lib/*.integration.test.cjs src/commands/*.integration.test.cjs",
     "prepublishOnly": "node ../../scripts/prepublish-guard.cjs"
   },
   "files": [

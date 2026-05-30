@@ -26,6 +26,57 @@ if [ -x "$VENDOR_DIR/bin/tmux" ]; then
   exit 0
 fi
 
+# ── Try prebuilt binary first (zero build-deps) ─────────────────────
+# Detect platform → look up prebuilt URL → curl + tar. Falls through
+# to the source-build path if the prebuilt is unavailable (404, no
+# network, unsupported platform). The release URL pattern is set up
+# so anyone publishing a tarball at the expected path "lights up"
+# every installed copy without code changes.
+#
+# Publishing tarballs: see scripts/build-tmux-prebuilt.sh — builds a
+# static binary on the current platform + emits a tarball with the
+# right name. Upload to a GitHub release tagged `tmux-prebuilt-<ver>`.
+PREBUILT_BASE_DEFAULT="https://github.com/opencues/opencues/releases/download"
+PREBUILT_BASE="${OPENCUES_TMUX_PREBUILT_BASE:-$PREBUILT_BASE_DEFAULT}"
+
+uname_s="$(uname -s 2>/dev/null || echo unknown)"
+uname_m="$(uname -m 2>/dev/null || echo unknown)"
+case "$uname_s" in
+  Linux)  os_label=linux ;;
+  Darwin) os_label=darwin ;;
+  *)      os_label="" ;;
+esac
+case "$uname_m" in
+  x86_64|amd64)         arch_label=x64 ;;
+  arm64|aarch64)        arch_label=arm64 ;;
+  *)                    arch_label="" ;;
+esac
+
+if [ -n "$os_label" ] && [ -n "$arch_label" ]; then
+  PREBUILT_TARBALL="tmux-${TMUX_VERSION}-${os_label}-${arch_label}.tar.gz"
+  PREBUILT_URL="$PREBUILT_BASE/tmux-prebuilt-${TMUX_VERSION}/$PREBUILT_TARBALL"
+
+  echo "▸ probing for prebuilt: $PREBUILT_URL"
+  mkdir -p "$VENDOR_DIR" "$SRC_DIR"
+  if command -v curl >/dev/null 2>&1 && \
+     curl -fsSL -o "$SRC_DIR/$PREBUILT_TARBALL.tmp" "$PREBUILT_URL" 2>/dev/null; then
+    mv "$SRC_DIR/$PREBUILT_TARBALL.tmp" "$SRC_DIR/$PREBUILT_TARBALL"
+    echo "▸ unpacking prebuilt into $VENDOR_DIR"
+    tar -xzf "$SRC_DIR/$PREBUILT_TARBALL" -C "$VENDOR_DIR"
+    if [ -x "$VENDOR_DIR/bin/tmux" ]; then
+      installed_ver="$("$VENDOR_DIR/bin/tmux" -V 2>&1 | awk '{print $2}')"
+      echo "✓ tmux $installed_ver installed at $VENDOR_DIR/bin/tmux (prebuilt)"
+      echo "  Skipped the source-build path entirely — zero compile-deps needed."
+      exit 0
+    else
+      echo "  prebuilt extracted but no bin/tmux found — falling through to source build"
+    fi
+  else
+    echo "  no prebuilt available — falling through to source build"
+    rm -f "$SRC_DIR/$PREBUILT_TARBALL.tmp"
+  fi
+fi
+
 # ── Build-dep probe ─────────────────────────────────────────────────
 missing=()
 command -v gcc       >/dev/null 2>&1 || missing+=(gcc)

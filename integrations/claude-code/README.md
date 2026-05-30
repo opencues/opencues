@@ -139,13 +139,26 @@ The OpenCues Settings blank (`OPENCUES.md` → `voice-mode`, `tips-mode`, etc.) 
 
 ## Update workflow
 
+One command that pulls latest, rebuilds, and redeploys — applies to
+this integration AND every other you have installed:
+
 ```bash
-cd opencues
-git pull
-pnpm install                              # picks up dep changes
-pnpm exec opencues install claude-code             # rebuilds + redeploys
-# Restart claude-cues
+opencues update                  # everything in lockstep
+opencues update claude-code      # CC only (still pulls + builds workspace)
+opencues update --check          # what's available, don't change anything
 ```
+
+Or just re-run the install if you're not on a clone:
+
+```bash
+opencues install claude-code     # rebuilds + redeploys this integration
+# Restart claude-cues to pick up the new cli.js
+```
+
+`opencues update` takes a lock at `~/.opencues/.update.lock` so two
+concurrent updates can't race, and detects running claude-cues
+processes (your live session keeps its old cli.js until restart —
+that's safe).
 
 `.md` config files (`CUES.md`, `BLANKS.md`, `cues/*`, `blanks/*`) hot-reload within ~2s on the next keystroke — no install needed for config edits.
 

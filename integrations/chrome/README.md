@@ -145,12 +145,16 @@ Warnings and errors always surface regardless of the flag.
 ## Update workflow
 
 ```bash
-cd opencues
-git pull
-pnpm install                              # picks up dep changes
-pnpm --filter @opencues/chrome dev-install   # rebuilds + redeploys
-# Reload the extension card at chrome://extensions
+opencues update              # pull + rebuild + redeploy every installed host
+opencues update chrome       # this integration only
+# Then RELOAD the extension at chrome://extensions (Chrome can't auto-reload unpacked extensions)
 ```
+
+Chrome is the one integration where the user has to do a manual
+post-update click: the unpacked extension keeps running the prior
+bundle until you click the reload arrow on the OpenCues card at
+`chrome://extensions`. This goes away when the extension ships to
+the Chrome Web Store (which handles auto-update).
 
 For continuous development, `pnpm --filter @opencues/chrome watch` runs esbuild in watch mode (no test/typecheck). Pair it with a separate copy step or just point Chrome directly at `integrations/chrome/`.
 

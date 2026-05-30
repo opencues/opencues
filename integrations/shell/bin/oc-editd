@@ -26,6 +26,12 @@ resolve_link() {
 SCRIPT="$(resolve_link "${BASH_SOURCE[0]}")"
 HERE="$(cd -- "$(dirname -- "$SCRIPT")" && pwd)"
 TERM_DIR="$(cd -- "$HERE/.." && pwd)"
+
+# Vendored bun (~/.opencues/vendor/bun/bin/) wins over system bun if
+# present — same contract as oc-edit. The shell installer adds it via
+# the post-install offer; uninstall removes the dir.
+[ -d "$HOME/.opencues/vendor/bun/bin" ] && PATH="$HOME/.opencues/vendor/bun/bin:$PATH"
+
 DIST_DAEMON="$TERM_DIR/dist/daemon.js"
 SRC_DAEMON="$TERM_DIR/src/daemon.ts"
 

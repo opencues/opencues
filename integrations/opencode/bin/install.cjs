@@ -87,18 +87,36 @@ function doInstall() {
   const paths = pathsForFork(fork);
 
   // Pre-flight bun. OpenCode itself is a bun app — without it, `bun
-  // install` inside the fork will fail partway through setup.sh. Catch
-  // it upfront so the user gets a clean error rather than a cryptic
-  // mid-install exit.
+  // install` inside the fork will fail partway through setup.sh.
+  //
+  // The top-level `opencues install` preflight PATH-prepends
+  // ~/.opencues/vendor/bun/bin/ before spawning this installer, so
+  // `which bun` succeeds when EITHER:
+  //   - system bun is on PATH, OR
+  //   - the user said "Y" to the vendored-bun offer earlier in this
+  //     install run.
+  // Catch the both-missing case upfront so the user gets a clean
+  // error rather than a cryptic mid-install exit.
+  const vendoredBun = path.join(HOME, '.opencues', 'vendor', 'bun', 'bin', 'bun');
   const bunCheck = spawnSync('which', ['bun'], { stdio: ['ignore', 'pipe', 'ignore'] });
-  if (bunCheck.status !== 0) {
+  if (bunCheck.status !== 0 && !fs.existsSync(vendoredBun)) {
     const msg = args.dryRun
       ? '\nWARNING: bun is not on PATH. A real install would fail here — OpenCode needs bun.'
       : '\nERROR: bun is not on PATH. OpenCode itself is a bun app, so opencues install cannot proceed.';
     console.error(msg);
-    console.error('Install bun: curl -fsSL https://bun.sh/install | bash  (or https://bun.sh/)');
+    console.error('Install bun:');
+    console.error('  Contained (preferred):  opencues install opencode  → say Y to the bun prompt');
+    console.error('  System:                 curl -fsSL https://bun.sh/install | bash');
     console.error('Then re-run: opencues install opencode' + (args.target ? ` --target ${args.target}` : ''));
     if (!args.dryRun) process.exit(127);
+  }
+  // If we found the vendored bun but PATH doesn't have its bin dir,
+  // inject it for the rest of this process (e.g. setup.sh's `bun install`).
+  if (fs.existsSync(vendoredBun)) {
+    const vendoredBin = path.dirname(vendoredBun);
+    if (!process.env.PATH || !process.env.PATH.split(path.delimiter).includes(vendoredBin)) {
+      process.env.PATH = vendoredBin + path.delimiter + (process.env.PATH || '');
+    }
   }
 
   if (args.dryRun) {
@@ -137,6 +155,14 @@ function doInstall() {
     console.error(`\nInstall failed. To roll back: ${launchCommand()} uninstall opencode`);
     process.exit(result.status || 1);
   }
+  // Write the version marker so doctor + `opencues update` can detect
+  // bundled-runtime drift later. Marker lands at <fork>/.opencues/
+  // (the OC fork tree is upstream-checkout territory; we own only the
+  // hidden .opencues dir inside it). Non-fatal on write failure.
+  try {
+    const { writeMarker } = require(path.join(REPO_ROOT, 'packages/opencues-cli/src/lib/version-markers.cjs'));
+    writeMarker('opencode', path.join(fork, '.opencues'), { pkg, REPO_ROOT });
+  } catch { /* non-fatal */ }
 }
 
 // --- UNINSTALL ------------------------------------------------------------
