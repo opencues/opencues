@@ -92,6 +92,23 @@ describe('gatherAmbientContext — null cases', () => {
     expect(isNormalInput(el)).toBe(false);
     expect(gatherAmbientContext(el)).toBeNull();
   });
+
+  it('rejects autocomplete=off when input name matches payment/account terms', () => {
+    // SENSITIVE_FIELD_NAME_PATTERN doesn't catch "account-number" /
+    // "iban" / "card-number" (it's tuned for password/cvv/otp/etc).
+    // The off-context pattern must also scan the input's own name+id,
+    // otherwise these slip through with no form / placeholder context.
+    setupDom('<input id="iban" type="text" autocomplete="off">');
+    expect(isNormalInput(document.getElementById('iban') as HTMLInputElement)).toBe(false);
+
+    setupDom('<input type="text" name="account-number" autocomplete="off">');
+    const accEl = document.querySelector('input[name="account-number"]') as HTMLInputElement;
+    expect(isNormalInput(accEl)).toBe(false);
+
+    setupDom('<input type="text" name="card-number" autocomplete="off">');
+    const cardEl = document.querySelector('input[name="card-number"]') as HTMLInputElement;
+    expect(isNormalInput(cardEl)).toBe(false);
+  });
 });
 
 describe('gatherAmbientContext — label resolution', () => {

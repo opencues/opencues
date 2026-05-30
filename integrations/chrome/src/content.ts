@@ -472,7 +472,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         : activeKind
           ? `${activeKind} focused but OpenCues did not attach (unsupported or sensitive field)`
           : '(none focused)',
-      trustGateInstalled: typeof (window as unknown as { __opencuesTrustGate?: unknown }).__opencuesTrustGate !== 'undefined',
+      trustGateInstalled: (window as unknown as { __opencuesTrustGateInstalled?: true }).__opencuesTrustGateInstalled === true,
       runtimeKeys,
       // The actual provider/model the runtime would use NOW. Picks up
       // the popup's overrides AND any OPENCUES.md scalar. Lets the

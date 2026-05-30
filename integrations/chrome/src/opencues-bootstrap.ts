@@ -457,10 +457,16 @@ function isSensitiveField(el: HTMLInputElement | HTMLTextAreaElement): boolean {
   }
   // Bank/payment forms sometimes set autocomplete="off" on the whole
   // form. Generic site search boxes do too, so require an additional
-  // sensitive-context signal before refusing.
+  // sensitive-context signal before refusing. The input's own name/id
+  // are part of the haystack — `SENSITIVE_FIELD_NAME_PATTERN` (above)
+  // only matches credential tokens (password/cvv/otp/secret/…); a
+  // `name="account-number"` or `name="iban"` field would otherwise
+  // slip through with `autocomplete=off` and no surrounding context.
   if (tokens.includes('off')) {
     const form = el.form;
     const context = [
+      name,
+      id,
       el.getAttribute('placeholder') || '',
       el.getAttribute('aria-label') || '',
       el.getAttribute('aria-describedby') || '',
@@ -2446,7 +2452,13 @@ function selectPlainRange(target: HTMLElement, start: number, end: number): bool
 // addition.
 
 const trustGate = createTrustGate();
-(window as unknown as { __opencuesTrustGate?: unknown }).__opencuesTrustGate = trustGate;
+// Diagnostic-only sentinel — the popup's Self-Check reads this to
+// confirm the bootstrap loaded. Boolean, not the live gate object:
+// page scripts can't reach this property (Chrome content-script
+// isolated world), but a future code path that runs in MAIN world
+// would otherwise get noteUnderscoreInsertion / reset on a silver
+// platter and could forge credits to bypass the gate.
+(window as unknown as { __opencuesTrustGateInstalled?: true }).__opencuesTrustGateInstalled = true;
 
 /** Called from content.ts on every trusted `_` introduction. `count`
  *  is the number of `_` characters introduced (1 for keydown of '_',

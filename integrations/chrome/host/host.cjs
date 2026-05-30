@@ -28,6 +28,12 @@ function resolveCueRoot() {
 }
 const CUE_ROOT = resolveCueRoot();
 
+// Tracks which env vars were set from ~/.cues/.env on a prior load.
+// On reload (file change), file-sourced keys MUST be overwritable so
+// `opencues set-key` rotation flows through to the next sendHostConfig.
+// Real shell-env vars are recorded on the first load and never get
+// clobbered, so explicit exports keep priority.
+const ENV_FILE_KEYS = new Set();
 function loadEnvFile(filePath) {
   if (!fs.existsSync(filePath)) return;
   let content = '';
@@ -43,10 +49,14 @@ function loadEnvFile(filePath) {
     if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
       value = value.slice(1, -1);
     }
-    // Real process env wins, but Chrome-launched native hosts usually
-    // lack shell rc exports. Loading .env makes `opencues set-key`
-    // sufficient for Chrome too.
-    if (!process.env[key]) process.env[key] = value;
+    // First load of a key: only set if shell didn't already export it
+    // (real env wins). Subsequent loads: overwrite if WE set it last
+    // time, so rotated keys flow through. A shell export at startup
+    // permanently wins over the .env file.
+    if (!(key in process.env) || ENV_FILE_KEYS.has(key)) {
+      process.env[key] = value;
+      ENV_FILE_KEYS.add(key);
+    }
   }
 }
 loadEnvFile(path.join(CUE_ROOT, '.env'));
