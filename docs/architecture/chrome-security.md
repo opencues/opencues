@@ -295,7 +295,9 @@ The check is layered:
   `autocomplete` matches an entry in `SENSITIVE_AUTOCOMPLETE_TOKENS`
   (`integrations/chrome/src/opencues-bootstrap.ts`) — currently
   `current-password`, `new-password`, `one-time-code`, all `cc-*`
-  variants — OR `autocomplete=off` is refused.
+  variants. `autocomplete=off` is refused only when nearby field/form
+  metadata also matches `SENSITIVE_AUTOCOMPLETE_OFF_CONTEXT_PATTERN`;
+  ordinary search boxes often use `off` and remain attachable.
 - **Name/id heuristic** (defence in depth — sites that don't
   use autocomplete correctly): refused when name/id matches
   `SENSITIVE_FIELD_NAME_PATTERN` in

@@ -415,6 +415,10 @@ async function runDiagnostic(): Promise<void> {
   if (pingOk && pingInfo) {
     log(`✓ content script alive — bootVersion=${pingInfo.bootVersion ?? '?'}`);
     log(`  currentTarget: ${pingInfo.currentTarget ?? '(none focused — click into a contenteditable, then re-run)'}`);
+    log(`  attachStatus: ${pingInfo.attachStatus ?? '(unknown)'}`);
+    if (pingInfo.targetAttachable === false && pingInfo.currentTarget) {
+      log('  ⚠ focused field is not attachable — OpenCues will not answer in this field');
+    }
     log(`  trustGateInstalled: ${pingInfo.trustGateInstalled ? 'yes' : 'no'}`);
 
     // Surface what provider the live runtime is resolved to — catches

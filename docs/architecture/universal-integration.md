@@ -280,7 +280,7 @@ Triggers when ANY of these are true:
 - `autocomplete="current-password"` / `"new-password"` — password fields
 - `autocomplete="one-time-code"` — OTP / 2FA codes
 - `autocomplete="cc-number"`, `"cc-exp"`, `"cc-exp-month"`, `"cc-exp-year"`, `"cc-csc"`, `"cc-name"`, `"cc-given-name"`, `"cc-family-name"` — payment fields
-- `autocomplete="off"` — banks/payment forms set this on whole forms; honored conservatively
+- `autocomplete="off"` only when nearby field/form metadata also matches `SENSITIVE_AUTOCOMPLETE_OFF_CONTEXT_PATTERN`; ordinary search boxes often use `off` and remain attachable
 
 **Name/id heuristic** (fallback for pages that don't bother with autocomplete):
 

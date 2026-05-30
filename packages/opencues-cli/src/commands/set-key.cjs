@@ -9,9 +9,14 @@ const os = require('node:os');
 const { tag, bold, dim, fileLink, banner, cliVersion } = require('../lib/style.cjs');
 
 const PROVIDERS = {
-  groq:    'GROQ_API_KEY',
-  finnhub: 'FINNHUB_API_KEY',
-  openai:  'OPENAI_API_KEY',
+  cerebras:     'CEREBRAS_API_KEY',
+  groq:         'GROQ_API_KEY',
+  gemini:       'GEMINI_API_KEY',
+  anthropic:    'ANTHROPIC_API_KEY',
+  openai:       'OPENAI_API_KEY',
+  openrouter:   'OPENROUTER_API_KEY',
+  'opencode-zen': 'OPENCODE_ZEN_API_KEY',
+  finnhub:      'FINNHUB_API_KEY',
 };
 
 module.exports = function setKey(argv, ctx) {
@@ -65,6 +70,7 @@ function printHelp() {
   console.log(`Providers: ${Object.keys(PROVIDERS).join(', ')}`);
   console.log('');
   console.log('Examples:');
+  console.log('  opencues set-key cerebras csk_...');
   console.log('  opencues set-key groq gsk_...');
   console.log('  opencues set-key finnhub abc123');
 }

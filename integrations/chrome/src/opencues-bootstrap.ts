@@ -371,11 +371,13 @@ function isManagedEditor(el: HTMLElement): boolean {
  *
  *  Sensitive-input exclusion: we DO NOT attach to password fields, OTP
  *  one-time codes, payment fields (autocomplete=cc-*), or anything the
- *  page has marked autocomplete="off" / autocomplete="new-password" /
- *  similar. The runtime would be reading + writing the user's
- *  credentials/PII through the LLM pipeline — a clear no. Defensive
- *  heuristic for name/id is layered on top of the formal type +
- *  autocomplete signal.
+ *  page has marked autocomplete="new-password" / similar. The runtime
+ *  would be reading + writing the user's credentials/PII through the
+ *  LLM pipeline — a clear no. `autocomplete="off"` is only sensitive
+ *  when the field or its form also looks credential/payment-related;
+ *  generic search boxes commonly use it and must remain attachable.
+ *  Defensive heuristic for name/id is layered on top of the formal type
+ *  + autocomplete signal.
  *
  *  Allowed input types: text, email, search, url. Textarea always
  *  allowed. Everything else (number, date, tel, color, hidden,
@@ -427,6 +429,17 @@ export const SENSITIVE_AUTOCOMPLETE_TOKENS: ReadonlySet<string> = new Set<string
 export const SENSITIVE_FIELD_NAME_PATTERN: RegExp =
   /\b(password|passwd|pwd|cvv|cvc|ssn|sin|pin|otp|secret|token|api[_-]?key|access[_-]?key|auth)\b/;
 
+/**
+ * Extra context used only for `autocomplete="off"`.
+ *
+ * Many normal search boxes set autocomplete=off, so treating that token
+ * as a hard deny-list entry blocks legitimate OpenCues use. We still
+ * honour it for likely payment/account forms by checking nearby field
+ * and form metadata for high-signal sensitive terms.
+ */
+export const SENSITIVE_AUTOCOMPLETE_OFF_CONTEXT_PATTERN: RegExp =
+  /\b(card|cardnumber|card-number|credit|debit|payment|billing|bank|account|iban|routing|sort-code|sortcode|security|verification|2fa|mfa)\b/;
+
 function isSensitiveField(el: HTMLInputElement | HTMLTextAreaElement): boolean {
   const autocomplete = (el.getAttribute('autocomplete') || '').toLowerCase();
   // Comma- or space-separated tokens per spec.
@@ -434,12 +447,6 @@ function isSensitiveField(el: HTMLInputElement | HTMLTextAreaElement): boolean {
   for (const tok of tokens) {
     if (SENSITIVE_AUTOCOMPLETE_TOKENS.has(tok)) return true;
   }
-  // Bank/payment forms sometimes set autocomplete="off" on the whole
-  // form. That's a heavier signal than "I don't want to be remembered"
-  // — many sites use it for SSN / bank-account / verification entry.
-  // Honor it conservatively.
-  if (tokens.includes('off')) return true;
-
   // Name/id heuristic — case-insensitive substring match against
   // sensitive patterns. Captures sites that don't use autocomplete=*.
   const name = (el.getAttribute('name') || '').toLowerCase();
@@ -447,6 +454,22 @@ function isSensitiveField(el: HTMLInputElement | HTMLTextAreaElement): boolean {
   const haystack = name + '|' + id;
   if (SENSITIVE_FIELD_NAME_PATTERN.test(haystack)) {
     return true;
+  }
+  // Bank/payment forms sometimes set autocomplete="off" on the whole
+  // form. Generic site search boxes do too, so require an additional
+  // sensitive-context signal before refusing.
+  if (tokens.includes('off')) {
+    const form = el.form;
+    const context = [
+      el.getAttribute('placeholder') || '',
+      el.getAttribute('aria-label') || '',
+      el.getAttribute('aria-describedby') || '',
+      form?.id || '',
+      form?.getAttribute('name') || '',
+      form?.className || '',
+      form?.getAttribute('aria-label') || '',
+    ].join('|').toLowerCase();
+    if (SENSITIVE_AUTOCOMPLETE_OFF_CONTEXT_PATTERN.test(context)) return true;
   }
   return false;
 }
@@ -2423,6 +2446,7 @@ function selectPlainRange(target: HTMLElement, start: number, end: number): bool
 // addition.
 
 const trustGate = createTrustGate();
+(window as unknown as { __opencuesTrustGate?: unknown }).__opencuesTrustGate = trustGate;
 
 /** Called from content.ts on every trusted `_` introduction. `count`
  *  is the number of `_` characters introduced (1 for keydown of '_',
