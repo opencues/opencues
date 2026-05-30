@@ -28,6 +28,29 @@ function resolveCueRoot() {
 }
 const CUE_ROOT = resolveCueRoot();
 
+function loadEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) return;
+  let content = '';
+  try { content = fs.readFileSync(filePath, 'utf8'); }
+  catch { return; }
+  for (const raw of content.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const m = line.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+    if (!m) continue;
+    const key = m[1];
+    let value = m[2].trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    // Real process env wins, but Chrome-launched native hosts usually
+    // lack shell rc exports. Loading .env makes `opencues set-key`
+    // sufficient for Chrome too.
+    if (!process.env[key]) process.env[key] = value;
+  }
+}
+loadEnvFile(path.join(CUE_ROOT, '.env'));
+
 // ─── @opencues/core loader ───────────────────────────────────────────────
 // Resolve relative to this script's location. Layout depends on where the
 // host runs from:
@@ -603,6 +626,8 @@ function schedule() {
   if (timer) clearTimeout(timer);
   timer = setTimeout(() => {
     timer = null;
+    loadEnvFile(path.join(CUE_ROOT, '.env'));
+    sendHostConfig();
     buildAndPush('change');
     rebuildUserBlankRegistry();   // re-register user-blanks on disk change
   }, 250);

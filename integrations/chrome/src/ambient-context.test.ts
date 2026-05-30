@@ -23,7 +23,7 @@
  */
 
 import { describe, expect, it, beforeEach } from 'vitest';
-import { gatherAmbientContext } from './opencues-bootstrap';
+import { gatherAmbientContext, isNormalInput } from './opencues-bootstrap';
 
 function setupDom(html: string, url = 'https://example.com/page'): void {
   document.documentElement.innerHTML = `<head><title>Test page</title></head><body>${html}</body>`;
@@ -73,6 +73,24 @@ describe('gatherAmbientContext — null cases', () => {
   it('returns null for input named pin / cvv (heuristic fallback)', () => {
     setupDom('<input id="card-cvv" type="text" name="cvv" placeholder="CVV">');
     expect(gatherAmbientContext(document.getElementById('card-cvv') as HTMLInputElement)).toBeNull();
+  });
+
+  it('allows ordinary search inputs with autocomplete=off', () => {
+    setupDom('<input id="global-search" type="search" autocomplete="off" placeholder="Search">');
+    const el = document.getElementById('global-search') as HTMLInputElement;
+    expect(isNormalInput(el)).toBe(true);
+    expect(gatherAmbientContext(el)).not.toBeNull();
+  });
+
+  it('still rejects autocomplete=off inside payment context', () => {
+    setupDom(`
+      <form id="billing-form">
+        <input id="card-number" type="text" autocomplete="off" placeholder="Card number">
+      </form>
+    `);
+    const el = document.getElementById('card-number') as HTMLInputElement;
+    expect(isNormalInput(el)).toBe(false);
+    expect(gatherAmbientContext(el)).toBeNull();
   });
 });
 

@@ -51,6 +51,7 @@ function ensureHighlightStyle(): HTMLStyleElement {
 // Captured at boot so the module-scope helpers below can read the
 // live opencuesState (cycled via `opencues settings _`).
 let _bootResult: ReturnType<typeof startOpenCues> | null = null;
+let currentTarget: HTMLElement | null = null;
 
 // Resolve the live dim-mix: runtime OPENCUES.md scalar (cycled via
 // `opencues settings _`) wins, fall back to the legacy popup-saved
@@ -123,8 +124,6 @@ async function init(): Promise<void> {
     // isn't present and StocksBlank silently skips. Matches the
     // shell-env model used by native hosts.
   });
-
-  let currentTarget: HTMLElement | null = null;
 
   const attachToFocused = (el: HTMLElement): void => {
     if (el === currentTarget) return;
@@ -437,8 +436,15 @@ init();
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type !== 'opencues:diagnostic-ping') return;
   const active = document.activeElement;
-  const isCE = !!active && (active as HTMLElement).isContentEditable === true;
-  const isNI = !!active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
+  const activeEl = active instanceof HTMLElement ? active : null;
+  const isCE = !!activeEl && activeEl.isContentEditable === true;
+  const isNI = !!activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
+  const activeAttachable = activeEl ? isTextInput(activeEl) : false;
+  const attached = !!currentTarget;
+  const activeKind = isCE ? 'contenteditable' : isNI ? `<${activeEl!.tagName.toLowerCase()}>` : null;
+  const attachedKind = currentTarget
+    ? (isNormalInput(currentTarget) ? `<${currentTarget.tagName.toLowerCase()}>` : 'contenteditable')
+    : null;
 
   // Echo back the FIRST 8 + LAST 4 chars of each LLM key the LIVE
   // runtime currently has loaded — by re-running loadConfig() so we
@@ -458,7 +464,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     sendResponse({
       bootVersion: chrome.runtime.getManifest().version,
       href: location.href.slice(0, 120),
-      currentTarget: isCE ? 'contenteditable' : isNI ? `<${active.tagName.toLowerCase()}>` : null,
+      currentTarget: activeKind,
+      attachedTarget: attachedKind,
+      targetAttachable: activeAttachable,
+      attachStatus: attached
+        ? `attached to ${attachedKind}`
+        : activeKind
+          ? `${activeKind} focused but OpenCues did not attach (unsupported or sensitive field)`
+          : '(none focused)',
       trustGateInstalled: typeof (window as unknown as { __opencuesTrustGate?: unknown }).__opencuesTrustGate !== 'undefined',
       runtimeKeys,
       // The actual provider/model the runtime would use NOW. Picks up
