@@ -116,8 +116,26 @@ fi
 # Default fork location: ~/claude-code-cues. Allow override via OPENCUES_CC_TARGET
 # pointing at a cli.js inside any other fork.
 if [ -n "${OPENCUES_CC_TARGET:-}" ]; then
-  # OPENCUES_CC_TARGET points at <fork>/node_modules/@anthropic-ai/claude-code/cli.js
-  CC_FORK_DIR="$(cd "$(dirname "$OPENCUES_CC_TARGET")/../../.." && pwd)"
+  # OPENCUES_CC_TARGET points at either:
+  #   <fork>/node_modules/@anthropic-ai/claude-code/cli.js          (3 dirs deep)
+  #   <fork>/node_modules/@anthropic-ai/claude-code/bin/claude.exe  (4 dirs deep)
+  # Pre-2.1.113 we only ever ran against cli.js. The native-binary
+  # fork (2.1.113+) needs the extra hop. Detect by basename + adjust.
+  _TARGET_BASENAME="$(basename "$OPENCUES_CC_TARGET")"
+  case "$_TARGET_BASENAME" in
+    cli.js)
+      CC_FORK_DIR="$(cd "$(dirname "$OPENCUES_CC_TARGET")/../../.." && pwd)"
+      ;;
+    claude.exe|claude)
+      CC_FORK_DIR="$(cd "$(dirname "$OPENCUES_CC_TARGET")/../../../.." && pwd)"
+      ;;
+    *)
+      echo "Error: OPENCUES_CC_TARGET basename '$_TARGET_BASENAME' not recognised." >&4
+      echo "Expected: cli.js (cli.js fork shape) or claude.exe (native-binary fork shape)." >&4
+      exit 1
+      ;;
+  esac
+  unset _TARGET_BASENAME
 else
   CC_FORK_DIR="$HOME/claude-code-cues"
 fi
@@ -336,17 +354,29 @@ mkdir -p "$OC_INSTALL_ROOT/scripts"
 cp "$SCRIPT_DIR/highlight-statusline.sh" "$OC_INSTALL_ROOT/statusline.sh"
 chmod +x "$OC_INSTALL_ROOT/statusline.sh"
 
-# 6a. Auto-fix CC settings.json so statusLine.command points at the
-# newly-installed script. Two prior layouts shipped statuslines at
-# different paths — both are gone now, so settings.json pointing at
-# either would invoke a missing file. settings.json holds an absolute
-# path, so the statusline works from any cwd you launch claude-cues from.
+# 6a. Migrate legacy statusLine paths only — never auto-write fresh.
+#
+# Design choice: setup.sh stages statusline.sh into our fork dir but
+# does NOT proactively edit ~/.claude/settings.json. ~/.claude/ is
+# Claude Code's directory; we're guests, and writing to it without
+# explicit user consent feels wrong. The user enables the tip surface
+# explicitly via:
+#
+#   opencues statusline enable             # writes ~/.claude/settings.json
+#   opencues statusline enable --project   # writes <cwd>/.claude/settings.json
+#
+# What we DO touch automatically: stale legacy opencues paths. If
+# the user previously enabled it via an old install layout, the
+# path will be wrong now (the install root has moved). Rewriting a
+# stale legacy path is a corrective in-place edit, not a fresh
+# write, and refusing to do it would leave the user's statusline
+# broken. Same sed-based logic the legacy install used.
 SETTINGS_JSON="$HOME/.claude/settings.json"
 if [ -f "$SETTINGS_JSON" ] && grep -qE "highlight-statusline\.sh|\.claude/opencues/statusline\.sh" "$SETTINGS_JSON" 2>/dev/null; then
   cp "$SETTINGS_JSON" "$SETTINGS_JSON.bak.cues-statusline"
   sedi "s|$HOME/.claude/highlight-statusline.sh|$OC_INSTALL_ROOT/statusline.sh|g" "$SETTINGS_JSON"
   sedi "s|$HOME/.claude/opencues/statusline.sh|$OC_INSTALL_ROOT/statusline.sh|g" "$SETTINGS_JSON"
-  echo "Updated statusLine.command in $SETTINGS_JSON"
+  echo "Migrated stale statusLine.command in $SETTINGS_JSON → $OC_INSTALL_ROOT/statusline.sh"
 fi
 end_step
 

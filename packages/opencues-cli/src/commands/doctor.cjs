@@ -408,6 +408,69 @@ module.exports = async function doctor(argv, ctx) {
         findings.push({ sev: 'warn', msg: `cli.js at ${cli} is not patched`, fix: `opencues install claude-code --target ${cli}` });
       }
     }
+    // ── StatusLine opt-in surface (CC's settings.json) ──────────────
+    // Status line tip is OPT-IN — install never touches ~/.claude/.
+    // Surface user-level + project-level state distinctly so users
+    // discover the command. Reuses the same lib statusline.cjs uses
+    // so this view can't drift from what `opencues statusline status`
+    // shows.
+    try {
+      const ccsl = require('../lib/cc-statusline.cjs');
+      const userInfo = ccsl.inspect('user');
+      const projectInfo = ccsl.inspect('project');
+
+      // User-level row.
+      if (userInfo.state === 'opencues-ours') {
+        s.ok(`statusLine (user)`, true);
+      } else if (userInfo.state === 'missing') {
+        s.info(`statusLine (user)`, dim('not configured — opt-in: `opencues statusline enable`'));
+      } else if (userInfo.state === 'opencues-stale') {
+        s.bad(`statusLine (user) — stale opencues path`, false);
+        findings.push({
+          sev: 'warn',
+          msg: `statusLine.command in ${userInfo.file} points at a stale opencues path (${userInfo.currentCmd})`,
+          fix: 'opencues statusline enable   # rewrites to current install root',
+        });
+      } else if (userInfo.state === 'user-custom') {
+        s.info(`statusLine (user) — custom`, dim(userInfo.currentCmd));
+      } else if (userInfo.state === 'broken') {
+        s.bad(`statusLine (user) — settings.json unreadable`, false);
+      }
+
+      // Project-level row. Only shown when something actually exists
+      // at <cwd>/.claude/settings.json — otherwise this would yell at
+      // every cwd that doesn't have CC project settings.
+      if (fs.existsSync(projectInfo.file)) {
+        if (projectInfo.state === 'opencues-ours') {
+          s.ok(`statusLine (project: ${process.cwd()})`, true);
+        } else if (projectInfo.state === 'missing') {
+          s.info(`statusLine (project)`, dim(`project settings.json exists but no statusLine — opt-in: opencues statusline enable --project`));
+        } else if (projectInfo.state === 'opencues-stale') {
+          s.bad(`statusLine (project) — stale opencues path`, false);
+          findings.push({
+            sev: 'warn',
+            msg: `statusLine.command in ${projectInfo.file} points at a stale opencues path (${projectInfo.currentCmd})`,
+            fix: 'opencues statusline enable --project   # rewrites to current install root',
+          });
+        } else if (projectInfo.state === 'user-custom') {
+          // Project-shadow case. User-level might be ours; project takes precedence.
+          // Surface this prominently — it's the genuine "tips don't appear here, why?" case.
+          if (userInfo.state === 'opencues-ours') {
+            s.info(`statusLine (project) — SHADOWING user-level`, dim(projectInfo.currentCmd));
+            findings.push({
+              sev: 'info',
+              msg: `OpenCues tips won't appear in CC launched from this project — ${projectInfo.file} sets its own statusLine.command (${projectInfo.currentCmd}) which takes precedence over your user-level configuration.`,
+              fix: 'opencues statusline enable --project --force   # if you want to replace the project command\n         ' +
+                   '(or `opencues statusline enable --project` after manually removing the project field)',
+            });
+          } else {
+            s.info(`statusLine (project) — custom`, dim(projectInfo.currentCmd));
+          }
+        } else if (projectInfo.state === 'broken') {
+          s.bad(`statusLine (project) — settings.json unreadable`, false);
+        }
+      }
+    } catch { /* cc-statusline lib unavailable — non-fatal */ }
     s.render();
   }
   // Stale pre-compact-footprint install still on disk?
@@ -419,6 +482,23 @@ module.exports = async function doctor(argv, ctx) {
       fix: 'opencues install claude-code',
     });
   }
+  // Detect extra CC fork dirs (e.g. ~/claude-code-cues-150/) — these
+  // are dev-only relics from when we maintained parallel forks per CC
+  // shape. The product model is now single-fork (upgrade in place via
+  // `opencues update claude-code --to <ver>`), so any extra fork is
+  // safe to delete. Surface as info, not warn — the user might still
+  // be using it intentionally as a side-by-side dev setup.
+  try {
+    const { detectExtraCCForks } = require('../lib/version-markers.cjs');
+    const extras = detectExtraCCForks();
+    for (const extra of extras) {
+      findings.push({
+        sev: 'info',
+        msg: `extra CC fork at ${extra}/ — the product model is single-fork (~/claude-code-cues/, upgraded in place). This fork is a dev relic; safe to remove.`,
+        fix: `rm -rf ${extra}   # if you don't want it; otherwise patch it explicitly with: opencues install claude-code --target ${path.join(extra, 'node_modules/@anthropic-ai/claude-code/bin/claude.exe')}`,
+      });
+    }
+  } catch { /* lib unavailable — skip */ }
   // Only surface "CC not installed" when the fork is actually absent.
   // If the fork is present (cli.js patched + runtime/core installed) but
   // .cues/ support dir is missing, it usually means the patch was
