@@ -19,7 +19,27 @@ Until May 2026 every internal package sat at `0.1.0` regardless of what landed �
 
 - Bump the version in the **same commit/PR** as the change. Don't batch bumps separately — that disconnects the version from the diff that motivated it and makes git blame less useful for "when did X become available?"
 - When `@opencues/core` or `@opencues/runtime` bumps, integrations that depend on it update their `dependencies` field in the same PR (or the next one) so versions don't drift in lockfiles.
+- **Update the changelog in the same PR as the version bump.** The root `CHANGELOG.md` has an `[Unreleased]` section for accumulating changes; spec-affecting changes also land an entry under `spec/CHANGELOG.md`. Without an entry the version bump is opaque — readers six months later have to grep PRs to learn what changed. The version field says *what* version; the changelog says *why*. They ship together.
 - The version snapshot table in CLAUDE.md will go stale fast. Regenerate it with the one-liner whenever versions matter for context; don't treat the literal table as ground truth.
+
+## Which changelog when
+
+Two changelogs, with clear scopes:
+
+| Changelog | Covers |
+|---|---|
+| `CHANGELOG.md` (root) | Every shipping change across the monorepo — `@opencues/core`, `@opencues/runtime`, the CLI, every integration. The `[Unreleased]` section accumulates entries between releases; cut a release by promoting it to a dated version heading. |
+| `spec/CHANGELOG.md` | Only changes to the open standard (`spec/` — cue / blank / auditor / core schemas). A spec entry is required when `SPEC_VERSION` bumps, when a documented frontmatter key is added/removed/repurposed, or when wire-format behaviour changes. Implementation refactors that preserve the spec don't need an entry. |
+
+A single PR can land entries in both. If unsure whether a change is spec-affecting, default to root-only — drift is easier to catch when entries are duplicated than when one is missing.
+
+## What makes a good changelog entry
+
+- **Lead with the user-visible name** of the thing that changed, bolded. Not a PR number, not a file path. Examples: "Three-bucket LLM routing", "`opencues doctor` LLM routing section", "`applyOpencuesScalar` race on back-to-back disk writes".
+- **One sentence on what it does**, one on **why it matters** if not obvious. Cross-link to the architecture doc when there is one.
+- **Group by Keep-a-Changelog category** (`Added` / `Changed` / `Fixed` / `Removed` / `Deprecated` / `Security`). Bump-only entries (versions moving without functional change) go under `Changed`.
+- **No PR / issue numbers** in the entry itself — git blame on the changelog gives the PR; the entry should make sense without one. (Exceptions: when a fix specifically references a prior incident PR for context, that's fine.)
+- **Past tense, plain prose.** "Added X" / "Fixed Y" / "Renamed A → B."
 
 ## Why this matters here specifically
 
