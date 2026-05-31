@@ -314,45 +314,42 @@ Host-side registry is rebuilt every time `fs.watch(CUE_ROOT)` fires
 (same debounce as the bundle push), so editing a blank's JS picks up
 without restart.
 
-**Hard dependency on chrome-host**: without it, the proxy's invoke
-fails with "native host not connected". Shipped TS-class blanks
-(weather/stocks/answer/prompt/hackernews/dictionary/crypto/countries/
-claude-status) still register upstream in `createBlanks()` and don't
-need the host. The migration's intent was to unify the source of
-truth across hosts; on chrome the TS class still wins when both
-exist (see `registerUserBlanksFromBundle` in `opencues-bootstrap.ts`).
+**Hard dependency on chrome-host for custom JS user-blanks**: without
+it, the proxy's invoke fails with "native host not connected". The
+shipped built-in blanks (weather/stocks/answer/prompt/hackernews/
+dictionary/crypto/countries/claude-status) live in `@opencues/runtime`
+as TS classes and ship inside the extension bundle — they work
+standalone without the chrome-host.
 
 Source of truth for capability enforcement: the HOST. Sanitization
 runs both at the host (output filter) and content-script (final
 defence in depth at the DOM trust boundary).
 
-### ⚠ Pre-launch decision — TS-class fallback duplication
+### Built-in TS classes are the single implementation (May 2026)
 
-Today (May 2026) chrome ships a TS-class version of every migrated
-blank (weather / stocks / answer / prompt / hackernews / dictionary /
-crypto / countries / claude-status) in `createBlanks()`. These take
-precedence over the user-blank versions on chrome so the extension
-works **without** the chrome-host installed. Native hosts (CC / OC /
-gemini) deleted their TS classes during the May 11 migration — they
-rely on user-blanks exclusively.
+Every shipped blank that has a built-in TS class in
+`BUILTIN_BLANKS` (`packages/opencues-runtime/src/blanks/index.ts`)
+runs from that class on every host — chrome, CC, OC, gemini. There
+is no parallel user-blank script in `defaults/blanks/<name>/blank.js`
+for these names; the BLANK.md frontmatter declares routing + tip +
+replace-mode only, and `createDefaultBlanksRegistry` provides the
+implementation.
 
-This is drift. Two implementations of the same blank → two places to
-keep in sync, two test surfaces, two places a bug could land. The
-TS classes are functionally a subset of the user-blank versions
-(no capability declarations, no quota tracking, no per-secret
-host binding).
+Background: chrome and native hosts used to have opposite
+precedence rules when a built-in collided with a user-blank
+shipping the same name. Chrome preferred the built-in; native
+hosts preferred the user-blank. The shipped `defaults/blanks/<name>/blank.js`
+files therefore ran on CC/OC/gemini but never on chrome — silent
+per-host divergence. Resolved by deleting the duplicate user-blank
+scripts and the `impl:` line from their BLANK.md, so the built-in
+TS class is the only path on every host.
 
-Decision needed before launch:
-- **Option A** — keep the TS-class fallback. Pro: extension works
-  standalone, lower install friction. Con: ongoing duplication.
-- **Option B** — drop the TS-class fallback. Chrome matches CC / OC /
-  gemini, ONE source of truth. Custom + shipped blanks both need
-  the host. Con: install requires two steps (extension + host).
-
-If B: delete the runtime-class registrations in `createBlanks()`
-for the migrated names; the user-blank proxy will be the only
-path. Keep `OpenCuesSettings` and `volume` (volume has no
-user-blank version, it's pure-host).
+The chrome-host is still required for **custom** user-blanks
+(third-party packs declaring `impl: ./blank.js` for names not in
+`BUILTIN_BLANKS`). For those, the collision-guard at
+`registerUserBlanksFromBundle` in `opencues-bootstrap.ts` keeps the
+built-in winning if a future pack accidentally squats on a built-in
+name.
 
 ## Security model
 

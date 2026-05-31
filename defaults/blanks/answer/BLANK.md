@@ -9,9 +9,9 @@ blankAutoPopulate: true
 blankFormat: string
 blankTip: Answer
 blankProximity: 20
-impl: ./blank.js
-llm: groq
 ---
 
-Dispatched by the shared runtime `AnswerBlank`
-(`packages/opencues-runtime/src/blanks/answer.ts`).
+Implementation: built-in `AnswerBlank` in `@opencues/runtime`
+(`packages/opencues-runtime/src/blanks/answer.ts`). Every host wires
+it via `createDefaultBlanksRegistry`; the keyword routing in this
+file is all that's needed.

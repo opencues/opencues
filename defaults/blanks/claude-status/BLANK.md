@@ -12,12 +12,9 @@ blankDismissible: true
 # The Yes/No answer reads naturally on its own — no get() reformat needed.
 blankReplace: auto
 blankClearOnEdit: true
-impl: ./blank.js
-network: [status.claude.com]
-storage: claude-status
 ---
 
-Dispatched by the shared runtime `ClaudeStatusBlank`
+Implementation: built-in `ClaudeStatusBlank` in `@opencues/runtime`
 (`packages/opencues-runtime/src/blanks/claude-status.ts`). Hits the
 public Statuspage API at `https://status.claude.com/api/v2/summary.json` and
 synthesises four cycling alts from one fetch:

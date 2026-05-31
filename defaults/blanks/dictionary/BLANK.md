@@ -7,15 +7,12 @@ blankFormat: string
 blankTip: Dictionary definition
 blankReadOnly: true
 blankProximity: 3
-impl: ./blank.js
-network: [api.dictionaryapi.dev]
-storage: dictionary
 # Auto: bare "define ephemeral _" → wipe → "ephemeral: lasting for a very short time"
 # (word embedded). Copula phrasing → keep.
 blankReplace: auto
 ---
 
-Dispatched by the shared runtime `DictionaryBlank`
+Implementation: built-in `DictionaryBlank` in `@opencues/runtime`
 (`packages/opencues-runtime/src/blanks/dictionary.ts`). Looks up
 the highlighted/contextual word at https://api.dictionaryapi.dev/
 (no API key, no signup), returns the first definition truncated to
