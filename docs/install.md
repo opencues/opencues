@@ -212,13 +212,26 @@ Shows the highlighted word and its tip in Claude Code's status bar:
 agents (1/3) - Spawn parallel workers via Task tool
 ```
 
-**Enable:** Run `/statusline` in Claude Code and set the command to:
+**Opt-in by design.** `opencues install claude-code` stages
+`statusline.sh` into the CC fork dir but **does not write to
+`~/.claude/settings.json`** — that's Claude Code's own directory and
+we don't want to touch it without explicit consent. Run the dedicated
+command:
 
-```
-~/claude-code-cues/.cues/statusline.sh
+```bash
+opencues statusline status               # what's configured where?
+opencues statusline enable               # writes ~/.claude/settings.json (user-level)
+opencues statusline enable --project     # writes <cwd>/.claude/settings.json (project-level)
+opencues statusline disable [--project]  # clears it
 ```
 
-**Disable:** Run `/statusline` again and clear the command.
+Behaviour rules:
+
+- We back up `settings.json` to `settings.json.bak.cues-statusline` before any write.
+- If `statusLine.command` is already a custom script (your starship.sh, etc.) we refuse to overwrite — pass `--force` if you want to replace it.
+- If `statusLine.command` already points at a stale opencues path (from a prior install layout), `enable` rewrites it to the current path.
+- `disable` only clears our entry — never touches a non-opencues `statusLine.command`.
+- Project-level wins over user-level. `opencues doctor` flags this shadow case so you know when project-level CC settings are suppressing the user-level tip surface.
 
 Full reference: [`integrations/claude-code/docs/status-line.md`](../integrations/claude-code/docs/status-line.md).
 

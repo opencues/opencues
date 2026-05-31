@@ -105,7 +105,6 @@ function enumerateInstalledHosts(ctx) {
   const HOME = os.homedir();
   const candidates = [
     { host: 'claude-code',       root: path.join(HOME, 'claude-code-cues', '.cues') },
-    { host: 'claude-code-150',   root: path.join(HOME, 'claude-code-cues-150', '.cues') },
     { host: 'opencode',          root: path.join(HOME, 'opencode-cues', '.opencues') },
     { host: 'gemini-cli',        root: path.join(HOME, 'gemini-cli-cues', '.opencues') },
     { host: 'shell',             root: path.join(ctx.REPO_ROOT, 'integrations/shell/node_modules/@opencues') },
@@ -123,11 +122,31 @@ function enumerateInstalledHosts(ctx) {
   return results;
 }
 
+// Detect "dev relic" CC fork dirs — anything matching ~/claude-code-cues*
+// other than the canonical ~/claude-code-cues/. These are leftovers
+// from when we maintained parallel forks per-shape; the product is now
+// single-fork (upgrade in place). Surface these so doctor can suggest
+// the user delete them.
+function detectExtraCCForks() {
+  const HOME = os.homedir();
+  const out = [];
+  try {
+    for (const entry of fs.readdirSync(HOME, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      if (!entry.name.startsWith('claude-code-cues')) continue;
+      if (entry.name === 'claude-code-cues') continue; // the canonical one
+      out.push(path.join(HOME, entry.name));
+    }
+  } catch { /* HOME unreadable — silent */ }
+  return out;
+}
+
 module.exports = {
   writeMarker,
   readMarker,
   checkDrift,
   enumerateInstalledHosts,
+  detectExtraCCForks,
   getSourceVersions,
   FILENAME,
 };

@@ -6,10 +6,15 @@
 #   { "statusLine": { "type": "command", "command": "/full/path/highlight-statusline.sh" } }
 
 # Find Claude Code PID by walking up the process tree.
-# Match either:
-#   - cmdline starting with `claude` (the native install or `claude-cues` shim)
-#   - cmdline containing `claude-code/cli.js` (when invoked as `node .../cli.js`,
-#     e.g. the local install used during integration development)
+# Match any of:
+#   - cmdline starting with `claude` (the system install or a `claude-cues` shim)
+#   - cmdline containing `claude-code/cli.js` (cli.js fork — CC 2.1.111 and earlier;
+#     invoked as `node .../@anthropic-ai/claude-code/cli.js`)
+#   - cmdline containing `claude-code/bin/claude` (native bun-binary fork —
+#     CC 2.1.113+ including 2.1.150; invoked as the absolute path to claude.exe.
+#     We match `bin/claude` rather than `bin/claude.exe` because the bun-compile
+#     output also spawns child processes via the same binary path, sometimes
+#     without the `.exe` suffix on linux builds.)
 #
 # Linux exposes per-PID cmdline + parent at /proc/$PID/{cmdline,stat}.
 # macOS has no /proc — fall back to `ps -o command=` for cmdline and
@@ -26,7 +31,7 @@ while [ "$WALK_PID" != "1" ] && [ -n "$WALK_PID" ]; do
   else
     CMDLINE=$(ps -o command= -p "$WALK_PID" 2>/dev/null)
   fi
-  if echo "$CMDLINE" | grep -qE '^claude|claude-code/cli\.js'; then
+  if echo "$CMDLINE" | grep -qE '^claude|claude-code/cli\.js|claude-code/bin/claude'; then
     CLAUDE_PID=$WALK_PID
     break
   fi
@@ -72,17 +77,36 @@ if [ -f "$HIGHLIGHT_FILE" ]; then
     if [ -n "$word" ]; then
       is_cue_blank=$(echo "$content" | grep -o '"cueBlank":true')
       altcount=$(echo "$content" | sed -n 's/.*"alts":\[\([^]]*\)\].*/\1/p' | tr ',' '\n' | wc -l)
-      # Show if word has alts OR is a cue-blank with a tip
-      if [ "$altcount" -gt 0 ] 2>/dev/null || [ -n "$is_cue_blank" -a -n "$tip" ]; then
+      altidx=$(echo "$content" | sed -n 's/.*"currentAltIndex":\([0-9]*\).*/\1/p')
+      altidx=${altidx:-0}
+      altpos=$((altidx + 1))
+      # Show if word has alts OR is a cue-blank with a tip OR cue-blank
+      # with no tip but a substituted alt (sentence cues, transform
+      # blanks, etc. — the alt text IS the content the user cares about,
+      # even when cueTip is null).
+      if [ "$altcount" -gt 0 ] 2>/dev/null || [ -n "$is_cue_blank" ]; then
         # Inline (no newline) — CC v2.1.x renders only the first line of the
         # status command output. Use a separator instead of a newline.
         printf ' %s|%s ' "$YELLOW" "$RESET"
         if [ -n "$is_cue_blank" ]; then
-          printf '%s' "$tip"
+          # Cue-blank: prefer tip if present; otherwise show the alt
+          # text (truncated) + position so the user sees what's currently
+          # selected. Sentence cues (cueBlank=true, cueTip=null) hit
+          # this branch — without it the statusline rendered as just
+          # "user@host:dir | " which looked broken.
+          if [ -n "$tip" ]; then
+            printf '%s' "$tip"
+          else
+            # Truncate long sentence-cue substitutions to ~70 chars so
+            # the statusline doesn't blow past the terminal width.
+            truncated=$(printf '%s' "$word" | cut -c1-70)
+            if [ "${#word}" -gt 70 ]; then truncated="${truncated}…"; fi
+            printf '%s%s%s' "${DIM}" "$truncated" "$RESET"
+            if [ "$altcount" -gt 1 ] 2>/dev/null; then
+              printf ' (%d/%d)' "$altpos" "$altcount"
+            fi
+          fi
         else
-          altidx=$(echo "$content" | sed -n 's/.*"currentAltIndex":\([0-9]*\).*/\1/p')
-          altidx=${altidx:-0}
-          altpos=$((altidx + 1))
           printf '%s%s%s (%d/%d)' "${BOLD}${CYAN}" "$word" "$RESET" "$altpos" "$altcount"
           if [ -n "$tip" ]; then
             printf ' - %s' "$tip"

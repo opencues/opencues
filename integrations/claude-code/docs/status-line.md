@@ -25,10 +25,28 @@ Words without alts or a cue-blank tip produce no status line output.
 
 ## Setup
 
-1. `setup.sh` copies `highlight-statusline.sh` to `~/.claude/`
-2. Run `/statusline` in Claude Code
-3. Set command to full path: `/home/YOUR_USER/.claude/highlight-statusline.sh`
-4. Restart Claude Code
+Two steps — install first, then opt in via a dedicated command:
+
+```bash
+opencues install claude-code             # stages statusline.sh into <CC_FORK>/.cues/
+opencues statusline enable               # writes ~/.claude/settings.json — explicit consent
+```
+
+Why two steps: `~/.claude/` is Claude Code's directory, not OpenCues's. Touching it on every install would surprise users (especially anyone running a custom statusline like starship). The opt-in command makes the file modification explicit + reversible.
+
+The `opencues statusline` command supports:
+
+- `enable [--project] [--force]` — write our `statusLine.command` to user (default) or `<cwd>/.claude/settings.json`. `--force` overrides a non-opencues custom command.
+- `disable [--project]` — clear our `statusLine.command`. Refuses to clear a non-opencues command.
+- `status` — read-only inspection of both user- and project-level settings.
+
+Behaviour rules baked into the command (and pinned by tests in `packages/opencues-cli/src/lib/cc-statusline.test.cjs`):
+
+- Back up `settings.json.bak.cues-statusline` before any write.
+- Refuse to overwrite a user-custom `statusLine.command` (your starship.sh, etc.) without `--force`.
+- Refuse to clear a non-opencues `statusLine.command` (never touch what's not ours).
+- Auto-rewrite stale opencues paths (e.g. legacy `~/.claude/opencues/statusline.sh`) to the current install root on `enable`.
+- Project-level (`<cwd>/.claude/settings.json`) wins over user-level when CC reads it. `opencues doctor` flags the shadow case prominently when project-level suppresses user-level.
 
 ## Data Flow
 

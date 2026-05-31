@@ -21,7 +21,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const compatLib = require('../lib/compat.cjs');
-const { tag, step, bold, dim, banner, tree, G, cliVersion } = require('../lib/style.cjs');
+const { tag, step, bold, dim, banner, tree, G, cliVersion, brightWhite } = require('../lib/style.cjs');
 
 const HOST_ALIASES = {
   'claude-code': 'claude-code', claudecode: 'claude-code', claude: 'claude-code', cc: 'claude-code',
@@ -59,8 +59,46 @@ module.exports = async function update(argv, ctx) {
   }
 
   // Mode dispatch.
+  // - `--check`: read-only "what's available" report.
+  // - `<host> --to <ver>`: explicit version upgrade.
+  // - `<host>` (no `--to`): upgrade to current-pin in compat.json. The
+  //   most common path — "give me the recommended version." No-op if
+  //   already current.
+  // - (no host): workspace pull + rebuild + redeploy all installed hosts.
   if (check) return doCheck(host, ctx);
   if (toVersion) return doUpgrade(host, toVersion, { force, dryRun }, ctx);
+  if (host) {
+    // Default to current-pin upgrade. Read compat.json, compare to
+    // installed, no-op if equal, otherwise call doUpgrade.
+    const compat = compatLib.loadCompat(ctx.REPO_ROOT, host);
+    if (!compat) {
+      console.error(`opencues update: no compat.json for ${host}`);
+      process.exit(1);
+    }
+    const targetVersion = compat['current-pin'];
+    if (!targetVersion) {
+      console.error(`opencues update: ${host}'s compat.json has no current-pin set; pass --to <ver> explicitly`);
+      process.exit(1);
+    }
+    const HOME = os.homedir();
+    const installedPin = compatLib.readNpmPin(HOME, compat) ||
+                         (compat['host-kind'] === 'git' ? compatLib.readGitPin(ctx.REPO_ROOT, compat)?.version : null);
+    if (installedPin === targetVersion) {
+      console.log(banner({ version: cliVersion(ctx), tagline: `update ${host}` }));
+      console.log('');
+      console.log(`${tag('ok')} ${host} already at current-pin ${bold(targetVersion)} — nothing to do.`);
+      console.log(`  ${dim('To force a rebuild without changing version: opencues install ' + host + ' --rebuild')}`);
+      return 0;
+    }
+    if (!installedPin) {
+      console.error(`opencues update: ${host} is not installed. Run \`opencues install ${host}\` first.`);
+      process.exit(1);
+    }
+    // Hand off to doUpgrade — it prints the banner. We don't print an
+    // info line BEFORE the banner because that breaks the visual
+    // hierarchy (every other CLI surface puts the banner first).
+    return doUpgrade(host, targetVersion, { force, dryRun, installedPin }, ctx);
+  }
   return doUpdate(host, { skipPull, dryRun }, ctx);
 };
 
@@ -281,11 +319,33 @@ function stripV(s) { return String(s || '').replace(/^v/, ''); }
 
 // ─── MODE 3: UPGRADE (--to) ────────────────────────────────────────────
 
-async function doUpgrade(host, toVersion, { force, dryRun }, ctx) {
+async function doUpgrade(host, toVersion, { force, dryRun, installedPin }, ctx) {
   if (!host) {
     console.error('opencues update --to <version>: must specify a host (e.g. opencues update claude-code --to 2.1.115)');
     process.exit(2);
   }
+  // Compute the installed pin BEFORE the banner so the banner tagline
+  // can carry the full from→to context. Avoids the redundant "info
+  // line under banner" pattern where banner says "→ X" and the line
+  // below repeats "Y → X".
+  if (!installedPin) {
+    const compatForRead = compatLib.loadCompat(ctx.REPO_ROOT, host);
+    if (compatForRead) {
+      const HOME = os.homedir();
+      installedPin = compatLib.readNpmPin(HOME, compatForRead) ||
+                     (compatForRead['host-kind'] === 'git' ? compatLib.readGitPin(ctx.REPO_ROOT, compatForRead)?.version : null);
+    }
+  }
+  // Version numbers in the tagline get bright-white-bold so they pop
+  // against the dim banner text — the from→to is what the user wants
+  // to verify at a glance.
+  const fromStr = brightWhite(bold(installedPin || ''));
+  const toStr   = brightWhite(bold(toVersion));
+  const tagline = installedPin && installedPin !== toVersion
+    ? `upgrade ${host} ${fromStr} → ${toStr}`
+    : `upgrade ${host} → ${toStr}`;
+  console.log(banner({ version: cliVersion(ctx), tagline }));
+  console.log('');
   const compat = compatLib.loadCompat(ctx.REPO_ROOT, host);
   if (!compat) {
     console.error(`opencues update: no compat.json for ${host} — can't upgrade automatically`);
@@ -393,7 +453,15 @@ async function doUpgradeGit(host, toVersion, compat, { dryRun }, ctx) {
 
 function runHostInstaller(host, ctx, { rollback }) {
   const installer = path.join(ctx.REPO_ROOT, 'integrations', host, 'bin/install.cjs');
-  const r = spawnSync('node', [installer, 'install'], { cwd: ctx.REPO_ROOT, stdio: 'inherit' });
+  // --rebuild forces the install to actually run setup.sh instead of
+  // no-opping on a healthy detection. Upgrade-to-new-version always
+  // requires real install work (npm-install the new CC version, patch
+  // it, write the marker) — never a no-op.
+  // OPENCUES_SKIP_BANNER=1 suppresses the per-host installer banner
+  // so we don't double-banner mid-stream (the update banner is
+  // already up).
+  const env = { ...process.env, OPENCUES_SKIP_BANNER: '1' };
+  const r = spawnSync('node', [installer, 'install', '--rebuild'], { cwd: ctx.REPO_ROOT, stdio: 'inherit', env });
   if (r.status !== 0) {
     console.error(`\nInstall failed at new pin.`);
     if (rollback) rollback();

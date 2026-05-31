@@ -56,7 +56,7 @@ The installer (`opencues install claude-code`) chains two scripts:
    - `npm install @anthropic-ai/claude-code` — pinned to exact version (2.1.110 for the cli.js fork at `~/claude-code-cues/`; 2.1.150+ for the native-binary fork at `~/claude-code-cues-150/`). See [UPGRADING.md](UPGRADING.md) for the cross-shape install dance.
    - Clones tweakcc into `<CC_FORK>/.cues/tweakcc/` (the patcher lives inside the fork)
    - Builds + installs `@opencues/{core,runtime}` into `<CC_FORK>/node_modules/@opencues/`
-   - Installs `statusline.sh` into `<CC_FORK>/.cues/`
+   - Installs `statusline.sh` into `<CC_FORK>/.cues/` (does NOT auto-edit `~/.claude/settings.json` — that's an explicit opt-in via `opencues statusline enable`)
    - Patches tweakcc to wire OpenCues v2 + disable every stock patch
    - Builds tweakcc + verifies dist contains v2 wiring (fail loud if not)
    - Applies tweakcc to cli.js + verifies the boot landed (fail loud if not)

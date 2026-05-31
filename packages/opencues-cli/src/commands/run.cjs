@@ -188,10 +188,11 @@ function printCachedUpdateNotice(ctx) {
 }
 
 function runCC(passthrough, ctx) {
-  // Preferred binary: ~/claude-code-cues-150/.../bin/claude.exe — the
-  // 2.1.150 native bun-compile install. That's the current default
-  // pin (compat.json current-pin=2.1.150). Falls back to the older
-  // cli.js install at ~/claude-code-cues/ for users still on 2.1.110.
+  // SINGLE canonical fork at ~/claude-code-cues/. Auto-detect whichever
+  // shape (cli.js or native binary) the pinned CC version ships in.
+  // Upgrading the version happens via `opencues update claude-code
+  // --to <ver>` in this same fork — no parallel fork dirs.
+  //
   // --bin always wins for explicit overrides.
   const binFlag = passthrough.indexOf('--bin');
   if (binFlag >= 0 && passthrough[binFlag + 1]) {
@@ -206,39 +207,39 @@ function runCC(passthrough, ctx) {
     return;
   }
 
-  // 2.1.150 native bun-binary (the new default).
-  const native150 = path.join(os.homedir(), 'claude-code-cues-150', 'node_modules',
-    '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
-  if (fs.existsSync(native150)) {
+  const forkRoot = path.join(os.homedir(), 'claude-code-cues');
+  const nativeBin = path.join(forkRoot, 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
+  const cliJs    = path.join(forkRoot, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
+
+  // Native binary wins when present — that's CC 2.1.113+ (current).
+  if (fs.existsSync(nativeBin)) {
     printLaunchBanner(ctx, 'claude-code', [
-      ['host',    'claude-code  ' + style.dim('(patched, native 2.1.150)')],
+      ['host',    'claude-code  ' + style.dim('(patched, native binary)')],
       ['command', `claude.exe ${passthrough.join(' ')}`.trim()],
-      ['fork',    style.fileLink(native150, native150)],
+      ['fork',    style.fileLink(nativeBin, nativeBin)],
     ]);
     clearScreenForHandoff();
-    const result = spawnSync(native150, passthrough, { stdio: 'inherit' });
-    exitFromSpawn(result, native150);
+    const result = spawnSync(nativeBin, passthrough, { stdio: 'inherit' });
+    exitFromSpawn(result, nativeBin);
     return;
   }
 
-  // 2.1.110 cli.js (legacy fork, kept for users who haven't migrated).
-  const patchedCli = path.join(os.homedir(), 'claude-code-cues', 'node_modules',
-    '@anthropic-ai', 'claude-code', 'cli.js');
-  if (fs.existsSync(patchedCli)) {
+  // cli.js shape — CC ≤ 2.1.111.
+  if (fs.existsSync(cliJs)) {
     printLaunchBanner(ctx, 'claude-code', [
-      ['host',    'claude-code  ' + style.dim('(patched, cli.js 2.1.110)')],
+      ['host',    'claude-code  ' + style.dim('(patched, cli.js)')],
       ['command', `node cli.js ${passthrough.join(' ')}`.trim()],
-      ['fork',    style.fileLink(patchedCli, patchedCli)],
+      ['fork',    style.fileLink(cliJs, cliJs)],
     ]);
     clearScreenForHandoff();
-    const result = spawnSync('node', [patchedCli, ...passthrough], { stdio: 'inherit' });
-    exitFromSpawn(result, patchedCli);
+    const result = spawnSync('node', [cliJs, ...passthrough], { stdio: 'inherit' });
+    exitFromSpawn(result, cliJs);
     return;
   }
 
   // Fallback: PATH-based lookup. `claude-cues` shell alias won't
   // resolve via `which` — only a real binary on PATH works.
-  console.warn(`${style.tag('warn')} patched install not found at ~/claude-code-cues-150 or ~/claude-code-cues`);
+  console.warn(`${style.tag('warn')} patched install not found at ${forkRoot}/`);
   console.warn(`     Install with: ${style.bold('opencues install claude-code')}`);
   console.warn(`     Falling back to PATH lookup (likely UNPATCHED — cues will not work):`);
   for (const c of ['claude-cues', 'claude']) {

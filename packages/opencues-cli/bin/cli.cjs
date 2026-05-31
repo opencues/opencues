@@ -36,6 +36,7 @@ const COMMANDS = {
   'set-key':      () => require('../src/commands/set-key.cjs'),
   'check-keys':   () => require('../src/commands/check-keys.cjs'),
   update:         () => require('../src/commands/update.cjs'),
+  statusline:     () => require('../src/commands/statusline.cjs'),
   debug:          () => require('../src/commands/debug.cjs'),
   completion:     () => require('../src/commands/completion.cjs'),
   which:          () => require('../src/commands/which.cjs'),

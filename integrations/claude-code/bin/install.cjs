@@ -78,7 +78,10 @@ const { command, args, unknown } = parseArgv(process.argv.slice(2));
 warnUnknownFlags(unknown);
 if (args.help || command === 'help') { printHelp(); process.exit(0); }
 
-printBanner();
+// Skip the per-host banner when invoked as a sub-process from a
+// higher-level command that already printed its own banner (e.g.
+// `opencues update`). Avoids duplicate banners mid-stream.
+if (process.env.OPENCUES_SKIP_BANNER !== '1') printBanner();
 
 const isClone = fs.existsSync(path.join(REPO_ROOT, 'pnpm-workspace.yaml'));
 if (!isClone) {
@@ -107,68 +110,200 @@ if (command === 'install') {
 // --- INSTALL --------------------------------------------------------------
 
 function doInstall() {
-  const target = args.target || tryAutoDetectCli();
-  if (target) checkCompat(target);
-  console.log(`Target cli.js: ${target || '(auto-detecting under ~/.claude/)'}`);
-
-  const installRoot = computeInstallRoot(target);
-  const tweakccConfigDir = installRoot ? path.join(installRoot, 'patch-state') : null;
-  const legacy = legacyPaths();
-
-  if (args.dryRun) {
-    console.log(`\n[dry-run] Would install everything inside the CC fork dir:`);
-    console.log(`  ${installRoot || '(unknown — pass --target to compute)'}/`);
-    for (const p of ['statusline.sh', 'scripts/', 'patch-state/  (patcher config + cli.js.backup)']) {
-      console.log(`    ${p}`);
+  // SINGLE-fork model. We maintain ONE canonical CC fork at
+  // ~/claude-code-cues/. The shape (cli.js vs native binary) is inferred
+  // automatically from the CC version pinned in that fork's package.json
+  // — setup.sh's shape detection handles both. Upgrading CC is editing
+  // the pin in that fork's package.json + re-running install; the fork
+  // stays at ~/claude-code-cues/ regardless of which CC version is pinned.
+  //
+  // Why not "patch every fork I find on disk":
+  //   - Most users only ever want one CC install. Two fork dirs is a
+  //     dev convention, not a product feature.
+  //   - The launcher name (`claude-cues`) is singular. There's no good
+  //     UX for multi-binary.
+  //   - Version upgrades happen IN-PLACE in the canonical fork, not
+  //     by maintaining parallel forks at different pins.
+  //
+  // For devs who DO want parallel forks (testing a new CC version
+  // without disturbing the canonical install): pass --target <cli.js>
+  // explicitly — single-fork install against the named target. Doctor
+  // surfaces extra `~/claude-code-cues-*` dirs as "dev relics — safe
+  // to delete" info findings.
+  const canonicalRoot = path.join(HOME, 'claude-code-cues');
+  let fork;
+  if (args.target) {
+    // Explicit override — point at a specific cli.js or bin/claude.exe.
+    const target = args.target;
+    const basename = path.basename(target);
+    const shape = basename === 'cli.js' ? 'cli.js' : 'native';
+    const root = basename === 'cli.js'
+      ? path.resolve(path.dirname(target), '..', '..', '..')
+      : path.resolve(path.dirname(target), '..', '..', '..', '..');
+    fork = { root, target, shape };
+  } else {
+    // Default — canonical fork at ~/claude-code-cues/. Bootstrap if missing.
+    ensureCanonicalForkExists(canonicalRoot);
+    fork = inferForkShape(canonicalRoot);
+    if (!fork) {
+      console.error(`Could not infer fork shape for ${canonicalRoot}.`);
+      console.error('Expected one of:');
+      console.error(`  ${canonicalRoot}/node_modules/@anthropic-ai/claude-code/cli.js`);
+      console.error(`  ${canonicalRoot}/node_modules/@anthropic-ai/claude-code/bin/claude.exe`);
+      console.error('Neither exists. Re-run install — setup.sh should npm-install the pinned CC version into the fork.');
+      process.exit(2);
     }
-    console.log(`  ${target ? path.join(path.dirname(target), '..', '..', '@opencues') : '<fork>/node_modules/@opencues'}/`);
-    console.log(`    core/`);
-    console.log(`    runtime/`);
-    console.log(`\n[dry-run] Would remove legacy paths if present:`);
-    for (const p of legacy) console.log(`  ${p}`);
-    if (target) console.log(`\n[dry-run] Would patch in place: ${target}`);
-    console.log(`[dry-run] cli.js backup will be at: ${tweakccConfigDir || '<install-root>'}/cli.js.backup`);
-    return;
   }
 
-  // Delegate to setup.sh — strictly CC-specific work now (cli.js patching,
-  // statusline install, tweakcc build/apply, settings.json fixup). All the
-  // shared ~/.cues/ + ~/.cues/OPENCUES.md writes (blank library scripts, settings
-  // self-heal, .cs compilation, TTS speak.sh) live in `opencues seed-configs`,
-  // which the top-level `opencues install` invokes BEFORE this script runs.
-  //
-  // tweakcc clones into <CC_FORK>/.cues/tweakcc by default — no need
-  // to pass an override unless the user is hacking on a side checkout.
-  // Pass through --keep-state for dev iteration; otherwise default to
-  // from-scratch.
+  console.log(`CC fork: ${fork.root}/  (${fork.shape})`);
+  console.log('');
+
+  // No-op-if-healthy gate. Idempotent semantics: a fresh `opencues
+  // install claude-code` against an already-healthy fork should NOT
+  // tear it down and rebuild. The nuke-and-rebuild work (setup.sh's
+  // default) is now opt-in via --rebuild — explicit destructive
+  // intent. validateFork checks every artefact (runtime + core +
+  // statusline.sh + patched cli.js/native-extract with opencues
+  // markers). If it passes, we exit cleanly with a notice; if it
+  // FAILS for any reason, we auto-escalate to rebuild and log why so
+  // the user's "re-run install to fix things" instinct still works.
+  if (!args.rebuild && !args.dryRun) {
+    const validation = validateFork(fork);
+    if (validation.ok) {
+      console.log(`${'\x1b[32m✓\x1b[0m'} ${fork.root} is already installed + healthy. No work needed.`);
+      console.log(`  ${'\x1b[2m'}Pass --rebuild to force a nuke-and-reinstall from scratch.${'\x1b[0m'}`);
+      return;
+    }
+    console.log(`${'\x1b[33m▸\x1b[0m'} install state needs repair: ${validation.reason}`);
+    console.log(`  ${'\x1b[2m'}Running full reinstall...${'\x1b[0m'}`);
+    console.log('');
+  }
+
+  checkCompat(fork.target);
+  const result = installFork(fork);
+
+  if (!result.ok) {
+    console.error(`\n✗ ${fork.root} (${fork.shape}) — ${result.reason}`);
+    process.exit(1);
+  }
+  console.log(`\n✓ ${fork.root} (${fork.shape}) installed + validated.`);
+
+  // Print the opt-in hint for the statusline. We install statusline.sh
+  // into the fork's .cues/ dir but do NOT auto-edit ~/.claude/settings.json
+  // — that's CC's own dir, and writing to it without consent is
+  // intrusive. Suggest the explicit command instead. Skipped silently
+  // if the user already has our statusLine configured.
+  try {
+    const userSettings = path.join(HOME, '.claude', 'settings.json');
+    if (fs.existsSync(userSettings)) {
+      const data = JSON.parse(fs.readFileSync(userSettings, 'utf8'));
+      const cmd = data?.statusLine?.command;
+      if (typeof cmd === 'string' && (cmd.includes('claude-code-cues') || cmd.endsWith('/statusline.sh'))) {
+        return; // already enabled
+      }
+    }
+    const oc = launchCommand();
+    console.log('');
+    console.log(`Status line tip surface is opt-in — to enable it in Claude Code:`);
+    console.log(`  ${oc} statusline enable             # writes ~/.claude/settings.json`);
+    console.log(`  ${oc} statusline enable --project   # writes <cwd>/.claude/settings.json`);
+  } catch { /* non-fatal — never block install on this hint */ }
+}
+
+// Bootstrap the canonical fork dir + package.json if either is missing.
+// Pin defaults to whatever compat.json declares as current-pin. This is
+// what removes the "package.json missing" first-time-user error.
+function ensureCanonicalForkExists(forkRoot) {
+  fs.mkdirSync(forkRoot, { recursive: true });
+  const pkgPath = path.join(forkRoot, 'package.json');
+  if (!fs.existsSync(pkgPath)) {
+    const compat = JSON.parse(fs.readFileSync(path.join(PKG_DIR, 'compat.json'), 'utf8'));
+    const pin = compat['current-pin'] || '2.1.150';
+    fs.writeFileSync(pkgPath, JSON.stringify({
+      private: true,
+      dependencies: { '@anthropic-ai/claude-code': pin },
+    }, null, 2) + '\n');
+    console.log(`Bootstrapped ${pkgPath} with @anthropic-ai/claude-code@${pin}`);
+  }
+}
+
+// Look inside a fork dir to figure out which shape's already there.
+// Returns { root, target, shape } or null if neither artefact exists.
+// (setup.sh will npm-install on first run; this is for the case where
+// install completed once and we're re-running.)
+function inferForkShape(root) {
+  const cliJs = path.join(root, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
+  const nativeBin = path.join(root, 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
+  if (fs.existsSync(cliJs)) return { root, target: cliJs, shape: 'cli.js' };
+  if (fs.existsSync(nativeBin)) return { root, target: nativeBin, shape: 'native' };
+  // First-time install: artefacts don't exist yet. Infer from the
+  // pin in package.json — versions ≤ 2.1.111 are cli.js shape, ≥ 2.1.113
+  // are native. setup.sh's npm install will create whichever; we just
+  // need to give it the right target path.
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+    const pin = pkg.dependencies?.['@anthropic-ai/claude-code'] || '';
+    const m = pin.match(/^(\d+)\.(\d+)\.(\d+)/);
+    if (m) {
+      const patch = parseInt(m[3], 10);
+      if (m[1] === '2' && m[2] === '1' && patch <= 111) {
+        return { root, target: cliJs, shape: 'cli.js' };
+      }
+      // 2.1.113+ (and any future major) → native binary.
+      return { root, target: nativeBin, shape: 'native' };
+    }
+  } catch { /* fall through */ }
+  return null;
+}
+
+// Run setup.sh against a single fork + validate the result. Pulled out
+// of doInstall so the dry-run / multi-fork paths share the same code.
+function installFork(fork) {
+  const installRoot = path.join(fork.root, '.cues');
+  const tweakccConfigDir = path.join(installRoot, 'patch-state');
+  const legacy = legacyPaths();
+
+  console.log(`\n▸ ${fork.root} (${fork.shape})`);
+
+  if (args.dryRun) {
+    console.log(`  [dry-run] Would install into ${installRoot}/ + node_modules/@opencues/`);
+    console.log(`  [dry-run] Would patch ${fork.target} (${fork.shape})`);
+    console.log(`  [dry-run] cli.js backup → ${tweakccConfigDir}/cli.js.backup`);
+    return { ok: true };
+  }
+
+  // Delegate to setup.sh — strictly CC-specific work (cli.js patching,
+  // statusline install, tweakcc build/apply, settings.json fixup).
+  // Pass through --keep-state for dev iteration.
   const setupSh = path.join(PKG_DIR, 'patches', 'setup.sh');
   const setupArgs = [];
   if (args.keepState) setupArgs.push('--keep-state');
-  const env = { ...process.env };
-  if (target) env.OPENCUES_CC_TARGET = target;
+  const env = { ...process.env, OPENCUES_CC_TARGET: fork.target };
   const result = spawnSync(setupSh, setupArgs, { stdio: 'inherit', env });
 
-  // exit 2 from setup.sh = "everything built, but no cli.js to patch
-  // and no target was given." Print a single actionable hint and bail.
   if (result.status === 2) {
-    console.error('\nRe-run with --target /path/to/cli.js once Claude Code is installed.');
-    process.exit(2);
+    return { ok: false, reason: 'setup.sh exited 2 (no cli.js to patch — fork state invalid?)' };
   }
   if (result.status !== 0) {
-    console.error(`\nInstall failed. To roll back: ${launchCommand()} uninstall claude-code`);
-    process.exit(result.status || 1);
+    return { ok: false, reason: `setup.sh exited ${result.status}` };
   }
-  // Success — setup.sh already printed "Done. Restart Claude Code to
-  // activate." Write the version marker AFTER setup.sh succeeded so
-  // doctor + `opencues update` can detect bundled-runtime drift.
-  // Marker write failure is non-fatal (we lose drift detection on
-  // this host but the install itself worked).
-  if (installRoot) {
-    try {
-      const { writeMarker } = require(path.join(REPO_ROOT, 'packages/opencues-cli/src/lib/version-markers.cjs'));
-      writeMarker('claude-code', installRoot, { pkg, REPO_ROOT });
-    } catch { /* non-fatal */ }
+
+  // setup.sh claimed success — VALIDATE the artefacts actually landed.
+  // This catches the silent-failure mode where tweakcc reports
+  // success but the patched-artifact verification was skipped.
+  const validation = validateFork(fork);
+  if (!validation.ok) {
+    return { ok: false, reason: `validation failed: ${validation.reason}` };
   }
+
+  // Write the version marker AFTER setup.sh + validation succeeded.
+  // Doctor + `opencues update` use this to detect bundled-runtime drift.
+  try {
+    const { writeMarker } = require(path.join(REPO_ROOT, 'packages/opencues-cli/src/lib/version-markers.cjs'));
+    writeMarker('claude-code', installRoot, { pkg, REPO_ROOT });
+  } catch { /* non-fatal */ }
+
+  return { ok: true };
 }
 
 // --- UNINSTALL ------------------------------------------------------------
@@ -197,6 +332,17 @@ function doUninstall() {
   const legacy = legacyPaths();
   const legacyToRemove = legacy.filter(p => fs.existsSync(p));
 
+  // Detect whether ~/.claude/settings.json's statusLine.command points
+  // at our script — if so, uninstall removes it. This is the symmetric
+  // counterpart to `opencues statusline enable` (we never write to
+  // settings.json from install, but a user who explicitly enabled the
+  // statusline expects uninstall to put the slot back).
+  // Project-level settings.json (<cwd>/.claude/settings.json) is NOT
+  // touched here — uninstall is host-scoped, project-scoped statusline
+  // cleanup is `opencues statusline disable --project`.
+  const settingsJsonPath = path.join(CLAUDE_DIR, 'settings.json');
+  const statuslineToRevert = detectOpenCuesStatusLine(settingsJsonPath);
+
   console.log('Uninstall plan:');
   if (target && fs.existsSync(tweakccBin) && backup) {
     console.log(`  tweakcc --revert against ${target}  (backup: ${backup})`);
@@ -210,7 +356,10 @@ function doUninstall() {
   if (rootExists) console.log(`  rm -rf ${installRoot}/`);
   if (inForkExists) console.log(`  rm -rf ${inForkNodeModules}/  (runtime)`);
   for (const p of legacyToRemove) console.log(`  rm -rf ${p}  (legacy)`);
-  if (!rootExists && !inForkExists && !legacyToRemove.length) {
+  if (statuslineToRevert) {
+    console.log(`  edit ${settingsJsonPath}  (clear statusLine.command — currently: ${statuslineToRevert})`);
+  }
+  if (!rootExists && !inForkExists && !legacyToRemove.length && !statuslineToRevert) {
     console.log('  (no installed paths found — appears clean)');
   }
 
@@ -255,8 +404,43 @@ function doUninstall() {
   }
   rmdirIfEmpty(path.join(CLAUDE_DIR, 'node_modules', '@opencues'));
 
+  // 4. Revert settings.json's statusLine if we configured it.
+  if (statuslineToRevert) {
+    try {
+      const data = JSON.parse(fs.readFileSync(settingsJsonPath, 'utf8'));
+      // Sanity: only delete if it's STILL our path (user might have
+      // edited between plan-print and execute).
+      if (data.statusLine && data.statusLine.command === statuslineToRevert) {
+        fs.copyFileSync(settingsJsonPath, settingsJsonPath + '.bak.cues-uninstall');
+        delete data.statusLine;
+        fs.writeFileSync(settingsJsonPath, JSON.stringify(data, null, 2) + '\n');
+        console.log(`  cleared statusLine from ${settingsJsonPath}`);
+      }
+    } catch (err) {
+      console.warn(`  could not revert ${settingsJsonPath}: ${err.message}`);
+    }
+  }
+
   console.log(`\n${pkg.name} uninstall complete.`);
   console.log('To fully remove the cloned repo: rm -rf <opencues-clone-dir>');
+}
+
+// Read ~/.claude/settings.json and return the opencues statusLine
+// command if that's currently configured. Returns null if no
+// settings.json, no statusLine, or the command isn't ours.
+function detectOpenCuesStatusLine(settingsFile) {
+  if (!fs.existsSync(settingsFile)) return null;
+  let data;
+  try { data = JSON.parse(fs.readFileSync(settingsFile, 'utf8')); }
+  catch { return null; }
+  const cmd = data?.statusLine?.command;
+  if (typeof cmd !== 'string') return null;
+  const isOurs = cmd.includes('claude-code-cues') ||
+                 cmd.includes('claude-code-cues-150') ||
+                 cmd.includes('.claude/highlight-statusline.sh') ||
+                 cmd.includes('.claude/opencues/statusline.sh') ||
+                 (cmd.endsWith('/statusline.sh') && cmd.includes('/.cues/'));
+  return isOurs ? cmd : null;
 }
 
 // --- SEED CONFIGS ---------------------------------------------------------
@@ -310,14 +494,138 @@ function listActionFileBasenames() {
   return [...new Set(out)];
 }
 
+// Single-target detection — back-compat for uninstall (which only ever
+// touched one fork at a time). For install, prefer detectAllForks().
 function tryAutoDetectCli() {
   // Common locations. Order: standard npm install → claude-cues local install.
   const candidates = [
     path.join(CLAUDE_DIR, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js'),
     path.join(HOME, 'claude-code-cues', 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js'),
+    path.join(HOME, 'claude-code-cues-150', 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe'),
   ];
   for (const c of candidates) if (fs.existsSync(c)) return c;
   return null;
+}
+
+// Multi-fork detection. Returns every CC fork on disk that's a viable
+// install target. Returns [{root, target, shape: 'cli.js' | 'native'}].
+//
+// Why this matters: prior to today, install.cjs only patched whichever
+// single fork tryAutoDetectCli() returned first. Users with both the
+// 2.1.110 cli.js fork AND the 2.1.150 native-binary fork would re-run
+// install thinking it'd update both — silently the 150 fork stayed
+// unpatched. (Documented in CLAUDE.md root § Claude Installs.) Now
+// install enumerates every fork + patches each in turn.
+//
+// Lookup order:
+//   1. Standard `~/.claude/node_modules/...` (rare — pre-fork-era layout)
+//   2. `~/claude-code-cues/` (default cli.js fork, CC ≤ 2.1.111)
+//   3. `~/claude-code-cues-150/` (default native-binary fork, CC ≥ 2.1.113)
+//   4. Any other `~/claude-code-cues-*/` (user-named forks)
+//
+// An explicit --target overrides the auto-detection — single-fork mode.
+function detectAllForks() {
+  const out = [];
+  const seen = new Set();
+
+  // (1) Pre-fork legacy.
+  const legacyCli = path.join(CLAUDE_DIR, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
+  if (fs.existsSync(legacyCli)) {
+    const root = path.resolve(path.dirname(legacyCli), '..', '..', '..');
+    if (!seen.has(root)) { out.push({ root, target: legacyCli, shape: 'cli.js' }); seen.add(root); }
+  }
+
+  // (2) + (3) + (4): walk ~/claude-code-cues* dirs. Each one has either
+  // a cli.js or a bin/claude.exe in its node_modules.
+  try {
+    for (const entry of fs.readdirSync(HOME, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      if (!entry.name.startsWith('claude-code-cues')) continue;
+      const root = path.join(HOME, entry.name);
+      if (seen.has(root)) continue;
+      const cliJs = path.join(root, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
+      const nativeBin = path.join(root, 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
+      if (fs.existsSync(cliJs)) {
+        out.push({ root, target: cliJs, shape: 'cli.js' });
+        seen.add(root);
+      } else if (fs.existsSync(nativeBin)) {
+        out.push({ root, target: nativeBin, shape: 'native' });
+        seen.add(root);
+      }
+      // If neither exists, this is an empty fork dir (e.g. user created
+      // it but never ran install). Skip — setup.sh would fail anyway.
+    }
+  } catch { /* HOME unreadable — extremely unlikely; fall through */ }
+
+  return out;
+}
+
+// Verify a patched fork actually has the OpenCues v2 wiring landed.
+// Returns { ok, reason }. Called after each setup.sh run so we can
+// surface partial-install failures loud (versus the prior silent
+// "claimed success, half-patched" failure mode).
+//
+// IMPORTANT: detect the CURRENT shape from what's on disk right now
+// rather than trusting the `fork.shape` snapshot from before install.
+// An upgrade that crosses the 2.1.111 → 2.1.113 cutover (cli.js ↔
+// native binary) makes the pre-install shape stale by the time
+// validation runs — the artefact files have moved. Re-detecting here
+// lets a single install handle in-place shape transitions cleanly.
+function validateFork(fork) {
+  const installRoot = path.join(fork.root, '.cues');
+  const runtime = path.join(fork.root, 'node_modules', '@opencues', 'runtime');
+  const core = path.join(fork.root, 'node_modules', '@opencues', 'core');
+  const statusline = path.join(installRoot, 'statusline.sh');
+
+  if (!fs.existsSync(runtime)) return { ok: false, reason: `runtime missing at ${runtime}` };
+  if (!fs.existsSync(core))    return { ok: false, reason: `core missing at ${core}` };
+  if (!fs.existsSync(statusline)) return { ok: false, reason: `statusline.sh missing at ${statusline}` };
+
+  // Re-detect shape from what's actually on disk now.
+  const cliJs     = path.join(fork.root, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
+  const nativeBin = path.join(fork.root, 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
+  const liveShape = fs.existsSync(nativeBin) ? 'native'
+                  : fs.existsSync(cliJs)     ? 'cli.js'
+                  : null;
+  if (!liveShape) {
+    return { ok: false, reason: `neither cli.js nor bin/claude.exe present in ${path.dirname(cliJs)} — npm install may not have completed` };
+  }
+
+  // Patched-artefact validation differs by shape:
+  //   - cli.js shape: cli.js is text-patched in place; grep for @opencues/runtime.
+  //   - native shape: tweakcc extracts cli.js from the ELF .bun
+  //     section, patches it, repacks, AND writes the post-patch text
+  //     to <installRoot>/patch-state/native-claudejs-patched.js for
+  //     verification (the bun section itself isn't ASCII-greppable
+  //     because it's compressed).
+  if (liveShape === 'cli.js') {
+    try {
+      const text = fs.readFileSync(cliJs, 'utf8');
+      if (!text.includes('@opencues/runtime') && !text.includes('startOpenCues')) {
+        return { ok: false, reason: `cli.js exists but missing opencues markers` };
+      }
+    } catch (err) {
+      return { ok: false, reason: `cli.js unreadable: ${err.message}` };
+    }
+  } else {
+    const verifiedExtract = path.join(installRoot, 'patch-state', 'native-claudejs-patched.js');
+    if (!fs.existsSync(verifiedExtract)) {
+      return { ok: false, reason: `tweakcc post-patch extract missing at ${verifiedExtract} — tweakcc never ran or didn't extract` };
+    }
+    try {
+      const text = fs.readFileSync(verifiedExtract, 'utf8');
+      if (!text.includes('@opencues/runtime') && !text.includes('startOpenCues')) {
+        return { ok: false, reason: `post-patch extract exists but missing opencues markers` };
+      }
+    } catch (err) {
+      return { ok: false, reason: `post-patch extract unreadable: ${err.message}` };
+    }
+  }
+
+  // Update caller's view so success log + version marker match reality.
+  fork.shape = liveShape;
+  fork.target = liveShape === 'cli.js' ? cliJs : nativeBin;
+  return { ok: true };
 }
 
 function checkCompat(cliJsPath) {
@@ -359,10 +667,10 @@ function rmdirIfEmpty(dir) {
 
 function parseArgv(argv) {
   // First non-flag positional = command. Default 'install'.
-  const KNOWN_FLAGS = new Set(['--help', '-h', '--target', '--dry-run', '--clean', '--keep-state']);
+  const KNOWN_FLAGS = new Set(['--help', '-h', '--target', '--dry-run', '--clean', '--keep-state', '--rebuild']);
   const VALUE_FLAGS = new Set(['--target']);
   const KNOWN_COMMANDS = new Set(['install', 'uninstall', 'seed-configs', 'help']);
-  const out = { command: 'install', args: { help: false, dryRun: false, clean: false, keepState: false }, unknown: [] };
+  const out = { command: 'install', args: { help: false, dryRun: false, clean: false, keepState: false, rebuild: false }, unknown: [] };
   let i = 0;
   if (argv[i] && !argv[i].startsWith('-')) {
     if (KNOWN_COMMANDS.has(argv[i])) {
@@ -380,6 +688,7 @@ function parseArgv(argv) {
     else if (a === '--dry-run') out.args.dryRun = true;
     else if (a === '--clean') out.args.clean = true;
     else if (a === '--keep-state') out.args.keepState = true;
+    else if (a === '--rebuild') out.args.rebuild = true;
     else if (a === '--target') out.args.target = argv[++i];
     else out.unknown.push(a);
   }
