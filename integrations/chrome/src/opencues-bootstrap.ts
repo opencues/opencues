@@ -2069,6 +2069,12 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     // reads/writes the seeded OPENCUES.md in chrome.storage.
     opencuesMdReadFile: () => readFile(`${ROOT}/.cues/OPENCUES.md`),
     opencuesMdWriteFile: (content) => writeFile(`${ROOT}/.cues/OPENCUES.md`, content),
+    // Sentinel-write blank — keyword-bound `set sentinel _` /
+    // `remove sentinel _`. Writes go through @opencues/core's
+    // validateSentinelWrite chokepoint BEFORE this writer is called;
+    // do not add a parallel write path. Security-audit.md row #24.
+    sentinelsMdReadFile: () => readFile(`${ROOT}/.cues/SENTINELS.md`),
+    sentinelsMdWriteFile: (content) => writeFile(`${ROOT}/.cues/SENTINELS.md`, content),
   });
   blankInvoke = createBlankInvoke(blanks);
 
