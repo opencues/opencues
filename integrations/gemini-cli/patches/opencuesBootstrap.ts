@@ -175,6 +175,13 @@ function findOpenCuesMdPath(): string {
   return path.join(process.env['HOME'] ?? '~', '.cues', 'OPENCUES.md');
 }
 
+function findSentinelsMdPath(): string {
+  if (process.env['OPENCUES_HOME']) {
+    return path.join(process.env['OPENCUES_HOME'], 'SENTINELS.md');
+  }
+  return path.join(process.env['HOME'] ?? '~', '.cues', 'SENTINELS.md');
+}
+
 function resolveTtsScript(): string {
   const root = process.env['OPENCUES_HOME'] ?? path.join(process.env['HOME'] ?? '~', '.cues');
   return path.join(root, 'scripts/speak.sh');
@@ -191,6 +198,11 @@ const blanksRegistry: Map<string, Blank> = createDefaultBlanksRegistry({
   opencuesMdIO: {
     readFile: async () => { try { return await fs.readFile(findOpenCuesMdPath(), 'utf8'); } catch { return null; } },
     writeFile: async (content: string) => { await fs.writeFile(findOpenCuesMdPath(), content, 'utf8'); },
+  },
+  // Sentinel-write blank — see security-audit.md row #24.
+  sentinelsMdIO: {
+    readFile: async () => { try { return await fs.readFile(findSentinelsMdPath(), 'utf8'); } catch { return null; } },
+    writeFile: async (content: string) => { await fs.writeFile(findSentinelsMdPath(), content, 'utf8'); },
   },
 });
 // Discover user-shipped JS blanks (`impl: ./blank.js` in BLANK.md)

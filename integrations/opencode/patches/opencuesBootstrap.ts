@@ -115,6 +115,13 @@ function findOpenCuesMdPath(): string {
   return path.join(process.env['HOME'] ?? "~", ".cues", "OPENCUES.md")
 }
 
+function findSentinelsMdPath(): string {
+  if (process.env['OPENCUES_HOME']) {
+    return path.join(process.env['OPENCUES_HOME'], "SENTINELS.md")
+  }
+  return path.join(process.env['HOME'] ?? "~", ".cues", "SENTINELS.md")
+}
+
 // TTS script lives at user-level (~/.cues/scripts/speak.sh), seeded
 // + kept current by `opencues seed-configs` (which all host installers
 // invoke). One canonical path, no walking, no integration coupling —
@@ -135,6 +142,14 @@ const blanksRegistry: Map<string, Blank> = createDefaultBlanksRegistry({
   opencuesMdIO: {
     readFile: async () => { try { return await fs.readFile(findOpenCuesMdPath(), "utf8") } catch { return null } },
     writeFile: async (content) => { await fs.writeFile(findOpenCuesMdPath(), content, "utf8") },
+  },
+  // SENTINELS.md sibling — the keyword-bound `set sentinel _` /
+  // `remove sentinel _` blank routes writes here. validateSentinelWrite
+  // runs INSIDE SentinelBlank before writeFile is called; never bypass.
+  // See docs/architecture/security-audit.md row #24.
+  sentinelsMdIO: {
+    readFile: async () => { try { return await fs.readFile(findSentinelsMdPath(), "utf8") } catch { return null } },
+    writeFile: async (content) => { await fs.writeFile(findSentinelsMdPath(), content, "utf8") },
   },
 })
 // User-shipped JS blanks: walk every .cues/blanks/<name>/BLANK.md
