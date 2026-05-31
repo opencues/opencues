@@ -84,11 +84,28 @@ module.exports = async function update(argv, ctx) {
     const installedPin = compatLib.readNpmPin(HOME, compat) ||
                          (compat['host-kind'] === 'git' ? compatLib.readGitPin(ctx.REPO_ROOT, compat)?.version : null);
     if (installedPin === targetVersion) {
+      // Host's own version matches — but bundled @opencues/{core,runtime}
+      // may be stale (May 2026 dual-fork bug class). When source has
+      // moved on since the install, transparently re-route to the
+      // rebuild path. Skipping this check is exactly what made the
+      // dual-fork bug silent — source had the fix, bundle didn't, and
+      // `opencues update cc` kept reporting "nothing to do".
+      const { checkDrift } = require('../lib/version-markers.cjs');
+      const installRoot = resolveInstallRoot(host, ctx);
+      const drift = installRoot ? checkDrift(installRoot, ctx) : { status: 'missing' };
+      const bundleStale = drift.status === 'stale';
       console.log(banner({ version: cliVersion(ctx), tagline: `update ${host}` }));
       console.log('');
-      console.log(`${tag('ok')} ${host} already at current-pin ${bold(targetVersion)} — nothing to do.`);
-      console.log(`  ${dim('To force a rebuild without changing version: opencues install ' + host + ' --rebuild')}`);
-      return 0;
+      if (!bundleStale) {
+        console.log(`${tag('ok')} ${host} already at current-pin ${bold(targetVersion)} — nothing to do.`);
+        console.log(`  ${dim('To force a rebuild without changing version:')} ${bold('opencues install ' + host + ' --rebuild')}`);
+        return 0;
+      }
+      // Bundle drift detected — explain, then hand off to the rebuild
+      // path. Same shape as doctor's "stale bundled runtime" finding.
+      console.log(`${tag('warn')} ${host} pinned at ${bold(targetVersion)} but bundled runtime ${bold(drift.marker.runtime)} is stale vs source ${bold(drift.source.runtime || '?')} — rebuilding.`);
+      console.log('');
+      return rebuildHostInPlace(host, ctx);
     }
     if (!installedPin) {
       console.error(`opencues update: ${host} is not installed. Run \`opencues install ${host}\` first.`);
@@ -453,6 +470,36 @@ async function doUpgradeGit(host, toVersion, compat, { dryRun }, ctx) {
   if (!compatLib.isTested(wantNorm, compat)) {
     console.log(dim(`Consider adding {version:"${wantNorm}",sha:"${wantedTag.sha}"} to integrations/${host}/compat.json's "tested" list once you've verified.`));
   }
+}
+
+/**
+ * Map host name → directory where the version marker lives. Mirrors
+ * `enumerateInstalledHosts` in version-markers.cjs so the drift check
+ * looks at the same path the installer writes to. Update when a new
+ * host integration is added.
+ */
+function resolveInstallRoot(host, ctx) {
+  const HOME = os.homedir();
+  switch (host) {
+    case 'claude-code': return path.join(HOME, 'claude-code-cues', '.cues');
+    case 'opencode':    return path.join(HOME, 'opencode-cues', '.opencues');
+    case 'gemini-cli':  return path.join(HOME, 'gemini-cli-cues', '.opencues');
+    case 'shell':       return path.join(ctx.REPO_ROOT, 'integrations/shell/node_modules/@opencues');
+    case 'chrome':      return path.join(ctx.REPO_ROOT, 'integrations/chrome/dist');
+    default: return null;
+  }
+}
+
+/**
+ * Drift-driven rebuild — used when the host's own version is at
+ * current-pin but the bundled @opencues/{core,runtime} is stale. Same
+ * underlying machinery as `runHostInstaller` (re-runs the host's
+ * installer with --rebuild) but no rollback path because the host's
+ * version isn't changing.
+ */
+function rebuildHostInPlace(host, ctx) {
+  runHostInstaller(host, ctx, { rollback: null });
+  return 0;
 }
 
 function runHostInstaller(host, ctx, { rollback }) {

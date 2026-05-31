@@ -171,7 +171,11 @@ function doInstall() {
     const validation = validateFork(fork);
     if (validation.ok) {
       console.log(`${'\x1b[32m✓\x1b[0m'} ${fork.root} is already installed + healthy. No work needed.`);
-      console.log(`  ${'\x1b[2m'}Pass --rebuild to force a nuke-and-reinstall from scratch.${'\x1b[0m'}`);
+      // Bold the hint — users (and prior versions of us) repeatedly
+      // miss --rebuild's role and assume "healthy" means "current
+      // runtime bundle." It doesn't; bundle drift is invisible to
+      // this short-circuit. Make the actionable flag stand out.
+      console.log(`  ${'\x1b[2m'}Pass${'\x1b[0m'} ${'\x1b[1m--rebuild\x1b[0m'} ${'\x1b[2m'}to force a nuke-and-reinstall from scratch.${'\x1b[0m'}`);
       return;
     }
     console.log(`${'\x1b[33m▸\x1b[0m'} install state needs repair: ${validation.reason}`);
