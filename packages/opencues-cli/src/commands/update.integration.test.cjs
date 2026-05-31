@@ -176,16 +176,35 @@ test('SIGINT arriving in the handler-register window releases the lock — regre
       ...process.env,
       HOME: home,
       OPENCUES_NO_UPDATE_CHECK: '1',
-      // 200ms gap between handler registration and acquireLock — the
-      // window in which signals must already be handled.
-      OPENCUES_UPDATE_TEST_PRE_LOCK_HANG_MS: '200',
+      // 1000ms gap between handler registration and acquireLock —
+      // generous so cold CI runners have time to spawn node + load
+      // modules + reach the handler-registration site before we
+      // SIGINT into the window.
+      OPENCUES_UPDATE_TEST_PRE_LOCK_HANG_MS: '1000',
+      // Tell update.cjs to print "ready-for-signal" on stderr once
+      // handlers are wired. The test waits for this marker rather
+      // than guessing a startup delay — earlier versions used a
+      // 50ms wait that was too tight for cold CI runners (node
+      // startup itself exceeded the wait, so SIGINT killed the
+      // process before any JS handler attached).
+      OPENCUES_UPDATE_TEST_HANDLER_MARKER: '1',
     },
     stdio: 'pipe',
   });
 
-  // 50ms is solidly inside the 200ms gap. Long enough for child to
-  // start the JS + register handlers (~10ms), well before acquireLock.
-  await new Promise(r => setTimeout(r, 50));
+  // Wait for the handler-ready marker on stderr. Cap at 5s.
+  await new Promise((resolve) => {
+    let buf = '';
+    const onData = (chunk) => {
+      buf += chunk.toString();
+      if (buf.includes('ready-for-signal')) {
+        child.stderr.off('data', onData);
+        resolve();
+      }
+    };
+    child.stderr.on('data', onData);
+    setTimeout(resolve, 5000);
+  });
   child.kill('SIGINT');
   await new Promise(r => child.once('exit', r));
 
