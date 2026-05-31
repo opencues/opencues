@@ -143,13 +143,28 @@ async function doUpdate(host, { skipPull, dryRun }, ctx) {
   // Detect concurrent runs. Two opencues update invocations racing the
   // same fork = half-patched cli.js + corrupt bundled runtime. We lock
   // before printing the plan; rejected races exit cleanly with a hint.
-  const lock = acquireLock();
+  //
+  // Signal handlers are wired BEFORE acquireLock writes the file — the
+  // earlier ordering (handlers registered AFTER acquireLock) had a
+  // microsecond race where a SIGINT arriving between the file write and
+  // the handler registration would land on Node's default handler
+  // (terminate by signal), leaving the lock file orphaned. The lock var
+  // is closed over and read lazily, so signals received before the lock
+  // is captured see `null` and just exit cleanly.
+  let lock = null;
+  process.on('exit',    () => { if (lock) releaseLock(lock); });
+  process.on('SIGINT',  () => { if (lock) releaseLock(lock); process.exit(130); });
+  process.on('SIGTERM', () => { if (lock) releaseLock(lock); process.exit(143); });
+
+  // Test hook: tests inject a delay BETWEEN handler registration and
+  // acquireLock to deterministically exercise the race window. Without
+  // this hook, the race only fires on slow CI runners (microsecond
+  // window). Production never sets either env var.
+  const preLockHangMs = parseInt(process.env.OPENCUES_UPDATE_TEST_PRE_LOCK_HANG_MS || '0', 10);
+  if (preLockHangMs > 0) await new Promise(r => setTimeout(r, preLockHangMs));
+
+  lock = acquireLock();
   if (!lock) return;          // process exited inside acquireLock with a message
-  // Release on every exit path. Lock-file content is the PID + start
-  // time so a stale lock from a crashed run can be diagnosed.
-  process.on('exit', () => releaseLock(lock));
-  process.on('SIGINT', () => { releaseLock(lock); process.exit(130); });
-  process.on('SIGTERM', () => { releaseLock(lock); process.exit(143); });
 
   // Test hook: integration tests need an interruptible window in which
   // the lock exists to verify SIGINT cleanup. Production never sets
