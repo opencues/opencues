@@ -138,19 +138,35 @@ export interface OpenCuesState {
    */
   readonly blankTriggerMode: 'immediate' | 'spaced';
   /**
-   * Separate provider for blank-class sources (FluidBlank / TransformBlank
-   * / ConfigIntent / keyword blanks). `inherit` (default) reuses
-   * `llm-provider`. `free` routes blanks through OpenCode Zen's free
-   * pool — no API key, but providers train on data. Cues + auditors
-   * are unaffected.
+   * Per-bucket LLM provider overrides — the three-bucket simplification.
+   * Each bucket carves the LLM surface into one of three trust classes:
    *
-   * Stored as the raw scalar string (not a typed union) because the set
-   * of valid provider ids is owned by `@opencues/core`'s ProviderId
-   * union — pinning the union here would force config-loader to import
-   * that and create a circular structural dependency. Resolver maps
-   * Concrete provider ids only — opencode-zen is a normal provider entry.
+   *   - `cuesLlmProvider`     — word-cues, sentence-cues (prose-bearing)
+   *   - `auditorsLlmProvider` — auditors, agent-rewrite (prose-bearing)
+   *   - `blanksLlmProvider`   — fluid-blank, transform-blank, fluid-config,
+   *                             keyword blanks (user-opt-in `_` surface)
+   *
+   * Each defaults to `'inherit'` — falls through to the global
+   * `llm-provider` scalar at the resolver. Concrete provider ids
+   * (`cerebras`, `groq`, …) override per bucket. Only `blanksLlmProvider`
+   * accepts `opencode-zen` (the free pool with `trainsOnInput: true`);
+   * the prose buckets get refused at source-build time via the existing
+   * trainsOnInput guard in build-sources.ts.
+   *
+   * Per-aspect overrides (`word-cues-provider`, `fluid-blank-provider`,
+   * `auditor-provider`, etc.) remain in OPENCUES.md as file-edit-only
+   * advanced overrides — they still win over the bucket scalars, which
+   * win over the global `llm-provider`. Keeping per-aspect off the menu
+   * is the point of the three-bucket simplification.
+   *
+   * Stored as raw scalar strings (not typed unions) because the set of
+   * valid provider ids is owned by `@opencues/core`'s ProviderId union —
+   * pinning the union here would force config-loader to import core and
+   * create a circular structural dependency.
    */
-  readonly blankLlmProvider: string;
+  readonly cuesLlmProvider: string;
+  readonly auditorsLlmProvider: string;
+  readonly blanksLlmProvider: string;
   /** Raw key→value of every top-level scalar in the frontmatter. */
   readonly settings: ReadonlyMap<string, string>;
   /**
@@ -174,10 +190,33 @@ export const DEFAULT_OPENCUES_STATE: OpenCuesState = {
   ambientContextMode: 'off',
   userContextMode: 'off',
   blankTriggerMode: 'immediate',
-  blankLlmProvider: 'inherit',
+  cuesLlmProvider: 'inherit',
+  auditorsLlmProvider: 'inherit',
+  blanksLlmProvider: 'inherit',
   settings: new Map(),
   definitions: new Map(),
 };
+
+/**
+ * Allow-list of provider ids accepted by the bucket scalars
+ * (`cues-llm-provider`, `auditors-llm-provider`, `blanks-llm-provider`).
+ * `inherit` falls through to the global `llm-provider` at the resolver;
+ * concrete ids match `@opencues/core`'s ProviderId union.
+ *
+ * Unknown values get rewritten to `inherit` — silently picking an
+ * invalid provider would disable every source in the bucket without
+ * a diagnostic; falling back keeps the user in a working state and
+ * surfaces the typo only through `opencues doctor`.
+ */
+const VALID_BUCKET_PROVIDERS = new Set([
+  'inherit',
+  'groq', 'openrouter', 'gemini', 'openai', 'openai-subscription',
+  'anthropic', 'cerebras', 'claude-cli', 'opencode-zen',
+]);
+
+function bucketProvider(raw: string): string {
+  return VALID_BUCKET_PROVIDERS.has(raw) ? raw : 'inherit';
+}
 
 /**
  * Parse the runtime config file. Format: markdown with YAML frontmatter
@@ -213,20 +252,25 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
     : 'off';
   const blankTriggerMode: 'immediate' | 'spaced' =
     get('blank-trigger-mode', 'immediate').toLowerCase() === 'spaced' ? 'spaced' : 'immediate';
-  // blank-llm-provider — `inherit` (default) or any concrete provider
-  // id. Unknown values fall back to `inherit` rather than silently
-  // picking an invalid provider — protects users from typos that
-  // would otherwise silently disable all blanks. The opencode-zen
-  // free pool is opted into via `blank-llm-provider: opencode-zen` +
-  // `blank-llm-model: free`; the trainsOnInput guard on the provider
-  // adapter prevents prose-bearing sources from using it regardless
-  // of the model value.
-  const blankProviderRaw = get('blank-llm-provider', 'inherit').toLowerCase();
-  const VALID_BLANK_PROVIDERS = new Set([
-    'inherit',
-    'groq', 'openrouter', 'gemini', 'openai', 'anthropic', 'cerebras', 'claude-cli', 'opencode-zen',
-  ]);
-  const blankLlmProvider = VALID_BLANK_PROVIDERS.has(blankProviderRaw) ? blankProviderRaw : 'inherit';
+  // Bucket scalars — `inherit` (default) or any concrete provider id.
+  // Unknown values fall back to `inherit` rather than silently picking
+  // an invalid provider — protects users from typos that would
+  // otherwise silently disable all sources in that bucket. The
+  // opencode-zen free pool is opt-in via `blanks-llm-provider:
+  // opencode-zen` + `blanks-llm-model: free`; the trainsOnInput guard
+  // in build-sources.ts refuses prose buckets (cues/auditors) routed
+  // to opencode-zen regardless of how the scalar got there.
+  //
+  // Back-compat (one release cycle): the legacy `blank-llm-provider`
+  // (singular) is read if `blanks-llm-provider` is absent. The
+  // seed-configs self-heal rewrites legacy → new in OPENCUES.md so
+  // this fallback fades naturally as users run `opencues install`.
+  const cuesLlmProvider = bucketProvider(get('cues-llm-provider', 'inherit').toLowerCase());
+  const auditorsLlmProvider = bucketProvider(get('auditors-llm-provider', 'inherit').toLowerCase());
+  const blanksLlmProviderRaw = settings.has('blanks-llm-provider')
+    ? get('blanks-llm-provider', 'inherit')
+    : get('blank-llm-provider', 'inherit'); // legacy fallback
+  const blanksLlmProvider = bucketProvider(blanksLlmProviderRaw.toLowerCase());
   // Menu definitions: registry-derived by default, with optional
   // file-level overrides. The @opencues/core FEATURES + MENU_TUNABLES
   // registry is the single source of truth; defaults/OPENCUES.md ships
@@ -239,7 +283,7 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   // Tests keep shipping mock `settings:` blocks; they get the
   // file-driven definitions, identical to the pre-refactor behaviour.
   const definitions = mergeDefinitions(getMenuDefinitions(), parseSettingsBlock(lines));
-  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, userContextMode, blankTriggerMode, blankLlmProvider, settings, definitions };
+  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, userContextMode, blankTriggerMode, cuesLlmProvider, auditorsLlmProvider, blanksLlmProvider, settings, definitions };
 }
 
 /**
@@ -520,11 +564,17 @@ export class ConfigLoader {
         return v === 'safe' ? 'safe' : v === 'raw' ? 'raw' : 'off';
       })(),
       blankTriggerMode: (get('blank-trigger-mode', 'immediate').toLowerCase() === 'spaced' ? 'spaced' : 'immediate') as 'immediate' | 'spaced',
-      blankLlmProvider: ((): string => {
-        const v = get('blank-llm-provider', 'inherit').toLowerCase();
-        const VALID = new Set(['inherit', 'groq', 'openrouter', 'gemini', 'openai', 'anthropic', 'cerebras', 'claude-cli', 'opencode-zen']);
-        return VALID.has(v) ? v : 'inherit';
-      })(),
+      cuesLlmProvider: bucketProvider(get('cues-llm-provider', 'inherit').toLowerCase()),
+      auditorsLlmProvider: bucketProvider(get('auditors-llm-provider', 'inherit').toLowerCase()),
+      blanksLlmProvider: bucketProvider(
+        // Back-compat: prefer the new `blanks-llm-provider` key, fall back
+        // to legacy `blank-llm-provider` (singular). seed-configs's
+        // self-heal rewrites old → new on the next `opencues install` run.
+        (newSettings.has('blanks-llm-provider')
+          ? get('blanks-llm-provider', 'inherit')
+          : get('blank-llm-provider', 'inherit')
+        ).toLowerCase(),
+      ),
       settings: newSettings as ReadonlyMap<string, string>,
       definitions: cur.definitions,
     };

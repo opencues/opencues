@@ -334,25 +334,66 @@ export const FEATURES: readonly FeatureSpec[] = [
   },
 
   // ── Provider routing ─────────────────────────────────────────────
+  //
+  // Three buckets, one knob each. Surfaces map to buckets as follows:
+  //   - cues:     word-cues, sentence-cues
+  //   - auditors: auditors, agent-rewrite (prose-bearing background agents)
+  //   - blanks:   fluid-blank, transform-blank, fluid-config, keyword blanks
+  //
+  // Both cues + auditors are prose-bearing — the resolver's trainsOnInput
+  // guard refuses to wire them through opencode-zen (or any future
+  // training-pool provider). Only `blanks-llm-provider` exposes the free
+  // pool in its menu. Per-aspect overrides (`word-cues-provider`,
+  // `fluid-blank-provider`, `auditor-provider`, `agent-provider`, …) stay
+  // file-edit only and are NOT registered here — keeping the menu small
+  // is the point of the three-bucket simplification.
   {
-    scalar: 'blank-llm-provider',
-    camelCase: 'blankLlmProvider',
-    description: 'LLM provider used for blank-class sources (FluidBlank / TransformBlank / ConfigIntent / keyword blanks). Inherits llm-provider by default.',
-    menuTip: 'Pick a separate provider for blanks (the opt-in `_` surface). `opencode-zen` + `blank-llm-model: free` routes blanks through OpenCode Zen\'s free pool (no API key, but the provider trains on blank inputs — your consent gate is writing `free` as the model). Cues + auditors refuse opencode-zen via the trainsOnInput guard.',
+    scalar: 'cues-llm-provider',
+    camelCase: 'cuesLlmProvider',
+    description: 'LLM provider for cue sources (word-cues, sentence-cues). Inherits llm-provider by default.',
+    menuTip: 'Pick the provider for cue sources (word-cues, sentence-cues). Refuses training-pool providers (opencode-zen) — prose surface.',
     values: [
-      { id: 'inherit',      description: 'Default — blanks use the same provider as llm-provider' },
-      { id: 'opencode-zen', description: 'OpenCode Zen free pool — pair with `blank-llm-model: free` (provider trains on input)' },
-      // The seven concrete paid provider ids stay parser-valid but are
-      // hidden from the menu — picking a specific paid provider
-      // per-surface is an advanced override better edited in OPENCUES.md
-      // directly. The menu's job is the inherit-vs-zen split.
-      { id: 'groq',         description: 'Pin blanks to Groq',         exposeInMenu: false },
-      { id: 'openrouter',   description: 'Pin blanks to OpenRouter',   exposeInMenu: false },
-      { id: 'gemini',       description: 'Pin blanks to Gemini',       exposeInMenu: false },
-      { id: 'openai',       description: 'Pin blanks to OpenAI',       exposeInMenu: false },
-      { id: 'anthropic',    description: 'Pin blanks to Anthropic',    exposeInMenu: false },
-      { id: 'cerebras',     description: 'Pin blanks to Cerebras',     exposeInMenu: false },
-      { id: 'claude-cli',   description: 'Pin blanks to claude-cli',   exposeInMenu: false },
+      { id: 'inherit',   description: 'Default — cues use the global llm-provider (auto-routed when unset)' },
+      { id: 'cerebras',  description: 'Cerebras — fastest gpt-oss-120b host (recommended)' },
+      { id: 'groq',      description: 'Groq — gpt-oss-120b, accuracy ceiling on long-form' },
+      { id: 'gemini',    description: 'Gemini — stable across the matrix' },
+      { id: 'anthropic', description: 'Anthropic — pricier, parity accuracy' },
+      { id: 'openai',    description: 'OpenAI — gpt-5.4-mini default' },
+      { id: 'openrouter', description: 'OpenRouter (multi-model router)', exposeInMenu: false },
+      { id: 'claude-cli', description: 'claude-cli (subprocess)',          exposeInMenu: false },
+    ],
+  },
+  {
+    scalar: 'auditors-llm-provider',
+    camelCase: 'auditorsLlmProvider',
+    description: 'LLM provider for auditor sources + agent-rewrite. Inherits llm-provider by default.',
+    menuTip: 'Pick the provider for auditors + agent-rewrite (background prose rewriters). Refuses training-pool providers (opencode-zen).',
+    values: [
+      { id: 'inherit',   description: 'Default — auditors use the global llm-provider (auto-routed when unset)' },
+      { id: 'cerebras',  description: 'Cerebras — fastest gpt-oss-120b host (recommended)' },
+      { id: 'groq',      description: 'Groq — gpt-oss-120b, accuracy ceiling on long-form' },
+      { id: 'gemini',    description: 'Gemini — stable across the matrix' },
+      { id: 'anthropic', description: 'Anthropic — pricier, parity accuracy' },
+      { id: 'openai',    description: 'OpenAI — gpt-5.4-mini default' },
+      { id: 'openrouter', description: 'OpenRouter (multi-model router)', exposeInMenu: false },
+      { id: 'claude-cli', description: 'claude-cli (subprocess)',          exposeInMenu: false },
+    ],
+  },
+  {
+    scalar: 'blanks-llm-provider',
+    camelCase: 'blanksLlmProvider',
+    description: 'LLM provider for blank-class sources (fluid-blank, transform-blank, fluid-config, keyword blanks). Inherits llm-provider by default.',
+    menuTip: 'Pick the provider for blanks (the opt-in `_` surface). `opencode-zen` + `blanks-llm-model: free` routes blanks through OpenCode Zen\'s free pool (no API key; provider trains on blank inputs).',
+    values: [
+      { id: 'inherit',      description: 'Default — blanks use the global llm-provider' },
+      { id: 'opencode-zen', description: 'OpenCode Zen free pool — pair with `blanks-llm-model: free` (provider trains on input)' },
+      { id: 'cerebras',     description: 'Cerebras — fastest gpt-oss-120b host (recommended)' },
+      { id: 'groq',         description: 'Groq — gpt-oss-120b, accuracy ceiling on long-form' },
+      { id: 'gemini',       description: 'Gemini — stable across the matrix' },
+      { id: 'anthropic',    description: 'Anthropic — pricier, parity accuracy' },
+      { id: 'openai',       description: 'OpenAI — gpt-5.4-mini default' },
+      { id: 'openrouter',   description: 'OpenRouter (multi-model router)', exposeInMenu: false },
+      { id: 'claude-cli',   description: 'claude-cli (subprocess)',          exposeInMenu: false },
     ],
   },
 

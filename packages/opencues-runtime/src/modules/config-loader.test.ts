@@ -466,3 +466,41 @@ describe('ConfigLoader hot-reload', () => {
     expect(loader.opencuesState.ambientContextMode).toBe('off');
   });
 });
+
+describe('bucket scalars (three-bucket simplification)', () => {
+  it('parses cues/auditors/blanks-llm-provider as typed fields', () => {
+    const state = parseOpenCuesMd(
+      `---\ncues-llm-provider: cerebras\nauditors-llm-provider: anthropic\nblanks-llm-provider: opencode-zen\n---\n`,
+    );
+    expect(state.cuesLlmProvider).toBe('cerebras');
+    expect(state.auditorsLlmProvider).toBe('anthropic');
+    expect(state.blanksLlmProvider).toBe('opencode-zen');
+  });
+
+  it('defaults every bucket scalar to inherit when frontmatter is empty', () => {
+    const state = parseOpenCuesMd(`---\nvoice-mode: active\n---\n`);
+    expect(state.cuesLlmProvider).toBe('inherit');
+    expect(state.auditorsLlmProvider).toBe('inherit');
+    expect(state.blanksLlmProvider).toBe('inherit');
+  });
+
+  it('reads legacy `blank-llm-provider:` (singular) into blanksLlmProvider when the new name is absent', () => {
+    const state = parseOpenCuesMd(`---\nblank-llm-provider: cerebras\n---\n`);
+    expect(state.blanksLlmProvider).toBe('cerebras');
+  });
+
+  it('prefers the new `blanks-llm-provider:` over the legacy singular when both are present', () => {
+    const state = parseOpenCuesMd(
+      `---\nblank-llm-provider: groq\nblanks-llm-provider: anthropic\n---\n`,
+    );
+    expect(state.blanksLlmProvider).toBe('anthropic');
+  });
+
+  it('sanitises unknown provider ids back to inherit (typo protection)', () => {
+    const state = parseOpenCuesMd(
+      `---\ncues-llm-provider: not-a-real-provider\nblanks-llm-provider: also-not-real\n---\n`,
+    );
+    expect(state.cuesLlmProvider).toBe('inherit');
+    expect(state.blanksLlmProvider).toBe('inherit');
+  });
+});
