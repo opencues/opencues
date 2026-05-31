@@ -71,6 +71,10 @@ describe('createDefaultBlanksRegistry semantics', () => {
         readFile: async () => null,
         writeFile: async () => {},
       },
+      sentinelsMdIO: {
+        readFile: async () => null,
+        writeFile: async () => {},
+      },
     });
     for (const spec of BUILTIN_BLANKS) {
       expect(reg.has(spec.name), `missing ${spec.name} in full-context registry`).toBe(true);
@@ -91,13 +95,18 @@ describe('createDefaultBlanksRegistry semantics', () => {
     expect(reg.has('opencues')).toBe(false);
   });
 
+  it('skips the sentinel blank when sentinelsMdIO is absent', () => {
+    const reg = createDefaultBlanksRegistry({});
+    expect(reg.has('sentinel')).toBe(false);
+  });
+
   it('canonical built-ins are all present in BUILTIN_BLANKS', () => {
     // Pins the floor — if someone removes one of these from the
     // registry, hosts that depended on it break silently.
     const canonical = [
       'hackernews', 'stocks', 'weather', 'claude-status',
       'dictionary', 'crypto', 'countries',
-      'answer', 'prompt', 'opencues',
+      'answer', 'prompt', 'opencues', 'sentinel',
     ];
     const present = new Set(BUILTIN_BLANKS.map(b => b.name));
     for (const name of canonical) {

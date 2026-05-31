@@ -292,6 +292,9 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
   const opencuesMdPathExpr =
     `(process.env.OPENCUES_HOME?(process.env.OPENCUES_HOME+"/OPENCUES.md"):` +
     `((process.env.HOME||"~")+"/.cues/OPENCUES.md"))`;
+  const sentinelsMdPathExpr =
+    `(process.env.OPENCUES_HOME?(process.env.OPENCUES_HOME+"/SENTINELS.md"):` +
+    `((process.env.HOME||"~")+"/.cues/SENTINELS.md"))`;
   // CUES roots for the sandbox + audit log. First entry is where the
   // log lands. Mirrors OC/gemini.
   const cuesRootsExpr =
@@ -387,6 +390,7 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     // bootstrap picks it up automatically via createDefaultBlanksRegistry.
     `var __ocCtl=__oc_req(${blanksPath});` +
     `var __ocFs=${requireFn}("fs");var __ocOcMd=${opencuesMdPathExpr};` +
+    `var __ocSentMd=${sentinelsMdPathExpr};` +
     `var __ocGroq=process.env.GROQ_API_KEY;` +
     `var __ocReg=__ocCtl.createDefaultBlanksRegistry({` +
     `llmConfig:__ocGroq?{apiKey:__ocGroq}:undefined,` +
@@ -394,6 +398,14 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `opencuesMdIO:{` +
     `readFile:function(){return new Promise(function(r){__ocFs.readFile(__ocOcMd,"utf8",function(e,d){r(e?null:d);});});},` +
     `writeFile:function(c){return new Promise(function(r,j){__ocFs.writeFile(__ocOcMd,c,"utf8",function(e){e?j(e):r();});});}` +
+    `},` +
+    // Sentinel-write blank — keyword-bound `set sentinel _` /
+    // `remove sentinel _`. Validator runs INSIDE SentinelBlank before
+    // writeFile is invoked; do not add a parallel write path. See
+    // docs/architecture/security-audit.md row #24.
+    `sentinelsMdIO:{` +
+    `readFile:function(){return new Promise(function(r){__ocFs.readFile(__ocSentMd,"utf8",function(e,d){r(e?null:d);});});},` +
+    `writeFile:function(c){return new Promise(function(r,j){__ocFs.writeFile(__ocSentMd,c,"utf8",function(e){e?j(e):r();});});}` +
     `}` +
     `});` +
     // User-shipped JS blanks: walk every .cues/blanks/<name>/BLANK.md,

@@ -20,6 +20,7 @@ export { WeatherBlank, type WeatherBlankOptions } from './weather';
 export { AnswerBlank, type AnswerBlankOptions } from './answer';
 export { PromptImproverBlank, type PromptImproverBlankOptions } from './prompt-improver';
 export { OpenCuesSettingsBlank, type OpenCuesSettingsBlankOptions } from './opencues-settings';
+export { SentinelBlank, type SentinelBlankOptions } from './sentinel';
 export { DictionaryBlank, type DictionaryBlankOptions } from './dictionary';
 export { CryptoBlank, type CryptoBlankOptions } from './crypto';
 export { CountriesBlank, type CountriesBlankOptions } from './countries';
@@ -34,6 +35,7 @@ import { WeatherBlank } from './weather';
 import { AnswerBlank } from './answer';
 import { PromptImproverBlank } from './prompt-improver';
 import { OpenCuesSettingsBlank } from './opencues-settings';
+import { SentinelBlank } from './sentinel';
 import { DictionaryBlank } from './dictionary';
 import { CryptoBlank } from './crypto';
 import { CountriesBlank } from './countries';
@@ -105,6 +107,21 @@ export interface BuiltinBlankContext {
     readonly writeFile: (content: string) => Promise<void>;
   };
   /**
+   * Read/write accessors for the user's SENTINELS.md file. Required
+   * to register the `sentinel` keyword-bound write blank. Hosts that
+   * don't supply this skip the sentinel blank — the user can still
+   * use `opencues sentinels set` from the CLI.
+   *
+   * SECURITY: the blank's writes are validated by
+   * @opencues/core's `validateSentinelWrite` BEFORE this writer is
+   * called. Hosts MUST NOT add a parallel write path that skips the
+   * validator. Audit row #24.
+   */
+  readonly sentinelsMdIO?: {
+    readonly readFile: () => Promise<string | null>;
+    readonly writeFile: (content: string) => Promise<void>;
+  };
+  /**
    * Host name passed through to OpenCuesSettingsBlank so the
    * registry's host-scoped tunables (e.g. chrome's `dim-mix`) only
    * surface in the cycling menu on their target host.
@@ -156,6 +173,14 @@ export const BUILTIN_BLANKS: readonly BuiltinBlankSpec[] = [
 
   // ── Settings / selector-satellite (skip when no IO supplied) ─────
   { name: 'opencues',      factory: ctx => ctx.opencuesMdIO ? new OpenCuesSettingsBlank({ ...ctx.opencuesMdIO, hostName: ctx.hostName }) : null },
+
+  // ── Sentinel-write (keyword-bound `set sentinel <k> <v> _` /
+  //    `remove sentinel <k> _`). Skips when no IO supplied (host
+  //    can't write SENTINELS.md). Audit row #24 — every host that
+  //    wires sentinelsMdIO MUST hand the writer the file content
+  //    AS-RETURNED by SentinelBlank.get(); never bypass the writer
+  //    or replace its content with a non-validated path.
+  { name: 'sentinel',      factory: ctx => ctx.sentinelsMdIO ? new SentinelBlank(ctx.sentinelsMdIO) : null },
 ];
 
 /**
