@@ -119,14 +119,25 @@ function configRows(ctx) {
   const globalProviderSet = readScalar(settingsFile, 'llm-provider');
   const globalProvider = globalProviderSet || autoPicked || 'cerebras';
   const globalModel    = readScalar(settingsFile, 'llm-model');
+  // Three-bucket UX (cues / auditors / blanks) — matches the menu, the
+  // fluid-config classifier, and docs/architecture/llm-routing.md.
+  // Per-aspect scalars (word-cues-provider, fluid-blank-provider,
+  // agent-provider, …) still WIN at the resolver, but they're advanced
+  // overrides — the primary user-facing surface is the three buckets.
+  // Bucket scalar 'inherit' (or unset) falls through to the global
+  // llm-provider; concrete provider id pins this bucket.
+  const resolveBucket = (bucketScalar) => {
+    const raw = (readScalar(settingsFile, bucketScalar) || '').toLowerCase();
+    return raw && raw !== 'inherit' ? raw : globalProvider;
+  };
   const surfaces = [
-    ['word-cues',       readScalar(settingsFile, 'word-cues-provider')       || globalProvider],
-    ['fluid-blank',     readScalar(settingsFile, 'fluid-blank-provider')     || globalProvider],
-    ['transform-blank', readScalar(settingsFile, 'transform-blank-provider') || globalProvider],
-    ['agent',           readScalar(settingsFile, 'agent-provider')           || globalProvider],
+    ['cues',     resolveBucket('cues-llm-provider')],
+    ['auditors', resolveBucket('auditors-llm-provider')],
+    ['blanks',   resolveBucket('blanks-llm-provider')],
   ].map(([s, p]) => {
+    const bucketModel = readScalar(settingsFile, `${s}-llm-model`);
     const model =
-      readScalar(settingsFile, `${s}-model`) ||
+      bucketModel ||
       globalModel ||
       (core?.getProvider(p.toLowerCase())?.defaultModel) ||
       PROVIDER_DEFAULT_MODEL[p.toLowerCase()] ||
@@ -155,36 +166,31 @@ function configRows(ctx) {
     return `${bold(k.padEnd(KEY_WIDTH))} ${set ? green(G.check) : dim(G.missing)}`;
   }).join(dim(SEP));
 
-  // Provider slot total width — sum of two Keys slots + one separator
-  // so the provider row's single divider lines up with the Keys row's
-  // middle divider.
-  const PROVIDER_SLOT_W = KEYS_SLOT_W * 2 + SEP.length;
-  // Per-COLUMN label padding (not per-row): the longest label sharing
-  // a column dictates the label width for both rows in that column.
-  // Row 1: surfaces[0] / [1].  Row 2: surfaces[2] / [3].
-  const COL_LABEL_W = [
-    Math.max(surfaces[0][0].length, surfaces[2][0].length),
-    Math.max(surfaces[1][0].length, surfaces[3][0].length),
-  ];
-  const slotForSurface = ([s, p, m], labelW) => {
+  // Three buckets, single row. Size each slot to fit its actual
+  // content (label + provider + ' · ' + full model id) — no truncation.
+  // The earlier 2-row 4-surface layout fit a 1/2-Keys-row budget; the
+  // 3-bucket layout is wider in aggregate but each slot stays compact
+  // enough that two inter-slot separators don't push past terminal width.
+  const LABEL_W = Math.max(...surfaces.map(s => s[0].length));
+  // Find the widest slot's natural width so every slot pads to the
+  // same column — keeps the three slots visually aligned.
+  const naturalWidths = surfaces.map(([, p, m]) =>
+    (LABEL_W + 1) + 1 + displayProvider(p, core).length + 3 + displayModel(m).length,
+  );
+  const PROVIDER_SLOT_W = Math.max(...naturalWidths);
+  const slotForSurface = ([s, p, m]) => {
     const pname = displayProvider(p, core);
-    const labelCol = (s + ':').padEnd(labelW + 1);
-    const usedBeforeModel = (labelW + 1) + 1 + pname.length + 3;
-    const modelBudget = Math.max(0, PROVIDER_SLOT_W - usedBeforeModel);
-    const mname = truncate(displayModel(m), modelBudget).padEnd(modelBudget);
-    return `${dim(labelCol)} ${bold(pname)} ${dim('·')} ${bold(mname)}`;
+    const labelCol = (s + ':').padEnd(LABEL_W + 1);
+    const mname = displayModel(m);
+    const used = (LABEL_W + 1) + 1 + pname.length + 3 + mname.length;
+    const padding = ' '.repeat(Math.max(0, PROVIDER_SLOT_W - used));
+    return `${dim(labelCol)} ${bold(pname)} ${dim('·')} ${bold(mname)}${padding}`;
   };
   // Providers: keep the same SEP visible width so the slot grid lines
   // up with the Keys row, but replace the `│` with whitespace.
   const PROVIDER_SEP = ' '.repeat(SEP.length);
-  const surfaceRow1 = [
-    slotForSurface(surfaces[0], COL_LABEL_W[0]),
-    slotForSurface(surfaces[1], COL_LABEL_W[1]),
-  ].join(PROVIDER_SEP);
-  const surfaceRow2 = [
-    slotForSurface(surfaces[2], COL_LABEL_W[0]),
-    slotForSurface(surfaces[3], COL_LABEL_W[1]),
-  ].join(PROVIDER_SEP);
+  const surfaceRow1 = surfaces.map(slotForSurface).join(PROVIDER_SEP);
+  const surfaceRow2 = null; // three buckets fit on one row now
 
   // Auto-route annotation: when the user has NOT set llm-provider:
   // explicitly, surface that the provider grid above was picked by the
@@ -201,7 +207,8 @@ function configRows(ctx) {
       ? dim(`auto-routed (${chainText}); set ${bold('llm-provider:')} in OPENCUES.md to override`)
       : dim(`no keys set — set any of ${envKeysList}`);
 
-  const providerContinuations = [surfaceRow2];
+  const providerContinuations = [];
+  if (surfaceRow2) providerContinuations.push(surfaceRow2);
   if (routeNote) providerContinuations.push(routeNote);
 
   return [
