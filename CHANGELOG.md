@@ -15,11 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **0.1.2 → 0.1.3**: Bare provider switches default to the **blanks** bucket. `"switch to anthropic _"` now writes `blanks-llm-provider: anthropic` (was `cues-llm-provider`). Cues and auditors require explicit scope; rationale: blanks is the user-opt-in `_` surface most likely targeted by a bucket-less phrase.
 - **0.1.3 → 0.1.4** (PR #32 — Sentinels infrastructure): TransformBlankSource now consumes the SENTINELS.md catalog — `draft email _`, `write a bio _`, etc. resolve sender sentinels via the same post-processor FluidBlank uses, with `preserveUnknown: true` so non-sender placeholders (`[Recipient Name]`, `[Date]`) survive untouched. New `validateSentinelWrite` discriminated chokepoint (`sentinels-validator.ts`) enforces key shape, value caps (256 chars / 64 fields), control-character filter, and token-collision detection for any code path that mutates SENTINELS.md. Renames: file `USER.md` → `SENTINELS.md`; symbols `UserContext*` → `Sentinels*`, `parseUserMd` → `parseSentinelsMd`, etc.; scalar `user-context-mode:` → `sentinels-mode:`. Back-compat: ConfigLoader reads both scalar names; seed-configs self-heals the file + scalar rename. Audit row #24 codifies the new write-surface threat model.
 
-### Added — `@opencues/runtime` 0.1.0 → 0.1.4
+### Added — `@opencues/runtime` 0.1.0 → 0.1.5
 - **0.1.0 → 0.1.1** (PR #17 chain-history): sequential LLM-blank substitutes chain into walkable history so the user can cycle back through prior fill-ins.
 - **0.1.1 → 0.1.2**: typed bucket fields (`cuesLlmProvider` / `auditorsLlmProvider` / `blanksLlmProvider`) on `OpenCuesState` with back-compat parsing; `boot-common.buildAgentLLMResolver` reads the auditors bucket so `agent-rewrite` routes through it.
 - **0.1.2 → 0.1.3**: `applyOpencuesScalar` now awaits the disk write — back-to-back applyScalar calls (ConfigIntent's provider+model verdict path) serialise on disk instead of racing the read-modify-write.
 - **0.1.3 → 0.1.4** (PR #32 — Sentinels rename): `OpenCuesState.userContextMode` → `sentinelsMode`; `ConfigLoader` parses the new `sentinels-mode:` scalar with back-compat fall-through to legacy `user-context-mode:`. No behaviour change for users who haven't opted into sentinels.
+- **0.1.4 → 0.1.5** (PR #34 — sentinel-write blank): new `SentinelBlank` class in `BUILTIN_BLANKS` handles `set sentinel <key> <value> _` and `remove sentinel <key> _`. Every write routes through `@opencues/core`'s `validateSentinelWrite` chokepoint (no parallel paths). New `sentinelsMdIO` field on `BuiltinBlankContext`; the blank registers only when the host wires it. Errors paint visibly into the buffer as `[err] <detail>` — never silent, never throws. 7 layered defences documented in security-audit.md row #24.
 
 ### Added — `opencues` CLI 0.1.1 → 0.1.5
 - **0.1.1 → 0.1.2** (Option-B self-heal): `seed-configs` cleans up legacy built-in / user-blank collisions left over from the May 2026 user-blank migration. Per-host log prefix; per-version markers.
@@ -27,11 +28,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **0.1.3 → 0.1.4** (PR #33): SIGINT race fix — `opencues update` registers signal handlers BEFORE `acquireLock` writes the lockfile (see CLI #33 entry above).
 - **0.1.4 → 0.1.5** (PR #32 — Sentinels CLI + migrations): new `opencues sentinels` command (interactive interview + scriptable `list` / `set` / `add` / `remove` / `rm` / `path` / `list --json`). Smart defaults from `git config` and `gh api user`. All writes route through `@opencues/core`'s `validateSentinelWrite`. `seed-configs` self-heals `~/.cues/USER.md` → `~/.cues/SENTINELS.md` (pre-SEED step so user data survives) and `user-context-mode:` → `sentinels-mode:` (legacy-value-wins when both present). `doctor` surfaces leftover legacy artifacts with `opencues seed-configs` as the fix command.
 
-### Added — `@opencues/claude-code` 0.1.0 → 0.1.1
+### Added — `@opencues/claude-code` 0.1.0 → 0.1.2
 - Single-fork CC install: one fork at `~/claude-code-cues/` handles both cli.js (≤2.1.111) and native-binary (≥2.1.113) shapes via tweakcc 4.0.13+ shape detection. `claude-code-cues-150` retired. Opt-in statusline. Native 2.1.150 support. Subsequent same-minor bumps (2.1.158 promoted to `current-pin` 2026-05-31) ride this band without a package-version bump — same adapter, same anchors, only `compat.json` updates.
+- **0.1.1 → 0.1.2** (PR #34): CC bootstrap wires `sentinelsMdIO` so the keyword-bound `set sentinel _` / `remove sentinel _` blank can write to `~/.cues/SENTINELS.md`. Writes route through `@opencues/core`'s `validateSentinelWrite`; no parallel write paths. Security-audit row #24.
 
-### Added — `@opencues/chrome` 0.1.0 → 0.1.1
+### Added — `@opencues/chrome` 0.1.0 → 0.1.2
 - Bundle ships the new `BLANK.md` frontmatter (the user-blank migration that retired the per-host built-in/user-blank duplication).
+- **0.1.1 → 0.1.2** (PR #34): Chrome bootstrap wires `sentinelsMdIO` so the sentinel blank works on contenteditables + normal inputs. Writes go through chrome.storage via the same validator chokepoint.
+
+### Added — `@opencues/opencode` 0.1.0 → 0.1.1
+- **0.1.0 → 0.1.1** (PR #34): OC bootstrap wires `sentinelsMdIO` for the sentinel blank.
+
+### Added — `@opencues/gemini-cli` 0.1.0 → 0.1.1
+- **0.1.0 → 0.1.1** (PR #34): Gemini bootstrap wires `sentinelsMdIO` for the sentinel blank.
+
+### Added — `@opencues/shell` 0.1.0 → 0.1.1
+- **0.1.0 → 0.1.1** (PR #34): Shell (`oc-edit`) bootstrap wires `sentinelsMdIO` for the sentinel blank.
 
 ### Added — new packages introduced this period
 - **`@opencues/runtime` 0.1.0** — host-agnostic runtime scaffold (HostAdapter types, MockAdapter, conformance suite). Replaces the inline runtime code that previously lived in the CC patch.
