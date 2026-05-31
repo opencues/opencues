@@ -205,6 +205,62 @@ it('HEAL phase: renames legacy blanks/<name>/BLANK.md to BLANK.md', () => {
     expect(fs.existsSync(path.join(blanksDir, 'orphan.md'))).toBe(true);
   });
 
+  it('HEAL phase: cleans up legacy built-in/user-blank collisions', () => {
+    // Pre-Option-B installs shipped duplicate `defaults/blanks/<name>/blank.js`
+    // user-blanks alongside the BUILTIN_BLANKS TS classes. Native hosts ran
+    // the user-blank (silent divergence vs chrome, which ran the built-in).
+    // Option B deleted the duplicates from defaults/, but existing user
+    // installs keep their copy because SYNC doesn't touch .js and
+    // mergeShippedMd preserves `impl:` as a "user-only field". This heal
+    // closes the gap by stripping `impl: ./blank.js` + JS-only capability
+    // fields + deleting the colocated blank.js.
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    const userDir = path.join(tmpHome, '.cues');
+    const blanksDir = path.join(userDir, 'blanks');
+
+    // Collision case — legacy shipped shape for a BUILTIN name.
+    fs.mkdirSync(path.join(blanksDir, 'weather'), { recursive: true });
+    fs.writeFileSync(path.join(blanksDir, 'weather/BLANK.md'),
+      '---\nname: weather\ntype: blank\nblankKeywords: weather, forecast\n' +
+      'impl: ./blank.js\nnetwork: [api.open-meteo.com]\nstorage: weather\n---\nbody preserved\n');
+    fs.writeFileSync(path.join(blanksDir, 'weather/blank.js'), 'module.exports = { get() { return "legacy"; } };');
+
+    // User-customised impl path — must NOT be touched.
+    fs.mkdirSync(path.join(blanksDir, 'stocks'), { recursive: true });
+    fs.writeFileSync(path.join(blanksDir, 'stocks/BLANK.md'),
+      '---\nname: stocks\ntype: blank\nimpl: ./my-custom-stocks.js\nsecrets: [FINNHUB_API_KEY]\n---\n');
+    fs.writeFileSync(path.join(blanksDir, 'stocks/my-custom-stocks.js'), 'module.exports = { get() { return "custom"; } };');
+
+    // Non-builtin name (e.g. gh-issues) — must NOT be touched.
+    fs.mkdirSync(path.join(blanksDir, 'gh-issues'), { recursive: true });
+    fs.writeFileSync(path.join(blanksDir, 'gh-issues/BLANK.md'),
+      '---\nname: gh-issues\ntype: blank\nimpl: ./blank.js\nnetwork: [api.github.com]\n---\n');
+    fs.writeFileSync(path.join(blanksDir, 'gh-issues/blank.js'), 'module.exports = { get() { return "issues"; } };');
+
+    seedConfigs(['--silent'], { REPO_ROOT });
+
+    // Weather: cleaned. JS gone, impl/network/storage stripped, routing + body preserved.
+    expect(fs.existsSync(path.join(blanksDir, 'weather/blank.js'))).toBe(false);
+    const weatherMd = fs.readFileSync(path.join(blanksDir, 'weather/BLANK.md'), 'utf8');
+    expect(weatherMd).not.toMatch(/^impl:/m);
+    expect(weatherMd).not.toMatch(/^network:/m);
+    expect(weatherMd).not.toMatch(/^storage:/m);
+    expect(weatherMd).toMatch(/^blankKeywords: weather, forecast$/m);  // routing preserved
+    expect(weatherMd).toContain('body preserved');
+
+    // Stocks: user-customised impl — left alone.
+    expect(fs.existsSync(path.join(blanksDir, 'stocks/my-custom-stocks.js'))).toBe(true);
+    const stocksMd = fs.readFileSync(path.join(blanksDir, 'stocks/BLANK.md'), 'utf8');
+    expect(stocksMd).toMatch(/^impl: \.\/my-custom-stocks\.js$/m);
+    expect(stocksMd).toMatch(/^secrets: \[FINNHUB_API_KEY\]$/m);
+
+    // gh-issues: not in BUILTIN_BLANKS — left alone.
+    expect(fs.existsSync(path.join(blanksDir, 'gh-issues/blank.js'))).toBe(true);
+    const ghMd = fs.readFileSync(path.join(blanksDir, 'gh-issues/BLANK.md'), 'utf8');
+    expect(ghMd).toMatch(/^impl: \.\/blank\.js$/m);
+    expect(ghMd).toMatch(/^network: \[api\.github\.com\]$/m);
+  });
+
   it('--project flag scopes to <cwd>/.cues (settings stay user-level)', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const projectDir = path.join(tmpHome, 'my-project');
