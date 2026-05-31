@@ -121,17 +121,38 @@ module.exports = async function doctor(argv, ctx) {
       }
     } catch { /* /bin/bash unavailable — skip */ }
 
-    // tmux — only matters for the shell integration. Always-display so
-    // users planning to install shell see it early.
+    // tmux — only matters for the shell integration. The shell install
+    // vendors its own tmux 3.4 at ~/.opencues/vendor/tmux/bin/tmux when
+    // the system tmux is < 3.2; oc-shell uses that vendored binary
+    // automatically. So the system-tmux check is only load-bearing when
+    // the vendored binary is absent (user planning to install shell but
+    // hasn't run the installer yet). When vendored tmux ≥ 3.2 is
+    // present, the system version is informational only — no finding.
+    const HOME = os.homedir();
+    const vendoredTmux = path.join(HOME, '.opencues/vendor/tmux/bin/tmux');
+    const vendoredVersion = (() => {
+      if (!fs.existsSync(vendoredTmux)) return null;
+      try {
+        const out = require('child_process').execSync(`${JSON.stringify(vendoredTmux)} -V 2>/dev/null`, { encoding: 'utf8' });
+        const m = out.match(/tmux (\d+)\.(\d+)/);
+        return m ? { maj: parseInt(m[1], 10), min: parseInt(m[2], 10) } : null;
+      } catch { return null; }
+    })();
+    const vendoredOk = vendoredVersion && (vendoredVersion.maj > 3 || (vendoredVersion.maj === 3 && vendoredVersion.min >= 2));
     try {
       const { execSync } = require('child_process');
       const out = execSync('tmux -V 2>/dev/null', { encoding: 'utf8' });
       const m = out.match(/tmux (\d+)\.(\d+)/);
       if (m) {
         const maj = parseInt(m[1], 10), min = parseInt(m[2], 10);
-        const ok = maj > 3 || (maj === 3 && min >= 2);
-        s.ok(`tmux ${maj}.${min} (shell integration)`, ok);
-        if (!ok) {
+        const sysOk = maj > 3 || (maj === 3 && min >= 2);
+        // Pass when either path satisfies. Show the vendored fallback
+        // inline so the user knows what oc-shell will actually use.
+        s.ok(
+          `tmux ${maj}.${min} (shell integration)` + (vendoredOk ? ` ${dim(`— vendored ${vendoredVersion.maj}.${vendoredVersion.min} also present, oc-shell uses that`)}` : ''),
+          sysOk || vendoredOk,
+        );
+        if (!sysOk && !vendoredOk) {
           findings.push({
             sev: 'info',
             msg: `tmux ${maj}.${min} — shell integration needs 3.2+ for display-popup`,
@@ -139,11 +160,17 @@ module.exports = async function doctor(argv, ctx) {
                  'apt install tmux  (or `dnf install tmux` / `pacman -S tmux`)',
           });
         }
+      } else if (vendoredOk) {
+        s.ok(`tmux (vendored ${vendoredVersion.maj}.${vendoredVersion.min} at ~/.opencues/vendor)`, true);
       } else {
         s.info('tmux on PATH (shell integration)', dim('(not found — needed for `opencues install shell`)'));
       }
     } catch {
-      s.info('tmux on PATH (shell integration)', dim('(not found — needed for `opencues install shell`)'));
+      if (vendoredOk) {
+        s.ok(`tmux (vendored ${vendoredVersion.maj}.${vendoredVersion.min} at ~/.opencues/vendor)`, true);
+      } else {
+        s.info('tmux on PATH (shell integration)', dim('(not found — needed for `opencues install shell`)'));
+      }
     }
 
     // bun — needed by both shell (oc-edit) AND opencode. Listed here so
