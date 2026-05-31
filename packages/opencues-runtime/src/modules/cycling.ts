@@ -15,6 +15,7 @@ import type { HighlightState } from '../state/highlight-state';
 import { DynDefs, type WordDef } from '../state/dyn-defs';
 import type { ConfigLoader, BlankEntry } from './config-loader';
 import { splitWords } from './navigation';
+import { resolveNavKeymap } from './nav-keymap';
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
@@ -22,6 +23,8 @@ import type { SelectorSatelliteState } from '../state/selector-satellite';
 export class Cycling {
   private _unsubUp: Unsubscribe | null = null;
   private _unsubDown: Unsubscribe | null = null;
+  private _unsubUpShift: Unsubscribe | null = null;
+  private _unsubDownShift: Unsubscribe | null = null;
 
   constructor(
     private adapter: HostAdapter,
@@ -65,19 +68,40 @@ export class Cycling {
   }
 
   subscribe(): void {
+    // See navigation.ts for the design rationale — both combos are
+    // subscribed so the OPENCUES.md `nav-keymap` scalar hot-reloads;
+    // chrome skips ctrl-shift because the browser owns "extend
+    // selection by word" on that combo.
     this._unsubUp = this.adapter.onKey(
       { requireModifiers: ['ctrl', 'alt'], keys: ['up'] },
-      e => this.step(e, +1),
+      e => this.matchesKeymap('ctrl-alt') ? this.step(e, +1) : false,
     );
     this._unsubDown = this.adapter.onKey(
       { requireModifiers: ['ctrl', 'alt'], keys: ['down'] },
-      e => this.step(e, -1),
+      e => this.matchesKeymap('ctrl-alt') ? this.step(e, -1) : false,
     );
+    if (this.adapter.hostName !== 'chrome') {
+      this._unsubUpShift = this.adapter.onKey(
+        { requireModifiers: ['ctrl', 'shift'], keys: ['up'] },
+        e => this.matchesKeymap('ctrl-shift') ? this.step(e, +1) : false,
+      );
+      this._unsubDownShift = this.adapter.onKey(
+        { requireModifiers: ['ctrl', 'shift'], keys: ['down'] },
+        e => this.matchesKeymap('ctrl-shift') ? this.step(e, -1) : false,
+      );
+    }
   }
 
   unsubscribe(): void {
     if (this._unsubUp) { this._unsubUp(); this._unsubUp = null; }
     if (this._unsubDown) { this._unsubDown(); this._unsubDown = null; }
+    if (this._unsubUpShift) { this._unsubUpShift(); this._unsubUpShift = null; }
+    if (this._unsubDownShift) { this._unsubDownShift(); this._unsubDownShift = null; }
+  }
+
+  private matchesKeymap(combo: 'ctrl-alt' | 'ctrl-shift'): boolean {
+    const configured = this.configLoader.opencuesState.navKeymap ?? 'auto';
+    return resolveNavKeymap(configured, this.adapter.hostName) === combo;
   }
 
   /** Exposed for unit testing — direction is +1 (up, forward) / -1 (down, back). */

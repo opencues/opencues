@@ -138,6 +138,24 @@ export interface OpenCuesState {
    */
   readonly blankTriggerMode: 'immediate' | 'spaced';
   /**
+   * Modifier combo used for word navigation (Left/Right) and
+   * alternative cycling (Up/Down).
+   *
+   * - `auto` (default): pick `ctrl-shift` on macOS Terminal.app
+   *   (TERM_PROGRAM=Apple_Terminal — strips Ctrl+Alt+arrow before the
+   *   app sees it), `ctrl-alt` everywhere else.
+   * - `ctrl-alt`: classic Ctrl+Alt+arrow / Ctrl+Option+arrow. Default
+   *   on every host except Apple_Terminal.
+   * - `ctrl-shift`: Ctrl+Shift+arrow. Used as the Terminal.app
+   *   fallback. Terminal hosts only — chrome hard-pins to ctrl-alt
+   *   regardless of the scalar (ctrl-shift+arrow extends browser
+   *   text selection — hijacking it would steal a primary shortcut).
+   *
+   * Hot-reloads. The handlers gate per-keystroke on the resolved
+   * combo so no restart is needed after editing OPENCUES.md.
+   */
+  readonly navKeymap: 'auto' | 'ctrl-alt' | 'ctrl-shift';
+  /**
    * Per-bucket LLM provider overrides — the three-bucket simplification.
    * Each bucket carves the LLM surface into one of three trust classes:
    *
@@ -190,6 +208,7 @@ export const DEFAULT_OPENCUES_STATE: OpenCuesState = {
   ambientContextMode: 'off',
   sentinelsMode: 'off',
   blankTriggerMode: 'immediate',
+  navKeymap: 'auto',
   cuesLlmProvider: 'inherit',
   auditorsLlmProvider: 'inherit',
   blanksLlmProvider: 'inherit',
@@ -256,6 +275,11 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
     : 'off';
   const blankTriggerMode: 'immediate' | 'spaced' =
     get('blank-trigger-mode', 'immediate').toLowerCase() === 'spaced' ? 'spaced' : 'immediate';
+  const navKeymapRaw = get('nav-keymap', 'auto').toLowerCase();
+  const navKeymap: 'auto' | 'ctrl-alt' | 'ctrl-shift' =
+    navKeymapRaw === 'ctrl-alt' ? 'ctrl-alt'
+    : navKeymapRaw === 'ctrl-shift' ? 'ctrl-shift'
+    : 'auto';
   // Bucket scalars — `inherit` (default) or any concrete provider id.
   // Unknown values fall back to `inherit` rather than silently picking
   // an invalid provider — protects users from typos that would
@@ -287,7 +311,7 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   // Tests keep shipping mock `settings:` blocks; they get the
   // file-driven definitions, identical to the pre-refactor behaviour.
   const definitions = mergeDefinitions(getMenuDefinitions(), parseSettingsBlock(lines));
-  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, sentinelsMode, blankTriggerMode, cuesLlmProvider, auditorsLlmProvider, blanksLlmProvider, settings, definitions };
+  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, sentinelsMode, blankTriggerMode, navKeymap, cuesLlmProvider, auditorsLlmProvider, blanksLlmProvider, settings, definitions };
 }
 
 /**
@@ -569,6 +593,10 @@ export class ConfigLoader {
         return v === 'safe' ? 'safe' : v === 'raw' ? 'raw' : 'off';
       })(),
       blankTriggerMode: (get('blank-trigger-mode', 'immediate').toLowerCase() === 'spaced' ? 'spaced' : 'immediate') as 'immediate' | 'spaced',
+      navKeymap: ((): 'auto' | 'ctrl-alt' | 'ctrl-shift' => {
+        const v = get('nav-keymap', 'auto').toLowerCase();
+        return v === 'ctrl-alt' ? 'ctrl-alt' : v === 'ctrl-shift' ? 'ctrl-shift' : 'auto';
+      })(),
       cuesLlmProvider: bucketProvider(get('cues-llm-provider', 'inherit').toLowerCase()),
       auditorsLlmProvider: bucketProvider(get('auditors-llm-provider', 'inherit').toLowerCase()),
       blanksLlmProvider: bucketProvider(

@@ -11,6 +11,7 @@ import type { DynDefs } from '../state/dyn-defs';
 import type { ConfigLoader } from './config-loader';
 import type { SpanFillState } from '../state/span-fill';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
+import { resolveNavKeymap } from './nav-keymap';
 
 export interface WordSpan {
   readonly start: number;
@@ -22,6 +23,8 @@ export interface WordSpan {
 export class Navigation {
   private _unsubLeft: Unsubscribe | null = null;
   private _unsubRight: Unsubscribe | null = null;
+  private _unsubLeftShift: Unsubscribe | null = null;
+  private _unsubRightShift: Unsubscribe | null = null;
   private _unsubEscape: Unsubscribe | null = null;
   private _unsubText: Unsubscribe | null = null;
   private _unsubCursor: Unsubscribe | null = null;
@@ -51,14 +54,31 @@ export class Navigation {
   ) {}
 
   subscribe(): void {
+    // Subscribe to both modifier combos so flipping `nav-keymap` in
+    // OPENCUES.md hot-reloads without re-subscribing. Each handler
+    // gates on the resolved keymap per-keystroke; the unmatched combo
+    // returns false so the host's own behaviour (or nothing) takes
+    // over. Chrome is exempt — ctrl-shift+arrow is the canonical
+    // browser "extend selection by word" shortcut, so we don't even
+    // subscribe to avoid any chance of a stray preventDefault.
     this._unsubLeft = this.adapter.onKey(
       { requireModifiers: ['ctrl', 'alt'], keys: ['left'] },
-      e => this.onArrowLeft(e),
+      e => this.matchesKeymap('ctrl-alt') ? this.onArrowLeft(e) : false,
     );
     this._unsubRight = this.adapter.onKey(
       { requireModifiers: ['ctrl', 'alt'], keys: ['right'] },
-      e => this.onArrowRight(e),
+      e => this.matchesKeymap('ctrl-alt') ? this.onArrowRight(e) : false,
     );
+    if (this.adapter.hostName !== 'chrome') {
+      this._unsubLeftShift = this.adapter.onKey(
+        { requireModifiers: ['ctrl', 'shift'], keys: ['left'] },
+        e => this.matchesKeymap('ctrl-shift') ? this.onArrowLeft(e) : false,
+      );
+      this._unsubRightShift = this.adapter.onKey(
+        { requireModifiers: ['ctrl', 'shift'], keys: ['right'] },
+        e => this.matchesKeymap('ctrl-shift') ? this.onArrowRight(e) : false,
+      );
+    }
     // Escape deactivates the highlight without changing text.
     // No required modifier — bare Escape; forbidModifiers prevents
     // accidental capture during a Ctrl+Esc / Alt+Esc shortcut chord.
@@ -83,9 +103,16 @@ export class Navigation {
   unsubscribe(): void {
     if (this._unsubLeft) { this._unsubLeft(); this._unsubLeft = null; }
     if (this._unsubRight) { this._unsubRight(); this._unsubRight = null; }
+    if (this._unsubLeftShift) { this._unsubLeftShift(); this._unsubLeftShift = null; }
+    if (this._unsubRightShift) { this._unsubRightShift(); this._unsubRightShift = null; }
     if (this._unsubEscape) { this._unsubEscape(); this._unsubEscape = null; }
     if (this._unsubText) { this._unsubText(); this._unsubText = null; }
     if (this._unsubCursor) { this._unsubCursor(); this._unsubCursor = null; }
+  }
+
+  private matchesKeymap(combo: 'ctrl-alt' | 'ctrl-shift'): boolean {
+    const configured = this.configLoader?.opencuesState.navKeymap ?? 'auto';
+    return resolveNavKeymap(configured, this.adapter.hostName) === combo;
   }
 
   /**

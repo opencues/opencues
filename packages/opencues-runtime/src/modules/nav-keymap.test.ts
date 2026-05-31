@@ -1,0 +1,53 @@
+import { describe, expect, it, afterEach } from 'vitest';
+import { resolveNavKeymap } from './nav-keymap';
+
+const ORIGINAL_TERM_PROGRAM = process.env.TERM_PROGRAM;
+
+afterEach(() => {
+  if (ORIGINAL_TERM_PROGRAM === undefined) delete process.env.TERM_PROGRAM;
+  else process.env.TERM_PROGRAM = ORIGINAL_TERM_PROGRAM;
+});
+
+describe('resolveNavKeymap', () => {
+  it('explicit ctrl-alt is honoured on every host', () => {
+    process.env.TERM_PROGRAM = 'Apple_Terminal';
+    expect(resolveNavKeymap('ctrl-alt', 'mock')).toBe('ctrl-alt');
+    expect(resolveNavKeymap('ctrl-alt', 'chrome')).toBe('ctrl-alt');
+    expect(resolveNavKeymap('ctrl-alt', 'claude-code')).toBe('ctrl-alt');
+  });
+
+  it('explicit ctrl-shift is honoured on terminal hosts, even when running in Apple_Terminal', () => {
+    process.env.TERM_PROGRAM = 'Apple_Terminal';
+    expect(resolveNavKeymap('ctrl-shift', 'claude-code')).toBe('ctrl-shift');
+    delete process.env.TERM_PROGRAM;
+    expect(resolveNavKeymap('ctrl-shift', 'opencode')).toBe('ctrl-shift');
+  });
+
+  it('chrome ignores explicit ctrl-shift and pins to ctrl-alt — browser owns ctrl-shift+arrow', () => {
+    // The chrome adapter band doesn't subscribe ctrl-shift at all
+    // (see navigation.ts / cycling.ts), so this branch is belt-and-
+    // braces — if someone wires the runtime up differently, the
+    // resolver still keeps chrome on the safe combo.
+    expect(resolveNavKeymap('ctrl-shift', 'chrome')).toBe('ctrl-alt');
+  });
+
+  it('auto resolves to ctrl-shift on macOS Terminal.app', () => {
+    process.env.TERM_PROGRAM = 'Apple_Terminal';
+    expect(resolveNavKeymap('auto', 'claude-code')).toBe('ctrl-shift');
+    expect(resolveNavKeymap('auto', 'opencode')).toBe('ctrl-shift');
+  });
+
+  it('auto resolves to ctrl-alt on Ghostty / iTerm2 / no TERM_PROGRAM', () => {
+    process.env.TERM_PROGRAM = 'ghostty';
+    expect(resolveNavKeymap('auto', 'claude-code')).toBe('ctrl-alt');
+    process.env.TERM_PROGRAM = 'iTerm.app';
+    expect(resolveNavKeymap('auto', 'claude-code')).toBe('ctrl-alt');
+    delete process.env.TERM_PROGRAM;
+    expect(resolveNavKeymap('auto', 'claude-code')).toBe('ctrl-alt');
+  });
+
+  it('auto resolves to ctrl-alt for chrome — TERM_PROGRAM is irrelevant in a browser', () => {
+    process.env.TERM_PROGRAM = 'Apple_Terminal';
+    expect(resolveNavKeymap('auto', 'chrome')).toBe('ctrl-alt');
+  });
+});
