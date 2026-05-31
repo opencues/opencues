@@ -90,6 +90,57 @@ plural (`blanks-llm-*`).
 After everyone has run `opencues install` once post-three-bucket, the
 back-compat fallback will be removed in the next release.
 
+## Natural-language switching via fluid-config
+
+When `fluid-config-mode: on`, the classifier at priority 94 catches
+`_`-trailed sentences and routes them to one of three intents: a
+**setting** change, a **provider** change, or **NONE**. The
+provider-change intent is the bucket-aware natural-language path:
+
+```
+use anthropic for cues _              → cues-llm-provider: anthropic
+switch the blanks brain to cerebras _ → blanks-llm-provider: cerebras
+use claude opus for auditors _        → auditors-llm-provider: anthropic
+                                        auditors-llm-model: claude-opus-4-7
+route everything to gemini _          → cues-llm-provider: gemini   (cues = default brain)
+```
+
+### What the classifier may emit
+
+The model is bounded by two registries:
+
+- **Bucket scope** ∈ `{cues, auditors, blanks}` — hard-coded list.
+- **Provider id** ∈ entries of `PROVIDERS` in
+  `packages/opencues-core/src/llm-provider.ts` (the `ProviderId` union).
+- **Model id** ∈ each provider's optional `knownModels: readonly string[]`
+  list. Models outside that list are rejected at runtime even if the
+  classifier emits them — power users can still pin them by editing
+  OPENCUES.md directly.
+
+The trust-class guard from the resolver mirrors here: the classifier
+verdict for the cues or auditors bucket cannot route to a provider
+whose `trainsOnInput: true` (today: `opencode-zen`). Only the blanks
+bucket may pick that provider.
+
+### Adding a new model to the classifier's choice space
+
+Append the model id to the provider adapter's `knownModels` array in
+`packages/opencues-core/src/llm-provider.ts`. The classifier prompt
+renders the lists at module-load, so no prompt edit is required. Aim
+for 3–5 entries per provider — bench-validated picks that cover the
+common cheap-fast / balanced / deep-reasoning tiers.
+
+### Cycling after a switch
+
+The fluid-config result is a selector-satellite pair: the selector is
+the bucket scalar (e.g. `cues-llm-provider`) — itself a FEATURES
+registry entry — and the satellite is the provider id. After a switch
+the user can cycle the satellite through the menu values for that
+bucket scalar (the registry's `values` list, e.g. `inherit, cerebras,
+groq, gemini, anthropic, openai`). Picking a different provider via
+cycling overwrites the provider scalar only — the model scalar (if
+previously set) stays put.
+
 ## Diagnostics
 
 `opencues doctor` shows the **LLM routing** section with the effective
