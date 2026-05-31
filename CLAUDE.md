@@ -564,7 +564,7 @@ done
 |---|---|---|---|
 | `SPEC.md` (open-standard) | `cues-spec` | 0.1 (draft) | exported as `SPEC_VERSION` from `@opencues/core` |
 | `package.json` (monorepo root) | `opencues` | 0.1.0 | private |
-| `packages/opencues-core/` | `@opencues/core` | 0.1.2 | private |
+| `packages/opencues-core/` | `@opencues/core` | 0.1.3 | private |
 | `packages/opencues-runtime/` | `@opencues/runtime` | 0.1.2 | private |
 | `packages/opencues-cli/` | `opencues` (real CLI) | 0.1.3 | private |
 | `packages/opencues-park/` | `opencues` (placeholder) | 0.0.1 | **PUBLISHED on npm** |

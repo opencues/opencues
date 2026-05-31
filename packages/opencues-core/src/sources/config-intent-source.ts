@@ -150,7 +150,7 @@ ${PROVIDER_REGISTRY_BLOCK}
 
 ROUTE TO PROVIDER when:
   - The user names a provider ("anthropic", "groq", "cerebras", "openai", "gemini", "claude") OR a model name from the lists above.
-  - AND names a scope ("for cues", "for blanks", "for auditors", "globally"/"everywhere") OR is generic ("switch to X" → MODEL: empty, SCOPE: cues as the default brain).
+  - AND names a scope ("for cues", "for blanks", "for auditors", "globally"/"everywhere") OR is generic ("switch to X" → MODEL: empty, SCOPE: blanks as the default — blanks is the user-opt-in \`_\` surface that a bare provider switch most likely targets).
 
 SCOPE rules:
   - "for cues" / "word cues" / "sentence cues" / "general" / "everywhere" / "globally" → cues
@@ -287,10 +287,28 @@ INPUT: route everything to gemini _
 INTENT: PROVIDER
 SETTING:
 VALUE:
-SCOPE: cues
+SCOPE: blanks
 PROVIDER: gemini
 MODEL:
 CONFIDENCE: 0.8
+
+INPUT: switch to anthropic _
+INTENT: PROVIDER
+SETTING:
+VALUE:
+SCOPE: blanks
+PROVIDER: anthropic
+MODEL:
+CONFIDENCE: 0.85
+
+INPUT: use cerebras _
+INTENT: PROVIDER
+SETTING:
+VALUE:
+SCOPE: blanks
+PROVIDER: cerebras
+MODEL:
+CONFIDENCE: 0.85
 
 INPUT: switch cues to a model that does not exist _
 INTENT: NONE
@@ -421,12 +439,13 @@ export function parseConfigIntentOutput(raw: string): ConfigIntentVerdict {
     if (!providerRaw || providerRaw.toUpperCase() === 'NONE') {
       return { kind: 'none', confidence };
     }
-    // Normalise scope; default to 'cues' when the classifier omitted it
-    // ("switch to anthropic _" with no explicit scope routes to the
-    // primary brain). Validator will reject unknown scope literals.
+    // Normalise scope; default to 'blanks' when the classifier omitted
+    // it ("switch to anthropic _" with no explicit scope routes to the
+    // user-opt-in `_` surface — that's the most likely target for a
+    // bare provider switch). Validator will reject unknown scope literals.
     const scope: BucketScope = (BUCKET_SCOPES as readonly string[]).includes(scopeRaw)
       ? (scopeRaw as BucketScope)
-      : 'cues';
+      : 'blanks';
     return {
       kind: 'provider',
       scope,

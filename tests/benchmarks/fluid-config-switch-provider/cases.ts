@@ -83,12 +83,28 @@ export const CASES: SwitchProviderCase[] = [
     input: 'make cues use gemini _',
     expected: { kind: 'provider', scope: 'cues', provider: 'gemini', model: null } },
 
-  { id: 'po-everything-default-cues',
+  { id: 'po-everything-default-blanks',
     category: 'hit-provider-only',
-    // "everything" / "globally" should land on cues (the prompt
-    // documents cues as the default brain when no explicit scope).
+    // "everything" / "globally" / bare phrases default to the blanks
+    // bucket — the user-opt-in `_` surface is the most likely target
+    // for a bucket-less provider switch.
     input: 'route everything to gemini _',
-    expected: { kind: 'provider', scope: 'cues', provider: 'gemini', model: null } },
+    expected: { kind: 'provider', scope: 'blanks', provider: 'gemini', model: null } },
+
+  { id: 'po-bare-switch-to-anthropic',
+    category: 'hit-provider-only',
+    input: 'switch to anthropic _',
+    expected: { kind: 'provider', scope: 'blanks', provider: 'anthropic', model: null } },
+
+  { id: 'po-bare-use-cerebras',
+    category: 'hit-provider-only',
+    input: 'use cerebras _',
+    expected: { kind: 'provider', scope: 'blanks', provider: 'cerebras', model: null } },
+
+  { id: 'po-bare-switch-to-gemini',
+    category: 'hit-provider-only',
+    input: 'switch to gemini _',
+    expected: { kind: 'provider', scope: 'blanks', provider: 'gemini', model: null } },
 
   { id: 'po-blanks-fluid-keyword',
     category: 'hit-provider-only',

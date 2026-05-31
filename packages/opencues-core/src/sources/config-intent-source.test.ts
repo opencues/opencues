@@ -148,13 +148,16 @@ describe('parseConfigIntentOutput', () => {
     }
   });
 
-  it('defaults SCOPE to cues when classifier omitted it but provider is present', () => {
+  it('defaults SCOPE to blanks when classifier omitted it but provider is present', () => {
+    // Bare phrases like "switch to anthropic _" route to the blanks
+    // bucket — the user-opt-in `_` surface is the most likely target
+    // of a bucket-less provider switch.
     const v = parseConfigIntentOutput(
       'INTENT: PROVIDER\nSCOPE:\nPROVIDER: gemini\nMODEL:\nCONFIDENCE: 0.7',
     );
     assert.strictEqual(v.kind, 'provider');
     if (v.kind === 'provider') {
-      assert.strictEqual(v.scope, 'cues');
+      assert.strictEqual(v.scope, 'blanks');
     }
   });
 
