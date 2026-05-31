@@ -459,19 +459,18 @@ export class Resolver {
       globalEndpoint: (this.options.endpointOverride && this.options.endpointOverride.length > 0
         ? this.options.endpointOverride
         : settings.get('llm-endpoint') ?? this.options.endpoint),
-      // Blank-class override tier — applies only to FluidBlank /
-      // TransformBlank / ConfigIntent / keyword BlankSource (the
-      // user-opt-in `_` surface). Cues + auditors never read these.
-      // `inherit` falls through to globalProvider at the resolveFor
-      // layer. The legacy `free` alias is normalised to `opencode-zen`
-      // in config-loader.ts before reaching here.
-      blankGlobalProvider: (() => {
-        const v = this.configLoader.opencuesState.blankLlmProvider;
-        if (v === 'inherit') return undefined;
-        return v;
-      })(),
-      blankGlobalModel: settings.get('blank-llm-model'),
-      blankGlobalEndpoint: settings.get('blank-llm-endpoint'),
+      // Per-bucket override tiers — the three-bucket simplification.
+      // Sits BETWEEN per-feature and global at the resolveFor layer.
+      // `inherit` collapses to undefined in build-sources so the
+      // bucket effectively disappears and global takes over. Auditors
+      // resolve through boot-common's buildAgentLLMResolver and never
+      // touch this path.
+      cuesBucketProvider: this.configLoader.opencuesState.cuesLlmProvider,
+      cuesBucketModel: settings.get('cues-llm-model'),
+      cuesBucketEndpoint: settings.get('cues-llm-endpoint'),
+      blanksBucketProvider: this.configLoader.opencuesState.blanksLlmProvider,
+      blanksBucketModel: settings.get('blanks-llm-model') ?? settings.get('blank-llm-model'),
+      blanksBucketEndpoint: settings.get('blanks-llm-endpoint') ?? settings.get('blank-llm-endpoint'),
       // Per-feature tier.
       wordCues: featureLLM(settings, 'word-cues'),
       fluidBlank: featureLLM(settings, 'fluid-blank'),
@@ -641,6 +640,13 @@ export class Resolver {
       s.get('llm-endpoint') ?? '',
       s.get('llm-model') ?? '',
       s.get('llm-provider') ?? '',
+      // Bucket scalars (three-bucket simplification). Auditors live in
+      // boot-common's resolveLLM thunk so its scalars are NOT keyed
+      // here — agent-rewrite resolves at tick time, not build time.
+      s.get('cues-llm-provider') ?? '', s.get('cues-llm-model') ?? '', s.get('cues-llm-endpoint') ?? '',
+      s.get('blanks-llm-provider') ?? s.get('blank-llm-provider') ?? '',
+      s.get('blanks-llm-model') ?? s.get('blank-llm-model') ?? '',
+      s.get('blanks-llm-endpoint') ?? s.get('blank-llm-endpoint') ?? '',
       s.get('word-cues-provider') ?? '', s.get('word-cues-model') ?? '', s.get('word-cues-endpoint') ?? '',
       s.get('fluid-blank-provider') ?? '', s.get('fluid-blank-model') ?? '', s.get('fluid-blank-endpoint') ?? '',
       s.get('transform-blank-provider') ?? '', s.get('transform-blank-model') ?? '', s.get('transform-blank-endpoint') ?? '',

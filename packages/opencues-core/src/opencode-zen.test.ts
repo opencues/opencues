@@ -1,6 +1,7 @@
 /**
  * Pin `dispatchWithFreePool` — the pool-walking dispatcher used by
- * `blank-llm-provider: free` mode. The pool is OPENCODE_ZEN_FREE_POOL
+ * `blanks-llm-provider: opencode-zen` + `blanks-llm-model: free` mode.
+ * The pool is OPENCODE_ZEN_FREE_POOL
  * (5 free model ids); the dispatcher walks it on transient failure,
  * health-caches dead entries for 30s, and bubbles sticky failures
  * (auth/quota) immediately.

@@ -768,6 +768,45 @@ module.exports = async function doctor(argv, ctx) {
     s.ok('FINNHUB_API_KEY (stocks blank)', !!process.env.FINNHUB_API_KEY);
     s.render();
   }
+  // ── LLM routing (three buckets) ────────────────────────────────────────
+  // Show effective resolution per bucket so users can audit where each
+  // surface is calling. Precedence shown: bucket scalar > global
+  // `llm-provider:` > auto-fallback (first env key in
+  // PROVIDER_AUTO_ORDER). Per-aspect overrides (`word-cues-provider:`,
+  // `fluid-blank-provider:`, etc.) win above bucket — they aren't
+  // displayed inline to keep the section compact; users edit OPENCUES.md
+  // directly for those.
+  {
+    const s = section('LLM routing', 'per-bucket effective provider (bucket scalar > global > auto)');
+    const settingsFile = path.join(userConfigDir, registry.CORE_SETTINGS_FILE);
+    const scalars = readOpencuesScalars(settingsFile);
+    const apiKeysFromEnv = {};
+    for (const adapter of providers.listProviders()) {
+      if (adapter.envKeyName) apiKeysFromEnv[adapter.envKeyName] = process.env[adapter.envKeyName];
+    }
+    const globalScalar = scalars['llm-provider'];
+    const autoPicked = providers.pickAutoProvider?.(apiKeysFromEnv) ?? null;
+    const resolveBucket = (bucketScalarName) => {
+      const raw = (scalars[bucketScalarName] || '').toLowerCase();
+      if (raw && raw !== 'inherit') return { provider: raw, source: bucketScalarName };
+      if (globalScalar) return { provider: globalScalar.toLowerCase(), source: 'llm-provider' };
+      if (autoPicked) return { provider: autoPicked, source: 'auto (env key)' };
+      return { provider: null, source: 'none' };
+    };
+    for (const bucketScalar of ['cues-llm-provider', 'auditors-llm-provider', 'blanks-llm-provider']) {
+      const { provider, source } = resolveBucket(bucketScalar);
+      const label = bucketScalar.replace('-llm-provider', '');
+      if (provider) {
+        const adapter = providers.getProvider(provider);
+        const model = scalars[bucketScalar.replace('provider', 'model')] || adapter?.defaultModel || '?';
+        const tag = source === bucketScalar ? '' : dim(` (← ${source})`);
+        s.info(`${label}:`, `${provider} · ${model}${tag}`);
+      } else {
+        s.info(`${label}:`, dim('(none — no key + no scalar set)'));
+      }
+    }
+    s.render();
+  }
   // CLI-transport providers (subscription-backed) probed separately.
   // Today: claude-cli only. Checks the binary is on PATH; we DON'T
   // probe `claude auth status` because that spawns a subprocess every

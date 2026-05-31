@@ -138,7 +138,7 @@ export interface ProviderAdapter {
    * omitting the Authorization header). Today only `opencode-zen` opts
    * in: its free model pool authenticates anonymously, paid models
    * still need a key. Without this flag, the provider is unusable
-   * until a key is set — which would break `blank-llm-provider: free`
+   * until a key is set — which would break `blanks-llm-provider: opencode-zen + blanks-llm-model: free`
    * for the no-account case the feature was designed for.
    */
   readonly optionalAuth?: boolean;
@@ -758,7 +758,7 @@ const CLAUDE_CLI: ProviderAdapter = {
  * 401s with "Model … is not supported". The `/v1/models` GET endpoint
  * is the authoritative live list.
  *
- * Used by the `blank-llm-provider: free` mode. The pool of free
+ * Used by the `blanks-llm-provider: opencode-zen + blanks-llm-model: free` mode. The pool of free
  * model IDs is in OPENCODE_ZEN_FREE_POOL (priority order) and
  * `dispatchWithFreePool` walks it on transient failure with 30s
  * health-caching of dead entries.
@@ -772,7 +772,7 @@ const OPENCODE_ZEN: ProviderAdapter = {
   displayName: 'OpenCode Zen',
   defaultEndpoint: 'https://opencode.ai/zen/v1/chat/completions',
   // First entry of the free pool. Used when no model is explicitly set
-  // (most common case for `blank-llm-provider: opencode-zen`).
+  // (most common case for `blanks-llm-provider: opencode-zen`).
   defaultModel: 'big-pickle',
   // Optional. Free models work without it; paid models need it.
   envKeyName: 'OPENCODE_ZEN_API_KEY',

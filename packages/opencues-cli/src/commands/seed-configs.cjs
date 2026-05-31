@@ -292,6 +292,45 @@ module.exports = function seedConfigs(argv, ctx) {
     }
   }
 
+  // ── 3.1 HEAL — rename legacy bucket scalars in OPENCUES.md ──
+  //
+  // The three-bucket simplification (cues / auditors / blanks)
+  // renamed the singular `blank-llm-provider:` / `blank-llm-model:` /
+  // `blank-llm-endpoint:` scalars to plural `blanks-llm-*`. The
+  // runtime still reads the old keys (back-compat in
+  // config-loader.ts), but only one release cycle — this self-heal
+  // rewrites legacy → new in place so the fallback can be dropped in
+  // a future release without losing user settings.
+  //
+  // Idempotent: skips lines that already use the new name. Single-line
+  // rewrite per key — preserves position in frontmatter + any
+  // user-trailing comments.
+  if (settingsTarget && fs.existsSync(settingsTarget) && fs.statSync(settingsTarget).size > 0) {
+    const original = fs.readFileSync(settingsTarget, 'utf8');
+    let rewritten = original;
+    const renames = [
+      ['blank-llm-provider', 'blanks-llm-provider'],
+      ['blank-llm-model',    'blanks-llm-model'],
+      ['blank-llm-endpoint', 'blanks-llm-endpoint'],
+    ];
+    const renamed = [];
+    for (const [oldKey, newKey] of renames) {
+      // Skip if the file already has the new key — never overwrite the
+      // user's intentional value with a legacy one.
+      const hasNew = new RegExp(`^${newKey}:`, 'm').test(rewritten);
+      if (hasNew) continue;
+      const re = new RegExp(`^${oldKey}:`, 'm');
+      if (re.test(rewritten)) {
+        rewritten = rewritten.replace(re, `${newKey}:`);
+        renamed.push(`${oldKey} → ${newKey}`);
+      }
+    }
+    if (rewritten !== original) {
+      fs.writeFileSync(settingsTarget, rewritten);
+      log(`Self-heal: renamed legacy bucket scalars in ${settingsTarget}: ${renamed.join(', ')}`);
+    }
+  }
+
   // Migrate legacy `<userDir>/blanks/<name>/{cue.md,blank.md}` → `BLANK.md`
   // per the open standard (spec/blank-spec.md). Idempotent: if BLANK.md
   // already exists, skip the source; otherwise rename whichever legacy

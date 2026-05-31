@@ -161,12 +161,26 @@ export function buildAgentLLMResolver(
   }
   if (!core?.resolveLLM) return null;
   const s = configLoader.opencuesState.settings;
+  // Auditors bucket override sits BETWEEN per-feature (agent-provider /
+  // agent-model) and the global llm-provider tier. `inherit` collapses
+  // to undefined so the bucket disappears and global takes over —
+  // mirrors the cues/blanks bucket collapse in build-sources.ts.
+  const auditorsBucket = configLoader.opencuesState.auditorsLlmProvider;
+  const auditorsBucketProvider = auditorsBucket === 'inherit' ? undefined : auditorsBucket;
+  const auditorsBucketModel = auditorsBucketProvider ? s.get('auditors-llm-model') : undefined;
+  const auditorsBucketEndpoint = auditorsBucketProvider ? s.get('auditors-llm-endpoint') : undefined;
   const out = core.resolveLLM({
     featureProvider: s.get('agent-provider'),
     featureModel: s.get('agent-model'),
-    endpointOverride: s.get('agent-endpoint') ?? s.get('llm-endpoint'),
-    globalProvider: s.get('llm-provider'),
-    globalModel: s.get('llm-model'),
+    endpointOverride: s.get('agent-endpoint') ?? auditorsBucketEndpoint ?? s.get('llm-endpoint'),
+    // Bucket-then-global precedence. When the user pins
+    // `auditors-llm-provider: cerebras` it wins over the global
+    // `llm-provider`; per-feature `agent-provider:` still wins above
+    // both.
+    globalProvider: auditorsBucketProvider ?? s.get('llm-provider'),
+    globalModel: auditorsBucketProvider
+      ? (auditorsBucketModel ?? undefined)
+      : s.get('llm-model'),
     apiKeys,
   }) as ResolvedAgentLLM | null;
   return out;
