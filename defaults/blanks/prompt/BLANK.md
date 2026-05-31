@@ -15,11 +15,9 @@ blankTip: Prompt improver
 model: openai/gpt-oss-120b
 altCount: 3
 includeOriginal: true
-impl: ./blank.js
-llm: groq
 ---
 
-> Dispatched by the shared runtime `PromptImproverBlank`
+> Implementation: built-in `PromptImproverBlank` in `@opencues/runtime`
 > (`packages/opencues-runtime/src/blanks/prompt-improver.ts`). The two
 > system prompts below are duplicated inside the runtime class for now
 > — a future improvement is to plumb them from this BLANK.md so this

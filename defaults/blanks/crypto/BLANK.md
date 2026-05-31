@@ -22,15 +22,12 @@ blankKeywordExpansions.ltc: Litecoin
 blankKeywordExpansions.bnb: Binance Coin
 blankKeywordExpansions.trx: TRON
 blankKeywordExpansions.shib: Shiba Inu
-impl: ./blank.js
-network: [api.coingecko.com]
-storage: crypto
 # Auto: bare "btc _" → wipe → "BTC: $78,542.00" (ticker embedded).
 # Copula phrasing → keep.
 blankReplace: auto
 ---
 
-Dispatched by the shared runtime `CryptoBlank`
+Implementation: built-in `CryptoBlank` in `@opencues/runtime`
 (`packages/opencues-runtime/src/blanks/crypto.ts`). Hits CoinGecko's
 free public API (no key, no signup) for live USD prices. 60-second
 cache per coin.

@@ -14,16 +14,13 @@ blankKeywordExpansions.googl: Alphabet
 blankKeywordExpansions.msft: Microsoft
 blankKeywordExpansions.amzn: Amazon
 blankKeywordExpansions.tsla: Tesla
-impl: ./blank.js
-network: [finnhub.io]
-storage: stocks
-secrets: [FINNHUB_API_KEY]
-secret-hosts.FINNHUB_API_KEY: [finnhub.io]
 # Auto: bare "nvda _" → wipe → "NVDA: $198.47" (ticker embedded).
 # "nvda is _" or copula phrasings → keep → "nvda is NVDA: $198.47".
 blankReplace: auto
 ---
 
-Dispatched by the shared runtime `StocksBlank`
-(`packages/opencues-runtime/src/blanks/stocks.ts`). The keyword → ticker
-map lives in the runtime class.
+Implementation: built-in `StocksBlank` in `@opencues/runtime`
+(`packages/opencues-runtime/src/blanks/stocks.ts`). The keyword →
+ticker map lives in the runtime class; requires `FINNHUB_API_KEY` in
+env (native hosts) or in the chrome popup. Without a key, the
+factory returns null and the blank is silently unregistered.
