@@ -125,28 +125,28 @@ export interface CueContext {
   ambient?: AmbientContext;
 
   /**
-   * Sentinel-mode user context derived from `~/.cues/USER.md`. Only
+   * Sentinel-mode user context derived from `~/.cues/SENTINELS.md`. Only
    * consumed by FluidBlankSource and only when
-   * `user-context-mode: safe` or `: raw` is set in OPENCUES.md (off
+   * `sentinels-mode: safe` or `: raw` is set in OPENCUES.md (off
    * by default). The runtime gate filters before this is populated;
    * sources see `undefined` when the user hasn't opted in.
    *
    * `mode` carries the global scalar so the source can decide
    * whether to inject the catalog with values (`raw`) or
    * tokens-and-descriptions only (`safe`). Mirror of
-   * `@opencues/core/user-context.ts` UserContext — declared here so
+   * `@opencues/core/sentinels.ts` Sentinels — declared here so
    * the type closes over CueContext without a circular import.
    */
-  userContext?: { fields: readonly UserContextField[]; catalog: ReadonlyMap<string, string>; mode: 'safe' | 'raw' };
+  sentinels?: { fields: readonly Sentinel[]; catalog: ReadonlyMap<string, string>; mode: 'safe' | 'raw' };
 
   /** Additional context for the analysis */
   metadata?: Record<string, unknown>;
 }
 
-/** Single user-context field. Mirror of `UserContextField` in
- *  user-context.ts; redeclared here so CueContext stays free of an
+/** Single sentinels field. Mirror of `Sentinel` in
+ *  sentinels.ts; redeclared here so CueContext stays free of an
  *  intra-package circular import. */
-export interface UserContextField {
+export interface Sentinel {
   readonly key: string;
   readonly token: string;
   readonly value: string;

@@ -319,6 +319,7 @@ module.exports = function help(argv, ctx) {
       ['update-configs',     'Pull new shipped cues/blanks into ~/.cues/ (after a `git pull`)'],
       ['update',             'Pull, rebuild, redeploy installed integrations'],
       ['set-key <provider>', 'Store an API key in ~/.cues/.env'],
+      ['sentinels',          'Manage SENTINELS.md personal-data sentinels (interactive or scriptable)'],
       ['check-keys',         'Verify configured API keys against provider endpoints'],
     ]},
     { title: 'Authoring', description: 'create, validate, and import cues/blanks/packs', rows: [

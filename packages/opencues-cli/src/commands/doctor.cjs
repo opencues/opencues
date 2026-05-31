@@ -338,6 +338,42 @@ module.exports = async function doctor(argv, ctx) {
     findings.push({ sev: 'info', msg: 'no user-level configs', fix: 'opencues seed-configs' });
   }
 
+  // ── Legacy USER.md / user-context-mode migration ──────────────────────
+  // The May 2026 rename USER.md → SENTINELS.md + user-context-mode →
+  // sentinels-mode is back-compat-supported by the runtime (config-loader.ts
+  // reads both names). `opencues seed-configs` migrates legacy → new on
+  // next run. Surface here so users who skip seed-configs see the hint.
+  {
+    const legacySentinelsFile = path.join(userConfigDir, 'USER.md');
+    const newSentinelsFile    = path.join(userConfigDir, 'SENTINELS.md');
+    const settingsFile        = path.join(userConfigDir, 'OPENCUES.md');
+    if (fs.existsSync(legacySentinelsFile) && !fs.existsSync(newSentinelsFile)) {
+      findings.push({
+        sev: 'warn',
+        msg: `${legacySentinelsFile} uses the legacy filename — runtime back-compat-reads it but new tooling expects SENTINELS.md`,
+        fix: 'opencues seed-configs   # self-heals the rename (USER.md → SENTINELS.md) in place',
+      });
+    }
+    if (fs.existsSync(legacySentinelsFile) && fs.existsSync(newSentinelsFile)) {
+      findings.push({
+        sev: 'warn',
+        msg: `Both ${legacySentinelsFile} AND SENTINELS.md exist — the runtime loads SENTINELS.md; remove the legacy USER.md after confirming`,
+      });
+    }
+    if (fs.existsSync(settingsFile)) {
+      const text = fs.readFileSync(settingsFile, 'utf8');
+      const hasLegacyScalar = /^user-context-mode:/m.test(text);
+      const hasNewScalar    = /^sentinels-mode:/m.test(text);
+      if (hasLegacyScalar && !hasNewScalar) {
+        findings.push({
+          sev: 'warn',
+          msg: `${settingsFile} uses legacy scalar \`user-context-mode:\` — runtime back-compat-reads it but rename to \`sentinels-mode:\` is preferred`,
+          fix: 'opencues seed-configs   # self-heals the scalar rename in place',
+        });
+      }
+    }
+  }
+
   // ── Feature wiring ────────────────────────────────────────────────────
   // Surface optional-feature state at the install boundary. Every row
   // here is derived from the FEATURES registry in @opencues/core. To
@@ -650,7 +686,7 @@ module.exports = async function doctor(argv, ctx) {
       // new file (USER.md, AUDITORS.md, ...) is added on the runtime
       // side, the host script's hardcoded file list must be updated
       // too or the file is silently never pushed. We hit this in May
-      // 2026 with USER.md.
+      // 2026 with SENTINELS.md.
       const hostScript = resolveHostScript(manifestPaths[0], shimPath);
       if (hostScript && fs.existsSync(hostScript)) {
         const text = fs.readFileSync(hostScript, 'utf8');
@@ -1023,7 +1059,7 @@ function countPopulatedFields(file, basename) {
       return { count: n, unit: n === 1 ? 'auditor' : 'auditors' };
     } catch { return { count: 0, unit: 'auditors' }; }
   }
-  // CUES.md / OPENCUES.md / USER.md → frontmatter scalar count
+  // CUES.md / OPENCUES.md / SENTINELS.md → frontmatter scalar count
   const n = Object.keys(readOpencuesScalars(file)).length;
   // CUES.md is special — it's also a cue config, so "frontmatter
   // fields" is the right metric for the always-on settings half.

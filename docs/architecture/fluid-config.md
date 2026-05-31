@@ -31,7 +31,7 @@ a single LLM call is a **deliberately narrow** capability:
 |---|---|---|
 | FEATURES scalars (`debug-mode`, `tips-mode`, ...) | **Yes** | Closed set; bounded enum codomains; flipping any of them has no exec / fetch / shell side effect. Recoverable visually + by re-summoning the inverse. |
 | MENU_TUNABLES (`agent-debounce-ms`, `blank-loading-animation`) | **No (v1)** | Numeric codomains widen the attack surface and the value space; need a per-pipeline threat-model review before opting in. Glyph-only tunables could land in v2. |
-| Hidden values (`user-context-mode: raw`) | **Never** | Footgun modes (PII inlined into LLM prompts) require deliberate file edits. The classifier prompt excludes them; the runtime validator rejects them even if a model regression emits one. |
+| Hidden values (`sentinels-mode: raw`) | **Never** | Footgun modes (PII inlined into LLM prompts) require deliberate file edits. The classifier prompt excludes them; the runtime validator rejects them even if a model regression emits one. |
 | User blanks (volume, brightness, weather, stocks, dictionary, any `impl:` / `blankScript:` entry) | **Never** | These are user-shipped capabilities that exec, fetch, run scripts. Auto-applying them from semantic intent bypasses the keyword gate that today protects them. Stays out of scope for fluid-config indefinitely — even widening "for symmetry" would be a security regression. |
 
 The structural property the design relies on: **every FEATURES scalar
@@ -152,7 +152,7 @@ that didn't happen would lie to the user.
 
 The classifier prompt instructs the model to stay inside the registry,
 but the validator is the load-bearing line. If a model regression ever
-emits `SETTING: shell\nVALUE: rm -rf` or `SETTING: user-context-mode\nVALUE: raw`,
+emits `SETTING: shell\nVALUE: rm -rf` or `SETTING: sentinels-mode\nVALUE: raw`,
 the validator drops it before any write happens.
 
 ---
@@ -308,11 +308,11 @@ What's optional but recommended:
   fuzzy variant, and any obvious reject case. Re-run the bench. If
   recall drops on the new scalar, add a few-shot to `SYSTEM_PROMPT`
   in `config-intent-source.ts` to pin the polarity (see how
-  `blank-trigger-mode=immediate` and `user-context-mode=off` were
+  `blank-trigger-mode=immediate` and `sentinels-mode=off` were
   added).
 
 If your new feature has values you DON'T want auto-flippable from
-semantic intent (footgun modes like `user-context-mode: raw`), mark
+semantic intent (footgun modes like `sentinels-mode: raw`), mark
 them `exposeInMenu: false`. The classifier prompt will exclude them
 AND the validator will reject any attempt to apply them.
 

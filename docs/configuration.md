@@ -14,8 +14,8 @@ Your user-level OpenCues config lives at `~/.cues/`:
 │                               # agent-debounce-ms, llm-provider + per-feature
 │                               # LLM keys). User-level only; project layer
 │                               # cannot override.
-├── USER.md                     # (Optional) your personal data, used by
-│                               # fluid-blank when user-context-mode: safe|raw.
+├── SENTINELS.md                     # (Optional) your personal data, used by
+│                               # fluid-blank when sentinels-mode: safe|raw.
 │                               # OFF by default.
 ├── CUES.md                     # Cue master: project metadata + `ignore:` +
 │                               # `disable:`. Frontmatter only.
@@ -68,7 +68,7 @@ Frontmatter keys at the top of `~/.cues/OPENCUES.md`. The same scalars are cycla
 | `fluid-config-mode` | `on` / `off` | `off` | Natural-language settings phrases (`enable debug logging _` → flips `debug-mode`). FEATURES-only scope; never routes to user blanks. |
 | `blank-trigger-mode` | `immediate` / `spaced` | `immediate` | Whether `_` fires on insertion or only on a confirming space. `spaced` lets markdown `_italic_` typists keep their formatting. |
 | `ambient-context-mode` | `on` / `off` | `off` | (Chrome only) Forward focused field's label / placeholder / page-title to fluid-blank for disambiguating lookups. |
-| `user-context-mode` | `off` / `safe` / `raw` | `off` | Inject `~/.cues/USER.md` personal data into fluid-blank. `safe` = sentinel tokens, values substituted post-LLM; `raw` = values inlined into the prompt. |
+| `sentinels-mode` | `off` / `safe` / `raw` | `off` | Inject `~/.cues/SENTINELS.md` personal data into fluid-blank. `safe` = sentinel tokens, values substituted post-LLM; `raw` = values inlined into the prompt. |
 | `agent-debounce-ms` | number | `1000` | Pause-after-keystroke before the inline agent fires. Misparse → 1000. |
 | `llm-provider` | `groq` / `cerebras` / `openai` / `anthropic` / `openrouter` / `gemini` | `groq` | Default LLM provider for every surface. Per-surface override below. |
 | `llm-model` | string | provider-default | Default model for the default provider. |
@@ -214,9 +214,9 @@ Why per-word dispatch matters (and why we don't merge prompts):
 
 Full spec: [`docs/features/word-cue-routing.md`](features/word-cue-routing.md).
 
-## USER.md — personal-data sentinels (opt-in)
+## SENTINELS.md — personal-data sentinels (opt-in)
 
-When `user-context-mode: safe` (or `: raw`) is set in `OPENCUES.md`, the runtime reads `~/.cues/USER.md` frontmatter and forwards it to FluidBlankSource for personalising `_` lookups.
+When `sentinels-mode: safe` (or `: raw`) is set in `OPENCUES.md`, the runtime reads `~/.cues/SENTINELS.md` frontmatter and forwards it to FluidBlankSource for personalising `_` lookups.
 
 ```yaml
 ---
@@ -233,7 +233,7 @@ In `safe` mode (recommended), the LLM only sees a catalog of token names + descr
 
 In `raw` mode, actual values inline into the prompt (better prose register for transform-blank-style outputs, worse privacy). Sensitive fields (password / OTP / payment / PII heuristics) refuse to attach regardless of mode.
 
-Full design + threat model: [`docs/architecture/user-context.md`](architecture/user-context.md). Default-off until you flip the scalar.
+Full design + threat model: [`docs/architecture/sentinels.md`](architecture/sentinels.md). Default-off until you flip the scalar.
 
 ## Hot-reload
 

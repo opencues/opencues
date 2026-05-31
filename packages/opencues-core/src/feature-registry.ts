@@ -13,9 +13,9 @@
 //   - packages/opencues-cli/src/commands/seed-configs.cjs    (templates)
 //
 // Adding a feature required editing all four. We hit two real drift
-// bugs during the May 2026 user-context ship:
+// bugs during the May 2026 sentinels ship:
 //
-//   1. USER.md was added to the runtime + parser but NOT to host.cjs's
+//   1. SENTINELS.md was added to the runtime + parser but NOT to host.cjs's
 //      file-push list. Chrome silently never received it. The feature
 //      looked "shipped" but was inert.
 //   2. doctor's hardcoded feature-wiring list stayed valid only as long
@@ -55,7 +55,7 @@
  *
  * Hiding a value from the menu does NOT make it invalid — the parser
  * still accepts it when set by direct file edit. The flag exists so
- * footgun modes (e.g. `user-context-mode: raw`, which inlines PII
+ * footgun modes (e.g. `sentinels-mode: raw`, which inlines PII
  * into LLM prompts) can't be flipped by a single keystroke.
  */
 export interface ValueSpec {
@@ -75,14 +75,14 @@ export interface ValueSpec {
  */
 export interface FeatureSpec {
   /**
-   * OPENCUES.md scalar key, kebab-case. Example: 'user-context-mode'.
+   * OPENCUES.md scalar key, kebab-case. Example: 'sentinels-mode'.
    * Must match the key in OPENCUES.md and CUES.md frontmatter.
    */
   readonly scalar: string;
 
   /**
    * camelCase form for the OpenCuesState field. Example:
-   * 'userContextMode'. ConfigLoader uses this when parsing.
+   * 'sentinelsMode'. ConfigLoader uses this when parsing.
    */
   readonly camelCase: string;
 
@@ -127,9 +127,9 @@ export interface FeatureSpec {
    * Triggers seed-configs (if template) + chrome-host push (if pushedBy).
    */
   readonly prereqFile?: {
-    /** Filename inside ~/.cues/, e.g. 'USER.md'. */
+    /** Filename inside ~/.cues/, e.g. 'SENTINELS.md'. */
     readonly basename: string;
-    /** Path under repo root for seed-configs to copy, e.g. 'defaults/USER.md'. */
+    /** Path under repo root for seed-configs to copy, e.g. 'defaults/SENTINELS.md'. */
     readonly template?: string;
     /**
      * When true, the feature is silently inert if the file exists but
@@ -206,7 +206,7 @@ export interface SeedableFile {
 /**
  * All optional config files that ship a starter template — core files
  * with templates (AUDITORS.md) plus every feature with prereqFile.template
- * (USER.md and future). seed-configs iterates this; SKIP-if-exists is
+ * (SENTINELS.md and future). seed-configs iterates this; SKIP-if-exists is
  * applied uniformly. Adding a new templated file = add to CORE_TEMPLATES
  * OR add a feature with prereqFile.template. seed-configs needs no edit.
  */
@@ -409,12 +409,12 @@ export const FEATURES: readonly FeatureSpec[] = [
     ],
   },
   {
-    scalar: 'user-context-mode',
-    camelCase: 'userContextMode',
+    scalar: 'sentinels-mode',
+    camelCase: 'sentinelsMode',
     description: 'Personal data injected into fluid-blank as sentinel tokens',
-    menuTip: 'Inject ~/.cues/USER.md fields (first name, email, etc.) as sentinel tokens into fluid-blank for personalised lookups.',
+    menuTip: 'Inject ~/.cues/SENTINELS.md fields (first name, email, etc.) as sentinel tokens into fluid-blank for personalised lookups.',
     values: [
-      { id: 'off',  description: 'Disabled (default) — USER.md never read' },
+      { id: 'off',  description: 'Disabled (default) — SENTINELS.md never read' },
       { id: 'safe', description: 'Tokens-only catalog sent to LLM; post-processor substitutes values after response. PII stays on the host.' },
       // `raw` mode (catalog values inlined into the prompt — PII
       // reaches the LLM provider) is implementation-complete but
@@ -424,8 +424,8 @@ export const FEATURES: readonly FeatureSpec[] = [
       { id: 'raw',  description: 'Catalog values inlined into prompt; PII reaches the LLM provider', exposeInMenu: false },
     ],
     prereqFile: {
-      basename: 'USER.md',
-      template: 'defaults/USER.md',
+      basename: 'SENTINELS.md',
+      template: 'defaults/SENTINELS.md',
       mustHavePopulatedFields: true,
     },
     pushedBy: ['chrome-host'],

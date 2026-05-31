@@ -1,7 +1,7 @@
 /**
- * User-context — sentinel-mode personal-data injection for fluid-blank.
+ * Sentinels — sentinel-mode personal-data injection for fluid-blank.
  *
- * Parses `~/.cues/USER.md`'s YAML frontmatter into a `UserContext`, and
+ * Parses `~/.cues/SENTINELS.md`'s YAML frontmatter into a `Sentinels`, and
  * provides the runtime helpers FluidBlankSource needs to:
  *
  *   - render a catalog block for injection into the LLM prompt (in
@@ -14,20 +14,20 @@
  *     catalog) are stripped before they reach the user's buffer.
  *
  * Design + bench evidence:
- * `tests/benchmarks/user-context/FINDINGS.md`.
+ * `tests/benchmarks/sentinels/FINDINGS.md`.
  *
- * Threat model: see `docs/architecture/user-context.md` (when added).
+ * Threat model: see `docs/architecture/sentinels.md` (when added).
  * Headline: in `safe` mode no PII value leaves the host (only token
  * names and descriptions); in `raw` mode values are inlined.
  */
 
-export type UserContextMode = 'off' | 'safe' | 'raw';
+export type SentinelsMode = 'off' | 'safe' | 'raw';
 
 /** Single field — `firstName: Wilfred` → token=`[FIRST NAME]`,
  *  key=`firstName`, value=`Wilfred`. Description auto-derived from
  *  the key unless an explicit `# description` comment was on the
- *  same line in USER.md. */
-export interface UserContextField {
+ *  same line in SENTINELS.md. */
+export interface Sentinel {
   /** Frontmatter key, verbatim (`firstName`, `first_name`, `first-name`). */
   key: string;
   /** Canonical sentinel-token form: `[UPPERCASE WORDS]`. */
@@ -38,10 +38,10 @@ export interface UserContextField {
   description: string;
 }
 
-/** Parsed USER.md — the runtime hands this through to FluidBlankSource
- *  when `user-context-mode` is on. */
-export interface UserContext {
-  readonly fields: readonly UserContextField[];
+/** Parsed SENTINELS.md — the runtime hands this through to FluidBlankSource
+ *  when `sentinels-mode` is on. */
+export interface Sentinels {
+  readonly fields: readonly Sentinel[];
   /** Convenience lookup: token → value. Built once at parse-time. */
   readonly catalog: ReadonlyMap<string, string>;
 }
@@ -79,7 +79,7 @@ export function deriveToken(key: string): string {
 }
 
 /**
- * Parse USER.md content (YAML frontmatter + optional body).
+ * Parse SENTINELS.md content (YAML frontmatter + optional body).
  *
  * Only the frontmatter is parsed in v1; the body is reserved for a
  * future Phase 3 (free-text body injection) and is silently ignored.
@@ -102,16 +102,16 @@ export function deriveToken(key: string): string {
  * field's description for the LLM catalog. Without it, the
  * description is auto-derived from the key.
  *
- * Returns an empty UserContext on missing/empty frontmatter so
+ * Returns an empty Sentinels on missing/empty frontmatter so
  * downstream code can treat "no USER.md" and "empty USER.md" the same.
  */
-export function parseUserMd(content: string | null | undefined): UserContext {
-  const empty: UserContext = { fields: [], catalog: new Map() };
+export function parseSentinelsMd(content: string | null | undefined): Sentinels {
+  const empty: Sentinels = { fields: [], catalog: new Map() };
   if (!content) return empty;
   const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
   if (!fmMatch || !fmMatch[1].trim()) return empty;
 
-  const fields: UserContextField[] = [];
+  const fields: Sentinel[] = [];
   const catalog = new Map<string, string>();
   for (const line of fmMatch[1].split('\n')) {
     if (!line || line.startsWith('#')) continue;
@@ -210,7 +210,7 @@ function autoDescribe(key: string): string {
  * Returns an empty string when the catalog has no entries, so the
  * caller can append the result verbatim without conditional logic.
  */
-export function renderUserCatalog(ctx: UserContext, mode: UserContextMode): string {
+export function renderSentinelsCatalog(ctx: Sentinels, mode: SentinelsMode): string {
   if (mode === 'off' || ctx.fields.length === 0) return '';
   const header = `USER CONTEXT — available tokens (emit verbatim; the runtime substitutes the real value before it reaches the user's buffer):`;
   const lines = ctx.fields.map(f =>
@@ -244,21 +244,69 @@ export function renderUserCatalog(ctx: UserContext, mode: UserContextMode): stri
   return `\n\n${header}\n\n${lines.join('\n')}\n\n${rules}`;
 }
 
+/**
+ * Render the catalog block for TransformBlank's APPLY / GENERATIVE /
+ * FUSED prompts.
+ *
+ * Different rule set from `renderSentinelsCatalog` (which targets
+ * FluidBlank's form-field-aware fused prompt). TransformBlank produces
+ * rewrites and generated content; the LLM legitimately emits
+ * placeholders for non-user entities (`[Recipient Name]` in an email,
+ * `[Date]` in a memo). The catalog must scope tightly to
+ * sender/author data and leave everything else to the LLM's
+ * usual placeholder behaviour. The post-processor is called with
+ * `preserveUnknown: true` so unmatched brackets pass through.
+ *
+ * Modes:
+ *   - `safe`: token + description (no values reach the LLM)
+ *   - `raw`:  token + description + value (opt-in PII inlining)
+ *
+ * Returns empty string when mode is off or the catalog is empty, so
+ * callers can append verbatim without conditional logic.
+ */
+export function renderSentinelsCatalogForTransform(
+  ctx: Sentinels,
+  mode: SentinelsMode,
+): string {
+  if (mode === 'off' || ctx.fields.length === 0) return '';
+  const header = `USER CONTEXT — tokens for the SENDER / AUTHOR / USER (the person composing this content). The runtime substitutes the real value before it reaches the user's buffer:`;
+  const lines = ctx.fields.map(f =>
+    mode === 'raw'
+      ? `- ${f.token} — ${f.description} (value: ${f.value})`
+      : `- ${f.token} — ${f.description}`,
+  );
+  const rules = `RULES for these tokens:
+1. Emit a token EXACTLY as written above (format: [UPPERCASE WORDS]) when the generated/rewritten content refers to the SENDER and a listed token fits. Do NOT use snake_case, lowercase, or invent variants.
+2. Tokens describe the SENDER ONLY. For OTHER people or entities (the recipient, a counterparty, a third party), use a natural placeholder ([Recipient Name], [Date], etc.) as you would normally — DO NOT use a sender token to fill someone else's slot.
+3. The list is EXHAUSTIVE for sender data. If no listed token fits a sender slot, write a natural placeholder ([Your Position]) — DO NOT invent a new sender sentinel like [USER_NAME] or [SENDER_EMAIL].
+4. When the content has no sender reference (a poem, a translation, a summary of someone else's text), do NOT pull in any tokens.
+5. When the user's instruction itself names a value already (e.g. "sign as Bob"), follow the instruction — do NOT override with a catalog token.`;
+  return `\n\n${header}\n\n${lines.join('\n')}\n\n${rules}`;
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // Post-processor
 // ───────────────────────────────────────────────────────────────────────────
 //
 // Walks the LLM output's bracket-tokens and either resolves, recovers,
 // or strips each. Mirrors the design proven in
-// `tests/benchmarks/user-context/post-process.ts` (19 tests, validated
+// `tests/benchmarks/sentinels/post-process.ts` (19 tests, validated
 // against 5-provider matrix).
 
 export interface PostProcessOptions {
-  /** Token → value catalog (from UserContext.catalog). */
+  /** Token → value catalog (from Sentinels.catalog). */
   catalog: ReadonlyMap<string, string>;
   /** Pre-edit body text. Any bracket-token already present here is
    *  preserved verbatim — the user's text wins over substitution. */
   originalBody?: string;
+  /** When true, unresolved bracket-tokens (no catalog hit, not in
+   *  originalBody) survive in the output instead of being stripped.
+   *  Used by TransformBlank where the LLM legitimately emits
+   *  placeholders for OTHER entities (`[Recipient Name]` in a drafted
+   *  email) that should not be silently deleted. FluidBlank keeps the
+   *  default strip behaviour (its prompt declares the catalog
+   *  EXHAUSTIVE; any unknown bracket is a hallucination). */
+  preserveUnknown?: boolean;
 }
 
 export interface PostProcessReport {
@@ -292,11 +340,11 @@ function buildCanonicalIndex(catalog: ReadonlyMap<string, string>): Map<string, 
   return idx;
 }
 
-export function postProcessUserContext(
+export function postProcessSentinels(
   llmOutput: string,
   opts: PostProcessOptions,
 ): PostProcessResult {
-  const { catalog, originalBody } = opts;
+  const { catalog, originalBody, preserveUnknown = false } = opts;
   const canonicalIndex = buildCanonicalIndex(catalog);
   const report: PostProcessReport = {
     resolved: [],
@@ -327,9 +375,11 @@ export function postProcessUserContext(
       report.tolerantMatches.push({ written: match, canonical: canonicalToken, value });
       return value;
     }
-    // 4. Unresolved — strip from output.
+    // 4. Unresolved — strip by default; preserve when caller opted in
+    //    (TransformBlank passes preserveUnknown:true so LLM-emitted
+    //    placeholders for non-user entities aren't silently deleted).
     report.stripped.push(match);
-    return '';
+    return preserveUnknown ? match : '';
   });
 
   return { output, report };

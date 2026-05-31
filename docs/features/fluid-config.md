@@ -30,7 +30,7 @@ With fluid-config on, you describe the change in plain English:
 | `enable debug logging _` | `debug-mode on` | `debug-mode: on` |
 | `stop showing tip popups _` | `tips-mode off` | `tips-mode: off` |
 | `I want to hear the tips read aloud _` | `voice-mode active` | `voice-mode: active` |
-| `let it use my personal info _` | `user-context-mode safe` | `user-context-mode: safe` |
+| `let it use my personal info _` | `sentinels-mode safe` | `sentinels-mode: safe` |
 | `make blanks wait for a space before firing _` | `blank-trigger-mode spaced` | `blank-trigger-mode: spaced` |
 
 Once the satellite pair lands, you can:
@@ -71,7 +71,7 @@ Off again is the same with `off`.
 
 - `fluid-blank-mode`, `word-cues-mode`, `transform-blank-mode`,
   `blank-trigger-mode`, `tips-mode`, `voice-mode`, `cursor-navigate`,
-  `debug-mode`, `ambient-context-mode`, `user-context-mode`,
+  `debug-mode`, `ambient-context-mode`, `sentinels-mode`,
   `fluid-config-mode` itself.
 
 Each setting's allowed values come straight from the registry too —
@@ -92,7 +92,7 @@ space; no edit to the prompt needed.
   needs a per-pipeline threat-model review since the value codomain
   widens.
 - **Hidden values** (`exposeInMenu: false`) — currently just
-  `user-context-mode: raw`. Footgun modes require deliberate file
+  `sentinels-mode: raw`. Footgun modes require deliberate file
   edits, not a single-keystroke summon.
 - **Anything that sounds like a setting but isn't in the registry** —
   "change the theme", "use a bigger font", "switch language". The
@@ -131,7 +131,7 @@ all bail to NONE.
 
 - Your OPENCUES.md content (only the registry shape goes into the
   prompt — never your current values).
-- USER.md / personal data.
+- SENTINELS.md / personal data.
 - Other settings' values, the file path, hostname, env vars.
 - Anything from other sources (word cues, transform blank, fluid
   blank don't share state with this classifier).

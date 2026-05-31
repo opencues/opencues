@@ -36,7 +36,7 @@ defaults/
 ├── CUES.md                    cue-surface master (project metadata, ignore[], disable[])
 ├── BLANKS.md                  blank-surface master
 ├── AUDITORS.md                auditor-surface master
-├── USER.md                    USER.md template (personal-data fields for user-context feature)
+├── SENTINELS.md                    SENTINELS.md template (personal-data fields for sentinels feature)
 ├── cues/                      shipped cue sources
 │   ├── tips/CUE.md            local-tip lookups (no LLM — ultrathink → Tab etc.)
 │   ├── legal/CUE.md           legal-terminology LLM cue

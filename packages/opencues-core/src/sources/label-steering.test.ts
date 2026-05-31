@@ -1,8 +1,8 @@
 // Drift-prevention for the "label steering" contract:
 //   - FUSED_SYSTEM_PROMPT contains the few-shot examples that
 //     demonstrate typed-hint → URL/value construction.
-//   - user-context.ts rule #10 declares typed hints take precedence
-//     over USER.md catalog sentinels.
+//   - sentinels.ts rule #10 declares typed hints take precedence
+//     over SENTINELS.md catalog sentinels.
 //
 // These are PROMPT-LEVEL invariants. The live behaviour is validated
 // against real LLMs by
@@ -11,13 +11,13 @@
 // prompt structure so someone can't silently delete the examples
 // or the rule and regress the bench.
 //
-// Full design + worked examples: docs/architecture/user-context.md
+// Full design + worked examples: docs/architecture/sentinels.md
 // § "Steering — typed hint vs catalog token".
 
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert';
 import { FUSED_SYSTEM_PROMPT } from './fluid-blank-source';
-import { renderUserCatalog, type UserContext } from '../user-context';
+import { renderSentinelsCatalog, type Sentinels } from '../sentinels';
 
 describe('label-steering prompt invariants', () => {
   describe('FUSED_SYSTEM_PROMPT few-shot examples', () => {
@@ -45,26 +45,26 @@ describe('label-steering prompt invariants', () => {
     });
   });
 
-  describe('user-context catalog rule #10 (typed hint precedence)', () => {
-    const sampleCtx: UserContext = {
+  describe('sentinels catalog rule #10 (typed hint precedence)', () => {
+    const sampleCtx: Sentinels = {
       fields: [{ key: 'github', token: '[GITHUB]', description: "user's github URL", value: 'https://github.com/me' }],
       catalog: new Map([['[GITHUB]', 'https://github.com/me']]),
     };
 
     it('rule #10 appears in the catalog when mode is safe', () => {
-      const block = renderUserCatalog(sampleCtx, 'safe');
+      const block = renderSentinelsCatalog(sampleCtx, 'safe');
       assert.match(block, /USER-TYPED HINT TAKES PRECEDENCE/);
       assert.match(block, /Do NOT substitute a catalog token in this case/);
     });
 
     it('rule #10 includes concrete handle + URL examples', () => {
-      const block = renderUserCatalog(sampleCtx, 'safe');
+      const block = renderSentinelsCatalog(sampleCtx, 'safe');
       assert.match(block, /danielsunderland.*linkedin\.com\/in\/danielsunderland/);
       assert.match(block, /wkasekende.*github\.com\/wkasekende/);
     });
 
     it('rule #10 explains the catalog-fallback condition', () => {
-      const block = renderUserCatalog(sampleCtx, 'safe');
+      const block = renderSentinelsCatalog(sampleCtx, 'safe');
       // Rule 10 closes by saying the catalog tokens (rule 6) apply
       // ONLY when no user-typed hint is present in the buffer.
       assert.match(block, /catalog tokens \(rule 6\) apply only when the buffer has NO user-typed hint/);
@@ -74,7 +74,7 @@ describe('label-steering prompt invariants', () => {
       // Rule 10 OVERRIDES rule 6 in the typed-hint case but doesn't
       // remove it. Bare-`_` cases still need rule 6 to emit the
       // catalog token rather than a generic placeholder URL.
-      const block = renderUserCatalog(sampleCtx, 'safe');
+      const block = renderSentinelsCatalog(sampleCtx, 'safe');
       assert.match(block, /when an UNTRUSTED_FIELD_CONTEXT block ALSO appears/);
       assert.match(block, /EMIT THE TOKEN/);
     });

@@ -43,6 +43,12 @@ import { useStrictJson, buildJsonResponseFormat, describeLLMCall, dispatchChat, 
 import { detectPartialTransform } from './transform-partial-detector';
 import { injectCursorSentinel, stripCursorSentinel } from '../cursor-sentinel';
 import { translateBufferCursorToTargetCursor } from './transform-cursor-translate';
+import {
+  renderSentinelsCatalogForTransform,
+  postProcessSentinels,
+  type Sentinels,
+  type SentinelsMode,
+} from '../sentinels';
 
 // ============================================================================
 // Prompts — ported verbatim from tests/benchmarks/transform-blank/
@@ -1460,6 +1466,53 @@ export class TransformBlankSource implements CueSource {
     return true;
   }
 
+  /**
+   * Build the SENTINELS.md catalog block to append to APPLY / GENERATIVE /
+   * FUSED prompts. Returns empty string + undefined ctx when
+   * `sentinels-mode: off` (or the runtime didn't populate
+   * sentinels for any reason). Off mode is the structural no-op —
+   * APPLY prompts revert to their pre-Phase-2 shape verbatim.
+   */
+  private buildUserCatalogBlock(context: CueContext): {
+    block: string;
+    ctx: Sentinels | undefined;
+  } {
+    const uc = context.sentinels;
+    if (!uc) return { block: '', ctx: undefined };
+    const ctx: Sentinels = { fields: uc.fields, catalog: uc.catalog };
+    const mode: SentinelsMode = uc.mode;
+    const block = renderSentinelsCatalogForTransform(ctx, mode);
+    if (block) {
+      this.log(`TransformBlank: sentinels: injected (mode=${mode}, ${ctx.fields.length} field${ctx.fields.length === 1 ? '' : 's'})`);
+    }
+    return { block, ctx };
+  }
+
+  /**
+   * Resolve sender-data sentinels emitted by the LLM into their real
+   * values. Always passes `preserveUnknown: true` so LLM-emitted
+   * placeholders for non-user entities (`[Recipient Name]`,
+   * `[Your Position]` when no `position` field exists, `[Date]`)
+   * survive untouched. No-op when sentinels is absent or its
+   * catalog is empty.
+   */
+  private resolveSentinels(
+    rewrite: string,
+    originalBody: string,
+    ctx: Sentinels | undefined,
+  ): string {
+    if (!ctx || ctx.catalog.size === 0) return rewrite;
+    const pp = postProcessSentinels(rewrite, {
+      catalog: ctx.catalog,
+      originalBody,
+      preserveUnknown: true,
+    });
+    if (pp.report.resolved.length || pp.report.tolerantMatches.length) {
+      this.log(`TransformBlank: sentinels: post-processed (resolved=${pp.report.resolved.length}, tolerant=${pp.report.tolerantMatches.length}, preserved-unknown=${pp.report.stripped.length})`);
+    }
+    return pp.output;
+  }
+
   async getCues(context: CueContext): Promise<CueSourceResult> {
     const startTime = Date.now();
     const previewLen = 80;
@@ -1578,13 +1631,15 @@ export class TransformBlankSource implements CueSource {
         this.log(`TransformBlank: GENERATIVE branch (instruction with no target)`);
         const genTokens = budgetForOutput(800, 1.0);  // assume up to ~800 chars of generated content
         const genStart = Date.now();
+        const { block: genCatalogBlock, ctx: genUserCtx } = this.buildUserCatalogBlock(context);
         const genRaw = await this.callLLM(
           P2_GENERATIVE_APPLY_SYSTEM,
-          `INSTRUCTION: ${ext.instruction}`,
+          `INSTRUCTION: ${ext.instruction}${genCatalogBlock}`,
           genTokens,
           useJson ? buildJsonResponseFormat('transform_generative', APPLY_SCHEMA as unknown as Record<string, unknown>) : undefined,
         );
-        const generated = (useJson ? parseApplyJson(genRaw) : parseApply(genRaw)).rewrite;
+        const generatedRaw = (useJson ? parseApplyJson(genRaw) : parseApply(genRaw)).rewrite;
+        const generated = this.resolveSentinels(generatedRaw, context.text, genUserCtx);
         this.log(`TransformBlank P2 GENERATIVE (${Date.now() - genStart}ms, max_tokens=${genTokens}): "${preview(generated)}"`);
         if (!generated) {
           this.log(`TransformBlank: claim-and-bail — GENERATIVE empty, slot ${blankIdx} consumed (no downstream fallback)`);
@@ -1679,6 +1734,7 @@ export class TransformBlankSource implements CueSource {
         this.log(`TransformBlank P2 APPLY: cursor injected at target-offset ${initialCursor}/${ext.target.length}`);
       }
       let lastRewrite = '';
+      const { block: applyCatalogBlock, ctx: applyUserCtx } = this.buildUserCatalogBlock(context);
       for (let i = 0; i < parts.length; i++) {
         const inst = parts[i];
         const stepStart = Date.now();
@@ -1691,12 +1747,15 @@ export class TransformBlankSource implements CueSource {
           : currentTarget;
         const applyRaw = await this.callLLM(
           P2_APPLY_SYSTEM,
-          `INSTRUCTION: ${inst}\nTARGET: ${targetForPrompt}`,
+          `INSTRUCTION: ${inst}\nTARGET: ${targetForPrompt}${applyCatalogBlock}`,
           p2Tokens,
           useJson ? buildJsonResponseFormat('transform_apply', APPLY_SCHEMA as unknown as Record<string, unknown>) : undefined,
         );
         // Strip any sentinel the model leaked into its output — input-only.
-        const draft = stripCursorSentinel((useJson ? parseApplyJson(applyRaw) : parseApply(applyRaw)).rewrite);
+        const draftRaw = stripCursorSentinel((useJson ? parseApplyJson(applyRaw) : parseApply(applyRaw)).rewrite);
+        // Resolve SENTINELS.md sentinels per step so VERIFY downstream sees
+        // the real values, not bracket-tokens. Preserves unknown brackets.
+        const draft = this.resolveSentinels(draftRaw, context.text, applyUserCtx);
         this.log(`TransformBlank P2 APPLY step ${i + 1}/${parts.length} (${Date.now() - stepStart}ms, max_tokens=${p2Tokens}): "${preview(draft)}"`);
         this.emit({
           type: 'pass-completed',
@@ -1904,8 +1963,17 @@ export class TransformBlankSource implements CueSource {
       Math.min(FUSED_CEILING, Math.ceil(extractText.length * 3.0 / 3) + FUSED_HEADROOM),
     );
     const fusedStart = Date.now();
-    const fusedRaw = await this.callLLM(FUSED_SYSTEM, `INPUT: ${extractText}`, fusedTokens);
-    const f = parseFused(fusedRaw);
+    const { block: fusedCatalogBlock, ctx: fusedUserCtx } = this.buildUserCatalogBlock(context);
+    const fusedRaw = await this.callLLM(FUSED_SYSTEM, `INPUT: ${extractText}${fusedCatalogBlock}`, fusedTokens);
+    const fParsed = parseFused(fusedRaw);
+    // Resolve SENTINELS.md sentinels in FULL_REWRITE before the result
+    // routes through the runtime's three-way merge. Preserves unknown
+    // brackets so LLM-emitted placeholders for non-user entities
+    // ([Recipient Name], [Date]) survive untouched.
+    const f = {
+      ...fParsed,
+      rewrite: this.resolveSentinels(fParsed.rewrite, context.text, fusedUserCtx),
+    };
     this.log(`TransformBlank FUSED (${Date.now() - fusedStart}ms, max_tokens=${fusedTokens}, source=${sourceTag}): verdict=${f.verdict}, instruction="${f.instruction}", target="${preview(f.target)}", rewrite="${preview(f.rewrite)}"`);
     this.emit({
       type: 'pass-completed',
