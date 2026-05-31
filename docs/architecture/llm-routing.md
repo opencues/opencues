@@ -102,7 +102,9 @@ use anthropic for cues _              → cues-llm-provider: anthropic
 switch the blanks brain to cerebras _ → blanks-llm-provider: cerebras
 use claude opus for auditors _        → auditors-llm-provider: anthropic
                                         auditors-llm-model: claude-opus-4-7
-route everything to gemini _          → cues-llm-provider: gemini   (cues = default brain)
+route everything to gemini _          → blanks-llm-provider: gemini (blanks = default scope)
+switch to anthropic _                 → blanks-llm-provider: anthropic
+use cerebras _                        → blanks-llm-provider: cerebras
 ```
 
 ### What the classifier may emit
