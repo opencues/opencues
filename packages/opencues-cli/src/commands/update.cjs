@@ -409,7 +409,9 @@ function doUpgradeNpm(host, toVersion, compat, { dryRun }, ctx) {
   console.log(`\nPin updated. Re-installing ${host} at ${toVersion}...\n`);
   runHostInstaller(host, ctx, { rollback: () => fixupRollbackHint(pkgPath, loc.field, oldValue, host) });
   console.log(`\n${tag('ok')} ${host} now pinned at ${bold(toVersion)} and installed.`);
-  console.log(dim(`Consider adding ${toVersion} to integrations/${host}/compat.json's "tested" list once you've verified.`));
+  if (!compatLib.isTested(toVersion, compat)) {
+    console.log(dim(`Consider adding ${toVersion} to integrations/${host}/compat.json's "tested" list once you've verified.`));
+  }
 }
 
 async function doUpgradeGit(host, toVersion, compat, { dryRun }, ctx) {
@@ -448,7 +450,9 @@ async function doUpgradeGit(host, toVersion, compat, { dryRun }, ctx) {
     },
   });
   console.log(`\n${tag('ok')} ${host} now pinned at ${bold(`${wantNorm}@${wantedTag.sha}`)} and installed.`);
-  console.log(dim(`Consider adding {version:"${wantNorm}",sha:"${wantedTag.sha}"} to integrations/${host}/compat.json's "tested" list once you've verified.`));
+  if (!compatLib.isTested(wantNorm, compat)) {
+    console.log(dim(`Consider adding {version:"${wantNorm}",sha:"${wantedTag.sha}"} to integrations/${host}/compat.json's "tested" list once you've verified.`));
+  }
 }
 
 function runHostInstaller(host, ctx, { rollback }) {
