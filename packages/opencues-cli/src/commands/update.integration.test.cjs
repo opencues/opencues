@@ -153,6 +153,62 @@ test('SIGINT during update releases the lock', async () => {
   fs.rmSync(home, { recursive: true, force: true });
 });
 
+test('SIGINT arriving in the handler-register window releases the lock — regression for CI race', async () => {
+  // Regression test for a race in update.cjs where the SIGINT/SIGTERM
+  // handlers were registered AFTER acquireLock wrote the lockfile.
+  // A SIGINT arriving in that microsecond window would fall to Node's
+  // default handler (terminate by signal), leaving the lockfile
+  // orphaned. Observed on CI run 26712395507 against master 63d83b1.
+  //
+  // Deterministic reproduction via `OPENCUES_UPDATE_TEST_PRE_LOCK_HANG_MS`:
+  // injects a 200ms gap between handler registration and acquireLock.
+  // We wait for the JS to start (gap window opens), then SIGINT into
+  // the window. With handlers correctly registered FIRST, the SIGINT
+  // handler sees `lock === null`, runs `process.exit(130)` cleanly,
+  // and the lockfile never gets created. Without the fix, the SIGINT
+  // arrives before the handler exists, Node terminates by signal, and
+  // the test fails on a non-zero exitCode.
+  const home = freshHome('sigint-race-window');
+  const lockFile = path.join(home, '.opencues', '.update.lock');
+
+  const child = spawn('node', [CLI_BIN, 'update', '--dry-run', '--no-pull'], {
+    env: {
+      ...process.env,
+      HOME: home,
+      OPENCUES_NO_UPDATE_CHECK: '1',
+      // 200ms gap between handler registration and acquireLock — the
+      // window in which signals must already be handled.
+      OPENCUES_UPDATE_TEST_PRE_LOCK_HANG_MS: '200',
+    },
+    stdio: 'pipe',
+  });
+
+  // 50ms is solidly inside the 200ms gap. Long enough for child to
+  // start the JS + register handlers (~10ms), well before acquireLock.
+  await new Promise(r => setTimeout(r, 50));
+  child.kill('SIGINT');
+  await new Promise(r => child.once('exit', r));
+
+  // With the fix: handler ran, exit code 130, no lockfile written.
+  // Without the fix: signal killed Node before handler attached,
+  // exitCode null and lockfile may or may not exist (it never got
+  // written either way because acquireLock hadn't been called) —
+  // but we assert exit code 130 to prove the handler RAN.
+  assert.strictEqual(
+    child.exitCode,
+    130,
+    `SIGINT handler must run cleanly (exit 130); got exitCode=${child.exitCode}, signal=${child.signalCode}. ` +
+      `Handlers must be registered BEFORE acquireLock — see update.cjs near line 146.`,
+  );
+  assert.strictEqual(
+    fs.existsSync(lockFile),
+    false,
+    'lockfile must not exist after SIGINT inside the pre-lock window',
+  );
+
+  fs.rmSync(home, { recursive: true, force: true });
+});
+
 test('--dry-run prints a plan without touching the workspace', () => {
   const home = freshHome('dryrun');
   const res = spawnSync('node', [CLI_BIN, 'update', '--dry-run', '--no-pull'], {
