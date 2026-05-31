@@ -332,6 +332,16 @@ const TOGETHER: ProviderAdapter = {
   id: 'together',
   defaultEndpoint: 'https://api.together.xyz/v1/chat/completions',
   defaultModel: 'meta-llama/Llama-3.3-70B-Instruct-Turbo',
+  // 2-5 bench-validated entries covering cheap-fast / balanced /
+  // deep-reasoning tiers. The fluid-config classifier renders this
+  // list verbatim and only routes natural-language model picks within
+  // it. Power users can still pin any model string by hand-editing
+  // OPENCUES.md — knownModels bounds NL-reachable picks only.
+  knownModels: [
+    'meta-llama/Llama-3.3-70B-Instruct-Turbo',
+    'meta-llama/Llama-3.3-405B-Instruct-Turbo',
+    'Qwen/Qwen2.5-72B-Instruct',
+  ],
   envKeyName: 'TOGETHER_API_KEY',
   buildRequest(req, ctx) {
     return {
@@ -347,6 +357,36 @@ const TOGETHER: ProviderAdapter = {
 Add to the `PROVIDERS` map and the `ProviderId` union, write a
 unit test in `llm-provider.test.ts`, update the manifest if Chrome
 support is desired. Existing call sites need no changes.
+
+### `knownModels` — what the fluid-config classifier may emit
+
+`knownModels` is optional but recommended. It bounds the model
+catalogue the fluid-config classifier (`fluid-config-mode: on`) may
+route to via natural language ("use cerebras gpt-oss-120b for cues
+_"). Three rules:
+
+1. **Curated, not exhaustive.** 2-5 canonical ids per provider —
+   typically one cheap-fast, one balanced, one deep-reasoning.
+   Listing every model the provider hosts bloats the classifier
+   prompt and gives the LLM more rope to hallucinate look-alikes.
+2. **First entry should match `defaultModel`.** Reads better in
+   error messages ("allowed: gpt-5.4-mini, gpt-5.4, gpt-5.4-nano")
+   and means picking the provider via NL without a model name lands
+   on the same default the resolver would pick.
+3. **Bench-validated.** Each entry should at minimum survive the
+   fluid-blank and transform-blank benches at this provider, or be
+   documented as a known cost/quality trade-off in the adapter
+   comments.
+
+Adding a model to `knownModels` automatically extends what
+`use <provider> <model> for <bucket> _` can reach — no prompt edit
+needed. Removing one prevents the classifier from emitting it, but
+file-edit pins still work (`<bucket>-llm-model: <whatever>` accepts
+any string).
+
+When `knownModels` is omitted entirely, the validator falls back to
+`[defaultModel]` — the classifier may still pick the provider but
+can only land on its default model.
 
 For non-OpenAI-compat providers (different request/response shape),
 follow the **Gemini** or **Anthropic** patterns — both write their
