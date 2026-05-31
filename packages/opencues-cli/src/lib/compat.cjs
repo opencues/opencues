@@ -186,6 +186,8 @@ module.exports = {
   semverCompare,
   matchesRange,
   classifyVersion,
+  isTested,
+  isKnownIncompatible,
   readNpmPin,
   readGitPin,
   writeGitPin,
