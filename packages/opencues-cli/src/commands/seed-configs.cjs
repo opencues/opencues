@@ -343,6 +343,35 @@ module.exports = function seedConfigs(argv, ctx) {
     }
   }
 
+  // ── 3.5 HEAL — built-in / user-blank collision cleanup ─────────────
+  //
+  // Before May 2026 we shipped a TS class in BUILTIN_BLANKS AND a
+  // duplicate user-blank script at `defaults/blanks/<name>/blank.js`
+  // for the same name. Native hosts (CC/OC/gemini) preferred the
+  // user-blank when both existed; chrome preferred the built-in.
+  // Silent per-host divergence — same name, different impl.
+  //
+  // Option B (this codebase, May 2026) deleted the duplicate user-
+  // blank scripts and dropped `impl:` from the shipped BLANK.md. But
+  // `seed-configs` is first-time-only for `.md`, SYNC doesn't touch
+  // `.js`, and `mergeShippedMd` preserves `impl:` as a "user-only
+  // field". Existing installs therefore keep the stale user-blank
+  // running on native hosts.
+  //
+  // This heal closes the gap: for each BUILTIN_BLANKS name where the
+  // user's BLANK.md still declares `impl: ./blank.js` (the shipped
+  // default shape), strip that line + the JS-only capability fields
+  // (`network:` / `storage:` / `secrets:` / `secret-hosts.*:` /
+  // `llm:`) and delete the colocated `blank.js`. User-customised
+  // impls (different filename, or BLANK.md edited beyond the shipped
+  // shape) are left alone — the guard is "impl: ./blank.js" exactly.
+  if (!projectScope) {
+    const healed = healBuiltinUserBlankCollisions(userBlanksDir, log);
+    if (healed.length > 0) {
+      log(`Self-heal: cleaned ${healed.length} built-in/user-blank collision(s): ${healed.join(', ')}`);
+    }
+  }
+
   // ── 4. COMPILE — colocated .cs → .exe (WSL only) ───────────────────
   const csc = '/mnt/c/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe';
   if (fs.existsSync(csc)) {
@@ -418,6 +447,70 @@ function copyDir(src, dst) {
     if (entry.isDirectory()) copyDir(s, d);
     else fs.copyFileSync(s, d);
   }
+}
+
+/** Discover the BUILTIN_BLANKS name list at runtime. Walks the
+ *  @opencues/runtime install relative to the CLI to avoid a hard
+ *  workspace dependency. Returns an empty Set on any failure (the
+ *  heal step degrades to no-op rather than crashing seed-configs). */
+function loadBuiltinBlankNames() {
+  try {
+    const runtimePath = path.resolve(__dirname, '../../../opencues-runtime/dist/src/blanks/index.js');
+    const mod = require(runtimePath);
+    const list = Array.isArray(mod?.BUILTIN_BLANKS) ? mod.BUILTIN_BLANKS : [];
+    return new Set(list.map(spec => spec && spec.name).filter(Boolean));
+  } catch { return new Set(); }
+}
+
+/** Strip a frontmatter line by exact key match (top-level only — leading
+ *  whitespace is treated as "indented, not top-level"). Returns the
+ *  rewritten content. Keys: array of literal key names (case-sensitive). */
+function stripFrontmatterKeys(mdContent, keysToStrip, keyPrefixesToStrip) {
+  const m = mdContent.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  if (!m) return mdContent;
+  const [, fm, body] = m;
+  const out = [];
+  for (const line of fm.split('\n')) {
+    if (line.startsWith(' ') || line.startsWith('\t')) { out.push(line); continue; }
+    const km = line.match(/^([a-zA-Z][a-zA-Z0-9_.-]*):/);
+    if (km && keysToStrip.includes(km[1])) continue;
+    if (km && keyPrefixesToStrip.some(p => km[1].startsWith(p))) continue;
+    out.push(line);
+  }
+  return `---\n${out.join('\n')}\n---\n${body}`;
+}
+
+/** For each BUILTIN_BLANKS name where the user's BLANK.md still ships
+ *  `impl: ./blank.js` (the shipped default shape), strip that line +
+ *  the JS-only capability fields (`network:` / `storage:` / `secrets:` /
+ *  `secret-hosts.*:` / `llm:`) and delete the colocated `blank.js`.
+ *  Skips user-customised impl paths (anything other than `./blank.js`).
+ *  Returns the list of healed names. */
+function healBuiltinUserBlankCollisions(userBlanksDir, log) {
+  if (!fs.existsSync(userBlanksDir)) return [];
+  const builtinNames = loadBuiltinBlankNames();
+  if (builtinNames.size === 0) return [];
+  const SHIPPED_IMPL_RE = /^[ \t]*impl:[ \t]*\.\/blank\.js[ \t]*$/m;
+  const STRIP_KEYS = ['impl', 'network', 'storage', 'secrets', 'llm'];
+  const STRIP_PREFIXES = ['secret-hosts.'];
+  const healed = [];
+  for (const subDir of listChildDirs(userBlanksDir)) {
+    const name = path.basename(subDir);
+    if (!builtinNames.has(name)) continue;
+    const mdPath = path.join(subDir, 'BLANK.md');
+    if (!fs.existsSync(mdPath)) continue;
+    const before = fs.readFileSync(mdPath, 'utf8');
+    if (!SHIPPED_IMPL_RE.test(before)) continue;  // not the shipped shape — leave alone
+    const after = stripFrontmatterKeys(before, STRIP_KEYS, STRIP_PREFIXES);
+    if (after !== before) fs.writeFileSync(mdPath, after);
+    const jsPath = path.join(subDir, 'blank.js');
+    if (fs.existsSync(jsPath)) {
+      try { fs.unlinkSync(jsPath); }
+      catch (err) { log(`  warn: could not delete ${jsPath}: ${err.message}`); }
+    }
+    healed.push(name);
+  }
+  return healed;
 }
 
 /** Compile .cs → .exe colocated (same dir as .cs). Returns true if compiled.
