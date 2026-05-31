@@ -6,7 +6,7 @@
 // features exist. ConfigLoader (here in opencues-runtime) parses a
 // subset of those scalars into typed OpenCuesState fields so that
 // TypeScript consumers get narrow types (e.g. `'off' | 'safe' | 'raw'`
-// for userContextMode) instead of `string`.
+// for sentinelsMode) instead of `string`.
 //
 // The risk: someone adds a feature to FEATURES but forgets to add a
 // matching OpenCuesState field. Consumers that read via the typed

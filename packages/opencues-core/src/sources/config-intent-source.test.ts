@@ -196,17 +196,17 @@ describe('validateAgainstRegistry', () => {
     assert.match(r.reason ?? '', /not cyclable/);
   });
 
-  it('rejects user-context-mode=raw (exposeInMenu: false — footgun)', () => {
+  it('rejects sentinels-mode=raw (exposeInMenu: false — footgun)', () => {
     // The classifier system prompt excludes hidden values, but defence
     // in depth: if a model emits it anyway, the runtime must NOT apply
     // a footgun mode on semantic-only intent.
-    const r = validateAgainstRegistry({ kind: 'setting', setting: 'user-context-mode', value: 'raw', confidence: 0.9 });
+    const r = validateAgainstRegistry({ kind: 'setting', setting: 'sentinels-mode', value: 'raw', confidence: 0.9 });
     assert.strictEqual(r.ok, false);
     assert.match(r.reason ?? '', /not cyclable/);
   });
 
-  it('accepts user-context-mode=safe (cyclable)', () => {
-    const r = validateAgainstRegistry({ kind: 'setting', setting: 'user-context-mode', value: 'safe', confidence: 0.9 });
+  it('accepts sentinels-mode=safe (cyclable)', () => {
+    const r = validateAgainstRegistry({ kind: 'setting', setting: 'sentinels-mode', value: 'safe', confidence: 0.9 });
     assert.strictEqual(r.ok, true);
   });
 
@@ -397,7 +397,7 @@ describe('ConfigIntentSource', () => {
     assert.deepStrictEqual(apply.calls, []);
   });
 
-  it('getCues with hidden-from-menu value (user-context=raw): cedes', async () => {
+  it('getCues with hidden-from-menu value (sentinels=raw): cedes', async () => {
     // The classifier prompt excludes raw from its choice space, but if
     // a model emits it, the runtime must NOT auto-apply a footgun
     // (raw = PII reaches LLM provider's logs).
@@ -405,7 +405,7 @@ describe('ConfigIntentSource', () => {
     const src = new ConfigIntentSource({
       ...baseConfig,
       httpAdapter: makeMockAdapter([
-        'SETTING: user-context-mode\nVALUE: raw\nCONFIDENCE: 0.99',
+        'SETTING: sentinels-mode\nVALUE: raw\nCONFIDENCE: 0.99',
       ]),
       applyScalar: apply.fn,
     });

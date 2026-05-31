@@ -87,12 +87,12 @@ The state machine that keeps multi-word substitutions, cycle progress, and per-e
 
 ## LLM context inputs
 
-Optional information the FluidBlank LLM call receives in addition to the user's prompt. Both OFF by default and gated on a scalar in `OPENCUES.md`. Read [`docs/architecture/ambient-context.md`](../architecture/ambient-context.md) and [`docs/architecture/user-context.md`](../architecture/user-context.md) before wiring fluid-blank output into any side-effect channel.
+Optional information the FluidBlank LLM call receives in addition to the user's prompt. Both OFF by default and gated on a scalar in `OPENCUES.md`. Read [`docs/architecture/ambient-context.md`](../architecture/ambient-context.md) and [`docs/architecture/sentinels.md`](../architecture/sentinels.md) before wiring fluid-blank output into any side-effect channel.
 
 | # | Feature | Description |
 |---|---------|-------------|
 | 32 | [Ambient Context](ambient-context.md) | FluidBlank optionally receives the focused field's label / placeholder / page-title so `_` lookups disambiguate per context (e.g. "destination" on flights.google.com vs airbnb.com). OFF by default. Chrome only — needs DOM. Host-agnostic at the `HostAdapter` contract level. |
-| 33 | [User Context](user-context.md) | FluidBlank optionally injects the user's own personal data (`~/.cues/USER.md` frontmatter) as sentinel tokens so `_` lookups personalise without re-typing. `safe` mode keeps PII off the LLM provider's logs; `raw` opts in to inlining. OFF by default. Phase 1 wires fluid-blank only. |
+| 33 | [User Context](sentinels.md) | FluidBlank optionally injects the user's own personal data (`~/.cues/SENTINELS.md` frontmatter) as sentinel tokens so `_` lookups personalise without re-typing. `safe` mode keeps PII off the LLM provider's logs; `raw` opts in to inlining. OFF by default. Phase 1 wires fluid-blank only. |
 
 ## Surfacing
 

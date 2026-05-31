@@ -236,12 +236,12 @@ to exfiltrate to. **If you ever wire fluid-blank output into a
 side-effect layer, the ambient-context threat model must be
 re-reviewed before that change lands.**
 
-### Boundary 10 — User-context scope + gate
+### Boundary 10 — Sentinels scope + gate
 
-`~/.cues/USER.md` frontmatter (the user's own personal data:
+`~/.cues/SENTINELS.md` frontmatter (the user's own personal data:
 first name, email, work city, etc.) is forwarded to
 FluidBlankSource as a catalog of sentinel tokens when
-`user-context-mode: safe` or `: raw` is set in
+`sentinels-mode: safe` or `: raw` is set in
 `~/.cues/OPENCUES.md`. Off by default.
 
 In `safe` mode (recommended) the catalog ships only token NAMES
@@ -252,7 +252,7 @@ mode the catalog inlines values (opt-in, better prose register).
 
 Two attack-class-specific rules baked into the catalog prompt
 (both validated end-to-end at
-`tests/benchmarks/user-context/e2e-combined.ts`):
+`tests/benchmarks/sentinels/e2e-combined.ts`):
 
 - **Rule 8 — ONE FIELD, ONE ANSWER.** A hostile label that
   asks the model to bundle multiple catalog values into one
@@ -268,13 +268,13 @@ Two attack-class-specific rules baked into the catalog prompt
 
 Sensitive fields are excluded the same way as in Boundary 9 —
 gate enforced via `isSensitiveField` in the chrome bootstrap;
-no USER.md data reaches a `_` trigger on a password / CC / OTP
+no SENTINELS.md data reaches a `_` trigger on a password / CC / OTP
 field even when feature is on.
 
 Same structural property as Boundary 9: the post-processed
 answer lands as user-visible buffer text. There is no parallel
 channel for the model to exfiltrate values through.
-See `docs/architecture/user-context.md` for the full threat
+See `docs/architecture/sentinels.md` for the full threat
 model and `security-audit.md` row #22.
 
 ### Boundary 11 — Sensitive-field exclusion (cross-cutting)
@@ -319,7 +319,7 @@ When ANY of these match, the chrome bootstrap:
    refuses first.
 
 The effect: a focused password / CC / OTP field gets no `_`
-trigger, no ambient capture, no user-context catalog
+trigger, no ambient capture, no sentinels catalog
 injection. False positives (e.g. a search box named
 "search-token") cost the user a feature, never a credential.
 

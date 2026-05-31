@@ -26,7 +26,7 @@
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter, AmbientContext } from '../types';
 import { BlankConfig } from '../cues-md';
 import { useStrictJson, buildJsonResponseFormat, describeLLMCall, dispatchChat, type ProviderAdapter } from '../llm-provider';
-import { renderUserCatalog, postProcessUserContext, type UserContext, type UserContextMode } from '../user-context';
+import { renderSentinelsCatalog, postProcessSentinels, type Sentinels, type SentinelsMode } from '../sentinels';
 
 // ─── Ambient-context sanitization + injection ──────────────────────
 //
@@ -744,20 +744,20 @@ export class FluidBlankSource implements CueSource {
         this.logInfo(`FluidBlank: ambient: injected (${ambientBlock.length} chars${pairsStr})`);
       } else this.logInfo('FluidBlank: ambient: empty (context present but sanitised to nothing)');
 
-      // User-context catalog (sentinel-mode personal data). Off by
-      // default — the runtime gates on `user-context-mode` in
-      // OPENCUES.md before populating context.userContext, so when
-      // mode is off this code path is a no-op. See user-context.ts +
-      // docs/architecture/user-context.md for the threat model.
-      const userCtx: UserContext | undefined = context.userContext
-        ? { fields: context.userContext.fields, catalog: context.userContext.catalog }
+      // Sentinels catalog (sentinel-mode personal data). Off by
+      // default — the runtime gates on `sentinels-mode` in
+      // OPENCUES.md before populating context.sentinels, so when
+      // mode is off this code path is a no-op. See sentinels.ts +
+      // docs/architecture/sentinels.md for the threat model.
+      const userCtx: Sentinels | undefined = context.sentinels
+        ? { fields: context.sentinels.fields, catalog: context.sentinels.catalog }
         : undefined;
-      const userMode: UserContextMode = context.userContext?.mode ?? 'off';
-      const userCatalogBlock = userCtx ? renderUserCatalog(userCtx, userMode) : '';
+      const userMode: SentinelsMode = context.sentinels?.mode ?? 'off';
+      const userCatalogBlock = userCtx ? renderSentinelsCatalog(userCtx, userMode) : '';
       if (userCtx && userCatalogBlock) {
-        this.logInfo(`FluidBlank: user-context: injected (mode=${userMode}, ${userCtx.fields.length} field${userCtx.fields.length === 1 ? '' : 's'})`);
-      } else if (context.userContext) {
-        this.logInfo('FluidBlank: user-context: empty (mode on but USER.md has no fields)');
+        this.logInfo(`FluidBlank: sentinels: injected (mode=${userMode}, ${userCtx.fields.length} field${userCtx.fields.length === 1 ? '' : 's'})`);
+      } else if (context.sentinels) {
+        this.logInfo('FluidBlank: sentinels: empty (mode on but SENTINELS.md has no fields)');
       }
 
       const fusedUser = `INPUT: ${context.text}${ambientBlock}${userCatalogBlock}`;
@@ -778,7 +778,7 @@ export class FluidBlankSource implements CueSource {
         return { results: [], timing: Date.now() - startTime, model: this.model };
       }
 
-      // Post-process the answer: resolve verbatim user-context tokens
+      // Post-process the answer: resolve verbatim sentinels tokens
       // to values, recover close-form variants via tolerant matching,
       // strip hallucinated unlisted tokens. No-op when userCtx is
       // absent (no catalog → no tokens to resolve, no tolerant index
@@ -788,7 +788,7 @@ export class FluidBlankSource implements CueSource {
       // post-processor handles any tokens the LLM ALSO emitted.
       let finalAnswer = answer;
       if (userCtx && userCtx.catalog.size > 0) {
-        const pp = postProcessUserContext(answer, {
+        const pp = postProcessSentinels(answer, {
           catalog: userCtx.catalog,
           // Pass context.text as originalBody so any bracket-token
           // the user typed in their buffer (e.g. writing docs about
@@ -797,7 +797,7 @@ export class FluidBlankSource implements CueSource {
         });
         finalAnswer = pp.output;
         if (pp.report.resolved.length || pp.report.tolerantMatches.length || pp.report.stripped.length) {
-          this.logInfo(`FluidBlank: user-context: post-processed (resolved=${pp.report.resolved.length}, tolerant=${pp.report.tolerantMatches.length}, stripped=${pp.report.stripped.length})`);
+          this.logInfo(`FluidBlank: sentinels: post-processed (resolved=${pp.report.resolved.length}, tolerant=${pp.report.tolerantMatches.length}, stripped=${pp.report.stripped.length})`);
         }
       }
 

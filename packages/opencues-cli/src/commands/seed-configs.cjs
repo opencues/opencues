@@ -4,7 +4,7 @@
 // Four responsibilities, all idempotent + safe to re-run:
 //
 //   1. SEED   first-time copy of repo defaults → ~/.cues/
-//             (CUES.md, BLANKS.md, OPENCUES.md, AUDITORS.md, USER.md,
+//             (CUES.md, BLANKS.md, OPENCUES.md, AUDITORS.md, SENTINELS.md,
 //              cues/, blanks/, auditors/, scripts/)
 //             Skips files that already exist with content (preserves user edits).
 //
@@ -81,6 +81,27 @@ module.exports = function seedConfigs(argv, ctx) {
   log(`  ${dim('target:')} ${fileLink(targetDir, targetDir)}`);
   log('');
 
+  // ── 0. PRE-SEED MIGRATE — rename legacy USER.md → SENTINELS.md ────
+  //
+  // Must run BEFORE the SEED phase. If the user has a populated
+  // ~/.cues/USER.md (May-2026 rename target was SENTINELS.md), we move
+  // it into place FIRST so the SEED phase's "skip if exists" check sees
+  // SENTINELS.md and doesn't clobber the user's data with the empty
+  // template. Idempotent: only fires when the legacy file exists AND
+  // the new file is absent.
+  //
+  // Mirrors the dryRun behaviour of the rest of seed-configs — silent
+  // when --dry-run is set.
+  fs.mkdirSync(targetDir, { recursive: true });
+  const oldSentinelsFile = path.join(targetDir, 'USER.md');
+  const newSentinelsFile = path.join(targetDir, 'SENTINELS.md');
+  if (fs.existsSync(oldSentinelsFile) && !fs.existsSync(newSentinelsFile)) {
+    if (!dryRun) {
+      fs.renameSync(oldSentinelsFile, newSentinelsFile);
+    }
+    log(`Self-heal: migrated USER.md → SENTINELS.md (${newSentinelsFile})`);
+  }
+
   // ── 1. SEED — first-time copy ──────────────────────────────────────
   const seedFiles = projectScope ? SEED_FILES_PROJECT : SEED_FILES_USER;
   const plan = seedFiles.map(name => ({
@@ -140,7 +161,7 @@ module.exports = function seedConfigs(argv, ctx) {
   }
 
   // Seed every optional templated file from the @opencues/core registry.
-  // Today: AUDITORS.md (core) + USER.md (feature). Adding a new templated
+  // Today: AUDITORS.md (core) + SENTINELS.md (feature). Adding a new templated
   // file = appending to CORE_TEMPLATES or to a feature's prereqFile.template;
   // no edit to this loop required.
   if (!projectScope) {
@@ -290,6 +311,46 @@ module.exports = function seedConfigs(argv, ctx) {
       fs.copyFileSync(settingsSource, settingsTarget);
       log(`Self-heal: reseeded empty ${settingsTarget} from defaults`);
     }
+  }
+
+  // (3.0a USER.md → SENTINELS.md migration moved to step 0 — must run
+  // BEFORE seed copies templates, otherwise the freshly-seeded blank
+  // SENTINELS.md template wins the "skip if exists" check and the
+  // user's data sits stranded in USER.md.)
+
+  // ── 3.0b HEAL — rename legacy `user-context-mode:` → `sentinels-mode:` ──
+  //
+  // Same rationale as the USER.md → SENTINELS.md rename above. The runtime
+  // back-compat-reads `user-context-mode` (config-loader.ts), but rewriting
+  // here gets every user onto the new key inside one `opencues install` run.
+  //
+  // Three cases:
+  //   - both exist: the user's value (legacy line) wins — copy it onto
+  //     the new line, drop the legacy line. The mergeOpencuesMd step
+  //     above injects a default `sentinels-mode: off` from defaults so
+  //     this case is the common one immediately after an upgrade.
+  //   - only legacy exists: rename in place.
+  //   - only new exists: no-op (migration already happened).
+  if (settingsTarget && fs.existsSync(settingsTarget) && fs.statSync(settingsTarget).size > 0) {
+    const original = fs.readFileSync(settingsTarget, 'utf8');
+    const newMatch = original.match(/^(sentinels-mode):[ \t]*(.+?)[ \t]*$/m);
+    const oldMatch = original.match(/^(user-context-mode):[ \t]*(.+?)[ \t]*$/m);
+    let rewritten = original;
+    if (oldMatch && newMatch) {
+      const userValue = oldMatch[2];
+      // Replace the new scalar's value with the user's value, then strip
+      // the legacy line (plus any one trailing newline).
+      rewritten = rewritten.replace(
+        /^sentinels-mode:[ \t]*.+$/m,
+        `sentinels-mode: ${userValue}`,
+      );
+      rewritten = rewritten.replace(/^user-context-mode:[ \t]*.+\r?\n?/m, '');
+      log(`Self-heal: migrated user-context-mode → sentinels-mode (value=${userValue}) in ${settingsTarget}`);
+    } else if (oldMatch) {
+      rewritten = rewritten.replace(/^user-context-mode:/m, 'sentinels-mode:');
+      log(`Self-heal: renamed legacy scalar user-context-mode → sentinels-mode in ${settingsTarget}`);
+    }
+    if (rewritten !== original) fs.writeFileSync(settingsTarget, rewritten);
   }
 
   // ── 3.1 HEAL — rename legacy bucket scalars in OPENCUES.md ──

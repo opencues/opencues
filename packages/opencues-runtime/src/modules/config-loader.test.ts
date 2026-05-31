@@ -117,22 +117,22 @@ some prose
     expect(parseOpenCuesMd('---\nambient-context-mode: on\n---').ambientContextMode).toBe('on');
   });
 
-  it('user-context-mode defaults to off and only accepts safe/raw', () => {
+  it('sentinels-mode defaults to off and only accepts safe/raw', () => {
     // Same fail-closed contract as ambient-context-mode — the privacy
     // model leans on `off` being the default + on unrecognised values
-    // not silently flipping the gate. See docs/architecture/user-context.md.
-    expect(parseOpenCuesMd('---\n---').userContextMode).toBe('off');
-    expect(parseOpenCuesMd('---\nuser-context-mode: off\n---').userContextMode).toBe('off');
-    expect(parseOpenCuesMd('---\nuser-context-mode: safe\n---').userContextMode).toBe('safe');
-    expect(parseOpenCuesMd('---\nuser-context-mode: raw\n---').userContextMode).toBe('raw');
+    // not silently flipping the gate. See docs/architecture/sentinels.md.
+    expect(parseOpenCuesMd('---\n---').sentinelsMode).toBe('off');
+    expect(parseOpenCuesMd('---\nsentinels-mode: off\n---').sentinelsMode).toBe('off');
+    expect(parseOpenCuesMd('---\nsentinels-mode: safe\n---').sentinelsMode).toBe('safe');
+    expect(parseOpenCuesMd('---\nsentinels-mode: raw\n---').sentinelsMode).toBe('raw');
     // Case-insensitive.
-    expect(parseOpenCuesMd('---\nuser-context-mode: SAFE\n---').userContextMode).toBe('safe');
-    expect(parseOpenCuesMd('---\nuser-context-mode: Raw\n---').userContextMode).toBe('raw');
+    expect(parseOpenCuesMd('---\nsentinels-mode: SAFE\n---').sentinelsMode).toBe('safe');
+    expect(parseOpenCuesMd('---\nsentinels-mode: Raw\n---').sentinelsMode).toBe('raw');
     // Anything else stays off — typos / unexpected values fail closed.
-    expect(parseOpenCuesMd('---\nuser-context-mode: on\n---').userContextMode).toBe('off');
-    expect(parseOpenCuesMd('---\nuser-context-mode: yes\n---').userContextMode).toBe('off');
-    expect(parseOpenCuesMd('---\nuser-context-mode: true\n---').userContextMode).toBe('off');
-    expect(parseOpenCuesMd('---\nuser-context-mode: enabled\n---').userContextMode).toBe('off');
+    expect(parseOpenCuesMd('---\nsentinels-mode: on\n---').sentinelsMode).toBe('off');
+    expect(parseOpenCuesMd('---\nsentinels-mode: yes\n---').sentinelsMode).toBe('off');
+    expect(parseOpenCuesMd('---\nsentinels-mode: true\n---').sentinelsMode).toBe('off');
+    expect(parseOpenCuesMd('---\nsentinels-mode: enabled\n---').sentinelsMode).toBe('off');
   });
 
   it('clamps unknown values to safe defaults', () => {
@@ -185,7 +185,7 @@ voice-mode: active
     expect(state.definitions.size).toBeGreaterThan(0);
     // Canonical features the registry covers
     expect(state.definitions.has('voice-mode')).toBe(true);
-    expect(state.definitions.has('user-context-mode')).toBe(true);
+    expect(state.definitions.has('sentinels-mode')).toBe(true);
     // Tunables from MENU_TUNABLES
     expect(state.definitions.has('agent-debounce-ms')).toBe(true);
   });
@@ -398,11 +398,11 @@ describe('ConfigLoader hot-reload', () => {
     expect(loader.opencuesState.voiceMode).toBe('inactive');
   });
 
-  it('user-context-mode hot-reloads from OPENCUES.md edits', async () => {
+  it('sentinels-mode hot-reloads from OPENCUES.md edits', async () => {
     // Same load-bearing contract as ambient — flipping the scalar
     // in OPENCUES.md must take effect on the NEXT keystroke without
     // a host restart. Off → safe → raw → off all need to round-trip.
-    const initial = `---\nuser-context-mode: off\n---\n`;
+    const initial = `---\nsentinels-mode: off\n---\n`;
     const adapter = new MockAdapter({
       files: { '/tips.json': '{"concepts":[]}', '/proj/.cues/OPENCUES.md': initial },
       cwd: '/proj',
@@ -412,19 +412,19 @@ describe('ConfigLoader hot-reload', () => {
       settingsFile: '/proj/.cues/OPENCUES.md',
     });
     await loader.load();
-    expect(loader.opencuesState.userContextMode).toBe('off');
+    expect(loader.opencuesState.sentinelsMode).toBe('off');
 
-    await adapter.writeFile('/proj/.cues/OPENCUES.md', `---\nuser-context-mode: safe\n---\n`);
+    await adapter.writeFile('/proj/.cues/OPENCUES.md', `---\nsentinels-mode: safe\n---\n`);
     await loader.maybeReload();
-    expect(loader.opencuesState.userContextMode).toBe('safe');
+    expect(loader.opencuesState.sentinelsMode).toBe('safe');
 
-    await adapter.writeFile('/proj/.cues/OPENCUES.md', `---\nuser-context-mode: raw\n---\n`);
+    await adapter.writeFile('/proj/.cues/OPENCUES.md', `---\nsentinels-mode: raw\n---\n`);
     await loader.maybeReload();
-    expect(loader.opencuesState.userContextMode).toBe('raw');
+    expect(loader.opencuesState.sentinelsMode).toBe('raw');
 
-    await adapter.writeFile('/proj/.cues/OPENCUES.md', `---\nuser-context-mode: off\n---\n`);
+    await adapter.writeFile('/proj/.cues/OPENCUES.md', `---\nsentinels-mode: off\n---\n`);
     await loader.maybeReload();
-    expect(loader.opencuesState.userContextMode).toBe('off');
+    expect(loader.opencuesState.sentinelsMode).toBe('off');
   });
 
   it('ambient-context-mode hot-reloads from OPENCUES.md edits', async () => {

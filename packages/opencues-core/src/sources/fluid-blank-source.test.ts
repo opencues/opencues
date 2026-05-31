@@ -551,7 +551,7 @@ describe('FluidBlankSource with ambient context', () => {
     }
   });
 
-  // ─── User-context (sentinel-mode personal data) integration ────────────
+  // ─── Sentinels (sentinel-mode personal data) integration ────────────
 
   it('injects USER CONTEXT catalog into the fused user message in safe mode', async () => {
     const { adapter, bodies } = makeRecordingAdapter([
@@ -561,7 +561,7 @@ describe('FluidBlankSource with ambient context', () => {
     await src.getCues({
       text: 'my email _',
       words: ['my', 'email', '_'],
-      userContext: {
+      sentinels: {
         fields: [
           { key: 'firstName', token: '[FIRST NAME]', value: 'Wilfred', description: "user's first name" },
           { key: 'email', token: '[EMAIL]', value: 'wilfred@example.com', description: "user's email" },
@@ -591,7 +591,7 @@ describe('FluidBlankSource with ambient context', () => {
     await src.getCues({
       text: 'my email _',
       words: ['my', 'email', '_'],
-      userContext: {
+      sentinels: {
         fields: [{ key: 'email', token: '[EMAIL]', value: 'wilfred@example.com', description: "user's email" }],
         catalog: new Map([['[EMAIL]', 'wilfred@example.com']]),
         mode: 'raw',
@@ -603,7 +603,7 @@ describe('FluidBlankSource with ambient context', () => {
     assert.match(userMsg, /value: wilfred@example.com/);
   });
 
-  it('omits USER CONTEXT block when context.userContext is undefined', async () => {
+  it('omits USER CONTEXT block when context.sentinels is undefined', async () => {
     const { adapter, bodies } = makeRecordingAdapter([
       'SPAN: capital of france _\nANSWER: Paris',
     ]);
@@ -623,7 +623,7 @@ describe('FluidBlankSource with ambient context', () => {
     const result = await src.getCues({
       text: 'my email _',
       words: ['my', 'email', '_'],
-      userContext: {
+      sentinels: {
         fields: [{ key: 'email', token: '[EMAIL]', value: 'wilfred@example.com', description: "user's email" }],
         catalog: new Map([['[EMAIL]', 'wilfred@example.com']]),
         mode: 'safe',
@@ -645,7 +645,7 @@ describe('FluidBlankSource with ambient context', () => {
     const result = await src.getCues({
       text: 'my dob _',
       words: ['my', 'dob', '_'],
-      userContext: {
+      sentinels: {
         fields: [{ key: 'firstName', token: '[FIRST NAME]', value: 'Wilfred', description: "user's first name" }],
         catalog: new Map([['[FIRST NAME]', 'Wilfred']]),
         mode: 'safe',
@@ -669,7 +669,7 @@ describe('FluidBlankSource with ambient context', () => {
     const result = await src.getCues({
       text: 'i work in _',
       words: ['i', 'work', 'in', '_'],
-      userContext: {
+      sentinels: {
         fields: [{ key: 'workCity', token: '[WORK CITY]', value: 'London', description: "user's work city" }],
         catalog: new Map([['[WORK CITY]', 'London']]),
         mode: 'safe',

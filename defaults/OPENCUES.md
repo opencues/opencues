@@ -18,11 +18,11 @@ cursor-navigate: inactive
 # docs/architecture/ambient-context.md.
 ambient-context-mode: off
 
-# user-context-mode — sentinel-mode personal data injection.
-# Pulls field data from ~/.cues/USER.md (your first name, email,
+# sentinels-mode — sentinel-mode personal data injection.
+# Pulls field data from ~/.cues/SENTINELS.md (your first name, email,
 # work city, etc.) and offers it to FluidBlankSource so `_` lookups
 # personalise without you re-typing the same info.
-#   off  (default): USER.md never read; no personal data reaches any prompt.
+#   off  (default): SENTINELS.md never read; no personal data reaches any prompt.
 #   safe          : catalog of TOKENS + descriptions injected. The LLM
 #                   emits `[FIRST NAME]` etc; a post-processor substitutes
 #                   your real values AFTER the response. Your PII never
@@ -31,8 +31,8 @@ ambient-context-mode: off
 # implementation-complete but deferred to Phase 2 — set it directly
 # here if you want, but it's intentionally not exposed in the
 # selector-satellite menu to prevent accidental flips. See
-# docs/architecture/user-context.md § Future work.
-user-context-mode: off
+# docs/architecture/sentinels.md § Future work.
+sentinels-mode: off
 
 # Surface-availability flags. "on" means the surface is registered and
 # ready to fire when matching input appears; "off" (or omitted) means the

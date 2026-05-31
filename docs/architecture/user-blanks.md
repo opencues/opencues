@@ -140,7 +140,7 @@ JavaScript primitives the user code needs (`Promise`, `URL`, `JSON`,
   exist.
 - `({}).constructor.constructor("return process")()` is the
   classic vm-escape pattern. It works to the extent that it
-  evaluates `process` in the user-context realm — but our realm
+  evaluates `process` in the sentinels realm — but our realm
   doesn't have `process` defined, so the result is `undefined`. The
   escape attempt succeeds at the function-creation step but yields
   nothing useful.

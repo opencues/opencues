@@ -178,21 +178,40 @@ export {
   injectCursorSentinel,
 } from './cursor-sentinel';
 
-// User-context (sentinel-mode personal data): parser, catalog
+// Sentinels (sentinel-mode personal data): parser, catalog
 // renderer, post-processor. Consumed by FluidBlankSource when
-// `user-context-mode` is on in OPENCUES.md.
+// `sentinels-mode` is on in OPENCUES.md.
 export {
-  parseUserMd,
+  parseSentinelsMd,
   deriveToken,
-  renderUserCatalog,
-  postProcessUserContext,
-  type UserContext,
-  type UserContextField,
-  type UserContextMode,
-  type PostProcessOptions as UserContextPostProcessOptions,
-  type PostProcessResult as UserContextPostProcessResult,
-  type PostProcessReport as UserContextPostProcessReport,
-} from './user-context';
+  renderSentinelsCatalog,
+  renderSentinelsCatalogForTransform,
+  postProcessSentinels,
+} from './sentinels';
+
+// SENTINELS.md write-validator — load-bearing safety check for any path
+// that mutates `~/.cues/SENTINELS.md`. Used by the CLI's `sentinels` command
+// today; will be used by a future keyword-bound sentinel blank.
+// See docs/architecture/security-audit.md row #24.
+export {
+  validateSentinelWrite,
+  DEFAULT_SENTINEL_CAPS,
+  type SentinelCaps,
+  type SentinelField,
+  type SentinelWriteOp,
+  type SentinelValidationResult,
+} from './sentinels-validator';
+
+// Re-aliased here just so the trailing `} from './sentinels';` below
+// stays a clean boundary; the original block continues:
+export {
+  type Sentinels,
+  type Sentinel,
+  type SentinelsMode,
+  type PostProcessOptions as SentinelsPostProcessOptions,
+  type PostProcessResult as SentinelsPostProcessResult,
+  type PostProcessReport as SentinelsPostProcessReport,
+} from './sentinels';
 
 // Feature registry — single source of truth for the set of optional
 // features OpenCues exposes via OPENCUES.md scalars. Consumed by

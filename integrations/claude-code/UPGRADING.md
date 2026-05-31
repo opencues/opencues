@@ -191,7 +191,7 @@ Expect the boot line on first keystroke:
 
 ```
 [HH:MM:SS][cc][info] OpenCues runtime starting (Claude Code v2.1)
-[HH:MM:SS][cc][info] ConfigLoader: USER.md → N fields
+[HH:MM:SS][cc][info] ConfigLoader: SENTINELS.md → N fields
 [HH:MM:SS][cc][info] Resolver: built with 5 sources [...]
 ```
 

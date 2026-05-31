@@ -1,7 +1,7 @@
 # Feature Registry
 
 OpenCues has ~13 optional runtime gates (`fluid-blank-mode`,
-`user-context-mode`, `voice-mode`, …) plus a handful of numeric
+`sentinels-mode`, `voice-mode`, …) plus a handful of numeric
 tunables (`agent-debounce-ms`, `max-concurrent-auditors`, …) that
 users can toggle through the selector-satellite menu (`opencues
 settings _`). Each one historically lived in 4–7 different files
@@ -33,8 +33,8 @@ feature is one PR appending one entry; nothing else can drift.**
 
 `FeatureSpec` carries:
 
-- `scalar` — kebab-case OPENCUES.md key (e.g. `'user-context-mode'`)
-- `camelCase` — TypeScript field name (e.g. `'userContextMode'`)
+- `scalar` — kebab-case OPENCUES.md key (e.g. `'sentinels-mode'`)
+- `camelCase` — TypeScript field name (e.g. `'sentinelsMode'`)
 - `values: ValueSpec[]` — each `{id, description, exposeInMenu?}`; first entry is the default
 - `description` — dev-facing one-liner (doctor's feature wiring section)
 - `menuTip?` — user-facing tip shown in the cycling menu (falls back to `description`)
@@ -52,7 +52,7 @@ from the registry:
 
 ```js
 // Old: hardcoded list
-s.ok('user-context-mode', scalars['user-context-mode'] ?? 'off');
+s.ok('sentinels-mode', scalars['sentinels-mode'] ?? 'off');
 s.ok('ambient-context-mode', scalars['ambient-context-mode'] ?? 'off');
 // ... 6 more rows ...
 
@@ -70,7 +70,7 @@ file is empty but the scalar is non-default → warn. Catches the
 
 ```js
 // Old: hardcoded
-for (const filename of ['OPENCUES.md', 'AUDITORS.md', 'USER.md']) {...}
+for (const filename of ['OPENCUES.md', 'AUDITORS.md', 'SENTINELS.md']) {...}
 
 // New: derived
 for (const filename of chromeHostFileList()) {...}
@@ -83,7 +83,7 @@ feature is one entry in FEATURES; host.cjs picks it up automatically.
 ### 3. `seed-configs.cjs` — Templated file copies
 
 ```js
-// Old: hardcoded for AUDITORS.md, USER.md, ...
+// Old: hardcoded for AUDITORS.md, SENTINELS.md, ...
 const auditorsTarget = ...; if (!hasContent(auditorsTarget)) fs.copyFileSync(...);
 const userMdTarget = ...; if (!hasContent(userMdTarget)) fs.copyFileSync(...);
 
@@ -130,7 +130,7 @@ The registry refactor fixed it on all four hosts at once.
 ```ts
 export interface OpenCuesState {
   readonly voiceMode: 'active' | 'inactive';
-  readonly userContextMode: 'off' | 'safe' | 'raw';
+  readonly sentinelsMode: 'off' | 'safe' | 'raw';
   // ...
 }
 ```
@@ -209,7 +209,7 @@ files, ~60 lines, easy to miss one and ship a silent bug.
 
 `exposeInMenu: false` on a `ValueSpec` makes that value
 **parser-valid but absent from the cycling menu**. Today the only
-hidden value is `user-context-mode: raw` — a footgun mode (inlines
+hidden value is `sentinels-mode: raw` — a footgun mode (inlines
 PII into LLM prompts) that should require a deliberate file edit,
 not a one-keystroke toggle.
 
@@ -217,9 +217,9 @@ not a one-keystroke toggle.
 { id: 'raw', description: '...PII reaches provider...', exposeInMenu: false }
 ```
 
-The registry test pins this contract: `user-context-mode`'s
+The registry test pins this contract: `sentinels-mode`'s
 `valueOrder` (the cycling menu's value list) is `['off', 'safe']`,
-NOT `['off', 'safe', 'raw']`. Setting `user-context-mode: raw`
+NOT `['off', 'safe', 'raw']`. Setting `sentinels-mode: raw`
 directly in OPENCUES.md still works — only the cycling path
 refuses to land on it.
 
@@ -281,7 +281,7 @@ Six commits in May 2026 collapsed the pre-registry drift surface:
 | `46478ff` | Doctor's feature wiring section | Hardcoded scalar list |
 | `3bb71ff` | LLM provider registry + host aliases | Provider lists in 6 sites; doctor said GROQ was "default" when chain was cerebras-first |
 | `c76bbef` | BUILTIN_BLANKS + sensitive-field constants | **claude-status missing on CC + gemini-cli** (silent feature gap on 2/4 hosts) |
-| `bddbdf7` | Menu schema into registry | OPENCUES.md `settings:` block duplicated FEATURES values; `user-context-mode: raw` hidden by absence rather than `exposeInMenu: false` |
+| `bddbdf7` | Menu schema into registry | OPENCUES.md `settings:` block duplicated FEATURES values; `sentinels-mode: raw` hidden by absence rather than `exposeInMenu: false` |
 | `224d182` | Doc fixup | Stale "settings block not user-customisable" prose |
 
 Result: `defaults/OPENCUES.md` shrunk 88 lines, the cycling menu

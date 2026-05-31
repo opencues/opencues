@@ -34,6 +34,7 @@ const COMMANDS = {
   list:           () => require('../src/commands/list.cjs'),
   show:           () => require('../src/commands/show.cjs'),
   'set-key':      () => require('../src/commands/set-key.cjs'),
+  sentinels:      () => require('../src/commands/sentinels.cjs'),
   'check-keys':   () => require('../src/commands/check-keys.cjs'),
   update:         () => require('../src/commands/update.cjs'),
   statusline:     () => require('../src/commands/statusline.cjs'),
