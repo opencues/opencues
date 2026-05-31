@@ -129,6 +129,22 @@ export interface ProviderAdapter {
   readonly defaultEndpoint: string;
   /** Default model when the user hasn't picked one. */
   readonly defaultModel: string;
+  /**
+   * Curated list of model ids the fluid-config classifier may route to
+   * for this provider via natural-language `_` ("use cerebras
+   * gpt-oss-120b for cues _"). First entry conventionally matches
+   * `defaultModel`. Power users can still set ANY model string in
+   * OPENCUES.md by hand — this list bounds only what the classifier is
+   * allowed to emit. Each entry should be bench-validated against the
+   * OpenCues pipelines (fluid-blank, transform-blank, agent-rewrite,
+   * cues) for that provider.
+   *
+   * Optional — when omitted, the classifier defaults to picking the
+   * provider's `defaultModel` only (no model selection via NL). Adding
+   * a few entries opens up natural-language model picking without
+   * exposing the full provider catalogue to LLM hallucination.
+   */
+  readonly knownModels?: readonly string[];
   /** The env-var name the boot layer reads to find this provider's API key. */
   readonly envKeyName: string;
   /**
@@ -312,6 +328,16 @@ const GROQ: ProviderAdapter = {
   displayName: 'Groq',
   defaultEndpoint: 'https://api.groq.com/openai/v1/chat/completions',
   defaultModel: 'openai/gpt-oss-120b',
+  // Groq's open-weight gpt-oss tier (verified May 2026). The 20b is
+  // the cheap-fast option; the 120b is the default; llama-3.3-70b is
+  // a non-reasoning alternative for users who want a different model
+  // family. Other Groq models (mixtral, llama-3.1, kimi) work via
+  // direct file edit but aren't surfaced to the fluid-config classifier.
+  knownModels: [
+    'openai/gpt-oss-120b',
+    'openai/gpt-oss-20b',
+    'llama-3.3-70b-versatile',
+  ],
   envKeyName: 'GROQ_API_KEY',
   // gpt-oss-120b at `medium`+`high` overshoots OpenCues' fluid-blank
   // (1500ms) and word-cue (500ms) budgets at Groq's throughput; `low`
@@ -339,6 +365,18 @@ const OPENROUTER: ProviderAdapter = {
   // tier — gives users a free fallback when their primary provider is
   // rate-limited or down. Users override per-feature for paid models.
   defaultModel: 'openai/gpt-oss-120b:free',
+  // OpenRouter is a multi-model router; the curated set here is the
+  // popular cross-provider picks OpenCues bench-validates against.
+  // Users routing to esoteric models (`x-ai/grok-2`, `mistralai/...`)
+  // can still set them via direct file edit; the classifier just
+  // can't reach them.
+  knownModels: [
+    'openai/gpt-oss-120b:free',
+    'openai/gpt-oss-120b',
+    'anthropic/claude-haiku-4-5',
+    'anthropic/claude-opus-4-7',
+    'google/gemini-3.1-flash-lite',
+  ],
   envKeyName: 'OPENROUTER_API_KEY',
   // OpenRouter is a multi-model router — `low` is the cross-model safe
   // default that mirrors what every call site used to hardcode. Picks
@@ -375,6 +413,16 @@ const OPENAI: ProviderAdapter = {
   // actually complete the task on long inputs. Users who want the cheaper
   // tier can override per-feature with `openai-model: gpt-5.4-nano`.
   defaultModel: 'gpt-5.4-mini',
+  // gpt-5.4 tier (released March 2026). nano is the cheapest but
+  // collapses on multi-paragraph rewrites (reasoning-token starvation);
+  // mini is the default; 5.4 proper is the deeper-reasoning option for
+  // agent/auditors. Legacy gpt-4o-* family kept reachable via file edit
+  // for users who explicitly need it.
+  knownModels: [
+    'gpt-5.4-mini',
+    'gpt-5.4',
+    'gpt-5.4-nano',
+  ],
   envKeyName: 'OPENAI_API_KEY',
   // `low` (not `none`) — bench showed `none` is fastest on fluid-blank,
   // but it drops transform-blank-fused 85.3%→28.1% on gpt-5.4-mini
@@ -463,6 +511,15 @@ const OPENAI_SUBSCRIPTION: ProviderAdapter = {
   transport: 'cli',
   defaultEndpoint: '', // unused for CLI transport
   defaultModel: 'gpt-5.4-mini',
+  // Subscription model allow-list (May 2026, verified by probing the
+  // Responses endpoint directly). Every other name returns 400 "not
+  // supported when using Codex with a ChatGPT account."
+  knownModels: [
+    'gpt-5.4-mini',
+    'gpt-5.4',
+    'gpt-5.5',
+    'gpt-5.3-codex',
+  ],
   envKeyName: '', // no env var — auth via `codex login`
   buildRequest() {
     throw new Error('openai-subscription: buildRequest is not used (transport is cli)');
@@ -509,6 +566,15 @@ const GEMINI: ProviderAdapter = {
   // Override per-feature with `<feature>-model:` if you want the
   // 3.1-pro tier for accuracy-critical surfaces.
   defaultModel: 'gemini-3.1-flash-lite',
+  // Gemini 3.1 tier (verified May 2026). flash-lite is the default
+  // (fastest + cheapest); flash adds vision/audio + better reasoning;
+  // pro is the frontier model for deeper writing tasks. Older 2.0
+  // family stays reachable via direct file edit.
+  knownModels: [
+    'gemini-3.1-flash-lite',
+    'gemini-3.1-flash',
+    'gemini-3.1-pro',
+  ],
   envKeyName: 'GEMINI_API_KEY',
   buildRequest(req, ctx) {
     const endpointTemplate = ctx.endpoint ?? this.defaultEndpoint;
@@ -585,6 +651,15 @@ const ANTHROPIC: ProviderAdapter = {
   // override per-feature for Sonnet 4.6 (better writing) or Opus 4.7
   // (deeper reasoning) on prose-heavy surfaces like agent-rewrite.
   defaultModel: 'claude-haiku-4-5-20251001',
+  // Claude 4 tier (May 2026). Haiku 4.5 is the cheap-fast default;
+  // Sonnet 4.6 is the balanced default for prose-heavy auditors;
+  // Opus 4.7 is the deepest-reasoning frontier model. Older 3.x
+  // family stays reachable via direct file edit.
+  knownModels: [
+    'claude-haiku-4-5-20251001',
+    'claude-sonnet-4-6',
+    'claude-opus-4-7',
+  ],
   envKeyName: 'ANTHROPIC_API_KEY',
   buildRequest(req, ctx) {
     const systemMessages = req.messages.filter((m) => m.role === 'system');
@@ -660,6 +735,15 @@ const CEREBRAS: ProviderAdapter = {
   displayName: 'Cerebras',
   defaultEndpoint: 'https://api.cerebras.ai/v1/chat/completions',
   defaultModel: 'gpt-oss-120b',
+  // Cerebras catalogue (May 2026): `gpt-oss-120b`, `qwen-3-235b...`,
+  // `zai-glm-4.7`. `gpt-oss-120b` + `zai-glm-4.7` are paid-only; free
+  // tier collapses to `qwen-3-235b-a22b-instruct-2507` (universally
+  // available 235B MoE). Other Cerebras names reachable via file edit.
+  knownModels: [
+    'gpt-oss-120b',
+    'qwen-3-235b-a22b-instruct-2507',
+    'zai-glm-4.7',
+  ],
   envKeyName: 'CEREBRAS_API_KEY',
   // Cerebras's wafer-scale silicon serves gpt-oss-120b fast enough that
   // `medium` fits every OpenCues pipeline (358ms p50 fluid-blank,
@@ -711,6 +795,14 @@ const CLAUDE_CLI: ProviderAdapter = {
   transport: 'cli',
   defaultEndpoint: '', // unused for CLI transport
   defaultModel: 'haiku', // fastest / cheapest of the supported aliases
+  // Aliases the daemon resolves to families. Full Claude model ids
+  // (`claude-haiku-4-5-20251001`, etc.) also work via direct file
+  // edit; the daemon's resolveModelFamily maps both shapes.
+  knownModels: [
+    'haiku',
+    'sonnet',
+    'opus',
+  ],
   envKeyName: '', // no env var — auth via `claude` install
   buildRequest() {
     // Never called for transport: 'cli'. Throw if it somehow IS called
@@ -774,6 +866,14 @@ const OPENCODE_ZEN: ProviderAdapter = {
   // First entry of the free pool. Used when no model is explicitly set
   // (most common case for `blanks-llm-provider: opencode-zen`).
   defaultModel: 'big-pickle',
+  // OpenCode Zen exposes both paid + free models. `free` is the
+  // sentinel routing to the dispatchWithFreePool path (walks
+  // OPENCODE_ZEN_FREE_POOL). `big-pickle` is the first free-pool
+  // model directly. Paid model ids reachable via direct file edit.
+  knownModels: [
+    'free',
+    'big-pickle',
+  ],
   // Optional. Free models work without it; paid models need it.
   envKeyName: 'OPENCODE_ZEN_API_KEY',
   optionalAuth: true,
