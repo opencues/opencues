@@ -160,6 +160,11 @@ async function doUpdate(host, { skipPull, dryRun }, ctx) {
   // acquireLock to deterministically exercise the race window. Without
   // this hook, the race only fires on slow CI runners (microsecond
   // window). Production never sets either env var.
+  if (process.env.OPENCUES_UPDATE_TEST_HANDLER_MARKER) {
+    // Stderr marker so the integration test can wait for handler-
+    // registration completion instead of guessing a startup delay.
+    process.stderr.write('ready-for-signal\n');
+  }
   const preLockHangMs = parseInt(process.env.OPENCUES_UPDATE_TEST_PRE_LOCK_HANG_MS || '0', 10);
   if (preLockHangMs > 0) await new Promise(r => setTimeout(r, preLockHangMs));
 
