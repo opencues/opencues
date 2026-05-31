@@ -135,6 +135,19 @@ some prose
     expect(parseOpenCuesMd('---\nsentinels-mode: enabled\n---').sentinelsMode).toBe('off');
   });
 
+  it('nav-keymap defaults to auto and only accepts ctrl-alt / ctrl-shift', () => {
+    expect(parseOpenCuesMd('---\n---').navKeymap).toBe('auto');
+    expect(parseOpenCuesMd('---\nnav-keymap: auto\n---').navKeymap).toBe('auto');
+    expect(parseOpenCuesMd('---\nnav-keymap: ctrl-alt\n---').navKeymap).toBe('ctrl-alt');
+    expect(parseOpenCuesMd('---\nnav-keymap: ctrl-shift\n---').navKeymap).toBe('ctrl-shift');
+    // Case-insensitive.
+    expect(parseOpenCuesMd('---\nnav-keymap: Ctrl-Shift\n---').navKeymap).toBe('ctrl-shift');
+    // Anything else stays auto — typos / unexpected values fall back
+    // to the host-aware default rather than disabling navigation.
+    expect(parseOpenCuesMd('---\nnav-keymap: meta-arrow\n---').navKeymap).toBe('auto');
+    expect(parseOpenCuesMd('---\nnav-keymap: shift\n---').navKeymap).toBe('auto');
+  });
+
   it('clamps unknown values to safe defaults', () => {
     const md = `---
 voice-mode: muted

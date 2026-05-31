@@ -323,6 +323,17 @@ export const FEATURES: readonly FeatureSpec[] = [
     ],
   },
   {
+    scalar: 'nav-keymap',
+    camelCase: 'navKeymap',
+    description: 'Modifier combo for word navigation + alternative cycling. `auto` picks ctrl-shift on macOS Terminal.app, ctrl-alt everywhere else. Chrome ignores the scalar and always uses ctrl-alt (ctrl-shift+arrow extends browser text selection).',
+    menuTip: 'Modifier combo for word nav (Left/Right) + alt cycling (Up/Down). `auto` resolves per host: macOS Terminal.app → ctrl-shift; everything else → ctrl-alt.',
+    values: [
+      { id: 'auto',       description: 'Default — pick ctrl-shift on macOS Terminal.app, ctrl-alt everywhere else' },
+      { id: 'ctrl-alt',   description: 'Ctrl+Alt+Arrow (Ctrl+Option+Arrow on macOS). Requires Ghostty / iTerm2 on macOS — Terminal.app strips the modifiers' },
+      { id: 'ctrl-shift', description: 'Ctrl+Shift+Arrow — macOS Terminal.app fallback. Terminal hosts only; chrome always uses ctrl-alt to avoid clobbering browser text selection' },
+    ],
+  },
+  {
     scalar: 'debug-mode',
     camelCase: 'debugMode',
     description: 'Verbose runtime logging (every cue/blank decision)',

@@ -41,7 +41,7 @@ async function setup(text: string) {
   await loader.load();
   const cycling = new Cycling(adapter, hlState, dynDefs, loader);
   cycling.subscribe();
-  const nav = new Navigation(adapter, hlState, dynDefs);
+  const nav = new Navigation(adapter, hlState, dynDefs, loader);
   nav.subscribe();
   return { adapter, hlState, dynDefs, loader, cycling, nav };
 }
@@ -116,6 +116,45 @@ describe('Cycling', () => {
     expect(hlState.wordIndex).toBe(1);
     adapter.fireKey('up', { ctrl: true, alt: true });
     expect(adapter.setTextCalls.at(-1)).toBe('big quick');
+  });
+
+  describe('nav-keymap scalar — ctrl-shift fallback', () => {
+    // Pins the macOS-Terminal.app fallback. The same scenario as the
+    // canonical Ctrl+Alt cycle test, but with `nav-keymap: ctrl-shift`
+    // active. Verifies that (a) ctrl-shift+arrow now drives nav +
+    // cycling, and (b) ctrl-alt+arrow goes inert (the unmatched
+    // handler returns false so the host's own default takes over).
+    async function setupCtrlShift(text: string) {
+      const ctx = await setup(text);
+      // applyOpenCuesScalar is the canonical in-memory mutation
+      // path — the same one selector-satellite cycling uses when the
+      // user flips a setting at runtime. Tests get hot-reload semantics
+      // for free.
+      ctx.loader.applyOpenCuesScalar('nav-keymap', 'ctrl-shift');
+      return ctx;
+    }
+
+    it('Ctrl+Shift+Up drives cycling when nav-keymap: ctrl-shift', async () => {
+      const { adapter, hlState } = await setupCtrlShift('fast slow');
+      hlState.activate(0, 'fast slow');
+      expect(adapter.fireKey('up', { ctrl: true, shift: true })).toBe(true);
+      expect(adapter.setTextCalls.at(-1)).toBe('quick slow');
+    });
+
+    it('Ctrl+Alt+Up is inert when nav-keymap: ctrl-shift', async () => {
+      const { adapter, hlState } = await setupCtrlShift('fast slow');
+      hlState.activate(0, 'fast slow');
+      expect(adapter.fireKey('up', { ctrl: true, alt: true })).toBe(false);
+      expect(adapter.setTextCalls).toEqual([]);
+    });
+
+    it('Ctrl+Shift+Left/Right drives navigation when nav-keymap: ctrl-shift', async () => {
+      const { adapter, hlState } = await setupCtrlShift('big fast');
+      expect(adapter.fireKey('left', { ctrl: true, shift: true })).toBe(true);
+      expect(hlState.wordIndex).toBe(1); // rightmost: fast
+      expect(adapter.fireKey('up', { ctrl: true, shift: true })).toBe(true);
+      expect(adapter.setTextCalls.at(-1)).toBe('big quick');
+    });
   });
 });
 

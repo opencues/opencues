@@ -162,6 +162,22 @@ GNOME, KDE, and most tiling WMs bind Ctrl+Alt+arrow to workspace switching by de
 
 Test: in a fresh shell, press Ctrl+Alt+Right inside `claude-cues`. If your workspace switches, the OS still owns the binding.
 
+### macOS: Terminal.app doesn't forward Ctrl+Alt+arrow
+
+Apple's built-in **Terminal.app does not send the `Ctrl+Alt+arrow` (Control+Option+arrow) escape sequences** that OpenCues navigation relies on. Pressing Ctrl+Alt+Right inside `claude-cues` just moves the cursor one character — the modifiers are stripped before the runtime ever sees them, so word navigation appears dead even though cues still highlight correctly. This is a terminal-emulator limitation, not a Mission Control conflict: the keystroke never reaches the app at all (your workspace does *not* switch).
+
+OpenCues detects Terminal.app automatically (`TERM_PROGRAM=Apple_Terminal`) and switches to **Ctrl+Shift+arrow** as the navigation / cycling combo. The default `nav-keymap: auto` scalar in `~/.cues/OPENCUES.md` handles this without configuration. If you'd rather override:
+
+- `nav-keymap: ctrl-alt` — force the classic combo (use this on Ghostty / iTerm2, which forward Ctrl+Alt+arrow cleanly).
+- `nav-keymap: ctrl-shift` — force the Terminal.app fallback on every terminal host.
+
+The chrome extension ignores the scalar and always uses `Ctrl+Alt+arrow` — `Ctrl+Shift+arrow` extends browser text selection by word and OpenCues won't clobber it.
+
+If you'd prefer to keep your `Ctrl+Alt+arrow` muscle memory, install a forwarding terminal (no further config needed):
+
+- [Ghostty](https://ghostty.org) — `brew install --cask ghostty`
+- [iTerm2](https://iterm2.com) — `brew install --cask iterm2`
+
 ## Troubleshooting
 
 ### `claude-cues` is on PATH but typing produces no cues
