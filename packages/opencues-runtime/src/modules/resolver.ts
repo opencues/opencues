@@ -987,13 +987,24 @@ export class Resolver {
       const target = wordSpans[r.wordIndex];
       if (!target) continue;
       const existing = this.dynDefs.get(r.wordIndex);
+      // Chainable LLM-blank substitutes (fluid-blank / transform-blank)
+      // are EXEMPT from the mid-cycle and blankName guards below — they
+      // explicitly extend an existing same-class chain at this position
+      // via findChainableLlmDef, instead of clobbering it. A blocked
+      // skip here would prevent the chain branch from ever running, so
+      // sequential "translate to japanese → translate to chinese" calls
+      // would silently no-op after the first.
+      const isChainableLlmSource = r.source === 'fluid-blank' || r.source === 'transform-blank';
+      const sameClassChainable = isChainableLlmSource
+        && !!existing?.blankName
+        && existing.blankName === r.source;
       // Don't clobber a user mid-cycle on this word.
-      if (existing && existing.currentIndex > 0) continue;
+      if (existing && existing.currentIndex > 0 && !sameClassChainable) continue;
       // Don't clobber blank-attributed entries (volume/brightness blank
       // fills, satellite cycles, etc.) — those route through their own
       // cycling path and have a script set/get protocol the LLM alts
       // would silently break.
-      if (existing && existing.blankName) continue;
+      if (existing && existing.blankName && !sameClassChainable) continue;
       // Already resolved — same word at the same index, fresh from a
       // prior LLM pass. Without this, every subsequent text-change
       // (typing the next word, adding a space) clobbers the existing
@@ -1086,17 +1097,54 @@ export class Resolver {
         const newWordIndex = newWord ? newWord.index : r.wordIndex;
         const newSpanEnd = newWord ? newWord.end : sub.newCursor;
 
-        const fluidDef: WordDef = {
-          originalWord: '_',
-          alternatives: ['_', ...alts],
-          currentIndex: 1,
-          spanStart: start,
-          spanEnd: newSpanEnd,
-          // blankName locks this def against re-resolution by the LLM —
-          // same mechanism blank-bound entries use to prevent the answer
-          // from being clobbered by RoutedWordSourceGroup synonyms.
-          blankName: 'fluid-blank',
-        };
+        // The "question" — the buffer slice we're replacing. For WIPE
+        // mode this is the user's full prompt phrase (e.g. "translate
+        // hello to japanese _"); for FILL mode it's just "_". Captured
+        // as alts[0] so cycling Down restores what the user typed before
+        // the LLM ran — they can edit the prompt and re-summon.
+        const question = text.slice(start, end);
+
+        // Chain extension: if a prior fluid-blank def sits inside the
+        // new span and is still verbatim at its recorded position, the
+        // user is doing a sequence of substitutions on the same content
+        // (translate to japanese → translate to chinese). Extend the
+        // existing alternatives with [question, answer] so Down walks
+        // back through the full chain. Truncate-on-branch: if the user
+        // cycled back mid-chain before re-summoning, discard the
+        // abandoned tail (alt-history equivalent of git branch).
+        const existingChain = this.dynDefs.findChainableLlmDef(
+          text, start, end, ['fluid-blank'],
+        );
+        let fluidDef: WordDef;
+        if (existingChain) {
+          const baseAlts = existingChain.def.alternatives
+            .slice(0, existingChain.def.currentIndex + 1);
+          const chainedAlts = [...baseAlts, question, alts[0]];
+          fluidDef = {
+            originalWord: existingChain.def.originalWord,
+            alternatives: chainedAlts,
+            currentIndex: chainedAlts.length - 1,
+            spanStart: start,
+            spanEnd: newSpanEnd,
+            blankName: 'fluid-blank',
+          };
+          if (existingChain.wordIndex !== newWordIndex) {
+            this.dynDefs.delete(existingChain.wordIndex);
+          }
+          this.adapter.log('info', `FluidBlank: extending chain (depth=${chainedAlts.length}, prevWordIdx=${existingChain.wordIndex}, newWordIdx=${newWordIndex})`);
+        } else {
+          fluidDef = {
+            originalWord: question,
+            alternatives: [question, alts[0]],
+            currentIndex: 1,
+            spanStart: start,
+            spanEnd: newSpanEnd,
+            // blankName locks this def against re-resolution by the LLM —
+            // same mechanism blank-bound entries use to prevent the answer
+            // from being clobbered by RoutedWordSourceGroup synonyms.
+            blankName: 'fluid-blank',
+          };
+        }
         this.dynDefs.set(newWordIndex, fluidDef);
         wrote++;
 
@@ -1510,18 +1558,51 @@ export class Resolver {
         const newWordIndex = firstSpliceWord ? firstSpliceWord.index : 0;
         const newSpanEnd = newWords.length > 0 ? newWords[newWords.length - 1].end : bufferText.length;
 
-        const transformDef: WordDef = {
-          originalWord: originalText,
-          // alternatives[0] = original full text (cycle Down to revert)
-          // alternatives[1] = the post-substitution buffer (cycle Up returns here)
-          alternatives: [originalText, bufferText],
-          currentIndex: 1,            // showing rewrite
-          spanStart: 0,
-          spanEnd: newSpanEnd,
-          // blankName locks this def from re-resolution by the LLM —
-          // same mechanism fluid-blank uses.
-          blankName: 'transform-blank',
-        };
+        // Chain extension: if a prior transform-blank def's current alt
+        // is still verbatim inside the pre-substitute buffer, the user
+        // is doing a sequence of rewrites on the same content
+        // (translate to japanese → translate to chinese). Extend the
+        // existing chain with [pre-substitute-buffer, post-substitute-
+        // buffer] so Down walks back through every rewrite waypoint
+        // AND the user's prompt-additions between them.
+        // Truncate-on-branch: if the user cycled mid-chain before
+        // re-summoning, discard the abandoned tail.
+        const existingChain = this.dynDefs.findChainableLlmDef(
+          originalText, 0, originalText.length, ['transform-blank'],
+        );
+        let transformDef: WordDef;
+        let extendedFromIdx: number | null = null;
+        if (existingChain) {
+          const baseAlts = existingChain.def.alternatives
+            .slice(0, existingChain.def.currentIndex + 1);
+          const chainedAlts = [...baseAlts, originalText, bufferText];
+          transformDef = {
+            originalWord: existingChain.def.originalWord,
+            alternatives: chainedAlts,
+            currentIndex: chainedAlts.length - 1,
+            spanStart: 0,
+            spanEnd: newSpanEnd,
+            blankName: 'transform-blank',
+          };
+          extendedFromIdx = existingChain.wordIndex;
+          if (existingChain.wordIndex !== newWordIndex) {
+            this.dynDefs.delete(existingChain.wordIndex);
+          }
+          this.adapter.log('info', `TransformBlank: extending chain (depth=${chainedAlts.length}, prevWordIdx=${existingChain.wordIndex}, newWordIdx=${newWordIndex})`);
+        } else {
+          transformDef = {
+            originalWord: originalText,
+            // alternatives[0] = original full text (cycle Down to revert)
+            // alternatives[1] = the post-substitution buffer (cycle Up returns here)
+            alternatives: [originalText, bufferText],
+            currentIndex: 1,            // showing rewrite
+            spanStart: 0,
+            spanEnd: newSpanEnd,
+            // blankName locks this def from re-resolution by the LLM —
+            // same mechanism fluid-blank uses.
+            blankName: 'transform-blank',
+          };
+        }
         // Prune stale defs the substitute invalidated.
         // (a) Sentence-cue defs were resolved against pre-substitute text;
         //     their spanStart/spanEnd indices now point at unrelated content
@@ -1533,6 +1614,7 @@ export class Resolver {
         let prunedCount = 0;
         for (const [idx, d] of this.dynDefs.entries()) {
           if (idx === newWordIndex) continue;            // keep the one we just set
+          if (extendedFromIdx !== null && idx === extendedFromIdx) continue; // skip the old chain key (already deleted above if differing)
           const isSentenceCue = d.blankName?.startsWith('sentence-cue:') ?? false;
           const outOfRange = d.spanEnd !== undefined && d.spanEnd > bufferText.length;
           if (isSentenceCue || outOfRange) {

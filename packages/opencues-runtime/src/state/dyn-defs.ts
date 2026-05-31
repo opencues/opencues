@@ -285,6 +285,49 @@ export class DynDefs {
    * Returns the FIRST edited span found, or null. One per text-change
    * event is enough; the next event re-scans.
    */
+  /**
+   * Find an existing LLM-blank def whose current alt is still verbatim in
+   * `liveText` at its recorded span, AND whose span is fully contained in
+   * the new substitute's `[newSpanStart, newSpanEnd)`. Used by the
+   * fluid-blank / transform-blank chain extension at substitute time so a
+   * sequence of LLM rewrites builds one walkable history instead of
+   * clobbering the prior result.
+   *
+   * Containment + verbatim is the structural fix that scopes "extend the
+   * chain" to "this new substitute fully encompasses an unchanged prior
+   * substitute". User edits inside the prior result break verbatim → fresh
+   * def, no chain. User edits outside the prior result preserve verbatim →
+   * chain extends with the new outer body as the pre-substitute question.
+   *
+   * `blankNames` lets the caller scope which class of chain to look for
+   * (e.g. only `['transform-blank']` so a fluid-blank doesn't graft onto a
+   * transform-blank chain — different pipelines, different intent).
+   *
+   * Returns the FIRST match. Sequential whole-buffer LLM substitutes
+   * structurally produce at most one matching def; FILL-mode FB at the
+   * same word position likewise. Ambiguity is not expected in practice.
+   */
+  findChainableLlmDef(
+    liveText: string,
+    newSpanStart: number,
+    newSpanEnd: number,
+    blankNames: readonly string[],
+  ): { wordIndex: number; def: WordDef } | null {
+    for (const [wordIndex, def] of this._defs.entries()) {
+      if (!def.blankName || !blankNames.includes(def.blankName)) continue;
+      // Existing def's span must be fully contained in the new substitute's range.
+      if (def.spanStart < newSpanStart) continue;
+      if (def.spanEnd > newSpanEnd) continue;
+      // Verbatim check — the current alt must still be at its recorded
+      // position. Any edit inside the prior result breaks the chain.
+      const currentAlt = def.alternatives[def.currentIndex];
+      if (currentAlt === undefined) continue;
+      if (liveText.slice(def.spanStart, def.spanEnd) !== currentAlt) continue;
+      return { wordIndex, def };
+    }
+    return null;
+  }
+
   findEditedSpan(
     currentText: string,
     filter?: (def: WordDef) => boolean,
