@@ -1,6 +1,6 @@
 {
   "name": "@opencues/claude-code",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "OpenCues for Claude Code \u2014 patches Claude Code's CLI via tweakcc to add real-time word alternatives, blanks, and cue-controls.",
   "compatibility": {
