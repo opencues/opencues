@@ -581,7 +581,7 @@ Everything except the placeholder is currently `private: true`. Flipping a packa
 
 ## Versioning policy
 
-Semver per package, stay <1.0 until public launch, bump in the same commit as the change, integrations bump independently of core/runtime. `SPEC_VERSION` bumps only on wire-format changes. Full policy with per-package bump rules: [docs/architecture/versioning.md](docs/architecture/versioning.md).
+Semver per package, stay <1.0 until public launch, bump in the same commit as the change, integrations bump independently of core/runtime. `SPEC_VERSION` bumps only on wire-format changes. **Every version bump also updates `CHANGELOG.md` (root) in the same PR**; spec-affecting changes also update `spec/CHANGELOG.md`. Full policy with per-package bump rules + changelog discipline: [docs/architecture/versioning.md](docs/architecture/versioning.md).
 
 ---
 
