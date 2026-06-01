@@ -132,13 +132,11 @@ function printLaunchBanner(ctx, host, rows, opts = {}) {
 // print; the actual key dispatch is owned by the runtime, which has
 // its own (canonical) resolver.
 //
-//   - chrome: always Ctrl+Alt — the browser owns Ctrl+Shift+arrow
-//     for "extend text selection by word" and the runtime hard-pins
-//     chrome to ctrl-alt regardless of the user's OPENCUES.md scalar.
-//   - Everything else (incl. macOS Terminal.app): Ctrl+Alt. With
-//     Option-as-Meta on, Ctrl+Option+arrow survives Terminal.app as
-//     Meta-prefixed CSI; the terminal adapters coalesce option/meta
-//     into the runtime's `alt` modifier, so the hint matches reality.
+//   - macOS (any host): Ctrl+Option — that's the physical key label
+//     on a Mac keyboard. Terminal.app cannot transmit this chord
+//     (the byte stream lacks the Ctrl bit); Ghostty / iTerm2 do.
+//     Chrome on macOS works via DOM altKey regardless of terminal.
+//   - Everything else: Ctrl+Alt.
 //
 // Does NOT read the user's explicit `nav-keymap: ctrl-alt|ctrl-shift`
 // override in ~/.cues/OPENCUES.md — the banner is informational and
@@ -146,7 +144,7 @@ function printLaunchBanner(ctx, host, rows, opts = {}) {
 // honour explicit overrides here, a 5-line regex grep against the
 // file is enough; no need to import the full ConfigLoader.
 function pickNavCombo(host) {
-  if (host === 'chrome') return 'Ctrl+Alt';
+  if (process.platform === 'darwin') return 'Ctrl+Option';
   return 'Ctrl+Alt';
 }
 
@@ -175,13 +173,11 @@ function sleepSync(ms) {
 // print; the actual key dispatch is owned by the runtime, which has
 // its own (canonical) resolver.
 //
-//   - chrome: always Ctrl+Alt — the browser owns Ctrl+Shift+arrow
-//     for "extend text selection by word" and the runtime hard-pins
-//     chrome to ctrl-alt regardless of the user's OPENCUES.md scalar.
-//   - Everything else (incl. macOS Terminal.app): Ctrl+Alt. With
-//     Option-as-Meta on, Ctrl+Option+arrow survives Terminal.app as
-//     Meta-prefixed CSI; the terminal adapters coalesce option/meta
-//     into the runtime's `alt` modifier, so the hint matches reality.
+//   - macOS (any host): Ctrl+Option — that's the physical key label
+//     on a Mac keyboard. Terminal.app cannot transmit this chord
+//     (the byte stream lacks the Ctrl bit); Ghostty / iTerm2 do.
+//     Chrome on macOS works via DOM altKey regardless of terminal.
+//   - Everything else: Ctrl+Alt.
 //
 // Does NOT read the user's explicit `nav-keymap: ctrl-alt|ctrl-shift`
 // override in ~/.cues/OPENCUES.md — the banner is informational and
@@ -189,7 +185,7 @@ function sleepSync(ms) {
 // honour explicit overrides here, a 5-line regex grep against the
 // file is enough; no need to import the full ConfigLoader.
 function pickNavCombo(host) {
-  if (host === 'chrome') return 'Ctrl+Alt';
+  if (process.platform === 'darwin') return 'Ctrl+Option';
   return 'Ctrl+Alt';
 }
 
