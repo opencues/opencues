@@ -20,6 +20,166 @@
 import type { HostAdapter, LogLevel } from './adapter';
 import type { ResolvedAgentLLM } from './modules/agent-rewrite';
 
+/* ─── Direct-launch drift advisory ───────────────────────────────────────
+ *
+ * `opencues run <host>` calls a CLI-side srcHash check + auto-rebuild
+ * before spawning the host (see PR #42). Direct launches —
+ * `claude-cues` typed straight from bash, `oc-shell` aliased to a
+ * key, anything that bypasses `opencues run` — never hit that path.
+ *
+ * `checkRuntimeDrift` closes the gap from the runtime side. The
+ * runtime knows its own bundled version (from its package.json) and
+ * reads the marker the installer wrote at install time. If the
+ * marker records a `repoRoot` AND the repo's current runtime
+ * package.json version is HIGHER than the running runtime's version,
+ * we warn the user once at boot — they have unpulled-bundle drift.
+ *
+ * Limits:
+ *   - Doesn't compute srcHash (would walk 200+ files at boot — too
+ *     expensive). Catches "version was bumped in source but bundle
+ *     wasn't re-installed". Doesn't catch "source changed without a
+ *     version bump" — that's exclusively the CLI's srcHash check
+ *     fires via `opencues run`. Direct-launch users see drift only
+ *     when versions were bumped.
+ *   - Silently skips when (a) no marker file found, (b) marker has
+ *     no repoRoot, (c) repoRoot doesn't exist on disk (npm-published
+ *     install with no clone), (d) `host.readFile` is unavailable
+ *     (chrome — no node fs). Designed for fail-open: never blocks a
+ *     legitimate launch.
+ *   - Marker discovery is a fixed list of relative paths off the
+ *     runtime's own location. Hosts that install the marker
+ *     elsewhere need a candidate entry added.
+ *
+ * Output: one `[opencues] WARN: bundled runtime <X> < source <Y> —
+ * run \`opencues update <host>\` to pick up changes.` line via
+ * `adapter.log('warn', ...)`. Same channel every other boot log uses.
+ */
+export async function checkRuntimeDrift(
+  adapter: HostAdapter,
+  options: { runtimeVersion?: string } = {},
+): Promise<void> {
+  try {
+    // Node-only path — chrome has no `fs` / `path`. The dynamic require
+    // throws under the chrome stub; we catch and silent-skip.
+    const fs = (await import('node:fs')).default;
+    const path = (await import('node:path')).default;
+
+    // Find this runtime's bundled package.json so we know our own
+    // version. We're running from `<install root>/node_modules/@opencues/runtime/dist/...`.
+    // The package.json sits two levels up from dist/ (dist/src/* → dist/* → package.json).
+    // Multiple candidate depths cover both the dist/src/ layout and
+    // dist/ flat layout some bundlers produce.
+    const runtimeBundlePkg = locatePackageJson(fs, path, __dirname);
+    if (!runtimeBundlePkg) return;
+    const bundlePkg = safeReadJson(fs, runtimeBundlePkg);
+    const bundledVersion: string | null = options.runtimeVersion
+      ?? (bundlePkg && typeof bundlePkg.version === 'string' ? bundlePkg.version : null);
+    if (!bundledVersion) return;
+
+    // Marker candidates — derived from where each host installs.
+    // host.cwd is the user's working dir, NOT the install root, so we
+    // walk up from the runtime's dist location to find the install
+    // root (3 levels: dist/src/<file> → dist/src → dist → @opencues/runtime → @opencues → node_modules → <fork>).
+    // Then probe each host's marker dir.
+    const installRoot = findInstallRoot(fs, path, runtimeBundlePkg);
+    if (!installRoot) return;
+    const markerCandidates = [
+      path.join(installRoot, '.cues', 'version.json'),       // CC
+      path.join(installRoot, '.opencues', 'version.json'),   // OC / gemini
+      path.join(installRoot, 'node_modules', '@opencues', 'version.json'), // shell self-owned
+    ];
+    let marker: Record<string, unknown> | null = null;
+    for (const c of markerCandidates) {
+      const parsed = safeReadJson(fs, c);
+      if (parsed && typeof parsed === 'object') {
+        marker = parsed;
+        break;
+      }
+    }
+    const repoRoot = marker && typeof marker.repoRoot === 'string' ? marker.repoRoot : null;
+    if (!repoRoot) return;
+
+    // Compare bundled runtime version against the source's current
+    // runtime version. If source moved ahead, warn.
+    const sourceRuntimePkg = path.join(repoRoot, 'packages', 'opencues-runtime', 'package.json');
+    const sourcePkg = safeReadJson(fs, sourceRuntimePkg);
+    const sourceVersion = sourcePkg && typeof sourcePkg.version === 'string' ? sourcePkg.version : null;
+    if (!sourceVersion) return;
+    if (sourceVersion === bundledVersion) return; // fresh
+    if (!isHigherVersion(sourceVersion, bundledVersion)) return; // source is OLDER (rollback) — don't nag
+
+    adapter.log(
+      'warn',
+      `[opencues] bundled runtime ${bundledVersion} is older than source ${sourceVersion} ` +
+      `at ${repoRoot}. Run \`opencues run ${adapter.hostName}\` (auto-rebuilds) or ` +
+      `\`opencues update ${adapter.hostName}\` to refresh the bundle. ` +
+      `Pass \`--no-rebuild-check\` to suppress this if intended.`,
+    );
+  } catch {
+    // Any failure (chrome stub, missing fs, parse error, permissions)
+    // → silent skip. Drift advisory is never load-bearing.
+  }
+}
+
+function safeReadJson(
+  fs: typeof import('node:fs'),
+  p: string,
+): Record<string, unknown> | null {
+  try {
+    const raw = fs.readFileSync(p, 'utf8');
+    return JSON.parse(raw);
+  } catch { return null; }
+}
+
+function locatePackageJson(
+  fs: typeof import('node:fs'),
+  path: typeof import('node:path'),
+  startDir: string,
+): string | null {
+  // Walk up from startDir looking for a package.json whose name is
+  // @opencues/runtime. Caps at 6 levels — runtime dist depth is
+  // usually 2-4.
+  let dir = startDir;
+  for (let i = 0; i < 6; i++) {
+    const candidate = path.join(dir, 'package.json');
+    const parsed = safeReadJson(fs, candidate);
+    if (parsed && parsed.name === '@opencues/runtime') return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
+function findInstallRoot(
+  fs: typeof import('node:fs'),
+  path: typeof import('node:path'),
+  runtimePkgPath: string,
+): string | null {
+  // runtimePkgPath is `<install root>/node_modules/@opencues/runtime/package.json`
+  // for fork-style installs. Walk up to the directory CONTAINING node_modules.
+  const runtimeDir = path.dirname(runtimePkgPath); // /node_modules/@opencues/runtime
+  const opencuesDir = path.dirname(runtimeDir);    // /node_modules/@opencues
+  const nodeModulesDir = path.dirname(opencuesDir); // /node_modules
+  if (path.basename(nodeModulesDir) !== 'node_modules') return null;
+  return path.dirname(nodeModulesDir);
+}
+
+function isHigherVersion(a: string, b: string): boolean {
+  // Simple semver compare — works for our 0.x.y range. Returns true
+  // iff a > b. Falls back to string compare on parse failure.
+  const ax = a.split('.').map(n => parseInt(n, 10));
+  const bx = b.split('.').map(n => parseInt(n, 10));
+  for (let i = 0; i < Math.max(ax.length, bx.length); i++) {
+    const av = ax[i] ?? 0;
+    const bv = bx[i] ?? 0;
+    if (Number.isNaN(av) || Number.isNaN(bv)) return a > b;
+    if (av > bv) return true;
+    if (av < bv) return false;
+  }
+  return false;
+}
+
 
 /* ─── Source reclassification helper ─────────────────────────────────────
  *
@@ -281,6 +441,13 @@ export function buildSharedRuntime(
   opts: BuildSharedRuntimeOptions,
 ): SharedRuntime {
   const { log, configSearchPaths, settingsFile } = opts;
+
+  // Fire-and-forget direct-launch drift advisory. Runs once per boot,
+  // catches users who launched the host directly (bypassing
+  // `opencues run`'s CLI-side srcHash check). Silent skip when no
+  // marker / no repo / chrome / any error. See `checkRuntimeDrift`
+  // for the limits.
+  void checkRuntimeDrift(adapter);
 
   // ConfigLoader first — every other module depends on it. load() runs
   // async; modules tolerate the empty pre-load window.
