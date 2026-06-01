@@ -162,21 +162,23 @@ GNOME, KDE, and most tiling WMs bind Ctrl+Alt+arrow to workspace switching by de
 
 Test: in a fresh shell, press Ctrl+Alt+Right inside `claude-cues`. If your workspace switches, the OS still owns the binding.
 
-### macOS: Terminal.app doesn't forward Ctrl+Alt+arrow
+### macOS: Terminal.app needs "Use Option as Meta key"
 
-Apple's built-in **Terminal.app does not send the `Ctrl+Alt+arrow` (Control+Option+arrow) escape sequences** that OpenCues navigation relies on. Pressing Ctrl+Alt+Right inside `claude-cues` just moves the cursor one character — the modifiers are stripped before the runtime ever sees them, so word navigation appears dead even though cues still highlight correctly. This is a terminal-emulator limitation, not a Mission Control conflict: the keystroke never reaches the app at all (your workspace does *not* switch).
+Apple's built-in **Terminal.app does not forward `Ctrl+Option+arrow` by default** — the Option key gets eaten unless you opt in. Pressing Ctrl+Alt+Right inside `claude-cues` just moves the cursor one character — the modifiers never reach the runtime, so word navigation appears dead even though cues still highlight correctly. (This is a terminal-emulator setting, not a Mission Control conflict: your workspace does *not* switch.)
 
-OpenCues detects Terminal.app automatically (`TERM_PROGRAM=Apple_Terminal`) and switches to **Ctrl+Shift+arrow** as the navigation / cycling combo. The default `nav-keymap: auto` scalar in `~/.cues/OPENCUES.md` handles this without configuration. If you'd rather override:
+**Fix (one checkbox):** Terminal.app → Settings → Profiles → *your profile* → Keyboard → check **"Use Option as Meta key"**. With that enabled, Ctrl+Option+arrow arrives as Meta-prefixed CSI (`ESC ESC [A` etc.); OpenCues' terminal adapters coalesce option/meta into the runtime's `alt` modifier, so the default `nav-keymap: auto` (= `ctrl-alt`) works the same as on every other host.
 
-- `nav-keymap: ctrl-alt` — force the classic combo (use this on Ghostty / iTerm2, which forward Ctrl+Alt+arrow cleanly).
-- `nav-keymap: ctrl-shift` — force the Terminal.app fallback on every terminal host.
+Manual override if you'd rather use a different combo:
+
+- `nav-keymap: ctrl-alt` — the default. Ctrl+Alt+arrow / Ctrl+Option+arrow.
+- `nav-keymap: ctrl-shift` — Ctrl+Shift+arrow. Useful on terminals that forward ctrl-shift but not ctrl-alt; note that Terminal.app *strips* Ctrl+Shift+arrow, so this is NOT the right fallback for Terminal.app.
 
 The chrome extension ignores the scalar and always uses `Ctrl+Alt+arrow` — `Ctrl+Shift+arrow` extends browser text selection by word and OpenCues won't clobber it.
 
-If you'd prefer to keep your `Ctrl+Alt+arrow` muscle memory, install a forwarding terminal (no further config needed):
+If you'd rather not toggle Option-as-Meta, a forwarding terminal works too (no config needed):
 
 - [Ghostty](https://ghostty.org) — `brew install --cask ghostty`
-- [iTerm2](https://iterm2.com) — `brew install --cask iterm2`
+- [iTerm2](https://iterm2.com) — `brew install --cask iterm2` (also has an "Option as Meta" toggle under Profiles → Keys)
 
 ## Troubleshooting
 

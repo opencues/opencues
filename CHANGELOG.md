@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fixed — macOS Terminal.app: Ctrl+Option+arrow now works (was silently dead)
+
+A tester on Mac Terminal.app reported `Ctrl+Alt+arrow` doing nothing inside `oc-shell`. `cat -v` testing confirmed Ctrl+Option+arrow actually survives Terminal.app cleanly as Meta-prefixed CSI (`ESC ESC [A` etc.) when **Use Option as Meta key** is enabled — but two layers in the runtime were dropping it:
+
+- **`integrations/shell/src/bootstrap.ts`** modifier coalesce was `alt: !!evt.option || !!evt.alt`. OpenTUI surfaces Mac's Option key as `meta: true` when the byte stream is ESC-prefixed; without `meta` in the coalesce, the runtime saw `alt: false` and the `ctrl-alt` keymap matcher never fired. The CC adapter at `packages/opencues-runtime/adapters/cc/v2.1/adapter.ts:339` already had the right coalesce (`raw.alt || raw.option || raw.meta`) — shell is now aligned. ([@opencues/shell](integrations/shell/) 0.1.2 → 0.1.3)
+- **`packages/opencues-runtime/src/modules/nav-keymap.ts`** used to auto-fall-back to `ctrl-shift` when `TERM_PROGRAM=Apple_Terminal`, based on the wrong assumption that Ctrl+Alt+arrow was stripped. Per the tester's data, *Ctrl+Shift+arrow* is the combo Terminal.app actually strips — the fallback was making things worse. Removed the special-case; `auto` now resolves to `ctrl-alt` everywhere (chrome stays hard-pinned). ([@opencues/runtime](packages/opencues-runtime/) 0.1.9 → 0.1.10, [@opencues/core](packages/opencues-core/) 0.1.6 → 0.1.7, [opencues CLI](packages/opencues-cli/) 0.1.7 → 0.1.8)
+- **`docs/install.md`** rewrites the macOS Terminal.app section to point users at the one-checkbox fix (Profiles → Keyboard → "Use Option as Meta key") instead of recommending the broken ctrl-shift fallback.
+
+User-facing upgrade path: `opencues run <host>` auto-rebuilds on next launch (srcHash drift detection from June 2026). Terminal.app users additionally need to toggle "Use Option as Meta key" on their profile — there's no way to do that from inside the app.
+
 ### Added — Self-healing forks: `opencues run <host>` auto-rebuilds on source drift
 
 The "git pull and existing forks silently keep running pre-pull bytecode forever" trap is now closed structurally. Three pieces shipping together in this batch:

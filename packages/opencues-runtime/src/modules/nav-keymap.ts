@@ -8,12 +8,18 @@
 //     shortcut in every browser textarea / contenteditable. Stealing
 //     it would clobber user muscle memory for a primary action — not
 //     worth the gain on a single misbehaving terminal.
-//   - macOS Terminal.app (TERM_PROGRAM === 'Apple_Terminal'):
-//     'ctrl-shift'. Apple's Terminal.app strips Ctrl+Alt+arrow before
-//     the running app ever sees it, so ctrl-alt is a dead default
-//     there. Ghostty / iTerm2 both forward Ctrl+Alt+arrow cleanly,
-//     so they stay on the ctrl-alt default.
 //   - Everything else: 'ctrl-alt'.
+//
+// macOS Terminal.app note (verified June 2026 via `cat -v`):
+// Ctrl+Option+arrow with Option-as-Meta enabled DOES survive Terminal.app
+// — it arrives as Meta-prefixed CSI (`ESC ESC [A` etc.). Both terminal
+// adapters (cc/v2.1 + shell/v1) coalesce option/meta into the runtime's
+// `alt` modifier, so `ctrl-alt` is the correct default there too. An
+// earlier auto-fallback to `ctrl-shift` on Apple_Terminal was based on a
+// wrong assumption (we thought Ctrl+Alt was stripped); the actual story
+// is that *Ctrl+Shift+arrow* is the one Terminal.app strips, so the
+// fallback was making things worse. Users who'd rather use `ctrl-shift`
+// in iTerm2 / Ghostty can still set it explicitly.
 //
 // Explicit `ctrl-alt` / `ctrl-shift` always wins over `auto`. The
 // menu still lets users override the auto pick from the cycling UI.
@@ -32,8 +38,5 @@ export function resolveNavKeymap(
   // belt-and-braces second check in the resolver itself.
   if (hostName === 'chrome') return 'ctrl-alt';
   if (configured === 'ctrl-alt' || configured === 'ctrl-shift') return configured;
-  const termProgram = typeof process !== 'undefined' && process.env
-    ? process.env.TERM_PROGRAM
-    : undefined;
-  return termProgram === 'Apple_Terminal' ? 'ctrl-shift' : 'ctrl-alt';
+  return 'ctrl-alt';
 }

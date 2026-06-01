@@ -417,7 +417,7 @@ export function dispatchOpenCuesKey(evt: any): boolean {
     key: normaliseKeyName(evt),
     modifiers: {
       ctrl: !!evt.ctrl,
-      alt: !!evt.option || !!evt.alt,
+      alt: !!evt.option || !!evt.alt || !!evt.meta,
       shift: !!evt.shift,
       meta: !!evt.meta,
     },

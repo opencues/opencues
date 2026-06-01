@@ -135,10 +135,10 @@ function printLaunchBanner(ctx, host, rows, opts = {}) {
 //   - chrome: always Ctrl+Alt — the browser owns Ctrl+Shift+arrow
 //     for "extend text selection by word" and the runtime hard-pins
 //     chrome to ctrl-alt regardless of the user's OPENCUES.md scalar.
-//   - macOS Terminal.app (TERM_PROGRAM=Apple_Terminal): Ctrl+Shift
-//     — Apple's Terminal.app strips Ctrl+Alt+arrow before the running
-//     app sees it, so the runtime auto-switches and so does this hint.
-//   - Everything else: Ctrl+Alt.
+//   - Everything else (incl. macOS Terminal.app): Ctrl+Alt. With
+//     Option-as-Meta on, Ctrl+Option+arrow survives Terminal.app as
+//     Meta-prefixed CSI; the terminal adapters coalesce option/meta
+//     into the runtime's `alt` modifier, so the hint matches reality.
 //
 // Does NOT read the user's explicit `nav-keymap: ctrl-alt|ctrl-shift`
 // override in ~/.cues/OPENCUES.md — the banner is informational and
@@ -147,7 +147,6 @@ function printLaunchBanner(ctx, host, rows, opts = {}) {
 // file is enough; no need to import the full ConfigLoader.
 function pickNavCombo(host) {
   if (host === 'chrome') return 'Ctrl+Alt';
-  if (process.env.TERM_PROGRAM === 'Apple_Terminal') return 'Ctrl+Shift';
   return 'Ctrl+Alt';
 }
 
@@ -179,10 +178,10 @@ function sleepSync(ms) {
 //   - chrome: always Ctrl+Alt — the browser owns Ctrl+Shift+arrow
 //     for "extend text selection by word" and the runtime hard-pins
 //     chrome to ctrl-alt regardless of the user's OPENCUES.md scalar.
-//   - macOS Terminal.app (TERM_PROGRAM=Apple_Terminal): Ctrl+Shift
-//     — Apple's Terminal.app strips Ctrl+Alt+arrow before the running
-//     app sees it, so the runtime auto-switches and so does this hint.
-//   - Everything else: Ctrl+Alt.
+//   - Everything else (incl. macOS Terminal.app): Ctrl+Alt. With
+//     Option-as-Meta on, Ctrl+Option+arrow survives Terminal.app as
+//     Meta-prefixed CSI; the terminal adapters coalesce option/meta
+//     into the runtime's `alt` modifier, so the hint matches reality.
 //
 // Does NOT read the user's explicit `nav-keymap: ctrl-alt|ctrl-shift`
 // override in ~/.cues/OPENCUES.md — the banner is informational and
@@ -191,7 +190,6 @@ function sleepSync(ms) {
 // file is enough; no need to import the full ConfigLoader.
 function pickNavCombo(host) {
   if (host === 'chrome') return 'Ctrl+Alt';
-  if (process.env.TERM_PROGRAM === 'Apple_Terminal') return 'Ctrl+Shift';
   return 'Ctrl+Alt';
 }
 
