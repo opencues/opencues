@@ -81,6 +81,16 @@ const common = {
   alias: {
     '@opencues/core/node-http-adapter': new URL('./src/stubs/node-http-adapter-stub.ts', import.meta.url).pathname,
   },
+  // boot-common's checkRuntimeDrift (PR #47) dynamically imports
+  // node:fs + node:path for the direct-launch advisory. Those
+  // modules don't exist in the browser, but the function's own
+  // try/catch catches the failed import and silent-skips. Marking
+  // them external tells esbuild "emit the dynamic import as-is,
+  // don't try to bundle" — the import then throws at runtime in
+  // chrome and the silent-skip path fires. Without this, the
+  // chrome build hard-fails at "node:path wasn't found on the
+  // file system but is built into node."
+  external: ['node:fs', 'node:path'],
 };
 
 // Content script — IIFE (injected into page context)
