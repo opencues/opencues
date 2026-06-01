@@ -35,7 +35,16 @@
 #   OPENCUES_CC_TARGET=<path>    cli.js to patch (default: auto-detect under fork)
 #
 
-set -e
+# pipefail is load-bearing here: every install step is piped through
+# `tail -N` to keep the user-visible output short. Without pipefail,
+# a failing `npm install ... | tail -3` returns tail's exit (0) and
+# set -e doesn't fire — the script silently marches on with no
+# node_modules/, then fails late at the dist-verification step with
+# a misleading "tweakcc dist contains no opencues v2 code" message.
+# Caught June 2026 after a transient npm error left tweakcc deps
+# missing on a real user install. See `assert_dir_nonempty` below
+# for the belt-and-braces post-install check.
+set -eo pipefail
 
 # BSD sed (macOS) requires an explicit extension arg after -i (even empty '');
 # GNU sed (Linux/WSL) does not accept it as a separate argument.
@@ -228,6 +237,18 @@ if $KEEP_STATE && [ -d "$TWEAKCC_DIR/.git" ]; then
 else
   git clone https://github.com/Piebald-AI/tweakcc "$TWEAKCC_DIR"
   (cd "$TWEAKCC_DIR" && npm install --legacy-peer-deps --no-audit --no-fund 2>&1 | tail -3)
+  # Belt-and-braces — pipefail (top of file) already aborts on a
+  # failing `npm install`, but a flake of "exited 0 + node_modules
+  # incomplete" would still slip through. This check looks for the
+  # specific binary the next build step needs (tsc); missing means
+  # the build will fail with a misleading "tsc: not found" error
+  # downstream. Better to fail here with the real cause.
+  if [ ! -x "$TWEAKCC_DIR/node_modules/.bin/tsc" ]; then
+    echo "FATAL: tweakcc deps incomplete — $TWEAKCC_DIR/node_modules/.bin/tsc missing after npm install." >&4
+    echo "  Likely cause: npm install hit a transient error (network, registry, peer dep)." >&4
+    echo "  Recover: rm -rf $TWEAKCC_DIR && re-run this script." >&4
+    exit 1
+  fi
 fi
 end_step
 
