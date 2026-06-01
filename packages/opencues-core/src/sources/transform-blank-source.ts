@@ -1908,9 +1908,20 @@ export class TransformBlankSource implements CueSource {
 
       return { results: [result], timing: Date.now() - startTime, model: this.model };
     } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      // ALWAYS log dispatch failures at info level. Before June 2026 this
+      // catch silently stuffed the error into the result envelope and
+      // returned; the caller (resolver) ignored the `error` field, so the
+      // user saw "TransformBlank: starting" with no completion log forever.
+      // Silent hangs on opencode-zen/free were the trigger — symptom was
+      // typing a verb-prefixed `_` and getting nothing, no error, no clue.
+      // Visible log gives the user a real signal.
+      this.log(
+        `TransformBlank: failed (${Date.now() - startTime}ms, llm=${this.provider.id}/${this.model}) — ${msg}`,
+      );
       return {
         results: [],
-        error: error instanceof Error ? error.message : String(error),
+        error: msg,
         timing: Date.now() - startTime,
       };
     }
