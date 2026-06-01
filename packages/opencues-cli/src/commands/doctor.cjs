@@ -612,14 +612,23 @@ module.exports = async function doctor(argv, ctx) {
       for (const winDist of winCandidates) {
         const winContent = path.join(winDist, 'content.js');
         if (!fs.existsSync(winContent)) continue;
-        const repoMtime = fs.statSync(chromeContentJs).mtimeMs;
-        const winMtime = fs.statSync(winContent).mtimeMs;
-        const fresh = repoMtime <= winMtime + 1000;  // 1s slop for cp delay
-        s.ok(`${winDist}/content.js up-to-date with repo dist`, fresh);
+        // Compare CONTENT hashes, not mtimes. Mtimes change every
+        // `pnpm build` even when the bundle output is byte-identical
+        // (esbuild rewrites the file unconditionally), which produced
+        // a false-positive "/mnt/c is stale" warning right after every
+        // build — making the user think they had to re-sync when the
+        // deployed extension was already current. Pre-June-2026 doctor
+        // used mtimes; switched to SHA-256 content compare so the
+        // warning fires only when the deployed file actually differs
+        // from the repo's just-built file.
+        const repoHash = sha256OfFile(chromeContentJs);
+        const winHash = sha256OfFile(winContent);
+        const fresh = repoHash === winHash;
+        s.ok(`${winDist}/content.js matches repo dist`, fresh);
         if (!fresh) {
           findings.push({
             sev: 'warn',
-            msg: `Chrome bundle at ${winDist}/ is older than the repo build — Chrome will run stale code until you re-sync`,
+            msg: `Chrome bundle at ${winDist}/ doesn't match the repo build — Chrome will run different code until you re-sync`,
             fix: `cp -r ${chromeDist}/* ${winDist}/ && cp ${path.join(ctx.REPO_ROOT, 'integrations/chrome/manifest.json')} ${path.dirname(winDist)}/manifest.json   # then reload at chrome://extensions`,
           });
         }
@@ -997,10 +1006,21 @@ module.exports = async function doctor(argv, ctx) {
   }
   await maybePrintUpdateNotice(ctx);
   const errors = findings.filter(f => f.sev === 'warn').length;
+  const infos = findings.filter(f => f.sev === 'info').length;
   // Return the exit code instead of calling process.exit from a library
   // function. The CLI entry point (bin/cli.cjs) honours numeric return
   // values; tests can inspect the return value without process.exit
   // killing the runtime mid-assertion.
+  //
+  // --strict (added June 2026): treat ANY finding — info OR warn — as
+  // a failure. Makes `opencues doctor --strict` usable as a one-line
+  // CI gate ("the project is healthy → exit 0; else → exit 1"). The
+  // non-strict default keeps info-level findings advisory so doctor
+  // stays useful interactively without spurious failures from soft
+  // notices (e.g. "tested version newer-tested available").
+  if (argv.includes('--strict')) {
+    return (errors + infos) > 0 ? 1 : 0;
+  }
   return errors > 0 ? 1 : 0;
 };
 
@@ -1109,6 +1129,18 @@ function resolveHostScript(manifestPath, shimPath) {
   } catch { return null; }
 }
 
+// SHA-256 of a file's content. Returns null on any read error.
+// Used by the chrome /mnt/c sync check so it compares CONTENT
+// rather than mtimes — mtimes change every esbuild run even when
+// the bundle is byte-identical, producing false-positive "stale
+// /mnt/c" warnings right after every `pnpm build`.
+function sha256OfFile(p) {
+  try {
+    const crypto = require('node:crypto');
+    return crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+  } catch { return null; }
+}
+
 // Resolve a binary on $PATH. Returns the absolute path or null.
 function findOnPath(bin) {
   const PATH = process.env.PATH || '';
@@ -1183,5 +1215,11 @@ function printHelp() {
   console.log('OpenCues might create. Reports what it found + suggested fixes for any');
   console.log('issues.');
   console.log('');
-  console.log('Exit codes: 0 = no warnings, 1 = warnings present.');
+  console.log('Exit codes:');
+  console.log('  0 = no warnings (default) / no findings at all (--strict)');
+  console.log('  1 = warnings present (default) / any finding present (--strict)');
+  console.log('');
+  console.log('Flags:');
+  console.log('  --strict   Treat info findings as failures too. Suitable for use as');
+  console.log('             a one-line CI gate or as the final step of scripts/pre-pr.sh.');
 }
