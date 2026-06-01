@@ -90,45 +90,36 @@ function printLaunchBanner(ctx, host, rows, opts = {}) {
     tagline: `launching ${host}`,
   }));
   console.log('');
-  // Build the Keys tree alongside the host tree so we can align the
-  // value column ACROSS both — `labelWidth` is computed from the
-  // union of every label in both arrays, so "Keys" and "command"
-  // (different lengths in their own trees) line up at the same
-  // column when stacked. The two trees are printed separately so
-  // they read as distinct sections, but the value column is unified
-  // visually.
+  console.log(style.tree({ rows }));
+  console.log('');
+  // Keys tree — "Keys" sits at column 0 as the section header, with
+  // ├─/└─ branches hanging directly beneath it (one shortcut per
+  // row). Hand-rendered rather than using style.tree's title mode
+  // because that adds an intermediate `│` connector + extra spacing
+  // from the label column that this section doesn't want.
   //
-  // One shortcut per row — the user reads each piece on its own
-  // line instead of parsing a comma-separated sentence in the dwell
-  // window. Only the actionable tokens (keystrokes + `<request> _`)
-  // are bold; the trailing description prose ("navigate", "cycle",
-  // "to fire a blank") is dim so the eye is drawn first to the bits
-  // the user has to type.
-  //
-  // Muscle memory for the nav combo is what first-time users
-  // actually need to retain past the host TUI takeover, especially
-  // on a Mac terminal where the default Ctrl+Alt+arrow is stripped
-  // by Apple's Terminal.app and pickNavCombo() flips to Ctrl+Shift.
+  // Only the actionable tokens (keystrokes + `<request> _`) are bold;
+  // the trailing description prose is dim so the eye is drawn first
+  // to the bits the user has to type. Token-pad width is computed
+  // dynamically because `combo` varies by host (Ctrl+Alt vs
+  // Ctrl+Shift — 8 vs 10 chars).
   const combo = pickNavCombo(host);
-  // Pad each bold token to a uniform width so the dim description
-  // column aligns vertically across all three rows. Token width is
-  // computed dynamically because `combo` varies by host (Ctrl+Alt vs
-  // Ctrl+Shift, an 8- vs 10-char prefix) — hard-coding a width
-  // would mis-align the Apple_Terminal case.
   const navTok = `${combo}+←/→`;
   const cycleTok = `${combo}+↑/↓`;
   const blankTok = '<request> _';
   const tokWidth = Math.max(navTok.length, cycleTok.length, blankTok.length);
-  const keysRows = [
-    ['Keys', `${style.bold(navTok.padEnd(tokWidth))}  ${style.dim('navigate cues')}`],
-    ['',     `${style.bold(cycleTok.padEnd(tokWidth))}  ${style.dim('cycle cues')}`],
-    ['',     `${style.bold(blankTok.padEnd(tokWidth))}  ${style.dim('send a request to AI')}`],
+  const keyEntries = [
+    [navTok, 'navigate cues'],
+    [cycleTok, 'cycle cues'],
+    [blankTok, 'send a request to AI'],
   ];
-  const labelWidth = [...rows, ...keysRows]
-    .reduce((m, r) => Math.max(m, String(r[0] || '').length), 0);
-  console.log(style.tree({ rows, labelWidth }));
-  console.log('');
-  console.log(style.tree({ rows: keysRows, labelWidth }));
+  console.log(style.bold('Keys'));
+  for (let i = 0; i < keyEntries.length; i++) {
+    const last = i === keyEntries.length - 1;
+    const branch = style.dim(last ? '└─' : '├─');
+    const [tok, desc] = keyEntries[i];
+    console.log(`${branch} ${style.bold(tok.padEnd(tokWidth))}  ${style.dim(desc)}`);
+  }
   console.log('');
   _bannerPrintedAt = Date.now();
 }
