@@ -28,6 +28,19 @@ exports.NodeHttpAdapter = void 0;
 /**
  * Node.js HTTP adapter with HTTPS keep-alive and optional provider config.
  */
+// Default timeout for a single LLM HTTP call. 30s was the original
+// default (June 2025); reduced to 15s in June 2026 after opencode-zen
+// free pool silent-hang regressions left users staring at `_` for
+// 30+ seconds with no log. 15s is still generous — every shipping
+// provider returns a real response well under 5s for typical
+// blank-sized prompts. Tighter values risked false-positive
+// timeouts on cold-start latency from slower providers; 15s leaves
+// 3x headroom over the slowest observed legitimate response.
+// Override via `new NodeHttpAdapter({ timeout: ms })` for batch /
+// long-running calls (none in the runtime today; benches set their
+// own).
+const DEFAULT_TIMEOUT_MS = 15000;
+
 class NodeHttpAdapter {
     constructor(config = {}) {
         this.config = config;
@@ -35,7 +48,7 @@ class NodeHttpAdapter {
         this.agent = new https.Agent({
             keepAlive: true,
             maxSockets: config.maxSockets || 2,
-            timeout: config.timeout || 30000,
+            timeout: config.timeout || DEFAULT_TIMEOUT_MS,
         });
         // Provider-specific overrides (e.g., Groq reasoning_effort)
         this.providerOverrides = config.providerOverrides || {};
@@ -86,7 +99,7 @@ class NodeHttpAdapter {
                     method: 'POST',
                     headers,
                     agent: this.agent,
-                    timeout: this.config.timeout || 30000,
+                    timeout: this.config.timeout || DEFAULT_TIMEOUT_MS,
                 }, (res) => {
                     let data = '';
                     res.on('data', (chunk) => { data += chunk; });

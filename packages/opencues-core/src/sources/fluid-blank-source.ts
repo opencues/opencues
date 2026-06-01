@@ -844,6 +844,16 @@ export class FluidBlankSource implements CueSource {
       this.emit({ type: 'bailed', reason: 'llm-error', latencyMs: Date.now() - startTime });
       const err = error instanceof Error ? error : new Error(String(error));
       const reason = classifyHttpError(err);
+      // ALWAYS log dispatch failures at info level. Before June 2026 this
+      // catch silently stuffed the error into the result envelope and
+      // returned; the caller (resolver) ignored the `error` field, so the
+      // user saw "FluidBlank: starting" with no completion log forever.
+      // Silent hangs on opencode-zen/free were the trigger — symptom was
+      // typing `_` and getting nothing, no error, no clue why. Visible
+      // log gives the user (and us during debugging) a real signal.
+      this.logInfo(
+        `FluidBlank: failed (${Date.now() - startTime}ms, llm=${this.provider.id}/${this.model}) — ${err.message}`,
+      );
       // Only USER-ACTIONABLE failures get an in-buffer substitute.
       // Generic / transient LLM hiccups stay silent — retry on next change.
       const blankIdx = context.words.indexOf('_');
