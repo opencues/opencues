@@ -13,32 +13,53 @@ const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const style = require('../lib/style.cjs');
 
-// Print the brand banner + a host/command/cwd tree, then yield stdio
-// to the spawned process. Output mirrors `seed-configs` / `install`
-// styling so all CLI surfaces look like one product. The style module
-// degrades to plain text when stdout isn't a TTY (NO_COLOR / pipes),
-// so this is safe to always call.
+// Print the brand banner + a host/command/cwd tree + a one-line
+// keybinding hint, then yield stdio to the spawned process. Output
+// mirrors `seed-configs` / `install` styling so all CLI surfaces look
+// like one product. The style module degrades to plain text when
+// stdout isn't a TTY (NO_COLOR / pipes), so this is safe to always
+// call.
 //
-// Banner is rendered into the **alt-screen buffer** (\x1b[?1049h) by
-// default so it never touches the user's main-screen scrollback.
-// clearScreenForHandoff exits alt-screen (\x1b[?1049l), restoring the
-// main screen to its pre-banner state right before the host TUI takes
-// over. The host then inherits a clean main screen and an empty
-// scrollback above it — same pattern vim / less / htop / tmux use for
-// transient full-screen UI that the user shouldn't be able to scroll
-// back to.
+// Default (persistent mode): banner is printed on the **main screen**
+// so it persists in the terminal scrollback after the host TUI takes
+// over. Hosts like CC / opencode / gemini-cli enter their own alt-
+// screens for the duration of the session; when the user exits the
+// host, the terminal restores the main screen with our banner still
+// right above the shell prompt — a scroll-up-able reference for the
+// keys + try-this prompt + log path + doctor pointer.
+//
+// `--skip-banner` flips into the legacy **alt-screen** behaviour: the
+// banner is shown inside the alt-screen buffer (\x1b[?1049h),
+// guaranteed visible for >= MIN_BANNER_DWELL_MS, then the alt-screen
+// is exited (\x1b[?1049l) right before spawn handoff — restoring the
+// pre-run scrollback so the banner is NEVER left in history. Useful
+// for piped runs / scripted automation / repeat-launchers where the
+// banner is just noise. "Skip" here means "skip leaving it in
+// scrollback", not "skip showing it" — the 1s minimum dwell makes
+// the keybinding hint actually readable on the way past.
 //
 // Pass `{ persistent: true }` for paths that do NOT spawn a host
 // (chrome, which prints reload-the-extension instructions the user
-// needs to act on AFTER `opencues run chrome` exits). Persistent
-// banners go straight to the main screen — clearScreenForHandoff is a
-// no-op for them because no spawn handoff is happening.
-// Tracks whether we've entered alt-screen so the process-exit safety
-// net below knows to restore main. Without this, a throw between
-// printLaunchBanner and clearScreenForHandoff (or a future spawn path
-// that forgets to call the latter) would leave the user's terminal
-// stuck on an empty alt-screen — `reset` or terminal-close to recover.
+// needs to act on AFTER `opencues run chrome` exits). Persistent +
+// non-skip both end up on main screen; the option is kept as an
+// explicit marker for the no-spawn paths.
+
+// Minimum visible duration for the alt-screen `--skip-banner` mode.
+// The pre-2026-05 flash was sub-100ms in practice (spawnSync to host
+// boot is fast on warm caches), too short to read the keys line. 1s
+// is the floor; the actual visibility window is max(1s, host-boot-
+// time). Bigger numbers feel laggy on every launch.
+const MIN_BANNER_DWELL_MS = 1000;
+
+let _skipBanner = false;
+let _bannerPrintedAt = 0;
 let _enteredAltScreen = false;
+
+// Process-exit safety net: if a throw escapes between alt-screen
+// entry (in printLaunchBanner) and clearScreenForHandoff, the user's
+// terminal would otherwise be stuck on an empty alt-screen — `reset`
+// or terminal-close to recover. The check is cheap enough to always
+// run.
 process.on('exit', () => {
   if (_enteredAltScreen) {
     try { process.stdout.write('\x1b[?1049l'); } catch { /* terminal gone */ }
@@ -47,10 +68,20 @@ process.on('exit', () => {
 
 function printLaunchBanner(ctx, host, rows, opts = {}) {
   const persistent = opts.persistent === true;
-  if (!persistent && process.stdout.isTTY && process.env.OPENCUES_NO_CLEAR !== '1') {
-    // Enter alt-screen and home the cursor in one write so the very
-    // first thing the user sees in the alt buffer is our banner — no
-    // flash of leftover content from before we started.
+  // Alt-screen path is gated on (a) the user opted in with
+  // --skip-banner, (b) we have a real TTY (piped output would smuggle
+  // \x1b sequences into the captured stream), and (c) this isn't a
+  // no-spawn / persistent path. OPENCUES_NO_CLEAR=1 stays as a back-
+  // compat opt-out — same semantics as the new default now that the
+  // default is "main screen".
+  const useAltScreen = _skipBanner
+    && !persistent
+    && process.stdout.isTTY
+    && process.env.OPENCUES_NO_CLEAR !== '1';
+  if (useAltScreen) {
+    // Enter alt-screen and home the cursor in one write so the first
+    // thing the user sees in the alt buffer is our banner — no flash
+    // of leftover content from before we started.
     process.stdout.write('\x1b[?1049h\x1b[H');
     _enteredAltScreen = true;
   }
@@ -66,10 +97,89 @@ function printLaunchBanner(ctx, host, rows, opts = {}) {
   // via the statusline + /tmp/opencues.log. Tell the user where to
   // look BEFORE that handoff so silent-failure looks like silent-
   // failure instead of "I guess it just doesn't do anything".
-  console.log(style.dim('  Try: `[Your prompt] improve prompt _` (the runtime rewrites it inline)'));
+  //
+  // The Keys line is the first hint because muscle memory is what
+  // people forget — they remember `_` triggers blanks but not the
+  // navigation combo, especially on a mac terminal where the default
+  // ctrl+alt+arrow is stripped by Apple's Terminal.app.
+  const combo = pickNavCombo(host);
+  console.log(style.dim(`  Keys: ${combo}+←/→ navigate · ${combo}+↑/↓ cycle · \`<request> _\` to fire a blank`));
+  console.log(style.dim('  Try:  `improve prompt _`  (after typing some text — the runtime rewrites it inline)'));
   console.log(style.dim(`  Logs: tail -f /tmp/opencues.log${host ? ` | grep '\\[${shortPrefix(host)}\\]'` : ''}`));
   console.log(style.dim('  Stuck? Run `opencues doctor` in another shell'));
   console.log('');
+  _bannerPrintedAt = Date.now();
+}
+
+// Pick the navigation modifier combo to display in the banner's Keys
+// line. Mirrors the runtime's `resolveNavKeymap(configured, hostName)`
+// in `@opencues/runtime/src/modules/nav-keymap.ts` — kept inline here
+// so the CLI doesn't need to load the runtime build to print one
+// hint line. Drift risk is low: this only decides what STRING to
+// print; the actual key dispatch is owned by the runtime, which has
+// its own (canonical) resolver.
+//
+//   - chrome: always Ctrl+Alt — the browser owns Ctrl+Shift+arrow
+//     for "extend text selection by word" and the runtime hard-pins
+//     chrome to ctrl-alt regardless of the user's OPENCUES.md scalar.
+//   - macOS Terminal.app (TERM_PROGRAM=Apple_Terminal): Ctrl+Shift
+//     — Apple's Terminal.app strips Ctrl+Alt+arrow before the running
+//     app sees it, so the runtime auto-switches and so does this hint.
+//   - Everything else: Ctrl+Alt.
+//
+// Does NOT read the user's explicit `nav-keymap: ctrl-alt|ctrl-shift`
+// override in ~/.cues/OPENCUES.md — the banner is informational and
+// the auto-default covers ~every shipped setup. If we ever need to
+// honour explicit overrides here, a 5-line regex grep against the
+// file is enough; no need to import the full ConfigLoader.
+function pickNavCombo(host) {
+  if (host === 'chrome') return 'Ctrl+Alt';
+  if (process.env.TERM_PROGRAM === 'Apple_Terminal') return 'Ctrl+Shift';
+  return 'Ctrl+Alt';
+}
+
+// Synchronous sleep for the dwell window. Atomics.wait blocks the
+// event loop without busy-waiting and without depending on /bin/sleep.
+// The buffer + array are throwaway; we never set a value to wake on,
+// so the wait runs to timeout.
+function sleepSync(ms) {
+  if (ms <= 0) return;
+  try {
+    const sab = new SharedArrayBuffer(4);
+    const view = new Int32Array(sab);
+    Atomics.wait(view, 0, 0, ms);
+  } catch {
+    // SharedArrayBuffer disabled in some hardened-Node profiles;
+    // fall through with no sleep. Banner just appears briefly as it
+    // did pre-2026-05 — acceptable degradation, not a fail.
+  }
+}
+
+// Pick the navigation modifier combo to display in the banner's Keys
+// line. Mirrors the runtime's `resolveNavKeymap(configured, hostName)`
+// in `@opencues/runtime/src/modules/nav-keymap.ts` — kept inline here
+// so the CLI doesn't need to load the runtime build to print one
+// hint line. Drift risk is low: this only decides what STRING to
+// print; the actual key dispatch is owned by the runtime, which has
+// its own (canonical) resolver.
+//
+//   - chrome: always Ctrl+Alt — the browser owns Ctrl+Shift+arrow
+//     for "extend text selection by word" and the runtime hard-pins
+//     chrome to ctrl-alt regardless of the user's OPENCUES.md scalar.
+//   - macOS Terminal.app (TERM_PROGRAM=Apple_Terminal): Ctrl+Shift
+//     — Apple's Terminal.app strips Ctrl+Alt+arrow before the running
+//     app sees it, so the runtime auto-switches and so does this hint.
+//   - Everything else: Ctrl+Alt.
+//
+// Does NOT read the user's explicit `nav-keymap: ctrl-alt|ctrl-shift`
+// override in ~/.cues/OPENCUES.md — the banner is informational and
+// the auto-default covers ~every shipped setup. If we ever need to
+// honour explicit overrides here, a 5-line regex grep against the
+// file is enough; no need to import the full ConfigLoader.
+function pickNavCombo(host) {
+  if (host === 'chrome') return 'Ctrl+Alt';
+  if (process.env.TERM_PROGRAM === 'Apple_Terminal') return 'Ctrl+Shift';
+  return 'Ctrl+Alt';
 }
 
 // Map full host name → the short prefix used in /tmp/opencues.log so the
@@ -78,37 +188,37 @@ function shortPrefix(host) {
   return ({ 'claude-code': 'cc', 'opencode': 'oc', 'gemini-cli': 'gemini', 'shell': 'term' })[host] ?? host;
 }
 
-// Exit the alt-screen buffer we entered in printLaunchBanner, right
-// before spawning the host. The terminal restores the main-screen
-// contents that were there before \x1b[?1049h — so the host TUI
-// inherits a clean main screen and the user's original prompt is
-// what's underneath it.
+// Exit the alt-screen buffer (if we entered one in printLaunchBanner)
+// right before spawning the host. The terminal restores whatever was
+// on the main screen pre-banner — so the host TUI inherits a clean
+// main screen and the user's original prompt is what's underneath it.
 //
-// Timing: called *before* spawnSync, not after. The visibility window
-// for the banner is whatever natural latency exists between the alt-
-// screen enter (in printLaunchBanner) and the host's first render —
-// in practice that's tree-render time + sync printing + the spawn
-// syscall + the host's own boot (e.g. ~1s for opencode's bun startup,
-// shorter for claude). The brief banner flash is enough for "yes, we
-// started launching the right thing"; the host TUI is what the user
-// reads from there on.
+// Default mode (no alt-screen entered): this is a no-op. The banner
+// was printed inline on the main screen, host TUI takes over the
+// visible area for its session, and when the user exits the host the
+// terminal restores the main screen with the banner still in
+// scrollback. Nothing to clean up.
 //
-// Why this ordering instead of "exit alt-screen *after* spawn":
+// --skip-banner mode (alt-screen entered): wait until the banner has
+// been visible for at least MIN_BANNER_DWELL_MS (the keybinding hint
+// is unreadable otherwise — the original "flash" before this change
+// was sub-100ms on warm host launches), then exit the alt-screen.
+// The sleep is synchronous because spawnSync below is synchronous;
+// `Atomics.wait` blocks without busy-waiting.
+//
+// Why ordering "exit alt-screen *before* spawn" (not after):
 //   - It avoids nested alt-screen state. Hosts that call \x1b[?1049h
-//     themselves (tmux, vim-style) inside our alt-screen would stack
-//     two layers; older terminals don't handle that cleanly.
+//     themselves (CC, opencode, gemini, tmux) inside our alt-screen
+//     would stack two layers; older terminals don't unwind cleanly.
 //   - It keeps the host's render in the normal main-screen + its-own-
 //     alt-screen pattern it was designed for — no surprise that it's
 //     rendering inside someone else's transient buffer.
-//
-// Gated on isTTY so piped runs (`opencues run cc | tee log`) don't
-// have escape sequences smuggled into the captured output.
-// OPENCUES_NO_CLEAR=1 opts out (keeps banner inline on main screen —
-// useful for debugging or if the user's terminal mis-handles ?1049).
 function clearScreenForHandoff() {
-  if (process.env.OPENCUES_NO_CLEAR === '1') return;
-  if (!process.stdout.isTTY) return;
-  process.stdout.write('\x1b[?1049l');
+  if (!_enteredAltScreen) return;
+  const elapsed = Date.now() - _bannerPrintedAt;
+  const remaining = MIN_BANNER_DWELL_MS - elapsed;
+  sleepSync(remaining);
+  if (process.stdout.isTTY) process.stdout.write('\x1b[?1049l');
   _enteredAltScreen = false;
 }
 
@@ -148,6 +258,14 @@ module.exports = function run(argv, ctx) {
   let target = null;
   const passthrough = [];
   for (const a of argv) {
+    if (a === '--skip-banner') {
+      // opencues-owned flag — consumed here, NOT forwarded to the
+      // spawned host. Flips printLaunchBanner into alt-screen mode
+      // (banner shown for >= MIN_BANNER_DWELL_MS, then wiped on
+      // handoff so it doesn't pollute scrollback).
+      _skipBanner = true;
+      continue;
+    }
     if (!a.startsWith('-') && !target) target = a;
     else passthrough.push(a);
   }
@@ -437,6 +555,7 @@ function printHelp() {
   console.log('Opencues-owned flags (consumed by `opencues run`, NOT forwarded):');
   console.log('  --bin <name>      (claude-code only) override which binary to exec');
   console.log('  --target <path>   (opencode/gemini-cli) fork dir (defaults: $HOME/opencode-cues, $HOME/gemini-cli-cues)');
+  console.log('  --skip-banner     show the launch banner in alt-screen for ~1s, then wipe — keeps scrollback clean');
   console.log('');
   console.log('Examples:');
   console.log('  opencues run claude-code');
@@ -446,7 +565,15 @@ function printHelp() {
   console.log('  opencues run opencode');
   console.log('  opencues run opencode --target /custom/fork      # --target is ours');
   console.log('  opencues run gemini-cli --model gemini-2.5-pro   # forwarded to gemini');
+  console.log('  opencues run claude-code --skip-banner           # transient banner instead of persistent');
+  console.log('');
+  console.log('Banner behaviour:');
+  console.log('  Default: banner with key hints prints on the main screen and persists');
+  console.log('           in scrollback after you exit the host TUI — a scroll-up-able');
+  console.log('           reference for the navigation combo + log path.');
+  console.log('  --skip-banner: banner shows in alt-screen for ~1s, then is wiped before');
+  console.log('           the host starts. Useful for scripted launches.');
   console.log('');
   console.log('Env vars:');
-  console.log('  OPENCUES_NO_CLEAR=1   keep the launch banner visible (skip screen clear)');
+  console.log('  OPENCUES_NO_CLEAR=1   (back-compat) force the default behaviour even when --skip-banner is set');
 }
