@@ -42,6 +42,14 @@ export interface ConfigLoaderOptions {
   /** Hot-reload debounce in ms. Defaults to 2000 (matches v1). */
   readonly reloadDebounceMs?: number;
   /**
+   * Background-poll interval in ms. The poll calls `maybeReload`
+   * (gated by `reloadDebounceMs`), so OPENCUES.md edits propagate
+   * even when the user isn't typing in the host. Default 5000.
+   * Set to 0 / negative to disable (keystroke-only mode — pre-June-2026
+   * behaviour, useful for tests that don't want a background timer).
+   */
+  readonly backgroundPollMs?: number;
+  /**
    * Directories searched for `words/*` and `blanks/*` folders, in
    * priority order. Earlier entries win on name conflicts.
    *
@@ -473,6 +481,12 @@ export class ConfigLoader {
   private _lastLoadAt = 0;
   private _loadInFlight: Promise<void> | null = null;
   private _unsubText: Unsubscribe | null = null;
+  // Background-poll handle. Created in `subscribe()` if setInterval
+  // exists and `backgroundPollMs > 0`. `ReturnType<typeof setInterval>`
+  // is `Timeout` in Node and `number` in browser — typing both as
+  // `unknown` keeps the union out of the field's type without losing
+  // the not-null discriminator.
+  private _pollTimer: ReturnType<typeof setInterval> | null = null;
   // Race guard: when applyOpenCuesScalar fires (cycling a satellite
   // updates an OPENCUES.md scalar in-memory), the host's blankInvoke
   // also kicks off an ASYNC file write. Cycling.ts then calls setText
@@ -648,14 +662,46 @@ export class ConfigLoader {
 
   // ─── Hot-reload subscription ───────────────────────────────────────────
 
+  /**
+   * Hot-reload is driven by TWO signals:
+   *   1. **Keystroke** — `adapter.onTextChange` fires `maybeReload` so
+   *      a user typing in the host picks up an OPENCUES.md edit on
+   *      the very next character. The fast path; no extra timers.
+   *   2. **Background poll** — a 5s setInterval also fires
+   *      `maybeReload` so users who edit OPENCUES.md and then DON'T
+   *      type (switch to the host, observe state, etc.) still see
+   *      the new config within 5s. Closes the "I changed the file but
+   *      nothing happened until I typed" surprise that bit us June 2026.
+   *
+   * Both paths funnel through the same debounce window (`reloadDebounceMs`,
+   * default 2s) so the file-read load is at most once per 2s regardless
+   * of how many signals fire. The poll's overhead is one filesystem
+   * stat every 5s — negligible.
+   */
   subscribe(): void {
     this._unsubText = this.adapter.onTextChange(() => {
       void this.maybeReload();
     });
+    // Background poll. Skipped when (a) setInterval isn't available
+    // (some test environments) OR (b) the option is explicitly
+    // <=0 (opt-out for tests / hosts that want pure keystroke-driven
+    // reload).
+    const pollMs = this.options.backgroundPollMs ?? 5000;
+    if (pollMs > 0 && typeof setInterval === 'function') {
+      this._pollTimer = setInterval(() => {
+        void this.maybeReload();
+      }, pollMs);
+      // Don't keep Node alive just for this timer — host-level disposal
+      // owns the lifecycle. `unref` is Node-only; chrome timers don't
+      // have it (no-op there).
+      const t = this._pollTimer as unknown as { unref?: () => void };
+      if (typeof t?.unref === 'function') t.unref();
+    }
   }
 
   unsubscribe(): void {
     if (this._unsubText) { this._unsubText(); this._unsubText = null; }
+    if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
   }
 
   /** Reload only if debounce window elapsed. */
