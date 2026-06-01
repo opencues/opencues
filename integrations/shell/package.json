@@ -1,6 +1,6 @@
 {
   "name": "@opencues/shell",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "OpenCues for the terminal — `shell` wraps your interactive shell in a tmux session with an Alt+Shift+↑ input box that hosts the OpenCues TUI. Brings full cues, blanks, cycling, agent-rewrite to any shell.",
   "type": "module",

@@ -261,6 +261,7 @@ module.exports = function run(argv, ctx) {
   const { HOSTS, resolve } = loadHostResolver(ctx);
 
   let target = null;
+  let skipRebuildCheck = false;
   const passthrough = [];
   for (const a of argv) {
     if (a === '--skip-banner') {
@@ -270,6 +271,15 @@ module.exports = function run(argv, ctx) {
       // clear-on-handoff — straight to spawnSync. Useful for
       // scripted launches and repeat-runners.
       _skipBanner = true;
+      continue;
+    }
+    if (a === '--no-rebuild-check') {
+      // Skip the source-drift check + transparent rebuild before
+      // launch. Use when (a) you're iterating on the CLI itself and
+      // don't want to re-install the bundle each time, or (b) you
+      // already know the bundle is fresh and want to shave ~30ms of
+      // hash computation off the launch path.
+      skipRebuildCheck = true;
       continue;
     }
     if (!a.startsWith('-') && !target) target = a;
@@ -294,12 +304,72 @@ module.exports = function run(argv, ctx) {
   // already know, not to introduce latency before the integration spawns.
   printCachedUpdateNotice(ctx);
 
+  // Self-healing drift check — every `opencues run <host>` compares
+  // the bundled @opencues/{core,runtime} against the current source.
+  // If stale (source changed since the last install), transparently
+  // re-run the host installer before launching. Replaces the silent-
+  // drift trap where `git pull master` left forks running pre-pull
+  // bytecode forever. See `ensureFreshBundle` for the full rationale.
+  // Skipped on --no-rebuild-check.
+  if (!skipRebuildCheck) ensureFreshBundle(folder, ctx);
+
   if (folder === 'claude-code') return runCC(passthrough, ctx);
   if (folder === 'opencode')    return runOC(passthrough, argv, ctx);
   if (folder === 'chrome') return runChrome(ctx);
   if (folder === 'gemini-cli') return runGemini(passthrough, argv, ctx);
   if (folder === 'shell') return runShell(passthrough, ctx);
 };
+
+/**
+ * Self-healing pre-launch step. Reads `<host>/.cues/version.json` (or
+ * the host's marker location), compares to the current source's
+ * `srcHash` + version strings. If stale, re-runs the host installer
+ * (`opencues install <host> --no-prompts --yes`) before returning so
+ * the launched host gets the latest bundled runtime.
+ *
+ * Triggered for every `opencues run <host>` call by default. The
+ * `--no-rebuild-check` flag opts out. Failure is non-fatal: if the
+ * installer exits non-zero the launch continues with whatever the
+ * fork currently has + a visible warning. The launch is the user-
+ * facing action; rebuild is best-effort.
+ *
+ * Why this lives in `opencues run` rather than per-host bin scripts
+ * (`claude-cues`, `oc-shell`, …): users who type `claude-cues`
+ * directly bypass this path. The runtime-side advisory check in
+ * `boot-common.ts` covers them with a warning. The strong guarantee
+ * is reserved for the `opencues run` flow because that's where we
+ * can synchronously rebuild before the host starts.
+ */
+function ensureFreshBundle(host, ctx) {
+  const { checkDrift, enumerateInstalledHosts } = require('../lib/version-markers.cjs');
+  const installed = enumerateInstalledHosts(ctx);
+  const entry = installed.find(e => e.host === host);
+  if (!entry) return; // host not yet installed — nothing to compare against
+  const { drift } = entry;
+  if (drift.status === 'fresh') return;
+  if (drift.status === 'missing') return; // pre-marker install — let it be; user can `opencues update <host>` if curious
+
+  // status === 'stale' — re-install transparently so the next launch
+  // picks up the source changes. Message is one line so it doesn't
+  // dominate the banner above.
+  const reasonHint = drift.reason === 'srcHash'
+    ? 'source files changed since last install'
+    : drift.reason === 'runtime'
+      ? `runtime ${drift.marker.runtime || '?'} → ${drift.source.runtime || '?'}`
+      : drift.reason === 'core'
+        ? `core ${drift.marker.core || '?'} → ${drift.source.core || '?'}`
+        : 'source drift';
+  console.log(`${style.tag('info')} ${style.bold(host)} bundle is stale (${style.dim(reasonHint)}). Rebuilding before launch — pass ${style.bold('--no-rebuild-check')} to skip.`);
+  console.log('');
+  const installResult = spawnSync('node', [
+    path.join(ctx.REPO_ROOT, 'packages/opencues-cli/bin/cli.cjs'),
+    'install', host, '--no-prompts', '--yes',
+  ], { stdio: 'inherit' });
+  if (installResult.status !== 0) {
+    console.log(`${style.tag('warn')} rebuild exited ${installResult.status}. Continuing with stale bundle. Run \`opencues install ${host}\` manually if the host misbehaves.`);
+  }
+  console.log('');
+}
 
 function printCachedUpdateNotice(ctx) {
   try {

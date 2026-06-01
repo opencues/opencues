@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Added — Self-healing forks: `opencues run <host>` auto-rebuilds on source drift
+
+The "git pull and existing forks silently keep running pre-pull bytecode forever" trap is now closed structurally. Three pieces shipping together in this batch:
+
+- **`packages/opencues-cli/src/lib/version-markers.cjs`** gains `computeSourceHash(repoRoot)` — a SHA-256 over every file under `packages/opencues-runtime/src/**` + `packages/opencues-core/src/**` + `packages/opencues-core/node-http-adapter.js`. `writeMarker` records it; `checkDrift` returns `status: 'stale', reason: 'srcHash'` when it diverges from the bundle's recorded hash. Load-bearing because it fires on ANY source byte change, not just package.json bumps — developers forgetting to bump no longer masks drift.
+- **`packages/opencues-cli/src/commands/run.cjs`** calls `ensureFreshBundle(host, ctx)` at the top of every `opencues run <host>` invocation. Stale → transparently runs `opencues install <host> --no-prompts --yes` before spawning the host. One info line tells the user what's happening (`bundle is stale (source files changed since last install). Rebuilding before launch`). `--no-rebuild-check` opts out.
+- **CLAUDE.md** gains a "Drift-prevention discipline" section codifying the new mechanism, the contract for adding bundled source dirs, and what contributors MUST do when changing `@opencues/{core,runtime}/src/**`.
+
+### Added — `@opencues/core` 0.1.4 → 0.1.5
+- **0.1.4 → 0.1.5** (PR #37 — nav-keymap): new `nav-keymap` scalar in FEATURES (`auto` | `ctrl-alt` | `ctrl-shift`). Auto resolves per host: chrome → ctrl-alt always (browser owns ctrl-shift+arrow); macOS Terminal.app (`TERM_PROGRAM=Apple_Terminal`) → ctrl-shift; everything else → ctrl-alt. Lets macOS Terminal.app users keep navigating without switching terminal emulators.
+
+### Added — `@opencues/runtime` 0.1.5 → 0.1.6
+- **0.1.5 → 0.1.6** (PR #37 — nav-keymap): `OpenCuesState.navKeymap` field with parser + `applyOpenCuesScalar` support; new `nav-keymap.ts` module exporting `resolveNavKeymap(configured, hostName)`. `Navigation` + `Cycling` subscribe both modifier combos at boot and gate each handler per-keystroke against the resolved keymap — flipping the scalar in OPENCUES.md hot-reloads without restart. Chrome adapter band skips the ctrl-shift subscription entirely (browser owns it for text selection).
+
+### Added — `opencues` CLI 0.1.5 → 0.1.6
+- **0.1.5 → 0.1.6** (PRs #38 / #39 / #40 / #41 + this batch):
+  - PR #38: `opencues run <host>` launch banner with key hints + `--skip-banner` opt-out. Banner held in alt-screen for 3s minimum dwell so the Keys line is actually readable.
+  - PR #39: shell-install tmux noise reduction — consolidated from 4 mentions per install to ≤2. Vendored-first preflight check skips the system-tmux warning when `~/.opencues/vendor/tmux/bin/tmux ≥ 3.2` is present.
+  - PR #40: banner Keys section restructured so "Keys" is the leftmost section header with ├─/└─ branches hanging beneath; description column aligned across both Ctrl+Alt (12) and Ctrl+Shift (14) widths.
+  - PR #41: vendor-pins test sandboxed via temp-`$HOME` so `pnpm test` stops deleting the real user's `~/.opencues/vendor/tmux/`.
+  - This batch: `ensureFreshBundle` drift check + auto-rebuild on `opencues run`; `version-markers.cjs` gains `computeSourceHash` + `srcHash` + `reason` fields.
+
+### Added — `@opencues/shell` 0.1.1 → 0.1.2
+- **0.1.1 → 0.1.2** (PR #39): `bin/install.cjs` no longer prints the duplicate "tmux not installed" note (preflight in `opencues install` is now the single source of truth); the auto-vendor message names WHY it's running (`▸ System tmux is X.Y (oc-shell needs ≥ 3.2). Vendoring tmux 3.4 to ~/.opencues/vendor/tmux/`); `patches/setup.sh` tail prints only `✓ Shell build done.`, with the Launch / Open input / Optional-shell-integration summary moved into install.cjs so it lands AFTER the vendor step, not before.
+
 ### Added — `@opencues/core` 0.1.0 → 0.1.4
 - **0.1.0 → 0.1.1**: Three-bucket LLM routing (`cues` / `auditors` / `blanks`). FEATURES registry gains three bucket scalars; `ConfigLoader` parses `cues-llm-provider` / `auditors-llm-provider` / `blanks-llm-provider` with back-compat read for legacy singular `blank-llm-*`. `build-sources.ts` routes per-bucket via `cuesBucket*` / `blanksBucket*` instead of the single `blankGlobal*`; the trust-class guard refuses `trainsOnInput: true` providers on prose buckets. Canonical doc: `docs/architecture/llm-routing.md`.
 - **0.1.1 → 0.1.2**: Fluid-config natural-language provider/model switching. `ConfigIntentVerdict` becomes a discriminated union (`setting` | `provider` | `none`); SYSTEM_PROMPT rewritten with three INTENT classes; `validateAgainstRegistry` handles both verdict kinds. `ProviderAdapter.knownModels` (optional `readonly string[]`) bounds the model catalogue the classifier may route to — 2-5 curated entries per provider.

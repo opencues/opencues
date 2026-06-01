@@ -55,28 +55,71 @@ Two Claude Code installs exist on this machine. **OpenCues work targets `claude-
 - `claude` is never patched. Use it for unaffected Claude Code sessions during development.
 - Each patched fork is pegged to its declared version — do not upgrade without re-running the [UPGRADING runbook](integrations/claude-code/UPGRADING.md) to verify the five seam anchors (S1/S2/S3 required, S6/S7 optional).
 
-> ⚠ **Rebuild EVERY fork after a runtime/core fix.** `setup.sh` defaults to
-> `~/claude-code-cues/` (cli.js fork). The 150 fork needs an explicit
-> `OPENCUES_CC_TARGET=~/claude-code-cues-150/node_modules/@anthropic-ai/claude-code/cli.js`
-> override (or `--target` flag), otherwise it keeps running the stale bundled
-> runtime and silently diverges from the cli.js fork — even though source has
-> the fix.
+> **Self-healing on `opencues run <host>` (shipped June 2026).** Every
+> `opencues run <host>` invocation now reads the fork's `version.json`
+> marker (under `<fork>/.cues/` for CC, `<fork>/.opencues/` for OC and
+> gemini-cli, `integrations/shell/node_modules/@opencues/` for shell,
+> `integrations/chrome/dist/` for chrome) and compares its **`srcHash`**
+> field — a SHA-256 over every file under
+> `packages/opencues-{core,runtime}/src/**` plus `packages/opencues-core/node-http-adapter.js`
+> — against the current source's hash. If different, the launch path
+> transparently re-runs the host installer before spawning the host.
+> A single info line tells the user what's happening
+> (`▸ <host> bundle is stale (source files changed since last install).
+> Rebuilding before launch — pass --no-rebuild-check to skip.`).
+>
+> The hash is load-bearing: it fires on **any source byte change**,
+> not just package.json bumps. Developers forgetting to bump
+> versions no longer masks drift — that was the structural root
+> cause of the May 2026 dual-fork bug and several subsequent
+> "stale runtime" reports.
+>
+> The remaining manual paths:
+> - **Users who type `claude-cues` / `oc-shell` directly** bypass
+>   `opencues run` and don't get the self-heal. The runtime-side
+>   advisory check in the boot path warns them (TODO if not yet wired).
+> - **Chrome's WSL → /mnt/c/ mirror** still needs `opencues sync chrome`
+>   to push rebuilt dist/ into the Chrome extension dir. That's a
+>   separate fan-out from the bundle-rebuild covered above.
+>
+> Where to look when self-heal needs extension:
+> - `packages/opencues-cli/src/lib/version-markers.cjs:BUNDLED_SOURCE_DIRS` —
+>   add a new bundled package's `src/` path here. Anything outside
+>   this list is invisible to drift detection.
+> - `packages/opencues-cli/src/commands/run.cjs:ensureFreshBundle` —
+>   the launch-time gate. Calls `enumerateInstalledHosts` + `checkDrift`,
+>   then `spawnSync('node', [cli.cjs, 'install', host, '--no-prompts', '--yes'])`
+>   on stale.
+> - `packages/opencues-cli/src/lib/version-markers.test.cjs` — drift-
+>   detection unit tests, including the deterministic-hash + ignored-
+>   dirs (`dist/` / `node_modules/` / `.cache/`) contracts.
 >
 > Concrete failure mode this rule prevents: a May-2026 resolver fix
 > (`isLlmBlankSource` exemption from the `_`-tip guard in
 > `packages/opencues-runtime/src/modules/resolver.ts`) landed in source and got
 > installed into the cli.js fork. The 150 fork was never re-run; users on
 > `claude-cues-150` had every TransformBlank substitute silently dropped for
-> hours before we noticed the version skew in `node_modules`. Re-applying the
-> bug fix structurally requires touching both forks; treat them as one
-> deployment unit, not two.
+> hours before we noticed the version skew in `node_modules`. Post-self-heal,
+> next `opencues run claude-code` on that fork would detect srcHash drift
+> and rebuild before the launch — closed loop.
 >
-> The same "fix all relevant installs" rule applies anywhere multiple bundled
-> copies of `@opencues/{core,runtime}` exist (chrome's `dist/configs/` bake
-> bundle, OC's per-fork `node_modules/`, future forks). Symptom is always the
-> same: source has the fix, one runtime doesn't, behaviour diverges per host
-> in a way the test suite can't catch (it's testing the source, not each
-> bundled copy).
+> **The discipline contract (CONTRIBUTORS MUST follow):**
+> 1. Any PR touching `packages/opencues-{core,runtime}/src/**` is
+>    automatically caught by srcHash drift detection at `opencues run`
+>    time. No special action required for users on the canonical
+>    install path.
+> 2. PRs SHOULD still bump `package.json` version + add CHANGELOG.md
+>    entry per the discipline in `docs/architecture/versioning.md` —
+>    not for drift detection (srcHash handles that), but for npm
+>    publish-readiness, downstream consumer tracking, and changelog
+>    discoverability.
+> 3. PRs that add a NEW bundled `@opencues/<pkg>` package MUST append
+>    its `src/` path to `BUNDLED_SOURCE_DIRS` in `version-markers.cjs`,
+>    or the new package will be invisible to drift detection.
+> 4. PRs that touch chrome's bake-bundle path
+>    (`integrations/chrome/dist/configs/`) still need an explicit
+>    `opencues sync chrome` step on the user side — chrome's fan-out
+>    is separate from the bundle-rebuild and not covered by self-heal.
 
 ---
 
