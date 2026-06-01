@@ -216,38 +216,57 @@ function preflightChecks(folders) {
   }
 
   // ── tmux 3.2+ (shell integration only) ────────────────────────────
+  // Skip entirely if `~/.opencues/vendor/tmux/bin/tmux` is already
+  // present and >= 3.2 — oc-shell prefers the vendored binary, and
+  // dragging the user through an apt/brew tmux install on top of that
+  // is pure noise (and was the second of FOUR tmux mentions in one
+  // `opencues install shell` run pre-2026-06). Mirrors doctor.cjs's
+  // vendored-first check at the same precedence.
   if (folders.includes('shell')) {
-    let tmuxInstall = platform === 'darwin' ? 'brew install tmux'
-      : 'apt install tmux  (or `dnf install tmux` / `pacman -S tmux`)';
-    const tmuxAuto = { apt: 'tmux', dnf: 'tmux', pacman: 'tmux', brew: 'tmux' };
-    try {
-      const out = execSync('tmux -V 2>/dev/null', { encoding: 'utf8' });
-      const m = out.match(/tmux (\d+)\.(\d+)/);
-      if (m) {
+    const vendoredTmux = path.join(os.homedir(), '.opencues', 'vendor', 'tmux', 'bin', 'tmux');
+    const vendoredUsable = (() => {
+      if (!fs.existsSync(vendoredTmux)) return false;
+      try {
+        const out = execSync(`${JSON.stringify(vendoredTmux)} -V 2>/dev/null`, { encoding: 'utf8' });
+        const m = out.match(/tmux (\d+)\.(\d+)/);
+        if (!m) return false;
         const maj = parseInt(m[1], 10), min = parseInt(m[2], 10);
-        if (maj < 3 || (maj === 3 && min < 2)) {
+        return maj > 3 || (maj === 3 && min >= 2);
+      } catch { return false; }
+    })();
+    if (!vendoredUsable) {
+      let tmuxInstall = platform === 'darwin' ? 'brew install tmux'
+        : 'apt install tmux  (or `dnf install tmux` / `pacman -S tmux`)';
+      const tmuxAuto = { apt: 'tmux', dnf: 'tmux', pacman: 'tmux', brew: 'tmux' };
+      try {
+        const out = execSync('tmux -V 2>/dev/null', { encoding: 'utf8' });
+        const m = out.match(/tmux (\d+)\.(\d+)/);
+        if (m) {
+          const maj = parseInt(m[1], 10), min = parseInt(m[2], 10);
+          if (maj < 3 || (maj === 3 && min < 2)) {
+            warnings.push({
+              item: `tmux ${maj}.${min}`,
+              impact: 'oc-shell needs tmux 3.2+ for display-popup',
+              fix: tmuxInstall,
+              autoInstall: tmuxAuto,
+            });
+          }
+        } else {
           warnings.push({
-            item: `tmux ${maj}.${min}`,
-            impact: 'oc-shell needs tmux 3.2+ for display-popup',
+            item: 'tmux not found on PATH',
+            impact: 'oc-shell needs tmux 3.2+ (will be vendored to ~/.opencues/vendor/tmux/ if you skip)',
             fix: tmuxInstall,
             autoInstall: tmuxAuto,
           });
         }
-      } else {
+      } catch {
         warnings.push({
           item: 'tmux not found on PATH',
-          impact: 'oc-shell needs tmux 3.2+',
+          impact: 'oc-shell needs tmux 3.2+ (will be vendored to ~/.opencues/vendor/tmux/ if you skip)',
           fix: tmuxInstall,
           autoInstall: tmuxAuto,
         });
       }
-    } catch {
-      warnings.push({
-        item: 'tmux not found on PATH',
-        impact: 'oc-shell needs tmux 3.2+',
-        fix: tmuxInstall,
-        autoInstall: tmuxAuto,
-      });
     }
   }
 
