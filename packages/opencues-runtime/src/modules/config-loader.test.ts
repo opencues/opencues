@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ConfigLoader, parseOpenCuesMd } from './config-loader';
 import { MockAdapter, wrapTipsAsCuesMd } from '../../testing/mock-adapter';
 
@@ -515,5 +515,63 @@ describe('bucket scalars (three-bucket simplification)', () => {
     );
     expect(state.cuesLlmProvider).toBe('inherit');
     expect(state.blanksLlmProvider).toBe('inherit');
+  });
+});
+
+describe('background-poll hot reload (June 2026)', () => {
+  // The keystroke-driven onTextChange path is well-tested above. This
+  // suite pins the background timer path that fires `maybeReload` even
+  // when the host stays idle. Closes the "I changed OPENCUES.md but
+  // nothing happened until I typed" surprise.
+
+  it('subscribe() creates a polling interval when backgroundPollMs > 0', async () => {
+    const adapter = new MockAdapter({ files: {} });
+    const loader = new ConfigLoader(adapter, { backgroundPollMs: 100 });
+    await loader.load();
+    loader.subscribe();
+    // Reflect on the private field via the same cast pattern the rest
+    // of the file uses for white-box state checks.
+    const inner = loader as unknown as { _pollTimer: unknown };
+    expect(inner._pollTimer).not.toBeNull();
+    loader.unsubscribe();
+    expect(inner._pollTimer).toBeNull();
+  });
+
+  it('subscribe() with backgroundPollMs: 0 skips the timer entirely', async () => {
+    const adapter = new MockAdapter({ files: {} });
+    const loader = new ConfigLoader(adapter, { backgroundPollMs: 0 });
+    await loader.load();
+    loader.subscribe();
+    const inner = loader as unknown as { _pollTimer: unknown };
+    expect(inner._pollTimer).toBeNull();
+    loader.unsubscribe();
+  });
+
+  it('poll fires maybeReload at the configured cadence (debounce permitting)', async () => {
+    // Use vi.useFakeTimers so we can advance virtually without waiting.
+    // Inspect reload count via white-box access to `_lastLoadAt` — that
+    // timestamp updates on every `load()` call (which is what
+    // `maybeReload` triggers). A change in `_lastLoadAt` between
+    // subscribe-time and after-3-poll-ticks proves the timer fired
+    // through `maybeReload` and into `load()`.
+    vi.useFakeTimers();
+    try {
+      const adapter = new MockAdapter({ files: {} });
+      // Disable debounce so each poll tick reloads (debounce gate would
+      // otherwise swallow polls within 2s of last load).
+      const loader = new ConfigLoader(adapter, { backgroundPollMs: 100, reloadDebounceMs: 0 });
+      await loader.load();
+      const inner = loader as unknown as { _lastLoadAt: number };
+      const before = inner._lastLoadAt;
+      loader.subscribe();
+      // Advance through 3 poll intervals + a microtask flush so the
+      // async `load()` chain inside `maybeReload` resolves.
+      await vi.advanceTimersByTimeAsync(350);
+      const after = inner._lastLoadAt;
+      expect(after).toBeGreaterThan(before);
+      loader.unsubscribe();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
