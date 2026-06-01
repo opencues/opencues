@@ -109,6 +109,33 @@ for f in $SCRIPTS; do
   # Both work in bash 3.2; CLAUDE.md says "prefer POSIX when equivalent"
   # but doesn't BAN them. The lint only enforces the hard bans (bash-4
   # only constructs + GNU-only flags + ungated /proc reads).
+
+  # 7. Strict-mode discipline for installer scripts. Catches the June
+  #    2026 failure mode where `set -e` without `pipefail` let
+  #    `npm install ... | tail -3` swallow a real npm failure (the
+  #    pipe returns tail's status 0, set -e doesn't fire). See PR #43.
+  #
+  #    Scoped to scripts/ + integrations/*/patches/ + integrations/*/bin/
+  #    setup-shaped scripts — they orchestrate multi-step pipelines
+  #    where a silent failure cascades badly. Simple user-facing blank
+  #    scripts under defaults/blanks/ are exempt; they shell out to
+  #    one command and return its exit. An explicit opt-out is
+  #    available via the marker `# lint: no-pipefail (<reason>)`.
+  case "$f" in
+    scripts/*.sh|integrations/*/patches/*.sh|integrations/shell/bin/oc-install-*)
+      if ! grep -qE '^set -[a-z]*o[a-z]* pipefail|^set -o pipefail' "$f"; then
+        if ! grep -qE '# lint: no-pipefail' "$f"; then
+          echo "✗ $f — orchestration script missing \`set -o pipefail\`."
+          echo "    Without pipefail, a failing \`x | tail -N\` returns tail's exit (0)"
+          echo "    and \`set -e\` doesn't fire. See PR #43 (June 2026)."
+          echo "    Fix: replace 'set -e' with 'set -eo pipefail', OR add a"
+          echo "    '# lint: no-pipefail (<reason>)' marker line if the script"
+          echo "    legitimately needs to keep going on pipe failures."
+          FAIL=1
+        fi
+      fi
+      ;;
+  esac
 done
 
 if [ "$FAIL" = "0" ]; then

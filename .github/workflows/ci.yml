@@ -69,8 +69,84 @@ jobs:
     # Catches the macOS/BSD regressions the May 2026 sweep fixed before
     # they re-land. Rules live in CLAUDE.md § "Cross-platform shell
     # scripts"; the lint enforces the hard bans (bash-4 features,
-    # GNU-only coreutils flags, ungated /proc reads, raw sed -i).
+    # GNU-only coreutils flags, ungated /proc reads, raw sed -i,
+    # orchestrator scripts missing `set -o pipefail`).
     steps:
       - uses: actions/checkout@v4
       - name: Run portability lint
         run: bash scripts/lint-shell-portability.sh
+
+  version-bump-gate:
+    name: version-bump gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    # Asserts that PRs touching `packages/<pkg>/src/**` also bump the
+    # corresponding `packages/<pkg>/package.json` version. The
+    # srcHash-driven self-heal (PR #42) means version bumps are no
+    # longer load-bearing for drift detection, but they remain
+    # required for npm publish + changelog discoverability.
+    # PRs #37-#41 all shipped without bumps before this gate existed.
+    # Bypass per-PR with the commit-message marker `[skip version-bump]`.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need master ref for the diff base
+      - name: Run version-bump gate
+        run: bash scripts/lint-version-bump.sh
+        env:
+          BASE: origin/master
+
+  chrome-bundle-check:
+    name: chrome bundle artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    # Asserts every Chrome dist artifact the manifest depends on
+    # actually exists with non-trivial size after `pnpm build`.
+    # Catches the PR #47 → #49 failure mode where a runtime import
+    # silently broke the chrome bundle while every other host built
+    # fine. Tied to `pnpm build` so it runs after the same turbo
+    # pipeline the main job uses.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+      - name: pnpm build
+        run: pnpm build
+      - name: Check chrome bundle
+        run: bash scripts/check-chrome-bundle.sh
+
+  test-hermeticity:
+    name: test hermeticity (sandboxed HOME)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+
+    # Runs the full test sweep under a sandboxed $HOME and asserts
+    # that the real ~/.opencues/ (if any) wasn't touched. Catches
+    # PR #41-class bugs where a unit test wrote to os.homedir()
+    # without sandboxing — the vendor-pins test was destroying users'
+    # vendored tmux on every `pnpm test` run before that PR.
+    #
+    # CI runners don't normally have ~/.opencues/, so the diff is
+    # vacuous. The override + run-pattern is still the contract —
+    # any test that tries to write under HOME gets a tempdir, not
+    # the runner's real /github/home.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+      - name: pnpm build
+        run: pnpm build
+      - name: Run hermeticity check
+        run: bash scripts/check-test-hermeticity.sh

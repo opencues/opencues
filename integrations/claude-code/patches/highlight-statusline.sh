@@ -4,6 +4,11 @@
 #
 # Install: Copy to ~/.claude/ and configure settings.json:
 #   { "statusLine": { "type": "command", "command": "/full/path/highlight-statusline.sh" } }
+#
+# lint: no-pipefail (statusline runs on every CC redraw; probe pipes
+# legitimately fall through on failure and the script degrades to a
+# minimal line rather than aborting. Aborting would mean an empty
+# statusline which is a worse user experience than partial info.)
 
 # Find Claude Code PID by walking up the process tree.
 # Match any of:

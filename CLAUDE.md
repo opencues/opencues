@@ -626,6 +626,63 @@ Everything except the placeholder is currently `private: true`. Flipping a packa
 
 Semver per package, stay <1.0 until public launch, bump in the same commit as the change, integrations bump independently of core/runtime. `SPEC_VERSION` bumps only on wire-format changes. **Every version bump also updates `CHANGELOG.md` (root) in the same PR**; spec-affecting changes also update `spec/CHANGELOG.md`. Full policy with per-package bump rules + changelog discipline: [docs/architecture/versioning.md](docs/architecture/versioning.md).
 
+The `version-bump-gate` CI job + `scripts/lint-version-bump.sh` enforce the "src changed → version bumped" half of this policy structurally. Bypass per-PR with the commit-message marker `[skip version-bump]` for non-shipping changes (docs, refactors, tests-only).
+
 ---
 
-*Last updated: May 2026*
+## Before you merge — minimum checklist
+
+The June 2026 PR cluster (#42 → #48, #47 → #49) all needed follow-up PRs because the shipping PR didn't exercise enough surfaces locally. The pre-PR gates below structurally prevent the same shape.
+
+**One command** runs every gate:
+
+```bash
+bash scripts/pre-pr.sh
+```
+
+Takes ~3 minutes warm. Individual gates can be skipped with `SKIP_BUILD=1 / SKIP_TESTS=1 / SKIP_INSTALL_SMOKE=1` for tight iteration loops.
+
+What each gate catches, mapped to a real bug it would have caught:
+
+| Gate | Script | Bug pattern it catches |
+|---|---|---|
+| **Shell portability + strict-mode** | `scripts/lint-shell-portability.sh` | PR #43 (silent npm failure — `set -e` without `pipefail` let `npm install ... \| tail -3` swallow errors) |
+| **Version-bump gate** | `scripts/lint-version-bump.sh` | PRs #37-#41 (source changed, version stayed put → marker drift detection blind to the change) |
+| **Chrome bundle artifacts** | `scripts/check-chrome-bundle.sh` | PR #47 → #49 (`await import('node:fs')` in boot-common broke esbuild; bundle silently shipped with missing dist files) |
+| **Test hermeticity** | `scripts/check-test-hermeticity.sh` | PR #41 (vendor-pins test `fs.rmSync`'d the real user's `~/.opencues/vendor/tmux/` on every `pnpm test` run) |
+| **Install self-heal smoke** | `scripts/check-install-self-heal.sh` | PR #42 → #48 (install short-circuited "already healthy" without updating marker; `opencues run cc` rebuilt forever in a closed loop) |
+| **`doctor`** | built-in CLI command | Real install-state warnings (⚠) — chrome /mnt/c sync, missing keys, broken forks. Content-hash-based since June 2026, so no false-positive after `pnpm build`. CI runs `doctor --strict` for info-level findings too. |
+
+CI runs the same gates as separate jobs so a green local run mirrors what CI will report. If `pre-pr.sh` passes locally, CI will pass.
+
+## Cross-PR contract — when you change X, run Y
+
+The follow-up PR class arose specifically because changes to *runtime / boot / install* code interact with downstream consumers without obvious source-level coupling. Concrete contracts:
+
+- **Change `@opencues/runtime/src/boot-common.ts` or anything importing `node:*` modules?** Run `cd integrations/chrome && npm run build`. The chrome esbuild fails on unmarked node imports — `external:` declaration goes in `integrations/chrome/esbuild.config.mjs`.
+- **Change `integrations/claude-code/bin/install.cjs` or `packages/opencues-cli/src/commands/run.cjs`?** Run `bash scripts/check-install-self-heal.sh`. Or manually: `opencues install <host>` → `opencues run <host>` → `opencues run <host>` again. The second run must be **silent** (no "Rebuilding before launch"). If it isn't, the install path lost the marker write or the run path's drift check is firing incorrectly.
+- **Change `version-markers.cjs` or any code that calls `writeMarker` / `checkDrift`?** Run the PR #42 demo scenarios (A–D) in the PR description manually OR via `scripts/check-install-self-heal.sh`.
+- **Change LLM dispatch error handling (any `catch` in `packages/opencues-core/src/sources/*-source.ts`)?** The catch MUST `this.log(...)` or `this.logInfo(...)` before returning the error envelope. Resolver consumers ignore the `error` field — silent catches eat the only failure signal.
+- **Add a new log line that more than one host emits?** Prefix it with `[<host>]` or emit via `adapter.log` (which auto-prefixes). Bare `[opencues] ...` lines in the shared `/tmp/opencues.log` confuse multi-host debugging — see PR #45.
+- **Edit a test file?** Grep for `os.homedir()`, `process.env.HOME`, `path.join(os.tmpdir())`. If any test writes under those without a `before/after` hook that mkdtemps and restores HOME, you have a vendor-pins-class bug. See PR #41 for the fix pattern.
+
+If a change touches more than one row above, run them all. The `pre-pr.sh` aggregator runs every gate regardless — when in doubt, just run it.
+
+## Common drift-bug patterns
+
+The eight bug classes from the June 2026 debugging session, with the file + the test that pins each one going forward. When something feels off in similar territory, start by re-reading the pattern that matches.
+
+| Bug class | First seen in PR | Pinned at | Lint that catches it |
+|---|---|---|---|
+| Test writes to real `~/.opencues/` | PR #41 | `vendor-pins.test.cjs` (before/after hook with mkdtempSync) | `check-test-hermeticity.sh` |
+| Shell script with `set -e` but no `pipefail` masks pipe failures | PR #43 | `setup.sh:38` + comment | `lint-shell-portability.sh` strict-mode check |
+| Source catch returns error envelope without logging | PR #44 | `transform-blank-source.ts:1910`, `fluid-blank-source.ts:843` | code review (no static lint yet — candidate for a future grep-based linter) |
+| Log line lacks `[host]` prefix in shared log | PR #45 | `chrome opencues-bootstrap.ts:1886` (now uses `[opencues][chrome]`) | convention check |
+| OPENCUES.md edit doesn't propagate without keystroke | PR #46 | `config-loader.ts:subscribe` (5s background poll) | `config-loader.test.ts` background-poll tests |
+| Direct launch bypasses self-heal | PR #47 | `boot-common.ts:checkRuntimeDrift` | runs at every host boot |
+| Install short-circuits with stale marker → run-loop | PR #48 | `integrations/claude-code/bin/install.cjs:checkSrcHashDrift` | `check-install-self-heal.sh` |
+| `node:*` import in runtime breaks chrome bundle | PR #49 | `integrations/chrome/esbuild.config.mjs:external` | `check-chrome-bundle.sh` |
+
+---
+
+*Last updated: June 2026*
