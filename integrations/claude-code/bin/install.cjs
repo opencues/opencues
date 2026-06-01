@@ -29,6 +29,30 @@ const PKG_DIR = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(PKG_DIR, '../..');
 const pkg = JSON.parse(fs.readFileSync(path.join(PKG_DIR, 'package.json'), 'utf8'));
 
+// Bundled-srcHash drift probe used by the no-op-if-healthy gate.
+// Delegates to the canonical version-markers.cjs in opencues-cli.
+// Returns { fresh: boolean, reason: string } — fresh: true when the
+// install marker's srcHash matches the current source's srcHash (no
+// rebuild needed); fresh: false when they differ (rebuild) or when
+// no marker exists yet (treat as fresh — first install just wrote
+// it). Errors swallowed silently and treated as fresh so a bad probe
+// can't trigger spurious rebuilds.
+function checkSrcHashDrift(markerDir) {
+  try {
+    const { checkDrift } = require(path.join(REPO_ROOT, 'packages/opencues-cli/src/lib/version-markers.cjs'));
+    const drift = checkDrift(markerDir, { pkg, REPO_ROOT });
+    if (drift.status === 'fresh' || drift.status === 'missing') {
+      return { fresh: true, reason: drift.reason };
+    }
+    return { fresh: false, reason: drift.reason };
+  } catch {
+    // Couldn't compute drift (clone-side install with missing files,
+    // post-publish path that has no source clone, etc.). Treat as
+    // fresh — drift detection is best-effort.
+    return { fresh: true, reason: 'probe-error' };
+  }
+}
+
 const HOME = os.homedir();
 const CLAUDE_DIR = path.join(HOME, '.claude');
 
@@ -164,23 +188,43 @@ function doInstall() {
   // default) is now opt-in via --rebuild — explicit destructive
   // intent. validateFork checks every artefact (runtime + core +
   // statusline.sh + patched cli.js/native-extract with opencues
-  // markers). If it passes, we exit cleanly with a notice; if it
-  // FAILS for any reason, we auto-escalate to rebuild and log why so
-  // the user's "re-run install to fix things" instinct still works.
+  // markers). If it passes, we ALSO compare the install marker's
+  // srcHash to the current source hash — if they differ, the bundle
+  // is stale even though the files are intact, and we rebuild. If
+  // both checks pass, we exit cleanly with a notice; if EITHER
+  // fails, we escalate to rebuild and log why so the user's "re-run
+  // install to fix things" instinct works for both file-corruption
+  // and stale-bundle drift.
+  //
+  // Why the srcHash check was added in PR #48: PR #42's `opencues
+  // run` self-heal detected drift correctly and called install,
+  // but install short-circuited at "already healthy" without
+  // updating the marker — so the very next `opencues run` detected
+  // drift AGAIN and re-triggered install AGAIN, forever. Closed
+  // loop only when install knows what "healthy" means in the
+  // post-self-heal world.
   if (!args.rebuild && !args.dryRun) {
     const validation = validateFork(fork);
     if (validation.ok) {
-      console.log(`${'\x1b[32m✓\x1b[0m'} ${fork.root} is already installed + healthy. No work needed.`);
-      // Bold the hint — users (and prior versions of us) repeatedly
-      // miss --rebuild's role and assume "healthy" means "current
-      // runtime bundle." It doesn't; bundle drift is invisible to
-      // this short-circuit. Make the actionable flag stand out.
-      console.log(`  ${'\x1b[2m'}Pass${'\x1b[0m'} ${'\x1b[1m--rebuild\x1b[0m'} ${'\x1b[2m'}to force a nuke-and-reinstall from scratch.${'\x1b[0m'}`);
-      return;
+      // File-level healthy. Now check srcHash drift.
+      const installRoot = fork.installRoot || path.join(fork.root, '.cues');
+      const drift = checkSrcHashDrift(installRoot);
+      if (drift.fresh) {
+        console.log(`${'\x1b[32m✓\x1b[0m'} ${fork.root} is already installed + healthy. No work needed.`);
+        // Bold the hint — users (and prior versions of us) repeatedly
+        // miss --rebuild's role and assume "healthy" means "current
+        // runtime bundle." Now the srcHash check rebuilds automatically
+        // on drift; --rebuild is still useful for force-from-scratch.
+        console.log(`  ${'\x1b[2m'}Pass${'\x1b[0m'} ${'\x1b[1m--rebuild\x1b[0m'} ${'\x1b[2m'}to force a nuke-and-reinstall from scratch.${'\x1b[0m'}`);
+        return;
+      }
+      console.log(`${'\x1b[33m▸\x1b[0m'} bundle stale (${drift.reason}). Rebuilding...`);
+      console.log('');
+    } else {
+      console.log(`${'\x1b[33m▸\x1b[0m'} install state needs repair: ${validation.reason}`);
+      console.log(`  ${'\x1b[2m'}Running full reinstall...${'\x1b[0m'}`);
+      console.log('');
     }
-    console.log(`${'\x1b[33m▸\x1b[0m'} install state needs repair: ${validation.reason}`);
-    console.log(`  ${'\x1b[2m'}Running full reinstall...${'\x1b[0m'}`);
-    console.log('');
   }
 
   checkCompat(fork.target);
