@@ -1883,13 +1883,24 @@ async function auditProvidersAgainstKeys(keys: Record<string, string>): Promise<
     }
   }
   if (problems.length === 0) return;
+  // Prefix the warning with [chrome] so it's unambiguous WHICH host is
+  // complaining when /tmp/opencues.log is shared with CC/OC/gemini-cli
+  // — those hosts read process.env directly so they see different
+  // keys-available state than chrome (which reads chrome.storage).
+  // Before June 2026 this warning landed in the shared log as a
+  // generic "[opencues]" line; users on CC with the env var SET saw
+  // "needs CEREBRAS_API_KEY" and assumed their CC install was broken.
+  // The host tag pins the warning to the actual misconfigured host.
   log.warn(
-    `[opencues] CUES.md provider audit found ${problems.length} ` +
-    `misconfigured ${problems.length === 1 ? 'directive' : 'directives'}:\n` +
+    `[opencues][chrome] CUES.md provider audit found ${problems.length} ` +
+    `misconfigured ${problems.length === 1 ? 'directive' : 'directives'} ` +
+    `(chrome reads keys from chrome.storage — env vars do NOT propagate):\n` +
     problems.join('\n') + '\n' +
-    `Set the missing env keys (CC/OC/gemini-cli read process.env + ~/.cues/.env), ` +
-    `or save them in the OpenCues popup (chrome). Cues/blanks routed to these ` +
-    `providers will silently no-op until fixed.`,
+    `Fix: save the missing keys in the OpenCues popup. (Native hosts ` +
+    `CC/OC/gemini-cli read process.env / ~/.cues/.env independently; ` +
+    `if a key is set in your shell, those hosts already have it — ` +
+    `only chrome needs the popup save.) Cues/blanks routed to these ` +
+    `providers will silently no-op on chrome until fixed.`,
   );
 }
 
