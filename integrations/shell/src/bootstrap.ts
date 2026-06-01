@@ -416,15 +416,19 @@ export function dispatchOpenCuesKey(evt: any): boolean {
   const text = _textareaRef?.plainText ?? '';
   const cursor = _textareaRef?.cursorOffset ?? 0;
   const keyName = normaliseKeyName(evt);
-  // Mac Terminal.app emits Ctrl+Option+arrow as `\x1b\x1b[A` (double-ESC + CSI)
-  // with no Ctrl byte. OpenTUI's parser detects the double-ESC and sets
-  // `option: true` (see parse.keypress:5957). The signature `option && arrow`
-  // is unique to this form (plain Option+L/R emits word-jump bytes, not
-  // arrows), so synthesising ctrl=true lets Ctrl+Option+arrow fire the
-  // `ctrl-alt` matcher on Mac Terminal.app. Ghostty / iTerm2 send proper
-  // modifier-encoded CSI where ctrl is already true → synth is a no-op.
-  const macDoubleEscCtrl =
-    !!evt.option && !evt.ctrl && MAC_DOUBLE_ESC_ARROWS.has(keyName);
+  // Mac Terminal.app emits Ctrl+Option+arrow as `\x1b\x1b[A` (double-ESC + CSI
+  // with no Ctrl byte). Every other terminal — Ghostty, iTerm2, Linux xterm,
+  // Windows Terminal — uses xterm-modifier-encoded CSI (`\x1b[1;7A`) with the
+  // Ctrl bit present, so the synth is a no-op there. We gate on the raw byte
+  // sequence rather than on `evt.option` because OpenTUI ALSO sets
+  // `option: true` for `\x1b[1;3A` (plain Alt+arrow on Linux — modifier byte
+  // bit 2). Gating on the literal `\x1b\x1b[` prefix means the synth can never
+  // hijack plain Alt+arrow on Linux/Windows.
+  const isMacDoubleEscArrow =
+    typeof evt.sequence === 'string' &&
+    evt.sequence.startsWith('\x1b\x1b[') &&
+    MAC_DOUBLE_ESC_ARROWS.has(keyName);
+  const macDoubleEscCtrl = isMacDoubleEscArrow && !evt.ctrl;
   const e: KeyEvent = {
     key: keyName,
     modifiers: {

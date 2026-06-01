@@ -96,28 +96,37 @@ describe('ClaudeCodeV21Adapter', () => {
     expect(e.modifiers.alt).toBe(true);
   });
 
-  it('Mac Terminal.app double-ESC arrow synthesises ctrl=true (Ctrl+Option+arrow has no Ctrl byte in stream)', () => {
-    // Ink parses `\x1b\x1b[A` (Mac Terminal Ctrl+Option+Up) as
-    // { key: 'up', option: true, ctrl: false } per parse-keypress.js:471.
-    // The runtime's `ctrl-alt` matcher needs ctrl=true to fire; the synth
-    // is what closes the loop on Mac Terminal.app users.
-    for (const key of ['up', 'down', 'left', 'right'] as const) {
-      const e = normaliseKeyEvent({ key, option: true }, '', 0);
+  it('Mac Terminal.app double-ESC arrow byte sequence synthesises ctrl=true', () => {
+    // Mac Terminal.app emits `\x1b\x1b[A` for Ctrl+Option+Up with no Ctrl byte.
+    // Ink/OpenTUI parse this with `option: true, ctrl: false` and the raw
+    // sequence preserved. The synth is gated on the byte signature so it
+    // ONLY fires for this exact encoding.
+    for (const [key, csi] of [['up', 'A'], ['down', 'B'], ['left', 'D'], ['right', 'C']] as const) {
+      const e = normaliseKeyEvent({ key, option: true, sequence: `\x1b\x1b[${csi}` }, '', 0);
       expect(e.modifiers.ctrl).toBe(true);
       expect(e.modifiers.alt).toBe(true);
     }
   });
 
-  it('Mac double-ESC synth does NOT fire on non-arrow keys (avoid hijacking Option+letter)', () => {
-    const e = normaliseKeyEvent({ key: 'a', option: true }, '', 0);
+  it('plain Alt+arrow on Linux/Windows is NOT hijacked (xterm-modifier CSI, not double-ESC)', () => {
+    // Linux/Windows xterm Alt+arrow emits `\x1b[1;3A`. OpenTUI parses this
+    // with `option: true` too (modifier byte bit 2). The synth must NOT
+    // fire here — gating on the literal `\x1b\x1b[` byte prefix is what
+    // prevents the regression.
+    const e = normaliseKeyEvent({ key: 'up', option: true, sequence: '\x1b[1;3A' }, '', 0);
     expect(e.modifiers.ctrl).toBe(false);
     expect(e.modifiers.alt).toBe(true);
   });
 
-  it('Mac double-ESC synth does not re-trigger when ctrl was already set (Ghostty/iTerm2 path)', () => {
-    // Modifier-encoded CSI from Ghostty/iTerm2 arrives with ctrl=true already;
-    // the synth is conditional on !ctrl so this path is unchanged.
-    const e = normaliseKeyEvent({ key: 'up', ctrl: true, option: true }, '', 0);
+  it('Mac double-ESC synth does NOT fire on non-arrow keys', () => {
+    const e = normaliseKeyEvent({ key: 'a', option: true, sequence: '\x1b\x1ba' }, '', 0);
+    expect(e.modifiers.ctrl).toBe(false);
+    expect(e.modifiers.alt).toBe(true);
+  });
+
+  it('Ghostty/iTerm2 Ctrl+Option+arrow: ctrl already true, synth is a no-op', () => {
+    // Modifier-encoded CSI `\x1b[1;7A` (modifier byte 7 = ctrl+alt).
+    const e = normaliseKeyEvent({ key: 'up', ctrl: true, option: true, sequence: '\x1b[1;7A' }, '', 0);
     expect(e.modifiers.ctrl).toBe(true);
     expect(e.modifiers.alt).toBe(true);
   });
