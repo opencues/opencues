@@ -67,20 +67,11 @@ function doInstall() {
     }
   }
 
-  const vendoredTmux = path.join(require('os').homedir(), '.opencues', 'vendor', 'tmux', 'bin', 'tmux');
-  const hasTmux =
-    fs.existsSync(vendoredTmux) ||
-    spawnSync('which', ['tmux'], { stdio: ['ignore', 'pipe', 'ignore'] }).status === 0;
-  if (!hasTmux) {
-    console.error('\nNOTE: tmux is not installed. oc-shell requires tmux >= 3.2.');
-    console.error('  macOS:         brew install tmux');
-    console.error('  Debian/Ubuntu: sudo apt install tmux');
-    console.error('  Fedora:        sudo dnf install tmux');
-    console.error('  Arch:          sudo pacman -S tmux');
-    console.error('After installing, run oc-install-tmux to build a private copy for oc-shell,');
-    console.error('or set OPENCUES_TMUX=/path/to/tmux to use your system tmux directly.');
-    console.error('');
-  }
+  // tmux warning lives in the top-level `opencues install` preflight
+  // (packages/opencues-cli/src/commands/install.cjs) — duplicating it
+  // here was the second of four tmux mentions per install. Removed.
+  // The post-setup.sh `hasUsableTmux` check still runs oc-install-tmux
+  // if needed, with a clearer "why" message at the call site.
 
   if (args.dryRun) {
     console.log('\n[dry-run] Would build @opencues/{core,runtime}.');
@@ -133,12 +124,29 @@ function doInstall() {
   //      path first, falls through to source build if 404. Source build
   //      may fail if the C-toolchain isn't installed — at that point
   //      oc-install-tmux prints platform-specific apt/brew commands.
+  let tmuxOk = true;
   if (!hasUsableTmux()) {
+    // State at this point: no vendored tmux exists AND system tmux is
+    // either missing or < 3.2. Show WHY we're vendoring so the user
+    // isn't surprised by a 30-second build step appearing after a
+    // smooth install. The installer tries a prebuilt tarball first
+    // (zero compile-deps) and only falls through to source build if
+    // that 404s.
+    const sysVer = (() => {
+      try {
+        const out = require('child_process').execSync('tmux -V 2>/dev/null', { encoding: 'utf8' });
+        const m = out.match(/tmux (\d+)\.(\d+)/);
+        return m ? `${m[1]}.${m[2]}` : null;
+      } catch { return null; }
+    })();
     console.log('');
-    console.log('▸ Setting up tmux for oc-shell (one-time)…');
+    console.log(sysVer
+      ? `▸ System tmux is ${sysVer} (oc-shell needs ≥ 3.2). Vendoring tmux 3.4 to ~/.opencues/vendor/tmux/ — your system tmux is untouched.`
+      : '▸ No tmux on PATH. Vendoring tmux 3.4 to ~/.opencues/vendor/tmux/ (one-time, ~30s).');
     const tmuxInstaller = path.join(PKG_DIR, 'bin', 'oc-install-tmux');
     const tmuxResult = spawnSync('bash', [tmuxInstaller], { stdio: 'inherit' });
     if (tmuxResult.status !== 0) {
+      tmuxOk = false;
       console.log('');
       console.log('  oc-install-tmux didn\'t complete. oc-shell needs tmux 3.2+ to launch.');
       console.log('  Options: (a) install via your package manager (apt/brew install tmux), then re-run');
@@ -147,6 +155,25 @@ function doInstall() {
       // Non-fatal — the rest of the install succeeded; tmux is per-launch.
     }
   }
+  // Launch / how-to summary — final lines of the install so they
+  // don't get buried by a 30-second tmux vendor build that prints
+  // ABOVE this block. Skipped if tmux didn't land — that path
+  // already printed actionable next-steps.
+  if (tmuxOk) printShellLaunchSummary();
+}
+
+function printShellLaunchSummary() {
+  // tput is the portable way to emit dim/reset; falls back to empty
+  // strings when stdout isn't a TTY (CI / piped runs).
+  const dim = process.stdout.isTTY ? '\x1b[2m' : '';
+  const reset = process.stdout.isTTY ? '\x1b[22m' : '';
+  console.log('');
+  console.log(`Launch:        ${'opencues run shell'.padEnd(20)} ${dim}# wraps your $SHELL in a private tmux session${reset}`);
+  console.log(`Open input:    ${'Alt+Shift+↑'.padEnd(20)} ${dim}# inside oc-shell, opens the OpenCues input pane${reset}`);
+  console.log('');
+  console.log('Optional one-time setup — capture the current shell line on Alt+Shift+↑:');
+  console.log(`  ${path.join(PKG_DIR, 'bin', 'oc-install-shell-integration')}`);
+  console.log('  (adds a source line to .bashrc/.zshrc/fish config; uninstall later cleans it up)');
 }
 
 // Probe for a usable tmux. Returns true if either:

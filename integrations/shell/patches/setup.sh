@@ -89,15 +89,9 @@ if [[ -n "$LINK_DIR" ]]; then
   done
 fi
 
-echo "✓ Terminal integration ready."
-echo
-echo "Try it:"
-echo "  $TERM_DIR/bin/oc-shell                    # shell wrapped with Alt+Shift+↑ input box"
-echo
-echo "Before first launch, build the vendored tmux 3.4 (one-time, ~30s):"
-echo "  $TERM_DIR/bin/oc-install-tmux          # builds to ~/.opencues/vendor/tmux/"
-echo "  (system tmux is never touched; user PATH is never changed)"
-echo
-echo "Optional — capture-current-line shell integration:"
-echo "  $TERM_DIR/bin/oc-install-shell-integration"
-echo "  (adds a one-time source line to your .bashrc/.zshrc/.fishrc)"
+echo "✓ Shell build done."
+# Launch / how-to summary is printed by integrations/shell/bin/install.cjs
+# AFTER the tmux vendoring step so the user reads "ready to launch"
+# as the last line, not before a 30-second source-build kicks off.
+# Devs invoking setup.sh directly get just the build confirmation —
+# next-steps live in CLAUDE.md / README.md.
