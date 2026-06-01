@@ -325,6 +325,20 @@ export function toggleZeroWidth(text: string): string {
   return stripped + (endedWithZws ? '\u200c' : '\u200b');
 }
 
+// Mac Terminal.app emits Ctrl+Option+arrow as `\x1b\x1b[A` (double-ESC + CSI)
+// with no Ctrl byte anywhere in the stream. Ink and OpenTUI both detect the
+// double-ESC prefix and set `raw.option = true` on arrow keys (per Ink's
+// parse-keypress.js:471 and OpenTUI's parse.keypress:5957). This signature is
+// unique to the double-ESC arrow form — plain Option+Left/Right emits word-jump
+// bytes (`^[b` / `^[f`), not arrows, so they never reach us as arrow events;
+// plain Option+Up/Down without Ctrl rarely emits anything useful and isn't
+// muscle-memory-bound to a competing action in Ink/OpenTUI input prompts.
+// We synthesise ctrl=true for `option && arrow` to make Ctrl+Option+arrow
+// reach the `ctrl-alt` keymap matcher on Mac Terminal.app. Ghostty / iTerm2
+// transmit the proper modifier-encoded CSI (`\x1b[1;7A`) so ctrl is already
+// true on those hosts and the synth is a no-op.
+const MAC_DOUBLE_ESC_ARROW_KEYS = new Set(['up', 'down', 'left', 'right']);
+
 export function normaliseKeyEvent(raw: {
   key?: string;
   ctrl?: boolean;
@@ -334,8 +348,11 @@ export function normaliseKeyEvent(raw: {
   shift?: boolean;
   super?: boolean;
 }, text: string, cursorOffset: number): KeyEvent {
+  const keyName = (raw.key ?? '').toLowerCase();
+  const macDoubleEscCtrlSynth =
+    !!raw.option && !raw.ctrl && MAC_DOUBLE_ESC_ARROW_KEYS.has(keyName);
   const modifiers: Modifiers = {
-    ctrl: !!raw.ctrl,
+    ctrl: !!raw.ctrl || macDoubleEscCtrlSynth,
     alt: !!(raw.alt || raw.option || raw.meta),
     shift: !!raw.shift,
     meta: !!raw.super,

@@ -96,6 +96,32 @@ describe('ClaudeCodeV21Adapter', () => {
     expect(e.modifiers.alt).toBe(true);
   });
 
+  it('Mac Terminal.app double-ESC arrow synthesises ctrl=true (Ctrl+Option+arrow has no Ctrl byte in stream)', () => {
+    // Ink parses `\x1b\x1b[A` (Mac Terminal Ctrl+Option+Up) as
+    // { key: 'up', option: true, ctrl: false } per parse-keypress.js:471.
+    // The runtime's `ctrl-alt` matcher needs ctrl=true to fire; the synth
+    // is what closes the loop on Mac Terminal.app users.
+    for (const key of ['up', 'down', 'left', 'right'] as const) {
+      const e = normaliseKeyEvent({ key, option: true }, '', 0);
+      expect(e.modifiers.ctrl).toBe(true);
+      expect(e.modifiers.alt).toBe(true);
+    }
+  });
+
+  it('Mac double-ESC synth does NOT fire on non-arrow keys (avoid hijacking Option+letter)', () => {
+    const e = normaliseKeyEvent({ key: 'a', option: true }, '', 0);
+    expect(e.modifiers.ctrl).toBe(false);
+    expect(e.modifiers.alt).toBe(true);
+  });
+
+  it('Mac double-ESC synth does not re-trigger when ctrl was already set (Ghostty/iTerm2 path)', () => {
+    // Modifier-encoded CSI from Ghostty/iTerm2 arrives with ctrl=true already;
+    // the synth is conditional on !ctrl so this path is unchanged.
+    const e = normaliseKeyEvent({ key: 'up', ctrl: true, option: true }, '', 0);
+    expect(e.modifiers.ctrl).toBe(true);
+    expect(e.modifiers.alt).toBe(true);
+  });
+
   it('forceRender is gated by capability', () => {
     const b = new FakeBindings();
     const a = new ClaudeCodeV21Adapter(b, ['file-read']); // no force-render

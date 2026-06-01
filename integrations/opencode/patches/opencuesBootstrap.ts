@@ -508,16 +508,27 @@ export function startOpenCues(opts: {
   return bootResult
 }
 
+const MAC_DOUBLE_ESC_ARROWS = new Set(['up', 'down', 'left', 'right'])
+
 /** Forwards an OpenTUI useKeyboard event into the runtime. Returns true if consumed. */
 export function dispatchOpenCuesKey(evt: any): boolean {
   if (!bootResult) return false
   const access = __ocPromptHolder.current
   const text = access?.read() ?? ""
   const cursor = access?.cursor() ?? 0
+  const keyName = normaliseKeyName(evt)
+  // Mac Terminal.app Ctrl+Option+arrow → `\x1b\x1b[A` (double-ESC + CSI, no
+  // Ctrl byte). OpenTUI's parser sets `option: true` for double-ESC arrow
+  // sequences (parse.keypress:5957). The `option && arrow` signature is
+  // unique to this form — plain Option+L/R emits `^[b` / `^[f` (word-jump,
+  // not arrows). Synthesise ctrl=true so the `ctrl-alt` matcher fires.
+  // Ghostty / iTerm2 send modifier-encoded CSI where ctrl is already true.
+  const macDoubleEscCtrl =
+    !!evt.option && !evt.ctrl && MAC_DOUBLE_ESC_ARROWS.has(keyName)
   const e: KeyEvent = {
-    key: normaliseKeyName(evt),
+    key: keyName,
     modifiers: {
-      ctrl: !!evt.ctrl,
+      ctrl: !!evt.ctrl || macDoubleEscCtrl,
       alt: !!evt.option || !!evt.alt || !!evt.meta,
       shift: !!evt.shift,
       meta: !!evt.meta,

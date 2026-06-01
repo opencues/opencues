@@ -162,24 +162,24 @@ GNOME, KDE, and most tiling WMs bind Ctrl+Alt+arrow to workspace switching by de
 
 Test: in a fresh shell, press Ctrl+Alt+Right inside `claude-cues`. If your workspace switches, the OS still owns the binding.
 
-### macOS: use Ghostty or iTerm2 — Terminal.app cannot transmit Ctrl+Option+arrow
+### macOS: Ctrl+Option+arrow works on every terminal, including Terminal.app
 
-Apple's built-in **Terminal.app fundamentally cannot send Ctrl+Option+arrow** in a way OpenCues (or any terminal app) can detect. Verified by `cat -v`:
+Mac Terminal.app emits Ctrl+Option+arrow as `\x1b\x1b[A` (double-ESC + CSI). The byte stream carries no Ctrl modifier — but the double-ESC prefix is a unique signature that no other key combination produces on arrow keys:
 
 ```
-Ctrl+Option+Up  → ^[^[[A   (just ESC ESC [A — no Ctrl byte anywhere)
-Ctrl+arrow      → eaten by Mission Control (OS owns it)
+Ctrl+Option+Up   → ^[^[[A   (double-ESC + CSI A — unique to this chord)
+plain Option+L/R → ^[b / ^[f (word-jump bytes, not arrow CSI)
+Ctrl+arrow       → eaten by Mission Control (OS owns it)
 Ctrl+Shift+arrow → stripped
 ```
 
-The byte stream Terminal.app emits for Ctrl+Option+arrow is **identical** to plain Option+arrow with Option-as-Meta on. The Ctrl modifier is dropped at the terminal layer before any program sees it — there is no software fix downstream. This is a Terminal.app limitation, not a bug we can patch.
+OpenCues' Ink + OpenTUI parsers both detect double-ESC and surface `option: true` on the arrow key event; the runtime synthesises `ctrl: true` for the unique `option && arrow` signature so the `ctrl-alt` keymap matcher fires. **No manual configuration required** — works with the default `nav-keymap: auto`.
 
-**Install Ghostty or iTerm2** — both transmit modifier-encoded CSI (`\x1b[1;7A` for Ctrl+Option+Up) so OpenCues sees both modifiers and cycling works with the default `nav-keymap: auto`:
+Terminal.app users may still want to enable **Settings → Profiles → Keyboard → "Use Option as Meta key"** for general shell ergonomics (proper word-jump in the surrounding bash/zsh prompt), but it's not required for OpenCues itself.
 
-- [Ghostty](https://ghostty.org) — `brew install --cask ghostty`
-- [iTerm2](https://iterm2.com) — `brew install --cask iterm2`
+Ghostty / iTerm2 work identically — they transmit modifier-encoded CSI (`\x1b[1;7A`) with the Ctrl bit present, and the synth is a no-op (ctrl was already true).
 
-The chrome extension is unaffected on macOS — DOM `KeyboardEvent.altKey` is set whenever Option is held, so Ctrl+Option+arrow works in any Mac browser.
+The chrome extension on macOS is independent — DOM `KeyboardEvent.altKey` is set whenever Option is held, so Ctrl+Option+arrow works in any Mac browser.
 
 ## Troubleshooting
 
