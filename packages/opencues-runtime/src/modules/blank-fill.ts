@@ -223,6 +223,7 @@ export class BlankFill {
       // resolver's gate so the runtime is consistent across both blank
       // dispatch paths. See `_underscoreKeyArmed`.
       if (filteredSlots.length > 0 && !this.explicitUnderscoreRecent()) {
+        this.adapter.log('debug', `BlankFill: explicit-_ gate BLOCKED ${filteredSlots.length} slot(s) (no recent _ keystroke)`);
         filteredSlots = [];
       }
       this.maybeRunScripts(e.text, filteredSlots);
