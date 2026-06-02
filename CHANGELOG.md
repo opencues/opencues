@@ -34,6 +34,34 @@ One root cause: a provider-blind default model leaking into an auto-routed provi
 
 Versions bumped: `@opencues/core` 0.1.7 → 0.1.8, `@opencues/runtime` 0.1.13 → 0.1.14.
 
+### Changed — Provider rename `claude-cli` → `claude-code-cli`, llama-3.3 removed from Groq catalogue, CLI providers added to smoke
+
+Follow-up on the LLM-provider fix below. Renamed the Anthropic CLI-transport provider id from `claude-cli` to `claude-code-cli` to match the official product name and remove ambiguity ("claude-cli" reads as a generic Claude CLI; the canonical user-facing brand for the binary is "Claude Code"). `canonicalizeProviderId()` keeps legacy user configs (`globalProvider: claude-cli`) silently working — old id resolves to canonical at every user-input boundary (resolveLLM + validateEndpoint + getProvider). Drop after 2027-01-01.
+
+`llama-3.3-70b-versatile` removed from Groq's `knownModels` — it's not a reasoning model, so the adapter's default `reasoning_effort: low` 400s on it. The `modelRejectsReasoningEffort` predicate keeps it usable via direct OPENCUES.md edit; the classifier just doesn't surface it.
+
+Smoke runner now also covers the two CLI-transport providers (`claude-code-cli`, `openai-subscription`) — `probe()` branches on `transport === 'cli'` and dispatches via `invokeCli()` instead of `fetch()`. Verified live 2026-06-02: 20 of 21 combos pass; the one failure was the user's expired `codex login` (actionable, not a bug — the runner correctly surfaced the API's auth-expired message).
+
+Version bumped: `@opencues/core` 0.1.7 → 0.1.8 (single bump covers both fixes).
+
+### Fixed — LLM providers: temperature/reasoning-effort deprecations + stale model catalogues
+
+User reported `draft email _` producing no output in claude-cues despite doctor reporting healthy. Log trace caught the actual failure: `anthropic error: \`temperature\` is deprecated for this model.` — every blank routing through `blanks-llm-provider: anthropic` (Claude 4.x) was silently dying in the LLM call. A live smoke runner ([`tests/integration/llm-providers-smoke.cjs`](tests/integration/llm-providers-smoke.cjs)) verifying all 19 shipped (provider, model) combinations against real keys caught three more latent failures:
+
+- **anthropic + claude-{opus,sonnet,haiku}-4-*** rejected `temperature`. Anthropic deprecated the field on the entire Claude 4.x family in June 2026. Now omitted at request build (`modelRejectsTemperature` registry). OpenRouter passthrough to `anthropic/claude-*` also covered.
+- **groq + llama-3.3-70b-versatile** rejected `reasoning_effort` with HTTP 400. Groq's adapter previously claimed "non-reasoning models silently ignore it" — they don't on llama. Now gated by `modelRejectsReasoningEffort` registry; gpt-oss companions (which REQUIRE the field) keep getting it.
+- **cerebras** catalogue listed `qwen-3-235b-a22b-instruct-2507` which Cerebras's `/v1/models` endpoint no longer returns. Removed from `knownModels`.
+- **gemini** catalogue listed `gemini-3.1-flash` / `gemini-3.1-pro` which 404 on the live API. Google switched to the `gemini-flash-latest` / `gemini-pro-latest` rolling aliases. Updated.
+
+Capability matrix lives in two registry consts in `llm-provider.ts` (`TEMPERATURE_REJECTING_MODELS`, `REASONING_EFFORT_REJECTING_MODELS`). Adding a future deprecation is a one-line append. 24 unit-test pins in `llm-provider.temperature.test.ts` cover the predicates + the buildRequest forwarding (Anthropic inline body + buildOpenAIBody-driven Groq/OpenRouter/Cerebras/OpenAI shared body). Live smoke runner (opt-in, requires API keys) verifies every catalogue entry actually accepts a minimal request — re-run on any model-catalogue or provider-adapter edit:
+
+```bash
+node tests/integration/llm-providers-smoke.cjs           # smoke every combo
+node tests/integration/llm-providers-smoke.cjs --models  # list known combos
+```
+
+Verified live: 19/19 combos pass after the fix. Version bumped: `@opencues/core` 0.1.7 → 0.1.8.
+
 ### Changed — Blanks fire only on explicit `_` keystroke (cursor-split bug)
 
 Explicit-`_` gate for blank activation (`packages/opencues-runtime/src/modules/{resolver,blank-fill}.ts`). FluidBlank / TransformBlank / ConfigIntent and script-backed blanks (volume, brightness, …) now fire ONLY when the `_` in the buffer was placed by an explicit user keystroke. A `_` exposed via cursor-relocation (typing `monologue_` and then splitting it to `monologue _`), paste, or programmatic `setText` is suppressed. Resolver and BlankFill each arm a one-shot flag on a plain `_` keypress, but only when the simulated insertion would produce a standalone `_` — so typing `_` adjacent to an existing word never arms. The flag is cleared at the end of the next `onTextChange` (exception: spaced-mode unconfirmed `_` keeps it through one extra dispatch so the confirming space still dispatches). `MockAdapter.pushText` auto-fires the `_` keystroke when the new text introduces additional `_` chars; the new `pushTextNoKeystroke` is the explicit opt-out for paste/programmatic-insertion simulations. Three scenario tests pin the user journey.

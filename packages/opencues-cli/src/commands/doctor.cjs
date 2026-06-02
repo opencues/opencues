@@ -897,7 +897,7 @@ module.exports = async function doctor(argv, ctx) {
         // path). Default to the id for any future CLI provider whose
         // binary matches its id.
         const BIN_BY_ID = {
-          'claude-cli': 'claude',
+          'claude-code-cli': 'claude',
           'openai-subscription': 'codex',
         };
         const bin = BIN_BY_ID[adapter.id] || adapter.id;
@@ -906,7 +906,7 @@ module.exports = async function doctor(argv, ctx) {
         s.ok(`${adapter.displayName} (${bin} on PATH)`, installed);
         if (!installed) {
           const FIX_BY_ID = {
-            'claude-cli': `install Claude Code from https://claude.com/code, run \`claude auth\`, then \`claude -p hi\` to confirm`,
+            'claude-code-cli': `install Claude Code from https://claude.com/code, run \`claude auth\`, then \`claude -p hi\` to confirm`,
             'openai-subscription': `install OpenAI Codex via \`npm i -g @openai/codex\`, then run \`codex login\` to sign in with your ChatGPT plan (writes ~/.codex/auth.json which the runtime reads on every call — the codex binary is not on the request hot path)`,
           };
           findings.push({

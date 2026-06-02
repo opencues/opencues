@@ -242,7 +242,7 @@ export const DEFAULT_OPENCUES_STATE: OpenCuesState = {
 const VALID_BUCKET_PROVIDERS = new Set([
   'inherit',
   'groq', 'openrouter', 'gemini', 'openai', 'openai-subscription',
-  'anthropic', 'cerebras', 'claude-cli', 'opencode-zen',
+  'anthropic', 'cerebras', 'claude-code-cli', 'opencode-zen',
 ]);
 
 function bucketProvider(raw: string): string {
