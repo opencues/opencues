@@ -18,7 +18,7 @@ import type { CliRenderer, TextareaRenderable } from "@opentui/core"
 import { RGBA } from "@opentui/core"
 import { boot, type BootResult } from "@opencues/runtime/dist/adapters/oc/__OPENCUES_BAND__/boot"
 import type { KeyEvent, LogLevel, RenderDirectives } from "@opencues/runtime/dist/src/adapter"
-import { shouldSynthesizeMacDoubleEscCtrl } from "@opencues/runtime/dist/src/modules/mac-keyboard"
+import { buildOpenTuiModifiers } from "@opencues/runtime/dist/src/modules/mac-keyboard"
 import { createSourceReclassifier } from "@opencues/runtime/dist/src/boot-common"
 import { codeUnitsToCells } from "@opencues/runtime/dist/src/util/cell-width"
 import { createBlankInvoke, createDefaultBlanksRegistry, type Blank } from "@opencues/runtime/dist/src/blanks"
@@ -516,23 +516,19 @@ export function dispatchOpenCuesKey(evt: any): boolean {
   const text = access?.read() ?? ""
   const cursor = access?.cursor() ?? 0
   const keyName = normaliseKeyName(evt)
-  // Mac Terminal.app's Ctrl+Option+arrow ships without a Ctrl byte — see
-  // `@opencues/runtime/src/modules/mac-keyboard.ts` for the full
-  // byte-signature rationale. OpenTUI's ParsedKey uses `name` not `key`;
-  // we pass both through unchanged and the helper accepts either.
-  const macDoubleEscCtrl = shouldSynthesizeMacDoubleEscCtrl({
-    ctrl: !!evt.ctrl,
-    sequence: typeof evt.sequence === 'string' ? evt.sequence : undefined,
-    name: keyName,
-  })
+  // OpenTUI-shape → runtime Modifiers + Mac double-ESC Ctrl synth, all
+  // pinned in `@opencues/runtime/src/modules/mac-keyboard.test.ts`.
   const e: KeyEvent = {
     key: keyName,
-    modifiers: {
-      ctrl: !!evt.ctrl || macDoubleEscCtrl,
-      alt: !!evt.option || !!evt.alt || !!evt.meta,
-      shift: !!evt.shift,
+    modifiers: buildOpenTuiModifiers({
+      ctrl: !!evt.ctrl,
+      alt: !!evt.alt,
+      option: !!evt.option,
       meta: !!evt.meta,
-    },
+      shift: !!evt.shift,
+      sequence: typeof evt.sequence === 'string' ? evt.sequence : undefined,
+      name: keyName,
+    }),
     text,
     cursorOffset: cursor,
   }

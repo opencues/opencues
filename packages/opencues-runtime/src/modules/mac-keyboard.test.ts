@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shouldSynthesizeMacDoubleEscCtrl } from './mac-keyboard';
+import { shouldSynthesizeMacDoubleEscCtrl, buildOpenTuiModifiers } from './mac-keyboard';
 
 // This helper centralises the Ctrl+Option+arrow synth used by CC's
 // `normaliseKeyEvent` and the OpenTUI bootstraps (shell + OC). The tests
@@ -87,6 +87,132 @@ describe('shouldSynthesizeMacDoubleEscCtrl', () => {
     it('key field is case-insensitive (some parsers uppercase)', () => {
       expect(shouldSynthesizeMacDoubleEscCtrl({ key: 'UP', sequence: '\x1b\x1b[A' })).toBe(true);
       expect(shouldSynthesizeMacDoubleEscCtrl({ name: 'Up', sequence: '\x1b\x1b[A' })).toBe(true);
+    });
+  });
+});
+
+// The OpenTUI bootstraps (shell + OpenCode) compose this helper to build
+// the runtime Modifiers shape end-to-end. These pins cover every (terminal,
+// modifier) interaction we know about — same matrix as the synth tests
+// above, but verifying the full ctrl/alt/shift/meta tuple instead of just
+// the synth boolean. A regression in the shell or OC bootstrap consumer
+// would fail HERE before reaching the host, even though those bootstraps
+// have no test scaffolding of their own.
+
+describe('buildOpenTuiModifiers', () => {
+  describe('macOS — Mac Terminal.app (double-ESC + CSI)', () => {
+    it.each([
+      ['up',    '\x1b\x1b[A'],
+      ['down',  '\x1b\x1b[B'],
+      ['right', '\x1b\x1b[C'],
+      ['left',  '\x1b\x1b[D'],
+    ])('Ctrl+Option+%s arrives as { option:true, sequence:%s } and lands ctrl+alt', (name, sequence) => {
+      // What Ink + OpenTUI parsers actually produce for `\x1b\x1b[A` on Mac
+      // Terminal.app: option flag set by double-ESC detection, meta set
+      // alongside it on OpenTUI, ctrl absent because Terminal.app strips it.
+      const mods = buildOpenTuiModifiers({ name, sequence, option: true, meta: true });
+      expect(mods).toEqual({ ctrl: true, alt: true, shift: false, meta: true });
+    });
+
+    it('preserves meta in the modifier tuple (forbidModifiers:[meta] still works)', () => {
+      // Mac Terminal.app double-ESC sets BOTH option and meta on the
+      // parsed event. The runtime's `forbidModifiers: ['meta']` filter
+      // (used e.g. for bare Escape) needs to keep seeing meta=true here
+      // so it doesn't accidentally swallow a meta-bearing chord.
+      const mods = buildOpenTuiModifiers({ name: 'up', sequence: '\x1b\x1b[A', option: true, meta: true });
+      expect(mods.meta).toBe(true);
+    });
+  });
+
+  describe('macOS — Ghostty / iTerm2 (xterm modifier-encoded CSI)', () => {
+    it('Ctrl+Option+arrow with modifier byte 7 lands ctrl+alt without synth firing', () => {
+      // `\x1b[1;7A` — modifier byte 7 = ctrl(4) + alt(2) + shift(1) → 7.
+      // OpenTUI sets ctrl, option, meta directly; synth is gated on !ctrl
+      // so it's a no-op here. Result must be the same as Mac Terminal.app.
+      const mods = buildOpenTuiModifiers({ name: 'up', sequence: '\x1b[1;7A', ctrl: true, option: true, meta: true });
+      expect(mods).toEqual({ ctrl: true, alt: true, shift: false, meta: true });
+    });
+
+    it('plain Option+arrow (modifier byte 3, ctrl=false) is NOT promoted to ctrl', () => {
+      // `\x1b[1;3A` — modifier byte 3 = shift(1) + alt(2). OpenTUI also sets
+      // option=true from the bit-2 (see parse.keypress:5966), so the synth
+      // condition `option && arrow && !ctrl` looks tempting. The byte-prefix
+      // gate is what prevents the hijack: this sequence doesn't start with
+      // `\x1b\x1b[`, so ctrl stays false and plain Alt+arrow word-skip is
+      // preserved.
+      const mods = buildOpenTuiModifiers({ name: 'up', sequence: '\x1b[1;3A', option: true, meta: true });
+      expect(mods).toEqual({ ctrl: false, alt: true, shift: false, meta: true });
+    });
+  });
+
+  describe('Linux / Windows (xterm modifier-encoded CSI)', () => {
+    it('Ctrl+Alt+arrow with modifier byte 7 lands ctrl+alt cleanly', () => {
+      // Same byte form Ghostty uses — Linux xterm + Windows Terminal both
+      // ship CSI 1;7 for Ctrl+Alt+arrow. No Option key concept; alt is
+      // already set explicitly by the parser.
+      const mods = buildOpenTuiModifiers({ name: 'up', sequence: '\x1b[1;7A', ctrl: true, alt: true });
+      expect(mods).toEqual({ ctrl: true, alt: true, shift: false, meta: false });
+    });
+
+    it('plain Alt+arrow on Linux is NOT promoted to ctrl (word-skip preserved)', () => {
+      // The regression guard. OpenTUI's parser sets option=true from
+      // modifier bit 2 even on non-Mac terminals — the byte-prefix gate
+      // is what keeps this safe.
+      const mods = buildOpenTuiModifiers({ name: 'up', sequence: '\x1b[1;3A', alt: true, option: true });
+      expect(mods).toEqual({ ctrl: false, alt: true, shift: false, meta: false });
+    });
+
+    it('plain arrow (no modifier byte, no ESC prefix) carries no modifiers', () => {
+      const mods = buildOpenTuiModifiers({ name: 'up', sequence: '\x1b[A' });
+      expect(mods).toEqual({ ctrl: false, alt: false, shift: false, meta: false });
+    });
+  });
+
+  describe('shift + multi-modifier combinations', () => {
+    it('Ctrl+Shift+arrow on xterm (modifier byte 6) lands ctrl+shift', () => {
+      // `\x1b[1;6A` — modifier byte 6 = ctrl(4) + shift(1) → 5; 5+1=6
+      // (the parsed modifier is 6, which encodes ctrl+shift). Used by the
+      // optional `nav-keymap: ctrl-shift` mode.
+      const mods = buildOpenTuiModifiers({ name: 'up', sequence: '\x1b[1;6A', ctrl: true, shift: true });
+      expect(mods).toEqual({ ctrl: true, alt: false, shift: true, meta: false });
+    });
+
+    it('Ctrl+Alt+Shift+arrow lands all three (no synth, ctrl already set)', () => {
+      const mods = buildOpenTuiModifiers({ name: 'up', sequence: '\x1b[1;8A', ctrl: true, alt: true, shift: true, option: true, meta: true });
+      expect(mods).toEqual({ ctrl: true, alt: true, shift: true, meta: true });
+    });
+  });
+
+  describe('alt coalesce semantics (option || alt || meta → alt)', () => {
+    it('option-only lights alt (Mac chord without Ctrl)', () => {
+      expect(buildOpenTuiModifiers({ name: 'a', option: true }).alt).toBe(true);
+    });
+    it('alt-only lights alt (Linux/Windows non-Mac path)', () => {
+      expect(buildOpenTuiModifiers({ name: 'a', alt: true }).alt).toBe(true);
+    });
+    it('meta-only lights alt (defensive — historical hosts that surfaced meta in lieu of alt)', () => {
+      expect(buildOpenTuiModifiers({ name: 'a', meta: true }).alt).toBe(true);
+    });
+    it('all three flags set: alt is still just true (no double-counting weirdness)', () => {
+      expect(buildOpenTuiModifiers({ name: 'a', option: true, alt: true, meta: true }).alt).toBe(true);
+    });
+    it('none set: alt is false', () => {
+      expect(buildOpenTuiModifiers({ name: 'a' }).alt).toBe(false);
+    });
+  });
+
+  describe('edge cases', () => {
+    it('missing fields default to false (defensive against any-typed callers)', () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mods = buildOpenTuiModifiers({} as any);
+      expect(mods).toEqual({ ctrl: false, alt: false, shift: false, meta: false });
+    });
+
+    it('synth path requires the sequence — double-ESC on the key name alone is not enough', () => {
+      // Defensive: don't trust someone passing key:"up" without proving the
+      // byte stream actually carried double-ESC.
+      const mods = buildOpenTuiModifiers({ name: 'up', option: true, meta: true });
+      expect(mods.ctrl).toBe(false);
     });
   });
 });
