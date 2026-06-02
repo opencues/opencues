@@ -707,7 +707,20 @@ export function boot(host: HostInfo): BootResult {
 
     dispatchKey(rawEvent, text, cursorOffset) {
       checkTextDrift(text, cursorOffset);
-      const event = normaliseKeyEvent(rawEvent, text, cursorOffset);
+      // ZWS strip at the KeyEvent boundary — same rationale as
+      // checkTextDrift / applyRender (see boot.ts:282, 771-772). Without
+      // this, `text` carries the render-kick `\u200B`/`\u200C` marker that
+      // __oc_pushHostText toggles to defeat React's string-equality bail.
+      // Resolver.onUnderscoreKey's standalone-`_` check runs splitWords
+      // (which matches `\S+`); a ZWS adjacent to the cursor word glues to
+      // it and the trailing `_` is no longer detected as standalone — the
+      // one-shot gate refuses to arm, and the second `_` in a chain (e.g.
+      // `draft email _` → `… translate to japanese _`) silently falls into
+      // the debounced fall-through with allowBlanks=false, masking the
+      // blank source.
+      const cleanText = visible(text);
+      const cleanCursor = visible(text.slice(0, cursorOffset)).length;
+      const event = normaliseKeyEvent(rawEvent, cleanText, cleanCursor);
       insideDispatch = true;
       try {
         for (const handler of keyHandlers) {

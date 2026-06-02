@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fixed — Claude Code: second `_` in a chain silently dropped (ZWS leaks into KeyEvent)
+
+CC-only regression after [#52](https://github.com/opencues/opencues/pull/52). Chaining `_` triggers (`draft email _` → `… translate to japanese _`) worked on OpenCode but failed on Claude Code: the second transform never fired, the `_` just sat in the buffer. Root cause: the CC adapter's `dispatchKey` passed `iz.text` straight into `normaliseKeyEvent` (`packages/opencues-runtime/adapters/cc/v2.1/boot.ts:708-727`) without stripping the render-kick `\u200B`/`\u200C` marker that `__oc_pushHostText` toggles to defeat React's string-equality bail. Resolver's `onUnderscoreKey` (added by #52) simulates the standalone-`_` check via `splitWords`, which matches `\S+`; the ZWS is non-whitespace, so it glues to the cursor word — the trailing `_` is no longer detected as standalone, the one-shot gate refuses to arm, and `onTextChange` falls through to the debounced path with `allowBlanks=false`, masking the blank source. OC isn't affected because it doesn't render-kick.
+
+Fix: strip ZWS at the KeyEvent boundary, same pattern as `checkTextDrift` (boot.ts:282) and `applyRender` (boot.ts:771-772) already use — this was the missing fourth row in the boundaries table in `integrations/claude-code/CLAUDE.md`. Adapter test pinned via `KeyEvent.text + cursorOffset are ZWS-stripped before reaching onKey handlers`.
+
+Version bumped: `@opencues/runtime` 0.1.14 → 0.1.15.
+
 ### Fixed — LLM blanks silently dead on auto-routed Cerebras (invalid provider/model pair) + provider errors now surface inline
 
 One root cause: a provider-blind default model leaking into an auto-routed provider of a different model namespace. The guiding principle for the fix: **always land on a valid (provider, model) pair; if a real error remains (credits, auth, …) surface it inline; never silently ship an invalid model.**
