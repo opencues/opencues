@@ -2632,11 +2632,16 @@ function installKeyListener(): void {
     // Normal `<input>` / `<textarea>` mode has no painted cues / cycling
     // band / navigation overlay, so the runtime's key dispatch has
     // nothing to act on (cycling would mutate text invisibly — worse
-    // than no-op). Let browser-default key behavior pass through.
-    if (isNormalInput(target)) return;
+    // than no-op). Let browser-default key behavior pass through —
+    // EXCEPT a bare `_` keypress, which the resolver's explicit-`_`
+    // gate (runtime PR #52) requires to arm blank dispatch. Without
+    // this carve-out every blank silently no-ops in normal-input mode.
+    const normalInput = isNormalInput(target);
+    const isBareUnderscore = e.key === '_' && !e.ctrlKey && !e.altKey && !e.metaKey;
+    if (normalInput && !isBareUnderscore) return;
     const active = document.activeElement;
     if (active !== target && !target.contains(active)) return;
-    const text = walkPlainText(target).text;
+    const text = readTargetText(target);
     const cursor = readCursorOffset();
     const ev: KeyEvent = {
       key: normaliseKey(e.key),
