@@ -569,7 +569,12 @@ export type FluidBlankErrorReason =
   | 'network'           // fetch failed, timeout, DNS — user can check connection
   | 'rate-limit'        // 429 — user can wait or upgrade tier
   | 'endpoint-not-found' // 404 — endpoint misconfigured, user needs to check provider URL
-  | 'bad-request';       // 400 — model name typo, malformed request, mismatched provider/model
+  | 'model-not-found'   // model rejected by the provider — wrong model name for the
+                        //   provider, model gated to a paid tier, or a provider/model
+                        //   namespace mismatch (e.g. `openai/gpt-oss-120b` → Cerebras,
+                        //   which serves it bare as `gpt-oss-120b`). User-actionable:
+                        //   fix `llm-model:` / `llm-provider:` so the PAIR is valid.
+  | 'bad-request';       // 400 — malformed request — user-actionable as a config typo
 
 /** Inspect a thrown error from the HTTP layer and decide whether it's
  *  user-actionable (returns a reason) or internal (returns null, no
@@ -580,6 +585,20 @@ function classifyHttpError(err: Error): FluidBlankErrorReason | null {
   const msg = err.message ?? '';
   if (/\b40[13]\b/.test(msg)) return 'invalid-api-key';
   if (/\b429\b/.test(msg)) return 'rate-limit';
+  // Model-not-found / no-access. The provider reached the request but
+  // REJECTED THE MODEL: wrong name for the provider, model gated to a
+  // paid tier, or a provider/model namespace mismatch (the classic
+  // `openai/gpt-oss-120b` sent to Cerebras, which serves it bare as
+  // `gpt-oss-120b`). Matched on the provider's TEXTUAL error rather than
+  // a status code because these errors frequently carry no HTTP number
+  // in the thrown message — e.g. Cerebras throws
+  //   "provider error: Model openai/gpt-oss-120b does not exist or you
+  //    do not have access to it. (code=model_not_found, type=not_found_error)"
+  // which has no "404" substring, so it used to fall through to the
+  // silent default. Checked BEFORE the generic 404 branch so a model 404
+  // is attributed to the MODEL (actionable: fix the pair), not the
+  // endpoint URL.
+  if (/model_not_found|not_found_error|model[^.\n]{0,40}does not exist|do(?:es)? not have access|no access to (?:the )?model|model not found|unknown model|invalid model|model[^.\n]{0,40}not available/i.test(msg)) return 'model-not-found';
   if (/\b404\b/.test(msg)) return 'endpoint-not-found';
   // 400 — bad request. Most commonly: wrong model name for the chosen
   // provider, malformed body, or mismatched provider/model combo
