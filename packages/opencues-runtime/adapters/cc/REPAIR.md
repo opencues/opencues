@@ -280,6 +280,45 @@ InputZone we return becomes the next `value`. If a future CC version
 breaks this assumption, cycling will visually flash but revert to the
 previous text. Look for this if cycling stops persisting.
 
+### 14. macOS Terminal.app Ctrl+Option+arrow: rewrite double-ESC at stdin before Ink splits it
+
+Mac Terminal.app emits Ctrl+Option+arrow as the raw bytes `\x1b\x1b[A`
+(double-ESC + CSI). Ink's keypress parser **splits** that into a standalone
+`escape` keypress + a plain arrow (`\x1b[A`) *before* `dispatchKey` runs, so
+the arrow no longer carries the double-ESC and the event-level
+`shouldSynthesizeMacDoubleEscCtrl` synth (PR #51) never fires. Proven on a
+real device (claude-cues 2.1.158): probe logged `{key:"escape",seq:"\x1b"}`
+then `{key:"up",seq:"\x1b[A",synthFired:false}`, same millisecond.
+
+Fixed **upstream of Ink, in the runtime — no Ink fork, no cli.js patch**:
+`boot()` calls `installMacDoubleEscStdinRewrite(process.stdin)`
+(`src/modules/mac-keyboard.ts`). Ink consumes stdin via `'readable'` +
+`stdin.read()` with `setEncoding('utf8')` (chunks are utf8 STRINGS), so the
+installer wraps `read()` (string + Buffer) and `emit('data')`, rewriting
+`\x1b\x1b[A/B/C/D` → `\x1b[1;7A/B/C/D` (the modifier-CSI Ghostty/iTerm2
+already send) before the parser sees it. Ink then parses a clean Ctrl+Alt
+arrow and the existing `ctrl-alt` matcher fires.
+
+- **darwin-only — Windows/Linux are a strict no-op.** The installer returns
+  `false` immediately when `process.platform !== 'darwin'`
+  (`mac-keyboard.ts:186`), so on non-Mac it never wraps stdin and the byte
+  rewrite is never reached. No behaviour change off macOS.
+- **Escape-safe** by the contiguous-byte invariant: the chord's 4 bytes
+  arrive in one `read()` buffer; a real lone Escape arrives as its own
+  buffer. Matching `\x1b\x1b[A` only WITHIN one buffer can never swallow a
+  real Escape — no state machine, no timing window, no Escape latency.
+- **Lazy-install caveat**: `boot()` runs on the FIRST key dispatch, so the
+  very first keystroke of a session isn't rewritten (it was already pulled
+  upstream). Every subsequent keystroke is covered.
+- **Degradation floor**: on split-chunk transports (tmux/ssh) where the 4
+  bytes arrive across two reads, the rewrite no-ops — identical to not having
+  it, never worse.
+- If a future Ink consumes stdin a different way, the wrap simply no-ops
+  (degrades to today's behaviour). The only Ink behaviour we lean on is the
+  split, which we sidestep by acting before the parser.
+- Tests: `src/modules/mac-keyboard.test.ts` (61 cases incl. a real-`Readable`
+  scenario test mirroring Ink's `read()`-loop + `setEncoding('utf8')`).
+
 ---
 
 ## Architecture in one paragraph

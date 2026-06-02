@@ -12,6 +12,7 @@
 
 import { Runtime } from '../../../src/runtime';
 import { ClaudeCodeV21Adapter, type HostBindings, normaliseKeyEvent, toggleZeroWidth } from './adapter';
+import { installMacDoubleEscStdinRewrite } from '../../../src/modules/mac-keyboard';
 import { Navigation } from '../../../src/modules/navigation';
 import { DimRender } from '../../../src/modules/dim-render';
 import { Cycling } from '../../../src/modules/cycling';
@@ -218,6 +219,16 @@ export function boot(host: HostInfo): BootResult {
       console.error(`[opencues][${level}] ${msg}`, data ?? '');
     }
   };
+
+  // Mac Terminal.app emits Ctrl+Option+arrow as `\x1b\x1b[A` (double-ESC),
+  // which Ink splits into a standalone escape + a plain arrow before any
+  // handler can see the modifier. Normalise the raw stdin chunk to the
+  // Ghostty-style `\x1b[1;7A` BEFORE Ink parses it — the installer wraps the
+  // `read()`-pull path Ink uses (utf8 strings) plus 'data' events. macOS-only +
+  // idempotent (guards live inside the installer); no-op on every other host.
+  if (installMacDoubleEscStdinRewrite(process.stdin)) {
+    log('info', 'mac double-ESC stdin rewrite installed');
+  }
 
   // Handler arrays + render state owned by this boot.
   const keyHandlers: Array<(e: KeyEvent) => boolean> = [];
