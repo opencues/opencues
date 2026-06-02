@@ -355,7 +355,7 @@ export function boot(host: HostInfo): BootResult {
     debounceMs: number;
     httpAdapter: unknown;
     missingKeyFallbackMessage?: string;
-    formatLLMErrorAsSubstitute?: (reason: 'invalid-api-key' | 'network' | 'rate-limit' | 'endpoint-not-found' | 'bad-request', err?: Error) => string;
+    formatLLMErrorAsSubstitute?: (reason: 'invalid-api-key' | 'network' | 'rate-limit' | 'endpoint-not-found' | 'model-not-found' | 'insufficient-credits' | 'bad-request', err?: Error) => string;
   } = {
     endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
     apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
@@ -383,13 +383,15 @@ export function boot(host: HostInfo): BootResult {
       // user-actionable reason maps to a one-line in-buffer hint that
       // tells the user where to look in chrome. LLM-internal issues
       // (malformed JSON, no-span) stay silent regardless.
-      formatLLMErrorAsSubstitute: (reason: 'invalid-api-key' | 'network' | 'rate-limit' | 'endpoint-not-found' | 'bad-request'): string => {
+      formatLLMErrorAsSubstitute: (reason: 'invalid-api-key' | 'network' | 'rate-limit' | 'endpoint-not-found' | 'model-not-found' | 'insufficient-credits' | 'bad-request'): string => {
         // Provider's own JSON error deliberately NOT inlined — it can
         // be ugly, leak details, or vary wildly across providers. The
         // reason class + actionable hint is enough.
         switch (reason) {
           case 'invalid-api-key':    return '[OpenCues: API key rejected (401/403) — open the extension popup and re-enter it]';
           case 'endpoint-not-found': return '[OpenCues: provider endpoint returned 404 — check the API URL in the extension popup]';
+          case 'model-not-found':    return '[OpenCues: model not available for the chosen provider — pick a Model that matches the selected Provider in the extension popup]';
+          case 'insufficient-credits': return '[OpenCues: provider rejected the request — out of credits / quota. Top up the account, or switch Provider in the extension popup to one whose key has credit.]';
           case 'rate-limit':         return '[OpenCues: provider rate-limit hit (429) — wait a moment or switch provider in the popup]';
           case 'network':            return '[OpenCues: network error — provider unreachable. Check connectivity, then retry.]';
           case 'bad-request':        return '[OpenCues: provider returned 400 (bad request) — check the Model name matches the selected Provider in the popup]';

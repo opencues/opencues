@@ -1568,3 +1568,64 @@ describe('Resolver sentence-cue substitution', () => {
   });
 });
 
+// ---------------------------------------------------------------------
+// Valid-pair invariant: the host-supplied (provider-BLIND) defaultModel
+// must NOT leak into the global MODEL tier. If it does, an auto-routed
+// provider in a different model namespace gets an invalid (provider,
+// model) pair — the production bug where CEREBRAS_API_KEY-only users had
+// the Groq-namespaced `openai/gpt-oss-120b` host default shipped to
+// Cerebras (which serves it bare as `gpt-oss-120b`), so every `_` LLM
+// blank died with `model_not_found`. The fix: globalModel comes ONLY
+// from an explicit choice (`llm-model:` scalar or host-UI modelOverride);
+// with neither, resolveLLM falls through to the resolved provider's own
+// defaultModel, which is valid by construction.
+// ---------------------------------------------------------------------
+
+async function captureBuildOpts(opts: {
+  defaultModel?: string;
+  modelOverride?: string;
+}): Promise<Record<string, unknown>> {
+  const adapter = new MockAdapter({
+    cwd: '/proj',
+    files: { '/proj/CUES.md': CUES_MD },
+  });
+  adapter.pushText('alpha _');
+  const hlState = new HighlightState();
+  const dynDefs = new DynDefs();
+  const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+  // Must load so rebuildResolver sees a cuesConfig and reaches the
+  // factory (it early-returns when no config is present).
+  await loader.load();
+  let captured: Record<string, unknown> | null = null;
+  const resolver = new Resolver(adapter, hlState, dynDefs, loader, {
+    endpoint: 'http://test',
+    apiKey: 'x',
+    defaultModel: opts.defaultModel ?? 'm',
+    modelOverride: opts.modelOverride,
+    debounceMs: 0,
+    httpAdapter: {},
+    // Capture the buildOpts that rebuildResolver hands to the core source
+    // factory — the third positional arg.
+    resolverFactory: (_c: unknown, _b: unknown, o: unknown) => {
+      captured = o as Record<string, unknown>;
+      return [];
+    },
+  });
+  resolver.rebuildResolver();
+  if (!captured) throw new Error('resolverFactory was not invoked — rebuildResolver bailed before building sources');
+  return captured;
+}
+
+describe('Resolver — valid (provider, model) pair invariant', () => {
+  it('does NOT pass the host defaultModel as globalModel when no llm-model scalar is set', async () => {
+    // Groq-namespaced host default — must not leak into the global tier.
+    const opts = await captureBuildOpts({ defaultModel: 'openai/gpt-oss-120b' });
+    expect(opts.globalModel).toBeUndefined();
+  });
+
+  it('passes an explicit host-UI modelOverride through as globalModel', async () => {
+    const opts = await captureBuildOpts({ defaultModel: 'openai/gpt-oss-120b', modelOverride: 'explicit-model' });
+    expect(opts.globalModel).toBe('explicit-model');
+  });
+});
+

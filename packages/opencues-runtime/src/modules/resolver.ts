@@ -99,7 +99,7 @@ export interface ResolverOptions {
    * ~/.cues/.env"). Omit to keep the silent failure.
    */
   readonly formatLLMErrorAsSubstitute?: (
-    reason: 'invalid-api-key' | 'network' | 'rate-limit' | 'endpoint-not-found' | 'bad-request',
+    reason: 'invalid-api-key' | 'network' | 'rate-limit' | 'endpoint-not-found' | 'model-not-found' | 'insufficient-credits' | 'bad-request',
     err?: Error,
   ) => string;
 }
@@ -501,9 +501,24 @@ export class Resolver {
       // the user's choice to blank sources (which CAN use it via
       // explicit `<feature>-llm-provider: opencode-zen` + `model: free`).
       globalProvider: this.options.providerOverride ?? settings.get('llm-provider'),
+      // Global MODEL tier: ONLY an explicit choice — host-UI modelOverride
+      // (chrome popup) or the `llm-model:` scalar in OPENCUES.md. We
+      // deliberately do NOT fall back to `this.options.defaultModel` here.
+      //
+      // That host default is provider-BLIND (the legacy Groq-namespaced
+      // `openai/gpt-oss-120b`). When the provider auto-routes to a
+      // provider with a different model namespace — e.g. Cerebras serves
+      // the same weights as bare `gpt-oss-120b` — injecting the host
+      // default as the global model overrides the provider's own correct
+      // `defaultModel` and ships an INVALID (provider, model) pair
+      // (`cerebras` + `openai/gpt-oss-120b` → provider `model_not_found`).
+      // With no explicit model, resolveLLM falls through to the resolved
+      // provider's `defaultModel`, which is valid by construction for
+      // whatever provider auto-route (or an explicit `llm-provider:`)
+      // landed on. See llm-provider.ts resolveLLM + its auto-route tests.
       globalModel: (this.options.modelOverride && this.options.modelOverride.length > 0
         ? this.options.modelOverride
-        : settings.get('llm-model') ?? this.options.defaultModel),
+        : settings.get('llm-model')),
       globalEndpoint: (this.options.endpointOverride && this.options.endpointOverride.length > 0
         ? this.options.endpointOverride
         : settings.get('llm-endpoint') ?? this.options.endpoint),
@@ -775,6 +790,15 @@ export class Resolver {
     // one-shot flag; this gate reads it BEFORE the flag is cleared in the
     // finally block below.
     if (blankJustTyped && !this.explicitUnderscoreRecent()) {
+      // Observability: this suppression is otherwise completely silent on
+      // the resolver path (fluid/transform/config-intent blanks just never
+      // dispatch — no `starting` line ever appears). Mirror BlankFill's
+      // `explicit-_ gate BLOCKED` debug line so `DEBUG=cues*` can explain a
+      // `_` that "did nothing". The most common cause: the trailing `_`
+      // was NOT placed by a fresh standalone `_` keystroke (pasted, exposed
+      // by editing existing text, or typed adjacent to a word so
+      // `onUnderscoreKey` declined to arm the one-shot flag).
+      this.adapter.log('debug', `Resolver: explicit-_ gate BLOCKED blank trigger (trailing _ present but no recent standalone _ keystroke; mode=${triggerMode})`);
       blankJustTyped = false;
     }
     let keepArmed = false;

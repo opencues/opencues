@@ -145,6 +145,29 @@ describe('boot()', () => {
     expect(events).toContain('user:hellox');
   });
 
+  it('KeyEvent.text + cursorOffset are ZWS-stripped before reaching onKey handlers', () => {
+    // Regression: without the strip, Resolver.onUnderscoreKey's standalone-`_`
+    // check sees the render-kick `\u200B` glued to the cursor word and refuses
+    // to arm — masking the second `_` in a chain (`draft email _` →
+    // `… translate to japanese _`). See boot.ts:708-727.
+    const host = fakeHost('');
+    const result = boot(host);
+    const seen: Array<{ key: string; text: string; cursorOffset: number }> = [];
+    result.adapter.onKey(null, e => {
+      seen.push({ key: e.key, text: e.text, cursorOffset: e.cursorOffset });
+      return false;
+    });
+    // Buffer was render-kicked: `prev\u200B translate to japanese ` with the
+    // ZWS glued to the first word; user just pressed `_` after the trailing
+    // space, so cursorOffset points to the end (in ZWS-bearing space).
+    const dirty = 'prev\u200B translate to japanese ';
+    result.dispatchKey({ key: '_' }, dirty, dirty.length);
+    expect(seen).toHaveLength(1);
+    expect(seen[0].text).toBe('prev translate to japanese ');
+    expect(seen[0].cursorOffset).toBe('prev translate to japanese '.length);
+    expect(seen[0].text).not.toMatch(/[\u200B\u200C]/);
+  });
+
   it('does NOT fire textChange when only ZWS noise differs (our own toggle)', () => {
     const host = fakeHost('hello');
     const result = boot(host);

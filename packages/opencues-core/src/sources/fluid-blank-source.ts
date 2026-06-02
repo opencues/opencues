@@ -569,7 +569,17 @@ export type FluidBlankErrorReason =
   | 'network'           // fetch failed, timeout, DNS — user can check connection
   | 'rate-limit'        // 429 — user can wait or upgrade tier
   | 'endpoint-not-found' // 404 — endpoint misconfigured, user needs to check provider URL
-  | 'bad-request';       // 400 — model name typo, malformed request, mismatched provider/model
+  | 'model-not-found'   // model rejected by the provider — wrong model name for the
+                        //   provider, model gated to a paid tier, or a provider/model
+                        //   namespace mismatch (e.g. `openai/gpt-oss-120b` → Cerebras,
+                        //   which serves it bare as `gpt-oss-120b`). User-actionable:
+                        //   fix `llm-model:` / `llm-provider:` so the PAIR is valid.
+  | 'insufficient-credits' // 402 / payment_required / insufficient_quota — the (provider,
+                        //   model) pair is VALID but the account can't pay for the call
+                        //   (out of credits, quota exhausted, billing not set up). The
+                        //   model landed correctly; this is the "real" downstream error
+                        //   to surface once self-healing got us to a valid model.
+  | 'bad-request';       // 400 — malformed request — user-actionable as a config typo
 
 /** Inspect a thrown error from the HTTP layer and decide whether it's
  *  user-actionable (returns a reason) or internal (returns null, no
@@ -580,6 +590,30 @@ function classifyHttpError(err: Error): FluidBlankErrorReason | null {
   const msg = err.message ?? '';
   if (/\b40[13]\b/.test(msg)) return 'invalid-api-key';
   if (/\b429\b/.test(msg)) return 'rate-limit';
+  // Billing / quota — 402 or a textual payment/credit/quota error. The
+  // (provider, model) pair is VALID here; the account just can't pay for
+  // the call. Surfaced as the "real" downstream error once self-healing
+  // has landed us on a valid model. Cerebras out-of-credits throws e.g.
+  //   "provider error: Payment required to access this resource. Visit
+  //    your billing tab. (code=payment_required, type=payment_required_error)"
+  // — no "402" substring, so match the text too. Checked before the
+  // model-not-found branch so a billing error is never misattributed to
+  // the model name.
+  if (/\b402\b|payment[_ -]?required|insufficient[_ -]?(?:quota|credit|balance|funds)|out[_ -]?of[_ -]?credit|quota[_ -]?(?:exceeded|exhausted)|billing/i.test(msg)) return 'insufficient-credits';
+  // Model-not-found / no-access. The provider reached the request but
+  // REJECTED THE MODEL: wrong name for the provider, model gated to a
+  // paid tier, or a provider/model namespace mismatch (the classic
+  // `openai/gpt-oss-120b` sent to Cerebras, which serves it bare as
+  // `gpt-oss-120b`). Matched on the provider's TEXTUAL error rather than
+  // a status code because these errors frequently carry no HTTP number
+  // in the thrown message — e.g. Cerebras throws
+  //   "provider error: Model openai/gpt-oss-120b does not exist or you
+  //    do not have access to it. (code=model_not_found, type=not_found_error)"
+  // which has no "404" substring, so it used to fall through to the
+  // silent default. Checked BEFORE the generic 404 branch so a model 404
+  // is attributed to the MODEL (actionable: fix the pair), not the
+  // endpoint URL.
+  if (/model_not_found|not_found_error|model[^.\n]{0,40}does not exist|do(?:es)? not have access|no access to (?:the )?model|model not found|unknown model|invalid model|model[^.\n]{0,40}not available/i.test(msg)) return 'model-not-found';
   if (/\b404\b/.test(msg)) return 'endpoint-not-found';
   // 400 — bad request. Most commonly: wrong model name for the chosen
   // provider, malformed body, or mismatched provider/model combo

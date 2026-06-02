@@ -96,6 +96,71 @@ describe('FluidBlankSource — user-actionable error substitution', () => {
     expect(result.results[0].alternatives[1]).toContain('check the API URL');
   });
 
+  it('Cerebras model_not_found (no HTTP status in message) → "model-not-found" substitute', async () => {
+    // The EXACT message Cerebras throws when an `openai/`-namespaced
+    // model name is sent to it (it serves the same weights bare). This
+    // string carries NO "404"/status number, so before the model-not-found
+    // matcher it fell through classifyHttpError to the silent default —
+    // the user only saw it in /tmp/opencues.log, never inline. Pins the
+    // regression: model-mismatch must surface inline like 401/404 do.
+    let observedReason: FluidBlankErrorReason | undefined;
+    const fluid = makeFluid({
+      throwError: new Error(
+        'provider error: Model openai/gpt-oss-120b does not exist or you do not have access to it. (code=model_not_found, type=not_found_error)',
+      ),
+      formatErrorAsSubstitute: (reason) => {
+        observedReason = reason;
+        return '[OpenCues: model not available for the chosen provider — make llm-model: and llm-provider: a valid pair]';
+      },
+    });
+    const result = await fluid.getCues(SAMPLE_CONTEXT);
+    expect(observedReason).toBe('model-not-found');
+    expect(result.results.length).toBe(1);
+    expect(result.results[0].alternatives[0]).toBe('_'); // cycle back dismisses
+    expect(result.results[0].alternatives[1]).toContain('model not available');
+    expect((result.results[0].metadata as { fluidBlankErrorReason?: string }).fluidBlankErrorReason).toBe('model-not-found');
+  });
+
+  it('404 that names the model → "model-not-found" (not endpoint), checked before the 404 branch', async () => {
+    let observedReason: FluidBlankErrorReason | undefined;
+    const fluid = makeFluid({
+      throwError: new Error('HTTP 404: model `gpt-oss-120b` does not exist'),
+      formatErrorAsSubstitute: (reason) => { observedReason = reason; return '[model]'; },
+    });
+    await fluid.getCues(SAMPLE_CONTEXT);
+    expect(observedReason).toBe('model-not-found');
+  });
+
+  it('Cerebras out-of-credits (402, no status number, textual billing error) → "insufficient-credits"', async () => {
+    // Once self-healing lands a VALID model, the next real failure to
+    // surface is billing. Cerebras throws this with NO "402" substring,
+    // so the matcher keys on the textual payment/quota error.
+    let observedReason: FluidBlankErrorReason | undefined;
+    const fluid = makeFluid({
+      throwError: new Error(
+        'provider error: Payment required to access this resource. Visit your billing tab. (code=payment_required, type=payment_required_error)',
+      ),
+      formatErrorAsSubstitute: (reason) => {
+        observedReason = reason;
+        return '[OpenCues: provider rejected the request — out of credits / quota]';
+      },
+    });
+    const result = await fluid.getCues(SAMPLE_CONTEXT);
+    expect(observedReason).toBe('insufficient-credits');
+    expect(result.results.length).toBe(1);
+    expect(result.results[0].alternatives[1]).toContain('out of credits');
+  });
+
+  it('insufficient_quota textual error → "insufficient-credits"', async () => {
+    let observedReason: FluidBlankErrorReason | undefined;
+    const fluid = makeFluid({
+      throwError: new Error('provider error: You exceeded your current quota (insufficient_quota)'),
+      formatErrorAsSubstitute: (reason) => { observedReason = reason; return '[credits]'; },
+    });
+    await fluid.getCues(SAMPLE_CONTEXT);
+    expect(observedReason).toBe('insufficient-credits');
+  });
+
   it('429 → "rate-limit" substitute', async () => {
     let observedReason: FluidBlankErrorReason | undefined;
     const fluid = makeFluid({
