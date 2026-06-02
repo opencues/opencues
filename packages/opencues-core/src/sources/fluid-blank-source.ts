@@ -574,6 +574,11 @@ export type FluidBlankErrorReason =
                         //   namespace mismatch (e.g. `openai/gpt-oss-120b` → Cerebras,
                         //   which serves it bare as `gpt-oss-120b`). User-actionable:
                         //   fix `llm-model:` / `llm-provider:` so the PAIR is valid.
+  | 'insufficient-credits' // 402 / payment_required / insufficient_quota — the (provider,
+                        //   model) pair is VALID but the account can't pay for the call
+                        //   (out of credits, quota exhausted, billing not set up). The
+                        //   model landed correctly; this is the "real" downstream error
+                        //   to surface once self-healing got us to a valid model.
   | 'bad-request';       // 400 — malformed request — user-actionable as a config typo
 
 /** Inspect a thrown error from the HTTP layer and decide whether it's
@@ -585,6 +590,16 @@ function classifyHttpError(err: Error): FluidBlankErrorReason | null {
   const msg = err.message ?? '';
   if (/\b40[13]\b/.test(msg)) return 'invalid-api-key';
   if (/\b429\b/.test(msg)) return 'rate-limit';
+  // Billing / quota — 402 or a textual payment/credit/quota error. The
+  // (provider, model) pair is VALID here; the account just can't pay for
+  // the call. Surfaced as the "real" downstream error once self-healing
+  // has landed us on a valid model. Cerebras out-of-credits throws e.g.
+  //   "provider error: Payment required to access this resource. Visit
+  //    your billing tab. (code=payment_required, type=payment_required_error)"
+  // — no "402" substring, so match the text too. Checked before the
+  // model-not-found branch so a billing error is never misattributed to
+  // the model name.
+  if (/\b402\b|payment[_ -]?required|insufficient[_ -]?(?:quota|credit|balance|funds)|out[_ -]?of[_ -]?credit|quota[_ -]?(?:exceeded|exhausted)|billing/i.test(msg)) return 'insufficient-credits';
   // Model-not-found / no-access. The provider reached the request but
   // REJECTED THE MODEL: wrong name for the provider, model gated to a
   // paid tier, or a provider/model namespace mismatch (the classic

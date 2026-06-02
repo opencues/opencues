@@ -99,7 +99,7 @@ export interface ResolverOptions {
    * ~/.cues/.env"). Omit to keep the silent failure.
    */
   readonly formatLLMErrorAsSubstitute?: (
-    reason: 'invalid-api-key' | 'network' | 'rate-limit' | 'endpoint-not-found' | 'model-not-found' | 'bad-request',
+    reason: 'invalid-api-key' | 'network' | 'rate-limit' | 'endpoint-not-found' | 'model-not-found' | 'insufficient-credits' | 'bad-request',
     err?: Error,
   ) => string;
 }

@@ -1448,6 +1448,48 @@ function translateModelToFallback(fromProvider: ProviderId, toProvider: Provider
   return FALLBACK_MODEL_MAP[fromProvider]?.[model] ?? model;
 }
 
+/**
+ * Per-provider model-name CANONICALIZATION — normalise a known
+ * cross-namespace alias INTO the resolved provider's own namespace, on
+ * the PRIMARY dispatch path (not just fallback). Same weights, different
+ * namespace prefix: Groq / OpenRouter serve gpt-oss as `openai/gpt-oss-*`,
+ * Cerebras serves it bare as `gpt-oss-*`.
+ *
+ * This is the "always land on a VALID (provider, model) pair" guarantee:
+ * a stale or mistyped `llm-model: openai/gpt-oss-120b` paired with an
+ * auto-routed-or-explicit Cerebras provider is healed to `gpt-oss-120b`
+ * BEFORE the call, instead of being shipped invalid and bouncing as a
+ * `model_not_found`. The map is the inverse-direction sibling of
+ * `FALLBACK_MODEL_MAP` (which translates AWAY from a provider toward its
+ * fallback peer); this one translates TOWARD the provider.
+ *
+ * Deliberately narrow: only the gpt-oss family, whose namespace rules we
+ * actually know. An unknown / genuinely-wrong model is left UNTOUCHED so
+ * the provider can reject it and the runtime can surface that rejection
+ * inline (model-not-found) — we never silently rewrite a model we don't
+ * recognise, and we never hide a real misconfiguration.
+ */
+const PROVIDER_MODEL_ALIASES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  cerebras: {
+    'openai/gpt-oss-120b': 'gpt-oss-120b',
+    'openai/gpt-oss-20b': 'gpt-oss-20b',
+  },
+  groq: {
+    'gpt-oss-120b': 'openai/gpt-oss-120b',
+    'gpt-oss-20b': 'openai/gpt-oss-20b',
+  },
+  openrouter: {
+    'gpt-oss-120b': 'openai/gpt-oss-120b',
+    'gpt-oss-20b': 'openai/gpt-oss-20b',
+  },
+};
+
+/** Normalise `model` into `providerId`'s namespace when it's a known
+ *  cross-namespace alias; otherwise return it unchanged. */
+export function canonicalizeModelForProvider(providerId: string, model: string): string {
+  return PROVIDER_MODEL_ALIASES[providerId]?.[model] ?? model;
+}
+
 // Host-injectable warning sink. Native hosts (CC/OC/gemini-cli) leave
 // this at the console.warn default — they have a real terminal and
 // the warns are user-actionable diagnostics. Chrome overrides it at
@@ -1577,7 +1619,11 @@ export function resolveLLM(opts: ResolveLLMOptions): ResolvedLLM | null {
       break;
     }
   }
-  const resolvedModel = (model ?? provider.defaultModel).trim();
+  // Canonicalize the model INTO the resolved provider's namespace so we
+  // always land on a valid pair. No-op for the provider's own defaultModel
+  // and for any model we don't recognise; heals known cross-namespace
+  // aliases (e.g. a stale `openai/gpt-oss-120b` paired with Cerebras).
+  const resolvedModel = canonicalizeModelForProvider(providerId, (model ?? provider.defaultModel).trim());
   const endpoint = opts.endpointOverride ?? provider.defaultEndpoint;
   // CLI-transport providers have external auth (e.g. claude-cli uses
   // the user's locally-installed `claude` session) — no API key in

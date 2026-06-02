@@ -220,7 +220,7 @@ export interface BuildSourcesOptions {
    * no-span) stay silent regardless — those aren't actionable.
    */
   formatLLMErrorAsSubstitute?: (
-    reason: 'invalid-api-key' | 'network' | 'rate-limit' | 'endpoint-not-found' | 'model-not-found' | 'bad-request',
+    reason: 'invalid-api-key' | 'network' | 'rate-limit' | 'endpoint-not-found' | 'model-not-found' | 'insufficient-credits' | 'bad-request',
     err?: Error,
   ) => string;
   /**

@@ -131,6 +131,36 @@ describe('FluidBlankSource — user-actionable error substitution', () => {
     expect(observedReason).toBe('model-not-found');
   });
 
+  it('Cerebras out-of-credits (402, no status number, textual billing error) → "insufficient-credits"', async () => {
+    // Once self-healing lands a VALID model, the next real failure to
+    // surface is billing. Cerebras throws this with NO "402" substring,
+    // so the matcher keys on the textual payment/quota error.
+    let observedReason: FluidBlankErrorReason | undefined;
+    const fluid = makeFluid({
+      throwError: new Error(
+        'provider error: Payment required to access this resource. Visit your billing tab. (code=payment_required, type=payment_required_error)',
+      ),
+      formatErrorAsSubstitute: (reason) => {
+        observedReason = reason;
+        return '[OpenCues: provider rejected the request — out of credits / quota]';
+      },
+    });
+    const result = await fluid.getCues(SAMPLE_CONTEXT);
+    expect(observedReason).toBe('insufficient-credits');
+    expect(result.results.length).toBe(1);
+    expect(result.results[0].alternatives[1]).toContain('out of credits');
+  });
+
+  it('insufficient_quota textual error → "insufficient-credits"', async () => {
+    let observedReason: FluidBlankErrorReason | undefined;
+    const fluid = makeFluid({
+      throwError: new Error('provider error: You exceeded your current quota (insufficient_quota)'),
+      formatErrorAsSubstitute: (reason) => { observedReason = reason; return '[credits]'; },
+    });
+    await fluid.getCues(SAMPLE_CONTEXT);
+    expect(observedReason).toBe('insufficient-credits');
+  });
+
   it('429 → "rate-limit" substitute', async () => {
     let observedReason: FluidBlankErrorReason | undefined;
     const fluid = makeFluid({

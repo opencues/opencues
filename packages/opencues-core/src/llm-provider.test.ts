@@ -15,6 +15,7 @@ import {
   listProviders,
   resolveLLM,
   withFallback,
+  canonicalizeModelForProvider,
   PROVIDER_IDS,
   _resetWarnDedupForTesting,
 } from './llm-provider';
@@ -657,6 +658,63 @@ describe('resolveLLM — settings-hierarchy precedence', () => {
     assert.strictEqual(r1?.endpoint, 'https://api.groq.com/openai/v1/chat/completions');
     const r2 = resolveLLM({ providerOverride: 'groq', endpointOverride: 'https://custom/v1/chat/completions', apiKeys });
     assert.strictEqual(r2?.endpoint, 'https://custom/v1/chat/completions');
+  });
+});
+
+// ---------------------------------------------------------------------
+// Model CANONICALIZATION — always land on a VALID (provider, model) pair.
+// A known cross-namespace alias (gpt-oss: Groq/OpenRouter prefix with
+// `openai/`, Cerebras serves it bare) is normalised INTO the resolved
+// provider's namespace on the primary dispatch path, so a stale/mistyped
+// `llm-model` never ships an invalid pair. Unknown models are left
+// untouched so the provider can reject them (surfaced inline elsewhere).
+// ---------------------------------------------------------------------
+
+describe('canonicalizeModelForProvider — unit', () => {
+  it('strips the openai/ prefix from gpt-oss for Cerebras (bare namespace)', () => {
+    assert.strictEqual(canonicalizeModelForProvider('cerebras', 'openai/gpt-oss-120b'), 'gpt-oss-120b');
+    assert.strictEqual(canonicalizeModelForProvider('cerebras', 'openai/gpt-oss-20b'), 'gpt-oss-20b');
+  });
+  it('adds the openai/ prefix to bare gpt-oss for Groq / OpenRouter', () => {
+    assert.strictEqual(canonicalizeModelForProvider('groq', 'gpt-oss-120b'), 'openai/gpt-oss-120b');
+    assert.strictEqual(canonicalizeModelForProvider('openrouter', 'gpt-oss-120b'), 'openai/gpt-oss-120b');
+  });
+  it('leaves the provider native default and unknown models untouched', () => {
+    assert.strictEqual(canonicalizeModelForProvider('cerebras', 'gpt-oss-120b'), 'gpt-oss-120b');
+    assert.strictEqual(canonicalizeModelForProvider('groq', 'openai/gpt-oss-120b'), 'openai/gpt-oss-120b');
+    assert.strictEqual(canonicalizeModelForProvider('cerebras', 'some-future-model'), 'some-future-model');
+    assert.strictEqual(canonicalizeModelForProvider('gemini', 'gemini-3.1-flash-lite'), 'gemini-3.1-flash-lite');
+  });
+});
+
+describe('resolveLLM — canonicalizes to a valid pair on the primary path', () => {
+  it('heals a stale openai/gpt-oss-120b paired with Cerebras → bare gpt-oss-120b', () => {
+    // The exact production footgun: a Groq-namespaced model name carried
+    // alongside the Cerebras provider must NOT ship invalid.
+    const r = resolveLLM({
+      providerOverride: 'cerebras',
+      modelOverride: 'openai/gpt-oss-120b',
+      apiKeys: { CEREBRAS_API_KEY: 'c' },
+    });
+    assert.strictEqual(r?.provider.id, 'cerebras');
+    assert.strictEqual(r?.model, 'gpt-oss-120b');
+  });
+  it('heals a bare gpt-oss-120b paired with Groq → openai/gpt-oss-120b', () => {
+    const r = resolveLLM({
+      providerOverride: 'groq',
+      modelOverride: 'gpt-oss-120b',
+      apiKeys: { GROQ_API_KEY: 'g' },
+    });
+    assert.strictEqual(r?.provider.id, 'groq');
+    assert.strictEqual(r?.model, 'openai/gpt-oss-120b');
+  });
+  it('heals a stale globalModel too (no explicit provider tier, auto-route to Cerebras)', () => {
+    const r = resolveLLM({
+      globalModel: 'openai/gpt-oss-120b',
+      apiKeys: { CEREBRAS_API_KEY: 'c' },
+    });
+    assert.strictEqual(r?.provider.id, 'cerebras');
+    assert.strictEqual(r?.model, 'gpt-oss-120b');
   });
 });
 
