@@ -149,15 +149,19 @@ export interface OpenCuesState {
    * Modifier combo used for word navigation (Left/Right) and
    * alternative cycling (Up/Down).
    *
-   * - `auto` (default): pick `ctrl-shift` on macOS Terminal.app
-   *   (TERM_PROGRAM=Apple_Terminal — strips Ctrl+Alt+arrow before the
-   *   app sees it), `ctrl-alt` everywhere else.
+   * - `auto` (default): `ctrl-alt` on every host. macOS Terminal.app
+   *   used to be a `ctrl-shift` exception, but `cat -v` testing (June
+   *   2026) showed Ctrl+Option+arrow survives Terminal.app as Meta-
+   *   prefixed CSI with Option-as-Meta on; *Ctrl+Shift+arrow* is the
+   *   combo Terminal.app actually strips. Adapters coalesce option/
+   *   meta into `alt`, so the default works there too.
    * - `ctrl-alt`: classic Ctrl+Alt+arrow / Ctrl+Option+arrow. Default
-   *   on every host except Apple_Terminal.
-   * - `ctrl-shift`: Ctrl+Shift+arrow. Used as the Terminal.app
-   *   fallback. Terminal hosts only — chrome hard-pins to ctrl-alt
-   *   regardless of the scalar (ctrl-shift+arrow extends browser
-   *   text selection — hijacking it would steal a primary shortcut).
+   *   on every terminal host.
+   * - `ctrl-shift`: Ctrl+Shift+arrow. Available as a manual override
+   *   for users on terminals that forward it but not Ctrl+Alt — chrome
+   *   hard-pins to ctrl-alt regardless of the scalar (ctrl-shift+arrow
+   *   extends browser text selection — hijacking it would steal a
+   *   primary shortcut).
    *
    * Hot-reloads. The handlers gate per-keystroke on the resolved
    * combo so no restart is needed after editing OPENCUES.md.

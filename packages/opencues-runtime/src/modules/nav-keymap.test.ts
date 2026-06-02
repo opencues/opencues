@@ -31,10 +31,11 @@ describe('resolveNavKeymap', () => {
     expect(resolveNavKeymap('ctrl-shift', 'chrome')).toBe('ctrl-alt');
   });
 
-  it('auto resolves to ctrl-shift on macOS Terminal.app', () => {
+  it('auto resolves to ctrl-alt on macOS Terminal.app — Ctrl+Option+arrow survives as Meta-prefixed CSI and adapters coalesce option/meta → alt', () => {
     process.env.TERM_PROGRAM = 'Apple_Terminal';
-    expect(resolveNavKeymap('auto', 'claude-code')).toBe('ctrl-shift');
-    expect(resolveNavKeymap('auto', 'opencode')).toBe('ctrl-shift');
+    expect(resolveNavKeymap('auto', 'claude-code')).toBe('ctrl-alt');
+    expect(resolveNavKeymap('auto', 'opencode')).toBe('ctrl-alt');
+    expect(resolveNavKeymap('auto', 'shell')).toBe('ctrl-alt');
   });
 
   it('auto resolves to ctrl-alt on Ghostty / iTerm2 / no TERM_PROGRAM', () => {

@@ -325,12 +325,12 @@ export const FEATURES: readonly FeatureSpec[] = [
   {
     scalar: 'nav-keymap',
     camelCase: 'navKeymap',
-    description: 'Modifier combo for word navigation + alternative cycling. `auto` picks ctrl-shift on macOS Terminal.app, ctrl-alt everywhere else. Chrome ignores the scalar and always uses ctrl-alt (ctrl-shift+arrow extends browser text selection).',
-    menuTip: 'Modifier combo for word nav (Left/Right) + alt cycling (Up/Down). `auto` resolves per host: macOS Terminal.app → ctrl-shift; everything else → ctrl-alt.',
+    description: 'Modifier combo for word navigation + alternative cycling. `auto` resolves to ctrl-alt on every host. Chrome hard-pins ctrl-alt (ctrl-shift+arrow extends browser text selection). On macOS Terminal.app, enable "Use Option as Meta key" so Ctrl+Option+arrow survives as Meta-prefixed CSI — adapters coalesce it into the runtime\'s `alt`.',
+    menuTip: 'Modifier combo for word nav (Left/Right) + alt cycling (Up/Down). `auto` → ctrl-alt everywhere. macOS Terminal.app users: enable "Use Option as Meta key" in profile settings.',
     values: [
-      { id: 'auto',       description: 'Default — pick ctrl-shift on macOS Terminal.app, ctrl-alt everywhere else' },
-      { id: 'ctrl-alt',   description: 'Ctrl+Alt+Arrow (Ctrl+Option+Arrow on macOS). Requires Ghostty / iTerm2 on macOS — Terminal.app strips the modifiers' },
-      { id: 'ctrl-shift', description: 'Ctrl+Shift+Arrow — macOS Terminal.app fallback. Terminal hosts only; chrome always uses ctrl-alt to avoid clobbering browser text selection' },
+      { id: 'auto',       description: 'Default — ctrl-alt on every host' },
+      { id: 'ctrl-alt',   description: 'Ctrl+Alt+Arrow (Ctrl+Option+Arrow on macOS, needs Option-as-Meta in Terminal.app)' },
+      { id: 'ctrl-shift', description: 'Ctrl+Shift+Arrow — manual override for terminals that forward ctrl-shift but not ctrl-alt. Chrome always uses ctrl-alt to avoid clobbering browser text selection' },
     ],
   },
   {

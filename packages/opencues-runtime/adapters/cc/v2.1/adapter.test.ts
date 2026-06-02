@@ -96,6 +96,22 @@ describe('ClaudeCodeV21Adapter', () => {
     expect(e.modifiers.alt).toBe(true);
   });
 
+  // The Mac Terminal.app Ctrl+Option+arrow synth lives in the shared helper
+  // `src/modules/mac-keyboard.ts` (full byte-shape matrix is pinned there).
+  // The two cases below only verify that `normaliseKeyEvent` correctly
+  // FORWARDS the helper's verdict into `modifiers.ctrl`.
+  it('forwards Mac double-ESC synth verdict into modifiers.ctrl', () => {
+    const e = normaliseKeyEvent({ key: 'up', option: true, sequence: '\x1b\x1b[A' }, '', 0);
+    expect(e.modifiers.ctrl).toBe(true);
+    expect(e.modifiers.alt).toBe(true);
+  });
+
+  it('leaves ctrl=false when the helper says no synth (xterm Alt+arrow on Linux)', () => {
+    const e = normaliseKeyEvent({ key: 'up', option: true, sequence: '\x1b[1;3A' }, '', 0);
+    expect(e.modifiers.ctrl).toBe(false);
+    expect(e.modifiers.alt).toBe(true);
+  });
+
   it('forceRender is gated by capability', () => {
     const b = new FakeBindings();
     const a = new ClaudeCodeV21Adapter(b, ['file-read']); // no force-render

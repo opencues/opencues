@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fixed — macOS Ctrl+Option+arrow now works on every terminal, including Terminal.app
+
+A tester reported `Ctrl+Alt+arrow` doing nothing on macOS. `cat -v` testing traced the byte stream Mac Terminal.app emits for Ctrl+Option+arrow: `\x1b\x1b[A` (double-ESC + CSI). The Ctrl modifier byte is missing — Terminal.app doesn't encode it — but **the double-ESC prefix is a unique signature**: no other macOS key combination produces double-ESC arrow CSI. Plain Option+Left/Right emits word-jump bytes (`^[b` / `^[f`), not arrow codes; plain arrows omit the ESC prefix entirely. Both Ink and OpenTUI parsers detect double-ESC and surface `option: true` on the arrow event (see `ink/parse-keypress.js:471` and `@opentui/core parse.keypress:5957`).
+
+Three sites now synthesise `ctrl: true` when the runtime sees `option && arrow && !ctrl`, so the `ctrl-alt` matcher fires on Mac Terminal.app exactly the way it does on Ghostty / iTerm2 (which already transmit the Ctrl bit in modifier-encoded CSI like `\x1b[1;7A`):
+
+- **`packages/opencues-runtime/adapters/cc/v2.1/adapter.ts:328-380`** — synth in `normaliseKeyEvent`, covers CC for both forks (cli.js 2.1.110 + native 2.1.150/158).
+- **`integrations/shell/src/bootstrap.ts:412-440`** — synth in `dispatchOpenCuesKey`. Same OpenTUI host as OC.
+- **`integrations/opencode/patches/opencuesBootstrap.ts:511-540`** — same synth.
+
+Per-integration matrix on macOS after this PR:
+
+| Integration | Mac Terminal.app | Ghostty / iTerm2 |
+|---|---|---|
+| CC | ✅ works (synth fires on double-ESC) | ✅ works (synth is no-op, ctrl already true) |
+| OC | ✅ works | ✅ works |
+| shell | ✅ works | ✅ works |
+| gemini-cli | ❌ Gemini's own parser at `KeypressContext.tsx:585` reads `alt` from the CSI modifier byte and discards the outer ESC-prefix from a double-ESC sequence. Mac Terminal users on gemini-cli need to install Ghostty or iTerm2 (which emit modifier-encoded CSI directly and bypass the parser quirk). | ✅ works |
+| chrome | ✅ DOM `altKey` works in any Mac browser | ✅ same |
+
+Versions bumped: `@opencues/runtime` 0.1.9 → 0.1.10, `@opencues/core` 0.1.6 → 0.1.7, `opencues` CLI 0.1.7 → 0.1.8, `@opencues/shell` 0.1.2 → 0.1.3, `@opencues/opencode` 0.1.1 → 0.1.2. Banner in `opencues run` shows "Ctrl+Option" on darwin to match the physical Mac keyboard label.
+- **`packages/opencues-runtime/src/modules/nav-keymap.ts`** used to auto-fall-back to `ctrl-shift` when `TERM_PROGRAM=Apple_Terminal`, based on the wrong assumption that Ctrl+Alt+arrow was stripped. Per the tester's data, *Ctrl+Shift+arrow* is the combo Terminal.app actually strips — the fallback was making things worse. Removed the special-case; `auto` now resolves to `ctrl-alt` everywhere (chrome stays hard-pinned). ([@opencues/runtime](packages/opencues-runtime/) 0.1.9 → 0.1.10, [@opencues/core](packages/opencues-core/) 0.1.6 → 0.1.7, [opencues CLI](packages/opencues-cli/) 0.1.7 → 0.1.8)
+- **`docs/install.md`** rewrites the macOS Terminal.app section to point users at the one-checkbox fix (Profiles → Keyboard → "Use Option as Meta key") instead of recommending the broken ctrl-shift fallback.
+
+User-facing upgrade path: `opencues run <host>` auto-rebuilds on next launch (srcHash drift detection from June 2026). Terminal.app users additionally need to toggle "Use Option as Meta key" on their profile — there's no way to do that from inside the app.
+
 ### Added — Self-healing forks: `opencues run <host>` auto-rebuilds on source drift
 
 The "git pull and existing forks silently keep running pre-pull bytecode forever" trap is now closed structurally. Three pieces shipping together in this batch:

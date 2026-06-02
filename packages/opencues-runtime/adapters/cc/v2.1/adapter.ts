@@ -22,6 +22,7 @@ import {
   type TextChangeEvent,
   type Unsubscribe,
 } from '../../../src/adapter';
+import { shouldSynthesizeMacDoubleEscCtrl } from '../../../src/modules/mac-keyboard';
 
 /**
  * Bindings supplied by the cli.js bootstrap. The bootstrap captures identifier
@@ -333,9 +334,13 @@ export function normaliseKeyEvent(raw: {
   option?: boolean;
   shift?: boolean;
   super?: boolean;
+  sequence?: string;
 }, text: string, cursorOffset: number): KeyEvent {
+  // Mac Terminal.app's Ctrl+Option+arrow ships without a Ctrl byte — see
+  // `src/modules/mac-keyboard.ts` for the full byte-signature rationale.
+  const macDoubleEscCtrlSynth = shouldSynthesizeMacDoubleEscCtrl(raw);
   const modifiers: Modifiers = {
-    ctrl: !!raw.ctrl,
+    ctrl: !!raw.ctrl || macDoubleEscCtrlSynth,
     alt: !!(raw.alt || raw.option || raw.meta),
     shift: !!raw.shift,
     meta: !!raw.super,
