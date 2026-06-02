@@ -29,11 +29,15 @@ Per-integration matrix on macOS after this PR:
 | gemini-cli | ❌ Gemini's own parser at `KeypressContext.tsx:585` reads `alt` from the CSI modifier byte and discards the outer ESC-prefix from a double-ESC sequence. Mac Terminal users on gemini-cli need to install Ghostty or iTerm2 (which emit modifier-encoded CSI directly and bypass the parser quirk). | ✅ works |
 | chrome | ✅ DOM `altKey` works in any Mac browser | ✅ same |
 
-Versions bumped: `@opencues/runtime` 0.1.9 → 0.1.10, `@opencues/core` 0.1.6 → 0.1.7, `opencues` CLI 0.1.7 → 0.1.8, `@opencues/shell` 0.1.2 → 0.1.3, `@opencues/opencode` 0.1.1 → 0.1.2. Banner in `opencues run` shows "Ctrl+Option" on darwin to match the physical Mac keyboard label.
-- **`packages/opencues-runtime/src/modules/nav-keymap.ts`** used to auto-fall-back to `ctrl-shift` when `TERM_PROGRAM=Apple_Terminal`, based on the wrong assumption that Ctrl+Alt+arrow was stripped. Per the tester's data, *Ctrl+Shift+arrow* is the combo Terminal.app actually strips — the fallback was making things worse. Removed the special-case; `auto` now resolves to `ctrl-alt` everywhere (chrome stays hard-pinned). ([@opencues/runtime](packages/opencues-runtime/) 0.1.9 → 0.1.10, [@opencues/core](packages/opencues-core/) 0.1.6 → 0.1.7, [opencues CLI](packages/opencues-cli/) 0.1.7 → 0.1.8)
-- **`docs/install.md`** rewrites the macOS Terminal.app section to point users at the one-checkbox fix (Profiles → Keyboard → "Use Option as Meta key") instead of recommending the broken ctrl-shift fallback.
+Also in this PR:
 
-User-facing upgrade path: `opencues run <host>` auto-rebuilds on next launch (srcHash drift detection from June 2026). Terminal.app users additionally need to toggle "Use Option as Meta key" on their profile — there's no way to do that from inside the app.
+- **`packages/opencues-runtime/src/modules/nav-keymap.ts`** — removed the `TERM_PROGRAM=Apple_Terminal → ctrl-shift` auto-fallback. It was based on the wrong assumption that Ctrl+Alt+arrow was stripped; per `cat -v` testing, *Ctrl+Shift+arrow* is the combo Terminal.app actually strips, so the fallback was making things worse. `auto` now resolves to `ctrl-alt` everywhere (chrome stays hard-pinned).
+- **`docs/install.md`** macOS section rewritten — Terminal.app now works without manual configuration thanks to the synth above. Earlier drafts of this PR recommended toggling "Use Option as Meta key" in profile settings; that's no longer required for OpenCues itself (users may still want it for general shell ergonomics).
+- **Shared helper** `packages/opencues-runtime/src/modules/mac-keyboard.ts` exports `shouldSynthesizeMacDoubleEscCtrl`. Single source of truth used by all three sites above; 16-test pin in `mac-keyboard.test.ts` covers every byte-shape × terminal × edge-case combination.
+
+Versions bumped: `@opencues/runtime` 0.1.9 → 0.1.10, `@opencues/core` 0.1.6 → 0.1.7, `opencues` CLI 0.1.7 → 0.1.8, `@opencues/shell` 0.1.2 → 0.1.3, `@opencues/opencode` 0.1.1 → 0.1.2. Banner in `opencues run` shows "Ctrl+Option" on darwin to match the physical Mac keyboard label.
+
+User-facing upgrade path: `opencues run <host>` auto-rebuilds on next launch (srcHash drift detection from June 2026). No manual terminal-settings toggle required.
 
 ### Added — Self-healing forks: `opencues run <host>` auto-rebuilds on source drift
 
