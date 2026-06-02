@@ -258,7 +258,7 @@ function displayProvider(id, core) {
 const PROVIDER_DISPLAY = {
   groq: 'Groq', cerebras: 'Cerebras', openai: 'OpenAI',
   anthropic: 'Claude', openrouter: 'OpenRouter', gemini: 'Gemini',
-  'claude-cli': 'Claude (CLI, subscription)',
+  'claude-code-cli': 'Claude Code (CLI, subscription)',
   'openai-subscription': 'OpenAI (ChatGPT subscription)',
   'opencode-zen': 'OpenCode Zen',
 };
@@ -272,7 +272,7 @@ const PROVIDER_DEFAULT_MODEL = {
   anthropic:  'claude-haiku-4-5-20251001',
   openrouter: 'openai/gpt-oss-120b:free',
   gemini:     'gemini-3.1-flash-lite',
-  'claude-cli': 'haiku',
+  'claude-code-cli': 'haiku',
   'openai-subscription': 'gpt-5.4-mini',
   'opencode-zen': 'big-pickle',
 };

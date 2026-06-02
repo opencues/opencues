@@ -20,9 +20,30 @@
  * model defaults + request/response translators. Nothing else changes.
  */
 
-export type ProviderId = 'groq' | 'openrouter' | 'gemini' | 'openai' | 'openai-subscription' | 'anthropic' | 'cerebras' | 'claude-cli' | 'opencode-zen';
+export type ProviderId = 'groq' | 'openrouter' | 'gemini' | 'openai' | 'openai-subscription' | 'anthropic' | 'cerebras' | 'claude-code-cli' | 'opencode-zen';
 
-export const PROVIDER_IDS: readonly ProviderId[] = ['groq', 'openrouter', 'gemini', 'openai', 'openai-subscription', 'anthropic', 'cerebras', 'claude-cli', 'opencode-zen'];
+export const PROVIDER_IDS: readonly ProviderId[] = ['groq', 'openrouter', 'gemini', 'openai', 'openai-subscription', 'anthropic', 'cerebras', 'claude-code-cli', 'opencode-zen'];
+
+/**
+ * Legacy provider-id aliases. User configs created before the rename
+ * (`claude-cli` → `claude-code-cli`, 2026-06-02) silently resolve via
+ * `getProvider`. The old id is retained ONLY for read; new writes
+ * always emit the canonical form. Drop after 2027-01-01.
+ */
+const LEGACY_PROVIDER_ALIASES: Readonly<Record<string, ProviderId>> = {
+  'claude-cli': 'claude-code-cli',
+};
+
+/**
+ * Canonicalises a provider id at every user-input boundary. Legacy
+ * aliases ({@link LEGACY_PROVIDER_ALIASES}) resolve to their current
+ * canonical id; unknown ids pass through unchanged for the caller to
+ * surface as `unknown-provider`. Internal call sites (buildRequest,
+ * fallback walkers) already receive canonical ids and don't need this.
+ */
+export function canonicalizeProviderId(id: string): string {
+  return LEGACY_PROVIDER_ALIASES[id] ?? id;
+}
 
 /**
  * Internal chat-request shape — provider-neutral. Each provider's
@@ -424,8 +445,11 @@ const GROQ: ProviderAdapter = {
   knownModels: [
     'openai/gpt-oss-120b',
     'openai/gpt-oss-20b',
-    'llama-3.3-70b-versatile',
   ],
+  // llama-3.3-70b-versatile removed 2026-06: not a reasoning model, so it
+  // 400s on the `reasoning_effort` field our adapter ships by default for
+  // its gpt-oss companions. Reachable via direct OPENCUES.md edit; the
+  // classifier just doesn't surface it.
   envKeyName: 'GROQ_API_KEY',
   // gpt-oss-120b at `medium`+`high` overshoots OpenCues' fluid-blank
   // (1500ms) and word-cue (500ms) budgets at Groq's throughput; `low`
@@ -888,8 +912,8 @@ const CEREBRAS: ProviderAdapter = {
  * install), but the field stays in the adapter for shape compatibility.
  */
 const CLAUDE_CLI: ProviderAdapter = {
-  id: 'claude-cli',
-  displayName: 'Claude (CLI, subscription)',
+  id: 'claude-code-cli',
+  displayName: 'Claude Code (CLI, subscription)',
   transport: 'cli',
   defaultEndpoint: '', // unused for CLI transport
   defaultModel: 'haiku', // fastest / cheapest of the supported aliases
@@ -906,10 +930,10 @@ const CLAUDE_CLI: ProviderAdapter = {
     // Never called for transport: 'cli'. Throw if it somehow IS called
     // so the bug surfaces immediately instead of silently producing
     // a malformed HTTP request.
-    throw new Error('claude-cli: buildRequest is not used (transport is cli)');
+    throw new Error('claude-code-cli: buildRequest is not used (transport is cli)');
   },
   parseResponse() {
-    throw new Error('claude-cli: parseResponse is not used (transport is cli)');
+    throw new Error('claude-code-cli: parseResponse is not used (transport is cli)');
   },
   async invokeCli(req) {
     // Extract system + user prompt from the neutral ChatRequest. The
@@ -1209,7 +1233,7 @@ const PROVIDERS: Readonly<Record<ProviderId, ProviderAdapter>> = {
   'openai-subscription': OPENAI_SUBSCRIPTION,
   anthropic: ANTHROPIC,
   cerebras: CEREBRAS,
-  'claude-cli': CLAUDE_CLI,
+  'claude-code-cli': CLAUDE_CLI,
   'opencode-zen': OPENCODE_ZEN,
 };
 
@@ -1268,7 +1292,8 @@ export function pickAutoProvider(apiKeys: Readonly<Record<string, string | undef
  */
 export function getProvider(id: string | undefined | null): ProviderAdapter | null {
   if (!id) return null;
-  const found = PROVIDERS[id as ProviderId];
+  const canonical = (LEGACY_PROVIDER_ALIASES[id] ?? id) as ProviderId;
+  const found = PROVIDERS[canonical];
   if (!found) {
     warnUnknownProviderOnce(id);
     return null;
@@ -1310,7 +1335,7 @@ export function validateEndpoint(
   endpoint: string | undefined | null,
 ): EndpointValidation {
   if (!providerId) return { ok: true, kind: 'default' };
-  const provider = PROVIDERS[providerId as ProviderId];
+  const provider = PROVIDERS[canonicalizeProviderId(providerId) as ProviderId];
   if (!provider) {
     return {
       ok: false,
@@ -1516,10 +1541,10 @@ const FALLBACK_PAIRS: Readonly<Record<ProviderId, ProviderId | undefined>> = {
   'openai-subscription': undefined,
   anthropic: undefined,
   gemini: undefined,
-  // claude-cli is a different transport entirely — no HTTP peer to fall
-  // back to. If the subscription daemon dies, the user picks a different
-  // provider in OPENCUES.md.
-  'claude-cli': undefined,
+  // claude-code-cli is a different transport entirely — no HTTP peer to
+  // fall back to. If the subscription daemon dies, the user picks a
+  // different provider in OPENCUES.md.
+  'claude-code-cli': undefined,
   // opencode-zen has its own pool-walking dispatcher
   // (dispatchWithFreePool); no cross-provider fallback needed.
   'opencode-zen': undefined,
@@ -1654,9 +1679,11 @@ export function resolveLLM(opts: ResolveLLMOptions): ResolvedLLM | null {
   // is suppressed when no tier picked it), so the literal here only
   // matters for "no keys, but we still need to emit a ProviderId".
   const autoPicked = providerTierIdx >= 0 ? null : pickAutoProvider(opts.apiKeys);
-  const providerId = (providerTierIdx >= 0
-    ? tiers[providerTierIdx].p!.trim()
-    : (autoPicked ?? 'cerebras')) as ProviderId;
+  const providerId = canonicalizeProviderId(
+    providerTierIdx >= 0
+      ? tiers[providerTierIdx].p!.trim()
+      : (autoPicked ?? 'cerebras')
+  ) as ProviderId;
   const provider = PROVIDERS[providerId];
   if (!provider) {
     warnUnknownProviderOnce(providerId);

@@ -40,11 +40,12 @@ try {
 const { getProvider } = llm;
 
 // Curated (provider, model) combos to verify. Pulled from each provider's
-// `knownModels:` list. CLI providers are excluded (separate path).
+// `knownModels:` list. CLI providers (claude-code-cli, openai-subscription)
+// are included — they're dispatched via `invokeCli(req, ctx)` instead of
+// fetch(), and `probe()` branches on `transport === 'cli'`.
 const COMBOS = [
   { provider: 'groq',       model: 'openai/gpt-oss-120b' },
   { provider: 'groq',       model: 'openai/gpt-oss-20b' },
-  { provider: 'groq',       model: 'llama-3.3-70b-versatile' },
   { provider: 'cerebras',   model: 'gpt-oss-120b' },
   { provider: 'cerebras',   model: 'zai-glm-4.7' },
   { provider: 'gemini',     model: 'gemini-3.1-flash-lite' },
@@ -61,6 +62,11 @@ const COMBOS = [
   { provider: 'openrouter', model: 'anthropic/claude-haiku-4-5' },
   { provider: 'openrouter', model: 'anthropic/claude-opus-4-7' },
   { provider: 'openrouter', model: 'google/gemini-3.1-flash-lite' },
+  // CLI transports — `invokeCli` path. Skipped automatically when the
+  // backing binary isn't on PATH (the daemon will warn-then-throw).
+  { provider: 'claude-code-cli',     model: 'haiku' },
+  { provider: 'claude-code-cli',     model: 'sonnet' },
+  { provider: 'openai-subscription', model: 'gpt-5.4-mini' },
 ];
 
 if (process.argv.includes('--models')) {
@@ -81,6 +87,26 @@ async function probe({ provider, model }) {
     temperature: 0,
     maxTokens: 16,
   };
+  // CLI transports — invokeCli spawns the backing binary (`claude`,
+  // `codex`) instead of POSTing. Skip with status=skipped if the binary
+  // is missing (the daemon will throw with ENOENT-ish).
+  if (adapter.transport === 'cli') {
+    const started = Date.now();
+    try {
+      const content = await adapter.invokeCli(req, { apiKey: apiKey ?? '', endpoint: '' });
+      const elapsed = Date.now() - started;
+      const trimmed = (content ?? '').trim().slice(0, 80);
+      return { provider, model, status: 'ok', reply: trimmed, ms: elapsed };
+    } catch (err) {
+      const msg = err && err.message ? err.message : String(err);
+      // Heuristic: a missing binary surfaces as ENOENT-ish text; report
+      // as skipped not failed so the smoke summary stays meaningful.
+      if (/ENOENT|not found|command not found|no such file/i.test(msg)) {
+        return { provider, model, status: 'skipped', reason: `CLI binary missing: ${msg.slice(0, 100)}` };
+      }
+      return { provider, model, status: 'failed', reason: msg.slice(0, 240), ms: Date.now() - started };
+    }
+  }
   let built;
   try {
     built = adapter.buildRequest(req, { apiKey: apiKey ?? '', endpoint: adapter.defaultEndpoint });

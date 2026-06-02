@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Changed — Provider rename `claude-cli` → `claude-code-cli`, llama-3.3 removed from Groq catalogue, CLI providers added to smoke
+
+Follow-up on the LLM-provider fix below. Renamed the Anthropic CLI-transport provider id from `claude-cli` to `claude-code-cli` to match the official product name and remove ambiguity ("claude-cli" reads as a generic Claude CLI; the canonical user-facing brand for the binary is "Claude Code"). `canonicalizeProviderId()` keeps legacy user configs (`globalProvider: claude-cli`) silently working — old id resolves to canonical at every user-input boundary (resolveLLM + validateEndpoint + getProvider). Drop after 2027-01-01.
+
+`llama-3.3-70b-versatile` removed from Groq's `knownModels` — it's not a reasoning model, so the adapter's default `reasoning_effort: low` 400s on it. The `modelRejectsReasoningEffort` predicate keeps it usable via direct OPENCUES.md edit; the classifier just doesn't surface it.
+
+Smoke runner now also covers the two CLI-transport providers (`claude-code-cli`, `openai-subscription`) — `probe()` branches on `transport === 'cli'` and dispatches via `invokeCli()` instead of `fetch()`. Verified live 2026-06-02: 20 of 21 combos pass; the one failure was the user's expired `codex login` (actionable, not a bug — the runner correctly surfaced the API's auth-expired message).
+
+Version bumped: `@opencues/core` 0.1.7 → 0.1.8 (single bump covers both fixes).
+
 ### Fixed — LLM providers: temperature/reasoning-effort deprecations + stale model catalogues
 
 User reported `draft email _` producing no output in claude-cues despite doctor reporting healthy. Log trace caught the actual failure: `anthropic error: \`temperature\` is deprecated for this model.` — every blank routing through `blanks-llm-provider: anthropic` (Claude 4.x) was silently dying in the LLM call. A live smoke runner ([`tests/integration/llm-providers-smoke.cjs`](tests/integration/llm-providers-smoke.cjs)) verifying all 19 shipped (provider, model) combinations against real keys caught three more latent failures:
