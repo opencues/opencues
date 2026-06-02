@@ -462,15 +462,16 @@ describe('Resolver — same-text dedupe (regression: double LLM call on `_` trig
     const spy = vi.spyOn(resolver, 'resolveAndApply');
     resolver.subscribe();
 
+    // Two distinct text changes, separated by enough time for the first
+    // debounced schedule to fire (10ms debounce in setupResolver). The
+    // point: dedupe is text-equality only — different text MUST trigger a
+    // second resolve, regardless of which path (bypass vs scheduled) each
+    // change takes.
     adapter.pushText('hello _');
+    await new Promise(r => setTimeout(r, 30));
     adapter.pushText('hello world _');  // different text
+    await new Promise(r => setTimeout(r, 30));
 
-    await new Promise(r => setTimeout(r, 50));
-
-    // Both fast-paths fire — first because `_` was just typed against
-    // empty `prev`, second because `_` is at the trailing edge against
-    // a `prev` that didn't end in `_` after we strip the trailing space.
-    // The point is: dedupe MUST NOT swallow a real text change.
     expect(spy).toHaveBeenCalledTimes(2);
   });
 });
@@ -913,6 +914,90 @@ describe('Resolver blank-trigger-mode gate', () => {
     adapter.pushText('this is _italic_');    // closing `_`
     await new Promise(r => setTimeout(r, 50));
     expect(callCount()).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Explicit-`_` gate: blanks (FluidBlank / TransformBlank / ConfigIntent)
+// fire ONLY when the `_` in the buffer was placed by an explicit user
+// keystroke. A `_` exposed via cursor-relocation (`monologue_` → split to
+// `monologue _`), paste, or programmatic setText must NOT fire.
+//
+// Bug observed June 2026: typing `monologue_` then splitting to
+// `monologue _` triggered FluidBlank substitution (log evidence:
+// `FluidBlank: substituting "Monologue #2 _" → "Monologue #2"`). The
+// blank's origin was not a "direct placement" — it was an attached `_`
+// that became standalone after a separate edit. Fix: gate blank
+// activation on the most-recent explicit `_` keystroke; the falls-through
+// scheduleResolve path captures freshness at change time so the debounce
+// can't open a hole.
+// ---------------------------------------------------------------------------
+
+describe('Resolver explicit-`_` gate', () => {
+  function setupGateScenario() {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': CUES_MD },
+    });
+    adapter.pushText('');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    const resolver = new Resolver(adapter, hlState, dynDefs, loader, {
+      endpoint: 'http://test', apiKey: 'x', defaultModel: 'm',
+      debounceMs: 20,
+      httpAdapter: {},
+    });
+    const seenWordsPerCall: string[][] = [];
+    (resolver as unknown as { _resolver: { resolve(ctx: { words: string[] }): Promise<{ results: unknown[] }> } })._resolver = {
+      resolve: async ctx => { seenWordsPerCall.push([...ctx.words]); return { results: [] }; },
+    };
+    resolver.subscribe();
+    return { adapter, resolver, seenWordsPerCall };
+  }
+
+  it('cursor-split scenario: `monologue_` → split to `monologue _` does NOT route `_` to blank sources', async () => {
+    const { adapter, seenWordsPerCall } = setupGateScenario();
+    // Step 1: user types `monologue_` (single explicit `_` keystroke
+    // attached to the word — NOT a standalone slot).
+    adapter.pushText('monologue_');
+    await new Promise(r => setTimeout(r, 80));
+    // The bypass on `monologue_` is a no-op for blank dispatch (no
+    // standalone `_`); the debounced resolve fires once with the `_`
+    // still attached — no isolated `_` word in the cleanWords list.
+    for (const words of seenWordsPerCall) {
+      expect(words).not.toContain('_');
+    }
+    const callsAfterStep1 = seenWordsPerCall.length;
+
+    // Step 2: user moves cursor and inserts a space, exposing a
+    // standalone `_`. This is the buggy path — no fresh keystroke fired
+    // (pushText auto-fires only when underscore COUNT grows, and here it
+    // doesn't). The cleanWords filter must mask the now-standalone `_`.
+    adapter.pushTextNoKeystroke('monologue _');
+    await new Promise(r => setTimeout(r, 80));
+    expect(seenWordsPerCall.length).toBeGreaterThan(callsAfterStep1);
+    for (const words of seenWordsPerCall) {
+      expect(words).not.toContain('_');
+    }
+  });
+
+  it('direct path: typing `country _` with the `_` keystroke DOES route `_` to blank sources', async () => {
+    const { adapter, seenWordsPerCall } = setupGateScenario();
+    // pushText auto-fires `_` keystroke because text gained a `_`.
+    adapter.pushText('country _');
+    await new Promise(r => setTimeout(r, 80));
+    const sawStandaloneUnderscore = seenWordsPerCall.some(words => words.includes('_'));
+    expect(sawStandaloneUnderscore).toBe(true);
+  });
+
+  it('paste scenario: programmatic `pushTextNoKeystroke` with a standalone `_` does NOT route to blank sources', async () => {
+    const { adapter, seenWordsPerCall } = setupGateScenario();
+    adapter.pushTextNoKeystroke('weather _');
+    await new Promise(r => setTimeout(r, 80));
+    for (const words of seenWordsPerCall) {
+      expect(words).not.toContain('_');
+    }
   });
 });
 

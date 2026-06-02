@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Changed — Blanks fire only on explicit `_` keystroke (cursor-split bug)
+
+Explicit-`_` gate for blank activation (`packages/opencues-runtime/src/modules/{resolver,blank-fill}.ts`). FluidBlank / TransformBlank / ConfigIntent and script-backed blanks (volume, brightness, …) now fire ONLY when the `_` in the buffer was placed by an explicit user keystroke. A `_` exposed via cursor-relocation (typing `monologue_` and then splitting it to `monologue _`), paste, or programmatic `setText` is suppressed. Resolver and BlankFill each arm a one-shot flag on a plain `_` keypress, but only when the simulated insertion would produce a standalone `_` — so typing `_` adjacent to an existing word never arms. The flag is cleared at the end of the next `onTextChange` (exception: spaced-mode unconfirmed `_` keeps it through one extra dispatch so the confirming space still dispatches). `MockAdapter.pushText` auto-fires the `_` keystroke when the new text introduces additional `_` chars; the new `pushTextNoKeystroke` is the explicit opt-out for paste/programmatic-insertion simulations. Three scenario tests pin the user journey.
+
+A follow-up commit on the same branch adds an event-bridge synth on `text:` injection that grows the underscore count — keeps the gate honest when text arrives through programmatic paths that bypass `onKey`.
+
+Version bumped: `@opencues/runtime` 0.1.12 → 0.1.13.
+
+
 ### Fixed — Terminal.app Ctrl+Option+arrow: stdin byte-rewrite (completes the #51 synth)
 
 Real-device testing of the [#51](https://github.com/opencues/opencues/pull/51) synth on a **default** Terminal.app profile (claude-cues 2.1.158, Ink) showed it still did nothing. A runtime probe of the raw event proved why: Ink **splits** the `\x1b\x1b[A` chord into two events *before any consumer sees it* — a standalone `escape` (seq `\x1b`) + a plain arrow (seq `\x1b[A`), same millisecond. After the split the arrow no longer carries the double-ESC prefix, so the event-level `shouldSynthesizeMacDoubleEscCtrl` gate can never fire (`synthFired:false` on every arrow; zero `ctrl:true` in the dispatch log).

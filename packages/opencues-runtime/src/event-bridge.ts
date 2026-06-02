@@ -446,6 +446,23 @@ class CommandRunner {
         // sequences which we decode here. \\\\ → \\ keeps backslashes
         // injectable.
         const decoded = arg.replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
+        // Explicit-`_` gate compatibility: when `text:` introduces new
+        // `_` characters relative to the prior buffer, synthesise a `_`
+        // keystroke BEFORE the text update so subscribers that gate on
+        // explicit keystroke origin (Resolver / BlankFill's explicit-`_`
+        // gate) see the keystroke→change pair a real user would produce.
+        // Without this, every blank-firing scenario that uses `text:foo _`
+        // would silently no-op. `text-keep-hl` skips this because the
+        // 'runtime' source flag already signals "not user-typed".
+        const prevText = adapter.getText();
+        if (cmd === 'text' && countUnderscores(decoded) > countUnderscores(prevText)) {
+          this.bindings.dispatchKey({
+            key: '_',
+            modifiers: { ctrl: false, alt: false, shift: false, meta: false },
+            text: prevText,
+            cursorOffset: adapter.getCursorOffset(),
+          });
+        }
         // Two-step write: (1) buffer set; (2) synthetic textChange so
         // the resolver / statusline see the change. OpenTUI's
         // replaceText skips onContentChange for programmatic writes —
@@ -562,6 +579,12 @@ function parseLine(line: string): { cmd: string; arg: string } {
  * dispatch time so the synthesised event matches what a real keystroke
  * would carry.
  */
+function countUnderscores(text: string): number {
+  let n = 0;
+  for (let i = 0; i < text.length; i += 1) if (text[i] === '_') n += 1;
+  return n;
+}
+
 function parseKeyArg(arg: string, adapter: HostAdapter): KeyEvent {
   const colon = arg.indexOf(':');
   const name = (colon >= 0 ? arg.slice(0, colon) : arg).trim().toLowerCase();

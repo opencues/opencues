@@ -285,8 +285,27 @@ export class MockAdapter implements HostAdapter {
     return false;
   }
 
-  /** Simulate a user edit: updates buffer AND fires onTextChange with source 'user'. */
+  /** Simulate a user edit: updates buffer AND fires onTextChange with source 'user'.
+   *  If the new text introduces additional `_` characters relative to the
+   *  previous buffer, ALSO fires a plain `_` keystroke first so subscribers
+   *  that gate on explicit keystroke origin (Resolver / BlankFill's
+   *  explicit-`_` gate) see the keystroke→change pair a real user would
+   *  produce. Tests that want to simulate paste / programmatic insertion
+   *  of `_` without a keystroke should use `pushTextNoKeystroke` instead. */
   pushText(text: string, cursorOffset?: number): void {
+    if (countUnderscores(text) > countUnderscores(this._text)) {
+      // Synthesise the `_` keypress before the change. We fire with the
+      // PRE-change text so a handler that reads `event.text` (cursor-aware
+      // logic in BlankFill.onUnderscoreKey, for instance) sees the same
+      // pre-state a real keypress would deliver.
+      this.fireKey('_');
+    }
+    this.pushTextNoKeystroke(text, cursorOffset);
+  }
+
+  /** Like `pushText` but without the auto-fired `_` keystroke. Use this when
+   *  the test specifically wants to simulate paste / programmatic insertion. */
+  pushTextNoKeystroke(text: string, cursorOffset?: number): void {
     const prev = this._text;
     this._text = text;
     if (cursorOffset !== undefined) this._offset = Math.max(0, Math.min(cursorOffset, text.length));
@@ -335,6 +354,12 @@ export class MockAdapter implements HostAdapter {
       }
     }
   }
+}
+
+function countUnderscores(text: string): number {
+  let n = 0;
+  for (let i = 0; i < text.length; i += 1) if (text[i] === '_') n += 1;
+  return n;
 }
 
 function keyMatchesFilter(event: KeyEvent, filter: KeyFilter | null): boolean {

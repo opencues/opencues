@@ -35,6 +35,13 @@ export class BlankFill {
   private _slots: readonly BlankSlot[] = [];
   private _unsubText: Unsubscribe | null = null;
   private _unsubKey: Unsubscribe | null = null;
+  /** One-shot flag: armed on a plain `_` keystroke, cleared at the end
+   *  of the next `onTextChange`. Mirrors the resolver's gate — script-
+   *  backed blanks (volume, brightness, etc.) only dispatch when the `_`
+   *  in the buffer was placed by an explicit user keystroke. A `_`
+   *  exposed via cursor-relocation (`volume_` → split to `volume _`),
+   *  paste, or programmatic setText MUST NOT fire the script. */
+  private _underscoreKeyArmed = false;
   /** Dedup key (text + slot index) → in-flight script promise. */
   private _pendingScripts = new Set<string>();
   private _warnedSandboxBlanks = new Set<string>();
@@ -108,6 +115,10 @@ export class BlankFill {
   /** Currently-detected slots (latest scan). */
   get slots(): readonly BlankSlot[] { return this._slots; }
 
+  private explicitUnderscoreRecent(): boolean {
+    return this._underscoreKeyArmed;
+  }
+
   /** Pure scanner — exposed for unit tests. */
   scan(text: string): readonly BlankSlot[] {
     const cleanText = text.replace(/[\u200B\u200C]/g, '');
@@ -123,6 +134,21 @@ export class BlankFill {
   }
 
   private onTextChange(e: TextChangeEvent): void {
+    let keepArmed = false;
+    try {
+      keepArmed = this._onTextChangeImpl(e);
+    } finally {
+      // One-shot: clear the keystroke flag at the END of this dispatch so
+      // the NEXT text-change (one not paired with a `_` keystroke) sees
+      // `explicitUnderscoreRecent()` = false. Exception: spaced-mode
+      // unconfirmed `_` — the user explicitly typed `_` and is waiting
+      // for the confirming space; we MUST keep the flag through one
+      // extra dispatch (mirrors the same exception in Resolver.onTextChange).
+      if (!keepArmed) this._underscoreKeyArmed = false;
+    }
+  }
+
+  private _onTextChangeImpl(e: TextChangeEvent): boolean {
     // Span-fill invalidation: if the span fill is live and the
     // current text doesn't match what we last filled (cycle or initial),
     // try to preserve the span (user edited OUTSIDE it — just re-anchor
@@ -190,8 +216,28 @@ export class BlankFill {
         const hasTrailingWs = /\s$/.test(cleanText);
         filteredSlots = slots.filter(s => s.index < lastWordIdx || hasTrailingWs);
       }
+      // Explicit-`_` gate: only dispatch scripts when the `_` was placed
+      // by an explicit user keystroke. A `_` exposed via cursor-relocation
+      // (`volume_` → split to `volume _`), paste, or programmatic setText
+      // MUST NOT fire the volume / brightness / etc. scripts. Mirrors the
+      // resolver's gate so the runtime is consistent across both blank
+      // dispatch paths. See `_underscoreKeyArmed`.
+      if (filteredSlots.length > 0 && !this.explicitUnderscoreRecent()) {
+        this.adapter.log('debug', `BlankFill: explicit-_ gate BLOCKED ${filteredSlots.length} slot(s) (no recent _ keystroke)`);
+        filteredSlots = [];
+      }
       this.maybeRunScripts(e.text, filteredSlots);
+
+      // Spaced-mode unconfirmed `_` (text ends with `_` without trailing
+      // whitespace): keep the armed flag so the next text-change (the
+      // confirming space) can still dispatch. Without this, spaced-mode
+      // legitimate usage would permanently fail the explicit-`_` gate.
+      if (this.configLoader?.opencuesState.blankTriggerMode === 'spaced') {
+        const cleanText = e.text.replace(/[\u200B\u200C]/g, '');
+        if (cleanText.endsWith('_')) return true;
+      }
     }
+    return false;
   }
 
   /**
@@ -838,6 +884,19 @@ export class BlankFill {
     // Only intercept plain '_' presses (no nav modifiers etc.).
     const m = event.modifiers;
     if (m.ctrl || m.alt || m.meta) return false;
+    // Simulate the insertion FIRST, then arm the one-shot flag only when
+    // the resulting `_` would be a standalone word. A `_` typed adjacent
+    // to existing letters (`volume` + `_` → `volume_`, or inside a word
+    // like `vol_ume`) is structurally NOT a blank trigger; arming on
+    // those would re-open the cursor-split bug for script-backed blanks.
+    const insertedText =
+      event.text.slice(0, event.cursorOffset) +
+      '_' +
+      event.text.slice(event.cursorOffset);
+    const insertedWord = findUnderscoreAtChar(insertedText, event.cursorOffset);
+    if (insertedWord) {
+      this._underscoreKeyArmed = true;
+    }
 
     // `blank-trigger-mode: spaced` defers blank firing until a space
     // follows the `_`. Letting the keypress fall through to the host's
@@ -848,14 +907,8 @@ export class BlankFill {
       return false;
     }
 
-    const insertedText =
-      event.text.slice(0, event.cursorOffset) +
-      '_' +
-      event.text.slice(event.cursorOffset);
-
     // Find the word index of our just-inserted '_' in the simulated text.
     // Only count it as a blank when it's surrounded by whitespace (or BOL/EOL).
-    const insertedWord = findUnderscoreAtChar(insertedText, event.cursorOffset);
     if (!insertedWord) return false;
 
     const slots = this.scan(insertedText);
@@ -1227,7 +1280,7 @@ export function computeCleanupRange(
  * character is the lone '_' word at its position. Returns null if the '_'
  * is part of a larger word (e.g. `affirm_xyz`).
  */
-function findUnderscoreAtChar(text: string, charOffset: number): { index: number; start: number; end: number } | null {
+export function findUnderscoreAtChar(text: string, charOffset: number): { index: number; start: number; end: number } | null {
   const words = splitWords(text);
   for (const w of words) {
     if (w.start <= charOffset && charOffset < w.end && w.word === '_') {
