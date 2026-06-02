@@ -371,7 +371,7 @@ export const FEATURES: readonly FeatureSpec[] = [
       { id: 'anthropic', description: 'Anthropic — pricier, parity accuracy' },
       { id: 'openai',    description: 'OpenAI — gpt-5.4-mini default' },
       { id: 'openrouter', description: 'OpenRouter (multi-model router)', exposeInMenu: false },
-      { id: 'claude-cli', description: 'claude-cli (subprocess)',          exposeInMenu: false },
+      { id: 'claude-code-cli', description: 'claude-code-cli (subprocess)', exposeInMenu: false },
     ],
   },
   {
@@ -387,7 +387,7 @@ export const FEATURES: readonly FeatureSpec[] = [
       { id: 'anthropic', description: 'Anthropic — pricier, parity accuracy' },
       { id: 'openai',    description: 'OpenAI — gpt-5.4-mini default' },
       { id: 'openrouter', description: 'OpenRouter (multi-model router)', exposeInMenu: false },
-      { id: 'claude-cli', description: 'claude-cli (subprocess)',          exposeInMenu: false },
+      { id: 'claude-code-cli', description: 'claude-code-cli (subprocess)', exposeInMenu: false },
     ],
   },
   {
@@ -404,7 +404,7 @@ export const FEATURES: readonly FeatureSpec[] = [
       { id: 'anthropic',    description: 'Anthropic — pricier, parity accuracy' },
       { id: 'openai',       description: 'OpenAI — gpt-5.4-mini default' },
       { id: 'openrouter',   description: 'OpenRouter (multi-model router)', exposeInMenu: false },
-      { id: 'claude-cli',   description: 'claude-cli (subprocess)',          exposeInMenu: false },
+      { id: 'claude-code-cli', description: 'claude-code-cli (subprocess)', exposeInMenu: false },
     ],
   },
 

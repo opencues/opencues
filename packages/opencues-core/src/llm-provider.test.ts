@@ -1062,18 +1062,18 @@ describe('resolveLLM — misconfiguration warnings (silent-no-op regressors)', (
   });
 });
 
-describe('resolveLLM — claude-cli (CLI-transport, no API key)', () => {
-  it('resolves to claude-cli with no apiKey + no fallback (auth is external)', () => {
+describe('resolveLLM — claude-code-cli (CLI-transport, no API key)', () => {
+  it('resolves to claude-code-cli with no apiKey + no fallback (auth is external)', () => {
     _resetWarnDedupForTesting();
     const { warnings, restore } = captureWarn();
     try {
       const result = resolveLLM({
-        globalProvider: 'claude-cli',
+        globalProvider: 'claude-code-cli',
         globalModel: 'haiku',
         apiKeys: {}, // intentionally empty — CLI transport doesn't use apiKeys
       });
       assert.notStrictEqual(result, null);
-      assert.strictEqual(result!.provider.id, 'claude-cli');
+      assert.strictEqual(result!.provider.id, 'claude-code-cli');
       assert.strictEqual(result!.provider.transport, 'cli');
       assert.strictEqual(result!.model, 'haiku');
       assert.strictEqual(result!.apiKey, '', 'CLI providers carry an empty apiKey');
@@ -1082,25 +1082,37 @@ describe('resolveLLM — claude-cli (CLI-transport, no API key)', () => {
     } finally { restore(); }
   });
 
-  it('per-feature claude-cli override resolves without env keys', () => {
+  it('per-feature claude-code-cli override resolves without env keys', () => {
     _resetWarnDedupForTesting();
     const result = resolveLLM({
-      featureProvider: 'claude-cli',
+      featureProvider: 'claude-code-cli',
       featureModel: 'sonnet',
       apiKeys: { GROQ_API_KEY: 'unused-here' },
     });
-    assert.strictEqual(result?.provider.id, 'claude-cli');
+    assert.strictEqual(result?.provider.id, 'claude-code-cli');
     assert.strictEqual(result?.model, 'sonnet');
   });
 
-  it('claude-cli is NOT auto-picked when only env keys for other providers are set', () => {
-    // claude-cli is opt-in only — not in PROVIDER_AUTO_ORDER. pickAutoProvider
-    // should never return it just because the user has a `claude` install.
+  it('legacy `claude-cli` id silently resolves to canonical `claude-code-cli`', () => {
+    // User configs created before the rename (2026-06-02) keep working.
+    _resetWarnDedupForTesting();
+    const result = resolveLLM({
+      globalProvider: 'claude-cli',  // legacy
+      globalModel: 'haiku',
+      apiKeys: {},
+    });
+    assert.strictEqual(result?.provider.id, 'claude-code-cli');
+  });
+
+  it('claude-code-cli is NOT auto-picked when only env keys for other providers are set', () => {
+    // claude-code-cli is opt-in only — not in PROVIDER_AUTO_ORDER.
+    // pickAutoProvider should never return it just because the user has a
+    // `claude` install.
     _resetWarnDedupForTesting();
     const result = resolveLLM({
       apiKeys: { CEREBRAS_API_KEY: 'k' }, // cerebras IS in auto-order
     });
-    assert.strictEqual(result?.provider.id, 'cerebras', 'auto-route must pick cerebras, not claude-cli');
+    assert.strictEqual(result?.provider.id, 'cerebras', 'auto-route must pick cerebras, not claude-code-cli');
   });
 });
 
