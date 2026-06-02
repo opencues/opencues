@@ -96,38 +96,19 @@ describe('ClaudeCodeV21Adapter', () => {
     expect(e.modifiers.alt).toBe(true);
   });
 
-  it('Mac Terminal.app double-ESC arrow byte sequence synthesises ctrl=true', () => {
-    // Mac Terminal.app emits `\x1b\x1b[A` for Ctrl+Option+Up with no Ctrl byte.
-    // Ink/OpenTUI parse this with `option: true, ctrl: false` and the raw
-    // sequence preserved. The synth is gated on the byte signature so it
-    // ONLY fires for this exact encoding.
-    for (const [key, csi] of [['up', 'A'], ['down', 'B'], ['left', 'D'], ['right', 'C']] as const) {
-      const e = normaliseKeyEvent({ key, option: true, sequence: `\x1b\x1b[${csi}` }, '', 0);
-      expect(e.modifiers.ctrl).toBe(true);
-      expect(e.modifiers.alt).toBe(true);
-    }
+  // The Mac Terminal.app Ctrl+Option+arrow synth lives in the shared helper
+  // `src/modules/mac-keyboard.ts` (full byte-shape matrix is pinned there).
+  // The two cases below only verify that `normaliseKeyEvent` correctly
+  // FORWARDS the helper's verdict into `modifiers.ctrl`.
+  it('forwards Mac double-ESC synth verdict into modifiers.ctrl', () => {
+    const e = normaliseKeyEvent({ key: 'up', option: true, sequence: '\x1b\x1b[A' }, '', 0);
+    expect(e.modifiers.ctrl).toBe(true);
+    expect(e.modifiers.alt).toBe(true);
   });
 
-  it('plain Alt+arrow on Linux/Windows is NOT hijacked (xterm-modifier CSI, not double-ESC)', () => {
-    // Linux/Windows xterm Alt+arrow emits `\x1b[1;3A`. OpenTUI parses this
-    // with `option: true` too (modifier byte bit 2). The synth must NOT
-    // fire here — gating on the literal `\x1b\x1b[` byte prefix is what
-    // prevents the regression.
+  it('leaves ctrl=false when the helper says no synth (xterm Alt+arrow on Linux)', () => {
     const e = normaliseKeyEvent({ key: 'up', option: true, sequence: '\x1b[1;3A' }, '', 0);
     expect(e.modifiers.ctrl).toBe(false);
-    expect(e.modifiers.alt).toBe(true);
-  });
-
-  it('Mac double-ESC synth does NOT fire on non-arrow keys', () => {
-    const e = normaliseKeyEvent({ key: 'a', option: true, sequence: '\x1b\x1ba' }, '', 0);
-    expect(e.modifiers.ctrl).toBe(false);
-    expect(e.modifiers.alt).toBe(true);
-  });
-
-  it('Ghostty/iTerm2 Ctrl+Option+arrow: ctrl already true, synth is a no-op', () => {
-    // Modifier-encoded CSI `\x1b[1;7A` (modifier byte 7 = ctrl+alt).
-    const e = normaliseKeyEvent({ key: 'up', ctrl: true, option: true, sequence: '\x1b[1;7A' }, '', 0);
-    expect(e.modifiers.ctrl).toBe(true);
     expect(e.modifiers.alt).toBe(true);
   });
 

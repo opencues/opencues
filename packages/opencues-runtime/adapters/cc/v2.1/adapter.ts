@@ -22,6 +22,7 @@ import {
   type TextChangeEvent,
   type Unsubscribe,
 } from '../../../src/adapter';
+import { shouldSynthesizeMacDoubleEscCtrl } from '../../../src/modules/mac-keyboard';
 
 /**
  * Bindings supplied by the cli.js bootstrap. The bootstrap captures identifier
@@ -325,21 +326,6 @@ export function toggleZeroWidth(text: string): string {
   return stripped + (endedWithZws ? '\u200c' : '\u200b');
 }
 
-// Mac Terminal.app emits Ctrl+Option+arrow as `\x1b\x1b[A` (double-ESC + CSI)
-// with no Ctrl byte anywhere in the stream. The double-ESC byte prefix is a
-// unique structural signature — it's only produced by Mac Terminal.app for
-// this exact chord. Every other terminal (Ghostty, iTerm2, Linux xterm,
-// Windows Terminal) uses xterm modifier-encoded CSI like `\x1b[1;7A` for
-// Ctrl+Alt+arrow with the Ctrl bit present, so the synth is a no-op there.
-//
-// We gate on the raw byte sequence (`\x1b\x1b[`) rather than on `raw.option`,
-// because both Ink and OpenTUI parsers ALSO set `option: true` for
-// xterm-modifier CSI with bit 2 set (plain Alt+arrow → `\x1b[1;3A`). Gating
-// on the byte signature instead of the parsed flag ensures the synth only
-// affects Mac Terminal.app's specific encoding and can NEVER hijack
-// plain Alt+arrow on Linux/Windows (word-jump muscle memory preserved).
-const MAC_DOUBLE_ESC_ARROW_KEYS = new Set(['up', 'down', 'left', 'right']);
-
 export function normaliseKeyEvent(raw: {
   key?: string;
   ctrl?: boolean;
@@ -350,12 +336,9 @@ export function normaliseKeyEvent(raw: {
   super?: boolean;
   sequence?: string;
 }, text: string, cursorOffset: number): KeyEvent {
-  const keyName = (raw.key ?? '').toLowerCase();
-  const isMacDoubleEscArrow =
-    typeof raw.sequence === 'string' &&
-    raw.sequence.startsWith('\x1b\x1b[') &&
-    MAC_DOUBLE_ESC_ARROW_KEYS.has(keyName);
-  const macDoubleEscCtrlSynth = isMacDoubleEscArrow && !raw.ctrl;
+  // Mac Terminal.app's Ctrl+Option+arrow ships without a Ctrl byte — see
+  // `src/modules/mac-keyboard.ts` for the full byte-signature rationale.
+  const macDoubleEscCtrlSynth = shouldSynthesizeMacDoubleEscCtrl(raw);
   const modifiers: Modifiers = {
     ctrl: !!raw.ctrl || macDoubleEscCtrlSynth,
     alt: !!(raw.alt || raw.option || raw.meta),

@@ -18,6 +18,7 @@ import type { CliRenderer, TextareaRenderable } from "@opentui/core"
 import { RGBA } from "@opentui/core"
 import { boot, type BootResult } from "@opencues/runtime/dist/adapters/oc/__OPENCUES_BAND__/boot"
 import type { KeyEvent, LogLevel, RenderDirectives } from "@opencues/runtime/dist/src/adapter"
+import { shouldSynthesizeMacDoubleEscCtrl } from "@opencues/runtime/dist/src/modules/mac-keyboard"
 import { createSourceReclassifier } from "@opencues/runtime/dist/src/boot-common"
 import { codeUnitsToCells } from "@opencues/runtime/dist/src/util/cell-width"
 import { createBlankInvoke, createDefaultBlanksRegistry, type Blank } from "@opencues/runtime/dist/src/blanks"
@@ -508,8 +509,6 @@ export function startOpenCues(opts: {
   return bootResult
 }
 
-const MAC_DOUBLE_ESC_ARROWS = new Set(['up', 'down', 'left', 'right'])
-
 /** Forwards an OpenTUI useKeyboard event into the runtime. Returns true if consumed. */
 export function dispatchOpenCuesKey(evt: any): boolean {
   if (!bootResult) return false
@@ -517,18 +516,15 @@ export function dispatchOpenCuesKey(evt: any): boolean {
   const text = access?.read() ?? ""
   const cursor = access?.cursor() ?? 0
   const keyName = normaliseKeyName(evt)
-  // Mac Terminal.app emits Ctrl+Option+arrow as `\x1b\x1b[A` (double-ESC + CSI,
-  // no Ctrl byte). Every other terminal uses xterm-modifier-encoded CSI
-  // (`\x1b[1;7A`) with the Ctrl bit present, so the synth is a no-op there.
-  // We gate on the raw byte sequence rather than `evt.option` because OpenTUI
-  // ALSO sets `option: true` for `\x1b[1;3A` (plain Alt+arrow on Linux —
-  // modifier byte bit 2). Gating on the literal `\x1b\x1b[` prefix means
-  // the synth can never hijack plain Alt+arrow on Linux/Windows.
-  const isMacDoubleEscArrow =
-    typeof evt.sequence === 'string' &&
-    evt.sequence.startsWith('\x1b\x1b[') &&
-    MAC_DOUBLE_ESC_ARROWS.has(keyName)
-  const macDoubleEscCtrl = isMacDoubleEscArrow && !evt.ctrl
+  // Mac Terminal.app's Ctrl+Option+arrow ships without a Ctrl byte — see
+  // `@opencues/runtime/src/modules/mac-keyboard.ts` for the full
+  // byte-signature rationale. OpenTUI's ParsedKey uses `name` not `key`;
+  // we pass both through unchanged and the helper accepts either.
+  const macDoubleEscCtrl = shouldSynthesizeMacDoubleEscCtrl({
+    ctrl: !!evt.ctrl,
+    sequence: typeof evt.sequence === 'string' ? evt.sequence : undefined,
+    name: keyName,
+  })
   const e: KeyEvent = {
     key: keyName,
     modifiers: {
