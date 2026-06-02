@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fixed — Terminal.app Ctrl+Option+arrow: stdin byte-rewrite (completes the #51 synth)
+
+Real-device testing of the [#51](https://github.com/opencues/opencues/pull/51) synth on a **default** Terminal.app profile (claude-cues 2.1.158, Ink) showed it still did nothing. A runtime probe of the raw event proved why: Ink **splits** the `\x1b\x1b[A` chord into two events *before any consumer sees it* — a standalone `escape` (seq `\x1b`) + a plain arrow (seq `\x1b[A`), same millisecond. After the split the arrow no longer carries the double-ESC prefix, so the event-level `shouldSynthesizeMacDoubleEscCtrl` gate can never fire (`synthFired:false` on every arrow; zero `ctrl:true` in the dispatch log).
+
+The fix runs one layer earlier — at the raw stdin bytes, before Ink parses:
+
+- **`packages/opencues-runtime/src/modules/mac-keyboard.ts`** — new pure `rewriteMacDoubleEscArrows(chunk)` rewrites `\x1b\x1b[A/B/C/D` → `\x1b[1;7A/B/C/D` (modifier param `7` = Ctrl(4)+Alt(2)+1 — the exact bytes Ghostty/iTerm2 already send, which Ink decodes to `{ctrl:true, alt:true}`). Plus `installMacDoubleEscStdinRewrite(stdin)` — darwin-gated, idempotent. Ink/CC consume stdin via 'readable' + `read()` with `setEncoding('utf8')`, so the installer wraps `read()` (the path that matters; chunks arrive as utf8 STRINGS, handled by a string-form rewrite) plus `emit('data')` for flowing hosts — each normalised before Ink's keypress parser sees it.
+- **`packages/opencues-runtime/adapters/cc/v2.1/boot.ts`** — installs it once in `boot()` (CC only; shell / OC / gemini receive pre-parsed events and don't read stdin).
+
+Safe by the **contiguous-byte invariant**: the terminal writes the chord's 4 bytes atomically → one stdin buffer; a real lone Escape arrives as its own buffer. Matching `\x1b\x1b[A` only within a single buffer therefore can never swallow a real Escape — no state, no timing window, no Escape latency. Degradation floor: on split-chunk transports (tmux/ssh) it no-ops, identical to the prior release. The #51 event-level synth is retained (no-op on this path, still covers hosts that preserve the full sequence). gemini-cli's matrix-❌ row is fixable by the same installer in its bootstrap (follow-up).
+
+Version bumped: `@opencues/runtime` 0.1.11 → 0.1.12.
+
 ### Added — Bootstrap-coverage tests + banner-combo extraction (no behaviour change)
 
 Follow-up to the macOS Ctrl+Option+arrow fix in [#51](https://github.com/opencues/opencues/pull/51). Two surfaces were behaviour-correct but untested:
