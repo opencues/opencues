@@ -13,7 +13,7 @@
 // User mid-cycle protection: if a DynDef entry has currentIndex > 0
 // (user has cycled past the original), the resolver leaves it alone.
 
-import type { HostAdapter, TextChangeEvent, Unsubscribe } from '../adapter';
+import type { HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../adapter';
 import type { ConfigLoader } from './config-loader';
 import type { DynDefs, WordDef } from '../state/dyn-defs';
 import { reconstructAsTyped, reconstructAsTypedWithMap } from '../state/dyn-defs';
@@ -23,6 +23,7 @@ import type { AgentTaskState } from '../state/agent-task';
 import type { SelectorSatelliteState as SelectorSatelliteStateRef } from '../state/selector-satellite';
 import { splitWords } from './navigation';
 import type { BlankLoadingAnimator } from './blank-loading';
+import { findUnderscoreAtChar } from './blank-fill';
 import { applyMarkdownAwareSplice, applyMarkdownAwareSubstitution } from './markdown-substitute';
 import { threeWayMerge } from './word-diff';
 
@@ -171,6 +172,23 @@ export class Resolver {
   private _sources: unknown[] = [];
   private _httpAdapter: unknown = null;
   private _unsubText: Unsubscribe | null = null;
+  private _unsubKey: Unsubscribe | null = null;
+  /** One-shot flag: set TRUE when a plain `_` keystroke arrives, cleared
+   *  at the END of the next `onTextChange`. Gates blank activation on
+   *  EXPLICIT user intent — a `_` that appears in the buffer without a
+   *  corresponding keystroke (paste, programmatic setText, cursor-
+   *  relocation exposing an attached `_`, e.g. typing `monologue_` then
+   *  splitting to `monologue _`) MUST NOT fire FluidBlank /
+   *  TransformBlank / ConfigIntent.
+   *
+   *  Why one-shot (not a time window): a 1500ms timestamp window leaves a
+   *  hole for fast cursor-splits — type `monologue_`, move cursor and
+   *  press space in <1500ms, and the gate still reads "fresh". One-shot
+   *  ties freshness to the SPECIFIC onTextChange that paired with the
+   *  keystroke; the cursor-split's onTextChange happens AFTER the flag
+   *  has been consumed and cleared. The falls-through `scheduleResolve`
+   *  captures the flag at change time, so the debounce can't open a hole. */
+  private _underscoreKeyArmed = false;
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private _generation = 0;
   /** Last user-typed text — used to detect when `_` was just added so we
@@ -238,6 +256,35 @@ export class Resolver {
   subscribe(): void {
     this.rebuildResolver();
     this._unsubText = this.adapter.onTextChange(e => this.onTextChange(e));
+    this._unsubKey = this.adapter.onKey({ keys: ['_'] }, e => this.onUnderscoreKey(e));
+  }
+
+  /** Arm the one-shot keystroke flag on plain `_` presses (no
+   *  ctrl/alt/meta) — but ONLY when the simulated insertion would
+   *  produce a standalone `_` word. A `_` typed adjacent to existing
+   *  letters (`monologue` + `_` → `monologue_`, or inside a word like
+   *  `monolog_ue`) is structurally NOT a blank trigger; arming on those
+   *  would re-open the cursor-split bug (the keystroke happens BEFORE
+   *  the split, so a time-window approach can't distinguish them).
+   *  Mirrors the same standalone check BlankFill's `onUnderscoreKey`
+   *  uses (line ~880). Returns false unconditionally — host inserts
+   *  the `_` normally. The flag is cleared at the end of the next
+   *  onTextChange dispatch (or kept across a spaced-mode unconfirmed
+   *  `_` so the confirming-space's text-change can still see it). */
+  private onUnderscoreKey(event: KeyEvent): boolean {
+    const m = event.modifiers;
+    if (m.ctrl || m.alt || m.meta) return false;
+    const insertedText =
+      event.text.slice(0, event.cursorOffset) +
+      '_' +
+      event.text.slice(event.cursorOffset);
+    if (!findUnderscoreAtChar(insertedText, event.cursorOffset)) return false;
+    this._underscoreKeyArmed = true;
+    return false;
+  }
+
+  private explicitUnderscoreRecent(): boolean {
+    return this._underscoreKeyArmed;
   }
 
   /**
@@ -374,6 +421,7 @@ export class Resolver {
 
   unsubscribe(): void {
     if (this._unsubText) { this._unsubText(); this._unsubText = null; }
+    if (this._unsubKey) { this._unsubKey(); this._unsubKey = null; }
     if (this._debounceTimer) { clearTimeout(this._debounceTimer); this._debounceTimer = null; }
   }
 
@@ -719,36 +767,74 @@ export class Resolver {
     } else {
       blankJustTyped = text.trimEnd().endsWith('_') && !prev.trimEnd().endsWith('_');
     }
-    if (blankJustTyped) {
-      if (this._debounceTimer) { clearTimeout(this._debounceTimer); this._debounceTimer = null; }
-      this.adapter.log('debug', `Resolver: _ trigger — bypassing debounce (mode=${triggerMode})`);
-      void this.resolveAndApply(text);
-      return;
+    // Explicit-`_` gate: the trailing `_` only counts as a blank trigger
+    // when it was placed by an explicit `_` keystroke. A `_` that appeared
+    // via paste, programmatic setText, or cursor-relocation exposing an
+    // attached `_` (`monologue_` → cursor inside → space → `monologue _`)
+    // must NOT fire. The keystroke handler (`onUnderscoreKey`) arms the
+    // one-shot flag; this gate reads it BEFORE the flag is cleared in the
+    // finally block below.
+    if (blankJustTyped && !this.explicitUnderscoreRecent()) {
+      blankJustTyped = false;
     }
+    let keepArmed = false;
+    try {
+      if (blankJustTyped) {
+        if (this._debounceTimer) { clearTimeout(this._debounceTimer); this._debounceTimer = null; }
+        this.adapter.log('debug', `Resolver: _ trigger — bypassing debounce (mode=${triggerMode})`);
+        void this.resolveAndApply(text, { allowBlanks: true });
+        return;
+      }
 
-    // In spaced mode, an unconfirmed lone `_` at end of buffer should
-    // never fire blanks — not via bypass (handled above) AND not via
-    // the debounced fall-through (handled here). Skip scheduling so a
-    // user pausing after `_` doesn't end up substituted. The next
-    // text-change (typing more or the confirming space) re-evaluates.
-    if (triggerMode === 'spaced' && text.trimEnd().endsWith('_') && !/_\s+$/.test(text)) {
-      if (this._debounceTimer) { clearTimeout(this._debounceTimer); this._debounceTimer = null; }
-      return;
+      // In spaced mode, an unconfirmed lone `_` at end of buffer should
+      // never fire blanks — not via bypass (handled above) AND not via
+      // the debounced fall-through (handled here). Skip scheduling so a
+      // user pausing after `_` doesn't end up substituted. The next
+      // text-change (typing more or the confirming space) re-evaluates.
+      // KEEP the armed flag across this dispatch so the next text-change
+      // (the confirming space) can still see the user's earlier explicit
+      // `_` keystroke. Without this, spaced-mode legit usage would
+      // permanently fail the explicit-`_` gate.
+      if (triggerMode === 'spaced' && text.trimEnd().endsWith('_') && !/_\s+$/.test(text)) {
+        if (this._debounceTimer) { clearTimeout(this._debounceTimer); this._debounceTimer = null; }
+        keepArmed = true;
+        return;
+      }
+
+      this.scheduleResolve(text);
+    } finally {
+      // One-shot: clear armed flag at the END of this onTextChange so the
+      // NEXT text-change (one not paired with a `_` keystroke) doesn't
+      // inherit the freshness. Exception: spaced-mode unconfirmed `_`
+      // (see `keepArmed`) — the user explicitly typed `_` and is waiting
+      // for the confirming space; we MUST keep the flag through one extra
+      // dispatch. `scheduleResolve` above captures the flag INTO its
+      // closure BEFORE this clear runs, so the debounced fire still sees
+      // allowBlanks=true when the keystroke was genuine.
+      if (!keepArmed) this._underscoreKeyArmed = false;
     }
-
-    this.scheduleResolve(text);
   }
 
   private scheduleResolve(text: string): void {
     if (this._debounceTimer) clearTimeout(this._debounceTimer);
     const delay = this.options.debounceMs ?? 500;
+    // Capture the freshness now so the gate reflects when the change
+    // happened — not when the debounce fires `delay` ms later (by which
+    // time the keystroke window may have lapsed even though the user
+    // genuinely just typed `_`).
+    const allowBlanks = this.explicitUnderscoreRecent();
     this._debounceTimer = setTimeout(() => {
-      void this.resolveAndApply(text);
+      void this.resolveAndApply(text, { allowBlanks });
     }, delay);
   }
 
-  /** Exposed for tests. */
-  async resolveAndApply(text: string): Promise<void> {
+  /** Exposed for tests.
+   *  @param opts.allowBlanks Default true. When false, `_` slots in the
+   *    buffer are masked from blank sources (FluidBlank / TransformBlank /
+   *    ConfigIntent). Production callers in `onTextChange` set this based
+   *    on `explicitUnderscoreRecent()` — see the explicit-`_` gate above. */
+  async resolveAndApply(text: string, opts: { allowBlanks?: boolean } = {}): Promise<void> {
+    const allowBlanks = opts.allowBlanks ?? true;
     if (!this._resolver) return;
     const generation = ++this._generation;
     const t0 = Date.now();
@@ -791,6 +877,20 @@ export class Resolver {
       // pruneStale, after which the `_` falls through to a real resolve.
       if (cleaned === '_') {
         if (this.dynDefs.findSpanContaining(i)) return '';
+        // Explicit-`_` gate (mirrors the bypass gate in onTextChange): a
+        // `_` slot in the buffer only routes to blank sources when the
+        // caller declares this resolve pass came from an explicit `_`
+        // keystroke. Without this, a falls-through scheduleResolve fires
+        // FluidBlank / TransformBlank on `_`s that were never explicitly
+        // typed (paste, programmatic setText, cursor-relocation exposing
+        // `monologue _` from `monologue_`). The flag is wired from
+        // onTextChange (which reads `explicitUnderscoreRecent()`); direct
+        // unit-test calls to resolveAndApply default to allowBlanks=true
+        // so the existing test suite — which exercises the resolver in
+        // isolation, with no keystroke surface — keeps working. Word-cues
+        // / sentence-cues continue to run on the other words; only the
+        // `_` slot is masked.
+        if (!allowBlanks) return '';
         return cleaned;
       }
       if (span && i >= span.index && i < span.index + span.spanLength) return '';
