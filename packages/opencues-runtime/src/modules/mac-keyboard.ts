@@ -58,3 +58,43 @@ export function shouldSynthesizeMacDoubleEscCtrl(raw: MacKeyboardRawEvent): bool
   const keyName = (raw.key ?? raw.name ?? '').toLowerCase();
   return ARROW_KEYS.has(keyName);
 }
+
+export interface OpenTuiKeyEvent extends MacKeyboardRawEvent {
+  alt?: boolean;
+  option?: boolean;
+  meta?: boolean;
+  shift?: boolean;
+}
+
+export interface NormalisedModifiers {
+  ctrl: boolean;
+  alt: boolean;
+  shift: boolean;
+  meta: boolean;
+}
+
+/**
+ * Builds the runtime's `Modifiers` shape from an OpenTUI-parsed key event.
+ * Both shell and OpenCode integration bootstraps consume this — the call
+ * shape is identical, so factoring keeps a single source of truth for the
+ * coalesce semantics and lets one test suite pin every (terminal, modifier)
+ * interaction across both hosts.
+ *
+ *   - `alt` coalesces `option || alt || meta` because OpenTUI parsers split
+ *     the macOS Option / Linux Alt / Meta-prefixed-CSI signals across three
+ *     fields depending on the byte form. The runtime's keymap matcher only
+ *     knows about `alt`, so we normalise them all into one bit.
+ *   - `ctrl` adds the Mac double-ESC synth (see `shouldSynthesizeMacDoubleEscCtrl`).
+ *   - `meta` here means the literal Meta modifier OpenTUI exposes (used by
+ *     `forbidModifiers: ['meta']`-style filters), NOT the union-of-alt-like
+ *     bits. Keeping these separate preserves the matcher's ability to tell
+ *     "Ctrl+Alt+arrow" from "Ctrl+Meta+arrow" on terminals that distinguish.
+ */
+export function buildOpenTuiModifiers(evt: OpenTuiKeyEvent): NormalisedModifiers {
+  return {
+    ctrl: !!evt.ctrl || shouldSynthesizeMacDoubleEscCtrl(evt),
+    alt: !!evt.option || !!evt.alt || !!evt.meta,
+    shift: !!evt.shift,
+    meta: !!evt.meta,
+  };
+}

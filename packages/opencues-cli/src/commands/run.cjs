@@ -12,6 +12,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const style = require('../lib/style.cjs');
+const { pickNavCombo } = require('../lib/nav-combo.cjs');
 
 // Print the brand banner + a host/command/cwd tree + a one-line
 // keybinding hint, then yield stdio to the spawned process. Output
@@ -124,30 +125,6 @@ function printLaunchBanner(ctx, host, rows, opts = {}) {
   _bannerPrintedAt = Date.now();
 }
 
-// Pick the navigation modifier combo to display in the banner's Keys
-// line. Mirrors the runtime's `resolveNavKeymap(configured, hostName)`
-// in `@opencues/runtime/src/modules/nav-keymap.ts` — kept inline here
-// so the CLI doesn't need to load the runtime build to print one
-// hint line. Drift risk is low: this only decides what STRING to
-// print; the actual key dispatch is owned by the runtime, which has
-// its own (canonical) resolver.
-//
-//   - macOS (any host): Ctrl+Option — that's the physical key label
-//     on a Mac keyboard. Terminal.app cannot transmit this chord
-//     (the byte stream lacks the Ctrl bit); Ghostty / iTerm2 do.
-//     Chrome on macOS works via DOM altKey regardless of terminal.
-//   - Everything else: Ctrl+Alt.
-//
-// Does NOT read the user's explicit `nav-keymap: ctrl-alt|ctrl-shift`
-// override in ~/.cues/OPENCUES.md — the banner is informational and
-// the auto-default covers ~every shipped setup. If we ever need to
-// honour explicit overrides here, a 5-line regex grep against the
-// file is enough; no need to import the full ConfigLoader.
-function pickNavCombo(host) {
-  if (process.platform === 'darwin') return 'Ctrl+Option';
-  return 'Ctrl+Alt';
-}
-
 // Synchronous sleep for the dwell window. Atomics.wait blocks the
 // event loop without busy-waiting and without depending on /bin/sleep.
 // The buffer + array are throwaway; we never set a value to wake on,
@@ -163,30 +140,6 @@ function sleepSync(ms) {
     // fall through with no sleep. Banner just appears briefly as it
     // did pre-2026-05 — acceptable degradation, not a fail.
   }
-}
-
-// Pick the navigation modifier combo to display in the banner's Keys
-// line. Mirrors the runtime's `resolveNavKeymap(configured, hostName)`
-// in `@opencues/runtime/src/modules/nav-keymap.ts` — kept inline here
-// so the CLI doesn't need to load the runtime build to print one
-// hint line. Drift risk is low: this only decides what STRING to
-// print; the actual key dispatch is owned by the runtime, which has
-// its own (canonical) resolver.
-//
-//   - macOS (any host): Ctrl+Option — that's the physical key label
-//     on a Mac keyboard. Terminal.app cannot transmit this chord
-//     (the byte stream lacks the Ctrl bit); Ghostty / iTerm2 do.
-//     Chrome on macOS works via DOM altKey regardless of terminal.
-//   - Everything else: Ctrl+Alt.
-//
-// Does NOT read the user's explicit `nav-keymap: ctrl-alt|ctrl-shift`
-// override in ~/.cues/OPENCUES.md — the banner is informational and
-// the auto-default covers ~every shipped setup. If we ever need to
-// honour explicit overrides here, a 5-line regex grep against the
-// file is enough; no need to import the full ConfigLoader.
-function pickNavCombo(host) {
-  if (process.platform === 'darwin') return 'Ctrl+Option';
-  return 'Ctrl+Alt';
 }
 
 // Dwell + exit the alt-screen right before spawning the host. Called
