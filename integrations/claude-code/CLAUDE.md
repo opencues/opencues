@@ -152,6 +152,14 @@ host-quirk catalogue:
    need).
 3. ANSI rendering goes through `render-override` + `dim-ranges`
    directives — the host doesn't accept arbitrary terminal sequences.
+4. macOS Terminal.app Ctrl+Option+arrow is normalised at **stdin**, not at
+   the event layer. Terminal.app sends the double-ESC `\x1b\x1b[A`, which
+   Ink splits into `escape` + a plain arrow before `dispatchKey` sees it —
+   so the event-level synth (`shouldSynthesizeMacDoubleEscCtrl`) can't fire.
+   `boot()` calls `installMacDoubleEscStdinRewrite(process.stdin)` to rewrite
+   `\x1b\x1b[A`→`\x1b[1;7A` (Ghostty's modifier-CSI) before Ink's parser
+   reads it. **No Ink fork, no cli.js patch; darwin-only (strict no-op on
+   Windows/Linux).** Full rationale: REPAIR.md §14.
 
 ### ZWS render-kick — invariant: never escape the adapter
 

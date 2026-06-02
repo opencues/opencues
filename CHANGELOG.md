@@ -39,8 +39,10 @@ Safe by the **contiguous-byte invariant**: the terminal writes the chord's 4
 bytes atomically → one stdin buffer; a real lone Escape arrives as its own
 buffer. Matching `\x1b\x1b[A` only within a single buffer therefore can never
 swallow a real Escape — no state, no timing window, no Escape latency.
-Degradation floor: on split-chunk transports (tmux/ssh) it no-ops, identical to
-the prior release. The #51 event-level synth is retained (no-op on this path,
+**Strictly darwin-gated — a complete no-op on Windows/Linux**: the installer
+returns early (`platform !== 'darwin'`) before wrapping stdin, so the byte
+rewrite is never reached off macOS. Degradation floor: on split-chunk transports
+(tmux/ssh) it no-ops, identical to the prior release. The #51 event-level synth is retained (no-op on this path,
 still covers hosts that preserve the full sequence). gemini-cli's matrix-❌ row
 is fixable by the same installer in its bootstrap (follow-up).
 
