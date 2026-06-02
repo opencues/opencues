@@ -32,7 +32,7 @@ One root cause: a provider-blind default model leaking into an auto-routed provi
 
 4. **Observability — resolver-side explicit-`_` gate now logs its suppression (`packages/opencues-runtime/src/modules/resolver.ts`).** When the explicit-`_` keystroke gate suppresses a blank trigger on the resolver path (fluid / transform / config-intent), it previously did so completely silently — no `starting` line, nothing even at debug level — so a `_` that "did nothing" was undiagnosable from the log. It now emits a `debug`-level `Resolver: explicit-_ gate BLOCKED …` line mirroring `BlankFill`'s existing one, surfaced under `debug-mode: on` (or `DEBUG_OPENCUES`).
 
-Versions bumped: `@opencues/core` 0.1.7 → 0.1.8, `@opencues/runtime` 0.1.13 → 0.1.14.
+Versions bumped: `@opencues/core` 0.1.8 → 0.1.9, `@opencues/runtime` 0.1.13 → 0.1.14.
 
 ### Changed — Provider rename `claude-cli` → `claude-code-cli`, llama-3.3 removed from Groq catalogue, CLI providers added to smoke
 
