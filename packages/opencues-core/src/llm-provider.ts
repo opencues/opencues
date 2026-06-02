@@ -227,7 +227,7 @@ export interface ProviderAdapter {
  * pass `includeReasoningEffort: true`; others omit the field unless
  * the model name suggests it's a reasoning model.
  */
-function buildOpenAIBody(req: ChatRequest, opts?: { includeReasoningEffort?: boolean; useCompletionTokensName?: boolean; defaultReasoningEffort?: 'none' | 'low' | 'medium' | 'high' }): string {
+function buildOpenAIBody(req: ChatRequest, opts?: { includeReasoningEffort?: boolean; useCompletionTokensName?: boolean; defaultReasoningEffort?: 'none' | 'low' | 'medium' | 'high'; provider?: ProviderId }): string {
   const body: Record<string, unknown> = {
     model: req.model,
     messages: req.messages.map((m) => ({ role: m.role, content: m.content })),
@@ -264,16 +264,29 @@ function buildOpenAIBody(req: ChatRequest, opts?: { includeReasoningEffort?: boo
     // wants based on its own routing.
     body[opts?.useCompletionTokensName ? 'max_completion_tokens' : 'max_tokens'] = effectiveMax;
   }
-  // gpt-5 / o-series lock temperature to 1 — passing any other value
-  // (including 0) returns HTTP 400 "Only the default (1) value is
-  // supported." `useCompletionTokensName` correlates 1:1 with this
-  // restriction, so re-use the flag rather than threading a second.
-  if (req.temperature !== undefined && !opts?.useCompletionTokensName) body.temperature = req.temperature;
+  // Two gates on `temperature`:
+  //   1. OpenAI gpt-5 / o-series lock temperature to 1 — passing any
+  //      other value (including 0) returns HTTP 400. `useCompletionTokensName`
+  //      correlates 1:1 with this restriction, so we re-use the flag.
+  //   2. Provider/model-level rejection — Anthropic Claude 4.x (direct or
+  //      via OpenRouter pass-through) and any future model added to the
+  //      `TEMPERATURE_REJECTING_MODELS` matrix.
+  const providerRejectsTemp = opts?.provider !== undefined
+    && modelRejectsTemperature(opts.provider, req.model);
+  if (req.temperature !== undefined && !opts?.useCompletionTokensName && !providerRejectsTemp) {
+    body.temperature = req.temperature;
+  }
   if (req.seed !== undefined) body.seed = req.seed;
   // Pass reasoning_effort only when the provider opts in OR the model
   // name suggests it's an OpenAI reasoning model (o1/o3/o4/gpt-5).
   // Leaves gpt-4o-mini-class models alone, where the field 400s.
-  if (reasoning !== undefined) {
+  // Provider/model-level explicit rejection wins regardless of opt-in
+  // (e.g. Groq llama-* rejects the field even though the adapter
+  //  opts in for its gpt-oss companions — see
+  //  `modelRejectsReasoningEffort`).
+  const providerRejectsReasoning = opts?.provider !== undefined
+    && modelRejectsReasoningEffort(opts.provider, req.model);
+  if (reasoning !== undefined && !providerRejectsReasoning) {
     body.reasoning_effort = reasoning;
   }
   // Structured outputs. Groq's gpt-oss-{20b,120b} support `strict: true`
@@ -320,6 +333,81 @@ function parseOpenAIResponse(rawJson: string): string {
 }
 
 // ---------------------------------------------------------------------
+// Model capability matrix
+// ---------------------------------------------------------------------
+
+/**
+ * (provider, model) pairs that 400 on the `temperature` parameter.
+ *
+ * - OpenAI's gpt-5 / o-series: temperature is locked to `1`; the adapter
+ *   already filters these via `useCompletionTokensName` (see buildOpenAIBody)
+ *   so they're NOT enumerated here.
+ * - Anthropic Claude 4.x: Anthropic's June 2026 API change deprecated
+ *   `temperature` on every Claude 4.x model — claude-opus-4-7 raises
+ *   "`temperature` is deprecated for this model" on every call that includes
+ *   the field, regardless of `reasoning_effort` state. Verified live against
+ *   the user's anthropic key on 2026-06-02. The same applies to
+ *   sonnet-4-6 and haiku-4-5 per Anthropic's docs / change notes.
+ * - OpenRouter pass-through: requests to `anthropic/claude-*` via OpenRouter
+ *   hit Anthropic's gate too, so the same rule applies when the model name
+ *   carries the `anthropic/` prefix.
+ *
+ * Match is a regex against the model name; the caller passes the resolved
+ * (provider, model) pair. When a future provider adds more reasoning-class
+ * models, append a row here — no buildRequest edits needed.
+ */
+const TEMPERATURE_REJECTING_MODELS: ReadonlyArray<{
+  provider: ProviderId;
+  pattern: RegExp;
+  reason: string;
+}> = [
+  { provider: 'anthropic',  pattern: /^claude-(opus|sonnet|haiku)-4/,             reason: 'Anthropic Claude 4.x deprecated `temperature` (June 2026 API change).' },
+  { provider: 'openrouter', pattern: /^anthropic\/claude-(opus|sonnet|haiku)-4/, reason: 'OpenRouter passthrough to Anthropic Claude 4.x — same deprecation.' },
+];
+
+/**
+ * Returns true when the (provider, model) pair is known to reject the
+ * `temperature` parameter at the API boundary. Callers should omit the
+ * field from the request body when this returns true.
+ */
+export function modelRejectsTemperature(provider: ProviderId, model: string): boolean {
+  return TEMPERATURE_REJECTING_MODELS.some(
+    (entry) => entry.provider === provider && entry.pattern.test(model),
+  );
+}
+
+/**
+ * (provider, model) pairs that 400 on the `reasoning_effort` parameter.
+ *
+ * - Groq's llama-3.3-70b-versatile (and other non-gpt-oss llama models) reject
+ *   `reasoning_effort` with HTTP 400 "`reasoning_effort` is not supported with
+ *   this model". Groq's adapter previously set `includeReasoningEffort: true`
+ *   adapter-wide on the assumption that non-reasoning models would silently
+ *   ignore it — they don't. Verified live 2026-06-02.
+ *
+ * The match shape mirrors `TEMPERATURE_REJECTING_MODELS` so adding a new
+ * entry is one line and never requires editing an adapter.
+ */
+const REASONING_EFFORT_REJECTING_MODELS: ReadonlyArray<{
+  provider: ProviderId;
+  pattern: RegExp;
+  reason: string;
+}> = [
+  { provider: 'groq', pattern: /^llama-/, reason: 'Groq llama-* family rejects `reasoning_effort` (HTTP 400).' },
+];
+
+/**
+ * Returns true when the (provider, model) pair is known to reject the
+ * `reasoning_effort` parameter. Callers should omit the field from the
+ * request body when this returns true.
+ */
+export function modelRejectsReasoningEffort(provider: ProviderId, model: string): boolean {
+  return REASONING_EFFORT_REJECTING_MODELS.some(
+    (entry) => entry.provider === provider && entry.pattern.test(model),
+  );
+}
+
+// ---------------------------------------------------------------------
 // Built-in providers
 // ---------------------------------------------------------------------
 
@@ -349,7 +437,7 @@ const GROQ: ProviderAdapter = {
     // non-reasoning models silently ignore it. Always-on is safe.
     return {
       url: ctx.endpoint ?? this.defaultEndpoint,
-      body: buildOpenAIBody(req, { includeReasoningEffort: true, defaultReasoningEffort: this.defaultReasoningEffort }),
+      body: buildOpenAIBody(req, { includeReasoningEffort: true, defaultReasoningEffort: this.defaultReasoningEffort, provider: this.id }),
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.apiKey}` },
     };
   },
@@ -386,7 +474,7 @@ const OPENROUTER: ProviderAdapter = {
   buildRequest(req, ctx) {
     return {
       url: ctx.endpoint ?? this.defaultEndpoint,
-      body: buildOpenAIBody(req, { defaultReasoningEffort: this.defaultReasoningEffort }),
+      body: buildOpenAIBody(req, { defaultReasoningEffort: this.defaultReasoningEffort, provider: this.id }),
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${ctx.apiKey}`,
@@ -456,7 +544,7 @@ const OPENAI: ProviderAdapter = {
 
     return {
       url: ctx.endpoint ?? this.defaultEndpoint,
-      body: buildOpenAIBody(reqForBody, { useCompletionTokensName, defaultReasoningEffort: this.defaultReasoningEffort }),
+      body: buildOpenAIBody(reqForBody, { useCompletionTokensName, defaultReasoningEffort: this.defaultReasoningEffort, provider: this.id }),
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.apiKey}` },
     };
   },
@@ -572,9 +660,13 @@ const GEMINI: ProviderAdapter = {
   // family stays reachable via direct file edit.
   knownModels: [
     'gemini-3.1-flash-lite',
-    'gemini-3.1-flash',
-    'gemini-3.1-pro',
+    'gemini-flash-latest',
+    'gemini-pro-latest',
   ],
+  // 2026-06: Google retired the `gemini-3.1-flash` / `gemini-3.1-pro` model
+  // names. The new public aliases are `gemini-flash-latest` / `gemini-pro-latest`
+  // (always point at the current Gemini 3.x family). flash-lite kept its
+  // own name. Smoke runner verifies against live API on each release.
   envKeyName: 'GEMINI_API_KEY',
   buildRequest(req, ctx) {
     const endpointTemplate = ctx.endpoint ?? this.defaultEndpoint;
@@ -676,7 +768,11 @@ const ANTHROPIC: ProviderAdapter = {
     if (systemMessages.length > 0) {
       body.system = systemMessages.map((m) => m.content).join('\n\n');
     }
-    if (req.temperature !== undefined) body.temperature = req.temperature;
+    // Claude 4.x models reject `temperature` outright (Anthropic API change,
+    // June 2026). See `modelRejectsTemperature` for the full matrix.
+    if (req.temperature !== undefined && !modelRejectsTemperature('anthropic', req.model)) {
+      body.temperature = req.temperature;
+    }
     return {
       url: ctx.endpoint ?? this.defaultEndpoint,
       body: JSON.stringify(body),
@@ -741,9 +837,11 @@ const CEREBRAS: ProviderAdapter = {
   // available 235B MoE). Other Cerebras names reachable via file edit.
   knownModels: [
     'gpt-oss-120b',
-    'qwen-3-235b-a22b-instruct-2507',
     'zai-glm-4.7',
   ],
+  // qwen-3-235b-a22b-instruct-2507 was removed 2026-06: Cerebras's public
+  // catalogue (/v1/models) returned only gpt-oss-120b + zai-glm-4.7 against
+  // a live key. The smoke runner catches this regression structurally.
   envKeyName: 'CEREBRAS_API_KEY',
   // Cerebras's wafer-scale silicon serves gpt-oss-120b fast enough that
   // `medium` fits every OpenCues pipeline (358ms p50 fluid-blank,
@@ -757,7 +855,7 @@ const CEREBRAS: ProviderAdapter = {
     // gpt-oss-* / qwen-3-thinking-* and similar.
     return {
       url: ctx.endpoint ?? this.defaultEndpoint,
-      body: buildOpenAIBody(req, { defaultReasoningEffort: this.defaultReasoningEffort }),
+      body: buildOpenAIBody(req, { defaultReasoningEffort: this.defaultReasoningEffort, provider: this.id }),
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.apiKey}` },
     };
   },
@@ -892,7 +990,7 @@ const OPENCODE_ZEN: ProviderAdapter = {
     if (ctx.apiKey) headers.Authorization = `Bearer ${ctx.apiKey}`;
     return {
       url: ctx.endpoint ?? this.defaultEndpoint,
-      body: buildOpenAIBody(req, { defaultReasoningEffort: this.defaultReasoningEffort }),
+      body: buildOpenAIBody(req, { defaultReasoningEffort: this.defaultReasoningEffort, provider: this.id }),
       headers,
     };
   },
