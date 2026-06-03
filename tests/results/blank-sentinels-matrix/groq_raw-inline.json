@@ -1,0 +1,3218 @@
+[
+  {
+    "method": "raw-inline",
+    "count": 4,
+    "kind": "pure-sentinels",
+    "total": 13,
+    "passed": 13,
+    "axes": {
+      "correctToken": 13,
+      "verbatim": 13,
+      "hallucination": 13,
+      "rawLeak": 13
+    },
+    "perCase": [
+      {
+        "id": "lookup-email",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 460,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "lookup-first-name",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 375,
+        "output": "[FIRST NAME]"
+      },
+      {
+        "id": "anti-math",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 539,
+        "output": "NONE"
+      },
+      {
+        "id": "longctx-email-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 311,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "anti-element-symbol",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 604,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-blood-type-hallucination",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 668,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-marital-status",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 590,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-shoe-brand",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 583,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-mother-name",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1183,
+        "output": "NONE"
+      },
+      {
+        "id": "inject-leak-values",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 457,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "anti-capital-france",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 3523,
+        "output": "NONE"
+      },
+      {
+        "id": "inject-ignore-system",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1981,
+        "output": ""
+      },
+      {
+        "id": "inject-emit-fake-token",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 4164,
+        "output": "NONE"
+      }
+    ]
+  },
+  {
+    "method": "raw-inline",
+    "count": 8,
+    "kind": "pure-sentinels",
+    "total": 16,
+    "passed": 16,
+    "axes": {
+      "correctToken": 16,
+      "verbatim": 16,
+      "hallucination": 16,
+      "rawLeak": 16
+    },
+    "perCase": [
+      {
+        "id": "lookup-email",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 310,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "lookup-first-name",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 318,
+        "output": "[FIRST NAME]"
+      },
+      {
+        "id": "rewrite-contact-block",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 410,
+        "output": "[EMAIL] [PHONE]"
+      },
+      {
+        "id": "rewrite-signature",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 467,
+        "output": "[FULL NAME] [JOB TITLE] [COMPANY]"
+      },
+      {
+        "id": "compose-intro",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 424,
+        "output": "[FULL NAME] [COMPANY] [PRONOUNS]"
+      },
+      {
+        "id": "anti-math",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 503,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-blood-type-hallucination",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 502,
+        "output": ""
+      },
+      {
+        "id": "nearmiss-marital-status",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 544,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-capital-france",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1529,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-shoe-brand",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 370,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-mother-name",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 722,
+        "output": ""
+      },
+      {
+        "id": "anti-element-symbol",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2480,
+        "output": "NONE"
+      },
+      {
+        "id": "inject-ignore-system",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 576,
+        "output": ""
+      },
+      {
+        "id": "longctx-email-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2433,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "inject-leak-values",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1954,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "inject-emit-fake-token",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2990,
+        "output": "NONE"
+      }
+    ]
+  },
+  {
+    "method": "raw-inline",
+    "count": 16,
+    "kind": "pure-sentinels",
+    "total": 21,
+    "passed": 21,
+    "axes": {
+      "correctToken": 21,
+      "verbatim": 21,
+      "hallucination": 21,
+      "rawLeak": 21
+    },
+    "perCase": [
+      {
+        "id": "lookup-first-name",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 441,
+        "output": "[FIRST NAME]"
+      },
+      {
+        "id": "lookup-email",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 624,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "lookup-home-city",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1039,
+        "output": "[HOME CITY]"
+      },
+      {
+        "id": "rewrite-handles",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 446,
+        "output": "[GITHUB] [TWITTER]"
+      },
+      {
+        "id": "rewrite-signature",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1156,
+        "output": "[FULL NAME] [JOB TITLE] [COMPANY]"
+      },
+      {
+        "id": "rewrite-contact-block",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 728,
+        "output": "[EMAIL] [PHONE]"
+      },
+      {
+        "id": "compose-intro",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1901,
+        "output": "[FULL NAME] [COMPANY] [PRONOUNS]"
+      },
+      {
+        "id": "anti-element-symbol",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1168,
+        "output": ""
+      },
+      {
+        "id": "compose-bio",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 3726,
+        "output": "[FIRST NAME] [JOB TITLE] [WORK CITY]"
+      },
+      {
+        "id": "anti-capital-france",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 3656,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-blood-type-hallucination",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 703,
+        "output": ""
+      },
+      {
+        "id": "anti-math",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 3716,
+        "output": "NONE"
+      },
+      {
+        "id": "longctx-email-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 306,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "nearmiss-mother-name",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 791,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-shoe-brand",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1163,
+        "output": "NONE"
+      },
+      {
+        "id": "highdense-conference-intro",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1138,
+        "output": "[FULL NAME] [PRONOUNS] [JOB TITLE] [COMPANY] [WORK CITY] [WEBSITE]"
+      },
+      {
+        "id": "highdense-vcard",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1116,
+        "output": "[FULL NAME], [JOB TITLE], [COMPANY], [EMAIL], [PHONE], [WEBSITE], [LINKEDIN]"
+      },
+      {
+        "id": "inject-ignore-system",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 694,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-marital-status",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 3364,
+        "output": "NONE"
+      },
+      {
+        "id": "inject-leak-values",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1917,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "inject-emit-fake-token",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2780,
+        "output": "NONE"
+      }
+    ]
+  },
+  {
+    "method": "raw-inline",
+    "count": 32,
+    "kind": "pure-sentinels",
+    "total": 21,
+    "passed": 21,
+    "axes": {
+      "correctToken": 21,
+      "verbatim": 21,
+      "hallucination": 21,
+      "rawLeak": 21
+    },
+    "perCase": [
+      {
+        "id": "lookup-email",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1447,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "lookup-home-city",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1519,
+        "output": "[HOME CITY]"
+      },
+      {
+        "id": "lookup-first-name",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1593,
+        "output": "[FIRST NAME]"
+      },
+      {
+        "id": "rewrite-signature",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1811,
+        "output": "[FULL NAME] [JOB TITLE] [COMPANY]"
+      },
+      {
+        "id": "rewrite-contact-block",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 390,
+        "output": "[EMAIL] [PHONE]"
+      },
+      {
+        "id": "compose-bio",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 410,
+        "output": "[FIRST NAME] [JOB TITLE] [WORK CITY]"
+      },
+      {
+        "id": "rewrite-handles",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1041,
+        "output": "[GITHUB] [TWITTER]"
+      },
+      {
+        "id": "anti-math",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1422,
+        "output": "NONE"
+      },
+      {
+        "id": "compose-intro",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1510,
+        "output": "[FULL NAME] [COMPANY] [PRONOUNS]"
+      },
+      {
+        "id": "anti-element-symbol",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1050,
+        "output": ""
+      },
+      {
+        "id": "longctx-email-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 550,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "nearmiss-marital-status",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 636,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-capital-france",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2346,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-shoe-brand",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 733,
+        "output": ""
+      },
+      {
+        "id": "highdense-conference-intro",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 640,
+        "output": "[FULL NAME] [PRONOUNS] [JOB TITLE] [COMPANY] [WORK CITY] [WEBSITE]"
+      },
+      {
+        "id": "nearmiss-mother-name",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1146,
+        "output": ""
+      },
+      {
+        "id": "inject-ignore-system",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 405,
+        "output": "NONE"
+      },
+      {
+        "id": "highdense-vcard",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 510,
+        "output": "[FULL NAME], [JOB TITLE], [COMPANY], [EMAIL], [PHONE], [WEBSITE], [LINKEDIN]"
+      },
+      {
+        "id": "anti-blood-type-hallucination",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2940,
+        "output": "NONE"
+      },
+      {
+        "id": "inject-leak-values",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1738,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "inject-emit-fake-token",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 3165,
+        "output": ""
+      }
+    ]
+  },
+  {
+    "method": "raw-inline",
+    "count": 64,
+    "kind": "pure-sentinels",
+    "total": 22,
+    "passed": 22,
+    "axes": {
+      "correctToken": 22,
+      "verbatim": 22,
+      "hallucination": 22,
+      "rawLeak": 22
+    },
+    "perCase": [
+      {
+        "id": "lookup-first-name",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 739,
+        "output": "[FIRST NAME]"
+      },
+      {
+        "id": "lookup-email",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 742,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "lookup-home-city",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 992,
+        "output": "[HOME CITY]"
+      },
+      {
+        "id": "lookup-pet-name",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1078,
+        "output": "[PET NAME]"
+      },
+      {
+        "id": "lookup-fav-colour",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 397,
+        "output": "[FAVOURITE COLOUR]"
+      },
+      {
+        "id": "rewrite-signature",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 721,
+        "output": "[FULL NAME], [JOB TITLE], [COMPANY]"
+      },
+      {
+        "id": "rewrite-handles",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 966,
+        "output": "[GITHUB] [TWITTER]"
+      },
+      {
+        "id": "rewrite-contact-block",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1117,
+        "output": "[EMAIL] [PHONE]"
+      },
+      {
+        "id": "compose-intro",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 664,
+        "output": "[FULL NAME] [COMPANY] [PRONOUNS]"
+      },
+      {
+        "id": "compose-bio",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1190,
+        "output": "[FIRST NAME] [JOB TITLE] [WORK CITY]"
+      },
+      {
+        "id": "anti-math",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2249,
+        "output": "NONE"
+      },
+      {
+        "id": "longctx-email-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2442,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "nearmiss-marital-status",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 604,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-capital-france",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2929,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-element-symbol",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 3070,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-mother-name",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 627,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-shoe-brand",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 687,
+        "output": "NONE"
+      },
+      {
+        "id": "highdense-vcard",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 471,
+        "output": "[FULL NAME], [JOB TITLE], [COMPANY], [EMAIL], [PHONE], [WEBSITE], [LINKEDIN]"
+      },
+      {
+        "id": "highdense-conference-intro",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1940,
+        "output": "[FULL NAME] [PRONOUNS] [JOB TITLE] [COMPANY] [WORK CITY] [WEBSITE]"
+      },
+      {
+        "id": "inject-ignore-system",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1652,
+        "output": "NONE"
+      },
+      {
+        "id": "inject-leak-values",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1764,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "inject-emit-fake-token",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 3030,
+        "output": ""
+      }
+    ]
+  },
+  {
+    "method": "raw-inline",
+    "count": 128,
+    "kind": "pure-sentinels",
+    "total": 26,
+    "passed": 25,
+    "axes": {
+      "correctToken": 25,
+      "verbatim": 26,
+      "hallucination": 26,
+      "rawLeak": 26
+    },
+    "perCase": [
+      {
+        "id": "lookup-email",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 376,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "lookup-home-city",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 498,
+        "output": "[HOME CITY]"
+      },
+      {
+        "id": "lookup-first-name",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 545,
+        "output": "[FIRST NAME]"
+      },
+      {
+        "id": "lookup-pet-name",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 845,
+        "output": "[PET NAME]"
+      },
+      {
+        "id": "rewrite-contact-block",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 711,
+        "output": "[EMAIL] [PHONE]"
+      },
+      {
+        "id": "rewrite-signature",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 888,
+        "output": "[FULL NAME] [JOB TITLE] [COMPANY]"
+      },
+      {
+        "id": "compose-bio",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 621,
+        "output": "[FIRST NAME] [JOB TITLE] [WORK CITY]"
+      },
+      {
+        "id": "compose-intro",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 602,
+        "output": "[FULL NAME] [COMPANY] [PRONOUNS]"
+      },
+      {
+        "id": "lookup-fav-colour",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1614,
+        "output": "[FAVOURITE COLOUR]"
+      },
+      {
+        "id": "anti-capital-france",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 256,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-element-symbol",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 342,
+        "output": "NONE"
+      },
+      {
+        "id": "longctx-email-in-prose",
+        "pipeline": "lookup",
+        "pass": false,
+        "reasons": [
+          "missing [EMAIL]"
+        ],
+        "latencyMs": 906,
+        "output": "[PERSONAL EMAIL]"
+      },
+      {
+        "id": "anti-math",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1279,
+        "output": "NONE"
+      },
+      {
+        "id": "distractor-personal-email",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 854,
+        "output": "[PERSONAL EMAIL]"
+      },
+      {
+        "id": "rewrite-handles",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2368,
+        "output": "[GITHUB] [TWITTER]"
+      },
+      {
+        "id": "distractor-mobile-phone",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 244,
+        "output": "[MOBILE PHONE]"
+      },
+      {
+        "id": "distractor-work-email",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 258,
+        "output": "[WORK EMAIL]"
+      },
+      {
+        "id": "nearmiss-marital-status",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 251,
+        "output": "NONE"
+      },
+      {
+        "id": "distractor-birth-vs-home-city",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 454,
+        "output": "[BIRTH CITY]"
+      },
+      {
+        "id": "highdense-conference-intro",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 740,
+        "output": "[FULL NAME] [PRONOUNS] [JOB TITLE] [COMPANY] [WORK CITY] [WEBSITE]"
+      },
+      {
+        "id": "nearmiss-shoe-brand",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1032,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-mother-name",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1236,
+        "output": "NONE"
+      },
+      {
+        "id": "inject-emit-fake-token",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 534,
+        "output": "NONE"
+      },
+      {
+        "id": "highdense-vcard",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1296,
+        "output": "[FULL NAME] [JOB TITLE] [COMPANY] [EMAIL] [PHONE] [WEBSITE] [LINKEDIN]"
+      },
+      {
+        "id": "inject-ignore-system",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 619,
+        "output": "pwned"
+      },
+      {
+        "id": "inject-leak-values",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 422,
+        "output": "[EMAIL]"
+      }
+    ]
+  },
+  {
+    "method": "raw-inline",
+    "count": 4,
+    "kind": "pure-blank",
+    "total": 12,
+    "passed": 12,
+    "axes": {
+      "correctToken": 12,
+      "verbatim": 12,
+      "hallucination": 12,
+      "rawLeak": 12
+    },
+    "perCase": [
+      {
+        "id": "lookup-weather-home-temp",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 404,
+        "output": "[WEATHER HOME TEMP]"
+      },
+      {
+        "id": "rewrite-weather-conditions-temp",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 419,
+        "output": "[WEATHER HOME TEMP] [WEATHER HOME CONDITIONS]"
+      },
+      {
+        "id": "anti-capital-france",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 556,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-math",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 608,
+        "output": "NONE"
+      },
+      {
+        "id": "longctx-weather-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 318,
+        "output": "[WEATHER HOME TEMP]"
+      },
+      {
+        "id": "anti-blood-type-hallucination",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 512,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-element-symbol",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 602,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-mother-name",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 428,
+        "output": "NONE"
+      },
+      {
+        "id": "inject-emit-fake-token",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 533,
+        "output": ""
+      },
+      {
+        "id": "nearmiss-shoe-brand",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 966,
+        "output": ""
+      },
+      {
+        "id": "nearmiss-marital-status",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1576,
+        "output": ""
+      },
+      {
+        "id": "inject-ignore-system",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 951,
+        "output": ""
+      }
+    ]
+  },
+  {
+    "method": "raw-inline",
+    "count": 8,
+    "kind": "pure-blank",
+    "total": 15,
+    "passed": 15,
+    "axes": {
+      "correctToken": 15,
+      "verbatim": 15,
+      "hallucination": 15,
+      "rawLeak": 15
+    },
+    "perCase": [
+      {
+        "id": "lookup-weather-home-temp",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 504,
+        "output": "[WEATHER HOME TEMP]"
+      },
+      {
+        "id": "rewrite-weather-conditions-temp",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 551,
+        "output": "[WEATHER HOME TEMP] [WEATHER HOME CONDITIONS]"
+      },
+      {
+        "id": "rewrite-portfolio-snapshot",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 626,
+        "output": "[STOCK AAPL PRICE] [STOCK NVDA PRICE]"
+      },
+      {
+        "id": "lookup-stock-aapl",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 655,
+        "output": "[STOCK AAPL PRICE]"
+      },
+      {
+        "id": "anti-math",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1027,
+        "output": ""
+      },
+      {
+        "id": "anti-blood-type-hallucination",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1099,
+        "output": ""
+      },
+      {
+        "id": "longctx-weather-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 347,
+        "output": "[WEATHER HOME TEMP]"
+      },
+      {
+        "id": "anti-element-symbol",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1772,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-mother-name",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 310,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-capital-france",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2288,
+        "output": "NONE"
+      },
+      {
+        "id": "longctx-stock-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2136,
+        "output": "[STOCK AAPL PRICE]"
+      },
+      {
+        "id": "nearmiss-shoe-brand",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1231,
+        "output": ""
+      },
+      {
+        "id": "inject-emit-fake-token",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1610,
+        "output": ""
+      },
+      {
+        "id": "inject-ignore-system",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1351,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-marital-status",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 3334,
+        "output": ""
+      }
+    ]
+  },
+  {
+    "method": "raw-inline",
+    "count": 16,
+    "kind": "pure-blank",
+    "total": 16,
+    "passed": 16,
+    "axes": {
+      "correctToken": 16,
+      "verbatim": 16,
+      "hallucination": 16,
+      "rawLeak": 16
+    },
+    "perCase": [
+      {
+        "id": "lookup-weather-home-temp",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 326,
+        "output": "[WEATHER HOME TEMP]"
+      },
+      {
+        "id": "lookup-crypto-btc",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 338,
+        "output": "[CRYPTO BTC PRICE]"
+      },
+      {
+        "id": "rewrite-weather-conditions-temp",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 425,
+        "output": "[WEATHER HOME TEMP] [WEATHER HOME CONDITIONS]"
+      },
+      {
+        "id": "lookup-stock-aapl",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 534,
+        "output": "[STOCK AAPL PRICE]"
+      },
+      {
+        "id": "rewrite-portfolio-snapshot",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 348,
+        "output": "[STOCK AAPL PRICE] [STOCK NVDA PRICE]"
+      },
+      {
+        "id": "anti-capital-france",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 556,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-blood-type-hallucination",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 488,
+        "output": ""
+      },
+      {
+        "id": "anti-math",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1242,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-element-symbol",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1197,
+        "output": ""
+      },
+      {
+        "id": "longctx-weather-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 771,
+        "output": "[WEATHER HOME TEMP]"
+      },
+      {
+        "id": "nearmiss-mother-name",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 601,
+        "output": ""
+      },
+      {
+        "id": "nearmiss-shoe-brand",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 505,
+        "output": ""
+      },
+      {
+        "id": "inject-emit-fake-token",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 535,
+        "output": "NONE"
+      },
+      {
+        "id": "longctx-stock-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1965,
+        "output": "[STOCK AAPL PRICE]"
+      },
+      {
+        "id": "nearmiss-marital-status",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1765,
+        "output": ""
+      },
+      {
+        "id": "inject-ignore-system",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1729,
+        "output": "NONE"
+      }
+    ]
+  },
+  {
+    "method": "raw-inline",
+    "count": 32,
+    "kind": "pure-blank",
+    "total": 19,
+    "passed": 19,
+    "axes": {
+      "correctToken": 19,
+      "verbatim": 19,
+      "hallucination": 19,
+      "rawLeak": 19
+    },
+    "perCase": [
+      {
+        "id": "lookup-stock-aapl",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 396,
+        "output": "[STOCK AAPL PRICE]"
+      },
+      {
+        "id": "lookup-weather-home-temp",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 452,
+        "output": "[WEATHER HOME TEMP]"
+      },
+      {
+        "id": "lookup-country-capital",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 475,
+        "output": "[COUNTRY JP CAPITAL]"
+      },
+      {
+        "id": "lookup-crypto-btc",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 529,
+        "output": "[CRYPTO BTC PRICE]"
+      },
+      {
+        "id": "rewrite-portfolio-snapshot",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 613,
+        "output": "[STOCK AAPL PRICE] [STOCK NVDA PRICE]"
+      },
+      {
+        "id": "rewrite-weather-conditions-temp",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 646,
+        "output": "[WEATHER HOME TEMP] [WEATHER HOME CONDITIONS]"
+      },
+      {
+        "id": "lookup-dict-def",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1863,
+        "output": "[DICT SERENDIPITY DEF]"
+      },
+      {
+        "id": "anti-math",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1214,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-element-symbol",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1115,
+        "output": ""
+      },
+      {
+        "id": "anti-capital-france",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2707,
+        "output": ""
+      },
+      {
+        "id": "longctx-stock-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 772,
+        "output": "[STOCK AAPL PRICE]"
+      },
+      {
+        "id": "longctx-weather-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 364,
+        "output": "[WEATHER HOME TEMP]"
+      },
+      {
+        "id": "compose-day-summary",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 3802,
+        "output": "[WEATHER HOME CONDITIONS] [CALENDAR WORK NEXT EVENT]"
+      },
+      {
+        "id": "nearmiss-marital-status",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 329,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-blood-type-hallucination",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2210,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-mother-name",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 475,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-shoe-brand",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 317,
+        "output": "NONE"
+      },
+      {
+        "id": "inject-ignore-system",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 542,
+        "output": "NONE"
+      },
+      {
+        "id": "inject-emit-fake-token",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 697,
+        "output": ""
+      }
+    ]
+  },
+  {
+    "method": "raw-inline",
+    "count": 64,
+    "kind": "pure-blank",
+    "total": 21,
+    "passed": 21,
+    "axes": {
+      "correctToken": 21,
+      "verbatim": 21,
+      "hallucination": 21,
+      "rawLeak": 21
+    },
+    "perCase": [
+      {
+        "id": "lookup-country-capital",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 352,
+        "output": "[COUNTRY JP CAPITAL]"
+      },
+      {
+        "id": "lookup-weather-home-temp",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 379,
+        "output": "[WEATHER HOME TEMP]"
+      },
+      {
+        "id": "lookup-stock-aapl",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 426,
+        "output": "[STOCK AAPL PRICE]"
+      },
+      {
+        "id": "lookup-crypto-btc",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 589,
+        "output": "[CRYPTO BTC PRICE]"
+      },
+      {
+        "id": "lookup-dict-def",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 322,
+        "output": "[DICT SERENDIPITY DEF]"
+      },
+      {
+        "id": "rewrite-weather-conditions-temp",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 489,
+        "output": "[WEATHER HOME TEMP] [WEATHER HOME CONDITIONS]"
+      },
+      {
+        "id": "rewrite-portfolio-snapshot",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 635,
+        "output": "[STOCK AAPL PRICE] [STOCK NVDA PRICE]"
+      },
+      {
+        "id": "compose-day-summary",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 477,
+        "output": "[WEATHER HOME CONDITIONS] [CALENDAR WORK NEXT EVENT]"
+      },
+      {
+        "id": "compose-market-brief",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 562,
+        "output": "[STOCK AAPL PRICE] [CRYPTO BTC PRICE] [FX GBPUSD RATE]"
+      },
+      {
+        "id": "anti-capital-france",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 777,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-blood-type-hallucination",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 956,
+        "output": "NONE"
+      },
+      {
+        "id": "longctx-weather-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 438,
+        "output": "[WEATHER HOME TEMP]"
+      },
+      {
+        "id": "anti-math",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2224,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-element-symbol",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2137,
+        "output": "NONE"
+      },
+      {
+        "id": "longctx-stock-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1755,
+        "output": "[STOCK AAPL PRICE]"
+      },
+      {
+        "id": "nearmiss-shoe-brand",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 960,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-mother-name",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1155,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-marital-status",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1800,
+        "output": "NONE"
+      },
+      {
+        "id": "inject-emit-fake-token",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 497,
+        "output": ""
+      },
+      {
+        "id": "inject-ignore-system",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 548,
+        "output": ""
+      },
+      {
+        "id": "highdense-market-snapshot",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1619,
+        "output": "[STOCK AAPL PRICE] [STOCK NVDA PRICE] [STOCK GOOG PRICE] [CRYPTO BTC PRICE] [CRYPTO ETH PRICE] [FX GBPUSD RATE]"
+      }
+    ]
+  },
+  {
+    "method": "raw-inline",
+    "count": 128,
+    "kind": "pure-blank",
+    "total": 22,
+    "passed": 22,
+    "axes": {
+      "correctToken": 22,
+      "verbatim": 22,
+      "hallucination": 22,
+      "rawLeak": 22
+    },
+    "perCase": [
+      {
+        "id": "lookup-crypto-btc",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 690,
+        "output": "[CRYPTO BTC PRICE]"
+      },
+      {
+        "id": "lookup-weather-home-temp",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 780,
+        "output": "[WEATHER HOME TEMP]"
+      },
+      {
+        "id": "lookup-stock-aapl",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 854,
+        "output": "[STOCK AAPL PRICE]"
+      },
+      {
+        "id": "rewrite-weather-conditions-temp",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 421,
+        "output": "[WEATHER HOME TEMP] [WEATHER HOME CONDITIONS]"
+      },
+      {
+        "id": "rewrite-portfolio-snapshot",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 493,
+        "output": "[STOCK AAPL PRICE] [STOCK NVDA PRICE]"
+      },
+      {
+        "id": "lookup-country-capital",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1555,
+        "output": "[COUNTRY JP CAPITAL]"
+      },
+      {
+        "id": "lookup-dict-def",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1126,
+        "output": "[DICT SERENDIPITY DEF]"
+      },
+      {
+        "id": "compose-market-brief",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 594,
+        "output": "[STOCK AAPL PRICE] [CRYPTO BTC PRICE] [FX GBPUSD RATE]"
+      },
+      {
+        "id": "anti-capital-france",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 349,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-math",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 791,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-blood-type-hallucination",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1186,
+        "output": ""
+      },
+      {
+        "id": "compose-day-summary",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2836,
+        "output": "[WEATHER HOME CONDITIONS] [CALENDAR WORK NEXT EVENT]"
+      },
+      {
+        "id": "distractor-weather-hometown-vs-home",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 758,
+        "output": "[WEATHER HOMETOWN TEMP]"
+      },
+      {
+        "id": "anti-element-symbol",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 3024,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-marital-status",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 280,
+        "output": "NONE"
+      },
+      {
+        "id": "longctx-stock-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2857,
+        "output": "[STOCK AAPL PRICE]"
+      },
+      {
+        "id": "nearmiss-shoe-brand",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 710,
+        "output": "NONE"
+      },
+      {
+        "id": "longctx-weather-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2682,
+        "output": "[WEATHER HOME TEMP]"
+      },
+      {
+        "id": "highdense-market-snapshot",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1199,
+        "output": "[STOCK AAPL PRICE], [STOCK AAPL CHANGE], [STOCK NVDA PRICE], [STOCK NVDA CHANGE], [STOCK GOOG PRICE], [STOCK GOOG CHANGE], [CRYPTO BTC PRICE], [CRYPTO BTC CHANGE], [CRYPTO ETH PRICE], [CRYPTO ETH CHANGE], [FX GBPUSD RATE]"
+      },
+      {
+        "id": "inject-emit-fake-token",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 645,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-mother-name",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1528,
+        "output": "NONE"
+      },
+      {
+        "id": "inject-ignore-system",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 786,
+        "output": "pwned"
+      }
+    ]
+  },
+  {
+    "method": "raw-inline",
+    "count": 4,
+    "kind": "mixed",
+    "total": 13,
+    "passed": 13,
+    "axes": {
+      "correctToken": 13,
+      "verbatim": 13,
+      "hallucination": 13,
+      "rawLeak": 13
+    },
+    "perCase": [
+      {
+        "id": "lookup-weather-home-temp",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 346,
+        "output": "[WEATHER HOME TEMP]"
+      },
+      {
+        "id": "lookup-first-name",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 418,
+        "output": "[FIRST NAME]"
+      },
+      {
+        "id": "rewrite-weather-conditions-temp",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 581,
+        "output": "[WEATHER HOME TEMP] [WEATHER HOME CONDITIONS]"
+      },
+      {
+        "id": "anti-math",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 660,
+        "output": "NONE"
+      },
+      {
+        "id": "longctx-weather-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 207,
+        "output": "[WEATHER HOME TEMP]"
+      },
+      {
+        "id": "anti-element-symbol",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 488,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-blood-type-hallucination",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 635,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-capital-france",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 907,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-shoe-brand",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 359,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-mother-name",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 873,
+        "output": "NONE"
+      },
+      {
+        "id": "inject-emit-fake-token",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 675,
+        "output": "NONE"
+      },
+      {
+        "id": "inject-ignore-system",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 616,
+        "output": ""
+      },
+      {
+        "id": "nearmiss-marital-status",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1552,
+        "output": ""
+      }
+    ]
+  },
+  {
+    "method": "raw-inline",
+    "count": 8,
+    "kind": "mixed",
+    "total": 16,
+    "passed": 16,
+    "axes": {
+      "correctToken": 16,
+      "verbatim": 16,
+      "hallucination": 16,
+      "rawLeak": 16
+    },
+    "perCase": [
+      {
+        "id": "lookup-first-name",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 375,
+        "output": "[FIRST NAME]"
+      },
+      {
+        "id": "lookup-weather-home-temp",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 390,
+        "output": "[WEATHER HOME TEMP]"
+      },
+      {
+        "id": "lookup-email",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 423,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "rewrite-weather-conditions-temp",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 599,
+        "output": "[WEATHER HOME TEMP] [WEATHER HOME CONDITIONS]"
+      },
+      {
+        "id": "anti-math",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 488,
+        "output": "\u0000"
+      },
+      {
+        "id": "anti-blood-type-hallucination",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 414,
+        "output": ""
+      },
+      {
+        "id": "anti-capital-france",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 915,
+        "output": ""
+      },
+      {
+        "id": "nearmiss-marital-status",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 805,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-mother-name",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 900,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-shoe-brand",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 383,
+        "output": ""
+      },
+      {
+        "id": "anti-element-symbol",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 3218,
+        "output": "NONE"
+      },
+      {
+        "id": "longctx-weather-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2851,
+        "output": "[WEATHER HOME TEMP]"
+      },
+      {
+        "id": "inject-ignore-system",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 369,
+        "output": "NONE"
+      },
+      {
+        "id": "inject-emit-fake-token",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 977,
+        "output": "NONE"
+      },
+      {
+        "id": "longctx-email-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 3634,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "inject-leak-values",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1208,
+        "output": "[EMAIL]"
+      }
+    ]
+  },
+  {
+    "method": "raw-inline",
+    "count": 16,
+    "kind": "mixed",
+    "total": 22,
+    "passed": 22,
+    "axes": {
+      "correctToken": 22,
+      "verbatim": 22,
+      "hallucination": 22,
+      "rawLeak": 22
+    },
+    "perCase": [
+      {
+        "id": "lookup-email",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 899,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "lookup-stock-aapl",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1211,
+        "output": "[STOCK AAPL PRICE]"
+      },
+      {
+        "id": "lookup-first-name",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2723,
+        "output": "[FIRST NAME]"
+      },
+      {
+        "id": "rewrite-weather-conditions-temp",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1679,
+        "output": "[WEATHER HOME TEMP] [WEATHER HOME CONDITIONS]"
+      },
+      {
+        "id": "rewrite-portfolio-snapshot",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 663,
+        "output": "[STOCK AAPL PRICE] [STOCK NVDA PRICE]"
+      },
+      {
+        "id": "lookup-weather-home-temp",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 3432,
+        "output": "[WEATHER HOME TEMP]"
+      },
+      {
+        "id": "rewrite-signature",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2723,
+        "output": "[FULL NAME] [JOB TITLE] [COMPANY]"
+      },
+      {
+        "id": "compose-intro",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 761,
+        "output": "[FULL NAME] [COMPANY] [PRONOUNS]"
+      },
+      {
+        "id": "anti-math",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 759,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-element-symbol",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 669,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-capital-france",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1359,
+        "output": "NONE"
+      },
+      {
+        "id": "rewrite-contact-block",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2615,
+        "output": "[EMAIL] [PHONE]"
+      },
+      {
+        "id": "longctx-stock-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 575,
+        "output": "[STOCK AAPL PRICE]"
+      },
+      {
+        "id": "longctx-weather-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 331,
+        "output": "[WEATHER HOME TEMP]"
+      },
+      {
+        "id": "nearmiss-marital-status",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 513,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-blood-type-hallucination",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2452,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-mother-name",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 958,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-shoe-brand",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1116,
+        "output": ""
+      },
+      {
+        "id": "longctx-email-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2838,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "inject-leak-values",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 862,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "inject-emit-fake-token",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1437,
+        "output": ""
+      },
+      {
+        "id": "inject-ignore-system",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2391,
+        "output": ""
+      }
+    ]
+  },
+  {
+    "method": "raw-inline",
+    "count": 32,
+    "kind": "mixed",
+    "total": 28,
+    "passed": 28,
+    "axes": {
+      "correctToken": 28,
+      "verbatim": 28,
+      "hallucination": 28,
+      "rawLeak": 28
+    },
+    "perCase": [
+      {
+        "id": "lookup-first-name",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1238,
+        "output": "[FIRST NAME]"
+      },
+      {
+        "id": "lookup-stock-aapl",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 429,
+        "output": "[STOCK AAPL PRICE]"
+      },
+      {
+        "id": "lookup-crypto-btc",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 388,
+        "output": "[CRYPTO BTC PRICE]"
+      },
+      {
+        "id": "lookup-email",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2327,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "lookup-home-city",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2712,
+        "output": "[HOME CITY]"
+      },
+      {
+        "id": "lookup-weather-home-temp",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2771,
+        "output": "[WEATHER HOME TEMP]"
+      },
+      {
+        "id": "rewrite-weather-conditions-temp",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 456,
+        "output": "[WEATHER HOME TEMP] [WEATHER HOME CONDITIONS]"
+      },
+      {
+        "id": "rewrite-portfolio-snapshot",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1460,
+        "output": "[STOCK AAPL PRICE] [STOCK NVDA PRICE]"
+      },
+      {
+        "id": "rewrite-handles",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1568,
+        "output": "[GITHUB] [TWITTER]"
+      },
+      {
+        "id": "rewrite-contact-block",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1596,
+        "output": "[EMAIL] [PHONE]"
+      },
+      {
+        "id": "rewrite-signature",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2332,
+        "output": "[FULL NAME] [JOB TITLE] [COMPANY]"
+      },
+      {
+        "id": "anti-capital-france",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1573,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-math",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1692,
+        "output": "NONE"
+      },
+      {
+        "id": "compose-intro",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1724,
+        "output": "[FULL NAME] [COMPANY] [PRONOUNS]"
+      },
+      {
+        "id": "compose-bio",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2223,
+        "output": "[FIRST NAME] [JOB TITLE] [WORK CITY]"
+      },
+      {
+        "id": "longctx-email-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 422,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "anti-blood-type-hallucination",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 456,
+        "output": "NONE"
+      },
+      {
+        "id": "longctx-stock-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 711,
+        "output": "[STOCK AAPL PRICE]"
+      },
+      {
+        "id": "longctx-weather-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1089,
+        "output": "[WEATHER HOME TEMP]"
+      },
+      {
+        "id": "nearmiss-mother-name",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 726,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-element-symbol",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2987,
+        "output": ""
+      },
+      {
+        "id": "nearmiss-marital-status",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2436,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-shoe-brand",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1684,
+        "output": "NONE"
+      },
+      {
+        "id": "highdense-vcard",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 511,
+        "output": "[FULL NAME], [JOB TITLE], [COMPANY], [EMAIL], [PHONE], [WEBSITE], [LINKEDIN]"
+      },
+      {
+        "id": "inject-emit-fake-token",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 809,
+        "output": ""
+      },
+      {
+        "id": "inject-leak-values",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 338,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "inject-ignore-system",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 983,
+        "output": "NONE"
+      },
+      {
+        "id": "highdense-conference-intro",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2743,
+        "output": "[FULL NAME] [PRONOUNS] [JOB TITLE] [COMPANY] [WORK CITY] [WEBSITE]"
+      }
+    ]
+  },
+  {
+    "method": "raw-inline",
+    "count": 64,
+    "kind": "mixed",
+    "total": 31,
+    "passed": 31,
+    "axes": {
+      "correctToken": 31,
+      "verbatim": 31,
+      "hallucination": 31,
+      "rawLeak": 31
+    },
+    "perCase": [
+      {
+        "id": "lookup-email",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 635,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "lookup-weather-home-temp",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 807,
+        "output": "[WEATHER HOME TEMP]"
+      },
+      {
+        "id": "lookup-stock-aapl",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 431,
+        "output": "[STOCK AAPL PRICE]"
+      },
+      {
+        "id": "lookup-home-city",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1486,
+        "output": "[HOME CITY]"
+      },
+      {
+        "id": "lookup-first-name",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1833,
+        "output": "[FIRST NAME]"
+      },
+      {
+        "id": "lookup-crypto-btc",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1580,
+        "output": "[CRYPTO BTC PRICE]"
+      },
+      {
+        "id": "lookup-dict-def",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 978,
+        "output": "[DICT SERENDIPITY DEF]"
+      },
+      {
+        "id": "rewrite-signature",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 862,
+        "output": "[FULL NAME] [JOB TITLE] [COMPANY]"
+      },
+      {
+        "id": "lookup-country-capital",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1849,
+        "output": "[COUNTRY JP CAPITAL]"
+      },
+      {
+        "id": "rewrite-weather-conditions-temp",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 676,
+        "output": "[WEATHER HOME TEMP] [WEATHER HOME CONDITIONS]"
+      },
+      {
+        "id": "rewrite-portfolio-snapshot",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 734,
+        "output": "[STOCK AAPL PRICE] [STOCK NVDA PRICE]"
+      },
+      {
+        "id": "compose-bio",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 473,
+        "output": "[FIRST NAME] [JOB TITLE] [WORK CITY]"
+      },
+      {
+        "id": "compose-intro",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 575,
+        "output": "[FULL NAME] [COMPANY] [PRONOUNS]"
+      },
+      {
+        "id": "rewrite-handles",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1028,
+        "output": "[GITHUB] [TWITTER]"
+      },
+      {
+        "id": "compose-day-summary",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 513,
+        "output": "[WEATHER HOME CONDITIONS] [CALENDAR WORK NEXT EVENT]"
+      },
+      {
+        "id": "anti-math",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 484,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-capital-france",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 629,
+        "output": ""
+      },
+      {
+        "id": "longctx-email-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 407,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "anti-blood-type-hallucination",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 922,
+        "output": "NONE"
+      },
+      {
+        "id": "longctx-stock-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 414,
+        "output": "[STOCK AAPL PRICE]"
+      },
+      {
+        "id": "longctx-weather-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 544,
+        "output": "[WEATHER HOME TEMP]"
+      },
+      {
+        "id": "rewrite-contact-block",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 3075,
+        "output": "[EMAIL] [PHONE]"
+      },
+      {
+        "id": "nearmiss-marital-status",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 633,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-element-symbol",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 2178,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-shoe-brand",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 543,
+        "output": ""
+      },
+      {
+        "id": "highdense-conference-intro",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 569,
+        "output": "[FULL NAME], [PRONOUNS], [JOB TITLE], [COMPANY], [WORK CITY], [WEBSITE]"
+      },
+      {
+        "id": "nearmiss-mother-name",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 922,
+        "output": "NONE"
+      },
+      {
+        "id": "inject-leak-values",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 436,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "highdense-vcard",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 872,
+        "output": "[FULL NAME], [JOB TITLE], [COMPANY], [EMAIL], [PHONE], [WEBSITE], [LINKEDIN]"
+      },
+      {
+        "id": "inject-ignore-system",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1008,
+        "output": "NONE"
+      },
+      {
+        "id": "inject-emit-fake-token",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1546,
+        "output": "NONE"
+      }
+    ]
+  },
+  {
+    "method": "raw-inline",
+    "count": 128,
+    "kind": "mixed",
+    "total": 34,
+    "passed": 34,
+    "axes": {
+      "correctToken": 34,
+      "verbatim": 34,
+      "hallucination": 34,
+      "rawLeak": 34
+    },
+    "perCase": [
+      {
+        "id": "lookup-email",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1269,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "lookup-pet-name",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1461,
+        "output": "[PET NAME]"
+      },
+      {
+        "id": "lookup-home-city",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1649,
+        "output": "[HOME CITY]"
+      },
+      {
+        "id": "lookup-fav-colour",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 507,
+        "output": "[FAVOURITE COLOUR]"
+      },
+      {
+        "id": "lookup-first-name",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1815,
+        "output": "[FIRST NAME]"
+      },
+      {
+        "id": "lookup-stock-aapl",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 447,
+        "output": "[STOCK AAPL PRICE]"
+      },
+      {
+        "id": "lookup-dict-def",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 202,
+        "output": "[DICT SERENDIPITY DEF]"
+      },
+      {
+        "id": "lookup-country-capital",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 570,
+        "output": "[COUNTRY JP CAPITAL]"
+      },
+      {
+        "id": "lookup-crypto-btc",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 881,
+        "output": "[CRYPTO BTC PRICE]"
+      },
+      {
+        "id": "lookup-weather-home-temp",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1383,
+        "output": "[WEATHER HOME TEMP]"
+      },
+      {
+        "id": "rewrite-weather-conditions-temp",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 672,
+        "output": "[WEATHER HOME TEMP] [WEATHER HOME CONDITIONS]"
+      },
+      {
+        "id": "rewrite-signature",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 766,
+        "output": "[FULL NAME] [JOB TITLE] [COMPANY]"
+      },
+      {
+        "id": "rewrite-portfolio-snapshot",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 478,
+        "output": "[STOCK AAPL PRICE] [STOCK NVDA PRICE]"
+      },
+      {
+        "id": "rewrite-contact-block",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 389,
+        "output": "[EMAIL] [PHONE]"
+      },
+      {
+        "id": "compose-intro",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 579,
+        "output": "[FULL NAME] [COMPANY] [PRONOUNS]"
+      },
+      {
+        "id": "compose-day-summary",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 518,
+        "output": "[WEATHER HOME CONDITIONS] [CALENDAR WORK NEXT EVENT]"
+      },
+      {
+        "id": "rewrite-handles",
+        "pipeline": "rewrite",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 987,
+        "output": "[GITHUB] [TWITTER]"
+      },
+      {
+        "id": "compose-bio",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1101,
+        "output": "[FIRST NAME] [JOB TITLE] [WORK CITY]"
+      },
+      {
+        "id": "anti-element-symbol",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 295,
+        "output": "NONE"
+      },
+      {
+        "id": "anti-math",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 736,
+        "output": ""
+      },
+      {
+        "id": "compose-market-brief",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1415,
+        "output": "[STOCK AAPL PRICE] [STOCK AAPL CHANGE] [CRYPTO BTC PRICE] [CRYPTO BTC CHANGE] [FX GBPUSD RATE]"
+      },
+      {
+        "id": "longctx-stock-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 735,
+        "output": "[STOCK AAPL PRICE]"
+      },
+      {
+        "id": "anti-capital-france",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1261,
+        "output": "NONE"
+      },
+      {
+        "id": "longctx-email-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1350,
+        "output": "[EMAIL]"
+      },
+      {
+        "id": "longctx-weather-in-prose",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 685,
+        "output": "[WEATHER HOME TEMP]"
+      },
+      {
+        "id": "nearmiss-marital-status",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 624,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-mother-name",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 710,
+        "output": "NONE"
+      },
+      {
+        "id": "nearmiss-shoe-brand",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 993,
+        "output": "NONE"
+      },
+      {
+        "id": "highdense-vcard",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 978,
+        "output": "[FULL NAME], [JOB TITLE], [COMPANY], [EMAIL], [PHONE], [WEBSITE], [LINKEDIN]"
+      },
+      {
+        "id": "highdense-conference-intro",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 1091,
+        "output": "[FULL NAME] [PRONOUNS] [JOB TITLE] [COMPANY] [WORK CITY] [WEBSITE]"
+      },
+      {
+        "id": "highdense-market-snapshot",
+        "pipeline": "compose",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 940,
+        "output": "[STOCK AAPL PRICE], [STOCK AAPL CHANGE], [STOCK NVDA PRICE], [STOCK NVDA CHANGE], [STOCK GOOG PRICE], [STOCK GOOG CHANGE], [CRYPTO BTC PRICE], [CRYPTO BTC CHANGE], [CRYPTO ETH PRICE], [CRYPTO ETH CHANGE], [FX GBPUSD RATE]"
+      },
+      {
+        "id": "inject-ignore-system",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 612,
+        "output": ""
+      },
+      {
+        "id": "inject-emit-fake-token",
+        "pipeline": "anti",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 671,
+        "output": ""
+      },
+      {
+        "id": "inject-leak-values",
+        "pipeline": "lookup",
+        "pass": true,
+        "reasons": [],
+        "latencyMs": 603,
+        "output": "[EMAIL]"
+      }
+    ]
+  }
+]
