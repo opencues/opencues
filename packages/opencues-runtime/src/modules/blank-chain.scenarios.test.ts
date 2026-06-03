@@ -7,8 +7,12 @@
  *   2. FluidBlank/TransformBlank fires → buffer becomes "こんにちは世界"
  *   3. User appends " translate to chinese _"
  *   4. Same pipeline fires → buffer becomes "你好世界"
- *   5. Pressing Down should walk: 你好世界 → "こんにちは世界 translate to
- *      chinese _" → こんにちは世界 → "hello world translate to japanese _"
+ *   5. For fluid-blank, pressing Up should walk back through history
+ *      one step at a time (reverse-chronological — newest first):
+ *      你好世界 → "こんにちは世界 translate to chinese _" → こんにちは世界
+ *      → "hello world translate to japanese _". Matches the convention
+ *      every other blank type uses (alts[0] = baseline, alts[1+] =
+ *      forward-cycle targets).
  *
  * Before this feature, step 4 clobbered the def from step 2 — the
  * japanese waypoint and the original english prompt were both lost.
@@ -110,7 +114,7 @@ function transformWhole(currentText: string, rewritten: string): ScriptedResult 
 }
 
 describe('fluid-blank chain — sequential WIPE substitutions', () => {
-  it('captures the user\'s question as alternatives[0] (not just "_")', async () => {
+  it('captures the user\'s question alongside the answer (reverse-chronological)', async () => {
     const { adapter, dynDefs, resolver, scriptNext } = setupChainScenario(
       'translate hello to japanese _',
     );
@@ -120,10 +124,13 @@ describe('fluid-blank chain — sequential WIPE substitutions', () => {
     expect(adapter.getText()).toBe('こんにちは');
     const def = findFluidBlankDef(dynDefs);
     expect(def).toBeDefined();
-    // Down-arrow target = the prompt the user typed, not a bare "_".
-    expect(def!.alternatives[0]).toBe('translate hello to japanese _');
-    expect(def!.alternatives[1]).toBe('こんにちは');
-    expect(def!.currentIndex).toBe(1);
+    // alts[0] = current visible (the answer); alts[1] = the prompt the
+    // user typed. Up-arrow advances to alts[1] (revert to prompt). This
+    // matches the convention every other blank type uses: alts[0] =
+    // baseline, alts[1+] = forward-cycle targets.
+    expect(def!.alternatives[0]).toBe('こんにちは');
+    expect(def!.alternatives[1]).toBe('translate hello to japanese _');
+    expect(def!.currentIndex).toBe(0);
   });
 
   it('extends the chain when a second WIPE encompasses the first result', async () => {
@@ -141,15 +148,16 @@ describe('fluid-blank chain — sequential WIPE substitutions', () => {
     expect(adapter.getText()).toBe('你好');
     const def = findFluidBlankDef(dynDefs);
     expect(def).toBeDefined();
-    // Chain depth 4: [original english prompt, japanese result,
-    //                 mid-chain question, chinese result]
+    // Chain depth 4, reverse-chronological — newest at index 0 so
+    // pressing Up walks back through history one step at a time:
+    //   [newest answer, newest question, prior answer, original prompt]
     expect(def!.alternatives).toEqual([
-      'translate hello to japanese _',
-      'こんにちは',
-      'こんにちは translate to chinese _',
       '你好',
+      'こんにちは translate to chinese _',
+      'こんにちは',
+      'translate hello to japanese _',
     ]);
-    expect(def!.currentIndex).toBe(3);
+    expect(def!.currentIndex).toBe(0);
   });
 
   it('does NOT extend when the prior result was edited inside (verbatim check fails)', async () => {
@@ -168,12 +176,13 @@ describe('fluid-blank chain — sequential WIPE substitutions', () => {
 
     const def = findFluidBlankDef(dynDefs);
     expect(def).toBeDefined();
-    // Fresh def — no japanese in the chain.
+    // Fresh def — no japanese in the chain. Reverse-chronological:
+    // answer first, question second.
     expect(def!.alternatives).toEqual([
-      'hola translate to chinese _',
       '你好',
+      'hola translate to chinese _',
     ]);
-    expect(def!.currentIndex).toBe(1);
+    expect(def!.currentIndex).toBe(0);
   });
 
   it('truncates the abandoned tail when the user cycled mid-chain before re-summoning', async () => {
@@ -187,13 +196,14 @@ describe('fluid-blank chain — sequential WIPE substitutions', () => {
     scriptNext([fluidWipe('こんにちは translate to chinese _', '你好')]);
     await resolver.resolveAndApply(adapter.getText());
 
-    // User cycles back to "こんにちは" (currentIndex 1) then re-summons.
+    // User cycles Up twice to land on "こんにちは" (index 2 in the new
+    // reverse-chronological ['你好', q2, 'こんにちは', q1]) then re-summons.
     const def = findFluidBlankDef(dynDefs);
     expect(def).toBeDefined();
     // Simulate the cycled state — production code does this via applyAltCycle,
     // but we set it directly to keep the test focused on truncate semantics.
     rewriteDef(dynDefs, def!, {
-      currentIndex: 1,
+      currentIndex: 2,
       spanStart: 0,
       spanEnd: 'こんにちは'.length,
     });
@@ -203,15 +213,56 @@ describe('fluid-blank chain — sequential WIPE substitutions', () => {
 
     const finalDef = findFluidBlankDef(dynDefs);
     expect(finalDef).toBeDefined();
-    // Tail "[こんにちは translate to chinese _, 你好]" was discarded;
-    // new branch "[こんにちは translate to korean _, 안녕하세요]" took its place.
+    // Abandoned head ["你好", "こんにちは translate to chinese _"] (items
+    // newer than where the user cycled to) was discarded; the new branch
+    // ["안녕하세요", "こんにちは translate to korean _"] is prepended.
     expect(finalDef!.alternatives).toEqual([
-      'translate hello to japanese _',
-      'こんにちは',
-      'こんにちは translate to korean _',
       '안녕하세요',
+      'こんにちは translate to korean _',
+      'こんにちは',
+      'translate hello to japanese _',
     ]);
-    expect(finalDef!.currentIndex).toBe(3);
+    expect(finalDef!.currentIndex).toBe(0);
+  });
+
+  it('chains across a multi-word answer (spanEnd covers the WHOLE answer, not just the first word)', async () => {
+    // Pre-fix regression: fluid-blank set spanEnd to the END OF THE
+    // FIRST WORD of the substitute. For a single-word answer that
+    // happens to be correct; for a multi-word answer like "William
+    // Shakespeare" at start=0, spanEnd was 7 (end of "William") rather
+    // than 19 (end of "Shakespeare"). The next substitute's chain
+    // verbatim check (`liveText.slice(spanStart, spanEnd) === currentAlt`)
+    // then compared "William " against "William Shakespeare" and bailed,
+    // dropping the first link from the chain.
+    const { adapter, dynDefs, resolver, scriptNext } = setupChainScenario(
+      'who wrote hamlet _',
+    );
+    scriptNext([fluidWipe('who wrote hamlet _', 'William Shakespeare')]);
+    await resolver.resolveAndApply(adapter.getText());
+    expect(adapter.getText()).toBe('William Shakespeare');
+
+    const firstDef = findFluidBlankDef(dynDefs);
+    expect(firstDef).toBeDefined();
+    // spanEnd MUST cover the whole "William Shakespeare" answer.
+    expect(firstDef!.spanStart).toBe(0);
+    expect(firstDef!.spanEnd).toBe('William Shakespeare'.length);
+
+    // Second substitute wraps the answer in a new lookup phrase. With the
+    // bug, this would create a FRESH def (chain broken); with the fix,
+    // the chain extends.
+    adapter.pushText('William Shakespeare year of birth _');
+    scriptNext([fluidWipe('William Shakespeare year of birth _', '1564')]);
+    await resolver.resolveAndApply(adapter.getText());
+
+    const def = findFluidBlankDef(dynDefs);
+    expect(def).toBeDefined();
+    expect(def!.alternatives).toEqual([
+      '1564',
+      'William Shakespeare year of birth _',
+      'William Shakespeare',
+      'who wrote hamlet _',
+    ]);
+    expect(def!.currentIndex).toBe(0);
   });
 });
 
@@ -231,13 +282,16 @@ describe('transform-blank chain — sequential whole-buffer rewrites', () => {
 
     const def = findTransformBlankDef(dynDefs);
     expect(def).toBeDefined();
+    // Reverse-chronological — newest at index 0 so pressing Up walks
+    // back through history one step at a time. Matches fluid-blank
+    // and every other blank type (alts[0] = current visible).
     expect(def!.alternatives).toEqual([
-      'translate hello to japanese _',
-      'こんにちは',
-      'こんにちは translate to chinese _',
       '你好',
+      'こんにちは translate to chinese _',
+      'こんにちは',
+      'translate hello to japanese _',
     ]);
-    expect(def!.currentIndex).toBe(3);
+    expect(def!.currentIndex).toBe(0);
   });
 
   it('does NOT graft a fluid-blank onto a transform-blank chain', async () => {
@@ -252,14 +306,15 @@ describe('transform-blank chain — sequential whole-buffer rewrites', () => {
     await resolver.resolveAndApply(adapter.getText());
 
     // Two independent defs: one transform-blank (japanese chain), one
-    // fresh fluid-blank (chinese substitute). The fluid-blank's alts[0]
-    // = the question; alts[1] = 你好 — no japanese leaked in.
+    // fresh fluid-blank (chinese substitute). The fluid-blank def is
+    // reverse-chronological — alts[0] = answer, alts[1] = question —
+    // no japanese leaked in.
     const transformDef = findTransformBlankDef(dynDefs);
     const fluidDef = findFluidBlankDef(dynDefs);
     expect(fluidDef).toBeDefined();
     expect(fluidDef!.alternatives).toEqual([
-      'こんにちは translate to chinese _',
       '你好',
+      'こんにちは translate to chinese _',
     ]);
     // The transform-blank def may have been pruned (its span [0, 'こんにちは'.length)
     // overlaps the fluid-blank wipe range). What we care about: NO chain merge.

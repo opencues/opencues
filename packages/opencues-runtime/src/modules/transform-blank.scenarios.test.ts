@@ -520,7 +520,7 @@ describe('TransformBlank surgical splice — cursor lands at end of new buffer',
 });
 
 describe('TransformBlank surgical splice — DynDef shape', () => {
-  it('alternatives[0] = original, alternatives[1] = final buffer (round-trip via cycle)', async () => {
+  it('alternatives[0] = final buffer, alternatives[1] = original (reverse-chronological)', async () => {
     const { adapter, resolver, dynDefs } = setupTransformScenario({
       originalText: 'hi my name is wilfred\n\nmake wilfred bold _',
       rewrittenText: 'hi my name is **wilfred**',
@@ -530,9 +530,13 @@ describe('TransformBlank surgical splice — DynDef shape', () => {
     await resolver.resolveAndApply(adapter.getText());
     expect(dynDefs.size).toBe(1);
     const def = [...dynDefs.entries()][0]?.[1];
-    expect(def!.alternatives[0]).toBe('hi my name is wilfred\n\nmake wilfred bold _');
-    expect(def!.alternatives[1]).toBe('hi my name is wilfred\n\n');
-    expect(def!.currentIndex).toBe(1);
+    // alts[0] = the post-substitution buffer (current visible).
+    // alts[1] = the original prompt (cycle Up reverts). Matches
+    // fluid-blank and every other blank type — alts[0] is the
+    // current visible, alts[1+] are forward-cycle targets.
+    expect(def!.alternatives[0]).toBe('hi my name is wilfred\n\n');
+    expect(def!.alternatives[1]).toBe('hi my name is wilfred\n\nmake wilfred bold _');
+    expect(def!.currentIndex).toBe(0);
     expect(def!.blankName).toBe('transform-blank');
   });
 });
