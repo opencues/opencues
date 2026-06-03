@@ -242,4 +242,61 @@ describe('FluidBlankSource — user-actionable error substitution', () => {
     expect(result.results[0].alternatives[0]).toBe('_');
     expect(result.results[0].alternatives).toHaveLength(2);
   });
+
+  // Provider-specific textual auth-error patterns. Many providers return a
+  // 401 body the parser surfaces WITHOUT the HTTP status in the thrown
+  // message. Before the textual-pattern branch, every one of these fell
+  // through classifyHttpError to the silent default — users with a bogus
+  // key saw `_` and nothing happened. Discovered when switch-model agentic
+  // testing pointed ANTHROPIC_API_KEY at a bogus value on opencode.
+  it('Anthropic 401 body ("anthropic error: invalid x-api-key") → "invalid-api-key"', async () => {
+    let observedReason: FluidBlankErrorReason | undefined;
+    const fluid = makeFluid({
+      throwError: new Error('anthropic error: invalid x-api-key'),
+      formatErrorAsSubstitute: (reason) => { observedReason = reason; return '[bad anthropic key]'; },
+    });
+    const result = await fluid.getCues(SAMPLE_CONTEXT);
+    expect(observedReason).toBe('invalid-api-key');
+    expect(result.results[0].alternatives[1]).toContain('bad anthropic key');
+  });
+
+  it('OpenAI / Groq invalid_api_key code → "invalid-api-key"', async () => {
+    let observedReason: FluidBlankErrorReason | undefined;
+    const fluid = makeFluid({
+      throwError: new Error('provider error: Incorrect API key provided (code=invalid_api_key, type=invalid_request_error)'),
+      formatErrorAsSubstitute: (reason) => { observedReason = reason; return '[bad openai key]'; },
+    });
+    await fluid.getCues(SAMPLE_CONTEXT);
+    expect(observedReason).toBe('invalid-api-key');
+  });
+
+  it('Gemini "API key not valid" → "invalid-api-key"', async () => {
+    let observedReason: FluidBlankErrorReason | undefined;
+    const fluid = makeFluid({
+      throwError: new Error('gemini error: API key not valid. Please pass a valid API key.'),
+      formatErrorAsSubstitute: (reason) => { observedReason = reason; return '[bad gemini key]'; },
+    });
+    await fluid.getCues(SAMPLE_CONTEXT);
+    expect(observedReason).toBe('invalid-api-key');
+  });
+
+  it('Generic authentication_error type → "invalid-api-key"', async () => {
+    let observedReason: FluidBlankErrorReason | undefined;
+    const fluid = makeFluid({
+      throwError: new Error('provider error: Authentication failed (code=authentication_error)'),
+      formatErrorAsSubstitute: (reason) => { observedReason = reason; return '[auth]'; },
+    });
+    await fluid.getCues(SAMPLE_CONTEXT);
+    expect(observedReason).toBe('invalid-api-key');
+  });
+
+  it('Unauthorized (textual, no HTTP number) → "invalid-api-key"', async () => {
+    let observedReason: FluidBlankErrorReason | undefined;
+    const fluid = makeFluid({
+      throwError: new Error('Unauthorized'),
+      formatErrorAsSubstitute: (reason) => { observedReason = reason; return '[unauth]'; },
+    });
+    await fluid.getCues(SAMPLE_CONTEXT);
+    expect(observedReason).toBe('invalid-api-key');
+  });
 });

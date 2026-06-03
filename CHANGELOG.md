@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fixed — bogus API key no longer fails silently when the provider's 401 body lacks an HTTP status number
+
+Reported as part of switch-model testing: users with an invalid `ANTHROPIC_API_KEY` typed `_` and saw nothing happen — no buffer change, no inline error, no UI signal at all. The runtime *was* hitting the provider and *was* getting a 401 back, but Anthropic's response body is shaped as a 200-ish JSON envelope containing `{"type":"error","error":{"message":"invalid x-api-key","type":"authentication_error"}}`. `parseResponse` correctly threw `Error("anthropic error: invalid x-api-key")`, but `classifyHttpError` only matched HTTP-status numbers like `401` / `403` — the textual error fell through to the silent default, no `formatLLMErrorAsSubstitute` was called, and no inline message landed in the buffer.
+
+Fix: `classifyHttpError` now also matches textual auth-error patterns (`invalid_api_key`, `invalid x-api-key`, `incorrect api key`, `api key not valid`, `authentication_error`, `authentication failed`, `permission_denied`, `unauthorized`). Anthropic, OpenAI, Groq, Gemini, and any future provider whose 401 body carries no HTTP status number now surface the same `[OpenCues: API key rejected ...]` substitute that 401/403 already did. Pre-existing `\b40[13]\b` HTTP-status path remains, so providers that *do* prefix the message with `HTTP 401` are still caught by the same branch.
+
+Companion precision tweak: the `fluid-blank.bailed` event now carries the classified reason (`invalid-api-key`, `model-not-found`, etc.) instead of always reporting the generic `llm-error`. Event-stream consumers can now assert on the specific failure class without grepping log strings. The `llm-error` fallback is preserved for unclassified (silent / 5xx / malformed-response) failures.
+
+Five new unit tests in `fluid-blank-error-substitute.test.ts` pin each provider's textual auth-error shape (Anthropic / OpenAI+Groq / Gemini / generic `authentication_error` / bare `Unauthorized`).
+
+Version bumped: `@opencues/core` 0.1.11 → 0.1.12.
+
 ### Added — fluid-config `provider:model` pair display + granular model discovery via `config _`
 
 Two UX gaps closed in one PR. Builds on top of #66 (provider cycling now skips values whose env key isn't set) — the pair-aware cycling here composes cleanly with that filter: cycling the provider skips ineligible providers AND resets the sibling model on the way, so neither "no env key" nor "stale model" pairs can persist.

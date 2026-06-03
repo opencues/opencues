@@ -601,6 +601,16 @@ export function classifyLlmError(err: Error): FluidBlankErrorReason | null {
 function classifyHttpError(err: Error): FluidBlankErrorReason | null {
   const msg = err.message ?? '';
   if (/\b40[13]\b/.test(msg)) return 'invalid-api-key';
+  // Textual auth-error patterns — many providers (Anthropic especially)
+  // return a 401 body that the parser surfaces WITHOUT the HTTP status
+  // in the thrown message. Anthropic's parse path throws
+  //   "anthropic error: invalid x-api-key"
+  // which had no "401" substring and used to fall through to the silent
+  // default — every user with a bogus ANTHROPIC_API_KEY saw `_` and
+  // nothing happened. Other providers' textual auth tokens covered too
+  // (openai/groq `invalid_api_key`, gemini `API key not valid`, generic
+  // `authentication_error` / `unauthorized`).
+  if (/invalid[_ -]?(?:x-)?api[_ -]?key|incorrect[_ -]?api[_ -]?key|api[_ -]?key[_ -]?not[_ -]?valid|authentication[_ -]?(?:error|failed)|invalid[_ -]?authentication|permission[_ -]?denied|\bunauthorized\b/i.test(msg)) return 'invalid-api-key';
   if (/\b429\b/.test(msg)) return 'rate-limit';
   // Billing / quota — 402 or a textual payment/credit/quota error. The
   // (provider, model) pair is VALID here; the account just can't pay for
@@ -887,9 +897,14 @@ export class FluidBlankSource implements CueSource {
       });
       return { results: [result], timing: Date.now() - startTime, model: this.model };
     } catch (error) {
-      this.emit({ type: 'bailed', reason: 'llm-error', latencyMs: Date.now() - startTime });
       const err = error instanceof Error ? error : new Error(String(error));
       const reason = classifyHttpError(err);
+      // Emit the classified reason (e.g. `invalid-api-key`) when known so
+      // event-stream consumers can assert on the specific failure class
+      // without grepping log strings. Falls back to the generic
+      // `llm-error` for unclassified (silent / 5xx / malformed-response)
+      // failures — what the bailed event always carried prior to June 2026.
+      this.emit({ type: 'bailed', reason: reason ?? 'llm-error', latencyMs: Date.now() - startTime });
       // ALWAYS log dispatch failures at info level. Before June 2026 this
       // catch silently stuffed the error into the result envelope and
       // returned; the caller (resolver) ignored the `error` field, so the
