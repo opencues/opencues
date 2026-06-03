@@ -586,6 +586,18 @@ export type FluidBlankErrorReason =
  *  substitute emitted). Matches against HTTP-status patterns the chrome
  *  fetch-http-adapter throws ("HTTP 401 …", "HTTP 404 …", etc.) and
  *  common network-error shapes. */
+/**
+ * Public export of the LLM-error classifier. Used by TransformBlank
+ * and ConfigIntent so EVERY blank-triggered LLM failure becomes a
+ * visible inline error substitute — not just FluidBlank. Renamed to
+ * `classifyLlmError` would be ideal but back-compat keeps the
+ * legacy name. The returned `FluidBlankErrorReason` is generic across
+ * LLM-driven sources despite the FluidBlank-named type.
+ */
+export function classifyLlmError(err: Error): FluidBlankErrorReason | null {
+  return classifyHttpError(err);
+}
+
 function classifyHttpError(err: Error): FluidBlankErrorReason | null {
   const msg = err.message ?? '';
   if (/\b40[13]\b/.test(msg)) return 'invalid-api-key';
