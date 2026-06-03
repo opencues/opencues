@@ -40,6 +40,7 @@
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
 import { BlankConfig } from '../cues-md';
 import { useStrictJson, buildJsonResponseFormat, describeLLMCall, dispatchChat, type ProviderAdapter } from '../llm-provider';
+import { classifyLlmError, type FluidBlankErrorReason } from './fluid-blank-source';
 import { detectPartialTransform } from './transform-partial-detector';
 import { injectCursorSentinel, stripCursorSentinel } from '../cursor-sentinel';
 import { translateBufferCursorToTargetCursor } from './transform-cursor-translate';
@@ -1370,6 +1371,17 @@ export interface TransformBlankSourceConfig {
    * `tests/benchmarks/transform-blank/EXPERIMENTS.md § 6-8`.
    */
   mode?: TransformBlankMode;
+  /**
+   * When set, user-actionable HTTP failures (401, 404, 429, 400, network,
+   * model-not-found, insufficient-credits) emit an inline `_` → error
+   * substitute instead of silently failing. Wire the same formatter
+   * FluidBlank uses (`nativeHostFormatLLMError` from boot-common.ts) so
+   * every blank-triggered LLM source produces the same visible error
+   * surface — the user always knows WHY their `_` didn't fire. Omit to
+   * preserve silent-fail behaviour (legacy default for back-compat with
+   * tests + chrome).
+   */
+  formatErrorAsSubstitute?: (reason: FluidBlankErrorReason, err?: Error) => string;
 }
 
 export type TransformBlankMode = 'auto' | '3-pass' | 'fused';
@@ -1411,6 +1423,7 @@ export class TransformBlankSource implements CueSource {
   private log: (msg: string) => void;
   private emit: (event: TransformBlankEvent) => void;
   private mode: '3-pass' | 'fused';
+  private formatErrorAsSubstitute: ((reason: FluidBlankErrorReason, err?: Error) => string) | undefined;
 
   constructor(config: TransformBlankSourceConfig) {
     this.httpAdapter = config.httpAdapter;
@@ -1424,6 +1437,7 @@ export class TransformBlankSource implements CueSource {
     this.blanks = config.blanks ?? {};
     this.log = config.log ?? (() => { /* default: silent */ });
     this.emit = config.onEvent ?? (() => { /* default: silent */ });
+    this.formatErrorAsSubstitute = config.formatErrorAsSubstitute;
     // Resolve mode once at construction — provider doesn't change during
     // the source's lifetime, and runtime callers can rebuild the source
     // if the user flips `llm-provider:` mid-session.
@@ -1908,17 +1922,37 @@ export class TransformBlankSource implements CueSource {
 
       return { results: [result], timing: Date.now() - startTime, model: this.model };
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      // ALWAYS log dispatch failures at info level. Before June 2026 this
-      // catch silently stuffed the error into the result envelope and
-      // returned; the caller (resolver) ignored the `error` field, so the
-      // user saw "TransformBlank: starting" with no completion log forever.
-      // Silent hangs on opencode-zen/free were the trigger — symptom was
-      // typing a verb-prefixed `_` and getting nothing, no error, no clue.
-      // Visible log gives the user a real signal.
+      const err = error instanceof Error ? error : new Error(String(error));
+      const msg = err.message;
       this.log(
         `TransformBlank: failed (${Date.now() - startTime}ms, llm=${this.provider.id}/${this.model}) — ${msg}`,
       );
+      // Inline error substitute — same shape FluidBlank uses (PR June
+      // 2026 for fluid-blank, extended to transform-blank in June 2026
+      // after live testing surfaced silent failures on invalid (provider,
+      // model) pairs). The `metadata.fluidBlankErrorReason` flag tells
+      // the resolver to route this through the substitute-splice path so
+      // the user sees `_` → `[OpenCues: ...]` inline.
+      const reason = classifyLlmError(err);
+      const blankIdx = context.words.indexOf('_');
+      if (reason !== null && blankIdx >= 0 && this.formatErrorAsSubstitute) {
+        const text = this.formatErrorAsSubstitute(reason, err);
+        if (text && text.length > 0) {
+          return {
+            results: [{
+              wordIndex: blankIdx,
+              word: '_',
+              alternatives: ['_', text],
+              source: this.id,
+              priority: this.priority,
+              cueTip: 'TransformBlank failed — message describes the cause',
+              metadata: { fluidBlankErrorReason: reason },
+            }],
+            error: msg,
+            timing: Date.now() - startTime,
+          };
+        }
+      }
       return {
         results: [],
         error: msg,

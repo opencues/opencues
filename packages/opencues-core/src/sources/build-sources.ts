@@ -602,6 +602,7 @@ export function buildSourcesFromConfig(
         blanks: options.blanks ?? {},
         log: options.log,
         onEvent: options.onConfigIntentEvent,
+        formatErrorAsSubstitute: options.formatLLMErrorAsSubstitute,
       }));
     }
   }
@@ -654,6 +655,7 @@ export function buildSourcesFromConfig(
         log: options.log,
         onEvent: options.onTransformBlankEvent,
         mode: options.transformBlankMode as ('auto' | '3-pass' | 'fused' | undefined),
+        formatErrorAsSubstitute: options.formatLLMErrorAsSubstitute,
       }));
     }
   }

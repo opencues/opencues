@@ -1208,20 +1208,23 @@ export class Resolver {
       // substitute (alternatives = ['_', errorMessage]) — route through
       // the fluid-blank applicator so the error text lands in the
       // buffer (otherwise the user only sees it via cycling).
-      const isFluidBlank = r.source === 'fluid-blank' || r.source === 'missing-key-fallback';
-      const isTransformBlank = r.source === 'transform-blank';
-      // Error substitutes (no-key fallback + FluidBlank's user-actionable
-      // HTTP failures) get registered as clearOnEdit spans so any edit
-      // INSIDE the message wipes the whole substitute back to `_` — the
-      // user can re-type their summon without manual backspace-spam.
+      //
+      // Error substitutes — any LLM-driven blank source that classified
+      // a user-actionable HTTP failure (transform-blank + config-intent
+      // gained this in June 2026; fluid-blank had it earlier) — also
+      // get routed through the substitute splice so the user sees the
+      // inline `[OpenCues: ...]` message regardless of which source
+      // emitted it.
       const isErrorSubstitute = r.source === 'missing-key-fallback'
         || (r.metadata as { fluidBlankErrorReason?: string } | undefined)?.fluidBlankErrorReason !== undefined;
+      const isFluidBlank = r.source === 'fluid-blank' || r.source === 'missing-key-fallback' || isErrorSubstitute;
+      const isTransformBlank = r.source === 'transform-blank' && !isErrorSubstitute;
       // ConfigIntent emits the same FluidBlank-style shape
       // (alternatives = ['_', confirmation]) — splice the
       // confirmation in at the `_`, register a DynDef for
       // cycling-Down revert. blankName below differs so the def
       // isn't re-resolved as a fluid-blank lookup.
-      const isConfigIntent = r.source === 'config-intent';
+      const isConfigIntent = r.source === 'config-intent' && !isErrorSubstitute;
       // Fluid-blank substitutes inline (BlankFill-style). For WIPE mode the
       // text shrinks so the wordIndex shifts — we have to compute the def's
       // FINAL position in the new text and key the def there, not at the
