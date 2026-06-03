@@ -319,11 +319,13 @@ describe('ConfigIntent substitute — provider:model pair display (the pair UX)'
     expect(selectorSatelliteState.current!.currentSetting).toBe('auditors-llm-provider');
   });
 
-  it('preserves the legacy single-token behaviour when verdict has no model', async () => {
-    // When the classifier emits a provider-only verdict (no model id),
-    // the satellite is just the provider name — no `:model` suffix.
-    // This pins backwards compatibility with the pre-pair UX path
-    // (existing `switch to anthropic _` cases).
+  it('runtime splice obeys whatever satelliteValue the classifier supplied (no second-guessing)', async () => {
+    // The runtime layer never inspects the satelliteValue — it splices
+    // whatever string the classifier emitted. The provider->defaultModel
+    // fallback for "use anthropic _" (no explicit model) is the classifier's
+    // job (config-intent-source.ts); the runtime just renders. This test
+    // pins the contract — pass a bare `anthropic` and the runtime splices
+    // bare `anthropic`. The opposite direction (pair string) is covered above.
     const { adapter, resolver, selectorSatelliteState, script } =
       setupConfigIntentScenario('switch to anthropic _');
     script([scriptConfigIntentResult({

@@ -692,12 +692,20 @@ export class ConfigIntentSource implements CueSource {
           await apply(`${verdict.scope}-llm-model`, verdict.model);
         }
         displaySelector = providerScalar;
-        displayValue = verdict.model !== null
-          ? `${verdict.provider}:${verdict.model}`
+        // Always show what model is in use — even when the user didn't
+        // name one. Falls back to the provider's defaultModel so the
+        // satellite is ALWAYS `provider:model`, never bare `provider`.
+        // The model scalar itself is only written when the user named a
+        // model (above) — display read-only-resolves the default in
+        // every other case so the user knows the effective state.
+        const providerAdapter = getProvider(verdict.provider);
+        const effectiveModel = verdict.model ?? providerAdapter?.defaultModel ?? null;
+        displayValue = effectiveModel !== null
+          ? `${verdict.provider}:${effectiveModel}`
           : verdict.provider;
         cyclingValue = verdict.provider;
-        cueTip = verdict.model !== null
-          ? `${verdict.scope} → ${verdict.provider} · ${verdict.model}`
+        cueTip = effectiveModel !== null
+          ? `${verdict.scope} → ${verdict.provider} · ${effectiveModel}`
           : `${verdict.scope} → ${verdict.provider}`;
       }
     } catch (e) {
