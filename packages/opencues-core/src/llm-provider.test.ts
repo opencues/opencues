@@ -12,6 +12,7 @@ import {
   buildProviderRequest,
   parseProviderResponse,
   getProvider,
+  isProviderValueCyclable,
   listProviders,
   resolveLLM,
   withFallback,
@@ -1216,5 +1217,88 @@ describe('resolveLLM — openai-subscription (CLI-transport, no API key)', () =>
     _resetWarnDedupForTesting();
     const result = resolveLLM({ apiKeys: { CEREBRAS_API_KEY: 'k' } });
     assert.strictEqual(result?.provider.id, 'cerebras', 'auto-route picks cerebras, not openai-subscription');
+  });
+});
+
+
+describe('isProviderValueCyclable — prevents cycling to a broken (provider, no-key) pair', () => {
+  // Pins the "test BEFORE you switch" invariant the user named: the
+  // cycling menu must not advertise a provider value the runtime can't
+  // actually dispatch with. Mirrors chrome's popup, which already drops
+  // un-keyed providers from its dropdown via `isKeyValid()`. The chrome
+  // adapter passes `isCliAvailable: undefined` (it can't probe arbitrary
+  // binaries), so cli-transport providers are conservatively dropped
+  // from its menu — matches its existing behaviour.
+
+  it('inherit is always cyclable (delegates to the global llm-provider with its own auto-route)', () => {
+    assert.strictEqual(isProviderValueCyclable('inherit', {}), true);
+    assert.strictEqual(isProviderValueCyclable('inherit', { GROQ_API_KEY: 'k' }), true);
+  });
+
+  it('http-transport providers require their envKey to be cyclable', () => {
+    // groq, cerebras, openai, anthropic, gemini, openrouter — all
+    // standard http providers. envKey absent → not cyclable; envKey
+    // present → cyclable.
+    for (const id of ['groq', 'cerebras', 'openai', 'anthropic', 'gemini', 'openrouter']) {
+      const adapter = getProvider(id);
+      assert.ok(adapter, `provider missing: ${id}`);
+      assert.strictEqual(
+        isProviderValueCyclable(id, {}),
+        false,
+        `${id}: should NOT be cyclable without ${adapter!.envKeyName}`,
+      );
+      assert.strictEqual(
+        isProviderValueCyclable(id, { [adapter!.envKeyName]: 'k' }),
+        true,
+        `${id}: SHOULD be cyclable with ${adapter!.envKeyName}`,
+      );
+    }
+  });
+
+  it('optionalAuth providers (opencode-zen) are cyclable WITHOUT a key — anonymous free pool', () => {
+    assert.strictEqual(isProviderValueCyclable('opencode-zen', {}), true);
+    assert.strictEqual(isProviderValueCyclable('opencode-zen', { OPENCODE_ZEN_API_KEY: 'k' }), true);
+  });
+
+  it('cli-transport providers cyclable iff isCliAvailable() returns true', () => {
+    // No probe supplied → not cyclable (the safe default).
+    assert.strictEqual(isProviderValueCyclable('claude-code-cli', {}), false);
+    assert.strictEqual(isProviderValueCyclable('openai-subscription', {}), false);
+    // Probe says yes → cyclable.
+    assert.strictEqual(
+      isProviderValueCyclable('claude-code-cli', {}, { isCliAvailable: () => true }),
+      true,
+    );
+    assert.strictEqual(
+      isProviderValueCyclable('openai-subscription', {}, { isCliAvailable: () => true }),
+      true,
+    );
+  });
+
+  it('unknown provider id → NOT cyclable', () => {
+    // Defensive: if a future PR adds a registry value that doesn't have
+    // a corresponding ProviderAdapter, the cycling menu drops it rather
+    // than silently committing a broken scalar to OPENCUES.md.
+    assert.strictEqual(isProviderValueCyclable('not-a-provider', { GROQ_API_KEY: 'k' }), false);
+    assert.strictEqual(isProviderValueCyclable('', {}), false);
+  });
+
+  it('legacy provider alias resolves to the canonical id first', () => {
+    // `claude-cli` is the only legacy alias today (resolves to
+    // `claude-code-cli`). The predicate should canonicalise BEFORE the
+    // adapter lookup so cycling-menu values that come in as aliases
+    // don't silently drop to "unknown id". Pins the existing
+    // LEGACY_PROVIDER_ALIASES wiring as part of the cyclability
+    // contract.
+    assert.strictEqual(
+      isProviderValueCyclable('claude-cli', {}, { isCliAvailable: () => true }),
+      true,
+      'claude-cli alias should resolve to claude-code-cli and be cyclable when the CLI is on PATH',
+    );
+    assert.strictEqual(
+      isProviderValueCyclable('claude-cli', {}, { isCliAvailable: () => false }),
+      false,
+      'claude-cli alias resolves; CLI probe says binary missing → not cyclable',
+    );
   });
 });
