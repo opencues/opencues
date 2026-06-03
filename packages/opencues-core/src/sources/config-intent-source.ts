@@ -660,6 +660,14 @@ export class ConfigIntentSource implements CueSource {
     };
     let displaySelector: string;
     let displayValue: string;
+    // Optional separate cycling value — when present, the runtime uses
+    // it for `selectorSatelliteState.currentValue` (the value cycling
+    // Up/Down advances within), while `displayValue` is what gets
+    // spliced into the buffer. This lets a PROVIDER verdict with a
+    // model show `anthropic:claude-opus-4-7` in the buffer (pair
+    // visible) while satellite-cycling still walks just the provider
+    // values (the catalogue of providers, not the cartesian product).
+    let cyclingValue: string | undefined;
     let cueTip: string;
     try {
       if (verdict.kind === 'setting') {
@@ -670,18 +678,24 @@ export class ConfigIntentSource implements CueSource {
       } else {
         // provider kind. Always write the bucket's provider scalar;
         // also write the model scalar when the verdict specified one.
-        // Cleaning up the model scalar when only the provider changed
-        // would risk overwriting a deliberate file-edit pin — leave
-        // any existing model scalar alone, let the resolver's
-        // bucket-provider-without-model fallback pick the new
-        // provider's defaultModel.
+        // The buffer satellite displays `provider:model` (one token —
+        // splitWords treats `:` as a non-whitespace word char) so the
+        // user sees the actual pair they got, not just the provider.
+        // The cycling state stores just the provider so cycling Up/Down
+        // walks the provider catalogue; cycling.ts's
+        // `providerScalarToModelScalar` resets the sibling model on
+        // each provider cycle so invalid (provider, model) pairs can
+        // never form by cycling alone.
         const providerScalar = `${verdict.scope}-llm-provider`;
         await apply(providerScalar, verdict.provider);
         if (verdict.model !== null) {
           await apply(`${verdict.scope}-llm-model`, verdict.model);
         }
         displaySelector = providerScalar;
-        displayValue = verdict.provider;
+        displayValue = verdict.model !== null
+          ? `${verdict.provider}:${verdict.model}`
+          : verdict.provider;
+        cyclingValue = verdict.provider;
         cueTip = verdict.model !== null
           ? `${verdict.scope} → ${verdict.provider} · ${verdict.model}`
           : `${verdict.scope} → ${verdict.provider}`;
@@ -716,6 +730,12 @@ export class ConfigIntentSource implements CueSource {
         blankName: 'opencues',
         selectorBlank: true,
         satelliteValue: displayValue,
+        // satelliteCyclingValue (when set) is what the runtime stores
+        // in `selectorSatelliteState.currentValue` for the cycling
+        // path; satelliteValue is just for the buffer splice. The two
+        // diverge when displaying a `provider:model` pair while
+        // cycling-state stores just `provider`.
+        ...(cyclingValue !== undefined ? { satelliteCyclingValue: cyclingValue } : {}),
         displaySeparator: ' ',
         configIntent: verdict.kind === 'setting'
           ? { setting: verdict.setting, value: verdict.value, confidence: verdict.confidence }
