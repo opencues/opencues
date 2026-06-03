@@ -322,7 +322,7 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   //
   // Tests keep shipping mock `settings:` blocks; they get the
   // file-driven definitions, identical to the pre-refactor behaviour.
-  const definitions = mergeDefinitions(getMenuDefinitions(), parseSettingsBlock(lines));
+  const definitions = mergeDefinitions(getMenuDefinitions(undefined, settings), parseSettingsBlock(lines));
   return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, sentinelsMode, blankTriggerMode, navKeymap, cuesLlmProvider, auditorsLlmProvider, blanksLlmProvider, settings, definitions };
 }
 
@@ -344,6 +344,40 @@ function mergeDefinitions(
 ): Map<string, OpenCuesSettingDef> {
   return fileDefs.size > 0 ? fileDefs : registryDefs;
 }
+
+/**
+ * Patch the dynamic FeatureSpec definitions (`valuesProvider`-backed
+ * `*-llm-model` scalars) on top of an existing definitions map.
+ * Preserves every static / file-shipped entry; only refreshes the
+ * scalars whose valid value list depends on live settings.
+ *
+ * Used by `applyOpenCuesScalar` so that cycling provider immediately
+ * shapes the sibling model menu — without this, cycling
+ * `auditors-llm-provider: groq → anthropic` would leave
+ * `auditors-llm-model` cycling through groq's models for 2.5s
+ * until the next file reload.
+ */
+function overlayDynamicDefinitions(
+  existing: ReadonlyMap<string, OpenCuesSettingDef>,
+  settings: ReadonlyMap<string, string>,
+): Map<string, OpenCuesSettingDef> {
+  const out = new Map(existing);
+  const fresh = getMenuDefinitions(undefined, settings);
+  for (const f of FEATURES_WITH_VALUES_PROVIDER) {
+    const freshDef = fresh.get(f);
+    if (freshDef) out.set(f, freshDef);
+  }
+  return out;
+}
+
+// Scalars whose value list is dynamic (valuesProvider-backed). Kept in
+// sync with feature-registry.ts. A drift test in feature-registry-menu.drift
+// would catch additions silently — for now this is a tiny hardcoded list.
+const FEATURES_WITH_VALUES_PROVIDER: readonly string[] = [
+  'cues-llm-model',
+  'auditors-llm-model',
+  'blanks-llm-model',
+];
 
 /**
  * Walk the indented `settings:` block and pull out each setting's tip +
@@ -627,7 +661,14 @@ export class ConfigLoader {
         ).toLowerCase(),
       ),
       settings: newSettings as ReadonlyMap<string, string>,
-      definitions: cur.definitions,
+      // Overlay dynamic-valued definitions (FeatureSpecs with
+      // valuesProvider — today the three `*-llm-model` scalars) on
+      // top of the existing definitions so cycling provider
+      // immediately refreshes the sibling model menu. Preserves any
+      // file-shipped `settings:` block (cur.definitions) for static
+      // scalars — without this, applying a scalar would wipe a user's
+      // custom menu until the next file reload.
+      definitions: overlayDynamicDefinitions(cur.definitions, newSettings),
     };
     this._config = { ...this._config, opencuesState: next };
   }
