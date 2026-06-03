@@ -459,7 +459,7 @@ describe('ConfigIntentSource', () => {
 
   // ── Provider routing scenarios ────────────────────────────────────
 
-  it('getCues provider hit (no model): writes only <scope>-llm-provider', async () => {
+  it('getCues provider hit (no model): writes only <scope>-llm-provider, satellite display falls back to provider defaultModel', async () => {
     const apply = noopApply();
     const src = new ConfigIntentSource({
       ...baseConfig,
@@ -471,10 +471,16 @@ describe('ConfigIntentSource', () => {
     const input = 'use anthropic for cues _';
     const result = await src.getCues(ctxFromText(input));
     assert.strictEqual(result.results.length, 1);
+    // Only the provider scalar is written — model scalar untouched (user didn't name a model).
     assert.deepStrictEqual(apply.calls, [['cues-llm-provider', 'anthropic']]);
     const r = result.results[0]!;
     assert.deepStrictEqual(r.alternatives, ['cues-llm-provider']);
-    assert.strictEqual(r.metadata?.satelliteValue, 'anthropic');
+    // Display falls back to anthropic's defaultModel so the user always
+    // sees the (provider, model) pair, even when they didn't name a model.
+    assert.match(String(r.metadata?.satelliteValue), /^anthropic:claude-/);
+    // Cycling state stores just the provider so satellite Up/Down walks
+    // the provider catalogue, not the model.
+    assert.strictEqual(r.metadata?.satelliteCyclingValue, 'anthropic');
     assert.strictEqual(r.metadata?.blankName, 'opencues');
     assert.strictEqual(r.metadata?.selectorBlank, true);
     assert.strictEqual(r.spanStart, 0);
