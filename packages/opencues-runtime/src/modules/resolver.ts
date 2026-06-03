@@ -1232,7 +1232,15 @@ export class Resolver {
         const newWords = splitWords(newText);
         const newWord = newWords.find(w => w.start === start);
         const newWordIndex = newWord ? newWord.index : r.wordIndex;
-        const newSpanEnd = newWord ? newWord.end : sub.newCursor;
+        // spanEnd must cover the FULL substituted range, not just the
+        // first word's end. For a multi-word answer like "William
+        // Shakespeare" spliced at start=0, the substituted text occupies
+        // [0, answer.length); using newWord.end here would give 7
+        // (end of "William"), and the chain-extension verbatim check
+        // (`liveText.slice(spanStart, spanEnd) === currentAlt`) would
+        // fail on the next substitute because the slice excludes
+        // "Shakespeare". Pinned by `fluid-blank-multiword-span.test.ts`.
+        const newSpanEnd = start + answer.length;
 
         // The "question" — the buffer slice we're replacing. For WIPE
         // mode this is the user's full prompt phrase (e.g. "translate
@@ -1245,22 +1253,25 @@ export class Resolver {
         // new span and is still verbatim at its recorded position, the
         // user is doing a sequence of substitutions on the same content
         // (translate to japanese → translate to chinese). Extend the
-        // existing alternatives with [question, answer] so Down walks
-        // back through the full chain. Truncate-on-branch: if the user
-        // cycled back mid-chain before re-summoning, discard the
-        // abandoned tail (alt-history equivalent of git branch).
+        // existing alternatives in REVERSE chronological order — newest
+        // at index 0 — so Up walks back through history one step at a
+        // time (matching the convention every other blank type uses:
+        // alts[0] = current, Up = +1 = next in cycle).
+        // Truncate-on-branch: if the user cycled back mid-chain before
+        // re-summoning, discard the abandoned tail (now the items at
+        // indices BELOW currentIndex — newer than where the user landed).
         const existingChain = this.dynDefs.findChainableLlmDef(
           text, start, end, ['fluid-blank'],
         );
         let fluidDef: WordDef;
         if (existingChain) {
           const baseAlts = existingChain.def.alternatives
-            .slice(0, existingChain.def.currentIndex + 1);
-          const chainedAlts = [...baseAlts, question, alts[0]];
+            .slice(existingChain.def.currentIndex);
+          const chainedAlts = [alts[0], question, ...baseAlts];
           fluidDef = {
             originalWord: existingChain.def.originalWord,
             alternatives: chainedAlts,
-            currentIndex: chainedAlts.length - 1,
+            currentIndex: 0,
             spanStart: start,
             spanEnd: newSpanEnd,
             blankName: 'fluid-blank',
@@ -1272,8 +1283,8 @@ export class Resolver {
         } else {
           fluidDef = {
             originalWord: question,
-            alternatives: [question, alts[0]],
-            currentIndex: 1,
+            alternatives: [alts[0], question],
+            currentIndex: 0,
             spanStart: start,
             spanEnd: newSpanEnd,
             // blankName locks this def against re-resolution by the LLM —
@@ -1699,11 +1710,14 @@ export class Resolver {
         // is still verbatim inside the pre-substitute buffer, the user
         // is doing a sequence of rewrites on the same content
         // (translate to japanese → translate to chinese). Extend the
-        // existing chain with [pre-substitute-buffer, post-substitute-
-        // buffer] so Down walks back through every rewrite waypoint
-        // AND the user's prompt-additions between them.
-        // Truncate-on-branch: if the user cycled mid-chain before
-        // re-summoning, discard the abandoned tail.
+        // existing chain in REVERSE chronological order — newest at
+        // index 0 — so Up walks back through history one step at a
+        // time (matching the convention every other blank type uses:
+        // alts[0] = current visible, Up = +1 = next in cycle).
+        // Truncate-on-branch: if the user cycled back mid-chain before
+        // re-summoning, discard the abandoned head (items NEWER than
+        // where the user landed — indices BELOW currentIndex in the
+        // new reverse-chronological layout).
         const existingChain = this.dynDefs.findChainableLlmDef(
           originalText, 0, originalText.length, ['transform-blank'],
         );
@@ -1711,12 +1725,12 @@ export class Resolver {
         let extendedFromIdx: number | null = null;
         if (existingChain) {
           const baseAlts = existingChain.def.alternatives
-            .slice(0, existingChain.def.currentIndex + 1);
-          const chainedAlts = [...baseAlts, originalText, bufferText];
+            .slice(existingChain.def.currentIndex);
+          const chainedAlts = [bufferText, originalText, ...baseAlts];
           transformDef = {
             originalWord: existingChain.def.originalWord,
             alternatives: chainedAlts,
-            currentIndex: chainedAlts.length - 1,
+            currentIndex: 0,
             spanStart: 0,
             spanEnd: newSpanEnd,
             blankName: 'transform-blank',
@@ -1729,10 +1743,10 @@ export class Resolver {
         } else {
           transformDef = {
             originalWord: originalText,
-            // alternatives[0] = original full text (cycle Down to revert)
-            // alternatives[1] = the post-substitution buffer (cycle Up returns here)
-            alternatives: [originalText, bufferText],
-            currentIndex: 1,            // showing rewrite
+            // alternatives[0] = the post-substitution buffer (current visible)
+            // alternatives[1] = original full text (cycle Up to revert)
+            alternatives: [bufferText, originalText],
+            currentIndex: 0,
             spanStart: 0,
             spanEnd: newSpanEnd,
             // blankName locks this def from re-resolution by the LLM —

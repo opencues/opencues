@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fixed — fluid-blank chain extension now survives a multi-word first answer
+
+Pre-existing regression surfaced by live-testing the scroll-order fix below. Fluid-blank stored its DynDef `spanEnd` as the END OF THE FIRST WORD of the substitution (`newSpanEnd = newWord.end` in `resolver.ts:1235`). For a single-word answer that happened to be correct; for a multi-word answer like `William Shakespeare` inserted at char 0, `spanEnd` landed at 7 (end of `William`) instead of 19 (end of `Shakespeare`). The next substitute's chain verbatim check (`liveText.slice(spanStart, spanEnd) === currentAlt`) then compared `"William "` against `"William Shakespeare"` and bailed, dropping the first link from the chain — a 3-step lookup chain ended up only 2 links deep, with the original prompt + first answer silently missing from the walk-back history.
+
+Fix: set `newSpanEnd = start + answer.length` (the FULL substituted range) in `resolver.ts:1235`. New scenario test at `blank-chain.scenarios.test.ts` pins the case explicitly.
+
+Version bumped: `@opencues/runtime` 0.1.17 → 0.1.18.
+
+### Fixed — fluid-blank AND transform-blank cycle order now match every other blank type ([#61](https://github.com/opencues/opencues/issues/61))
+
+Cycling through a fluid-blank chain (`translate to japanese _` → `… translate to chinese _`) or a transform-blank chain (`draft email _` → continue → another transform) moved in the opposite direction from list-blanks / selector-satellite / sentence-cues. After the first substitution the buffer showed the answer (`こんにちは`); the DynDef stored `[question, answer]` with `currentIndex: 1`, so pressing Up (+1) wrapped from the end of the array straight to the oldest question instead of stepping back one item. With a chain `[q1, a1, q2, a2]` at `currentIndex=3`, Up jumped all the way to `q1` while Down only walked to `q2` — opposite of every other blank where `alts[0]` is the current visible and Up advances through `alts[1..]` one entry at a time.
+
+The bug structurally affected both LLM-blank chain pipelines (`fluid-blank` and `transform-blank`) because they share the same `[oldest, …, newest]` chronological layout with `currentIndex` pointing at the tail. The initial PR only fixed fluid-blank per the narrow issue title; manual testing in CC surfaced that `draft email _` (transform-blank) had identical broken cycling, so the fix was extended to transform-blank.
+
+Fix: store both fluid-blank AND transform-blank alternatives in reverse-chronological order — `[newestAnswer, newestQuestion, …priorItems]` with `currentIndex: 0`. Up now walks backward through history one entry at a time (newest answer → newest question → prior answer → original prompt), matching the convention list-blanks and sentence-cues already use. Chain truncate-on-branch flipped accordingly for both pipelines: drop the items NEWER than where the user cycled to (the indices BELOW `currentIndex` in the new layout) before prepending the next substitution. Tests at `packages/opencues-runtime/src/modules/blank-chain.scenarios.test.ts` and `transform-blank.scenarios.test.ts` updated for the new shape.
+
+Version bumped: `@opencues/runtime` 0.1.15 → 0.1.17.
+
 ### Fixed — Claude Code: second `_` in a chain silently dropped (ZWS leaks into KeyEvent)
 
 CC-only regression after [#52](https://github.com/opencues/opencues/pull/52). Chaining `_` triggers (`draft email _` → `… translate to japanese _`) worked on OpenCode but failed on Claude Code: the second transform never fired, the `_` just sat in the buffer. Root cause: the CC adapter's `dispatchKey` passed `iz.text` straight into `normaliseKeyEvent` (`packages/opencues-runtime/adapters/cc/v2.1/boot.ts:708-727`) without stripping the render-kick `\u200B`/`\u200C` marker that `__oc_pushHostText` toggles to defeat React's string-equality bail. Resolver's `onUnderscoreKey` (added by #52) simulates the standalone-`_` check via `splitWords`, which matches `\S+`; the ZWS is non-whitespace, so it glues to the cursor word — the trailing `_` is no longer detected as standalone, the one-shot gate refuses to arm, and `onTextChange` falls through to the debounced path with `allowBlanks=false`, masking the blank source. OC isn't affected because it doesn't render-kick.
