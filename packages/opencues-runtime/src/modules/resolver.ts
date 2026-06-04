@@ -590,6 +590,9 @@ export class Resolver {
       //      inactive). Cycling's path always pairs the in-memory
       //      update with a `set` invocation; ConfigIntent was missing
       //      the second half.
+      readOpencuesScalar: (setting: string): string | undefined => {
+        return this.configLoader.opencuesState.settings.get(setting);
+      },
       applyOpencuesScalar: async (setting: string, value: string) => {
         this.configLoader.applyOpenCuesScalar(setting, value);
         // Await the file write so back-to-back applyScalar calls (e.g.

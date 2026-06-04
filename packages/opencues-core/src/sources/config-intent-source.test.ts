@@ -482,6 +482,56 @@ describe('ConfigIntentSource', () => {
     assert.strictEqual(r.spanEnd, input.length);
   });
 
+  it('getCues provider hit (no model) WITH readScalar wired + incompatible existing model: auto-corrects to provider default', async () => {
+    // The June 2026 fix — when the existing model scalar belongs to a
+    // different provider's API (the stale-pair case: `openai/gpt-oss-120b`
+    // left in `blanks-llm-model` after NL-switching `blanks-llm-provider`
+    // to `anthropic`), ConfigIntent's apply path should overwrite the
+    // model with the new provider's defaultModel rather than leaving a
+    // broken (provider, model) pair behind. Guards against the "I said
+    // switch to anthropic and now my blanks are broken" UX.
+    const apply = noopApply();
+    const src = new ConfigIntentSource({
+      ...baseConfig,
+      httpAdapter: makeMockAdapter([
+        'INTENT: PROVIDER\nSCOPE: blanks\nPROVIDER: anthropic\nMODEL:\nCONFIDENCE: 0.92',
+      ]),
+      applyScalar: apply.fn,
+      // Simulate the user's stale config: blanks-llm-model is openai/gpt-oss-120b
+      // (a Groq/OpenRouter model name); they're switching to anthropic.
+      readScalar: (key: string) => key === 'blanks-llm-model' ? 'openai/gpt-oss-120b' : undefined,
+    });
+    const result = await src.getCues(ctxFromText('use anthropic for blanks _'));
+    assert.strictEqual(result.results.length, 1);
+    // Both scalars written: provider + auto-corrected model (anthropic's default).
+    assert.strictEqual(apply.calls.length, 2);
+    assert.deepStrictEqual(apply.calls[0], ['blanks-llm-provider', 'anthropic']);
+    assert.strictEqual(apply.calls[1]![0], 'blanks-llm-model');
+    // Don't pin the exact model id (anthropic's defaultModel may bump);
+    // assert it's an anthropic-shaped name that DIFFERS from the stale value.
+    const newModel = apply.calls[1]![1] as string;
+    assert.ok(/^claude/i.test(newModel) || /haiku|sonnet|opus/i.test(newModel), `expected anthropic model id, got ${newModel}`);
+    assert.notStrictEqual(newModel, 'openai/gpt-oss-120b');
+  });
+
+  it('getCues provider hit (no model) WITH readScalar + COMPATIBLE existing model: leaves model alone', async () => {
+    // Mirror of the above: if the existing model scalar IS in the new
+    // provider's knownModels catalogue, treat it as a deliberate pin
+    // and leave it alone. Only the provider scalar gets written.
+    const apply = noopApply();
+    const src = new ConfigIntentSource({
+      ...baseConfig,
+      httpAdapter: makeMockAdapter([
+        'INTENT: PROVIDER\nSCOPE: blanks\nPROVIDER: anthropic\nMODEL:\nCONFIDENCE: 0.92',
+      ]),
+      applyScalar: apply.fn,
+      // The model is already anthropic-shaped — keep it.
+      readScalar: (key: string) => key === 'blanks-llm-model' ? 'claude-haiku-4-5-20251001' : undefined,
+    });
+    await src.getCues(ctxFromText('use anthropic for blanks _'));
+    assert.deepStrictEqual(apply.calls, [['blanks-llm-provider', 'anthropic']]);
+  });
+
   it('getCues provider hit WITH model: writes both <scope>-llm-provider and <scope>-llm-model', async () => {
     const apply = noopApply();
     const src = new ConfigIntentSource({

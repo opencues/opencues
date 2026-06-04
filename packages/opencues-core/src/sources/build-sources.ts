@@ -172,6 +172,15 @@ export interface BuildSourcesOptions {
    */
   applyOpencuesScalar?: (setting: string, value: string) => void | Promise<void>;
   /**
+   * Optional companion to `applyOpencuesScalar`: read the current value
+   * of an OPENCUES.md scalar so config-intent's apply path can inspect
+   * the bucket model BEFORE deciding whether to overwrite it on a
+   * provider switch. Runtime injects a closure over
+   * `ConfigLoader.opencuesState.settings`. Without it, config-intent
+   * falls back to leaving incompatible models alone.
+   */
+  readOpencuesScalar?: (setting: string) => string | undefined;
+  /**
    * Enable sentence-scope cues. When false, every CUES.md / CUE.md
    * entry with `scope: sentence` is silently filtered at build time —
    * no LLM calls fire and no cues surface. Defaults to false; flip on
@@ -599,6 +608,7 @@ export function buildSourcesFromConfig(
         maxTokens: options.configIntent?.maxTokens,
         temperature: options.configIntent?.temperature,
         applyScalar: options.applyOpencuesScalar,
+        readScalar: options.readOpencuesScalar,
         blanks: options.blanks ?? {},
         log: options.log,
         onEvent: options.onConfigIntentEvent,

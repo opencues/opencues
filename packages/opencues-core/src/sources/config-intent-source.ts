@@ -599,6 +599,16 @@ export interface ConfigIntentSourceConfig {
    */
   applyScalar: (setting: string, value: string) => void | Promise<void>;
   /**
+   * Read a current OPENCUES.md scalar value (e.g. read 'blanks-llm-model'
+   * before deciding whether to overwrite it). Runtime injects a closure
+   * over `ConfigLoader.opencuesState.settings`. Optional — when omitted
+   * the apply path falls back to the old behaviour (leave incompatible
+   * models alone, runtime's bucket-fallback picks the provider default
+   * silently). With it, ConfigIntent auto-corrects incompatible
+   * (provider, model) pairs on a provider switch.
+   */
+  readScalar?: (setting: string) => string | undefined;
+  /**
    * Registered blanks (so this source can cede the slot when a
    * keyword-bound blank would claim it — mirrors the cede logic in
    * FluidBlankSource and TransformBlankSource).
@@ -624,6 +634,7 @@ export class ConfigIntentSource implements CueSource {
   private maxTokensOverride: number | undefined;
   private temperatureOverride: number | undefined;
   private applyScalar: (setting: string, value: string) => void | Promise<void>;
+  private _readScalar: ((setting: string) => string | undefined) | undefined;
   private blanks: Record<string, BlankConfig>;
   private log: (msg: string) => void;
   private emit: (event: ConfigIntentEvent) => void;
@@ -637,6 +648,7 @@ export class ConfigIntentSource implements CueSource {
     this.maxTokensOverride = config.maxTokens;
     this.temperatureOverride = config.temperature;
     this.applyScalar = config.applyScalar;
+    this._readScalar = config.readScalar;
     this.blanks = config.blanks ?? {};
     this.priority = config.priority ?? 94;
     this.log = config.log ?? (() => { /* silent */ });
@@ -729,22 +741,54 @@ export class ConfigIntentSource implements CueSource {
         displayValue = verdict.value;
         cueTip = `${verdict.setting} → ${verdict.value}`;
       } else {
-        // provider kind. Always write the bucket's provider scalar;
-        // also write the model scalar when the verdict specified one.
-        // Cleaning up the model scalar when only the provider changed
-        // would risk overwriting a deliberate file-edit pin — leave
-        // any existing model scalar alone, let the resolver's
-        // bucket-provider-without-model fallback pick the new
-        // provider's defaultModel.
+        // provider kind. Always write the bucket's provider scalar.
+        // Then decide whether to update the model scalar:
+        //   - verdict.model present → use it (LLM picked one explicitly)
+        //   - verdict.model null → check if the existing model scalar is
+        //     compatible with the new provider (i.e. listed in its
+        //     knownModels catalogue). Compatible → leave it (respects
+        //     deliberate file-edit pins). Incompatible → overwrite with
+        //     the new provider's defaultModel (a model meant for the
+        //     OLD provider's API will produce 404/400 calls against the
+        //     new provider — the auto-fix is far less surprising than
+        //     a silently-broken bucket).
         const providerScalar = `${verdict.scope}-llm-provider`;
+        const modelScalar = `${verdict.scope}-llm-model`;
         await apply(providerScalar, verdict.provider);
+        let appliedModel: string | null = null;
         if (verdict.model !== null) {
-          await apply(`${verdict.scope}-llm-model`, verdict.model);
+          await apply(modelScalar, verdict.model);
+          appliedModel = verdict.model;
+        } else if (this._readScalar) {
+          // Auto-correction path — only enabled when the host wires a
+          // readScalar callback. Inspect the current model scalar and
+          // the new provider's catalogue. Overwrite if the existing
+          // model belongs to a different provider's API (the classic
+          // stale-pair after a NL provider switch: `openai/gpt-oss-120b`
+          // left in place after switching `blanks-llm-provider` to
+          // `anthropic`). Without this, the next LLM call against the
+          // new provider gets a 404 / model-not-found / bad-request.
+          const currentModel = this._readScalar(modelScalar) ?? '';
+          const newProvider = getProvider(verdict.provider);
+          if (newProvider) {
+            const known = newProvider.knownModels ?? [];
+            const compatible = currentModel !== '' && known.includes(currentModel);
+            if (!compatible) {
+              const target = newProvider.defaultModel;
+              if (currentModel !== target) {
+                await apply(modelScalar, target);
+                appliedModel = target;
+                this.log(`ConfigIntent: ${currentModel === '' ? 'set' : 'auto-corrected'} ${modelScalar} ${currentModel === '' ? '→' : `${currentModel} →`} ${target} (was incompatible with new provider ${verdict.provider})`);
+              }
+            }
+          }
         }
+        // else: no readScalar wired → preserve old behaviour (leave
+        // model untouched; runtime's bucket-fallback may rescue).
         displaySelector = providerScalar;
         displayValue = verdict.provider;
-        cueTip = verdict.model !== null
-          ? `${verdict.scope} → ${verdict.provider} · ${verdict.model}`
+        cueTip = appliedModel !== null
+          ? `${verdict.scope} → ${verdict.provider} · ${appliedModel}`
           : `${verdict.scope} → ${verdict.provider}`;
       }
     } catch (e) {
