@@ -19,6 +19,18 @@ import { resolveNavKeymap } from './nav-keymap';
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
+import { isProviderValueCyclable } from '@opencues/core';
+
+/** Settings whose values are LLM provider ids — cycling on these
+ *  filters out values whose env key isn't set so the user can't
+ *  commit a broken (provider, no-key) pair via Ctrl+Alt+Up. Mirrors
+ *  the chrome popup's pre-filtered dropdown. */
+const PROVIDER_SCALARS: ReadonlySet<string> = new Set([
+  'llm-provider',
+  'cues-llm-provider',
+  'auditors-llm-provider',
+  'blanks-llm-provider',
+]);
 
 export class Cycling {
   private _unsubUp: Unsubscribe | null = null;
@@ -34,7 +46,36 @@ export class Cycling {
     private spanFillState?: SpanFillState,
     private dismissedBlanks?: DismissedBlanks,
     private selectorSatelliteState?: SelectorSatelliteState,
+    /** Resolves the API-key bag the host gathered at boot. Cycling
+     *  uses this to FILTER llm-provider satellite values so the menu
+     *  never advances to a value the runtime can't dispatch with —
+     *  the "test before you switch" property the chrome popup enforces
+     *  natively. Omit to disable filtering (back-compat default; the
+     *  cycling menu then matches its pre-June-2026 behaviour of
+     *  cycling blindly through every registry-declared value). */
+    private getApiKeys?: () => Readonly<Record<string, string | undefined>>,
+    /** Optional probe for `transport: 'cli'` providers (claude-code-cli,
+     *  openai-subscription) — true iff the CLI binary is on PATH. */
+    private isCliProviderAvailable?: (providerId: string) => boolean,
   ) {}
+
+  /** Filter a setting's value list to those eligible for cycling
+   *  given the current env. Today only `*-llm-provider` scalars are
+   *  filtered; everything else passes through unchanged. */
+  private eligibleValues(scalar: string, values: readonly string[]): readonly string[] {
+    if (!PROVIDER_SCALARS.has(scalar)) return values;
+    if (!this.getApiKeys) return values;
+    const apiKeys = this.getApiKeys();
+    const filtered = values.filter(v =>
+      isProviderValueCyclable(v, apiKeys, { isCliAvailable: this.isCliProviderAvailable }),
+    );
+    // Safety: never collapse the list to empty. If the user has zero
+    // keys + zero CLI providers wired up, fall back to the unfiltered
+    // list so the cycle still steps SOMEWHERE — the runtime then
+    // surfaces the resulting LLM-call failure inline rather than
+    // freezing the menu.
+    return filtered.length > 0 ? filtered : values;
+  }
 
   /**
    * Try host-native blank invocation first; fall back to spawning
@@ -191,7 +232,13 @@ export class Cycling {
       const nextIdx = ((curIdx + direction) % names.length + names.length) % names.length;
       const nextSetting = names[nextIdx];
       const nextDef = definitions.get(nextSetting);
-      const provisionalValue = nextDef?.valueOrder[0] ?? '';
+      // Same filter as the satellite cycle: when stepping the selector
+      // into a `*-llm-provider` scalar, the provisional initial value
+      // must already be eligible — otherwise the cycle would silently
+      // land on an unusable provider before the user has even pressed
+      // satellite-cycle to step it.
+      const provisionalValues = nextDef ? this.eligibleValues(nextSetting, nextDef.valueOrder) : [];
+      const provisionalValue = provisionalValues[0] ?? '';
 
       const newText = spliceSelectorSatellite(event.text, selStartWord, selEndWord, satEndWord, nextSetting, provisionalValue, entry.separator);
       const newRegionEnd = selStartWord.start + nextSetting.length + entry.separator.length + provisionalValue.length;
@@ -255,12 +302,22 @@ export class Cycling {
       return true;
     }
 
-    // Satellite cycle.
+    // Satellite cycle. For `*-llm-provider` scalars, drop values whose
+    // env key isn't set BEFORE picking the next index — the user can't
+    // commit a broken pair via Ctrl+Alt+Up. Non-provider scalars pass
+    // through `eligibleValues` unchanged.
     const def = definitions.get(entry.currentSetting);
     if (!def || def.valueOrder.length === 0) return false;
-    const valIdx = def.valueOrder.indexOf(entry.currentValue);
-    const nextValIdx = ((valIdx + direction) % def.valueOrder.length + def.valueOrder.length) % def.valueOrder.length;
-    const nextValue = def.valueOrder[nextValIdx];
+    const values = this.eligibleValues(entry.currentSetting, def.valueOrder);
+    // Keep currentValue's index stable even when it isn't in the
+    // filtered list (e.g. user manually set `blanks-llm-provider: groq`
+    // without GROQ_API_KEY → cycle Up moves to the FIRST eligible
+    // value, not the next slot from groq's original index).
+    const valIdx = values.indexOf(entry.currentValue);
+    const baseIdx = valIdx >= 0 ? valIdx : 0;
+    const startIdx = valIdx >= 0 ? baseIdx + direction : 0;
+    const nextValIdx = ((startIdx) % values.length + values.length) % values.length;
+    const nextValue = values[nextValIdx];
 
     const newText = spliceSelectorSatellite(event.text, selStartWord, selEndWord, satEndWord, entry.currentSetting, nextValue, entry.separator);
     const newRegionEnd = selStartWord.start + entry.currentSetting.length + entry.separator.length + nextValue.length;

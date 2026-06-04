@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Added — cycling `*-llm-provider` settings now SKIPS values whose env key isn't set
+
+Same "test before you switch" property the chrome popup enforces natively: cycling on the CLI hosts (CC / OC / gemini / shell) must not land on a provider value the runtime can't actually dispatch with. Prior to this change, `config _` → cycle to `blanks-llm-provider` → Ctrl+Alt+Up stepped through every registry-declared value blindly. A user with only `CEREBRAS_API_KEY` set could land on `groq`, commit `blanks-llm-provider: groq` to `~/.cues/OPENCUES.md`, then watch every subsequent `_` silently no-op until they read `/tmp/opencues.log` (or, with #65 landed, see the inline `[OpenCues: API key rejected ...]` substitute).
+
+New predicate `isProviderValueCyclable(providerId, apiKeys, { isCliAvailable? })` in `@opencues/core/llm-provider.ts` encodes the eligibility rule: `inherit` is always cyclable; `transport: 'cli'` providers (claude-code-cli, openai-subscription) are cyclable iff their CLI binary is on PATH; `optionalAuth: true` providers (opencode-zen) are cyclable without a key; all others require `apiKeys[provider.envKeyName]` to be set. Cycling reads it via a new `getApiKeys: () => apiKeys` callback threaded through `buildSharedRuntime` and the per-host adapter bands.
+
+Safety net: when the filter would collapse a setting's value list to empty (no eligible providers + no `inherit` in the list), the cycle falls back to the unfiltered list so it still steps SOMEWHERE — the runtime then surfaces the resulting LLM-call failure inline (#65) rather than freezing the menu on the same value forever.
+
+Scope is intentionally narrow — only `llm-provider`, `cues-llm-provider`, `auditors-llm-provider`, `blanks-llm-provider` scalars are filtered. Other settings (voice-mode, debug-mode, tips-mode, etc.) cycle unchanged. Hosts that don't thread `getApiKeys` (back-compat path) keep the pre-change blind-cycle semantic, so third-party adapters don't break.
+
+7 new tests in `cycling.test.ts` pin the matrix (zero keys / one key / multi-key cycling forward + reverse / back-compat default / never-empty safety net / non-provider-scalar pass-through). 6 unit tests in `llm-provider.test.ts` pin `isProviderValueCyclable` independently across http / cli / optionalAuth / unknown-id / legacy-alias cases.
+
+Versions bumped: `@opencues/core` 0.1.9 → 0.1.10, `@opencues/runtime` 0.1.18 → 0.1.19.
+
 ### Fixed — fluid-blank chain extension now survives a multi-word first answer
 
 Pre-existing regression surfaced by live-testing the scroll-order fix below. Fluid-blank stored its DynDef `spanEnd` as the END OF THE FIRST WORD of the substitution (`newSpanEnd = newWord.end` in `resolver.ts:1235`). For a single-word answer that happened to be correct; for a multi-word answer like `William Shakespeare` inserted at char 0, `spanEnd` landed at 7 (end of `William`) instead of 19 (end of `Shakespeare`). The next substitute's chain verbatim check (`liveText.slice(spanStart, spanEnd) === currentAlt`) then compared `"William "` against `"William Shakespeare"` and bailed, dropping the first link from the chain — a 3-step lookup chain ended up only 2 links deep, with the original prompt + first answer silently missing from the walk-back history.

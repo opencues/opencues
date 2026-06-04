@@ -389,6 +389,19 @@ export interface BuildSharedRuntimeOptions {
   /** Path to `OPENCUES.md` (user-level runtime config, frontmatter
    *  format). When unset, settings stay at runtime defaults. */
   readonly settingsFile?: string;
+  /** Resolves the API-key bag the host gathered at boot. Threaded into
+   *  Cycling so the satellite-cycle path can skip llm-provider values
+   *  whose env key isn't set — prevents committing a broken
+   *  (provider, no-key) pair to OPENCUES.md via Ctrl+Alt+Up.
+   *  Omit to disable filtering (back-compat default; the cycling menu
+   *  then matches its pre-June-2026 behaviour of cycling blindly). */
+  readonly getApiKeys?: () => Readonly<Record<string, string | undefined>>;
+  /** Optional probe for `transport: 'cli'` providers
+   *  (claude-code-cli, openai-subscription) — true iff the CLI binary
+   *  is on PATH. Hosts that don't shell out (chrome) leave undefined,
+   *  in which case CLI providers are conservatively dropped from the
+   *  cycling menu. */
+  readonly isCliProviderAvailable?: (providerId: string) => boolean;
 }
 
 /**
@@ -442,7 +455,7 @@ export function buildSharedRuntime(
   adapter: HostAdapter,
   opts: BuildSharedRuntimeOptions,
 ): SharedRuntime {
-  const { log, configSearchPaths, settingsFile } = opts;
+  const { log, configSearchPaths, settingsFile, getApiKeys, isCliProviderAvailable } = opts;
 
   // Fire-and-forget direct-launch drift advisory. Runs once per boot,
   // catches users who launched the host directly (bypassing
@@ -480,6 +493,7 @@ export function buildSharedRuntime(
   const cycling = new Cycling(
     adapter, hlState, dynDefs, configLoader,
     spanFillState, dismissedBlanks, selectorSatelliteState,
+    getApiKeys, isCliProviderAvailable,
   );
   cycling.subscribe();
 

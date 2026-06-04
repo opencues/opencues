@@ -503,7 +503,16 @@ export function boot(host: HostInfo): BootResult {
   navigation.subscribe();
   const dimRender = new DimRender(adapter, hlState, dynDefs, configLoader, spanFillState, selectorSatelliteState);
   dimRender.subscribe();
-  const cycling = new Cycling(adapter, hlState, dynDefs, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState);
+  // Build the multi-provider key bag here (rather than next to the
+  // Resolver constructor below) so Cycling's satellite-cycle filter
+  // sees the same keys the Resolver will dispatch against.
+  const apiKeys: Record<string, string | undefined> = { ...(host.llmApiKeys ?? {}) };
+  if (host.llmApiKey && !apiKeys.GROQ_API_KEY) apiKeys.GROQ_API_KEY = host.llmApiKey;
+  const cycling = new Cycling(
+    adapter, hlState, dynDefs, configLoader,
+    spanFillState, dismissedBlanks, selectorSatelliteState,
+    () => apiKeys,
+  );
   cycling.subscribe();
 
   // BlankFill: scans for `_` placeholders + matched blank. Owns the
@@ -590,8 +599,8 @@ export function boot(host: HostInfo): BootResult {
   // Resolver: LLM-driven cycle population. Only constructed when an API key
   // is present. Subscribes once configLoader.load() resolves so the resolver
   // can build sources from cuesConfig + blanksConfig.
-  const apiKeys: Record<string, string | undefined> = { ...(host.llmApiKeys ?? {}) };
-  if (host.llmApiKey && !apiKeys.GROQ_API_KEY) apiKeys.GROQ_API_KEY = host.llmApiKey;
+  // `apiKeys` is constructed above (next to Cycling) so the cycling
+  // filter sees the same bag.
   const hasAnyKey = Object.values(apiKeys).some(Boolean);
   // Resolver is constructed even with no keys so the MissingKeyFallbackSource
   // can substitute a visible in-buffer hint on `_` instead of silent no-op.

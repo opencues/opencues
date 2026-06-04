@@ -132,6 +132,7 @@ export {
   PROVIDER_IDS,
   PROVIDER_AUTO_ORDER,
   getProvider,
+  isProviderValueCyclable,
   listProviders,
   buildProviderRequest,
   parseProviderResponse,

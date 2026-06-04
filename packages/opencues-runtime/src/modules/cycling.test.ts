@@ -1016,3 +1016,246 @@ settings:
     expect(spawnSpy).toHaveBeenCalled();
   });
 });
+
+describe('Cycling — satellite cycle FILTERS llm-provider values whose env key is unset', () => {
+  // Pins the "test BEFORE you switch" invariant the user named: cycling
+  // a `*-llm-provider` scalar MUST skip values whose env key isn't
+  // present in the bag passed via `getApiKeys`. Mirrors chrome's popup,
+  // which already drops un-keyed providers from its dropdown via
+  // `isKeyValid()`. Without the filter, Ctrl+Alt+Up could land on
+  // `groq` while GROQ_API_KEY is unset → next `_` silently no-ops
+  // until the user reads `/tmp/opencues.log`. With it, the cycle steps
+  // directly to the next eligible value (or falls back to `inherit`).
+
+  const SETTINGS_MD = `---
+blanks-llm-provider: inherit
+settings:
+  blanks-llm-provider:
+    tip: Provider for blank-class sources.
+    values:
+      inherit: Default
+      groq: Groq
+      cerebras: Cerebras
+      anthropic: Anthropic
+      openai: OpenAI
+      gemini: Gemini
+---`;
+
+  async function setup(apiKeys: Record<string, string | undefined>) {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': SETTINGS_MD },
+    });
+    adapter.pushText('blanks-llm-provider inherit');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const ss = new SelectorSatelliteState();
+    ss.set({
+      blankName: 'opencues',
+      scriptPath: '/tmp/oc.sh',
+      selectorIndex: 0,
+      selectorLength: 1,
+      satelliteIndex: 1,
+      satelliteLength: 1,
+      currentSetting: 'blanks-llm-provider',
+      currentValue: 'inherit',
+      separator: ' ',
+      clearOnEdit: false,
+    }, 'blanks-llm-provider inherit');
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    await loader.load();
+    const cycling = new Cycling(
+      adapter, hlState, dynDefs, loader,
+      undefined, undefined, ss,
+      () => apiKeys,
+    );
+    cycling.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: '', stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    return { adapter, hlState, ss };
+  }
+
+  it('with no keys set, satellite cycle stays on the only eligible value (inherit)', async () => {
+    const { adapter, hlState } = await setup({});
+    hlState.activate(1, 'blanks-llm-provider inherit'); // satellite word
+    adapter.setCursorOffset('blanks-llm-provider inherit'.length);
+    // Up should walk: inherit -> (skip groq/cerebras/anthropic/openai/gemini, all unkeyed) -> wrap to inherit.
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    expect(adapter.setTextCalls.at(-1)).toBe('blanks-llm-provider inherit');
+  });
+
+  it('with GROQ_API_KEY set, satellite cycle Up walks inherit → groq', async () => {
+    const { adapter, hlState } = await setup({ GROQ_API_KEY: 'gsk_test' });
+    hlState.activate(1, 'blanks-llm-provider inherit');
+    adapter.setCursorOffset('blanks-llm-provider inherit'.length);
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    expect(adapter.setTextCalls.at(-1)).toBe('blanks-llm-provider groq');
+  });
+
+  it('with GROQ + CEREBRAS set, satellite cycle SKIPS unkeyed anthropic/openai/gemini', async () => {
+    const { adapter, hlState } = await setup({
+      GROQ_API_KEY: 'gsk_test',
+      CEREBRAS_API_KEY: 'csk_test',
+    });
+    hlState.activate(1, 'blanks-llm-provider inherit');
+    adapter.setCursorOffset('blanks-llm-provider inherit'.length);
+    // inherit → groq → cerebras → wrap to inherit (anthropic/openai/gemini all skipped).
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    expect(adapter.setTextCalls.at(-1)).toBe('blanks-llm-provider groq');
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    expect(adapter.setTextCalls.at(-1)).toBe('blanks-llm-provider cerebras');
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    expect(adapter.setTextCalls.at(-1)).toBe('blanks-llm-provider inherit');
+  });
+
+  it('Down walks the eligible set in reverse', async () => {
+    const { adapter, hlState } = await setup({
+      GROQ_API_KEY: 'gsk_test',
+      CEREBRAS_API_KEY: 'csk_test',
+    });
+    hlState.activate(1, 'blanks-llm-provider inherit');
+    adapter.setCursorOffset('blanks-llm-provider inherit'.length);
+    // Down: inherit → cerebras → groq → inherit.
+    adapter.fireKey('down', { ctrl: true, alt: true });
+    expect(adapter.setTextCalls.at(-1)).toBe('blanks-llm-provider cerebras');
+    adapter.fireKey('down', { ctrl: true, alt: true });
+    expect(adapter.setTextCalls.at(-1)).toBe('blanks-llm-provider groq');
+  });
+
+  it('without getApiKeys (back-compat default), cycling stays blind — all values eligible', async () => {
+    // Mirrors the pre-June 2026 behaviour. Hosts that DON'T thread
+    // apiKeys (or third-party adapters that haven't updated yet) keep
+    // the original "cycle through every registry-declared value"
+    // semantic. The inline-error substitute (#65) is the safety net.
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': SETTINGS_MD },
+    });
+    adapter.pushText('blanks-llm-provider inherit');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const ss = new SelectorSatelliteState();
+    ss.set({
+      blankName: 'opencues', scriptPath: '/tmp/oc.sh',
+      selectorIndex: 0, selectorLength: 1,
+      satelliteIndex: 1, satelliteLength: 1,
+      currentSetting: 'blanks-llm-provider', currentValue: 'inherit',
+      separator: ' ', clearOnEdit: false,
+    }, 'blanks-llm-provider inherit');
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    await loader.load();
+    // NO getApiKeys argument — filter disabled.
+    const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
+    cycling.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: '', stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    hlState.activate(1, 'blanks-llm-provider inherit');
+    adapter.setCursorOffset('blanks-llm-provider inherit'.length);
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    // No filter → cycle takes the literal next value (groq), regardless
+    // of env state.
+    expect(adapter.setTextCalls.at(-1)).toBe('blanks-llm-provider groq');
+  });
+
+  it('NEVER collapses to empty — when zero values would be eligible, falls back to unfiltered list', async () => {
+    // Defensive: if a config pack adds an `*-llm-provider` scalar whose
+    // values are ALL un-keyed (and inherit isn't in the list), cycling
+    // would have nothing to step to. The filter falls back to the
+    // unfiltered list so the cycle still moves SOMEWHERE; the runtime
+    // then surfaces the resulting LLM-call failure inline rather than
+    // freezing the menu on the same value forever.
+    const NO_INHERIT_MD = `---
+blanks-llm-provider: groq
+settings:
+  blanks-llm-provider:
+    tip: Provider for blank-class sources.
+    values:
+      groq: Groq
+      anthropic: Anthropic
+---`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': NO_INHERIT_MD },
+    });
+    adapter.pushText('blanks-llm-provider groq');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const ss = new SelectorSatelliteState();
+    ss.set({
+      blankName: 'opencues', scriptPath: '/tmp/oc.sh',
+      selectorIndex: 0, selectorLength: 1,
+      satelliteIndex: 1, satelliteLength: 1,
+      currentSetting: 'blanks-llm-provider', currentValue: 'groq',
+      separator: ' ', clearOnEdit: false,
+    }, 'blanks-llm-provider groq');
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    await loader.load();
+    const cycling = new Cycling(
+      adapter, hlState, dynDefs, loader,
+      undefined, undefined, ss,
+      () => ({}), // no keys
+    );
+    cycling.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: '', stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    hlState.activate(1, 'blanks-llm-provider groq');
+    adapter.setCursorOffset('blanks-llm-provider groq'.length);
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    // Both values are unkeyed → filter would collapse to empty → safety
+    // net falls back to unfiltered values → cycle steps to next literal
+    // (anthropic). The inline-error substitute will surface the issue
+    // on the next `_`.
+    expect(adapter.setTextCalls.at(-1)).toBe('blanks-llm-provider anthropic');
+  });
+
+  it('non-provider scalars (e.g. voice-mode) are NOT filtered — only *-llm-provider gates', async () => {
+    // The filter scope is narrow on purpose: cycling voice-mode /
+    // debug-mode / tips-mode etc. must keep working unchanged regardless
+    // of which API keys are set.
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': `---
+voice-mode: active
+settings:
+  voice-mode:
+    tip: Gates TTS
+    values:
+      active: a
+      inactive: i
+---` },
+    });
+    adapter.pushText('voice-mode active');
+    const hlState = new HighlightState();
+    const ss = new SelectorSatelliteState();
+    ss.set({
+      blankName: 'opencues', scriptPath: '/tmp/oc.sh',
+      selectorIndex: 0, selectorLength: 1,
+      satelliteIndex: 1, satelliteLength: 1,
+      currentSetting: 'voice-mode', currentValue: 'active',
+      separator: ' ', clearOnEdit: false,
+    }, 'voice-mode active');
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    await loader.load();
+    // getApiKeys returns empty — but voice-mode isn't a provider scalar.
+    const cycling = new Cycling(
+      adapter, hlState, new DynDefs(), loader,
+      undefined, undefined, ss,
+      () => ({}),
+    );
+    cycling.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: '', stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    hlState.activate(1, 'voice-mode active');
+    adapter.setCursorOffset('voice-mode active'.length);
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    expect(adapter.setTextCalls.at(-1)).toBe('voice-mode inactive');
+  });
+});

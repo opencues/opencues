@@ -1285,6 +1285,51 @@ export function pickAutoProvider(apiKeys: Readonly<Record<string, string | undef
 }
 
 /**
+ * Decide whether a provider-bucket scalar value (e.g. for
+ * `blanks-llm-provider`) should be ELIGIBLE for the cycling menu given
+ * the current set of API keys. Mirrors the chrome popup's "don't show
+ * providers whose key isn't entered" behaviour: cycling on a CLI host
+ * MUST NOT land on a value the runtime can't actually dispatch with.
+ *
+ * Eligibility rules:
+ *   - `inherit` — always eligible (delegates to global `llm-provider:`
+ *     which has its own auto-route fallback).
+ *   - `transport: 'cli'` providers (claude-code-cli, openai-subscription)
+ *     — eligible iff their CLI binary is on PATH. Caller supplies the
+ *     check via `isCliAvailable(providerId)` because `@opencues/core`
+ *     doesn't shell out. When the callback is omitted, CLI providers
+ *     are conservatively NOT cyclable (matches the chrome popup, which
+ *     also can't probe arbitrary binaries).
+ *   - `optionalAuth: true` providers (opencode-zen) — eligible (they
+ *     authenticate anonymously for the free pool).
+ *   - All others — eligible iff `apiKeys[provider.envKeyName]` is set.
+ *
+ * Unknown ids — NOT eligible. The cycling menu only advertises values
+ * the runtime can actually dispatch with; an unrecognised id is treated
+ * the same as a broken provider config.
+ */
+export function isProviderValueCyclable(
+  providerId: string,
+  apiKeys: Readonly<Record<string, string | undefined>>,
+  options: {
+    /** Probes whether a `transport: 'cli'` provider's binary is on
+     *  PATH. Called only for the CLI subset; omit when callers don't
+     *  shell out (e.g. unit tests, chrome). */
+    readonly isCliAvailable?: (providerId: string) => boolean;
+  } = {},
+): boolean {
+  if (providerId === 'inherit') return true;
+  const canonical = (LEGACY_PROVIDER_ALIASES[providerId] ?? providerId) as ProviderId;
+  const adapter = PROVIDERS[canonical];
+  if (!adapter) return false;
+  if (adapter.transport === 'cli') {
+    return options.isCliAvailable?.(canonical) ?? false;
+  }
+  if (adapter.optionalAuth) return true;
+  return Boolean(apiKeys[adapter.envKeyName]);
+}
+
+/**
  * Look up a provider adapter by id. Unknown id → null (caller must
  * decide whether to fall back to default or raise). The runtime's
  * config-loader validates the setting at parse time so this rarely

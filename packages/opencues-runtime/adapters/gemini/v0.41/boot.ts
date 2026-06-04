@@ -333,7 +333,14 @@ export function boot(host: HostInfo): BootResult {
   const settingsFile = process.env.OPENCUES_HOME
     ? `${process.env.OPENCUES_HOME}/OPENCUES.md`
     : `${HOME}/.cues/OPENCUES.md`;
-  const shared = buildSharedRuntime(adapter, { log, configSearchPaths, settingsFile });
+  // Build the multi-provider key bag here so Cycling's satellite
+  // filter sees the same bag the Resolver dispatches against below.
+  const apiKeys: Record<string, string | undefined> = { ...(host.llmApiKeys ?? {}) };
+  if (host.llmApiKey && !apiKeys.GROQ_API_KEY) apiKeys.GROQ_API_KEY = host.llmApiKey;
+  const shared = buildSharedRuntime(adapter, {
+    log, configSearchPaths, settingsFile,
+    getApiKeys: () => apiKeys,
+  });
   configLoaderRef = shared.configLoader;
 
   const {
@@ -371,8 +378,8 @@ export function boot(host: HostInfo): BootResult {
   }
 
   // Phase G.7 — LLM Resolver + AgentRewrite. Same wiring as OC band.
-  const apiKeys: Record<string, string | undefined> = { ...(host.llmApiKeys ?? {}) };
-  if (host.llmApiKey && !apiKeys.GROQ_API_KEY) apiKeys.GROQ_API_KEY = host.llmApiKey;
+  // `apiKeys` is built above (before buildSharedRuntime) so Cycling's
+  // satellite filter sees the same bag.
   const hasAnyKey = Object.values(apiKeys).some(Boolean);
   // Resolver constructed even with no keys so MissingKeyFallbackSource
   // surfaces a visible in-buffer hint on `_` instead of silent no-op.
