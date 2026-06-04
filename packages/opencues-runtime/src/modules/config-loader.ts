@@ -342,13 +342,8 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   //
   // Tests keep shipping mock `settings:` blocks; they get the
   // file-driven definitions, identical to the pre-refactor behaviour.
-<<<<<<< HEAD
   const definitions = mergeDefinitions(getMenuDefinitions(undefined, settings), parseSettingsBlock(lines));
-  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, sentinelsMode, blankTriggerMode, navKeymap, cuesLlmProvider, auditorsLlmProvider, blanksLlmProvider, settings, definitions };
-=======
-  const definitions = mergeDefinitions(getMenuDefinitions(), parseSettingsBlock(lines));
   return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, identityContextMode, blankContextMode, blankTriggerMode, navKeymap, cuesLlmProvider, auditorsLlmProvider, blanksLlmProvider, settings, definitions };
->>>>>>> feat: rename sentinels → identity-context + blank-as-context + cleanup CLI
 }
 
 /**
