@@ -1,6 +1,6 @@
 {
   "name": "@opencues/core",
-  "version": "0.1.12",
+  "version": "0.2.1",
   "description": "Core OpenCues library - pure TypeScript, no I/O dependencies",
   "private": true,
   "main": "dist/index.js",
@@ -23,7 +23,11 @@
     "bench:providers": "tsc --skipLibCheck --rootDir . --outDir dist-smoke scripts/bench-providers.ts && node dist-smoke/scripts/bench-providers.js",
     "bench:websocket": "tsc --skipLibCheck --rootDir . --outDir dist-smoke scripts/bench-websocket-mode.ts && node dist-smoke/scripts/bench-websocket-mode.js"
   },
-  "keywords": ["cues", "alternatives", "tips"],
+  "keywords": [
+    "cues",
+    "alternatives",
+    "tips"
+  ],
   "license": "UNLICENSED",
   "devDependencies": {
     "@types/node": "^22.0.0"

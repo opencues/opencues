@@ -1,7 +1,7 @@
 /**
- * Sentinels — sentinel-mode personal-data injection for fluid-blank.
+ * Identity — sentinel-mode personal-data injection for fluid-blank.
  *
- * Parses `~/.cues/SENTINELS.md`'s YAML frontmatter into a `Sentinels`, and
+ * Parses `~/.cues/SENTINELS.md`'s YAML frontmatter into a `Identity`, and
  * provides the runtime helpers FluidBlankSource needs to:
  *
  *   - render a catalog block for injection into the LLM prompt (in
@@ -21,13 +21,13 @@
  * names and descriptions); in `raw` mode values are inlined.
  */
 
-export type SentinelsMode = 'off' | 'safe' | 'raw';
+export type ContextMode = 'off' | 'safe' | 'raw';
 
 /** Single field — `firstName: Wilfred` → token=`[FIRST NAME]`,
  *  key=`firstName`, value=`Wilfred`. Description auto-derived from
  *  the key unless an explicit `# description` comment was on the
  *  same line in SENTINELS.md. */
-export interface Sentinel {
+export interface IdentityField {
   /** Frontmatter key, verbatim (`firstName`, `first_name`, `first-name`). */
   key: string;
   /** Canonical sentinel-token form: `[UPPERCASE WORDS]`. */
@@ -40,8 +40,8 @@ export interface Sentinel {
 
 /** Parsed SENTINELS.md — the runtime hands this through to FluidBlankSource
  *  when `sentinels-mode` is on. */
-export interface Sentinels {
-  readonly fields: readonly Sentinel[];
+export interface Identity {
+  readonly fields: readonly IdentityField[];
   /** Convenience lookup: token → value. Built once at parse-time. */
   readonly catalog: ReadonlyMap<string, string>;
 }
@@ -102,16 +102,16 @@ export function deriveToken(key: string): string {
  * field's description for the LLM catalog. Without it, the
  * description is auto-derived from the key.
  *
- * Returns an empty Sentinels on missing/empty frontmatter so
+ * Returns an empty Identity on missing/empty frontmatter so
  * downstream code can treat "no USER.md" and "empty USER.md" the same.
  */
-export function parseSentinelsMd(content: string | null | undefined): Sentinels {
-  const empty: Sentinels = { fields: [], catalog: new Map() };
+export function parseIdentityMd(content: string | null | undefined): Identity {
+  const empty: Identity = { fields: [], catalog: new Map() };
   if (!content) return empty;
   const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
   if (!fmMatch || !fmMatch[1].trim()) return empty;
 
-  const fields: Sentinel[] = [];
+  const fields: IdentityField[] = [];
   const catalog = new Map<string, string>();
   for (const line of fmMatch[1].split('\n')) {
     if (!line || line.startsWith('#')) continue;
@@ -210,7 +210,7 @@ function autoDescribe(key: string): string {
  * Returns an empty string when the catalog has no entries, so the
  * caller can append the result verbatim without conditional logic.
  */
-export function renderSentinelsCatalog(ctx: Sentinels, mode: SentinelsMode): string {
+export function renderIdentityContextCatalog(ctx: Identity, mode: ContextMode): string {
   if (mode === 'off' || ctx.fields.length === 0) return '';
   const header = `USER CONTEXT — available tokens (emit verbatim; the runtime substitutes the real value before it reaches the user's buffer):`;
   const lines = ctx.fields.map(f =>
@@ -248,7 +248,7 @@ export function renderSentinelsCatalog(ctx: Sentinels, mode: SentinelsMode): str
  * Render the catalog block for TransformBlank's APPLY / GENERATIVE /
  * FUSED prompts.
  *
- * Different rule set from `renderSentinelsCatalog` (which targets
+ * Different rule set from `renderIdentityContextCatalog` (which targets
  * FluidBlank's form-field-aware fused prompt). TransformBlank produces
  * rewrites and generated content; the LLM legitimately emits
  * placeholders for non-user entities (`[Recipient Name]` in an email,
@@ -264,9 +264,9 @@ export function renderSentinelsCatalog(ctx: Sentinels, mode: SentinelsMode): str
  * Returns empty string when mode is off or the catalog is empty, so
  * callers can append verbatim without conditional logic.
  */
-export function renderSentinelsCatalogForTransform(
-  ctx: Sentinels,
-  mode: SentinelsMode,
+export function renderIdentityContextCatalogForTransform(
+  ctx: Identity,
+  mode: ContextMode,
 ): string {
   if (mode === 'off' || ctx.fields.length === 0) return '';
   const header = `USER CONTEXT — tokens for the SENDER / AUTHOR / USER (the person composing this content). The runtime substitutes the real value before it reaches the user's buffer:`;
@@ -294,7 +294,7 @@ export function renderSentinelsCatalogForTransform(
 // against 5-provider matrix).
 
 export interface PostProcessOptions {
-  /** Token → value catalog (from Sentinels.catalog). */
+  /** Token → value catalog (from Identity.catalog). */
   catalog: ReadonlyMap<string, string>;
   /** Pre-edit body text. Any bracket-token already present here is
    *  preserved verbatim — the user's text wins over substitution. */
@@ -340,7 +340,7 @@ function buildCanonicalIndex(catalog: ReadonlyMap<string, string>): Map<string, 
   return idx;
 }
 
-export function postProcessSentinels(
+export function postProcessContext(
   llmOutput: string,
   opts: PostProcessOptions,
 ): PostProcessResult {
@@ -384,3 +384,4 @@ export function postProcessSentinels(
 
   return { output, report };
 }
+

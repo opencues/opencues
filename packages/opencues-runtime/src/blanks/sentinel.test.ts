@@ -197,8 +197,8 @@ describe('SentinelBlank — security: validator is the only write path', () => {
     await b.get('set sentinel', ['twitter', '@inventor']);  // needs quoting
     await b.get('set sentinel', ['greeting', 'yes']);        // YAML reserved word
     // Re-parse and check the catalog is intact.
-    const { parseSentinelsMd } = await import('@opencues/core');
-    const ctx = parseSentinelsMd(io.text);
+    const { parseIdentityMd } = await import('@opencues/core');
+    const ctx = parseIdentityMd(io.text);
     const map = new Map(ctx.fields.map(f => [f.key, f.value]));
     expect(map.get('firstName')).toBe('Wilfred');
     expect(map.get('twitter')).toBe('@inventor');

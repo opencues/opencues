@@ -514,10 +514,14 @@ export const FEATURES: readonly FeatureSpec[] = [
     ],
   },
   {
-    scalar: 'sentinels-mode',
-    camelCase: 'sentinelsMode',
-    description: 'Personal data injected into fluid-blank as sentinel tokens',
-    menuTip: 'Inject ~/.cues/SENTINELS.md fields (first name, email, etc.) as sentinel tokens into fluid-blank for personalised lookups.',
+    // Renamed June 2026 from `sentinels-mode` → `identity-context-mode`
+    // to disambiguate from blank-context and ambient-context (now all
+    // three are explicit "context" sources). ConfigLoader reads the
+    // legacy `sentinels-mode` scalar as a fallback for one release.
+    scalar: 'identity-context-mode',
+    camelCase: 'identityContextMode',
+    description: 'Personal identity data injected into fluid-blank as context tokens',
+    menuTip: 'Inject ~/.cues/IDENTITY.md fields (first name, email, etc.) as identity-context tokens into fluid-blank for personalised lookups.',
     values: [
       { id: 'off',  description: 'Disabled (default) — SENTINELS.md never read' },
       { id: 'safe', description: 'Tokens-only catalog sent to LLM; post-processor substitutes values after response. PII stays on the host.' },
@@ -529,11 +533,28 @@ export const FEATURES: readonly FeatureSpec[] = [
       { id: 'raw',  description: 'Catalog values inlined into prompt; PII reaches the LLM provider', exposeInMenu: false },
     ],
     prereqFile: {
-      basename: 'SENTINELS.md',
-      template: 'defaults/SENTINELS.md',
+      // ConfigLoader reads IDENTITY.md primarily and falls back to
+      // SENTINELS.md for one release. seed-configs ships IDENTITY.md
+      // as the canonical template.
+      basename: 'IDENTITY.md',
+      template: 'defaults/IDENTITY.md',
       mustHavePopulatedFields: true,
     },
     pushedBy: ['chrome-host'],
+  },
+  {
+    scalar: 'blank-context-mode',
+    camelCase: 'blankContextMode',
+    description: 'Blanks expose their current values as ambient tokens for fluid-blank',
+    menuTip: 'Expose context-eligible blanks (stocks, weather, crypto, …) as ambient tokens fluid-blank can reach without typing the keyword. See docs/features/blank-as-context.md.',
+    values: [
+      { id: 'off',  description: 'Disabled (default) — blanks only fire on the keyword-trigger path' },
+      { id: 'safe', description: 'Tokens-only catalog; post-processor substitutes live values after response. Bench-validated at 100% on Cerebras + Groq.' },
+      // Same exposure rule as sentinels — raw is implemented but kept
+      // off the menu. Requires sentinels-mode: raw too (mode-gate
+      // composition pinned in docs/architecture/blank-as-context.md).
+      { id: 'raw',  description: 'Live values inlined into the prompt; values reach the LLM provider', exposeInMenu: false },
+    ],
   },
 ];
 

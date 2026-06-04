@@ -40,15 +40,15 @@ describe('feature-registry shape', () => {
 
 describe('feature-registry lookups', () => {
   it('findFeature returns the right entry', () => {
-    expect(findFeature('sentinels-mode')?.camelCase).toBe('sentinelsMode');
+    expect(findFeature('identity-context-mode')?.camelCase).toBe('identityContextMode');
     expect(findFeature('does-not-exist')).toBeUndefined();
   });
 
   it('chromeHostFileList includes core files + chrome-host-pushed feature files', () => {
     const list = chromeHostFileList();
     for (const f of CORE_CONFIG_FILES) expect(list).toContain(f);
-    // sentinels-mode declares pushedBy chrome-host → SENTINELS.md must be in the list
-    expect(list).toContain('SENTINELS.md');
+    // identity-context-mode declares pushedBy chrome-host → IDENTITY.md must be in the list
+    expect(list).toContain('IDENTITY.md');
   });
 
   it('chromeHostFileList does NOT include native-only or non-pushed files', () => {
@@ -90,10 +90,10 @@ describe('feature-registry — seedable files', () => {
     }
   });
 
-  it('contains AUDITORS.md (core) + SENTINELS.md (feature)', () => {
+  it('contains AUDITORS.md (core) + IDENTITY.md (feature)', () => {
     const seeds = seedableOptionalFiles().map(s => s.basename);
     expect(seeds).toContain('AUDITORS.md');
-    expect(seeds).toContain('SENTINELS.md');
+    expect(seeds).toContain('IDENTITY.md');
   });
 });
 
@@ -198,7 +198,7 @@ describe('feature-registry — the canonical features must exist', () => {
     'cursor-navigate',
     'debug-mode',
     'ambient-context-mode',
-    'sentinels-mode',
+    'identity-context-mode',
   ];
 
   for (const scalar of canonical) {

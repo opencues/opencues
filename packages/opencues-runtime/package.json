@@ -1,6 +1,10 @@
 {
   "name": "@opencues/runtime",
+<<<<<<< HEAD
   "version": "0.1.20",
+=======
+  "version": "0.2.0",
+>>>>>>> feat: rename sentinels → identity-context + blank-as-context + cleanup CLI
   "description": "Host-agnostic runtime for OpenCues. Hosts implement HostAdapter; runtime owns all feature logic.",
   "private": true,
   "main": "dist/src/index.js",

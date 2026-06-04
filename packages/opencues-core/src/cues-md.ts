@@ -214,6 +214,36 @@ export interface BlankConfig {
   maxLlmPerMinute?: number;
   maxStorageBytes?: number;
   /**
+   * Blank-as-context opt-in. When `safe` or `raw`, the blank
+   * contributes one or more tokens to fluid-blank's ambient prompt
+   * catalog without the user typing the keyword. See
+   * `docs/features/blank-as-context.md` and
+   * `docs/architecture/blank-as-context.md`.
+   * - `off` (default) → keyword-trigger path only; not ambient.
+   * - `safe` → only resolved tokens flow; values substitute post-LLM.
+   * - `raw`  → values inlined into the prompt. Requires
+   *   `sentinels-mode: raw` for consistency.
+   */
+  asContext?: 'off' | 'safe' | 'raw';
+  /** Seconds a snapshot stays cached. Refresh is lazy on prompt-build. */
+  contextTtl?: number;
+  /** Explicit list of slot names. Each slot produces one token
+   *  `[<BLANK> <SLOT>]`. Use this when the slots are static. */
+  contextSlots?: string[];
+  /** Alternative to contextSlots — bind to a sentinel field. Reads
+   *  the sentinel's value; that value (or its split fragments)
+   *  becomes the slot list. */
+  contextBind?: string;
+  /** When set with contextBind, the sentinel's value is split on this
+   *  separator and each fragment becomes a slot. Mandatory ack via
+   *  `splitValuesInTokenNamesAck: true` (the value fragment ends up
+   *  in the token name — only safe for opaque codes like ticker
+   *  symbols, not personal-name-shaped data). */
+  contextBindSplit?: string;
+  /** Required acknowledgement when contextBindSplit is set. The blank
+   *  is dropped from the context catalog if missing. */
+  splitValuesInTokenNamesAck?: boolean;
+  /**
    * Opt-in OS-level sandbox for this blank's script. When 'strict',
    * the runtime wraps the spawn with bubblewrap (Linux/WSL) — readonly
    * filesystem, no network, isolated PID/IPC namespaces. The script
@@ -866,6 +896,13 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   sandbox?: 'strict' | 'off';
   sandboxNet?: 'allow' | 'deny';
   sandboxFs?: 'ro' | 'rw';
+  /** Blank-as-context opt-in. See BlankConfig.asContext. */
+  asContext?: 'off' | 'safe' | 'raw';
+  contextTtl?: number;
+  contextSlots?: string[];
+  contextBind?: string;
+  contextBindSplit?: string;
+  splitValuesInTokenNamesAck?: boolean;
   /** User-shipped JS impl (relative path) or registry name. See BlankConfig.impl. */
   impl?: string;
   /** Capability declarations for user-shipped JS blanks (impl: ./xxx). */
@@ -994,6 +1031,35 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'sandbox': fm.sandbox = value === 'strict' ? 'strict' : 'off'; break;
       case 'sandbox-net': case 'sandboxNet': fm.sandboxNet = value === 'allow' ? 'allow' : 'deny'; break;
       case 'sandbox-fs': case 'sandboxFs': fm.sandboxFs = value === 'rw' ? 'rw' : 'ro'; break;
+      // Blank-as-context opt-in. See docs/architecture/blank-as-context.md.
+      case 'as-context': case 'asContext': case 'ascontext': {
+        const v = value.toLowerCase().trim();
+        if (v === 'off' || v === 'safe' || v === 'raw') fm.asContext = v;
+        break;
+      }
+      case 'context-ttl': case 'contextTtl': case 'contextttl': {
+        const n = parseInt(value, 10);
+        if (Number.isFinite(n) && n > 0) fm.contextTtl = n;
+        break;
+      }
+      case 'context-slots': case 'contextSlots': case 'contextslots': {
+        try {
+          const parsed = JSON.parse(value);
+          if (Array.isArray(parsed)) fm.contextSlots = parsed.map(String);
+        } catch {
+          fm.contextSlots = value.split(',').map(s => s.trim()).filter(Boolean);
+        }
+        break;
+      }
+      case 'context-bind': case 'contextBind': case 'contextbind':
+        fm.contextBind = value.trim(); break;
+      case 'context-bind-split': case 'contextBindSplit': case 'contextbindsplit':
+        fm.contextBindSplit = value.replace(/^['"]|['"]$/g, ''); break;
+      case 'split-values-in-token-names': case 'splitValuesInTokenNames':
+      case 'splitvaluesintokennames':
+        fm.splitValuesInTokenNamesAck = value.trim().toLowerCase() === 'ok'
+          || value.trim().toLowerCase() === 'true';
+        break;
       // impl: defaults to undefined → runtime falls back to <name>Blank
       // class lookup. Relative path → user-shipped JS module (loaded
       // through the capability-constrained user-blank loader).
@@ -1117,6 +1183,12 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
       if (frontmatter.sandbox !== undefined) blank.sandbox = frontmatter.sandbox;
       if (frontmatter.sandboxNet !== undefined) blank.sandboxNet = frontmatter.sandboxNet;
       if (frontmatter.sandboxFs !== undefined) blank.sandboxFs = frontmatter.sandboxFs;
+      if (frontmatter.asContext !== undefined) blank.asContext = frontmatter.asContext;
+      if (frontmatter.contextTtl !== undefined) blank.contextTtl = frontmatter.contextTtl;
+      if (frontmatter.contextSlots !== undefined) blank.contextSlots = frontmatter.contextSlots;
+      if (frontmatter.contextBind !== undefined) blank.contextBind = frontmatter.contextBind;
+      if (frontmatter.contextBindSplit !== undefined) blank.contextBindSplit = frontmatter.contextBindSplit;
+      if (frontmatter.splitValuesInTokenNamesAck !== undefined) blank.splitValuesInTokenNamesAck = frontmatter.splitValuesInTokenNamesAck;
       if (frontmatter.impl !== undefined) {
         // Relative path → resolve to absolute against the BLANK.md's
         // folder. Bare name → stays as-is for runtime registry lookup.

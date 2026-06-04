@@ -16,7 +16,7 @@ import {
   validateSentinelWrite,
   DEFAULT_SENTINEL_CAPS,
   type SentinelField,
-} from './sentinels-validator';
+} from './identity-validator';
 
 const field = (key: string, value: string): SentinelField => ({ key, value });
 

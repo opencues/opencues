@@ -196,17 +196,18 @@ describe('validateAgainstRegistry', () => {
     assert.match(r.reason ?? '', /not cyclable/);
   });
 
-  it('rejects sentinels-mode=raw (exposeInMenu: false — footgun)', () => {
+  it('rejects identity-context-mode=raw (exposeInMenu: false — footgun)', () => {
     // The classifier system prompt excludes hidden values, but defence
     // in depth: if a model emits it anyway, the runtime must NOT apply
     // a footgun mode on semantic-only intent.
-    const r = validateAgainstRegistry({ kind: 'setting', setting: 'sentinels-mode', value: 'raw', confidence: 0.9 });
+    // (Renamed June 2026 from sentinels-mode → identity-context-mode.)
+    const r = validateAgainstRegistry({ kind: 'setting', setting: 'identity-context-mode', value: 'raw', confidence: 0.9 });
     assert.strictEqual(r.ok, false);
     assert.match(r.reason ?? '', /not cyclable/);
   });
 
-  it('accepts sentinels-mode=safe (cyclable)', () => {
-    const r = validateAgainstRegistry({ kind: 'setting', setting: 'sentinels-mode', value: 'safe', confidence: 0.9 });
+  it('accepts identity-context-mode=safe (cyclable)', () => {
+    const r = validateAgainstRegistry({ kind: 'setting', setting: 'identity-context-mode', value: 'safe', confidence: 0.9 });
     assert.strictEqual(r.ok, true);
   });
 

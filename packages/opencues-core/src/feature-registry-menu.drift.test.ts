@@ -65,9 +65,10 @@ describe('menu definitions ↔ FEATURES + MENU_TUNABLES', () => {
     }
   });
 
-  it('sentinels-mode hides `raw` from the menu', () => {
+  it('identity-context-mode hides `raw` from the menu', () => {
     // Pin the specific case the exposeInMenu flag was added for.
-    const def = menu.get('sentinels-mode');
+    // (Renamed June 2026 from sentinels-mode → identity-context-mode.)
+    const def = menu.get('identity-context-mode');
     expect(def?.valueOrder).toEqual(['off', 'safe']);
     expect(def?.valueOrder.includes('raw')).toBe(false);
   });
