@@ -6,6 +6,7 @@
  */
 
 import { LocalCueData } from './types';
+import { isSpecCompatible } from './spec-version';
 
 // ============================================================================
 // Types
@@ -16,6 +17,11 @@ export interface CuesMdFrontmatter {
   description?: string;
   domain?: string;
   version?: number;
+  /** Spec version pin — `opencues/<major>.<minor>[-<pre>]`. The
+   *  master-file parsers (CUES.md / BLANKS.md / AUDITORS.md) reject
+   *  files declaring a `spec:` newer than the runtime's pinned
+   *  `SPEC_VERSION`. See `spec-version.ts:isSpecCompatible`. */
+  spec?: string;
   /** Words to never suggest alternatives for (frontmatter form, replaces
    *  the legacy `## Ignore` body section). */
   ignore?: string[];
@@ -222,7 +228,7 @@ export interface BlankConfig {
    * - `off` (default) → keyword-trigger path only; not ambient.
    * - `safe` → only resolved tokens flow; values substitute post-LLM.
    * - `raw`  → values inlined into the prompt. Requires
-   *   `sentinels-mode: raw` for consistency.
+   *   `identity-context-mode: raw` for consistency.
    */
   asContext?: 'off' | 'safe' | 'raw';
   /** Seconds a snapshot stays cached. Refresh is lazy on prompt-build. */
@@ -383,6 +389,16 @@ export interface CuesMdConfig {
 
   /** Raw section content for unknown/extensible sections */
   sections: Record<string, string>;
+
+  /** Populated when the parser refused this file because its `spec:`
+   *  declares a version newer than the runtime supports (or
+   *  cross-major-with-stable-reader, post-1.0). When set, the rest
+   *  of the config is intentionally empty — callers MUST skip the
+   *  source AND surface this string in their logs so the user can
+   *  see why the file isn't loading. Per `SPEC.md`'s "MUST refuse
+   *  files declaring a newer spec:" rule. See
+   *  `spec-version.ts:isSpecCompatible`. */
+  specError?: string;
 }
 
 /**
@@ -489,6 +505,8 @@ function parseFrontmatter(content: string): { frontmatter: CuesMdFrontmatter; bo
     const key = trimmed.slice(0, colonIdx).trim();
     const value = trimmed.slice(colonIdx + 1).trim();
     if (key === 'name') fm.name = value;
+    else if (key === 'description') fm.description = value;
+    else if (key === 'spec') fm.spec = value;
     else if (key === 'domain') fm.domain = value;
     else if (key === 'version') fm.version = parseInt(value, 10) || undefined;
     else if (key === 'ignore') fm.ignore = parseHostList(value); // JSON array OR comma-sep
@@ -782,6 +800,15 @@ function parseIgnoreSection(content: string): string[] {
  */
 export function parseCuesMd(content: string): CuesMdConfig {
   const { frontmatter, body } = parseFrontmatter(content);
+
+  // Spec-version refusal — `SPEC.md` § Version policy.
+  // Returns an intentionally empty config + a populated `specError`
+  // so callers (ConfigLoader / discover) can log + skip.
+  const compat = isSpecCompatible(frontmatter.spec);
+  if (!compat.ok) {
+    return { frontmatter, sections: {}, specError: compat.reason };
+  }
+
   const sections = splitSections(body);
 
   const result: CuesMdConfig = {
@@ -845,6 +872,12 @@ export function parseCuesMd(content: string): CuesMdConfig {
  * Config lives in frontmatter instead of YAML code blocks.
  */
 export interface SingleCueFrontmatter extends CuesMdFrontmatter {
+  /** Spec version pin — `opencues/<major>.<minor>[-<pre>]`. Files
+   *  omitting this are treated as `SPEC_OMIT_DEFAULT`. The parser
+   *  refuses files declaring a `spec:` newer than `SPEC_VERSION`
+   *  (or cross-major-with-stable-reader, post-1.0). See
+   *  `spec-version.ts:isSpecCompatible`. */
+  spec?: string;
   /** Discriminator for `_`-triggered blanks. Cue sources (both static
    *  and LLM-driven) are inferred from data shape — body JSON ⇒ static,
    *  otherwise prompt-driven. Only `'blank'` is meaningful here. */
@@ -961,6 +994,7 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
     switch (key) {
       case 'name': fm.name = value; break;
       case 'description': fm.description = value; break;
+      case 'spec': fm.spec = value; break;
       case 'disable': fm.disable = parseHostList(value); break;
       case 'domain': fm.domain = value; break;
       case 'version': fm.version = parseInt(value, 10) || undefined; break;
@@ -1122,6 +1156,13 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
  */
 export function parseSingleCueMd(content: string, folderPath: string, nameOverride?: string): CuesMdConfig {
   const { frontmatter, body } = parseExtendedFrontmatter(content);
+
+  // Spec-version refusal — see parseCuesMd's comment.
+  const compat = isSpecCompatible(frontmatter.spec);
+  if (!compat.ok) {
+    return { frontmatter, sections: {}, specError: compat.reason };
+  }
+
   const name = frontmatter.name || nameOverride || 'unknown';
 
   const result: CuesMdConfig = {
@@ -1321,6 +1362,13 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
 export function parseSingleAuditorMd(content: string, folderPath: string, nameOverride?: string): CuesMdConfig {
   void folderPath;
   const { frontmatter, body } = parseExtendedFrontmatter(content);
+
+  // Spec-version refusal — see parseCuesMd's comment.
+  const compat = isSpecCompatible(frontmatter.spec);
+  if (!compat.ok) {
+    return { frontmatter, sections: {}, specError: compat.reason };
+  }
+
   const name = frontmatter.name || nameOverride || 'unknown';
 
   const result: CuesMdConfig = {
@@ -1355,6 +1403,13 @@ export function parseSingleAuditorMd(content: string, folderPath: string, nameOv
  */
 function parseMasterFile(content: string, surface: 'cues' | 'blanks' | 'auditors'): CuesMdConfig {
   const { frontmatter } = parseExtendedFrontmatter(content);
+
+  // Spec-version refusal — see parseCuesMd's comment.
+  const compat = isSpecCompatible(frontmatter.spec);
+  if (!compat.ok) {
+    return { frontmatter, sections: {}, specError: compat.reason };
+  }
+
   const result: CuesMdConfig = { frontmatter, sections: {} };
   const disableRaw = (frontmatter as { disable?: unknown }).disable;
   const disable = Array.isArray(disableRaw)

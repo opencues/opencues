@@ -14,6 +14,80 @@ breaking.
 
 ## [Unreleased]
 
+### Enforced
+
+- **Spec-version refusal gate** — the `0.x` normative claim "A
+  conforming reader MUST refuse to parse a file whose declared spec
+  version is higher than the reader's pinned `SPEC_VERSION`" is now
+  actually enforced by the reference implementation. Previously the
+  parsers ignored the `spec:` frontmatter field and the conformance
+  fixture for `spec-too-new` was regex-matched against the fixture
+  content rather than exercised against the runtime. Reference impl
+  details + 39 unit/integration tests are in the root `CHANGELOG.md`;
+  the spec itself is unchanged — what changed is that the existing
+  rule now actually holds at runtime.
+
+---
+
+## [0.2.0-alpha] — 2026-06-04
+
+Spec bump: extending the wire-format surface with the sentinel /
+identity-context mechanism. Adds one new spec doc, one new section in
+an existing spec, schema updates, and a host-rename. Additive over
+`0.1-alpha`; a `0.1-alpha` reader will refuse `spec: opencues/0.2-alpha`
+files per the "newer-spec-refuse" rule (`SPEC.md` § Version policy).
+
+### Added
+
+- **`identity-context-spec.md`** — new spec for `IDENTITY.md` (the
+  user's personal-data catalog), the canonical sentinel-token
+  derivation algorithm (`firstName` → `[FIRST NAME]`), and the
+  catalog-injection / post-processing contract for runtimes that
+  choose to personalise LLM-bound prompts. Opt-in via the
+  `identity-context-mode` scalar in `OPENCUES.md`; default `off`.
+  Includes capacity caps, collision-rejection, mode-gate composition
+  with `blank-context-mode`, and the security-claim list a second
+  implementation must honour.
+
+- **`blank-spec.md` § Sentinel aspects** — new section defining
+  how blanks participate in the sentinel mechanism:
+  - `as-context: off | safe | raw` optional frontmatter for
+    blank-as-context (the blank's value becomes an ambient
+    `[BLANK NAME]` token in the LLM prompt);
+  - `contextTtl` optional cache lifetime;
+  - the reserved `sentinel` blank name (built-in keyword-bound
+    write surface for `IDENTITY.md`), routed through the same
+    validator chokepoint defined in `identity-context-spec.md`.
+
+  User packs MUST NOT shadow `name: sentinel`. The pair makes the
+  catalog mechanism a shared cross-cutting standard between blanks
+  and identity-context, not a feature of either in isolation.
+
+- **`core.md` § Spec-mandated scalars** — new section formalising
+  which `OPENCUES.md` scalars are part of the wire contract (today:
+  `identity-context-mode`, `blank-context-mode`) and which are
+  runtime-only. Documents the mode-gate composition rule
+  (`blank-context-mode: raw` MUST downgrade to `safe` when
+  `identity-context-mode` is NOT `raw`). The filename is
+  conventional; the scalar contract is normative.
+
+### Fixed
+
+- **`schemas/blank.schema.json`** — `blankProximity` default was `1`,
+  matches the spec's `0` (adjacent default). Adds `as-context` and
+  `contextTtl` properties so JSON-schema-driven validators / IDE
+  hints no longer flag valid frontmatter as unknown.
+- **`schemas/opencues.schema.json`** — adds the missing spec-level
+  scalars (`identity-context-mode`, `blank-context-mode`,
+  `ambient-context-mode`, `sentence-cues-mode`, `fluid-config-mode`,
+  `blank-trigger-mode`, `nav-keymap`) plus the three LLM buckets
+  (`blanks-llm-*`, `cues-llm-*`, `auditors-llm-*`).
+- **`core.md` § Known host names** — `terminal` was listed as a
+  reserved host; the canonical name is now `shell`. Runtimes MUST
+  resolve the legacy `terminal` alias to `shell` for back-compat
+  (the reference impl already does this via
+  `HOST_ALIASES` in `host-compat.ts`).
+
 ### Changed
 
 - **Conformance routing fixtures** now ship as JSON, not YAML

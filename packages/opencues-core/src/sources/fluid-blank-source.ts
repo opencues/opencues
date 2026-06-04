@@ -801,20 +801,20 @@ export class FluidBlankSource implements CueSource {
         this.logInfo(`FluidBlank: ambient: injected (${ambientBlock.length} chars${pairsStr})`);
       } else this.logInfo('FluidBlank: ambient: empty (context present but sanitised to nothing)');
 
-      // Identity catalog (sentinel-mode personal data). Off by
-      // default — the runtime gates on `sentinels-mode` in
+      // Identity catalog (identity-context-mode personal data). Off by
+      // default — the runtime gates on `identity-context-mode` in
       // OPENCUES.md before populating context.identityContext, so when
-      // mode is off this code path is a no-op. See sentinels.ts +
-      // docs/architecture/sentinels.md for the threat model.
+      // mode is off this code path is a no-op. See identity-context.ts +
+      // docs/architecture/identity-context.md for the threat model.
       const userCtx: Identity | undefined = context.identityContext
         ? { fields: context.identityContext.fields, catalog: context.identityContext.catalog }
         : undefined;
       const userMode: ContextMode = context.identityContext?.mode ?? 'off';
       const userCatalogBlock = userCtx ? renderIdentityContextCatalog(userCtx, userMode) : '';
       if (userCtx && userCatalogBlock) {
-        this.logInfo(`FluidBlank: sentinels: injected (mode=${userMode}, ${userCtx.fields.length} field${userCtx.fields.length === 1 ? '' : 's'})`);
+        this.logInfo(`FluidBlank: identity-context: injected (mode=${userMode}, ${userCtx.fields.length} field${userCtx.fields.length === 1 ? '' : 's'})`);
       } else if (context.identityContext) {
-        this.logInfo('FluidBlank: sentinels: empty (mode on but SENTINELS.md has no fields)');
+        this.logInfo('FluidBlank: identity-context: empty (mode on but IDENTITY.md has no fields)');
       }
 
       // Blank-as-context (ambient blanks: stocks/weather/crypto/…).

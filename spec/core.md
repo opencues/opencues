@@ -1,6 +1,6 @@
 # core — shared rules across cue-spec and blank-spec
 
-> **Status:** `0.1-alpha`. Expect changes.
+> **Status:** `0.2-alpha`. Expect changes.
 
 This document covers concerns shared by `cue-spec.md`, `blank-spec.md`, and `auditor-spec.md`: the project search-path, the master `CUES.md` / `BLANKS.md` / `AUDITORS.md` files at the root, host compatibility, hot-reload, routing, and the promotion path from runtime-specific knobs to standard fields.
 
@@ -116,9 +116,39 @@ Same defensive treatment: missing or 0-byte = treated as absent. See [`auditor-s
 | `tips-mode`, `word-cues-mode` | `CUES.md` | Cue-surface enable flags. (Spelling no longer has its own flag — it's a regular word-cue at `cues/spelling/CUE.md`.) |
 | `ignore: [<word>, ...]` | `CUES.md`, `BLANKS.md` | Per-surface ignore lists. Words/blanks the runtime never surfaces, regardless of source matches. |
 | `disable: [<source-id>, ...]` | every master | Subtract a named source from this layer's composition without modifying the user-level library. Symmetric across cues, blanks, auditors. |
+| `identity-context-mode`, `blank-context-mode` | `OPENCUES.md` (or runtime equivalent) | Spec-level mode gates for the sentinel-catalog machinery. See § Spec-mandated scalars below + [`identity-context-spec.md`](./identity-context-spec.md) and [`blank-spec.md`](./blank-spec.md) § Sentinel aspects. |
 | Anything else (voice, debug, navigation, fluid-/transform-blank toggles, per-feature LLM routing) | `OPENCUES.md` | Runtime knobs — not part of this standard. See [`@opencues/runtime`'s `SPEC.md`](../packages/opencues-runtime/SPEC.md). |
 
 A conformant runtime MUST refuse to honor surface settings declared in the wrong master file. Runtime-owned settings (TTS, debug, fluid-blank toggles, etc.) are NOT part of this spec and live in `OPENCUES.md`; another implementation that parks its runtime config in a different file is conformant.
+
+### Spec-mandated scalars
+
+The following kebab-case scalars are part of the **wire contract** —
+they gate spec-level behaviour (sentinel catalogs, host-compat
+classifications) and a conformant runtime MUST honour them as
+specified. The OPENCUES.md filename is conventional; an alternate
+runtime MAY store them elsewhere, but the scalar name + value enum +
+default + mode-gate composition rules are normative.
+
+| Scalar | Values | Default | Defined in |
+|---|---|---|---|
+| `identity-context-mode` | `off` / `safe` / `raw` (`raw` MUST be hidden from cycling menus) | `off` | [`identity-context-spec.md`](./identity-context-spec.md) |
+| `blank-context-mode` | `off` / `safe` / `raw` | `off` | [`blank-spec.md`](./blank-spec.md) § Sentinel aspects |
+
+**Mode-gate composition.** When `blank-context-mode: raw` is set but
+`identity-context-mode` is NOT `raw`, conformant runtimes MUST
+downgrade `blank-context-mode` to `safe`. This prevents a footgun
+where the user opts blanks into raw values without realising
+identity-context is still in safe mode (which would leak ambient
+blank values to the LLM provider while user-identity values stay
+locally substituted — an inconsistent privacy posture). See
+`identity-context-spec.md` § Mode-gate composition.
+
+Other scalars the reference impl reads from `OPENCUES.md` (per-bucket
+LLM routing, debug-mode, voice-mode, etc.) are documented in
+[`@opencues/runtime`'s `SPEC.md`](../packages/opencues-runtime/SPEC.md)
+and are NOT part of this standard — a second implementation MAY
+ignore or replace them.
 
 ---
 
@@ -184,11 +214,11 @@ The standard reserves these host identifiers:
 - `opencode`
 - `chrome`
 - `gemini-cli`
-- `terminal`
+- `shell` (`terminal` is a deprecated back-compat alias resolving to `shell`)
 
 Runtimes MAY define additional host names. Other implementations SHOULD ignore unknown host names rather than failing.
 
-The constants `HOSTS` and `NATIVE_HOSTS` in OpenCues' `@opencues/core` library (`packages/opencues-core/src/host-compat.ts`) are non-normative reference values that enumerate the above set; `terminal`, `claude-code`, `gemini-cli`, and `opencode` are members of `NATIVE_HOSTS` (can spawn subprocesses and touch the filesystem without a bridge); `chrome` is the lone non-native host.
+The constants `HOSTS` and `NATIVE_HOSTS` in OpenCues' `@opencues/core` library (`packages/opencues-core/src/host-compat.ts`) are non-normative reference values that enumerate the above set; `shell`, `claude-code`, `gemini-cli`, and `opencode` are members of `NATIVE_HOSTS` (can spawn subprocesses and touch the filesystem without a bridge); `chrome` is the lone non-native host. Conformant runtimes MUST resolve the legacy `terminal` alias to `shell` for back-compat.
 
 ---
 

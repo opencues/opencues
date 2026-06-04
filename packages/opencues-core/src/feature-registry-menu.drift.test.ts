@@ -67,7 +67,7 @@ describe('menu definitions ↔ FEATURES + MENU_TUNABLES', () => {
 
   it('identity-context-mode hides `raw` from the menu', () => {
     // Pin the specific case the exposeInMenu flag was added for.
-    // (Renamed June 2026 from sentinels-mode → identity-context-mode.)
+    // (Renamed June 2026 from sentinels-mode → identity-context-mode.)  // LEGACY-NAME-ALLOW: historical narrative
     const def = menu.get('identity-context-mode');
     expect(def?.valueOrder).toEqual(['off', 'safe']);
     expect(def?.valueOrder.includes('raw')).toBe(false);

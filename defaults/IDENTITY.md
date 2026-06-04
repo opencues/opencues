@@ -13,7 +13,7 @@
 # phone:
 ---
 
-# SENTINELS.md — your personal data for OpenCues
+# IDENTITY.md — your personal data for OpenCues
 
 The frontmatter above is the catalog. Each key auto-derives a
 identity-context token: `firstName` → `[FIRST NAME]`, `workCity` →

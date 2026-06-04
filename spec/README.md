@@ -1,6 +1,6 @@
 # OpenCues — Open Standard
 
-> **Status:** `0.1-alpha`. Expect changes.
+> **Status:** `0.2-alpha`. Expect changes.
 
 This directory holds three open file-format standards — **Cues**, **Blanks**, and **Auditors** — that any text editor, IDE, or LLM-pipeline can implement to interoperate. Each surface has its own spec file and its own conformance contract; a runtime can implement one and be conformant for that surface (you don't have to implement all three). Licensed under the same terms as this repository (see [`LICENSE`](../LICENSE)).
 
@@ -29,6 +29,7 @@ The standard covers three source-folder entry files (`CUE.md`, `BLANK.md`, `AUDI
 | [`cue-spec.md`](./cue-spec.md) | The `CUE.md` format and the cue runtime contract |
 | [`blank-spec.md`](./blank-spec.md) | The `BLANK.md` format and the blank runtime contract |
 | [`auditor-spec.md`](./auditor-spec.md) | The `AUDITOR.md` format and the auditor runtime contract |
+| [`identity-context-spec.md`](./identity-context-spec.md) | The `IDENTITY.md` format, canonical sentinel-token derivation, and the catalog-injection / post-processing contract |
 | [`core.md`](./core.md) | Shared rules: search-path, host-compat, hot-reload, master `CUES.md` / `BLANKS.md` / `AUDITORS.md`, routing |
 | [`@opencues/runtime`'s `SPEC.md`](../packages/opencues-runtime/SPEC.md) | **Non-standard, lives outside `spec/`.** Documents OpenCues-runtime-only knobs (voice-mode, debug-mode, cursor-navigate) plus implementation details for fluid blank and transform blank. Reference-impl documentation; not part of the standard a future second runtime would need to implement. |
 | [`schemas/cue.schema.json`](./schemas/cue.schema.json) | JSON Schema for `CUE.md` frontmatter. Editor integrations may use this for live validation. |

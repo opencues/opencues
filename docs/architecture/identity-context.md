@@ -1,12 +1,12 @@
-# User Context
+# Identity Context
 
 OpenCues can offer the LLM your personal data (first name, email,
 work city, etc.) so `_` lookups personalise without you re-typing
-them each time. Off by default; opt-in via `sentinels-mode: safe`
+them each time. Off by default; opt-in via `identity-context-mode: safe`
 in `~/.cues/OPENCUES.md`. A third value (`raw`) is parser-valid but
 hidden from the cycling menu via `exposeInMenu: false` — see "Hiding
 values" in `docs/architecture/feature-registry.md`. The scalar +
-USER.md prereq + chrome-host push declaration all live in the
+IDENTITY.md prereq + chrome-host push declaration all live in the
 FEATURES registry (one entry); doctor, seed-configs, and host.cjs
 derive from it.
 
@@ -19,7 +19,7 @@ threat-model review.
 
 ## What "user context" contains
 
-Fields the user has put in `~/.cues/SENTINELS.md`'s YAML frontmatter.
+Fields the user has put in `~/.cues/IDENTITY.md`'s YAML frontmatter.
 Each frontmatter key auto-derives to a canonical sentinel token:
 
 ```yaml
@@ -81,7 +81,7 @@ in provider logs. Opt-in only.
 
 ### `off` (default)
 
-USER.md is read into the runtime cache so settings reload paths
+IDENTITY.md is read into the runtime cache so settings reload paths
 work, but `CueContext.sentinels` is **never** populated.
 FluidBlankSource sees `undefined` and skips the entire injection
 path. The runtime gate (`Resolver.resolveAndApply`) does this
@@ -92,7 +92,7 @@ check; sources can't bypass.
 ## The post-processor — three behaviours
 
 `postProcessSentinels` in `packages/opencues-core/src/sentinels.ts`.
-Runs after every fluid-blank LLM response when sentinels-mode is
+Runs after every fluid-blank LLM response when identity-context-mode is
 on. Walks every bracket-token in the answer and decides:
 
 1. **Preserve user-typed brackets.** If `originalBody` (the
@@ -125,7 +125,7 @@ fluid-blank call, the LLM gets three signals:
 |---|---|---|
 | **Ambient label** ("LinkedIn profile URL (full URL)") | shape | tells the LLM *what kind of value* the field wants |
 | **User-typed buffer** (`danielsunderland _`) | content (if present) | the literal handle/value the user wants embedded |
-| **USER.md catalog** (`[LINKEDIN]` token) | content fallback | user's own data when no hint is typed |
+| **IDENTITY.md catalog** (`[LINKEDIN]` token) | content fallback | user's own data when no hint is typed |
 
 **Priority rule (`sentinels.ts` rule #10):** when the buffer
 contains a non-trivial typed hint before the `_` — a handle, a
@@ -175,9 +175,9 @@ the catalog token (post-processor resolves to user's value).
   or auditors.** Hard-coded scope. Widening requires explicit
   per-pipeline threat-model review.
 - **Body text is ignored.** Only frontmatter is parsed. The body
-  of `SENTINELS.md` is reserved for a future Phase 3 (free-text body
+  of `IDENTITY.md` is reserved for a future Phase 3 (free-text body
   injection) — see "Future work" below.
-- **No per-project SENTINELS.md overlays.** User data is user data;
+- **No per-project IDENTITY.md overlays.** User data is user data;
   per-project user data makes no sense and would create
   weird overlays. Global only (lives next to OPENCUES.md).
 - **No automatic refresh of stale data.** If you change jobs and
@@ -194,7 +194,7 @@ the catalog token (post-processor resolves to user's value).
 | **Pack greedily requests every field.** | N/A in Phase 1 — only built-in FluidBlankSource consumes sentinels; user packs cannot. When packs do consume it (future phase), parallel the `secrets:` model: `requires-user: [firstName, email]` declaration, `opencues review` flags >N fields. |
 | **Pack exfils via fetch.** | Pack JS sandbox already gates network via per-secret host binding (audit row #5). The same pattern extends — pack must declare `sentinels-hosts.firstName: [llm-host]`, fetch body-scan refuses unbound hosts. Deferred to the packs-consume phase. |
 | **Pack overrides mode silently.** | The runtime decides mode (global OPENCUES.md scalar), not the pack. Pack-requested raw is at most a HINT; the user's global setting is the ceiling. Today no pack-side request exists (FluidBlankSource is core); this lands with the packs phase. |
-| **Prompt injection via SENTINELS.md itself.** | The catalog block is wrapped in clear delimiters. Values are sanitized via the same NFKC + control-strip + sentinel-escape that AmbientContext goes through. Lower threat than ambient because users probably aren't attacking themselves — but defence-in-depth for screen-share / committed-to-git-by-accident scenarios. |
+| **Prompt injection via IDENTITY.md itself.** | The catalog block is wrapped in clear delimiters. Values are sanitized via the same NFKC + control-strip + sentinel-escape that AmbientContext goes through. Lower threat than ambient because users probably aren't attacking themselves — but defence-in-depth for screen-share / committed-to-git-by-accident scenarios. |
 | **Cross-pack data leak.** | The Resolver's per-source dispatch (audit row #1) keeps sentinels scoped to FluidBlankSource only. Other sources see `CueContext.sentinels === undefined`. |
 | **Provider correlation across sessions.** | In `safe` mode the catalog ships only token + description ("[FIRST NAME] resolves to user's first name"). A provider with multi-user access could in theory correlate sessions by description text — but no PII values flow. Documented residual; same envelope as audit row #6 (LLM body exfil). |
 | **Post-processor leaves a hallucinated bracket in the buffer.** | The "strip unlisted" rule + the body-preservation guard collide cleanly: any bracket-token that's NOT in the catalog AND NOT in the user's original text is stripped. Pinned by 6 integration tests in `fluid-blank-source.test.ts`. |
@@ -225,14 +225,14 @@ the LLM is at honouring the sentinel-only rule.
   inlining, off-mode omission, post-process resolve/strip/
   tolerant-recover).
 - `packages/opencues-runtime/src/modules/config-loader.ts` —
-  reads `SENTINELS.md` alongside `OPENCUES.md`, exposes the parsed
+  reads `IDENTITY.md` alongside `OPENCUES.md`, exposes the parsed
   `sentinels` via the loader's public surface.
 - `packages/opencues-runtime/src/modules/resolver.ts` — gate.
   Off-mode produces `undefined`; safe/raw produces `{ fields,
   catalog, mode }`.
-- `defaults/SENTINELS.md` — shipped template, fully commented out.
-  `opencues seed-configs` copies to `~/.cues/SENTINELS.md`.
-- `defaults/OPENCUES.md` — `sentinels-mode` scalar +
+- `defaults/IDENTITY.md` — shipped template, fully commented out.
+  `opencues seed-configs` copies to `~/.cues/IDENTITY.md`.
+- `defaults/OPENCUES.md` — `identity-context-mode` scalar +
   selector-satellite cycling entry under `settings:`.
 
 ---
@@ -250,7 +250,7 @@ Tests:
   — 6 integration tests proving the full FluidBlankSource path
   honours mode, injects correctly, and post-processes the answer.
 - `packages/opencues-runtime/src/modules/config-loader.test.ts`
-  — 1 new test pinning the `sentinels-mode` scalar's
+  — 1 new test pinning the `identity-context-mode` scalar's
   fail-closed parsing.
 
 Pre-merge command:
@@ -269,10 +269,10 @@ OPENCUES_BENCH_PROVIDER=cerebras-gpt-oss \
 
 ## Future work
 
-**Phase 2 — raw mode + body injection (free-text SENTINELS.md body).**
+**Phase 2 — raw mode + body injection (free-text IDENTITY.md body).**
 
 `raw` mode is implemented today but only exposed via the catalog
-shape. The body of `SENTINELS.md` (free prose after the closing `---`)
+shape. The body of `IDENTITY.md` (free prose after the closing `---`)
 is currently parsed-and-discarded. The plan when it lands:
 
 - A new `requires-user-body: true` declaration on packs that want
@@ -305,7 +305,7 @@ requires-user: [linkedin, fullName, email]
 ```
 
 `opencues validate` flags packs requesting fields not in
-USER.md. `opencues review` summarises requested fields at install
+IDENTITY.md. `opencues review` summarises requested fields at install
 time so the user can decide before approving. Parallels the
 `secrets:` capability model from audit rows #5 / #7.
 

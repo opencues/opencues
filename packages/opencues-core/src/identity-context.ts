@@ -1,7 +1,7 @@
 /**
- * Identity — sentinel-mode personal-data injection for fluid-blank.
+ * Identity — identity-context-mode personal-data injection for fluid-blank.
  *
- * Parses `~/.cues/SENTINELS.md`'s YAML frontmatter into a `Identity`, and
+ * Parses `~/.cues/IDENTITY.md`'s YAML frontmatter into a `Identity`, and
  * provides the runtime helpers FluidBlankSource needs to:
  *
  *   - render a catalog block for injection into the LLM prompt (in
@@ -26,7 +26,7 @@ export type ContextMode = 'off' | 'safe' | 'raw';
 /** Single field — `firstName: Wilfred` → token=`[FIRST NAME]`,
  *  key=`firstName`, value=`Wilfred`. Description auto-derived from
  *  the key unless an explicit `# description` comment was on the
- *  same line in SENTINELS.md. */
+ *  same line in IDENTITY.md. */
 export interface IdentityField {
   /** Frontmatter key, verbatim (`firstName`, `first_name`, `first-name`). */
   key: string;
@@ -38,8 +38,8 @@ export interface IdentityField {
   description: string;
 }
 
-/** Parsed SENTINELS.md — the runtime hands this through to FluidBlankSource
- *  when `sentinels-mode` is on. */
+/** Parsed IDENTITY.md — the runtime hands this through to FluidBlankSource
+ *  when `identity-context-mode` is on. */
 export interface Identity {
   readonly fields: readonly IdentityField[];
   /** Convenience lookup: token → value. Built once at parse-time. */
@@ -79,7 +79,7 @@ export function deriveToken(key: string): string {
 }
 
 /**
- * Parse SENTINELS.md content (YAML frontmatter + optional body).
+ * Parse IDENTITY.md content (YAML frontmatter + optional body).
  *
  * Only the frontmatter is parsed in v1; the body is reserved for a
  * future Phase 3 (free-text body injection) and is silently ignored.
@@ -103,7 +103,7 @@ export function deriveToken(key: string): string {
  * description is auto-derived from the key.
  *
  * Returns an empty Identity on missing/empty frontmatter so
- * downstream code can treat "no USER.md" and "empty USER.md" the same.
+ * downstream code can treat "no IDENTITY.md" and "empty IDENTITY.md" the same.
  */
 export function parseIdentityMd(content: string | null | undefined): Identity {
   const empty: Identity = { fields: [], catalog: new Map() };

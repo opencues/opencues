@@ -2084,8 +2084,8 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     // `remove sentinel _`. Writes go through @opencues/core's
     // validateSentinelWrite chokepoint BEFORE this writer is called;
     // do not add a parallel write path. Security-audit.md row #24.
-    sentinelsMdReadFile: () => readFile(`${ROOT}/.cues/SENTINELS.md`),
-    sentinelsMdWriteFile: (content) => writeFile(`${ROOT}/.cues/SENTINELS.md`, content),
+    identityMdReadFile: () => readFile(`${ROOT}/.cues/IDENTITY.md`),
+    identityMdWriteFile: (content) => writeFile(`${ROOT}/.cues/IDENTITY.md`, content),
   });
   blankInvoke = createBlankInvoke(blanks);
 

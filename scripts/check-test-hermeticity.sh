@@ -7,7 +7,7 @@
 #   - ~/.opencues/  — vendored deps (tmux), update lock, internal state.
 #                     PR #41 (June 2026) caught vendor-pins.test.cjs
 #                     wiping the user's tmux dir here on every test run.
-#   - ~/.cues/      — user's live config: OPENCUES.md, CUES.md, SENTINELS.md,
+#   - ~/.cues/      — user's live config: OPENCUES.md, CUES.md, IDENTITY.md,
 #                     cues/<topic>/CUE.md, blanks/<name>/BLANK.md. A test
 #                     that bypasses the HOME sandbox via a hardcoded path
 #                     or reads $USER instead of $HOME could write here.

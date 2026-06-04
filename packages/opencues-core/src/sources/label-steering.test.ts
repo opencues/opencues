@@ -1,8 +1,8 @@
 // Drift-prevention for the "label steering" contract:
 //   - FUSED_SYSTEM_PROMPT contains the few-shot examples that
 //     demonstrate typed-hint → URL/value construction.
-//   - sentinels.ts rule #10 declares typed hints take precedence
-//     over SENTINELS.md catalog sentinels.
+//   - identity-context.ts rule #10 declares typed hints take precedence
+//     over IDENTITY.md catalog sentinels.
 //
 // These are PROMPT-LEVEL invariants. The live behaviour is validated
 // against real LLMs by

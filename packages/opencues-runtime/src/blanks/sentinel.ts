@@ -1,4 +1,4 @@
-// SentinelBlank — keyword-bound write surface for SENTINELS.md.
+// SentinelBlank — keyword-bound write surface for IDENTITY.md.
 //
 // Triggered by:
 //   set sentinel <key> <value> _        → add or update
@@ -17,7 +17,7 @@
 //
 // Errors are NEVER silent — the blank's return value is what gets
 // painted into the buffer, so a capacity-exceeded write produces a
-// visible `[err] USER.md is full — ...` pair the user can read and
+// visible `[err] IDENTITY.md is full — ...` pair the user can read and
 // react to.
 //
 // Security model — full review at docs/architecture/security-audit.md
@@ -25,7 +25,7 @@
 //
 //   1. KEYWORD-BOUND ONLY. No LLM classification routes here (cf. the
 //      explicit refusal in fluid-config to extend ConfigIntent to
-//      SENTINELS.md writes). User must type the literal `set sentinel`
+//      IDENTITY.md writes). User must type the literal `set sentinel`
 //      / `remove sentinel` phrase before `_`.
 //   2. TRUST-GATE PROTECTED. The `_` keystroke is policed by the
 //      credit-based trust gate (security-audit row #13); a hostile
@@ -38,8 +38,8 @@
 //      user-blanks/registry.ts:145.
 //   5. VALIDATOR IS THE ONLY WRITE PATH. The shell-script fallback
 //      (defaults/blanks/sentinel/sentinel-blank.sh) routes back to
-//      the same validator via `opencues sentinels set`. Adding a
-//      second site that writes SENTINELS.md without going through
+//      the same validator via `opencues identity set`. Adding a
+//      second site that writes IDENTITY.md without going through
 //      validateSentinelWrite is an audit-row-worthy regression.
 
 import type { Blank } from './types';
@@ -53,9 +53,9 @@ import {
 } from '@opencues/core';
 
 export interface SentinelBlankOptions {
-  /** Read SENTINELS.md content. Returns null when missing. */
+  /** Read IDENTITY.md content. Returns null when missing. */
   readonly readFile: () => Promise<string | null>;
-  /** Write SENTINELS.md (atomic replace). */
+  /** Write IDENTITY.md (atomic replace). */
   readonly writeFile: (content: string) => Promise<void>;
   /** Override default caps (64 × 256). Used by tests + future per-host policy. */
   readonly caps?: SentinelCaps;

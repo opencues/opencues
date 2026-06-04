@@ -5,7 +5,7 @@
  * `Blank.get(slot)` method. Refresh is lazy on prompt-build — there is
  * no background cron. Idle cost is zero.
  *
- * Capacity cap mirrors the sentinels-validator chokepoint shape:
+ * Capacity cap mirrors the identity-validator chokepoint shape:
  * exceeding the cap silently evicts the oldest entries. Failed fetches
  * surface as `[STALE]` markers in the snapshot rather than blocking
  * the prompt build.
@@ -34,7 +34,7 @@ interface CacheEntry {
 
 export interface BlankContextCacheOptions {
   /** Hard cap on cached tuples. Defaults to 32 — matches the
-   *  sentinels-validator chokepoint shape. */
+   *  identity-validator chokepoint shape. */
   readonly capacity?: number;
   /** Override Date.now (test seam). */
   readonly now?: () => number;

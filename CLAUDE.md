@@ -606,7 +606,7 @@ done
 
 | Path | Name | Version | Status |
 |---|---|---|---|
-| `SPEC.md` (open-standard) | `cues-spec` | 0.1 (draft) | exported as `SPEC_VERSION` from `@opencues/core` |
+| `SPEC.md` (open-standard) | `cues-spec` | 0.2 (draft) | exported as `SPEC_VERSION` from `@opencues/core` |
 | `package.json` (monorepo root) | `opencues` | 0.1.0 | private |
 | `packages/opencues-core/` | `@opencues/core` | 0.1.3 | private |
 | `packages/opencues-runtime/` | `@opencues/runtime` | 0.1.3 | private |
@@ -625,6 +625,40 @@ Everything except the placeholder is currently `private: true`. Flipping a packa
 ## Versioning policy
 
 Semver per package, stay <1.0 until public launch, bump in the same commit as the change, integrations bump independently of core/runtime. `SPEC_VERSION` bumps only on wire-format changes. **Every version bump also updates `CHANGELOG.md` (root) in the same PR**; spec-affecting changes also update `spec/CHANGELOG.md`. Full policy with per-package bump rules + changelog discipline: [docs/architecture/versioning.md](docs/architecture/versioning.md).
+
+### When to bump `SPEC_VERSION`
+
+The open-standard version (`packages/opencues-core/src/spec-version.ts`'s `SPEC_VERSION`) is the wire-contract pin a second implementation targets. **Bump the spec version in the same PR** when any of these land:
+
+- New file format (e.g. June 2026 added `IDENTITY.md` — bumped 0.1 → 0.2).
+- New frontmatter key documented in `spec/cue-spec.md` / `spec/blank-spec.md` / `spec/auditor-spec.md` / `spec/identity-context-spec.md` (e.g. `as-context:`, `contextTtl:`).
+- New spec-level OPENCUES.md scalar (anything declared in `spec/core.md` § Spec-mandated scalars — today `identity-context-mode`, `blank-context-mode`).
+- Reserved blank/cue/auditor name (e.g. `name: sentinel` reserved for the IDENTITY.md write surface).
+- Any change that would make a `0.x-alpha` reader misinterpret a file authored against the new spec.
+
+**Do NOT bump** when only changing:
+
+- Prompt prose internal to the reference impl (out of spec scope).
+- Reference-impl class names, file paths, runtime-only knobs (`debug-mode`, `voice-mode`, `tts-rate`, per-bucket LLM routing — all live in `packages/opencues-runtime/SPEC.md`, not the standard).
+- Editorial wording in spec docs that doesn't change a normative claim.
+
+**The bump checklist** (in one commit):
+
+1. `packages/opencues-core/src/spec-version.ts` — bump the exported constant (`'0.1'` → `'0.2'`).
+2. `SPEC.md` (root) — update the **Current version** line.
+3. `spec/README.md` — update the Status banner + Status & versioning section.
+4. `spec/*.md` (every spec doc — cue/blank/auditor/identity-context/core) — bump the Status banner.
+5. `spec/CHANGELOG.md` — release the `[Unreleased]` block under the new version header with today's date + add a `## [Unreleased]` placeholder above it.
+6. `packages/opencues-core/src/conformance.test.ts` — bump the `case 'spec-too-new'` regex to match the new version's "too-new" threshold.
+7. **Conformance fixtures (`spec/conformance/`)** — per `spec/conformance/README.md`, the suite forks when a new spec version cuts. Adding fixtures for the new surface (e.g. `spec/conformance/valid/identity/`) goes here. If the new surface ships without fixtures, add a TODO row to `spec/conformance/README.md` explicitly calling out the coverage gap.
+8. **JSON schemas (`spec/schemas/`)** — update any schema affected by the new frontmatter keys or scalars. JSON-schema-driven validators are the first thing a third-party tooling integrator will reach for; stale schemas silently flag valid frontmatter as unknown.
+9. Update package versions per the usual per-package rules (`@opencues/core` always bumps when SPEC_VERSION bumps; downstream packages bump per `docs/architecture/versioning.md`).
+
+The `version-bump-gate` lint enforces `package.json` version bumps when `src/` changes; it does NOT enforce SPEC_VERSION bumps when only `spec/` changes. Reviewers MUST eyeball spec-only PRs for the bump checklist above — there's no current static gate. (Candidate for a future `lint-spec-bump.sh`.)
+
+### Spec-omit-default is permanent
+
+`spec/core.md` says "Files that omit `spec:` MUST be treated as `opencues/0.1-alpha`". When the spec bumps to `0.2-alpha`, the omit-default **stays at `0.1-alpha`** — never moves forward. Reasoning: old unannotated files keep working; new files SHOULD declare their target spec explicitly. Moving the default forward would silently misinterpret pre-existing files.
 
 The `version-bump-gate` CI job + `scripts/lint-version-bump.sh` enforce the "src changed → version bumped" half of this policy structurally. Bypass per-PR with the commit-message marker `[skip version-bump]` for non-shipping changes (docs, refactors, tests-only).
 
@@ -647,6 +681,7 @@ What each gate catches, mapped to a real bug it would have caught:
 | Gate | Script | Bug pattern it catches |
 |---|---|---|
 | **Shell portability + strict-mode** | `scripts/lint-shell-portability.sh` | PR #43 (silent npm failure — `set -e` without `pipefail` let `npm install ... \| tail -3` swallow errors) |
+| **Legacy-names lint** | `scripts/lint-legacy-names.sh` | June 2026 sentinels → identity-context rename — `SENTINELS.md` / `sentinels-mode` / `opencues sentinels` references lingered in dozens of files after the rename PR. Banned-list with `LEGACY-NAME-ALLOW` marker for historical/narrative carve-outs. |
 | **Version-bump gate** | `scripts/lint-version-bump.sh` | PRs #37-#41 (source changed, version stayed put → marker drift detection blind to the change) |
 | **Chrome bundle artifacts** | `scripts/check-chrome-bundle.sh` | PR #47 → #49 (`await import('node:fs')` in boot-common broke esbuild; bundle silently shipped with missing dist files) |
 | **Test hermeticity** | `scripts/check-test-hermeticity.sh` | PR #41 (vendor-pins test `fs.rmSync`'d the real user's `~/.opencues/vendor/tmux/` on every `pnpm test` run) |
@@ -665,6 +700,8 @@ The follow-up PR class arose specifically because changes to *runtime / boot / i
 - **Change LLM dispatch error handling (any `catch` in `packages/opencues-core/src/sources/*-source.ts`)?** The catch MUST `this.log(...)` or `this.logInfo(...)` before returning the error envelope. Resolver consumers ignore the `error` field — silent catches eat the only failure signal.
 - **Add a new log line that more than one host emits?** Prefix it with `[<host>]` or emit via `adapter.log` (which auto-prefixes). Bare `[opencues] ...` lines in the shared `/tmp/opencues.log` confuse multi-host debugging — see PR #45.
 - **Edit a test file?** Grep for `os.homedir()`, `process.env.HOME`, `path.join(os.tmpdir())`. If any test writes under those without a `before/after` hook that mkdtemps and restores HOME, you have a vendor-pins-class bug. See PR #41 for the fix pattern.
+- **Renaming a feature, file, or scalar?** Add the old name(s) to `BANNED_PATTERNS` at the top of `scripts/lint-legacy-names.sh` in the SAME PR. The lint enforces "no shipping-code reference to the old name" structurally — what was an editorial pass of grep-and-replace becomes a CI gate. Migration code (files whose JOB is to handle the rename — `seed-configs.cjs`, `doctor.cjs`, migration tests) goes on `FILE_ALLOWLIST`. One-off historical-narrative references get a `// LEGACY-NAME-ALLOW: <reason>` marker on the same line.
+- **Editing `integrations/claude-code/patches/opencuesRuntime.ts`?** Run `node scripts/check-cc-patch-boot.cjs` (or `bash scripts/pre-pr.sh`, which includes it). The CC patch is a JS string injected into a minified cli.js; source typechecks won't catch identifier-scope errors in the emitted string. The smoke evaluates the emitted bootstrap in a sandbox to surface `ReferenceError` / missing field errors that would otherwise only fire on a user's machine. Any identifier referenced in the boot args object literal (`blanks:`, `blankInvoke:`, `spawnProcess:`, etc.) MUST be declared in the surrounding `s1Bootstrap` scope, not inside an IIFE in the args themselves.
 
 If a change touches more than one row above, run them all. The `pre-pr.sh` aggregator runs every gate regardless — when in doubt, just run it.
 
@@ -682,6 +719,8 @@ The eight bug classes from the June 2026 debugging session, with the file + the 
 | Direct launch bypasses self-heal | PR #47 | `boot-common.ts:checkRuntimeDrift` | runs at every host boot |
 | Install short-circuits with stale marker → run-loop | PR #48 | `integrations/claude-code/bin/install.cjs:checkSrcHashDrift` | `check-install-self-heal.sh` |
 | `node:*` import in runtime breaks chrome bundle | PR #49 | `integrations/chrome/esbuild.config.mjs:external` | `check-chrome-bundle.sh` |
+| Renamed feature's old name lingers in shipping code | June 2026 sentinels → identity-context rename | `scripts/lint-legacy-names.sh:BANNED_PATTERNS` + per-line `LEGACY-NAME-ALLOW` markers | `lint-legacy-names.sh` |
+| CC patch emits JS with scope/reference errors that only fire at runtime | June 2026 cc38ab8 (`blanks: __ocReg` where `__ocReg` was IIFE-local) — every keystroke ReferenceError'd, swallowed by patch's own catch, OpenCues silently dead on every CC user's machine. Bundle parsed fine; source typechecked fine; install applied fine. | `scripts/check-cc-patch-boot.cjs` evaluates the emitted bootstrap in a Node vm sandbox with stubs — surfaces ReferenceError + asserts boot args have all required fields | `check-cc-patch-boot.cjs` |
 
 ---
 

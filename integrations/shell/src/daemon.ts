@@ -2,7 +2,7 @@
 //
 // Background process spawned by `bin/`oc-shell``. Pre-reads every config
 // file the runtime would otherwise hit per popup (~/.cues/OPENCUES.md,
-// SENTINELS.md, CUES.md, BLANKS.md, AUDITORS.md, cues/**, blanks/**,
+// IDENTITY.md, CUES.md, BLANKS.md, AUDITORS.md, cues/**, blanks/**,
 // auditors/**) and serves them over a unix socket. The popup's
 // bootstrap consults the snapshot before falling through to the real
 // filesystem, so the popup pays no file-I/O cost on the hot path and
@@ -65,7 +65,7 @@ SEARCH_PATHS.push(path.join(HOME, '.cues'));
 const SETTINGS_FILE = process.env.OPENCUES_HOME
   ? path.join(process.env.OPENCUES_HOME, 'OPENCUES.md')
   : path.join(HOME, '.cues', 'OPENCUES.md');
-const USER_MD = path.join(path.dirname(SETTINGS_FILE), 'SENTINELS.md');
+const USER_MD = path.join(path.dirname(SETTINGS_FILE), 'IDENTITY.md');
 
 const LOG_PATH = '/tmp/oc-editd.log';
 function logLine(msg: string): void {

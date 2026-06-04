@@ -71,7 +71,7 @@ describe('createDefaultBlanksRegistry semantics', () => {
         readFile: async () => null,
         writeFile: async () => {},
       },
-      sentinelsMdIO: {
+      identityMdIO: {
         readFile: async () => null,
         writeFile: async () => {},
       },
@@ -95,7 +95,7 @@ describe('createDefaultBlanksRegistry semantics', () => {
     expect(reg.has('opencues')).toBe(false);
   });
 
-  it('skips the sentinel blank when sentinelsMdIO is absent', () => {
+  it('skips the sentinel blank when identityMdIO is absent', () => {
     const reg = createDefaultBlanksRegistry({});
     expect(reg.has('sentinel')).toBe(false);
   });

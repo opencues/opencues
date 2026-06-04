@@ -155,19 +155,20 @@ calls, MCP execution, fetch, clipboard write) — re-review the
 ambient-context threat model + `security-audit.md` row #21
 BEFORE landing it.
 
-## Sentinels — off by default
+## Identity context — off by default
 
-Sibling to ambient. The runtime reads `~/.cues/SENTINELS.md`
+Sibling to ambient. The runtime reads `~/.cues/IDENTITY.md`
 frontmatter into a structured catalog of sentinel tokens
 (`firstName: Wilfred` → `[FIRST NAME]`) and forwards it to
-`FluidBlankSource` when `sentinels-mode: safe` (or `: raw`) is
+`FluidBlankSource` when `identity-context-mode: safe` (or `: raw`) is
 set in `OPENCUES.md`. Off by default — three layers of opt-in
 (scalar in OPENCUES.md + sensitive-field exclusion + per-pack
 declaration when Phase 2 lands).
 
-> File + scalar were renamed May 2026 from `USER.md` /
-> `user-context-mode`. The runtime back-compat-reads the legacy
-> names; `opencues seed-configs` self-heals both on next run.
+> File + scalar were renamed June 2026: `USER.md` → `SENTINELS.md` → `IDENTITY.md`
+> and `user-context-mode` → `sentinels-mode` → `identity-context-mode`.
+> No runtime back-compat reads — `opencues seed-configs` self-heals
+> legacy filenames + scalar names on next install.
 
 In `safe` mode (recommended) only token NAMES + descriptions
 reach the LLM (`[EMAIL] — user's email`). A runtime
@@ -191,18 +192,18 @@ Sensitive fields (`isSensitiveField` regex — password / CC /
 OTP / etc.) still return null when focused; the catalog never
 lands on those.
 
-Full design + threat model: `docs/architecture/sentinels.md`.
+Full design + threat model: `docs/architecture/identity-context.md`.
 Bench evidence: `tests/benchmarks/user-context/FINDINGS.md`.
 Chrome doesn't have anything special to do for this feature —
 it's a runtime + core concern; chrome just provides the focused
-target. The ConfigLoader reads `SENTINELS.md` next to `OPENCUES.md`,
+target. The ConfigLoader reads `IDENTITY.md` next to `OPENCUES.md`,
 the Resolver gates on the scalar, and FluidBlankSource consumes
 the catalog. No chrome-specific code path.
 
 Same structural invariant as ambient: no tool / exec layer for
 fluid-blank output. Worst-case the LLM hallucinates a value
 into the buffer; user sees + edits. **If you wire fluid-blank
-output into a side-effect channel, re-review the sentinels
+output into a side-effect channel, re-review the identity-context
 threat model alongside ambient.**
 
 ## Live config sync — native-messaging host (May 2026)

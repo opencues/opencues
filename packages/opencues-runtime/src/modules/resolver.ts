@@ -1070,8 +1070,8 @@ export class Resolver {
         ambient: this.configLoader.opencuesState.ambientContextMode === 'on'
           ? (this.adapter.getAmbientContext?.() ?? undefined)
           : undefined,
-        // Optional sentinels (sentinel-mode personal data). Gated by
-        // `sentinels-mode` in OPENCUES.md (`off` by default — when
+        // Optional identity context (identity-context-mode personal data). Gated by
+        // `identity-context-mode` in OPENCUES.md (`off` by default — when
         // `off` we don't even forward the parsed catalog, so a future
         // misconfigured source can't accidentally read it). When on,
         // ship the catalog + mode through to FluidBlankSource; no

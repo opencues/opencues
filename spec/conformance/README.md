@@ -153,7 +153,29 @@ spec: opencues/0.1-alpha
 
 When the spec bumps to `0.2-alpha`, the suite forks: `conformance/0.1-alpha/` and `conformance/0.2-alpha/` coexist for one minor cycle, so an implementer running against `0.1-alpha` still has the fixtures pinned at that version.
 
-(This forking has not happened yet — the suite is `0.1-alpha` flat. The split lands when the first `0.2-alpha` change ships.)
+**Status (`0.2-alpha` cut, June 2026).** The spec bumped to `0.2-alpha`
+(IDENTITY.md, `as-context:` / `contextTtl:` on BLANK.md, spec-mandated
+OPENCUES.md scalars). The fork has NOT yet happened — the suite is
+still `0.1-alpha` flat. **Coverage gap** until the fork lands:
+
+- `valid/identity/` — IDENTITY.md fixtures (frontmatter + expected
+  derived-token sets) covering the canonical token-derivation
+  algorithm in `identity-context-spec.md`.
+- `invalid/identity/` — files that MUST be rejected (bad key shape,
+  control chars, oversize values, token collisions, capacity
+  overflow).
+- `post-processor/` — LLM-output → post-processed-output pairs for
+  verbatim resolve, unknown-strip, originalBody preserve, tolerant
+  matching.
+- `valid/blank/` — at least one fixture exercising
+  `as-context: safe` with a derived `[BLANK NAME]` token.
+- `routing/` — mode-gate composition (the rule that
+  `blank-context-mode: raw` MUST downgrade to `safe` when
+  `identity-context-mode` is NOT `raw`).
+
+A second implementation targeting `0.2-alpha` should treat the
+spec text in `identity-context-spec.md` and `blank-spec.md`
+§ Sentinel aspects as authoritative until these fixtures land.
 
 ## Runner template
 

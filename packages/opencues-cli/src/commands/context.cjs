@@ -1,7 +1,7 @@
 // `opencues context` — unified inspection surface for ALL context sources.
 //
 // Three sources of context tokens that reach the LLM:
-//   1. identity-context  — fields from ~/.cues/IDENTITY.md (was SENTINELS.md)
+//   1. identity-context  — fields from ~/.cues/IDENTITY.md (was SENTINELS.md)  // LEGACY-NAME-ALLOW: historical narrative
 //   2. blank-context     — ambient blank tokens (stocks, weather, …)
 //   3. ambient-context   — chrome-only field metadata (label, placeholder)
 //

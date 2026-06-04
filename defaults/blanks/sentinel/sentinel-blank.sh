@@ -2,7 +2,7 @@
 # sentinel-blank.sh — native-host fallback for `set sentinel _` /
 # `remove sentinel _`.
 #
-# Routes every write back through `opencues sentinels set|remove` so
+# Routes every write back through `opencues identity set|remove` so
 # the validator (validateSentinelWrite in @opencues/core) is the
 # single chokepoint. Refuses to write directly. See
 # docs/architecture/security-audit.md row #24.
@@ -42,10 +42,10 @@ case "$cmd" in
           echo "[err] set sentinel: usage is \`set sentinel <key> <value> _\`"
           exit 0
         fi
-        out=$($OC_CLI sentinels set "$key" "$value" 2>&1)
+        out=$($OC_CLI identity set "$key" "$value" 2>&1)
         rc=$?
         if [ $rc -eq 0 ]; then
-          token=$($OC_CLI sentinels list --json 2>/dev/null \
+          token=$($OC_CLI identity list --json 2>/dev/null \
             | grep -E "\"key\":\s*\"$key\"" -A 1 \
             | grep -E '"token"' \
             | sed 's/.*"token":[[:space:]]*"\([^"]*\)".*/\1/')
@@ -65,7 +65,7 @@ case "$cmd" in
           echo "[err] remove sentinel: usage is \`remove sentinel <key> _\`"
           exit 0
         fi
-        out=$($OC_CLI sentinels remove "$key" 2>&1)
+        out=$($OC_CLI identity remove "$key" 2>&1)
         rc=$?
         if [ $rc -eq 0 ]; then
           echo "[removed $key]"

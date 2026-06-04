@@ -107,17 +107,17 @@ export interface BuiltinBlankContext {
     readonly writeFile: (content: string) => Promise<void>;
   };
   /**
-   * Read/write accessors for the user's SENTINELS.md file. Required
+   * Read/write accessors for the user's IDENTITY.md file. Required
    * to register the `sentinel` keyword-bound write blank. Hosts that
    * don't supply this skip the sentinel blank — the user can still
-   * use `opencues sentinels set` from the CLI.
+   * use `opencues identity set` from the CLI.
    *
    * SECURITY: the blank's writes are validated by
    * @opencues/core's `validateSentinelWrite` BEFORE this writer is
    * called. Hosts MUST NOT add a parallel write path that skips the
    * validator. Audit row #24.
    */
-  readonly sentinelsMdIO?: {
+  readonly identityMdIO?: {
     readonly readFile: () => Promise<string | null>;
     readonly writeFile: (content: string) => Promise<void>;
   };
@@ -176,11 +176,11 @@ export const BUILTIN_BLANKS: readonly BuiltinBlankSpec[] = [
 
   // ── IdentityField-write (keyword-bound `set sentinel <k> <v> _` /
   //    `remove sentinel <k> _`). Skips when no IO supplied (host
-  //    can't write SENTINELS.md). Audit row #24 — every host that
-  //    wires sentinelsMdIO MUST hand the writer the file content
+  //    can't write IDENTITY.md). Audit row #24 — every host that
+  //    wires identityMdIO MUST hand the writer the file content
   //    AS-RETURNED by SentinelBlank.get(); never bypass the writer
   //    or replace its content with a non-validated path.
-  { name: 'sentinel',      factory: ctx => ctx.sentinelsMdIO ? new SentinelBlank(ctx.sentinelsMdIO) : null },
+  { name: 'sentinel',      factory: ctx => ctx.identityMdIO ? new SentinelBlank(ctx.identityMdIO) : null },
 ];
 
 /**

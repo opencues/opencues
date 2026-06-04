@@ -139,7 +139,7 @@ export interface OpenCuesState {
    * crypto, …) as ambient sentinel-style tokens for fluid-blank.
    * `off` (default): only the keyword-trigger path runs.
    * `safe`: tokens-only catalog; runtime substitutes values after the LLM.
-   * `raw`:  values inlined into the prompt. Requires `sentinelsMode: 'raw'`.
+   * `raw`:  values inlined into the prompt. Requires `identityContextMode: 'raw'`.
    * See docs/features/blank-as-context.md.
    */
   readonly blankContextMode: 'off' | 'safe' | 'raw';
@@ -295,10 +295,10 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
     identityRaw === 'safe' ? 'safe'
     : identityRaw === 'raw' ? 'raw'
     : 'off';
-  // Blank-as-context scalar — independent of sentinels-mode but
-  // mode-gate composed: blankContextMode='raw' requires sentinelsMode='raw'
+  // Blank-as-context scalar — independent of identity-context-mode but
+  // mode-gate composed: blankContextMode='raw' requires identityContextMode='raw'
   // (silently downgrades to 'safe' otherwise so the user doesn't get
-  // surprised by a values-leak after flipping sentinels off).
+  // surprised by a values-leak after flipping identity-context off).
   const blankContextRaw = get('blank-context-mode', 'off').toLowerCase();
   let blankContextMode: 'off' | 'safe' | 'raw' =
     blankContextRaw === 'safe' ? 'safe'
@@ -571,9 +571,9 @@ export class ConfigLoader {
   get mergedBlanksConfig(): CuesMdConfig | null { return this._config.mergedBlanksConfig; }
   get navigableWords(): ReadonlySet<string> { return this._config.navigableWords; }
   get blanksByWord(): ReadonlyMap<string, BlankEntry> { return this._config.blanksByWord; }
-  /** Parsed `~/.cues/SENTINELS.md`. Always populated; the runtime gate on
-   *  `opencuesState.sentinelsMode` decides whether it ever leaves
-   *  the ConfigLoader. See `LoadedConfig.sentinels`. */
+  /** Parsed `~/.cues/IDENTITY.md`. Always populated; the runtime gate on
+   *  `opencuesState.identityContextMode` decides whether it ever leaves
+   *  the ConfigLoader. See `LoadedConfig.identity`. */
   get identity(): LoadedConfig['identity'] { return this._config.identity; }
 
   /** Unique blanks by name (lowercased).
@@ -907,20 +907,30 @@ export class ConfigLoader {
     const cueDisableUnion = new Set<string>();
     const blankDisableUnion = new Set<string>();
     const auditorDisableUnion = new Set<string>();
+    // Master files (CUES.md / BLANKS.md / AUDITORS.md). The
+    // spec-version gate in core's parseMasterFile populates
+    // `specError` on too-new files; we log + skip so the disable[]
+    // list from a refused master file doesn't leak into the union.
     for (const p of perPath) {
       if (p.cuesMd) {
         try {
-          for (const name of parseCuesMaster(p.cuesMd).disableCues ?? []) cueDisableUnion.add(name);
+          const cfg = parseCuesMaster(p.cuesMd);
+          if (cfg.specError) this.adapter.log('warn', `ConfigLoader: CUES.md refused — ${cfg.specError}`);
+          else for (const name of cfg.disableCues ?? []) cueDisableUnion.add(name);
         } catch { /* defensive */ }
       }
       if (p.blanksMd) {
         try {
-          for (const name of parseBlanksMaster(p.blanksMd).disableBlanks ?? []) blankDisableUnion.add(name);
+          const cfg = parseBlanksMaster(p.blanksMd);
+          if (cfg.specError) this.adapter.log('warn', `ConfigLoader: BLANKS.md refused — ${cfg.specError}`);
+          else for (const name of cfg.disableBlanks ?? []) blankDisableUnion.add(name);
         } catch { /* defensive */ }
       }
       if (p.auditorsMd) {
         try {
-          for (const name of parseAuditorsMaster(p.auditorsMd).disableAuditors ?? []) auditorDisableUnion.add(name);
+          const cfg = parseAuditorsMaster(p.auditorsMd);
+          if (cfg.specError) this.adapter.log('warn', `ConfigLoader: AUDITORS.md refused — ${cfg.specError}`);
+          else for (const name of cfg.disableAuditors ?? []) auditorDisableUnion.add(name);
         } catch { /* defensive */ }
       }
     }
@@ -1078,7 +1088,18 @@ export class ConfigLoader {
 
   private _safeParseCuesMd(content: string | null, label: string): CuesMdConfig | null {
     if (content === null) return null;
-    try { return parseCuesMd(content); } catch (err) {
+    try {
+      const cfg = parseCuesMd(content);
+      // Spec-version refusal — `SPEC.md` § Version policy. Parser
+      // populated `specError` when the file's `spec:` is newer than
+      // this runtime supports. Log + skip so a too-new file becomes
+      // visible-but-inert rather than silently crashing the load.
+      if (cfg.specError) {
+        this.adapter.log('warn', `ConfigLoader: ${label} refused — ${cfg.specError}`);
+        return null;
+      }
+      return cfg;
+    } catch (err) {
       this.adapter.log('warn', `ConfigLoader: ${label} parse failed`, err);
       return null;
     }
@@ -1125,6 +1146,9 @@ export class ConfigLoader {
         // Mirrors chrome's bundle-level on-site filter so the same on-host:
         // declaration works uniformly across native hosts + chrome.
         hostName: this.adapter.hostName,
+        // Surface spec-version refusals as warn-level log lines so a
+        // user with a too-new file sees why their pack isn't loading.
+        log: (level, msg) => this.adapter.log(level, `ConfigLoader: ${msg}`),
       });
     } catch (err) {
       this.adapter.log('warn', 'ConfigLoader: folder discovery failed', err);

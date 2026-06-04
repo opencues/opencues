@@ -8,11 +8,13 @@ on the `_` blank uses your real data when it's relevant.
 `~/.cues/OPENCUES.md`. Phase 1 wires fluid-blank only.
 
 > **Naming note (June 2026 rename).** Identity context was previously
-> called "sentinels"; the file used to be `SENTINELS.md` and the scalar
-> was `sentinels-mode`. Both old names still work for one release cycle
-> (back-compat reads in ConfigLoader). New users get `IDENTITY.md` from
-> `opencues seed-configs`. The mechanism — bracketed `[FOO]` tokens
-> substituted by the runtime — is unchanged.
+> called "sentinels"; the file used to be `SENTINELS.md` (and earlier
+> `USER.md`) and the scalar was `sentinels-mode` (earlier
+> `user-context-mode`). No runtime back-compat reads — the rename
+> is mechanical on install: `opencues seed-configs` migrates legacy
+> filenames + rewrites the scalar in `OPENCUES.md` in place.
+> The mechanism — bracketed `[FOO]` tokens substituted by the runtime
+> — is unchanged.
 
 ## The 30-second example
 

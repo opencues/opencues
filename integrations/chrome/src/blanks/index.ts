@@ -39,28 +39,28 @@ export function createBlanks(options?: {
   opencuesMdReadFile?: () => Promise<string | null>;
   opencuesMdWriteFile?: (content: string) => Promise<void>;
   /**
-   * Optional SENTINELS.md file accessors. When supplied, the
+   * Optional IDENTITY.md file accessors. When supplied, the
    * keyword-bound `set sentinel _` / `remove sentinel _` blank is
    * registered. Chrome wires these to chrome.storage; without them
    * the blank stays unregistered (user can still use `opencues
-   * sentinels` from the CLI). Writes go through the same validator
+   * identity` from the CLI). Writes go through the same validator
    * as the CLI — see security-audit.md row #24.
    */
-  sentinelsMdReadFile?: () => Promise<string | null>;
-  sentinelsMdWriteFile?: (content: string) => Promise<void>;
+  identityMdReadFile?: () => Promise<string | null>;
+  identityMdWriteFile?: (content: string) => Promise<void>;
 }): Map<string, BrowserBlank> {
   const opencuesMdIO = (options?.opencuesMdReadFile && options.opencuesMdWriteFile)
     ? { readFile: options.opencuesMdReadFile, writeFile: options.opencuesMdWriteFile }
     : undefined;
-  const sentinelsMdIO = (options?.sentinelsMdReadFile && options.sentinelsMdWriteFile)
-    ? { readFile: options.sentinelsMdReadFile, writeFile: options.sentinelsMdWriteFile }
+  const identityMdIO = (options?.identityMdReadFile && options.identityMdWriteFile)
+    ? { readFile: options.identityMdReadFile, writeFile: options.identityMdWriteFile }
     : undefined;
   return createDefaultBlanksRegistry({
     llmConfig: options?.llmConfig,
     finnhubApiKey: options?.finnhubApiKey,
     customTickers: options?.customTickers,
     opencuesMdIO,
-    sentinelsMdIO,
+    identityMdIO,
     hostName: 'chrome',
   }) as Map<string, BrowserBlank>;
 }

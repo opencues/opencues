@@ -136,7 +136,7 @@ function cmdSet(argv) {
       console.error('The runtime keeps the first definition; this set would be silently dropped.');
       console.error(`Either rename ${bold(key)} to avoid collision, or run ${bold(`opencues identity remove ${r.context.conflictingKey}`)} first.`);
     } else if (r.error === 'capacity-exceeded') {
-      console.error(dim(`USER.md path: ${IDENTITY_MD_PATH}`));
+      console.error(dim(`IDENTITY.md path: ${IDENTITY_MD_PATH}`));
     }
     // Exit codes: shape errors (invalid-key, value-*, capacity) → 2,
     // state errors (collision) → 1. Matches the unix convention.

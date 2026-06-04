@@ -80,7 +80,7 @@ export type BucketScope = typeof BUCKET_SCOPES[number];
 // Built at module-load from FEATURES so adding a scalar to the
 // registry automatically extends the classifier's choice space — no
 // edit here required. Hidden-from-menu values (exposeInMenu: false,
-// today only `sentinels-mode: raw`) are excluded: the classifier
+// today only `identity-context-mode: raw`) are excluded: the classifier
 // must never auto-flip a footgun mode on semantic intent alone; that
 // stays a deliberate file edit.
 
@@ -523,7 +523,7 @@ export function parseConfigIntentOutput(raw: string): ConfigIntentVerdict {
  * Validate a parsed verdict against the FEATURES + PROVIDERS
  * registries. Rejects anything the model hallucinated:
  *   - setting kind: unknown setting, unlisted value, hidden value
- *     (e.g. sentinels-mode=raw)
+ *     (e.g. identity-context-mode=raw)
  *   - provider kind: unknown scope, unknown provider, model not in
  *     that provider's knownModels (when knownModels is declared)
  *

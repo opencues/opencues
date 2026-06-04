@@ -183,8 +183,8 @@ When the user has typed a hint before the `_` (e.g.
 `danielsunderland _` in a LinkedIn URL field), the LLM uses the
 ambient label as the SHAPE (`https://linkedin.com/in/...`) and the
 typed buffer as the CONTENT (`danielsunderland`), merging into
-`https://linkedin.com/in/danielsunderland`. When `sentinels-mode`
-is also on, the typed hint takes precedence over SENTINELS.md catalog
+`https://linkedin.com/in/danielsunderland`. When `identity-context-mode`
+is also on, the typed hint takes precedence over IDENTITY.md catalog
 sentinels — full priority rule + bench evidence in
 `docs/architecture/sentinels.md` § *Steering — typed hint vs
 catalog token*.

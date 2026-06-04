@@ -91,7 +91,7 @@ describe('SentinelBlank — set: success paths', () => {
   });
 
   it('preserves the file body (docstring) on write', async () => {
-    const body = '\n# SENTINELS.md\n\nMy notes.\n';
+    const body = '\n# IDENTITY.md\n\nMy notes.\n';
     const io = makeIO(`---\nfirstName: Wilfred\n---${body}`);
     const b = new SentinelBlank(io);
     await b.get('set sentinel', ['jobTitle', 'Founder']);
@@ -157,7 +157,7 @@ describe('SentinelBlank — error surface (visible, not silent)', () => {
     const b = new SentinelBlank(io);
     const before = io.text;
     const out = await b.get('set sentinel', ['overflow', 'x']);
-    expect(out).toMatch(/^\[err\] USER\.md is full/);
+    expect(out).toMatch(/^\[err\] IDENTITY\.md is full/);
     expect(out).toMatch(/remove unused/i);
     expect(io.text).toBe(before);  // no write
   });
@@ -214,7 +214,7 @@ describe('SentinelBlank — security: validator is the only write path', () => {
     await b.get('set sentinel', ['a', '1']);
     await b.get('set sentinel', ['b', '2']);
     const out = await b.get('set sentinel', ['c', '3']);
-    expect(out).toMatch(/^\[err\] USER\.md is full/);
+    expect(out).toMatch(/^\[err\] IDENTITY\.md is full/);
   });
 
   it('refuses keyword "set sentinel" if BlankFill misroutes it (defence-in-depth)', async () => {

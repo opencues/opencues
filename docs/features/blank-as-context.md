@@ -160,7 +160,7 @@ across all six counts. See `FINDINGS.md`.
   Refresh is lazy on prompt-build, not on a background cron.
 - **Hard cap** — at most 32 (blank × slot × field) tuples can be active
   at once across the whole catalog. Mirrors the
-  `sentinels-validator.ts:validateSentinelWrite` chokepoint. Drop the
+  `identity-validator.ts:validateSentinelWrite` chokepoint. Drop the
   oldest if exceeded.
 - **Failed fetches** — emit a `[STALE]` marker in the token's slot
   rather than blocking. Fluid-blank tolerates missing context.
@@ -184,7 +184,7 @@ stocks (ttl 60s, last snapshot 12s ago)
 3 blanks active · 5 tokens · safe mode · provider sees token names only
 ```
 
-The list mirrors `opencues sentinels list` deliberately — same mental
+The list mirrors `opencues identity list` deliberately — same mental
 model, same UI gesture. Anything visible in the list is what a provider
 could see (by name in `safe`, by value in `raw`).
 

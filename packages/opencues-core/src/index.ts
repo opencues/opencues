@@ -6,7 +6,15 @@
  */
 
 // Spec version
-export { SPEC_VERSION, type SpecVersion } from './spec-version';
+export {
+  SPEC_VERSION,
+  SPEC_OMIT_DEFAULT,
+  parseSpecPin,
+  isSpecCompatible,
+  type SpecVersion,
+  type SpecPin,
+  type SpecCompatResult,
+} from './spec-version';
 
 // Types
 export * from './types';
@@ -209,8 +217,8 @@ export type {
   PlanResult as BlankContextPlanResult,
 } from './blank-context';
 
-// SENTINELS.md write-validator — load-bearing safety check for any path
-// that mutates `~/.cues/SENTINELS.md`. Used by the CLI's `sentinels` command
+// IDENTITY.md write-validator — load-bearing safety check for any path
+// that mutates `~/.cues/IDENTITY.md`. Used by the CLI's `identity` command
 // today; will be used by a future keyword-bound sentinel blank.
 // See docs/architecture/security-audit.md row #24.
 export {

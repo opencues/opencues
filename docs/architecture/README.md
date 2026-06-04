@@ -45,7 +45,7 @@ its area + the "read before editing" guard.
 | [`fluid-config.md`](fluid-config.md) | Optional `fluid-config-mode` feature — semantic `_` → settings change classifier at priority 94. Routes ONLY to FEATURES-registry scalars. Three structural defences + the known precision boundary (FluidBlank eagerness on imperatives). |
 | [`sentence-cues.md`](sentence-cues.md) | `scope: sentence` cues + the `sentence-cues-mode` scalar. Passive DynDef contract — buffer is never modified without a keystroke. Managed-span overlap guard. Forward-compat KNOWN_SCOPES allowlist. |
 | [`ambient-context.md`](ambient-context.md) | Optional `ambient-context-mode` — fluid-blank receives sanitized field metadata (label/placeholder/page-title) for disambiguating lookups. Chrome-only gatherer; host-agnostic at the HostAdapter contract. |
-| [`sentinels.md`](sentinels.md) | Optional `sentinels-mode` — fluid-blank receives sentinel tokens from `~/.cues/SENTINELS.md`. Safe-mode (post-process substitution) vs raw-mode (inline values). PII never reaches provider logs in safe mode. |
+| [`sentinels.md`](sentinels.md) | Optional `identity-context-mode` — fluid-blank receives sentinel tokens from `~/.cues/IDENTITY.md`. Safe-mode (post-process substitution) vs raw-mode (inline values). PII never reaches provider logs in safe mode. |
 | [`agent-task.md`](agent-task.md) | AgentRewrite module — `agentically X _` / `add task X _`. One debounce-driven LLM call per tick, three-way merge against live buffer drops hunks overlapping user edits. |
 | [`agent-rewrite-cache.md`](agent-rewrite-cache.md) | AgentRewrite two-tier cache (skip-on-stable + LRU). Cache-key composition, determinism assumption (temp=0 + seed pinning), extension points. |
 

@@ -44,7 +44,7 @@ class StubBlank implements Blank {
 
 describe('blank-as-context end-to-end wiring', () => {
   it('frontmatter → plan → snapshot → render → substitute', async () => {
-    // 1. SENTINELS.md content. Single field: portfolio with 3 tickers.
+    // 1. IDENTITY.md content. Single field: portfolio with 3 tickers.
     const sentinels = parseIdentityMd(`---
 portfolio: AAPL,NVDA,GOOG
 ---`);

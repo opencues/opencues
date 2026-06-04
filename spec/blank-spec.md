@@ -1,6 +1,6 @@
 # blank-spec — the Blank file format & runtime contract
 
-> **Status:** `0.1-alpha`. Expect changes.
+> **Status:** `0.2-alpha`. Expect changes.
 
 A **blank** is the user→system surface: when a user writes `_` (underscore) in their text, the runtime substitutes a value sourced from somewhere — a list, a shell script, an in-process function. Blanks are how text touches the world: volume, weather, stock prices, dictionary entries, settings toggles. This document specifies the `BLANK.md` file format and what a conformant runtime MUST do with one.
 
@@ -85,6 +85,8 @@ A blank source MUST also declare **exactly one** binding profile (see § Binding
 | `blankScript` | string (relative path) | none | Binding profile — shell script. |
 | `impl` | string | implicit from `name` | Binding profile — in-process class name. |
 | `on-host` / `not-on-host` | list | auto-detected | Host filtering. See `core.md`. |
+| `as-context` | `"off"` \| `"safe"` \| `"raw"` | `"off"` | Opt-in for **blank-as-context** — exposes the blank's current value as an ambient sentinel token (e.g. `[STOCKS]`, `[WEATHER]`) the LLM can reference without the user typing the keyword. Shares the catalog machinery defined in [`identity-context-spec.md`](./identity-context-spec.md). `safe` ships tokens-only (values substituted post-LLM); `raw` inlines values into the prompt. See § Sentinel aspects below. |
+| `contextTtl` | number (seconds) | runtime default | Cache lifetime for the blank-as-context snapshot before the runtime re-invokes `get()` on prompt-build. Only meaningful when `as-context` is `safe` or `raw`. |
 | `speak` | boolean | `false` | Per-blank TTS hint. Reserved here so authors have a portable place to declare intent; TTS itself is non-standard. |
 | `spec` | string | `"opencues/0.1-alpha"` | Spec version this file targets. Files that omit `spec:` MUST be treated as `opencues/0.1-alpha`. Runtimes MUST refuse files declaring a newer `spec:` than they support. |
 
@@ -321,6 +323,82 @@ All methods are async. The `keyword` argument carries which `blankKeywords` entr
 - **`blankProximity: N`** — up to N words may sit *between* the keyword and `_`. Default 0 (adjacent). With `N = 2`, `"weather in paris _"` matches (2 words between); `"weather in central paris _"` does not (3 words between, exceeds N).
 - **`blankKeywordExpansions.<key>`** — when `<key>` triggers, the runtime MAY pass the expanded form as `context` instead of the raw keyword.
 - **`blankStep`, `blankFormat`, `blankSuffix`** — numeric/format hints. Runtime MUST honor for numeric blanks.
+
+---
+
+## Sentinel aspects
+
+Two surfaces let blanks participate in the sentinel-token mechanism
+defined in [`identity-context-spec.md`](./identity-context-spec.md):
+**blank-as-context** (a blank emits its value as an ambient token)
+and the **reserved `sentinel` blank** (a built-in that mutates the
+user's `IDENTITY.md`).
+
+### Blank-as-context — `as-context: safe | raw`
+
+A blank that opts in via `as-context: safe` or `as-context: raw`
+declares its current value should be available to the LLM as an
+ambient catalog token. The token name is derived from the blank's
+`name:` field using the same canonical algorithm as
+`identity-context-spec.md` (e.g. a blank `name: stocks` derives
+`[STOCKS]`; `name: weather` derives `[WEATHER]`).
+
+A conformant runtime that observes `as-context: safe|raw`:
+
+- MUST gate emission on the `blank-context-mode` scalar in
+  `OPENCUES.md` (`off` / `safe` / `raw`; default `off`). A blank
+  with `as-context: raw` does NOT bypass this gate.
+- MUST apply the same post-processor rules as for IDENTITY.md
+  tokens: resolve catalog hits, strip unknown brackets, preserve
+  user-typed bracket strings in the input.
+- MUST honor the mode-gate composition rule: when the user has set
+  `blank-context-mode: raw` but `identity-context-mode` is NOT
+  `raw`, the runtime MUST downgrade `blank-context-mode` to
+  `safe`. This prevents a footgun where the user opts blanks into
+  raw values without realising identity-context is still safe.
+- MUST refresh the cached snapshot at most every `contextTtl`
+  seconds when set; otherwise per the runtime's default cache
+  policy.
+
+The token-name collision rules from `identity-context-spec.md`
+apply across catalogs — a user `IDENTITY.md` field that would
+derive `[STOCKS]` collides with a blank-as-context entry of the
+same name, and the validator MUST reject the IDENTITY.md write.
+
+### The `sentinel` built-in — IDENTITY.md mutation
+
+The blank name `sentinel` is **reserved** for a built-in
+keyword-bound blank that mutates the user's `IDENTITY.md` via the
+validator chokepoint in `identity-context-spec.md`. Triggers:
+
+```
+set sentinel <key> <value> _      → add / update
+remove sentinel <key> _            → delete
+```
+
+Conformant runtimes that ship this built-in:
+
+- MUST route every mutation through the same single validator
+  chokepoint defined in `identity-context-spec.md` (key-shape
+  check, value-shape check, capacity caps, collision rejection).
+  Bypassing it for any reason is a regression.
+- MUST refuse keyword routing for the `sentinel` name from
+  LLM-classified intent surfaces (e.g. ConfigIntent-style
+  classifiers MUST NOT auto-target IDENTITY.md). The trigger is
+  keyword-bound only.
+- MUST NOT consume ambient context (page placeholder / aria /
+  field label) when servicing this blank — a hostile page MUST
+  NOT influence what gets written.
+- SHOULD register the built-in first so a user pack of the same
+  name loses the registration race (first-wins gate, with a
+  visible warning). User packs of name `sentinel` MUST NOT be
+  silently allowed to shadow the built-in.
+
+A runtime that chooses not to ship the in-editor mutation surface
+still meets the spec — `IDENTITY.md` can be edited by hand or via
+a reference-impl CLI (`opencues identity set`). The reserved-name
+rule still applies: user packs MUST NOT use the name `sentinel`
+for unrelated purposes.
 
 ---
 

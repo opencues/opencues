@@ -294,7 +294,7 @@ describe('opencues identity — E2E', () => {
       userMd: `---\n${lines}\n---\n`,
     });
     assert.notStrictEqual(r.status, 0);
-    assert.match(r.stderr, /USER\.md is full/);
+    assert.match(r.stderr, /IDENTITY\.md is full/);
     assert.match(r.stderr, /remove unused/i);
   });
 

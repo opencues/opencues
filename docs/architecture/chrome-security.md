@@ -238,10 +238,10 @@ re-reviewed before that change lands.**
 
 ### Boundary 10 — Sentinels scope + gate
 
-`~/.cues/SENTINELS.md` frontmatter (the user's own personal data:
+`~/.cues/IDENTITY.md` frontmatter (the user's own personal data:
 first name, email, work city, etc.) is forwarded to
 FluidBlankSource as a catalog of sentinel tokens when
-`sentinels-mode: safe` or `: raw` is set in
+`identity-context-mode: safe` or `: raw` is set in
 `~/.cues/OPENCUES.md`. Off by default.
 
 In `safe` mode (recommended) the catalog ships only token NAMES
@@ -268,7 +268,7 @@ Two attack-class-specific rules baked into the catalog prompt
 
 Sensitive fields are excluded the same way as in Boundary 9 —
 gate enforced via `isSensitiveField` in the chrome bootstrap;
-no SENTINELS.md data reaches a `_` trigger on a password / CC / OTP
+no IDENTITY.md data reaches a `_` trigger on a password / CC / OTP
 field even when feature is on.
 
 Same structural property as Boundary 9: the post-processed

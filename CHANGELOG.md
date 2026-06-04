@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Added — spec-version gate (the standard's "MUST refuse newer" rule, finally enforced)
+
+The `SPEC.md` § Version policy clause "A conforming reader MUST refuse to parse a file whose declared spec version is higher than the reader's pinned SPEC_VERSION" used to be normative-but-inert — the parsers ignored the `spec:` frontmatter field entirely. Conformance fixtures pretended to cover it via regex-matching the fixture content, never calling into the runtime.
+
+Now actually enforced:
+
+- **`@opencues/core` (0.2.1 → 0.2.2)** — `spec-version.ts` adds `parseSpecPin`, `isSpecCompatible`, and `SPEC_OMIT_DEFAULT`. Every parser entry (`parseCuesMd`, `parseSingleCueMd`, `parseSingleAuditorMd`, `parseCuesMaster`, `parseBlanksMaster`, `parseAuditorsMaster`) calls the gate before producing a config. On refusal, an empty `CuesMdConfig` is returned with a populated `specError` field. `discover.ts` honours the gate and exposes an optional `log` hook so callers see refusal reasons. The algorithm encodes both the draft (`0.x`) and post-stable (`1.0+`) regimes: newer-major refuse, newer-minor refuse, AND post-1.0 cross-major refuse (major bumps are breaking by definition).
+- **`@opencues/runtime` (0.2.1 → 0.2.2)** — `ConfigLoader` wires the discover log hook + every master-file load checks `specError` and emits `[warn] ConfigLoader: <file> refused — <reason>`. Refused sources are visible in `/tmp/opencues.log` instead of silently missing.
+- **Conformance test rewritten** — `conformance.test.ts`'s `spec-too-new` case now calls `parseSingleCueMd` directly and asserts the returned config has `specError` set + no sources/blanks/auditors populated. The fixture-only regex check it replaced was technically passing the conformance suite without exercising any production code path.
+- **39 new tests** — `spec-version.test.ts` (32 unit tests covering the algorithm against future versions: a 2.0 reader, 1.5 reader, pre-release suffix semantics, unparseable input) + `discover.spec-version.test.ts` (7 integration tests covering the log hook + the back-compat "omit-default never moves forward" invariant).
+
+**The bug this prevents.** Without the gate, a `0.2-alpha` runtime silently accepts files declaring `spec: opencues/99.0`. The runtime tries to honour any feature the file uses — including future surfaces the runtime can't model — and produces incoherent results. With the gate, the runtime says "I'm 0.2, file declares 99.0, refused" and the user sees a single warn line they can act on.
+
+**Forward-compat invariant.** `SPEC_OMIT_DEFAULT` stays at `opencues/0.1-alpha` permanently. When the spec bumps to 0.3, 1.0, 2.0, etc., legacy spec-less files still load (the default is always ≤ the runtime's version). New files SHOULD declare their target explicitly. Codified in `CLAUDE.md` § Spec-omit-default is permanent.
+
 ### Breaking + Added — identity-context rename, blank-as-context feature, and `opencues context`/`opencues cleanup` CLI
 
 **Renamed** the personal-data feature from `sentinels` → `identity-context`:
