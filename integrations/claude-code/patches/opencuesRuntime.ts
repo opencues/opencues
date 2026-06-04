@@ -443,6 +443,11 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `}` +
     `return __ocCtl.createBlankInvoke(__ocReg);` +
     `}catch(__ocCe){if(globalThis.__oc&&globalThis.__oc.adapter)globalThis.__oc.adapter.log("warn","blankInvoke unavailable",{err:String(__ocCe)});return function(){return null;};}})(),` +
+    // Blank-as-context: hand the same registry to the runtime as a
+    // Map<name, Blank> so the Resolver can snapshot context-eligible
+    // blanks (those with `as-context: safe|raw` in BLANK.md). Without
+    // this, `blank-context-mode: safe` in OPENCUES.md is inert.
+    `blanks:__ocReg,` +
     // Statusline + cursor-state export paths. Per-PID, canonical names
     // shared across every host adapter so the agentic harness (oc-state,
     // scenario-runner, /tmp/opencues-status-<pid>.json contract in

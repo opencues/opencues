@@ -438,6 +438,7 @@ export function startOpenCues(opts: {
     },
     log,
     blankInvoke,
+    blanks: blanksRegistry,
     // Path matches the agentic harness's readStatus convention
     // (`/tmp/opencues-status-<pid>.json`) so scenario-runner expect
     // steps with `source: 'status'` find the file. CC and OC both
