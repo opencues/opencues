@@ -443,6 +443,11 @@ export function startOpenCues(opts: {
     // scripts still run for OS-level blanks (volume, brightness) and any
     // blank that hasn't been hoisted to runtime yet.
     blankInvoke,
+    // Same registry, exposed to the runtime as a plain Map so the
+    // Resolver can snapshot context-eligible blanks (`as-context: safe`)
+    // without going through the script-spawn path. See
+    // docs/features/blank-as-context.md.
+    blanks: blanksRegistry,
     // Canonical status path — same shape across all hosts (CC, OC, future
     // Gemini). The pid suffix already disambiguates concurrent processes
     // and the JSON's `host` field tells you which host wrote it. The

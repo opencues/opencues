@@ -416,6 +416,65 @@ export interface BuildSharedRuntimeOptions {
  * (401/403/404/429/400/network) through this function; LLM-internal
  * errors (no-span, malformed JSON, 5xx) stay silent unconditionally.
  */
+/**
+ * Build a `blankContextProvider` closure for the Resolver constructor.
+ *
+ * The resolver invokes this on every resolve when
+ * `blank-context-mode !== 'off'`. We plan slots for every blank with
+ * `as-context: safe|raw` in its frontmatter, then snapshot via the
+ * BlankContextCache (lazy TTL refresh on prompt-build, fail-soft `[STALE]`
+ * on fetch error). Returns `undefined` when no host blanks are wired
+ * (chrome host-process path) or the user hasn't opted in any blanks.
+ *
+ * See docs/features/blank-as-context.md.
+ */
+export function buildBlankContextProvider(
+  configLoader: ConfigLoader,
+  blanks: ReadonlyMap<string, import('./blanks/types').Blank> | undefined,
+  log: (level: LogLevel, msg: string) => void,
+): (() => Promise<
+  | { fields: ReadonlyArray<{ token: string; description: string; value: string }>;
+      catalog: ReadonlyMap<string, string>;
+      mode: 'safe' | 'raw' }
+  | undefined
+>) | undefined {
+  if (!blanks || blanks.size === 0) return undefined;
+  // Dynamic require — opencues-core may not be loadable in every host
+  // build (chrome bundle was a notable case until June 2026). Skip the
+  // wire-up gracefully when it isn't.
+  let core: {
+    planBlankContextSlots?: (cfg: unknown, identity: unknown) => { slots: ReadonlyArray<{ blankName: string; slot: string; token: string; description: string }>; warnings: ReadonlyArray<string> };
+  } | null = null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    core = require('@opencues/core');
+  } catch {
+    return undefined;
+  }
+  if (!core?.planBlankContextSlots) return undefined;
+  const { BlankContextCache } = require('./modules/blank-context-cache') as typeof import('./modules/blank-context-cache');
+  const cache = new BlankContextCache();
+  return async () => {
+    const mode = configLoader.opencuesState.blankContextMode;
+    if (mode === 'off') return undefined;
+    const identity = configLoader.identity;
+    // Plan slots across every shipped blank with as-context opt-in.
+    const merged = configLoader.mergedBlanksConfig?.blanks ?? {};
+    const allPlans: Array<{ blankName: string; slot: string; token: string; description: string }> = [];
+    const ttls = new Map<string, number>();
+    for (const [name, blankCfg] of Object.entries(merged)) {
+      if (!blankCfg.asContext || blankCfg.asContext === 'off') continue;
+      const result = core.planBlankContextSlots!(blankCfg, identity);
+      allPlans.push(...result.slots);
+      for (const w of result.warnings) log('warn', `blank-context: ${w}`);
+      ttls.set(name, (blankCfg.contextTtl ?? 60) * 1000);
+    }
+    if (allPlans.length === 0) return undefined;
+    const snap = await cache.snapshot(allPlans, blanks, ttls);
+    return { fields: snap.fields, catalog: snap.catalog, mode };
+  };
+}
+
 export function nativeHostFormatLLMError(
   reason: 'invalid-api-key' | 'network' | 'rate-limit' | 'endpoint-not-found' | 'model-not-found' | 'insufficient-credits' | 'bad-request',
 ): string {
