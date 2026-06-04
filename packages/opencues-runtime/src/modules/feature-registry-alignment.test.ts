@@ -35,6 +35,13 @@ const SETTINGS_MAP_ONLY: ReadonlySet<string> = new Set([
   'transformBlankMode', // consumed by transform-blank pipeline gate
   'fluidConfigMode',    // consumed in resolver.ts:enableConfigIntent
   'sentenceCuesMode',   // consumed in resolver.ts:enableSentenceCues
+  // The three `*-llm-model` scalars are read straight off `settings.get(...)`
+  // by resolver.ts:532-535. They're dynamic-valued (their valid range
+  // depends on the sibling `*-llm-provider`) so a typed enum would be
+  // wrong — the legal values change at runtime.
+  'cuesLlmModel',
+  'auditorsLlmModel',
+  'blanksLlmModel',
 ]);
 
 describe('feature-registry ↔ OpenCuesState alignment', () => {

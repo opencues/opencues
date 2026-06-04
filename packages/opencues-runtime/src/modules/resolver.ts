@@ -160,6 +160,23 @@ function featureLLM(settings: { get(k: string): string | undefined }, prefix: st
   };
 }
 
+/**
+ * Translate a `*-llm-model` scalar's raw value into a model id or
+ * undefined. The literal `default` (used as the first cycleable
+ * value in the `*-llm-model` FEATURES entries) means "fall through
+ * to the provider's defaultModel" — semantically identical to the
+ * scalar being absent. Keeping `default` as an explicit value (rather
+ * than deleting the line from OPENCUES.md) lets the cycling menu
+ * express "reset to provider default" without a delete-scalar code
+ * path.
+ */
+function normalizeModelScalar(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined;
+  const t = raw.trim();
+  if (t === '' || t.toLowerCase() === 'default') return undefined;
+  return t;
+}
+
 function isRoutedWordGroup(s: unknown): s is RoutedWordSourceGroupLike {
   return !!s
     && typeof s === 'object'
@@ -529,10 +546,15 @@ export class Resolver {
       // resolve through boot-common's buildAgentLLMResolver and never
       // touch this path.
       cuesBucketProvider: this.configLoader.opencuesState.cuesLlmProvider,
-      cuesBucketModel: settings.get('cues-llm-model'),
+      // `default` means "use the provider's defaultModel" — translate
+      // to undefined so the resolver's fallback chain kicks in. Same
+      // semantics as the scalar being absent, but keeping `default` as
+      // an explicit cycleable value lets `config _` cycling express
+      // "reset to provider default" without a delete-scalar path.
+      cuesBucketModel: normalizeModelScalar(settings.get('cues-llm-model')),
       cuesBucketEndpoint: settings.get('cues-llm-endpoint'),
       blanksBucketProvider: this.configLoader.opencuesState.blanksLlmProvider,
-      blanksBucketModel: settings.get('blanks-llm-model') ?? settings.get('blank-llm-model'),
+      blanksBucketModel: normalizeModelScalar(settings.get('blanks-llm-model') ?? settings.get('blank-llm-model')),
       blanksBucketEndpoint: settings.get('blanks-llm-endpoint') ?? settings.get('blank-llm-endpoint'),
       // Per-feature tier.
       wordCues: featureLLM(settings, 'word-cues'),
@@ -1186,20 +1208,23 @@ export class Resolver {
       // substitute (alternatives = ['_', errorMessage]) — route through
       // the fluid-blank applicator so the error text lands in the
       // buffer (otherwise the user only sees it via cycling).
-      const isFluidBlank = r.source === 'fluid-blank' || r.source === 'missing-key-fallback';
-      const isTransformBlank = r.source === 'transform-blank';
-      // Error substitutes (no-key fallback + FluidBlank's user-actionable
-      // HTTP failures) get registered as clearOnEdit spans so any edit
-      // INSIDE the message wipes the whole substitute back to `_` — the
-      // user can re-type their summon without manual backspace-spam.
+      //
+      // Error substitutes — any LLM-driven blank source that classified
+      // a user-actionable HTTP failure (transform-blank + config-intent
+      // gained this in June 2026; fluid-blank had it earlier) — also
+      // get routed through the substitute splice so the user sees the
+      // inline `[OpenCues: ...]` message regardless of which source
+      // emitted it.
       const isErrorSubstitute = r.source === 'missing-key-fallback'
         || (r.metadata as { fluidBlankErrorReason?: string } | undefined)?.fluidBlankErrorReason !== undefined;
+      const isFluidBlank = r.source === 'fluid-blank' || r.source === 'missing-key-fallback' || isErrorSubstitute;
+      const isTransformBlank = r.source === 'transform-blank' && !isErrorSubstitute;
       // ConfigIntent emits the same FluidBlank-style shape
       // (alternatives = ['_', confirmation]) — splice the
       // confirmation in at the `_`, register a DynDef for
       // cycling-Down revert. blankName below differs so the def
       // isn't re-resolved as a fluid-blank lookup.
-      const isConfigIntent = r.source === 'config-intent';
+      const isConfigIntent = r.source === 'config-intent' && !isErrorSubstitute;
       // Fluid-blank substitutes inline (BlankFill-style). For WIPE mode the
       // text shrinks so the wordIndex shifts — we have to compute the def's
       // FINAL position in the new text and key the def there, not at the
@@ -1348,6 +1373,15 @@ export class Resolver {
         const selector = alts[0];
         const meta = r.metadata as Record<string, unknown> | undefined;
         const satellite = String(meta?.satelliteValue ?? '');
+        // When satelliteCyclingValue is set, it's stored as the
+        // cycling state's currentValue while `satellite` is used for
+        // the buffer splice. The two differ for PROVIDER verdicts that
+        // included a model — buffer shows `anthropic:claude-opus-4-7`,
+        // cycling state stores `anthropic`. Falls back to `satellite`
+        // when absent (every other case behaves unchanged).
+        const cyclingValue = meta && typeof meta.satelliteCyclingValue === 'string' && meta.satelliteCyclingValue
+          ? String(meta.satelliteCyclingValue)
+          : satellite;
         const sep = String(meta?.displaySeparator ?? ' ');
         const blankName = String(meta?.blankName ?? 'opencues');
         if (!satellite) {
@@ -1385,7 +1419,12 @@ export class Resolver {
               satelliteIndex: selStartWord.index + selectorLength,
               satelliteLength,
               currentSetting: selector,
-              currentValue: satellite,
+              // cyclingValue is the satellite for non-pair cases (same
+              // string); for `provider:model` pairs it's just `provider`
+              // so cycling Up/Down rotates the provider catalogue. The
+              // model auto-resets via providerScalarToModelScalar on
+              // each provider cycle, keeping the pair invariant.
+              currentValue: cyclingValue,
               separator: sep,
               // clearOnEdit: true — backspacing into either word wipes
               // the whole pair in one go via applyClearOnEdit. The

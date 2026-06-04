@@ -40,6 +40,7 @@ interface ScriptedConfigIntent {
   value: string;              // e.g. 'openai', 'kimi-k2'
   separator?: string;         // default ' '
   wipeText: string;           // the buffer text the source analyzed
+  cyclingValue?: string;      // when set, currentValue in cycling state ≠ satelliteValue
 }
 
 function scriptConfigIntentResult(s: ScriptedConfigIntent) {
@@ -56,6 +57,7 @@ function scriptConfigIntentResult(s: ScriptedConfigIntent) {
       displaySeparator: s.separator ?? ' ',
       blankName: 'opencues',
       selectorBlank: true,
+      ...(s.cyclingValue !== undefined ? { satelliteCyclingValue: s.cyclingValue } : {}),
     },
   };
 }
@@ -276,5 +278,82 @@ describe('ConfigIntent substitute — sequential setting changes (PR #25)', () =
     })]);
     await resolver.resolveAndApply(adapter.getText());
     expect(adapter.getText()).toBe('llm-model gpt-4');
+  });
+});
+
+describe('ConfigIntent substitute — provider:model pair display (the pair UX)', () => {
+  // The user explicitly asked for "a unique state indication of
+  // provider: model" so they always know what model is in use after
+  // a fluid switch. The classifier emits `satelliteValue: provider:model`
+  // (one token; `:` isn't whitespace so splitWords keeps it as one
+  // word) and `satelliteCyclingValue: provider` so the buffer renders
+  // the pair while cycling Up/Down still walks the provider catalogue.
+
+  it('splices the buffer as `<bucket>-llm-provider <provider>:<model>` when verdict has a model', async () => {
+    const { adapter, resolver, script } = setupConfigIntentScenario('use claude opus for auditors _');
+    script([scriptConfigIntentResult({
+      setting: 'auditors-llm-provider',
+      value: 'anthropic:claude-opus-4-7',
+      cyclingValue: 'anthropic',
+      wipeText: 'use claude opus for auditors _',
+    })]);
+    await resolver.resolveAndApply(adapter.getText());
+    expect(adapter.getText()).toBe('auditors-llm-provider anthropic:claude-opus-4-7');
+  });
+
+  it('cycling state stores just `provider` even when buffer shows the pair', async () => {
+    const { adapter, resolver, selectorSatelliteState, script } =
+      setupConfigIntentScenario('use claude opus for auditors _');
+    script([scriptConfigIntentResult({
+      setting: 'auditors-llm-provider',
+      value: 'anthropic:claude-opus-4-7',
+      cyclingValue: 'anthropic',
+      wipeText: 'use claude opus for auditors _',
+    })]);
+    await resolver.resolveAndApply(adapter.getText());
+    expect(selectorSatelliteState.current).toBeTruthy();
+    // Cycling Up/Down walks the provider catalogue, NOT the cartesian
+    // product. The pair is visible in the buffer for the user; cycling
+    // semantics stay simple (one scalar at a time).
+    expect(selectorSatelliteState.current!.currentValue).toBe('anthropic');
+    expect(selectorSatelliteState.current!.currentSetting).toBe('auditors-llm-provider');
+  });
+
+  it('runtime splice obeys whatever satelliteValue the classifier supplied (no second-guessing)', async () => {
+    // The runtime layer never inspects the satelliteValue — it splices
+    // whatever string the classifier emitted. The provider->defaultModel
+    // fallback for "use anthropic _" (no explicit model) is the classifier's
+    // job (config-intent-source.ts); the runtime just renders. This test
+    // pins the contract — pass a bare `anthropic` and the runtime splices
+    // bare `anthropic`. The opposite direction (pair string) is covered above.
+    const { adapter, resolver, selectorSatelliteState, script } =
+      setupConfigIntentScenario('switch to anthropic _');
+    script([scriptConfigIntentResult({
+      setting: 'blanks-llm-provider',
+      value: 'anthropic',
+      wipeText: 'switch to anthropic _',
+    })]);
+    await resolver.resolveAndApply(adapter.getText());
+    expect(adapter.getText()).toBe('blanks-llm-provider anthropic');
+    expect(selectorSatelliteState.current!.currentValue).toBe('anthropic');
+  });
+
+  it('satellite is a single splitWords token (colon is not whitespace)', async () => {
+    // Regression: if a future refactor changed `splitWords` to split
+    // on `:`, the pair would become two words and the cycling code's
+    // `satelliteLength: 1` assertion would break. This pins the
+    // single-word property of the satellite at the splice layer.
+    const { adapter, resolver, selectorSatelliteState, script } =
+      setupConfigIntentScenario('use claude opus for auditors _');
+    script([scriptConfigIntentResult({
+      setting: 'auditors-llm-provider',
+      value: 'anthropic:claude-opus-4-7',
+      cyclingValue: 'anthropic',
+      wipeText: 'use claude opus for auditors _',
+    })]);
+    await resolver.resolveAndApply(adapter.getText());
+    // Buffer: "auditors-llm-provider anthropic:claude-opus-4-7" → 2 words
+    expect(adapter.getText().split(/\s+/)).toHaveLength(2);
+    expect(selectorSatelliteState.current!.satelliteLength).toBe(1);
   });
 });

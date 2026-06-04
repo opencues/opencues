@@ -1,3 +1,5 @@
+import { getProvider } from './llm-provider';
+
 // Single source of truth for OpenCues' optional features + the config
 // files each one reads.
 //
@@ -145,6 +147,20 @@ export interface FeatureSpec {
    * directly — only chrome needs the explicit push list.
    */
   readonly pushedBy?: readonly 'chrome-host'[];
+
+  /**
+   * Optional dynamic value computation. When set, the cycling menu
+   * derives `values` from the current settings instead of the static
+   * `values` array. Used for scalars whose valid range depends on
+   * another scalar — e.g. `auditors-llm-model` enumerates the current
+   * `auditors-llm-provider`'s knownModels.
+   *
+   * The static `values` array is still required (used as a fallback
+   * + a TypeScript-discoverable list of "in principle valid" ids). The
+   * dynamic provider is invoked at every cycling decision point so it
+   * always reflects live settings.
+   */
+  readonly valuesProvider?: (settings: ReadonlyMap<string, string>) => readonly ValueSpec[];
 }
 
 /**
@@ -221,6 +237,39 @@ export function seedableOptionalFiles(): SeedableFile[] {
       mustHavePopulatedFields: f.prereqFile.mustHavePopulatedFields,
     }] : []),
   ];
+}
+
+/**
+ * Build the model-value list for a `*-llm-model` scalar from the
+ * sibling provider's catalogue. Returns `default` followed by the
+ * provider's `knownModels`. When the provider is unset / `inherit` /
+ * unknown, falls back to the `globalFallback` provider (`llm-provider`)
+ * and finally to a `default`-only list so the menu still works.
+ */
+function buildModelValues(
+  bucketProvider: string | undefined,
+  globalFallback: string | undefined,
+): readonly ValueSpec[] {
+  // `inherit` means "use llm-provider" — resolve to that for the menu.
+  const id = bucketProvider && bucketProvider !== 'inherit' ? bucketProvider : globalFallback;
+  const adapter = id ? getProvider(id) : null;
+  const out: ValueSpec[] = [
+    {
+      id: 'default',
+      description: adapter
+        ? `Use ${adapter.id}'s default model (${adapter.defaultModel})`
+        : 'Use the provider\'s default model',
+    },
+  ];
+  const models = adapter?.knownModels ?? (adapter ? [adapter.defaultModel] : []);
+  for (const m of models) {
+    if (m === adapter?.defaultModel) {
+      out.push({ id: m, description: `${m} (provider default)` });
+    } else {
+      out.push({ id: m, description: m });
+    }
+  }
+  return out;
 }
 
 /**
@@ -408,6 +457,51 @@ export const FEATURES: readonly FeatureSpec[] = [
     ],
   },
 
+  // ── Provider routing — model selection ───────────────────────────
+  //
+  // Each bucket has a paired model scalar whose valid values DEPEND ON
+  // the sibling provider scalar. The valuesProvider callback enumerates
+  // the current provider's `knownModels` so cycling Up/Down through
+  // `auditors-llm-model` walks the models valid for whatever
+  // `auditors-llm-provider` is currently set to.
+  //
+  // `default` is the first entry (so cycling lands there after a
+  // provider change resets the pair). It means "use the provider's
+  // defaultModel" — the resolver treats this as if the scalar were
+  // absent. Concrete model ids appear AFTER default so the menu walks
+  // default → model1 → model2 → … → default.
+  {
+    scalar: 'cues-llm-model',
+    camelCase: 'cuesLlmModel',
+    description: 'LLM model for the cues bucket. Valid values depend on `cues-llm-provider`.',
+    menuTip: 'Pick the model for cues. Menu walks the current cues-llm-provider\'s known models.',
+    values: [
+      { id: 'default', description: 'Use the provider\'s default model' },
+    ],
+    valuesProvider: (settings) => buildModelValues(settings.get('cues-llm-provider'), settings.get('llm-provider')),
+  },
+  {
+    scalar: 'auditors-llm-model',
+    camelCase: 'auditorsLlmModel',
+    description: 'LLM model for the auditors + agent-rewrite bucket. Valid values depend on `auditors-llm-provider`.',
+    menuTip: 'Pick the model for auditors. Menu walks the current auditors-llm-provider\'s known models.',
+    values: [
+      { id: 'default', description: 'Use the provider\'s default model' },
+    ],
+    valuesProvider: (settings) => buildModelValues(settings.get('auditors-llm-provider'), settings.get('llm-provider')),
+  },
+  {
+    scalar: 'blanks-llm-model',
+    camelCase: 'blanksLlmModel',
+    description: 'LLM model for the blanks bucket. Valid values depend on `blanks-llm-provider`.',
+    menuTip: 'Pick the model for blanks. Menu walks the current blanks-llm-provider\'s known models.',
+    values: [
+      { id: 'default', description: 'Use the provider\'s default model' },
+      { id: 'free', description: 'OpenCode Zen free pool (only valid when blanks-llm-provider is opencode-zen)' },
+    ],
+    valuesProvider: (settings) => buildModelValues(settings.get('blanks-llm-provider'), settings.get('llm-provider')),
+  },
+
   // ── Context injection ────────────────────────────────────────────
   {
     scalar: 'ambient-context-mode',
@@ -549,7 +643,10 @@ export function getCyclableValues(spec: { values: readonly ValueSpec[] }): reado
  * Returned shape mirrors the legacy OpenCuesSettingDef so consumers
  * (Cycling.ts, OpenCuesSettingsBlank) don't need to change.
  */
-export function getMenuDefinitions(hostName?: string): Map<string, {
+export function getMenuDefinitions(
+  hostName?: string,
+  settings?: ReadonlyMap<string, string>,
+): Map<string, {
   readonly tip?: string;
   readonly valueOrder: readonly string[];
   readonly valueTips: ReadonlyMap<string, string>;
@@ -559,8 +656,14 @@ export function getMenuDefinitions(hostName?: string): Map<string, {
   // Features first (in declaration order), then tunables. Match the
   // original OPENCUES.md ordering so the menu's first-setting probe
   // returns the same first scalar.
+  const emptySettings: ReadonlyMap<string, string> = new Map();
   for (const f of FEATURES) {
-    const cyclable = getCyclableValues(f);
+    // Dynamic values take precedence when valuesProvider is present —
+    // used by `*-llm-model` scalars whose valid range depends on the
+    // sibling provider scalar's current value.
+    const dynamic = f.valuesProvider ? f.valuesProvider(settings ?? emptySettings) : null;
+    const source = dynamic ?? f.values;
+    const cyclable = source.filter(v => v.exposeInMenu !== false);
     if (cyclable.length === 0) continue;
     const tips = new Map<string, string>();
     for (const v of cyclable) tips.set(v.id, v.description);

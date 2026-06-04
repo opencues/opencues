@@ -94,6 +94,12 @@ describe('every cyclable registry scalar round-trips through set()', () => {
 describe('registry round-trip contract pins the shape', () => {
   it('every cyclable feature has at least two values (so cycling is meaningful)', () => {
     for (const f of FEATURES) {
+      // Features with valuesProvider derive their value list dynamically
+      // from current settings (today: `*-llm-model` scalars whose valid
+      // range depends on the sibling provider). The static `values`
+      // array is a fallback — cycling correctness is enforced by
+      // valuesProvider returning ≥2 entries at runtime, tested separately.
+      if (f.valuesProvider) continue;
       const cyclable = getCyclableValues(f);
       if (cyclable.length === 0) continue;  // not cyclable at all — fine
       expect(cyclable.length,

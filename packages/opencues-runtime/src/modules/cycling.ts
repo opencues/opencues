@@ -32,6 +32,20 @@ const PROVIDER_SCALARS: ReadonlySet<string> = new Set([
   'blanks-llm-provider',
 ]);
 
+/**
+ * Returns the sibling `*-llm-model` scalar name when `setting` is a
+ * `*-llm-provider` scalar; null otherwise. Used by the satellite-cycle
+ * code to reset the model whenever the provider changes, keeping the
+ * (provider, model) pair valid by construction.
+ */
+function providerScalarToModelScalar(setting: string): string | null {
+  // Only the three bucket providers carry a paired model scalar today.
+  // Global `llm-provider:` does NOT — its sibling `llm-model:` is a
+  // power-user file edit and we don't auto-clear it on cycle.
+  const m = setting.match(/^(cues|auditors|blanks)-llm-provider$/);
+  return m ? `${m[1]}-llm-model` : null;
+}
+
 export class Cycling {
   private _unsubUp: Unsubscribe | null = null;
   private _unsubDown: Unsubscribe | null = null;
@@ -335,6 +349,17 @@ export class Cycling {
     // Apply the change to opencuesState immediately so TTS / Statusline
     // see the new setting without waiting for the next hot-reload.
     this.configLoader.applyOpenCuesScalar(entry.currentSetting, nextValue);
+    // Pair invariant: cycling a `*-llm-provider` makes any pinned
+    // sibling `*-llm-model` ambiguous (the prior model was valid only
+    // for the prior provider). Reset to `default` so the resolver
+    // falls through to the new provider's defaultModel — the alternative
+    // is silent invalid-pair errors at the next LLM dispatch (e.g.
+    // `groq` provider + `claude-opus-4-7` model → 400). Same write-path
+    // as the provider change so the 2.5s suppression window covers both.
+    const siblingModelScalar = providerScalarToModelScalar(entry.currentSetting);
+    if (siblingModelScalar) {
+      this.configLoader.applyOpenCuesScalar(siblingModelScalar, 'default');
+    }
     this.adapter.setText(newText);
     this.adapter.setCursorOffset(newCursor);
     this.adapter.forceRender();
@@ -350,6 +375,17 @@ export class Cycling {
         entry.scriptPath,
         { detached: true, timeoutMs: 4000 },
       );
+      // Fire the sibling write through the same blank-invoke path so
+      // OPENCUES.md persists the model reset.
+      if (siblingModelScalar) {
+        this.invokeOrSpawn(
+          entry.blankName,
+          'set',
+          [siblingModelScalar, 'default'],
+          entry.scriptPath,
+          { detached: true, timeoutMs: 4000 },
+        );
+      }
       if (!handle) {
         this.adapter.log('debug', `Cycling: satellite set SKIPPED ${entry.blankName}`, {
           hasScriptPath: !!entry.scriptPath,

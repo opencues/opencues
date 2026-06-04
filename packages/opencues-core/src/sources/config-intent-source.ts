@@ -58,6 +58,7 @@
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
 import { BlankConfig } from '../cues-md';
 import { describeLLMCall, dispatchChat, getProvider, listProviders, type ProviderAdapter } from '../llm-provider';
+import { classifyLlmError, type FluidBlankErrorReason } from './fluid-blank-source';
 import {
   FEATURES,
   getCyclableValues,
@@ -547,6 +548,14 @@ export interface ConfigIntentSourceConfig {
   priority?: number;
   log?: (msg: string) => void;
   onEvent?: (event: ConfigIntentEvent) => void;
+  /**
+   * When set, user-actionable HTTP failures emit an inline `_` → error
+   * substitute instead of silently failing. Same wiring as
+   * FluidBlankSource + TransformBlankSource so the user always sees
+   * WHY a `_` didn't fire. Wire to `nativeHostFormatLLMError` from
+   * boot-common.ts in native hosts.
+   */
+  formatErrorAsSubstitute?: (reason: FluidBlankErrorReason, err?: Error) => string;
 }
 
 export class ConfigIntentSource implements CueSource {
@@ -566,6 +575,7 @@ export class ConfigIntentSource implements CueSource {
   private blanks: Record<string, BlankConfig>;
   private log: (msg: string) => void;
   private emit: (event: ConfigIntentEvent) => void;
+  private formatErrorAsSubstitute: ((reason: FluidBlankErrorReason, err?: Error) => string) | undefined;
 
   constructor(config: ConfigIntentSourceConfig) {
     this.httpAdapter = config.httpAdapter;
@@ -580,6 +590,7 @@ export class ConfigIntentSource implements CueSource {
     this.priority = config.priority ?? 94;
     this.log = config.log ?? (() => { /* silent */ });
     this.emit = config.onEvent ?? (() => { /* silent */ });
+    this.formatErrorAsSubstitute = config.formatErrorAsSubstitute;
   }
 
   supports(context: CueContext): boolean {
@@ -631,8 +642,33 @@ export class ConfigIntentSource implements CueSource {
       // model wraps the output in extra prose.
       raw = await this.callLLM(SYSTEM_PROMPT, `INPUT: ${context.text}`, this.maxTokensOverride ?? 128);
     } catch (e) {
-      this.log(`ConfigIntent: LLM call failed — ${(e as Error).message}`);
+      const err = e instanceof Error ? e : new Error(String(e));
+      this.log(`ConfigIntent: LLM call failed — ${err.message}`);
       this.emit({ type: 'bailed', reason: 'llm-error', latencyMs: Date.now() - t0 });
+      // Same inline error substitute the other blank-triggered sources
+      // emit — the user sees `_` → `[OpenCues: ...]` instead of silent
+      // failure. Classifier failures on user-actionable HTTP errors
+      // (401, 404, model-not-found) are exactly when the user most
+      // needs the inline signal.
+      const reason = classifyLlmError(err);
+      if (reason !== null && this.formatErrorAsSubstitute) {
+        const text = this.formatErrorAsSubstitute(reason, err);
+        if (text && text.length > 0) {
+          return {
+            results: [{
+              wordIndex: blankIdx,
+              word: '_',
+              alternatives: ['_', text],
+              source: this.id,
+              priority: this.priority,
+              cueTip: 'ConfigIntent failed — message describes the cause',
+              metadata: { fluidBlankErrorReason: reason },
+            }],
+            timing: Date.now() - t0,
+            model: this.model,
+          };
+        }
+      }
       return { results: [], timing: Date.now() - t0, model: this.model };
     }
 
@@ -660,6 +696,14 @@ export class ConfigIntentSource implements CueSource {
     };
     let displaySelector: string;
     let displayValue: string;
+    // Optional separate cycling value — when present, the runtime uses
+    // it for `selectorSatelliteState.currentValue` (the value cycling
+    // Up/Down advances within), while `displayValue` is what gets
+    // spliced into the buffer. This lets a PROVIDER verdict with a
+    // model show `anthropic:claude-opus-4-7` in the buffer (pair
+    // visible) while satellite-cycling still walks just the provider
+    // values (the catalogue of providers, not the cartesian product).
+    let cyclingValue: string | undefined;
     let cueTip: string;
     try {
       if (verdict.kind === 'setting') {
@@ -670,20 +714,44 @@ export class ConfigIntentSource implements CueSource {
       } else {
         // provider kind. Always write the bucket's provider scalar;
         // also write the model scalar when the verdict specified one.
-        // Cleaning up the model scalar when only the provider changed
-        // would risk overwriting a deliberate file-edit pin — leave
-        // any existing model scalar alone, let the resolver's
-        // bucket-provider-without-model fallback pick the new
-        // provider's defaultModel.
+        // The buffer satellite displays `provider:model` (one token —
+        // splitWords treats `:` as a non-whitespace word char) so the
+        // user sees the actual pair they got, not just the provider.
+        // The cycling state stores just the provider so cycling Up/Down
+        // walks the provider catalogue; cycling.ts's
+        // `providerScalarToModelScalar` resets the sibling model on
+        // each provider cycle so invalid (provider, model) pairs can
+        // never form by cycling alone.
         const providerScalar = `${verdict.scope}-llm-provider`;
+        const modelScalar = `${verdict.scope}-llm-model`;
         await apply(providerScalar, verdict.provider);
         if (verdict.model !== null) {
-          await apply(`${verdict.scope}-llm-model`, verdict.model);
+          await apply(modelScalar, verdict.model);
+        } else {
+          // Pair invariant: provider change always resets the sibling
+          // model scalar. A user who previously pinned a model for the
+          // old provider (e.g. `auditors-llm-model: claude-opus-4-7`)
+          // and now says "use cerebras for auditors _" must NOT keep
+          // the old model around — the resolver would then dispatch
+          // `cerebras + claude-opus-4-7` and 400. Mirrors the
+          // providerScalarToModelScalar reset in cycling.ts.
+          await apply(modelScalar, 'default');
         }
         displaySelector = providerScalar;
-        displayValue = verdict.provider;
-        cueTip = verdict.model !== null
-          ? `${verdict.scope} → ${verdict.provider} · ${verdict.model}`
+        // Always show what model is in use — even when the user didn't
+        // name one. Falls back to the provider's defaultModel so the
+        // satellite is ALWAYS `provider:model`, never bare `provider`.
+        // The model scalar itself is only written when the user named a
+        // model (above) — display read-only-resolves the default in
+        // every other case so the user knows the effective state.
+        const providerAdapter = getProvider(verdict.provider);
+        const effectiveModel = verdict.model ?? providerAdapter?.defaultModel ?? null;
+        displayValue = effectiveModel !== null
+          ? `${verdict.provider}:${effectiveModel}`
+          : verdict.provider;
+        cyclingValue = verdict.provider;
+        cueTip = effectiveModel !== null
+          ? `${verdict.scope} → ${verdict.provider} · ${effectiveModel}`
           : `${verdict.scope} → ${verdict.provider}`;
       }
     } catch (e) {
@@ -716,6 +784,12 @@ export class ConfigIntentSource implements CueSource {
         blankName: 'opencues',
         selectorBlank: true,
         satelliteValue: displayValue,
+        // satelliteCyclingValue (when set) is what the runtime stores
+        // in `selectorSatelliteState.currentValue` for the cycling
+        // path; satelliteValue is just for the buffer splice. The two
+        // diverge when displaying a `provider:model` pair while
+        // cycling-state stores just `provider`.
+        ...(cyclingValue !== undefined ? { satelliteCyclingValue: cyclingValue } : {}),
         displaySeparator: ' ',
         configIntent: verdict.kind === 'setting'
           ? { setting: verdict.setting, value: verdict.value, confidence: verdict.confidence }
