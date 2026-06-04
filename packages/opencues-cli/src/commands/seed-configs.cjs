@@ -81,25 +81,66 @@ module.exports = function seedConfigs(argv, ctx) {
   log(`  ${dim('target:')} ${fileLink(targetDir, targetDir)}`);
   log('');
 
-  // ── 0. PRE-SEED MIGRATE — rename legacy USER.md → SENTINELS.md ────
+  // ── 0. PRE-SEED MIGRATE — legacy file renames + OPENCUES.md scalar rewrites
   //
-  // Must run BEFORE the SEED phase. If the user has a populated
-  // ~/.cues/USER.md (May-2026 rename target was SENTINELS.md), we move
-  // it into place FIRST so the SEED phase's "skip if exists" check sees
-  // SENTINELS.md and doesn't clobber the user's data with the empty
-  // template. Idempotent: only fires when the legacy file exists AND
-  // the new file is absent.
+  // Must run BEFORE the SEED phase. If the user has a populated legacy
+  // file (USER.md from before May 2026, SENTINELS.md from before June
+  // 2026), we move it into place FIRST so the SEED phase's "skip if
+  // exists" check sees the canonical IDENTITY.md and doesn't clobber
+  // the user's data with the empty template. Idempotent: each step
+  // only fires when the source exists AND the target is absent.
+  //
+  // We also rewrite legacy mode-scalar names in OPENCUES.md
+  // (`user-context-mode`, `sentinels-mode`) → `identity-context-mode`
+  // so the runtime — which only reads the canonical name post-June
+  // 2026 — finds the user's setting after the rename.
   //
   // Mirrors the dryRun behaviour of the rest of seed-configs — silent
   // when --dry-run is set.
   fs.mkdirSync(targetDir, { recursive: true });
-  const oldSentinelsFile = path.join(targetDir, 'USER.md');
-  const newSentinelsFile = path.join(targetDir, 'SENTINELS.md');
-  if (fs.existsSync(oldSentinelsFile) && !fs.existsSync(newSentinelsFile)) {
-    if (!dryRun) {
-      fs.renameSync(oldSentinelsFile, newSentinelsFile);
+  const userMdFile = path.join(targetDir, 'USER.md');
+  const sentinelsFile = path.join(targetDir, 'SENTINELS.md');
+  const identityFile = path.join(targetDir, 'IDENTITY.md');
+
+  // Two-hop rename: USER.md → SENTINELS.md → IDENTITY.md, idempotent.
+  if (fs.existsSync(userMdFile) && !fs.existsSync(sentinelsFile) && !fs.existsSync(identityFile)) {
+    if (!dryRun) fs.renameSync(userMdFile, sentinelsFile);
+    log(`Self-heal: migrated USER.md → SENTINELS.md (${sentinelsFile})`);
+  }
+  if (fs.existsSync(sentinelsFile) && !fs.existsSync(identityFile)) {
+    if (!dryRun) fs.renameSync(sentinelsFile, identityFile);
+    log(`Self-heal: migrated SENTINELS.md → IDENTITY.md (${identityFile})`);
+  }
+
+  // OPENCUES.md scalar rewrite — `user-context-mode` / `sentinels-mode`
+  // → `identity-context-mode`. The renamed user's file is useless if
+  // the scalar that gates it still uses the old name. Idempotent:
+  // skip the write if no change was needed. Also de-dupes when both
+  // the legacy and canonical scalars are present (first wins by line
+  // order; duplicates are dropped).
+  const opencuesMdFile = path.join(targetDir, 'OPENCUES.md');
+  if (fs.existsSync(opencuesMdFile)) {
+    const before = fs.readFileSync(opencuesMdFile, 'utf8');
+    let after = before
+      .replace(/^(\s*)sentinels-mode(\s*:)/gm, '$1identity-context-mode$2')
+      .replace(/^(\s*)user-context-mode(\s*:)/gm, '$1identity-context-mode$2');
+    // Drop duplicate identity-context-mode lines, keeping the LAST
+    // occurrence — matches the runtime's last-write-wins parse and
+    // preserves whatever the user most recently set (an explicit
+    // `identity-context-mode: safe` line further down beats a legacy
+    // `sentinels-mode: off` that auto-rewrote into the first slot).
+    const lines = after.split('\n');
+    let lastIdx = -1;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (/^\s*identity-context-mode\s*:/.test(lines[i])) { lastIdx = i; break; }
     }
-    log(`Self-heal: migrated USER.md → SENTINELS.md (${newSentinelsFile})`);
+    if (lastIdx !== -1) {
+      after = lines.filter((line, i) => i === lastIdx || !/^\s*identity-context-mode\s*:/.test(line)).join('\n');
+    }
+    if (after !== before) {
+      if (!dryRun) fs.writeFileSync(opencuesMdFile, after);
+      log(`Self-heal: rewrote legacy scalar names in ${opencuesMdFile}`);
+    }
   }
 
   // ── 1. SEED — first-time copy ──────────────────────────────────────
@@ -318,7 +359,7 @@ module.exports = function seedConfigs(argv, ctx) {
   // SENTINELS.md template wins the "skip if exists" check and the
   // user's data sits stranded in USER.md.)
 
-  // ── 3.0b HEAL — rename legacy `user-context-mode:` → `sentinels-mode:` ──
+  // ── 3.0b HEAL — rename legacy `user-context-mode:` → `identity-context-mode:` ──
   //
   // Same rationale as the USER.md → SENTINELS.md rename above. The runtime
   // back-compat-reads `user-context-mode` (config-loader.ts), but rewriting
@@ -327,13 +368,13 @@ module.exports = function seedConfigs(argv, ctx) {
   // Three cases:
   //   - both exist: the user's value (legacy line) wins — copy it onto
   //     the new line, drop the legacy line. The mergeOpencuesMd step
-  //     above injects a default `sentinels-mode: off` from defaults so
+  //     above injects a default `identity-context-mode: off` from defaults so
   //     this case is the common one immediately after an upgrade.
   //   - only legacy exists: rename in place.
   //   - only new exists: no-op (migration already happened).
   if (settingsTarget && fs.existsSync(settingsTarget) && fs.statSync(settingsTarget).size > 0) {
     const original = fs.readFileSync(settingsTarget, 'utf8');
-    const newMatch = original.match(/^(sentinels-mode):[ \t]*(.+?)[ \t]*$/m);
+    const newMatch = original.match(/^(identity-context-mode):[ \t]*(.+?)[ \t]*$/m);
     const oldMatch = original.match(/^(user-context-mode):[ \t]*(.+?)[ \t]*$/m);
     let rewritten = original;
     if (oldMatch && newMatch) {
@@ -341,14 +382,14 @@ module.exports = function seedConfigs(argv, ctx) {
       // Replace the new scalar's value with the user's value, then strip
       // the legacy line (plus any one trailing newline).
       rewritten = rewritten.replace(
-        /^sentinels-mode:[ \t]*.+$/m,
-        `sentinels-mode: ${userValue}`,
+        /^identity-context-mode:[ \t]*.+$/m,
+        `identity-context-mode: ${userValue}`,
       );
       rewritten = rewritten.replace(/^user-context-mode:[ \t]*.+\r?\n?/m, '');
-      log(`Self-heal: migrated user-context-mode → sentinels-mode (value=${userValue}) in ${settingsTarget}`);
+      log(`Self-heal: migrated user-context-mode → identity-context-mode (value=${userValue}) in ${settingsTarget}`);
     } else if (oldMatch) {
-      rewritten = rewritten.replace(/^user-context-mode:/m, 'sentinels-mode:');
-      log(`Self-heal: renamed legacy scalar user-context-mode → sentinels-mode in ${settingsTarget}`);
+      rewritten = rewritten.replace(/^user-context-mode:/m, 'identity-context-mode:');
+      log(`Self-heal: renamed legacy scalar user-context-mode → identity-context-mode in ${settingsTarget}`);
     }
     if (rewritten !== original) fs.writeFileSync(settingsTarget, rewritten);
   }

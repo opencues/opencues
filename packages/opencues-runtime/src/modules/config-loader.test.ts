@@ -117,22 +117,22 @@ some prose
     expect(parseOpenCuesMd('---\nambient-context-mode: on\n---').ambientContextMode).toBe('on');
   });
 
-  it('sentinels-mode defaults to off and only accepts safe/raw', () => {
+  it('identity-context-mode defaults to off and only accepts safe/raw', () => {
     // Same fail-closed contract as ambient-context-mode — the privacy
     // model leans on `off` being the default + on unrecognised values
     // not silently flipping the gate. See docs/architecture/sentinels.md.
-    expect(parseOpenCuesMd('---\n---').sentinelsMode).toBe('off');
-    expect(parseOpenCuesMd('---\nsentinels-mode: off\n---').sentinelsMode).toBe('off');
-    expect(parseOpenCuesMd('---\nsentinels-mode: safe\n---').sentinelsMode).toBe('safe');
-    expect(parseOpenCuesMd('---\nsentinels-mode: raw\n---').sentinelsMode).toBe('raw');
+    expect(parseOpenCuesMd('---\n---').identityContextMode).toBe('off');
+    expect(parseOpenCuesMd('---\nidentity-context-mode: off\n---').identityContextMode).toBe('off');
+    expect(parseOpenCuesMd('---\nidentity-context-mode: safe\n---').identityContextMode).toBe('safe');
+    expect(parseOpenCuesMd('---\nidentity-context-mode: raw\n---').identityContextMode).toBe('raw');
     // Case-insensitive.
-    expect(parseOpenCuesMd('---\nsentinels-mode: SAFE\n---').sentinelsMode).toBe('safe');
-    expect(parseOpenCuesMd('---\nsentinels-mode: Raw\n---').sentinelsMode).toBe('raw');
+    expect(parseOpenCuesMd('---\nidentity-context-mode: SAFE\n---').identityContextMode).toBe('safe');
+    expect(parseOpenCuesMd('---\nidentity-context-mode: Raw\n---').identityContextMode).toBe('raw');
     // Anything else stays off — typos / unexpected values fail closed.
-    expect(parseOpenCuesMd('---\nsentinels-mode: on\n---').sentinelsMode).toBe('off');
-    expect(parseOpenCuesMd('---\nsentinels-mode: yes\n---').sentinelsMode).toBe('off');
-    expect(parseOpenCuesMd('---\nsentinels-mode: true\n---').sentinelsMode).toBe('off');
-    expect(parseOpenCuesMd('---\nsentinels-mode: enabled\n---').sentinelsMode).toBe('off');
+    expect(parseOpenCuesMd('---\nidentity-context-mode: on\n---').identityContextMode).toBe('off');
+    expect(parseOpenCuesMd('---\nidentity-context-mode: yes\n---').identityContextMode).toBe('off');
+    expect(parseOpenCuesMd('---\nidentity-context-mode: true\n---').identityContextMode).toBe('off');
+    expect(parseOpenCuesMd('---\nidentity-context-mode: enabled\n---').identityContextMode).toBe('off');
   });
 
   it('nav-keymap defaults to auto and only accepts ctrl-alt / ctrl-shift', () => {
@@ -198,7 +198,8 @@ voice-mode: active
     expect(state.definitions.size).toBeGreaterThan(0);
     // Canonical features the registry covers
     expect(state.definitions.has('voice-mode')).toBe(true);
-    expect(state.definitions.has('sentinels-mode')).toBe(true);
+    // Renamed June 2026 from `identity-context-mode` to `identity-context-mode`.
+    expect(state.definitions.has('identity-context-mode')).toBe(true);
     // Tunables from MENU_TUNABLES
     expect(state.definitions.has('agent-debounce-ms')).toBe(true);
   });
@@ -411,11 +412,11 @@ describe('ConfigLoader hot-reload', () => {
     expect(loader.opencuesState.voiceMode).toBe('inactive');
   });
 
-  it('sentinels-mode hot-reloads from OPENCUES.md edits', async () => {
+  it('identity-context-mode hot-reloads from OPENCUES.md edits', async () => {
     // Same load-bearing contract as ambient — flipping the scalar
     // in OPENCUES.md must take effect on the NEXT keystroke without
     // a host restart. Off → safe → raw → off all need to round-trip.
-    const initial = `---\nsentinels-mode: off\n---\n`;
+    const initial = `---\nidentity-context-mode: off\n---\n`;
     const adapter = new MockAdapter({
       files: { '/tips.json': '{"concepts":[]}', '/proj/.cues/OPENCUES.md': initial },
       cwd: '/proj',
@@ -425,19 +426,19 @@ describe('ConfigLoader hot-reload', () => {
       settingsFile: '/proj/.cues/OPENCUES.md',
     });
     await loader.load();
-    expect(loader.opencuesState.sentinelsMode).toBe('off');
+    expect(loader.opencuesState.identityContextMode).toBe('off');
 
-    await adapter.writeFile('/proj/.cues/OPENCUES.md', `---\nsentinels-mode: safe\n---\n`);
+    await adapter.writeFile('/proj/.cues/OPENCUES.md', `---\nidentity-context-mode: safe\n---\n`);
     await loader.maybeReload();
-    expect(loader.opencuesState.sentinelsMode).toBe('safe');
+    expect(loader.opencuesState.identityContextMode).toBe('safe');
 
-    await adapter.writeFile('/proj/.cues/OPENCUES.md', `---\nsentinels-mode: raw\n---\n`);
+    await adapter.writeFile('/proj/.cues/OPENCUES.md', `---\nidentity-context-mode: raw\n---\n`);
     await loader.maybeReload();
-    expect(loader.opencuesState.sentinelsMode).toBe('raw');
+    expect(loader.opencuesState.identityContextMode).toBe('raw');
 
-    await adapter.writeFile('/proj/.cues/OPENCUES.md', `---\nsentinels-mode: off\n---\n`);
+    await adapter.writeFile('/proj/.cues/OPENCUES.md', `---\nidentity-context-mode: off\n---\n`);
     await loader.maybeReload();
-    expect(loader.opencuesState.sentinelsMode).toBe('off');
+    expect(loader.opencuesState.identityContextMode).toBe('off');
   });
 
   it('ambient-context-mode hot-reloads from OPENCUES.md edits', async () => {

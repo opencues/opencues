@@ -446,6 +446,19 @@ function runOC(passthrough, fullArgv, ctx) {
   // See packages/opencode/src/storage/db.ts:30 (getChannelPath).
   const env = { ...process.env, OPENCODE_DISABLE_CHANNEL_DB: '1' };
 
+  // Predecessor-kill: SIGTERM any prior OC instance for the same
+  // project before we spawn. Avoids orphan-process pileup when a
+  // previous `opencues run opencode` was killed without cleanup
+  // (terminal closed, double-fork detached, etc.). Skippable via
+  // --no-cleanup on the run command.
+  if (!fullArgv.includes('--no-cleanup')) {
+    const { preflightKill } = require('./cleanup.cjs');
+    const { killed, found } = preflightKill({ host: 'opencode', project: userCwd });
+    if (killed > 0) {
+      console.error(`${style.tag('info')} SIGTERM'd ${killed} prior opencode instance${killed === 1 ? '' : 's'} for this project (${found} found, --no-cleanup to skip)`);
+    }
+  }
+
   printLaunchBanner(ctx, 'opencode', [
     ['host',    'opencode  ' + style.dim('(patched fork)')],
     ['command', `bun run dev ${[...projectArgs, ...cleaned].join(' ')}`.trim()],
@@ -493,6 +506,15 @@ function runGemini(passthrough, fullArgv, ctx) {
 
   // Drop --target if it was passed; it's ours, not gemini's.
   const cleaned = passthrough.filter((a, i, arr) => a !== '--target' && arr[i - 1] !== '--target');
+
+  // Predecessor-kill (see runOC for rationale).
+  if (!fullArgv.includes('--no-cleanup')) {
+    const { preflightKill } = require('./cleanup.cjs');
+    const { killed } = preflightKill({ host: 'gemini-cli', project: process.cwd() });
+    if (killed > 0) {
+      console.error(`${style.tag('info')} SIGTERM'd ${killed} prior gemini-cli instance${killed === 1 ? '' : 's'} (--no-cleanup to skip)`);
+    }
+  }
 
   // Launch from the user's cwd, not the fork dir. The fork ships its
   // own .gemini/settings.json (devtools + experimental flags) which

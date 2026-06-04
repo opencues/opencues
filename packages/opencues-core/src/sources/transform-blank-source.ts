@@ -44,11 +44,11 @@ import { detectPartialTransform } from './transform-partial-detector';
 import { injectCursorSentinel, stripCursorSentinel } from '../cursor-sentinel';
 import { translateBufferCursorToTargetCursor } from './transform-cursor-translate';
 import {
-  renderSentinelsCatalogForTransform,
-  postProcessSentinels,
-  type Sentinels,
-  type SentinelsMode,
-} from '../sentinels';
+  renderIdentityContextCatalogForTransform,
+  postProcessContext,
+  type Identity,
+  type ContextMode,
+} from '../identity-context';
 
 // ============================================================================
 // Prompts — ported verbatim from tests/benchmarks/transform-blank/
@@ -1475,13 +1475,13 @@ export class TransformBlankSource implements CueSource {
    */
   private buildUserCatalogBlock(context: CueContext): {
     block: string;
-    ctx: Sentinels | undefined;
+    ctx: Identity | undefined;
   } {
-    const uc = context.sentinels;
+    const uc = context.identityContext;
     if (!uc) return { block: '', ctx: undefined };
-    const ctx: Sentinels = { fields: uc.fields, catalog: uc.catalog };
-    const mode: SentinelsMode = uc.mode;
-    const block = renderSentinelsCatalogForTransform(ctx, mode);
+    const ctx: Identity = { fields: uc.fields, catalog: uc.catalog };
+    const mode: ContextMode = uc.mode;
+    const block = renderIdentityContextCatalogForTransform(ctx, mode);
     if (block) {
       this.log(`TransformBlank: sentinels: injected (mode=${mode}, ${ctx.fields.length} field${ctx.fields.length === 1 ? '' : 's'})`);
     }
@@ -1499,10 +1499,10 @@ export class TransformBlankSource implements CueSource {
   private resolveSentinels(
     rewrite: string,
     originalBody: string,
-    ctx: Sentinels | undefined,
+    ctx: Identity | undefined,
   ): string {
     if (!ctx || ctx.catalog.size === 0) return rewrite;
-    const pp = postProcessSentinels(rewrite, {
+    const pp = postProcessContext(rewrite, {
       catalog: ctx.catalog,
       originalBody,
       preserveUnknown: true,

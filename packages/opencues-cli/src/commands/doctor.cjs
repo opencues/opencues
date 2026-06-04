@@ -340,7 +340,7 @@ module.exports = async function doctor(argv, ctx) {
 
   // ── Legacy USER.md / user-context-mode migration ──────────────────────
   // The May 2026 rename USER.md → SENTINELS.md + user-context-mode →
-  // sentinels-mode is back-compat-supported by the runtime (config-loader.ts
+  // identity-context-mode is back-compat-supported by the runtime (config-loader.ts
   // reads both names). `opencues seed-configs` migrates legacy → new on
   // next run. Surface here so users who skip seed-configs see the hint.
   {
@@ -363,11 +363,11 @@ module.exports = async function doctor(argv, ctx) {
     if (fs.existsSync(settingsFile)) {
       const text = fs.readFileSync(settingsFile, 'utf8');
       const hasLegacyScalar = /^user-context-mode:/m.test(text);
-      const hasNewScalar    = /^sentinels-mode:/m.test(text);
+      const hasNewScalar    = /^identity-context-mode:/m.test(text);
       if (hasLegacyScalar && !hasNewScalar) {
         findings.push({
           sev: 'warn',
-          msg: `${settingsFile} uses legacy scalar \`user-context-mode:\` — runtime back-compat-reads it but rename to \`sentinels-mode:\` is preferred`,
+          msg: `${settingsFile} uses legacy scalar \`user-context-mode:\` — runtime back-compat-reads it but rename to \`identity-context-mode:\` is preferred`,
           fix: 'opencues seed-configs   # self-heals the scalar rename in place',
         });
       }

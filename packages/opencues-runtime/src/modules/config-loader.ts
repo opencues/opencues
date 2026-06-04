@@ -29,7 +29,7 @@ import {
   parseCuesMaster,
   parseBlanksMaster,
   parseAuditorsMaster,
-  parseSentinelsMd,
+  parseIdentityMd,
   getMenuDefinitions,
   type LocalCueLookupResult,
   type CuesMdConfig,
@@ -116,12 +116,12 @@ export interface OpenCuesState {
    */
   readonly ambientContextMode: 'on' | 'off';
   /**
-   * Whether `~/.cues/SENTINELS.md` field data (first name, email, etc.) is
-   * forwarded to FluidBlankSource as sentinel tokens for prompt
-   * personalization.
+   * Whether `~/.cues/IDENTITY.md` field data (first name, email, etc.)
+   * is forwarded to FluidBlankSource as identity-context tokens for
+   * prompt personalization.
    *
-   * - `off` (default): SENTINELS.md is not read. CueContext.sentinels stays
-   *   undefined. No personal data reaches any prompt.
+   * - `off` (default): IDENTITY.md is not read. CueContext.identityContext
+   *   stays undefined. No personal data reaches any prompt.
    * - `safe`: catalog of TOKENs + descriptions injected into the
    *   prompt. LLM emits tokens; a post-processor substitutes real
    *   values AFTER the response. PII never reaches the LLM provider.
@@ -129,11 +129,20 @@ export interface OpenCuesState {
    *   provider. Use only when register/tone fidelity matters more
    *   than provider-log privacy.
    *
-   * See docs/architecture/sentinels.md (when added) for the threat
-   * model. Phase 1 wires only fluid-blank; other pipelines stay
-   * sentinel-free.
+   * See docs/architecture/identity-context.md for the threat model.
+   * Phase 1 wires only fluid-blank; other pipelines stay
+   * identity-context-free.
    */
-  readonly sentinelsMode: 'off' | 'safe' | 'raw';
+  readonly identityContextMode: 'off' | 'safe' | 'raw';
+  /**
+   * Blanks-as-context — expose context-eligible blanks (stocks, weather,
+   * crypto, …) as ambient sentinel-style tokens for fluid-blank.
+   * `off` (default): only the keyword-trigger path runs.
+   * `safe`: tokens-only catalog; runtime substitutes values after the LLM.
+   * `raw`:  values inlined into the prompt. Requires `sentinelsMode: 'raw'`.
+   * See docs/features/blank-as-context.md.
+   */
+  readonly blankContextMode: 'off' | 'safe' | 'raw';
   /**
    * Controls when `_` fires its blank.
    *
@@ -218,7 +227,8 @@ export const DEFAULT_OPENCUES_STATE: OpenCuesState = {
   tipsMode: 'on',
   cursorNavigate: 'inactive',
   ambientContextMode: 'off',
-  sentinelsMode: 'off',
+  identityContextMode: 'off',
+  blankContextMode: 'off',
   blankTriggerMode: 'immediate',
   navKeymap: 'auto',
   cuesLlmProvider: 'inherit',
@@ -276,15 +286,25 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   const tipsMode = get('tips-mode', 'on') === 'off' ? 'off' : 'on';
   const cursorNavigate = get('cursor-navigate', 'inactive') === 'active' ? 'active' : 'inactive';
   const ambientContextMode = get('ambient-context-mode', 'off') === 'on' ? 'on' : 'off';
-  // Sentinel-mode scalar — current name is `sentinels-mode`; back-compat
-  // fallback to legacy `user-context-mode` (renamed May 2026). seed-configs
-  // self-heal rewrites legacy → new in OPENCUES.md on next `opencues
-  // install` so the fallback fades within a release cycle.
-  const sentinelsRaw = get('sentinels-mode', get('user-context-mode', 'off')).toLowerCase();
-  const sentinelsMode: 'off' | 'safe' | 'raw' =
-    sentinelsRaw === 'safe' ? 'safe'
-    : sentinelsRaw === 'raw' ? 'raw'
+  // Identity-context mode scalar. Only the canonical name is read at
+  // runtime — `opencues seed-configs` rewrites legacy
+  // `sentinels-mode` / `user-context-mode` to `identity-context-mode`
+  // on first install (see seed-configs.cjs:PRE-SEED MIGRATE).
+  const identityRaw = get('identity-context-mode', 'off').toLowerCase();
+  const identityContextMode: 'off' | 'safe' | 'raw' =
+    identityRaw === 'safe' ? 'safe'
+    : identityRaw === 'raw' ? 'raw'
     : 'off';
+  // Blank-as-context scalar — independent of sentinels-mode but
+  // mode-gate composed: blankContextMode='raw' requires sentinelsMode='raw'
+  // (silently downgrades to 'safe' otherwise so the user doesn't get
+  // surprised by a values-leak after flipping sentinels off).
+  const blankContextRaw = get('blank-context-mode', 'off').toLowerCase();
+  let blankContextMode: 'off' | 'safe' | 'raw' =
+    blankContextRaw === 'safe' ? 'safe'
+    : blankContextRaw === 'raw' ? 'raw'
+    : 'off';
+  if (blankContextMode === 'raw' && identityContextMode !== 'raw') blankContextMode = 'safe';
   const blankTriggerMode: 'immediate' | 'spaced' =
     get('blank-trigger-mode', 'immediate').toLowerCase() === 'spaced' ? 'spaced' : 'immediate';
   const navKeymapRaw = get('nav-keymap', 'auto').toLowerCase();
@@ -323,7 +343,7 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   // Tests keep shipping mock `settings:` blocks; they get the
   // file-driven definitions, identical to the pre-refactor behaviour.
   const definitions = mergeDefinitions(getMenuDefinitions(), parseSettingsBlock(lines));
-  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, sentinelsMode, blankTriggerMode, navKeymap, cuesLlmProvider, auditorsLlmProvider, blanksLlmProvider, settings, definitions };
+  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, identityContextMode, blankContextMode, blankTriggerMode, navKeymap, cuesLlmProvider, auditorsLlmProvider, blanksLlmProvider, settings, definitions };
 }
 
 /**
@@ -431,17 +451,17 @@ export interface LoadedConfig {
   /** cwd BLANKS.md + folder blanks/* merged. The resolver consumes this. */
   readonly mergedBlanksConfig: CuesMdConfig | null;
   /**
-   * Parsed sentinels from `<settingsFile-dir>/SENTINELS.md`. Always
-   * populated (parser returns an empty Sentinels when the file is
-   * missing or has no frontmatter). The resolver consults
-   * `opencuesState.sentinelsMode` to decide whether to pass this
+   * Parsed identity-context data from `<settingsFile-dir>/IDENTITY.md`.
+   * Always populated (parser returns an empty Identity when the file
+   * is missing or has no frontmatter). The resolver consults
+   * `opencuesState.identityContextMode` to decide whether to pass this
    * through to FluidBlankSource — when mode is `off` the data still
    * lives here but never reaches any prompt.
    *
-   * Mirror of @opencues/core's Sentinels shape, kept structural to
+   * Mirror of @opencues/core's Identity shape, kept structural to
    * avoid an import cycle.
    */
-  readonly sentinels: {
+  readonly identity: {
     readonly fields: readonly { readonly key: string; readonly token: string; readonly value: string; readonly description: string }[];
     readonly catalog: ReadonlyMap<string, string>;
   };
@@ -479,7 +499,7 @@ export class ConfigLoader {
     mergedBlanksConfig: null,
     navigableWords: new Set(),
     blanksByWord: new Map(),
-    sentinels: { fields: [], catalog: new Map() },
+    identity: { fields: [], catalog: new Map() },
   };
   private _loaded = false;
   private _lastLoadAt = 0;
@@ -520,7 +540,7 @@ export class ConfigLoader {
   /** Parsed `~/.cues/SENTINELS.md`. Always populated; the runtime gate on
    *  `opencuesState.sentinelsMode` decides whether it ever leaves
    *  the ConfigLoader. See `LoadedConfig.sentinels`. */
-  get sentinels(): LoadedConfig['sentinels'] { return this._config.sentinels; }
+  get identity(): LoadedConfig['identity'] { return this._config.identity; }
 
   /** Unique blanks by name (lowercased).
    *  Sourced from folderConfigs + blanksConfig. Useful when a consumer
@@ -605,10 +625,20 @@ export class ConfigLoader {
       tipsMode: (get('tips-mode', 'on') === 'off' ? 'off' : 'on') as 'off' | 'on',
       cursorNavigate: (get('cursor-navigate', 'inactive') === 'active' ? 'active' : 'inactive') as 'active' | 'inactive',
       ambientContextMode: (get('ambient-context-mode', 'off') === 'on' ? 'on' : 'off') as 'on' | 'off',
-      sentinelsMode: ((): 'off' | 'safe' | 'raw' => {
-        // Back-compat: fall through to legacy `user-context-mode` key.
-        const v = get('sentinels-mode', get('user-context-mode', 'off')).toLowerCase();
+      identityContextMode: ((): 'off' | 'safe' | 'raw' => {
+        const v = get('identity-context-mode', 'off').toLowerCase();
         return v === 'safe' ? 'safe' : v === 'raw' ? 'raw' : 'off';
+      })(),
+      blankContextMode: ((): 'off' | 'safe' | 'raw' => {
+        const v = get('blank-context-mode', 'off').toLowerCase();
+        const candidate: 'off' | 'safe' | 'raw' =
+          v === 'safe' ? 'safe' : v === 'raw' ? 'raw' : 'off';
+        // raw composition rule: silently downgrade if identity not raw too.
+        if (candidate === 'raw') {
+          const sentRaw = get('identity-context-mode', 'off').toLowerCase();
+          if (sentRaw !== 'raw') return 'safe';
+        }
+        return candidate;
       })(),
       blankTriggerMode: (get('blank-trigger-mode', 'immediate').toLowerCase() === 'spaced' ? 'spaced' : 'immediate') as 'immediate' | 'spaced',
       navKeymap: ((): 'auto' | 'ctrl-alt' | 'ctrl-shift' => {
@@ -748,27 +778,29 @@ export class ConfigLoader {
       ? await this._safeReadFile(this.options.settingsFile)
       : null;
 
-    // User context lives in `SENTINELS.md` alongside OPENCUES.md (so the
-    // user-level `~/.cues/` directory holds both). Global only by
-    // design — user data is user data; per-project overlays make no
-    // sense. Always read when settingsFile is set; the runtime gate
-    // (`sentinels-mode`) decides whether the parsed data ever
-    // reaches a prompt.
-    const userMdPath = this.options.settingsFile
-      ? this.options.settingsFile.replace(/[^/]+$/, 'SENTINELS.md')
+    // Identity-context data lives in `IDENTITY.md` alongside
+    // OPENCUES.md (so the user-level `~/.cues/` directory holds both).
+    // Global only by design — user data is user data; per-project
+    // overlays make no sense. Always read when settingsFile is set;
+    // the runtime gate (`identity-context-mode`) decides whether the
+    // parsed data ever reaches a prompt.
+    //
+    // Only the canonical filename is read. `opencues seed-configs`
+    // migrates legacy names (USER.md → SENTINELS.md → IDENTITY.md) on
+    // first install.
+    const identityMdPath = this.options.settingsFile
+      ? this.options.settingsFile.replace(/[^/]+$/, 'IDENTITY.md')
       : null;
-    const userMdContent = userMdPath
-      ? await this._safeReadFile(userMdPath)
+    const identityMdContent = identityMdPath
+      ? await this._safeReadFile(identityMdPath)
       : null;
-    const sentinels = parseSentinelsMd(userMdContent);
-    // Diagnostic: one line per load so the failure mode is greppable
-    // ("no path" / "missing" / "empty" / "N fields"). Trace why
-    // sentinels isn't firing without having to bisect chrome.storage.
-    const userMdState = !userMdPath ? 'no settingsFile (no path derivable)'
-      : userMdContent === null ? `missing at ${userMdPath}`
-      : sentinels.fields.length === 0 ? `read but parsed 0 fields from ${userMdPath} (${userMdContent.length} bytes)`
-      : `${sentinels.fields.length} fields from ${userMdPath}`;
-    this.adapter.log('info', `ConfigLoader: SENTINELS.md → ${userMdState}`);
+    const identity = parseIdentityMd(identityMdContent);
+    // Diagnostic: one line per load so the failure mode is greppable.
+    const identityMdState = !identityMdPath ? 'no settingsFile (no path derivable)'
+      : identityMdContent === null ? `missing at ${identityMdPath}`
+      : identity.fields.length === 0 ? `read but parsed 0 fields from ${identityMdPath} (${identityMdContent.length} bytes)`
+      : `${identity.fields.length} fields from ${identityMdPath}`;
+    this.adapter.log('info', `ConfigLoader: IDENTITY.md → ${identityMdState}`);
 
     // Per-search-path master file reads. Master files declare the
     // surface as a whole — project metadata, ignore[], disable[]. Each
@@ -945,7 +977,7 @@ export class ConfigLoader {
       mergedBlanksConfig,
       navigableWords,
       blanksByWord,
-      sentinels,
+      identity,
     };
     this.adapter.log('debug', `ConfigLoader: loaded ${cueMap.size} cue entries, opencuesState=${JSON.stringify({
       voiceMode: opencuesState.voiceMode,

@@ -1,13 +1,13 @@
-// Tests for `opencues sentinels` — SENTINELS.md sentinel management.
+// Tests for `opencues identity` — IDENTITY.md sentinel management.
 //
 // Two layers:
 //   1. Pure parser/derivation/quoting helpers — exercise the
 //      __test__ exports directly. These mirror contracts shared with
-//      @opencues/core's sentinels.ts and would silently drift if
+//      @opencues/core's identity.ts and would silently drift if
 //      the regex chains diverge.
-//   2. Subcommand E2E — spawn `bin/cli.cjs sentinels …` against a
+//   2. Subcommand E2E — spawn `bin/cli.cjs identity …` against a
 //      sandbox HOME so we can assert real file writes without
-//      touching the developer's actual ~/.cues/SENTINELS.md.
+//      touching the developer's actual ~/.cues/IDENTITY.md.
 
 'use strict';
 
@@ -19,11 +19,11 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const CLI = path.join(__dirname, '..', '..', 'bin', 'cli.cjs');
-const cmd = require('./sentinels.cjs');
+const cmd = require('./identity.cjs');
 const { parseSentinelsMd, deriveToken, needsQuoting, stripInlineComment } = cmd.__test__;
 
 // ────────────────────────────────────────────────────────────────────────────
-// Token derivation — locked to core/sentinels.ts contract.
+// Token derivation — locked to core/identity.ts contract.
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('deriveToken (must match @opencues/core)', () => {
@@ -124,7 +124,7 @@ describe('needsQuoting', () => {
 // E2E — spawn the CLI against a sandbox HOME.
 //
 // Each test gets a fresh tmpdir + HOME override + ~/.cues/ scaffold, so
-// writes are isolated from the dev's real SENTINELS.md.
+// writes are isolated from the dev's real IDENTITY.md.
 // ────────────────────────────────────────────────────────────────────────────
 
 function runCli(args, opts = {}) {
@@ -132,25 +132,25 @@ function runCli(args, opts = {}) {
   const env = { ...process.env, HOME: tmp, FORCE_COLOR: '0', NO_COLOR: '1' };
   if (opts.userMd) {
     fs.mkdirSync(path.join(tmp, '.cues'), { recursive: true });
-    fs.writeFileSync(path.join(tmp, '.cues', 'SENTINELS.md'), opts.userMd, 'utf8');
+    fs.writeFileSync(path.join(tmp, '.cues', 'IDENTITY.md'), opts.userMd, 'utf8');
   }
-  const r = spawnSync('node', [CLI, 'sentinels', ...args], { env, encoding: 'utf8' });
-  return { ...r, tmp, userMdPath: path.join(tmp, '.cues', 'SENTINELS.md') };
+  const r = spawnSync('node', [CLI, 'identity', ...args], { env, encoding: 'utf8' });
+  return { ...r, tmp, userMdPath: path.join(tmp, '.cues', 'IDENTITY.md') };
 }
 
-describe('opencues sentinels — E2E', () => {
-  it('path: prints the absolute SENTINELS.md path (scriptable)', () => {
+describe('opencues identity — E2E', () => {
+  it('path: prints the absolute IDENTITY.md path (scriptable)', () => {
     const r = runCli(['path']);
     assert.strictEqual(r.status, 0);
-    // Path resolves to $HOME/.cues/SENTINELS.md — the sandbox tmpdir's HOME.
-    assert.match(r.stdout, /\.cues\/SENTINELS\.md\n$/);
+    // Path resolves to $HOME/.cues/IDENTITY.md — the sandbox tmpdir's HOME.
+    assert.match(r.stdout, /\.cues\/IDENTITY\.md\n$/);
     assert.strictEqual(r.stderr, '');
   });
 
   it('list: empty state on a fresh HOME shows an info hint', () => {
     const r = runCli(['list']);
     assert.strictEqual(r.status, 0);
-    assert.match(r.stdout, /no sentinels defined/);
+    assert.match(r.stdout, /no identity defined/);
   });
 
   it('list --json: emits valid JSON', () => {
@@ -165,7 +165,7 @@ describe('opencues sentinels — E2E', () => {
     ]);
   });
 
-  it('set: writes a new sentinel + SENTINELS.md round-trips through parse', () => {
+  it('set: writes a new sentinel + IDENTITY.md round-trips through parse', () => {
     const r = runCli(['set', 'jobTitle', 'Founder']);
     assert.strictEqual(r.status, 0);
     assert.match(r.stdout, /added jobTitle/);
@@ -266,12 +266,12 @@ describe('opencues sentinels — E2E', () => {
   it('--help: prints help + exits 0', () => {
     const r = runCli(['--help']);
     assert.strictEqual(r.status, 0);
-    assert.match(r.stdout, /opencues sentinels/);
-    assert.match(r.stdout, /sentinels-mode/);
+    assert.match(r.stdout, /opencues identity/);
+    assert.match(r.stdout, /identity-context-mode/);
   });
 
   it('preserves user-added keys not asked about in the interview when writing via set', () => {
-    // A user has favoriteEditor in SENTINELS.md. Setting a NEW key should
+    // A user has favoriteEditor in IDENTITY.md. Setting a NEW key should
     // leave favoriteEditor in place.
     const r = runCli(['set', 'jobTitle', 'Founder'], {
       userMd: '---\nfirstName: Wilfred\nfavoriteEditor: vim\n---\n',
@@ -285,10 +285,10 @@ describe('opencues sentinels — E2E', () => {
     assert.ok(keys.includes('jobTitle'));
   });
 
-  it('set: refuses with capacity-exceeded once SENTINELS.md is full', () => {
-    // Build a SENTINELS.md at the default cap (64 fields) and try to add
+  it('set: refuses with capacity-exceeded once IDENTITY.md is full', () => {
+    // Build a IDENTITY.md at the default cap (64 fields) and try to add
     // one more. The validator should refuse with an exit code and a
-    // visible hint about removing unused sentinels.
+    // visible hint about removing unused identity.
     const lines = Array.from({ length: 64 }, (_, i) => `k${i}: v${i}`).join('\n');
     const r = runCli(['set', 'overflow', 'x'], {
       userMd: `---\n${lines}\n---\n`,
@@ -314,7 +314,7 @@ describe('opencues sentinels — E2E', () => {
   });
 
   it('preserves the file body (docstring) across writes', () => {
-    const body = '# SENTINELS.md — custom body\n\nMy notes here.\n';
+    const body = '# IDENTITY.md — custom body\n\nMy notes here.\n';
     const r = runCli(['set', 'jobTitle', 'Founder'], {
       userMd: `---\nfirstName: Wilfred\n---\n${body}`,
     });

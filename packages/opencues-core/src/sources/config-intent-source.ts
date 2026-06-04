@@ -348,7 +348,7 @@ CONFIDENCE: 0.9
 
 INPUT: let it use my personal info when answering _
 INTENT: SETTING
-SETTING: sentinels-mode
+SETTING: identity-context-mode
 VALUE: safe
 SCOPE:
 PROVIDER:
@@ -362,7 +362,68 @@ VALUE: on
 SCOPE:
 PROVIDER:
 MODEL:
-CONFIDENCE: 0.88`;
+CONFIDENCE: 0.88
+
+═════════════════════════════════════════════════════════════════
+NEGATIVE EXAMPLES — questions about the user's own identity are
+LOOKUPS (fluid-blank's job), NOT requests to change identity-context-mode.
+The word "identity" in the scalar name refers to whether the FEATURE
+is enabled, not to anything the user is asking ABOUT themselves.
+═════════════════════════════════════════════════════════════════
+
+INPUT: my mother's maiden name _
+INTENT: NONE
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.98
+
+INPUT: my email _
+INTENT: NONE
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.98
+
+INPUT: my name _
+INTENT: NONE
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.98
+
+INPUT: i work at _
+INTENT: NONE
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.97
+
+INPUT: who am I _
+INTENT: NONE
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.95
+
+INPUT: what's my github _
+INTENT: NONE
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.96`;
 
 // ============================================================================
 // Parsed verdict — discriminated union

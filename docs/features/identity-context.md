@@ -1,15 +1,22 @@
-# User context
+# Identity context
 
 Stop typing your name, email, work city, and other personal facts
-into every form. Tell OpenCues once via `~/.cues/SENTINELS.md`; from then
+into every form. Tell OpenCues once via `~/.cues/IDENTITY.md`; from then
 on the `_` blank uses your real data when it's relevant.
 
-**Off by default.** Opt in via `sentinels-mode: safe` in
+**Off by default.** Opt in via `identity-context-mode: safe` in
 `~/.cues/OPENCUES.md`. Phase 1 wires fluid-blank only.
+
+> **Naming note (June 2026 rename).** Identity context was previously
+> called "sentinels"; the file used to be `SENTINELS.md` and the scalar
+> was `sentinels-mode`. Both old names still work for one release cycle
+> (back-compat reads in ConfigLoader). New users get `IDENTITY.md` from
+> `opencues seed-configs`. The mechanism — bracketed `[FOO]` tokens
+> substituted by the runtime — is unchanged.
 
 ## The 30-second example
 
-Edit `~/.cues/SENTINELS.md`:
+Edit `~/.cues/IDENTITY.md`:
 
 ```yaml
 ---
@@ -23,7 +30,7 @@ github:       https://github.com/wkasekende
 In `~/.cues/OPENCUES.md` flip the mode:
 
 ```yaml
-sentinels-mode: safe
+identity-context-mode: safe
 ```
 
 Now on any web form, type `my email _` → fluid-blank substitutes
@@ -48,7 +55,7 @@ sees real data so it can pick a register that matches your name
 (e.g. "Dear Robert" vs "Hey Bob"). PII reaches the provider. Opt-in
 when prose quality matters more than provider-log privacy.
 
-**`off` (default)** — `SENTINELS.md` is never read.
+**`off` (default)** — `IDENTITY.md` is never read.
 
 ## Field naming
 
@@ -75,22 +82,22 @@ workCity: London  # description: city I work in (not where I live)
 | Threat | Protection |
 |---|---|
 | LLM provider sees my PII | `safe` mode keeps values on the host. `raw` mode opts you out — that's the trade-off. |
-| OpenCues sends SENTINELS.md to a network | No. Only the focused field's catalog reaches FluidBlankSource, then the FluidBlank LLM endpoint you configured. |
-| A pack reads SENTINELS.md | Not in Phase 1. FluidBlankSource (core, built-in) is the only consumer. Pack consumption arrives in Phase 2 with a per-pack `requires-user: [...]` declaration. |
+| OpenCues sends IDENTITY.md to a network | No. Only the focused field's catalog reaches FluidBlankSource, then the FluidBlank LLM endpoint you configured. |
+| A pack reads IDENTITY.md | Not in Phase 1. FluidBlankSource (core, built-in) is the only consumer. Pack consumption arrives in Phase 2 with a per-pack `requires-user: [...]` declaration. |
 | LLM hallucinates `[DATE OF BIRTH]` | Post-processor strips any token not in your catalog. Pinned by tests. |
 | LLM emits `[WORK_CITY]` underscore instead of `[WORK CITY]` space | Post-processor tolerant-matches case + space/underscore variants. |
 | I write `[FIRST NAME]` in a doc; LLM rewrites it | The post-processor checks your original buffer text. Anything you typed yourself is preserved as-is. |
 
 Full threat model + design:
-[`docs/architecture/sentinels.md`](../architecture/sentinels.md).
+[`docs/architecture/identity-context.md`](../architecture/identity-context.md).
 
 ## What's NOT supported in Phase 1
 
-- **Body text in SENTINELS.md.** The body (free prose after the
+- **Body text in IDENTITY.md.** The body (free prose after the
   frontmatter's closing `---`) is ignored. Reserved for Phase 3.
 - **Other pipelines.** Transform-blank, word-cues, agent-rewrite,
   auditors all explicitly skip sentinels. Fluid-blank only.
-- **Per-project SENTINELS.md.** Global only. User data isn't
+- **Per-project IDENTITY.md.** Global only. User data isn't
   project data.
 - **Per-pack field requests.** Until packs can declare
   `requires-user: [...]`, only built-in fluid-blank sees the
@@ -98,12 +105,13 @@ Full threat model + design:
 
 ## Where the data lives
 
-`~/.cues/SENTINELS.md`. Same directory as `OPENCUES.md`. Shipped as a
+`~/.cues/IDENTITY.md`. Same directory as `OPENCUES.md`. Shipped as a
 commented-out template (run `opencues seed-configs` to drop it in
 place). Re-edit any time — changes hot-reload on the next keystroke.
 
 ## See also
 
-- [`docs/architecture/sentinels.md`](../architecture/sentinels.md) — design + threat model
+- [`docs/architecture/identity-context.md`](../architecture/identity-context.md) — design + threat model
 - [`docs/architecture/ambient-context.md`](../architecture/ambient-context.md) — the related feature
+- [`docs/features/blank-as-context.md`](blank-as-context.md) — the sibling feature for ambient blank tokens
 - [`tests/benchmarks/sentinels/FINDINGS.md`](../../tests/benchmarks/sentinels/FINDINGS.md) — bench evidence that shaped the design

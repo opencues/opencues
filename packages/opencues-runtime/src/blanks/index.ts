@@ -174,7 +174,7 @@ export const BUILTIN_BLANKS: readonly BuiltinBlankSpec[] = [
   // ── Settings / selector-satellite (skip when no IO supplied) ─────
   { name: 'opencues',      factory: ctx => ctx.opencuesMdIO ? new OpenCuesSettingsBlank({ ...ctx.opencuesMdIO, hostName: ctx.hostName }) : null },
 
-  // ── Sentinel-write (keyword-bound `set sentinel <k> <v> _` /
+  // ── IdentityField-write (keyword-bound `set sentinel <k> <v> _` /
   //    `remove sentinel <k> _`). Skips when no IO supplied (host
   //    can't write SENTINELS.md). Audit row #24 — every host that
   //    wires sentinelsMdIO MUST hand the writer the file content

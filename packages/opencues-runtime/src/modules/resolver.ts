@@ -251,6 +251,19 @@ export class Resolver {
      *  config-intent branch falls back to inline paint only (no
      *  cycling). */
     private selectorSatelliteState?: SelectorSatelliteStateRef,
+    /** Blank-as-context provider — called at every resolve to produce
+     *  the ambient-blank snapshot the FluidBlank source consumes.
+     *  Hosts that haven't opted into the feature can omit this; the
+     *  resolver then passes `undefined` for `context.blankContext` and
+     *  blank-context is inert. Implementations are expected to be
+     *  cheap (cache-backed) — invoked on every keystroke that fires a
+     *  resolve. */
+    private blankContextProvider?: () => Promise<
+      | { fields: ReadonlyArray<{ token: string; description: string; value: string }>;
+          catalog: ReadonlyMap<string, string>;
+          mode: 'safe' | 'raw' }
+      | undefined
+    >,
   ) {}
 
   subscribe(): void {
@@ -1041,12 +1054,19 @@ export class Resolver {
         // misconfigured source can't accidentally read it). When on,
         // ship the catalog + mode through to FluidBlankSource; no
         // other source consumes this field today by design.
-        sentinels: this.configLoader.opencuesState.sentinelsMode !== 'off'
+        identityContext: this.configLoader.opencuesState.identityContextMode !== 'off'
           ? {
-              fields: this.configLoader.sentinels.fields,
-              catalog: this.configLoader.sentinels.catalog,
-              mode: this.configLoader.opencuesState.sentinelsMode,
+              fields: this.configLoader.identity.fields,
+              catalog: this.configLoader.identity.catalog,
+              mode: this.configLoader.opencuesState.identityContextMode,
             }
+          : undefined,
+        // Ambient blank-context. Provider call is cache-backed; runs
+        // on every resolve so OPENCUES.md flips are picked up without
+        // host restart. When mode is off the provider returns
+        // undefined.
+        blankContext: this.configLoader.opencuesState.blankContextMode !== 'off' && this.blankContextProvider
+          ? await this.blankContextProvider()
           : undefined,
       });
     } catch (err) {

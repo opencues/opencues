@@ -30,7 +30,7 @@ import { describe, it } from 'node:test';
 import * as assert from 'node:assert';
 import { TransformBlankSource } from './transform-blank-source';
 import { getProvider } from '../llm-provider';
-import { parseSentinelsMd } from '../sentinels';
+import { parseIdentityMd } from '../identity-context';
 import type { HttpAdapter, CueContext } from '../types';
 
 interface RecordedCall {
@@ -98,14 +98,14 @@ favoriteEditor: vim
 ---`;
 
 function ctxWithUser(text: string, mode: 'safe' | 'raw' = 'safe'): CueContext {
-  const uc = parseSentinelsMd(USER_MD);
+  const uc = parseIdentityMd(USER_MD);
   return {
     text,
     words: text.split(/\s+/).filter(Boolean),
     blankIndices: text.split(/\s+/).filter(Boolean)
       .map((w, i) => (w === '_' ? i : -1))
       .filter(i => i >= 0),
-    sentinels: { fields: uc.fields, catalog: uc.catalog, mode },
+    identityContext: { fields: uc.fields, catalog: uc.catalog, mode },
   };
 }
 

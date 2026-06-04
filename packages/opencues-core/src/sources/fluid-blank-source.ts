@@ -26,7 +26,8 @@
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter, AmbientContext } from '../types';
 import { BlankConfig } from '../cues-md';
 import { useStrictJson, buildJsonResponseFormat, describeLLMCall, dispatchChat, type ProviderAdapter } from '../llm-provider';
-import { renderSentinelsCatalog, postProcessSentinels, type Sentinels, type SentinelsMode } from '../sentinels';
+import { renderIdentityContextCatalog, postProcessContext, type Identity, type ContextMode } from '../identity-context';
+import { renderBlankContextCatalog, mergeCatalogs, type BlankContextSnapshot, type BlankContextMode } from '../blank-context';
 
 // ─── Ambient-context sanitization + injection ──────────────────────
 //
@@ -778,23 +779,36 @@ export class FluidBlankSource implements CueSource {
         this.logInfo(`FluidBlank: ambient: injected (${ambientBlock.length} chars${pairsStr})`);
       } else this.logInfo('FluidBlank: ambient: empty (context present but sanitised to nothing)');
 
-      // Sentinels catalog (sentinel-mode personal data). Off by
+      // Identity catalog (sentinel-mode personal data). Off by
       // default — the runtime gates on `sentinels-mode` in
-      // OPENCUES.md before populating context.sentinels, so when
+      // OPENCUES.md before populating context.identityContext, so when
       // mode is off this code path is a no-op. See sentinels.ts +
       // docs/architecture/sentinels.md for the threat model.
-      const userCtx: Sentinels | undefined = context.sentinels
-        ? { fields: context.sentinels.fields, catalog: context.sentinels.catalog }
+      const userCtx: Identity | undefined = context.identityContext
+        ? { fields: context.identityContext.fields, catalog: context.identityContext.catalog }
         : undefined;
-      const userMode: SentinelsMode = context.sentinels?.mode ?? 'off';
-      const userCatalogBlock = userCtx ? renderSentinelsCatalog(userCtx, userMode) : '';
+      const userMode: ContextMode = context.identityContext?.mode ?? 'off';
+      const userCatalogBlock = userCtx ? renderIdentityContextCatalog(userCtx, userMode) : '';
       if (userCtx && userCatalogBlock) {
         this.logInfo(`FluidBlank: sentinels: injected (mode=${userMode}, ${userCtx.fields.length} field${userCtx.fields.length === 1 ? '' : 's'})`);
-      } else if (context.sentinels) {
+      } else if (context.identityContext) {
         this.logInfo('FluidBlank: sentinels: empty (mode on but SENTINELS.md has no fields)');
       }
 
-      const fusedUser = `INPUT: ${context.text}${ambientBlock}${userCatalogBlock}`;
+      // Blank-as-context (ambient blanks: stocks/weather/crypto/…).
+      // Threat-model identical to sentinels above — see
+      // docs/architecture/blank-as-context.md. Catalog appended to
+      // the same prompt section; LLM sees one unified context block.
+      const bcSnapshot: BlankContextSnapshot | undefined = context.blankContext
+        ? { fields: context.blankContext.fields, catalog: context.blankContext.catalog }
+        : undefined;
+      const bcMode: BlankContextMode = context.blankContext?.mode ?? 'off';
+      const blankContextBlock = bcSnapshot ? renderBlankContextCatalog(bcSnapshot, bcMode) : '';
+      if (bcSnapshot && blankContextBlock) {
+        this.logInfo(`FluidBlank: blank-context: injected (mode=${bcMode}, ${bcSnapshot.fields.length} token${bcSnapshot.fields.length === 1 ? '' : 's'})`);
+      }
+
+      const fusedUser = `INPUT: ${context.text}${ambientBlock}${userCatalogBlock}${blankContextBlock}`;
       // Per-feature override: `fluid-blank-max-tokens:` in OPENCUES.md.
       // 512 default is bench-tuned for short-factual answers.
       const fusedOut = await this.callLLM(FUSED_SYSTEM_PROMPT, fusedUser, this.maxTokensOverride ?? 512,
@@ -821,9 +835,15 @@ export class FluidBlankSource implements CueSource {
       // mode the LLM may have already inlined values, and the
       // post-processor handles any tokens the LLM ALSO emitted.
       let finalAnswer = answer;
-      if (userCtx && userCtx.catalog.size > 0) {
-        const pp = postProcessSentinels(answer, {
-          catalog: userCtx.catalog,
+      // Build the merged substitution catalog. IdentityField catalog
+      // wins on collision (mergeCatalogs handles ordering). When
+      // neither catalog is present this is a no-op.
+      const sentinelCatalog = userCtx?.catalog ?? new Map<string, string>();
+      const blankCtxCatalog = bcSnapshot?.catalog ?? new Map<string, string>();
+      const mergedCatalog = mergeCatalogs(sentinelCatalog, blankCtxCatalog);
+      if (mergedCatalog.size > 0) {
+        const pp = postProcessContext(answer, {
+          catalog: mergedCatalog,
           // Pass context.text as originalBody so any bracket-token
           // the user typed in their buffer (e.g. writing docs about
           // the sentinel API) is preserved verbatim.
@@ -831,7 +851,7 @@ export class FluidBlankSource implements CueSource {
         });
         finalAnswer = pp.output;
         if (pp.report.resolved.length || pp.report.tolerantMatches.length || pp.report.stripped.length) {
-          this.logInfo(`FluidBlank: sentinels: post-processed (resolved=${pp.report.resolved.length}, tolerant=${pp.report.tolerantMatches.length}, stripped=${pp.report.stripped.length})`);
+          this.logInfo(`FluidBlank: ctx-post-processed (resolved=${pp.report.resolved.length}, tolerant=${pp.report.tolerantMatches.length}, stripped=${pp.report.stripped.length})`);
         }
       }
 

@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Breaking + Added — identity-context rename, blank-as-context feature, and `opencues context`/`opencues cleanup` CLI
+
+**Renamed** the personal-data feature from `sentinels` → `identity-context`:
+
+- `~/.cues/SENTINELS.md` → `~/.cues/IDENTITY.md`
+- `sentinels-mode` scalar in OPENCUES.md → `identity-context-mode`
+- Public exports: `parseSentinelsMd` → `parseIdentityMd`, `renderSentinelsCatalog` → `renderIdentityContextCatalog`, `postProcessSentinels` → `postProcessContext`, types `Sentinels`/`Sentinel`/`SentinelsMode` → `Identity`/`IdentityField`/`ContextMode`
+- CLI: `opencues sentinels` → `opencues identity`
+- Source files: `packages/opencues-core/src/sentinels{,-validator}.ts` → `identity-context.ts` / `identity-validator.ts`
+- Docs: `docs/features/sentinels.md` + `docs/architecture/sentinels.md` → `identity-context.md` siblings
+
+No runtime back-compat reads. `opencues seed-configs` self-heals: `USER.md` → `SENTINELS.md` → `IDENTITY.md` two-hop rename + rewrites legacy scalar names in `OPENCUES.md`. Runs automatically on `opencues install <host>` for every existing user.
+
+Why the rename — `sentinels` named the implementation (bracket tokens), not the content (identity), and conflicted with three sibling features (blank-context, ambient-context) all sharing the same `<context>` prompt block. The new umbrella is "context" with three sources (identity / blank / ambient). See `docs/features/identity-context.md`.
+
+**Added — blank-as-context** (`docs/features/blank-as-context.md`): blanks can opt into surfacing their current values as ambient sentinel-style tokens for fluid-blank without the user typing the keyword. Stocks, weather, crypto, etc. become available as `[STOCK AAPL]`, `[WEATHER LONDON]` tokens that the LLM can emit; runtime substitutes after the response. Off by default per scalar `blank-context-mode: off | safe | raw` + per-blank `as-context: off | safe | raw` frontmatter. Bench evidence at `tests/benchmarks/blank-sentinels-matrix/FINDINGS.md` — 5-method × 5-provider × 6-count matrix (9,200 LLM calls); `safe-tokens` wins on every provider tested (100% on Cerebras + Groq, 99.4-99.7% on Gemini + OpenAI, 92.9% on Claude Haiku).
+
+**Added — `opencues context list`**: unified inspection surface for all three context sources (identity / blank / ambient). Shows mode scalar, file paths, active tokens. `--json` for scripting.
+
+**Added — `opencues cleanup`**: find and SIGTERM orphan host processes left behind by prior `opencues run` invocations. Also wired into `opencues run opencode|gemini-cli` as a predecessor-kill so fresh launches supersede prior instances for the same project. `--host`, `--project`, `--kill`, `--force`, `--json` flags. Self-protective: walks the current process's ppid chain to avoid killing its own ancestor.
+
+**Fixed — config-intent classifier false-positive on identity-related lookups**: the rename created semantic collision between the user-typed phrase `mother's maiden name _` and the scalar name `identity-context-mode`. The classifier was applying `identity-context-mode safe` instead of ceding to fluid-blank. Added six NEGATIVE example phrases (`mother's maiden name`, `my email`, `my name`, `who am I`, `what's my github`, `i work at`) to the classifier's few-shot prompt. The positive setting-flip path (`let it use my personal info when answering _`) still routes correctly.
+
+Versions bumped: `@opencues/core` 0.1.9 → 0.2.0, `@opencues/runtime` 0.1.18 → 0.2.0, `opencues` (CLI) 0.1.10 → 0.2.0.
+
 ### Fixed — fluid-blank chain extension now survives a multi-word first answer
 
 Pre-existing regression surfaced by live-testing the scroll-order fix below. Fluid-blank stored its DynDef `spanEnd` as the END OF THE FIRST WORD of the substitution (`newSpanEnd = newWord.end` in `resolver.ts:1235`). For a single-word answer that happened to be correct; for a multi-word answer like `William Shakespeare` inserted at char 0, `spanEnd` landed at 7 (end of `William`) instead of 19 (end of `Shakespeare`). The next substitute's chain verbatim check (`liveText.slice(spanStart, spanEnd) === currentAlt`) then compared `"William "` against `"William Shakespeare"` and bailed, dropping the first link from the chain — a 3-step lookup chain ended up only 2 links deep, with the original prompt + first answer silently missing from the walk-back history.

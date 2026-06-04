@@ -36,7 +36,7 @@
  * defence).
  */
 
-import { deriveToken } from './sentinels';
+import { deriveToken } from './identity-context';
 
 /** Default capacity caps — defence-in-depth bound for SENTINELS.md size.
  *  Tuned generously enough that a heavy real user (50 sentinels with
@@ -61,7 +61,7 @@ export type SentinelWriteOp =
   | { op: 'set'; key: string; value: string }
   | { op: 'remove'; key: string };
 
-/** Minimal field shape — matches the public `Sentinel` but
+/** Minimal field shape — matches the public `IdentityField` but
  *  takes only `key` + `value` so callers (CLI, blank) don't need to
  *  pre-derive the token. */
 export interface SentinelField {
@@ -96,7 +96,7 @@ const FORBIDDEN_VALUE_CHARS = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/;
  * Validate a proposed write against the current fields + caps.
  *
  * `currentFields` is the parsed state of SENTINELS.md just before this
- * write (call sites get this from `parseSentinelsMd(readUserMd())`).
+ * write (call sites get this from `parseIdentityMd(readUserMd())`).
  * Returns the post-write field array on success — the caller writes
  * that verbatim to disk.
  */

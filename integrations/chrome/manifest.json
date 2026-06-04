@@ -1,9 +1,13 @@
 {
   "manifest_version": 3,
   "name": "OpenCues",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "LLM-powered word alternatives for text editors",
-  "permissions": ["storage", "activeTab", "nativeMessaging"],
+  "permissions": [
+    "storage",
+    "activeTab",
+    "nativeMessaging"
+  ],
   "host_permissions": [
     "https://api.groq.com/*",
     "https://api.cerebras.ai/*",
@@ -28,9 +32,15 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["dist/content.js"],
-      "css": ["dist/content.css"]
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "dist/content.js"
+      ],
+      "css": [
+        "dist/content.css"
+      ]
     }
   ],
   "icons": {
@@ -50,8 +60,13 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["dist/configs/*", "dist/configs/**/*"],
-      "matches": ["<all_urls>"]
+      "resources": [
+        "dist/configs/*",
+        "dist/configs/**/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }

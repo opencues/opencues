@@ -35,7 +35,7 @@ runtime post-processor strips unlisted tokens.
 
 ## The 60-second example
 
-Edit `~/.cues/SENTINELS.md`:
+Edit `~/.cues/IDENTITY.md`:
 
 ```yaml
 ---
@@ -97,10 +97,10 @@ prose made them relevant.
 | **`safe`** (recommended) | No — only resolved tokens flow; values substitute post-LLM | Default for any blank you'd be uncomfortable seeing in a provider log |
 | **`raw`** | Yes — values inlined into the prompt | When prose quality genuinely needs the value (e.g. composing a weather forecast where the LLM needs to pick "chilly" vs "balmy" register) |
 
-`safe` mode works even when `sentinels-mode: off` — the binding field is
+`safe` mode works even when `identity-context-mode: off` — the binding field is
 read locally to look up the snapshot, never reaches the LLM.
 
-`raw` mode requires `sentinels-mode: raw` for consistency.
+`raw` mode requires `identity-context-mode: raw` for consistency.
 
 ## How parameter binding works
 
@@ -216,7 +216,7 @@ could see (by name in `safe`, by value in `raw`).
 ## Where the data lives
 
 - Each blank's `BLANK.md` carries the opt-in frontmatter.
-- Sentinel bindings read from `~/.cues/SENTINELS.md` — no duplication.
+- Sentinel bindings read from `~/.cues/IDENTITY.md` — no duplication.
 - Snapshot cache is in-memory in the runtime process. Lost on restart;
   refreshed lazily on next prompt-build.
 

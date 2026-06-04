@@ -44,7 +44,7 @@
 
 import type { Blank } from './types';
 import {
-  parseSentinelsMd,
+  parseIdentityMd,
   validateSentinelWrite,
   DEFAULT_SENTINEL_CAPS,
   deriveToken,
@@ -96,7 +96,7 @@ export class SentinelBlank implements Blank {
     const text = (await this._read()) ?? '';
     // Drop derived fields (token, description) — validator only needs
     // {key, value}. Type-narrowing satisfies the SentinelField shape.
-    const currentFields: readonly SentinelField[] = parseSentinelsMd(text).fields
+    const currentFields: readonly SentinelField[] = parseIdentityMd(text).fields
       .map(f => ({ key: f.key, value: f.value }));
 
     if (isRemove) {
