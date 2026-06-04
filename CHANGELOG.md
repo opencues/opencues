@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fixed — ConfigIntent auto-corrects stale model when switching provider via natural language
+
+Follow-up to the rename below. When a user typed e.g. `switch blanks to anthropic _`, ConfigIntent wrote `blanks-llm-provider: anthropic` but used to leave `blanks-llm-model: openai/gpt-oss-120b` (a Groq/OpenRouter model id) alone. The next LLM call against Anthropic then returned `model_not_found` and the buffer showed the `[OpenCues: model not available...]` inline-error substitute — surfacing the failure but requiring a manual edit of `~/.cues/OPENCUES.md` to fix.
+
+Fix: apply path now reads the current `<bucket>-llm-model` scalar (via a new optional `readScalar` callback on `ConfigIntentSourceConfig`) and checks it against the new provider's `knownModels` catalogue. Compatible (deliberate file-edit pin) → leave alone. Incompatible (different provider's namespace) → overwrite with the new provider's `defaultModel`. The runtime wires `readScalar` from `ConfigLoader.opencuesState.settings`; existing callers (tests, libraries) that don't wire it get the old "leave alone" behaviour.
+
+Two new tests in `config-intent-source.test.ts` pin both branches.
+
+Versions bumped: `@opencues/core` 0.2.0 → 0.2.1, `@opencues/runtime` 0.2.0 → 0.2.1.
+
 ### Breaking + Added — identity-context rename, blank-as-context feature, and `opencues context`/`opencues cleanup` CLI
 
 **Renamed** the personal-data feature from `sentinels` → `identity-context`:
