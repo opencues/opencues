@@ -561,7 +561,7 @@ describe('FluidBlankSource with ambient context', () => {
     await src.getCues({
       text: 'my email _',
       words: ['my', 'email', '_'],
-      sentinels: {
+      identityContext: {
         fields: [
           { key: 'firstName', token: '[FIRST NAME]', value: 'Wilfred', description: "user's first name" },
           { key: 'email', token: '[EMAIL]', value: 'wilfred@example.com', description: "user's email" },
@@ -591,7 +591,7 @@ describe('FluidBlankSource with ambient context', () => {
     await src.getCues({
       text: 'my email _',
       words: ['my', 'email', '_'],
-      sentinels: {
+      identityContext: {
         fields: [{ key: 'email', token: '[EMAIL]', value: 'wilfred@example.com', description: "user's email" }],
         catalog: new Map([['[EMAIL]', 'wilfred@example.com']]),
         mode: 'raw',
@@ -623,7 +623,7 @@ describe('FluidBlankSource with ambient context', () => {
     const result = await src.getCues({
       text: 'my email _',
       words: ['my', 'email', '_'],
-      sentinels: {
+      identityContext: {
         fields: [{ key: 'email', token: '[EMAIL]', value: 'wilfred@example.com', description: "user's email" }],
         catalog: new Map([['[EMAIL]', 'wilfred@example.com']]),
         mode: 'safe',
@@ -645,7 +645,7 @@ describe('FluidBlankSource with ambient context', () => {
     const result = await src.getCues({
       text: 'my dob _',
       words: ['my', 'dob', '_'],
-      sentinels: {
+      identityContext: {
         fields: [{ key: 'firstName', token: '[FIRST NAME]', value: 'Wilfred', description: "user's first name" }],
         catalog: new Map([['[FIRST NAME]', 'Wilfred']]),
         mode: 'safe',
@@ -669,7 +669,7 @@ describe('FluidBlankSource with ambient context', () => {
     const result = await src.getCues({
       text: 'i work in _',
       words: ['i', 'work', 'in', '_'],
-      sentinels: {
+      identityContext: {
         fields: [{ key: 'workCity', token: '[WORK CITY]', value: 'London', description: "user's work city" }],
         catalog: new Map([['[WORK CITY]', 'London']]),
         mode: 'safe',

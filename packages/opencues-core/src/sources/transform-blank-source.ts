@@ -45,11 +45,11 @@ import { detectPartialTransform } from './transform-partial-detector';
 import { injectCursorSentinel, stripCursorSentinel } from '../cursor-sentinel';
 import { translateBufferCursorToTargetCursor } from './transform-cursor-translate';
 import {
-  renderSentinelsCatalogForTransform,
-  postProcessSentinels,
-  type Sentinels,
-  type SentinelsMode,
-} from '../sentinels';
+  renderIdentityContextCatalogForTransform,
+  postProcessContext,
+  type Identity,
+  type ContextMode,
+} from '../identity-context';
 
 // ============================================================================
 // Prompts — ported verbatim from tests/benchmarks/transform-blank/
@@ -1481,23 +1481,23 @@ export class TransformBlankSource implements CueSource {
   }
 
   /**
-   * Build the SENTINELS.md catalog block to append to APPLY / GENERATIVE /
+   * Build the IDENTITY.md catalog block to append to APPLY / GENERATIVE /
    * FUSED prompts. Returns empty string + undefined ctx when
-   * `sentinels-mode: off` (or the runtime didn't populate
-   * sentinels for any reason). Off mode is the structural no-op —
+   * `identity-context-mode: off` (or the runtime didn't populate
+   * identity context for any reason). Off mode is the structural no-op —
    * APPLY prompts revert to their pre-Phase-2 shape verbatim.
    */
   private buildUserCatalogBlock(context: CueContext): {
     block: string;
-    ctx: Sentinels | undefined;
+    ctx: Identity | undefined;
   } {
-    const uc = context.sentinels;
+    const uc = context.identityContext;
     if (!uc) return { block: '', ctx: undefined };
-    const ctx: Sentinels = { fields: uc.fields, catalog: uc.catalog };
-    const mode: SentinelsMode = uc.mode;
-    const block = renderSentinelsCatalogForTransform(ctx, mode);
+    const ctx: Identity = { fields: uc.fields, catalog: uc.catalog };
+    const mode: ContextMode = uc.mode;
+    const block = renderIdentityContextCatalogForTransform(ctx, mode);
     if (block) {
-      this.log(`TransformBlank: sentinels: injected (mode=${mode}, ${ctx.fields.length} field${ctx.fields.length === 1 ? '' : 's'})`);
+      this.log(`TransformBlank: identity-context: injected (mode=${mode}, ${ctx.fields.length} field${ctx.fields.length === 1 ? '' : 's'})`);
     }
     return { block, ctx };
   }
@@ -1513,16 +1513,16 @@ export class TransformBlankSource implements CueSource {
   private resolveSentinels(
     rewrite: string,
     originalBody: string,
-    ctx: Sentinels | undefined,
+    ctx: Identity | undefined,
   ): string {
     if (!ctx || ctx.catalog.size === 0) return rewrite;
-    const pp = postProcessSentinels(rewrite, {
+    const pp = postProcessContext(rewrite, {
       catalog: ctx.catalog,
       originalBody,
       preserveUnknown: true,
     });
     if (pp.report.resolved.length || pp.report.tolerantMatches.length) {
-      this.log(`TransformBlank: sentinels: post-processed (resolved=${pp.report.resolved.length}, tolerant=${pp.report.tolerantMatches.length}, preserved-unknown=${pp.report.stripped.length})`);
+      this.log(`TransformBlank: identity-context: post-processed (resolved=${pp.report.resolved.length}, tolerant=${pp.report.tolerantMatches.length}, preserved-unknown=${pp.report.stripped.length})`);
     }
     return pp.output;
   }
@@ -1767,7 +1767,7 @@ export class TransformBlankSource implements CueSource {
         );
         // Strip any sentinel the model leaked into its output — input-only.
         const draftRaw = stripCursorSentinel((useJson ? parseApplyJson(applyRaw) : parseApply(applyRaw)).rewrite);
-        // Resolve SENTINELS.md sentinels per step so VERIFY downstream sees
+        // Resolve IDENTITY.md sentinels per step so VERIFY downstream sees
         // the real values, not bracket-tokens. Preserves unknown brackets.
         const draft = this.resolveSentinels(draftRaw, context.text, applyUserCtx);
         this.log(`TransformBlank P2 APPLY step ${i + 1}/${parts.length} (${Date.now() - stepStart}ms, max_tokens=${p2Tokens}): "${preview(draft)}"`);
@@ -2011,7 +2011,7 @@ export class TransformBlankSource implements CueSource {
     const { block: fusedCatalogBlock, ctx: fusedUserCtx } = this.buildUserCatalogBlock(context);
     const fusedRaw = await this.callLLM(FUSED_SYSTEM, `INPUT: ${extractText}${fusedCatalogBlock}`, fusedTokens);
     const fParsed = parseFused(fusedRaw);
-    // Resolve SENTINELS.md sentinels in FULL_REWRITE before the result
+    // Resolve IDENTITY.md sentinels in FULL_REWRITE before the result
     // routes through the runtime's three-way merge. Preserves unknown
     // brackets so LLM-emitted placeholders for non-user entities
     // ([Recipient Name], [Date]) survive untouched.

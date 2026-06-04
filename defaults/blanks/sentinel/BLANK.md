@@ -9,7 +9,7 @@ blankKeywords: set sentinel, remove sentinel
 # the proximity-0 default makes the blank silently miss every
 # non-single-word value (TransformBlank wins the slot instead). A
 # user with an unusually long value (>16 words / ~80 chars) falls
-# back to `opencues sentinels set` from the CLI, which has no
+# back to `opencues identity set` from the CLI, which has no
 # proximity limit. The 256-char value cap (validateSentinelWrite)
 # still gates the actual content of any matched write.
 blankProximity: 16
@@ -17,8 +17,8 @@ blankFormat: string
 blankScript: ./sentinel-blank.sh
 blankClearKeywords: true
 blankClearOnEdit: true
-# Sandbox: off because sentinel-blank.sh writes to ~/.cues/SENTINELS.md
-# (sentinel-mode personal data) which is outside the sandbox's tmpfs
+# Sandbox: off because sentinel-blank.sh writes to ~/.cues/IDENTITY.md
+# (identity-context personal data) which is outside the sandbox's tmpfs
 # and would be refused by the read-only CUES root bind. Chrome routes
 # this through SentinelBlank (impl: class, no spawn) so the sandbox
 # declaration only affects native hosts.
@@ -28,7 +28,7 @@ sandbox: off
 on-host: chrome, claude-code, gemini-cli, opencode, shell
 ---
 
-# Sentinel — write to ~/.cues/SENTINELS.md from inside the editor
+# Sentinel — write to ~/.cues/IDENTITY.md from inside the editor
 
 Triggered by `set sentinel <key> <value> _` (add/update) or
 `remove sentinel <key> _`. Every write goes through the single
@@ -48,7 +48,7 @@ remove sentinel jobTitle _
   (`../etc/passwd`), shell metacharacters (`foo;rm`, `foo|cat`),
   Unicode tricks.
 - **Value shape** — refuses NUL + C0/C1 control chars (defence-in-
-  depth against YAML / `sentinels-mode: raw` prompt smuggling).
+  depth against YAML / `identity-context-mode: raw` prompt smuggling).
 - **Value length** — 256-char cap.
 - **Capacity** — 64-field cap. Refuses unbounded growth.
 - **Token collision** — `firstName` and `first_name` both derive to
@@ -60,7 +60,7 @@ remove sentinel jobTitle _
 Errors paint visibly into the buffer as `[err] <detail>`. Never
 silent, never throws. Examples:
 
-- `[err] USER.md is full — 64/64 sentinels defined. Remove unused ones …`
+- `[err] IDENTITY.md is full — 64/64 fields defined. Remove unused ones …`
 - `[err] key "../foo" must match [A-Za-z][A-Za-z0-9_-]* — letters/…`
 - `[err] value for "note" contains forbidden control characters`
 - `[err] key "first_name" derives to [FIRST NAME] — same token as existing "firstName"`
@@ -78,5 +78,5 @@ model. Key invariants:
 4. **Pack-shadow defended.** Built-in `sentinel` wins over any
    user-pack with the same name (row #12, first-wins).
 5. **Validator is the only write path.** The shell-script fallback
-   routes back to `opencues sentinels set`, which uses the same
+   routes back to `opencues identity set`, which uses the same
    validator.

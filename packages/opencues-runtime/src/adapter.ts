@@ -270,6 +270,19 @@ export interface DirEntry {
 export interface CommonHostInfo {
   readonly hostVersion: string;
   readonly cwd: string;
+  /**
+   * Optional registry of built-in blank instances. When supplied, the
+   * runtime constructs a `blankContextProvider` that snapshots
+   * context-eligible blanks (those with `as-context: safe|raw` in
+   * BLANK.md) and surfaces their current values as ambient tokens for
+   * fluid-blank. Without this map, `blank-context-mode` in OPENCUES.md
+   * is silently inert. See docs/features/blank-as-context.md.
+   *
+   * Hosts already build this map for `blankInvoke`; passing it here
+   * too is a one-line wire. Optional so adapters that don't ship
+   * built-in blanks (chrome host-process flow) can omit it.
+   */
+  blanks?: ReadonlyMap<string, import('./blanks/types').Blank>;
   getText(): string;
   getCursorOffset(): number;
   setText(text: string): void;

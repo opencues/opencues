@@ -33,7 +33,7 @@ import { createSourceReclassifier, resetSharedBufferState } from '../../../src/b
 import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import { AgentTaskState } from '../../../src/state/agent-task';
 import { applyDirectives } from '../../../src/render-directives';
-import { buildAgentLLMResolver, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildAgentLLMResolver, buildBlankContextProvider, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { startEventBridge } from '../../../src/event-bridge';
 import type {
   BlankInvokeSpec,
@@ -51,6 +51,12 @@ import type {
 export interface HostInfo {
   readonly hostVersion: string;
   readonly cwd: string;
+  /** Optional registry of built-in blank instances. When supplied, the
+   *  runtime constructs a blank-as-context provider that snapshots
+   *  context-eligible blanks (those with `as-context: safe|raw` in
+   *  BLANK.md) as ambient tokens for fluid-blank. Without this map,
+   *  `blank-context-mode` in OPENCUES.md is silently inert. */
+  blanks?: ReadonlyMap<string, import('../../../src/blanks/types').Blank>;
   /** Snapshot of the current input text. */
   getText(): string;
   /** Snapshot of the current cursor offset. */
@@ -612,7 +618,8 @@ export function boot(host: HostInfo): BootResult {
     debounceMs: host.llmDebounceMs ?? 500,
     missingKeyFallbackMessage: hasAnyKey ? undefined : NATIVE_HOST_MISSING_KEY_MESSAGE,
     formatLLMErrorAsSubstitute: nativeHostFormatLLMError,
-  }, spanFillState, agentTaskState, blankLoading, markdownRender, selectorSatelliteState);
+  }, spanFillState, agentTaskState, blankLoading, markdownRender, selectorSatelliteState,
+  buildBlankContextProvider(configLoader, host.blanks, log));
   if (hasAnyKey) {
     // AgentRewrite — cadence-driven holistic rewrite with three-way merge.
     const agentRewrite = new AgentRewrite(adapter, dynDefs, agentTaskState, {

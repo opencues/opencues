@@ -46,6 +46,59 @@
     "auditors-model": { "type": "string" },
     "auditors-endpoint": { "type": "string", "format": "uri" },
 
+    "blanks-llm-provider": { "type": "string", "description": "Default provider for all blank-bucket sources (fluid-blank, transform-blank, blank-context). Per-aspect scalars (fluid-blank-provider etc.) win when set." },
+    "blanks-llm-model": { "type": "string" },
+    "blanks-llm-endpoint": { "type": "string", "format": "uri" },
+
+    "cues-llm-provider": { "type": "string", "description": "Default provider for cue-bucket sources (word-cues, sentence-cues)." },
+    "cues-llm-model": { "type": "string" },
+    "cues-llm-endpoint": { "type": "string", "format": "uri" },
+
+    "auditors-llm-provider": { "type": "string", "description": "Default provider for the auditor bucket (also covers agent-rewrite). Refuses trainsOnInput providers — prose-bearing." },
+    "auditors-llm-model": { "type": "string" },
+    "auditors-llm-endpoint": { "type": "string", "format": "uri" },
+
+    "identity-context-mode": {
+      "type": "string",
+      "enum": ["off", "safe", "raw"],
+      "default": "off",
+      "description": "Gates IDENTITY.md personal-data injection into fluid-blank and transform-blank as sentinel tokens. `safe`: tokens-only catalog to LLM, values substituted post-response. `raw`: values inlined into prompt (PII reaches provider logs; hidden from cycling menu). See spec/identity-context-spec.md."
+    },
+    "blank-context-mode": {
+      "type": "string",
+      "enum": ["off", "safe", "raw"],
+      "default": "off",
+      "description": "Gates blank-as-context (blanks with as-context: safe|raw expose their values as ambient [BLANK NAME] tokens). Mode-gate composition: `raw` MUST be downgraded to `safe` when identity-context-mode is not also `raw`."
+    },
+    "ambient-context-mode": {
+      "type": "string",
+      "enum": ["off", "on"],
+      "default": "off",
+      "description": "Chrome-only. Gates ambient field-metadata (label + placeholder + page-title) injection into fluid-blank for label-aware disambiguation."
+    },
+    "sentence-cues-mode": {
+      "type": "string",
+      "enum": ["off", "on"],
+      "default": "off",
+      "description": "Gates SentenceCueSource (scope: sentence cues that emit whole-sentence rewrites cycleable via the existing word-cue path)."
+    },
+    "fluid-config-mode": {
+      "type": "string",
+      "enum": ["off", "on"],
+      "default": "off",
+      "description": "Gates ConfigIntentSource (semantic `_` classifier targeting FEATURES registry scalars). Settings-only; user blanks excluded."
+    },
+    "blank-trigger-mode": {
+      "type": "string",
+      "enum": ["immediate", "spaced"],
+      "default": "immediate",
+      "description": "When blank fill fires after the user types `_`. immediate = on next keystroke; spaced = waits for a trailing space."
+    },
+    "nav-keymap": {
+      "type": "string",
+      "description": "Cycling keymap profile. Values come from MENU_TUNABLES; default `ctrl-alt-arrows`."
+    },
+
     "agent-window-words": { "type": ["string", "number"], "description": "Sliding-window mode: 0 = full-buffer, N>0 = ~N words around cursor." },
     "agent-debounce-ms": { "type": ["string", "number"], "description": "Debounce after last keystroke before AgentRewrite ticks (ms). Misparse / non-positive → 1000." },
 

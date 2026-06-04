@@ -9,6 +9,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Added — spec-version gate (the standard's "MUST refuse newer" rule, finally enforced)
+
+The `SPEC.md` § Version policy clause "A conforming reader MUST refuse to parse a file whose declared spec version is higher than the reader's pinned SPEC_VERSION" used to be normative-but-inert — the parsers ignored the `spec:` frontmatter field entirely. Conformance fixtures pretended to cover it via regex-matching the fixture content, never calling into the runtime.
+
+Now actually enforced:
+
+- **`@opencues/core` (0.2.1 → 0.2.2)** — `spec-version.ts` adds `parseSpecPin`, `isSpecCompatible`, and `SPEC_OMIT_DEFAULT`. Every parser entry (`parseCuesMd`, `parseSingleCueMd`, `parseSingleAuditorMd`, `parseCuesMaster`, `parseBlanksMaster`, `parseAuditorsMaster`) calls the gate before producing a config. On refusal, an empty `CuesMdConfig` is returned with a populated `specError` field. `discover.ts` honours the gate and exposes an optional `log` hook so callers see refusal reasons. The algorithm encodes both the draft (`0.x`) and post-stable (`1.0+`) regimes: newer-major refuse, newer-minor refuse, AND post-1.0 cross-major refuse (major bumps are breaking by definition).
+- **`@opencues/runtime` (0.2.1 → 0.2.2)** — `ConfigLoader` wires the discover log hook + every master-file load checks `specError` and emits `[warn] ConfigLoader: <file> refused — <reason>`. Refused sources are visible in `/tmp/opencues.log` instead of silently missing.
+- **Conformance test rewritten** — `conformance.test.ts`'s `spec-too-new` case now calls `parseSingleCueMd` directly and asserts the returned config has `specError` set + no sources/blanks/auditors populated. The fixture-only regex check it replaced was technically passing the conformance suite without exercising any production code path.
+- **39 new tests** — `spec-version.test.ts` (32 unit tests covering the algorithm against future versions: a 2.0 reader, 1.5 reader, pre-release suffix semantics, unparseable input) + `discover.spec-version.test.ts` (7 integration tests covering the log hook + the back-compat "omit-default never moves forward" invariant).
+
+**The bug this prevents.** Without the gate, a `0.2-alpha` runtime silently accepts files declaring `spec: opencues/99.0`. The runtime tries to honour any feature the file uses — including future surfaces the runtime can't model — and produces incoherent results. With the gate, the runtime says "I'm 0.2, file declares 99.0, refused" and the user sees a single warn line they can act on.
+
+**Forward-compat invariant.** `SPEC_OMIT_DEFAULT` stays at `opencues/0.1-alpha` permanently. When the spec bumps to 0.3, 1.0, 2.0, etc., legacy spec-less files still load (the default is always ≤ the runtime's version). New files SHOULD declare their target explicitly. Codified in `CLAUDE.md` § Spec-omit-default is permanent.
+
+### Breaking + Added — identity-context rename, blank-as-context feature, and `opencues context`/`opencues cleanup` CLI
+
+**Renamed** the personal-data feature from `sentinels` → `identity-context`:
+
+- `~/.cues/SENTINELS.md` → `~/.cues/IDENTITY.md`
+- `sentinels-mode` scalar in OPENCUES.md → `identity-context-mode`
+- Public exports: `parseSentinelsMd` → `parseIdentityMd`, `renderSentinelsCatalog` → `renderIdentityContextCatalog`, `postProcessSentinels` → `postProcessContext`, types `Sentinels`/`Sentinel`/`SentinelsMode` → `Identity`/`IdentityField`/`ContextMode`
+- CLI: `opencues sentinels` → `opencues identity`
+- Source files: `packages/opencues-core/src/sentinels{,-validator}.ts` → `identity-context.ts` / `identity-validator.ts`
+- Docs: `docs/features/sentinels.md` + `docs/architecture/sentinels.md` → `identity-context.md` siblings
+
+No runtime back-compat reads. `opencues seed-configs` self-heals: `USER.md` → `SENTINELS.md` → `IDENTITY.md` two-hop rename + rewrites legacy scalar names in `OPENCUES.md`. Runs automatically on `opencues install <host>` for every existing user.
+
+Why the rename — `sentinels` named the implementation (bracket tokens), not the content (identity), and conflicted with three sibling features (blank-context, ambient-context) all sharing the same `<context>` prompt block. The new umbrella is "context" with three sources (identity / blank / ambient). See `docs/features/identity-context.md`.
+
+**Added — blank-as-context** (`docs/features/blank-as-context.md`): blanks can opt into surfacing their current values as ambient sentinel-style tokens for fluid-blank without the user typing the keyword. Stocks, weather, crypto, etc. become available as `[STOCK AAPL]`, `[WEATHER LONDON]` tokens that the LLM can emit; runtime substitutes after the response. Off by default per scalar `blank-context-mode: off | safe | raw` + per-blank `as-context: off | safe | raw` frontmatter. Bench evidence at `tests/benchmarks/blank-sentinels-matrix/FINDINGS.md` — 5-method × 5-provider × 6-count matrix (9,200 LLM calls); `safe-tokens` wins on every provider tested (100% on Cerebras + Groq, 99.4-99.7% on Gemini + OpenAI, 92.9% on Claude Haiku).
+
+**Added — `opencues context list`**: unified inspection surface for all three context sources (identity / blank / ambient). Shows mode scalar, file paths, active tokens. `--json` for scripting. (LLM provider/model pair-display lives in `opencues doctor` from #68.)
+
+**Added — `opencues cleanup`**: find and SIGTERM orphan host processes left behind by prior `opencues run` invocations. Also wired into `opencues run opencode|gemini-cli` as a predecessor-kill so fresh launches supersede prior instances for the same project. `--host`, `--project`, `--kill`, `--force`, `--json` flags. Self-protective: walks the current process's ppid chain to avoid killing its own ancestor.
+
+**Fixed — config-intent classifier false-positive on identity-related lookups**: the rename created semantic collision between the user-typed phrase `mother's maiden name _` and the scalar name `identity-context-mode`. The classifier was applying `identity-context-mode safe` instead of ceding to fluid-blank. Added six NEGATIVE example phrases (`mother's maiden name`, `my email`, `my name`, `who am I`, `what's my github`, `i work at`) to the classifier's few-shot prompt. The positive setting-flip path (`let it use my personal info when answering _`) still routes correctly.
+
+**Fixed — ConfigIntent auto-corrects stale model when switching provider via NL**: companion to PR #68's pair-display + cycling-resets-model fix, on the NL-classifier-apply path. When a user types `switch blanks to anthropic _`, ConfigIntent now reads the current `<bucket>-llm-model` scalar (via a new optional `readScalar` callback) and overwrites it with the new provider's `defaultModel` if the existing model belongs to a different provider's namespace. The runtime wires `readScalar` from `ConfigLoader.opencuesState.settings`; existing test callers without it get the old "leave alone" behaviour. Two new tests pin both branches.
+
+Versions bumped: `@opencues/core` 0.1.12 → 0.2.1, `@opencues/runtime` 0.1.20 → 0.2.1, `opencues` (CLI) 0.1.10 → 0.2.0, `@opencues/chrome` 0.1.4 → 0.2.1.
+
 ### Fixed — bogus API key no longer fails silently when the provider's 401 body lacks an HTTP status number
 
 Reported as part of switch-model testing: users with an invalid `ANTHROPIC_API_KEY` typed `_` and saw nothing happen — no buffer change, no inline error, no UI signal at all. The runtime *was* hitting the provider and *was* getting a 401 back, but Anthropic's response body is shaped as a 200-ish JSON envelope containing `{"type":"error","error":{"message":"invalid x-api-key","type":"authentication_error"}}`. `parseResponse` correctly threw `Error("anthropic error: invalid x-api-key")`, but `classifyHttpError` only matched HTTP-status numbers like `401` / `403` — the textual error fell through to the silent default, no `formatLLMErrorAsSubstitute` was called, and no inline message landed in the buffer.

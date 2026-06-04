@@ -142,8 +142,8 @@ Inside any of those:
 - `BLANKS.md` — blank-pack master file
 - `cues/<name>/CUE.md` — individual cue packs
 - `blanks/<name>/BLANK.md` — individual blank packs
-- `USER.md` (user-level only) — user context (for the
-  `user-context-mode` feature)
+- `IDENTITY.md` (user-level only) — identity context (for the
+  `identity-context-mode` feature)
 
 A first install seeds defaults into `~/.cues/`:
 

@@ -33,6 +33,12 @@ export interface DiscoverOptions {
    *  Mirrors chrome's bundle-level `applySiteCompatFilter`. Omit to disable
    *  filtering (legacy callers + unit tests). */
   hostName?: string;
+  /** Optional log hook for per-file refusal reasons. discover.ts skips
+   *  sources whose parser returned `specError` (file declared a newer
+   *  `spec:` than the runtime supports); this callback lets the host
+   *  surface the reason in `/tmp/opencues.log` (or equivalent) so the
+   *  refusal is visible-not-silent. Omit to discard the messages. */
+  log?: (level: 'warn' | 'info', msg: string) => void;
 }
 
 export interface DiscoveredConfigs {
@@ -80,6 +86,15 @@ function scanDir(
     if (!content) continue;
 
     const config = parseSingleCueMd(content, configPath, inferredName);
+
+    // Spec-version refusal — `SPEC.md` § Version policy. parseSingleCueMd
+    // populates `specError` on too-new files; skip the source and surface
+    // the reason via the optional log hook so users see why their file
+    // isn't loading.
+    if (config.specError) {
+      opts.log?.('warn', `discover: ${cuePath} refused — ${config.specError}`);
+      continue;
+    }
 
     // Host-compat filter — skip the whole folder when the current host
     // isn't in the entry's allow-list (on-host) or is in its deny-list
@@ -130,6 +145,13 @@ function scanAuditorsDir(dirPath: string, opts: DiscoverOptions): CuesMdConfig[]
     if (!content) continue;
 
     const config = parseSingleAuditorMd(content, folderPath, inferredName);
+
+    // Spec-version refusal — same gate as the cues/blanks walk above.
+    if (config.specError) {
+      opts.log?.('warn', `discover: ${filePath} refused — ${config.specError}`);
+      continue;
+    }
+
     if (opts.hostName && !isAllowedOnHost(config.frontmatter, opts.hostName)) {
       continue;
     }

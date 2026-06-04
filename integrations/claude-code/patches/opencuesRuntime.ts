@@ -292,9 +292,9 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
   const opencuesMdPathExpr =
     `(process.env.OPENCUES_HOME?(process.env.OPENCUES_HOME+"/OPENCUES.md"):` +
     `((process.env.HOME||"~")+"/.cues/OPENCUES.md"))`;
-  const sentinelsMdPathExpr =
-    `(process.env.OPENCUES_HOME?(process.env.OPENCUES_HOME+"/SENTINELS.md"):` +
-    `((process.env.HOME||"~")+"/.cues/SENTINELS.md"))`;
+  const identityMdPathExpr =
+    `(process.env.OPENCUES_HOME?(process.env.OPENCUES_HOME+"/IDENTITY.md"):` +
+    `((process.env.HOME||"~")+"/.cues/IDENTITY.md"))`;
   // CUES roots for the sandbox + audit log. First entry is where the
   // log lands. Mirrors OC/gemini.
   const cuesRootsExpr =
@@ -316,10 +316,76 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
 
   // S1 injection: lazy-init __oc on first dispatch, then run the dispatch.
   // readFile uses fs from createRequire — needed by ConfigLoader for tips JSON.
+  // Build the blanks-registry construction block. Emitted OUTSIDE the
+  // boot() call so __ocReg + __ocBI are reachable from `blankInvoke:`
+  // AND `blanks:` in the args. Pre-June-2026 these declarations lived
+  // inside the `blankInvoke:(function(){...})()` IIFE — `blanks:__ocReg`
+  // outside the IIFE then ReferenceError'd, the outer catch fell into
+  // __oc.failed=true, and every keystroke silently skipped dispatch.
+  // Symptom on the user: claude-cues launches, types into the prompt,
+  // nothing OpenCues-shaped happens, /tmp/opencues.log stays untouched.
+  const blanksRegistryConstruction =
+    `var __ocReg=null;var __ocBI=function(){return null;};` +
+    `try{` +
+    `var __ocCtl=__oc_req(${blanksPath});` +
+    `var __ocFs=${requireFn}("fs");var __ocOcMd=${opencuesMdPathExpr};` +
+    `var __ocIdMd=${identityMdPathExpr};` +
+    `var __ocGroq=process.env.GROQ_API_KEY;` +
+    `__ocReg=__ocCtl.createDefaultBlanksRegistry({` +
+    `llmConfig:__ocGroq?{apiKey:__ocGroq}:undefined,` +
+    `finnhubApiKey:process.env.FINNHUB_API_KEY,` +
+    `opencuesMdIO:{` +
+    `readFile:function(){return new Promise(function(r){__ocFs.readFile(__ocOcMd,"utf8",function(e,d){r(e?null:d);});});},` +
+    `writeFile:function(c){return new Promise(function(r,j){__ocFs.writeFile(__ocOcMd,c,"utf8",function(e){e?j(e):r();});});}` +
+    `},` +
+    // Sentinel-write blank — keyword-bound `set sentinel _` /
+    // `remove sentinel _`. Validator runs INSIDE SentinelBlank before
+    // writeFile is invoked; do not add a parallel write path. See
+    // docs/architecture/security-audit.md row #24.
+    `identityMdIO:{` +
+    `readFile:function(){return new Promise(function(r){__ocFs.readFile(__ocIdMd,"utf8",function(e,d){r(e?null:d);});});},` +
+    `writeFile:function(c){return new Promise(function(r,j){__ocFs.writeFile(__ocIdMd,c,"utf8",function(e){e?j(e):r();});});}` +
+    `}` +
+    `});` +
+    // User-shipped JS blanks: walk every .cues/blanks/<name>/BLANK.md,
+    // parse, register each impl: ./xxx.js entry. Wrapped in try/catch
+    // so older runtime installs (without user-blanks support) degrade
+    // silently — built-in blanks keep working.
+    `try{` +
+    `var __ocUbReg=__oc_req(${userBlanksPath});` +
+    `var __ocCore=__oc_req(${corePath});` +
+    `var __ocPath=${requireFn}("path");var __ocOs=${requireFn}("os");` +
+    `var __ocRoots2=[];if(process.env.OPENCUES_HOME)__ocRoots2.push(process.env.OPENCUES_HOME);` +
+    `__ocRoots2.push(__ocPath.join(process.cwd(),".cues"));` +
+    `__ocRoots2.push(__ocPath.join(__ocOs.homedir(),".cues"));` +
+    `var __ocUserCfgs=[];` +
+    `for(var __ocRi=0;__ocRi<__ocRoots2.length;__ocRi++){` +
+    `var __ocBd=__ocPath.join(__ocRoots2[__ocRi],"blanks");` +
+    `if(!__ocFs.existsSync(__ocBd))continue;` +
+    `var __ocEs=__ocFs.readdirSync(__ocBd,{withFileTypes:true});` +
+    `for(var __ocEi=0;__ocEi<__ocEs.length;__ocEi++){` +
+    `if(!__ocEs[__ocEi].isDirectory())continue;` +
+    `var __ocBM=__ocPath.join(__ocBd,__ocEs[__ocEi].name,"BLANK.md");` +
+    `if(!__ocFs.existsSync(__ocBM))continue;` +
+    `try{` +
+    `var __ocC=__ocFs.readFileSync(__ocBM,"utf8");` +
+    `var __ocPr=__ocCore.parseSingleCueMd(__ocC,__ocPath.dirname(__ocBM));` +
+    `var __ocBlk=__ocPr.blanks&&__ocPr.blanks[__ocEs[__ocEi].name];` +
+    `if(__ocBlk&&__ocBlk.impl&&__ocBlk.impl.indexOf("/")>=0)__ocUserCfgs.push(__ocBlk);` +
+    `}catch(__ocBe){}` +
+    `}` +
+    `}` +
+    `var __ocUm=__ocUbReg.buildUserBlankRegistry(__ocUserCfgs,{storageRoot:__ocRoots2[__ocRoots2.length-1],secrets:process.env,llm:__ocUbReg.createNativeLlmAdapter(process.env),log:function(){}});` +
+    `__ocUm.forEach(function(b,n){__ocReg.set(n,b);});` +
+    `}catch(__ocUbE){}` +
+    `__ocBI=__ocCtl.createBlankInvoke(__ocReg);` +
+    `}catch(__ocCe){__ocReg=null;__ocBI=function(){return null;};}`;
+
   const s1Bootstrap =
     `try{` +
     `if(!globalThis.__oc){` +
     reqHelper +
+    blanksRegistryConstruction +
     `try{globalThis.__oc=__oc_req(${bootPath}).boot({` +
     `hostVersion:"2.1.x",cwd:process.cwd(),` +
     `getText:function(){return ${iz}.text;},` +
@@ -381,68 +447,19 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     // module on legacy installs degrades gracefully (BlankFill falls back
     // to spawnProcess for that name). Lazily-built registry — avoid
     // constructing classes that need API keys we don't have.
-    `blankInvoke:(function(){try{` +
-    // Built-in blanks come from @opencues/runtime's BUILTIN_BLANKS
-    // registry — single source of truth across CC / OC / chrome /
-    // gemini-cli. Previously this list was missing 'claude-status'
-    // (silent feature gap on CC). Adding a new built-in is one
-    // entry in packages/opencues-runtime/src/blanks/index.ts; this
-    // bootstrap picks it up automatically via createDefaultBlanksRegistry.
-    `var __ocCtl=__oc_req(${blanksPath});` +
-    `var __ocFs=${requireFn}("fs");var __ocOcMd=${opencuesMdPathExpr};` +
-    `var __ocSentMd=${sentinelsMdPathExpr};` +
-    `var __ocGroq=process.env.GROQ_API_KEY;` +
-    `var __ocReg=__ocCtl.createDefaultBlanksRegistry({` +
-    `llmConfig:__ocGroq?{apiKey:__ocGroq}:undefined,` +
-    `finnhubApiKey:process.env.FINNHUB_API_KEY,` +
-    `opencuesMdIO:{` +
-    `readFile:function(){return new Promise(function(r){__ocFs.readFile(__ocOcMd,"utf8",function(e,d){r(e?null:d);});});},` +
-    `writeFile:function(c){return new Promise(function(r,j){__ocFs.writeFile(__ocOcMd,c,"utf8",function(e){e?j(e):r();});});}` +
-    `},` +
-    // Sentinel-write blank — keyword-bound `set sentinel _` /
-    // `remove sentinel _`. Validator runs INSIDE SentinelBlank before
-    // writeFile is invoked; do not add a parallel write path. See
-    // docs/architecture/security-audit.md row #24.
-    `sentinelsMdIO:{` +
-    `readFile:function(){return new Promise(function(r){__ocFs.readFile(__ocSentMd,"utf8",function(e,d){r(e?null:d);});});},` +
-    `writeFile:function(c){return new Promise(function(r,j){__ocFs.writeFile(__ocSentMd,c,"utf8",function(e){e?j(e):r();});});}` +
-    `}` +
-    `});` +
-    // User-shipped JS blanks: walk every .cues/blanks/<name>/BLANK.md,
-    // parse, register each impl: ./xxx.js entry. Wrapped in try/catch
-    // so older runtime installs (without user-blanks support) degrade
-    // silently — built-in blanks keep working.
-    `try{` +
-    `var __ocUbReg=__oc_req(${userBlanksPath});` +
-    `var __ocCore=__oc_req(${corePath});` +
-    `var __ocPath=${requireFn}("path");var __ocOs=${requireFn}("os");` +
-    `var __ocRoots2=[];if(process.env.OPENCUES_HOME)__ocRoots2.push(process.env.OPENCUES_HOME);` +
-    `__ocRoots2.push(__ocPath.join(process.cwd(),".cues"));` +
-    `__ocRoots2.push(__ocPath.join(__ocOs.homedir(),".cues"));` +
-    `var __ocUserCfgs=[];` +
-    `for(var __ocRi=0;__ocRi<__ocRoots2.length;__ocRi++){` +
-    `var __ocBd=__ocPath.join(__ocRoots2[__ocRi],"blanks");` +
-    `if(!__ocFs.existsSync(__ocBd))continue;` +
-    `var __ocEs=__ocFs.readdirSync(__ocBd,{withFileTypes:true});` +
-    `for(var __ocEi=0;__ocEi<__ocEs.length;__ocEi++){` +
-    `if(!__ocEs[__ocEi].isDirectory())continue;` +
-    `var __ocBM=__ocPath.join(__ocBd,__ocEs[__ocEi].name,"BLANK.md");` +
-    `if(!__ocFs.existsSync(__ocBM))continue;` +
-    `try{` +
-    `var __ocC=__ocFs.readFileSync(__ocBM,"utf8");` +
-    `var __ocPr=__ocCore.parseSingleCueMd(__ocC,__ocPath.dirname(__ocBM));` +
-    `var __ocBlk=__ocPr.blanks&&__ocPr.blanks[__ocEs[__ocEi].name];` +
-    `if(__ocBlk&&__ocBlk.impl&&__ocBlk.impl.indexOf("/")>=0)__ocUserCfgs.push(__ocBlk);` +
-    `}catch(__ocBe){}` +
-    `}` +
-    `}` +
-    `var __ocUm=__ocUbReg.buildUserBlankRegistry(__ocUserCfgs,{storageRoot:__ocRoots2[__ocRoots2.length-1],secrets:process.env,llm:__ocUbReg.createNativeLlmAdapter(process.env),log:function(){}});` +
-    `__ocUm.forEach(function(b,n){__ocReg.set(n,b);});` +
-    `}catch(__ocUbE){` +
-    `if(globalThis.__oc&&globalThis.__oc.adapter)globalThis.__oc.adapter.log("warn","user-blank discovery failed",{err:String(__ocUbE)});` +
-    `}` +
-    `return __ocCtl.createBlankInvoke(__ocReg);` +
-    `}catch(__ocCe){if(globalThis.__oc&&globalThis.__oc.adapter)globalThis.__oc.adapter.log("warn","blankInvoke unavailable",{err:String(__ocCe)});return function(){return null;};}})(),` +
+    //
+    // __ocReg + __ocBI are hoisted to the s1Bootstrap scope (declared
+    // earlier in this block before boot()) so `blanks: __ocReg` below
+    // can reach the SAME map the blankInvoke wraps. Pre-June-2026 the
+    // declarations sat inside the blankInvoke IIFE; `blanks: __ocReg`
+    // outside the IIFE then ReferenceError'd, the outer catch set
+    // __oc.failed=true, and every keystroke silently skipped dispatch.
+    `blankInvoke:__ocBI,` +
+    // Blank-as-context: hand the same registry to the runtime as a
+    // Map<name, Blank> so the Resolver can snapshot context-eligible
+    // blanks (those with `as-context: safe|raw` in BLANK.md). Without
+    // this, `blank-context-mode: safe` in OPENCUES.md is inert.
+    `blanks:__ocReg,` +
     // Statusline + cursor-state export paths. Per-PID, canonical names
     // shared across every host adapter so the agentic harness (oc-state,
     // scenario-runner, /tmp/opencues-status-<pid>.json contract in

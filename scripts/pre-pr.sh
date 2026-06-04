@@ -49,6 +49,14 @@ skip() {
 # ─── 1. Shell portability + strict-mode lint ────────────────────────
 step "shell-portability lint" bash scripts/lint-shell-portability.sh
 
+# ─── 1b. Legacy-names lint ─────────────────────────────────────────
+# Catches the rename-drift class — old feature names lingering in    # LEGACY-NAME-ALLOW: aggregator comment
+# shipping code after a rename. Banned identifiers live in           # LEGACY-NAME-ALLOW: aggregator comment
+# scripts/lint-legacy-names.sh:BANNED_PATTERNS. Each legacy          # LEGACY-NAME-ALLOW: aggregator comment
+# reference outside the migration allowlist must either go away      # LEGACY-NAME-ALLOW: aggregator comment
+# or carry a LEGACY-NAME-ALLOW marker on the same line.
+step "legacy-names lint" bash scripts/lint-legacy-names.sh
+
 # ─── 2. Version-bump gate ──────────────────────────────────────────
 step "version-bump gate (vs origin/master)" bash scripts/lint-version-bump.sh
 
@@ -61,6 +69,16 @@ fi
 
 # ─── 4. Chrome bundle assertion ─────────────────────────────────────
 step "chrome bundle assertion" bash scripts/check-chrome-bundle.sh
+
+# ─── 4b. CC patch boot smoke ────────────────────────────────────────
+# The CC patch emits a JS string injected into cli.js. Source typechecks
+# don't catch identifier scope errors in that emitted string. June 2026
+# the patch shipped `blanks: __ocReg` where __ocReg was IIFE-local —
+# every keystroke ReferenceError'd, the patch's try/catch swallowed it,
+# globalThis.__oc.failed=true, OpenCues silently dead on every CC user.
+# This evaluates the emitted bootstrap in a Node vm sandbox so any
+# scope/reference error throws at smoke time, not on the user's machine.
+step "CC patch boot smoke (catches scope errors in emitted JS)" node scripts/check-cc-patch-boot.cjs
 
 # ─── 5. Test hermeticity + full sweep ──────────────────────────────
 if [ -z "${SKIP_TESTS:-}" ]; then

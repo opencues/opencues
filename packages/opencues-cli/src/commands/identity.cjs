@@ -1,20 +1,20 @@
-// `opencues sentinels` — manage SENTINELS.md sentinels.
+// `opencues identity` — manage IDENTITY.md identity fields.
 //
-// SENTINELS.md (~/.cues/SENTINELS.md) is a YAML frontmatter file where each key
-// becomes a sentinel token consumed by FluidBlank (today) and
+// IDENTITY.md (~/.cues/IDENTITY.md) is a YAML frontmatter file where each key
+// becomes a identity field token consumed by FluidBlank (today) and
 // TransformBlank (Phase-2, May 2026). Adding `firstName: Wilfred`
 // derives a `[FIRST NAME]` token the LLM can emit; the runtime
 // substitutes the real value before the buffer is written. Spec:
-// docs/architecture/sentinels.md.
+// docs/architecture/identity-context.md.
 //
 // Subcommands:
-//   opencues sentinels                  → interactive interview
-//   opencues sentinels list             → show current sentinels
-//   opencues sentinels list --json      → JSON output (scriptable)
-//   opencues sentinels set <key> <val>  → add or update one (also: add)
-//   opencues sentinels remove <key>     → remove one (also: rm)
-//   opencues sentinels path             → print absolute SENTINELS.md path
-//   opencues sentinels --help           → this help
+//   opencues identity                  → interactive interview
+//   opencues identity list             → show current identity fields
+//   opencues identity list --json      → JSON output (scriptable)
+//   opencues identity set <key> <val>  → add or update one (also: add)
+//   opencues identity remove <key>     → remove one (also: rm)
+//   opencues identity path             → print absolute IDENTITY.md path
+//   opencues identity --help           → this help
 
 'use strict';
 
@@ -25,7 +25,7 @@ const { execSync } = require('node:child_process');
 const readline = require('node:readline');
 const { tag, bold, dim, fileLink, banner, cliVersion } = require('../lib/style.cjs');
 
-const SENTINELS_MD_PATH = path.join(os.homedir(), '.cues', 'SENTINELS.md');
+const IDENTITY_MD_PATH = path.join(os.homedir(), '.cues', 'IDENTITY.md');
 
 // Lazy-load the validator from built core. Resolves a few candidate
 // paths so the CLI works from a clone (REPO_ROOT/packages/...) as well
@@ -35,8 +35,8 @@ let _validatorCache = null;
 function loadValidator() {
   if (_validatorCache) return _validatorCache;
   const candidates = [
-    path.resolve(__dirname, '..', '..', '..', 'opencues-core', 'dist', 'sentinels-validator.js'),
-    path.resolve(__dirname, '..', '..', 'node_modules', '@opencues', 'core', 'dist', 'sentinels-validator.js'),
+    path.resolve(__dirname, '..', '..', '..', 'opencues-core', 'dist', 'identity-validator.js'),
+    path.resolve(__dirname, '..', '..', 'node_modules', '@opencues', 'core', 'dist', 'identity-validator.js'),
   ];
   for (const c of candidates) {
     if (fs.existsSync(c)) {
@@ -44,12 +44,12 @@ function loadValidator() {
       return _validatorCache;
     }
   }
-  throw new Error(`opencues sentinels: cannot locate validator (tried: ${candidates.join(', ')})`);
+  throw new Error(`opencues identity: cannot locate validator (tried: ${candidates.join(', ')})`);
 }
 
 // Field catalogue for the interactive interview. Order matters — we
 // walk top-to-bottom. Each entry pairs a YAML key with a prompt and an
-// optional smart-default loader. Keys map 1:1 to SENTINELS.md frontmatter;
+// optional smart-default loader. Keys map 1:1 to IDENTITY.md frontmatter;
 // add a new entry here to extend the interview without touching any
 // other site.
 const INTERVIEW_FIELDS = [
@@ -68,7 +68,7 @@ const INTERVIEW_FIELDS = [
   { key: 'signOff',    prompt: 'Email sign-off' },
 ];
 
-module.exports = function sentinels(argv, ctx) {
+module.exports = function identity(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
   const sub = (argv[0] || '').toLowerCase();
   const rest = argv.slice(1);
@@ -81,8 +81,8 @@ module.exports = function sentinels(argv, ctx) {
     case 'path':                                  return cmdPath();
     case '':                                      return cmdInterview(ctx);
     default:
-      console.error(`opencues sentinels: unknown subcommand "${sub}"`);
-      console.error('Run `opencues sentinels --help` for usage.');
+      console.error(`opencues identity: unknown subcommand "${sub}"`);
+      console.error('Run `opencues identity --help` for usage.');
       return 2;
   }
 };
@@ -102,8 +102,8 @@ function cmdList(argv) {
     return 0;
   }
   if (fields.length === 0) {
-    console.log(`${tag('info')} no sentinels defined yet — run ${bold('opencues sentinels')} to add some`);
-    console.log(dim(`file: ${SENTINELS_MD_PATH}`));
+    console.log(`${tag('info')} no identity defined yet — run ${bold('opencues identity')} to add some`);
+    console.log(dim(`file: ${IDENTITY_MD_PATH}`));
     return 0;
   }
   // Tidy two-column display: key, derived token, value.
@@ -113,7 +113,7 @@ function cmdList(argv) {
     console.log(`  ${bold(key.padEnd(widths[0]))}  ${dim(token.padEnd(widths[1]))}  ${value}`);
   }
   console.log('');
-  console.log(dim(`${fields.length} sentinel${fields.length === 1 ? '' : 's'} — ${SENTINELS_MD_PATH}`));
+  console.log(dim(`${fields.length} identity field${fields.length === 1 ? '' : 's'} — ${IDENTITY_MD_PATH}`));
   return 0;
 }
 
@@ -122,8 +122,8 @@ function cmdSet(argv) {
   const [key, ...valueParts] = positional;
   const value = valueParts.join(' ');
   if (!key || !value) {
-    console.error('opencues sentinels set: usage: opencues sentinels set <key> <value>');
-    console.error('Example: opencues sentinels set jobTitle "Staff Engineer"');
+    console.error('opencues identity set: usage: opencues identity set <key> <value>');
+    console.error('Example: opencues identity set jobTitle "Staff Engineer"');
     return 2;
   }
   const fields = parseSentinelsMd(readUserMd());
@@ -134,9 +134,9 @@ function cmdSet(argv) {
     console.error(`${tag(errPrefix)} ${r.detail}`);
     if (r.error === 'collision') {
       console.error('The runtime keeps the first definition; this set would be silently dropped.');
-      console.error(`Either rename ${bold(key)} to avoid collision, or run ${bold(`opencues sentinels remove ${r.context.conflictingKey}`)} first.`);
+      console.error(`Either rename ${bold(key)} to avoid collision, or run ${bold(`opencues identity remove ${r.context.conflictingKey}`)} first.`);
     } else if (r.error === 'capacity-exceeded') {
-      console.error(dim(`USER.md path: ${SENTINELS_MD_PATH}`));
+      console.error(dim(`IDENTITY.md path: ${IDENTITY_MD_PATH}`));
     }
     // Exit codes: shape errors (invalid-key, value-*, capacity) → 2,
     // state errors (collision) → 1. Matches the unix convention.
@@ -146,14 +146,14 @@ function cmdSet(argv) {
   const token = deriveToken(key);
   const verb = r.action === 'added' ? 'added' : r.action === 'updated' ? 'updated' : 'unchanged';
   console.log(`${tag('ok')} ${verb} ${bold(key)} → ${dim(token)} = ${value}`);
-  console.log(dim(`file: ${SENTINELS_MD_PATH}`));
+  console.log(dim(`file: ${IDENTITY_MD_PATH}`));
   return 0;
 }
 
 function cmdRemove(argv) {
   const [key] = argv.filter(a => !a.startsWith('-'));
   if (!key) {
-    console.error('opencues sentinels remove: usage: opencues sentinels remove <key>');
+    console.error('opencues identity remove: usage: opencues identity remove <key>');
     return 2;
   }
   const fields = parseSentinelsMd(readUserMd());
@@ -162,7 +162,7 @@ function cmdRemove(argv) {
   if (!r.ok) {
     console.error(`${tag('error')} ${r.detail}`);
     if (r.error === 'not-found') {
-      console.error(`Run ${bold('opencues sentinels list')} to see what's defined.`);
+      console.error(`Run ${bold('opencues identity list')} to see what's defined.`);
     }
     return 1;
   }
@@ -173,23 +173,23 @@ function cmdRemove(argv) {
 
 function cmdPath() {
   // Pure scriptable: just print the absolute path, no banner, no
-  // styling. `opencues sentinels path | xargs $EDITOR` etc.
-  process.stdout.write(SENTINELS_MD_PATH + '\n');
+  // styling. `opencues identity path | xargs $EDITOR` etc.
+  process.stdout.write(IDENTITY_MD_PATH + '\n');
   return 0;
 }
 
 async function cmdInterview(ctx) {
   if (!process.stdin.isTTY) {
-    console.error('opencues sentinels: interview mode requires a TTY.');
-    console.error('For non-interactive use: `opencues sentinels set <key> <value>`');
+    console.error('opencues identity: interview mode requires a TTY.');
+    console.error('For non-interactive use: `opencues identity set <key> <value>`');
     return 2;
   }
-  console.log(banner({ version: cliVersion(ctx), tagline: 'set up your sentinels' }));
+  console.log(banner({ version: cliVersion(ctx), tagline: 'set up your identity fields' }));
   console.log('');
-  console.log(dim('Each answer becomes a sentinel token the LLM can emit; the runtime'));
+  console.log(dim('Each answer becomes a identity field token the LLM can emit; the runtime'));
   console.log(dim('substitutes your real value before it reaches the buffer. Press Enter to'));
   console.log(dim('accept the [default] in brackets, or Enter on its own to skip a field.'));
-  console.log(dim(`File: ${SENTINELS_MD_PATH}`));
+  console.log(dim(`File: ${IDENTITY_MD_PATH}`));
   console.log('');
 
   // Preload existing values so re-running the interview is a no-op for
@@ -215,17 +215,17 @@ async function cmdInterview(ctx) {
     }
     console.log('');
     // Preserve any user-added keys we didn't ask about (e.g. an
-    // earlier `opencues sentinels set favoriteEditor vim`). Append
+    // earlier `opencues identity set favoriteEditor vim`). Append
     // them after the interview-collected ones.
     const interviewKeys = new Set(INTERVIEW_FIELDS.map(f => f.key));
     for (const [key, value] of existing) {
       if (!interviewKeys.has(key)) result.push({ key, value });
     }
     writeUserMd(result);
-    console.log(`${tag('ok')} wrote ${result.length} sentinel${result.length === 1 ? '' : 's'} → ${fileLink(SENTINELS_MD_PATH, SENTINELS_MD_PATH)}`);
+    console.log(`${tag('ok')} wrote ${result.length} identity field${result.length === 1 ? '' : 's'} → ${fileLink(IDENTITY_MD_PATH, IDENTITY_MD_PATH)}`);
     console.log('');
-    console.log(dim('Activate sentinel substitution in OPENCUES.md:'));
-    console.log(`  ${bold('sentinels-mode: safe')}`);
+    console.log(dim('Activate identity field substitution in OPENCUES.md:'));
+    console.log(`  ${bold('identity-context-mode: safe')}`);
     return 0;
   } finally {
     rl.close();
@@ -233,20 +233,20 @@ async function cmdInterview(ctx) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// SENTINELS.md parser + writer
+// IDENTITY.md parser + writer
 // ────────────────────────────────────────────────────────────────────────────
 //
 // Local re-implementation rather than a cross-package import: the core
-// parser lives in TS/ESM (`@opencues/core/sentinels.ts`) and the
+// parser lives in TS/ESM (`@opencues/core/identity fields.ts`) and the
 // CLI ships as CJS. Re-importing through the built `dist/` shim is
 // brittle (depends on the user having built core), and the parsing
 // logic is small enough to duplicate. The contract is locked by tests
-// in `sentinels.test.cjs` that compare derived tokens against the
+// in `identity fields.test.cjs` that compare derived tokens against the
 // core's own test cases.
 
 function readUserMd() {
-  if (!fs.existsSync(SENTINELS_MD_PATH)) return '';
-  return fs.readFileSync(SENTINELS_MD_PATH, 'utf8');
+  if (!fs.existsSync(IDENTITY_MD_PATH)) return '';
+  return fs.readFileSync(IDENTITY_MD_PATH, 'utf8');
 }
 
 function parseSentinelsMd(content) {
@@ -272,7 +272,7 @@ function parseSentinelsMd(content) {
 }
 
 function stripInlineComment(rest) {
-  // Mirror core/sentinels.ts: split at first ` #` outside quotes.
+  // Mirror core/identity fields.ts: split at first ` #` outside quotes.
   let inQuote = null;
   for (let i = 0; i < rest.length - 1; i++) {
     const ch = rest[i];
@@ -288,22 +288,22 @@ function stripInlineComment(rest) {
 }
 
 function writeUserMd(fields) {
-  fs.mkdirSync(path.dirname(SENTINELS_MD_PATH), { recursive: true });
+  fs.mkdirSync(path.dirname(IDENTITY_MD_PATH), { recursive: true });
   // Preserve the original body (anything after the closing `---`) so
   // the user's docstring + spec-reference notes survive. New file
   // ships with the same boilerplate as `opencues seed-configs`.
   const existing = readUserMd();
   const bodyMatch = existing.match(/^---\n[\s\S]*?\n---\n?([\s\S]*)$/);
-  const body = bodyMatch ? bodyMatch[1] : `\n# SENTINELS.md — your personal data for OpenCues\n\nEdit any value above. Each key auto-derives a sentinel token\n(\`firstName\` → \`[FIRST NAME]\`). Activate via \`sentinels-mode: safe\`\nin OPENCUES.md. Spec: \`docs/architecture/sentinels.md\`.\n`;
+  const body = bodyMatch ? bodyMatch[1] : `\n# IDENTITY.md — your personal data for OpenCues\n\nEdit any value above. Each key auto-derives a identity field token\n(\`firstName\` → \`[FIRST NAME]\`). Activate via \`identity-context-mode: safe\`\nin OPENCUES.md. Spec: \`docs/architecture/identity fields.md\`.\n`;
   // Render with aligned colons for human-friendliness (matches the
-  // shipped SENTINELS.md template style).
+  // shipped IDENTITY.md template style).
   const longestKey = fields.reduce((m, f) => Math.max(m, f.key.length), 0);
   const lines = fields.map(f => {
     const v = needsQuoting(f.value) ? `"${f.value.replace(/"/g, '\\"')}"` : f.value;
     return `${f.key}:${' '.repeat(longestKey - f.key.length + 4)}${v}`;
   });
   const out = `---\n${lines.join('\n')}\n---\n${body.startsWith('\n') ? body : '\n' + body}`;
-  fs.writeFileSync(SENTINELS_MD_PATH, out, 'utf8');
+  fs.writeFileSync(IDENTITY_MD_PATH, out, 'utf8');
 }
 
 function needsQuoting(value) {
@@ -318,7 +318,7 @@ function needsQuoting(value) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Token derivation — keep in lockstep with core/sentinels.ts deriveToken
+// Token derivation — keep in lockstep with core/identity fields.ts deriveToken
 // ────────────────────────────────────────────────────────────────────────────
 
 function deriveToken(key) {
@@ -367,35 +367,35 @@ function safe(fn) { try { return fn() || ''; } catch { return ''; } }
 // ────────────────────────────────────────────────────────────────────────────
 
 function printHelp() {
-  console.log('opencues sentinels — manage SENTINELS.md sentinels (personal-data tokens).');
+  console.log('opencues identity — manage IDENTITY.mdidentity (personal-data tokens).');
   console.log('');
   console.log('Usage:');
-  console.log('  opencues sentinels                    interactive interview (writes SENTINELS.md)');
-  console.log('  opencues sentinels list               show defined sentinels');
-  console.log('  opencues sentinels list --json        JSON output (scriptable)');
-  console.log('  opencues sentinels set <key> <value>  add or update one sentinel');
-  console.log('  opencues sentinels add <key> <value>  alias for set');
-  console.log('  opencues sentinels remove <key>       remove a sentinel');
-  console.log('  opencues sentinels rm <key>           alias for remove');
-  console.log('  opencues sentinels path               print absolute SENTINELS.md path');
+  console.log('  opencues identity                    interactive interview (writes IDENTITY.md)');
+  console.log('  opencues identity list               show defined identity fields');
+  console.log('  opencues identity list --json        JSON output (scriptable)');
+  console.log('  opencues identity set <key> <value>  add or update one identity field');
+  console.log('  opencues identity add <key> <value>  alias for set');
+  console.log('  opencues identity remove <key>       remove a identity field');
+  console.log('  opencues identity rm <key>           alias for remove');
+  console.log('  opencues identity path               print absolute IDENTITY.md path');
   console.log('');
   console.log('Keys are arbitrary — anything matching `[A-Za-z][A-Za-z0-9_-]*` works.');
   console.log('The token is auto-derived: `firstName` → `[FIRST NAME]`, `signOff` → `[SIGN OFF]`.');
   console.log('');
-  console.log('Activate sentinel substitution in OPENCUES.md:');
-  console.log('  sentinels-mode: safe   # tokens-only to LLM, real values substituted locally');
-  console.log('  sentinels-mode: raw    # values inlined into the prompt (opt-in PII)');
-  console.log('  sentinels-mode: off    # default — no sentinel data leaves your machine');
+  console.log('Activate identity field substitution in OPENCUES.md:');
+  console.log('  identity-context-mode: safe   # tokens-only to LLM, real values substituted locally');
+  console.log('  identity-context-mode: raw    # values inlined into the prompt (opt-in PII)');
+  console.log('  identity-context-mode: off    # default — no identity field data leaves your machine');
   console.log('');
   console.log('Examples:');
-  console.log('  opencues sentinels set jobTitle "Staff Engineer"');
-  console.log('  opencues sentinels set signOff "Best from sunny London"');
-  console.log('  opencues sentinels remove favoriteColor');
-  console.log('  opencues sentinels list --json | jq \'.[] | .key\'');
+  console.log('  opencues identity set jobTitle "Staff Engineer"');
+  console.log('  opencues identity set signOff "Best from sunny London"');
+  console.log('  opencues identity remove favoriteColor');
+  console.log('  opencues identity list --json | jq \'.[] | .key\'');
   return 0;
 }
 
 // Exported for tests.
 module.exports.__test__ = {
-  parseSentinelsMd, deriveToken, needsQuoting, stripInlineComment, SENTINELS_MD_PATH,
+  parseSentinelsMd, deriveToken, needsQuoting, stripInlineComment, IDENTITY_MD_PATH,
 };

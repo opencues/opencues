@@ -6,6 +6,7 @@
  */
 
 import { LocalCueData } from './types';
+import { isSpecCompatible } from './spec-version';
 
 // ============================================================================
 // Types
@@ -16,6 +17,11 @@ export interface CuesMdFrontmatter {
   description?: string;
   domain?: string;
   version?: number;
+  /** Spec version pin — `opencues/<major>.<minor>[-<pre>]`. The
+   *  master-file parsers (CUES.md / BLANKS.md / AUDITORS.md) reject
+   *  files declaring a `spec:` newer than the runtime's pinned
+   *  `SPEC_VERSION`. See `spec-version.ts:isSpecCompatible`. */
+  spec?: string;
   /** Words to never suggest alternatives for (frontmatter form, replaces
    *  the legacy `## Ignore` body section). */
   ignore?: string[];
@@ -214,6 +220,36 @@ export interface BlankConfig {
   maxLlmPerMinute?: number;
   maxStorageBytes?: number;
   /**
+   * Blank-as-context opt-in. When `safe` or `raw`, the blank
+   * contributes one or more tokens to fluid-blank's ambient prompt
+   * catalog without the user typing the keyword. See
+   * `docs/features/blank-as-context.md` and
+   * `docs/architecture/blank-as-context.md`.
+   * - `off` (default) → keyword-trigger path only; not ambient.
+   * - `safe` → only resolved tokens flow; values substitute post-LLM.
+   * - `raw`  → values inlined into the prompt. Requires
+   *   `identity-context-mode: raw` for consistency.
+   */
+  asContext?: 'off' | 'safe' | 'raw';
+  /** Seconds a snapshot stays cached. Refresh is lazy on prompt-build. */
+  contextTtl?: number;
+  /** Explicit list of slot names. Each slot produces one token
+   *  `[<BLANK> <SLOT>]`. Use this when the slots are static. */
+  contextSlots?: string[];
+  /** Alternative to contextSlots — bind to a sentinel field. Reads
+   *  the sentinel's value; that value (or its split fragments)
+   *  becomes the slot list. */
+  contextBind?: string;
+  /** When set with contextBind, the sentinel's value is split on this
+   *  separator and each fragment becomes a slot. Mandatory ack via
+   *  `splitValuesInTokenNamesAck: true` (the value fragment ends up
+   *  in the token name — only safe for opaque codes like ticker
+   *  symbols, not personal-name-shaped data). */
+  contextBindSplit?: string;
+  /** Required acknowledgement when contextBindSplit is set. The blank
+   *  is dropped from the context catalog if missing. */
+  splitValuesInTokenNamesAck?: boolean;
+  /**
    * Opt-in OS-level sandbox for this blank's script. When 'strict',
    * the runtime wraps the spawn with bubblewrap (Linux/WSL) — readonly
    * filesystem, no network, isolated PID/IPC namespaces. The script
@@ -353,6 +389,16 @@ export interface CuesMdConfig {
 
   /** Raw section content for unknown/extensible sections */
   sections: Record<string, string>;
+
+  /** Populated when the parser refused this file because its `spec:`
+   *  declares a version newer than the runtime supports (or
+   *  cross-major-with-stable-reader, post-1.0). When set, the rest
+   *  of the config is intentionally empty — callers MUST skip the
+   *  source AND surface this string in their logs so the user can
+   *  see why the file isn't loading. Per `SPEC.md`'s "MUST refuse
+   *  files declaring a newer spec:" rule. See
+   *  `spec-version.ts:isSpecCompatible`. */
+  specError?: string;
 }
 
 /**
@@ -459,6 +505,8 @@ function parseFrontmatter(content: string): { frontmatter: CuesMdFrontmatter; bo
     const key = trimmed.slice(0, colonIdx).trim();
     const value = trimmed.slice(colonIdx + 1).trim();
     if (key === 'name') fm.name = value;
+    else if (key === 'description') fm.description = value;
+    else if (key === 'spec') fm.spec = value;
     else if (key === 'domain') fm.domain = value;
     else if (key === 'version') fm.version = parseInt(value, 10) || undefined;
     else if (key === 'ignore') fm.ignore = parseHostList(value); // JSON array OR comma-sep
@@ -752,6 +800,15 @@ function parseIgnoreSection(content: string): string[] {
  */
 export function parseCuesMd(content: string): CuesMdConfig {
   const { frontmatter, body } = parseFrontmatter(content);
+
+  // Spec-version refusal — `SPEC.md` § Version policy.
+  // Returns an intentionally empty config + a populated `specError`
+  // so callers (ConfigLoader / discover) can log + skip.
+  const compat = isSpecCompatible(frontmatter.spec);
+  if (!compat.ok) {
+    return { frontmatter, sections: {}, specError: compat.reason };
+  }
+
   const sections = splitSections(body);
 
   const result: CuesMdConfig = {
@@ -815,6 +872,12 @@ export function parseCuesMd(content: string): CuesMdConfig {
  * Config lives in frontmatter instead of YAML code blocks.
  */
 export interface SingleCueFrontmatter extends CuesMdFrontmatter {
+  /** Spec version pin — `opencues/<major>.<minor>[-<pre>]`. Files
+   *  omitting this are treated as `SPEC_OMIT_DEFAULT`. The parser
+   *  refuses files declaring a `spec:` newer than `SPEC_VERSION`
+   *  (or cross-major-with-stable-reader, post-1.0). See
+   *  `spec-version.ts:isSpecCompatible`. */
+  spec?: string;
   /** Discriminator for `_`-triggered blanks. Cue sources (both static
    *  and LLM-driven) are inferred from data shape — body JSON ⇒ static,
    *  otherwise prompt-driven. Only `'blank'` is meaningful here. */
@@ -866,6 +929,13 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   sandbox?: 'strict' | 'off';
   sandboxNet?: 'allow' | 'deny';
   sandboxFs?: 'ro' | 'rw';
+  /** Blank-as-context opt-in. See BlankConfig.asContext. */
+  asContext?: 'off' | 'safe' | 'raw';
+  contextTtl?: number;
+  contextSlots?: string[];
+  contextBind?: string;
+  contextBindSplit?: string;
+  splitValuesInTokenNamesAck?: boolean;
   /** User-shipped JS impl (relative path) or registry name. See BlankConfig.impl. */
   impl?: string;
   /** Capability declarations for user-shipped JS blanks (impl: ./xxx). */
@@ -924,6 +994,7 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
     switch (key) {
       case 'name': fm.name = value; break;
       case 'description': fm.description = value; break;
+      case 'spec': fm.spec = value; break;
       case 'disable': fm.disable = parseHostList(value); break;
       case 'domain': fm.domain = value; break;
       case 'version': fm.version = parseInt(value, 10) || undefined; break;
@@ -994,6 +1065,35 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'sandbox': fm.sandbox = value === 'strict' ? 'strict' : 'off'; break;
       case 'sandbox-net': case 'sandboxNet': fm.sandboxNet = value === 'allow' ? 'allow' : 'deny'; break;
       case 'sandbox-fs': case 'sandboxFs': fm.sandboxFs = value === 'rw' ? 'rw' : 'ro'; break;
+      // Blank-as-context opt-in. See docs/architecture/blank-as-context.md.
+      case 'as-context': case 'asContext': case 'ascontext': {
+        const v = value.toLowerCase().trim();
+        if (v === 'off' || v === 'safe' || v === 'raw') fm.asContext = v;
+        break;
+      }
+      case 'context-ttl': case 'contextTtl': case 'contextttl': {
+        const n = parseInt(value, 10);
+        if (Number.isFinite(n) && n > 0) fm.contextTtl = n;
+        break;
+      }
+      case 'context-slots': case 'contextSlots': case 'contextslots': {
+        try {
+          const parsed = JSON.parse(value);
+          if (Array.isArray(parsed)) fm.contextSlots = parsed.map(String);
+        } catch {
+          fm.contextSlots = value.split(',').map(s => s.trim()).filter(Boolean);
+        }
+        break;
+      }
+      case 'context-bind': case 'contextBind': case 'contextbind':
+        fm.contextBind = value.trim(); break;
+      case 'context-bind-split': case 'contextBindSplit': case 'contextbindsplit':
+        fm.contextBindSplit = value.replace(/^['"]|['"]$/g, ''); break;
+      case 'split-values-in-token-names': case 'splitValuesInTokenNames':
+      case 'splitvaluesintokennames':
+        fm.splitValuesInTokenNamesAck = value.trim().toLowerCase() === 'ok'
+          || value.trim().toLowerCase() === 'true';
+        break;
       // impl: defaults to undefined → runtime falls back to <name>Blank
       // class lookup. Relative path → user-shipped JS module (loaded
       // through the capability-constrained user-blank loader).
@@ -1056,6 +1156,13 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
  */
 export function parseSingleCueMd(content: string, folderPath: string, nameOverride?: string): CuesMdConfig {
   const { frontmatter, body } = parseExtendedFrontmatter(content);
+
+  // Spec-version refusal — see parseCuesMd's comment.
+  const compat = isSpecCompatible(frontmatter.spec);
+  if (!compat.ok) {
+    return { frontmatter, sections: {}, specError: compat.reason };
+  }
+
   const name = frontmatter.name || nameOverride || 'unknown';
 
   const result: CuesMdConfig = {
@@ -1117,6 +1224,12 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
       if (frontmatter.sandbox !== undefined) blank.sandbox = frontmatter.sandbox;
       if (frontmatter.sandboxNet !== undefined) blank.sandboxNet = frontmatter.sandboxNet;
       if (frontmatter.sandboxFs !== undefined) blank.sandboxFs = frontmatter.sandboxFs;
+      if (frontmatter.asContext !== undefined) blank.asContext = frontmatter.asContext;
+      if (frontmatter.contextTtl !== undefined) blank.contextTtl = frontmatter.contextTtl;
+      if (frontmatter.contextSlots !== undefined) blank.contextSlots = frontmatter.contextSlots;
+      if (frontmatter.contextBind !== undefined) blank.contextBind = frontmatter.contextBind;
+      if (frontmatter.contextBindSplit !== undefined) blank.contextBindSplit = frontmatter.contextBindSplit;
+      if (frontmatter.splitValuesInTokenNamesAck !== undefined) blank.splitValuesInTokenNamesAck = frontmatter.splitValuesInTokenNamesAck;
       if (frontmatter.impl !== undefined) {
         // Relative path → resolve to absolute against the BLANK.md's
         // folder. Bare name → stays as-is for runtime registry lookup.
@@ -1249,6 +1362,13 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
 export function parseSingleAuditorMd(content: string, folderPath: string, nameOverride?: string): CuesMdConfig {
   void folderPath;
   const { frontmatter, body } = parseExtendedFrontmatter(content);
+
+  // Spec-version refusal — see parseCuesMd's comment.
+  const compat = isSpecCompatible(frontmatter.spec);
+  if (!compat.ok) {
+    return { frontmatter, sections: {}, specError: compat.reason };
+  }
+
   const name = frontmatter.name || nameOverride || 'unknown';
 
   const result: CuesMdConfig = {
@@ -1283,6 +1403,13 @@ export function parseSingleAuditorMd(content: string, folderPath: string, nameOv
  */
 function parseMasterFile(content: string, surface: 'cues' | 'blanks' | 'auditors'): CuesMdConfig {
   const { frontmatter } = parseExtendedFrontmatter(content);
+
+  // Spec-version refusal — see parseCuesMd's comment.
+  const compat = isSpecCompatible(frontmatter.spec);
+  if (!compat.ok) {
+    return { frontmatter, sections: {}, specError: compat.reason };
+  }
+
   const result: CuesMdConfig = { frontmatter, sections: {} };
   const disableRaw = (frontmatter as { disable?: unknown }).disable;
   const disable = Array.isArray(disableRaw)

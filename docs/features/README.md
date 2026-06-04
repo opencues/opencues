@@ -92,7 +92,7 @@ Optional information the FluidBlank LLM call receives in addition to the user's 
 | # | Feature | Description |
 |---|---------|-------------|
 | 32 | [Ambient Context](ambient-context.md) | FluidBlank optionally receives the focused field's label / placeholder / page-title so `_` lookups disambiguate per context (e.g. "destination" on flights.google.com vs airbnb.com). OFF by default. Chrome only — needs DOM. Host-agnostic at the `HostAdapter` contract level. |
-| 33 | [User Context](sentinels.md) | FluidBlank optionally injects the user's own personal data (`~/.cues/SENTINELS.md` frontmatter) as sentinel tokens so `_` lookups personalise without re-typing. `safe` mode keeps PII off the LLM provider's logs; `raw` opts in to inlining. OFF by default. Phase 1 wires fluid-blank only. |
+| 33 | [Identity Context](identity-context.md) | FluidBlank optionally injects the user's own personal data (`~/.cues/IDENTITY.md` frontmatter) as identity-context tokens so `_` lookups personalise without re-typing. `safe` mode keeps PII off the LLM provider's logs; `raw` opts in to inlining. OFF by default. Phase 1 wires fluid-blank only. |
 
 ## Surfacing
 

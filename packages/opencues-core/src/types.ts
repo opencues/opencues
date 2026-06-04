@@ -125,28 +125,42 @@ export interface CueContext {
   ambient?: AmbientContext;
 
   /**
-   * Sentinel-mode user context derived from `~/.cues/SENTINELS.md`. Only
+   * Identity-context catalog derived from `~/.cues/IDENTITY.md`. Only
    * consumed by FluidBlankSource and only when
-   * `sentinels-mode: safe` or `: raw` is set in OPENCUES.md (off
-   * by default). The runtime gate filters before this is populated;
-   * sources see `undefined` when the user hasn't opted in.
+   * `identity-context-mode: safe` or `: raw` is set in OPENCUES.md
+   * (off by default). The runtime gate filters before this is
+   * populated; sources see `undefined` when the user hasn't opted in.
    *
    * `mode` carries the global scalar so the source can decide
    * whether to inject the catalog with values (`raw`) or
    * tokens-and-descriptions only (`safe`). Mirror of
-   * `@opencues/core/sentinels.ts` Sentinels — declared here so
+   * `@opencues/core/identity-context.ts` Identity — declared here so
    * the type closes over CueContext without a circular import.
    */
-  sentinels?: { fields: readonly Sentinel[]; catalog: ReadonlyMap<string, string>; mode: 'safe' | 'raw' };
+  identityContext?: { fields: readonly IdentityField[]; catalog: ReadonlyMap<string, string>; mode: 'safe' | 'raw' };
+
+  /**
+   * Ambient blank-context catalog (stocks/weather/crypto/… resolved
+   * snapshots). Populated by the runtime when
+   * `blank-context-mode: safe` or `: raw` is set in OPENCUES.md
+   * (off by default). Same threat-model shape as identityContext above:
+   * `safe` keeps values off the LLM; `raw` inlines them. Mirror of
+   * `@opencues/core/blank-context.ts` BlankContextSnapshot.
+   */
+  blankContext?: {
+    fields: ReadonlyArray<{ token: string; description: string; value: string }>;
+    catalog: ReadonlyMap<string, string>;
+    mode: 'safe' | 'raw';
+  };
 
   /** Additional context for the analysis */
   metadata?: Record<string, unknown>;
 }
 
-/** Single sentinels field. Mirror of `Sentinel` in
+/** Single sentinels field. Mirror of `IdentityField` in
  *  sentinels.ts; redeclared here so CueContext stays free of an
  *  intra-package circular import. */
-export interface Sentinel {
+export interface IdentityField {
   readonly key: string;
   readonly token: string;
   readonly value: string;

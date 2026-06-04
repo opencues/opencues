@@ -175,11 +175,11 @@ function findOpenCuesMdPath(): string {
   return path.join(process.env['HOME'] ?? '~', '.cues', 'OPENCUES.md');
 }
 
-function findSentinelsMdPath(): string {
+function findIdentityMdPath(): string {
   if (process.env['OPENCUES_HOME']) {
-    return path.join(process.env['OPENCUES_HOME'], 'SENTINELS.md');
+    return path.join(process.env['OPENCUES_HOME'], 'IDENTITY.md');
   }
-  return path.join(process.env['HOME'] ?? '~', '.cues', 'SENTINELS.md');
+  return path.join(process.env['HOME'] ?? '~', '.cues', 'IDENTITY.md');
 }
 
 function resolveTtsScript(): string {
@@ -200,9 +200,9 @@ const blanksRegistry: Map<string, Blank> = createDefaultBlanksRegistry({
     writeFile: async (content: string) => { await fs.writeFile(findOpenCuesMdPath(), content, 'utf8'); },
   },
   // Sentinel-write blank — see security-audit.md row #24.
-  sentinelsMdIO: {
-    readFile: async () => { try { return await fs.readFile(findSentinelsMdPath(), 'utf8'); } catch { return null; } },
-    writeFile: async (content: string) => { await fs.writeFile(findSentinelsMdPath(), content, 'utf8'); },
+  identityMdIO: {
+    readFile: async () => { try { return await fs.readFile(findIdentityMdPath(), 'utf8'); } catch { return null; } },
+    writeFile: async (content: string) => { await fs.writeFile(findIdentityMdPath(), content, 'utf8'); },
   },
 });
 // Discover user-shipped JS blanks (`impl: ./blank.js` in BLANK.md)
@@ -438,6 +438,7 @@ export function startOpenCues(opts: {
     },
     log,
     blankInvoke,
+    blanks: blanksRegistry,
     // Path matches the agentic harness's readStatus convention
     // (`/tmp/opencues-status-<pid>.json`) so scenario-runner expect
     // steps with `source: 'status'` find the file. CC and OC both

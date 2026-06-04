@@ -80,7 +80,7 @@ export type BucketScope = typeof BUCKET_SCOPES[number];
 // Built at module-load from FEATURES so adding a scalar to the
 // registry automatically extends the classifier's choice space — no
 // edit here required. Hidden-from-menu values (exposeInMenu: false,
-// today only `sentinels-mode: raw`) are excluded: the classifier
+// today only `identity-context-mode: raw`) are excluded: the classifier
 // must never auto-flip a footgun mode on semantic intent alone; that
 // stays a deliberate file edit.
 
@@ -349,7 +349,7 @@ CONFIDENCE: 0.9
 
 INPUT: let it use my personal info when answering _
 INTENT: SETTING
-SETTING: sentinels-mode
+SETTING: identity-context-mode
 VALUE: safe
 SCOPE:
 PROVIDER:
@@ -363,7 +363,68 @@ VALUE: on
 SCOPE:
 PROVIDER:
 MODEL:
-CONFIDENCE: 0.88`;
+CONFIDENCE: 0.88
+
+═════════════════════════════════════════════════════════════════
+NEGATIVE EXAMPLES — questions about the user's own identity are
+LOOKUPS (fluid-blank's job), NOT requests to change identity-context-mode.
+The word "identity" in the scalar name refers to whether the FEATURE
+is enabled, not to anything the user is asking ABOUT themselves.
+═════════════════════════════════════════════════════════════════
+
+INPUT: my mother's maiden name _
+INTENT: NONE
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.98
+
+INPUT: my email _
+INTENT: NONE
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.98
+
+INPUT: my name _
+INTENT: NONE
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.98
+
+INPUT: i work at _
+INTENT: NONE
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.97
+
+INPUT: who am I _
+INTENT: NONE
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.95
+
+INPUT: what's my github _
+INTENT: NONE
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.96`;
 
 // ============================================================================
 // Parsed verdict — discriminated union
@@ -462,7 +523,7 @@ export function parseConfigIntentOutput(raw: string): ConfigIntentVerdict {
  * Validate a parsed verdict against the FEATURES + PROVIDERS
  * registries. Rejects anything the model hallucinated:
  *   - setting kind: unknown setting, unlisted value, hidden value
- *     (e.g. sentinels-mode=raw)
+ *     (e.g. identity-context-mode=raw)
  *   - provider kind: unknown scope, unknown provider, model not in
  *     that provider's knownModels (when knownModels is declared)
  *

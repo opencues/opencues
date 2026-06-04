@@ -81,7 +81,7 @@ The merge is implemented in `discoverFolderConfigs` and
 The frontmatter of `OPENCUES.md` holds **system-wide settings**
 owned by the runtime — voice-mode, fluid-blank-mode, word-cues-mode,
 tips-mode, debug-mode, cursor-navigate, blank-trigger-mode,
-ambient-context-mode, sentinels-mode, plus numeric tunables
+ambient-context-mode, identity-context-mode, plus numeric tunables
 (agent-debounce-ms, max-concurrent-auditors, blank-loading-*)
 and global LLM provider/model overrides (llm-provider, llm-model,
 <feature>-provider). Schema is declared in `@opencues/core`'s

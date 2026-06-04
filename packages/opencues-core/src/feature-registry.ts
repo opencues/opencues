@@ -17,7 +17,7 @@ import { getProvider } from './llm-provider';
 // Adding a feature required editing all four. We hit two real drift
 // bugs during the May 2026 sentinels ship:
 //
-//   1. SENTINELS.md was added to the runtime + parser but NOT to host.cjs's
+//   1. SENTINELS.md was added to the runtime + parser but NOT to host.cjs's  // LEGACY-NAME-ALLOW: historical narrative
 //      file-push list. Chrome silently never received it. The feature
 //      looked "shipped" but was inert.
 //   2. doctor's hardcoded feature-wiring list stayed valid only as long
@@ -57,7 +57,7 @@ import { getProvider } from './llm-provider';
  *
  * Hiding a value from the menu does NOT make it invalid — the parser
  * still accepts it when set by direct file edit. The flag exists so
- * footgun modes (e.g. `sentinels-mode: raw`, which inlines PII
+ * footgun modes (e.g. `identity-context-mode: raw`, which inlines PII
  * into LLM prompts) can't be flipped by a single keystroke.
  */
 export interface ValueSpec {
@@ -77,14 +77,14 @@ export interface ValueSpec {
  */
 export interface FeatureSpec {
   /**
-   * OPENCUES.md scalar key, kebab-case. Example: 'sentinels-mode'.
+   * OPENCUES.md scalar key, kebab-case. Example: 'identity-context-mode'.
    * Must match the key in OPENCUES.md and CUES.md frontmatter.
    */
   readonly scalar: string;
 
   /**
    * camelCase form for the OpenCuesState field. Example:
-   * 'sentinelsMode'. ConfigLoader uses this when parsing.
+   * 'identityContextMode'. ConfigLoader uses this when parsing.
    */
   readonly camelCase: string;
 
@@ -129,9 +129,9 @@ export interface FeatureSpec {
    * Triggers seed-configs (if template) + chrome-host push (if pushedBy).
    */
   readonly prereqFile?: {
-    /** Filename inside ~/.cues/, e.g. 'SENTINELS.md'. */
+    /** Filename inside ~/.cues/, e.g. 'IDENTITY.md'. */
     readonly basename: string;
-    /** Path under repo root for seed-configs to copy, e.g. 'defaults/SENTINELS.md'. */
+    /** Path under repo root for seed-configs to copy, e.g. 'defaults/IDENTITY.md'. */
     readonly template?: string;
     /**
      * When true, the feature is silently inert if the file exists but
@@ -222,7 +222,7 @@ export interface SeedableFile {
 /**
  * All optional config files that ship a starter template — core files
  * with templates (AUDITORS.md) plus every feature with prereqFile.template
- * (SENTINELS.md and future). seed-configs iterates this; SKIP-if-exists is
+ * (IDENTITY.md and future). seed-configs iterates this; SKIP-if-exists is
  * applied uniformly. Adding a new templated file = add to CORE_TEMPLATES
  * OR add a feature with prereqFile.template. seed-configs needs no edit.
  */
@@ -514,12 +514,16 @@ export const FEATURES: readonly FeatureSpec[] = [
     ],
   },
   {
-    scalar: 'sentinels-mode',
-    camelCase: 'sentinelsMode',
-    description: 'Personal data injected into fluid-blank as sentinel tokens',
-    menuTip: 'Inject ~/.cues/SENTINELS.md fields (first name, email, etc.) as sentinel tokens into fluid-blank for personalised lookups.',
+    // Renamed June 2026 from `sentinels-mode` → `identity-context-mode`  // LEGACY-NAME-ALLOW: historical narrative
+    // to disambiguate from blank-context and ambient-context (now all
+    // three are explicit "context" sources). No runtime back-compat
+    // read — `opencues seed-configs` self-heals the legacy scalar.
+    scalar: 'identity-context-mode',
+    camelCase: 'identityContextMode',
+    description: 'Personal identity data injected into fluid-blank as context tokens',
+    menuTip: 'Inject ~/.cues/IDENTITY.md fields (first name, email, etc.) as identity-context tokens into fluid-blank for personalised lookups.',
     values: [
-      { id: 'off',  description: 'Disabled (default) — SENTINELS.md never read' },
+      { id: 'off',  description: 'Disabled (default) — IDENTITY.md never read' },
       { id: 'safe', description: 'Tokens-only catalog sent to LLM; post-processor substitutes values after response. PII stays on the host.' },
       // `raw` mode (catalog values inlined into the prompt — PII
       // reaches the LLM provider) is implementation-complete but
@@ -529,11 +533,28 @@ export const FEATURES: readonly FeatureSpec[] = [
       { id: 'raw',  description: 'Catalog values inlined into prompt; PII reaches the LLM provider', exposeInMenu: false },
     ],
     prereqFile: {
-      basename: 'SENTINELS.md',
-      template: 'defaults/SENTINELS.md',
+      // ConfigLoader reads IDENTITY.md only — `opencues seed-configs`
+      // self-heals the legacy USER.md / SENTINELS.md filenames into  // LEGACY-NAME-ALLOW: migration reference
+      // IDENTITY.md on install. No runtime fallback.
+      basename: 'IDENTITY.md',
+      template: 'defaults/IDENTITY.md',
       mustHavePopulatedFields: true,
     },
     pushedBy: ['chrome-host'],
+  },
+  {
+    scalar: 'blank-context-mode',
+    camelCase: 'blankContextMode',
+    description: 'Blanks expose their current values as ambient tokens for fluid-blank',
+    menuTip: 'Expose context-eligible blanks (stocks, weather, crypto, …) as ambient tokens fluid-blank can reach without typing the keyword. See docs/features/blank-as-context.md.',
+    values: [
+      { id: 'off',  description: 'Disabled (default) — blanks only fire on the keyword-trigger path' },
+      { id: 'safe', description: 'Tokens-only catalog; post-processor substitutes live values after response. Bench-validated at 100% on Cerebras + Groq.' },
+      // Same exposure rule as identity-context — raw is implemented but
+      // kept off the menu. Requires identity-context-mode: raw too
+      // (mode-gate composition pinned in docs/architecture/blank-as-context.md).
+      { id: 'raw',  description: 'Live values inlined into the prompt; values reach the LLM provider', exposeInMenu: false },
+    ],
   },
 ];
 

@@ -17,7 +17,7 @@ spawns a fresh `bun` process that:
 
 1. Loads `@opentui/core` + `@opentui/solid` (terminal renderer, ~300ms)
 2. Loads `@opencues/runtime` + `@opencues/core` (~200ms)
-3. Reads + parses `~/.cues/CUES.md`, `OPENCUES.md`, `USER.md`,
+3. Reads + parses `~/.cues/CUES.md`, `OPENCUES.md`, `IDENTITY.md`,
    and every `blanks/*/BLANK.md` (~100-200ms)
 4. Builds the Resolver, blanks registry, dyn-defs, highlight state,
    span-fill state, selector-satellite state

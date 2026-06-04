@@ -81,11 +81,11 @@ function findOpenCuesMdPath(): string {
   return path.join(process.env['HOME'] ?? os.homedir(), '.cues', 'OPENCUES.md');
 }
 
-function findSentinelsMdPath(): string {
+function findIdentityMdPath(): string {
   if (process.env['OPENCUES_HOME']) {
-    return path.join(process.env['OPENCUES_HOME'], 'SENTINELS.md');
+    return path.join(process.env['OPENCUES_HOME'], 'IDENTITY.md');
   }
-  return path.join(process.env['HOME'] ?? os.homedir(), '.cues', 'SENTINELS.md');
+  return path.join(process.env['HOME'] ?? os.homedir(), '.cues', 'IDENTITY.md');
 }
 
 function resolveTtsScript(): string {
@@ -106,12 +106,12 @@ const blanksRegistry: Map<string, Blank> = createDefaultBlanksRegistry({
     },
   },
   // Sentinel-write blank — see security-audit.md row #24.
-  sentinelsMdIO: {
+  identityMdIO: {
     readFile: async () => {
-      try { return await fs.readFile(findSentinelsMdPath(), 'utf8'); } catch { return null; }
+      try { return await fs.readFile(findIdentityMdPath(), 'utf8'); } catch { return null; }
     },
     writeFile: async (content) => {
-      await fs.writeFile(findSentinelsMdPath(), content, 'utf8');
+      await fs.writeFile(findIdentityMdPath(), content, 'utf8');
     },
   },
 });
@@ -351,6 +351,7 @@ export function startOpenCues(opts: TerminalBootOpts): BootResult {
     },
     log,
     blankInvoke,
+    blanks: blanksRegistry,
     statusFilePath: `/tmp/opencues-status-${process.pid}.json`,
     cursorStatePath: `/tmp/opencues-cursor-state-${process.pid}.json`,
     statusSnapshotHook: (payload: any) => {

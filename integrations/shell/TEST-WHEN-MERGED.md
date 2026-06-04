@@ -26,7 +26,7 @@ This file is the **reviewer's manual pass** — boxes to tick after pulling the 
 - [ ] `bun integrations/shell/bin/oc-edit` opens a full-screen TUI with a single textarea + statusline at the bottom
 - [ ] `tail -f /tmp/opencues.log | grep '\[term\]'` (in another shell) shows:
   - `OpenCues runtime starting (Terminal v1)` with `host: terminal`
-  - `ConfigLoader: USER.md → N fields`
+  - `ConfigLoader: IDENTITY.md → N fields`
   - `Resolver: built with 5 sources [sentence-cue:more-formal, word-cues, config-intent, fluid-blank, transform-blank]`
 - [ ] Type `the attorney filed today` — at least one word (e.g. `attorney`) gets a dim underline within ~1 second
 - [ ] Cursor onto a dimmed word and press **Ctrl+Alt+↑** — the word changes to an alternative; statusline shows `word (1/N) - tip`

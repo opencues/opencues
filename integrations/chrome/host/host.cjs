@@ -142,7 +142,7 @@ function buildBundle(dir, core) {
   }
 
   // Pass-through pass — every registry-pushed file that isn't filtered.
-  // Today: OPENCUES.md, AUDITORS.md, SENTINELS.md. Tomorrow: whatever you
+  // Today: OPENCUES.md, AUDITORS.md, IDENTITY.md. Tomorrow: whatever you
   // add to feature-registry.ts with pushedBy: ['chrome-host'].
   for (const filename of passThroughList) {
     const p = path.join(dir, filename);

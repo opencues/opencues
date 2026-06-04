@@ -1,5 +1,5 @@
 /**
- * Tests for TransformBlankSource — SENTINELS.md sentinel integration.
+ * Tests for TransformBlankSource — IDENTITY.md sentinel integration.
  *
  * Phase-2 wiring (May 2026) extends the sentinel-mode personal-data
  * feature from FluidBlank-only to TransformBlank. Three integration
@@ -30,7 +30,7 @@ import { describe, it } from 'node:test';
 import * as assert from 'node:assert';
 import { TransformBlankSource } from './transform-blank-source';
 import { getProvider } from '../llm-provider';
-import { parseSentinelsMd } from '../sentinels';
+import { parseIdentityMd } from '../identity-context';
 import type { HttpAdapter, CueContext } from '../types';
 
 interface RecordedCall {
@@ -84,7 +84,7 @@ function makeFusedSource(httpAdapter: HttpAdapter): TransformBlankSource {
   });
 }
 
-// SENTINELS.md frontmatter samples — mix shipped sentinels with user-defined
+// IDENTITY.md frontmatter samples — mix shipped sentinels with user-defined
 // ones (signOff, jobTitle, favoriteEditor) to verify the catalog is
 // open-ended (any YAML key becomes a sentinel).
 const USER_MD = `---
@@ -98,14 +98,14 @@ favoriteEditor: vim
 ---`;
 
 function ctxWithUser(text: string, mode: 'safe' | 'raw' = 'safe'): CueContext {
-  const uc = parseSentinelsMd(USER_MD);
+  const uc = parseIdentityMd(USER_MD);
   return {
     text,
     words: text.split(/\s+/).filter(Boolean),
     blankIndices: text.split(/\s+/).filter(Boolean)
       .map((w, i) => (w === '_' ? i : -1))
       .filter(i => i >= 0),
-    sentinels: { fields: uc.fields, catalog: uc.catalog, mode },
+    identityContext: { fields: uc.fields, catalog: uc.catalog, mode },
   };
 }
 
@@ -116,7 +116,7 @@ function ctxNoUser(text: string): CueContext {
     blankIndices: text.split(/\s+/).filter(Boolean)
       .map((w, i) => (w === '_' ? i : -1))
       .filter(i => i >= 0),
-    // sentinels omitted — runtime gate didn't populate it (sentinels-mode: off)
+    // sentinels omitted — runtime gate didn't populate it (identity-context-mode: off)
   };
 }
 
@@ -142,7 +142,7 @@ function findCallContaining(recorded: readonly RecordedCall[], needle: string): 
 // 1. CATALOG INJECTION — prompt body shape per pipeline branch
 // ────────────────────────────────────────────────────────────────────────────
 
-describe('TransformBlankSource — SENTINELS.md catalog injection (3-pass APPLY)', () => {
+describe('TransformBlankSource — IDENTITY.md catalog injection (3-pass APPLY)', () => {
   it('appends catalog block to APPLY user message when sentinels is present', async () => {
     const recorded: RecordedCall[] = [];
     // "uppercase" — non-deictic instruction, no P1.5 RESOLVE call.
@@ -196,7 +196,7 @@ describe('TransformBlankSource — SENTINELS.md catalog injection (3-pass APPLY)
   });
 });
 
-describe('TransformBlankSource — SENTINELS.md catalog injection (3-pass GENERATIVE)', () => {
+describe('TransformBlankSource — IDENTITY.md catalog injection (3-pass GENERATIVE)', () => {
   it('appends catalog block to GENERATIVE user message', async () => {
     const recorded: RecordedCall[] = [];
     // GENERATIVE = TRANSFORM verdict + empty TARGET. Single APPLY call,
@@ -226,7 +226,7 @@ describe('TransformBlankSource — SENTINELS.md catalog injection (3-pass GENERA
   });
 });
 
-describe('TransformBlankSource — SENTINELS.md catalog injection (FUSED)', () => {
+describe('TransformBlankSource — IDENTITY.md catalog injection (FUSED)', () => {
   it('appends catalog block to FUSED user message', async () => {
     const recorded: RecordedCall[] = [];
     const responses = [

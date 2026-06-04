@@ -76,6 +76,45 @@ jobs:
       - name: Run portability lint
         run: bash scripts/lint-shell-portability.sh
 
+  legacy-names:
+    name: legacy-names lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    # Catches the rename-drift class — old feature names lingering in
+    # shipping code after a rename (`SENTINELS.md`/`USER.md`/
+    # `sentinels-mode`/`opencues sentinels` are the current bans).
+    # See CLAUDE.md § "Rename discipline" + the BANNED_PATTERNS list
+    # at the top of scripts/lint-legacy-names.sh.
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run legacy-names lint
+        run: bash scripts/lint-legacy-names.sh
+
+  cc-patch-boot-smoke:
+    name: CC patch boot smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    # Evaluates the CC patch's emitted JS in a Node vm sandbox to catch
+    # identifier scope errors that source-level typechecks can't see.
+    # June 2026 cc38ab8 shipped `blanks: __ocReg` where __ocReg was
+    # IIFE-local — ReferenceError on every keystroke, swallowed by the
+    # patch's own catch, OpenCues silently dead. Source compiled fine,
+    # patch applied fine, bundle parsed fine — only the runtime
+    # evaluation surfaced the bug. This job runs that evaluation in CI.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+      - name: Run CC patch boot smoke
+        run: node scripts/check-cc-patch-boot.cjs
+
   version-bump-gate:
     name: version-bump gate
     runs-on: ubuntu-latest

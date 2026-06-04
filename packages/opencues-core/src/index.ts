@@ -6,7 +6,15 @@
  */
 
 // Spec version
-export { SPEC_VERSION, type SpecVersion } from './spec-version';
+export {
+  SPEC_VERSION,
+  SPEC_OMIT_DEFAULT,
+  parseSpecPin,
+  isSpecCompatible,
+  type SpecVersion,
+  type SpecPin,
+  type SpecCompatResult,
+} from './spec-version';
 
 // Types
 export * from './types';
@@ -179,19 +187,38 @@ export {
   injectCursorSentinel,
 } from './cursor-sentinel';
 
-// Sentinels (sentinel-mode personal data): parser, catalog
-// renderer, post-processor. Consumed by FluidBlankSource when
-// `sentinels-mode` is on in OPENCUES.md.
+// Identity-context — the user's personal-data catalog. Parser,
+// prompt-block renderer, substitution post-processor. Consumed by
+// FluidBlankSource when `identity-context-mode` is on in OPENCUES.md.
+// (Renamed June 2026 from "sentinels". seed-configs migrates legacy
+// file/scalar names; runtime only knows the canonical names.)
 export {
-  parseSentinelsMd,
+  parseIdentityMd,
+  renderIdentityContextCatalog,
+  renderIdentityContextCatalogForTransform,
+  postProcessContext,
   deriveToken,
-  renderSentinelsCatalog,
-  renderSentinelsCatalogForTransform,
-  postProcessSentinels,
-} from './sentinels';
+} from './identity-context';
+// Blank-as-context — ambient blank tokens (stocks/weather/crypto/…)
+// surfaced as sentinel-style tokens for fluid-blank without typing
+// the blank keyword. Same threat model as sentinels; same
+// safe-tokens prompt shape. See docs/features/blank-as-context.md.
+export {
+  deriveBlankContextToken,
+  planBlankContextSlots,
+  renderBlankContextCatalog,
+  mergeCatalogs,
+} from './blank-context';
+export type {
+  BlankContextMode,
+  BlankContextSlot,
+  BlankContextSnapshot,
+  ResolvedBlankContextField,
+  PlanResult as BlankContextPlanResult,
+} from './blank-context';
 
-// SENTINELS.md write-validator — load-bearing safety check for any path
-// that mutates `~/.cues/SENTINELS.md`. Used by the CLI's `sentinels` command
+// IDENTITY.md write-validator — load-bearing safety check for any path
+// that mutates `~/.cues/IDENTITY.md`. Used by the CLI's `identity` command
 // today; will be used by a future keyword-bound sentinel blank.
 // See docs/architecture/security-audit.md row #24.
 export {
@@ -201,18 +228,17 @@ export {
   type SentinelField,
   type SentinelWriteOp,
   type SentinelValidationResult,
-} from './sentinels-validator';
+} from './identity-validator';
 
-// Re-aliased here just so the trailing `} from './sentinels';` below
-// stays a clean boundary; the original block continues:
+// Identity-context type exports.
 export {
-  type Sentinels,
-  type Sentinel,
-  type SentinelsMode,
-  type PostProcessOptions as SentinelsPostProcessOptions,
-  type PostProcessResult as SentinelsPostProcessResult,
-  type PostProcessReport as SentinelsPostProcessReport,
-} from './sentinels';
+  type Identity,
+  type IdentityField,
+  type ContextMode,
+  type PostProcessOptions,
+  type PostProcessResult,
+  type PostProcessReport,
+} from './identity-context';
 
 // Feature registry — single source of truth for the set of optional
 // features OpenCues exposes via OPENCUES.md scalars. Consumed by

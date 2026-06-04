@@ -1,12 +1,12 @@
 /**
- * Tests for the SENTINELS.md write-validator.
+ * Tests for the IDENTITY.md write-validator.
  *
  * Two layers under test:
  *   1. SHAPE checks — key regex, value control-char filter, length cap.
  *   2. STATE checks — token collision, capacity, no-op detection.
  *
  * These are the load-bearing safety properties for any code path that
- * mutates SENTINELS.md. The validator is the single chokepoint; tests below
+ * mutates IDENTITY.md. The validator is the single chokepoint; tests below
  * pin every failure mode + every success-action variant.
  */
 
@@ -16,7 +16,7 @@ import {
   validateSentinelWrite,
   DEFAULT_SENTINEL_CAPS,
   type SentinelField,
-} from './sentinels-validator';
+} from './identity-validator';
 
 const field = (key: string, value: string): SentinelField => ({ key, value });
 

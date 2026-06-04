@@ -193,17 +193,25 @@ describe('invalid/cue/*.md', () => {
         break;
       }
       case 'spec-too-new': {
-        it(`${file} declares a spec: newer than this runtime supports (opencues/0.1-alpha)`, () => {
-          // Parser doesn't surface `spec:` on the typed frontmatter today
-          // (it's not in the switch), so structurally read it from raw
-          // content. Anything with a non-zero major or a minor > 1 is "too
-          // new" against the 0.1-alpha baseline.
-          const m = content.match(/^\s*spec\s*:\s*opencues\/([0-9]+)\.([0-9]+)/m);
+        it(`${file} is REFUSED by parseSingleCueMd via the spec-version gate`, () => {
+          // Actually exercise the runtime. The parser MUST populate
+          // `specError` on too-new files and leave the rest of the
+          // config empty so callers skip the source. This pins the
+          // SPEC.md § Version policy "MUST refuse newer" rule to
+          // executable behaviour, not just fixture shape.
+          const config = parseSingleCueMd(content, ROOT, file.replace('.md', ''));
+          expect(config.specError).toBeTruthy();
+          // The refusal reason MUST mention the offending version so
+          // log readers can identify the source.
+          const m = content.match(/^\s*spec\s*:\s*(opencues\/\S+)/m);
           expect(m).toBeTruthy();
-          const major = parseInt(m![1], 10);
-          const minor = parseInt(m![2], 10);
-          const tooNew = major > 0 || (major === 0 && minor > 1);
-          expect(tooNew).toBe(true);
+          expect(config.specError!).toContain(m![1]);
+          // Defence-in-depth: when refused, the parser MUST NOT have
+          // populated any sources / blanks / auditors — a too-new
+          // file is invisible to the runtime, not partially loaded.
+          expect(config.promptConfig?.sources ?? {}).toEqual({});
+          expect(config.blanks ?? {}).toEqual({});
+          expect(config.auditors ?? {}).toEqual({});
         });
         break;
       }

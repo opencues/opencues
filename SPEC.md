@@ -1,6 +1,6 @@
 # Cues Specification
 
-**Current version: `0.1` (draft)**
+**Current version: `0.2` (draft)**
 
 This document declares the **Cues spec** — the durable, host-agnostic format that
 describes word-cues and blank-fills. It is separate from any single
@@ -39,6 +39,43 @@ The `0.1` spec defines the wire format of:
    `not-on-site:` frontmatter keys that scope a cue/blank to specific
    integrations or URLs.
 
+7. **`IDENTITY.md` + sentinel tokens** — opt-in personal-data catalog.
+   YAML frontmatter where each `key: value` derives a canonical
+   bracket-token usable in LLM-bound prompts.
+
+   **Token derivation** (deterministic, canonical across all
+   conforming readers): camelCase / snake_case / kebab-case → space-
+   separated UPPERCASE wrapped in brackets. Required by interop —
+   two independent readers consuming the same `IDENTITY.md` MUST
+   derive the same tokens.
+
+   ```
+   firstName        → [FIRST NAME]
+   first_name       → [FIRST NAME]
+   first-name       → [FIRST NAME]
+   workCityHome     → [WORK CITY HOME]
+   phoneE164        → [PHONE E164]
+   ```
+
+   See `packages/opencues-core/src/identity-context.ts:deriveToken`
+   for the canonical algorithm (camelCase boundary insertion +
+   separator collapse + uppercase). Collisions (two keys → same
+   token) are rejected at write time; see
+   `identity-validator.ts:validateSentinelWrite`. Capacity caps
+   default to 64 fields × 256 chars/value (`DEFAULT_SENTINEL_CAPS`).
+
+   **Catalog emission + post-processing** are implementation
+   choices a reader MAY adopt: when emitted, the LLM sees the
+   bracket-tokens (in `safe` mode just the tokens + descriptions;
+   in `raw` mode tokens accompanied by their values), and the
+   runtime substitutes any token that resolves against the catalog
+   back to its value before the LLM output reaches the buffer.
+   Unknown bracket-tokens MUST be stripped (hallucination
+   defence) and bracket-strings already present in the user's
+   buffer MUST be preserved verbatim. The mode is gated by the
+   `identity-context-mode` scalar in `OPENCUES.md` (`off` /
+   `safe` / `raw`; default `off`).
+
 ## What the spec does NOT cover
 
 - The internal `CueSource` class hierarchy (`BlankSource`,
@@ -50,6 +87,11 @@ The `0.1` spec defines the wire format of:
   agrees.
 - The host-side runtime surface (`HostAdapter` contract, render directives,
   ZWS handling, etc.) — that is `@opencues/runtime`-specific.
+- Per-prompt sentinel conventions internal to specific cue/blank
+  pipelines (e.g. `CURSOR_SENTINEL` for TransformBlank cursor
+  encoding). Only the public `IDENTITY.md`-derived sentinel tokens
+  are wire format; per-pipeline sentinels are implementation
+  details of the reference resolver.
 
 ## Version policy
 

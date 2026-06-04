@@ -1,9 +1,9 @@
 /**
- * SENTINELS.md write-validator — the load-bearing safety check for ANY
- * code path that mutates `~/.cues/SENTINELS.md`.
+ * IDENTITY.md write-validator — the load-bearing safety check for ANY
+ * code path that mutates `~/.cues/IDENTITY.md`.
  *
  * Today's call sites:
- *   - `opencues sentinels set <key> <value>` (CLI)
+ *   - `opencues identity set <key> <value>` (CLI)
  *   - The interactive interview in the same CLI command
  *
  * Future call site (under security review — see
@@ -18,7 +18,7 @@
  *      (first-wins); the validator refuses up-front so the write
  *      doesn't appear to succeed.
  *   3. CAPACITY — hard caps on field count and value length. Without
- *      these, a hostile or buggy write loop could balloon SENTINELS.md.
+ *      these, a hostile or buggy write loop could balloon IDENTITY.md.
  *   4. VALUE SHAPE — reject control chars / NUL / very-long values.
  *      Defence-in-depth for the YAML parser; keeps `raw` mode from
  *      smuggling control sequences into LLM prompts.
@@ -29,22 +29,22 @@
  * into the satellite pair so it's visible in the buffer).
  *
  * Security note: the validator is the ONLY layer between user-typed
- * (or blank-script-passed) input and the SENTINELS.md write. Any future
+ * (or blank-script-passed) input and the IDENTITY.md write. Any future
  * call site MUST go through `validateSentinelWrite` — adding a second
- * site that writes SENTINELS.md directly is an audit-table-row-worthy
+ * site that writes IDENTITY.md directly is an audit-table-row-worthy
  * regression (rebuts Row #24's "validator is the single chokepoint"
  * defence).
  */
 
-import { deriveToken } from './sentinels';
+import { deriveToken } from './identity-context';
 
-/** Default capacity caps — defence-in-depth bound for SENTINELS.md size.
+/** Default capacity caps — defence-in-depth bound for IDENTITY.md size.
  *  Tuned generously enough that a heavy real user (50 sentinels with
  *  long signOff blocks) sits well under, while a runaway write loop
  *  hits the wall fast. Override per call site via `validateSentinelWrite`'s
  *  `caps` option. */
 export const DEFAULT_SENTINEL_CAPS = {
-  /** Maximum number of fields in SENTINELS.md. */
+  /** Maximum number of fields in IDENTITY.md. */
   maxFields: 64,
   /** Maximum length (UTF-16 code units) of a single value. */
   maxValueLength: 256,
@@ -61,7 +61,7 @@ export type SentinelWriteOp =
   | { op: 'set'; key: string; value: string }
   | { op: 'remove'; key: string };
 
-/** Minimal field shape — matches the public `Sentinel` but
+/** Minimal field shape — matches the public `IdentityField` but
  *  takes only `key` + `value` so callers (CLI, blank) don't need to
  *  pre-derive the token. */
 export interface SentinelField {
@@ -95,8 +95,8 @@ const FORBIDDEN_VALUE_CHARS = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/;
 /**
  * Validate a proposed write against the current fields + caps.
  *
- * `currentFields` is the parsed state of SENTINELS.md just before this
- * write (call sites get this from `parseSentinelsMd(readUserMd())`).
+ * `currentFields` is the parsed state of IDENTITY.md just before this
+ * write (call sites get this from `parseIdentityMd(readUserMd())`).
  * Returns the post-write field array on success — the caller writes
  * that verbatim to disk.
  */
@@ -180,7 +180,7 @@ export function validateSentinelWrite(
     return {
       ok: false,
       error: 'capacity-exceeded',
-      detail: `USER.md is full — ${currentFields.length}/${caps.maxFields} sentinels defined. Remove unused ones with \`opencues sentinels remove <key>\`.`,
+      detail: `IDENTITY.md is full — ${currentFields.length}/${caps.maxFields} fields defined. Remove unused ones with \`opencues identity remove <key>\`.`,
       context: { maxFields: caps.maxFields, current: currentFields.length },
     };
   }

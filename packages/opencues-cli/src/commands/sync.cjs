@@ -364,14 +364,31 @@ function resolveSources({ flags, includes, pack, source }) {
 // Walk a single .cues/ dir, calling cb(entry) for each chrome-relevant
 // file. entry = { absPath, relPath, compat }.
 function walkSource(dir, core, cb) {
-  const { parseCuesMd, parseSingleCueMd, inferHostCompat } = core;
+  const { parseCuesMd, parseSingleCueMd, inferHostCompat, chromeHostFileList } = core;
 
-  // Top-level files: CUES.md / BLANKS.md. These are monolithic —
-  // host-compat applies per-section, so we either include the whole
-  // file or rebuild it from the chrome-compatible subset.
-  // Today: include whole file if ANY section is chrome-compatible.
-  // Folder-based configs (next loop) get per-entry filtering.
-  for (const filename of ['CUES.md', 'BLANKS.md']) {
+  // Top-level files: CUES.md / BLANKS.md are parsed for per-section
+  // chrome-compat filtering (include whole file if ANY section matches).
+  // Every other pass-through file from chromeHostFileList() (AUDITORS.md,
+  // IDENTITY.md, …) is copied verbatim — matches the live chrome-host
+  // push semantics in `integrations/chrome/host/host.cjs:passThroughList`.
+  // Adding a new feature-registry-pushed file requires zero edits here.
+  // Mirror the chrome-host's two-pass file logic exactly (see
+  // `integrations/chrome/host/host.cjs:115-150`):
+  //   - FILTERED files (CUES.md, legacy BLANKS.md) — parsed per-section,
+  //     included when ANY source/blank is chrome-compatible.
+  //   - PASS-THROUGH files (registry-pushed, minus filtered + skipped) —
+  //     copied verbatim. Today: AUDITORS.md, IDENTITY.md. Tomorrow:
+  //     any new feature whose prereqFile has `pushedBy: ['chrome-host']`.
+  //
+  // OPENCUES.md is runtime-state (mode flips, cycling-driven writes);
+  // chrome reads it from chrome.storage via the live native-messaging
+  // sync, never from the bake bundle — skip it here.
+  //
+  // BLANKS.md is legacy (pre-registry) and intentionally outside
+  // chromeHostFileList. Keep parsing it for migration-period users.
+  const FILTERED = new Set(['CUES.md', 'BLANKS.md']);
+  const SKIP = new Set(['OPENCUES.md']);
+  for (const filename of FILTERED) {
     const p = path.join(dir, filename);
     if (!fs.existsSync(p)) continue;
     try {
@@ -385,6 +402,12 @@ function walkSource(dir, core, cb) {
         cb({ absPath: p, relPath: filename, compat: { hosts: ['chrome'] } });
       }
     } catch { /* skip on parse error */ }
+  }
+  for (const filename of chromeHostFileList()) {
+    if (FILTERED.has(filename) || SKIP.has(filename)) continue;
+    const p = path.join(dir, filename);
+    if (!fs.existsSync(p)) continue;
+    cb({ absPath: p, relPath: filename, compat: { hosts: ['chrome'] } });
   }
 
   // Folder-based: cues/<name>/CUE.md, blanks/<name>/BLANK.md
