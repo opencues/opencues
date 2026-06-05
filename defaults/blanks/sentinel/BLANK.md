@@ -26,6 +26,11 @@ sandbox: off
 # Hosts that get the SentinelBlank built-in. Native hosts also fall
 # back to the shell script if blankInvoke fails.
 on-host: chrome, claude-code, gemini-cli, opencode, shell
+# Blank-as-context: deliberately OFF. SentinelBlank is the WRITE
+# surface for ~/.cues/IDENTITY.md — identity-context is a separate
+# READ surface served by IDENTITY.md frontmatter directly. Surfacing
+# the write-blank as ambient would be a meaningless self-reference.
+as-context: off
 ---
 
 # Sentinel — write to ~/.cues/IDENTITY.md from inside the editor

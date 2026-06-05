@@ -15,4 +15,8 @@ blankScript: ./brightness-blank.sh
 # (xrandr / Win32 / macOS via /mnt/c on WSL) that need filesystem
 # access outside CUE_ROOT. Same trust posture as volume.
 sandbox: off
+# Blank-as-context: deliberately OFF. Action blank — same reasoning
+# as volume; surfacing current brightness in ambient prose makes no
+# user-facing sense.
+as-context: off
 ---

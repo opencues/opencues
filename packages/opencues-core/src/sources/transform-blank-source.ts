@@ -50,6 +50,12 @@ import {
   type Identity,
   type ContextMode,
 } from '../identity-context';
+import {
+  renderBlankContextCatalogForTransform,
+  mergeCatalogs,
+  type BlankContextSnapshot,
+  type BlankContextMode,
+} from '../blank-context';
 
 // ============================================================================
 // Prompts — ported verbatim from tests/benchmarks/transform-blank/
@@ -1503,6 +1509,33 @@ export class TransformBlankSource implements CueSource {
   }
 
   /**
+   * Render the ambient blank-context block (stocks/weather/crypto/…
+   * live-data snapshots) for inclusion in EXTRACT/APPLY/FUSED prompts.
+   * Mirrors `buildUserCatalogBlock` for identity-context. Returns empty
+   * block + undefined snapshot when `blank-context-mode: off` or no
+   * blanks declare `as-context`.
+   *
+   * The two catalogs travel side-by-side: identity-context fields
+   * describe the SENDER (the user composing); blank-context fields
+   * describe AMBIENT live data the rewrite may reference. Both go
+   * through the same post-processor with `preserveUnknown: true`.
+   */
+  private buildBlankCatalogBlock(context: CueContext): {
+    block: string;
+    snapshot: BlankContextSnapshot | undefined;
+  } {
+    const bc = context.blankContext;
+    if (!bc) return { block: '', snapshot: undefined };
+    const snapshot: BlankContextSnapshot = { fields: bc.fields, catalog: bc.catalog };
+    const mode: BlankContextMode = bc.mode;
+    const block = renderBlankContextCatalogForTransform(snapshot, mode);
+    if (block) {
+      this.log(`TransformBlank: blank-context: injected (mode=${mode}, ${snapshot.fields.length} slot${snapshot.fields.length === 1 ? '' : 's'})`);
+    }
+    return { block, snapshot };
+  }
+
+  /**
    * Resolve sender-data sentinels emitted by the LLM into their real
    * values. Always passes `preserveUnknown: true` so LLM-emitted
    * placeholders for non-user entities (`[Recipient Name]`,
@@ -1514,15 +1547,23 @@ export class TransformBlankSource implements CueSource {
     rewrite: string,
     originalBody: string,
     ctx: Identity | undefined,
+    blankSnapshot?: BlankContextSnapshot | undefined,
   ): string {
-    if (!ctx || ctx.catalog.size === 0) return rewrite;
+    const hasIdentity = ctx && ctx.catalog.size > 0;
+    const hasBlank = blankSnapshot && blankSnapshot.catalog.size > 0;
+    if (!hasIdentity && !hasBlank) return rewrite;
+    const catalog = hasIdentity && hasBlank
+      ? mergeCatalogs(ctx!.catalog, blankSnapshot!.catalog)
+      : hasIdentity
+        ? ctx!.catalog
+        : blankSnapshot!.catalog;
     const pp = postProcessContext(rewrite, {
-      catalog: ctx.catalog,
+      catalog,
       originalBody,
       preserveUnknown: true,
     });
     if (pp.report.resolved.length || pp.report.tolerantMatches.length) {
-      this.log(`TransformBlank: identity-context: post-processed (resolved=${pp.report.resolved.length}, tolerant=${pp.report.tolerantMatches.length}, preserved-unknown=${pp.report.stripped.length})`);
+      this.log(`TransformBlank: context post-processed (resolved=${pp.report.resolved.length}, tolerant=${pp.report.tolerantMatches.length}, preserved-unknown=${pp.report.stripped.length})`);
     }
     return pp.output;
   }
@@ -1646,14 +1687,15 @@ export class TransformBlankSource implements CueSource {
         const genTokens = budgetForOutput(800, 1.0);  // assume up to ~800 chars of generated content
         const genStart = Date.now();
         const { block: genCatalogBlock, ctx: genUserCtx } = this.buildUserCatalogBlock(context);
+        const { block: genBlankBlock, snapshot: genBlankSnapshot } = this.buildBlankCatalogBlock(context);
         const genRaw = await this.callLLM(
           P2_GENERATIVE_APPLY_SYSTEM,
-          `INSTRUCTION: ${ext.instruction}${genCatalogBlock}`,
+          `INSTRUCTION: ${ext.instruction}${genCatalogBlock}${genBlankBlock}`,
           genTokens,
           useJson ? buildJsonResponseFormat('transform_generative', APPLY_SCHEMA as unknown as Record<string, unknown>) : undefined,
         );
         const generatedRaw = (useJson ? parseApplyJson(genRaw) : parseApply(genRaw)).rewrite;
-        const generated = this.resolveSentinels(generatedRaw, context.text, genUserCtx);
+        const generated = this.resolveSentinels(generatedRaw, context.text, genUserCtx, genBlankSnapshot);
         this.log(`TransformBlank P2 GENERATIVE (${Date.now() - genStart}ms, max_tokens=${genTokens}): "${preview(generated)}"`);
         if (!generated) {
           this.log(`TransformBlank: claim-and-bail — GENERATIVE empty, slot ${blankIdx} consumed (no downstream fallback)`);
@@ -1749,6 +1791,7 @@ export class TransformBlankSource implements CueSource {
       }
       let lastRewrite = '';
       const { block: applyCatalogBlock, ctx: applyUserCtx } = this.buildUserCatalogBlock(context);
+      const { block: applyBlankBlock, snapshot: applyBlankSnapshot } = this.buildBlankCatalogBlock(context);
       for (let i = 0; i < parts.length; i++) {
         const inst = parts[i];
         const stepStart = Date.now();
@@ -1761,7 +1804,7 @@ export class TransformBlankSource implements CueSource {
           : currentTarget;
         const applyRaw = await this.callLLM(
           P2_APPLY_SYSTEM,
-          `INSTRUCTION: ${inst}\nTARGET: ${targetForPrompt}${applyCatalogBlock}`,
+          `INSTRUCTION: ${inst}\nTARGET: ${targetForPrompt}${applyCatalogBlock}${applyBlankBlock}`,
           p2Tokens,
           useJson ? buildJsonResponseFormat('transform_apply', APPLY_SCHEMA as unknown as Record<string, unknown>) : undefined,
         );
@@ -1769,7 +1812,7 @@ export class TransformBlankSource implements CueSource {
         const draftRaw = stripCursorSentinel((useJson ? parseApplyJson(applyRaw) : parseApply(applyRaw)).rewrite);
         // Resolve IDENTITY.md sentinels per step so VERIFY downstream sees
         // the real values, not bracket-tokens. Preserves unknown brackets.
-        const draft = this.resolveSentinels(draftRaw, context.text, applyUserCtx);
+        const draft = this.resolveSentinels(draftRaw, context.text, applyUserCtx, applyBlankSnapshot);
         this.log(`TransformBlank P2 APPLY step ${i + 1}/${parts.length} (${Date.now() - stepStart}ms, max_tokens=${p2Tokens}): "${preview(draft)}"`);
         this.emit({
           type: 'pass-completed',
@@ -1846,7 +1889,11 @@ export class TransformBlankSource implements CueSource {
           finalRewrite = lastRewrite;
         } else {
           this.log(`TransformBlank: REPAIR accepted — using verify's correction`);
-          finalRewrite = ver.rewrite;
+          // VERIFY's REPAIR output bypassed the per-step resolveSentinels
+          // chain — if the model hallucinated a bracket-token (unlikely
+          // since VERIFY sees only already-substituted DRAFT, but possible),
+          // run the post-processor once more to catch it.
+          finalRewrite = this.resolveSentinels(ver.rewrite, context.text, applyUserCtx, applyBlankSnapshot);
         }
       }
 
@@ -2009,15 +2056,16 @@ export class TransformBlankSource implements CueSource {
     );
     const fusedStart = Date.now();
     const { block: fusedCatalogBlock, ctx: fusedUserCtx } = this.buildUserCatalogBlock(context);
-    const fusedRaw = await this.callLLM(FUSED_SYSTEM, `INPUT: ${extractText}${fusedCatalogBlock}`, fusedTokens);
+    const { block: fusedBlankBlock, snapshot: fusedBlankSnapshot } = this.buildBlankCatalogBlock(context);
+    const fusedRaw = await this.callLLM(FUSED_SYSTEM, `INPUT: ${extractText}${fusedCatalogBlock}${fusedBlankBlock}`, fusedTokens);
     const fParsed = parseFused(fusedRaw);
-    // Resolve IDENTITY.md sentinels in FULL_REWRITE before the result
-    // routes through the runtime's three-way merge. Preserves unknown
-    // brackets so LLM-emitted placeholders for non-user entities
-    // ([Recipient Name], [Date]) survive untouched.
+    // Resolve IDENTITY.md sentinels + ambient blank-context tokens in
+    // FULL_REWRITE before the result routes through the runtime's three-
+    // way merge. Preserves unknown brackets so LLM-emitted placeholders
+    // for non-user entities ([Recipient Name], [Date]) survive untouched.
     const f = {
       ...fParsed,
-      rewrite: this.resolveSentinels(fParsed.rewrite, context.text, fusedUserCtx),
+      rewrite: this.resolveSentinels(fParsed.rewrite, context.text, fusedUserCtx, fusedBlankSnapshot),
     };
     this.log(`TransformBlank FUSED (${Date.now() - fusedStart}ms, max_tokens=${fusedTokens}, source=${sourceTag}): verdict=${f.verdict}, instruction="${f.instruction}", target="${preview(f.target)}", rewrite="${preview(f.rewrite)}"`);
     this.emit({

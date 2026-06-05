@@ -25,6 +25,12 @@ blankKeywordExpansions.shib: Shiba Inu
 # Auto: bare "btc _" → wipe → "BTC: $78,542.00" (ticker embedded).
 # Copula phrasing → keep.
 blankReplace: auto
+# Blank-as-context: when blank-context-mode is on, expose BTC + ETH
+# as ambient tokens ([CRYPTO BTC], [CRYPTO ETH]) so casual phrasings
+# ("how is bitcoin doing _", "crypto check _", "digital currency _")
+# route through fluid-blank without typing the keyword.
+as-context: safe
+context-slots: BTC, ETH
 ---
 
 Implementation: built-in `CryptoBlank` in `@opencues/runtime`

@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Added — transform-blank wires blank-as-context end-to-end
+
+Blank-as-context's June 2026 v1 shipped fluid-blank-only — transform-blank (the compose / rewrite surface) consumed identity-context but not ambient blank-context tokens. The deferral was bench-gated, not architectural — `docs/architecture/blank-as-context.md:36-38` named it as the next milestone. This change closes that deferral.
+
+The structural difference matters: fluid-blank already has the deterministic keyword path (`weather london _` works regardless of catalog), so blank-context for fluid is a convenience layer over a working path. Transform-blank has NO keyword path for ambient data — there is no way to type `weather london _` in the middle of `draft an email about today's weather`. Wiring blank-context into transform-blank is the structural unlock that lets compose flows reference live ambient data ("draft email about btc", "tweet about how stocks are doing", "morning standup: weather + crypto + nvda") with the runtime substituting live values into the prose locally.
+
+- **`@opencues/core` (0.2.3 → 0.3.0)** — added `renderBlankContextCatalogForTransform` (a transform-flavoured prompt block: no INPUT/ANSWER examples since transform has no such shape; rules phrased for long-output prose; emit verbatim, never invent bracket-tokens from covers-hints, third-party `[Recipient Name]` / `[Date]` placeholders survive). Wired into TransformBlankSource at three prompt sites (GENERATIVE / 3-pass APPLY / FUSED). `resolveSentinels` now merges identity + blank-context catalogs into a single post-processor pass via `mergeCatalogs`, with `preserveUnknown: true` so non-catalog brackets in long bodies aren't stripped. 3-pass VERIFY REPAIR path also re-runs the post-processor to catch the edge case where VERIFY hallucinates a token in its correction.
+- **Default frontmatter additions** (`defaults/blanks/*/BLANK.md`) — every shipping blank now declares `as-context:` explicitly. Data sources default ON (weather, stocks, crypto, hackernews, claude-status); action / write / loop-hazard blanks default OFF with a one-line rationale (volume, brightness, prompt, answer, sentinel, opencues, dictionary). Concrete slot lists:
+  - **weather**: `context-bind: workCity` — binds to the existing `IDENTITY.md:workCity` field. `[WEATHER <CITY>]`.
+  - **stocks**: `context-slots: NVDA, AAPL, TSLA, MSFT, GOOGL`. Documented in-frontmatter how to swap to `context-bind: portfolio` (with split + ack) for a personal watchlist.
+  - **crypto**: `context-slots: BTC, ETH`. Majors only.
+  - **hackernews**: `context-slots: top`. Single-slot — current top story.
+  - **claude-status**: `context-slots: api`. Useful for "is claude working _" / "should i wait to retry _" routing.
+
+  Per-blank audit table at `docs/architecture/blank-as-context.md:216` updated to match shipped state.
+
+- **Bench evidence** — new `tests/benchmarks/blank-context-recall/transform-prod-bench.ts`. 7 compose-flow scenarios (email about weather, tweet about BTC, multi-token standup, identity+blank-context mix, etc.) hitting real Cerebras gpt-oss-120b: **7/7** with live substitution into prose. Plus 7 new unit tests at `packages/opencues-core/src/sources/transform-blank-blank-context.test.ts` pinning catalog injection (3-pass APPLY + FUSED), safe/raw mode contracts, post-processor substitution, and `preserveUnknown` survival of `[Recipient]` / `[Date]` placeholders.
+
+**The user-facing scenarios this unlocks** — `draft an email to the team about today's weather _`, `write a tweet about how btc is doing _`, `compose a morning standup mentioning weather and crypto _`, `add a P.S. about today's btc price _`. All produce live-data prose without a keyword break. Threat-model parity with identity-context: `safe` mode keeps live values off the wire (substitution is local post-LLM); `raw` mode opt-in inlines them.
+
 ### Fixed — fluid-blank catalog recall +26pp via FUSED prompt rebalance
 
 The FUSED_SYSTEM_PROMPT carries 30+ plain-prose factual-lookup examples that established a strong "answer in prose" prior — strong enough that catalog tokens were being dropped on indirect phrasings (`how are my stocks doing _` → empty answer; `biggest mover in my portfolio _` → invented `[PORTFOLIO]` bracket-token; `what's it like outside _` → prose instead of `[WEATHER LONDON]`). The shipped catalog block had a CRITICAL DECISION RULE but no inline counterweight to the plain-prose pull.
