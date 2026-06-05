@@ -26,4 +26,10 @@ blankScript: ./volume-blank.sh
 # sandbox; v1 keeps it unsandboxed with the path sandbox + audit log
 # as the remaining defences.
 sandbox: off
+# Blank-as-context: deliberately OFF. Volume is an ACTION blank
+# (set/get system audio level), not an ambient data source. Surfacing
+# it in fluid-blank's catalog would invite the LLM to substitute the
+# current volume into prose that mentions "volume", which makes no
+# user-facing sense ("draft an email about the volume _" → "70%").
+as-context: off
 ---

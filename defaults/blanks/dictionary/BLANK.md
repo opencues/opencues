@@ -10,6 +10,10 @@ blankProximity: 3
 # Auto: bare "define ephemeral _" → wipe → "ephemeral: lasting for a very short time"
 # (word embedded). Copula phrasing → keep.
 blankReplace: auto
+# Blank-as-context: deliberately OFF. The "ambient" set for dictionary
+# would be "every word the user looks up" — a surveillance shape that
+# also has no fixed slot list. Keep this as a keyword-triggered lookup.
+as-context: off
 ---
 
 Implementation: built-in `DictionaryBlank` in `@opencues/runtime`

@@ -17,6 +17,16 @@ blankKeywordExpansions.tsla: Tesla
 # Auto: bare "nvda _" → wipe → "NVDA: $198.47" (ticker embedded).
 # "nvda is _" or copula phrasings → keep → "nvda is NVDA: $198.47".
 blankReplace: auto
+# Blank-as-context: when blank-context-mode is on, expose 5 popular
+# tickers as ambient tokens ([STOCKS NVDA], [STOCKS AAPL], …) so
+# fluid-blank + transform-blank can route casual prose ("how are
+# my stocks doing _", "draft a market update _") through the
+# catalog without typing each ticker. To track YOUR portfolio
+# instead, replace `context-slots` with `context-bind: portfolio`
+# + `context-bind-split: ,` + `split-values-in-token-names: ok`
+# here and add `portfolio: NVDA,AAPL,…` to ~/.cues/IDENTITY.md.
+as-context: safe
+context-slots: NVDA, AAPL, TSLA, MSFT, GOOGL
 ---
 
 Implementation: built-in `StocksBlank` in `@opencues/runtime`

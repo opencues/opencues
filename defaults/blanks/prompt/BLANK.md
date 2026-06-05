@@ -15,6 +15,10 @@ blankTip: Prompt improver
 model: openai/gpt-oss-120b
 altCount: 3
 includeOriginal: true
+# Blank-as-context: deliberately OFF. PromptImprover is a transform
+# blank, not a data source — there's no "current value" to surface
+# as an ambient token.
+as-context: off
 ---
 
 > Implementation: built-in `PromptImproverBlank` in `@opencues/runtime`

@@ -9,6 +9,10 @@ blankAutoPopulate: true
 blankFormat: string
 blankTip: Answer
 blankProximity: 20
+# Blank-as-context: deliberately OFF. AnswerBlank is a per-query LLM
+# lookup with no fixed "current value" to surface — every invocation
+# produces a different answer from the user's phrasing.
+as-context: off
 ---
 
 Implementation: built-in `AnswerBlank` in `@opencues/runtime`

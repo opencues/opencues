@@ -21,4 +21,10 @@ blankClearOnEdit: true
 # auto-detection (which would flag this as "not chrome" because of
 # the blankScript: extension).
 on-host: chrome, claude-code, gemini-cli, opencode
+# Blank-as-context: deliberately OFF. OpenCues settings feeding back
+# into prompts is a loop hazard — the LLM could be steered by current
+# settings into recommending other settings, and substitution would
+# inline live config values into prose that mentions OpenCues. Settings
+# are a CONTROL surface, not an ambient data source.
+as-context: off
 ---

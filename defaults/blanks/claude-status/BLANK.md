@@ -12,6 +12,12 @@ blankDismissible: true
 # The Yes/No answer reads naturally on its own — no get() reformat needed.
 blankReplace: auto
 blankClearOnEdit: true
+# Blank-as-context: when blank-context-mode is on, expose Anthropic
+# API status as [CLAUDE-STATUS API] so casual phrasings ("is claude
+# working _", "anything broken _", "should i wait to retry _") route
+# through the catalog without typing the keyword.
+as-context: safe
+context-slots: api
 ---
 
 Implementation: built-in `ClaudeStatusBlank` in `@opencues/runtime`

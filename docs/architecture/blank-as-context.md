@@ -213,25 +213,34 @@ field added to `OpenCuesState` in `config-loader.ts` per the
 | `packages/opencues-runtime/src/modules/resolver.ts` | At resolver init, plan slots once + create cache; on each fluid-blank call, snapshot + pass to source |
 | `packages/opencues-runtime/src/blank-context-integration.test.ts` | **NEW** — end-to-end with mocked LLM |
 
-## Per-blank audit (within current shipping blanks)
+## Per-blank audit (shipped state — June 2026)
 
-| Blank | v1 behaviour | What slot names mean |
-|---|---|---|
-| **stocks** | `as-context: safe`, `context-bind: portfolio` (split `,`) | Each ticker is a slot — `[STOCK AAPL]` etc. |
-| **crypto** | `as-context: safe`, `context-bind: watchlist` (split `,`) | Each symbol — `[CRYPTO BTC]` |
-| **weather** | `as-context: safe`, `context-bind: home_city` | One slot per bound city — `[WEATHER LONDON]` |
-| **countries** | `as-context: safe`, `context-bind: countries` (split `,`) | Each country — `[COUNTRIES UK]` |
-| **dictionary** | `as-context: off` | Words a user looks up don't have a stable ambient set; would surveil typing history |
-| **hackernews** | `as-context: safe`, `context-slots: [top]` | Single fixed slot — `[HACKERNEWS TOP]` |
-| **affirmations** | `as-context: safe`, `context-slots: [today]` | `[AFFIRMATIONS TODAY]` |
-| **opencues-settings** | `as-context: off` | Settings values feeding back into prompts is a loop hazard |
-| **prompt-improver** | `as-context: off` | Not a data source |
-| **answer** | `as-context: off` | Not a data source |
-| **volume / brightness / claude-status / sentinel** | `as-context: off` | Action / system-state blanks; context not useful |
+Every shipping default `BLANK.md` now declares `as-context:` explicitly
+(safe or off). Data sources default ON; action / write / loop-hazard
+blanks default OFF with a one-line rationale. The frontmatter is still
+gated by the global `blank-context-mode` scalar (off by default), so
+users who don't flip the scalar see zero behaviour change.
 
-Default frontmatter additions land in `defaults/blanks/*.md` so a
-fresh `opencues seed-configs` user inherits the safe defaults. Users
-who don't flip the scalar see zero behaviour change.
+| Blank | Shipped frontmatter | Tokens surfaced | Why this default |
+|---|---|---|---|
+| **weather** | `as-context: safe`, `context-bind: workCity` | `[WEATHER <CITY>]` from `IDENTITY.md:workCity` | Live ambient data; binds to existing identity field. |
+| **stocks** | `as-context: safe`, `context-slots: NVDA, AAPL, TSLA, MSFT, GOOGL` | `[STOCKS NVDA]` etc. | Live ambient data; popular tech defaults. Users can swap to `context-bind: portfolio` (with split + ack) for their own watchlist. |
+| **crypto** | `as-context: safe`, `context-slots: BTC, ETH` | `[CRYPTO BTC]`, `[CRYPTO ETH]` | Live ambient data; majors only. |
+| **hackernews** | `as-context: safe`, `context-slots: top` | `[HACKERNEWS TOP]` | Live single-slot — current top story. |
+| **claude-status** | `as-context: safe`, `context-slots: api` | `[CLAUDE-STATUS API]` | Live single-slot — Anthropic API status. Useful for "is claude working _" / "should i wait to retry _" routing. |
+| **dictionary** | `as-context: off` | — | No stable ambient set; "every word the user looks up" is a surveillance shape. |
+| **answer** | `as-context: off` | — | Per-query LLM lookup; no current value to surface. |
+| **prompt** | `as-context: off` | — | Transform blank, not a data source. |
+| **sentinel** | `as-context: off` | — | Write surface for `IDENTITY.md`; identity is its own read surface. Surfacing this as ambient would be a self-reference. |
+| **opencues** | `as-context: off` | — | Settings feedback loop hazard. |
+| **volume / brightness** | `as-context: off` | — | Action blanks; surfacing current volume/brightness in ambient prose makes no user-facing sense. |
+| **countries / gh-issues / example / affirmations** | omitted (= off) | — | No sensible default slot list without user-provided binding (countries needs a country list; gh-issues needs `owner/repo`). |
+
+Users who don't flip `blank-context-mode: safe` in OPENCUES.md see
+zero behaviour change. Once flipped, the data-source blanks above
+(weather/stocks/crypto/hackernews/claude-status) all participate
+automatically — no per-blank knob to find. Users who want to opt
+OUT individually flip `as-context: off` in the relevant `BLANK.md`.
 
 ## Test plan
 
