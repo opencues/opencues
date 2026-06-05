@@ -66,21 +66,50 @@ The three file formats (Cues / Blanks / Auditors) are open standards — designe
 
 ### 1. System prerequisites (one-time per machine)
 
-Install Node + pnpm:
+OpenCues needs **Node.js 18+** and **pnpm 8+**. The installers are bash +
+POSIX coreutils, so platform support is:
+
+- **macOS** (Intel + Apple Silicon) — supported natively.
+- **Linux** — supported natively (the primary dev platform).
+- **Windows** — **not** supported natively; run everything inside **WSL2**.
+  `package.json` declares `"os": ["darwin", "linux"]`, so `pnpm install`
+  refuses up front on native Windows rather than failing mid-install.
+
+Pick your platform and run the matching block. Each ends by verifying
+`node --version` (v18+) and `pnpm --version` (8+).
+
+**macOS** — default shell is zsh, so the API-key + alias steps below write to `~/.zshrc`:
 
 ```bash
-# Node.js 18+ — pick whichever installer you prefer
-curl -fsSL https://fnm.vercel.app/install | bash && exec $SHELL -l
-fnm install --lts && fnm use lts-latest
-# OR: brew install node, apt install nodejs, nvm, etc.
+brew install node            # Node.js 18+ — or: brew install fnm && fnm install --lts
+corepack enable pnpm         # pnpm 8+ — ships with Node 16+; or: npm install -g pnpm
 
-# pnpm 8+
-npm install -g pnpm
-
-# verify
-node --version    # v18 or higher
-pnpm --version    # 8 or higher
+node --version && pnpm --version
 ```
+
+**Linux** — distro Node packages are often stale, so fnm (or nodesource) is safer:
+
+```bash
+curl -fsSL https://fnm.vercel.app/install | bash && exec $SHELL -l
+fnm install --lts && fnm use lts-latest    # Node.js 18+
+# OR (Debian/Ubuntu, if new enough): sudo apt install nodejs npm
+
+corepack enable pnpm         # pnpm 8+ — or: npm install -g pnpm
+
+node --version && pnpm --version
+```
+
+**Windows** — install WSL2 once, then run **every** OpenCues command inside the Linux shell (Ubuntu terminal), **not** PowerShell or CMD:
+
+```powershell
+# In an elevated PowerShell (Windows side), then reboot when prompted:
+wsl --install -d Ubuntu
+```
+
+Open the **Ubuntu** terminal and follow the **Linux** block above for Node +
+pnpm. From there, every step in this README runs inside WSL. The Chrome
+integration is the one cross-boundary case — it builds in WSL and deploys to
+Windows-side Chrome via `--wsl` / `--target` (see [step 4](#4-install-an-integration)).
 
 **That's it for prereqs.** Anything else an integration needs (bun for
 opencode/shell, tmux for shell, bubblewrap/espeak-ng/brightnessctl on
