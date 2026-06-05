@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fixed — fluid-blank catalog recall +26pp via FUSED prompt rebalance
+
+The FUSED_SYSTEM_PROMPT carries 30+ plain-prose factual-lookup examples that established a strong "answer in prose" prior — strong enough that catalog tokens were being dropped on indirect phrasings (`how are my stocks doing _` → empty answer; `biggest mover in my portfolio _` → invented `[PORTFOLIO]` bracket-token; `what's it like outside _` → prose instead of `[WEATHER LONDON]`). The shipped catalog block had a CRITICAL DECISION RULE but no inline counterweight to the plain-prose pull.
+
+- **`@opencues/core` (0.2.2 → 0.2.3)** — `FUSED_SYSTEM_PROMPT` adds an explicit PRIORITY ORDER section (catalog tokens FIRST when a USER CONTEXT or BLANK CONTEXT block is present), plus an anti-hallucination rule: covers-hints are routing synonyms, NEVER bracket-token names ("portfolio" in the covers for `[STOCKS NVDA]` routes there; it does NOT license emitting `[PORTFOLIO]`). The empty-answer failure mode is named explicitly as the worst outcome.
+- **Bench evidence** — new `tests/benchmarks/blank-context-recall/` matrix (30-35 cases, 5-provider matrix shape lifted from the matrix bench). Cerebras gpt-oss-120b on the production path: 25/35 (71.4%) → 34/35 (**97.1%**). Positive class 65% → 100%; negative 100% preserved. Ambient bench (`fluid-blank-ambient/fused-bench.ts`) holds at 174/176 — within noise.
+- **Re-run before editing `FUSED_SYSTEM_PROMPT`** — `OPENCUES_BENCH_PROVIDER=cerebras-gpt-oss npx tsx tests/benchmarks/blank-context-recall/prod-bench.ts`. Target: positive ≥95%, negative 100%, no invented bracket-tokens.
+
 ### Added — spec-version gate (the standard's "MUST refuse newer" rule, finally enforced)
 
 The `SPEC.md` § Version policy clause "A conforming reader MUST refuse to parse a file whose declared spec version is higher than the reader's pinned SPEC_VERSION" used to be normative-but-inert — the parsers ignored the `spec:` frontmatter field entirely. Conformance fixtures pretended to cover it via regex-matching the fixture content, never calling into the runtime.

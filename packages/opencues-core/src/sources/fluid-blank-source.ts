@@ -157,6 +157,17 @@ The user is typing a casual note/sentence and has dropped an underscore (_) next
 
 You may also receive:
 - An <UNTRUSTED_FIELD_CONTEXT> block describing the FIELD the user is filling (label, placeholder, page title). Use it to (a) STEER THE ANSWER FORMAT, and (b) WHEN THE INPUT LACKS ITS OWN LOOKUP PHRASE, treat the field's label as the lookup question itself.
+- A USER CONTEXT block listing bracket-tokens for the user's personal data ([FIRST NAME], [EMAIL], etc.).
+- A BLANK CONTEXT block listing bracket-tokens for ambient live data ([STOCKS NVDA], [WEATHER LONDON], etc.).
+
+PRIORITY ORDER when deciding the ANSWER:
+1. CATALOG TOKENS FIRST. If a USER CONTEXT or BLANK CONTEXT block is present AND the user's query topically overlaps any token (use the token's description AND any "covers:" hint — be liberal), emit that token (or those tokens) verbatim as the ANSWER. The runtime substitutes the live value after your response. This OVERRIDES the plain-prose examples below — when a catalog applies, prefer the token even if you "know" the answer. When multiple tokens share a prefix (e.g. several [STOCKS *]) and the query is general about the topic ("how are my stocks", "morning portfolio check", "any movers"), emit ALL matching tokens separated by single spaces.
+2. FIELD-LABEL STEERING. If <UNTRUSTED_FIELD_CONTEXT> sets a specific format (Airport code, ISO 3166, etc.), shape your answer to that format.
+3. PLAIN FACTUAL LOOKUP. If no catalog applies and no field-format steers, answer in plain prose per the examples below.
+
+NEVER return an empty ANSWER when a catalog token applies — emit the matching token instead. Empty answers on catalog-relevant queries are the worst failure mode (the user sees nothing).
+
+NEVER invent a bracket-token from the "covers:" hint. The covers list contains synonyms that ROUTE you to a real token in the catalog — it is NOT a list of token names. E.g. seeing "portfolio" in the covers hint for [STOCKS NVDA] means a "portfolio" query routes to [STOCKS NVDA] (and any other [STOCKS *]); it does NOT mean you may emit [PORTFOLIO], [HOLDINGS], [WATCHLIST], or any other bracketed word that does not appear verbatim in the catalog list.
 
 Output exactly two lines, nothing else:
 SPAN: <the contiguous substring of the input including _, OR the literal word NONE>
@@ -193,7 +204,7 @@ ANSWER RULES:
 10. Strip surrounding markdown/quotes.
 11. ANSWER is empty when SPAN=NONE.
 
-EXAMPLES:
+EXAMPLES (general factual lookups when no catalog applies — when a catalog DOES apply, follow PRIORITY ORDER #1 and emit the token instead of looking up the value yourself):
 
 INPUT: unicode for ampersand _ where do i put it
 SPAN: unicode for ampersand _
@@ -767,7 +778,7 @@ export class FluidBlankSource implements CueSource {
         this.emit({ type: 'bailed', reason: 'consumed-upstream', latencyMs: 0 });
         return { results: [] };
       }
-      this.emit({ type: 'started', textLen: context.text.length, blankIdx, llm: describeLLMCall(this.provider, this.model, undefined, { maxTokens: this.maxTokensOverride, temperature: this.temperatureOverride }) });
+      this.emit({ type: 'started', textLen: context.text.length, blankIdx, llm: describeLLMCall(this.provider, this.model, 'low', { maxTokens: this.maxTokensOverride, temperature: this.temperatureOverride }) });
 
       // Strict JSON on groq gpt-oss — same gate as transform-blank.
       const useJson = useStrictJson(this.provider.id, this.model);
@@ -968,9 +979,19 @@ export class FluidBlankSource implements CueSource {
         // Per-feature temperature override (`fluid-blank-temperature:`).
         // 0 default — lookups should be deterministic.
         temperature: this.temperatureOverride ?? 0,
-        // reasoningEffort omitted — provider adapter applies its
-        // bench-derived default (see ProviderAdapter.defaultReasoningEffort
-        // in @opencues/core/llm-provider.ts).
+        // Force reasoning to 'low'. Bench-validated: when the provider's
+        // default reasoning_effort is 'medium' or higher (Cerebras
+        // gpt-oss-120b ships at medium), the model reasons itself
+        // OUT of catalog-token emission on indirect queries
+        // ("what's it like outside _" → reasons to "yes" instead of
+        // [WEATHER LONDON]). Positive-class recall drops from ~95%
+        // (reasoning=low) to ~5% (reasoning=medium). Factual
+        // negatives stay 100% either way — reasoning was never
+        // load-bearing for fluid-blank lookups, only the
+        // catalog-emission decision is reasoning-sensitive. See
+        // `tests/benchmarks/blank-context-recall/FINDINGS.md`
+        // § Reasoning-effort gap (June 2026).
+        reasoningEffort: 'low',
         seed: 42,
         responseFormat,
       },
