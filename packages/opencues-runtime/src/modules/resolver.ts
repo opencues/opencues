@@ -102,6 +102,18 @@ export interface ResolverOptions {
     reason: 'invalid-api-key' | 'network' | 'rate-limit' | 'endpoint-not-found' | 'model-not-found' | 'insufficient-credits' | 'bad-request',
     err?: Error,
   ) => string;
+  /**
+   * Word-indices of `_` slots claimed by keyword-bound BlankFill blanks
+   * (volume / brightness / weather / stocks-ticker / etc.) for the given
+   * text. When every `_` in the buffer is in this set, the resolver
+   * skips the `blankContextProvider()` fetch — none of the sources that
+   * consume the catalog (FluidBlank, TransformBlank) will fire because
+   * they all cede to keyword-bound BlankFill. Wired in `boot-common`
+   * from `BlankFill.scan(text)`. Omitting it leaves the catalog fetch
+   * unchanged (legacy behaviour). Saves ~5 sequential script/network
+   * calls (1+ s) on every `volume _` / `brightness _` / `weather _`.
+   */
+  readonly keywordBoundSlotIndices?: (text: string) => readonly number[];
 }
 
 interface CuesCoreLike {
@@ -182,6 +194,28 @@ function isRoutedWordGroup(s: unknown): s is RoutedWordSourceGroupLike {
     && typeof s === 'object'
     && (s as { id?: unknown }).id === 'word-cues'
     && typeof (s as { classify?: unknown }).classify === 'function';
+}
+
+/** True when no `_` slot will be available to a catalog-consuming source.
+ *  Two cases collapse: (1) buffer has no `_` at all — neither FluidBlank
+ *  nor TransformBlank fires (both need `_`); (2) every `_` is claimed by
+ *  a keyword-bound BlankFill slot — both sources cede in that case. In
+ *  either case the per-resolve blank-context provider fetch (N sequential
+ *  script/network calls) is pure waste. */
+function noBlankContextConsumer(
+  cleanWords: readonly string[],
+  claimed: readonly number[],
+): boolean {
+  const claimedSet = new Set(claimed);
+  let sawBlank = false;
+  for (let i = 0; i < cleanWords.length; i++) {
+    if (cleanWords[i] !== '_') continue;
+    sawBlank = true;
+    if (!claimedSet.has(i)) return false;  // free `_` — fluid/transform may consume
+  }
+  // Either no `_` at all, or every `_` was keyword-bound — either way no
+  // catalog-consuming source will fire.
+  return true;
 }
 
 export class Resolver {
@@ -1086,8 +1120,14 @@ export class Resolver {
         // Ambient blank-context. Provider call is cache-backed; runs
         // on every resolve so OPENCUES.md flips are picked up without
         // host restart. When mode is off the provider returns
-        // undefined.
-        blankContext: this.configLoader.opencuesState.blankContextMode !== 'off' && this.blankContextProvider
+        // undefined. ALSO skipped when every `_` in the buffer is
+        // already claimed by a keyword-bound BlankFill slot — the only
+        // sources that consume the catalog (FluidBlank, TransformBlank)
+        // both cede in that case, so the fetch would be 5 sequential
+        // script/network calls whose result is thrown away.
+        blankContext: this.configLoader.opencuesState.blankContextMode !== 'off'
+          && this.blankContextProvider
+          && !noBlankContextConsumer(cleanWords, this.options.keywordBoundSlotIndices?.(text) ?? [])
           ? await this.blankContextProvider()
           : undefined,
       });

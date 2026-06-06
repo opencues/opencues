@@ -851,6 +851,101 @@ describe('Resolver ambient-context gate', () => {
   });
 });
 
+describe('Resolver blank-context skip for keyword-bound slots (regression: volume _ took 1.2s on June 2026)', () => {
+  // Sources that consume the `blankContext` catalog (FluidBlank,
+  // TransformBlank) cede when a keyword-bound BlankFill slot claims
+  // the `_`. When EVERY `_` is keyword-bound, the per-resolve catalog
+  // fetch — N sequential script/network calls — is pure waste. The
+  // resolver skips it via the `keywordBoundSlotIndices` option, wired
+  // by each adapter from BlankFill.scan.
+  interface CapturedCtx { blankContext?: unknown }
+
+  function setup(opts: { keywordBoundSlotIndices?: (text: string) => readonly number[] }) {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': CUES_MD },
+    });
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    loader.applyOpenCuesScalar('blank-context-mode', 'safe');
+
+    let providerCallCount = 0;
+    const blankContextProvider = async () => {
+      providerCallCount++;
+      return { fields: [], catalog: new Map<string, string>(), mode: 'safe' as const };
+    };
+
+    const resolver = new Resolver(
+      adapter, hlState, dynDefs, loader,
+      {
+        endpoint: 'http://test', apiKey: 'x', defaultModel: 'm', debounceMs: 10,
+        httpAdapter: {},
+        keywordBoundSlotIndices: opts.keywordBoundSlotIndices,
+      },
+      undefined, undefined, undefined, undefined, undefined,
+      blankContextProvider,
+    );
+    const capturedCtxs: CapturedCtx[] = [];
+    (resolver as unknown as { _resolver: { resolve(ctx: CapturedCtx): Promise<{ results: MockResult[] }> } })._resolver = {
+      resolve: async (ctx) => { capturedCtxs.push(ctx); return { results: [] }; },
+    };
+    return { resolver, capturedCtxs, providerCalls: () => providerCallCount };
+  }
+
+  it('every `_` is keyword-bound → blankContextProvider is NOT called', async () => {
+    // `volume _` → BlankFill claims word index 1.
+    const { resolver, capturedCtxs, providerCalls } = setup({
+      keywordBoundSlotIndices: text => text === 'volume _' ? [1] : [],
+    });
+    await resolver.resolveAndApply('volume _');
+    expect(providerCalls()).toBe(0);
+    expect(capturedCtxs[0]?.blankContext).toBeUndefined();
+  });
+
+  it('no keyword-bound slot → blankContextProvider IS called (transform/fluid still get catalog)', async () => {
+    // `draft stocks information email _` — none of those words are
+    // blank keywords (stocks blank's keywords are tickers like NVDA,
+    // not "stocks"). BlankFill returns no slots → catalog fetched →
+    // TransformBlank gets it.
+    const { resolver, capturedCtxs, providerCalls } = setup({
+      keywordBoundSlotIndices: () => [],
+    });
+    await resolver.resolveAndApply('draft stocks information email _');
+    expect(providerCalls()).toBe(1);
+    expect(capturedCtxs[0]?.blankContext).toBeDefined();
+  });
+
+  it('partial coverage (some `_` claimed, some not) → blankContextProvider IS called', async () => {
+    // Mixed buffer: one keyword-bound, one free. The free `_` may go
+    // to FluidBlank / TransformBlank, so the catalog is still needed.
+    const { resolver, capturedCtxs, providerCalls } = setup({
+      // Only word index 1 is keyword-bound; the `_` at word 5 is free.
+      keywordBoundSlotIndices: () => [1],
+    });
+    await resolver.resolveAndApply('volume _ then question _');
+    expect(providerCalls()).toBe(1);
+    expect(capturedCtxs[0]?.blankContext).toBeDefined();
+  });
+
+  it('no `_` in buffer → blankContextProvider is NOT called', async () => {
+    // No blanks anywhere → no consumer of the catalog → skip.
+    const { resolver, capturedCtxs, providerCalls } = setup({
+      keywordBoundSlotIndices: () => [],
+    });
+    await resolver.resolveAndApply('the lawyer filed today');
+    expect(providerCalls()).toBe(0);
+    expect(capturedCtxs[0]?.blankContext).toBeUndefined();
+  });
+
+  it('option omitted → legacy behaviour (provider called whenever `_` is present)', async () => {
+    const { resolver, capturedCtxs, providerCalls } = setup({});
+    await resolver.resolveAndApply('volume _');
+    expect(providerCalls()).toBe(1);
+    expect(capturedCtxs[0]?.blankContext).toBeDefined();
+  });
+});
+
 describe('Resolver blank-trigger-mode gate', () => {
   // The user-facing distinction: in `immediate` mode a bare `_` at the
   // end of the buffer bypasses the debounce and resolves NOW. In

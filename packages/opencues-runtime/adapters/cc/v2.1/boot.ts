@@ -618,6 +618,7 @@ export function boot(host: HostInfo): BootResult {
     debounceMs: host.llmDebounceMs ?? 500,
     missingKeyFallbackMessage: hasAnyKey ? undefined : NATIVE_HOST_MISSING_KEY_MESSAGE,
     formatLLMErrorAsSubstitute: nativeHostFormatLLMError,
+    keywordBoundSlotIndices: (text: string) => blankFill.scan(text).map(s => s.index),
   }, spanFillState, agentTaskState, blankLoading, markdownRender, selectorSatelliteState,
   buildBlankContextProvider(configLoader, host.blanks, log));
   if (hasAnyKey) {
