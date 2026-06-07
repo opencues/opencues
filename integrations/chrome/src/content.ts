@@ -25,9 +25,23 @@ import {
 import { clearStatusbar } from './runtime-statusbar';
 import { deriveOpenCuesColours } from './derive-colours';
 import { walkPlainText, plainOffsetOfPosition } from './dom-walk';
+import {
+  resolveFocusedFromEvent as _resolveFromEvent,
+  resolveFocusedElement as _resolveFromState,
+} from './shadow-focus';
 
 function isTextInput(el: HTMLElement): boolean {
   return el.isContentEditable || isNormalInput(el);
+}
+
+// Local wrappers — inject the isTextInput predicate into the shared
+// shadow-piercing helpers. Lets the shadow-focus module stay
+// chrome-host-agnostic + unit-testable.
+function resolveFocusedFromEvent(e: Event): HTMLElement | null {
+  return _resolveFromEvent(e, isTextInput);
+}
+function resolveFocusedElement(start: Element | null): HTMLElement | null {
+  return _resolveFromState(start, isTextInput);
 }
 
 // CSS Custom Highlight pseudo-elements don't reliably inherit CSS
@@ -154,7 +168,7 @@ async function init(): Promise<void> {
   };
 
   document.addEventListener('focusin', (e) => {
-    const el = e.target as HTMLElement;
+    const el = resolveFocusedFromEvent(e);
     if (el) attachToFocused(el);
     // Wipe any pending trust-gate credits. A `_` keypress in a
     // different field (e.g. an iframe OpenCues isn't attached to)
@@ -171,7 +185,9 @@ async function init(): Promise<void> {
   // input both count as "left the editor".
   document.addEventListener('focusout', (e) => {
     const evt = e as FocusEvent;
-    const next = evt.relatedTarget as HTMLElement | null;
+    // relatedTarget can be retargeted to a shadow host the same way
+    // focusin's target is — resolve before testing isTextInput.
+    const next = resolveFocusedElement(evt.relatedTarget as Element | null);
     if (!next || !isTextInput(next)) {
       if (currentTarget) {
         if (!isNormalInput(currentTarget)) clearDerivedColours(currentTarget);
@@ -187,9 +203,8 @@ async function init(): Promise<void> {
     }
   });
 
-  if (document.activeElement && document.activeElement instanceof HTMLElement) {
-    attachToFocused(document.activeElement);
-  }
+  const initialActive = resolveFocusedElement(document.activeElement);
+  if (initialActive) attachToFocused(initialActive);
 
   // Re-derive colours when the user toggles OS dark/light mode — host
   // pages that respect prefers-color-scheme will have flipped their
@@ -435,8 +450,10 @@ init();
 // on this tab?" without opening devtools.
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.type !== 'opencues:diagnostic-ping') return;
-  const active = document.activeElement;
-  const activeEl = active instanceof HTMLElement ? active : null;
+  // Shadow-piercing: Self-Check on shadow-DOM sites (Reddit's
+  // <shreddit-composer>, etc.) would otherwise report the wrapper custom
+  // element instead of the real focused contenteditable.
+  const activeEl = resolveFocusedElement(document.activeElement);
   const isCE = !!activeEl && activeEl.isContentEditable === true;
   const isNI = !!activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
   const activeAttachable = activeEl ? isTextInput(activeEl) : false;
