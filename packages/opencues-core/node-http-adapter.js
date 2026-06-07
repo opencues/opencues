@@ -76,10 +76,23 @@ class NodeHttpAdapter {
 
     /**
      * Make a POST request with keep-alive and provider overrides.
+     *
+     * `options.signal` (AbortSignal) — when triggered, the in-flight
+     * request is destroyed and the promise rejects with an AbortError-
+     * shaped error. Used by the resolver to cancel stale LLM calls
+     * when a newer keystroke supersedes the in-flight one.
      */
-    async post(url, body, headers) {
+    async post(url, body, headers, options) {
         const https = require('https');
         const u = new URL(url);
+        const signal = options && options.signal;
+
+        // Pre-aborted signal: reject immediately without touching the network.
+        if (signal && signal.aborted) {
+            const err = new Error('aborted');
+            err.name = 'AbortError';
+            return Promise.reject(err);
+        }
 
         // Apply provider-specific overrides to the request body
         const overrides = this.providerOverrides[u.hostname];
@@ -107,6 +120,24 @@ class NodeHttpAdapter {
                 });
                 req.on('error', reject);
                 req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+                // Wire signal AFTER req is created so destroy() targets
+                // the right object. The listener is one-shot — once
+                // aborted, the request is gone.
+                let onAbort = null;
+                if (signal) {
+                    onAbort = () => {
+                        const err = new Error('aborted');
+                        err.name = 'AbortError';
+                        try { req.destroy(err); } catch (_) {}
+                        reject(err);
+                    };
+                    signal.addEventListener('abort', onAbort, { once: true });
+                    // Detach the listener once the request settles so we
+                    // don't leak handlers when the resolve-generation's
+                    // controller is held past this request's lifetime.
+                    const detach = () => signal.removeEventListener('abort', onAbort);
+                    req.on('close', detach);
+                }
                 req.write(body);
                 req.end();
             } catch (e) {

@@ -1488,7 +1488,7 @@ export async function dispatchChat(
   provider: ProviderAdapter,
   httpAdapter: HttpAdapterShape,
   req: ChatRequest,
-  ctx: { apiKey: string; endpoint?: string },
+  ctx: { apiKey: string; endpoint?: string; signal?: AbortSignal },
 ): Promise<string> {
   // CLI-transport providers (e.g. claude-cli daemon, openai-subscription)
   // handle their own lifecycle and return the assistant text directly.
@@ -1496,6 +1496,10 @@ export async function dispatchChat(
   // passes it because resolveLLM doesn't know which transport will be
   // picked until after the dispatch, and the call sites are
   // transport-agnostic.
+  //
+  // TODO: thread `ctx.signal` into `invokeCli` so subprocess providers
+  // can also honour the resolver's cancellation. v1 only covers HTTP
+  // because that's where the wasted-token cost dominates.
   if (provider.transport === 'cli') {
     if (!provider.invokeCli) {
       throw new Error(`provider ${provider.id} declared transport='cli' but has no invokeCli`);
@@ -1503,9 +1507,11 @@ export async function dispatchChat(
     return provider.invokeCli(req, ctx);
   }
   // Default HTTP transport — byte-for-byte identical to pre-May-2026
-  // inline dispatch at the five source call sites.
+  // inline dispatch at the five source call sites; `signal` flows through
+  // to httpAdapter.post so the in-flight request is cancelled when the
+  // resolver's generation rolls.
   const built = provider.buildRequest(req, ctx);
-  const raw = await httpAdapter.post(built.url, built.body, built.headers);
+  const raw = await httpAdapter.post(built.url, built.body, built.headers, { signal: ctx.signal });
   return provider.parseResponse(raw);
 }
 
@@ -1908,13 +1914,20 @@ function looksTransient(raw: string): boolean {
  *      doesn't).
  */
 export interface HttpAdapterShape {
-  post(url: string, body: string, headers: Record<string, string>): Promise<string>;
+  /** `options.signal` cancels the in-flight request. Optional —
+   *  callers that don't pass options get legacy behaviour. */
+  post(
+    url: string,
+    body: string,
+    headers: Record<string, string>,
+    options?: { signal?: AbortSignal },
+  ): Promise<string>;
 }
 
 export function withFallback(base: HttpAdapterShape, fallback: ResolvedLLM | null | undefined): HttpAdapterShape {
   if (!fallback) return base;
   return {
-    post: async (url, body, headers) => {
+    post: async (url, body, headers, options) => {
       const tryFallback = async (): Promise<string> => {
         let fallbackBody = body;
         try {
@@ -1927,28 +1940,37 @@ export function withFallback(base: HttpAdapterShape, fallback: ResolvedLLM | nul
         const fbHeaders = { ...headers };
         // OpenAI-shape providers all use bearer auth; swap it.
         fbHeaders.Authorization = `Bearer ${fallback.apiKey}`;
-        return base.post(fallback.endpoint, fallbackBody, fbHeaders);
+        return base.post(fallback.endpoint, fallbackBody, fbHeaders, options);
       };
 
       let primary: string;
       try {
-        primary = await base.post(url, body, headers);
+        primary = await base.post(url, body, headers, options);
       } catch (err) {
+        // Abort propagates without trying the fallback — the whole
+        // resolve was cancelled; retrying defeats the cancel.
+        if (isAbortError(err)) throw err;
         // Network / timeout / agent error — try fallback.
         try {
           return await tryFallback();
-        } catch {
+        } catch (fbErr) {
+          if (isAbortError(fbErr)) throw fbErr;
           throw err;                                       // both failed → bubble the original
         }
       }
       if (looksTransient(primary)) {
         try {
           return await tryFallback();
-        } catch {
+        } catch (fbErr) {
+          if (isAbortError(fbErr)) throw fbErr;
           return primary;                                  // fallback also failed → return primary's error body
         }
       }
       return primary;
     },
   };
+}
+
+function isAbortError(err: unknown): boolean {
+  return !!err && typeof err === 'object' && (err as { name?: string }).name === 'AbortError';
 }

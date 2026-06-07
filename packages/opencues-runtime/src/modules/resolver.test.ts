@@ -946,6 +946,126 @@ describe('Resolver blank-context skip for keyword-bound slots (regression: volum
   });
 });
 
+describe('Resolver per-resolve AbortController (stale-generation cancellation)', () => {
+  // When a newer keystroke fires resolveAndApply while a prior one is
+  // still in flight, the prior call's AbortController is aborted so
+  // pending LLM HTTP calls are cancelled mid-flight. Without this,
+  // sources run to completion and their results are dropped on
+  // generation mismatch — provider cost + rate-limit pressure burned
+  // for nothing. Sources thread `context.signal` into `httpAdapter.post`
+  // (via `dispatchChat`); the runtime's job is just to create the
+  // controller and roll it on generation increment.
+
+  interface CapturedCtx { signal?: AbortSignal }
+
+  function setup() {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': CUES_MD },
+    });
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    const resolver = new Resolver(adapter, hlState, dynDefs, loader, {
+      endpoint: 'http://test', apiKey: 'x', defaultModel: 'm', debounceMs: 10,
+      httpAdapter: {},
+    });
+    return { adapter, loader, resolver };
+  }
+
+  it('a fresh AbortSignal lands in the ctx of every resolve', async () => {
+    const { resolver } = setup();
+    const captured: CapturedCtx[] = [];
+    (resolver as unknown as { _resolver: { resolve(ctx: CapturedCtx): Promise<{ results: MockResult[] }> } })._resolver = {
+      resolve: async (ctx) => { captured.push(ctx); return { results: [] }; },
+    };
+    await resolver.resolveAndApply('alpha');
+    await resolver.resolveAndApply('alpha _');
+    expect(captured.length).toBe(2);
+    expect(captured[0].signal).toBeInstanceOf(AbortSignal);
+    expect(captured[1].signal).toBeInstanceOf(AbortSignal);
+    expect(captured[0].signal).not.toBe(captured[1].signal);
+  });
+
+  it('a newer resolveAndApply aborts the PRIOR one\'s signal mid-flight', async () => {
+    const { resolver } = setup();
+    // Long-running resolve that we'll observe the signal on. Resolves
+    // when the SECOND call comes in.
+    let firstSignal: AbortSignal | undefined;
+    let firstStarted!: (v: void) => void;
+    const firstStartedP = new Promise<void>(r => { firstStarted = r; });
+    let firstResolve!: (v: { results: MockResult[] }) => void;
+    let secondCalled = false;
+    (resolver as unknown as { _resolver: { resolve(ctx: CapturedCtx): Promise<{ results: MockResult[] }> } })._resolver = {
+      resolve: async (ctx) => {
+        if (!secondCalled) {
+          firstSignal = ctx.signal;
+          firstStarted();
+          // First call blocks until we resolve it externally — simulating
+          // a real LLM call that is still in flight.
+          return new Promise(r => { firstResolve = r; });
+        }
+        return { results: [] };
+      },
+    };
+    const firstP = resolver.resolveAndApply('alpha');
+    await firstStartedP;
+    expect(firstSignal?.aborted).toBe(false);
+    // Fire a newer resolve — should abort the first signal.
+    secondCalled = true;
+    const secondP = resolver.resolveAndApply('alpha _');
+    // Give the abort a microtask to fire.
+    await Promise.resolve();
+    expect(firstSignal?.aborted).toBe(true);
+    // Unblock the first call so the test can clean up.
+    firstResolve({ results: [] });
+    await firstP;
+    await secondP;
+  });
+
+  it('an aborted resolve does NOT log as an error (AbortError is expected on supersede)', async () => {
+    const { adapter, resolver } = setup();
+    let firstSignal: AbortSignal | undefined;
+    let firstStarted!: (v: void) => void;
+    const firstStartedP = new Promise<void>(r => { firstStarted = r; });
+    let abortedRejection!: (e: Error) => void;
+    let secondCalled = false;
+    (resolver as unknown as { _resolver: { resolve(ctx: CapturedCtx): Promise<{ results: MockResult[] }> } })._resolver = {
+      resolve: async (ctx) => {
+        if (!secondCalled) {
+          firstSignal = ctx.signal;
+          firstStarted();
+          // Simulate a source that throws AbortError when its signal trips.
+          return new Promise((_resolve, reject) => {
+            ctx.signal?.addEventListener('abort', () => {
+              const err = new Error('aborted');
+              err.name = 'AbortError';
+              abortedRejection = reject;
+              abortedRejection(err);
+            }, { once: true });
+          });
+        }
+        return { results: [] };
+      },
+    };
+    const errors: unknown[] = [];
+    const origLog = adapter.log.bind(adapter);
+    adapter.log = (level, msg, data) => {
+      if (level === 'error' && msg === 'Resolver.resolve threw') errors.push(data);
+      return origLog(level, msg, data);
+    };
+    const firstP = resolver.resolveAndApply('alpha');
+    await firstStartedP;
+    expect(firstSignal?.aborted).toBe(false);
+    secondCalled = true;
+    const secondP = resolver.resolveAndApply('alpha _');
+    await firstP;
+    await secondP;
+    expect(firstSignal?.aborted).toBe(true);
+    expect(errors).toEqual([]);
+  });
+});
+
 describe('Resolver blank-trigger-mode gate', () => {
   // The user-facing distinction: in `immediate` mode a bare `_` at the
   // end of the buffer bypasses the debounce and resolves NOW. In
