@@ -155,6 +155,25 @@ export interface CueContext {
 
   /** Additional context for the analysis */
   metadata?: Record<string, unknown>;
+
+  /**
+   * Abort signal for the resolve generation this context belongs to.
+   * The runtime Resolver creates an AbortController per `resolveAndApply`
+   * and aborts it when a new resolve preempts the in-flight one
+   * (generation roll). Sources that issue LLM calls SHOULD forward
+   * this into `httpAdapter.post(..., { signal })` so the underlying
+   * HTTP request is cancelled — the response would be dropped at apply
+   * time anyway (stale generation), but the provider call (cost +
+   * provider rate-limit pressure) is wasted without abort.
+   *
+   * Sources that don't issue HTTP requests can ignore this. Synchronous
+   * compute / cached lookups are too fast for cancellation to matter.
+   *
+   * Optional — adapters that don't supply a signal get legacy behaviour
+   * (the LLM call runs to completion; its response is dropped on
+   * generation mismatch in the runtime apply layer).
+   */
+  signal?: AbortSignal;
 }
 
 /** Single sentinels field. Mirror of `IdentityField` in
@@ -413,10 +432,23 @@ export interface StorageAdapter {
 
 /**
  * Adapter for HTTP operations.
+ *
+ * `post` accepts an optional 4th `options` arg carrying an `AbortSignal`.
+ * Implementations SHOULD honour `options.signal` — when the signal aborts,
+ * the in-flight request is cancelled (Node: `req.destroy`; browser:
+ * native `fetch({ signal })`). Backwards-compatible: callers that don't
+ * pass options keep legacy behaviour. Used by the resolver's per-resolve
+ * AbortController to drop LLM calls when a newer keystroke supersedes
+ * the in-flight one (saves provider $$$ + rate-limit pressure).
  */
 export interface HttpAdapter {
-  /** Make a POST request */
-  post(url: string, body: string, headers: Record<string, string>): Promise<string>;
+  /** Make a POST request. `options.signal` cancels the in-flight request. */
+  post(
+    url: string,
+    body: string,
+    headers: Record<string, string>,
+    options?: { signal?: AbortSignal },
+  ): Promise<string>;
 
   /** Make a GET request */
   get?(url: string, headers?: Record<string, string>): Promise<string>;

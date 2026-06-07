@@ -29,7 +29,20 @@ interface ProxiedFetchResponse {
  * Authorization header, simple request mode).
  */
 export class FetchHttpAdapter implements HttpAdapter {
-  async post(url: string, body: string, headers: Record<string, string>): Promise<string> {
+  async post(
+    url: string,
+    body: string,
+    headers: Record<string, string>,
+    options?: { signal?: AbortSignal },
+  ): Promise<string> {
+    const signal = options?.signal;
+    // Pre-aborted signal: reject before the round-trip starts.
+    if (signal?.aborted) {
+      const err = new Error('aborted');
+      err.name = 'AbortError';
+      throw err;
+    }
+
     // Per-call prompt-tail log. Gated behind `debug-mode: on` per the
     // chrome integration's logging policy (CLAUDE.md → "Debug logging"
     // section). The string printed is the user's own buffer + ambient
@@ -43,13 +56,32 @@ export class FetchHttpAdapter implements HttpAdapter {
       log.debug('[OpenCues] LLM prompt tail:', lastLine.slice(0, 200));
     } catch { /* ignore */ }
 
-    const response = await chrome.runtime.sendMessage<unknown, ProxiedFetchResponse>({
+    // Race the SW round-trip against the abort signal. If the signal
+    // trips during the in-flight call, we reject with AbortError
+    // immediately so the caller can drop its result. The SW request
+    // itself runs to completion (Chrome's native-messaging port has
+    // no per-message abort yet) — its response is silently discarded
+    // by the SW-side requestId tracker. v1 saves runtime work but
+    // not provider $$$ for chrome; full SW plumbing is a follow-up.
+    const fetchP = chrome.runtime.sendMessage<unknown, ProxiedFetchResponse>({
       type: 'opencues:fetch',
       method: 'POST',
       url,
       headers: { 'Content-Type': 'application/json', ...headers },
       body,
     });
+    const response = signal
+      ? await Promise.race<ProxiedFetchResponse>([
+          fetchP,
+          new Promise<ProxiedFetchResponse>((_resolve, reject) => {
+            signal.addEventListener('abort', () => {
+              const err = new Error('aborted');
+              err.name = 'AbortError';
+              reject(err);
+            }, { once: true });
+          }),
+        ])
+      : await fetchP;
     if (!response || !response.ok) {
       const status = response?.status ?? 0;
       const statusText = response?.statusText ?? 'sendMessage failed';

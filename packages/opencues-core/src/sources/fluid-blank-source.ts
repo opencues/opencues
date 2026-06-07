@@ -845,7 +845,7 @@ export class FluidBlankSource implements CueSource {
       // Per-feature override: `fluid-blank-max-tokens:` in OPENCUES.md.
       // 512 default is bench-tuned for short-factual answers.
       const fusedOut = await this.callLLM(FUSED_SYSTEM_PROMPT, fusedUser, this.maxTokensOverride ?? 512,
-        useJson ? buildJsonResponseFormat('fluid_fused', FLUID_FUSED_SCHEMA) : undefined);
+        useJson ? buildJsonResponseFormat('fluid_fused', FLUID_FUSED_SCHEMA) : undefined, context.signal);
       const { span, answer } = useJson ? parseFusedJson(fusedOut) : parseFused(fusedOut);
       this.emit({ type: 'pass-completed', pass: 'FUSED', latencyMs: Date.now() - fusedStart, span: span ?? '', answer: answer ?? '' });
       if (!span) {
@@ -965,6 +965,7 @@ export class FluidBlankSource implements CueSource {
     user: string,
     maxTokens: number,
     responseFormat?: { name: string; strict?: boolean; schema: Record<string, unknown> },
+    signal?: AbortSignal,
   ): Promise<string> {
     return dispatchChat(
       this.provider,
@@ -995,7 +996,7 @@ export class FluidBlankSource implements CueSource {
         seed: 42,
         responseFormat,
       },
-      { apiKey: this.apiKey, endpoint: this.endpoint },
+      { apiKey: this.apiKey, endpoint: this.endpoint, signal },
     );
   }
 }

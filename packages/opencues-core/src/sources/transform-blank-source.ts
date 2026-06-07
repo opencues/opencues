@@ -1632,6 +1632,7 @@ export class TransformBlankSource implements CueSource {
         `INPUT: ${extractText}`,
         p1Tokens,
         useJson ? buildJsonResponseFormat('transform_extract', EXTRACT_SCHEMA as unknown as Record<string, unknown>) : undefined,
+        context.signal,
       );
       const ext = useJson ? parseExtractJson(extractRaw) : parseExtract(extractRaw);
       this.log(`TransformBlank P1 EXTRACT (${Date.now() - p1Start}ms, max_tokens=${p1Tokens}, source=${sourceTag}): verdict=${ext.verdict}, instruction="${ext.instruction}", target="${preview(ext.target)}"`);
@@ -1693,6 +1694,7 @@ export class TransformBlankSource implements CueSource {
           `INSTRUCTION: ${ext.instruction}${genCatalogBlock}${genBlankBlock}`,
           genTokens,
           useJson ? buildJsonResponseFormat('transform_generative', APPLY_SCHEMA as unknown as Record<string, unknown>) : undefined,
+          context.signal,
         );
         const generatedRaw = (useJson ? parseApplyJson(genRaw) : parseApply(genRaw)).rewrite;
         const generated = this.resolveSentinels(generatedRaw, context.text, genUserCtx, genBlankSnapshot);
@@ -1752,6 +1754,7 @@ export class TransformBlankSource implements CueSource {
             `INSTRUCTION: ${ext.instruction}\nTARGET: ${targetWithCursor}`,
             p1_5Tokens,
             useJson ? buildJsonResponseFormat('transform_resolve', RESOLVE_SCHEMA as unknown as Record<string, unknown>) : undefined,
+            context.signal,
           );
           const resolved = useJson
             ? parseResolveJson(p1_5Raw)
@@ -1807,6 +1810,7 @@ export class TransformBlankSource implements CueSource {
           `INSTRUCTION: ${inst}\nTARGET: ${targetForPrompt}${applyCatalogBlock}${applyBlankBlock}`,
           p2Tokens,
           useJson ? buildJsonResponseFormat('transform_apply', APPLY_SCHEMA as unknown as Record<string, unknown>) : undefined,
+          context.signal,
         );
         // Strip any sentinel the model leaked into its output — input-only.
         const draftRaw = stripCursorSentinel((useJson ? parseApplyJson(applyRaw) : parseApply(applyRaw)).rewrite);
@@ -1865,6 +1869,7 @@ export class TransformBlankSource implements CueSource {
           `INSTRUCTION: ${verifyInstruction}\nTARGET: ${ext.target}\nDRAFT: ${lastRewrite}`,
           p3Tokens,
           useJson ? buildJsonResponseFormat('transform_verify', VERIFY_SCHEMA as unknown as Record<string, unknown>) : undefined,
+          context.signal,
         );
         ver = useJson ? parseVerifyJson(verifyRaw) : parseVerify(verifyRaw);
         this.log(`TransformBlank P3 VERIFY (${Date.now() - p3Start}ms, max_tokens=${p3Tokens}): verdict=${ver.verdict}, rewrite="${preview(ver.rewrite)}"`);
@@ -2057,7 +2062,7 @@ export class TransformBlankSource implements CueSource {
     const fusedStart = Date.now();
     const { block: fusedCatalogBlock, ctx: fusedUserCtx } = this.buildUserCatalogBlock(context);
     const { block: fusedBlankBlock, snapshot: fusedBlankSnapshot } = this.buildBlankCatalogBlock(context);
-    const fusedRaw = await this.callLLM(FUSED_SYSTEM, `INPUT: ${extractText}${fusedCatalogBlock}${fusedBlankBlock}`, fusedTokens);
+    const fusedRaw = await this.callLLM(FUSED_SYSTEM, `INPUT: ${extractText}${fusedCatalogBlock}${fusedBlankBlock}`, fusedTokens, undefined, context.signal);
     const fParsed = parseFused(fusedRaw);
     // Resolve IDENTITY.md sentinels + ambient blank-context tokens in
     // FULL_REWRITE before the result routes through the runtime's three-
@@ -2167,6 +2172,7 @@ export class TransformBlankSource implements CueSource {
     user: string,
     maxTokens: number,
     responseFormat?: { name: string; strict?: boolean; schema: Record<string, unknown> },
+    signal?: AbortSignal,
   ): Promise<string> {
     // Per-feature override (`transform-blank-max-tokens:` /
     // `transform-blank-temperature:`). When set, applies UNIFORMLY to
@@ -2191,7 +2197,7 @@ export class TransformBlankSource implements CueSource {
         seed: 42,
         responseFormat,
       },
-      { apiKey: this.apiKey, endpoint: this.endpoint },
+      { apiKey: this.apiKey, endpoint: this.endpoint, signal },
     );
   }
 }

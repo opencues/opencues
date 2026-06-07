@@ -189,6 +189,10 @@ function normalizeModelScalar(raw: string | undefined): string | undefined {
   return t;
 }
 
+function isAbortError(err: unknown): boolean {
+  return !!err && typeof err === 'object' && (err as { name?: string }).name === 'AbortError';
+}
+
 function isRoutedWordGroup(s: unknown): s is RoutedWordSourceGroupLike {
   return !!s
     && typeof s === 'object'
@@ -242,6 +246,15 @@ export class Resolver {
   private _underscoreKeyArmed = false;
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private _generation = 0;
+  /** AbortController for the currently in-flight `resolveAndApply`. Each
+   *  resolveAndApply call creates a fresh controller; when a NEWER call
+   *  fires and bumps `_generation`, we abort the prior controller so
+   *  every in-flight LLM call (transform-blank EXTRACT, fluid-blank
+   *  FUSED, etc.) is cancelled mid-flight rather than running to
+   *  completion just to have its result dropped on generation
+   *  mismatch. Drops provider $$$ + rate-limit pressure during
+   *  fast typing. Null between resolves. */
+  private _inFlightController: AbortController | null = null;
   /** Last user-typed text — used to detect when `_` was just added so we
    *  can bypass the debounce and fire fluid-blank resolution immediately. */
   private _lastInputText = '';
@@ -929,6 +942,15 @@ export class Resolver {
   async resolveAndApply(text: string, opts: { allowBlanks?: boolean } = {}): Promise<void> {
     const allowBlanks = opts.allowBlanks ?? true;
     if (!this._resolver) return;
+    // Abort the previous resolve's in-flight HTTP calls (if any). The
+    // resolve is being superseded by this newer one — its results would
+    // be dropped on generation mismatch downstream, so the LLM round-
+    // trip is pure waste (provider $$$ + rate-limit pressure).
+    if (this._inFlightController) {
+      try { this._inFlightController.abort(); } catch { /* never */ }
+    }
+    const controller = new AbortController();
+    this._inFlightController = controller;
     const generation = ++this._generation;
     const t0 = Date.now();
     this.adapter.log('debug', `Resolver.resolveAndApply: text=${JSON.stringify(text.slice(0, 80))}`);
@@ -1130,13 +1152,28 @@ export class Resolver {
           && !noBlankContextConsumer(cleanWords, this.options.keywordBoundSlotIndices?.(text) ?? [])
           ? await this.blankContextProvider()
           : undefined,
+        // AbortSignal for in-flight LLM cancellation. Each source's
+        // getCues forwards this to its callLLM → httpAdapter.post.
+        // When a newer resolveAndApply preempts this one, the
+        // controller above aborts, killing pending HTTP calls instead
+        // of letting them run to completion just to have their results
+        // dropped on generation mismatch.
+        signal: controller.signal,
       });
     } catch (err) {
       stopAllAnimations();
-      this.adapter.log('error', 'Resolver.resolve threw', err);
+      // AbortError on supersede is expected — don't surface as a logical
+      // failure. Anything else is a real fault and gets logged.
+      if (!isAbortError(err)) {
+        this.adapter.log('error', 'Resolver.resolve threw', err);
+      }
+      // Clear our in-flight slot if it's still us. If a newer resolve
+      // already replaced us, leave it alone.
+      if (this._inFlightController === controller) this._inFlightController = null;
       return;
     }
     stopAllAnimations();
+    if (this._inFlightController === controller) this._inFlightController = null;
 
     this.adapter.log('debug', `Resolver.resolve: got ${result.results.length} result(s) for ${cleanWords.length} cleanWords`);
     // Per-word routing/skipped surfaces which ConfigSource claimed each

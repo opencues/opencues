@@ -287,7 +287,7 @@ export class SentenceCueSource implements CueSource {
       // on a reasoning model risks the same budget-starvation that
       // motivated the provider-level reasoning-floor (see
       // llm-provider.ts:needsReasoningFloor).
-      raw = await this.callLLM(ensuredPrompt, `INPUT: ${context.text}`, this.sourceConfig.maxTokens ?? 768);
+      raw = await this.callLLM(ensuredPrompt, `INPUT: ${context.text}`, this.sourceConfig.maxTokens ?? 768, context.signal);
     } catch (e) {
       this.log(`SentenceCue[${this.sourceConfig.name}]: LLM call failed — ${(e as Error).message}`);
       this.emit({ type: 'bailed', reason: 'llm-error', latencyMs: Date.now() - t0 });
@@ -334,7 +334,7 @@ export class SentenceCueSource implements CueSource {
     return { results, timing: Date.now() - t0, model: this.model };
   }
 
-  private async callLLM(system: string, user: string, maxTokens: number): Promise<string> {
+  private async callLLM(system: string, user: string, maxTokens: number, signal?: AbortSignal): Promise<string> {
     return dispatchChat(
       this.provider,
       this.httpAdapter,
@@ -348,7 +348,7 @@ export class SentenceCueSource implements CueSource {
         temperature: this.sourceConfig.temperature ?? 0.3,
         seed: 42,
       },
-      { apiKey: this.apiKey, endpoint: this.endpoint },
+      { apiKey: this.apiKey, endpoint: this.endpoint, signal },
     );
   }
 }

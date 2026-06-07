@@ -701,7 +701,7 @@ export class ConfigIntentSource implements CueSource {
       // is tight because the classifier output is tiny (VERDICT,
       // SETTING, VALUE, CONFIDENCE) — bumping helps only if the
       // model wraps the output in extra prose.
-      raw = await this.callLLM(SYSTEM_PROMPT, `INPUT: ${context.text}`, this.maxTokensOverride ?? 128);
+      raw = await this.callLLM(SYSTEM_PROMPT, `INPUT: ${context.text}`, this.maxTokensOverride ?? 128, context.signal);
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
       this.log(`ConfigIntent: LLM call failed — ${err.message}`);
@@ -865,6 +865,7 @@ export class ConfigIntentSource implements CueSource {
     system: string,
     user: string,
     maxTokens: number,
+    signal?: AbortSignal,
   ): Promise<string> {
     return dispatchChat(
       this.provider,
@@ -882,7 +883,7 @@ export class ConfigIntentSource implements CueSource {
         temperature: this.temperatureOverride ?? 0,
         seed: 42,
       },
-      { apiKey: this.apiKey, endpoint: this.endpoint },
+      { apiKey: this.apiKey, endpoint: this.endpoint, signal },
     );
   }
 }
