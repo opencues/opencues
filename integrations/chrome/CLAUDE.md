@@ -89,6 +89,19 @@ The branch is an `isNormalInput(el)` check at the top of every
 read/write helper in `opencues-bootstrap.ts`. Full spec + supported
 blank subset + caveats live in `docs/features/chrome-normal-inputs.md`.
 
+**Shadow-DOM focus piercing (June 2026)** — when the focused
+contenteditable is slotted into (or lives inside) a shadow root with
+`delegatesFocus: true`, the browser retargets `focusin.target` and
+`document.activeElement` to the shadow HOST (a custom element). The
+host fails `isTextInput()` and silent no-attach is the result. Canonical
+case: Reddit's `<shreddit-composer>` → `<reddit-rte
+shadowrootdelegatesfocus>`. Resolution lives in `src/shadow-focus.ts` —
+`composedPath()[0]` for event-driven attach (focusin/focusout/keydown),
+recursive `shadowRoot.activeElement` walk for state-driven attach
+(initial document.activeElement, diagnostic ping). Closed shadow roots
+terminate the walk at the host (same dead-end as today, no regression).
+Pinned by `src/shadow-focus.test.ts` (16 tests).
+
 **Sensitive inputs are NEVER attached** — even within normal-input
 mode. `isSensitiveField()` refuses to attach when the focused input
 looks like a password / OTP / payment / PII field (autocomplete
