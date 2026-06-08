@@ -102,6 +102,41 @@ recursive `shadowRoot.activeElement` walk for state-driven attach
 terminate the walk at the host (same dead-end as today, no regression).
 Pinned by `src/shadow-focus.test.ts` (16 tests).
 
+**Capture-phase input listener (June 2026)** — managed editors like
+Reddit's Lexical install their own listeners that may `stopPropagation`
+on input events in bubble phase. The document-level input listener in
+`content.ts` was bubble, so `_`-bearing input events were swallowed
+before reaching `notifyOpenCuesTextChange`. Symptom: attach worked,
+cycling worked (text-change-driven), but blanks silently no-op'd
+because notifyTextChange never ran. Fix: register the input listener
+in capture phase. No regression on light-DOM sites (Gmail / ChatGPT /
+Twitter) since they don't stopPropagation input — the listener still
+runs the same code in the same order.
+
+**Runtime — diff-based fallback for the explicit-`_` gate
+(June 2026)** — paired with the capture-phase fix above. PR #52 added
+an arm flag set by the resolver's `_` keystroke handler and read by
+the blank-dispatch gate. On focus-trap modals (Reddit shreddit, LinkedIn
+share), the chrome keydown listener can early-return when
+`currentTarget` is null during focus shuffle — the arm never fires
+and blanks block. Runtime now accepts a second signal: the buffer's
+`_` count just went UP between `prev` and `text`. PR #52's cursor-
+split case is naturally excluded (whitespace insertion exposes an
+existing `_`; count stays same). Lives in `packages/opencues-runtime/
+src/modules/{resolver,blank-fill}.ts`.
+
+**Managed-editor paragraph emission (June 2026)** — `replaceAllText`
+used to emit one block per `\n` line, including explicit
+`<p><br></p>` for empty lines between paragraphs. On editors with
+default `<p>` margin (Lexical, ProseMirror, Quill), the empty
+paragraph stacked margin + margin = visible double-spacing — symptom:
+Reddit Lexical rendering email bodies with excessive blank lines
+("too linebreaky"). Fix: split on `\n\n+` for paragraph breaks, use
+inline `<br>` for soft breaks WITHIN a paragraph. Generic
+contenteditables (Gmail / YouTube) keep the per-line `<div>` emission
+because they lack default block-margin styling — explicit empty
+`<div><br></div>` IS what carries the visible paragraph break there.
+
 **Sensitive inputs are NEVER attached** — even within normal-input
 mode. `isSensitiveField()` refuses to attach when the focused input
 looks like a password / OTP / payment / PII field (autocomplete
@@ -607,7 +642,7 @@ trial and error. Don't unify it without testing every entry below.
 
 | Engine | Sites | Write path | Why this and not others |
 |---|---|---|---|
-| **Lexical** | Reddit | `__lexicalEditor.update(() => { root.clear(); $createParagraphNode + $createTextNode … })` — clear + insert in ONE transaction, single Lexical history entry. Falls back to Ctrl+A keydown (selection-only) + synthetic `paste` with `<p>`-per-paragraph HTML when the editor instance isn't reachable on the DOM. | Lexical's selection model doesn't sync from browser selection. Direct DOM mutations get reverted. Only its editor API or keydown-pipeline events are honored. **No Backspace step** — it'd land as a separate history entry; the paste's replace-selection semantics handle the wipe atomically. |
+| **Lexical** | Reddit | `__lexicalEditor.update(() => { root.clear(); $createParagraphNode + $createTextNode … })` — clear + insert in ONE transaction, single Lexical history entry. Falls back to Ctrl+A keydown (selection-only) + synthetic `paste` with managed-shape HTML (`<p>para</p><p>para<br>soft</p>` — split on `\n\n+`, `<br>` for soft breaks) when the editor instance isn't reachable on the DOM. | Lexical's selection model doesn't sync from browser selection. Direct DOM mutations get reverted. Only its editor API or keydown-pipeline events are honored. **No Backspace step** — it'd land as a separate history entry; the paste's replace-selection semantics handle the wipe atomically. **No empty `<p><br></p>` between paragraphs** (June 2026): Lexical gives every `<p>` a default margin, so the empty block stacks margin+margin = double-spacing. Splitting on `\n\n+` and using `<br>` for soft breaks keeps the per-paragraph margin and stacks signature lines without gap. |
 | **Draft.js** | Twitter/X | Ctrl+A keydown → synthetic `paste` event with `text/plain` (NOT html) | Draft.js's keydown pipeline accepts synthetic Ctrl+A (sets internal selection to whole buffer). Its `onPaste` handler reads `e.clipboardData.getData('text')` and runs `replaceText` over the selection — one transaction. **No Backspace step** (May 2026): the prior pattern emitted Backspace before paste, which Draft recorded as its own history entry → first Ctrl+Z showed an empty buffer. |
 | **ProseMirror/TipTap default** | LinkedIn, ChatGPT, claude.ai, Luma, and presumably most ProseMirror/TipTap sites | `execCommand('insertHTML', false, '<p>...</p>...')` over a `selectNodeContents` range (May 2026) | The prior path used `execCommand('insertText')` whose `beforeinput` inputType (`"insertText"`) is intercepted by some PM custom handlers — claude.ai's split it into delete + insert as TWO transactions, producing a blank-flash on Ctrl+Z. `insertHTML` fires `inputType: "insertReplacementText"`, which PM's default replace-selection handler treats as one transaction. Verified atomic on claude.ai / ChatGPT / LinkedIn / Luma. |
 | **Generic contenteditable** | Gmail, YouTube, plain `<div contenteditable>` | `execCommand('insertHTML', false, '<div>...</div>...')` over a `selectNodeContents` range — single browser-level undo entry | The prior pattern was `execCommand('delete')` + synthetic paste — two undo entries (the delete landed its own), causing the blank-flash on the first Ctrl+Z. `<div>`-per-line block shape matches Gmail's native Enter emission. |
