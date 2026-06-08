@@ -536,8 +536,19 @@ export class BlankFill {
 
     // Staleness guard — if the user moved on or already filled the slot,
     // drop the late callback. Applies to all downstream paths
-    // (selector/satellite, consume-all, range-clear, char-splice).
-    if (!target || target.word !== '_') return;
+    // (selector/satellite, consume-all, range-clear, char-splice). A
+    // loading-frame char in the slot position is NOT stale: it means
+    // the resolver-owned animation is still painting (refcount kept
+    // it alive past BlankFill's own release) — the splice below uses
+    // target.start/end to overwrite the frame char with the answer.
+    // Without this carve-out, the animator's frame char would defeat
+    // the substitute on every keyword-bound `_` resolve where the
+    // resolver outlives BlankFill's release — the silent-drop bug
+    // introduced by the 2026-05-28 owner-refcount commit.
+    if (!target) return;
+    const ourSlot = target.word === '_'
+      || (this._loading?.isOurSlotChar(slot.index, target.word) ?? false);
+    if (!ourSlot) return;
 
     // Selector/satellite fill. When the script returns a
     // tab-separated `<setting>\t<value>` and the blank declares
