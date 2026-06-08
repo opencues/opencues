@@ -819,22 +819,46 @@ export class Resolver {
     }
     // Explicit-`_` gate: the trailing `_` only counts as a blank trigger
     // when it was placed by an explicit `_` keystroke. A `_` that appeared
-    // via paste, programmatic setText, or cursor-relocation exposing an
-    // attached `_` (`monologue_` → cursor inside → space → `monologue _`)
-    // must NOT fire. The keystroke handler (`onUnderscoreKey`) arms the
-    // one-shot flag; this gate reads it BEFORE the flag is cleared in the
-    // finally block below.
-    if (blankJustTyped && !this.explicitUnderscoreRecent()) {
+    // via cursor-relocation exposing an attached `_` (`monologue_` → cursor
+    // inside → space → `monologue _`) must NOT fire. The keystroke handler
+    // (`onUnderscoreKey`) arms the one-shot flag; this gate reads it
+    // BEFORE the flag is cleared in the finally block below.
+    //
+    // Diff-based fallback: some host adapters route keydowns through a
+    // path that can drop `_` events (chrome's focus-trap modals — LinkedIn
+    // share composer, Reddit's <shreddit-composer> — clear `currentTarget`
+    // during focus shuffle, so the document-level keydown listener
+    // early-returns before reaching `onUnderscoreKey`). For these cases
+    // we accept "underscore count just went UP AND the new `_` is in a
+    // standalone position at the cursor" as an implicit arm signal. This
+    // is structurally narrower than PR #52's cursor-split case: the
+    // cursor-split's `_` count stays the same (the `_` existed before,
+    // only got exposed); a freshly-typed `_` increases the count. Trust
+    // gate (chrome) and source filter (line 772 already excludes runtime
+    // writes) keep this safe for non-user origins.
+    const prevUnderscoreCount = (prev.match(/_/g) || []).length;
+    const newUnderscoreCount = (text.match(/_/g) || []).length;
+    // Count-delta alone is sufficient — `blankJustTyped` (computed
+    // above) already proves a standalone `_` exists at the trailing
+    // edge. The cursor-split bug doesn't change the count (just
+    // exposes an existing `_` via whitespace insertion), so any
+    // count increase is structurally a fresh insert.
+    const freshUnderscoreInserted = newUnderscoreCount > prevUnderscoreCount;
+    if (blankJustTyped && !this.explicitUnderscoreRecent() && !freshUnderscoreInserted) {
       // Observability: this suppression is otherwise completely silent on
       // the resolver path (fluid/transform/config-intent blanks just never
       // dispatch — no `starting` line ever appears). Mirror BlankFill's
       // `explicit-_ gate BLOCKED` debug line so `DEBUG=cues*` can explain a
       // `_` that "did nothing". The most common cause: the trailing `_`
-      // was NOT placed by a fresh standalone `_` keystroke (pasted, exposed
+      // was NOT placed by a fresh standalone `_` keystroke (exposed
       // by editing existing text, or typed adjacent to a word so
       // `onUnderscoreKey` declined to arm the one-shot flag).
       this.adapter.log('debug', `Resolver: explicit-_ gate BLOCKED blank trigger (trailing _ present but no recent standalone _ keystroke; mode=${triggerMode})`);
       blankJustTyped = false;
+    } else if (blankJustTyped && !this.explicitUnderscoreRecent() && freshUnderscoreInserted) {
+      // Implicit arm via text diff — host adapter likely missed the
+      // keydown but the buffer state unambiguously shows a fresh insert.
+      this.adapter.log('debug', `Resolver: explicit-_ gate auto-armed via diff (fresh _ at cursor; host adapter may have missed keydown; mode=${triggerMode})`);
     }
     let keepArmed = false;
     try {

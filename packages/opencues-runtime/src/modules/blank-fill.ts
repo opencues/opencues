@@ -42,6 +42,12 @@ export class BlankFill {
    *  exposed via cursor-relocation (`volume_` → split to `volume _`),
    *  paste, or programmatic setText MUST NOT fire the script. */
   private _underscoreKeyArmed = false;
+  /** Last user-typed text — used by the diff-based gate fallback so
+   *  that host adapters which can't reliably deliver every `_` keydown
+   *  (chrome's focus-trap modals — LinkedIn share composer, Reddit's
+   *  shreddit composer) don't silently block legit blank dispatch.
+   *  See `_onTextChangeImpl` for the fallback logic. */
+  private _lastInputText = '';
   /** Dedup key (text + slot index) → in-flight script promise. */
   private _pendingScripts = new Set<string>();
   private _warnedSandboxBlanks = new Set<string>();
@@ -218,14 +224,28 @@ export class BlankFill {
       }
       // Explicit-`_` gate: only dispatch scripts when the `_` was placed
       // by an explicit user keystroke. A `_` exposed via cursor-relocation
-      // (`volume_` → split to `volume _`), paste, or programmatic setText
-      // MUST NOT fire the volume / brightness / etc. scripts. Mirrors the
-      // resolver's gate so the runtime is consistent across both blank
-      // dispatch paths. See `_underscoreKeyArmed`.
-      if (filteredSlots.length > 0 && !this.explicitUnderscoreRecent()) {
+      // (`volume_` → split to `volume _`) MUST NOT fire the volume /
+      // brightness / etc. scripts. Mirrors the resolver's gate so the
+      // runtime is consistent across both blank dispatch paths. See
+      // `_underscoreKeyArmed`.
+      //
+      // Diff-based fallback: some host adapters (chrome's focus-trap
+      // modals — LinkedIn share composer, Reddit's <shreddit-composer>)
+      // drop `_` keydowns during focus shuffle, so the keystroke arm
+      // never gets set. Accept "underscore count just went UP" as an
+      // implicit arm: PR #52's cursor-split case doesn't add a new `_`
+      // (count stays the same), so this is structurally distinct.
+      // Mirror of the resolver-side fallback in resolver.ts:onTextChange.
+      const prevU = (this._lastInputText.match(/_/g) || []).length;
+      const newU = (e.text.match(/_/g) || []).length;
+      const freshUnderscoreInserted = newU > prevU;
+      if (filteredSlots.length > 0 && !this.explicitUnderscoreRecent() && !freshUnderscoreInserted) {
         this.adapter.log('debug', `BlankFill: explicit-_ gate BLOCKED ${filteredSlots.length} slot(s) (no recent _ keystroke)`);
         filteredSlots = [];
+      } else if (filteredSlots.length > 0 && !this.explicitUnderscoreRecent() && freshUnderscoreInserted) {
+        this.adapter.log('debug', `BlankFill: explicit-_ gate auto-armed via diff (fresh _ inserted; host adapter may have missed keydown)`);
       }
+      this._lastInputText = e.text;
       this.maybeRunScripts(e.text, filteredSlots);
 
       // Spaced-mode unconfirmed `_` (text ends with `_` without trailing
