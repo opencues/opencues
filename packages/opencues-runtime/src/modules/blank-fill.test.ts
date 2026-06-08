@@ -1760,3 +1760,130 @@ blankClearKeywords: true
     });
   });
 });
+
+describe('BlankFill result cache (skip spawn on repeat invocation within TTL)', () => {
+  // Mirror the proven `blankReplace` block's setup pattern exactly —
+  // same TIPS_MIN, same makeBlank shape, spy installed BEFORE
+  // loader.load + bf.subscribe inside setup, test then awaits load +
+  // subscribe.
+  const TIPS_MIN = `---
+ignore: []
+---
+`;
+
+  function makeBlank(opts: { ttl?: number } = {}): string {
+    const ttlLine = opts.ttl !== undefined ? `\nblankCacheTtlMs: ${opts.ttl}` : '';
+    return `---
+type: blank
+name: demo
+blankKeywords: demo
+blankProximity: 10
+blankScript: ./demo.sh
+blankReplace: keep${ttlLine}
+---
+`;
+  }
+
+  function makeScenario(opts: { ttl?: number } = {}) {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS_MIN, '/proj/blanks/demo/BLANK.md': makeBlank(opts) },
+    });
+    const loader = new ConfigLoader(adapter);
+    const bf = new BlankFill(adapter, loader);
+    let callIndex = 0;
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => {
+      const idx = callIndex++;
+      return {
+        result: Promise.resolve({ exitCode: 0, stdout: `RESULT_${idx}`, stderr: '', timedOut: false }),
+        kill: () => {},
+      };
+    });
+    return { adapter, loader, bf, spawnSpy };
+  }
+
+  // Simulate "user re-typed `_` after the prior fill landed". Need to
+  // reset the buffer to the pre-`_` shape AND arm the explicit-`_`
+  // flag (BlankFill won't fire scripts without it — same gate the
+  // resolver uses). The bareUnderscoreKeyAt-end approach mirrors what
+  // a real user keystroke produces: cursor at end of "demo ", then `_`.
+  function reArmAndPush(adapter: MockAdapter, withText: string): void {
+    const idx = withText.lastIndexOf('_');
+    const pre = withText.slice(0, idx);
+    // Quietly reset the buffer (no keystroke synthesis on the way down).
+    adapter.pushTextNoKeystroke(pre, pre.length);
+    // Then re-use pushText which fires the `_` keystroke when the new
+    // text has more underscores than the current — same path
+    // MockAdapter's pushText takes on a real keystroke.
+    adapter.pushText(withText, withText.length);
+  }
+
+  it('repeat identical-arg invocation within TTL skips spawn + reuses cached stdout', async () => {
+    const { adapter, loader, bf, spawnSpy } = makeScenario();
+    await loader.load();
+    bf.subscribe();
+    adapter.pushText('demo _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+    expect(adapter.getText()).toBe('demo RESULT_0');
+
+    reArmAndPush(adapter, 'demo _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(spawnSpy).toHaveBeenCalledTimes(1);   // cache HIT
+    expect(adapter.getText()).toBe('demo RESULT_0');
+  });
+
+  it('past TTL → spawn fires again', async () => {
+    const { adapter, loader, bf, spawnSpy } = makeScenario({ ttl: 50 });
+    await loader.load();
+    bf.subscribe();
+    adapter.pushText('demo _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+    await new Promise(r => setTimeout(r, 80));   // past TTL
+    reArmAndPush(adapter, 'demo _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(spawnSpy).toHaveBeenCalledTimes(2);
+    expect(adapter.getText()).toBe('demo RESULT_1');
+  });
+
+  it('blankCacheTtlMs: 0 disables the cache (every call spawns)', async () => {
+    const { adapter, loader, bf, spawnSpy } = makeScenario({ ttl: 0 });
+    await loader.load();
+    bf.subscribe();
+    adapter.pushText('demo _');
+    await new Promise(r => setTimeout(r, 0));
+    reArmAndPush(adapter, 'demo _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(spawnSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('failed result (exitCode !== 0) is NOT cached — next call still spawns', async () => {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS_MIN, '/proj/blanks/demo/BLANK.md': makeBlank() },
+    });
+    const loader = new ConfigLoader(adapter);
+    const bf = new BlankFill(adapter, loader);
+    let callIndex = 0;
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => {
+      const idx = callIndex++;
+      return {
+        result: Promise.resolve(idx === 0
+          ? { exitCode: 1, stdout: '', stderr: 'oops', timedOut: false }
+          : { exitCode: 0, stdout: 'GOOD', stderr: '', timedOut: false }),
+        kill: () => {},
+      };
+    });
+    await loader.load();
+    bf.subscribe();
+    adapter.pushText('demo _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+    // Failure NOT cached → next invocation spawns again.
+    reArmAndPush(adapter, 'demo _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(spawnSpy).toHaveBeenCalledTimes(2);
+    expect(adapter.getText()).toBe('demo GOOD');
+  });
+});
