@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fixed — `volume _` and other keyword-bound blanks no longer pay a 1.2s wasted catalog fetch
+
+Typing `volume _` / `weather _` / `nvidia _` / `brightness _` / any keyword-bound script-backed blank was visibly slow — the spinner ran ~1.3s even though the underlying script (`volume-blank.sh`, etc.) returned in ~200ms. The agentic harness traced the wasted second to the `blankContextProvider()` fetch: every `_` resolve sequentially called `await blank.get(slot.slot)` for every blank with `as-context: safe|raw` in its frontmatter (weather, crypto, stocks, hackernews, claude-status). 5 network/script calls on every keystroke that contains a `_`. The catalog is only ever consumed by FluidBlankSource and TransformBlankSource — both of which **cede** when a keyword-bound BlankFill slot claims the `_`. For `volume _` the catalog was being built and immediately thrown away.
+
+The shipped fix is a single gate at the catalog-fetch site, plus the plumbing to feed it BlankFill's current slot indices.
+
+- **`@opencues/runtime` (0.2.2 → 0.2.3)** — new `ResolverOptions.keywordBoundSlotIndices?: (text) => readonly number[]` option. Each of the 6 adapter bands (cc/v2.1, oc/v1.4, oc/v1.14, chrome/v1, gemini/v0.41, shell/v1) passes `text => shared.blankFill.scan(text).map(s => s.index)`. `SharedRuntime` now exposes `blankFill` so the closure is well-defined. Resolver calls a new internal `noBlankContextConsumer(cleanWords, claimed)` helper which returns true when either (a) the buffer has no `_` at all, or (b) every `_` is in the keyword-bound set. When true the `blankContextProvider()` fetch is skipped entirely. Backwards-compatible — adapters that don't pass the callback get legacy behaviour.
+- **Measured on opencode via the agentic harness:** `volume _` resolver latency 1247ms → 8ms (99% reduction). `weather _` ~1s → 6ms. `nvidia _` ~1s → 5ms. Substitution lands at ~600-800ms (script time, not eliminable). `atomic number of oxygen _` and `draft stocks information email _` still fetch the catalog — both consumers run and produce correct output (the email draft still includes all 5 live ticker prices).
+- **5 regression tests** in `packages/opencues-runtime/src/modules/resolver.test.ts` pin every branch: every-`_`-claimed → no fetch; no-`_`-claimed → fetch; partial coverage → fetch; no-`_`-at-all → no fetch; option-omitted → legacy behaviour.
+
+The 1.2s tail was introduced in `22c898f feat(transform-blank): wire blank-as-context end-to-end (#73)` — the catalog fetch shipped without the "no consumer" gate. The agentic harness also uncovered a latent silent-drop bug in BlankFill's staleness check (introduced May 2026 in `0097d65 blank-loading: refcount animator`); that fix is staged in a follow-up PR alongside the dance-blank WIP.
+
 ### Added — transform-blank wires blank-as-context end-to-end
 
 Blank-as-context's June 2026 v1 shipped fluid-blank-only — transform-blank (the compose / rewrite surface) consumed identity-context but not ambient blank-context tokens. The deferral was bench-gated, not architectural — `docs/architecture/blank-as-context.md:36-38` named it as the next milestone. This change closes that deferral.

@@ -376,6 +376,12 @@ export interface SharedRuntime {
    *  etc. on LLM-substitution events and emits per-range directives
    *  the host's render pipeline picks up. */
   readonly markdownRender: MarkdownRender;
+  /** Keyword-bound `_` slot detector. Adapters thread this into the
+   *  Resolver's `keywordBoundSlotIndices` option so the blank-as-context
+   *  catalog fetch is skipped when every `_` is already claimed by
+   *  BlankFill — saves ~5 sequential script/network calls per resolve
+   *  on inputs like `volume _` / `weather _` / `nvidia _`. */
+  readonly blankFill: BlankFill;
 }
 
 export interface BuildSharedRuntimeOptions {
@@ -629,6 +635,7 @@ export function buildSharedRuntime(
     agentTaskState,
     blankLoading,
     markdownRender,
+    blankFill,
   };
 }
 

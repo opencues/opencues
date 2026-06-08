@@ -242,6 +242,7 @@ export function boot(host: HostInfo): BootResult {
     debounceMs: host.llmDebounceMs ?? 500,
     missingKeyFallbackMessage: hasAnyKey ? undefined : NATIVE_HOST_MISSING_KEY_MESSAGE,
     formatLLMErrorAsSubstitute: nativeHostFormatLLMError,
+    keywordBoundSlotIndices: (text: string) => shared.blankFill.scan(text).map(s => s.index),
   }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState,
   // Blank-as-context provider — invoked per resolve when
   // blank-context-mode is on. Reads host's blanks registry to fetch
