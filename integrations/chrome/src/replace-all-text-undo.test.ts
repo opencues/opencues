@@ -367,6 +367,162 @@ describe('replaceAllText — undo-stack shape', () => {
     expect(pasteOps[0].text).toBe('rewritten');
   });
 
+  // Quill (LinkedIn share composer). Three-step ladder:
+  //   1. PREFERRED — `__quill.clipboard.dangerouslyPasteHTML(html, 'user')`
+  //      with managed-shape HTML (split on `\n\n+`, `<br>` for soft breaks).
+  //      Inherits the new paragraph emission so Quill's blot tree gets
+  //      single-margin paragraphs, not double-spaced from empty blocks.
+  //   2. SECONDARY — `__quill.setText(condensed, 'user')` where
+  //      `condensed = text.replace(/\n\n+/g, '\n')`. Used when clipboard
+  //      module isn't exposed but setText is.
+  //   3. FALLBACK — Ctrl+A keydown + synthetic paste with `text/html`
+  //      (Quill's ClipboardModule reads HTML first, falls back to plain).
+  it('Quill — preferred: calls __quill.clipboard.dangerouslyPasteHTML with managed-shape HTML', () => {
+    const container = document.createElement('div');
+    container.className = 'ql-container';
+    const editor = document.createElement('div');
+    editor.className = 'ql-editor';
+    editor.setAttribute('contenteditable', 'true');
+    editor.textContent = 'original';
+    container.appendChild(editor);
+    document.body.appendChild(container);
+
+    const pasteHtmlCalls: Array<{ html: string; source?: string }> = [];
+    (container as unknown as { __quill: unknown }).__quill = {
+      setText: () => true,
+      clipboard: {
+        dangerouslyPasteHTML: (html: string, source?: string) => {
+          pasteHtmlCalls.push({ html, source });
+          editor.innerHTML = html;
+          return true;
+        },
+      },
+    };
+
+    publishTarget(editor);
+    const spy = installMutationSpy(editor);
+
+    replaceAllText('Hi\n\nHope\n\nBest,\nWilfred');
+
+    spy.restore();
+    expect(pasteHtmlCalls.length).toBe(1);
+    expect(pasteHtmlCalls[0].source).toBe('user');
+    // Managed-shape HTML: `<p>` per paragraph, `<br>` for soft break inside.
+    expect(pasteHtmlCalls[0].html).toContain('<p>Hi</p>');
+    expect(pasteHtmlCalls[0].html).toContain('<p>Hope</p>');
+    expect(pasteHtmlCalls[0].html).toContain('Best,<br>Wilfred');
+    // No execCommand wipe, no Ctrl+A — Quill API does it all.
+    const usedCtrlA = spy.ops.some(o => o.kind === 'keydown' && o.key === 'a' && o.ctrl);
+    expect(usedCtrlA).toBe(false);
+  });
+
+  it('Quill — secondary: setText with collapsed text when clipboard.dangerouslyPasteHTML is unavailable', () => {
+    const container = document.createElement('div');
+    container.className = 'ql-container';
+    const editor = document.createElement('div');
+    editor.className = 'ql-editor';
+    editor.setAttribute('contenteditable', 'true');
+    editor.textContent = 'original';
+    container.appendChild(editor);
+    document.body.appendChild(container);
+
+    const setTextCalls: Array<{ text: string; source?: string }> = [];
+    (container as unknown as { __quill: unknown }).__quill = {
+      // No clipboard module — exercise secondary path.
+      setText: (text: string, source?: string) => {
+        setTextCalls.push({ text, source });
+        editor.textContent = text;
+        return true;
+      },
+    };
+
+    publishTarget(editor);
+    const spy = installMutationSpy(editor);
+
+    replaceAllText('Hi\n\nHope\n\nBest,\nWilfred');
+
+    spy.restore();
+    expect(setTextCalls.length).toBe(1);
+    // \n\n collapsed to \n; soft break (\n in signature) preserved.
+    expect(setTextCalls[0].text).toBe('Hi\nHope\nBest,\nWilfred');
+    expect(setTextCalls[0].source).toBe('user');
+    const usedCtrlA = spy.ops.some(o => o.kind === 'keydown' && o.key === 'a' && o.ctrl);
+    expect(usedCtrlA).toBe(false);
+  });
+
+  it('Quill — fallback: selectAll via Range API + execCommand insertText when no __quill is reachable', () => {
+    const container = document.createElement('div');
+    container.className = 'ql-container';
+    const editor = document.createElement('div');
+    editor.className = 'ql-editor';
+    editor.setAttribute('contenteditable', 'true');
+    editor.textContent = 'original';
+    container.appendChild(editor);
+    document.body.appendChild(container);
+    // Deliberately do NOT install __quill — exercise the fallback.
+
+    publishTarget(editor);
+    const spy = installMutationSpy(editor);
+
+    replaceAllText('Hi\n\nHope\n\nBest,\nWilfred');
+
+    spy.restore();
+    // Fallback now uses execCommand('insertText') with `\n\n+`-condensed
+    // text instead of synthetic paste — observed-working path on LinkedIn
+    // where Quill rejects synthetic ClipboardEvent + the prior insertHTML
+    // path got reverted by Quill's MutationObserver.
+    const insertTextOps = spy.ops.filter(
+      o => o.kind === 'execCommand' && o.cmd === 'insertText',
+    ) as Array<{ kind: 'execCommand'; cmd: string; arg?: string }>;
+    expect(insertTextOps.length).toBe(1);
+    // \n\n collapsed to \n; soft break (\n in signature) preserved.
+    expect(insertTextOps[0].arg).toBe('Hi\nHope\nBest,\nWilfred');
+    // No synthetic Ctrl+A — Quill ignores untrusted keydowns; Range API
+    // selectNodeContents handles the selection instead.
+    const ctrlA = spy.ops.find(o => o.kind === 'keydown' && o.key === 'a' && o.ctrl);
+    expect(ctrlA).toBeUndefined();
+    // No synthetic paste either.
+    const pasteOps = spy.ops.filter(o => o.kind === 'paste');
+    expect(pasteOps.length).toBe(0);
+  });
+
+  it('Quill — preferred path swallows dangerouslyPasteHTML errors and falls back to setText', () => {
+    const container = document.createElement('div');
+    container.className = 'ql-container';
+    const editor = document.createElement('div');
+    editor.className = 'ql-editor';
+    editor.setAttribute('contenteditable', 'true');
+    editor.textContent = 'original';
+    container.appendChild(editor);
+    document.body.appendChild(container);
+
+    let pasteHtmlCalled = false;
+    const setTextCalls: Array<{ text: string }> = [];
+    (container as unknown as { __quill: unknown }).__quill = {
+      setText: (text: string) => {
+        setTextCalls.push({ text });
+        return true;
+      },
+      clipboard: {
+        dangerouslyPasteHTML: () => {
+          pasteHtmlCalled = true;
+          throw new Error('linkedin internal: editor in read-only mode');
+        },
+      },
+    };
+
+    publishTarget(editor);
+    const spy = installMutationSpy(editor);
+
+    replaceAllText('rewritten after error');
+
+    spy.restore();
+    expect(pasteHtmlCalled).toBe(true);
+    // Secondary setText path took over.
+    expect(setTextCalls.length).toBe(1);
+    expect(setTextCalls[0].text).toBe('rewritten after error');
+  });
+
   it('records the actual op sequence for the generic path (diagnostic — never asserts)', () => {
     const target = makeContentEditable('original body');
     publishTarget(target);
