@@ -498,8 +498,8 @@ real failures the user should see immediately.
 | YouTube comments | generic contenteditable | same | 1 |
 | Reddit | Lexical | `editor.update(() => { root.clear(); insertNodes(...) })` — one transaction, OR fallback: Ctrl+A keydown + synthetic paste | 1 |
 | Twitter/X | Draft.js | Ctrl+A keydown + synthetic paste with `text/plain` | 1 |
-| LinkedIn | ProseMirror | `execCommand('insertHTML', false, '<p>...</p>')` over select-all | 1 |
-| ChatGPT | ProseMirror | same | 1 |
+| LinkedIn (share composer) | Quill.js | `editor.setText(text, 'user')` via `__quill` on `.ql-container` — single Delta op. Fallback: Ctrl+A keydown + synthetic paste with `text/plain` | 1 |
+| ChatGPT | ProseMirror | `execCommand('insertHTML', false, '<p>...</p>')` over select-all | 1 |
 | claude.ai | ProseMirror | same | 1 |
 | Luma | TipTap | Ctrl+A keydown + synthetic paste with `<p>` HTML — historically the "outlier", retained as its own branch but Luma's TipTap also accepts the default managed `insertHTML` path (May 2026 verified). The keyboard-sim path is left in for now until a broader TipTap regression sweep clears collapsing the branch. | 1 |
 
@@ -644,7 +644,8 @@ trial and error. Don't unify it without testing every entry below.
 |---|---|---|---|
 | **Lexical** | Reddit | `__lexicalEditor.update(() => { root.clear(); $createParagraphNode + $createTextNode … })` — clear + insert in ONE transaction, single Lexical history entry. Falls back to Ctrl+A keydown (selection-only) + synthetic `paste` with managed-shape HTML (`<p>para</p><p>para<br>soft</p>` — split on `\n\n+`, `<br>` for soft breaks) when the editor instance isn't reachable on the DOM. | Lexical's selection model doesn't sync from browser selection. Direct DOM mutations get reverted. Only its editor API or keydown-pipeline events are honored. **No Backspace step** — it'd land as a separate history entry; the paste's replace-selection semantics handle the wipe atomically. **No empty `<p><br></p>` between paragraphs** (June 2026): Lexical gives every `<p>` a default margin, so the empty block stacks margin+margin = double-spacing. Splitting on `\n\n+` and using `<br>` for soft breaks keeps the per-paragraph margin and stacks signature lines without gap. |
 | **Draft.js** | Twitter/X | Ctrl+A keydown → synthetic `paste` event with `text/plain` (NOT html) | Draft.js's keydown pipeline accepts synthetic Ctrl+A (sets internal selection to whole buffer). Its `onPaste` handler reads `e.clipboardData.getData('text')` and runs `replaceText` over the selection — one transaction. **No Backspace step** (May 2026): the prior pattern emitted Backspace before paste, which Draft recorded as its own history entry → first Ctrl+Z showed an empty buffer. |
-| **ProseMirror/TipTap default** | LinkedIn, ChatGPT, claude.ai, Luma, and presumably most ProseMirror/TipTap sites | `execCommand('insertHTML', false, '<p>...</p>...')` over a `selectNodeContents` range (May 2026) | The prior path used `execCommand('insertText')` whose `beforeinput` inputType (`"insertText"`) is intercepted by some PM custom handlers — claude.ai's split it into delete + insert as TWO transactions, producing a blank-flash on Ctrl+Z. `insertHTML` fires `inputType: "insertReplacementText"`, which PM's default replace-selection handler treats as one transaction. Verified atomic on claude.ai / ChatGPT / LinkedIn / Luma. |
+| **ProseMirror/TipTap default** | ChatGPT, claude.ai, Luma, and presumably most ProseMirror/TipTap sites | `execCommand('insertHTML', false, '<p>...</p>...')` over a `selectNodeContents` range (May 2026) | The prior path used `execCommand('insertText')` whose `beforeinput` inputType (`"insertText"`) is intercepted by some PM custom handlers — claude.ai's split it into delete + insert as TWO transactions, producing a blank-flash on Ctrl+Z. `insertHTML` fires `inputType: "insertReplacementText"`, which PM's default replace-selection handler treats as one transaction. Verified atomic on claude.ai / ChatGPT / Luma. **LinkedIn used to live here**; they migrated to Quill — see next row. |
+| **Quill.js** | LinkedIn (share composer) | `editor.setText(text, 'user')` via the `__quill` instance attached to `.ql-container`. Falls back to Ctrl+A keydown + synthetic `paste` with `text/plain` when the instance isn't reachable (e.g. LinkedIn ships a private bundle that renames the slot). | Quill has a Delta-based document model with a strict MutationObserver that REVERTS external DOM mutations on the next microtask. The generic `execCommand('insertHTML')` path lands briefly then disappears as Quill reconciles its model. `editor.setText` writes through the Delta model — DOM follows from model render, no MutationObserver fight. Fallback's Ctrl+A is honoured by Quill's keymap; its ClipboardModule reads `text/plain` and routes through its Delta-aware paste pipeline. **No Backspace step** — would land its own history entry. |
 | **Generic contenteditable** | Gmail, YouTube, plain `<div contenteditable>` | `execCommand('insertHTML', false, '<div>...</div>...')` over a `selectNodeContents` range — single browser-level undo entry | The prior pattern was `execCommand('delete')` + synthetic paste — two undo entries (the delete landed its own), causing the blank-flash on the first Ctrl+Z. `<div>`-per-line block shape matches Gmail's native Enter emission. |
 
 ### Key learnings (do not re-discover)
@@ -705,9 +706,10 @@ trial and error. Don't unify it without testing every entry below.
    - `.public-DraftEditor-content` / `data-block="true"` → Draft.js
    - `.ProseMirror` → ProseMirror/TipTap
    - `[data-slate-editor="true"]` → Slate
+   - `.ql-editor` + `.ql-container` → Quill
 2. Try the matching path from the matrix first (no code changes needed if
    the engine is already detected — `isManagedEditor`/`isLexicalEditor`/
-   `isDraftJsEditor` cover it).
+   `isDraftJsEditor`/`isQuillEditor` cover it).
 3. If the default path for that engine doesn't work for this site, add a
    hostname carve-out in `replaceAllText`. Examples already in code:
    `isLuma`, `isPasteFiltered`. Keep the carve-outs minimal and

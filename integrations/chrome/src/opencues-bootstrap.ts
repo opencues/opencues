@@ -359,7 +359,7 @@ export function updateRuntimeLlmConfig(patch: {
  *  editor-API path instead of the generic in-place splice. */
 function isManagedEditor(el: HTMLElement): boolean {
   return !!el.closest(
-    '[data-lexical-editor="true"], .ProseMirror, [data-slate-editor="true"], .public-DraftEditor-content'
+    '[data-lexical-editor="true"], .ProseMirror, [data-slate-editor="true"], .public-DraftEditor-content, .ql-editor'
   );
 }
 
@@ -628,6 +628,36 @@ function isLexicalEditor(el: HTMLElement): boolean {
 
 function isDraftJsEditor(el: HTMLElement): boolean {
   return !!el.closest('.public-DraftEditor-content');
+}
+
+function isQuillEditor(el: HTMLElement): boolean {
+  return !!el.closest('.ql-editor');
+}
+
+/** Walk up from a `.ql-editor` to find the Quill editor instance. Quill
+ *  stashes itself on the container element (`.ql-container`) as
+ *  `__quill`. Falls back to checking the immediate root + walking
+ *  ancestors. Returns null if the instance isn't reachable (Quill
+ *  was destroyed, or LinkedIn's bundle uses a custom private name). */
+type QuillInstance = {
+  setText: (text: string, source?: string) => unknown;
+  setContents?: (delta: unknown, source?: string) => unknown;
+  getLength?: () => number;
+  root?: HTMLElement;
+  clipboard?: { dangerouslyPasteHTML?: (html: string, source?: string) => unknown };
+};
+function findQuillInstance(el: HTMLElement): QuillInstance | null {
+  const editor = el.closest('.ql-editor') as HTMLElement | null;
+  if (!editor) return null;
+  // Common location: on the .ql-container element (the editor's parent).
+  const container = editor.closest('.ql-container') as HTMLElement | null;
+  const probes = [container, editor.parentElement, editor];
+  for (const node of probes) {
+    if (!node) continue;
+    const inst = (node as unknown as { __quill?: QuillInstance }).__quill;
+    if (inst && typeof inst.setText === 'function') return inst;
+  }
+  return null;
 }
 
 /**
@@ -1100,6 +1130,144 @@ export function replaceAllText(text: string): void {
         key: 'a', code: 'KeyA', keyCode: 65, ctrlKey: true,
         bubbles: true, cancelable: true,
       }));
+    } else if (isQuillEditor(target)) {
+      // Quill (LinkedIn share composer). Quill is a managed editor
+      // with a Delta-based document model and a strict MutationObserver
+      // that reverts external DOM mutations on the next microtask. The
+      // generic `execCommand('insertHTML')` path lands briefly then
+      // gets reverted as Quill reconciles its internal state.
+      //
+      // Preferred path: find the Quill instance via `__quill` and call
+      // its `clipboard.dangerouslyPasteHTML` API with the managed-shape
+      // HTML (`<p>para</p><p>para<br>soft</p>` — same `\n\n+`-split +
+      // `<br>` soft-break emission built above). This writes through
+      // Quill's HTML paste pipeline (Delta model under the hood, no
+      // MutationObserver fight) AND inherits the new paragraph rendering
+      // — Quill's blot tree gives each `<p>` a single margin, no
+      // double-spacing from empty paragraph blocks.
+      //
+      // Fallback ladder when the instance/clipboard isn't reachable
+      // (e.g. LinkedIn ships a custom Quill bundle that renames the
+      // private slot): synthetic Ctrl+A + paste with `text/html`. Quill's
+      // ClipboardModule reads HTML first, falls back to text/plain — so
+      // we send HTML primarily and text as a tail-end fallback.
+      const quill = findQuillInstance(target);
+      if (quill?.clipboard?.dangerouslyPasteHTML) {
+        try {
+          quill.clipboard.dangerouslyPasteHTML(html, 'user');
+          log.info('[opencues] replaceAllText: quill API dangerouslyPasteHTML, htmlLen=' + html.length);
+          sourceReclassifier.markRuntimeWrite(text);
+          schedulePostReconcileRender();
+          return;
+        } catch (err) {
+          log.warn('[opencues] Quill dangerouslyPasteHTML failed, trying setText:', err);
+        }
+      }
+      // Secondary API: setText with the original `\n+`-collapsed text
+      // (Quill setText takes plain text; `\n` → block boundary in Delta).
+      // Used when clipboard module isn't exposed but setText is. Same
+      // collapse the managed-paragraph emission uses so empty
+      // paragraph blocks don't double up Quill's block margins.
+      if (quill?.setText) {
+        try {
+          const condensed = text.replace(/\n\n+/g, '\n');
+          quill.setText(condensed, 'user');
+          log.info('[opencues] replaceAllText: quill API setText (condensed), len=' + condensed.length);
+          sourceReclassifier.markRuntimeWrite(text);
+          schedulePostReconcileRender();
+          return;
+        } catch (err) {
+          log.warn('[opencues] Quill setText failed, falling back to paste:', err);
+        }
+      }
+      // Fallback ladder when no `__quill` is reachable (LinkedIn ships a
+      // private bundle that doesn't expose the instance):
+      //
+      // STRATEGY: select-all via the Range API (NOT synthetic Ctrl+A —
+      // Quill ignores it because untrusted keydowns don't trigger
+      // Quill's selectAll handler), then for each line of text:
+      // `execCommand('insertText', false, line)` followed by
+      // `execCommand('insertParagraph')` between lines. Quill's
+      // `beforeinput` handler reads these inputTypes and routes them
+      // through its Delta model — the same code path real typing +
+      // Enter uses, so the model accepts the writes and the
+      // MutationObserver doesn't fight (DOM mutation is the *result*
+      // of a model write, not a foreign mutation).
+      //
+      // Why per-line: browsers strip embedded `\n` characters from
+      // `execCommand('insertText', false, 'a\nb')` — the newlines
+      // become non-text and Quill never sees them. Splitting on `\n`
+      // and emitting `insertParagraph` between is the cross-engine
+      // way to actually get block boundaries.
+      //
+      // Prior approaches that DIDN'T work on LinkedIn:
+      // - Synthetic Ctrl+A + ClipboardEvent paste (text/html): Quill
+      //   rejected untrusted paste, substitute reverted.
+      // - Single `execCommand('insertText', '...\n...')`: `\n`s
+      //   stripped, all text rendered as one run-on paragraph.
+      try {
+        const sel = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(target);
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      } catch { /* selection unavailable */ }
+      // Preserve the paragraph-vs-soft-break distinction:
+      //   - `\n\n+` in LLM source → paragraph break (blank line between)
+      //     emitted via `execCommand('insertParagraph')` → `<p>` block.
+      //   - single `\n` (soft break within a paragraph — e.g. signature
+      //     lines) → emitted via `execCommand('insertLineBreak')` → `<br>`,
+      //     adjacent line with no margin gap.
+      //
+      // Why this matters: an LLM email body emits `\n\n` between
+      // paragraphs (Subject / Dear / body / Thank you / signature
+      // group) and `\n` within the signature (Best regards / Name /
+      // Title / email). Treating every break as a paragraph creates
+      // excessive gaps in the signature. Treating every break as a
+      // soft break loses the body paragraph structure.
+      //
+      // Split-on-double-then-single preserves both. ExecCommand alone
+      // (no synthetic Enter keydown, no beforeinput dispatch) — those
+      // caused stale-cursor / reversed-order issues on LinkedIn's
+      // Quill in prior iterations.
+      // LinkedIn's Quill: every text run becomes a `<p>` block, and
+      // LinkedIn's CSS collapses the default `<p>` margin so consecutive
+      // `<p>`s render stacked tight (no visible blank between them).
+      // To create the visible blank line a reader expects between body
+      // paragraphs, we need an empty `<p><br></p>` block between them
+      // — which is exactly what hitting Enter on an empty line produces
+      // in Quill (and what the user reproduces when they manually press
+      // Enter twice). We emit that by calling `insertParagraph` TWICE
+      // for paragraph breaks (the second call creates the empty middle
+      // `<p>`), and ONCE for soft breaks within a paragraph (tight
+      // signature stacking with no blank line between).
+      const paragraphs = text.split(/\n\n+/);
+      let totalSoftBreaks = 0;
+      for (let p = 0; p < paragraphs.length; p++) {
+        const lines = paragraphs[p].split('\n');
+        for (let l = 0; l < lines.length; l++) {
+          if (lines[l].length > 0) {
+            document.execCommand('insertText', false, lines[l]);
+          }
+          if (l < lines.length - 1) {
+            // Soft break within a paragraph (signature lines): single
+            // paragraph-end → stacked tight via LinkedIn's CSS collapse.
+            document.execCommand('insertParagraph');
+            totalSoftBreaks++;
+          }
+        }
+        if (p < paragraphs.length - 1) {
+          // Body paragraph break: TWICE → blank `<p><br></p>` middle
+          // block. Visible blank line in the rendered editor.
+          document.execCommand('insertParagraph');
+          document.execCommand('insertParagraph');
+        }
+      }
+      log.info('[opencues] replaceAllText: quill fallback (selectAll + per-line insertText), paragraphs='
+        + paragraphs.length + ' softBreaks=' + totalSoftBreaks);
+      sourceReclassifier.markRuntimeWrite(text);
+      schedulePostReconcileRender();
+      return;
     } else if (isDraftJsEditor(target)) {
       // Draft.js (Twitter/X). Internal selection model doesn't sync
       // from browser selection — set it via synthetic Ctrl+A keydown

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OpenCues",
-  "version": "0.2.1",
+  "version": "0.2.3",
   "description": "LLM-powered word alternatives for text editors",
   "permissions": [
     "storage",
@@ -40,7 +40,8 @@
       ],
       "css": [
         "dist/content.css"
-      ]
+      ],
+      "run_at": "document_end"
     }
   ],
   "icons": {
