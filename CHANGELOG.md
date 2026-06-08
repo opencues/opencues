@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Changed — Resolver also skips forwarding `identityContext` when no consumer source will fire (symmetric with the blank-context gate)
+
+PR #74 added a gate that skips the `blankContext` provider fetch when no consumer source (FluidBlank, TransformBlank) will fire. The symmetric site — `identityContext` forwarding in the same `_resolver.resolve(...)` call — was left as legacy "forward whenever `identity-context-mode !== 'off'`". The identity catalog is in-memory at ConfigLoader so the cost saving is small (no IO), but the symmetric correctness + payload-size win is worth the one-line gate.
+
+- **`@opencues/runtime` (0.2.5 → 0.2.6)** — the same `noBlankContextConsumer(cleanWords, claimed)` predicate that gates `blankContext` now also gates `identityContext`: skip when either (a) the buffer has no `_` at all, or (b) every `_` is in the keyword-bound set passed via `keywordBoundSlotIndices`.
+- **4 new regression tests** in `packages/opencues-runtime/src/modules/resolver.test.ts`'s new `identity-context skip for keyword-bound slots (symmetric with blank-context)` block: (1) every-`_`-claimed → not forwarded; (2) no-`_`-claimed → forwarded; (3) mode=off → not forwarded regardless; (4) no-`_` at all → not forwarded.
+
 ### Fixed — `volume _` and other keyword-bound blanks no longer pay a 1.2s wasted catalog fetch
 
 Typing `volume _` / `weather _` / `nvidia _` / `brightness _` / any keyword-bound script-backed blank was visibly slow — the spinner ran ~1.3s even though the underlying script (`volume-blank.sh`, etc.) returned in ~200ms. The agentic harness traced the wasted second to the `blankContextProvider()` fetch: every `_` resolve sequentially called `await blank.get(slot.slot)` for every blank with `as-context: safe|raw` in its frontmatter (weather, crypto, stocks, hackernews, claude-status). 5 network/script calls on every keystroke that contains a `_`. The catalog is only ever consumed by FluidBlankSource and TransformBlankSource — both of which **cede** when a keyword-bound BlankFill slot claims the `_`. For `volume _` the catalog was being built and immediately thrown away.

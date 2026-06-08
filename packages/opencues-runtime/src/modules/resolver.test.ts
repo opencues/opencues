@@ -946,6 +946,81 @@ describe('Resolver blank-context skip for keyword-bound slots (regression: volum
   });
 });
 
+describe('Resolver identity-context skip for keyword-bound slots (symmetric with blank-context)', () => {
+  // FluidBlank and TransformBlank are the only consumers of
+  // `identityContext`. Both cede when a keyword-bound BlankFill slot
+  // claims the `_`. The catalog itself is cheap (in-memory at
+  // ConfigLoader), so the saving here is symmetric correctness +
+  // payload-size rather than an IO/cost win.
+  interface CapturedCtx { identityContext?: unknown }
+
+  function setup(opts: {
+    mode?: 'off' | 'safe' | 'raw';
+    keywordBoundSlotIndices?: (text: string) => readonly number[];
+  }) {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': CUES_MD },
+    });
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    if (opts.mode && opts.mode !== 'off') {
+      loader.applyOpenCuesScalar('identity-context-mode', opts.mode);
+    }
+
+    const resolver = new Resolver(
+      adapter, hlState, dynDefs, loader,
+      {
+        endpoint: 'http://test', apiKey: 'x', defaultModel: 'm', debounceMs: 10,
+        httpAdapter: {},
+        keywordBoundSlotIndices: opts.keywordBoundSlotIndices,
+      },
+    );
+    const capturedCtxs: CapturedCtx[] = [];
+    (resolver as unknown as { _resolver: { resolve(ctx: CapturedCtx): Promise<{ results: MockResult[] }> } })._resolver = {
+      resolve: async (ctx) => { capturedCtxs.push(ctx); return { results: [] }; },
+    };
+    return { resolver, capturedCtxs };
+  }
+
+  it('every `_` is keyword-bound → identityContext is NOT forwarded', async () => {
+    const { resolver, capturedCtxs } = setup({
+      mode: 'safe',
+      keywordBoundSlotIndices: text => text === 'volume _' ? [1] : [],
+    });
+    await resolver.resolveAndApply('volume _');
+    expect(capturedCtxs[0]?.identityContext).toBeUndefined();
+  });
+
+  it('no keyword-bound slot → identityContext IS forwarded', async () => {
+    const { resolver, capturedCtxs } = setup({
+      mode: 'safe',
+      keywordBoundSlotIndices: () => [],
+    });
+    await resolver.resolveAndApply('draft an email about my trip _');
+    expect(capturedCtxs[0]?.identityContext).toBeDefined();
+  });
+
+  it('mode=off → identityContext is NOT forwarded regardless of slot state', async () => {
+    const { resolver, capturedCtxs } = setup({
+      mode: 'off',
+      keywordBoundSlotIndices: () => [],
+    });
+    await resolver.resolveAndApply('draft an email about my trip _');
+    expect(capturedCtxs[0]?.identityContext).toBeUndefined();
+  });
+
+  it('no `_` in buffer → identityContext is NOT forwarded (no consumer source can fire)', async () => {
+    const { resolver, capturedCtxs } = setup({
+      mode: 'safe',
+      keywordBoundSlotIndices: () => [],
+    });
+    await resolver.resolveAndApply('the lawyer filed today');
+    expect(capturedCtxs[0]?.identityContext).toBeUndefined();
+  });
+});
+
 describe('Resolver blank-trigger-mode gate', () => {
   // The user-facing distinction: in `immediate` mode a bare `_` at the
   // end of the buffer bypasses the debounce and resolves NOW. In
