@@ -2639,8 +2639,16 @@ function installKeyListener(): void {
     const normalInput = isNormalInput(target);
     const isBareUnderscore = e.key === '_' && !e.ctrlKey && !e.altKey && !e.metaKey;
     if (normalInput && !isBareUnderscore) return;
-    const active = document.activeElement;
-    if (active !== target && !target.contains(active)) return;
+    // Shadow-DOM piercing: on web-component editors with
+    // delegatesFocus (Reddit's <shreddit-composer>), document.activeElement
+    // reports the shadow HOST — usually an ANCESTOR of `target` —
+    // and target.contains(host) is false, so every key event silently
+    // no-ops. composedPath()[0] is the actual leaf the event came from
+    // (a Node, possibly Text), which IS inside target.
+    const path = (e as Event).composedPath();
+    const leaf = path.length > 0 ? path[0] as Node : document.activeElement;
+    const inTarget = leaf === target || (leaf instanceof Node && target.contains(leaf));
+    if (!inTarget) return;
     const text = readTargetText(target);
     const cursor = readCursorOffset();
     const ev: KeyEvent = {
