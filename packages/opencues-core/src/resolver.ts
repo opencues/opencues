@@ -74,13 +74,31 @@ export class CueResolver {
     const consumedBlankSlots = new Set<number>(context.consumedBlankSlots ?? []);
 
     if (this.config.parallel) {
-      // Query all sources in parallel. Parallel mode can't forward
-      // claimed-slots between sources (every call sees the same starting
-      // context), so the consumed-slots channel is only enforced for
-      // sources that ran sequentially BEFORE this batch. Hosts that rely
-      // on the claim-then-bail pattern (TransformBlank → FluidBlank)
-      // should run with parallel: false — the default for the runtime
-      // resolver wrapper.
+      // Query all sources in parallel. Each source still gets the same
+      // starting `consumedBlankSlots`, so dispatch-time bail (e.g.
+      // FluidBlank refusing to query when an upstream slot is already
+      // claimed) only fires for slots the CALLER passed in — sibling
+      // sources in this batch can't see each other's claims at
+      // dispatch time. To preserve the claim-then-bail SEMANTIC
+      // (TransformBlank claims slot, FluidBlank's lookup answer must
+      // NOT vandalise it), we reconcile claims after the parallel
+      // batch resolves: iterate sources in priority-descending order
+      // (the constructor already sorted `applicableSources` that way),
+      // accumulate `consumedBlankSlots` from each source's result as
+      // we process it, and FILTER each source's results to drop any
+      // CueResult whose `wordIndex` was claimed by a HIGHER-priority
+      // source that already ran. A source's own results are never
+      // suppressed by its own claim (it gets to fill the slot it
+      // claimed). This way the wall-clock win of parallel dispatch
+      // (max(source_time) instead of sum) is preserved while still
+      // enforcing the higher-priority claim semantic.
+      //
+      // The cost not addressed by this PR: lower-priority sources
+      // still PAY for the LLM call even when their result is dropped.
+      // That's the abort-on-claim-during-resolve follow-up — see
+      // #76 (perf/abort-llm-on-stale-generation) for the supersede
+      // case; the in-batch race needs a sibling-cancellation channel
+      // which is a separate piece of work.
       const promises = applicableSources.map((source) =>
         this.querySourceWithTimeout(source, withConsumed(context, consumedBlankSlots))
       );
@@ -89,12 +107,36 @@ export class CueResolver {
       for (let i = 0; i < sourceResults.length; i++) {
         const source = applicableSources[i];
         const result = sourceResults[i];
+
+        // Filter results overlapping HIGHER-priority claims accumulated
+        // so far. The first (highest-priority) source's results always
+        // pass through; subsequent sources lose any wordIndex already
+        // in the consumed set. Empty-result sources are unaffected;
+        // the filter is a no-op for them.
+        const filteredResults = result.results.length === 0 || consumedBlankSlots.size === 0
+          ? result.results
+          : result.results.filter(r => !consumedBlankSlots.has(r.wordIndex));
+        const filteredSourceResult: CueSourceResult = filteredResults === result.results
+          ? result
+          : { ...result, results: filteredResults };
+
+        // Accumulate this source's claims AFTER filtering — its own
+        // consumedBlankSlots applies to siblings that come AFTER it
+        // in priority order.
         if (result.consumedBlankSlots) {
           for (const idx of result.consumedBlankSlots) consumedBlankSlots.add(idx);
         }
+        // Also treat THIS source's actual produced wordIndices as
+        // claimed — a higher-priority source's content-bearing result
+        // suppresses lower-priority results on the same slot. Without
+        // this, the priority-tiebreak in processSourceResult could
+        // still overwrite an upstream content claim with a downstream
+        // result when their priorities matched.
+        for (const r of filteredResults) consumedBlankSlots.add(r.wordIndex);
+
         this.processSourceResult(
           source,
-          result,
+          filteredSourceResult,
           resultsByIndex,
           metrics,
           errors
