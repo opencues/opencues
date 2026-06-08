@@ -781,3 +781,57 @@ describe('failover palettes', () => {
     expect(a.getActiveColor(1, 'rgb')).not.toBe(DEFAULT_RGB_PALETTE[0]);
   });
 });
+
+describe('BlankLoadingAnimator.isOurSlotChar — staleness-check helper', () => {
+  // The predicate BlankFill.applyAsyncFill uses to decide whether a
+  // non-`_` char in the slot position is "stale slot — user typed
+  // over it" (return false) or "still our slot — animator paints it
+  // while a co-owner holds the refcount" (return true). Pre-fix,
+  // BlankFill rejected any non-`_`, which silently dropped substitutes
+  // whenever the resolver outlived BlankFill's release.
+
+  it('returns true for the literal underscore regardless of slot state', () => {
+    const { adapter } = makeAdapter('_');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce' });
+    expect(a.isOurSlotChar(0, '_')).toBe(true);
+    expect(a.isOurSlotChar(99, '_')).toBe(true); // even for an unknown slot
+  });
+
+  it('returns true for any of the slot\'s frame characters while the slot is active', () => {
+    const { adapter } = makeAdapter('_');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce' });
+    a.start(0);
+    // BOUNCE_FRAMES = ['_', '-', '‾', '-']
+    expect(a.isOurSlotChar(0, '-')).toBe(true);
+    expect(a.isOurSlotChar(0, '‾')).toBe(true);
+  });
+
+  it('returns false for a non-frame, non-underscore char (the "user typed over it" case)', () => {
+    const { adapter } = makeAdapter('_');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce' });
+    a.start(0);
+    expect(a.isOurSlotChar(0, 'X')).toBe(false);
+    expect(a.isOurSlotChar(0, '8')).toBe(false);
+  });
+
+  it('returns false for a frame-char query against an inactive slot', () => {
+    // No start() call → slot not in `_active` → only `_` is recognised.
+    const { adapter } = makeAdapter('_');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce' });
+    expect(a.isOurSlotChar(0, '-')).toBe(false);
+  });
+
+  it('recognises custom-mode frames (user-supplied)', () => {
+    const { adapter } = makeAdapter('_');
+    const customFrames = ['·', '•', '●', '•', '·'];
+    const a = new BlankLoadingAnimator({
+      adapter,
+      mode: () => 'custom',
+      customFrames: () => customFrames,
+    });
+    a.start(0);
+    expect(a.isOurSlotChar(0, '●')).toBe(true);
+    expect(a.isOurSlotChar(0, '·')).toBe(true);
+    expect(a.isOurSlotChar(0, 'X')).toBe(false);
+  });
+});

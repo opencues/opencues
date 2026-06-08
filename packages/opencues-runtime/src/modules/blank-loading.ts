@@ -375,6 +375,33 @@ export class BlankLoadingAnimator {
   }
 
   /**
+   * True when `char` is the literal `_` or one of the frame characters
+   * the slot at `wordIndex` is currently cycling through. Lets
+   * substitution paths tell "stale slot — user typed over it" apart
+   * from "still our slot, just currently painted as a loading frame".
+   * Returns false when the slot isn't active (no slot to belong to).
+   * Per-slot frames so user-supplied custom frames (`blank-loading-frames`
+   * scalar) are also recognised.
+   *
+   * Background: pre-May-2026, BlankFill's `applyAsyncFill` staleness
+   * check rejected any non-`_` char in the slot. That was fine when
+   * the resolver's `stop` ALWAYS restored `_` before substitute (the
+   * single-owner regime). Once owner-refcounting landed in `0097d65`,
+   * BlankFill's own `stop` no longer restores `_` if any other owner
+   * (e.g. the resolver) still holds the slot — the buffer still
+   * carries a loading-frame char when applyAsyncFill reads it, so the
+   * splice silently dropped. This predicate gives BlankFill the
+   * structural knowledge to recognise "the slot is still ours" without
+   * having to know the frame set itself.
+   */
+  isOurSlotChar(wordIndex: number, char: string): boolean {
+    if (char === '_') return true;
+    const slot = this._active.get(wordIndex);
+    if (!slot) return false;
+    return slot.frames.includes(char);
+  }
+
+  /**
    * Begin animating the `_` at the given word index. Honours the
    * current mode — if `off`, this is a no-op. The `owner` identifies
    * which module is claiming the slot; the slot keeps animating until
