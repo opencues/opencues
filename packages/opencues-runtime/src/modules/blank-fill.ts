@@ -45,6 +45,35 @@ export class BlankFill {
   /** Dedup key (text + slot index) → in-flight script promise. */
   private _pendingScripts = new Set<string>();
   private _warnedSandboxBlanks = new Set<string>();
+
+  /**
+   * Per-blank result cache. Keyed by `<blankName>::<argsKey>` where
+   * argsKey is `<keyword>|<contextWords-joined>`. Entries carry the
+   * stdout string + fetchedAt timestamp + the TTL the entry was
+   * cached against.
+   *
+   * Why: every keystroke that creates a fillable slot spawns the
+   * blank's `get` script (bash → external binary on WSL = ~150ms
+   * fork+exec; network blanks like weather/stocks = ~500ms HTTP).
+   * Repeat invocations with identical args within the TTL (user
+   * backspaces the substitution and re-types `_`, or re-cycles the
+   * same `_`) returned the SAME stdout but paid the spawn cost again.
+   *
+   * Cache invariants:
+   *  - GET path only — BlankFill never calls `set` here, so cached
+   *    entries are always idempotent read-results.
+   *  - Per-blank TTL (frontmatter `blankCacheTtlMs`, default 2000ms,
+   *    0 disables). Tuned for "instant on re-cycle" without masking
+   *    real-world value drift (system volume changed externally, BTC
+   *    moved 30s ago). Action blanks (volume/brightness) keep the
+   *    default; ambient blanks (weather/stocks) may opt for higher
+   *    values in their BLANK.md frontmatter.
+   *  - LRU eviction at 32 entries — far above the typical
+   *    keyword-bound blank count (<10) so steady-state is no eviction.
+   */
+  private _resultCache = new Map<string, { output: string; fetchedAt: number; ttlMs: number }>();
+  private static readonly RESULT_CACHE_MAX_ENTRIES = 32;
+  private static readonly DEFAULT_CACHE_TTL_MS = 2000;
   /**
    * Loading-animation owner for in-flight blank slots. Lazily created
    * on first dispatch; mode read from OPENCUES.md's
@@ -333,6 +362,46 @@ export class BlankFill {
         }
       }
 
+      // Cache lookup. Args identical to a recent call → reuse the
+      // stored stdout instead of paying the spawn cost again. Per-blank
+      // TTL via frontmatter `blankCacheTtlMs` (default 2000ms; 0 = disabled).
+      // Frontmatter parser may pass the value through as either a
+      // number or a string-of-digits depending on the YAML shape, so
+      // coerce here.
+      const cacheKey = `${slot.blankName}::${slot.keyword}|${contextWords.join('|')}`;
+      const rawTtl = (blank as { blankCacheTtlMs?: unknown }).blankCacheTtlMs;
+      const parsedTtl = typeof rawTtl === 'number'
+        ? rawTtl
+        : typeof rawTtl === 'string' && /^-?\d+$/.test(rawTtl)
+          ? parseInt(rawTtl, 10)
+          : null;
+      const ttlMs = parsedTtl !== null ? parsedTtl : BlankFill.DEFAULT_CACHE_TTL_MS;
+      if (ttlMs > 0) {
+        const entry = this._resultCache.get(cacheKey);
+        if (entry && Date.now() - entry.fetchedAt < entry.ttlMs) {
+          this.adapter.log('debug', `BlankFill: cache HIT for ${slot.blankName} get ${slot.keyword} (age=${Date.now() - entry.fetchedAt}ms, ttl=${entry.ttlMs}ms)`);
+          this.adapter.emitEvent?.('blank.invoked', {
+            blankName: slot.blankName,
+            keyword: slot.keyword,
+            contextWords: contextWords.slice(0, 8),
+            cacheHit: true,
+          });
+          // Apply the cached stdout directly — same path as the
+          // post-spawn success branch. Bump LRU recency so freshly used
+          // entries survive eviction.
+          this._resultCache.delete(cacheKey);
+          this._resultCache.set(cacheKey, entry);
+          // Drop the dedup entry: we never started a spawn for this
+          // key, so the matching delete in the .then/.catch path won't
+          // ever fire. Without this, subsequent identical-arg keystrokes
+          // see `_pendingScripts.has(dedupKey)` and skip even after the
+          // cached value is fresh.
+          this._pendingScripts.delete(dedupKey);
+          this.applyAsyncFill(slot, entry.output);
+          continue;
+        }
+      }
+
       this.adapter.log('debug', `BlankFill: invoke ${slot.blankName} get ${slot.keyword}`, { contextWords, envExtras: extraEnvKeys(blank), scriptPath });
       this.adapter.emitEvent?.('blank.invoked', {
         blankName: slot.blankName,
@@ -411,6 +480,23 @@ export class BlankFill {
         if (res.exitCode !== 0 || res.timedOut) return;
         const stdout = res.stdout.trim();
         if (!stdout) return;
+        // Cache the successful result. Only cache successes —
+        // an exit-1 / empty-stdout case is more useful to retry
+        // (the user may have just fixed whatever upstream condition
+        // caused the failure). TTL was captured at dispatch time,
+        // not now, so a frontmatter edit between dispatch + return
+        // doesn't change THIS entry's lifetime.
+        if (ttlMs > 0) {
+          this._resultCache.set(cacheKey, { output: stdout, fetchedAt: Date.now(), ttlMs });
+          // LRU evict — drop the oldest entries until we're at cap.
+          // Map preserves insertion order; deleting + re-inserting
+          // bumps recency on hits (see cache-lookup branch above).
+          while (this._resultCache.size > BlankFill.RESULT_CACHE_MAX_ENTRIES) {
+            const oldest = this._resultCache.keys().next().value;
+            if (oldest === undefined) break;
+            this._resultCache.delete(oldest);
+          }
+        }
         this.applyAsyncFill(slot, stdout);
       }).catch(err => {
         this._pendingScripts.delete(dedupKey);

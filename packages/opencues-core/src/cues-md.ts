@@ -161,6 +161,18 @@ export interface BlankConfig {
   blankStep?: number;
   /** When true, auto-fill the blank with the current value on analysis */
   blankAutoPopulate?: boolean;
+  /**
+   * BlankFill result-cache TTL in milliseconds. When > 0, the script's
+   * stdout from `<blankName> get <keyword> ...contextWords` is memoised
+   * for this window — a subsequent invocation with identical args
+   * within the window reuses the stored value instead of re-spawning.
+   * 0 disables the cache. Omitted → runtime default (currently 2000ms).
+   * Tune higher for slow-moving ambient sources (stocks 5000-15000ms,
+   * weather 60000ms); leave at default for action blanks (volume,
+   * brightness) so cycling stays responsive without masking real-world
+   * value drift.
+   */
+  blankCacheTtlMs?: number;
   /** Value format: integer (default), float, or string */
   blankFormat?: 'integer' | 'float' | 'string';
   /** Tip shown when the auto-populated value is highlighted */
@@ -904,6 +916,7 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   speak?: boolean;
   blankKeywords?: string;
   blankStep?: number;
+  blankCacheTtlMs?: number;
   blankAutoPopulate?: boolean;
   blankFormat?: 'integer' | 'float' | 'string';
   blankTip?: string;
@@ -1026,6 +1039,11 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'speak': fm.speak = value === 'true'; break;
       case 'blankKeywords': fm.blankKeywords = value; break;
       case 'blankStep': fm.blankStep = parseInt(value, 10) || undefined; break;
+      case 'blankCacheTtlMs': {
+        const n = parseInt(value, 10);
+        if (Number.isFinite(n) && n >= 0) fm.blankCacheTtlMs = n;
+        break;
+      }
       case 'blankAutoPopulate': fm.blankAutoPopulate = value === 'true'; break;
       case 'blankFormat': fm.blankFormat = value as 'integer' | 'float' | 'string'; break;
       case 'blankTip': fm.blankTip = value; break;
@@ -1198,6 +1216,7 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
         blank.blankKeywords = frontmatter.blankKeywords.split(',').map(k => k.trim().toLowerCase());
       }
       if (frontmatter.blankStep !== undefined) blank.blankStep = frontmatter.blankStep;
+      if (frontmatter.blankCacheTtlMs !== undefined) blank.blankCacheTtlMs = frontmatter.blankCacheTtlMs;
       if (frontmatter.blankAutoPopulate !== undefined) blank.blankAutoPopulate = frontmatter.blankAutoPopulate;
       if (frontmatter.blankFormat !== undefined) blank.blankFormat = frontmatter.blankFormat;
       if (frontmatter.blankTip !== undefined) blank.blankTip = frontmatter.blankTip;
