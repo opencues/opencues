@@ -339,7 +339,8 @@ async function init(): Promise<void> {
       // }
       runtimeNotify(text);
     });
-  });
+  }, true);  // CAPTURE phase — managed editors (Lexical, Quill) may stopPropagation
+             // on input events in bubble; without capture we never see them.
 
   // Cursor-only moves (mouse click, arrow keys without typing) — fire
   // selectionchange. Drives cursor-navigate auto-highlight when on.
