@@ -40,7 +40,8 @@
       ],
       "css": [
         "dist/content.css"
-      ]
+      ],
+      "run_at": "document_end"
     }
   ],
   "icons": {

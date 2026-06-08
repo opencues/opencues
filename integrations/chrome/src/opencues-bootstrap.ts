@@ -1185,22 +1185,26 @@ export function replaceAllText(text: string): void {
       //
       // STRATEGY: select-all via the Range API (NOT synthetic Ctrl+A —
       // Quill ignores it because untrusted keydowns don't trigger
-      // Quill's selectAll handler), then `execCommand('insertText')`
-      // with the LLM substitute as a plain-text string carrying `\n`.
-      // Quill's `beforeinput` handler reads `inputType:
-      // "insertReplacementText"` events and routes them through its
-      // Delta model — the same code path real typing uses, so the
-      // model accepts the write. `\n` characters in the plain text
-      // become block boundaries in Quill's Delta. The MutationObserver
-      // doesn't fight because the DOM mutation is the *result* of
-      // a model write, not a foreign mutation.
+      // Quill's selectAll handler), then for each line of text:
+      // `execCommand('insertText', false, line)` followed by
+      // `execCommand('insertParagraph')` between lines. Quill's
+      // `beforeinput` handler reads these inputTypes and routes them
+      // through its Delta model — the same code path real typing +
+      // Enter uses, so the model accepts the writes and the
+      // MutationObserver doesn't fight (DOM mutation is the *result*
+      // of a model write, not a foreign mutation).
       //
-      // The prior synthetic-paste fallback (text/html via ClipboardEvent)
-      // didn't work on LinkedIn — Quill's paste handler appears to
-      // reject untrusted ClipboardEvent and the bare `execCommand`
-      // path that follows mutates the DOM in a way the observer
-      // immediately reverts. `execCommand('insertText')` is the
-      // observed-working path.
+      // Why per-line: browsers strip embedded `\n` characters from
+      // `execCommand('insertText', false, 'a\nb')` — the newlines
+      // become non-text and Quill never sees them. Splitting on `\n`
+      // and emitting `insertParagraph` between is the cross-engine
+      // way to actually get block boundaries.
+      //
+      // Prior approaches that DIDN'T work on LinkedIn:
+      // - Synthetic Ctrl+A + ClipboardEvent paste (text/html): Quill
+      //   rejected untrusted paste, substitute reverted.
+      // - Single `execCommand('insertText', '...\n...')`: `\n`s
+      //   stripped, all text rendered as one run-on paragraph.
       try {
         const sel = window.getSelection();
         const range = document.createRange();
@@ -1208,11 +1212,59 @@ export function replaceAllText(text: string): void {
         sel?.removeAllRanges();
         sel?.addRange(range);
       } catch { /* selection unavailable */ }
-      // Collapse multiple newlines to single — same as Quill setText
-      // condensed path. Avoids empty paragraph blocks in Quill's Delta.
-      const condensed = text.replace(/\n\n+/g, '\n');
-      document.execCommand('insertText', false, condensed);
-      log.info('[opencues] replaceAllText: quill fallback (selectAll + insertText), len=' + condensed.length);
+      // Preserve the paragraph-vs-soft-break distinction:
+      //   - `\n\n+` in LLM source → paragraph break (blank line between)
+      //     emitted via `execCommand('insertParagraph')` → `<p>` block.
+      //   - single `\n` (soft break within a paragraph — e.g. signature
+      //     lines) → emitted via `execCommand('insertLineBreak')` → `<br>`,
+      //     adjacent line with no margin gap.
+      //
+      // Why this matters: an LLM email body emits `\n\n` between
+      // paragraphs (Subject / Dear / body / Thank you / signature
+      // group) and `\n` within the signature (Best regards / Name /
+      // Title / email). Treating every break as a paragraph creates
+      // excessive gaps in the signature. Treating every break as a
+      // soft break loses the body paragraph structure.
+      //
+      // Split-on-double-then-single preserves both. ExecCommand alone
+      // (no synthetic Enter keydown, no beforeinput dispatch) — those
+      // caused stale-cursor / reversed-order issues on LinkedIn's
+      // Quill in prior iterations.
+      // LinkedIn's Quill: every text run becomes a `<p>` block, and
+      // LinkedIn's CSS collapses the default `<p>` margin so consecutive
+      // `<p>`s render stacked tight (no visible blank between them).
+      // To create the visible blank line a reader expects between body
+      // paragraphs, we need an empty `<p><br></p>` block between them
+      // — which is exactly what hitting Enter on an empty line produces
+      // in Quill (and what the user reproduces when they manually press
+      // Enter twice). We emit that by calling `insertParagraph` TWICE
+      // for paragraph breaks (the second call creates the empty middle
+      // `<p>`), and ONCE for soft breaks within a paragraph (tight
+      // signature stacking with no blank line between).
+      const paragraphs = text.split(/\n\n+/);
+      let totalSoftBreaks = 0;
+      for (let p = 0; p < paragraphs.length; p++) {
+        const lines = paragraphs[p].split('\n');
+        for (let l = 0; l < lines.length; l++) {
+          if (lines[l].length > 0) {
+            document.execCommand('insertText', false, lines[l]);
+          }
+          if (l < lines.length - 1) {
+            // Soft break within a paragraph (signature lines): single
+            // paragraph-end → stacked tight via LinkedIn's CSS collapse.
+            document.execCommand('insertParagraph');
+            totalSoftBreaks++;
+          }
+        }
+        if (p < paragraphs.length - 1) {
+          // Body paragraph break: TWICE → blank `<p><br></p>` middle
+          // block. Visible blank line in the rendered editor.
+          document.execCommand('insertParagraph');
+          document.execCommand('insertParagraph');
+        }
+      }
+      log.info('[opencues] replaceAllText: quill fallback (selectAll + per-line insertText), paragraphs='
+        + paragraphs.length + ' softBreaks=' + totalSoftBreaks);
       sourceReclassifier.markRuntimeWrite(text);
       schedulePostReconcileRender();
       return;
