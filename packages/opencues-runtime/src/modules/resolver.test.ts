@@ -956,7 +956,7 @@ describe('Resolver per-resolve AbortController (stale-generation cancellation)',
   // (via `dispatchChat`); the runtime's job is just to create the
   // controller and roll it on generation increment.
 
-  interface CapturedCtx { signal?: AbortSignal }
+  interface CapturedAbortCtx { signal?: AbortSignal }
 
   function setup() {
     const adapter = new MockAdapter({
@@ -975,8 +975,8 @@ describe('Resolver per-resolve AbortController (stale-generation cancellation)',
 
   it('a fresh AbortSignal lands in the ctx of every resolve', async () => {
     const { resolver } = setup();
-    const captured: CapturedCtx[] = [];
-    (resolver as unknown as { _resolver: { resolve(ctx: CapturedCtx): Promise<{ results: MockResult[] }> } })._resolver = {
+    const captured: CapturedAbortCtx[] = [];
+    (resolver as unknown as { _resolver: { resolve(ctx: CapturedAbortCtx): Promise<{ results: MockResult[] }> } })._resolver = {
       resolve: async (ctx) => { captured.push(ctx); return { results: [] }; },
     };
     await resolver.resolveAndApply('alpha');
@@ -989,20 +989,16 @@ describe('Resolver per-resolve AbortController (stale-generation cancellation)',
 
   it('a newer resolveAndApply aborts the PRIOR one\'s signal mid-flight', async () => {
     const { resolver } = setup();
-    // Long-running resolve that we'll observe the signal on. Resolves
-    // when the SECOND call comes in.
     let firstSignal: AbortSignal | undefined;
     let firstStarted!: (v: void) => void;
     const firstStartedP = new Promise<void>(r => { firstStarted = r; });
     let firstResolve!: (v: { results: MockResult[] }) => void;
     let secondCalled = false;
-    (resolver as unknown as { _resolver: { resolve(ctx: CapturedCtx): Promise<{ results: MockResult[] }> } })._resolver = {
+    (resolver as unknown as { _resolver: { resolve(ctx: CapturedAbortCtx): Promise<{ results: MockResult[] }> } })._resolver = {
       resolve: async (ctx) => {
         if (!secondCalled) {
           firstSignal = ctx.signal;
           firstStarted();
-          // First call blocks until we resolve it externally — simulating
-          // a real LLM call that is still in flight.
           return new Promise(r => { firstResolve = r; });
         }
         return { results: [] };
@@ -1011,13 +1007,10 @@ describe('Resolver per-resolve AbortController (stale-generation cancellation)',
     const firstP = resolver.resolveAndApply('alpha');
     await firstStartedP;
     expect(firstSignal?.aborted).toBe(false);
-    // Fire a newer resolve — should abort the first signal.
     secondCalled = true;
     const secondP = resolver.resolveAndApply('alpha _');
-    // Give the abort a microtask to fire.
     await Promise.resolve();
     expect(firstSignal?.aborted).toBe(true);
-    // Unblock the first call so the test can clean up.
     firstResolve({ results: [] });
     await firstP;
     await secondP;
@@ -1030,12 +1023,11 @@ describe('Resolver per-resolve AbortController (stale-generation cancellation)',
     const firstStartedP = new Promise<void>(r => { firstStarted = r; });
     let abortedRejection!: (e: Error) => void;
     let secondCalled = false;
-    (resolver as unknown as { _resolver: { resolve(ctx: CapturedCtx): Promise<{ results: MockResult[] }> } })._resolver = {
+    (resolver as unknown as { _resolver: { resolve(ctx: CapturedAbortCtx): Promise<{ results: MockResult[] }> } })._resolver = {
       resolve: async (ctx) => {
         if (!secondCalled) {
           firstSignal = ctx.signal;
           firstStarted();
-          // Simulate a source that throws AbortError when its signal trips.
           return new Promise((_resolve, reject) => {
             ctx.signal?.addEventListener('abort', () => {
               const err = new Error('aborted');
@@ -1063,6 +1055,81 @@ describe('Resolver per-resolve AbortController (stale-generation cancellation)',
     await secondP;
     expect(firstSignal?.aborted).toBe(true);
     expect(errors).toEqual([]);
+  });
+});
+
+describe('Resolver identity-context skip for keyword-bound slots (symmetric with blank-context)', () => {
+  // FluidBlank and TransformBlank are the only consumers of
+  // `identityContext`. Both cede when a keyword-bound BlankFill slot
+  // claims the `_`. The catalog itself is cheap (in-memory at
+  // ConfigLoader), so the saving here is symmetric correctness +
+  // payload-size rather than an IO/cost win.
+  interface CapturedIdentityCtx { identityContext?: unknown }
+
+  function setup(opts: {
+    mode?: 'off' | 'safe' | 'raw';
+    keywordBoundSlotIndices?: (text: string) => readonly number[];
+  }) {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': CUES_MD },
+    });
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    if (opts.mode && opts.mode !== 'off') {
+      loader.applyOpenCuesScalar('identity-context-mode', opts.mode);
+    }
+
+    const resolver = new Resolver(
+      adapter, hlState, dynDefs, loader,
+      {
+        endpoint: 'http://test', apiKey: 'x', defaultModel: 'm', debounceMs: 10,
+        httpAdapter: {},
+        keywordBoundSlotIndices: opts.keywordBoundSlotIndices,
+      },
+    );
+    const capturedCtxs: CapturedIdentityCtx[] = [];
+    (resolver as unknown as { _resolver: { resolve(ctx: CapturedIdentityCtx): Promise<{ results: MockResult[] }> } })._resolver = {
+      resolve: async (ctx) => { capturedCtxs.push(ctx); return { results: [] }; },
+    };
+    return { resolver, capturedCtxs };
+  }
+
+  it('every `_` is keyword-bound → identityContext is NOT forwarded', async () => {
+    const { resolver, capturedCtxs } = setup({
+      mode: 'safe',
+      keywordBoundSlotIndices: text => text === 'volume _' ? [1] : [],
+    });
+    await resolver.resolveAndApply('volume _');
+    expect(capturedCtxs[0]?.identityContext).toBeUndefined();
+  });
+
+  it('no keyword-bound slot → identityContext IS forwarded', async () => {
+    const { resolver, capturedCtxs } = setup({
+      mode: 'safe',
+      keywordBoundSlotIndices: () => [],
+    });
+    await resolver.resolveAndApply('draft an email about my trip _');
+    expect(capturedCtxs[0]?.identityContext).toBeDefined();
+  });
+
+  it('mode=off → identityContext is NOT forwarded regardless of slot state', async () => {
+    const { resolver, capturedCtxs } = setup({
+      mode: 'off',
+      keywordBoundSlotIndices: () => [],
+    });
+    await resolver.resolveAndApply('draft an email about my trip _');
+    expect(capturedCtxs[0]?.identityContext).toBeUndefined();
+  });
+
+  it('no `_` in buffer → identityContext is NOT forwarded (no consumer source can fire)', async () => {
+    const { resolver, capturedCtxs } = setup({
+      mode: 'safe',
+      keywordBoundSlotIndices: () => [],
+    });
+    await resolver.resolveAndApply('the lawyer filed today');
+    expect(capturedCtxs[0]?.identityContext).toBeUndefined();
   });
 });
 
