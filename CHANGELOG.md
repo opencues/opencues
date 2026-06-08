@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Changed — ConfigLoader parallelises every independent fs read on each `_loadOnce`
+
+Pre-fix, `ConfigLoader._loadOnce` ran fs reads in serialised waves: OPENCUES.md → IDENTITY.md → per-path master batch → per-path folder discovery (sequential for-loop) → per-folder `prewalk` (sequential for-loop) → per-scope walks (sequential for-loop). Every read in each wave was independent of every other wave's, but `await` boundaries forced strict order. On a typical install (2-3 search paths × ~100 .md files), the reload paid sum-of-reads instead of max-of-reads. Cold reloads on a synced / mounted filesystem (WSL, sshfs, network home) showed 50-200ms unnecessary spin.
+
+Post-fix: every independent read fans out under one top-level `Promise.all` in `_loadOnce` (settings + identity + per-path master batch + per-path folder discovery), and the two for-loops inside `_discoverFolders` become `Promise.all(entries.map(...))` and `Promise.all(['cues', 'blanks', 'auditors'].map(...))`. The downstream merge/fold logic is unchanged — same priority semantics, same fold-low-to-high overlay rule.
+
+- **`@opencues/runtime` (0.2.6 → 0.2.7)** — single-file change in `packages/opencues-runtime/src/modules/config-loader.ts`. The top-level Promise.all hoists 4 categories of fs work (settings, identity, master batch, folder discovery) into one parallel wave; `_discoverFolders`'s per-entry and per-scope walks parallelise inside. No API surface changes; callers see the same `load()` Promise resolving with the same result shape, just faster on cold reads.
+- **No new tests** — the existing config-loader suite (33 tests) covers all loader-output invariants and continues to pass; parallelisation is an implementation detail that preserves output semantics. Adding a "parallelism" test would essentially time the load and is too host-dependent to pin reliably.
+- **Estimated win** — 50-200ms per cold `_loadOnce` on WSL / mounted FS. Invisible on a fast SSD. The 2s `maybeReload` debounce + 5s background poll mean this fires at most a few times per second of UI activity; the cumulative saving over an hour-long session is small but visible during cold-startup spikes.
+
 ### Added — transform-blank wires blank-as-context end-to-end
 
 Blank-as-context's June 2026 v1 shipped fluid-blank-only — transform-blank (the compose / rewrite surface) consumed identity-context but not ambient blank-context tokens. The deferral was bench-gated, not architectural — `docs/architecture/blank-as-context.md:36-38` named it as the next milestone. This change closes that deferral.
