@@ -319,7 +319,26 @@ async function init(): Promise<void> {
     // first — guarantees source='runtime' classification works for
     // runtime-driven writes regardless of DOM normalisation.
     queueMicrotask(() => {
-      const target = currentTarget;
+      let target = currentTarget;
+      // Lazy re-attach for focus-trap modals (LinkedIn share composer,
+      // any Ember/Lit dialog that auto-focuses its editor on open):
+      // focus is delivered programmatically before our content script
+      // loads OR via a path that bypasses document-level focusin (focus
+      // traps sometimes restore focus internally without re-dispatching).
+      // Result: input event arrives with `currentTarget=null` and the
+      // first `_` keystroke silently drops.
+      //
+      // Defence: walk `document.activeElement` (shadow-piercing-aware)
+      // and attach if it IS a text-input. attachToFocused is idempotent
+      // (returns early when el===currentTarget) so on the steady-state
+      // path this is a single null-check.
+      if (!target) {
+        const live = resolveFocusedElement(document.activeElement);
+        if (live) {
+          attachToFocused(live);
+          target = currentTarget;
+        }
+      }
       if (!target) return;
       // readTargetText branches: `.value` for normal inputs, walk for CE.
       // The runtime re-reads cursor via its own getCursorOffset hook,

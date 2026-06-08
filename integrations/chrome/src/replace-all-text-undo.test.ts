@@ -450,7 +450,7 @@ describe('replaceAllText — undo-stack shape', () => {
     expect(usedCtrlA).toBe(false);
   });
 
-  it('Quill — fallback: selectAll via Range API + execCommand insertText when no __quill is reachable', () => {
+  it('Quill — fallback: selectAll via Range API + per-line insertText with mixed soft/hard breaks when no __quill is reachable', () => {
     const container = document.createElement('div');
     container.className = 'ql-container';
     const editor = document.createElement('div');
@@ -464,24 +464,46 @@ describe('replaceAllText — undo-stack shape', () => {
     publishTarget(editor);
     const spy = installMutationSpy(editor);
 
+    // `Hi\n\nHope\n\nBest,\nWilfred`:
+    //   - paragraphs (split on `\n\n+`): ["Hi", "Hope", "Best,\nWilfred"]
+    //   - Last paragraph has TWO lines (signature soft-break).
     replaceAllText('Hi\n\nHope\n\nBest,\nWilfred');
 
     spy.restore();
-    // Fallback now uses execCommand('insertText') with `\n\n+`-condensed
-    // text instead of synthetic paste — observed-working path on LinkedIn
-    // where Quill rejects synthetic ClipboardEvent + the prior insertHTML
-    // path got reverted by Quill's MutationObserver.
+    // Each non-empty line gets an insertText. 4 lines total.
     const insertTextOps = spy.ops.filter(
       o => o.kind === 'execCommand' && o.cmd === 'insertText',
     ) as Array<{ kind: 'execCommand'; cmd: string; arg?: string }>;
-    expect(insertTextOps.length).toBe(1);
-    // \n\n collapsed to \n; soft break (\n in signature) preserved.
-    expect(insertTextOps[0].arg).toBe('Hi\nHope\nBest,\nWilfred');
-    // No synthetic Ctrl+A — Quill ignores untrusted keydowns; Range API
-    // selectNodeContents handles the selection instead.
+    expect(insertTextOps.length).toBe(4);
+    expect(insertTextOps[0].arg).toBe('Hi');
+    expect(insertTextOps[1].arg).toBe('Hope');
+    expect(insertTextOps[2].arg).toBe('Best,');
+    expect(insertTextOps[3].arg).toBe('Wilfred');
+    // Paragraph breaks (\n\n+ in source): TWICE each to create empty
+    // <p><br></p> middle block (LinkedIn's CSS collapses default <p>
+    // margin so a single insertParagraph stacks tight; need the empty
+    // middle to create a visible blank line).
+    // 2 paragraph breaks × 2 = 4 insertParagraphs for body.
+    // Soft breaks (single \n in source — signature): 1 each.
+    // 1 soft break × 1 = 1 insertParagraph for signature.
+    // Total: 5 insertParagraph ops.
+    const insertParagraphOps = spy.ops.filter(
+      o => o.kind === 'execCommand' && o.cmd === 'insertParagraph',
+    );
+    expect(insertParagraphOps.length).toBe(5);
+    // No more insertLineBreak — LinkedIn's Quill converts it to <p>
+    // anyway, so we use insertParagraph everywhere with TWICE for
+    // body paragraph breaks.
+    const insertLineBreakOps = spy.ops.filter(
+      o => o.kind === 'execCommand' && o.cmd === 'insertLineBreak',
+    );
+    expect(insertLineBreakOps.length).toBe(0);
+    // No synthetic Enter keydown (caused stale-cursor issues), no Ctrl+A,
+    // no synthetic paste.
+    const enterKeydowns = spy.ops.filter(o => o.kind === 'keydown' && o.key === 'Enter');
+    expect(enterKeydowns.length).toBe(0);
     const ctrlA = spy.ops.find(o => o.kind === 'keydown' && o.key === 'a' && o.ctrl);
     expect(ctrlA).toBeUndefined();
-    // No synthetic paste either.
     const pasteOps = spy.ops.filter(o => o.kind === 'paste');
     expect(pasteOps.length).toBe(0);
   });
