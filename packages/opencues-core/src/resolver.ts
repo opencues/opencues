@@ -93,20 +93,38 @@ export class CueResolver {
       // (max(source_time) instead of sum) is preserved while still
       // enforcing the higher-priority claim semantic.
       //
-      // The cost not addressed by this PR: lower-priority sources
-      // still PAY for the LLM call even when their result is dropped.
-      // That's the abort-on-claim-during-resolve follow-up — see
-      // #76 (perf/abort-llm-on-stale-generation) for the supersede
-      // case; the in-batch race needs a sibling-cancellation channel
-      // which is a separate piece of work.
-      const promises = applicableSources.map((source) =>
-        this.querySourceWithTimeout(source, withConsumed(context, consumedBlankSlots))
+      // Sibling-abort: when a higher-priority source produces a
+      // whole-buffer claim (`spanStart=0 && spanEnd>=text.length` — the
+      // signature ConfigIntent + selector-satellite blanks emit, and
+      // TransformBlank emits when it rewrites the full buffer), abort
+      // all strictly-lower-priority in-flight siblings. Their results
+      // would target spans inside the wiped buffer and be filtered
+      // out anyway; aborting saves the LLM round-trip (typically the
+      // slowest call in the batch — e.g. Claude Opus on the blanks
+      // bucket while ConfigIntent's classifier runs on fast Cerebras).
+      // Per-source AbortControllers chain off the context signal so
+      // an outer generation-roll still cascades down.
+      const controllers = applicableSources.map(() => new AbortController());
+      const baseSignal = context.signal;
+      if (baseSignal) {
+        if (baseSignal.aborted) {
+          for (const c of controllers) c.abort();
+        } else {
+          baseSignal.addEventListener('abort', () => {
+            for (const c of controllers) c.abort();
+          });
+        }
+      }
+      const promises = applicableSources.map((source, i) =>
+        this.querySourceWithTimeout(
+          source,
+          withConsumed({ ...context, signal: controllers[i].signal }, consumedBlankSlots),
+        )
       );
-      const sourceResults = await Promise.all(promises);
 
-      for (let i = 0; i < sourceResults.length; i++) {
+      for (let i = 0; i < promises.length; i++) {
         const source = applicableSources[i];
-        const result = sourceResults[i];
+        const result = await promises[i];
 
         // Filter results overlapping HIGHER-priority claims accumulated
         // so far. The first (highest-priority) source's results always
@@ -133,6 +151,26 @@ export class CueResolver {
         // still overwrite an upstream content claim with a downstream
         // result when their priorities matched.
         for (const r of filteredResults) consumedBlankSlots.add(r.wordIndex);
+
+        // Whole-buffer claim → abort strictly-lower-priority siblings.
+        // Their LLM calls' results would all be wiped by the splice
+        // (spanStart=0/spanEnd=text.length replaces the entire buffer),
+        // so the round-trips are pure waste. We use the survived
+        // (filtered) results to make the decision — a higher-priority
+        // result that itself got filtered out by an EVEN-higher
+        // claim shouldn't trigger further aborts.
+        const textLen = context.text.length;
+        const wholeBufferClaim = filteredResults.some(
+          r => r.spanStart === 0 && typeof r.spanEnd === 'number' && r.spanEnd >= textLen,
+        );
+        if (wholeBufferClaim) {
+          const claimingPriority = source.priority;
+          for (let j = i + 1; j < applicableSources.length; j++) {
+            if (applicableSources[j].priority < claimingPriority) {
+              controllers[j].abort();
+            }
+          }
+        }
 
         this.processSourceResult(
           source,

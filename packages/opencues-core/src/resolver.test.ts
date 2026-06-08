@@ -207,6 +207,137 @@ describe('CueResolver: parallel mode — higher-priority claims suppress lower-p
     assert.deepStrictEqual(byIdx.get(7), ['LOW-7']);
   });
 
+  // Sibling-abort: a higher-priority source emitting a whole-buffer claim
+  // (spanStart=0, spanEnd>=text.length — ConfigIntent/selector-satellite/
+  // TransformBlank rewrite signature) should abort strictly-lower-priority
+  // in-flight siblings. Their LLM results would be wiped by the splice
+  // anyway, so the round-trips are pure waste — the wait was previously
+  // adding 1–3s of perceived latency to fluid-config when the blanks bucket
+  // routed to a slow provider (Claude Opus).
+  it('whole-buffer claim from higher-priority source aborts lower-priority sibling signals', async () => {
+    let lowSignal: AbortSignal | undefined;
+    let lowAborted = false;
+
+    const high: CueSource = {
+      id: 'high',
+      priority: 94,
+      isCycleable: false,
+      supports: () => true,
+      async getCues(ctx) {
+        return {
+          results: [{
+            wordIndex: 3, word: '_', alternatives: ['HIGH'],
+            source: 'high', priority: 94,
+            spanStart: 0, spanEnd: ctx.text.length,
+          }],
+        };
+      },
+    };
+    const low: CueSource = {
+      id: 'low',
+      priority: 92,
+      isCycleable: false,
+      supports: () => true,
+      async getCues(ctx) {
+        lowSignal = ctx.signal;
+        // Simulate a slow LLM call. Resolve to nothing if aborted mid-flight.
+        await new Promise<void>(resolve => {
+          const t = setTimeout(resolve, 200);
+          ctx.signal?.addEventListener('abort', () => {
+            clearTimeout(t);
+            lowAborted = true;
+            resolve();
+          });
+        });
+        return { results: [] };
+      },
+    };
+
+    const resolver = new CueResolver([high, low], { parallel: true });
+    await resolver.resolve(makeContext('x x x _'));
+
+    assert.ok(lowSignal, 'low source should receive a signal in its context');
+    assert.strictEqual(lowAborted, true, 'low source signal should fire when high source emits a whole-buffer claim');
+  });
+
+  it('non-whole-buffer claim does NOT abort lower-priority siblings (point-wise filter still wins)', async () => {
+    let lowAborted = false;
+
+    const high: CueSource = {
+      id: 'high',
+      priority: 94,
+      isCycleable: false,
+      supports: () => true,
+      async getCues(_ctx) {
+        // No spanStart/spanEnd → point-wise wordIndex claim, not whole-buffer.
+        return {
+          results: [{ wordIndex: 3, word: '_', alternatives: ['HIGH'], source: 'high', priority: 94 }],
+        };
+      },
+    };
+    const low: CueSource = {
+      id: 'low',
+      priority: 92,
+      isCycleable: false,
+      supports: () => true,
+      async getCues(ctx) {
+        ctx.signal?.addEventListener('abort', () => { lowAborted = true; });
+        // Resolve quickly so the test finishes — we just need to observe
+        // that no abort fires before the source returns.
+        return {
+          results: [{ wordIndex: 7, word: '_', alternatives: ['LOW-7'], source: 'low', priority: 92 }],
+        };
+      },
+    };
+
+    const resolver = new CueResolver([high, low], { parallel: true });
+    await resolver.resolve(makeContext('x x x _ y y y _'));
+
+    assert.strictEqual(lowAborted, false, 'low source should NOT be aborted — high only claimed wordIndex 3 point-wise');
+  });
+
+  it('outer context signal cascades to all sibling sources', async () => {
+    const outer = new AbortController();
+    let aAborted = false;
+    let bAborted = false;
+
+    const a: CueSource = {
+      id: 'a',
+      priority: 94,
+      isCycleable: false,
+      supports: () => true,
+      async getCues(ctx) {
+        ctx.signal?.addEventListener('abort', () => { aAborted = true; });
+        await new Promise<void>(resolve => {
+          const t = setTimeout(resolve, 200);
+          ctx.signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); });
+        });
+        return { results: [] };
+      },
+    };
+    const b: CueSource = {
+      id: 'b',
+      priority: 92,
+      isCycleable: false,
+      supports: () => true,
+      async getCues(ctx) {
+        ctx.signal?.addEventListener('abort', () => { bAborted = true; });
+        await new Promise<void>(resolve => {
+          const t = setTimeout(resolve, 200);
+          ctx.signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); });
+        });
+        return { results: [] };
+      },
+    };
+
+    const resolver = new CueResolver([a, b], { parallel: true });
+    setTimeout(() => outer.abort(), 30);
+    await resolver.resolve({ ...makeContext('x x x _'), signal: outer.signal });
+
+    assert.strictEqual(aAborted, true, 'outer abort should cascade to source a');
+    assert.strictEqual(bAborted, true, 'outer abort should cascade to source b');
+  });
+
   it('a source\'s own consumedBlankSlots does NOT filter its own results (a source can fill the slot it claimed)', async () => {
     const source = stubSource({
       id: 's',
