@@ -1273,13 +1273,20 @@ describe('Resolver explicit-`_` gate', () => {
     expect(sawStandaloneUnderscore).toBe(true);
   });
 
-  it('paste scenario: programmatic `pushTextNoKeystroke` with a standalone `_` does NOT route to blank sources', async () => {
+  it('diff-based fallback: `pushTextNoKeystroke` that grows underscore count auto-arms (PR #90)', async () => {
+    // PR #90 added a diff-based fallback to the explicit-`_` gate: when the
+    // buffer underscore count goes UP without a keystroke arm (chrome focus-
+    // trap modals — LinkedIn share, Reddit's shreddit-composer — clear
+    // `currentTarget` during focus shuffle, so the document-level keydown
+    // listener early-returns before `onUnderscoreKey` arms the flag), the
+    // resolver treats the count delta itself as the arm signal. The cursor-
+    // split case (PR #52) is naturally excluded because it doesn't change
+    // the count — it only exposes an existing `_` via whitespace.
     const { adapter, seenWordsPerCall } = setupGateScenario();
     adapter.pushTextNoKeystroke('weather _');
     await new Promise(r => setTimeout(r, 80));
-    for (const words of seenWordsPerCall) {
-      expect(words).not.toContain('_');
-    }
+    const sawStandaloneUnderscore = seenWordsPerCall.some(words => words.includes('_'));
+    expect(sawStandaloneUnderscore).toBe(true);
   });
 });
 
