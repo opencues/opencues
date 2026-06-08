@@ -359,7 +359,7 @@ export function updateRuntimeLlmConfig(patch: {
  *  editor-API path instead of the generic in-place splice. */
 function isManagedEditor(el: HTMLElement): boolean {
   return !!el.closest(
-    '[data-lexical-editor="true"], .ProseMirror, [data-slate-editor="true"], .public-DraftEditor-content'
+    '[data-lexical-editor="true"], .ProseMirror, [data-slate-editor="true"], .public-DraftEditor-content, .ql-editor'
   );
 }
 
@@ -628,6 +628,36 @@ function isLexicalEditor(el: HTMLElement): boolean {
 
 function isDraftJsEditor(el: HTMLElement): boolean {
   return !!el.closest('.public-DraftEditor-content');
+}
+
+function isQuillEditor(el: HTMLElement): boolean {
+  return !!el.closest('.ql-editor');
+}
+
+/** Walk up from a `.ql-editor` to find the Quill editor instance. Quill
+ *  stashes itself on the container element (`.ql-container`) as
+ *  `__quill`. Falls back to checking the immediate root + walking
+ *  ancestors. Returns null if the instance isn't reachable (Quill
+ *  was destroyed, or LinkedIn's bundle uses a custom private name). */
+type QuillInstance = {
+  setText: (text: string, source?: string) => unknown;
+  setContents?: (delta: unknown, source?: string) => unknown;
+  getLength?: () => number;
+  root?: HTMLElement;
+  clipboard?: { dangerouslyPasteHTML?: (html: string, source?: string) => unknown };
+};
+function findQuillInstance(el: HTMLElement): QuillInstance | null {
+  const editor = el.closest('.ql-editor') as HTMLElement | null;
+  if (!editor) return null;
+  // Common location: on the .ql-container element (the editor's parent).
+  const container = editor.closest('.ql-container') as HTMLElement | null;
+  const probes = [container, editor.parentElement, editor];
+  for (const node of probes) {
+    if (!node) continue;
+    const inst = (node as unknown as { __quill?: QuillInstance }).__quill;
+    if (inst && typeof inst.setText === 'function') return inst;
+  }
+  return null;
 }
 
 /**
@@ -1100,6 +1130,92 @@ export function replaceAllText(text: string): void {
         key: 'a', code: 'KeyA', keyCode: 65, ctrlKey: true,
         bubbles: true, cancelable: true,
       }));
+    } else if (isQuillEditor(target)) {
+      // Quill (LinkedIn share composer). Quill is a managed editor
+      // with a Delta-based document model and a strict MutationObserver
+      // that reverts external DOM mutations on the next microtask. The
+      // generic `execCommand('insertHTML')` path lands briefly then
+      // gets reverted as Quill reconciles its internal state.
+      //
+      // Preferred path: find the Quill instance via `__quill` and call
+      // its `clipboard.dangerouslyPasteHTML` API with the managed-shape
+      // HTML (`<p>para</p><p>para<br>soft</p>` — same `\n\n+`-split +
+      // `<br>` soft-break emission built above). This writes through
+      // Quill's HTML paste pipeline (Delta model under the hood, no
+      // MutationObserver fight) AND inherits the new paragraph rendering
+      // — Quill's blot tree gives each `<p>` a single margin, no
+      // double-spacing from empty paragraph blocks.
+      //
+      // Fallback ladder when the instance/clipboard isn't reachable
+      // (e.g. LinkedIn ships a custom Quill bundle that renames the
+      // private slot): synthetic Ctrl+A + paste with `text/html`. Quill's
+      // ClipboardModule reads HTML first, falls back to text/plain — so
+      // we send HTML primarily and text as a tail-end fallback.
+      const quill = findQuillInstance(target);
+      if (quill?.clipboard?.dangerouslyPasteHTML) {
+        try {
+          quill.clipboard.dangerouslyPasteHTML(html, 'user');
+          log.info('[opencues] replaceAllText: quill API dangerouslyPasteHTML, htmlLen=' + html.length);
+          sourceReclassifier.markRuntimeWrite(text);
+          schedulePostReconcileRender();
+          return;
+        } catch (err) {
+          log.warn('[opencues] Quill dangerouslyPasteHTML failed, trying setText:', err);
+        }
+      }
+      // Secondary API: setText with the original `\n+`-collapsed text
+      // (Quill setText takes plain text; `\n` → block boundary in Delta).
+      // Used when clipboard module isn't exposed but setText is. Same
+      // collapse the managed-paragraph emission uses so empty
+      // paragraph blocks don't double up Quill's block margins.
+      if (quill?.setText) {
+        try {
+          const condensed = text.replace(/\n\n+/g, '\n');
+          quill.setText(condensed, 'user');
+          log.info('[opencues] replaceAllText: quill API setText (condensed), len=' + condensed.length);
+          sourceReclassifier.markRuntimeWrite(text);
+          schedulePostReconcileRender();
+          return;
+        } catch (err) {
+          log.warn('[opencues] Quill setText failed, falling back to paste:', err);
+        }
+      }
+      // Fallback ladder when no `__quill` is reachable (LinkedIn ships a
+      // private bundle that doesn't expose the instance):
+      //
+      // STRATEGY: select-all via the Range API (NOT synthetic Ctrl+A —
+      // Quill ignores it because untrusted keydowns don't trigger
+      // Quill's selectAll handler), then `execCommand('insertText')`
+      // with the LLM substitute as a plain-text string carrying `\n`.
+      // Quill's `beforeinput` handler reads `inputType:
+      // "insertReplacementText"` events and routes them through its
+      // Delta model — the same code path real typing uses, so the
+      // model accepts the write. `\n` characters in the plain text
+      // become block boundaries in Quill's Delta. The MutationObserver
+      // doesn't fight because the DOM mutation is the *result* of
+      // a model write, not a foreign mutation.
+      //
+      // The prior synthetic-paste fallback (text/html via ClipboardEvent)
+      // didn't work on LinkedIn — Quill's paste handler appears to
+      // reject untrusted ClipboardEvent and the bare `execCommand`
+      // path that follows mutates the DOM in a way the observer
+      // immediately reverts. `execCommand('insertText')` is the
+      // observed-working path.
+      try {
+        const sel = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(target);
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      } catch { /* selection unavailable */ }
+      // Collapse multiple newlines to single — same as Quill setText
+      // condensed path. Avoids empty paragraph blocks in Quill's Delta.
+      const condensed = text.replace(/\n\n+/g, '\n');
+      document.execCommand('insertText', false, condensed);
+      log.info('[opencues] replaceAllText: quill fallback (selectAll + insertText), len=' + condensed.length);
+      sourceReclassifier.markRuntimeWrite(text);
+      schedulePostReconcileRender();
+      return;
     } else if (isDraftJsEditor(target)) {
       // Draft.js (Twitter/X). Internal selection model doesn't sync
       // from browser selection — set it via synthetic Ctrl+A keydown
