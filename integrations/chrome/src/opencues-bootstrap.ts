@@ -994,13 +994,31 @@ export function replaceAllText(text: string): void {
     // runtime intent; the occasional +1 trailing placeholder is
     // less disruptive than the alternative (losing user-intended
     // empty lines).
-    const blockOpen = isManaged ? '<p>' : '<div>';
-    const blockClose = isManaged ? '</p>' : '</div>';
-    const html = text.split('\n').map(line =>
-      line.length === 0
-        ? `${blockOpen}<br>${blockClose}`
-        : `${blockOpen}${escape(line)}${blockClose}`,
-    ).join('');
+    // Block emission. Two strategies based on editor flavor:
+    //
+    // - MANAGED (Lexical/Reddit, ProseMirror, Slate, Quill): each `<p>`
+    //   block already has a default margin/padding that visually
+    //   *is* the paragraph break. Emitting an empty `<p><br></p>`
+    //   between every paragraph stacks block-margin + block-margin =
+    //   visible double-spacing ("too linebreaky" on Reddit). Split on
+    //   `\n\n+` for paragraph breaks and use inline `<br>` for soft
+    //   breaks within a paragraph. Result for `Hi\n\nHope\n\nBest,\nWilfred`:
+    //   `<p>Hi</p><p>Hope</p><p>Best,<br>Wilfred</p>` — three paragraphs
+    //   with single-margin gaps, signature stacked.
+    //
+    // - GENERIC contenteditable (Gmail, YouTube, plain CE): no default
+    //   block-margin styling, so explicit `<div><br></div>` blocks are
+    //   what carry the visible paragraph break. Keep the per-line emit.
+    let html: string;
+    if (isManaged) {
+      html = text.split(/\n\n+/).map(para =>
+        '<p>' + para.split('\n').map(line => escape(line)).join('<br>') + '</p>',
+      ).join('');
+    } else {
+      html = text.split('\n').map(line =>
+        line.length === 0 ? `<div><br></div>` : `<div>${escape(line)}</div>`,
+      ).join('');
+    }
 
     // Wipe the existing content first.
     //
