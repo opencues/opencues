@@ -630,6 +630,20 @@ function isDraftJsEditor(el: HTMLElement): boolean {
   return !!el.closest('.public-DraftEditor-content');
 }
 
+/** LinkedIn messaging composer (`<div class="msg-form__contenteditable" ...>`).
+ *  No public marker for the underlying editor framework (LinkedIn ships a
+ *  private build). Empty-state shape is `<p><br></p>` and the Send button
+ *  is driven by React state that only flips when the editor's input
+ *  pipeline observes content. Generic `execCommand('insertHTML')` lands
+ *  the DOM but doesn't trip React's state — Send stays disabled even
+ *  though text is visible. The carve-out below uses per-line
+ *  `execCommand('insertText')` + `insertParagraph`, which fire trusted
+ *  `beforeinput`/`input` events whose `inputType` is the same shape real
+ *  typing produces — React's listener catches them and flips the state. */
+function isLinkedInMessaging(el: HTMLElement): boolean {
+  return !!el.closest('.msg-form__contenteditable');
+}
+
 function isQuillEditor(el: HTMLElement): boolean {
   return !!el.closest('.ql-editor');
 }
@@ -1312,6 +1326,47 @@ export function replaceAllText(text: string): void {
 
       const postFinal = target.textContent?.length ?? 0;
       log.info('[opencues] replaceAllText: draftjs path, preLen=' + pre + ', postLen=' + postFinal);
+      sourceReclassifier.markRuntimeWrite(text);
+      schedulePostReconcileRender();
+      return;
+    } else if (isLinkedInMessaging(target)) {
+      // LinkedIn messaging composer (`.msg-form__contenteditable`).
+      // No public marker for the underlying framework (LinkedIn ships a
+      // private build); empty-state shape is `<p><br></p>` and the Send
+      // button is gated by React state that only flips when the editor's
+      // input pipeline observes content. Generic `execCommand('insertHTML')`
+      // lands the DOM mutation but DOES NOT flip the React state — text
+      // appears in the box but Send stays disabled, like the placeholder
+      // is still active. Mirrors the Quill fallback's typing-simulation
+      // approach: Range-API select-all + per-line `insertText` +
+      // `insertParagraph` between. These fire `beforeinput`/`input`
+      // events whose `inputType` matches real typing
+      // (`"insertText"` / `"insertParagraph"`), so LinkedIn's React
+      // listener catches them and updates the state.
+      try {
+        const sel = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(target);
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      } catch { /* selection unavailable */ }
+      const paragraphs = text.split(/\n\n+/);
+      for (let p = 0; p < paragraphs.length; p++) {
+        const lines = paragraphs[p].split('\n');
+        for (let l = 0; l < lines.length; l++) {
+          if (lines[l].length > 0) {
+            document.execCommand('insertText', false, lines[l]);
+          }
+          if (l < lines.length - 1) {
+            document.execCommand('insertParagraph');
+          }
+        }
+        if (p < paragraphs.length - 1) {
+          document.execCommand('insertParagraph');
+          document.execCommand('insertParagraph');
+        }
+      }
+      log.info('[opencues] replaceAllText: linkedin-messaging path, paragraphs=' + paragraphs.length);
       sourceReclassifier.markRuntimeWrite(text);
       schedulePostReconcileRender();
       return;
