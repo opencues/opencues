@@ -815,26 +815,50 @@ export class ConfigLoader {
     // with frontmatter, system-wide, runtime-owned schema). Read
     // separately from the cue library — settings are tool config,
     // sources are the standard's data.
-    const settingsContent = this.options.settingsFile
-      ? await this._safeReadFile(this.options.settingsFile)
-      : null;
-
-    // Identity-context data lives in `IDENTITY.md` alongside
-    // OPENCUES.md (so the user-level `~/.cues/` directory holds both).
-    // Global only by design — user data is user data; per-project
-    // overlays make no sense. Always read when settingsFile is set;
-    // the runtime gate (`identity-context-mode`) decides whether the
-    // parsed data ever reaches a prompt.
     //
-    // Only the canonical filename is read. `opencues seed-configs`
-    // migrates legacy names (USER.md → SENTINELS.md → IDENTITY.md) on
-    // first install.
+    // Identity-context data lives in `IDENTITY.md` alongside
+    // OPENCUES.md. Global only by design. Always read when settingsFile
+    // is set; the runtime gate (`identity-context-mode`) decides
+    // whether the parsed data ever reaches a prompt. Only the
+    // canonical filename is read; legacy names are migrated by
+    // `opencues seed-configs` on install.
+    //
+    // Both reads are independent of each other AND of the
+    // per-path master batch + per-path folder discovery below, so
+    // hoist them into a single Promise.all that parallelises every
+    // independent fs read for the load. On a typical install with
+    // 2-3 search paths × 3 master files + 2 user-level reads + N
+    // per-folder scans (parallelised separately below), this cuts
+    // wall-clock for a cold reload from sum-of-stats to
+    // max-of-stats — 50-200ms on a synced/mounted filesystem.
     const identityMdPath = this.options.settingsFile
       ? this.options.settingsFile.replace(/[^/]+$/, 'IDENTITY.md')
       : null;
-    const identityMdContent = identityMdPath
-      ? await this._safeReadFile(identityMdPath)
-      : null;
+
+    const [settingsContent, identityMdContent, allReads, folderConfigsPerPath] = await Promise.all([
+      this.options.settingsFile
+        ? this._safeReadFile(this.options.settingsFile)
+        : Promise.resolve(null),
+      identityMdPath
+        ? this._safeReadFile(identityMdPath)
+        : Promise.resolve(null),
+      // Per-search-path master file reads — same Promise.all shape as
+      // before, kept inline so the per-path index math below stays
+      // identical to the pre-change indexing.
+      Promise.all([
+        ...searchPaths.flatMap(p => [
+          this._safeReadFile(`${p}/CUES.md`),
+          this._safeReadFile(`${p}/BLANKS.md`),
+          this._safeReadFile(`${p}/AUDITORS.md`),
+        ]),
+      ]),
+      // Per-path folder discovery — replaces a sequential for-loop.
+      // Each path's discovery is independent (caches are local to a
+      // single _discoverFolders call), so they parallelise cleanly.
+      this.adapter.readDir
+        ? Promise.all(searchPaths.map(p => this._discoverFolders(p)))
+        : Promise.resolve(null),
+    ]);
     const identity = parseIdentityMd(identityMdContent);
     // Diagnostic: one line per load so the failure mode is greppable.
     const identityMdState = !identityMdPath ? 'no settingsFile (no path derivable)'
@@ -843,17 +867,9 @@ export class ConfigLoader {
       : `${identity.fields.length} fields from ${identityMdPath}`;
     this.adapter.log('info', `ConfigLoader: IDENTITY.md → ${identityMdState}`);
 
-    // Per-search-path master file reads. Master files declare the
-    // surface as a whole — project metadata, ignore[], disable[]. Each
-    // search path contributes one CUES.md, one BLANKS.md, one
-    // AUDITORS.md; all are optional and may be null.
-    const allReads = await Promise.all([
-      ...searchPaths.flatMap(p => [
-        this._safeReadFile(`${p}/CUES.md`),
-        this._safeReadFile(`${p}/BLANKS.md`),
-        this._safeReadFile(`${p}/AUDITORS.md`),
-      ]),
-    ]);
+    // Per-search-path master file results. The reads themselves ran
+    // above as part of the top-level Promise.all that parallelises
+    // every independent fs operation in this load.
     const perPath = searchPaths.map((_searchPath, i) => ({
       cuesMd: allReads[i * 3],
       blanksMd: allReads[i * 3 + 1],
@@ -881,15 +897,14 @@ export class ConfigLoader {
       ? parseOpenCuesMd(settingsContent)
       : DEFAULT_OPENCUES_STATE;
 
-    // Folder discovery: walk each search path, then merge with project-
-    // precedence (same fold-low-to-high rule as .md configs).
+    // Folder discovery: discovery itself ran above in parallel as part
+    // of the top-level Promise.all (`folderConfigsPerPath`). Here we
+    // just merge with project-precedence (same fold-low-to-high rule
+    // as .md configs). Null entries (missing dirs / disabled readDir)
+    // are filtered out.
     let folderConfigs: DiscoveredConfigs | null = null;
-    if (this.adapter.readDir) {
-      const perPathFolders: DiscoveredConfigs[] = [];
-      for (const p of searchPaths) {
-        const fc = await this._discoverFolders(p);
-        if (fc) perPathFolders.push(fc);
-      }
+    if (folderConfigsPerPath) {
+      const perPathFolders = folderConfigsPerPath.filter((fc): fc is DiscoveredConfigs => fc !== null);
       // Fold reverse so higher-priority paths overlay lower-priority.
       for (let i = perPathFolders.length - 1; i >= 0; i--) {
         folderConfigs = folderConfigs
@@ -1117,7 +1132,12 @@ export class ConfigLoader {
       const entries = await this.adapter.readDir!(dir);
       dirCache.set(dir, entries);
       if (!entries) return;
-      for (const e of entries) {
+      // Parallelise the per-entry work — recursing into a subdirectory
+      // and reading an .md file are both independent operations, so a
+      // for-await loop here serialised fs round-trips that didn't need
+      // to wait for each other. Promise.all gives us max(entries)
+      // instead of sum on every directory level.
+      await Promise.all(entries.map(async e => {
         const full = `${dir}/${e.name}`;
         if (e.isDirectory) {
           await prewalk(full, depth + 1);
@@ -1129,13 +1149,15 @@ export class ConfigLoader {
           const content = await this._safeReadFile(full);
           fileCache.set(full, content);
         }
-      }
+      }));
     };
 
-    // Walk every scope dir. Missing dirs are no-ops via prewalk's null check.
-    for (const sub of ['cues', 'blanks', 'auditors']) {
-      await prewalk(`${cwd}/${sub}`, 0);
-    }
+    // Walk every scope dir. Missing dirs are no-ops via prewalk's null
+    // check. Three scopes are independent of each other; Promise.all
+    // collapses 3 sequential walks into max(walks).
+    await Promise.all(['cues', 'blanks', 'auditors'].map(sub =>
+      prewalk(`${cwd}/${sub}`, 0),
+    ));
 
     try {
       return discoverFolderConfigs({
