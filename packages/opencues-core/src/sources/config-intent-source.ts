@@ -882,6 +882,14 @@ export class ConfigIntentSource implements CueSource {
         // flagging unrecognised setting/value pairs.
         temperature: this.temperatureOverride ?? 0,
         seed: 42,
+        // Force reasoning to 'low'. The classifier output is tiny
+        // (SETTING + VALUE + CONFIDENCE) and the prompt is structured
+        // enough that medium/high reasoning adds 700-1500ms without
+        // improving accuracy — the fluid-config bench runs at 'low'
+        // and held 100% precision / 90-100% holdout recall across
+        // 5 providers (see tests/benchmarks/fluid-config/). Mirrors
+        // FluidBlank's same-rationale 'low' floor (fluid-blank-source.ts:995).
+        reasoningEffort: 'low',
       },
       { apiKey: this.apiKey, endpoint: this.endpoint, signal },
     );
