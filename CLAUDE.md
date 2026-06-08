@@ -614,7 +614,7 @@ done
 | `packages/opencues-park/` | `opencues` (placeholder) | 0.0.1 | **PUBLISHED on npm** |
 | `integrations/claude-code/` | `@opencues/claude-code` | 0.2.0 | private |
 | `integrations/opencode/` | `@opencues/opencode` | 0.2.0 | private |
-| `integrations/chrome/` | `@opencues/chrome` | 0.2.2 | private |
+| `integrations/chrome/` | `@opencues/chrome` | 0.2.3 | private |
 | `integrations/gemini-cli/` | `@opencues/gemini-cli` | 0.2.0 | private |
 | `integrations/shell/` | `@opencues/shell` | 0.2.0 | private |
 
@@ -625,6 +625,19 @@ Everything except the placeholder is currently `private: true`. Flipping a packa
 ## Versioning policy
 
 Semver per package, stay <1.0 until public launch, bump in the same commit as the change, integrations bump independently of core/runtime. `SPEC_VERSION` bumps only on wire-format changes. **Every version bump also updates `CHANGELOG.md` (root) in the same PR**; spec-affecting changes also update `spec/CHANGELOG.md`. Full policy with per-package bump rules + changelog discipline: [docs/architecture/versioning.md](docs/architecture/versioning.md).
+
+### Chrome integration — bump `manifest.json` AND `package.json` in lockstep
+
+The chrome integration has **two** version fields that MUST stay aligned:
+
+- `integrations/chrome/manifest.json` — what **Chrome itself displays** in `chrome://extensions` and uses for the auto-update tracker. The user-visible version.
+- `integrations/chrome/package.json` — what **npm + the monorepo's version snapshot** track.
+
+These have drifted multiple times because contributors update one and forget the other. The June 2026 LinkedIn-Quill PR (#91) found `manifest.json` at 0.2.1 while `package.json` had moved to 0.2.2 — five chrome-touching PRs (#84, #75, #82, #83) had landed without touching the manifest. Users reloading the extension saw the SAME version string in `chrome://extensions` across all 5 PRs, so there was no way to confirm a new bundle was actually loaded. The prior drift event was commit `dfd7658 fix(chrome): align manifest.json version with package.json (0.1.1 → 0.1.4)` — the same shape.
+
+**Rule:** any PR that touches `integrations/chrome/src/**` (or any file that lands in `dist/`) MUST bump BOTH `manifest.json` AND `package.json` to the same new version in the same commit. If the chrome bundle's bytes change, both files change. No exceptions.
+
+`scripts/pre-pr.sh`'s `doctor` check doesn't currently catch this drift; it's a structural gap. Until a lint covers it, reviewers MUST eyeball chrome PRs for the lockstep bump.
 
 ### When to bump `SPEC_VERSION`
 
@@ -721,6 +734,7 @@ The eight bug classes from the June 2026 debugging session, with the file + the 
 | `node:*` import in runtime breaks chrome bundle | PR #49 | `integrations/chrome/esbuild.config.mjs:external` | `check-chrome-bundle.sh` |
 | Renamed feature's old name lingers in shipping code | June 2026 sentinels → identity-context rename | `scripts/lint-legacy-names.sh:BANNED_PATTERNS` + per-line `LEGACY-NAME-ALLOW` markers | `lint-legacy-names.sh` |
 | CC patch emits JS with scope/reference errors that only fire at runtime | June 2026 cc38ab8 (`blanks: __ocReg` where `__ocReg` was IIFE-local) — every keystroke ReferenceError'd, swallowed by patch's own catch, OpenCues silently dead on every CC user's machine. Bundle parsed fine; source typechecked fine; install applied fine. | `scripts/check-cc-patch-boot.cjs` evaluates the emitted bootstrap in a Node vm sandbox with stubs — surfaces ReferenceError + asserts boot args have all required fields | `check-cc-patch-boot.cjs` |
+| Chrome `manifest.json` version drifts from `package.json` version | June 2026 PR #91 — manifest stuck at 0.2.1 while package.json had moved to 0.2.2 across PRs #84, #75, #82, #83. Users reloading the extension saw the same version string in `chrome://extensions` across 5 PRs, so there was no way to confirm a new bundle was actually loaded. Prior drift event: commit `dfd7658 fix(chrome): align manifest.json version with package.json (0.1.1 → 0.1.4)` — same shape. | CLAUDE.md § "Chrome integration — bump `manifest.json` AND `package.json` in lockstep" | none yet — candidate for a future `lint-chrome-version-lockstep.sh` |
 
 ---
 
