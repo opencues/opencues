@@ -769,6 +769,15 @@ module.exports = async function doctor(argv, ctx) {
   //   - Other → no confiner wired; falls through unwrapped.
   // See packages/opencues-runtime/src/security/sandbox-runner.ts §
   // wrapForPlatform for the dispatcher.
+  //
+  // F9 (INFOSEC): the sandbox is opt-in. A scripted blank that doesn't
+  // declare `sandbox: strict` runs with the user's full filesystem +
+  // network privileges regardless of whether bwrap/sandbox-exec is
+  // installed. We now also surface the count of installed scripted
+  // blanks that AREN'T opted in, so the unwrapped-by-default footgun
+  // is visible to the user instead of being something they have to
+  // discover by reading the F9 finding.
+  let sandboxMechanismOK = false;
   {
     const s = section('OS-level sandbox', 'wraps `blankScript: sandbox: strict` runs in an OS confinement layer');
     if (process.platform === 'linux') {
@@ -779,6 +788,7 @@ module.exports = async function doctor(argv, ctx) {
       })();
       const platLabel = wslEnv ? 'WSL2 (Linux)' : 'Linux';
       s.ok(`${platLabel}: bwrap (bubblewrap) on PATH`, !!bwrap);
+      sandboxMechanismOK = !!bwrap;
       if (!bwrap) {
         findings.push({
           sev: 'warn',
@@ -789,6 +799,7 @@ module.exports = async function doctor(argv, ctx) {
     } else if (process.platform === 'darwin') {
       const sbx = fs.existsSync('/usr/bin/sandbox-exec');
       s.ok(`macOS: sandbox-exec at /usr/bin/sandbox-exec (Apple seatbelt)`, sbx);
+      sandboxMechanismOK = sbx;
       if (!sbx) {
         findings.push({
           sev: 'warn',
@@ -803,6 +814,29 @@ module.exports = async function doctor(argv, ctx) {
         msg: `no OS sandbox available for platform "${process.platform}" — strict-sandbox blanks run unwrapped`,
         fix: 'use macOS or Linux/WSL2 for confined blanks; otherwise treat `sandbox: strict` as documentation only',
       });
+    }
+
+    // F9: scan installed scripted blanks and report how many are
+    // opt-in to strict sandbox vs running unconfined. Catches the
+    // common case where the user has bwrap installed but their
+    // blanks don't declare `sandbox: strict`, so it's a no-op.
+    const scriptedBlanks = scanScriptedBlanks(HOME);
+    if (scriptedBlanks.total > 0) {
+      const strictCount = scriptedBlanks.strict;
+      const unstrictCount = scriptedBlanks.total - strictCount;
+      if (unstrictCount === 0) {
+        s.ok(`scripted blanks declaring sandbox: strict (${strictCount}/${scriptedBlanks.total})`, true);
+      } else {
+        s.bad(`scripted blanks declaring sandbox: strict (${strictCount}/${scriptedBlanks.total}) — ${unstrictCount} run UNCONFINED`, false);
+        findings.push({
+          sev: sandboxMechanismOK ? 'warn' : 'warn',
+          msg: `${unstrictCount} of ${scriptedBlanks.total} installed scripted blanks have no \`sandbox: strict\` — they run with the user's full filesystem + network privileges` +
+               (scriptedBlanks.unstrictPaths.length ? `\n         examples: ${scriptedBlanks.unstrictPaths.slice(0, 3).join(', ')}` : ''),
+          fix: 'add `sandbox: strict` to the blank\'s BLANK.md frontmatter, or remove the blank if you don\'t trust it',
+        });
+      }
+    } else {
+      s.info('no scripted blanks installed', dim('— sandbox status N/A'));
     }
     s.render();
   }
@@ -1038,6 +1072,51 @@ async function maybePrintUpdateNotice(ctx) {
   } catch { /* fail-silent */ }
 }
 
+// F9 (INFOSEC): scan ~/.cues/blanks/ + $OPENCUES_HOME/blanks/ for
+// every BLANK.md that declares `blankScript:` and check whether it
+// also declares `sandbox: strict`. Returns the counts so doctor can
+// surface "X of Y scripted blanks run unconfined" — the unwrapped-
+// by-default footgun the F9 finding called out.
+//
+// Best-effort YAML — we only need to spot the two scalars. The
+// runtime's CUES.md / cues-md.ts parser is the authoritative one;
+// this is purely diagnostic.
+function scanScriptedBlanks(home) {
+  const roots = [
+    path.join(home, '.cues', 'blanks'),
+    process.env.OPENCUES_HOME ? path.join(process.env.OPENCUES_HOME, 'blanks') : null,
+  ].filter(Boolean);
+  const result = { total: 0, strict: 0, unstrictPaths: [] };
+  for (const root of roots) {
+    if (!fs.existsSync(root)) continue;
+    let entries;
+    try { entries = fs.readdirSync(root, { withFileTypes: true }); }
+    catch { continue; }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const blankMd = path.join(root, entry.name, 'BLANK.md');
+      if (!fs.existsSync(blankMd)) continue;
+      let text;
+      try { text = fs.readFileSync(blankMd, 'utf8'); }
+      catch { continue; }
+      const fmMatch = text.match(/^---\n([\s\S]*?)\n---/);
+      if (!fmMatch) continue;
+      const fm = fmMatch[1];
+      // Only count blanks that actually shell out.
+      const hasScript = /^\s*blankScript\s*:/m.test(fm);
+      if (!hasScript) continue;
+      result.total++;
+      const strictMatch = fm.match(/^\s*sandbox\s*:\s*(\w+)/m);
+      if (strictMatch && strictMatch[1] === 'strict') {
+        result.strict++;
+      } else {
+        result.unstrictPaths.push(entry.name);
+      }
+    }
+  }
+  return result;
+}
+
 // Read OPENCUES.md (or CUES.md) frontmatter and return a flat
 // {scalar: value} map. Best-effort YAML — only top-level
 // `key: value` lines, no nesting. Missing file → empty object.
@@ -1223,3 +1302,6 @@ function printHelp() {
   console.log('  --strict   Treat info findings as failures too. Suitable for use as');
   console.log('             a one-line CI gate or as the final step of scripts/pre-pr.sh.');
 }
+
+// Internal helpers exposed for testing. Not part of the public surface.
+module.exports._internal = { scanScriptedBlanks };

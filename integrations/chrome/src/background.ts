@@ -37,6 +37,11 @@ interface FetchResponse {
   text: string;
 }
 
+// Sender authentication + fetch-origin allow-list live in sw-auth.ts so
+// drift tests can import them without triggering background.ts's
+// onMessage side-effects (INFOSEC F6).
+import { isInternalSender, isFetchOriginAllowed } from './sw-auth';
+
 // ─── Logging gate ───────────────────────────────────────────────────────
 //
 // The service worker mirrors the content script's `debug-mode: on/off`
@@ -119,6 +124,23 @@ function preconnectOrigin(originUrl: string): void {
 
 chrome.runtime.onMessage.addListener((message: FetchRequest, _sender, sendResponse) => {
   if (message?.type !== 'opencues:fetch') return false;
+  if (!isInternalSender(_sender)) {
+    sendResponse({ ok: false, status: 0, statusText: 'sender not internal — refused (F6)', text: '' });
+    return true;
+  }
+  // F6: refuse fetches to anything outside the manifest host_permissions
+  // allow-list. The SW is a CORS-bypassing relay; without this gate, any
+  // caller could use it to reach arbitrary URLs with caller-chosen
+  // headers from the SW's privileged context.
+  if (!isFetchOriginAllowed(message.url)) {
+    sendResponse({
+      ok: false,
+      status: 0,
+      statusText: `origin not in allow-list — refused (F6). URL: ${message.url}`,
+      text: '',
+    });
+    return true;
+  }
 
   preconnectOrigin(message.url);
 
@@ -362,6 +384,10 @@ function scheduleReconnect(): void {
 // exec-result. Returns ProcessResult-shape JSON via sendResponse.
 chrome.runtime.onMessage.addListener((message: ExecRequestFromContent, _sender, sendResponse) => {
   if (message?.type !== 'opencues:exec') return false;
+  if (!isInternalSender(_sender)) {
+    sendResponse({ exitCode: 127, stdout: '', stderr: 'sender not internal — refused (F6)', timedOut: false });
+    return true;
+  }
   if (!nativePort) {
     sendResponse({ exitCode: 127, stdout: '', stderr: 'native host not connected', timedOut: false });
     return true;
@@ -407,6 +433,10 @@ chrome.runtime.onMessage.addListener((message: ExecRequestFromContent, _sender, 
 // Replaces the in-page Web Worker — see user-blank-loader.ts.
 chrome.runtime.onMessage.addListener((message: UserBlankInvokeRequestFromContent, _sender, sendResponse) => {
   if (message?.type !== 'opencues:user-blank-invoke') return false;
+  if (!isInternalSender(_sender)) {
+    sendResponse({ ok: false, error: 'sender not internal — refused (F6)' });
+    return true;
+  }
   if (!nativePort) {
     sendResponse({ ok: false, error: 'native host not connected — install via `opencues install chrome-host`' });
     return true;
@@ -454,12 +484,20 @@ chrome.runtime.onMessage.addListener((message: UserBlankInvokeRequestFromContent
 // (defer to a nonexistent source = empty config).
 chrome.runtime.onMessage.addListener((message: { type?: string }, _sender, sendResponse) => {
   if (message?.type !== 'opencues:host-status') return false;
+  if (!isInternalSender(_sender)) {
+    sendResponse({ connected: false });
+    return true;
+  }
   sendResponse({ connected: nativePort !== null });
   return true;
 });
 
 chrome.runtime.onMessage.addListener((message: { type?: string; level?: string; msg?: string; data?: unknown }, _sender, sendResponse) => {
   if (message?.type !== 'opencues:log') return false;
+  if (!isInternalSender(_sender)) {
+    sendResponse({ ok: false });
+    return true;
+  }
   if (nativePort) {
     try {
       nativePort.postMessage({
@@ -482,6 +520,10 @@ chrome.runtime.onMessage.addListener((message: { type?: string; level?: string; 
 // install; the first bundle push after host install converges the two.
 chrome.runtime.onMessage.addListener((message: WriteFileRequestFromContent, _sender, sendResponse) => {
   if (message?.type !== 'opencues:write-file') return false;
+  if (!isInternalSender(_sender)) {
+    sendResponse({ ok: false, error: 'sender not internal — refused (F6)' });
+    return true;
+  }
   if (!nativePort) {
     sendResponse({ ok: false, error: 'native host not connected' });
     return true;
