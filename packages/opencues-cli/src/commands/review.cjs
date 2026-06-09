@@ -246,24 +246,70 @@ function staticChecks(fm, jsSource) {
     }
   }
 
-  // 5. JS-source static patterns. Strip comments + string literals
-  // first so we don't false-positive on JSDoc `@type {import(...)}` or
-  // URL string literals containing `https`. These regexes are
-  // heuristic flags — the actual security boundaries are enforced at
-  // load time by the AST rewriter + sandbox.
+  // 5. JS-source static patterns. We scan TWO views of the source:
+  //   - `stripped` (comments + string literals removed) → keeps the
+  //     `eval` / `Function` / `require` heuristics low-false-positive
+  //     against JSDoc `@type {import(...)}` or string-literal URLs.
+  //   - `raw` (the source verbatim) → catches the F5 escape pattern
+  //     `Promise['cons'+'tructor'](…)` and similar string-concat
+  //     hide-the-token tricks. INFOSEC F5: hiding `process` inside a
+  //     string literal made the stripped scan miss it entirely.
+  //
+  // These regexes are heuristic flags — the actual security
+  // boundaries are enforced at load time by the AST rewriter +
+  // sandbox. F1 is the structural fix; this scan exists to raise
+  // the bar for naive packs and refuse the most obvious bypasses.
   if (jsSource) {
     const stripped = stripCommentsAndStrings(jsSource);
+    const raw = jsSource;
+
+    // — eval / Function (stripped only — false-positive prone in docs/strings)
     if (/\beval\s*\(/.test(stripped)) {
       findings.push({ sev: 'warn', msg: 'source contains `eval(` — runtime context has no eval, but the call site is suspicious.' });
     }
     if (/\bnew\s+Function\b/.test(stripped) || /\bFunction\s*\(/.test(stripped)) {
       findings.push({ sev: 'warn', msg: 'source references `Function(`/`new Function` — refused at load by the AST rewriter, but worth a human look.' });
     }
+
+    // — dynamic import — hard blocker (AST rewriter refuses, mirror here)
     if (/\bimport\s*\(/.test(stripped)) {
       findings.push({ sev: 'error', msg: 'source uses dynamic `import()` — AST rewriter refuses to load this blank.' });
     }
+
+    // — Node built-in names — informational hint (sandbox shadows them)
     if (/\b(?:require|process|child_process|fs|os|http|https|net|dgram|cluster|worker_threads|vm)\s*[\.\(]/.test(stripped)) {
       findings.push({ sev: 'info', msg: 'source references Node built-in names — undefined in the sandbox, but check intent.' });
+    }
+    // Raw scan for Node built-ins too — catches `'pro'+'cess'` style
+    // string-concat hiding (warn, not error, because many packs include
+    // these tokens in legit error strings: `"requires the X API key"`).
+    if (/['"`]\s*\+\s*['"`](?:cons|truc|tructor|proc|ess|requ|ire|fs|child)/i.test(raw) ||
+        /['"`](?:cons|truc|tructor|proc|ess|requ|ire|fs|child)\s*['"`]\s*\+/i.test(raw)) {
+      findings.push({ sev: 'warn', msg: 'source string-concatenates fragments resembling Node built-in / constructor tokens — common F1-escape obfuscation.' });
+    }
+
+    // — .constructor / Reflect / globalThis / proto-walk — hard blockers
+    //   The Node `vm` sandbox shares host realm references; reaching the
+    //   `Function` constructor via any of these is the F1 RCE pivot.
+    //   Refuse them at review time so even an obfuscation-free PoC is
+    //   blocked. Mirrors stripped + raw — bracket-access form
+    //   `['constructor']` survives both views.
+    const escapePatterns = [
+      // .constructor / ["constructor"] / ['constructor'] / [`constructor`]
+      { re: /\.constructor\b/, msg: 'source accesses `.constructor` — the F1 sandbox-escape pivot via Promise/Date/URL/etc. → host `Function`.' },
+      { re: /\[\s*['"`]constructor['"`]\s*\]/, msg: 'source accesses `["constructor"]` (bracket form) — same F1 sandbox-escape pivot.' },
+      // Reflect — the introspection escape hatch
+      { re: /\bReflect\b/, msg: 'source references `Reflect` — Reflect.get/apply on host objects reaches the host realm.' },
+      // globalThis — direct host-global access
+      { re: /\bglobalThis\b/, msg: 'source references `globalThis` — the sandbox does not own globalThis; this is the host global object.' },
+      // __proto__ / proto-walk
+      { re: /\b__proto__\b/, msg: 'source accesses `__proto__` — proto-walk reaches the host realm prototype chain.' },
+      { re: /\b(?:getPrototypeOf|setPrototypeOf)\s*\(/, msg: 'source uses Object.{get,set}PrototypeOf — proto-walk reaches the host realm prototype chain.' },
+    ];
+    for (const { re, msg } of escapePatterns) {
+      if (re.test(stripped) || re.test(raw)) {
+        findings.push({ sev: 'error', msg });
+      }
     }
   }
 
@@ -638,5 +684,5 @@ function printHelp() {
   console.log('  2  LLM unavailable (static section still ran)');
 }
 
-// Internal helpers exposed for testing.
-module.exports._internal = { staticChecks };
+// Internal helpers exposed for testing. Not part of the public surface.
+module.exports._internal = { staticChecks, stripCommentsAndStrings };

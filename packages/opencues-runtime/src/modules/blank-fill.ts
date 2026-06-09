@@ -15,6 +15,7 @@ import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
 import type { DynDefs } from '../state/dyn-defs';
 import { BlankLoadingAnimator, parseCustomFrames, parseRgbColors, parseAnsiColors, parseFrameIntervalMs, DEFAULT_RGB_PALETTE, DEFAULT_ANSI_PALETTE, type BlankLoadingMode } from './blank-loading';
+import { buildSafeScriptEnv } from '../security/safe-env';
 
 export interface BlankSlot {
   /** Word index of the `_`. */
@@ -365,25 +366,30 @@ export class BlankFill {
         ? (script.startsWith('~') ? home + script.slice(1) : script)
         : '';
 
-      // Build per-blank env. Inherits process.env on Node hosts;
-      // sandboxed hosts (Chrome content scripts) have no `process` global,
-      // so `typeof` guard avoids ReferenceError. blankInvoke ignores env
-      // there anyway — only spawnProcess paths consume it.
-      const baseEnv: Record<string, string> = (typeof process !== 'undefined' && process.env)
-        ? process.env as Record<string, string>
-        : {};
-      const env: Record<string, string> = { ...baseEnv };
-      if (blank.model) env.CUES_MODEL = blank.model;
-      if (blank.apiUrl) env.CUES_API_URL = blank.apiUrl;
-      if (blank.apiKeyEnv) env.CUES_API_KEY_ENV = blank.apiKeyEnv;
-      if (blank.altCount !== undefined) env.CUES_ALT_COUNT = String(blank.altCount);
-      if (blank.includeOriginal !== undefined) env.CUES_INCLUDE_ORIGINAL = String(blank.includeOriginal);
+      // INFOSEC F2: build per-blank env from a tight allow-list rather
+      // than spreading process.env. Without this, every scripted blank
+      // received every *_API_KEY the user had configured, regardless of
+      // whether the blank declared `secrets:`. Now: PATH/HOME/LC_* and
+      // the explicitly-declared `secrets: [NAME]` provider keys reach
+      // the child; everything else (`*_API_KEY` outside the declaration,
+      // `LD_PRELOAD`, `DYLD_*`, `NODE_OPTIONS`, …) is dropped.
+      const processEnv: Readonly<Record<string, string | undefined>> =
+        (typeof process !== 'undefined' && process.env) ? process.env : {};
+      const declaredSecrets = (blank as { userBlankSecrets?: readonly string[] })
+        .userBlankSecrets ?? [];
+      const extras: Record<string, string> = {};
+      if (blank.model) extras.CUES_MODEL = blank.model;
+      if (blank.apiUrl) extras.CUES_API_URL = blank.apiUrl;
+      if (blank.apiKeyEnv) extras.CUES_API_KEY_ENV = blank.apiKeyEnv;
+      if (blank.altCount !== undefined) extras.CUES_ALT_COUNT = String(blank.altCount);
+      if (blank.includeOriginal !== undefined) extras.CUES_INCLUDE_ORIGINAL = String(blank.includeOriginal);
       if (blank.prompts) {
         for (const [k, v] of Object.entries(blank.prompts)) {
           const envKey = 'CUES_PROMPT_' + k.toUpperCase().replace(/[^A-Z0-9]/g, '_');
-          env[envKey] = String(v);
+          extras[envKey] = String(v);
         }
       }
+      const env: Record<string, string> = buildSafeScriptEnv(processEnv, declaredSecrets, extras);
 
       // Cache lookup. Args identical to a recent call → reuse the
       // stored stdout instead of paying the spawn cost again. Per-blank
