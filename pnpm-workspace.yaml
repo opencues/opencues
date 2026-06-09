@@ -30,3 +30,14 @@ packages:
 onlyBuiltDependencies:
   - esbuild
   - isolated-vm
+
+# INFOSEC dep CVE pins (DA1-DA7 — June 2026). pnpm 10's `overrides`
+# location is pnpm-workspace.yaml; the `pnpm.overrides` field in
+# package.json is silently ignored. Each entry pins the lowest
+# patched version per the relevant advisory.
+overrides:
+  seroval: ">=1.4.1"     # DA2 — GHSA-66fc-rw6m-c2q6 etc.
+  immutable: ">=3.8.3"   # DA3 — GHSA-wf6x-7x77-mvgw
+  file-type: ">=21.3.1"  # DA6 — GHSA-5v7r-6r5c-r473
+  diff: ">=8.0.3"        # DA7 — GHSA-73rr-hh4g-fpgx
+  vite: "6.4.3"          # DA5 — GHSA-4w7w-66w2-5vf9 (also: vitest 4 needs vite 6)

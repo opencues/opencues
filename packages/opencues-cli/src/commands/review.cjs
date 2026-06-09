@@ -214,32 +214,102 @@ function staticChecks(fm, jsSource) {
     });
   }
 
-  // 4. Sandbox declarations on scripted blanks.
-  if (fm.blankScript && fm.sandbox !== 'strict') {
-    findings.push({
-      sev: 'warn',
-      msg: `blankScript without sandbox: strict — script runs with the user's full filesystem + network privileges.`,
-    });
+  // 4. Sandbox declarations on scripted blanks (INFOSEC F9).
+  //
+  //   - Missing entirely → HARD ERROR. Authors must make an explicit
+  //     choice between `strict` (confined) and `off` (acknowledged
+  //     full host privileges). The runtime now refuses to spawn such
+  //     blanks.
+  //   - Declared `strict`   → no finding; confined run.
+  //   - Declared `off`      → warn so the user understands what they're
+  //     installing.
+  //   - Any other value     → hard error (only those two are valid).
+  if (fm.blankScript) {
+    if (fm.sandbox === undefined || fm.sandbox === null || fm.sandbox === '') {
+      findings.push({
+        sev: 'error',
+        msg: `blankScript: declared without sandbox: — runtime will refuse to spawn. ` +
+          `Add \`sandbox: strict\` (confined under bwrap/sandbox-exec) or \`sandbox: off\` ` +
+          `(acknowledge full host privileges, see docs/architecture/sandbox.md). INFOSEC F9.`,
+      });
+    } else if (fm.sandbox === 'off') {
+      findings.push({
+        sev: 'warn',
+        msg: `blankScript with \`sandbox: off\` — script runs with the user's full filesystem + network privileges. ` +
+          `Verify the BLANK.md explains why confined mode isn't viable.`,
+      });
+    } else if (fm.sandbox !== 'strict') {
+      findings.push({
+        sev: 'error',
+        msg: `blankScript with sandbox: "${fm.sandbox}" — only \`strict\` or \`off\` are valid. INFOSEC F9.`,
+      });
+    }
   }
 
-  // 5. JS-source static patterns. Strip comments + string literals
-  // first so we don't false-positive on JSDoc `@type {import(...)}` or
-  // URL string literals containing `https`. These regexes are
-  // heuristic flags — the actual security boundaries are enforced at
-  // load time by the AST rewriter + sandbox.
+  // 5. JS-source static patterns. We scan TWO views of the source:
+  //   - `stripped` (comments + string literals removed) → keeps the
+  //     `eval` / `Function` / `require` heuristics low-false-positive
+  //     against JSDoc `@type {import(...)}` or string-literal URLs.
+  //   - `raw` (the source verbatim) → catches the F5 escape pattern
+  //     `Promise['cons'+'tructor'](…)` and similar string-concat
+  //     hide-the-token tricks. INFOSEC F5: hiding `process` inside a
+  //     string literal made the stripped scan miss it entirely.
+  //
+  // These regexes are heuristic flags — the actual security
+  // boundaries are enforced at load time by the AST rewriter +
+  // sandbox. F1 is the structural fix; this scan exists to raise
+  // the bar for naive packs and refuse the most obvious bypasses.
   if (jsSource) {
     const stripped = stripCommentsAndStrings(jsSource);
+    const raw = jsSource;
+
+    // — eval / Function (stripped only — false-positive prone in docs/strings)
     if (/\beval\s*\(/.test(stripped)) {
       findings.push({ sev: 'warn', msg: 'source contains `eval(` — runtime context has no eval, but the call site is suspicious.' });
     }
     if (/\bnew\s+Function\b/.test(stripped) || /\bFunction\s*\(/.test(stripped)) {
       findings.push({ sev: 'warn', msg: 'source references `Function(`/`new Function` — refused at load by the AST rewriter, but worth a human look.' });
     }
+
+    // — dynamic import — hard blocker (AST rewriter refuses, mirror here)
     if (/\bimport\s*\(/.test(stripped)) {
       findings.push({ sev: 'error', msg: 'source uses dynamic `import()` — AST rewriter refuses to load this blank.' });
     }
+
+    // — Node built-in names — informational hint (sandbox shadows them)
     if (/\b(?:require|process|child_process|fs|os|http|https|net|dgram|cluster|worker_threads|vm)\s*[\.\(]/.test(stripped)) {
       findings.push({ sev: 'info', msg: 'source references Node built-in names — undefined in the sandbox, but check intent.' });
+    }
+    // Raw scan for Node built-ins too — catches `'pro'+'cess'` style
+    // string-concat hiding (warn, not error, because many packs include
+    // these tokens in legit error strings: `"requires the X API key"`).
+    if (/['"`]\s*\+\s*['"`](?:cons|truc|tructor|proc|ess|requ|ire|fs|child)/i.test(raw) ||
+        /['"`](?:cons|truc|tructor|proc|ess|requ|ire|fs|child)\s*['"`]\s*\+/i.test(raw)) {
+      findings.push({ sev: 'warn', msg: 'source string-concatenates fragments resembling Node built-in / constructor tokens — common F1-escape obfuscation.' });
+    }
+
+    // — .constructor / Reflect / globalThis / proto-walk — hard blockers
+    //   The Node `vm` sandbox shares host realm references; reaching the
+    //   `Function` constructor via any of these is the F1 RCE pivot.
+    //   Refuse them at review time so even an obfuscation-free PoC is
+    //   blocked. Mirrors stripped + raw — bracket-access form
+    //   `['constructor']` survives both views.
+    const escapePatterns = [
+      // .constructor / ["constructor"] / ['constructor'] / [`constructor`]
+      { re: /\.constructor\b/, msg: 'source accesses `.constructor` — the F1 sandbox-escape pivot via Promise/Date/URL/etc. → host `Function`.' },
+      { re: /\[\s*['"`]constructor['"`]\s*\]/, msg: 'source accesses `["constructor"]` (bracket form) — same F1 sandbox-escape pivot.' },
+      // Reflect — the introspection escape hatch
+      { re: /\bReflect\b/, msg: 'source references `Reflect` — Reflect.get/apply on host objects reaches the host realm.' },
+      // globalThis — direct host-global access
+      { re: /\bglobalThis\b/, msg: 'source references `globalThis` — the sandbox does not own globalThis; this is the host global object.' },
+      // __proto__ / proto-walk
+      { re: /\b__proto__\b/, msg: 'source accesses `__proto__` — proto-walk reaches the host realm prototype chain.' },
+      { re: /\b(?:getPrototypeOf|setPrototypeOf)\s*\(/, msg: 'source uses Object.{get,set}PrototypeOf — proto-walk reaches the host realm prototype chain.' },
+    ];
+    for (const { re, msg } of escapePatterns) {
+      if (re.test(stripped) || re.test(raw)) {
+        findings.push({ sev: 'error', msg });
+      }
     }
   }
 
@@ -613,3 +683,6 @@ function printHelp() {
   console.log('  1  pack would fail to load OR has hard-blocked patterns');
   console.log('  2  LLM unavailable (static section still ran)');
 }
+
+// Internal helpers exposed for testing. Not part of the public surface.
+module.exports._internal = { staticChecks, stripCommentsAndStrings };

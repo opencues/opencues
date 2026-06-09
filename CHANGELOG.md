@@ -22,6 +22,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Chrome content-script Worker path unchanged** — it's structurally separate (page-CSP-bounded, no Node `vm` involved). The chrome-host process (Node-based) uses the same isolated-vm path as CC/OC/Gemini.
 
 This supersedes the F1 stopgap warn (PR #106). When both PRs land, the warn from PR #106 is no longer load-bearing.
+### Security — `blankScript:` blanks must declare `sandbox:` explicitly (INFOSEC F9)
+
+The F9 doctor PR (#102) surfaced the unconfined-by-default footgun: `bwrap` / `sandbox-exec` only wraps when a blank declares `sandbox: strict`, and most don't. This PR closes the gap structurally at the install-time gate.
+
+- **`opencues review` (`packages/opencues-cli/src/commands/review.cjs`)** — refuses any pack with `blankScript:` lacking a `sandbox:` declaration as a hard error (sev: `error`, exit 1). `sandbox: off` produces a warn (explicit acknowledgement of full host privileges). `sandbox: strict` is clean. Any other value is a hard error. Authors can no longer ship a `blankScript:` blank without making an explicit confinement choice.
+- **`@opencues/runtime` (0.2.8 → 0.2.9)** `BlankFill.maybeRunScripts` — one-time per-blank-name warn when a script-backed blank lacks `sandbox:` at runtime. Pre-F9 installs that slipped past review get a loud diagnostic in `/tmp/opencues.log` and the host's console: "BlankFill: X declares blankScript: without sandbox: — running UNCONFINED... INFOSEC F9". Per-blank dispatch refusal (rather than warn) deferred to v2 once the broader pack ecosystem migrates.
+- **All shipped defaults already declare** explicit `sandbox:` (volume / brightness / opencues / sentinel → `sandbox: off`; example → `sandbox: strict`). No regression for shipped blanks.
+- **Tests**: 5 new in `review.f9.test.cjs` cover every code path (missing → error; strict → clean; off → warn; bogus value → error; non-scripted → unaffected). 3 new in `blank-fill.f9-warn.test.ts` pin: warn fires once for missing-sandbox + spawn still happens (back-compat); strict + off both silent.
+- **`security-audit.md` row #17** updated with the F9 install-time gate.
+### Security — scripted blanks get a deny-by-default env, not the host's full process.env (INFOSEC F2)
+
+Pre-fix, `BlankFill.maybeRunScripts` built the child env as `{ ...process.env, ...extras }`. Every scripted blank received every `*_API_KEY` the host had loaded — including ones the blank never declared in `secrets:`. A `blankScript:`-bearing pack could `curl` GROQ_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, FINNHUB_API_KEY etc. out without any frontmatter declaration. Per the F2 finding (live-confirmed against the chrome-host), the per-blank allow-list claim in `security-audit.md` rows #5/#7 only ever covered the JS-blank `ctx.secrets` path.
+
+- **`@opencues/runtime` (0.2.8 → 0.2.9)** — new `security/safe-env.ts` exports `buildSafeScriptEnv(processEnv, declaredSecrets, extras)`. Base allow-list: `PATH`, `HOME`, `USER`, `LOGNAME`, `LANG`, `TZ`, `TMPDIR`, `SHELL`, `TERM`, `DISPLAY`, `WAYLAND_DISPLAY`, `XDG_RUNTIME_DIR`, `WSL_DISTRO_NAME`, `WSLENV` plus every `LC_*` locale variant. Provider keys land in the child env ONLY when the blank's frontmatter `secrets: [NAME]` declared them. Malicious declarations (`secrets: [LD_PRELOAD]`) are refused via `DANGEROUS_ENV_PATTERN` (`LD_*`, `DYLD_*`, `NODE_OPTIONS`, `PYTHONPATH`, `BASH_ENV`, `PROMPT_COMMAND`, …).
+- **`@opencues/runtime` (`blank-fill.ts:369`)** — replaces the `{ ...process.env, ...extras }` spread with a `buildSafeScriptEnv` call. The `CUES_*` extras (model, apiUrl, prompts, …) are layered as the last step exactly as before.
+- **`@opencues/chrome` (0.2.4 → 0.2.5)** — `host/host.cjs` mirrors the same allow-list (PATH/HOME/locale/desktop-integration) AND switches `filterMessageEnv` from a `CUES_*`-only allow-list to a `[A-Z_][A-Z0-9_]*` shape check + dangerous-name deny-list. The host now trusts the runtime's curated wire env (which already filtered to declared secrets) and applies the deny-list as a second line of defence. The `{ ...process.env, ...filterMessageEnv(msg.env) }` spread becomes `{ ...buildBaseHostEnv(), ...filterMessageEnv(msg.env) }` — process.env's `*_API_KEY` never reach the child.
+- **11 new tests** in `safe-env.test.ts` cover: base allow-list passes; every common provider key dropped when undeclared; declared FINNHUB_API_KEY injected; LD_PRELOAD/DYLD_*/NODE_OPTIONS/PYTHONPATH unconditionally dropped; malicious `secrets: [LD_PRELOAD]` refused; declared secret can't shadow PATH; malformed name shapes (lowercase, dashes, leading digits) refused; CUES_* extras layer correctly; returns a new object; drift tests pin `DANGEROUS_ENV_PATTERN` shape + `SAFE_ENV_ALLOWLIST` excludes any `*_API_KEY`/`*_TOKEN`/`*_SECRET`/`*_PASSWORD`.
+- **`security-audit.md`** rows #5/#7 already updated for F4. The F2 fix completes the closure: rows now describe both the JS-blank AND scripted-blank secret-containment paths.
+### Security — dependency CVE sweep (INFOSEC DA1–DA7)
+
+`pnpm audit` reported 7 advisories across the dep graph; this PR closes all of them. Mix of direct bumps and `pnpm-workspace.yaml` overrides (pnpm 10 moved the override location out of `package.json` — the old `pnpm.overrides` is silently ignored, which is the same trap CLAUDE.md called out for `onlyBuiltDependencies`).
+
+- **DA1 vitest** `2.x → ^4.1.0` (root + opencues-runtime + chrome). [GHSA-5xrq-8626-4rwp](https://github.com/advisories/GHSA-5xrq-8626-4rwp) — vitest UI dev server arbitrary file read + execute.
+- **DA4 esbuild** `^0.21.x → ^0.25.0` (root + chrome). [GHSA-67mh-4wv8-2f99](https://github.com/advisories/GHSA-67mh-4wv8-2f99) — dev-server CORS bypass.
+- **DA5 vite** override `6.4.3` (was 5.4.21 transitive). [GHSA-4w7w-66w2-5vf9](https://github.com/advisories/GHSA-4w7w-66w2-5vf9) — optimized-dep `.map` path traversal. Vitest 4 also requires vite ≥ 6, so the pin satisfies two needs.
+- **DA2 seroval** override `>=1.4.1` (transitive via solid-js in shell). Five separate advisories — RCE + prototype pollution + 3 DoS vectors — one fix.
+- **DA3 immutable** override `>=3.8.3` (transitive via @types/draft-js + draft-js in chrome). [GHSA-wf6x-7x77-mvgw](https://github.com/advisories/GHSA-wf6x-7x77-mvgw) — prototype pollution.
+- **DA6 file-type** override `>=21.3.1` (transitive via jimp in shell). [GHSA-5v7r-6r5c-r473](https://github.com/advisories/GHSA-5v7r-6r5c-r473) — DoS via malformed ASF input.
+- **DA7 diff** override `>=8.0.3` (transitive via @opentui/core in shell). [GHSA-73rr-hh4g-fpgx](https://github.com/advisories/GHSA-73rr-hh4g-fpgx) — DoS in parsePatch / applyPatch.
+- `pnpm-workspace.yaml` also picks up the migrated `onlyBuiltDependencies: [esbuild]` config that CLAUDE.md flagged as silently dropped under pnpm 10.
+
+`pnpm audit` after: **No known vulnerabilities found.** All 1609 runtime tests + 176 chrome tests pass under vitest 4.1.8 (the 3 pre-vitest-4-compatibility chrome failures are fixed by the upgrade — same test files now green). Chrome bundle rebuilds cleanly under esbuild 0.25.
+### Security — chrome native host: interpreter allow-list + writable-target allow-list (INFOSEC F3)
+
+The chrome native-messaging host's `handleExec` and `handleWriteFile` previously enforced a path-only sandbox (everything must resolve under `CUE_ROOT`) but had no command-name / inline-code / target-basename restrictions. That made them a latent write-then-execute primitive: `write-file` could drop a `blanks/<x>/blank.js` that the user-blank registry would auto-load + execute on the next `fs.watch` tick, and `handleExec` accepted `bash -c '<arbitrary>'` because non-absolute args were returned unchanged by `sandboxArg`. Today the only thing that protects this is the manifest's absence of `externally_connectable` (closed defensively in F6); F3 closes the latent primitive structurally.
+
+- **`@opencues/chrome` (0.2.4 → 0.2.5)** — new `host/host-validators.cjs` exports `INTERPRETER_ALLOWLIST` (`bash`, `sh`), `INLINE_CODE_FLAG_PATTERN` (refuses `-c`, `--command`, `-e`, `--eval`, `-p`, `--exec`, `--cmd`, `-i`, `--inline`, `--source`), `WRITABLE_BASENAMES` (`OPENCUES.md`, `IDENTITY.md`, `CUES.md`), `isWritableTarget`, and `validateExec`.
+- **`host.cjs`** — `handleWriteFile` refuses any target whose basename isn't in `WRITABLE_BASENAMES`. `handleExec` refuses non-allow-listed interpreters, inline-code flags, and non-path-shaped `args[0]` when bash/sh is the interpreter. Absolute paths under `CUE_ROOT` (compiled-binary case) keep working through the prior `sandboxArg` realpath check.
+- **19 tests** in `host-validators.test.cjs` covering: each writable basename accepted, arbitrary `.md` / script extensions refused, bash/sh + path passes, node/python3/curl refused, `bash -c` refused, `bash --command` refused, `bash -l` (flag as args[0]) refused, missing/empty inputs refused, and a structural drift test pinning both allow-lists.
+
+Defence-in-depth pairs with F6 (sender-auth on the SW relay) — F6 closes the entry-point, F3 closes the primitive even when the entry is reachable.
+### Security — `opencues doctor` surfaces the unconfined-blanks footgun (INFOSEC F9)
+
+The OS sandbox (`bwrap` / `sandbox-exec`) was already checked, but it's only wired on `blankScript: sandbox: strict` — blanks that don't declare `sandbox: strict` run with the user's full filesystem + network privileges regardless of whether the OS confiner is installed. Most real-world scripted blanks don't opt in, so the "I have bwrap installed, I'm safe" assumption silently held nothing.
+
+- **`opencues doctor`** — new `scanScriptedBlanks` helper iterates `~/.cues/blanks/` + `$OPENCUES_HOME/blanks/` and reports "X of Y scripted blanks declare `sandbox: strict`". When Y > X, prints a loud `bad` line + a `warn` finding naming up to 3 unwrapped blanks by folder name.
+- **Status quo** — does NOT flip the default to strict (would break trusted/first-party blanks; that's the F9 follow-up that needs separate review).
+- **4 new tests** in `doctor.scanblanks.test.cjs`: mixed strict/unstrict counted correctly, empty install returns zeros, built-in TS blanks (no `blankScript:`) are ignored, malformed frontmatter silently skipped.
+### Security — chrome SW listeners authenticate sender + fetch proxy origin-allow-list (INFOSEC F6)
+
+Every `chrome.runtime.onMessage` listener in `background.ts` previously ignored the `sender` arg and acted on the message unconditionally — safe today ONLY because the manifest declares no `externally_connectable`. That one manifest property was the entire authentication boundary for the `exec` / `write-file` / `user-blank-invoke` relays + the `opencues:fetch` open relay. If `externally_connectable` ever lands or a content-script bug exposes the relay, those become arbitrary-page-reachable.
+
+- **`@opencues/chrome` (0.2.4 → 0.2.5)** — new `sw-auth.ts` module exports `isInternalSender(sender)` (`sender.id === chrome.runtime.id`) and `isFetchOriginAllowed(url)` (origin must be in `FETCH_ALLOWED_ORIGINS`, derived from manifest `host_permissions`). Every listener in `background.ts` now sender-auths before acting: refuses with a self-describing error response when the sender isn't internal.
+- **Fetch-proxy origin allow-list** — `opencues:fetch` refuses any URL whose origin isn't in `host_permissions`. Closes the open-relay attack where any context that can post a message uses the SW as a CORS-bypassing fetcher to attacker-chosen hosts with attacker-chosen headers.
+- **Drift tests** — `manifest-security.test.ts` (10 tests) asserts the manifest has NO `externally_connectable` (load-bearing property cannot regress) AND that `FETCH_ALLOWED_ORIGINS` matches `host_permissions` exactly (no drift between code and manifest). Plus 4 unit tests for `isFetchOriginAllowed` (allowed, refused-undeclared, refused-scheme-variant, refused-malformed) + 4 for `isInternalSender` (matching id, mismatched id, undefined, no-id).
+### Security — `opencues review` catches the constructor-chain escape and string-concat obfuscation (INFOSEC F5)
+
+The static review's denylist flagged `eval`, `new Function`, dynamic `import()`, and Node built-in names (`process`, `require`, `child_process`, `fs`, …). It did NOT flag `.constructor` chains — the actual vm-sandbox escape pivot. Worse, the scan stripped string literals first, so a payload hidden in `Promise['cons'+'tructor']('return process')()` had every telltale token stripped before the regex ran, and `opencues review` returned exit 0 on a working RCE PoC.
+
+- **`opencues` CLI (`review.cjs`)** — six new hard-blocker patterns: `.constructor`, `["constructor"]` (bracket form), `Reflect`, `globalThis`, `__proto__`, `Object.{get,set}PrototypeOf`. Each refuses the pack with `sev: 'error'`, mirrors the AST rewriter's stance.
+- **Dual scan** — the existing stripped-literals heuristic kept (low false-positive on JSDoc/URL strings), plus a new RAW-source scan for the escape patterns AND a string-concat-fragment detector (warn) that catches the `'cons'+'tructor'` / `'pro'+'cess'` style of hide-in-strings obfuscation.
+- **11 new tests** in `review.test.cjs` cover: each escape pattern as a hard blocker, the string-concat obfuscation warn, clean code produces no errors, and the pre-existing `import()` + `eval` heuristics still fire.
+
+INFOSEC F5 is a defence-in-depth ground gain — F1 is the structural fix (a real isolate). This raises the bar for the naive PoC and the obfuscated PoC without changing the runtime trust model.
+
+### Security — `enforceSecretBindings` becomes a deny-by-default destination allow-list (INFOSEC F4)
+
+The prior model was a substring scan: refuse the request if the literal secret VALUE appeared in URL/headers/body, otherwise allow. A malicious user-blank could trivially bypass it by encoding the secret (`btoa(k)`, hex, or fragmentation) before sending — the substring scan misses anything that doesn't share the literal bytes. Audit row #5/#6 listed residual "None" — that claim overstated the guarantee.
+
+Two-layer guard now:
+
+- **`@opencues/runtime` (0.2.8 → 0.2.9)** — `secret-leak-guard.ts:enforceSecretBindings` layer 1 (destination allow-list, primary): when ANY declared secret has a non-empty `secret-hosts.<NAME>` binding, EVERY outbound `ctx.fetch` host must be in the UNION of those bindings — payload content is irrelevant. Encoded exfil defeated structurally (the attacker can't reach `evil.com` regardless of how the value is encoded). Layer 2 (literal-value scan, secondary): within the allow-list, still scan URL/headers/body for bound secret values — catches multi-secret cross-talk (GROQ value sent to finnhub.io host is refused even though finnhub.io is in the union).
+- **5 new tests** in `secret-leak-guard.test.ts` covering: base64-encoded exfil refused; fragmented-value exfil refused; non-secret-bearing fetch to non-binding host refused; multi-secret union honoured for non-secret fetch; layer-2 cross-secret scan within union. Plus 1 new test asserting the error message lists the union for diagnostics. 15 tests total.
+- **`security-audit.md` row #5** updated to reflect two-layer guard and `Recently resolved` log entry added.
+
+### Security — Gemini API key moved off URL query string into `x-goog-api-key` header (INFOSEC F8)
+
+`?key=<apiKey>` puts secrets in URLs — they land in server/proxy access logs, browser history, the Referer header, and the chrome path also pipes them through the `opencues:fetch` SW proxy. Other providers correctly use `Authorization: Bearer` / `x-api-key` headers. Gemini's documented API contract accepts the key in either place, so the fix is mechanical: switch to `x-goog-api-key`.
+
+- **`@opencues/core`** — `GEMINI` adapter `buildRequest` returns a URL with no query string and a `x-goog-api-key` header. Test updated to assert the URL contains neither `gem_test` nor `key=`, and the header carries the key.
+- **`opencues check-keys` (CLI probe)** — same shape.
+- **chrome popup boot-time key audit + popup probe** — same shape.
+
+### Security — `opencues set-key` always tightens `~/.cues/.env` perms (INFOSEC F7)
+
+`fs.writeFileSync({ mode: 0o600 })` only applies the mode when the file is newly created. An existing `~/.cues/.env` with looser perms (created by hand or copied with default umask) was rewritten in place without ever being chmod'd, so plaintext API keys could remain world/group-readable. The chrome host then loads this file into `process.env` and hands it to every scripted blank ([F2](../INFOSEC_FINDINGS.md#f2)), so loose perms compounded that exposure.
+
+- **`opencues` CLI (`set-key`)** — always `chmod 0o600` the file and `0o700` the parent dir after writing, regardless of whether the file pre-existed. Warns when the prior mode was broader than `0600` so users know their key was previously readable.
+- Three regression tests in `set-key.test.cjs`: create-from-scratch lands at 0600/0700; pre-existing 0644 file gets tightened; pre-existing 0640 file gets tightened. Existing key lines preserved across the rewrite.
 
 ### Added — per-call `with <model>` LLM dispatch override for fluid-blank and transform-blank
 
