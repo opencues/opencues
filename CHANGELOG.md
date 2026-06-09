@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security — `opencues set-key` always tightens `~/.cues/.env` perms (INFOSEC F7)
 
+`fs.writeFileSync({ mode: 0o600 })` only applies the mode when the file is newly created. An existing `~/.cues/.env` with looser perms (created by hand or copied with default umask) was rewritten in place without ever being chmod'd, so plaintext API keys could remain world/group-readable. The chrome host then loads this file into `process.env` and hands it to every scripted blank ([F2](../INFOSEC_FINDINGS.md#f2)), so loose perms compounded that exposure.
+
+- **`opencues` CLI (`set-key`)** — always `chmod 0o600` the file and `0o700` the parent dir after writing, regardless of whether the file pre-existed. Warns when the prior mode was broader than `0600` so users know their key was previously readable.
+- Three regression tests in `set-key.test.cjs`: create-from-scratch lands at 0600/0700; pre-existing 0644 file gets tightened; pre-existing 0640 file gets tightened. Existing key lines preserved across the rewrite.
+
+### Added — per-call `with <model>` LLM dispatch override for fluid-blank and transform-blank
+
 Adds a `with <name>` token anywhere in the buffer before `_` (`make formal X with opus _`, `atomic number of oxygen with cerebras _`) to flip the dispatch target for ONE call without writing any scalar to disk. The next `_` keystroke without `with X` goes back to the configured bucket. Five-tier token resolution: common aliases (opus / haiku / sonnet / nano / mini / flash / gpt-oss / llama / claude / anthropic / cerebras / groq / openai / gemini / openrouter), provider id, exact model name, prefix in any `knownModels`, substring fallback. Always on — no scalar gates it.
 
 - **`@opencues/core` (0.3.4 → 0.3.5)** — new `model-aliases.ts` module with `detectModelOverride` + `resolveAlias` + `stripModelOverride`. 21 unit tests in `model-aliases.test.ts` pin token resolution, last-match-wins tie-break, regex word-boundary (`without` doesn't match), and strip behaviour.
