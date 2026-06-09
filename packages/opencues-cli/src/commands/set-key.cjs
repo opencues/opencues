@@ -38,9 +38,14 @@ module.exports = function setKey(argv, ctx) {
   }
 
   const envFile = path.join(os.homedir(), '.cues', '.env');
-  fs.mkdirSync(path.dirname(envFile), { recursive: true });
+  const envDir = path.dirname(envFile);
+  fs.mkdirSync(envDir, { recursive: true });
 
-  // Read existing, replace or append the line for this var.
+  let preExistingMode = null;
+  if (fs.existsSync(envFile)) {
+    try { preExistingMode = fs.statSync(envFile).mode & 0o777; } catch {}
+  }
+
   let lines = [];
   if (fs.existsSync(envFile)) {
     lines = fs.readFileSync(envFile, 'utf8').split('\n');
@@ -50,6 +55,15 @@ module.exports = function setKey(argv, ctx) {
   if (idx >= 0) lines[idx] = newLine;
   else lines.push(newLine);
   fs.writeFileSync(envFile, lines.filter(Boolean).join('\n') + '\n', { mode: 0o600 });
+
+  // writeFileSync's mode is only applied on creation. Apply unconditionally
+  // so an existing file with looser perms gets tightened.
+  try { fs.chmodSync(envFile, 0o600); } catch {}
+  try { fs.chmodSync(envDir, 0o700); } catch {}
+
+  if (preExistingMode !== null && (preExistingMode & 0o077) !== 0) {
+    console.log(`${tag('warn')} previous ${fileLink(envFile, envFile)} mode was ${preExistingMode.toString(8).padStart(4, '0')} (group/other readable); tightened to 0600.`);
+  }
 
   console.log(`${tag('ok')} stored ${bold(envName)} in ${fileLink(envFile, envFile)}`);
   console.log('');
