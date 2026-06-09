@@ -247,20 +247,44 @@ function handleMessage(msg) {
 // that chrome.storage's stale overlay used to mask). With the handler,
 // chrome writes to the FILE first, falling back to chrome.storage
 // only when the host is disconnected.
+// F3 (INFOSEC) validators live in host-validators.cjs so they're unit-
+// testable in isolation. Reviewers: don't expand WRITABLE_BASENAMES /
+// INTERPRETER_ALLOWLIST without re-reading docs/architecture/
+// security-audit.md row #15 + the F3 finding in INFOSEC_FINDINGS.md.
+const {
+  WRITABLE_BASENAMES,
+  isWritableTarget,
+  validateExec: _validateExec,
+} = require('./host-validators.cjs');
+
 function handleWriteFile(msg) {
   const requestId = msg.requestId;
   if (typeof requestId !== 'string') return;
   const reply = (body) => sendMessage({ type: 'write-file-result', requestId, ...body });
-  const path = typeof msg.path === 'string' ? msg.path : '';
+  const pathArg = typeof msg.path === 'string' ? msg.path : '';
   const content = typeof msg.content === 'string' ? msg.content : '';
-  if (!path) { reply({ ok: false, error: 'missing path' }); return; }
+  if (!pathArg) { reply({ ok: false, error: 'missing path' }); return; }
   // Path-form translation + sandbox: same rules as handleExec's
   // sandboxArg. Chrome-runtime virtual paths (`/chrome-storage/.cues/...`)
   // translate to `${CUE_ROOT}/...`; absolute paths are honored only when
   // they resolve (via realpath) under CUE_ROOT.
-  const safe = sandboxArg(path);
+  const safe = sandboxArg(pathArg);
   if (safe === null) {
-    reply({ ok: false, error: `path outside CUE_ROOT: ${path}` });
+    reply({ ok: false, error: `path outside CUE_ROOT: ${pathArg}` });
+    return;
+  }
+  // F3: refuse writes outside the configured-file allow-list. The
+  // earlier "any path under CUE_ROOT" model let a single trusted
+  // frame create a `blanks/x/blank.js` that the registry would
+  // auto-load + execute. Restrict to the exact file basenames
+  // OPENCUES.md (today) and IDENTITY.md / CUES.md
+  // (forward-compat for the in-editor identity write surface).
+  if (!isWritableTarget(safe)) {
+    reply({
+      ok: false,
+      error: `write target not in allow-list (F3): ${path.basename(safe)}. ` +
+        `Permitted basenames: ${[...WRITABLE_BASENAMES].sort().join(', ')}`,
+    });
     return;
   }
   try {
@@ -484,6 +508,34 @@ function handleExec(msg) {
       exitCode: 126, stdout: '', stderr: `command outside CUE_ROOT: ${command}`, timedOut: false,
     });
     return;
+  }
+  // F3 (INFOSEC): interpreter allow-list + inline-code flag refusal +
+  // args[0] must be a script path. Validators in host-validators.cjs.
+  const isAbsoluteUnderCueRoot = command.startsWith('/') && safeCommand !== null;
+  const validationErr = _validateExec({
+    command: safeCommand,
+    args: rawArgs,
+    isAbsoluteUnderCueRoot,
+  });
+  if (validationErr) {
+    sendMessage({
+      type: 'exec-result', requestId,
+      exitCode: 126, stdout: '', stderr: validationErr, timedOut: false,
+    });
+    return;
+  }
+  // F3: when bash/sh, also require args[0] to resolve under CUE_ROOT
+  // (the runtime's only call shape is `bash <scriptPath> ...`).
+  if (rawArgs[0] && (safeCommand === 'bash' || safeCommand === 'sh')) {
+    if (sandboxArg(rawArgs[0]) === null) {
+      sendMessage({
+        type: 'exec-result', requestId,
+        exitCode: 126, stdout: '',
+        stderr: `args[0] does not resolve under CUE_ROOT (F3): ${rawArgs[0]}`,
+        timedOut: false,
+      });
+      return;
+    }
   }
   const args = [];
   for (const a of rawArgs) {
