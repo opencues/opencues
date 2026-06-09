@@ -84,7 +84,11 @@ describe('buildSourcesFromConfig — per-feature provider routing', () => {
     await fluid!.getCues({ text: 'capital of france _', words: ['capital', 'of', 'france', '_'] });
     assert.ok(calls.length > 0);
     assert.match(calls[0].url, /generativelanguage\.googleapis\.com/);
-    assert.match(calls[0].url, /models\/gemini-3\.1-flash-lite:generateContent\?key=gem_k/);
+    assert.match(calls[0].url, /models\/gemini-3\.1-flash-lite:generateContent$/);
+    // INFOSEC F8: API key in header, not URL.
+    assert.ok(!calls[0].url.includes('key='), 'F8: URL must not contain ?key=');
+    assert.ok(!calls[0].url.includes('gem_k'), 'F8: URL must not contain the API key');
+    assert.strictEqual(calls[0].headers['x-goog-api-key'], 'gem_k');
     const body = JSON.parse(calls[0].body);
     assert.ok(body.contents, 'expected gemini-shaped body with `contents`');
     assert.ok(body.systemInstruction, 'expected systemInstruction (gemini-shape)');

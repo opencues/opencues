@@ -521,7 +521,7 @@ const PROBE_ENDPOINTS: Record<string, { url: string; headers: (k: string) => Rec
   OPENAI_API_KEY:     { url: 'https://api.openai.com/v1/models',                                                                                       headers: k => ({ Authorization: `Bearer ${k}` }) },
   ANTHROPIC_API_KEY:  { url: 'https://api.anthropic.com/v1/models',                                                                                    headers: k => ({ 'x-api-key': k, 'anthropic-version': '2023-06-01' }) },
   OPENROUTER_API_KEY: { url: 'https://openrouter.ai/api/v1/models',                                                                                    headers: k => ({ Authorization: `Bearer ${k}` }) },
-  GEMINI_API_KEY:     { url: `https://generativelanguage.googleapis.com/v1beta/models?key=__KEY__`,                                                    headers: () => ({}) },
+  GEMINI_API_KEY:     { url: 'https://generativelanguage.googleapis.com/v1beta/models',                                                                headers: k => ({ 'x-goog-api-key': k }) }, // INFOSEC F8: header not URL
 };
 
 async function probeOneKey(envName: string, key: string, out: (line: string) => void): Promise<void> {

@@ -651,12 +651,16 @@ const OPENAI_SUBSCRIPTION: ProviderAdapter = {
 
 /**
  * Gemini's API takes a fundamentally different shape:
- *   POST /v1beta/models/{model}:generateContent?key={apiKey}
+ *   POST /v1beta/models/{model}:generateContent
+ *   Header: x-goog-api-key: {apiKey}
  *   { contents: [{ role, parts: [{ text }] }],
  *     generationConfig: { maxOutputTokens, temperature } }
  *
  * Notable differences from OpenAI-shape:
- *   - Auth via `?key=` query param (NOT bearer header).
+ *   - Auth via `x-goog-api-key` header (per Google's API surface — also
+ *     accepts `?key=` query param, but URL-embedded keys have a wider
+ *     logging/caching surface: server access logs, proxy logs, browser
+ *     history, referrer. Header form keeps it out of URLs. INFOSEC F8.
  *   - Model embedded in URL path (NOT request body).
  *   - System role unsupported in `contents` — must go in
  *     `systemInstruction` separately.
@@ -713,11 +717,15 @@ const GEMINI: ProviderAdapter = {
     if (req.temperature !== undefined) generationConfig.temperature = req.temperature;
     if (Object.keys(generationConfig).length > 0) body.generationConfig = generationConfig;
     return {
-      // Gemini auth is query param, not header. The api key never goes
-      // in a body field, so logging the body is safe.
-      url: `${url}?key=${encodeURIComponent(ctx.apiKey)}`,
+      // INFOSEC F8: key in header, not URL — keeps it out of access logs,
+      // browser history, referrer. URL form (`?key=…`) still works on
+      // Google's side but is the higher-exposure shape.
+      url,
       body: JSON.stringify(body),
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': ctx.apiKey,
+      },
     };
   },
   parseResponse(rawJson) {

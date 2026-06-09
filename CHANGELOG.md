@@ -19,6 +19,21 @@ Two-layer guard now:
 - **5 new tests** in `secret-leak-guard.test.ts` covering: base64-encoded exfil refused; fragmented-value exfil refused; non-secret-bearing fetch to non-binding host refused; multi-secret union honoured for non-secret fetch; layer-2 cross-secret scan within union. Plus 1 new test asserting the error message lists the union for diagnostics. 15 tests total.
 - **`security-audit.md` row #5** updated to reflect two-layer guard and `Recently resolved` log entry added.
 
+### Security — Gemini API key moved off URL query string into `x-goog-api-key` header (INFOSEC F8)
+
+`?key=<apiKey>` puts secrets in URLs — they land in server/proxy access logs, browser history, the Referer header, and the chrome path also pipes them through the `opencues:fetch` SW proxy. Other providers correctly use `Authorization: Bearer` / `x-api-key` headers. Gemini's documented API contract accepts the key in either place, so the fix is mechanical: switch to `x-goog-api-key`.
+
+- **`@opencues/core`** — `GEMINI` adapter `buildRequest` returns a URL with no query string and a `x-goog-api-key` header. Test updated to assert the URL contains neither `gem_test` nor `key=`, and the header carries the key.
+- **`opencues check-keys` (CLI probe)** — same shape.
+- **chrome popup boot-time key audit + popup probe** — same shape.
+
+### Security — `opencues set-key` always tightens `~/.cues/.env` perms (INFOSEC F7)
+
+`fs.writeFileSync({ mode: 0o600 })` only applies the mode when the file is newly created. An existing `~/.cues/.env` with looser perms (created by hand or copied with default umask) was rewritten in place without ever being chmod'd, so plaintext API keys could remain world/group-readable. The chrome host then loads this file into `process.env` and hands it to every scripted blank ([F2](../INFOSEC_FINDINGS.md#f2)), so loose perms compounded that exposure.
+
+- **`opencues` CLI (`set-key`)** — always `chmod 0o600` the file and `0o700` the parent dir after writing, regardless of whether the file pre-existed. Warns when the prior mode was broader than `0600` so users know their key was previously readable.
+- Three regression tests in `set-key.test.cjs`: create-from-scratch lands at 0600/0700; pre-existing 0644 file gets tightened; pre-existing 0640 file gets tightened. Existing key lines preserved across the rewrite.
+
 ### Added — per-call `with <model>` LLM dispatch override for fluid-blank and transform-blank
 
 Adds a `with <name>` token anywhere in the buffer before `_` (`make formal X with opus _`, `atomic number of oxygen with cerebras _`) to flip the dispatch target for ONE call without writing any scalar to disk. The next `_` keystroke without `with X` goes back to the configured bucket. Five-tier token resolution: common aliases (opus / haiku / sonnet / nano / mini / flash / gpt-oss / llama / claude / anthropic / cerebras / groq / openai / gemini / openrouter), provider id, exact model name, prefix in any `knownModels`, substring fallback. Always on — no scalar gates it.
