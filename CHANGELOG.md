@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Security — dependency CVE sweep (INFOSEC DA1–DA7)
+
+`pnpm audit` reported 7 advisories across the dep graph; this PR closes all of them. Mix of direct bumps and `pnpm-workspace.yaml` overrides (pnpm 10 moved the override location out of `package.json` — the old `pnpm.overrides` is silently ignored, which is the same trap CLAUDE.md called out for `onlyBuiltDependencies`).
+
+- **DA1 vitest** `2.x → ^4.1.0` (root + opencues-runtime + chrome). [GHSA-5xrq-8626-4rwp](https://github.com/advisories/GHSA-5xrq-8626-4rwp) — vitest UI dev server arbitrary file read + execute.
+- **DA4 esbuild** `^0.21.x → ^0.25.0` (root + chrome). [GHSA-67mh-4wv8-2f99](https://github.com/advisories/GHSA-67mh-4wv8-2f99) — dev-server CORS bypass.
+- **DA5 vite** override `6.4.3` (was 5.4.21 transitive). [GHSA-4w7w-66w2-5vf9](https://github.com/advisories/GHSA-4w7w-66w2-5vf9) — optimized-dep `.map` path traversal. Vitest 4 also requires vite ≥ 6, so the pin satisfies two needs.
+- **DA2 seroval** override `>=1.4.1` (transitive via solid-js in shell). Five separate advisories — RCE + prototype pollution + 3 DoS vectors — one fix.
+- **DA3 immutable** override `>=3.8.3` (transitive via @types/draft-js + draft-js in chrome). [GHSA-wf6x-7x77-mvgw](https://github.com/advisories/GHSA-wf6x-7x77-mvgw) — prototype pollution.
+- **DA6 file-type** override `>=21.3.1` (transitive via jimp in shell). [GHSA-5v7r-6r5c-r473](https://github.com/advisories/GHSA-5v7r-6r5c-r473) — DoS via malformed ASF input.
+- **DA7 diff** override `>=8.0.3` (transitive via @opentui/core in shell). [GHSA-73rr-hh4g-fpgx](https://github.com/advisories/GHSA-73rr-hh4g-fpgx) — DoS in parsePatch / applyPatch.
+- `pnpm-workspace.yaml` also picks up the migrated `onlyBuiltDependencies: [esbuild]` config that CLAUDE.md flagged as silently dropped under pnpm 10.
+
+`pnpm audit` after: **No known vulnerabilities found.** All 1609 runtime tests + 176 chrome tests pass under vitest 4.1.8 (the 3 pre-vitest-4-compatibility chrome failures are fixed by the upgrade — same test files now green). Chrome bundle rebuilds cleanly under esbuild 0.25.
 ### Security — chrome native host: interpreter allow-list + writable-target allow-list (INFOSEC F3)
 
 The chrome native-messaging host's `handleExec` and `handleWriteFile` previously enforced a path-only sandbox (everything must resolve under `CUE_ROOT`) but had no command-name / inline-code / target-basename restrictions. That made them a latent write-then-execute primitive: `write-file` could drop a `blanks/<x>/blank.js` that the user-blank registry would auto-load + execute on the next `fs.watch` tick, and `handleExec` accepted `bash -c '<arbitrary>'` because non-absolute args were returned unchanged by `sandboxArg`. Today the only thing that protects this is the manifest's absence of `externally_connectable` (closed defensively in F6); F3 closes the latent primitive structurally.
