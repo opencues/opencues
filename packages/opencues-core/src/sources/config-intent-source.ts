@@ -59,6 +59,7 @@ import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '
 import { BlankConfig } from '../cues-md';
 import { describeLLMCall, dispatchChat, getProvider, listProviders, type ProviderAdapter } from '../llm-provider';
 import { classifyLlmError, type FluidBlankErrorReason } from './fluid-blank-source';
+import { detectModelOverride } from '../model-aliases';
 import {
   FEATURES,
   getCyclableValues,
@@ -688,6 +689,23 @@ export class ConfigIntentSource implements CueSource {
     const t0 = Date.now();
     const blankIdx = context.words.indexOf('_');
     if (blankIdx === -1) return { results: [] };
+
+    // Cede when the buffer carries a per-call `with <model>` override
+    // token (see model-aliases.ts). The override is a deliberate alternate
+    // syntax to the settings-flip shapes ("change to opus _", "switch to
+    // cerebras _", "use anthropic for cues _") — those keep using their
+    // imperative verbs and route here. Anything containing `with <model>`
+    // is the per-call override path and belongs to TransformBlank /
+    // FluidBlank instead. Ceding synchronously avoids burning a classifier
+    // LLM call on inputs ConfigIntent shouldn't claim, AND prevents the
+    // misclassification observed in early testing where
+    // "make formal with opus _" routed here as `cues-llm-provider:
+    // anthropic:claude-opus-4-7` instead of letting TransformBlank do
+    // the rewrite with a per-call Opus override.
+    if (detectModelOverride(context.text) !== null) {
+      this.log(`ConfigIntent: ceding — buffer carries 'with <model>' override token (per-call override path)`);
+      return { results: [], timing: Date.now() - t0, model: this.model };
+    }
 
     const llmDesc = describeLLMCall(this.provider, this.model, undefined, {
       maxTokens: this.maxTokensOverride, temperature: this.temperatureOverride,
