@@ -119,6 +119,16 @@ in `~/.opencues/vendor/` so `opencues uninstall <host>` cleans them
 up; system packages prompt for sudo once and stay where your package
 manager put them. Pass `--no-prompts` to skip every offer (CI mode).
 
+> **Native module fallback.** The runtime sandbox uses
+> [`isolated-vm`](https://github.com/laverdet/isolated-vm), a native
+> C++ binding. Prebuilt binaries cover linux/darwin x64+arm64 and
+> win32 x64 — those install without any toolchain. On rarer arches
+> (e.g. armv7, FreeBSD) `pnpm install` falls back to `node-gyp
+> rebuild`, which needs `build-essential` + `python3` on Linux or
+> `xcode-select --install` on macOS. The installer probes the binding
+> on every run; if it can't load, you get one actionable line with
+> the right fix for your platform before any host build starts.
+
 ### 2. Get an LLM API key
 
 **Cerebras is the recommended default** — same `gpt-oss-120b` weights
