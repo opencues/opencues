@@ -118,6 +118,16 @@ module.exports = async function install(argv, ctx) {
   // auto-run `pnpm install` if any are missing.
   ensureWorkspaceDeps(ctx);
 
+  // Native-binding probe: `isolated-vm` ships prebuilt binaries for
+  // common platforms (linux/darwin x64+arm64, win32 x64), but rare
+  // arches fall back to `node-gyp rebuild` which silently fails when
+  // no C++ toolchain is present. pnpm reports install success either
+  // way; the per-host build then dies at `require('isolated-vm')`
+  // with a confusing TS2307. Probe the load AFTER deps are installed
+  // so users get actionable guidance early. Skip with
+  // OPENCUES_SKIP_NATIVE_PROBE=1 if you know your env is fine.
+  ensureNativeBindings(ctx);
+
   // Run seed-configs FIRST so the user-level ~/.cues/ tree is current
   // before any host installer runs. seed-configs handles all shared writes:
   // first-time copy, library-script sync, OPENCUES.md self-heal, .cs compile.
@@ -598,6 +608,53 @@ function ensureWorkspaceDeps(ctx) {
     process.exit(r.status ?? 1);
   }
   console.log('');
+}
+
+// Verify each declared native module loads. Today's only entry is
+// `isolated-vm` (used by the user-blanks JS sandbox — INFOSEC F1, June
+// 2026). When `pnpm install`'s postinstall hook drops back to
+// `node-gyp rebuild` and that fails for lack of a C++ toolchain,
+// pnpm's exit code can still report success but `require('isolated-vm')`
+// throws ENOENT for the .node binding. Detect the failure mode here
+// and print actionable platform-specific guidance instead of letting
+// the per-host build die at TS2307 mid-stream.
+function ensureNativeBindings(ctx) {
+  if (process.env.OPENCUES_SKIP_NATIVE_PROBE === '1') return;
+  const repoRoot = ctx.REPO_ROOT;
+  const runtimeDir = path.join(repoRoot, 'packages/opencues-runtime');
+  if (!fs.existsSync(path.join(runtimeDir, 'node_modules'))) return;
+
+  const { createRequire } = require('node:module');
+  const requireFromRuntime = createRequire(path.join(runtimeDir, 'package.json'));
+  try {
+    const ivm = requireFromRuntime('isolated-vm');
+    if (!ivm || typeof ivm.Isolate !== 'function') {
+      throw new Error('isolated-vm loaded but Isolate constructor missing');
+    }
+  } catch (err) {
+    console.log('');
+    console.error(`${tag('err')} native module ${bold('isolated-vm')} failed to load (${err.message})`);
+    console.error('');
+    console.error('   isolated-vm is a NATIVE C++ binding (required by the user-blanks');
+    console.error('   sandbox — INFOSEC F1). pnpm tried prebuild-install for your');
+    console.error('   platform; if no prebuilt binary matched, it fell back to compiling');
+    console.error('   via node-gyp, which needs a working C++ toolchain.');
+    console.error('');
+    const platform = process.platform;
+    if (platform === 'linux') {
+      console.error('   On Debian/Ubuntu/WSL:');
+      console.error('     sudo apt-get install build-essential python3');
+    } else if (platform === 'darwin') {
+      console.error('   On macOS:');
+      console.error('     xcode-select --install   # installs Apple\'s clang toolchain');
+    }
+    console.error('   Then re-run:');
+    console.error('     pnpm rebuild isolated-vm');
+    console.error('     pnpm exec opencues install <host>');
+    console.error('');
+    console.error(`   ${dim('Skip this probe with OPENCUES_SKIP_NATIVE_PROBE=1 once you\'ve verified the binding loads from packages/opencues-runtime/.')}`);
+    process.exit(1);
+  }
 }
 
 function runHostInstaller(host, action, extraArgs, ctx) {

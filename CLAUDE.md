@@ -490,6 +490,7 @@ Bash-syntax-check every shell-script edit before handing back: `bash -n <file>`.
 
 ## Environment
 
+- **Native build dep**: `isolated-vm` (runtime sandbox, INFOSEC F1). Prebuilt binaries cover linux/darwin x64+arm64 + win32 x64; rare arches fall back to `node-gyp rebuild` which needs a C++ toolchain (`build-essential` + `python3` on Linux, `xcode-select --install` on macOS). `opencues install` probes the binding load and prints actionable platform-specific guidance if it can't — bypass with `OPENCUES_SKIP_NATIVE_PROBE=1` once verified.
 - **API Key**: `GROQ_API_KEY` for Groq (default provider)
 - **API Key**: `FINNHUB_API_KEY` for Finnhub (stock prices)
 - **Debug**: `DEBUG=cues*` for debug logging
