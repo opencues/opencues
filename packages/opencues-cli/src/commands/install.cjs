@@ -110,6 +110,14 @@ module.exports = async function install(argv, ctx) {
   // Today this is macOS-only — see preflightChecks for the rationale.
   preflightChecks(folders);
 
+  // Workspace-deps gate: when invoked from a clone, any newly declared
+  // dep in @opencues/{core,runtime,cli} that hasn't been `pnpm install`'d
+  // makes every per-host installer fail at the tsc build step (the
+  // June 2026 `isolated-vm` add was the canonical incident — five hosts
+  // failed simultaneously with the same TS2307). Probe declared deps;
+  // auto-run `pnpm install` if any are missing.
+  ensureWorkspaceDeps(ctx);
+
   // Run seed-configs FIRST so the user-level ~/.cues/ tree is current
   // before any host installer runs. seed-configs handles all shared writes:
   // first-time copy, library-script sync, OPENCUES.md self-heal, .cs compile.
@@ -544,6 +552,52 @@ function onPath(name) {
   } catch {
     return false;
   }
+}
+
+// Probe each workspace package's declared `dependencies` against the
+// installed `node_modules/<dep>`. First missing dep → run `pnpm install`
+// once, then proceed. Workspace-internal `workspace:*` deps are skipped
+// (pnpm wires those via symlinks the install also creates). Only runs
+// from a clone (detected via `pnpm-workspace.yaml`).
+//
+// Catches the failure shape where a PR adds an external dep but the
+// next contributor hasn't re-run pnpm install yet — every per-host
+// installer would then fail at tsc with TS2307 "Cannot find module".
+// Skip with OPENCUES_SKIP_DEPS_GATE=1 for tight install-script iteration.
+function ensureWorkspaceDeps(ctx) {
+  if (process.env.OPENCUES_SKIP_DEPS_GATE === '1') return;
+  const repoRoot = ctx.REPO_ROOT;
+  if (!fs.existsSync(path.join(repoRoot, 'pnpm-workspace.yaml'))) return;
+
+  const packages = ['opencues-core', 'opencues-runtime', 'opencues-cli'];
+  let stale = null;
+  for (const pkg of packages) {
+    const pkgJson = path.join(repoRoot, 'packages', pkg, 'package.json');
+    if (!fs.existsSync(pkgJson)) continue;
+    let pj;
+    try { pj = JSON.parse(fs.readFileSync(pkgJson, 'utf8')); } catch { continue; }
+    const deps = pj.dependencies || {};
+    for (const [name, spec] of Object.entries(deps)) {
+      if (typeof spec === 'string' && spec.startsWith('workspace:')) continue;
+      const probe = path.join(repoRoot, 'packages', pkg, 'node_modules', name);
+      if (!fs.existsSync(probe)) {
+        stale = { pkg, missing: name };
+        break;
+      }
+    }
+    if (stale) break;
+  }
+
+  if (!stale) return;
+
+  console.log('');
+  console.log(`${tag('info')} workspace deps stale (packages/${stale.pkg}/node_modules/${stale.missing} missing) — running ${bold('pnpm install')}`);
+  const r = spawnSync('pnpm', ['install'], { cwd: repoRoot, stdio: 'inherit' });
+  if (r.status !== 0) {
+    console.error(`${tag('err')} pnpm install failed (exit ${r.status}) — fix workspace state and re-run`);
+    process.exit(r.status ?? 1);
+  }
+  console.log('');
 }
 
 function runHostInstaller(host, action, extraArgs, ctx) {
