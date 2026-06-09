@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Security — `opencues review` catches the constructor-chain escape and string-concat obfuscation (INFOSEC F5)
+
+The static review's denylist flagged `eval`, `new Function`, dynamic `import()`, and Node built-in names (`process`, `require`, `child_process`, `fs`, …). It did NOT flag `.constructor` chains — the actual vm-sandbox escape pivot. Worse, the scan stripped string literals first, so a payload hidden in `Promise['cons'+'tructor']('return process')()` had every telltale token stripped before the regex ran, and `opencues review` returned exit 0 on a working RCE PoC.
+
+- **`opencues` CLI (`review.cjs`)** — six new hard-blocker patterns: `.constructor`, `["constructor"]` (bracket form), `Reflect`, `globalThis`, `__proto__`, `Object.{get,set}PrototypeOf`. Each refuses the pack with `sev: 'error'`, mirrors the AST rewriter's stance.
+- **Dual scan** — the existing stripped-literals heuristic kept (low false-positive on JSDoc/URL strings), plus a new RAW-source scan for the escape patterns AND a string-concat-fragment detector (warn) that catches the `'cons'+'tructor'` / `'pro'+'cess'` style of hide-in-strings obfuscation.
+- **11 new tests** in `review.test.cjs` cover: each escape pattern as a hard blocker, the string-concat obfuscation warn, clean code produces no errors, and the pre-existing `import()` + `eval` heuristics still fire.
+
+INFOSEC F5 is a defence-in-depth ground gain — F1 is the structural fix (a real isolate). This raises the bar for the naive PoC and the obfuscated PoC without changing the runtime trust model.
+
 ### Security — `enforceSecretBindings` becomes a deny-by-default destination allow-list (INFOSEC F4)
 
 The prior model was a substring scan: refuse the request if the literal secret VALUE appeared in URL/headers/body, otherwise allow. A malicious user-blank could trivially bypass it by encoding the secret (`btoa(k)`, hex, or fragmentation) before sending — the substring scan misses anything that doesn't share the literal bytes. Audit row #5/#6 listed residual "None" — that claim overstated the guarantee.
