@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Security — `blankScript:` blanks must declare `sandbox:` explicitly (INFOSEC F9)
+
+The F9 doctor PR (#102) surfaced the unconfined-by-default footgun: `bwrap` / `sandbox-exec` only wraps when a blank declares `sandbox: strict`, and most don't. This PR closes the gap structurally at the install-time gate.
+
+- **`opencues review` (`packages/opencues-cli/src/commands/review.cjs`)** — refuses any pack with `blankScript:` lacking a `sandbox:` declaration as a hard error (sev: `error`, exit 1). `sandbox: off` produces a warn (explicit acknowledgement of full host privileges). `sandbox: strict` is clean. Any other value is a hard error. Authors can no longer ship a `blankScript:` blank without making an explicit confinement choice.
+- **`@opencues/runtime` (0.2.8 → 0.2.9)** `BlankFill.maybeRunScripts` — one-time per-blank-name warn when a script-backed blank lacks `sandbox:` at runtime. Pre-F9 installs that slipped past review get a loud diagnostic in `/tmp/opencues.log` and the host's console: "BlankFill: X declares blankScript: without sandbox: — running UNCONFINED... INFOSEC F9". Per-blank dispatch refusal (rather than warn) deferred to v2 once the broader pack ecosystem migrates.
+- **All shipped defaults already declare** explicit `sandbox:` (volume / brightness / opencues / sentinel → `sandbox: off`; example → `sandbox: strict`). No regression for shipped blanks.
+- **Tests**: 5 new in `review.f9.test.cjs` cover every code path (missing → error; strict → clean; off → warn; bogus value → error; non-scripted → unaffected). 3 new in `blank-fill.f9-warn.test.ts` pin: warn fires once for missing-sandbox + spawn still happens (back-compat); strict + off both silent.
+- **`security-audit.md` row #17** updated with the F9 install-time gate.
 ### Security — scripted blanks get a deny-by-default env, not the host's full process.env (INFOSEC F2)
 
 Pre-fix, `BlankFill.maybeRunScripts` built the child env as `{ ...process.env, ...extras }`. Every scripted blank received every `*_API_KEY` the host had loaded — including ones the blank never declared in `secrets:`. A `blankScript:`-bearing pack could `curl` GROQ_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, FINNHUB_API_KEY etc. out without any frontmatter declaration. Per the F2 finding (live-confirmed against the chrome-host), the per-blank allow-list claim in `security-audit.md` rows #5/#7 only ever covered the JS-blank `ctx.secrets` path.
