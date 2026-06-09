@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Security — chrome native host: interpreter allow-list + writable-target allow-list (INFOSEC F3)
+
+The chrome native-messaging host's `handleExec` and `handleWriteFile` previously enforced a path-only sandbox (everything must resolve under `CUE_ROOT`) but had no command-name / inline-code / target-basename restrictions. That made them a latent write-then-execute primitive: `write-file` could drop a `blanks/<x>/blank.js` that the user-blank registry would auto-load + execute on the next `fs.watch` tick, and `handleExec` accepted `bash -c '<arbitrary>'` because non-absolute args were returned unchanged by `sandboxArg`. Today the only thing that protects this is the manifest's absence of `externally_connectable` (closed defensively in F6); F3 closes the latent primitive structurally.
+
+- **`@opencues/chrome` (0.2.4 → 0.2.5)** — new `host/host-validators.cjs` exports `INTERPRETER_ALLOWLIST` (`bash`, `sh`), `INLINE_CODE_FLAG_PATTERN` (refuses `-c`, `--command`, `-e`, `--eval`, `-p`, `--exec`, `--cmd`, `-i`, `--inline`, `--source`), `WRITABLE_BASENAMES` (`OPENCUES.md`, `IDENTITY.md`, `CUES.md`), `isWritableTarget`, and `validateExec`.
+- **`host.cjs`** — `handleWriteFile` refuses any target whose basename isn't in `WRITABLE_BASENAMES`. `handleExec` refuses non-allow-listed interpreters, inline-code flags, and non-path-shaped `args[0]` when bash/sh is the interpreter. Absolute paths under `CUE_ROOT` (compiled-binary case) keep working through the prior `sandboxArg` realpath check.
+- **19 tests** in `host-validators.test.cjs` covering: each writable basename accepted, arbitrary `.md` / script extensions refused, bash/sh + path passes, node/python3/curl refused, `bash -c` refused, `bash --command` refused, `bash -l` (flag as args[0]) refused, missing/empty inputs refused, and a structural drift test pinning both allow-lists.
+
+Defence-in-depth pairs with F6 (sender-auth on the SW relay) — F6 closes the entry-point, F3 closes the primitive even when the entry is reachable.
+
 ### Added — per-call `with <model>` LLM dispatch override for fluid-blank and transform-blank
 
 Adds a `with <name>` token anywhere in the buffer before `_` (`make formal X with opus _`, `atomic number of oxygen with cerebras _`) to flip the dispatch target for ONE call without writing any scalar to disk. The next `_` keystroke without `with X` goes back to the configured bucket. Five-tier token resolution: common aliases (opus / haiku / sonnet / nano / mini / flash / gpt-oss / llama / claude / anthropic / cerebras / groq / openai / gemini / openrouter), provider id, exact model name, prefix in any `knownModels`, substring fallback. Always on — no scalar gates it.
