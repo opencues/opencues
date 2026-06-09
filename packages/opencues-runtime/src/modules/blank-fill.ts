@@ -51,6 +51,9 @@ export class BlankFill {
   /** Dedup key (text + slot index) → in-flight script promise. */
   private _pendingScripts = new Set<string>();
   private _warnedSandboxBlanks = new Set<string>();
+  /** INFOSEC F9: blank names we've already warned about for missing
+   *  `sandbox:` declaration. One warn per name per process. */
+  private _warnedMissingSandboxBlanks = new Set<string>();
 
   /**
    * Per-blank result cache. Keyed by `<blankName>::<argsKey>` where
@@ -484,6 +487,30 @@ export class BlankFill {
               `Running unwrapped (path sandbox + audit log still apply).`,
             );
           }
+        }
+        // INFOSEC F9 (real fix — Option B, runtime side): warn loudly
+        // when a blankScript: blank hasn't declared `sandbox:`. The
+        // install-time gate in `opencues review` is the structural
+        // refusal; this warn handles pre-existing installs where the
+        // blank slipped past review (typically because review hadn't
+        // been run yet on that pack). One warn per blank-name per
+        // process — enough for the user to notice without spamming.
+        // The v2 plan is to flip this to a refusal once all shipped
+        // defaults and the broader pack ecosystem have migrated.
+        const declared = (blank as { sandbox?: unknown }).sandbox;
+        if (declared === undefined || declared === null || declared === '') {
+          if (!this._warnedMissingSandboxBlanks.has(slot.blankName)) {
+            this._warnedMissingSandboxBlanks.add(slot.blankName);
+            this.adapter.log('warn',
+              `BlankFill: "${slot.blankName}" declares blankScript: without sandbox: — ` +
+              `running UNCONFINED with the user's full filesystem + network privileges. ` +
+              `INFOSEC F9: authors should declare \`sandbox: strict\` (confined under ` +
+              `bwrap/sandbox-exec) or \`sandbox: off\` (acknowledge full host privileges). ` +
+              `Run \`opencues review <pack>\` for install-time guidance.`,
+            );
+          }
+          // Pre-existing installs continue to spawn (back-compat). The
+          // review-time refusal catches new packs structurally.
         }
         handle = this.adapter.spawnProcess({
           command: 'bash',

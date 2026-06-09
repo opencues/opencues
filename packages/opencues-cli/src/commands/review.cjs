@@ -214,12 +214,36 @@ function staticChecks(fm, jsSource) {
     });
   }
 
-  // 4. Sandbox declarations on scripted blanks.
-  if (fm.blankScript && fm.sandbox !== 'strict') {
-    findings.push({
-      sev: 'warn',
-      msg: `blankScript without sandbox: strict — script runs with the user's full filesystem + network privileges.`,
-    });
+  // 4. Sandbox declarations on scripted blanks (INFOSEC F9).
+  //
+  //   - Missing entirely → HARD ERROR. Authors must make an explicit
+  //     choice between `strict` (confined) and `off` (acknowledged
+  //     full host privileges). The runtime now refuses to spawn such
+  //     blanks.
+  //   - Declared `strict`   → no finding; confined run.
+  //   - Declared `off`      → warn so the user understands what they're
+  //     installing.
+  //   - Any other value     → hard error (only those two are valid).
+  if (fm.blankScript) {
+    if (fm.sandbox === undefined || fm.sandbox === null || fm.sandbox === '') {
+      findings.push({
+        sev: 'error',
+        msg: `blankScript: declared without sandbox: — runtime will refuse to spawn. ` +
+          `Add \`sandbox: strict\` (confined under bwrap/sandbox-exec) or \`sandbox: off\` ` +
+          `(acknowledge full host privileges, see docs/architecture/sandbox.md). INFOSEC F9.`,
+      });
+    } else if (fm.sandbox === 'off') {
+      findings.push({
+        sev: 'warn',
+        msg: `blankScript with \`sandbox: off\` — script runs with the user's full filesystem + network privileges. ` +
+          `Verify the BLANK.md explains why confined mode isn't viable.`,
+      });
+    } else if (fm.sandbox !== 'strict') {
+      findings.push({
+        sev: 'error',
+        msg: `blankScript with sandbox: "${fm.sandbox}" — only \`strict\` or \`off\` are valid. INFOSEC F9.`,
+      });
+    }
   }
 
   // 5. JS-source static patterns. Strip comments + string literals
@@ -613,3 +637,6 @@ function printHelp() {
   console.log('  1  pack would fail to load OR has hard-blocked patterns');
   console.log('  2  LLM unavailable (static section still ran)');
 }
+
+// Internal helpers exposed for testing.
+module.exports._internal = { staticChecks };
