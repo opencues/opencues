@@ -794,6 +794,15 @@ function mergeOpencuesMd(defaultsContent, userContent) {
 const SHIPPED_MD_CONTRACT_FIELDS = new Set([
   'on-host', 'not-on-host', 'on-site', 'not-on-site',
   'sandbox', 'blankReplace', 'type', 'name', 'spec',
+  // `blankScript` is policy too: it dictates whether the resolver
+  // spawns a subprocess (with all the sandbox/secrets/exit-code
+  // surface that brings) or routes through blankInvoke / impl: class
+  // only. When defaults DROPS blankScript (e.g. June 2026 opencues +
+  // sentinel migrated to impl-only — see security-audit.md), the
+  // user's existing copy must lose the line too; otherwise the old
+  // shell fallback path stays declared even though the .sh has been
+  // removed from defaults/.
+  'blankScript',
 ]);
 function mergeShippedMd(defaultsContent, userContent) {
   const split = (text) => {

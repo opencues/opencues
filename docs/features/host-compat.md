@@ -201,4 +201,4 @@ Chrome applies the filter at bundle-read time (in `integrations/chrome/src/openc
 
 API: `@opencues/core`'s `inferSiteCompat(input, ctx)`, `SiteCompatContext` type.
 
-Real-world example: `.cues/blanks/opencues/BLANK.md` has `blankScript: ./opencues-blank.sh` (native fallback) AND a runtime-class implementation in `@opencues/runtime`. With the new default-all behaviour no override is needed — every host attempts the call and picks the right implementation at runtime.
+Real-world example: `.cues/blanks/volume/BLANK.md` declares `blankScript: ./volume-blank.sh` (needs system-binary access — outside CUE_ROOT — so impl-only isn't an option) and an explicit `on-host:` list excluding chrome (chrome can't change system volume). With the default-all behaviour, hosts where volume genuinely can't run are listed explicitly rather than silently relying on a missing capability.

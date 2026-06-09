@@ -36,9 +36,10 @@
 //   4. PACK-SHADOW DEFENDED. Built-in `sentinel` is registered in
 //      BUILTIN_BLANKS before any user pack; first-wins at
 //      user-blanks/registry.ts:145.
-//   5. VALIDATOR IS THE ONLY WRITE PATH. The shell-script fallback
-//      (defaults/blanks/sentinel/sentinel-blank.sh) routes back to
-//      the same validator via `opencues identity set`. Adding a
+//   5. VALIDATOR IS THE ONLY WRITE PATH. Every host invokes
+//      SentinelBlank.set() via blankInvoke; the shell-script fallback
+//      retired June 2026 (impl class wired on every native host
+//      via createDefaultBlanksRegistry + identityMdIO). Adding a
 //      second site that writes IDENTITY.md without going through
 //      validateSentinelWrite is an audit-row-worthy regression.
 

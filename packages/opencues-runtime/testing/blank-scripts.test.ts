@@ -16,7 +16,7 @@
 //      writes stale data to the wrong path.
 
 import { describe, it, expect } from 'vitest';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -93,66 +93,12 @@ describe('shipped blank scripts: colocated-helpers contract', () => {
       expect(out.trim()).toMatch(/^\d{1,3}$/);
     });
 
-    it.skipIf(skip)('opencues-blank.sh get: returns "<setting>\\t<value>" when an OPENCUES.md with a settings: block is at ~/.cues/', () => {
-      // opencues-blank.sh's contract: read OPENCUES.md two levels up
-      // from the script (~/.cues/blanks/opencues/ → ~/.cues/OPENCUES.md).
-      //
-      // Post-May-2026: defaults/OPENCUES.md no longer ships a
-      // settings: block (the @opencues/core registry owns the menu
-      // schema; the runtime TS path uses getMenuDefinitions()
-      // directly). The legacy bash script can't query the registry —
-      // it only works when the file ships its own settings: block.
-      // We test that path explicitly by writing a synthetic file with
-      // a block, not by copying defaults/OPENCUES.md.
-      const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'oc-test-home-'));
-      const ctlDir = path.join(tmpHome, '.cues/blanks/opencues');
-      fs.mkdirSync(ctlDir, { recursive: true });
-      fs.copyFileSync(
-        path.join(DEFAULTS_BLANKS, 'opencues/opencues-blank.sh'),
-        path.join(ctlDir, 'opencues-blank.sh'),
-      );
-      fs.chmodSync(path.join(ctlDir, 'opencues-blank.sh'), 0o755);
-      const userMd =
-        '---\n' +
-        'voice-mode: active\n' +
-        'settings:\n' +
-        '  voice-mode:\n' +
-        '    tip: Gates TTS\n' +
-        '    values:\n' +
-        '      active: TTS reads tips\n' +
-        '      inactive: TTS silenced\n' +
-        '---\n';
-      fs.writeFileSync(path.join(tmpHome, '.cues', 'OPENCUES.md'), userMd);
-
-      const out = execFileSync('bash', [path.join(ctlDir, 'opencues-blank.sh'), 'get'], {
-        encoding: 'utf8',
-        env: { ...process.env, HOME: tmpHome },
-      });
-      expect(out.trim()).toMatch(/^[a-z][a-z0-9_-]*\t.+$/);
-    });
-
-    // Documents the behavior the host needs to seed against. The script
-    // exits 1 + outputs nothing when OPENCUES.md is empty — same silent-
-    // failure mode that hits OpenCuesSettingsBlank.set(). install.cjs
-    // seed-configs + setup.sh section 7a-bis ensure this state never
-    // happens on a real install.
-    it.skipIf(skip)('opencues-blank.sh get: silently exits 1 when CUES.md is 0 bytes', () => {
-      const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'oc-test-home-'));
-      const ctlDir = path.join(tmpHome, '.cues/blanks/opencues');
-      fs.mkdirSync(ctlDir, { recursive: true });
-      fs.copyFileSync(
-        path.join(DEFAULTS_BLANKS, 'opencues/opencues-blank.sh'),
-        path.join(ctlDir, 'opencues-blank.sh'),
-      );
-      fs.chmodSync(path.join(ctlDir, 'opencues-blank.sh'), 0o755);
-      fs.writeFileSync(path.join(tmpHome, 'CUES.md'), '');
-
-      const result = spawnSync('bash', [path.join(ctlDir, 'opencues-blank.sh'), 'get'], {
-        encoding: 'utf8',
-        env: { ...process.env, HOME: tmpHome },
-      });
-      expect(result.status).toBe(1);
-      expect(result.stdout.trim()).toBe('');
-    });
+    // opencues-blank.sh + sentinel-blank.sh used to live here. Both
+    // were retired June 2026: OpenCuesSettingsBlank + SentinelBlank in
+    // @opencues/runtime serve every host via blankInvoke (the resolver
+    // tries blankInvoke before spawnProcess for any blank name found
+    // in the registry, and never falls through for these two). No
+    // shell fallback ships from defaults anymore — see PR migrating
+    // these to impl-only.
   });
 });
