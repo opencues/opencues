@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Security — F1 stopgap: load-time warning + honest audit + tracked follow-up (INFOSEC F1)
+
+The critical finding from the static + dynamic security review: Node's `vm.runInContext` is NOT a security boundary against adversarial JS. `Promise.constructor('return process')()` reaches the host realm, then `process.env` exposes every API key and `child_process.execSync` runs arbitrary commands. Live-confirmed June 2026 against the shipped sandbox composition. The structural fix (migrate to `isolated-vm` or out-of-process Node with `--experimental-permission`) is ~1-2 weeks of integration work and a separate PR — this PR is the stopgap.
+
+- **`@opencues/runtime` (0.2.8 → 0.2.9)** — `node-loader.ts`:
+  - **Header comment rewritten** to reflect the actual security posture. The prior comment claimed the vm boundary was "well-understood" and primitive wrappers couldn't reach the host realm; that's false. New comment names the constructor-chain escape explicitly and points to the audit row + the F5 install-time defence.
+  - **One-time loud warn at first load per blank path**: `console.warn` AND the adapter log fire on first `loadUserBlank` for each unique `absJsPath`. Message mentions "INFOSEC F1", "FULL host privileges", "constructor-chain", and points at `opencues review`. Warn dedup'd via a per-process Set so steady-state operation isn't spammed.
+  - **`_resetF1WarnCache()`** exported for testing.
+- **5 new tests** in `node-loader.f1-warn.test.ts`: first load warns, subsequent loads silent, different paths each warn once, `_resetF1WarnCache` clears state, warn flows through the supplied adapter log.
+- **`security-audit.md` row #2** flipped 🟢 → 🟡 with accurate description: F5 install-time denylist + F1 load-time warn raise the bar but don't structurally close the gap. Concrete residual risk + the "treat `impl: ./blank.js` as fully trusted" warning included.
+- **`security-audit.md` § Open follow-ups** new entry: "#2 (vm-sandbox escape — INFOSEC F1)" — names `isolated-vm` vs out-of-process Node as the two candidate fixes, sketches integration cost + the chrome-bundle native-module consideration. Pairs with the existing #17 Windows-sandbox follow-up.
+
+This PR does NOT change runtime behaviour for legitimate users — packs that loaded before still load. It adds visibility so users + developers understand the trust model is "fully trusted, gated by install-time review" rather than "sandboxed."
+
 ### Added — per-call `with <model>` LLM dispatch override for fluid-blank and transform-blank
 
 Adds a `with <name>` token anywhere in the buffer before `_` (`make formal X with opus _`, `atomic number of oxygen with cerebras _`) to flip the dispatch target for ONE call without writing any scalar to disk. The next `_` keystroke without `with X` goes back to the configured bucket. Five-tier token resolution: common aliases (opus / haiku / sonnet / nano / mini / flash / gpt-oss / llama / claude / anthropic / cerebras / groq / openai / gemini / openrouter), provider id, exact model name, prefix in any `knownModels`, substring fallback. Always on — no scalar gates it.

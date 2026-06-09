@@ -20,16 +20,49 @@
 //   - `Buffer`, `__dirname`, `__filename` — no Node primitives
 //   - The runtime's own globals (CueResolver, host adapters, etc.)
 //
-// The `vm.runInContext` boundary is well-understood. Known escape
-// vectors (prototype-chain walking to find the host realm) are
-// mitigated by:
+// SECURITY POSTURE — IMPORTANT (INFOSEC F1):
+//
+// Node's `vm` module is NOT a security boundary when host-realm
+// objects/functions are shared into the context. The Node docs say
+// so directly. The sandbox below shares `Promise`, `URL`, `Date`,
+// `Math`, `RegExp`, `setTimeout`, `console.log`, and every function
+// on `ctx` — every one of those exposes the host realm's `Function`
+// constructor via `.constructor`, and a host-realm `Function` resolves
+// free identifiers (`process`, `require`, `globalThis`) against the
+// HOST global scope. Concretely:
+//
+//   Promise.constructor('return process')()
+//     // returns the host's `process` — env vars, child_process, fs, …
+//
+// This is the F1 finding (live-confirmed June 2026). Treat `impl:
+// ./blank.js` packs as **full host privilege** today, not as
+// sandboxed code. Each one can read your env, spawn processes, and
+// touch any file the user has access to.
+//
+// **Real fix**: replace `vm.runInContext` with `isolated-vm` (a real
+// V8 isolate boundary) or out-of-process Node with `--experimental-
+// permission`. Tracked at docs/architecture/security-audit.md row #2.
+//
+// **Current stopgap**: a one-time loud warn fires on first load of
+// each blank name (see `_warnedBlankNames` below) so the developer
+// using `opencues run` is reminded that custom JS packs are
+// effectively trusted. `opencues review` (CLI) already refuses the
+// most common escape patterns (.constructor / Reflect / globalThis /
+// proto-walk) as hard blockers under F5 — install-time review +
+// load-time warn together raise the bar but do not close the gap.
+//
+// **What we DO mitigate (orthogonal to the vm boundary)**:
 //   - Each blank gets a FRESH context (no shared globals across
-//     invocations)
-//   - The context is created with `vm.createContext({})` — empty
-//     start, we add only what we want
-//   - User code can't traverse to the host realm via primitive
-//     wrappers because we don't expose primitive wrappers from the
-//     host (we expose fresh ones from inside the context).
+//     invocations).
+//   - `require` / `import` / `process` / `Buffer` / `__dirname` are
+//     not exposed; the loader's ESM rewriter rejects dynamic
+//     `import()`.
+//   - `ctx.fetch` enforces network allow-list + bound-secret
+//     destination control (F4).
+//   - `ctx.secrets` only contains names the blank declared.
+//
+// These limit the BLAST RADIUS of a benign-but-buggy blank. They do
+// not stop a deliberate constructor-chain escape.
 
 import * as vm from 'node:vm';
 import * as fs from 'node:fs';
@@ -138,6 +171,15 @@ export interface LoaderOptions {
   readonly timeoutMs?: number;
 }
 
+// F1 (INFOSEC) stopgap: track which JS paths we've already warned
+// about in this process, so the loud-warn fires once per unique blank
+// at first load and then stays silent. Cleared by `_resetF1WarnCache`
+// for tests.
+const _warnedBlankPaths = new Set<string>();
+export function _resetF1WarnCache(): void {
+  _warnedBlankPaths.clear();
+}
+
 /**
  * Load a user blank from disk into an isolated vm context.
  *
@@ -146,12 +188,36 @@ export interface LoaderOptions {
  * functions, but the functions themselves execute inside the sandbox.
  * Throws when the file can't be read, when the JS doesn't parse, or
  * when the exported shape is wrong.
+ *
+ * **F1 SECURITY POSTURE (June 2026)**: this loader uses `vm.runInContext`
+ * which is NOT a security boundary for adversarial JS. See the file
+ * header for the constructor-chain escape pivot. A one-time loud
+ * warn fires per blank path on first load.
  */
 export function loadUserBlank(absJsPath: string, opts: LoaderOptions): LoadedUserBlank {
   const source = fs.readFileSync(absJsPath, 'utf8');
   const folder = path.dirname(absJsPath);
   const caps = opts.capabilities;
   const log = opts.log ?? ((lvl, msg) => console.log(`[user-blank] [${lvl}] ${msg}`));
+
+  // F1 (INFOSEC) stopgap loud-warn — fires once per unique JS path
+  // per process. Surfaces the "this pack runs with full host
+  // privileges" reality so developers + users have visibility while
+  // the real isolated-vm migration is in progress. The warning lands
+  // on console.warn (visible in every host) AND through the adapter
+  // log (visible in /tmp/opencues.log for steady-state diagnostics).
+  if (!_warnedBlankPaths.has(absJsPath)) {
+    _warnedBlankPaths.add(absJsPath);
+    const msg =
+      `[opencues] loading custom JS blank: ${absJsPath}\n` +
+      `[opencues] WARNING (INFOSEC F1): user-blank JS runs with FULL host privileges.\n` +
+      `[opencues]   The Node \`vm\` sandbox does NOT contain adversarial code — a constructor-chain\n` +
+      `[opencues]   escape can reach the host's process, env vars, child_process, and fs.\n` +
+      `[opencues]   Only install blanks you trust. \`opencues review <pack>\` refuses the most\n` +
+      `[opencues]   common escape patterns at install time. Tracked at security-audit.md row #2.`;
+    try { console.warn(msg); } catch { /* swallow */ }
+    try { log('warn', msg); } catch { /* swallow */ }
+  }
 
   // Build the context proxy that gets injected into the sandbox.
   const ctx = buildBlankContext(caps, opts, log);

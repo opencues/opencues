@@ -63,7 +63,7 @@ Status colour: 🟢 green = closed, 🟡 amber = closed with caveat, ⚪ N/A.
 | # | Attack class | Concrete threat | Defence | Residual risk | Status |
 |---|---|---|---|---|---|
 | 1 | Prompt injection via pack | Malicious word-cue prompt poisons every word | `RoutedWordSourceGroup` — per-word dispatch to ONE source; pack's prompt can only affect words its source claims | A domain-matching pack could still produce hostile alts for matched words. Bounded by `match:` scope. | 🟢 |
-| 2 | Malicious user-blank JS — eval/Function escape | Blank code uses `Function`/`eval` to break out of Worker harness | Worker harness embeds source at construction; no Function/eval used by runtime. Strict-CSP pages block it anyway. | A blank can still call user-provided Function inside its own code on non-CSP pages — but that runs IN the Worker, can't escape it. | 🟢 |
+| 2 | Malicious user-blank JS — sandbox escape | Blank code reaches the host realm via `Promise.constructor('return process')()` (constructor chain) or via `Reflect`/`globalThis`/`__proto__` proto-walk, then reads `process.env` / `child_process.execSync` for arbitrary command execution and secret theft | **PARTIAL (INFOSEC F1)**: Worker harness on chrome embeds source at construction (no Function/eval); strict-CSP pages block dynamic exec; `opencues review` denylist refuses `.constructor` / `Reflect` / `globalThis` / `__proto__` / `getPrototypeOf` at install time (F5); node-loader emits a one-time loud warn on first load surfacing the "full host privilege" reality. **NOT closed structurally**: `vm.runInContext` is NOT a security boundary when host-realm objects are shared into the context (Node's own docs say so); a constructor-chain escape was live-confirmed June 2026 against the shipped sandbox composition. | A custom `impl: ./blank.js` pack that passes `opencues review` clean and avoids the static patterns still gets full host privileges via any host-realm intrinsic exposed in the sandbox (Promise, URL, Date, Math, RegExp, setTimeout, console.log, ctx fns). **Real fix tracked in `Open follow-ups` below — replace `vm.runInContext` with `isolated-vm` (real V8 isolate) or out-of-process with `--experimental-permission`.** | 🟡 |
 | 3 | Malicious blank — ESM rewrite escape | Crafted source where `export default` inside a string survives parse but gets rewritten | AST-based rewriter via acorn — only syntactic `export default` is rewritten; string/template/comment literals are never touched. | None — AST parse is byte-exact. | 🟢 |
 | 4 | Malicious blank — dynamic import escape | Blank uses `import('./other.js')` to load unsandboxed code | acorn-walk catches `ImportExpression` at load time → throws "dynamic import not supported". | None. | 🟢 |
 | 5 | Network exfil via allow-list smuggle | Pack declares `network: [api.legit.com, evil.com]` and POSTs secrets to evil.com | Per-secret host binding (`secret-hosts.NAME: [host]`). `ctx.fetch` scans URL/headers/body for bound secret values; refuses unbound hosts. **Required** — a blank that declares `secrets:` without matching `secret-hosts.<NAME>` is refused at load time. | None. | 🟢 |
@@ -91,6 +91,18 @@ Status colour: 🟢 green = closed, 🟡 amber = closed with caveat, ⚪ N/A.
 
 The amber items each have a known next step:
 
+- **#2 (vm-sandbox escape — INFOSEC F1)** — `vm.runInContext` is not a
+  security boundary against adversarial JS. Real fix: migrate the
+  user-blank loader to `isolated-vm` (a real V8 isolate, fresh realm,
+  no host-object leakage) OR to an out-of-process Node child with
+  `--experimental-permission`. `isolated-vm` is a native module so it
+  needs build-time consideration for the chrome bundle path; the
+  out-of-process route is heavier but works under any bundling. Either
+  way, plan for ~1-2 weeks of integration work + a benchmark sweep
+  (per-invocation cost should stay sub-millisecond for the cache-hit
+  case). Until then: `opencues review` denylist (F5) + the load-time
+  warn (F1 stopgap) raise the bar but don't close the gap. Treat
+  `impl: ./blank.js` packs as fully trusted.
 - **#17** — Windows native still has no OS-sandbox wrapper.
   Investigate AppContainer / Job Objects when there's concrete demand.
 
