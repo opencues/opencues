@@ -110,10 +110,7 @@ function lookupSetting(text: string, name: string): string | null {
   return m[1].trim();
 }
 
-/** Walk the indented `settings:` block and return the first key.
- *  Mirrors the awk in the legacy opencues-blank.sh:
- *    /^settings:/{f=1;next} f && /^  [a-z]/{print first key; exit}
- */
+/** Walk the indented `settings:` block and return the first key. */
 function firstSettingName(text: string): string | null {
   const lines = text.split('\n');
   let inBlock = false;

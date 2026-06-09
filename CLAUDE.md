@@ -470,7 +470,7 @@ Future scripts that re-introduce non-portable constructs silently regress macOS 
 - Shebang: `#!/usr/bin/env bash` (not `#!/bin/bash` — picks up macOS 3.2 only)
 - No bash 4+ features: avoid `mapfile`, `declare -A`, `${var^^}` / `,,`, namerefs (`declare -n`)
 - Prefer POSIX over bashisms when equivalent: `grep -qE` over `[[ =~ ]]`, `[ -gt ]` / `[ -lt ]` over `(( ))`
-- `sed -i` → reuse the `sedi()` wrapper (see `integrations/claude-code/patches/setup.sh:42` or `defaults/blanks/opencues/opencues-blank.sh:10`)
+- `sed -i` → reuse the `sedi()` wrapper (see `integrations/claude-code/patches/setup.sh:42` or `defaults/blanks/volume/volume-blank.sh`)
 - `stat -c %s` → `stat_size()` (`stat -c` GNU / `stat -f` BSD — pattern in `integrations/shell/bin/oc-popup:43`)
 - `readlink -f X` → `resolve_link()` portable walker (pattern in `integrations/shell/bin/{oc-shell,oc-edit,oc-editd,oc-popup}`)
 - `/proc/$PID/...` → gate with `[ -d /proc ]`; fall back to `ps -o ppid= -p $PID` / `ps -o command= -p $PID` (pattern in `integrations/claude-code/patches/highlight-statusline.sh`)

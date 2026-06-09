@@ -137,13 +137,11 @@ type: blank
 #   not-on-host: [chrome]        — deny-list (filters auto / on-host)
 #
 # Use `on-host:` if you have a runtime-class implementation in
-# @opencues/runtime/src/blanks/<name>.ts that handles chrome (e.g.
-# routes through chrome.storage instead of the .sh fallback). The
-# opencues blank does this — `blankScript: ./opencues-blank.sh` for
-# native hosts, OpenCuesSettingsBlank in TS for chrome, and
-# `on-host: chrome, claude-code, gemini-cli, opencode` to override the
-# auto-detect that would otherwise exclude chrome.
-# See docs/features/host-compat.md.
+# @opencues/runtime/src/blanks/<name>.ts wired into BUILTIN_BLANKS.
+# The opencues + sentinel blanks do this — no `blankScript:` field at
+# all; OpenCuesSettingsBlank / SentinelBlank serve every host via
+# blankInvoke (chrome.storage on chrome, fs-backed readFile/writeFile
+# on native hosts). See docs/features/host-compat.md.
 
 # on-host: chrome, claude-code, gemini-cli, opencode
 # not-on-host: chrome

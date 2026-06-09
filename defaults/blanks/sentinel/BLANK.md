@@ -14,17 +14,15 @@ blankKeywords: set sentinel, remove sentinel
 # still gates the actual content of any matched write.
 blankProximity: 16
 blankFormat: string
-blankScript: ./sentinel-blank.sh
 blankClearKeywords: true
 blankClearOnEdit: true
-# Sandbox: off because sentinel-blank.sh writes to ~/.cues/IDENTITY.md
-# (identity-context personal data) which is outside the sandbox's tmpfs
-# and would be refused by the read-only CUES root bind. Chrome routes
-# this through SentinelBlank (impl: class, no spawn) so the sandbox
-# declaration only affects native hosts.
-sandbox: off
-# Hosts that get the SentinelBlank built-in. Native hosts also fall
-# back to the shell script if blankInvoke fails.
+# Runtime-only blank — served by SentinelBlank in @opencues/runtime on
+# every host (chrome.storage on chrome; injected readFile/writeFile
+# against ~/.cues/IDENTITY.md on every native host). The resolver tries
+# blankInvoke first and never falls back to spawn for this name, so no
+# blankScript: / sandbox: is needed. Every write still goes through
+# validateSentinelWrite (the chokepoint enforces key shape, value cap,
+# token collision, capacity — see security-audit.md row #24).
 on-host: chrome, claude-code, gemini-cli, opencode, shell
 # Blank-as-context: deliberately OFF. SentinelBlank is the WRITE
 # surface for ~/.cues/IDENTITY.md — identity-context is a separate
@@ -82,6 +80,6 @@ model. Key invariants:
 3. **No ambient context.** Ignores page placeholder/aria/title.
 4. **Pack-shadow defended.** Built-in `sentinel` wins over any
    user-pack with the same name (row #12, first-wins).
-5. **Validator is the only write path.** The shell-script fallback
-   routes back to `opencues identity set`, which uses the same
-   validator.
+5. **Validator is the only write path.** Every host invokes
+   `SentinelBlank.set()` via `blankInvoke`, which calls
+   `validateSentinelWrite` before touching disk.

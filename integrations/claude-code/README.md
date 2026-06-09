@@ -188,7 +188,7 @@ that's safe).
 ├── blanks/<name>/               folder-based cue-blanks — colocated with their helpers:
 │   ├── brightness/                  BLANK.md + brightness.sh + BrightCtl.exe + brightness-set.ps1
 │   ├── volume/                      BLANK.md + volume.sh + VolCtl.exe
-│   └── opencues/                    CUE.md + opencues-blank.sh
+│   └── opencues/, sentinel/         BLANK.md only — served by @opencues/runtime impl classes
 └── scripts/                       shared utilities (speak.sh + SpeakCtl.exe — TTS for all hosts)
 ```
 
