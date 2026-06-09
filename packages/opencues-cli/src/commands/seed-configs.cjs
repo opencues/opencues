@@ -513,6 +513,31 @@ module.exports = function seedConfigs(argv, ctx) {
     }
   }
 
+  // ── 3.6 HEAL — retired-script orphan removal ──────────────────────
+  //
+  // June 2026: opencues + sentinel blanks migrated to impl-only (the
+  // OpenCuesSettingsBlank / SentinelBlank classes serve every host via
+  // blankInvoke; the .sh fallbacks were dead code on every host since
+  // those classes wired). `mergeShippedMd` now strips the `blankScript:`
+  // line from existing user copies (`blankScript` is in
+  // SHIPPED_MD_CONTRACT_FIELDS), but the `.sh` files themselves sit
+  // orphan on disk. Resolver never reaches them — blankInvoke wins —
+  // but they're crud. Remove them here so the on-disk state matches
+  // what defaults/ ships. List grows on future retirements; each entry
+  // is a specific (folder, basename) pair so we never touch user files
+  // that happen to share the folder.
+  const retiredScripts = [
+    ['opencues', 'opencues-blank.sh'],
+    ['sentinel', 'sentinel-blank.sh'],
+  ];
+  for (const [folder, basename] of retiredScripts) {
+    const orphan = path.join(targetDir, 'blanks', folder, basename);
+    if (fs.existsSync(orphan) && !dryRun) {
+      fs.unlinkSync(orphan);
+      log(`Self-heal: removed retired ${folder}/${basename} (impl class serves every host)`);
+    }
+  }
+
   // ── 4. COMPILE — colocated .cs → .exe (WSL only) ───────────────────
   const csc = '/mnt/c/Windows/Microsoft.NET/Framework64/v4.0.30319/csc.exe';
   if (fs.existsSync(csc)) {
