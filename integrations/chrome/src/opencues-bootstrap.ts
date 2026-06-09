@@ -2154,7 +2154,7 @@ const PROVIDER_KEY_CHECKS: Record<string, (key: string) => { url: string; header
   openai:     (k) => ({ url: 'https://api.openai.com/v1/models',                        headers: { Authorization: `Bearer ${k}` } }),
   anthropic:  (k) => ({ url: 'https://api.anthropic.com/v1/models',                     headers: { 'x-api-key': k, 'anthropic-version': '2023-06-01' } }),
   openrouter: (k) => ({ url: 'https://openrouter.ai/api/v1/models',                     headers: { Authorization: `Bearer ${k}` } }),
-  gemini:     (k) => ({ url: `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(k)}`, headers: {} }),
+  gemini:     (k) => ({ url: 'https://generativelanguage.googleapis.com/v1beta/models',                headers: { 'x-goog-api-key': k } }), // INFOSEC F8: header not URL
 };
 
 /** Verify LLM keys at boot — runs once after the runtime is constructed.
