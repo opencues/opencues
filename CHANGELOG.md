@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Security — `opencues review` catches the constructor-chain escape and string-concat obfuscation (INFOSEC F5)
+
+The static review's denylist flagged `eval`, `new Function`, dynamic `import()`, and Node built-in names (`process`, `require`, `child_process`, `fs`, …). It did NOT flag `.constructor` chains — the actual vm-sandbox escape pivot. Worse, the scan stripped string literals first, so a payload hidden in `Promise['cons'+'tructor']('return process')()` had every telltale token stripped before the regex ran, and `opencues review` returned exit 0 on a working RCE PoC.
+
+- **`opencues` CLI (`review.cjs`)** — six new hard-blocker patterns: `.constructor`, `["constructor"]` (bracket form), `Reflect`, `globalThis`, `__proto__`, `Object.{get,set}PrototypeOf`. Each refuses the pack with `sev: 'error'`, mirrors the AST rewriter's stance.
+- **Dual scan** — the existing stripped-literals heuristic kept (low false-positive on JSDoc/URL strings), plus a new RAW-source scan for the escape patterns AND a string-concat-fragment detector (warn) that catches the `'cons'+'tructor'` / `'pro'+'cess'` style of hide-in-strings obfuscation.
+- **11 new tests** in `review.test.cjs` cover: each escape pattern as a hard blocker, the string-concat obfuscation warn, clean code produces no errors, and the pre-existing `import()` + `eval` heuristics still fire.
+
+INFOSEC F5 is a defence-in-depth ground gain — F1 is the structural fix (a real isolate). This raises the bar for the naive PoC and the obfuscated PoC without changing the runtime trust model.
+
 ### Added — per-call `with <model>` LLM dispatch override for fluid-blank and transform-blank
 
 Adds a `with <name>` token anywhere in the buffer before `_` (`make formal X with opus _`, `atomic number of oxygen with cerebras _`) to flip the dispatch target for ONE call without writing any scalar to disk. The next `_` keystroke without `with X` goes back to the configured bucket. Five-tier token resolution: common aliases (opus / haiku / sonnet / nano / mini / flash / gpt-oss / llama / claude / anthropic / cerebras / groq / openai / gemini / openrouter), provider id, exact model name, prefix in any `knownModels`, substring fallback. Always on — no scalar gates it.
