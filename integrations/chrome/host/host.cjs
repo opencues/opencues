@@ -472,18 +472,48 @@ function appendAuditLine(hostName, spec, result, durationMs) {
   } catch { /* */ }
 }
 
-// Whitelist env keys we accept from the wire. The runtime sends
-// CUES_MODEL / CUES_API_URL / CUES_API_KEY_ENV / CUES_ALT_COUNT etc.
-// Anything outside this prefix is rejected so a malicious cue pack
-// can't smuggle PATH / LD_PRELOAD / DYLD_* through the message and
-// influence the spawned process's environment.
+// INFOSEC F2: deny-by-default env construction.
+//
+// Pre-F2 the spawn call was `{ ...process.env, ...filterMessageEnv(msg.env) }`,
+// which spread EVERY *_API_KEY the host process had loaded — including
+// keys never declared by the running blank. A `blankScript:`-bearing
+// pack could `curl` them out without any frontmatter `secrets:`.
+//
+// Now: the host starts from its own tight base allow-list (PATH, HOME,
+// locale, desktop-integration vars) and trusts the runtime to put
+// declared-secret values into msg.env. The runtime's
+// `buildSafeScriptEnv` already validates names + declared-secret shapes
+// before they land on the wire; the host applies a second-line
+// deny-list (LD_PRELOAD / DYLD_* / NODE_OPTIONS / …) as belt-and-braces.
+const HOST_BASE_ENV_ALLOWLIST = new Set([
+  'PATH', 'HOME', 'USER', 'LOGNAME', 'LANG', 'TZ', 'TMPDIR', 'SHELL',
+  'TERM', 'DISPLAY', 'WAYLAND_DISPLAY', 'XDG_RUNTIME_DIR',
+  'WSL_DISTRO_NAME', 'WSLENV',
+]);
+const HOST_DANGEROUS_ENV_PATTERN = /^(?:LD_[A-Z0-9_]+|DYLD_[A-Z0-9_]+|NODE_OPTIONS|NODE_PATH|PYTHONPATH|PYTHONHOME|PERL5LIB|RUBYOPT|RUBYLIB|JAVA_OPTS|JDK_JAVA_OPTIONS|BASH_ENV|ENV|PROMPT_COMMAND|GTK_MODULES|GIO_USE_VFS|GST_PLUGIN_PATH)$/;
+
+function buildBaseHostEnv() {
+  const out = {};
+  for (const k of HOST_BASE_ENV_ALLOWLIST) {
+    if (typeof process.env[k] === 'string') out[k] = process.env[k];
+  }
+  for (const [k, v] of Object.entries(process.env)) {
+    if (typeof v !== 'string') continue;
+    if (k.startsWith('LC_')) out[k] = v;
+  }
+  return out;
+}
+
+// Trust the runtime's wire env (it constructed it via buildSafeScriptEnv).
+// Still apply the dangerous-name deny-list as a second line of defence.
 function filterMessageEnv(msgEnv) {
   if (!msgEnv || typeof msgEnv !== 'object') return {};
   const out = {};
   for (const [k, v] of Object.entries(msgEnv)) {
-    if (typeof k === 'string' && /^CUES_[A-Z0-9_]+$/.test(k)) {
-      out[k] = String(v);
-    }
+    if (typeof k !== 'string') continue;
+    if (!/^[A-Z_][A-Z0-9_]*$/.test(k)) continue;
+    if (HOST_DANGEROUS_ENV_PATTERN.test(k)) continue;
+    out[k] = String(v);
   }
   return out;
 }
@@ -575,7 +605,7 @@ function handleExec(msg) {
   let child;
   try {
     child = spawn(finalCommand, finalArgs, {
-      env: { ...process.env, ...filterMessageEnv(msg.env) },
+      env: { ...buildBaseHostEnv(), ...filterMessageEnv(msg.env) },
       cwd: CUE_ROOT,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
