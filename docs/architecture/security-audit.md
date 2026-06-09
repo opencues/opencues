@@ -63,7 +63,7 @@ Status colour: 🟢 green = closed, 🟡 amber = closed with caveat, ⚪ N/A.
 | # | Attack class | Concrete threat | Defence | Residual risk | Status |
 |---|---|---|---|---|---|
 | 1 | Prompt injection via pack | Malicious word-cue prompt poisons every word | `RoutedWordSourceGroup` — per-word dispatch to ONE source; pack's prompt can only affect words its source claims | A domain-matching pack could still produce hostile alts for matched words. Bounded by `match:` scope. | 🟢 |
-| 2 | Malicious user-blank JS — eval/Function escape | Blank code uses `Function`/`eval` to break out of Worker harness | Worker harness embeds source at construction; no Function/eval used by runtime. Strict-CSP pages block it anyway. | A blank can still call user-provided Function inside its own code on non-CSP pages — but that runs IN the Worker, can't escape it. | 🟢 |
+| 2 | Malicious user-blank JS — sandbox escape | Blank code reaches the host realm via `Promise.constructor('return process')()` (constructor chain) or via `Reflect`/`globalThis`/`__proto__` proto-walk, then reads `process.env` / `child_process.execSync` for arbitrary command execution and secret theft | **INFOSEC F1 — closed June 2026.** `node-loader.ts` runs user JS in a real V8 isolate via `isolated-vm`. The isolate is a fresh realm: its `Promise`, `URL`, `Date`, `Math`, `RegExp` etc. are its OWN intrinsics, not the host's. The constructor-chain pivot lands you in the isolate's `Function` constructor, which resolves `process` against the isolate's empty global — undefined. 12 escape-pivot tests in `node-loader.f1-escape.test.ts` pin the closure (Promise/Date/URL/Math/JSON/setTimeout `.constructor`, proto-walk via `Object.getPrototypeOf`, bracket-form obfuscation `Promise['cons'+'tructor']`). Chrome's content-script Worker path remains structurally separate (page-CSP-bounded; no Node `vm` involved). | None for the F1 escape class. New attack surface (always-present in any isolate-based sandbox): isolated-vm itself is a native module — a CVE in the C++ binding could in principle bypass the isolate. Tracked by `pnpm audit`. | 🟢 |
 | 3 | Malicious blank — ESM rewrite escape | Crafted source where `export default` inside a string survives parse but gets rewritten | AST-based rewriter via acorn — only syntactic `export default` is rewritten; string/template/comment literals are never touched. | None — AST parse is byte-exact. | 🟢 |
 | 4 | Malicious blank — dynamic import escape | Blank uses `import('./other.js')` to load unsandboxed code | acorn-walk catches `ImportExpression` at load time → throws "dynamic import not supported". | None. | 🟢 |
 | 5 | Network exfil via allow-list smuggle | Pack declares `network: [api.legit.com, evil.com]` and POSTs secrets to evil.com (plaintext or encoded — base64 / fragmentation / hex) | **Two-layer guard.** (a) **Primary (INFOSEC F4 — May 2026)**: when any declared secret has a non-empty `secret-hosts.<NAME>` binding, EVERY outbound `ctx.fetch` host must be in the UNION of those bindings — payload doesn't matter. Defeats encoded exfil structurally (attacker can't reach `evil.com` regardless of how the value is encoded). (b) **Secondary**: within the allow-list, scan URL/headers/body for bound secret values; refuse if a value appears at a host that isn't in THAT specific secret's binding. Catches multi-secret cross-talk. **Required** — a blank that declares `secrets:` without matching `secret-hosts.<NAME>` is refused at load time. **INFOSEC F2 (June 2026)**: scripted blanks (`blankScript:`) now also get a deny-by-default env via `buildSafeScriptEnv` — provider keys reach the child only when the blank's frontmatter `secrets: [NAME]` declared them. Pre-F2 the scripted-blank path spread the full `process.env` regardless of declaration. | None. | 🟢 |
@@ -145,6 +145,21 @@ CLI reference: `opencues review --help`.
 
 ## Recently resolved
 
+- **#2 (vm-sandbox escape — INFOSEC F1, critical — closed)** — June 2026
+  migrated the user-blank loader from Node's `vm.runInContext` (which
+  is not a security boundary when host-realm objects are shared into
+  the context) to `isolated-vm` (a real V8 isolate, fresh realm, no
+  host-object leakage). The constructor-chain pivot (`Promise.constructor
+  ('return process')()`) and every related escape attempted in the
+  June 2026 dynamic security pen-test now fail because the isolate's
+  intrinsics are its OWN. Pinned by 12 escape-pivot tests in
+  `node-loader.f1-escape.test.ts`. The wire format for user-blank
+  invocations changed: `ctx.fetch` now returns a plain Response-shape
+  object `{ ok, status, statusText, headers, text, text(), json() }`
+  instead of a real Response (Response objects can't cross the isolate
+  boundary). Backwards-compatible with the documented user-blank API.
+  Cost: ~1-3 ms per invocation (cold) vs the prior loader's ~0.1 ms —
+  acceptable given blanks fire per-keystroke, not per-frame.
 - **#5 (encoded-secret exfil — INFOSEC F4 second-pass review)** — June
   2026 hardened `enforceSecretBindings` from a substring-only scan into
   a two-layer guard. Layer 1 (deny-by-default destination allow-list)

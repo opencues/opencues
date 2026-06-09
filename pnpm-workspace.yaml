@@ -19,11 +19,17 @@ packages:
   - "packages/opencues-runtime"
   - "integrations/*"
 
-# Build-script approval — only esbuild's postinstall is allowed to run.
-# Migrated from root package.json's `pnpm.onlyBuiltDependencies` which
-# pnpm 10+ silently ignores.
+# Build-script approval. Native modules whose `install` / `postinstall`
+# hooks pnpm 10 will execute. Anything not listed is silently denied
+# (pnpm 10 default-deny policy).
+#
+#   esbuild       — bundler we build with
+#   isolated-vm   — V8 isolate wrapper for user-blank sandboxing (F1 fix);
+#                   prebuilt binaries cover linux/mac/win on common Node
+#                   versions, falls back to compile-from-source.
 onlyBuiltDependencies:
   - esbuild
+  - isolated-vm
 
 # INFOSEC dep CVE pins (DA1-DA7 — June 2026). pnpm 10's `overrides`
 # location is pnpm-workspace.yaml; the `pnpm.overrides` field in

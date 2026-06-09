@@ -1,6 +1,6 @@
 {
   "name": "@opencues/runtime",
-  "version": "0.2.9",
+  "version": "0.3.0",
   "description": "Host-agnostic runtime for OpenCues. Hosts implement HostAdapter; runtime owns all feature logic.",
   "private": true,
   "main": "dist/src/index.js",
@@ -22,9 +22,10 @@
     "prepublishOnly": "node ../../scripts/prepublish-guard.cjs"
   },
   "dependencies": {
+    "@opencues/core": "workspace:*",
     "acorn": "^8.12.1",
     "acorn-walk": "^8.3.3",
-    "@opencues/core": "workspace:*"
+    "isolated-vm": "^5.0.4"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
