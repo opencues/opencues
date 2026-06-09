@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Security — `enforceSecretBindings` becomes a deny-by-default destination allow-list (INFOSEC F4)
+
+The prior model was a substring scan: refuse the request if the literal secret VALUE appeared in URL/headers/body, otherwise allow. A malicious user-blank could trivially bypass it by encoding the secret (`btoa(k)`, hex, or fragmentation) before sending — the substring scan misses anything that doesn't share the literal bytes. Audit row #5/#6 listed residual "None" — that claim overstated the guarantee.
+
+Two-layer guard now:
+
+- **`@opencues/runtime` (0.2.8 → 0.2.9)** — `secret-leak-guard.ts:enforceSecretBindings` layer 1 (destination allow-list, primary): when ANY declared secret has a non-empty `secret-hosts.<NAME>` binding, EVERY outbound `ctx.fetch` host must be in the UNION of those bindings — payload content is irrelevant. Encoded exfil defeated structurally (the attacker can't reach `evil.com` regardless of how the value is encoded). Layer 2 (literal-value scan, secondary): within the allow-list, still scan URL/headers/body for bound secret values — catches multi-secret cross-talk (GROQ value sent to finnhub.io host is refused even though finnhub.io is in the union).
+- **5 new tests** in `secret-leak-guard.test.ts` covering: base64-encoded exfil refused; fragmented-value exfil refused; non-secret-bearing fetch to non-binding host refused; multi-secret union honoured for non-secret fetch; layer-2 cross-secret scan within union. Plus 1 new test asserting the error message lists the union for diagnostics. 15 tests total.
+- **`security-audit.md` row #5** updated to reflect two-layer guard and `Recently resolved` log entry added.
+
 ### Security — Gemini API key moved off URL query string into `x-goog-api-key` header (INFOSEC F8)
 
 `?key=<apiKey>` puts secrets in URLs — they land in server/proxy access logs, browser history, the Referer header, and the chrome path also pipes them through the `opencues:fetch` SW proxy. Other providers correctly use `Authorization: Bearer` / `x-api-key` headers. Gemini's documented API contract accepts the key in either place, so the fix is mechanical: switch to `x-goog-api-key`.

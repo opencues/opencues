@@ -66,7 +66,7 @@ Status colour: 🟢 green = closed, 🟡 amber = closed with caveat, ⚪ N/A.
 | 2 | Malicious user-blank JS — eval/Function escape | Blank code uses `Function`/`eval` to break out of Worker harness | Worker harness embeds source at construction; no Function/eval used by runtime. Strict-CSP pages block it anyway. | A blank can still call user-provided Function inside its own code on non-CSP pages — but that runs IN the Worker, can't escape it. | 🟢 |
 | 3 | Malicious blank — ESM rewrite escape | Crafted source where `export default` inside a string survives parse but gets rewritten | AST-based rewriter via acorn — only syntactic `export default` is rewritten; string/template/comment literals are never touched. | None — AST parse is byte-exact. | 🟢 |
 | 4 | Malicious blank — dynamic import escape | Blank uses `import('./other.js')` to load unsandboxed code | acorn-walk catches `ImportExpression` at load time → throws "dynamic import not supported". | None. | 🟢 |
-| 5 | Network exfil via allow-list smuggle | Pack declares `network: [api.legit.com, evil.com]` and POSTs secrets to evil.com | Per-secret host binding (`secret-hosts.NAME: [host]`). `ctx.fetch` scans URL/headers/body for bound secret values; refuses unbound hosts. **Required** — a blank that declares `secrets:` without matching `secret-hosts.<NAME>` is refused at load time. | None. | 🟢 |
+| 5 | Network exfil via allow-list smuggle | Pack declares `network: [api.legit.com, evil.com]` and POSTs secrets to evil.com (plaintext or encoded — base64 / fragmentation / hex) | **Two-layer guard.** (a) **Primary (INFOSEC F4 — May 2026)**: when any declared secret has a non-empty `secret-hosts.<NAME>` binding, EVERY outbound `ctx.fetch` host must be in the UNION of those bindings — payload doesn't matter. Defeats encoded exfil structurally (attacker can't reach `evil.com` regardless of how the value is encoded). (b) **Secondary**: within the allow-list, scan URL/headers/body for bound secret values; refuse if a value appears at a host that isn't in THAT specific secret's binding. Catches multi-secret cross-talk. **Required** — a blank that declares `secrets:` without matching `secret-hosts.<NAME>` is refused at load time. | None. | 🟢 |
 | 6 | LLM body exfil | Pack embeds `Bearer ${ctx.secrets.X}` in the prompt to leak via the LLM endpoint | `ctx.llm` resolves provider endpoint up-front, applies same `secret-hosts` enforcement on prompt+system body. | LLM endpoint can still log prompts — secret values flowing to bound LLM host land in provider logs. Out of scope (user trust in provider). | 🟢 |
 | 7 | Secret exposure to unrelated blanks | Blank A reads `FINNHUB_API_KEY` that's only meant for Blank B | Per-blank `secrets: [NAME]` allow-list; loader populates `ctx.secrets` only with declared names. Required `secret-hosts.<NAME>` per name forces authors to think about each one. `opencues validate` flags unused secrets + orphan/unreachable bindings. | None. | 🟢 |
 | 8 | Resource exhaustion — fetch hammering | Blank polls `api.x.com` 100/s to DoS or run up an API bill | Sliding-60s window: 120 fetches/min default, hard ceiling 600/min. | None. | 🟢 |
@@ -145,6 +145,15 @@ CLI reference: `opencues review --help`.
 
 ## Recently resolved
 
+- **#5 (encoded-secret exfil — INFOSEC F4 second-pass review)** — June
+  2026 hardened `enforceSecretBindings` from a substring-only scan into
+  a two-layer guard. Layer 1 (deny-by-default destination allow-list)
+  refuses every fetch to a host outside the union of bound secret-hosts
+  when any bound secret is in scope — regardless of payload content.
+  Defeats base64 / fragmentation / hex encoding bypasses structurally
+  (attacker can't reach the exfil host). Layer 2 keeps the literal-value
+  scan for multi-secret cross-talk. 5 new tests in
+  `secret-leak-guard.test.ts` (15 total).
 - **#13 (hostile-page underscore injection — amber → green)** — May 2026
   hardened the credit-based trust gate with a 500ms credit TTL (closes
   the preventDefault attack) and focus-change credit resets (closes
