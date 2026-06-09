@@ -39,8 +39,9 @@
 
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
 import { BlankConfig } from '../cues-md';
-import { useStrictJson, buildJsonResponseFormat, describeLLMCall, dispatchChat, type ProviderAdapter } from '../llm-provider';
+import { useStrictJson, buildJsonResponseFormat, describeLLMCall, dispatchChat, getProvider, type ProviderAdapter } from '../llm-provider';
 import { classifyLlmError, type FluidBlankErrorReason } from './fluid-blank-source';
+import { detectModelOverride, stripModelOverride, type ModelOverride } from '../model-aliases';
 import { detectPartialTransform } from './transform-partial-detector';
 import { injectCursorSentinel, stripCursorSentinel } from '../cursor-sentinel';
 import { translateBufferCursorToTargetCursor } from './transform-cursor-translate';
@@ -1295,7 +1296,7 @@ function looksLikeImperative(words: string[], blankIdx: number, fullText: string
  */
 export type TransformBlankEvent =
   /** Pipeline started. textLen = full buffer length, blankIdx = the `_` word index. */
-  | { type: 'started'; textLen: number; blankIdx: number; llm: string; mode: string }
+  | { type: 'started'; textLen: number; blankIdx: number; llm: string; mode: string; modelOverride?: { provider: string; model: string; token: string } }
   /** One pipeline pass completed. P1 = EXTRACT, P2 = APPLY (one or more
    *  steps), P3 = VERIFY. P1 carries the verdict + extracted instruction;
    *  P2 carries step / totalSteps; P3 carries the verify verdict. */
@@ -1328,6 +1329,14 @@ export interface TransformBlankSourceConfig {
   endpoint: string;
   apiKey: string;
   model: string;
+  /**
+   * Optional full apiKey map keyed by provider id. When present, the
+   * source can dispatch a single in-flight call through a non-default
+   * provider when a `with <model>` override token is detected in the
+   * buffer. Mirrors `FluidBlankSourceConfig.apiKeys`; see
+   * model-aliases.ts for resolution rules and the trust contract.
+   */
+  apiKeys?: Readonly<Record<string, string | undefined>>;
   /** Per-feature max-tokens override (`transform-blank-max-tokens:`).
    *  When set, ALL passes (3-pass EXTRACT/APPLY/VERIFY + FUSED) use
    *  it as the max instead of the per-pass bench-tuned defaults.
@@ -1423,6 +1432,20 @@ export class TransformBlankSource implements CueSource {
   private endpoint: string;
   private apiKey: string;
   private model: string;
+  private apiKeys: Readonly<Record<string, string | undefined>>;
+  /**
+   * Per-call model-alias override resolved at the top of getCues and
+   * cleared in the finally block. Read by callLLM so the multiple
+   * downstream pass invocations (3-pass EXTRACT/APPLY/VERIFY/REPAIR +
+   * FUSED) all route through the same override without each having to
+   * thread the parameter. Safe because getCues is awaited as a single
+   * promise per resolve generation (the resolver aborts the old before
+   * the next one starts; sibling-abort and HTTP-level abort honour the
+   * signal). Not async-context-tracked — concurrent calls on the same
+   * instance would race, but that doesn't happen under normal resolver
+   * orchestration.
+   */
+  private _currentOverride: { provider: ProviderAdapter; model: string; apiKey: string } | null = null;
   private maxTokensOverride: number | undefined;
   private temperatureOverride: number | undefined;
   private blanks: Record<string, BlankConfig>;
@@ -1437,6 +1460,7 @@ export class TransformBlankSource implements CueSource {
     this.endpoint = config.endpoint;
     this.apiKey = config.apiKey;
     this.model = config.model;
+    this.apiKeys = config.apiKeys ?? {};
     this.maxTokensOverride = config.maxTokens;
     this.temperatureOverride = config.temperature;
     this.priority = config.priority ?? 93;
@@ -1572,11 +1596,31 @@ export class TransformBlankSource implements CueSource {
     const startTime = Date.now();
     const previewLen = 80;
     const preview = (s: string) => s.length > previewLen ? s.slice(0, previewLen) + '…' : s;
+    // Per-call model override — `with <model>` in the buffer flips
+    // dispatch target for THIS call only. Stored on `this` so the
+    // multiple downstream callLLM sites (3-pass EXTRACT/APPLY/VERIFY,
+    // FUSED) pick it up without each having to thread the parameter.
+    // The pattern is safe because getCues is awaited as a single
+    // promise per resolve generation; the resolver aborts the old
+    // signal before starting a new generation, and providers honour
+    // it (the sibling-abort pattern shipped June 2026, perf #95).
+    // The try/finally below clears the field even on throw.
+    const override = detectModelOverride(context.text);
+    const overrideTarget = override ? this.resolveOverride(override) : null;
+    this._currentOverride = overrideTarget;
     try {
       const blankIdx = context.words.indexOf('_');
       if (blankIdx === -1) return { results: [] };
 
-      const __llmDesc = describeLLMCall(this.provider, this.model, undefined, {
+      if (overrideTarget) {
+        this.log(`TransformBlank: model-override → ${overrideTarget.provider.id}/${overrideTarget.model} (token="${override!.matchedToken}")`);
+      } else if (override) {
+        this.log(`TransformBlank: model-override skip — no apiKey for provider '${override.provider}' (token="${override.matchedToken}")`);
+      }
+
+      const effectiveProvider = overrideTarget?.provider ?? this.provider;
+      const effectiveModel = overrideTarget?.model ?? this.model;
+      const __llmDesc = describeLLMCall(effectiveProvider, effectiveModel, undefined, {
         maxTokens: this.maxTokensOverride, temperature: this.temperatureOverride,
       });
       // The resolver subscribes to the `started` event and emits the
@@ -1585,7 +1629,16 @@ export class TransformBlankSource implements CueSource {
       // apart. FluidBlank already only logs via the resolver subscriber;
       // this comment + the missing this.log() mirror that pattern.
       const __pipelineT0 = Date.now();
-      this.emit({ type: 'started', textLen: context.text.length, blankIdx, llm: __llmDesc, mode: this.mode });
+      this.emit({
+        type: 'started',
+        textLen: context.text.length,
+        blankIdx,
+        llm: __llmDesc,
+        mode: this.mode,
+        ...(overrideTarget && override
+          ? { modelOverride: { provider: overrideTarget.provider.id, model: overrideTarget.model, token: override.matchedToken } }
+          : {}),
+      });
 
       // FUSED MODE — single-call short-circuit. Capable generalist models
       // (cerebras, gemini, claude, openai by default) emit VERDICT +
@@ -1622,11 +1675,21 @@ export class TransformBlankSource implements CueSource {
       // wins when set so the LLM can see prior styling and preserve it
       // across transforms ("X is bold, now make it caps" → still bold).
       // asTypedText is the legacy agent-defeat path.
-      const extractText = context.richText ?? context.asTypedText ?? context.text;
+      const rawExtractText = context.richText ?? context.asTypedText ?? context.text;
+      // Override path strips `with <model>` from the LLM-bound prompt
+      // so the model name doesn't leak into the rewrite. The substitute
+      // span (spanStart=0/spanEnd=context.text.length below) still wipes
+      // the original buffer including "with opus", so the override
+      // token disappears with the rewrite. Skip strip on rich/as-typed
+      // paths — they already echo user-typed structure; the override
+      // detector only ran against context.text (visible buffer).
+      const extractText = overrideTarget && !context.richText && !context.asTypedText
+        ? stripModelOverride(rawExtractText, override!)
+        : rawExtractText;
       const sourceTag = context.richText ? 'rich-text' : context.asTypedText ? 'as-typed' : 'visible';
       const p1Tokens = budgetForOutput(extractText.length, 1.0);
       const p1Start = Date.now();
-      const useJson = useStrictJson(this.provider.id, this.model);
+      const useJson = useStrictJson(effectiveProvider.id, effectiveModel);
       const extractRaw = await this.callLLM(
         P1_EXTRACT_SYSTEM,
         `INPUT: ${extractText}`,
@@ -2010,6 +2073,11 @@ export class TransformBlankSource implements CueSource {
         error: msg,
         timing: Date.now() - startTime,
       };
+    } finally {
+      // Clear per-call override regardless of success / throw — every
+      // future getCues invocation starts with `_currentOverride = null`
+      // and resolves its own override fresh.
+      this._currentOverride = null;
     }
   }
 
@@ -2032,7 +2100,17 @@ export class TransformBlankSource implements CueSource {
   ): Promise<CueSourceResult | null> {
     // Same text-source precedence as the 3-pass EXTRACT input (rich-text
     // > as-typed > visible) so styling + agent-revert behaviour matches.
-    const extractText = context.richText ?? context.asTypedText ?? context.text;
+    const rawExtractText = context.richText ?? context.asTypedText ?? context.text;
+    // Mirror the 3-pass override strip — `with <model>` only sits in
+    // the visible buffer, never in the rich-text / as-typed projection
+    // (those are runtime overlays the user doesn't type the override
+    // into). The substitute span at runFusedAndBuild's tail covers the
+    // full original buffer including "with opus".
+    const override = detectModelOverride(context.text);
+    const overrideForStrip = override && this._currentOverride ? override : null;
+    const extractText = overrideForStrip && !context.richText && !context.asTypedText
+      ? stripModelOverride(rawExtractText, overrideForStrip)
+      : rawExtractText;
     const sourceTag = context.richText ? 'rich-text' : context.asTypedText ? 'as-typed' : 'visible';
     // FULL_REWRITE budget — fused emits the WHOLE final buffer (May
     // 2026 contract change). Output is ~input-length plus VERDICT/
@@ -2167,12 +2245,29 @@ export class TransformBlankSource implements CueSource {
     return { results: [result], timing: Date.now() - startTime, model: this.model };
   }
 
+  /**
+   * Resolve a model-alias override to a concrete dispatch target.
+   * Returns null when the override's provider isn't in the apiKeys map.
+   * Mirror of `FluidBlankSource.resolveOverride`.
+   */
+  private resolveOverride(override: ModelOverride): { provider: ProviderAdapter; model: string; apiKey: string } | null {
+    const adapter = getProvider(override.provider);
+    if (adapter === null) return null;
+    // apiKeys map is keyed by envKeyName (`ANTHROPIC_API_KEY`,
+    // `CEREBRAS_API_KEY`, …) — matches what resolveLLM reads at
+    // llm-provider.ts:1817 + what every host adapter populates.
+    const apiKey = this.apiKeys[adapter.envKeyName];
+    if (!apiKey) return null;
+    return { provider: adapter, model: override.model, apiKey };
+  }
+
   private async callLLM(
     system: string,
     user: string,
     maxTokens: number,
     responseFormat?: { name: string; strict?: boolean; schema: Record<string, unknown> },
     signal?: AbortSignal,
+    overrideTarget?: { provider: ProviderAdapter; model: string; apiKey: string },
   ): Promise<string> {
     // Per-feature override (`transform-blank-max-tokens:` /
     // `transform-blank-temperature:`). When set, applies UNIFORMLY to
@@ -2180,11 +2275,18 @@ export class TransformBlankSource implements CueSource {
     // tuning would need a richer API; the simple uniform override
     // covers the long-buffer-rewrite use case.
     const effectiveMaxTokens = this.maxTokensOverride ?? maxTokens;
+    // Per-call override precedence: explicit overrideTarget arg > class
+    // field _currentOverride (set by getCues) > configured provider.
+    const eff = overrideTarget ?? this._currentOverride ?? null;
+    const effProvider = eff?.provider ?? this.provider;
+    const effModel = eff?.model ?? this.model;
+    const effApiKey = eff?.apiKey ?? this.apiKey;
+    const effEndpoint = eff ? effProvider.defaultEndpoint : this.endpoint;
     return dispatchChat(
-      this.provider,
+      effProvider,
       this.httpAdapter,
       {
-        model: this.model,
+        model: effModel,
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: user },
@@ -2197,7 +2299,7 @@ export class TransformBlankSource implements CueSource {
         seed: 42,
         responseFormat,
       },
-      { apiKey: this.apiKey, endpoint: this.endpoint, signal },
+      { apiKey: effApiKey, endpoint: effEndpoint, signal },
     );
   }
 }

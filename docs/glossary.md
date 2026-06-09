@@ -116,6 +116,14 @@ A **cue source** is anything that provides alternatives for words. All cue sourc
 
 ---
 
+## LLM dispatch routing
+
+**Bucket scalar** — A persistent provider/model pair stored in `~/.cues/OPENCUES.md` that gates one TRIO of surfaces. Three buckets (`cues-llm-*`, `auditors-llm-*`, `blanks-llm-*`); each writes to disk and survives every keystroke until the user changes it. The settings-flip syntax (`change to opus _`, `switch to cerebras _`, plus the satellite cycling menu) writes bucket scalars. See `docs/architecture/llm-routing.md`.
+
+**Model override** (per-call `with <model>`) — A transient dispatch redirect detected from buffer prose: `with <token>` before `_` flips the dispatch target for ONE fluid-blank or transform-blank call without writing any scalar to disk. The next `_` keystroke (without `with X`) goes back to the bucket. Token resolution via `model-aliases.ts:resolveAlias()` walks common aliases (opus / haiku / sonnet / nano / mini / flash / gpt-oss / llama / claude), provider ids, exact model names, and prefix / substring matches. Always on — no scalar gates it. Distinct from the persistent bucket flip: per-call override is dispatch-only, has no on-disk trace, and doesn't survive a single keystroke. See `docs/features/model-override.md`.
+
+---
+
 ## Response Parsers
 
 How LLM responses are interpreted. Set via `parser` field in `.md` config. See `docs/guides/parser-types.md` for full details with examples.
