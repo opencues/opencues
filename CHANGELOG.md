@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Security — `opencues doctor` surfaces the unconfined-blanks footgun (INFOSEC F9)
+
+The OS sandbox (`bwrap` / `sandbox-exec`) was already checked, but it's only wired on `blankScript: sandbox: strict` — blanks that don't declare `sandbox: strict` run with the user's full filesystem + network privileges regardless of whether the OS confiner is installed. Most real-world scripted blanks don't opt in, so the "I have bwrap installed, I'm safe" assumption silently held nothing.
+
+- **`opencues doctor`** — new `scanScriptedBlanks` helper iterates `~/.cues/blanks/` + `$OPENCUES_HOME/blanks/` and reports "X of Y scripted blanks declare `sandbox: strict`". When Y > X, prints a loud `bad` line + a `warn` finding naming up to 3 unwrapped blanks by folder name.
+- **Status quo** — does NOT flip the default to strict (would break trusted/first-party blanks; that's the F9 follow-up that needs separate review).
+- **4 new tests** in `doctor.scanblanks.test.cjs`: mixed strict/unstrict counted correctly, empty install returns zeros, built-in TS blanks (no `blankScript:`) are ignored, malformed frontmatter silently skipped.
 ### Security — chrome SW listeners authenticate sender + fetch proxy origin-allow-list (INFOSEC F6)
 
 Every `chrome.runtime.onMessage` listener in `background.ts` previously ignored the `sender` arg and acted on the message unconditionally — safe today ONLY because the manifest declares no `externally_connectable`. That one manifest property was the entire authentication boundary for the `exec` / `write-file` / `user-blank-invoke` relays + the `opencues:fetch` open relay. If `externally_connectable` ever lands or a content-script bug exposes the relay, those become arbitrary-page-reachable.
