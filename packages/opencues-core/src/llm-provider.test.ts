@@ -262,7 +262,7 @@ describe('openai provider — direct OpenAI', () => {
 });
 
 describe('gemini provider — translates to/from Google’s shape', () => {
-  it('buildRequest: model in URL path, key in query string, no auth header', () => {
+  it('buildRequest: model in URL path, key in x-goog-api-key header (NOT URL — INFOSEC F8)', () => {
     const built = buildProviderRequest(
       'gemini',
       { model: 'gemini-3.1-flash-lite', messages: [{ role: 'user', content: 'hi' }] },
@@ -270,9 +270,13 @@ describe('gemini provider — translates to/from Google’s shape', () => {
     );
     assert.strictEqual(
       built.url,
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=gem_test',
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent',
     );
-    assert.deepStrictEqual(built.headers, { 'Content-Type': 'application/json' });
+    // F8: key MUST NOT appear in URL (access logs / browser history / referrer leak).
+    assert.ok(!built.url.includes('gem_test'), 'API key leaked into URL');
+    assert.ok(!built.url.includes('key='), 'URL still uses ?key= query param');
+    assert.strictEqual(built.headers['x-goog-api-key'], 'gem_test');
+    assert.strictEqual(built.headers['Content-Type'], 'application/json');
   });
 
   it('buildRequest: maps messages → contents (parts[].text), assistant → model', () => {

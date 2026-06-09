@@ -105,8 +105,9 @@ function checkOpenRouter(key) {
     .then(j => `${(j.data || []).length} models available`);
 }
 function checkGemini(key) {
-  // Gemini takes the key in the query string, not a header.
-  return httpJson(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`)
+  // INFOSEC F8: x-goog-api-key header instead of `?key=` to keep the
+  // secret out of URL access logs / browser history / referrer.
+  return httpJson('https://generativelanguage.googleapis.com/v1beta/models', { 'x-goog-api-key': key })
     .then(j => `${(j.models || []).length} models available`);
 }
 function checkFinnhub(key) {
@@ -136,7 +137,7 @@ function printHelp() {
   console.log('  - openai:     GET /v1/models');
   console.log('  - anthropic:  GET /v1/models  (x-api-key + anthropic-version header)');
   console.log('  - openrouter: GET /api/v1/models');
-  console.log('  - gemini:     GET /v1beta/models?key=… (key in query)');
+  console.log('  - gemini:     GET /v1beta/models  (x-goog-api-key header)');
   console.log('  - finnhub:    GET /quote?symbol=AAPL  (free tier, 1 req)');
   console.log('');
   console.log('Reads keys from process.env first, then ~/.cues/.env. Exits 1 if any');

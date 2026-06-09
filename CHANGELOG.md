@@ -16,6 +16,40 @@ Every `chrome.runtime.onMessage` listener in `background.ts` previously ignored 
 - **`@opencues/chrome` (0.2.4 → 0.2.5)** — new `sw-auth.ts` module exports `isInternalSender(sender)` (`sender.id === chrome.runtime.id`) and `isFetchOriginAllowed(url)` (origin must be in `FETCH_ALLOWED_ORIGINS`, derived from manifest `host_permissions`). Every listener in `background.ts` now sender-auths before acting: refuses with a self-describing error response when the sender isn't internal.
 - **Fetch-proxy origin allow-list** — `opencues:fetch` refuses any URL whose origin isn't in `host_permissions`. Closes the open-relay attack where any context that can post a message uses the SW as a CORS-bypassing fetcher to attacker-chosen hosts with attacker-chosen headers.
 - **Drift tests** — `manifest-security.test.ts` (10 tests) asserts the manifest has NO `externally_connectable` (load-bearing property cannot regress) AND that `FETCH_ALLOWED_ORIGINS` matches `host_permissions` exactly (no drift between code and manifest). Plus 4 unit tests for `isFetchOriginAllowed` (allowed, refused-undeclared, refused-scheme-variant, refused-malformed) + 4 for `isInternalSender` (matching id, mismatched id, undefined, no-id).
+### Security — `opencues review` catches the constructor-chain escape and string-concat obfuscation (INFOSEC F5)
+
+The static review's denylist flagged `eval`, `new Function`, dynamic `import()`, and Node built-in names (`process`, `require`, `child_process`, `fs`, …). It did NOT flag `.constructor` chains — the actual vm-sandbox escape pivot. Worse, the scan stripped string literals first, so a payload hidden in `Promise['cons'+'tructor']('return process')()` had every telltale token stripped before the regex ran, and `opencues review` returned exit 0 on a working RCE PoC.
+
+- **`opencues` CLI (`review.cjs`)** — six new hard-blocker patterns: `.constructor`, `["constructor"]` (bracket form), `Reflect`, `globalThis`, `__proto__`, `Object.{get,set}PrototypeOf`. Each refuses the pack with `sev: 'error'`, mirrors the AST rewriter's stance.
+- **Dual scan** — the existing stripped-literals heuristic kept (low false-positive on JSDoc/URL strings), plus a new RAW-source scan for the escape patterns AND a string-concat-fragment detector (warn) that catches the `'cons'+'tructor'` / `'pro'+'cess'` style of hide-in-strings obfuscation.
+- **11 new tests** in `review.test.cjs` cover: each escape pattern as a hard blocker, the string-concat obfuscation warn, clean code produces no errors, and the pre-existing `import()` + `eval` heuristics still fire.
+
+INFOSEC F5 is a defence-in-depth ground gain — F1 is the structural fix (a real isolate). This raises the bar for the naive PoC and the obfuscated PoC without changing the runtime trust model.
+
+### Security — `enforceSecretBindings` becomes a deny-by-default destination allow-list (INFOSEC F4)
+
+The prior model was a substring scan: refuse the request if the literal secret VALUE appeared in URL/headers/body, otherwise allow. A malicious user-blank could trivially bypass it by encoding the secret (`btoa(k)`, hex, or fragmentation) before sending — the substring scan misses anything that doesn't share the literal bytes. Audit row #5/#6 listed residual "None" — that claim overstated the guarantee.
+
+Two-layer guard now:
+
+- **`@opencues/runtime` (0.2.8 → 0.2.9)** — `secret-leak-guard.ts:enforceSecretBindings` layer 1 (destination allow-list, primary): when ANY declared secret has a non-empty `secret-hosts.<NAME>` binding, EVERY outbound `ctx.fetch` host must be in the UNION of those bindings — payload content is irrelevant. Encoded exfil defeated structurally (the attacker can't reach `evil.com` regardless of how the value is encoded). Layer 2 (literal-value scan, secondary): within the allow-list, still scan URL/headers/body for bound secret values — catches multi-secret cross-talk (GROQ value sent to finnhub.io host is refused even though finnhub.io is in the union).
+- **5 new tests** in `secret-leak-guard.test.ts` covering: base64-encoded exfil refused; fragmented-value exfil refused; non-secret-bearing fetch to non-binding host refused; multi-secret union honoured for non-secret fetch; layer-2 cross-secret scan within union. Plus 1 new test asserting the error message lists the union for diagnostics. 15 tests total.
+- **`security-audit.md` row #5** updated to reflect two-layer guard and `Recently resolved` log entry added.
+
+### Security — Gemini API key moved off URL query string into `x-goog-api-key` header (INFOSEC F8)
+
+`?key=<apiKey>` puts secrets in URLs — they land in server/proxy access logs, browser history, the Referer header, and the chrome path also pipes them through the `opencues:fetch` SW proxy. Other providers correctly use `Authorization: Bearer` / `x-api-key` headers. Gemini's documented API contract accepts the key in either place, so the fix is mechanical: switch to `x-goog-api-key`.
+
+- **`@opencues/core`** — `GEMINI` adapter `buildRequest` returns a URL with no query string and a `x-goog-api-key` header. Test updated to assert the URL contains neither `gem_test` nor `key=`, and the header carries the key.
+- **`opencues check-keys` (CLI probe)** — same shape.
+- **chrome popup boot-time key audit + popup probe** — same shape.
+
+### Security — `opencues set-key` always tightens `~/.cues/.env` perms (INFOSEC F7)
+
+`fs.writeFileSync({ mode: 0o600 })` only applies the mode when the file is newly created. An existing `~/.cues/.env` with looser perms (created by hand or copied with default umask) was rewritten in place without ever being chmod'd, so plaintext API keys could remain world/group-readable. The chrome host then loads this file into `process.env` and hands it to every scripted blank ([F2](../INFOSEC_FINDINGS.md#f2)), so loose perms compounded that exposure.
+
+- **`opencues` CLI (`set-key`)** — always `chmod 0o600` the file and `0o700` the parent dir after writing, regardless of whether the file pre-existed. Warns when the prior mode was broader than `0600` so users know their key was previously readable.
+- Three regression tests in `set-key.test.cjs`: create-from-scratch lands at 0600/0700; pre-existing 0644 file gets tightened; pre-existing 0640 file gets tightened. Existing key lines preserved across the rewrite.
 
 ### Added — per-call `with <model>` LLM dispatch override for fluid-blank and transform-blank
 
