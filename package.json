@@ -17,16 +17,17 @@
     "clean": "rm -rf packages/*/dist integrations/chrome/dist .turbo packages/*/.turbo integrations/*/.turbo"
   },
   "devDependencies": {
+    "esbuild": "^0.21.5",
+    "jsdom": "^29.0.2",
     "opencues": "workspace:*",
     "turbo": "^2.9.6",
     "typescript": "^5.3.0",
-    "vitest": "^2.1.9",
-    "jsdom": "^29.0.2",
-    "esbuild": "^0.21.5"
+    "vitest": "^2.1.9"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "esbuild"
+      "esbuild",
+      "isolated-vm"
     ]
   }
 }
