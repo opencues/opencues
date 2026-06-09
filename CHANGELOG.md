@@ -9,7 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
-### Added — per-call `with <model>` LLM dispatch override for fluid-blank and transform-blank
+### Security — Gemini API key moved off URL query string into `x-goog-api-key` header (INFOSEC F8)
+
+`?key=<apiKey>` puts secrets in URLs — they land in server/proxy access logs, browser history, the Referer header, and the chrome path also pipes them through the `opencues:fetch` SW proxy. Other providers correctly use `Authorization: Bearer` / `x-api-key` headers. Gemini's documented API contract accepts the key in either place, so the fix is mechanical: switch to `x-goog-api-key`.
+
+- **`@opencues/core`** — `GEMINI` adapter `buildRequest` returns a URL with no query string and a `x-goog-api-key` header. Test updated to assert the URL contains neither `gem_test` nor `key=`, and the header carries the key.
+- **`opencues check-keys` (CLI probe)** — same shape.
+- **chrome popup boot-time key audit + popup probe** — same shape.
+
+### Security — `opencues set-key` always tightens `~/.cues/.env` perms (INFOSEC F7)
 
 Adds a `with <name>` token anywhere in the buffer before `_` (`make formal X with opus _`, `atomic number of oxygen with cerebras _`) to flip the dispatch target for ONE call without writing any scalar to disk. The next `_` keystroke without `with X` goes back to the configured bucket. Five-tier token resolution: common aliases (opus / haiku / sonnet / nano / mini / flash / gpt-oss / llama / claude / anthropic / cerebras / groq / openai / gemini / openrouter), provider id, exact model name, prefix in any `knownModels`, substring fallback. Always on — no scalar gates it.
 
