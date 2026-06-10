@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fix — Multi-fork CC install fan-out + boot-smoke gate + per-fork drift advisory
+
+PR #117 (Claude Fable 5) added `packages/opencues-core/src/providers/claude-cli-daemon.ts`. `integrations/claude-code/patches/setup.sh` hard-coded the dist subdirs it copied into each fork (`sources` only), so the new `providers/` subdir was silently dropped at install time. The installed bundle's `@opencues/core/model-aliases.js` then `require('./providers/claude-cli-daemon')` blew up at boot, the CC patch's outer try/catch swallowed the error, and every CC session came up with `__oc.failed=true` — no cues, no blanks, no log line, no install error. The install reported `✓ installed + validated`.
+
+Three structural fixes, in order of how-much-it-could-have-prevented:
+
+- **`integrations/claude-code/patches/setup.sh`** now recursively copies every subdir under `packages/opencues-core/dist/*/` instead of a hard-coded list. Adding a new dist subdir is now structurally safe — `cp` covers it.
+- **`integrations/claude-code/bin/install.cjs` `validateFork()`** now runs a boot-smoke probe: `spawnSync(node, '-e', 'require(<spec>)')` from the fork's root for each path the CC patch's bootstrap actually requires (`@opencues/runtime`, `dist/adapters/cc/v2.1/boot.js`, `dist/src/blanks/index.js`, `dist/src/security/{spawn-sandbox,sandbox-runner}.js`, `dist/src/user-blanks/registry.js`). If any spec fails to load, the install refuses to ship the fork with a clear error pointing at the broken require + the setup.sh § 5 fix shape. This catches the failure class as a build error instead of as a silent runtime degradation.
+- **`packages/opencues-runtime/adapters/cc/v2.1/boot.ts`** now calls `checkRuntimeDrift(adapter)` at boot. Every other host already got this via `buildSharedRuntime`; CC's hand-wired per-band boot was missing it since PR #47 landed. Direct launches of a stale CC fork — bypassing both `opencues run`'s CLI-side srcHash check AND the install fan-out — now surface a loud `warn` line in `/tmp/opencues.log` naming the fork + the fix command.
+
+Plus the broader multi-fork awareness this pulled in:
+
+- **`packages/opencues-cli/src/lib/version-markers.cjs`** — new `enumerateCCForks()` walks every `~/claude-code-cues*` dir on disk and returns the ones with a real CC binary, canonical first.
+- **`integrations/claude-code/bin/install.cjs` `doInstall()`** — fans out across every detected fork by default. Each fork gets per-fork drift check + targeted rebuild only when stale. `--canonical-only` opts out. `--target` unchanged.
+- **`packages/opencues-cli/src/commands/update.cjs`** — when host is at current-pin, the drift check now walks every CC fork before deciding "nothing to do". The fan-out into `rebuildHostInPlace` covers all forks via the installer's new logic.
+- **`packages/opencues-cli/src/commands/doctor.cjs`** — extra CC forks are no longer "dev relics to delete." Each fork's drift status surfaces as a discrete row (stale → warn, missing marker → warn, fresh → info). Truly orphaned dirs (no CC binary at all) still surface as "safe to remove."
+- **`integrations/claude-code/CLAUDE.md`** — iteration loop now reads "`opencues install claude-code` and the install fans out across every fork." The previous `OPENCUES_CC_TARGET=~/claude-code-cues-150/...` ritual is preserved as a CI / one-off-target escape hatch.
+
+Concrete failure mode the boot-smoke gate prevents: any future PR adding a new `@opencues/runtime/dist/<subdir>/<file>.js` referenced by the patch's bootstrap, where setup.sh's copy step misses the file. Today only setup.sh copies are gated; if `integrations/{opencode,gemini-cli,shell}/patches/setup.sh` (which already use `cp -r dist/`) ever switch to a hard-coded list, the same bug class returns there. The CC smoke probe pattern can be lifted into a shared helper if needed.
+
+`@opencues/runtime` 0.3.1 → 0.3.2 (boot-time drift advisory added to CC boot).
+`opencues` (CLI) 0.2.1 → 0.2.2 (multi-fork fan-out + boot-smoke gate + per-fork drift in doctor).
+
 ### Feature — Claude Fable 5 support + global `anthropic-subscription` routing
 
 Anthropic shipped **Claude Fable 5** (Mythos-class frontier model) on 2026-06-09. This change wires it across both provider paths AND adds a global control for how every anthropic-class `with <model>` override gets dispatched.
