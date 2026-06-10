@@ -783,6 +783,12 @@ const ANTHROPIC: ProviderAdapter = {
     'claude-haiku-4-5-20251001',
     'claude-sonnet-4-6',
     'claude-opus-4-7',
+    // Fable 5 — Mythos-class frontier model (2026-06-09 launch).
+    // $10/$50 per M tokens (2× Opus), so the menu lists it but
+    // doesn't make it the default for any bucket. Reached via the
+    // `with fable` per-call override or by setting an explicit
+    // per-feature scalar in OPENCUES.md.
+    'claude-fable-5',
   ],
   envKeyName: 'ANTHROPIC_API_KEY',
   buildRequest(req, ctx) {
@@ -932,6 +938,12 @@ const CLAUDE_CLI: ProviderAdapter = {
     'haiku',
     'sonnet',
     'opus',
+    // Subscription users with Pro/Max/Team/Enterprise have free Fable
+    // access during the 2026-06-09 → 06-22 intro window, and paid
+    // thereafter. The CLI accepts the full id; the daemon's
+    // resolveModelFamily routes it to the 'fable' flag table.
+    'fable',
+    'claude-fable-5',
   ],
   envKeyName: '', // no env var — auth via `claude` install
   buildRequest() {

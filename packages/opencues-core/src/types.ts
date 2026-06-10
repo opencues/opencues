@@ -153,6 +153,19 @@ export interface CueContext {
     mode: 'safe' | 'raw';
   };
 
+  /**
+   * Global policy for anthropic-class `with` overrides — propagated
+   * from OPENCUES.md's `anthropic-subscription` scalar by the runtime
+   * before each resolve. `'prefer'` (default) routes through the local
+   * `claude` CLI subscription when available; `'off'` forces every
+   * anthropic-class override onto the HTTP API even when the CLI is
+   * present. When undefined, FluidBlank + TransformBlank default to
+   * `'prefer'` for back-compat with hosts not threading the scalar yet.
+   *
+   * See docs/architecture/model-override.md § Subscription preference.
+   */
+  anthropicSubscription?: 'prefer' | 'only' | 'off';
+
   /** Additional context for the analysis */
   metadata?: Record<string, unknown>;
 

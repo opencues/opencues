@@ -40,7 +40,12 @@ order:
    | `opus` | anthropic / claude-opus-4-7 |
    | `haiku` | anthropic / claude-haiku-4-5-… |
    | `sonnet` | anthropic / claude-sonnet-4-6 |
+   | `fable` | anthropic / claude-fable-5 |
    | `claude` | anthropic / (provider default = haiku) |
+   | `anthropic` | anthropic / (provider default = haiku) |
+
+   > **Every anthropic-class override (the rows above for opus/sonnet/haiku/fable/claude/anthropic) auto-prefers your Claude subscription when the `claude` CLI is installed.** Falls back to the API otherwise. See [Subscription preference](#subscription-preference).
+
    | `nano` | openai / gpt-5.4-nano |
    | `mini` | openai / gpt-5.4-mini |
    | `flash` | gemini / gemini-3.1-flash-lite |
@@ -64,6 +69,51 @@ order:
 Unknown tokens (`with fish _`, `with the cat _`) **fall through to no
 override** — the call dispatches through your configured bucket as
 normal.
+
+---
+
+## Subscription preference
+
+If the `claude` CLI is on your `PATH` (i.e. you have Claude Pro / Max / Team / Enterprise and the desktop CLI installed), **every anthropic-class `with`** routes through your subscription — no API tokens consumed. That covers:
+
+- `with anthropic` / `with claude` — generic, defaults to haiku
+- `with opus` / `with sonnet` / `with haiku` / `with fable` — named models
+- `with claude-opus-4-7` / `with claude-fable-5` / any full Anthropic model id
+
+If the CLI isn't installed, every one of those calls falls through to the regular Anthropic HTTP API (using your `ANTHROPIC_API_KEY`). The fall-back is automatic and silent.
+
+```
+the committee considered the report with opus _
+                ↑
+   ┌────────────┴───────────────┐
+   │  claude CLI on PATH?       │
+   ├────────────────────────────┤
+   │  YES → claude -p (your sub)│
+   │  NO  → api.anthropic.com   │
+   └────────────────────────────┘
+```
+
+**Non-Anthropic overrides aren't affected.** `with cerebras`, `with gpt-oss`, `with gemini`, `with nano`, etc. always go through their own provider's HTTP path — the subscription only covers Anthropic models.
+
+**Cost trade-off:** subscription calls are bundled in your plan but average 30-100% slower than the API for cue / blank surfaces (no streaming, higher TTFT variance under Anthropic load).
+
+**Controlling it globally.** Set `anthropic-subscription` in `~/.cues/OPENCUES.md`:
+
+| Value | Behaviour |
+|---|---|
+| `prefer` (default) | Try CLI subscription. Fall back to API when `claude` isn't on PATH. |
+| `only` | **Billing safety.** Always use the CLI. If it isn't available the call FAILS rather than silently spending API tokens. Use this when you have a subscription and never want surprise API charges. |
+| `off` | Always use the Anthropic HTTP API, even when the CLI is installed. |
+
+```yaml
+anthropic-subscription: only   # never silently spend API tokens
+```
+
+Hot-reloads — no restart needed. You can also cycle it in-buffer with `opencues settings _` (cycle to `anthropic-subscription`, then cycle the value).
+
+**Per-call escape hatch.** If you want the API path for ONE call without flipping the global scalar, use a non-anthropic override — `with cerebras`, `with gpt-oss`, `with gemini` — for completions where speed matters more than weights.
+
+**No runtime fallback:** if the CLI is installed but auth has expired, or the model isn't on your subscription tier (e.g. Fable 5 outside the 2026-06-09 → 06-22 intro window for non-Pro users), the call surfaces the CLI's error rather than silently retrying through the API. Re-auth (`claude /login`) or pick a different model.
 
 ---
 

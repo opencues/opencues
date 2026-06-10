@@ -41,7 +41,7 @@ import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '
 import { BlankConfig } from '../cues-md';
 import { useStrictJson, buildJsonResponseFormat, describeLLMCall, dispatchChat, getProvider, type ProviderAdapter } from '../llm-provider';
 import { classifyLlmError, type FluidBlankErrorReason } from './fluid-blank-source';
-import { detectModelOverride, stripModelOverride, type ModelOverride } from '../model-aliases';
+import { detectModelOverride, applySubscriptionPreference, stripModelOverride, type ModelOverride } from '../model-aliases';
 import { detectPartialTransform } from './transform-partial-detector';
 import { injectCursorSentinel, stripCursorSentinel } from '../cursor-sentinel';
 import { translateBufferCursorToTargetCursor } from './transform-cursor-translate';
@@ -1605,7 +1605,10 @@ export class TransformBlankSource implements CueSource {
     // signal before starting a new generation, and providers honour
     // it (the sibling-abort pattern shipped June 2026, perf #95).
     // The try/finally below clears the field even on throw.
-    const override = detectModelOverride(context.text);
+    const override = applySubscriptionPreference(
+      detectModelOverride(context.text),
+      context.anthropicSubscription ?? 'prefer',
+    );
     const overrideTarget = override ? this.resolveOverride(override) : null;
     this._currentOverride = overrideTarget;
     try {
@@ -2253,6 +2256,13 @@ export class TransformBlankSource implements CueSource {
   private resolveOverride(override: ModelOverride): { provider: ProviderAdapter; model: string; apiKey: string } | null {
     const adapter = getProvider(override.provider);
     if (adapter === null) return null;
+    // CLI-transport providers (claude-code-cli) auth via the installed
+    // binary (`claude /login`), not an env var — envKeyName is empty.
+    // Skip the apiKey gate for them; the dispatch path (invokeCli)
+    // surfaces auth failures at spawn time.
+    if (adapter.transport === 'cli') {
+      return { provider: adapter, model: override.model, apiKey: '' };
+    }
     // apiKeys map is keyed by envKeyName (`ANTHROPIC_API_KEY`,
     // `CEREBRAS_API_KEY`, …) — matches what resolveLLM reads at
     // llm-provider.ts:1817 + what every host adapter populates.

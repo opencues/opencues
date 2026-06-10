@@ -177,6 +177,34 @@ export interface OpenCuesState {
    */
   readonly navKeymap: 'auto' | 'ctrl-alt' | 'ctrl-shift';
   /**
+   * Whether to auto-route anthropic-class `with` overrides (e.g.
+   * `with anthropic _`, `with opus _`, `with fable _`) through the
+   * local `claude` CLI subscription instead of the HTTP API.
+   *
+   * - `prefer` (default): when the `claude` CLI is on PATH, every
+   *   anthropic-class override gets rewritten to dispatch through
+   *   the `claude-code-cli` provider — the call uses the user's
+   *   Pro/Max/Team/Enterprise subscription, no API tokens spent.
+   *   Falls back silently to the HTTP API when the CLI is missing.
+   * - `only`: ALWAYS dispatch anthropic-class overrides through the
+   *   CLI, even if the binary isn't currently on PATH. If the spawn
+   *   fails the call surfaces the error — it does NOT silently fall
+   *   through to the API. This is the "billing safety" mode for users
+   *   who have a subscription and never want to silently spend API
+   *   tokens; failures are visible instead of hidden behind a credit
+   *   charge.
+   * - `off`: anthropic-class overrides always go through the HTTP
+   *   API. Useful when comparing API behaviour deliberately, or when
+   *   subscription TTFT (~3-10s) hurts the workflow.
+   *
+   * No runtime fallback: if the CLI is installed but auth has
+   * expired or the model isn't on the user's tier, the dispatch
+   * surfaces the CLI's error — it does NOT silently retry against
+   * the API. See docs/architecture/model-override.md § Subscription
+   * preference.
+   */
+  readonly anthropicSubscription: 'prefer' | 'only' | 'off';
+  /**
    * Per-bucket LLM provider overrides — the three-bucket simplification.
    * Each bucket carves the LLM surface into one of three trust classes:
    *
@@ -231,6 +259,7 @@ export const DEFAULT_OPENCUES_STATE: OpenCuesState = {
   blankContextMode: 'off',
   blankTriggerMode: 'immediate',
   navKeymap: 'auto',
+  anthropicSubscription: 'prefer',
   cuesLlmProvider: 'inherit',
   auditorsLlmProvider: 'inherit',
   blanksLlmProvider: 'inherit',
@@ -312,6 +341,11 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
     navKeymapRaw === 'ctrl-alt' ? 'ctrl-alt'
     : navKeymapRaw === 'ctrl-shift' ? 'ctrl-shift'
     : 'auto';
+  const anthropicSubscriptionRaw = get('anthropic-subscription', 'prefer').toLowerCase();
+  const anthropicSubscription: 'prefer' | 'only' | 'off' =
+    anthropicSubscriptionRaw === 'off' ? 'off'
+    : anthropicSubscriptionRaw === 'only' ? 'only'
+    : 'prefer';
   // Bucket scalars — `inherit` (default) or any concrete provider id.
   // Unknown values fall back to `inherit` rather than silently picking
   // an invalid provider — protects users from typos that would
@@ -343,7 +377,7 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   // Tests keep shipping mock `settings:` blocks; they get the
   // file-driven definitions, identical to the pre-refactor behaviour.
   const definitions = mergeDefinitions(getMenuDefinitions(undefined, settings), parseSettingsBlock(lines));
-  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, identityContextMode, blankContextMode, blankTriggerMode, navKeymap, cuesLlmProvider, auditorsLlmProvider, blanksLlmProvider, settings, definitions };
+  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, identityContextMode, blankContextMode, blankTriggerMode, navKeymap, anthropicSubscription, cuesLlmProvider, auditorsLlmProvider, blanksLlmProvider, settings, definitions };
 }
 
 /**
@@ -678,6 +712,10 @@ export class ConfigLoader {
       navKeymap: ((): 'auto' | 'ctrl-alt' | 'ctrl-shift' => {
         const v = get('nav-keymap', 'auto').toLowerCase();
         return v === 'ctrl-alt' ? 'ctrl-alt' : v === 'ctrl-shift' ? 'ctrl-shift' : 'auto';
+      })(),
+      anthropicSubscription: ((): 'prefer' | 'only' | 'off' => {
+        const v = get('anthropic-subscription', 'prefer').toLowerCase();
+        return v === 'off' ? 'off' : v === 'only' ? 'only' : 'prefer';
       })(),
       cuesLlmProvider: bucketProvider(get('cues-llm-provider', 'inherit').toLowerCase()),
       auditorsLlmProvider: bucketProvider(get('auditors-llm-provider', 'inherit').toLowerCase()),

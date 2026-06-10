@@ -47,6 +47,36 @@
 // in chrome (no subprocess support), but the bundler still walks the
 // import graph; lazy-require keeps the module browser-safe.
 
+/**
+ * Per-process cache for `which claude`. The check fires at most once
+ * per Node process and is shared between every consumer (model-aliases'
+ * subscription-preference path, future doctor checks, etc.). Browser
+ * bundles never enter this function — both call sites guard against
+ * non-Node hosts before invoking it.
+ */
+let _cliAvailable: boolean | null = null;
+export function isClaudeCliAvailable(): boolean {
+  if (_cliAvailable !== null) return _cliAvailable;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const nodeChildProcess = (eval('require') as NodeRequire)('child_process');
+    // `which claude` (POSIX) / `where claude` (Windows). Both exit
+    // non-zero when the binary isn't on PATH. spawnSync is fine here —
+    // total wall-clock is sub-millisecond on Linux/macOS.
+    const cmd = process.platform === 'win32' ? 'where' : 'which';
+    const res = nodeChildProcess.spawnSync(cmd, ['claude'], { stdio: 'ignore' });
+    _cliAvailable = res.status === 0;
+  } catch {
+    _cliAvailable = false;
+  }
+  return _cliAvailable;
+}
+
+/** Tests-only — reset the availability cache. */
+export function _resetClaudeCliAvailabilityCacheForTesting(): void {
+  _cliAvailable = null;
+}
+
 /** Model name as passed to `claude --model`. Accepts either the
  *  short aliases (`haiku` | `sonnet` | `opus` — claude resolves to
  *  the latest version) or a full model identifier
@@ -58,7 +88,7 @@ export type ClaudeCliModel = string;
  *  Haiku's behaviour-under-thinking is similar across 3.5 / 4 / 4.5
  *  generations, etc. If a future generation needs different flags,
  *  add a more specific case in `resolveModelFamily` below. */
-export type ClaudeCliModelFamily = 'haiku' | 'sonnet' | 'opus';
+export type ClaudeCliModelFamily = 'haiku' | 'sonnet' | 'opus' | 'fable';
 
 /**
  * Map any model string to its family for flag-table lookup.
@@ -66,19 +96,24 @@ export type ClaudeCliModelFamily = 'haiku' | 'sonnet' | 'opus';
  *   'haiku' / 'claude-haiku-3-5' / 'claude-haiku-4-5-20251001' → 'haiku'
  *   'sonnet' / 'claude-sonnet-4-6'                              → 'sonnet'
  *   'opus' / 'claude-opus-4-7'                                  → 'opus'
+ *   'fable' / 'claude-fable-5'                                  → 'fable'
  *
  * Throws on unknown names so a typo in OPENCUES.md surfaces immediately
  * instead of silently picking the wrong flag table.
  */
 export function resolveModelFamily(model: string): ClaudeCliModelFamily {
   const m = model.toLowerCase();
+  // Order matters: more-specific first. `fable` must match before
+  // `opus` because the substring includes-checks are intentionally
+  // permissive (covers `claude-fable-5`, future `claude-fable-6`, etc.).
   if (m === 'haiku' || m.includes('haiku')) return 'haiku';
   if (m === 'sonnet' || m.includes('sonnet')) return 'sonnet';
+  if (m === 'fable' || m.includes('fable')) return 'fable';
   if (m === 'opus' || m.includes('opus')) return 'opus';
   throw new Error(
     `claude-cli: cannot infer model family from "${model}" ` +
-    `(expected an alias 'haiku'|'sonnet'|'opus' or a full name like ` +
-    `'claude-haiku-4-5-20251001')`,
+    `(expected an alias 'haiku'|'sonnet'|'opus'|'fable' or a full name like ` +
+    `'claude-haiku-4-5-20251001' / 'claude-fable-5')`,
   );
 }
 
@@ -103,6 +138,14 @@ const MODEL_FLAGS: Record<ClaudeCliModelFamily, ModelFlagConfig> = {
   },
   opus: {
     extraArgs: [], // Opus is best without --effort (thinking helps but flag interferes)
+    env: { CLAUDE_CODE_DISABLE_THINKING: '1', MAX_THINKING_TOKENS: '0' },
+  },
+  fable: {
+    // Mythos-class — frontier reasoning. Pre-bench tuning mirrors
+    // Opus (no --effort; thinking disabled to keep first-token latency
+    // bounded). Re-tune once tests/benchmarks/thinking-budget/ has a
+    // fable row.
+    extraArgs: [],
     env: { CLAUDE_CODE_DISABLE_THINKING: '1', MAX_THINKING_TOKENS: '0' },
   },
 };

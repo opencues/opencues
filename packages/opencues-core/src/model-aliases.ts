@@ -31,6 +31,7 @@
  */
 
 import { listProviders, getProvider } from './llm-provider';
+import { isClaudeCliAvailable } from './providers/claude-cli-daemon';
 
 export interface ModelOverride {
   /** The provider id to dispatch through (e.g. `'anthropic'`). */
@@ -58,6 +59,13 @@ const COMMON_ALIASES: Record<string, { provider: string; model?: string }> = {
   opus: { provider: 'anthropic', model: 'claude-opus-4-7' },
   haiku: { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
   sonnet: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+  // Claude Fable 5 — Mythos-class model launched June 9, 2026. Routes
+  // to the same `anthropic` adapter (the API exposes it under the
+  // canonical `claude-fable-5` model id). Subscription users on the
+  // `claude-code-cli` provider also get fable-5 through Anthropic's
+  // free intro window (Pro/Max/Team/Enterprise, 2026-06-09 → 06-22);
+  // the daemon's resolveModelFamily picks the right flag table.
+  fable: { provider: 'anthropic', model: 'claude-fable-5' },
   claude: { provider: 'anthropic' },
   anthropic: { provider: 'anthropic' },
   cerebras: { provider: 'cerebras' },
@@ -87,6 +95,88 @@ const COMMON_ALIASES: Record<string, { provider: string; model?: string }> = {
  * `play with fire` won't match anything because `the` / `fire` don't
  * resolve to a provider.
  */
+/**
+ * Optional post-processor — if the override resolved to ANY Anthropic
+ * model AND the local `claude` CLI is available, swap the provider to
+ * `claude-code-cli` so the call goes through the user's Pro / Max /
+ * Team / Enterprise subscription instead of paying for API tokens.
+ *
+ * Scope is "every anthropic-class override":
+ *   - `with anthropic` / `with claude` (generic aliases → defaults to haiku)
+ *   - `with opus` / `with sonnet` / `with haiku` / `with fable` (named models)
+ *   - `with claude-fable-5` / `with claude-opus-4-7` etc. (full model ids)
+ *
+ * The model string carries through verbatim — the CLI's `--model` flag
+ * accepts both Anthropic's full ids (`claude-opus-4-7`,
+ * `claude-fable-5`) AND its built-in short aliases (`opus`, `sonnet`,
+ * `haiku`). The daemon's `resolveModelFamily()` maps either form to
+ * the right flag table.
+ *
+ * Falls back to the API path when:
+ *   - `claude` isn't on PATH (binary missing) — checked once per
+ *     process via `isClaudeCliAvailable()`. The override stays
+ *     unchanged (anthropic/HTTP).
+ *   - The `claude-code-cli` provider isn't in the registry (shouldn't
+ *     happen on supported hosts).
+ *
+ * What this does NOT cover: runtime CLI failure. If the binary is
+ * present but auth has expired, the model isn't on the user's
+ * subscription tier, or the call rate-limits mid-session, the failure
+ * surfaces to the source's existing override-skip path rather than
+ * silently retrying against the API. Runtime fallback would need
+ * explicit error classification (auth-expired vs tier-unavailable vs
+ * transient-network vs real-LLM-error) and a session-level "CLI is
+ * broken" cache. Tracked as a follow-up.
+ *
+ * Caller convention: invoke immediately after `detectModelOverride` and
+ * before passing the override to `resolveOverride`. Both FluidBlank
+ * and TransformBlank do this in their override-consumer paths.
+ *
+ * Why a separate function (vs. inlining in detectModelOverride): keeps
+ * detectModelOverride pure (no I/O); makes the subscription-preference
+ * policy a SEPARATE concern tests can exercise in isolation; lets
+ * future call sites opt out cheaply if they want raw resolution.
+ *
+ * See: docs/architecture/model-override.md § Subscription preference.
+ */
+export type AnthropicSubscriptionMode = 'prefer' | 'only' | 'off';
+
+export function applySubscriptionPreference(
+  override: ModelOverride | null,
+  mode: AnthropicSubscriptionMode = 'prefer',
+): ModelOverride | null {
+  if (!override) return null;
+  // Global opt-out — the `anthropic-subscription: off` scalar in
+  // OPENCUES.md flips this to 'off' and every anthropic-class
+  // override skips the CLI rewrite, even on hosts where `claude` is
+  // installed. Useful when comparing API behaviour deliberately or
+  // when subscription TTFT hurts the workflow.
+  if (mode === 'off') return override;
+  // Only rewrite anthropic-class overrides. `with cerebras`,
+  // `with gemini`, `with gpt-oss`, etc. keep their original provider
+  // — the subscription only routes Anthropic models.
+  if (override.provider !== 'anthropic') return override;
+  const cliAdapter = getProvider('claude-code-cli');
+  if (!cliAdapter) return override; // registry missing the CLI provider
+  // Strict subscription-only mode: rewrite unconditionally. If the
+  // CLI binary isn't actually on PATH the dispatch will fail at spawn
+  // time with a clear "claude not found" error — that's the desired
+  // behaviour for users who set `anthropic-subscription: only` as a
+  // billing safety mode ("never silently spend API tokens"). The
+  // alternative (falling back to API) would defeat the explicit
+  // opt-in to strict subscription routing.
+  if (mode === 'only') {
+    return { ...override, provider: 'claude-code-cli' };
+  }
+  // Default `prefer`: rewrite when CLI is available, otherwise leave
+  // the override on the HTTP API path. Model string passes through
+  // verbatim — the CLI accepts both full Anthropic ids
+  // (claude-opus-4-7, claude-fable-5) and short aliases
+  // (opus, sonnet, haiku).
+  if (!isClaudeCliAvailable()) return override;
+  return { ...override, provider: 'claude-code-cli' };
+}
+
 export function detectModelOverride(text: string): ModelOverride | null {
   // `\bwith\s+([a-zA-Z][\w.-]*)\b` — `with` + token. Case-insensitive
   // on `with`. Token starts with a letter (so `with 5` isn't a match)

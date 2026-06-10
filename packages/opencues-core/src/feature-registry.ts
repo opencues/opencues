@@ -383,6 +383,17 @@ export const FEATURES: readonly FeatureSpec[] = [
     ],
   },
   {
+    scalar: 'anthropic-subscription',
+    camelCase: 'anthropicSubscription',
+    description: 'Auto-route anthropic-class `with` overrides (with anthropic / claude / opus / sonnet / haiku / fable) through the local `claude` CLI subscription instead of the HTTP API',
+    menuTip: 'Subscription routing for `with anthropic / opus / sonnet / haiku / fable …`',
+    values: [
+      { id: 'prefer', description: 'Default — when `claude` CLI is on PATH, route every anthropic-class override through your Pro/Max/Team/Enterprise subscription. Falls back to the API when the CLI binary is missing.' },
+      { id: 'only',   description: 'Billing safety — always dispatch anthropic-class overrides through the CLI. If the CLI isn\'t available the call FAILS rather than silently spending API tokens. Use when you have a subscription and never want surprise API charges.' },
+      { id: 'off',    description: 'Always use the Anthropic HTTP API for anthropic-class overrides, even when the CLI is installed. Useful for comparing API behaviour or when subscription latency hurts your workflow.' },
+    ],
+  },
+  {
     scalar: 'debug-mode',
     camelCase: 'debugMode',
     description: 'Verbose runtime logging (every cue/blank decision)',

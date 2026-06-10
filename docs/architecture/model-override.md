@@ -110,6 +110,82 @@ configured target as if no `with` was present.
 
 ---
 
+## Subscription preference — every anthropic-class `with` routes through CLI
+
+Any `with <token>` that resolves to the `anthropic` provider gets a one-step post-processor after `resolveAlias()` returns:
+
+```
+detectModelOverride(text) → ModelOverride | null
+       ↓
+applySubscriptionPreference(override) → ModelOverride | null
+       ↓
+resolveOverride(override) → ResolvedOverride | null
+```
+
+If `applySubscriptionPreference` sees:
+
+1. A non-null override
+2. Whose `provider` field is `'anthropic'`
+3. And `isClaudeCliAvailable()` returns true (`which claude` succeeded; checked once per process, cached)
+
+…it rewrites the override's `provider` from `'anthropic'` to `'claude-code-cli'`, **preserving the model string verbatim**. The user's `with X _` then dispatches through their Pro/Max/Team/Enterprise subscription instead of consuming API tokens.
+
+### Coverage matrix
+
+| Override | Resolves to (CLI available) | Resolves to (CLI not on PATH) |
+|---|---|---|
+| `with anthropic` | claude-code-cli/claude-haiku-4-5-… | anthropic/claude-haiku-4-5-… |
+| `with claude` | claude-code-cli/claude-haiku-4-5-… | anthropic/claude-haiku-4-5-… |
+| `with opus` | claude-code-cli/claude-opus-4-7 | anthropic/claude-opus-4-7 |
+| `with sonnet` | claude-code-cli/claude-sonnet-4-6 | anthropic/claude-sonnet-4-6 |
+| `with haiku` | claude-code-cli/claude-haiku-4-5-… | anthropic/claude-haiku-4-5-… |
+| `with fable` | claude-code-cli/claude-fable-5 | anthropic/claude-fable-5 |
+| `with claude-fable-5` (or any full id) | claude-code-cli/claude-fable-5 | anthropic/claude-fable-5 |
+| `with cerebras` / `with gemini` / `with gpt-oss` / etc. | unchanged | unchanged |
+
+The CLI accepts both short aliases (`opus`, `sonnet`, `haiku`) AND full Anthropic ids (`claude-opus-4-7`, `claude-fable-5`); the daemon's `resolveModelFamily()` normalises either form to the right flag table. So the model string passes through verbatim — no translation needed.
+
+### Fall-back behaviour (boot-time)
+
+If `claude` isn't on PATH, `applySubscriptionPreference` returns the override unchanged — dispatch falls through to the original `anthropic` HTTP provider. The fall-back is silent because users without the CLI don't need to know they were "downgraded"; their `ANTHROPIC_API_KEY` covers them.
+
+### Global control — `anthropic-subscription` scalar
+
+The `anthropic-subscription` scalar in `OPENCUES.md` controls the preference globally. Three values:
+
+| Value | Behaviour | When to pick it |
+|---|---|---|
+| `prefer` (default) | Auto-detect — route through CLI when `which claude` succeeds, fall through to API when it doesn't | The sensible default — get subscription pricing when you can, API when you can't |
+| `only` | Always rewrite to CLI. If the binary isn't actually on PATH the dispatch fails at spawn time with a "claude not found" error. **No silent API fallback.** | "Billing safety" — you have a subscription and never want surprise API charges. Hard failures are visible; silent fallback isn't |
+| `off` | Skip the CLI rewrite entirely. Every anthropic-class override goes through the HTTP API | Comparing API behaviour, or when subscription TTFT hurts the workflow |
+
+Plumbing:
+
+1. `feature-registry.ts` declares the scalar (`anthropic-subscription` / `camelCase: 'anthropicSubscription'`) so `opencues settings _` cycles it.
+2. `config-loader.ts` parses the value into `OpenCuesState.anthropicSubscription`.
+3. `resolver.ts` copies the field onto every `CueContext.anthropicSubscription` it dispatches.
+4. `applySubscriptionPreference(override, mode)` honours the mode — `'off'` short-circuits before the `isClaudeCliAvailable()` check.
+5. FluidBlank + TransformBlank pass `context.anthropicSubscription ?? 'prefer'` (back-compat default when a host hasn't propagated the scalar yet).
+
+The cost of the CLI-availability check (`spawnSync` on `which claude`) is ~3-8 ms cold, ~0.002 ms warm (per-process cache). Cheap enough that the boot-time auto-detect is always-on by default; the scalar is for users who explicitly want the API path despite having a subscription.
+
+### Cache + invalidation
+
+The `isClaudeCliAvailable()` cache lives in `providers/claude-cli-daemon.ts` (`_cliAvailable`). Set on first call, never expires within the process. If the user installs `claude` mid-session, the next dispatch still sees the cached "not available" result. Restart cycles the cache. Tests call `_resetClaudeCliAvailabilityCacheForTesting()` to exercise both branches without flake.
+
+### What this does NOT cover — no runtime fallback
+
+This is a BOOT-TIME preference. If the CLI binary is present BUT auth has expired, OR the model isn't on the user's subscription tier (e.g. Fable 5 outside the 2026-06-09 → 06-22 intro window for non-Pro accounts), OR the call rate-limits mid-session — the dispatch fails with the CLI's error envelope and does **NOT** silently retry against the HTTP API.
+
+Adding runtime fallback would need:
+1. Explicit error classification (auth-expired vs model-not-on-tier vs transient-network vs real-LLM-error)
+2. A session-level "CLI is broken" cache so we don't retry every call
+3. A way to surface "I fell back to API for this call" to the source's logging without spamming
+
+Tracked as a follow-up. For now, if a user hits CLI-side failures, they re-auth (`claude /login`) or switch to a non-anthropic-class override (`with cerebras`, `with gpt-oss`) which bypasses subscription routing entirely.
+
+---
+
 ## ConfigIntent synchronous cede
 
 ConfigIntent sits at priority 94, above TransformBlank (93) and
