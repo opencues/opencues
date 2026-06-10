@@ -48,7 +48,8 @@ Two Claude Code installs exist on this machine. **OpenCues work targets `claude-
 |---|---|---|---|
 | `claude-cues` | `~/claude-code-cues` (local npm) | 2.1.110 (cli.js, pegged) | OpenCues patches applied here — npm cli.js shape |
 | `claude-cues-150` | `~/claude-code-cues-150` (local npm) | 2.1.150 (native bun-binary) | OpenCues patches applied here — native-binary shape (post-2.1.113 cutover) |
-| `claude-cues-158` | `~/claude-code-cues-158` (local npm) | 2.1.158 (native bun-binary) | OpenCues patches applied here — latest tested, same v2.1 adapter band as 150 (all 4 seams S1/S2/S3/S7 still hit) |
+| `claude-cues-158` | `~/claude-code-cues-158` (local npm) | 2.1.158 (native bun-binary) | OpenCues patches applied here — same v2.1 adapter band as 150 (all 4 seams S1/S2/S3/S7 still hit) |
+| `claude-cues-170` | `~/claude-code-cues-170` (local npm) | 2.1.170 (native bun-binary) | OpenCues patches applied here — **latest tested** (June 2026), same v2.1 adapter band; S6 still missing (gone since 2.1.150, statusline polls); S1/S2/S3/S7 all hit; agentic core suite (01/02/03/07/14) green |
 | `claude` | `~/.local/bin/claude` (native) | latest | Clean/unpatched — development use |
 
 - Both `claude-cues` and `claude-cues-150` are patched instances. `setup.sh` targets the cli.js fork; the native-binary fork is patched via tweakcc 4.0.13+'s `.bun` ELF section extract/repack.
