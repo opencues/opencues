@@ -139,8 +139,8 @@ jobs:
         run: corepack enable
       - name: pnpm install
         run: pnpm install --frozen-lockfile
-      - name: Build @opencues/runtime
-        run: pnpm --filter @opencues/runtime build
+      - name: Build @opencues/{core,runtime}
+        run: pnpm --filter @opencues/core --filter @opencues/runtime build
       - name: Probe runtime load under Bun
         run: bash scripts/check-runtime-loads-on-bun.sh
 
