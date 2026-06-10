@@ -115,6 +115,35 @@ jobs:
       - name: Run CC patch boot smoke
         run: node scripts/check-cc-patch-boot.cjs
 
+  runtime-bun-load:
+    name: runtime loads on bun
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    # Asserts @opencues/runtime's user-blanks registry imports cleanly
+    # under Bun — opencode + shell both run on Bun, so any top-level
+    # Node-V8 native import (e.g. isolated-vm) crashes them at boot
+    # with "undefined symbol" before any try/catch can fire. Tests
+    # run on Node, so this gate is the only structural protection.
+    # b460076 isolated-vm migration (June 2026) is the canonical
+    # incident — every opencode + shell user crashed at boot for hours.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+      - name: Build @opencues/{core,runtime}
+        run: pnpm --filter @opencues/core --filter @opencues/runtime build
+      - name: Probe runtime load under Bun
+        run: bash scripts/check-runtime-loads-on-bun.sh
+
   version-bump-gate:
     name: version-bump gate
     runs-on: ubuntu-latest

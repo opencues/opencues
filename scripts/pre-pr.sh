@@ -80,6 +80,16 @@ step "chrome bundle assertion" bash scripts/check-chrome-bundle.sh
 # scope/reference error throws at smoke time, not on the user's machine.
 step "CC patch boot smoke (catches scope errors in emitted JS)" node scripts/check-cc-patch-boot.cjs
 
+# ─── 4b. Runtime loads on Bun (catches Node-only native imports) ────
+# Bug class: a Node-V8 native binding gets added as a top-level
+# import in @opencues/runtime; opencode + shell (Bun-based) then
+# crash at boot with "undefined symbol" before any try/catch can
+# fire. Tests run on Node so unit coverage stays green while every
+# Bun host is broken in production. b460076 isolated-vm migration
+# (June 2026) is the canonical incident — opencode + shell crashed
+# at boot for hours before the agentic harness caught it.
+step "runtime loads on bun (catches Node-only native imports)" bash scripts/check-runtime-loads-on-bun.sh
+
 # ─── 5. Test hermeticity + full sweep ──────────────────────────────
 if [ -z "${SKIP_TESTS:-}" ]; then
   step "test-hermeticity (pnpm -r test + CLI tests, sandboxed \$HOME)" bash scripts/check-test-hermeticity.sh

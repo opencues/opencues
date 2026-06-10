@@ -47,8 +47,37 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import ivm from 'isolated-vm';
+import type * as ivm from 'isolated-vm';
 import { rewriteEsmToCjsShim } from './esm-rewrite';
+
+// `isolated-vm` is a NATIVE Node-V8 binding (INFOSEC F1, June 2026).
+// Bun-based hosts (opencode, shell) use JavaScriptCore — loading the
+// `.node` binding fails with `undefined symbol: _ZN2v8...` at module
+// import. We MUST keep the top-level import type-only and defer the
+// real `require()` until a user-blank JS impl actually tries to load;
+// the exception then propagates to `registry.ts`'s try/catch and the
+// host disables JS user-blanks instead of crashing at boot.
+//
+// Re-test before changing: `bun -e "require('@opencues/runtime/dist/src/user-blanks/registry')"` MUST succeed.
+let _ivm: typeof ivm | null = null;
+let _ivmError: Error | null = null;
+function getIvm(): typeof ivm {
+  if (_ivm) return _ivm;
+  if (_ivmError) throw _ivmError;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    _ivm = require('isolated-vm') as typeof ivm;
+    return _ivm;
+  } catch (e) {
+    _ivmError = new Error(
+      `isolated-vm unavailable on this runtime (${(e as Error).message}). ` +
+      `User-blank JS impl: feature requires Node.js with a working ` +
+      `isolated-vm binding. Bun-based hosts (opencode, shell) cannot ` +
+      `load user-blank JS today — built-in blanks + .sh blanks keep working.`,
+    );
+    throw _ivmError;
+  }
+}
 import { buildRequestParts, enforceSecretBindings, type BoundSecret } from './secret-leak-guard';
 import type {
   BlankCapabilities,
@@ -167,6 +196,9 @@ export interface LoaderOptions {
  * isolate fails to construct, or the exported shape is wrong.
  */
 export function loadUserBlank(absJsPath: string, opts: LoaderOptions): LoadedUserBlank {
+  // Lazy load — throws on Bun, caught by registry.ts (gracefully
+  // disables this one blank, host keeps running).
+  const ivmRT = getIvm();
   const source = fs.readFileSync(absJsPath, 'utf8');
   const folder = path.dirname(absJsPath);
   const caps = opts.capabilities;
@@ -181,7 +213,7 @@ export function loadUserBlank(absJsPath: string, opts: LoaderOptions): LoadedUse
   const wrapped = rewriteEsmExportDefault(source);
 
   // Construct the isolate + context.
-  const isolate = new ivm.Isolate({ memoryLimit });
+  const isolate = new ivmRT.Isolate({ memoryLimit });
   const context = isolate.createContextSync();
   const jail = context.global;
 
@@ -191,9 +223,9 @@ export function loadUserBlank(absJsPath: string, opts: LoaderOptions): LoadedUse
   jail.setSync('globalThis', jail.derefInto());
 
   // Minimal console — every method routes back to the host log.
-  const consoleLogRef = new ivm.Reference((msg: string) => log('info', msg));
-  const consoleWarnRef = new ivm.Reference((msg: string) => log('warn', msg));
-  const consoleErrRef = new ivm.Reference((msg: string) => log('error', msg));
+  const consoleLogRef = new ivmRT.Reference((msg: string) => log('info', msg));
+  const consoleWarnRef = new ivmRT.Reference((msg: string) => log('warn', msg));
+  const consoleErrRef = new ivmRT.Reference((msg: string) => log('error', msg));
   jail.setSync('__oc_console_log', consoleLogRef);
   jail.setSync('__oc_console_warn', consoleWarnRef);
   jail.setSync('__oc_console_err', consoleErrRef);
@@ -292,6 +324,10 @@ async function invokeUserMethod(
   args: readonly unknown[] | undefined,
   timeoutMs: number,
 ): Promise<unknown> {
+  // Lazy load. Reaching this path means loadUserBlank already
+  // succeeded for this blank, so getIvm() is guaranteed to return
+  // the cached module — never throws here in practice.
+  const ivmRT = getIvm();
   callerCtx = callerCtx ?? {};
   args = args ?? [];
 
@@ -302,10 +338,10 @@ async function invokeUserMethod(
   // keeps the host functions alive only for the call duration).
   const refs: Record<string, ivm.Reference | undefined> = {
     now: typeof callerCtx.now === 'function'
-      ? new ivm.Reference(() => (callerCtx!.now as () => number)())
+      ? new ivmRT.Reference(() => (callerCtx!.now as () => number)())
       : undefined,
     log: typeof callerCtx.log === 'function'
-      ? new ivm.Reference((lvl: string, msg: string, data?: unknown) => {
+      ? new ivmRT.Reference((lvl: string, msg: string, data?: unknown) => {
           (callerCtx!.log as (l: 'info' | 'warn' | 'error', m: string, d?: unknown) => void)(
             lvl as 'info' | 'warn' | 'error',
             msg,
@@ -314,7 +350,7 @@ async function invokeUserMethod(
         })
       : undefined,
     fetch: typeof callerCtx.fetch === 'function'
-      ? new ivm.Reference(async (url: string, init?: string) => {
+      ? new ivmRT.Reference(async (url: string, init?: string) => {
           // init was JSON-stringified on the way in; parse back.
           const initObj = init ? JSON.parse(init) : undefined;
           const res = await (callerCtx!.fetch as (url: string, init?: RequestInit) => Promise<Response>)(
@@ -335,7 +371,7 @@ async function invokeUserMethod(
         })
       : undefined,
     llm: typeof callerCtx.llm === 'function'
-      ? new ivm.Reference(async (reqJson: string) => {
+      ? new ivmRT.Reference(async (reqJson: string) => {
           const req = JSON.parse(reqJson);
           const result = await (callerCtx!.llm as (
             req: { prompt: string; system?: string; model?: string; maxTokens?: number; temperature?: number },
@@ -344,13 +380,13 @@ async function invokeUserMethod(
         })
       : undefined,
     storage_get: typeof callerCtx.storage?.get === 'function'
-      ? new ivm.Reference(async (k: string) => {
+      ? new ivmRT.Reference(async (k: string) => {
           const v = await callerCtx!.storage!.get(k);
           return v;
         })
       : undefined,
     storage_set: typeof callerCtx.storage?.set === 'function'
-      ? new ivm.Reference(async (k: string, v: string) => {
+      ? new ivmRT.Reference(async (k: string, v: string) => {
           await callerCtx!.storage!.set(k, v);
         })
       : undefined,
@@ -437,7 +473,7 @@ async function invokeUserMethod(
 
   const result = await methodRef.apply(
     undefined,
-    [ctxShim.derefInto(), new ivm.ExternalCopy([...args]).copyInto()],
+    [ctxShim.derefInto(), new ivmRT.ExternalCopy([...args]).copyInto()],
     {
       timeout: timeoutMs,
       result: { promise: true, copy: true },
