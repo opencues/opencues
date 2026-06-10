@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Feature — Claude Fable 5 support + global `anthropic-subscription` routing
+
+Anthropic shipped **Claude Fable 5** (Mythos-class frontier model) on 2026-06-09. This change wires it across both provider paths AND adds a global control for how every anthropic-class `with <model>` override gets dispatched.
+
+- **`@opencues/core` (0.3.6 → 0.3.7)** — Fable 5 wired into both provider adapters:
+  - `llm-provider.ts:anthropic.knownModels` adds `claude-fable-5` (HTTP API path).
+  - `llm-provider.ts:claude-code-cli.knownModels` adds `fable` + `claude-fable-5` (subscription path).
+  - `providers/claude-cli-daemon.ts` gains a new `fable` model family with Opus-mirroring flag tuning (`CLAUDE_CODE_DISABLE_THINKING=1`, `MAX_THINKING_TOKENS=0`, no `--effort`) pending a real `tests/benchmarks/thinking-budget/` row.
+  - `model-aliases.ts` `COMMON_ALIASES['fable']` resolves `with fable _` to `(anthropic, claude-fable-5)`. The CLI's `--model` does NOT alias-resolve short `fable` — only `opus/sonnet/haiku` are CLI-side aliases — so passing the full id `claude-fable-5` is what the daemon actually sends.
+- **Subscription preference — every anthropic-class `with` (anthropic / claude / opus / sonnet / haiku / fable / any full id) auto-routes through the local `claude` CLI** when the binary is on PATH. New `applySubscriptionPreference` post-processor in `model-aliases.ts` rewrites every override whose resolved provider is `'anthropic'` to `'claude-code-cli'` (model string passes verbatim). Non-anthropic overrides (`with cerebras`, `with gemini`, `with gpt-oss`, …) are never touched.
+  - `isClaudeCliAvailable()` helper in `providers/claude-cli-daemon.ts` caches a `which claude` probe per-process. Cold ~3-8 ms, warm ~0.002 ms.
+  - `resolveOverride` in both `FluidBlankSource` and `TransformBlankSource` now short-circuits on `provider.transport === 'cli'` before its `apiKey` gate — the CLI provider auths via `claude /login`, not an env var, so the lookup would have rejected every subscription override otherwise. Caught by agentic scenarios 72 + 74 during validation.
+- **`@opencues/runtime` (0.3.0 → 0.3.1)** — New `anthropic-subscription` global scalar in `OPENCUES.md`, registered in the FEATURES menu so `opencues settings _` cycles it. Three values:
+  - **`prefer`** (default) — auto-route through CLI when available, silently fall back to HTTP API when missing.
+  - **`only`** — billing safety. Always dispatch through CLI; the call FAILS at spawn time if the binary isn't on PATH (no silent API charge).
+  - **`off`** — global opt-out; every anthropic-class override goes through the HTTP API regardless of CLI availability.
+  - The scalar flows OpenCuesState → CueContext → applySubscriptionPreference, hot-reloads via ConfigLoader.
+- **Per-call cost trade-off**. Subscription calls are bundled in the user's Pro/Max/Team/Enterprise plan but average 30–100% slower than the API (no streaming, higher TTFT variance). Bench across both paths confirmed Fable 5 at 4–10s end-to-end typical (vs sub-second for Haiku).
+- **No runtime fallback yet**. If the CLI is installed but auth has expired or the model isn't on the user's subscription tier, the dispatch surfaces the CLI error rather than silently retrying through the API. Adding runtime fallback would need explicit error classification + a session-level "CLI is broken" cache; tracked as a follow-up.
+- **Tests**: 32 unit tests in `model-aliases.test.ts` pin every routing cell (including the new `mode='off' | 'only'` branches and the non-anthropic-untouched invariant). Plus end-to-end agentic scenarios 72-75 in opencues-agentic, all green on opencode 1.14.17. Existing override scenarios 65-67 updated to pin `anthropic-subscription: off` so their assertions stay deterministic.
+- **Docs**: `docs/architecture/model-override.md` + `docs/features/model-override.md` document the full coverage matrix, plumbing, cost trade-off, and "no runtime fallback" caveat. The feature-table at the top of `docs/features/model-override.md` now lists `fable` alongside opus/sonnet/haiku.
+
 ### Security — user-blank loader migrated to `isolated-vm` — F1 escape closed (INFOSEC F1)
 
 **This is the structural fix for the F1 vm-sandbox escape.** Node's `vm.runInContext` is not a security boundary against adversarial JS — `Promise.constructor('return process')()` reaches the host realm, then `process.env` exposes every API key and `child_process.execSync` runs arbitrary commands. The June 2026 security review live-confirmed this against the shipped sandbox. The prior PR shipped a stopgap (load-time warn); this PR closes the gap structurally.
