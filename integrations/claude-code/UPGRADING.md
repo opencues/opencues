@@ -4,6 +4,41 @@ Runbook for moving the Claude Code integration from one upstream version to
 another. CC's distribution + patch surface have changed substantially across
 the 2.1.x line and this guide reflects the current state.
 
+## Are you a USER (your fork is behind) or a MAINTAINER (bumping the pin)?
+
+**User — your fork is at an older version, you want to catch up to the
+shipped `current-pin`:** one command.
+
+```bash
+git pull                           # gets the new compat.json from origin
+opencues update claude-code        # rewrites your fork's package.json pin
+                                   # + reinstalls + repatches
+# Restart Claude Code (close, then re-launch claude-cues)
+```
+
+That's the whole upgrade. The command is idempotent — re-running when
+already current prints `already at current-pin <ver> — nothing to do.`.
+
+**Cross-shape note (one-time, 2.1.111 → 2.1.113+):** Anthropic switched
+distribution shape from cli.js to a native bun-compile binary in 2.1.113.
+`opencues update` handles the cutover transparently — npm install drops
+the cli.js and writes the new `bin/claude.exe` into your fork's
+node_modules; tweakcc detects the shape and applies the right patch path.
+You don't need to do anything special. **However**, if you maintain a
+shell alias like `alias claude-cues='node ~/claude-code-cues/…/cli.js'`
+(the pre-2.1.113 shape), update it after upgrade — cli.js is gone:
+
+```bash
+alias claude-cues='~/claude-code-cues/node_modules/@anthropic-ai/claude-code/bin/claude.exe'
+```
+
+**Maintainer — you're validating a new upstream version and want to ship
+it as the default for everyone:** the runbook below ("The dance"). Probe
+seams, update `compat.json` + `CLAUDE.md` + the `tested:` array, run the
+agentic harness, commit.
+
+---
+
 ## TL;DR — the two patch shapes
 
 CC ships two different distribution shapes within the same minor line:
@@ -98,9 +133,11 @@ For the **native binary shape** (2.1.113+):
 npm pack @anthropic-ai/claude-code-linux-x64@<new-version> --pack-destination /tmp
 tar xzf /tmp/anthropic-ai-claude-code-linux-x64-*.tgz -C /tmp/cc-bin --strip-components=1
 # Tweakcc's nativeInstallation module extracts cli.js from the binary's
-# .bun ELF section. Use its CLI directly to dump for inspection:
+# .bun ELF section. Use its `unpack` subcommand to dump for inspection
+# (the env-var path is optional — `unpack` accepts the binary as a
+# positional too):
 cd integrations/claude-code/tweakcc
-TWEAKCC_CC_INSTALLATION_PATH=/tmp/cc-bin/claude node dist/index.mjs --dump-cli > /tmp/cc-bin-cli.js
+node dist/index.mjs unpack /tmp/cc-bin-cli.js /tmp/cc-bin/claude
 # Now grep for anchors against /tmp/cc-bin-cli.js the same way as above
 ```
 

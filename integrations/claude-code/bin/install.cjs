@@ -216,6 +216,12 @@ function doInstall() {
         // runtime bundle." Now the srcHash check rebuilds automatically
         // on drift; --rebuild is still useful for force-from-scratch.
         console.log(`  ${'\x1b[2m'}Pass${'\x1b[0m'} ${'\x1b[1m--rebuild\x1b[0m'} ${'\x1b[2m'}to force a nuke-and-reinstall from scratch.${'\x1b[0m'}`);
+        // Still fire the stale-alias detector — a user could be
+        // running `opencues install` post-upgrade purely as a sanity
+        // check, and they're equally affected by a stale alias in
+        // their shell rc. The detector is a no-op when nothing's
+        // stale.
+        warnStaleClaudeCuesAlias(fork);
         return;
       }
       console.log(`${'\x1b[33m▸\x1b[0m'} bundle stale (${drift.reason}). Rebuilding...`);
@@ -235,6 +241,14 @@ function doInstall() {
     process.exit(1);
   }
   console.log(`\n✓ ${fork.root} (${fork.shape}) installed + validated.`);
+
+  // Stale-alias detector. Pre-2.1.113 the launch alias pointed at
+  // `node <fork>/.../cli.js`. Post-cutover the fork ships a native
+  // bun-binary at `<fork>/.../bin/claude.exe` with NO cli.js — so the
+  // old alias is broken after the user upgrades. Doesn't auto-edit
+  // their shell rc (that's invasive); just prints the correct alias
+  // line and the rc paths that mention it.
+  warnStaleClaudeCuesAlias(fork);
 
   // Print the opt-in hint for the statusline. We install statusline.sh
   // into the fork's .cues/ dir but do NOT auto-edit ~/.claude/settings.json
@@ -674,6 +688,50 @@ function validateFork(fork) {
   fork.shape = liveShape;
   fork.target = liveShape === 'cli.js' ? cliJs : nativeBin;
   return { ok: true };
+}
+
+// Best-effort stale-alias detector. Greps the common shell rc files
+// (~/.bashrc, ~/.zshrc, ~/.bash_aliases, ~/.config/fish/config.fish)
+// for an `alias claude-cues=…` line that points at a cli.js path. If
+// we installed a native-binary shape, the cli.js path is dead and
+// running `claude-cues` after upgrade fails with "Cannot find
+// module". Print one info block with the correct line + the file
+// they need to edit. No write — that's invasive.
+function warnStaleClaudeCuesAlias(fork) {
+  if (fork.shape !== 'native') return; // cli.js fork — old alias still works
+  const candidates = [
+    path.join(HOME, '.bashrc'),
+    path.join(HOME, '.zshrc'),
+    path.join(HOME, '.bash_aliases'),
+    path.join(HOME, '.config', 'fish', 'config.fish'),
+  ];
+  const stale = [];
+  // Match: alias claude-cues=… that mentions cli.js. Allows quotes +
+  // bash/zsh/fish variants. Doesn't match an alias pointing at
+  // bin/claude.exe (already correct).
+  const re = /alias\s+claude-cues\s*[= ].*cli\.js/;
+  for (const f of candidates) {
+    if (!fs.existsSync(f)) continue;
+    try {
+      const lines = fs.readFileSync(f, 'utf8').split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        if (re.test(lines[i])) stale.push({ file: f, lineNo: i + 1, line: lines[i].trim() });
+      }
+    } catch { /* fail-silent */ }
+  }
+  if (stale.length === 0) return;
+  const correct = `alias claude-cues='${path.join(fork.root, 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe')}'`;
+  console.log('');
+  console.log('\x1b[33mNote:\x1b[0m your shell config has a `claude-cues` alias pointing at the pre-2.1.113 cli.js path,');
+  console.log('which no longer exists after the upgrade to a native-binary CC version. Update it to:');
+  console.log('');
+  console.log(`  ${correct}`);
+  console.log('');
+  console.log('Detected stale alias in:');
+  for (const s of stale) {
+    console.log(`  ${s.file}:${s.lineNo}`);
+    console.log(`    \x1b[2m${s.line}\x1b[0m`);
+  }
 }
 
 function checkCompat(cliJsPath) {
