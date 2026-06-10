@@ -131,19 +131,20 @@ if [ -n "${OPENCUES_CC_TARGET:-}" ]; then
   # Pre-2.1.113 we only ever ran against cli.js. The native-binary
   # fork (2.1.113+) needs the extra hop. Detect by basename + adjust.
   #
-  # Path resolution uses `realpath -m` (no-existence-required) so a
-  # FRESH fork (e.g. ~/claude-code-cues-170 with just a package.json
-  # and no node_modules yet) doesn't trip the `cd && pwd` form on
-  # missing intermediate dirs. node-pinned forks bootstrap their npm
-  # install in step 4; cd-based resolution would fail before that
-  # ever runs.
+  # Path resolution uses Node's `path.resolve` so a FRESH fork (e.g.
+  # ~/claude-code-cues-170 with just a package.json and no node_modules
+  # yet) doesn't trip the `cd && pwd` form on missing intermediate dirs.
+  # We can't use `realpath -m` here — that's a GNU coreutils flag and
+  # BSD realpath on macOS lacks it (see CLAUDE.md § "Cross-platform
+  # shell scripts"). Node is a hard install pre-req anyway, so shelling
+  # out gives a portable normalizer with no extra dependency.
   _TARGET_BASENAME="$(basename "$OPENCUES_CC_TARGET")"
   case "$_TARGET_BASENAME" in
     cli.js)
-      CC_FORK_DIR="$(realpath -m "$(dirname "$OPENCUES_CC_TARGET")/../../..")"
+      CC_FORK_DIR="$(node -e 'var p=require("path");process.stdout.write(p.resolve(p.dirname(process.argv[1]), "..", "..", ".."))' "$OPENCUES_CC_TARGET")"
       ;;
     claude.exe|claude)
-      CC_FORK_DIR="$(realpath -m "$(dirname "$OPENCUES_CC_TARGET")/../../../..")"
+      CC_FORK_DIR="$(node -e 'var p=require("path");process.stdout.write(p.resolve(p.dirname(process.argv[1]), "..", "..", "..", ".."))' "$OPENCUES_CC_TARGET")"
       ;;
     *)
       echo "Error: OPENCUES_CC_TARGET basename '$_TARGET_BASENAME' not recognised." >&4
