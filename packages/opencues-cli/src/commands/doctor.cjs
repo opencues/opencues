@@ -823,15 +823,27 @@ module.exports = async function doctor(argv, ctx) {
     const scriptedBlanks = scanScriptedBlanks(HOME);
     if (scriptedBlanks.total > 0) {
       const strictCount = scriptedBlanks.strict;
-      const unstrictCount = scriptedBlanks.total - strictCount;
-      if (unstrictCount === 0) {
-        s.ok(`scripted blanks declaring sandbox: strict (${strictCount}/${scriptedBlanks.total})`, true);
+      const intactCount = scriptedBlanks.shippedIntact;
+      const modifiedCount = scriptedBlanks.userModified;
+      // The warning gate is ONLY user-modified blanks. Shipped-intact
+      // ones (volume, brightness, etc.) inherit trust from the repo
+      // the user already ran `opencues install` against; their
+      // `sandbox: off` was a deliberate design call (system-binary
+      // access outside any sandbox). Modified blanks are the surface
+      // the user can act on — they either added it locally or a pack
+      // shadowed a shipped name with different bytes (hash-mismatch).
+      const trustedCount = strictCount + intactCount;
+      const trustedSuffix = intactCount > 0
+        ? ` (${strictCount} strict + ${intactCount} shipped-intact)`
+        : '';
+      if (modifiedCount === 0) {
+        s.ok(`scripted blanks trusted (${trustedCount}/${scriptedBlanks.total})${trustedSuffix}`, true);
       } else {
-        s.bad(`scripted blanks declaring sandbox: strict (${strictCount}/${scriptedBlanks.total}) — ${unstrictCount} run UNCONFINED`, false);
+        s.bad(`scripted blanks trusted (${trustedCount}/${scriptedBlanks.total})${trustedSuffix} — ${modifiedCount} user-modified run UNCONFINED`, false);
         findings.push({
           sev: sandboxMechanismOK ? 'warn' : 'warn',
-          msg: `${unstrictCount} of ${scriptedBlanks.total} installed scripted blanks have no \`sandbox: strict\` — they run with the user's full filesystem + network privileges` +
-               (scriptedBlanks.unstrictPaths.length ? `\n         examples: ${scriptedBlanks.unstrictPaths.slice(0, 3).join(', ')}` : ''),
+          msg: `${modifiedCount} of ${scriptedBlanks.total} installed scripted blanks are user-modified (or pack-shadowed) and run with the user's full filesystem + network privileges` +
+               (scriptedBlanks.userModifiedPaths.length ? `\n         examples: ${scriptedBlanks.userModifiedPaths.slice(0, 3).join(', ')}` : ''),
           fix: 'add `sandbox: strict` to the blank\'s BLANK.md frontmatter, or remove the blank if you don\'t trust it',
         });
       }
@@ -1086,7 +1098,22 @@ function scanScriptedBlanks(home) {
     path.join(home, '.cues', 'blanks'),
     process.env.OPENCUES_HOME ? path.join(process.env.OPENCUES_HOME, 'blanks') : null,
   ].filter(Boolean);
-  const result = { total: 0, strict: 0, unstrictPaths: [] };
+  // Manifest categorises an unstrict blank as either `shippedIntact`
+  // (every file hash-matches the shipped artefact — trust inherited
+  // from the repo at install time) or `userModified` (the warning
+  // case the user can actually act on). A pack masquerading under
+  // a shipped name (e.g. ships its own `volume-blank.sh`) will hash-
+  // mismatch and land in userModified.
+  const manifest = loadShippedManifest();
+  const result = {
+    total: 0,
+    strict: 0,
+    shippedIntact: 0,
+    shippedIntactPaths: [],
+    userModified: 0,
+    userModifiedPaths: [],
+    unstrictPaths: [], // legacy field — kept for back-compat with the doctor render below
+  };
   for (const root of roots) {
     if (!fs.existsSync(root)) continue;
     let entries;
@@ -1094,7 +1121,8 @@ function scanScriptedBlanks(home) {
     catch { continue; }
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
-      const blankMd = path.join(root, entry.name, 'BLANK.md');
+      const blankDir = path.join(root, entry.name);
+      const blankMd = path.join(blankDir, 'BLANK.md');
       if (!fs.existsSync(blankMd)) continue;
       let text;
       try { text = fs.readFileSync(blankMd, 'utf8'); }
@@ -1109,12 +1137,76 @@ function scanScriptedBlanks(home) {
       const strictMatch = fm.match(/^\s*sandbox\s*:\s*(\w+)/m);
       if (strictMatch && strictMatch[1] === 'strict') {
         result.strict++;
+        continue;
+      }
+      // Unstrict: shipped-intact vs user-modified.
+      if (isShippedIntact(entry.name, blankDir, manifest)) {
+        result.shippedIntact++;
+        result.shippedIntactPaths.push(entry.name);
       } else {
+        result.userModified++;
+        result.userModifiedPaths.push(entry.name);
         result.unstrictPaths.push(entry.name);
       }
     }
   }
   return result;
+}
+
+// Loads `packages/opencues-core/dist/shipped-manifest.json` (emitted
+// by `scripts/build-shipped-manifest.cjs` at core build time). Returns
+// null when the manifest is missing — every unstrict blank then falls
+// through to userModified (the SAFE default — better to over-warn
+// than silently exempt). Builds re-emit the manifest, so a fresh
+// install always has one.
+function loadShippedManifest() {
+  try {
+    const corePath = require.resolve('@opencues/core/package.json', {
+      paths: [path.resolve(__dirname, '../../..')],
+    });
+    const manifestPath = path.join(path.dirname(corePath), 'dist/shipped-manifest.json');
+    if (!fs.existsSync(manifestPath)) return null;
+    const raw = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    if (!raw || raw.version !== 1 || !raw.blanks) return null;
+    return raw.blanks;
+  } catch { return null; }
+}
+
+// Returns true iff the user-level <blankDir> hash-matches every entry
+// in manifest[name]. Any extra file in the user dir (e.g. a colocated
+// helper the user added) means NOT intact — the surface they're
+// running is larger than what we shipped. Missing file (e.g. the
+// shipped .cs that hasn't been compiled yet) also means NOT intact —
+// we don't reason about which absences are benign.
+//
+// Compiled artefacts like .exe are excluded from the manifest at
+// generation time (`EXCLUDE_EXT`), so they don't break the equality —
+// the user-level dir holding the freshly-compiled VolCtl.exe is still
+// considered intact as long as BLANK.md + .sh + .cs match.
+function isShippedIntact(name, blankDir, manifest) {
+  if (!manifest || !manifest[name]) return false;
+  const expected = manifest[name];
+  const expectedKeys = Object.keys(expected);
+  let entries;
+  try { entries = fs.readdirSync(blankDir, { withFileTypes: true }); }
+  catch { return false; }
+  // Build the set of files in the user dir that should be in the
+  // manifest (skipping the same EXCLUDE_EXT compiled artefacts the
+  // manifest skipped).
+  const userFiles = entries
+    .filter(d => d.isFile() && !d.name.startsWith('.') && !d.name.endsWith('.exe'))
+    .map(d => d.name)
+    .sort();
+  if (userFiles.length !== expectedKeys.length) return false;
+  const crypto = require('node:crypto');
+  for (const f of expectedKeys) {
+    const userPath = path.join(blankDir, f);
+    if (!fs.existsSync(userPath)) return false;
+    const h = crypto.createHash('sha256');
+    h.update(fs.readFileSync(userPath));
+    if (h.digest('hex') !== expected[f]) return false;
+  }
+  return true;
 }
 
 // Read OPENCUES.md (or CUES.md) frontmatter and return a flat
@@ -1304,4 +1396,4 @@ function printHelp() {
 }
 
 // Internal helpers exposed for testing. Not part of the public surface.
-module.exports._internal = { scanScriptedBlanks };
+module.exports._internal = { scanScriptedBlanks, loadShippedManifest, isShippedIntact };

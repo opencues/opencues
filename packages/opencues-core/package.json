@@ -15,7 +15,7 @@
     "access": "restricted"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node ../../scripts/build-shipped-manifest.cjs",
     "typecheck": "tsc --noEmit",
     "test": "find dist -name '*.test.js' ! -name 'feature-registry*.test.js' ! -name 'llm-provider.drift.test.js' ! -name 'llm-provider.temperature.test.js' ! -name 'conformance.test.js' | xargs node --test && vitest run",
     "prepublishOnly": "node ../../scripts/prepublish-guard.cjs",
