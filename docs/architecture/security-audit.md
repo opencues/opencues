@@ -185,6 +185,28 @@ CLI reference: `opencues review --help`.
   on Linux but bwrap is missing. `opencues doctor` flags it under
   "OS-level sandbox" with the install command. README documents the
   recommendation.
+- **#17 (warning-fatigue: doctor flagged shipped `sandbox: off` blanks
+  forever)** — June 2026. `volume` + `brightness` declare `sandbox:
+  off` because they need system-binary access (Core Audio,
+  xrandr/VolCtl.exe) outside any sandbox bubblewrap can grant. The
+  blanket warning persisted indefinitely after install, training users
+  to ignore the "scripted blanks run UNCONFINED" line — hiding any
+  genuinely risky USER-installed `sandbox: off` blank. **Fix**:
+  hash-based trust. `scripts/build-shipped-manifest.cjs` emits
+  `packages/opencues-core/dist/shipped-manifest.json` with SHA-256s
+  of every file under `defaults/blanks/<name>/`. `opencues doctor`
+  categorises each unstrict scripted blank as `shipped-intact`
+  (every file hash-matches) or `user-modified`. Only user-modified
+  fires the warning. A pack masquerading under a shipped name (e.g.
+  ships a hostile `volume-blank.sh`) hash-mismatches and lands in
+  user-modified — so the exemption is spoof-proof against
+  external packs without requiring signing infrastructure. Residual
+  trust rests on the same repo the user already ran `opencues
+  install` against; a repo compromise invalidates manifest +
+  scripts in lockstep. Pinned by 6 tests in
+  `doctor.scanblanks.test.cjs` (matching hashes, byte-flip spoof,
+  extra-file detection, unknown blank name, missing manifest,
+  `.exe` ignored).
 
 ## Lessons from prior open-standard rollouts (MCP / OpenClaw)
 
