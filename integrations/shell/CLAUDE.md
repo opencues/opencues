@@ -46,7 +46,7 @@ pre-open state.
 |---|---|
 | `pin.json` | OpenTUI version pin (no upstream fork — what's pinned is the renderer stack). |
 | `compat.json` | Declared compatibility (`host-kind: self`). |
-| `patches/setup.sh` | One-command installer (Bun, build runtime, optional symlink). |
+| `patches/setup.sh` | One-command installer (Bun, build runtime, optional symlink). Uses full-recursive `cp -r packages/opencues-{core,runtime}/dist` into `integrations/shell/node_modules/@opencues/` — covers any new dist subdir automatically. Don't switch to a hard-coded subdir list; doing so re-introduces the silent-boot-failure bug class the June 2026 PR #117 providers/ regression hit on CC. The CC-specific CI gate that catches this is `scripts/check-cc-bundle-integrity.sh`; add a parallel gate before changing the copy shape here. |
 | `conf/shell.tmux.conf` | Private tmux config loaded by `bin/oc-shell` (doesn't touch `~/.tmux.conf`). Holds all Alt+Shift+arrow + Ctrl+Alt+\* bindings, status-bar format, pane styling. |
 | `src/app.tsx` | The Solid app — `<textarea>` (full-pane in keep-alive mode; with statusline below in legacy popup mode). |
 | `src/bootstrap.ts` | OpenCues wiring (analog of `integrations/opencode/patches/opencuesBootstrap.ts`, but without the holder/publish dance). |

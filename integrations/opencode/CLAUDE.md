@@ -42,7 +42,14 @@ The four files patched in the fork (paths relative to the cloned
 4. **Install** the built artefacts into the fork at
    `node_modules/@opencues/{core,runtime}/` by `cp -r`'ing
    `dist/` + `package.json`. No symlinks — Node's bare-specifier
-   resolution finds them on its own.
+   resolution finds them on its own. The full-recursive `cp -r dist/`
+   shape covers any new dist subdir automatically, which is the
+   structural property that kept OC clear of the June 2026 PR #117
+   providers/ regression that hit CC. If you ever switch this to a
+   hard-coded subdir list ("copy only sources/, runtime/, …"), the
+   same silent-boot-failure bug class returns. The CI gate for that
+   class is `scripts/check-cc-bundle-integrity.sh` (CC-specific
+   today); add a parallel gate before changing the copy shape here.
 5. **Patch** the fork in place: drops `opencues.ts` bootstrap + edits
    the four `.tsx` files via anchor-based `str.replace`. Each patch
    is idempotent — looks for a marker string from its injection and
