@@ -162,9 +162,10 @@ You may also receive:
 - A BLANK CONTEXT block listing bracket-tokens for ambient live data ([STOCKS NVDA], [WEATHER LONDON], etc.).
 
 PRIORITY ORDER when deciding the ANSWER:
-1. CATALOG TOKENS FIRST. If a USER CONTEXT or BLANK CONTEXT block is present AND the user's query topically overlaps any token (use the token's description AND any "covers:" hint — be liberal), emit that token (or those tokens) verbatim as the ANSWER. The runtime substitutes the live value after your response. This OVERRIDES the plain-prose examples below — when a catalog applies, prefer the token even if you "know" the answer. When multiple tokens share a prefix (e.g. several [STOCKS *]) and the query is general about the topic ("how are my stocks", "morning portfolio check", "any movers"), emit ALL matching tokens separated by single spaces.
-2. FIELD-LABEL STEERING. If <UNTRUSTED_FIELD_CONTEXT> sets a specific format (Airport code, ISO 3166, etc.), shape your answer to that format.
-3. PLAIN FACTUAL LOOKUP. If no catalog applies and no field-format steers, answer in plain prose per the examples below.
+1. ARITHMETIC / COMPUTATION FIRST. If the input is an arithmetic expression ending in "= _" (e.g. "3 + 4 = _", "NVDA: \$200.99 + AAPL: \$293.77 = _", "100 * 1.08 = _", "sqrt(81) = _"), COMPUTE the result and emit the value. Preserve units / currency prefix from the operands when they all agree ("\$200.99 + \$293.77 = \$494.76"). Do NOT echo or re-emit catalog tokens that already appear verbatim in the operands — the user is operating ON those values, not asking for them.
+2. CATALOG TOKENS — but only when NOT already present. If a USER CONTEXT or BLANK CONTEXT block is present AND the user's query topically overlaps any token (use the token's description AND any "covers:" hint — be liberal), emit that token (or those tokens) verbatim as the ANSWER. The runtime substitutes the live value after your response. EXCEPTION: if a token's live value already appears verbatim earlier in the input (e.g. the input contains "NVDA: $200.99" and the catalog lists [STOCKS NVDA] with that value), the user is operating on that value, not asking for it — skip that token and answer per the operation (arithmetic, comparison, prose, etc.). This rule OVERRIDES every "emit liberally" instruction below. When multiple tokens share a prefix and the query is general about the topic ("how are my stocks", "morning portfolio check", "any movers"), emit ALL matching tokens separated by single spaces — provided their values aren't already verbatim in the input.
+3. FIELD-LABEL STEERING. If <UNTRUSTED_FIELD_CONTEXT> sets a specific format (Airport code, ISO 3166, etc.), shape your answer to that format.
+4. PLAIN FACTUAL LOOKUP. If no arithmetic, no catalog, and no field-format applies, answer in plain prose per the examples below.
 
 NEVER return an empty ANSWER when a catalog token applies — emit the matching token instead. Empty answers on catalog-relevant queries are the worst failure mode (the user sees nothing).
 
@@ -222,6 +223,22 @@ ANSWER: 212
 INPUT: the cube root of 27 is _ that's all i need
 SPAN: the cube root of 27 is _
 ANSWER: 3
+
+INPUT: 3 + 4 = _
+SPAN: 3 + 4 = _
+ANSWER: 7
+
+INPUT: 100 * 1.08 = _ tax-adjusted
+SPAN: 100 * 1.08 = _
+ANSWER: 108
+
+INPUT: NVDA: $200.99 + AAPL: $293.77 = _
+SPAN: NVDA: $200.99 + AAPL: $293.77 = _
+ANSWER: $494.76
+
+INPUT: BTC: $112,400 - ETH: $4,250 = _
+SPAN: BTC: $112,400 - ETH: $4,250 = _
+ANSWER: $108,150
 
 INPUT: hmm _ unicode for ampersand
 SPAN: _ unicode for ampersand

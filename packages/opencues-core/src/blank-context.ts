@@ -223,7 +223,9 @@ export function renderBlankContextCatalog(
 
 The "covers:" hint after each token lists synonyms, jargon, and casual phrasings that COUNT AS the topic. Match LIBERALLY against these hints — if the user's words appear (or paraphrase) any covers-term, the token applies. Examples that count as overlap: "outside" / "umbrella" / "jacket" / "do i need a coat" all overlap WEATHER's covers list. "digital currency" / "coin" / "blockchain" all overlap CRYPTO. "holdings" / "watchlist" / "equities" / "portfolio" all overlap STOCKS.
 
-NEVER return an empty answer when ANY covers-term appears in the user's query — emit the matching token(s) instead. Empty answers on topical queries are the worst failure mode.
+ALREADY-PRESENT EXCEPTION: when a catalog token's live value already appears verbatim in the input (e.g. the user wrote "NVDA: $200.99" earlier in the sentence and [STOCKS NVDA] would resolve to that same string), the user is OPERATING ON that value — they're doing arithmetic, comparison, formatting, prose-rewriting, etc. — not asking for it. Do NOT re-emit that token. Answer per the operation: compute the sum for "X + Y = _", compute the difference for "X - Y = _", emit the formatted prose for "X is _ today", etc. This is the single highest-priority exception and overrides the "emit liberally" instructions above.
+
+NEVER return an empty answer when ANY covers-term appears in the user's query AND the catalog token is NOT already-present — emit the matching token(s) instead. Empty answers on topical queries are the worst failure mode.
 
 ${examples}
 

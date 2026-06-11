@@ -1188,6 +1188,22 @@ export class BlankFill {
     // auto-populate the system volume even though the user can't see
     // or cycle the result.
     const supportsCycling = this.adapter.supportsCycling?.() ?? true;
+    // Skip candidate keyword matches that fall inside an already-
+    // substituted multi-word span. Without this guard, BlankFill loops
+    // on substituted output that contains a registered keyword:
+    // `nvda _` → `Nvidia NVDA: $200.42`; then `nvidia` (inside the
+    // substituted text) re-matches the stocks blank's `nvidia`
+    // keyword on every next text-change, re-firing the substitute
+    // forever and clobbering any sibling blanks (`+ apple _`, `= _`)
+    // that try to fire alongside it. The stocks-chain regression
+    // (June 2026) is the canonical incident — `nvda _ + apple _ = _`
+    // produced "apple •" + "= •" stuck loading because nvda kept
+    // re-substituting and reset the resolver's state.
+    const indexInsideSubstitutedSpan = (idx: number): boolean => {
+      if (!this.dynDefs) return false;
+      const span = this.dynDefs.findSpanContaining(idx);
+      return span !== null;
+    };
     for (let j = blankIdx - 1; j >= 0; j -= 1) {
       for (const [name, blank] of this.configLoader.blanks.entries()) {
         const blankKeywords = (blank as { blankKeywords?: readonly string[] }).blankKeywords;
@@ -1218,6 +1234,18 @@ export class BlankFill {
             }
           }
           if (matches) {
+            // Reject the match if any word in the keyword span sits
+            // inside an already-substituted multi-word DynDef span.
+            // See `indexInsideSubstitutedSpan` declaration above for
+            // the bug class this prevents.
+            let insideSubstitute = false;
+            for (let k = 0; k < kwWords.length; k += 1) {
+              if (indexInsideSubstitutedSpan(start + k)) {
+                insideSubstitute = true;
+                break;
+              }
+            }
+            if (insideSubstitute) continue;
             return {
               index: blankIdx,
               keyword: kwLc,
