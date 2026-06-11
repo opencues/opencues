@@ -242,12 +242,56 @@ function detectExtraCCForks() {
   return out;
 }
 
+// Enumerate EVERY CC fork on disk that's a legit install (canonical +
+// any `~/claude-code-cues*` siblings that carry a real CC binary).
+// Returns: [{ root, target, shape }] for each fork.
+//
+// Why this exists: PR #117 (June 2026) bumped @opencues/{core,runtime}
+// versions; only the canonical fork got rebuilt by `opencues install`.
+// The `-170` dev fork — documented in CLAUDE.md as a load-bearing test
+// install — kept running its stale bundle for hours with no warning,
+// because every install-path command (install / update / doctor)
+// historically only knew about the canonical fork.
+//
+// Fix shape: install/update fans out across whatever's on disk, so
+// "I ran the installer once, everything's fresh" actually holds.
+// detectExtraCCForks's older "delete the relics" framing is retained
+// for genuinely orphaned dirs (no CC binary at all); anything with a
+// real binary is rebuilt instead.
+function enumerateCCForks() {
+  const HOME = os.homedir();
+  const out = [];
+  let entries;
+  try {
+    entries = fs.readdirSync(HOME, { withFileTypes: true });
+  } catch { return out; }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (!entry.name.startsWith('claude-code-cues')) continue;
+    const root = path.join(HOME, entry.name);
+    const cliJs = path.join(root, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
+    const nativeBin = path.join(root, 'node_modules', '@anthropic-ai', 'claude-code', 'bin', 'claude.exe');
+    if (fs.existsSync(cliJs)) {
+      out.push({ root, target: cliJs, shape: 'cli.js' });
+    } else if (fs.existsSync(nativeBin)) {
+      out.push({ root, target: nativeBin, shape: 'native' });
+    }
+    // Dirs with no binary at all are skipped here — detectExtraCCForks
+    // covers the "orphan dir to delete" surface.
+  }
+  // Canonical first if present; rest sorted for stable output.
+  const canonical = out.find(f => f.root === path.join(HOME, 'claude-code-cues'));
+  const others = out.filter(f => f !== canonical).sort((a, b) => a.root.localeCompare(b.root));
+  return canonical ? [canonical, ...others] : others;
+}
+
 module.exports = {
   writeMarker,
   readMarker,
   checkDrift,
   enumerateInstalledHosts,
   detectExtraCCForks,
+  enumerateCCForks,
   getSourceVersions,
   computeSourceHash,
   FILENAME,

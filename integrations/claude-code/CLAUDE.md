@@ -72,28 +72,50 @@ patched fork is a no-op (we look for the `__oc.failed` /
 
 ## Iteration loop
 
-After changes to `opencuesRuntime.ts` or `@opencues/runtime`, **rebuild
-both forks** — the cli.js fork at `~/claude-code-cues/` AND the
-native-binary fork at `~/claude-code-cues-150/`. `setup.sh` only targets
-the cli.js fork by default; the 150 fork keeps running its stale bundled
-runtime until you tell it explicitly. Either is enough to make a fix
-look "applied" when it isn't — and the user can't tell which fork they
-have running just by looking at the CC TUI.
+After changes to `opencuesRuntime.ts` or `@opencues/runtime`, run **one
+command**:
 
 ```bash
-# 1. Patch the cli.js fork (default)
-integrations/claude-code/patches/setup.sh
-
-# 2. Patch the 150 native-binary fork (explicit target — pass the bun-
-#    binary path; setup.sh auto-detects the cli.js-vs-native shape).
-OPENCUES_CC_TARGET=~/claude-code-cues-150/node_modules/@anthropic-ai/claude-code/bin/claude.exe \
-  integrations/claude-code/patches/setup.sh
-
-# Then restart both: claude-cues and claude-cues-150
+opencues install claude-code
 ```
 
-`--keep-state` skips the nuke (~39s vs the 1m 5s warm install) when
-you're only iterating on patch sources — pass it to both invocations.
+It auto-detects every `~/claude-code-cues*` dir with a real CC binary
+and patches each in sequence. Canonical first, then dev forks
+(`-150`, `-158`, `-170`, …) in name order. Healthy + fresh forks skip;
+stale ones rebuild. ~1m 5s per fork warm.
+
+**Why the fan-out exists** (June 2026, PR following #117): PR #117
+bumped `@opencues/{runtime,core}`. The release pass rebuilt the
+canonical fork; the `-170` dev fork was forgotten. Direct launches of
+`~/claude-code-cues-170/.../claude.exe` ran the stale 0.3.0 bundle for
+hours, dropping every cue + blank silently. No warning, no test
+coverage (unit tests run source, not bundles), no doctor row. The
+install path now treats every CC fork on disk as a real install
+target — "I ran the installer once, every fork is fresh" is now
+structurally true.
+
+Direct setup.sh still works for single-fork iteration:
+
+```bash
+# Single fork, explicit target (CI, one-off binaries outside ~/claude-code-cues*).
+OPENCUES_CC_TARGET=~/claude-code-cues-170/node_modules/@anthropic-ai/claude-code/bin/claude.exe \
+  integrations/claude-code/patches/setup.sh
+```
+
+`opencues install claude-code --canonical-only` skips the fan-out
+without pinning a target — useful when you're certain only the
+canonical fork matters.
+
+`--keep-state` skips the nuke (~39s vs 1m 5s warm) when you're only
+iterating on patch sources.
+
+**Boot-time advisory** (June 2026): every CC launch also runs
+`checkRuntimeDrift` from the runtime side. If a user launches a fork
+directly (bypassing `opencues run` self-heal AND the install fan-out),
+the runtime detects bundled-version drift on boot and writes a `warn`
+line to `/tmp/opencues.log` naming the fork + fix command. Closes the
+"silently broken stale fork" gap that the May/June 2026 dual-fork bugs
+both hit.
 
 > Why this matters: each fork has its own bundled `node_modules/@opencues/{core,runtime}`
 > copy. A fix to `packages/opencues-runtime/src/modules/resolver.ts` lands in

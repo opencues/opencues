@@ -90,6 +90,20 @@ step "CC patch boot smoke (catches scope errors in emitted JS)" node scripts/che
 # at boot for hours before the agentic harness caught it.
 step "runtime loads on bun (catches Node-only native imports)" bash scripts/check-runtime-loads-on-bun.sh
 
+# ─── 4c. CC fork bundle integrity (catches dist-subdir copy gaps) ───
+# Bug class (June 2026, providers/claude-cli-daemon): a PR adds a new
+# subdir under packages/opencues-{core,runtime}/dist/; setup.sh's
+# copy step misses it (the pre-fix version hard-coded "sources" only);
+# installed model-aliases.js requires the missing module; CC patch's
+# outer try/catch sets __oc.failed=true; user has no cues + no blanks
+# + no log line + no install error. validateFork passed because it
+# only checked for opencues markers, not for whether the runtime
+# actually loads. This evaluates the EXACT bundle setup.sh would
+# assemble + runs the same require chain the patch's bootstrap does,
+# from a clean NODE_PATH so the workspace's hoisted deps can't mask
+# the missing-module case. ~10s.
+step "CC fork bundle integrity (catches dist-subdir copy gaps)" bash scripts/check-cc-bundle-integrity.sh
+
 # ─── 5. Test hermeticity + full sweep ──────────────────────────────
 if [ -z "${SKIP_TESTS:-}" ]; then
   step "test-hermeticity (pnpm -r test + CLI tests, sandboxed \$HOME)" bash scripts/check-test-hermeticity.sh

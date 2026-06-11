@@ -33,7 +33,7 @@ import { createSourceReclassifier, resetSharedBufferState } from '../../../src/b
 import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import { AgentTaskState } from '../../../src/state/agent-task';
 import { applyDirectives } from '../../../src/render-directives';
-import { buildAgentLLMResolver, buildBlankContextProvider, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildAgentLLMResolver, buildBlankContextProvider, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { startEventBridge } from '../../../src/event-bridge';
 import type {
   BlankInvokeSpec,
@@ -477,6 +477,15 @@ export function boot(host: HostInfo): BootResult {
   };
 
   const adapter = new ClaudeCodeV21Adapter(bindings);
+
+  // Direct-launch drift advisory. CC's per-band boot wires modules by
+  // hand and predates `buildSharedRuntime` (where every other host gets
+  // this for free). Without this call the warning never fires for CC
+  // users launching the host directly (bypassing `opencues run`'s
+  // CLI-side srcHash check). Fire-and-forget; silent on any error.
+  // See boot-common.ts:checkRuntimeDrift for limits.
+  void checkRuntimeDrift(adapter);
+
   const hlState = new HighlightState();
   const dynDefs = new DynDefs();
   const spanFillState = new SpanFillState();

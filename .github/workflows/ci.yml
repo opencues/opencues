@@ -144,6 +144,39 @@ jobs:
       - name: Probe runtime load under Bun
         run: bash scripts/check-runtime-loads-on-bun.sh
 
+  cc-bundle-integrity:
+    name: CC fork bundle integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    # Asserts every require path the CC patch's bootstrap pulls is
+    # reachable from a freshly-assembled fork (the bundle setup.sh
+    # would copy into ~/claude-code-cues/node_modules/@opencues/).
+    # Bug class this guards: a PR adds a new file/subdir under
+    # packages/opencues-{core,runtime}/dist/ but setup.sh's copy step
+    # misses it; installed model-aliases.js then requires a missing
+    # module; CC patch's outer try/catch sets __oc.failed=true; user
+    # has no cues + no blanks + no log line + no install error. June
+    # 2026 PR #117 (providers/claude-cli-daemon) is the canonical
+    # incident — silent breakage on every user's CC session for
+    # hours. The script assembles the exact bundle setup.sh ships, then
+    # runs `require()` from a clean NODE_PATH (so workspace hoisting
+    # can't mask missing transitive deps) for every spec the CC patch
+    # references.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+      - name: Build @opencues/{core,runtime}
+        run: pnpm --filter @opencues/core --filter @opencues/runtime build
+      - name: Probe CC fork bundle integrity
+        run: bash scripts/check-cc-bundle-integrity.sh
+
   version-bump-gate:
     name: version-bump gate
     runs-on: ubuntu-latest

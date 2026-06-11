@@ -42,6 +42,13 @@ rebuild.
    by `cp -r`'ing `dist/` + `package.json`. No symlinks — Node's bare-specifier
    resolution finds them on its own. Each install is `rm -rf`'d first
    so a stale layout from an earlier setup.sh layout can't shadow.
+   Full-recursive `cp -r` here covers any new dist subdir automatically
+   — the structural property that kept Gemini clear of the June 2026
+   PR #117 providers/ regression that hit CC. Don't switch this to a
+   hard-coded subdir list ("copy only sources/, runtime/, …"); doing
+   so re-introduces the silent-boot-failure bug class CC fixed via
+   `scripts/check-cc-bundle-integrity.sh` and `validateFork`'s
+   per-fork boot-smoke probe in `install.cjs`.
 5. **Copy** `opencuesBootstrap.ts` to `<fork>/packages/cli/src/ui/opencues.ts`.
    The patched .tsx files import from `./opencues.js` (NodeNext
    resolution maps that to opencues.ts at build time).

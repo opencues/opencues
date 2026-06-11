@@ -85,15 +85,43 @@ module.exports = async function update(argv, ctx) {
                          (compat['host-kind'] === 'git' ? compatLib.readGitPin(ctx.REPO_ROOT, compat)?.version : null);
     if (installedPin === targetVersion) {
       // Host's own version matches — but bundled @opencues/{core,runtime}
-      // may be stale (May 2026 dual-fork bug class). When source has
-      // moved on since the install, transparently re-route to the
-      // rebuild path. Skipping this check is exactly what made the
-      // dual-fork bug silent — source had the fix, bundle didn't, and
-      // `opencues update cc` kept reporting "nothing to do".
-      const { checkDrift } = require('../lib/version-markers.cjs');
-      const installRoot = resolveInstallRoot(host, ctx);
-      const drift = installRoot ? checkDrift(installRoot, ctx) : { status: 'missing' };
-      const bundleStale = drift.status === 'stale';
+      // may be stale (May 2026 dual-fork bug class, then June 2026
+      // PR #117 dual-fork bug class). When source has moved on since
+      // the install, transparently re-route to the rebuild path.
+      // Skipping this check is exactly what made the dual-fork bugs
+      // silent — source had the fix, bundle didn't, and `opencues
+      // update cc` kept reporting "nothing to do".
+      const { checkDrift, enumerateCCForks } = require('../lib/version-markers.cjs');
+      // For CC: walk every fork on disk and check each. ANY fork stale
+      // → trigger the rebuild path (which itself fans out across all
+      // forks). Without this, a fresh canonical hid a stale -170 dev
+      // fork and the user got "nothing to do" + silent broken
+      // runtime. For non-CC hosts: single-fork drift check as before.
+      let bundleStale = false;
+      let staleSummary = null;
+      if (host === 'claude-code') {
+        const forks = enumerateCCForks();
+        const staleForks = [];
+        for (const fork of forks) {
+          const d = checkDrift(path.join(fork.root, '.cues'), ctx);
+          if (d.status === 'stale') {
+            staleForks.push({ fork, drift: d });
+          }
+        }
+        if (staleForks.length > 0) {
+          bundleStale = true;
+          staleSummary = staleForks
+            .map(({ fork, drift }) => `${fork.root} (bundled runtime ${drift.marker.runtime} vs source ${drift.source.runtime || '?'})`)
+            .join('; ');
+        }
+      } else {
+        const installRoot = resolveInstallRoot(host, ctx);
+        const drift = installRoot ? checkDrift(installRoot, ctx) : { status: 'missing' };
+        if (drift.status === 'stale') {
+          bundleStale = true;
+          staleSummary = `bundled runtime ${drift.marker.runtime} stale vs source ${drift.source.runtime || '?'}`;
+        }
+      }
       console.log(banner({ version: cliVersion(ctx), tagline: `update ${host}` }));
       console.log('');
       if (!bundleStale) {
@@ -101,9 +129,8 @@ module.exports = async function update(argv, ctx) {
         console.log(`  ${dim('To force a rebuild without changing version:')} ${bold('opencues install ' + host + ' --rebuild')}`);
         return 0;
       }
-      // Bundle drift detected — explain, then hand off to the rebuild
-      // path. Same shape as doctor's "stale bundled runtime" finding.
-      console.log(`${tag('warn')} ${host} pinned at ${bold(targetVersion)} but bundled runtime ${bold(drift.marker.runtime)} is stale vs source ${bold(drift.source.runtime || '?')} — rebuilding.`);
+      console.log(`${tag('warn')} ${host} pinned at ${bold(targetVersion)} but bundle drift detected — rebuilding.`);
+      console.log(`  ${dim(staleSummary)}`);
       console.log('');
       return rebuildHostInPlace(host, ctx);
     }
@@ -634,9 +661,22 @@ async function detectRunningHosts(targets) {
 
 function detectInstalled(HOME, REPO_ROOT) {
   const out = [];
+  // CC: detect canonical + any -<ver> dev forks on disk. The installer
+  // (integrations/claude-code/bin/install.cjs) fans out across all of
+  // them on a single `opencues update claude-code` run — so we only
+  // need ONE row here per logical host, not one per fork. The fan-out
+  // happens inside the host installer, not in this enumeration.
   const ccFork = path.join(HOME, 'claude-code-cues');
   if (fs.existsSync(path.join(ccFork, 'node_modules/@opencues/runtime'))) {
-    out.push({ host: 'claude-code', folder: 'claude-code', evidence: `${ccFork}/node_modules/@opencues/runtime exists` });
+    let evidence = `${ccFork}/node_modules/@opencues/runtime exists`;
+    try {
+      const { enumerateCCForks } = require('../lib/version-markers.cjs');
+      const forks = enumerateCCForks();
+      if (forks.length > 1) {
+        evidence += ` (+${forks.length - 1} dev fork${forks.length === 2 ? '' : 's'})`;
+      }
+    } catch { /* fall back to single-fork evidence */ }
+    out.push({ host: 'claude-code', folder: 'claude-code', evidence });
   } else if (fs.existsSync(path.join(HOME, '.claude/opencues/runtime'))) {
     out.push({ host: 'claude-code', folder: 'claude-code', evidence: '~/.claude/opencues/runtime exists (legacy)' });
   }

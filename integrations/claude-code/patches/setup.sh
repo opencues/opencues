@@ -352,9 +352,22 @@ end_step
 begin_step "Building + installing @opencues/{core,runtime}"
 (cd "$CUES_CORE" && npm run build --silent 2>/dev/null || npm run build)
 mkdir -p "$OC_NM_DIR/core"
+# Recursive copy of every subdir under dist/ so newly-added subdirs
+# (sources/, providers/, future ones) aren't silently dropped. The
+# previous hard-coded list ("sources" only) was the root cause of the
+# June 2026 silent-boot bug: PR #117 added providers/claude-cli-daemon
+# but setup.sh kept copying only sources/, so the installed core's
+# model-aliases.js require'd a non-existent ./providers/claude-cli-daemon,
+# CC's patch outer try/catch swallowed the load error, every CC
+# session silently came up with __oc.failed=true and no cues / no
+# blanks. Recursive copy makes adding a new subdir to the bundle
+# structurally safe.
 cp "$CUES_CORE"/dist/*.js "$CUES_CORE"/dist/*.d.ts "$OC_NM_DIR/core/" 2>/dev/null || true
 [ -f "$CUES_CORE/node-http-adapter.js" ] && cp "$CUES_CORE/node-http-adapter.js" "$OC_NM_DIR/core/"
-[ -d "$CUES_CORE/dist/sources" ] && cp -r "$CUES_CORE/dist/sources" "$OC_NM_DIR/core/"
+for sub in "$CUES_CORE"/dist/*/; do
+  [ -d "$sub" ] || continue
+  cp -r "$sub" "$OC_NM_DIR/core/"
+done
 node -e "
 const pkg = JSON.parse(require('fs').readFileSync('$CUES_CORE/package.json', 'utf8'));
 pkg.main = 'index.js';

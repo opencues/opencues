@@ -134,42 +134,38 @@ if (command === 'install') {
 // --- INSTALL --------------------------------------------------------------
 
 function doInstall() {
-  // SINGLE-fork model. We maintain ONE canonical CC fork at
-  // ~/claude-code-cues/. The shape (cli.js vs native binary) is inferred
-  // automatically from the CC version pinned in that fork's package.json
-  // — setup.sh's shape detection handles both. Upgrading CC is editing
-  // the pin in that fork's package.json + re-running install; the fork
-  // stays at ~/claude-code-cues/ regardless of which CC version is pinned.
+  // Multi-fork model (June 2026). The canonical fork at
+  // ~/claude-code-cues/ is the user-facing default — `opencues install
+  // claude-code` always bootstraps + patches it. But if extra forks
+  // exist on disk (e.g. ~/claude-code-cues-170/ — a dev fork pinned
+  // to a specific CC version for version-bump testing, documented in
+  // CLAUDE.md), we patch EVERY one in the same run.
   //
-  // Why not "patch every fork I find on disk":
-  //   - Most users only ever want one CC install. Two fork dirs is a
-  //     dev convention, not a product feature.
-  //   - The launcher name (`claude-cues`) is singular. There's no good
-  //     UX for multi-binary.
-  //   - Version upgrades happen IN-PLACE in the canonical fork, not
-  //     by maintaining parallel forks at different pins.
+  // Why: PR #117 (June 2026) bumped @opencues/{runtime,core} versions.
+  // Only the canonical fork got rebuilt; the -170 dev fork silently
+  // kept running its hours-old stale bundle. Symptoms: no cues, no
+  // blanks, no warning. The user's mental model — "I ran the
+  // installer once, every fork on my disk is fresh" — was violated.
+  // Fan-out makes that mental model actually hold.
   //
-  // For devs who DO want parallel forks (testing a new CC version
-  // without disturbing the canonical install): pass --target <cli.js>
-  // explicitly — single-fork install against the named target. Doctor
-  // surfaces extra `~/claude-code-cues-*` dirs as "dev relics — safe
-  // to delete" info findings.
-  const canonicalRoot = path.join(HOME, 'claude-code-cues');
-  let fork;
+  // Explicit --target still does a single-fork install against the
+  // named target; useful for CI / one-off targets outside ~/claude-
+  // code-cues*. Pass --canonical-only to skip the fan-out without
+  // pinning a target.
+  let forks;
   if (args.target) {
-    // Explicit override — point at a specific cli.js or bin/claude.exe.
     const target = args.target;
     const basename = path.basename(target);
     const shape = basename === 'cli.js' ? 'cli.js' : 'native';
     const root = basename === 'cli.js'
       ? path.resolve(path.dirname(target), '..', '..', '..')
       : path.resolve(path.dirname(target), '..', '..', '..', '..');
-    fork = { root, target, shape };
+    forks = [{ root, target, shape }];
   } else {
-    // Default — canonical fork at ~/claude-code-cues/. Bootstrap if missing.
+    const canonicalRoot = path.join(HOME, 'claude-code-cues');
     ensureCanonicalForkExists(canonicalRoot);
-    fork = inferForkShape(canonicalRoot);
-    if (!fork) {
+    const canonical = inferForkShape(canonicalRoot);
+    if (!canonical) {
       console.error(`Could not infer fork shape for ${canonicalRoot}.`);
       console.error('Expected one of:');
       console.error(`  ${canonicalRoot}/node_modules/@anthropic-ai/claude-code/cli.js`);
@@ -177,78 +173,95 @@ function doInstall() {
       console.error('Neither exists. Re-run install — setup.sh should npm-install the pinned CC version into the fork.');
       process.exit(2);
     }
-  }
-
-  console.log(`CC fork: ${fork.root}/  (${fork.shape})`);
-  console.log('');
-
-  // No-op-if-healthy gate. Idempotent semantics: a fresh `opencues
-  // install claude-code` against an already-healthy fork should NOT
-  // tear it down and rebuild. The nuke-and-rebuild work (setup.sh's
-  // default) is now opt-in via --rebuild — explicit destructive
-  // intent. validateFork checks every artefact (runtime + core +
-  // statusline.sh + patched cli.js/native-extract with opencues
-  // markers). If it passes, we ALSO compare the install marker's
-  // srcHash to the current source hash — if they differ, the bundle
-  // is stale even though the files are intact, and we rebuild. If
-  // both checks pass, we exit cleanly with a notice; if EITHER
-  // fails, we escalate to rebuild and log why so the user's "re-run
-  // install to fix things" instinct works for both file-corruption
-  // and stale-bundle drift.
-  //
-  // Why the srcHash check was added in PR #48: PR #42's `opencues
-  // run` self-heal detected drift correctly and called install,
-  // but install short-circuited at "already healthy" without
-  // updating the marker — so the very next `opencues run` detected
-  // drift AGAIN and re-triggered install AGAIN, forever. Closed
-  // loop only when install knows what "healthy" means in the
-  // post-self-heal world.
-  if (!args.rebuild && !args.dryRun) {
-    const validation = validateFork(fork);
-    if (validation.ok) {
-      // File-level healthy. Now check srcHash drift.
-      const installRoot = fork.installRoot || path.join(fork.root, '.cues');
-      const drift = checkSrcHashDrift(installRoot);
-      if (drift.fresh) {
-        console.log(`${'\x1b[32m✓\x1b[0m'} ${fork.root} is already installed + healthy. No work needed.`);
-        // Bold the hint — users (and prior versions of us) repeatedly
-        // miss --rebuild's role and assume "healthy" means "current
-        // runtime bundle." Now the srcHash check rebuilds automatically
-        // on drift; --rebuild is still useful for force-from-scratch.
-        console.log(`  ${'\x1b[2m'}Pass${'\x1b[0m'} ${'\x1b[1m--rebuild\x1b[0m'} ${'\x1b[2m'}to force a nuke-and-reinstall from scratch.${'\x1b[0m'}`);
-        // Still fire the stale-alias detector — a user could be
-        // running `opencues install` post-upgrade purely as a sanity
-        // check, and they're equally affected by a stale alias in
-        // their shell rc. The detector is a no-op when nothing's
-        // stale.
-        warnStaleClaudeCuesAlias(fork);
-        return;
-      }
-      console.log(`${'\x1b[33m▸\x1b[0m'} bundle stale (${drift.reason}). Rebuilding...`);
-      console.log('');
-    } else {
-      console.log(`${'\x1b[33m▸\x1b[0m'} install state needs repair: ${validation.reason}`);
-      console.log(`  ${'\x1b[2m'}Running full reinstall...${'\x1b[0m'}`);
-      console.log('');
+    forks = [canonical];
+    if (!args.canonicalOnly) {
+      try {
+        const { enumerateCCForks } = require(path.join(REPO_ROOT, 'packages/opencues-cli/src/lib/version-markers.cjs'));
+        const allForks = enumerateCCForks();
+        for (const f of allForks) {
+          if (f.root !== canonical.root) forks.push(f);
+        }
+      } catch { /* enumeration failure → fall back to canonical-only, no fan-out */ }
     }
   }
 
-  checkCompat(fork.target);
-  const result = installFork(fork);
+  if (forks.length > 1) {
+    console.log(`CC forks (${forks.length}):`);
+    for (const f of forks) console.log(`  ▸ ${f.root}/  (${f.shape})`);
+    console.log(`  ${'\x1b[2m'}Pass --canonical-only to skip extra-fork fan-out.${'\x1b[0m'}`);
+  } else {
+    console.log(`CC fork: ${forks[0].root}/  (${forks[0].shape})`);
+  }
+  console.log('');
 
-  if (!result.ok) {
-    console.error(`\n✗ ${fork.root} (${fork.shape}) — ${result.reason}`);
+  let anyInstalled = false;
+  let anyFailed = false;
+  for (const fork of forks) {
+    // No-op-if-healthy gate. Per-fork. The nuke-and-rebuild work is
+    // opt-in via --rebuild. validateFork checks every artefact
+    // (runtime + core + statusline.sh + patched cli.js/native-extract
+    // with opencues markers). If it passes, we ALSO compare the
+    // install marker's srcHash to the current source hash — if they
+    // differ, the bundle is stale and we rebuild. If both pass, skip
+    // this fork.
+    //
+    // Why srcHash matters even when files exist (PR #48): self-heal
+    // detected drift, called install, install short-circuited at
+    // "already healthy" without updating the marker — `opencues run`
+    // detected drift AGAIN, re-triggered install AGAIN, forever.
+    // Closed loop only when install knows "healthy" means "marker
+    // hash matches current source", not just "files present".
+    if (!args.rebuild && !args.dryRun) {
+      const validation = validateFork(fork);
+      if (validation.ok) {
+        const installRoot = fork.installRoot || path.join(fork.root, '.cues');
+        const drift = checkSrcHashDrift(installRoot);
+        if (drift.fresh) {
+          console.log(`${'\x1b[32m✓\x1b[0m'} ${fork.root} already installed + healthy.`);
+          // Don't double-print the --rebuild hint when fanning out;
+          // it'd repeat per fork. Print once at the end.
+          warnStaleClaudeCuesAlias(fork);
+          continue;
+        }
+        console.log(`${'\x1b[33m▸\x1b[0m'} ${fork.root}: bundle stale (${drift.reason}). Rebuilding...`);
+        console.log('');
+      } else {
+        console.log(`${'\x1b[33m▸\x1b[0m'} ${fork.root}: install state needs repair: ${validation.reason}`);
+        console.log(`  ${'\x1b[2m'}Running full reinstall...${'\x1b[0m'}`);
+        console.log('');
+      }
+    }
+
+    checkCompat(fork.target);
+    const result = installFork(fork);
+
+    if (!result.ok) {
+      console.error(`\n✗ ${fork.root} (${fork.shape}) — ${result.reason}`);
+      anyFailed = true;
+      // Continue to next fork instead of bailing — partial success
+      // beats "first fork failed and the rest were skipped silently".
+      continue;
+    }
+    console.log(`\n✓ ${fork.root} (${fork.shape}) installed + validated.`);
+    anyInstalled = true;
+    warnStaleClaudeCuesAlias(fork);
+  }
+
+  if (anyFailed) {
+    if (anyInstalled) {
+      console.error(`\nOne or more forks failed; others installed successfully. See per-fork output above.`);
+    }
     process.exit(1);
   }
-  console.log(`\n✓ ${fork.root} (${fork.shape}) installed + validated.`);
 
-  // Stale-alias detector. Pre-2.1.113 the launch alias pointed at
-  // `node <fork>/.../cli.js`. Post-cutover the fork ships a native
-  // bun-binary at `<fork>/.../bin/claude.exe` with NO cli.js — so the
-  // old alias is broken after the user upgrades. Doesn't auto-edit
-  // their shell rc (that's invasive); just prints the correct alias
-  // line and the rc paths that mention it.
-  warnStaleClaudeCuesAlias(fork);
+  if (!anyInstalled && forks.length > 0) {
+    // Every fork was healthy + fresh — print the rebuild hint once.
+    console.log(`  ${'\x1b[2m'}Pass${'\x1b[0m'} ${'\x1b[1m--rebuild\x1b[0m'} ${'\x1b[2m'}to force a nuke-and-reinstall from scratch.${'\x1b[0m'}`);
+    return;
+  }
+
+  // Use the canonical/first fork for the post-install hints below.
+  const fork = forks[0];
 
   // Print the opt-in hint for the statusline. We install statusline.sh
   // into the fork's .cues/ dir but do NOT auto-edit ~/.claude/settings.json
@@ -687,6 +700,51 @@ function validateFork(fork) {
   // Update caller's view so success log + version marker match reality.
   fork.shape = liveShape;
   fork.target = liveShape === 'cli.js' ? cliJs : nativeBin;
+
+  // Boot-smoke: actually `require` the runtime + the exact paths the
+  // patch's bootstrap pulls. Catches the bug class where files exist
+  // on disk + tweakcc markers are present but a transitive require
+  // chain resolves to a missing file — symptom on the user:
+  // claude-cues launches, types nothing happens, /tmp/opencues.log
+  // stays untouched. Patch's outer try/catch swallows the failure
+  // silently.
+  //
+  // Concrete instance the smoke catches (June 2026 PR #117 regression):
+  // setup.sh hard-coded the dist subdirs it copied ("sources" only),
+  // missing the new "providers" subdir. `@opencues/core/model-aliases`
+  // require'd `./providers/claude-cli-daemon` — boot threw at the
+  // outer try, every CC session came up with __oc.failed=true.
+  // Markers were present, validateFork was happy, the user got silent
+  // breakage. The fix: install.cjs now refuses to ship a fork whose
+  // bundled runtime can't load.
+  //
+  // Probe paths mirror EXACTLY the specifier list the patch emits in
+  // `opencuesRuntime.ts` (every `const xxxPath = "@opencues/runtime/..."`
+  // line). Keep in sync — when the patch starts requiring a new
+  // submodule, append it here so a new install can't silently ship a
+  // broken bundle.
+  const smokeProbes = [
+    '@opencues/runtime',
+    '@opencues/runtime/dist/adapters/cc/v2.1/boot.js',
+    '@opencues/runtime/dist/src/blanks/index.js',
+    '@opencues/runtime/dist/src/security/spawn-sandbox.js',
+    '@opencues/runtime/dist/src/security/sandbox-runner.js',
+    '@opencues/runtime/dist/src/user-blanks/registry.js',
+  ];
+  for (const spec of smokeProbes) {
+    const probe = spawnSync(process.execPath, [
+      '-e', `require(${JSON.stringify(spec)})`,
+    ], { cwd: fork.root, env: process.env });
+    if (probe.status !== 0) {
+      const stderr = (probe.stderr || '').toString().split('\n').slice(0, 4).join('\n');
+      return {
+        ok: false,
+        reason: `boot-smoke FAILED for require(${JSON.stringify(spec)}) from ${fork.root} — installed bundle is broken. ` +
+                `setup.sh's copy step probably missed a new dist subdir; the recursive copy in setup.sh § 5 should cover ` +
+                `every dist/*/ subdir.\n  ${stderr.replace(/\n/g, '\n  ')}`,
+      };
+    }
+  }
   return { ok: true };
 }
 
@@ -773,10 +831,10 @@ function rmdirIfEmpty(dir) {
 
 function parseArgv(argv) {
   // First non-flag positional = command. Default 'install'.
-  const KNOWN_FLAGS = new Set(['--help', '-h', '--target', '--dry-run', '--clean', '--keep-state', '--rebuild']);
+  const KNOWN_FLAGS = new Set(['--help', '-h', '--target', '--dry-run', '--clean', '--keep-state', '--rebuild', '--canonical-only']);
   const VALUE_FLAGS = new Set(['--target']);
   const KNOWN_COMMANDS = new Set(['install', 'uninstall', 'seed-configs', 'help']);
-  const out = { command: 'install', args: { help: false, dryRun: false, clean: false, keepState: false, rebuild: false }, unknown: [] };
+  const out = { command: 'install', args: { help: false, dryRun: false, clean: false, keepState: false, rebuild: false, canonicalOnly: false }, unknown: [] };
   let i = 0;
   if (argv[i] && !argv[i].startsWith('-')) {
     if (KNOWN_COMMANDS.has(argv[i])) {
@@ -795,6 +853,7 @@ function parseArgv(argv) {
     else if (a === '--clean') out.args.clean = true;
     else if (a === '--keep-state') out.args.keepState = true;
     else if (a === '--rebuild') out.args.rebuild = true;
+    else if (a === '--canonical-only') out.args.canonicalOnly = true;
     else if (a === '--target') out.args.target = argv[++i];
     else out.unknown.push(a);
   }

@@ -545,20 +545,50 @@ module.exports = async function doctor(argv, ctx) {
       fix: 'opencues install claude-code',
     });
   }
-  // Detect extra CC fork dirs (e.g. ~/claude-code-cues-150/) — these
-  // are dev-only relics from when we maintained parallel forks per CC
-  // shape. The product model is now single-fork (upgrade in place via
-  // `opencues update claude-code --to <ver>`), so any extra fork is
-  // safe to delete. Surface as info, not warn — the user might still
-  // be using it intentionally as a side-by-side dev setup.
+  // Detect extra CC fork dirs (e.g. ~/claude-code-cues-150/, -170/) +
+  // check each one for drift. As of June 2026 the install/update path
+  // fans out across every `~/claude-code-cues*` dir with a real CC
+  // binary, so these forks are no longer "dev relics to delete" —
+  // they're real install targets. Surface drift on each one (warn,
+  // because stale = broken runtime), and surface truly-orphaned dirs
+  // (no CC binary anywhere) as info ("safe to remove").
   try {
-    const { detectExtraCCForks } = require('../lib/version-markers.cjs');
-    const extras = detectExtraCCForks();
-    for (const extra of extras) {
+    const { enumerateCCForks, detectExtraCCForks, checkDrift } = require('../lib/version-markers.cjs');
+    const canonicalCC = path.join(HOME, 'claude-code-cues');
+    const allForks = enumerateCCForks();
+    // Forks with a real CC binary → drift check.
+    for (const fork of allForks) {
+      if (fork.root === canonicalCC) continue; // canonical drift covered elsewhere
+      const drift = checkDrift(path.join(fork.root, '.cues'), ctx);
+      if (drift.status === 'stale') {
+        findings.push({
+          sev: 'warn',
+          msg: `extra CC fork at ${fork.root}/ is STALE — bundled runtime ${drift.marker.runtime} vs source ${drift.source.runtime || '?'} (reason: ${drift.reason}). Direct launches of this fork run broken/old code.`,
+          fix: `opencues install claude-code   # fans out across every fork`,
+        });
+      } else if (drift.status === 'missing') {
+        findings.push({
+          sev: 'warn',
+          msg: `extra CC fork at ${fork.root}/ has no install marker — never patched, or patched pre-marker era. Direct launches of this fork won't load OpenCues.`,
+          fix: `opencues install claude-code   # fans out across every fork`,
+        });
+      } else {
+        findings.push({
+          sev: 'info',
+          msg: `extra CC fork at ${fork.root}/ — fresh (bundled runtime ${drift.marker.runtime}, srcHash matches). Multi-fork dev install detected.`,
+        });
+      }
+    }
+    // Orphan dirs: detectExtraCCForks finds every `claude-code-cues*`
+    // dir; subtract the ones with a real binary (already handled
+    // above) and report the rest as "safe to remove."
+    const realForkRoots = new Set(allForks.map(f => f.root));
+    for (const extra of detectExtraCCForks()) {
+      if (realForkRoots.has(extra)) continue;
       findings.push({
         sev: 'info',
-        msg: `extra CC fork at ${extra}/ — the product model is single-fork (~/claude-code-cues/, upgraded in place). This fork is a dev relic; safe to remove.`,
-        fix: `rm -rf ${extra}   # if you don't want it; otherwise patch it explicitly with: opencues install claude-code --target ${path.join(extra, 'node_modules/@anthropic-ai/claude-code/bin/claude.exe')}`,
+        msg: `extra dir at ${extra}/ — no CC binary inside. Likely an orphan from a prior layout; safe to delete.`,
+        fix: `rm -rf ${extra}`,
       });
     }
   } catch { /* lib unavailable — skip */ }
