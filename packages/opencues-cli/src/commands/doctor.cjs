@@ -1078,7 +1078,7 @@ module.exports = async function doctor(argv, ctx) {
   console.log(bold('## Suggested fixes'));
   for (const f of findings) {
     console.log(`  ${tag(f.sev === 'warn' ? 'warn' : 'info')} ${f.msg}`);
-    console.log(`     ${dim(G.arrow)} ${f.fix}`);
+    if (f.fix) console.log(`     ${dim(G.arrow)} ${f.fix}`);
   }
   await maybePrintUpdateNotice(ctx);
   const errors = findings.filter(f => f.sev === 'warn').length;
