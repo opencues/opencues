@@ -941,14 +941,45 @@ module.exports = async function doctor(argv, ctx) {
       if (autoPicked) return { provider: autoPicked, source: 'auto (env key)' };
       return { provider: null, source: 'none' };
     };
+    // Mirror normalizeModelScalar in opencues-runtime/src/modules/resolver.ts:
+    // literal "default"/"inherit"/empty in a *-llm-model scalar means
+    // "fall through" — the runtime resolves to the provider's
+    // defaultModel. Doctor must apply the same normalization or the
+    // displayed model misleads the user (e.g. shows "default" as if it
+    // were a real model name, when the runtime actually dispatches with
+    // the provider's default).
+    const normalizeBucketModel = (raw) => {
+      if (!raw) return undefined;
+      const t = String(raw).trim().toLowerCase();
+      if (t === '' || t === 'default' || t === 'inherit') return undefined;
+      return String(raw).trim();
+    };
     for (const bucketScalar of ['cues-llm-provider', 'auditors-llm-provider', 'blanks-llm-provider']) {
       const { provider, source } = resolveBucket(bucketScalar);
       const label = bucketScalar.replace('-llm-provider', '');
       if (provider) {
         const adapter = providers.getProvider(provider);
-        const model = scalars[bucketScalar.replace('provider', 'model')] || adapter?.defaultModel || '?';
+        const modelScalarName = bucketScalar.replace('provider', 'model');
+        const modelScalarRaw = scalars[modelScalarName];
+        const normalized = normalizeBucketModel(modelScalarRaw);
+        // Global fallback chain mirrors the runtime (build-sources.ts:
+        // effectiveGlobalModel + resolveLLM): bucket-model > global
+        // llm-model > provider defaultModel.
+        const globalLlmModel = normalizeBucketModel(scalars['llm-model']);
+        const model = normalized || globalLlmModel || adapter?.defaultModel || '?';
         const tag = source === bucketScalar ? '' : dim(` (← ${source})`);
         s.info(`${label}:`, `${provider} · ${model}${tag}`);
+        // Warn if the user wrote a literal "default"/"inherit" — it
+        // works (runtime treats it as fall-through) but it's confusing
+        // and a sign the menu cycle wrote a sentinel into a scalar
+        // expecting a real model name. Surface it so the user can
+        // clean it up.
+        if (modelScalarRaw && normalizeBucketModel(modelScalarRaw) === undefined) {
+          findings.push({
+            sev: 'info',
+            msg: `${modelScalarName}: "${modelScalarRaw}" is a fall-through sentinel — runtime treats it as unset and dispatches with ${model}. Delete this line if you want the global llm-model + provider default, or replace it with a real model name.`,
+          });
+        }
       } else {
         s.info(`${label}:`, dim('(none — no key + no scalar set)'));
       }
