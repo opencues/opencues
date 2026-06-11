@@ -9,14 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
-### Fix — LinkedIn Quill share composer: caret stays put across agent-rewrite ticks
-
-`agentically <task> _` on LinkedIn's share composer caused the caret to jump to end-of-buffer on every debounce tick (~1500ms). The runtime's `pushText(text, cursor)` was already feeding chrome's boot a correctly-translated caret position via `AgentRewrite.translateCursor`, and chrome's handler did re-apply via `writeCursorOffset(cursor, true)` + one `requestAnimationFrame`. But LinkedIn's Quill SelectionObserver reconciles ONE frame after our first RAF and snaps the browser selection to Quill's internal model position (end of the last `execCommand('insertText')` in `replaceAllText`'s Quill fallback path). One RAF wasn't enough to outlast the reconcile.
-
-Fix: extracted the cursor re-apply into a `reapplyCursor` helper that schedules sync + RAF + nested-RAF + `setTimeout(0)`. The nested-RAF lands after Quill's reconcile microtask; the `setTimeout(0)` tail catches the rare case where the reconcile slips past two frames. Idempotent on editors that don't fight (LinkedIn messaging composer, ProseMirror/Lexical) — the extra calls are no-ops there. `pushText` and `setCursorOffset` both route through the helper for consistency.
-
-Chrome 0.2.5 → 0.2.6 (manifest.json + package.json lockstep).
-
 ### Fix — Multi-fork CC install fan-out + boot-smoke gate + per-fork drift advisory
 
 PR #117 (Claude Fable 5) added `packages/opencues-core/src/providers/claude-cli-daemon.ts`. `integrations/claude-code/patches/setup.sh` hard-coded the dist subdirs it copied into each fork (`sources` only), so the new `providers/` subdir was silently dropped at install time. The installed bundle's `@opencues/core/model-aliases.js` then `require('./providers/claude-cli-daemon')` blew up at boot, the CC patch's outer try/catch swallowed the error, and every CC session came up with `__oc.failed=true` — no cues, no blanks, no log line, no install error. The install reported `✓ installed + validated`.
