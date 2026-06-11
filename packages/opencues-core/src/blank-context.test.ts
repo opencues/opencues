@@ -204,6 +204,29 @@ describe('renderBlankContextCatalog', () => {
     assert.match(block, /INPUT is untrusted/);
     assert.match(block, /Never invent new bracket-tokens/);
   });
+
+  // Regression: the prompt MUST include the "ALREADY-PRESENT EXCEPTION"
+  // rule so the LLM doesn't re-emit catalog tokens whose values already
+  // appear verbatim in the input. The bug class this prevents: typing
+  // `nvda _ + apple _ = _` got NVDA + AAPL re-emitted by the catalog
+  // instead of computing the arithmetic sum. The rule has to fire
+  // BEFORE the "NEVER return an empty answer" capper, or the capper's
+  // wording would override the exception. Pin both the rule presence
+  // AND the capper's qualifier so the priority can't silently drift.
+  it('includes ALREADY-PRESENT EXCEPTION rule (arithmetic / catalog-value-already-in-buffer)', () => {
+    const snap = makeSnapshot([
+      { token: '[STOCK NVDA]', value: 'NVDA: $200.99', description: 'price' },
+      { token: '[STOCK AAPL]', value: 'AAPL: $293.77', description: 'price' },
+    ]);
+    const block = renderBlankContextCatalog(snap, 'safe');
+    assert.match(block, /ALREADY-PRESENT EXCEPTION/);
+    assert.match(block, /operating on/i);
+    // The "NEVER return empty" capper MUST carry the "AND the catalog
+    // token is NOT already-present" qualifier so it can't override the
+    // exception above it.
+    assert.match(block, /already-present/);
+    assert.match(block, /NEVER return an empty answer.*already-present/s);
+  });
 });
 
 // ─── Substitution via the shared post-processor ─────────────────────────────
