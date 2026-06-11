@@ -83,6 +83,18 @@ export interface HostInfo extends CommonHostInfo {
    */
   supportsCycling?(): boolean;
   /**
+   * Per-current-target capability — does the currently focused
+   * element support background agent rewrites? Chrome returns false
+   * on Quill (LinkedIn share composer) because Quill's Delta-model
+   * selection doesn't sync from browser-set selections, so the
+   * runtime-translated cursor passed to `pushText` is ignored by
+   * Quill's internal cursor state and every keystroke after a rewrite
+   * tick lands at Quill's model position rather than where the user
+   * sees the caret. See adapter.ts § supportsAgentRewrite for the
+   * full rationale + non-affected inline flows.
+   */
+  supportsAgentRewrite?(): boolean;
+  /**
    * Optional — gathers AmbientContext for the focused field. See the
    * runtime adapter's AmbientContext for the contract; chrome's
    * implementation lives in `gatherAmbientContext` in the bootstrap.
@@ -265,6 +277,7 @@ export function boot(host: HostInfo): BootResult {
     blankInvoke: host.blankInvoke,
     spawnProcess: host.spawnProcess,
     supportsCycling: host.supportsCycling,
+    supportsAgentRewrite: host.supportsAgentRewrite,
     getAmbientContext: host.getAmbientContext,
     log,
     emitEvent: (type, body) => {

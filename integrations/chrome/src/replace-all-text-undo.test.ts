@@ -456,7 +456,12 @@ describe('replaceAllText — undo-stack shape', () => {
     const editor = document.createElement('div');
     editor.className = 'ql-editor';
     editor.setAttribute('contenteditable', 'true');
-    editor.textContent = 'original';
+    // Empty DOM forces the fallback path: the in-place hunk fast path
+    // can't run when there are no text-node segments to anchor hunks
+    // against (`wordDiff('', new) → one big insertion hunk @ position 0`
+    // with no segment to receive it). For populated-DOM scenarios where
+    // the hunks DO fit in existing text nodes, the fast path takes over;
+    // those are covered by `quill-in-place-update.test.ts`.
     container.appendChild(editor);
     document.body.appendChild(container);
     // Deliberately do NOT install __quill — exercise the fallback.
