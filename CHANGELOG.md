@@ -17,6 +17,21 @@ Fix: extracted the cursor re-apply into a `reapplyCursor` helper that schedules 
 
 Chrome 0.2.5 → 0.2.6 (manifest.json + package.json lockstep).
 
+### Fix — FluidBlank handles arithmetic + skips re-emitting already-present catalog tokens
+
+Concrete reproducer: `nvda _ + apple _ = _` yielded `NVDA: $200.99 + AAPL: $293.77 = NVDA: $200.99 AAPL: $293.77` instead of the sum. Root cause: the FluidBlank `= _` invocation received the buffer alongside the stocks blank-context catalog ([STOCKS NVDA], [STOCKS AAPL], …). The catalog instructions push the LLM aggressively toward token-emission ("NEVER return an empty answer when ANY covers-term appears"). The LLM saw NVDA and AAPL in the buffer, matched them against the catalog, and dutifully emitted both tokens — the post-processor then substituted them back to the same prices already visible in the buffer. The `+ ... = _` arithmetic was never recognised.
+
+Prompt changes split across two layers:
+
+- **`FUSED_SYSTEM_PROMPT`** (`packages/opencues-core/src/sources/fluid-blank-source.ts`) — adds a new highest-priority rule "ARITHMETIC / COMPUTATION FIRST" with explicit currency-preserving examples (`NVDA: $200.99 + AAPL: $293.77 = _` → `$494.76`, `BTC: $112,400 - ETH: $4,250 = _` → `$108,150`). The CATALOG rule is demoted to #2 and gains an explicit "skip tokens whose values already appear verbatim in the input" exception.
+- **`renderBlankContextCatalog`** (`packages/opencues-core/src/blank-context.ts`) — adds an "ALREADY-PRESENT EXCEPTION" paragraph inside the catalog block itself, with the same wording: when the catalog token's live value is already verbatim in the input, the user is operating on it (arithmetic, comparison, prose-rewrite) — do not re-emit. Overrides the "emit liberally" instructions above it. Caps the "NEVER return empty" rule with "AND the catalog token is NOT already-present" so it can't override the new exception.
+
+The wider class this kills: any pattern where the user wants to OPERATE on a catalog value (sum two stocks, compare two prices, format a portfolio table, write prose about the current weather) was being short-circuited by the catalog instruction set. Now the catalog only offers the LLM info it doesn't already have.
+
+`@opencues/core` 0.3.7 → 0.3.8.
+
+Verification path: bench `tests/benchmarks/blank-context-recall/` should NOT regress on the "emit token when value is NOT yet present" cases. A bench-validated arithmetic suite is a follow-up; the prompt changes ship now because the production bug they fix is visible end-to-end on stocks today.
+
 ### Fix — BlankFill stops looping on substituted output that contains a registered keyword
 
 Concrete shape: `nvda _` substitutes to `Nvidia NVDA: $200.42`. The substituted span contains `nvidia` (one of the stocks blank's keywords). On the NEXT text-change BlankFill scanned the new buffer, matched `nvidia` against the next `_` in the buffer, and re-fired the substitute. Buffer kept looping; sibling blanks (`+ apple _`, `= _`) never got a stable scan to fire against. Canonical reproducer: `nvda _ + apple _ = _` — both sibling blanks got stuck in loading frames (`apple •`, `= •`) because nvda's loop kept resetting state.
