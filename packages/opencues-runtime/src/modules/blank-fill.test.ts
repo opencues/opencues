@@ -5,6 +5,7 @@ import { MockAdapter, wrapTipsAsCuesMd } from '../../testing/mock-adapter';
 import { SpanFillState } from '../state/span-fill';
 import { DismissedBlanks } from '../state/dismissed-blanks';
 import { SelectorSatelliteState } from '../state/selector-satellite';
+import { DynDefs } from '../state/dyn-defs';
 
 const TIPS = wrapTipsAsCuesMd({ concepts: [] });
 
@@ -118,6 +119,96 @@ describe('BlankFill detection', () => {
     adapter.pushText('affirm _');
     expect(bf.slots).toHaveLength(1);
     expect(bf.slots[0].blankName).toBe('affirmations');
+  });
+
+  // Regression: stocks-chain loop (June 2026 — `nvda _ + apple _ = _`)
+  //
+  // BlankFill was looping on substituted output whose text contained a
+  // registered keyword. Concrete shape: `nvda _` → `Nvidia NVDA: $200.42`.
+  // The substituted span contained `nvidia` (one of the stocks blank's
+  // keywords); on the NEXT text-change BlankFill scanned the new buffer,
+  // matched `nvidia` against the still-present `_` further along, and
+  // re-fired the substitute. Buffer kept looping; sibling blanks
+  // (`apple _`, `= _`) never got a stable scan to fire against.
+  //
+  // Fix: matchKeyword skips candidates whose keyword indices fall
+  // inside an already-substituted multi-word DynDef span.
+  it('skips keyword match inside an already-substituted multi-word span', async () => {
+    const STOCKS = `---
+type: blank
+name: stocks
+blankKeywords: nvidia, nvda, apple, aapl
+blankProximity: 0
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: {
+        '/mock/CUES.md': TIPS,
+        '/proj/blanks/stocks/BLANK.md': STOCKS,
+      },
+    });
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const dynDefs = new DynDefs();
+    // Mimic the post-substitute state: stocks substituted "nvda _" to
+    // "Nvidia NVDA: $200.42" (3 words, indices 0-2). DynDefs registers
+    // that span. The user then appends " + apple _", giving the full
+    // buffer "Nvidia NVDA: $200.42 + apple _" (7 words, _ at index 6).
+    dynDefs.set(0, {
+      originalWord: 'nvda',
+      alternatives: ['Nvidia NVDA: $200.42'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: 20,
+      blankName: 'stocks',
+    });
+    const bf = new BlankFill(adapter, loader, undefined, undefined, undefined, dynDefs);
+    const slots = bf.scan('Nvidia NVDA: $200.42 + apple _');
+    // Only the apple slot at _ (index 6) should match. The substituted
+    // span's "Nvidia" / "NVDA:" must NOT be picked up as an
+    // nvidia/nvda keyword candidate.
+    expect(slots).toHaveLength(1);
+    expect(slots[0]).toMatchObject({
+      keyword: 'apple',
+      blankName: 'stocks',
+    });
+  });
+
+  it('still matches keyword OUTSIDE substituted spans', async () => {
+    const STOCKS = `---
+type: blank
+name: stocks
+blankKeywords: nvidia, nvda, apple
+blankProximity: 0
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: {
+        '/mock/CUES.md': TIPS,
+        '/proj/blanks/stocks/BLANK.md': STOCKS,
+      },
+    });
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    // Belt-and-braces: a DynDefs with a SINGLE-word substituted entry
+    // shouldn't suppress matches anywhere (findSpanContaining only
+    // returns multi-word spans). The "apple" keyword at index 0 should
+    // still match.
+    const dynDefs = new DynDefs();
+    dynDefs.set(2, {
+      originalWord: 'foo',
+      alternatives: ['BAR'],
+      currentIndex: 0,
+      spanStart: 6,
+      spanEnd: 9,
+      blankName: 'other',
+    });
+    const bf = new BlankFill(adapter, loader, undefined, undefined, undefined, dynDefs);
+    const slots = bf.scan('apple _ BAR');
+    expect(slots).toHaveLength(1);
+    expect(slots[0]).toMatchObject({ keyword: 'apple', blankName: 'stocks' });
   });
 });
 
