@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fix — BlankFill stops looping on substituted output that contains a registered keyword
+
+Concrete shape: `nvda _` substitutes to `Nvidia NVDA: $200.42`. The substituted span contains `nvidia` (one of the stocks blank's keywords). On the NEXT text-change BlankFill scanned the new buffer, matched `nvidia` against the next `_` in the buffer, and re-fired the substitute. Buffer kept looping; sibling blanks (`+ apple _`, `= _`) never got a stable scan to fire against. Canonical reproducer: `nvda _ + apple _ = _` — both sibling blanks got stuck in loading frames (`apple •`, `= •`) because nvda's loop kept resetting state.
+
+Fix: `BlankFill.matchKeyword` now consults `DynDefs.findSpanContaining` for each candidate keyword word index and skips matches that fall inside an already-substituted multi-word span. Single-word substitutions stay matchable (findSpanContaining only returns multi-word spans, mirroring how the broader runtime treats single-word DynDefs as the original-keyword-is-unchanged case).
+
+`@opencues/runtime` 0.3.2 → 0.3.3.
+
+Pinned by two new tests in `packages/opencues-runtime/src/modules/blank-fill.test.ts`:
+- `skips keyword match inside an already-substituted multi-word span`
+- `still matches keyword OUTSIDE substituted spans`
+
+Known follow-up (not in this PR): when two unique-keyword blanks are typed simultaneously (`nvda _ + apple _`), the first to substitute shifts word indices; the second one's invoke completes but its substitute may not write back cleanly. Tracked separately — needs a more careful look at how concurrent invokes coordinate with span writes.
+
 ### Fix — Multi-fork CC install fan-out + boot-smoke gate + per-fork drift advisory
 
 PR #117 (Claude Fable 5) added `packages/opencues-core/src/providers/claude-cli-daemon.ts`. `integrations/claude-code/patches/setup.sh` hard-coded the dist subdirs it copied into each fork (`sources` only), so the new `providers/` subdir was silently dropped at install time. The installed bundle's `@opencues/core/model-aliases.js` then `require('./providers/claude-cli-daemon')` blew up at boot, the CC patch's outer try/catch swallowed the error, and every CC session came up with `__oc.failed=true` — no cues, no blanks, no log line, no install error. The install reported `✓ installed + validated`.
