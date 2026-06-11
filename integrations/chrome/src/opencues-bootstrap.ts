@@ -738,6 +738,30 @@ function writeCursorOffset(offset: number, force: boolean = false): void {
   sel.addRange(range);
 }
 
+/** Re-apply the caret across multiple frames + a tail timeout so it
+ *  sticks past managed editors' selection reconcile. LinkedIn's Quill
+ *  share composer is the load-bearing case: its SelectionObserver
+ *  normalizes the browser selection to its internal model position one
+ *  frame after our first RAF, snapping the caret back to end-of-buffer.
+ *  A 2-frame + setTimeout(0) tail catches the reconcile and lands the
+ *  caret at the runtime-translated position. Idempotent on editors that
+ *  don't fight — the extra calls are no-ops.
+ *
+ *  If the user moves the caret between calls (e.g. clicks elsewhere
+ *  during the ~16ms window), the later calls will re-snap to our
+ *  target — accepted trade-off: agent-rewrite ticks are debounced
+ *  ~1500ms apart, so the re-snap window is short relative to typing
+ *  cadence and overwhelmingly the user benefit is cursor-stays-where-
+ *  it-was-typed rather than cursor-jumps-to-end. */
+function reapplyCursor(offset: number): void {
+  writeCursorOffset(offset, true);
+  requestAnimationFrame(() => {
+    writeCursorOffset(offset, true);
+    requestAnimationFrame(() => writeCursorOffset(offset, true));
+  });
+  setTimeout(() => writeCursorOffset(offset, true), 0);
+}
+
 /** Apply newText to the target by mutating existing text nodes in
  *  place — common-prefix/common-suffix diff, splice the difference
  *  into whichever node(s) the change falls in.
@@ -2380,8 +2404,7 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     // We also re-apply after a frame so the managed editor's
     // post-reconcile cursor snap doesn't override us.
     setCursorOffset: (offset) => {
-      writeCursorOffset(offset, true);
-      requestAnimationFrame(() => writeCursorOffset(offset, true));
+      reapplyCursor(offset);
     },
     pushText: (text, cursor) => {
       // diffWriteText already calls sourceReclassifier.markRuntimeWrite.
@@ -2390,12 +2413,14 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
       diffWriteText(text);
       // pushText cursor came from the runtime (substitution landing
       // position) — force the move even on managed editors, and
-      // re-apply after a frame so the editor's reconcile doesn't
-      // snap the caret back to its model's idea of "natural" position.
-      if (cursor !== undefined) {
-        writeCursorOffset(cursor, true);
-        requestAnimationFrame(() => writeCursorOffset(cursor, true));
-      }
+      // re-apply across multiple frames so the editor's reconcile
+      // doesn't snap the caret back to its model's idea of "natural"
+      // position. LinkedIn's Quill share composer specifically reconciles
+      // its SelectionObserver one frame AFTER our first RAF — a single
+      // RAF re-apply isn't enough; the agent-rewrite tick would land the
+      // caret at end-of-buffer on every ~1500ms tick instead of the
+      // translated position. See reapplyCursor for the schedule.
+      if (cursor !== undefined) reapplyCursor(cursor);
     },
     forceRender: () => {
       runtimeRender();
