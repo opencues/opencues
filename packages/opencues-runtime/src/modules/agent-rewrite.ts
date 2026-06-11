@@ -288,6 +288,17 @@ export class AgentRewrite {
   async tick(): Promise<void> {
     if (this._running) return;
     if (!this.state.armed) return;
+    // Host-level opt-out per current target. Chrome turns this off for
+    // Quill editors (LinkedIn share composer) because Quill's internal
+    // Delta-model selection doesn't sync from browser-set selections —
+    // every keystroke after a rewrite tick lands at Quill's model
+    // position rather than where the user sees the caret, making
+    // agent-rewrite unusable on those targets. Inline single-substitution
+    // flows (transform-blank, fluid-blank, word-cues) are unaffected
+    // because their cursor is span-derived, not getCursorOffset-derived.
+    // See adapter.ts § supportsAgentRewrite for full rationale.
+    const supported = this.adapter.supportsAgentRewrite?.() ?? true;
+    if (!supported) return;
     const snapshot = this.adapter.getText();
     if (!snapshot.trim()) return;
 

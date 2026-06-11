@@ -137,6 +137,21 @@ export interface ChromeBindings {
   supportsCycling?(): boolean;
 
   /**
+   * Per-current-target capability — does the focused element support
+   * background agent rewrites? Chrome returns false on Quill (LinkedIn
+   * share composer) because Quill's Delta-model selection doesn't sync
+   * from browser-set selections; the runtime-translated cursor passed
+   * to `pushText` is ignored by Quill's internal cursor state and every
+   * keystroke after a rewrite tick lands at Quill's model position
+   * rather than where the user sees the caret. See @opencues/runtime
+   * § supportsAgentRewrite for full rationale.
+   *
+   * Defaults to true when omitted (back-compat with adapter bands that
+   * predate this capability).
+   */
+  supportsAgentRewrite?(): boolean;
+
+  /**
    * Sanitized ambient context for the focused field — see
    * AmbientContext in @opencues/runtime/src/adapter.ts for the full
    * security contract. Returns null when:
@@ -203,6 +218,11 @@ export class ChromeV1Adapter implements HostAdapter {
     // normal-input → false). When the binding is absent the host has
     // only one mode and we default to true (back-compat).
     try { return this.bindings.supportsCycling?.() ?? true; } catch { return true; }
+  }
+  supportsAgentRewrite(): boolean {
+    // Bootstrap returns false for Quill targets, true otherwise.
+    // Default true preserves behaviour for older bootstraps.
+    try { return this.bindings.supportsAgentRewrite?.() ?? true; } catch { return true; }
   }
   getAmbientContext(): AmbientContext | null {
     // Runtime gates on `ambient-context-mode` BEFORE calling, so

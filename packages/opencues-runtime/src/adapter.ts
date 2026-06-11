@@ -365,6 +365,40 @@ export interface HostAdapter {
   supportsCycling?(): boolean;
 
   /**
+   * Optional — whether the currently-focused target supports background
+   * agentic rewrite (the `agentically <task> _` workflow + AgentRewrite
+   * module). When this returns false, AgentRewrite refuses to arm a
+   * task on the current target and skips its debounce-driven LLM tick
+   * for any already-armed task whose live buffer is on this target.
+   *
+   * Used by chrome on Quill targets (LinkedIn share composer): Quill
+   * intercepts every `execCommand` insert through a `beforeinput`
+   * handler with its own Delta-model pipeline, then runs an asynchronous
+   * MutationObserver + selection-observer reconcile. That reconcile
+   * doesn't sync browser-set selections back into Quill's internal
+   * model, so the runtime-translated cursor passed to `pushText` lands
+   * the BROWSER caret in the right place but Quill ignores it for
+   * subsequent typing — every keystroke after a rewrite tick goes to
+   * Quill's model position (end of buffer / start of buffer / wherever
+   * its delta cursor ended up). Result: the user types into the wrong
+   * location after every tick, making agent-rewrite unusable on Quill.
+   *
+   * Inline single-substitution flows on the same target (transform-blank,
+   * fluid-blank, word-cues, etc.) are unaffected because their cursor
+   * is computed deterministically from the substitute span — they don't
+   * round-trip through `getCursorOffset` and they only mutate one text
+   * node, which Quill's Delta-model selection-shift handles correctly.
+   *
+   * Defaults to true when the adapter omits the method.
+   *
+   * Dynamic — re-evaluated per current target. A host whose support
+   * varies by focused element (e.g. chrome with both contenteditable
+   * and Quill editors on the same page) must check `currentTarget` at
+   * call time.
+   */
+  supportsAgentRewrite?(): boolean;
+
+  /**
    * Optional — describes the field the user is currently filling, for
    * fluid-blank disambiguation. See AmbientContext above for the full
    * security contract.

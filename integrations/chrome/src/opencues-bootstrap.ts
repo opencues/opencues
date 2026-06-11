@@ -29,6 +29,7 @@ import { applySiteCompatFilter as siteFilter } from './site-filter';
 import { parseSingleCueMd } from '@opencues/core';
 import { ChromeUserBlank } from './user-blank-loader';
 import { createBlankInvoke } from '@opencues/runtime/dist/src/blanks';
+import { wordDiff } from '@opencues/runtime/dist/src/modules/word-diff';
 import { applyDirectives, clearDirectives } from './runtime-renderer';
 import { applyStatuslinePayload } from './runtime-statusbar';
 import { WebSpeechAdapter } from './adapters/web-speech-adapter';
@@ -674,19 +675,162 @@ function findQuillInstance(el: HTMLElement): QuillInstance | null {
   return null;
 }
 
+/** In-place hunk-level mutation for Quill targets.
+ *
+ *  Uses the runtime's `wordDiff` to split the old → new buffer change
+ *  into a sequence of small, targeted hunks (typically word-level for
+ *  agent-rewrite). For each hunk, find the SINGLE text-node segment
+ *  whose plain range contains it and splice in the replacement via a
+ *  direct `.data` assignment. Apply right-to-left so the unchanged
+ *  positions in earlier segments stay valid as we mutate later ones.
+ *
+ *  This is the structural equivalent of how transform-blank works on
+ *  Quill — a small targeted change inside one text node, picked up by
+ *  Quill's MutationObserver, fed into its Delta model, with Quill's
+ *  internal selection shifting naturally for inserts/deletes before
+ *  the cursor. Cursor preservation comes for free because we only
+ *  touch text nodes that actually need to change; nodes containing
+ *  the caret are either untouched OR mutate with the caret offset
+ *  riding along.
+ *
+ *  Returns `true` when every hunk could be applied as a single-segment
+ *  splice. Returns `false` (DOM untouched) if any hunk spans multiple
+ *  segments — that means the change crosses a `<p>` boundary (e.g.
+ *  the LLM joined two paragraphs by removing a `\n`) or hits inline
+ *  formatting we can't safely traverse. Caller falls back to the
+ *  legacy select-all + per-line storm. The fallback is destructive
+ *  to cursor but acceptable for paragraph-restructuring cases (rare
+ *  during agent-rewrite, common for `draft email _`).
+ *
+ *  Why hunk-level granularity (vs. paragraph or line-level earlier
+ *  attempts): agent-rewrite typically produces multiple INDEPENDENT
+ *  small changes scattered across the buffer. A prefix/suffix LCP
+ *  diff would compute one big change region covering everything from
+ *  the first changed word to the last (potentially spanning paragraphs
+ *  via `\n`), forcing routing to the destructive storm. `wordDiff`
+ *  returns separate hunks for separate changes — each hunk small
+ *  enough to fit in one text node. */
+/** Module-level signal: was the most recent `diffWriteText` /
+ *  `replaceAllText` handled by an in-place text-node mutation path that
+ *  naturally preserves the user's caret position? `pushText` reads this
+ *  to decide whether to fire an explicit `reapplyCursor` afterwards.
+ *
+ *  Why this exists: agent-rewrite passes a cursor value derived from
+ *  `translateCursor(cursorBefore, ...)` where `cursorBefore` is
+ *  `chrome.readCursorOffset()`. On LinkedIn's Quill share composer
+ *  `window.getSelection()` regularly lands outside `.ql-editor` between
+ *  events (Quill's private bundle parks selection in a scratch location
+ *  during idle), so `readCursorOffset` returns 0 and the runtime
+ *  propagates 0 through. The in-place hunk fast path correctly mutates
+ *  the buffer AND preserves the user's actual caret via browser
+ *  text-node-offset preservation — but a follow-up `reapplyCursor(0)`
+ *  then drags the caret to start-of-buffer, exactly the symptom users
+ *  reported. Setting this flag tells `pushText` to trust the fast
+ *  path's natural cursor preservation and skip the explicit move. */
+let _diffPreservedCursor = false;
+
+function quillInPlaceUpdate(target: HTMLElement, newText: string): boolean {
+  const { text: currentText, segments } = walkPlainText(target);
+  if (currentText === newText) {
+    _diffPreservedCursor = true;
+    return true;
+  }
+
+  const hunks = wordDiff(currentText, newText);
+  if (hunks.length === 0) {
+    _diffPreservedCursor = true;
+    return true;
+  }
+
+  // Pre-flight: every hunk must fit cleanly inside a single Text-node
+  // segment. Collect mutations atomically so we never half-apply.
+  // Apply right-to-left below so the earlier hunks' segment-relative
+  // offsets stay valid (later mutations don't shift earlier ranges).
+  type Mut = { node: Text; startOff: number; endOff: number; replacement: string };
+  const muts: Mut[] = [];
+  for (const h of hunks) {
+    let foundSeg: { node: Node; plainStart: number; plainEnd: number } | null = null;
+    for (const s of segments) {
+      // A hunk that's a pure insertion (aStart === aEnd) needs a
+      // segment whose range CONTAINS that point. A hunk with extent
+      // needs a segment that fully contains the [aStart, aEnd) range.
+      const overlaps = h.aStart === h.aEnd
+        ? (s.plainStart <= h.aStart && s.plainEnd >= h.aStart)
+        : (s.plainStart <= h.aStart && s.plainEnd >= h.aEnd);
+      if (overlaps) {
+        if (foundSeg !== null) return false;
+        foundSeg = s;
+      }
+    }
+    if (foundSeg === null) return false;
+    if (foundSeg.node.nodeType !== Node.TEXT_NODE) return false;
+
+    const node = foundSeg.node as Text;
+    const startOff = h.aStart - foundSeg.plainStart;
+    const endOff = h.aEnd - foundSeg.plainStart;
+    if (startOff < 0 || endOff > node.data.length) return false;
+    muts.push({ node, startOff, endOff, replacement: h.replacement });
+  }
+
+  // Apply right-to-left. Same node may receive multiple mutations
+  // (e.g. two corrections in the same paragraph); processing
+  // right-to-left keeps the left ones' offsets valid because we
+  // haven't disturbed text to the left of them yet.
+  for (let i = muts.length - 1; i >= 0; i--) {
+    const m = muts[i];
+    const before = m.node.data.slice(0, m.startOff);
+    const after = m.node.data.slice(m.endOff);
+    const newData = before + m.replacement + after;
+    if (m.node.data !== newData) m.node.data = newData;
+  }
+  _diffPreservedCursor = true;
+  return true;
+}
+
 /**
  * Read the caret offset (in plain-text characters) from the current
  * contenteditable. Returns 0 when no target or no selection.
+ *
+ * Quill fallback (LinkedIn share composer): LinkedIn ships a private
+ * Quill bundle whose Selection module doesn't reliably propagate its
+ * internal cursor model to `window.getSelection()` between events —
+ * the browser selection's `startContainer` regularly lands OUTSIDE
+ * the `.ql-editor` between user actions, which used to make this
+ * function return 0 via the "outside target" guard. The agent-rewrite
+ * tick then captured cursorBefore=0, the runtime's
+ * `AgentRewrite.translateCursor` propagated 0 through its hunk-delta
+ * math (no hunks before position 0 to shift the cursor positive), and
+ * `pushText(text, 0)` landed the caret at start-of-buffer on every
+ * ~1500ms debounce — visible as "cursor jumps to start" while typing.
+ *
+ * Fix: cache the last cursor we successfully read for each target,
+ * populated on every `selectionchange` the user fires (see
+ * `cacheValidCursor` callers in content.ts). When
+ * `window.getSelection()` has wandered, return the cache instead of
+ * the misleading 0. Non-Quill editors are unaffected — their
+ * `window.getSelection()` is reliable so the fallback path never
+ * fires for them.
  */
+const _lastValidCursor = new WeakMap<HTMLElement, number>();
+
+export function cacheValidCursor(target: HTMLElement, offset: number): void {
+  if (offset >= 0) _lastValidCursor.set(target, offset);
+}
+
 function readCursorOffset(): number {
   const target = currentTarget;
   if (!target) return 0;
   if (isNormalInput(target)) return target.selectionStart ?? 0;
   const sel = window.getSelection();
-  if (!sel || sel.rangeCount === 0) return 0;
-  const range = sel.getRangeAt(0);
-  if (!target.contains(range.startContainer)) return 0;
-  return plainOffsetOfPosition(target, range.startContainer, range.startOffset);
+  if (sel && sel.rangeCount > 0) {
+    const range = sel.getRangeAt(0);
+    if (target.contains(range.startContainer)) {
+      const offset = plainOffsetOfPosition(target, range.startContainer, range.startOffset);
+      _lastValidCursor.set(target, offset);
+      return offset;
+    }
+  }
+  return _lastValidCursor.get(target) ?? 0;
 }
 
 /** Move the caret to the given plain-text offset within the current target.
@@ -738,28 +882,38 @@ function writeCursorOffset(offset: number, force: boolean = false): void {
   sel.addRange(range);
 }
 
-/** Re-apply the caret across multiple frames + a tail timeout so it
- *  sticks past managed editors' selection reconcile. LinkedIn's Quill
- *  share composer is the load-bearing case: its SelectionObserver
- *  normalizes the browser selection to its internal model position one
- *  frame after our first RAF, snapping the caret back to end-of-buffer.
- *  A 2-frame + setTimeout(0) tail catches the reconcile and lands the
- *  caret at the runtime-translated position. Idempotent on editors that
- *  don't fight — the extra calls are no-ops.
+/** Re-apply the caret in a microtask + on the next frame.
  *
- *  If the user moves the caret between calls (e.g. clicks elsewhere
- *  during the ~16ms window), the later calls will re-snap to our
- *  target — accepted trade-off: agent-rewrite ticks are debounced
- *  ~1500ms apart, so the re-snap window is short relative to typing
- *  cadence and overwhelmingly the user benefit is cursor-stays-where-
- *  it-was-typed rather than cursor-jumps-to-end. */
+ *  Why microtask, not sync: LinkedIn's Quill share composer intercepts
+ *  every `execCommand('insertText'|'insertParagraph')` via a
+ *  `beforeinput` handler that `preventDefault`s the browser action and
+ *  applies the change through its own Delta model. The model commit +
+ *  DOM rerender is scheduled as a microtask, so at the synchronous
+ *  moment immediately after `replaceAllText`'s per-line execCommand
+ *  storm finishes (i.e. when `pushText` calls into here),
+ *  `target.textContent` still holds the OLD content. A sync
+ *  `writeCursorOffset(translatedCursor)` would then ask
+ *  `domPositionOfPlainOffset` to find an offset that lies beyond the
+ *  current DOM's plain length — the walker falls off the end and the
+ *  fallback path lands the caret at position 0. The user perceives
+ *  this as a flash to start-of-buffer, then a "reset" to the right
+ *  spot when our second (RAF) reapply fires after Quill has rendered.
+ *
+ *  Scheduling a microtask AFTER Quill's beforeinput handler queued ITS
+ *  microtasks (during the execCommand storm) means ours runs LAST in
+ *  the microtask queue — Quill's reconcile is done, DOM has the new
+ *  text, `domPositionOfPlainOffset` finds the right node. The
+ *  RAF call is belt-and-braces against any post-reconcile Quill
+ *  selection-observer snap-back (idempotent on editors that don't
+ *  fight). Other hosts (Lexical, ProseMirror, generic CE) don't queue
+ *  this kind of model-deferred DOM update — for them the microtask
+ *  delay is sub-millisecond and not perceptible.
+ *
+ *  See PR #122 (0.2.6) for the prior over-eager 4-layer schedule that
+ *  treated the flash as a "snap-back" — wrong root cause, didn't help. */
 function reapplyCursor(offset: number): void {
-  writeCursorOffset(offset, true);
-  requestAnimationFrame(() => {
-    writeCursorOffset(offset, true);
-    requestAnimationFrame(() => writeCursorOffset(offset, true));
-  });
-  setTimeout(() => writeCursorOffset(offset, true), 0);
+  queueMicrotask(() => writeCursorOffset(offset, true));
+  requestAnimationFrame(() => writeCursorOffset(offset, true));
 }
 
 /** Apply newText to the target by mutating existing text nodes in
@@ -973,6 +1127,12 @@ function applyTextDiff(target: HTMLElement, newText: string): boolean {
  *  This is the "I changed a word" path. Use replaceAllText for
  *  whole-body rewrites (transform-blank, generate-draft). */
 function diffWriteText(text: string): void {
+  // Reset the in-place-preservation signal at the top of each write so
+  // `pushText` reads a fresh value. Set to `true` by paths that handle
+  // cursor naturally via text-node `.data` mutation (Quill in-place
+  // hunk fast path); left `false` for paths that destroy + reinsert
+  // (storm fallback) where `pushText` must explicitly restore cursor.
+  _diffPreservedCursor = false;
   const target = currentTarget;
   if (!target) return;
   if (isNormalInput(target)) {
@@ -1243,6 +1403,47 @@ export function replaceAllText(text: string): void {
       //   rejected untrusted paste, substitute reverted.
       // - Single `execCommand('insertText', '...\n...')`: `\n`s
       //   stripped, all text rendered as one run-on paragraph.
+      // Structural fast path: use the runtime's `wordDiff` to split
+      // the old → new change into small targeted hunks, then apply
+      // each as a single-segment text-node splice. This is the same
+      // shape of write transform-blank uses on Quill — small, targeted,
+      // picked up by Quill's MutationObserver, fed into its Delta
+      // model. Quill's internal selection shifts naturally for
+      // inserts/deletes before the cursor, so the user's logical
+      // typing position is preserved.
+      //
+      // Avoiding the legacy select-all + per-line execCommand storm
+      // matters because that storm leaves Quill's internal selection
+      // model at end-of-buffer. Quill processes each
+      // `execCommand('insertText')` through its Delta pipeline,
+      // advancing its internal cursor with every op; the browser-side
+      // `reapplyCursor` we do afterwards sets the BROWSER selection
+      // but Quill's selection observer doesn't reliably sync that
+      // back into its model. Result on LinkedIn share composer: every
+      // keystroke after an agent-rewrite tick lands at end-of-buffer
+      // regardless of where the user sees their caret — feature
+      // unusable.
+      //
+      // Hunk-level granularity matters specifically for agent-rewrite,
+      // which typically produces multiple INDEPENDENT small changes
+      // scattered across the buffer. The prefix/suffix LCP diff in
+      // `applyTextDiff` would compute one big change region covering
+      // the entire span from first to last change (potentially crossing
+      // paragraph boundaries via `\n`), forcing routing to the storm.
+      // `wordDiff` returns separate hunks for separate changes — each
+      // small enough to live inside one text node.
+      if (quillInPlaceUpdate(target, text)) {
+        log.info('[opencues] replaceAllText: quill in-place hunk-level mutation');
+        sourceReclassifier.markRuntimeWrite(text);
+        schedulePostReconcileRender();
+        return;
+      }
+      // Hunk crossed text-node boundaries (paragraph join/split, or
+      // inline formatting in the changed region). Fall through to the
+      // legacy select-all + per-line storm — destructive to cursor on
+      // agent-rewrite but correct for full-body rewrites (`draft email _`,
+      // transform-blank substitutes that restructure the buffer) where
+      // cursor-at-end-of-substitute is the expected outcome.
       try {
         const sel = window.getSelection();
         const range = document.createRange();
@@ -2411,16 +2612,27 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
       // Cursor is set synchronously after so the input-event handler
       // reads the post-fill caret position (matters for multi-word fills).
       diffWriteText(text);
-      // pushText cursor came from the runtime (substitution landing
-      // position) — force the move even on managed editors, and
-      // re-apply across multiple frames so the editor's reconcile
-      // doesn't snap the caret back to its model's idea of "natural"
-      // position. LinkedIn's Quill share composer specifically reconciles
-      // its SelectionObserver one frame AFTER our first RAF — a single
-      // RAF re-apply isn't enough; the agent-rewrite tick would land the
-      // caret at end-of-buffer on every ~1500ms tick instead of the
-      // translated position. See reapplyCursor for the schedule.
-      if (cursor !== undefined) reapplyCursor(cursor);
+      // Skip the explicit cursor restore when the write was handled by
+      // an in-place text-node mutation path (e.g. Quill hunk fast path)
+      // that preserves the user's caret naturally. The runtime-provided
+      // `cursor` is derived from `translateCursor(cursorBefore, ...)`
+      // which on Quill can be `0` (chrome.readCursorOffset returns 0
+      // when Quill parks `window.getSelection` outside `.ql-editor` —
+      // a regular occurrence with LinkedIn's private bundle). Applying
+      // `reapplyCursor(0)` after a successful in-place mutation would
+      // drag the caret to start-of-buffer, exactly the symptom users
+      // see on agent-rewrite ticks. When the in-place path mutated text
+      // nodes directly, the browser preserved text-node-offset for the
+      // caret AND Quill's MutationObserver fed the change into its
+      // Delta model with selection-shifting — so caret is already at
+      // the right place. Don't second-guess it.
+      //
+      // For storm fallback + transform-blank single-segment paths the
+      // flag stays `false`, so the explicit reapply runs as before —
+      // those paths need it. Transform-blank specifically passes a
+      // cursor value derived from the substitute span (NOT from
+      // getCursorOffset), so it's always meaningful.
+      if (cursor !== undefined && !_diffPreservedCursor) reapplyCursor(cursor);
     },
     forceRender: () => {
       runtimeRender();
@@ -2464,6 +2676,20 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     // between the two kinds — sources/blanks pruned reactively
     // without any popup save or page reload.
     supportsCycling: () => !isNormalInput(currentTarget),
+    // Quill (LinkedIn share composer) opt-out for background agent
+    // rewrites. Quill's Delta-model selection doesn't sync from browser
+    // selections we set after a write, so every keystroke following an
+    // agent-rewrite tick lands at Quill's internal cursor position
+    // rather than where the user sees the caret — typing into the
+    // wrong location, feature unusable. Inline single-substitution
+    // flows on the same target (transform-blank `translate to
+    // japanese _`, fluid-blank `weather _`, word-cues) still work
+    // because their cursor is computed deterministically from the
+    // substitute span and they mutate one text node which Quill's
+    // Delta-model selection-shift handles correctly. The runtime gate
+    // wipes the `agentically X _` trigger phrase cleanly but doesn't
+    // arm an AgentTask on Quill. See adapter.ts § supportsAgentRewrite.
+    supportsAgentRewrite: () => !(currentTarget && isQuillEditor(currentTarget)),
     // Ambient-context gatherer — gated by the `ambient-context-mode`
     // scalar on the runtime side. Returns null for sensitive fields
     // and when no usable metadata is present. See gatherAmbientContext

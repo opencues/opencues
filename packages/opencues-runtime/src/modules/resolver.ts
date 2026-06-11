@@ -417,7 +417,26 @@ export class Resolver {
       }
     }
 
-    switch (action) {
+    // Host opt-out gate for agentic flows. Hosts whose currently-focused
+    // target can't support background agent rewrites (chrome on Quill —
+    // see adapter.ts § supportsAgentRewrite) silently drop ARM/ADD
+    // verdicts here by rewriting them to a no-op that still trims the
+    // trigger phrase from the buffer (clean feedback), but doesn't arm
+    // the task. STOP is still honored so users can disarm tasks armed
+    // in a different (supported) context that the focus has since
+    // moved away from.
+    const agentRewriteSupported = this.adapter.supportsAgentRewrite?.() ?? true;
+    const effectiveAction = (!agentRewriteSupported && (action === 'TASK_ARM' || action === 'TASK_ADD'))
+      ? 'TASK_SUPPRESSED'
+      : action;
+    if (effectiveAction === 'TASK_SUPPRESSED') {
+      this.adapter.log('info', `AgentTask: arm/add suppressed — current target does not support agent-rewrite (supportsAgentRewrite=false)`);
+    }
+    switch (effectiveAction) {
+      case 'TASK_SUPPRESSED':
+        newText = prefix;
+        newCursor = newText.length;
+        break;
       case 'TASK_ARM':
         state.arm(payload);
         this.adapter.log('info', `AgentTask: ARM (taskId=${state.taskId?.slice(0, 8)}…, prompt="${payload}")`);

@@ -21,6 +21,7 @@ import {
   updateRuntimeLlmConfig,
   notifyBufferReplacedExternally,
   notifyExternalReplaceUndo,
+  cacheValidCursor,
 } from './opencues-bootstrap';
 import { clearStatusbar } from './runtime-statusbar';
 import { deriveOpenCuesColours } from './derive-colours';
@@ -167,6 +168,26 @@ async function init(): Promise<void> {
     publishTarget(el);
   };
 
+  // Snapshot the current cursor into opencues-bootstrap's last-valid-cursor
+  // cache from any event whose handler can guarantee the browser selection
+  // reflects the user's perceived cursor. The cache is the only reliable
+  // cursor source on LinkedIn's Quill share composer, where the editor's
+  // Selection module regularly parks the browser selection outside
+  // `.ql-editor` between events — leaving `readCursorOffset` to return 0
+  // at agent-rewrite tick time without it. See `cacheValidCursor`
+  // discussion in opencues-bootstrap.ts.
+  const captureCursorIntoCache = (): void => {
+    const target = currentTarget;
+    if (!target) return;
+    if (isNormalInput(target)) return;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    if (!target.contains(range.startContainer)) return;
+    const cursor = plainOffsetOfPosition(target, range.startContainer, range.startOffset);
+    cacheValidCursor(target, cursor);
+  };
+
   document.addEventListener('focusin', (e) => {
     const el = resolveFocusedFromEvent(e);
     if (el) attachToFocused(el);
@@ -270,6 +291,19 @@ async function init(): Promise<void> {
   // § "Per-buffer state must reset on focus change".
   document.addEventListener('beforeinput', (e) => {
     if (!e.isTrusted) return;
+    // Seed the last-valid-cursor cache (opencues-bootstrap) BEFORE the
+    // editor processes input. At `beforeinput` time, `window.getSelection()`
+    // is guaranteed to reflect where the user's input will land — that's
+    // the user's perceived cursor. This is the most reliable signal we
+    // have: LinkedIn's Quill regularly parks the browser selection
+    // outside `.ql-editor` between events, so neither `selectionchange`
+    // nor a polled `readCursorOffset` at agent-rewrite tick time can
+    // recover the user's actual cursor. Snapshotting it here means the
+    // cache holds the last-keystroke position by the time the agent's
+    // debounce fires ~1500ms later. Same path also fires on real paste
+    // / IME commit, which is correct — those are intentional user edits
+    // that land at the cursor too.
+    captureCursorIntoCache();
     const t = (e as InputEvent).inputType;
     // Undo/redo additionally open a brief window during which input
     // events get reclassified to 'runtime' — a restored `_` from a
@@ -281,6 +315,22 @@ async function init(): Promise<void> {
     } else if (t === 'insertFromPaste' || t === 'insertCompositionText') {
       notifyBufferReplacedExternally();
     }
+  }, true);
+
+  // Same snapshot at keyup — covers arrow keys / Home / End / PgUp / PgDn
+  // that move the cursor without firing beforeinput. Synchronous capture
+  // (no microtask defer) so Quill's selectionchange-driven internal
+  // reshuffle doesn't run first.
+  document.addEventListener('keyup', () => {
+    captureCursorIntoCache();
+  }, true);
+
+  // Same snapshot at mouseup — covers click-to-position-cursor on Quill,
+  // which also doesn't fire beforeinput. The user just placed the caret
+  // where they want it; the browser selection is at that position right
+  // now.
+  document.addEventListener('mouseup', () => {
+    captureCursorIntoCache();
   }, true);
 
   // Managed editors (Lexical, ProseMirror, Draft.js) bind ctrl/cmd+z and
@@ -362,7 +412,11 @@ async function init(): Promise<void> {
              // on input events in bubble; without capture we never see them.
 
   // Cursor-only moves (mouse click, arrow keys without typing) — fire
-  // selectionchange. Drives cursor-navigate auto-highlight when on.
+  // selectionchange. Drives cursor-navigate auto-highlight when on, AND
+  // seeds opencues-bootstrap's last-valid-cursor cache (LinkedIn Quill's
+  // Selection module doesn't reliably propagate to `window.getSelection()`
+  // between events, so the cached value becomes the only reliable source
+  // by the time `readCursorOffset` is polled at agent-rewrite tick time).
   document.addEventListener('selectionchange', () => {
     const target = currentTarget;
     if (!target) return;
@@ -375,6 +429,7 @@ async function init(): Promise<void> {
     const range = sel.getRangeAt(0);
     if (!target.contains(range.startContainer)) return;
     const cursor = plainOffsetOfPosition(target, range.startContainer, range.startOffset);
+    cacheValidCursor(target, cursor);
     const text = walkPlainText(target).text;
     runtimeNotifyCursor(text, cursor);
   });
