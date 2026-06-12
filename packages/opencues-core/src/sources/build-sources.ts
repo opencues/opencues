@@ -275,6 +275,19 @@ export interface BuildSourcesOptions {
    * has cycling continues to register everything.
    */
   supportsCycling?: boolean;
+  /**
+   * OPENCUES.md `max-thinking` toggle. `true` (default) lets each
+   * reasoning-capable model think up to its per-model ceiling (the
+   * pre-feature behaviour); `false` drops it to the model's reduced
+   * level for faster, cheaper cues/blanks. Threaded into every LLM
+   * source's dispatch ctx → resolved per-model in
+   * `@opencues/core/model-thinking.ts`'s `resolveReasoningEffort`.
+   *
+   * Set from OPENCUES.md `max-thinking: on | off` by the runtime
+   * (resolver.ts). The config-intent classifier is unaffected — it
+   * pins reasoning to `low` regardless.
+   */
+  maxThinking?: boolean;
 }
 
 /**
@@ -484,6 +497,7 @@ export function buildSourcesFromConfig(
           endpoint: resolved.endpoint,
           apiKey: resolved.apiKey,
           model: resolved.model,
+          maxThinking: options.maxThinking,
           sourceConfig: srcCfg,
           log: options.log,
           onEvent: options.onSentenceCueEvent,
@@ -521,6 +535,7 @@ export function buildSourcesFromConfig(
           endpoint: resolved.endpoint,
           apiKey: resolved.apiKey,
           model: resolved.model,
+          maxThinking: options.maxThinking,
         }));
       } else {
         // Non-routable sources (different scope or parser) stay direct.
@@ -536,6 +551,7 @@ export function buildSourcesFromConfig(
           endpoint: resolved.endpoint,
           apiKey: resolved.apiKey,
           model: resolved.model,
+          maxThinking: options.maxThinking,
         }));
       }
     }
@@ -624,6 +640,7 @@ export function buildSourcesFromConfig(
         apiKeys,
         maxTokens: options.fluidBlank?.maxTokens,
         temperature: options.fluidBlank?.temperature,
+        maxThinking: options.maxThinking,
         blanks: options.blanks ?? {},
         onEvent: options.onFluidBlankEvent,
         log: options.log,
@@ -653,6 +670,7 @@ export function buildSourcesFromConfig(
         apiKeys,
         maxTokens: options.transformBlank?.maxTokens,
         temperature: options.transformBlank?.temperature,
+        maxThinking: options.maxThinking,
         blanks: options.blanks ?? {},
         log: options.log,
         onEvent: options.onTransformBlankEvent,

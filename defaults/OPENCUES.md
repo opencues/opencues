@@ -7,6 +7,20 @@ debug-mode: off
 tips-mode: on
 cursor-navigate: inactive
 
+# max-thinking — how hard reasoning-capable models think before
+# answering. Each verified model has a bench-tuned CEILING (cerebras
+# gpt-oss → medium, groq/openai/openrouter gpt-oss & gpt-5 → low) and a
+# reduced OFF level (cerebras → low, the rest → none). See
+# packages/opencues-core/src/model-thinking.ts.
+#   on  (default): each model reasons up to its ceiling — identical to
+#                  the pre-feature behaviour.
+#   off          : each model drops to its reduced level for faster,
+#                  cheaper cues + blanks ("thinking too much is too slow").
+# Applies to word-cues, sentence-cues, fluid-blank, transform-blank, and
+# agent-rewrite. The fluid-config classifier always reasons at `low`
+# regardless. Non-reasoning providers (anthropic, gemini) ignore it.
+max-thinking: on
+
 # Forwards a low-fan-out, sanitized snapshot of the focused field
 # (label, placeholder, aria-*, input type, page title, page url
 # origin+path, meta description) to the fluid-blank LLM call ONLY,

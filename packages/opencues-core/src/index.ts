@@ -162,6 +162,15 @@ export {
   type ResponseFormat,
 } from './llm-provider';
 
+// Per-model thinking-budget resolution for the `max-thinking` setting
+export {
+  resolveReasoningEffort,
+  lookupModelThinking,
+  type ReasoningEffort,
+  type ModelThinking,
+  type ResolveReasoningArgs,
+} from './model-thinking';
+
 // Host-compat: which integrations a cue or blank runs on
 export {
   inferHostCompat,

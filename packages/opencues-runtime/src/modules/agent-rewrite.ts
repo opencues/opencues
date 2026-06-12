@@ -58,7 +58,7 @@ export interface AgentRewriteProviderAdapter {
       seed?: number;
       reasoningEffort?: 'low' | 'medium' | 'high';
     },
-    ctx: { apiKey: string; endpoint?: string },
+    ctx: { apiKey: string; endpoint?: string; maxThinking?: boolean },
   ): { url: string; body: string; headers: Record<string, string> };
   parseResponse(rawJson: string): string;
   /** Optional — CLI-transport providers supply this; AgentRewrite calls
@@ -86,6 +86,14 @@ export interface ResolvedAgentLLM {
    * cerebras when both keys are configured.
    */
   readonly fallback?: ResolvedAgentLLM | null;
+  /**
+   * OPENCUES.md `max-thinking` toggle (default on), stamped by
+   * boot-common's `buildAgentLLMResolver`. Threaded into the wire
+   * dispatch ctx so `@opencues/core`'s `model-thinking.ts` resolves the
+   * per-model reasoning ceiling (on) vs reduced level (off). Undefined
+   * is treated as on.
+   */
+  readonly maxThinking?: boolean;
 }
 
 export interface AgentRewriteOptions {
@@ -626,7 +634,7 @@ export class AgentRewrite {
           provider as unknown as Parameters<typeof dispatchChat>[0],
           { post: async () => '' },
           chatRequest,
-          { apiKey, endpoint },
+          { apiKey, endpoint, maxThinking: resolved?.maxThinking ?? true },
         );
         return out && out.trim() ? out : null;
       } catch (err) {
@@ -638,7 +646,7 @@ export class AgentRewrite {
     let body: string;
     let headers: Record<string, string>;
     if (provider) {
-      const built = provider.buildRequest(chatRequest, { apiKey, endpoint });
+      const built = provider.buildRequest(chatRequest, { apiKey, endpoint, maxThinking: resolved?.maxThinking ?? true });
       url = built.url;
       body = built.body;
       headers = built.headers;

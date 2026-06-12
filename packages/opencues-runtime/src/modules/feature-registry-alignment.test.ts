@@ -35,6 +35,9 @@ const SETTINGS_MAP_ONLY: ReadonlySet<string> = new Set([
   'transformBlankMode', // consumed by transform-blank pipeline gate
   'fluidConfigMode',    // consumed in resolver.ts:enableConfigIntent
   'sentenceCuesMode',   // consumed in resolver.ts:enableSentenceCues
+  'maxThinking',        // consumed in resolver.ts (buildSources maxThinking)
+                        // + boot-common buildAgentLLMResolver; a plain
+                        // on/off toggle, no narrow-typed consumer needs it.
   // The three `*-llm-model` scalars are read straight off `settings.get(...)`
   // by resolver.ts:532-535. They're dynamic-valued (their valid range
   // depends on the sibling `*-llm-provider`) so a typed enum would be

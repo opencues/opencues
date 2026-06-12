@@ -555,6 +555,11 @@ export interface FluidBlankSourceConfig {
   /** Per-feature temperature override. Falls back to 0 (deterministic
    *  lookups) when absent. */
   temperature?: number;
+  /** OPENCUES.md `max-thinking` toggle (default on). Threaded into the
+   *  dispatch ctx so model-thinking.ts resolves the reasoning ceiling vs
+   *  reduced level. `false` (off) drops reasoning-capable models to their
+   *  reduced level for faster lookups. */
+  maxThinking?: boolean;
   /** Source priority. Default 92 — sits below keyword-bound BlankSource
    * (95) so a blank claims a slot whose keyword is in proximity, fluid
    * handles everything else. */
@@ -709,6 +714,7 @@ export class FluidBlankSource implements CueSource {
   private apiKeys: Readonly<Record<string, string | undefined>>;
   private maxTokensOverride: number | undefined;
   private temperatureOverride: number | undefined;
+  private maxThinking: boolean;
   private blanks: Record<string, BlankConfig>;
   private emit: (event: FluidBlankEvent) => void;
   private log: (msg: string) => void;
@@ -724,6 +730,7 @@ export class FluidBlankSource implements CueSource {
     this.apiKeys = config.apiKeys ?? {};
     this.maxTokensOverride = config.maxTokens;
     this.temperatureOverride = config.temperature;
+    this.maxThinking = config.maxThinking ?? true;
     this.priority = config.priority ?? 92;
     this.blanks = config.blanks ?? {};
     this.emit = config.onEvent ?? (() => { /* default: silent */ });
@@ -1110,7 +1117,7 @@ export class FluidBlankSource implements CueSource {
         seed: 42,
         responseFormat,
       },
-      { apiKey: overrideApiKey ?? this.apiKey, endpoint: overrideProvider ? overrideProvider.defaultEndpoint : this.endpoint, signal },
+      { apiKey: overrideApiKey ?? this.apiKey, endpoint: overrideProvider ? overrideProvider.defaultEndpoint : this.endpoint, signal, maxThinking: this.maxThinking },
     );
   }
 }

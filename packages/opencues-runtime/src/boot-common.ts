@@ -343,7 +343,13 @@ export function buildAgentLLMResolver(
       : s.get('llm-model'),
     apiKeys,
   }) as ResolvedAgentLLM | null;
-  return out;
+  if (!out) return null;
+  // Thread the `max-thinking` toggle (default on) onto the resolved
+  // tuple so AgentRewrite's dispatch honours the same per-model
+  // reasoning-budget resolution as the cue/blank sources. `agent-rewrite`
+  // reads the auditors bucket; `off` drops its reasoning-capable models
+  // to their reduced level. See @opencues/core/model-thinking.ts.
+  return { ...out, maxThinking: (s.get('max-thinking') ?? 'on') !== 'off' };
 }
 import { Navigation } from './modules/navigation';
 import { DimRender } from './modules/dim-render';

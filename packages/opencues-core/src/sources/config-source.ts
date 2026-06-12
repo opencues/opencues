@@ -51,6 +51,9 @@ export interface ConfigSourceOptions {
   apiKey: string;
   /** Resolved model identifier. */
   model: string;
+  /** OPENCUES.md `max-thinking` toggle (default on). Threaded into the
+   *  dispatch ctx for the reasoning-budget resolution in model-thinking.ts. */
+  maxThinking?: boolean;
 }
 
 // ============================================================================
@@ -89,6 +92,7 @@ export class ConfigSource implements CueSource {
   private endpoint: string;
   private apiKey: string;
   private model: string;
+  private maxThinking: boolean;
   private matchRe?: RegExp;
 
   constructor(opts: ConfigSourceOptions) {
@@ -103,6 +107,7 @@ export class ConfigSource implements CueSource {
     this.endpoint = opts.endpoint;
     this.apiKey = opts.apiKey;
     this.model = opts.model;
+    this.maxThinking = opts.maxThinking ?? true;
 
     if (cfg.match) {
       try { this.matchRe = new RegExp(cfg.match, 'i'); } catch { /* invalid regex */ }
@@ -151,11 +156,10 @@ export class ConfigSource implements CueSource {
           // absent the bench-tuned defaults (800 / 0.3) hold.
           maxTokens: this.sourceConfig.maxTokens ?? 800,
           temperature: this.sourceConfig.temperature ?? 0.3,
-          // reasoningEffort omitted — provider adapter applies its
-          // bench-derived default (see ProviderAdapter.defaultReasoningEffort
-          // in @opencues/core/llm-provider.ts). Honored by groq /
-          // cerebras / openai / openrouter on reasoning models;
-          // ignored by gemini / anthropic.
+          // reasoningEffort omitted — model-thinking.ts resolves the level
+          // from the model's ceiling + the `max-thinking` toggle (threaded
+          // via ctx.maxThinking below). Honored by groq / cerebras / openai
+          // / openrouter on reasoning models; ignored by gemini / anthropic.
           responseFormat: useJson
             ? buildJsonResponseFormat(
                 this.parser === 'alternatives' ? 'word_cues_alts' : 'word_cues_raw',
@@ -163,7 +167,7 @@ export class ConfigSource implements CueSource {
               )
             : undefined,
         },
-        { apiKey: this.apiKey, endpoint: this.endpoint },
+        { apiKey: this.apiKey, endpoint: this.endpoint, maxThinking: this.maxThinking },
       );
 
       const results = useJson

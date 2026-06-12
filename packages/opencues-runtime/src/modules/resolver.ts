@@ -663,6 +663,11 @@ export class Resolver {
       enableConfigIntent: settings.get('fluid-config-mode') === 'on',
       enableSentenceCues: settings.get('sentence-cues-mode') === 'on',
       enableWordCues: settings.get('word-cues-mode') === 'on',
+      // `max-thinking` (default on). Threaded into every LLM source's
+      // dispatch ctx; @opencues/core/model-thinking.ts resolves the
+      // per-model reasoning ceiling (on) vs reduced level (off). Only
+      // `off` changes anything — `on` reproduces the prior behaviour.
+      maxThinking: (settings.get('max-thinking') ?? 'on') !== 'off',
       // applyOpencuesScalar — ConfigIntentSource's side-effect callback.
       //
       // Does TWO things, matching the pair that satellite cycling

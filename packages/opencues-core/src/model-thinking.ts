@@ -1,0 +1,165 @@
+/**
+ * opencues-core/model-thinking.ts
+ *
+ * Per-model "thinking budget" resolution for the `max-thinking` OPENCUES.md
+ * setting.
+ *
+ * ## The idea
+ *
+ * Every reasoning-capable model has a sensible CEILING on how hard it should
+ * think before the latency cost outweighs the accuracy gain — "thinking too
+ * much is too slow". Cerebras' gpt-oss models top out at `medium` (their
+ * fastest reasoning path); Groq / OpenAI gpt-oss / gpt-5 top out at `low`.
+ * Each model also gets a REDUCED level used when the user wants snappier,
+ * cheaper output: cerebras → `low`, the gpt-oss / gpt-5 family → `none`.
+ *
+ * The single user knob is `max-thinking: on | off` (OPENCUES.md scalar,
+ * default `on`):
+ *
+ *   - `on`  → each model thinks at its `max` ceiling. The ceilings are
+ *             seeded to equal each provider's bench-derived
+ *             `defaultReasoningEffort`, so `on` reproduces the pre-feature
+ *             behaviour byte-for-byte.
+ *   - `off` → each model drops to its `off` level.
+ *
+ * ## Why per-model (not per-provider)
+ *
+ * `ProviderAdapter.defaultReasoningEffort` is per-provider. This table is
+ * per-(provider, model) so individual models can be tuned independently
+ * later (e.g. a future cerebras model that's fine at `high`) without moving
+ * every sibling. Models absent from the table fall back to the provider
+ * default for `max` and one notch below it for `off`.
+ *
+ * ## Where this plugs in
+ *
+ * `resolveReasoningEffort` is the single resolution function. It runs inside
+ * `buildOpenAIBody` (llm-provider.ts) — the one chokepoint every
+ * reasoning-capable wire call funnels through (the source `dispatchChat`
+ * calls AND AgentRewrite's direct `provider.buildRequest`). The `maxThinking`
+ * flag reaches it via the `ctx` that already flows to every `buildRequest`.
+ *
+ * Bench provenance for the ceilings: `tests/results/thinking-budget-2026-05-18.md`
+ * (the same sweep that set each provider's `defaultReasoningEffort`).
+ */
+
+export type ReasoningEffort = 'none' | 'low' | 'medium' | 'high';
+
+/** Strength ordering so a ceiling can be enforced as a numeric min. */
+const ORDER: Record<ReasoningEffort, number> = { none: 0, low: 1, medium: 2, high: 3 };
+
+/** Lower of the two levels — clamps `effort` so it never exceeds `ceiling`. */
+function clampToCeiling(effort: ReasoningEffort, ceiling: ReasoningEffort): ReasoningEffort {
+  return ORDER[effort] <= ORDER[ceiling] ? effort : ceiling;
+}
+
+/** One level below `e`: high→medium, medium→low, low→none, none→none. */
+function notchBelow(e: ReasoningEffort): ReasoningEffort {
+  switch (e) {
+    case 'high': return 'medium';
+    case 'medium': return 'low';
+    case 'low': return 'none';
+    default: return 'none';
+  }
+}
+
+export interface ModelThinking {
+  /** Ceiling applied when `max-thinking` is ON. */
+  readonly max: ReasoningEffort;
+  /** Reduced level applied when `max-thinking` is OFF. */
+  readonly off: ReasoningEffort;
+}
+
+/**
+ * Explicit per-(provider, model) ceilings. Key is `${providerId}:${model}`.
+ *
+ * Seeded from each provider's `defaultReasoningEffort` (= `max`) with `off`
+ * one notch below, but written out per model so each entry is independently
+ * tunable. ONLY reasoning-capable models need a row — non-reasoning
+ * providers (anthropic, gemini, claude-cli) never forward `reasoning_effort`,
+ * so `resolveReasoningEffort` returns `undefined` for them regardless and the
+ * value is dropped by `buildOpenAIBody`'s forward gate.
+ */
+const MODEL_THINKING: Readonly<Record<string, ModelThinking>> = {
+  // Cerebras — fastest reasoning path; `medium` is the bench ceiling.
+  'cerebras:gpt-oss-120b': { max: 'medium', off: 'low' },
+  'cerebras:zai-glm-4.7':  { max: 'medium', off: 'low' },
+
+  // Groq — gpt-oss-* REQUIRE the field; `low` ceiling.
+  'groq:openai/gpt-oss-120b': { max: 'low', off: 'none' },
+  'groq:openai/gpt-oss-20b':  { max: 'low', off: 'none' },
+
+  // OpenAI gpt-5 family — `low` ceiling (`none` collapses transform-blank).
+  'openai:gpt-5.4-mini': { max: 'low', off: 'none' },
+  'openai:gpt-5.4':      { max: 'low', off: 'none' },
+  'openai:gpt-5.4-nano': { max: 'low', off: 'none' },
+  'openai-subscription:gpt-5.4-mini': { max: 'low', off: 'none' },
+  'openai-subscription:gpt-5.4':      { max: 'low', off: 'none' },
+  'openai-subscription:gpt-5.4-nano': { max: 'low', off: 'none' },
+
+  // OpenRouter gpt-oss passthrough (non-gpt-oss routes are non-reasoning).
+  'openrouter:openai/gpt-oss-120b':      { max: 'low', off: 'none' },
+  'openrouter:openai/gpt-oss-120b:free': { max: 'low', off: 'none' },
+
+  // OpenCode Zen free pool.
+  'opencode-zen:free':       { max: 'low', off: 'none' },
+  'opencode-zen:big-pickle': { max: 'low', off: 'none' },
+};
+
+/**
+ * The `{ max, off }` pair for a (provider, model). Explicit table entry wins;
+ * otherwise derive from `providerDefault` (`max = default`, `off` one notch
+ * below). When the provider has no reasoning default (non-reasoning provider)
+ * both are `none` — but the result is unused, since such providers don't
+ * forward the field.
+ */
+export function lookupModelThinking(
+  providerId: string | undefined,
+  model: string,
+  providerDefault?: ReasoningEffort,
+): ModelThinking {
+  const explicit = providerId ? MODEL_THINKING[`${providerId}:${model}`] : undefined;
+  if (explicit) return explicit;
+  if (providerDefault === undefined) return { max: 'none', off: 'none' };
+  return { max: providerDefault, off: notchBelow(providerDefault) };
+}
+
+export interface ResolveReasoningArgs {
+  readonly providerId?: string;
+  readonly model: string;
+  /**
+   * Caller's explicit per-call reasoning (e.g. FluidBlank / ConfigIntent
+   * pin `'low'` for latency). Wins over the max-thinking toggle, but is
+   * still clamped DOWN to the model's ceiling — `max-thinking` is a true
+   * cap, so an explicit `'high'` on cerebras still resolves to `'medium'`.
+   */
+  readonly explicit?: ReasoningEffort;
+  /** The provider's bench default — ceiling for models absent from the table. */
+  readonly providerDefault?: ReasoningEffort;
+  /** OPENCUES.md `max-thinking` toggle. Treated as `true` (on) when omitted. */
+  readonly maxThinking?: boolean;
+}
+
+/**
+ * Resolve the `reasoning_effort` value for a (provider, model) wire call.
+ *
+ * Precedence:
+ *   1. `explicit` (clamped to the model's ceiling).
+ *   2. `maxThinking` ON  → the model's ceiling.
+ *      `maxThinking` OFF → the model's reduced level.
+ *
+ * Returns `undefined` only when the provider has no reasoning default AND no
+ * explicit value — i.e. a non-reasoning provider — exactly matching the prior
+ * `req.reasoningEffort ?? defaultReasoningEffort` contract this replaced.
+ *
+ * NOTE: with `maxThinking` ON (the default) and ceilings seeded to equal
+ * `providerDefault`, this returns the SAME value the old expression did, so
+ * the default install is behaviourally unchanged.
+ */
+export function resolveReasoningEffort(args: ResolveReasoningArgs): ReasoningEffort | undefined {
+  const { max, off } = lookupModelThinking(args.providerId, args.model, args.providerDefault);
+  if (args.explicit !== undefined) return clampToCeiling(args.explicit, max);
+  // No reasoning default → non-reasoning provider; preserve the undefined
+  // contract regardless of the toggle (value would be dropped anyway).
+  if (args.providerDefault === undefined) return undefined;
+  return (args.maxThinking ?? true) ? max : off;
+}
