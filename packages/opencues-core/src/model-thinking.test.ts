@@ -4,7 +4,13 @@ import { resolveReasoningEffort, lookupModelThinking } from './model-thinking';
 describe('model-thinking: lookupModelThinking', () => {
   it('returns the explicit table entry for a verified model', () => {
     expect(lookupModelThinking('cerebras', 'gpt-oss-120b')).toEqual({ max: 'medium', off: 'low' });
-    expect(lookupModelThinking('groq', 'openai/gpt-oss-120b')).toEqual({ max: 'low', off: 'none' });
+    // groq gpt-oss-* hard-rejects 'none' on the wire (HTTP 400); `low` is
+    // the floor. openrouter, opencode-zen passthroughs share this constraint.
+    expect(lookupModelThinking('groq', 'openai/gpt-oss-120b')).toEqual({ max: 'low', off: 'low' });
+    expect(lookupModelThinking('openrouter', 'openai/gpt-oss-120b:free')).toEqual({ max: 'low', off: 'low' });
+    // openai gpt-5.4-* DOES accept 'none' as a valid wire value (verified
+    // 2026-06-12). It's the only family in the table that gets all the way
+    // down to 'none' on the `off` toggle.
     expect(lookupModelThinking('openai', 'gpt-5.4-mini')).toEqual({ max: 'low', off: 'none' });
   });
 
@@ -32,7 +38,8 @@ describe('model-thinking: resolveReasoningEffort', () => {
 
   it('max-thinking OFF drops to the model reduced level', () => {
     expect(resolveReasoningEffort({ providerId: 'cerebras', model: 'gpt-oss-120b', providerDefault: 'medium', maxThinking: false })).toBe('low');
-    expect(resolveReasoningEffort({ providerId: 'groq', model: 'openai/gpt-oss-120b', providerDefault: 'low', maxThinking: false })).toBe('none');
+    // groq: floor IS low; the `off` toggle is a no-op for it but won't 400.
+    expect(resolveReasoningEffort({ providerId: 'groq', model: 'openai/gpt-oss-120b', providerDefault: 'low', maxThinking: false })).toBe('low');
     expect(resolveReasoningEffort({ providerId: 'openai', model: 'gpt-5.4-mini', providerDefault: 'low', maxThinking: false })).toBe('none');
   });
 

@@ -41,12 +41,16 @@ describe('max-thinking → reasoning_effort wire body', () => {
     });
   });
 
-  describe('groq gpt-oss-120b (ceiling low, reduced none)', () => {
+  describe('groq gpt-oss-120b (ceiling low, floor low — wire rejects "none")', () => {
     it('ON → low', () => {
       expect(reasoningOf('groq', 'openai/gpt-oss-120b', { maxThinking: true })).toBe('low');
     });
-    it('OFF → none (reasoning disabled)', () => {
-      expect(reasoningOf('groq', 'openai/gpt-oss-120b', { maxThinking: false })).toBe('none');
+    // groq returns HTTP 400 ("reasoning_effort must be one of `low`,
+    // `medium`, or `high`") when sent 'none'. The table pins both
+    // levels at 'low' so the toggle is a no-op — but more importantly
+    // never produces a broken request.
+    it('OFF → low (groq hard-rejects "none"; floor is the toggle target)', () => {
+      expect(reasoningOf('groq', 'openai/gpt-oss-120b', { maxThinking: false })).toBe('low');
     });
   });
 

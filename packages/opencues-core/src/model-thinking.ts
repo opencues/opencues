@@ -80,29 +80,56 @@ export interface ModelThinking {
  * value is dropped by `buildOpenAIBody`'s forward gate.
  */
 const MODEL_THINKING: Readonly<Record<string, ModelThinking>> = {
-  // Cerebras — fastest reasoning path; `medium` is the bench ceiling.
+  // Cerebras gpt-oss-120b — `medium` ceiling. `'none'` is rejected
+  // with HTTP 400 ("Unsupported reasoning effort: none. Supported
+  // values are 'low', 'medium'") — verified live 2026-06-12. `low`
+  // is the floor here, NOT `none`.
   'cerebras:gpt-oss-120b': { max: 'medium', off: 'low' },
-  'cerebras:zai-glm-4.7':  { max: 'medium', off: 'low' },
+  // Note on cerebras:zai-glm-4.7 — model name doesn't match the
+  // `isReasoningModelName` heuristic in `buildOpenAIBody`, so
+  // `reasoning_effort` is never forwarded for this model regardless of
+  // table contents. Verified live 2026-06-12: sending any non-none
+  // reasoning_effort to zai-glm-4.7 returns an empty completion (the
+  // model treats it as no-op output). No entry here keeps lookup
+  // returning the cerebras provider default; the gate drops it before
+  // the wire anyway.
 
-  // Groq — gpt-oss-* REQUIRE the field; `low` ceiling.
-  'groq:openai/gpt-oss-120b': { max: 'low', off: 'none' },
-  'groq:openai/gpt-oss-20b':  { max: 'low', off: 'none' },
+  // Groq `openai/gpt-oss-*` — REQUIRES the field. Accepts ONLY
+  // 'low' | 'medium' | 'high'; `'none'` returns HTTP 400
+  // (`"reasoning_effort must be one of `low`, `medium`, or `high`"`).
+  // Verified live 2026-06-12. `low` is the floor — `off: 'low'` is a
+  // no-op for groq but it's the closest the toggle can get.
+  'groq:openai/gpt-oss-120b': { max: 'low', off: 'low' },
+  'groq:openai/gpt-oss-20b':  { max: 'low', off: 'low' },
 
-  // OpenAI gpt-5 family — `low` ceiling (`none` collapses transform-blank).
+  // OpenAI gpt-5.4 family — `low` ceiling. Live API on 2026-06-12 now
+  // accepts `'none'` as a valid value (rejects `'minimal'` — inverse
+  // of the May 2026 bench which is now stale on this point). `'none'`
+  // returns 200 with usable content on a short generation; longer
+  // rewrites may show a quality drop. `off: 'none'` is supported but
+  // users should benchmark on their workload before relying on it.
   'openai:gpt-5.4-mini': { max: 'low', off: 'none' },
   'openai:gpt-5.4':      { max: 'low', off: 'none' },
   'openai:gpt-5.4-nano': { max: 'low', off: 'none' },
+  // openai-subscription routes through the same gpt-5.4 API surface.
   'openai-subscription:gpt-5.4-mini': { max: 'low', off: 'none' },
   'openai-subscription:gpt-5.4':      { max: 'low', off: 'none' },
   'openai-subscription:gpt-5.4-nano': { max: 'low', off: 'none' },
 
-  // OpenRouter gpt-oss passthrough (non-gpt-oss routes are non-reasoning).
-  'openrouter:openai/gpt-oss-120b':      { max: 'low', off: 'none' },
-  'openrouter:openai/gpt-oss-120b:free': { max: 'low', off: 'none' },
+  // OpenRouter `openai/gpt-oss-*` passthrough — OpenRouter explicitly
+  // rejects `'none'` with HTTP 400 (`"Reasoning is mandatory for this
+  // endpoint and cannot be disabled."`) on both the paid and `:free`
+  // endpoints. Verified live 2026-06-12. `low` is the floor.
+  'openrouter:openai/gpt-oss-120b':      { max: 'low', off: 'low' },
+  'openrouter:openai/gpt-oss-120b:free': { max: 'low', off: 'low' },
 
-  // OpenCode Zen free pool.
-  'opencode-zen:free':       { max: 'low', off: 'none' },
-  'opencode-zen:big-pickle': { max: 'low', off: 'none' },
+  // OpenCode Zen free pool — same gpt-oss-120b family as groq, so
+  // assume the same `'none'` hard-reject. No live probe (free pool
+  // requires a separate key + has stricter rate limits); `off: 'low'`
+  // is the conservative choice that won't 400. Re-probe if the floor
+  // changes.
+  'opencode-zen:free':       { max: 'low', off: 'low' },
+  'opencode-zen:big-pickle': { max: 'low', off: 'low' },
 };
 
 /**
