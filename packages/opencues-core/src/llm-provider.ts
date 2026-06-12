@@ -20,6 +20,8 @@
  * model defaults + request/response translators. Nothing else changes.
  */
 
+import { resolveReasoningEffort } from './model-thinking';
+
 export type ProviderId = 'groq' | 'openrouter' | 'gemini' | 'openai' | 'openai-subscription' | 'anthropic' | 'cerebras' | 'claude-code-cli' | 'opencode-zen';
 
 export const PROVIDER_IDS: readonly ProviderId[] = ['groq', 'openrouter', 'gemini', 'openai', 'openai-subscription', 'anthropic', 'cerebras', 'claude-code-cli', 'opencode-zen'];
@@ -212,7 +214,7 @@ export interface ProviderAdapter {
    * Required for `transport: 'http'` (the default). CLI-transport
    * providers may stub this — it's never called.
    */
-  buildRequest(req: ChatRequest, ctx: { apiKey: string; endpoint?: string }): BuiltRequest;
+  buildRequest(req: ChatRequest, ctx: { apiKey: string; endpoint?: string; maxThinking?: boolean }): BuiltRequest;
   /**
    * Extract the assistant's text from this provider's response shape.
    * Required for `transport: 'http'`. CLI-transport providers may stub
@@ -227,7 +229,7 @@ export interface ProviderAdapter {
    * buildRequest, but the `apiKey` field is typically ignored (CLI
    * providers use external auth like a logged-in `claude` session).
    */
-  invokeCli?(req: ChatRequest, ctx: { apiKey: string; endpoint?: string }): Promise<string>;
+  invokeCli?(req: ChatRequest, ctx: { apiKey: string; endpoint?: string; maxThinking?: boolean }): Promise<string>;
 }
 
 // ---------------------------------------------------------------------
@@ -248,17 +250,29 @@ export interface ProviderAdapter {
  * pass `includeReasoningEffort: true`; others omit the field unless
  * the model name suggests it's a reasoning model.
  */
-function buildOpenAIBody(req: ChatRequest, opts?: { includeReasoningEffort?: boolean; useCompletionTokensName?: boolean; defaultReasoningEffort?: 'none' | 'low' | 'medium' | 'high'; provider?: ProviderId }): string {
+function buildOpenAIBody(req: ChatRequest, opts?: { includeReasoningEffort?: boolean; useCompletionTokensName?: boolean; defaultReasoningEffort?: 'none' | 'low' | 'medium' | 'high'; provider?: ProviderId; maxThinking?: boolean }): string {
   const body: Record<string, unknown> = {
     model: req.model,
     messages: req.messages.map((m) => ({ role: m.role, content: m.content })),
   };
   // Resolve the reasoning level FIRST so the max_tokens pairing below
-  // can see it. Caller's explicit value wins over the adapter default.
+  // can see it. Resolution honours the `max-thinking` toggle + the
+  // per-model ceiling table (model-thinking.ts): an explicit per-call
+  // value wins but is clamped to the ceiling; otherwise the toggle
+  // picks the model's `max` (on) or `off` (reduced) level. With the
+  // toggle ON (the default) and ceilings seeded to equal
+  // `defaultReasoningEffort`, this is identical to the prior
+  // `req.reasoningEffort ?? defaultReasoningEffort` expression.
   const isReasoningModelName = /^(o\d|gpt-5|gpt-oss|qwen-3-thinking)/i.test(req.model);
   const reasoningForwarded = opts?.includeReasoningEffort || isReasoningModelName;
   const reasoning = reasoningForwarded
-    ? (req.reasoningEffort ?? opts?.defaultReasoningEffort)
+    ? resolveReasoningEffort({
+        providerId: opts?.provider,
+        model: req.model,
+        explicit: req.reasoningEffort,
+        providerDefault: opts?.defaultReasoningEffort,
+        maxThinking: opts?.maxThinking,
+      })
     : undefined;
   if (req.maxTokens !== undefined) {
     // Pair max_tokens with reasoning on gpt-oss models: the model
@@ -461,7 +475,7 @@ const GROQ: ProviderAdapter = {
     // non-reasoning models silently ignore it. Always-on is safe.
     return {
       url: ctx.endpoint ?? this.defaultEndpoint,
-      body: buildOpenAIBody(req, { includeReasoningEffort: true, defaultReasoningEffort: this.defaultReasoningEffort, provider: this.id }),
+      body: buildOpenAIBody(req, { includeReasoningEffort: true, defaultReasoningEffort: this.defaultReasoningEffort, provider: this.id, maxThinking: ctx.maxThinking }),
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.apiKey}` },
     };
   },
@@ -498,7 +512,7 @@ const OPENROUTER: ProviderAdapter = {
   buildRequest(req, ctx) {
     return {
       url: ctx.endpoint ?? this.defaultEndpoint,
-      body: buildOpenAIBody(req, { defaultReasoningEffort: this.defaultReasoningEffort, provider: this.id }),
+      body: buildOpenAIBody(req, { defaultReasoningEffort: this.defaultReasoningEffort, provider: this.id, maxThinking: ctx.maxThinking }),
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${ctx.apiKey}`,
@@ -568,7 +582,7 @@ const OPENAI: ProviderAdapter = {
 
     return {
       url: ctx.endpoint ?? this.defaultEndpoint,
-      body: buildOpenAIBody(reqForBody, { useCompletionTokensName, defaultReasoningEffort: this.defaultReasoningEffort, provider: this.id }),
+      body: buildOpenAIBody(reqForBody, { useCompletionTokensName, defaultReasoningEffort: this.defaultReasoningEffort, provider: this.id, maxThinking: ctx.maxThinking }),
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.apiKey}` },
     };
   },
@@ -893,7 +907,7 @@ const CEREBRAS: ProviderAdapter = {
     // gpt-oss-* / qwen-3-thinking-* and similar.
     return {
       url: ctx.endpoint ?? this.defaultEndpoint,
-      body: buildOpenAIBody(req, { defaultReasoningEffort: this.defaultReasoningEffort, provider: this.id }),
+      body: buildOpenAIBody(req, { defaultReasoningEffort: this.defaultReasoningEffort, provider: this.id, maxThinking: ctx.maxThinking }),
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.apiKey}` },
     };
   },
@@ -1034,7 +1048,7 @@ const OPENCODE_ZEN: ProviderAdapter = {
     if (ctx.apiKey) headers.Authorization = `Bearer ${ctx.apiKey}`;
     return {
       url: ctx.endpoint ?? this.defaultEndpoint,
-      body: buildOpenAIBody(req, { defaultReasoningEffort: this.defaultReasoningEffort, provider: this.id }),
+      body: buildOpenAIBody(req, { defaultReasoningEffort: this.defaultReasoningEffort, provider: this.id, maxThinking: ctx.maxThinking }),
       headers,
     };
   },
@@ -1477,7 +1491,7 @@ export function describeLLMCall(
 export function buildProviderRequest(
   providerId: ProviderId,
   req: ChatRequest,
-  ctx: { apiKey: string; endpoint?: string },
+  ctx: { apiKey: string; endpoint?: string; maxThinking?: boolean },
 ): BuiltRequest {
   const p = PROVIDERS[providerId];
   if (!p) throw new Error(`unknown provider: ${providerId}`);
@@ -1508,7 +1522,7 @@ export async function dispatchChat(
   provider: ProviderAdapter,
   httpAdapter: HttpAdapterShape,
   req: ChatRequest,
-  ctx: { apiKey: string; endpoint?: string; signal?: AbortSignal },
+  ctx: { apiKey: string; endpoint?: string; signal?: AbortSignal; maxThinking?: boolean },
 ): Promise<string> {
   // CLI-transport providers (e.g. claude-cli daemon, openai-subscription)
   // handle their own lifecycle and return the assistant text directly.

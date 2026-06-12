@@ -1345,6 +1345,10 @@ export interface TransformBlankSourceConfig {
   /** Per-feature temperature override (`transform-blank-temperature:`).
    *  Falls back to 0 (deterministic rewrites) when absent. */
   temperature?: number;
+  /** OPENCUES.md `max-thinking` toggle (default on). Threaded into the
+   *  dispatch ctx so model-thinking.ts resolves the reasoning ceiling vs
+   *  reduced level for every pass (EXTRACT/APPLY/VERIFY/REPAIR/FUSED). */
+  maxThinking?: boolean;
   /** Source priority. Default 93 — sits ABOVE FluidBlankSource (92) so
    * imperative-shaped inputs route here, BELOW BlankSource (95) so
    * keyword-bound blanks always win. */
@@ -1448,6 +1452,7 @@ export class TransformBlankSource implements CueSource {
   private _currentOverride: { provider: ProviderAdapter; model: string; apiKey: string } | null = null;
   private maxTokensOverride: number | undefined;
   private temperatureOverride: number | undefined;
+  private maxThinking: boolean;
   private blanks: Record<string, BlankConfig>;
   private log: (msg: string) => void;
   private emit: (event: TransformBlankEvent) => void;
@@ -1463,6 +1468,7 @@ export class TransformBlankSource implements CueSource {
     this.apiKeys = config.apiKeys ?? {};
     this.maxTokensOverride = config.maxTokens;
     this.temperatureOverride = config.temperature;
+    this.maxThinking = config.maxThinking ?? true;
     this.priority = config.priority ?? 93;
     this.blanks = config.blanks ?? {};
     this.log = config.log ?? (() => { /* default: silent */ });
@@ -2309,7 +2315,7 @@ export class TransformBlankSource implements CueSource {
         seed: 42,
         responseFormat,
       },
-      { apiKey: effApiKey, endpoint: effEndpoint, signal },
+      { apiKey: effApiKey, endpoint: effEndpoint, signal, maxThinking: this.maxThinking },
     );
   }
 }

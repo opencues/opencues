@@ -403,6 +403,16 @@ export const FEATURES: readonly FeatureSpec[] = [
       { id: 'on',  description: 'Debug output emitted to console' },
     ],
   },
+  {
+    scalar: 'max-thinking',
+    camelCase: 'maxThinking',
+    description: 'How hard reasoning-capable models think. Each model has a bench-tuned ceiling (cerebras → medium, gpt-oss / gpt-5 → low); `on` uses that ceiling, `off` drops to a reduced level (cerebras → low, others → none) for faster, cheaper output. See packages/opencues-core/src/model-thinking.ts.',
+    menuTip: 'Trade reasoning depth for speed. `on` lets each model think up to its ceiling; `off` minimises thinking for snappier blanks/cues.',
+    values: [
+      { id: 'on',  description: 'Default — each model reasons up to its ceiling (cerebras medium, gpt-oss/gpt-5 low)' },
+      { id: 'off', description: 'Faster — each model drops to its reduced level (cerebras low, gpt-oss/gpt-5 none)' },
+    ],
+  },
 
   // ── Provider routing ─────────────────────────────────────────────
   //

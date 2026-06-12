@@ -198,6 +198,9 @@ export interface SentenceCueSourceConfig {
   sourceConfig: SourceConfig;
   /** Default priority when sourceConfig.priority is absent. */
   defaultPriority?: number;
+  /** OPENCUES.md `max-thinking` toggle (default on). Threaded into the
+   *  dispatch ctx for the reasoning-budget resolution in model-thinking.ts. */
+  maxThinking?: boolean;
   log?: (msg: string) => void;
   onEvent?: (event: SentenceCueEvent) => void;
 }
@@ -214,6 +217,7 @@ export class SentenceCueSource implements CueSource {
   private endpoint: string;
   private apiKey: string;
   private model: string;
+  private maxThinking: boolean;
   private sourceConfig: SourceConfig;
   private log: (msg: string) => void;
   private emit: (event: SentenceCueEvent) => void;
@@ -224,6 +228,7 @@ export class SentenceCueSource implements CueSource {
     this.endpoint = config.endpoint;
     this.apiKey = config.apiKey;
     this.model = config.model;
+    this.maxThinking = config.maxThinking ?? true;
     this.sourceConfig = config.sourceConfig;
     this.id = `sentence-cue:${config.sourceConfig.name}`;
     this.priority = config.sourceConfig.priority ?? config.defaultPriority ?? 85;
@@ -348,7 +353,7 @@ export class SentenceCueSource implements CueSource {
         temperature: this.sourceConfig.temperature ?? 0.3,
         seed: 42,
       },
-      { apiKey: this.apiKey, endpoint: this.endpoint, signal },
+      { apiKey: this.apiKey, endpoint: this.endpoint, signal, maxThinking: this.maxThinking },
     );
   }
 }

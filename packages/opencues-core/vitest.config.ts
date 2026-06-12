@@ -22,6 +22,8 @@ export default defineConfig({
       'src/feature-registry-menu.drift.test.ts',
       'src/llm-provider.drift.test.ts',
       'src/llm-provider.temperature.test.ts',
+      'src/llm-provider.max-thinking.test.ts',
+      'src/model-thinking.test.ts',
       'src/conformance.test.ts',
       'src/sources/fluid-blank-error-substitute.test.ts',
     ],

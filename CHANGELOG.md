@@ -55,6 +55,21 @@ Pinned by two new tests in `packages/opencues-runtime/src/modules/blank-fill.tes
 - `still matches keyword OUTSIDE substituted spans`
 
 Known follow-up (not in this PR): when two unique-keyword blanks are typed simultaneously (`nvda _ + apple _`), the first to substitute shifts word indices; the second one's invoke completes but its substitute may not write back cleanly. Tracked separately — needs a more careful look at how concurrent invokes coordinate with span writes.
+### Feature — `max-thinking` per-model reasoning budget
+
+New OPENCUES.md scalar `max-thinking: on | off` (default `on`) that trades reasoning depth for speed. Each verified reasoning-capable model has a bench-tuned **ceiling** (Cerebras gpt-oss → `medium`, Groq / OpenAI gpt-oss + gpt-5 → `low`) and a reduced **off** level (Cerebras → `low`, the rest → `none`). `on` uses the ceiling — seeded to equal each provider's existing `defaultReasoningEffort`, so the default install is behaviourally unchanged. `off` is the opt-in "go faster, think less" mode.
+
+- **`@opencues/core` (0.3.8 → 0.3.9)**:
+  - New `model-thinking.ts` — the per-`(provider, model)` `{ max, off }` table + `resolveReasoningEffort` (explicit wins but clamps to the ceiling; otherwise toggle picks ceiling/reduced; `undefined` for non-reasoning providers — exactly the prior contract).
+  - `buildOpenAIBody` (`llm-provider.ts`) now resolves `reasoning_effort` through `resolveReasoningEffort` instead of `req.reasoningEffort ?? defaultReasoningEffort`. The `maxThinking` flag rides the dispatch `ctx` that already flows to every `buildRequest` (ctx type widened on `buildRequest` / `dispatchChat` / `buildProviderRequest`); each OpenAI-compatible provider forwards `ctx.maxThinking`.
+  - New `FEATURES` entry `max-thinking` → auto-extends the `_` settings menu + config-intent classifier with no further edits.
+  - Sources (config-source / fluid-blank / transform-blank / sentence-cue) + `build-sources` thread `maxThinking` into their dispatch ctx. Config-intent is unaffected — it pins `low`.
+- **`@opencues/runtime` (0.3.3 → 0.3.4)**:
+  - `resolver.ts` reads `max-thinking` and passes `maxThinking` into `buildSourcesFromConfig`.
+  - `boot-common.buildAgentLLMResolver` stamps `maxThinking` onto `ResolvedAgentLLM`; AgentRewrite forwards it into its dispatch ctx (auditors bucket). Legacy no-core-provider inline path is unaffected (documented gap).
+  - `max-thinking` added to `feature-registry-alignment.test.ts`'s `SETTINGS_MAP_ONLY` (settings-map-only toggle, like the other `*-mode` scalars).
+- **Not a spec change** — runtime reference-impl knob; `SPEC_VERSION` unchanged.
+- Docs: `docs/features/max-thinking.md` (user-facing), `docs/architecture/max-thinking.md` (canonical). `defaults/OPENCUES.md` ships `max-thinking: on`.
 
 ### Fix — Multi-fork CC install fan-out + boot-smoke gate + per-fork drift advisory
 
