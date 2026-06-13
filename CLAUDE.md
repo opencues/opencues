@@ -626,6 +626,17 @@ Two packages share the bare `opencues` name — the real CLI at `packages/opencu
 
 Everything except the placeholder is currently `private: true`. Flipping a package to publishable requires removing `"private": true` AND repointing (or removing) its `publishConfig` block (most currently target `npm.pkg.github.com`).
 
+## Cerebras-specific features
+
+Cerebras is the default inference path and the provider OpenCues optimises hardest for. **Automatic prompt prefix caching** is the biggest current feature: cerebras hits 99.5% cache rate on our ~20k-token `FUSED_SYSTEM` / `FUSED_SYSTEM_PROMPT` constants, saving ~300-500ms of TTFT per dispatch. Two hard rules for prompt authors:
+
+1. **Stable session-level context (identity catalog, blank-context catalog) goes in the SYSTEM message** so cerebras caches it as part of the prefix.
+2. **Per-call binding context (ambient field metadata, user INPUT) stays in the USER message.** Moving ambient to system regressed the fluid-blank-ambient bench from 175/176 → 166/176 — the LLM stops tightly binding ambient hints to the input.
+
+Cache visibility lives at `dispatchChat`'s optional `onUsage(u: UsageReport)` callback. The three semantic-`_` sources wire it to `this.log` and emit a debug-level line when `cachedTokens > 0`. Enable `debug-mode: on` to observe.
+
+Full design + cross-provider comparison + code-pointer table: [docs/architecture/cerebras.md](docs/architecture/cerebras.md). Read it before touching the system/user message split in any source, before adding per-call salts anywhere near the start of a system prompt, or before adopting a new cerebras-only feature (reasoning effort, strict JSON, routing keys, etc.).
+
 ## Versioning policy
 
 Semver per package, stay <1.0 until public launch, bump in the same commit as the change, integrations bump independently of core/runtime. `SPEC_VERSION` bumps only on wire-format changes. **Every version bump also updates `CHANGELOG.md` (root) in the same PR**; spec-affecting changes also update `spec/CHANGELOG.md`. Full policy with per-package bump rules + changelog discipline: [docs/architecture/versioning.md](docs/architecture/versioning.md).

@@ -49,6 +49,13 @@ async function runOne(
   alternates: string[] = [],
 ): Promise<Outcome> {
   const ambBlock = renderAmbientMinimal(ambient);
+  // Ambient stays in user message — the LLM must bind it tightly to
+  // the INPUT (`paris _` in a Postcode field → SW1A 1AA). Earlier
+  // attempt to move ambient to system regressed the bench from 175 →
+  // 166. Identity + blank-context catalogs DO move to system in
+  // production for cerebras prefix-cache hits, but those are tested
+  // by separate suites (transform-blank-sentinels, transform-blank-
+  // blank-context).
   const userMsg = `INPUT: ${input}${ambBlock}`;
   const t0 = Date.now();
   const r = await chat(sysUser(FUSED_AMBIENT_SYSTEM_PROMPT, userMsg), { maxTokens: 512, temperature: 0, seed: 42 });

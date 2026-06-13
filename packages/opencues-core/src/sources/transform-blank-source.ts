@@ -2244,7 +2244,16 @@ export class TransformBlankSource implements CueSource {
     const fusedStart = Date.now();
     const { block: fusedCatalogBlock, ctx: fusedUserCtx } = this.buildUserCatalogBlock(context);
     const { block: fusedBlankBlock, snapshot: fusedBlankSnapshot } = this.buildBlankCatalogBlock(context);
-    const fusedRaw = await this.callLLM(FUSED_SYSTEM, `INPUT: ${extractText}${fusedCatalogBlock}${fusedBlankBlock}`, fusedTokens, undefined, context.signal);
+    // Cerebras prefix-cache optimisation (PR June 2026): move identity
+    // + blank-context catalog blocks from the user message into the
+    // SYSTEM message. Cerebras's automatic prompt caching hits on the
+    // static prefix (verified at 99.5% cache rate on gpt-oss-120b).
+    // The catalog content is stable per session (identity) and per
+    // refresh-TTL (blank-context snapshot); moving it into system
+    // grows the cached prefix by ~600 tokens. Bench-validated against
+    // tests/benchmarks/transform-blank to preserve accuracy.
+    const fusedSystem = `${FUSED_SYSTEM}${fusedCatalogBlock}${fusedBlankBlock}`;
+    const fusedRaw = await this.callLLM(fusedSystem, `INPUT: ${extractText}`, fusedTokens, undefined, context.signal);
     const fParsed = parseFused(fusedRaw);
     // Resolve IDENTITY.md sentinels + ambient blank-context tokens in
     // FULL_REWRITE before the result routes through the runtime's three-
@@ -2426,7 +2435,20 @@ export class TransformBlankSource implements CueSource {
         seed: 42,
         responseFormat,
       },
-      { apiKey: effApiKey, endpoint: effEndpoint, signal, maxThinking: this.maxThinking },
+      {
+        apiKey: effApiKey,
+        endpoint: effEndpoint,
+        signal,
+        maxThinking: this.maxThinking,
+        onUsage: (u) => {
+          // Only log when the provider surfaced cache info (cerebras /
+          // openai). Other providers report 0 by default; we skip
+          // those to keep /tmp/opencues.log clean.
+          if (u.cachedTokens > 0 || u.cacheHitRate > 0) {
+            this.log(`TransformBlank: usage prompt=${u.promptTokens} cached=${u.cachedTokens} (${(u.cacheHitRate * 100).toFixed(1)}%) completion=${u.completionTokens}`);
+          }
+        },
+      },
     );
   }
 
