@@ -268,6 +268,40 @@ describe('Statusline write behaviour', () => {
     expect(p.currentAltIndex).toBe(0);
   });
 
+  // Pinning the manual-select-only rule (June 2026 user request): a
+  // live spanFillState (BlankFill / fluid-blank / transform-blank /
+  // agent-rewrite just substituted) MUST NOT make the statusline
+  // active until the user explicitly navigates onto the span. The
+  // payload stays { active: false } so chrome's runtime-statusbar
+  // hides entirely and CC's status line consumer renders nothing.
+  it('spanFillState set but hlState inactive → active=false (no auto-select after substitute)', async () => {
+    const { SpanFillState } = await import('../state/span-fill');
+    const adapter = new MockAdapter();
+    adapter.pushText('affirm I am strong');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const span = new SpanFillState();
+    // Mimic the post-substitute state: BlankFill just filled a span.
+    // The user has NOT navigated onto it yet.
+    span.set({
+      index: 1,
+      alternatives: ['I am strong', 'I am brave', '_'],
+      currentAltIndex: 0,
+      spanLength: 3,
+      blankTip: 'Daily affirmations',
+    }, 'affirm I am strong');
+    const sl = new Statusline(adapter, hlState, dynDefs, {
+      exportPath: '/tmp/x.json',
+    }, undefined, span);
+    // hlState intentionally not activated — represents the moment
+    // immediately after BlankFill landed.
+    const p = sl.buildPayload({ text: 'affirm I am strong', cursor: 0, externalHighlights: [] });
+    expect(p.active).toBe(false);
+    expect(p.cueTip).toBeUndefined();
+    expect(p.cueBlank).toBeUndefined();
+    expect(p.alts).toBeUndefined();
+  });
+
   it('selector word emits setting-level tip', async () => {
     const { SelectorSatelliteState } = await import('../state/selector-satellite');
     const OPENCUES_MD = `---

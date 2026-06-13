@@ -156,26 +156,25 @@ export class Statusline {
   /** Exposed for testing — build the payload from current state + render ctx. */
   buildPayload(ctx: RenderContext): StatuslinePayload {
     const agentTask = this.formatAgentTask();
-    // `active` means "OpenCues has an interactive region the user can
-    // act on". Highlight active is the obvious case. Span fill (e.g.
-    // a weather/stocks blank that just substituted) is also active —
-    // the user can cycle Up/Down through alternatives. Without
-    // including spanFill here, BlankFill scenarios that wait for
-    // active=true after a substitution time out even though the
-    // substituted span is fully cyclable.
-    const spanActive = this.spanFillState?.current ?? null;
+    // `active` means "OpenCues has an interactive region the user
+    // navigated onto and is acting on right now." A substituted span
+    // (BlankFill / fluid-blank / transform-blank / agent-rewrite)
+    // becomes cyclable as soon as it lands, but ONLY hlState.active
+    // marks the user-acknowledged target.
+    //
+    // History: this branch used to elevate any live spanFillState to
+    // active=true even when hlState was inactive — the rationale was
+    // that BlankFill scenarios polled `active === true` after a
+    // substitute to assert "the run completed." Those scenarios moved
+    // to `waitForEvent` on `blank.substituted` (the canonical
+    // completion signal) and the one remaining waiter sits under
+    // tests/agentic/scenarios/_flaky/. Removing the elevation gives
+    // the no-tip-no-highlight UX every host needs: the user must
+    // navigate onto the span (Tab / Ctrl+Alt+arrow) before the
+    // statusline emits ANY tip or selection signal. Cycling continues
+    // to work — Cycling.ts reads spanFillState directly and is not
+    // gated on the statusline's active flag.
     if (!this.hlState.active || this.hlState.wordIndex === null) {
-      if (spanActive) {
-        return {
-          active: true, timestamp: Date.now(), agentTask,
-          highlightedWordIndex: spanActive.index,
-          highlightedWord: spanActive.alternatives[spanActive.currentAltIndex] ?? '',
-          cueTip: spanActive.blankTip ?? null,
-          alts: spanActive.alternatives,
-          currentAltIndex: spanActive.currentAltIndex,
-          cueBlank: true,
-        };
-      }
       return { active: false, timestamp: Date.now(), agentTask };
     }
     // tips-mode: off → still expose word + alts but suppress tip text.

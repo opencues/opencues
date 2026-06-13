@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fix — Substitute never auto-selects; user must manually navigate onto the span
+
+`statusline.ts:buildPayload` used to elevate any live `spanFillState` to `active: true` even when `hlState` was inactive — the rationale was that BlankFill scenarios polled `active === true` to assert "the substitute completed." Those scenarios moved to `waitForEvent` on the `blank.substituted` event (the canonical completion signal); the one remaining poller now sits under `tests/agentic/scenarios/_flaky/`.
+
+The lingering elevation conflicted with OpenCues' core UX rule: a region is only `active` once the user has *manually navigated onto it*. Without that, fluid-blank / transform-blank / agent-rewrite substitutes appeared "auto-selected" the moment they landed — statusline emitted the span's `blankTip` and chrome's floating statusbar showed it, even though the user hadn't moved onto the span. The elevation also returned BEFORE the `tipsMode === 'off'` check, so even `tips-mode: off` didn't suppress it.
+
+Fix: remove the spanActive-without-hlState branch. When `hlState.active` is false, `buildPayload` now returns `{ active: false, agentTask }` unconditionally regardless of the spanFillState. Cycling (`Cycling.ts:181`) reads `spanFillState` directly so Up/Down cycling after manual navigation works exactly as before — only the *unactivated* "selected on substitute" signal is removed.
+
+Behavioural matrix (verified end-to-end on CC harness, transform-blank substitute):
+
+| State | `active` | `cueTip` | `cueBlank` | Visible? |
+|---|---|---|---|---|
+| Right after substitute (no nav) | `false` | `null` | `null` | Nothing — empty statusbar/statusline |
+| After Ctrl+Alt+arrow onto span | `true` | `null` | `true` | Span highlighted; chrome statusbar hides per PR #128 |
+
+Rules pinned by a new unit test (`statusline.test.ts`): `spanFillState set but hlState inactive → active=false`. Runtime suite: 1646 / 1646 pass.
+
+`@opencues/runtime` 0.3.5 → 0.3.6.
+
 ### Fix — Statusline shows nothing for any word inside a fluid/transform/agent-rewrite substitute
 
 `statusline.ts:buildPayload` used `this.dynDefs.get(wordIndex)` to find the DynDef at the highlighted word, then suppressed the tip when `def.blankName` was set (fluid-blank / transform-blank / agent-rewrite substitutes shouldn't surface tips because the substituted text was emitted by the LLM, not authored by the user). But `dynDefs.get(wordIndex)` only matches the **origin** word index of a multi-word span. When the highlight landed on word N>origin INSIDE a multi-word substitute, `def` came back undefined and the function fell through to the word-cue lookup at the bottom, which surfaced a tip for the individual LLM-emitted word.
