@@ -58,6 +58,38 @@ export class RoutedWordSourceGroup implements CueSource {
   /** Sources with `match:` or `keywords:` — checked priority desc. */
   private readonly entries: readonly RouteEntry[];
 
+  /**
+   * Per-child-source LRU cache of dispatch results, keyed on the EXACT
+   * sub-context text the child source receives (`0=cat 1=sat 2=the`).
+   * Hits when the LLM input is unchanged from a recent dispatch —
+   * common during typing (every space the user types reproduces the
+   * prior word set), edit-revisit loops, and after cursor moves that
+   * re-fire the debounce on identical text.
+   *
+   * Caches BOTH zero-result responses and positive results. The
+   * dominant case in production is the spelling source (match: .*)
+   * firing ~280ms LLM round-trips on neutral prose to find zero
+   * misspellings — caching that empty result is the biggest single win.
+   *
+   * Cache lifetime is tied to this group instance. When the resolver
+   * rebuilds sources (OPENCUES.md flags change, CUES.md edits, focus
+   * moves between cycling / non-cycling hosts), the group is
+   * reconstructed and this cache is GC'd with the old instance — no
+   * explicit invalidation needed.
+   *
+   * Cached values are SUB-CONTEXT-INDEXED (wordIndex 0..k matching the
+   * bucket order at dispatch time). On hit we remap to the CURRENT
+   * bucket's original indices, so the same sub-context text in a
+   * different surrounding buffer (same word set, different positions)
+   * is still correctly mapped.
+   *
+   * Bounded LRU; insertion order = recency since Map preserves
+   * insertion order and we delete+reinsert on hit. Mirrors the
+   * AgentRewrite._rewriteCache shape (see agent-rewrite.ts:209).
+   */
+  private readonly _resultCache = new Map<ConfigSource, Map<string, ReadonlyArray<CueResult>>>();
+  private static readonly CACHE_SIZE_PER_SOURCE = 64;
+
   constructor(config: RoutedWordSourceGroupConfig) {
     this.id = config.id ?? 'word-cues';
     this.priority = config.sources.reduce((m, s) => Math.max(m, s.priority), 0);
@@ -123,12 +155,41 @@ export class RoutedWordSourceGroup implements CueSource {
     // containing only THAT source's words, renumbered 0..k. We remember
     // the original indices to remap the response.
     const dispatches = Array.from(groups.entries()).map(async ([source, bucket]) => {
+      const subContextText = bucket.map((b, i) => `${i}=${b.word}`).join(' ');
+
+      // Cache lookup — keyed on the exact LLM input. Avoids the LLM
+      // round-trip when this child source has already answered for the
+      // same word set (regardless of where those words sit in the
+      // surrounding buffer).
+      const sourceCache = this._cacheFor(source);
+      const cached = sourceCache.get(subContextText);
+      if (cached !== undefined) {
+        // Reinsert for LRU recency.
+        sourceCache.delete(subContextText);
+        sourceCache.set(subContextText, cached);
+        return cached.map<CueResult>(res => ({
+          ...res,
+          wordIndex: bucket[res.wordIndex]?.idx ?? res.wordIndex,
+        }));
+      }
+
       const subContext: CueContext = {
         ...context,
         words: bucket.map(b => b.word),
-        text: bucket.map((b, i) => `${i}=${b.word}`).join(' '),
+        text: subContextText,
       };
       const result = await source.getCues(subContext);
+
+      // Cache the SUB-CONTEXT-INDEXED results so the remap on hit
+      // works against any future bucket order. Caches empty arrays
+      // too — that's the dominant win for spelling on neutral prose.
+      sourceCache.set(subContextText, result.results);
+      while (sourceCache.size > RoutedWordSourceGroup.CACHE_SIZE_PER_SOURCE) {
+        const oldest = sourceCache.keys().next().value;
+        if (oldest === undefined) break;
+        sourceCache.delete(oldest);
+      }
+
       // Map sub-context indices back to original context indices.
       return result.results.map<CueResult>(res => ({
         ...res,
@@ -160,5 +221,22 @@ export class RoutedWordSourceGroup implements CueSource {
   /** Public for tests / debug — count of routed sources. */
   get routingStats(): { sources: number } {
     return { sources: this.entries.length };
+  }
+
+  /** Public for tests / debug — cache size per child source.
+   *  Returns 0 entries for any source that hasn't been dispatched yet. */
+  cacheSizes(): Map<ConfigSource, number> {
+    const out = new Map<ConfigSource, number>();
+    for (const [source, cache] of this._resultCache) out.set(source, cache.size);
+    return out;
+  }
+
+  private _cacheFor(source: ConfigSource): Map<string, ReadonlyArray<CueResult>> {
+    let cache = this._resultCache.get(source);
+    if (!cache) {
+      cache = new Map();
+      this._resultCache.set(source, cache);
+    }
+    return cache;
   }
 }
