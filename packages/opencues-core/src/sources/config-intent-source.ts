@@ -1073,7 +1073,16 @@ export class ConfigIntentSource implements CueSource {
         // FluidBlank's same-rationale 'low' floor (fluid-blank-source.ts:995).
         reasoningEffort: 'low',
       },
-      { apiKey: this.apiKey, endpoint: this.endpoint, signal },
+      {
+        apiKey: this.apiKey,
+        endpoint: this.endpoint,
+        signal,
+        onUsage: (u) => {
+          if (u.cachedTokens > 0 || u.cacheHitRate > 0) {
+            this.log(`ConfigIntent: usage prompt=${u.promptTokens} cached=${u.cachedTokens} (${(u.cacheHitRate * 100).toFixed(1)}%) completion=${u.completionTokens}`);
+          }
+        },
+      },
     );
   }
 

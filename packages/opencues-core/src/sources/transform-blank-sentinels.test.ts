@@ -227,16 +227,19 @@ describe('TransformBlankSource — IDENTITY.md catalog injection (3-pass GENERAT
 });
 
 describe('TransformBlankSource — IDENTITY.md catalog injection (FUSED)', () => {
-  it('appends catalog block to FUSED user message', async () => {
+  it('appends catalog block to FUSED system message', async () => {
+    // June 2026: catalog block moved system-side (cerebras prefix-cache
+    // optimisation). The block content + the post-LLM substitution
+    // logic are unchanged; only its message-role location differs.
     const recorded: RecordedCall[] = [];
     const responses = [
       fused('write a short bio', '', 'Wilfred Kasekende is a Founder at Command Stick.'),
     ];
     const src = makeFusedSource(makeRecordingAdapter(responses, recorded));
     await src.getCues(ctxWithUser('write a short bio _'));
-    const fusedMsg = recorded[0].userMessage;
+    const fusedMsg = recorded[0].systemMessage;
     assert.ok(fusedMsg.includes('USER CONTEXT'),
-      `FUSED user-message should carry catalog block. Got: ${fusedMsg.slice(0, 400)}`);
+      `FUSED system-message should carry catalog block. Got: ${fusedMsg.slice(0, 400)}`);
     assert.ok(fusedMsg.includes('[JOB TITLE]'),
       'FUSED catalog should list user-defined [JOB TITLE] token');
   });

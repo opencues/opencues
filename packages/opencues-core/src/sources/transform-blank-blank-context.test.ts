@@ -116,7 +116,11 @@ const fused = (instruction: string, target: string, rewrite: string, verdict = '
   `VERDICT: ${verdict}\nINSTRUCTION: ${instruction}\nTARGET: ${target}\nFULL_REWRITE: ${rewrite}`;
 
 function findCallContaining(recorded: readonly RecordedCall[], needle: string): RecordedCall | undefined {
-  return recorded.find(c => c.userMessage.includes(needle));
+  // Search BOTH user and system messages — June 2026 the BLANK CONTEXT
+  // and IDENTITY catalog blocks moved system-side for cerebras prefix-
+  // cache hits. Tests previously asserted user-message presence; now
+  // we accept either role.
+  return recorded.find(c => c.userMessage.includes(needle) || c.systemMessage.includes(needle));
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -184,7 +188,8 @@ describe('TransformBlankSource — BLANK CONTEXT catalog injection (FUSED)', () 
     await src.getCues(ctxWithBlank('compose email about today\'s weather _'));
     const fusedCall = findCallContaining(recorded, 'BLANK CONTEXT');
     assert.ok(fusedCall, 'expected a FUSED call carrying the BLANK CONTEXT block');
-    assert.ok(fusedCall.userMessage.includes('[WEATHER LONDON]'), 'catalog should list [WEATHER LONDON]');
+    // June 2026: catalog block is in the SYSTEM message (cerebras prefix-cache optimisation).
+    assert.ok(fusedCall.systemMessage.includes('[WEATHER LONDON]'), 'catalog should list [WEATHER LONDON]');
   });
 });
 

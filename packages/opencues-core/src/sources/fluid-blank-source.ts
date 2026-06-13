@@ -990,10 +990,28 @@ export class FluidBlankSource implements CueSource {
         this.logInfo(`FluidBlank: blank-context: injected (mode=${bcMode}, ${bcSnapshot.fields.length} token${bcSnapshot.fields.length === 1 ? '' : 's'})`);
       }
 
-      const fusedUser = `INPUT: ${effectiveText}${ambientBlock}${userCatalogBlock}${blankContextBlock}`;
+      // Cerebras prefix-cache optimisation (PR June 2026): move the
+      // STABLE catalog blocks (identity catalog, blank-context catalog)
+      // from the user message into the SYSTEM message. Cerebras's
+      // automatic prompt caching hits on the static prefix (verified
+      // at 99.5% cache rate on gpt-oss-120b for the ~20k-token static
+      // prefix). Putting these catalogs in system grows the cached
+      // prefix and drops warm-call latency.
+      //
+      // CRITICAL: ambientBlock stays in the USER message. It carries
+      // per-call field metadata (label, placeholder, page title) that
+      // the LLM must bind tightly to the INPUT (`paris _` in a
+      // "Postcode" field → SW1A 1AA, not London). Moving ambient to
+      // system regressed the fluid-blank-ambient bench from 175/176 to
+      // 166/176 — the LLM treated system-side ambient as global
+      // background and stopped pairing it with the input. Identity +
+      // blank-context catalogs ARE safe in system because they carry
+      // session-stable reference data, not per-call binding hints.
+      const fullSystem = `${FUSED_SYSTEM_PROMPT}${userCatalogBlock}${blankContextBlock}`;
+      const fusedUser = `INPUT: ${effectiveText}${ambientBlock}`;
       // Per-feature override: `fluid-blank-max-tokens:` in OPENCUES.md.
       // 512 default is bench-tuned for short-factual answers.
-      const fusedOut = await this.callLLM(FUSED_SYSTEM_PROMPT, fusedUser, this.maxTokensOverride ?? 512,
+      const fusedOut = await this.callLLM(fullSystem, fusedUser, this.maxTokensOverride ?? 512,
         useJson ? buildJsonResponseFormat('fluid_fused', FLUID_FUSED_SCHEMA) : undefined, context.signal,
         effectiveProvider, effectiveModel, effectiveApiKey);
       const { span, answer } = useJson ? parseFusedJson(fusedOut) : parseFused(fusedOut);
@@ -1207,7 +1225,17 @@ export class FluidBlankSource implements CueSource {
         seed: 42,
         responseFormat,
       },
-      { apiKey: overrideApiKey ?? this.apiKey, endpoint: overrideProvider ? overrideProvider.defaultEndpoint : this.endpoint, signal, maxThinking: this.maxThinking },
+      {
+        apiKey: overrideApiKey ?? this.apiKey,
+        endpoint: overrideProvider ? overrideProvider.defaultEndpoint : this.endpoint,
+        signal,
+        maxThinking: this.maxThinking,
+        onUsage: (u) => {
+          if (u.cachedTokens > 0 || u.cacheHitRate > 0) {
+            this.log(`FluidBlank: usage prompt=${u.promptTokens} cached=${u.cachedTokens} (${(u.cacheHitRate * 100).toFixed(1)}%) completion=${u.completionTokens}`);
+          }
+        },
+      },
     );
   }
 

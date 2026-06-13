@@ -497,7 +497,11 @@ describe('FluidBlankSource with ambient context', () => {
     await src.getCues(ctx);
     // FUSED makes ONE call (was two with the old P1+P3 pipeline).
     assert.strictEqual(bodies.length, 1);
-    // The fused call's user message must contain the ambient block.
+    // Ambient stays in USER message — moving it to system regressed
+    // the fluid-blank-ambient bench from 175/176 to 166/176 because
+    // the LLM stopped tightly binding ambient hints to the INPUT.
+    // The June 2026 cerebras prefix-cache restructure ONLY moved the
+    // session-stable identity + blank-context catalogs to system.
     const userMsg = (() => {
       const parsed = JSON.parse(bodies[0]) as { messages: Array<{ role: string; content: string }> };
       return parsed.messages.find(m => m.role === 'user')?.content ?? '';
@@ -573,14 +577,15 @@ describe('FluidBlankSource with ambient context', () => {
         mode: 'safe',
       },
     });
-    const userMsg = JSON.parse(bodies[0]).messages.find((m: { role: string }) => m.role === 'user').content;
+    // June 2026: catalog block moved system-side for cerebras prefix-cache hits.
+    const systemMsg = JSON.parse(bodies[0]).messages.find((m: { role: string }) => m.role === 'system').content;
     // Catalog present in safe mode...
-    assert.match(userMsg, /USER CONTEXT/);
-    assert.match(userMsg, /\[FIRST NAME\] — user's first name/);
-    assert.match(userMsg, /\[EMAIL\] — user's email/);
+    assert.match(systemMsg, /USER CONTEXT/);
+    assert.match(systemMsg, /\[FIRST NAME\] — user's first name/);
+    assert.match(systemMsg, /\[EMAIL\] — user's email/);
     // ...with NO values inlined. Safe-mode guarantee.
-    assert.doesNotMatch(userMsg, /Wilfred/);
-    assert.doesNotMatch(userMsg, /wilfred@example.com/);
+    assert.doesNotMatch(systemMsg, /Wilfred/);
+    assert.doesNotMatch(systemMsg, /wilfred@example.com/);
   });
 
   it('inlines values in raw mode', async () => {
@@ -597,10 +602,11 @@ describe('FluidBlankSource with ambient context', () => {
         mode: 'raw',
       },
     });
-    const userMsg = JSON.parse(bodies[0]).messages.find((m: { role: string }) => m.role === 'user').content;
-    assert.match(userMsg, /USER CONTEXT/);
+    // June 2026: catalog block moved system-side for cerebras prefix-cache hits.
+    const systemMsg = JSON.parse(bodies[0]).messages.find((m: { role: string }) => m.role === 'system').content;
+    assert.match(systemMsg, /USER CONTEXT/);
     // Raw mode DOES carry values.
-    assert.match(userMsg, /value: wilfred@example.com/);
+    assert.match(systemMsg, /value: wilfred@example.com/);
   });
 
   it('omits USER CONTEXT block when context.sentinels is undefined', async () => {
@@ -691,10 +697,12 @@ describe('FluidBlankSource with ambient context', () => {
       },
     };
     await src.getCues(ctx);
-    // Inspect only the USER message of the fused call — the system
-    // prompt uses the sentinels as illustrative markers in few-shot
-    // examples, so a full-body scan double-counts. The user message
-    // is where any smuggled sentinel from the label would actually land.
+    // Inspect the USER message — ambient stays user-side (per the
+    // June 2026 restructure, only identity + blank-context moved to
+    // system). The static FUSED_SYSTEM_PROMPT contains illustrative
+    // sentinel markers as few-shot examples, so a full system-body
+    // scan double-counts; the user message is where any smuggled
+    // sentinel from the label would actually land.
     const fusedUserMsg = (() => {
       const parsed = JSON.parse(bodies[0]) as { messages: Array<{ role: string; content: string }> };
       return parsed.messages.find(m => m.role === 'user')?.content ?? '';

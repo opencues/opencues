@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Perf — Move stable catalog blocks into the SYSTEM message so cerebras prefix-cache hits cover them; add `cached_tokens` observability + `docs/architecture/cerebras.md`
+
+Cerebras's [automatic prompt prefix caching](https://inference-docs.cerebras.ai/capabilities/prompt-caching) hits at 99.5% on our ~20k-token `FUSED_SYSTEM` / `FUSED_SYSTEM_PROMPT` constants on `gpt-oss-120b`, saving ~300-500ms of TTFT per dispatch. The cached prefix only extends as far as the stable bytes of the request — pre-PR the identity catalog (~250 tokens) and blank-context catalog (~350 tokens) lived in the user message where they don't cache.
+
+This PR appends those stable catalogs to the SYSTEM message in both `TransformBlankSource` (fused path) and `FluidBlankSource` (fused path). Cached prefix grows by ~600 tokens; warm-call latency drops by ~37ms and cold-call by ~87ms in ad-hoc benchmarks (`/tmp/cerebras-restructure-bench.mjs`).
+
+**Critical carve-out: ambient stays user-side.** The ambient block (chrome's per-field label / placeholder / page title) MUST stay in the user message. An earlier attempt to move ambient to system regressed `tests/benchmarks/fluid-blank-ambient/fused-bench.ts` from 175/176 → 166/176 — the LLM treats system-side ambient as global background and stops tightly binding it to the input (`paris _` in a Postcode field returned "London" instead of "SW1A 1AA"). Identity + blank-context catalogs ARE safe in system because they carry session-stable reference data, not per-call binding hints.
+
+Accuracy validation:
+- `tests/benchmarks/fluid-blank-ambient/fused-bench.ts` on cerebras: 175/176 (matches target).
+- `tests/benchmarks/transform-blank/prod-fused.ts` on cerebras: 191-192/231 (master baseline 193/231; delta within LLM nondeterminism noise — cerebras shows ~1 case variance across runs even at temp=0, seed=42).
+- 154 / 154 source-level unit tests pass.
+
+Cache observability — new `UsageReport` callback on `dispatchChat`:
+- `dispatchChat`'s `ctx` now accepts an optional `onUsage(u: UsageReport)` callback.
+- `UsageReport` exposes `{ promptTokens, completionTokens, cachedTokens, cacheHitRate }`.
+- The three semantic-`_` sources wire `onUsage` to `this.log` and emit a debug-level line when `cachedTokens > 0`:
+  ```
+  TransformBlank: usage prompt=20203 cached=20096 (99.5%) completion=181
+  FluidBlank: usage prompt=20347 cached=20096 (98.8%) completion=42
+  ConfigIntent: usage prompt=4823 cached=4736 (98.2%) completion=12
+  ```
+  Enable `debug-mode: on` in `~/.cues/OPENCUES.md` to see them in `/tmp/opencues.log`. A `cachedTokens=0` line is a regression signal — something in the prompt prefix is changing per-call when it shouldn't.
+
+New `docs/architecture/cerebras.md` — the single landing page for every cerebras-specific feature OpenCues relies on (prefix caching today; reasoning effort, strict JSON, routing keys, future additions). CLAUDE.md trimmed to a short pointer.
+
+`prompt_cache_key` deliberately not used: auto-cache is consistent in our benches; explicit keys risk shard hot-spotting at scale. Documented in [cerebras.md § `prompt_cache_key`](docs/architecture/cerebras.md#prompt_cache_key-we-dont-use-it).
+
+Bumps:
+- `@opencues/core` 0.3.15 → 0.3.16 (prompt restructure + `UsageReport` plumbing + cache-hit logging in all 3 semantic-`_` sources).
+- `@opencues/chrome` 0.2.15 → 0.2.16 (bundle bytes change; manifest + package.json in lockstep).
+
 ### Perf — Skip in-progress trailing word from word-cue dispatch; sole-word typing now silent at the LLM layer
 
 `RoutedWordSourceGroup` dispatches every cycleable word in the buffer to its routed child source. The shipped **spelling** source has `match: .*` so it claims every word — meaning when the user is typing a sentence, every keystroke pause triggers a spelling LLM call that includes the **partial** trailing word (e.g. `te` while typing `team`, `lawye` while typing `lawyer`). The LLM correctly returns no misspellings for those partial words, but still burns ~280ms round-trip per pause.
