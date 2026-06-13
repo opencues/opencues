@@ -101,6 +101,65 @@ describe('DimRender + render pipeline (integration)', () => {
     expect(out?.dimRanges).toEqual([]);
   });
 
+  // Blank-keyword arm gating — June 2026 UX change.
+  // A blank keyword on its own is an *action trigger* that requires `_`
+  // adjacency to fire. Without `_`, dimming the keyword is noise — it
+  // implies interactivity when nothing will happen. The gate suppresses
+  // the dim until `_` lands within `blankProximity`. Word-cue entries
+  // (legal/medical/financial/spelling, any CUES.md ## Tips) bypass the
+  // gate because their dim IS the offer of prose alternatives.
+  it('blank keyword without `_` adjacent does NOT dim', async () => {
+    const { ConfigLoader } = await import('./config-loader');
+    const VOLUME_BLANK = `---
+name: volume
+type: blank
+blankKeywords: volume
+blankProximity: 3
+tip: system volume
+blankScript: ./vol.sh
+---`;
+    const TIPS = JSON.stringify({ domain: 't', version: 1, concepts: [] });
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/blanks/volume/BLANK.md': VOLUME_BLANK },
+    });
+    adapter.pushText('the volume in this room was low');
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const dim = new DimRender(adapter, hlState, dynDefs, loader);
+    const out = dim.compute({ text: 'the volume in this room was low', cursor: 0, externalHighlights: [] });
+    // "volume" is in blanksByWord (navigable) but no `_` is adjacent → suppress.
+    expect(out?.dimRanges ?? []).toEqual([]);
+  });
+
+  it('blank keyword WITH `_` within proximity DOES dim', async () => {
+    const { ConfigLoader } = await import('./config-loader');
+    const VOLUME_BLANK = `---
+name: volume
+type: blank
+blankKeywords: volume
+blankProximity: 3
+tip: system volume
+blankScript: ./vol.sh
+---`;
+    const TIPS = JSON.stringify({ domain: 't', version: 1, concepts: [] });
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/tips.json': TIPS, '/proj/blanks/volume/BLANK.md': VOLUME_BLANK },
+    });
+    adapter.pushText('volume is _');
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const dim = new DimRender(adapter, hlState, dynDefs, loader);
+    const out = dim.compute({ text: 'volume is _', cursor: 0, externalHighlights: [] });
+    // _ is at word 2, volume is at word 0; proximity 3 covers it → dim fires.
+    expect(out?.dimRanges?.some(r => r.start === 0 && r.end === 6)).toBe(true);
+  });
+
   it('dims words that are only navigable via DynDefs (LLM-resolved)', async () => {
     const { ConfigLoader } = await import('./config-loader');
     const adapter = new MockAdapter({

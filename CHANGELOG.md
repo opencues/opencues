@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fix — Blank keywords no longer dim until `_` is in proximity
+
+`DimRender` painted dim ranges for every word in `configLoader.navigableWords` — which includes every shipped blank's `blankKeywords` list (91 distinct keywords across `volume`, `brightness`, `weather`, `forecast`, all stock tickers, all crypto symbols, lookup triggers like `what is`, `define`, country phrasings, etc.). The result was phantom dimming on bare prose: "the volume in this room was low" painted `volume`, "Apple announced earnings" painted `apple`, "i love bitcoin lately" painted `bitcoin`. The dim implied interactivity but the action only fires when `_` lands adjacent — so the user saw a hint with no payoff.
+
+User report 2026-06-13: "should we make it that they don't turn gray... only 'Cues' or aspects which have been changed should turn gray."
+
+Fix: new gate `DimRender.shouldGateBlankKeywordDim()` runs after the existing `navigable.has(lc)` check. A word that is:
+- in `blanksByWord` (a blank keyword), AND
+- NOT in `cueMap` (i.e. not also a word-cue or tip entry — those still dim because their dim IS the affordance of cyclable prose alternatives)
+
+…is treated as a pure action trigger. It dims only when `_` is within `blankProximity` words of the keyword (matches the same proximity window that gates the action firing in `BlankFill`). Bare-prose mentions stay plain text.
+
+Behaviour matrix (verified on CC harness with debug-mode dim trace):
+
+| Phrase | Before | After |
+|---|---|---|
+| `the volume in this room` | `volume` dimmed | nothing dims ✓ |
+| `Apple announced earnings` | `Apple` dimmed | nothing dims ✓ |
+| `i love bitcoin lately` | `bitcoin` dimmed | nothing dims ✓ |
+| `volume _` | `volume` + `_` dim | same — gate passes because `_` is within proximity 3 |
+| `volume is _` | `volume` + `_` dim | same |
+| `i have a contract` | dimmed via `legal` word-cue (host-gated) | same — word-cue arm is unaffected |
+| Substituted span (post-`volume _` resolve to `volume 50%`) | dim covers keyword + `50%` | same — DynDef arm is unaffected |
+
+Word-cues with real prose alternatives (legal, medical, financial, spelling, more-formal) keep the unconditional dim because their dim IS the offer. Tips-folder static entries (`tips-claude-code`, `tips-gemini-cli`, etc.) also keep the dim — they're informational hints without action.
+
+Pinned by two new tests in `dim-render.test.ts`:
+- `blank keyword without _ adjacent does NOT dim`
+- `blank keyword WITH _ within proximity DOES dim`
+
+`@opencues/runtime` 0.3.6 → 0.3.7.
+
 ### Fix — Substitute never auto-selects; user must manually navigate onto the span
 
 `statusline.ts:buildPayload` used to elevate any live `spanFillState` to `active: true` even when `hlState` was inactive — the rationale was that BlankFill scenarios polled `active === true` to assert "the substitute completed." Those scenarios moved to `waitForEvent` on the `blank.substituted` event (the canonical completion signal); the one remaining poller now sits under `tests/agentic/scenarios/_flaky/`.
