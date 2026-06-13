@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Perf — Parallelise blank-context cache refresh; cold transform-blank/fluid-blank 2.3× faster
+
+`BlankContextCache.snapshot()` refreshed catalog slots via a **sequential** `for ... await blank.get(slot)` loop. Every stale slot stalled on a real HTTP call — stocks → Finnhub, weather → OpenWeather, crypto → CoinGecko, hackernews → HN API, etc. On the default catalog (5 stocks from `context-slots` + N from `context-bind: portfolio` + 2 crypto + 1 weather + 1 HN + 1 claude-status) that's 10+ sequential round-trips firing on every cold transform-blank / fluid-blank call.
+
+User bench 2026-06-13, `draft an email _` on cerebras gpt-oss-120b:
+
+| Trial | Sequential (pre-fix) | Parallel (post-fix) | Saved |
+|---|---|---|---|
+| Cold 1 (fresh runtime) | 1810ms | **785ms** | 1025ms (57%) |
+| Cold 2 (post-65s TTL expiry) | 1953ms | **811ms** | 1142ms (58%) |
+| Warm (cache valid, no HTTP) | 926ms | 692ms | within noise — expected unchanged |
+
+Direct HTTP probe confirmed the mechanism: 5 sequential Finnhub stock calls = 877ms; parallel = max(209ms) ≈ 210ms. The fanout is independent per slot — no cross-slot dependency — so the runtime can launch every refresh concurrently.
+
+Fix: replace the sequential loop with `Promise.all(plan.map(async slot => ...))`. Per-slot `try/catch` preserved so a single network failure still produces `[STALE]` for that one slot without poisoning the rest of the snapshot. Cache eviction (`_evictIfOver`) moved to fire once after the fan-out lands, instead of inside the loop. Otherwise zero behaviour change — same TTL semantics, same `[STALE]` fallback, same cache shape.
+
+The other obvious optimisation — skipping catalog injection entirely when the buffer text doesn't plausibly reference any token — is tracked as a follow-up (would cut another ~500ms on prose-only buffers by eliminating the LLM-side prompt + reasoning tax). This fix alone is a structurally tight one-file, ~30-line change with no behaviour difference visible to the user beyond "transform-blank substitutes feel snappier on cold runs."
+
+`@opencues/runtime` 0.3.7 → 0.3.8.
+
 ### Fix — Blank keywords no longer dim until `_` is in proximity
 
 `DimRender` painted dim ranges for every word in `configLoader.navigableWords` — which includes every shipped blank's `blankKeywords` list (91 distinct keywords across `volume`, `brightness`, `weather`, `forecast`, all stock tickers, all crypto symbols, lookup triggers like `what is`, `define`, country phrasings, etc.). The result was phantom dimming on bare prose: "the volume in this room was low" painted `volume`, "Apple announced earnings" painted `apple`, "i love bitcoin lately" painted `bitcoin`. The dim implied interactivity but the action only fires when `_` lands adjacent — so the user saw a hint with no payoff.
