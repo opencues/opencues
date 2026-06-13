@@ -231,3 +231,138 @@ describe('RoutedWordSourceGroup: getCues()', () => {
     assert.strictEqual(group.priority, 90);
   });
 });
+
+// ---------------------------------------------------------------------------
+// getCues — result cache
+// ---------------------------------------------------------------------------
+
+describe('RoutedWordSourceGroup: result cache', () => {
+  /** Records every dispatch call. Returns predictable results so the
+   *  test can distinguish cache hits (mapped output) from misses
+   *  (LLM-call simulated by `received.push`). */
+  class CountingSource {
+    readonly id: string;
+    readonly priority: number;
+    readonly sourceConfig: SourceConfig;
+    readonly received: CueContext[] = [];
+    constructor(name: string, partial: Partial<SourceConfig> = {}) {
+      this.id = name;
+      this.priority = partial.priority ?? 50;
+      this.sourceConfig = { name, promptText: `p-${name}`, ...partial };
+    }
+    supports() { return true; }
+    async getCues(context: CueContext): Promise<CueSourceResult> {
+      this.received.push(context);
+      // Pretend NO misspellings for 'cat'/'sat'/'mat'; ONE for 'teh'.
+      const results = context.words.flatMap((w, i) =>
+        w === 'teh'
+          ? [{ wordIndex: i, word: w, alternatives: ['teh', 'the'], source: this.id, priority: this.priority }]
+          : []
+      );
+      return { results, timing: 0 };
+    }
+  }
+
+  it('zero-result responses are cached — second call with identical words skips dispatch', async () => {
+    const spelling = new CountingSource('spelling', { match: '.*' });
+    const group = new RoutedWordSourceGroup({ sources: [spelling as any] });
+
+    await group.getCues(mkContext(['cat', 'sat', 'mat']));
+    assert.strictEqual(spelling.received.length, 1, 'first call dispatches');
+
+    await group.getCues(mkContext(['cat', 'sat', 'mat']));
+    assert.strictEqual(spelling.received.length, 1, 'second call hits cache, no dispatch');
+
+    // Sanity: cache populated.
+    const sizes = Array.from(group.cacheSizes().values());
+    assert.strictEqual(sizes[0], 1, 'one cache entry');
+  });
+
+  it('positive results are cached AND remapped to current buffer positions', async () => {
+    const spelling = new CountingSource('spelling', { match: '.*' });
+    const group = new RoutedWordSourceGroup({ sources: [spelling as any] });
+
+    // First call: 'teh' is at original index 1.
+    const out1 = await group.getCues(mkContext(['cat', 'teh', 'mat']));
+    assert.strictEqual(spelling.received.length, 1);
+    assert.strictEqual(out1.results.length, 1);
+    assert.strictEqual(out1.results[0].wordIndex, 1);
+
+    // Second call: same word set, but surrounded by other prose. 'teh'
+    // is at original index 4 now. Sub-context is the same → cache hit,
+    // but wordIndex must be remapped to 4 (not the stale 1).
+    const out2 = await group.getCues(mkContext(['a', 'b', 'c', 'd', 'teh', 'e']));
+    // Note 'a','b','c','d','e' all match `.*` too, so they all route to
+    // spelling — the bucket is ['a','b','c','d','teh','e']. The sub-
+    // context text differs (more words). Expect a miss here, not a hit.
+    assert.strictEqual(spelling.received.length, 2, 'different word set → miss');
+    assert.strictEqual(out2.results.length, 1);
+    assert.strictEqual(out2.results[0].wordIndex, 4, 'remapped to original index');
+
+    // Third call: SAME word set as the first call. Cache hit; remap
+    // pins teh to its current original index (still 1 here).
+    const out3 = await group.getCues(mkContext(['cat', 'teh', 'mat']));
+    assert.strictEqual(spelling.received.length, 2, 'same word set as call 1 → cache hit');
+    assert.strictEqual(out3.results[0].wordIndex, 1);
+  });
+
+  it('different sub-context per source — each source has its own cache', async () => {
+    const legal = new CountingSource('legal', { keywords: 'contract' });
+    const spelling = new CountingSource('spelling', { match: '.*', priority: 10 });
+    const group = new RoutedWordSourceGroup({ sources: [legal as any, spelling as any] });
+
+    await group.getCues(mkContext(['the', 'contract', 'is']));
+    assert.strictEqual(legal.received.length, 1);
+    assert.strictEqual(spelling.received.length, 1);
+
+    await group.getCues(mkContext(['the', 'contract', 'is']));
+    assert.strictEqual(legal.received.length, 1, 'legal cache hit');
+    assert.strictEqual(spelling.received.length, 1, 'spelling cache hit');
+  });
+
+  it('LRU eviction drops oldest entries past CACHE_SIZE_PER_SOURCE', async () => {
+    const spelling = new CountingSource('spelling', { match: '.*' });
+    const group = new RoutedWordSourceGroup({ sources: [spelling as any] });
+
+    // Fill cache with 65 distinct word sets (size cap is 64).
+    for (let i = 0; i < 65; i++) {
+      await group.getCues(mkContext([`word${i}`]));
+    }
+    assert.strictEqual(spelling.received.length, 65);
+    assert.strictEqual(group.cacheSizes().values().next().value, 64, 'cache stays at cap');
+
+    // First-inserted entry (`word0`) should have been evicted.
+    await group.getCues(mkContext(['word0']));
+    assert.strictEqual(spelling.received.length, 66, 'word0 evicted → re-dispatched');
+
+    // Most-recent entry (`word64`) should still be cached.
+    await group.getCues(mkContext(['word64']));
+    assert.strictEqual(spelling.received.length, 66, 'word64 still cached');
+  });
+
+  it('LRU recency — hit reorders entry to most-recent', async () => {
+    const spelling = new CountingSource('spelling', { match: '.*' });
+    const group = new RoutedWordSourceGroup({ sources: [spelling as any] });
+
+    // Insert entries A and B.
+    await group.getCues(mkContext(['A']));
+    await group.getCues(mkContext(['B']));
+    // Hit A — moves it to most-recent.
+    await group.getCues(mkContext(['A']));
+    assert.strictEqual(spelling.received.length, 2);
+
+    // Now fill 63 more entries. B was second-oldest → should evict
+    // BEFORE A on overflow.
+    for (let i = 0; i < 63; i++) {
+      await group.getCues(mkContext([`fill${i}`]));
+    }
+    // Cache should be at cap (64). B should have been evicted; A should remain.
+    assert.strictEqual(spelling.received.length, 65);
+
+    await group.getCues(mkContext(['A']));
+    assert.strictEqual(spelling.received.length, 65, 'A still cached after recency promotion');
+
+    await group.getCues(mkContext(['B']));
+    assert.strictEqual(spelling.received.length, 66, 'B evicted → re-dispatched');
+  });
+});

@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Perf — Word-cue result cache in RoutedWordSourceGroup; zero LLM round-trip on repeat dispatch
+
+Every resolver pass on prose with no `_` fired the word-cue source group, which routes each word to a child source and dispatches one LLM call per source in parallel. The shipped **spelling** source has `match: .*` so it claims every word — meaning even neutral English prose (`"the cat sat on the mat"`) burned a ~280ms LLM round-trip to find zero misspellings. Every keystroke pause, every cursor move that re-triggered debounce, every backspace-retype loop: ~280ms of waste per resolve.
+
+`RoutedWordSourceGroup` now keeps a per-child-source LRU cache of dispatch results, keyed on the EXACT sub-context text the child source receives (`0=cat 1=sat 2=the`). Caches both zero-result and positive responses. On hit, the cached sub-context-indexed results are remapped to the current bucket's original buffer indices — so the same word set in a different surrounding buffer still maps correctly.
+
+Latency micro-bench (`tests/benchmarks/word-cue-cache/`, n=5, simulated 280ms spelling source):
+
+| Variant | Wall-clock (median) | LLM calls |
+|---|---|---|
+| Cold (cache miss) | 280.7ms | 1 |
+| Warm (identical buffer) | **0.0ms** | **0** |
+| Saved | 280.7ms (100% of the LLM round-trip) | — |
+
+Cache lifetime is tied to the source group instance: when the resolver rebuilds sources (OPENCUES.md flag flip, CUES.md edit, focus moves between cycling / non-cycling hosts), the group is reconstructed and the cache is GC'd with the old instance. No explicit invalidation logic needed. Mirrors the well-trodden `AgentRewrite._rewriteCache` shape (LRU via `Map` insertion order + delete-and-reinsert on hit). Bounded at 64 entries per child source.
+
+When the cache hits: identical-buffer revisits (backspace-retype loops, cursor moves that re-fire debounce, copy-paste-back), and during linear typing whenever you add a non-word char (space, punctuation) that doesn't change the word set the LLM sees. When it misses: every fresh word added to the buffer pays the full round-trip once, then subsequent hits on that buffer state are free.
+
+Bumps:
+- `@opencues/core` 0.3.11 → 0.3.12 (`RoutedWordSourceGroup` adds cache layer).
+- `@opencues/chrome` 0.2.9 → 0.2.10 (bundle bytes change; manifest + package.json in lockstep).
+
+Runtime suite: 1656/1656 pass (unchanged). Core suite: 22/22 new cache tests pass (5 cases: zero-result caching, positive-result remapping, per-source isolation, LRU eviction, LRU recency). Agentic scenario `26-word-cue-routing` (existing) covers end-to-end dispatch — cache is transparent to its assertions.
+
 ### Perf — Pre-warm blank-context cache on background timer; first user `_` after launch hits warm cache
 
 The lazy-refresh `BlankContextCache.snapshot()` populated only on prompt-build, so the FIRST `_` after launch still paid the full HTTP fan-out tax (~210ms even after #131's parallelisation). PR #131 was the wall-clock-of-slowest-source win; this is the eliminate-the-wait-entirely win.
