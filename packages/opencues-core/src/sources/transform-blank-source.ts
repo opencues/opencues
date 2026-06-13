@@ -1450,6 +1450,47 @@ export class TransformBlankSource implements CueSource {
    * orchestration.
    */
   private _currentOverride: { provider: ProviderAdapter; model: string; apiKey: string } | null = null;
+  /**
+   * Per-input variant pool — caches prior LLM rewrites for each
+   * (buffer + provider + model + mode + maxThinking) tuple so that
+   * re-triggers on the same buffer can:
+   *   - Cycle through prior fresh rewrites instantly (Up arrow walks
+   *     the alternatives array — DynDef cycling is unchanged), and
+   *   - Periodically generate a NEW fresh rewrite to preserve
+   *     variation (real providers don't return byte-identical output
+   *     even at temperature=0 + seed=42; users rely on re-trigger to
+   *     roll the dice).
+   *
+   * State machine per key:
+   *   - 'building' (entries.length < POOL_SIZE): every trigger is
+   *     fresh, accumulates in the pool.
+   *   - 'cycling' (entries.length == POOL_SIZE, cyclePos < POOL_SIZE):
+   *     trigger serves entries[cyclePos] from cache, cyclePos++.
+   *   - 'refreshing' (entries.length == POOL_SIZE, cyclePos == POOL_SIZE):
+   *     trigger generates fresh, FIFO-evicts oldest, cyclePos=0.
+   *     After: switch back to 'cycling'.
+   *
+   * Result after warmup: 3 fresh + 3 cache + 1 fresh + 3 cache + 1
+   * fresh + … — 75% cache-hit rate during sustained re-trigger flows.
+   *
+   * Cache lifetime is MODULE-LEVEL (static) — survives source
+   * instance rebuilds. On hosts where the resolver rebuilds frequently
+   * (chrome's universal-integration flips `supportsCycling()` per
+   * focused target; live config-sync from the native-host triggers
+   * reloads), an instance-scoped pool would empty between every
+   * trigger and the cache would never accumulate entries. The static
+   * pool is keyed on (buffer + provider + model + mode + maxThinking)
+   * so different configs never collide; the KEY_CAP LRU bound keeps
+   * memory bounded as users switch providers / modes.
+   *
+   * The pool DOES survive across all source instances within the
+   * process. This is what we want: re-entering a buffer state after
+   * the resolver rebuilt (focus shift, config refresh) still hits
+   * cache. Tests must clear it explicitly (see resetVariantPoolForTest).
+   */
+  private static _variantPool = new Map<string, { entries: string[]; cyclePos: number }>();
+  private static readonly VARIANT_POOL_SIZE = 3;
+  private static readonly VARIANT_KEY_CAP = 32;
   private maxTokensOverride: number | undefined;
   private temperatureOverride: number | undefined;
   private maxThinking: boolean;
@@ -1649,6 +1690,58 @@ export class TransformBlankSource implements CueSource {
           : {}),
       });
 
+      // VARIANT POOL — decide fresh dispatch vs cache serve. See the
+      // _variantPool field doc for the state machine. On hit we
+      // short-circuit the LLM dispatch entirely and return a result
+      // carrying the cached rewrite as alternatives[1], with other
+      // pool entries at alternatives[2..N] so DynDef cycling (Up
+      // arrow) walks the variant history without re-paying.
+      //
+      // FUSED MODE ONLY. 3-pass mode's finalRewrite is the splice-
+      // REPLACEMENT portion (not the whole buffer) and serving it
+      // through the cache's whole-body replace path would wipe the
+      // buffer's prefix/suffix. Caching 3-pass would require also
+      // caching transformTarget so the resolver can replay the
+      // surgical splice — out of scope for the prototype; tracked as
+      // a follow-up.
+      const cacheKey = this._computeCacheKey(context);
+      const variantChoice = this.mode === 'fused'
+        ? this._selectVariant(cacheKey)
+        : { kind: 'fresh' as const, others: [] as string[] };
+      if (variantChoice.kind === 'cache') {
+        this.log(`TransformBlank: variant-cache HIT — serving cached rewrite (pool size ${variantChoice.others.length + 1})`);
+        return {
+          results: [{
+            wordIndex: blankIdx,
+            word: '_',
+            alternatives: [context.text, variantChoice.rewrite, ...variantChoice.others],
+            source: this.id,
+            priority: this.priority,
+            spanStart: 0,
+            spanEnd: context.text.length,
+            metadata: {
+              // transformTarget intentionally omitted — its absence
+              // routes the resolver substitute branch to whole-body
+              // replace, which is correct: the cached rewrite IS the
+              // post-substitution whole-buffer content (true for both
+              // fused mode and 3-pass mode at the cache layer).
+              pipelineMode: 'variant-cache',
+              pipelineLatencyMs: 0,
+              variantCacheHit: true,
+              variantPoolSize: variantChoice.others.length + 1,
+            },
+          }],
+          timing: Date.now() - startTime,
+          model: this.model,
+        };
+      }
+      // Fresh path — `variantChoice.others` carries the prior pool
+      // entries (may be empty during build phase). These get
+      // prepended-after-fresh on the alternatives array at each
+      // return site so users can Up-arrow through history without
+      // re-dispatching.
+      const priorVariants = variantChoice.others;
+
       // FUSED MODE — single-call short-circuit. Capable generalist models
       // (cerebras, gemini, claude, openai by default) emit VERDICT +
       // INSTRUCTION + TARGET + REWRITE in one call, skipping P1.5/P2/P3
@@ -1657,7 +1750,7 @@ export class TransformBlankSource implements CueSource {
       // Benchmark evidence: tests/benchmarks/transform-blank/
       // EXPERIMENTS.md § Experiment 6.
       if (this.mode === 'fused') {
-        const fusedResult = await this.runFusedAndBuild(context, blankIdx, __pipelineT0, preview, startTime);
+        const fusedResult = await this.runFusedAndBuild(context, blankIdx, __pipelineT0, preview, startTime, cacheKey, priorVariants);
         if (fusedResult) return fusedResult;
         // Fused failed (empty result / parse miss) — fall through to
         // the 3-pass pipeline below as graceful degradation.
@@ -2106,6 +2199,8 @@ export class TransformBlankSource implements CueSource {
     __pipelineT0: number,
     preview: (s: string) => string,
     startTime: number,
+    cacheKey: string,
+    priorVariants: string[],
   ): Promise<CueSourceResult | null> {
     // Same text-source precedence as the 3-pass EXTRACT input (rich-text
     // > as-typed > visible) so styling + agent-revert behaviour matches.
@@ -2226,10 +2321,24 @@ export class TransformBlankSource implements CueSource {
     // event fires. Latency is carried through the result so the
     // resolver can include it on the event body.
     const pipelineLatencyMs = Date.now() - startTime;
+    // Record the fresh rewrite into the variant pool — subsequent
+    // identical-buffer triggers will cycle through cached variants
+    // (see _variantPool docs for the state machine). FIFO eviction
+    // when at capacity, so the just-recorded rewrite is the most
+    // recent and an older entry may have just been dropped.
+    this._recordFreshRewrite(cacheKey, f.rewrite);
+    // Re-read the pool POST-RECORD to get the actually-cached
+    // siblings (priorVariants was captured pre-record and may
+    // include an entry that's now been evicted).
+    const postRecordOthers = (TransformBlankSource._variantPool.get(cacheKey)?.entries ?? [])
+      .filter(r => r !== f.rewrite);
     const result: CueResult = {
       wordIndex: blankIdx,
       word: '_',
-      alternatives: [context.text, f.rewrite],
+      // alternatives shape: [original, fresh, ...other-pool-entries].
+      // Up-arrow walks alternatives[2..N] = prior cached variants;
+      // Down-arrow walks to alternatives[0] = original (revert).
+      alternatives: [context.text, f.rewrite, ...postRecordOthers],
       source: this.id,
       priority: this.priority,
       spanStart: 0,
@@ -2249,6 +2358,8 @@ export class TransformBlankSource implements CueSource {
         // Latency carried for the resolver to use on the post-substitute
         // `transform-blank.completed` event (see header comment).
         pipelineLatencyMs,
+        variantCacheHit: false,
+        variantPoolSize: postRecordOthers.length + 1,
       },
     };
     return { results: [result], timing: Date.now() - startTime, model: this.model };
@@ -2317,5 +2428,119 @@ export class TransformBlankSource implements CueSource {
       },
       { apiKey: effApiKey, endpoint: effEndpoint, signal, maxThinking: this.maxThinking },
     );
+  }
+
+  /**
+   * Derive a cache key for the variant pool. Includes everything that
+   * could change the LLM rewrite: buffer text, effective provider+model,
+   * pipeline mode, maxThinking. Excludes identity / blank context VALUES
+   * — those are substituted post-LLM by the post-processor in `safe`
+   * mode, so the cached rewrite (which carries `[TOKEN]` names) re-
+   * substitutes against current values on each hit and stays correct
+   * even as values drift. In `raw` mode values do affect the LLM input;
+   * cached entries may serve slightly-stale-valued rewrites then. The
+   * trade-off was deliberate (most users are on `safe` mode; raw users
+   * get a minor cosmetic staleness window between context refreshes).
+   */
+  private _computeCacheKey(context: CueContext): string {
+    const providerId = this._currentOverride?.provider.id ?? this.provider.id;
+    const model = this._currentOverride?.model ?? this.model;
+    const SEP = '\x1f';  // ASCII unit separator — won't collide with text content
+    return [
+      context.text,
+      providerId,
+      model,
+      this.mode,
+      this.maxThinking ? 'maxT' : 'minT',
+    ].join(SEP);
+  }
+
+  /**
+   * Decide whether to dispatch fresh or serve from the variant pool.
+   * Returns the chosen primary rewrite (or null if we must dispatch
+   * fresh). Also returns the pool state's "other" entries so the
+   * caller can enrich the alternatives array.
+   *
+   * State machine semantics — see the _variantPool field doc.
+   *
+   * Pool is updated by this method (cyclePos advances on cache hit;
+   * the FRESH path is responsible for calling _recordFreshRewrite()
+   * AFTER dispatch succeeds).
+   */
+  private _selectVariant(key: string): { kind: 'cache'; rewrite: string; others: string[] } | { kind: 'fresh'; others: string[] } {
+    let entry = TransformBlankSource._variantPool.get(key);
+    if (!entry) {
+      entry = { entries: [], cyclePos: 0 };
+      TransformBlankSource._variantPool.set(key, entry);
+    } else {
+      // LRU recency.
+      TransformBlankSource._variantPool.delete(key);
+      TransformBlankSource._variantPool.set(key, entry);
+    }
+
+    // Building phase — pool not yet full.
+    if (entry.entries.length < TransformBlankSource.VARIANT_POOL_SIZE) {
+      return { kind: 'fresh', others: entry.entries.slice() };
+    }
+
+    // Cycling phase — pool full, serve next.
+    if (entry.cyclePos < entry.entries.length) {
+      const rewrite = entry.entries[entry.cyclePos];
+      entry.cyclePos++;
+      const others = entry.entries.filter((_, i) => i !== entry!.cyclePos - 1);
+      return { kind: 'cache', rewrite, others };
+    }
+
+    // Refresh phase — cycle done, generate fresh.
+    return { kind: 'fresh', others: entry.entries.slice() };
+  }
+
+  /**
+   * Record a fresh LLM rewrite into the variant pool. Called by the
+   * dispatch path after a successful LLM call. Handles FIFO eviction
+   * when the pool is at capacity (preserves variation by always
+   * adding the newest, dropping the oldest).
+   */
+  private _recordFreshRewrite(key: string, rewrite: string): void {
+    let entry = TransformBlankSource._variantPool.get(key);
+    if (!entry) {
+      // Defensive — shouldn't happen since _selectVariant always
+      // creates the entry. Fall through gracefully.
+      entry = { entries: [], cyclePos: 0 };
+      TransformBlankSource._variantPool.set(key, entry);
+    }
+
+    // FIFO eviction at capacity. Reset cyclePos so the next trigger
+    // walks the new pool from the start.
+    if (entry.entries.length >= TransformBlankSource.VARIANT_POOL_SIZE) {
+      entry.entries.shift();
+    }
+    entry.entries.push(rewrite);
+    entry.cyclePos = 0;
+
+    // LRU cap on distinct keys.
+    while (TransformBlankSource._variantPool.size > TransformBlankSource.VARIANT_KEY_CAP) {
+      const oldest = TransformBlankSource._variantPool.keys().next().value;
+      if (oldest === undefined) break;
+      TransformBlankSource._variantPool.delete(oldest);
+    }
+  }
+
+  /** For tests + diagnostics — current pool size for a given key. */
+  variantPoolSize(key: string): number {
+    return TransformBlankSource._variantPool.get(key)?.entries.length ?? 0;
+  }
+
+  /** For tests — re-expose the key derivation. */
+  cacheKeyForTest(context: CueContext): string {
+    return this._computeCacheKey(context);
+  }
+
+  /** Test-only: empty the module-level variant pool. Without this,
+   *  test order would matter — a pool populated by one test would
+   *  leak into the next. Production code must NEVER call this; the
+   *  pool's LRU bound handles real-world memory growth. */
+  static resetVariantPoolForTest(): void {
+    TransformBlankSource._variantPool.clear();
   }
 }

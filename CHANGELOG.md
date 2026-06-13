@@ -9,6 +9,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Perf — Variant cache across all three semantic-`_` sources; cache hits 10-20× faster end-to-end
+
+Three sources fire on every `_` keystroke in fused-capable hosts: `TransformBlankSource` (whole-buffer rewrites), `FluidBlankSource` (factual lookups), and `ConfigIntentSource` (settings-change classifier). Each ran its own LLM round-trip on every trigger, even when the user was re-triggering the same buffer back-to-back (Down-arrow revert + re-trigger, Ctrl+Z undo-redo, A/B comparing different transforms, backspace-retype loops). On the resolver's "wait for all siblings" join, the slowest source's round-trip determined wall-clock — typically 300-800ms per trigger.
+
+All three now keep a **static module-level variant pool** keyed on `(buffer + provider + model + mode + maxThinking + ambient/context shape)`. State machine matches across sources: first `POOL_SIZE` triggers are fresh (LLM dispatch + add to pool), next `POOL_SIZE` triggers cycle through the cached responses, then one fresh refresh evicts the oldest entry (FIFO). 75% hit rate after warmup. Pool size = 3 per key, 32 keys max per source.
+
+Crucial design: the pool is **static**, not instance-scoped. Chrome's universal-integration profile rebuilds the resolver constantly (focus shifts between contenteditable / normal-input flip `supportsCycling()`; live config sync from the native-host triggers reloads), so an instance-scoped pool would empty between every trigger and never accumulate. Module-level state survives source instance reconstruction. Verified end-to-end on chrome (LinkedIn share composer) with a diagnostic showing `totalPoolKeys=1` persists across multiple Resolver rebuilds within the same trigger sequence.
+
+Per-source key composition:
+- **TransformBlank**: `text + provider + model + mode + maxThinking`. Mode-gated to `fused` only (3-pass produces splice-replacement output, not whole-buffer; caching it would corrupt buffer prefix/suffix on the whole-body replace path).
+- **FluidBlank**: `text + provider + model + maxThinking + ambient(JSON-stringified) + identity-context-mode + blank-context-mode`. Ambient must be in the key because chrome's `paris _` in a Gmail compose field differs from an Airport-code field.
+- **ConfigIntent**: `text + provider + model`. Classifier is mostly deterministic per input.
+
+UX preserved (variation argument): in safe mode the post-processor substitutes identity/blank-context VALUES post-LLM, so cached responses carrying `[FIRST NAME]` tokens re-substitute against current values on each hit — the cache never serves a stale value. The "build → cycle → refresh" state machine means the user always gets a NEW fresh variant after cycling through the cached ones, preserving the "re-trigger rolls the dice" behaviour at 25% rate after warmup.
+
+DynDef cycling exposes prior pool entries as `alternatives[2..N]` for TransformBlank so Up-arrow walks variant history instantly without re-paying.
+
+End-to-end latency on chrome (LinkedIn, `draft an email _`, 6 consecutive triggers on identical buffer):
+
+| Trigger | State | Wall-clock |
+|---|---|---|
+| T1 | fresh, pool=0 | 653ms |
+| T2 | fresh, pool=1 | 603ms |
+| T3 | fresh, pool=2 (pool fills) | 770ms |
+| T4 | **cache hit** (all 3 sources) | **65ms** |
+| T5 | **cache hit** | **38ms** |
+| T6 | **cache hit** | **32ms** |
+
+10-20× faster on cache hits. The remaining ~32-65ms is irreducible DOM mutation + event dispatch on chrome's managed editors.
+
+Unit tests: 8 new variant cache tests (state machine, build→cycle→refresh, LRU eviction + recency, survives-source-rebuild), plus all 92 existing fluid-blank + 41 transform-blank + 8 config-intent tests pass.
+Agentic: scenario `53-transform-blank-variant-cache` exercises the state machine end-to-end on a real CC instance with cerebras dispatch.
+
+Bumps:
+- `@opencues/core` 0.3.12 → 0.3.13 (variant cache pattern applied to 3 sources).
+- `@opencues/chrome` 0.2.12 → 0.2.13 (bundle bytes change; manifest + package.json in lockstep).
+
 ### Perf — Word-cue result cache in RoutedWordSourceGroup; zero LLM round-trip on repeat dispatch
 
 Every resolver pass on prose with no `_` fired the word-cue source group, which routes each word to a child source and dispatches one LLM call per source in parallel. The shipped **spelling** source has `match: .*` so it claims every word — meaning even neutral English prose (`"the cat sat on the mat"`) burned a ~280ms LLM round-trip to find zero misspellings. Every keystroke pause, every cursor move that re-triggered debounce, every backspace-retype loop: ~280ms of waste per resolve.

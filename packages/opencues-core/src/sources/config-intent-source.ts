@@ -639,6 +639,26 @@ export class ConfigIntentSource implements CueSource {
   private emit: (event: ConfigIntentEvent) => void;
   private formatErrorAsSubstitute: ((reason: FluidBlankErrorReason, err?: Error) => string) | undefined;
 
+  /**
+   * Per-input cache of raw LLM responses. ConfigIntent is a
+   * CLASSIFIER — same buffer should yield same intent, so we cache
+   * the raw response and re-run parse/validate/apply on hit. Same
+   * static module-level shape as TransformBlank / FluidBlank pools
+   * so the cache survives chrome's resolver rebuild churn.
+   *
+   * The most common case is "INTENT: NONE" (prose that isn't a config
+   * command) — caching that lets prose-`_` paths cede instantly to
+   * sibling sources without burning a classifier round-trip every
+   * keystroke.
+   *
+   * Setting-apply side effects (writes to OPENCUES.md via
+   * applyScalar) are idempotent — re-applying the same value on
+   * cache hit is a no-op write at the scalar level.
+   */
+  private static _variantPool = new Map<string, { entries: string[]; cyclePos: number }>();
+  private static readonly VARIANT_POOL_SIZE = 3;
+  private static readonly VARIANT_KEY_CAP = 32;
+
   constructor(config: ConfigIntentSourceConfig) {
     this.httpAdapter = config.httpAdapter;
     this.provider = config.provider;
@@ -713,13 +733,25 @@ export class ConfigIntentSource implements CueSource {
     this.log(`ConfigIntent: starting (textLen=${context.text.length}, blankIdx=${blankIdx}, llm=${llmDesc})`);
     this.emit({ type: 'started', textLen: context.text.length, blankIdx, llm: llmDesc });
 
+    // VARIANT POOL — cache raw LLM response. Re-run parse/validate/
+    // apply on hit so the verdict's side effect (applyScalar for
+    // SETTING/PROVIDER verdicts) still fires. Idempotent at the
+    // scalar level — re-applying the same value is a no-op write.
+    const cacheKey = this._computeCacheKey(context);
+    const variantChoice = this._selectVariant(cacheKey);
+
     let raw: string;
-    try {
+    if (variantChoice.kind === 'cache') {
+      this.log(`ConfigIntent: variant-cache HIT — serving cached response (pool size ${variantChoice.others.length + 1})`);
+      raw = variantChoice.rewrite;
+    } else {
+      try {
       // Per-feature `fluid-config-max-tokens:` override; 128 default
       // is tight because the classifier output is tiny (VERDICT,
       // SETTING, VALUE, CONFIDENCE) — bumping helps only if the
       // model wraps the output in extra prose.
       raw = await this.callLLM(SYSTEM_PROMPT, `INPUT: ${context.text}`, this.maxTokensOverride ?? 128, context.signal);
+      this._recordFreshResponse(cacheKey, raw);
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
       this.log(`ConfigIntent: LLM call failed — ${err.message}`);
@@ -749,6 +781,7 @@ export class ConfigIntentSource implements CueSource {
         }
       }
       return { results: [], timing: Date.now() - t0, model: this.model };
+    }
     }
 
     const verdict = parseConfigIntentOutput(raw);
@@ -911,5 +944,63 @@ export class ConfigIntentSource implements CueSource {
       },
       { apiKey: this.apiKey, endpoint: this.endpoint, signal },
     );
+  }
+
+  /** Cache key — buffer + provider + model. ConfigIntent has no
+   *  mode/maxThinking variations on the prompt shape today. */
+  private _computeCacheKey(context: CueContext): string {
+    const SEP = '\x1f';
+    return [context.text, this.provider.id, this.model].join(SEP);
+  }
+
+  private _selectVariant(key: string): { kind: 'cache'; rewrite: string; others: string[] } | { kind: 'fresh'; others: string[] } {
+    let entry = ConfigIntentSource._variantPool.get(key);
+    if (!entry) {
+      entry = { entries: [], cyclePos: 0 };
+      ConfigIntentSource._variantPool.set(key, entry);
+    } else {
+      ConfigIntentSource._variantPool.delete(key);
+      ConfigIntentSource._variantPool.set(key, entry);
+    }
+    if (entry.entries.length < ConfigIntentSource.VARIANT_POOL_SIZE) {
+      return { kind: 'fresh', others: entry.entries.slice() };
+    }
+    if (entry.cyclePos < entry.entries.length) {
+      const rewrite = entry.entries[entry.cyclePos];
+      entry.cyclePos++;
+      const others = entry.entries.filter((_, i) => i !== entry!.cyclePos - 1);
+      return { kind: 'cache', rewrite, others };
+    }
+    return { kind: 'fresh', others: entry.entries.slice() };
+  }
+
+  private _recordFreshResponse(key: string, response: string): void {
+    let entry = ConfigIntentSource._variantPool.get(key);
+    if (!entry) {
+      entry = { entries: [], cyclePos: 0 };
+      ConfigIntentSource._variantPool.set(key, entry);
+    }
+    if (entry.entries.length >= ConfigIntentSource.VARIANT_POOL_SIZE) {
+      entry.entries.shift();
+    }
+    entry.entries.push(response);
+    entry.cyclePos = 0;
+    while (ConfigIntentSource._variantPool.size > ConfigIntentSource.VARIANT_KEY_CAP) {
+      const oldest = ConfigIntentSource._variantPool.keys().next().value;
+      if (oldest === undefined) break;
+      ConfigIntentSource._variantPool.delete(oldest);
+    }
+  }
+
+  variantPoolSize(key: string): number {
+    return ConfigIntentSource._variantPool.get(key)?.entries.length ?? 0;
+  }
+
+  cacheKeyForTest(context: CueContext): string {
+    return this._computeCacheKey(context);
+  }
+
+  static resetVariantPoolForTest(): void {
+    ConfigIntentSource._variantPool.clear();
   }
 }
