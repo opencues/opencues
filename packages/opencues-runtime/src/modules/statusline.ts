@@ -181,7 +181,23 @@ export class Statusline {
     // tips-mode: off → still expose word + alts but suppress tip text.
     const tipsHidden = this.configLoader?.opencuesState.tipsMode === 'off';
     const wordIndex = this.hlState.wordIndex;
-    const def = this.dynDefs.get(wordIndex);
+    // Direct lookup matches multi-word substitute DefAt the origin word
+    // only. If the highlight is on word N>origin inside a multi-word span
+    // (fluid/transform blank substitutes are always multi-word — the
+    // LLM emits 2+ word answers), `dynDefs.get(wordIndex)` returns
+    // undefined and the code falls through to the word-cue lookup at
+    // the bottom of this function. That surfaces a word-cue tip for an
+    // individual word in the LLM-substituted body (e.g. "email" inside a
+    // draft) — confusing because the user didn't write that word, the
+    // LLM did. Use `findSpanContaining` so any word inside a
+    // blankName-attributed span (`fluid-blank`, `transform-blank`,
+    // `agent-rewrite`) resolves to the originating def and goes through
+    // the suppression branch below.
+    let def = this.dynDefs.get(wordIndex);
+    if (!def) {
+      const span = this.dynDefs.findSpanContaining(wordIndex);
+      if (span) def = span.def;
+    }
     const words = splitWords(ctx.text);
     let highlightedWord: string;
     if (def) {
