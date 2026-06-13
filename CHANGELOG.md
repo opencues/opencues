@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fix — Chrome narrows `supportsAgentRewrite: false` to LinkedIn share composer only
+
+PR #125 disabled `supportsAgentRewrite` for **every** `.ql-editor` on the page, intending to scope to LinkedIn's share composer (where Delta+MutationObserver fights cause caret snap-back). But LinkedIn comment boxes are also Quill instances, so they got swept up — `agentically X _` in a LinkedIn comment was silently wiped instead of running. Symptom reported 2026-06-12.
+
+The original caret-snap bug is specific to the share composer's lifecycle (post-creation modal + inline "Start a post" surface + legacy share-box widget). Comment boxes, messaging compose, and the article editor are also Quill but don't exhibit the same multi-tick storm. Narrowed the detection with a new `isLinkedInShareComposerQuill` predicate that requires both `.ql-editor` AND an ancestor matching one of:
+
+- `.share-creation-state` — modal share composer wrapper
+- `.share-box-feed-entry__form` — inline "Start a post" surface
+- `.share-box` — broadest legacy class; covers older variants
+
+If another Quill site reproduces the same caret-snap class of bug, add its detection marker to the predicate. Default-deny stays on the share composer where the structural problem is verified; everything else gets the feature back.
+
+Chrome 0.2.7 → 0.2.8 (manifest + package lockstep).
+
 ### Feature — Per-target `supportsAgentRewrite` capability; chrome opts Quill out
 
 After PR #122 (0.2.5 → 0.2.6) — the first attempt to fix LinkedIn's "cursor jumps on agent-rewrite tick" symptom by reapplying caret across more frames — failed in production, we walked through a sequence of further attempts each landing on a different theory: caret-color cosmetic hide, paragraph-level in-place mutation, line-level in-place mutation, hunk-level in-place mutation via the runtime's `wordDiff`, and a `pushText` flag to suppress an explicit cursor restore after a successful in-place write. Each was a structural improvement on its own — chrome ships them — but none fully fixed the user-visible bug. The remaining root cause: Quill's Delta-model selection doesn't sync from browser-set selections after a write. Even when we got the right characters into the right text nodes, Quill's internal cursor was still anchored at the wrong place, so every subsequent keystroke landed in the wrong location and broke the feature.

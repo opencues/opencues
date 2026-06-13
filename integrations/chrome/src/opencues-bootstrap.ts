@@ -649,6 +649,40 @@ function isQuillEditor(el: HTMLElement): boolean {
   return !!el.closest('.ql-editor');
 }
 
+/**
+ * Narrower variant: the SPECIFIC Quill instance LinkedIn ships in its
+ * share composer (the post-creation modal at the top of the feed).
+ * That's the surface PR #125 disabled agent-rewrite on — Delta-model
+ * + MutationObserver fighting the multi-tick replaceAllText path.
+ *
+ * Comment boxes ARE Quill too but they live in a different DOM context
+ * (`.comments-comment-box`, `.comments-comment-texteditor`, …) with a
+ * different lifecycle and don't show the same caret-snap bug at agent
+ * cadence. Without the narrowing, "agentically X _" in a LinkedIn
+ * comment was silently wiped instead of running — symptom reported
+ * 2026-06-12.
+ *
+ * Detection markers (any one is sufficient — LinkedIn ships multiple
+ * variants of the share composer DOM across A/B rollouts):
+ *   - `.share-creation-state`         — modal share composer wrapper
+ *   - `.share-box-feed-entry__form`   — inline "Start a post" surface
+ *   - `.share-box`                    — broadest historical class; covers
+ *                                       the legacy widget shape too.
+ *
+ * Any `.ql-editor` outside one of those ancestors (today: comment boxes,
+ * messaging compose, article editor) is treated as agent-rewrite-eligible.
+ * If a different Quill site later reproduces the same caret-snap class
+ * of bug, add its detection marker here.
+ */
+function isLinkedInShareComposerQuill(el: HTMLElement): boolean {
+  if (!el.closest('.ql-editor')) return false;
+  return !!(
+    el.closest('.share-creation-state') ||
+    el.closest('.share-box-feed-entry__form') ||
+    el.closest('.share-box')
+  );
+}
+
 /** Walk up from a `.ql-editor` to find the Quill editor instance. Quill
  *  stashes itself on the container element (`.ql-container`) as
  *  `__quill`. Falls back to checking the immediate root + walking
@@ -2689,7 +2723,7 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     // Delta-model selection-shift handles correctly. The runtime gate
     // wipes the `agentically X _` trigger phrase cleanly but doesn't
     // arm an AgentTask on Quill. See adapter.ts § supportsAgentRewrite.
-    supportsAgentRewrite: () => !(currentTarget && isQuillEditor(currentTarget)),
+    supportsAgentRewrite: () => !(currentTarget && isLinkedInShareComposerQuill(currentTarget)),
     // Ambient-context gatherer — gated by the `ambient-context-mode`
     // scalar on the runtime side. Returns null for sensitive fields
     // and when no usable metadata is present. See gatherAmbientContext
