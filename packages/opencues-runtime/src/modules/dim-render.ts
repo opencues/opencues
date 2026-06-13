@@ -104,6 +104,18 @@ export class DimRender {
           navigable.has(lc) ||
           this.dynDefs.get(w.index)
         ) {
+          // Blank-keyword arm: a word that is ONLY a blank keyword
+          // (not a word-cue match, not a registered tip in cueMap)
+          // shouldn't dim until a `_` is in proximity. Without the
+          // gate, every prose mention of `volume` / `bitcoin` /
+          // `apple` / `weather` etc. paints a phantom dim that
+          // suggests "I'm interactive" \u2014 but the action only fires
+          // when `_` lands adjacent. Words that are ALSO word-cue
+          // entries (legal/medical/financial when host-enabled, any
+          // CUES.md ## Tips entry) keep the unconditional dim
+          // because those genuinely offer prose alternatives the
+          // user can cycle \u2014 the dim is the affordance.
+          if (this.shouldGateBlankKeywordDim(lc, w.index, words)) continue;
           dimRanges.push({ start: w.start, end: w.end });
         }
       }
@@ -171,5 +183,44 @@ export class DimRender {
 
     if (!highlight && dimRanges.length === 0) return null;
     return { highlight, dimRanges };
+  }
+
+  /**
+   * Returns true when the dim for this word should be SUPPRESSED because
+   * it's a pure blank keyword (an action trigger that needs `_` to fire)
+   * and no `_` is in proximity. Words that are ALSO word-cue entries
+   * (live in `configLoader.cueMap`) bypass the gate and dim
+   * unconditionally — those offer real prose alternatives.
+   *
+   * See `docs/architecture/spans-and-cycling.md` § "Dim contract" for
+   * the rationale.
+   */
+  private shouldGateBlankKeywordDim(
+    lc: string,
+    wordIdx: number,
+    words: readonly { word: string }[],
+  ): boolean {
+    if (!this.configLoader) return false;
+    // Word-cue entries (CUES.md ## Tips, folder cues, spelling) keep
+    // the unconditional dim — their dim IS the offer that the user
+    // can cycle them.
+    if (this.configLoader.cueMap.has(lc)) return false;
+    const entry = this.configLoader.blanksByWord.get(lc);
+    if (!entry) return false;
+    // The word resolved to a blank keyword. Check if any `_` is within
+    // proximity. blankProximity defaults to 0 (keyword must be
+    // directly adjacent to `_`); blanks with looser phrasing set it
+    // explicitly (e.g. volume = 3, dictionary = 20).
+    const proximity = entry.blank.blankProximity ?? 0;
+    const lower = wordIdx - proximity - 1;
+    const upper = wordIdx + proximity + 1;
+    const start = Math.max(0, lower);
+    const end = Math.min(words.length - 1, upper);
+    for (let i = start; i <= end; i++) {
+      if (i === wordIdx) continue;
+      const w = words[i]?.word;
+      if (w === '_' || w?.replace(/[​‌]/g, '') === '_') return false;
+    }
+    return true;
   }
 }
