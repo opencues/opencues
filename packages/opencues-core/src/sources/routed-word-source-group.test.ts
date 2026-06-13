@@ -36,6 +36,14 @@ function mkSource(name: string, partial: Partial<SourceConfig> = {}): ConfigSour
 }
 
 function mkContext(words: string[]): CueContext {
+  // Trailing space so the in-progress-word gate (June 2026) treats every
+  // word as complete. Tests that want to exercise the gate should call
+  // mkContextTyping(...) below.
+  return { text: words.join(' ') + ' ', words };
+}
+
+function mkContextTyping(words: string[]): CueContext {
+  // No trailing space — last word is "in-progress" per the gate.
   return { text: words.join(' '), words };
 }
 
@@ -364,5 +372,90 @@ describe('RoutedWordSourceGroup: result cache', () => {
 
     await group.getCues(mkContext(['B']));
     assert.strictEqual(spelling.received.length, 66, 'B evicted → re-dispatched');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// In-progress trailing word gate
+// ---------------------------------------------------------------------------
+
+describe('RoutedWordSourceGroup: in-progress trailing word gate', () => {
+  class CountingSource {
+    readonly id: string;
+    readonly priority = 10;
+    readonly sourceConfig: SourceConfig;
+    readonly received: CueContext[] = [];
+    constructor(name: string, partial: Partial<SourceConfig> = {}) {
+      this.id = name;
+      this.sourceConfig = { name, promptText: `p-${name}`, ...partial };
+    }
+    supports() { return true; }
+    async getCues(context: CueContext): Promise<CueSourceResult> {
+      this.received.push(context);
+      return { results: [], timing: 0 };
+    }
+  }
+
+  it('skips trailing word when buffer ends in non-whitespace (user actively typing)', async () => {
+    const spelling = new CountingSource('spelling', { match: '.*' });
+    const group = new RoutedWordSourceGroup({ sources: [spelling as any] });
+
+    // Buffer: "cat sat te" — trailing "te" is in-progress.
+    await group.getCues(mkContextTyping(['cat', 'sat', 'te']));
+    assert.strictEqual(spelling.received.length, 1, 'dispatch ran');
+    assert.deepStrictEqual(spelling.received[0].words, ['cat', 'sat'], 'trailing "te" skipped');
+  });
+
+  it('processes trailing word when buffer ends in whitespace (word complete)', async () => {
+    const spelling = new CountingSource('spelling', { match: '.*' });
+    const group = new RoutedWordSourceGroup({ sources: [spelling as any] });
+
+    await group.getCues(mkContext(['cat', 'sat', 'rug']));
+    assert.strictEqual(spelling.received.length, 1);
+    assert.deepStrictEqual(spelling.received[0].words, ['cat', 'sat', 'rug'], 'no skip; all 3 routed');
+  });
+
+  it('processes trailing word when cursor is mid-text (user editing, not typing at end)', async () => {
+    const spelling = new CountingSource('spelling', { match: '.*' });
+    const group = new RoutedWordSourceGroup({ sources: [spelling as any] });
+
+    // Buffer ends in non-whitespace BUT cursor is at position 3 (mid "cat"
+    // or just-after "cat"). The gate sees cursor < text.length and bails.
+    const ctx: CueContext = { text: 'cat sat rug', words: ['cat', 'sat', 'rug'], cursor: 3 };
+    await group.getCues(ctx);
+    assert.deepStrictEqual(spelling.received[0].words, ['cat', 'sat', 'rug'], 'no skip when cursor mid-text');
+  });
+
+  it('skips the LLM call entirely when the in-progress word is the only candidate', async () => {
+    const spelling = new CountingSource('spelling', { match: '.*' });
+    const group = new RoutedWordSourceGroup({ sources: [spelling as any] });
+
+    // Only word in buffer is being typed → dispatch should issue zero LLM
+    // calls (empty bucket short-circuits getCues).
+    await group.getCues(mkContextTyping(['hel']));
+    assert.strictEqual(spelling.received.length, 0, 'no dispatch when sole word is in-progress');
+  });
+
+  it('handles cursor at end-of-buffer explicitly (cursor == text.length)', async () => {
+    const spelling = new CountingSource('spelling', { match: '.*' });
+    const group = new RoutedWordSourceGroup({ sources: [spelling as any] });
+
+    const text = 'cat sat te';
+    const ctx: CueContext = { text, words: text.split(' '), cursor: text.length };
+    await group.getCues(ctx);
+    assert.deepStrictEqual(spelling.received[0].words, ['cat', 'sat'], 'trailing word skipped with cursor at end');
+  });
+
+  it('does not regress when buffer ends with `_` (the trigger filter still applies)', async () => {
+    const spelling = new CountingSource('spelling', { match: '.*' });
+    const group = new RoutedWordSourceGroup({ sources: [spelling as any] });
+
+    // Buffer "make formal _" — _ is the trigger, already filtered by the
+    // _ word check. The in-progress gate would also flag _ as trailing,
+    // but the word !== '_' filter applies regardless.
+    await group.getCues(mkContextTyping(['make', 'formal', '_']));
+    // Either the _ filter or the in-progress gate excludes the last item;
+    // both yield the same dispatched bucket.
+    assert.deepStrictEqual(spelling.received[0]?.words, ['make', 'formal'], 'trigger + in-progress both excluded; "make formal" dispatched');
   });
 });
