@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fix — Statusline shows nothing for any word inside a fluid/transform/agent-rewrite substitute
+
+`statusline.ts:buildPayload` used `this.dynDefs.get(wordIndex)` to find the DynDef at the highlighted word, then suppressed the tip when `def.blankName` was set (fluid-blank / transform-blank / agent-rewrite substitutes shouldn't surface tips because the substituted text was emitted by the LLM, not authored by the user). But `dynDefs.get(wordIndex)` only matches the **origin** word index of a multi-word span. When the highlight landed on word N>origin INSIDE a multi-word substitute, `def` came back undefined and the function fell through to the word-cue lookup at the bottom, which surfaced a tip for the individual LLM-emitted word.
+
+User report 2026-06-13 (chrome): "tips when we highlight the modified text. It should not have any tips for now." → in chrome's floating statusbar this surfaced as `word (N/M) - tip` for a word the LLM picked, not the user.
+
+Fix: when `dynDefs.get(wordIndex)` misses, fall back to `dynDefs.findSpanContaining(wordIndex)` so the origin def of any multi-word span containing this word is picked up. The existing `if (def?.blankName)` branch then suppresses the tip + sets `cueBlank: true` for the whole span uniformly. Chrome's runtime-statusbar handles `cueBlank: true && cueTip: null` → `combined === null` → `hide()`, so the floating div fully disappears for any navigation into a substitute (no word, no `(N/M)`, no tip).
+
+CC behaviour unchanged in practice (cursor-navigate lands on origin word indices for multi-word DynDefs, so the original `dynDefs.get` already matched there) — the fix is structurally defensive for any host whose cursor model walks inside multi-word spans.
+
+`@opencues/runtime` 0.3.4 → 0.3.5.
+
 ### Fix — Chrome narrows `supportsAgentRewrite: false` to LinkedIn share composer only
 
 PR #125 disabled `supportsAgentRewrite` for **every** `.ql-editor` on the page, intending to scope to LinkedIn's share composer (where Delta+MutationObserver fights cause caret snap-back). But LinkedIn comment boxes are also Quill instances, so they got swept up — `agentically X _` in a LinkedIn comment was silently wiped instead of running. Symptom reported 2026-06-12.
