@@ -61,14 +61,28 @@ export class BlankContextCache {
     blanks: ReadonlyMap<string, Blank>,
     perBlankTtlMs: ReadonlyMap<string, number>,
   ): Promise<BlankContextSnapshot> {
-    const fields: ResolvedBlankContextField[] = [];
-    const catalog = new Map<string, string>();
-
-    for (const slot of plan) {
+    // Parallelise the refresh fan-out. Pre-June-2026 this was a
+    // sequential `for ... await blank.get(slot.slot)` which stalled on
+    // every HTTP call (stocks → Finnhub, weather → OpenWeather, crypto
+    // → CoinGecko, hackernews → HN API). On a default catalog
+    // (5 stocks + portfolio stocks + 2 crypto + weather + HN) that's
+    // 10+ sequential round-trips before the TransformBlank /
+    // FluidBlank call could even start. Bench showed ~1000ms added to
+    // every cold transform-blank substitute purely from blocking on
+    // these HTTP calls in series.
+    //
+    // The fetches are independent — each blank's get(slot) reads its
+    // own data source with no cross-slot dependency — so `Promise.all`
+    // is safe and reduces the cold-cache cost to roughly the SLOWEST
+    // single fetch (~200-300ms) instead of their sum.
+    //
+    // Each fetch keeps its own try/catch so a single network failure
+    // still produces `[STALE]` for that one slot without poisoning
+    // the rest of the snapshot.
+    const resolutions = await Promise.all(plan.map(async (slot) => {
       const ttl = perBlankTtlMs.get(slot.blankName) ?? 60_000;
       let entry = this._cache.get(slot.token);
       if (!entry || this._now() - entry.fetchedAt > ttl || entry.value === null) {
-        // Stale or absent — re-fetch.
         const blank = blanks.get(slot.blankName);
         let value: string | null = null;
         if (blank) {
@@ -86,13 +100,20 @@ export class BlankContextCache {
           ttlMs: ttl,
         };
         this._cache.set(slot.token, entry);
-        this._evictIfOver();
       }
+      return { slot, entry };
+    }));
+
+    // Evict once after all fetches land (was: per-slot inside the loop).
+    this._evictIfOver();
+
+    const fields: ResolvedBlankContextField[] = [];
+    const catalog = new Map<string, string>();
+    for (const { slot, entry } of resolutions) {
       const resolved = entry.value ?? '[STALE]';
       fields.push({ token: slot.token, description: slot.description, value: resolved });
       catalog.set(slot.token, resolved);
     }
-
     return { fields, catalog };
   }
 
