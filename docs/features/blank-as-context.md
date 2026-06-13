@@ -102,6 +102,30 @@ read locally to look up the snapshot, never reaches the LLM.
 
 `raw` mode requires `identity-context-mode: raw` for consistency.
 
+## Performance — `blank-context-prewarm-ms`
+
+The cache populates lazily on the first `_` after launch, so without
+pre-warm the first user call pays the full HTTP fan-out (~210ms for
+the default catalog). The `blank-context-prewarm-ms` tunable runs the
+refresh on a background timer so the first user call hits warm cache:
+
+```yaml
+blank-context-prewarm-ms: 35000   # off | 15000 | 35000 | 60000 | 120000
+```
+
+- **Default `35000`** (35s) — comfortably inside the 60s TTL, so every
+  user-triggered call finds every entry within TTL → zero HTTP →
+  returns within microseconds.
+- **`off`** — reverts to lazy refresh (legacy behaviour). Use on
+  rate-limited keys.
+- **`15000`** — aggressive, always-fresh; ~40 HTTP calls/min total.
+- **`60000` / `120000`** — conservative; cache may go stale between
+  ticks but recovers via the lazy backstop.
+
+The setting hot-reloads — editing OPENCUES.md takes effect within one
+tick, no host restart. The timer is silent when `blank-context-mode: off`
+(no HTTP regardless of `blank-context-prewarm-ms`).
+
 ## How parameter binding works
 
 Blank-context only supports **sentinel-bound** parameters today. Three

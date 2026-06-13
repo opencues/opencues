@@ -615,6 +615,17 @@ export const MENU_TUNABLES: readonly MenuTunableSpec[] = [
     ],
   },
   {
+    scalar: 'blank-context-prewarm-ms',
+    menuTip: 'Background refresh interval for the blank-context cache. Eliminates the ~200ms HTTP fan-out tax on the first `_` after launch by refreshing stocks/weather/crypto/HN in the background. `off` reverts to legacy lazy refresh.',
+    values: [
+      { id: 'off',    description: 'Disabled — cache refreshes lazily on prompt-build (legacy behaviour). Use on rate-limited keys.' },
+      { id: '15000',  description: 'Aggressive — 15s; cache always fresh, ~40 HTTP calls/min to upstream sources' },
+      { id: '35000',  description: 'Default — 35s; comfortably inside the 60s TTL so user-triggered calls always hit warm cache' },
+      { id: '60000',  description: 'Conservative — 60s; cache may refresh once on the first call after a long pause' },
+      { id: '120000', description: 'Minimal — 120s; only suitable when context tokens change rarely' },
+    ],
+  },
+  {
     scalar: 'max-concurrent-auditors',
     menuTip: 'Cap on parallel auditor calls per tick. 0 = uncapped. Bound LLM cost when many auditors are active.',
     values: [

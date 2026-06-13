@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Perf — Pre-warm blank-context cache on background timer; first user `_` after launch hits warm cache
+
+The lazy-refresh `BlankContextCache.snapshot()` populated only on prompt-build, so the FIRST `_` after launch still paid the full HTTP fan-out tax (~210ms even after #131's parallelisation). PR #131 was the wall-clock-of-slowest-source win; this is the eliminate-the-wait-entirely win.
+
+`buildBlankContextProvider` (in `@opencues/runtime` boot-common.ts) now starts a self-rescheduling background timer that calls the same `runProvider` closure the user-triggered path uses. The timer fires once immediately on construction and then every `blank-context-prewarm-ms` (default `35000` — comfortably inside the 60s TTL), so user-triggered calls find every cache entry within TTL → 0 HTTP → returns within microseconds.
+
+Latency micro-bench (`tests/benchmarks/blank-context-prewarm/run.ts`, 10 simulated 200ms HTTP sources):
+
+| Variant | First-call wall-clock (median, n=5) | blank.get calls during user call |
+|---|---|---|
+| Baseline (prewarm: off) | 200.7ms | 10 |
+| Prewarm: on (35000ms) | **0.1ms** | 0 |
+| Saved | 200.6ms (100% of the HTTP tax) | — |
+
+New tunable `blank-context-prewarm-ms` (cyclable: `off`/`15000`/`35000`/`60000`/`120000`). Hot-reloads on OPENCUES.md edit — each tick re-reads the setting, so changing the interval or flipping to `off`/back-on takes effect within one tick (or within 5s when re-enabling from `off`, via the recheck loop). The timer is silent when `blank-context-mode: off` (no HTTP regardless of the prewarm setting). `.unref()` on the timer keeps it from pinning Node alive in tests / short-lived hosts.
+
+Quality risk: zero. The timer runs the SAME `runProvider` code path the user-triggered call uses; snapshot content is identical, only timing differs. A swallowed error in the background tick (network blip, provider 429) just means the next user call falls back to lazy refresh — pre-prewarm behaviour preserved as the backstop.
+
+Bumps:
+- `@opencues/core` 0.3.10 → 0.3.11 (FEATURES registry: new `blank-context-prewarm-ms` MENU_TUNABLES entry).
+- `@opencues/runtime` 0.3.8 → 0.3.9 (timer wiring in `boot-common.ts`).
+
 ### Perf — Parallelise blank-context cache refresh; cold transform-blank/fluid-blank 2.3× faster
 
 `BlankContextCache.snapshot()` refreshed catalog slots via a **sequential** `for ... await blank.get(slot)` loop. Every stale slot stalled on a real HTTP call — stocks → Finnhub, weather → OpenWeather, crypto → CoinGecko, hackernews → HN API, etc. On the default catalog (5 stocks from `context-slots` + N from `context-bind: portfolio` + 2 crypto + 1 weather + 1 HN + 1 claude-status) that's 10+ sequential round-trips firing on every cold transform-blank / fluid-blank call.

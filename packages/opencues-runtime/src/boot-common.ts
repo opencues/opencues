@@ -293,6 +293,7 @@ export function createLogFunction(
   };
 }
 import { ConfigLoader } from './modules/config-loader';
+import { BlankContextCache } from './modules/blank-context-cache';
 
 /**
  * Build the AgentRewrite `resolveLLM` thunk for boot files. Reads the
@@ -440,16 +441,24 @@ export interface BuildSharedRuntimeOptions {
  *
  * See docs/features/blank-as-context.md.
  */
-export function buildBlankContextProvider(
-  configLoader: ConfigLoader,
-  blanks: ReadonlyMap<string, import('./blanks/types').Blank> | undefined,
-  log: (level: LogLevel, msg: string) => void,
-): (() => Promise<
+/**
+ * Closure returned by `buildBlankContextProvider`. Carries an optional
+ * `.stop()` hook so tests + future explicit-teardown callers can cancel
+ * the background pre-warm timer. Production callers don't need to wire
+ * it — the timer is `.unref()`'d, so it doesn't block process exit.
+ */
+export type BlankContextProvider = ((() => Promise<
   | { fields: ReadonlyArray<{ token: string; description: string; value: string }>;
       catalog: ReadonlyMap<string, string>;
       mode: 'safe' | 'raw' }
   | undefined
->) | undefined {
+>)) & { stop?: () => void };
+
+export function buildBlankContextProvider(
+  configLoader: ConfigLoader,
+  blanks: ReadonlyMap<string, import('./blanks/types').Blank> | undefined,
+  log: (level: LogLevel, msg: string) => void,
+): BlankContextProvider | undefined {
   if (!blanks || blanks.size === 0) return undefined;
   // Dynamic require — opencues-core may not be loadable in every host
   // build (chrome bundle was a notable case until June 2026). Skip the
@@ -464,9 +473,9 @@ export function buildBlankContextProvider(
     return undefined;
   }
   if (!core?.planBlankContextSlots) return undefined;
-  const { BlankContextCache } = require('./modules/blank-context-cache') as typeof import('./modules/blank-context-cache');
   const cache = new BlankContextCache();
-  return async () => {
+
+  const runProvider = async () => {
     const mode = configLoader.opencuesState.blankContextMode;
     if (mode === 'off') return undefined;
     const identity = configLoader.identity;
@@ -476,7 +485,7 @@ export function buildBlankContextProvider(
     const ttls = new Map<string, number>();
     for (const [name, blankCfg] of Object.entries(merged)) {
       if (!blankCfg.asContext || blankCfg.asContext === 'off') continue;
-      const result = core.planBlankContextSlots!(blankCfg, identity);
+      const result = core!.planBlankContextSlots!(blankCfg, identity);
       allPlans.push(...result.slots);
       for (const w of result.warnings) log('warn', `blank-context: ${w}`);
       ttls.set(name, (blankCfg.contextTtl ?? 60) * 1000);
@@ -485,6 +494,67 @@ export function buildBlankContextProvider(
     const snap = await cache.snapshot(allPlans, blanks, ttls);
     return { fields: snap.fields, catalog: snap.catalog, mode };
   };
+
+  // Pre-warm timer — self-rescheduling so the interval (read from
+  // `blank-context-prewarm-ms`) hot-reloads without a host restart.
+  //
+  // Why this exists: pre-#131, the first `_` after launch always paid
+  // the full HTTP fan-out (~200-300ms for stocks+weather+crypto+HN even
+  // with the parallelised Promise.all). #131 brought it down to ~210ms.
+  // The pre-warm timer reduces that to ~0ms on the FIRST user call:
+  // it fires runProvider in the background every interval, populating
+  // the cache; user-triggered calls then find every entry within TTL
+  // and skip every HTTP round-trip.
+  //
+  // Quality risk: zero. The timer runs the SAME runProvider code path
+  // the user-triggered call uses; snapshot CONTENT is identical, only
+  // timing differs. A swallowed error in the timer (network blip) just
+  // means the next user call falls back to lazy refresh — exactly the
+  // pre-#131 behaviour.
+  let timerHandle: ReturnType<typeof setTimeout> | null = null;
+  let stopped = false;
+  const tick = async (): Promise<void> => {
+    if (stopped) return;
+    try {
+      if (configLoader.opencuesState.blankContextMode !== 'off') {
+        await runProvider();
+      }
+    } catch {
+      // Timer is a backstop. Errors here are silently absorbed; the
+      // user-triggered call will retry on its own.
+    }
+    if (stopped) return;
+    const next = readPrewarmIntervalMs(configLoader);
+    // When `off`, recheck every 5s so re-enabling via OPENCUES.md edit
+    // brings the timer back without a host restart.
+    const delay = next > 0 ? next : 5_000;
+    timerHandle = setTimeout(() => { void tick(); }, delay);
+    // Don't pin the Node event loop alive in tests / short-lived hosts.
+    (timerHandle as { unref?: () => void }).unref?.();
+  };
+  // Fire once immediately so the FIRST user `_` after launch hits warm
+  // cache. Fire-and-forget — runProvider has its own try/catch above.
+  void tick();
+
+  const provider = runProvider as BlankContextProvider;
+  provider.stop = () => {
+    stopped = true;
+    if (timerHandle) clearTimeout(timerHandle);
+  };
+  return provider;
+}
+
+/** Read the `blank-context-prewarm-ms` setting. Returns 0 when
+ *  disabled (`off`), a positive number of milliseconds otherwise.
+ *  Misparses + sub-1s values fall back to the 35s default. */
+function readPrewarmIntervalMs(configLoader: ConfigLoader): number {
+  const raw = configLoader.opencuesState.settings.get('blank-context-prewarm-ms');
+  if (!raw) return 35_000;
+  const trimmed = raw.trim().toLowerCase();
+  if (trimmed === 'off' || trimmed === '0') return 0;
+  const n = parseInt(trimmed, 10);
+  if (!Number.isFinite(n) || n < 1000) return 35_000;
+  return n;
 }
 
 export function nativeHostFormatLLMError(
