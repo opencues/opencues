@@ -46,6 +46,46 @@ interface RouteEntry {
   priority: number;
 }
 
+/**
+ * Determine whether the LAST word in the buffer is "in-progress" —
+ * actively being typed by the user. Used to skip that word from
+ * word-cue dispatch so the LLM doesn't burn round-trips on partial
+ * words it would correctly ignore anyway.
+ *
+ * Returns the trailing word's index (in `context.words`) when:
+ *   - The buffer is non-empty AND
+ *   - The buffer doesn't end in whitespace (so the last word hasn't
+ *     been "closed" with a space/newline) AND
+ *   - The cursor (if known) sits at the end of the buffer (the user
+ *     is actively typing there, not editing mid-text).
+ *
+ * Returns null otherwise — including the common case of cursor in
+ * the middle of the buffer (mid-edit), where skipping the trailing
+ * word would silently regress mid-text spelling/cue surfacing.
+ *
+ * When `context.cursor` is undefined (headless tests, agentic
+ * harness bare-injection mode), we conservatively assume the cursor
+ * is at end-of-buffer — matches the default behaviour of every
+ * shipped host and keeps the optimisation firing where it matters.
+ */
+function findInProgressTrailingWord(context: CueContext): number | null {
+  const text = context.text;
+  if (text.length === 0) return null;
+  // Buffer ends with whitespace → last word is complete (user typed
+  // space after finishing it).
+  if (/\s$/.test(text)) return null;
+  // Cursor explicitly mid-text → user is editing somewhere other than
+  // the trailing word; don't skip it.
+  if (context.cursor !== undefined && context.cursor >= 0 && context.cursor < text.length) {
+    return null;
+  }
+  // Trailing word is in-progress: return its index in `context.words`.
+  // `words` is space-split, so the last entry corresponds to the last
+  // non-whitespace run in the buffer.
+  if (context.words.length === 0) return null;
+  return context.words.length - 1;
+}
+
 export class RoutedWordSourceGroup implements CueSource {
   readonly id: string;
   readonly priority: number;
@@ -132,10 +172,28 @@ export class RoutedWordSourceGroup implements CueSource {
   async getCues(context: CueContext): Promise<CueSourceResult> {
     const t0 = Date.now();
 
+    // Skip the "in-progress" trailing word — when the buffer ends in
+    // a non-whitespace character AND the cursor sits at end-of-buffer,
+    // the trailing word is almost certainly being typed (incomplete).
+    // Partial words can't be misspelled (the spelling LLM correctly
+    // skips them anyway) and don't usefully match cue sources yet
+    // ("contr" isn't a legal term until it becomes "contract").
+    // Skipping it from dispatch means:
+    //   - One fewer word in the spelling sub-context (shorter prompt)
+    //   - When the in-progress word is the ONLY cue-eligible word,
+    //     the entire LLM call is avoided.
+    // After the user types whitespace (space, newline, period+space),
+    // the now-complete word is no longer trailing and gets checked
+    // on the next resolve. Matches the timing of Word / Docs spell
+    // checkers — corrections appear after word completion, not mid-
+    // word. Conservative gate so we don't regress middle-of-text
+    // editing flows.
+    const inProgressIdx = findInProgressTrailingWord(context);
+
     // Collect (word, originalIndex) for every cycleable word in the input.
     const items = context.words
       .map((word, idx) => ({ word, idx }))
-      .filter(({ word }) => word !== '_' && word.length > 0);
+      .filter(({ word, idx }) => word !== '_' && word.length > 0 && idx !== inProgressIdx);
 
     // Route each word. Words with no matching source are silently dropped
     // (= no cue / not navigable). That's the user's choice when they don't

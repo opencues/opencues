@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Perf — Skip in-progress trailing word from word-cue dispatch; sole-word typing now silent at the LLM layer
+
+`RoutedWordSourceGroup` dispatches every cycleable word in the buffer to its routed child source. The shipped **spelling** source has `match: .*` so it claims every word — meaning when the user is typing a sentence, every keystroke pause triggers a spelling LLM call that includes the **partial** trailing word (e.g. `te` while typing `team`, `lawye` while typing `lawyer`). The LLM correctly returns no misspellings for those partial words, but still burns ~280ms round-trip per pause.
+
+`findInProgressTrailingWord` is a cheap pre-filter (zero allocations beyond a regex test): when the buffer ends in a non-whitespace character AND the cursor (if known) sits at end-of-buffer, the trailing word is treated as in-progress and dropped from the dispatch bucket. Conservative gating so we don't regress mid-text editing:
+- Trailing whitespace (`"cat sat rug "`) → last word complete, no skip.
+- Cursor mid-text (`cursor < text.length`) → user is editing somewhere other than the trailing word, no skip.
+- Cursor undefined (headless tests, agentic harness bare-injection mode) → assume end-of-buffer typing, gate fires.
+
+Effect on the typing flow:
+- **Sole-word typing** (`"hel"` mid-word pause) → empty bucket → zero LLM calls. Pre-PR: ~280ms per keystroke pause. Post-PR: instant.
+- **Sentence typing** (`"the cat sat te"` mid-word pause) → bucket drops to `["the", "cat", "sat"]` → shorter LLM input, but call still fires (other words present).
+- **After word completion** (`"the cat sat team "` with trailing space) → all 4 words dispatched, spelling normally surfaces.
+
+Matches the timing of Word / Google Docs spell-checkers — corrections appear after word completion (space/punctuation typed), not mid-word. Less visual noise during typing.
+
+Applies to ALL word-cue child sources (legal / medical / financial / spelling / tips), not just spelling. `contr` doesn't usefully match the `contract` keyword in a legal cue source until it's complete; skipping it is correct for every shipped cue.
+
+Tests: 6 new gate tests (typing skip, whitespace passes through, cursor mid-text bails, sole-word short-circuits LLM entirely, cursor-at-end fires gate, `_` co-trigger handled). All 28 existing `RoutedWordSourceGroup` tests pass (existing `mkContext` helper updated to append trailing whitespace so the gate doesn't fire during routing/cache tests; new `mkContextTyping` helper exercises the typing-pause path).
+
+Bumps:
+- `@opencues/core` 0.3.14 → 0.3.15 (gate in `routed-word-source-group.ts`).
+- `@opencues/chrome` 0.2.14 → 0.2.15 (bundle bytes change; manifest + package.json in lockstep).
+
 ### Perf — Likely-intent keyword gate skips ConfigIntent's LLM call when the buffer has zero settings/provider keywords
 
 `ConfigIntentSource` fires on every `_` keystroke to classify whether the buffer is a settings change (`make fluid-blank off _`), a provider routing change (`use anthropic for cues _`), or NONE. The dominant case in production is NONE — prose like `draft an email _`, factual lookups like `capital of france _`, transform instructions like `make formal _`. Pre-PR4 every cold trigger burned a ~280ms classifier LLM call. PR4's variant cache eliminated the cost on repeat triggers; this PR eliminates it on the FIRST trigger when the buffer has zero plausible intent keywords.
