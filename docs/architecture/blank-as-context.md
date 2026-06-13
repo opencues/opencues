@@ -143,11 +143,65 @@ export class BlankContextCache {
 ```
 
 Behaviour:
-- Lazy refresh — only fetches on prompt-build, never a background
-  cron. Idle cost zero.
+- Refresh shape — the lazy-on-prompt-build path is the source of
+  truth (single code path); `buildBlankContextProvider` ALSO calls
+  it on a self-rescheduling background timer
+  (`blank-context-prewarm-ms`, default 35s) so the FIRST user `_`
+  after launch hits warm cache. `off` reverts to pure lazy refresh.
+  See [Pre-warm timer](#pre-warm-timer) below.
 - Capacity cap of 32 tuples; oldest entries evicted first.
 - Failed fetches emit a `[STALE]` marker rather than blocking — same
   fail-soft pattern existing blanks use (`AAPL: error`).
+
+### Pre-warm timer
+
+Pre-#131 the first `_` after launch paid the full HTTP fan-out:
+~1000ms with sequential fetches across stocks/weather/crypto/HN. PR
+#131 parallelised the fan-out to ~210ms (`max(slot)` instead of
+`sum(slot)`). The pre-warm timer (PR perf/prewarm-blank-context-cache,
+June 2026) takes that to ~0ms on the FIRST user call by populating
+the cache in the background BEFORE the user types.
+
+Shape:
+- `buildBlankContextProvider` (in `boot-common.ts`) starts a
+  self-rescheduling timer that fires `runProvider` every
+  `blank-context-prewarm-ms` (default `35000`, comfortably inside
+  the 60s TTL).
+- The timer fires ONCE immediately on construction so the very first
+  user call after launch is warm.
+- Each tick re-reads `blank-context-prewarm-ms` from OPENCUES.md, so
+  the interval hot-reloads without a host restart. `off` puts the
+  timer into a 5s recheck loop so re-enabling also hot-reloads.
+- Each tick re-reads `blank-context-mode`; when `off`, the timer
+  reschedules but skips the call. Zero network traffic from
+  pre-warm when the feature is disabled.
+- The timer is `.unref()`'d so it doesn't pin the Node event loop
+  alive in tests / short-lived hosts. `provider.stop()` cancels
+  explicitly (used by tests; production callers don't need to wire it).
+
+Quality risk: zero. The timer runs the SAME `runProvider` code path
+the user-triggered call uses; snapshot content is identical, only
+timing differs. A swallowed error in a background tick (network
+blip, provider 429) just means the next user call falls back to lazy
+refresh — exactly the pre-prewarm behaviour.
+
+Cost on the back end: one full plan-and-snapshot round per interval.
+With the default catalog (5 stocks + 2 crypto + weather + HN +
+claude-status = ~10 fetches), 35s interval ≈ 17 HTTP calls/min,
+comfortably inside Finnhub's free tier (60/min), CoinGecko (unmetered),
+OpenWeather (60/min). Users on rate-limited keys can dial up to
+`120000` or `off`.
+
+Bench: `tests/benchmarks/blank-context-prewarm/run.ts` — measures
+first-call wall-clock with 10 simulated 200ms HTTP sources. Saved
+~200ms (100% of the HTTP tax) on the first user call when prewarm
+is on.
+
+Chrome MV3 note: chrome's blank fetching runs in the native-messaging
+host process, not the SW. `buildBlankContextProvider` returns
+`undefined` when no host blanks are wired, so the timer never starts
+in the SW. The native-host process uses Node `setInterval` like every
+other host — no `chrome.alarms` path needed.
 
 ## Sentinel integration — one catalog, two sources
 
