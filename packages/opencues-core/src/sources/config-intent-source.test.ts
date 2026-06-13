@@ -549,3 +549,64 @@ describe('ConfigIntentSource', () => {
     assert.deepStrictEqual(apply.calls, []);
   });
 });
+
+describe('ConfigIntent: likely-intent gate (pre-filter)', () => {
+  // The gate is a cheap keyword check that skips the LLM dispatch
+  // when the buffer has no plausible settings/provider intent. False
+  // positives (firing when not needed) are absorbed by the variant
+  // cache; false negatives (missing a real settings command) would
+  // silently break the feature.
+
+  function gateOnly(buffer: string): { fired: boolean; calls: number } {
+    let calls = 0;
+    const adapter: HttpAdapter = {
+      post: async () => {
+        calls++;
+        return JSON.stringify({ choices: [{ message: { content: 'INTENT: NONE\nSETTING:\nVALUE:\nSCOPE:\nPROVIDER:\nMODEL:\nCONFIDENCE: 0.99' } }] });
+      },
+    };
+    const src = new ConfigIntentSource({
+      httpAdapter: adapter,
+      provider: getProvider('groq')!,
+      endpoint: 'https://api.groq.com/openai/v1/chat/completions',
+      apiKey: 'x',
+      model: 'openai/gpt-oss-120b',
+      applyScalar: () => {},
+      blanks: {},
+    });
+    return src.getCues(ctxFromText(buffer)).then(() => ({
+      fired: calls > 0,
+      calls,
+    })) as unknown as { fired: boolean; calls: number };
+  }
+
+  for (const buffer of [
+    'draft an email _',
+    'capital of france _',
+    'the cat sat on the mat _',
+    'unicode for ampersand _',
+    'do the thing _',
+    'rewrite for clarity _',
+  ]) {
+    it(`gates "${buffer}" — no keyword, cedes without LLM call`, async () => {
+      const result = await gateOnly(buffer);
+      assert.strictEqual(result.calls, 0, 'no LLM dispatch on gate-skip');
+    });
+  }
+
+  for (const buffer of [
+    'enable debug _',
+    'change to opus _',
+    'use anthropic for cues _',
+    'switch to cerebras for blanks _',
+    'turn voice mode on _',
+    'set tips off _',
+    'stop showing tip popups _',
+    'make fluid-blank off _',
+  ]) {
+    it(`fires "${buffer}" — keyword present, dispatch proceeds`, async () => {
+      const result = await gateOnly(buffer);
+      assert.strictEqual(result.calls, 1, 'LLM dispatched');
+    });
+  }
+});

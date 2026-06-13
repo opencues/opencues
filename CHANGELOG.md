@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Perf — Likely-intent keyword gate skips ConfigIntent's LLM call when the buffer has zero settings/provider keywords
+
+`ConfigIntentSource` fires on every `_` keystroke to classify whether the buffer is a settings change (`make fluid-blank off _`), a provider routing change (`use anthropic for cues _`), or NONE. The dominant case in production is NONE — prose like `draft an email _`, factual lookups like `capital of france _`, transform instructions like `make formal _`. Pre-PR4 every cold trigger burned a ~280ms classifier LLM call. PR4's variant cache eliminated the cost on repeat triggers; this PR eliminates it on the FIRST trigger when the buffer has zero plausible intent keywords.
+
+`LIKELY_INTENT_KEYWORDS` is a static Set built at module load from:
+- Every FEATURES scalar name (kebab-case AND space-separated — users say "voice mode" as often as "voice-mode")
+- Every cyclable scalar value ≥ 3 chars (skipping ultra-common standalones like `on`/`off`/`auto` to avoid noise)
+- Every provider id + display name (`anthropic`, `groq`, `cerebras`, …)
+- Every bucket scope word (`cues`, `auditors`, `blanks`)
+- Curated action verbs + symptom hints (`enable`, `disable`, `switch`, `turn`, `stop`, `start`, `set`, `use`, `change`, `make`, `show`, `hear`, `louder`, `noisy`, `navigate`, `tips`, `voice`, `debug`, …)
+- Every `COMMON_ALIASES` key from `model-aliases.ts` (`opus`, `haiku`, `sonnet`, `fable`, `claude`, `nano`, `mini`, `flash`, `llama`, `gpt-oss`, `gpt-5`)
+
+The gate runs after the existing `with <model>` override cede check and before the LLM dispatch. Multi-word/hyphenated keywords use substring match; single-word keywords use word-boundary regex (so `blank` doesn't match `blanket`). Measured at < 0.5ms on a 32-char buffer with the full keyword set.
+
+Adding a feature to FEATURES, a provider to `PROVIDERS`, or a model alias to `COMMON_ALIASES` automatically extends this gate's coverage — no manual edit required for new features.
+
+Conservative shape: false-positive (firing when not needed) is fine because the variant cache absorbs it on T2+. False-negative (skipping a real settings command) would silently break the feature, so the keyword set is intentionally wide. Curated verbs include some common-prose words like `make` and `change` — those will produce false positives on TransformBlank-style buffers like `make formal _`, but the cache makes those free after T1.
+
+Language scope: ConfigIntent is inherently English-centric (the system prompt and the FEATURES registry are English). The pre-filter makes the existing language coverage explicit — it doesn't narrow what ConfigIntent recognises, only what it dispatches for. Provider names and model aliases are language-neutral and will still match for non-English buffers carrying those tokens.
+
+Latency impact on prose triggers (factual lookups, transforms, general writing):
+- Before: ~280ms classifier LLM call per cold trigger.
+- After: < 0.5ms keyword scan, ceded result — no LLM call. Effectively free.
+
+Bumps:
+- `@opencues/core` 0.3.13 → 0.3.14 (new `hasLikelyIntent` gate + `LIKELY_INTENT_KEYWORDS` set in `config-intent-source.ts`).
+- `@opencues/chrome` 0.2.13 → 0.2.14 (bundle bytes change; manifest + package.json in lockstep).
+
+Tests: 14 new gate tests (6 cede cases on prose buffers, 8 fire cases on settings/provider commands). All 57 existing ConfigIntent tests pass — including symptom-based routing (`stop showing tip popups _` → `tips-mode: off`, `change volume because we hate quiet music _` → falls through to volume blank). All 1656 runtime tests pass. All 186 chrome tests pass.
+
 ### Perf — Variant cache across all three semantic-`_` sources; cache hits 10-20× faster end-to-end
 
 Three sources fire on every `_` keystroke in fused-capable hosts: `TransformBlankSource` (whole-buffer rewrites), `FluidBlankSource` (factual lookups), and `ConfigIntentSource` (settings-change classifier). Each ran its own LLM round-trip on every trigger, even when the user was re-triggering the same buffer back-to-back (Down-arrow revert + re-trigger, Ctrl+Z undo-redo, A/B comparing different transforms, backspace-retype loops). On the resolver's "wait for all siblings" join, the slowest source's round-trip determined wall-clock — typically 300-800ms per trigger.
