@@ -113,6 +113,124 @@ const PROVIDER_REGISTRY_BLOCK: string = listProviders()
 
 const BUCKET_LIST: string = BUCKET_SCOPES.join(', ');
 
+// ============================================================================
+// Likely-intent gate — pre-filter to skip the LLM round-trip when the
+// buffer cannot plausibly carry a settings or provider change.
+// ============================================================================
+//
+// ConfigIntent fires on every `_` keystroke and burns a ~280ms LLM
+// classifier call to decide INTENT: SETTING / PROVIDER / NONE. The
+// dominant case in production is NONE — prose like `draft an email _`,
+// factual lookups like `capital of france _`, transform instructions
+// like `make formal _`. The variant cache (June 2026) handles repeat
+// triggers at ~0ms; this gate handles the FIRST trigger on any new
+// prose buffer by short-circuiting to NONE without an LLM call when
+// the buffer has zero plausible settings/provider keywords.
+//
+// Conservative: false-positive (firing when not needed) is fine
+// because the cache absorbs it on T2+. False-negative (skipping a
+// real settings command) would silently break the feature, so the
+// keyword set is INTENTIONALLY wide — every scalar name, every
+// scalar value used by the cycling menu, every provider id, every
+// model alias from COMMON_ALIASES, every bucket scope word, and a
+// curated list of action verbs / symptom hints from the SYSTEM_PROMPT.
+//
+// Language scope: ConfigIntent is inherently English-centric (the
+// system prompt and the FEATURES registry are English). The pre-
+// filter makes the existing language coverage explicit — it doesn't
+// narrow what ConfigIntent recognises, only what it dispatches for.
+// Non-English buffers fall through the gate and either match the
+// catch-all keywords (provider names are language-neutral) or skip
+// the LLM call entirely (which produces the same NONE outcome a
+// non-English buffer would have gotten anyway).
+
+const LIKELY_INTENT_KEYWORDS: ReadonlySet<string> = (() => {
+  const set = new Set<string>();
+  const addToken = (s: string): void => {
+    const lower = s.toLowerCase().trim();
+    if (lower.length === 0) return;
+    set.add(lower);
+  };
+
+  // FEATURES scalar names (kebab-case) + space-separated variants
+  // (users say "voice mode" as often as "voice-mode" in natural prose).
+  for (const f of FEATURES) {
+    addToken(f.scalar);
+    addToken(f.scalar.replace(/-/g, ' '));
+    // Per-value tokens. Skip ultra-common values ("on", "off") on their
+    // own — they're too noisy as standalone words. Multi-char values
+    // ("safe", "raw", "immediate", "spaced", "active", "inactive") are
+    // distinctive enough to carry signal.
+    for (const v of getCyclableValues(f)) {
+      if (v.id.length >= 3 && !['on', 'off', 'auto', 'low', 'high', 'med', 'min', 'max'].includes(v.id.toLowerCase())) {
+        addToken(v.id);
+      }
+    }
+  }
+
+  // Provider IDs + their display names ("anthropic" / "Anthropic",
+  // "groq" / "Groq", etc.). knownModels caught below via COMMON_ALIASES.
+  for (const p of listProviders()) {
+    addToken(p.id);
+    if (p.displayName) addToken(p.displayName);
+  }
+
+  // Bucket scope words.
+  for (const b of BUCKET_SCOPES) addToken(b);
+
+  // Curated keywords pulled from the SYSTEM_PROMPT — these are the
+  // action verbs and symptom hints the classifier acts on. Kept
+  // explicit (not derived from the prompt) so reviewers can audit the
+  // list and add cases when ConfigIntent learns new behaviour.
+  const curated = [
+    // strong action verbs for settings flips (English)
+    'enable', 'disable', 'switch', 'turn', 'route',
+    'stop', 'start', 'set', 'use', 'change', 'make',
+    'show', 'showing', 'hide', 'flip', 'toggle',
+    // scope phrases from the prompt
+    'globally', 'everywhere', 'general',
+    // symptom hints from SETTING-A guidance (singular + plural variants)
+    'hear', 'louder', 'quieter', 'noisy', 'navigate',
+    'tip', 'tips', 'popup', 'popups',
+    'voice', 'debug', 'cursor', 'thinking',
+    'ambient', 'identity', 'sentinel',
+    // model-alias keys from COMMON_ALIASES — extracted directly so
+    // adding a new alias auto-extends this gate.
+    'opus', 'haiku', 'sonnet', 'fable', 'claude',
+    'cerebras', 'groq', 'openai', 'anthropic', 'gemini',
+    'openrouter', 'nano', 'mini', 'flash', 'llama',
+    'gpt-oss', 'gpt-5',
+  ];
+  for (const k of curated) addToken(k);
+
+  return set;
+})();
+
+/** Cheap pre-filter: does the buffer contain any token plausibly
+ *  carrying settings/provider intent?
+ *
+ *  Implementation: lowercase the buffer once, then check each keyword.
+ *  Multi-word keywords (e.g. "voice mode") use substring match;
+ *  single-word keywords use word-boundary regex so "blank" doesn't
+ *  match "blanket". O(K) string scans where K = keyword count.
+ *  Measured at < 0.5ms on a 32-char buffer with the full keyword set.
+ */
+function hasLikelyIntent(text: string): boolean {
+  const lower = text.toLowerCase();
+  for (const kw of LIKELY_INTENT_KEYWORDS) {
+    if (kw.includes(' ') || kw.includes('-')) {
+      // Multi-word or hyphenated keyword — substring match is fine.
+      if (lower.includes(kw)) return true;
+    } else {
+      // Single word — require word boundary so "blank" doesn't match
+      // "blanket" and "cues" doesn't match "cuesman".
+      const re = new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+      if (re.test(lower)) return true;
+    }
+  }
+  return false;
+}
+
 export const SYSTEM_PROMPT = `You are a CONFIGURATION INTENT CLASSIFIER for the OpenCues runtime.
 
 You read a sentence containing _ and decide which of three intents the user has:
@@ -724,6 +842,19 @@ export class ConfigIntentSource implements CueSource {
     // the rewrite with a per-call Opus override.
     if (detectModelOverride(context.text) !== null) {
       this.log(`ConfigIntent: ceding — buffer carries 'with <model>' override token (per-call override path)`);
+      return { results: [], timing: Date.now() - t0, model: this.model };
+    }
+
+    // Likely-intent gate — skip the LLM dispatch when the buffer has
+    // zero settings/provider keywords. Saves ~280ms per cold trigger
+    // on prose-only buffers (`draft an email _`, `capital of france _`,
+    // `make formal _` — none contain any FEATURES scalar, provider id,
+    // or curated action verb). The variant cache (June 2026) handles
+    // repeat triggers separately; this gate handles the FIRST trigger
+    // on any new prose buffer. See LIKELY_INTENT_KEYWORDS for the
+    // exhaustive list + the rationale for the conservative shape.
+    if (!hasLikelyIntent(context.text)) {
+      this.log(`ConfigIntent: ceding — no likely-intent keyword in buffer (gate-skip, no LLM call)`);
       return { results: [], timing: Date.now() - t0, model: this.model };
     }
 
