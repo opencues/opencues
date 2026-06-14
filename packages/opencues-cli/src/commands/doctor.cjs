@@ -854,18 +854,24 @@ module.exports = async function doctor(argv, ctx) {
     if (scriptedBlanks.total > 0) {
       const strictCount = scriptedBlanks.strict;
       const intactCount = scriptedBlanks.shippedIntact;
+      const ackOffCount = scriptedBlanks.sandboxOff;
       const modifiedCount = scriptedBlanks.userModified;
-      // The warning gate is ONLY user-modified blanks. Shipped-intact
-      // ones (volume, brightness, etc.) inherit trust from the repo
-      // the user already ran `opencues install` against; their
-      // `sandbox: off` was a deliberate design call (system-binary
-      // access outside any sandbox). Modified blanks are the surface
-      // the user can act on — they either added it locally or a pack
-      // shadowed a shipped name with different bytes (hash-mismatch).
-      const trustedCount = strictCount + intactCount;
-      const trustedSuffix = intactCount > 0
-        ? ` (${strictCount} strict + ${intactCount} shipped-intact)`
-        : '';
+      // The warning gate is ONLY user-modified blanks. Three exemptions:
+      //   - `sandbox: strict`: confined under bwrap / sandbox-exec.
+      //   - shipped-intact: hash-matches the artefacts the user already
+      //     opted into by running `opencues install`; their (typically
+      //     `sandbox: off`) policy is the repo's deliberate design.
+      //   - `sandbox: off`: explicit author/user ack of host privileges
+      //     (F9 contract — same as the runtime's load-time check).
+      // Modified-and-unacknowledged blanks are the surface the user
+      // can act on — they either added it locally or a pack shadowed a
+      // shipped name with different bytes (hash-mismatch).
+      const trustedCount = strictCount + intactCount + ackOffCount;
+      const trustedParts = [];
+      if (strictCount > 0) trustedParts.push(`${strictCount} strict`);
+      if (intactCount > 0) trustedParts.push(`${intactCount} shipped-intact`);
+      if (ackOffCount > 0) trustedParts.push(`${ackOffCount} sandbox:off ack`);
+      const trustedSuffix = trustedParts.length > 0 ? ` (${trustedParts.join(' + ')})` : '';
       if (modifiedCount === 0) {
         s.ok(`scripted blanks trusted (${trustedCount}/${scriptedBlanks.total})${trustedSuffix}`, true);
       } else {
@@ -874,7 +880,14 @@ module.exports = async function doctor(argv, ctx) {
           sev: sandboxMechanismOK ? 'warn' : 'warn',
           msg: `${modifiedCount} of ${scriptedBlanks.total} installed scripted blanks are user-modified (or pack-shadowed) and run with the user's full filesystem + network privileges` +
                (scriptedBlanks.userModifiedPaths.length ? `\n         examples: ${scriptedBlanks.userModifiedPaths.slice(0, 3).join(', ')}` : ''),
-          fix: 'add `sandbox: strict` to the blank\'s BLANK.md frontmatter, or remove the blank if you don\'t trust it',
+          // For blanks whose work fundamentally needs unsandboxed
+          // access (system audio, brightness, hardware bridges), the
+          // shipped defaults declare `sandbox: off` deliberately —
+          // adding `sandbox: strict` would break them. Tell the user
+          // to either move to strict (if the blank's work allows it)
+          // or audit the script + acknowledge by setting
+          // `sandbox: off`.
+          fix: 'audit the script. If it can run confined, add `sandbox: strict` to BLANK.md. If it genuinely needs host privileges (e.g. system audio/brightness/hardware), declare `sandbox: off` to acknowledge that explicitly. Otherwise remove the blank.',
         });
       }
     } else {
@@ -1169,6 +1182,8 @@ function scanScriptedBlanks(home) {
   const result = {
     total: 0,
     strict: 0,
+    sandboxOff: 0,
+    sandboxOffPaths: [],
     shippedIntact: 0,
     shippedIntactPaths: [],
     userModified: 0,
@@ -1195,12 +1210,24 @@ function scanScriptedBlanks(home) {
       const hasScript = /^\s*blankScript\s*:/m.test(fm);
       if (!hasScript) continue;
       result.total++;
-      const strictMatch = fm.match(/^\s*sandbox\s*:\s*(\w+)/m);
-      if (strictMatch && strictMatch[1] === 'strict') {
+      const sandboxMatch = fm.match(/^\s*sandbox\s*:\s*(\w+)/m);
+      const sandboxValue = sandboxMatch ? sandboxMatch[1] : null;
+      if (sandboxValue === 'strict') {
         result.strict++;
         continue;
       }
-      // Unstrict: shipped-intact vs user-modified.
+      // Mirror of the runtime's INFOSEC F9 contract (blank-fill.ts:506-520):
+      // authors must declare EITHER `sandbox: strict` (confined) OR
+      // `sandbox: off` (explicit acknowledgement of host privileges).
+      // `off` doesn't add confinement, but it does prove the author or
+      // user inspected the script — silencing the warn for an explicitly
+      // acknowledged blank keeps the signal on un-audited surfaces.
+      if (sandboxValue === 'off') {
+        result.sandboxOff++;
+        result.sandboxOffPaths.push(entry.name);
+        continue;
+      }
+      // Neither strict nor off: shipped-intact vs user-modified.
       if (isShippedIntact(entry.name, blankDir, manifest)) {
         result.shippedIntact++;
         result.shippedIntactPaths.push(entry.name);
@@ -1263,11 +1290,46 @@ function isShippedIntact(name, blankDir, manifest) {
   for (const f of expectedKeys) {
     const userPath = path.join(blankDir, f);
     if (!fs.existsSync(userPath)) return false;
+    let raw = fs.readFileSync(userPath);
+    // BLANK.md may carry a "user-only fields" block that `opencues
+    // seed-configs` appends below a divider line to preserve hand-
+    // tweaked fields across shipped-md refreshes (see
+    // packages/opencues-cli/src/commands/seed-configs.cjs § append
+    // user-only keys). Stripping the block before hashing lets a
+    // vanilla install whose only divergence is the preserved suffix
+    // still register as shipped-intact instead of being warn'd as
+    // user-modified. The manifest's hash is over the shipped frontmatter
+    // ONLY, so we strip the same block here for symmetry.
+    if (f === 'BLANK.md') {
+      raw = Buffer.from(stripUserOnlyFieldsBlock(raw.toString('utf8')), 'utf8');
+    }
     const h = crypto.createHash('sha256');
-    h.update(fs.readFileSync(userPath));
+    h.update(raw);
     if (h.digest('hex') !== expected[f]) return false;
   }
   return true;
+}
+
+// Mirror of the divider emitted by `seed-configs.cjs:879`. Anything from
+// that line through the close of the frontmatter is user-only and
+// excluded from the shipped-intact hash. Idempotent on text that has
+// no divider (returns input verbatim).
+const USER_ONLY_DIVIDER = '# ── User-only fields (preserved by shipped-md refresh) ──';
+function stripUserOnlyFieldsBlock(text) {
+  const fmMatch = text.match(/^(---\n)([\s\S]*?)(\n---)/);
+  if (!fmMatch) return text;
+  const open = fmMatch[1];
+  const fm = fmMatch[2];
+  const close = fmMatch[3];
+  const idx = fm.indexOf(USER_ONLY_DIVIDER);
+  if (idx < 0) return text;
+  // Strip the divider and any newline immediately preceding it so the
+  // frontmatter content ends right after the last shipped field.
+  let cutStart = idx;
+  while (cutStart > 0 && fm[cutStart - 1] === '\n') cutStart--;
+  const cleanedFm = fm.slice(0, cutStart);
+  const rest = text.slice(fmMatch[0].length);
+  return open + cleanedFm + close + rest;
 }
 
 // Read OPENCUES.md (or CUES.md) frontmatter and return a flat

@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fix — `opencues doctor` false-positives on volume / brightness; `sandbox: off` now recognized as the F9 acknowledgement
+
+Two related cleanups to the scripted-blank trust check in `opencues doctor`.
+
+**1. User-only-fields block flipped the shipped-intact hash.** `opencues seed-configs` appends a `# ── User-only fields (preserved by shipped-md refresh) ──` divider + extras inside BLANK.md frontmatter to preserve hand-tweaked fields (`blankSuffix: %`, `blankProximity: 3`, etc.) across shipped-md refreshes. Doctor's `isShippedIntact` did a raw SHA-256 over the whole file, so any user carrying a vanilla install with even one preserved field (the typical case — `blankSuffix: %` on brightness) was misclassified as `userModified` and warned about. Fix: `stripUserOnlyFieldsBlock` peels the divider + everything below it within the frontmatter before hashing. A real edit ABOVE the divider still mismatches (defence-in-depth pinned by test).
+
+**2. `sandbox: off` was not recognized as a trust signal.** The runtime's INFOSEC F9 contract (`blank-fill.ts:506-520`) requires authors to declare EITHER `sandbox: strict` (confined under bwrap/sandbox-exec) OR `sandbox: off` (explicit acknowledgement of host privileges). Doctor only recognised `strict` as audit-done, so a deliberately-declared `sandbox: off` blank still tripped the warn. Now mirrors the runtime contract — `sandbox: off` blanks count under a new `sandboxOff` bucket labelled `sandbox:off ack`. The warn fires only on script-backed blanks that declare neither AND don't hash-match a shipped artefact.
+
+**Warning text also tightened.** The previous fix was `add \`sandbox: strict\` to the blank's BLANK.md frontmatter, or remove the blank if you don't trust it`. For blanks whose work fundamentally needs host privileges (volume needs system audio; brightness needs xrandr / hardware bridges), `strict` would break them. New text walks the user through the audit decision: confine if possible (`strict`), acknowledge if not (`off`), otherwise remove.
+
+Tests: 5 new in `packages/opencues-cli/src/commands/doctor.scanblanks.test.cjs` covering the strip behaviour (divider present, divider absent, real edit-above-divider still flagged), the `sandbox: off` ack categorisation, and the still-warn case for un-acknowledged user-modified blanks. All 16 scanblanks tests + pre-pr gates green.
+
+Bumps:
+- `opencues` (CLI) 0.2.3 → 0.2.4.
+
 ### Feat — user-pack JS blanks on Bun hosts via Node subprocess
 
 User-pack JS blanks (`impl: ./blank.js` in BLANK.md) ran fine on Node-based hosts (Claude Code, Gemini CLI, chrome-host) but failed to load on **Bun-based hosts** (opencode, shell) with `isolated-vm unavailable on this runtime`. Root cause: `isolated-vm` is a native C++ binding that links V8's ABI; Bun ships JavaScriptCore, so the `.node` file fails at module-import time with `undefined symbol: _ZN2v8...`. Built-in blanks + `.sh` blanks kept working; JS user-blanks (including the shipped `gh-issues` demo and any third-party pack) were silently disabled on opencode + shell.
