@@ -166,6 +166,28 @@ A `pred-accepted=0` line on a long input is a regression signal — something ab
 
 Cerebras's `gpt-oss-120b` exposes a `reasoning_effort` parameter. Our default is `medium` for transform-blank and `low` for fluid-blank, tuned by the [thinking-budget bench](../../tests/benchmarks/thinking-budget/). The `max-thinking: off` scalar dials this down further (see [max-thinking.md](max-thinking.md)).
 
+### zai-glm-4.7 — `reasoning_effort: none` is the only useful mode
+
+`zai-glm-4.7` (cerebras's other reasoning-capable model, paid tier) has a binary reasoning knob in practice:
+
+| `reasoning_effort` | Reasoning tokens | Median latency | Notes |
+|---|---|---|---|
+| `none` | 0 | ~280ms | Clean disable, usable output |
+| `low` / `medium` / `high` | 500-700 | ~1000ms | Knob is essentially ignored; always burns thinking tokens |
+
+OpenCues forwards `reasoning_effort: none` for this model via the `MODEL_THINKING` table (`'cerebras:zai-glm-4.7': { max: 'none', off: 'none' }`). The `isReasoningModelName` regex in `buildOpenAIBody` was extended to match `zai-glm` so the field actually reaches the wire (without the extension, the field is silently dropped and zai defaults to full thinking mode — slow + lower accuracy).
+
+**Head-to-head accuracy** (June 2026, all on cerebras with prefix-cache + predicted-outputs enabled):
+
+| Bench | gpt-oss-120b/medium (default) | zai-glm-4.7/none | Delta |
+|---|---|---|---|
+| fluid-blank standard 137 | 137/137 (100%) | 136/137 (99.3%) | −0.7pp |
+| fluid-blank ambient in-prompt 18 | 17/18 (94.4%) | 17/18 (94.4%) | 0pp |
+| fluid-blank ambient holdout 21 | 21/21 (100%) | 14/21 (66.7%) | **−33pp** |
+| transform-blank prod-fused 231 | 186/231 (80.5%) | 182/231 (78.8%) | −1.7pp (within cerebras variance) |
+
+**Conclusion**: zai-glm-4.7 is competitive on in-distribution cases (within 1pp) but loses substantially on the ambient holdout — it doesn't generalize ambient patterns the prompt wasn't tuned against (ZIP codes, postcodes, callsigns, label-IS-question cases). gpt-oss-120b stays the default. zai is now properly usable as an opt-in via `blanks-llm-model: zai-glm-4.7` for users who prefer its slight latency edge (~50ms median faster) over the holdout accuracy gap.
+
 ### Strict JSON output via `response_format`
 
 Cerebras's `gpt-oss-120b` supports `response_format: { strict: true, schema }` for constrained decoding. We use it in fluid-blank's fused path (`FLUID_FUSED_SCHEMA`) to lock the LLM into emitting `{ span, answer }` reliably. Switching to a provider that doesn't support strict mode means the parser falls back to label-format output — see the dual-path parsers in `transform-blank-source.ts` / `fluid-blank-source.ts`.

@@ -85,14 +85,21 @@ const MODEL_THINKING: Readonly<Record<string, ModelThinking>> = {
   // values are 'low', 'medium'") — verified live 2026-06-12. `low`
   // is the floor here, NOT `none`.
   'cerebras:gpt-oss-120b': { max: 'medium', off: 'low' },
-  // Note on cerebras:zai-glm-4.7 — model name doesn't match the
-  // `isReasoningModelName` heuristic in `buildOpenAIBody`, so
-  // `reasoning_effort` is never forwarded for this model regardless of
-  // table contents. Verified live 2026-06-12: sending any non-none
-  // reasoning_effort to zai-glm-4.7 returns an empty completion (the
-  // model treats it as no-op output). No entry here keeps lookup
-  // returning the cerebras provider default; the gate drops it before
-  // the wire anyway.
+  // Cerebras zai-glm-4.7 — reasoning_effort knob is BINARY in
+  // practice: `'none'` cleanly disables thinking (0 reasoning tokens,
+  // ~280ms median); ANY other value (low/medium/high) burns 500-700
+  // reasoning tokens regardless of the level chosen (~1000ms median).
+  // OpenCues only ever wants the `none` mode — verified June 2026 via
+  // /tmp/cerebras-zai-no-reasoning.mjs head-to-head.
+  //
+  // June 2026: the `isReasoningModelName` regex in
+  // buildOpenAIBody was extended to match `zai-glm` so the field
+  // actually reaches the wire. Prior to that extension `reasoning_effort`
+  // was silently dropped for this model and zai defaulted to thinking
+  // mode. See cerebras docs
+  // https://inference-docs.cerebras.ai/capabilities/reasoning for the
+  // `none` value.
+  'cerebras:zai-glm-4.7': { max: 'none', off: 'none' },
 
   // Groq `openai/gpt-oss-*` — REQUIRES the field. Accepts ONLY
   // 'low' | 'medium' | 'high'; `'none'` returns HTTP 400

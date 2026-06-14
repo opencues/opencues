@@ -287,7 +287,14 @@ function buildOpenAIBody(req: ChatRequest, opts?: { includeReasoningEffort?: boo
   // toggle ON (the default) and ceilings seeded to equal
   // `defaultReasoningEffort`, this is identical to the prior
   // `req.reasoningEffort ?? defaultReasoningEffort` expression.
-  const isReasoningModelName = /^(o\d|gpt-5|gpt-oss|qwen-3-thinking)/i.test(req.model);
+  // zai-glm-4.7 (cerebras) needs reasoning_effort forwarded SPECIFICALLY
+  // to disable thinking via `'none'` — by default the model burns
+  // 500-700 reasoning tokens. Without forwarding `reasoning_effort:
+  // none` the model treats it as full-thinking mode (verified via
+  // ad-hoc bench, June 2026). See cerebras docs
+  // https://inference-docs.cerebras.ai/capabilities/reasoning and
+  // model-thinking.ts MODEL_THINKING['cerebras:zai-glm-4.7'].
+  const isReasoningModelName = /^(o\d|gpt-5|gpt-oss|qwen-3-thinking|zai-glm)/i.test(req.model);
   const reasoningForwarded = opts?.includeReasoningEffort || isReasoningModelName;
   const reasoning = reasoningForwarded
     ? resolveReasoningEffort({

@@ -82,13 +82,15 @@ const httpAdapter: HttpAdapter = {
   },
 };
 
+const CEREBRAS_MODEL = process.env.OPENCUES_CEREBRAS_MODEL ?? 'gpt-oss-120b';
+
 function buildSource(): TransformBlankSource {
   return new TransformBlankSource({
     httpAdapter,
     provider: getProvider('cerebras')!,
     endpoint: 'https://api.cerebras.ai/v1/chat/completions',
     apiKey: CEREBRAS_KEY!,
-    model: 'gpt-oss-120b',
+    model: CEREBRAS_MODEL,
     mode: 'fused', // explicit — what we're testing
   });
 }
