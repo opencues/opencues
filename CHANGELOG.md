@@ -21,8 +21,12 @@ Two unrelated blockers stacked on a clean `pnpm exec opencues install claude-cod
 
 Bumps:
 - `@opencues/runtime` 0.3.9 → 0.3.10.
-- `@opencues/claude-code` 0.2.0 → 0.2.1.
 - `opencues` (CLI) 0.2.2 → 0.2.3.
+- `@opencues/claude-code` 0.2.0 → 0.2.1.
+- `@opencues/opencode` 0.2.0 → 0.2.1.
+- `@opencues/gemini-cli` 0.2.0 → 0.2.1.
+- `@opencues/shell` 0.2.0 → 0.2.1.
+- `@opencues/chrome` 0.2.19 → 0.2.20 (manifest.json bumped in lockstep).
 
 ### Fix — Word-cue dispatch: in-progress-word gate no longer fires on unknown cursor (regression from #136)
 

@@ -473,12 +473,12 @@ npm_install_fork() {
 
 # ─── prerequisites ────────────────────────────────────────────────────
 if ! command -v node &>/dev/null; then
-  echo "Error: Node.js is not installed. Gemini CLI requires Node 18+." >&2
+  echo "Error: Node.js is not installed. Gemini CLI requires Node 22+." >&2
   exit 1
 fi
 NODE_MAJOR=$(node -e "process.stdout.write(String(process.versions.node.split('.')[0]))")
-if [ "$NODE_MAJOR" -lt 18 ]; then
-  echo "Error: Node.js 18+ required (found $(node --version))." >&2
+if [ "$NODE_MAJOR" -lt 22 ]; then
+  echo "Error: Node.js 22+ required (found $(node --version))." >&2
   exit 1
 fi
 

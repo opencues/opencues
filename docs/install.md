@@ -4,7 +4,7 @@ Per-host installation, what each install does, where things land, and how to rec
 
 ## Prerequisites
 
-- **Node.js 18+** (`node --version`)
+- **Node.js 22+** (`node --version`)
 - **pnpm 8+** (`pnpm --version`; `corepack enable pnpm` ships it with Node 16+)
 - An **LLM provider API key.** Cerebras is the recommended default
   ([cloud.cerebras.ai/platform/](https://cloud.cerebras.ai/platform/) → *Generate API Key*); Groq, OpenAI, Anthropic, Gemini, OpenRouter,
@@ -60,7 +60,7 @@ brew install bash tmux brightness  # bash 4+ optional but recommended
 | `claude-code` | Claude Code 2.1.110+ on PATH (the installer reinstalls a pinned copy locally; the on-PATH check just confirms you have the auth set up) | `claude --version` |
 | `opencode`    | [bun](https://bun.sh/) (OpenCode is a bun app — the installer clones a fork itself) | `bun --version` |
 | `chrome`      | Chrome 121+ | `chrome://version` |
-| `gemini-cli`  | Node 18+ (installer clones a Gemini CLI 0.41.x fork itself) | `node --version` |
+| `gemini-cli`  | Node 22+ (installer clones a Gemini CLI 0.41.x fork itself) | `node --version` |
 
 A Claude-Code-only user never needs bun. An OpenCode user needs bun because OpenCode itself is a bun app, not because OpenCues requires it.
 

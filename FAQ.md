@@ -29,7 +29,7 @@ After install, launch with `opencues run <host>` (except Chrome, which you load 
 
 ### What do I need installed first?
 
-Universal: Node.js 18+, [pnpm](https://pnpm.io), a Groq API key (or any OpenAI-compatible provider).
+Universal: Node.js 22+, [pnpm](https://pnpm.io), a Groq API key (or any OpenAI-compatible provider).
 
 Per-integration (the HOST's requirements, not OpenCues's):
 

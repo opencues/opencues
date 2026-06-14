@@ -15,7 +15,7 @@ prompted before being touched.**
 ```
                           ┌─────────────────────────────────┐
    pre-install gate       │ package.json "os" + "engines"   │  blocks Windows native,
-                          │ (npm-native, hard refuse)       │  Node <18 before any code runs
+                          │ (npm-native, hard refuse)       │  Node <22 before any code runs
                           └─────────────────────────────────┘
                                        │
                                        ▼

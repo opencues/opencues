@@ -117,12 +117,12 @@ trap on_error ERR
 
 # ─── prerequisites ────────────────────────────────────────────────────
 if ! command -v node &>/dev/null; then
-  echo "Error: Node.js is not installed. Please install Node.js 18 or later." >&4
+  echo "Error: Node.js is not installed. Please install Node.js 22 or later." >&4
   exit 1
 fi
 NODE_MAJOR=$(node -e "process.stdout.write(String(process.versions.node.split('.')[0]))")
-if [ "$NODE_MAJOR" -lt 18 ]; then
-  echo "Error: Node.js 18+ required (found $(node --version))." >&4
+if [ "$NODE_MAJOR" -lt 22 ]; then
+  echo "Error: Node.js 22+ required (found $(node --version))." >&4
   exit 1
 fi
 

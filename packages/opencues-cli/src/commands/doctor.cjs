@@ -69,14 +69,14 @@ module.exports = async function doctor(argv, ctx) {
   {
     const s = section('Platform tooling', 'developer tools + shells the installers/runtime touch');
 
-    // Node version (declared in package.json engines as >=18).
+    // Node version (declared in package.json engines as >=22).
     const nodeMajor = parseInt(process.versions.node.split('.')[0], 10);
-    s.ok(`node ${process.versions.node}`, nodeMajor >= 18);
-    if (nodeMajor < 18) {
+    s.ok(`node ${process.versions.node}`, nodeMajor >= 22);
+    if (nodeMajor < 22) {
       findings.push({
         sev: 'warn',
-        msg: `Node ${process.versions.node} — opencues requires >=18`,
-        fix: 'install Node 18+ via fnm / nvm / brew / apt',
+        msg: `Node ${process.versions.node} — opencues requires >=22`,
+        fix: 'install Node 22+ via fnm / nvm / brew / apt',
       });
     }
 

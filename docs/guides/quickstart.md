@@ -4,7 +4,7 @@ Get OpenCues running in Claude Code in under 5 minutes.
 
 ## 1. Prerequisites
 
-- Node.js 18+ (`node --version`)
+- Node.js 22+ (`node --version`)
 - [pnpm](https://pnpm.io/installation) (`corepack enable pnpm` works)
 - Claude Code installed (`which claude`)
 - A free [Groq API key](https://console.groq.com)
