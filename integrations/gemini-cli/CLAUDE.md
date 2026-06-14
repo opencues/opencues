@@ -381,6 +381,6 @@ re-applying). If you ever see weird patch state, just re-run setup.
 | `volume _` | Cue-blank script | `_` auto-populates to e.g. `25%`; up/down on it adjusts system volume |
 | `weather _` | Cue-blank HTTP | `_` auto-populates with current temp |
 | `atomic number of oxygen _` | Fluid blank | LLM substitutes `8` |
-| `fix typos _ this is bad righting` | Transform blank | Rewrites to `this is bad writing` |
+| `this is bad righting fix typos _` | Transform blank | Rewrites to `this is bad writing` |
 | `opencues settings _` | Selector blank | Shows e.g. `voice-mode active`; up/down toggles |
 | Any active cycle | Footer | Shows `attorney (2/5) - …` while cycling |

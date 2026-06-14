@@ -36,7 +36,7 @@ substitutes an answer at `_`. But people often want the opposite:
 instruction.
 
 ```
-You type:   change boy to girl _ the boy ran fast
+You type:   the boy ran fast change boy to girl _
 You see:    the girl ran fast
 ```
 
@@ -77,22 +77,23 @@ match any obvious imperative verb). The cost of one EXTRACT call per
 non-transform `_` is ~400ms, which is acceptable for the cleanliness
 gain.
 
-### Two layouts the user can type
-
-Both work — the EXTRACT prompt is trained on both:
+### The shape — body first, instruction last
 
 ```
-(a) <INSTRUCTION> _ <TARGET>
-    e.g.  change boy to girl _ the boy ran fast
-
-(b) <TARGET> <INSTRUCTION> _
-    e.g.  the boy ran fast change boy to girl _
+<TARGET> <INSTRUCTION> _
+e.g.  the boy ran fast change boy to girl _
 ```
 
-Real users mostly do (b) — they type their text first, then realize
-they want to transform it, and add the imperative at the end. (a) is
-more common when a user is dictating an imperative they've already
-formulated.
+This is the only shape live typing can produce: `_` triggers the
+moment you press it, so anything you'd type *after* `_` would never
+reach the source. The body has to be in the buffer before `_` lands.
+
+The inverted shape `<INSTRUCTION> _ <TARGET>` exists as a parser
+target — the EXTRACT prompt is trained on both layouts so a pasted
+snippet, a synthetic bench case, or text you constructed by editing
+*back* into the middle of the buffer all still classify correctly.
+But that's a paste-or-edit path, not a typing path. Examples in
+user-facing docs should use `<TARGET> <INSTRUCTION> _` exclusively.
 
 ---
 
@@ -836,7 +837,7 @@ TransformBlank P2 APPLY: 1 step(s) — ["change boy to girl"]
 TransformBlank P2 APPLY step 1/1 (227ms, max_tokens=812): "the girl ran fast"
 TransformBlank P3 VERIFY: SKIPPED (low-stakes instruction + faithful draft)
 TransformBlank: pipeline done (578ms total) — final="the girl ran fast"
-TransformBlank: substituting "change boy to girl _ the boy ran fast" → "the girl ran fast" (origLen=42, rewriteLen=18, defAt=0)
+TransformBlank: substituting "the boy ran fast change boy to girl _" → "the girl ran fast" (origLen=42, rewriteLen=18, defAt=0)
 ```
 
 Each log line maps to a code location in `transform-blank-source.ts`

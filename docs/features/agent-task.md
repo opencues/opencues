@@ -6,7 +6,7 @@ on every debounce. Edits appear as dimmed words you can navigate to and
 revert with cycle Down.
 
 ```
-You type:   agentically correct spelling _ I rite some text witth typos
+You type:   I rite some text witth typos agentically correct spelling _
 You see:    I write some text with typos
             (with "write" and "with" dimmed — the agent's edits)
 
@@ -18,9 +18,9 @@ You type:   stop task _
             agent cleared. Existing dimmed edits stay.
 ```
 
-Where **transform-blank** is one-shot ("change boy to girl _ ..." fires
-once), agent-task is **persistent** — the instruction stays armed and
-fires on every typing pause until you stop it.
+Where **transform-blank** is one-shot ("the boy ran change boy to girl _"
+fires once), agent-task is **persistent** — the instruction stays armed
+and fires on every typing pause until you stop it.
 
 ---
 
