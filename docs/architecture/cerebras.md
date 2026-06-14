@@ -92,6 +92,72 @@ If we ever ship per-tab / per-textbox routing hints, the place to compute them w
 
 ---
 
+## Predicted Outputs (speculative decoding)
+
+Cerebras supports [Predicted Outputs](https://inference-docs.cerebras.ai/capabilities/predicted-outputs) — a client-side speculative-decoding hint where you pre-supply the expected output. The server validates token-by-token against the actual generation; matching tokens come from cache (billed at the input rate), mismatches regenerate (billed at the output rate).
+
+Model support: `gpt-oss-120b` (the model we route to) + `zai-glm-4.7`.
+
+### When OpenCues uses it
+
+**TransformBlank fused path only**, gated at `extractText.length >= 200`. The prediction passed is `extractText` — the original buffer body that's about to be rewritten. For typical TransformBlank flows (fix typos, make formal, shorten, rephrase) the output preserves 50-95% of input byte content; cerebras's speculation engine accepts those tokens from the prediction cache instead of regenerating.
+
+**Why TransformBlank only:**
+- FluidBlank output is novel ("capital of france _" → "Paris" has zero prediction signal)
+- ConfigIntent output is short (~20 tokens; speculation window doesn't engage)
+- 3-pass mode (groq) — predicted outputs is a cerebras feature, doesn't apply
+
+**Why a length gate:**
+
+| Output length | Acceptance rate | Net latency effect |
+|---|---|---|
+| < 170 completion tokens (~100-200 input chars) | 0% | +12ms overhead from rejected tokens |
+| 170-240 completion tokens (~200-400 input chars) | Variable; speculation window starts engaging | Break-even |
+| ≥ 240 completion tokens (~400+ input chars) | ~66% | -150ms median, -750ms p95 |
+
+Bench measurements at June 2026:
+- `/tmp/cerebras-predicted-outputs-bench.mjs` (4 trials × 4 cases): long-rewrite (resignation email) +pred saves 156ms; short-rewrite + medium-rewrite show 0% acceptance.
+- `/tmp/cerebras-reasoning-matrix.mjs` (6 trials × 2 models × 3 reasoning × {no-pred, +pred}): 66% acceptance consistent across reasoning levels on long inputs; gpt-oss-120b/low/+pred hits 258ms median (vs 261ms no-pred — savings are mainly tail).
+
+### Cost arithmetic
+
+Using approximate published cerebras rates ($0.10/M input, $0.60/M output):
+
+| Scenario | 240 completion tokens, 40 accepted, 21 rejected | Without prediction |
+|---|---|---|
+| Generated at output rate | 200 × $0.60/M = $0.000120 | 240 × $0.60/M = $0.000144 |
+| Accepted prediction (input rate) | 40 × $0.10/M = $0.000004 | — |
+| Rejected prediction (output rate) | 21 × $0.60/M = $0.0000126 | — |
+| **Total** | **$0.000147** | **$0.000154** |
+
+Net: 5% cheaper on cache-hit cases, 6.5% more expensive on 0% acceptance. The length gate (≥200 chars) keeps us in the cache-hit regime.
+
+### Accuracy validation
+
+The prompt's INPUT/OUTPUT content is unchanged — predicted outputs only affects HOW the server generates each token (cache lookup vs regeneration), not WHAT it generates. Bench validation against `tests/benchmarks/transform-blank/prod-fused.ts`:
+
+- Master baseline: 186-193/231 across runs (cerebras has ~7-case variance on this bench at temp=0 + seed=42).
+- Branch with predicted outputs (200-char gate): 186-188/231 across runs — within variance, no measurable drift.
+
+The accuracy signal can't be distinguished from cerebras's natural run-to-run variance, so we rely on the cost asymmetry: rejected predictions are billed but don't change the model's output trajectory (the model regenerates the actual token whenever it disagrees with the prediction). Per-token determinism at temp=0 + seed=42 is preserved.
+
+### What it looks like in the log
+
+With `debug-mode: on`, predicted outputs surfaces in the existing usage log line:
+
+```
+TransformBlank: usage prompt=20347 cached=20096 (98.8%) completion=242 pred-accepted=40 pred-rejected=21 (acc rate 66%)
+```
+
+A `pred-accepted=0` line on a long input is a regression signal — something about the prompt shape is breaking the speculation window. Check whether the catalog blocks moved positions, whether reasoning is producing far more tokens than expected, or whether the model changed.
+
+### What we deliberately don't pass prediction for
+
+- **FluidBlank**: output is short and novel; speculation window doesn't fire usefully.
+- **ConfigIntent**: output is short and the gated pre-filter catches most calls before dispatch anyway.
+- **3-pass TransformBlank (groq)**: predicted outputs is cerebras-specific.
+- **TransformBlank fused with `extractText.length < 200`**: generation-style triggers like `draft an email _` have no body to predict against; rejected tokens would just be cost overhead.
+
 ## Other Cerebras-specific behaviour OpenCues relies on
 
 (Future-proofing: every new Cerebras feature OpenCues adopts gets a section here. Today the list is short.)

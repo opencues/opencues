@@ -1078,8 +1078,13 @@ export class ConfigIntentSource implements CueSource {
         endpoint: this.endpoint,
         signal,
         onUsage: (u) => {
-          if (u.cachedTokens > 0 || u.cacheHitRate > 0) {
-            this.log(`ConfigIntent: usage prompt=${u.promptTokens} cached=${u.cachedTokens} (${(u.cacheHitRate * 100).toFixed(1)}%) completion=${u.completionTokens}`);
+          const hasCacheData = u.cachedTokens > 0 || u.cacheHitRate > 0;
+          const hasPredData = u.acceptedPredictionTokens > 0 || u.rejectedPredictionTokens > 0;
+          if (hasCacheData || hasPredData) {
+            const predPart = hasPredData
+              ? ` pred-accepted=${u.acceptedPredictionTokens} pred-rejected=${u.rejectedPredictionTokens} (acc rate ${(u.predictionAcceptRate * 100).toFixed(0)}%)`
+              : '';
+            this.log(`ConfigIntent: usage prompt=${u.promptTokens} cached=${u.cachedTokens} (${(u.cacheHitRate * 100).toFixed(1)}%) completion=${u.completionTokens}${predPart}`);
           }
         },
       },

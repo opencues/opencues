@@ -9,6 +9,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Perf — Cerebras predicted outputs in TransformBlank fused path (200-char gate); iterative refinement on long bodies hits ~66% prediction acceptance
+
+Cerebras's [Predicted Outputs](https://inference-docs.cerebras.ai/capabilities/predicted-outputs) is a client-side speculative-decoding hint: pre-supply your guess at the output, the server validates token-by-token against the actual generation, matching tokens come from cache (input rate billing), mismatches regenerate (output rate billing).
+
+This PR enables it for TransformBlank's fused dispatch path, passing the input body (`extractText`) as the prediction. For typical TransformBlank flows (fix typos, make formal, shorten, rephrase, refine), the output preserves 50-95% of input byte content — cerebras's speculation accepts those tokens from prediction cache instead of regenerating. The dominant use case: iterative refinement of a long body (drafting an email, then refining it 4+ times) — each iteration has high acceptance because most bytes carry through.
+
+**Length gate at 200 chars.** Empirically (June 2026 ad-hoc benches, `/tmp/cerebras-predicted-outputs-bench.mjs` + `/tmp/cerebras-reasoning-matrix.mjs`):
+- < 170 completion tokens (≤ ~200 input chars): 0% acceptance — net +12ms overhead from rejected tokens
+- ≥ 240 completion tokens (~ 400+ input chars): **66% acceptance**, ~150ms median latency win, **~750ms p95 tail reduction**
+
+Gating at 200 chars avoids paying the rejected-token surcharge on short triggers (`draft an email _` has nothing to predict against) while capturing the win on the iteration case.
+
+**zai-glm-4.7 evaluated and rejected.** Side-by-side reasoning matrix bench (`/tmp/cerebras-reasoning-matrix.mjs`) confirmed zai-glm-4.7 is 1.5-4× slower than gpt-oss-120b at every reasoning level — its `reasoning_effort` parameter has minimal effect (burns 500-700 reasoning tokens regardless). zai stays the slow path even with predicted outputs enabled; we keep gpt-oss-120b as the cerebras default. See [docs/architecture/cerebras.md § Predicted Outputs](docs/architecture/cerebras.md#predicted-outputs-speculative-decoding) for the full evaluation.
+
+**Accuracy validation.** `tests/benchmarks/transform-blank/prod-fused.ts` on cerebras:
+- Master baseline: 186-193/231 across runs (cerebras has ~7-case variance at temp=0/seed=42).
+- Branch with predicted outputs (200-char gate): 186-188/231 — within variance, no measurable drift.
+- 146/146 source-level unit tests pass.
+- 1656/1656 runtime tests pass.
+
+**Cost arithmetic** (approximate published cerebras rates, $0.10/M input, $0.60/M output): cache-hit case (40 accepted, 21 rejected, 240 completion total) costs 5% less than no-prediction; 0% acceptance case costs 6.5% more. The 200-char gate keeps us in the cache-hit regime.
+
+**Observability.** Extended `UsageReport` with `acceptedPredictionTokens` + `rejectedPredictionTokens` + `predictionAcceptRate`. All three semantic-`_` sources surface predictions in the existing debug-level usage log:
+
+```
+TransformBlank: usage prompt=20347 cached=20096 (98.8%) completion=242 pred-accepted=40 pred-rejected=21 (acc rate 66%)
+```
+
+A `pred-accepted=0` line on a long input is a regression signal. Enable `debug-mode: on` to observe.
+
+**What we deliberately don't apply prediction to:**
+- FluidBlank — output is short and novel (~50 chars typical), speculation window doesn't engage
+- ConfigIntent — output is short and the [PR135](https://github.com/opencues/opencues/pull/135) keyword gate already skips most NONE-bound calls before dispatch
+- 3-pass TransformBlank (groq) — predicted outputs is cerebras-specific
+
+Bumps:
+- `@opencues/core` 0.3.16 → 0.3.17 (predicted outputs plumbing + `UsageReport` extension + log line update in 3 sources + docs/architecture/cerebras.md § Predicted Outputs).
+- `@opencues/chrome` 0.2.16 → 0.2.17 (bundle bytes change; manifest + package.json in lockstep).
+
 ### Perf — Move stable catalog blocks into the SYSTEM message so cerebras prefix-cache hits cover them; add `cached_tokens` observability + `docs/architecture/cerebras.md`
 
 Cerebras's [automatic prompt prefix caching](https://inference-docs.cerebras.ai/capabilities/prompt-caching) hits at 99.5% on our ~20k-token `FUSED_SYSTEM` / `FUSED_SYSTEM_PROMPT` constants on `gpt-oss-120b`, saving ~300-500ms of TTFT per dispatch. The cached prefix only extends as far as the stable bytes of the request — pre-PR the identity catalog (~250 tokens) and blank-context catalog (~350 tokens) lived in the user message where they don't cache.

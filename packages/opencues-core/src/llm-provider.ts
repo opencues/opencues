@@ -84,6 +84,30 @@ export interface ChatRequest {
    * `parseResponse` still returns the raw `message.content` string.
    */
   readonly responseFormat?: ResponseFormat;
+  /**
+   * Speculative-decoding hint — see Cerebras's
+   * [Predicted Outputs](https://inference-docs.cerebras.ai/capabilities/prompt-caching).
+   *
+   * When set, providers that support predicted outputs (cerebras's
+   * `gpt-oss-120b` and `zai-glm-4.7` today) include this text as a
+   * `prediction: { type: 'content', content: prediction }` field. The
+   * server validates the predicted text token-by-token against the
+   * actual generation; matching tokens come from cache (billed at the
+   * input rate), mismatches regenerate (billed at the output rate).
+   *
+   * Use for **transformations of existing text** where most output
+   * bytes overlap the input (fix typos on a paragraph, make formal,
+   * shorten, edit a draft). Don't use for **generations from a short
+   * seed** ("draft an email _") — nothing to predict against, and
+   * rejected tokens cost the same as regenerating from scratch.
+   *
+   * Empirically (June 2026) on cerebras gpt-oss-120b:
+   *   - 66% acceptance rate on long-rewrite tasks (≥240 output tokens)
+   *   - ~150ms median speedup, ~750ms p95 tail reduction
+   *   - 0% acceptance on short outputs (<170 tokens) — net +12ms overhead
+   * See docs/architecture/cerebras.md § Predicted Outputs.
+   */
+  readonly prediction?: string;
 }
 
 /** Structured-outputs spec for a single ChatRequest. */
@@ -338,6 +362,16 @@ function buildOpenAIBody(req: ChatRequest, opts?: { includeReasoningEffort?: boo
         schema: req.responseFormat.schema,
       },
     };
+  }
+  // Predicted outputs — Cerebras's speculative-decoding hint. Cerebras
+  // surfaces it on gpt-oss-120b and zai-glm-4.7. OpenAI also supports
+  // the `prediction` field shape on chat-completions. Other providers
+  // silently ignore unknown fields, so we pass it through unconditionally
+  // when set (caller decides whether the cost is worth it for the
+  // specific model/prompt combo). See docs/architecture/cerebras.md §
+  // Predicted Outputs for the empirical effectiveness table.
+  if (req.prediction !== undefined && req.prediction.length > 0) {
+    body.prediction = { type: 'content', content: req.prediction };
   }
   return JSON.stringify(body);
 }
@@ -1533,6 +1567,15 @@ export interface UsageReport {
   readonly cachedTokens: number;
   /** cachedTokens / promptTokens. 0..1. */
   readonly cacheHitRate: number;
+  /** Predicted-outputs accepted token count (0 when the provider
+   *  doesn't surface it, or when no prediction was supplied, or when
+   *  none of the prediction tokens matched the actual generation). */
+  readonly acceptedPredictionTokens: number;
+  /** Predicted-outputs rejected token count. Billed at the output
+   *  rate even though the model didn't generate them. */
+  readonly rejectedPredictionTokens: number;
+  /** acceptedPredictionTokens / (accepted + rejected). 0..1. */
+  readonly predictionAcceptRate: number;
 }
 
 export async function dispatchChat(
@@ -1580,16 +1623,26 @@ export async function dispatchChat(
           prompt_tokens?: number;
           completion_tokens?: number;
           prompt_tokens_details?: { cached_tokens?: number };
+          completion_tokens_details?: {
+            accepted_prediction_tokens?: number;
+            rejected_prediction_tokens?: number;
+          };
         };
       };
       const u = parsed.usage;
       if (u && typeof u.prompt_tokens === 'number') {
         const cached = u.prompt_tokens_details?.cached_tokens ?? 0;
+        const accepted = u.completion_tokens_details?.accepted_prediction_tokens ?? 0;
+        const rejected = u.completion_tokens_details?.rejected_prediction_tokens ?? 0;
+        const predTotal = accepted + rejected;
         ctx.onUsage({
           promptTokens: u.prompt_tokens,
           completionTokens: u.completion_tokens ?? 0,
           cachedTokens: cached,
           cacheHitRate: u.prompt_tokens > 0 ? cached / u.prompt_tokens : 0,
+          acceptedPredictionTokens: accepted,
+          rejectedPredictionTokens: rejected,
+          predictionAcceptRate: predTotal > 0 ? accepted / predTotal : 0,
         });
       }
     } catch { /* malformed usage block — silent */ }
