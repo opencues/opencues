@@ -187,6 +187,31 @@ Once volume + brightness + a few read-only blanks (weather, stocks, dictionary) 
 
 ---
 
+## User-pack JS blanks fail to load on Bun hosts — known platform gap
+
+`isolated-vm` (the sandbox we use to run user-pack JS like `gh-issues/blank.js`) is a Node V8 native binding. Bun's JavaScriptCore can't load it — the binding's symbol layout doesn't match what Bun expects. The error surfaces as:
+
+```
+isolated-vm unavailable on this runtime: undefined symbol: _ZN2v815ValueSerializer8Delegate19HasCustomHostObjectEPNS_7IsolateE
+```
+
+Affected hosts: **opencode** + **shell** (both Bun-based).
+Unaffected hosts: Claude Code, Gemini CLI, Chrome (Node + native-messaging-host bridge).
+
+Built-in TS blanks (volume / brightness / weather / stocks / crypto / dictionary / countries / hackernews / claude-status / answer / prompt / sentinel) and shell-script blanks keep working on Bun hosts — only `impl: ./blank.js` user-pack JS is blocked.
+
+**Options for a real fix** (separate PR):
+
+1. **Vendored isolated-vm-bun** — port the C++ binding to use Bun's bun:ffi or N-API-compat layer. Real C++ work, multi-week effort.
+2. **Replace isolated-vm with `vm.Context` (Node built-in)** — give up the strong process-level isolation in exchange for cross-runtime support. Security regression vs current model.
+3. **Use Worker threads** — run user-pack JS in a Worker with restricted globals. Works on Bun (Bun has Worker), but the sandbox boundary is weaker than isolated-vm's V8 isolate.
+4. **Use a separate Node subprocess for user-pack JS dispatch** — opencode/shell spawn a small Node helper that owns the isolated-vm sandboxes. Cleanest separation but adds a process + IPC hop per invocation.
+5. **Document the gap and defer** — user-pack JS is a feature for power users; the built-in blanks cover 95% of use cases. Mark `impl:` as Node-only in the spec and document in adding-a-cue-blank.md.
+
+Recommendation: **(5) for the immediate doc sweep**, then **(4) as a small follow-up PR**. Subprocess isolation gives us cross-runtime support without compromising the security boundary. The IPC hop is ~5-10ms which is negligible compared to the network calls user-pack JS typically does (gh-issues hits api.github.com, others fetch from various APIs).
+
+Tracked here so the next contributor knows the gap is structural, not a bug.
+
 ## Countries data source — known fragile
 
 `CountriesBlank` previously hit `https://restcountries.com/v3.1/name/<country>`. That API was **deprecated** in 2026 — it now returns 301 → `legacy.json` with an error body, and the v5 replacement requires an auth key.

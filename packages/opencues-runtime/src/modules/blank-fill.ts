@@ -724,10 +724,29 @@ export class BlankFill {
       spanAsUnit: blank?.blankClearOnEdit === true,
     });
 
-    const { newText, newCursor } = clearEnd !== undefined || expansion != null
-      ? buildClearKeywordText(cleaned, slot, primaryFill, expansion, clearEnd)
-      : { newText: cleaned.slice(0, target.start) + primaryFill + cleaned.slice(target.end),
-          newCursor: target.start + primaryFill.length };
+    // Shape-driven path (June 2026) — when the matched shape produced
+    // a slot with `action` set, the shape's regex matched the ENTIRE
+    // input (regex anchored ^...$). Wipe the whole matched input
+    // (line-scoped — surrounding paragraphs survive) and splice the
+    // fill into its place. Without this carve-out, the legacy
+    // computeFillRange would only wipe the keyword span, leaving the
+    // user's captured prompt text (or other prefix words the shape
+    // matched) loose in the buffer. Mirrors the same carve-out in
+    // applySatelliteFill — both emission shapes converge on
+    // line-scoped wipe for shape-driven blanks.
+    const isShapeDriven = slot.action !== undefined;
+    const { newText, newCursor } = isShapeDriven
+      ? (() => {
+          const lineStart = cleaned.lastIndexOf('\n', target.start - 1) + 1;
+          return {
+            newText: cleaned.slice(0, lineStart) + primaryFill + cleaned.slice(target.end),
+            newCursor: lineStart + primaryFill.length,
+          };
+        })()
+      : clearEnd !== undefined || expansion != null
+        ? buildClearKeywordText(cleaned, slot, primaryFill, expansion, clearEnd)
+        : { newText: cleaned.slice(0, target.start) + primaryFill + cleaned.slice(target.end),
+            newCursor: target.start + primaryFill.length };
 
     // Populate span for non-consume-all fills when there's
     // anything cycleable to do: multi-word fill, multiple lines from

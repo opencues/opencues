@@ -80,8 +80,8 @@ Every runtime change gates on `blankShapes:` being present on the blank. Shape-l
 - Manual UX validation in a real opencode session: volume + brightness selector-satellite + cycling; weather + stocks one-span emission; prose misfire reject across all four; OPENCUES settings dual-axis preserved; backspace wipes the whole substitution for both shapes.
 
 Bumps:
-- `@opencues/core` 0.3.21 → 0.3.22.
-- `@opencues/runtime` 0.3.10 → 0.3.11.
+- `@opencues/core` 0.3.21 → 0.3.23.
+- `@opencues/runtime` 0.3.10 → 0.3.12.
 
 ### Fix — Word-cue dispatch: in-progress-word gate no longer fires on unknown cursor (regression from #136)
 
