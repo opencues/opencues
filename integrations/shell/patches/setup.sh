@@ -69,6 +69,28 @@ if [[ -f "$OPENCUES_ROOT/packages/opencues-core/node-http-adapter.js" ]]; then
   cp "$OPENCUES_ROOT/packages/opencues-core/node-http-adapter.js" "$CORE_DEST/"
 fi
 
+# ─── User-blank subprocess runner (Bun-host fallback) ───────────────
+# Shell is Bun-based. `isolated-vm` (the in-process user-blank sandbox)
+# is a V8 native binding that doesn't load against JavaScriptCore, so
+# the runtime spawns a Node helper at first user-pack JS invocation.
+# The vendor dir is shared across hosts (one copy serves OC + shell).
+echo "  ▸ installing user-blank subprocess runner into ~/.opencues/vendor/"
+VENDOR_DIR="$HOME/.opencues/vendor"
+mkdir -p "$VENDOR_DIR/node_modules"
+RUNNER_SRC="$OPENCUES_ROOT/packages/opencues-runtime/dist/src/user-blanks/subprocess-runner.cjs"
+[[ ! -f "$RUNNER_SRC" ]] && RUNNER_SRC="$OPENCUES_ROOT/packages/opencues-runtime/src/user-blanks/subprocess-runner.cjs"
+if [[ -f "$RUNNER_SRC" ]]; then
+  cp "$RUNNER_SRC" "$VENDOR_DIR/user-blank-runner.cjs"
+fi
+IVM_SRC="$OPENCUES_ROOT/node_modules/isolated-vm"
+IVM_DST="$VENDOR_DIR/node_modules/isolated-vm"
+if [[ -d "$IVM_SRC" ]]; then
+  if [[ ! -e "$IVM_DST" ]] || ! diff -rq "$IVM_SRC" "$IVM_DST" &>/dev/null; then
+    rm -rf "$IVM_DST"
+    cp -RL "$IVM_SRC" "$IVM_DST"
+  fi
+fi
+
 # ─── Bundle skipped (oc-edit runs src/app.tsx directly) ────────────
 # A `bun run bundle` (scripts/bundle.ts) is wired up and works, but
 # we hit a leftover .jsc-segfault issue with the bytecode experiment

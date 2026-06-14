@@ -144,6 +144,52 @@ install_into_fork() {
   if [[ -f "$OPENCUES_ROOT/packages/opencues-core/node-http-adapter.js" ]]; then
     cp "$OPENCUES_ROOT/packages/opencues-core/node-http-adapter.js" "$core_dest/dist/"
   fi
+
+  # User-blank subprocess runner — Bun hosts can't load isolated-vm
+  # in-process (V8 native binding vs JavaScriptCore). The runtime falls
+  # back to spawning this CJS helper from ~/.opencues/vendor/ on the
+  # first user-pack JS dispatch. CC + Gemini don't need this — their
+  # in-process loader works — but it's harmless to install (no startup
+  # cost; lazy-spawned on first need).
+  install_user_blank_runner
+}
+
+# Copy the subprocess runner into ~/.opencues/vendor/ and seed a
+# node_modules with isolated-vm so the runner can `require()` it. The
+# vendor dir is shared across hosts (only one copy needed even if the
+# user has CC + OC + shell all installed).
+install_user_blank_runner() {
+  local vendor_dir="$HOME/.opencues/vendor"
+  local runner_src="$OPENCUES_ROOT/packages/opencues-runtime/dist/src/user-blanks/subprocess-runner.cjs"
+  local runner_dst="$vendor_dir/user-blank-runner.cjs"
+  local ivm_dst="$vendor_dir/node_modules/isolated-vm"
+  local ivm_src="$OPENCUES_ROOT/node_modules/isolated-vm"
+
+  if [[ ! -f "$runner_src" ]]; then
+    # Source-build out-of-date copy fallback — runner is CJS, lives in src/.
+    runner_src="$OPENCUES_ROOT/packages/opencues-runtime/src/user-blanks/subprocess-runner.cjs"
+  fi
+  if [[ ! -f "$runner_src" ]]; then
+    echo "  ▸ subprocess-runner.cjs missing — skipping vendor install"
+    return 0
+  fi
+
+  mkdir -p "$vendor_dir"
+  cp "$runner_src" "$runner_dst"
+
+  # isolated-vm: copy from the source workspace's already-installed
+  # binding rather than re-running npm install (much faster, and
+  # guarantees the exact same version the in-process loader would have
+  # used on Node hosts).
+  if [[ -d "$ivm_src" ]]; then
+    mkdir -p "$vendor_dir/node_modules"
+    if [[ ! -e "$ivm_dst" ]] || ! diff -rq "$ivm_src" "$ivm_dst" &>/dev/null; then
+      rm -rf "$ivm_dst"
+      cp -RL "$ivm_src" "$ivm_dst"
+    fi
+  else
+    echo "  ▸ workspace isolated-vm not found at $ivm_src — vendor runner may fail at load time"
+  fi
 }
 
 patch_app_tsx() {

@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Feat — user-pack JS blanks on Bun hosts via Node subprocess
+
+User-pack JS blanks (`impl: ./blank.js` in BLANK.md) ran fine on Node-based hosts (Claude Code, Gemini CLI, chrome-host) but failed to load on **Bun-based hosts** (opencode, shell) with `isolated-vm unavailable on this runtime`. Root cause: `isolated-vm` is a native C++ binding that links V8's ABI; Bun ships JavaScriptCore, so the `.node` file fails at module-import time with `undefined symbol: _ZN2v8...`. Built-in blanks + `.sh` blanks kept working; JS user-blanks (including the shipped `gh-issues` demo and any third-party pack) were silently disabled on opencode + shell.
+
+**Fix:** the runtime now spawns a long-lived **Node subprocess** on Bun hosts when the in-process loader can't load `isolated-vm`. The subprocess owns the isolates and IPCs to the main process via newline-delimited JSON on stdin/stdout. Capability calls (`ctx.fetch` / `ctx.llm` / `ctx.storage`) round-trip back to the main process so the existing allow-list + quota + secret-binding enforcement (INFOSEC F4) runs unchanged. Same security boundary as the in-process loader; an isolated-vm escape still requires a CVE in the native binding regardless of which process it runs in.
+
+Architecture is **two loaders, one capability surface**: `registry.ts` tries `node-loader.ts:loadUserBlank` first and falls back to `subprocess-loader.ts:loadUserBlankSubprocess` only when the error message matches `"isolated-vm unavailable"` AND the runner script is present at `~/.opencues/vendor/user-blank-runner.cjs`. Both loaders expose the same `LoadedUserBlank` shape so the rest of the runtime sees no difference.
+
+**Lifecycle**: lazy-spawn on first dispatch (sessions that never hit a JS blank pay zero overhead); one subprocess per session, multiplexed across every blank; 5-minute idle reap with respawn on next dispatch (~50ms cold start); crash-resilient (subprocess dies → in-flight promises reject → next invoke spawns fresh). One Bun host today: opencode + shell share the vendor dir (`~/.opencues/vendor/user-blank-runner.cjs` + `node_modules/isolated-vm/`).
+
+**Install**: `integrations/opencode/patches/setup.sh:install_user_blank_runner` and `integrations/shell/patches/setup.sh` copy the runner CJS + the already-built `isolated-vm` binding from the source workspace into the vendor dir. CC + Gemini-CLI integrations don't need this (in-process loader works); chrome's content-script Worker loader is structurally separate and is unaffected.
+
+**Coverage**: 11 new tests in `packages/opencues-runtime/src/user-blanks/subprocess-loader.test.ts` — lifecycle (load/get/set/shutdown), capability bridge (fetch round-trip + allow-list block + capability gating when undeclared), multiplexing (two blanks in one runner), crash recovery (kill mid-invoke + respawn), secret subset filtering, ESM-rewrite parity. All 1667 existing runtime tests still green.
+
+Architecture doc: `docs/architecture/user-blanks-subprocess.md`. Threat model in `security-audit.md` row #2 (INFOSEC F1) is unchanged — the subprocess fallback inherits the same V8-isolate security boundary as the in-process path.
+
+Bumps:
+- `@opencues/runtime` 0.3.12 → 0.3.13.
+
 ### Fix — macOS / Node 24 install blockers: isolated-vm Node-24 support + setup.sh BSD `cp` flattening
 
 Two unrelated blockers stacked on a clean `pnpm exec opencues install claude-code` on macOS + Node 24. Both surfaced as install-time failures rather than silent runtime drift (the `validateFork` boot-smoke probe and the native-module probe both fired loudly), but together they made a fresh install impossible on the platform.

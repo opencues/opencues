@@ -8,7 +8,17 @@
 // Map<name, Blank> entry per user blank — but the implementation
 // uses postMessage rather than vm.runInContext.
 
+import * as fs from 'node:fs';
 import type { Blank } from '../blanks/types';
+
+function fsExistsSync(p: string): boolean {
+  try { return fs.existsSync(p); } catch { return false; }
+}
+
+function isIvmUnavailableError(err: unknown): boolean {
+  const msg = (err as { message?: string })?.message ?? '';
+  return msg.includes('isolated-vm unavailable');
+}
 import type {
   BlankCapabilities,
   BlankContext,
@@ -22,6 +32,10 @@ import {
   type StorageAdapter,
   createFileStorageAdapter,
 } from './node-loader';
+import {
+  loadUserBlankSubprocess,
+  getDefaultRunnerPath,
+} from './subprocess-loader';
 import { sanitizeBlankOutput } from './sanitize';
 import { createQuotaTracker, type QuotaConfig, type QuotaTracker } from './quota';
 import { buildRequestParts, enforceSecretBindings, type BoundSecret } from './secret-leak-guard';
@@ -195,8 +209,34 @@ export function buildUserBlankRegistry(
         timeoutMs: opts.timeoutMs,
       });
     } catch (err) {
-      log('warn', `failed to load user blank "${cfg.name}" from ${cfg.impl}: ${(err as Error).message}`);
-      continue;
+      // Bun-based hosts (opencode, shell) can't load the isolated-vm
+      // native binding. Fall back to the subprocess runner — spawns a
+      // Node helper that owns the isolates and IPCs over JSON. Same
+      // security boundary; capability gating happens host-side, same
+      // as in-process. Subprocess fallback requires the runner script
+      // to be present at `~/.opencues/vendor/user-blank-runner.cjs`
+      // (installed by `opencues install opencode/shell`). If the
+      // runner is missing too, fall through to the warn+skip path
+      // exactly as before — built-in blanks + .sh blanks keep working.
+      if (isIvmUnavailableError(err) && fsExistsSync(getDefaultRunnerPath())) {
+        try {
+          loaded = loadUserBlankSubprocess(cfg.impl, cfg.name, {
+            capabilities: caps,
+            storage,
+            llm: opts.llm,
+            secrets: opts.secrets,
+            log,
+            timeoutMs: opts.timeoutMs,
+          });
+          log('info', `loaded user blank "${cfg.name}" via subprocess (isolated-vm unavailable in-process)`);
+        } catch (err2) {
+          log('warn', `failed to load user blank "${cfg.name}" from ${cfg.impl} (subprocess fallback): ${(err2 as Error).message}`);
+          continue;
+        }
+      } else {
+        log('warn', `failed to load user blank "${cfg.name}" from ${cfg.impl}: ${(err as Error).message}`);
+        continue;
+      }
     }
 
     // Build the ctx ONCE here so the wrapped Blank reuses it across
