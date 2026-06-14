@@ -1,6 +1,6 @@
 {
   "name": "@opencues/runtime",
-  "version": "0.3.12",
+  "version": "0.3.13",
   "description": "Host-agnostic runtime for OpenCues. Hosts implement HostAdapter; runtime owns all feature logic.",
   "private": true,
   "main": "dist/src/index.js",
@@ -18,7 +18,7 @@
     "access": "restricted"
   },
   "scripts": {
-    "build": "rm -rf dist && tsc",
+    "build": "rm -rf dist && tsc && mkdir -p dist/src/user-blanks && cp src/user-blanks/subprocess-runner.cjs dist/src/user-blanks/",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:dev": "vitest",
