@@ -66,7 +66,7 @@ The three file formats (Cues / Blanks / Auditors) are open standards — designe
 
 ### 1. System prerequisites (one-time per machine)
 
-OpenCues needs **Node.js 18+** and **pnpm 8+**. The installers are bash +
+OpenCues needs **Node.js 22+** and **pnpm 8+**. The installers are bash +
 POSIX coreutils, so platform support is:
 
 - **macOS** (Intel + Apple Silicon) — supported natively.
@@ -76,12 +76,12 @@ POSIX coreutils, so platform support is:
   refuses up front on native Windows rather than failing mid-install.
 
 Pick your platform and run the matching block. Each ends by verifying
-`node --version` (v18+) and `pnpm --version` (8+).
+`node --version` (v22+) and `pnpm --version` (8+).
 
 **macOS** — default shell is zsh, so the API-key + alias steps below write to `~/.zshrc`:
 
 ```bash
-brew install node            # Node.js 18+ — or: brew install fnm && fnm install --lts
+brew install node            # Node.js 22+ — or: brew install fnm && fnm install --lts
 corepack enable pnpm         # pnpm 8+ — ships with Node 16+; or: npm install -g pnpm
 
 node --version && pnpm --version
@@ -91,7 +91,7 @@ node --version && pnpm --version
 
 ```bash
 curl -fsSL https://fnm.vercel.app/install | bash && exec $SHELL -l
-fnm install --lts && fnm use lts-latest    # Node.js 18+
+fnm install --lts && fnm use lts-latest    # Node.js 22+
 # OR (Debian/Ubuntu, if new enough): sudo apt install nodejs npm
 
 corepack enable pnpm         # pnpm 8+ — or: npm install -g pnpm

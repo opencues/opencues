@@ -20,7 +20,7 @@ npm install -g opencues
 ```
 
 What npm does at install time:
-- Checks `engines.node >=18` — refuses on older Node.
+- Checks `engines.node >=22` — refuses on older Node.
 - Checks `os` is `darwin` or `linux` — refuses on Windows native (use WSL).
 - Drops the `opencues` binary into `$(npm prefix -g)/bin/`.
 

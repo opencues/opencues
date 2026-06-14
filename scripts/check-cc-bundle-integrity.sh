@@ -78,9 +78,13 @@ mkdir -p "$OC_NM_DIR/core" "$OC_NM_DIR/runtime/dist"
 # bug class returns and this gate catches it.
 cp "$CUES_CORE"/dist/*.js "$CUES_CORE"/dist/*.d.ts "$OC_NM_DIR/core/" 2>/dev/null || true
 [ -f "$CUES_CORE/node-http-adapter.js" ] && cp "$CUES_CORE/node-http-adapter.js" "$OC_NM_DIR/core/"
+# `${sub%/}` strips the trailing slash the `*/` glob leaves — without it
+# BSD cp (macOS) copies the directory *contents* into core/ (flattening
+# sources/ → core/*.js), diverging from GNU cp. Mirrors the same fix in
+# setup.sh § 5.
 for sub in "$CUES_CORE"/dist/*/; do
   [ -d "$sub" ] || continue
-  cp -r "$sub" "$OC_NM_DIR/core/"
+  cp -r "${sub%/}" "$OC_NM_DIR/core/"
 done
 
 # runtime: full recursive dist mirror, then point package.json's main

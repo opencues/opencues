@@ -107,7 +107,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 22
       - name: Enable corepack (pnpm)
         run: corepack enable
       - name: pnpm install
@@ -131,7 +131,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 22
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -167,7 +167,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: 22
       - name: Enable corepack (pnpm)
         run: corepack enable
       - name: pnpm install

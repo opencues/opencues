@@ -1,6 +1,6 @@
 {
   "name": "@opencues/gemini-cli",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "OpenCues for Gemini CLI — patches a Gemini CLI fork to add real-time word alternatives, blanks, and cue-controls.",
   "compatibility": {
@@ -10,7 +10,7 @@
     "opencues-gemini-cli": "./bin/install.cjs"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "os": [
     "darwin",

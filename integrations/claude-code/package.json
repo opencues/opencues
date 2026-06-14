@@ -1,6 +1,6 @@
 {
   "name": "@opencues/claude-code",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "OpenCues for Claude Code — patches Claude Code's CLI via tweakcc to add real-time word alternatives, blanks, and cue-controls.",
   "compatibility": {
@@ -10,7 +10,7 @@
     "opencues-claude-code": "./bin/install.cjs"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "os": [
     "darwin",

@@ -1,6 +1,6 @@
 {
   "name": "@opencues/opencode",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "OpenCues for OpenCode — patches an OpenCode TUI fork to add real-time word alternatives, blanks, and cue-controls.",
   "compatibility": {
@@ -10,7 +10,7 @@
     "opencues-opencode": "./bin/install.cjs"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "os": [
     "darwin",
