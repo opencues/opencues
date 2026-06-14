@@ -2253,7 +2253,38 @@ export class TransformBlankSource implements CueSource {
     // grows the cached prefix by ~600 tokens. Bench-validated against
     // tests/benchmarks/transform-blank to preserve accuracy.
     const fusedSystem = `${FUSED_SYSTEM}${fusedCatalogBlock}${fusedBlankBlock}`;
-    const fusedRaw = await this.callLLM(fusedSystem, `INPUT: ${extractText}`, fusedTokens, undefined, context.signal);
+    // Cerebras Predicted Outputs (PR June 2026): pass the input body
+    // as the prediction. For TransformBlank-style rewrites (fix typos,
+    // make formal, shorten, rephrase) the output preserves 50-95% of
+    // input byte content; cerebras's speculation accepts those tokens
+    // from cache (input rate) instead of regenerating them (output
+    // rate). Empirically 66% acceptance + ~150ms median latency win
+    // on long-rewrite tasks; ~750ms p95 tail reduction on high-
+    // reasoning calls. Gated at 50 chars so trivial generation
+    // triggers ("draft an email _" with no body) don't pay the
+    // rejected-token surcharge for no win. Other providers ignore
+    // the field silently.
+    // See docs/architecture/cerebras.md § Predicted Outputs.
+    // Length gate. Picked empirically (June 2026 ad-hoc benches —
+    // /tmp/cerebras-predicted-outputs-bench.mjs + reasoning matrix):
+    //   - Below ~200 chars: cerebras's 16-token speculation window
+    //     doesn't engage meaningfully on rewrite outputs — 0%
+    //     acceptance rate, ~12ms median overhead from rejected tokens
+    //     for no win.
+    //   - Above ~200 chars: ~66% acceptance on typical rewrite tasks,
+    //     ~150ms median speedup, ~750ms p95 tail reduction.
+    // Accuracy: bench-validated against transform-blank/prod-fused.ts
+    // on cerebras — 186/231 across 4 runs vs master 186-193 (cerebras
+    // has ~7-case variance on this bench at temp=0/seed=42, so the
+    // accuracy signal can't be distinguished from noise; we accept
+    // the empirical no-drift result and rely on the cost asymmetry —
+    // rejected prediction tokens are cheap, accepted ones are
+    // input-rate). The iteration use case ("refine this draft 4
+    // times") naturally has bodies > 200 chars once the first draft
+    // is in place — the dominant payoff window.
+    const PREDICTION_MIN_CHARS = 200;
+    const fusedPrediction = extractText.length >= PREDICTION_MIN_CHARS ? extractText : undefined;
+    const fusedRaw = await this.callLLM(fusedSystem, `INPUT: ${extractText}`, fusedTokens, undefined, context.signal, undefined, fusedPrediction);
     const fParsed = parseFused(fusedRaw);
     // Resolve IDENTITY.md sentinels + ambient blank-context tokens in
     // FULL_REWRITE before the result routes through the runtime's three-
@@ -2404,6 +2435,12 @@ export class TransformBlankSource implements CueSource {
     responseFormat?: { name: string; strict?: boolean; schema: Record<string, unknown> },
     signal?: AbortSignal,
     overrideTarget?: { provider: ProviderAdapter; model: string; apiKey: string },
+    /** Predicted-outputs hint — see cerebras.md § Predicted Outputs.
+     *  Cerebras surfaces this on gpt-oss-120b; other providers ignore
+     *  the field. Pass the BODY being transformed (original buffer
+     *  text); the rewrite will share ~50-95% of byte content for
+     *  typical transformations. */
+    prediction?: string,
   ): Promise<string> {
     // Per-feature override (`transform-blank-max-tokens:` /
     // `transform-blank-temperature:`). When set, applies UNIFORMLY to
@@ -2434,6 +2471,7 @@ export class TransformBlankSource implements CueSource {
         // in @opencues/core/llm-provider.ts).
         seed: 42,
         responseFormat,
+        prediction,
       },
       {
         apiKey: effApiKey,
@@ -2441,11 +2479,16 @@ export class TransformBlankSource implements CueSource {
         signal,
         maxThinking: this.maxThinking,
         onUsage: (u) => {
-          // Only log when the provider surfaced cache info (cerebras /
-          // openai). Other providers report 0 by default; we skip
-          // those to keep /tmp/opencues.log clean.
-          if (u.cachedTokens > 0 || u.cacheHitRate > 0) {
-            this.log(`TransformBlank: usage prompt=${u.promptTokens} cached=${u.cachedTokens} (${(u.cacheHitRate * 100).toFixed(1)}%) completion=${u.completionTokens}`);
+          // Only log when the provider surfaced cache OR prediction
+          // info (cerebras / openai). Other providers report 0 by
+          // default; we skip those to keep /tmp/opencues.log clean.
+          const hasCacheData = u.cachedTokens > 0 || u.cacheHitRate > 0;
+          const hasPredData = u.acceptedPredictionTokens > 0 || u.rejectedPredictionTokens > 0;
+          if (hasCacheData || hasPredData) {
+            const predPart = hasPredData
+              ? ` pred-accepted=${u.acceptedPredictionTokens} pred-rejected=${u.rejectedPredictionTokens} (acc rate ${(u.predictionAcceptRate * 100).toFixed(0)}%)`
+              : '';
+            this.log(`TransformBlank: usage prompt=${u.promptTokens} cached=${u.cachedTokens} (${(u.cacheHitRate * 100).toFixed(1)}%) completion=${u.completionTokens}${predPart}`);
           }
         },
       },
