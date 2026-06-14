@@ -355,6 +355,29 @@ function buildOpenAIBody(req: ChatRequest, opts?: { includeReasoningEffort?: boo
   if (reasoning !== undefined && !providerRejectsReasoning) {
     body.reasoning_effort = reasoning;
   }
+  // Cerebras gpt-oss-120b only — request `reasoning_format: "hidden"`
+  // so the model's reasoning trace is suppressed from the response.
+  // Reasoning tokens are still generated and counted (no cost change,
+  // no accuracy change), but the JSON response carries only the final
+  // answer in `message.content` with NO separate `reasoning` field.
+  //
+  // Why hidden on gpt-oss-120b: bench-measured at N=20 trials it
+  // tightens p95 by ~150-230ms on short-output calls (fluid-blank,
+  // config-intent) — the small content + heavy reasoning trace ratio
+  // amplifies the relative cost of transmitting the trace. Long-
+  // output calls (transform-blank fused) are neutral. Median latency
+  // is unchanged either way.
+  //
+  // Why gated to gpt-oss-120b: cerebras docs scope `reasoning_format`
+  // to gpt-oss-120b and zai-glm-4.7. zai-glm-4.7 already runs at
+  // reasoning_effort: 'none' for us (model-thinking.ts) so it
+  // produces no reasoning text; hidden is a no-op there. Other
+  // providers may reject the unknown field; safest to scope tight.
+  //
+  // See docs/architecture/cerebras.md § "Hidden reasoning format".
+  if (opts?.provider === 'cerebras' && /^gpt-oss/i.test(req.model)) {
+    body.reasoning_format = 'hidden';
+  }
   // Structured outputs. Groq's gpt-oss-{20b,120b} support `strict: true`
   // with constrained decoding (guarantee). Other OpenAI-compatible
   // providers accept best-effort (strict: false). The schema must
