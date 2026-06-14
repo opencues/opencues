@@ -1,22 +1,26 @@
 ---
 name: stocks
 type: blank
+# Every keyword the TypeScript blank accepts. Listed here so the
+# runtime BlankFill scanner sees them all as candidate triggers
+# before the shape gate runs. The shape pattern below filters
+# them to "actually a stock invocation" (prose declines).
 blankKeywords: reddit stock, reddit, rddt, nvidia stock, nvidia, nvda, apple stock, apple, aapl, google stock, google, googl, microsoft stock, microsoft, msft, amazon stock, amazon, amzn, tesla stock, tesla, tsla, meta stock, meta
+# blankShapes: declarative precision gate (June 2026). Each keyword
+# alternation explicitly listed — the alternation IS the precision.
+# Bare prose like "she nvda her presentation _" or "they apple-pick
+# in autumn _" doesn't match (the keyword must be the leading word
+# in the input). The companies + tickers are deliberately the same
+# set as blankKeywords above.
+blankShapes: [{"pattern":"^(reddit\\s+stock|reddit|rddt|nvidia\\s+stock|nvidia|nvda|apple\\s+stock|apple|aapl|google\\s+stock|google|googl|microsoft\\s+stock|microsoft|msft|amazon\\s+stock|amazon|amzn|tesla\\s+stock|tesla|tsla|meta\\s+stock|meta)\\s*_$","action":"get","valueGroup":1}]
 blankAutoPopulate: true
 blankFormat: string
 blankTip: Stock price
 blankReadOnly: true
-blankProximity: 1
-blankKeywordExpansions.rddt: Reddit
-blankKeywordExpansions.nvda: Nvidia
-blankKeywordExpansions.aapl: Apple
-blankKeywordExpansions.googl: Alphabet
-blankKeywordExpansions.msft: Microsoft
-blankKeywordExpansions.amzn: Amazon
-blankKeywordExpansions.tsla: Tesla
-# Auto: bare "nvda _" → wipe → "NVDA: $198.47" (ticker embedded).
-# "nvda is _" or copula phrasings → keep → "nvda is NVDA: $198.47".
-blankReplace: auto
+# No blankSatellite: stocks has no cycle vocab. One uniform gray span
+# emission — see shape-driven-blanks.md.
+blankClearOnEdit: true
+blankConsumeContext: true
 # Blank-as-context: when blank-context-mode is on, expose 5 popular
 # tickers as ambient tokens ([STOCKS NVDA], [STOCKS AAPL], …) so
 # fluid-blank + transform-blank can route casual prose ("how are

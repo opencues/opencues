@@ -10,14 +10,17 @@ function fetchOk(body: unknown, status = 200): typeof fetch {
   } as Response)) as unknown as typeof fetch;
 }
 
+// V2-clone schema (countries-api-836d.onrender.com) — June 2026.
+// name is a string, capital is a string, currencies + languages
+// are arrays of objects. See countries.ts § Data source note.
 const FRANCE = [{
-  name: { common: 'France' },
-  capital: ['Paris'],
+  name: 'France',
+  capital: 'Paris',
   population: 67750000,
   region: 'Europe',
   area: 551695,
-  currencies: { EUR: { name: 'Euro', symbol: '€' } },
-  languages: { fra: 'French' },
+  currencies: [{ code: 'EUR', name: 'Euro', symbol: '€' }],
+  languages: [{ iso639_1: 'fr', iso639_2: 'fra', name: 'French', nativeName: 'français' }],
 }];
 
 describe('CountriesBlank', () => {
@@ -47,7 +50,12 @@ describe('CountriesBlank', () => {
   });
 
   it('returns first 3 languages joined', async () => {
-    const india = [{ ...FRANCE[0], languages: { hin: 'Hindi', eng: 'English', tam: 'Tamil', tel: 'Telugu' } }];
+    const india = [{ ...FRANCE[0], languages: [
+      { name: 'Hindi' },
+      { name: 'English' },
+      { name: 'Tamil' },
+      { name: 'Telugu' },
+    ] }];
     const ctl = new CountriesBlank({ fetchFn: fetchOk(india) });
     expect(await ctl.get('languages of', ['india'])).toBe('India languages: Hindi, English, Tamil');
   });
@@ -59,6 +67,36 @@ describe('CountriesBlank', () => {
     await ctl.get('capital of', ['france']);
     await ctl.get('currency of', ['france']);
     expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('disambiguates multi-hit responses by exact name match first, shortest second', async () => {
+    // The v2-clone returns multiple countries for ambiguous queries
+    // (e.g. "india" → British Indian Ocean Territory + India; "united
+    // states" → United States Minor Outlying Islands + United States
+    // of America). pickBestMatch picks the right one.
+    const indiaResponse = [
+      { ...FRANCE[0], name: 'British Indian Ocean Territory', capital: 'Diego Garcia',
+        languages: [{ name: 'English' }] },
+      { ...FRANCE[0], name: 'India', capital: 'New Delhi',
+        languages: [{ name: 'Hindi' }, { name: 'English' }] },
+    ];
+    const ctl = new CountriesBlank({ fetchFn: fetchOk(indiaResponse) });
+    expect(await ctl.get('capital of', ['india'])).toBe('India capital: New Delhi');
+    expect(await ctl.get('languages of', ['india'])).toBe('India languages: Hindi, English');
+  });
+
+  it('disambiguates multi-word query by shortest-name fallback when no exact match', async () => {
+    // "united states" doesn't exactly match either result; shortest name wins.
+    const usResponse = [
+      { ...FRANCE[0], name: 'United States Minor Outlying Islands', capital: '' },
+      { ...FRANCE[0], name: 'United States of America', capital: 'Washington, D.C.' },
+    ];
+    const ctl = new CountriesBlank({ fetchFn: fetchOk(usResponse) });
+    // prettyCountry uses the QUERY string (the user typed "united
+    // states"), not the API's longer name — so the prefix stays
+    // "United States" even though the matched entry is "United
+    // States of America".
+    expect(await ctl.get('capital of', ['united states'])).toBe('United States capital: Washington, D.C.');
   });
 
   it('returns "<country>: not found" for HTTP 404', async () => {

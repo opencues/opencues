@@ -15,7 +15,7 @@ describe('StocksBlank', () => {
     expect(await ctl.get()).toBe('');
   });
 
-  it('returns "Unknown: <kw>" for keywords not in the ticker map', async () => {
+  it('returns "Unknown: <kw>" for keywords not in the ticker map (June 2026: one-span emission, no tab)', async () => {
     const ctl = new StocksBlank({ apiKey: 'x', fetchFn: fetchOk({ c: 1 }) });
     expect(await ctl.get('not-a-ticker')).toBe('Unknown: not-a-ticker');
   });
@@ -25,7 +25,7 @@ describe('StocksBlank', () => {
     expect(await ctl.get('aapl')).toBe('AAPL: no API key');
   });
 
-  it('formats Finnhub current-price response as "$X.XX"', async () => {
+  it('formats Finnhub current-price response as "<TICKER>: $X.XX"', async () => {
     const ctl = new StocksBlank({ apiKey: 'k', fetchFn: fetchOk({ c: 201.66 }) });
     expect(await ctl.get('aapl')).toBe('AAPL: $201.66');
   });

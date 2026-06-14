@@ -30,9 +30,9 @@ function makeFetch(plan: FetchPlan): typeof fetch {
 }
 
 describe('WeatherBlank', () => {
-  it('returns "<temp>°C <desc>" for the resolved location', async () => {
+  it('returns "weather <city> <temp>°C <desc>" for the resolved location (June 2026: one-span emission, no tab — no cycle vocab)', async () => {
     const ctl = new WeatherBlank({ fetchFn: makeFetch({}) });
-    expect(await ctl.get('weather', ['weather', 'london'])).toBe('London: 14°C Partly cloudy');
+    expect(await ctl.get('weather', ['weather', 'london'])).toBe('weather London 14°C Partly cloudy');
   });
 
   it("strips trigger/time words and uses the last meaningful token as location", async () => {
@@ -52,7 +52,7 @@ describe('WeatherBlank', () => {
     expect(calls[0][0]).toContain('name=Berlin');
   });
 
-  it('returns "Unknown location: <name>" when geocode has no results', async () => {
+  it('returns "Unknown location: <name>" when geocode has no results (legacy error shape — not tab-separated)', async () => {
     const ctl = new WeatherBlank({ fetchFn: makeFetch({ geo: { results: [] } }) });
     expect(await ctl.get('weather', ['weather', 'narnia'])).toBe('Unknown location: narnia');
   });

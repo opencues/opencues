@@ -2,20 +2,19 @@
 name: sentinel
 type: blank
 blankKeywords: set sentinel, remove sentinel
-# Allow up to 16 words between the keyword and `_` so multi-word
-# values land correctly (e.g. `set sentinel signOff Best from sunny
-# London _`). 16 covers any realistic sentinel value (~80 chars of
-# prose) while keeping false-positive matches narrow — without it,
-# the proximity-0 default makes the blank silently miss every
-# non-single-word value (TransformBlank wins the slot instead). A
-# user with an unusually long value (>16 words / ~80 chars) falls
-# back to `opencues identity set` from the CLI, which has no
-# proximity limit. The 256-char value cap (validateSentinelWrite)
-# still gates the actual content of any matched write.
-blankProximity: 16
+# blankShapes: precision gate (June 2026). Two shapes — set captures
+# the full "<key> <value>" payload; remove captures just the key.
+# The proximity-16 hack (needed under the legacy gate to allow
+# multi-word values) retires — shapes anchor at start of input and
+# accept arbitrary content for the value, no false-positive surface
+# at all. The SentinelBlank class continues to split the captured
+# payload into key + value and validate via validateSentinelWrite
+# (security chokepoint unchanged).
+blankShapes: [{"pattern":"^set\\s+sentinel\\s+(.+?)\\s*_$","action":"get","valueGroup":1},{"pattern":"^remove\\s+sentinel\\s+(\\w+)\\s*_$","action":"get","valueGroup":1}]
 blankFormat: string
 blankClearKeywords: true
 blankClearOnEdit: true
+blankConsumeContext: true
 # Runtime-only blank — served by SentinelBlank in @opencues/runtime on
 # every host (chrome.storage on chrome; injected readFile/writeFile
 # against ~/.cues/IDENTITY.md on every native host). The resolver tries
