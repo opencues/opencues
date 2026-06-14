@@ -28,7 +28,7 @@ host and the runtime.
 
 
 **Current Integrations**:
-- **Claude Code** (`integrations/claude-code/`) — patches Claude Code 2.1.x (tested 2.1.110 cli.js + 2.1.150 native binary) via tweakcc 4.0.13+
+- **Claude Code** (`integrations/claude-code/`) — patches Claude Code 2.1.x (current pin 2.1.170 native binary; tested versions in `integrations/claude-code/compat.json`) via tweakcc 4.0.13+
 - **OpenCode** (`integrations/opencode/`) — patches OpenCode 1.4.x; runtime loaded inline
 - **Chrome** (`integrations/chrome/`) — MV3 extension; CSS Custom Highlight API for in-page rendering
 - **Gemini CLI** (`integrations/gemini-cli/`) — patches Gemini CLI 0.41.x; React/Ink host with a render-kick + ZWS-toggle pull model. See its CLAUDE.md for the React quirks (it's the first React/Ink host so the integration was non-trivial).
@@ -46,15 +46,13 @@ Two Claude Code installs exist on this machine. **OpenCues work targets `claude-
 
 | Command | Location | Version | Purpose |
 |---|---|---|---|
-| `claude-cues` | `~/claude-code-cues` (local npm) | 2.1.110 (cli.js, pegged) | OpenCues patches applied here — npm cli.js shape |
-| `claude-cues-150` | `~/claude-code-cues-150` (local npm) | 2.1.150 (native bun-binary) | OpenCues patches applied here — native-binary shape (post-2.1.113 cutover) |
-| `claude-cues-158` | `~/claude-code-cues-158` (local npm) | 2.1.158 (native bun-binary) | OpenCues patches applied here — same v2.1 adapter band as 150 (all 4 seams S1/S2/S3/S7 still hit) |
-| `claude-cues-170` | `~/claude-code-cues-170` (local npm) | 2.1.170 (native bun-binary) | OpenCues patches applied here — **latest tested** (June 2026), same v2.1 adapter band; S6 still missing (gone since 2.1.150, statusline polls); S1/S2/S3/S7 all hit; agentic core suite (01/02/03/07/14) green |
+| `claude-cues` | `~/claude-code-cues` (local npm) | 2.1.170 (native bun-binary, pegged via `compat.json:current-pin`) | OpenCues patches applied here |
 | `claude` | `~/.local/bin/claude` (native) | latest | Clean/unpatched — development use |
 
-- Both `claude-cues` and `claude-cues-150` are patched instances. `setup.sh` targets the cli.js fork; the native-binary fork is patched via tweakcc 4.0.13+'s `.bun` ELF section extract/repack.
+- `claude-cues` is the only patched instance. The 2.1.113+ native bun-binary shape is patched via tweakcc 4.0.13+'s `.bun` ELF section extract/repack (the pre-2.1.113 cli.js shape used a direct minified-JS patch — same `setup.sh` auto-detects which shape is present).
 - `claude` is never patched. Use it for unaffected Claude Code sessions during development.
 - Each patched fork is pegged to its declared version — do not upgrade without re-running the [UPGRADING runbook](integrations/claude-code/UPGRADING.md) to verify the five seam anchors (S1/S2/S3 required, S6/S7 optional).
+- Multi-version dev forks (`~/claude-code-cues-150/`, `-158/`, `-170/`) were retired June 2026. Re-spawn one for a targeted version test, but don't keep them around as ambient drift surfaces — `opencues install claude-code` fans out across every `~/claude-code-cues*` dir it finds and stale forks rebuild silently, which is more cost than they're worth when no active test work is using them.
 
 > **Self-healing on `opencues run <host>` (shipped June 2026).** Every
 > `opencues run <host>` invocation now reads the fork's `version.json`
@@ -249,7 +247,8 @@ export GROQ_API_KEY="your-key"
    library-script sync + 0-byte OPENCUES.md self-heal + colocated `.cs`
    compile (WSL only).
 2. **`integrations/claude-code/patches/setup.sh`** — strictly CC-specific.
-   Default behavior: nuke + rebuild from scratch. Pinned `@anthropic-ai/claude-code@2.1.110`
+   Default behavior: nuke + rebuild from scratch. Pinned `@anthropic-ai/claude-code`
+   (version from `integrations/claude-code/compat.json:current-pin`, today 2.1.170)
    reinstalled + cloned tweakcc inside `<CC_FORK>/.cues/tweakcc/` +
    `@opencues/{core,runtime}` built and installed into `<CC_FORK>/node_modules/@opencues/`
    + statusline.sh into `<CC_FORK>/.cues/` + tweakcc patched (only

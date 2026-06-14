@@ -58,7 +58,7 @@ text-level patch surface is identical; only the install pipeline differs.
 The compat manifest at `integrations/claude-code/compat.json` is the source of
 truth for what we've tested.
 
-## The seam inventory (current as of 2.1.150)
+## The seam inventory (current as of 2.1.170)
 
 The patch is **anchored on five seams** in cli.js. Same-patch and same-minor
 bumps usually leave all five intact; cross-minor refactors can move any of

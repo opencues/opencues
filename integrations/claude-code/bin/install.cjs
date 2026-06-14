@@ -293,7 +293,7 @@ function ensureCanonicalForkExists(forkRoot) {
   const pkgPath = path.join(forkRoot, 'package.json');
   if (!fs.existsSync(pkgPath)) {
     const compat = JSON.parse(fs.readFileSync(path.join(PKG_DIR, 'compat.json'), 'utf8'));
-    const pin = compat['current-pin'] || '2.1.150';
+    const pin = compat['current-pin'] || '2.1.170';
     fs.writeFileSync(pkgPath, JSON.stringify({
       private: true,
       dependencies: { '@anthropic-ai/claude-code': pin },
@@ -586,17 +586,19 @@ function tryAutoDetectCli() {
 // install target. Returns [{root, target, shape: 'cli.js' | 'native'}].
 //
 // Why this matters: prior to today, install.cjs only patched whichever
-// single fork tryAutoDetectCli() returned first. Users with both the
-// 2.1.110 cli.js fork AND the 2.1.150 native-binary fork would re-run
-// install thinking it'd update both — silently the 150 fork stayed
-// unpatched. (Documented in CLAUDE.md root § Claude Installs.) Now
-// install enumerates every fork + patches each in turn.
+// single fork tryAutoDetectCli() returned first. Users running both the
+// canonical fork AND a versioned dev fork (e.g. `~/claude-code-cues-150/`)
+// would re-run install thinking it'd update both — silently the dev fork
+// stayed unpatched. (Documented in CLAUDE.md root § Claude Installs.)
+// Now install enumerates every fork + patches each in turn.
 //
 // Lookup order:
 //   1. Standard `~/.claude/node_modules/...` (rare — pre-fork-era layout)
-//   2. `~/claude-code-cues/` (default cli.js fork, CC ≤ 2.1.111)
-//   3. `~/claude-code-cues-150/` (default native-binary fork, CC ≥ 2.1.113)
-//   4. Any other `~/claude-code-cues-*/` (user-named forks)
+//   2. `~/claude-code-cues/` (canonical fork; shape auto-detected — today's
+//      pin in compat.json:current-pin is 2.1.170 native bun-binary, older
+//      pins fell on the cli.js shape)
+//   3. Any other `~/claude-code-cues-*/` (user-named version-test forks
+//      — see CLAUDE.md § Claude Installs for the dev-fork retirement note)
 //
 // An explicit --target overrides the auto-detection — single-fork mode.
 function detectAllForks() {

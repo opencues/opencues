@@ -2,12 +2,17 @@
 #
 # setup.sh — install OpenCues into Claude Code (claude-cues fork).
 #
-# Scope: handles the **npm cli.js** install shape (Claude Code 2.1.111 and
-# earlier — default fork `~/claude-code-cues/`, pinned to 2.1.110). For
-# the **native bun-binary** shape (2.1.113+, including 2.1.150 — default
-# fork `~/claude-code-cues-150/`), see `integrations/claude-code/UPGRADING.md`
-# § "Reinstall" — tweakcc 4.0.13+ patches the binary directly; the install
-# pipeline differs at the npm-install step but the patch source is identical.
+# Scope: handles BOTH install shapes structurally — the npm **cli.js**
+# shape (Claude Code 2.1.111 and earlier) and the **native bun-binary**
+# shape (2.1.113+, including today's pinned 2.1.170). Same script,
+# same patch source; `setup.sh` auto-detects which artifact is present
+# under the fork's `node_modules/@anthropic-ai/claude-code/` and hands
+# the right path to tweakcc — tweakcc 4.0.13+ patches cli.js directly,
+# or for native binaries extracts cli.js from the `.bun` ELF section,
+# patches the text, and repacks. The version pin lives in
+# `integrations/claude-code/compat.json:current-pin` (today 2.1.170);
+# see `integrations/claude-code/UPGRADING.md` for the version-bump
+# runbook.
 #
 # Always-from-scratch by default: every install nukes prior state and
 # rebuilds deterministically. The ONLY way to drift is to opt in via
@@ -19,7 +24,7 @@
 # State that gets nuked + rebuilt every install (default):
 #   ~/claude-code-cues/.cues/                            recreated (incl. tweakcc clone)
 #   ~/claude-code-cues/node_modules/@opencues/{core,runtime}/  rebuilt + recopied
-#   ~/claude-code-cues/node_modules/@anthropic-ai/       reinstalled (pinned 2.1.110, cli.js shape)
+#   ~/claude-code-cues/node_modules/@anthropic-ai/       reinstalled (pin from compat.json:current-pin, today 2.1.170 native bun-binary)
 #
 # State that survives every install:
 #   ~/.cues/  (incl. OPENCUES.md)                        user content (your CUE.md / BLANK.md edits etc.)
@@ -156,11 +161,18 @@ if [ -n "${OPENCUES_CC_TARGET:-}" ]; then
 else
   CC_FORK_DIR="$HOME/claude-code-cues"
 fi
+# Resolve the canonical CC pin from compat.json (single source of truth).
+# Falls back gracefully if compat.json is unreadable so a one-off setup.sh
+# invocation against a side fork doesn't hard-fail.
+COMPAT_JSON="$(dirname "$0")/../compat.json"
+CC_PIN=$(node -e "try{process.stdout.write(JSON.parse(require('fs').readFileSync('$COMPAT_JSON','utf8'))['current-pin']||'')}catch{}" 2>/dev/null || true)
+[ -z "$CC_PIN" ] && CC_PIN="2.1.170"
+
 if [ ! -f "$CC_FORK_DIR/package.json" ]; then
   echo "Error: $CC_FORK_DIR/package.json missing." >&4
   echo "Create the fork dir first with a package.json that pins claude-code:" >&4
   echo "  mkdir -p $CC_FORK_DIR" >&4
-  echo "  echo '{\"dependencies\":{\"@anthropic-ai/claude-code\":\"2.1.110\"}}' > $CC_FORK_DIR/package.json" >&4
+  echo "  echo '{\"dependencies\":{\"@anthropic-ai/claude-code\":\"$CC_PIN\"}}' > $CC_FORK_DIR/package.json" >&4
   exit 1
 fi
 # Sanity-check the pin is exact (no caret / tilde — those allow drift).
@@ -168,7 +180,7 @@ PINNED_VERSION=$(node -e "process.stdout.write(JSON.parse(require('fs').readFile
 if [[ "$PINNED_VERSION" =~ ^(\^|~) ]]; then
   echo "Warning: $CC_FORK_DIR/package.json pins @anthropic-ai/claude-code with a range ($PINNED_VERSION)." >&4
   echo "  Caret/tilde ranges allow npm install to drift to incompatible versions." >&4
-  echo "  Edit package.json to pin an EXACT version (e.g. \"2.1.110\")." >&4
+  echo "  Edit package.json to pin an EXACT version (e.g. \"$CC_PIN\")." >&4
 fi
 
 OC_INSTALL_ROOT="$CC_FORK_DIR/.cues"
