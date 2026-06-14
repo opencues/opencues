@@ -158,18 +158,14 @@ A `pred-accepted=0` line on a long input is a regression signal — something ab
 - **3-pass TransformBlank (groq)**: predicted outputs is cerebras-specific.
 - **TransformBlank fused with `extractText.length < 200`**: generation-style triggers like `draft an email _` have no body to predict against; rejected tokens would just be cost overhead.
 
-## Other Cerebras-specific behaviour OpenCues relies on
+## Hidden reasoning format on gpt-oss-120b
 
-(Future-proofing: every new Cerebras feature OpenCues adopts gets a section here. Today the list is short.)
-
-### Hidden reasoning format on gpt-oss-120b
-
-Cerebras's `gpt-oss-120b` accepts a `reasoning_format` parameter ([docs](https://inference-docs.cerebras.ai/capabilities/reasoning)) that controls how the model's internal reasoning trace appears in the response:
+Cerebras's `gpt-oss-120b` accepts a [`reasoning_format` parameter](https://inference-docs.cerebras.ai/capabilities/reasoning) that controls how the internal reasoning trace appears in the response:
 
 - **`text_parsed`** (default for gpt-oss): reasoning appears as a separate field in the response message.
 - **`hidden`**: reasoning tokens are still **computed and counted**, but the response contains only the final answer in `message.content`. No `reasoning` field is returned.
 
-**OpenCues passes `reasoning_format: "hidden"` for every cerebras dispatch to gpt-oss-120b.** This is conditional in `buildOpenAIBody`: gated on `provider === 'cerebras'` AND `req.model` starts with `gpt-oss`.
+**OpenCues passes `reasoning_format: "hidden"` for every cerebras dispatch to gpt-oss-120b.** This is conditional in `buildOpenAIBody`: gated on `provider === 'cerebras'` AND `req.model` starts with `gpt-oss`. Bench harnesses (`tests/benchmarks/fluid-blank/cerebras.ts`) mirror so future benches measure what production runs.
 
 Why hidden:
 - **Same accuracy**: same internal generation, identical content bytes. Bench-validated at 175/176 on `tests/benchmarks/fluid-blank-ambient/fused-bench.ts` and 187/231 on `transform-blank/prod-fused.ts` (both within master's variance band).
@@ -185,40 +181,56 @@ Why hidden:
 
   N=20 trials per cell, June 2026. Long-output sources (TransformBlank's fused rewrite) are neutral because the output content dominates the response payload — the reasoning trace doesn't materially change the transmission cost. Short-output sources have a small content payload, so the reasoning trace was disproportionately inflating worst-case responses; hidden strips that overhead.
 
-Why gated to gpt-oss-120b:
-- Cerebras docs scope `reasoning_format` to gpt-oss-120b and zai-glm-4.7. zai-glm-4.7 already runs at `reasoning_effort: 'none'` for us (no reasoning text to hide); the parameter is a no-op there but we still gate it tight to avoid sending an unknown field to other providers' models.
+Why gated to gpt-oss-120b: cerebras docs scope `reasoning_format` to gpt-oss-120b and zai-glm-4.7. zai-glm-4.7 already runs at `reasoning_effort: 'none'` for us (no reasoning text to hide); the parameter is a no-op there. Tight gating avoids sending an unknown field to other providers' models.
 
 Why NOT a runtime toggle: the behavior change is semantic-neutral and the bench data is clear, so we don't expose a config scalar for it. It's always on for cerebras gpt-oss-120b.
 
-### Reasoning effort `medium` for transform-blank / fluid-blank dispatches
+---
 
-Cerebras's `gpt-oss-120b` exposes a `reasoning_effort` parameter. Our default is `medium` for transform-blank and `low` for fluid-blank, tuned by the [thinking-budget bench](../../tests/benchmarks/thinking-budget/). The `max-thinking: off` scalar dials this down further (see [max-thinking.md](max-thinking.md)).
+## Reasoning controls (`reasoning_effort` per-model)
 
-### zai-glm-4.7 — `reasoning_effort: none` is the only useful mode
+Both cerebras reasoning-capable models accept `reasoning_effort` but behave differently. OpenCues sets per-model defaults via the `MODEL_THINKING` table in `packages/opencues-core/src/model-thinking.ts`.
 
-`zai-glm-4.7` (cerebras's other reasoning-capable model, paid tier) has a binary reasoning knob in practice:
+### gpt-oss-120b — graduated knob
+
+| `reasoning_effort` | Reasoning tokens | Notes |
+|---|---|---|
+| `none` | n/a | **HTTP 400** — cerebras rejects this value for gpt-oss-120b. `low` is the floor. |
+| `low` | ~6 | Minimal thinking; sufficient for fluid-blank lookups |
+| `medium` (OpenCues default for transform-blank) | ~120 | Bench-tuned for transform-blank quality |
+| `high` | ~370 | Available but rarely beneficial |
+
+Our default is `medium` for transform-blank and `low` for fluid-blank, tuned by the [thinking-budget bench](../../tests/benchmarks/thinking-budget/). The `max-thinking: off` scalar dials this down by one notch (see [max-thinking.md](max-thinking.md)).
+
+### zai-glm-4.7 — binary knob
 
 | `reasoning_effort` | Reasoning tokens | Median latency | Notes |
 |---|---|---|---|
-| `none` | 0 | ~280ms | Clean disable, usable output |
-| `low` / `medium` / `high` | 500-700 | ~1000ms | Knob is essentially ignored; always burns thinking tokens |
+| `none` | 0 | ~280ms | Clean disable; usable output. **The only useful mode.** |
+| `low` / `medium` / `high` | 500-700 | ~1000ms | Knob essentially ignored; always burns thinking tokens regardless of level |
 
-OpenCues forwards `reasoning_effort: none` for this model via the `MODEL_THINKING` table (`'cerebras:zai-glm-4.7': { max: 'none', off: 'none' }`). The `isReasoningModelName` regex in `buildOpenAIBody` was extended to match `zai-glm` so the field actually reaches the wire (without the extension, the field is silently dropped and zai defaults to full thinking mode — slow + lower accuracy).
+OpenCues forwards `reasoning_effort: none` for this model via `'cerebras:zai-glm-4.7': { max: 'none', off: 'none' }` in `MODEL_THINKING`. The `isReasoningModelName` regex in `buildOpenAIBody` was extended in June 2026 to match `zai-glm` so the field actually reaches the wire — without the extension, the field is silently dropped and zai defaults to full thinking mode (slow + lower accuracy).
 
-**Head-to-head accuracy** (June 2026, all on cerebras with prefix-cache + predicted-outputs enabled):
+### Head-to-head accuracy (gpt-oss-120b vs zai-glm-4.7)
 
-| Bench | gpt-oss-120b/medium (default) | zai-glm-4.7/none | Delta |
+Both with their respective minimum-reasoning setting (gpt-oss-120b at `low`, zai-glm-4.7 at `none`):
+
+| Bench | gpt-oss-120b/low | zai-glm-4.7/none | Delta |
 |---|---|---|---|
 | fluid-blank standard 137 | 137/137 (100%) | 136/137 (99.3%) | −0.7pp |
 | fluid-blank ambient in-prompt 18 | 17/18 (94.4%) | 17/18 (94.4%) | 0pp |
 | fluid-blank ambient holdout 21 | 21/21 (100%) | 14/21 (66.7%) | **−33pp** |
 | transform-blank prod-fused 231 | 186/231 (80.5%) | 182/231 (78.8%) | −1.7pp (within cerebras variance) |
 
-**Conclusion**: zai-glm-4.7 is competitive on in-distribution cases (within 1pp) but loses substantially on the ambient holdout — it doesn't generalize ambient patterns the prompt wasn't tuned against (ZIP codes, postcodes, callsigns, label-IS-question cases). gpt-oss-120b stays the default. zai is now properly usable as an opt-in via `blanks-llm-model: zai-glm-4.7` for users who prefer its slight latency edge (~50ms median faster) over the holdout accuracy gap.
+zai-glm-4.7 is competitive on in-distribution cases (within 1pp) but loses substantially on the ambient holdout — it doesn't generalize ambient patterns the prompt wasn't tuned against (ZIP codes, postcodes, callsigns, label-IS-question cases). gpt-oss-120b stays the cerebras default. zai is a viable opt-in via `blanks-llm-model: zai-glm-4.7` for users who prefer its ~50ms median latency edge over the holdout accuracy gap.
 
-### Strict JSON output via `response_format`
+---
 
-Cerebras's `gpt-oss-120b` supports `response_format: { strict: true, schema }` for constrained decoding. We use it in fluid-blank's fused path (`FLUID_FUSED_SCHEMA`) to lock the LLM into emitting `{ span, answer }` reliably. Switching to a provider that doesn't support strict mode means the parser falls back to label-format output — see the dual-path parsers in `transform-blank-source.ts` / `fluid-blank-source.ts`.
+## Strict JSON output via `response_format`
+
+Cerebras's `gpt-oss-120b` supports `response_format: { type: 'json_schema', json_schema: { strict: true, schema } }` for constrained decoding. OpenCues uses it in fluid-blank's fused path (`FLUID_FUSED_SCHEMA`) to lock the LLM into emitting `{ span, answer }` reliably.
+
+Switching to a provider that doesn't support strict mode means the parser falls back to label-format output — see the dual-path parsers in `transform-blank-source.ts` / `fluid-blank-source.ts`.
 
 See [llm-routing.md](llm-routing.md) for the broader provider abstraction.
 
@@ -226,15 +238,21 @@ See [llm-routing.md](llm-routing.md) for the broader provider abstraction.
 
 ## Where to find these in code
 
-| What | File | Symbol |
+| Feature | File | Symbol / search term |
 |---|---|---|
-| Provider adapter | `packages/opencues-core/src/llm-provider.ts` | `cerebrasAdapter` |
+| Provider adapter | `packages/opencues-core/src/llm-provider.ts` | `CEREBRAS` (export) |
 | Dispatch + usage callback | `packages/opencues-core/src/llm-provider.ts` | `dispatchChat`, `UsageReport` |
-| Catalog blocks in system message | `packages/opencues-core/src/sources/transform-blank-source.ts` | search `Cerebras prefix-cache optimisation` |
-| Same for fluid-blank | `packages/opencues-core/src/sources/fluid-blank-source.ts` | search `Cerebras prefix-cache optimisation` |
-| Cache-hit debug logging | All three semantic-`_` sources | `onUsage:` callback in `callLLM` |
-| Recall bench | `tests/benchmarks/fluid-blank-ambient/fused-bench.ts` | 175/176 target on cerebras |
+| **Prefix caching** — catalog blocks in system message | `packages/opencues-core/src/sources/transform-blank-source.ts` | `Cerebras prefix-cache optimisation` |
+| **Prefix caching** — fluid-blank | `packages/opencues-core/src/sources/fluid-blank-source.ts` | `Cerebras prefix-cache optimisation` |
+| **Predicted outputs** — prediction parameter plumbing | `packages/opencues-core/src/llm-provider.ts` | `req.prediction`, `body.prediction` |
+| **Predicted outputs** — TransformBlank gate | `packages/opencues-core/src/sources/transform-blank-source.ts` | `PREDICTION_MIN_CHARS` |
+| **Hidden reasoning** — conditional gate | `packages/opencues-core/src/llm-provider.ts` | `reasoning_format = 'hidden'` |
+| **Reasoning per model** — table | `packages/opencues-core/src/model-thinking.ts` | `MODEL_THINKING` |
+| **zai-glm-4.7 fix** — regex match | `packages/opencues-core/src/llm-provider.ts` | `isReasoningModelName` |
+| **Cache-hit / pred-accept logging** | All three semantic-`_` sources | `onUsage:` callback in `callLLM` |
+| Recall bench (fluid-blank) | `tests/benchmarks/fluid-blank-ambient/fused-bench.ts` | 175/176 target on cerebras |
+| Accuracy bench (transform-blank) | `tests/benchmarks/transform-blank/prod-fused.ts` | ~186-193/231 master variance band |
 
 ---
 
-*Last updated: June 2026 (cerebras prefix-cache restructure PR).*
+*Last updated: June 2026 — covers PR #137 (prefix-cache restructure), PR #138 (predicted outputs), PR #139 (zai reasoning fix), PR #140 (hidden reasoning format).*
