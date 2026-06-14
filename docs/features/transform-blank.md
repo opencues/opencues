@@ -5,14 +5,14 @@ runtime rewrites the surrounding text per the instruction (or generates
 new content from scratch when no surrounding text is given).
 
 ```
-You type:   change boy to girl _ the boy ran fast
+You type:   the boy ran fast change boy to girl _
 You see:    the girl ran fast
-Press ↓ :   change boy to girl _ the boy ran fast   (revert)
+Press ↓ :   the boy ran fast change boy to girl _   (revert)
 Press ↑ :   the girl ran fast                        (apply)
 ```
 
 Where **fluid-blank** answers questions at `_` ("capital of france _" → Paris),
-**transform-blank** edits text around `_` ("change boy to girl _ the boy ran"
+**transform-blank** edits text around `_` ("the boy ran change boy to girl _"
 → "the girl ran") OR generates new content ("write a poem _" → a poem).
 
 ---
@@ -37,20 +37,19 @@ fluid-blank-mode: on  # both blank handlers can coexist; instructions go to
 
 ---
 
-## Two layouts
-
-The instruction can sit either side of `_`:
+## The shape — body first, instruction at the end
 
 ```
-(a) <INSTRUCTION> _ <TARGET>
-    e.g.  change boy to girl _ the boy ran fast
-
-(b) <TARGET> <INSTRUCTION> _
-    e.g.  the boy ran fast change boy to girl _
+<TARGET> <INSTRUCTION> _
+e.g.  the boy ran fast change boy to girl _
 ```
 
-Both work. Most people end up using (b) — they type the text first,
-realize they want to transform it, then add the imperative at the end.
+Body first, instruction last, `_` triggers the rewrite. This is the
+only shape that works for live typing because `_` resolves the moment
+you type it — anything you'd type *after* `_` would never reach the
+source. (The EXTRACT prompt is also trained on the inverted layout
+`<INSTRUCTION> _ <TARGET>` so a pasted snippet shaped that way still
+parses, but you can't get there by typing.)
 
 ---
 
@@ -105,35 +104,34 @@ rate ~83%, ~1.4s per case end-to-end on Groq gpt-oss-120b.
 
 | Category | Example |
 |---|---|
-| literal swap | `change boy to girl _ the boy ran` |
-| multi-span | `replace USD with EUR _ price is 10 USD plus 2 USD` |
-| concept | `he/she swap _ he gave the book to John` |
-| transform | `make past tense _ I run to the store` |
-| math | `add 10% _ original price 100, final price 100` |
-| linked-concepts | `change pet from dog to cat _ the dog wagged its tail and barked` |
-| targeted scope | `capitalize the names _ john and sarah went to lunch` |
-| composed (X and Y) | `make past tense and remove pronouns _ I run to the store` |
-| trailing-instruction | `the boy ran fast change boy to girl _` |
-| code-transform | `convert var to const _ var name = "alice"; var age = 30;` |
-| adversarial | `change the word change to modify _ I want to change my approach` |
+| literal swap | `the boy ran change boy to girl _` |
+| multi-span | `price is 10 USD plus 2 USD replace USD with EUR _` |
+| concept | `he gave the book to John he/she swap _` |
+| transform | `I run to the store make past tense _` |
+| math | `original price 100, final price 100 add 10% _` |
+| linked-concepts | `the dog wagged its tail and barked change pet from dog to cat _` |
+| targeted scope | `john and sarah went to lunch capitalize the names _` |
+| composed (X and Y) | `I run to the store make past tense and remove pronouns _` |
+| code-transform | `var name = "alice"; var age = 30; convert var to const _` |
+| adversarial | `I want to change my approach change the word change to modify _` |
 | negative (correctly bails) | `capital of france _` |
 
 ### Mid categories (70-90%)
 
 | Category | Example |
 |---|---|
-| long-text (40 cases, 4 sub-buckets) | `make past tense _ <multi-paragraph input>` |
-| creative-rewrite | `translate to pirate speak _ Hello, where is the bathroom?` |
-| format-transform | `convert to bullet points _ I need eggs, milk, bread, cheese` |
-| multi-paragraph | `change protagonist to wizard _ <2-3 paragraph story>` |
-| conditional | `change boy to girl but not in the second sentence _ The boy ran. ...` |
+| long-text (40 cases, 4 sub-buckets) | `<multi-paragraph input> make past tense _` |
+| creative-rewrite | `Hello, where is the bathroom? translate to pirate speak _` |
+| format-transform | `I need eggs, milk, bread, cheese convert to bullet points _` |
+| multi-paragraph | `<2-3 paragraph story> change protagonist to wizard _` |
+| conditional | `The boy ran. ... change boy to girl but not in the second sentence _` |
 
 ### Weak categories (50-70%)
 
 | Category | Example |
 |---|---|
-| context-referring | `match the style of the first sentence _ ...` |
-| tone-shift | `make it more confident _ I think maybe we should perhaps consider` |
+| context-referring | `... match the style of the first sentence _` |
+| tone-shift | `I think maybe we should perhaps consider make it more confident _` |
 
 The persistent floor (~17%) is mostly upstream model variance + judge
 calibration on open-ended cases ("make it casual", "match the style of
@@ -172,7 +170,7 @@ TransformBlank P2 APPLY: 1 step(s) — ["change boy to girl"]
 TransformBlank P2 APPLY step 1/1 (227ms, max_tokens=812): "the girl ran fast"
 TransformBlank P3 VERIFY: SKIPPED (low-stakes instruction + faithful draft)
 TransformBlank: pipeline done (578ms total) — final="the girl ran fast"
-TransformBlank: substituting "change boy to girl _ the boy ran fast" → "the girl ran fast" (origLen=42, rewriteLen=18, defAt=0)
+TransformBlank: substituting "the boy ran fast change boy to girl _" → "the girl ran fast" (origLen=42, rewriteLen=18, defAt=0)
 ```
 
 Composed instructions show one APPLY line per step:
