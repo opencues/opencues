@@ -232,6 +232,29 @@ Cerebras's `gpt-oss-120b` supports `response_format: { type: 'json_schema', json
 
 Switching to a provider that doesn't support strict mode means the parser falls back to label-format output — see the dual-path parsers in `transform-blank-source.ts` / `fluid-blank-source.ts`.
 
+## Payload optimization — gzip request compression
+
+Cerebras's inference API accepts gzip-compressed request bodies via standard HTTP `Content-Encoding: gzip` ([docs](https://inference-docs.cerebras.ai/capabilities/payload-optimization)). OpenCues's `NodeHttpAdapter` gzips every outbound request to `api.cerebras.ai` and adds the header.
+
+**Always on for cerebras. No size gate.** Bench evidence (N=20 per cell, gpt-oss-120b with hidden reasoning) — the saving is asymmetric across the source mix but never net-negative:
+
+| Source shape | Plain body | Gzip body | Reduction | Δ median | Δ p95 |
+|---|---|---|---|---|---|
+| TransformBlank fused (FUSED_SYSTEM) | 86,384 B | 27,174 B | **−68.5%** | **−100ms** | **−179ms** |
+| FluidBlank fused (FUSED_SYSTEM) | 86,205 B | 27,074 B | −68.6% | −44ms | +80ms (noise) |
+| ConfigIntent (small system) | 839 B | 490 B | −41.6% | +6ms | −53ms |
+| Word-cue spelling | 1,144 B | 701 B | −38.7% | +1ms | **−332ms (−45%)** |
+| AgentRewrite short doc | 1,471 B | 828 B | −43.7% | +9ms | **−152ms (−23%)** |
+| AgentRewrite long doc | 2,625 B | 1,369 B | −47.8% | −22ms | +7ms |
+
+Big payloads (FUSED_SYSTEM-bearing — transform-blank, fluid-blank) hit −100ms median wins from the wire-size reduction alone. Small payloads (word-cues, ConfigIntent, AgentRewrite) are median-neutral but their p95 tail tightens dramatically — the word-cue p95 −332ms is the standout, since spelling fires on every typing pause.
+
+Implementation: gating lives in `packages/opencues-core/node-http-adapter.js`'s `GZIP_REQUEST_HOSTS` set, currently `{'api.cerebras.ai'}`. The adapter buffers the JSON body with `zlib.gzipSync`, sets `Content-Encoding: gzip` + `Content-Length`, and writes the buffer. Other providers stay on plain JSON; they neither benefit similarly (lower latency floor, smaller prompts) nor have we bench-validated their decoder paths.
+
+Chrome path is unaffected — the chrome bundle uses a throwing stub for `node-http-adapter` and routes through `FetchHttpAdapter` instead. Adding gzip to the browser path would require a `CompressionStream` change in the SW; deferred until measured chrome traffic justifies it.
+
+Bench harnesses in `tests/benchmarks/{fluid-blank,transform-blank}/cerebras.ts` mirror the production wire shape (gzip outbound) so accuracy + latency numbers match what users see.
+
 See [llm-routing.md](llm-routing.md) for the broader provider abstraction.
 
 ---
@@ -247,6 +270,7 @@ See [llm-routing.md](llm-routing.md) for the broader provider abstraction.
 | **Predicted outputs** — prediction parameter plumbing | `packages/opencues-core/src/llm-provider.ts` | `req.prediction`, `body.prediction` |
 | **Predicted outputs** — TransformBlank gate | `packages/opencues-core/src/sources/transform-blank-source.ts` | `PREDICTION_MIN_CHARS` |
 | **Hidden reasoning** — conditional gate | `packages/opencues-core/src/llm-provider.ts` | `reasoning_format = 'hidden'` |
+| **Gzip request compression** | `packages/opencues-core/node-http-adapter.js` | `GZIP_REQUEST_HOSTS` set + `zlib.gzipSync` in `post` |
 | **Reasoning per model** — table | `packages/opencues-core/src/model-thinking.ts` | `MODEL_THINKING` |
 | **zai-glm-4.7 fix** — regex match | `packages/opencues-core/src/llm-provider.ts` | `isReasoningModelName` |
 | **Cache-hit / pred-accept logging** | All three semantic-`_` sources | `onUsage:` callback in `callLLM` |
@@ -255,4 +279,4 @@ See [llm-routing.md](llm-routing.md) for the broader provider abstraction.
 
 ---
 
-*Last updated: June 2026 — covers PR #137 (prefix-cache restructure), PR #138 (predicted outputs), PR #139 (zai reasoning fix), PR #140 (hidden reasoning format).*
+*Last updated: June 2026 — covers PR #137 (prefix-cache restructure), PR #138 (predicted outputs), PR #139 (zai reasoning fix), PR #140 (hidden reasoning format), PR #142 (gzip request compression).*
