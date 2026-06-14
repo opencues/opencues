@@ -1,20 +1,28 @@
-// CountriesBlank — fetches country facts from restcountries.com
-// (no auth, no rate limit beyond reasonable). Read-only. 24h cache
-// per (country, fact) pair.
+// CountriesBlank — fetches country facts from a free v2-clone of
+// REST Countries. Read-only. 24h cache per country.
 //
 // Trigger phrases like "population of france", "capital of japan",
 // "currency of brazil" → resolve <fact> + <country>, fetch the
 // country, return the requested field.
 //
-// Design note: REST Countries returns a rich object per country,
-// so a single blank can surface multiple facts. The BLANK.md exposes
-// it via several keywords (population of, capital of, currency of, ...)
+// Design note: a single blank can surface multiple facts. The BLANK.md
+// exposes it via several keywords (population of, capital of, etc.)
 // and the keyword tells us which field to extract.
+//
+// Data source note (June 2026): restcountries.com/v3.1 was deprecated
+// in 2026, v5 requires an auth key. This blank uses a community-run
+// v2 clone at countries-api-836d.onrender.com — same schema as the
+// pre-deprecation REST Countries v2 API. The endpoint is free but
+// hosted on Render's free tier, so the first request after ~15 min
+// of inactivity may take 30-60s (cold start). Long-term path: bundle
+// a static dataset (mledoze/countries) so the blank doesn't depend
+// on any third-party API for read-only data that doesn't change
+// frequently. Tracked in plan.md § Countries data source.
 
 import type { Blank } from './types';
 
 const CACHE_TTL_MS = 86_400_000; // 24h — country data is stable
-const ENDPOINT = 'https://restcountries.com/v3.1/name';
+const ENDPOINT = 'https://countries-api-836d.onrender.com/countries/name';
 
 // Keyword phrase fragment → which field to surface.
 // Order matters for partial matches (longest-first wins via sort).
@@ -29,14 +37,17 @@ const FACT_PATTERNS: Array<[RegExp, FactKey]> = [
 
 type FactKey = 'population' | 'capital' | 'currency' | 'region' | 'languages' | 'area';
 
+// REST Countries v2-clone schema (countries-api-836d.onrender.com):
+// flatter than v3.1 — name is a string, capital is a string, and
+// currencies/languages are arrays of objects rather than keyed records.
 interface CountryApiEntry {
-  name?: { common?: string };
-  capital?: string[];
+  name?: string;
+  capital?: string;
   population?: number;
   region?: string;
   area?: number;
-  currencies?: Record<string, { name?: string; symbol?: string }>;
-  languages?: Record<string, string>;
+  currencies?: Array<{ code?: string; name?: string; symbol?: string }>;
+  languages?: Array<{ iso639_1?: string; iso639_2?: string; name?: string; nativeName?: string }>;
 }
 
 const SKIP_WORDS: ReadonlySet<string> = new Set([
@@ -83,7 +94,7 @@ export class CountriesBlank implements Blank {
         }
         const data = (await resp.json()) as CountryApiEntry[];
         if (!data?.length) return `${country}: not found`;
-        entry = data[0];
+        entry = pickBestMatch(country, data);
         this._cache.set(country.toLowerCase(), { data: entry, ts: Date.now() });
       } catch {
         return `${country}: error`;
@@ -123,6 +134,33 @@ function pickCountry(keyword?: string, context?: string[]): string {
   return all.join(' ').trim();
 }
 
+/**
+ * The v2-clone returns multiple hits for ambiguous queries — "india"
+ * returns both "British Indian Ocean Territory" + "India"; "united
+ * states" returns "United States Minor Outlying Islands" before "United
+ * States of America". `data[0]` picks the wrong one. Two-pass rank:
+ *   1. exact case-insensitive name match (best);
+ *   2. shortest name (works for both cases — "India" beats "British
+ *      Indian Ocean Territory", "United States of America" beats
+ *      "United States Minor Outlying Islands" by length).
+ */
+function pickBestMatch(query: string, data: CountryApiEntry[]): CountryApiEntry {
+  const q = query.toLowerCase().trim();
+  for (const c of data) {
+    if ((c.name ?? '').toLowerCase() === q) return c;
+  }
+  let best = data[0];
+  let bestLen = (best.name ?? '').length || Infinity;
+  for (const c of data) {
+    const len = (c.name ?? '').length;
+    if (len && len < bestLen) {
+      best = c;
+      bestLen = len;
+    }
+  }
+  return best;
+}
+
 function formatFact(fact: FactKey, entry: CountryApiEntry): string {
   switch (fact) {
     case 'population': {
@@ -134,7 +172,7 @@ function formatFact(fact: FactKey, entry: CountryApiEntry): string {
       if (n >= 1e3) return `${(n / 1e3).toFixed(0)}K`;
       return String(n);
     }
-    case 'capital': return entry.capital?.[0] ?? 'unknown';
+    case 'capital': return entry.capital ?? 'unknown';
     case 'region':  return entry.region ?? 'unknown';
     case 'area': {
       const a = entry.area;
@@ -143,15 +181,17 @@ function formatFact(fact: FactKey, entry: CountryApiEntry): string {
     }
     case 'currency': {
       const cs = entry.currencies;
-      if (!cs) return 'unknown';
-      const code = Object.keys(cs)[0];
-      const name = cs[code]?.name;
-      return name ? `${name} (${code})` : code;
+      if (!cs?.length) return 'unknown';
+      const first = cs[0];
+      const code = first.code ?? '';
+      const name = first.name ?? '';
+      if (name && code) return `${name} (${code})`;
+      return name || code || 'unknown';
     }
     case 'languages': {
       const ls = entry.languages;
-      if (!ls) return 'unknown';
-      return Object.values(ls).slice(0, 3).join(', ');
+      if (!ls?.length) return 'unknown';
+      return ls.slice(0, 3).map(l => l.name).filter(Boolean).join(', ');
     }
   }
 }

@@ -187,6 +187,22 @@ Once volume + brightness + a few read-only blanks (weather, stocks, dictionary) 
 
 ---
 
+## Countries data source — known fragile
+
+`CountriesBlank` previously hit `https://restcountries.com/v3.1/name/<country>`. That API was **deprecated** in 2026 — it now returns 301 → `legacy.json` with an error body, and the v5 replacement requires an auth key.
+
+Quick fix shipped in PR #146: switched to `https://countries-api-836d.onrender.com/countries/name/<country>` — a community-run v2-clone with the same field shape as pre-deprecation REST Countries. Schema adapted (v2 has flatter shape: `name` is a string, `capital` is a string, `currencies`/`languages` are arrays of objects instead of keyed records).
+
+**Known limitations of the workaround**:
+
+- Hosted on Render's free tier — sleeps after ~15 min of inactivity, so the first request after a quiet period can take 30-60s (cold start). Cached for 24h per country once fetched.
+- Third-party operator. Could go down or change shape without notice.
+- No SLA, no contact for issues.
+
+**Long-term path** (separate PR): bundle a static country dataset (mledoze/countries — public-domain JSON, ~250 countries, 80+ fields each). Eliminates the network call, the upstream dependency, and the cold-start. ~1.4MB bundled (or ~80KB with trimming to just the fields the blank uses). Yearly manual refresh for stale population numbers. Trade-off: slightly bigger npm package vs zero runtime upstream risk for read-only data that doesn't change daily.
+
+Tracked here so the next contributor knows the current setup is provisional.
+
 ## Decisions made (record so we don't relitigate)
 
 1. **Shape gate is regex-based**, not LLM-based. Authors declare shapes; runtime extracts the matching value. No LLM in the routing loop = no prompt-injection blast radius widening.
