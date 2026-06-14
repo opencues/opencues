@@ -52,21 +52,28 @@ interface RouteEntry {
  * word-cue dispatch so the LLM doesn't burn round-trips on partial
  * words it would correctly ignore anyway.
  *
- * Returns the trailing word's index (in `context.words`) when:
+ * Returns the trailing word's index (in `context.words`) when ALL of:
  *   - The buffer is non-empty AND
  *   - The buffer doesn't end in whitespace (so the last word hasn't
  *     been "closed" with a space/newline) AND
- *   - The cursor (if known) sits at the end of the buffer (the user
- *     is actively typing there, not editing mid-text).
+ *   - The cursor is **known** AND sits at the end of the buffer (the
+ *     user is actively typing there, not editing mid-text).
  *
- * Returns null otherwise — including the common case of cursor in
- * the middle of the buffer (mid-edit), where skipping the trailing
- * word would silently regress mid-text spelling/cue surfacing.
+ * Returns null otherwise — including:
+ *   - Cursor in the middle of the buffer (mid-edit) — skipping the
+ *     trailing word would silently regress mid-text spelling cues.
+ *   - Cursor undefined (headless tests, agentic bare-injection,
+ *     hosts that don't expose cursor) — we can't tell typing from
+ *     pasted/edit-after, so we let everything through. The perf gate
+ *     is a production optimisation, not a correctness guarantee;
+ *     defaulting to "include" when we don't know is the structurally
+ *     safer choice (June 2026 — the earlier "assume end-of-buffer"
+ *     default silently dropped single-word inputs in every test that
+ *     omits `cursor`, masking real cue regressions).
  *
- * When `context.cursor` is undefined (headless tests, agentic
- * harness bare-injection mode), we conservatively assume the cursor
- * is at end-of-buffer — matches the default behaviour of every
- * shipped host and keeps the optimisation firing where it matters.
+ * Production hosts (CC v2.1, OC v1.14, gemini-cli, chrome, shell)
+ * always pass `cursor`, so the optimisation still fires on every
+ * real typing surface.
  */
 function findInProgressTrailingWord(context: CueContext): number | null {
   const text = context.text;
@@ -74,9 +81,9 @@ function findInProgressTrailingWord(context: CueContext): number | null {
   // Buffer ends with whitespace → last word is complete (user typed
   // space after finishing it).
   if (/\s$/.test(text)) return null;
-  // Cursor explicitly mid-text → user is editing somewhere other than
-  // the trailing word; don't skip it.
-  if (context.cursor !== undefined && context.cursor >= 0 && context.cursor < text.length) {
+  // Cursor must be known AND at end-of-buffer for the gate to fire.
+  // Anything else (undefined cursor, cursor mid-text) → don't skip.
+  if (context.cursor === undefined || context.cursor < text.length) {
     return null;
   }
   // Trailing word is in-progress: return its index in `context.words`.
