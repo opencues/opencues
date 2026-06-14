@@ -43,8 +43,13 @@ function mkContext(words: string[]): CueContext {
 }
 
 function mkContextTyping(words: string[]): CueContext {
-  // No trailing space — last word is "in-progress" per the gate.
-  return { text: words.join(' '), words };
+  // No trailing space + cursor at end-of-buffer — the two conditions
+  // the in-progress-word gate (June 2026) requires before it fires.
+  // Cursor is explicit because the gate's unknown-cursor default is
+  // "don't skip" (the production-safe choice; only known-end-cursor
+  // skips the trailing word).
+  const text = words.join(' ');
+  return { text, words, cursor: text.length };
 }
 
 // ---------------------------------------------------------------------------

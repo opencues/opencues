@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fix — Word-cue dispatch: in-progress-word gate no longer fires on unknown cursor (regression from #136)
+
+PR #136 (`perf(core): skip in-progress trailing word from word-cue dispatch`) introduced a `findInProgressTrailingWord` gate that drops the trailing word from word-cue dispatch when the user is actively typing at end-of-buffer. The gate's three checks: (1) buffer non-empty, (2) buffer doesn't end in whitespace, (3) cursor is at end-of-buffer.
+
+The original implementation got the third check wrong: it treated `cursor === undefined` as "assume end-of-buffer typing" — i.e. fired the gate when cursor was unknown. This silently dropped the only word in every CueContext that omitted `cursor`, which included almost every pre-existing core test (`output.test.ts` `ctx(text)` helper, `build-sources.providers.test.ts` literal contexts, etc.).
+
+The CI billing block from 2026-06-13 22:33Z hid the breakage for ~5h across PRs #135–#140. With billing resolved, `build · typecheck · test` started failing in 28 places — every single one was the same root cause.
+
+Fix: flip the unknown-cursor default to "don't skip". The gate now requires `cursor` to be **known AND at end-of-buffer**. Production hosts (CC v2.1, OC v1.14, gemini-cli, chrome, shell) always pass `cursor`, so the perf optimisation still fires on every real typing surface — only headless tests, agentic bare-injection, and any future host that doesn't expose cursor stop being silently penalised. `mkContextTyping` test helper updated to set `cursor: text.length` explicitly so PR #136's own gate-firing tests still exercise the optimisation.
+
+Net: 870/879 core tests pass (was 842/879), 1656/1656 runtime tests pass, no behaviour change for production hosts.
+
+Bumps:
+- `@opencues/core` 0.3.20 → 0.3.21.
+
 ### Perf — Cerebras gzip request compression; FUSED_SYSTEM payloads shrink 68%, TransformBlank median −100ms / p95 −179ms
 
 Cerebras's inference API accepts gzip-compressed request bodies via standard HTTP `Content-Encoding: gzip` ([docs](https://inference-docs.cerebras.ai/capabilities/payload-optimization)). `NodeHttpAdapter` now gzips every outbound request to `api.cerebras.ai` and adds the header. Gating lives in a single `GZIP_REQUEST_HOSTS` set; other providers stay on plain JSON.
