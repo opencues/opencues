@@ -10,7 +10,7 @@
     "oc-install-shell-integration": "./bin/oc-install-shell-integration"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "os": [
     "darwin",

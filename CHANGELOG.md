@@ -17,9 +17,12 @@ Two unrelated blockers stacked on a clean `pnpm exec opencues install claude-cod
 
 **2. `setup.sh`'s core copy flattened `dist/sources/` on macOS.** `setup.sh` § 5 copies every `dist/*/` subdir into the installed fork's `@opencues/core/`. The `for sub in "$CUES_CORE"/dist/*/` glob yields paths with a **trailing slash** (`.../dist/sources/`), and `cp -r src/ dest/` diverges by platform: GNU cp (Linux) copies the directory (`core/sources/`), but BSD cp (macOS) copies the directory *contents* into `core/`, flattening `dist/sources/*.js` to `core/*.js`. The installed `core/index.js`'s `require("./sources/config-source")` then 404'd, the boot-smoke probe failed, and install aborted. This is the same BSD/GNU portability class the repo already wraps for `sed -i` / `stat -c` (root CLAUDE.md § Cross-platform shell scripts). Fix: strip the glob's trailing slash with `${sub%/}` so `cp -r` copies the directory on both platforms. CI runs on Linux (GNU cp), so this was invisible to the existing `check-cc-bundle-integrity.sh` gate — macOS-only.
 
+**Node floor raised to 22.** Because no single isolated-vm version spans Node 18–25 and Node 18/20 are both EOL as of June 2026, the `engines.node` constraint is moved from `>=18` to `>=22` across the workspace (root, CLI, and all integrations), with an explicit `engines.node: ">=22"` added to `@opencues/runtime` where the native constraint originates. Bun-based hosts (opencode, shell) run their host process on Bun, not Node; the floor governs the Node-based install/CLI tooling and the runtime's `isolated-vm` JS-user-blank sandbox (which already degrades gracefully when the binding is absent).
+
 Bumps:
 - `@opencues/runtime` 0.3.9 → 0.3.10.
 - `@opencues/claude-code` 0.2.0 → 0.2.1.
+- `opencues` (CLI) 0.2.2 → 0.2.3.
 
 ### Fix — Word-cue dispatch: in-progress-word gate no longer fires on unknown cursor (regression from #136)
 
