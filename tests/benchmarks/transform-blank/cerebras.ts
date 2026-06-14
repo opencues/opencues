@@ -37,7 +37,9 @@ export async function chat(
     // Override via OPENCUES_CEREBRAS_REASONING=medium for probes that
     // need to mirror production (production uses 'medium' for
     // transform-blank — see llm-provider.ts).
-    reasoning_effort: (process.env.OPENCUES_CEREBRAS_REASONING ?? 'low') as 'low' | 'medium' | 'high',
+    // zai-glm-4.7 requires 'none' — any non-none value burns 500-700
+    // reasoning tokens for no quality gain (see model-thinking.ts).
+    reasoning_effort: (process.env.OPENCUES_CEREBRAS_REASONING ?? (MODEL === 'zai-glm-4.7' ? 'none' : 'low')) as 'none' | 'low' | 'medium' | 'high',
   });
 
   const t0 = Date.now();

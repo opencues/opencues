@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fix — `cerebras-model: zai-glm-4.7` now forwards `reasoning_effort: none` correctly; opt-in users get fast + accurate output instead of slow + 60% accuracy
+
+Cerebras's `zai-glm-4.7` ([their docs](https://inference-docs.cerebras.ai/capabilities/reasoning)) has a **binary** reasoning knob in practice: `'none'` cleanly disables thinking (0 reasoning tokens, ~280ms median); any other value (`low` / `medium` / `high`) burns 500-700 reasoning tokens for no quality gain (~1000ms median).
+
+Pre-PR the `isReasoningModelName` regex in `buildOpenAIBody` only matched `o\d|gpt-5|gpt-oss|qwen-3-thinking` — so `reasoning_effort` was silently dropped for `zai-glm-4.7` and the model defaulted to full thinking mode. Users opting in via `blanks-llm-model: zai-glm-4.7` got the slowest possible behaviour and (verified) a 60.8% / 94.9% drop on the fluid-blank-ambient bench (vs 99.4% on gpt-oss-120b).
+
+This PR:
+- Extends the regex to match `zai-glm` so the field reaches the wire.
+- Adds `'cerebras:zai-glm-4.7': { max: 'none', off: 'none' }` to `MODEL_THINKING` — the only useful mode. Both `max-thinking: on` and `max-thinking: off` resolve to `reasoning_effort: none`.
+- Updates the bench harnesses (`tests/benchmarks/fluid-blank/cerebras.ts` + `tests/benchmarks/transform-blank/cerebras.ts`) to use the same `none`-when-zai default so future bench runs measure what production runs.
+
+**Head-to-head accuracy on cerebras** (gpt-oss-120b/medium vs zai-glm-4.7/none, June 2026):
+
+| Bench | gpt-oss-120b/medium | zai-glm-4.7/none | Delta |
+|---|---|---|---|
+| fluid-blank standard 137 | 137/137 (100%) | 136/137 (99.3%) | −0.7pp |
+| fluid-blank ambient in-prompt 18 | 17/18 (94.4%) | 17/18 (94.4%) | 0pp |
+| fluid-blank ambient holdout 21 | 21/21 (100%) | 14/21 (66.7%) | **−33pp** |
+| transform-blank prod-fused 231 | 186/231 (80.5%) | 182/231 (78.8%) | −1.7pp (within cerebras variance) |
+
+zai is competitive on in-distribution cases (within 1pp) but loses substantially on the ambient holdout — novel patterns the prompt wasn't tuned against (ZIP codes, postcodes, callsigns, label-IS-question cases). **gpt-oss-120b stays the cerebras default.** This PR fixes the wiring so zai-glm-4.7 is a viable opt-in for users who want its ~50ms latency edge and don't care about the holdout accuracy gap.
+
+Bumps:
+- `@opencues/core` 0.3.17 → 0.3.18 (`isReasoningModelName` regex extension + `MODEL_THINKING` entry for `cerebras:zai-glm-4.7` + bench harness reasoning defaults + `docs/architecture/cerebras.md` extension).
+- `@opencues/chrome` 0.2.17 → 0.2.18 (bundle bytes change; manifest + package.json in lockstep).
+
 ### Perf — Cerebras predicted outputs in TransformBlank fused path (200-char gate); iterative refinement on long bodies hits ~66% prediction acceptance
 
 Cerebras's [Predicted Outputs](https://inference-docs.cerebras.ai/capabilities/predicted-outputs) is a client-side speculative-decoding hint: pre-supply your guess at the output, the server validates token-by-token against the actual generation, matching tokens come from cache (input rate billing), mismatches regenerate (output rate billing).

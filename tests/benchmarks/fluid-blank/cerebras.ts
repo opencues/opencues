@@ -23,6 +23,17 @@ const agent = new https.Agent({ keepAlive: true, maxSockets: 32 });
 export interface ChatMessage { role: 'system' | 'user' | 'assistant'; content: string; }
 export interface ChatResult { text: string; latencyMs: number; }
 
+/** Per-model default reasoning effort. Mirrors the production
+ *  MODEL_THINKING table in @opencues/core/model-thinking.ts so the
+ *  bench measures what production will actually run.
+ *  - gpt-oss-120b: 'low' is the floor (reasoning model, 'none' rejected)
+ *  - zai-glm-4.7: 'none' is the only useful value (any other burns
+ *    500-700 reasoning tokens for no quality gain) */
+function defaultReasoningFor(model: string): 'none' | 'low' | 'medium' | 'high' {
+  if (model === 'zai-glm-4.7') return 'none';
+  return 'low';
+}
+
 export async function chat(
   messages: ChatMessage[],
   opts: { temperature?: number; maxTokens?: number; seed?: number; reasoning?: 'none' | 'low' | 'medium' | 'high' } = {},
@@ -33,7 +44,7 @@ export async function chat(
     temperature: opts.temperature ?? 0,
     max_tokens: opts.maxTokens ?? 512,
     seed: opts.seed ?? 42,
-    reasoning_effort: opts.reasoning ?? 'low',
+    reasoning_effort: opts.reasoning ?? defaultReasoningFor(MODEL),
   });
 
   const t0 = Date.now();
