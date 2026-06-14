@@ -376,9 +376,15 @@ mkdir -p "$OC_NM_DIR/core"
 # structurally safe.
 cp "$CUES_CORE"/dist/*.js "$CUES_CORE"/dist/*.d.ts "$OC_NM_DIR/core/" 2>/dev/null || true
 [ -f "$CUES_CORE/node-http-adapter.js" ] && cp "$CUES_CORE/node-http-adapter.js" "$OC_NM_DIR/core/"
+# NOTE: strip the trailing slash the `*/` glob leaves on $sub. With the
+# trailing slash, BSD cp (macOS) copies the directory *contents* into
+# core/ — flattening dist/sources/*.js to core/*.js so `require("./sources/
+# config-source")` 404s — whereas GNU cp (Linux) copies the dir itself.
+# `${sub%/}` makes `cp -r` copy the directory on both. (BSD/GNU compat,
+# same class as the sedi/stat_size wrappers — see root CLAUDE.md.)
 for sub in "$CUES_CORE"/dist/*/; do
   [ -d "$sub" ] || continue
-  cp -r "$sub" "$OC_NM_DIR/core/"
+  cp -r "${sub%/}" "$OC_NM_DIR/core/"
 done
 node -e "
 const pkg = JSON.parse(require('fs').readFileSync('$CUES_CORE/package.json', 'utf8'));

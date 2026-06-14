@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fix — macOS / Node 24 install blockers: isolated-vm Node-24 support + setup.sh BSD `cp` flattening
+
+Two unrelated blockers stacked on a clean `pnpm exec opencues install claude-code` on macOS + Node 24. Both surfaced as install-time failures rather than silent runtime drift (the `validateFork` boot-smoke probe and the native-module probe both fired loudly), but together they made a fresh install impossible on the platform.
+
+**1. `isolated-vm` couldn't build on Node 24.** The dependency was pinned `^5.0.4`. isolated-vm 5.0.4's `binding.gyp` compiles with `-std=c++17`, but Node 24's bundled V8 headers (`cppgc/.../conditional-stack-allocated.h`) use C++20 `concept` / `requires`, so the node-gyp fallback failed with `unknown type name 'concept'`. Forcing C++20 then surfaced deeper V8 API removals 5.0.4 doesn't track (`CopyablePersistentTraits`, `ObjectTemplate::SetAccessor`, non-virtual `PostTask`) — i.e. 5.0.4 is fundamentally Node-24-incompatible, not just a compiler-flag issue. Bumped to `^6.1.2` (engines `node >=22`), which ships a prebuilt darwin-arm64 binary for the Node 24 ABI and loads via `node-gyp-build` with no local toolchain. The JS API surface the runtime uses (`Isolate` / `createContextSync` / `Reference` / `ExternalCopy` / `compileScriptSync` / `derefInto`) is unchanged across the 5→6 major (that bump was purely engine support), so `node-loader.ts` needed no code change. **Note:** this raises the runtime's effective Node floor to 22 (no single isolated-vm version spans Node 18–25; Node 18 and 20 are both EOL as of June 2026).
+
+**2. `setup.sh`'s core copy flattened `dist/sources/` on macOS.** `setup.sh` § 5 copies every `dist/*/` subdir into the installed fork's `@opencues/core/`. The `for sub in "$CUES_CORE"/dist/*/` glob yields paths with a **trailing slash** (`.../dist/sources/`), and `cp -r src/ dest/` diverges by platform: GNU cp (Linux) copies the directory (`core/sources/`), but BSD cp (macOS) copies the directory *contents* into `core/`, flattening `dist/sources/*.js` to `core/*.js`. The installed `core/index.js`'s `require("./sources/config-source")` then 404'd, the boot-smoke probe failed, and install aborted. This is the same BSD/GNU portability class the repo already wraps for `sed -i` / `stat -c` (root CLAUDE.md § Cross-platform shell scripts). Fix: strip the glob's trailing slash with `${sub%/}` so `cp -r` copies the directory on both platforms. CI runs on Linux (GNU cp), so this was invisible to the existing `check-cc-bundle-integrity.sh` gate — macOS-only.
+
+Bumps:
+- `@opencues/runtime` 0.3.9 → 0.3.10.
+- `@opencues/claude-code` 0.2.0 → 0.2.1.
+
 ### Fix — Word-cue dispatch: in-progress-word gate no longer fires on unknown cursor (regression from #136)
 
 PR #136 (`perf(core): skip in-progress trailing word from word-cue dispatch`) introduced a `findInProgressTrailingWord` gate that drops the trailing word from word-cue dispatch when the user is actively typing at end-of-buffer. The gate's three checks: (1) buffer non-empty, (2) buffer doesn't end in whitespace, (3) cursor is at end-of-buffer.
