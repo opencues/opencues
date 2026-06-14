@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Perf — Cerebras gzip request compression; FUSED_SYSTEM payloads shrink 68%, TransformBlank median −100ms / p95 −179ms
+
+Cerebras's inference API accepts gzip-compressed request bodies via standard HTTP `Content-Encoding: gzip` ([docs](https://inference-docs.cerebras.ai/capabilities/payload-optimization)). `NodeHttpAdapter` now gzips every outbound request to `api.cerebras.ai` and adds the header. Gating lives in a single `GZIP_REQUEST_HOSTS` set; other providers stay on plain JSON.
+
+**Effect** (N=20 trials per cell, gpt-oss-120b with hidden reasoning, June 2026):
+
+| Source shape | Plain body | Gzip body | Reduction | Δ median | Δ p95 |
+|---|---|---|---|---|---|
+| TransformBlank fused (FUSED_SYSTEM) | 86,384 B | 27,174 B | **−68.5%** | **−100ms** | **−179ms** |
+| FluidBlank fused (FUSED_SYSTEM) | 86,205 B | 27,074 B | −68.6% | −44ms | +80ms (noise) |
+| ConfigIntent (small system) | 839 B | 490 B | −41.6% | +6ms | −53ms |
+| Word-cue spelling | 1,144 B | 701 B | −38.7% | +1ms | **−332ms (−45%)** |
+| AgentRewrite short doc | 1,471 B | 828 B | −43.7% | +9ms | **−152ms (−23%)** |
+| AgentRewrite long doc | 2,625 B | 1,369 B | −47.8% | −22ms | +7ms |
+
+Big payloads (FUSED_SYSTEM-bearing) hit −100ms median wins from wire-size reduction alone. Small payloads are median-neutral but their p95 tail tightens substantially — word-cue p95 −332ms is the standout since spelling fires on every typing pause.
+
+**No size gate.** Bench evidence shows every shape is net-neutral or net-positive at p95.
+
+**Accuracy preserved** — bench-validated:
+- `tests/benchmarks/fluid-blank-ambient/fused-bench.ts`: **175/176** (target).
+- `tests/benchmarks/transform-blank/prod-fused.ts`: within master's variance band (186-193).
+
+Chrome path unchanged — chrome uses a throwing stub for `node-http-adapter` and routes through `FetchHttpAdapter`. No chrome bundle change.
+
+Bench harnesses in `tests/benchmarks/{fluid-blank,transform-blank}/cerebras.ts` mirror the production wire shape so latency comparisons remain honest.
+
+Documented in [`docs/architecture/cerebras.md` § Payload optimization](docs/architecture/cerebras.md#payload-optimization--gzip-request-compression).
+
+Bumps:
+- `@opencues/core` 0.3.19 → 0.3.20 (`node-http-adapter.js` gzip gate + bench harness mirror + cerebras.md extension).
+
 ### Perf — Cerebras `reasoning_format: "hidden"` on gpt-oss-120b; p95 tail drops 26-40% on short-output sources
 
 Cerebras's `gpt-oss-120b` accepts a `reasoning_format` parameter ([docs](https://inference-docs.cerebras.ai/capabilities/reasoning)) that controls whether the reasoning trace appears in the response. Default is `"text_parsed"` (reasoning appears as a separate field); `"hidden"` suppresses the reasoning text while still generating + counting the tokens internally.

@@ -41,6 +41,19 @@ exports.NodeHttpAdapter = void 0;
 // own).
 const DEFAULT_TIMEOUT_MS = 15000;
 
+// Hosts where the adapter unconditionally gzips request bodies and adds
+// `Content-Encoding: gzip`. Bench evidence (June 2026, N=20 per cell):
+// FUSED_SYSTEM-bearing payloads shrink 86KB → 27KB (-68%), saving
+// -100ms median + -179ms p95 on TransformBlank. Word-cue + AgentRewrite
+// payloads are small (1-3KB) but their p95 still tightens by -150 to
+// -332ms. Median impact on small payloads is noise (±10ms); p95 wins
+// alone justify ungated application. Chrome's FetchHttpAdapter doesn't
+// gzip (browser fetch can't auto-encode the request body cleanly).
+// See docs/architecture/cerebras.md § "Payload optimization (gzip)".
+const GZIP_REQUEST_HOSTS = new Set([
+    'api.cerebras.ai',
+]);
+
 class NodeHttpAdapter {
     constructor(config = {}) {
         this.config = config;
@@ -104,13 +117,31 @@ class NodeHttpAdapter {
             } catch (_) {}
         }
 
+        // Gzip request body for hosts that accept Content-Encoding: gzip
+        // (cerebras today). Saves wire bytes on FUSED_SYSTEM-bearing
+        // payloads + tightens p95 across every cerebras source. Header
+        // injection is non-mutating on the caller's headers object.
+        let wireHeaders = headers;
+        if (GZIP_REQUEST_HOSTS.has(u.hostname)) {
+            try {
+                const zlib = require('zlib');
+                const buf = typeof body === 'string' ? Buffer.from(body, 'utf8') : body;
+                body = zlib.gzipSync(buf);
+                wireHeaders = Object.assign({}, headers, { 'Content-Encoding': 'gzip', 'Content-Length': body.length });
+            } catch (_) {
+                // zlib failure (shouldn't happen on node) — fall through
+                // with the plain body. Cerebras decompression layer is
+                // optional, so this won't break the call.
+            }
+        }
+
         return new Promise((resolve, reject) => {
             try {
                 const req = https.request({
                     hostname: u.hostname,
                     path: u.pathname + u.search,
                     method: 'POST',
-                    headers,
+                    headers: wireHeaders,
                     agent: this.agent,
                     timeout: this.config.timeout || DEFAULT_TIMEOUT_MS,
                 }, (res) => {

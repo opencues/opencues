@@ -8,6 +8,7 @@
  */
 
 import * as https from 'https';
+import { gzipSync } from 'node:zlib';
 
 const ENDPOINT = 'https://api.cerebras.ai/v1/chat/completions';
 export const MODEL = process.env.OPENCUES_CEREBRAS_MODEL ?? 'gpt-oss-120b';
@@ -42,6 +43,11 @@ export async function chat(
     reasoning_effort: (process.env.OPENCUES_CEREBRAS_REASONING ?? (MODEL === 'zai-glm-4.7' ? 'none' : 'low')) as 'none' | 'low' | 'medium' | 'high',
   });
 
+  // Mirror production's gzip request compression (PR June 2026, see
+  // @opencues/core/node-http-adapter.js's GZIP_REQUEST_HOSTS). Keeps
+  // bench wire-shape identical to production so latency comparisons
+  // are honest.
+  const wireBody = gzipSync(Buffer.from(body, 'utf8'));
   const t0 = Date.now();
   const data = await new Promise<string>((resolve, reject) => {
     const u = new URL(ENDPOINT);
@@ -51,8 +57,9 @@ export async function chat(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Content-Encoding': 'gzip',
         'Authorization': `Bearer ${API_KEY}`,
-        'Content-Length': Buffer.byteLength(body),
+        'Content-Length': wireBody.length,
       },
       agent,
     }, (res) => {
@@ -61,7 +68,7 @@ export async function chat(
       res.on('end', () => resolve(buf));
     });
     req.on('error', reject);
-    req.write(body);
+    req.write(wireBody);
     req.end();
   });
   const latencyMs = Date.now() - t0;
