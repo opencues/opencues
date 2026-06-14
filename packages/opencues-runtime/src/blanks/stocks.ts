@@ -65,8 +65,11 @@ export class StocksBlank implements Blank {
       const resp = await this._fetch(url);
       if (!resp.ok) return `${ticker}: HTTP ${resp.status}`;
       const data = (await resp.json()) as { c?: number };
-      // Embed ticker so `blankReplace: auto` produces self-contained
-      // output when the trigger is wiped ("nvda _" → "NVDA: $198.47").
+      // Shape-driven read-only emission (June 2026). No tab — stocks
+      // has no cycle vocab. The runtime splices the whole string as
+      // one wipeable gray span via the regular consumeContext path.
+      // See docs/architecture/shape-driven-blanks.md § Emission
+      // shapes by cycle-vocab presence.
       const price = `${ticker}: $${data.c?.toFixed(2) ?? '?'}`;
       this._cache.set(ticker, { price, ts: Date.now() });
       return price;

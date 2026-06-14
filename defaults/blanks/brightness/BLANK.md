@@ -4,12 +4,17 @@ type: blank
 tip: screen brightness
 speak: true
 blankKeywords: brightness
+# blankShapes: declarative intent gate (mirrors volume). Drops prose
+# mentions of "brightness" from claiming the slot.
+#   Shape 1 — bare GET:                brightness _
+#   Shape 2 — direct SET:              brightness 70 _    /  brightness 70% _
+#   Shape 3 — verb-prefixed SET:       set brightness to 70 _    /  set brightness 70 _
+blankShapes: [{"pattern":"^brightness\\s*_$","action":"get"},{"pattern":"^brightness\\s+(\\d+)\\s*%?\\s*_$","action":"set","valueGroup":1},{"pattern":"^set\\s+brightness\\s+(?:to\\s+)?(\\d+)\\s*%?\\s*_$","action":"set","valueGroup":1}]
 blankStep: 10
 blankAutoPopulate: true
-blankSuffix: %
-# Raw "70%" is context-free; keep the "brightness" prefix so readers
-# can tell volume / battery / brightness apart.
-blankReplace: keep
+blankSatellite: true
+blankClearOnEdit: true
+blankConsumeContext: true
 blankScript: ./brightness-blank.sh
 # Sandbox: declared OFF — script calls system brightness controls
 # (xrandr / Win32 / macOS via /mnt/c on WSL) that need filesystem
