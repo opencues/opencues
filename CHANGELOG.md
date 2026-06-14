@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Perf — Cerebras `reasoning_format: "hidden"` on gpt-oss-120b; p95 tail drops 26-40% on short-output sources
+
+Cerebras's `gpt-oss-120b` accepts a `reasoning_format` parameter ([docs](https://inference-docs.cerebras.ai/capabilities/reasoning)) that controls whether the reasoning trace appears in the response. Default is `"text_parsed"` (reasoning appears as a separate field); `"hidden"` suppresses the reasoning text while still generating + counting the tokens internally.
+
+This PR sets `reasoning_format: "hidden"` for every cerebras dispatch to a gpt-oss-* model. Conditional in `buildOpenAIBody`: `opts.provider === 'cerebras'` AND `req.model` starts with `gpt-oss`. The bench harnesses (`tests/benchmarks/fluid-blank/cerebras.ts`) were updated to mirror so future benches measure what production runs.
+
+**Effect** (N=20 trials per cell, June 2026):
+
+| Source | default p95 | hidden p95 | Δ |
+|---|---|---|---|
+| FluidBlank | 579ms | 348ms | **−231ms (−40%)** |
+| ConfigIntent | 603ms | 446ms | **−157ms (−26%)** |
+| TransformBlank | 461ms | 470ms | +9ms (noise) |
+
+The pattern is clean: hidden mode tightens p95 for **short-output sources** (FluidBlank, ConfigIntent — ~50-90 completion tokens) but is neutral for **long-output sources** (TransformBlank fused — ~240 completion tokens). Hypothesis: when content is small but the reasoning trace is heavy, transmission of the trace inflates worst-case latency; hidden mode skips that.
+
+**Accuracy preserved** — bench-validated on both:
+- `tests/benchmarks/fluid-blank-ambient/fused-bench.ts`: **175/176** (matches target).
+- `tests/benchmarks/transform-blank/prod-fused.ts`: **187/231** (within master's variance band 186-193).
+- 1656/1656 runtime tests pass.
+
+Cost unchanged: reasoning tokens are still computed and counted in `usage.completion_tokens_details.reasoning_tokens`. Hidden mode only suppresses the **text** of the reasoning trace from the response payload.
+
+Why no runtime toggle: the behavior change is semantic-neutral and the bench data is clear, so this is always-on for cerebras gpt-oss-120b. Documented in [`docs/architecture/cerebras.md` § Hidden reasoning format](docs/architecture/cerebras.md#hidden-reasoning-format-on-gpt-oss-120b).
+
+Bumps:
+- `@opencues/core` 0.3.18 → 0.3.19 (one conditional in `buildOpenAIBody` + bench harness mirror + cerebras.md extension).
+- `@opencues/chrome` 0.2.18 → 0.2.19 (bundle bytes change; manifest + package.json in lockstep).
+
 ### Fix — `cerebras-model: zai-glm-4.7` now forwards `reasoning_effort: none` correctly; opt-in users get fast + accurate output instead of slow + 60% accuracy
 
 Cerebras's `zai-glm-4.7` ([their docs](https://inference-docs.cerebras.ai/capabilities/reasoning)) has a **binary** reasoning knob in practice: `'none'` cleanly disables thinking (0 reasoning tokens, ~280ms median); any other value (`low` / `medium` / `high`) burns 500-700 reasoning tokens for no quality gain (~1000ms median).

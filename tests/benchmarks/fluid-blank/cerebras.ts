@@ -38,14 +38,23 @@ export async function chat(
   messages: ChatMessage[],
   opts: { temperature?: number; maxTokens?: number; seed?: number; reasoning?: 'none' | 'low' | 'medium' | 'high' } = {},
 ): Promise<ChatResult> {
-  const body = JSON.stringify({
+  // Mirror production: cerebras gpt-oss-120b uses reasoning_format:
+  // "hidden" to suppress the reasoning trace from the response
+  // (bench-validated tail reduction; see llm-provider.ts § hidden
+  // reasoning). zai-glm-4.7 runs at reasoning_effort: 'none' so it
+  // produces no reasoning text either way.
+  const reqBody: Record<string, unknown> = {
     model: MODEL,
     messages,
     temperature: opts.temperature ?? 0,
     max_tokens: opts.maxTokens ?? 512,
     seed: opts.seed ?? 42,
     reasoning_effort: opts.reasoning ?? defaultReasoningFor(MODEL),
-  });
+  };
+  if (/^gpt-oss/i.test(MODEL)) {
+    reqBody.reasoning_format = 'hidden';
+  }
+  const body = JSON.stringify(reqBody);
 
   const t0 = Date.now();
   const data = await new Promise<string>((resolve, reject) => {

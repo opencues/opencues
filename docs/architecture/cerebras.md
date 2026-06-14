@@ -162,6 +162,34 @@ A `pred-accepted=0` line on a long input is a regression signal — something ab
 
 (Future-proofing: every new Cerebras feature OpenCues adopts gets a section here. Today the list is short.)
 
+### Hidden reasoning format on gpt-oss-120b
+
+Cerebras's `gpt-oss-120b` accepts a `reasoning_format` parameter ([docs](https://inference-docs.cerebras.ai/capabilities/reasoning)) that controls how the model's internal reasoning trace appears in the response:
+
+- **`text_parsed`** (default for gpt-oss): reasoning appears as a separate field in the response message.
+- **`hidden`**: reasoning tokens are still **computed and counted**, but the response contains only the final answer in `message.content`. No `reasoning` field is returned.
+
+**OpenCues passes `reasoning_format: "hidden"` for every cerebras dispatch to gpt-oss-120b.** This is conditional in `buildOpenAIBody`: gated on `provider === 'cerebras'` AND `req.model` starts with `gpt-oss`.
+
+Why hidden:
+- **Same accuracy**: same internal generation, identical content bytes. Bench-validated at 175/176 on `tests/benchmarks/fluid-blank-ambient/fused-bench.ts` and 187/231 on `transform-blank/prod-fused.ts` (both within master's variance band).
+- **Same cost**: reasoning tokens still counted (no change in per-call billing).
+- **Same median latency** (within ±10ms noise).
+- **Significant p95 tail reduction** on short-output sources:
+
+  | Source | default p95 | hidden p95 | Δ |
+  |---|---|---|---|
+  | FluidBlank | 579ms | 348ms | **−231ms (−40%)** |
+  | ConfigIntent | 603ms | 446ms | **−157ms (−26%)** |
+  | TransformBlank | 461ms | 470ms | +9ms (noise) |
+
+  N=20 trials per cell, June 2026. Long-output sources (TransformBlank's fused rewrite) are neutral because the output content dominates the response payload — the reasoning trace doesn't materially change the transmission cost. Short-output sources have a small content payload, so the reasoning trace was disproportionately inflating worst-case responses; hidden strips that overhead.
+
+Why gated to gpt-oss-120b:
+- Cerebras docs scope `reasoning_format` to gpt-oss-120b and zai-glm-4.7. zai-glm-4.7 already runs at `reasoning_effort: 'none'` for us (no reasoning text to hide); the parameter is a no-op there but we still gate it tight to avoid sending an unknown field to other providers' models.
+
+Why NOT a runtime toggle: the behavior change is semantic-neutral and the bench data is clear, so we don't expose a config scalar for it. It's always on for cerebras gpt-oss-120b.
+
 ### Reasoning effort `medium` for transform-blank / fluid-blank dispatches
 
 Cerebras's `gpt-oss-120b` exposes a `reasoning_effort` parameter. Our default is `medium` for transform-blank and `low` for fluid-blank, tuned by the [thinking-budget bench](../../tests/benchmarks/thinking-budget/). The `max-thinking: off` scalar dials this down further (see [max-thinking.md](max-thinking.md)).
