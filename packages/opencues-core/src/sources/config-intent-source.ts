@@ -977,8 +977,12 @@ export class ConfigIntentSource implements CueSource {
           // and now says "use cerebras for auditors _" must NOT keep
           // the old model around — the resolver would then dispatch
           // `cerebras + claude-opus-4-7` and 400. Mirrors the
-          // providerScalarToModelScalar reset in cycling.ts.
-          await apply(modelScalar, 'default');
+          // providerScalarToModelScalar reset in cycling.ts. Write the
+          // NEW provider's defaultModel explicitly (not the literal
+          // `default` sentinel) so OPENCUES.md is self-explanatory and
+          // doctor's "inert sentinel" warning doesn't fire.
+          const providerAdapter = getProvider(verdict.provider);
+          await apply(modelScalar, providerAdapter?.defaultModel ?? 'default');
         }
         displaySelector = providerScalar;
         // Always show what model is in use — even when the user didn't

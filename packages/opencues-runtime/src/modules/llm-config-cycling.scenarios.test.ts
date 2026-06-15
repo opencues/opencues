@@ -13,10 +13,14 @@
  *   1. PAIR DISPLAY — the buffer shows `<bucket>-llm-provider provider:model`
  *      whenever the verdict named a model, so the user always knows
  *      what's in use.
+
  *   2. PROVIDER-CYCLE RESETS MODEL — cycling Ctrl+Alt+Up on the
- *      provider satellite ALSO writes `default` to the sibling model
- *      scalar via applyOpenCuesScalar, so the (provider, model) pair
- *      stays valid by construction.
+ *      provider satellite ALSO writes the NEW provider's defaultModel
+ *      to the sibling model scalar via applyOpenCuesScalar, so the
+ *      (provider, model) pair stays valid by construction. (Up to PR
+ *      #149 this wrote the literal `default` sentinel; we now write
+ *      the resolved name so OPENCUES.md is self-explanatory and
+ *      doctor's "inert sentinel" warning doesn't fire.)
  *   3. MODEL MENU IS PROVIDER-AWARE — the `*-llm-model` features
  *      registered with valuesProvider show only the current provider's
  *      knownModels. Cycling provider reshapes the model menu.
@@ -25,6 +29,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { getProvider } from '@opencues/core';
 import { Cycling } from './cycling';
 import { ConfigLoader } from './config-loader';
 import { HighlightState } from '../state/highlight-state';
@@ -82,12 +87,17 @@ describe('LLM config cycling — provider cycle resets sibling model', () => {
     hlState.activate(1, 'auditors-llm-provider anthropic');
     adapter.fireKey('up', { ctrl: true, alt: true });
 
-    // Provider walked to the next value in the registry. Model reset to default.
+    // Provider walked to the next value in the registry. Model reset to
+    // the new provider's defaultModel — explicit, not the legacy
+    // `'default'` sentinel.
+    const newProvider = loader.opencuesState.settings.get('auditors-llm-provider')!;
     const newModel = loader.opencuesState.settings.get('auditors-llm-model');
-    expect(newModel, 'sibling model scalar must reset on provider cycle').toBe('default');
+    const expectedModel = getProvider(newProvider)?.defaultModel ?? 'default';
+    expect(newModel, 'sibling model scalar must reset to new provider\'s defaultModel').toBe(expectedModel);
+    expect(newModel, 'must NOT be the stale prior model').not.toBe('claude-opus-4-7');
   });
 
-  it('cycling blanks-llm-provider also resets blanks-llm-model', async () => {
+  it('cycling blanks-llm-provider also resets blanks-llm-model to the new provider\'s default', async () => {
     const { adapter, hlState, loader } = await setupBucketCycle(
       'blanks-llm-provider cerebras',
       'blanks-llm-provider',
@@ -96,10 +106,12 @@ describe('LLM config cycling — provider cycle resets sibling model', () => {
     loader.applyOpenCuesScalar('blanks-llm-model', 'gpt-oss-120b');
     hlState.activate(1, 'blanks-llm-provider cerebras');
     adapter.fireKey('up', { ctrl: true, alt: true });
-    expect(loader.opencuesState.settings.get('blanks-llm-model')).toBe('default');
+    const newProvider = loader.opencuesState.settings.get('blanks-llm-provider')!;
+    expect(loader.opencuesState.settings.get('blanks-llm-model'))
+      .toBe(getProvider(newProvider)?.defaultModel ?? 'default');
   });
 
-  it('cycling cues-llm-provider also resets cues-llm-model', async () => {
+  it('cycling cues-llm-provider also resets cues-llm-model to the new provider\'s default', async () => {
     const { adapter, hlState, loader } = await setupBucketCycle(
       'cues-llm-provider openai',
       'cues-llm-provider',
@@ -108,7 +120,9 @@ describe('LLM config cycling — provider cycle resets sibling model', () => {
     loader.applyOpenCuesScalar('cues-llm-model', 'gpt-5.4');
     hlState.activate(1, 'cues-llm-provider openai');
     adapter.fireKey('up', { ctrl: true, alt: true });
-    expect(loader.opencuesState.settings.get('cues-llm-model')).toBe('default');
+    const newProvider = loader.opencuesState.settings.get('cues-llm-provider')!;
+    expect(loader.opencuesState.settings.get('cues-llm-model'))
+      .toBe(getProvider(newProvider)?.defaultModel ?? 'default');
   });
 
   it('cycling a non-provider scalar (voice-mode) does NOT clear any model scalar', async () => {
@@ -213,14 +227,19 @@ describe('LLM config cycling — invariant: no invalid (provider, model) pair la
         hlState.activate(1, adapter.getText());
         adapter.fireKey('up', { ctrl: true, alt: true });
 
-        const provider = loader.opencuesState.settings.get(`${bucket}-llm-provider`);
+        const provider = loader.opencuesState.settings.get(`${bucket}-llm-provider`)!;
         const model = loader.opencuesState.settings.get(`${bucket}-llm-model`);
 
-        // After ANY cycle, model must be `default` (since the cycle
-        // unconditionally resets it). This is the strongest invariant:
-        // there's no path where an invalid pair can persist.
-        expect(model, `after cycle ${i + 1}, ${bucket}-llm-model must be 'default' (provider=${provider})`)
-          .toBe('default');
+        // After ANY cycle, model must be the new provider's defaultModel
+        // (since the cycle unconditionally resets it to a valid value).
+        // When the cycled-to value is the `inherit` meta-provider (no
+        // adapter), the runtime falls back to the legacy `default`
+        // sentinel — both have the same "fall through to global"
+        // semantics. This is the strongest invariant: there's no path
+        // where an invalid pair can persist.
+        const expectedDefault = getProvider(provider)?.defaultModel ?? 'default';
+        expect(model, `after cycle ${i + 1}, ${bucket}-llm-model must be ${provider}'s defaultModel (${expectedDefault})`)
+          .toBe(expectedDefault);
       }
     });
   }

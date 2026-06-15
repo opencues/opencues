@@ -472,15 +472,19 @@ describe('ConfigIntentSource', () => {
     const input = 'use anthropic for cues _';
     const result = await src.getCues(ctxFromText(input));
     assert.strictEqual(result.results.length, 1);
-    // Provider scalar written + sibling model reset to `default` so any
+    // Provider scalar written + sibling model reset to the NEW provider's
+    // resolved defaultModel (anthropic → claude-opus-4-7) so any
     // previously-pinned model (incompatible with the new provider) is
     // cleared. Mirrors the cycling-resets-model invariant — fluid-config
     // and cycling must produce identical OPENCUES.md state for an
     // equivalent user intent (provider switch with no model named).
-    assert.deepStrictEqual(apply.calls, [
-      ['cues-llm-provider', 'anthropic'],
-      ['cues-llm-model', 'default'],
-    ]);
+    // Writing the resolved model name (not the legacy `default` sentinel)
+    // makes OPENCUES.md self-explanatory and keeps doctor's "inert
+    // sentinel" warning silent.
+    assert.strictEqual(apply.calls.length, 2);
+    assert.deepStrictEqual(apply.calls[0], ['cues-llm-provider', 'anthropic']);
+    assert.strictEqual(apply.calls[1]![0], 'cues-llm-model');
+    assert.match(apply.calls[1]![1]!, /^claude-/, 'model scalar must be an anthropic defaultModel, not the legacy `default` sentinel');
     const r = result.results[0]!;
     assert.deepStrictEqual(r.alternatives, ['cues-llm-provider']);
     // Display falls back to anthropic's defaultModel so the user always
