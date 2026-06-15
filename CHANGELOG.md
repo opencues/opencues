@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Improvement — identity- + blank-context prompts: section-type vocabulary, `covers:` synonyms, specific-entity check (`@opencues/core` 0.3.24 → 0.3.25)
+
+`renderIdentityContextCatalogForTransform` and `renderBlankContextCatalogForTransform` got two structural prompt revisions, validated by a new `tests/benchmarks/identity-order/` harness across 17 compose-style inputs × 2 message-orders × multiple seeds.
+
+**Identity-context:** rule 6 swapped a flat genre table (email-sig / cover-letter / bio / ...) for a **section-type vocabulary** (BYLINE / SIGNATURE / CONTACT HEADER / ADDRESS BLOCK / PROFILE-LINK STRIP / ROLE-LINE / SUBJECT TITLE) plus a **document-shape decomposition** (10 doc types → which sections each one has). This generalises to inputs the old table never named (CV header, invoice header, podcast guest intro, portfolio about, conference talk abstract). Each catalog line now also carries a `(covers: synonyms)` suffix mirroring blank-context's pattern, so the model binds natural prose ("my role", "where I work", "DM me") back to the canonical token. Mean utilization on the 17-input bench rose from 79.4% baseline → 87.6% v8; conference-talk-abstract went 0% → 80% from the `covers:` hints alone.
+
+**Blank-context:** rules 7 + 8 added — a **specific-entity check** ("when prose names Apple/Bitcoin/etc., scan the catalog before paraphrasing") and a **one-entity-per-token** constraint with WRONG/RIGHT negative examples. Fixes two production bugs the bench surfaced:
+
+- *Apple-position email*: the model wrote prose about Apple without ever citing `[STOCK AAPL]`, burying the live value the user wanted visible. Now uses the token.
+- *Market summary email*: the model used `[STOCK AAPL]` as an S&P 500 index level ("S&P 500 closed at [STOCK AAPL] points") and `[STOCK MSFT]` as an oil price. Both now write prose for unmapped values and use tokens only for their actual entities.
+
+**Latency**: the longer stable prefix (1.8k → 5.5k bytes for the catalog block) actually **reduces TTFT** on cerebras gpt-oss-120b — measured −21.6% median, −766ms p95 across 50 calls. Bigger cached prefix + better-structured guidance shortens the reasoning loop. No regression elsewhere — 870 core + 1671 runtime + 177 vitest tests all pass.
+
+The bench harness lives at `tests/benchmarks/identity-order/run.ts` (3-axis sweep, utilization + dups + missed-slots + raw-leak audit) and `latency-probe.ts` (baseline-vs-prod TTFT compare). Re-run before any future edit to either catalog's RULES block.
+
 ### Fix — provider-cycle resets sibling model to the resolved `defaultModel`, not the legacy `default` sentinel
 
 When the user flipped a bucket provider without naming a model — either via the ConfigIntent natural-language path (`switch model to cerebras _`) or via the cycling satellite (Ctrl+Alt+↑ on `blanks-llm-provider`) — the apply path wrote the literal string `default` to the sibling `<bucket>-llm-model` scalar. That kept the (provider, model) pair valid at dispatch time (the runtime treats `default` as a fall-through sentinel) but tripped doctor's "inert sentinel" warning and confused users reading OPENCUES.md ("what is `default`? why is it stuck?").
