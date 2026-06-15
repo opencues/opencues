@@ -27,5 +27,10 @@ export default defineConfig({
       'src/conformance.test.ts',
       'src/sources/fluid-blank-error-substitute.test.ts',
     ],
+    // `isolate: false` — don't reset modules between test files.
+    // Mirrors the runtime config. Small absolute win here (the vitest-
+    // loadable subset is fast already), but kept consistent so the
+    // contract is uniform across packages.
+    isolate: false,
   },
 });
