@@ -1,10 +1,31 @@
 name: CI
 
+# paths-ignore skips CI entirely on PRs that only touch documentation,
+# changelog, license, or other repo metadata. The filter fires only when
+# EVERY changed file matches — a PR that mixes source + docs still runs
+# full CI. Doc-only PRs see the checks count as "skipped" (NOT "passed");
+# branch protection's required-checks list needs adjusting accordingly,
+# or doc-only PRs will be blocked until the required checks pass.
+#
+# Saved a full CI run for ≈30% of the recent PRs in this repo
+# (#143, #144, #149's CHANGELOG were the canonical doc-only shapes).
 on:
   push:
     branches: [master]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "spec/**"
+      - "blog-resources/**"
+      - "LICENSE"
   pull_request:
     branches: [master]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "spec/**"
+      - "blog-resources/**"
+      - "LICENSE"
 
 # Cancel older runs of the same branch when a new push lands.
 concurrency:
@@ -19,9 +40,21 @@ jobs:
   # (≈90s on a cold cache, ≈30s warm) and removes the rebuild that ran
   # twice in parallel. The hermeticity check still runs the same scripts
   # — it just shares the install + build with the rest of the job.
+  # build-and-test is the critical-path job (~1m49s on a warm cache, ~80s
+  # of which is CPU-bound test execution via vitest workers). On a larger
+  # runner the test step parallelises better — expect ~40% off the test
+  # step on 4-core, ~60% on 8-core. Other jobs are short or I/O-bound and
+  # don't materially benefit, so they stay on the standard runner.
+  #
+  # To enable: org admin configures `ubuntu-latest-4-cores` (or similar)
+  # as a larger runner, then set the repo variable
+  # `OPENCUES_CI_BUILD_RUNNER=ubuntu-latest-4-cores`. The fallback to
+  # `ubuntu-latest` ensures CI keeps working if the variable is unset or
+  # the org loses access to larger runners — no editing this file
+  # required to opt in or out.
   build-and-test:
     name: build · typecheck · test + hermeticity
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.OPENCUES_CI_BUILD_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 15
 
     steps:
