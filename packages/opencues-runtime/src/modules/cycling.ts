@@ -19,7 +19,7 @@ import { resolveNavKeymap } from './nav-keymap';
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
-import { isProviderValueCyclable } from '@opencues/core';
+import { isProviderValueCyclable, getProvider } from '@opencues/core';
 
 /** Settings whose values are LLM provider ids — cycling on these
  *  filters out values whose env key isn't set so the user can't
@@ -535,14 +535,18 @@ export class Cycling {
     this.configLoader.applyOpenCuesScalar(entry.currentSetting, nextValue);
     // Pair invariant: cycling a `*-llm-provider` makes any pinned
     // sibling `*-llm-model` ambiguous (the prior model was valid only
-    // for the prior provider). Reset to `default` so the resolver
-    // falls through to the new provider's defaultModel — the alternative
-    // is silent invalid-pair errors at the next LLM dispatch (e.g.
-    // `groq` provider + `claude-opus-4-7` model → 400). Same write-path
-    // as the provider change so the 2.5s suppression window covers both.
+    // for the prior provider). Reset to the NEW provider's defaultModel
+    // — keeps (provider, model) valid by construction. Previously wrote
+    // the literal sentinel `default` here; that was equivalent at
+    // dispatch time but tripped doctor's "inert sentinel" warning and
+    // confused users reading OPENCUES.md. Writing the resolved name
+    // is explicit and matches what `displayValue` already shows below.
     const siblingModelScalar = providerScalarToModelScalar(entry.currentSetting);
-    if (siblingModelScalar) {
-      this.configLoader.applyOpenCuesScalar(siblingModelScalar, 'default');
+    const siblingDefaultModel = siblingModelScalar
+      ? (getProvider(nextValue)?.defaultModel ?? 'default')
+      : null;
+    if (siblingModelScalar && siblingDefaultModel) {
+      this.configLoader.applyOpenCuesScalar(siblingModelScalar, siblingDefaultModel);
     }
     this.adapter.setText(newText);
     this.adapter.setCursorOffset(newCursor);
@@ -561,11 +565,11 @@ export class Cycling {
       );
       // Fire the sibling write through the same blank-invoke path so
       // OPENCUES.md persists the model reset.
-      if (siblingModelScalar) {
+      if (siblingModelScalar && siblingDefaultModel) {
         this.invokeOrSpawn(
           entry.blankName,
           'set',
-          [siblingModelScalar, 'default'],
+          [siblingModelScalar, siblingDefaultModel],
           entry.scriptPath,
           { detached: true, timeoutMs: 4000 },
         );

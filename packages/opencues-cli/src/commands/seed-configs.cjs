@@ -433,6 +433,63 @@ module.exports = function seedConfigs(argv, ctx) {
     }
   }
 
+  // ── 3.2 HEAL — rewrite legacy `*-llm-model: default` sentinel ──
+  //
+  // Up to PR #150 the apply path (ConfigIntent + cycling.ts) wrote the
+  // literal `default` sentinel to `<bucket>-llm-model` when the user
+  // changed provider without naming a model. It worked (runtime treated
+  // the sentinel as "fall through to global llm-model") but tripped
+  // doctor's "inert sentinel" warning and confused users reading
+  // OPENCUES.md. The apply path now writes the resolved defaultModel for
+  // the bucket's current provider; this heal updates any existing line
+  // in place so users don't have to wait for the next ConfigIntent flip.
+  //
+  // Each bucket's sentinel is rewritten to the bucket's current provider
+  // (in the SAME file) defaultModel. If the bucket has no provider
+  // scalar set, the global llm-provider serves; if neither is set, the
+  // line is left alone (no resolvable adapter to grab a name from).
+  if (settingsTarget && fs.existsSync(settingsTarget) && fs.statSync(settingsTarget).size > 0) {
+    const text = fs.readFileSync(settingsTarget, 'utf8');
+    // Lazy-require: the registry is bundled at install time. Best-effort
+    // — if @opencues/core can't be required (e.g. running from a non-
+    // workspace install), skip the heal silently.
+    // @opencues/core isn't a declared CLI dep — its symbols are reached
+    // either via host-side hoist (when installed from a fork) or via the
+    // workspace path (when running `opencues seed-configs` from a clone).
+    // Try the bare specifier first, fall through to the workspace path.
+    let getProvider;
+    try { ({ getProvider } = require('@opencues/core')); }
+    catch {
+      try { ({ getProvider } = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core'))); }
+      catch { getProvider = null; }
+    }
+    if (getProvider) {
+      // Snapshot provider scalars currently in the file so we can compute
+      // each bucket's effective provider in one pass.
+      const grab = (key) => {
+        const m = text.match(new RegExp(`^${key}:\\s*(\\S+)`, 'm'));
+        return m ? m[1] : null;
+      };
+      const globalProvider = grab('llm-provider');
+      let rewritten = text;
+      const healedBuckets = [];
+      for (const bucket of ['cues', 'auditors', 'blanks']) {
+        const sentinelRe = new RegExp(`^${bucket}-llm-model:\\s*default\\s*$`, 'm');
+        if (!sentinelRe.test(rewritten)) continue;
+        const bucketProvider = grab(`${bucket}-llm-provider`) || globalProvider;
+        if (!bucketProvider) continue;
+        const adapter = getProvider(bucketProvider);
+        if (!adapter || !adapter.defaultModel) continue;
+        rewritten = rewritten.replace(sentinelRe, `${bucket}-llm-model: ${adapter.defaultModel}`);
+        healedBuckets.push(`${bucket}-llm-model: ${adapter.defaultModel} (${bucketProvider})`);
+      }
+      if (rewritten !== text) {
+        fs.writeFileSync(settingsTarget, rewritten);
+        log(`Self-heal: rewrote 'default' sentinel(s) in ${settingsTarget}: ${healedBuckets.join('; ')}`);
+      }
+    }
+  }
+
   // Migrate legacy `<userDir>/blanks/<name>/{cue.md,blank.md}` → `BLANK.md`
   // per the open standard (spec/blank-spec.md). Idempotent: if BLANK.md
   // already exists, skip the source; otherwise rename whichever legacy

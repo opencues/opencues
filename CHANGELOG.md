@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fix — provider-cycle resets sibling model to the resolved `defaultModel`, not the legacy `default` sentinel
+
+When the user flipped a bucket provider without naming a model — either via the ConfigIntent natural-language path (`switch model to cerebras _`) or via the cycling satellite (Ctrl+Alt+↑ on `blanks-llm-provider`) — the apply path wrote the literal string `default` to the sibling `<bucket>-llm-model` scalar. That kept the (provider, model) pair valid at dispatch time (the runtime treats `default` as a fall-through sentinel) but tripped doctor's "inert sentinel" warning and confused users reading OPENCUES.md ("what is `default`? why is it stuck?").
+
+The apply path now writes the **resolved defaultModel for the new provider** — explicit, self-explanatory, no sentinel concept on the surface. Two code sites converged:
+
+- `packages/opencues-core/src/sources/config-intent-source.ts:981` — ConfigIntent's natural-language flip path.
+- `packages/opencues-runtime/src/modules/cycling.ts:545,568` — satellite-cycle pair-invariant.
+
+Both look up the provider adapter via `getProvider(verdict.provider)` and write `adapter.defaultModel` directly. When the cycled-to value is the `inherit` meta-provider (no adapter), both fall back to writing `'default'` — semantics match (both mean "fall through to global `llm-model:`").
+
+The one semantic difference vs the old behaviour: if a user later hand-edits the global `llm-model:` to a different value, the per-bucket scalar no longer cascades — each bucket is independent once cycled. This is the expected mental model for most users (the bucket they explicitly flipped shouldn't silently change when they edit the global later); the sentinel was clever-but-wrong UX.
+
+**Self-heal for existing files:** `packages/opencues-cli/src/commands/seed-configs.cjs` gained a new step (§ 3.2) that rewrites any pre-existing `<bucket>-llm-model: default` line to the bucket's effective-provider defaultModel on the next `opencues install`. Idempotent; skips when no provider is resolvable. So existing users get the clean state without having to hand-edit OPENCUES.md.
+
+**Test updates:**
+- `packages/opencues-runtime/src/modules/llm-config-cycling.scenarios.test.ts` — 4 scenarios + the full-cycle invariant updated to expect `getProvider(provider)?.defaultModel ?? 'default'` (the `?? 'default'` matches the `inherit` carve-out).
+- `packages/opencues-core/src/sources/config-intent-source.test.ts` — `getCues provider hit (no model)` no longer expects the literal `default`; checks the second apply call's model value matches the new provider's known shape (e.g. `^claude-` for anthropic).
+
+All 10 cycling scenarios green, 57/57 config-intent-source tests green, 1671/1671 runtime tests green, full pre-pr gates green.
+
+Bumps:
+- `@opencues/core` 0.3.23 → 0.3.24.
+- `@opencues/runtime` 0.3.13 → 0.3.14.
+- `opencues` (CLI) 0.2.4 → 0.2.5.
+
 ### Fix — `opencues doctor` false-positives on volume / brightness; `sandbox: off` now recognized as the F9 acknowledgement
 
 Two related cleanups to the scripted-blank trust check in `opencues doctor`.
