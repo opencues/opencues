@@ -1,10 +1,31 @@
 name: CI
 
+# paths-ignore skips CI entirely on PRs that only touch documentation,
+# changelog, license, or other repo metadata. The filter fires only when
+# EVERY changed file matches — a PR that mixes source + docs still runs
+# full CI. Doc-only PRs see the checks count as "skipped" (NOT "passed");
+# branch protection's required-checks list needs adjusting accordingly,
+# or doc-only PRs will be blocked until the required checks pass.
+#
+# Saved a full CI run for ≈30% of the recent PRs in this repo
+# (#143, #144, #149's CHANGELOG were the canonical doc-only shapes).
 on:
   push:
     branches: [master]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "spec/**"
+      - "blog-resources/**"
+      - "LICENSE"
   pull_request:
     branches: [master]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "spec/**"
+      - "blog-resources/**"
+      - "LICENSE"
 
 # Cancel older runs of the same branch when a new push lands.
 concurrency:
