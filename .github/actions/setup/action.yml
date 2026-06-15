@@ -1,0 +1,77 @@
+name: Setup OpenCues build env
+description: >
+  Reusable composite for CI jobs — Node + pnpm via corepack, with the pnpm
+  store cached (keyed by lockfile hash) and optional .turbo cache for warm
+  builds. Every CI job repeats this prelude, so consolidating here keeps
+  cache hits consistent across jobs and shaves ~35-40s off each one (cold
+  `pnpm install --frozen-lockfile` is ~45s; warm-cache restore + symlink
+  is ~5s).
+
+  Usage:
+    - uses: actions/checkout@v4
+    - uses: ./.github/actions/setup
+    - uses: ./.github/actions/setup
+      with:
+        install: 'false'          # skip pnpm install (rare; only when no JS work)
+        turbo-cache: 'true'       # restore .turbo/ for warm builds
+
+inputs:
+  node-version:
+    description: Node.js version
+    default: "22"
+    required: false
+  install:
+    description: Run `pnpm install --frozen-lockfile` after restoring the store cache
+    default: "true"
+    required: false
+  turbo-cache:
+    description: Restore .turbo/ keyed by lockfile + git sha (falls back to lockfile-only)
+    default: "false"
+    required: false
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Enable corepack (pnpm)
+      shell: bash
+      run: corepack enable
+
+    - name: Resolve pnpm store path
+      if: inputs.install == 'true'
+      shell: bash
+      run: echo "PNPM_STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+
+    # Cache the global pnpm CAS store. The cache key uses the lockfile
+    # hash so any dep change invalidates; restore-keys gives partial hits
+    # when only some deps changed.
+    - name: Cache pnpm store
+      if: inputs.install == 'true'
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.PNPM_STORE_PATH }}
+        key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: |
+          pnpm-store-${{ runner.os }}-
+
+    - name: pnpm install
+      if: inputs.install == 'true'
+      shell: bash
+      run: pnpm install --frozen-lockfile
+
+    # Turbo cache: keyed by lockfile + sha. The sha key keeps the cache
+    # fresh for the exact commit; the restore-keys ladder pulls the most
+    # recent cache for the same lockfile (deps unchanged → build cache
+    # still valid) and falls through to any prior cache as a last resort.
+    - name: Cache .turbo
+      if: inputs.turbo-cache == 'true'
+      uses: actions/cache@v4
+      with:
+        path: .turbo
+        key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+        restore-keys: |
+          turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+          turbo-${{ runner.os }}-

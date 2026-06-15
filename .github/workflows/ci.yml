@@ -12,55 +12,55 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ── build · typecheck · test + hermeticity (merged) ──────────────────
+  # The previously-separate `test-hermeticity` job did the same install +
+  # build + run-tests sequence as this one, just with HOME pointed at a
+  # tempdir. Merging them saves a whole job's worth of runner-minutes
+  # (≈90s on a cold cache, ≈30s warm) and removes the rebuild that ran
+  # twice in parallel. The hermeticity check still runs the same scripts
+  # — it just shares the install + build with the rest of the job.
   build-and-test:
-    name: build · typecheck · test
+    name: build · typecheck · test + hermeticity
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v4
-
-      # pnpm is pinned in package.json's `packageManager` field —
-      # action/setup-node honours that when corepack is enabled.
-      - uses: actions/setup-node@v4
+      - uses: ./.github/actions/setup
         with:
-          node-version: 22
+          turbo-cache: "true"
 
-      - name: Enable corepack (pnpm)
-        run: corepack enable
-
-      - name: pnpm install
-        run: pnpm install --frozen-lockfile
-
-      # turbo run build — builds @opencues/core, @opencues/runtime,
-      # and the chrome extension's dist/ in dependency order. Cached
-      # via .turbo/ but cache isn't restored across CI runs yet (would
-      # need actions/cache with the turbo cache dir).
       - name: Build
         run: pnpm build
 
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Test
-        run: pnpm test
+      # Runs the full test sweep under a sandboxed $HOME and asserts the
+      # real ~/.opencues/ + ~/.cues/ are untouched. Covers `pnpm -r test`
+      # AND the CLI's own `npm test` target. CI runners don't normally
+      # have either dir, so the diff is vacuous — the HOME override is
+      # the load-bearing contract. PR #41 (June 2026) caught
+      # vendor-pins.test.cjs wiping the user's tmux dir; this gate
+      # structurally prevents the regression class.
+      - name: Test + hermeticity (sandboxed HOME)
+        run: bash scripts/check-test-hermeticity.sh
 
-      - name: Test (CLI unit + integration)
+      - name: Test (CLI integration)
         run: |
           cd packages/opencues-cli
-          npm test
           npm run test:integration
         env:
           # Tests should never need a real LLM key. If a unit test
           # requires one, that's the bug — file it instead of unsetting
-          # this. Existing tests use mocked providers (see
-          # @opencues/core's source-class tests).
-          GROQ_API_KEY: ''
-          CEREBRAS_API_KEY: ''
-          OPENAI_API_KEY: ''
-          ANTHROPIC_API_KEY: ''
-          GEMINI_API_KEY: ''
+          # this. Existing tests use mocked providers.
+          GROQ_API_KEY: ""
+          CEREBRAS_API_KEY: ""
+          OPENAI_API_KEY: ""
+          ANTHROPIC_API_KEY: ""
+          GEMINI_API_KEY: ""
 
+  # ── lints (no install needed) ────────────────────────────────────────
   shell-portability:
     name: shell portability lint
     runs-on: ubuntu-latest
@@ -91,6 +91,7 @@ jobs:
       - name: Run legacy-names lint
         run: bash scripts/lint-legacy-names.sh
 
+  # ── install-dependent gates ──────────────────────────────────────────
   cc-patch-boot-smoke:
     name: CC patch boot smoke
     runs-on: ubuntu-latest
@@ -105,13 +106,7 @@ jobs:
     # evaluation surfaced the bug. This job runs that evaluation in CI.
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Enable corepack (pnpm)
-        run: corepack enable
-      - name: pnpm install
-        run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
       - name: Run CC patch boot smoke
         run: node scripts/check-cc-patch-boot.cjs
 
@@ -129,16 +124,12 @@ jobs:
     # incident — every opencode + shell user crashed at boot for hours.
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: ./.github/actions/setup
         with:
-          node-version: 22
+          turbo-cache: "true"
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      - name: Enable corepack (pnpm)
-        run: corepack enable
-      - name: pnpm install
-        run: pnpm install --frozen-lockfile
       - name: Build @opencues/{core,runtime}
         run: pnpm --filter @opencues/core --filter @opencues/runtime build
       - name: Probe runtime load under Bun
@@ -165,13 +156,9 @@ jobs:
     # references.
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: ./.github/actions/setup
         with:
-          node-version: 22
-      - name: Enable corepack (pnpm)
-        run: corepack enable
-      - name: pnpm install
-        run: pnpm install --frozen-lockfile
+          turbo-cache: "true"
       - name: Build @opencues/{core,runtime}
         run: pnpm --filter @opencues/core --filter @opencues/runtime build
       - name: Probe CC fork bundle integrity
@@ -192,7 +179,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # need master ref for the diff base
+          fetch-depth: 0 # need master ref for the diff base
       - name: Run version-bump gate
         run: bash scripts/lint-version-bump.sh
         env:
@@ -211,43 +198,10 @@ jobs:
     # pipeline the main job uses.
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: ./.github/actions/setup
         with:
-          node-version: 22
-      - name: Enable corepack (pnpm)
-        run: corepack enable
-      - name: pnpm install
-        run: pnpm install --frozen-lockfile
+          turbo-cache: "true"
       - name: pnpm build
         run: pnpm build
       - name: Check chrome bundle
         run: bash scripts/check-chrome-bundle.sh
-
-  test-hermeticity:
-    name: test hermeticity (sandboxed HOME)
-    runs-on: ubuntu-latest
-    timeout-minutes: 12
-
-    # Runs the full test sweep under a sandboxed $HOME and asserts
-    # that the real ~/.opencues/ (if any) wasn't touched. Catches
-    # PR #41-class bugs where a unit test wrote to os.homedir()
-    # without sandboxing — the vendor-pins test was destroying users'
-    # vendored tmux on every `pnpm test` run before that PR.
-    #
-    # CI runners don't normally have ~/.opencues/, so the diff is
-    # vacuous. The override + run-pattern is still the contract —
-    # any test that tries to write under HOME gets a tempdir, not
-    # the runner's real /github/home.
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Enable corepack (pnpm)
-        run: corepack enable
-      - name: pnpm install
-        run: pnpm install --frozen-lockfile
-      - name: pnpm build
-        run: pnpm build
-      - name: Run hermeticity check
-        run: bash scripts/check-test-hermeticity.sh
