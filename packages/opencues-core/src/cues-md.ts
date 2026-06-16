@@ -285,41 +285,6 @@ export interface BlankConfig {
   sandboxFs?: 'ro' | 'rw';
   /** Max words allowed between keyword and _ (0 = adjacent, undefined = no limit) */
   blankProximity?: number;
-  /**
-   * Declarative intent shapes. When set, REPLACES the coarse
-   * proximity gate for this blank: the runtime walks each shape's
-   * regex against the buffer text (with `_` as anchor); first match
-   * wins. The matched shape's `action` determines whether the script
-   * is called with `get` or `set <value>`. If NO shape matches, the
-   * blank declines the slot — fluid-blank takes it.
-   *
-   * Why this exists: `blankProximity` is positive-only — it claims any
-   * sentence where the keyword sits within N words of `_`, including
-   * incidental prose ("the volume was great _", "the volume button is
-   * broken _"). Shapes upgrade the gate to "must look like a real
-   * invocation", dropping misfires sharply without an LLM call.
-   *
-   * Example for volume:
-   *   blankShapes:
-   *     - pattern: '^volume\\s*_$'                          action: get
-   *     - pattern: '^volume\\s+(\\d+)\\s*%?\\s*_$'          action: set  valueGroup: 1
-   *     - pattern: '^set\\s+volume\\s+(?:to\\s+)?(\\d+)\\s*%?\\s*_$'
-   *       action: set  valueGroup: 1
-   *
-   * Patterns are matched case-insensitively against the trimmed
-   * buffer text (whitespace-normalised). `_` is literal in the
-   * pattern; the runtime substitutes its known position.
-   */
-  blankShapes?: ReadonlyArray<{
-    /** RegExp source string (no flags — runtime adds `i`). */
-    pattern: string;
-    /** What to do when this shape matches. */
-    action: 'get' | 'set' | 'step';
-    /** 1-based capture-group index whose match is passed to `set <value>`
-     *  or used as the step direction (`up` / `down`). Required for
-     *  action: 'set' and action: 'step'. */
-    valueGroup?: number;
-  }>;
   /** If true, cycling (Up/Down) is disabled — display-only blank */
   blankReadOnly?: boolean;
   /** If true, `_` is appended as the last cycling option so the user can dismiss the value */
@@ -957,11 +922,6 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   blankTip?: string;
   blankScript?: string;
   blankProximity?: number;
-  blankShapes?: ReadonlyArray<{
-    pattern: string;
-    action: 'get' | 'set' | 'step';
-    valueGroup?: number;
-  }>;
   blankReadOnly?: boolean;
   blankDismissible?: boolean;
   blankSuffix?: string;
@@ -1089,31 +1049,6 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'blankTip': fm.blankTip = value; break;
       case 'blankScript': fm.blankScript = value; break;
       case 'blankProximity': fm.blankProximity = parseInt(value, 10); break;
-      case 'blankShapes': {
-        // Inline-JSON like stepValues (the homegrown parser is line-per-key;
-        // a real YAML pass for blankShapes is a follow-up). Silently drop
-        // malformed entries so a partial syntax error doesn't kill the blank.
-        try {
-          const arr = JSON.parse(value) as Array<{ pattern?: unknown; action?: unknown; valueGroup?: unknown }>;
-          if (Array.isArray(arr)) {
-            const valid: Array<{ pattern: string; action: 'get' | 'set' | 'step'; valueGroup?: number }> = [];
-            for (const s of arr) {
-              if (typeof s.pattern !== 'string') continue;
-              if (s.action !== 'get' && s.action !== 'set' && s.action !== 'step') continue;
-              const entry: { pattern: string; action: 'get' | 'set' | 'step'; valueGroup?: number } = {
-                pattern: s.pattern,
-                action: s.action,
-              };
-              if (typeof s.valueGroup === 'number' && s.valueGroup >= 1) {
-                entry.valueGroup = s.valueGroup;
-              }
-              valid.push(entry);
-            }
-            if (valid.length > 0) fm.blankShapes = valid;
-          }
-        } catch { /* ignore malformed */ }
-        break;
-      }
       case 'blankReadOnly': fm.blankReadOnly = value === 'true'; break;
       case 'blankDismissible': fm.blankDismissible = value === 'true'; break;
       case 'blankSuffix': fm.blankSuffix = value; break;
@@ -1286,7 +1221,6 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
       if (frontmatter.blankFormat !== undefined) blank.blankFormat = frontmatter.blankFormat;
       if (frontmatter.blankTip !== undefined) blank.blankTip = frontmatter.blankTip;
       if (frontmatter.blankProximity !== undefined) blank.blankProximity = frontmatter.blankProximity;
-      if (frontmatter.blankShapes !== undefined) blank.blankShapes = frontmatter.blankShapes;
       if (frontmatter.blankReadOnly !== undefined) blank.blankReadOnly = frontmatter.blankReadOnly;
       if (frontmatter.blankDismissible !== undefined) blank.blankDismissible = frontmatter.blankDismissible;
       if (frontmatter.blankSuffix !== undefined) blank.blankSuffix = frontmatter.blankSuffix;

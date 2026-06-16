@@ -84,17 +84,13 @@ export class WeatherBlank implements Blank {
 
       const temp = `${Math.round(current.temperature_2m)}°C`;
       const desc = WMO_CODES[current.weather_code] ?? '';
+      // Embed the location so `blankReplace: auto` callers produce
+      // self-contained output when the trigger phrase is wiped.
       const prettyLocation = location
         .split(/\s+/)
         .map(w => w.charAt(0).toUpperCase() + w.slice(1))
         .join(' ');
-      // Shape-driven read-only emission (June 2026). No tab — weather
-      // has no cycle vocab (no blankStep, no stepValues), so the
-      // selector-satellite split has no semantic purpose. The runtime
-      // splices the whole string as one wipeable gray span via the
-      // regular consumeContext path. See docs/architecture/shape-
-      // driven-blanks.md § Emission shapes by cycle-vocab presence.
-      const display = `weather ${prettyLocation} ${temp} ${desc}`.trim();
+      const display = `${prettyLocation}: ${temp} ${desc}`.trim();
 
       this._cache.set(cacheKey, { result: display, ts: Date.now() });
       return display;

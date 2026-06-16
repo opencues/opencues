@@ -1526,27 +1526,11 @@ export class TransformBlankSource implements CueSource {
     const blankIndex = lower.indexOf('_');
     if (blankIndex === -1) return false;
 
-    // Cede to keyword-bound BlankSource if a registered blank would
-    // claim the slot — either via legacy blankProximity or via the
-    // new blankShapes gate. Mirror of fluid-blank-source.ts's cede
-    // logic; the two MUST stay in sync because they're the two
-    // priority-92/93 races against the priority-95 BlankFill claim.
-    //
-    // Path A (legacy): keyword present + within blankProximity words
-    // of `_`. Original behavior.
-    // Path B (shapes — June 2026): keyword present anywhere + a
-    // shape matches the `^...$`-anchored input. Without this, shape-
-    // driven blanks with no preserved legacy proximity (gh-issues,
-    // sentinel, future migrations) would race transform-blank and
-    // lose on async dispatches (the user-pack JS dispatch hit this
-    // first; sentinel + future user blanks would inherit the same
-    // race).
-    const testText = context.words.slice(0, blankIndex + 1).join(' ').trim();
+    // Cede to keyword-bound BlankSource if a registered blank's keyword is
+    // within blankProximity of the `_` (mirror fluid-blank cede logic).
     for (const blk of Object.values(this.blanks)) {
       if (!blk.blankKeywords?.length) continue;
       const proximity = blk.blankProximity ?? 0;
-      let keywordPresent = false;
-      let kwInProximity = false;
       for (const phrase of blk.blankKeywords) {
         const parts = phrase.toLowerCase().split(/\s+/);
         for (let i = 0; i <= lower.length - parts.length; i++) {
@@ -1555,21 +1539,9 @@ export class TransformBlankSource implements CueSource {
             if (lower[i + j] !== parts[j]) { ok = false; break; }
           }
           if (!ok) continue;
-          keywordPresent = true;
           const endIdx = i + parts.length - 1;
           const gap = Math.abs(endIdx - blankIndex) - 1;
-          if (gap <= proximity) kwInProximity = true;
-        }
-      }
-      if (!keywordPresent) continue;
-      if (kwInProximity) return false; // path A
-      const shapes = (blk as { blankShapes?: ReadonlyArray<{ pattern: string }> }).blankShapes;
-      if (Array.isArray(shapes) && shapes.length > 0) {
-        for (const shape of shapes) {
-          let re: RegExp;
-          try { re = new RegExp(shape.pattern, 'is'); }
-          catch { continue; }
-          if (re.test(testText)) return false; // path B
+          if (gap <= proximity) return false;
         }
       }
     }

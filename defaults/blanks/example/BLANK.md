@@ -33,24 +33,15 @@ enabled: false
 # which run on plain text). Cue sources omit this field.
 type: blank
 
-# Triggered when any of these words appears within the shapes
-# declared below. Use comma-separated short triggers — they're
+# Triggered when any of these words appears within `blankProximity`
+# words of `_`. Use comma-separated short triggers — they're
 # matched as whole words, case-insensitive.
 blankKeywords: time, clock
 
-# blankShapes: the precision gate (the modern replacement for
-# blankProximity). Each shape is a regex anchored against the input
-# up to and including `_`. First match wins, declines if none match.
-# This blank's shapes cover the bare-keyword case (`time _` /
-# `clock _`). Add more shapes if you want copula forms
-# (`^the\s+time\s+is\s*_$`) or other phrasings.
-#
-# Full design: docs/architecture/shape-driven-blanks.md.
-blankShapes: [{"pattern":"^(?:the\\s+)?(?:time|clock)(?:\\s+(?:is|now|right\\s+now))?\\s*_$","action":"get"}]
-
-# One-span emission — no cycle vocab on a clock.
-blankClearOnEdit: true
-blankConsumeContext: true
+# Max words between keyword and `_`. 0 means "directly adjacent
+# only" (`time _`). 2 lets `time is _` and `time right now _` fire.
+# Volume / brightness use 3 to handle copulas like `volume is _`.
+blankProximity: 2
 
 # Auto-populate on text-change: as soon as the keyword+`_` pattern
 # is detected, fire `get` without waiting for the user to navigate

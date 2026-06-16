@@ -587,9 +587,6 @@ export class ConfigLoader {
   // overwritten by the stale file content. _suppressReloadUntil delays
   // the next reload long enough for the write to settle.
   private _suppressReloadUntil = 0;
-  // June 2026 — one-shot deprecation warn per blank-name per process.
-  // See plan.md § Phase 2 + Phase 5 for the deprecation timeline.
-  private _warnedDeprecatedProximity = new Set<string>();
 
   constructor(
     private adapter: HostAdapter,
@@ -1072,28 +1069,6 @@ export class ConfigLoader {
     }
     for (const [name, blk] of Object.entries(blanksConfig?.blanks ?? {})) {
       addBlank(name, blk as BlankConfig);
-    }
-
-    // blankProximity deprecation warning (June 2026). Flagged once
-    // per blank per process lifetime. blankShapes is the precise
-    // replacement; proximity is a positive-only gate that misfires
-    // on prose. Full design: docs/architecture/shape-driven-blanks.md.
-    // Removal queued in plan.md § Phase 5 after all shipped blanks
-    // migrate. Until then: warn loudly, keep the gate working for
-    // back-compat.
-    for (const [name, blk] of blanksByWord) {
-      const b = blk.blank as { blankProximity?: number; blankShapes?: unknown };
-      const hasShapes = Array.isArray(b.blankShapes) && b.blankShapes.length > 0;
-      const hasProximity = typeof b.blankProximity === 'number';
-      if (hasProximity && !hasShapes && !this._warnedDeprecatedProximity.has(blk.name)) {
-        this._warnedDeprecatedProximity.add(blk.name);
-        this.adapter.log('warn',
-          `blank '${blk.name}': blankProximity: is DEPRECATED — declare blankShapes: ` +
-          `for precision. Proximity is a positive-only gate that fires on prose ` +
-          `("the ${name} was great _" claims the slot). See ` +
-          `docs/architecture/shape-driven-blanks.md § Author migration checklist.`,
-        );
-      }
     }
 
     this._config = {

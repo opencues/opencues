@@ -810,25 +810,12 @@ export class FluidBlankSource implements CueSource {
     if (TASK_TRIGGER_GUARD.test(context.text)) return false;
     // Cede the slot to BlankFill if any registered blank would actually
     // claim it. Mirror BlankSource's claim rules: keyword present AND
-    // either (a) within `blankProximity` words of the `_`, OR (b) the
-    // blank has `blankShapes:` declared and at least one shape matches
-    // the input. Without (b), shape-driven blanks with no legacy
-    // proximity declared (gh-issues, future migrated blanks) would
-    // not cede — fluid-blank would race the host-side proxy and win
-    // on slow dispatches (the June 2026 gh-issues race).
-    //
-    // Shape walk uses the SAME `^...$`-anchored regex as
-    // matchBlankShape in BlankFill (`testText = words[0..blankIdx].join(' ')`),
-    // so the two gates are byte-identical in their match decisions —
-    // no drift surface between cede check and dispatch decision.
-    const testText = context.words.slice(0, blankIndex + 1).join(' ').trim();
+    // within `blankProximity` words of the `_`. Loose-match (keyword
+    // present anywhere) leaves a dead zone for inputs like `what is git
+    // as in github _` where the keyword is too far to claim.
     for (const blk of Object.values(this.blanks)) {
       if (!blk.blankKeywords?.length) continue;
       const proximity = blk.blankProximity ?? 0;
-      // Quick keyword presence check — if the keyword isn't in the
-      // buffer at all, neither proximity nor shape can match.
-      let keywordPresent = false;
-      let kwInProximity = false;
       for (const phrase of blk.blankKeywords) {
         const parts = phrase.toLowerCase().split(/\s+/);
         for (let i = 0; i <= lower.length - parts.length; i++) {
@@ -837,27 +824,9 @@ export class FluidBlankSource implements CueSource {
             if (lower[i + j] !== parts[j]) { ok = false; break; }
           }
           if (!ok) continue;
-          keywordPresent = true;
           const endIdx = i + parts.length - 1;
           const gap = Math.abs(endIdx - blankIndex) - 1;
-          if (gap <= proximity) kwInProximity = true;
-        }
-      }
-      if (!keywordPresent) continue;
-      // Path A — legacy proximity gate: keyword present AND within
-      // proximity.
-      if (kwInProximity) return false;
-      // Path B — shape gate: keyword present (somewhere) AND a shape
-      // matches the input. The shape's `^...$` anchor handles
-      // false-positives like "the volume was great _" — those match
-      // no shape so fluid-blank correctly claims.
-      const shapes = (blk as { blankShapes?: ReadonlyArray<{ pattern: string }> }).blankShapes;
-      if (Array.isArray(shapes) && shapes.length > 0) {
-        for (const shape of shapes) {
-          let re: RegExp;
-          try { re = new RegExp(shape.pattern, 'is'); }
-          catch { continue; }
-          if (re.test(testText)) return false;
+          if (gap <= proximity) return false;   // BlankSource will claim
         }
       }
     }

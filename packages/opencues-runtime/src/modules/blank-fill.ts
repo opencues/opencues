@@ -30,14 +30,6 @@ export interface BlankSlot {
   readonly keywordEnd: number;
   /** Words between keywordEnd and the `_` (0 = adjacent). */
   readonly proximity: number;
-  /** When the blank declared `blankShapes` and one matched, the
-   *  action the script should perform. Falls through to `get` for
-   *  shape-less blanks (today's behaviour). */
-  readonly action?: 'get' | 'set' | 'step';
-  /** Captured value from the matched shape's `valueGroup` — passed as
-   *  the second arg to `script set <value>` (or `step <value>` for
-   *  direction tokens like "up"/"down"). Empty for action: 'get'. */
-  readonly value?: string;
 }
 
 export class BlankFill {
@@ -343,18 +335,10 @@ export class BlankFill {
         | undefined;
       if (!blank) continue;
       if (blank.blankAutoPopulate === false) continue;
-      // stepValues alone (no script, no blank-invoke) is the legacy
-      // list-blank pattern — `_` gets replaced with stepValues[0]
-      // synchronously in onUnderscoreKey and the script path stays
-      // dormant. But when a blank ALSO declares blankScript /
-      // blank-invoke, stepValues is just the categorical cycle vocab
-      // for the satellite cycler (June 2026 — three-axis model);
-      // the script still owns get/set. Skip only when there's no
-      // backing implementation.
+      // stepValues path is handled synchronously in onUnderscoreKey.
+      if (Array.isArray(blank.stepValues) && blank.stepValues.length > 0) continue;
       const script = blank.blankScript;
       const canBlankInvoke = this.adapter.capabilities.includes('blank-invoke');
-      if (Array.isArray(blank.stepValues) && blank.stepValues.length > 0
-          && !script && !canBlankInvoke) continue;
       // Need EITHER a shell script (legacy spawnProcess path) OR a
       // blankInvoke-capable host (modern shared-runtime blanks).
       // Without either, no way to fetch the fill.
@@ -413,11 +397,7 @@ export class BlankFill {
       // Frontmatter parser may pass the value through as either a
       // number or a string-of-digits depending on the YAML shape, so
       // coerce here.
-      // Cache key includes action + value so a SET 70 result doesn't
-      // satisfy a SET 30 lookup, and a SET cache hit doesn't satisfy a
-      // GET intent (or vice versa). Shape-less blanks always emit GET
-      // with empty value, so this is byte-identical to today's key.
-      const cacheKey = `${slot.blankName}::${slot.action ?? 'get'}::${slot.value ?? ''}::${slot.keyword}|${contextWords.join('|')}`;
+      const cacheKey = `${slot.blankName}::${slot.keyword}|${contextWords.join('|')}`;
       const rawTtl = (blank as { blankCacheTtlMs?: unknown }).blankCacheTtlMs;
       const parsedTtl = typeof rawTtl === 'number'
         ? rawTtl
@@ -464,26 +444,13 @@ export class BlankFill {
       // animates until BOTH owners release (refcounted in animator).
       this._loadingAnimator().start(slot.index, 'blank-fill');
 
-      // Pick the script verb. Shape-driven blanks (blankShapes set in
-      // BLANK.md) emit slot.action in {get, set, step} based on which
-      // shape matched. Shape-less blanks (today's default) always run
-      // 'get'. For 'set' / 'step', slot.value carries the captured
-      // group from the matching shape (e.g. "70" from `volume 70 _`).
-      // The script's contract on the set branch is to apply the value,
-      // clamp it as needed, and echo the FINAL post-clamp state on
-      // stdout — that's what the runtime substitutes into the slot.
-      const scriptAction = slot.action ?? 'get';
-      const actionArgs: string[] = scriptAction === 'get'
-        ? [slot.keyword, ...contextWords]
-        : (slot.value !== undefined ? [slot.value] : []);
-
       // Try host-native blank invocation first (Chrome, Electron,
       // anything without shell access). Fall through to spawnProcess
       // when the host returns null or doesn't implement blankInvoke.
       let handle = this.adapter.blankInvoke?.({
         blankName: slot.blankName,
-        action: scriptAction,
-        args: actionArgs,
+        action: 'get',
+        args: [slot.keyword, ...contextWords],
         env,
         timeoutMs: 8000,
       }) ?? null;
@@ -553,7 +520,7 @@ export class BlankFill {
         }
         handle = this.adapter.spawnProcess({
           command: 'bash',
-          args: [scriptPath, scriptAction, ...actionArgs],
+          args: [scriptPath, 'get', slot.keyword, ...contextWords],
           env,
           timeoutMs: 8000,
           sandbox,
@@ -724,29 +691,10 @@ export class BlankFill {
       spanAsUnit: blank?.blankClearOnEdit === true,
     });
 
-    // Shape-driven path (June 2026) — when the matched shape produced
-    // a slot with `action` set, the shape's regex matched the ENTIRE
-    // input (regex anchored ^...$). Wipe the whole matched input
-    // (line-scoped — surrounding paragraphs survive) and splice the
-    // fill into its place. Without this carve-out, the legacy
-    // computeFillRange would only wipe the keyword span, leaving the
-    // user's captured prompt text (or other prefix words the shape
-    // matched) loose in the buffer. Mirrors the same carve-out in
-    // applySatelliteFill — both emission shapes converge on
-    // line-scoped wipe for shape-driven blanks.
-    const isShapeDriven = slot.action !== undefined;
-    const { newText, newCursor } = isShapeDriven
-      ? (() => {
-          const lineStart = cleaned.lastIndexOf('\n', target.start - 1) + 1;
-          return {
-            newText: cleaned.slice(0, lineStart) + primaryFill + cleaned.slice(target.end),
-            newCursor: lineStart + primaryFill.length,
-          };
-        })()
-      : clearEnd !== undefined || expansion != null
-        ? buildClearKeywordText(cleaned, slot, primaryFill, expansion, clearEnd)
-        : { newText: cleaned.slice(0, target.start) + primaryFill + cleaned.slice(target.end),
-            newCursor: target.start + primaryFill.length };
+    const { newText, newCursor } = clearEnd !== undefined || expansion != null
+      ? buildClearKeywordText(cleaned, slot, primaryFill, expansion, clearEnd)
+      : { newText: cleaned.slice(0, target.start) + primaryFill + cleaned.slice(target.end),
+          newCursor: target.start + primaryFill.length };
 
     // Populate span for non-consume-all fills when there's
     // anything cycleable to do: multi-word fill, multiple lines from
@@ -1030,30 +978,11 @@ export class BlankFill {
     if (!selectorRaw || !satelliteRaw) return;
     const sep = blank.blankSatelliteSeparator || ' ';
     const pair = `${selectorRaw}${sep}${satelliteRaw}`;
-
-    // Shape-driven path: the shape pattern matched the ENTIRE input
-    // up to and including `_` (regex is anchored with ^...$ by author
-    // convention), so the whole input is the summon and gets replaced
-    // by the satellite pair. This converges shape-driven blanks on
-    // ConfigIntent's wipe-all emission shape (one wipeable span,
-    // surrounding prose preserved). For legacy blanks (no shapes),
-    // fall through to the existing keyword-range computeFillRange.
-    let newText: string;
-    let newCursor: number;
-    if (slot.action !== undefined) {
-      // Wipe from start-of-line (or last newline boundary) to the
-      // `_` position. Multi-line buffers: stay scoped to the current
-      // line so prior paragraphs survive.
-      const lineStart = cleaned.lastIndexOf('\n', target.start - 1) + 1;
-      newText = cleaned.slice(0, lineStart) + pair + cleaned.slice(target.end);
-      newCursor = lineStart + pair.length;
-    } else {
-      const { clearEnd, expansion } = computeFillRange(blank, slot);
-      ({ newText, newCursor } = clearEnd !== undefined || expansion != null
-        ? buildClearKeywordText(cleaned, slot, pair, expansion, clearEnd)
-        : { newText: cleaned.slice(0, target.start) + pair + cleaned.slice(target.end),
-            newCursor: target.start + pair.length });
-    }
+    const { clearEnd, expansion } = computeFillRange(blank, slot);
+    const { newText, newCursor } = clearEnd !== undefined || expansion != null
+      ? buildClearKeywordText(cleaned, slot, pair, expansion, clearEnd)
+      : { newText: cleaned.slice(0, target.start) + pair + cleaned.slice(target.end),
+          newCursor: target.start + pair.length };
 
     if (this.selectorSatelliteState) {
       const newWords = splitWords(newText);
@@ -1153,14 +1082,6 @@ export class BlankFill {
     if (this.dismissedBlanks?.has(slot.index)) return false;
     const stepValues = blank.stepValues;
     if (!Array.isArray(stepValues) || stepValues.length === 0) return false;
-    // Three-axis model (June 2026): when the blank also declares
-    // blankScript / blank-invoke, stepValues is the categorical cycle
-    // vocab — the script owns get/set, not the synchronous list
-    // fill. Bail and let maybeRunScripts handle the async script
-    // call. Pure list-blanks (no script) still get the sync fill.
-    const hasBackingImpl = !!(blank as { blankScript?: string }).blankScript
-      || this.adapter.capabilities.includes('blank-invoke');
-    if (hasBackingImpl) return false;
     const fillValue = stepValues[0];
 
     // Mirror applyAsyncFill: when `blankReplace` is set explicitly,
@@ -1298,21 +1219,8 @@ export class BlankFill {
         // dictionary, where the user types extra words between the
         // trigger phrase and `_`) MUST set blankProximity explicitly.
         // Matches the cede default in blank-source.ts.
-        //
-        // Shape-driven blanks (`blankShapes:` declared) BYPASS the
-        // proximity gate entirely — the shape patterns own precision
-        // and already anchor their own keyword + value distance via
-        // the regex. Without this carve-out, a shape like
-        // `^theme\s+(dark|light)\s*_$` could never match because the
-        // proximity-0 default would reject the keyword being 2+ words
-        // back from `_`. Shapes ARE the gate; proximity becomes a
-        // legacy field for shape-less blanks.
-        const hasShapes = Array.isArray((blank as { blankShapes?: unknown }).blankShapes)
-          && ((blank as { blankShapes?: unknown[] }).blankShapes?.length ?? 0) > 0;
-        if (!hasShapes) {
-          const blankProximity = (blank as { blankProximity?: number }).blankProximity ?? 0;
-          if ((blankIdx - j - 1) > blankProximity) continue;
-        }
+        const blankProximity = (blank as { blankProximity?: number }).blankProximity ?? 0;
+        if ((blankIdx - j - 1) > blankProximity) continue;
         for (const kw of blankKeywords) {
           const kwLc = kw.toLowerCase();
           const kwWords = kwLc.split(/\s+/);
@@ -1338,22 +1246,6 @@ export class BlankFill {
               }
             }
             if (insideSubstitute) continue;
-            // Shape gate: when the blank declares `blankShapes`, the
-            // proximity match is necessary but not sufficient. The shape
-            // patterns must also confirm the user's input looks like a
-            // real invocation — drops misfires on prose like "the volume
-            // was great _" where `volume` is near `_` but the user isn't
-            // invoking the blank. If shapes are declared and none match,
-            // this blank declines the slot (fluid-blank takes it).
-            const shapes = (blank as { blankShapes?: ReadonlyArray<{ pattern: string; action: 'get' | 'set' | 'step'; valueGroup?: number }> }).blankShapes;
-            let shapeAction: 'get' | 'set' | 'step' | undefined;
-            let shapeValue: string | undefined;
-            if (shapes && shapes.length > 0) {
-              const matchedShape = matchBlankShape(words, blankIdx, shapes);
-              if (!matchedShape) continue;
-              shapeAction = matchedShape.action;
-              shapeValue = matchedShape.value;
-            }
             return {
               index: blankIdx,
               keyword: kwLc,
@@ -1361,8 +1253,6 @@ export class BlankFill {
               keywordStart: start,
               keywordEnd: j,
               proximity: blankIdx - j - 1,
-              ...(shapeAction ? { action: shapeAction } : {}),
-              ...(shapeValue !== undefined ? { value: shapeValue } : {}),
             };
           }
         }
@@ -1370,45 +1260,6 @@ export class BlankFill {
     }
     return null;
   }
-}
-
-/**
- * Walk the blank's declared shapes against the buffer text; return
- * the matched action + extracted value, or null if no shape fires.
- *
- * The test string is the buffer text up to and including `_`, with
- * leading/trailing whitespace trimmed. Patterns are compiled with `i`
- * (case-insensitive) and `s` (dotall — multi-line bodies don't need
- * to anchor at the start of every line). Authors can use `^` / `$`
- * to anchor against the trimmed input as a whole.
- *
- * First-match wins (top-down walk). Authors should order shapes
- * narrowest-first: bare-keyword shapes after numeric-bearing shapes,
- * so "volume 70 _" matches the SET shape before the bare-GET shape
- * sees it.
- */
-function matchBlankShape(
-  words: readonly string[],
-  blankIdx: number,
-  shapes: ReadonlyArray<{ pattern: string; action: 'get' | 'set' | 'step'; valueGroup?: number }>,
-): { action: 'get' | 'set' | 'step'; value?: string } | null {
-  // Build the test string from the buffer up to and including the `_`.
-  // Trailing words AFTER the `_` are ignored — by the time `_` fires,
-  // they're not part of the invocation.
-  const testText = words.slice(0, blankIdx + 1).join(' ').trim();
-  for (const shape of shapes) {
-    let re: RegExp;
-    try { re = new RegExp(shape.pattern, 'is'); }
-    catch { continue; }
-    const m = re.exec(testText);
-    if (!m) continue;
-    let value: string | undefined;
-    if (shape.valueGroup !== undefined) {
-      value = m[shape.valueGroup];
-    }
-    return { action: shape.action, ...(value !== undefined ? { value } : {}) };
-  }
-  return null;
 }
 
 /** Debug helper — keys actually injected into the script env. */

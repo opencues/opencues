@@ -340,54 +340,18 @@ export class Navigation {
     // Force-include selector-start + satellite-start. Drop
     // inner words of either side (multi-word selectors like "display
     // mode" or values like "plain text" cycle as single units).
-    //
-    // Shape-driven blanks (June 2026) — atomic-pair navigation. Full
-    // design: docs/architecture/shape-driven-blanks.md § Navigation
-    // semantics. The selector is a static label, not a cycle axis;
-    // the satellite is the only cyclable handle. Treating them as
-    // two independent nav stops would suggest an axis that doesn't
-    // exist. Carve-out: when the active pair is shape-driven (the
-    // blank declares `blankShapes:`), include ONLY the satellite in
-    // the nav targets. The selector becomes unreachable via Ctrl+Alt
-    // +←/→ word-skip — the pair is one nav step, landing on the
-    // satellite directly. The selector character positions stay
-    // reachable via regular cursor keys; clearOnEdit still fires on
-    // edits anywhere in the span.
-    //
-    // FEATURES-registry pairs (`opencues settings _`) keep both
-    // stops — there the selector axis is real (cycles through
-    // settings) so the user needs to land on it. Detected by the
-    // active blank NOT having `blankShapes:` declared.
-    //
-    // Multi-parameter blanks (future `blankParameters:` field) will
-    // gate the carve-out further: `hasShapes && !hasParameters`.
-    // Today every shape-driven blank is single-parameter.
     const ss = this.selectorSatelliteState?.current ?? null;
-    const ssBlank = ss ? this.configLoader?.blanks.get(ss.blankName) as
-      | { blankShapes?: unknown }
-      | undefined : undefined;
-    const ssIsShapeDriven = ssBlank && Array.isArray(ssBlank.blankShapes)
-      && (ssBlank.blankShapes as unknown[]).length > 0;
     const withSelectorSatellite = (ins: number[]): number[] => {
       if (!ss) return ins;
       const selLen = Math.max(1, ss.selectorLength);
       const satLen = Math.max(1, ss.satelliteLength);
       const selEnd = ss.selectorIndex + selLen - 1;
       const satEnd = ss.satelliteIndex + satLen - 1;
-      // Inner-position filter: drop multi-word selector/satellite
-      // inner words. For shape-driven blanks, ALSO drop the selector
-      // start (so the satellite is the only nav stop for the pair).
       const isInner = (i: number): boolean =>
         (i > ss.selectorIndex && i <= selEnd) ||
-        (i > ss.satelliteIndex && i <= satEnd) ||
-        (!!ssIsShapeDriven && i >= ss.selectorIndex && i <= selEnd);
+        (i > ss.satelliteIndex && i <= satEnd);
       const out = ins.filter(i => !isInner(i));
-      // Force-add: always satellite-start. Selector-start ONLY when
-      // not shape-driven (FEATURES-pair behaviour preserved).
-      const forceAdd = ssIsShapeDriven
-        ? [ss.satelliteIndex]
-        : [ss.selectorIndex, ss.satelliteIndex];
-      for (const idx of forceAdd) {
+      for (const idx of [ss.selectorIndex, ss.satelliteIndex]) {
         if (!out.includes(idx) && words.some(w => w.index === idx)) out.push(idx);
       }
       out.sort((a, b) => a - b);

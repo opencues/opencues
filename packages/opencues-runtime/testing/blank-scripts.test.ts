@@ -77,46 +77,20 @@ describe('shipped blank scripts: colocated-helpers contract', () => {
     // are bash-portable.
     const skip = os.platform() === 'win32';
 
-    it.skipIf(skip)('brightness-blank.sh get: returns selector-satellite "brightness\\t<N>%", never crashes', () => {
-      // June 2026: brightness migrated to selector-satellite emission
-      // (mirrors volume). Script echoes `brightness\t<value>%` so the
-      // runtime's blankSatellite path splices it as one wipeable span.
+    it.skipIf(skip)('brightness-blank.sh get: returns a bare integer, never crashes', () => {
       const out = execFileSync('bash', [path.join(DEFAULTS_BLANKS, 'brightness/brightness-blank.sh'), 'get'], {
         encoding: 'utf8',
         env: { ...process.env, HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'oc-test-home-')) },
       });
-      expect(out.trim()).toMatch(/^brightness\t\d{1,3}%$/);
+      expect(out.trim()).toMatch(/^\d{1,3}$/);
     });
 
-    it.skipIf(skip)('brightness-blank.sh set <N>: applies + echoes post-clamp selector-satellite', () => {
-      // set 200 clamps to 100 + echoes `brightness\t100%`.
-      const out = execFileSync('bash', [path.join(DEFAULTS_BLANKS, 'brightness/brightness-blank.sh'), 'set', '200'], {
-        encoding: 'utf8',
-        env: { ...process.env, HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'oc-test-home-')) },
-      });
-      expect(out.trim()).toBe('brightness\t100%');
-    });
-
-    it.skipIf(skip)('volume-blank.sh get: returns selector-satellite "volume\\t<N>%", never crashes', () => {
-      // June 2026: volume migrated to selector-satellite emission. The
-      // script now echoes `volume\t<value>%` (TAB-separated) so the
-      // runtime's blankSatellite path splices it as one wipeable span.
+    it.skipIf(skip)('volume-blank.sh get: returns a bare integer, never crashes', () => {
       const out = execFileSync('bash', [path.join(DEFAULTS_BLANKS, 'volume/volume-blank.sh'), 'get'], {
         encoding: 'utf8',
         env: { ...process.env, HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'oc-test-home-')) },
       });
-      expect(out.trim()).toMatch(/^volume\t\d{1,3}%$/);
-    });
-
-    it.skipIf(skip)('volume-blank.sh set <N>: applies + echoes post-clamp selector-satellite', () => {
-      // Calling set 200 must clamp to 100 and echo `volume\t100%` so
-      // the buffer reflects the FINAL state, not the user's pre-clamp
-      // input. Same pattern: TAB-separated label+value.
-      const out = execFileSync('bash', [path.join(DEFAULTS_BLANKS, 'volume/volume-blank.sh'), 'set', '200'], {
-        encoding: 'utf8',
-        env: { ...process.env, HOME: fs.mkdtempSync(path.join(os.tmpdir(), 'oc-test-home-')) },
-      });
-      expect(out.trim()).toBe('volume\t100%');
+      expect(out.trim()).toMatch(/^\d{1,3}$/);
     });
 
     // opencues-blank.sh + sentinel-blank.sh used to live here. Both

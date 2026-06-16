@@ -135,30 +135,12 @@ export class DimRender {
 
     // Selector + satellite dim. Both sides can be multi-word
     // ("display mode" / "plain text"). Each side gets its own dim layer.
-    //
-    // Shape-driven blanks (June 2026) — atomic-pair dimming. Full
-    // design: docs/architecture/shape-driven-blanks.md § Navigation
-    // semantics (rendering follows the same predicate as navigation).
-    // The selector for shape-driven blanks is a static LABEL, not a
-    // cycle axis — graying it implies an interaction the user
-    // doesn't have (gray = "navigable cue here"). Suppress the
-    // selector's dim entry; the satellite stays dimmable so the
-    // user can still see "there's something cyclable on this side".
-    // FEATURES-pairs (`opencues settings _`) keep both sides dimmed
-    // — both ARE interactive there.
     if (hasDimCap && ss) {
-      const ssBlank = this.configLoader?.blanks.get(ss.blankName) as
-        | { blankShapes?: unknown }
-        | undefined;
-      const ssIsShapeDriven = ssBlank && Array.isArray(ssBlank.blankShapes)
-        && (ssBlank.blankShapes as unknown[]).length > 0;
       const ss0 = words[ss.selectorIndex];
       const ss1 = words[ssSelEnd];
       const ts = words[ss.satelliteIndex];
       const te = words[ssSatEnd];
-      if (ss0 && ss1 && !activeInSelector && !ssIsShapeDriven) {
-        dimRanges.push({ start: ss0.start, end: ss1.end });
-      }
+      if (ss0 && ss1 && !activeInSelector) dimRanges.push({ start: ss0.start, end: ss1.end });
       if (ts && te && !activeInSatellite) dimRanges.push({ start: ts.start, end: te.end });
     }
 

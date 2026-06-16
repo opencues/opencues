@@ -3,18 +3,17 @@ name: gh-issues
 type: blank
 tip: open issue count for a github repo
 blankKeywords: gh-issues
-# blankShapes: precision gate (June 2026). Captures owner/repo at
-# the end. Drops prose where "gh-issues" appears mid-sentence from
-# claiming.
-blankShapes: [{"pattern":"^gh-issues\\s+([\\w.-]+\\/[\\w.-]+)\\s*_$","action":"get","valueGroup":1}]
+# Allow `owner/repo` between the keyword and `_`. Without this,
+# `blankKeywords` must be immediately adjacent to `_` (proximity 0).
+blankProximity: 2
 blankAutoPopulate: true
 blankReadOnly: true
-# One-span emission — no cycle vocab.
-blankClearOnEdit: true
-blankConsumeContext: true
 impl: ./blank.js
 network: [api.github.com]
 storage: gh-issues
+# Auto: bare "gh-issues opencues/opencues _" → wipe → "opencues/opencues: 42 open"
+# (repo embedded). Copula phrasing → keep.
+blankReplace: auto
 ---
 
 User-shipped JS blank demo. Type `gh-issues owner/repo _` and the
