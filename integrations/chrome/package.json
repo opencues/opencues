@@ -1,6 +1,6 @@
 {
   "name": "@opencues/chrome",
-  "version": "0.2.20",
+  "version": "0.2.21",
   "private": true,
   "description": "OpenCues Chrome MV3 extension — real-time word alternatives, blanks, and cue-controls in the browser.",
   "compatibility": {
