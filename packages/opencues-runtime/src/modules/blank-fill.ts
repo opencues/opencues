@@ -1349,7 +1349,7 @@ export class BlankFill {
             let shapeAction: 'get' | 'set' | 'step' | undefined;
             let shapeValue: string | undefined;
             if (shapes && shapes.length > 0) {
-              const matchedShape = matchBlankShape(words, blankIdx, shapes);
+              const matchedShape = matchBlankShape(words, start, blankIdx, shapes);
               if (!matchedShape) continue;
               shapeAction = matchedShape.action;
               shapeValue = matchedShape.value;
@@ -1376,11 +1376,15 @@ export class BlankFill {
  * Walk the blank's declared shapes against the buffer text; return
  * the matched action + extracted value, or null if no shape fires.
  *
- * The test string is the buffer text up to and including `_`, with
- * leading/trailing whitespace trimmed. Patterns are compiled with `i`
- * (case-insensitive) and `s` (dotall — multi-line bodies don't need
- * to anchor at the start of every line). Authors can use `^` / `$`
- * to anchor against the trimmed input as a whole.
+ * The test string is the buffer slice from the matched keyword's
+ * leading word up to and including `_`, with leading/trailing
+ * whitespace trimmed. Patterns are compiled with `i` (case-
+ * insensitive) and `s` (dotall — multi-line bodies don't need to
+ * anchor at the start of every line). Authors can use `^` / `$` to
+ * anchor against the trimmed invocation window — NOT the whole
+ * buffer. The slice starts at the keyword so a `^foo\s*_$` shape
+ * matches `<prior-span> + foo _` the same way it matches `foo _`
+ * alone (stacked-blank composition).
  *
  * First-match wins (top-down walk). Authors should order shapes
  * narrowest-first: bare-keyword shapes after numeric-bearing shapes,
@@ -1389,13 +1393,11 @@ export class BlankFill {
  */
 function matchBlankShape(
   words: readonly string[],
+  start: number,
   blankIdx: number,
   shapes: ReadonlyArray<{ pattern: string; action: 'get' | 'set' | 'step'; valueGroup?: number }>,
 ): { action: 'get' | 'set' | 'step'; value?: string } | null {
-  // Build the test string from the buffer up to and including the `_`.
-  // Trailing words AFTER the `_` are ignored — by the time `_` fires,
-  // they're not part of the invocation.
-  const testText = words.slice(0, blankIdx + 1).join(' ').trim();
+  const testText = words.slice(start, blankIdx + 1).join(' ').trim();
   for (const shape of shapes) {
     let re: RegExp;
     try { re = new RegExp(shape.pattern, 'is'); }
