@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fix (chrome) — popup Provider / Model dropdowns auto-populate on key entry; no longer gated behind Save
+
+The popup's `Provider` and `Model` dropdowns only list providers whose API key has been verified (a live probe against each provider's `/models` endpoint). That verification previously ran only on popup `init()` (from already-saved keys) and inside the `Save` click handler. So a user pasting a *fresh* key saw `Provider` stuck on `— no verified keys —` until they clicked `Save` — which sits **below** the Provider/Model controls. The required action order (paste key → Save → pick provider → pick model → Save again) contradicted the top-to-bottom layout.
+
+`integrations/chrome/src/popup/popup.ts` now wires a debounced (`600ms`) `input` listener on every provider-key field that re-runs the same `refreshProviderDropdown` verify-and-populate path used by `init()`/`Save`. Pasting or typing a valid key now populates Provider/Model automatically, so the layout reads in execution order and `Save` reverts to purely "persist my final choices". Skipped while `use ~/.cues/ config (chrome-host)` (defer mode) is on, since Provider/Model are ignored then. The stale `— no verified keys —` hover hint ("…and click save") was updated to reflect the automatic behaviour.
+
+Typecheck clean; 9/9 `popup-roundtrip.test.ts` green.
+
+Bumps:
+- `@opencues/chrome` 0.2.20 → 0.2.21 (`manifest.json` + `package.json` in lockstep).
+
 ### Fix — provider-cycle resets sibling model to the resolved `defaultModel`, not the legacy `default` sentinel
 
 When the user flipped a bucket provider without naming a model — either via the ConfigIntent natural-language path (`switch model to cerebras _`) or via the cycling satellite (Ctrl+Alt+↑ on `blanks-llm-provider`) — the apply path wrote the literal string `default` to the sibling `<bucket>-llm-model` scalar. That kept the (provider, model) pair valid at dispatch time (the runtime treats `default` as a fall-through sentinel) but tripped doctor's "inert sentinel" warning and confused users reading OPENCUES.md ("what is `default`? why is it stuck?").

@@ -114,7 +114,7 @@ async function refreshProviderDropdown(preferred: string, currentModel: string):
     opt.value = '';
     opt.textContent = '— no verified keys —';
     providerEl.appendChild(opt);
-    providerEl.title = 'Paste an API key above and click save. Verified keys appear here.';
+    providerEl.title = 'Paste an API key above — verified providers appear here automatically.';
     if (hint) hint.textContent = '';
     populateModelDropdown('', currentModel);
     return;
@@ -235,6 +235,31 @@ async function init(): Promise<void> {
   };
   applyDeferUI();
   deferEl.addEventListener('change', applyDeferUI);
+
+  // Auto-verify keys as they're entered so the Provider / Model
+  // dropdowns populate WITHOUT a Save round-trip first. Previously the
+  // dropdowns only repopulated on init() (from saved keys) and on Save,
+  // so a freshly-pasted key left Provider showing "— no verified keys —"
+  // until the user clicked Save — which sits BELOW provider/model. That
+  // made the action order (paste → save → pick provider → pick model →
+  // save) contradict the visual top-to-bottom order. Auto-verifying here
+  // means the layout reads in execution order and Save is purely
+  // "persist my final choices". Debounced so we probe each provider's
+  // /models endpoint once after typing/paste settles, not per keystroke.
+  let verifyTimer: ReturnType<typeof setTimeout> | undefined;
+  const scheduleKeyVerify = (): void => {
+    if (deferEl.checked) return; // provider/model ignored in defer mode
+    if (verifyTimer !== undefined) clearTimeout(verifyTimer);
+    verifyTimer = setTimeout(() => {
+      void refreshProviderDropdown(
+        providerEl.value || config.provider || '',
+        modelEl.value || config.model || '',
+      );
+    }, 600);
+  };
+  for (const el of providerKeyInputs()) {
+    el.addEventListener('input', scheduleKeyVerify);
+  }
 
   const dimMix = document.getElementById('dimMix') as HTMLInputElement;
   const dimMixValue = document.getElementById('dimMixValue') as HTMLSpanElement;
