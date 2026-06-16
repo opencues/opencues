@@ -724,22 +724,23 @@ export class BlankFill {
       spanAsUnit: blank?.blankClearOnEdit === true,
     });
 
-    // Shape-driven path (June 2026) — wipe from the matched keyword's
-    // leading word to (and including) `_`. Mirrors the proximity-blank
-    // semantics: the substitute replaces the invocation window, not the
-    // whole line. The earlier line-scoped wipe assumed the shape regex
-    // matched the entire buffer prefix (back when `matchBlankShape`
-    // tested `words.slice(0, blankIdx + 1)`); now that the shape gate
-    // slices from `slot.keywordStart`, the substitute mirrors that
-    // window so authors get "broader shaping, proximity-style range".
-    // Mirrors the same carve-out in applySatelliteFill.
+    // Shape-driven path (June 2026) — when the matched shape produced
+    // a slot with `action` set, the shape's regex matched the ENTIRE
+    // input (regex anchored ^...$). Wipe the whole matched input
+    // (line-scoped — surrounding paragraphs survive) and splice the
+    // fill into its place. Without this carve-out, the legacy
+    // computeFillRange would only wipe the keyword span, leaving the
+    // user's captured prompt text (or other prefix words the shape
+    // matched) loose in the buffer. Mirrors the same carve-out in
+    // applySatelliteFill — both emission shapes converge on
+    // line-scoped wipe for shape-driven blanks.
     const isShapeDriven = slot.action !== undefined;
     const { newText, newCursor } = isShapeDriven
       ? (() => {
-          const kwStartChar = words[slot.keywordStart]?.start ?? target.start;
+          const lineStart = cleaned.lastIndexOf('\n', target.start - 1) + 1;
           return {
-            newText: cleaned.slice(0, kwStartChar) + primaryFill + cleaned.slice(target.end),
-            newCursor: kwStartChar + primaryFill.length,
+            newText: cleaned.slice(0, lineStart) + primaryFill + cleaned.slice(target.end),
+            newCursor: lineStart + primaryFill.length,
           };
         })()
       : clearEnd !== undefined || expansion != null
@@ -1030,21 +1031,22 @@ export class BlankFill {
     const sep = blank.blankSatelliteSeparator || ' ';
     const pair = `${selectorRaw}${sep}${satelliteRaw}`;
 
-    // Shape-driven path: the shape regex matched the keyword window
-    // (`words.slice(slot.keywordStart, slot.index + 1)`), so the
-    // substitute replaces just that window — keyword leading word
-    // through `_`. This converges shape-driven blanks on the same
-    // proximity-style range proximity-only blanks always had,
-    // preserving prefix text the user wrote before the keyword.
-    // For legacy blanks (no shapes), fall through to the existing
-    // keyword-range computeFillRange.
+    // Shape-driven path: the shape pattern matched the ENTIRE input
+    // up to and including `_` (regex is anchored with ^...$ by author
+    // convention), so the whole input is the summon and gets replaced
+    // by the satellite pair. This converges shape-driven blanks on
+    // ConfigIntent's wipe-all emission shape (one wipeable span,
+    // surrounding prose preserved). For legacy blanks (no shapes),
+    // fall through to the existing keyword-range computeFillRange.
     let newText: string;
     let newCursor: number;
     if (slot.action !== undefined) {
-      const wordSpans = splitWords(cleaned);
-      const kwStartChar = wordSpans[slot.keywordStart]?.start ?? target.start;
-      newText = cleaned.slice(0, kwStartChar) + pair + cleaned.slice(target.end);
-      newCursor = kwStartChar + pair.length;
+      // Wipe from start-of-line (or last newline boundary) to the
+      // `_` position. Multi-line buffers: stay scoped to the current
+      // line so prior paragraphs survive.
+      const lineStart = cleaned.lastIndexOf('\n', target.start - 1) + 1;
+      newText = cleaned.slice(0, lineStart) + pair + cleaned.slice(target.end);
+      newCursor = lineStart + pair.length;
     } else {
       const { clearEnd, expansion } = computeFillRange(blank, slot);
       ({ newText, newCursor } = clearEnd !== undefined || expansion != null
