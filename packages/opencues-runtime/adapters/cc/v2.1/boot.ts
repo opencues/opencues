@@ -33,7 +33,7 @@ import { createSourceReclassifier, resetSharedBufferState } from '../../../src/b
 import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import { AgentTaskState } from '../../../src/state/agent-task';
 import { applyDirectives } from '../../../src/render-directives';
-import { buildAgentLLMResolver, buildBlankContextProvider, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildAgentLLMResolver, buildBlankContextProvider, buildBlankIntegrationRunner, buildBlankTokenIntegrationRunner, buildRewritePolishRunner, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { startEventBridge } from '../../../src/event-bridge';
 import type {
   BlankInvokeSpec,
@@ -581,7 +581,30 @@ export function boot(host: HostInfo): BootResult {
     };
   });
 
-  const blankFill = new BlankFill(adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading);
+  // Integration polish runner — shared between BlankFill (keyword-bound
+  // fills) and the Resolver's sources (semantic `_` fills). Null when
+  // the runtime couldn't build one (core not require()-able or no
+  // blanks-bucket provider); BlankFill + sources gate on truthy.
+  const integrationRunner = buildBlankIntegrationRunner(
+    configLoader,
+    () => apiKeys,
+    (level, msg, data) => adapter.log(level, msg, data),
+  );
+  // Token-integration runner — same boot shape, separate cache, used
+  // by FluidBlank when `fluid-blank-token-integration: smart` is set.
+  const tokenIntegrationRunner = buildBlankTokenIntegrationRunner(
+    configLoader,
+    () => apiKeys,
+    (level, msg, data) => adapter.log(level, msg, data),
+  );
+  // Rewrite-polish runner — used by TransformBlank's FUSED branch when
+  // smart mode is on and the post-processor resolved a catalog sentinel.
+  const rewritePolishRunner = buildRewritePolishRunner(
+    configLoader,
+    () => apiKeys,
+    (level, msg, data) => adapter.log(level, msg, data),
+  );
+  const blankFill = new BlankFill(adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading, integrationRunner ?? undefined);
   configLoader.load().then(() => blankFill.subscribe()).catch(() => { /* logged */ });
   void blankFill; // silence unused — referenced by future phases
 
@@ -628,6 +651,9 @@ export function boot(host: HostInfo): BootResult {
     missingKeyFallbackMessage: hasAnyKey ? undefined : NATIVE_HOST_MISSING_KEY_MESSAGE,
     formatLLMErrorAsSubstitute: nativeHostFormatLLMError,
     keywordBoundSlotIndices: (text: string) => blankFill.scan(text).map(s => s.index),
+    runIntegration: integrationRunner ?? undefined,
+    runTokenIntegration: tokenIntegrationRunner ?? undefined,
+    runRewritePolish: rewritePolishRunner ?? undefined,
   }, spanFillState, agentTaskState, blankLoading, markdownRender, selectorSatelliteState,
   buildBlankContextProvider(configLoader, host.blanks, log));
   if (hasAnyKey) {

@@ -31,6 +31,7 @@ import { DEFAULT_OPENCUES_STATE } from './config-loader';
 // on/off toggle and the read site is concentrated (resolver.ts).
 const SETTINGS_MAP_ONLY: ReadonlySet<string> = new Set([
   'fluidBlankMode',     // consumed in resolver.ts:enableFluidBlank
+  'fluidBlankTokenIntegration', // consumed in fluid-blank-source.ts: gate the new LLM-owned WIPE/FILL+polish stage
   'wordCuesMode',       // consumed in resolver.ts:enableWordCues
   'transformBlankMode', // consumed by transform-blank pipeline gate
   'fluidConfigMode',    // consumed in resolver.ts:enableConfigIntent

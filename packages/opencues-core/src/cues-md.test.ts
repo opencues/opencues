@@ -531,79 +531,11 @@ describe('parseCuesMd: edge cases', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Real file validation — parse the actual BLANKS.md and CUES.md
-// ---------------------------------------------------------------------------
-
-describe('parseCuesMd: real BLANKS.md', () => {
-  const fs = require('fs');
-  const path = require('path');
-  const blanksPath = path.resolve(__dirname, '../../../defaults/BLANKS.md');
-
-  // Skip if BLANKS.md doesn't exist (CI without repo root) OR if it
-  // doesn't contain classifier-sources content (these tests pin
-  // behaviour that no longer ships in defaults/BLANKS.md).
-  const fileContent = fs.existsSync(blanksPath) ? fs.readFileSync(blanksPath, 'utf8') : '';
-  const blanksExists = fileContent.includes('classifier') && fileContent.includes('### math');
-
-  (blanksExists ? it : it.skip)('should parse all 11 sources', () => {
-    const cfg = parseCuesMd(fs.readFileSync(blanksPath, 'utf8'));
-    const names = Object.keys(cfg.promptConfig!.sources);
-    assert.strictEqual(names.length, 11);
-    assert.ok(names.includes('classifier'));
-    assert.ok(names.includes('math'));
-    assert.ok(names.includes('factual'));
-    assert.ok(names.includes('translation'));
-    assert.ok(names.includes('unit'));
-    assert.ok(names.includes('spelling'));
-    assert.ok(names.includes('color'));
-    assert.ok(names.includes('http'));
-    assert.ok(names.includes('timezone'));
-    assert.ok(names.includes('roman'));
-    assert.ok(names.includes('grammar'));
-  });
-
-  (blanksExists ? it : it.skip)('should have correct parsers', () => {
-    const cfg = parseCuesMd(fs.readFileSync(blanksPath, 'utf8'));
-    const s = cfg.promptConfig!.sources;
-    assert.strictEqual(s.math.parser, 'math');
-    assert.strictEqual(s.unit.parser, 'math');
-    assert.strictEqual(s.factual.parser, 'answer');
-    assert.strictEqual(s.translation.parser, 'answer');
-    assert.strictEqual(s.spelling.parser, 'answer');
-    assert.strictEqual(s.color.parser, 'answer');
-    assert.strictEqual(s.http.parser, 'answer');
-    assert.strictEqual(s.timezone.parser, 'answer');
-    assert.strictEqual(s.roman.parser, 'answer');
-    assert.strictEqual(s.grammar.parser, 'alternatives');
-  });
-
-  (blanksExists ? it : it.skip)('every non-grammar/classifier source should have match or keywords', () => {
-    const cfg = parseCuesMd(fs.readFileSync(blanksPath, 'utf8'));
-    for (const [name, src] of Object.entries(cfg.promptConfig!.sources)) {
-      if (name === 'classifier' || name === 'grammar') continue;
-      assert.ok(src.match || src.keywords, `Source "${name}" has neither match nor keywords — will never fast-match`);
-    }
-  });
-
-  (blanksExists ? it : it.skip)('every source should have prompt text', () => {
-    const cfg = parseCuesMd(fs.readFileSync(blanksPath, 'utf8'));
-    for (const [name, src] of Object.entries(cfg.promptConfig!.sources)) {
-      assert.ok(src.promptText && src.promptText.length > 10, `Source "${name}" has no/short prompt text`);
-    }
-  });
-
-  (blanksExists ? it : it.skip)('should pass validation with no errors', () => {
-    const cfg = parseCuesMd(fs.readFileSync(blanksPath, 'utf8'));
-    const errors = validateCuesMd(cfg);
-    assert.deepStrictEqual(errors, [], `Validation errors: ${errors.join(', ')}`);
-  });
-
-  (blanksExists ? it : it.skip)('should have ignore words', () => {
-    const cfg = parseCuesMd(fs.readFileSync(blanksPath, 'utf8'));
-    assert.ok(cfg.ignore && cfg.ignore.length > 0, 'BLANKS.md should have ignore words');
-  });
-});
+// Real file validation for `defaults/BLANKS.md` was deleted (June 2026):
+// that file was retired in favour of per-blank `defaults/blanks/<name>/
+// BLANK.md` folders. The 6 tests here pinned the classifier-sources
+// shape the legacy file carried and the file no longer exists. Live
+// per-blank coverage now lives in the per-blank parsing suites above.
 
 // ---------------------------------------------------------------------------
 // Forward-compat: unknown scope values
@@ -772,26 +704,8 @@ describe('parseCuesMd: per-source maxTokens + temperature overrides', () => {
   });
 });
 
-describe('parseCuesMd: real CUES.md', () => {
-  const fs = require('fs');
-  const path = require('path');
-  const cuesPath = path.resolve(__dirname, '../../../defaults/CUES.md');
-  const cuesExists = fs.existsSync(cuesPath);
-
-  (cuesExists ? it : it.skip)('parses cleanly (sources live in words/<name>.md or cues/<name>/CUE.md, not inline)', () => {
-    const cfg = parseCuesMd(fs.readFileSync(cuesPath, 'utf8'));
-    assert.ok(cfg);
-    // No inline word sources expected — everything is folder-based now.
-    assert.ok(!cfg.promptConfig?.sources || Object.keys(cfg.promptConfig.sources).length === 0);
-  });
-
-  (cuesExists ? it : it.skip)('does not store inline tips (tips are folder-based)', () => {
-    const cfg = parseCuesMd(fs.readFileSync(cuesPath, 'utf8'));
-    assert.ok(!cfg.tips || cfg.tips.length === 0, 'tips moved to words/<id>.md or cues/<id>/CUE.md');
-  });
-
-  (cuesExists ? it : it.skip)('should pass validation', () => {
-    const cfg = parseCuesMd(fs.readFileSync(cuesPath, 'utf8'));
-    assert.deepStrictEqual(validateCuesMd(cfg), []);
-  });
-});
+// Real-file validation for `defaults/CUES.md` deleted (June 2026):
+// the legacy `CUES.md` file has been folded into per-cue
+// `defaults/cues/<name>/CUE.md` folders. The 3 tests here all pinned
+// the absence of the old inline shape — but the file itself no longer
+// exists, so the assertion is moot.

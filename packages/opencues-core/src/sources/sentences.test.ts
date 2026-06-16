@@ -156,121 +156,13 @@ describe('sentences: simple grammar', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Word alternatives: legal domain
-// ---------------------------------------------------------------------------
-
-describe.skip('sentences: legal domain', () => {
-  it('"the contract shall be terminated" → legal terms get alts', async () => {
-    const sources = buildWordSources(
-      '1:agreement,pact,deal\n2:must,will,should\n4:ended,cancelled,voided'
-    );
-    const result = await sources[0].getCues(ctx('the contract shall be terminated'));
-
-    const contractResult = result.results.find(r => r.word === 'contract');
-    assert.ok(contractResult);
-    assert.ok(contractResult.alternatives.includes('agreement'));
-
-    const shallResult = result.results.find(r => r.word === 'shall');
-    assert.ok(shallResult);
-    assert.ok(shallResult.alternatives.includes('must'));
-    assert.ok(shallResult.alternatives.includes('will'));
-  });
-
-  it('"the party shall indemnify and hold harmless" → complex legal', async () => {
-    const sources = buildWordSources(
-      '1:parties,entity,company\n2:must,will,is obligated to\n3:compensate,protect,reimburse'
-    );
-    const result = await sources[0].getCues(ctx('the party shall indemnify and hold harmless'));
-
-    assert.ok(result.results.find(r => r.word === 'party'));
-    assert.ok(result.results.find(r => r.word === 'shall'));
-    assert.ok(result.results.find(r => r.word === 'indemnify'));
-  });
-
-  it('"whereas the agreement stipulates liability" → multiple legal terms', async () => {
-    const sources = buildWordSources(
-      '0:since,given that,considering\n2:contract,arrangement,understanding\n3:requires,mandates,specifies\n4:responsibility,obligation,exposure'
-    );
-    const result = await sources[0].getCues(ctx('whereas the agreement stipulates liability'));
-
-    assert.strictEqual(result.results.length, 4);
-    const whereasResult = result.results.find(r => r.word === 'whereas');
-    assert.ok(whereasResult);
-    assert.ok(whereasResult.alternatives.includes('since'));
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Word alternatives: medical domain
-// ---------------------------------------------------------------------------
-
-describe.skip('sentences: medical domain', () => {
-  it('"the diagnosis was confirmed" → clinical terms', async () => {
-    const sources = buildWordSources(
-      '1:clinical impression,assessment,finding\n3:verified,established,validated'
-    );
-    const result = await sources[0].getCues(ctx('the diagnosis was confirmed'));
-
-    const diagResult = result.results.find(r => r.word === 'diagnosis');
-    assert.ok(diagResult);
-    assert.ok(diagResult.alternatives.includes('clinical impression'));
-  });
-
-  it('"the prognosis indicates comorbidity" → multiple medical terms', async () => {
-    const sources = buildWordSources(
-      '1:outlook,disease course,expected outcome\n2:suggests,shows,reveals\n3:coexisting condition,concurrent disease,multimorbidity'
-    );
-    const result = await sources[0].getCues(ctx('the prognosis indicates comorbidity'));
-
-    assert.strictEqual(result.results.length, 3);
-    assert.ok(result.results.find(r => r.word === 'prognosis'));
-    assert.ok(result.results.find(r => r.word === 'comorbidity'));
-  });
-
-  it('"contraindication for prophylaxis noted" → advanced clinical', async () => {
-    const sources = buildWordSources(
-      '0:precaution,adverse interaction,warning\n2:prevention,preventive treatment,protective measure\n3:recorded,documented,observed'
-    );
-    const result = await sources[0].getCues(ctx('contraindication for prophylaxis noted'));
-
-    const ciResult = result.results.find(r => r.word === 'contraindication');
-    assert.ok(ciResult);
-    assert.ok(ciResult.alternatives.includes('precaution'));
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Word alternatives: mixed domain
-// ---------------------------------------------------------------------------
-
-describe.skip('sentences: mixed domain', () => {
-  it('"the contract covers the diagnosis" → legal + medical in one sentence', async () => {
-    const sources = buildWordSources(
-      '1:agreement,policy,document\n2:includes,addresses,details\n4:assessment,clinical finding,evaluation'
-    );
-    const result = await sources[0].getCues(ctx('the contract covers the diagnosis'));
-
-    assert.strictEqual(result.results.length, 3);
-    assert.ok(result.results.find(r => r.word === 'contract'));
-    assert.ok(result.results.find(r => r.word === 'diagnosis'));
-  });
-
-  it('"the liability for the etiology report" → legal + medical terms', async () => {
-    const sources = buildWordSources(
-      '1:responsibility,obligation,exposure\n4:causation,root cause,origin\n5:analysis,summary,document'
-    );
-    const result = await sources[0].getCues(ctx('the liability for the etiology report'));
-
-    const liabResult = result.results.find(r => r.word === 'liability');
-    assert.ok(liabResult);
-    assert.ok(liabResult.alternatives.includes('responsibility'));
-
-    const etioResult = result.results.find(r => r.word === 'etiology');
-    assert.ok(etioResult);
-    assert.ok(etioResult.alternatives.includes('causation'));
-  });
-});
+// Legal / medical / mixed domain sentence blocks deleted (June 2026):
+// these tests pinned the SHAPE of `buildWordSources` from a sources/
+// matrix that has been retired. The parser today returns a different
+// envelope and there is no working translation from the inline-YAML
+// fixture format the tests used. Kept under `.skip` for months without
+// resolution — clearing them out so the test-pass counter reflects
+// real coverage. Re-add real-shape tests when needed.
 
 // ---------------------------------------------------------------------------
 // Word alternatives: sentences with numbers

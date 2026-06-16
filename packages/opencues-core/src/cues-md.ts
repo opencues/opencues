@@ -262,6 +262,29 @@ export interface BlankConfig {
    *  is dropped from the context catalog if missing. */
   splitValuesInTokenNamesAck?: boolean;
   /**
+   * Integration pass — when true, BlankFill runs a second LLM call after
+   * the blank's substitute lands, polishing the raw value to fit the
+   * surrounding prose. Example: stocks blank fills "$254.00", surrounding
+   * prose uses whole dollars → integration pass returns "$254".
+   *
+   * Cost: one extra LLM call per fill (~150-250ms on cerebras). Default
+   * `false` — opt-in per blank.
+   *
+   * REQUIRES the blank's value to be safe to send to the LLM. If the blank
+   * is classified (via the planned `classified:` flag), integration is
+   * disabled at runtime even when `integrate: true` is set — the LLM can't
+   * polish a value it never sees. Today (no classification flag shipped
+   * yet), only the `integrate: true` opt-in matters.
+   */
+  integrate?: boolean;
+  /**
+   * Free-text hint injected into the integration pass system prompt.
+   * Example: "stock price — match currency formatting, trim trailing .00
+   * if surrounding prose uses whole dollars". Optional; integration runs
+   * with a generic prompt when omitted.
+   */
+  integrateHint?: string;
+  /**
    * Opt-in OS-level sandbox for this blank's script. When 'strict',
    * the runtime wraps the spawn with bubblewrap (Linux/WSL) — readonly
    * filesystem, no network, isolated PID/IPC namespaces. The script
@@ -989,6 +1012,9 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   contextBind?: string;
   contextBindSplit?: string;
   splitValuesInTokenNamesAck?: boolean;
+  /** Integration pass opt-in. See BlankConfig.integrate. */
+  integrate?: boolean;
+  integrateHint?: string;
   /** User-shipped JS impl (relative path) or registry name. See BlankConfig.impl. */
   impl?: string;
   /** Capability declarations for user-shipped JS blanks (impl: ./xxx). */
@@ -1177,6 +1203,15 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
         fm.splitValuesInTokenNamesAck = value.trim().toLowerCase() === 'ok'
           || value.trim().toLowerCase() === 'true';
         break;
+      case 'integrate': {
+        const v = value.trim().toLowerCase();
+        fm.integrate = v === 'true' || v === 'on' || v === 'yes';
+        break;
+      }
+      case 'integrate-hint': case 'integrateHint': case 'integratehint':
+        // Strip surrounding quotes if present (matches contextBindSplit pattern).
+        fm.integrateHint = value.replace(/^['"]|['"]$/g, '').trim();
+        break;
       // impl: defaults to undefined → runtime falls back to <name>Blank
       // class lookup. Relative path → user-shipped JS module (loaded
       // through the capability-constrained user-blank loader).
@@ -1315,6 +1350,8 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
       if (frontmatter.contextBind !== undefined) blank.contextBind = frontmatter.contextBind;
       if (frontmatter.contextBindSplit !== undefined) blank.contextBindSplit = frontmatter.contextBindSplit;
       if (frontmatter.splitValuesInTokenNamesAck !== undefined) blank.splitValuesInTokenNamesAck = frontmatter.splitValuesInTokenNamesAck;
+      if (frontmatter.integrate !== undefined) blank.integrate = frontmatter.integrate;
+      if (frontmatter.integrateHint !== undefined) blank.integrateHint = frontmatter.integrateHint;
       if (frontmatter.impl !== undefined) {
         // Relative path → resolve to absolute against the BLANK.md's
         // folder. Bare name → stays as-is for runtime registry lookup.

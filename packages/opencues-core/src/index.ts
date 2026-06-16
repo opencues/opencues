@@ -226,6 +226,59 @@ export type {
   PlanResult as BlankContextPlanResult,
 } from './blank-context';
 
+// Integration pass — polish a blank's raw substituted value into the
+// surrounding prose with a single LLM call. Opt-in per blank via
+// `integrate: true` + optional `integrate-hint:` in BLANK.md. See
+// integration-pass.ts for the dispatch contract + validator semantics.
+export {
+  runIntegrationPass,
+  makeIntegrationCache,
+  IntegrationCache,
+  buildIntegrationSystemPrompt,
+  buildIntegrationUserMessage,
+  sliceContextWindows,
+  hasFormatHint,
+  extractNumericTokens,
+  numericTokensPreserved,
+  makeCacheKey as makeIntegrationCacheKey,
+} from './integration-pass';
+export type {
+  IntegrationRequest,
+  IntegrationResult,
+  IntegrationDispatch,
+  IntegrationPassRunner,
+} from './integration-pass';
+
+// Token-integration — newer post-token-resolution stage that decides
+// what range of the user buffer to replace AND what to put there, in
+// one language-invariant LLM call. Replaces today's WIPE/FILL regex +
+// post-hoc polish. See `token-integration-plan.md` + token-integration.ts.
+export {
+  runTokenIntegration,
+  makeTokenIntegrationCache,
+  TokenIntegrationCache,
+  buildTokenIntegrationSystemPrompt,
+  buildTokenIntegrationUserMessage,
+  parseTokenIntegrationOutput,
+  makeTokenCacheKey,
+  runRewritePolish,
+  makeRewritePolishCache,
+  RewritePolishCache,
+  buildRewritePolishSystemPrompt,
+  buildRewritePolishUserMessage,
+  parseRewritePolishOutput,
+  makeRewritePolishCacheKey,
+} from './token-integration';
+export type {
+  TokenIntegrationRequest,
+  TokenIntegrationResult,
+  TokenIntegrationDispatch,
+  TokenIntegrationRunner,
+  RewritePolishRequest,
+  RewritePolishResult,
+  RewritePolishRunner,
+} from './token-integration';
+
 // IDENTITY.md write-validator — load-bearing safety check for any path
 // that mutates `~/.cues/IDENTITY.md`. Used by the CLI's `identity` command
 // today; will be used by a future keyword-bound sentinel blank.

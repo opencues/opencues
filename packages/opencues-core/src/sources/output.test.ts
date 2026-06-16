@@ -137,59 +137,11 @@ describe('word output: numbers skipped', () => {
   });
 });
 
-describe.skip('word output: legal sentences', () => {
-  it('"shall" → legal alts', async () => {
-    const r = await wordResult('shall', '0:must,will,should');
-    assert.deepStrictEqual(r.results[0].alternatives, ['shall', 'must', 'will', 'should']);
-  });
-
-  it('"The agreement shall terminate upon breach" → multiple legal words', async () => {
-    const r = await wordResult(
-      'The agreement shall terminate upon breach',
-      '1:contract,arrangement,understanding\n2:must,will,is required to\n3:end,expire,cease\n5:violation,default,infringement'
-    );
-    assert.strictEqual(r.results.length, 4);
-    assert.strictEqual(r.results.find(x => x.word === 'agreement')!.alternatives[0], 'agreement');
-    assert.ok(r.results.find(x => x.word === 'shall')!.alternatives.includes('must'));
-    assert.ok(r.results.find(x => x.word === 'breach')!.alternatives.includes('violation'));
-  });
-
-  it('"liability" single legal term', async () => {
-    const r = await wordResult('liability', '0:responsibility,obligation,exposure');
-    assert.strictEqual(r.results[0].alternatives[0], 'liability');
-    assert.ok(r.results[0].alternatives.includes('obligation'));
-  });
-});
-
-describe.skip('word output: medical sentences', () => {
-  it('"diagnosis confirmed" → clinical alts', async () => {
-    const r = await wordResult('diagnosis confirmed', '0:assessment,finding,evaluation\n1:verified,validated,established');
-    assert.strictEqual(r.results[0].alternatives[0], 'diagnosis');
-    assert.ok(r.results[0].alternatives.includes('assessment'));
-    assert.strictEqual(r.results[1].alternatives[0], 'confirmed');
-  });
-
-  it('"The prognosis is poor due to comorbidity" → two medical terms', async () => {
-    const r = await wordResult(
-      'The prognosis is poor due to comorbidity',
-      '1:outlook,disease course,expected outcome\n3:bad,grim,unfavorable\n6:coexisting condition,multimorbidity,concurrent illness'
-    );
-    assert.ok(r.results.find(x => x.word === 'prognosis')!.alternatives.includes('outlook'));
-    assert.ok(r.results.find(x => x.word === 'comorbidity')!.alternatives.includes('multimorbidity'));
-  });
-});
-
-describe.skip('word output: mixed domain', () => {
-  it('"the contract covers the diagnosis" → legal + medical', async () => {
-    const r = await wordResult(
-      'the contract covers the diagnosis',
-      '1:agreement,policy\n2:includes,addresses\n4:assessment,evaluation'
-    );
-    assert.strictEqual(r.results.length, 3);
-    assert.ok(r.results.find(x => x.word === 'contract'));
-    assert.ok(r.results.find(x => x.word === 'diagnosis'));
-  });
-});
+// Legal / medical / mixed domain output blocks deleted (June 2026):
+// these tests pinned the SHAPE of `wordResult`'s output from a sources/
+// matrix that has been retired. Companion to the sentence-domain blocks
+// removed from sources/sentences.test.ts for the same reason. Re-add
+// with current envelope when domain-specific output coverage is needed.
 
 describe('word output: LLM response edge cases', () => {
   it('LLM returns preamble text before indices', async () => {

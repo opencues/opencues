@@ -411,6 +411,9 @@ export function boot(host: HostInfo): BootResult {
         }
       },
       keywordBoundSlotIndices: (text: string) => shared.blankFill.scan(text).map(s => s.index),
+      runIntegration: shared.integrationRunner ?? undefined,
+      runTokenIntegration: shared.tokenIntegrationRunner ?? undefined,
+      runRewritePolish: shared.rewritePolishRunner ?? undefined,
     }), spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState);
     configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
     liveResolver = resolver;

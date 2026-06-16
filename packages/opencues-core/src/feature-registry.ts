@@ -292,6 +292,16 @@ export const FEATURES: readonly FeatureSpec[] = [
     ],
   },
   {
+    scalar: 'fluid-blank-token-integration',
+    camelCase: 'fluidBlankTokenIntegration',
+    description: 'Use an LLM to decide WIPE vs FILL + format the substitute (replaces legacy regex)',
+    menuTip: 'After a catalog [TOKEN] resolves, run an LLM call to decide what range of buffer to replace AND polish the substitute in one pass. `smart` = the new LLM-owned stage. `legacy` = today\'s regex + post-hoc polish.',
+    values: [
+      { id: 'legacy', description: 'Legacy regex decides WIPE/FILL; post-hoc polish runs if `integrate: true` (default while shaking down)' },
+      { id: 'smart',  description: 'New LLM-owned token-integration stage decides REPLACE + WITH in one call' },
+    ],
+  },
+  {
     scalar: 'word-cues-mode',
     camelCase: 'wordCuesMode',
     description: 'LLM word alternatives surfaced on plain text',

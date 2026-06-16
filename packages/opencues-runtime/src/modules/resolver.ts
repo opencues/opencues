@@ -114,6 +114,32 @@ export interface ResolverOptions {
    * calls (1+ s) on every `volume _` / `brightness _` / `weather _`.
    */
   readonly keywordBoundSlotIndices?: (text: string) => readonly number[];
+  /**
+   * Integration polish runner shared with BlankFill. When set, sources
+   * that resolve blank-context sentinels into their LLM output
+   * (FluidBlankSource today; TransformBlank + AgentRewrite as
+   * follow-ups) run a single LLM polish call to fit the answer to the
+   * user's surrounding buffer prose. Threaded down through
+   * `buildSourcesFromConfig`. When omitted the gate is a no-op —
+   * answers land verbatim.
+   */
+  readonly runIntegration?: import('@opencues/core').IntegrationPassRunner;
+  /**
+   * Token-integration runner — the LLM-owned post-token-resolution
+   * stage that replaces `determineReplaceMode` + post-hoc polish with
+   * a single REPLACE+WITH decision. See token-integration-plan.md.
+   * Enabled per-installation via the `fluid-blank-token-integration:
+   * smart` OPENCUES.md scalar. When omitted OR when the scalar is
+   * `legacy` (default), FluidBlank uses the legacy regex+polish path.
+   */
+  readonly runTokenIntegration?: import('@opencues/core').TokenIntegrationRunner;
+  /**
+   * Sibling polish runner used by TransformBlank's FUSED branch on
+   * whole-buffer rewrites. Different shape from runTokenIntegration:
+   * input is (instruction, rewrite) and output is KEEP / polished body.
+   * Same on/off gate (`fluid-blank-token-integration: smart`).
+   */
+  readonly runRewritePolish?: import('@opencues/core').RewritePolishRunner;
 }
 
 interface CuesCoreLike {
@@ -774,6 +800,18 @@ export class Resolver {
       // the warning some other way, e.g. statusline).
       missingKeyFallbackMessage: this.options.missingKeyFallbackMessage,
       formatLLMErrorAsSubstitute: this.options.formatLLMErrorAsSubstitute,
+      runIntegration: this.options.runIntegration,
+      runTokenIntegration: this.options.runTokenIntegration,
+      runRewritePolish: this.options.runRewritePolish,
+      // Reader for the OPENCUES.md `fluid-blank-token-integration` scalar.
+      // Returns 'smart' to enable the new path; anything else (including
+      // undefined and any unrecognised string) keeps the legacy regex+
+      // polish path. Read fresh on every resolve so OPENCUES.md hot-
+      // reloads propagate without resolver rebuild.
+      tokenIntegrationMode: () => {
+        const v = this.configLoader.opencuesState.settings.get('fluid-blank-token-integration');
+        return v === 'smart' ? 'smart' : 'legacy';
+      },
     };
     let sources: unknown[];
     try {

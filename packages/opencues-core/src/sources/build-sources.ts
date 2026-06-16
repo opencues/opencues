@@ -255,6 +255,42 @@ export interface BuildSourcesOptions {
   /** Subscriber for `SentenceCueSource` (one batch call per cue per buffer). */
   onSentenceCueEvent?: SentenceCueSourceConfig['onEvent'];
   /**
+   * Integration polish runner shared with BlankFill. When set, sources
+   * that resolve blank-context sentinels into LLM-generated text (today:
+   * FluidBlankSource; TransformBlank + AgentRewrite in follow-ups) run
+   * a single polish LLM call to fit the substituted answer to the
+   * user's surrounding buffer prose. Runner internally gates on
+   * substitute length, format-hint detection, and LRU cache; sources
+   * just await the envelope and use `result.polished`. When omitted
+   * the gate is structurally a no-op — answers land verbatim, bit-
+   * identical to today's behaviour.
+   */
+  runIntegration?: import('../integration-pass').IntegrationPassRunner;
+  /**
+   * Token-integration runner — the LLM-owned post-token-resolution
+   * stage that replaces `determineReplaceMode` + post-hoc polish with
+   * a single REPLACE+WITH decision. Wired through to FluidBlankSource
+   * (TransformBlank/AgentRewrite migration is a follow-up PR). When
+   * omitted or when the flag below is `legacy`, FluidBlank uses the
+   * legacy regex+polish path.
+   */
+  runTokenIntegration?: import('../token-integration').TokenIntegrationRunner;
+  /**
+   * OPENCUES.md `fluid-blank-token-integration` reader. Threaded as a
+   * getter so OPENCUES.md hot-reloads propagate without source-instance
+   * rebuild. Returns 'smart' to enable the new path; anything else
+   * (including undefined) keeps the legacy regex+polish path. Default
+   * is `legacy` while the new path validates in real opencode use.
+   */
+  tokenIntegrationMode?: () => 'smart' | 'legacy' | undefined;
+  /**
+   * Polish runner — sibling of `runTokenIntegration`, used by
+   * TransformBlank's FUSED branch on whole-buffer rewrites. Refines the
+   * just-resolved rewrite prose so resolved data values feel naturally
+   * integrated. Gated on the same `tokenIntegrationMode` flag (smart).
+   */
+  runRewritePolish?: import('../token-integration').RewritePolishRunner;
+  /**
    * Whether the host advertises a CYCLING SURFACE — i.e. it can
    * intercept Ctrl+Alt+arrow keys AND render visual feedback for
    * the user to pick between alternatives. Terminal hosts and
@@ -646,6 +682,9 @@ export function buildSourcesFromConfig(
         log: options.log,
         logInfo: options.logInfo,
         formatErrorAsSubstitute: options.formatLLMErrorAsSubstitute,
+        runIntegration: options.runIntegration,
+        runTokenIntegration: options.runTokenIntegration,
+        tokenIntegrationMode: options.tokenIntegrationMode,
       }));
     }
   }
@@ -676,6 +715,9 @@ export function buildSourcesFromConfig(
         onEvent: options.onTransformBlankEvent,
         mode: options.transformBlankMode as ('auto' | '3-pass' | 'fused' | undefined),
         formatErrorAsSubstitute: options.formatLLMErrorAsSubstitute,
+        runTokenIntegration: options.runTokenIntegration,
+        tokenIntegrationMode: options.tokenIntegrationMode,
+        runRewritePolish: options.runRewritePolish,
       }));
     }
   }

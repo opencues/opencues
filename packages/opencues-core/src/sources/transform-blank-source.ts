@@ -1401,6 +1401,37 @@ export interface TransformBlankSourceConfig {
    * tests + chrome).
    */
   formatErrorAsSubstitute?: (reason: FluidBlankErrorReason, err?: Error) => string;
+  /**
+   * Token-integration runner — when wired AND the `fluid-blank-token-
+   * integration: smart` OPENCUES.md scalar is on AND the FUSED rewrite
+   * resolved at least one catalog sentinel, run a single LLM call that
+   * looks at (original buffer, post-processed rewrite) and decides
+   * REPLACE+WITH for the final substitution. Lets long-form generative
+   * rewrites (e.g. `draft an email about nvda stock price _`) properly
+   * weave resolved values like `$212.45` into the body. Same runner
+   * shape FluidBlank uses (shared LRU cache; see token-integration-
+   * plan.md).
+   *
+   * When omitted OR when the flag is `legacy`, TransformBlank's rewrite
+   * lands verbatim — bit-identical to today's behaviour.
+   */
+  runTokenIntegration?: import('../token-integration').TokenIntegrationRunner;
+  /**
+   * Reader for the `fluid-blank-token-integration` OPENCUES.md scalar.
+   * Returns 'smart' to enable token-integration after the rewrite
+   * resolves a sentinel; anything else (including undefined) keeps
+   * today's behaviour.
+   */
+  tokenIntegrationMode?: () => 'smart' | 'legacy' | undefined;
+  /**
+   * Polish runner — refines the FUSED whole-buffer rewrite AFTER sentinel
+   * post-processing. Different shape from runTokenIntegration (no REPLACE/
+   * WITH — just takes the rewrite and returns KEEP or polished body).
+   * Gated on the same `tokenIntegrationMode` flag (smart) and the same
+   * resolved-sentinel-count > 0 condition. When omitted or off, the
+   * post-processed rewrite is shipped verbatim.
+   */
+  runRewritePolish?: import('../token-integration').RewritePolishRunner;
 }
 
 export type TransformBlankMode = 'auto' | '3-pass' | 'fused';
@@ -1499,6 +1530,12 @@ export class TransformBlankSource implements CueSource {
   private emit: (event: TransformBlankEvent) => void;
   private mode: '3-pass' | 'fused';
   private formatErrorAsSubstitute: ((reason: FluidBlankErrorReason, err?: Error) => string) | undefined;
+  /** Token-integration runner. See TransformBlankSourceConfig.runTokenIntegration. */
+  private runTokenIntegration: import('../token-integration').TokenIntegrationRunner | undefined;
+  /** Reader for the `fluid-blank-token-integration` OPENCUES.md scalar. */
+  private tokenIntegrationMode: (() => 'smart' | 'legacy' | undefined) | undefined;
+  /** Polish runner — refines FUSED whole-buffer rewrites. */
+  private runRewritePolish: import('../token-integration').RewritePolishRunner | undefined;
 
   constructor(config: TransformBlankSourceConfig) {
     this.httpAdapter = config.httpAdapter;
@@ -1515,6 +1552,9 @@ export class TransformBlankSource implements CueSource {
     this.log = config.log ?? (() => { /* default: silent */ });
     this.emit = config.onEvent ?? (() => { /* default: silent */ });
     this.formatErrorAsSubstitute = config.formatErrorAsSubstitute;
+    this.runTokenIntegration = config.runTokenIntegration;
+    this.tokenIntegrationMode = config.tokenIntegrationMode;
+    this.runRewritePolish = config.runRewritePolish;
     // Resolve mode once at construction — provider doesn't change during
     // the source's lifetime, and runtime callers can rebuild the source
     // if the user flips `llm-provider:` mid-session.
@@ -1648,9 +1688,24 @@ export class TransformBlankSource implements CueSource {
     ctx: Identity | undefined,
     blankSnapshot?: BlankContextSnapshot | undefined,
   ): string {
+    return this.resolveSentinelsWithCount(rewrite, originalBody, ctx, blankSnapshot).output;
+  }
+
+  /**
+   * Same as `resolveSentinels` but returns the resolution count alongside
+   * the output. The FUSED branch uses the count to gate the token-
+   * integration call. Other callers (3-pass intermediate passes) only
+   * need the output string and can use the simpler wrapper above.
+   */
+  private resolveSentinelsWithCount(
+    rewrite: string,
+    originalBody: string,
+    ctx: Identity | undefined,
+    blankSnapshot?: BlankContextSnapshot | undefined,
+  ): { output: string; resolvedCount: number } {
     const hasIdentity = ctx && ctx.catalog.size > 0;
     const hasBlank = blankSnapshot && blankSnapshot.catalog.size > 0;
-    if (!hasIdentity && !hasBlank) return rewrite;
+    if (!hasIdentity && !hasBlank) return { output: rewrite, resolvedCount: 0 };
     const catalog = hasIdentity && hasBlank
       ? mergeCatalogs(ctx!.catalog, blankSnapshot!.catalog)
       : hasIdentity
@@ -1664,7 +1719,7 @@ export class TransformBlankSource implements CueSource {
     if (pp.report.resolved.length || pp.report.tolerantMatches.length) {
       this.log(`TransformBlank: context post-processed (resolved=${pp.report.resolved.length}, tolerant=${pp.report.tolerantMatches.length}, preserved-unknown=${pp.report.stripped.length})`);
     }
-    return pp.output;
+    return { output: pp.output, resolvedCount: pp.report.resolved.length + pp.report.tolerantMatches.length };
   }
 
   async getCues(context: CueContext): Promise<CueSourceResult> {
@@ -2318,10 +2373,12 @@ export class TransformBlankSource implements CueSource {
     // FULL_REWRITE before the result routes through the runtime's three-
     // way merge. Preserves unknown brackets so LLM-emitted placeholders
     // for non-user entities ([Recipient Name], [Date]) survive untouched.
+    const resolved = this.resolveSentinelsWithCount(fParsed.rewrite, context.text, fusedUserCtx, fusedBlankSnapshot);
     const f = {
       ...fParsed,
-      rewrite: this.resolveSentinels(fParsed.rewrite, context.text, fusedUserCtx, fusedBlankSnapshot),
+      rewrite: resolved.output,
     };
+    const fusedResolvedSentinelCount = resolved.resolvedCount;
     this.log(`TransformBlank FUSED (${Date.now() - fusedStart}ms, max_tokens=${fusedTokens}, source=${sourceTag}): verdict=${f.verdict}, instruction="${f.instruction}", target="${preview(f.target)}", rewrite="${preview(f.rewrite)}"`);
     this.emit({
       type: 'pass-completed',
@@ -2394,19 +2451,63 @@ export class TransformBlankSource implements CueSource {
     // (see _variantPool docs for the state machine). FIFO eviction
     // when at capacity, so the just-recorded rewrite is the most
     // recent and an older entry may have just been dropped.
-    this._recordFreshRewrite(cacheKey, f.rewrite);
+    // ── SMART (rewrite-polish) pass over the FUSED rewrite ────────
+    // When `fluid-blank-token-integration: smart` is on AND a polish runner
+    // is wired AND the post-processor resolved at least one catalog
+    // sentinel (e.g. `[STOCK NVDA]` → `$212.45`), run a single LLM call
+    // that refines the just-resolved rewrite — ensuring resolved data
+    // values are integrated naturally rather than dropped in awkwardly.
+    //
+    // Different shape from FluidBlank's token-integration pass: FluidBlank
+    // takes (buffer-with-`_`, substitute) and decides REPLACE+WITH (splice).
+    // TransformBlank takes (instruction, rewrite) and either returns KEEP
+    // (rewrite already natural) or POLISHED: <body>. The runner module
+    // returns the original rewrite on any failure path, so latency is
+    // additive but correctness is preserved.
+    //
+    // Used to use the same splice-shape runner as FluidBlank, but it always
+    // fell back with `fallback-no-underscore` since the substitute (whole
+    // rewrite) has no `_`. The dedicated polish runner replaces it.
+    let finalRewrite = f.rewrite;
+    const tokenIntegrationFlag = this.tokenIntegrationMode?.();
+    if (
+      tokenIntegrationFlag === 'smart'
+      && this.runRewritePolish
+      && fusedResolvedSentinelCount > 0
+    ) {
+      try {
+        const polish = await this.runRewritePolish({
+          instruction: f.instruction,
+          rewrite: f.rewrite,
+        });
+        if (polish.reason === 'polished' || polish.reason === 'cache-hit') {
+          finalRewrite = polish.rewrite;
+          this.log(
+            `TransformBlank: rewrite-polish ${polish.reason} (llm=${polish.llmCalled}) — rewrite refined (origLen=${f.rewrite.length}, polishedLen=${polish.rewrite.length})`,
+          );
+        } else {
+          this.log(
+            `TransformBlank: rewrite-polish ${polish.reason} (llm=${polish.llmCalled}) — using post-processed rewrite verbatim`,
+          );
+        }
+      } catch (err) {
+        this.log(`TransformBlank: rewrite-polish runner threw — using raw rewrite (${String(err)})`);
+      }
+    }
+
+    this._recordFreshRewrite(cacheKey, finalRewrite);
     // Re-read the pool POST-RECORD to get the actually-cached
     // siblings (priorVariants was captured pre-record and may
     // include an entry that's now been evicted).
     const postRecordOthers = (TransformBlankSource._variantPool.get(cacheKey)?.entries ?? [])
-      .filter(r => r !== f.rewrite);
+      .filter(r => r !== finalRewrite);
     const result: CueResult = {
       wordIndex: blankIdx,
       word: '_',
       // alternatives shape: [original, fresh, ...other-pool-entries].
       // Up-arrow walks alternatives[2..N] = prior cached variants;
       // Down-arrow walks to alternatives[0] = original (revert).
-      alternatives: [context.text, f.rewrite, ...postRecordOthers],
+      alternatives: [context.text, finalRewrite, ...postRecordOthers],
       source: this.id,
       priority: this.priority,
       spanStart: 0,

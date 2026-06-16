@@ -352,6 +352,314 @@ export function buildAgentLLMResolver(
   // to their reduced level. See @opencues/core/model-thinking.ts.
   return { ...out, maxThinking: (s.get('max-thinking') ?? 'on') !== 'off' };
 }
+
+/**
+ * Build the integration-pass runner for BlankFill. Wires the
+ * `runIntegrationPass` module from `@opencues/core` to:
+ *   - a `dispatchChat` shim that resolves the BLANKS bucket fresh on
+ *     every call (so OPENCUES.md hot-reload of `blanks-llm-*` scalars
+ *     propagates without restart);
+ *   - a shared LRU `IntegrationCache` so repeated identical (substitute,
+ *     surrounding-prose) pairs skip the LLM round-trip.
+ *
+ * Returns null when:
+ *   - `@opencues/core` is not require()-able (e.g. chrome's prebuilt
+ *     bundle that doesn't ship the full dispatch layer); or
+ *   - no blanks-bucket provider resolves at boot (no key configured).
+ *
+ * On null, BlankFill falls back to its today-bit-identical behaviour:
+ * blanks with `integrate: true` quietly do nothing.
+ *
+ * Re-resolves the provider on every dispatch — same hot-reload behaviour
+ * as `buildAgentLLMResolver`. A `null` resolve mid-session (user
+ * unconfigured a provider) yields the raw substitute via the runner's
+ * `rejected-dispatch-error` reason.
+ */
+export function buildBlankIntegrationRunner(
+  configLoader: ConfigLoader,
+  getApiKeys: () => Readonly<Record<string, string | undefined>>,
+  log: (level: 'info' | 'warn' | 'error' | 'debug', msg: string, data?: unknown) => void,
+): import('./modules/blank-fill').IntegrationPassRunner | null {
+  // Lazy require — `@opencues/core` may not be present in every host
+  // bundle (chrome strips parts at bake-time). Mirrors the lazy require
+  // in `buildAgentLLMResolver`.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  let core: {
+    resolveLLM?: (opts: unknown) => unknown;
+    dispatchChat?: (provider: unknown, http: unknown, req: unknown, ctx: unknown) => Promise<string>;
+    runIntegrationPass?: (req: unknown, dispatch: unknown, cache: unknown) => Promise<unknown>;
+    makeIntegrationCache?: (max?: number) => unknown;
+  } | null = null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    core = require('@opencues/core');
+  } catch {
+    return null;
+  }
+  if (!core?.runIntegrationPass || !core.makeIntegrationCache || !core.resolveLLM || !core.dispatchChat) {
+    return null;
+  }
+  // One cache per boot — shared across all integration calls. Bounded
+  // at the default 256 entries; tune via the module constant if real-
+  // world churn ever pushes past that.
+  const cache = core.makeIntegrationCache();
+
+  // The HTTP adapter dispatchChat needs. The bootstrap thunk already
+  // owns its own httpAdapter; we recreate a minimal one here to avoid
+  // a new constructor parameter. dispatchChat's CLI branch bypasses it,
+  // so most providers don't need the HTTP path either — but the
+  // fallback shape is structurally identical to AgentRewrite's.
+  const httpAdapter = {
+    post: async (url: string, body: unknown, headers: Record<string, string>, opts?: { signal?: AbortSignal }) => {
+      const res = await fetch(url, {
+        method: 'POST',
+        body: typeof body === 'string' ? body : new Uint8Array(body as ArrayBuffer),
+        headers,
+        signal: opts?.signal,
+      });
+      return await res.text();
+    },
+  };
+
+  return async (req) => {
+    // Resolve the BLANKS bucket fresh. Returns null if no key for the
+    // resolved provider, in which case we abort and let BlankFill keep
+    // the raw substitute.
+    if (!core || !core.resolveLLM) {
+      throw new Error('integration-runner: @opencues/core resolveLLM disappeared mid-session');
+    }
+    const s = configLoader.opencuesState.settings;
+    const blanksBucket = configLoader.opencuesState.blanksLlmProvider;
+    const blanksBucketProvider = blanksBucket === 'inherit' ? undefined : blanksBucket;
+    const blanksBucketModel = blanksBucketProvider ? s.get('blanks-llm-model') : undefined;
+    const blanksBucketEndpoint = blanksBucketProvider ? s.get('blanks-llm-endpoint') : undefined;
+    const resolved = core.resolveLLM({
+      // Integration is a per-call polish — no per-feature scalar above
+      // it. Bucket then global.
+      globalProvider: blanksBucketProvider ?? s.get('llm-provider'),
+      globalModel: blanksBucketProvider ? (blanksBucketModel ?? undefined) : s.get('llm-model'),
+      endpointOverride: blanksBucketEndpoint ?? s.get('llm-endpoint'),
+      apiKeys: getApiKeys(),
+    }) as { provider: unknown; model: string; endpoint: string; apiKey: string } | null;
+    if (!resolved) {
+      log('debug', 'integration-runner: no blanks-bucket provider resolved — skipping polish');
+      // Surface as rejected-dispatch-error via a synthetic throw; the
+      // module catches it and returns the raw substitute with that reason.
+      throw new Error('integration-runner: no provider resolved');
+    }
+
+    // Dispatch shim — takes (system, user) per the IntegrationDispatch
+    // contract; assembles the ChatRequest and routes via core.dispatchChat.
+    const dispatch = async (system: string, user: string): Promise<string> => {
+      if (!core?.dispatchChat) throw new Error('integration-runner: dispatchChat missing');
+      const chatRequest = {
+        model: resolved.model,
+        messages: [
+          { role: 'system' as const, content: system },
+          { role: 'user' as const, content: user },
+        ],
+        // Integration polish is short — usually <30 tokens. Cap small
+        // to bound runaway-token cost on hostile inputs.
+        maxTokens: 128,
+        temperature: 0,
+        seed: 42,
+      };
+      const out = await core.dispatchChat(
+        resolved.provider,
+        httpAdapter,
+        chatRequest,
+        { apiKey: resolved.apiKey, endpoint: resolved.endpoint, maxThinking: false },
+      );
+      return typeof out === 'string' ? out : '';
+    };
+
+    if (!core.runIntegrationPass) throw new Error('integration-runner: runIntegrationPass missing');
+    return (await core.runIntegrationPass(req, dispatch, cache)) as import('@opencues/core').IntegrationResult;
+  };
+}
+
+/**
+ * Build the token-integration runner — the LLM-owned post-token-
+ * resolution stage that decides REPLACE + WITH for FluidBlank sub-
+ * stitutions (and BlankFill in a follow-up PR). Same boot shape as
+ * `buildBlankIntegrationRunner`: shared LRU cache across all calls,
+ * resolves the BLANKS bucket on every dispatch so OPENCUES.md hot-
+ * reload of `blanks-llm-*` scalars propagates without restart.
+ *
+ * Returns null when @opencues/core isn't require()-able OR no
+ * blanks-bucket provider resolves at boot.
+ */
+export function buildBlankTokenIntegrationRunner(
+  configLoader: ConfigLoader,
+  getApiKeys: () => Readonly<Record<string, string | undefined>>,
+  log: (level: 'info' | 'warn' | 'error' | 'debug', msg: string, data?: unknown) => void,
+): import('@opencues/core').TokenIntegrationRunner | null {
+  let core: {
+    resolveLLM?: (opts: unknown) => unknown;
+    dispatchChat?: (provider: unknown, http: unknown, req: unknown, ctx: unknown) => Promise<string>;
+    runTokenIntegration?: (req: unknown, dispatch: unknown, cache: unknown) => Promise<unknown>;
+    makeTokenIntegrationCache?: (max?: number) => unknown;
+  } | null = null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    core = require('@opencues/core');
+  } catch {
+    return null;
+  }
+  if (!core?.runTokenIntegration || !core.makeTokenIntegrationCache || !core.resolveLLM || !core.dispatchChat) {
+    return null;
+  }
+  const cache = core.makeTokenIntegrationCache();
+  const httpAdapter = {
+    post: async (url: string, body: unknown, headers: Record<string, string>, opts?: { signal?: AbortSignal }) => {
+      const res = await fetch(url, {
+        method: 'POST',
+        body: typeof body === 'string' ? body : new Uint8Array(body as ArrayBuffer),
+        headers,
+        signal: opts?.signal,
+      });
+      return await res.text();
+    },
+  };
+
+  return (async (req: import('@opencues/core').TokenIntegrationRequest) => {
+    if (!core?.resolveLLM) {
+      throw new Error('token-integration-runner: @opencues/core resolveLLM disappeared mid-session');
+    }
+    const s = configLoader.opencuesState.settings;
+    const blanksBucket = configLoader.opencuesState.blanksLlmProvider;
+    const blanksBucketProvider = blanksBucket === 'inherit' ? undefined : blanksBucket;
+    const blanksBucketModel = blanksBucketProvider ? s.get('blanks-llm-model') : undefined;
+    const blanksBucketEndpoint = blanksBucketProvider ? s.get('blanks-llm-endpoint') : undefined;
+    const resolved = core.resolveLLM({
+      globalProvider: blanksBucketProvider ?? s.get('llm-provider'),
+      globalModel: blanksBucketProvider ? (blanksBucketModel ?? undefined) : s.get('llm-model'),
+      endpointOverride: blanksBucketEndpoint ?? s.get('llm-endpoint'),
+      apiKeys: getApiKeys(),
+    }) as { provider: unknown; model: string; endpoint: string; apiKey: string } | null;
+    if (!resolved) {
+      log('debug', 'token-integration-runner: no blanks-bucket provider resolved — falling back to default replacement');
+      throw new Error('token-integration-runner: no provider resolved');
+    }
+
+    const dispatch = async (system: string, user: string): Promise<string> => {
+      if (!core?.dispatchChat) throw new Error('token-integration-runner: dispatchChat missing');
+      const chatRequest = {
+        model: resolved.model,
+        messages: [
+          { role: 'system' as const, content: system },
+          { role: 'user' as const, content: user },
+        ],
+        // Slightly larger than polish (which is short): the model may
+        // produce REPLACE + WITH spanning lines, especially for
+        // conversational-continuation WITH outputs. Still bounded.
+        maxTokens: 256,
+        temperature: 0,
+        seed: 42,
+      };
+      const out = await core.dispatchChat(
+        resolved.provider,
+        httpAdapter,
+        chatRequest,
+        { apiKey: resolved.apiKey, endpoint: resolved.endpoint, maxThinking: false },
+      );
+      return typeof out === 'string' ? out : '';
+    };
+
+    if (!core.runTokenIntegration) throw new Error('token-integration-runner: runTokenIntegration missing');
+    return (await core.runTokenIntegration(req, dispatch, cache)) as import('@opencues/core').TokenIntegrationResult;
+  }) as import('@opencues/core').TokenIntegrationRunner;
+}
+
+/**
+ * Build the polish-shape runner. Sibling of `buildBlankTokenIntegrationRunner`
+ * — used by TransformBlank's FUSED branch to refine whole-buffer rewrites
+ * after sentinel post-processing. Same blanks-bucket provider routing,
+ * separate LRU cache (polish keys are very different — instruction + rewrite
+ * head/tail), and a separately-bounded maxTokens (polished rewrites can run
+ * long: ~600-char emails round up to ~2k tokens).
+ */
+export function buildRewritePolishRunner(
+  configLoader: ConfigLoader,
+  getApiKeys: () => Readonly<Record<string, string | undefined>>,
+  log: (level: 'info' | 'warn' | 'error' | 'debug', msg: string, data?: unknown) => void,
+): import('@opencues/core').RewritePolishRunner | null {
+  let core: {
+    resolveLLM?: (opts: unknown) => unknown;
+    dispatchChat?: (provider: unknown, http: unknown, req: unknown, ctx: unknown) => Promise<string>;
+    runRewritePolish?: (req: unknown, dispatch: unknown, cache: unknown) => Promise<unknown>;
+    makeRewritePolishCache?: (max?: number) => unknown;
+  } | null = null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    core = require('@opencues/core');
+  } catch {
+    return null;
+  }
+  if (!core?.runRewritePolish || !core.makeRewritePolishCache || !core.resolveLLM || !core.dispatchChat) {
+    return null;
+  }
+  const cache = core.makeRewritePolishCache();
+  const httpAdapter = {
+    post: async (url: string, body: unknown, headers: Record<string, string>, opts?: { signal?: AbortSignal }) => {
+      const res = await fetch(url, {
+        method: 'POST',
+        body: typeof body === 'string' ? body : new Uint8Array(body as ArrayBuffer),
+        headers,
+        signal: opts?.signal,
+      });
+      return await res.text();
+    },
+  };
+
+  return (async (req: import('@opencues/core').RewritePolishRequest) => {
+    if (!core?.resolveLLM) {
+      throw new Error('rewrite-polish-runner: @opencues/core resolveLLM disappeared mid-session');
+    }
+    const s = configLoader.opencuesState.settings;
+    const blanksBucket = configLoader.opencuesState.blanksLlmProvider;
+    const blanksBucketProvider = blanksBucket === 'inherit' ? undefined : blanksBucket;
+    const blanksBucketModel = blanksBucketProvider ? s.get('blanks-llm-model') : undefined;
+    const blanksBucketEndpoint = blanksBucketProvider ? s.get('blanks-llm-endpoint') : undefined;
+    const resolved = core.resolveLLM({
+      globalProvider: blanksBucketProvider ?? s.get('llm-provider'),
+      globalModel: blanksBucketProvider ? (blanksBucketModel ?? undefined) : s.get('llm-model'),
+      endpointOverride: blanksBucketEndpoint ?? s.get('llm-endpoint'),
+      apiKeys: getApiKeys(),
+    }) as { provider: unknown; model: string; endpoint: string; apiKey: string } | null;
+    if (!resolved) {
+      log('debug', 'rewrite-polish-runner: no blanks-bucket provider resolved — using raw rewrite');
+      throw new Error('rewrite-polish-runner: no provider resolved');
+    }
+
+    const dispatch = async (system: string, user: string): Promise<string> => {
+      if (!core?.dispatchChat) throw new Error('rewrite-polish-runner: dispatchChat missing');
+      const chatRequest = {
+        model: resolved.model,
+        messages: [
+          { role: 'system' as const, content: system },
+          { role: 'user' as const, content: user },
+        ],
+        // Polished email/doc rewrites can be 500-1000 chars; bump
+        // headroom so the polished output isn't truncated.
+        maxTokens: 2048,
+        temperature: 0,
+        seed: 42,
+      };
+      const out = await core.dispatchChat(
+        resolved.provider,
+        httpAdapter,
+        chatRequest,
+        { apiKey: resolved.apiKey, endpoint: resolved.endpoint, maxThinking: false },
+      );
+      return typeof out === 'string' ? out : '';
+    };
+
+    if (!core.runRewritePolish) throw new Error('rewrite-polish-runner: runRewritePolish missing');
+    return (await core.runRewritePolish(req, dispatch, cache)) as import('@opencues/core').RewritePolishResult;
+  }) as import('@opencues/core').RewritePolishRunner;
+}
+
 import { Navigation } from './modules/navigation';
 import { DimRender } from './modules/dim-render';
 import { Cycling } from './modules/cycling';
@@ -389,6 +697,26 @@ export interface SharedRuntime {
    *  BlankFill — saves ~5 sequential script/network calls per resolve
    *  on inputs like `volume _` / `weather _` / `nvidia _`. */
   readonly blankFill: BlankFill;
+  /** Integration polish runner shared between BlankFill (keyword-bound
+   *  fills) and the Resolver's sources (semantic `_` fills via FluidBlank,
+   *  TransformBlank, etc.). Per-adapter boot threads this into the
+   *  Resolver constructor via `ResolverOptions.runIntegration` so polish
+   *  fires uniformly across both substitution paths. `null` when the
+   *  runtime couldn't build a runner (core not require()-able / no
+   *  blanks-bucket provider configured) — sources gate on the value
+   *  being truthy. */
+  readonly integrationRunner: import('@opencues/core').IntegrationPassRunner | null;
+  /** Token-integration runner — the LLM-owned post-token-resolution
+   *  stage. Per-adapter boot threads this into the Resolver via
+   *  `ResolverOptions.runTokenIntegration`. Behaviour gated by the
+   *  `fluid-blank-token-integration: smart | legacy` OPENCUES.md scalar
+   *  (default `legacy`). `null` when the runtime couldn't build it. */
+  readonly tokenIntegrationRunner: import('@opencues/core').TokenIntegrationRunner | null;
+  /** Sibling polish runner — refines transform-blank whole-buffer rewrites
+   *  AFTER sentinel post-processing. Only TransformBlank consumes this
+   *  today. Same blanks-bucket provider routing, separate cache + prompt.
+   *  `null` when the runtime couldn't build it. */
+  readonly rewritePolishRunner: import('@opencues/core').RewritePolishRunner | null;
 }
 
 export interface BuildSharedRuntimeOptions {
@@ -687,8 +1015,38 @@ export function buildSharedRuntime(
   // BlankFill subscribes only after ConfigLoader.load resolves so its
   // initial scan sees the populated blanksByWord map. Same pattern
   // both hosts had inline.
+  //
+  // Integration-pass runner: wired only when `@opencues/core` is
+  // require()-able AND a blanks-bucket provider resolves. Hosts that
+  // can't reach core (chrome's bundle is built without dispatch) get
+  // a no-runner BlankFill — `integrate: true` becomes a no-op silently.
+  // The runner builds lazily per dispatch so OPENCUES.md hot-reload of
+  // the blanks-llm-* scalars propagates without restart.
+  // apiKeys snapshot for the runner. The runner re-resolves the provider
+  // on every dispatch but reads from this map — for hot-reload of key
+  // changes mid-session, we read fresh via getApiKeys() inside the
+  // dispatch shim instead of pinning at boot.
+  const integrationRunner = buildBlankIntegrationRunner(
+    configLoader,
+    () => (getApiKeys ? getApiKeys() : {}),
+    log,
+  );
+  // Token-integration runner — same boot shape, separate cache.
+  const tokenIntegrationRunner = buildBlankTokenIntegrationRunner(
+    configLoader,
+    () => (getApiKeys ? getApiKeys() : {}),
+    log,
+  );
+  // Rewrite-polish runner — sibling of token-integration, used by
+  // TransformBlank's FUSED branch on whole-buffer rewrites.
+  const rewritePolishRunner = buildRewritePolishRunner(
+    configLoader,
+    () => (getApiKeys ? getApiKeys() : {}),
+    log,
+  );
   const blankFill = new BlankFill(
     adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading,
+    integrationRunner ?? undefined,
   );
   configLoader.load()
     .then(() => blankFill.subscribe())
@@ -712,6 +1070,9 @@ export function buildSharedRuntime(
     blankLoading,
     markdownRender,
     blankFill,
+    integrationRunner: integrationRunner ?? null,
+    tokenIntegrationRunner: tokenIntegrationRunner ?? null,
+    rewritePolishRunner: rewritePolishRunner ?? null,
   };
 }
 

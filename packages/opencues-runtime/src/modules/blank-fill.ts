@@ -9,13 +9,30 @@
 import type { HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../adapter';
 import type { ConfigLoader } from './config-loader';
 import { splitWords } from './navigation';
-import { resolveReplaceMode, isBlankConfigCycleable, type EffectiveReplaceMode } from '@opencues/core';
+import { resolveReplaceMode, isBlankConfigCycleable, sliceContextWindows, type EffectiveReplaceMode, type IntegrationRequest, type IntegrationResult } from '@opencues/core';
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
 import type { DynDefs } from '../state/dyn-defs';
 import { BlankLoadingAnimator, parseCustomFrames, parseRgbColors, parseAnsiColors, parseFrameIntervalMs, DEFAULT_RGB_PALETTE, DEFAULT_ANSI_PALETTE, type BlankLoadingMode } from './blank-loading';
 import { buildSafeScriptEnv } from '../security/safe-env';
+
+/**
+ * Integration-pass runner — async callback that polishes a raw blank
+ * substitute against the surrounding prose. Injected by boot-common
+ * (wired to `dispatchChat` for the blanks-llm-* bucket) so BlankFill
+ * stays decoupled from the provider layer.
+ *
+ * Returns the result envelope from `@opencues/core/integration-pass`.
+ * BlankFill consumes `result.polished` — on accept it's the polished
+ * string; on reject it's the original substitute. Either way it's safe
+ * to splice into the buffer.
+ *
+ * When `undefined` (boot didn't wire it OR the runtime is operating
+ * without an LLM), BlankFill skips the integration gate entirely and
+ * uses the raw value. Bit-identical to today's pre-PR behaviour.
+ */
+export type IntegrationPassRunner = (req: IntegrationRequest) => Promise<IntegrationResult>;
 
 export interface BlankSlot {
   /** Word index of the `_`. */
@@ -100,6 +117,15 @@ export class BlankFill {
    */
   private _loading: BlankLoadingAnimator | null = null;
 
+  /**
+   * Integration-pass runner injected by boot-common. When present, blanks
+   * with `integrate: true` go through a polish-the-substitute LLM call
+   * before the splice. When absent, raw values land verbatim — bit-
+   * identical to pre-PR behaviour, so omitting the runner is a clean
+   * disable for hosts that haven't wired the blanks-llm-* dispatch path.
+   */
+  private _runIntegration?: IntegrationPassRunner;
+
   constructor(
     private adapter: HostAdapter,
     private configLoader: ConfigLoader,
@@ -113,8 +139,70 @@ export class BlankFill {
      *  for backward compat with external callers that haven't wired the
      *  shared owner). */
     blankLoading?: BlankLoadingAnimator,
+    runIntegration?: IntegrationPassRunner,
   ) {
     if (blankLoading) this._loading = blankLoading;
+    if (runIntegration) this._runIntegration = runIntegration;
+  }
+
+  /**
+   * Set/replace the integration-pass runner after construction. Used by
+   * boot-common when the runner is built lazily (resolveLLM may not be
+   * available until first dispatch). Calling with `undefined` disables
+   * the integration gate.
+   */
+  setIntegrationRunner(runner: IntegrationPassRunner | undefined): void {
+    this._runIntegration = runner;
+  }
+
+  /**
+   * Run the integration pass if the blank opted in AND a runner is wired.
+   * Returns the polished primaryFill (or the raw substitute when the
+   * runner skips/rejects/errors). Pure async — caller awaits inline.
+   *
+   * The blank-config view here is narrow because the constructor type
+   * already projects to the same shape downstream — we mirror it for
+   * compile-time safety without widening to BlankConfig.
+   *
+   * Surface kept as a class method so tests can spy on it via the
+   * runner-injection seam without reimplementing the gate.
+   */
+  private async maybeIntegratePrimary(
+    blank: Record<string, unknown> | undefined,
+    cleaned: string,
+    insertionStart: number,
+    primaryFill: string,
+  ): Promise<string> {
+    if (!blank || !this._runIntegration) return primaryFill;
+    const integrate = (blank as { integrate?: boolean }).integrate;
+    if (integrate !== true) return primaryFill;
+    const insertionEnd = insertionStart + primaryFill.length;
+    const { contextBefore, contextAfter } = sliceContextWindows(
+      cleaned,
+      Math.max(0, Math.min(insertionStart, cleaned.length)),
+      Math.max(0, Math.min(insertionEnd, cleaned.length + primaryFill.length)),
+    );
+    try {
+      const result = await this._runIntegration({
+        substituted: primaryFill,
+        contextBefore,
+        contextAfter,
+        hint: (blank as { integrateHint?: string }).integrateHint,
+      });
+      this.adapter.log(
+        'debug',
+        `BlankFill: integration ${result.reason} (llm=${result.llmCalled}, accepted=${result.accepted}) — "${primaryFill.slice(0, 40)}" → "${result.polished.slice(0, 40)}"`,
+      );
+      return result.polished;
+    } catch (err) {
+      // Runner throwing is treated as skip — log + fall back to raw.
+      // The runner module itself catches dispatch errors and turns them
+      // into rejected-* reasons, so a throw here means the runner code
+      // itself crashed (programmer error). Surface in log; don't crash
+      // the splice path.
+      this.adapter.log('warn', `BlankFill: integration runner threw — using raw substitute (${String(err)})`);
+      return primaryFill;
+    }
   }
 
   private _loadingAnimator(): BlankLoadingAnimator {
@@ -599,6 +687,14 @@ export class BlankFill {
    * dispatch.
    */
   private applyAsyncFill(slot: BlankSlot, fillValue: string): void {
+    // Integration pass (when wired + blank.integrate is true) is an
+    // async polish step. When applicable, defer the actual splice to
+    // _applyAsyncFillCore via a microtask chain; otherwise the original
+    // synchronous path runs unchanged.
+    void this._applyAsyncFillImpl(slot, fillValue);
+  }
+
+  private async _applyAsyncFillImpl(slot: BlankSlot, fillValue: string): Promise<void> {
     const currentText = this.adapter.getText();
     const cleaned = currentText.replace(/[\u200B\u200C]/g, '');
     const words = splitWords(cleaned);
@@ -660,6 +756,22 @@ export class BlankFill {
     if (blank?.blankSuffix && /^-?\d+(?:\.\d+)?$/.test(primaryFill)) {
       primaryFill = primaryFill + blank.blankSuffix;
     }
+
+    // Integration pass — when the blank opts in via `integrate: true` AND
+    // the runtime has the runner wired (boot-common attached a
+    // dispatchChat-shaped function), polish primaryFill against the
+    // surrounding prose with a single LLM call. The runner internally
+    // gates on substitute length + format-hint detection + cache; we
+    // just await its envelope and use `result.polished`. On skip / reject
+    // / runner-throw the original primaryFill is returned unchanged, so
+    // this is always safe to call.
+    //
+    // Context windows computed against `target` (the underscore's
+    // current char range in the pre-splice buffer). Splice paths below
+    // may widen the wipe range (clear keywords, line-scoped wipe) — the
+    // integration prompt's ±300 char window absorbs that imprecision;
+    // the LLM has enough surrounding signal either way.
+    primaryFill = await this.maybeIntegratePrimary(blank, cleaned, target.start, primaryFill);
 
     // New unified `blankReplace` field, when set explicitly, supersedes
     // the legacy flag path (consumeAll/consumeContext/clearKeywords).

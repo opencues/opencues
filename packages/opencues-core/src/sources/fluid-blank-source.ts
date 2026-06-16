@@ -29,6 +29,8 @@ import { useStrictJson, buildJsonResponseFormat, describeLLMCall, dispatchChat, 
 import { renderIdentityContextCatalog, postProcessContext, type Identity, type ContextMode } from '../identity-context';
 import { renderBlankContextCatalog, mergeCatalogs, type BlankContextSnapshot, type BlankContextMode } from '../blank-context';
 import { detectModelOverride, applySubscriptionPreference, stripModelOverride, type ModelOverride } from '../model-aliases';
+import { sliceContextWindows, type IntegrationPassRunner } from '../integration-pass';
+import type { TokenIntegrationRunner } from '../token-integration';
 
 // ─── Ambient-context sanitization + injection ──────────────────────
 //
@@ -606,6 +608,42 @@ export interface FluidBlankSourceConfig {
    * keep silent + use the statusline instead.
    */
   formatErrorAsSubstitute?: (reason: FluidBlankErrorReason, err?: Error) => string;
+  /**
+   * Integration polish runner. When set AND the post-processor resolves
+   * at least one blank-context sentinel into a real value, the final
+   * answer is sent through a polish LLM call to fit the surrounding
+   * buffer prose (drop redundant labels, match number formatting, trim
+   * upvote counts, etc.). The runner internally gates on substitute
+   * length + format-hint detection + cache; the source just awaits the
+   * envelope and uses `result.polished`. When undefined the gate is a
+   * no-op — final answer lands verbatim. Boot-common wires this from
+   * the blanks-llm-* bucket using the same runner BlankFill uses; the
+   * single shared LRU cache deduplicates polish calls across sources.
+   */
+  runIntegration?: IntegrationPassRunner;
+  /**
+   * Token-integration runner — when wired AND the FEATURES scalar
+   * `fluid-blank-token-integration: smart` is on, replaces the legacy
+   * `determineReplaceMode` + post-hoc polish with a single LLM call
+   * that decides what range of buffer to replace AND what to put there.
+   *
+   * Falls back to the legacy regex + polish path when:
+   *   - The runner is not wired (boot didn't build it; flag treated as 'legacy')
+   *   - The flag is `legacy` (default)
+   *   - The post-processor resolved no catalog sentinels (no [TOKEN] to
+   *     re-integrate; bare factual answers like "capital of france _"
+   *     bypass this stage as before)
+   *
+   * See token-integration-plan.md § Migration for the rollout plan.
+   */
+  runTokenIntegration?: TokenIntegrationRunner;
+  /**
+   * Reader for the `fluid-blank-token-integration` OPENCUES.md scalar.
+   * Returns 'smart' to enable the new path, anything else (or undefined)
+   * for the legacy path. Threaded in as a getter so OPENCUES.md hot-
+   * reloads propagate without source-instance rebuild.
+   */
+  tokenIntegrationMode?: () => 'smart' | 'legacy' | undefined;
 }
 
 /** Classified failure reasons for FluidBlank — limited to USER-ACTIONABLE
@@ -720,6 +758,12 @@ export class FluidBlankSource implements CueSource {
   private log: (msg: string) => void;
   private logInfo: (msg: string) => void;
   private formatErrorAsSubstitute: ((reason: FluidBlankErrorReason, err?: Error) => string) | undefined;
+  /** Integration polish runner. See FluidBlankSourceConfig.runIntegration. */
+  private runIntegration: IntegrationPassRunner | undefined;
+  /** Token-integration runner. See FluidBlankSourceConfig.runTokenIntegration. */
+  private runTokenIntegration: TokenIntegrationRunner | undefined;
+  /** OPENCUES.md `fluid-blank-token-integration` reader. */
+  private tokenIntegrationMode: (() => 'smart' | 'legacy' | undefined) | undefined;
 
   /**
    * Per-input variant pool — caches prior LLM answers for each
@@ -768,6 +812,9 @@ export class FluidBlankSource implements CueSource {
     this.log = config.log ?? (() => { /* default: silent */ });
     this.logInfo = config.logInfo ?? this.log;
     this.formatErrorAsSubstitute = config.formatErrorAsSubstitute;
+    this.runIntegration = config.runIntegration;
+    this.runTokenIntegration = config.runTokenIntegration;
+    this.tokenIntegrationMode = config.tokenIntegrationMode;
   }
 
   /** Build a substitute CueResult that puts the formatted error string
@@ -1073,6 +1120,7 @@ export class FluidBlankSource implements CueSource {
       const sentinelCatalog = userCtx?.catalog ?? new Map<string, string>();
       const blankCtxCatalog = bcSnapshot?.catalog ?? new Map<string, string>();
       const mergedCatalog = mergeCatalogs(sentinelCatalog, blankCtxCatalog);
+      let resolvedSentinelCount = 0;
       if (mergedCatalog.size > 0) {
         const pp = postProcessContext(answer, {
           catalog: mergedCatalog,
@@ -1082,6 +1130,7 @@ export class FluidBlankSource implements CueSource {
           originalBody: context.text,
         });
         finalAnswer = pp.output;
+        resolvedSentinelCount = pp.report.resolved.length + pp.report.tolerantMatches.length;
         if (pp.report.resolved.length || pp.report.tolerantMatches.length || pp.report.stripped.length) {
           this.logInfo(`FluidBlank: ctx-post-processed (resolved=${pp.report.resolved.length}, tolerant=${pp.report.tolerantMatches.length}, stripped=${pp.report.stripped.length})`);
         }
@@ -1092,12 +1141,144 @@ export class FluidBlankSource implements CueSource {
       // read result.metadata.context defensively).
       const ctx = '';
 
+      // ── SMART (token-integration) path ──────────────────────────────
+      // When the FEATURES scalar `fluid-blank-token-integration: smart`
+      // is on AND a token-integration runner is wired AND the post-
+      // processor resolved at least one catalog sentinel, run a single
+      // LLM call that decides BOTH the replacement range AND the
+      // polished value. Replaces the legacy `determineReplaceMode`
+      // regex (which only matched English copulas) + the separate
+      // post-hoc polish step. See token-integration-plan.md.
+      //
+      // When the smart path succeeds (LLM-validated REPLACE+WITH), we
+      // skip both the legacy regex AND the polish call below. When it
+      // fails (no runner, no sentinel resolution, runner threw,
+      // validation rejected), we fall through to the legacy path
+      // unchanged.
+      let smartReplaceStart: number | null = null;
+      let smartReplaceEnd: number | null = null;
+      const tokenIntegrationFlag = this.tokenIntegrationMode?.();
+      if (
+        tokenIntegrationFlag === 'smart'
+        && this.runTokenIntegration
+        && resolvedSentinelCount > 0
+      ) {
+        try {
+          const ti = await this.runTokenIntegration({
+            buffer: context.text,
+            substitute: finalAnswer,
+            hint: 'fluid-blank LLM answer with a catalog sentinel resolved. Decide the buffer range to swap AND the polished value in one step. Drop redundant labels when prose names the entity; match precision to nearby numbers; preserve information the prose does not supply.',
+          });
+          // Validate the runner's REPLACE substring actually appears in
+          // the user's buffer (the runner module itself does this too,
+          // but a defensive check here makes the spanStart/spanEnd
+          // contract impossible to violate).
+          const idx = context.text.indexOf(ti.replace);
+          if (idx >= 0 && ti.replace.includes('_')) {
+            smartReplaceStart = idx;
+            smartReplaceEnd = idx + ti.replace.length;
+            finalAnswer = ti.with_;
+            this.logInfo(
+              `FluidBlank: token-integration ${ti.reason} (llm=${ti.llmCalled}) — REPLACE="${ti.replace.slice(0, 40)}" WITH="${ti.with_.slice(0, 40)}"`,
+            );
+          } else {
+            this.logInfo(
+              `FluidBlank: token-integration validated-fallback (reason=${ti.reason}, REPLACE not in buffer or no _) — falling back to legacy regex+polish`,
+            );
+          }
+        } catch (err) {
+          this.logInfo(
+            `FluidBlank: token-integration runner threw — falling back to legacy regex+polish (${String(err)})`,
+          );
+        }
+      }
+
+      // ── LEGACY path ────────────────────────────────────────────────
       // Replacement mode. Mode-decision reads the SAME text the LLM saw
       // (effectiveText after override strip). For an override-active
       // input like `the capital of france with opus is _`, effectiveText
       // is `the capital of france is _` → ends with `is _` → FILL,
       // matching what the LLM is shaped for.
+      //
+      // When the smart path produced a validated REPLACE+WITH above,
+      // mode is informational only (we use smartReplaceStart/End to
+      // derive the span). When smart failed or wasn't enabled, this is
+      // the only mode signal we have.
       const mode = determineReplaceMode(effectiveText);
+      const smartSucceeded = smartReplaceStart !== null && smartReplaceEnd !== null;
+
+      // Integration polish — fires when:
+      //   1. A runner is wired (boot-common attached one), AND
+      //   2. The post-processor RESOLVED at least one catalog sentinel
+      //      into a value (resolvedSentinelCount > 0).
+      //
+      // Rationale for (2): when the LLM answers directly without using
+      // a catalog token (bare factual lookups like `capital of france`
+      // → "Paris"; long-form recalls like `population of france` →
+      // "67,000,000"), the answer is ALREADY shaped by the source LLM
+      // with full prose context. The model picked its preferred
+      // representation knowing what the user typed. Polish in this
+      // case is at best a no-op and at worst re-formats away a
+      // deliberate choice. Skip it.
+      //
+      // For catalog-resolved cases, the post-processor performs a raw
+      // splice: the catalog value is a GENERIC string from the source
+      // blank (e.g. "NVDA: $212.45" from the stocks Finnhub fetch),
+      // with no awareness of the user's prose. Polish gets to drop
+      // redundant labels, match precision, etc.
+      //
+      // BOTH FILL and WIPE modes polish (refined June 2026). The
+      // earlier WIPE-skip was over-conservative: it assumed dropping
+      // the substitute's label would orphan the entity, but that's
+      // only true when surrounding prose stays AND it doesn't mention
+      // the entity. The polish prompt already understands "preserve
+      // information surrounding text doesn't supply" — and we now
+      // compute contextBefore/After from the POST-WIPE buffer so
+      // polish sees what actually survives the splice. Cases:
+      //   - FILL: contextBefore = buffer up to `_`, contextAfter =
+      //     buffer after `_`. Splice replaces just `_`.
+      //   - WIPE: contextBefore = buffer up to wipe-range-start,
+      //     contextAfter = buffer after wipe-range-end. Splice
+      //     replaces the whole wipe span.
+      //   - WIPE-whole-input ("whats nvda stock price _" → whole input
+      //     wipes): contextBefore = contextAfter = "" — polish sees
+      //     standalone substitute, decides naturally.
+      if (!smartSucceeded && this.runIntegration && resolvedSentinelCount > 0) {
+        // Compute the splice range that the substitute will replace.
+        let spliceStart: number;
+        let spliceEnd: number;
+        const splicePos = context.text.lastIndexOf('_');
+        if (mode === 'WIPE' && span) {
+          const range = findSpanCharRange(span, context.text);
+          if (range) {
+            spliceStart = range[0];
+            spliceEnd = range[1];
+          } else {
+            spliceStart = splicePos >= 0 ? splicePos : context.text.length;
+            spliceEnd = splicePos >= 0 ? splicePos + 1 : context.text.length;
+          }
+        } else {
+          spliceStart = splicePos >= 0 ? splicePos : context.text.length;
+          spliceEnd = splicePos >= 0 ? splicePos + 1 : context.text.length;
+        }
+        const { contextBefore, contextAfter } = sliceContextWindows(
+          context.text,
+          spliceStart,
+          spliceEnd,
+        );
+        try {
+          const polish = await this.runIntegration({
+            substituted: finalAnswer,
+            contextBefore,
+            contextAfter,
+            hint: 'fluid-blank LLM answer with a catalog sentinel resolved. Fit naturally into the surrounding prose (contextBefore/After is the buffer EXCLUDING the splice region — i.e. what survives the substitution). Drop redundant labels when prose already names the entity; preserve information the prose does not supply.',
+          });
+          this.logInfo(`FluidBlank: integration ${polish.reason} (llm=${polish.llmCalled}, accepted=${polish.accepted}) — "${finalAnswer.slice(0, 40)}" → "${polish.polished.slice(0, 40)}"`);
+          finalAnswer = polish.polished;
+        } catch (err) {
+          this.logInfo(`FluidBlank: integration runner threw — using raw substitute (${String(err)})`);
+        }
+      }
 
       // Record the fresh answer into the variant pool — subsequent
       // identical-buffer triggers will cycle through cached variants
@@ -1122,21 +1303,24 @@ export class FluidBlankSource implements CueSource {
         },
       };
 
-      // For WIPE mode: mark the multi-word span so the runtime knows to
-      // wipe the lookup phrase, not just the `_` token. spanStart/spanEnd
-      // are CHARACTER offsets (matching WordDef in the runtime).
-      // Alternatives stay ['_', answer] — cycling back to `_` clears the
-      // lookup phrase to a bare blank rather than restoring the full
-      // queried text. The lookup phrase is consumed by the substitution.
-      //
-      // Override path: the LLM saw stripped text, so its span won't
-      // match the original buffer literally (it lacks "with opus"). For
-      // v1 we force a whole-buffer WIPE when override is active — the
-      // user's "with opus _" is wiped along with the lookup phrase and
-      // replaced by just the answer. Cleaner than a partial wipe that
-      // leaves "with opus" in the buffer next to the answer; partial
-      // remapping (stripped offsets → original) is a v2 follow-up.
-      if (mode === 'WIPE') {
+      // Span computation — three paths:
+      //  1. Smart-mode succeeded: spanStart/End from the validated
+      //     REPLACE range (works for both single-_ and lookup-phrase
+      //     replacement; the runtime treats them uniformly).
+      //  2. Legacy WIPE: span from `findSpanCharRange(span, ...)` or
+      //     whole-buffer if override is active.
+      //  3. Legacy FILL: no span set; runtime defaults to `_` position.
+      if (smartSucceeded) {
+        result.spanStart = smartReplaceStart!;
+        result.spanEnd = smartReplaceEnd!;
+      } else if (mode === 'WIPE') {
+        // Override path: the LLM saw stripped text, so its span won't
+        // match the original buffer literally (it lacks "with opus"). For
+        // v1 we force a whole-buffer WIPE when override is active — the
+        // user's "with opus _" is wiped along with the lookup phrase and
+        // replaced by just the answer. Cleaner than a partial wipe that
+        // leaves "with opus" in the buffer next to the answer; partial
+        // remapping (stripped offsets → original) is a v2 follow-up.
         if (override && overrideAdapter) {
           result.spanStart = 0;
           result.spanEnd = context.text.length;
