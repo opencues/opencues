@@ -175,6 +175,57 @@ blankProximity: 0
     });
   });
 
+  // Regression: shape-anchored blank rejected when stacked behind a
+  // prior substituted span (June 2026 — `apple stock _` → "AAPL: $298.97";
+  // then `<that> + nvda stock _` silently fell through to FluidBlank).
+  //
+  // Cause: matchBlankShape tested the full buffer prefix up to `_`. Every
+  // shipped blank's shape uses `^...\s*_$`, so the `^` failed to anchor
+  // once anything preceded the keyword in the buffer.
+  //
+  // Fix: matchBlankShape now slices from the keyword's leading word,
+  // so `^` anchors against the invocation window. Spans that come
+  // before don't break the gate.
+  it('shape-anchored keyword matches when stacked behind a prior span', async () => {
+    const STOCKS = `---
+type: blank
+name: stocks
+blankKeywords: nvda, apple stock, nvda stock
+blankShapes: [{"pattern":"^(nvda|apple\\\\s+stock|nvda\\\\s+stock)\\\\s*_$","action":"get","valueGroup":1}]
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: {
+        '/mock/CUES.md': TIPS,
+        '/proj/blanks/stocks/BLANK.md': STOCKS,
+      },
+    });
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const dynDefs = new DynDefs();
+    // Prior apple-stock fill substituted "apple stock _" → "AAPL: $298.97".
+    // DynDefs registers that 2-word span at indices 0-1.
+    dynDefs.set(0, {
+      originalWord: 'apple',
+      alternatives: ['AAPL: $298.97'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: 13,
+      blankName: 'stocks',
+    });
+    const bf = new BlankFill(adapter, loader, undefined, undefined, undefined, dynDefs);
+    // The exact buffer from the 16:14:05 log line.
+    const slots = bf.scan('AAPL: $298.97 + nvda stock _');
+    expect(slots).toHaveLength(1);
+    expect(slots[0]).toMatchObject({
+      keyword: 'nvda stock',
+      blankName: 'stocks',
+      action: 'get',
+      value: 'nvda stock',
+    });
+  });
+
   it('still matches keyword OUTSIDE substituted spans', async () => {
     const STOCKS = `---
 type: blank
