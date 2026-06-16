@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fix — resolver explicit-`_` gate compared against stale baseline after a runtime substitute
+
+Stacked-blank scenario broke: user types `config _` → BlankFill substitutes to `fluid-blank-mode on` → user appends ` build a website _` → silent no-op (no TransformBlank, no FluidBlank, no ConfigIntent). The next `_` got masked from every blank source.
+
+Cause: `Resolver._lastInputText` updates only on `source: 'user'` events (the early-return at `resolver.ts:843`). BlankFill's satellite substitute fires `setText` with `source: 'runtime'`, so `_lastInputText` stays at the pre-substitute text (`config _`). The next user keystroke's gate then compares:
+
+| | Stale `_lastInputText` (bug) | Actual prior buffer `e.previousText` |
+|---|---|---|
+| prev | `config _` (ends with `_`) | `fluid-blank-mode on` (no `_`) |
+| `blankJustTyped` | false | true |
+| underscore count | 1 == 1, not fresh | 0 → 1, fresh |
+| Result | masked, `allowBlanks=false`, no-op | fires |
+
+Fix: the gate now reads `e.previousText` (the adapter's actual prior buffer state, updated regardless of source) for the trigger-detection + freshness comparisons. `_lastInputText` keeps its same-text-dedupe role above.
+
+Why the test suite missed it: every prior gate test starts from a clean baseline and never goes through a `source: 'runtime'` write between two user events. New scenario test (`user-typed _ after a runtime substitute`) exercises the full three-step sequence. Verified failing without the fix, passing with it. 1673/1673 runtime tests green.
+
+Bumps:
+- `@opencues/runtime` 0.3.16 → 0.3.17.
+
 ### Fix — shape-driven substitute wiped the whole current line
 
 Follow-up to the shape-anchor stacked-blank fix (0.3.15). With the shape gate now slicing from the keyword window, the substitute path was still wiping from the last newline before `_` — losing any prefix the user had written. `hello world nvda _` → `NVDA: $208.79` instead of `hello world NVDA: $208.79`.

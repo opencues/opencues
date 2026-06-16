@@ -1273,6 +1273,52 @@ describe('Resolver explicit-`_` gate', () => {
     expect(sawStandaloneUnderscore).toBe(true);
   });
 
+  // Regression: stacked `_` after a runtime substitute (June 2026).
+  //
+  // Repro: user types `config _` → BlankFill substitutes to
+  // `fluid-blank-mode on` (source='runtime'). Resolver's onTextChange
+  // early-returns on source='runtime', so `_lastInputText` stays at
+  // `config _`. User then appends ` build a website _` → the
+  // user-source event arrives with text=`fluid-blank-mode on build a
+  // website _`, but the gate compared against the stale
+  // `_lastInputText` = `config _`. Both end with `_`, so
+  // `blankJustTyped` = false. Both have exactly 1 `_`, so
+  // `freshUnderscoreInserted` = false. The new `_` got masked from
+  // blank sources and the resolver silently no-op'd.
+  //
+  // Fix: compare against the adapter-reported `e.previousText`, NOT
+  // `_lastInputText`. The adapter's previousText reflects the actual
+  // prior visible buffer (updated regardless of source), so the gate
+  // sees the real diff.
+  it('user-typed `_` after a runtime substitute (stale-baseline regression)', async () => {
+    const { adapter, seenWordsPerCall } = setupGateScenario();
+    // Step 1: user types `config _`. pushText auto-fires the `_`
+    // keystroke arm because underscore count went 0 → 1.
+    adapter.pushText('config _');
+    await new Promise(r => setTimeout(r, 80));
+    const callsAfterStep1 = seenWordsPerCall.length;
+    // Step 2: simulate the satellite's runtime substitute by replacing
+    // the buffer via setText (which fires source='runtime'). Resolver
+    // MUST NOT update _lastInputText for this — it's the source of the
+    // bug shape if it did. This is exactly what BlankFill's
+    // applySatelliteFill does in prod after `config _` resolves to a
+    // setting/value pair.
+    adapter.setText('fluid-blank-mode on');
+    await new Promise(r => setTimeout(r, 30));
+    // Step 3: user types ` build a website _` — appending. Underscore
+    // count IS growing (post-substitute buffer has 0, post-append has 1).
+    adapter.pushText('fluid-blank-mode on build a website _');
+    await new Promise(r => setTimeout(r, 80));
+    expect(seenWordsPerCall.length).toBeGreaterThan(callsAfterStep1);
+    // The `_` must reach blank sources for the appended invocation to
+    // resolve. Pre-fix, the stale-baseline gate masked it and this
+    // assertion failed.
+    const sawStandaloneUnderscoreAfterAppend = seenWordsPerCall
+      .slice(callsAfterStep1)
+      .some(words => words.includes('_'));
+    expect(sawStandaloneUnderscoreAfterAppend).toBe(true);
+  });
+
   it('diff-based fallback: `pushTextNoKeystroke` that grows underscore count auto-arms (PR #90)', async () => {
     // PR #90 added a diff-based fallback to the explicit-`_` gate: when the
     // buffer underscore count goes UP without a keystroke arm (chrome focus-

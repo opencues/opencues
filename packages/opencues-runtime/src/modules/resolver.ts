@@ -871,6 +871,21 @@ export class Resolver {
     // in, same text out, nothing for the resolver to do — early return.
     if (text === prev) return;
     this._lastInputText = text;
+    // Gate-comparison baseline: use the adapter's `e.previousText`, NOT
+    // `this._lastInputText`. _lastInputText is updated only on user-
+    // source events (the early-return at the top of this function), so
+    // a runtime write between two user events (e.g. BlankFill satellite
+    // substitute writing `config _` → `fluid-blank-mode on` and then
+    // the user appending ` build a website _`) leaves _lastInputText
+    // stale. The gate then sees the stale prior buffer, miscomputes
+    // freshness, and routes the new `_` to scheduleResolve with
+    // allowBlanks=false — masking it from every blank source and
+    // producing the "stacked-after-satellite silently no-ops" bug.
+    // `e.previousText` is the adapter's actual prior buffer state
+    // (updated regardless of source), so it reflects what the user
+    // saw before this change. _lastInputText stays as the dedupe
+    // baseline for the early-return above.
+    const gatePrev = e.previousText;
     // Trigger detection — gated by blank-trigger-mode.
     //
     // - `immediate` (default): bypass debounce the instant `_` becomes
@@ -884,9 +899,9 @@ export class Resolver {
     if (triggerMode === 'spaced') {
       // Buffer ends with `_` then whitespace, AND the prior text didn't
       // already satisfy that condition (so we don't re-fire on every space).
-      blankJustTyped = /_\s+$/.test(text) && !/_\s+$/.test(prev);
+      blankJustTyped = /_\s+$/.test(text) && !/_\s+$/.test(gatePrev);
     } else {
-      blankJustTyped = text.trimEnd().endsWith('_') && !prev.trimEnd().endsWith('_');
+      blankJustTyped = text.trimEnd().endsWith('_') && !gatePrev.trimEnd().endsWith('_');
     }
     // Explicit-`_` gate: the trailing `_` only counts as a blank trigger
     // when it was placed by an explicit `_` keystroke. A `_` that appeared
@@ -907,7 +922,7 @@ export class Resolver {
     // only got exposed); a freshly-typed `_` increases the count. Trust
     // gate (chrome) and source filter (line 772 already excludes runtime
     // writes) keep this safe for non-user origins.
-    const prevUnderscoreCount = (prev.match(/_/g) || []).length;
+    const prevUnderscoreCount = (gatePrev.match(/_/g) || []).length;
     const newUnderscoreCount = (text.match(/_/g) || []).length;
     // Count-delta alone is sufficient — `blankJustTyped` (computed
     // above) already proves a standalone `_` exists at the trailing
