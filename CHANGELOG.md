@@ -9,19 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
-### Fix — shape-anchored blanks rejected when stacked behind a prior substituted span
-
-A user filling `apple stock _` → `AAPL: $298.97`, then appending ` + nvda stock _` to the same buffer, found the second invocation silently fell through to FluidBlank (which returned just `"NVDA"` — no Finnhub call, no price). Every shipped blank with a `^...\s*_$` shape (stocks, weather, volume, brightness, crypto, countries, answer, sentinel, claude-status, example) hit the same bug shape: the moment any text preceded the keyword in the buffer, the `^` anchor failed and BlankFill dropped the slot.
-
-Cause: `matchBlankShape` in `packages/opencues-runtime/src/modules/blank-fill.ts` built its `testText` from `words.slice(0, blankIdx + 1)` — the entire buffer prefix up to `_`. Author intent on every shape pattern was "the keyword leads the *invocation*", but the code conflated the invocation window with the whole buffer.
-
-Fix: `matchBlankShape` now takes the keyword's leading word index (already known by the caller) and slices from there. `^` anchors against the keyword span; preceding spans in the buffer no longer break the gate. The earlier `indexInsideSubstitutedSpan` guard (June 2026, stocks-chain regression) still prevents a keyword from re-entering its own substitute, so the chain-loop class stays closed.
-
-Scenario test in `blank-fill.test.ts` reproduces the exact 16:14:05 log buffer (`AAPL: $298.97 + nvda stock _` with the prior 2-word DynDef registered) and asserts the `nvda stock` slot is detected. Verified failing without the fix, passing with it.
-
-Bumps:
-- `@opencues/runtime` 0.3.14 → 0.3.15.
-
 ### Fix (chrome) — popup Provider / Model dropdowns auto-populate on key entry; no longer gated behind Save
 
 The popup's `Provider` and `Model` dropdowns only list providers whose API key has been verified (a live probe against each provider's `/models` endpoint). That verification previously ran only on popup `init()` (from already-saved keys) and inside the `Save` click handler. So a user pasting a *fresh* key saw `Provider` stuck on `— no verified keys —` until they clicked `Save` — which sits **below** the Provider/Model controls. The required action order (paste key → Save → pick provider → pick model → Save again) contradicted the top-to-bottom layout.
