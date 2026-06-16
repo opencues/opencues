@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Revert — shape-driven blanks system (PRs #146, #155, #156) — keep on `dev/shape-system` for exploration
+
+The shape system (PR #146) introduced `blankShapes:` as a declarative precision gate replacing `blankProximity:`. Migrated 14 blanks (stocks / volume / brightness / weather / crypto / countries / dictionary / answer / prompt / sentinel / claude-status / example / gh-issues / hackernews) and added shape-handling code paths in `blank-fill.ts`, `cycling.ts`, `dim-render.ts`, `navigation.ts`.
+
+After 2 days of debugging across PRs #155, #156, and the abandoned #157, it became clear the system's coupling between match-intent, anchor-convention, and substitute-range was producing unpredictable cascading bugs. Each fix exposed a new code path that another shape author had implicitly relied on. Reverted on master to restore predictability while the system is re-explored on a dev branch.
+
+What this revert restores:
+- Every BLANK.md back to the `blankProximity:` + frontmatter shape it had pre-#146.
+- `blank-fill.ts`'s `matchKeyword` / `matchBlankShape` removed; only proximity-based matching active.
+- `cycling.ts` / `dim-render.ts` / `navigation.ts` shape-aware carve-outs removed.
+- `config-loader.ts` parsing of `blankShapes:` removed (the field is now ignored if present in any user blank's frontmatter).
+
+Where the work is preserved: `dev/shape-system` branch contains the full shape system + the #155 / #156 / #157-commit-1 / #157-commit-2 fixes for future exploration. Don't merge dev/shape-system to master until the design questions in CLAUDE.md § Shape conventions are resolved.
+
+Bumps:
+- `@opencues/runtime` 0.3.14 → 0.3.15 (forward bump signalling the revert; behaviour functionally back to 0.3.10).
+- `@opencues/core` 0.3.24 → 0.3.25 (parallel signal for the parser revert).
+
 ### Fix (chrome) — popup Provider / Model dropdowns auto-populate on key entry; no longer gated behind Save
 
 The popup's `Provider` and `Model` dropdowns only list providers whose API key has been verified (a live probe against each provider's `/models` endpoint). That verification previously ran only on popup `init()` (from already-saved keys) and inside the `Save` click handler. So a user pasting a *fresh* key saw `Provider` stuck on `— no verified keys —` until they clicked `Save` — which sits **below** the Provider/Model controls. The required action order (paste key → Save → pick provider → pick model → Save again) contradicted the top-to-bottom layout.
