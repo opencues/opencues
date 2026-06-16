@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fix — shape-driven substitute wiped the whole current line
+
+Follow-up to the shape-anchor stacked-blank fix (0.3.15). With the shape gate now slicing from the keyword window, the substitute path was still wiping from the last newline before `_` — losing any prefix the user had written. `hello world nvda _` → `NVDA: $208.79` instead of `hello world NVDA: $208.79`.
+
+The shape-driven branches in `applyAsyncFill` and `applySatelliteFill` (`blank-fill.ts:737-749` and `blank-fill.ts:1043-1049`) now replace `[words[slot.keywordStart].start .. target.end)` — the same window the shape gate validated — instead of `[lastNewline .. target.end)`. Author intent: "broader shaping, proximity-style range". Every shipped shape-driven blank (stocks, weather, volume, brightness, crypto, countries, answer, sentinel, claude-status, example) now preserves prefix text exactly as proximity-only blanks always have.
+
+Scenario test in `blank-fill.test.ts` covers `hello world apple stock _` → `hello world AAPL: $298.97`. Verified failing without the fix, passing with it. Full 1673-test runtime suite green.
+
+Bumps:
+- `@opencues/runtime` 0.3.15 → 0.3.16.
+
 ### Fix — shape-anchored blanks rejected when stacked behind a prior substituted span
 
 A user filling `apple stock _` → `AAPL: $298.97`, then appending ` + nvda stock _` to the same buffer, found the second invocation silently fell through to FluidBlank (which returned just `"NVDA"` — no Finnhub call, no price). Every shipped blank with a `^...\s*_$` shape (stocks, weather, volume, brightness, crypto, countries, answer, sentinel, claude-status, example) hit the same bug shape: the moment any text preceded the keyword in the buffer, the `^` anchor failed and BlankFill dropped the slot.

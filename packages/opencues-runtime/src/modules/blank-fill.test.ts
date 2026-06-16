@@ -226,6 +226,51 @@ blankShapes: [{"pattern":"^(nvda|apple\\\\s+stock|nvda\\\\s+stock)\\\\s*_$","act
     });
   });
 
+  // Regression: shape-driven substitute wiped the whole current line
+  // (June 2026 follow-up to the shape-anchor stacked-blank fix).
+  // The previous line-wipe carve-out assumed `matchBlankShape` had
+  // matched the entire buffer prefix, so it spliced from the last
+  // newline before `_` and lost any prefix the user had written. Now
+  // that the shape gate slices from the keyword window, the substitute
+  // mirrors that window so "hello world apple stock _" preserves
+  // "hello world " — proximity-style range with shape-style matching.
+  it('shape-driven substitute wipes only the keyword window, not the whole line', async () => {
+    const STOCKS = `---
+type: blank
+name: stocks
+blankKeywords: apple stock, nvda
+blankShapes: [{"pattern":"^(apple\\\\s+stock|nvda)\\\\s*_$","action":"get","valueGroup":1}]
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: {
+        '/mock/CUES.md': TIPS,
+        '/proj/blanks/stocks/BLANK.md': STOCKS,
+      },
+    });
+    adapter.pushText('hello world apple stock _');
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const spanFillState = new SpanFillState();
+    const bf = new BlankFill(adapter, loader, spanFillState);
+    const slots = bf.scan('hello world apple stock _');
+    expect(slots).toHaveLength(1);
+    expect(slots[0]).toMatchObject({
+      keyword: 'apple stock',
+      blankName: 'stocks',
+      keywordStart: 2,
+      keywordEnd: 3,
+      action: 'get',
+    });
+    // Drive the shape-driven splice through applyAsyncFill (the post-
+    // script-result handler that the substitute path runs in prod).
+    // The "hello world " prefix MUST survive.
+    (bf as unknown as { applyAsyncFill: (s: typeof slots[0], v: string) => void })
+      .applyAsyncFill(slots[0], 'AAPL: $298.97');
+    expect(adapter.getText()).toBe('hello world AAPL: $298.97');
+  });
+
   it('still matches keyword OUTSIDE substituted spans', async () => {
     const STOCKS = `---
 type: blank
