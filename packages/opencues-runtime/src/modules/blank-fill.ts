@@ -1374,20 +1374,33 @@ export class BlankFill {
  * Walk the blank's declared shapes against the buffer text; return
  * the matched action + extracted value, or null if no shape fires.
  *
- * The test string is the buffer slice from the matched keyword's
- * leading word up to and including `_`, with leading/trailing
- * whitespace trimmed. Patterns are compiled with `i` (case-
- * insensitive) and `s` (dotall — multi-line bodies don't need to
- * anchor at the start of every line). Authors can use `^` / `$` to
- * anchor against the trimmed invocation window — NOT the whole
- * buffer. The slice starts at the keyword so a `^foo\s*_$` shape
- * matches `<prior-span> + foo _` the same way it matches `foo _`
- * alone (stacked-blank composition).
+ * Two shape-author conventions coexist; we try both slices so each
+ * one matches its declared scope:
  *
- * First-match wins (top-down walk). Authors should order shapes
- * narrowest-first: bare-keyword shapes after numeric-bearing shapes,
- * so "volume 70 _" matches the SET shape before the bare-GET shape
- * sees it.
+ *   1. KEYWORD-anchored — the shape pattern starts at the keyword's
+ *      leading word. Stocks (`^nvda\s*_$`), volume, weather,
+ *      brightness, crypto, etc. — the `^` author intent is "the
+ *      KEYWORD leads the invocation, no prefix expected". For these
+ *      shapes the buffer's leading prefix (`<prior-span> + nvda _`)
+ *      MUST NOT enter the test or the `^` anchor would always fail
+ *      on stacked invocations.
+ *
+ *   2. PREFIX-anchored — the shape pattern captures content BEFORE
+ *      the keyword in a `(.+?)` group. Prompt-improver
+ *      (`^(.+?)\s+improve\s+prompt\s*_$`) — the `^` author intent is
+ *      "the whole prefix IS the captured data". Slicing only from
+ *      the keyword window loses the prefix the `(.+?)` is supposed
+ *      to consume, and the shape never matches.
+ *
+ * Try the keyword-window slice first (works for shape style #1 and
+ * for the `<prior-span> + foo _` stacking case); fall back to the
+ * full-prefix slice (works for shape style #2). The first match
+ * wins regardless of slice — authors can mix both styles in one
+ * `blankShapes` array.
+ *
+ * Within each slice, shapes are walked top-down — order them
+ * narrowest-first (bare-keyword AFTER numeric-bearing) so
+ * `volume 70 _` matches the SET shape before the bare-GET shape.
  */
 function matchBlankShape(
   words: readonly string[],
@@ -1395,18 +1408,30 @@ function matchBlankShape(
   blankIdx: number,
   shapes: ReadonlyArray<{ pattern: string; action: 'get' | 'set' | 'step'; valueGroup?: number }>,
 ): { action: 'get' | 'set' | 'step'; value?: string } | null {
-  const testText = words.slice(start, blankIdx + 1).join(' ').trim();
-  for (const shape of shapes) {
-    let re: RegExp;
-    try { re = new RegExp(shape.pattern, 'is'); }
-    catch { continue; }
-    const m = re.exec(testText);
-    if (!m) continue;
-    let value: string | undefined;
-    if (shape.valueGroup !== undefined) {
-      value = m[shape.valueGroup];
+  const tryAgainstSlice = (sliceStart: number): { action: 'get' | 'set' | 'step'; value?: string } | null => {
+    const testText = words.slice(sliceStart, blankIdx + 1).join(' ').trim();
+    for (const shape of shapes) {
+      let re: RegExp;
+      try { re = new RegExp(shape.pattern, 'is'); }
+      catch { continue; }
+      const m = re.exec(testText);
+      if (!m) continue;
+      let value: string | undefined;
+      if (shape.valueGroup !== undefined) {
+        value = m[shape.valueGroup];
+      }
+      return { action: shape.action, ...(value !== undefined ? { value } : {}) };
     }
-    return { action: shape.action, ...(value !== undefined ? { value } : {}) };
+    return null;
+  };
+  // Keyword-window first (stocks-style + stacked-blank composition).
+  const kwMatch = tryAgainstSlice(start);
+  if (kwMatch) return kwMatch;
+  // Full-prefix fallback (prompt-improver-style — shape captures
+  // content before the keyword via `(.+?)`).
+  if (start > 0) {
+    const prefixMatch = tryAgainstSlice(0);
+    if (prefixMatch) return prefixMatch;
   }
   return null;
 }

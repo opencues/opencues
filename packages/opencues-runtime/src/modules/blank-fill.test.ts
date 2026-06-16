@@ -271,6 +271,44 @@ blankShapes: [{"pattern":"^(apple\\\\s+stock|nvda)\\\\s*_$","action":"get","valu
     expect(adapter.getText()).toBe('hello world AAPL: $298.97');
   });
 
+  // Regression: prompt blank's trigger-at-end shape needs the FULL
+  // buffer prefix to capture the user's prompt via `(.+?)`. After
+  // shape-anchor work sliced from the keyword window for stacked-
+  // blank composition, prompt-improver's
+  // `^(.+?)\s+improve\s+prompt\s*_$` stopped matching because `(.+?)`
+  // had nothing to capture in the keyword-only slice. Fix:
+  // matchBlankShape now tries keyword-window first (stocks-style),
+  // full-prefix fallback (prompt-improver-style). User repro from
+  // `/tmp/opencues.log` 20:54:31 — `build a website improve prompt _`
+  // got 0 results.
+  it('shape with `(.+?)` before keyword matches against full buffer prefix', async () => {
+    const PROMPT = `---
+type: blank
+name: prompt
+blankKeywords: improve prompt
+blankShapes: [{"pattern":"^(.+?)\\\\s+improve\\\\s+prompt\\\\s*_$","action":"get","valueGroup":1}]
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: {
+        '/mock/CUES.md': TIPS,
+        '/proj/blanks/prompt/BLANK.md': PROMPT,
+      },
+    });
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    const slots = bf.scan('build a website improve prompt _');
+    expect(slots).toHaveLength(1);
+    expect(slots[0]).toMatchObject({
+      keyword: 'improve prompt',
+      blankName: 'prompt',
+      action: 'get',
+      value: 'build a website',
+    });
+  });
+
   it('still matches keyword OUTSIDE substituted spans', async () => {
     const STOCKS = `---
 type: blank

@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fix — shape gate tries both keyword-window AND full-prefix slices
+
+Follow-up to #155. The shape-anchor fix sliced from the keyword's leading word so stacked invocations (`<prior-span> + nvda _`) could match. That broke prompt-improver's `^(.+?)\s+improve\s+prompt\s*_$` trigger-at-end shape: `(.+?)` had nothing to capture in the keyword-only slice, so `build a website improve prompt _` silently no-op'd.
+
+Two shape conventions coexist now:
+1. **Keyword-anchored** (stocks, volume, weather, brightness, crypto): `^<keyword>\s*_$` — author intent is "the keyword leads the invocation, no prefix expected"
+2. **Prefix-anchored** (prompt-improver, future "fix this email" patterns): `^(.+?)\s+<keyword>\s*_$` — author intent is "the whole prefix IS the captured data"
+
+`matchBlankShape` now tries the keyword-window slice first (works for #1 and for stacked composition), falls back to the full-prefix slice (works for #2). First match wins; authors can mix both styles in one `blankShapes` array.
+
+Scenario test covers `build a website improve prompt _` → captures `build a website` as `valueGroup 1`. 1675/1675 runtime tests green.
+
 ### Fix — resolver explicit-`_` gate compared against stale baseline after a runtime substitute
 
 Stacked-blank scenario broke: user types `config _` → BlankFill substitutes to `fluid-blank-mode on` → user appends ` build a website _` → silent no-op (no TransformBlank, no FluidBlank, no ConfigIntent). The next `_` got masked from every blank source.
