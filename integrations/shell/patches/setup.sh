@@ -91,13 +91,21 @@ if [[ -d "$IVM_SRC" ]]; then
   fi
 fi
 
-# ─── Bundle skipped (oc-edit runs src/app.tsx directly) ────────────
-# A `bun run bundle` (scripts/bundle.ts) is wired up and works, but
-# we hit a leftover .jsc-segfault issue with the bytecode experiment
-# that bit production usage. Until the daemon model (see
-# DAEMON-PLAN.md) is built, oc-edit runs src/app.tsx directly via
-# the bun shim — ~1s cold start per input-box open, but reliable.
-# To opt in manually, run `bun run bundle` from integrations/shell/.
+# ─── Pre-bundle src/app.tsx → dist/app.js ───────────────────────────
+# oc-edit prefers dist/app.js when present (falls back to src/app.tsx
+# transpile-on-load otherwise). The bundle is a pure perf win: cuts
+# per-launch transpile cost from ~2-3s to ~0.5s. Single cold launch
+# measured: 3.3s without dist/, 1.2s with. Tooling that spawns
+# multiple oc-edit processes concurrently amplifies the saving
+# because Bun's on-the-fly transpile contends across instances.
+#
+# The earlier bytecode-segfault concern is in scripts/bundle.ts as
+# `bytecode: false` — bundle output is plain ESM and safe.
+echo "  ▸ bundling src/app.tsx → dist/app.js"
+(
+  cd "$TERM_DIR"
+  bun run bundle 2>&1 | tee -a "$LOG" | grep -E "bundle:|error" || true
+) || echo "    (bundle step failed — oc-edit will fall back to src/app.tsx transpile-on-load)"
 
 # ─── Optional symlink ────────────────────────────────────────────────
 if [[ -n "$LINK_DIR" ]]; then
