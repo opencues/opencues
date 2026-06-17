@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Feat — three semantic-_ surfaces enabled by default (runtime 0.3.18)
+
+`fluid-config-mode`, `identity-context-mode`, and `blank-context-mode` now default to enabled. Concretely:
+
+- `fluid-config-mode: on` (was `off`) — semantic `_` → settings-change classifier. Type `enable debug logging _`, `switch to cerebras _`, etc. and the matching OPENCUES.md scalar flips with a confirming satellite pair. One extra ~200-300ms LLM call per `_` (Cerebras prefix-cached, bench-validated 100% precision); routes ONLY to FEATURES registry scalars, never user blanks.
+- `identity-context-mode: safe` (was `off`) — `~/.cues/IDENTITY.md` fields advertised to the fluid-blank LLM as identity-context tokens; runtime post-processor substitutes real values AFTER the response, so PII never reaches provider logs. Users who never created an IDENTITY.md see no behavioural diff (empty catalog).
+- `blank-context-mode: safe` (was `off`) — script-backed blanks (stocks, weather, crypto, …) expose their current values as ambient tokens; a `_` lookup like `buy more apple if _` reaches AAPL without typing the `apple` keyword. Catalog of token names ships to the LLM; values substituted post-response.
+
+The shipped `defaults/OPENCUES.md` carries the new values explicitly. Three rollout paths for existing users:
+
+- `defaults/OPENCUES.md` shipped with explicit `identity-context-mode: safe` / `fluid-config-mode: on` / `blank-context-mode: safe`. Fresh installs get all three on out of the box.
+- `DEFAULT_OPENCUES_STATE` in `config-loader.ts` now sets `identityContextMode: 'safe'` and `blankContextMode: 'safe'`. Existing users whose OPENCUES.md doesn't declare these typed-state scalars automatically pick up the new defaults — no file edit needed.
+- `opencues seed-configs` (runs on every `opencues install`) self-heal-appends `fluid-config-mode: on` and `blank-context-mode: safe` to existing OPENCUES.md when the keys are absent. The runtime check for `fluid-config-mode` reads from the settings map (absent = off), so this self-heal is the only way existing users see the flipped fluid-config default; the appended block sits inside the frontmatter with a leading `# why` comment. Existing values are never overwritten — only absent keys are appended.
+
+Feature-registry "(default)" annotations updated to reflect the new defaults; menu-cycle UI labels rotate `on (default)` / `safe (default)` accordingly.
+
 ### Fix — shell bridge `resetBufferState` wiring + clear static variant pool (runtime 0.3.17)
 
 Two correctness bugs in the shell adapter / resolver reset path:

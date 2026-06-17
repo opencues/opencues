@@ -36,17 +36,48 @@ ambient-context-mode: off
 # Pulls field data from ~/.cues/IDENTITY.md (your first name, email,
 # work city, etc.) and offers it to FluidBlankSource so `_` lookups
 # personalise without you re-typing the same info.
-#   off  (default): IDENTITY.md never read; no personal data reaches any prompt.
-#   safe          : catalog of TOKENS + descriptions injected. The LLM
+#   off          : IDENTITY.md never read; no personal data reaches any prompt.
+#   safe (default): catalog of TOKENS + descriptions injected. The LLM
 #                   emits `[FIRST NAME]` etc; a post-processor substitutes
 #                   your real values AFTER the response. Your PII never
 #                   reaches the LLM provider's logs.
+# Users who never created an IDENTITY.md see no behavioural diff — the
+# catalog is empty so no tokens reach the prompt.
 # A `raw` mode (catalog values inlined into the prompt) is also
 # implementation-complete but deferred to Phase 2 — set it directly
 # here if you want, but it's intentionally not exposed in the
 # selector-satellite menu to prevent accidental flips. See
 # docs/architecture/identity-context.md § Future work.
-identity-context-mode: off
+identity-context-mode: safe
+
+# fluid-config-mode — semantic `_` → settings-change classifier. When
+# a `_` lookup phrases the surrounding text like a settings change
+# ("enable debug logging _", "switch to cerebras _", "turn on voice
+# mode _"), one LLM call classifies it against the FEATURES registry
+# and applies the matched setting + drops a selector-satellite pair as
+# visual confirmation. Routes ONLY to OPENCUES scalars, never user
+# blanks (the routing layer's prompt enumerates only registry-cyclable
+# values; runtime guard rejects anything else).
+#   off          : `_` falls through to fluid-blank as a generic lookup.
+#   on (default) : every `_` pays one extra ~200-300ms LLM call (Cerebras
+#                  prefix-cached) to classify settings intent; on hit,
+#                  setting is applied. Bench-validated at 100% precision.
+# See docs/architecture/fluid-config.md.
+fluid-config-mode: on
+
+# blank-context-mode — blanks expose their current values as ambient
+# tokens for fluid-blank, so a `_` lookup can reach stock prices,
+# weather, crypto rates etc. WITHOUT typing the keyword. e.g. "buy
+# more apple if _" resolves AAPL even though the user didn't write
+# "apple _". `safe` ships a tokens-only catalog to the LLM; the
+# runtime post-processor substitutes live values AFTER the response.
+# Values never reach the provider's logs.
+#   off          : blanks only fire on the keyword-trigger path.
+#   safe (default): catalog of context-eligible blanks injected as tokens.
+# A `raw` mode (values inlined into the prompt) is implementation-
+# complete but kept off the menu; requires identity-context-mode: raw too.
+# See docs/architecture/blank-as-context.md.
+blank-context-mode: safe
 
 # Surface-availability flags. "on" means the surface is registered and
 # ready to fire when matching input appears; "off" (or omitted) means the

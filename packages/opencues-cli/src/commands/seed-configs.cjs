@@ -394,6 +394,47 @@ module.exports = function seedConfigs(argv, ctx) {
     if (rewritten !== original) fs.writeFileSync(settingsTarget, rewritten);
   }
 
+  // ── 3.0c HEAL — append flipped-default scalars to existing OPENCUES.md ──
+  //
+  // June 2026: flipped `fluid-config-mode` (off → on) and
+  // `blank-context-mode` (off → safe) defaults. The runtime read
+  // paths fall through to `absent === off` for these two — so users
+  // whose OPENCUES.md predates this change are silently frozen at
+  // the old default until they add the key.
+  //
+  // Append missing keys in-place so the user can see the new default
+  // in their file and edit it back if desired. Existing values are
+  // NEVER overwritten — only ABSENT keys are appended. Insertion goes
+  // before the closing frontmatter fence so the keys land inside the
+  // YAML block where the runtime parses them.
+  //
+  // identity-context-mode is NOT in this list because the runtime
+  // path uses DEFAULT_OPENCUES_STATE.identityContextMode='safe' as
+  // the absent-key fallback — existing users automatically pick up
+  // the new default without a file rewrite.
+  if (settingsTarget && fs.existsSync(settingsTarget) && fs.statSync(settingsTarget).size > 0) {
+    const original = fs.readFileSync(settingsTarget, 'utf8');
+    let rewritten = original;
+    const newDefaults = [
+      ['fluid-config-mode', 'on',
+       'Semantic `_` → settings-change classifier (FEATURES registry only, no user blanks). One LLM call per `_` to classify intent; ~99.5% Cerebras prefix-cache hit.'],
+      ['blank-context-mode', 'safe',
+       'Blanks expose values as ambient tokens for fluid-blank. `safe` = tokens-only catalog; values never reach provider logs.'],
+    ];
+    for (const [key, value, why] of newDefaults) {
+      if (new RegExp(`^${key}:\\s*`, 'm').test(rewritten)) continue;
+      const block = `\n# ${why}\n${key}: ${value}\n`;
+      // Find the closing `---` of the frontmatter (every OPENCUES.md
+      // has one, opening + closing). Insert block JUST before it.
+      const fmRe = /^(---\s*\n[\s\S]*?)(^---\s*$)/m;
+      if (fmRe.test(rewritten)) {
+        rewritten = rewritten.replace(fmRe, (_, head, close) => `${head}${block}${close}`);
+        log(`Self-heal: appended ${key}: ${value} to ${settingsTarget} (new default June 2026)`);
+      }
+    }
+    if (rewritten !== original) fs.writeFileSync(settingsTarget, rewritten);
+  }
+
   // ── 3.1 HEAL — rename legacy bucket scalars in OPENCUES.md ──
   //
   // The three-bucket simplification (cues / auditors / blanks)

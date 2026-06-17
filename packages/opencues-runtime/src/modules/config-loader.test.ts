@@ -117,18 +117,23 @@ some prose
     expect(parseOpenCuesMd('---\nambient-context-mode: on\n---').ambientContextMode).toBe('on');
   });
 
-  it('identity-context-mode defaults to off and only accepts safe/raw', () => {
-    // Same fail-closed contract as ambient-context-mode — the privacy
-    // model leans on `off` being the default + on unrecognised values
-    // not silently flipping the gate. See docs/architecture/sentinels.md.
-    expect(parseOpenCuesMd('---\n---').identityContextMode).toBe('off');
+  it('identity-context-mode: absent → safe (new default June 2026), explicit invalid → off (fail-closed)', () => {
+    // Two-tier semantics:
+    //   ABSENT key             → `safe` (shipped-seed default; tokens-only,
+    //                            no PII leak, no-op for users without IDENTITY.md).
+    //   Explicit valid value   → use it.
+    //   Explicit invalid value → `off` (fail-closed — the privacy gate must
+    //                            not silently flip on a typo).
+    // See docs/architecture/identity-context.md.
+    expect(parseOpenCuesMd('---\n---').identityContextMode).toBe('safe');
     expect(parseOpenCuesMd('---\nidentity-context-mode: off\n---').identityContextMode).toBe('off');
     expect(parseOpenCuesMd('---\nidentity-context-mode: safe\n---').identityContextMode).toBe('safe');
     expect(parseOpenCuesMd('---\nidentity-context-mode: raw\n---').identityContextMode).toBe('raw');
     // Case-insensitive.
     expect(parseOpenCuesMd('---\nidentity-context-mode: SAFE\n---').identityContextMode).toBe('safe');
     expect(parseOpenCuesMd('---\nidentity-context-mode: Raw\n---').identityContextMode).toBe('raw');
-    // Anything else stays off — typos / unexpected values fail closed.
+    // Anything else fails closed to off — typos / unexpected values must
+    // not silently flip the gate to safe (the new default).
     expect(parseOpenCuesMd('---\nidentity-context-mode: on\n---').identityContextMode).toBe('off');
     expect(parseOpenCuesMd('---\nidentity-context-mode: yes\n---').identityContextMode).toBe('off');
     expect(parseOpenCuesMd('---\nidentity-context-mode: true\n---').identityContextMode).toBe('off');

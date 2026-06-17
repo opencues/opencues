@@ -317,8 +317,8 @@ export const FEATURES: readonly FeatureSpec[] = [
     description: 'Semantic `_` → settings-change routing (LLM classifier over the FEATURES registry)',
     menuTip: 'Route `_` to a settings change when no keyword matched ("stop showing tips _" → tips-mode=off). Only routes to OPENCUES settings, never user blanks.',
     values: [
-      { id: 'off', description: 'Disabled (default) — `_` falls through to fluid-blank as a lookup' },
-      { id: 'on',  description: 'Enabled — one LLM call classifies the surrounding text against the FEATURES registry; on hit, the matched setting is applied' },
+      { id: 'off', description: 'Disabled — `_` falls through to fluid-blank as a lookup' },
+      { id: 'on',  description: 'Enabled (default) — one LLM call classifies the surrounding text against the FEATURES registry; on hit, the matched setting is applied' },
     ],
   },
   {
@@ -544,8 +544,8 @@ export const FEATURES: readonly FeatureSpec[] = [
     description: 'Personal identity data injected into fluid-blank as context tokens',
     menuTip: 'Inject ~/.cues/IDENTITY.md fields (first name, email, etc.) as identity-context tokens into fluid-blank for personalised lookups.',
     values: [
-      { id: 'off',  description: 'Disabled (default) — IDENTITY.md never read' },
-      { id: 'safe', description: 'Tokens-only catalog sent to LLM; post-processor substitutes values after response. PII stays on the host.' },
+      { id: 'off',  description: 'Disabled — IDENTITY.md never read' },
+      { id: 'safe', description: 'Tokens-only catalog (default) sent to LLM; post-processor substitutes values after response. PII stays on the host.' },
       // `raw` mode (catalog values inlined into the prompt — PII
       // reaches the LLM provider) is implementation-complete but
       // intentionally NOT cycleable from the menu — flipping it should
@@ -569,8 +569,8 @@ export const FEATURES: readonly FeatureSpec[] = [
     description: 'Blanks expose their current values as ambient tokens for fluid-blank',
     menuTip: 'Expose context-eligible blanks (stocks, weather, crypto, …) as ambient tokens fluid-blank can reach without typing the keyword. See docs/features/blank-as-context.md.',
     values: [
-      { id: 'off',  description: 'Disabled (default) — blanks only fire on the keyword-trigger path' },
-      { id: 'safe', description: 'Tokens-only catalog; post-processor substitutes live values after response. Bench-validated at 100% on Cerebras + Groq.' },
+      { id: 'off',  description: 'Disabled — blanks only fire on the keyword-trigger path' },
+      { id: 'safe', description: 'Tokens-only catalog (default); post-processor substitutes live values after response. Bench-validated at 100% on Cerebras + Groq.' },
       // Same exposure rule as identity-context — raw is implemented but
       // kept off the menu. Requires identity-context-mode: raw too
       // (mode-gate composition pinned in docs/architecture/blank-as-context.md).
