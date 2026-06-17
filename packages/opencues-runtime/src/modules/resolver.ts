@@ -286,6 +286,72 @@ export class Resolver {
    *  keystroke (no host restart required). */
   private _lastBuildKey: string | null = null;
 
+  /** Full state reset — wipes every per-buffer / per-keystroke piece
+   *  of internal state so the next resolve runs from a clean slate.
+   *  Called by hosts that reuse a single runtime instance across
+   *  buffer lifecycle boundaries — chrome's panel close+reopen,
+   *  shell's `oc-edit --keep-alive` mode where one Bun process
+   *  handles multiple Alt+Shift+↑ sessions (see
+   *  integrations/shell/CLAUDE.md § Per-buffer state reset). Without
+   *  this, _lastInputText / _lastBuildKey / in-flight controllers
+   *  carry across the boundary and the next session sees stale
+   *  state. Also reachable via the event bridge's `reset` command
+   *  for off-process drivers. NOT a substitute for dispose — wraps
+   *  neither unsubscribe nor source teardown. After resetState() the
+   *  resolver is still wired and ready; it just thinks it's brand
+   *  new. _httpAdapter + _resolver + _sources are kept because
+   *  rebuilding them requires the dispatch context that only the
+   *  caller has. */
+  resetState(): void {
+    if (this._debounceTimer) {
+      clearTimeout(this._debounceTimer);
+      this._debounceTimer = null;
+    }
+    if (this._inFlightController) {
+      try { this._inFlightController.abort(); } catch { /* swallow */ }
+      this._inFlightController = null;
+    }
+    this._underscoreKeyArmed = false;
+    this._lastInputText = '';
+    this._lastTaskStopAt = 0;
+    this._lastTaskStopPrompt = '';
+    // Force a full source-rebuild on the next text-change. The CueSource
+    // instances (TransformBlankSource, FluidBlankSource, etc.) hold
+    // their own per-buffer caches (variant cache, MarkdownRender
+    // primings, _rewriteCache, etc.) which we can't reach through
+    // module-level reset. Re-instantiating the whole resolver via
+    // rebuildResolver gives us fresh source instances with empty
+    // caches — at the cost of one extra rebuild on the next resolve.
+    // _lastBuildKey=null guarantees the buildKey-equality short-circuit
+    // can't skip the rebuild.
+    this._lastBuildKey = null;
+    // Clear TransformBlankSource's STATIC variant pool. It survives
+    // instance rebuilds by design (production wants cache survival
+    // across resolver rebuilds on hosts where the resolver re-creates
+    // sources on every focused-target flip — e.g. chrome's universal
+    // integration). But a full resetState is meant to leave NO stale
+    // state behind: a user who reloads OPENCUES.md mid-session (provider
+    // change, mode toggle) triggers a source rebuild via resetState,
+    // and without this clear the pool keeps returning stale rewrites
+    // for the previous provider/model until LRU eviction cycles them
+    // out. A keep-alive host crossing a session boundary has the
+    // same need — the next session's first identical-buffer trigger
+    // shouldn't reuse rewrites the previous session generated.
+    // Best-effort import — production reset paths don't import @opencues/core.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { TransformBlankSource } = require('@opencues/core') as { TransformBlankSource?: { resetVariantPoolForTest?: () => void } };
+      TransformBlankSource?.resetVariantPoolForTest?.();
+    } catch { /* swallow — production paths without core lib still work */ }
+    this.adapter.log('info', 'Resolver: resetState — rebuilding sources');
+    if (this._resolver) this.rebuildResolver();
+    else this.adapter.log('warn', 'Resolver: resetState — _resolver was null, skipping rebuild');
+    // _generation is monotonic by design — bumping it just discards
+    // any in-flight results without changing semantics on the next
+    // resolve. Leave it alone; the controller-abort above is what
+    // actually cancels in-flight LLM calls.
+  }
+
   constructor(
     private adapter: HostAdapter,
     private hlState: HighlightState,
@@ -871,6 +937,20 @@ export class Resolver {
     // in, same text out, nothing for the resolver to do — early return.
     if (text === prev) return;
     this._lastInputText = text;
+    // Gate-comparison baseline: use the adapter's `e.previousText`, NOT
+    // `this._lastInputText`. _lastInputText is updated only on user-
+    // source events (the early-return at the top of this function), so
+    // a runtime write between two user events (e.g. BlankFill or
+    // TransformBlank writing the substitute via setText) leaves
+    // _lastInputText stale. The gate then sees the stale prior buffer,
+    // miscomputes freshness, and routes the new `_` to scheduleResolve
+    // with allowBlanks=false — masking it from every blank source and
+    // producing the "stacked-blank after substitute silently no-ops"
+    // bug. `e.previousText` is the adapter's actual prior buffer state
+    // (updated regardless of source), so it reflects what the user saw
+    // before this change. _lastInputText stays as the dedupe baseline
+    // for the early-return above.
+    const gatePrev = e.previousText;
     // Trigger detection — gated by blank-trigger-mode.
     //
     // - `immediate` (default): bypass debounce the instant `_` becomes
@@ -884,9 +964,9 @@ export class Resolver {
     if (triggerMode === 'spaced') {
       // Buffer ends with `_` then whitespace, AND the prior text didn't
       // already satisfy that condition (so we don't re-fire on every space).
-      blankJustTyped = /_\s+$/.test(text) && !/_\s+$/.test(prev);
+      blankJustTyped = /_\s+$/.test(text) && !/_\s+$/.test(gatePrev);
     } else {
-      blankJustTyped = text.trimEnd().endsWith('_') && !prev.trimEnd().endsWith('_');
+      blankJustTyped = text.trimEnd().endsWith('_') && !gatePrev.trimEnd().endsWith('_');
     }
     // Explicit-`_` gate: the trailing `_` only counts as a blank trigger
     // when it was placed by an explicit `_` keystroke. A `_` that appeared
@@ -907,7 +987,7 @@ export class Resolver {
     // only got exposed); a freshly-typed `_` increases the count. Trust
     // gate (chrome) and source filter (line 772 already excludes runtime
     // writes) keep this safe for non-user origins.
-    const prevUnderscoreCount = (prev.match(/_/g) || []).length;
+    const prevUnderscoreCount = (gatePrev.match(/_/g) || []).length;
     const newUnderscoreCount = (text.match(/_/g) || []).length;
     // Count-delta alone is sufficient — `blankJustTyped` (computed
     // above) already proves a standalone `_` exists at the trailing
@@ -955,7 +1035,14 @@ export class Resolver {
         return;
       }
 
-      this.scheduleResolve(text);
+      // Pass the diff-based freshness signal through so the debounced
+      // resolve also unblocks blank sources when the `_` is mid-buffer
+      // (e.g. `change boy to girl _ the boy ran fast` — TransformBlank-
+      // style "instruction _ target"). Without this, only trailing-`_`
+      // patterns would arm via the diff fallback; middle-`_` patterns
+      // would silently no-op because the explicit-keystroke arm path
+      // (onUnderscoreKey) is the only way `allowBlanks` becomes true.
+      this.scheduleResolve(text, freshUnderscoreInserted);
     } finally {
       // One-shot: clear armed flag at the END of this onTextChange so the
       // NEXT text-change (one not paired with a `_` keystroke) doesn't
@@ -969,14 +1056,16 @@ export class Resolver {
     }
   }
 
-  private scheduleResolve(text: string): void {
+  private scheduleResolve(text: string, freshUnderscoreInserted = false): void {
     if (this._debounceTimer) clearTimeout(this._debounceTimer);
     const delay = this.options.debounceMs ?? 500;
     // Capture the freshness now so the gate reflects when the change
     // happened — not when the debounce fires `delay` ms later (by which
     // time the keystroke window may have lapsed even though the user
-    // genuinely just typed `_`).
-    const allowBlanks = this.explicitUnderscoreRecent();
+    // genuinely just typed `_`). Accept either the keystroke arm flag
+    // OR a positive underscore-count delta as proof of fresh user
+    // intent — see callsite comment for the middle-`_` rationale.
+    const allowBlanks = this.explicitUnderscoreRecent() || freshUnderscoreInserted;
     this._debounceTimer = setTimeout(() => {
       void this.resolveAndApply(text, { allowBlanks });
     }, delay);

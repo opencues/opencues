@@ -91,6 +91,17 @@ export class MarkdownRender {
     if (this._unsubText) { this._unsubText(); this._unsubText = null; }
   }
 
+  /** Wipe the cached styled payload so the next resolve runs without
+   *  rich-text injection. Called as part of a full runtime reset —
+   *  a primed cache from a prior buffer lifecycle would otherwise
+   *  send rich-text input into the LLM during the next session's
+   *  first transform, biasing classification with stale styling
+   *  metadata. Keep-alive hosts crossing a session boundary and any
+   *  off-process bridge driver calling `reset` exercise this path. */
+  resetState(): void {
+    this._cached = null;
+  }
+
   /** Pure: takes a render context, returns directives or null. */
   compute(ctx: RenderContext): RenderDirectives | null {
     if (this._cached === null) return null;

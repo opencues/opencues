@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fix — shell bridge `resetBufferState` wiring + clear static variant pool (runtime 0.3.17)
+
+Two correctness bugs in the shell adapter / resolver reset path:
+
+1. **Shell adapter never passed `resetBufferState` to `startEventBridge`.** The event bridge's `reset` command tried `this.bindings.resetBufferState?.()` — on OpenCode and chrome it's wired, on shell it was undefined → silent no-op. Any off-process bridge driver calling `reset` got a half-reset where ephemeral buffer state cleared but cached LLM rewrites kept returning. The bridge is documented as a runtime introspection surface (`integrations/shell/CLAUDE.md § Debugging`); shell was the cross-host outlier. Also relevant for shell's `oc-edit --keep-alive` mode where one Bun process spans multiple session boundaries.
+
+2. **`Resolver.resetState()` didn't clear `TransformBlankSource`'s static variant pool.** The pool is `static` by design — chrome's universal-integration recreates source instances on every focused-target flip, and production wants cache survival across those rebuilds. But `Resolver.resetState()` is the *full* reset surface: a user who reloads OPENCUES.md mid-session (provider change, mode toggle) would still see stale rewrites for the prior provider/model until LRU eviction cycles them out.
+
+Also extended `resetSharedBufferState` to accept optional `resolver` / `agentRewrite` / module-level reset hooks (`blankFill`, `markdownRender`, `dismissedBlanks`, `agentTaskState`) so the chain works end-to-end. New `resetState()` methods on `BlankFill`, `MarkdownRender`, `AgentRewrite` follow the same shape. All defensive — `resetSharedBufferState` uses `typeof === 'function'` guards so back-compat callers passing partial state objects still work.
+
+User-visible repro for the variant-pool half: type a prompt with a transform trigger 3 times in a row, then edit OPENCUES.md to switch provider/model and reload. Pre-fix: the 4th identical trigger returns the prior provider's rewrite until LRU eviction. Post-fix: rebuilds correctly with the new provider's output.
+
 ### Fix — `cycleBlankStep` syncs `spanFillState.lastFilledText` (runtime 0.3.16)
 
 Numeric-step blanks (`brightness`, `volume`, anything with `blankStep`) wiped the entire buffer the first time the user cycled Up/Down after auto-populate. Root cause: `cycleBlankStep` updated the DynDef + called `setText` but never refreshed `spanFillState.lastFilledText`. The next `_onTextChangeImpl` then saw `cleaned !== lastFilledText` (stale at the previous cycle's value), classified the cycle output as a user edit inside the clear-on-edit span, and ran `applyClearOnEdit` over the whole `"<keyword> <value>%"` pair — buffer ended empty.
