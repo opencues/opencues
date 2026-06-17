@@ -562,6 +562,15 @@ export class Cycling {
       });
     }
 
+    // Sync spanFillState.lastFilledText to the new buffer BEFORE setText —
+    // otherwise BlankFill._onTextChangeImpl sees the cycle output as a
+    // user edit inside the clear-on-edit span and wipes everything.
+    // Mirrors what cycleSpanFill does at the equivalent point.
+    const spanEntry = this.spanFillState?.current;
+    if (spanEntry && spanEntry.index === target.index) {
+      this.spanFillState!.set(spanEntry, newText);
+    }
+
     this.adapter.setText(newText);
     this.adapter.setCursorOffset(clampedCursor);
     this.adapter.forceRender();
