@@ -151,6 +151,21 @@ export class BlankFill {
     if (this._unsubKey) { this._unsubKey(); this._unsubKey = null; }
   }
 
+  /** Full state reset — wipes per-buffer / per-keystroke state +
+   *  the script-result cache so the next text-change runs from a
+   *  clean slate. Called as part of a full runtime reset (keep-alive
+   *  host session boundary, off-process bridge `reset` command).
+   *  Subscriptions stay live — this only wipes data; the module is
+   *  still attached to the adapter. */
+  resetState(): void {
+    this._slots = [];
+    this._underscoreKeyArmed = false;
+    this._lastInputText = '';
+    this._pendingScripts.clear();
+    this._resultCache.clear();
+    if (this._loading) this._loading.stopAll();
+  }
+
   /** Currently-detected slots (latest scan). */
   get slots(): readonly BlankSlot[] { return this._slots; }
 
@@ -237,7 +252,7 @@ export class BlankFill {
       // `blank-trigger-mode: spaced` — gate text-change-based blank
       // fills per-slot, mirroring the keypress handler's gate at the
       // text-change level. Without this, any programmatic text-set
-      // (the agentic harness bridge, an external paste, a host that
+      // (off-process bridge driver, external paste, a host that
       // delivers the buffer as a single text-change after composing)
       // bypasses the spaced-mode gate.
       //

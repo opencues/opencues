@@ -208,6 +208,14 @@ export interface BridgeBindings {
   notifyTextChange?(text: string, cursor: number, source: 'user' | 'runtime'): void;
   /** Same shape, for cursor-only injects. Optional. */
   notifyCursorChange?(text: string, cursor: number, source: 'user' | 'runtime'): void;
+  /** Full state reset — clears DynDefs / SpanFillState /
+   *  SelectorSatelliteState / HighlightState. Optional: bound by hosts
+   *  that already wire bootResult.resetBufferState. Exposed so the
+   *  bridge's `reset` command can wipe state without an off-process
+   *  driver having to teardown + relaunch the host. Useful for any
+   *  long-lived runtime instance that handles multiple buffer
+   *  lifecycles (keep-alive hosts, off-process scripted consumers). */
+  resetBufferState?(): void;
   /** Runtime state classes — observed each tick for transition events,
    *  serialized into the dump on demand. */
   readonly state: BridgeState;
@@ -235,7 +243,12 @@ export interface EventBridgeHandle {
 // cleanly on stop. Every emit is wrapped in try/catch — a flaky FS
 // can't crash the runtime.
 
-const POLL_INTERVAL_MS = 100;
+// Default 100ms — well below LLM round-trip (200-1500ms), high enough
+// that idle CPU stays negligible. Overridable via
+// `OPENCUES_BRIDGE_POLL_MS` for off-process drivers that need tighter
+// inject + state-probe cadence (drops per-command IPC tax from
+// ~100ms to whatever the override sets, at modest CPU cost).
+const POLL_INTERVAL_MS = Number(process.env.OPENCUES_BRIDGE_POLL_MS) || 100;
 
 class EventStream {
   private open = false;
@@ -504,6 +517,23 @@ class CommandRunner {
         this.bindings.notifyTextChange?.('', 0, 'user');
         adapter.forceRender();
         this.stream.emit({ type: 'cleared' });
+        return;
+      }
+      case 'reset': {
+        // Full state reset — DynDefs, SpanFillState, SelectorSatellite,
+        // HighlightState all wiped. Then clear the buffer. Useful for
+        // any off-process driver that wants a clean baseline mid-session
+        // without teardown + relaunch. Long-lived runtime instances
+        // accumulate per-buffer state across the lifecycles they handle
+        // (cycled DynDefs, primed MarkdownRender cache, in-flight
+        // controllers, source-level variant pools); the first lifecycle
+        // looks clean, subsequent ones inherit the residue.
+        this.bindings.resetBufferState?.();
+        adapter.setText('');
+        adapter.setCursorOffset(0);
+        this.bindings.notifyTextChange?.('', 0, 'user');
+        adapter.forceRender();
+        this.stream.emit({ type: 'reset' });
         return;
       }
       case 'dump': {

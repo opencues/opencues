@@ -189,9 +189,12 @@ export function boot(host: HostInfo): BootResult {
   buildBlankContextProvider(configLoader, host.blanks, log));
   configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
 
+  // Hoist agentRewrite outside the `if (hasAnyKey)` block so the
+  // resetBufferState path below can reach it. Mirrors oc/v1.14:264.
+  let agentRewrite: AgentRewrite | null = null;
   if (hasAnyKey) {
 
-    const agentRewrite = new AgentRewrite(adapter, dynDefs, agentTaskState, {
+    agentRewrite = new AgentRewrite(adapter, dynDefs, agentTaskState, {
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
       apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
@@ -217,6 +220,21 @@ export function boot(host: HostInfo): BootResult {
       notifyTextChange: (text, cursor, source) => fireTextChange(text, cursor, source),
       notifyCursorChange: (text, cursor, source) => fireCursorChange(text, cursor, source),
       state: { hlState, dynDefs, spanFillState, selectorSatelliteState, agentTaskState },
+      // Wire the SAME reset that the host's resetBufferState calls so the
+      // bridge `reset` command drops DynDefs / SpanFill / SelectorSatellite /
+      // runtime module caches / Resolver source rebuilds (including the
+      // static TransformBlankSource variant pool). Without this binding
+      // the bridge `reset` was a silent no-op on shell — any off-process
+      // bridge driver calling it got a half-reset where the buffer
+      // ephemeral state cleared but cached LLM rewrites kept returning.
+      // The bridge is documented as a runtime introspection surface
+      // (integrations/shell/CLAUDE.md § Debugging); the OC and chrome
+      // adapters wire this same binding — shell was the outlier.
+      resetBufferState: () => resetSharedBufferState({
+        ...shared,
+        resolver,
+        ...(agentRewrite ? { agentRewrite } : {}),
+      }),
     });
   }
 
@@ -240,7 +258,11 @@ export function boot(host: HostInfo): BootResult {
       return renderEvents.collect(ctx, err => log('error', 'render handler threw', err));
     },
     resetBufferState() {
-      resetSharedBufferState(shared);
+      resetSharedBufferState({
+        ...shared,
+        resolver,
+        ...(agentRewrite ? { agentRewrite } : {}),
+      });
     },
     dispose() {
       adapter.dispose();

@@ -764,9 +764,37 @@ export function resetSharedBufferState(state: {
   readonly hlState: Pick<HighlightState, 'deactivate'>;
   readonly spanFillState: Pick<SpanFillState, 'clear'>;
   readonly selectorSatelliteState: Pick<SelectorSatelliteState, 'clear'>;
+  /** Optional: deeper module + source state that survives a basic
+   *  buffer-state wipe. Keep-alive hosts crossing session boundaries
+   *  and off-process bridge drivers calling `reset` mid-session both
+   *  need these cleared too — otherwise dismissed-blank flags, primed
+   *  caches, in-flight resolver controllers leak across what should
+   *  be independent sessions. Hosts that don't thread these in stay
+   *  buffer-state-only (back-compat). */
+  readonly dismissedBlanks?: Pick<DismissedBlanks, 'clear'>;
+  readonly agentTaskState?: Pick<AgentTaskState, 'stop'>;
+  readonly blankFill?: { resetState(): void };
+  readonly markdownRender?: { resetState(): void };
+  /** Optional: Resolver + AgentRewrite reset hooks. The Resolver
+   *  isn't part of SharedRuntime (constructed per adapter band) but
+   *  the adapter exposes its resetState via this same path so the
+   *  reset surface stays one-shot for callers. */
+  readonly resolver?: { resetState(): void };
+  readonly agentRewrite?: { resetState(): void };
 }): void {
   state.dynDefs.clear();
   state.hlState.deactivate();
   state.spanFillState.clear();
   state.selectorSatelliteState.clear();
+  // Optional-module clears are defensive: `typeof === 'function'`
+  // tolerates callers that pass a SharedRuntime-shaped object with
+  // stub fields (existing back-compat tests do this), as well as
+  // earlier-vintage runtimes whose module classes pre-date the
+  // resetState method.
+  if (typeof state.dismissedBlanks?.clear === 'function') state.dismissedBlanks.clear();
+  if (typeof state.agentTaskState?.stop === 'function') state.agentTaskState.stop();
+  if (typeof state.blankFill?.resetState === 'function') state.blankFill.resetState();
+  if (typeof state.markdownRender?.resetState === 'function') state.markdownRender.resetState();
+  if (typeof state.resolver?.resetState === 'function') state.resolver.resetState();
+  if (typeof state.agentRewrite?.resetState === 'function') state.agentRewrite.resetState();
 }

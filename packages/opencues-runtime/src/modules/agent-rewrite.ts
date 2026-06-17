@@ -277,6 +277,25 @@ export class AgentRewrite {
     this._logFn('AgentRewrite: stopped');
   }
 
+  /** Wipe per-task cache + cadence state. Called as part of a full
+   *  runtime reset (keep-alive host session boundary, off-process
+   *  bridge `reset` command) so the next session doesn't inherit
+   *  the previous one's primed cache or armed cadence. Doesn't
+   *  toggle started/unsubscribed — the module stays attached and
+   *  ready to fire on the next tick. */
+  resetState(): void {
+    this._rewriteCache.clear();
+    this._recentApplied.length = 0;
+    this._lastStableSnapshot = null;
+    this._lastStableTask = null;
+    this._lastStableCursor = -1;
+    this._running = false;
+    if (this._debounceTimer) {
+      clearTimeout(this._debounceTimer);
+      this._debounceTimer = null;
+    }
+  }
+
   /**
    * Schedule a tick after the debounce window. Resetting the timer on
    * every text-change event collapses a burst of keystrokes into one

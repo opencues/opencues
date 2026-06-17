@@ -823,7 +823,19 @@ export class ConfigLoader {
     // _suppressReloadUntil. Lets the in-flight blankInvoke set's
     // async file write complete before we read the file back.
     if (Date.now() < this._suppressReloadUntil) return;
-    const debounce = this.options.reloadDebounceMs ?? 2000;
+    // Off-process driver fast-path: when the event bridge is armed
+    // AND the operator opts into zero-debounce mode, skip the 2s
+    // window so scripted settings round-trips don't burn time across
+    // a run. Off by default — production hosts keep the 2s window
+    // because it gates against thrashing on rapid-fire keystrokes
+    // that all read+write the file. The env var is only honoured
+    // when OPENCUES_BRIDGE=1 is also set, so a stray user with the
+    // env baked in their shell can't accidentally disable the
+    // debounce on their real-world session.
+    const debounce = (process.env.OPENCUES_BRIDGE === '1'
+        && process.env.OPENCUES_BRIDGE_NO_RELOAD_DEBOUNCE === '1')
+      ? 0
+      : (this.options.reloadDebounceMs ?? 2000);
     if (Date.now() - this._lastLoadAt < debounce) return;
     await this.load();
   }
