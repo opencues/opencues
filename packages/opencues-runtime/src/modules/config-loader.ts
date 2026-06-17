@@ -255,8 +255,8 @@ export const DEFAULT_OPENCUES_STATE: OpenCuesState = {
   tipsMode: 'on',
   cursorNavigate: 'inactive',
   ambientContextMode: 'off',
-  identityContextMode: 'off',
-  blankContextMode: 'off',
+  identityContextMode: 'safe',
+  blankContextMode: 'safe',
   blankTriggerMode: 'immediate',
   navKeymap: 'auto',
   anthropicSubscription: 'prefer',
@@ -319,20 +319,35 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   // runtime — `opencues seed-configs` rewrites legacy
   // `sentinels-mode` / `user-context-mode` to `identity-context-mode`
   // on first install (see seed-configs.cjs:PRE-SEED MIGRATE).
-  const identityRaw = get('identity-context-mode', 'off').toLowerCase();
+  //
+  // Two-tier semantics (June 2026):
+  //   ABSENT key             → `safe` (the shipped-seed default).
+  //   Explicit valid value   → use it (`off` / `safe` / `raw`).
+  //   Explicit invalid value → `off` (fail-closed — the privacy gate
+  //                            should not silently flip on a typo).
+  // Users with an empty IDENTITY.md see no behavioural diff under
+  // `safe` — the catalog is empty so no tokens reach the prompt.
+  const identityHasKey = get('identity-context-mode', '__ABSENT__') !== '__ABSENT__';
+  const identityRaw = get('identity-context-mode', 'safe').toLowerCase();
   const identityContextMode: 'off' | 'safe' | 'raw' =
     identityRaw === 'safe' ? 'safe'
     : identityRaw === 'raw' ? 'raw'
-    : 'off';
-  // Blank-as-context scalar — independent of identity-context-mode but
-  // mode-gate composed: blankContextMode='raw' requires identityContextMode='raw'
-  // (silently downgrades to 'safe' otherwise so the user doesn't get
-  // surprised by a values-leak after flipping identity-context off).
-  const blankContextRaw = get('blank-context-mode', 'off').toLowerCase();
+    : identityRaw === 'off' ? 'off'
+    : identityHasKey ? 'off'   // explicit but unrecognised value → fail-closed
+    : 'safe';                  // truly absent → new default
+  // Blank-as-context scalar — same two-tier semantics as
+  // identity-context-mode above. Mode-gate composed: blankContextMode='raw'
+  // requires identityContextMode='raw' (silently downgrades to 'safe'
+  // otherwise so the user doesn't get surprised by a values-leak after
+  // flipping identity-context off).
+  const blankContextHasKey = get('blank-context-mode', '__ABSENT__') !== '__ABSENT__';
+  const blankContextRaw = get('blank-context-mode', 'safe').toLowerCase();
   let blankContextMode: 'off' | 'safe' | 'raw' =
     blankContextRaw === 'safe' ? 'safe'
     : blankContextRaw === 'raw' ? 'raw'
-    : 'off';
+    : blankContextRaw === 'off' ? 'off'
+    : blankContextHasKey ? 'off' // explicit but unrecognised → fail-closed
+    : 'safe';                    // absent → new default
   if (blankContextMode === 'raw' && identityContextMode !== 'raw') blankContextMode = 'safe';
   const blankTriggerMode: 'immediate' | 'spaced' =
     get('blank-trigger-mode', 'immediate').toLowerCase() === 'spaced' ? 'spaced' : 'immediate';

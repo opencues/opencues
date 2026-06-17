@@ -1077,7 +1077,10 @@ describe('Resolver identity-context skip for keyword-bound slots (symmetric with
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
     const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
-    if (opts.mode && opts.mode !== 'off') {
+    // Write the mode unconditionally — June 2026 default flipped from
+    // off → safe, so an absent key now resolves to `safe` (not `off`).
+    // Tests that want `off` MUST write it explicitly.
+    if (opts.mode) {
       loader.applyOpenCuesScalar('identity-context-mode', opts.mode);
     }
 
