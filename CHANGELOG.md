@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fix — `cycleBlankStep` syncs `spanFillState.lastFilledText` (runtime 0.3.16)
+
+Numeric-step blanks (`brightness`, `volume`, anything with `blankStep`) wiped the entire buffer the first time the user cycled Up/Down after auto-populate. Root cause: `cycleBlankStep` updated the DynDef + called `setText` but never refreshed `spanFillState.lastFilledText`. The next `_onTextChangeImpl` then saw `cleaned !== lastFilledText` (stale at the previous cycle's value), classified the cycle output as a user edit inside the clear-on-edit span, and ran `applyClearOnEdit` over the whole `"<keyword> <value>%"` pair — buffer ended empty.
+
+`cycleSpanFill` (Path 0) already does this sync at the equivalent point — `cycleBlankStep` (Path 2) was the only cycling path missing it. Added the same `spanFillState.set(entry, newText)` call gated on the entry's index matching the cycle target.
+
+User-visible repro: type `brightness _`. Pre-fix: auto-populates to `brightness 80%`, then Ctrl+Alt+Right + Ctrl+Alt+Up wipes the whole buffer instead of cycling to `brightness 90%`. Volume blank behaves identically. Post-fix: cycles correctly through 10% increments. Same shape for any user blank declaring `blankStep:` in its frontmatter.
+
 ### Revert — shape-driven blanks system (PRs #146, #155, #156) — keep on `dev/shape-system` for exploration
 
 The shape system (PR #146) introduced `blankShapes:` as a declarative precision gate replacing `blankProximity:`. Migrated 14 blanks (stocks / volume / brightness / weather / crypto / countries / dictionary / answer / prompt / sentinel / claude-status / example / gh-issues / hackernews) and added shape-handling code paths in `blank-fill.ts`, `cycling.ts`, `dim-render.ts`, `navigation.ts`.
