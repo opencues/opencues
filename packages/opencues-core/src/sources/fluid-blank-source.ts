@@ -1126,14 +1126,30 @@ export class FluidBlankSource implements CueSource {
         }
       }
 
-      this.emit({
-        type: 'completed',
-        span,
-        answer: finalAnswer,
-        mode,
-        latencyMs: Date.now() - startTime,
-      });
-      return { results: [result], timing: Date.now() - startTime, model: this.model };
+      // `fluid-blank.completed` is intentionally NOT emitted from here.
+      // It's emitted from the RESOLVER's substitute branch AFTER the
+      // buffer setText commits (same pattern as `transform-blank.completed`
+      // — see resolver.ts isTransformBlank path). The reason: firing
+      // here would mean observers (tests, statusline) can read the
+      // buffer BETWEEN the source returning and the resolver's substitute
+      // committing — catching the loading-animation braille char. The
+      // agentic harness scenario 65 (model-override fluid-blank) hit
+      // this race: `waitForEvent fluid-blank.completed` matched ~100ms
+      // before the substitute landed; the subsequent `dump` read the
+      // spinner-painted buffer. Carry the pipeline data through
+      // metadata so the resolver can emit the event with the same
+      // payload shape.
+      const pipelineLatencyMs = Date.now() - startTime;
+      result.metadata = {
+        ...(result.metadata ?? {}),
+        fluidBlankCompletion: {
+          span,
+          answer: finalAnswer,
+          mode,
+          latencyMs: pipelineLatencyMs,
+        },
+      };
+      return { results: [result], timing: pipelineLatencyMs, model: this.model };
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       const reason = classifyHttpError(err);
