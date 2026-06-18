@@ -506,8 +506,15 @@ class CommandRunner {
           this.stream.emit({ type: 'command.error', cmd, arg, error: 'cursor: bad offset' });
           return;
         }
-        adapter.setCursorOffset(offset);
+        // Same prev-stale fix shape as the `text:` command above:
+        // notify FIRST so any host adapter that eagerly updates
+        // `lastSeenCursor` inside setCursorOffset doesn't poison the
+        // event's view of the prior position. Today only CC needs
+        // this discipline (shell + gemini bind setCursorOffset
+        // directly to the host), but applying the order universally
+        // keeps every host on the same contract.
         this.bindings.notifyCursorChange?.(adapter.getText(), offset, 'user');
+        adapter.setCursorOffset(offset);
         adapter.forceRender();
         this.stream.emit({ type: 'cursor.injected', cursor: offset });
         return;
