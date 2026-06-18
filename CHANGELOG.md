@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fix — event-bridge `text:` inject order so CC's blank-`_` gate fires (runtime 0.3.19)
+
+The bridge's `text:` command (used by every agentic-harness scenario via `inject text:` / `injectAppend`) called `adapter.setText(decoded)` BEFORE the synthetic `notifyTextChange(...,'user')`. On hosts whose `setText` eagerly updates the adapter's `lastSeenText` (CC v2.1 does — to drift-track React re-render echoes), that meant `lastSeenText` was already the NEW buffer by the time `notifyTextChange` constructed the textChange event. The event's `previousText` therefore equalled `text`, and the Resolver's explicit-`_` gate saw `blankJustTyped=false` + `freshUnderscoreInserted=false` — so the `_` was masked from FluidBlank / TransformBlank / ConfigIntent. Every blank-firing `text:` inject silently no-op'd on CC.
+
+Surfaced after fixing the agentic harness's CC PTY launcher: with CC scenarios actually running, scenarios 100 / 102 / 103 (prior-content preservation regressions for the SPAN-unify refactor) all timed out waiting for `transform-blank.completed` / `selector-satellite.started`. The runtime IS firing on real user keystrokes on CC — this only broke the synthetic-inject path the agentic harness uses.
+
+Fix: swap the order — `notifyTextChange` first (CC's `lastSeenText` still holds the OLD buffer; previousText is correct), then `setText` (CC's own runtime-source event now sees prev === new and skips the redundant fire). Shell + Gemini bind `setText` directly to the host's setter so they don't touch `lastSeenText`; the reorder is invisible to them. 12/12 stable on shell, 9/9 stable on CC across the affected scenarios. Same one-line fix unblocks future CC-host agentic test work.
+
 ### Refactor — extract `VariantCache<T>` primitive shared by all three semantic-`_` sources (core 0.3.28)
 
 FluidBlank, ConfigIntent, and TransformBlank each had a private `static _variantPool = new Map<...>()` with identical LRU + cycling logic — three copies of the same state machine differing only in the value type (`string` vs `{rewrite, span}`). Pulled out a generic `VariantCache<T>` primitive (`packages/opencues-core/src/variant-cache.ts`) and replaced all three with delegating wrappers.

@@ -476,14 +476,26 @@ class CommandRunner {
             cursorOffset: adapter.getCursorOffset(),
           });
         }
-        // Two-step write: (1) buffer set; (2) synthetic textChange so
-        // the resolver / statusline see the change. OpenTUI's
-        // replaceText skips onContentChange for programmatic writes —
-        // see the file-header note + bootstrap source-reclassifier.
-        adapter.setText(decoded);
+        // Two-step write: (1) synthetic textChange FIRST so the
+        // resolver / statusline see the change WITH the correct
+        // previousText, (2) buffer set. The order matters on CC v2.1
+        // (and any other host whose setText eagerly updates
+        // `lastSeenText`): if setText runs first, CC's lastSeenText is
+        // already the NEW text by the time notifyTextChange fires, so
+        // previousText === text and the resolver's explicit-`_` gate
+        // sees no diff (blankJustTyped=false, freshUnderscoreInserted=false)
+        // — every blank-firing `text:` inject silently no-ops.
+        // Reversing the order keeps lastSeenText at the OLD value when
+        // notifyTextChange constructs the event, so previousText is
+        // correct on every host. Shell/Gemini's setText doesn't touch
+        // lastSeenText, so they're unaffected by the order; CC's
+        // setText sees prev === new after notifyTextChange's
+        // bookkeeping and skips its own redundant runtime-source event.
         const source: 'user' | 'runtime' = cmd === 'text-keep-hl' ? 'runtime' : 'user';
+        const preCursor = adapter.getCursorOffset();
+        this.bindings.notifyTextChange?.(decoded, preCursor, source);
+        adapter.setText(decoded);
         const cursor = adapter.getCursorOffset();
-        this.bindings.notifyTextChange?.(decoded, cursor, source);
         adapter.forceRender();
         this.stream.emit({ type: 'text.injected', text: decoded, source, cursor });
         return;
