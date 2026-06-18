@@ -1748,6 +1748,27 @@ export class TransformBlankSource implements CueSource {
         : { kind: 'fresh' as const, others: [] as { rewrite: string; span: string }[] };
       if (variantChoice.kind === 'cache') {
         this.log(`TransformBlank: variant-cache HIT — serving cached rewrite (pool size ${variantChoice.others.length + 1})`);
+        // Emit a synthetic pass-completed so observers see the same
+        // event stream whether the rewrite came from the LLM or the
+        // cache. Without this, scenarios that wait for
+        // `transform-blank.pass-completed pass=P1` time out on the
+        // second trigger against the same buffer (cache HIT) even
+        // though the substitute itself succeeds in ~4ms. The agentic
+        // pipeline-events scenario (08) caught this — it asserts the
+        // event sequence is mode-agnostic, which includes the
+        // variant-cache HIT path. The latency is 0 because no LLM
+        // call ran; verdict is TRANSFORM because the cache only ever
+        // stores TRANSFORM verdicts (NONE/TASK_* paths return
+        // empty/no result and don't write to the cache).
+        this.emit({
+          type: 'pass-completed',
+          pass: 'P1',
+          verdict: 'TRANSFORM',
+          instruction: '',
+          target: '',
+          latencyMs: 0,
+          source: 'visible',
+        });
         // Re-derive splice geometry from the cached SPAN. The cache
         // key includes context.text verbatim, so the SPAN we recorded
         // on the original dispatch IS still a substring of the live

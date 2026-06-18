@@ -1490,9 +1490,25 @@ export class Resolver {
         // LLM-driven path completes. If `_` is no longer in the live text
         // at the expected position, BlankFill already won — skip our
         // substitute so we don't overwrite "nvidia $209.25" with "NVDA".
+        //
+        // Spinner-frame guard: BlankLoading's animation overwrites the
+        // `_` with braille frames (· • ●) during an in-flight resolve.
+        // The bare `liveText.includes('_')` check would treat a buffer
+        // mid-animation as "already substituted" — silently skipping
+        // every FluidBlank substitute that runs longer than one frame
+        // tick. Check the word at r.wordIndex against the animator's
+        // `isOurSlotChar` helper so the spinner chars there are
+        // recognised as still-our-`_`. Falls back to the original
+        // includes('_') check for non-animated states.
         const liveText = this.adapter.getText();
         const start = isMultiWordSpan ? r.spanStart! : target.start;
-        if (liveText.charAt(start) !== '_' && !liveText.includes('_')) {
+        const liveWords = splitWords(liveText);
+        const slotWord = liveWords[r.wordIndex]?.word ?? '';
+        const stillOurSlot = liveText.charAt(start) === '_'
+          || liveText.includes('_')
+          || slotWord === '_'
+          || (this.blankLoading?.isOurSlotChar(r.wordIndex, slotWord) ?? false);
+        if (!stillOurSlot) {
           this.adapter.log('info', 'FluidBlank: skipping — _ already substituted by another module');
           continue;
         }

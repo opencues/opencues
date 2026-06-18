@@ -55,7 +55,7 @@ export interface BootResult {
   /** Call from useKeyboard's callback. Returns true if OpenCues consumed the event. */
   dispatchKey(event: KeyEvent): boolean;
   /** Call when the prompt input value changes (from onInput). */
-  notifyTextChange(text: string, cursorOffset: number, source: 'user' | 'runtime'): void;
+  notifyTextChange(text: string, cursorOffset: number, source: 'user' | 'runtime', previousText?: string): void;
   /** Call when the cursor moves WITHOUT the text changing (mouse click,
    *  arrow keys, focus). The patched Prompt component watches its
    *  cursor offset and fires this when it changes alone. Idempotent —
@@ -118,9 +118,9 @@ export function boot(host: HostInfo): BootResult {
   // pollutes the now-unattributed word with LLM alts.
   let lastSeenText: string | null = null;
   let lastSeenCursor = 0;
-  const fireTextChange = (text: string, cursor: number, source: 'user' | 'runtime'): void => {
+  const fireTextChange = (text: string, cursor: number, source: 'user' | 'runtime', previousText?: string): void => {
     textEvents.emit(
-      { text, cursorOffset: cursor, previousText: lastSeenText ?? '', source },
+      { text, cursorOffset: cursor, previousText: previousText ?? lastSeenText ?? '', source },
       err => log('error', 'text handler threw', err),
     );
     lastSeenText = text;
@@ -293,7 +293,7 @@ export function boot(host: HostInfo): BootResult {
     startEventBridge({
       adapter,
       dispatchKey: (e) => keyEvents.emitUntilConsumed(e, err => log('error', 'key handler threw', err)),
-      notifyTextChange: (text, cursor, source) => fireTextChange(text, cursor, source),
+      notifyTextChange: (text, cursor, source, previousText) => fireTextChange(text, cursor, source, previousText),
       notifyCursorChange: (text, cursor, source) => fireCursorChange(text, cursor, source),
       state: { hlState, dynDefs, spanFillState, selectorSatelliteState, agentTaskState },
     });
@@ -303,8 +303,8 @@ export function boot(host: HostInfo): BootResult {
     dispatchKey(event) {
       return keyEvents.emitUntilConsumed(event, err => log('error', 'key handler threw', err));
     },
-    notifyTextChange(text, cursorOffset, source) {
-      fireTextChange(text, cursorOffset, source);
+    notifyTextChange(text, cursorOffset, source, previousText) {
+      fireTextChange(text, cursorOffset, source, previousText);
     },
     notifyCursorChange(text, cursorOffset, source) {
       fireCursorChange(text, cursorOffset, source);

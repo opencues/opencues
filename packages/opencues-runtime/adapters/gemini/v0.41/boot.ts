@@ -56,7 +56,7 @@ export interface BootResult {
   /** Call from a KeypressContext subscriber. Returns true if OpenCues consumed the event. */
   dispatchKey(event: KeyEvent): boolean;
   /** Call when the prompt input value changes (from buffer state observation). */
-  notifyTextChange(text: string, cursorOffset: number, source: 'user' | 'runtime'): void;
+  notifyTextChange(text: string, cursorOffset: number, source: 'user' | 'runtime', previousText?: string): void;
   /** Call when the cursor moves WITHOUT the text changing (mouse click,
    *  arrow keys, focus). The patched InputPrompt watches its
    *  cursor offset and fires this when it changes alone. Idempotent —
@@ -171,10 +171,11 @@ export function boot(host: HostInfo): BootResult {
   // block below; non-headless interactive runs leave it null and the
   // host's own React reactivity drives renders.
   let headlessTrigger: (() => void) | null = null;
-  const fireTextChange = (text: string, cursor: number, source: 'user' | 'runtime'): void => {
+  const fireTextChange = (text: string, cursor: number, source: 'user' | 'runtime', previousText?: string): void => {
     const clean = stripZw(text);
+    const prev = previousText !== undefined ? stripZw(previousText) : stripZw(lastSeenText ?? '');
     textEvents.emit(
-      { text: clean, cursorOffset: cursor, previousText: stripZw(lastSeenText ?? ''), source },
+      { text: clean, cursorOffset: cursor, previousText: prev, source },
       err => log('error', 'text handler threw', err),
     );
     lastSeenText = clean;
@@ -479,8 +480,8 @@ export function boot(host: HostInfo): BootResult {
         drainPendingAndRender();
         return consumed;
       },
-      notifyTextChange: (text, cursor, source) => {
-        fireTextChange(text, cursor, source);
+      notifyTextChange: (text, cursor, source, previousText) => {
+        fireTextChange(text, cursor, source, previousText);
         drainPendingAndRender();
       },
       notifyCursorChange: (text, cursor, source) => {
@@ -495,8 +496,8 @@ export function boot(host: HostInfo): BootResult {
     dispatchKey(event) {
       return keyEvents.emitUntilConsumed(event, err => log('error', 'key handler threw', err));
     },
-    notifyTextChange(text, cursorOffset, source) {
-      fireTextChange(text, cursorOffset, source);
+    notifyTextChange(text, cursorOffset, source, previousText) {
+      fireTextChange(text, cursorOffset, source, previousText);
     },
     notifyCursorChange(text, cursorOffset, source) {
       fireCursorChange(text, cursorOffset, source);

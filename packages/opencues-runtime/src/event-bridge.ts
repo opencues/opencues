@@ -205,7 +205,16 @@ export interface BridgeBindings {
    * re-emit here. Optional: CC tracks drift through applyRender so it
    * can leave this null.
    */
-  notifyTextChange?(text: string, cursor: number, source: 'user' | 'runtime'): void;
+  /**
+   * Optional `previousText` overrides whatever the host adapter tracks
+   * as the prior buffer (CC eagerly updates `lastSeenText` inside
+   * setText, so by the time the bridge calls notifyTextChange the
+   * adapter's idea of "previous" already matches the new text and
+   * the resolver's `_` gate sees no diff). Bridge captures the prior
+   * buffer BEFORE setText runs and threads it through here. Hosts
+   * that don't poison their own previousText can ignore the override.
+   */
+  notifyTextChange?(text: string, cursor: number, source: 'user' | 'runtime', previousText?: string): void;
   /** Same shape, for cursor-only injects. Optional. */
   notifyCursorChange?(text: string, cursor: number, source: 'user' | 'runtime'): void;
   /** Full state reset — clears DynDefs / SpanFillState /
@@ -476,26 +485,28 @@ class CommandRunner {
             cursorOffset: adapter.getCursorOffset(),
           });
         }
-        // Two-step write: (1) synthetic textChange FIRST so the
-        // resolver / statusline see the change WITH the correct
-        // previousText, (2) buffer set. The order matters on CC v2.1
-        // (and any other host whose setText eagerly updates
-        // `lastSeenText`): if setText runs first, CC's lastSeenText is
-        // already the NEW text by the time notifyTextChange fires, so
-        // previousText === text and the resolver's explicit-`_` gate
-        // sees no diff (blankJustTyped=false, freshUnderscoreInserted=false)
-        // — every blank-firing `text:` inject silently no-ops.
-        // Reversing the order keeps lastSeenText at the OLD value when
-        // notifyTextChange constructs the event, so previousText is
-        // correct on every host. Shell/Gemini's setText doesn't touch
-        // lastSeenText, so they're unaffected by the order; CC's
-        // setText sees prev === new after notifyTextChange's
-        // bookkeeping and skips its own redundant runtime-source event.
+        // Three-step write:
+        //   (1) capture prevText BEFORE setText runs (CC's setText
+        //       eagerly updates `lastSeenText`; without capturing here,
+        //       the explicit prevText passed to notifyTextChange below
+        //       would already match the new buffer);
+        //   (2) setText commits the buffer change (and may synchronously
+        //       trigger downstream substitutes via runtime-source
+        //       textChange events — e.g. BlankFill's cache-hit path
+        //       calls pushText/setText to splice the answer in);
+        //   (3) notifyTextChange fires the synthetic 'user'-source
+        //       textChange the Resolver gates on. We thread the
+        //       captured prevText through explicitly so the host
+        //       doesn't have to reconstruct it. (Earlier reorder put
+        //       notifyTextChange BEFORE setText to fix CC's prev-stale
+        //       bug, but that broke BlankFill's cache-hit substitute —
+        //       step (2)'s setText would overwrite the synchronous
+        //       substitute applied during step (3)'s onTextChange.
+        //       The explicit-prevText path is order-independent.)
         const source: 'user' | 'runtime' = cmd === 'text-keep-hl' ? 'runtime' : 'user';
-        const preCursor = adapter.getCursorOffset();
-        this.bindings.notifyTextChange?.(decoded, preCursor, source);
         adapter.setText(decoded);
         const cursor = adapter.getCursorOffset();
+        this.bindings.notifyTextChange?.(decoded, cursor, source, prevText);
         adapter.forceRender();
         this.stream.emit({ type: 'text.injected', text: decoded, source, cursor });
         return;

@@ -43,7 +43,7 @@ export interface HostInfo extends CommonHostInfo {
 
 export interface BootResult {
   dispatchKey(event: KeyEvent): boolean;
-  notifyTextChange(text: string, cursorOffset: number, source: 'user' | 'runtime'): void;
+  notifyTextChange(text: string, cursorOffset: number, source: 'user' | 'runtime', previousText?: string): void;
   notifyCursorChange(text: string, cursorOffset: number, source: 'user' | 'runtime'): void;
   collectRenderDirectives(text: string, cursor: number): RenderDirectives[];
   /**
@@ -76,9 +76,9 @@ export function boot(host: HostInfo): BootResult {
 
   let lastSeenText: string | null = null;
   let lastSeenCursor = 0;
-  const fireTextChange = (text: string, cursor: number, source: 'user' | 'runtime'): void => {
+  const fireTextChange = (text: string, cursor: number, source: 'user' | 'runtime', previousText?: string): void => {
     textEvents.emit(
-      { text, cursorOffset: cursor, previousText: lastSeenText ?? '', source },
+      { text, cursorOffset: cursor, previousText: previousText ?? lastSeenText ?? '', source },
       err => log('error', 'text handler threw', err),
     );
     lastSeenText = text;
@@ -217,7 +217,7 @@ export function boot(host: HostInfo): BootResult {
     startEventBridge({
       adapter,
       dispatchKey: (e) => keyEvents.emitUntilConsumed(e, err => log('error', 'key handler threw', err)),
-      notifyTextChange: (text, cursor, source) => fireTextChange(text, cursor, source),
+      notifyTextChange: (text, cursor, source, previousText) => fireTextChange(text, cursor, source, previousText),
       notifyCursorChange: (text, cursor, source) => fireCursorChange(text, cursor, source),
       state: { hlState, dynDefs, spanFillState, selectorSatelliteState, agentTaskState },
       // Wire the SAME reset that the host's resetBufferState calls so the
@@ -242,8 +242,8 @@ export function boot(host: HostInfo): BootResult {
     dispatchKey(event) {
       return keyEvents.emitUntilConsumed(event, err => log('error', 'key handler threw', err));
     },
-    notifyTextChange(text, cursorOffset, source) {
-      fireTextChange(text, cursorOffset, source);
+    notifyTextChange(text, cursorOffset, source, previousText) {
+      fireTextChange(text, cursorOffset, source, previousText);
     },
     notifyCursorChange(text, cursorOffset, source) {
       fireCursorChange(text, cursorOffset, source);

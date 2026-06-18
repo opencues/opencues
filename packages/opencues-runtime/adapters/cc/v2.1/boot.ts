@@ -717,11 +717,18 @@ export function boot(host: HostInfo): BootResult {
       // cycle. Fire textHandlers directly so the Resolver / Statusline
       // see the synthetic change. Mirrors checkTextDrift's emit logic
       // minus the visible-diff guard (the caller already knows it changed).
-      notifyTextChange: (text, cursor, source) => {
+      notifyTextChange: (text, cursor, source, previousText) => {
+        // CC's setText eagerly updates lastSeenText (drift-tracks
+        // React re-render echoes), so by the time the bridge calls
+        // this, lastSeenText already equals `text`. Trust the
+        // explicit previousText argument the bridge captured BEFORE
+        // setText ran. Falls back to lastSeenText for hosts that
+        // call notifyTextChange directly without supplying it (none
+        // today; defensive only).
         const event = {
           text,
           cursorOffset: cursor,
-          previousText: lastSeenText ?? '',
+          previousText: previousText ?? lastSeenText ?? '',
           source,
         };
         for (const handler of textHandlers) {

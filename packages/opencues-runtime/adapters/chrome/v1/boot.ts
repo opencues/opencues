@@ -105,7 +105,7 @@ export interface HostInfo extends CommonHostInfo {
 
 export interface BootResult {
   dispatchKey(event: KeyEvent): boolean;
-  notifyTextChange(text: string, cursorOffset: number, source: 'user' | 'runtime'): void;
+  notifyTextChange(text: string, cursorOffset: number, source: 'user' | 'runtime', previousText?: string): void;
   /** Cursor-only move (no text change). Drives cursor-navigate. */
   notifyCursorChange(text: string, cursorOffset: number, source: 'user' | 'runtime'): void;
   collectRenderDirectives(text: string, cursor: number): RenderDirectives[];
@@ -239,9 +239,9 @@ export function boot(host: HostInfo): BootResult {
 
   let lastSeenText: string | null = null;
   let lastSeenCursor = 0;
-  const fireTextChange = (text: string, cursor: number, source: 'user' | 'runtime'): void => {
+  const fireTextChange = (text: string, cursor: number, source: 'user' | 'runtime', previousText?: string): void => {
     textEvents.emit(
-      { text, cursorOffset: cursor, previousText: lastSeenText ?? '', source },
+      { text, cursorOffset: cursor, previousText: previousText ?? lastSeenText ?? '', source },
       err => log('error', 'text handler threw', err),
     );
     lastSeenText = text;
@@ -445,8 +445,8 @@ export function boot(host: HostInfo): BootResult {
     dispatchKey(event) {
       return keyEvents.emitUntilConsumed(event, err => log('error', 'key handler threw', err));
     },
-    notifyTextChange(text, cursorOffset, source) {
-      fireTextChange(text, cursorOffset, source);
+    notifyTextChange(text, cursorOffset, source, previousText) {
+      fireTextChange(text, cursorOffset, source, previousText);
     },
     notifyCursorChange(text, cursorOffset, source) {
       fireCursorChange(text, cursorOffset, source);
