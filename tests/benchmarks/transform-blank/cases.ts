@@ -1500,6 +1500,35 @@ export const CASES: TransformCase[] = [
     input: 'the child found one mouse pluralize _',
     expected: { finalText: 'the children found mice' },
   },
+  {
+    // Append-over-body: a CREATE/ADD instruction trailing a real body must
+    // PRESERVE the body and append the new content — not wipe the buffer.
+    // Regression: this routed to FluidBlank WIPE (whole-buffer replace)
+    // because EXTRACT ceded instead of treating the body as the TARGET.
+    id: 'trail-11',
+    category: 'trailing-instruction',
+    input: 'Build a responsive website with HTML, CSS, and JavaScript, with a homepage and a contact form. add a paragraph about security _',
+    expected: {
+      finalText: 'Build a responsive website with HTML, CSS, and JavaScript, with a homepage and a contact form.\n\nSecurity is a priority: the site uses HTTPS, validates and sanitizes all form inputs, guards against SQL injection and XSS, and stores passwords using strong hashing.',
+      note: 'add-over-body must keep the original prompt and APPEND the new paragraph; judge passes if the body is preserved and a relevant security paragraph is appended.',
+    },
+  },
+  {
+    id: 'trail-12',
+    category: 'trailing-instruction',
+    input: 'Quarterly report. Revenue grew 12% this period. add a conclusion _',
+    expected: {
+      // Generated conclusion wording is open-ended — the load-bearing
+      // assertion is "body preserved + a relevant concluding paragraph
+      // appended", not exact phrasing. Alternates cover the common shapes.
+      finalText: 'Quarterly report. Revenue grew 12% this period.\n\nIn conclusion, the quarter delivered solid revenue growth and a strong foundation to build on.',
+      finalTextAlternates: [
+        'Quarterly report. Revenue grew 12% this period.\n\nThe period showed solid growth; looking ahead, continued expansion is expected.',
+        'Quarterly report. Revenue grew 12% this period.\n\nOverall, the quarter was strong and positions the company well for the period ahead.',
+      ],
+      note: 'generative add trailing a body → preserve body, append generated conclusion (not whole-buffer wipe). Judge grades on body-preservation + relevance, not exact wording.',
+    },
+  },
 
   // ============================================================
   // CODE-TRANSFORM — programming-specific edits. Tests whether

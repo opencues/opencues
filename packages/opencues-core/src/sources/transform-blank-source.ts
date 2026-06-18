@@ -100,7 +100,9 @@ For composed instructions joined by "and" ("make past tense and remove pronouns"
 
 Bail to NONE for: UI placeholders, pure lookups (no instruction), idioms, and FluidBlank META-TRIGGERS (bare "_", "answer _", "this _", "answer this _", "fill _", "fill in _", "the answer _", "what is the answer _", "what is the question _", "what is the label _") — these are short generic answer-requests where the form-field context (only FluidBlank sees it) carries the question, NOT transform instructions.
 
-GENERATIVE INSTRUCTIONS — when the imperative is a CREATE/GENERATE request ("write a poem", "compose an email", "give me 5 startup ideas", "draft a tweet about X"), there is NO target text to operate on. Output VERDICT: TRANSFORM with the instruction populated and TARGET empty. The downstream pipeline will route this to a generative branch.
+GENERATIVE INSTRUCTIONS — when the imperative is a CREATE/GENERATE request ("write a poem", "compose an email", "give me 5 startup ideas", "draft a tweet about X") AND the input is ONLY that instruction plus _ (no other body text), there is NO target to operate on. Output VERDICT: TRANSFORM with the instruction populated and TARGET empty. The downstream pipeline routes this to a generative branch.
+
+ADD / APPEND OVER A BODY — when a CREATE/ADD instruction ("add a paragraph about X", "write a conclusion", "add a section on Y", "append a note about Z", "include a disclaimer") FOLLOWS or SURROUNDS existing body text, that body IS the TARGET — this is NOT a generative no-target request. Output VERDICT: TRANSFORM with INSTRUCTION = the add phrase and TARGET = the existing body verbatim. The body must be preserved; downstream APPLY generates the new content and appends it to the end of the target. The presence of body text is the deciding signal: instruction + body → TRANSFORM (body as TARGET); instruction alone → generative (empty TARGET). Never bail to NONE just because the body is long or unrelated to the add phrase.
 
 AGENT TASK COMMANDS — these arm or modify a continuously-running agent loop:
 
@@ -170,6 +172,17 @@ INPUT: write a poem _
 VERDICT: TRANSFORM
 INSTRUCTION: write a poem
 TARGET:
+
+INPUT: Build a responsive website with HTML, CSS, and JavaScript, with a homepage and contact form. add a paragraph about security _
+VERDICT: TRANSFORM
+INSTRUCTION: add a paragraph about security
+TARGET: Build a responsive website with HTML, CSS, and JavaScript, with a homepage and contact form.
+
+INPUT: Quarterly report. Revenue grew 12% this period.
+add a paragraph about risks _
+VERDICT: TRANSFORM
+INSTRUCTION: add a paragraph about risks
+TARGET: Quarterly report. Revenue grew 12% this period.
 
 INPUT: agentically correct spelling _
 VERDICT: TASK_ARM
@@ -800,7 +813,9 @@ NONE rules — bail when ANY apply:
 - idiom that looks like an instruction but isn't ("change of plans _ we meet at 3pm")
 - META-TRIGGER for FluidBlank to answer using ambient context — bail to NONE when the ENTIRE input is a short generic answer-request with no real content to transform. Patterns: bare "_", "answer _", "this _", "answer this _", "fill _", "fill in _", "the answer _", "what is the answer _", "what is the question _", "what is the label _". These have no TARGET text — the user is signalling that the surrounding FORM FIELD (which only FluidBlank sees) carries the question. Don't fabricate a conversational response.
 
-GENERATIVE — when the imperative asks to CREATE/GENERATE ("write a poem", "compose an email", "give me 5 startup ideas"), VERDICT=TRANSFORM, TARGET is empty, FULL_REWRITE contains the generated content.
+GENERATIVE — when the imperative asks to CREATE/GENERATE ("write a poem", "compose an email", "give me 5 startup ideas") AND the input is ONLY that instruction plus _ (no other body text), VERDICT=TRANSFORM, TARGET is empty, FULL_REWRITE contains the generated content.
+
+ADD / APPEND OVER A BODY — when a CREATE/ADD instruction ("add a paragraph about X", "write a conclusion", "add a section on Y", "append a note about Z", "include a disclaimer") FOLLOWS or SURROUNDS existing body text, that body IS the TARGET — NOT a generative no-target request. VERDICT=TRANSFORM, TARGET = the existing body verbatim, and FULL_REWRITE = the existing body PRESERVED VERBATIM with the newly generated content appended at the end on a new paragraph (\\n\\n). Generate the requested content; do not drop, summarise, or replace the body. The presence of body text is decisive: instruction + body → append (body preserved in FULL_REWRITE); instruction alone → generative (FULL_REWRITE is only the generated content). Never bail to NONE just because the body is long or unrelated to the add phrase.
 
 AGENT TASK COMMANDS — FULL_REWRITE empty for all of these:
 - TASK_ARM: input has "agentically <X>" → INSTRUCTION = X (without "agentically").
@@ -818,6 +833,7 @@ APPLY RULES when VERDICT=TRANSFORM with non-empty TARGET:
 7. CONDITIONAL — apply ONLY where the condition holds ("change boy to girl but not in second sentence").
 8. PRESERVE PARAGRAPHS — \\n\\n breaks survive verbatim.
 9. FULL_REWRITE contains ONLY what the user should see — instruction phrase + _ deleted, all surrounding context preserved verbatim or transformed per the instruction.
+10. ADDITION instructions ("add", "append", "include", "write a <section/paragraph/conclusion>") do NOT replace the TARGET — keep the TARGET verbatim and append the new content at the end on a new paragraph (\\n\\n). The body survives; only new text is added.
 
 EXAMPLES:
 
@@ -868,6 +884,14 @@ VERDICT: TRANSFORM
 INSTRUCTION: write a poem about the sea
 TARGET:
 FULL_REWRITE: Waves whisper to the shore, / endless rhythm, salt-bright air, / the sea holds every story.
+
+INPUT: Build a responsive website with HTML, CSS, and JavaScript, with a homepage and a contact form. add a paragraph about security _
+VERDICT: TRANSFORM
+INSTRUCTION: add a paragraph about security
+TARGET: Build a responsive website with HTML, CSS, and JavaScript, with a homepage and a contact form.
+FULL_REWRITE: Build a responsive website with HTML, CSS, and JavaScript, with a homepage and a contact form.
+
+Security is a priority: serve the site over HTTPS, validate and sanitize all form inputs, guard against SQL injection and XSS, and store any credentials using strong, salted hashing.
 
 INPUT: agentically correct spelling _
 VERDICT: TASK_ARM
