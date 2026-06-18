@@ -155,8 +155,6 @@ opencues/
 │       ├── stocks.md              # impl: @opencues/runtime StocksBlank
 │       ├── weather.md             # impl: @opencues/runtime WeatherBlank
 │       ├── hackernews.md          # impl: @opencues/runtime HackerNewsBlank
-│       ├── prompt.md              # impl: @opencues/runtime PromptImproverBlank
-│       ├── answer.md              # impl: @opencues/runtime AnswerBlank
 │       ├── countries.md           # impl: @opencues/runtime CountriesBlank
 │       ├── crypto.md              # impl: @opencues/runtime CryptoBlank
 │       ├── dictionary.md          # impl: @opencues/runtime DictionaryBlank

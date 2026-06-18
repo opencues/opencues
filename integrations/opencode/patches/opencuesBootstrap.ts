@@ -136,9 +136,7 @@ function resolveTtsScript(): string {
 // registry — single source of truth shared across CC / OC / chrome /
 // gemini-cli. Adding a new built-in is one entry there; no edits to
 // any host bootstrap. See packages/opencues-runtime/src/blanks/index.ts.
-const groqApiKey = process.env['GROQ_API_KEY']
 const blanksRegistry: Map<string, Blank> = createDefaultBlanksRegistry({
-  llmConfig: groqApiKey ? { apiKey: groqApiKey } : undefined,
   finnhubApiKey: process.env['FINNHUB_API_KEY'],
   opencuesMdIO: {
     readFile: async () => { try { return await fs.readFile(findOpenCuesMdPath(), "utf8") } catch { return null } },

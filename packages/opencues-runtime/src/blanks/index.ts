@@ -17,8 +17,6 @@ export { FetchHttpAdapter } from './http-adapter';
 export { HackerNewsBlank } from './hackernews';
 export { StocksBlank, type StocksBlankOptions } from './stocks';
 export { WeatherBlank, type WeatherBlankOptions } from './weather';
-export { AnswerBlank, type AnswerBlankOptions } from './answer';
-export { PromptImproverBlank, type PromptImproverBlankOptions } from './prompt-improver';
 export { OpenCuesSettingsBlank, type OpenCuesSettingsBlankOptions } from './opencues-settings';
 export { SentinelBlank, type SentinelBlankOptions } from './sentinel';
 export { DictionaryBlank, type DictionaryBlankOptions } from './dictionary';
@@ -32,8 +30,6 @@ export { ClaudeStatusBlank, type ClaudeStatusBlankOptions } from './claude-statu
 import { HackerNewsBlank } from './hackernews';
 import { StocksBlank } from './stocks';
 import { WeatherBlank } from './weather';
-import { AnswerBlank } from './answer';
-import { PromptImproverBlank } from './prompt-improver';
 import { OpenCuesSettingsBlank } from './opencues-settings';
 import { SentinelBlank } from './sentinel';
 import { DictionaryBlank } from './dictionary';
@@ -64,8 +60,8 @@ import { ClaudeStatusBlank } from './claude-status';
 // FACTORY CONTRACT
 //
 // Each factory takes a BuiltinBlankContext and returns either a Blank
-// instance or null. Return null when prereqs aren't met (e.g. no LLM
-// key for the answer blank, no settings-file IO for the opencues
+// instance or null. Return null when prereqs aren't met (e.g. no Finnhub
+// key for the stocks blank, no settings-file IO for the opencues
 // blank). `createDefaultBlanksRegistry` filters nulls out so the host
 // doesn't need to know which prereqs each blank checks.
 
@@ -75,16 +71,6 @@ import { ClaudeStatusBlank } from './claude-status';
  * return null when they don't have enough to construct a usable blank.
  */
 export interface BuiltinBlankContext {
-  /**
-   * LLM config for blanks that talk to an OpenAI-compatible chat API
-   * (answer, prompt). When absent, both blanks skip registration.
-   * apiUrl / model default to Groq's gpt-oss-120b when omitted.
-   */
-  readonly llmConfig?: {
-    readonly apiKey: string;
-    readonly apiUrl?: string;
-    readonly model?: string;
-  };
   /**
    * Finnhub API key for the stocks blank. Optional — without it the
    * blank still registers but live quote requests will fail at runtime
@@ -167,9 +153,12 @@ export const BUILTIN_BLANKS: readonly BuiltinBlankSpec[] = [
   { name: 'crypto',        factory: () => new CryptoBlank() },
   { name: 'countries',     factory: () => new CountriesBlank() },
 
-  // ── LLM-driven (skip when llmConfig absent) ──────────────────────
-  { name: 'answer',        factory: ctx => ctx.llmConfig?.apiKey ? new AnswerBlank(ctx.llmConfig) : null },
-  { name: 'prompt',        factory: ctx => ctx.llmConfig?.apiKey ? new PromptImproverBlank(ctx.llmConfig) : null },
+  // NOTE: the legacy bespoke LLM blanks `answer` + `prompt` were removed
+  // (June 2026). They were direct-to-Groq HTTP clients that bypassed the
+  // provider/dispatch layer, so they couldn't honour the user's configured
+  // provider. Their intents are now served by the generalized semantic-`_`
+  // sources that already use the user's provider: `answer _` / `what is the
+  // answer _` → FluidBlank meta-triggers; `improve prompt _` → TransformBlank.
 
   // ── Settings / selector-satellite (skip when no IO supplied) ─────
   { name: 'opencues',      factory: ctx => ctx.opencuesMdIO ? new OpenCuesSettingsBlank({ ...ctx.opencuesMdIO, hostName: ctx.hostName }) : null },

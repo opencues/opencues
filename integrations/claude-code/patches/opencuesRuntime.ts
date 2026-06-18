@@ -330,9 +330,7 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `var __ocCtl=__oc_req(${blanksPath});` +
     `var __ocFs=${requireFn}("fs");var __ocOcMd=${opencuesMdPathExpr};` +
     `var __ocIdMd=${identityMdPathExpr};` +
-    `var __ocGroq=process.env.GROQ_API_KEY;` +
     `__ocReg=__ocCtl.createDefaultBlanksRegistry({` +
-    `llmConfig:__ocGroq?{apiKey:__ocGroq}:undefined,` +
     `finnhubApiKey:process.env.FINNHUB_API_KEY,` +
     `opencuesMdIO:{` +
     `readFile:function(){return new Promise(function(r){__ocFs.readFile(__ocOcMd,"utf8",function(e,d){r(e?null:d);});});},` +
