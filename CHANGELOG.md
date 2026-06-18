@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fix — "add a paragraph about X _" appends instead of wiping the buffer (core 0.3.27)
+
+A trailing CREATE/ADD instruction over a real body (e.g. a long prompt followed by `add a paragraph about security _`) was misclassified by TransformBlank's `_` classifier: it ceded to FluidBlank, whose deterministic mode picker chose WIPE over `[0, text.length)` and **replaced the entire buffer** with the generated paragraph instead of appending it.
+
+Root cause was in the classifier prompts, both of which conflated "add X" with a generative no-target request:
+
+- `FUSED_SYSTEM` (the production path for cerebras + every non-groq provider) and `P1_EXTRACT_SYSTEM` (3-pass, groq) now carry an explicit **ADD / APPEND OVER A BODY** rule: when an add/write/include instruction follows or surrounds existing body text, that body IS the TARGET — emit `VERDICT: TRANSFORM` with the body preserved verbatim and the new content appended on a new paragraph (`\n\n`), never bail to NONE or treat it as generative. GENERATIVE is now scoped to "instruction + `_` with no other body".
+- Added few-shot examples mirroring the failing case to both prompts, a fused APPLY rule (#10) for additions, and benchmark cases `trail-11` / `trail-12` pinning body-preserved append.
+
+Both classifier prompts were fixed in the same change so the groq (3-pass) and cerebras/other (fused) paths can't drift.
+
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
 ### Feat — three semantic-_ surfaces enabled by default (runtime 0.3.18)
