@@ -191,9 +191,7 @@ function resolveTtsScript(): string {
 // registry — single source of truth. Adding a new built-in is one
 // entry there; this file picks it up automatically. Previously this
 // list was missing `claude-status` (silent feature gap on this host).
-const groqApiKey = process.env['GROQ_API_KEY'];
 const blanksRegistry: Map<string, Blank> = createDefaultBlanksRegistry({
-  llmConfig: groqApiKey ? { apiKey: groqApiKey } : undefined,
   finnhubApiKey: process.env['FINNHUB_API_KEY'],
   opencuesMdIO: {
     readFile: async () => { try { return await fs.readFile(findOpenCuesMdPath(), 'utf8'); } catch { return null; } },

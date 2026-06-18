@@ -15,20 +15,11 @@ import type { BrowserBlank } from './types';
 import { createDefaultBlanksRegistry } from '@opencues/runtime/dist/src/blanks';
 
 export type { BrowserBlank } from './types';
-export { PromptImproverBlank } from '@opencues/runtime/dist/src/blanks';
-export type PromptImproverConfig = {
-  apiKey: string;
-  apiUrl: string;
-  model: string;
-  altCount?: number;
-  includeOriginal?: boolean;
-};
 
 /** Registry of all available browser-native blanks */
 export function createBlanks(options?: {
   finnhubApiKey?: string;
   customTickers?: Record<string, string>;
-  llmConfig?: PromptImproverConfig;
   /**
    * Optional OPENCUES.md file accessors. When supplied, the
    * `opencues settings _` selector/satellite blank is registered.
@@ -56,7 +47,6 @@ export function createBlanks(options?: {
     ? { readFile: options.identityMdReadFile, writeFile: options.identityMdWriteFile }
     : undefined;
   return createDefaultBlanksRegistry({
-    llmConfig: options?.llmConfig,
     finnhubApiKey: options?.finnhubApiKey,
     customTickers: options?.customTickers,
     opencuesMdIO,

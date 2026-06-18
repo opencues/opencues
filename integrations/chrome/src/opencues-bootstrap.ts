@@ -2555,8 +2555,7 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
   };
 
   // CE.8 — build the chrome blank registry. The runtime's BlankFill
-  // + Cycling dispatch into this via blankInvoke. Prompt-improver
-  // is opt-in via llmConfig.
+  // + Cycling dispatch into this via blankInvoke.
   // Stocks is a non-LLM API blank backed by Finnhub. Chrome reads its
   // key from the same multi-provider bag the LLM resolver uses
   // (`opencues_host_keys.FINNHUB_API_KEY`, pushed by chrome-host); the
@@ -2566,16 +2565,6 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
   const blanks = createBlanks({
     finnhubApiKey: opts.llmApiKeys?.FINNHUB_API_KEY ?? undefined,
     customTickers: opts.customTickers,
-    llmConfig: opts.llmApiKey ? {
-      apiKey: opts.llmApiKey,
-      // PromptImproverConfig field is `apiUrl`, NOT `endpoint`. The
-      // mismatch left cfg.apiUrl undefined → fetch(undefined,...) threw
-      // → catch returned the original fullContext → consume-all replaced
-      // the buffer with the unchanged original ("improve prompt
-      // resolves to original word").
-      apiUrl: opts.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
-      model: opts.llmDefaultModel ?? 'openai/gpt-oss-120b',
-    } : undefined,
     // OpenCues settings selector/satellite (`opencues settings _`)
     // reads/writes the seeded OPENCUES.md in chrome.storage.
     opencuesMdReadFile: () => readFile(`${ROOT}/.cues/OPENCUES.md`),

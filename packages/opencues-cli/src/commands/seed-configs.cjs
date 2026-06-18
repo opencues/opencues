@@ -112,6 +112,22 @@ module.exports = function seedConfigs(argv, ctx) {
     log(`Self-heal: migrated SENTINELS.md → IDENTITY.md (${identityFile})`);
   }
 
+  // Remove deprecated blank configs. The bespoke `answer` + `prompt`
+  // built-in blanks were retired (June 2026) — their intents are served
+  // by the generalized semantic-`_` sources (FluidBlank / TransformBlank)
+  // that use the user's configured provider. seed-configs only ever
+  // ADDS, so existing users keep the orphaned BLANK.md, whose keywords
+  // still claim "improve prompt" / "answer" and route to a now-absent
+  // blank → silent no-op. Delete them so the keywords fall through to
+  // the generalized sources. Idempotent.
+  for (const dep of ['answer', 'prompt']) {
+    const depDir = path.join(targetDir, 'blanks', dep);
+    if (fs.existsSync(depDir)) {
+      if (!dryRun) fs.rmSync(depDir, { recursive: true, force: true });
+      log(`Self-heal: removed deprecated blank config blanks/${dep}/ (now handled by FluidBlank/TransformBlank)`);
+    }
+  }
+
   // OPENCUES.md scalar rewrite — `user-context-mode` / `sentinels-mode`
   // → `identity-context-mode`. The renamed user's file is useless if
   // the scalar that gates it still uses the old name. Idempotent:

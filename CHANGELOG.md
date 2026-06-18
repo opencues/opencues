@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed — bespoke `answer` + `prompt` built-in blanks; generalized to the user's provider (runtime 0.3.19)
+
+The `answer` (factual lookup / translation) and `prompt` (improve prompt) built-in blanks were direct-to-Groq HTTP clients: they hardcoded the Groq endpoint + `openai/gpt-oss-120b` model and every host bootstrap fed them only a `GROQ_API_KEY`. They bypassed the provider/dispatch layer entirely, so they could **not** honour the user's configured provider (`llm-provider:` / `blanks-llm-*`) — a user on cerebras still hit Groq, and a user without a Groq key got nothing.
+
+Both are removed. Their intents are already served — on the user's provider — by the generalized semantic-`_` sources:
+
+- `answer _` / `what is the answer _` → **FluidBlank** meta-triggers (already the canonical path).
+- `improve prompt _ <prompt>` → **TransformBlank** (validated on cerebras: produces equal-or-better improvements than the bespoke 2-pass pipeline).
+
+Changes: deleted `blanks/{answer,prompt-improver}.ts` (+ tests) and their `BUILTIN_BLANKS` entries; removed the unused `llmConfig` field from `BuiltinBlankContext`; removed the dead `groqApiKey`/`llmConfig` wiring from all four host bootstraps + chrome's `createBlanks`; deleted `defaults/blanks/{answer,prompt}/`. **Migration**: `opencues seed-configs` now deletes orphaned `~/.cues/blanks/{answer,prompt}/` so the keywords fall through to the generalized sources instead of silently no-op'ing on a now-absent blank. Validated end-to-end on opencode via the agentic harness.
+
 ### Fix — "add a paragraph about X _" appends instead of wiping the buffer (core 0.3.27)
 
 A trailing CREATE/ADD instruction over a real body (e.g. a long prompt followed by `add a paragraph about security _`) was misclassified by TransformBlank's `_` classifier: it ceded to FluidBlank, whose deterministic mode picker chose WIPE over `[0, text.length)` and **replaced the entire buffer** with the generated paragraph instead of appending it.

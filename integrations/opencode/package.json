@@ -1,6 +1,6 @@
 {
   "name": "@opencues/opencode",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "OpenCues for OpenCode — patches an OpenCode TUI fork to add real-time word alternatives, blanks, and cue-controls.",
   "compatibility": {

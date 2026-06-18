@@ -81,10 +81,15 @@ describe('createDefaultBlanksRegistry semantics', () => {
     }
   });
 
-  it('skips LLM blanks when llmConfig is absent', () => {
+  it('does not register the removed bespoke LLM blanks (answer / prompt)', () => {
+    // The legacy direct-to-Groq `answer` + `prompt` blanks were removed
+    // (June 2026); their intents are served by the generalized semantic-`_`
+    // sources (FluidBlank / TransformBlank) that use the user's provider.
     const reg = createDefaultBlanksRegistry({});
     expect(reg.has('answer')).toBe(false);
     expect(reg.has('prompt')).toBe(false);
+    expect(BUILTIN_BLANKS.some(b => b.name === 'answer')).toBe(false);
+    expect(BUILTIN_BLANKS.some(b => b.name === 'prompt')).toBe(false);
     // Non-LLM blanks still register
     expect(reg.has('weather')).toBe(true);
     expect(reg.has('claude-status')).toBe(true);
@@ -106,7 +111,7 @@ describe('createDefaultBlanksRegistry semantics', () => {
     const canonical = [
       'hackernews', 'stocks', 'weather', 'claude-status',
       'dictionary', 'crypto', 'countries',
-      'answer', 'prompt', 'opencues', 'sentinel',
+      'opencues', 'sentinel',
     ];
     const present = new Set(BUILTIN_BLANKS.map(b => b.name));
     for (const name of canonical) {

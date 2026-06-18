@@ -93,9 +93,7 @@ function resolveTtsScript(): string {
   return path.join(root, 'scripts/speak.sh');
 }
 
-const groqApiKey = process.env['GROQ_API_KEY'];
 const blanksRegistry: Map<string, Blank> = createDefaultBlanksRegistry({
-  llmConfig: groqApiKey ? { apiKey: groqApiKey } : undefined,
   finnhubApiKey: process.env['FINNHUB_API_KEY'],
   opencuesMdIO: {
     readFile: async () => {
