@@ -29,6 +29,7 @@ import { useStrictJson, buildJsonResponseFormat, describeLLMCall, dispatchChat, 
 import { renderIdentityContextCatalog, postProcessContext, type Identity, type ContextMode } from '../identity-context';
 import { renderBlankContextCatalog, mergeCatalogs, type BlankContextSnapshot, type BlankContextMode } from '../blank-context';
 import { detectModelOverride, applySubscriptionPreference, stripModelOverride, type ModelOverride } from '../model-aliases';
+import { VariantCache } from '../variant-cache';
 
 // ─── Ambient-context sanitization + injection ──────────────────────
 //
@@ -736,10 +737,10 @@ export class FluidBlankSource implements CueSource {
    * tuple so re-triggers on the same lookup cycle through prior
    * answers without re-dispatching.
    *
-   * State machine matches TransformBlankSource._variantPool:
-   *   - building (pool < POOL_SIZE): every trigger fresh, accumulates
-   *   - cycling (pool full, cyclePos < POOL_SIZE): serves from cache
-   *   - refreshing (cyclePos == POOL_SIZE): one fresh, FIFO-evicts oldest
+   * State machine + LRU semantics live in the shared `VariantCache<T>`
+   * primitive (`@opencues/core/variant-cache.ts`). ConfigIntent +
+   * TransformBlank share the same primitive — one cache class, three
+   * call sites.
    *
    * Cache lifetime is MODULE-LEVEL (static) so it survives source
    * instance rebuilds. Critical on chrome where the resolver rebuilds
@@ -757,9 +758,7 @@ export class FluidBlankSource implements CueSource {
    * box vs an Airport-Code field produce different answers; we must
    * not collide them.
    */
-  private static _variantPool = new Map<string, { entries: string[]; cyclePos: number }>();
-  private static readonly VARIANT_POOL_SIZE = 3;
-  private static readonly VARIANT_KEY_CAP = 32;
+  private static _variantCache = new VariantCache<string>();
 
   constructor(config: FluidBlankSourceConfig) {
     this.httpAdapter = config.httpAdapter;
@@ -906,7 +905,7 @@ export class FluidBlankSource implements CueSource {
       const cacheKey = this._computeCacheKey(context);
       const variantChoice = overrideAdapter
         ? { kind: 'fresh' as const, others: [] as string[] }
-        : this._selectVariant(cacheKey);
+        : FluidBlankSource._variantCache.select(cacheKey);
       if (variantChoice.kind === 'cache') {
         this.log(`FluidBlank: variant-cache HIT — serving cached answer (pool size ${variantChoice.others.length + 1})`);
         // Determine replace-mode from the buffer (same logic the fresh
@@ -916,7 +915,7 @@ export class FluidBlankSource implements CueSource {
         this.emit({
           type: 'completed',
           span: effectiveText,
-          answer: variantChoice.rewrite,
+          answer: variantChoice.value,
           mode: cachedMode,
           latencyMs: 0,
         });
@@ -924,7 +923,7 @@ export class FluidBlankSource implements CueSource {
           results: [{
             wordIndex: blankIdx,
             word: '_',
-            alternatives: ['_', variantChoice.rewrite],
+            alternatives: ['_', variantChoice.value],
             source: this.id,
             priority: this.priority,
             metadata: {
@@ -1082,7 +1081,7 @@ export class FluidBlankSource implements CueSource {
       // instead of re-dispatching. Override path bypasses cache (see
       // decision branch earlier in getCues).
       if (!overrideAdapter) {
-        this._recordFreshAnswer(cacheKey, finalAnswer);
+        FluidBlankSource._variantCache.record(cacheKey, finalAnswer);
       }
 
       const result: CueResult = {
@@ -1280,59 +1279,9 @@ export class FluidBlankSource implements CueSource {
     ].join(SEP);
   }
 
-  /**
-   * Decide whether to dispatch fresh or serve from the variant pool.
-   * State machine matches TransformBlankSource — see that source for
-   * the long explanation. Returns 'cache' with the rewrite + others
-   * (for potential alternatives enrichment) or 'fresh' with the prior
-   * pool entries.
-   */
-  private _selectVariant(key: string): { kind: 'cache'; rewrite: string; others: string[] } | { kind: 'fresh'; others: string[] } {
-    let entry = FluidBlankSource._variantPool.get(key);
-    if (!entry) {
-      entry = { entries: [], cyclePos: 0 };
-      FluidBlankSource._variantPool.set(key, entry);
-    } else {
-      // LRU recency.
-      FluidBlankSource._variantPool.delete(key);
-      FluidBlankSource._variantPool.set(key, entry);
-    }
-    if (entry.entries.length < FluidBlankSource.VARIANT_POOL_SIZE) {
-      return { kind: 'fresh', others: entry.entries.slice() };
-    }
-    if (entry.cyclePos < entry.entries.length) {
-      const rewrite = entry.entries[entry.cyclePos];
-      entry.cyclePos++;
-      const others = entry.entries.filter((_, i) => i !== entry!.cyclePos - 1);
-      return { kind: 'cache', rewrite, others };
-    }
-    // cyclePos == entries.length → refresh phase.
-    return { kind: 'fresh', others: entry.entries.slice() };
-  }
-
-  /** Record a fresh LLM answer into the pool. FIFO-evicts oldest at
-   *  capacity. Resets cyclePos so next trigger walks the new pool. */
-  private _recordFreshAnswer(key: string, answer: string): void {
-    let entry = FluidBlankSource._variantPool.get(key);
-    if (!entry) {
-      entry = { entries: [], cyclePos: 0 };
-      FluidBlankSource._variantPool.set(key, entry);
-    }
-    if (entry.entries.length >= FluidBlankSource.VARIANT_POOL_SIZE) {
-      entry.entries.shift();
-    }
-    entry.entries.push(answer);
-    entry.cyclePos = 0;
-    while (FluidBlankSource._variantPool.size > FluidBlankSource.VARIANT_KEY_CAP) {
-      const oldest = FluidBlankSource._variantPool.keys().next().value;
-      if (oldest === undefined) break;
-      FluidBlankSource._variantPool.delete(oldest);
-    }
-  }
-
   /** For tests + diagnostics — current pool size for a given key. */
   variantPoolSize(key: string): number {
-    return FluidBlankSource._variantPool.get(key)?.entries.length ?? 0;
+    return FluidBlankSource._variantCache.size(key);
   }
 
   /** For tests — re-expose the key derivation. */
@@ -1340,9 +1289,9 @@ export class FluidBlankSource implements CueSource {
     return this._computeCacheKey(context);
   }
 
-  /** Test-only: empty the module-level variant pool. */
+  /** Test-only: empty the module-level variant cache. */
   static resetVariantPoolForTest(): void {
-    FluidBlankSource._variantPool.clear();
+    FluidBlankSource._variantCache.clear();
   }
 }
 

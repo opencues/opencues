@@ -59,6 +59,7 @@ import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '
 import { BlankConfig } from '../cues-md';
 import { describeLLMCall, dispatchChat, getProvider, listProviders, type ProviderAdapter } from '../llm-provider';
 import { classifyLlmError, findSpanCharRange, type FluidBlankErrorReason } from './fluid-blank-source';
+import { VariantCache } from '../variant-cache';
 import { detectModelOverride } from '../model-aliases';
 import {
   FEATURES,
@@ -819,9 +820,7 @@ export class ConfigIntentSource implements CueSource {
    * applyScalar) are idempotent — re-applying the same value on
    * cache hit is a no-op write at the scalar level.
    */
-  private static _variantPool = new Map<string, { entries: string[]; cyclePos: number }>();
-  private static readonly VARIANT_POOL_SIZE = 3;
-  private static readonly VARIANT_KEY_CAP = 32;
+  private static _variantCache = new VariantCache<string>();
 
   constructor(config: ConfigIntentSourceConfig) {
     this.httpAdapter = config.httpAdapter;
@@ -915,12 +914,12 @@ export class ConfigIntentSource implements CueSource {
     // SETTING/PROVIDER verdicts) still fires. Idempotent at the
     // scalar level — re-applying the same value is a no-op write.
     const cacheKey = this._computeCacheKey(context);
-    const variantChoice = this._selectVariant(cacheKey);
+    const variantChoice = ConfigIntentSource._variantCache.select(cacheKey);
 
     let raw: string;
     if (variantChoice.kind === 'cache') {
       this.log(`ConfigIntent: variant-cache HIT — serving cached response (pool size ${variantChoice.others.length + 1})`);
-      raw = variantChoice.rewrite;
+      raw = variantChoice.value;
     } else {
       try {
       // Per-feature `fluid-config-max-tokens:` override; 128 default
@@ -928,7 +927,7 @@ export class ConfigIntentSource implements CueSource {
       // SETTING, VALUE, CONFIDENCE) — bumping helps only if the
       // model wraps the output in extra prose.
       raw = await this.callLLM(SYSTEM_PROMPT, `INPUT: ${context.text}`, this.maxTokensOverride ?? 128, context.signal);
-      this._recordFreshResponse(cacheKey, raw);
+      ConfigIntentSource._variantCache.record(cacheKey, raw);
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
       this.log(`ConfigIntent: LLM call failed — ${err.message}`);
@@ -1163,47 +1162,8 @@ export class ConfigIntentSource implements CueSource {
     return [context.text, this.provider.id, this.model].join(SEP);
   }
 
-  private _selectVariant(key: string): { kind: 'cache'; rewrite: string; others: string[] } | { kind: 'fresh'; others: string[] } {
-    let entry = ConfigIntentSource._variantPool.get(key);
-    if (!entry) {
-      entry = { entries: [], cyclePos: 0 };
-      ConfigIntentSource._variantPool.set(key, entry);
-    } else {
-      ConfigIntentSource._variantPool.delete(key);
-      ConfigIntentSource._variantPool.set(key, entry);
-    }
-    if (entry.entries.length < ConfigIntentSource.VARIANT_POOL_SIZE) {
-      return { kind: 'fresh', others: entry.entries.slice() };
-    }
-    if (entry.cyclePos < entry.entries.length) {
-      const rewrite = entry.entries[entry.cyclePos];
-      entry.cyclePos++;
-      const others = entry.entries.filter((_, i) => i !== entry!.cyclePos - 1);
-      return { kind: 'cache', rewrite, others };
-    }
-    return { kind: 'fresh', others: entry.entries.slice() };
-  }
-
-  private _recordFreshResponse(key: string, response: string): void {
-    let entry = ConfigIntentSource._variantPool.get(key);
-    if (!entry) {
-      entry = { entries: [], cyclePos: 0 };
-      ConfigIntentSource._variantPool.set(key, entry);
-    }
-    if (entry.entries.length >= ConfigIntentSource.VARIANT_POOL_SIZE) {
-      entry.entries.shift();
-    }
-    entry.entries.push(response);
-    entry.cyclePos = 0;
-    while (ConfigIntentSource._variantPool.size > ConfigIntentSource.VARIANT_KEY_CAP) {
-      const oldest = ConfigIntentSource._variantPool.keys().next().value;
-      if (oldest === undefined) break;
-      ConfigIntentSource._variantPool.delete(oldest);
-    }
-  }
-
   variantPoolSize(key: string): number {
-    return ConfigIntentSource._variantPool.get(key)?.entries.length ?? 0;
+    return ConfigIntentSource._variantCache.size(key);
   }
 
   cacheKeyForTest(context: CueContext): string {
@@ -1211,6 +1171,6 @@ export class ConfigIntentSource implements CueSource {
   }
 
   static resetVariantPoolForTest(): void {
-    ConfigIntentSource._variantPool.clear();
+    ConfigIntentSource._variantCache.clear();
   }
 }

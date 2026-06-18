@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Refactor — extract `VariantCache<T>` primitive shared by all three semantic-`_` sources (core 0.3.28)
+
+FluidBlank, ConfigIntent, and TransformBlank each had a private `static _variantPool = new Map<...>()` with identical LRU + cycling logic — three copies of the same state machine differing only in the value type (`string` vs `{rewrite, span}`). Pulled out a generic `VariantCache<T>` primitive (`packages/opencues-core/src/variant-cache.ts`) and replaced all three with delegating wrappers.
+
+Behaviour is unchanged (same poolSize=3, keyCap=32, same building → cycling → refresh state machine). Net diff: -120 lines of duplicated code, +1 documented primitive class. Adding a fourth source with the same cache shape now costs one field declaration instead of ~60 lines of pasted logic.
+
+The cycling behaviour itself ("cache 3 fresh responses, walk through them, then refresh") is a deliberate UX opinion — it gives the user variety on Up-arrow re-triggers. Surfaced into the primitive's docstring so future changes to it are made in one place rather than triplicate.
+
+10 new unit tests cover the primitive directly; all 114 pre-existing source tests still pass with no test edits required (public API preserved via thin `variantPoolSize()` + `resetVariantPoolForTest()` delegating wrappers on each source).
+
 ### Refactor — unify ConfigIntent + FUSED TransformBlank onto FluidBlank's SPAN splice (core 0.3.27)
 
 All three semantic-`_` sources (FluidBlank, ConfigIntent, FUSED TransformBlank) now share **one** substitute mechanism: the LLM emits a verbatim `SPAN` substring + a slice fill, the runtime locates the span via `findSpanCharRange` (shared helper exported from `fluid-blank-source.ts`), and splices the fill into that range. Anything outside the SPAN is preserved verbatim — fixing a real bug where typed prior content was being wiped.
