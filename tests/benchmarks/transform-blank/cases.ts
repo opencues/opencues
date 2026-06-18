@@ -13,7 +13,7 @@
 
 export interface TransformCase {
   id: string;
-  category: 'literal' | 'concept' | 'transform' | 'negative' | 'multi-span' | 'math' | 'linked-concepts' | 'long-text' | 'targeted' | 'multi-paragraph' | 'conditional' | 'context-referring' | 'trailing-instruction' | 'code-transform' | 'tone-shift' | 'format-transform' | 'creative-rewrite' | 'adversarial';
+  category: 'literal' | 'concept' | 'transform' | 'negative' | 'multi-span' | 'math' | 'linked-concepts' | 'long-text' | 'targeted' | 'multi-paragraph' | 'conditional' | 'context-referring' | 'trailing-instruction' | 'code-transform' | 'tone-shift' | 'format-transform' | 'creative-rewrite' | 'adversarial' | 'multilingual';
   input: string;
   expected: {
     /** Final text after applying edits + wiping the instruction phrase. */
@@ -2384,6 +2384,78 @@ export const CASES: TransformCase[] = [
         'The cat sat on the mat with a rat',
       ],
       note: 'open-ended; accept any rewrite that adds a rhyme',
+    },
+  },
+
+  // ============================================================
+  // MULTILINGUAL — the transform class must work in any language:
+  // non-English INSTRUCTIONS, non-English BODIES, non-Latin output,
+  // plus emoji-add. Pins the "append/translate/emoji in any language"
+  // requirement. All verified PASS on cerebras/fused.
+  // ============================================================
+  {
+    id: 'ml-emoji-en',
+    category: 'multilingual',
+    input: 'add some emojis _ We just launched our new product and the whole team is thrilled',
+    expected: {
+      finalText: 'We just launched our new product and the whole team is thrilled 🚀🎉😊',
+      finalTextAlternates: [
+        'We just launched our new product and the whole team is thrilled\n\n🚀🎉😊',
+        'We just launched our new product 🚀 and the whole team is thrilled 🎉',
+      ],
+      note: 'add emojis → body preserved, emojis added (inline or appended); not a wipe.',
+    },
+  },
+  {
+    id: 'ml-append-es',
+    category: 'multilingual',
+    input: 'añade un párrafo sobre seguridad _ Construye un sitio web con HTML y CSS, con una página de inicio y un formulario de contacto.',
+    expected: {
+      finalText: 'Construye un sitio web con HTML y CSS, con una página de inicio y un formulario de contacto.\n\nLa seguridad es fundamental: usa HTTPS, valida y sanea todas las entradas del formulario, protege contra inyección SQL y XSS, y almacena las credenciales con hashing seguro.',
+      note: 'Spanish instruction AND body → body preserved verbatim, Spanish security paragraph appended.',
+    },
+  },
+  {
+    id: 'ml-translate-es-en',
+    category: 'multilingual',
+    input: 'traduce esto al inglés _ El gato se sentó en la alfombra',
+    expected: {
+      finalText: 'The cat sat on the mat',
+      finalTextAlternates: ['The cat sat on the rug', 'The cat sat on the carpet'],
+      note: 'Spanish instruction "translate this to English" must classify + translate.',
+    },
+  },
+  {
+    id: 'ml-translate-ja',
+    category: 'multilingual',
+    input: 'translate to japanese _ Good morning, how are you?',
+    expected: {
+      finalText: 'おはようございます。お元気ですか？',
+      finalTextAlternates: ['おはよう。元気ですか？', 'おはようございます、お元気ですか？'],
+      note: 'non-Latin script output.',
+    },
+  },
+  {
+    id: 'ml-append-fr',
+    category: 'multilingual',
+    input: 'Le rapport trimestriel montre une forte croissance. ajoute une conclusion _',
+    expected: {
+      finalText: 'Le rapport trimestriel montre une forte croissance.\n\nEn conclusion, cette croissance confirme la solidité de notre stratégie et ouvre des perspectives prometteuses pour le prochain trimestre.',
+      finalTextAlternates: [
+        'Le rapport trimestriel montre une forte croissance.\n\nCette croissance soutenue témoigne de la solidité de nos stratégies et ouvre la voie à des opportunités prometteuses pour le prochain trimestre.',
+        'Le rapport trimestriel montre une forte croissance.\n\nDans l\'ensemble, ces résultats positifs nous positionnent favorablement pour la période à venir.',
+      ],
+      note: 'French body + French instruction → body preserved, French conclusion appended. Generated wording is open-ended; judge grades on body-preservation + a relevant French conclusion.',
+    },
+  },
+  {
+    id: 'ml-formal-de',
+    category: 'multilingual',
+    input: 'mach diesen Text formell _ hey was geht, wir sollten bald mal reden',
+    expected: {
+      finalText: 'Hallo, wie geht es Ihnen? Wir sollten uns bald einmal unterhalten.',
+      finalTextAlternates: ['Guten Tag, wie geht es Ihnen? Wir sollten uns bald einmal besprechen.'],
+      note: 'German instruction + German body → formalized German (in-place transform).',
     },
   },
 ];
