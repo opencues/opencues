@@ -20,6 +20,7 @@ import {
   type RenderContext,
   type RenderDirectives,
   type TextChangeEvent,
+  type CursorChangeEvent,
   type Unsubscribe,
 } from '../../../src/adapter';
 import { shouldSynthesizeMacDoubleEscCtrl } from '../../../src/modules/mac-keyboard';
@@ -56,6 +57,14 @@ export interface HostBindings {
   registerRenderHandler(cb: (ctx: RenderContext) => RenderDirectives | null): Unsubscribe;
   /** Register a text-change handler. Returns unsub. */
   registerTextChangeHandler(cb: (event: TextChangeEvent) => void): Unsubscribe;
+  /** Register a cursor-change handler. Returns unsub.
+   *  CC v2.1's cli.js doesn't surface cursor-only moves natively, so
+   *  REAL user cursor moves don't fire these. The handler list exists
+   *  so synthetic cursor injects via the event-bridge's `cursor:N`
+   *  command can drive runtime modules that gate on cursor changes
+   *  (Navigation's cursor-navigate mode). Optional — when omitted,
+   *  Navigation degrades to "highlight follows typing only". */
+  registerCursorChangeHandler?(cb: (event: CursorChangeEvent) => void): Unsubscribe;
 
   /** Optional: read a file (absolute path). Resolves to null if missing. */
   readFile?(path: string): Promise<string | null>;
@@ -181,6 +190,20 @@ export class ClaudeCodeV21Adapter implements HostAdapter {
 
   onTextChange(handler: (e: TextChangeEvent) => void): Unsubscribe {
     return this.bindings.registerTextChangeHandler(handler);
+  }
+
+  onCursorChange(handler: (e: CursorChangeEvent) => void): Unsubscribe {
+    // Real user cursor moves on CC v2.1 don't fire this (cli.js has
+    // no native onCursorChange surface). The path exists for synthetic
+    // injects via the agentic harness's event-bridge `cursor:N`
+    // command (drives the cursor-navigate-mode highlight contract —
+    // scenario 30). When the bootstrap doesn't wire
+    // registerCursorChangeHandler we return a no-op Unsubscribe so
+    // Navigation's optional-chain guard (navigation.ts:98) still
+    // works — adapter.onCursorChange exists as a function, but the
+    // subscription it returns will never fire.
+    if (!this.bindings.registerCursorChangeHandler) return () => { /* noop */ };
+    return this.bindings.registerCursorChangeHandler(handler);
   }
 
   onRender(handler: (ctx: RenderContext) => RenderDirectives | null): Unsubscribe {

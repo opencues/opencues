@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Fix — wire `onCursorChange` on CC + apply prev-stale fix to bridge's `cursor:` command (runtime 0.3.19)
+
+CC's adapter (`adapters/cc/v2.1/`) didn't expose `onCursorChange` at all — its band has no `cursorHandlers` list, no `registerCursorChangeHandler` binding, no `notifyCursorChange` impl. So `adapter.onCursorChange` was undefined, `Navigation.subscribe()` fell through to its "highlight follows typing only" degradation path, and the cursor-navigate mode (plain Right arrow auto-activates the highlight on the cursor's word) silently no-op'd. Surfaced when scenario 30 in the agentic harness — locked to CC, gated on cursor-navigate — actually ran for the first time after the launcher + inject-order fixes shipped.
+
+Wired the path end-to-end: HostBindings gets `registerCursorChangeHandler`; `ClaudeCodeV21Adapter` gets `onCursorChange`; boot.ts holds a `cursorHandlers` array; the EventBridge bindings's `notifyCursorChange` fires them after stamping `lastSeenCursor`. CC's cli.js still doesn't surface REAL user cursor moves (the parent React tree has no onCursorChange path), so real arrow-key navigation on CC still degrades the same way — the fix unblocks the synthetic-inject path the agentic harness uses to PIN the contract, and lays the wiring for any future native cursor-event source.
+
+Same trip: applied the prev-stale fix from the `text:` order swap to the bridge's `cursor:` command — `notifyCursorChange` runs BEFORE `adapter.setCursorOffset`, so any host that eagerly updates `lastSeenCursor` (CC does) doesn't poison the event's view of the prior position.
+
 ### Fix — event-bridge `text:` inject order so CC's blank-`_` gate fires (runtime 0.3.19)
 
 The bridge's `text:` command (used by every agentic-harness scenario via `inject text:` / `injectAppend`) called `adapter.setText(decoded)` BEFORE the synthetic `notifyTextChange(...,'user')`. On hosts whose `setText` eagerly updates the adapter's `lastSeenText` (CC v2.1 does — to drift-track React re-render echoes), that meant `lastSeenText` was already the NEW buffer by the time `notifyTextChange` constructed the textChange event. The event's `previousText` therefore equalled `text`, and the Resolver's explicit-`_` gate saw `blankJustTyped=false` + `freshUnderscoreInserted=false` — so the `_` was masked from FluidBlank / TransformBlank / ConfigIntent. Every blank-firing `text:` inject silently no-op'd on CC.
