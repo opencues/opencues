@@ -34,17 +34,31 @@ result shape + a small metadata vocabulary.
 |---|---|---|---|
 | **`BlankSource`** (`blank-source.ts`) | `<keyword> _` matches a folder under `blanks/` | None — runs a script / sync stepValues / built-in JS impl | Deterministic splice via `blank-fill.ts`. Slot bounds come from the parser (keyword + `_` positions), not from LLM. |
 | **`FluidBlankSource`** (`fluid-blank-source.ts`) | unbound `_` (no `BlankSource` match) | Short answer (e.g. "Paris") | Deterministic splice via `blank-fill.ts`. `blankReplace` mode (`keep`/`wipe`/`wipe-all`/`auto`) picks the splice range from the slot, not the LLM. |
-| **`TransformBlankSource`** (`transform-blank-source.ts`) | imperative phrase next to `_` (e.g. "make past tense _") | Either a target-only rewrite (3-pass) OR the whole final buffer (`FULL_REWRITE`, fused mode) | **Two paths.** 3-pass: surgical splice driven by `metadata.transformTarget`. Fused: `threeWayMerge` against the live buffer. |
+| **`TransformBlankSource`** (`transform-blank-source.ts`) | imperative phrase next to `_` (e.g. "make past tense _") | A target-only rewrite (3-pass) OR an LLM-emitted SPAN + slice REWRITE (fused, June 2026) | **One path.** Deterministic splice via `metadata.transformTarget` (= SPAN for fused, target text for 3-pass). Anything in the buffer outside the SPAN range is preserved verbatim. |
 | **`SentenceCueSource`** (`sentence-cue-source.ts`) | one cue per sentence at `scope: sentence` | Sentence alternatives | Passive — registers a DynDef; cycling swaps the sentence via the existing word-cue cycle path. Never touches the buffer until the user presses Ctrl+Alt+Up. |
 | **`ConfigIntentSource`** (`config-intent-source.ts`) | unbound `_` interpreted as a settings change ("make it louder _") | Setting + value classification | Selector-satellite shaped result with `clearOnEdit: true`; substitute wipes the summon words via `spanStart=0, spanEnd=text.length` and hands off to standard cycling. |
 | **`ConfigSource`** (`config-source.ts`) | highlighted word matches the source's `match:` / `keywords:` (LLM word-cue) | Word alternatives | Per-word substitution via DynDef set; no buffer-wide rewrite. |
 | **`LocalCueSource`** (`local-cue-source.ts`) | highlighted word matches a static tip | Static alternatives from `CUES.md`'s `## Tips` | Per-word substitution via DynDef set; no LLM call. |
 | **`RoutedWordSourceGroup`** (`routed-word-source-group.ts`) | wraps every `ConfigSource` | (dispatches) | Not a substitute mechanism — routes each highlighted word to exactly one child source by priority + `match:` / `keywords:`. See `docs/features/word-cue-routing.md`. |
 
-`AgentRewrite` lives in `opencues-runtime` (not a `CueSource`) and
-also routes through `threeWayMerge`; see
-[`agent-task.md`](agent-task.md). Its merge primitive is the same
-one TransformBlank-fused reuses.
+`AgentRewrite` lives in `opencues-runtime` (not a `CueSource`) and is
+the **only** remaining consumer of `threeWayMerge`; see
+[`agent-task.md`](agent-task.md). The merge primitive stays load-
+bearing there because AgentRewrite is a background rewriter that may
+run for seconds while the user keeps typing; three-way merge protects
+in-flight user edits from being clobbered. The semantic `_` sources
+all run on a single keystroke and don't have that exposure window —
+the splice mechanism is sufficient.
+
+> **June 2026 unification.** Previously TransformBlank fused mode
+> also routed through `threeWayMerge` (LLM emitted `FULL_REWRITE` =
+> whole buffer; runtime diffed against the live buffer). Empirical
+> testing showed the merge didn't protect against the LLM dropping
+> unrelated prior content from `FULL_REWRITE` — the snapshot vs
+> liveText diff only catches in-flight user typing, not LLM
+> omissions. The fused path now emits SPAN + slice REWRITE and
+> splices, matching FluidBlank + ConfigIntent. One mechanism, one
+> mental model, one bug surface.
 
 ---
 
@@ -81,7 +95,8 @@ by the merge primitive.
 
 ### 2. Three-way merge (whole-buffer LLM)
 
-Used by `TransformBlankSource` fused mode + `AgentRewrite`.
+Used by `AgentRewrite` only (June 2026 — TransformBlank fused mode
+moved to splice; see the table note above).
 
 ```ts
 const merge = threeWayMerge(snapshot, fullRewrite, liveText);

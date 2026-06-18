@@ -40,7 +40,7 @@
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
 import { BlankConfig } from '../cues-md';
 import { useStrictJson, buildJsonResponseFormat, describeLLMCall, dispatchChat, getProvider, type ProviderAdapter } from '../llm-provider';
-import { classifyLlmError, type FluidBlankErrorReason } from './fluid-blank-source';
+import { classifyLlmError, findSpanCharRange, type FluidBlankErrorReason } from './fluid-blank-source';
 import { detectModelOverride, applySubscriptionPreference, stripModelOverride, type ModelOverride } from '../model-aliases';
 import { detectPartialTransform } from './transform-partial-detector';
 import { injectCursorSentinel, stripCursorSentinel } from '../cursor-sentinel';
@@ -780,11 +780,12 @@ const FUSED_SYSTEM = `Read the input and produce a structured edit result.
 
 The input is a sentence with an underscore (_) signalling either an IMPERATIVE INSTRUCTION the user wants applied to surrounding text, OR a command to manage a continuously-running agent task, OR a lookup placeholder (none of those).
 
-Output exactly four labelled lines (FULL_REWRITE may span multiple lines):
+Output exactly five labelled lines (REWRITE may span multiple lines):
 VERDICT: TRANSFORM | NONE | TASK_ARM | TASK_ADD | TASK_STOP | TASK_SHOW
 INSTRUCTION: <the imperative phrase OR task prompt, _ removed; or empty>
 TARGET: <the rest of the input after removing instruction + _; or empty>
-FULL_REWRITE: <the ENTIRE final buffer with the instruction applied AND the instruction phrase + _ removed. Contains ONLY what the user should see. Empty when VERDICT is NONE / TASK_*>
+SPAN: <the verbatim substring of INPUT that constitutes the transform region: INSTRUCTION + _ + TARGET, in input order. When the user typed UNRELATED prior content before the imperative (e.g. "hii world. uppercase the brands _ i bought apple"), SPAN starts at the first character of INSTRUCTION-or-TARGET (whichever is leftmost) — NOT at the start of the input. When the whole input IS INSTRUCTION + _ + TARGET, SPAN equals the whole input. Empty when VERDICT is NONE.>
+REWRITE: <the REPLACEMENT for SPAN: the post-transform TARGET with INSTRUCTION + _ stripped. Contains ONLY the slice that replaces SPAN — NEVER repeat any text from before SPAN (prior content is preserved by the runtime, not by you). Empty when VERDICT is NONE / TASK_*>
 
 LAYOUTS — the instruction sits IMMEDIATELY before _. Three valid:
   - <INSTRUCTION> _ <TARGET>
@@ -817,7 +818,8 @@ APPLY RULES when VERDICT=TRANSFORM with non-empty TARGET:
 6. ROLE PRESERVATION — "add 10%" to "original price 100, final price 100" only changes FINAL → 110.
 7. CONDITIONAL — apply ONLY where the condition holds ("change boy to girl but not in second sentence").
 8. PRESERVE PARAGRAPHS — \\n\\n breaks survive verbatim.
-9. FULL_REWRITE contains ONLY what the user should see — instruction phrase + _ deleted, all surrounding context preserved verbatim or transformed per the instruction.
+9. REWRITE contains ONLY the slice that replaces SPAN — the post-transform TARGET, with INSTRUCTION + _ already deleted. NEVER repeat any text from BEFORE SPAN in the input; the runtime preserves prior content verbatim and splices REWRITE into SPAN's range.
+10. SPAN must be a verbatim contiguous substring of INPUT covering both INSTRUCTION and TARGET and the _ between/after them. The PRIOR-CONTENT exclusion only applies when there is a clear sentence-or-topic boundary (period, newline, semicolon) between prior content and the imperative — e.g. "draft email. uppercase the brands _ apple" → SPAN starts at "uppercase". WITHOUT such a boundary, all preceding content IS the target and is part of SPAN — e.g. "i bought apple uppercase the brands _" → SPAN is the WHOLE input. Default to SPAN-equals-whole-input when in doubt; the prior-content carve-out is the EXCEPTION, not the rule.
 
 EXAMPLES:
 
@@ -825,91 +827,141 @@ INPUT: change boy to girl _ the boy ran fast
 VERDICT: TRANSFORM
 INSTRUCTION: change boy to girl
 TARGET: the boy ran fast
-FULL_REWRITE: the girl ran fast
+SPAN: change boy to girl _ the boy ran fast
+REWRITE: the girl ran fast
 
 INPUT: he/she swap _ he gave the book to John
 VERDICT: TRANSFORM
 INSTRUCTION: he/she swap
 TARGET: he gave the book to John
-FULL_REWRITE: she gave the book to John
+SPAN: he/she swap _ he gave the book to John
+REWRITE: she gave the book to John
 
 INPUT: make it british english _ the color of the harbor is gray
 VERDICT: TRANSFORM
 INSTRUCTION: make it british english
 TARGET: the color of the harbor is gray
-FULL_REWRITE: the colour of the harbour is grey
+SPAN: make it british english _ the color of the harbor is gray
+REWRITE: the colour of the harbour is grey
 
 INPUT: pluralize _ the child found one mouse
 VERDICT: TRANSFORM
 INSTRUCTION: pluralize
 TARGET: the child found one mouse
-FULL_REWRITE: the children found mice
+SPAN: pluralize _ the child found one mouse
+REWRITE: the children found mice
 
 INPUT: change pet from dog to cat _ the dog wagged its tail and barked at the postman
 VERDICT: TRANSFORM
 INSTRUCTION: change pet from dog to cat
 TARGET: the dog wagged its tail and barked at the postman
-FULL_REWRITE: the cat swished its tail and meowed at the postman
+SPAN: change pet from dog to cat _ the dog wagged its tail and barked at the postman
+REWRITE: the cat swished its tail and meowed at the postman
 
 INPUT: i bought apple and samsung phones online uppercase the brands _
 VERDICT: TRANSFORM
 INSTRUCTION: uppercase the brands
 TARGET: i bought apple and samsung phones online
-FULL_REWRITE: i bought APPLE and SAMSUNG phones online
+SPAN: i bought apple and samsung phones online uppercase the brands _
+REWRITE: i bought APPLE and SAMSUNG phones online
 
 INPUT: pluralize and make past tense _ the child runs to the park
 VERDICT: TRANSFORM
 INSTRUCTION: pluralize | make past tense
 TARGET: the child runs to the park
-FULL_REWRITE: the children ran to the parks
+SPAN: pluralize and make past tense _ the child runs to the park
+REWRITE: the children ran to the parks
 
 INPUT: write a poem about the sea _
 VERDICT: TRANSFORM
 INSTRUCTION: write a poem about the sea
 TARGET:
-FULL_REWRITE: Waves whisper to the shore, / endless rhythm, salt-bright air, / the sea holds every story.
+SPAN: write a poem about the sea _
+REWRITE: Waves whisper to the shore, / endless rhythm, salt-bright air, / the sea holds every story.
+
+INPUT: hii world. uppercase the brands _ i bought apple and samsung phones
+VERDICT: TRANSFORM
+INSTRUCTION: uppercase the brands
+TARGET: i bought apple and samsung phones
+SPAN: uppercase the brands _ i bought apple and samsung phones
+REWRITE: i bought APPLE and SAMSUNG phones
+
+INPUT: hi my name is wilfred make it caps _
+VERDICT: TRANSFORM
+INSTRUCTION: make it caps
+TARGET: hi my name is wilfred
+SPAN: hi my name is wilfred make it caps _
+REWRITE: HI MY NAME IS WILFRED
+
+INPUT: hi my name is **wilfred** make it caps _
+VERDICT: TRANSFORM
+INSTRUCTION: make it caps
+TARGET: hi my name is **wilfred**
+SPAN: hi my name is **wilfred** make it caps _
+REWRITE: HI MY NAME IS **WILFRED**
+
+INPUT: meeting at 3pm. translate hello world to french _
+VERDICT: TRANSFORM
+INSTRUCTION: translate hello world to french
+TARGET:
+SPAN: translate hello world to french _
+REWRITE: bonjour le monde
+
+INPUT: notes for monday. make this a question _ the meeting is at 3pm
+VERDICT: TRANSFORM
+INSTRUCTION: make this a question
+TARGET: the meeting is at 3pm
+SPAN: make this a question _ the meeting is at 3pm
+REWRITE: is the meeting at 3pm?
 
 INPUT: agentically correct spelling _
 VERDICT: TASK_ARM
 INSTRUCTION: correct spelling
 TARGET:
-FULL_REWRITE:
+SPAN: agentically correct spelling _
+REWRITE:
 
 INPUT: capital of france _
 VERDICT: NONE
 INSTRUCTION:
 TARGET:
-FULL_REWRITE:
+SPAN:
+REWRITE:
 
 INPUT: click _ to continue
 VERDICT: NONE
 INSTRUCTION:
 TARGET:
-FULL_REWRITE:
+SPAN:
+REWRITE:
 
 INPUT: answer this _
 VERDICT: NONE
 INSTRUCTION:
 TARGET:
-FULL_REWRITE:
+SPAN:
+REWRITE:
 
 INPUT: answer _
 VERDICT: NONE
 INSTRUCTION:
 TARGET:
-FULL_REWRITE:
+SPAN:
+REWRITE:
 
 INPUT: fill in _
 VERDICT: NONE
 INSTRUCTION:
 TARGET:
-FULL_REWRITE:
+SPAN:
+REWRITE:
 
 INPUT: what is the answer _
 VERDICT: NONE
 INSTRUCTION:
 TARGET:
-FULL_REWRITE:`;
+SPAN:
+REWRITE:`;
 
 // ============================================================================
 // Parsers
@@ -936,29 +988,42 @@ interface FusedResult {
   verdict: ExtractVerdict;
   instruction: string;
   target: string;
+  /** Verbatim substring of the input the LLM claims its REWRITE
+   *  replaces (INSTRUCTION + _ + TARGET in input order). Used by
+   *  the runtime to derive the splice range — anything BEFORE
+   *  SPAN's start in the buffer is preserved verbatim. Empty
+   *  on NONE / TASK_* verdicts (no slice to splice). */
+  span: string;
   rewrite: string;
 }
 
 /**
  * Parser for the fused-mode output (`FUSED_SYSTEM` prompt). Same shape as
- * parseExtract but with an extra REWRITE field at the end. The TARGET field
- * is multi-line-tolerant (sandwiched layout) but stops at the REWRITE label
- * via a lookahead, since REWRITE itself can also span multiple lines.
+ * parseExtract but with extra SPAN + REWRITE fields. SPAN is single-line
+ * (lives between TARGET and REWRITE). REWRITE is multi-line-tolerant
+ * (poems, translations, long-form generation) and is the last field.
  */
 function parseFused(raw: string): FusedResult {
   const verdictMatch = raw.match(/^VERDICT:[ \t]*(TRANSFORM|NONE|TASK_ARM|TASK_ADD|TASK_STOP|TASK_SHOW)[ \t]*$/im);
   const instructionMatch = raw.match(/^INSTRUCTION:[ \t]*(.*?)[ \t]*$/im);
-  // TARGET may span multiple lines but stops at the FULL_REWRITE: (or
-  // legacy REWRITE:) label via lookahead.
-  const targetMatch = raw.match(/TARGET:[ \t]*([\s\S]*?)(?=^(?:FULL_)?REWRITE:|\s*$)/im);
-  // FULL_REWRITE is the last field — capture to end of output. Accept
-  // bare REWRITE: too for back-compat with models that drop the prefix.
+  // TARGET may span multiple lines but stops at the SPAN: / FULL_REWRITE: /
+  // REWRITE: label via lookahead. (FULL_REWRITE accepted for back-compat
+  // with the pre-June-2026 whole-buffer prompt — a model that hasn't
+  // learnt the new SPAN+slice shape will fall through to whole-buffer
+  // via the empty-SPAN path below.)
+  const targetMatch = raw.match(/TARGET:[ \t]*([\s\S]*?)(?=^SPAN:|^(?:FULL_)?REWRITE:|\s*$)/im);
+  // SPAN is a single-line verbatim substring of input.
+  const spanMatch = raw.match(/^SPAN:[ \t]*(.*?)[ \t]*$/im);
+  // REWRITE is the last field — capture to end of output. Accept
+  // FULL_REWRITE: too for the pre-June-2026 whole-buffer prompt shape
+  // (back-compat with models that haven't learnt the new contract).
   const rewriteMatch = raw.match(/(?:FULL_)?REWRITE:[ \t]*([\s\S]*?)\s*$/i);
   const verdict = (verdictMatch ? verdictMatch[1].toUpperCase() : 'NONE') as ExtractVerdict;
   return {
     verdict,
     instruction: instructionMatch ? instructionMatch[1].trim() : '',
     target: targetMatch ? targetMatch[1].trim() : '',
+    span: spanMatch ? spanMatch[1].trim() : '',
     rewrite: rewriteMatch ? rewriteMatch[1].trim() : '',
   };
 }
@@ -1488,7 +1553,7 @@ export class TransformBlankSource implements CueSource {
    * the resolver rebuilt (focus shift, config refresh) still hits
    * cache. Tests must clear it explicitly (see resetVariantPoolForTest).
    */
-  private static _variantPool = new Map<string, { entries: string[]; cyclePos: number }>();
+  private static _variantPool = new Map<string, { entries: { rewrite: string; span: string }[]; cyclePos: number }>();
   private static readonly VARIANT_POOL_SIZE = 3;
   private static readonly VARIANT_KEY_CAP = 32;
   private maxTokensOverride: number | undefined;
@@ -1707,24 +1772,38 @@ export class TransformBlankSource implements CueSource {
       const cacheKey = this._computeCacheKey(context);
       const variantChoice = this.mode === 'fused'
         ? this._selectVariant(cacheKey)
-        : { kind: 'fresh' as const, others: [] as string[] };
+        : { kind: 'fresh' as const, others: [] as { rewrite: string; span: string }[] };
       if (variantChoice.kind === 'cache') {
         this.log(`TransformBlank: variant-cache HIT — serving cached rewrite (pool size ${variantChoice.others.length + 1})`);
+        // Re-derive splice geometry from the cached SPAN. The cache
+        // key includes context.text verbatim, so the SPAN we recorded
+        // on the original dispatch IS still a substring of the live
+        // buffer here — lastIndexOf is structurally safe.
+        const otherRewrites = variantChoice.others.map(o => o.rewrite);
+        const range = findSpanCharRange(variantChoice.span, context.text);
+        const spanStart = range !== null ? range[0] : 0;
+        const spanEnd = range !== null ? range[1] : context.text.length;
         return {
           results: [{
             wordIndex: blankIdx,
             word: '_',
-            alternatives: [context.text, variantChoice.rewrite, ...variantChoice.others],
+            // alternatives[0] = FULL original buffer (race-guard +
+            // DynDef revert state); alternatives[1] = cached slice
+            // REWRITE; alternatives[2..N] = other cached slice REWRITEs.
+            // Resolver computes splice bounds from transformTarget (= SPAN)
+            // via indexOf against alternatives[0].
+            alternatives: [context.text, variantChoice.rewrite, ...otherRewrites],
             source: this.id,
             priority: this.priority,
-            spanStart: 0,
-            spanEnd: context.text.length,
+            spanStart,
+            spanEnd,
             metadata: {
-              // transformTarget intentionally omitted — its absence
-              // routes the resolver substitute branch to whole-body
-              // replace, which is correct: the cached rewrite IS the
-              // post-substitution whole-buffer content (true for both
-              // fused mode and 3-pass mode at the cache layer).
+              // transformTarget = SPAN content — routes the resolver
+              // substitute branch through the existing splice path
+              // (3-pass and FUSED+SPAN share one mechanism: deterministic
+              // slot splice with parser/LLM-emitted bounds). The merge
+              // path is now reserved for AgentRewrite only.
+              transformTarget: variantChoice.span,
               pipelineMode: 'variant-cache',
               pipelineLatencyMs: 0,
               variantCacheHit: true,
@@ -1736,10 +1815,9 @@ export class TransformBlankSource implements CueSource {
         };
       }
       // Fresh path — `variantChoice.others` carries the prior pool
-      // entries (may be empty during build phase). These get
-      // prepended-after-fresh on the alternatives array at each
-      // return site so users can Up-arrow through history without
-      // re-dispatching.
+      // entries (may be empty during build phase). Each entry is
+      // {rewrite, span}; alternatives at the return site use just the
+      // rewrites for Up-arrow history walk.
       const priorVariants = variantChoice.others;
 
       // FUSED MODE — single-call short-circuit. Capable generalist models
@@ -2200,7 +2278,7 @@ export class TransformBlankSource implements CueSource {
     preview: (s: string) => string,
     startTime: number,
     cacheKey: string,
-    priorVariants: string[],
+    priorVariants: { rewrite: string; span: string }[],
   ): Promise<CueSourceResult | null> {
     // Same text-source precedence as the 3-pass EXTRACT input (rich-text
     // > as-typed > visible) so styling + agent-revert behaviour matches.
@@ -2294,7 +2372,7 @@ export class TransformBlankSource implements CueSource {
       ...fParsed,
       rewrite: this.resolveSentinels(fParsed.rewrite, context.text, fusedUserCtx, fusedBlankSnapshot),
     };
-    this.log(`TransformBlank FUSED (${Date.now() - fusedStart}ms, max_tokens=${fusedTokens}, source=${sourceTag}): verdict=${f.verdict}, instruction="${f.instruction}", target="${preview(f.target)}", rewrite="${preview(f.rewrite)}"`);
+    this.log(`TransformBlank FUSED (${Date.now() - fusedStart}ms, max_tokens=${fusedTokens}, source=${sourceTag}): verdict=${f.verdict}, instruction="${f.instruction}", target="${preview(f.target)}", span="${preview(f.span)}", rewrite="${preview(f.rewrite)}"`);
     this.emit({
       type: 'pass-completed',
       pass: 'P1',
@@ -2343,12 +2421,31 @@ export class TransformBlankSource implements CueSource {
       return null;
     }
 
-    // Whole-buffer contract (May 2026 — FULL_REWRITE replaces
-    // REWRITE-of-target). The LLM owns the entire rewritten buffer;
-    // the runtime three-way-merges it against the live text. This
-    // structurally eliminates the duplication bug class that arose
-    // when narrow-TARGET + wide-REWRITE made the splice path concat
-    // an already-rewritten tail. No detector needed.
+    // SPAN+slice contract (June 2026 — unifies FUSED with the other
+    // splice sources). LLM emits SPAN (the verbatim substring to
+    // replace) + REWRITE (just the slice that fills it). The runtime
+    // computes splice bounds via findSpanCharRange and substitutes
+    // REWRITE at [spanStart, spanEnd). Anything outside SPAN —
+    // including any user-typed prior content — is preserved verbatim
+    // because the splice never touches it. This replaces the
+    // pre-June-2026 whole-buffer + three-way-merge mechanism (merge
+    // didn't protect against the LLM dropping unrelated prefix from
+    // FULL_REWRITE — empirically broken on 5/5 prior-content tests).
+    //
+    // Fallback for legacy LLM output (empty / unfindable SPAN): treat
+    // REWRITE as the whole post-transform buffer, splice [0, text.length).
+    // Matches the pre-June-2026 contract so older provider responses
+    // don't regress. New prompt examples train the LLM on SPAN; this
+    // branch should be cold in steady state.
+    //
+    // Duplication-bug-class defence (the structural reason May 2026
+    // moved to whole-buffer + merge): the May bug was narrow-TARGET +
+    // wide-REWRITE + concat-tail at [span_end:]. The new contract has
+    // no concat-tail — REWRITE replaces SPAN exactly, nothing else
+    // is appended. The remaining risk is the LLM emitting REWRITE that
+    // overlaps text outside SPAN; the prompt explicitly forbids this
+    // (rule 9 + 10) and the SPAN-or-fallback split keeps the runtime
+    // safe even if the LLM ignores the rule.
     //
     // NOTE: the `transform-blank.completed` event is intentionally NOT
     // fired here. It's emitted from the RESOLVER's substitute branch
@@ -2361,36 +2458,45 @@ export class TransformBlankSource implements CueSource {
     // event fires. Latency is carried through the result so the
     // resolver can include it on the event body.
     const pipelineLatencyMs = Date.now() - startTime;
-    // Record the fresh rewrite into the variant pool — subsequent
-    // identical-buffer triggers will cycle through cached variants
-    // (see _variantPool docs for the state machine). FIFO eviction
-    // when at capacity, so the just-recorded rewrite is the most
-    // recent and an older entry may have just been dropped.
-    this._recordFreshRewrite(cacheKey, f.rewrite);
+    // Locate SPAN in the input buffer. The LLM was instructed to emit
+    // a verbatim substring; lastIndexOf picks the closest-to-`_`
+    // occurrence if the same span appears twice in the buffer.
+    const spanRange = f.span ? findSpanCharRange(f.span, context.text) : null;
+    const spliceStart = spanRange !== null ? spanRange[0] : 0;
+    const spliceEnd = spanRange !== null ? spanRange[1] : context.text.length;
+    const spanSubstring = spanRange !== null ? f.span : context.text;
+    // Record the fresh rewrite + span into the variant pool. The span
+    // travels with the rewrite so cache hits can re-derive splice
+    // geometry without re-calling the LLM.
+    this._recordFreshRewrite(cacheKey, f.rewrite, spanSubstring);
     // Re-read the pool POST-RECORD to get the actually-cached
     // siblings (priorVariants was captured pre-record and may
     // include an entry that's now been evicted).
     const postRecordOthers = (TransformBlankSource._variantPool.get(cacheKey)?.entries ?? [])
-      .filter(r => r !== f.rewrite);
+      .filter(e => e.rewrite !== f.rewrite)
+      .map(e => e.rewrite);
     const result: CueResult = {
       wordIndex: blankIdx,
       word: '_',
-      // alternatives shape: [original, fresh, ...other-pool-entries].
-      // Up-arrow walks alternatives[2..N] = prior cached variants;
-      // Down-arrow walks to alternatives[0] = original (revert).
+      // alternatives shape: [full-original-buffer, fresh-slice-rewrite,
+      // ...other-pool-rewrites]. alternatives[0] is the FULL buffer
+      // (the resolver's race-guard compares it against liveText, and
+      // the DynDef cycling stores it as the "revert" state). The
+      // resolver computes splice bounds from metadata.transformTarget
+      // (= SPAN) via indexOf against alternatives[0] and replaces just
+      // [spanStart, spanEnd) with alternatives[1] (= slice REWRITE).
       alternatives: [context.text, f.rewrite, ...postRecordOthers],
       source: this.id,
       priority: this.priority,
-      spanStart: 0,
-      spanEnd: context.text.length,
+      spanStart: spliceStart,
+      spanEnd: spliceEnd,
       metadata: {
-        // INSTRUCTION + TARGET kept for debug + event payloads — they
-        // are CoT scaffolding the model produced, NOT splice geometry.
-        // `transformTarget` is intentionally omitted from the metadata
-        // shape the runtime reads for substitution: its presence on a
-        // result is the signal to take the surgical-splice path (used
-        // by 3-pass). Whole-buffer fused results skip that branch and
-        // route through `threeWayMerge` instead.
+        // transformTarget = SPAN content — routes the resolver
+        // substitute branch through the existing splice path
+        // (3-pass and FUSED+SPAN share one mechanism: deterministic
+        // slot splice with parser/LLM-emitted bounds). The merge
+        // path is now reserved for AgentRewrite only.
+        transformTarget: spanSubstring,
         transformInstruction: f.instruction,
         transformTargetDebug: f.target,
         verifyVerdict: 'SKIPPED',
@@ -2532,7 +2638,7 @@ export class TransformBlankSource implements CueSource {
    * the FRESH path is responsible for calling _recordFreshRewrite()
    * AFTER dispatch succeeds).
    */
-  private _selectVariant(key: string): { kind: 'cache'; rewrite: string; others: string[] } | { kind: 'fresh'; others: string[] } {
+  private _selectVariant(key: string): { kind: 'cache'; rewrite: string; span: string; others: { rewrite: string; span: string }[] } | { kind: 'fresh'; others: { rewrite: string; span: string }[] } {
     let entry = TransformBlankSource._variantPool.get(key);
     if (!entry) {
       entry = { entries: [], cyclePos: 0 };
@@ -2550,10 +2656,10 @@ export class TransformBlankSource implements CueSource {
 
     // Cycling phase — pool full, serve next.
     if (entry.cyclePos < entry.entries.length) {
-      const rewrite = entry.entries[entry.cyclePos];
+      const chosen = entry.entries[entry.cyclePos];
       entry.cyclePos++;
       const others = entry.entries.filter((_, i) => i !== entry!.cyclePos - 1);
-      return { kind: 'cache', rewrite, others };
+      return { kind: 'cache', rewrite: chosen.rewrite, span: chosen.span, others };
     }
 
     // Refresh phase — cycle done, generate fresh.
@@ -2562,11 +2668,11 @@ export class TransformBlankSource implements CueSource {
 
   /**
    * Record a fresh LLM rewrite into the variant pool. Called by the
-   * dispatch path after a successful LLM call. Handles FIFO eviction
-   * when the pool is at capacity (preserves variation by always
-   * adding the newest, dropping the oldest).
+   * dispatch path after a successful LLM call. Stores rewrite + span
+   * together so cache hits can re-derive splice geometry without
+   * re-calling the LLM. Handles FIFO eviction at capacity.
    */
-  private _recordFreshRewrite(key: string, rewrite: string): void {
+  private _recordFreshRewrite(key: string, rewrite: string, span: string): void {
     let entry = TransformBlankSource._variantPool.get(key);
     if (!entry) {
       // Defensive — shouldn't happen since _selectVariant always
@@ -2580,7 +2686,7 @@ export class TransformBlankSource implements CueSource {
     if (entry.entries.length >= TransformBlankSource.VARIANT_POOL_SIZE) {
       entry.entries.shift();
     }
-    entry.entries.push(rewrite);
+    entry.entries.push({ rewrite, span });
     entry.cyclePos = 0;
 
     // LRU cap on distinct keys.

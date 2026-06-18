@@ -58,7 +58,7 @@
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
 import { BlankConfig } from '../cues-md';
 import { describeLLMCall, dispatchChat, getProvider, listProviders, type ProviderAdapter } from '../llm-provider';
-import { classifyLlmError, type FluidBlankErrorReason } from './fluid-blank-source';
+import { classifyLlmError, findSpanCharRange, type FluidBlankErrorReason } from './fluid-blank-source';
 import { detectModelOverride } from '../model-aliases';
 import {
   FEATURES,
@@ -306,6 +306,7 @@ VALUE: <one of the listed values for that scalar>
 SCOPE:
 PROVIDER:
 MODEL:
+SPAN: <contiguous substring of INPUT that constitutes the settings command, including any leading verbs / sugar ("please ", "let's ", "turn ", "enable ", etc.) and the trailing _. Quote the input VERBATIM; do not paraphrase. If the whole input is the command, emit the whole input.>
 CONFIDENCE: <0.0..1.0>
 
 When INTENT is PROVIDER:
@@ -315,6 +316,7 @@ VALUE:
 SCOPE: <one of: ${BUCKET_LIST}>
 PROVIDER: <provider id from INTENT B list>
 MODEL: <model id from that provider's list, OR empty>
+SPAN: <same shape as above>
 CONFIDENCE: <0.0..1.0>
 
 When INTENT is NONE:
@@ -324,6 +326,7 @@ VALUE:
 SCOPE:
 PROVIDER:
 MODEL:
+SPAN:
 CONFIDENCE: <0.0..1.0>
 
 CONFIDENCE:
@@ -347,6 +350,7 @@ VALUE: on
 SCOPE:
 PROVIDER:
 MODEL:
+SPAN: enable debug logging _
 CONFIDENCE: 0.97
 
 INPUT: stop reading the tips out loud _
@@ -356,6 +360,37 @@ VALUE: inactive
 SCOPE:
 PROVIDER:
 MODEL:
+SPAN: stop reading the tips out loud _
+CONFIDENCE: 0.92
+
+INPUT: hii world. voice mode off _
+INTENT: SETTING
+SETTING: voice-mode
+VALUE: inactive
+SCOPE:
+PROVIDER:
+MODEL:
+SPAN: voice mode off _
+CONFIDENCE: 0.95
+
+INPUT: writing my notes turn debug mode on _
+INTENT: SETTING
+SETTING: debug-mode
+VALUE: on
+SCOPE:
+PROVIDER:
+MODEL:
+SPAN: turn debug mode on _
+CONFIDENCE: 0.93
+
+INPUT: I keep talking about voice mode. Now please change to cerebras _
+INTENT: PROVIDER
+SETTING:
+VALUE:
+SCOPE: cues
+PROVIDER: cerebras
+MODEL:
+SPAN: please change to cerebras _
 CONFIDENCE: 0.92
 
 INPUT: I keep typing _italic_ and the blank fires before the closing one _
@@ -554,6 +589,11 @@ export interface SettingVerdict {
   readonly setting: string;
   readonly value: string;
   readonly confidence: number | null;
+  /** Verbatim substring of the input buffer that constitutes the
+   *  settings command — used to splice ONLY the summon phrase out
+   *  of the buffer, preserving any prior user content. May be null
+   *  when the LLM omitted SPAN (back-compat with pre-SPAN prompts). */
+  readonly summon: string | null;
 }
 
 export interface ProviderVerdict {
@@ -562,11 +602,13 @@ export interface ProviderVerdict {
   readonly provider: string;
   readonly model: string | null;
   readonly confidence: number | null;
+  readonly summon: string | null;
 }
 
 export interface NoneVerdict {
   readonly kind: 'none';
   readonly confidence: number | null;
+  readonly summon: string | null;
 }
 
 export type ConfigIntentVerdict = SettingVerdict | ProviderVerdict | NoneVerdict;
@@ -589,6 +631,7 @@ export function parseConfigIntentOutput(raw: string): ConfigIntentVerdict {
   const scopeMatch = raw.match(/^SCOPE:[ \t]*(.*?)[ \t]*$/im);
   const providerMatch = raw.match(/^PROVIDER:[ \t]*(.*?)[ \t]*$/im);
   const modelMatch = raw.match(/^MODEL:[ \t]*(.*?)[ \t]*$/im);
+  const spanMatch = raw.match(/^SPAN:[ \t]*(.*?)[ \t]*$/im);
   const confidenceMatch = raw.match(/^CONFIDENCE:[ \t]*([0-9.]+)/im);
 
   const intentRaw = intentMatch ? intentMatch[1].trim().toUpperCase() : '';
@@ -597,6 +640,8 @@ export function parseConfigIntentOutput(raw: string): ConfigIntentVerdict {
   const scopeRaw = scopeMatch ? scopeMatch[1].trim().toLowerCase() : '';
   const providerRaw = providerMatch ? providerMatch[1].trim().toLowerCase() : '';
   const modelRaw = modelMatch ? modelMatch[1].trim() : '';
+  const summonRaw = spanMatch ? spanMatch[1].trim() : '';
+  const summon: string | null = summonRaw.length > 0 ? summonRaw : null;
   const confidence = confidenceMatch ? Number(confidenceMatch[1]) : null;
 
   // Infer kind. Explicit INTENT line wins; otherwise fall back to
@@ -612,13 +657,13 @@ export function parseConfigIntentOutput(raw: string): ConfigIntentVerdict {
 
   if (kind === 'setting') {
     if (!settingRaw || settingRaw.toUpperCase() === 'NONE' || !valueRaw) {
-      return { kind: 'none', confidence };
+      return { kind: 'none', confidence, summon };
     }
-    return { kind: 'setting', setting: settingRaw, value: valueRaw, confidence };
+    return { kind: 'setting', setting: settingRaw, value: valueRaw, confidence, summon };
   }
   if (kind === 'provider') {
     if (!providerRaw || providerRaw.toUpperCase() === 'NONE') {
-      return { kind: 'none', confidence };
+      return { kind: 'none', confidence, summon };
     }
     // Normalise scope; default to 'blanks' when the classifier omitted
     // it ("switch to anthropic _" with no explicit scope routes to the
@@ -633,9 +678,10 @@ export function parseConfigIntentOutput(raw: string): ConfigIntentVerdict {
       provider: providerRaw,
       model: modelRaw || null,
       confidence,
+      summon,
     };
   }
-  return { kind: 'none', confidence };
+  return { kind: 'none', confidence, summon };
 }
 
 /**
@@ -1012,20 +1058,35 @@ export class ConfigIntentSource implements CueSource {
 
     // Selector-satellite shape, mirroring the result BlankSource emits
     // for keyword-bound `opencues settings _` (see blank-source.ts
-    // selector-satellite branch). spanStart=0/spanEnd=text.length wipes
-    // the user's summon words AND the `_` — the buffer becomes JUST
-    // "<scalar><sep><value>" and full satellite cycling is then live.
-    // For provider verdicts the bucket scalar (cues-llm-provider, etc.)
-    // is itself a FEATURES entry, so satellite cycling enumerates the
-    // provider list directly — no extra wiring needed.
+    // selector-satellite branch). The span wipes the user's summon
+    // words AND the `_` — the buffer becomes "<prior content><scalar>
+    // <sep><value>" (or just the latter when there is no prior content)
+    // and full satellite cycling is then live.
+    //
+    // Preserve prior user content via the LLM-emitted SPAN field: the
+    // classifier returns the verbatim substring constituting the
+    // settings command, and `findSpanCharRange` locates it via
+    // lastIndexOf (closest-to-`_` match). Falls back to the whole
+    // buffer when SPAN is missing or unlocatable. Use case:
+    // "hii world. voice mode off _" → wipes only the settings phrase,
+    // leaving "hii world." intact.
+    let summonStart = 0;
+    let summonEnd = context.text.length;
+    const summonRange = verdict.summon
+      ? findSpanCharRange(verdict.summon, context.text)
+      : null;
+    if (summonRange !== null) {
+      summonStart = summonRange[0];
+      summonEnd = summonRange[1];
+    }
     const result: CueResult = {
       wordIndex: blankIdx,
       word: '_',
       alternatives: [displaySelector],
       source: this.id,
       priority: this.priority,
-      spanStart: 0,
-      spanEnd: context.text.length,
+      spanStart: summonStart,
+      spanEnd: summonEnd,
       cueTip,
       metadata: {
         blankName: 'opencues',

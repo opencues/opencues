@@ -501,11 +501,20 @@ const TASK_TRIGGER_GUARD = /\b(?:agentically|(?:stop|add|current|show)\s+task|ta
  *
  * The runtime uses character offsets in WordDef.spanStart/spanEnd (not word
  * indices), so CueResult.spanStart/spanEnd must also be characters.
+ *
+ * Uses LAST occurrence (`lastIndexOf`) so a user with prior content
+ * that happens to contain the same substring earlier in the buffer
+ * still gets the recent (trailing-`_`) instance picked. e.g.
+ * `"voice mode off was discussed. voice mode off _"` should target
+ * the trailing summon, not the earlier mention.
+ *
+ * Exported so ConfigIntent + TransformBlank can reuse the same
+ * mechanism (they pass their own LLM-extracted SPAN through this).
  */
-function findSpanCharRange(span: string, text: string): [number, number] | null {
+export function findSpanCharRange(span: string, text: string): [number, number] | null {
   const trimmed = span.trim();
   if (!trimmed) return null;
-  const idx = text.indexOf(trimmed);
+  const idx = text.lastIndexOf(trimmed);
   if (idx === -1) return null;
   return [idx, idx + trimmed.length];
 }

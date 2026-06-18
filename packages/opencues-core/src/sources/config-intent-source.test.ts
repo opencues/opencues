@@ -175,23 +175,23 @@ describe('parseConfigIntentOutput', () => {
 
 describe('validateAgainstRegistry', () => {
   it('passes NONE verdict (nothing to validate)', () => {
-    const r = validateAgainstRegistry({ kind: 'none', confidence: 0.9 });
+    const r = validateAgainstRegistry({ kind: 'none', confidence: 0.9, summon: null });
     assert.strictEqual(r.ok, true);
   });
 
   it('passes a real setting (setting, value) pair', () => {
-    const r = validateAgainstRegistry({ kind: 'setting', setting: 'debug-mode', value: 'on', confidence: 0.9 });
+    const r = validateAgainstRegistry({ kind: 'setting', setting: 'debug-mode', value: 'on', confidence: 0.9, summon: null });
     assert.strictEqual(r.ok, true);
   });
 
   it('rejects an unknown setting (hallucinated scalar)', () => {
-    const r = validateAgainstRegistry({ kind: 'setting', setting: 'definitely-not-a-thing', value: 'on', confidence: 0.9 });
+    const r = validateAgainstRegistry({ kind: 'setting', setting: 'definitely-not-a-thing', value: 'on', confidence: 0.9, summon: null });
     assert.strictEqual(r.ok, false);
     assert.match(r.reason ?? '', /unknown setting/);
   });
 
   it('rejects a value not listed under the setting', () => {
-    const r = validateAgainstRegistry({ kind: 'setting', setting: 'debug-mode', value: 'maybe', confidence: 0.9 });
+    const r = validateAgainstRegistry({ kind: 'setting', setting: 'debug-mode', value: 'maybe', confidence: 0.9, summon: null });
     assert.strictEqual(r.ok, false);
     assert.match(r.reason ?? '', /not cyclable/);
   });
@@ -201,30 +201,30 @@ describe('validateAgainstRegistry', () => {
     // in depth: if a model emits it anyway, the runtime must NOT apply
     // a footgun mode on semantic-only intent.
     // (Renamed June 2026 from sentinels-mode → identity-context-mode.)  // LEGACY-NAME-ALLOW: historical narrative
-    const r = validateAgainstRegistry({ kind: 'setting', setting: 'identity-context-mode', value: 'raw', confidence: 0.9 });
+    const r = validateAgainstRegistry({ kind: 'setting', setting: 'identity-context-mode', value: 'raw', confidence: 0.9, summon: null });
     assert.strictEqual(r.ok, false);
     assert.match(r.reason ?? '', /not cyclable/);
   });
 
   it('accepts identity-context-mode=safe (cyclable)', () => {
-    const r = validateAgainstRegistry({ kind: 'setting', setting: 'identity-context-mode', value: 'safe', confidence: 0.9 });
+    const r = validateAgainstRegistry({ kind: 'setting', setting: 'identity-context-mode', value: 'safe', confidence: 0.9, summon: null });
     assert.strictEqual(r.ok, true);
   });
 
   // ── Provider verdict validation ───────────────────────────────────
 
   it('accepts a provider verdict for cues bucket with no model (defaults to providers defaultModel)', () => {
-    const r = validateAgainstRegistry({ kind: 'provider', scope: 'cues', provider: 'anthropic', model: null, confidence: 0.9 });
+    const r = validateAgainstRegistry({ kind: 'provider', scope: 'cues', provider: 'anthropic', model: null, confidence: 0.9, summon: null });
     assert.strictEqual(r.ok, true);
   });
 
   it('accepts a provider verdict with a knownModel', () => {
-    const r = validateAgainstRegistry({ kind: 'provider', scope: 'cues', provider: 'anthropic', model: 'claude-opus-4-7', confidence: 0.9 });
+    const r = validateAgainstRegistry({ kind: 'provider', scope: 'cues', provider: 'anthropic', model: 'claude-opus-4-7', confidence: 0.9, summon: null });
     assert.strictEqual(r.ok, true);
   });
 
   it('rejects an unknown provider id', () => {
-    const r = validateAgainstRegistry({ kind: 'provider', scope: 'cues', provider: 'totally-fake-provider', model: null, confidence: 0.9 });
+    const r = validateAgainstRegistry({ kind: 'provider', scope: 'cues', provider: 'totally-fake-provider', model: null, confidence: 0.9, summon: null });
     assert.strictEqual(r.ok, false);
     assert.match(r.reason ?? '', /unknown provider/);
   });
@@ -234,14 +234,14 @@ describe('validateAgainstRegistry', () => {
     // the runtime validator must still catch a string-typed scope from
     // a parsed verdict whose source we don't trust.
     const r = validateAgainstRegistry({
-      kind: 'provider', scope: 'everything' as 'cues', provider: 'anthropic', model: null, confidence: 0.9,
+      kind: 'provider', scope: 'everything' as 'cues', provider: 'anthropic', model: null, confidence: 0.9, summon: null,
     });
     assert.strictEqual(r.ok, false);
     assert.match(r.reason ?? '', /unknown scope/);
   });
 
   it('rejects a model not in the providers knownModels', () => {
-    const r = validateAgainstRegistry({ kind: 'provider', scope: 'cues', provider: 'anthropic', model: 'claude-sonnet-9-9', confidence: 0.9 });
+    const r = validateAgainstRegistry({ kind: 'provider', scope: 'cues', provider: 'anthropic', model: 'claude-sonnet-9-9', confidence: 0.9, summon: null });
     assert.strictEqual(r.ok, false);
     assert.match(r.reason ?? '', /knownModels/);
   });
@@ -250,18 +250,18 @@ describe('validateAgainstRegistry', () => {
     // Trust-class guard — mirrors the resolver's build-time refusal.
     // Without it, fluid-config could route prose through a training
     // pool when the resolver would refuse the same wiring.
-    const r = validateAgainstRegistry({ kind: 'provider', scope: 'cues', provider: 'opencode-zen', model: null, confidence: 0.9 });
+    const r = validateAgainstRegistry({ kind: 'provider', scope: 'cues', provider: 'opencode-zen', model: null, confidence: 0.9, summon: null });
     assert.strictEqual(r.ok, false);
     assert.match(r.reason ?? '', /trains on input/);
   });
 
   it('rejects opencode-zen on the auditors bucket (trainsOnInput)', () => {
-    const r = validateAgainstRegistry({ kind: 'provider', scope: 'auditors', provider: 'opencode-zen', model: null, confidence: 0.9 });
+    const r = validateAgainstRegistry({ kind: 'provider', scope: 'auditors', provider: 'opencode-zen', model: null, confidence: 0.9, summon: null });
     assert.strictEqual(r.ok, false);
   });
 
   it('accepts opencode-zen on the blanks bucket (user opt-in surface)', () => {
-    const r = validateAgainstRegistry({ kind: 'provider', scope: 'blanks', provider: 'opencode-zen', model: 'free', confidence: 0.9 });
+    const r = validateAgainstRegistry({ kind: 'provider', scope: 'blanks', provider: 'opencode-zen', model: 'free', confidence: 0.9, summon: null });
     assert.strictEqual(r.ok, true);
   });
 });

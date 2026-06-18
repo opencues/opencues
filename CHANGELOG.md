@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Scope of this section**: only changes tied to an actual package version bump are listed. The project shipped many other features and fixes since 0.1.0 (sentence cues, auditors, agent-rewrite, ambient/user context, etc.) without bumping versions at the time — those landed in source but aren't formally versioned, so they're tracked in git, not here. From now on, the rule in `docs/architecture/versioning.md` § Discipline keeps changelog entries and version bumps shipping together.
 
+### Refactor — unify ConfigIntent + FUSED TransformBlank onto FluidBlank's SPAN splice (core 0.3.27)
+
+All three semantic-`_` sources (FluidBlank, ConfigIntent, FUSED TransformBlank) now share **one** substitute mechanism: the LLM emits a verbatim `SPAN` substring + a slice fill, the runtime locates the span via `findSpanCharRange` (shared helper exported from `fluid-blank-source.ts`), and splices the fill into that range. Anything outside the SPAN is preserved verbatim — fixing a real bug where typed prior content was being wiped.
+
+Concretely:
+
+- **ConfigIntent** (`config-intent-source.ts`): classifier prompt now emits `SPAN:` alongside `INTENT/SETTING/VALUE`. The result's `spanStart`/`spanEnd` come from `findSpanCharRange(verdict.summon, context.text)` instead of the old `[0, text.length)` wipe-everything. `"hii world. voice mode off _"` now leaves `"hii world."` in place and only wipes `"voice mode off _"`.
+- **FUSED TransformBlank** (`transform-blank-source.ts`): FUSED prompt now emits `SPAN:` + slice-only `REWRITE:` (was `FULL_REWRITE:` = whole buffer). `metadata.transformTarget` is set to the SPAN content so the resolver's existing splice path handles it — three-way merge is no longer reached from this source. Variant cache stores `{rewrite, span}` pairs so cache hits re-derive splice geometry without re-calling the LLM. New prompt examples include prior-content preservation cases AND counter-examples ("no sentence boundary = whole input is SPAN") to keep the stacked-transform path stable. Bench: prod-fused on cerebras gpt-oss-120b lands at 186/231 (inside the historical 186-193 variance band).
+
+`threeWayMerge` (in `word-diff.ts`) stays load-bearing for **AgentRewrite** only — that's a background rewriter that may run for seconds while the user keeps typing, so its snapshot-vs-liveText diff genuinely protects in-flight edits. The semantic-`_` sources all run on a single keystroke and don't have that exposure window; the splice mechanism is sufficient and structurally simpler.
+
+The May 2026 duplication bug class (narrow-TARGET + wide-REWRITE concat-tail) is structurally prevented by the new contract: `REWRITE` replaces SPAN exactly — no concat-tail. The bench + 26 runtime scenario tests + 96% agentic suite confirm.
+
+Architecture doc `docs/architecture/blank-sources.md` updated to reflect the unification (substitute-mechanism table now reads "one path" for both FUSED + 3-pass TransformBlank).
+
 ### Feat — three semantic-_ surfaces enabled by default (runtime 0.3.18)
 
 `fluid-config-mode`, `identity-context-mode`, and `blank-context-mode` now default to enabled. Concretely:
