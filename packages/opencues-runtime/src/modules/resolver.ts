@@ -1630,6 +1630,26 @@ export class Resolver {
         }
 
         this.adapter.log('info', `FluidBlank: substituting "${text.slice(start, end)}" → "${answer}" (mode=${isMultiWordSpan ? 'WIPE' : 'FILL'}, range=[${start},${end}), defAt=${newWordIndex}, errorSub=${isErrorSubstitute}, totalMs=${Date.now() - __resolveStart})`);
+
+        // Emit `fluid-blank.completed` AFTER the buffer commit so
+        // observers (statusline, agentic tests) can rely on the event
+        // marking a final, user-visible buffer state — never an
+        // intermediate loading-animation frame. The source carries the
+        // completion payload via `metadata.fluidBlankCompletion`; this
+        // structurally closes the race that allowed the braille
+        // loading char (· • ●) to be caught between completion of the
+        // LLM call and the resolver's substitute commit. Mirrors the
+        // `transform-blank.completed` pattern below. Error substitutes
+        // don't carry the metadata field (they bail before recording
+        // the success payload), so the optional-chain naturally
+        // suppresses the event in that path — error events ride
+        // through `fluid-blank.bailed` instead.
+        const fbCompletion = r.metadata?.fluidBlankCompletion as
+          | { span: string; answer: string; mode: string; latencyMs: number }
+          | undefined;
+        if (fbCompletion !== undefined) {
+          this.adapter.emitEvent?.('fluid-blank.completed', fbCompletion);
+        }
         continue; // skip the generic def-creation below
       }
 
