@@ -91,6 +91,32 @@ describe('segmentSentences', () => {
     const spans = segmentSentences(text, text.split(/\s+/));
     assert.strictEqual(spans.length, 3);
   });
+
+  it('splits CJK sentences at the ideographic full stop 。 (no trailing space)', () => {
+    // Regression: a Japanese paragraph used to collapse into ONE giant
+    // "sentence" (the regex only knew ASCII .!? + a trailing-space rule,
+    // which CJK doesn't use) — so the sentence-cue highlight selected the
+    // whole block. Observed live on Claude Code.
+    const text = 'HTMLを使用します。サイトはモバイルです。次の文です。';
+    const spans = segmentSentences(text, text.split(/\s+/));
+    assert.strictEqual(spans.length, 3);
+    assert.strictEqual(spans[0].text, 'HTMLを使用します。');
+    assert.strictEqual(spans[1].text, 'サイトはモバイルです。');
+    assert.strictEqual(spans[2].text, '次の文です。');
+  });
+
+  it('treats the CJK comma 、 as NOT a sentence terminator', () => {
+    const text = 'HTML、CSS を使用して、設計します。次は開発します。';
+    const spans = segmentSentences(text, text.split(/\s+/));
+    assert.strictEqual(spans.length, 2);
+    assert.strictEqual(spans[0].text, 'HTML、CSS を使用して、設計します。');
+  });
+
+  it('splits fullwidth ！ and ？ too', () => {
+    const text = 'すごい！本当に？はい。';
+    const spans = segmentSentences(text, text.split(/\s+/));
+    assert.strictEqual(spans.length, 3);
+  });
 });
 
 // ---------------------------------------------------------------------------
