@@ -173,7 +173,7 @@ mirror what `BlankSource` produces for keyword-bound `opencues settings _`:
   alternatives: [setting],          // e.g. ['debug-mode']
   source: 'config-intent',
   priority: 94,
-  spanStart: summonPhraseStart(context.text),  // start of the settings command — see below
+  spanStart: await resolveCommandSpanStart(context.text),  // start of the settings command — see below
   spanEnd: context.text.length,
   metadata: {
     blankName: 'opencues',
@@ -194,14 +194,35 @@ then:
    - Bails if `liveText.slice(spanStart, spanEnd) !== text.slice(spanStart, spanEnd)`
      — the wipe range no longer matches what the classifier analysed.
 2. **Splices** `<setting><sep><value>` into `[spanStart, spanEnd)`. The
-   span starts at `summonPhraseStart(text)` — the last sentence
-   terminator (`.`/`!`/`?` + whitespace) or line break before `_`, or
-   `0` when there is no prior content. So `hii world. voice mode off _`
-   wipes only `voice mode off _` and leaves `hii world.` intact, while
-   a bare `debug-mode on _` (no prior content → start 0) is replaced
-   wholesale with just `debug-mode on`. The summon-phrase scoping
-   replaced an earlier `spanStart=0` behaviour that destroyed any
-   prior user content sharing the buffer with the settings command.
+   span starts where the settings command begins, so `hii world. voice
+   mode off _` wipes only `voice mode off _` and leaves `hii world.`
+   intact, while a bare `debug-mode on _` (no prior content → start 0)
+   is replaced wholesale with just `debug-mode on`. This scoping
+   replaced an earlier `spanStart=0` behaviour that destroyed any prior
+   user content sharing the buffer with the settings command.
+
+   **How `spanStart` is resolved (`resolveCommandSpanStart`)** — the
+   command boundary is decided **language-invariantly** by a dedicated,
+   single-purpose LLM call (`SUMMON_PROMPT`) that returns the exact
+   trailing command substring; the runtime trusts it only when it's a
+   verbatim suffix of the live buffer. A regex (`summonPhraseStart` — the
+   last `.`/`!`/`?`+whitespace, CJK/fullwidth `。！？．`, or line break
+   before `_`) is the deterministic **floor** used when the call fails or
+   returns a non-suffix. The model call is what handles scripts a regex
+   can't segment at all — Thai (`ฉันกำลังเขียนบันทึก turn on tips _`) has no
+   sentence punctuation or spaces, yet the command boundary is still
+   found.
+
+   It's a **separate** call (not one more field on the classifier)
+   deliberately: adding `SUMMON` to the classifier prompt regressed its
+   INTENT recall ~85% → ~60% and the field was emitted ~10% of the time —
+   a tuned single-purpose classifier can't carry a second job. The
+   dedicated prompt scores 10/10 across EN/JA/KO/TH/FR/ZH. The extra call
+   fires ONLY after a SETTING/PROVIDER verdict is confirmed (NONE cedes
+   first), is per-buffer memoised, honours the resolve `AbortSignal`, and
+   validates with a whole-buffer-over-include data-loss guard. The
+   classifier's `SYSTEM_PROMPT` is untouched, so classification accuracy
+   is unaffected.
 3. **Registers a `SelectorSatelliteEntry`** on the shared
    `SelectorSatelliteState`, with the same shape `BlankFill.applySatelliteFill`
    uses for the keyword-bound path. Standard satellite cycling
