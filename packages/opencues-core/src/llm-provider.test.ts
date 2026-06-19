@@ -444,11 +444,16 @@ describe('anthropic provider — Messages API (different shape from OpenAI)', ()
       { apiKey: 'k' },
     );
     const body = JSON.parse(built.body);
-    assert.strictEqual(body.system, 'You are terse.');
+    // System is sent as a content-block array carrying a cache_control
+    // breakpoint (Anthropic prompt caching). The user message stays in
+    // `messages`, AFTER the cached prefix.
+    assert.deepStrictEqual(body.system, [
+      { type: 'text', text: 'You are terse.', cache_control: { type: 'ephemeral' } },
+    ]);
     assert.deepStrictEqual(body.messages, [{ role: 'user', content: 'explain X' }]);
   });
 
-  it('buildRequest: multiple system messages are joined with \\n\\n', () => {
+  it('buildRequest: multiple system messages are joined with \\n\\n inside the cached block', () => {
     const built = buildProviderRequest(
       'anthropic',
       {
@@ -462,7 +467,33 @@ describe('anthropic provider — Messages API (different shape from OpenAI)', ()
       { apiKey: 'k' },
     );
     const body = JSON.parse(built.body);
-    assert.strictEqual(body.system, 'Rule 1\n\nRule 2');
+    assert.deepStrictEqual(body.system, [
+      { type: 'text', text: 'Rule 1\n\nRule 2', cache_control: { type: 'ephemeral' } },
+    ]);
+  });
+
+  it('buildRequest: prompt caching — system carries a single ephemeral cache_control breakpoint; user message is uncached', () => {
+    const built = buildProviderRequest(
+      'anthropic',
+      {
+        model: 'claude-sonnet-4-6',
+        messages: [
+          { role: 'system', content: 'big stable system prompt' },
+          { role: 'user', content: 'per-call input that must NOT be cached' },
+        ],
+      },
+      { apiKey: 'k' },
+    );
+    const body = JSON.parse(built.body);
+    // Exactly one breakpoint, on the system block — everything up to and
+    // including it is the cached prefix; the user turn comes after.
+    assert.ok(Array.isArray(body.system));
+    assert.strictEqual(body.system.length, 1);
+    assert.deepStrictEqual(body.system[0].cache_control, { type: 'ephemeral' });
+    // The volatile user message is a plain string in messages — never marked.
+    assert.deepStrictEqual(body.messages, [
+      { role: 'user', content: 'per-call input that must NOT be cached' },
+    ]);
   });
 
   it('buildRequest: max_tokens defaulted to 1024 when caller omits it', () => {

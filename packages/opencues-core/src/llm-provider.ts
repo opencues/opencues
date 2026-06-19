@@ -932,7 +932,23 @@ const ANTHROPIC: ProviderAdapter = {
       messages: nonSystem,
     };
     if (systemMessages.length > 0) {
-      body.system = systemMessages.map((m) => m.content).join('\n\n');
+      const systemText = systemMessages.map((m) => m.content).join('\n\n');
+      // Send `system` as a content-block array with a cache_control
+      // breakpoint so Anthropic caches the (static) system prefix. On
+      // subsequent calls within the 5-minute ephemeral TTL the cached
+      // prefix bills at ~10% of input price (measured: ~90% cheaper input
+      // on sonnet for our ~3k-token prompts). The per-call user message
+      // sits AFTER the breakpoint and stays uncached — correct, it's the
+      // only part that varies. Harmless below a model's cache floor
+      // (sonnet/opus cache from ~1k tokens; haiku-4-5's effective floor is
+      // ~4-5k, so our 3-3.8k prompts mostly don't cache there): an
+      // unmet cache_control is silently ignored — no error, normal price,
+      // no write premium (writes only bill extra when caching actually
+      // happens). This is a COST optimisation, not latency — at our prompt
+      // sizes the cached read doesn't change wall-clock, only the bill.
+      body.system = [
+        { type: 'text', text: systemText, cache_control: { type: 'ephemeral' } },
+      ];
     }
     // Claude 4.x models reject `temperature` outright (Anthropic API change,
     // June 2026). See `modelRejectsTemperature` for the full matrix.
