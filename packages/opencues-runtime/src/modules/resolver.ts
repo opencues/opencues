@@ -1489,8 +1489,22 @@ export class Resolver {
         // substitute so we don't overwrite "nvidia $209.25" with "NVDA".
         const liveText = this.adapter.getText();
         const start = isMultiWordSpan ? r.spanStart! : target.start;
+        const end = isMultiWordSpan ? r.spanEnd! : target.end;
         if (liveText.charAt(start) !== '_' && !liveText.includes('_')) {
           this.adapter.log('info', 'FluidBlank: skipping — _ already substituted by another module');
+          continue;
+        }
+        // Fail-safe (mirrors the ConfigIntent / TransformBlank splice
+        // guards): for WIPE mode — which overwrites the whole lookup
+        // PHRASE, not just `_` — the range we're about to replace must
+        // still match the analyzed snapshot byte-for-byte in the live
+        // buffer. If the user typed into it during the async LLM call
+        // (or the span now runs past the buffer end), abort rather than
+        // splice stale coordinates over their edit. This is the splice-
+        // site guard the WIPE path was missing; until now it relied
+        // solely on the source emitting a parser-bounded span.
+        if (isMultiWordSpan && (end > liveText.length || liveText.slice(start, end) !== text.slice(start, end))) {
+          this.adapter.log('info', 'FluidBlank: skipping WIPE — splice range drifted from the analyzed buffer');
           continue;
         }
         // Splice the answer into [start, end) — the canonical
@@ -1498,7 +1512,6 @@ export class Resolver {
         // write + markdown.styled emit with ranges shifted into
         // final-buffer coords. Same primitive TransformBlank uses
         // below; the only difference is which range we hand it.
-        const end = isMultiWordSpan ? r.spanEnd! : target.end;
         const sub = applyMarkdownAwareSplice(this.adapter, text, start, end, alts[0]);
         const newText = sub.newText;
         const answer = sub.stripped;
