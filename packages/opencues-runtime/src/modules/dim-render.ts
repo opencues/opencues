@@ -175,7 +175,18 @@ export class DimRender {
         }
       } else {
         const target = words[this.hlState.wordIndex];
-        if (target) {
+        // A span-bound def (e.g. a sentence-cue) carries an explicit CHAR
+        // span. In spaceless CJK the whole buffer is ONE whitespace-word,
+        // so `findSpanContaining` (which keys off word count) doesn't see
+        // the def as a span and we land here — but highlighting the whole
+        // word would cover the entire buffer instead of the def's actual
+        // span (e.g. one sentence inside a two-sentence Japanese buffer).
+        // When the def's char span is narrower than the word, honour it.
+        const def = this.dynDefs.get(this.hlState.wordIndex);
+        if (def && def.spanEnd > def.spanStart && target
+          && (def.spanStart > target.start || def.spanEnd < target.end)) {
+          highlight = { start: def.spanStart, end: def.spanEnd };
+        } else if (target) {
           highlight = { start: target.start, end: target.end };
         }
       }

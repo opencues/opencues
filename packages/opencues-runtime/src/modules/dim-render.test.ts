@@ -36,6 +36,43 @@ describe('DimRender.compute', () => {
     expect(dimRender.compute({ text: 'alpha', cursor: 0, externalHighlights: [] })).toBeNull();
   });
 
+  it('highlights a span-bound def\'s CHAR span, not the whole whitespace-word (CJK has no spaces)', () => {
+    // Regression (observed live on Claude Code): a Japanese sentence-cue.
+    // The buffer is two sentences but has NO spaces, so splitWords yields a
+    // SINGLE word covering the whole buffer. The sentence-cue def carries
+    // the first sentence's char span [0,13); the highlight must use that,
+    // not the giant word [0,22], or it selects both sentences.
+    const buffer = '今日はとても楽しかったよ。また一緒に遊ぼうね。'; // one whitespace-word
+    const { hlState, dynDefs, dimRender } = setup(buffer);
+    dynDefs.set(0, {
+      originalWord: '今日はとても楽しかったよ。',
+      alternatives: ['今日はとても楽しかったよ。', '本日はとても楽しゅうございました。'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: 13, // end of the first sentence (after 。)
+      blankName: 'sentence-cue:more-formal',
+    });
+    hlState.activate(0, buffer);
+    const out = dimRender.compute({ text: buffer, cursor: 0, externalHighlights: [] });
+    expect(out).toMatchObject({ highlight: { start: 0, end: 13 } });
+  });
+
+  it('still highlights the whole word when the def span equals the word (ASCII unchanged)', () => {
+    // A normal single-word cue: def char span == the word's range → use the
+    // word range (no behaviour change for space-delimited text).
+    const { hlState, dynDefs, dimRender } = setup('alpha beta');
+    dynDefs.set(0, {
+      originalWord: 'alpha',
+      alternatives: ['alpha', 'first'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: 5, // == "alpha" word range
+    });
+    hlState.activate(0, 'alpha beta');
+    const out = dimRender.compute({ text: 'alpha beta', cursor: 0, externalHighlights: [] });
+    expect(out).toMatchObject({ highlight: { start: 0, end: 5 } });
+  });
+
   it('honours capability gating — no highlight without highlight-range capability', () => {
     const adapter = new MockAdapter({ capabilities: ['file-read'] });
     const hlState = new HighlightState();
