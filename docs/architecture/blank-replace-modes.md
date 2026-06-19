@@ -95,7 +95,10 @@ preserved.
 
 `wipe-all`, by contrast, drops the whole buffer including
 pre-keyword text. Reserved for blanks that act on the entire draft
-(prompt-improver, summariser).
+(e.g. a summariser). The shipped prompt-improver blank that once
+used this mode was retired June 2026 — its intent moved to the
+whole-buffer `TransformBlankSource` — but the mode remains available
+to custom blanks.
 
 ## Embedding context in `wipe`-style answers
 
@@ -166,13 +169,16 @@ when designing a new blank:
 | dictionary | `auto` | `ephemeral: lasting for...` |
 | gh-issues | `auto` | `opencues/opencues: 42 open` |
 | hackernews | `auto` | `<top story title>` |
-| answer | `wipe` | `astonishment` |
-| prompt | `wipe-all` | improved prompt replaces buffer |
 | opencues | (selector/satellite — separate UX) | `voice-mode active` |
+
+(The retired `answer` / `prompt` blanks — June 2026 — used `wipe` and
+`wipe-all` respectively; their intents now route through `FluidBlankSource`
+and `TransformBlankSource`, which manage their own span scoping rather than a
+`blankReplace` mode.)
 
 Authors writing new keyword-bound blanks should default to `auto`
 and only override when the answer alone is ambiguous (volume,
-brightness) or the blank rewrites the whole draft (prompt-improver).
+brightness) or the blank rewrites the whole draft (a summariser, say).
 
 ## When to update this doc
 

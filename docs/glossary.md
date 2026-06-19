@@ -60,7 +60,7 @@ Configured in `blanks/{name}/BLANK.md` with `blankKeywords`, `blankStep`, `blank
 
 **Blank-Bound Word** — Internal: a WordDef with `metadata.blankName` set. Indicates the position is owned by a cue-blank's auto-populated value and must not be overwritten by LLM/grammar merges. Only the user can clear it (by editing the word).
 
-**Consume-All Blank** — A blank with `blankConsumeAll: true` that clears **all** surrounding text (not just keywords) when it auto-populates. The result is a multi-word span the user cycles through as a unit. Used when the entire input is the blank's input (e.g., a prompt to improve). Requires dedicated cycling storage because the standard WordDef array is overwritten by analysis. See `docs/features/consume-all-blanks.md`.
+**Consume-All Blank** — A blank with `blankConsumeAll: true` that clears **all** surrounding text (not just keywords) when it auto-populates. The result is a multi-word span the user cycles through as a unit. Used when the entire input is the blank's input. Requires dedicated cycling storage because the standard WordDef array is overwritten by analysis. (The shipped prompt-improver blank that once used this mode was retired June 2026; the mechanism remains available to custom blanks.) See `docs/features/consume-all-blanks.md`.
 
 **Consume-Context Blank** — A blank with `blankConsumeContext: true` that clears words **between the keyword and blank** when it auto-populates, while preserving surrounding text. Used for factual lookups where context is the query and the answer replaces it (e.g., `what is the word for love in Japanese _` → `Ai`). Differs from consume-all in that text before the keyword and after the blank is kept. See `docs/features/consume-context-blanks.md`.
 
@@ -78,7 +78,7 @@ OpenCues is configured via `.md` files in the project root. These files are the 
 
 **cues/{name}/CUE.md** — One folder per cue source. Folder name = source id. Static cues have a body JSON code block (the words map: `{"ultrathink": {"tip": "...", "alts": [...], "speak": true}}`). LLM cues declare `match:` or `keywords:` in frontmatter and put prompt text in the body. The runtime infers static-vs-LLM from data shape (no `type:` discriminator).
 
-**blanks/{name}/BLANK.md** — One folder per blank. Defines `_`-gated cycling behaviour — script-triggered (volume, brightness), auto-populated (stock prices, weather), list (affirmations), read-only (live API values), and consume-all (prompt improver). Frontmatter holds the BlankConfig fields; scripts are colocated in the same folder. (Filename per the open standard at `spec/blank-spec.md`. Legacy `blank.md` and `cue.md` names are auto-migrated by `seed-configs`.)
+**blanks/{name}/BLANK.md** — One folder per blank. Defines `_`-gated cycling behaviour — script-triggered (volume, brightness), auto-populated (stock prices, weather), list (affirmations), read-only (live API values), and consume-all. Frontmatter holds the BlankConfig fields; scripts are colocated in the same folder. (Filename per the open standard at `spec/blank-spec.md`. Legacy `blank.md` and `cue.md` names are auto-migrated by `seed-configs`.)
 
 **Folder-based config** — Each cue / blank is a self-contained folder: cues use `CUE.md`, blanks use `BLANK.md` (YAML frontmatter for config, body for prompt or words JSON), with optional colocated scripts. Folders in `cues/` and `blanks/` are auto-discovered.
 

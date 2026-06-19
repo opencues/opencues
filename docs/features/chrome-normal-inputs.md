@@ -74,9 +74,9 @@ registration. Single-answer blanks survive.
 
 | Blank kind                          | Works on normal inputs? | Notes |
 |---|---|---|
-| Compute → text (weather, stocks, crypto, hackernews, dictionary, countries, claude-status, answer) | ✅ | First match fills, single-shot. |
-| Transform (prompt-improver, "make it louder _", …)                  | ✅ | Rewrites the whole `.value`. On single-line inputs the substitution still happens — surprise factor is on the user. |
-| Fluid blank (free-form `_` lookup)                                  | ✅ | Single substitution at the `_`. |
+| Compute → text (weather, stocks, crypto, hackernews, dictionary, countries, claude-status) | ✅ | First match fills, single-shot. |
+| Transform ("make it louder _", "improve prompt _", …)               | ✅ | Rewrites the whole `.value`. On single-line inputs the substitution still happens — surprise factor is on the user. |
+| Fluid blank (free-form `_` lookup, incl. `answer _` meta-triggers)   | ✅ | Single substitution at the `_`. |
 | List blank (affirmations, stepValues)                               | ❌ | Pruned — cycleable. The list shape means the user has multiple choices to step between; without a cycling surface there's nothing to step. |
 | Selector / satellite (`opencues settings _`)                        | ❌ | Pruned — `blankSatellite: true` means cycling-required. |
 | Script-backed cycling blanks (`volume _`, `brightness _`)           | ❌ | Pruned — `blankScript:` defaults to cycleable. Opt back in via `blankReadOnly: true` if the script truly is one-shot. |

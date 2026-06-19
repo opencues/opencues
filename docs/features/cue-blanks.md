@@ -12,7 +12,7 @@ There are five flavours:
 - **List blanks** — BLANK.md has `stepValues: ["I am brave", "I am strong", …]`. No script; the runtime cycles through the list. Multi-word values are span-tracked.
 - **Dynamic list blanks** — `blankInvoke get` returns multiple lines, each becoming a cycling alternative (e.g., HN front-page titles).
 - **Read-only blanks** — `blankReadOnly: true` fetches data once and disables cycling (e.g., stock prices via Finnhub).
-- **Consume-all blanks** — `blankConsumeAll: true` clears the entire input and replaces it with multi-word cycling alternatives (e.g., the prompt improver). Uses dedicated cycling storage independent of `_dynDefs`. See [Consume-All Blanks](consume-all-blanks.md).
+- **Consume-all blanks** — `blankConsumeAll: true` clears the entire input and replaces it with multi-word cycling alternatives. Uses dedicated cycling storage independent of `_dynDefs`. See [Consume-All Blanks](consume-all-blanks.md). (The shipped prompt-improver blank that once exercised this was retired in June 2026 — "improve prompt _" is now served by the generalized TransformBlank source — but the mechanism remains available to custom blanks.)
 
 Cue-blanks are checked **first** in the cycling function (`_cycleAlt`) before any alternative or linked-word cycling.
 
@@ -57,8 +57,6 @@ TypeScript classes living in
 | `hackernews` | `HackerNewsBlank` | Live HN front-page headlines via RSS |
 | `stocks` | `StocksBlank` | Live stock prices via Finnhub |
 | `weather` | `WeatherBlank` | Forecast via Open-Meteo |
-| `answer` | `AnswerBlank` | LLM-formatted answer in place |
-| `prompt` | `PromptImproverBlank` | LLM-rewritten prompt in place |
 | `opencues` | `OpenCuesSettingsBlank` | Read/write `CUES.md` frontmatter scalars |
 | `countries` | `CountriesBlank` | Country lookup |
 | `crypto` | `CryptoBlank` | Live crypto prices |

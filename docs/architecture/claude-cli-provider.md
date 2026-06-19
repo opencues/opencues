@@ -109,11 +109,10 @@ table.
 | transform-blank | ≤1000ms   | ✓ Haiku (borderline) |
 | fluid-blank     | ≤1500ms   | ✓ Haiku, ✓ Sonnet |
 | agent-rewrite   | 1–3s      | ✓ Haiku, ✓ Sonnet, ✓ Opus |
-| prompt-improver | 5–10s ok  | ✓ all |
 
 Users opt in per feature in OPENCUES.md (see "How to use" below). Mixing is
 expected: most users will leave word-cues on a fast OSS provider
-(Cerebras gpt-oss-120b) and route only agent-rewrite + prompt-improver to
+(Cerebras gpt-oss-120b) and route only agent-rewrite + transform-blank to
 `claude-cli` for higher-quality prose.
 
 ## Daemon lifecycle

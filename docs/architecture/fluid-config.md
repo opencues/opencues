@@ -173,8 +173,8 @@ mirror what `BlankSource` produces for keyword-bound `opencues settings _`:
   alternatives: [setting],          // e.g. ['debug-mode']
   source: 'config-intent',
   priority: 94,
-  spanStart: 0,
-  spanEnd: context.text.length,     // wipe the whole prompt — see below
+  spanStart: summonPhraseStart(context.text),  // start of the settings command — see below
+  spanEnd: context.text.length,
   metadata: {
     blankName: 'opencues',
     selectorBlank: true,
@@ -193,12 +193,15 @@ then:
    - Bails if `_` is no longer in the live text (user typed past it).
    - Bails if `liveText.slice(spanStart, spanEnd) !== text.slice(spanStart, spanEnd)`
      — the wipe range no longer matches what the classifier analysed.
-     ConfigIntent's wipe is more aggressive than FluidBlank's localized
-     splice, so the stricter guard is necessary; without it, an
-     unrelated edit in the prefix would silently get destroyed.
-2. **Splices** `<setting><sep><value>` into `[spanStart, spanEnd)`. With
-   the default `spanStart=0` and `spanEnd=text.length` from the source,
-   the entire user prompt is replaced with just `debug-mode on`.
+2. **Splices** `<setting><sep><value>` into `[spanStart, spanEnd)`. The
+   span starts at `summonPhraseStart(text)` — the last sentence
+   terminator (`.`/`!`/`?` + whitespace) or line break before `_`, or
+   `0` when there is no prior content. So `hii world. voice mode off _`
+   wipes only `voice mode off _` and leaves `hii world.` intact, while
+   a bare `debug-mode on _` (no prior content → start 0) is replaced
+   wholesale with just `debug-mode on`. The summon-phrase scoping
+   replaced an earlier `spanStart=0` behaviour that destroyed any
+   prior user content sharing the buffer with the settings command.
 3. **Registers a `SelectorSatelliteEntry`** on the shared
    `SelectorSatelliteState`, with the same shape `BlankFill.applySatelliteFill`
    uses for the keyword-bound path. Standard satellite cycling
@@ -338,7 +341,7 @@ AND the validator will reject any attempt to apply them.
 - [`feature-registry.md`](feature-registry.md) — the FEATURES + MENU_TUNABLES + BUILTIN_BLANKS registry that fluid-config dispatches against.
 - [`spans-and-cycling.md`](spans-and-cycling.md) — selector-satellite cycling, span priorities, the `clearOnEdit` cleanup path.
 - [`security-audit.md`](security-audit.md) — fluid-config's bounded-codomain rationale slots into row #21 (no side-effect channel for LLM-derived buffer text).
-- [`blank-replace-modes.md`](blank-replace-modes.md) — sister doc for FluidBlank's KEEP/WIPE/AUTO modes; ConfigIntent's wipe is structurally different (always whole-prompt) so it doesn't share the heuristic.
+- [`blank-replace-modes.md`](blank-replace-modes.md) — sister doc for FluidBlank's KEEP/WIPE/AUTO modes; ConfigIntent's wipe is structurally different (summon-phrase-scoped via `summonPhraseStart` through `text.length`, not a `blankReplace` mode) so it doesn't share the heuristic.
 
 ---
 

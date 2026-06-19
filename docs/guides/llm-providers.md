@@ -301,9 +301,9 @@ a hosted/shared service.
   ≤500ms budget short surfaces need.
 - **Transform blank** — viable on either subscription. `openai-subscription`
   at ~730ms median fits inside the 1-3s sweet spot.
-- **Agent rewrite / prompt improver** — best fit for subscription.
-  Latency budget is already in seconds, and the per-call cost is free
-  (covered by your existing AI plan).
+- **Agent rewrite** — best fit for subscription. Latency budget is
+  already in seconds, and the per-call cost is free (covered by your
+  existing AI plan).
 
 ### Auto-route exemption
 

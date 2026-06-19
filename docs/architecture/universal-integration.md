@@ -212,7 +212,7 @@ on whichever apply:
 |---|---|---|
 | **Focus moved to a different field** | chrome tabbing between `<input>`s | per-buffer state keyed by word-index in the OLD buffer; corrupts the new one (the canonical bug above) |
 | **Same field, buffer replaced externally** | paste, undo, redo, IME commit, programmatic `.value =` from the page | offsets the runtime tracks point at chars that no longer exist; next cycle splices at stale positions |
-| **Session boundary in a keep-alive process** | shell's `oc-edit --keep-alive` between Alt+Shift+↑ opens, a hypothetical VS Code panel that re-opens, any "submit then re-open" lifecycle in one host process | state from session N leaks into session N+1; a prompt-improver from N's DynDef blocks N+1's first blank silently via `existing.blankName` guard |
+| **Session boundary in a keep-alive process** | shell's `oc-edit --keep-alive` between Alt+Shift+↑ opens, a hypothetical VS Code panel that re-opens, any "submit then re-open" lifecycle in one host process | state from session N leaks into session N+1; a transform-blank from N's DynDef blocks N+1's first blank silently via `existing.blankName` guard |
 | **Buffer fully cleared by host UI** | shell's Ctrl+C wipe, a "new session" button, slash command like `/clear` (when the implementation doesn't go through `pushText`) | analogous to undo — the visible buffer no longer matches the offsets the runtime tracks |
 
 Hosts that hit ONE of these reliably need ONE call site. Hosts

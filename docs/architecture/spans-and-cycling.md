@@ -50,8 +50,9 @@ deliberately because they have different semantics.
 For: `_` placeholders that get filled by blank scripts or LLM
 classifiers. Examples:
 - `weather _ paris` → `_` becomes `13.9°C, light cloud`
-- `improve prompt write a poem _` → consume-all overwrites the whole
-  buffer with the improved prompt
+- a consume-all blank → overwrites the whole buffer with its result
+  (the shipped prompt-improver that once did this was retired June 2026;
+  `improve prompt _` now routes to the whole-buffer TransformBlank source)
 - `volume _` → blankScript writes the current value (`50%`)
 
 **Single-slot** — at any moment, at most ONE blank-fill is being
@@ -683,9 +684,14 @@ Start: text "the legal eagle filed" — span at idx 1, spanLength 2
 
 ### Scenario 5 — Blank fill coexists with static-alt span
 
+> The consume-all keyword shown below (`improve prompt`) belonged to the
+> prompt-improver blank, retired June 2026 — `improve prompt _` now routes
+> to TransformBlank instead. The scenario is kept as a walkthrough of the
+> consume-all SPAN mechanism, which any custom consume-all blank still uses.
+
 ```
-Start: text "improve prompt write a poem _"
-       — "_" is a blank, "improve prompt" is a consume-all keyword.
+Start: text "<consume-all keyword> write a poem _"
+       — "_" is a blank, the keyword phrase is a consume-all keyword.
        — Some other word later might become a multi-word span.
 
 [t=0]  User types this. BlankFill.onTextChange detects the blank slot.
