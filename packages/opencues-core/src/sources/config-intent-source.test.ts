@@ -10,6 +10,7 @@ import {
   ConfigIntentSource,
   parseConfigIntentOutput,
   validateAgainstRegistry,
+  summonPhraseStart,
 } from './config-intent-source';
 import type { CueContext, HttpAdapter } from '../types';
 import { getProvider } from '../llm-provider';
@@ -613,4 +614,40 @@ describe('ConfigIntent: likely-intent gate (pre-filter)', () => {
       assert.strictEqual(result.calls, 1, 'LLM dispatched');
     });
   }
+});
+
+describe('summonPhraseStart — preserve prior content (no whole-buffer nuke)', () => {
+  // Regression for the config-intent nuke: `hii world. voice mode off _`
+  // used to wipe [0, len) and lose "hii world.". The wipe must start at
+  // the trailing summon phrase, preserving prior user content.
+  it('no prior content → 0 (whole buffer is the summon, unchanged behaviour)', () => {
+    assert.strictEqual(summonPhraseStart('voice mode off _'), 0);
+    assert.strictEqual(summonPhraseStart('switch cues to anthropic _'), 0);
+  });
+
+  it('prior sentence → start of the summon (prior content preserved)', () => {
+    const t = 'hii world. voice mode off _';
+    assert.strictEqual(summonPhraseStart(t), t.indexOf('voice'));
+    assert.strictEqual(t.slice(0, summonPhraseStart(t)), 'hii world. ');
+  });
+
+  it('multiple prior sentences → after the LAST boundary', () => {
+    const t = 'Hi there. How are you. voice mode off _';
+    assert.strictEqual(summonPhraseStart(t), t.indexOf('voice'));
+  });
+
+  it('line break is a boundary too', () => {
+    const t = 'some notes\nvoice mode off _';
+    assert.strictEqual(summonPhraseStart(t), t.indexOf('voice'));
+  });
+
+  it('model-version dots are NOT sentence boundaries (lookahead needs whitespace)', () => {
+    // "gpt-5.4" must not split — the dot is followed by a digit, not ws.
+    assert.strictEqual(summonPhraseStart('use gpt-5.4 for cues _'), 0);
+  });
+
+  it('? and ! also delimit', () => {
+    assert.strictEqual(summonPhraseStart('really? voice mode off _'), 'really? '.length);
+    assert.strictEqual(summonPhraseStart('wow! tips off _'), 'wow! '.length);
+  });
 });

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — data-loss hardening: gate provider params, harden the splice site, kill the config-intent nuke (core 0.3.29 / runtime 0.3.21)
+
+Follow-up to the `prediction`-param removal: an audit + the agentic suite found the **same unsafe shapes** elsewhere — an ungated param, a splice-site gap, and a whole-buffer nuke.
+
+- **`seed` gated to providers that natively support it** (cerebras / groq / openai). Every source hardcodes `seed: 42` and it was emitted to *all* OpenAI-shape providers — the exact structural twin of the `prediction` bug. On an openrouter→anthropic route it would 400 (anthropic has no `seed`). Now never sent to a pass-through gateway. The variant-cache determinism that relies on seed only pins groq/cerebras, so the gate loses nothing.
+- **AgentRewrite legacy inline path gates `reasoning_effort`** by model-name heuristic. That fallback (fires only when `@opencues/core` can't be required) builds a raw Groq-shaped body, bypassing every param gate; `reasoning_effort: 'low'` 400s on Groq's non-reasoning models (llama-\*). Now only sent to reasoning-capable models, matching the core heuristic.
+- **FluidBlank WIPE splice re-validates against the live buffer.** WIPE replaces the whole lookup *phrase*, not just `_`; the splice now aborts if the live buffer drifted from the analyzed snapshot over that range (or the span runs past the buffer end) — the same guard its siblings TransformBlank and ConfigIntent already carry. Until now the WIPE path relied solely on the source emitting a parser-bounded span.
+- **ConfigIntent no longer nukes the whole buffer.** It hardcoded `spanStart: 0` and spliced the settings selector/satellite pair over `[0, len)` — so `hii world. voice mode off _` lost "hii world." entirely. It now wipes only from the trailing **summon phrase** (`summonPhraseStart`: last sentence terminator / line break before `_`), preserving any prior user content. No prior content → behaviour unchanged. Pinned by `summonPhraseStart` unit tests + agentic scenario `102`.
+
+(A `<10%`-length collapse guard for the fused TransformBlank path was considered and **rejected** — a length ratio can't distinguish a hallucinated collapse from a legitimate `summarize _` / `make it a title _`, and would silently drop valid transforms. Data-loss protection stays structural: three-way merge + the multi-paragraph WIPE fail-safe + this splice guard.)
+
+> These point-gates are interim. The follow-up is a **provider capability model** — each adapter declares the request fields it accepts and the single body-builder consults it — so "forgot to gate a provider-specific param" becomes structurally impossible.
+
 ### Removed — `with <model>` per-call override + `anthropic-subscription` scalar (core 0.3.28 / runtime 0.3.20)
 
 The `with <model>` per-call LLM override (e.g. `summarize with opus _`) is removed. It was English-anchored (keyed off the literal word `with`) and the source of a data-loss bug chain: a 2-paragraph prompt containing ordinary prose like *"…with a framework such as React…"* matched the article **"a"**, which the fuzzy resolver mapped to `anthropic/claude-opus-4-7` (a real model id starting with "a"). That spurious override flipped the call to openrouter/anthropic, where the cerebras-only `prediction` hint **400'd**, the transform failed, and the failure cascaded into a destructive FluidBlank WIPE — collapsing the two paragraphs into one. Rather than patch it with anchors + an English stopword list, the whole feature is removed; it will be reintroduced later as a **language-invariant** mechanism.

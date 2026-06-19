@@ -675,12 +675,19 @@ export class AgentRewrite {
       // dependency on @opencues/core for boot files that haven't
       // migrated to passing a provider thunk.
       url = endpoint;
+      // This path bypasses @opencues/core's buildOpenAIBody, so it also
+      // bypasses its param gates. Only `reasoning_effort` is risky on the
+      // Groq-shaped target it's built for: Groq's non-reasoning models
+      // (llama-*) 400 on the field, while its gpt-oss companions need it.
+      // Mirror the core name heuristic so we only send it to reasoning-
+      // capable models. seed + temperature are valid for the Groq target.
+      const legacyIsReasoningModel = /gpt-oss|gpt-5|^o[1-4]/i.test(chatRequest.model);
       const legacyBody: Record<string, unknown> = {
         model: chatRequest.model,
         messages: chatRequest.messages,
         max_tokens: chatRequest.maxTokens,
         temperature: chatRequest.temperature,
-        reasoning_effort: chatRequest.reasoningEffort ?? 'low',
+        ...(legacyIsReasoningModel ? { reasoning_effort: chatRequest.reasoningEffort ?? 'low' } : {}),
         seed: chatRequest.seed,
       };
       if (chatRequest.responseFormat) {

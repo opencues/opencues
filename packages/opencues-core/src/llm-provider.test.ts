@@ -45,6 +45,22 @@ describe('groq provider — OpenAI-compatible (the back-compat default)', () => 
     });
   });
 
+  it('buildRequest: gates `seed` to native providers — omitted for openrouter pass-through, kept for cerebras', () => {
+    // Regression twin of the `prediction` 400 bug: an OpenAI-only field
+    // (seed) rode a request that got routed to openrouter (proxying
+    // anthropic, which has no `seed` param) and 400'd. seed must only go
+    // to providers that natively accept it.
+    const req = { messages: [{ role: 'user' as const, content: 'hi' }], maxTokens: 100, seed: 42 };
+    const orBody = JSON.parse(
+      buildProviderRequest('openrouter', { ...req, model: 'anthropic/claude-opus-4-7' }, { apiKey: 'k' }).body,
+    );
+    assert.strictEqual(orBody.seed, undefined, 'openrouter (anthropic pass-through) must not receive seed');
+    for (const p of ['cerebras', 'groq', 'openai'] as const) {
+      const body = JSON.parse(buildProviderRequest(p, { ...req, model: 'gpt-oss-120b' }, { apiKey: 'k' }).body);
+      assert.strictEqual(body.seed, 42, `${p} natively supports seed`);
+    }
+  });
+
   it('buildRequest: floors max_tokens to 2048 on gpt-oss when reasoning is on (any level)', () => {
     // Caught 2026-05-18 via the agentic harness: with the previous
     // narrow floor (`reasoning === 'high'` only), sentence-cues calling

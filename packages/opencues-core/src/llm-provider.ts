@@ -342,7 +342,15 @@ function buildOpenAIBody(req: ChatRequest, opts?: { includeReasoningEffort?: boo
   if (req.temperature !== undefined && !opts?.useCompletionTokensName && !providerRejectsTemp) {
     body.temperature = req.temperature;
   }
-  if (req.seed !== undefined) body.seed = req.seed;
+  // Deterministic seed — an OpenAI-API param. Gate to providers that
+  // natively support it (cerebras / groq / openai); NEVER send it to a
+  // pass-through gateway. openrouter (proxying anthropic) 400s on
+  // unsupported params — the exact class that the `prediction` bug hit,
+  // since a seed rides a cerebras-default request that got routed to
+  // openrouter/anthropic. The variant-cache determinism that relies on
+  // seed only ever pins groq/cerebras, so the gate loses nothing.
+  const providerSupportsSeed = opts?.provider === 'cerebras' || opts?.provider === 'groq' || opts?.provider === 'openai';
+  if (providerSupportsSeed && req.seed !== undefined) body.seed = req.seed;
   // Pass reasoning_effort only when the provider opts in OR the model
   // name suggests it's an OpenAI reasoning model (o1/o3/o4/gpt-5).
   // Leaves gpt-4o-mini-class models alone, where the field 400s.

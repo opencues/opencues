@@ -45,8 +45,10 @@
  * `opencues settings _`: an `alternatives: [<setting>]` payload with
  * `metadata.selectorBlank: true` and `metadata.satelliteValue: <value>`.
  * The runtime resolver's config-intent branch then wipes the user's
- * summoning words AND `_` from the buffer (via `spanStart=0`, `spanEnd=text.length`)
- * and splices in `<setting><sep><value>` at the start. After that,
+ * summoning words AND `_` from the buffer (via `spanStart=summonPhraseStart(text)`,
+ * `spanEnd=text.length` — so any prior user content BEFORE the settings
+ * command is preserved, not nuked) and splices in `<setting><sep><value>`
+ * at that offset. After that,
  * standard satellite cycling is fully active — the user can cycle the
  * satellite to pick a different value (each cycle calls
  * `applyOpenCuesScalar` via the existing path) or cycle the selector
@@ -738,6 +740,30 @@ export interface ConfigIntentSourceConfig {
   formatErrorAsSubstitute?: (reason: FluidBlankErrorReason, err?: Error) => string;
 }
 
+/**
+ * Start offset of the trailing "summon phrase" — the settings-intent
+ * clause the user typed before `_` (e.g. "voice mode off"). ConfigIntent
+ * wipes from here to the end of the buffer and splices in the
+ * selector/satellite pair; everything BEFORE this offset is the user's
+ * prior content and MUST be preserved. Without this the source wiped
+ * `[0, len)` and a buffer like `hii world. voice mode off _` lost
+ * "hii world." entirely (the config-intent nuke landmine).
+ *
+ * Heuristic: the last sentence terminator (`.`/`!`/`?`) followed by
+ * whitespace, or a line break, before `_`. No boundary found → 0 (the
+ * whole buffer is the summon; behaviour unchanged from before). The
+ * `(?=\s)` lookahead keeps model-version dots ("gpt-5.4") from being
+ * mistaken for sentence ends.
+ */
+export function summonPhraseStart(text: string): number {
+  const re = /[.!?](?=\s)|\n/g;
+  let start = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) start = m.index + m[0].length;
+  while (start < text.length && /\s/.test(text.charAt(start))) start++;
+  return start;
+}
+
 export class ConfigIntentSource implements CueSource {
   readonly id = 'config-intent';
   readonly priority: number;
@@ -995,8 +1021,11 @@ export class ConfigIntentSource implements CueSource {
 
     // Selector-satellite shape, mirroring the result BlankSource emits
     // for keyword-bound `opencues settings _` (see blank-source.ts
-    // selector-satellite branch). spanStart=0/spanEnd=text.length wipes
-    // the user's summon words AND the `_` — the buffer becomes JUST
+    // selector-satellite branch). The wipe span runs from the start of
+    // the trailing summon phrase (NOT [0, len)) to the end, so any prior
+    // user content before the settings command is preserved — the
+    // resolver keeps liveText.slice(0, spanStart) and splices the pair
+    // after it. The summon words AND `_` are replaced by
     // "<scalar><sep><value>" and full satellite cycling is then live.
     // For provider verdicts the bucket scalar (cues-llm-provider, etc.)
     // is itself a FEATURES entry, so satellite cycling enumerates the
@@ -1007,7 +1036,7 @@ export class ConfigIntentSource implements CueSource {
       alternatives: [displaySelector],
       source: this.id,
       priority: this.priority,
-      spanStart: 0,
+      spanStart: summonPhraseStart(context.text),
       spanEnd: context.text.length,
       cueTip,
       metadata: {
