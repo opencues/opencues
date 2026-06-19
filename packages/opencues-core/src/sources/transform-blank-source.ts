@@ -788,6 +788,13 @@ REWRITE: hii my name is *wilfred*.`;
 // the same call; downstream code uses REWRITE directly, skipping APPLY +
 // VERIFY entirely (verify net-hurts on every non-groq provider per
 // Experiment 6).
+// Buffer-length floor above which a fused `VERDICT: NONE` is NOT trusted and
+// the call falls through to 3-pass (see the NONE handling in runFusedAndBuild).
+// Well above any bare lookup ("capital of france _", "answer _") so genuine
+// short cedes are unaffected; the fused-NONE-under-budget-pressure misfires
+// only show up on long buffers (the reported case was ~1.3k chars).
+const FUSED_NONE_RETRY_FLOOR = 400;
+
 const FUSED_SYSTEM = `Read the input and produce a structured edit result.
 
 The input is a sentence with an underscore (_) signalling either an IMPERATIVE INSTRUCTION the user wants applied to surrounding text, OR a command to manage a continuously-running agent task, OR a lookup placeholder (none of those).
@@ -2284,6 +2291,22 @@ export class TransformBlankSource implements CueSource {
     }
 
     if (f.verdict === 'NONE' || !f.instruction) {
+      // A NONE on a SHORT buffer is a genuine cede — a bare lookup like
+      // "capital of france _" that FluidBlank should answer. But the fused
+      // path has to emit the ENTIRE rewritten buffer (FULL_REWRITE) in one
+      // shot, and cerebras gpt-oss-120b INTERMITTENTLY returns VERDICT: NONE
+      // under that output/reasoning-budget pressure on a long buffer even
+      // when there IS a clear trailing imperative (symptom: a chained
+      // "make it all make sense structurally _" on a ~1.3k-char buffer
+      // silently does nothing). On a long buffer, don't trust a fused NONE —
+      // fall through to 3-pass, whose EXTRACT is a small separate call with
+      // no FULL_REWRITE budget pressure and re-classifies reliably. A
+      // genuinely non-transform long buffer still cedes there (3-pass EXTRACT
+      // returns NONE too), at the cost of one cheap extra extract.
+      if (context.text.length > FUSED_NONE_RETRY_FLOOR) {
+        this.log(`TransformBlank FUSED: verdict=NONE on a long buffer (${context.text.length} chars) — not trusting it; falling through to 3-pass for a budget-free re-classify`);
+        return null;
+      }
       this.log('TransformBlank FUSED: bailing — verdict=NONE or empty instruction');
       this.emit({ type: 'bailed', reason: 'FUSED-verdict-none-or-empty', latencyMs: Date.now() - __pipelineT0 });
       return { results: [], timing: Date.now() - startTime, model: this.model };
