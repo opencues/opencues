@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — `prediction`-unsupported is now a fallback, not a hard failure (core 0.3.30)
+
+The predicted-outputs `prediction` hint is a perf optimisation, not a correctness feature — but **cerebras gpt-oss-120b rejects it intermittently** mid-session with `property 'prediction' is unsupported`, which hard-failed the whole TransformBlank call (a user's `add a paragraph _` over a >200-char body would silently do nothing). `dispatchChat` now catches that specific rejection and **retries once without `prediction`** — a strict subset of the original request, guaranteed valid, can't recur. Scoped tightly: only fires when `prediction` was actually sent (TransformBlank's predicted-outputs path is the only setter) and the error matches both `prediction` + `unsupported`; every other call keeps its original single-attempt behaviour and unrelated errors still surface unchanged. `dispatchChat` is the single wire chokepoint for `prediction` (AgentRewrite's separate HTTP path never sends it), so the one site covers every case. Pinned by 3 unit tests (retry-and-succeed, no-retry-on-unrelated-error, no-retry-when-prediction-absent).
+
 ### Fixed — data-loss hardening: gate provider params, harden the splice site, kill the config-intent nuke (core 0.3.29 / runtime 0.3.21)
 
 Follow-up to the `prediction`-param removal: an audit + the agentic suite found the **same unsafe shapes** elsewhere — an ungated param, a splice-site gap, and a whole-buffer nuke.

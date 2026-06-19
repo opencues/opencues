@@ -1647,50 +1647,83 @@ export async function dispatchChat(
   // inline dispatch at the five source call sites; `signal` flows through
   // to httpAdapter.post so the in-flight request is cancelled when the
   // resolver's generation rolls.
-  const built = provider.buildRequest(req, ctx);
-  const raw = await httpAdapter.post(built.url, built.body, built.headers, { signal: ctx.signal });
-  // Cerebras prefix-cache observability (PR June 2026). Parse the
-  // usage block from the raw OpenAI-compatible response and log
-  // cached_tokens when the caller supplied a logger. Cerebras returns
-  // `usage.prompt_tokens_details.cached_tokens` on gpt-oss-120b /
-  // zai-glm-4.7 — see https://inference-docs.cerebras.ai/capabilities/prompt-caching
-  // OpenAI also surfaces this field on some models. Non-cerebras /
-  // non-openai providers may not include it; the log line is silent
-  // in that case so we don't pollute /tmp/opencues.log on providers
-  // that don't cache. See CLAUDE.md § "Cerebras prefix caching" for
-  // the optimisation rationale.
-  if (ctx.onUsage) {
-    try {
-      const parsed = JSON.parse(raw) as {
-        usage?: {
-          prompt_tokens?: number;
-          completion_tokens?: number;
-          prompt_tokens_details?: { cached_tokens?: number };
-          completion_tokens_details?: {
-            accepted_prediction_tokens?: number;
-            rejected_prediction_tokens?: number;
+  // One wire attempt — build + post + usage-parse + response-parse for a
+  // given request. Pulled into a closure so the prediction-fallback below
+  // can re-issue it with the optimisation param stripped.
+  const attempt = async (request: ChatRequest): Promise<string> => {
+    const built = provider.buildRequest(request, ctx);
+    const raw = await httpAdapter.post(built.url, built.body, built.headers, { signal: ctx.signal });
+    // Cerebras prefix-cache observability (PR June 2026). Parse the
+    // usage block from the raw OpenAI-compatible response and log
+    // cached_tokens when the caller supplied a logger. Cerebras returns
+    // `usage.prompt_tokens_details.cached_tokens` on gpt-oss-120b /
+    // zai-glm-4.7 — see https://inference-docs.cerebras.ai/capabilities/prompt-caching
+    // OpenAI also surfaces this field on some models. Non-cerebras /
+    // non-openai providers may not include it; the log line is silent
+    // in that case so we don't pollute /tmp/opencues.log on providers
+    // that don't cache. See CLAUDE.md § "Cerebras prefix caching" for
+    // the optimisation rationale.
+    if (ctx.onUsage) {
+      try {
+        const parsed = JSON.parse(raw) as {
+          usage?: {
+            prompt_tokens?: number;
+            completion_tokens?: number;
+            prompt_tokens_details?: { cached_tokens?: number };
+            completion_tokens_details?: {
+              accepted_prediction_tokens?: number;
+              rejected_prediction_tokens?: number;
+            };
           };
         };
-      };
-      const u = parsed.usage;
-      if (u && typeof u.prompt_tokens === 'number') {
-        const cached = u.prompt_tokens_details?.cached_tokens ?? 0;
-        const accepted = u.completion_tokens_details?.accepted_prediction_tokens ?? 0;
-        const rejected = u.completion_tokens_details?.rejected_prediction_tokens ?? 0;
-        const predTotal = accepted + rejected;
-        ctx.onUsage({
-          promptTokens: u.prompt_tokens,
-          completionTokens: u.completion_tokens ?? 0,
-          cachedTokens: cached,
-          cacheHitRate: u.prompt_tokens > 0 ? cached / u.prompt_tokens : 0,
-          acceptedPredictionTokens: accepted,
-          rejectedPredictionTokens: rejected,
-          predictionAcceptRate: predTotal > 0 ? accepted / predTotal : 0,
-        });
-      }
-    } catch { /* malformed usage block — silent */ }
+        const u = parsed.usage;
+        if (u && typeof u.prompt_tokens === 'number') {
+          const cached = u.prompt_tokens_details?.cached_tokens ?? 0;
+          const accepted = u.completion_tokens_details?.accepted_prediction_tokens ?? 0;
+          const rejected = u.completion_tokens_details?.rejected_prediction_tokens ?? 0;
+          const predTotal = accepted + rejected;
+          ctx.onUsage({
+            promptTokens: u.prompt_tokens,
+            completionTokens: u.completion_tokens ?? 0,
+            cachedTokens: cached,
+            cacheHitRate: u.prompt_tokens > 0 ? cached / u.prompt_tokens : 0,
+            acceptedPredictionTokens: accepted,
+            rejectedPredictionTokens: rejected,
+            predictionAcceptRate: predTotal > 0 ? accepted / predTotal : 0,
+          });
+        }
+      } catch { /* malformed usage block — silent */ }
+    }
+    return provider.parseResponse(raw);
+  };
+
+  try {
+    return await attempt(req);
+  } catch (err) {
+    // Prediction-fallback. The predicted-outputs `prediction` hint is a
+    // perf optimisation, not a correctness feature. Some providers
+    // (cerebras gpt-oss-120b, INTERMITTENTLY) reject it mid-session with
+    // "property 'prediction' is unsupported", which would otherwise hard-
+    // fail the whole transform. When prediction was actually sent (only
+    // TransformBlank's predicted-outputs path sets it) and the error is
+    // that specific rejection, retry ONCE WITHOUT it — a strict subset of
+    // the original request, guaranteed valid, can't recur. Every other
+    // call keeps the original single-attempt behaviour and real errors
+    // still surface unchanged.
+    if (req.prediction !== undefined && isPredictionUnsupportedError(err)) {
+      return attempt({ ...req, prediction: undefined });
+    }
+    throw err;
   }
-  return provider.parseResponse(raw);
+}
+
+/** True when an LLM error is a provider rejecting the predicted-outputs
+ *  `prediction` field (e.g. cerebras "property 'prediction' is
+ *  unsupported"). Matched on both tokens so unrelated errors that merely
+ *  mention one word don't trigger the strip-and-retry fallback. */
+function isPredictionUnsupportedError(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return msg.includes('prediction') && msg.includes('unsupported');
 }
 
 /**
