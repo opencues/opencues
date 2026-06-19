@@ -275,6 +275,117 @@ describe('FluidBlankSource', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Model-decided MODE field — the model emits a MODE line (FILL/WIPE); the
+// runtime trusts it, falling back to determineReplaceMode only when absent
+// or unrecognised. Model proposes, runtime validates.
+// ---------------------------------------------------------------------------
+
+describe('FluidBlankSource — model-decided MODE field', () => {
+  const baseConfig = {
+    provider: getProvider('groq')!,
+    endpoint: 'https://example.test/v1/chat/completions',
+    apiKey: 'test-key',
+    model: 'test-model',
+  };
+
+  it('keeps heuristic FILL as a non-destructive floor even when the model proposes WIPE', async () => {
+    // "X is _" → the heuristic returns FILL (high-confidence sentence with
+    // a trailing gap). The model is WIPE-biased here, but a WIPE would
+    // collapse "the answer is " → "42". The FILL floor refuses that: the
+    // model may not escalate a heuristic-FILL into a destructive WIPE.
+    const src = new FluidBlankSource({
+      ...baseConfig,
+      httpAdapter: makeMockAdapter([
+        'SPAN: the answer is _\nANSWER: 42\nMODE: WIPE',
+      ]),
+    });
+    assert.strictEqual(determineReplaceMode('the answer is _'), 'FILL');
+    const r = (await src.getCues(ctxFromText('the answer is _'))).results[0]!;
+    assert.strictEqual(r.metadata?.fluidBlankMode, 'FILL');
+    assert.strictEqual(r.spanStart, undefined);
+    assert.strictEqual(r.spanEnd, undefined);
+  });
+
+  it('model MODE: FILL rescues a heuristic WIPE (language-invariant sentence shape)', async () => {
+    // "capital of france _" → the English heuristic returns WIPE. When the
+    // heuristic says WIPE the runtime DEFERS to the model — here it picks
+    // FILL (this is the path that rescues non-English copula sentences the
+    // English regex can't parse). FILL → span left unset (only _ replaced).
+    const src = new FluidBlankSource({
+      ...baseConfig,
+      httpAdapter: makeMockAdapter([
+        'SPAN: capital of france _\nANSWER: Paris\nMODE: FILL',
+      ]),
+    });
+    assert.strictEqual(determineReplaceMode('capital of france _'), 'WIPE');
+    const r = (await src.getCues(ctxFromText('capital of france _'))).results[0]!;
+    assert.strictEqual(r.metadata?.fluidBlankMode, 'FILL');
+    assert.strictEqual(r.spanStart, undefined);
+    assert.strictEqual(r.spanEnd, undefined);
+  });
+
+  it('model MODE: WIPE is honoured when the heuristic also says WIPE (defers to model)', async () => {
+    // Heuristic WIPE + model WIPE → WIPE, multi-word span set. Confirms the
+    // deferral path still produces a WIPE for genuine terse lookups.
+    const src = new FluidBlankSource({
+      ...baseConfig,
+      httpAdapter: makeMockAdapter([
+        'SPAN: capital of france _\nANSWER: Paris\nMODE: WIPE',
+      ]),
+    });
+    assert.strictEqual(determineReplaceMode('capital of france _'), 'WIPE');
+    const r = (await src.getCues(ctxFromText('trivia capital of france _'))).results[0]!;
+    assert.strictEqual(r.metadata?.fluidBlankMode, 'WIPE');
+    assert.strictEqual(r.spanStart, 7);
+    assert.strictEqual(r.spanEnd, 7 + 'capital of france _'.length);
+  });
+
+  it('falls back to the heuristic when the model omits MODE', async () => {
+    // No MODE line — the runtime uses determineReplaceMode('capital of
+    // france _') === 'WIPE'. (Mirrors a weaker label-format model.)
+    const src = new FluidBlankSource({
+      ...baseConfig,
+      httpAdapter: makeMockAdapter([
+        'SPAN: capital of france _\nANSWER: Paris',
+      ]),
+    });
+    const r = (await src.getCues(ctxFromText('trivia capital of france _'))).results[0]!;
+    assert.strictEqual(r.metadata?.fluidBlankMode, 'WIPE');
+  });
+
+  it('falls back to the heuristic when MODE is unrecognised', async () => {
+    const src = new FluidBlankSource({
+      ...baseConfig,
+      httpAdapter: makeMockAdapter([
+        'SPAN: the answer is _\nANSWER: 42\nMODE: maybe-wipe?',
+      ]),
+    });
+    const r = (await src.getCues(ctxFromText('the answer is _'))).results[0]!;
+    // Garbage MODE → ignored → heuristic ("is _") → FILL.
+    assert.strictEqual(r.metadata?.fluidBlankMode, 'FILL');
+  });
+
+  it('never WIPEs a multi-paragraph buffer even when the model proposes WIPE (data-loss fail-safe)', async () => {
+    // Heuristic says FILL ("...is _"), so the pre-dispatch multi-paragraph
+    // guard does NOT bail; the LLM runs and proposes WIPE. The FILL floor
+    // (plus the defense-in-depth multi-paragraph backstop) refuses the WIPE
+    // so the user's prior paragraph is preserved — a bare-lookup WIPE would
+    // collapse two paragraphs into one.
+    const text = 'first paragraph of real content.\n\nthe answer is _';
+    assert.strictEqual(determineReplaceMode(text), 'FILL');
+    const src = new FluidBlankSource({
+      ...baseConfig,
+      httpAdapter: makeMockAdapter([
+        'SPAN: the answer is _\nANSWER: 42\nMODE: WIPE',
+      ]),
+    });
+    const r = (await src.getCues(ctxFromText(text))).results[0]!;
+    assert.strictEqual(r.metadata?.fluidBlankMode, 'FILL');
+    assert.strictEqual(r.spanStart, undefined);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // renderAmbientBlock — sanitization + sentinel escape
 // ---------------------------------------------------------------------------
 

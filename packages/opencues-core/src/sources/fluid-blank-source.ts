@@ -170,9 +170,10 @@ NEVER return an empty ANSWER when a catalog token applies — emit the matching 
 
 NEVER invent a bracket-token from the "covers:" hint. The covers list contains synonyms that ROUTE you to a real token in the catalog — it is NOT a list of token names. E.g. seeing "portfolio" in the covers hint for [STOCKS NVDA] means a "portfolio" query routes to [STOCKS NVDA] (and any other [STOCKS *]); it does NOT mean you may emit [PORTFOLIO], [HOLDINGS], [WATCHLIST], or any other bracketed word that does not appear verbatim in the catalog list.
 
-Output exactly two lines, nothing else:
+Output exactly three lines, nothing else:
 SPAN: <the contiguous substring of the input including _, OR the literal word NONE>
 ANSWER: <the value that should replace the SPAN; empty when SPAN=NONE>
+MODE: <FILL or WIPE — see MODE RULES>
 
 SPAN RULES:
 1. SPAN is an exact contiguous substring of the input, including the underscore.
@@ -417,7 +418,9 @@ INPUT: UK _
 label: Country
 </UNTRUSTED_FIELD_CONTEXT>
 SPAN: UK _
-ANSWER: United Kingdom`;
+ANSWER: United Kingdom
+
+MODE (the third output line — classify by SHAPE, so it holds in any language): WIPE when the input is a terse standalone lookup phrase whose whole text is replaced by the ANSWER ("capital of france _" → Paris, "unicode for ampersand _" → U+0026) — this is the common case. FILL when the input is a sentence and the ANSWER drops into the gap, keeping the surrounding words: _ after a copula/equation/question ("the cube root of 27 is _" → 3, "3 + 4 = _" → 7) or _ mid-sentence with the ANSWER restating the clause ("Water boils at _ degrees Celsius"). SPAN=NONE → FILL.`;
 
 /**
  * Decide whether the user wants the answer to FILL the `_` (preserve the
@@ -981,7 +984,7 @@ export class FluidBlankSource implements CueSource {
       // 512 default is bench-tuned for short-factual answers.
       const fusedOut = await this.callLLM(fullSystem, fusedUser, this.maxTokensOverride ?? 512,
         useJson ? buildJsonResponseFormat('fluid_fused', FLUID_FUSED_SCHEMA) : undefined, context.signal);
-      const { span, answer } = useJson ? parseFusedJson(fusedOut) : parseFused(fusedOut);
+      const { span, answer, mode: modelMode } = useJson ? parseFusedJson(fusedOut) : parseFused(fusedOut);
       this.emit({ type: 'pass-completed', pass: 'FUSED', latencyMs: Date.now() - fusedStart, span: span ?? '', answer: answer ?? '' });
       if (!span) {
         // LLM internal — silent. Retry on next text-change.
@@ -1028,9 +1031,62 @@ export class FluidBlankSource implements CueSource {
       // read result.metadata.context defensively).
       const ctx = '';
 
-      // Replacement mode. Mode-decision reads the SAME text the LLM saw
-      // (effectiveText), matching what the LLM is shaped for.
-      const mode = determineReplaceMode(effectiveText);
+      // Replacement mode — FILL (substitute only `_`, keep the surrounding
+      // words) vs WIPE (replace the whole lookup phrase). The MODEL emits a
+      // MODE line (see MODE RULES in FUSED_SYSTEM_PROMPT) and owns the OPEN
+      // content judgement: "is this a terse query phrase, or a sentence with
+      // a gap?". But FILL is also the NON-DESTRUCTIVE mode, so we keep a
+      // deterministic data-loss FLOOR — the same category of safety
+      // invariant as the multi-paragraph guard below:
+      //
+      //   - heuristic FILL  → FILL, AUTHORITATIVELY. determineReplaceMode
+      //     returns FILL only on high-confidence "sentence with a trailing
+      //     gap" shapes (copula / equation / question adjacency, or `_`
+      //     mid-sentence). Those are exactly the cases where a WIPE would
+      //     collapse text the user deliberately typed ("3 + 4 = _" must
+      //     stay "3 + 4 = 7", not reduce to "7"; "...? _" keeps the
+      //     question). The model is WIPE-biased on these (bench-observed),
+      //     so it may NOT escalate a heuristic-FILL into a destructive WIPE.
+      //   - heuristic WIPE  → DEFER TO THE MODEL. The heuristic's regex is
+      //     English-anchored, so it WIPEs a non-English sentence it can't
+      //     parse ("la racine cubique de 27 est _"); the model rescues those
+      //     to FILL. A genuine terse lookup stays WIPE either way. This is
+      //     where the language-invariance win lands.
+      //
+      // Net: behaviour is unchanged on every case the English anchor already
+      // got right, and strictly improved on non-English copula sentences —
+      // no regression, real gain. Falls back to the pure heuristic when the
+      // model omitted MODE / emitted garbage (label-format path on a weak
+      // model; strict-JSON providers always emit it).
+      const heuristicMode = determineReplaceMode(effectiveText);
+      let mode: 'FILL' | 'WIPE';
+      if (heuristicMode === 'FILL') {
+        mode = 'FILL';
+        if (modelMode === 'WIPE') {
+          this.logInfo('FluidBlank: keeping heuristic FILL (non-destructive floor); model proposed WIPE');
+        }
+      } else {
+        mode = modelMode ?? 'WIPE';
+        if (modelMode === 'FILL') {
+          this.logInfo('FluidBlank: model rescued heuristic WIPE → FILL (language-invariant sentence shape)');
+        } else if (!modelMode) {
+          this.logInfo('FluidBlank: mode from heuristic=WIPE (model omitted MODE)');
+        }
+      }
+      // Defense-in-depth backstop — NEVER WIPE a multi-paragraph buffer.
+      // Two upstream checks already cover this (the pre-dispatch guard bails
+      // when heuristic=WIPE on a multi-paragraph buffer; the FILL floor
+      // above forces FILL when heuristic=FILL), so in the current control
+      // flow this is unreachable. It stays as a deliberate, cheap redundant
+      // guard on a DATA-LOSS invariant: any future change to the floor or
+      // the pre-dispatch guard that let a WIPE through on a multi-paragraph
+      // buffer would be caught here instead of destroying the user's
+      // content. The cost is four lines; the failure it prevents is the
+      // "2 paragraphs collapsed to 1" landmine.
+      if (mode === 'WIPE' && /\n[ \t]*\n/.test(effectiveText)) {
+        this.logInfo('FluidBlank: downgrading proposed WIPE → FILL on a multi-paragraph buffer (data-loss fail-safe)');
+        mode = 'FILL';
+      }
 
       // Record the fresh answer into the variant pool — subsequent
       // identical-buffer triggers will cycle through cached variants
@@ -1260,30 +1316,45 @@ export class FluidBlankSource implements CueSource {
 
 const FLUID_FUSED_SCHEMA: Record<string, unknown> = {
   type: 'object',
-  properties: { span: { type: 'string' }, answer: { type: 'string' } },
-  required: ['span', 'answer'],
+  properties: {
+    span: { type: 'string' },
+    answer: { type: 'string' },
+    mode: { type: 'string', enum: ['FILL', 'WIPE'] },
+  },
+  required: ['span', 'answer', 'mode'],
   additionalProperties: false,
 };
 
-interface FusedResult { span: string | null; answer: string | null; }
+// `mode` is the model's FILL/WIPE classification (see MODE RULES in the
+// prompt). `null` when the model omitted it or emitted an unrecognised
+// value — the caller falls back to the deterministic determineReplaceMode
+// heuristic in that case. Model proposes, runtime validates.
+interface FusedResult { span: string | null; answer: string | null; mode: 'FILL' | 'WIPE' | null; }
+
+function normalizeMode(raw: string | undefined | null): 'FILL' | 'WIPE' | null {
+  if (!raw) return null;
+  const m = raw.trim().toUpperCase();
+  return m === 'FILL' || m === 'WIPE' ? m : null;
+}
 
 function parseFused(raw: string): FusedResult {
   const spanMatch = raw.match(/^SPAN:\s*(.*?)$/m);
   const answerMatch = raw.match(/^ANSWER:\s*([\s\S]*?)\s*$/m);
+  const modeMatch = raw.match(/^MODE:\s*(.*?)$/m);
   const spanRaw = spanMatch ? spanMatch[1].trim() : '';
   const ansRaw = answerMatch ? answerMatch[1].trim() : '';
   const span = (!spanRaw || spanRaw.toUpperCase() === 'NONE') ? null : spanRaw;
   const answer = span === null ? null : (ansRaw || null);
-  return { span, answer };
+  return { span, answer, mode: normalizeMode(modeMatch ? modeMatch[1] : null) };
 }
 
 function parseFusedJson(raw: string): FusedResult {
   try {
-    const obj = JSON.parse(raw.trim()) as { span?: unknown; answer?: unknown };
+    const obj = JSON.parse(raw.trim()) as { span?: unknown; answer?: unknown; mode?: unknown };
     const spanRaw = typeof obj.span === 'string' ? obj.span.trim() : '';
     const ansRaw = typeof obj.answer === 'string' ? obj.answer.trim() : '';
     const span = (!spanRaw || spanRaw.toUpperCase() === 'NONE') ? null : spanRaw;
     const answer = span === null ? null : (ansRaw || null);
-    return { span, answer };
-  } catch { return { span: null, answer: null }; }
+    return { span, answer, mode: normalizeMode(typeof obj.mode === 'string' ? obj.mode : null) };
+  } catch { return { span: null, answer: null, mode: null }; }
 }
