@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-04-12
+last_updated: 2026-06-18
 ---
 
 # Consume-Context Blanks
@@ -7,6 +7,15 @@ last_updated: 2026-04-12
 A consume-context blank is a blank that **collapses the keyword and context words between the keyword and blank**, while preserving surrounding text. The collapsed region is replaced by the blank's resolved value.
 
 This extends [Cue-Blanks](cue-blanks.md) and differs from [Consume-All Blanks](consume-all-blanks.md) which clear *everything*.
+
+> **Note:** the canonical example below — the `answer` blank (`what is the word
+> for X _`) — was **retired in June 2026**. Factual `_` lookups are now served
+> by the generalized `FluidBlankSource` (see [cue-blanks](cue-blanks.md) §
+> fluid blanks and the glossary's FluidBlankSource entry; incl. `answer _`
+> meta-triggers), which runs on the user's configured provider and
+> scopes its own replacement span. The `blankConsumeContext` mechanism itself
+> is unchanged and still available to custom keyword-bound blanks; the example
+> is kept as an illustration of that mechanism.
 
 ---
 
@@ -44,12 +53,16 @@ Other fields typically used:
 
 ---
 
-## Example: Answer Blank
+## Example: Answer Blank (retired)
 
-The `blanks/answer/` blank uses consume-context to provide factual lookups:
+The `blanks/answer/` blank — **retired June 2026**, intent moved to
+`FluidBlankSource` — used consume-context to provide factual lookups. Its
+frontmatter is preserved below to illustrate how a consume-context blank is
+configured; a new custom consume-context blank would follow the same shape.
 
 ```yaml
 ---
+# blanks/answer/ — no longer shipped; shown only as a config illustration
 name: answer
 type: blank
 blankKeywords: what is the word for
@@ -96,7 +109,7 @@ I wonder what is the word for hello in French _ she said
 |------|-------|--------|
 | Standard blank | `volume _` | `volume 50` |
 | `blankClearKeywords` | `volume _` | `50` (keyword cleared) |
-| `blankConsumeAll` | `improve write a poem _` | `Compose a moving sonnet...` (everything cleared) |
+| `blankConsumeAll` | (a custom whole-buffer blank) | result replaces everything (entire input cleared) |
 | **`blankConsumeContext`** | `I think define ephemeral _` | `I think lasting a very short time` (context collapsed, prefix kept) |
 
 ---

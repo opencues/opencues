@@ -155,9 +155,11 @@ blankDismissible: true
 
 Type `affirmation _` → blank fills with "I am strong". Up/Down cycles: "I am brave" → "I am worthy" → "I am enough" → `_` to dismiss.
 
-## 5. Adding an LLM/HTTP blank (TypeScript class)
+## 5. Adding an HTTP/data blank (TypeScript class)
 
-Blanks that fetch data from web APIs or call LLMs are implemented as **TypeScript classes inside `@opencues/runtime`**. Existing examples: `StocksBlank`, `WeatherBlank`, `HackerNewsBlank`, `AnswerBlank`, `PromptImproverBlank`, `OpenCuesSettingsBlank`, `CountriesBlank`, `CryptoBlank`, `DictionaryBlank`.
+Blanks that fetch data from web APIs are implemented as **TypeScript classes inside `@opencues/runtime`**. Existing examples: `StocksBlank`, `WeatherBlank`, `HackerNewsBlank`, `OpenCuesSettingsBlank`, `CountriesBlank`, `CryptoBlank`, `DictionaryBlank`.
+
+> The LLM-backed answer + prompt-improver blanks that once lived here were retired June 2026; those intents are now served by the generalized semantic-`_` sources (`FluidBlankSource` for `answer _` / factual lookups, `TransformBlankSource` for `improve prompt _` / imperative rewrites), which run on the user's configured provider rather than a hardcoded one. Prefer a fluid/transform source over a new LLM blank class for any free-form `_` intent.
 
 This applies to both read-only API blanks (e.g. stocks, weather) and dynamic list blanks (e.g. Hacker News titles). The shape:
 

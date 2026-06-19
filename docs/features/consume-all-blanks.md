@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-04-10
+last_updated: 2026-06-18
 ---
 
 # Consume-All Blanks
@@ -8,18 +8,28 @@ A consume-all blank is a blank that **clears all surrounding text** when it auto
 
 This extends [Cue-Blanks](cue-blanks.md) with a new pattern: instead of replacing just `_`, the entire input is consumed — activation keywords, prompt text, and the blank are all replaced by the result.
 
+> **Note:** the canonical example blank that once exercised this mode — the
+> prompt-improver (`improve prompt _`) — was **retired in June 2026**. That
+> intent is now served by the generalized `TransformBlankSource` (`improve
+> prompt _` → a whole-buffer three-way-merge rewrite on the user's configured
+> provider; see [transform-blank](transform-blank.md)). The `blankConsumeAll`
+> mechanism itself is unchanged and still available to custom blanks — this
+> doc documents that mechanism. The "Prompt Improver" section below is kept
+> as a worked illustration of the data flow, not a description of a shipped
+> blank.
+
 ---
 
 ## Concept
 
-Standard cue-blanks replace `_` with a value (e.g., `volume _` → `50`). Consume-all blanks replace **everything**:
+Standard cue-blanks replace `_` with a value (e.g., `volume _` → `50`). Consume-all blanks replace **everything** — using a custom blank's activation keyword as an illustration:
 
 ```
-Input:  write a poem about love improve prompt _
+Input:  write a poem about love <consume-all keyword> _
 Result: Compose a deeply moving sonnet exploring the transformative power of love
 ```
 
-The activation keywords (`improve prompt`) and the original text (`write a poem about love`) are all cleared. The result is a multi-word span that the user can cycle through alternative versions of.
+The activation keyword and the original text (`write a poem about love`) are all cleared. The result is a multi-word span that the user can cycle through alternative versions of.
 
 ---
 
@@ -69,25 +79,32 @@ An integration implementing consume-all blanks must:
 
 ---
 
-## Example: Prompt Improver
+## Worked illustration (retired blank)
+
+The prompt-improver was the first blank to exercise this mode. It was
+**retired in June 2026** — its `improve prompt _` intent moved to the
+generalized [`TransformBlankSource`](transform-blank.md) which runs on the
+user's configured LLM provider and merges its rewrite into the live buffer
+rather than consuming the whole input. The sketch below is preserved only to
+show how a consume-all blank's data flow looked end-to-end; no such blank
+ships today.
 
 ```
-blanks/prompt/
+blanks/prompt/                      # (retired — no longer shipped)
   BLANK.md              # Config: blankConsumeAll, keywords (improve prompt, enhance prompt, refine prompt)
-                      # Implementation: @opencues/runtime PromptImproverBlank
-                      # (packages/opencues-runtime/src/blanks/prompt-improver.ts)
 ```
 
-The implementation is a TypeScript class in `@opencues/runtime` (post the
-blanks hoist refactor). It performs a two-step LLM pass: extract
-prompt/conditions from the activation keywords, then generate 3 improved
-versions. Returns newline-separated output, which the consume-all pipeline
-treats as cycling alternatives.
+The implementation was a TypeScript class in `@opencues/runtime`. It
+performed a two-step LLM pass: extract prompt/conditions from the activation
+keywords, then generate 3 improved versions. It returned newline-separated
+output, which the consume-all pipeline treats as cycling alternatives.
 
-**Usage:**
+**Usage (as it once worked):**
 - `write a poem about love improve prompt _` → improved prompt (3 alternatives + original to cycle)
 - `improve prompt _ write a poem about love make it rhyme` → improved prompt respecting conditions
 - Cycle past last improved version → original prompt text (without activation keywords)
 
-**Original prompt preservation:** The class includes the extracted original prompt (minus activation keywords) as the last cycling alternative. This lets the user always get back to their original text without dismissing to `_`. The extraction step already separates the prompt from keywords, so the original is available at no extra cost.
+**Original prompt preservation:** The class included the extracted original prompt (minus activation keywords) as the last cycling alternative, letting the user always get back to their original text without dismissing to `_`.
+
+A new custom consume-all blank would follow the same shape: implement a TS class (or shell script) returning newline-separated alternatives, set `blankConsumeAll: true` + `blankClearKeywords: true`, and the runtime handles the span storage and cycling.
 

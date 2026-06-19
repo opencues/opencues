@@ -59,9 +59,9 @@ We measured the per-model wall-clock latency through `claude -p`:
 
 | model  | p50    | p95    | recommended pipelines |
 |--------|--------|--------|----------------------|
-| haiku  | 840ms  | 874ms  | transform-blank, fluid-blank, agent-rewrite, prompt-improver |
-| sonnet | 1338ms | 1445ms | fluid-blank (borderline), agent-rewrite, prompt-improver |
-| opus   | 1982ms | 2900ms | agent-rewrite (when quality matters), prompt-improver |
+| haiku  | 840ms  | 874ms  | transform-blank, fluid-blank, agent-rewrite |
+| sonnet | 1338ms | 1445ms | fluid-blank (borderline), agent-rewrite |
+| opus   | 1982ms | 2900ms | agent-rewrite (when quality matters), transform-blank |
 
 **Word-cues are not supported** via `claude-cli` — they need sub-500ms
 response and even Haiku via the CLI is over budget. Leave word-cues on
@@ -79,11 +79,11 @@ llm-provider: cerebras
 llm-model: gpt-oss-120b
 
 # Use my Claude Pro subscription for the prose-heavy stuff
-agent-rewrite-provider: claude-cli
-agent-rewrite-model: sonnet
+agent-provider: claude-cli
+agent-model: sonnet
 
-prompt-improver-provider: claude-cli
-prompt-improver-model: opus
+transform-blank-provider: claude-cli
+transform-blank-model: opus
 ---
 ```
 

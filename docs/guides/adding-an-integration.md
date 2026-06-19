@@ -228,8 +228,9 @@ process, host-side buffer clears, paste / undo / IME): wire
 `BootResult.resetBufferState()` at every boundary. The failure
 mode is silent — a stale `DynDef` from a prior substitution
 blocks the next blank with no log line. Shell missed this on
-launch (2026-05-28) — prompt-improver state leaked across
-keep-alive sessions and silently broke every subsequent blank.
+launch (2026-05-28) — a blank's span state (the then-shipped
+prompt-improver's, since retired) leaked across keep-alive
+sessions and silently broke every subsequent blank.
 
 Full trigger catalogue + symptom table + pre-ship checklist:
 [`docs/architecture/universal-integration.md`](../architecture/universal-integration.md)
