@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Performance — Anthropic prompt caching: ~90% cheaper input on cached system prompts (core 0.3.37)
+
+Every OpenCues system prompt is static per session (the cerebras prefix-cache relies on this), but the **Anthropic** provider was sending `system` as a plain string — which Anthropic never caches. So anthropic-routed buckets (auditors / agent-rewrite default to Sonnet; any bucket a user points at Claude) re-billed the full system prompt on every call. `ANTHROPIC.buildRequest` now sends `system` as a content-block array with a single `cache_control: { type: 'ephemeral' }` breakpoint, so the static prefix is cached and subsequent calls within the 5-minute TTL bill the prefix at ~10% of input price. The per-call user message sits after the breakpoint and stays uncached (correct — it's the only varying part).
+
+Measured (Sonnet, the ~3k-token fluid prompt, warm): input billing **3801 → 393 token-equiv (~90% cheaper)**, confirmed end-to-end through the production `buildProviderRequest` path (`cache_read_input_tokens=3787`, `input_tokens=11`). **This is a COST win, not a latency win** — at our prompt sizes the cached read doesn't change wall-clock (1720ms vs 1795ms, noise); it only cuts the bill. (Anthropic differs from cerebras here, where prefix caching *is* a 4× latency win.)
+
+**Model-dependent and harmless when it doesn't engage:** Sonnet / Opus / Fable cache from ~1k tokens, so all our 3–3.8k-token prompts cache there; Haiku-4-5 (the anthropic default for cues/blanks) has an effective floor of ~4–5k tokens, so our prompts mostly *don't* cache on it — but an unmet `cache_control` is silently ignored (no error, normal price, no write premium), so the change is strictly safe everywhere. Pinned by provider unit tests (system is a one-block array with the ephemeral breakpoint; user message uncached). Follow-up (deferred): a two-block split so FluidBlank's appended identity/blank-context catalogs sit *after* the breakpoint, keeping the big stable prefix cached even when a catalog changes.
+
 ### Performance — ConfigIntent's two LLM calls no longer stack: ~473ms → ~290ms per config command (core 0.3.36)
 
 The dedicated SUMMON span call (0.3.35) ran *after* the classifier, so a config command paid two serial round-trips. Two changes collapse that:
