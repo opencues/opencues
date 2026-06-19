@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — sentence-cues segment CJK text at the ideographic full stop (core 0.3.39)
+
+`segmentSentences` only recognised ASCII terminators with a trailing-space rule (`[.!?]+(?=\s|$)`). CJK scripts use `。！？` with no space after the stop, so a Japanese/Chinese paragraph collapsed into **one giant "sentence"** — and the sentence-cue highlight on Claude Code selected the whole block (observed live: a ~460-char Japanese buffer highlighted as `[0,464]` instead of the first sentence). The segmenter now also splits on CJK/fullwidth terminators `。！？．` directly (no trailing space required, like ConfigIntent's CJK summon boundary in 0.3.34); the CJK comma `、` is deliberately not a terminator. ASCII behaviour is byte-identical (the `gpt-5.4` / `e.g.` / URL-dot mid-token guard is unchanged), so the English sentence-cues bench is unaffected. Pinned by 3 CJK tests (ideographic `。`, comma-is-not-a-terminator, fullwidth `！`/`？`).
+
 ### Changed — chrome 0.2.23: rebuild on core 0.3.38
 
 Version bump for the chrome extension to ship a fresh bundle baking in the core changes from this cycle (provider capability model, FluidBlank FILL/WIPE + MODE fixes, ConfigIntent language-invariant command boundary + parallel span, Anthropic prompt caching). No chrome `src/` changes — `manifest.json` + `package.json` bumped in lockstep so a reload in `chrome://extensions` is confirmable.
