@@ -91,8 +91,14 @@ export class DimRender {
           if (seenStaticAltSpans.has(span.originIdx)) continue;
           seenStaticAltSpans.add(span.originIdx);
           if (activeStaticAltSpan && activeStaticAltSpan.originIdx === span.originIdx) continue;
-          const endWord = words[span.originIdx + span.spanLength - 1];
-          if (endWord) dimRanges.push({ start: w.start, end: endWord.end });
+          // Char span over word-derived range — see the highlight branch
+          // below (CJK words straddle 。 sentence boundaries).
+          if (span.def.spanEnd > span.def.spanStart) {
+            dimRanges.push({ start: span.def.spanStart, end: span.def.spanEnd });
+          } else {
+            const endWord = words[span.originIdx + span.spanLength - 1];
+            if (endWord) dimRanges.push({ start: w.start, end: endWord.end });
+          }
           continue;
         }
 
@@ -158,10 +164,21 @@ export class DimRender {
           highlight = { start: startWord.start, end: endWord.end };
         }
       } else if (activeStaticAltSpan) {
-        const startWord = words[activeStaticAltSpan.originIdx];
-        const endWord = words[activeStaticAltSpan.originIdx + activeStaticAltSpan.spanLength - 1];
-        if (startWord && endWord) {
-          highlight = { start: startWord.start, end: endWord.end };
+        // Prefer the def's CHAR span over word-derived boundaries. With
+        // mixed CJK+Latin text a whitespace-word can STRADDLE a 。 sentence
+        // boundary (no space after the stop), e.g. "…します。同一サイト…" is
+        // one word spanning two sentences — so words[origin]…words[end]
+        // over/under-covers the actual sentence. The def's spanStart/spanEnd
+        // is the true range. For space-delimited text they're equal.
+        const def = activeStaticAltSpan.def;
+        if (def.spanEnd > def.spanStart) {
+          highlight = { start: def.spanStart, end: def.spanEnd };
+        } else {
+          const startWord = words[activeStaticAltSpan.originIdx];
+          const endWord = words[activeStaticAltSpan.originIdx + activeStaticAltSpan.spanLength - 1];
+          if (startWord && endWord) {
+            highlight = { start: startWord.start, end: endWord.end };
+          }
         }
       } else if (activeInSelector && ss) {
         const s0 = words[ss.selectorIndex];

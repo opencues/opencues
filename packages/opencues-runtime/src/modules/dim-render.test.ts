@@ -57,6 +57,29 @@ describe('DimRender.compute', () => {
     expect(out).toMatchObject({ highlight: { start: 0, end: 13 } });
   });
 
+  it('mixed CJK+Latin: highlights the def char span when a whitespace-word straddles a 。 boundary', () => {
+    // Multi-WORD sentence (has spaces around "HTTPS"), so it goes through
+    // the activeStaticAltSpan branch — but whitespace-word 2
+    // ("を徹底します。同一サイトトークンで") straddles the 。 between two
+    // sentences (no space after the stop). The word-derived range would run
+    // to the end of that straddling word (into sentence 2); the def's char
+    // span [0,21) is the true first-sentence range. Observed live on CC.
+    const buffer = 'すべての通信で HTTPS を徹底します。同一サイトトークンで CSRF を防止します。';
+    const { hlState, dynDefs, dimRender } = setup(buffer);
+    dynDefs.set(0, {
+      originalWord: 'すべての通信で HTTPS を徹底します。',
+      alternatives: ['すべての通信で HTTPS を徹底します。', 'すべての通信で HTTPS を徹底いたします。'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: 21, // end of "…します。" (the first 。)
+    });
+    hlState.activate(0, buffer);
+    const out = dimRender.compute({ text: buffer, cursor: 0, externalHighlights: [] });
+    expect(out).toMatchObject({ highlight: { start: 0, end: 21 } });
+    // The straddling word 2 ends at 31; the highlight must NOT reach it.
+    expect((out as { highlight: { end: number } }).highlight.end).toBeLessThan(31);
+  });
+
   it('still highlights the whole word when the def span equals the word (ASCII unchanged)', () => {
     // A normal single-word cue: def char span == the word's range → use the
     // word range (no behaviour change for space-delimited text).
