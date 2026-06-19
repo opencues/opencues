@@ -973,6 +973,19 @@ export class ConfigIntentSource implements CueSource {
     this.log(`ConfigIntent: starting (textLen=${context.text.length}, blankIdx=${blankIdx}, llm=${llmDesc})`);
     this.emit({ type: 'started', textLen: context.text.length, blankIdx, llm: llmDesc });
 
+    // Kick off the wipe-span resolution CONCURRENTLY with the classifier.
+    // The command boundary is independent of the verdict (it's a function
+    // of the buffer text, not of which setting/provider was named), so the
+    // summon call — when one is even needed (see resolveCommandSpanStart's
+    // regex-confident short-circuit) — overlaps the classifier's latency
+    // instead of stacking after it. We only AWAIT it on a confirmed
+    // SETTING/PROVIDER verdict; a NONE verdict cedes without awaiting, so
+    // the NONE path is never slowed by it. `.catch` keeps an early-cede /
+    // error path from leaving a floating rejection (the method itself
+    // never throws — regex floor on any failure).
+    const spanStartPromise = this.resolveCommandSpanStart(context.text, context.signal);
+    spanStartPromise.catch(() => {});
+
     // VARIANT POOL — cache raw LLM response. Re-run parse/validate/
     // apply on hit so the verdict's side effect (applyScalar for
     // SETTING/PROVIDER verdicts) still fires. Idempotent at the
@@ -1119,10 +1132,11 @@ export class ConfigIntentSource implements CueSource {
     this.log(`ConfigIntent: applied ${cueTip} (${Date.now() - t0}ms, conf=${verdict.confidence ?? 'n/a'})`);
     this.emit({ type: 'completed', verdict, applied: true, latencyMs: Date.now() - t0 });
 
-    // Resolve the wipe span's left edge. The command is confirmed at this
-    // point, so we make the dedicated SUMMON extraction call (language-
-    // invariant boundary, regex floor on failure). See SUMMON_PROMPT.
-    const spanStart = await this.resolveCommandSpanStart(context.text, context.signal);
+    // Await the wipe-span resolution started concurrently above. By now the
+    // classifier round-trip has elapsed, so on the common path this promise
+    // is already settled (the summon call, if any, overlapped it) — the span
+    // adds ~0 to the critical path instead of a second serial round-trip.
+    const spanStart = await spanStartPromise;
 
     // Selector-satellite shape, mirroring the result BlankSource emits
     // for keyword-bound `opencues settings _` (see blank-source.ts
@@ -1165,12 +1179,24 @@ export class ConfigIntentSource implements CueSource {
   }
 
   /**
-   * Resolve the wipe span's left edge for a confirmed config command via
-   * the dedicated SUMMON extraction call (see SUMMON_PROMPT), with the
-   * `summonPhraseStart` regex as the deterministic floor. Memoised per
-   * buffer; never throws — any failure falls back to the regex so a
-   * provider hiccup can't break the command, only make the boundary
-   * slightly less language-aware.
+   * Resolve the wipe span's left edge for a config command. Three tiers,
+   * cheapest first:
+   *
+   *   1. PER-BUFFER CACHE — a repeat/double-fire trigger pays nothing.
+   *   2. REGEX-CONFIDENT SHORT-CIRCUIT — if `summonPhraseStart` found a
+   *      real sentence boundary (start > 0), USE IT and make NO LLM call.
+   *      The regex can only ever UNDER-find a boundary (miss one in a
+   *      script it can't segment); it never HALLUCINATES one, so any
+   *      boundary it does find is a valid command start. This skips the
+   *      summon call entirely for the common case (English/CJK prior
+   *      content with punctuation) — the optimisation that keeps the
+   *      second call off the hot path when the regex already suffices.
+   *   3. DEDICATED SUMMON CALL — only when start === 0 (bare command, OR
+   *      prior content in a script the regex can't segment, e.g. Thai).
+   *      This is the one case the model adds value; in `getCues` it is
+   *      kicked off CONCURRENTLY with the classifier so its latency
+   *      overlaps rather than stacks. Never throws (regex floor on any
+   *      failure), memoised.
    */
   private async resolveCommandSpanStart(text: string, signal?: AbortSignal): Promise<number> {
     const cached = ConfigIntentSource._summonStartCache.get(text);
@@ -1178,16 +1204,25 @@ export class ConfigIntentSource implements CueSource {
       this.log(`ConfigIntent: summon-span cache HIT (start=${cached})`);
       return cached;
     }
+    const regexStart = summonPhraseStart(text);
     let start: number;
-    try {
-      const raw = await this.callLLM(SUMMON_PROMPT, `INPUT: ${text}`, this.maxTokensOverride ?? 96, signal);
-      const summon = parseSummonOutput(raw);
-      start = resolveSummonStart(text, summon);
-      const via = summon && text.endsWith(summon.trim()) && start === text.length - summon.trim().length ? 'model' : 'regex-floor';
-      this.log(`ConfigIntent: summon-span via ${via} (start=${start}, summon=${JSON.stringify(summon)})`);
-    } catch (e) {
-      start = summonPhraseStart(text);
-      this.log(`ConfigIntent: summon extraction failed (${(e as Error).message}) — regex floor (start=${start})`);
+    if (regexStart > 0) {
+      // Regex found a real boundary — authoritative, no LLM call needed.
+      start = regexStart;
+      this.log(`ConfigIntent: summon-span via regex-confident (start=${start}, no LLM call)`);
+    } else {
+      // Ambiguous (start === 0): the model disambiguates bare-command vs
+      // non-punctuated prior content.
+      try {
+        const raw = await this.callLLM(SUMMON_PROMPT, `INPUT: ${text}`, this.maxTokensOverride ?? 96, signal);
+        const summon = parseSummonOutput(raw);
+        start = resolveSummonStart(text, summon);
+        const via = summon && text.endsWith(summon.trim()) && start === text.length - summon.trim().length ? 'model' : 'regex-floor';
+        this.log(`ConfigIntent: summon-span via ${via} (start=${start}, summon=${JSON.stringify(summon)})`);
+      } catch (e) {
+        start = summonPhraseStart(text);
+        this.log(`ConfigIntent: summon extraction failed (${(e as Error).message}) — regex floor (start=${start})`);
+      }
     }
     // Bounded memo — evict oldest on overflow (Map preserves insertion order).
     const cache = ConfigIntentSource._summonStartCache;

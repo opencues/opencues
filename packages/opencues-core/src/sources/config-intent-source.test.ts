@@ -370,42 +370,70 @@ describe('ConfigIntentSource', () => {
     });
   });
 
-  it('getCues hit: dedicated SUMMON call drives a language-invariant span (preserves non-Latin prior content)', async () => {
+  it('getCues hit: regex-confident short-circuit resolves the span WITHOUT a summon call (punctuated prior content)', async () => {
     const apply = noopApply();
-    // Japanese prior content the regex floor alone would still segment via
-    // 。 — but here we prove the SEPARATE summon call is the one driving the
-    // span: the classifier response is call #1, the SUMMON response call #2.
-    const input = '日本語のメモ。voice mode off _';
-    const src = new ConfigIntentSource({
-      ...baseConfig,
-      httpAdapter: makeMockAdapter([
-        'INTENT: SETTING\nSETTING: voice-mode\nVALUE: inactive\nCONFIDENCE: 0.95',
-        'SUMMON: voice mode off _',
-      ]),
-      applyScalar: apply.fn,
-    });
+    // "morning notes. " ends in `.` + space → the regex finds the boundary
+    // confidently, so NO summon call fires (only the classifier). 1 POST.
+    const input = 'morning notes. voice mode off _';
+    let posts = 0;
+    const adapter: HttpAdapter = {
+      post: async () => { posts++; return JSON.stringify({ choices: [{ message: { content: 'INTENT: SETTING\nSETTING: voice-mode\nVALUE: inactive\nCONFIDENCE: 0.95' } }] }); },
+    };
+    const src = new ConfigIntentSource({ ...baseConfig, httpAdapter: adapter, applyScalar: apply.fn });
     const r = (await src.getCues(ctxFromText(input))).results[0]!;
     assert.deepStrictEqual(apply.calls, [['voice-mode', 'inactive']]);
-    // Span starts at the command, NOT 0 — the Japanese note is preserved.
+    assert.strictEqual(posts, 1, 'no summon call — regex found the boundary');
     assert.strictEqual(r.spanStart, input.indexOf('voice mode off _'));
-    assert.strictEqual(r.spanEnd, input.length);
-    assert.strictEqual(input.slice(0, r.spanStart), '日本語のメモ。');
+    assert.strictEqual(input.slice(0, r.spanStart), 'morning notes. ');
   });
 
-  it('getCues hit: summon call returning a non-suffix falls back to the regex floor (command still applies)', async () => {
+  // Content-aware two-call adapter. With the parallelised span resolution
+  // the SUMMON call can fire BEFORE the classifier, so order-based mocks are
+  // unreliable — route by which system prompt the request carried.
+  function ciTwoCall(classify: string, summon: string): { adapter: HttpAdapter; count: () => number } {
+    let n = 0;
+    const adapter: HttpAdapter = {
+      post: async (_url: string, body: string) => {
+        n++;
+        const isSummon = body.includes('COMMAND SPAN'); // unique to SUMMON_PROMPT
+        return JSON.stringify({ choices: [{ message: { content: isSummon ? summon : classify } }] });
+      },
+    };
+    return { adapter, count: () => n };
+  }
+
+  it('getCues hit: SUMMON call drives the span when the regex cannot segment the prior content (Thai, no punctuation)', async () => {
     const apply = noopApply();
-    const input = 'hmm. tips off _';
-    const src = new ConfigIntentSource({
-      ...baseConfig,
-      httpAdapter: makeMockAdapter([
-        'INTENT: SETTING\nSETTING: tips-mode\nVALUE: off\nCONFIDENCE: 0.95',
-        'SUMMON: disable the tips _', // not a verbatim suffix → ignored
-      ]),
-      applyScalar: apply.fn,
-    });
+    // Thai prior content with no sentence punctuation → regex returns 0, so
+    // the concurrent summon call is what preserves the prior note.
+    const input = 'ฉันเขียนโน้ต turn on tips _';
+    assert.strictEqual(summonPhraseStart(input), 0, 'regex cannot segment Thai — summon needed');
+    const { adapter, count } = ciTwoCall(
+      'INTENT: SETTING\nSETTING: tips-mode\nVALUE: on\nCONFIDENCE: 0.95',
+      'SUMMON: turn on tips _',
+    );
+    const src = new ConfigIntentSource({ ...baseConfig, httpAdapter: adapter, applyScalar: apply.fn });
+    const r = (await src.getCues(ctxFromText(input))).results[0]!;
+    assert.deepStrictEqual(apply.calls, [['tips-mode', 'on']]);
+    assert.strictEqual(count(), 2, 'classifier + concurrent summon both fired');
+    assert.strictEqual(r.spanStart, input.indexOf('turn on tips _'));
+    assert.strictEqual(input.slice(0, r.spanStart), 'ฉันเขียนโน้ต ');
+  });
+
+  it('getCues hit: summon returning a non-suffix falls back to the regex floor (command still applies)', async () => {
+    const apply = noopApply();
+    // No-punctuation prior → regex 0 → summon fires but returns a non-suffix
+    // (paraphrase) → resolveSummonStart ignores it → regex floor (0). The
+    // command still applies; worst case the whole buffer is the wipe span.
+    const input = 'メモ tips off _';
+    const { adapter } = ciTwoCall(
+      'INTENT: SETTING\nSETTING: tips-mode\nVALUE: off\nCONFIDENCE: 0.95',
+      'SUMMON: disable the tips _', // not a verbatim suffix → ignored
+    );
+    const src = new ConfigIntentSource({ ...baseConfig, httpAdapter: adapter, applyScalar: apply.fn });
     const r = (await src.getCues(ctxFromText(input))).results[0]!;
     assert.deepStrictEqual(apply.calls, [['tips-mode', 'off']]);
-    assert.strictEqual(r.spanStart, input.indexOf('tips off _')); // regex floor
+    assert.strictEqual(r.spanStart, 0); // regex floor (no boundary found)
     assert.strictEqual(r.spanEnd, input.length);
   });
 
@@ -652,7 +680,11 @@ describe('ConfigIntent: likely-intent gate (pre-filter)', () => {
   ]) {
     it(`fires "${buffer}" — keyword present, dispatch proceeds`, async () => {
       const result = await gateOnly(buffer);
-      assert.strictEqual(result.calls, 1, 'LLM dispatched');
+      // Gate fired (dispatch proceeded). The count is 1 when the regex
+      // resolves the wipe span confidently, or 2 when the span resolution
+      // also makes its concurrent SUMMON call (bare command — regexStart 0).
+      // This test pins the GATE decision, not the call count.
+      assert.ok(result.calls >= 1, 'LLM dispatched (gate fired)');
     });
   }
 });
