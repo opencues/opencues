@@ -59,13 +59,11 @@ Three ways, all equivalent:
    `think less _` or `turn off max thinking _` and the config-intent
    classifier routes it to `max-thinking: off`.
 
-## Interaction with `with <model>` overrides
+## Reasoning floors
 
-A per-call `with <model>` override (see [model-override.md](model-override.md))
-swaps the model for one call; `max-thinking` still applies to that call
-using the override model's ceiling. An explicit reasoning floor set by a
-source (fluid-blank pins `low` internally) always wins, but is clamped
-down to the model's ceiling — `max-thinking` is a true cap.
+An explicit reasoning floor set by a source (fluid-blank pins `low`
+internally) always wins, but is clamped down to the model's ceiling —
+`max-thinking` is a true cap.
 
 ## Reference
 

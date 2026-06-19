@@ -49,8 +49,8 @@
 
 /**
  * Per-process cache for `which claude`. The check fires at most once
- * per Node process and is shared between every consumer (model-aliases'
- * subscription-preference path, future doctor checks, etc.). Browser
+ * per Node process and is shared between every consumer (the
+ * claude-code-cli provider path, future doctor checks, etc.). Browser
  * bundles never enter this function — both call sites guard against
  * non-Node hosts before invoking it.
  */

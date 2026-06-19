@@ -32,12 +32,11 @@ rewrite my prose without me typing `_`".
 Most-specific wins:
 
 ```
-per-call override (`with <model>` token in the buffer — fluid-blank + transform-blank only)
-  ▶ per-source frontmatter (`provider:` / `model:` in a CUE.md / BLANK.md)
-    ▶ per-feature scalar (`word-cues-provider:`, `fluid-blank-provider:`, …)
-      ▶ bucket scalar (`cues-llm-provider:`, `auditors-llm-provider:`, `blanks-llm-provider:`)
-        ▶ global scalar (`llm-provider:`)
-          ▶ auto-fallback (first env key in `PROVIDER_AUTO_ORDER`)
+per-source frontmatter (`provider:` / `model:` in a CUE.md / BLANK.md)
+  ▶ per-feature scalar (`word-cues-provider:`, `fluid-blank-provider:`, …)
+    ▶ bucket scalar (`cues-llm-provider:`, `auditors-llm-provider:`, `blanks-llm-provider:`)
+      ▶ global scalar (`llm-provider:`)
+        ▶ auto-fallback (first env key in `PROVIDER_AUTO_ORDER`)
 ```
 
 Setting `cues-llm-provider: cerebras` pins every cue source to Cerebras
@@ -45,28 +44,6 @@ Setting `cues-llm-provider: cerebras` pins every cue source to Cerebras
 `provider:` (per-source) or the user set a `word-cues-provider:`
 (per-feature). Setting `cues-llm-provider: inherit` (the default)
 collapses the bucket and lets `llm-provider:` take over.
-
-### Per-call `with <model>` — dispatch-only override
-
-The top tier in the ladder is the per-call override: a `with <model>`
-token in the buffer flips the dispatch target for ONE fluid-blank or
-transform-blank call without writing any scalar to disk. The next `_`
-keystroke (without `with X`) goes back to your configured bucket. Two
-properties keep this safe to slot above per-source frontmatter:
-
-- **Dispatch-only.** The override changes which (provider, model,
-  apiKey) the `dispatchChat` call uses. It does NOT change which
-  bucket a source belongs to, does NOT bypass the `trainsOnInput`
-  guard (cues + auditors still refuse `opencode-zen`), and does NOT
-  unlock user-blank routing.
-- **Source-scoped.** Only FluidBlank and TransformBlank read the
-  override. Word-cues, sentence-cues, auditors, agent-rewrite,
-  ConfigIntent — all dispatch through their configured bucket
-  unchanged. Adding the override to a new source widens the
-  prompt-injection blast radius and should be reviewed individually.
-
-Full design: [`docs/architecture/model-override.md`](model-override.md).
-User-facing summary: [`docs/features/model-override.md`](../features/model-override.md).
 
 ## Per-aspect overrides — advanced, file-edit only
 

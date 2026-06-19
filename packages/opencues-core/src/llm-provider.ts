@@ -394,13 +394,19 @@ function buildOpenAIBody(req: ChatRequest, opts?: { includeReasoningEffort?: boo
     };
   }
   // Predicted outputs — Cerebras's speculative-decoding hint. Cerebras
-  // surfaces it on gpt-oss-120b and zai-glm-4.7. OpenAI also supports
-  // the `prediction` field shape on chat-completions. Other providers
-  // silently ignore unknown fields, so we pass it through unconditionally
-  // when set (caller decides whether the cost is worth it for the
-  // specific model/prompt combo). See docs/architecture/cerebras.md §
-  // Predicted Outputs for the empirical effectiveness table.
-  if (req.prediction !== undefined && req.prediction.length > 0) {
+  // surfaces it on gpt-oss-120b and zai-glm-4.7; OpenAI also supports the
+  // `prediction` field shape on chat-completions. ONLY send it to those
+  // two. The earlier "other providers silently ignore unknown fields"
+  // assumption is FALSE for strict gateways: openrouter (proxying
+  // anthropic) returns `400 property 'prediction' is unsupported`, which
+  // hard-fails the call. That bit us when a per-source provider override
+  // flipped a cerebras-default request to openrouter/anthropic
+  // but the cerebras `prediction` hint rode along — the 400 cascaded into
+  // a destructive FluidBlank WIPE. Gate on the resolved provider so the
+  // hint can never leak to a provider that rejects it. See
+  // docs/architecture/cerebras.md § Predicted Outputs.
+  const providerSupportsPrediction = opts?.provider === 'cerebras' || opts?.provider === 'openai';
+  if (providerSupportsPrediction && req.prediction !== undefined && req.prediction.length > 0) {
     body.prediction = { type: 'content', content: req.prediction };
   }
   return JSON.stringify(body);
@@ -863,9 +869,8 @@ const ANTHROPIC: ProviderAdapter = {
     'claude-opus-4-7',
     // Fable 5 — Mythos-class frontier model (2026-06-09 launch).
     // $10/$50 per M tokens (2× Opus), so the menu lists it but
-    // doesn't make it the default for any bucket. Reached via the
-    // `with fable` per-call override or by setting an explicit
-    // per-feature scalar in OPENCUES.md.
+    // doesn't make it the default for any bucket. Reached by setting
+    // an explicit per-feature scalar in OPENCUES.md.
     'claude-fable-5',
   ],
   envKeyName: 'ANTHROPIC_API_KEY',

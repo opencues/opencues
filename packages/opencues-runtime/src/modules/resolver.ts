@@ -1305,9 +1305,6 @@ export class Resolver {
         // overrides. Default 'prefer' is set on the OpenCuesState
         // shape itself, so passing it through verbatim is correct —
         // FluidBlank + TransformBlank fall back to 'prefer' if the
-        // field is undefined (back-compat for hosts not yet
-        // propagating the scalar).
-        anthropicSubscription: this.configLoader.opencuesState.anthropicSubscription,
         // AbortSignal for in-flight LLM cancellation. Each source's
         // getCues forwards this to its callLLM → httpAdapter.post.
         // When a newer resolveAndApply preempts this one, the

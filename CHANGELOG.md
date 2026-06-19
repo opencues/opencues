@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed — `with <model>` per-call override + `anthropic-subscription` scalar (core 0.3.28 / runtime 0.3.20)
+
+The `with <model>` per-call LLM override (e.g. `summarize with opus _`) is removed. It was English-anchored (keyed off the literal word `with`) and the source of a data-loss bug chain: a 2-paragraph prompt containing ordinary prose like *"…with a framework such as React…"* matched the article **"a"**, which the fuzzy resolver mapped to `anthropic/claude-opus-4-7` (a real model id starting with "a"). That spurious override flipped the call to openrouter/anthropic, where the cerebras-only `prediction` hint **400'd**, the transform failed, and the failure cascaded into a destructive FluidBlank WIPE — collapsing the two paragraphs into one. Rather than patch it with anchors + an English stopword list, the whole feature is removed; it will be reintroduced later as a **language-invariant** mechanism.
+
+Removed: `packages/opencues-core/src/model-aliases.ts` (`detectModelOverride` / `stripModelOverride` / `applySubscriptionPreference` / `ModelOverride` / `COMMON_ALIASES`) + test; the override plumbing in FluidBlank / TransformBlank / ConfigIntent; the `apiKeys`-for-override config on both sources; the `modelOverride` event field; and the now-dead **`anthropic-subscription`** scalar (its only consumer was the override's subscription rewrite) from the feature registry, config-loader, and `CueContext`. The `claude-code-cli` provider stays — still selectable directly via `cues-llm-provider: claude-code-cli`.
+
+### Fixed — two logical landmines hardened (so removal isn't the only safety net)
+
+- **No destructive WIPE on a multi-paragraph buffer.** FluidBlank now refuses to WIPE when the buffer contains a paragraph break (`\n\n`) — that's the user's own content, not a bare lookup. This fires whenever a sibling source that should own the edit (TransformBlank for `add a paragraph _`, an agent rewrite) **errors out before claiming the slot** (provider 400, rate-limit, network blip) and FluidBlank would otherwise get the destructive turn. Pinned by fail-safe scenario tests (working-LLM and throwing-LLM cases).
+- **`prediction` param gated to providers that support it** (cerebras + openai). The earlier "other providers silently ignore unknown fields" assumption was false for strict gateways (openrouter/anthropic 400 on it); it's now never sent to a provider that rejects it.
+
 ### Removed — bespoke `answer` + `prompt` built-in blanks; generalized to the user's provider (runtime 0.3.19)
 
 The `answer` (factual lookup / translation) and `prompt` (improve prompt) built-in blanks were direct-to-Groq HTTP clients: they hardcoded the Groq endpoint + `openai/gpt-oss-120b` model and every host bootstrap fed them only a `GROQ_API_KEY`. They bypassed the provider/dispatch layer entirely, so they could **not** honour the user's configured provider (`llm-provider:` / `blanks-llm-*`) — a user on cerebras still hit Groq, and a user without a Groq key got nothing.

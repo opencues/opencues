@@ -713,3 +713,64 @@ describe('FluidBlankSource with ambient context', () => {
     assert.strictEqual(closes.length, 1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Fail-safe: never WIPE a multi-paragraph buffer (the "2 paragraphs → 1"
+// landmine). FluidBlank gets a destructive turn whenever a sibling source
+// that SHOULD own the edit (TransformBlank, agent rewrite) errors out before
+// claiming the slot. The guard must preserve the user's content regardless
+// of why FluidBlank was reached.
+// ---------------------------------------------------------------------------
+describe('FluidBlank fail-safe: multi-paragraph WIPE guard', () => {
+  const baseConfig = {
+    provider: getProvider('groq')!,
+    endpoint: 'https://example.test/v1/chat/completions',
+    apiKey: 'test-key',
+    model: 'test-model',
+  };
+
+  const TWO_PARAGRAPHS =
+    'Design a responsive website with a modern UI and good performance.\n\n' +
+    'The site should use HTML5, CSS3 and JavaScript, with a component-based ' +
+    'architecture. add a paragraph about security _';
+
+  it('bails (preserves buffer) on a multi-paragraph WIPE — even with a working LLM', async () => {
+    // A working adapter would happily return an answer that WIPES all 2
+    // paragraphs. The guard must fire BEFORE the call and bail.
+    const src = new FluidBlankSource({
+      ...baseConfig,
+      httpAdapter: makeMockAdapter(['Security: use HTTPS and sanitize inputs.']),
+    });
+    const out = await src.getCues(ctxFromText(TWO_PARAGRAPHS));
+    assert.strictEqual(out.results.length, 0, 'must bail — no destructive substitution');
+  });
+
+  it('bails on a multi-paragraph WIPE even when the LLM call FAILS', async () => {
+    const throwingAdapter: HttpAdapter = { post: async () => { throw new Error('provider 400: unsupported'); } };
+    const src = new FluidBlankSource({ ...baseConfig, httpAdapter: throwingAdapter });
+    const out = await src.getCues(ctxFromText(TWO_PARAGRAPHS));
+    assert.strictEqual(out.results.length, 0, 'failure must not produce a buffer-wiping result');
+  });
+
+  it('STILL answers a single-paragraph WIPE (guard is paragraph-scoped, not blanket)', async () => {
+    const src = new FluidBlankSource({
+      ...baseConfig,
+      httpAdapter: makeMockAdapter(['SPAN: atomic number of oxygen _\nANSWER: 8']),
+    });
+    const out = await src.getCues(ctxFromText('atomic number of oxygen _'));
+    assert.strictEqual(out.results.length, 1, 'normal single-block lookups are unaffected');
+  });
+
+  it('STILL fills (does not bail) a multi-paragraph buffer in FILL mode', async () => {
+    // FILL only replaces the `_`, never the surrounding paragraphs, so it is
+    // not data-loss and must not be blocked.
+    const src = new FluidBlankSource({
+      ...baseConfig,
+      httpAdapter: makeMockAdapter(['SPAN: The capital of France is _\nANSWER: Paris']),
+    });
+    const text = 'Some notes here.\n\nMore notes. The capital of France is _';
+    assert.strictEqual(determineReplaceMode(text), 'FILL');
+    const out = await src.getCues(ctxFromText(text));
+    assert.strictEqual(out.results.length, 1, 'FILL on multi-paragraph is safe and must proceed');
+  });
+});

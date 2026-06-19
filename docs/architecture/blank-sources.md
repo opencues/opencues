@@ -205,39 +205,6 @@ primitive already pays for.
 
 ---
 
-## Per-call model override — affects FluidBlank + TransformBlank dispatch only
-
-Both `FluidBlankSource` and `TransformBlankSource` accept an optional
-`apiKeys: Readonly<Record<string, string | undefined>>` in their
-constructor config (June 2026). The map is keyed by `envKeyName`
-(`ANTHROPIC_API_KEY`, `CEREBRAS_API_KEY`, …) — same convention
-`resolveLLM` uses at `llm-provider.ts:1817`. build-sources passes the
-runtime resolver's full apiKeys map through as a pass-through.
-
-When the buffer carries a `with <model>` token (the per-call override
-syntax), the source detects it at the top of `getCues`, resolves the
-override to `(provider, model, apiKey)` via
-`packages/opencues-core/src/model-aliases.ts`, and dispatches THAT
-call through the override target. The class's configured
-(`this.provider`, `this.model`, `this.apiKey`) stays untouched. Next
-`_` keystroke without `with X` goes back to the configured target.
-
-**For new sources that issue LLM calls**: think about whether you want
-the override to apply. The current contract:
-
-| Source | Override fires? | Why |
-|---|---|---|
-| FluidBlank | Yes | User-opt-in via `_`; lookup answers are short and bounded |
-| TransformBlank | Yes | Same trust class as FluidBlank |
-| ConfigIntent | Cedes synchronously | Override syntax overlaps with PROVIDER-routing phrasing — cede prevents misclassification |
-| SentenceCue | No | Background prose-bearing; widening would let CUES.md prompt content reach providers it shouldn't |
-| Word-cues | No | Same reason; routed per-word, no clean trigger boundary |
-| Auditors / agent-rewrite | No | Background tick; user didn't explicitly type `_` to consent |
-
-Full design + tests: [`docs/architecture/model-override.md`](model-override.md).
-
----
-
 ## Related docs
 
 - [`transform-blank.md`](transform-blank.md) — TransformBlank pipeline
@@ -248,7 +215,5 @@ Full design + tests: [`docs/architecture/model-override.md`](model-override.md).
   field for BlankSource / FluidBlankSource.
 - [`spans-and-cycling.md`](spans-and-cycling.md) — the DynDef
   cycling layer that passive cues use.
-- [`model-override.md`](model-override.md) — per-call `with <model>`
-  dispatch redirect for FluidBlank + TransformBlank.
 - `docs/features/word-cue-routing.md` — per-word dispatch via
   `RoutedWordSourceGroup`.

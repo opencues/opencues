@@ -59,7 +59,6 @@ import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '
 import { BlankConfig } from '../cues-md';
 import { describeLLMCall, dispatchChat, getProvider, listProviders, type ProviderAdapter } from '../llm-provider';
 import { classifyLlmError, type FluidBlankErrorReason } from './fluid-blank-source';
-import { detectModelOverride } from '../model-aliases';
 import {
   FEATURES,
   getCyclableValues,
@@ -131,9 +130,9 @@ const BUCKET_LIST: string = BUCKET_SCOPES.join(', ');
 // because the cache absorbs it on T2+. False-negative (skipping a
 // real settings command) would silently break the feature, so the
 // keyword set is INTENTIONALLY wide — every scalar name, every
-// scalar value used by the cycling menu, every provider id, every
-// model alias from COMMON_ALIASES, every bucket scope word, and a
-// curated list of action verbs / symptom hints from the SYSTEM_PROMPT.
+// scalar value used by the cycling menu, every provider id, a
+// curated list of model/provider alias keys, every bucket scope word,
+// and a curated list of action verbs / symptom hints from the SYSTEM_PROMPT.
 //
 // Language scope: ConfigIntent is inherently English-centric (the
 // system prompt and the FEATURES registry are English). The pre-
@@ -169,7 +168,8 @@ const LIKELY_INTENT_KEYWORDS: ReadonlySet<string> = (() => {
   }
 
   // Provider IDs + their display names ("anthropic" / "Anthropic",
-  // "groq" / "Groq", etc.). knownModels caught below via COMMON_ALIASES.
+  // "groq" / "Groq", etc.). knownModels caught below via the curated
+  // alias-key list.
   for (const p of listProviders()) {
     addToken(p.id);
     if (p.displayName) addToken(p.displayName);
@@ -194,8 +194,8 @@ const LIKELY_INTENT_KEYWORDS: ReadonlySet<string> = (() => {
     'tip', 'tips', 'popup', 'popups',
     'voice', 'debug', 'cursor', 'thinking',
     'ambient', 'identity', 'sentinel',
-    // model-alias keys from COMMON_ALIASES — extracted directly so
-    // adding a new alias auto-extends this gate.
+    // curated model/provider alias keys — add a new alias here to
+    // extend this gate.
     'opus', 'haiku', 'sonnet', 'fable', 'claude',
     'cerebras', 'groq', 'openai', 'anthropic', 'gemini',
     'openrouter', 'nano', 'mini', 'flash', 'llama',
@@ -827,23 +827,6 @@ export class ConfigIntentSource implements CueSource {
     const t0 = Date.now();
     const blankIdx = context.words.indexOf('_');
     if (blankIdx === -1) return { results: [] };
-
-    // Cede when the buffer carries a per-call `with <model>` override
-    // token (see model-aliases.ts). The override is a deliberate alternate
-    // syntax to the settings-flip shapes ("change to opus _", "switch to
-    // cerebras _", "use anthropic for cues _") — those keep using their
-    // imperative verbs and route here. Anything containing `with <model>`
-    // is the per-call override path and belongs to TransformBlank /
-    // FluidBlank instead. Ceding synchronously avoids burning a classifier
-    // LLM call on inputs ConfigIntent shouldn't claim, AND prevents the
-    // misclassification observed in early testing where
-    // "make formal with opus _" routed here as `cues-llm-provider:
-    // anthropic:claude-opus-4-7` instead of letting TransformBlank do
-    // the rewrite with a per-call Opus override.
-    if (detectModelOverride(context.text) !== null) {
-      this.log(`ConfigIntent: ceding — buffer carries 'with <model>' override token (per-call override path)`);
-      return { results: [], timing: Date.now() - t0, model: this.model };
-    }
 
     // Likely-intent gate — skip the LLM dispatch when the buffer has
     // zero settings/provider keywords. Saves ~280ms per cold trigger
