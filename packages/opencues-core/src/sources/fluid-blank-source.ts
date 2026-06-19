@@ -173,7 +173,7 @@ NEVER invent a bracket-token from the "covers:" hint. The covers list contains s
 Output exactly three lines, nothing else:
 SPAN: <the contiguous substring of the input including _, OR the literal word NONE>
 ANSWER: <the value that should replace the SPAN; empty when SPAN=NONE>
-MODE: <FILL or WIPE — see MODE RULES>
+MODE: <WIPE if the whole input is a terse lookup phrase the ANSWER replaces; FILL if the ANSWER fills a gap in a sentence and the surrounding words stay>
 
 SPAN RULES:
 1. SPAN is an exact contiguous substring of the input, including the underscore.
@@ -418,9 +418,22 @@ INPUT: UK _
 label: Country
 </UNTRUSTED_FIELD_CONTEXT>
 SPAN: UK _
-ANSWER: United Kingdom
+ANSWER: United Kingdom`;
 
-MODE (the third output line — classify by SHAPE, so it holds in any language): WIPE when the input is a terse standalone lookup phrase whose whole text is replaced by the ANSWER ("capital of france _" → Paris, "unicode for ampersand _" → U+0026) — this is the common case. FILL when the input is a sentence and the ANSWER drops into the gap, keeping the surrounding words: _ after a copula/equation/question ("the cube root of 27 is _" → 3, "3 + 4 = _" → 7) or _ mid-sentence with the ANSWER restating the clause ("Water boils at _ degrees Celsius"). SPAN=NONE → FILL.`;
+/**
+ * MODE rules for the third output line. Kept SEPARATE from
+ * FUSED_SYSTEM_PROMPT and appended AFTER the identity/blank-context catalog
+ * blocks at assembly time (see getCues). Position is load-bearing: when this
+ * paragraph sat *before* the catalog (its original #170 home, since the
+ * catalog is appended after the base prompt), it suppressed ANSWER emission
+ * for catalog lookups — `i work at _` returned no ANSWER at all (agentic
+ * scenario 54). Moving it AFTER the catalog lets the model read the catalog
+ * right after the examples (as it did pre-#170) and restores token binding,
+ * while still steering FILL/WIPE language-invariantly (French/Spanish
+ * copulas → FILL). Validated: 4/4 identity binding + 6/6 FILL/WIPE on
+ * cerebras.
+ */
+export const MODE_RULES = `MODE RULES — classify by SHAPE, holds in any language: WIPE when the input is a terse standalone lookup phrase the ANSWER replaces ("capital of france _" → Paris). FILL when the input is a sentence and the ANSWER fills a gap keeping the surrounding words: _ after a copula/equation/question ("the cube root of 27 is _" → 3; "la capital de españa es _") or _ mid-sentence ("Water boils at _ degrees Celsius"). SPAN=NONE → FILL.`;
 
 /**
  * Decide whether the user wants the answer to FILL the `_` (preserve the
@@ -978,7 +991,11 @@ export class FluidBlankSource implements CueSource {
       // background and stopped pairing it with the input. Identity +
       // blank-context catalogs ARE safe in system because they carry
       // session-stable reference data, not per-call binding hints.
-      const fullSystem = `${FUSED_SYSTEM_PROMPT}${userCatalogBlock}${blankContextBlock}`;
+      // MODE_RULES go LAST — AFTER the catalog blocks — so the model reads
+      // the catalog right after the examples (preserving token binding) and
+      // the FILL/WIPE steering doesn't wedge between examples and catalog.
+      // See MODE_RULES doc comment for why position matters.
+      const fullSystem = `${FUSED_SYSTEM_PROMPT}${userCatalogBlock}${blankContextBlock}\n\n${MODE_RULES}`;
       const fusedUser = `INPUT: ${effectiveText}${ambientBlock}`;
       // Per-feature override: `fluid-blank-max-tokens:` in OPENCUES.md.
       // 512 default is bench-tuned for short-factual answers.
@@ -1339,7 +1356,16 @@ function normalizeMode(raw: string | undefined | null): 'FILL' | 'WIPE' | null {
 
 function parseFused(raw: string): FusedResult {
   const spanMatch = raw.match(/^SPAN:\s*(.*?)$/m);
-  const answerMatch = raw.match(/^ANSWER:\s*([\s\S]*?)\s*$/m);
+  // Single-line capture (`.*?`, not `[\s\S]*?`). Fluid answers are always a
+  // single line (a terse value or one restated clause), and since the fused
+  // output now carries a trailing `MODE:` line (added with the FILL/WIPE
+  // field), a multi-line `[\s\S]*?` capture would BLEED across the newline:
+  // an EMPTY `ANSWER:` followed by `MODE: WIPE` made the regex grab
+  // "MODE: WIPE" as the answer and splice it into the buffer. Bounding the
+  // capture to the answer's own line makes an empty answer parse as "" →
+  // null → a clean bail, never a destructive literal. (The strict-JSON path
+  // is unaffected — JSON parsing has no such bleed.)
+  const answerMatch = raw.match(/^ANSWER:[ \t]*(.*?)[ \t]*$/m);
   const modeMatch = raw.match(/^MODE:\s*(.*?)$/m);
   const spanRaw = spanMatch ? spanMatch[1].trim() : '';
   const ansRaw = answerMatch ? answerMatch[1].trim() : '';

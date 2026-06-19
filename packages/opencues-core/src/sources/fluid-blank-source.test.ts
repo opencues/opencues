@@ -340,6 +340,22 @@ describe('FluidBlankSource — model-decided MODE field', () => {
     assert.strictEqual(r.spanEnd, 7 + 'capital of france _'.length);
   });
 
+  it('empty ANSWER followed by a MODE line bails — never splices "MODE: WIPE" into the buffer (regression)', async () => {
+    // Agentic scenario 54 caught this: the model emitted an empty ANSWER,
+    // and the answer regex (`[\s\S]*?`) bled across the newline and captured
+    // the trailing "MODE: WIPE" line as the answer — which then got spliced
+    // into the buffer, replacing the user's text with the literal string
+    // "MODE: WIPE". An empty answer must parse to null and bail.
+    const src = new FluidBlankSource({
+      ...baseConfig,
+      httpAdapter: makeMockAdapter([
+        'SPAN: i work at _\nANSWER:\nMODE: WIPE',
+      ]),
+    });
+    const result = await src.getCues(ctxFromText('i work at _'));
+    assert.deepStrictEqual(result.results, []);
+  });
+
   it('falls back to the heuristic when the model omits MODE', async () => {
     // No MODE line — the runtime uses determineReplaceMode('capital of
     // france _') === 'WIPE'. (Mirrors a weaker label-format model.)

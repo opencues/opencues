@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — FluidBlank MODE field no longer corrupts the buffer or breaks identity-context binding (core 0.3.38)
+
+The agentic suite caught two regressions from the FILL/WIPE `MODE` field (0.3.33):
+
+- **Empty-ANSWER bleed → "MODE: WIPE" spliced into the buffer.** `parseFused`'s answer regex used `[\s\S]*?`, which crosses newlines. With the trailing `MODE:` line now in the output, an *empty* `ANSWER:` made the regex capture the next line — the literal `MODE: WIPE` — and splice it into the buffer, replacing the user's text. The answer capture is now single-line (`.*?`), matching the SPAN/SUMMON parsers: an empty answer parses to `null` and bails cleanly. Pinned by a regression test (`ANSWER:` empty + `MODE: WIPE` → no results).
+
+- **MODE rules suppressed identity-context token emission.** The MODE-rules paragraph lived at the tail of `FUSED_SYSTEM_PROMPT`, i.e. *before* the identity/blank-context catalog (which is appended at assembly time). With the rules wedged between the examples and the catalog, the model stopped emitting an ANSWER for safe-mode identity lookups — `i work at _` returned nothing instead of `[COMPANY]` (agentic scenario 54). Fix: the rules are extracted to a `MODE_RULES` constant and appended **after** the catalog blocks, so the model reads the catalog right after the examples (as it did pre-0.3.33). Validated on cerebras: identity binding 4/4 (was 2/4), FILL/WIPE 6/6 (French/Spanish copulas correctly FILL), fluid-blank-ambient bench back to 176/176. The OUTPUT-FORMAT `MODE:` line is now self-contained (no dangling "see MODE RULES" reference).
+
+Root cause both times: the fused prompt is sensitive to *where* an instruction sits relative to the per-call catalog, and the ambient bench has no identity-context cases so it never flagged it — the agentic harness did. End-to-end verified: scenarios 53 / 54 / 58 (identity-context), 09 (fluid-blank), 11 (copula), 102 (config-intent) all green on opencode.
+
 ### Performance — Anthropic prompt caching: ~90% cheaper input on cached system prompts (core 0.3.37)
 
 Every OpenCues system prompt is static per session (the cerebras prefix-cache relies on this), but the **Anthropic** provider was sending `system` as a plain string — which Anthropic never caches. So anthropic-routed buckets (auditors / agent-rewrite default to Sonnet; any bucket a user points at Claude) re-billed the full system prompt on every call. `ANTHROPIC.buildRequest` now sends `system` as a content-block array with a single `cache_control: { type: 'ephemeral' }` breakpoint, so the static prefix is cached and subsequent calls within the 5-minute TTL bill the prefix at ~10% of input price. The per-call user message sits after the breakpoint and stays uncached (correct — it's the only varying part).
