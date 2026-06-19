@@ -749,14 +749,17 @@ export interface ConfigIntentSourceConfig {
  * `[0, len)` and a buffer like `hii world. voice mode off _` lost
  * "hii world." entirely (the config-intent nuke landmine).
  *
- * Heuristic: the last sentence terminator (`.`/`!`/`?`) followed by
- * whitespace, or a line break, before `_`. No boundary found → 0 (the
- * whole buffer is the summon; behaviour unchanged from before). The
- * `(?=\s)` lookahead keeps model-version dots ("gpt-5.4") from being
- * mistaken for sentence ends.
+ * Heuristic: the last sentence terminator before `_`. ASCII terminators
+ * (`.`/`!`/`?`) require a trailing whitespace via the `(?=\s)` lookahead
+ * (so model-version dots like "gpt-5.4" aren't mistaken for sentence
+ * ends); CJK/fullwidth terminators (`。`/`！`/`？`/`．`) match directly
+ * because those scripts don't put a space after the stop — without them a
+ * Japanese buffer like `こんにちは世界。voice mode off _` found no boundary
+ * and wiped the user's whole sentence (a language-dependent data-loss bug).
+ * A line break is always a boundary. No boundary found → 0.
  */
 export function summonPhraseStart(text: string): number {
-  const re = /[.!?](?=\s)|\n/g;
+  const re = /[.!?](?=\s)|[。！？．]|\n/g;
   let start = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) start = m.index + m[0].length;

@@ -650,4 +650,19 @@ describe('summonPhraseStart — preserve prior content (no whole-buffer nuke)', 
     assert.strictEqual(summonPhraseStart('really? voice mode off _'), 'really? '.length);
     assert.strictEqual(summonPhraseStart('wow! tips off _'), 'wow! '.length);
   });
+
+  it('CJK / fullwidth sentence terminators delimit too (language-invariant data-loss fix)', () => {
+    // The settings command is English (the classifier is English-only) but
+    // the prior content can be any language. CJK scripts use 。！？ with no
+    // trailing space, so the old ASCII-only `(?=\s)` regex found no boundary
+    // and nuked the user's whole sentence. These must now be preserved.
+    const ja = 'こんにちは世界。voice mode off _';
+    assert.strictEqual(ja.slice(0, summonPhraseStart(ja)), 'こんにちは世界。');
+    const ko = '안녕하세요。tips off _';
+    assert.strictEqual(ko.slice(0, summonPhraseStart(ko)), '안녕하세요。');
+    const fw = 'メモ！voice mode off _'; // fullwidth ！
+    assert.strictEqual(fw.slice(0, summonPhraseStart(fw)), 'メモ！');
+    const fwq = '質問？tips on _'; // fullwidth ？
+    assert.strictEqual(fwq.slice(0, summonPhraseStart(fwq)), '質問？');
+  });
 });
