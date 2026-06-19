@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — ConfigIntent no longer nukes non-Latin prior content (core 0.3.34)
+
+`summonPhraseStart` scopes what a fluid-config `_` settings command wipes — everything from the last sentence boundary before `_` to the end, so prior user content is preserved (`hii world. voice mode off _` keeps "hii world."). Its boundary regex only recognised ASCII terminators with a trailing space (`[.!?](?=\s)`), so a buffer whose prior content ends in a **CJK/fullwidth** stop — `こんにちは世界。voice mode off _` — found *no* boundary, returned 0, and **wiped the user's whole sentence** (the config-intent nuke landmine, language-dependent variant). The regex now also matches `。！？．` directly (these scripts don't put a space after the stop). The ASCII `(?=\s)` lookahead is unchanged, so the `gpt-5.4` model-version-dot guard still holds. Pinned by 4 CJK/fullwidth cases (Japanese/Korean `。`, fullwidth `！`/`？`).
+
+> Note: the fuller "let the model emit the command span (`SUMMON`) so the boundary is language-invariant for *any* script" approach was prototyped and **rejected on evidence** — adding the field to the (English, heavily-tuned) classifier prompt regressed INTENT recall from ~85% → ~60% on the fluid-config bench and the model emitted the field on only ~10% of cases. The classifier prompt is too sensitive to carry a second job; the deterministic regex fix covers the realistic cases (the command itself is always English, only the prior content varies) without touching classification accuracy. The `TASK_TRIGGER_GUARD` / `LIKELY_INTENT_KEYWORDS` English keyword lists were left as-is for the same reason: both are guards *downstream* of English-keyword subsystems (transform-blank's triggers, the config-intent classifier), so removing them in isolation buys no real language-invariance.
+
 ### Changed — FluidBlank's FILL/WIPE choice is the model's call, with a deterministic data-loss floor (core 0.3.33)
 
 The fluid-blank `_` lookup decides between FILL (substitute only `_`, keep the surrounding words) and WIPE (replace the whole lookup phrase). That choice used to be made entirely by `determineReplaceMode` — an **English-anchored regex** (`\b(?:is|are|was|were|am|be|equals)\b` / `=` / `:` / `?` before `_`). It only ever worked for English sentence shapes: a French "…est _" or Spanish "…es _" would fall through to WIPE and collapse the user's sentence to a bare value.
