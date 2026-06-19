@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — chrome 0.2.23: rebuild on core 0.3.38
+
+Version bump for the chrome extension to ship a fresh bundle baking in the core changes from this cycle (provider capability model, FluidBlank FILL/WIPE + MODE fixes, ConfigIntent language-invariant command boundary + parallel span, Anthropic prompt caching). No chrome `src/` changes — `manifest.json` + `package.json` bumped in lockstep so a reload in `chrome://extensions` is confirmable.
+
 ### Fixed — FluidBlank MODE field no longer corrupts the buffer or breaks identity-context binding (core 0.3.38)
 
 The agentic suite caught two regressions from the FILL/WIPE `MODE` field (0.3.33):
