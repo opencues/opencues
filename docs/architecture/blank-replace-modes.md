@@ -72,6 +72,39 @@ This matches how speech and writing actually work: `"X is _"` invites
 a fill-in; `"X is something _"` is a complete statement that the
 blank should replace with its answer.
 
+### Keyword `auto` blanks vs fluid-blank — two consumers, one heuristic
+
+`determineReplaceMode` has two callers, and they treat it differently:
+
+- **Keyword-bound `auto` blanks** (weather / stocks / dictionary / …)
+  resolve their mode through `resolveReplaceMode`, which runs the
+  heuristic **as the sole decider**. Everything in this doc above
+  describes that path. It stays a pure deterministic function — no LLM,
+  no model dependency — because a keyword blank already knows its
+  keyword span and the question is only "keep the keyword or wipe it".
+
+- **Fluid-blank** (`FluidBlankSource.getCues`, the free-form `_` lookup)
+  no longer lets the heuristic decide. The fused LLM call emits a
+  `MODE: FILL|WIPE` line and the **model owns the open judgement**
+  ("is this a terse query phrase, or a sentence with a gap?") — which
+  is what makes it work across languages the English-anchored regex
+  can't parse (`la racine cubique de 27 est _` → FILL, not a collapsing
+  WIPE). The heuristic is kept only as a **deterministic data-loss
+  floor**:
+
+  | `determineReplaceMode(buffer)` | What the runtime does |
+  |---|---|
+  | `FILL` (a.k.a. `keep`) | Force FILL, **authoritatively** — the model may not escalate it to a destructive WIPE. These are the copula/equation/question shapes where a WIPE would collapse text the user typed (`3 + 4 = _` must stay `3 + 4 = 7`). |
+  | `WIPE` | Defer to the model's `MODE` — rescues non-English sentences to FILL; a genuine terse lookup stays WIPE. Falls back to WIPE when the model omits/garbles MODE. |
+
+  This is the same "model proposes, runtime validates a safety
+  invariant" split the multi-paragraph WIPE guard uses. See
+  `core 0.3.33` in the root CHANGELOG and the MODE RULES block in
+  `FUSED_SYSTEM_PROMPT`. The `MODE` field is a required enum in
+  `FLUID_FUSED_SCHEMA`, so strict-JSON providers always return it.
+  Any edit to that prompt block must re-run
+  `tests/benchmarks/fluid-blank-ambient/fused-bench.ts` (target 176/176).
+
 ## What `wipe` actually wipes
 
 `wipe` drops three contiguous regions in the word stream:
@@ -184,7 +217,11 @@ brightness) or the blank rewrites the whole draft (a summariser, say).
 
 - Whenever a new mode is added.
 - Whenever the heuristic regex changes (especially adding/removing a
-  copula).
+  copula). Note the heuristic is now only a **floor** for fluid-blank
+  (the model's `MODE` decides above it) but still the **sole** decider
+  for keyword `auto` blanks — see "Keyword `auto` blanks vs fluid-blank".
+- Whenever the fluid-blank MODE prompt block or the FILL/WIPE floor
+  logic in `getCues` changes.
 - Whenever the migration cheat-sheet drifts from the actual built-in
   blanks (i.e. a built-in's `blankReplace` changes).
 

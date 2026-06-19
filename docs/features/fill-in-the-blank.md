@@ -21,10 +21,7 @@ Every `_` slot routes through the same priority chain. The three sources race; t
 
    See [Transform Blanks](transform-blank.md) and the canonical reference at `docs/architecture/transform-blank.md`. Opt-in via `transform-blank-mode: on`.
 
-3. **`FluidBlankSource` (priority 92)** — free-form lookup. Two-pass LLM pipeline:
-   - **P1 SEGMENT** identifies the lookup span around `_` (handles ambient phrasing, embedded WH-questions, compact factual claims).
-   - **P3 ANSWER** produces the canonical short answer.
-   The whole span is replaced with the answer (WIPE mode) or just the `_` is filled (FILL mode), determined heuristically by the input shape (`is _` / `= _` / `? _` → FILL; `<phrase> _` → WIPE). Opt-in via `fluid-blank-mode: on`.
+3. **`FluidBlankSource` (priority 92)** — free-form lookup. A single fused LLM call segments the lookup span around `_` (handling ambient phrasing, embedded WH-questions, compact factual claims), produces the canonical short answer, and classifies placement: the whole span is replaced with the answer (WIPE mode) or just the `_` is filled (FILL mode). The **model decides** FILL vs WIPE (a `MODE` line in the fused output), so the choice is language-invariant; a deterministic copula/equation/question heuristic (`is _` / `= _` / `? _`) is kept as a data-loss floor that forces FILL on the sentence shapes a WIPE would collapse. See [docs/architecture/blank-replace-modes.md § Keyword `auto` blanks vs fluid-blank](../architecture/blank-replace-modes.md). Opt-in via `fluid-blank-mode: on`.
 
 ---
 
