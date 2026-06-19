@@ -713,7 +713,7 @@ function validateFork(fork) {
   //
   // Concrete instance the smoke catches (June 2026 PR #117 regression):
   // setup.sh hard-coded the dist subdirs it copied ("sources" only),
-  // missing the new "providers" subdir. `@opencues/core/model-aliases`
+  // missing the new "providers" subdir. A module under `dist/sources/`
   // require'd `./providers/claude-cli-daemon` — boot threw at the
   // outer try, every CC session came up with __oc.failed=true.
   // Markers were present, validateFork was happy, the user got silent

@@ -68,44 +68,9 @@ The cede logic in `supports()` mirrors what TransformBlank and FluidBlank
 already do: if a registered blank's keyword sits within `blankProximity`
 of the `_`, ConfigIntent declines so BlankSource takes the slot.
 
-### Synchronous cede on `with <model>` override token
-
-A second cede gate sits at the top of `getCues()` itself:
-
-```ts
-if (detectModelOverride(context.text) !== null) {
-  this.log(`ConfigIntent: ceding — buffer carries 'with <model>' override token`);
-  return { results: [], ... };  // no LLM call, no scalar write
-}
-```
-
-`detectModelOverride` is the regex matcher from
-`packages/opencues-core/src/model-aliases.ts` — the same one
-FluidBlank and TransformBlank use to detect the per-call `with <model>`
-override. When it matches, ConfigIntent yields without burning a
-classifier LLM round-trip.
-
-Reason: before the cede gate landed (June 2026), inputs like `make
-formal: the cat sat on the mat with opus _` were being misclassified
-as PROVIDER routing → ConfigIntent wrote `cues-llm-provider:
-anthropic:claude-opus-4-7` to disk. A settings flip the user didn't
-ask for, plus a selector-satellite painted in the buffer. The
-classifier was doing its job correctly given the prompt (the user did
-mention `opus`); the issue was that the override syntax overlaps with
-PROVIDER-routing phrasing and the cede has to be structural, not
-prompt-level.
-
 The settings-flip syntax (`change to opus _`, `switch to cerebras _`,
-`use anthropic for cues _`) doesn't contain `with` — `detectModelOverride`
-returns null — the cede doesn't fire — the classifier runs normally
-and writes the scalar. So both syntaxes coexist:
-
-```
-change to opus _     →  ConfigIntent fires → writes blanks-llm-provider
-make X with opus _   →  ConfigIntent cedes → TransformBlank dispatches via Opus per-call
-```
-
-Full design: [`docs/architecture/model-override.md`](model-override.md).
+`use anthropic for cues _`) is what ConfigIntent classifies — it runs
+the classifier and writes the bucket scalar to disk.
 
 ---
 

@@ -28,7 +28,6 @@ import { BlankConfig } from '../cues-md';
 import { useStrictJson, buildJsonResponseFormat, describeLLMCall, dispatchChat, getProvider, type ProviderAdapter } from '../llm-provider';
 import { renderIdentityContextCatalog, postProcessContext, type Identity, type ContextMode } from '../identity-context';
 import { renderBlankContextCatalog, mergeCatalogs, type BlankContextSnapshot, type BlankContextMode } from '../blank-context';
-import { detectModelOverride, applySubscriptionPreference, stripModelOverride, type ModelOverride } from '../model-aliases';
 
 // ─── Ambient-context sanitization + injection ──────────────────────
 //
@@ -521,7 +520,7 @@ export type FluidBlankEvent =
    *  `<providerId>/<model>` (e.g. `cerebras/gpt-oss-120b`) so debug
    *  consumers can surface which provider is being called without
    *  cross-referencing config. */
-  | { type: 'started'; textLen: number; blankIdx: number; llm: string; modelOverride?: { provider: string; model: string; token: string } }
+  | { type: 'started'; textLen: number; blankIdx: number; llm: string }
   /** FUSED segment+answer completed (single LLM call). */
   | { type: 'pass-completed'; pass: 'FUSED'; latencyMs: number; span: string; answer: string }
   /** Pipeline finished and produced a substitution. */
@@ -536,19 +535,6 @@ export interface FluidBlankSourceConfig {
   endpoint: string;
   apiKey: string;
   model: string;
-  /**
-   * Optional full apiKey map keyed by provider id. When present, the
-   * source can route a single call through a non-default provider when
-   * a `with <model>` override token is detected in the buffer (see
-   * model-aliases.ts). The configured (provider, model, apiKey) above
-   * remain the steady-state target; the override only flips the dispatch
-   * for the one in-flight call and leaves no on-disk trace.
-   *
-   * When omitted, override detection is disabled — the source uses its
-   * configured target for every call. Build-sources passes this through
-   * from the runtime so hosts without multi-provider keys get a no-op.
-   */
-  apiKeys?: Readonly<Record<string, string | undefined>>;
   /** Per-feature max-tokens override (e.g. `fluid-blank-max-tokens: 1024`
    *  in OPENCUES.md). Falls back to the bench-tuned 512 when absent. */
   maxTokens?: number;
@@ -711,7 +697,6 @@ export class FluidBlankSource implements CueSource {
   private endpoint: string;
   private apiKey: string;
   private model: string;
-  private apiKeys: Readonly<Record<string, string | undefined>>;
   private maxTokensOverride: number | undefined;
   private temperatureOverride: number | undefined;
   private maxThinking: boolean;
@@ -758,7 +743,6 @@ export class FluidBlankSource implements CueSource {
     this.endpoint = config.endpoint;
     this.apiKey = config.apiKey;
     this.model = config.model;
-    this.apiKeys = config.apiKeys ?? {};
     this.maxTokensOverride = config.maxTokens;
     this.temperatureOverride = config.temperature;
     this.maxThinking = config.maxThinking ?? true;
@@ -849,55 +833,39 @@ export class FluidBlankSource implements CueSource {
         this.emit({ type: 'bailed', reason: 'consumed-upstream', latencyMs: 0 });
         return { results: [] };
       }
-      // Per-call model override — `with <model>` token in the buffer
-      // flips the dispatch target for THIS call only without writing
-      // any scalar to disk. See model-aliases.ts for the resolution
-      // rules. When matched + apiKey available, we strip the token
-      // from the prompt body and route through the override provider;
-      // otherwise the token stays in (LLM sees it as buffer prose) and
-      // dispatch uses the configured target.
-      const override = applySubscriptionPreference(
-        detectModelOverride(context.text),
-        context.anthropicSubscription ?? 'prefer',
-      );
-      const overrideAdapter = override ? this.resolveOverride(override) : null;
-      const effectiveProvider = overrideAdapter?.provider ?? this.provider;
-      const effectiveModel = overrideAdapter?.model ?? this.model;
-      const effectiveApiKey = overrideAdapter?.apiKey ?? this.apiKey;
-      const effectiveText = overrideAdapter ? stripModelOverride(context.text, override!) : context.text;
-      if (overrideAdapter) {
-        this.logInfo(`FluidBlank: model-override → ${effectiveProvider.id}/${effectiveModel} (token="${override!.matchedToken}")`);
-      } else if (override) {
-        // Token matched a known model but no apiKey for that provider —
-        // cede the override silently, keep the configured target. Log
-        // at debug level so users can grep for "model-override skip"
-        // when wondering why their `with X` didn't take.
-        this.log(`FluidBlank: model-override skip — no apiKey for provider '${override.provider}' (token="${override.matchedToken}")`);
+      // Fail-safe against data loss — never WIPE a multi-paragraph buffer.
+      // A bare fluid lookup is short; once the buffer carries a paragraph
+      // break it's the user's own content, and a whole-buffer WIPE here
+      // destroys it. This is the "2 paragraphs collapsed to 1" landmine:
+      // it fires when a sibling source that SHOULD own the edit
+      // (TransformBlank for `add a paragraph _`, an agent rewrite, etc.)
+      // ERRORS OUT before claiming the slot — e.g. a provider 400, a
+      // rate-limit, a network blip — leaving FluidBlank the destructive
+      // turn. The `consumedBlankSlots` guard above only covers the case
+      // where TransformBlank got far enough to mark the slot; a hard LLM
+      // failure skips that. Bail so the buffer is preserved; multi-
+      // paragraph edits belong to TransformBlank, not a fluid lookup.
+      if (determineReplaceMode(context.text) === 'WIPE' && /\n[ \t]*\n/.test(context.text)) {
+        this.logInfo('FluidBlank: refusing WIPE on a multi-paragraph buffer (fail-safe — preserving user content)');
+        this.emit({ type: 'bailed', reason: 'wipe-multiparagraph-guard', latencyMs: 0 });
+        return { results: [] };
       }
+      const effectiveProvider = this.provider;
+      const effectiveModel = this.model;
+      const effectiveText = context.text;
       this.emit({
         type: 'started',
         textLen: context.text.length,
         blankIdx,
         llm: describeLLMCall(effectiveProvider, effectiveModel, 'low', { maxTokens: this.maxTokensOverride, temperature: this.temperatureOverride }),
-        ...(overrideAdapter && override
-          ? { modelOverride: { provider: overrideAdapter.provider.id, model: overrideAdapter.model, token: override.matchedToken } }
-          : {}),
       });
 
       // VARIANT POOL — decide fresh dispatch vs cache serve. Same
       // state machine + cache-hit short-circuit as TransformBlank. On
       // hit, we skip the LLM call entirely and synthesise a CueResult
       // from the cached answer.
-      //
-      // Override path bypasses cache — `with <model>` is the user
-      // explicitly asking for a different inference path, so we
-      // honour that by always dispatching fresh. (Caching across
-      // providers would also widen the key blast radius for marginal
-      // benefit.)
       const cacheKey = this._computeCacheKey(context);
-      const variantChoice = overrideAdapter
-        ? { kind: 'fresh' as const, others: [] as string[] }
-        : this._selectVariant(cacheKey);
+      const variantChoice = this._selectVariant(cacheKey);
       if (variantChoice.kind === 'cache') {
         this.log(`FluidBlank: variant-cache HIT — serving cached answer (pool size ${variantChoice.others.length + 1})`);
         // Determine replace-mode from the buffer (same logic the fresh
@@ -1012,8 +980,7 @@ export class FluidBlankSource implements CueSource {
       // Per-feature override: `fluid-blank-max-tokens:` in OPENCUES.md.
       // 512 default is bench-tuned for short-factual answers.
       const fusedOut = await this.callLLM(fullSystem, fusedUser, this.maxTokensOverride ?? 512,
-        useJson ? buildJsonResponseFormat('fluid_fused', FLUID_FUSED_SCHEMA) : undefined, context.signal,
-        effectiveProvider, effectiveModel, effectiveApiKey);
+        useJson ? buildJsonResponseFormat('fluid_fused', FLUID_FUSED_SCHEMA) : undefined, context.signal);
       const { span, answer } = useJson ? parseFusedJson(fusedOut) : parseFused(fusedOut);
       this.emit({ type: 'pass-completed', pass: 'FUSED', latencyMs: Date.now() - fusedStart, span: span ?? '', answer: answer ?? '' });
       if (!span) {
@@ -1062,19 +1029,13 @@ export class FluidBlankSource implements CueSource {
       const ctx = '';
 
       // Replacement mode. Mode-decision reads the SAME text the LLM saw
-      // (effectiveText after override strip). For an override-active
-      // input like `the capital of france with opus is _`, effectiveText
-      // is `the capital of france is _` → ends with `is _` → FILL,
-      // matching what the LLM is shaped for.
+      // (effectiveText), matching what the LLM is shaped for.
       const mode = determineReplaceMode(effectiveText);
 
       // Record the fresh answer into the variant pool — subsequent
       // identical-buffer triggers will cycle through cached variants
-      // instead of re-dispatching. Override path bypasses cache (see
-      // decision branch earlier in getCues).
-      if (!overrideAdapter) {
-        this._recordFreshAnswer(cacheKey, finalAnswer);
-      }
+      // instead of re-dispatching.
+      this._recordFreshAnswer(cacheKey, finalAnswer);
 
       const result: CueResult = {
         wordIndex: blankIdx,
@@ -1097,24 +1058,11 @@ export class FluidBlankSource implements CueSource {
       // Alternatives stay ['_', answer] — cycling back to `_` clears the
       // lookup phrase to a bare blank rather than restoring the full
       // queried text. The lookup phrase is consumed by the substitution.
-      //
-      // Override path: the LLM saw stripped text, so its span won't
-      // match the original buffer literally (it lacks "with opus"). For
-      // v1 we force a whole-buffer WIPE when override is active — the
-      // user's "with opus _" is wiped along with the lookup phrase and
-      // replaced by just the answer. Cleaner than a partial wipe that
-      // leaves "with opus" in the buffer next to the answer; partial
-      // remapping (stripped offsets → original) is a v2 follow-up.
       if (mode === 'WIPE') {
-        if (override && overrideAdapter) {
-          result.spanStart = 0;
-          result.spanEnd = context.text.length;
-        } else {
-          const range = findSpanCharRange(span, context.text);
-          if (range) {
-            result.spanStart = range[0];
-            result.spanEnd = range[1];
-          }
+        const range = findSpanCharRange(span, context.text);
+        if (range) {
+          result.spanStart = range[0];
+          result.spanEnd = range[1];
         }
       }
 
@@ -1159,48 +1107,18 @@ export class FluidBlankSource implements CueSource {
     }
   }
 
-  /**
-   * Resolve a model-alias override to a concrete dispatch target.
-   * Returns null when the override's provider isn't in the apiKeys map
-   * — the call falls through to the source's configured (provider,
-   * model, apiKey). The httpAdapter is reused from the source's config
-   * even on override; provider-specific wrapping (fallback chain,
-   * free-pool wrapper) stays tied to the configured target, not the
-   * override.
-   */
-  private resolveOverride(override: ModelOverride): { provider: ProviderAdapter; model: string; apiKey: string } | null {
-    const adapter = getProvider(override.provider);
-    if (adapter === null) return null;
-    // CLI-transport providers (claude-code-cli) auth via the installed
-    // binary (`claude /login`), not an env var — envKeyName is empty.
-    // Skip the apiKey gate for them; the dispatch path (invokeCli)
-    // surfaces auth failures at spawn time.
-    if (adapter.transport === 'cli') {
-      return { provider: adapter, model: override.model, apiKey: '' };
-    }
-    // apiKeys map is keyed by envKeyName (`ANTHROPIC_API_KEY`,
-    // `CEREBRAS_API_KEY`, …) — matches what resolveLLM reads at
-    // llm-provider.ts:1817 + what every host adapter populates.
-    const apiKey = this.apiKeys[adapter.envKeyName];
-    if (!apiKey) return null;
-    return { provider: adapter, model: override.model, apiKey };
-  }
-
   private async callLLM(
     system: string,
     user: string,
     maxTokens: number,
     responseFormat: { name: string; strict?: boolean; schema: Record<string, unknown> } | undefined,
     signal: AbortSignal | undefined,
-    overrideProvider?: ProviderAdapter,
-    overrideModel?: string,
-    overrideApiKey?: string,
   ): Promise<string> {
     return dispatchChat(
-      overrideProvider ?? this.provider,
+      this.provider,
       this.httpAdapter,
       {
-        model: overrideModel ?? this.model,
+        model: this.model,
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: user },
@@ -1226,8 +1144,8 @@ export class FluidBlankSource implements CueSource {
         responseFormat,
       },
       {
-        apiKey: overrideApiKey ?? this.apiKey,
-        endpoint: overrideProvider ? overrideProvider.defaultEndpoint : this.endpoint,
+        apiKey: this.apiKey,
+        endpoint: this.endpoint,
         signal,
         maxThinking: this.maxThinking,
         onUsage: (u) => {
