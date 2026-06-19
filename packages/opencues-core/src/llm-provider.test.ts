@@ -17,6 +17,7 @@ import {
   resolveLLM,
   withFallback,
   canonicalizeModelForProvider,
+  dispatchChat,
   PROVIDER_IDS,
   _resetWarnDedupForTesting,
 } from './llm-provider';
@@ -1320,5 +1321,48 @@ describe('isProviderValueCyclable — prevents cycling to a broken (provider, no
       false,
       'claude-cli alias resolves; CLI probe says binary missing → not cyclable',
     );
+  });
+});
+
+describe('dispatchChat — prediction-unsupported fallback', () => {
+  const cerebras = getProvider('cerebras')!;
+  const baseReq = { model: 'gpt-oss-120b', messages: [{ role: 'user' as const, content: 'hi' }] };
+
+  it('retries WITHOUT prediction when the provider rejects it, and succeeds', async () => {
+    let calls = 0;
+    let retryHadPrediction: boolean | null = null;
+    const http = {
+      post: async (_url: string, body: string) => {
+        calls++;
+        const parsed = JSON.parse(body) as { prediction?: unknown };
+        if (calls === 1) {
+          assert.ok(parsed.prediction, 'first attempt carries the prediction hint');
+          return JSON.stringify({ error: { message: "property 'prediction' is unsupported" } });
+        }
+        retryHadPrediction = parsed.prediction !== undefined;
+        return JSON.stringify({ choices: [{ message: { content: 'appended ok' } }] });
+      },
+    };
+    const out = await dispatchChat(cerebras, http, { ...baseReq, prediction: 'the body being transformed' }, { apiKey: 'k' });
+    assert.strictEqual(out, 'appended ok');
+    assert.strictEqual(calls, 2, 'exactly one retry');
+    assert.strictEqual(retryHadPrediction, false, 'retry must drop the prediction field');
+  });
+
+  it('does NOT retry on an unrelated provider error', async () => {
+    let calls = 0;
+    const http = { post: async () => { calls++; return JSON.stringify({ error: { message: 'rate limited (429)' } }); } };
+    await assert.rejects(
+      () => dispatchChat(cerebras, http, { ...baseReq, prediction: 'x' }, { apiKey: 'k' }),
+      /rate limited/,
+    );
+    assert.strictEqual(calls, 1, 'a non-prediction error must not trigger the strip-and-retry');
+  });
+
+  it('does NOT retry when prediction was never sent (single attempt, error surfaces)', async () => {
+    let calls = 0;
+    const http = { post: async () => { calls++; return JSON.stringify({ error: { message: "property 'prediction' is unsupported" } }); } };
+    await assert.rejects(() => dispatchChat(cerebras, http, baseReq, { apiKey: 'k' }));
+    assert.strictEqual(calls, 1, 'no prediction was set → no fallback path');
   });
 });

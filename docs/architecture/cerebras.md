@@ -119,6 +119,12 @@ Bench measurements at June 2026:
 - `/tmp/cerebras-predicted-outputs-bench.mjs` (4 trials × 4 cases): long-rewrite (resignation email) +pred saves 156ms; short-rewrite + medium-rewrite show 0% acceptance.
 - `/tmp/cerebras-reasoning-matrix.mjs` (6 trials × 2 models × 3 reasoning × {no-pred, +pred}): 66% acceptance consistent across reasoning levels on long inputs; gpt-oss-120b/low/+pred hits 258ms median (vs 261ms no-pred — savings are mainly tail).
 
+### Fallback: cerebras intermittently rejects `prediction`
+
+Predicted outputs is a **perf optimisation, not a correctness feature** — and cerebras `gpt-oss-120b` will **intermittently reject the field mid-session** with `property 'prediction' is unsupported` (a 400). Before the fallback, that hard-failed the whole TransformBlank call — a user's `add a paragraph _` over a >200-char body would silently do nothing.
+
+`dispatchChat` (the single wire chokepoint that carries `prediction` — TransformBlank's fused path is its only setter) now catches that **specific** rejection and **retries once without `prediction`** (a strict subset of the original request, guaranteed valid, can't recur). Scoped tightly: only fires when `prediction` was actually sent and the error matches both `prediction` + `unsupported`; every other call keeps its single-attempt behaviour and unrelated errors surface unchanged. A rejected prediction now costs one extra round-trip, never a failed transform. Code: `dispatchChat` + `isPredictionUnsupportedError` in `llm-provider.ts`; pinned by 3 unit tests. (The sibling `seed` + `prediction` provider gates in `buildOpenAIBody` are the *send-side* half of the same "OpenAI-only param rejected by a strict gateway" class.)
+
 ### Cost arithmetic
 
 Using approximate published cerebras rates ($0.10/M input, $0.60/M output):

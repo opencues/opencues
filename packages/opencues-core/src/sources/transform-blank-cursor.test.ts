@@ -241,3 +241,43 @@ describe('TransformBlankSource — system-prompt rule wiring', () => {
       'APPLY system prompt should instruct stripping the marker');
   });
 });
+
+describe('TransformBlankSource — fused VERDICT:NONE fallthrough on long buffers', () => {
+  // Regression: cerebras gpt-oss-120b intermittently returns VERDICT: NONE on a
+  // LONG buffer (FULL_REWRITE output/reasoning-budget pressure) even when there
+  // IS a trailing imperative — a chained "make it all make sense structurally _"
+  // on a ~1.3k-char buffer silently did nothing. A long-buffer fused NONE must
+  // NOT be trusted: fall through to 3-pass (separate budget-free EXTRACT).
+  function fusedSource(httpAdapter: HttpAdapter): TransformBlankSource {
+    return new TransformBlankSource({
+      httpAdapter,
+      provider: getProvider('cerebras')!,
+      endpoint: 'https://api.cerebras.ai/v1/chat/completions',
+      apiKey: 'k',
+      model: 'gpt-oss-120b',
+      mode: 'fused',
+    });
+  }
+  const fusedNone = 'VERDICT: NONE\nINSTRUCTION:\nTARGET:\nFULL_REWRITE:';
+
+  it('long buffer + fused NONE → falls through to 3-pass (re-classifies, does not silently cede)', async () => {
+    const recorded: RecordedCall[] = [];
+    const longBody = 'This is a long accumulated prompt body that exceeds the floor. '.repeat(8) + 'make it formal _';
+    assert.ok(longBody.length > 400, 'fixture must clear the long-buffer floor');
+    const src = fusedSource(makeRecordingAdapter(
+      [fusedNone, extract('make it formal', longBody), apply('a formal rewrite'), verify('OK')],
+      recorded,
+    ));
+    await src.getCues(ctxWithCursor(longBody, longBody.length));
+    assert.ok(recorded.length >= 2,
+      `expected fallthrough to 3-pass (≥2 LLM calls), got ${recorded.length} — a long-buffer fused NONE must not bail`);
+  });
+
+  it('short buffer + fused NONE → cedes after one call (genuine lookup, FluidBlank answers it)', async () => {
+    const recorded: RecordedCall[] = [];
+    const src = fusedSource(makeRecordingAdapter([fusedNone], recorded));
+    const out = await src.getCues(ctxWithCursor('capital of france _', 18));
+    assert.strictEqual(recorded.length, 1, 'a short NONE must cede after exactly one call (no 3-pass)');
+    assert.strictEqual(out.results.length, 0, 'short NONE yields empty so FluidBlank can answer');
+  });
+});

@@ -158,7 +158,7 @@ The six verdicts split into three branches:
 
 - **`TRANSFORM`** — the imperative path. EXTRACT splits into INSTRUCTION + TARGET; APPLY rewrites; VERIFY checks. If TARGET is empty, the **generative branch** fires instead (single-pass APPLY, no VERIFY) — covers cases like "write a poem _", "compose an email _", "give me 5 startup ideas _".
 - **`TASK_ARM` / `TASK_ADD` / `TASK_STOP` / `TASK_SHOW`** — the agent-task path. Routes to the runtime's agent state machine via `metadata.taskAction` + `metadata.taskPayload`; APPLY and VERIFY do not run. See `docs/architecture/agent-task.md` for the task semantics.
-- **`NONE`** — the source bails immediately and FluidBlankSource (priority 92) takes the slot.
+- **`NONE`** — the source bails immediately and FluidBlankSource (priority 92) takes the slot. **Exception (fused mode):** a `NONE` on a **long buffer** (> `FUSED_NONE_RETRY_FLOOR`, 400 chars) is *not trusted* and falls through to 3-pass instead of ceding. Rationale: the fused call emits the entire `FULL_REWRITE` in one shot, and cerebras `gpt-oss-120b` intermittently returns `VERDICT: NONE` under that output/reasoning-budget pressure even when there *is* a trailing imperative (a chained `make it all make sense structurally _` on a ~1.3k-char buffer silently did nothing). 3-pass's EXTRACT is a small, budget-free call that re-classifies reliably; a genuinely non-transform long buffer still cedes there (its EXTRACT also returns `NONE`). Short NONEs (bare lookups like `capital of france _`) cede unchanged.
 
 ### Claim-and-bail — protecting the slot from FluidBlank "vandalism"
 
@@ -849,7 +849,8 @@ Each log line maps to a code location in `transform-blank-source.ts`
 
 | Symptom in trace | Likely cause | Fix |
 |---|---|---|
-| `verdict=NONE, instruction=""` | Real NONE — input isn't a transform | None needed (FluidBlank takes over) |
+| `verdict=NONE, instruction=""` (short buffer) | Real NONE — input isn't a transform | None needed (FluidBlank takes over) |
+| `verdict=NONE` on a **long** buffer (>400 chars) with a clear imperative | Fused budget-pressure misclassify (cerebras gpt-oss-120b) | Auto-handled — falls through to 3-pass (`FUSED: verdict=NONE on a long buffer … falling through to 3-pass`). If the rewrite still doesn't land, check 3-pass EXTRACT output. |
 | `verdict=NONE, instruction="TARGET:"` | Parser bug (regex swallowing newlines) | Should be fixed; if recurring see commit ac7f79d |
 | `verdict=TRANSFORM, target=""` | Layout (b) parsing issue — instruction at end with leading text the model thinks is also instruction | Add a similar-shape example to EXTRACT prompt |
 | `APPLY step 1 returned empty` | Model bailed mid-output or rate-limited | Check Groq dashboard for TPM cap |
