@@ -11,6 +11,8 @@ import {
   parseConfigIntentOutput,
   validateAgainstRegistry,
   summonPhraseStart,
+  resolveSummonStart,
+  parseSummonOutput,
 } from './config-intent-source';
 import type { CueContext, HttpAdapter } from '../types';
 import { getProvider } from '../llm-provider';
@@ -368,6 +370,45 @@ describe('ConfigIntentSource', () => {
     });
   });
 
+  it('getCues hit: dedicated SUMMON call drives a language-invariant span (preserves non-Latin prior content)', async () => {
+    const apply = noopApply();
+    // Japanese prior content the regex floor alone would still segment via
+    // 。 — but here we prove the SEPARATE summon call is the one driving the
+    // span: the classifier response is call #1, the SUMMON response call #2.
+    const input = '日本語のメモ。voice mode off _';
+    const src = new ConfigIntentSource({
+      ...baseConfig,
+      httpAdapter: makeMockAdapter([
+        'INTENT: SETTING\nSETTING: voice-mode\nVALUE: inactive\nCONFIDENCE: 0.95',
+        'SUMMON: voice mode off _',
+      ]),
+      applyScalar: apply.fn,
+    });
+    const r = (await src.getCues(ctxFromText(input))).results[0]!;
+    assert.deepStrictEqual(apply.calls, [['voice-mode', 'inactive']]);
+    // Span starts at the command, NOT 0 — the Japanese note is preserved.
+    assert.strictEqual(r.spanStart, input.indexOf('voice mode off _'));
+    assert.strictEqual(r.spanEnd, input.length);
+    assert.strictEqual(input.slice(0, r.spanStart), '日本語のメモ。');
+  });
+
+  it('getCues hit: summon call returning a non-suffix falls back to the regex floor (command still applies)', async () => {
+    const apply = noopApply();
+    const input = 'hmm. tips off _';
+    const src = new ConfigIntentSource({
+      ...baseConfig,
+      httpAdapter: makeMockAdapter([
+        'INTENT: SETTING\nSETTING: tips-mode\nVALUE: off\nCONFIDENCE: 0.95',
+        'SUMMON: disable the tips _', // not a verbatim suffix → ignored
+      ]),
+      applyScalar: apply.fn,
+    });
+    const r = (await src.getCues(ctxFromText(input))).results[0]!;
+    assert.deepStrictEqual(apply.calls, [['tips-mode', 'off']]);
+    assert.strictEqual(r.spanStart, input.indexOf('tips off _')); // regex floor
+    assert.strictEqual(r.spanEnd, input.length);
+  });
+
   it('getCues NONE: cedes (empty results) AND does NOT call applyScalar', async () => {
     const apply = noopApply();
     const src = new ConfigIntentSource({
@@ -664,5 +705,52 @@ describe('summonPhraseStart — preserve prior content (no whole-buffer nuke)', 
     assert.strictEqual(fw.slice(0, summonPhraseStart(fw)), 'メモ！');
     const fwq = '質問？tips on _'; // fullwidth ？
     assert.strictEqual(fwq.slice(0, summonPhraseStart(fwq)), '質問？');
+  });
+});
+
+describe('parseSummonOutput', () => {
+  it('extracts the SUMMON line verbatim', () => {
+    assert.strictEqual(parseSummonOutput('SUMMON: voice mode off _'), 'voice mode off _');
+    assert.strictEqual(parseSummonOutput('foo\nSUMMON: tips off _\nbar'), 'tips off _');
+  });
+  it('returns null when absent or empty', () => {
+    assert.strictEqual(parseSummonOutput('INTENT: SETTING'), null);
+    assert.strictEqual(parseSummonOutput('SUMMON:'), null);
+    assert.strictEqual(parseSummonOutput('SUMMON:   '), null);
+  });
+});
+
+describe('resolveSummonStart — model span with regex floor + data-loss guard', () => {
+  it('trusts the model summon when it is a verbatim suffix (language-invariant)', () => {
+    // Thai prior content — NO sentence punctuation/space, so the regex floor
+    // alone returns 0 (would nuke). The model summon rescues it.
+    const t = 'ฉันกำลังเขียนบันทึก voice mode off _';
+    assert.strictEqual(summonPhraseStart(t), 0); // regex can't segment Thai
+    assert.strictEqual(resolveSummonStart(t, 'voice mode off _'), t.indexOf('voice'));
+  });
+
+  it('falls back to the regex floor when summon is null', () => {
+    const t = 'hii world. voice mode off _';
+    assert.strictEqual(resolveSummonStart(t, null), t.indexOf('voice'));
+  });
+
+  it('falls back to the regex floor when summon is not a verbatim suffix', () => {
+    // Model paraphrased / hallucinated — not a suffix → don't trust it.
+    const t = 'hii world. voice mode off _';
+    assert.strictEqual(resolveSummonStart(t, 'turn voice off _'), t.indexOf('voice'));
+  });
+
+  it('data-loss guard: ignores a whole-buffer summon when the regex found a real boundary', () => {
+    // Model over-included the prior sentence (summon === whole buffer →
+    // modelStart 0). The regex found a boundary, so trust the boundary —
+    // never nuke "hii world.".
+    const t = 'hii world. voice mode off _';
+    assert.strictEqual(resolveSummonStart(t, t), t.indexOf('voice'));
+  });
+
+  it('whole-buffer summon is fine when there is genuinely no prior content', () => {
+    const t = 'voice mode off _';
+    assert.strictEqual(resolveSummonStart(t, t), 0);
+    assert.strictEqual(resolveSummonStart(t, null), 0);
   });
 });

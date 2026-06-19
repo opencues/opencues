@@ -548,6 +548,92 @@ MODEL:
 CONFIDENCE: 0.96`;
 
 // ============================================================================
+// SUMMON extraction — a SEPARATE, single-purpose LLM call
+// ============================================================================
+//
+// Why a second call instead of one more line on the classifier above:
+// adding a SUMMON field to the (English, heavily-tuned) classifier prompt
+// regressed its INTENT recall ~85% → ~60% on the fluid-config bench and the
+// model emitted the field on only ~10% of cases — a tuned single-purpose
+// classifier can't reliably carry a second job. A dedicated extraction
+// prompt does it cleanly: a standalone probe scored 10/10 verbatim-suffix +
+// boundary-correct across English / Japanese / Korean / Thai / French /
+// Chinese prior content — including Thai, which has NO sentence punctuation
+// or spaces and which NO regex floor can segment. This is the
+// language-invariant ("feature-agnostic") path the regex `summonPhraseStart`
+// only approximates for Latin/CJK scripts.
+//
+// It runs ONLY after the classifier has confirmed a SETTING/PROVIDER verdict
+// (NONE cedes earlier), so the extra call fires only on genuine config
+// commands — rare, and a one-shot settings apply isn't latency-sensitive
+// the way interactive typing is. `_summonCache` memoises per-buffer so a
+// double-fire / repeat trigger doesn't pay for it twice. On any failure
+// (network, non-suffix output) it falls back to the regex floor — the model
+// proposes the boundary, the runtime validates it, the regex is the safety
+// net. The classifier's SYSTEM_PROMPT is UNTOUCHED, so classification
+// accuracy is unaffected by definition.
+
+export const SUMMON_PROMPT = `You extract the COMMAND SPAN from a buffer that ends in a settings/config command followed by _.
+
+The buffer may begin with the user's own writing (notes, a sentence — possibly in another language). That prior text is NOT part of the command. Your job: return the EXACT, VERBATIM trailing substring that is the command itself, including the trailing _.
+
+Rules:
+- SUMMON must be a VERBATIM suffix of the input — copy it character-for-character; do NOT paraphrase, translate, or normalise spacing.
+- It starts at the first word of the trailing command and runs to the end (incl. _).
+- If the ENTIRE input is the command (no prior writing), SUMMON is the whole input.
+- Output exactly one line, nothing else: SUMMON: <substring>
+
+EXAMPLES:
+INPUT: voice mode off _
+SUMMON: voice mode off _
+
+INPUT: hii world. voice mode off _
+SUMMON: voice mode off _
+
+INPUT: こんにちは世界。voice mode off _
+SUMMON: voice mode off _
+
+INPUT: meeting notes from today, lots to do. switch cues to anthropic _
+SUMMON: switch cues to anthropic _
+
+INPUT: 日本語のメモです。tips off _
+SUMMON: tips off _`;
+
+/** Parse the SUMMON line from a dedicated-extraction response. */
+export function parseSummonOutput(raw: string): string | null {
+  const m = raw.match(/^SUMMON:[ \t]*(.*?)[ \t]*$/im);
+  const s = m ? m[1].trim() : '';
+  return s ? s : null;
+}
+
+/**
+ * Resolve where the settings/provider command starts in the buffer — the
+ * wipe span's left edge. The dedicated SUMMON call returns the exact
+ * trailing command substring (incl. `_`); when it's a verbatim suffix of
+ * the live buffer we trust it, because the model identifies the command
+ * boundary language-invariantly (English / CJK / Thai prior content all
+ * work). `summonPhraseStart` is the deterministic floor when SUMMON is
+ * absent (call failed / disabled) or not a clean suffix.
+ *
+ * Data-loss guard: if the model's summon spans the WHOLE buffer
+ * (`modelStart === 0`) but the regex found a real earlier boundary, the
+ * model over-included prior content — trust the boundary instead so we
+ * never nuke text the user typed before the command. Mirrors the
+ * "model proposes, runtime validates a safety invariant" split FluidBlank's
+ * FILL/WIPE floor uses.
+ */
+export function resolveSummonStart(text: string, summon: string | null): number {
+  const regexStart = summonPhraseStart(text);
+  const s = summon?.trim();
+  if (s && text.endsWith(s)) {
+    const modelStart = text.length - s.length;
+    if (modelStart === 0 && regexStart > 0) return regexStart;
+    return modelStart;
+  }
+  return regexStart;
+}
+
+// ============================================================================
 // Parsed verdict — discriminated union
 // ============================================================================
 
@@ -806,6 +892,17 @@ export class ConfigIntentSource implements CueSource {
   private static readonly VARIANT_POOL_SIZE = 3;
   private static readonly VARIANT_KEY_CAP = 32;
 
+  /**
+   * Per-buffer memo of the dedicated SUMMON extraction (see SUMMON_PROMPT).
+   * The summon call only fires on confirmed SETTING/PROVIDER verdicts, but a
+   * single `_` trigger can resolve more than once in a burst (apply →
+   * setText → re-resolve within the reload-suppression window); this stops
+   * the second resolve paying for the extraction again. Keyed by buffer
+   * text, value is the resolved spanStart. Bounded like the variant pool.
+   */
+  private static _summonStartCache = new Map<string, number>();
+  private static readonly SUMMON_CACHE_CAP = 32;
+
   constructor(config: ConfigIntentSourceConfig) {
     this.httpAdapter = config.httpAdapter;
     this.provider = config.provider;
@@ -1022,6 +1119,11 @@ export class ConfigIntentSource implements CueSource {
     this.log(`ConfigIntent: applied ${cueTip} (${Date.now() - t0}ms, conf=${verdict.confidence ?? 'n/a'})`);
     this.emit({ type: 'completed', verdict, applied: true, latencyMs: Date.now() - t0 });
 
+    // Resolve the wipe span's left edge. The command is confirmed at this
+    // point, so we make the dedicated SUMMON extraction call (language-
+    // invariant boundary, regex floor on failure). See SUMMON_PROMPT.
+    const spanStart = await this.resolveCommandSpanStart(context.text, context.signal);
+
     // Selector-satellite shape, mirroring the result BlankSource emits
     // for keyword-bound `opencues settings _` (see blank-source.ts
     // selector-satellite branch). The wipe span runs from the start of
@@ -1039,7 +1141,7 @@ export class ConfigIntentSource implements CueSource {
       alternatives: [displaySelector],
       source: this.id,
       priority: this.priority,
-      spanStart: summonPhraseStart(context.text),
+      spanStart,
       spanEnd: context.text.length,
       cueTip,
       metadata: {
@@ -1060,6 +1162,41 @@ export class ConfigIntentSource implements CueSource {
     };
 
     return { results: [result], timing: Date.now() - t0, model: this.model };
+  }
+
+  /**
+   * Resolve the wipe span's left edge for a confirmed config command via
+   * the dedicated SUMMON extraction call (see SUMMON_PROMPT), with the
+   * `summonPhraseStart` regex as the deterministic floor. Memoised per
+   * buffer; never throws — any failure falls back to the regex so a
+   * provider hiccup can't break the command, only make the boundary
+   * slightly less language-aware.
+   */
+  private async resolveCommandSpanStart(text: string, signal?: AbortSignal): Promise<number> {
+    const cached = ConfigIntentSource._summonStartCache.get(text);
+    if (cached !== undefined) {
+      this.log(`ConfigIntent: summon-span cache HIT (start=${cached})`);
+      return cached;
+    }
+    let start: number;
+    try {
+      const raw = await this.callLLM(SUMMON_PROMPT, `INPUT: ${text}`, this.maxTokensOverride ?? 96, signal);
+      const summon = parseSummonOutput(raw);
+      start = resolveSummonStart(text, summon);
+      const via = summon && text.endsWith(summon.trim()) && start === text.length - summon.trim().length ? 'model' : 'regex-floor';
+      this.log(`ConfigIntent: summon-span via ${via} (start=${start}, summon=${JSON.stringify(summon)})`);
+    } catch (e) {
+      start = summonPhraseStart(text);
+      this.log(`ConfigIntent: summon extraction failed (${(e as Error).message}) — regex floor (start=${start})`);
+    }
+    // Bounded memo — evict oldest on overflow (Map preserves insertion order).
+    const cache = ConfigIntentSource._summonStartCache;
+    if (cache.size >= ConfigIntentSource.SUMMON_CACHE_CAP) {
+      const oldest = cache.keys().next().value;
+      if (oldest !== undefined) cache.delete(oldest);
+    }
+    cache.set(text, start);
+    return start;
   }
 
   private async callLLM(
