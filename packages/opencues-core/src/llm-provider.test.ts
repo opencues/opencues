@@ -1366,3 +1366,35 @@ describe('dispatchChat — prediction-unsupported fallback', () => {
     assert.strictEqual(calls, 1, 'no prediction was set → no fallback path');
   });
 });
+
+describe('provider capability model — default-off param gating', () => {
+  const OPENAI_SHAPE = ['groq', 'openrouter', 'openai', 'cerebras', 'opencode-zen'] as const;
+  const u = (role: 'user') => ({ role, content: 'x' });
+
+  it('every OpenAI-shape adapter declares a capabilities block (so new params default OFF)', () => {
+    for (const id of OPENAI_SHAPE) {
+      const p = getProvider(id);
+      assert.ok(p, `${id} resolves`);
+      assert.ok(p!.capabilities !== undefined, `${id} must declare capabilities — default-off gating depends on it`);
+    }
+  });
+
+  it('`prediction` is emitted IFF the provider declares it', () => {
+    const base = { messages: [u('user')], maxTokens: 50, prediction: 'a body being transformed' };
+    const pred = (id: typeof OPENAI_SHAPE[number], model: string) =>
+      JSON.parse(buildProviderRequest(id, { ...base, model }, { apiKey: 'k' }).body).prediction;
+    assert.ok(pred('cerebras', 'gpt-oss-120b') !== undefined, 'cerebras declares prediction → sent');
+    assert.ok(pred('openai', 'gpt-4o') !== undefined, 'openai declares prediction → sent');
+    assert.strictEqual(pred('groq', 'openai/gpt-oss-120b'), undefined, 'groq declares seed but NOT prediction → omitted');
+    assert.strictEqual(pred('openrouter', 'anthropic/claude-opus-4-7'), undefined, 'openrouter declares nothing → omitted');
+    assert.strictEqual(pred('opencode-zen', 'anything'), undefined, 'opencode-zen declares nothing → omitted');
+  });
+
+  it('`reasoning_format: hidden` only fires for cerebras gpt-oss models (the model predicate)', () => {
+    const rf = (id: typeof OPENAI_SHAPE[number], model: string) =>
+      JSON.parse(buildProviderRequest(id, { messages: [u('user')], model, reasoningEffort: 'medium' }, { apiKey: 'k' }).body).reasoning_format;
+    assert.strictEqual(rf('cerebras', 'gpt-oss-120b'), 'hidden', 'cerebras gpt-oss → hidden');
+    assert.strictEqual(rf('cerebras', 'zai-glm-4.7'), undefined, 'cerebras non-gpt-oss → predicate false → not sent');
+    assert.strictEqual(rf('groq', 'openai/gpt-oss-120b'), undefined, 'groq does not declare reasoningFormatHidden → never sent');
+  });
+});

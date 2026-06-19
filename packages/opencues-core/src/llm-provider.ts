@@ -151,6 +151,26 @@ export interface BuiltRequest {
   readonly headers: Record<string, string>;
 }
 
+/**
+ * Per-provider opt-ins for non-universal OpenAI-shape request fields.
+ * `buildOpenAIBody` emits each field ONLY when declared here (default-off).
+ * Add a new opt-in field here + read it in `buildOpenAIBody` whenever a
+ * provider-specific param is introduced — never with a `provider === 'x'`
+ * check at the call site (that's the scattered-allowlist pattern this
+ * replaces). Model-dependent capabilities take a predicate.
+ */
+export interface ProviderCapabilities {
+  /** OpenAI `seed` — deterministic sampling. Rejected by pass-through
+   *  gateways (openrouter → anthropic 400s). */
+  readonly seed?: boolean;
+  /** Predicted-outputs `prediction` speculative-decoding hint
+   *  (cerebras gpt-oss-120b / zai-glm-4.7, openai chat-completions). */
+  readonly prediction?: boolean;
+  /** `reasoning_format: "hidden"` — cerebras, gpt-oss-class models only,
+   *  so model-dependent (a predicate). */
+  readonly reasoningFormatHidden?: boolean | ((model: string) => boolean);
+}
+
 export interface ProviderAdapter {
   readonly id: ProviderId;
   /** Human-readable name for CLI banners + doctor / help output. e.g. 'Cerebras', 'OpenAI'. */
@@ -234,6 +254,21 @@ export interface ProviderAdapter {
    */
   readonly defaultReasoningEffort?: 'none' | 'low' | 'medium' | 'high';
   /**
+   * Wire-feature opt-ins for the OpenAI-shape body builder. Each request
+   * field that is NOT universally accepted is emitted by `buildOpenAIBody`
+   * ONLY when the provider declares it here — **default-off**. This makes
+   * the "forgot to gate a provider-specific param" class structurally
+   * impossible: a NEW field added to `ChatRequest` is never sent until a
+   * provider opts in, so forgetting is *safe* (the param is dropped) rather
+   * than a 400 on a provider that doesn't support it (the failure mode that
+   * `seed` and `prediction` both hit). Providers that build their own body
+   * (anthropic / gemini) or use a CLI transport leave this unset — it's
+   * unread there. The dispatch-level `prediction`-unsupported retry stays as
+   * the receive-side belt: capabilities are a best-effort declaration, the
+   * fallback handles a provider that rejects a field anyway.
+   */
+  readonly capabilities?: ProviderCapabilities;
+  /**
    * Translate the neutral ChatRequest into wire format for this provider.
    * Required for `transport: 'http'` (the default). CLI-transport
    * providers may stub this — it's never called.
@@ -274,7 +309,7 @@ export interface ProviderAdapter {
  * pass `includeReasoningEffort: true`; others omit the field unless
  * the model name suggests it's a reasoning model.
  */
-function buildOpenAIBody(req: ChatRequest, opts?: { includeReasoningEffort?: boolean; useCompletionTokensName?: boolean; defaultReasoningEffort?: 'none' | 'low' | 'medium' | 'high'; provider?: ProviderId; maxThinking?: boolean }): string {
+function buildOpenAIBody(req: ChatRequest, opts?: { includeReasoningEffort?: boolean; useCompletionTokensName?: boolean; defaultReasoningEffort?: 'none' | 'low' | 'medium' | 'high'; provider?: ProviderId; capabilities?: ProviderCapabilities; maxThinking?: boolean }): string {
   const body: Record<string, unknown> = {
     model: req.model,
     messages: req.messages.map((m) => ({ role: m.role, content: m.content })),
@@ -342,15 +377,12 @@ function buildOpenAIBody(req: ChatRequest, opts?: { includeReasoningEffort?: boo
   if (req.temperature !== undefined && !opts?.useCompletionTokensName && !providerRejectsTemp) {
     body.temperature = req.temperature;
   }
-  // Deterministic seed — an OpenAI-API param. Gate to providers that
-  // natively support it (cerebras / groq / openai); NEVER send it to a
-  // pass-through gateway. openrouter (proxying anthropic) 400s on
-  // unsupported params — the exact class that the `prediction` bug hit,
-  // since a seed rides a cerebras-default request that got routed to
-  // openrouter/anthropic. The variant-cache determinism that relies on
+  // Deterministic seed — emitted only when the provider declares it
+  // (capabilities.seed). NEVER sent to a pass-through gateway: openrouter
+  // (proxying anthropic) 400s on unsupported params. Declared by
+  // cerebras / groq / openai; the variant-cache determinism that relies on
   // seed only ever pins groq/cerebras, so the gate loses nothing.
-  const providerSupportsSeed = opts?.provider === 'cerebras' || opts?.provider === 'groq' || opts?.provider === 'openai';
-  if (providerSupportsSeed && req.seed !== undefined) body.seed = req.seed;
+  if (opts?.capabilities?.seed && req.seed !== undefined) body.seed = req.seed;
   // Pass reasoning_effort only when the provider opts in OR the model
   // name suggests it's an OpenAI reasoning model (o1/o3/o4/gpt-5).
   // Leaves gpt-4o-mini-class models alone, where the field 400s.
@@ -382,8 +414,11 @@ function buildOpenAIBody(req: ChatRequest, opts?: { includeReasoningEffort?: boo
   // produces no reasoning text; hidden is a no-op there. Other
   // providers may reject the unknown field; safest to scope tight.
   //
-  // See docs/architecture/cerebras.md § "Hidden reasoning format".
-  if (opts?.provider === 'cerebras' && /^gpt-oss/i.test(req.model)) {
+  // See docs/architecture/cerebras.md § "Hidden reasoning format". Emitted
+  // only when the provider declares `reasoningFormatHidden` for this model
+  // (cerebras → a `/^gpt-oss/` predicate; everyone else off).
+  const rfh = opts?.capabilities?.reasoningFormatHidden;
+  if (typeof rfh === 'function' ? rfh(req.model) : rfh) {
     body.reasoning_format = 'hidden';
   }
   // Structured outputs. Groq's gpt-oss-{20b,120b} support `strict: true`
@@ -401,20 +436,17 @@ function buildOpenAIBody(req: ChatRequest, opts?: { includeReasoningEffort?: boo
       },
     };
   }
-  // Predicted outputs — Cerebras's speculative-decoding hint. Cerebras
-  // surfaces it on gpt-oss-120b and zai-glm-4.7; OpenAI also supports the
-  // `prediction` field shape on chat-completions. ONLY send it to those
-  // two. The earlier "other providers silently ignore unknown fields"
-  // assumption is FALSE for strict gateways: openrouter (proxying
-  // anthropic) returns `400 property 'prediction' is unsupported`, which
-  // hard-fails the call. That bit us when a per-source provider override
-  // flipped a cerebras-default request to openrouter/anthropic
-  // but the cerebras `prediction` hint rode along — the 400 cascaded into
-  // a destructive FluidBlank WIPE. Gate on the resolved provider so the
-  // hint can never leak to a provider that rejects it. See
+  // Predicted outputs — speculative-decoding hint, emitted only when the
+  // provider declares `capabilities.prediction` (cerebras gpt-oss-120b /
+  // zai-glm-4.7, openai chat-completions). The "other providers silently
+  // ignore unknown fields" assumption is FALSE for strict gateways:
+  // openrouter (proxying anthropic) returns `400 property 'prediction' is
+  // unsupported`, which hard-fails the call — so default-off via the
+  // capability table keeps the hint from ever leaking to a rejecter. (The
+  // dispatch-level retry-without-prediction in `dispatchChat` is the
+  // receive-side belt for a provider that rejects it anyway.) See
   // docs/architecture/cerebras.md § Predicted Outputs.
-  const providerSupportsPrediction = opts?.provider === 'cerebras' || opts?.provider === 'openai';
-  if (providerSupportsPrediction && req.prediction !== undefined && req.prediction.length > 0) {
+  if (opts?.capabilities?.prediction && req.prediction !== undefined && req.prediction.length > 0) {
     body.prediction = { type: 'content', content: req.prediction };
   }
   return JSON.stringify(body);
@@ -526,6 +558,7 @@ export function modelRejectsReasoningEffort(provider: ProviderId, model: string)
 
 const GROQ: ProviderAdapter = {
   id: 'groq',
+  capabilities: { seed: true },
   displayName: 'Groq',
   defaultEndpoint: 'https://api.groq.com/openai/v1/chat/completions',
   defaultModel: 'openai/gpt-oss-120b',
@@ -553,7 +586,7 @@ const GROQ: ProviderAdapter = {
     // non-reasoning models silently ignore it. Always-on is safe.
     return {
       url: ctx.endpoint ?? this.defaultEndpoint,
-      body: buildOpenAIBody(req, { includeReasoningEffort: true, defaultReasoningEffort: this.defaultReasoningEffort, provider: this.id, maxThinking: ctx.maxThinking }),
+      body: buildOpenAIBody(req, { includeReasoningEffort: true, defaultReasoningEffort: this.defaultReasoningEffort, provider: this.id, capabilities: this.capabilities, maxThinking: ctx.maxThinking }),
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.apiKey}` },
     };
   },
@@ -562,6 +595,9 @@ const GROQ: ProviderAdapter = {
 
 const OPENROUTER: ProviderAdapter = {
   id: 'openrouter',
+  // Pass-through gateway: it proxies arbitrary upstream models (anthropic,
+  // etc.) that 400 on OpenAI-only params, so it opts into NONE of them.
+  capabilities: {},
   displayName: 'OpenRouter',
   defaultEndpoint: 'https://openrouter.ai/api/v1/chat/completions',
   // Free-tier non-llama default. `openai/gpt-oss-120b:free` is the same
@@ -590,7 +626,7 @@ const OPENROUTER: ProviderAdapter = {
   buildRequest(req, ctx) {
     return {
       url: ctx.endpoint ?? this.defaultEndpoint,
-      body: buildOpenAIBody(req, { defaultReasoningEffort: this.defaultReasoningEffort, provider: this.id, maxThinking: ctx.maxThinking }),
+      body: buildOpenAIBody(req, { defaultReasoningEffort: this.defaultReasoningEffort, provider: this.id, capabilities: this.capabilities, maxThinking: ctx.maxThinking }),
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${ctx.apiKey}`,
@@ -605,6 +641,7 @@ const OPENROUTER: ProviderAdapter = {
 
 const OPENAI: ProviderAdapter = {
   id: 'openai',
+  capabilities: { seed: true, prediction: true },
   displayName: 'OpenAI',
   defaultEndpoint: 'https://api.openai.com/v1/chat/completions',
   // gpt-5.4-mini (released March 2026) — mid-tier in the OpenAI lineup
@@ -660,7 +697,7 @@ const OPENAI: ProviderAdapter = {
 
     return {
       url: ctx.endpoint ?? this.defaultEndpoint,
-      body: buildOpenAIBody(reqForBody, { useCompletionTokensName, defaultReasoningEffort: this.defaultReasoningEffort, provider: this.id, maxThinking: ctx.maxThinking }),
+      body: buildOpenAIBody(reqForBody, { useCompletionTokensName, defaultReasoningEffort: this.defaultReasoningEffort, provider: this.id, capabilities: this.capabilities, maxThinking: ctx.maxThinking }),
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.apiKey}` },
     };
   },
@@ -957,6 +994,9 @@ const ANTHROPIC: ProviderAdapter = {
  */
 const CEREBRAS: ProviderAdapter = {
   id: 'cerebras',
+  // gpt-oss-class models accept seed + prediction + hidden reasoning_format;
+  // the predicate keeps reasoning_format off for non-gpt-oss cerebras models.
+  capabilities: { seed: true, prediction: true, reasoningFormatHidden: (m) => /^gpt-oss/i.test(m) },
   displayName: 'Cerebras',
   defaultEndpoint: 'https://api.cerebras.ai/v1/chat/completions',
   defaultModel: 'gpt-oss-120b',
@@ -984,7 +1024,7 @@ const CEREBRAS: ProviderAdapter = {
     // gpt-oss-* / qwen-3-thinking-* and similar.
     return {
       url: ctx.endpoint ?? this.defaultEndpoint,
-      body: buildOpenAIBody(req, { defaultReasoningEffort: this.defaultReasoningEffort, provider: this.id, maxThinking: ctx.maxThinking }),
+      body: buildOpenAIBody(req, { defaultReasoningEffort: this.defaultReasoningEffort, provider: this.id, capabilities: this.capabilities, maxThinking: ctx.maxThinking }),
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ctx.apiKey}` },
     };
   },
@@ -1094,6 +1134,9 @@ const CLAUDE_CLI: ProviderAdapter = {
  */
 const OPENCODE_ZEN: ProviderAdapter = {
   id: 'opencode-zen',
+  // A gateway over many upstream models — opt into no OpenAI-only params
+  // (conservative default; none were sent before this either).
+  capabilities: {},
   displayName: 'OpenCode Zen',
   defaultEndpoint: 'https://opencode.ai/zen/v1/chat/completions',
   // First entry of the free pool. Used when no model is explicitly set
@@ -1125,7 +1168,7 @@ const OPENCODE_ZEN: ProviderAdapter = {
     if (ctx.apiKey) headers.Authorization = `Bearer ${ctx.apiKey}`;
     return {
       url: ctx.endpoint ?? this.defaultEndpoint,
-      body: buildOpenAIBody(req, { defaultReasoningEffort: this.defaultReasoningEffort, provider: this.id, maxThinking: ctx.maxThinking }),
+      body: buildOpenAIBody(req, { defaultReasoningEffort: this.defaultReasoningEffort, provider: this.id, capabilities: this.capabilities, maxThinking: ctx.maxThinking }),
       headers,
     };
   },
