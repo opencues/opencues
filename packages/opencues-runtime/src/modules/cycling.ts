@@ -21,6 +21,15 @@ import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
 import { isProviderValueCyclable, getProvider } from '@opencues/core';
 
+/** Sentence-cue defs cycle over a SENTENCE whose char span (spanStart/
+ *  spanEnd) is the source of truth — whitespace words don't bound it in
+ *  spaceless/mixed CJK. Only these use the def char span for the cycle
+ *  splice; normal multi-word blanks keep the live word-derived range
+ *  (their stored span can drift). Mirrors DimRender's `isSentenceCueDef`. */
+function isSentenceCueDef(def: { blankName?: string }): boolean {
+  return typeof def.blankName === 'string' && def.blankName.startsWith('sentence-cue:');
+}
+
 /** Settings whose values are LLM provider ids — cycling on these
  *  filters out values whose env key isn't set so the user can't
  *  commit a broken (provider, no-key) pair via Ctrl+Alt+Up. Mirrors
@@ -666,11 +675,25 @@ export class Cycling {
     const words = splitWords(event.text);
     const startWord = words[wordIndex];
     if (!startWord) return false;
-    const currentAlt = def.alternatives[def.currentIndex] ?? '';
-    const currentAltWordCount = Math.max(1, currentAlt.split(/\s+/).filter(Boolean).length);
-    const endWord = words[wordIndex + currentAltWordCount - 1] ?? startWord;
-    const rangeStart = startWord.start;
-    const rangeEnd = endWord.end;
+    let rangeStart: number;
+    let rangeEnd: number;
+    if (isSentenceCueDef(def) && def.spanEnd > def.spanStart) {
+      // CJK / sentence-cue: whitespace words don't bound the sentence —
+      // a spaceless Japanese buffer is ONE giant word, so the word-derived
+      // range would replace the WHOLE buffer and wipe every other sentence
+      // on cycle. The def's char span IS the sentence; use it. Sentence-cues
+      // are passive + re-resolved on edit (and this cycle keeps spanStart/
+      // spanEnd current below), so the span doesn't go stale the way a
+      // normal blank's can.
+      rangeStart = def.spanStart;
+      rangeEnd = def.spanEnd;
+    } else {
+      const currentAlt = def.alternatives[def.currentIndex] ?? '';
+      const currentAltWordCount = Math.max(1, currentAlt.split(/\s+/).filter(Boolean).length);
+      const endWord = words[wordIndex + currentAltWordCount - 1] ?? startWord;
+      rangeStart = startWord.start;
+      rangeEnd = endWord.end;
+    }
 
     // Advance the cycle AFTER we've captured the current range.
     const fromAltIndex = def.currentIndex;
@@ -686,6 +709,16 @@ export class Cycling {
     // positions until the next cycle recomputes.
     def.spanStart = rangeStart;
     def.spanEnd = rangeStart + nextWord.length;
+
+    // Keep DOWNSTREAM span-bound defs' char offsets current. A
+    // length-changing splice shifts every char after `rangeEnd`; defs
+    // that begin at/after it (e.g. later sentence-cues in a multi-
+    // paragraph CJK buffer) would otherwise point at stale chars and
+    // mis-splice on their next cycle. Sentence-cue defs are locked
+    // against re-resolution, so this is the only thing that keeps them
+    // honest. The just-cycled def starts at `rangeStart` (< rangeEnd) so
+    // it's excluded — its own span was set above.
+    if (lenDiff !== 0) this.dynDefs.shiftCharSpansAfter(rangeEnd, lenDiff);
 
     const cursorBefore = event.cursorOffset;
     const newCursor = cursorBefore <= rangeStart

@@ -1818,12 +1818,15 @@ describe('Resolver sentence-cue substitution', () => {
     expect(wordCueDef, 'word-cue outside sentence span should survive suppression').toBeDefined();
   });
 
-  it('v1 caps at one sentence-cue per resolve (multi-sentence-cue handling deferred)', async () => {
-    // Two sentence-cue results in the same resolve pass — only the
-    // first should register a DynDef. Documented v1 limitation: future
-    // multi-sentence handling would need per-sentence cue suppression
-    // tracking so independent sentence cues don't all claim the same
-    // word range. The buffer is untouched either way (passive cue).
+  it('registers EVERY sentence-cue in one resolve pass (v1 one-per-resolve cap lifted, June 2026)', async () => {
+    // Two sentence-cue results in the same resolve pass at DISTINCT word
+    // indices — BOTH register a passive DynDef. This is the structural
+    // fix for "some all-Japanese text isn't highlighted": in spaceless
+    // CJK each paragraph is one whitespace-word, so a multi-paragraph
+    // buffer yields one sentence-cue result per paragraph at a distinct
+    // word index. The old v1 cap registered only the first, leaving later
+    // paragraphs un-cued and un-highlighted. Registration is passive (no
+    // splice), so there is no word-index shift cascade to guard against.
     const buffer = 'thanks a bunch. ping me when ready.';
     const s1End = 'thanks a bunch.'.length;
     const s2Start = 'thanks a bunch. '.length;
@@ -1849,14 +1852,51 @@ describe('Resolver sentence-cue substitution', () => {
     adapter.pushText(buffer);
     await resolver.resolveAndApply(buffer);
 
-    // Buffer untouched — passive cue. First sentence's def registered;
-    // second sentence's def skipped (one-per-resolve cap).
+    // Buffer untouched — passive cue.
     expect(adapter.getText()).toBe(buffer);
+    // BOTH sentence-cue defs registered, at their respective word indices.
     expect(dynDefs.get(0)?.blankName).toBe('sentence-cue:more-formal');
-    // Second sentence's wordIndex=3 should NOT have a def (the cap
-    // dropped it before def-creation).
-    const secondDef = dynDefs.get(3);
-    if (secondDef) expect(secondDef.blankName).not.toBe('sentence-cue:more-formal');
+    expect(dynDefs.get(0)?.originalWord).toBe('thanks a bunch.');
+    expect(dynDefs.get(3)?.blankName).toBe('sentence-cue:more-formal');
+    expect(dynDefs.get(3)?.originalWord).toBe('ping me when ready.');
+  });
+
+  it('same-word sentence-cue collision is first-wins (multiple 。 sentences inside ONE CJK whitespace-word)', async () => {
+    // Spaceless CJK with two 。-separated sentences is ONE whitespace-word,
+    // so both sentence-cue results carry wordIndex 0 and collide in the
+    // word-keyed DynDefs map. The first registers; the second is dropped
+    // by the existing blankName guard (can't clobber a span-bound def).
+    // This is the remaining v1 limitation — multiple sentences inside one
+    // whitespace-word can't each get a distinct cue. (Multi-PARAGRAPH CJK
+    // does NOT hit this: paragraphs are newline-separated, hence distinct
+    // words — see the test above.)
+    const buffer = '今日は楽しかったよ。また遊ぼうね。';
+    const s1End = '今日は楽しかったよ。'.length;
+    const { adapter, dynDefs, resolver } = setupRich([
+      sentenceCueResult({
+        cueName: 'more-formal',
+        sentence: '今日は楽しかったよ。',
+        spanStart: 0,
+        spanEnd: s1End,
+        wordIndex: 0,
+        rewrites: ['本日は大変楽しかったです。'],
+      }),
+      sentenceCueResult({
+        cueName: 'more-formal',
+        sentence: 'また遊ぼうね。',
+        spanStart: s1End,
+        spanEnd: buffer.length,
+        wordIndex: 0, // same word — no spaces
+        rewrites: ['また是非ご一緒しましょう。'],
+      }),
+    ]);
+    adapter.pushText(buffer);
+    await resolver.resolveAndApply(buffer);
+
+    expect(adapter.getText()).toBe(buffer);
+    // First sentence wins the single word-0 slot.
+    expect(dynDefs.get(0)?.blankName).toBe('sentence-cue:more-formal');
+    expect(dynDefs.get(0)?.originalWord).toBe('今日は楽しかったよ。');
   });
 });
 

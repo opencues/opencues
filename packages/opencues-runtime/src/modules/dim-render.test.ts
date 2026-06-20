@@ -266,6 +266,70 @@ blankScript: ./vol.sh
     expect(out?.dimRanges).toEqual([{ start: 4, end: 7 }]);
   });
 
+  it('multi-paragraph CJK: dims EVERY paragraph that has a sentence-cue def (the "some all-Japanese text isn\'t highlighted" fix)', async () => {
+    // The user's live complaint: translate prose to Japanese across
+    // several paragraphs, run sentence-cues, and only the FIRST paragraph
+    // is highlighted — the rest of the all-Japanese text shows no dim.
+    //
+    // Root cause was upstream (the resolver's v1 one-sentence-cue-per-
+    // resolve cap registered only the first paragraph's DynDef). With that
+    // cap lifted, EACH newline-separated paragraph is a distinct
+    // whitespace-word carrying its own sentence-cue def — so the dim layer
+    // must paint all of them. Each def's char span equals its paragraph
+    // word (single CJK sentence per paragraph), so the dim falls to the
+    // word-derived range and covers the whole paragraph.
+    const { ConfigLoader } = await import('./config-loader');
+    const para1 = '私は毎朝走ります。';
+    const para2 = '健康のためにとても良いです。';
+    const para3 = 'あなたも一緒にどうですか。';
+    const buffer = `${para1}\n${para2}\n${para3}`;
+    const p2Start = buffer.indexOf(para2);
+    const p3Start = buffer.indexOf(para3);
+
+    const adapter = new MockAdapter({
+      files: { '/tips.json': JSON.stringify({ domain: 't', version: 1, concepts: [] }) },
+    });
+    adapter.pushText(buffer);
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    // One sentence-cue def per paragraph word (indices 0, 1, 2) — exactly
+    // what the resolver now registers post-cap-lift.
+    dynDefs.set(0, {
+      originalWord: para1,
+      alternatives: [para1, '私は毎朝走っております。'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: para1.length,
+      blankName: 'sentence-cue:more-formal',
+    });
+    dynDefs.set(1, {
+      originalWord: para2,
+      alternatives: [para2, '健康のために大変良いものです。'],
+      currentIndex: 0,
+      spanStart: p2Start,
+      spanEnd: p2Start + para2.length,
+      blankName: 'sentence-cue:more-formal',
+    });
+    dynDefs.set(2, {
+      originalWord: para3,
+      alternatives: [para3, 'あなたも是非ご一緒にいかがでしょうか。'],
+      currentIndex: 0,
+      spanStart: p3Start,
+      spanEnd: p3Start + para3.length,
+      blankName: 'sentence-cue:more-formal',
+    });
+    const dim = new DimRender(adapter, hlState, dynDefs, loader);
+    const out = dim.compute({ text: buffer, cursor: 0, externalHighlights: [] });
+    // All THREE paragraphs get a dim range — none left un-highlighted.
+    expect(out?.dimRanges).toEqual([
+      { start: 0, end: para1.length },
+      { start: p2Start, end: p2Start + para2.length },
+      { start: p3Start, end: p3Start + para3.length },
+    ]);
+  });
+
   it('no consume-all dim when state is empty', () => {
     const adapter = new MockAdapter();
     adapter.pushText('hello world');
