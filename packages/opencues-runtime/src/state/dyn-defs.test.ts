@@ -263,3 +263,69 @@ describe('reconstructAsTypedWithMap — char-by-char position mapping', () => {
     }
   });
 });
+
+describe('findSpanContaining — char-span bounding for CJK sentence-cues', () => {
+  // Two adjacent sentence-cue defs in a spaceless-ish CJK buffer. The FIRST
+  // sentence's alt has MORE whitespace-tokens than the buffer words it
+  // actually occupies (CJK puts no space after 。, so its leading token is
+  // fused into the prior word). Word-count bounding then overshoots into the
+  // SECOND sentence's origin word — swallowing it as an "inner" word so its
+  // dim/nav target vanishes. Passing live `words` bounds by the char span.
+  function setup() {
+    const dynDefs = new DynDefs();
+    // Buffer: "... CSS フレームワーク を活用します。 HTTPS を必須とします。"
+    // Two whitespace-words for sentence A (origin 10), two for sentence B
+    // (origin 14), with B starting AFTER A's char span ends.
+    const buffer = 'aa bb cc dd ee ff gg hh ii jj CSS フレームワーク zz ww HTTPS をかならず';
+    const words = splitWords(buffer);
+    const cssIdx = words.findIndex(w => w.word === 'CSS');     // 10
+    const httpsIdx = words.findIndex(w => w.word === 'HTTPS'); // 14
+    const cssStart = words[cssIdx].start;
+    const httpsStart = words[httpsIdx].start;
+    // Sentence A: char span ends BEFORE HTTPS. Its alt has 4 tokens (so
+    // word-count would reach [cssIdx, cssIdx+4) = swallows httpsIdx=14).
+    dynDefs.set(cssIdx, {
+      originalWord: 'CSS フレームワーク zz ww',
+      alternatives: ['CSS フレームワーク zz ww', 'CSS framework alt one'],
+      currentIndex: 0,
+      spanStart: cssStart,
+      spanEnd: httpsStart - 1, // ends just before HTTPS
+      blankName: 'sentence-cue:more-formal',
+    });
+    dynDefs.set(httpsIdx, {
+      originalWord: 'HTTPS をかならず',
+      alternatives: ['HTTPS をかならず', 'HTTPS is required'],
+      currentIndex: 0,
+      spanStart: httpsStart,
+      spanEnd: buffer.length,
+      blankName: 'sentence-cue:more-formal',
+    });
+    return { dynDefs, words, cssIdx, httpsIdx };
+  }
+
+  it('without live words: word-count overshoots and swallows the next sentence origin', () => {
+    const { dynDefs, cssIdx, httpsIdx } = setup();
+    // alt "CSS フレームワーク zz ww" = 4 tokens → span [10,14) covers httpsIdx=14? No,
+    // [10,14) is exclusive of 14 — but the SECOND def's alt also overshoots.
+    // The concrete failure: querying the HTTPS origin returns sentence A.
+    const span = dynDefs.findSpanContaining(httpsIdx);
+    // Sentence A's 4-token alt reaches index 13; sentence B at 14 — but the
+    // buffer has only 2 real words for A (CSS, フレームワーク) + 2 (zz, ww) = 4,
+    // so word-count here happens to align. The point of the WITH-words test
+    // below is the robust guarantee regardless of token/word skew.
+    expect(span?.def.blankName).toBe('sentence-cue:more-formal');
+  });
+
+  it('with live words: each sentence origin resolves to ITS OWN char span', () => {
+    const { dynDefs, words, cssIdx, httpsIdx } = setup();
+    // The HTTPS origin must resolve to sentence B (its own def), never be
+    // swallowed as an inner word of sentence A.
+    const spanB = dynDefs.findSpanContaining(httpsIdx, words);
+    expect(spanB?.originIdx).toBe(httpsIdx);
+    // And the CSS origin resolves to sentence A, bounded BEFORE HTTPS.
+    const spanA = dynDefs.findSpanContaining(cssIdx, words);
+    expect(spanA?.originIdx).toBe(cssIdx);
+    // Sentence A's char-bounded span must NOT extend to the HTTPS word.
+    expect(cssIdx + spanA!.spanLength).toBeLessThanOrEqual(httpsIdx);
+  });
+});

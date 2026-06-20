@@ -10,6 +10,8 @@ import {
   SentenceCueSource,
   segmentSentences,
   parseSentenceAltOutput,
+  matchBlocksToSpans,
+  estimateSentenceCueBudget,
 } from './sentence-cue-source';
 import type { CueContext, HttpAdapter } from '../types';
 import { getProvider } from '../llm-provider';
@@ -196,6 +198,81 @@ describe('parseSentenceAltOutput', () => {
 
   it('returns empty array for garbage input', () => {
     assert.deepStrictEqual(parseSentenceAltOutput('whatever'), []);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// estimateSentenceCueBudget — output budget MUST scale with the input
+// (live bug: a fixed ~768/2048 budget truncated 4 long Japanese sentences
+// to one block; the tail sentences silently vanished)
+// ---------------------------------------------------------------------------
+
+describe('estimateSentenceCueBudget', () => {
+  it('stays small for tiny input (the provider reasoning-floor still raises it to 2048 for gpt-oss)', () => {
+    // Just the reasoning headroom for an empty/tiny buffer — well under the
+    // 2048 the provider floors gpt-oss to, so small buffers are unchanged.
+    assert.ok(estimateSentenceCueBudget([]) <= 2048);
+    assert.ok(estimateSentenceCueBudget([10]) <= 2048);
+  });
+
+  it('scales above the old 2048 floor for several long sentences', () => {
+    // 4 sentences ≈ 62 + 95 + 112 + 153 chars (the live repro's lengths).
+    const budget = estimateSentenceCueBudget([62, 95, 112, 153]);
+    assert.ok(budget > 2048, `expected > 2048, got ${budget}`);
+    // …but stays bounded.
+    assert.ok(budget <= 8192);
+  });
+
+  it('caps at 8192 for a pathological paste', () => {
+    assert.strictEqual(estimateSentenceCueBudget(Array(50).fill(500)), 8192);
+  });
+
+  it('is monotonic in total input length', () => {
+    const small = estimateSentenceCueBudget([40, 40]);
+    const large = estimateSentenceCueBudget([200, 200]);
+    assert.ok(large > small);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// matchBlocksToSpans — exact → longest-prefix, consume-once. The model's
+// echo of a LONG sentence drifts in the TAIL (paraphrase, normalised hyphen,
+// dropped space), so exact full-sentence equality drops exactly the long
+// sentences that need cueing most (live bug: a 180-char Japanese security
+// sentence parsed but never matched).
+// ---------------------------------------------------------------------------
+
+describe('matchBlocksToSpans', () => {
+  const mk = (sentence: string, alts: string[] = ['x']) => ({ sentence, alts, ceded: false });
+
+  it('matches when the model echo drifts only in the tail', () => {
+    const span = 'HTTPS を必須とし、厳格な Content‑Security‑Policy ヘッダーを適用し、XSS やインジェクションの脅威を軽減します';
+    // Model echoed the head verbatim but paraphrased the tail + normalised
+    // the non-breaking hyphen ‑ → - .
+    const echoed = 'HTTPS を必須とし、厳格な Content-Security-Policy ヘッダーを適用し、XSS や脅威を抑えます';
+    const [match] = matchBlocksToSpans([span], [mk(echoed, ['…formal…'])]);
+    assert.ok(match, 'tail-drifted echo should still match by shared prefix');
+    assert.deepStrictEqual(match!.alts, ['…formal…']);
+  });
+
+  it('keeps distinct sentences distinct and consumes each block once', () => {
+    const s1 = 'モダンでレスポンシブなウェブアプリケーションを設計します。';
+    const s2 = 'ダークモードのサポートと画像の遅延読み込みを実装します。';
+    const out = matchBlocksToSpans([s1, s2], [mk(s1, ['a']), mk(s2, ['b'])]);
+    assert.deepStrictEqual(out[0]!.alts, ['a']);
+    assert.deepStrictEqual(out[1]!.alts, ['b']);
+  });
+
+  it('does NOT cross-match two sentences that only share a short opener', () => {
+    // Below the MIN_PREFIX run — must NOT match (would otherwise steal the
+    // wrong block).
+    const [m] = matchBlocksToSpans(['the cat'], [mk('the dog ran far away today')]);
+    assert.strictEqual(m, undefined);
+  });
+
+  it('returns undefined for a span with no emitted block', () => {
+    const [m] = matchBlocksToSpans(['some sentence here that was dropped'], []);
+    assert.strictEqual(m, undefined);
   });
 });
 

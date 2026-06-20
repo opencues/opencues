@@ -317,8 +317,13 @@ export class Navigation {
         // Skip inner positions of any multi-word static-alt span —
         // navigation lands only on the origin so the span behaves as
         // one unit. Same semantics as SpanFillState span handling
-        // below (which handles blank-fills).
-        const innerSpan = this.dynDefs.findSpanContaining(w.index);
+        // below (which handles blank-fills). Pass `words` so sentence-cue
+        // spans are bounded by their CHAR span, not the overshooting alt
+        // word-count: in CJK (no space after 。) a sentence's alt has more
+        // whitespace-tokens than buffer words, so the word-count range
+        // bleeds into the NEXT sentence's origin and navigation would skip
+        // it — leaving later all-CJK sentences unreachable for cycling.
+        const innerSpan = this.dynDefs.findSpanContaining(w.index, words);
         if (innerSpan && innerSpan.originIdx !== w.index) continue;
         const lc = w.word.toLowerCase().replace(/[\u200B\u200C]/g, '');
         if (lc.length === 0) continue;

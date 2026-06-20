@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — multi-paragraph CJK sentence-cues: long all-Japanese paragraphs are now cued, highlighted, navigable, and cycleable (core 0.3.41 / runtime 0.3.26)
+
+Follow-up to the multi-paragraph fix below. On a realistic translated buffer (three Japanese paragraphs, the last a single ~180-char sentence) the later all-Japanese text still wasn't dimmed/selected. Four independent failures, each downstream of "CJK + long sentences," each fixed and verified end-to-end on Claude Code (Cerebras gpt-oss-120b):
+
+1. **Output-token starvation (core).** The sentence-cue dispatch is one shot — every `SENTENCE/ALT/---` block is emitted sequentially — so a fixed ~768/2048 budget truncated mid-stream and the tail sentences silently vanished (no error, no cede): 4 sentences in, `emitted=1`. The budget now scales with the segmented input (`estimateSentenceCueBudget`: ~1.6 output tokens/char × 3 alts/sentence + framing + reasoning headroom, clamped [768, 8192]). 4 sentences → all 4 blocks returned.
+
+2. **Block-matching fragility (core).** Each source sentence was matched to its model block by EXACT normalised equality of the model's `SENTENCE:` echo. The model echoes a long sentence with tail drift (a paraphrased clause, a normalised non-breaking hyphen `‑`→`-`, a dropped space), so the longest sentence parsed fine but never matched — dropped. Matching is now exact → **longest shared normalised prefix** (consume-once, `MIN_PREFIX` guard against short-opener collisions). The head of the echo is reliably verbatim.
+
+3. **Span overlap from word-count bounding (runtime).** `DynDefs.findSpanContaining` derived a span's word range from the alt's whitespace-token count. CJK puts no space after `。`, so a sentence's leading token fuses into the prior word and the alt has MORE tokens than the buffer words it occupies — adjacent sentence spans overlapped and the later sentence's origin was swallowed as an "inner" word (no dim, unreachable by navigation, and cycling it rotated the WRONG sentence). `findSpanContaining` now accepts the live `words` and bounds sentence-cue spans by their authoritative CHAR span; DimRender, Navigation, and Cycling all pass it.
+
+4. **Wrapped-vs-logical coordinate mismatch (runtime).** DimRender split words on the render-context text, but Claude Code hands `onRender` a SOFT-WRAPPED buffer (newlines inserted at terminal width) while DynDef char spans live in LOGICAL coordinates. The inserted newlines split long CJK words and shifted every later word index, so a sentence-cue def's dim landed on the wrong word — or vanished. DimRender now computes on the adapter's logical buffer when it's the same content as `ctx.text` (identical once whitespace + ZWS are stripped), and still trusts `ctx.text` during genuine runtime-driven edits (cycle/delete).
+
+Verified: the live 3-paragraph buffer now emits `dimRanges:[{0,62},{64,141},{141,253},{255,408}]` (one per sentence, all four), navigation reaches the final Japanese sentence (`highlight {255,408}`), and cycling it rewrites only that sentence — P1/P2 intact. Pinned by core tests (`estimateSentenceCueBudget` scaling, `matchBlocksToSpans` tail-drift), a `findSpanContaining` char-bounding test, and a DimRender soft-wrap + adjacent-overlap test.
+
 ### Fixed — multi-paragraph CJK: EVERY paragraph is now cued + highlighted, not just the first (runtime 0.3.25)
 
 The live complaint: translate prose to Japanese across several paragraphs, run sentence-cues, and only the **first** paragraph is highlighted — the rest of the all-Japanese text shows no dim/highlight at all. Two root causes, both downstream of "spaceless CJK makes each paragraph one whitespace-word":
