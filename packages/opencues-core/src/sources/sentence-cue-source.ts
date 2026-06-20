@@ -3,12 +3,30 @@
  *
  * Sentence-scope cue. A cue whose CUE.md frontmatter declares
  * `scope: sentence` operates on whole sentences instead of individual
- * words: it segments the buffer, sends ONE LLM call per buffer with
- * the per-cue prompt, and emits one CueResult per sentence with
+ * words: it segments the buffer, then fires ONE LLM CALL PER SENTENCE
+ * (concurrency-capped — see `SENTENCE_CUE_CONCURRENCY` / `mapWithConcurrency`)
+ * and emits one CueResult per sentence with
  * `alternatives = [originalSentence, ...alts]` and char-range
  * spanStart/spanEnd. Cycling Up/Down in the runtime swaps the
  * sentence in place (TransformBlank-style; uses the existing
  * multi-word substitution branch).
+ *
+ * ## Why one call per sentence (NOT one batched call)
+ *
+ * The original design batched all N sentences into one call and asked the
+ * model to return a labelled block per sentence. That made the model
+ * intermittently DROP a sentence (~1/3 of runs on a 4-sentence CJK buffer,
+ * usually the longest) — no error, no cede, it just omitted one — and forced
+ * fragile scaffolding (echo-each-sentence, numbered slots, text-matching back
+ * to source spans, token-budget scaling, retry passes) purely to re-align the
+ * response. A single-sentence call can't "drop one of N": there's one slot,
+ * and we already KNOW the sentence + its char span, so no matching is needed.
+ * Measured: per-sentence is 100% coverage vs ~66% batched, at the same wall-
+ * clock (the calls run in parallel). Prefix caching is NOT the reason it's
+ * cheap — the per-sentence system prompt is only ~256 cacheable tokens, so
+ * `cached_tokens` saves negligible latency here (unlike the 20k-token fused
+ * blank prompts); the speed comes from parallelism + fast generation.
+ * Principle: never overload one call with N independent jobs.
  *
  * Priority sits BETWEEN word-cues and BlankSource so a sentence-cue
  * for a sentence containing a word-cue'd word wins (per the design
@@ -17,11 +35,12 @@
  *
  * ## Prompt composition
  *
- * The user's `promptText` is wrapped with a framework-supplied OUTPUT
- * FORMAT spec — same shape ConfigSource uses for word cues. The user
- * writes the *intent* ("Rewrite each sentence to be more formal..."),
- * the framework appends the strict block-delimited output format the
- * parser knows how to read.
+ * The user's `promptText` is the STABLE system message (cerebras caches its
+ * prefix across all per-sentence calls), wrapped with a framework-supplied
+ * `SINGLE_SENTENCE_FORMAT_SPEC` (return `ALT:` lines, or `ALT: NONE`). The
+ * one sentence under analysis is the only per-call content, sent in the user
+ * message as `SENTENCE: <text>`. The user writes the *intent* ("Rewrite each
+ * sentence to be more formal..."); the framework appends the output format.
  *
  * ## Cede semantics
  *
@@ -37,7 +56,7 @@
  * Prompt + parser validated at `tests/benchmarks/sentence-cues/`. v1
  * scored 100% recall + 100% precision on the 30-case `more-formal`
  * suite across all 5 providers. Re-run that bench when editing
- * `SENTENCE_ALT_FORMAT_SPEC` or the segmenter.
+ * `SINGLE_SENTENCE_FORMAT_SPEC` or the segmenter.
  */
 
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
@@ -95,11 +114,23 @@ export function segmentSentences(buffer: string, words: ReadonlyArray<string>): 
   // `[\s\S]+?` (≥1 char, non-greedy) can never produce a zero-width match,
   // so the exec loop below always advances.
   const re = /[\s\S]+?(?:[.!?]+(?=\s|$)|[。！？．]+|$)/g;
+  // Zero-width characters: ZWSP (U+200B) + ZWNJ (U+200C) — Claude Code's
+  // render-kick toggles these onto the buffer to force a repaint (see the CC
+  // ZWS-strip-at-boundaries contract). They are NOT content: a buffer ending
+  // in a render-kick `‌` must not segment that lone char as its own
+  // "sentence" (which then pollutes the sentence count, collides on the last
+  // word, and can bump the REAL final sentence out of registration — the
+  // "実施されます。 left out" bug). Treat them like whitespace at span edges,
+  // and skip a span that is nothing but zero-width / whitespace.
+  const ZW = /[​‌﻿]/g;
+  const trimEdges = (s: string): string => s.replace(/^[\s​‌﻿]+/, '').replace(/[\s​‌﻿]+$/, '');
   let m: RegExpExecArray | null;
   while ((m = re.exec(buffer)) !== null) {
     const raw = m[0];
-    const trimmed = raw.trim();
-    if (!trimmed) continue;
+    const trimmed = trimEdges(raw);
+    // Empty after trimming, or zero real content (only zero-width left) →
+    // not a sentence.
+    if (!trimmed || !trimmed.replace(ZW, '').trim()) continue;
     const start = m.index + raw.indexOf(trimmed[0]);
     const end = start + trimmed.length;
     spans.push({ text: trimmed, start, end, firstWordIndex: -1 });
@@ -142,50 +173,36 @@ export function segmentSentences(buffer: string, words: ReadonlyArray<string>): 
 // Output-format spec — appended to the user's per-cue promptText
 // ============================================================================
 
-export const SENTENCE_ALT_FORMAT_SPEC = `OUTPUT FORMAT — exactly this shape, nothing else, repeated per sentence:
+// Per-sentence output format — the user message carries exactly ONE sentence
+// ("SENTENCE: <text>"), so the model just returns its rewrites. No SENTENCE:
+// echo to match back, no "---" separators, no "emit exactly N" — there's one
+// sentence, so there's nothing to drop or misalign.
+export const SINGLE_SENTENCE_FORMAT_SPEC = `You are given ONE sentence (after "SENTENCE:"). Return up to 3 rewrites of THAT sentence, one per line:
+ALT: <rewrite 1>
+ALT: <rewrite 2>
+ALT: <rewrite 3>
 
-  SENTENCE: <verbatim sentence as it appears in the input>
-  ALT: <rewrite 1>
-  ALT: <rewrite 2>
-  ALT: <rewrite 3>
-  ---
-
-The trailing "---" separator is required after every sentence block, including the last.
-
-WHEN TO EMIT ALTS:
-  - The sentence is prose (not code / commands / URLs / identifiers).
-  - The sentence is long enough to carry meaning (subject + verb minimum — not "ok." or "hi.").
-  - At least ONE useful rewrite exists for the cue's intent.
-
-WHEN TO EMIT "ALT: NONE":
-  - Sentence is a fragment, one-word greeting, interjection.
-  - Sentence is technical (code / commands / URLs / identifiers).
-  - Sentence already meets the cue's intent (no useful lift possible).
+If the sentence needs no change — it's a fragment / greeting, it's technical (code / commands / URLs / identifiers), or it already meets the intent — return exactly:
+ALT: NONE
 
 RULES PER ALT:
   1. Preserve MEANING — semantically equivalent, no info added/dropped.
   2. Preserve PUNCTUATION shape (questions stay questions, etc.).
   3. Each ALT must be a complete sentence.
-  4. ALTS should be DISTINCT — fewer distinct alts is better than three near-identical ones.
+  4. ALTS should be DISTINCT — fewer distinct alts beats three near-identical ones.
 
-DO NOT include the original sentence in the ALT list. DO NOT output anything outside the SENTENCE/ALT/--- structure.`;
+DO NOT include the original sentence. Output ONLY ALT: lines, nothing else.`;
 
 function hasFormatSpec(text: string): boolean {
-  return /^SENTENCE:/m.test(text) || /^ALT:/m.test(text);
+  return /^\s*ALT:/m.test(text);
 }
 
 /**
- * Output-token budget for one sentence-cue dispatch. MUST scale with the
- * input: the whole multi-sentence response is one shot (SENTENCE/ALT/---
- * blocks emitted sequentially), so a fixed budget truncates mid-stream and
- * the tail sentences silently vanish — no error, no cede (live bug: 4 long
- * Japanese sentences → only the first survived a ~768/2048 budget).
- *
- * Each sentence yields up to 3 alts, each ~its own length; CJK is the worst
- * case at ~1.6 output tokens/char. Add per-sentence framing (~24 tok) and
- * reasoning headroom (gpt-oss at medium burns a chunk before any content).
- * Clamped to [768, 8192] so a pathological paste can't request an unbounded
- * completion.
+ * Output-token budget for ONE sentence's call. Per-sentence calls keep this
+ * small (no multi-sentence accumulation that used to truncate). Up to 3 alts,
+ * each ~the sentence's length; CJK worst case ~1.6 output tokens/char; plus
+ * reasoning headroom (gpt-oss at medium burns a chunk before content). Clamped
+ * to [768, 8192].
  */
 export function estimateSentenceCueBudget(sentenceCharLengths: ReadonlyArray<number>): number {
   const totalChars = sentenceCharLengths.reduce((n, len) => n + len, 0);
@@ -193,91 +210,59 @@ export function estimateSentenceCueBudget(sentenceCharLengths: ReadonlyArray<num
   return Math.min(8192, Math.max(768, estimatedOutput));
 }
 
+/** Max concurrent per-sentence LLM calls. A "queue of sorts": a long buffer
+ *  resolves through this cap instead of firing every sentence at once, so the
+ *  provider isn't hammered while still overlapping the round-trips. */
+export const SENTENCE_CUE_CONCURRENCY = 5;
+
+/** Run `fn` over `items` with at most `limit` in flight at once; preserves
+ *  input order in the result array. */
+export async function mapWithConcurrency<T, R>(
+  items: ReadonlyArray<T>,
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      out[i] = await fn(items[i], i);
+    }
+  };
+  const n = Math.max(1, Math.min(limit, items.length));
+  await Promise.all(Array.from({ length: n }, () => worker()));
+  return out;
+}
+
 // ============================================================================
 // Parser
 // ============================================================================
 
-export interface SentenceAltBlock {
-  sentence: string;
+export interface SingleSentenceAlts {
   alts: string[];
-  /** True if the model emitted ALT: NONE for this block. */
+  /** True if the model returned ALT: NONE (legitimately declined to rewrite). */
   ceded: boolean;
 }
 
-export function parseSentenceAltOutput(raw: string): SentenceAltBlock[] {
-  const blocks: SentenceAltBlock[] = [];
-  const rawBlocks = raw.split(/^\s*-{3,}\s*$/m);
-  for (const rawBlock of rawBlocks) {
-    const text = rawBlock.trim();
-    if (!text) continue;
-    const sentenceMatch = text.match(/^SENTENCE:\s*(.*?)(?:\n|$)/);
-    if (!sentenceMatch) continue;
-    const sentence = sentenceMatch[1].trim();
-    if (!sentence) continue;
-    const alts: string[] = [];
-    let ceded = false;
-    const altLines = text.match(/^ALT:\s*(.*?)$/gm) ?? [];
-    for (const line of altLines) {
-      const value = line.replace(/^ALT:\s*/, '').trim();
-      if (!value) continue;
-      if (value.toUpperCase() === 'NONE') { ceded = true; continue; }
-      if (!alts.includes(value)) alts.push(value);
-    }
-    blocks.push({ sentence, alts, ceded });
-  }
-  return blocks;
-}
-
-const normSentence = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').replace(/[.!?,;:]+$/, '').trim();
-
-/** Length of the shared leading run of two strings. */
-function commonPrefixLen(a: string, b: string): number {
-  const n = Math.min(a.length, b.length);
-  let i = 0;
-  while (i < n && a[i] === b[i]) i++;
-  return i;
-}
-
 /**
- * Match each segmented source sentence to the model's emitted block.
- *
- * The model echoes a `SENTENCE:` line per block, IN ORDER, but its echo of
- * a LONG sentence drifts in the TAIL — a paraphrased clause, a normalised
- * hyphen (`‑`→`-`), a dropped space around a Latin token — so exact
- * normalised equality fails on exactly the buffers that need cueing most
- * (live bug: a 180-char Japanese security sentence parsed fine but never
- * matched, so it was silently dropped). The head of the echo is reliably
- * verbatim, so we match on the LONGEST shared normalised prefix, requiring
- * a minimum run to avoid two distinct sentences colliding on a short shared
- * opener. Each block is consumed at most once. Exact equality still wins
- * when present (handles short sentences that share a long prefix).
+ * Parse a per-sentence response: just the `ALT:` lines for the one sentence we
+ * asked about. No SENTENCE: echo, no "---" separators, no matching — the call
+ * was scoped to a single known sentence. Leading whitespace tolerated (models
+ * often indent), `ALT: NONE` → ceded.
  */
-export function matchBlocksToSpans(
-  spanTexts: ReadonlyArray<string>,
-  blocks: ReadonlyArray<SentenceAltBlock>,
-): Array<SentenceAltBlock | undefined> {
-  const MIN_PREFIX = 8; // normalised chars — below this, treat as no match
-  const blockNorms = blocks.map(b => normSentence(b.sentence));
-  const used = new Array<boolean>(blocks.length).fill(false);
-  const out: Array<SentenceAltBlock | undefined> = [];
-  for (const spanText of spanTexts) {
-    const norm = normSentence(spanText);
-    // 1. Exact normalised equality (first unconsumed).
-    let idx = blockNorms.findIndex((bn, i) => !used[i] && bn === norm);
-    // 2. Longest shared normalised prefix ≥ MIN_PREFIX (first unconsumed wins ties).
-    if (idx === -1) {
-      let bestLen = MIN_PREFIX - 1;
-      for (let i = 0; i < blocks.length; i++) {
-        if (used[i]) continue;
-        const p = commonPrefixLen(blockNorms[i], norm);
-        if (p > bestLen) { bestLen = p; idx = i; }
-      }
-    }
-    if (idx === -1) { out.push(undefined); continue; }
-    used[idx] = true;
-    out.push(blocks[idx]);
+export function parseSingleSentenceAlts(raw: string): SingleSentenceAlts {
+  const alts: string[] = [];
+  let ceded = false;
+  const altLines = raw.match(/^[ \t]*ALT:\s*(.*?)\s*$/gm) ?? [];
+  for (const line of altLines) {
+    const value = line.replace(/^[ \t]*ALT:\s*/, '').trim();
+    if (!value) continue;
+    if (value.toUpperCase() === 'NONE') { ceded = true; continue; }
+    if (!alts.includes(value)) alts.push(value);
   }
-  return out;
+  return { alts, ceded };
 }
 
 // ============================================================================
@@ -371,59 +356,47 @@ export class SentenceCueSource implements CueSource {
       return { results: [], timing: Date.now() - t0, model: this.model };
     }
 
-    const ensuredPrompt = hasFormatSpec(promptText)
+    // ONE LLM CALL PER SENTENCE — never batch N sentences into one call.
+    // Batching made the model intermittently DROP a sentence (~1/3 of runs on
+    // a 4-sentence CJK buffer, usually the longest) and forced fragile
+    // scaffolding (echo-each-sentence, numbered slots, text-matching, retry,
+    // budget-scaling) just to re-align the response to the source sentences.
+    // A single-sentence call can't "drop one of N" — there's one slot — and
+    // we already KNOW the sentence + its char span, so no matching is needed.
+    // The cue's promptText + format spec live in the STABLE system message
+    // (cerebras caches that prefix across all per-sentence calls ~99.5%, so N
+    // calls cost barely more than one on TTFT); only the one sentence varies
+    // in the user message. Calls run through a small concurrency cap so a
+    // long buffer doesn't hammer the provider.
+    const system = hasFormatSpec(promptText)
       ? promptText.trimEnd()
-      : `${promptText.trimEnd()}\n\n${SENTENCE_ALT_FORMAT_SPEC}`;
-    const fullPrompt = `${ensuredPrompt}\n\nINPUT: ${context.text}`;
+      : `${promptText.trimEnd()}\n\n${SINGLE_SENTENCE_FORMAT_SPEC}`;
 
-    let raw: string;
-    try {
-      // Output token budget — MUST scale with the input, or a buffer with
-      // several long sentences truncates mid-stream and only the first
-      // block survives. The whole response is one shot: every sentence's
-      // SENTENCE/ALT/--- block is emitted sequentially, so once maxTokens
-      // is hit the tail sentences silently vanish (no error, no cede —
-      // `parseSentenceAltOutput` just never sees their blocks). Live bug
-      // (June 2026, Claude Code + cerebras gpt-oss-120b reasoning=medium):
-      // 4 long Japanese sentences (textLen=408) → `emitted=1, sentences=4`
-      // because the fixed ~768/2048 budget ran out after sentence 1.
-      //
-      // Estimate: each sentence yields up to 3 alts, each ~the sentence's
-      // own length; CJK is the worst case at ~1.6 output tokens/char. Add
-      // per-sentence framing (~24 tok) and reasoning headroom (gpt-oss at
-      // medium burns a chunk before any content). Clamp to a sane ceiling
-      // so a pathological paste can't request an unbounded completion.
-      // A per-cue `maxTokens` in CUE.md still wins (explicit override).
-      const totalSentenceChars = spans.reduce((n, s) => n + s.text.length, 0);
-      const dynamicBudget = estimateSentenceCueBudget(spans.map(s => s.text.length));
-      const budget = this.sourceConfig.maxTokens ?? dynamicBudget;
-      this.log(`SentenceCue[${this.sourceConfig.name}]: token budget=${budget} (sentences=${spans.length}, sentenceChars=${totalSentenceChars}${this.sourceConfig.maxTokens ? ', cue-override' : ''})`);
-      raw = await this.callLLM(ensuredPrompt, `INPUT: ${context.text}`, budget, context.signal);
-    } catch (e) {
-      this.log(`SentenceCue[${this.sourceConfig.name}]: LLM call failed — ${(e as Error).message}`);
-      this.emit({ type: 'bailed', reason: 'llm-error', latencyMs: Date.now() - t0 });
-      return { results: [], timing: Date.now() - t0, model: this.model };
-    }
+    const matched: Array<string[] | 'ceded' | null> = await mapWithConcurrency(
+      spans,
+      SENTENCE_CUE_CONCURRENCY,
+      async (span) => {
+        if (context.signal?.aborted) return null;
+        try {
+          const budget = this.sourceConfig.maxTokens ?? estimateSentenceCueBudget([span.text.length]);
+          const raw = await this.callLLM(system, `SENTENCE: ${span.text}`, budget, context.signal);
+          const parsed = parseSingleSentenceAlts(raw);
+          if (parsed.ceded) return 'ceded';
+          return parsed.alts.length > 0 ? parsed.alts : null;
+        } catch (e) {
+          this.log(`SentenceCue[${this.sourceConfig.name}]: call failed for "${span.text.slice(0, 24)}…" — ${(e as Error).message}`);
+          return null;
+        }
+      },
+    );
 
-    const blocks = parseSentenceAltOutput(raw);
-    this.log(`SentenceCue[${this.sourceConfig.name}]: raw response ${raw.length} chars → ${blocks.length} block(s) parsed (segmented ${spans.length})`);
-    void fullPrompt; // exported for debug; reference suppresses unused-var
-
-    // Match each model block to its source sentence (exact → longest-prefix,
-    // consume-once — robust to the model's tail-drift on long echoes).
-    const matched = matchBlocksToSpans(spans.map(s => s.text), blocks);
     const results: CueResult[] = [];
     let cededCount = 0;
     for (let si = 0; si < spans.length; si++) {
       const span = spans[si];
-      const block = matched[si];
-      if (!block) {
-        this.log(`SentenceCue[${this.sourceConfig.name}]: NO-MATCH span="${span.text.slice(0, 30)}…" (no block within prefix tolerance)`);
-      }
-      if (!block || block.ceded || block.alts.length === 0) {
-        if (block?.ceded) cededCount++;
-        continue;
-      }
+      const alts = matched[si];
+      if (alts === 'ceded') { cededCount++; continue; }
+      if (!alts || alts.length === 0) continue;
       results.push({
         wordIndex: span.firstWordIndex,
         word: context.words[span.firstWordIndex] ?? span.text.split(/\s+/)[0],
@@ -431,7 +404,7 @@ export class SentenceCueSource implements CueSource {
         // swaps the sentence; Down to alt[0] restores. Same shape
         // TransformBlank emits today; resolver's multi-word substitution
         // branch handles both.
-        alternatives: [span.text, ...block.alts],
+        alternatives: [span.text, ...alts],
         source: this.id,
         priority: this.priority,
         spanStart: span.start,
@@ -440,7 +413,7 @@ export class SentenceCueSource implements CueSource {
         metadata: {
           sentenceCue: {
             cueName: this.sourceConfig.name,
-            altCount: block.alts.length,
+            altCount: alts.length,
           },
         },
       });

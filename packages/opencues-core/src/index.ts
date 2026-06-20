@@ -67,12 +67,14 @@ export {
 export {
   SentenceCueSource,
   segmentSentences,
-  parseSentenceAltOutput,
-  SENTENCE_ALT_FORMAT_SPEC,
+  parseSingleSentenceAlts,
+  SINGLE_SENTENCE_FORMAT_SPEC,
+  estimateSentenceCueBudget,
+  mapWithConcurrency,
   type SentenceCueSourceConfig,
   type SentenceCueEvent,
   type SentenceSpan,
-  type SentenceAltBlock,
+  type SingleSentenceAlts,
 } from './sources/sentence-cue-source';
 
 export {
