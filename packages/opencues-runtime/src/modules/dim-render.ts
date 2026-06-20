@@ -164,6 +164,25 @@ export class DimRender {
           dimRanges.push({ start: w.start, end: w.end });
         }
       }
+
+      // Dedicated sentence-cue pass. The word loop above dims sentence-cues
+      // reachable at a real word index, but a SECOND sentence sharing one
+      // spaceless-CJK whitespace-word is registered at a SYNTHETIC key that
+      // no word index addresses — so the loop never visits it and its span
+      // would silently go undimmed (the long-second-sentence bug). Dim every
+      // sentence-cue's authoritative char span directly, skipping spans the
+      // word loop already covered and the active one (the highlight paints
+      // it).
+      const activeSpan = activeStaticAltSpan
+        ? { s: activeStaticAltSpan.def.spanStart, e: activeStaticAltSpan.def.spanEnd }
+        : null;
+      for (const { def } of this.dynDefs.sentenceCueDefs()) {
+        const s = def.spanStart, e = def.spanEnd;
+        if (activeSpan && activeSpan.s === s && activeSpan.e === e) continue;
+        if (dimRanges.some(r => r.start === s && r.end === e)) continue;
+        dimRanges.push({ start: s, end: e });
+      }
+      dimRanges.sort((a, b) => a.start - b.start);
     }
 
     // When a span fill is active, treat the whole

@@ -119,6 +119,26 @@ export class DynDefs {
    * next cycle. Keying off the char offset (not the word index) closes
    * that gap. Defs at-or-before the splice point are untouched.
    */
+  /**
+   * Every registered sentence-cue def (`blankName` = `sentence-cue:*`) with a
+   * valid char span, sorted by span start. Includes defs at synthetic keys
+   * (same-word CJK collisions) that the word-iterating consumers can't see —
+   * DimRender uses this for a dedicated dim pass, Cycling to resolve the
+   * sentence under the cursor. The map key is returned as `key` so callers
+   * can address the exact entry (synthetic or natural).
+   */
+  sentenceCueDefs(): Array<{ key: number; def: WordDef }> {
+    const out: Array<{ key: number; def: WordDef }> = [];
+    for (const [key, def] of this._defs.entries()) {
+      if (typeof def.blankName !== 'string' || !def.blankName.startsWith('sentence-cue:')) continue;
+      if (typeof def.spanStart !== 'number' || typeof def.spanEnd !== 'number') continue;
+      if (def.spanEnd <= def.spanStart) continue;
+      out.push({ key, def });
+    }
+    out.sort((a, b) => a.def.spanStart - b.def.spanStart);
+    return out;
+  }
+
   shiftCharSpansAfter(charOffset: number, delta: number): void {
     if (delta === 0) return;
     for (const def of this._defs.values()) {

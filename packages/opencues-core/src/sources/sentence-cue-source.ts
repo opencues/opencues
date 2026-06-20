@@ -116,7 +116,23 @@ export function segmentSentences(buffer: string, words: ReadonlyArray<string>): 
   }
   for (const span of spans) {
     let firstWordIndex = wordCharStart.findIndex(idx => idx >= span.start && idx < span.end);
-    if (firstWordIndex === -1) firstWordIndex = 0;
+    if (firstWordIndex === -1) {
+      // No word STARTS inside this sentence. This is the spaceless-CJK case:
+      // the sentence begins mid-word because the PRIOR sentence's 。 has no
+      // following space, so its first chars share a whitespace-word with the
+      // prior sentence. Anchor to the word that CONTAINS the sentence start
+      // (the last word starting at/before it) — NOT the old fallback of 0,
+      // which made every such sentence collide with the FIRST sentence at
+      // word 0 and get dropped at registration (the long-second-sentence
+      // "not highlighted" bug).
+      let containing = 0;
+      for (let i = 0; i < wordCharStart.length; i++) {
+        const ws = wordCharStart[i];
+        if (ws === -1) continue;
+        if (ws <= span.start) containing = i; else break;
+      }
+      firstWordIndex = containing;
+    }
     span.firstWordIndex = firstWordIndex;
   }
   return spans;

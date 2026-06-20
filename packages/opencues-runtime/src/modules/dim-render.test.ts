@@ -389,6 +389,50 @@ blankScript: ./vol.sh
     ]);
   });
 
+  it('dims a sentence-cue def at a SYNTHETIC key (same-word CJK collision) via the dedicated pass', async () => {
+    // Two sentences in ONE spaceless-CJK whitespace-word: the first is at the
+    // natural word index, the SECOND at a synthetic key no word addresses. The
+    // word loop never visits the synthetic key, so without the dedicated
+    // sentence-cue pass its span goes undimmed (the long-second-sentence bug).
+    const { ConfigLoader } = await import('./config-loader');
+    const s1 = '今日は楽しかったよ。';
+    const s2 = 'また遊ぼうね。';
+    const buffer = s1 + s2; // no space — ONE whitespace-word
+    const adapter = new MockAdapter({
+      files: { '/tips.json': JSON.stringify({ domain: 't', version: 1, concepts: [] }) },
+    });
+    adapter.pushText(buffer);
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    // First at natural word index 0.
+    dynDefs.set(0, {
+      originalWord: s1,
+      alternatives: [s1, '本日は大変楽しかったです。'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: s1.length,
+      blankName: 'sentence-cue:more-formal',
+    });
+    // Second at a synthetic key (mirrors the resolver's collision re-keying).
+    dynDefs.set(2_000_000 + s1.length, {
+      originalWord: s2,
+      alternatives: [s2, 'また是非ご一緒しましょう。'],
+      currentIndex: 0,
+      spanStart: s1.length,
+      spanEnd: buffer.length,
+      blankName: 'sentence-cue:more-formal',
+    });
+    const dim = new DimRender(adapter, hlState, dynDefs, loader);
+    const out = dim.compute({ text: buffer, cursor: 0, externalHighlights: [] });
+    // BOTH sentence spans dim — the synthetic-keyed one via the dedicated pass.
+    expect(out?.dimRanges).toEqual([
+      { start: 0, end: s1.length },
+      { start: s1.length, end: buffer.length },
+    ]);
+  });
+
   it('no consume-all dim when state is empty', () => {
     const adapter = new MockAdapter();
     adapter.pushText('hello world');

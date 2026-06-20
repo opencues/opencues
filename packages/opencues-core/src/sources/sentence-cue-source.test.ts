@@ -43,6 +43,20 @@ describe('segmentSentences', () => {
     assert.deepStrictEqual(segmentSentences('', []), []);
   });
 
+  it('a sentence starting MID-WORD (spaceless CJK 。) anchors to its containing word, not word 0', () => {
+    // 'aa いう。えお' — word 0 = "aa", word 1 = "いう。えお". The second
+    // sentence "えお" begins after the 。 inside word 1 (no space), so NO
+    // word STARTS within it. The old fallback put it at word 0 → it then
+    // collided with the FIRST sentence at registration and got dropped
+    // (the long-second-sentence "not highlighted" bug). It must anchor to
+    // its containing word (1).
+    const text = 'aa いう。えお';
+    const spans = segmentSentences(text, text.split(/\s+/).filter(Boolean));
+    assert.strictEqual(spans.length, 2);
+    assert.strictEqual(spans[1].text, 'えお');
+    assert.strictEqual(spans[1].firstWordIndex, 1, 'mid-word sentence must anchor to containing word 1, not 0');
+  });
+
   it('handles a single sentence ending in period', () => {
     const text = 'thanks a bunch for the help.';
     const spans = segmentSentences(text, text.split(/\s+/));
