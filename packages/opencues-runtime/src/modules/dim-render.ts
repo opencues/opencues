@@ -15,6 +15,20 @@ import type { SpanFillState } from '../state/span-fill';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
 import { splitWords } from './navigation';
 
+/**
+ * Sentence-cue defs are the only ones whose stored char span (spanStart/
+ * spanEnd) should override the word-derived highlight/dim range. They're
+ * passive (no splice) and re-resolved on edit, so their span stays current
+ * — and it's the only correct range for spaceless / mixed CJK where
+ * whitespace-words don't align with sentence boundaries. Normal blanks
+ * (fluid-blank / transform-blank) actively relocate; their stored span can
+ * go stale, so those keep the live word-derived range. blankName is set to
+ * the source id (`sentence-cue:<name>`) at registration.
+ */
+function isSentenceCueDef(def: { blankName?: string }): boolean {
+  return typeof def.blankName === 'string' && def.blankName.startsWith('sentence-cue:');
+}
+
 export class DimRender {
   private _unsub: Unsubscribe | null = null;
 
@@ -91,9 +105,14 @@ export class DimRender {
           if (seenStaticAltSpans.has(span.originIdx)) continue;
           seenStaticAltSpans.add(span.originIdx);
           if (activeStaticAltSpan && activeStaticAltSpan.originIdx === span.originIdx) continue;
-          // Char span over word-derived range — see the highlight branch
-          // below (CJK words straddle 。 sentence boundaries).
-          if (span.def.spanEnd > span.def.spanStart) {
+          // Char span over word-derived range — but ONLY for sentence-cues
+          // (see the highlight branch below). Sentence-cues are passive and
+          // re-resolved on edit, so their stored span stays current; normal
+          // blanks (fluid/transform) actively relocate and their stored
+          // spanStart/spanEnd can go STALE, so for those we keep the
+          // word-derived range that's recomputed from the live words each
+          // render (the pre-CJK-fix behaviour).
+          if (isSentenceCueDef(span.def) && span.def.spanEnd > span.def.spanStart) {
             dimRanges.push({ start: span.def.spanStart, end: span.def.spanEnd });
           } else {
             const endWord = words[span.originIdx + span.spanLength - 1];
@@ -171,7 +190,7 @@ export class DimRender {
         // over/under-covers the actual sentence. The def's spanStart/spanEnd
         // is the true range. For space-delimited text they're equal.
         const def = activeStaticAltSpan.def;
-        if (def.spanEnd > def.spanStart) {
+        if (isSentenceCueDef(def) && def.spanEnd > def.spanStart) {
           highlight = { start: def.spanStart, end: def.spanEnd };
         } else {
           const startWord = words[activeStaticAltSpan.originIdx];
@@ -200,7 +219,7 @@ export class DimRender {
         // span (e.g. one sentence inside a two-sentence Japanese buffer).
         // When the def's char span is narrower than the word, honour it.
         const def = this.dynDefs.get(this.hlState.wordIndex);
-        if (def && def.spanEnd > def.spanStart && target
+        if (def && isSentenceCueDef(def) && def.spanEnd > def.spanStart && target
           && (def.spanStart > target.start || def.spanEnd < target.end)) {
           highlight = { start: def.spanStart, end: def.spanEnd };
         } else if (target) {

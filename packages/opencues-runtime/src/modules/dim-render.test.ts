@@ -72,12 +72,34 @@ describe('DimRender.compute', () => {
       currentIndex: 0,
       spanStart: 0,
       spanEnd: 21, // end of "…します。" (the first 。)
+      blankName: 'sentence-cue:more-formal',
     });
     hlState.activate(0, buffer);
     const out = dimRender.compute({ text: buffer, cursor: 0, externalHighlights: [] });
     expect(out).toMatchObject({ highlight: { start: 0, end: 21 } });
     // The straddling word 2 ends at 31; the highlight must NOT reach it.
     expect((out as { highlight: { end: number } }).highlight.end).toBeLessThan(31);
+  });
+
+  it('does NOT use a normal multi-word blank\'s stored span (it can be stale) — uses the live word range', () => {
+    // Regression guard: the def-char-span override is for sentence-cues ONLY.
+    // A fluid-blank's spanStart/spanEnd can go stale after edits; trusting it
+    // for the multi-word highlight/dim caught future text. A non-sentence-cue
+    // def must fall back to the word-derived range, recomputed live.
+    const buffer = 'New York and more text here';
+    const { hlState, dynDefs, dimRender } = setup(buffer);
+    dynDefs.set(0, {
+      originalWord: 'New York', // 2 words → multi-word span (activeStaticAltSpan branch)
+      alternatives: ['New York', 'NYC'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: 27, // STALE — spans the WHOLE buffer, not just "New York" [0,8)
+      blankName: 'fluid-blank', // NOT a sentence-cue
+    });
+    hlState.activate(0, buffer);
+    const out = dimRender.compute({ text: buffer, cursor: 0, externalHighlights: [] });
+    // Must highlight only "New York" [0,8) via the live words, NOT [0,27).
+    expect(out).toMatchObject({ highlight: { start: 0, end: 8 } });
   });
 
   it('still highlights the whole word when the def span equals the word (ASCII unchanged)', () => {
