@@ -1364,34 +1364,38 @@ export class Resolver {
     if (generation !== this._generation) return;
 
     let wrote = 0;
-    // Sentence-cue suppression state. When any `sentence-cue:*` result
+    // Sentence-cue suppression state. When a `sentence-cue:*` result
     // applies, subsequent word-cue results whose wordIndex falls within
-    // the applied sentence's word range get suppressed (design rule:
-    // sentence wins outright). v1 also caps at ONE sentence-cue per
-    // resolve to avoid the word-index shift cascading when multiple
-    // sentences splice in the same pass (each splice changes downstream
-    // word offsets; subsequent sentence-cue results carry the
-    // pre-splice spanStart and would splice at the wrong location).
-    // Multi-sentence-cue handling is a v2 followup (process in reverse
-    // span-order, or apply via a single batched splice).
-    let sentenceCueApplied = false;
-    let sentenceClaimWordStart = -1;
-    let sentenceClaimWordEnd = -1;
+    // ANY applied sentence's word range get suppressed (design rule:
+    // sentence wins outright).
+    //
+    // Multi-sentence-cue (lifted the v1 one-per-resolve cap, June 2026):
+    // sentence-cue registration is PASSIVE — the def lands at
+    // currentIndex=0 against the UNMODIFIED buffer, no splice. The old
+    // cap existed to avoid a word-index shift cascade when MULTIPLE
+    // sentences spliced in the same pass; since nothing splices at
+    // registration time, every sentence-cue's spanStart/spanEnd stays
+    // valid and they can all register together. This is what makes a
+    // multi-paragraph (or multi-sentence) buffer cue EVERY sentence
+    // instead of only the first — the user-visible symptom was that in
+    // spaceless CJK, later paragraphs/sentences weren't highlighted at
+    // all because only the first got a DynDef. Same-word collisions
+    // (multiple 。-separated sentences inside ONE whitespace-word) are
+    // still resolved first-wins by the existing blankName guard below;
+    // post-cycle span shifts self-heal on the re-resolve the splice
+    // triggers.
+    const sentenceClaims: Array<{ start: number; end: number }> = [];
     for (const r of result.results) {
       const isSentenceCue = typeof r.source === 'string' && r.source.startsWith('sentence-cue:');
       // ── Suppression check: word-cue (or any non-LLM-blank result)
       //    inside an applied sentence's word range is dropped.
       const isLlmBlank = r.source === 'fluid-blank' || r.source === 'transform-blank' || r.source === 'config-intent';
-      if (sentenceCueApplied && !isSentenceCue && !isLlmBlank) {
-        if (r.wordIndex >= sentenceClaimWordStart && r.wordIndex <= sentenceClaimWordEnd) {
-          this.adapter.log('debug', `Resolver: suppressing word-cue at wordIndex=${r.wordIndex} — inside sentence-cue span [${sentenceClaimWordStart},${sentenceClaimWordEnd}]`);
+      if (sentenceClaims.length > 0 && !isSentenceCue && !isLlmBlank) {
+        const claimed = sentenceClaims.find(c => r.wordIndex >= c.start && r.wordIndex <= c.end);
+        if (claimed) {
+          this.adapter.log('debug', `Resolver: suppressing word-cue at wordIndex=${r.wordIndex} — inside sentence-cue span [${claimed.start},${claimed.end}]`);
           continue;
         }
-      }
-      // v1: only the first sentence-cue per resolve applies (see comment above).
-      if (isSentenceCue && sentenceCueApplied) {
-        this.adapter.log('debug', `Resolver: skipping additional sentence-cue at wordIndex=${r.wordIndex} — v1 caps at one per resolve`);
-        continue;
       }
       const target = wordSpans[r.wordIndex];
       if (!target) continue;
@@ -1777,12 +1781,14 @@ export class Resolver {
 
         // Record claim for downstream word-cue suppression. Uses the
         // ORIGINAL word indices (the result list is in original-buffer
-        // coords since we didn't splice).
-        sentenceClaimWordStart = r.wordIndex;
-        sentenceClaimWordEnd = r.wordIndex + originalSentence.split(/\s+/).filter(Boolean).length - 1;
-        sentenceCueApplied = true;
+        // coords since we didn't splice). One entry per applied
+        // sentence-cue — every claimed range suppresses word-cues inside
+        // it (multi-sentence-cue lift, June 2026).
+        const claimStart = r.wordIndex;
+        const claimEnd = r.wordIndex + originalSentence.split(/\s+/).filter(Boolean).length - 1;
+        sentenceClaims.push({ start: claimStart, end: claimEnd });
 
-        this.adapter.log('info', `SentenceCue[${r.source}]: cue ready [${start},${end}) "${originalSentence.slice(0, 50)}…" (alts=${r.alternatives.length - 1}, defAt=${r.wordIndex}, claimWords=[${sentenceClaimWordStart},${sentenceClaimWordEnd}])`);
+        this.adapter.log('info', `SentenceCue[${r.source}]: cue ready [${start},${end}) "${originalSentence.slice(0, 50)}…" (alts=${r.alternatives.length - 1}, defAt=${r.wordIndex}, claimWords=[${claimStart},${claimEnd}])`);
         continue;
       }
 

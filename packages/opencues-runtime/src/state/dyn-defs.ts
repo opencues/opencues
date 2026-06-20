@@ -96,6 +96,34 @@ export class DynDefs {
   }
 
   /**
+   * Shift the CHAR span (spanStart/spanEnd) of every span-bound def that
+   * begins at or after `charOffset` by `delta` chars. Companion to
+   * `shiftAfter` (which shifts the word-index keys): when a cycle splices
+   * a length-changing alt, downstream defs keep their word position but
+   * their stored char offsets go stale.
+   *
+   * This matters specifically for sentence-cue defs, whose char span IS
+   * the splice/highlight source of truth AND which are LOCKED against
+   * re-resolution (the resolver's blankName guard), so they never
+   * self-heal a stale span. In spaceless/mixed CJK, cycling an earlier
+   * sentence changes char offsets without changing the whitespace-word
+   * count — so `shiftAfter`'s `delta` is 0 and the word-index path alone
+   * leaves later sentences pointing at the wrong chars, mis-splicing the
+   * next cycle. Keying off the char offset (not the word index) closes
+   * that gap. Defs at-or-before the splice point are untouched.
+   */
+  shiftCharSpansAfter(charOffset: number, delta: number): void {
+    if (delta === 0) return;
+    for (const def of this._defs.values()) {
+      if (typeof def.spanStart !== 'number' || typeof def.spanEnd !== 'number') continue;
+      if (def.spanEnd <= def.spanStart) continue;
+      if (def.spanStart < charOffset) continue;
+      def.spanStart += delta;
+      def.spanEnd += delta;
+    }
+  }
+
+  /**
    * Find the multi-word static-alt span (if any) that covers `index`.
    * Returns the span's origin DynDef and length, or null if the
    * position isn't inside any multi-word span.

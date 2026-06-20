@@ -217,6 +217,83 @@ describe('Cycling static-alt multi-word spans', () => {
     expect(spanFillState.current).toBeNull(); // SpanFillState left alone
   });
 
+  it('cycling a CJK sentence-cue replaces only its char span — preserves the rest of the buffer', async () => {
+    // Regression (DATA LOSS, observed live on CC): cycling a Japanese
+    // sentence-cue's rewrite wiped every OTHER sentence. CJK has no spaces,
+    // so splitWords yields ONE word covering the whole buffer; the
+    // word-derived splice range then replaced the WHOLE buffer. The cycle
+    // must splice the def's char span [0,13), keeping the rest.
+    const buffer = '今日はとても楽しかったよ。また一緒に遊ぼうね。';
+    const { adapter, hlState, dynDefs } = await setupMw(buffer);
+    dynDefs.set(0, {
+      originalWord: '今日はとても楽しかったよ。',
+      alternatives: ['今日はとても楽しかったよ。', '本日はとても楽しゅうございました。'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: 13, // end of the first sentence (after 。)
+      blankName: 'sentence-cue:more-formal',
+    });
+    hlState.activate(0, buffer);
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    // First sentence → rewrite; the SECOND sentence must survive.
+    expect(adapter.setTextCalls.at(-1)).toBe('本日はとても楽しゅうございました。また一緒に遊ぼうね。');
+    expect(adapter.setTextCalls.at(-1)).toContain('また一緒に遊ぼうね。');
+  });
+
+  it('multi-paragraph CJK: cycling an EARLIER paragraph keeps LATER paragraphs splice-able (char-span shift)', async () => {
+    // Regression (DATA CORRUPTION): in a multi-paragraph CJK buffer every
+    // newline-separated paragraph is its own whitespace-word with its own
+    // sentence-cue def. Cycling paragraph 1 to a LONGER rewrite shifts the
+    // char offsets of paragraph 2 — but paragraph 2's def is LOCKED against
+    // re-resolution (blankName guard), so without an explicit char-span
+    // shift its stored [spanStart,spanEnd) stays stale and the NEXT cycle
+    // on paragraph 2 splices the wrong range, corrupting the buffer.
+    const para1 = '今日は楽しい。';
+    const para2 = 'また来てね。';
+    const buffer = `${para1}\n${para2}`;
+    const p2Start = buffer.indexOf(para2); // 8
+    const rewrite1 = '本日はまことに楽しゅうございました。'; // longer than para1
+    const rewrite2 = 'またのお越しを心よりお待ち申し上げます。';
+    const { adapter, hlState, dynDefs } = await setupMw(buffer);
+    dynDefs.set(0, {
+      originalWord: para1,
+      alternatives: [para1, rewrite1],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: para1.length,
+      blankName: 'sentence-cue:more-formal',
+    });
+    dynDefs.set(1, {
+      originalWord: para2,
+      alternatives: [para2, rewrite2],
+      currentIndex: 0,
+      spanStart: p2Start,
+      spanEnd: p2Start + para2.length,
+      blankName: 'sentence-cue:more-formal',
+    });
+
+    // Cycle paragraph 1 → its longer rewrite. Paragraph 2 must survive…
+    hlState.activate(0, buffer);
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    const afterFirst = adapter.setTextCalls.at(-1)!;
+    expect(afterFirst).toBe(`${rewrite1}\n${para2}`);
+
+    // …AND paragraph 2's def char span must have shifted to track the new
+    // offsets (delta = rewrite1.length − para1.length).
+    const delta = rewrite1.length - para1.length;
+    const p2Def = dynDefs.get(1)!;
+    expect(p2Def.spanStart).toBe(p2Start + delta);
+    expect(p2Def.spanEnd).toBe(p2Start + para2.length + delta);
+    // The shifted span points at paragraph 2 in the NEW buffer.
+    expect(afterFirst.slice(p2Def.spanStart, p2Def.spanEnd)).toBe(para2);
+
+    // Now cycle paragraph 2 — it must splice cleanly, preserving the
+    // already-formal paragraph 1 (no corruption from a stale span).
+    hlState.activate(1, afterFirst);
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    expect(adapter.setTextCalls.at(-1)).toBe(`${rewrite1}\n${rewrite2}`);
+  });
+
   it('cycling multi-word → multi-word keeps the span (DynDef updates)', async () => {
     const { adapter, hlState, dynDefs } = await setupMw('the attorney');
     hlState.activate(1, 'the attorney');
