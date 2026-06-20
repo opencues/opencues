@@ -62,20 +62,28 @@ export interface SentenceSpan {
 /**
  * Split a buffer into sentences with char + word offsets.
  *
- * Strategy: regex match runs of non-terminator chars followed by a
- * terminator. ASCII terminators (`.!?`) must be followed by whitespace
- * or EOF (so "gpt-5.4", "e.g.", and URL dots don't split mid-token);
- * CJK / fullwidth terminators (`。！？．`) split directly because those
+ * Strategy: match sentence CONTENT non-greedily up to a real terminator.
+ * A terminator is an ASCII `.!?` followed by whitespace or EOF, OR a
+ * CJK/fullwidth `。！？．`, OR end-of-string.
+ *
+ * The content run is `[\s\S]+?` (any char, non-greedy) rather than a
+ * "non-terminator" character class, so a MID-TOKEN ASCII period —
+ * "WCAG 2.1", "gpt-5.4", "e.g.", an IP, a URL — is kept as content
+ * instead of breaking the run. The earlier `[^.!?。！？．]+` class stopped
+ * at every `.`/`!`/`?`; when that mid-token `.` wasn't a real terminator
+ * (no trailing space) the regex couldn't complete and SKIPPED the text
+ * before it — dropping "アクセシビリティ（WCAG 2." entirely so it was never
+ * cue-able (observed live on Claude Code).
+ *
+ * CJK/fullwidth terminators (`。！？．`) split directly because those
  * scripts don't put a space after the stop — without them a Japanese /
- * Chinese paragraph collapsed into ONE giant "sentence" and the
- * sentence-cue highlight selected the whole block instead of the first
- * sentence (same language-dependent class as ConfigIntent's CJK summon
- * boundary). The CJK comma `、` is deliberately NOT a terminator. Trim
- * each match so leading/trailing whitespace stays in the buffer.
+ * Chinese paragraph collapsed into ONE giant "sentence". The CJK comma
+ * `、` is deliberately NOT a terminator. Trim each match so leading /
+ * trailing whitespace stays in the buffer.
  *
  * Known limitations (intentional v1 simplifications):
- *  - Abbreviations ("Mr.", "Dr.", "e.g.") split mid-word.
- *  - URLs containing periods get split at each dot.
+ *  - Abbreviations ("Mr. Smith") still split when the period is followed
+ *    by a space — indistinguishable from a sentence end without a lexicon.
  *  - Markdown-style headers / lists treated as single sentences.
  *
  * These are mitigated downstream by the LLM emitting `ALT: NONE` on
@@ -84,7 +92,9 @@ export interface SentenceSpan {
 export function segmentSentences(buffer: string, words: ReadonlyArray<string>): SentenceSpan[] {
   if (!buffer) return [];
   const spans: SentenceSpan[] = [];
-  const re = /[^.!?。！？．]+(?:[.!?]+(?=\s|$)|[。！？．]+|$)/g;
+  // `[\s\S]+?` (≥1 char, non-greedy) can never produce a zero-width match,
+  // so the exec loop below always advances.
+  const re = /[\s\S]+?(?:[.!?]+(?=\s|$)|[。！？．]+|$)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(buffer)) !== null) {
     const raw = m[0];

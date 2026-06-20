@@ -117,6 +117,35 @@ describe('segmentSentences', () => {
     const spans = segmentSentences(text, text.split(/\s+/));
     assert.strictEqual(spans.length, 3);
   });
+
+  it('keeps mid-token ASCII periods (version numbers) — does NOT drop the text before them', () => {
+    // Regression (observed live on Claude Code): the "2.1" in "WCAG 2.1 AA"
+    // made the old class-based regex stop at the `.`, fail to find a
+    // terminator (no trailing space), and SKIP "アクセシビリティ（WCAG 2." —
+    // dropping it from every sentence span so it couldn't be cued.
+    const text = 'アクセシビリティ（WCAG 2.1 AA）を確保します。次の文です。';
+    const spans = segmentSentences(text, text.split(/\s+/));
+    assert.strictEqual(spans.length, 2);
+    assert.strictEqual(spans[0].text, 'アクセシビリティ（WCAG 2.1 AA）を確保します。');
+    assert.strictEqual(spans[1].text, '次の文です。');
+  });
+
+  it('keeps mid-token ASCII periods in Latin text (gpt-5.4) instead of splitting/dropping', () => {
+    const text = 'Use gpt-5.4 today. It is fast.';
+    const spans = segmentSentences(text, text.split(/\s+/));
+    assert.strictEqual(spans.length, 2);
+    assert.strictEqual(spans[0].text, 'Use gpt-5.4 today.');
+    assert.strictEqual(spans[1].text, 'It is fast.');
+  });
+
+  it('covers the buffer with no dropped chars (contiguous spans modulo whitespace)', () => {
+    const text = 'CDN は IP 1.2.3.4 で配信します。ロードは 2 秒以下に下回ります。';
+    const spans = segmentSentences(text, text.split(/\s+/));
+    // Every non-whitespace char must belong to some span — no gaps.
+    let covered = '';
+    for (const s of spans) covered += text.slice(s.start, s.end);
+    assert.strictEqual(covered.replace(/\s/g, ''), text.replace(/\s/g, ''));
+  });
 });
 
 // ---------------------------------------------------------------------------
