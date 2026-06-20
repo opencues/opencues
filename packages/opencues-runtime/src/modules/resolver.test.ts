@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Resolver } from './resolver';
+import { Resolver, SENTENCE_CUE_SYNTHETIC_KEY_BASE } from './resolver';
 import { ConfigLoader } from './config-loader';
 import { HighlightState } from '../state/highlight-state';
 import { DynDefs } from '../state/dyn-defs';
@@ -1861,15 +1861,13 @@ describe('Resolver sentence-cue substitution', () => {
     expect(dynDefs.get(3)?.originalWord).toBe('ping me when ready.');
   });
 
-  it('same-word sentence-cue collision is first-wins (multiple 。 sentences inside ONE CJK whitespace-word)', async () => {
+  it('same-word sentence-cue collision: BOTH register — second at a synthetic key (the long-second-sentence fix)', async () => {
     // Spaceless CJK with two 。-separated sentences is ONE whitespace-word,
-    // so both sentence-cue results carry wordIndex 0 and collide in the
-    // word-keyed DynDefs map. The first registers; the second is dropped
-    // by the existing blankName guard (can't clobber a span-bound def).
-    // This is the remaining v1 limitation — multiple sentences inside one
-    // whitespace-word can't each get a distinct cue. (Multi-PARAGRAPH CJK
-    // does NOT hit this: paragraphs are newline-separated, hence distinct
-    // words — see the test above.)
+    // so both sentence-cue results carry wordIndex 0. The word-keyed DynDefs
+    // map can't hold two at index 0, so the FIRST takes the natural index
+    // and the SECOND is re-homed to a synthetic, collision-free key
+    // (SENTENCE_CUE_SYNTHETIC_KEY_BASE + spanStart) — BOTH survive, so the
+    // long second sentence is cued + dimmed instead of silently dropped.
     const buffer = '今日は楽しかったよ。また遊ぼうね。';
     const s1End = '今日は楽しかったよ。'.length;
     const { adapter, dynDefs, resolver } = setupRich([
@@ -1894,9 +1892,19 @@ describe('Resolver sentence-cue substitution', () => {
     await resolver.resolveAndApply(buffer);
 
     expect(adapter.getText()).toBe(buffer);
-    // First sentence wins the single word-0 slot.
+    // First sentence at the natural word index.
     expect(dynDefs.get(0)?.blankName).toBe('sentence-cue:more-formal');
     expect(dynDefs.get(0)?.originalWord).toBe('今日は楽しかったよ。');
+    // Second sentence at the synthetic key — registered, not dropped.
+    const second = dynDefs.get(SENTENCE_CUE_SYNTHETIC_KEY_BASE + s1End);
+    expect(second?.blankName).toBe('sentence-cue:more-formal');
+    expect(second?.originalWord).toBe('また遊ぼうね。');
+    expect(second?.spanStart).toBe(s1End);
+    expect(second?.spanEnd).toBe(buffer.length);
+    // Both surface via the dedicated enumerator (what DimRender / Cycling use).
+    expect(dynDefs.sentenceCueDefs().map(x => x.def.originalWord)).toEqual([
+      '今日は楽しかったよ。', 'また遊ぼうね。',
+    ]);
   });
 });
 

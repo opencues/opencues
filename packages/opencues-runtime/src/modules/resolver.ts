@@ -222,6 +222,19 @@ function noBlankContextConsumer(
   return true;
 }
 
+/**
+ * Synthetic DynDefs key base for sentence-cues that collide on a whitespace
+ * word (spaceless CJK: two `。`-separated sentences share one word). The
+ * word-keyed DynDefs map can't hold two cues at the natural index, so the
+ * later sentence registers at `BASE + spanStart` — far out of the real
+ * word-index range (a buffer would need 2M+ chars to reach it), unique per
+ * sentence, and stable across re-resolves. Synthetic-keyed defs are invisible
+ * to the word-iterating consumers (dim word-loop, navigation), so DimRender
+ * runs a dedicated sentence-cue pass and Cycling resolves by cursor char
+ * position; see `DynDefs.sentenceCueDefs()`.
+ */
+export const SENTENCE_CUE_SYNTHETIC_KEY_BASE = 2_000_000;
+
 export class Resolver {
   private _resolver: { resolve(ctx: unknown): Promise<{ results: CueResultLike[] }> } | null = null;
   private _sources: unknown[] = [];
@@ -1411,13 +1424,24 @@ export class Resolver {
       const sameClassChainable = isChainableLlmSource
         && !!existing?.blankName
         && existing.blankName === r.source;
+      // Same-word sentence-cue collision: two sentences segmented from ONE
+      // whitespace-word (spaceless CJK — a 。 with no following space fuses
+      // the next sentence's start into the prior word). They share a natural
+      // word index, so the SECOND would be dropped by the blankName guard
+      // below and never cued/dimmed (the long-second-sentence bug). Exempt
+      // it here; the sentence-cue registration block re-keys it to a
+      // synthetic, collision-free index so BOTH survive.
+      const sameWordSentenceCueCollision = isSentenceCue
+        && typeof existing?.blankName === 'string'
+        && existing.blankName.startsWith('sentence-cue:')
+        && (existing.spanStart !== r.spanStart || existing.spanEnd !== r.spanEnd);
       // Don't clobber a user mid-cycle on this word.
-      if (existing && existing.currentIndex > 0 && !sameClassChainable) continue;
+      if (existing && existing.currentIndex > 0 && !sameClassChainable && !sameWordSentenceCueCollision) continue;
       // Don't clobber blank-attributed entries (volume/brightness blank
       // fills, satellite cycles, etc.) — those route through their own
       // cycling path and have a script set/get protocol the LLM alts
       // would silently break.
-      if (existing && existing.blankName && !sameClassChainable) continue;
+      if (existing && existing.blankName && !sameClassChainable && !sameWordSentenceCueCollision) continue;
       // Already resolved — same word at the same index, fresh from a
       // prior LLM pass. Without this, every subsequent text-change
       // (typing the next word, adding a space) clobbers the existing
@@ -1741,6 +1765,18 @@ export class Resolver {
           this.adapter.log('info', `SentenceCue[${r.source}]: skipping — buffer edit at [${start},${end}) changed the sentence since resolve`);
           continue;
         }
+        // Registration key. Normally the sentence's first word index. But
+        // when a DIFFERENT sentence-cue already holds that word (two
+        // sentences in one spaceless-CJK word), re-key the later one to a
+        // synthetic, collision-free index so BOTH survive (the long-second-
+        // sentence "not highlighted" bug). Stable across re-resolves (same
+        // span → same key), so it isn't duplicated.
+        const atNatural = this.dynDefs.get(r.wordIndex);
+        const collides = !!atNatural && typeof atNatural.blankName === 'string'
+          && atNatural.blankName.startsWith('sentence-cue:')
+          && (atNatural.spanStart !== start || atNatural.spanEnd !== end);
+        const regKey = collides ? SENTENCE_CUE_SYNTHETIC_KEY_BASE + start : r.wordIndex;
+
         // Managed-span overlap guard. SentenceCueSource segments the
         // WHOLE buffer regardless of any active selector/satellite pair
         // or other span-bound DynDef (fluid-blank substitute, transform
@@ -1750,11 +1786,14 @@ export class Resolver {
         const sat = this.selectorSatelliteState?.current;
         const overlapsSatellite = sat ? (start < sat.pairCharEnd && sat.pairCharStart < end) : false;
         let overlapsDynDef = false;
-        for (const [idx, def] of this.dynDefs.entries()) {
+        for (const [, def] of this.dynDefs.entries()) {
           if (!def.blankName) continue;
           if (typeof def.spanStart !== 'number' || typeof def.spanEnd !== 'number') continue;
           if (def.spanEnd <= def.spanStart) continue;
-          if (idx === r.wordIndex && typeof def.blankName === 'string' && def.blankName.startsWith('sentence-cue:')) continue; // refreshing our own def is fine
+          // Refreshing OUR OWN def (same sentence span, any key) is fine —
+          // exempt the exact span so re-resolution doesn't self-collide.
+          if (typeof def.blankName === 'string' && def.blankName.startsWith('sentence-cue:')
+            && def.spanStart === start && def.spanEnd === end) continue;
           if (start < def.spanEnd && def.spanStart < end) { overlapsDynDef = true; break; }
         }
         if (overlapsSatellite || overlapsDynDef) {
@@ -1766,7 +1805,7 @@ export class Resolver {
         // the original sentence. alts[0] === originalSentence so cycling
         // Up to currentIndex=1 swaps in the first rewrite via the
         // existing applyAltCycle path.
-        this.dynDefs.set(r.wordIndex, {
+        this.dynDefs.set(regKey, {
           originalWord: originalSentence,
           alternatives: r.alternatives, // [original, ...rewrites]
           currentIndex: 0, // passive — buffer shows alts[0] (the original)

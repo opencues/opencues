@@ -617,10 +617,14 @@ export class Cycling {
     // Inner-span redirect: if this index is inside a multi-word
     // static-alt span (not the origin), cycle the origin instead so
     // the whole span rotates as one unit. Mirrors what cycleSpanFill
-    // does for blank-fills.
-    const span = this.dynDefs.findSpanContaining(wordIndex);
+    // does for blank-fills. Pass `words` so sentence-cue spans are
+    // bounded by their CHAR span, not the overshooting alt word-count —
+    // otherwise a later CJK sentence's origin is mistaken for an inner
+    // word of the prior sentence and cycling it wrongly rotates the
+    // PRIOR sentence (the buffer's word-count > char-bounded span in CJK).
+    const words = splitWords(event.text);
+    const span = this.dynDefs.findSpanContaining(wordIndex, words);
     if (span && span.originIdx !== wordIndex) {
-      const words = splitWords(event.text);
       const origin = words[span.originIdx];
       if (origin) {
         return this.cycleStaticAlts(event, {

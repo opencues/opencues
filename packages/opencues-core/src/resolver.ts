@@ -36,6 +36,14 @@ export interface ResolverResult {
  * Sources are queried in priority order (highest first).
  * Results are merged with higher-priority sources winning conflicts.
  */
+/**
+ * Dedup-key base for sentence-cue results in the per-resolve merge map. Keeps
+ * two sentences that share one whitespace-word (spaceless CJK) from collapsing
+ * into a single cue. Offset far past any real word index; the result's own
+ * `wordIndex` field is untouched (only the map key changes).
+ */
+export const SENTENCE_CUE_MERGE_KEY_BASE = 2_000_000;
+
 export class CueResolver {
   private sources: CueSource[];
   private config: CueResolverConfig;
@@ -202,9 +210,11 @@ export class CueResolver {
       }
     }
 
-    // Convert map to array, sorted by word index
+    // Convert map to array, sorted by word index (span start as a stable
+    // tiebreak so two same-word sentence-cues keep buffer order — the runtime
+    // registers the first at the natural index, the second at a synthetic one).
     const results = Array.from(resultsByIndex.values()).sort(
-      (a, b) => a.wordIndex - b.wordIndex
+      (a, b) => a.wordIndex - b.wordIndex || (a.spanStart ?? 0) - (b.spanStart ?? 0)
     );
 
     return {
@@ -271,15 +281,28 @@ export class CueResolver {
       }
     }
 
-    // Merge results (higher priority wins on conflict)
+    // Merge results (higher priority wins on conflict). The dedup key is
+    // normally the word index — one alt-set per word. SENTENCE-CUE results
+    // are the exception: two sentences can share ONE whitespace-word
+    // (spaceless CJK, a 。 with no following space), so keying them by word
+    // index alone MERGES two distinct sentences' alternatives into one cue
+    // and the second sentence vanishes. Key sentence-cues by their char span
+    // instead so each survives as its own result (the runtime then re-keys
+    // any same-word collision to a synthetic DynDef index).
     for (const cueResult of result.results) {
-      const existing = resultsByIndex.get(cueResult.wordIndex);
+      const isSentenceCue = typeof cueResult.source === 'string'
+        && cueResult.source.startsWith('sentence-cue:')
+        && typeof cueResult.spanStart === 'number';
+      const key = isSentenceCue
+        ? SENTENCE_CUE_MERGE_KEY_BASE + (cueResult.spanStart as number)
+        : cueResult.wordIndex;
+      const existing = resultsByIndex.get(key);
       if (!existing || cueResult.priority > existing.priority) {
-        resultsByIndex.set(cueResult.wordIndex, cueResult);
+        resultsByIndex.set(key, cueResult);
       } else if (cueResult.priority === existing.priority) {
         // Same priority - merge alternatives
         const merged = this.mergeResults(existing, cueResult);
-        resultsByIndex.set(cueResult.wordIndex, merged);
+        resultsByIndex.set(key, merged);
       }
     }
   }

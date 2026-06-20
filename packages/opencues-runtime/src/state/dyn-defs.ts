@@ -28,6 +28,13 @@ export interface WordDef {
  * picks a different alt string. Stored on the def directly via a
  * non-enumerable backdoor property; GC'd along with the def.
  */
+/** Sentence-cue defs (blankName `sentence-cue:<name>`) are the only ones
+ *  whose char span (spanStart/spanEnd) is authoritative over the word-count-
+ *  derived range. Mirrors the predicate in dim-render.ts / cycling.ts. */
+function isSentenceCueDef(def: WordDef): boolean {
+  return typeof def.blankName === 'string' && def.blankName.startsWith('sentence-cue:');
+}
+
 function altWordsOf(def: WordDef): string[] {
   const cache = def as WordDef & { _altWordsCache?: { idx: number; words: string[] } };
   const idx = def.currentIndex;
@@ -112,6 +119,26 @@ export class DynDefs {
    * next cycle. Keying off the char offset (not the word index) closes
    * that gap. Defs at-or-before the splice point are untouched.
    */
+  /**
+   * Every registered sentence-cue def (`blankName` = `sentence-cue:*`) with a
+   * valid char span, sorted by span start. Includes defs at synthetic keys
+   * (same-word CJK collisions) that the word-iterating consumers can't see —
+   * DimRender uses this for a dedicated dim pass, Cycling to resolve the
+   * sentence under the cursor. The map key is returned as `key` so callers
+   * can address the exact entry (synthetic or natural).
+   */
+  sentenceCueDefs(): Array<{ key: number; def: WordDef }> {
+    const out: Array<{ key: number; def: WordDef }> = [];
+    for (const [key, def] of this._defs.entries()) {
+      if (typeof def.blankName !== 'string' || !def.blankName.startsWith('sentence-cue:')) continue;
+      if (typeof def.spanStart !== 'number' || typeof def.spanEnd !== 'number') continue;
+      if (def.spanEnd <= def.spanStart) continue;
+      out.push({ key, def });
+    }
+    out.sort((a, b) => a.def.spanStart - b.def.spanStart);
+    return out;
+  }
+
   shiftCharSpansAfter(charOffset: number, delta: number): void {
     if (delta === 0) return;
     for (const def of this._defs.values()) {
@@ -138,9 +165,31 @@ export class DynDefs {
    * O(defs * 1). Linear in the number of active DynDefs, fine for the
    * tens-of-words contexts the runtime sees in practice.
    */
-  findSpanContaining(index: number): { originIdx: number; spanLength: number; def: WordDef } | null {
+  findSpanContaining(
+    index: number,
+    words?: ReadonlyArray<{ start: number; end: number }>,
+  ): { originIdx: number; spanLength: number; def: WordDef } | null {
     for (const [originIdx, def] of this._defs.entries()) {
       if (originIdx > index) continue;
+      // Sentence-cue defs carry an AUTHORITATIVE char span. Deriving the
+      // word range from alt word-count overshoots for CJK: with no space
+      // after `。`, a sentence's first token fuses into the prior word, so
+      // the alt has MORE whitespace-tokens than the buffer words it
+      // actually occupies — adjacent sentence spans then overlap and the
+      // later sentence's origin gets swallowed as an "inner" word (its dim
+      // vanishes). When live word positions are available, bound the span
+      // by the char span instead: the last covered word is the last one
+      // that STARTS before spanEnd.
+      if (words && isSentenceCueDef(def) && def.spanEnd > def.spanStart) {
+        let lastIdx = originIdx;
+        for (let i = originIdx; i < words.length; i++) {
+          if (words[i].start < def.spanEnd) lastIdx = i; else break;
+        }
+        if (index <= lastIdx) {
+          return { originIdx, spanLength: lastIdx - originIdx + 1, def };
+        }
+        continue;
+      }
       const altWords = altWordsOf(def);
       if (altWords.length <= 1) continue;
       if (index >= originIdx + altWords.length) continue;

@@ -57,7 +57,27 @@ export class DimRender {
     const hasHighlightCap = this.adapter.capabilities.includes('highlight-range');
     const hasDimCap = this.adapter.capabilities.includes('dim-ranges');
 
-    const words = splitWords(ctx.text);
+    // DynDef char spans + word indices live in LOGICAL buffer coordinates —
+    // the space the resolver computes them in (from adapter text-change
+    // events). Some hosts hand onRender a SOFT-WRAPPED text: Claude Code
+    // inserts newlines at terminal width, which splits a long CJK word and
+    // shifts every later word index. Splitting on that wrapped text then
+    // mis-attributes a sentence-cue def (e.g. logical word 14 = "HTTPS") to
+    // the wrong word, so its dim/highlight silently vanishes for any
+    // paragraph past the first wrap point (live CJK bug).
+    //
+    // BUT ctx.text is also the authoritative "what's being rendered NOW"
+    // during runtime-driven text changes (a cycle replaces a word; the
+    // adapter's buffer can briefly lag). So only prefer the adapter's
+    // logical buffer when it's the SAME logical content as ctx.text —
+    // i.e. the host merely re-wrapped it (identical once whitespace + ZWS
+    // are stripped). A genuine edit differs in content → trust ctx.text.
+    const stripLayout = (s: string): string => s.replace(/[\s\u200B\u200C]/g, '');
+    const logicalText = this.adapter.getText();
+    const sameContent = logicalText.length > 0
+      && stripLayout(logicalText) === stripLayout(ctx.text);
+    const text = sameContent ? logicalText : ctx.text;
+    const words = splitWords(text);
 
     // Dim ranges: every cue or blank word that is NOT the
     // currently-highlighted one AND not inside an active span/satellite
@@ -85,7 +105,7 @@ export class DimRender {
     // Used by both the dim loop AND the highlight expansion below —
     // declared at outer scope so the highlight branch can reach it.
     const activeStaticAltSpan = activeIndex !== null && activeIndex >= 0
-      ? this.dynDefs.findSpanContaining(activeIndex)
+      ? this.dynDefs.findSpanContaining(activeIndex, words)
       : null;
     if (hasDimCap && this.configLoader) {
       const navigable = this.configLoader.navigableWords;
@@ -99,7 +119,7 @@ export class DimRender {
         // skipped (the origin's range covers them). The span the
         // active highlight is inside (if any) is also skipped — the
         // highlight layer paints it.
-        const span = this.dynDefs.findSpanContaining(w.index);
+        const span = this.dynDefs.findSpanContaining(w.index, words);
         if (span) {
           if (span.originIdx !== w.index) continue;
           if (seenStaticAltSpans.has(span.originIdx)) continue;
@@ -144,6 +164,25 @@ export class DimRender {
           dimRanges.push({ start: w.start, end: w.end });
         }
       }
+
+      // Dedicated sentence-cue pass. The word loop above dims sentence-cues
+      // reachable at a real word index, but a SECOND sentence sharing one
+      // spaceless-CJK whitespace-word is registered at a SYNTHETIC key that
+      // no word index addresses — so the loop never visits it and its span
+      // would silently go undimmed (the long-second-sentence bug). Dim every
+      // sentence-cue's authoritative char span directly, skipping spans the
+      // word loop already covered and the active one (the highlight paints
+      // it).
+      const activeSpan = activeStaticAltSpan
+        ? { s: activeStaticAltSpan.def.spanStart, e: activeStaticAltSpan.def.spanEnd }
+        : null;
+      for (const { def } of this.dynDefs.sentenceCueDefs()) {
+        const s = def.spanStart, e = def.spanEnd;
+        if (activeSpan && activeSpan.s === s && activeSpan.e === e) continue;
+        if (dimRanges.some(r => r.start === s && r.end === e)) continue;
+        dimRanges.push({ start: s, end: e });
+      }
+      dimRanges.sort((a, b) => a.start - b.start);
     }
 
     // When a span fill is active, treat the whole

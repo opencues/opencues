@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DimRender } from './dim-render';
-import { Navigation } from './navigation';
+import { Navigation, splitWords } from './navigation';
 import { HighlightState } from '../state/highlight-state';
 import { DynDefs } from '../state/dyn-defs';
 import { SpanFillState } from '../state/span-fill';
@@ -327,6 +327,109 @@ blankScript: ./vol.sh
       { start: 0, end: para1.length },
       { start: p2Start, end: p2Start + para2.length },
       { start: p3Start, end: p3Start + para3.length },
+    ]);
+  });
+
+  it('soft-wrapped ctx.text: dims in LOGICAL coords + dims EVERY adjacent CJK sentence (the live "P3 not highlighted" bug)', async () => {
+    // The live Claude Code bug had TWO compounding causes, both pinned here:
+    //   1. CC hands onRender a SOFT-WRAPPED text (newlines inserted at
+    //      terminal width) that splits long CJK words and shifts later word
+    //      indices — so a sentence-cue def's logical word index pointed at
+    //      the wrong word and its dim vanished.
+    //   2. Adjacent CJK sentence-cue spans OVERLAP under word-count bounding
+    //      (no space after 。 fuses a sentence's first token into the prior
+    //      word), so the later sentence's origin was swallowed as an inner
+    //      word — no dim.
+    // The logical buffer has two paragraphs; ctx.text is the wrapped variant
+    // with an extra newline spliced into the long second paragraph. Both
+    // paragraphs must dim at their LOGICAL char spans.
+    const { ConfigLoader } = await import('./config-loader');
+    const p1 = '今日は良い天気ですね。';
+    const p2 = 'これはとても長い二番目の文章で端末幅を超えて折り返されるはずの段落です。';
+    const logical = `${p1}\n${p2}`;
+    const p2Start = logical.indexOf(p2);
+    // Wrapped render text: a soft-wrap newline inserted mid-p2 (no such char
+    // in the logical buffer). Same content once whitespace is stripped.
+    const wrapPos = p2Start + 20;
+    const wrapped = logical.slice(0, wrapPos) + '\n' + logical.slice(wrapPos);
+
+    const adapter = new MockAdapter({
+      files: { '/tips.json': JSON.stringify({ domain: 't', version: 1, concepts: [] }) },
+    });
+    adapter.pushText(logical); // adapter.getText() === logical
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const words = splitWords(logical);
+    const p1Idx = 0;
+    const p2Idx = words.findIndex(w => w.start === p2Start);
+    dynDefs.set(p1Idx, {
+      originalWord: p1,
+      alternatives: [p1, '本日は良いお天気でございますね。'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: p1.length,
+      blankName: 'sentence-cue:more-formal',
+    });
+    dynDefs.set(p2Idx, {
+      originalWord: p2,
+      alternatives: [p2, '…formal…'],
+      currentIndex: 0,
+      spanStart: p2Start,
+      spanEnd: p2Start + p2.length,
+      blankName: 'sentence-cue:more-formal',
+    });
+    const dim = new DimRender(adapter, hlState, dynDefs, loader);
+    // compute is handed the WRAPPED text — but must dim using logical coords.
+    const out = dim.compute({ text: wrapped, cursor: 0, externalHighlights: [] });
+    expect(out?.dimRanges).toEqual([
+      { start: 0, end: p1.length },
+      { start: p2Start, end: p2Start + p2.length },
+    ]);
+  });
+
+  it('dims a sentence-cue def at a SYNTHETIC key (same-word CJK collision) via the dedicated pass', async () => {
+    // Two sentences in ONE spaceless-CJK whitespace-word: the first is at the
+    // natural word index, the SECOND at a synthetic key no word addresses. The
+    // word loop never visits the synthetic key, so without the dedicated
+    // sentence-cue pass its span goes undimmed (the long-second-sentence bug).
+    const { ConfigLoader } = await import('./config-loader');
+    const s1 = '今日は楽しかったよ。';
+    const s2 = 'また遊ぼうね。';
+    const buffer = s1 + s2; // no space — ONE whitespace-word
+    const adapter = new MockAdapter({
+      files: { '/tips.json': JSON.stringify({ domain: 't', version: 1, concepts: [] }) },
+    });
+    adapter.pushText(buffer);
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    // First at natural word index 0.
+    dynDefs.set(0, {
+      originalWord: s1,
+      alternatives: [s1, '本日は大変楽しかったです。'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: s1.length,
+      blankName: 'sentence-cue:more-formal',
+    });
+    // Second at a synthetic key (mirrors the resolver's collision re-keying).
+    dynDefs.set(2_000_000 + s1.length, {
+      originalWord: s2,
+      alternatives: [s2, 'また是非ご一緒しましょう。'],
+      currentIndex: 0,
+      spanStart: s1.length,
+      spanEnd: buffer.length,
+      blankName: 'sentence-cue:more-formal',
+    });
+    const dim = new DimRender(adapter, hlState, dynDefs, loader);
+    const out = dim.compute({ text: buffer, cursor: 0, externalHighlights: [] });
+    // BOTH sentence spans dim — the synthetic-keyed one via the dedicated pass.
+    expect(out?.dimRanges).toEqual([
+      { start: 0, end: s1.length },
+      { start: s1.length, end: buffer.length },
     ]);
   });
 

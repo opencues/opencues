@@ -116,7 +116,23 @@ export function segmentSentences(buffer: string, words: ReadonlyArray<string>): 
   }
   for (const span of spans) {
     let firstWordIndex = wordCharStart.findIndex(idx => idx >= span.start && idx < span.end);
-    if (firstWordIndex === -1) firstWordIndex = 0;
+    if (firstWordIndex === -1) {
+      // No word STARTS inside this sentence. This is the spaceless-CJK case:
+      // the sentence begins mid-word because the PRIOR sentence's 。 has no
+      // following space, so its first chars share a whitespace-word with the
+      // prior sentence. Anchor to the word that CONTAINS the sentence start
+      // (the last word starting at/before it) — NOT the old fallback of 0,
+      // which made every such sentence collide with the FIRST sentence at
+      // word 0 and get dropped at registration (the long-second-sentence
+      // "not highlighted" bug).
+      let containing = 0;
+      for (let i = 0; i < wordCharStart.length; i++) {
+        const ws = wordCharStart[i];
+        if (ws === -1) continue;
+        if (ws <= span.start) containing = i; else break;
+      }
+      firstWordIndex = containing;
+    }
     span.firstWordIndex = firstWordIndex;
   }
   return spans;
@@ -158,6 +174,25 @@ function hasFormatSpec(text: string): boolean {
   return /^SENTENCE:/m.test(text) || /^ALT:/m.test(text);
 }
 
+/**
+ * Output-token budget for one sentence-cue dispatch. MUST scale with the
+ * input: the whole multi-sentence response is one shot (SENTENCE/ALT/---
+ * blocks emitted sequentially), so a fixed budget truncates mid-stream and
+ * the tail sentences silently vanish — no error, no cede (live bug: 4 long
+ * Japanese sentences → only the first survived a ~768/2048 budget).
+ *
+ * Each sentence yields up to 3 alts, each ~its own length; CJK is the worst
+ * case at ~1.6 output tokens/char. Add per-sentence framing (~24 tok) and
+ * reasoning headroom (gpt-oss at medium burns a chunk before any content).
+ * Clamped to [768, 8192] so a pathological paste can't request an unbounded
+ * completion.
+ */
+export function estimateSentenceCueBudget(sentenceCharLengths: ReadonlyArray<number>): number {
+  const totalChars = sentenceCharLengths.reduce((n, len) => n + len, 0);
+  const estimatedOutput = Math.ceil(totalChars * 1.6 * 3) + sentenceCharLengths.length * 24 + 1024;
+  return Math.min(8192, Math.max(768, estimatedOutput));
+}
+
 // ============================================================================
 // Parser
 // ============================================================================
@@ -194,6 +229,56 @@ export function parseSentenceAltOutput(raw: string): SentenceAltBlock[] {
 }
 
 const normSentence = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').replace(/[.!?,;:]+$/, '').trim();
+
+/** Length of the shared leading run of two strings. */
+function commonPrefixLen(a: string, b: string): number {
+  const n = Math.min(a.length, b.length);
+  let i = 0;
+  while (i < n && a[i] === b[i]) i++;
+  return i;
+}
+
+/**
+ * Match each segmented source sentence to the model's emitted block.
+ *
+ * The model echoes a `SENTENCE:` line per block, IN ORDER, but its echo of
+ * a LONG sentence drifts in the TAIL — a paraphrased clause, a normalised
+ * hyphen (`‑`→`-`), a dropped space around a Latin token — so exact
+ * normalised equality fails on exactly the buffers that need cueing most
+ * (live bug: a 180-char Japanese security sentence parsed fine but never
+ * matched, so it was silently dropped). The head of the echo is reliably
+ * verbatim, so we match on the LONGEST shared normalised prefix, requiring
+ * a minimum run to avoid two distinct sentences colliding on a short shared
+ * opener. Each block is consumed at most once. Exact equality still wins
+ * when present (handles short sentences that share a long prefix).
+ */
+export function matchBlocksToSpans(
+  spanTexts: ReadonlyArray<string>,
+  blocks: ReadonlyArray<SentenceAltBlock>,
+): Array<SentenceAltBlock | undefined> {
+  const MIN_PREFIX = 8; // normalised chars — below this, treat as no match
+  const blockNorms = blocks.map(b => normSentence(b.sentence));
+  const used = new Array<boolean>(blocks.length).fill(false);
+  const out: Array<SentenceAltBlock | undefined> = [];
+  for (const spanText of spanTexts) {
+    const norm = normSentence(spanText);
+    // 1. Exact normalised equality (first unconsumed).
+    let idx = blockNorms.findIndex((bn, i) => !used[i] && bn === norm);
+    // 2. Longest shared normalised prefix ≥ MIN_PREFIX (first unconsumed wins ties).
+    if (idx === -1) {
+      let bestLen = MIN_PREFIX - 1;
+      for (let i = 0; i < blocks.length; i++) {
+        if (used[i]) continue;
+        const p = commonPrefixLen(blockNorms[i], norm);
+        if (p > bestLen) { bestLen = p; idx = i; }
+      }
+    }
+    if (idx === -1) { out.push(undefined); continue; }
+    used[idx] = true;
+    out.push(blocks[idx]);
+  }
+  return out;
+}
 
 // ============================================================================
 // Source
@@ -293,22 +378,27 @@ export class SentenceCueSource implements CueSource {
 
     let raw: string;
     try {
-      // Token budget — ~3 sentences × 3 alts × ~30 tokens each + framing
-      // = ~400 tokens of OUTPUT. 768 covers most prose buffers when
-      // reasoning is OFF. When reasoning is on for a gpt-oss model,
-      // the provider auto-floors to 2048 (see llm-provider.ts:
-      // `needsReasoningFloor`) — covers reasoning + content. The
-      // agentic harness on 2026-05-18 caught the previous
-      // unconditional 768 producing empty content
-      // (`emitted=0, ceded=0` in 120-187ms) on cerebras-gpt-oss-120b
-      // with reasoning=medium; the provider floor closed the gap.
-      // Per-source overrides: sourceConfig.maxTokens / .temperature
-      // win when set in the cue's CUE.md frontmatter. Defaults (768 +
-      // 0.3) reflect bench-tuned values; lowering maxTokens too far
-      // on a reasoning model risks the same budget-starvation that
-      // motivated the provider-level reasoning-floor (see
-      // llm-provider.ts:needsReasoningFloor).
-      raw = await this.callLLM(ensuredPrompt, `INPUT: ${context.text}`, this.sourceConfig.maxTokens ?? 768, context.signal);
+      // Output token budget — MUST scale with the input, or a buffer with
+      // several long sentences truncates mid-stream and only the first
+      // block survives. The whole response is one shot: every sentence's
+      // SENTENCE/ALT/--- block is emitted sequentially, so once maxTokens
+      // is hit the tail sentences silently vanish (no error, no cede —
+      // `parseSentenceAltOutput` just never sees their blocks). Live bug
+      // (June 2026, Claude Code + cerebras gpt-oss-120b reasoning=medium):
+      // 4 long Japanese sentences (textLen=408) → `emitted=1, sentences=4`
+      // because the fixed ~768/2048 budget ran out after sentence 1.
+      //
+      // Estimate: each sentence yields up to 3 alts, each ~the sentence's
+      // own length; CJK is the worst case at ~1.6 output tokens/char. Add
+      // per-sentence framing (~24 tok) and reasoning headroom (gpt-oss at
+      // medium burns a chunk before any content). Clamp to a sane ceiling
+      // so a pathological paste can't request an unbounded completion.
+      // A per-cue `maxTokens` in CUE.md still wins (explicit override).
+      const totalSentenceChars = spans.reduce((n, s) => n + s.text.length, 0);
+      const dynamicBudget = estimateSentenceCueBudget(spans.map(s => s.text.length));
+      const budget = this.sourceConfig.maxTokens ?? dynamicBudget;
+      this.log(`SentenceCue[${this.sourceConfig.name}]: token budget=${budget} (sentences=${spans.length}, sentenceChars=${totalSentenceChars}${this.sourceConfig.maxTokens ? ', cue-override' : ''})`);
+      raw = await this.callLLM(ensuredPrompt, `INPUT: ${context.text}`, budget, context.signal);
     } catch (e) {
       this.log(`SentenceCue[${this.sourceConfig.name}]: LLM call failed — ${(e as Error).message}`);
       this.emit({ type: 'bailed', reason: 'llm-error', latencyMs: Date.now() - t0 });
@@ -316,14 +406,20 @@ export class SentenceCueSource implements CueSource {
     }
 
     const blocks = parseSentenceAltOutput(raw);
+    this.log(`SentenceCue[${this.sourceConfig.name}]: raw response ${raw.length} chars → ${blocks.length} block(s) parsed (segmented ${spans.length})`);
     void fullPrompt; // exported for debug; reference suppresses unused-var
 
-    // Match each model block to its source sentence by normalised text.
+    // Match each model block to its source sentence (exact → longest-prefix,
+    // consume-once — robust to the model's tail-drift on long echoes).
+    const matched = matchBlocksToSpans(spans.map(s => s.text), blocks);
     const results: CueResult[] = [];
     let cededCount = 0;
-    for (const span of spans) {
-      const norm = normSentence(span.text);
-      const block = blocks.find(b => normSentence(b.sentence) === norm);
+    for (let si = 0; si < spans.length; si++) {
+      const span = spans[si];
+      const block = matched[si];
+      if (!block) {
+        this.log(`SentenceCue[${this.sourceConfig.name}]: NO-MATCH span="${span.text.slice(0, 30)}…" (no block within prefix tolerance)`);
+      }
       if (!block || block.ceded || block.alts.length === 0) {
         if (block?.ceded) cededCount++;
         continue;

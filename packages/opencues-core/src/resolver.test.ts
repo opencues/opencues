@@ -357,3 +357,47 @@ describe('CueResolver: parallel mode — higher-priority claims suppress lower-p
     assert.deepStrictEqual(out.results[0].alternatives, ['I-CLAIMED-AND-FILLED']);
   });
 });
+
+describe('CueResolver: same-word sentence-cues are NOT merged (spaceless CJK)', () => {
+  it('two sentence-cue results sharing a wordIndex but with distinct spans both survive', async () => {
+    // Two sentences in ONE whitespace-word (no space after 。) carry the
+    // SAME firstWordIndex. Keyed by word index alone they would merge into
+    // one cue and the second sentence would vanish. Keyed by span, both
+    // survive — the runtime then re-homes the collision to a synthetic key.
+    const source = stubSource({
+      id: 'sentence-cue:more-formal',
+      priority: 85,
+      result: {
+        results: [
+          { wordIndex: 0, word: 'x', alternatives: ['第一文。', '第一文(formal)。'], source: 'sentence-cue:more-formal', priority: 85, spanStart: 0, spanEnd: 4 },
+          { wordIndex: 0, word: 'x', alternatives: ['第二文。', '第二文(formal)。'], source: 'sentence-cue:more-formal', priority: 85, spanStart: 4, spanEnd: 8 },
+        ],
+        timing: 1,
+      },
+    });
+    const resolver = new CueResolver([source]);
+    const out = await resolver.resolve(makeContext('第一文。第二文。'));
+    const sentenceCues = out.results.filter(r => r.source === 'sentence-cue:more-formal');
+    assert.strictEqual(sentenceCues.length, 2, 'both same-word sentences must survive the merge');
+    const spans = sentenceCues.map(r => `${r.spanStart}-${r.spanEnd}`).sort();
+    assert.deepStrictEqual(spans, ['0-4', '4-8']);
+  });
+
+  it('genuine word-cue duplicates at one index still merge (no behaviour change off the sentence-cue path)', async () => {
+    const source = stubSource({
+      id: 'config:grammar',
+      priority: 50,
+      result: {
+        results: [
+          { wordIndex: 1, word: 'a', alternatives: ['a', 'an'], source: 'config:grammar', priority: 50 },
+          { wordIndex: 1, word: 'a', alternatives: ['a', 'one'], source: 'config:grammar', priority: 50 },
+        ],
+        timing: 1,
+      },
+    });
+    const resolver = new CueResolver([source]);
+    const out = await resolver.resolve(makeContext('x a y'));
+    const atOne = out.results.filter(r => r.wordIndex === 1);
+    assert.strictEqual(atOne.length, 1, 'non-sentence-cue duplicates still merge into one');
+  });
+});
