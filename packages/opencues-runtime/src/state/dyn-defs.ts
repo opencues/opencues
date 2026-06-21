@@ -306,8 +306,51 @@ export class DynDefs {
     return foundAt;
   }
 
-  set(wordIndex: number, def: WordDef): void {
+  /**
+   * Register a def at `wordIndex`. Returns `true` if it was stored, `false` if
+   * REJECTED by the managed-span invariant below.
+   *
+   * ## Managed-span ownership invariant (the centralised guard)
+   *
+   * A def WITHOUT a `blankName` (a plain word-cue / static-alt) is REJECTED if
+   * its char span overlaps the span of an existing def WITH a `blankName` (a
+   * managed owner: transform-blank / fluid-blank / config-intent / sentence-cue
+   * / volume / brightness / list-blank …). The owner owns its region; a word-cue
+   * overlapping it registers a competing DynDef that fights the owner on every
+   * re-resolve / cycle (wrong dim, wrong cycle target, or a data-loss splice).
+   *
+   * This used to be enforced ad-hoc at one call site (the resolver's word-cue
+   * branch), keyed by WORD INDEX — which missed overlaps where the owner sits
+   * at a different index than the word-cue (a spaceless-CJK paragraph is one
+   * giant word; the owner is registered elsewhere). Centralising it here, keyed
+   * by SPAN OVERLAP, means every external caller (resolver, cycling's
+   * buildDefFrom, blank-fill, any future code) is protected — the guard can't
+   * be forgotten per-site.
+   *
+   * SAFE for internal mechanics: `shiftAfter` / `pruneStale` / `relocate`
+   * re-insert via `this._defs` DIRECTLY (not this method), so a key shift never
+   * trips the guard. Managed owners (def HAS a blankName) are always allowed —
+   * owner-vs-owner overlap is arbitrated upstream (e.g. the sentence-cue branch
+   * refuses to register over an active managed span). The slot at `wordIndex`
+   * itself is excluded (updating / refreshing a def is always allowed).
+   */
+  set(wordIndex: number, def: WordDef): boolean {
+    if (
+      typeof def.blankName !== 'string'
+      && typeof def.spanStart === 'number' && typeof def.spanEnd === 'number'
+      && def.spanEnd > def.spanStart
+    ) {
+      for (const [k, d] of this._defs) {
+        if (k === wordIndex) continue;
+        if (typeof d.blankName !== 'string') continue; // only managed owners block
+        if (typeof d.spanStart !== 'number' || typeof d.spanEnd !== 'number' || d.spanEnd <= d.spanStart) continue;
+        if (def.spanStart < d.spanEnd && d.spanStart < def.spanEnd) {
+          return false; // overlaps a managed span — reject
+        }
+      }
+    }
     this._defs.set(wordIndex, def);
+    return true;
   }
 
   delete(wordIndex: number): void {
