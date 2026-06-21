@@ -109,13 +109,6 @@ word cue.
 These are deliberate v1 simplifications, not architectural
 constraints — each can be relaxed in v2:
 
-- **One sentence-cue per resolve pass.** Multi-sentence buffers
-  with multiple sentence-cues firing only apply the first one (in
-  word-index order). The remaining sentences pass through
-  unchanged. Reason: each splice shifts downstream word indices,
-  and applying multiple splices in one pass without re-segmenting
-  is fragile. v2 will batch in reverse-span order or single-batch
-  the splices.
 - **Regex-based segmenter.** Splits on `[.!?]+` followed by
   whitespace/EOF. Abbreviations (`Mr.`, `Dr.`, `e.g.`) and
   period-bearing URLs get split mid-token. The model usually
@@ -127,35 +120,36 @@ constraints — each can be relaxed in v2:
   sentence-cue at build time, same way it drops cycleable word-cues
   and list blanks. Chrome contenteditables, claude-cues, opencode,
   gemini-cli all support cycling so the cue surfaces there normally.
-- **No per-paragraph batching for long buffers.** v1 sends the
-  whole buffer to the LLM per cue. Very long buffers may run
-  into token budgets.
-
 ---
 
 ## What it sends to the LLM
 
-For each sentence-scope cue, ONE call per buffer per resolve:
+For each sentence-scope cue, the buffer is segmented into sentences and
+**one call is fired per sentence** (concurrency-capped, default 5 in
+flight). Each call carries:
 
   - System message: your `promptText` from CUE.md + the framework's
-    auto-appended output-format spec.
-  - User message: `INPUT: <the buffer text>`.
+    auto-appended output-format spec. This is identical across every
+    sentence, so providers with prefix caching reuse it.
+  - User message: `INPUT: <a single sentence>`.
 
-The model emits one block per sentence:
+The model emits one block for that sentence:
 
 ```
 SENTENCE: <verbatim sentence>
 ALT: <rewrite 1>
 ALT: <rewrite 2>
 ALT: <rewrite 3>
----
-SENTENCE: <next>
-ALT: ...
----
 ```
 
-Or `ALT: NONE` for sentences that don't merit a rewrite (fragments,
+Or `ALT: NONE` for a sentence that doesn't merit a rewrite (fragments,
 code, URLs, already-meeting-the-intent).
+
+Per-sentence calls replaced the earlier single-batched-call model
+(June 2026): batching every sentence into one prompt silently dropped
+~1/3 of sentences on real buffers. One call per sentence means a long
+buffer can't blow a single call's token budget, and a slow or dropped
+sentence can't take its neighbours down with it.
 
 **What's NEVER sent:**
 

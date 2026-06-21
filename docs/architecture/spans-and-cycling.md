@@ -32,6 +32,7 @@ packages/opencues-runtime/
 │       ├── cycling.ts            ← all Ctrl+Alt+Up/Down dispatch
 │       ├── navigation.ts         ← all Ctrl+Alt+Left/Right dispatch
 │       ├── dim-render.ts         ← computes dim + highlight ranges
+│       ├── coord-map.ts          ← buildIndexMap: content↔painted coord remap
 │       ├── blank-fill.ts         ← detects `_`, runs scripts/LLM, registers
 │       │                            spans, owns SpanFillState invalidation
 │       └── resolver.ts           ← runs the LLM Resolver, populates DynDefs
@@ -269,6 +270,35 @@ silent wrong relocations. See "Trade-offs" → "Deterministic relocate".
 Plain access. Note: with pruning in place, callers can trust the result
 is fresh-or-undefined; no need to validate on read.
 
+### `set(wordIndex, def)` — mutation + managed-span ownership guard
+
+Returns `boolean`. `true` = stored; `false` = **rejected** by the
+managed-span ownership invariant (callers must check — the resolver's
+word-cue branch does `if (!set(...)) continue;`).
+
+The invariant: a def WITHOUT a `blankName` (a plain word-cue / static-alt)
+is rejected if its char span **overlaps** the span of an existing def
+WITH a `blankName` (a managed owner: transform-blank / fluid-blank /
+config-intent / sentence-cue / volume / brightness / list-blank …). The
+owner owns its region; a word-cue overlapping it would register a
+competing DynDef that fights the owner on every re-resolve / cycle
+(wrong dim, wrong cycle target, or a data-loss splice).
+
+The test is **span overlap, not word index** — the owner can sit at a
+different word index than the rejected word-cue (a spaceless-CJK
+paragraph is one giant whitespace-word; the owner is registered
+elsewhere by char span). This used to be enforced ad-hoc at the one
+resolver call site keyed by word index, which missed exactly that case.
+Centralising it in `set()` means every external caller (resolver,
+cycling's `buildDefFrom`, blank-fill, future code) is protected and the
+guard can't be forgotten per-site.
+
+**Internal mechanics bypass the guard:** `shiftAfter` / `pruneStale` /
+`relocate` re-insert via `this._defs` DIRECTLY (not `set()`), so a key
+shift never trips it. Managed owners (def HAS a blankName) are always
+allowed — owner-vs-owner overlap is arbitrated upstream. The slot at
+`wordIndex` itself is excluded (refreshing a def is always allowed).
+
 ---
 
 ## Navigation — span-aware computeTargets
@@ -312,6 +342,37 @@ For the highlight:
 - Else if active is inside a multi-word DynDef span → expand to span range
 - Else if active is inside a selector/satellite multi-word side → expand
 - Else → just the active word
+
+### `defSpanLive` race-guard (any span-bound def)
+
+Whenever DimRender would dim/highlight a def's stored char span
+(`spanStart`/`spanEnd`) instead of the word-derived range, it first
+checks `defSpanLive(def, text)` — `text.slice(spanStart, spanEnd) ===
+def.alternatives[currentIndex]`. The stored char span is the
+authoritative range (it covers CJK substitutes whose char length doesn't
+match the whitespace-word count), but only while it still matches the
+live buffer. DynDef clearing is async, so after a user edit a def lingers
+a render or two; using its now-stale span would paint over whatever new
+(often shorter) text sits at those offsets — the "dim catches the words
+I'm typing" / "blanks catch future text" regression class. When the
+guard fails, DimRender SKIPS that span (it does not fall back to the
+word-derived range, which would re-introduce the over-paint). This
+replaced the older `isSentenceCueDef`-only check — the guard now applies
+to every span-bound def (sentence-cue, fluid/transform substitute,
+multi-word static-alt).
+
+### Coordinate remap (logical → painted)
+
+Ranges are computed in **content coordinates** (ZWS-stripped
+`adapter.getText()`) so word/def logic lines up, then mapped onto
+`ctx.text` (what the host paints) via `buildIndexMap` (`coord-map.ts`)
+before returning. Some hosts (Claude Code) insert a soft-wrap `\n`
+and/or a ZWS render-kick into the painted text that the logical buffer
+lacks; without the remap every range after such an insert drifts (the
+"N paragraphs → N-1 misaligned chars" / mixed CJK+Latin off-by-a-couple
+bug). The map aligns on the non-whitespace skeleton (whitespace/ZWS are
+interchangeable); when DimRender used `ctx.text` directly (a genuine
+edit) the map is identity.
 
 ---
 
@@ -522,6 +583,9 @@ keystrokes, assert on observable text + state.
 | Stale DynDef.originalWord after user edit → wrong cycling direction | `pruneStale` drops mismatched defs on user text change | "drops DynDefs whose word has been deleted from that position" |
 | Cycled alt re-evaluated by Resolver → alt-track drift (`attorney → lawyer → client → customer`) | Resolver filter also matches def's currentAlt first word + checks `findSpanContaining` | "skips a word that has been CYCLED to one of the def's alternatives" + "skips both inner positions of a multi-word static-alt span" |
 | Prepending text dropped the cycled DynDef → user lost cycle progress on prefix edits | `pruneStale` adds deterministic relocate: stale def whose currentAlt's words appear at exactly ONE new position is moved instead of dropped | "cycle, then PREPEND text — DynDef RELOCATES to new position" + 4 sibling tests covering single/multi/ambiguity/collision |
+| Word-cue claimed a word inside a managed span (transform/fluid/sentence-cue) → competing DynDef fought the owner on cycle; the per-site index-keyed guard missed spaceless-CJK owners at other indices | `DynDefs.set` centrally rejects (returns `false`) a non-`blankName` def whose span overlaps a managed owner's span — span-overlap test, not word index | `dyn-defs.test.ts` ownership-guard cases + `cjk-span-coordinate.scenarios.test.ts` |
+| Stale span-bound def (clearing is async) dimmed its old range over freshly-typed text → "dim catches the words I'm typing" / "blanks catch future text" | `defSpanLive` guard: only dim/highlight a stored char span while `text.slice(span) === alternatives[currentIndex]`; skip when stale | `dim-render.test.ts` stale-span cases |
+| CJK substitute (char length ≠ whitespace-word count) + host soft-wrap → dim under-covered the tail / drifted past the wrap ("N paragraphs → N-1 misaligned chars") | Compute in content coords, then `buildIndexMap` remap content→painted (`coord-map.ts`); prefer the def char span over the word-derived range when live | `coord-map.test.ts` + `cjk-span-coordinate.scenarios.test.ts` |
 
 ---
 
