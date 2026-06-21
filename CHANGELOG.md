@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — chrome: cycling a multi-paragraph transform on Gmail no longer piles up blank lines (chrome 0.2.25)
+
+Cycling a whole-body transform-blank result (e.g. an English↔Japanese resignation letter) in a Gmail compose box made blank lines accumulate every cycle — observed climbing from a clean body to 20+ trailing empty lines over a few cycles. Root cause, captured from the live DOM: Gmail appends its own trailing `<div><br></div>` placeholder after each `insertHTML`; the runtime then reads that back (`walkPlainText` counts the trailing block as a `\n`), bakes it into the next cycle's text, re-emits it as another trailing block, Gmail appends ANOTHER placeholder — a compounding read↔write feedback loop. (The English↔Japanese length difference just made it visually obvious; it is not a character-length bug.)
+
+Fix: `replaceAllText` now trims a trailing blank-line run (`/\n+$/`) before writing, for the contenteditable path. Each write emits no trailing blanks, so the editor's single placeholder can't accumulate. Interior blank lines (paragraph breaks) are untouched; an empty body stays empty. Pinned by two new cases in `replace-all-text-undo.test.ts` (trailing run trimmed; interior break preserved). Verified no regression across the Playwright editor matrix (generic CE, Lexical, ProseMirror, realistic-flow — 9/10; the Draft.js harness has a pre-existing `_block.getKey` init error unrelated to this change). Also fixed the Playwright harness build, which was failing on boot-common's `node:fs`/`node:path` imports — the harness now stubs them (`src/stubs/node-builtin-stub.ts`), mirroring production's `external`.
+
 ### Fixed — multi-paragraph CJK sentence-cues: long all-Japanese paragraphs are now cued, highlighted, navigable, and cycleable (core 0.3.42 / runtime 0.3.27)
 
 Follow-up to the multi-paragraph fix below. On a realistic translated buffer (three Japanese paragraphs, the last a single ~180-char sentence) the later all-Japanese text still wasn't dimmed/selected. Four independent failures, each downstream of "CJK + long sentences," each fixed and verified end-to-end on Claude Code (Cerebras gpt-oss-120b):

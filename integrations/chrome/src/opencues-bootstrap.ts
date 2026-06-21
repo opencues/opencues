@@ -1216,6 +1216,20 @@ export function replaceAllText(text: string): void {
     writeNormalInputValue(target, text);
     return;
   }
+  // Drop a TRAILING blank-line run before writing. Without this, a
+  // contenteditable that appends its own trailing placeholder block on
+  // paste (Gmail adds a `<div><br></div>` after an insertHTML) creates a
+  // compounding feedback loop: the runtime reads the buffer back
+  // (walkPlainText counts the trailing block as a `\n`), bakes that into
+  // the next cycle's text, re-emits it as another trailing `<div><br></div>`,
+  // the editor appends ANOTHER placeholder, and the blank lines grow every
+  // cycle ("cycling on Gmail adds lots of newlines", June 2026 — observed
+  // climbing from a clean body to 20+ trailing blank lines over a few
+  // English↔Japanese transform cycles). Trimming the trailing run caps it:
+  // each write emits no trailing blanks, so the editor's one placeholder
+  // can't accumulate. Interior blank lines (paragraph breaks) are
+  // untouched. Empty body is preserved as empty.
+  text = text.replace(/\n+$/, '');
   target.focus();
   log.info('[opencues] replaceAllText: newLen=' + text.length + ', preDomLen=' + (target.textContent?.length ?? 0));
   const sel = window.getSelection();
