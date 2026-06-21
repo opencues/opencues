@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — chrome rebuilt on the per-sentence + CJK-render runtime/core (chrome 0.2.24)
+
+No chrome-specific source change — the bump rebundles `@opencues/{core,runtime}` at core 0.3.43 / runtime 0.3.28 so chrome ships the per-sentence sentence-cue dispatch and the host-agnostic render fixes (`coord-map`, `defSpanLive`, the `DynDefs.set` managed-span ownership guard). `manifest.json` + `package.json` bumped in lockstep so a reload in `chrome://extensions` shows the new version string and confirms the fresh bundle loaded. Chrome's normal-`<input>` no-cycling profile still prunes sentence-cues at registration (they're cycleable); contenteditable surfaces get them.
+
 ### Fixed — CJK render correctness: host-coordinate mapping, managed-span ownership, stale-span safety (runtime 0.3.28)
 
 A cluster of fixes for translated-CJK rendering on Claude Code, where the painted text (`ctx.text`) is a *reflowed* view of the runtime's logical buffer and several features compute spans against the wrong coordinate space or claim overlapping regions. All driven by live debugging on real Japanese translations.
