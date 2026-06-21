@@ -174,7 +174,7 @@ Live LLM benchmarks live under `tests/benchmarks/` (TypeScript runners, one per 
 
 ```bash
 GROQ_API_KEY=xxx npx tsx tests/benchmarks/agent-rewrite/run.ts        # AgentRewrite cadence + merge
-GROQ_API_KEY=xxx npx tsx tests/benchmarks/transform-blank/run.ts      # 3-pass imperative pipeline
+GROQ_API_KEY=xxx npx tsx tests/benchmarks/transform-blank/prod.ts --mode 3-pass  # imperative pipeline (drives production source)
 GROQ_API_KEY=xxx npx tsx tests/benchmarks/fluid-blank/run.ts          # free-form `_` lookup
 ```
 

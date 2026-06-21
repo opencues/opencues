@@ -42,26 +42,30 @@ tests/benchmarks/
 ├── CLAUDE.md               # this file
 ├── transform-blank/        # imperative rewrite pipeline (long-output)
 │   ├── EXPERIMENTS.md      # running log of experiments + findings
-│   ├── run.ts              # main harness — `--mode <X> --parallel N`
+│   ├── prod.ts             # ★ THE benchmark — drives @opencues/core's
+│   │                       #   TransformBlankSource. `--mode fused|3-pass`
+│   │                       #   `--provider cerebras|groq` `--parallel N`.
+│   │                       #   NO bench-local prompt: EXTRACT/APPLY/VERIFY +
+│   │                       #   FUSED live ONLY in transform-blank-source.ts.
 │   ├── cases.ts            # 231 cases across 18 categories
 │   ├── groq.ts             # ▸ 5-provider router (env-var switch)
-│   ├── groq-impl.ts        # ▸ Groq adapter (the default)
-│   ├── cerebras.ts         # ▸ Cerebras adapter
-│   ├── gemini.ts           # ▸ Gemini adapter
-│   ├── claude.ts           # ▸ Claude adapter
-│   ├── openai.ts           # ▸ OpenAI adapter (incl. chat-latest)
+│   ├── groq-impl.ts        # ▸ Groq adapter (judge pin + router)
+│   ├── cerebras.ts         # ▸ Cerebras adapter (router)
+│   ├── gemini.ts           # ▸ Gemini adapter (router)
+│   ├── claude.ts           # ▸ Claude adapter (router)
+│   ├── openai.ts           # ▸ OpenAI adapter (router)
 │   ├── judge.ts            # LLM-as-judge — pinned to Groq gpt-oss-120b
-│   ├── pass1-extract.ts    # 3-pass mode — P1 EXTRACT prompt
-│   ├── pass2-apply.ts      # 3-pass mode — P2 APPLY prompt
-│   ├── pass3-verify.ts     # 3-pass mode — P3 VERIFY prompt
-│   ├── single-call.ts      # single-call mode prompt
-│   ├── fused-extract-apply.ts  # fused mode prompt (production-shaped)
-│   ├── minimal-prompts.ts  # Experiment-2 variants of P1/P2/P3
-│   ├── prod-fused.ts       # benchmark driving `@opencues/core`'s fused
-│   ├── latency-probe.ts    # 7-case latency-only probe
-│   └── archive/            # one-off repros / tuning scripts (apply-tune,
-│                           #   cursor-aware, deictic-resolve, json-consistency,
-│                           #   repro-*). See archive/README.md.
+│   ├── budget-translate-probe.ts  # niche probe (uses the router)
+│   └── archive/            # FROZEN historical harness + repros. The old
+│                           #   comparative `run.ts` + its OWN copies of the
+│                           #   prompts (pass1-extract / pass2-apply /
+│                           #   pass3-verify / single-call / fused-extract-apply
+│                           #   / fused-full / minimal-prompts / latency-probe)
+│                           #   live here — they DRIFTED from production (e.g.
+│                           #   bench APPLY lacked the FILL PLACEHOLDER rule),
+│                           #   so prod.ts (which drives the real source)
+│                           #   replaced them. Plus apply-tune, cursor-aware,
+│                           #   deictic-resolve, repro-*. See archive/README.md.
 │
 ├── fluid-blank/            # short factual lookup pipeline (short-output)
 │   ├── EXPERIMENTS.md
@@ -124,8 +128,14 @@ which adapter they ended up with.
 
 ```bash
 OPENCUES_BENCH_PROVIDER=openai-nano OPENCUES_OPENAI_MODEL=chat-latest \
-  npx tsx tests/benchmarks/transform-blank/run.ts --mode fused
+  npx tsx tests/benchmarks/fluid-blank/run.ts --mode fused
 ```
+
+> Note: the `OPENCUES_BENCH_PROVIDER` router drives the comparative
+> harnesses (fluid-blank's `run.ts`, and transform-blank's now-archived
+> `run.ts`). **transform-blank's live bench is `prod.ts`**, which selects
+> its provider with `--provider cerebras|groq` and reads keys directly —
+> it doesn't go through this router.
 
 OpenAI also has `OPENCUES_OPENAI_REASONING={none|low|medium|high|xhigh}`
 for `reasoning_effort`. Gemini has `OPENCUES_GEMINI_THINKING={none|low|high}`
@@ -254,15 +264,18 @@ provider available to real opencues users.
 ### 4. Run it
 
 ```bash
+# Router-driven comparative harness (fluid-blank; transform-blank's lives in archive/):
 OPENCUES_BENCH_PROVIDER=<NEW>-id <NEW>_API_KEY=... \
-  npx tsx tests/benchmarks/transform-blank/run.ts --mode fused --parallel 8
+  npx tsx tests/benchmarks/fluid-blank/run.ts --mode fused --parallel 8
+```
 
-# add to the matrix-v2 sweep alongside the others:
-mkdir -p tests/results/matrix-v2-with-<NEW>
-for mode in extract-apply-verify single-call fused fused-verify; do
-  OPENCUES_BENCH_PROVIDER=<NEW>-id npx tsx tests/benchmarks/transform-blank/run.ts \
-    --mode "$mode" --parallel 8 > "tests/results/matrix-v2-with-<NEW>/<NEW>_$mode.log" 2>&1
-done
+For **transform-blank**, the live bench drives the production source, so a
+new provider only needs step 3 (the `@opencues/core` PROVIDERS entry) plus
+a one-line addition to the `PROVIDERS` map in `prod.ts`, then:
+
+```bash
+<NEW>_API_KEY=... GROQ_API_KEY=... \
+  npx tsx tests/benchmarks/transform-blank/prod.ts --provider <NEW>-id --mode fused --parallel 8
 ```
 
 Then update [`BENCHMARKS.md`](BENCHMARKS.md) with the row.
@@ -274,7 +287,9 @@ Then update [`BENCHMARKS.md`](BENCHMARKS.md) with the row.
 Heavier — create a new folder under `tests/benchmarks/<name>/` with:
 
 - `cases.ts` — typed test cases
-- `run.ts` — main harness (mirror `transform-blank/run.ts` shape)
+- `run.ts` — main harness (mirror `fluid-blank/run.ts` shape; or, to
+  measure the production source directly without a bench-local prompt,
+  mirror `transform-blank/prod.ts`)
 - `judge*.ts` — judge prompt + parser, **importing `chat` from
   `./groq-impl` directly** (not the router — keep judge pinned)
 - `groq.ts` — the provider router (paste from transform-blank)

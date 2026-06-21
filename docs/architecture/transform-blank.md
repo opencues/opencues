@@ -889,21 +889,31 @@ plus exact-match short-circuits.
 
 ### Modes
 
+The live benchmark **drives the production source** (`TransformBlankSource`
+from `@opencues/core`) — there is no bench-local copy of any prompt to keep
+in sync. Edit the prompt in `transform-blank-source.ts` and this measures it:
+
 ```bash
-GROQ_API_KEY=… npx tsx tests/benchmarks/transform-blank/run.ts \
-  --mode <mode> --parallel 8 [--category <cat>] [--case <id>]
+# production FUSED (cerebras → fused):
+CEREBRAS_API_KEY=… GROQ_API_KEY=… \
+  npx tsx tests/benchmarks/transform-blank/prod.ts --mode fused --parallel 8
+# production 3-PASS (groq → 3-pass):
+GROQ_API_KEY=… \
+  npx tsx tests/benchmarks/transform-blank/prod.ts --mode 3-pass --parallel 8
 ```
 
-| Mode | Description |
+| Flag | Values |
 |---|---|
-| `extract-apply-verify` | Production 3-pass (with skip-conservative) |
-| `extract-apply` | 2-pass (no VERIFY) |
-| `rewrite` | 1-pass single prompt (legacy, ~46% accuracy) |
-| `single-call` | Combine all 3 prompts into one (~19% accuracy) |
-| `extract-apply-verify-skip-easy` | Original "skip on literal swap" rule (deprecated) |
-| `minimal-extract` | Use minimal EXTRACT prompt (Experiment 2 winner) |
-| `minimal-apply` / `minimal-verify` / `minimal-all` | Ablation variants |
-| `skip-never` / `skip-conservative` / `skip-current` / `skip-aggressive` / `skip-always` | Skip-VERIFY rule variants (Experiment 4) |
+| `--mode` | `fused` \| `3-pass` (the two production shapes) |
+| `--provider` | `cerebras` \| `groq` (default: 3-pass→groq, fused→cerebras) |
+| `--parallel` | concurrency (default 8) |
+
+> The old comparative harness — `run.ts` with its `extract-apply`,
+> `single-call`, `minimal-*`, `skip-*` and other exploratory modes, each
+> carrying its OWN copy of the prompts — has been retired to
+> `tests/benchmarks/transform-blank/archive/`. Those copies had drifted
+> from production; `prod.ts` driving the real source replaces them. The
+> mode-comparison findings remain in `EXPERIMENTS.md`.
 
 ### Parallelism
 

@@ -11,9 +11,9 @@
  *     npx tsx tests/benchmarks/transform-blank/latency-probe.ts
  */
 
-import { CASES } from './cases';
+import { CASES } from '../cases';
 import { runFused } from './fused-extract-apply';
-import { MODEL } from './openai';
+import { MODEL } from '../openai';
 
 const PROBE_IDS = [
   'literal-1',
