@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — transform-blank fused mode: "add <field> <value>" fills a matching placeholder instead of appending a label line (core 0.3.43)
+
+A transform command issued at the BOTTOM of a long document — e.g. a resignation letter ending `…+44 7700 900123 add recipient name Karen _` over a body that opens `Dear [Recipient Name],` — was **nondeterministic** on the fused path (cerebras and the other capable generalists). The model sometimes filled the placeholder (`Dear Karen,`) and sometimes **appended a literal `Recipient Name: Karen` line at the end, leaving `[Recipient Name]` untouched**. "Iterating on bits from the bottom" of a template hit this constantly.
+
+Root cause: the fused `FUSED_SYSTEM` prompt had an ADD/APPEND rule but **no placeholder-fill rule**, so "add …" followed the append rule. The 3-pass `P2_APPLY_SYSTEM` prompt (groq's path) already had a FILL PLACEHOLDER rule (#12a) — so groq filled and cerebras drifted. Fix: port a **FILL PLACEHOLDER** rule into the fused prompt with explicit **precedence over ADD/APPEND** — when the instruction supplies a value for a named field and a matching placeholder (`[Recipient Name]`, `[Name]`, `[Date]`, `___`, …) already exists, replace it in place by keyword overlap, no matter how far the placeholder sits from the trailing `_`. A genuine "add a paragraph about X" with no matching placeholder still appends (regression-checked).
+
+Verified on the real cerebras gpt-oss-120b fused path: the exact failing letter now fills the placeholder **12/12 runs** (was intermittent), all four placeholder-label variants (`[Recipient Name]` / `[Name]` / `[Your Name]` / `___`) fill, and the append-a-paragraph case still appends. Pinned by `transform-blank-placeholder-fill.test.ts` (prompt-contract guard on both prompts + fill-substitute plumbing) and three `targeted-placeholder-fill-*` benchmark cases (two fill + one append-regression, all PASS through the pinned judge). Full core suite green (1043 + 177).
+
 ### Fixed — multi-paragraph CJK sentence-cues: long all-Japanese paragraphs are now cued, highlighted, navigable, and cycleable (core 0.3.42 / runtime 0.3.27)
 
 Follow-up to the multi-paragraph fix below. On a realistic translated buffer (three Japanese paragraphs, the last a single ~180-char sentence) the later all-Japanese text still wasn't dimmed/selected. Four independent failures, each downstream of "CJK + long sentences," each fixed and verified end-to-end on Claude Code (Cerebras gpt-oss-120b):
