@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — transform-blank generative output uses real line breaks, not " / " (core 0.3.45 / chrome 0.2.28)
+
+A generated poem on claude.ai came out as one line with literal slashes — `Whispered tides of moonlit night, / silver verses on the sea, / …` — instead of line-broken verses. The log confirmed the LLM itself emitted the ` / ` (not the renderer): the fused `FUSED_SYSTEM` generative example used ` / ` as the poem line separator, so the model sometimes copied it ("write a poem" → slashes) and sometimes used real newlines ("draft a poem" → correct). Fix: the example now uses actual newlines, and the GENERATIVE rule explicitly says structure with real line breaks (poems/lists/emails) and NEVER ` / ` or literal `\n` text. (The 3-pass generative prompt already used real newlines.) Verified on cerebras: "write a poem" / "write a poem about the sea" / "give me 3 startup ideas" all emit 0 slashes and proper newlines, 3/3. Managed editors (claude.ai/ProseMirror, Gmail) render the newlines via the existing `replaceAllText` `<br>`/`<p>` path.
+
 ### Changed — chrome rebuilt on the per-sentence + CJK-render runtime/core (chrome 0.2.24)
 
 No chrome-specific source change — the bump rebundles `@opencues/{core,runtime}` at core 0.3.43 / runtime 0.3.28 so chrome ships the per-sentence sentence-cue dispatch and the host-agnostic render fixes (`coord-map`, `defSpanLive`, the `DynDefs.set` managed-span ownership guard). `manifest.json` + `package.json` bumped in lockstep so a reload in `chrome://extensions` shows the new version string and confirms the fresh bundle loaded. Chrome's normal-`<input>` no-cycling profile still prunes sentence-cues at registration (they're cycleable); contenteditable surfaces get them.
