@@ -457,6 +457,34 @@ describe('Resolver — same-text dedupe (regression: double LLM call on `_` trig
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
+  it('resetState() clears the dedupe baseline — same `_` resolves again after a focus change', async () => {
+    // Regression for the June 2026 Luma bug: chrome's normal-input mode
+    // hosts MANY independent fields per page. Tabbing field→field with a
+    // bare `_` in each meant the second field's `_` was `=== _lastInputText`
+    // (the first field's `_`) and got deduped — silently never populating,
+    // while delete+retype (passing through "") worked. The fix resets the
+    // resolver's per-buffer baseline on focus change (resetBufferState →
+    // resetState). This pins that resetState lets an identical buffer
+    // resolve again.
+    const { adapter, resolver } = setupResolver([]);
+    const spy = vi.spyOn(resolver, 'resolveAndApply');
+    resolver.subscribe();
+
+    // Field A: type `_` → resolves.
+    adapter.pushText('_');
+    await new Promise(r => setTimeout(r, 50));
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    // Focus change to field B (same content) WITHOUT a reset would dedupe.
+    // Simulate the focus-change reset the adapter performs on publishTarget.
+    resolver.resetState();
+
+    // Field B: identical `_` must resolve again (baseline cleared).
+    adapter.pushText('_');
+    await new Promise(r => setTimeout(r, 50));
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
   it('genuinely different text fires resolveAndApply twice — dedupe is text-equality only', async () => {
     const { adapter, resolver } = setupResolver([]);
     const spy = vi.spyOn(resolver, 'resolveAndApply');
