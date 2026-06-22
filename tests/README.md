@@ -28,9 +28,11 @@ pnpm --filter @opencues/runtime test                   # runtime (~1252 tests)
 # A specific pipeline bench
 GROQ_API_KEY=... npx tsx tests/benchmarks/fluid-blank/run.ts --mode fused --parallel 6
 
-# Swap providers via env var (same shape for every bench)
+# Swap providers — router-driven benches via env var:
 OPENCUES_BENCH_PROVIDER=cerebras-gpt-oss \
-  npx tsx tests/benchmarks/transform-blank/run.ts --mode fused
+  npx tsx tests/benchmarks/fluid-blank/run.ts --mode fused
+# transform-blank's prod.ts drives the production source — provider via flag:
+npx tsx tests/benchmarks/transform-blank/prod.ts --provider cerebras --mode fused
 
 # Bump max-tokens floor (e.g. for reasoning sweeps)
 OPENCUES_BENCH_MAX_TOKENS=2048 \

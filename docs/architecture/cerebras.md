@@ -140,7 +140,7 @@ Net: 5% cheaper on cache-hit cases, 6.5% more expensive on 0% acceptance. The le
 
 ### Accuracy validation
 
-The prompt's INPUT/OUTPUT content is unchanged — predicted outputs only affects HOW the server generates each token (cache lookup vs regeneration), not WHAT it generates. Bench validation against `tests/benchmarks/transform-blank/prod-fused.ts`:
+The prompt's INPUT/OUTPUT content is unchanged — predicted outputs only affects HOW the server generates each token (cache lookup vs regeneration), not WHAT it generates. Bench validation against `tests/benchmarks/transform-blank/prod.ts`:
 
 - Master baseline: 186-193/231 across runs (cerebras has ~7-case variance on this bench at temp=0 + seed=42).
 - Branch with predicted outputs (200-char gate): 186-188/231 across runs — within variance, no measurable drift.
@@ -174,7 +174,7 @@ Cerebras's `gpt-oss-120b` accepts a [`reasoning_format` parameter](https://infer
 **OpenCues passes `reasoning_format: "hidden"` for every cerebras dispatch to gpt-oss-120b.** This is conditional in `buildOpenAIBody`: gated on `provider === 'cerebras'` AND `req.model` starts with `gpt-oss`. Bench harnesses (`tests/benchmarks/fluid-blank/cerebras.ts`) mirror so future benches measure what production runs.
 
 Why hidden:
-- **Same accuracy**: same internal generation, identical content bytes. Bench-validated at 175/176 on `tests/benchmarks/fluid-blank-ambient/fused-bench.ts` and 187/231 on `transform-blank/prod-fused.ts` (both within master's variance band).
+- **Same accuracy**: same internal generation, identical content bytes. Bench-validated at 175/176 on `tests/benchmarks/fluid-blank-ambient/fused-bench.ts` and 187/231 on `transform-blank/prod.ts` (both within master's variance band).
 - **Same cost**: reasoning tokens still counted (no change in per-call billing).
 - **Same median latency** (within ±10ms noise).
 - **Significant p95 tail reduction** on short-output sources:
@@ -226,7 +226,7 @@ Both with their respective minimum-reasoning setting (gpt-oss-120b at `low`, zai
 | fluid-blank standard 137 | 137/137 (100%) | 136/137 (99.3%) | −0.7pp |
 | fluid-blank ambient in-prompt 18 | 17/18 (94.4%) | 17/18 (94.4%) | 0pp |
 | fluid-blank ambient holdout 21 | 21/21 (100%) | 14/21 (66.7%) | **−33pp** |
-| transform-blank prod-fused 231 | 186/231 (80.5%) | 182/231 (78.8%) | −1.7pp (within cerebras variance) |
+| transform-blank prod 231 | 186/231 (80.5%) | 182/231 (78.8%) | −1.7pp (within cerebras variance) |
 
 zai-glm-4.7 is competitive on in-distribution cases (within 1pp) but loses substantially on the ambient holdout — it doesn't generalize ambient patterns the prompt wasn't tuned against (ZIP codes, postcodes, callsigns, label-IS-question cases). gpt-oss-120b stays the cerebras default. zai is a viable opt-in via `blanks-llm-model: zai-glm-4.7` for users who prefer its ~50ms median latency edge over the holdout accuracy gap.
 
@@ -281,7 +281,7 @@ See [llm-routing.md](llm-routing.md) for the broader provider abstraction.
 | **zai-glm-4.7 fix** — regex match | `packages/opencues-core/src/llm-provider.ts` | `isReasoningModelName` |
 | **Cache-hit / pred-accept logging** | All three semantic-`_` sources | `onUsage:` callback in `callLLM` |
 | Recall bench (fluid-blank) | `tests/benchmarks/fluid-blank-ambient/fused-bench.ts` | 175/176 target on cerebras |
-| Accuracy bench (transform-blank) | `tests/benchmarks/transform-blank/prod-fused.ts` | ~186-193/231 master variance band |
+| Accuracy bench (transform-blank) | `tests/benchmarks/transform-blank/prod.ts` | ~186-193/231 master variance band |
 
 ---
 

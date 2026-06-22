@@ -237,9 +237,10 @@ Quick locator:
   `enableTransformBlank`, gated on `transform-blank-mode: on`)
 - **Substitution**: `packages/opencues-runtime/src/modules/resolver.ts`
   (search for `isTransformBlank`)
-- **Benchmark**: `tests/benchmarks/transform-blank/` — 212 cases, run via
-  `GROQ_API_KEY=… npx tsx tests/benchmarks/transform-blank/run.ts
-  --mode extract-apply-verify --parallel 8`
+- **Benchmark**: `tests/benchmarks/transform-blank/` — run via
+  `GROQ_API_KEY=… npx tsx tests/benchmarks/transform-blank/prod.ts
+  --mode 3-pass --parallel 8` (or `--mode fused` with `CEREBRAS_API_KEY`).
+  `prod.ts` drives the production source — no bench-local prompt copy.
 - **Experiments + design decisions**:
   `tests/benchmarks/transform-blank/EXPERIMENTS.md` — strategy
   comparison, prompt ablation, dynamic max_tokens, skip-VERIFY rule
