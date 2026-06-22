@@ -531,7 +531,21 @@ export function boot(host: HostInfo): BootResult {
     resetBufferState() {
       // Wipe set + rationale lives in boot-common.ts's
       // `resetSharedBufferState` so every band stays in lockstep.
-      resetSharedBufferState(shared);
+      //
+      // Pass the live Resolver so its per-buffer state resets too. This
+      // matters specifically for chrome's normal-input mode, where ONE
+      // page hosts MANY independent fields and focus moves between them
+      // via Tab. The Resolver's same-text dedupe (`_lastInputText`,
+      // resolver.ts) is keyed on the last buffer it saw — built for
+      // OpenCode re-emitting identical content. Across a focus change,
+      // two different fields legitimately hold the SAME text (a bare
+      // `_`): without resetting the baseline, the second field's `_` is
+      // `=== _lastInputText` and the resolver early-returns BEFORE the
+      // blank gate ever runs — so the second field silently never
+      // populates, while delete+retype (which passes through `""`) does.
+      // The Resolver isn't part of `shared` (constructed locally), so
+      // thread it in explicitly. (June 2026 — Luma multi-field forms.)
+      resetSharedBufferState({ ...shared, resolver: liveResolver ?? undefined });
       // Reset lastSeen so the next collectRenderDirectives doesn't
       // diff against a stale snapshot from the prior buffer. This
       // piece is local to the chrome boot closure (each band tracks

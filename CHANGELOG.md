@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — chrome normal-input: a `_` in the next form field after Tab now populates (runtime 0.3.29 / chrome 0.2.26)
+
+On a multi-field form (e.g. Luma RSVP), filling one field with `_` (ambient-context populate), then Tab to the next field and typing `_`, silently did nothing — but deleting and retyping the `_` worked. Root cause: the Resolver's same-text dedupe (`_lastInputText`, built for OpenCode re-emitting identical buffers) is keyed on the last buffer the resolver saw. Chrome's normal-input mode hosts MANY independent fields per page; across a Tab focus change, two different fields legitimately hold the SAME text (a bare `_`), so the second field's `_` was `=== _lastInputText` and the resolver early-returned BEFORE the blank gate ran. Delete+retype worked because it passed through `""`, breaking the dedupe.
+
+`Resolver.resetState()` already clears `_lastInputText`, and `resetSharedBufferState` already calls `resolver?.resetState()` — but chrome's `resetBufferState` (run on every `publishTarget` focus change) never passed the resolver in (it's constructed locally, not part of `shared`). Fix: thread the live resolver into `resetSharedBufferState` so the per-buffer baseline resets on focus change, exactly like `lastSeenText` already does. Pinned by a new resolver scenario test (`resetState() clears the dedupe baseline — same _ resolves again after a focus change`). CC is unaffected (single buffer, no mid-session focus changes between fields).
+
 ### Fixed — multi-paragraph CJK sentence-cues: long all-Japanese paragraphs are now cued, highlighted, navigable, and cycleable (core 0.3.42 / runtime 0.3.27)
 
 Follow-up to the multi-paragraph fix below. On a realistic translated buffer (three Japanese paragraphs, the last a single ~180-char sentence) the later all-Japanese text still wasn't dimmed/selected. Four independent failures, each downstream of "CJK + long sentences," each fixed and verified end-to-end on Claude Code (Cerebras gpt-oss-120b):
