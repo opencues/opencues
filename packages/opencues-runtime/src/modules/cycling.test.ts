@@ -240,6 +240,59 @@ describe('Cycling static-alt multi-word spans', () => {
     expect(adapter.setTextCalls.at(-1)).toContain('また一緒に遊ぼうね。');
   });
 
+  it('cycling a STALE CJK sentence-cue span ABORTS (no splice) — never corrupts the live buffer', async () => {
+    // Race-guard (DATA LOSS): if the user edited between resolve and the
+    // Ctrl+Alt+Up, the def's stored span [0,13] no longer holds its sentence.
+    // The splice trusts those offsets verbatim, so without the guard it would
+    // splice the rewrite at the wrong place. The cycle must ABORT (no setText)
+    // — NOT fall back to the word-derived whole-buffer range (which is the
+    // very wipe we're preventing). The def refreshes on the next resolve.
+    const liveBuffer = 'すっかり別のテキストに変わったよ。'; // user replaced the buffer
+    const { adapter, hlState, dynDefs } = await setupMw(liveBuffer);
+    // A def whose span/text reflect the OLD (now-gone) buffer.
+    dynDefs.set(0, {
+      originalWord: '今日はとても楽しかったよ。',
+      alternatives: ['今日はとても楽しかったよ。', '本日はとても楽しゅうございました。'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: 13,
+      blankName: 'sentence-cue:more-formal',
+    });
+    hlState.activate(0, liveBuffer);
+    const callsBefore = adapter.setTextCalls.length;
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    // No splice happened — the live buffer is untouched.
+    expect(adapter.setTextCalls.length).toBe(callsBefore);
+    expect(adapter.getText()).toBe(liveBuffer);
+  });
+
+  it('cycling a transform-blank whose buffer ends in a ZWNJ render-kick reverts cleanly (no span break)', async () => {
+    // Live bug: a CJK transform-blank output ends with the ZWNJ render-kick
+    // (looks like a trailing space). Cycling (Down → revert) used the
+    // WORD-derived range, which pulls the trailing ZWNJ into the last word and
+    // splices it inconsistently → the span breaks. Using the def's char span
+    // (which excludes the render-kick char) makes the revert exact.
+    const content = 'モダンなサイトの向上を図ります。';
+    const original = 'improve the modern site _';
+    const live = content + '‌'; // ZWNJ render-kick appended (the user's "looks like a space")
+    const { adapter, hlState, dynDefs } = await setupMw(live);
+    dynDefs.set(0, {
+      originalWord: '_',
+      alternatives: [content, original], // [current translation, revert target]
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: content.length, // span EXCLUDES the trailing ZWNJ
+      blankName: 'transform-blank',
+    });
+    hlState.activate(0, live);
+    adapter.fireKey('down', { ctrl: true, alt: true });
+    // Reverts to the original; the trailing ZWNJ is preserved after the span,
+    // and crucially the splice didn't corrupt the buffer.
+    const result = adapter.setTextCalls.at(-1)!;
+    expect(result.startsWith(original)).toBe(true);
+    expect(result).not.toContain(content); // the Japanese was fully replaced, not partially
+  });
+
   it('multi-paragraph CJK: cycling an EARLIER paragraph keeps LATER paragraphs splice-able (char-span shift)', async () => {
     // Regression (DATA CORRUPTION): in a multi-paragraph CJK buffer every
     // newline-separated paragraph is its own whitespace-word with its own

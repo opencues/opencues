@@ -329,3 +329,58 @@ describe('findSpanContaining — char-span bounding for CJK sentence-cues', () =
     expect(cssIdx + spanA!.spanLength).toBeLessThanOrEqual(httpsIdx);
   });
 });
+
+describe('DynDefs.set — managed-span ownership invariant (centralised guard)', () => {
+  const managed = (s: number, e: number, blankName = 'transform-blank') => ({
+    originalWord: 'x', alternatives: ['x'], currentIndex: 0,
+    spanStart: s, spanEnd: e, blankName,
+  });
+  const wordCue = (s: number, e: number) => ({
+    originalWord: 'w', alternatives: ['w', 'W'], currentIndex: 0,
+    spanStart: s, spanEnd: e,
+  });
+
+  it('REJECTS a plain word-cue overlapping a managed span (different key)', () => {
+    const d = new DynDefs();
+    expect(d.set(0, managed(0, 100))).toBe(true);       // owner
+    expect(d.set(5, wordCue(40, 60))).toBe(false);      // inside owner → rejected
+    expect(d.get(5)).toBeUndefined();
+    // owner intact
+    expect(d.get(0)?.blankName).toBe('transform-blank');
+  });
+
+  it('ALLOWS a word-cue that does NOT overlap the managed span', () => {
+    const d = new DynDefs();
+    d.set(0, managed(0, 50));
+    expect(d.set(9, wordCue(60, 70))).toBe(true);       // outside → allowed
+    expect(d.get(9)?.alternatives).toContain('W');
+  });
+
+  it('treats an ADJACENT word-cue (touching the edge) as non-overlapping', () => {
+    const d = new DynDefs();
+    d.set(0, managed(0, 50));
+    expect(d.set(9, wordCue(50, 55))).toBe(true);       // starts exactly at owner end
+    expect(d.get(9)).toBeDefined();
+  });
+
+  it('ALLOWS a managed owner even when it overlaps another managed span (owners arbitrated upstream)', () => {
+    const d = new DynDefs();
+    d.set(0, managed(0, 50, 'sentence-cue:more-formal'));
+    expect(d.set(1, managed(40, 90, 'transform-blank'))).toBe(true);
+    expect(d.get(1)?.blankName).toBe('transform-blank');
+  });
+
+  it('ALLOWS updating the def at the same key (refresh/cycle)', () => {
+    const d = new DynDefs();
+    d.set(0, managed(0, 100));
+    // a word-cue AT the owner's own key updates that slot — allowed (excludes self)
+    expect(d.set(0, wordCue(0, 100))).toBe(true);
+    expect(d.get(0)?.blankName).toBeUndefined();
+  });
+
+  it('ALLOWS a spanless word-cue (no real char span) regardless of managed defs', () => {
+    const d = new DynDefs();
+    d.set(0, managed(0, 100));
+    expect(d.set(5, { originalWord: 'w', alternatives: ['w'], currentIndex: 0, spanStart: 0, spanEnd: 0 })).toBe(true);
+  });
+});

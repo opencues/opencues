@@ -342,20 +342,42 @@ export class BlankLoadingAnimator {
     return list[slot.frameIdx % list.length] ?? null;
   }
 
-  /** All currently-animating slots with their CHAR ranges in `text` +
-   *  the active colour. Hosts call this from their render path to wrap
-   *  the loading char in colour (ANSI for terminals, CSS for chrome).
-   *  Returns [] when nothing is animating or no colour is configured. */
-  getActiveColoredRanges(text: string, prefer: 'rgb' | 'ansi'): Array<{ start: number; end: number; color: string; wordIndex: number }> {
+  /** All currently-animating slots with their CHAR ranges + the active colour.
+   *  Hosts call this from their render path to wrap the loading char in colour
+   *  (ANSI for terminals, CSS for chrome). Returns [] when nothing is animating
+   *  or no colour is configured.
+   *
+   *  `paintedText` is what the host actually renders (`ctx.text`). `logicalText`
+   *  is the runtime's buffer (`adapter.getText()`) the slot word indices are
+   *  relative to; pass it whenever it can differ from the painted text (a host
+   *  soft-wrap `\n` / ZWS render-kick inserts chars). Slot word positions are
+   *  computed in LOGICAL coords then mapped to painted coords, so the coloured
+   *  spinner lines up with what the user sees (the "loading colour is N chars
+   *  too early on mixed CJK+Latin" misalignment \u2014 same wrap/ZWS root cause as
+   *  the dim/highlight drift). When `logicalText` is omitted it defaults to
+   *  `paintedText` (identity map \u2014 back-compat). */
+  getActiveColoredRanges(
+    paintedText: string,
+    prefer: 'rgb' | 'ansi',
+    _logicalText: string = paintedText,
+  ): Array<{ start: number; end: number; color: string; wordIndex: number }> {
     if (this._active.size === 0) return [];
     const list = prefer === 'rgb' ? this._rgbColorsFn() : this._ansiColorsFn();
     if (!list || list.length === 0) return [];
-    const cleaned = text.replace(/[\u200B\u200C]/g, '');
+    // Word-split on CONTENT (ZWS-stripped logical) so slot word indices line up
+    // with how they were assigned, then map content→painted (a clean superset:
+    // content + the host's wrap inserts). The logical buffer's own ZWS render-
+    // kick is an insert the painted text lacks, so feeding raw logical to the
+    // map would diverge and drop the wrap shift — same coordinate fix as
+    // DimRender. (See coord-map.ts.)
     const out: Array<{ start: number; end: number; color: string; wordIndex: number }> = [];
     const re = /\S+/g;
     let m: RegExpExecArray | null;
     let idx = 0;
-    while ((m = re.exec(cleaned)) !== null) {
+    while ((m = re.exec(paintedText)) !== null) {
+      // Skip a standalone zero-width render-kick "word" so it doesn't consume a
+      // slot index (a ZWS attached to a real word stays part of that word).
+      if (/^[\u200B\u200C\uFEFF]+$/.test(m[0])) continue;
       const slot = this._active.get(idx);
       if (slot) {
         const color = list[slot.frameIdx % list.length];

@@ -330,7 +330,7 @@ blankScript: ./vol.sh
     ]);
   });
 
-  it('soft-wrapped ctx.text: dims in LOGICAL coords + dims EVERY adjacent CJK sentence (the live "P3 not highlighted" bug)', async () => {
+  it('soft-wrapped ctx.text: dim ranges are MAPPED to ctx coords (wrap newline shift) for every CJK sentence', async () => {
     // The live Claude Code bug had TWO compounding causes, both pinned here:
     //   1. CC hands onRender a SOFT-WRAPPED text (newlines inserted at
     //      terminal width) that splits long CJK words and shifts later word
@@ -381,11 +381,15 @@ blankScript: ./vol.sh
       blankName: 'sentence-cue:more-formal',
     });
     const dim = new DimRender(adapter, hlState, dynDefs, loader);
-    // compute is handed the WRAPPED text — but must dim using logical coords.
+    // compute is handed the WRAPPED text. Ranges are computed in logical coords
+    // then MAPPED to ctx (wrapped) coords so the host paints them correctly.
     const out = dim.compute({ text: wrapped, cursor: 0, externalHighlights: [] });
+    // p1 is entirely before the wrap → unchanged. The wrap newline sits inside
+    // p2 (at wrapPos), so p2's END shifts +1 in ctx coords; its start (before
+    // the wrap) is unchanged.
     expect(out?.dimRanges).toEqual([
       { start: 0, end: p1.length },
-      { start: p2Start, end: p2Start + p2.length },
+      { start: p2Start, end: p2Start + p2.length + 1 },
     ]);
   });
 
@@ -431,6 +435,105 @@ blankScript: ./vol.sh
       { start: 0, end: s1.length },
       { start: s1.length, end: buffer.length },
     ]);
+  });
+
+  it('a STALE sentence-cue def does NOT dim the new buffer (the "dim catches the words I\'m typing" regression)', async () => {
+    // Regression: a sentence-cue def (incl. a synthetic-keyed one from a
+    // spaceless-CJK collision) lingers a render or two after the buffer
+    // changes because DynDef clearing is async. The dedicated dim pass used
+    // to paint its old span over the NEW text. The race-guard skips a def
+    // whose stored span no longer matches the live buffer.
+    const { ConfigLoader } = await import('./config-loader');
+    const adapter = new MockAdapter({
+      files: { '/tips.json': JSON.stringify({ domain: 't', version: 1, concepts: [] }) },
+    });
+    // Live buffer is short new text; the lingering def points at [0,13]/[13,32]
+    // which no longer hold their sentences.
+    adapter.pushText('hello world');
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    // Stale def at a real key — its span [0,13] exceeds 'hello world' content.
+    dynDefs.set(0, {
+      originalWord: 'セキュリティは不可欠です。',
+      alternatives: ['セキュリティは不可欠です。', 'セキュリティは必須でございます。'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: 13,
+      blankName: 'sentence-cue:more-formal',
+    });
+    // Stale def at a SYNTHETIC key (the same-word-CJK-collision path) — span
+    // [13,32] is entirely past the 11-char live buffer.
+    dynDefs.set(2_000_013, {
+      originalWord: 'すべての通信はHTTPSを使用します。',
+      alternatives: ['すべての通信はHTTPSを使用します。', 'すべての通信でHTTPSを使用いたします。'],
+      currentIndex: 0,
+      spanStart: 13,
+      spanEnd: 32,
+      blankName: 'sentence-cue:more-formal',
+    });
+    const dim = new DimRender(adapter, hlState, dynDefs, loader);
+    const out = dim.compute({ text: 'hello world', cursor: 0, externalHighlights: [] });
+    // NEITHER stale span dims the new buffer.
+    expect(out?.dimRanges ?? []).toEqual([]);
+  });
+
+  it('a translated (transform-blank) CJK span dims its FULL char span, not the word-derived range', async () => {
+    // The user's case: sentence-mode OFF, a translation blank produces a
+    // mixed CJK+Latin substitute span. The whole substitute is ONE span and
+    // must dim fully. Word-count-derived ranges under-cover CJK (fewer
+    // whitespace-words than chars; wrap/truncation shifts the count further),
+    // so the char span [0,N] is the source of truth when it's live.
+    const { ConfigLoader } = await import('./config-loader');
+    const buffer = 'すべての通信は HTTPS を使用し、厳格な CSP ヘッダーを設定します。';
+    const adapter = new MockAdapter({
+      files: { '/tips.json': JSON.stringify({ domain: 't', version: 1, concepts: [] }) },
+    });
+    adapter.pushText(buffer);
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    // transform-blank substitute: one def at word 0 spanning the whole buffer.
+    dynDefs.set(0, {
+      originalWord: buffer,
+      alternatives: [buffer],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: buffer.length,
+      blankName: 'transform-blank',
+    });
+    const dim = new DimRender(adapter, hlState, dynDefs, loader);
+    const out = dim.compute({ text: buffer, cursor: 0, externalHighlights: [] });
+    // Full char span dimmed — every translated character.
+    expect(out?.dimRanges).toEqual([{ start: 0, end: buffer.length }]);
+  });
+
+  it('a STALE transform-blank span does NOT dim the new buffer (no word-derived over-cover)', async () => {
+    // Companion to the above: once the user edits, the transform-blank span is
+    // stale and must NOT paint the new buffer (the #181 "blanks catch future
+    // text" bug). It's skipped — not word-derived (which would cover all).
+    const { ConfigLoader } = await import('./config-loader');
+    const adapter = new MockAdapter({
+      files: { '/tips.json': JSON.stringify({ domain: 't', version: 1, concepts: [] }) },
+    });
+    adapter.pushText('brand new typed text');
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    dynDefs.set(0, {
+      originalWord: 'すべての通信は HTTPS を使用します。',
+      alternatives: ['すべての通信は HTTPS を使用します。'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: 20, // stale — doesn't match 'brand new typed text'
+      blankName: 'transform-blank',
+    });
+    const dim = new DimRender(adapter, hlState, dynDefs, loader);
+    const out = dim.compute({ text: 'brand new typed text', cursor: 0, externalHighlights: [] });
+    expect(out?.dimRanges ?? []).toEqual([]);
   });
 
   it('no consume-all dim when state is empty', () => {

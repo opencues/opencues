@@ -30,6 +30,22 @@ function isSentenceCueDef(def: { blankName?: string }): boolean {
   return typeof def.blankName === 'string' && def.blankName.startsWith('sentence-cue:');
 }
 
+/** True only when a sentence-cue def's stored char span still holds its
+ *  current text in the LIVE buffer. The splice trusts spanStart/spanEnd
+ *  directly (word boundaries don't bound a CJK sentence), so a stale span
+ *  would splice at the wrong offsets and CORRUPT the buffer. If the user
+ *  edited since the def was registered, this returns false and the caller
+ *  aborts the cycle — the def refreshes on the next resolve. Mirrors
+ *  DimRender's `sentenceCueSpanLive`. */
+function sentenceCueSpanLive(
+  def: { spanStart: number; spanEnd: number; currentIndex: number; alternatives: readonly string[] },
+  text: string,
+): boolean {
+  if (def.spanEnd <= def.spanStart || def.spanEnd > text.length) return false;
+  const expected = def.alternatives[def.currentIndex];
+  return typeof expected === 'string' && text.slice(def.spanStart, def.spanEnd) === expected;
+}
+
 /** Settings whose values are LLM provider ids — cycling on these
  *  filters out values whose env key isn't set so the user can't
  *  commit a broken (provider, no-key) pair via Ctrl+Alt+Up. Mirrors
@@ -685,10 +701,20 @@ export class Cycling {
       // CJK / sentence-cue: whitespace words don't bound the sentence —
       // a spaceless Japanese buffer is ONE giant word, so the word-derived
       // range would replace the WHOLE buffer and wipe every other sentence
-      // on cycle. The def's char span IS the sentence; use it. Sentence-cues
-      // are passive + re-resolved on edit (and this cycle keeps spanStart/
-      // spanEnd current below), so the span doesn't go stale the way a
-      // normal blank's can.
+      // on cycle. The def's char span IS the sentence; use it.
+      //
+      // RACE-GUARD: only if the span still matches the live buffer. The
+      // splice trusts these offsets verbatim, so a stale span (user typed
+      // between resolve and this Ctrl+Alt+Up, before the def refreshed)
+      // would splice at the wrong place and CORRUPT the buffer. We do NOT
+      // fall back to the word-derived range here — for spaceless CJK that
+      // range is the whole buffer, which is exactly the data-loss we're
+      // avoiding — so abort the cycle instead; the def refreshes on the
+      // next resolve and the user can cycle then.
+      if (!sentenceCueSpanLive(def, event.text)) {
+        this.adapter.log('debug', `Cycling: aborting sentence-cue cycle — stored span [${def.spanStart},${def.spanEnd}) no longer matches live text`);
+        return false;
+      }
       rangeStart = def.spanStart;
       rangeEnd = def.spanEnd;
     } else {

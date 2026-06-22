@@ -835,3 +835,33 @@ describe('BlankLoadingAnimator.isOurSlotChar — staleness-check helper', () => 
     expect(a.isOurSlotChar(0, 'X')).toBe(false);
   });
 });
+
+describe('getActiveColoredRanges — painted-vs-logical coordinate mapping', () => {
+  it('maps the colour range to PAINTED (ctx) coords when a wrap newline shifts it', () => {
+    // Slot word index 2 is animating. The logical buffer the slot index is
+    // relative to has no wrap; the painted ctx.text has a soft-wrap \n inserted
+    // BEFORE word 2, shifting its position +1. The colour range must land on the
+    // word in PAINTED coords, not logical (the "loading colour 1 char too early"
+    // wrap misalignment).
+    const { adapter } = makeAdapter('aa bb cc dd');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', ansiColors: () => ['red'] });
+    a.start(2); // word "cc"
+    const logical = 'aa bb cc dd';              // word2 "cc" at [6,8)
+    const wrapAt = 5;
+    const painted = logical.slice(0, wrapAt) + '\n' + logical.slice(wrapAt); // soft-wrap INSERT
+    const ranges = a.getActiveColoredRanges(painted, 'ansi', logical);
+    expect(ranges.length).toBe(1);
+    // "cc" shifted +1 in painted coords (one inserted \n before it).
+    const ccStart = painted.indexOf('cc');
+    expect(ccStart).toBe(7); // 6 logical + 1 wrap insert
+    expect(ranges[0]).toMatchObject({ start: ccStart, end: ccStart + 2, color: 'red', wordIndex: 2 });
+  });
+
+  it('identity-maps when painted === logical (no host inserts)', () => {
+    const { adapter } = makeAdapter('aa bb cc');
+    const a = new BlankLoadingAnimator({ adapter, mode: () => 'bounce', ansiColors: () => ['red'] });
+    a.start(1);
+    const ranges = a.getActiveColoredRanges('aa bb cc', 'ansi');
+    expect(ranges[0]).toMatchObject({ start: 3, end: 5, wordIndex: 1 });
+  });
+});

@@ -9,24 +9,37 @@
 
 import type { HostAdapter, Range, RenderContext, RenderDirectives, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
-import type { DynDefs } from '../state/dyn-defs';
+import type { DynDefs, WordDef } from '../state/dyn-defs';
 import type { ConfigLoader } from './config-loader';
 import type { SpanFillState } from '../state/span-fill';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
 import { splitWords } from './navigation';
+import { buildIndexMap } from './coord-map';
+
 
 /**
- * Sentence-cue defs are the only ones whose stored char span (spanStart/
- * spanEnd) should override the word-derived highlight/dim range. They're
- * passive (no splice) and re-resolved on edit, so their span stays current
- * — and it's the only correct range for spaceless / mixed CJK where
- * whitespace-words don't align with sentence boundaries. Normal blanks
- * (fluid-blank / transform-blank) actively relocate; their stored span can
- * go stale, so those keep the live word-derived range. blankName is set to
- * the source id (`sentence-cue:<name>`) at registration.
+ * Race-guard for a def's stored char span. A span-bound def (sentence-cue OR a
+ * blank substitute — fluid/transform — OR a multi-word static-alt) keeps
+ * `alternatives[currentIndex]` in the buffer at [spanStart, spanEnd). When that
+ * still holds in the LIVE buffer, the char span is the AUTHORITATIVE range to
+ * dim/highlight — it's immune to the word-count fragility that breaks CJK
+ * coverage (a spaceless/mixed Japanese substitute has fewer whitespace-words
+ * than its char length, and CC soft-wrap / viewport-truncated ctx.text shift
+ * the word count further, so the word-derived range under-covers the tail —
+ * "not all the translated text is dimmed").
+ *
+ * When it does NOT hold — the user edited/replaced the buffer and the def
+ * hasn't been cleared yet (clearing is async) — the stored span is STALE and
+ * must NOT be used, or it paints over whatever new text now sits at those
+ * offsets (the "dim catches the words I'm typing" / #181 "normal blanks catch
+ * future text" bugs). The caller then falls back to the live word-derived
+ * range. Verifying every render makes the visual layer self-correcting without
+ * waiting on re-resolve / pruneStale.
  */
-function isSentenceCueDef(def: { blankName?: string }): boolean {
-  return typeof def.blankName === 'string' && def.blankName.startsWith('sentence-cue:');
+function defSpanLive(def: WordDef, text: string): boolean {
+  if (def.spanEnd <= def.spanStart || def.spanEnd > text.length) return false;
+  const expected = def.alternatives[def.currentIndex];
+  return typeof expected === 'string' && text.slice(def.spanStart, def.spanEnd) === expected;
 }
 
 export class DimRender {
@@ -73,10 +86,25 @@ export class DimRender {
     // i.e. the host merely re-wrapped it (identical once whitespace + ZWS
     // are stripped). A genuine edit differs in content → trust ctx.text.
     const stripLayout = (s: string): string => s.replace(/[\s\u200B\u200C]/g, '');
-    const logicalText = this.adapter.getText();
-    const sameContent = logicalText.length > 0
-      && stripLayout(logicalText) === stripLayout(ctx.text);
-    const text = sameContent ? logicalText : ctx.text;
+    const stripZws = (s: string): string => s.replace(/[\u200B\u200C]/g, '');
+    // THREE coordinate spaces are in play:
+    //   1. adapter.getText() \u2014 the logical buffer + the spinner's ZWS
+    //      render-kick. The resolver computes DynDef char spans here, but
+    //      against the ZWS-STRIPPED form (spans are content-coords).
+    //   2. ctx.text \u2014 what the host PAINTS: content + host soft-wrap `\n`
+    //      (Claude Code), and NO ZWS.
+    //   3. content \u2014 neither layout artifact.
+    // Compute against CONTENT (ZWS-stripped adapter text) so def spans + word
+    // logic line up, then map content\u2192ctx.text (a clean superset: content plus
+    // the host's wrap inserts) so the painted ranges match. Using the raw
+    // adapter text as the base failed because its ZWS is an insert ctx lacks
+    // AND ctx's wrap `\n` is an insert the adapter lacks \u2014 neither is a clean
+    // subsequence of the other, so the map diverged and silently dropped the
+    // wrap shift (the "N paragraphs \u2192 N-1 misaligned chars" drift).
+    const contentText = stripZws(this.adapter.getText());
+    const sameContent = contentText.length > 0
+      && stripLayout(contentText) === stripLayout(ctx.text);
+    const text = sameContent ? contentText : ctx.text;
     const words = splitWords(text);
 
     // Dim ranges: every cue or blank word that is NOT the
@@ -125,16 +153,26 @@ export class DimRender {
           if (seenStaticAltSpans.has(span.originIdx)) continue;
           seenStaticAltSpans.add(span.originIdx);
           if (activeStaticAltSpan && activeStaticAltSpan.originIdx === span.originIdx) continue;
-          // Char span over word-derived range — but ONLY for sentence-cues
-          // (see the highlight branch below). Sentence-cues are passive and
-          // re-resolved on edit, so their stored span stays current; normal
-          // blanks (fluid/transform) actively relocate and their stored
-          // spanStart/spanEnd can go STALE, so for those we keep the
-          // word-derived range that's recomputed from the live words each
-          // render (the pre-CJK-fix behaviour).
-          if (isSentenceCueDef(span.def) && span.def.spanEnd > span.def.spanStart) {
-            dimRanges.push({ start: span.def.spanStart, end: span.def.spanEnd });
+          // Prefer the def's CHAR span over the word-derived range whenever
+          // it still matches the live buffer (`defSpanLive`). The char span is
+          // the true extent of a substitute/cue — the word-count-derived range
+          // under-covers CJK (a spaceless/mixed Japanese substitute has fewer
+          // whitespace-words than chars, and wrap/truncation shifts the count),
+          // so a translated span would dim only partially. The race-guard means
+          // a STALE span (user edited, def not yet cleared) falls back to the
+          // live word-derived range instead of painting over new text (#181).
+          if (span.def.spanEnd > span.def.spanStart) {
+            // Def carries a char span. Use it when it still matches the live
+            // buffer (the authoritative full extent — fixes partial CJK dim).
+            // When it's STALE (user edited, def not yet cleared) SKIP — do not
+            // fall back to the word-derived range, which would paint the whole
+            // new (often shorter) buffer (#181 "blanks catch future text" +
+            // the "dim catches what I'm typing" regression).
+            if (defSpanLive(span.def, text)) {
+              dimRanges.push({ start: span.def.spanStart, end: span.def.spanEnd });
+            }
           } else {
+            // No char span (e.g. a plain word-cue) — derive from live words.
             const endWord = words[span.originIdx + span.spanLength - 1];
             if (endWord) dimRanges.push({ start: w.start, end: endWord.end });
           }
@@ -143,11 +181,28 @@ export class DimRender {
 
         const lc = w.word.toLowerCase().replace(/[\u200B\u200C]/g, '');
         if (lc.length === 0) continue;
+        const defAtIdx = this.dynDefs.get(w.index);
+        // A MANAGED def (blankName) with a char span landing here means
+        // `findSpanContaining` didn't recognise it as a multi-word span \u2014 the
+        // spaceless-CJK case where the whole substitute is ONE whitespace-word
+        // (e.g. a transform-blank's Japanese output). Dim its authoritative
+        // char span when it still matches the live buffer; when STALE (a
+        // leftover def from a prior buffer) SKIP \u2014 don't dim the new word that
+        // now sits at this index ("dim leaks onto the new text" / stale-def
+        // paint-over).
+        if (defAtIdx && typeof defAtIdx.blankName === 'string'
+          && typeof defAtIdx.spanStart === 'number' && typeof defAtIdx.spanEnd === 'number'
+          && defAtIdx.spanEnd > defAtIdx.spanStart) {
+          if (defSpanLive(defAtIdx, text)) {
+            dimRanges.push({ start: defAtIdx.spanStart, end: defAtIdx.spanEnd });
+          }
+          continue;
+        }
         // DynDefs entries (LLM-resolved alts) also count as
         // navigable, so they should dim too.
         if (
           navigable.has(lc) ||
-          this.dynDefs.get(w.index)
+          defAtIdx
         ) {
           // Blank-keyword arm: a word that is ONLY a blank keyword
           // (not a word-cue match, not a registered tip in cueMap)
@@ -178,6 +233,11 @@ export class DimRender {
         : null;
       for (const { def } of this.dynDefs.sentenceCueDefs()) {
         const s = def.spanStart, e = def.spanEnd;
+        // Race-guard: skip a STALE span. DynDef clearing is async, so after an
+        // edit a sentence-cue def lingers a render or two; without this it
+        // paints its old span over the new (often shorter) buffer — the
+        // "dim catches the words I'm typing" regression. Verify against live text.
+        if (!defSpanLive(def, text)) continue;
         if (activeSpan && activeSpan.s === s && activeSpan.e === e) continue;
         if (dimRanges.some(r => r.start === s && r.end === e)) continue;
         dimRanges.push({ start: s, end: e });
@@ -229,7 +289,7 @@ export class DimRender {
         // over/under-covers the actual sentence. The def's spanStart/spanEnd
         // is the true range. For space-delimited text they're equal.
         const def = activeStaticAltSpan.def;
-        if (isSentenceCueDef(def) && def.spanEnd > def.spanStart) {
+        if (def.spanEnd > def.spanStart && defSpanLive(def, text)) {
           highlight = { start: def.spanStart, end: def.spanEnd };
         } else {
           const startWord = words[activeStaticAltSpan.originIdx];
@@ -258,7 +318,8 @@ export class DimRender {
         // span (e.g. one sentence inside a two-sentence Japanese buffer).
         // When the def's char span is narrower than the word, honour it.
         const def = this.dynDefs.get(this.hlState.wordIndex);
-        if (def && isSentenceCueDef(def) && def.spanEnd > def.spanStart && target
+        if (def && def.spanEnd > def.spanStart && target
+          && defSpanLive(def, text)
           && (def.spanStart > target.start || def.spanEnd < target.end)) {
           highlight = { start: def.spanStart, end: def.spanEnd };
         } else if (target) {
@@ -268,6 +329,23 @@ export class DimRender {
     }
 
     if (!highlight && dimRanges.length === 0) return null;
+
+    // Coordinate remap: all ranges above were computed in LOGICAL coordinates
+    // (`text` === logicalText when we chose it for correct word/def logic), but
+    // the host paints them onto `ctx.text`. Some hosts (Claude Code) insert a
+    // soft-wrap `\n` — and/or a ZWS render-kick — into ctx.text that the logical
+    // buffer lacks, so every position after that insert is shifted. Without this
+    // remap the dim/highlight drifts past the wrap point (the "off by a couple
+    // of characters with mixed CJK+Latin" misalignment — same root cause as the
+    // loading-spinner colour drift). Map each range logical→ctx. When we used
+    // ctx.text directly (genuine edit, !sameContent) the map is identity.
+    if (text !== ctx.text) {
+      const toCtx = buildIndexMap(text, ctx.text);
+      const mapRange = (r: Range): Range => ({ start: toCtx.start(r.start), end: toCtx.end(r.end) });
+      const mapped: RenderDirectives = { dimRanges: dimRanges.map(mapRange) };
+      if (highlight) mapped.highlight = mapRange(highlight);
+      return mapped;
+    }
     return { highlight, dimRanges };
   }
 

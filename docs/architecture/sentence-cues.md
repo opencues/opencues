@@ -5,17 +5,19 @@ sentence` per-cue declaration. User-facing summary:
 [`docs/features/sentence-cues.md`](../features/sentence-cues.md).
 
 This doc covers: the sentence-scope source class shape, the
-segmentation strategy + known limitations, the resolver substitution
-branch + word-cue suppression contract (design decision 4a: sentence
-wins outright), the v1 one-sentence-cue-per-resolve cap and why,
-priority placement vs other sources, and what the bench validates.
+**one-call-per-sentence** dispatch model (concurrency-capped) and why it
+replaced batching, the segmentation strategy + known limitations, the
+resolver substitution branch + word-cue suppression contract (design
+decision 4a: sentence wins outright), multi-sentence handling (the v1
+one-per-resolve cap is now lifted), priority placement vs other sources,
+and what the bench validates.
 
 Read this before touching:
 
 - `packages/opencues-core/src/sources/sentence-cue-source.ts`
 - the sentence-cue substitution branch in
   `packages/opencues-runtime/src/modules/resolver.ts`
-- the `SENTENCE_ALT_FORMAT_SPEC` constant
+- the `SINGLE_SENTENCE_FORMAT_SPEC` constant
 - the FEATURES registry's `sentence-cues-mode` entry
 - the `scope: 'words' | 'blanks' | 'sentence' | 'all'` type in
   `packages/opencues-core/src/cues-md.ts`
@@ -79,24 +81,41 @@ class SentenceCueSource implements CueSource {
 **`getCues()` flow:**
 
 1. Segment the buffer into `SentenceSpan[]` via `segmentSentences()`.
-2. One LLM call per buffer: `promptText` + `SENTENCE_ALT_FORMAT_SPEC`
-   as system; `INPUT: <buffer>` as user.
-3. Parse the output into `SentenceAltBlock[]` via
-   `parseSentenceAltOutput()`.
-4. Match each block to its sentence span by normalised text
-   equality (case-insensitive, whitespace-collapsed, trailing-punct
-   stripped).
-5. For each non-ceded block with ≥1 alt, emit a `CueResult` with:
+2. **One LLM call PER SENTENCE**, fired through a concurrency cap
+   (`SENTENCE_CUE_CONCURRENCY`, default 5, via `mapWithConcurrency`).
+   Each call sends the STABLE `promptText` + `SINGLE_SENTENCE_FORMAT_SPEC`
+   as the system message and just `SENTENCE: <one sentence>` as the user
+   message.
+3. Parse each response with `parseSingleSentenceAlts()` — read the
+   `ALT:` lines (leading-whitespace tolerant); `ALT: NONE` → ceded.
+4. **No matching step.** The call was scoped to a known sentence, so its
+   alts attach directly to that sentence's span — there is nothing to
+   align or mis-align.
+5. For each non-ceded sentence with ≥1 alt, emit a `CueResult` with:
    - `wordIndex` = sentence's first word index
    - `alternatives` = `[originalSentence, ...rewrites]`
-   - `spanStart` / `spanEnd` = char range of the sentence
+   - `spanStart` / `spanEnd` = char range of the sentence (from
+     segmentation — never from the model, so a result can't point at
+     chars the model invented)
    - `source` = `sentence-cue:<cue-name>`
    - `priority` = configured priority
    - `metadata.sentenceCue.{cueName, altCount}`
 
-Blocks with no matching sentence in the buffer are dropped — if the
-model hallucinates a sentence that wasn't in the input, the source
-has no anchor for the splice and would mis-splice.
+### Why per-sentence, not one batched call
+
+The original design batched all N sentences into one call and matched a
+labelled block back to each source span. That made the model
+**intermittently drop a sentence** (~1/3 of runs on a 4-sentence CJK
+buffer, usually the longest) — silently, no cede — and needed echo +
+numbered-slot + text-matching + retry scaffolding just to re-align the
+response. A single-sentence call can't drop "one of N". Measured: per-
+sentence is **100% coverage** vs ~66% batched, at the **same wall-clock**
+(calls run in parallel). Prefix caching is *not* the reason it's cheap —
+the per-sentence system prompt is only ~256 cacheable tokens, so
+`cached_tokens` saves negligible latency here (verified directly: genuine
+cold ≈ warm ≈ ~300–700ms/call); the speed is parallelism + fast
+generation. Principle: **never overload one call with N independent
+jobs.** See [[feedback_never_overload_llm]] equivalent in CLAUDE.md.
 
 ---
 
@@ -113,21 +132,26 @@ Each `SentenceSpan` carries `text`, `start` / `end` char offsets, and
 `firstWordIndex` (the word-array index of the first word of the
 sentence).
 
-**Strategy** (regex `[^.!?]+(?:[.!?]+(?=\s|$)|$)/g`):
+**Strategy** (regex `[\s\S]+?(?:[.!?]+(?=\s|$)|[。！？．]+|$)/g`):
 
-- Matches runs of non-terminators followed by one or more terminators
-  AND either whitespace or EOF.
-- Preserves the terminator on the sentence it terminates.
-- Tolerates EOF without trailing punctuation.
+- Matches sentence content non-greedily up to a real terminator: ASCII
+  `.!?` followed by whitespace/EOF, OR a CJK/fullwidth `。！？．`, OR EOF.
+- The content run is `[\s\S]+?` (any char) — NOT a non-terminator class —
+  so a mid-token ASCII period ("WCAG 2.1", "gpt-5.4", an IP/URL) is kept
+  as content instead of dropping the text before it.
+- CJK terminators split directly (no trailing space needed); the CJK
+  comma `、` is deliberately not a terminator.
+- **Zero-width chars** (ZWSP U+200B, ZWNJ U+200C — Claude Code's render-
+  kick) are trimmed at span edges and a zero-width-only span is skipped,
+  so a trailing `‌` is never segmented as a phantom sentence.
+- A sentence that starts MID-WORD (spaceless CJK — the prior `。` has no
+  following space) anchors to its CONTAINING word, not word 0.
 
 **Known v1 limitations** (documented, not blocking):
 
-- **Abbreviations split mid-token.** "Mr. Jones said hi." splits at
-  "Mr." Recoverable failure mode — the LLM typically emits
-  `ALT: NONE` for the fragment, so the user-visible effect is "no
-  cue on the fragment" rather than "wrong cue".
-- **URLs split at each period.** Same recovery — LLM cedes on the
-  fragments.
+- **Abbreviations split mid-token** when the period is followed by a
+  space ("Mr. Jones"). Recoverable — the per-sentence call emits
+  `ALT: NONE` for the fragment, so the effect is "no cue on the fragment".
 - **Multi-line buffers** are tolerated; newlines INSIDE a sentence
   pass as whitespace.
 
@@ -225,60 +249,43 @@ Cleaner UX to commit to one rewrite gesture per span.
 
 ---
 
-## v1 limitation: one sentence-cue per resolve pass
+## Multi-sentence handling (the v1 cap is LIFTED)
 
-The resolver caps at one sentence-cue substitution per `resolveAndApply`
-pass:
+Every sentence-cue in a resolve pass now registers — the old "one
+sentence-cue per resolve" cap was removed (June 2026). It existed to
+avoid a word/char shift cascade when multiple sentences SPLICED in one
+pass, but sentence-cue registration is **passive** (the def lands at
+`currentIndex:0` against the unmodified buffer; nothing splices until the
+user cycles), so there is no cascade to guard against. Resolver-side
+details (per-sentence word-cue suppression, same-whitespace-word CJK
+collisions re-homed to a synthetic DynDef key, the DimRender dedicated
+pass) live in [docs/architecture/spans-and-cycling.md] and the resolver
+source.
 
-```ts
-if (isSentenceCue && sentenceCueApplied) {
-  this.adapter.log('debug', `Resolver: skipping additional sentence-cue ...`);
-  continue;
-}
-```
-
-Reason: each splice shifts downstream char and word indices. A
-sentence-cue at `spanStart=20` after a prior splice at `[0,15)` that
-grew to length 25 now needs to splice at `spanStart=30` instead.
-Computing the shift across multiple in-pass splices without
-re-segmenting is fragile.
-
-v2 strategies (not implemented):
-
-- **Reverse-order application** — process sentence-cue results in
-  descending `spanStart` order so later splices don't shift earlier
-  ones. Simplest fix; requires sorting the iteration order.
-- **Single batched splice** — compute all replacements up front,
-  apply as one multi-region splice with explicit position remapping.
-  More complex but symmetric with how SpanFill handles its
-  multi-region case.
-- **Per-paragraph batching** — segment into paragraphs first, then
-  sentences within each. Apply per-paragraph in one go. Smaller
-  blast radius per LLM call too.
-
-Multi-sentence buffers today get the first sentence-cued; remaining
-sentences pass through unchanged. The bench validates per-sentence
-expectations independently, so the test surface is unaffected.
+Cycling a length-changing sentence DOES shift downstream char spans; the
+runtime handles that via `DynDefs.shiftCharSpansAfter` (see the cycling
+module), not by capping registration.
 
 ---
 
 ## Per-cue prompt + format-spec composition
 
 User authors write the INTENT in CUE.md body. The framework appends
-the OUTPUT FORMAT spec automatically:
+the per-sentence OUTPUT FORMAT spec automatically and sends it as the
+STABLE system message (one sentence per call — see the getCues flow
+above):
 
 ```ts
-const ensuredPrompt = hasFormatSpec(promptText)
+const system = hasFormatSpec(promptText)
   ? promptText.trimEnd()
-  : `${promptText.trimEnd()}\n\n${SENTENCE_ALT_FORMAT_SPEC}`;
+  : `${promptText.trimEnd()}\n\n${SINGLE_SENTENCE_FORMAT_SPEC}`;
 ```
 
-`hasFormatSpec()` detects whether the user already included
-`SENTENCE:` / `ALT:` markers in their prompt — if so, the framework
-trusts the user's output spec verbatim (used for advanced cues that
-need a different output shape).
+`hasFormatSpec()` detects whether the user already included `ALT:`
+markers in their prompt — if so, the framework trusts the user's output
+spec verbatim (used for advanced cues that need a different output shape).
 
-The `SENTENCE_ALT_FORMAT_SPEC` constant carries:
+The `SINGLE_SENTENCE_FORMAT_SPEC` constant carries:
 
 - The line-delimited block shape (`SENTENCE:` / `ALT:` / `---`).
 - The cede contract (`ALT: NONE` for fragments / code / already-meeting-intent).
@@ -312,7 +319,7 @@ Without overrides, sentence cues inherit the global `llm-provider:`
 
 | File | Pins |
 |---|---|
-| `packages/opencues-core/src/sources/sentence-cue-source.test.ts` | Segmenter offsets (single + multi-sentence + EOF tolerance), block parser (alts + cede + dedup), source class (supports cede on `_`, prose detection, priority defaults, emit shape with alternatives[0]=original, multi-sentence with mixed cede, LLM-error bail, hallucinated-sentence drop) |
+| `packages/opencues-core/src/sources/sentence-cue-source.test.ts` | Segmenter offsets (single + multi-sentence + EOF tolerance + trailing zero-width/ZWNJ trim + mid-word CJK anchor), per-sentence ALT parser (`parseSingleSentenceAlts`: alts + cede + dedup + leading-indent tolerance), `mapWithConcurrency` (order + in-flight cap), `estimateSentenceCueBudget`, source class (cede on `_`, prose detection, priority defaults, emit shape with alternatives[0]=original, one-call-per-sentence with mixed cede, every-sentence-emitted, span-from-segmentation, stable-system-prompt split, LLM-error bail) |
 | `packages/opencues-runtime/src/modules/resolver.test.ts` (`Resolver sentence-cue substitution` describe) | Splice happens, DynDef registered with correct alternatives + currentIndex=1 + blankName, race guard fires on mid-flight edits, word-cues inside sentence span are suppressed, word-cues OUTSIDE the span survive, v1 one-cue-per-resolve cap |
 | `tests/benchmarks/sentence-cues/` (bench, not unit) | Recall ≥ 80% AND precision ≥ 95% on the 30-case suite across 5 providers (`groq`, `cerebras`, `gemini-flash-lite`, `claude-haiku`, `openai-nano`) |
 | `packages/opencues-runtime/src/modules/feature-registry-alignment.test.ts` | `sentenceCuesMode` is registered AND categorized as settings-map-only (consumed by `resolver.ts:enableSentenceCues`, no `OpenCuesState` typed slot) |

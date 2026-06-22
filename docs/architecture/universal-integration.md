@@ -48,6 +48,7 @@ edits needed.
 | `ConfigSource` (word-cues) | `true` (constant) | Class identity — cues by definition surface alternatives |
 | `RoutedWordSourceGroup` | `true` (constant) | Wraps word-cue ConfigSources |
 | `LocalCueSource` (tips files) | `true` (constant) | Class identity — tips include alternatives |
+| `SentenceCueSource` (`scope: sentence`) | `true` (constant) | Ctrl+Alt+Up cycles between sentence rewrites — pruned in no-cycling profiles (chrome normal-`<input>`) |
 | `FluidBlankSource` | `false` (constant) | Single LLM answer per `_` |
 | `TransformBlankSource` | `false` (constant) | Single LLM rewrite of the buffer |
 | `BlankSource` | `false` (post-prune) | The defs map is pre-filtered before construction; the source itself never claims cycleable cues |

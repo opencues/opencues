@@ -9,19 +9,26 @@ import * as assert from 'node:assert';
 import {
   SentenceCueSource,
   segmentSentences,
-  parseSentenceAltOutput,
-  matchBlocksToSpans,
+  parseSingleSentenceAlts,
   estimateSentenceCueBudget,
+  mapWithConcurrency,
 } from './sentence-cue-source';
 import type { CueContext, HttpAdapter } from '../types';
 import { getProvider } from '../llm-provider';
 
-function makeMockAdapter(responses: string[]): HttpAdapter {
-  let i = 0;
+// Per-sentence calls fire one request per sentence (possibly concurrent), so
+// a positional response list is non-deterministic. This mock returns a
+// response based on which sentence is in the request body — `match` substrings
+// → ALT-block content. `fallback` (default `ALT: NONE`) covers anything else.
+function makeMockAdapter(
+  routes: Array<{ match: string; content: string }>,
+  fallback = 'ALT: NONE',
+): HttpAdapter {
   return {
-    post: async () => {
-      const r = responses[i++ % responses.length];
-      return JSON.stringify({ choices: [{ message: { content: r } }] });
+    post: async (_url: string, body: string) => {
+      const route = routes.find(r => body.includes(r.match));
+      const content = route ? route.content : fallback;
+      return JSON.stringify({ choices: [{ message: { content } }] });
     },
   };
 }
@@ -41,6 +48,26 @@ function ctxFromText(text: string): CueContext {
 describe('segmentSentences', () => {
   it('returns empty for empty input', () => {
     assert.deepStrictEqual(segmentSentences('', []), []);
+  });
+
+  it('a trailing zero-width render-kick char (ZWNJ U+200C) is NOT segmented as its own sentence', () => {
+    // Claude Code appends a zero-width char (ZWSP/ZWNJ) to force a repaint.
+    // A buffer ending in that kick-char must NOT segment it as a phantom
+    // final "sentence" — that inflated the count, collided on the last word,
+    // and bumped the REAL final sentence out of registration (the
+    // "実施されます。 left out" bug). Two real sentences + trailing ZWNJ = 2.
+    const text = 'すべての通信は暗号化されます。認証データは保護されます。‌';
+    const spans = segmentSentences(text, text.split(/\s+/).filter(Boolean));
+    assert.strictEqual(spans.length, 2, 'trailing ZWNJ must not count as a sentence');
+    assert.ok(spans[1].text.endsWith('保護されます。'), 'last real sentence intact');
+    assert.ok(!spans[1].text.includes('‌'), 'ZWNJ trimmed from the last span');
+  });
+
+  it('also ignores a lone ZWSP (U+200B) and BOM (U+FEFF) span', () => {
+    const text = '文章です。​﻿';
+    const spans = segmentSentences(text, text.split(/\s+/).filter(Boolean));
+    assert.strictEqual(spans.length, 1);
+    assert.strictEqual(spans[0].text, '文章です。');
   });
 
   it('a sentence starting MID-WORD (spaceless CJK 。) anchors to its containing word, not word 0', () => {
@@ -165,53 +192,64 @@ describe('segmentSentences', () => {
 });
 
 // ---------------------------------------------------------------------------
-// parseSentenceAltOutput — block parser
+// parseSingleSentenceAlts — per-sentence ALT-line parser (no SENTENCE: echo,
+// no "---", no matching: the call was scoped to ONE known sentence)
 // ---------------------------------------------------------------------------
 
-describe('parseSentenceAltOutput', () => {
-  it('parses a single block with three alts', () => {
-    const blocks = parseSentenceAltOutput(
-      'SENTENCE: thanks.\nALT: Thank you.\nALT: Many thanks.\nALT: My gratitude.\n---',
-    );
-    assert.strictEqual(blocks.length, 1);
-    assert.strictEqual(blocks[0].sentence, 'thanks.');
-    assert.deepStrictEqual(blocks[0].alts, ['Thank you.', 'Many thanks.', 'My gratitude.']);
-    assert.strictEqual(blocks[0].ceded, false);
+describe('parseSingleSentenceAlts', () => {
+  it('parses three ALT lines', () => {
+    const r = parseSingleSentenceAlts('ALT: Thank you.\nALT: Many thanks.\nALT: My gratitude.');
+    assert.deepStrictEqual(r.alts, ['Thank you.', 'Many thanks.', 'My gratitude.']);
+    assert.strictEqual(r.ceded, false);
   });
 
-  it('parses two blocks separated by ---', () => {
-    const blocks = parseSentenceAltOutput(
-      'SENTENCE: one.\nALT: One!\n---\nSENTENCE: two.\nALT: Two!\n---',
-    );
-    assert.strictEqual(blocks.length, 2);
-    assert.strictEqual(blocks[0].sentence, 'one.');
-    assert.strictEqual(blocks[1].sentence, 'two.');
+  it('treats ALT: NONE as a cede signal', () => {
+    const r = parseSingleSentenceAlts('ALT: NONE');
+    assert.strictEqual(r.ceded, true);
+    assert.deepStrictEqual(r.alts, []);
   });
 
-  it('treats ALT: NONE as a cede signal (no alts populated)', () => {
-    const blocks = parseSentenceAltOutput('SENTENCE: ok.\nALT: NONE\n---');
-    assert.strictEqual(blocks.length, 1);
-    assert.strictEqual(blocks[0].ceded, true);
-    assert.deepStrictEqual(blocks[0].alts, []);
+  it('tolerates leading whitespace (model copies indentation from the spec example)', () => {
+    // The exact regression that silently dropped an indented English block:
+    // a strict `^ALT:` anchor parsed zero alts.
+    const r = parseSingleSentenceAlts('  ALT: Thank you very much.\n  ALT: I appreciate it.');
+    assert.deepStrictEqual(r.alts, ['Thank you very much.', 'I appreciate it.']);
   });
 
-  it('de-duplicates near-identical alts within a block', () => {
-    const blocks = parseSentenceAltOutput(
-      'SENTENCE: hi.\nALT: Hello.\nALT: Hello.\nALT: Greetings.\n---',
-    );
-    assert.deepStrictEqual(blocks[0].alts, ['Hello.', 'Greetings.']);
+  it('de-duplicates identical alts', () => {
+    const r = parseSingleSentenceAlts('ALT: Hello.\nALT: Hello.\nALT: Greetings.');
+    assert.deepStrictEqual(r.alts, ['Hello.', 'Greetings.']);
   });
 
-  it('tolerates trailing whitespace on each field', () => {
-    const blocks = parseSentenceAltOutput(
-      'SENTENCE: thanks.  \nALT: Thank you. \n---',
-    );
-    assert.strictEqual(blocks[0].sentence, 'thanks.');
-    assert.deepStrictEqual(blocks[0].alts, ['Thank you.']);
+  it('returns no alts for garbage / no ALT lines', () => {
+    assert.deepStrictEqual(parseSingleSentenceAlts('whatever the model said'), { alts: [], ceded: false });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mapWithConcurrency — the "queue of sorts" that caps in-flight per-sentence
+// calls while preserving order
+// ---------------------------------------------------------------------------
+
+describe('mapWithConcurrency', () => {
+  it('preserves input order in the result', async () => {
+    const out = await mapWithConcurrency([1, 2, 3, 4, 5], 2, async (n) => n * 10);
+    assert.deepStrictEqual(out, [10, 20, 30, 40, 50]);
   });
 
-  it('returns empty array for garbage input', () => {
-    assert.deepStrictEqual(parseSentenceAltOutput('whatever'), []);
+  it('never exceeds the concurrency limit in flight', async () => {
+    let inFlight = 0, peak = 0;
+    await mapWithConcurrency(Array.from({ length: 12 }, (_, i) => i), 3, async () => {
+      inFlight++; peak = Math.max(peak, inFlight);
+      await new Promise(r => setTimeout(r, 5));
+      inFlight--;
+      return 0;
+    });
+    assert.ok(peak <= 3, `peak in-flight ${peak} must be <= 3`);
+  });
+
+  it('handles an empty list', async () => {
+    assert.deepStrictEqual(await mapWithConcurrency([], 5, async () => 1), []);
   });
 });
 
@@ -245,48 +283,6 @@ describe('estimateSentenceCueBudget', () => {
     const small = estimateSentenceCueBudget([40, 40]);
     const large = estimateSentenceCueBudget([200, 200]);
     assert.ok(large > small);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// matchBlocksToSpans — exact → longest-prefix, consume-once. The model's
-// echo of a LONG sentence drifts in the TAIL (paraphrase, normalised hyphen,
-// dropped space), so exact full-sentence equality drops exactly the long
-// sentences that need cueing most (live bug: a 180-char Japanese security
-// sentence parsed but never matched).
-// ---------------------------------------------------------------------------
-
-describe('matchBlocksToSpans', () => {
-  const mk = (sentence: string, alts: string[] = ['x']) => ({ sentence, alts, ceded: false });
-
-  it('matches when the model echo drifts only in the tail', () => {
-    const span = 'HTTPS を必須とし、厳格な Content‑Security‑Policy ヘッダーを適用し、XSS やインジェクションの脅威を軽減します';
-    // Model echoed the head verbatim but paraphrased the tail + normalised
-    // the non-breaking hyphen ‑ → - .
-    const echoed = 'HTTPS を必須とし、厳格な Content-Security-Policy ヘッダーを適用し、XSS や脅威を抑えます';
-    const [match] = matchBlocksToSpans([span], [mk(echoed, ['…formal…'])]);
-    assert.ok(match, 'tail-drifted echo should still match by shared prefix');
-    assert.deepStrictEqual(match!.alts, ['…formal…']);
-  });
-
-  it('keeps distinct sentences distinct and consumes each block once', () => {
-    const s1 = 'モダンでレスポンシブなウェブアプリケーションを設計します。';
-    const s2 = 'ダークモードのサポートと画像の遅延読み込みを実装します。';
-    const out = matchBlocksToSpans([s1, s2], [mk(s1, ['a']), mk(s2, ['b'])]);
-    assert.deepStrictEqual(out[0]!.alts, ['a']);
-    assert.deepStrictEqual(out[1]!.alts, ['b']);
-  });
-
-  it('does NOT cross-match two sentences that only share a short opener', () => {
-    // Below the MIN_PREFIX run — must NOT match (would otherwise steal the
-    // wrong block).
-    const [m] = matchBlocksToSpans(['the cat'], [mk('the dog ran far away today')]);
-    assert.strictEqual(m, undefined);
-  });
-
-  it('returns undefined for a span with no emitted block', () => {
-    const [m] = matchBlocksToSpans(['some sentence here that was dropped'], []);
-    assert.strictEqual(m, undefined);
   });
 });
 
@@ -382,11 +378,11 @@ describe('SentenceCueSource', () => {
     assert.strictEqual(src.isCycleable, true);
   });
 
-  it('getCues hit: emits one CueResult per matched sentence with alternatives=[original, ...alts]', async () => {
+  it('getCues hit: emits one CueResult per sentence with alternatives=[original, ...alts]', async () => {
     const src = new SentenceCueSource({
       ...baseConfig,
       httpAdapter: makeMockAdapter([
-        'SENTENCE: thanks a bunch.\nALT: Thank you very much.\nALT: Many thanks.\nALT: I am grateful.\n---',
+        { match: 'thanks a bunch.', content: 'ALT: Thank you very much.\nALT: Many thanks.\nALT: I am grateful.' },
       ]),
       sourceConfig: moreFormalSource,
     });
@@ -406,19 +402,39 @@ describe('SentenceCueSource', () => {
     assert.strictEqual(r.wordIndex, 0);
   });
 
-  it('getCues multi-sentence: emits one result per sentence, ceded sentences dropped', async () => {
+  it('getCues multi-sentence: one call PER sentence, ceded sentences dropped', async () => {
+    // Per-sentence calls: sentence 1 → alts, sentence 2 ("ok.") → ALT: NONE
+    // (the content-aware mock routes by the sentence in the request body).
     const src = new SentenceCueSource({
       ...baseConfig,
-      httpAdapter: makeMockAdapter([
-        'SENTENCE: thanks a bunch.\nALT: Thank you very much.\n---\nSENTENCE: ok.\nALT: NONE\n---',
-      ]),
+      httpAdapter: makeMockAdapter(
+        [{ match: 'thanks a bunch.', content: 'ALT: Thank you very much.' }],
+        'ALT: NONE', // fallback for "ok."
+      ),
       sourceConfig: moreFormalSource,
     });
     const buffer = 'thanks a bunch. ok.';
     const result = await src.getCues(ctxFromText(buffer));
-    // Only the first sentence (non-NONE) should produce a result.
+    // Only the first sentence (non-NONE) produces a result.
     assert.strictEqual(result.results.length, 1);
     assert.strictEqual(result.results[0]!.alternatives[0], 'thanks a bunch.');
+  });
+
+  it('getCues multi-sentence: EVERY sentence gets its own result (no batch-drop)', async () => {
+    // The whole point of the per-sentence refactor: 3 sentences → 3 results,
+    // none silently dropped. Each routed independently.
+    const src = new SentenceCueSource({
+      ...baseConfig,
+      httpAdapter: makeMockAdapter([
+        { match: 'First one.', content: 'ALT: The first.' },
+        { match: 'Second one.', content: 'ALT: The second.' },
+        { match: 'Third one.', content: 'ALT: The third.' },
+      ]),
+      sourceConfig: moreFormalSource,
+    });
+    const result = await src.getCues(ctxFromText('First one. Second one. Third one.'));
+    assert.strictEqual(result.results.length, 3);
+    assert.deepStrictEqual(result.results.map(r => r.alternatives[1]), ['The first.', 'The second.', 'The third.']);
   });
 
   it('getCues with LLM error: returns empty results, no throw', async () => {
@@ -441,19 +457,42 @@ describe('SentenceCueSource', () => {
     assert.strictEqual(result.results.length, 0);
   });
 
-  it('getCues: model emits sentence not in buffer → dropped', async () => {
-    // If the model hallucinates a sentence that doesn't appear in the
-    // buffer, the source MUST NOT emit a result for it (no anchor for
-    // the splice). Mirrors fluid-blank's "answer must be substitutable"
-    // contract.
+  it('span comes from SEGMENTATION, not the model — result always anchored to the buffer', async () => {
+    // Per-sentence design: the model just returns alts; the span (spanStart/
+    // spanEnd) is always the segmented sentence's range, so a result can never
+    // point at chars the model invented. alts are used verbatim.
     const src = new SentenceCueSource({
       ...baseConfig,
       httpAdapter: makeMockAdapter([
-        'SENTENCE: a completely different sentence.\nALT: An entirely formal alternative.\n---',
+        { match: 'thanks a bunch.', content: 'ALT: An entirely formal alternative.' },
       ]),
       sourceConfig: moreFormalSource,
     });
     const result = await src.getCues(ctxFromText('thanks a bunch.'));
-    assert.strictEqual(result.results.length, 0);
+    assert.strictEqual(result.results.length, 1);
+    assert.strictEqual(result.results[0]!.spanStart, 0);
+    assert.strictEqual(result.results[0]!.spanEnd, 'thanks a bunch.'.length);
+    assert.strictEqual(result.results[0]!.alternatives[0], 'thanks a bunch.');
+  });
+
+  it('per-sentence calls share a STABLE system prompt; only the sentence varies (cerebras prefix-cache contract)', async () => {
+    const systems: string[] = [];
+    const users: string[] = [];
+    const capturing: HttpAdapter = {
+      post: async (_url: string, body: string) => {
+        const parsed = JSON.parse(body) as { messages: Array<{ role: string; content: string }> };
+        systems.push(parsed.messages.find(m => m.role === 'system')!.content);
+        users.push(parsed.messages.find(m => m.role === 'user')!.content);
+        return JSON.stringify({ choices: [{ message: { content: 'ALT: x.' } }] });
+      },
+    };
+    const src = new SentenceCueSource({ ...baseConfig, httpAdapter: capturing, sourceConfig: moreFormalSource });
+    await src.getCues(ctxFromText('First one. Second one.'));
+    assert.strictEqual(systems.length, 2);
+    assert.strictEqual(systems[0], systems[1], 'system prompt must be identical across per-sentence calls');
+    // Each user message carries exactly ONE sentence.
+    assert.ok(users.some(u => u.includes('First one.')));
+    assert.ok(users.some(u => u.includes('Second one.')));
+    assert.ok(!users[0].includes('Second one.') || !users[1].includes('First one.'), 'sentences not batched into one message');
   });
 });

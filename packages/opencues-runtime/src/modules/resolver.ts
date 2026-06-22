@@ -2051,7 +2051,15 @@ export class Resolver {
         const newWords = splitWords(bufferText);
         const firstSpliceWord = newWords.find(w => w.start >= spliceStart);
         const newWordIndex = firstSpliceWord ? firstSpliceWord.index : 0;
-        const newSpanEnd = newWords.length > 0 ? newWords[newWords.length - 1].end : bufferText.length;
+        // spanEnd MUST be the full bufferText length — the def's alternatives[0]
+        // IS bufferText, so the span and the stored text have to agree. Using
+        // the last WHITESPACE-word's end (the old behaviour) fell short whenever
+        // the rewrite ended in trailing whitespace/newline, leaving the def
+        // span shorter than its own text — the dim/highlight then stopped a
+        // generation-dependent char or two before the real end (the trailing
+        // 。 / last chars not highlighted). Whole-buffer transform → spanStart 0,
+        // spanEnd = full length.
+        const newSpanEnd = bufferText.length;
 
         // Chain extension: if a prior transform-blank def's current alt
         // is still verbatim inside the pre-substitute buffer, the user
@@ -2163,7 +2171,17 @@ export class Resolver {
         spanStart: target.start,
         spanEnd: target.end,
       };
-      this.dynDefs.set(r.wordIndex, def);
+      // `DynDefs.set` enforces the managed-span ownership invariant centrally:
+      // a plain word-cue whose span overlaps an active managed owner (transform/
+      // fluid/config-intent/sentence-cue/blank) is REJECTED, so it can't fight
+      // the owner on re-resolve/cycle ("the blank span breaks when I edit", and
+      // word-cues claiming inner words of a persisted sentence-cue span). The
+      // owner can sit at a different word index — span-overlap, not index, is
+      // the test. set() returns false when it rejects.
+      if (!this.dynDefs.set(r.wordIndex, def)) {
+        this.adapter.log('debug', `Resolver: word-cue at [${def.spanStart},${def.spanEnd}) rejected — inside an active managed span`);
+        continue;
+      }
       wrote++;
     }
     // Force a paint so DimRender/Statusline pick up the new alts without

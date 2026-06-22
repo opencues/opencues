@@ -1906,6 +1906,74 @@ describe('Resolver sentence-cue substitution', () => {
       '今日は楽しかったよ。', 'また遊ぼうね。',
     ]);
   });
+
+  it('suppresses a word-cue that falls inside an active transform-blank span (the "blank span breaks on edit" bug)', async () => {
+    // word-cues-mode runs on a transform-blank's translated output. In spaceless
+    // CJK each paragraph is one giant whitespace-word, so a word-cue claims a
+    // chunk INSIDE the transform-blank span (a different word index, so the
+    // same-key blankName guard doesn't catch it) and the two overlapping defs
+    // fight on every re-resolve. A plain word-cue fully inside a managed-blank
+    // span must be dropped.
+    const buffer = 'aaa bbb ccc ddd'; // words at 0,4,8,12
+    const { adapter, dynDefs, resolver } = setupRich([
+      // word-cue at wordIndex 2 ("ccc", chars [8,11]) — inside the blank span.
+      { wordIndex: 2, word: 'ccc', alternatives: ['ccc', 'CCC'], source: 'config:grammar', priority: 60 },
+    ]);
+    adapter.pushText(buffer);
+    // Pre-existing transform-blank def owning the whole buffer (from a prior
+    // resolve — blankName-locked, persists across edits).
+    dynDefs.set(0, {
+      originalWord: buffer, alternatives: [buffer], currentIndex: 0,
+      spanStart: 0, spanEnd: buffer.length, blankName: 'transform-blank',
+    });
+    await resolver.resolveAndApply(buffer);
+    // The word-cue at index 2 was inside [0,15) → suppressed, not registered.
+    expect(dynDefs.get(2)).toBeUndefined();
+    // The transform-blank def is untouched.
+    expect(dynDefs.get(0)?.blankName).toBe('transform-blank');
+    expect(dynDefs.get(0)?.spanEnd).toBe(buffer.length);
+  });
+
+  it('does NOT suppress a word-cue OUTSIDE the blank span (a word typed after it)', async () => {
+    // The blank owns [0,11]; a word-cue on a word AFTER it must still register —
+    // suppression is only for words fully inside the managed span.
+    const buffer = 'aaa bbb ccc ddd'; // "ddd" at [12,15) is outside [0,11)
+    const { adapter, dynDefs, resolver } = setupRich([
+      { wordIndex: 3, word: 'ddd', alternatives: ['ddd', 'DDD'], source: 'config:grammar', priority: 60 },
+    ]);
+    adapter.pushText(buffer);
+    dynDefs.set(0, {
+      originalWord: 'aaa bbb ccc', alternatives: ['aaa bbb ccc'], currentIndex: 0,
+      spanStart: 0, spanEnd: 11, blankName: 'transform-blank',
+    });
+    await resolver.resolveAndApply(buffer);
+    // "ddd" is outside the span → word-cue registers normally.
+    expect(dynDefs.get(3)?.alternatives).toContain('DDD');
+  });
+
+  it('suppresses a word-cue inside a PERSISTED sentence-cue span on a later resolve (cross-pass)', async () => {
+    // The per-pass `sentenceClaims` only suppresses word-cues in the SAME
+    // resolve that registered the sentence-cue. A sentence-cue def persists
+    // (blankName-locked) across resolves; a word-cue claiming an INNER word of
+    // it on a later pass must still be suppressed — span-overlap, any owner.
+    const buffer = 'aaa bbb ccc ddd';
+    const { adapter, dynDefs, resolver } = setupRich([
+      { wordIndex: 1, word: 'bbb', alternatives: ['bbb', 'BBB'], source: 'config:grammar', priority: 60 },
+    ]);
+    adapter.pushText(buffer);
+    // Persisted sentence-cue owning [0,11] from a prior resolve.
+    dynDefs.set(0, {
+      originalWord: 'aaa bbb ccc',
+      alternatives: ['aaa bbb ccc', 'AAA BBB CCC'],
+      currentIndex: 0,
+      spanStart: 0, spanEnd: 11,
+      blankName: 'sentence-cue:more-formal',
+    });
+    await resolver.resolveAndApply(buffer);
+    // word-cue at index 1 ("bbb", [4,7)) is inside the sentence-cue span → dropped.
+    expect(dynDefs.get(1)).toBeUndefined();
+    expect(dynDefs.get(0)?.blankName).toBe('sentence-cue:more-formal');
+  });
 });
 
 // ---------------------------------------------------------------------
