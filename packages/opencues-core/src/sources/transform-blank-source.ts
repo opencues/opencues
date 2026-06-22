@@ -795,7 +795,7 @@ REWRITE: hii my name is *wilfred*.`;
 // only show up on long buffers (the reported case was ~1.3k chars).
 const FUSED_NONE_RETRY_FLOOR = 400;
 
-const FUSED_SYSTEM = `Read the input and produce a structured edit result.
+export const FUSED_SYSTEM = `Read the input and produce a structured edit result.
 
 The input is a sentence with an underscore (_) signalling either an IMPERATIVE INSTRUCTION the user wants applied to surrounding text, OR a command to manage a continuously-running agent task, OR a lookup placeholder (none of those).
 
@@ -821,7 +821,9 @@ NONE rules — bail when ANY apply:
 
 GENERATIVE — when the imperative asks to CREATE/GENERATE ("write a poem", "compose an email", "give me 5 startup ideas") AND the input is ONLY that instruction plus _ (no other body text), VERDICT=TRANSFORM, TARGET is empty, FULL_REWRITE contains the generated content.
 
-ADD / APPEND OVER A BODY — when a CREATE/ADD instruction ("add a paragraph about X", "write a conclusion", "add a section on Y", "append a note about Z", "include a disclaimer") FOLLOWS or SURROUNDS existing body text, that body IS the TARGET — NOT a generative no-target request. VERDICT=TRANSFORM, TARGET = the existing body verbatim, and FULL_REWRITE = the existing body PRESERVED VERBATIM with the newly generated content appended at the end on a new paragraph (\\n\\n). Generate the requested content; do not drop, summarise, or replace the body. The presence of body text is decisive: instruction + body → append (body preserved in FULL_REWRITE); instruction alone → generative (FULL_REWRITE is only the generated content). Never bail to NONE just because the body is long or unrelated to the add phrase.
+FILL PLACEHOLDER (takes precedence over ADD/APPEND below) — when the instruction supplies a VALUE for a named FIELD ("add recipient name Karen", "set date to Monday", "company Acme", "add my name Wilfred", "manager Karen") AND the TARGET already contains a matching placeholder — a bracketed/templated slot (\`[Recipient Name]\`, \`[Your Name]\`, \`[Name]\`, \`[Date]\`, \`[Company]\`, \`[Position]\`, \`{{name}}\`, \`<name>\`, \`___\`, \`xxx\`) or a "Label:" line with an empty value — REPLACE that placeholder IN PLACE with the value and remove the instruction. Do NOT append a new line; do NOT leave the placeholder. Match by keyword overlap between the field word(s) in the instruction and the placeholder text: "recipient name" → \`[Recipient Name]\` (or the closest name slot, e.g. \`[Name]\` / \`[Your Name]\`), "company"/"employer" → \`[Company]\`, "date"/"last day"/"end date" → \`[Date]\` / \`[Last Working Day]\`, "position"/"role"/"title" → \`[Position]\` / \`[Your Role]\`, "name" → the name slot. The value to insert is the instruction's trailing tokens after the field name. Only when NO placeholder plausibly matches does the ADD/APPEND rule below apply. This holds no matter how far the placeholder sits from the trailing _ (e.g. greeting at the top, command at the bottom of a long letter).
+
+ADD / APPEND OVER A BODY — when a CREATE/ADD instruction ("add a paragraph about X", "write a conclusion", "add a section on Y", "append a note about Z", "include a disclaimer") FOLLOWS or SURROUNDS existing body text AND no matching placeholder exists (see FILL PLACEHOLDER above), that body IS the TARGET — NOT a generative no-target request. VERDICT=TRANSFORM, TARGET = the existing body verbatim, and FULL_REWRITE = the existing body PRESERVED VERBATIM with the newly generated content appended at the end on a new paragraph (\\n\\n). Generate the requested content; do not drop, summarise, or replace the body. The presence of body text is decisive: instruction + body → append (body preserved in FULL_REWRITE); instruction alone → generative (FULL_REWRITE is only the generated content). Never bail to NONE just because the body is long or unrelated to the add phrase.
 
 AGENT TASK COMMANDS — FULL_REWRITE empty for all of these:
 - TASK_ARM: input has "agentically <X>" → INSTRUCTION = X (without "agentically").
@@ -839,7 +841,7 @@ APPLY RULES when VERDICT=TRANSFORM with non-empty TARGET:
 7. CONDITIONAL — apply ONLY where the condition holds ("change boy to girl but not in second sentence").
 8. PRESERVE PARAGRAPHS — \\n\\n breaks survive verbatim.
 9. FULL_REWRITE contains ONLY what the user should see — instruction phrase + _ deleted, all surrounding context preserved verbatim or transformed per the instruction.
-10. ADDITION instructions ("add", "append", "include", "write a <section/paragraph/conclusion>") do NOT replace the TARGET — keep the TARGET verbatim and append the new content at the end on a new paragraph (\\n\\n). The body survives; only new text is added.
+10. ADDITION instructions ("add", "append", "include", "write a <section/paragraph/conclusion>") do NOT replace the TARGET — keep the TARGET verbatim and append the new content at the end on a new paragraph (\\n\\n). The body survives; only new text is added. EXCEPTION: if the instruction supplies a VALUE for a named FIELD and a matching placeholder already exists in the TARGET, FILL that placeholder in place instead of appending (see FILL PLACEHOLDER above) — "add recipient name Karen" over a buffer containing \`[Recipient Name]\` fills the slot, it does NOT append a "Recipient Name: Karen" line.
 
 EXAMPLES:
 
@@ -898,6 +900,18 @@ TARGET: Build a responsive website with HTML, CSS, and JavaScript, with a homepa
 FULL_REWRITE: Build a responsive website with HTML, CSS, and JavaScript, with a homepage and a contact form.
 
 Security is a priority: serve the site over HTTPS, validate and sanitize all form inputs, guard against SQL injection and XSS, and store any credentials using strong, salted hashing.
+
+INPUT: Dear [Recipient Name],
+
+I am writing to formally resign, effective [Date]. add recipient name Karen _
+VERDICT: TRANSFORM
+INSTRUCTION: add recipient name Karen
+TARGET: Dear [Recipient Name],
+
+I am writing to formally resign, effective [Date].
+FULL_REWRITE: Dear Karen,
+
+I am writing to formally resign, effective [Date].
 
 INPUT: agentically correct spelling _
 VERDICT: TASK_ARM

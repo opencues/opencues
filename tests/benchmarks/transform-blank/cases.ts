@@ -1045,6 +1045,41 @@ export const CASES: TransformCase[] = [
     },
   },
   {
+    // June 2026 bug: command at the BOTTOM of a letter must FILL a matching
+    // placeholder at the TOP, not append a "Recipient Name: Karen" line.
+    id: 'targeted-placeholder-fill-1',
+    category: 'targeted',
+    input: 'Dear [Recipient Name],\n\nI am writing to formally resign, effective [Date].\n\nSincerely,\nWilfred add recipient name Karen _',
+    expected: {
+      finalText: 'Dear Karen,\n\nI am writing to formally resign, effective [Date].\n\nSincerely,\nWilfred',
+      note: 'Fill the [Recipient Name] slot in place; keep [Date] untouched; do NOT append a label line.',
+    },
+  },
+  {
+    // Generic placeholder label ([Name], not [Recipient Name]) — keyword
+    // overlap ("name") must still target it.
+    id: 'targeted-placeholder-fill-2',
+    category: 'targeted',
+    input: 'Hi [Name],\n\nThanks for your interest. set name Karen _',
+    expected: {
+      finalText: 'Hi Karen,\n\nThanks for your interest.',
+      finalTextAlternates: ['Hi Karen,\n\nThanks for your interest. '],
+      note: 'Generic [Name] slot filled via keyword overlap; command stripped.',
+    },
+  },
+  {
+    // The genuine APPEND case must NOT regress into a fill attempt:
+    // "add a paragraph about X" over a body with no matching placeholder
+    // still appends.
+    id: 'targeted-placeholder-fill-3-append-regression',
+    category: 'targeted',
+    input: 'Build a responsive website with HTML and CSS, with a homepage and a contact form. add a paragraph about security _',
+    expected: {
+      finalText: 'Build a responsive website with HTML and CSS, with a homepage and a contact form.\n\nSecurity is a priority: serve the site over HTTPS, validate and sanitize all form inputs, and guard against SQL injection and XSS.',
+      note: 'No placeholder present → ADD/APPEND still applies. Generated wording open-ended; judge grades on body-preservation + a relevant security paragraph appended.',
+    },
+  },
+  {
     id: 'targeted-2',
     category: 'targeted',
     input: 'uppercase the brand names _ i bought apple and samsung phones online last week',
