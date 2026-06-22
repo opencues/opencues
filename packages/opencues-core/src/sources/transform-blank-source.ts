@@ -441,46 +441,80 @@ RULES:
 
     NEVER return an empty REWRITE for an "add X" instruction. If no placeholder matches and no cursor anchor is available, fall back to APPEND. The user expects something to happen.
 
-    EXAMPLES:
-      INSTRUCTION: add my name Wilfred
-      TARGET: Dear [Manager's Name],\\n\\nI am writing from [Your Address]. Sincerely,\\n[Your Name]
-      REWRITE: Dear [Manager's Name],\\n\\nI am writing from [Your Address]. Sincerely,\\nWilfred
+    EXAMPLES (multi-line TARGET/REWRITE use REAL line breaks — the runtime sends the buffer with actual newlines and writes your output back verbatim; NEVER emit " / " or literal "\\n" as a separator):
 
-      INSTRUCTION: add company CS Limited
-      TARGET: Dear Karen,\\n\\nI am writing on behalf of [Company]. Regards.
-      REWRITE: Dear Karen,\\n\\nI am writing on behalf of CS Limited. Regards.
+INSTRUCTION: add my name Wilfred
+TARGET: Dear [Manager's Name],
 
-      INSTRUCTION: add last working day 31st June 2026
-      TARGET: My last working day will be [Last Working Day]. Thank you.
-      REWRITE: My last working day will be 31st June 2026. Thank you.
+I am writing from [Your Address]. Sincerely,
+[Your Name]
+REWRITE: Dear [Manager's Name],
 
-      INSTRUCTION: add position Senior Engineer
-      TARGET: I am writing to resign from my role as [Your Position] at the company.
-      REWRITE: I am writing to resign from my role as Senior Engineer at the company.
+I am writing from [Your Address]. Sincerely,
+Wilfred
 
-      INSTRUCTION: add a joke after dear line
-      TARGET: Dear Karen,\\n\\nI hope you are well.
-      REWRITE: Dear Karen,\\n\\n(Why did the manager bring a ladder to work? To reach new heights.)\\n\\nI hope you are well.
+INSTRUCTION: add company CS Limited
+TARGET: Dear Karen,
 
-      INSTRUCTION: add bolding where appropriate
-      TARGET: Dear Karen,\\n\\nI am writing to formally resign from my position as Senior Engineer at CS Limited. My last day will be 31st June 2026.\\n\\nBest regards,\\nWilfred
-      REWRITE: Dear **Karen**,\\n\\nI am writing to formally resign from my position as **Senior Engineer** at **CS Limited**. My last day will be **31st June 2026**.\\n\\nBest regards,\\n**Wilfred**
+I am writing on behalf of [Company]. Regards.
+REWRITE: Dear Karen,
 
-      INSTRUCTION: make bold the bits necessary
-      TARGET: This document contains private information about Acme Corp and is confidential.
-      REWRITE: This document contains **private information** about **Acme Corp** and is **confidential**.
+I am writing on behalf of CS Limited. Regards.
 
-      INSTRUCTION: drop "Best regards" before the name
-      TARGET: Body text.\\n\\nWilfred
-      REWRITE: Body text.\\n\\nBest regards\\nWilfred
+INSTRUCTION: add last working day 31st June 2026
+TARGET: My last working day will be [Last Working Day]. Thank you.
+REWRITE: My last working day will be 31st June 2026. Thank you.
 
-      INSTRUCTION: chuck in the date 2026-06-30
-      TARGET: The deadline is [Date].
-      REWRITE: The deadline is 2026-06-30.
+INSTRUCTION: add position Senior Engineer
+TARGET: I am writing to resign from my role as [Your Position] at the company.
+REWRITE: I am writing to resign from my role as Senior Engineer at the company.
 
-      INSTRUCTION: stick my name Wilfred in
-      TARGET: Sincerely,\\n[Your Name]
-      REWRITE: Sincerely,\\nWilfred
+INSTRUCTION: add a joke after dear line
+TARGET: Dear Karen,
+
+I hope you are well.
+REWRITE: Dear Karen,
+
+(Why did the manager bring a ladder to work? To reach new heights.)
+
+I hope you are well.
+
+INSTRUCTION: add bolding where appropriate
+TARGET: Dear Karen,
+
+I am writing to formally resign from my position as Senior Engineer at CS Limited. My last day will be 31st June 2026.
+
+Best regards,
+Wilfred
+REWRITE: Dear **Karen**,
+
+I am writing to formally resign from my position as **Senior Engineer** at **CS Limited**. My last day will be **31st June 2026**.
+
+Best regards,
+**Wilfred**
+
+INSTRUCTION: make bold the bits necessary
+TARGET: This document contains private information about Acme Corp and is confidential.
+REWRITE: This document contains **private information** about **Acme Corp** and is **confidential**.
+
+INSTRUCTION: drop "Best regards" before the name
+TARGET: Body text.
+
+Wilfred
+REWRITE: Body text.
+
+Best regards
+Wilfred
+
+INSTRUCTION: chuck in the date 2026-06-30
+TARGET: The deadline is [Date].
+REWRITE: The deadline is 2026-06-30.
+
+INSTRUCTION: stick my name Wilfred in
+TARGET: Sincerely,
+[Your Name]
+REWRITE: Sincerely,
+Wilfred
 
 EXAMPLES:
 

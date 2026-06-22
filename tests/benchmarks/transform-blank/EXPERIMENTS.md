@@ -835,3 +835,52 @@ Raw logs: `tests/results/cerebras-vs-groq-fused/`.
 
 
 
+
+---
+
+## Experiment 9 — Few-shot example formatting leaks into output (literal `\n` / `" / "`)
+
+**Context:** PR #190 + #191. A user generated a poem via `write a poem _`
+on claude.ai and got one line with literal slashes
+(`Whispered tides of moonlit night, / silver verses on the sea, / …`).
+The log confirmed the LLM emitted the ` / ` itself — the fused
+`FUSED_SYSTEM` poem example used ` / ` as its line separator, so the
+model copied it ~half the time.
+
+**Bug class:** a few-shot example's *formatting convention* leaks verbatim
+into the model's output. The runtime writes the rewrite back to the buffer
+unchanged (deterministic splice; `parseApply`/`parseFused` only `.trim()`),
+so whatever separator the example teaches is exactly what the user sees.
+
+**Two sites, same class:**
+- **Fused path** (`FUSED_SYSTEM`, cerebras/etc.) — poem example used ` / `.
+  Fixed in #190 (real newlines + a GENERATIVE rule banning ` / ` and
+  literal `\n`).
+- **3-pass path** (`P2_APPLY_SYSTEM`, groq) — every multi-line letter
+  example (`add my name Wilfred`, `add bolding`, `drop "Best regards"`)
+  used literal `\n` text. Fixed in #191. Crucially, the *real* runtime
+  input sends `TARGET` with **real newlines** (`transform-blank-source.ts`
+  P2 APPLY call), so the literal-`\n` examples didn't even match the input
+  format — converting them to real newlines fixed the bug AND aligned the
+  examples with reality.
+
+**Result:** #191 3-pass bench (groq gpt-oss-120b) = **195/242 vs 196/242
+baseline — flat** (within ±2-4 per-category run-to-run noise). #190 fused
+spot-check on cerebras: `write a poem` / `…about the sea` / `give me 3
+startup ideas` → 0 slashes, real newlines, 3/3.
+
+**Methodology note (see also memory `feedback_bench_rate_limit_phantom_
+regression`):** the first #191 run at `--parallel 8` reported a phantom
+154/242 — groq rate-limit errors swallowed as ~26ms `(bailed)` results.
+Re-run at `--parallel 4` with a same-session baseline gave the true flat
+delta. Categories that bail at the EXTRACT pass (format-transform,
+multilingual) can't be affected by a P2_APPLY edit — their collapse was
+the tell that the run was infra-polluted, not regressed.
+
+**Lesson:** never use a non-newline separator (` / `, literal `\n`, `\\n`)
+in a multi-line few-shot example whose output is written verbatim to the
+buffer. Examples must use the exact format the runtime sends and consumes.
+
+**Residual:** `P2_APPLY_SYSTEM` rule prose (~L399) still uses literal-`\n`
+*notation* to describe "insert a line break at [CURSOR]". Lower risk
+(rule, not an output example) — candidate follow-up.
