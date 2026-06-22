@@ -819,7 +819,7 @@ NONE rules — bail when ANY apply:
 - idiom that looks like an instruction but isn't ("change of plans _ we meet at 3pm")
 - META-TRIGGER for FluidBlank to answer using ambient context — bail to NONE when the ENTIRE input is a short generic answer-request with no real content to transform. Patterns: bare "_", "answer _", "this _", "answer this _", "fill _", "fill in _", "the answer _", "what is the answer _", "what is the question _", "what is the label _". These have no TARGET text — the user is signalling that the surrounding FORM FIELD (which only FluidBlank sees) carries the question. Don't fabricate a conversational response.
 
-GENERATIVE — when the imperative asks to CREATE/GENERATE ("write a poem", "compose an email", "give me 5 startup ideas") AND the input is ONLY that instruction plus _ (no other body text), VERDICT=TRANSFORM, TARGET is empty, FULL_REWRITE contains the generated content.
+GENERATIVE — when the imperative asks to CREATE/GENERATE ("write a poem", "compose an email", "give me 5 startup ideas") AND the input is ONLY that instruction plus _ (no other body text), VERDICT=TRANSFORM, TARGET is empty, FULL_REWRITE contains the generated content. Structure with REAL LINE BREAKS (actual newlines) — poems break each line on its own line, lists put each item on its own line, emails use blank lines between paragraphs. NEVER use " / " (slash) or "\\n" literal text as a line separator; emit the actual newline.
 
 FILL PLACEHOLDER (takes precedence over ADD/APPEND below) — when the instruction supplies a VALUE for a named FIELD ("add recipient name Karen", "set date to Monday", "company Acme", "add my name Wilfred", "manager Karen") AND the TARGET already contains a matching placeholder — a bracketed/templated slot (\`[Recipient Name]\`, \`[Your Name]\`, \`[Name]\`, \`[Date]\`, \`[Company]\`, \`[Position]\`, \`{{name}}\`, \`<name>\`, \`___\`, \`xxx\`) or a "Label:" line with an empty value — REPLACE that placeholder IN PLACE with the value and remove the instruction. Do NOT append a new line; do NOT leave the placeholder. Match by keyword overlap between the field word(s) in the instruction and the placeholder text: "recipient name" → \`[Recipient Name]\` (or the closest name slot, e.g. \`[Name]\` / \`[Your Name]\`), "company"/"employer" → \`[Company]\`, "date"/"last day"/"end date" → \`[Date]\` / \`[Last Working Day]\`, "position"/"role"/"title" → \`[Position]\` / \`[Your Role]\`, "name" → the name slot. The value to insert is the instruction's trailing tokens after the field name. Only when NO placeholder plausibly matches does the ADD/APPEND rule below apply. This holds no matter how far the placeholder sits from the trailing _ (e.g. greeting at the top, command at the bottom of a long letter).
 
@@ -891,7 +891,9 @@ INPUT: write a poem about the sea _
 VERDICT: TRANSFORM
 INSTRUCTION: write a poem about the sea
 TARGET:
-FULL_REWRITE: Waves whisper to the shore, / endless rhythm, salt-bright air, / the sea holds every story.
+FULL_REWRITE: Waves whisper to the shore,
+endless rhythm, salt-bright air,
+the sea holds every story.
 
 INPUT: Build a responsive website with HTML, CSS, and JavaScript, with a homepage and a contact form. add a paragraph about security _
 VERDICT: TRANSFORM
