@@ -33,6 +33,13 @@ const commonOpts = {
   },
   alias: {
     '@opencues/core/node-http-adapter': resolve(chromeRoot, 'src/stubs/node-http-adapter-stub.ts'),
+    // boot-common dynamic-imports node:fs/node:path for a direct-launch
+    // advisory that's a no-op in the browser. Production marks them
+    // `external` (esbuild.config.mjs); the harness stubs them so the
+    // dynamic import resolves cleanly instead of rejecting (a rejection
+    // disrupted the Draft.js/React harness init before window.__OC was set).
+    'node:fs': resolve(chromeRoot, 'src/stubs/node-builtin-stub.ts'),
+    'node:path': resolve(chromeRoot, 'src/stubs/node-builtin-stub.ts'),
   },
 };
 

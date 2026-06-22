@@ -178,6 +178,45 @@ describe('replaceAllText — undo-stack shape', () => {
     expect(isolatedDelete).toBe(false);
   });
 
+  it('generic contenteditable: trims a TRAILING blank-line run (no compounding newlines on cycle)', () => {
+    const target = makeContentEditable('seed');
+    publishTarget(target);
+    const spy = installMutationSpy(target);
+
+    // A body with content + a long trailing blank-line run — the shape
+    // that accumulates on Gmail when the read→write cycle feeds the
+    // editor's appended placeholder back in (June 2026 "lots of newlines").
+    replaceAllText('Dear Karen,\n\nBest,\nWilfred\n\n\n\n\n\n\n\n');
+
+    const insert = spy.ops.find(o => o.kind === 'execCommand' && o.cmd === 'insertHTML') as
+      | { kind: 'execCommand'; cmd: string; arg?: string } | undefined;
+    spy.restore();
+
+    expect(insert, 'generic path should write via insertHTML').toBeTruthy();
+    const html = insert!.arg ?? '';
+    // The interior paragraph break survives; the trailing blank run does NOT.
+    expect(html).toContain('<div>Dear Karen,</div>');
+    expect(html).toContain('<div>Wilfred</div>');
+    // No trailing empty-block run at the end of the emitted HTML.
+    expect(html).not.toMatch(/(<div><br><\/div>)+$/);
+    expect(html.endsWith('<div>Wilfred</div>')).toBe(true);
+  });
+
+  it('generic contenteditable: an interior blank line (paragraph break) is preserved', () => {
+    const target = makeContentEditable('seed');
+    publishTarget(target);
+    const spy = installMutationSpy(target);
+
+    replaceAllText('para one\n\npara two');
+
+    const insert = spy.ops.find(o => o.kind === 'execCommand' && o.cmd === 'insertHTML') as
+      | { kind: 'execCommand'; cmd: string; arg?: string } | undefined;
+    spy.restore();
+
+    // The empty line BETWEEN paragraphs must remain (one <div><br></div>).
+    expect(insert!.arg).toBe('<div>para one</div><div><br></div><div>para two</div>');
+  });
+
   it('managed editor (ProseMirror): keyboard-sim wipe is NOT used for the default path', () => {
     // ChatGPT / LinkedIn / claude.ai shape — has .ProseMirror class.
     const target = document.createElement('div');
