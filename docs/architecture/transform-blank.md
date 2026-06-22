@@ -989,6 +989,17 @@ by an experiment in `EXPERIMENTS.md`.
     just do X?", the answer should be `tests/benchmarks/transform-blank/EXPERIMENTS.md,
     Experiment N`.
 
+11. **Few-shot examples leak their formatting into the buffer — match
+    the runtime's real I/O exactly.** The rewrite is written back to the
+    buffer verbatim (deterministic splice; the parsers only `.trim()`),
+    so whatever line-separator an example teaches is what the user sees.
+    A `FUSED_SYSTEM` poem example using ` / ` made the model emit literal
+    slashes (PR #190); `P2_APPLY_SYSTEM` letter examples using literal
+    `\n` risked visible backslash-n in letters on groq, and didn't even
+    match the runtime (which sends `TARGET` with REAL newlines) (PR #191).
+    Rule: multi-line examples use real newlines — never ` / ` or literal
+    `\n`/`\\n`. See `EXPERIMENTS.md, Experiment 9`.
+
 ---
 
 ## Known limits
