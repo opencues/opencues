@@ -14,10 +14,10 @@ Every `_` slot routes through the same priority chain. The three sources race; t
 
 1. **`BlankSource` (priority 95)** — keyword-bound. If any registered blank's `blankKeywords` matches a phrase within `blankProximity` words of the `_` (default 0 — strictly adjacent), that blank claims the slot. Auto-populates with the blank's current value (script `get` or runtime-class `blankInvoke`). Up/Down cycling writes back. Examples: `volume _` → `50%`, `nvda _` → `$209.25`, `define ephemeral _` → `lasting briefly`. See [Cue-Blanks](cue-blanks.md).
 
-2. **`TransformBlankSource` (priority 93)** — imperative instructions. Three-pass LLM pipeline (EXTRACT → APPLY → VERIFY) plus a generative branch when the input has no target. Cedes to any keyword-bound match first (re-checks `blankKeywords` in `supports()`); otherwise EXTRACT classifies whether the input is actually a transform.
-   - **Transform mode**: `change boy to girl _`, `make this past tense _`, `translate to french _`. EXTRACT splits into instruction + target; APPLY rewrites; VERIFY checks for defects and repairs.
-   - **Generative mode**: `write a poem _`, `compose an email _`, `give me 5 startup ideas _`. Single-pass APPLY, no VERIFY (~700–1200ms).
-   - **Agent-task mode**: `agentically X _`, `add task X _`, `stop task _`, `current task _` route into the runtime's agent state machine via TASK_* verdicts (no APPLY/VERIFY).
+2. **`TransformBlankSource` (priority 93)** — imperative instructions. A single fused LLM call that classifies and rewrites in one pass, plus a generative branch when the input has no target. Cedes to any keyword-bound match first (re-checks `blankKeywords` in `supports()`); otherwise the fused call classifies whether the input is actually a transform.
+   - **Transform mode**: `change boy to girl _`, `make this past tense _`, `translate to french _`. The fused call classifies the instruction + target and emits the full rewritten buffer in one pass; a whole-buffer three-way merge folds it into the live text.
+   - **Generative mode**: `write a poem _`, `compose an email _`, `give me 5 startup ideas _`. Same single fused call (~700–1200ms).
+   - **Agent-task mode**: `agentically X _`, `add task X _`, `stop task _`, `current task _` route into the runtime's agent state machine via TASK_* verdicts from the fused call (no buffer rewrite).
 
    See [Transform Blanks](transform-blank.md) and the canonical reference at `docs/architecture/transform-blank.md`. Opt-in via `transform-blank-mode: on`.
 

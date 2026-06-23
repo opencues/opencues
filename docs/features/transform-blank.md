@@ -47,7 +47,7 @@ e.g.  the boy ran fast change boy to girl _
 Body first, instruction last, `_` triggers the rewrite. This is the
 only shape that works for live typing because `_` resolves the moment
 you type it — anything you'd type *after* `_` would never reach the
-source. (The EXTRACT prompt is also trained on the inverted layout
+source. (The fused prompt is also trained on the inverted layout
 `<INSTRUCTION> _ <TARGET>` so a pasted snippet shaped that way still
 parses, but you can't get there by typing.)
 
@@ -55,34 +55,36 @@ parses, but you can't get there by typing.)
 
 ## How it works
 
-Up to three sequential LLM calls (~1.4s end-to-end median on Groq
-gpt-oss-120b):
+A single fused LLM call (~700ms–1.4s end-to-end on Groq gpt-oss-120b)
+that classifies and rewrites in one pass. The `FUSED_SYSTEM` prompt
+emits four labelled lines:
 
 ```
-P1 EXTRACT    →  { instruction, target }
-                 splits "X and Y" composed instructions on "|"
-                 ("make past tense | remove pronouns")
-                 EMPTY target → routes to GENERATIVE branch (single call,
-                 no APPLY/VERIFY) for "write a poem _" / "compose an
-                 email _" type prompts
-
-P2 APPLY      →  draft rewrite of TARGET
-                 runs ONCE per pipe-part (sequential composition —
-                 output of step N feeds target of step N+1)
-
-P3 VERIFY     →  OK | REPAIR
-                 OK   → trust draft.
-                 REPAIR → emit corrected rewrite.
-                 Catches AGREEMENT (they is → they are), COVERAGE
-                 (changed first boy not all boys), STRUCTURAL
-                 COMPLETENESS (made it a "?" not a real question), and
-                 CONCEPT-SWAP propagation (cat that "barks" — cats
-                 don't bark).
-
-                 SKIPPED on literal swaps (`change X to Y`) and
-                 BrE↔AmE conversions — saves ~13% latency at no
-                 measurable accuracy cost.
+VERDICT:        TRANSFORM | NONE | TASK_ARM | TASK_ADD | TASK_STOP | TASK_SHOW
+INSTRUCTION:    the imperative phrase (_ removed), or empty
+TARGET:         the body the instruction operates on, or empty
+FULL_REWRITE:   the ENTIRE final buffer — instruction phrase + _ removed,
+                everything else preserved verbatim or transformed per the
+                instruction. Empty for NONE / TASK_* verdicts.
 ```
+
+- **Classification + rewrite happen together.** The same call decides
+  whether the input is a real transform (`VERDICT: TRANSFORM`), a bail
+  (`NONE` — e.g. `capital of france _`), or an agent-task command
+  (`TASK_*`), and — when it's a transform — emits the full rewritten
+  buffer in `FULL_REWRITE`.
+- **Composed "X and Y" instructions** pipe-join in `INSTRUCTION`
+  (`make past tense | remove pronouns`) and are applied together in the
+  one `FULL_REWRITE`.
+- **EMPTY target → generative.** `VERDICT: TRANSFORM` with an empty
+  `TARGET` routes to the generative branch (same single call); `write a
+  poem _` / `compose an email _` put the generated content in
+  `FULL_REWRITE`.
+
+Because `FULL_REWRITE` is the entire final buffer, the runtime folds it
+into the live text with a whole-buffer three-way merge against the
+original — any hunk overlapping a concurrent user edit is dropped, so
+typing during the call is never clobbered.
 
 Returns a single CueResult with:
 - `alternatives = [originalFullText, rewrittenText]`
@@ -141,8 +143,8 @@ calibration on open-ended cases ("make it casual", "match the style of
 
 ## Generative blanks
 
-When the instruction has no target text to operate on, the pipeline
-routes to a single-pass generative branch:
+When the instruction has no target text to operate on, the fused call
+routes to its generative branch:
 
 ```
 write a poem _                              → a poem
@@ -152,55 +154,47 @@ draft a thank you note for an interview _   → letter
 write a tweet announcing a product launch _ → tweet
 ```
 
-Latency is ~700-1200ms (no VERIFY pass — there's nothing to verify
-against). The generated content is the rewrite; cycle Down to revert
-to the original instruction text.
+Latency is ~700-1200ms. The generated content lands in `FULL_REWRITE`
+and is the rewrite; cycle Down to revert to the original instruction
+text.
 
 ---
 
 ## Debugging
 
-With `debug-mode: on` the runtime emits a trace at every pipeline stage
-to `/tmp/opencues.log`:
+With `debug-mode: on` the runtime emits a trace for the fused call to
+`/tmp/opencues.log`:
 
 ```
 TransformBlank: starting (textLen=42, blankIdx=4)
-TransformBlank P1 EXTRACT (351ms, max_tokens=820): verdict=TRANSFORM, instruction="change boy to girl", target="the boy ran fast"
-TransformBlank P2 APPLY: 1 step(s) — ["change boy to girl"]
-TransformBlank P2 APPLY step 1/1 (227ms, max_tokens=812): "the girl ran fast"
-TransformBlank P3 VERIFY: SKIPPED (low-stakes instruction + faithful draft)
-TransformBlank: pipeline done (578ms total) — final="the girl ran fast"
+TransformBlank FUSED (351ms, max_tokens=820, source=trailing): verdict=TRANSFORM, instruction="change boy to girl", target="the boy ran fast", rewrite="the girl ran fast"
 TransformBlank: substituting "the boy ran fast change boy to girl _" → "the girl ran fast" (origLen=42, rewriteLen=18, defAt=0)
 ```
 
-Composed instructions show one APPLY line per step:
+Composed instructions show the pipe-joined instruction in the same
+line:
 
 ```
-TransformBlank P2 APPLY: 2 step(s) — ["make past tense", "remove pronouns"]
-TransformBlank P2 APPLY step 1/2 (412ms): "I ran to the store and I bought milk"
-TransformBlank P2 APPLY step 2/2 (380ms): "ran to the store and bought milk"
+TransformBlank FUSED (412ms, max_tokens=820, source=trailing): verdict=TRANSFORM, instruction="make past tense | remove pronouns", target="I run to the store and I buy milk", rewrite="ran to the store and bought milk"
 ```
 
-Generative branch shows a different line:
+The generative branch shows an empty target:
 
 ```
-TransformBlank: GENERATIVE branch (instruction with no target)
-TransformBlank P2 GENERATIVE (724ms, max_tokens=768): "Crimson leaves drift down..."
-TransformBlank: GENERATIVE done (1156ms total) — final="Crimson leaves drift down..."
+TransformBlank FUSED (724ms, max_tokens=820, source=trailing): verdict=TRANSFORM, instruction="write a poem about autumn", target="", rewrite="Crimson leaves drift down..."
 ```
 
-REPAIR cases:
+Agent-task commands log the TASK branch (FULL_REWRITE empty):
 
 ```
-TransformBlank P3 VERIFY (340ms): verdict=REPAIR, rewrite="the children found mice"
-TransformBlank: REPAIR accepted — using verify's correction
+TransformBlank FUSED: TASK branch (TASK_ARM, instruction="add a closing paragraph")
 ```
 
-When the safety net trips (truncated/garbled REPAIR), the runtime falls
-back to the draft and logs why:
+A `NONE` verdict on a long buffer is not trusted (the bail might be
+budget-pressure under truncation), so the source cedes:
 
 ```
-TransformBlank: REPAIR rejected (truncated=false, garbled=true) — falling back to draft
+TransformBlank FUSED: verdict=NONE on a long buffer (812 chars) — not trusting it; ceding
 ```
 
 ---
@@ -209,17 +203,14 @@ TransformBlank: REPAIR rejected (truncated=false, garbled=true) — falling back
 
 | Phase | Typical | Outlier |
 |---|---|---|
-| P1 EXTRACT | 300-700ms | 2000ms |
-| P2 APPLY | 250-800ms | 1600ms (long inputs) |
-| P3 VERIFY | 300-1000ms | 1700ms |
-| P3 SKIPPED | 0ms | — |
+| Fused call | 300-1000ms | 2000ms (long inputs) |
 | Substitution | 60ms | — |
 
 | Scenario | Total |
 |---|---|
-| Best case — literal swap (skip VERIFY), `_` just typed | ~600ms |
-| **Typical** — non-literal transform | **~1.4s** |
-| Generative (no VERIFY) | ~800-1200ms |
+| Best case — literal swap, `_` just typed | ~600ms |
+| **Typical** — non-literal transform | **~700ms-1.4s** |
+| Generative | ~800-1200ms |
 | Long-input transform (700+ chars) | ~2-3.5s |
 | `_` not at trailing edge | + 500ms debounce |
 
@@ -227,8 +218,8 @@ TransformBlank: REPAIR rejected (truncated=false, garbled=true) — falling back
 
 ## Architecture references
 
-For the canonical implementation reference (3-pass design rationale,
-prompt design, parser quirks, runtime integration, all the
+For the canonical implementation reference (single-fused-call design
+rationale, prompt design, parser quirks, runtime integration, all the
 experiments) see **`docs/architecture/transform-blank.md`**.
 
 Quick locator:
@@ -238,13 +229,13 @@ Quick locator:
 - **Substitution**: `packages/opencues-runtime/src/modules/resolver.ts`
   (search for `isTransformBlank`)
 - **Benchmark**: `tests/benchmarks/transform-blank/` — run via
-  `GROQ_API_KEY=… npx tsx tests/benchmarks/transform-blank/prod.ts
-  --mode 3-pass --parallel 8` (or `--mode fused` with `CEREBRAS_API_KEY`).
+  `CEREBRAS_API_KEY=… npx tsx tests/benchmarks/transform-blank/prod.ts
+  --provider cerebras` (or `--provider groq` with `GROQ_API_KEY`).
   `prod.ts` drives the production source — no bench-local prompt copy.
 - **Experiments + design decisions**:
   `tests/benchmarks/transform-blank/EXPERIMENTS.md` — strategy
-  comparison, prompt ablation, dynamic max_tokens, skip-VERIFY rule
-  tuning
+  comparison, prompt ablation, dynamic max_tokens, and the Experiment 10
+  retirement of the old 3-pass pipeline
 - **Priority chain**: BlankSource (95) > TransformBlankSource (93) >
   FluidBlankSource (92) > shipped spelling cue (80, ConfigSource)
 

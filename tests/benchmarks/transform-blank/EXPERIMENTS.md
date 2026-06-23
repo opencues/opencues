@@ -884,3 +884,57 @@ buffer. Examples must use the exact format the runtime sends and consumes.
 **Residual:** `P2_APPLY_SYSTEM` rule prose (~L399) still uses literal-`\n`
 *notation* to describe "insert a line break at [CURSOR]". Lower risk
 (rule, not an output example) — candidate follow-up.
+
+---
+
+## Experiment 10 — Retiring the 3-pass pipeline (single fused route)
+
+**Context:** TransformBlank shipped two encodings of the same behaviour —
+FUSED (one call, default for cerebras/openai/gemini/anthropic) and 3-PASS
+(EXTRACT→APPLY→VERIFY, groq only), picked by `pickTransformBlankMode`. The
+routing rested on a stale "groq collapses on the single wide call (~18%)"
+number from an OLD crude single-call prompt (Experiment 1's `single-call`
+row), not today's matured `FUSED_SYSTEM`. The two paths had drifted —
+rules added to one silently missing from the other (the `make X bold`
+gap, PR #195) — which motivated re-checking whether the split still earned
+its keep.
+
+**Hypothesis:** on the current `FUSED_SYSTEM`, groq handles the single call
+well enough that the 3-pass pipeline (3× the latency, a whole second prompt
+surface to maintain) is no longer justified.
+
+**Head-to-head (groq gpt-oss-120b, same session, same prompt, 243 cases):**
+
+| Config | Total | linked-concepts | long-text | negative | format | Avg latency | calls |
+|---|---|---|---|---|---|---|---|
+| fused @ low | 197 (81.1%) | 3/10 | 26/40 | 10/10 | 29/30 | **615ms** | 1 |
+| fused @ medium | 199 (81.9%) | 5/10 | 27/40 | 8/10 | 30/30 | 1146ms | 1 |
+| 3-pass | 201 (82.7%) | 8/10 | 32/40 | 3/10 | 25/30 | 984ms | 3 |
+
+**Findings:**
+1. **"groq sucks at fused" is false.** fused @ low (197) ≈ 3-pass (201) —
+   ~1.6pp, inside run-to-run variance — and fused is the FASTEST (615ms vs
+   984ms, ~35% quicker; 1 call vs 3).
+2. **The 3-pass edge is a category TRADE, not a uniform win.** 3-pass wins
+   linked-concepts + long-text; fused wins negative + format. The
+   decomposition (not reasoning depth) is what helps those two categories.
+3. **Bumping groq reasoning to `medium` is a trap.** ~2× latency
+   (615→1146ms) for +2 cases; doesn't recover linked-concepts to 3-pass's
+   level. Worst of both worlds — slower than fused-low AND 3-pass.
+
+**Decision:** retire the 3-pass pipeline. `pickTransformBlankMode`, the
+`P1_EXTRACT`/`P1_5_RESOLVE`/`P2_APPLY`/`P2_GENERATIVE`/`P3_VERIFY` prompts,
+their parsers/schemas, cursor-sentinel injection (TransformBlank's use),
+and the `transform-blank-mode` pipeline override are all deleted.
+TransformBlank now runs ONE fused call on every provider. Cost: groq loses
+~1.6pp (concentrated in linked-concepts/long-text) for ~35% lower latency,
+one prompt instead of two, and the elimination of the entire two-path
+drift class (and the 4 fused/3-pass parity gaps that came with it). Since
+groq isn't the recommended default (cerebras is), the blast radius is
+small.
+
+**Known regression accepted:** caret-relative + deictic instructions ("add
+a line break here", "shorten it", "make this line bold") and the
+heading/list/anchored-insert/auto-styling capabilities lived ONLY in the
+3-pass `P2_APPLY`. They are now absent on all providers until re-authored
+directly into `FUSED_SYSTEM` as fix-forward work. (`docs/architecture/transform-blank.md`.)

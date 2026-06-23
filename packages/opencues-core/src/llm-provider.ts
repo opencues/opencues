@@ -647,8 +647,8 @@ const OPENAI: ProviderAdapter = {
   // gpt-5.4-mini (released March 2026) — mid-tier in the OpenAI lineup
   // at $0.75/$4.50 per 1M in/out. Picked as the default over gpt-5.4-nano
   // ($0.20/$1.25) after the May 2026 benchmark sweep showed nano
-  // collapsing on multi-paragraph (0% on transform-blank 3-pass/fused/
-  // fused-verify) and long-form rewrites — the reasoning model spends
+  // collapsing on multi-paragraph (0% on transform-blank fused) and
+  // long-form rewrites — the reasoning model spends
   // its `max_completion_tokens` budget on internal reasoning and runs out
   // before producing the rest of the output. Mini has enough budget to
   // actually complete the task on long inputs. Users who want the cheaper

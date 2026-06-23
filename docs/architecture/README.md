@@ -41,7 +41,7 @@ its area + the "read before editing" guard.
 
 | Doc | What it covers |
 |---|---|
-| [`transform-blank.md`](transform-blank.md) | Imperative-blank pipeline (EXTRACT → APPLY → VERIFY). 3-pass design rationale, prompt design, sequential composition for "X and Y", skip-VERIFY rules, parser quirks. Companion: `tests/benchmarks/transform-blank/EXPERIMENTS.md`. |
+| [`transform-blank.md`](transform-blank.md) | Imperative-blank pipeline — a single fused LLM call (classify + rewrite in one pass) plus whole-buffer three-way merge. Design rationale, prompt design, composition for "X and Y", parser quirks. Companion: `tests/benchmarks/transform-blank/EXPERIMENTS.md`. |
 | [`fluid-config.md`](fluid-config.md) | Optional `fluid-config-mode` feature — semantic `_` → settings change classifier at priority 94. Routes ONLY to FEATURES-registry scalars. Three structural defences + the known precision boundary (FluidBlank eagerness on imperatives). |
 | [`sentence-cues.md`](sentence-cues.md) | `scope: sentence` cues + the `sentence-cues-mode` scalar. Passive DynDef contract — buffer is never modified without a keystroke. Managed-span overlap guard. Forward-compat KNOWN_SCOPES allowlist. |
 | [`ambient-context.md`](ambient-context.md) | Optional `ambient-context-mode` — fluid-blank receives sanitized field metadata (label/placeholder/page-title) for disambiguating lookups. Chrome-only gatherer; host-agnostic at the HostAdapter contract. |

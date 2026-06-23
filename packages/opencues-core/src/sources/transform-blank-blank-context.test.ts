@@ -7,8 +7,8 @@
  *
  *   1. CATALOG INJECTION — when `CueContext.blankContext` is populated,
  *      the transform-flavoured BLANK CONTEXT block is appended to the
- *      APPLY user message (and the GENERATIVE / FUSED equivalents).
- *      Off mode = no block reaches the LLM (structural no-op).
+ *      single fused call's SYSTEM message. Off mode = no block reaches
+ *      the LLM (structural no-op).
  *
  *   2. TOKEN RESOLUTION — when the LLM emits a token from the catalog
  *      (`[WEATHER LONDON]`), the post-processor substitutes the live
@@ -65,17 +65,6 @@ function makeFusedSource(httpAdapter: HttpAdapter): TransformBlankSource {
     endpoint: 'https://api.cerebras.ai/v1/chat/completions',
     apiKey: 'test-key',
     model: 'test-model',
-    mode: 'fused',
-  });
-}
-
-function make3PassSource(httpAdapter: HttpAdapter): TransformBlankSource {
-  return new TransformBlankSource({
-    httpAdapter,
-    provider: getProvider('groq')!,
-    endpoint: 'https://api.groq.com/openai/v1/chat/completions',
-    apiKey: 'test-key',
-    model: 'test-model',
   });
 }
 
@@ -107,89 +96,57 @@ function ctxNoBlank(text: string): CueContext {
   };
 }
 
-const extract = (instruction: string, target: string) =>
-  `VERDICT: TRANSFORM\nINSTRUCTION: ${instruction}\nTARGET: ${target}`;
-const apply = (rewrite: string) => `REWRITE: ${rewrite}`;
-const verify = (verdict: 'OK' | 'REPAIR', rewrite = '') =>
-  `VERDICT: ${verdict}\nREWRITE: ${rewrite}`;
 const fused = (instruction: string, target: string, rewrite: string, verdict = 'TRANSFORM') =>
   `VERDICT: ${verdict}\nINSTRUCTION: ${instruction}\nTARGET: ${target}\nFULL_REWRITE: ${rewrite}`;
-
-function findCallContaining(recorded: readonly RecordedCall[], needle: string): RecordedCall | undefined {
-  // Search BOTH user and system messages — June 2026 the BLANK CONTEXT
-  // and IDENTITY catalog blocks moved system-side for cerebras prefix-
-  // cache hits. Tests previously asserted user-message presence; now
-  // we accept either role.
-  return recorded.find(c => c.userMessage.includes(needle) || c.systemMessage.includes(needle));
-}
 
 // ───────────────────────────────────────────────────────────────────────
 // 1. CATALOG INJECTION
 // ───────────────────────────────────────────────────────────────────────
 
-describe('TransformBlankSource — BLANK CONTEXT catalog injection (3-pass APPLY)', () => {
-  it('appends BLANK CONTEXT block to APPLY user message when blankContext is present', async () => {
+describe('TransformBlankSource — BLANK CONTEXT catalog injection (FUSED)', () => {
+  it('appends BLANK CONTEXT block to the fused SYSTEM message when blankContext is present', async () => {
     const recorded: RecordedCall[] = [];
-    const responses = [
-      extract('uppercase', 'hello'),
-      apply('HELLO'),
-      verify('OK'),
-    ];
-    const src = make3PassSource(makeRecordingAdapter(responses, recorded));
+    const responses = [fused('uppercase', 'hello', 'HELLO')];
+    const src = makeFusedSource(makeRecordingAdapter(responses, recorded));
     await src.getCues(ctxWithBlank('uppercase _ hello'));
-    const applyCall = findCallContaining(recorded, 'BLANK CONTEXT');
-    assert.ok(applyCall, `expected a call with BLANK CONTEXT block. Calls: ${recorded.map(c => c.userMessage.slice(0, 60)).join(' | ')}`);
-    assert.ok(applyCall.userMessage.includes('[WEATHER LONDON]'), 'catalog should list [WEATHER LONDON]');
-    assert.ok(applyCall.userMessage.includes('[CRYPTO BTC]'), 'catalog should list [CRYPTO BTC]');
-    assert.ok(applyCall.userMessage.includes('[STOCKS NVDA]'), 'catalog should list [STOCKS NVDA]');
+    assert.strictEqual(recorded.length, 1, 'exactly one fused call');
+    const sys = recorded[0].systemMessage;
+    assert.ok(sys.includes('BLANK CONTEXT'),
+      `fused SYSTEM message should carry the BLANK CONTEXT block. Got: ${sys.slice(0, 400)}`);
+    assert.ok(sys.includes('[WEATHER LONDON]'), 'catalog should list [WEATHER LONDON]');
+    assert.ok(sys.includes('[CRYPTO BTC]'), 'catalog should list [CRYPTO BTC]');
+    assert.ok(sys.includes('[STOCKS NVDA]'), 'catalog should list [STOCKS NVDA]');
   });
 
   it('safe mode: catalog lists tokens + descriptions but NOT live values', async () => {
     const recorded: RecordedCall[] = [];
-    const responses = [extract('uppercase', 'hi'), apply('HI'), verify('OK')];
-    const src = make3PassSource(makeRecordingAdapter(responses, recorded));
+    const src = makeFusedSource(makeRecordingAdapter([fused('uppercase', 'hi', 'HI')], recorded));
     await src.getCues(ctxWithBlank('uppercase _ hi', 'safe'));
-    const applyCall = findCallContaining(recorded, 'BLANK CONTEXT');
-    assert.ok(applyCall, 'expected an APPLY call carrying the BLANK CONTEXT block');
-    assert.ok(!applyCall.userMessage.includes('18°C'),
-      `safe mode must NOT leak live values to LLM. Got: ${applyCall.userMessage.slice(0, 400)}`);
-    assert.ok(!applyCall.userMessage.includes('$63,568'),
+    const sys = recorded[0].systemMessage;
+    assert.ok(sys.includes('BLANK CONTEXT'), 'expected a fused call carrying the BLANK CONTEXT block');
+    assert.ok(!sys.includes('18°C'),
+      `safe mode must NOT leak live values to LLM. Got: ${sys.slice(0, 400)}`);
+    assert.ok(!sys.includes('$63,568'),
       'safe mode must NOT leak BTC price to LLM');
   });
 
   it('raw mode: catalog inlines current values', async () => {
     const recorded: RecordedCall[] = [];
-    const responses = [extract('uppercase', 'hi'), apply('HI'), verify('OK')];
-    const src = make3PassSource(makeRecordingAdapter(responses, recorded));
+    const src = makeFusedSource(makeRecordingAdapter([fused('uppercase', 'hi', 'HI')], recorded));
     await src.getCues(ctxWithBlank('uppercase _ hi', 'raw'));
-    const applyCall = findCallContaining(recorded, 'BLANK CONTEXT');
-    assert.ok(applyCall, 'expected an APPLY call carrying the BLANK CONTEXT block');
-    assert.ok(applyCall.userMessage.includes('current value: London: 18°C Overcast'),
-      `raw mode should inline values. Got snippet: ${applyCall.userMessage.slice(0, 400)}`);
+    const sys = recorded[0].systemMessage;
+    assert.ok(sys.includes('current value: London: 18°C Overcast'),
+      `raw mode should inline values. Got snippet: ${sys.slice(0, 400)}`);
   });
 
   it('omits BLANK CONTEXT entirely when blankContext is undefined', async () => {
     const recorded: RecordedCall[] = [];
-    const responses = [extract('uppercase', 'hi'), apply('HI'), verify('OK')];
-    const src = make3PassSource(makeRecordingAdapter(responses, recorded));
+    const src = makeFusedSource(makeRecordingAdapter([fused('uppercase', 'hi', 'HI')], recorded));
     await src.getCues(ctxNoBlank('uppercase _ hi'));
     for (const c of recorded) {
-      assert.ok(!c.userMessage.includes('BLANK CONTEXT'),
-        `off mode must produce NO BLANK CONTEXT block. Got: ${c.userMessage.slice(0, 200)}`);
+      assert.ok(!c.userMessage.includes('BLANK CONTEXT') && !c.systemMessage.includes('BLANK CONTEXT'),
+        `off mode must produce NO BLANK CONTEXT block. Got system: ${c.systemMessage.slice(0, 200)}`);
     }
-  });
-});
-
-describe('TransformBlankSource — BLANK CONTEXT catalog injection (FUSED)', () => {
-  it('appends BLANK CONTEXT block to FUSED user message', async () => {
-    const recorded: RecordedCall[] = [];
-    const responses = [fused('compose email about today\'s weather', '', 'The weather is [WEATHER LONDON].')];
-    const src = makeFusedSource(makeRecordingAdapter(responses, recorded));
-    await src.getCues(ctxWithBlank('compose email about today\'s weather _'));
-    const fusedCall = findCallContaining(recorded, 'BLANK CONTEXT');
-    assert.ok(fusedCall, 'expected a FUSED call carrying the BLANK CONTEXT block');
-    // June 2026: catalog block is in the SYSTEM message (cerebras prefix-cache optimisation).
-    assert.ok(fusedCall.systemMessage.includes('[WEATHER LONDON]'), 'catalog should list [WEATHER LONDON]');
   });
 });
 

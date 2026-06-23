@@ -100,12 +100,12 @@ Model support: `gpt-oss-120b` (the model we route to) + `zai-glm-4.7`.
 
 ### When OpenCues uses it
 
-**TransformBlank fused path only**, gated at `extractText.length >= 200`. The prediction passed is `extractText` — the original buffer body that's about to be rewritten. For typical TransformBlank flows (fix typos, make formal, shorten, rephrase) the output preserves 50-95% of input byte content; cerebras's speculation engine accepts those tokens from the prediction cache instead of regenerating.
+**TransformBlank only** (its single fused call), gated at `extractText.length >= 200`. The prediction passed is `extractText` — the original buffer body that's about to be rewritten. For typical TransformBlank flows (fix typos, make formal, shorten, rephrase) the output preserves 50-95% of input byte content; cerebras's speculation engine accepts those tokens from the prediction cache instead of regenerating.
 
 **Why TransformBlank only:**
 - FluidBlank output is novel ("capital of france _" → "Paris" has zero prediction signal)
 - ConfigIntent output is short (~20 tokens; speculation window doesn't engage)
-- 3-pass mode (groq) — predicted outputs is a cerebras feature, doesn't apply
+- Predicted outputs is a cerebras-only feature, so it only applies when the configured provider is cerebras (groq runs the same fused call but gets no prediction acceleration)
 
 **Why a length gate:**
 
@@ -161,8 +161,8 @@ A `pred-accepted=0` line on a long input is a regression signal — something ab
 
 - **FluidBlank**: output is short and novel; speculation window doesn't fire usefully.
 - **ConfigIntent**: output is short and the gated pre-filter catches most calls before dispatch anyway.
-- **3-pass TransformBlank (groq)**: predicted outputs is cerebras-specific.
-- **TransformBlank fused with `extractText.length < 200`**: generation-style triggers like `draft an email _` have no body to predict against; rejected tokens would just be cost overhead.
+- **Any provider other than cerebras**: predicted outputs is cerebras-specific, so the same fused TransformBlank call on groq/etc. gets no prediction acceleration.
+- **TransformBlank with `extractText.length < 200`**: generation-style triggers like `draft an email _` have no body to predict against; rejected tokens would just be cost overhead.
 
 ## Hidden reasoning format on gpt-oss-120b
 

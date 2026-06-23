@@ -720,10 +720,6 @@ export class Resolver {
       transformBlank: featureLLM(settings, 'transform-blank'),
       configIntent: featureLLM(settings, 'fluid-config'),
       sentenceCues: featureLLM(settings, 'sentence-cues'),
-      // Pipeline mode for TransformBlank — `auto` (default) picks per
-      // provider via pickTransformBlankMode(); `fused` / `3-pass` force
-      // it. Set in CUES.md frontmatter as `transform-blank-mode:`.
-      transformBlankMode: settings.get('transform-blank-mode'),
       // Spelling is a regular config-driven cue now (defaults/cues/
       // spelling.md). It inherits per-cue / `word-cues-*` / global LLM
       // routing through the standard ConfigSource path — no per-feature
@@ -1987,10 +1983,13 @@ export class Resolver {
 
         // ── Two substitute paths ───────────────────────────────────────
         //
-        // 3-pass (transformTarget set): the LLM rewrote ONLY the target
-        // span, so the runtime splices [spliceStart, spliceEnd) computed
-        // above. Structurally safe because APPLY only saw the target as
-        // input — it can't produce content outside that span.
+        // Bounded-target (transformTarget set): the source rewrote ONLY
+        // the target span, so the runtime splices [spliceStart, spliceEnd)
+        // computed above. Structurally safe because the LLM only saw the
+        // target as input — it can't produce content outside that span.
+        // (TransformBlank's fused path does NOT set transformTarget — it
+        // emits the whole buffer — so it always takes the merge path
+        // below; this branch remains for any future bounded-span source.)
         //
         // Fused / whole-buffer (transformTarget empty/undefined): the
         // LLM emitted the WHOLE final buffer in FULL_REWRITE. We diff
