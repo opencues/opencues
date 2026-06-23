@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — salvaged runtime fixes from #162 (event-bridge inject order, CC cursor wiring, fluid-blank.completed race) (runtime 0.3.30 / core 0.3.48)
+
+The three host-agnostic runtime fixes from #162 (`refactor/unify-semantic-blank-splice`), cherry-picked clean onto current master. The PR's contested core — the SPAN-splice unification (`27ba00b`) and the `VariantCache<T>` extraction (`c5f9f63`) — was **deliberately NOT included**: it predates the model-override removal (#165, so it carries 15+ references to the deleted `model-aliases` module) and reverts the fused-TransformBlank fill-placeholder/newline work (#185/#190/#191). That part needs a re-author on master, not a merge. These three are independent and orthogonal to that:
+
+- **event-bridge `text:` inject order so CC's blank-`_` gate fires.** The bridge's `text:` command called `adapter.setText(decoded)` BEFORE the synthetic `notifyTextChange(...,'user')`. On hosts whose `setText` eagerly updates `lastSeenText` (CC v2.1 does), the textChange event's `previousText` equalled `text`, so the Resolver's explicit-`_` gate saw no fresh underscore and masked the `_` from FluidBlank / TransformBlank / ConfigIntent — every blank-firing `text:` inject silently no-op'd on CC. Fix: `notifyTextChange` first (CC's `lastSeenText` still holds the OLD buffer), then `setText`. Shell + Gemini bind `setText` directly so the reorder is invisible to them.
+- **wire `onCursorChange` on CC + prev-stale fix for the bridge's `cursor:` command.** CC's adapter band had no `cursorHandlers` / `registerCursorChangeHandler` / `notifyCursorChange`, so `adapter.onCursorChange` was undefined and cursor-navigate mode silently no-op'd on the synthetic-inject path. Wired end-to-end; same prev-stale order fix applied to the `cursor:` command.
+- **emit `fluid-blank.completed` from the resolver post-substitute** so observers (statusline, agentic tests) see an event marking a final, user-visible buffer state, never an intermediate loading-animation frame (race fix for agentic scenario 65).
+
+Core + runtime unit suites green (177 vitest + node:test core; 1694 runtime). No transform-blank/fluid-blank prompt or substitute-mechanism change, so LLM output is unaffected.
+
 ### Fixed — 3-pass transform-blank APPLY examples use real line breaks, not literal `\n` (core 0.3.46 / chrome 0.2.29)
 
 Follow-up to the fused-path fix below — the same few-shot-mimicry bug class, on the **3-pass** (groq) path. The `P2_APPLY_SYSTEM` prompt's multi-line letter examples (`add my name Wilfred`, `add bolding where appropriate`, etc.) showed multi-paragraph TARGET/REWRITE using literal `\n` text (`Dear Karen,\n\nWilfred`). But the runtime sends the buffer TARGET with **real newlines** (`transform-blank-source.ts:1962`) and writes the model's REWRITE back verbatim (`parseApply` only `.trim()`s — no literal-`\n`→newline conversion anywhere). So a model that copied the example convention would splice visible `\n` characters into a user's letter on groq. Fix: every multi-line example now uses real newlines (matching the actual runtime input format) and a header line forbids ` / ` and literal `\n` separators — mirroring the GENERATIVE rule added to the fused path. The fused path was already correct (its letter examples use real newlines).
@@ -113,23 +123,6 @@ Follow-up to the CJK segmenter fix. Even with sentences correctly split, the **h
 Version bump for the chrome extension to ship a fresh bundle baking in the core changes from this cycle (provider capability model, FluidBlank FILL/WIPE + MODE fixes, ConfigIntent language-invariant command boundary + parallel span, Anthropic prompt caching). No chrome `src/` changes — `manifest.json` + `package.json` bumped in lockstep so a reload in `chrome://extensions` is confirmable.
 
 ### Fixed — FluidBlank MODE field no longer corrupts the buffer or breaks identity-context binding (core 0.3.38)
-### Fix — wire `onCursorChange` on CC + apply prev-stale fix to bridge's `cursor:` command (runtime 0.3.19)
-
-CC's adapter (`adapters/cc/v2.1/`) didn't expose `onCursorChange` at all — its band has no `cursorHandlers` list, no `registerCursorChangeHandler` binding, no `notifyCursorChange` impl. So `adapter.onCursorChange` was undefined, `Navigation.subscribe()` fell through to its "highlight follows typing only" degradation path, and the cursor-navigate mode (plain Right arrow auto-activates the highlight on the cursor's word) silently no-op'd. Surfaced when scenario 30 in the agentic harness — locked to CC, gated on cursor-navigate — actually ran for the first time after the launcher + inject-order fixes shipped.
-
-Wired the path end-to-end: HostBindings gets `registerCursorChangeHandler`; `ClaudeCodeV21Adapter` gets `onCursorChange`; boot.ts holds a `cursorHandlers` array; the EventBridge bindings's `notifyCursorChange` fires them after stamping `lastSeenCursor`. CC's cli.js still doesn't surface REAL user cursor moves (the parent React tree has no onCursorChange path), so real arrow-key navigation on CC still degrades the same way — the fix unblocks the synthetic-inject path the agentic harness uses to PIN the contract, and lays the wiring for any future native cursor-event source.
-
-Same trip: applied the prev-stale fix from the `text:` order swap to the bridge's `cursor:` command — `notifyCursorChange` runs BEFORE `adapter.setCursorOffset`, so any host that eagerly updates `lastSeenCursor` (CC does) doesn't poison the event's view of the prior position.
-
-### Fix — event-bridge `text:` inject order so CC's blank-`_` gate fires (runtime 0.3.19)
-
-The bridge's `text:` command (used by every agentic-harness scenario via `inject text:` / `injectAppend`) called `adapter.setText(decoded)` BEFORE the synthetic `notifyTextChange(...,'user')`. On hosts whose `setText` eagerly updates the adapter's `lastSeenText` (CC v2.1 does — to drift-track React re-render echoes), that meant `lastSeenText` was already the NEW buffer by the time `notifyTextChange` constructed the textChange event. The event's `previousText` therefore equalled `text`, and the Resolver's explicit-`_` gate saw `blankJustTyped=false` + `freshUnderscoreInserted=false` — so the `_` was masked from FluidBlank / TransformBlank / ConfigIntent. Every blank-firing `text:` inject silently no-op'd on CC.
-
-Surfaced after fixing the agentic harness's CC PTY launcher: with CC scenarios actually running, scenarios 100 / 102 / 103 (prior-content preservation regressions for the SPAN-unify refactor) all timed out waiting for `transform-blank.completed` / `selector-satellite.started`. The runtime IS firing on real user keystrokes on CC — this only broke the synthetic-inject path the agentic harness uses.
-
-Fix: swap the order — `notifyTextChange` first (CC's `lastSeenText` still holds the OLD buffer; previousText is correct), then `setText` (CC's own runtime-source event now sees prev === new and skips the redundant fire). Shell + Gemini bind `setText` directly to the host's setter so they don't touch `lastSeenText`; the reorder is invisible to them. 12/12 stable on shell, 9/9 stable on CC across the affected scenarios. Same one-line fix unblocks future CC-host agentic test work.
-
-### Refactor — extract `VariantCache<T>` primitive shared by all three semantic-`_` sources (core 0.3.28)
 
 The agentic suite caught two regressions from the FILL/WIPE `MODE` field (0.3.33):
 
