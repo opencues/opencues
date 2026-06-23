@@ -141,6 +141,71 @@ for the full strategy comparison.
 
 ---
 
+## Two-path parity (fused vs 3-pass) — a maintenance invariant
+
+⚠️ **The same behaviour is encoded TWICE and the two copies drift.** Read
+this before editing any prompt in `transform-blank-source.ts`.
+
+`pickTransformBlankMode()` chooses the path by provider:
+
+| Path | Constant(s) | Providers | Shape |
+|---|---|---|---|
+| **FUSED** | `FUSED_SYSTEM` (one call) | cerebras / openai / gemini / anthropic — **the default for most users** | classify + extract + apply in a single prompt |
+| **3-PASS** | `P1_EXTRACT_SYSTEM` + `P1_5_RESOLVE_DEICTICS_SYSTEM` + `P2_APPLY_SYSTEM` + `P2_GENERATIVE_APPLY_SYSTEM` + `P3_VERIFY_SYSTEM` | groq | one prompt per phase |
+
+**THE INVARIANT:** any behaviour rule (a new instruction kind, a NONE-bail
+condition, a styling/formatting rule, a placeholder syntax, even a load-
+bearing example) added to ONE path MUST be mirrored into the OTHER, OR the
+asymmetry MUST be recorded below as intentional. Adding a rule to only one
+encoding is a **silent regression on the other provider set** — and since
+fused is the default, a 3-pass-only rule breaks the majority of users.
+
+This is not hypothetical: `make X bold _` mis-fired on every non-groq
+provider for a long time because the markdown-styling rule lived only in
+3-pass `P2_APPLY` rule 11; fused had nothing (PR #195). The bench did not
+catch it (see the bench caveat below).
+
+### Intentional asymmetries (NOT to be "fixed")
+
+- **P3 VERIFY is fused-skipped by design.** The verify/repair pass exists
+  only in 3-pass. Experiment 6 showed it net-hurts on non-groq providers
+  (it "corrects" valid drafts into wrong output). Fused deliberately has
+  no verify step. Do not port it.
+
+### Known parity GAPS (fix-forward candidates — 3-pass has, fused lacks)
+
+These were found auditing the two paths after the bold fix. All degrade
+the **default** (fused) provider path. Until closed, they are live bugs of
+the same shape as the bold one:
+
+| Gap | 3-pass home | Impact |
+|---|---|---|
+| **Cursor / positional edits + the whole P1.5 deictic pass** ("make this line bold", "shorten it", "add a line break here", "split this paragraph here", "fix this typo") | `P1_5_RESOLVE_DEICTICS_SYSTEM` + `P2_APPLY` rule 10 + `injectCursorSentinel` wiring | **Largest gap.** Fused sends no `[CURSOR]` and resolves no deictic referents — an entire class of caret-relative / "this/that/it" instructions silently degrades on default providers. |
+| **Heading / list-ification** ("make it a heading" → `# `, "turn into a list" → `- `) | `P2_APPLY` rule 11 tail | Same shape as the bold bug; absent from fused. |
+| **AUTO STYLING** ("add bolding where appropriate", "highlight key terms" → pick 2–5 spans) | `P2_APPLY` sub-pattern (e) | Fused only has the *named-span* styling rule, not pick-your-own-spans. |
+| **Anchored / colloquial insertion** ("add X after the dear line", "chuck in", "drop X in" vs "drop X" = delete) | `P2_APPLY` rule 12 (a–d) + drop-disambiguation | Fused appends at end only; loses anchored insertion + the drop-verb disambiguation. |
+
+Minor reverse-direction asymmetries (fused has, 3-pass lacks): `underline`
+verb, the "instruction-shaped phrase but no target" NONE clause, and the
+broader placeholder syntaxes (`{{name}}` / `<name>` / `___` / `Label:`).
+
+### When you edit a prompt — the checklist
+
+1. **Mirror or document.** Make the equivalent change in the other path,
+   or add a row to "Intentional asymmetries" with the reason.
+2. **Re-bench BOTH modes:** `prod.ts --mode fused --provider cerebras` AND
+   `prod.ts --mode 3-pass --provider groq`, each against a same-session
+   baseline (cerebras/groq accuracy has run-to-run variance — judge the
+   delta, not the absolute).
+3. **Bench caveat — it can't see everything.** `prod.ts` drives the BARE
+   source; the live host appends the identity/blank-context catalog to the
+   prompt. Catalog-induced classification bugs (the bold bug only fired
+   *with* a catalog on) are invisible to the bench. The **agentic harness**
+   (`tests/agentic/`, e.g. scenario 103) is the gate for those.
+4. **Update this table** if you close a gap or discover a new one.
+
+---
+
 ## P1 — EXTRACT
 
 **Job:** decide whether the input carries an imperative instruction. If

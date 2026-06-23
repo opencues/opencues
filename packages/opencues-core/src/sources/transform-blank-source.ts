@@ -60,6 +60,37 @@ import {
 // ============================================================================
 // Prompts — ported verbatim from tests/benchmarks/transform-blank/
 // ============================================================================
+//
+// ⚠️ TWO-PATH PARITY — READ BEFORE EDITING ANY PROMPT BELOW.
+//
+// TransformBlank has TWO interchangeable encodings of the SAME behaviour,
+// picked per-provider by `pickTransformBlankMode()`:
+//   • FUSED  — the single `FUSED_SYSTEM` constant. ONE call does
+//              classify + extract + apply. Used by cerebras / openai /
+//              gemini / anthropic — i.e. the DEFAULT for most users.
+//   • 3-PASS — `P1_EXTRACT_SYSTEM` + `P1_5_RESOLVE_DEICTICS_SYSTEM` +
+//              `P2_APPLY_SYSTEM` (+ `P2_GENERATIVE_APPLY_SYSTEM`) +
+//              `P3_VERIFY_SYSTEM`. Used by groq.
+//
+// THE RULE: a behaviour change (a new instruction kind, a NONE-bail
+// condition, a styling/formatting rule, a placeholder syntax, an example)
+// added to ONE path MUST be mirrored into the OTHER — or the divergence
+// MUST be recorded in `docs/architecture/transform-blank.md`
+// § "Two-path parity" as an INTENTIONAL asymmetry (e.g. P3 VERIFY is
+// deliberately fused-skipped; see Experiment 6).
+//
+// Why this banner exists: the fused path shipped with NO markdown-styling
+// rule for a long time while 3-pass `P2_APPLY` rule 11 had it — `make X
+// bold _` silently mis-fired on every non-groq provider (the default!)
+// until PR #195. Adding a rule to only one encoding is a SILENT regression
+// on the other provider set.
+//
+// When you touch a prompt: (1) mirror or document, (2) re-run BOTH
+// `prod.ts --mode fused` AND `--mode 3-pass`, (3) update the parity table
+// in `docs/architecture/transform-blank.md`. That table also lists the
+// CURRENT known gaps (cursor/deictic, heading/list, auto-styling,
+// anchored-insert) — fix-forward candidates, not licence to add more.
+// ============================================================================
 
 // EXTRACT prompt — minimal variant. The previous verbose prompt
 // (extensive shape lists + 18 examples) was over-constraining the
@@ -358,6 +389,12 @@ INSTRUCTION: make it a question
 TARGET: The meeting is at 3pm.[CURSOR]
 RESOLVED: make it a question`;
 
+// ⚠️ PARITY: rules added here (markdown styling, anchored insert, auto-
+// styling, cursor edits, etc.) must be mirrored into `FUSED_SYSTEM` —
+// fused is the DEFAULT path for non-groq providers and silently lacks
+// anything you add here only. See the TWO-PATH PARITY banner at the top
+// of the Prompts section + docs/architecture/transform-blank.md
+// § "Two-path parity".
 export const P2_APPLY_SYSTEM = `You receive:
 - INSTRUCTION: a short imperative editing command
 - TARGET: the text to apply the instruction to
@@ -829,6 +866,12 @@ REWRITE: hii my name is *wilfred*.`;
 // only show up on long buffers (the reported case was ~1.3k chars).
 const FUSED_NONE_RETRY_FLOOR = 400;
 
+// ⚠️ PARITY: this single prompt must encode every behaviour the 3-pass
+// family (P1_EXTRACT + P1_5_RESOLVE + P2_APPLY + P2_GENERATIVE) splits
+// across multiple constants. Editing a rule here? Mirror it into the
+// matching 3-pass constant (or vice-versa) and re-bench both modes.
+// See the TWO-PATH PARITY banner at the top of the Prompts section +
+// docs/architecture/transform-blank.md § "Two-path parity".
 export const FUSED_SYSTEM = `Read the input and produce a structured edit result.
 
 The input is a sentence with an underscore (_) signalling either an IMPERATIVE INSTRUCTION the user wants applied to surrounding text, OR a command to manage a continuously-running agent task, OR a lookup placeholder (none of those).
