@@ -2039,6 +2039,103 @@ export const CASES: TransformCase[] = [
     },
   },
 
+  // ============================================================
+  // FIX-FORWARD GAPS — capabilities that lived only in the retired
+  // 3-pass P2_APPLY and must be re-authored into FUSED_SYSTEM:
+  // list-ification, anchored insertion, drop-verb disambiguation,
+  // and deictic ("shorten it"). See EXPERIMENTS.md Experiment 11.
+  // ============================================================
+  {
+    id: 'gap-list-1',
+    category: 'format-transform',
+    input: 'turn this into a list _ eggs, milk, bread, cheese',
+    expected: {
+      finalText: '- eggs\n- milk\n- bread\n- cheese',
+      finalTextAlternates: ['* eggs\n* milk\n* bread\n* cheese'],
+      note: 'list-ification — each item on its own `- ` line (markers kept in buffer, like format-1)',
+    },
+  },
+  {
+    id: 'gap-list-2',
+    category: 'format-transform',
+    input: 'make these into bullet points _ first wash the car then mow the lawn then wash the dishes',
+    expected: {
+      finalText: '- wash the car\n- mow the lawn\n- wash the dishes',
+      finalTextAlternates: [
+        '* wash the car\n* mow the lawn\n* wash the dishes',
+        '- first wash the car\n- then mow the lawn\n- then wash the dishes',
+        '- first wash the car\n- mow the lawn\n- wash the dishes',
+      ],
+      note: 'list-ification from prose with sequence words (filler "first"/"then" may be kept or stripped — any well-formed 3-item bulleted list passes)',
+    },
+  },
+  {
+    id: 'gap-anchor-before',
+    category: 'targeted',
+    input: 'add "Best regards" before the name _ Body text.\n\nWilfred',
+    expected: {
+      finalText: 'Body text.\n\nBest regards\nWilfred',
+      finalTextAlternates: ['Body text.\n\nBest regards,\nWilfred'],
+      note: 'anchored insert — place the given text immediately BEFORE the named anchor, not appended at the end',
+    },
+  },
+  {
+    id: 'gap-anchor-after',
+    category: 'targeted',
+    input: 'add a line saying "Sent from my phone" after the signature _ Thanks,\nKaren',
+    expected: {
+      finalText: 'Thanks,\nKaren\nSent from my phone',
+      finalTextAlternates: ['Thanks,\nKaren\n\nSent from my phone'],
+      note: 'anchored insert AFTER the named anchor',
+    },
+  },
+  {
+    id: 'gap-drop-in-insert',
+    category: 'targeted',
+    input: 'stick my name Wilfred in _ Sincerely,\n[Your Name]',
+    expected: {
+      finalText: 'Sincerely,\nWilfred',
+      note: 'drop/stick X IN = insert (fills the placeholder); contrast with bare "drop X" = delete',
+    },
+  },
+  {
+    id: 'gap-drop-delete',
+    category: 'targeted',
+    input: 'drop the second sentence _ I like apples. I hate oranges. I love pears.',
+    expected: {
+      finalText: 'I like apples. I love pears.',
+      note: 'bare "drop X" = DELETE (no preposition) — must not insert anything',
+    },
+  },
+  {
+    id: 'gap-deictic-shorten-it',
+    category: 'targeted',
+    input: 'shorten it _ The quarterly report demonstrates that our revenue has grown substantially over the past three months due to strong performance across all of our regional markets',
+    expected: {
+      finalText: 'Quarterly revenue grew strongly across all regional markets.',
+      finalTextAlternates: [
+        'Revenue grew strongly across all regions this quarter.',
+        'The quarterly report shows strong revenue growth across all regional markets.',
+        'The quarterly report shows strong revenue growth over the past three months across all regions.',
+        'Our revenue grew substantially over the past three months across all regional markets.',
+      ],
+      note: 'deictic "it" = the whole buffer (no cursor needed) — must rewrite SHORTER, not bail. Any materially-shorter faithful rewrite passes.',
+    },
+  },
+  {
+    id: 'gap-deictic-make-formal',
+    category: 'targeted',
+    input: 'make this more formal _ hey can u send me the report asap thx',
+    expected: {
+      finalText: 'Could you please send me the report as soon as possible? Thank you.',
+      finalTextAlternates: [
+        'Could you send me the report as soon as possible? Thanks.',
+        'Please send me the report as soon as possible. Thank you.',
+      ],
+      note: 'deictic "this" = the whole buffer — register shift',
+    },
+  },
+
   // ---- italic / strikethrough across the same layout matrix ----
   // Same 6 layouts × 3 inline-style instructions (bold already covered
   // above; here we round out italic + strike). Pins the prompt
