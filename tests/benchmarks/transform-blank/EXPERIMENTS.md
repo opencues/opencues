@@ -938,3 +938,54 @@ a line break here", "shorten it", "make this line bold") and the
 heading/list/anchored-insert/auto-styling capabilities lived ONLY in the
 3-pass `P2_APPLY`. They are now absent on all providers until re-authored
 directly into `FUSED_SYSTEM` as fix-forward work. (`docs/architecture/transform-blank.md`.)
+
+---
+
+## Experiment 11 — Recovering the 3-pass "fix-forward gaps" in fused
+
+**Context:** retiring the 3-pass pipeline (Experiment 10) left four
+documented capability gaps that lived only in `P2_APPLY` rule text:
+list/heading-ification, anchored insertion, drop-verb disambiguation,
+and deictic edits ("shorten it"). Before re-authoring rules into
+`FUSED_SYSTEM`, benchmark whether they're actually broken — the gap list
+came from comparing PROMPT TEXT, not measured behaviour.
+
+**Method:** added 8 targeted cases (`gap-*` in `cases.ts`) and baselined
+the current fused prompt on both providers.
+
+**Baseline (no new rules):**
+
+| Gap case | cerebras | groq |
+|---|---|---|
+| list-ification (×2) | PASS / PASS | **FAIL / FAIL** |
+| anchored insert (before/after) | PASS / PASS | PASS / PASS |
+| drop insert / drop delete | PASS / PASS | PASS / PASS |
+| deictic shorten-it / make-formal | (judge-strict) / PASS | PASS / PASS |
+
+**Finding: the "gaps" were mostly theoretical.** A capable model
+(cerebras) already handles anchored insertion, drop-verb disambiguation,
+and deictic "it"/"this" through the whole-buffer FULL_REWRITE — no
+explicit rule needed. The one real failure was **list-ification on
+groq** (it emitted prose, not `- ` bullets). The single cerebras "fail"
+was an over-strict expected (the model DID shorten correctly; the test's
+alternates were too prescriptive — loosened).
+
+**Fix:** added ONE concise `STRUCTURE` rule to `FUSED_SYSTEM` ("turn into
+a list" → `- ` per item; "make it a heading" → `# `). Deliberately did
+NOT add rules for anchored-insert / drop / deictic — the model already
+does them, and adding rules for behaviour the model has would be opinion
+without benefit (cf. the "minimise opinions, rely on the model" pass).
+
+**After the STRUCTURE rule:**
+- **cerebras: 8/8 gap cases pass**, format-transform 32/32, total
+  213/251 (was 211 — free, no regression).
+- **groq: list-ification recovered** (both cases); the only remaining
+  flips are run-to-run LLM variance on the borderline deictic cases.
+
+**Still genuinely out of reach (needs more than a prompt rule):**
+caret-relative "here" edits ("add a line break here", "make THIS line
+bold") need the `[CURSOR]` sentinel injected into the fused call — that
+wiring was removed with the 3-pass path and would be a separate feature,
+not a prompt addition. Heading and "add bolding where appropriate"
+(auto-styling) aren't bench-scorable via `finalText` (markers are
+stripped to a markdown.styled event) so they're untested here.
