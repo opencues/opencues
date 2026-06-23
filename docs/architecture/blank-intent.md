@@ -1,11 +1,14 @@
 # Blank-Intent — keyword-gated LLM invocation gate (PROPOSAL)
 
-> **Status: PROPOSAL / not implemented.** This documents a design we want to
-> benchmark, not shipped behaviour. As of this writing the runtime still
-> dispatches script-backed blanks via the deterministic `blankProximity`
-> keyword gate in `blank-fill.ts:matchKeyword`. Do not cite this doc as
-> describing current behaviour. The shape system it supersedes is itself
-> reverted (see `dev/shape-system` branch + `docs/architecture/shape-driven-blanks.md`).
+> **Status: PROPOSAL — classifier prototyped + benched (PoC); runtime wiring
+> NOT built.** The Phase-2 classifier prompt + a bench exist at
+> `tests/benchmarks/blank-intent/run.ts` and the proof-of-concept passed
+> (see [Benchmark results](#benchmark-results-proof-of-concept)), but the
+> runtime still dispatches script-backed blanks via the deterministic
+> `blankProximity` keyword gate in `blank-fill.ts:matchKeyword`. Do not cite
+> this doc as describing current behaviour. The shape system it supersedes
+> is itself reverted (see `dev/shape-system` branch +
+> `docs/architecture/shape-driven-blanks.md`).
 
 ## The problem
 
@@ -206,6 +209,50 @@ novel phrasing isn't materially better than shapes, the simplification
 isn't worth replacing the proximity gate for small-grammar blanks; keep
 proximity there and apply BlankIntent only to the open-ended ones
 (weather, dictionary).
+
+## Benchmark results (proof-of-concept)
+
+A bench-local Phase-2 classifier (`tests/benchmarks/blank-intent/run.ts`)
+over a 30-case suite (19 recall / 8 precision / 3 keyword-free safety) was
+run on all three providers. **The PoC passed decisively:**
+
+| Provider | Recall (invoke + args) | Precision (prose ceded) | Safety (keyword-free ceded) | Avg latency |
+|---|---|---|---|---|
+| cerebras gpt-oss-120b | **19/19 (100%)** | **8/8 (100%)** | 2/3 ¹ | ~245ms |
+| groq gpt-oss-120b | **19/19 (100%)** | **8/8 (100%)** | 3/3 | ~240ms |
+| gemini-3.1-flash-lite | **19/19 (100%)** | **8/8 (100%)** | 3/3 | ~634ms |
+
+What it establishes against the proposal's decision gate:
+
+- **Precision (the proximity-killer): 100% on every provider.** Every
+  prose case with the keyword near `_` (`the volume was great _`,
+  `tesla stock crashed this year _`, `bitcoin is fascinating _`) correctly
+  CEDEs — the thing `blankProximity` gets wrong by construction.
+- **Recall (the shape-killer): 100%.** Phrasings no regex author would
+  enumerate all of (`how much is apple stock _`, `set the volume to seventy
+  _`, `what's the weather in tokyo _`, `price of bitcoin _`) all INVOKE
+  with the right action + value — and the model even normalises to the
+  canonical symbol (`apple → aapl`, `bitcoin → btc`).
+- ¹ **The one cerebras "safety" miss is the most important data point.**
+  `turn it down a bit _` has NO catalog keyword, yet cerebras inferred
+  `volume step down`. That is the LLM **over-reaching on a keyword-free
+  input** — exactly what Phase 1 (the deterministic keyword pre-gate)
+  exists to block, and exactly why **the LLM must not be the consent gate
+  for exec/fetch tools.** The bench empirically confirms the two-phase
+  architecture: keyword authorises, LLM refines. (groq + gemini happened to
+  cede it, but the design can't rely on that.)
+
+**Conclusion:** the gate quality clears the bar (precision ≥ shapes,
+recall ≥ proximity, both at 100% on a first-cut prompt). Next step is to
+promote the prompt + parser into a real `BlankIntentSource` (single source
+of truth) and wire Phase 1 + the trust tiers, then re-bench the integrated
+path + add agentic exec-consent scenarios. The PoC de-risks that work.
+
+> Caveat: this bench uses a **bench-local copy** of the prompt (exploration
+> convention). On promotion to `BlankIntentSource`, the bench must drive the
+> real source's prompt to avoid the drift the transform-blank `prod.ts`
+> lesson warns about. Suite is also small (30 cases) — expand per-blank
+> before shipping.
 
 ## Relationship to prior work
 
