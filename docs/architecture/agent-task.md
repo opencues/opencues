@@ -37,10 +37,10 @@ space on pure deletion; pad on pure insertion between word-chars).
 
 ### Why this shape
 
-Transform-blank's three-pass EXTRACT/APPLY/VERIFY pattern works well
-because each invocation is structurally small: one LLM call, parsed
-once, applied once. AgentRewrite picks the same primitive — one
-holistic rewrite per round, parsed once, merged once.
+Transform-blank's single fused call works well because each invocation
+is structurally small: one LLM call, parsed once, applied once.
+AgentRewrite picks the same primitive — one holistic rewrite per round,
+parsed once, merged once.
 
 The merge layer is a textbook three-way merge — well-understood, no
 LLM-specific edge cases. Whatever the model emits, the merge either
@@ -83,9 +83,9 @@ ring (the latter two no longer carry correctness load, but the cache
 prevents the agent from churning when nothing's changed).
 
 `Resolver` still owns the TASK_* trigger keywords (`agentically`, `add
-task`, `stop task`, `current task`). `transform-blank-source.ts`
-EXTRACT routes those triggers to the resolver, which arms / appends /
-clears / reads the task state.
+task`, `stop task`, `current task`). `transform-blank-source.ts`'s
+fused call classifies those triggers (TASK_* verdicts) and routes them
+to the resolver, which arms / appends / clears / reads the task state.
 
 ---
 
@@ -165,8 +165,8 @@ protection" filters. AgentRewrite doesn't need them: a holistic
 rewrite under `correct spelling` etc. wouldn't translate
 `agentically` to a non-trigger word — and even if it did, the user's
 NEXT typed `agentically <X> _` regenerates the keyword on the fly
-because EXTRACT operates on the user's typed prefix, not the buffer's
-mutated tail.
+because the fused call operates on the user's typed prefix, not the
+buffer's mutated tail.
 
 `TASK_TRIGGER_KEYWORDS` is exported from `resolver.ts` as the
 canonical map.

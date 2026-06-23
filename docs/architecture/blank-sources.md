@@ -34,7 +34,7 @@ result shape + a small metadata vocabulary.
 |---|---|---|---|
 | **`BlankSource`** (`blank-source.ts`) | `<keyword> _` matches a folder under `blanks/` | None — runs a script / sync stepValues / built-in JS impl | Deterministic splice via `blank-fill.ts`. Slot bounds come from the parser (keyword + `_` positions), not from LLM. |
 | **`FluidBlankSource`** (`fluid-blank-source.ts`) | unbound `_` (no `BlankSource` match) | Short answer (e.g. "Paris") | Deterministic splice via `blank-fill.ts`. `blankReplace` mode (`keep`/`wipe`/`wipe-all`/`auto`) picks the splice range from the slot, not the LLM. |
-| **`TransformBlankSource`** (`transform-blank-source.ts`) | imperative phrase next to `_` (e.g. "make past tense _") | Either a target-only rewrite (3-pass) OR the whole final buffer (`FULL_REWRITE`, fused mode) | **Two paths.** 3-pass: surgical splice driven by `metadata.transformTarget`. Fused: `threeWayMerge` against the live buffer. |
+| **`TransformBlankSource`** (`transform-blank-source.ts`) | imperative phrase next to `_` (e.g. "make past tense _") | The whole final buffer (`FULL_REWRITE`) from a single fused LLM call | **One path.** Always `threeWayMerge` against the live buffer. |
 | **`SentenceCueSource`** (`sentence-cue-source.ts`) | one cue per sentence at `scope: sentence` | Sentence alternatives | Passive — registers a DynDef; cycling swaps the sentence via the existing word-cue cycle path. Never touches the buffer until the user presses Ctrl+Alt+Up. |
 | **`ConfigIntentSource`** (`config-intent-source.ts`) | unbound `_` interpreted as a settings change ("make it louder _") | Setting + value classification | Selector-satellite shaped result with `clearOnEdit: true`; substitute wipes the summon phrase via `spanStart=summonPhraseStart(text), spanEnd=text.length` (the last sentence terminator / line break before `_`, or 0 if none) so prior user content before the settings command is preserved, then hands off to standard cycling. |
 | **`ConfigSource`** (`config-source.ts`) | highlighted word matches the source's `match:` / `keywords:` (LLM word-cue) | Word alternatives | Per-word substitution via DynDef set; no buffer-wide rewrite. |
@@ -52,8 +52,9 @@ one TransformBlank-fused reuses.
 
 ### 1. Deterministic slot splice
 
-Used by `BlankSource`, `FluidBlankSource`, `ConfigIntentSource`'s
-satellite handoff, and TransformBlank's 3-pass path.
+Used by `BlankSource`, `FluidBlankSource`, and `ConfigIntentSource`'s
+satellite handoff. (TransformBlank used a splice path in its retired
+3-pass mode; it now always takes the three-way-merge path below.)
 
 ```ts
 newText = liveText.slice(0, slot.start) + answer + liveText.slice(slot.end)
@@ -81,7 +82,7 @@ by the merge primitive.
 
 ### 2. Three-way merge (whole-buffer LLM)
 
-Used by `TransformBlankSource` fused mode + `AgentRewrite`.
+Used by `TransformBlankSource` (its single fused call) + `AgentRewrite`.
 
 ```ts
 const merge = threeWayMerge(snapshot, fullRewrite, liveText);
@@ -114,7 +115,7 @@ Properties:
 - **Markdown styling preservation is unchanged.**
   `applyMarkdownAwareSubstitution` strips markdown markers from the
   merged text and emits `markdown.styled` ranges in final-buffer
-  coords. The richText injection on the EXTRACT input side (see
+  coords. The richText injection on the fused call's input side (see
   `resolver.ts` rich-text block) is independent of the substitute
   mechanism.
 
@@ -125,7 +126,7 @@ Properties:
 | Source emits | Pick |
 |---|---|
 | A short fill the parser knows where to splice (BlankSource shape) | **Deterministic slot splice.** Wire through `blank-fill.ts`. |
-| An LLM-claimed span + a span-scoped rewrite | **Deterministic slot splice.** But ensure the span CANNOT exceed what the LLM saw as input (e.g., 3-pass APPLY receives only the target as input — structurally safe). |
+| An LLM-claimed span + a span-scoped rewrite | **Deterministic slot splice.** But ensure the span CANNOT exceed what the LLM saw as input — pass the LLM only the bounded target as input so the splice range is structurally safe. (TransformBlank's retired 3-pass APPLY worked this way; the splice path remains available for a future bounded-span source, but TransformBlank no longer uses it — it emits the whole buffer and merges.) |
 | The whole final buffer | **Three-way merge.** Set `metadata.pipelineMode = 'fused'` (or similar) so the resolver routes correctly. Do NOT emit `metadata.transformTarget` — its presence is the signal to take the splice path. |
 | A passive cue (no buffer change until the user cycles) | **No substitute.** Register a DynDef; cycling handles it. See [`spans-and-cycling.md`](spans-and-cycling.md). |
 
@@ -179,13 +180,15 @@ primitive already pays for.
 ## Tests pinning this behaviour
 
 - `packages/opencues-runtime/src/modules/transform-blank.scenarios.test.ts`
-  — 24 scenario tests covering both substitute paths (3-pass splice
-  + fused whole-buffer merge). The "TransformBlank fused / whole-buffer
-  — duplication-bug structural fix" describe block (4 tests) pins
-  the new merge contract: long-body has no duplication, exact LLM
-  rewrite lands, pathological duplicated LLM output never produces a
-  concat-induced doubling, in-flight user typing past the trigger
-  survives.
+  — scenario tests covering the runtime substitute paths. The
+  "TransformBlank fused / whole-buffer — duplication-bug structural
+  fix" describe block (4 tests) pins the merge contract TransformBlank
+  uses today: long-body has no duplication, exact LLM rewrite lands,
+  pathological duplicated LLM output never produces a concat-induced
+  doubling, in-flight user typing past the trigger survives. The
+  "surgical splice" describe blocks pin the runtime's bounded-span
+  splice mechanism, which remains available for a future bounded-span
+  source even though TransformBlank no longer emits `transformTarget`.
 - `packages/opencues-runtime/src/modules/word-diff.ts` + companion
   `word-diff.test.ts` / `word-diff.scenarios.test.ts` /
   `word-diff.properties.test.ts` — 600+ tests on the merge primitive
@@ -194,10 +197,10 @@ primitive already pays for.
   `blank-fill.test.ts` — pins the deterministic slot splice path for
   BlankSource + FluidBlankSource. Covers each `blankReplace` mode
   plus the legacy flag paths.
-- `tests/benchmarks/transform-blank/` — `--mode fused-full` validates
-  the LLM contract end-to-end across 5 providers (groq, cerebras,
-  claude, gemini, openai). Production routes through this mode on
-  every provider except groq, which uses 3-pass.
+- `tests/benchmarks/transform-blank/` — `prod.ts` validates the LLM
+  contract end-to-end (`--provider cerebras|groq`). The single fused
+  pipeline runs on every provider; the old groq-only 3-pass path was
+  retired June 2026 (see `EXPERIMENTS.md § Experiment 10`).
 - `tests/agentic/scenarios/08-transform-blank-pipeline.json` — pins
   the resolver's dispatch ordering (one `transform-blank.started`
   per `_` trigger, not two — the May 2026 double-fire regression
@@ -208,7 +211,7 @@ primitive already pays for.
 ## Related docs
 
 - [`transform-blank.md`](transform-blank.md) — TransformBlank pipeline
-  internals (3-pass + fused) + prompt design + EXPERIMENTS history.
+  internals (single fused call) + prompt design + EXPERIMENTS history.
 - [`agent-task.md`](agent-task.md) — AgentRewrite + the three-way
   merge invariants in detail.
 - [`blank-replace-modes.md`](blank-replace-modes.md) — `blankReplace`
