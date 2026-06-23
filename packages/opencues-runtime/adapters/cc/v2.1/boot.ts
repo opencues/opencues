@@ -44,6 +44,7 @@ import type {
   RenderContext,
   RenderDirectives,
   TextChangeEvent,
+  CursorChangeEvent,
   Unsubscribe,
 } from '../../../src/adapter';
 
@@ -240,6 +241,17 @@ export function boot(host: HostInfo): BootResult {
   const keyHandlers: Array<(e: KeyEvent) => boolean> = [];
   const renderHandlers: Array<(c: RenderContext) => RenderDirectives | null> = [];
   const textHandlers: Array<(e: TextChangeEvent) => void> = [];
+  // Cursor-change subscribers. CC's cli.js doesn't surface cursor-only
+  // moves natively (the parent React tree has no onCursorChange path),
+  // so REAL user cursor moves don't fire these — same caveat as the
+  // file-header note. The handlers exist so SYNTHETIC cursor injects
+  // via the event-bridge's `cursor:N` command can drive runtime modules
+  // that gate on cursor changes (Navigation's cursor-navigate mode is
+  // the load-bearing consumer — scenario 30 in the agentic harness
+  // pins the contract end-to-end). Without this, scenario 30 silently
+  // no-ops on CC because adapter.onCursorChange is undefined and
+  // Navigation.subscribe() falls through to "highlight follows typing only".
+  const cursorHandlers: Array<(e: CursorChangeEvent) => void> = [];
   // Module-emitted structured events (resolver.completed, etc.).
   // Subscribers registered via bindings.registerEventHandler; emit
   // via bindings.emitEvent. Cheap when nobody's subscribed.
@@ -424,6 +436,10 @@ export function boot(host: HostInfo): BootResult {
     registerTextChangeHandler: (cb): Unsubscribe => {
       textHandlers.push(cb);
       return () => removeFrom(textHandlers, cb);
+    },
+    registerCursorChangeHandler: (cb): Unsubscribe => {
+      cursorHandlers.push(cb);
+      return () => removeFrom(cursorHandlers, cb);
     },
     readFile: host.readFile,
     readDir: host.readDir,
@@ -715,10 +731,28 @@ export function boot(host: HostInfo): BootResult {
         lastSeenText = text;
         lastSeenCursor = cursor;
       },
-      // CC has no cursor-only event type — leave cursor change to the
-      // next applyRender's drift detection. Acceptable: synthetic
-      // cursor-only injects on CC are rarely interesting (cycling +
-      // text drives all the realistic test paths).
+      // notifyCursorChange — used by the event-bridge's synthetic
+      // `cursor:N` command. Real user cursor moves on CC don't fire
+      // this (cli.js has no onCursorChange surface); the path exists
+      // for the agentic-harness contract (scenario 30: cursor-navigate
+      // mode auto-activates highlight on cursor change). Updates
+      // lastSeenCursor + fires cursorHandlers (Navigation subscribes
+      // there when cursor-navigate is on). Same prev-text-stale fix
+      // shape as notifyTextChange above — bridge calls this BEFORE
+      // adapter.setCursorOffset, so lastSeenCursor still holds the OLD
+      // value here.
+      notifyCursorChange: (text, cursor, source) => {
+        const event: CursorChangeEvent = {
+          text,
+          cursorOffset: cursor,
+          source,
+        };
+        for (const handler of cursorHandlers) {
+          try { handler(event); }
+          catch (err) { log('error', 'bridged cursorChange handler error', err); }
+        }
+        lastSeenCursor = cursor;
+      },
       state: { hlState, dynDefs, spanFillState, selectorSatelliteState, agentTaskState },
     });
   }

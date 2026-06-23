@@ -449,6 +449,65 @@ the table of regressions and which scenario test now pins each one.
 
 ---
 
+## Agentic scenarios — assert the ABSENCE of a regression, not the PRESENCE of a specific LLM output
+
+The agentic harness owns **runtime contracts**. The benches own **LLM
+quality**. Scenarios that mix the two go flaky every time the LLM
+behaves slightly differently — even when the runtime contract is
+holding fine.
+
+The June 2026 CC suite triage made this concrete. Five flaky tests:
+three were genuine runtime bugs (event-emit-before-substitute,
+cache-overwrite race, prev-text-stale gate); two were tests that
+*depended on the LLM producing a specific output* before the runtime
+invariant could be checked. We fixed the runtime bugs; we **rewrote
+the test framing** for the LLM-quality-dependent ones.
+
+**Rule:** for any agentic scenario testing a runtime contract,
+phrase the assertion so it would still hold if the LLM bailed,
+hallucinated, or refused. The runtime contract is "no double-fire,"
+"prior content preserved," "satellite registered" — not "LLM
+returned VALUE: active."
+
+Concretely:
+
+| Coupled-to-LLM (flaky shape) | Decoupled (robust shape) |
+|---|---|
+| `waitForEvent transform-blank.completed` + assert specific text | `waitForEvent transform-blank.started` + sleep enough for any retrigger + `expectEventCount started == 1` |
+| `expect text matches "8"` after fluid-blank | `expect text notEquals <original input>` (substitution happened) |
+| `waitFor selectorSatellite.currentSetting equals "voice-mode"` using a phrasing that hallucinates `VALUE: on` | use an LLM-stable phrasing (`voice mode off _` reliably classifies; `turn on voice mode _` doesn't) |
+| `expect rewrite matches "the girl ran fast"` | dump DynDefs, assert `dynDefs.defs[0].blankName === 'transform-blank'` (the def landed, regardless of LLM phrasing) |
+
+**When LLM-content assertion IS legitimate:**
+
+- Identity-context substitution: assert `notMatches "\\[[A-Z][A-Z_]+\\]"` (no unsubstituted `[FIRST NAME]` tokens remain). That's a runtime guarantee — the post-processor MUST strip every token. Compare against the **negative** invariant. The post-processor must NOT leave a hole.
+- Span preservation: scenario 102's `^hii world\.` on the buffer after ConfigIntent — that's pinning the SPAN-splice contract (prior content preserved), not LLM output. The LLM emits any voice-mode value; the runtime guarantees the prefix survives.
+- Mode classification: `expect blankName equals "opencues"` on selector-satellite — that's the routing contract.
+
+**Picking LLM-stable phrasings** (when a settings/transform-blank prompt is needed at all):
+
+- `enable debug logging _` → debug-mode on (reliable on cerebras gpt-oss-120b)
+- `voice mode off _` → voice-mode inactive (reliable)
+- `enable X mode _` → X-mode on (reliable for any `*-mode` scalar)
+- `fix typos _ <body>` → reliable TransformBlank classification
+- `make it caps _` (no prior content) → reliable
+
+**Unstable phrasings** (avoid):
+
+- `turn on voice mode _` → cerebras hallucinates `VALUE: on` (voice-mode is `active/inactive`)
+- Long-body translations to dense scripts (Japanese/Chinese/Korean) → cerebras intermittently returns NONE on inputs >300 chars
+- Specific paraphrasing prompts (`make this poetic _`) → output varies widely
+
+**Don't add `expect text matches <LLM-content>` for the sake of
+verifying the LLM ran.** The event-stream already proves the source
+fired. Test the runtime contract: did the *def* land? Did the
+*satellite* register? Did the buffer *change at all*? Did the wrong
+event fail to fire?
+
+LLM-quality benches in `tests/benchmarks/` exist for the other half.
+
+---
+
 ## Cross-platform shell scripts — bash 3.2 / BSD compat
 
 Any shell script that ships in this repo (`defaults/`, `integrations/*/bin/`,
