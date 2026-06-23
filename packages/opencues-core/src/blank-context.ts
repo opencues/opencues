@@ -362,7 +362,13 @@ export function renderBlankContextCatalogForTransform(
 3. NEVER invent bracket-tokens from covers hints. The covers list is synonyms ROUTING to a real token, not a list of token names. Do NOT emit [PORTFOLIO], [HOLDINGS], [BITCOIN] when the listed token is [STOCKS NVDA] / [CRYPTO BTC] / etc.
 4. When multiple slot tokens share a prefix and the rewrite refers to the topic generally (e.g. "my stocks", "my portfolio"), emit ALL of them in natural prose order, separated by what makes sense (commas, "and", line breaks per the surrounding format).
 5. If the rewrite does not reference any of the ambient data, do NOT pull in any token.
-6. The list is EXHAUSTIVE for live-data tokens. If no listed token fits a slot the rewrite needs to fill, write a natural placeholder ([Current Weather], [Today's Price]) rather than inventing a bracket-token.`;
+6. The list is EXHAUSTIVE for live-data tokens. If no listed token fits a slot the rewrite needs to fill, write a natural placeholder ([Current Weather], [Today's Price]) rather than inventing a bracket-token.
+7. SPECIFIC-ENTITY CHECK — before writing prose ABOUT a named entity (Apple, Bitcoin, the London weather, NVIDIA, etc.), SCAN the catalog above for that exact entity. If a matching token exists, USE IT instead of paraphrasing or omitting the value. The user typed about that entity because they want the live value visible — do not bury it.
+   Example: input "draft an email about exiting our Apple position" → the rewrite says "Apple (AAPL) is trading at [STOCK AAPL]" (uses the token). WRONG: writing about AAPL without ever citing [STOCK AAPL].
+8. EACH TOKEN IS ONE ENTITY'S VALUE — never substitute a token where the prose refers to a DIFFERENT entity than the token's name. [STOCK AAPL] is Apple's share price ONLY — do not use it for an index level (S&P 500, Dow, Nasdaq composite), an unrelated stock, or as a generic numeric placeholder. If the rewrite needs a value that ISN'T in the catalog, write prose ("approximately X" / "[Current Index Level]") — DO NOT borrow another token to fill the slot.
+   WRONG: "The S&P 500 closed at [STOCK AAPL] points" (AAPL is a single stock, not the index).
+   WRONG: "Oil prices settled at [STOCK MSFT] per barrel" (MSFT is a stock, not oil).
+   RIGHT: "The S&P 500 closed at [Current Index Level], with [STOCK AAPL] and [STOCK NVDA] leading the gainers".`;
   return `\n\n${header}\n\n${lines.join('\n')}\n\n${rules}`;
 }
 

@@ -245,6 +245,36 @@ export function renderIdentityContextCatalog(ctx: Identity, mode: ContextMode): 
 }
 
 /**
+ * Synonym hints for the canonical identity tokens. Returned as a
+ * comma-separated string for inclusion in the `(covers: ...)` suffix
+ * on each catalog line. Empty for non-canonical / user-defined tokens
+ * (custom fields aren't mapped here — they just don't get a covers hint
+ * and the LLM falls back to the description). Lookup is case-sensitive
+ * against the canonical token shape.
+ */
+function identityCoversFor(token: string): string {
+  switch (token) {
+    case '[FIRST NAME]':    return 'given name, forename';
+    case '[LAST NAME]':     return 'surname, family name';
+    case '[FULL NAME]':     return 'my name, the sender, the author, signed by, sign as me';
+    case '[EMAIL]':         return 'my email, contact email, reach me at, email address';
+    case '[PHONE]':         return 'my phone, call me at, mobile, cell, telephone';
+    case '[PRONOUNS]':      return 'my pronouns, they/them, she/her';
+    case '[JOB TITLE]':     return 'my role, my position, what I do, what I work as, my title';
+    case '[COMPANY]':       return 'where I work, my employer, my team, my organisation, my org';
+    case '[WORK CITY]':     return 'based in (for work), where I work from, my office city';
+    case '[HOME CITY]':     return 'where I live, my home town, my city';
+    case '[HOME COUNTRY]':  return 'my country, country of residence, where I am';
+    case '[HOME POSTCODE]': return 'my postcode, my ZIP, postal code';
+    case '[GITHUB]':        return 'my github, github profile, code, repos';
+    case '[LINKEDIN]':      return 'my linkedin, professional profile, connect with me, find me on LI';
+    case '[TWITTER]':       return 'my twitter, my X, my handle, follow me, DM me';
+    case '[WEBSITE]':       return 'my site, my homepage, my blog, my portfolio, more at';
+    default:                return '';
+  }
+}
+
+/**
  * Render the catalog block for TransformBlank's APPLY / GENERATIVE /
  * FUSED prompts.
  *
@@ -270,17 +300,50 @@ export function renderIdentityContextCatalogForTransform(
 ): string {
   if (mode === 'off' || ctx.fields.length === 0) return '';
   const header = `USER CONTEXT — tokens for the SENDER / AUTHOR / USER (the person composing this content). The runtime substitutes the real value before it reaches the user's buffer:`;
-  const lines = ctx.fields.map(f =>
-    mode === 'raw'
+  // Per-field `covers:` synonym hints help the LLM bind natural prose
+  // ("my role", "where I work", "DM me") back to the canonical token,
+  // mirroring blank-context's catalog. Bench-validated +80pp utilization
+  // on conference-talk-abstract inputs.
+  const lines = ctx.fields.map(f => {
+    const covers = identityCoversFor(f.token);
+    const base = mode === 'raw'
       ? `- ${f.token} — ${f.description} (value: ${f.value})`
-      : `- ${f.token} — ${f.description}`,
-  );
+      : `- ${f.token} — ${f.description}`;
+    return covers ? `${base} (covers: ${covers})` : base;
+  });
   const rules = `RULES for these tokens:
 1. Emit a token EXACTLY as written above (format: [UPPERCASE WORDS]) when the generated/rewritten content refers to the SENDER and a listed token fits. Do NOT use snake_case, lowercase, or invent variants.
 2. Tokens describe the SENDER ONLY. For OTHER people or entities (the recipient, a counterparty, a third party), use a natural placeholder ([Recipient Name], [Date], etc.) as you would normally — DO NOT use a sender token to fill someone else's slot.
 3. The list is EXHAUSTIVE for sender data. If no listed token fits a sender slot, write a natural placeholder ([Your Position]) — DO NOT invent a new sender sentinel like [USER_NAME] or [SENDER_EMAIL].
 4. When the content has no sender reference (a poem, a translation, a summary of someone else's text), do NOT pull in any tokens.
-5. When the user's instruction itself names a value already (e.g. "sign as Bob"), follow the instruction — do NOT override with a catalog token.`;
+5. When the user's instruction itself names a value already (e.g. "sign as Bob"), follow the instruction — do NOT override with a catalog token.
+6. SECTION-FIT SCAN — when a generative rewrite contains any of the following SECTION TYPES, fill it from the catalog. A document may contain ZERO, ONE, or MANY of these — apply each rule independently. Sections are compositional: a cover letter has a HEADER + a BYLINE + a SIGNATURE; a tweet bio has only a ROLE-LINE; an invoice has a HEADER only.
+
+   • BYLINE / OPENER ("I'm <name>, a <role> at <company> based in <city>") → [FULL NAME], [JOB TITLE], [COMPANY], [WORK CITY], [PRONOUNS] when natural.
+   • SIGNATURE / SIGN-OFF (block under "Best regards,") → [FULL NAME], [JOB TITLE], [COMPANY], [EMAIL], [PHONE], + [LINKEDIN]/[GITHUB]/[WEBSITE] when relevant.
+   • CONTACT HEADER (top-of-CV / top-of-cover-letter / invoice-from block) → [FULL NAME], [EMAIL], [PHONE], [HOME CITY], [HOME COUNTRY], [HOME POSTCODE], + [LINKEDIN]/[GITHUB]/[WEBSITE].
+   • ADDRESS BLOCK (postal address, "where to mail") → [FULL NAME], [HOME CITY], [HOME COUNTRY], [HOME POSTCODE].
+   • PROFILE-LINK STRIP (social-handle line, often pipe- or bullet-separated) → all relevant of [LINKEDIN], [GITHUB], [TWITTER], [WEBSITE].
+   • ROLE-LINE (one-line "what I do" — bio header, twitter bio, slack title) → [JOB TITLE], [COMPANY], + [PRONOUNS] when bio-shaped, + one PROFILE-LINK STRIP token when room allows.
+   • SUBJECT TITLE (email subject naming the sender — "Resignation – ___", "Introduction – ___") → [FULL NAME].
+
+   For each section the document contains, include EVERY listed catalog token from that section's list that has a corresponding catalog entry. Omitting a token that fits a section MAKES THE USER FILL IT IN MANUALLY — that's the failure mode this rule prevents.
+
+   Common DOCUMENT SHAPES decompose as follows — use this if the input matches:
+   - Email (most kinds) → SUBJECT TITLE? + body prose + SIGNATURE.
+   - Cover letter → CONTACT HEADER + body prose + SIGNATURE.
+   - Bio / "about me" / LinkedIn about / portfolio about → BYLINE + value-prop prose + PROFILE-LINK STRIP.
+   - CV / resume header → CONTACT HEADER + PROFILE-LINK STRIP.
+   - Invoice header → CONTACT HEADER.
+   - Twitter / X bio → ROLE-LINE (single line, ends with one [TWITTER] or [WEBSITE]).
+   - GitHub README header → BYLINE + PROFILE-LINK STRIP ([GITHUB], [WEBSITE]).
+   - Slack standup / status post → optional ROLE-LINE then bullet content.
+   - Conference talk abstract → BYLINE (opening sentence) + abstract prose + PROFILE-LINK STRIP at end ("Reach me at [TWITTER] / [WEBSITE]").
+   - Podcast guest intro → BYLINE + value-prop sentence + PROFILE-LINK STRIP.
+   - Mailing address → ADDRESS BLOCK.
+   - Daily briefing / news roundup email → SUBJECT TITLE + sections of content + SIGNATURE.
+
+7. Conversely, do NOT cram fields into documents that don't conventionally include any of the above sections — a one-line status update has no SIGNATURE; a poem has no BYLINE; a single-line slack reply has no ROLE-LINE.`;
   return `\n\n${header}\n\n${lines.join('\n')}\n\n${rules}`;
 }
 
