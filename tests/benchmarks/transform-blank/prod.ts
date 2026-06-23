@@ -1,32 +1,25 @@
 /**
  * Production benchmark — drives the actual `TransformBlankSource` from
  * `@opencues/core` so we measure EXACTLY what users run. There is no
- * bench-local copy of any production prompt: the EXTRACT / APPLY / VERIFY
- * (3-pass) and FUSED prompts all live solely in
+ * bench-local copy of any production prompt: the single FUSED prompt
+ * lives solely in
  * `packages/opencues-core/src/sources/transform-blank-source.ts`. This is
- * the single source of truth — editing a prompt there is automatically
- * what this bench measures.
+ * the single source of truth — editing it is automatically what this
+ * bench measures. (TransformBlank runs ONE fused pipeline on every
+ * provider; the old 3-pass groq path was retired June 2026 after groq
+ * fused benched at parity — see EXPERIMENTS.md § Experiment 10.)
  *
  * (Historical note: the old `run.ts` comparative harness kept its OWN
- * copies of these prompts in `pass1-extract.ts` / `pass2-apply.ts` /
- * `pass3-verify.ts` / `fused-extract-apply.ts` etc. Those drifted from
- * production — e.g. the bench APPLY prompt was missing the FILL
- * PLACEHOLDER rule production had — so a "production" bench mode silently
- * measured a stale prompt. That harness now lives in `archive/`; this
- * runner replaces it for every production shape.)
+ * copies of these prompts and drifted from production — e.g. the bench
+ * APPLY prompt was missing the FILL PLACEHOLDER rule production had — so
+ * a "production" bench mode silently measured a stale prompt. That
+ * harness now lives in `archive/`; this runner replaces it.)
  *
  * Usage:
- *   # production FUSED (cerebras → fused, the default):
  *   CEREBRAS_API_KEY=xxx GROQ_API_KEY=xxx \
- *     npx tsx tests/benchmarks/transform-blank/prod.ts [--parallel N]
- *   # production 3-PASS (groq → 3-pass):
- *   GROQ_API_KEY=xxx \
- *     npx tsx tests/benchmarks/transform-blank/prod.ts --mode 3-pass [--parallel N]
- *   # explicit override:
- *     ... prod.ts --provider cerebras --mode 3-pass
+ *     npx tsx tests/benchmarks/transform-blank/prod.ts [--provider cerebras|groq] [--parallel N]
  *
- * Flags: `--mode fused|3-pass` (default: provider's production mode),
- * `--provider cerebras|groq` (default: 3-pass→groq, fused→cerebras),
+ * Flags: `--provider cerebras|groq` (default cerebras),
  * `--parallel N` (default 8). GROQ_API_KEY is always required — the JUDGE
  * pins to groq gpt-oss-120b regardless of inference provider (see
  * EXPERIMENTS.md § Experiment 6). The selected inference provider's key
@@ -104,19 +97,15 @@ const httpAdapter: HttpAdapter = {
 const CEREBRAS_MODEL = process.env.OPENCUES_CEREBRAS_MODEL ?? 'gpt-oss-120b';
 const GROQ_MODEL = process.env.OPENCUES_GROQ_MODEL ?? 'openai/gpt-oss-120b';
 
-type BenchMode = 'fused' | '3-pass';
-
-// Provider wiring for the two PRODUCTION-relevant shapes. Production
-// auto-routes groq → 3-pass and cerebras → fused (pickTransformBlankMode);
-// these defaults mirror that so `--mode 3-pass` measures the real groq
-// 3-pass and `--mode fused` the real cerebras fused, without re-declaring
-// either prompt here — both come from @opencues/core.
-const PROVIDERS: Record<string, { endpoint: string; key: string | undefined; model: string; defaultMode: BenchMode }> = {
-  cerebras: { endpoint: 'https://api.cerebras.ai/v1/chat/completions', key: CEREBRAS_KEY, model: CEREBRAS_MODEL, defaultMode: 'fused' },
-  groq:     { endpoint: 'https://api.groq.com/openai/v1/chat/completions', key: GROQ_KEY, model: GROQ_MODEL, defaultMode: '3-pass' },
+// Provider wiring. TransformBlank runs a SINGLE fused pipeline on every
+// provider (the prompt lives solely in @opencues/core's FUSED_SYSTEM), so
+// this just selects the endpoint/model to measure that one shape against.
+const PROVIDERS: Record<string, { endpoint: string; key: string | undefined; model: string }> = {
+  cerebras: { endpoint: 'https://api.cerebras.ai/v1/chat/completions', key: CEREBRAS_KEY, model: CEREBRAS_MODEL },
+  groq:     { endpoint: 'https://api.groq.com/openai/v1/chat/completions', key: GROQ_KEY, model: GROQ_MODEL },
 };
 
-function buildSource(providerId: string, mode: BenchMode): TransformBlankSource {
+function buildSource(providerId: string): TransformBlankSource {
   const p = PROVIDERS[providerId];
   if (!p) { console.error(`Unknown provider "${providerId}". Known: ${Object.keys(PROVIDERS).join(', ')}`); process.exit(1); }
   if (!p.key) { console.error(`Set ${providerId.toUpperCase()}_API_KEY to bench provider "${providerId}".`); process.exit(1); }
@@ -126,7 +115,6 @@ function buildSource(providerId: string, mode: BenchMode): TransformBlankSource 
     endpoint: p.endpoint,
     apiKey: p.key,
     model: p.model,
-    mode, // explicit — the production shape under test; the PROMPT lives in @opencues/core
   });
 }
 
@@ -200,20 +188,15 @@ async function main() {
     return i >= 0 ? process.argv[i + 1] : undefined;
   };
   const parallel = argVal('--parallel') ? parseInt(argVal('--parallel')!, 10) : 8;
-  const mode = (argVal('--mode') as BenchMode | undefined) ?? undefined;
-  // Default provider follows the requested mode's production home
-  // (3-pass → groq, fused → cerebras); --provider overrides.
-  const provider = argVal('--provider') ?? (mode === '3-pass' ? 'groq' : 'cerebras');
-  const effMode: BenchMode = mode ?? PROVIDERS[provider]?.defaultMode ?? 'fused';
-  if (effMode !== 'fused' && effMode !== '3-pass') {
-    console.error(`--mode must be fused | 3-pass, got: ${effMode}`); process.exit(1);
-  }
+  // Single fused pipeline on every provider; --provider selects which one
+  // to measure (default cerebras).
+  const provider = argVal('--provider') ?? 'cerebras';
   console.log(`${BOLD}transform-blank PROD benchmark${RESET}  ${DIM}(drives @opencues/core TransformBlankSource — no bench-local prompt)${RESET}`);
-  console.log(`Provider: ${provider} ${PROVIDERS[provider]?.model ?? '?'} (mode=${effMode})`);
+  console.log(`Provider: ${provider} ${PROVIDERS[provider]?.model ?? '?'} (fused)`);
   console.log(`Judge: groq gpt-oss-120b (pinned)`);
   console.log(`Cases: ${CASES.length}  parallel=${parallel}\n`);
 
-  const source = buildSource(provider, effMode);
+  const source = buildSource(provider);
   const wall0 = Date.now();
   const outcomes = await runWithConcurrency(CASES, c => runOne(c, source), parallel);
   const wallMs = Date.now() - wall0;

@@ -8,8 +8,8 @@ OpenCues — alongside `BlankSource` (keyword-bound blanks) and
 makes `_` a *universal interaction handle* rather than just a slot to
 fill.
 
-If you're touching the prompts, debugging an edge case, or porting the
-pipeline to a different host — start here.
+If you're touching the prompt, debugging an edge case, or porting the
+source to a different host — start here.
 
 Companion docs:
 - **`docs/features/transform-blank.md`** — user-facing reference
@@ -18,6 +18,9 @@ Companion docs:
   with all the alternative-architecture tests we ran and their results
 - **`docs/architecture/spans-and-cycling.md`** — how the runtime
   handles the substitution + cycling once the rewrite arrives
+- **`docs/architecture/blank-sources.md`** — the family of `CueSource`
+  classes and the two substitute mechanisms (slot-splice vs
+  three-way-merge) the resolver picks between
 
 ---
 
@@ -54,7 +57,7 @@ the whole region.
 ```
 Priority chain (highest first):
   95  BlankSource          ← keyword-bound (volume, brightness, ...)
-  93  TransformBlankSource ← NEW: imperative instructions
+  93  TransformBlankSource ← imperative instructions
   92  FluidBlankSource     ← free-form lookups
   80  spelling cue         ← misspelled words on plain text (defaults/cues/spelling.md, ConfigSource)
 ```
@@ -64,18 +67,17 @@ race in parallel. The highest-priority result wins via the resolver's
 priority-merge step.
 
 `TransformBlankSource.supports()` always returns `true` for any input
-containing `_` (after ceding to keyword-bound `BlankSource`). EXTRACT —
-the first LLM call — is the authoritative classifier. If the input
-isn't actually a transform-shaped imperative, EXTRACT returns
+containing `_` (after ceding to keyword-bound `BlankSource`). The
+**fused LLM call is the authoritative classifier**. If the input isn't
+actually a transform-shaped imperative, the call returns
 `VERDICT: NONE` and the source bails with empty results, letting
 `FluidBlankSource` (priority 92) take the slot.
 
 This was a deliberate architectural choice. We initially used a
 keyword/regex heuristic in `supports()` to avoid the extra LLM call on
 non-transform inputs, but it was brittle ("full caps all words" didn't
-match any obvious imperative verb). The cost of one EXTRACT call per
-non-transform `_` is ~400ms, which is acceptable for the cleanliness
-gain.
+match any obvious imperative verb). The cost of one fused call per
+non-transform `_` is acceptable for the cleanliness gain.
 
 ### The shape — body first, instruction last
 
@@ -89,647 +91,248 @@ moment you press it, so anything you'd type *after* `_` would never
 reach the source. The body has to be in the buffer before `_` lands.
 
 The inverted shape `<INSTRUCTION> _ <TARGET>` exists as a parser
-target — the EXTRACT prompt is trained on both layouts so a pasted
-snippet, a synthetic bench case, or text you constructed by editing
-*back* into the middle of the buffer all still classify correctly.
-But that's a paste-or-edit path, not a typing path. Examples in
-user-facing docs should use `<TARGET> <INSTRUCTION> _` exclusively.
+target — the fused prompt is trained on both layouts (plus a
+SANDWICHED `<TARGET-PT1> <INSTRUCTION> _ <TARGET-PT2>` layout) so a
+pasted snippet, a synthetic bench case, or text you constructed by
+editing *back* into the middle of the buffer all still classify
+correctly. But that's a paste-or-edit path, not a typing path.
+Examples in user-facing docs should use `<TARGET> <INSTRUCTION> _`
+exclusively.
 
 ---
 
-## Pipeline architecture (the 3-pass design)
+## Pipeline — single fused call
 
 ```
-INPUT → EXTRACT → APPLY → VERIFY → SUBSTITUTE
-        (P1)      (P2)     (P3)
-        LLM       LLM(s)   LLM     code
-        ~400ms    ~500ms   ~600ms  ~10ms
+INPUT → FUSED → SUBSTITUTE (three-way merge)
+        LLM     code
+        ~600ms  ~10ms
 ```
 
-Total: ~1.4-1.6s per blank in production, dominated by sequential LLM
-latency. At `parallel=8` in the benchmark, throughput is ~5 cases/sec.
+TransformBlank makes **one** LLM call per blank, on every provider. The
+call runs `FUSED_SYSTEM` (a module-scope constant in
+`transform-blank-source.ts`), which classifies, extracts the
+instruction + target, and produces the rewrite in a single prompt.
+`runFusedAndBuild` is the method that issues the call and builds the
+`CueResult`.
 
-### Why 3 passes and not 1
+### The contract
 
-This was the central design decision. We tested:
+The fused call emits four labelled lines (`FULL_REWRITE` may span
+multiple lines):
 
-| Architecture | Accuracy | Per-case latency |
-|---|---|---|
-| Single-call (all in one prompt) | 19% | 0.5s |
-| 1-pass rewrite | 46% | 0.6s |
-| 2-pass extract → apply | 83% | 1.1s |
-| **3-pass extract → apply → verify** | **86-90%** | **1.4-1.7s** |
-
-Single-call is broken because the model can't juggle "is this a
-transform?" + "extract instruction + target" + "apply the transform" +
-"check consistency" simultaneously. It scored 0% on conditional,
-context-referring, and trailing-instruction (the categories that need
-sophisticated EXTRACT). It even returned `VERDICT: TRANSFORM | NONE`
-literally on a pluralize case — confused enough to echo the placeholder.
-
-The 3-pass split is the same architectural insight that made the
-2-pass `FluidBlankSource` work: **narrow jobs are easier than wide
-jobs**. P1's only question is "is this an imperative? if so, what's
-the instruction and what's the target?" P2 only does the rewrite —
-no decisions about validity. P3 only checks for consistency bugs —
-never re-litigates whether to fire.
-
-This recursive structure (split a pipeline into single-purpose phases)
-is the cornerstone pattern for OpenCues' LLM-orchestration code.
-See `tests/benchmarks/transform-blank/EXPERIMENTS.md`, "Experiment 1"
-for the full strategy comparison.
-
----
-
-## Two-path parity (fused vs 3-pass) — a maintenance invariant
-
-⚠️ **The same behaviour is encoded TWICE and the two copies drift.** Read
-this before editing any prompt in `transform-blank-source.ts`.
-
-`pickTransformBlankMode()` chooses the path by provider:
-
-| Path | Constant(s) | Providers | Shape |
-|---|---|---|---|
-| **FUSED** | `FUSED_SYSTEM` (one call) | cerebras / openai / gemini / anthropic — **the default for most users** | classify + extract + apply in a single prompt |
-| **3-PASS** | `P1_EXTRACT_SYSTEM` + `P1_5_RESOLVE_DEICTICS_SYSTEM` + `P2_APPLY_SYSTEM` + `P2_GENERATIVE_APPLY_SYSTEM` + `P3_VERIFY_SYSTEM` | groq | one prompt per phase |
-
-**THE INVARIANT:** any behaviour rule (a new instruction kind, a NONE-bail
-condition, a styling/formatting rule, a placeholder syntax, even a load-
-bearing example) added to ONE path MUST be mirrored into the OTHER, OR the
-asymmetry MUST be recorded below as intentional. Adding a rule to only one
-encoding is a **silent regression on the other provider set** — and since
-fused is the default, a 3-pass-only rule breaks the majority of users.
-
-This is not hypothetical: `make X bold _` mis-fired on every non-groq
-provider for a long time because the markdown-styling rule lived only in
-3-pass `P2_APPLY` rule 11; fused had nothing (PR #195). The bench did not
-catch it (see the bench caveat below).
-
-### Intentional asymmetries (NOT to be "fixed")
-
-- **P3 VERIFY is fused-skipped by design.** The verify/repair pass exists
-  only in 3-pass. Experiment 6 showed it net-hurts on non-groq providers
-  (it "corrects" valid drafts into wrong output). Fused deliberately has
-  no verify step. Do not port it.
-
-### Known parity GAPS (fix-forward candidates — 3-pass has, fused lacks)
-
-These were found auditing the two paths after the bold fix. All degrade
-the **default** (fused) provider path. Until closed, they are live bugs of
-the same shape as the bold one:
-
-| Gap | 3-pass home | Impact |
-|---|---|---|
-| **Cursor / positional edits + the whole P1.5 deictic pass** ("make this line bold", "shorten it", "add a line break here", "split this paragraph here", "fix this typo") | `P1_5_RESOLVE_DEICTICS_SYSTEM` + `P2_APPLY` rule 10 + `injectCursorSentinel` wiring | **Largest gap.** Fused sends no `[CURSOR]` and resolves no deictic referents — an entire class of caret-relative / "this/that/it" instructions silently degrades on default providers. |
-| **Heading / list-ification** ("make it a heading" → `# `, "turn into a list" → `- `) | `P2_APPLY` rule 11 tail | Same shape as the bold bug; absent from fused. |
-| **AUTO STYLING** ("add bolding where appropriate", "highlight key terms" → pick 2–5 spans) | `P2_APPLY` sub-pattern (e) | Fused only has the *named-span* styling rule, not pick-your-own-spans. |
-| **Anchored / colloquial insertion** ("add X after the dear line", "chuck in", "drop X in" vs "drop X" = delete) | `P2_APPLY` rule 12 (a–d) + drop-disambiguation | Fused appends at end only; loses anchored insertion + the drop-verb disambiguation. |
-
-Minor reverse-direction asymmetries (fused has, 3-pass lacks): `underline`
-verb, the "instruction-shaped phrase but no target" NONE clause, and the
-broader placeholder syntaxes (`{{name}}` / `<name>` / `___` / `Label:`).
-
-### When you edit a prompt — the checklist
-
-1. **Mirror or document.** Make the equivalent change in the other path,
-   or add a row to "Intentional asymmetries" with the reason.
-2. **Re-bench BOTH modes:** `prod.ts --mode fused --provider cerebras` AND
-   `prod.ts --mode 3-pass --provider groq`, each against a same-session
-   baseline (cerebras/groq accuracy has run-to-run variance — judge the
-   delta, not the absolute).
-3. **Bench caveat — it can't see everything.** `prod.ts` drives the BARE
-   source; the live host appends the identity/blank-context catalog to the
-   prompt. Catalog-induced classification bugs (the bold bug only fired
-   *with* a catalog on) are invisible to the bench. The **agentic harness**
-   (`tests/agentic/`, e.g. scenario 103) is the gate for those.
-4. **Update this table** if you close a gap or discover a new one.
-
----
-
-## P1 — EXTRACT
-
-**Job:** decide whether the input carries an imperative instruction. If
-yes, split the input into `instruction` and `target`. If no, bail with
-`VERDICT: NONE`.
-
-**Output format:**
 ```
 VERDICT: TRANSFORM | NONE | TASK_ARM | TASK_ADD | TASK_STOP | TASK_SHOW
-INSTRUCTION: <imperative phrase, _ removed; or empty>
-TARGET: <text the instruction should apply to; or empty>
+INSTRUCTION: <the imperative phrase OR task prompt, _ removed; or empty>
+TARGET: <the rest of the input after removing instruction + _; or empty>
+FULL_REWRITE: <the ENTIRE final buffer with the instruction applied AND
+               the instruction phrase + _ removed. Contains ONLY what the
+               user should see. Empty when VERDICT is NONE / TASK_*>
 ```
 
-The six verdicts split into three branches:
+The verdicts split into three branches:
 
-- **`TRANSFORM`** — the imperative path. EXTRACT splits into INSTRUCTION + TARGET; APPLY rewrites; VERIFY checks. If TARGET is empty, the **generative branch** fires instead (single-pass APPLY, no VERIFY) — covers cases like "write a poem _", "compose an email _", "give me 5 startup ideas _".
-- **`TASK_ARM` / `TASK_ADD` / `TASK_STOP` / `TASK_SHOW`** — the agent-task path. Routes to the runtime's agent state machine via `metadata.taskAction` + `metadata.taskPayload`; APPLY and VERIFY do not run. See `docs/architecture/agent-task.md` for the task semantics.
-- **`NONE`** — the source bails immediately and FluidBlankSource (priority 92) takes the slot. **Exception (fused mode):** a `NONE` on a **long buffer** (> `FUSED_NONE_RETRY_FLOOR`, 400 chars) is *not trusted* and falls through to 3-pass instead of ceding. Rationale: the fused call emits the entire `FULL_REWRITE` in one shot, and cerebras `gpt-oss-120b` intermittently returns `VERDICT: NONE` under that output/reasoning-budget pressure even when there *is* a trailing imperative (a chained `make it all make sense structurally _` on a ~1.3k-char buffer silently did nothing). 3-pass's EXTRACT is a small, budget-free call that re-classifies reliably; a genuinely non-transform long buffer still cedes there (its EXTRACT also returns `NONE`). Short NONEs (bare lookups like `capital of france _`) cede unchanged.
+- **`TRANSFORM`** — the imperative path. `FULL_REWRITE` is the entire
+  rewritten buffer. If `TARGET` is empty, the **generative branch**
+  fired — the input was *only* an instruction (`write a poem _`,
+  `compose an email _`, `give me 5 startup ideas _`) and `FULL_REWRITE`
+  holds the generated content.
+- **`TASK_ARM` / `TASK_ADD` / `TASK_STOP` / `TASK_SHOW`** — the
+  agent-task path. `FULL_REWRITE` is empty; the result routes to the
+  runtime's agent state machine via `metadata.taskAction` +
+  `metadata.taskPayload`. See `docs/architecture/agent-task.md`.
+- **`NONE`** — the source bails and `FluidBlankSource` (priority 92)
+  takes the slot. **Exception:** a `NONE` on a **long buffer** (>
+  `FUSED_NONE_RETRY_FLOOR`, 400 chars) is *not trusted* and the source
+  **cedes** (returns `null`) so a later resolve can take a fresh look,
+  rather than letting a budget-pressure misfire silently drop the edit.
+  Rationale: the fused call emits the entire `FULL_REWRITE` in one
+  shot, and cerebras `gpt-oss-120b` intermittently returns
+  `VERDICT: NONE` under that output/reasoning-budget pressure even when
+  there *is* a trailing imperative (a chained `make it all make sense
+  structurally _` on a ~1.3k-char buffer silently did nothing). Short
+  NONEs (bare lookups like `capital of france _`) cede unchanged.
+
+### The whole-buffer FULL_REWRITE → three-way-merge
+
+`FULL_REWRITE` is the **entire** rewritten buffer, not a rewritten
+slice. The LLM owns the whole buffer; the runtime diffs
+`alternatives[0]` (original) against `alternatives[1]` (rewrite) and
+**three-way-merges** the change into the live text (`threeWayMerge` in
+`packages/opencues-runtime/src/modules/word-diff.ts`). The merge drops
+any LLM hunk that overlaps a user edit made during the async call, so
+typing while the call is in flight is never clobbered.
+
+This is the structural fix for the May 2026 long-body duplication bug:
+the earlier design had the LLM emit a narrow `REWRITE` of just the
+TARGET, then the resolver spliced it back using an LLM-claimed span —
+when the claimed span and the concat-tail disagreed, the body
+duplicated. The fused result deliberately emits *no* splice geometry
+(`INSTRUCTION` / `TARGET` ride along as `transformInstruction` /
+`transformTargetDebug` metadata for debug + event payloads only, NOT as
+substitution bounds), so the resolver always routes transform-blank
+through the merge path. See `docs/architecture/blank-sources.md` for
+the full merge-vs-splice decision table.
+
+### Why one call (and why there used to be three)
+
+A `groq`-only 3-pass pipeline (EXTRACT → APPLY → VERIFY, plus a P1.5
+deictic-resolver sub-pass and cursor-sentinel injection) used to exist
+alongside the fused path, picked per-provider by
+`pickTransformBlankMode`. It was retired June 2026: on the matured
+`FUSED_SYSTEM` prompt, groq fused benched at parity with 3-pass
+(~1.6pp, inside run-to-run variance), ~35% faster (615ms vs 984ms, one
+call vs three), and a single prompt eliminated an entire two-path
+*drift* class — behaviour rules added to one encoding silently missing
+from the other. See `EXPERIMENTS.md, Experiment 10` for the head-to-head
+data and the retirement rationale.
+
+### The fused prompt's APPLY rules ARE load-bearing
+
+The same insight that justified the old 3-pass APPLY's verbose rules
+holds for the fused prompt: stripping APPLY to minimal rules *dropped*
+accuracy AND raised latency (the model thinks harder without explicit
+guidance — Experiment 2). The fused prompt's APPLY rules therefore
+carry real semantic load and should NOT be pruned. The notable ones:
+
+- **Apply to ALL applicable spans**, not just the first; preserve
+  everything not targeted (other words, punctuation, casing).
+- **Concept-swap propagation** — when the instruction names a CATEGORY
+  (pet, vehicle, profession, era), update dependent verbs/sounds/
+  objects to match (cats meow not bark; cars use seatbelts not helmets).
+- **Composed instructions** ("X and Y") — pipe-join in `INSTRUCTION`
+  (`make past tense | remove pronouns`) and apply BOTH simultaneously;
+  the result must be grammatical under both constraints. Don't split a
+  single edit (`change boy to girl`, `make it formal`).
+- **Preserve structure** — `\n\n` paragraph breaks round-trip verbatim;
+  multi-paragraph in → multi-paragraph out.
+- **Markdown styling** — `make X bold` / `italicize Y` / etc. decorate
+  the named span IN PLACE with `**`/`*`/`~~`/`` ` `` markers (stripped
+  before the buffer is written; visual style rendered via the host's
+  `markdown.styled` event). The named span may sit in a sentence
+  *before* the instruction, across a period or line break — find it,
+  don't bail.
+- **Fill placeholder vs add/append** — when the instruction supplies a
+  VALUE for a named field (`add recipient name Karen`) and the body
+  already contains a matching placeholder (`[Recipient Name]`,
+  `{{name}}`, `___`, a `Label:` line), REPLACE that placeholder in
+  place; otherwise an ADD/APPEND instruction over existing body
+  preserves the body verbatim and appends the new content on a new
+  paragraph. The presence of body text is decisive: instruction + body
+  → append; instruction alone → generative.
+- **Generative output uses real line breaks** — poems break each line,
+  lists put each item on its own line, emails blank-line between
+  paragraphs. Never ` / ` or a literal `\n`; emit the actual newline
+  (the rewrite is written to the buffer verbatim — see Lesson 5).
+
+The prompt's example block is the load-bearing part for the APPLY rules
+(unlike classification, where examples can hurt — Experiment 2). When a
+concrete production failure shows the model needs a new example, add
+it; otherwise resist, because each addition risks pushing the model
+back into exclusionary pattern-matching mode.
+
+### Identity + blank-context catalog blocks
+
+When `identity-context-mode` and/or `blank-context-mode` are on, the
+runtime appends two catalog blocks to the fused system prompt:
+
+- **Identity catalog** (`buildUserCatalogBlock`) — the user's own
+  personal data from `~/.cues/IDENTITY.md`, so a `draft an email _`
+  rewrite can personalise the sender without re-typing.
+- **Blank-context catalog** (`buildBlankContextBlock`) — ambient
+  blank values (stocks/weather/crypto/…) the rewrite can fold in.
+
+Both default OFF and are structural no-ops when off. In `safe` mode the
+identity catalog sends only token names + descriptions; a runtime
+post-processor (`resolveSentinels`) substitutes real values AFTER the
+LLM responds, so PII never reaches the provider. See
+`docs/architecture/identity-context.md`.
+
+> **Cerebras prompt-cache note:** `FUSED_SYSTEM` and the two catalog
+> blocks are stable session-level context and go in the **system**
+> message so cerebras caches them as a prefix (~99.5% hit rate). The
+> per-call user INPUT stays in the user message. Don't move per-call
+> binding into the system prompt — see `docs/architecture/cerebras.md`.
 
 ### Claim-and-bail — protecting the slot from FluidBlank "vandalism"
 
-If EXTRACT classified the input as `TRANSFORM` but APPLY couldn't produce a rewrite (every step returned empty, parser couldn't parse the model output, etc.), the source **claims** the `_` slot before returning. Implemented by setting `CueSourceResult.consumedBlankSlots: [blankIdx]` on the empty result.
+If the fused call classified the input as `TRANSFORM` but couldn't
+produce a rewrite (empty `FULL_REWRITE`, unparseable output), the source
+**claims** the `_` slot before returning, by setting
+`CueSourceResult.consumedBlankSlots: [blankIdx]` on the empty result.
 
-The resolver forwards consumed-slot indices into the `CueContext.consumedBlankSlots` field of every downstream source. `FluidBlankSource.getCues` checks early: if its slot is in that list, it bails with `reason: 'consumed-upstream'` and the buffer is left unchanged.
+The resolver forwards consumed-slot indices into the
+`CueContext.consumedBlankSlots` field of every downstream source.
+`FluidBlankSource.getCues` checks early: if its slot is in that list, it
+bails with `reason: 'consumed-upstream'` and the buffer is left
+unchanged.
 
-Why this matters: without the claim, an EXTRACT verdict of `TRANSFORM` + a failed APPLY would let FluidBlank fall through and substitute the user's instruction as a *question* — "make this shorter _" becomes "Paris" because FluidBlank read the imperative as a lookup phrase. The user gave an instruction; we failed to apply it; substituting an unrelated answer is worse than leaving the buffer alone.
+Why this matters: without the claim, a `TRANSFORM` verdict + a failed
+rewrite would let FluidBlank fall through and substitute the user's
+instruction as a *question* — "make this shorter _" becomes "Paris"
+because FluidBlank read the imperative as a lookup phrase. The user gave
+an instruction; we failed to apply it; substituting an unrelated answer
+is worse than leaving the buffer alone.
 
-Rule: **if TransformBlank tries a slot, FluidBlank never does.** Both branches claim:
+Rule: **if TransformBlank tries a slot, FluidBlank never does.** The
+only paths that LEGITIMATELY hand off to FluidBlank:
+- The verdict was `NONE` on a short buffer (input wasn't classified as
+  imperative — "capital of france _", "atomic number of oxygen _").
+- TransformBlank short-circuited before the LLM call (no `_`,
+  partial-detector flagged still-typing) — empty result without claim.
 
-- **Imperative** (`TRANSFORM` + non-empty TARGET + every APPLY step empty) → claim. User said "make this shorter _"; we failed to shorten it; FluidBlank substituting an unrelated answer is worse than leaving the buffer alone.
-- **Generative** (`TRANSFORM` + empty TARGET + GENERATIVE pass empty) → claim. User said "write a poem _"; we failed to write one; FluidBlank treating "write a poem" as a lookup phrase would vandalise the intent.
-
-The only paths that LEGITIMATELY hand off to FluidBlank:
-- EXTRACT verdict was `NONE` (input wasn't classified as imperative — "capital of france _", "atomic number of oxygen _").
-- TransformBlank short-circuited before EXTRACT (no `_`, partial-detector flagged still-typing, etc.) — empty result without claim.
-
-Pinned by `packages/opencues-core/src/resolver.test.ts` (consumed-slots forwarding) and the TransformBlank tests covering the EXTRACT=TRANSFORM + APPLY=empty case.
-
-### Why minimal prompts win here (Experiment 2)
-
-The first version of EXTRACT had ~200 lines of rules and 18 examples
-covering every layout, conditional shape, context-referring shape,
-etc. Stripping it to a single semantic question and 4 layout-spanning
-examples improved accuracy from 83% to 88-90% (Experiment 2).
-
-Mechanism: the verbose prompt enumerated 10+ imperative shapes. The
-model treated this list as an *exclusionary filter* — bailing to NONE
-on borderline imperatives that didn't match a listed shape. The
-minimal prompt asks ONE semantic question and the model answers it
-more accurately than pattern-matching against an enumerated list.
-
-The current production prompt is in
-`packages/opencues-core/src/sources/transform-blank-source.ts`,
-constant `P1_EXTRACT_SYSTEM`. It contains:
-
-- One paragraph defining what an "imperative instruction" is
-- The two-line output format spec
-- A note about the two layouts (a/b)
-- A note about composed instructions ("X and Y" → pipe-joined)
-- A NONE-rule list (bail conditions)
-- 5 carefully-chosen examples covering both layouts + composed + NONE
-
-**Don't add more examples.** Each addition risks pushing the model
-back into pattern-matching mode. Add only when a concrete production
-failure shows the model needs the example.
-
-### Composed instructions
-
-When the imperative joins two transforms with "and"
-("make past tense and remove pronouns"), EXTRACT outputs them
-**pipe-joined** in `INSTRUCTION`:
-
-```
-INSTRUCTION: make past tense | remove pronouns
-```
-
-The pipe is the wire format that signals "run APPLY twice, sequentially,
-output of N feeds target of N+1". This was Experiment 3's main
-architectural change — see "Sequential composition" below in the APPLY
-section.
-
-The "would each half stand alone?" guard lives in the prompt as the
-test for whether to split. The model rarely violates it on the 162-case
-suite.
+Pinned by `packages/opencues-core/src/resolver.test.ts` (consumed-slots
+forwarding) and the TransformBlank tests covering the TRANSFORM +
+empty-rewrite case.
 
 ### Parser quirks
 
-The output is line-based, parsed by regex:
+The output is line-based, parsed by regex. Two non-obvious bug fixes
+are baked in:
 
-```ts
-const verdictMatch     = raw.match(/^VERDICT:[ \t]*(TRANSFORM|NONE)[ \t]*$/im);
-const instructionMatch = raw.match(/^INSTRUCTION:[ \t]*(.*?)[ \t]*$/im);
-const targetMatch      = raw.match(/TARGET:[ \t]*([\s\S]*?)\s*$/i);
-```
-
-**Two non-obvious bug fixes** baked in:
-
-1. **`[ \t]*` not `\s*`** for single-line fields (VERDICT, INSTRUCTION).
-   Production bug: model emitted
-
-   ```
-   VERDICT: NONE
-   INSTRUCTION:
-   TARGET:
-   ```
-
-   The `\s*` matched the newline AND the next line's "TARGET:" text,
-   so the lazy `.*?` extended across lines and captured `TARGET:` as
-   the instruction value. Trace showed
-   `verdict=NONE, instruction="TARGET:"` — pure noise. Fixed by using
-   `[ \t]*` (horizontal whitespace only).
-
-2. **TARGET drops the `m` flag** because it can span multiple
-   paragraphs (multi-paragraph rewrites). With `m`, `$` matches at
-   end of each line and lazy `[\s\S]*?` stops at the first newline,
-   truncating multi-paragraph TARGETs to one line. Multi-paragraph
-   accuracy went from 0% → 80% with this fix alone.
+1. **`[ \t]*` not `\s*`** for single-line fields (VERDICT,
+   INSTRUCTION). `\s*` matches the newline AND the next line's label, so
+   a lazy `.*?` extends across lines and captures the next field's label
+   as the current field's value (trace showed
+   `verdict=NONE, instruction="TARGET:"` — pure noise). Use
+   horizontal-whitespace-only.
+2. **`FULL_REWRITE` drops the `m` flag** because it can span multiple
+   paragraphs. With `m`, `$` matches at end of each line and lazy
+   `[\s\S]*?` stops at the first newline, truncating multi-paragraph
+   rewrites to one line.
 
 ### Dynamic max_tokens
 
-Each EXTRACT call computes its own `max_tokens` budget from the input
-length:
+The call computes its own `max_tokens` budget from the input length
+(`budgetForOutput`):
 
 ```
 budget = max(FLOOR=768, ceil(input_chars / 3) + REASONING_HEADROOM=400)
 ```
 
-- **FLOOR=768** is a hard minimum to ensure room for both
-  `reasoning_effort: 'low'` reasoning tokens AND a short structured
-  output. An earlier version used FLOOR=128 — long-text cases
-  truncated mid-output and accuracy dropped 85% → 50%. Lesson: when
-  using `reasoning_effort`, you need to reserve room for BOTH
-  reasoning + output, and the safe floor is bigger than the output
-  alone would suggest.
-- **`input_chars / 3`** estimates output tokens (TARGET echoes most
-  of the input back; rough char-to-token of 3).
+- **FLOOR=768** reserves room for BOTH `reasoning_effort: 'low'`
+  reasoning tokens AND the structured output. An earlier FLOOR=128
+  truncated long-text cases mid-output and dropped accuracy 85% → 50%.
+  Lesson: with `reasoning_effort`, the safe floor is bigger than the
+  output alone would suggest.
+- **`input_chars / 3`** estimates output tokens (`FULL_REWRITE` echoes
+  most of the input back).
 - **CEILING=4096** caps multi-paragraph rewrites.
 
-The previous flat `2048` budget was wasting 50-200ms per call on Groq
-via higher TTFT and longer planning overhead.
-
----
-
-## P1.5 — DEICTIC RESOLVER (conditional sub-step)
-
-**Job:** rewrite the instruction with deictic references (`this line`,
-`this word`, `it`, `those`, etc.) resolved into explicit quoted spans
-before APPLY sees them. Only fires when the instruction contains a
-deictic — the regex `needsDeicticResolution()` is the gate.
-
-**Why it exists:** APPLY has to do two jobs when the instruction is
-deictic — figure out which span the deictic refers to (using
-`[CURSOR]` position) AND apply the edit. Splitting the referent
-resolution into its own pass reduces APPLY's job to "apply an
-unambiguous edit to a known span."
-
-**Conditional gate** (`needsDeicticResolution(instruction)` in
-`transform-blank-source.ts`): permissive regex matching
-`\b(this|that|these|those|it|them|there)\b`. False positives only
-cost one extra LLM call (P1.5 passes the instruction through
-unchanged); false negatives bypass P1.5 entirely.
-
-**Examples:**
-
-```
-INSTRUCTION: bold this word
-TARGET:      hello wil[CURSOR]fred today
-RESOLVED:    bold the word "wilfred"
-
-INSTRUCTION: rephrase this sentence
-TARGET:      I went to the store yesterday. I bought[CURSOR] some apples. They were red.
-RESOLVED:    rephrase the sentence "I bought some apples."
-```
-
-**Idiomatic-"it" carve-out:** `make it british english` /
-`make it past tense` / `make it shorter` are FIXED English
-constructions; "it" doesn't refer to a specific span. P1.5 leaves
-these unchanged. The prompt has an explicit rule + 4 examples for
-this case.
-
-**Positional cues stay positional:** `here`, `at this point`, `right
-here` are NOT resolved. APPLY handles those via the `[CURSOR]` marker
-itself. The resolver passes the instruction through.
-
-**Empirical gain** (benchmark
-`tests/benchmarks/transform-blank/archive/deictic-resolve.ts`, 75 cases):
-
-| Category | Raw APPLY | P1.5 + APPLY |
-|---|---|---|
-| this-line | 88% | **93%** |
-| this-word | 91% | **100%** |
-| this-standalone | 69% | **85%** |
-| Other categories | unchanged | unchanged |
-| **Overall** | **87.1%** | **92.0% (+4.9pp)** |
-
-Conditional-trigger correctness: 75/75 — regex never wrongly fires
-on idiomatic-"it" and never misses a real deictic.
-
-**Latency cost:** ~300-500ms extra LLM call ONLY when the trigger
-fires (roughly half of TransformBlank dispatches in production
-logs). Non-deictic instructions skip P1.5 entirely.
-
----
-
-## P2 — APPLY
-
-**Job:** execute the instruction on the target. Pure rewrite — no
-decisions about validity (P1 already gated that).
-
-**Output format:**
-```
-REWRITE: <rewritten target>
-```
-
-### Why APPLY's verbose rules ARE load-bearing
-
-Experiment 2 stripped APPLY to minimal rules — accuracy DROPPED from
-83% to 81% AND latency went UP from 1729ms → 1938ms per case. The
-model thinks harder without explicit guidance. APPLY's rules carry
-real semantic load and should NOT be pruned.
-
-The current ruleset (in `P2_APPLY_SYSTEM`):
-
-1. Apply to ALL applicable spans (not just the first)
-2. Preserve everything not targeted (other words, punctuation, casing)
-3. Pick a consistent interpretation when ambiguous
-4. Output only the rewritten target — no instruction, no commentary
-5. **CONCEPT-SWAP PROPAGATION** — when the instruction names a CATEGORY
-   (pet, vehicle, profession, era, etc.) update verbs, sounds, objects,
-   properties to match. Cats meow not bark; cars use seatbelts not
-   helmets; teachers assign homework not prescribe medicine.
-6. **ROLE PRESERVATION** — when modifying SOME numbers but the target
-   labels them with roles ("original price 100, final price 100"),
-   update only the role the instruction names.
-7. **COMPOSED INSTRUCTIONS** — apply both transforms; result must be
-   grammatical under both constraints simultaneously.
-8. **PRESERVE STRUCTURE** — `\n\n` paragraph breaks must round-trip
-   verbatim. Multi-paragraph in → multi-paragraph out.
-9. **CONDITIONAL INSTRUCTIONS** — "X but not Y", "X except Y",
-   "X only when Z" — apply only where the condition holds.
-10. **CURSOR ANCHOR** — `TARGET` may contain a `[CURSOR]` marker.
-    For POSITIONAL instructions (`here`, `this line`, `this word`,
-    `add X`, `split here`, `before/after this`, `new line/paragraph here`),
-    apply the edit AT the cursor. For non-positional instructions
-    (translate, capitalise, fix typos, etc.), IGNORE the cursor.
-    `line break here` → insert `\n`; `paragraph break here` → `\n\n`.
-11. **MARKDOWN FORMATTING** — `make X bold` / `italicize Y` / etc.
-    decorate the span IN PLACE with `**`/`*`/`~~`/`` ` ``/`# `/`- `
-    markers. The rewrite must contain the ENTIRE TARGET verbatim
-    except for the added markers. Markers are stripped before the
-    buffer is written; visual style is rendered via the host's
-    `markdown.styled` event.
-12. **ADDITION / INSERTION** — when the instruction uses verbs like
-    `add`, `insert`, `append`, `prepend`, `include`, `fill`, `set`,
-    `put`, `write`, `stick X in`, `throw in`, `chuck in`, `pop in`,
-    `slip in`, `drop X in/before/after`, the action is to ADD content,
-    not transform. Five sub-patterns:
-    - **FILL PLACEHOLDER**: target has `[Your Name]` / `[Date]` /
-      etc.; match by keyword overlap and replace with the supplied
-      value.
-    - **ANCHORED INSERT**: `add X after Y` / `add X before Y` — locate
-      Y, insert X relative to it.
-    - **CURSOR INSERT**: `add X` with `[CURSOR]` and no clear
-      placeholder — insert at cursor.
-    - **APPEND**: no anchor, no placeholder, no useful cursor —
-      append to end on a new line.
-    - **AUTO STYLING**: `add bolding where appropriate` — wrap
-      proper nouns / dates / key terms in `**`. Pick reasonable
-      spans, don't refuse on subjectivity.
-    Verb-disambiguation: `drop X` alone = DELETE; `drop X in/before/
-    after` = INSERT (the preposition decides).
-
-Plus ~50 worked examples covering each rule. Examples are the
-load-bearing part for APPLY (unlike EXTRACT, where they hurt).
-Pinned by `tests/benchmarks/transform-blank/archive/apply-tune.ts` —
-95 cases × 3 fanout = 285 attempts; current pass rate **279/279
-(100%)** with zero regressions across literal/concept/tense/case/
-pluralise/composed/conditional/role-preserve/markdown/positional/
-multiline-preserve/add-fill/add-anchored/add-auto-style/add-cursor/
-add-synonym/add-colloquial/add-indirect/polite-wrapper/remove/
-polish/replace-synonym categories.
-
-### Sequential composition for "X and Y" instructions
-
-When EXTRACT pipe-joins ("X | Y"), the resolver runs APPLY twice — the
-output of step 1 becomes the target of step 2:
-
-```
-EXTRACT → INSTRUCTION: pluralize | make past tense
-          TARGET: the child runs to the park
-
-APPLY 1 → ("pluralize", "the child runs to the park")
-       → "the children run to the parks"
-
-APPLY 2 → ("make past tense", "the children run to the parks")
-       → "the children ran to the parks"
-
-VERIFY  → ("pluralize and make past tense", original_target, "the children ran to the parks")
-```
-
-VERIFY sees the **original** ("X and Y") form, not the pipe-joined
-form, so it can check both transforms were applied to the correct
-starting text.
-
-This was Experiment 3's main win. Asking ONE APPLY call to do
-"pluralize AND make past tense" simultaneously dropped to 47%. Splitting
-into two sequential APPLY calls jumped to 73%. The model handles ONE
-transform at a time much better than two — same "narrow jobs" insight
-as the 3-pass split.
-
-### Garbled output — soft-fail Groq parse errors
-
-Sometimes Groq returns a parse error mid-completion:
-
-```json
-{"error": {"message": "Parsing failed. The model generated output that could not be parsed..."}}
-```
-
-We swallow these in the Groq client and return empty text. Caller's
-parser treats empty as a bail. One bad response shouldn't kill a
-50-case benchmark or ruin a user's session.
-
----
-
-## P3 — VERIFY
-
-**Job:** check the draft for AGREEMENT, COVERAGE, STRUCTURAL
-COMPLETENESS, and CONCEPT-SWAP PROPAGATION bugs. Either pass through
-(`VERDICT: OK`) or emit a corrected rewrite (`VERDICT: REPAIR`).
-
-**Output format:**
-```
-VERDICT: OK | REPAIR
-REWRITE: <DRAFT verbatim when OK; corrected rewrite when REPAIR>
-```
-
-**Authority is narrow:** P3 NEVER bails to NONE. P1 already decided
-this is a valid transform; P3 only repairs the rewrite.
-
-### When VERIFY actually catches things
-
-The four checks (each with worked examples in the prompt):
-
-1. **AGREEMENT** — when an edit changes number/tense/case, dependent
-   words must follow. "they is" → "they are"; "one mice" → "mice".
-2. **COVERAGE** — edit applied to ALL applicable spans, not just the
-   first. "the boy and the boy" → both should change.
-3. **STRUCTURAL COMPLETENESS** — restructuring instructions actually
-   restructure. "make it a question" must produce a real question, not
-   just append "?".
-4. **CONCEPT-SWAP PROPAGATION** — for category swaps, dependent
-   vocabulary updates. Cats don't bark; cars don't use helmets.
-
-### "Default to OK" is critical
-
-VERIFY's biggest failure mode used to be **over-editing already-correct
-drafts**. APPLY would produce a clean rewrite, VERIFY would decide it
-could rephrase it more elegantly, and the "improved" rewrite was often
-wrong (added prose, changed valid word choices, mangled the structure
-mid-paragraph).
-
-Prompt fix: "DEFAULT TO OK. Only output REPAIR when you can name a
-SPECIFIC, IDENTIFIABLE defect. If the draft looks fine — even if you
-could rephrase it more elegantly — output OK and pass it through.
-Stylistic improvement is NOT your job. You are a defect catcher, not
-a writer."
-
-Plus a section on AMBIGUOUS INSTRUCTIONS:
-"`capitalize all words` can mean Title Case OR ALL CAPS. When the
-DRAFT picks ONE valid interpretation, ACCEPT IT. Do NOT REPAIR just
-because YOU would have interpreted differently."
-
-This single rule prevented a class of regressions where APPLY's valid
-output got reverted to a different valid output by VERIFY.
-
-### OK passthrough — code-level safety net
-
-Even with the prompt rule, VERIFY occasionally emits a slightly
-different rewrite when verdict is OK (model adds a period, swaps
-"the" for "a", etc.). The runtime ignores this:
-
-```ts
-finalRewrite = ver.verdict === 'OK' ? draft : ver.rewrite;
-```
-
-When VERIFY says OK, we pass through the draft, NOT verify's echo.
-This caught real production drift where a perfectly valid
-"the colour of the harbour is grey" got OK'd but verify echoed
-"the colour of the harbour" (truncated).
-
-### Garbled-repair safety net
-
-When `VERDICT: REPAIR` fires, the rewrite sometimes comes back garbled —
-not truncated (length check would catch that) but full of separator
-dashes, ellipsis-of-omission, zero-width chars, or stray "END" markers.
-The model is going off the rails mid-output.
-
-```ts
-function repairLooksGarbled(repair: string): boolean {
-  if (/[ \t]{4,}/.test(repair)) return true;        // whitespace runs
-  if (/[\u200B-\u200F\uFEFF\u2028\u2029]/.test(repair)) return true; // hidden chars
-  if (/\.{3,}\s*\S/.test(repair)) return true;       // mid-sentence ASCII ellipsis
-  if (/…/.test(repair)) return true;                 // U+2026 ellipsis
-  const dashes = repair.match(/[‑–—]/g) ?? [];
-  if (dashes.length >= 3) return true;               // separator dashes
-  if (/\?END\?|END\?\s*END|END\s+END/.test(repair)) return true;
-  return false;
-}
-```
-
-Plus a length check (`repair.length < 0.5 × draft.length AND <
-0.5 × target.length`). When either trips, fall back to the draft.
-
-This safety net was added after a real production case mangled a
-multi-paragraph BrE rewrite into:
-```
-the colour of the harbour — the grey ‑ the walk ‑ the pav ‑ the theatre ‑ ...
-```
-The dashes-as-separators pattern is the model losing its place. The
-safety net catches it; the user gets the (correct) draft instead.
-
-### Smart skip-VERIFY
-
-VERIFY is the slowest single phase (~600-1500ms per call). For some
-input types, it almost never fires REPAIR — running it is pure
-latency cost.
-
-We tested 5 skip-rule variants in Experiment 4:
-
-| Variant | Accuracy | Per-case |
-|---|---|---|
-| skip-never (always run) | 81.6% | 1477ms |
-| **skip-conservative (DEPLOYED)** | **81.1%** | **1290ms** |
-| skip-current (broader rules) | 78.8% | 1390ms |
-| skip-aggressive (any single-instr ±10%) | 80.7% | 1387ms |
-| skip-always (any single-instr) | 77.4% | 1225ms |
-
-`skip-conservative` is essentially free — 0.5pp accuracy delta is
-within noise, but −13% per-case latency is real. The current rules:
-
-Skip VERIFY when ALL hold:
-- draft length within ±15% of target length
-- no `\n\n` in target/draft (multi-paragraph needs verify)
-- single instruction (no `|` — composed needs verify for cross-step
-  agreement)
-- instruction matches one of:
-  - **literal swap**: `change|replace|swap|rename A to|with|for B`
-  - **BrE↔AmE**: `make it (british|american) english`
-
-Adding case changes or simple tense to this list (the previous
-deployment) HURT accuracy by 2.3pp because case has ambiguous
-interpretations VERIFY catches and simple tense triggers
-concept-swap propagation gaps when target nouns hint at a category
-swap.
-
-**Lesson** documented in EXPERIMENTS.md, Experiment 4: skip-rules
-need a **semantic gate** ("is the instruction MECHANICALLY
-unambiguous"), not just structural ones (length ratio, paragraph
-count). Even short single-line outputs can have agreement bugs that
-VERIFY catches.
-
----
-
-## Structured outputs — strict JSON on groq gpt-oss
-
-When the resolved provider is `groq` AND the model is one of
-`openai/gpt-oss-{20b,120b}`, **every pass in the pipeline uses
-Groq's strict JSON-schema mode** (constrained decoding). The model
-is forced at the token level to emit a JSON document matching the
-per-pass schema:
-
-| Pass | Schema |
-|---|---|
-| P1 EXTRACT | `{ verdict, instruction, target }` |
-| P1.5 RESOLVE | `{ resolved }` |
-| P2 APPLY | `{ rewrite }` |
-| P2 GENERATIVE | `{ rewrite }` |
-| P3 VERIFY | `{ verdict, rewrite }` |
-
-The same gate (`useStrictJson(providerId, model)`, exported from
-`@opencues/core`) is used by every other LLM-calling surface in the
-runtime: FluidBlank's SEGMENT + ANSWER, WordCues' alternatives/raw
-parsers, and AgentRewrite. All 10 schemas pinned by
-`tests/benchmarks/transform-blank/archive/json-consistency.ts` — empirically
-100/100 parseable, 100/100 schema-conformant on gpt-oss-120b.
-
-**Failure classes eliminated:**
-
-- **Missing `REWRITE:` prefix** — the model used to occasionally
-  drop the format prefix on long outputs (multi-paragraph add-X,
-  joke insertions), causing the parser to return empty. In strict
-  mode the response IS the JSON document; no prefix to drop.
-- **Preamble leakage** — `"Sure, here's the rewrite:"` or
-  `"Here is your answer:"` could leak into the buffer when the
-  parser failed open. Strict mode can't emit such tokens — the
-  very first emitted token must be `{`.
-- **Refusal smuggled as content** — `"Sorry, I can't do that"`
-  used to land in the buffer when models hedged. Now it'd have to
-  fit into `{ "rewrite": "" }` shape; we catch empty rewrites
-  before substitution.
-
-**What strict mode does NOT solve:**
-
-- Wrong content (model misinterprets the instruction) — strict
-  mode constrains FORMAT, not SEMANTICS.
-- Token-budget truncation in long string values — still cuts off
-  mid-sentence if `max_tokens` is too low. Mitigated by raising
-  `REASONING_HEADROOM` to 700 (`budgetForOutput`).
-- Non-gpt-oss models (Llama, Gemini, Claude, OpenRouter) — those
-  keep the legacy label-based path (`REWRITE: …`) with a
-  fallback parser that tolerates a missing prefix.
-
-**Architectural notes:**
-
-- `ChatRequest.responseFormat` is the wire field (added to
-  `@opencues/core/llm-provider.ts`).
-- `buildJsonResponseFormat(name, schema)` constructs the field —
-  one helper, used by every call site to avoid object-literal
-  drift.
-- Per-pass schemas live as module-scope constants in each source
-  file (e.g. `EXTRACT_SCHEMA`, `APPLY_SCHEMA` in
-  `transform-blank-source.ts`).
-- Adding a new supported (provider, model) is one line in
-  `useStrictJson` — every surface picks it up automatically.
+### Output parsing — label-based, not strict JSON
+
+The fused call emits four labelled lines
+(`VERDICT:` / `INSTRUCTION:` / `TARGET:` / `FULL_REWRITE:`, the last
+spanning multiple lines) and `parseFused` extracts them with tolerant
+regexes. It deliberately does NOT use a JSON-schema constrained-decoding
+mode: `FULL_REWRITE` is the entire rewritten buffer (arbitrary newlines,
+markdown, dense scripts), which doesn't schematize cleanly, and the
+label format with a permissive parser handles a missing prefix or
+preamble leakage gracefully. (The retired 3-pass path DID use Groq's
+strict JSON mode for its small `{verdict, instruction, target}` EXTRACT
+schema — that went away with the pipeline. The `useStrictJson` gate
+still exists in `@opencues/core` for other sources, but TransformBlank
+no longer calls it.)
 
 ---
 
@@ -740,11 +343,11 @@ parsers, and AgentRewrite. All 10 schemas pinned by
 ```
 packages/opencues-core/src/sources/transform-blank-source.ts
   ↳ TransformBlankSource (CueSource)
-  ↳ Prompts (P1/P2/P3 system prompts inlined as constants)
-  ↳ Parsers
-  ↳ Skip-VERIFY heuristic
-  ↳ Garbled-repair safety net
+  ↳ FUSED_SYSTEM prompt (single inlined constant)
+  ↳ runFusedAndBuild (the one LLM call + result builder)
+  ↳ Parser
   ↳ Dynamic max_tokens (budgetForOutput)
+  ↳ Identity / blank-context catalog block builders + sentinel resolver
 
 packages/opencues-core/src/sources/build-sources.ts
   ↳ enableTransformBlank flag (option to buildSourcesFromConfig)
@@ -753,8 +356,8 @@ packages/opencues-core/src/sources/build-sources.ts
 packages/opencues-runtime/src/modules/resolver.ts
   ↳ Reads OPENCUES.md `transform-blank-mode` setting
   ↳ Passes adapter.log → source's `log` callback (debug-mode trace)
-  ↳ Inline-substitute branch on `r.source === 'transform-blank'`
-  ↳ Builds WordDef with alternatives = [originalText, rewrittenText]
+  ↳ Three-way-merge substitute branch on `r.source === 'transform-blank'`
+  ↳ Builds WordDef with alternatives = [originalText, rewrittenText, ...variants]
 ```
 
 ### CueResult shape
@@ -763,46 +366,61 @@ packages/opencues-runtime/src/modules/resolver.ts
 {
   wordIndex: blankIdx,
   word: '_',
-  alternatives: [originalFullText, rewrittenText],
+  alternatives: [originalFullText, rewrittenText, ...priorVariants],
   source: 'transform-blank',
   priority: 93,
   spanStart: 0,
   spanEnd: context.text.length,    // entire input region
   metadata: {
-    transformInstruction: <pipe-joined or single>,
-    transformTarget:      <original target>,
-    verifyVerdict:        <'OK' | 'REPAIR'>,        // omitted in generative mode
-    transformMode:        <'generative'>,            // present only when TARGET was empty
-    taskAction:           <'arm' | 'add' | 'stop' | 'show'>,  // TASK_* branches
-    taskPayload:          <task-action-specific data>,
+    transformInstruction:  <pipe-joined or single>,   // CoT scaffolding, debug only
+    transformTargetDebug:  <the model's TARGET line>,  // debug only — NOT splice geometry
+    verifyVerdict:         'SKIPPED',                  // no verify pass exists
+    pipelineMode:          'fused',
+    taskAction:            <'arm' | 'add' | 'stop' | 'show'>,  // TASK_* branches
+    taskPayload:           <task-action-specific data>,
   },
 }
 ```
 
 `alternatives[0]` is the original input (so cycling Down restores it).
-`alternatives[1]` is the rewrite (the magic). `spanStart=0,
-spanEnd=text.length` covers the entire input — the runtime replaces
-everything with the rewrite when applying.
+`alternatives[1]` is the fresh rewrite. `alternatives[2..N]` are prior
+cached variants from the variant pool (Up-arrow walks them). The
+metadata carries `transformTargetDebug`, deliberately **not**
+`transformTarget` — its absence is the signal the resolver uses to take
+the whole-buffer merge path rather than a surgical splice (see
+Substitution below).
 
 ### Substitution
 
-In `packages/opencues-runtime/src/modules/resolver.ts`, the inline-
-substitute branch (mirrored from FluidBlank):
+In `packages/opencues-runtime/src/modules/resolver.ts`, the
+transform-blank branch:
 
-1. Race-guard: if `liveText !== originalText`, another module touched
-   the text — skip with a "skipping — live text changed since resolve"
-   log.
-2. Compute `newWords = splitWords(rewrittenText)`. Key the WordDef at
-   `newWords[0].index` so cycling targets the right position in the
-   new text.
-3. Build a WordDef with `currentIndex=1` (showing the rewrite) and
+1. Race-guard: compare ZWS-stripped `liveText` against `originalText`.
+   If they differ, another module touched the text — skip with a
+   "skipping — live text changed since resolve" log. (ZWS is stripped
+   because CC's loading-spinner pushText flips a zero-width char every
+   frame; those toggles aren't user edits.)
+2. TASK routing: if `metadata.taskAction` is set, route to
+   `handleTaskCommand` (AgentTaskState) instead of substituting.
+3. Because the source emits no `transformTarget`, take the
+   **whole-buffer path**: `threeWayMerge(originalText, rewrittenText,
+   liveText)` produces the merged buffer (dropping any LLM hunk
+   overlapping a concurrent user edit).
+4. Build a WordDef keyed at the merged text's first changed word, with
+   `currentIndex=1` (showing the rewrite) and
    `blankName='transform-blank'` (locks against re-resolution by
    subsequent LLM passes — same mechanism FluidBlank uses).
-4. Call `adapter.pushText(rewrittenText, newCursor)` — atomic
+5. Call `adapter.pushText(mergedText, newCursor)` — atomic
    text-and-cursor update. Falls back to `setText` + `setCursorOffset`
    + `forceRender` for hosts without pushText.
-5. Log: `TransformBlank: substituting "originalText…" → "rewrittenText…"
-   (origLen=…, rewriteLen=…, defAt=…)`.
+6. Emit `transform-blank.completed` AFTER the setText commits (so
+   observers never read the buffer mid-loading-animation).
+
+> The resolver still contains a surgical-splice branch (gated on
+> `transformTarget` being present), used by FluidBlank's WIPE mode and
+> ConfigIntent. TransformBlank never sets that field, so it always takes
+> the merge path; the splice branch is effectively inert for
+> transform-blank.
 
 ### asTypedText reconstruction — TransformBlank defs are SKIPPED
 
@@ -813,37 +431,37 @@ produce the "as the user typed it" view. TransformBlank-typed defs
 
 Why: TransformBlank's `originalWord` is the FULL prior visible body
 (body + the prior trigger phrase), not a single agent-edited word.
-Re-injecting it bleeds the prior instruction phrase into the EXTRACT
-input on the NEXT transform — EXTRACT then sees two instructions and
-two `_`s, dropping the body or composing both into one
-pipe-instruction.
+Re-injecting it bleeds the prior instruction phrase into the fused
+input on the NEXT transform — the call then sees two instructions and
+two `_`s, dropping the body or composing both into one pipe-instruction.
 
 Bug shape (live-reproduced May 2026): user does "add emojis where
-appropriate _" → success. Then types "remove emojis _" → second
-EXTRACT sees `<no-emoji body> add emojis where appropriate _ remove
+appropriate _" → success. Then types "remove emojis _" → the second
+call sees `<no-emoji body> add emojis where appropriate _ remove
 emojis _` as INPUT, returns `INSTRUCTION: Add emojis where
 appropriate / TARGET: remove emojis`, body collapses to a 17-char
-rewrite. Repro lives at
+rewrite. Repro at
 `tests/benchmarks/transform-blank/archive/repro-astyped-contamination.ts`.
 
-The skip lives at `dyn-defs.ts` in `reconstructAsTypedWithMap`,
-gated on `def.blankName === 'transform-blank'`. The cycle-Down
-revert path doesn't go through asTyped, so this skip is safe.
+The skip lives at `dyn-defs.ts` in `reconstructAsTypedWithMap`, gated on
+`def.blankName === 'transform-blank'`. The cycle-Down revert path
+doesn't go through asTyped, so this skip is safe.
 
 **Rule for new blank types:** if a new blank's `originalWord` can be
 multi-word or contain a trigger phrase, add it to the skip list (or
-extend the predicate). Single-token / `_`-only originalWords (fluid-
-blank, task-show, agent-task, user blanks) are safe to revert and
-need no skip — they have to remain reverted so trigger detection
-on agent-edited text still works.
+extend the predicate). Single-token / `_`-only originalWords
+(fluid-blank, task-show, agent-task, user blanks) are safe to revert
+and need no skip.
 
 ### Cycling
 
 Cycling is delegated to the runtime's existing `WordDef`/`DynDefs`
-machinery. With `currentIndex=1` (showing rewrite), cycling Down sets
-`currentIndex=0` and replaces the span with `alternatives[0]` (the
-original input including the instruction phrase). Cycling Up wraps
-back to `1`.
+machinery. With `currentIndex=1` (showing the fresh rewrite), cycling
+Down sets `currentIndex=0` and replaces the span with `alternatives[0]`
+(the original input including the instruction phrase). Cycling Up walks
+through `alternatives[2..N]` — prior cached variants from the variant
+pool (identical-buffer triggers cycle through cached rewrites rather
+than re-calling the LLM).
 
 The `blankName='transform-blank'` field prevents the resolver from
 re-firing on the rewrite text — same lock that prevents FluidBlank's
@@ -857,17 +475,14 @@ answer from being clobbered by RoutedWordSourceGroup synonyms.
 
 ```yaml
 transform-blank-mode: on    # required to enable TransformBlankSource
-debug-mode: on              # surfaces per-pipeline-stage logs (recommended)
+debug-mode: on              # surfaces per-stage logs (recommended)
 ```
 
-Hot-reload picks up changes — no restart needed. Both settings are
-declared in `packages/opencues-cli/src/templates/OPENCUES.md` so
-`opencues seed-configs` lays them out for new users with
-`transform-blank-mode: off` as the default (opt-in).
-
-The selector/satellite UI also surfaces them via the matching
-`settings:` block entry — typing `config _` and cycling lets users
-toggle them without editing the file.
+Hot-reload picks up changes — no restart needed. Defaults to
+`transform-blank-mode: off` (opt-in), laid out by
+`opencues seed-configs`. The selector/satellite UI also surfaces it via
+the matching `settings:` block entry — typing `config _` and cycling
+toggles it without editing the file.
 
 ### Tunables (in source code)
 
@@ -875,17 +490,15 @@ toggle them without editing the file.
 // transform-blank-source.ts
 
 budgetForOutput(expectedChars, multiplier)
-  FLOOR              = 768   // reasoning + short output headroom
+  FLOOR              = 768   // reasoning + output headroom
   REASONING_HEADROOM = 400   // covers reasoning_effort: 'low'
   CEILING            = 4096  // caps multi-paragraph rewrites
 
-shouldSkipVerify(instruction, target, draft)
-  Length window     = ±15% of target
-  Filtered patterns = literal swap, BrE↔AmE only
+FUSED_NONE_RETRY_FLOOR = 400  // long-buffer NONE → cede, don't trust
 ```
 
-Don't ship tunables to users via OPENCUES.md — they're fragile and
-the right values are determined by benchmarks, not preference.
+Don't ship tunables to users via OPENCUES.md — the right values are
+determined by benchmarks, not preference.
 
 ---
 
@@ -893,224 +506,157 @@ the right values are determined by benchmarks, not preference.
 
 ### Debug log trace
 
-With `debug-mode: on`, every pipeline stage emits a structured log:
+With `debug-mode: on`, the source emits a structured trace:
 
 ```
 TransformBlank: starting (textLen=42, blankIdx=4)
-TransformBlank P1 EXTRACT (351ms, max_tokens=820): verdict=TRANSFORM, instruction="change boy to girl", target="the boy ran fast"
-TransformBlank P2 APPLY: 1 step(s) — ["change boy to girl"]
-TransformBlank P2 APPLY step 1/1 (227ms, max_tokens=812): "the girl ran fast"
-TransformBlank P3 VERIFY: SKIPPED (low-stakes instruction + faithful draft)
-TransformBlank: pipeline done (578ms total) — final="the girl ran fast"
+TransformBlank: identity-context: injected (mode=safe, 3 fields)
+TransformBlank FUSED (351ms, max_tokens=820): verdict=TRANSFORM, instruction="change boy to girl"
 TransformBlank: substituting "the boy ran fast change boy to girl _" → "the girl ran fast" (origLen=42, rewriteLen=18, defAt=0)
 ```
 
-Each log line maps to a code location in `transform-blank-source.ts`
-(`this.log(...)` calls). The log function is wired in
-`resolver.ts:rebuildResolver` as
+The log function is wired in `resolver.ts:rebuildResolver` as
 `(msg) => this.adapter.log('debug', msg)`, gated by `debug-mode`.
 
 ### Diagnosing common failures
 
 | Symptom in trace | Likely cause | Fix |
 |---|---|---|
-| `verdict=NONE, instruction=""` (short buffer) | Real NONE — input isn't a transform | None needed (FluidBlank takes over) |
-| `verdict=NONE` on a **long** buffer (>400 chars) with a clear imperative | Fused budget-pressure misclassify (cerebras gpt-oss-120b) | Auto-handled — falls through to 3-pass (`FUSED: verdict=NONE on a long buffer … falling through to 3-pass`). If the rewrite still doesn't land, check 3-pass EXTRACT output. |
+| `verdict=NONE` (short buffer) | Real NONE — input isn't a transform | None needed (FluidBlank takes over) |
+| `verdict=NONE on a long buffer … ceding` | Fused budget-pressure misfire (cerebras gpt-oss-120b) | Auto-handled — source cedes; a later resolve re-classifies. If the rewrite still never lands, raise `FUSED_NONE_RETRY_FLOOR` or the output budget |
 | `verdict=NONE, instruction="TARGET:"` | Parser bug (regex swallowing newlines) | Should be fixed; if recurring see commit ac7f79d |
-| `verdict=TRANSFORM, target=""` | Layout (b) parsing issue — instruction at end with leading text the model thinks is also instruction | Add a similar-shape example to EXTRACT prompt |
-| `APPLY step 1 returned empty` | Model bailed mid-output or rate-limited | Check Groq dashboard for TPM cap |
-| `REPAIR rejected (truncated=…, garbled=…)` | Safety net working as designed | None — VERIFY produced bad repair, fell back to draft |
+| `verdict=TRANSFORM`, body collapsed to a short rewrite | asTyped contamination (prior trigger bled into input) | Confirm the transform-blank asTyped skip is intact (`dyn-defs.ts`) |
+| `empty rewrite — ceding` | Model parsed input but produced no result | Check provider dashboard for TPM cap / truncation |
 | `skipping — live text changed since resolve` | Race with another module; rare | None — substitution skipped to avoid clobbering |
-| Long latency (>5s) per call | Model in deep reasoning loop | Check if `reasoning_effort` setting changed |
+| Long latency (>5s) per call | Model in deep reasoning loop | Check if `reasoning_effort` / `max-thinking` changed |
 
 ---
 
 ## The benchmark suite
 
 `tests/benchmarks/transform-blank/` has the empirical foundation for
-every design decision in this document.
-
-### Suite scope
-
-**212 cases across 18 categories:**
-```
-literal              10  multi-span      10  concept              10
-transform            12  negative        10  math                 10
-linked-concepts      10  long-text       40  targeted             10
-multi-paragraph      10  conditional     10  context-referring    10
-trailing-instruction 10  code-transform  10  tone-shift           10
-format-transform     10  creative-rewrite 10 adversarial          10
-```
-
-Each case has:
-- `input`: the full text the user typed (with `_`)
-- `expected.finalText`: canonical correct rewrite
-- `expected.finalTextAlternates`: optional acceptable variants
-- `expected.shouldFailSoft`: when present, the case should bail (NONE)
-
-Per-case judgment uses an LLM-as-judge (`judge.ts`) that compares the
-actual output against expected + alternates with semantic equivalence,
-plus exact-match short-circuits.
-
-### Modes
-
-The live benchmark **drives the production source** (`TransformBlankSource`
-from `@opencues/core`) — there is no bench-local copy of any prompt to keep
-in sync. Edit the prompt in `transform-blank-source.ts` and this measures it:
+every design decision in this document. **`prod.ts` drives the
+production source** (`TransformBlankSource` from `@opencues/core`) —
+there is no bench-local copy of the prompt. Edit `FUSED_SYSTEM` in
+`transform-blank-source.ts` and this measures it:
 
 ```bash
-# production FUSED (cerebras → fused):
 CEREBRAS_API_KEY=… GROQ_API_KEY=… \
-  npx tsx tests/benchmarks/transform-blank/prod.ts --mode fused --parallel 8
-# production 3-PASS (groq → 3-pass):
-GROQ_API_KEY=… \
-  npx tsx tests/benchmarks/transform-blank/prod.ts --mode 3-pass --parallel 8
+  npx tsx tests/benchmarks/transform-blank/prod.ts --provider cerebras --parallel 8
 ```
 
-| Flag | Values |
-|---|---|
-| `--mode` | `fused` \| `3-pass` (the two production shapes) |
-| `--provider` | `cerebras` \| `groq` (default: 3-pass→groq, fused→cerebras) |
-| `--parallel` | concurrency (default 8) |
+Per-case judgment uses an LLM-as-judge (`judge.ts`, pinned to Groq
+gpt-oss-120b regardless of the provider under test) with exact-match
+short-circuits.
 
-> The old comparative harness — `run.ts` with its `extract-apply`,
-> `single-call`, `minimal-*`, `skip-*` and other exploratory modes, each
-> carrying its OWN copy of the prompts — has been retired to
-> `tests/benchmarks/transform-blank/archive/`. Those copies had drifted
-> from production; `prod.ts` driving the real source replaces them. The
-> mode-comparison findings remain in `EXPERIMENTS.md`.
-
-### Parallelism
-
-The benchmark runner has `--parallel N` for concurrent case execution
-via worker pool. Per-case output stays sequential because workers write
-to original-index slots; printed after all workers finish.
-
-Groq's free tier hits a 250k TPM rate limit if you fan out 5 variants
-× 8 cases × 3 LLM calls simultaneously. For multi-mode comparisons,
-run modes sequentially (one process at a time) with `parallel=8`
-internally. ~40s wall per mode.
+> The old comparative harness (`run.ts` with `extract-apply`,
+> `single-call`, `minimal-*`, `skip-*` modes, each carrying its own copy
+> of the prompts) is retired to `archive/`. The mode-comparison findings
+> remain in `EXPERIMENTS.md`.
 
 ---
 
 ## Lessons learned
 
-A condensed set of insights from the experiment log. Each is backed
-by an experiment in `EXPERIMENTS.md`.
+A condensed set of insights from the experiment log. Each is backed by
+an experiment in `EXPERIMENTS.md`.
 
-1. **Narrow jobs >> wide jobs.** The 3-pass split outperforms
-   single-call by ~70 percentage points. Even with the same model and
-   total token budget, splitting "is this a transform / what's the
-   instruction / apply it / check it" into separate prompts gets
-   dramatically better results than asking one prompt to do all four.
+1. **Always-claim + LLM-as-classifier beats heuristic gating.** A
+   regex/keyword heuristic in `supports()` was brittle (missed "full
+   caps", `make me a website` was wrongly classified). Always claiming +
+   letting the fused call decide via NONE bail is cleaner — the cost is
+   one extra LLM call per non-transform `_`. (Experiment 1.)
 
-2. **Sequential composition for multi-step transforms.** Asking ONE
-   APPLY call to "pluralize AND make past tense" hurts. Splitting
-   into two sequential calls (EXTRACT pipe-joins, APPLY runs N times)
-   is the same insight at one level deeper.
-
-3. **Minimal prompts win at classification, verbose prompts win at
-   execution.** EXTRACT got 7 percentage points better when stripped
-   to one semantic question. APPLY got 2 percentage points worse and
-   200ms slower when stripped. The difference: classification benefits
-   from openness; execution benefits from explicit rules.
-
-4. **Reserve reasoning headroom in max_tokens budgets.** When using
-   `reasoning_effort: 'low'`, a too-tight max_tokens truncates the
-   model mid-output (it ran out of budget partway through emitting).
-   FLOOR=768 is the safe minimum for short outputs, even if the
-   actual output is 50 tokens.
-
-5. **Single-line field parsers should use `[ \t]*` not `\s*`.** `\s*`
+2. **Single-line field parsers should use `[ \t]*` not `\s*`.** `\s*`
    matches newlines, which lets a lazy `.*?` accidentally capture the
-   next field's label as the current field's value. Use horizontal-
-   whitespace-only.
+   next field's label as the current field's value. Use
+   horizontal-whitespace-only.
 
-6. **Skip-rules need semantic gates, not structural ones.** A rule
-   like "skip VERIFY when output length is ±15% of input" misses the
-   point — even short single-line outputs can have agreement bugs.
-   The right axis is "is the instruction MECHANICALLY unambiguous"
-   (literal swap, deterministic spelling change).
+3. **Reserve reasoning headroom in max_tokens budgets.** With
+   `reasoning_effort: 'low'`, a too-tight budget truncates the model
+   mid-output. FLOOR=768 is the safe minimum for short outputs even if
+   the actual output is 50 tokens. (Experiment 1/2.)
 
-7. **VERIFY as defect catcher, not stylist.** Without an explicit
-   "default to OK, only repair NAMED defects" rule, VERIFY was
-   over-editing valid drafts (replacing "charged" with "cast a spell at"
-   on a knight→wizard swap). The defect-catcher framing is the most
-   important sentence in the VERIFY prompt.
+4. **The fused prompt's APPLY rules are load-bearing — execution
+   benefits from explicit rules.** Stripping them dropped accuracy AND
+   raised latency (the model thinks harder without guidance).
+   Classification, by contrast, benefits from openness — keep the
+   NONE-decision minimal and the APPLY rules verbose. (Experiment 2.)
 
-8. **Always-claim + LLM-as-classifier beats heuristic gating.** We
-   tried a regex/keyword heuristic in `supports()` to avoid extra
-   LLM calls. It was brittle (missed "full caps", "fullcaps",
-   `make me a website` was wrongly classified). Always claiming +
-   letting EXTRACT decide via NONE bail is cleaner — the cost is
-   one extra ~400ms call per non-transform `_`.
+5. **Match the runtime's real I/O exactly — examples leak their
+   formatting into the buffer.** The rewrite is written back verbatim
+   (the parser only `.trim()`s), so whatever line-separator an example
+   teaches is what the user sees. A `FUSED_SYSTEM` poem example using
+   ` / ` made the model emit literal slashes (PR #190); literal `\n` in
+   examples risks visible backslash-n. Multi-line examples use **real
+   newlines** — never ` / ` or literal `\n`/`\\n`. With a single prompt
+   there's no second encoding to keep in sync; the only rule is "the
+   prompt's I/O must match what the buffer receives." (Experiment 9.)
 
-9. **Soft-fail Groq parse errors and rate limits.** One bad response
-   shouldn't kill a batch run or a user session. Catch in the client,
-   return empty, let the caller's parser treat it as a bail.
+6. **Soft-fail provider parse errors and rate limits.** One bad
+   response shouldn't kill a batch run or a user session. Catch in the
+   client, return empty, let the caller treat it as a bail.
 
-10. **Document each design decision with the experiment that justifies
-    it.** When the next person (or future-you) asks "why didn't we
-    just do X?", the answer should be `tests/benchmarks/transform-blank/EXPERIMENTS.md,
-    Experiment N`.
+7. **Document each design decision with the experiment that justifies
+   it.** When the next person (or future-you) asks "why didn't we just
+   do X?", the answer should be `EXPERIMENTS.md, Experiment N`.
 
-11. **Few-shot examples leak their formatting into the buffer — match
-    the runtime's real I/O exactly.** The rewrite is written back to the
-    buffer verbatim (deterministic splice; the parsers only `.trim()`),
-    so whatever line-separator an example teaches is what the user sees.
-    A `FUSED_SYSTEM` poem example using ` / ` made the model emit literal
-    slashes (PR #190); `P2_APPLY_SYSTEM` letter examples using literal
-    `\n` risked visible backslash-n in letters on groq, and didn't even
-    match the runtime (which sends `TARGET` with REAL newlines) (PR #191).
-    Rule: multi-line examples use real newlines — never ` / ` or literal
-    `\n`/`\\n`. See `EXPERIMENTS.md, Experiment 9`.
+> **Historical (no longer load-bearing):** the experiment log also
+> records lessons about the retired 3-pass split — sequential
+> composition for "X and Y", VERIFY-as-defect-catcher, smart
+> skip-VERIFY, the P1.5 deictic resolver. They explain why the 3-pass
+> design once outperformed a *crude* single call; Experiment 10 then
+> showed the matured fused prompt reaches parity with one call. They're
+> kept in `EXPERIMENTS.md` for context but no longer describe shipping
+> code.
 
 ---
 
 ## Known limits
 
-- **Multi-paragraph >200 words untested.** The longest cases in the
-  benchmark are ~150 words. Latency may exceed 2s on long inputs;
-  EXTRACT's max_tokens scales but reasoning could still bottleneck.
-- **Subjective register shifts are at the model's edge.** "Make it
-  more confident", "make it sincere", "make it more dramatic" — the
-  model often produces minimal-effort outputs (just appending "!" or
-  "Oh,"). Pass rate hovers at 30-60% on tone-shift tasks, mostly due
-  to APPLY weakness, not pipeline design.
+- **Multi-paragraph >200 words untested.** The longest bench cases are
+  ~150 words. Latency may exceed 2s on long inputs.
+- **Subjective register shifts are at the model's edge.** "Make it more
+  confident", "make it sincere" — the model often produces minimal
+  outputs (appending "!" or "Oh,"). 30-60% on tone-shift tasks.
 - **Conditional with paragraph-specific scope.** "X but only in the
-  first paragraph" works ~70% of the time. The model needs to reason
-  about paragraph boundaries while applying the edit, which is at the
-  edge of its one-shot capacity.
-- **Context-referring "match the style of X".** 50-70% pass rate.
-  Open-ended style transfer is genuinely hard.
-- **No streaming.** The rewrite arrives all at once after ~1.4s.
-- **No multi-span linked highlighting.** The runtime treats the whole
-  rewrite as one block replacement. A future enhancement would diff
-  the rewrite against the original and highlight individual word
-  changes as linked spans.
+  first paragraph" works ~70%.
+- **Context-referring "match the style of X".** 50-70% — open-ended
+  style transfer is genuinely hard.
+- **No streaming.** The rewrite arrives all at once.
+- **No multi-span linked highlighting.** The runtime three-way-merges
+  the whole rewrite; it doesn't highlight individual word changes as
+  separately-cycleable linked spans.
+
+### Fix-forward gaps — capabilities lost with the 3-pass retirement
+
+These capabilities lived **only** in the retired 3-pass `P2_APPLY` (+
+the P1.5 deictic resolver + cursor-sentinel injection). They are now
+absent on **all** providers until re-authored directly into
+`FUSED_SYSTEM`. Treat them as known fix-forward work, not silent bugs:
+
+- **Caret-relative / deictic edits** — "add a line break here", "shorten
+  it", "make this line bold", "split this paragraph here", "fix this
+  typo". The fused call sends no `[CURSOR]` and resolves no deictic
+  referents ("this/that/it" → an explicit span), so this whole class
+  degrades. This is the largest gap.
+- **Heading / list-ification** — "make it a heading" (→ `# `), "turn
+  into a list" (→ `- `). Same shape as the old `make X bold` parity bug.
+- **Anchored insertion** — "add X after the dear line", "drop X in" (vs
+  "drop X" = delete). The fused prompt appends at the end of the body;
+  it loses anchored-relative insertion and the drop-verb
+  disambiguation.
+- **Auto-styling** — "add bolding where appropriate", "highlight key
+  terms" (pick 2–5 spans yourself). The fused prompt handles
+  *named-span* styling but not pick-your-own-spans.
+
+Re-authoring any of these is a `FUSED_SYSTEM` prompt edit + a `prod.ts`
+re-bench. See `EXPERIMENTS.md, Experiment 10` for the accepted-regression
+note.
 
 ---
 
-## Future directions
-
-Experiments not yet tried (with hypothesized impact):
-
-| Idea | Hypothesis | Where to add |
-|---|---|---|
-| Smaller model for VERIFY only | Haiku-class could halve VERIFY latency at small accuracy cost | New mode `extract-apply-verify-haiku` |
-| Streaming partial APPLY | Show rewrite as it generates instead of waiting; perceived latency cut even if total is the same | Runtime change in `resolver.ts` |
-| JSON-output APPLY | Forcing structured output reduces truncation/garbage on long outputs | New prompt + parser variant |
-| Parallel APPLY for composed | Trade accuracy for latency on "X and Y" — let both transforms run concurrently and merge | Anti-pattern; the sequential composition was the WIN |
-| Linked-spans cycling | Diff rewrite against original; highlight each changed word as a separately-cycleable span | Big runtime change in `dyn-defs.ts` |
-| Prompt-cache warmup | First call has cold prompt cache; subsequent should be faster | Groq client change |
-
-When picking the next direction, run the new variant via a
-`--mode <name>` flag in `run.ts` rather than mutating the default —
-that way the comparison is reproducible and the prior result stays
-benchmarkable.
-
----
-
-*Last updated: 2026-05-05. Authoritative for the production pipeline
-including the generative branch (`f85dad7`) and the TASK_* verdicts
-that route into the agent-task state machine.*
+*Last updated: 2026-06-23. Authoritative for the single fused pipeline
+(3-pass retired per `EXPERIMENTS.md, Experiment 10`), the generative
+branch, and the TASK_* verdicts that route into the agent-task state
+machine.*

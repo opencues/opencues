@@ -4,18 +4,17 @@
  * Bug (June 2026): a transform command issued at the BOTTOM of a long
  * document ("…+44 7700 900123 add recipient name Karen _") over a buffer
  * containing a matching placeholder at the TOP ("Dear [Recipient Name],")
- * was nondeterministic on the FUSED path (cerebras): the model sometimes
+ * was nondeterministic on the fused path (cerebras): the model sometimes
  * FILLED the placeholder ("Dear Karen,") and sometimes APPENDED a literal
  * "Recipient Name: Karen" line, leaving the placeholder untouched. Root
  * cause: the fused prompt had an ADD/APPEND rule but NO placeholder-fill
- * rule — the 3-pass APPLY prompt (groq path) already had one (rule #12a),
- * so groq filled and cerebras drifted. Fix: port a FILL PLACEHOLDER rule
- * into FUSED_SYSTEM with precedence over ADD/APPEND, matching the chosen
- * "prefer filling the placeholder" behaviour.
+ * rule. Fix: add a FILL PLACEHOLDER rule into FUSED_SYSTEM with
+ * precedence over ADD/APPEND, matching the chosen "prefer filling the
+ * placeholder" behaviour.
  *
  * These are deterministic pins:
- *   1. PROMPT CONTRACT — both prompts (fused + 3-pass APPLY) must carry a
- *      placeholder-fill rule with precedence over append. A mock can't
+ *   1. PROMPT CONTRACT — FUSED_SYSTEM must carry a placeholder-fill rule
+ *      with precedence over append. A mock can't
  *      validate prompt CONTENT (it returns canned output), so this guard
  *      is what stops the rule being silently deleted; the real accuracy
  *      validation is the LLM bench (tests/benchmarks/transform-blank,
@@ -27,7 +26,7 @@
 
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert';
-import { TransformBlankSource, FUSED_SYSTEM, P2_APPLY_SYSTEM } from './transform-blank-source';
+import { TransformBlankSource, FUSED_SYSTEM } from './transform-blank-source';
 import { getProvider } from '../llm-provider';
 import type { HttpAdapter, CueContext } from '../types';
 
@@ -55,11 +54,6 @@ describe('TransformBlank — FILL PLACEHOLDER prompt contract', () => {
       'fused prompt must include the recipient-name fill example');
     assert.match(FUSED_SYSTEM, /Dear Karen,/,
       'fused example must show the placeholder filled, not appended');
-  });
-
-  it('3-pass APPLY prompt still carries its FILL PLACEHOLDER rule (the bug-class twin)', () => {
-    assert.match(P2_APPLY_SYSTEM, /FILL PLACEHOLDER/,
-      '3-pass APPLY prompt must keep its placeholder-fill rule');
   });
 });
 

@@ -12,8 +12,8 @@
  *     (FIFO-evicts oldest), then cycling resumes.
  *   - Pattern after warmup: 1 fresh + N cache + 1 fresh + N cache + …
  *     where N = POOL_SIZE.
- *   - 3-pass mode bypasses the variant cache entirely (caching
- *     splice-replacement-only rewrites would corrupt the buffer).
+ *   - The variant pool tracks entries on the (single) fused path —
+ *     `variantPoolSize(key)` grows as fresh rewrites accumulate.
  *   - The alternatives array carries [original, served, ...others]
  *     so DynDef cycling Up-arrow walks variant history.
  *
@@ -177,11 +177,10 @@ describe('TransformBlankSource variant pool — state machine', () => {
     assert.deepStrictEqual(alts.slice(2).sort(), ['R-variant-1', 'R-variant-2']);
   });
 
-  it('3-pass mode bypasses variant cache (no pool entries tracked)', async () => {
-    // groq → 3-pass auto-selected. Mock returns malformed responses so
-    // dispatch will fail, but that's fine — we only care that the
-    // variant pool stays empty across multiple triggers when mode is
-    // 3-pass. (The cache-bypass guard runs BEFORE dispatch.)
+  it('fused path tracks pool entries — variantPoolSize grows per fresh trigger', async () => {
+    // FUSED is now the only pipeline. Each fresh trigger should append
+    // one entry to the keyed pool (until POOL_SIZE), so variantPoolSize
+    // climbs 0 → 1 → 2 across the building phase.
     const { adapter } = makeMockAdapter('R');
     const source = new TransformBlankSource({
       httpAdapter: adapter,
@@ -189,7 +188,6 @@ describe('TransformBlankSource variant pool — state machine', () => {
       endpoint: 'https://api.groq.com/openai/v1/chat/completions',
       apiKey: 'x',
       model: 'openai/gpt-oss-120b',
-      mode: '3-pass',
     });
     const ctx = mkContext();
     const key = source.cacheKeyForTest(ctx);
@@ -197,13 +195,11 @@ describe('TransformBlankSource variant pool — state machine', () => {
     // Pool should be empty before any trigger.
     assert.strictEqual(source.variantPoolSize(key), 0);
 
-    // Trigger getCues twice — regardless of dispatch outcome, the pool
-    // should remain at 0 because the cache layer is bypassed for 3-pass.
-    await source.getCues(ctx).catch(() => { /* dispatch may fail; ignore */ });
-    assert.strictEqual(source.variantPoolSize(key), 0, 'no pool entry after T1 in 3-pass mode');
+    await source.getCues(ctx);
+    assert.strictEqual(source.variantPoolSize(key), 1, 'pool grew to 1 after first fresh trigger');
 
-    await source.getCues(ctx).catch(() => { /* ignore */ });
-    assert.strictEqual(source.variantPoolSize(key), 0, 'no pool entry after T2 in 3-pass mode');
+    await source.getCues(ctx);
+    assert.strictEqual(source.variantPoolSize(key), 2, 'pool grew to 2 after second fresh trigger');
   });
 
   it('different cache keys: different providers do not share pool', async () => {

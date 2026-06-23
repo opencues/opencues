@@ -120,15 +120,6 @@ export interface BuildSourcesOptions {
   transformBlank?: FeatureLLMSetting;
   configIntent?: FeatureLLMSetting;
   sentenceCues?: FeatureLLMSetting;
-  /**
-   * Pipeline mode for TransformBlank. `'auto'` (default) picks per
-   * provider — groq → 3-pass, everyone else → fused — via
-   * `pickTransformBlankMode`. `'3-pass'` and `'fused'` force the mode
-   * regardless of provider. Read from OPENCUES.md's `transform-blank-mode:`
-   * frontmatter scalar by the runtime/resolver before passing here.
-   * See `transform-blank-source.ts` for the dispatch logic.
-   */
-  transformBlankMode?: string;
   /** Merged blank configs */
   blanks?: Record<string, BlankConfig>;
   /** I/O adapter: calls blankScript get to read current live blank value (raw string).
@@ -142,8 +133,8 @@ export interface BuildSourcesOptions {
    */
   enableFluidBlank?: boolean;
   /**
-   * Enable the transform-blank source — a 3-pass (EXTRACT + APPLY + VERIFY)
-   * handler for IMPERATIVE instructions placed next to `_`. Where
+   * Enable the transform-blank source — a single-call FUSED handler
+   * for IMPERATIVE instructions placed next to `_`. Where
    * fluid-blank handles "capital of france _", transform-blank handles
    * "change boy to girl _ the boy ran fast". Priority 93 — sits ABOVE
    * fluid-blank (92) and only claims when the surrounding text starts
@@ -246,7 +237,7 @@ export interface BuildSourcesOptions {
   // Runtime consumers namespace these events when adapting to their
   // own event-stream format — core owns the names + body shapes;
   // consumers adapt.
-  /** Subscriber for `TransformBlankSource` (3-pass pipeline). */
+  /** Subscriber for `TransformBlankSource` (fused pipeline). */
   onTransformBlankEvent?: TransformBlankSourceConfig['onEvent'];
   /** Subscriber for `FluidBlankSource` (2-pass pipeline). */
   onFluidBlankEvent?: FluidBlankSourceConfig['onEvent'];
@@ -672,7 +663,6 @@ export function buildSourcesFromConfig(
         blanks: options.blanks ?? {},
         log: options.log,
         onEvent: options.onTransformBlankEvent,
-        mode: options.transformBlankMode as ('auto' | '3-pass' | 'fused' | undefined),
         formatErrorAsSubstitute: options.formatLLMErrorAsSubstitute,
       }));
     }
