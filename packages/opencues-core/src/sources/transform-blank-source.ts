@@ -855,6 +855,8 @@ NONE rules — bail when ANY apply:
 
 GENERATIVE — when the imperative asks to CREATE/GENERATE ("write a poem", "compose an email", "give me 5 startup ideas") AND the input is ONLY that instruction plus _ (no other body text), VERDICT=TRANSFORM, TARGET is empty, FULL_REWRITE contains the generated content. Structure with REAL LINE BREAKS (actual newlines) — poems break each line on its own line, lists put each item on its own line, emails use blank lines between paragraphs. NEVER use " / " (slash) or "\\n" literal text as a line separator; emit the actual newline.
 
+MARKDOWN STYLING — when the instruction asks to DECORATE a named span ("make wilfred bold", "bold the word X", "italicize Y", "underline Z", "strike through W", "make X code") you are NOT rewriting or extracting — you wrap that span in markdown markers IN PLACE. The named span may appear ANYWHERE in the input — including in a sentence BEFORE the instruction, across a period, comma, or line break. VERDICT=TRANSFORM; TARGET = the ENTIRE input minus the instruction phrase + _; FULL_REWRITE = that whole TARGET verbatim, byte-for-byte, with ONLY markdown markers added around the named span (bold → \`**span**\`, italic → \`*span*\`, strike → \`~~span~~\`, code → \`\\\`span\\\`\`). Match the named span case-insensitively but PRESERVE its original casing in the output. NEVER bail to NONE because the styled word sits in a prior sentence — find it and decorate it.
+
 FILL PLACEHOLDER (takes precedence over ADD/APPEND below) — when the instruction supplies a VALUE for a named FIELD ("add recipient name Karen", "set date to Monday", "company Acme", "add my name Wilfred", "manager Karen") AND the TARGET already contains a matching placeholder — a bracketed/templated slot (\`[Recipient Name]\`, \`[Your Name]\`, \`[Name]\`, \`[Date]\`, \`[Company]\`, \`[Position]\`, \`{{name}}\`, \`<name>\`, \`___\`, \`xxx\`) or a "Label:" line with an empty value — REPLACE that placeholder IN PLACE with the value and remove the instruction. Do NOT append a new line; do NOT leave the placeholder. Match by keyword overlap between the field word(s) in the instruction and the placeholder text: "recipient name" → \`[Recipient Name]\` (or the closest name slot, e.g. \`[Name]\` / \`[Your Name]\`), "company"/"employer" → \`[Company]\`, "date"/"last day"/"end date" → \`[Date]\` / \`[Last Working Day]\`, "position"/"role"/"title" → \`[Position]\` / \`[Your Role]\`, "name" → the name slot. The value to insert is the instruction's trailing tokens after the field name. Only when NO placeholder plausibly matches does the ADD/APPEND rule below apply. This holds no matter how far the placeholder sits from the trailing _ (e.g. greeting at the top, command at the bottom of a long letter).
 
 ADD / APPEND OVER A BODY — when a CREATE/ADD instruction ("add a paragraph about X", "write a conclusion", "add a section on Y", "append a note about Z", "include a disclaimer") FOLLOWS or SURROUNDS existing body text AND no matching placeholder exists (see FILL PLACEHOLDER above), that body IS the TARGET — NOT a generative no-target request. VERDICT=TRANSFORM, TARGET = the existing body verbatim, and FULL_REWRITE = the existing body PRESERVED VERBATIM with the newly generated content appended at the end on a new paragraph (\\n\\n). Generate the requested content; do not drop, summarise, or replace the body. The presence of body text is decisive: instruction + body → append (body preserved in FULL_REWRITE); instruction alone → generative (FULL_REWRITE is only the generated content). Never bail to NONE just because the body is long or unrelated to the add phrase.
@@ -914,6 +916,12 @@ VERDICT: TRANSFORM
 INSTRUCTION: uppercase the brands
 TARGET: i bought apple and samsung phones online
 FULL_REWRITE: i bought APPLE and SAMSUNG phones online
+
+INPUT: My name is Wilfred and I work on opencues. make wilfred bold _
+VERDICT: TRANSFORM
+INSTRUCTION: make wilfred bold
+TARGET: My name is Wilfred and I work on opencues.
+FULL_REWRITE: My name is **Wilfred** and I work on opencues.
 
 INPUT: pluralize and make past tense _ the child runs to the park
 VERDICT: TRANSFORM
