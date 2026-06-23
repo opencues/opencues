@@ -1919,6 +1919,15 @@ export const CASES: TransformCase[] = [
     },
   },
   {
+    id: 'format-bold-prior-sentence',
+    category: 'format-transform',
+    input: 'My name is Wilfred and I work on opencues. make wilfred bold _',
+    expected: {
+      finalText: 'My name is Wilfred and I work on opencues.',
+      note: 'styled word lives in a PRIOR sentence across a period — must TRANSFORM (bold Wilfred in place, markers stripped), not bail to NONE leaving FluidBlank to fill the _. Regression: agentic scenario 103.',
+    },
+  },
+  {
     id: 'format-bold-2',
     category: 'format-transform',
     input: 'bold the word name _ hi my name is wilfred',

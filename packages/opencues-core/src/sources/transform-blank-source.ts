@@ -60,6 +60,37 @@ import {
 // ============================================================================
 // Prompts — ported verbatim from tests/benchmarks/transform-blank/
 // ============================================================================
+//
+// ⚠️ TWO-PATH PARITY — READ BEFORE EDITING ANY PROMPT BELOW.
+//
+// TransformBlank has TWO interchangeable encodings of the SAME behaviour,
+// picked per-provider by `pickTransformBlankMode()`:
+//   • FUSED  — the single `FUSED_SYSTEM` constant. ONE call does
+//              classify + extract + apply. Used by cerebras / openai /
+//              gemini / anthropic — i.e. the DEFAULT for most users.
+//   • 3-PASS — `P1_EXTRACT_SYSTEM` + `P1_5_RESOLVE_DEICTICS_SYSTEM` +
+//              `P2_APPLY_SYSTEM` (+ `P2_GENERATIVE_APPLY_SYSTEM`) +
+//              `P3_VERIFY_SYSTEM`. Used by groq.
+//
+// THE RULE: a behaviour change (a new instruction kind, a NONE-bail
+// condition, a styling/formatting rule, a placeholder syntax, an example)
+// added to ONE path MUST be mirrored into the OTHER — or the divergence
+// MUST be recorded in `docs/architecture/transform-blank.md`
+// § "Two-path parity" as an INTENTIONAL asymmetry (e.g. P3 VERIFY is
+// deliberately fused-skipped; see Experiment 6).
+//
+// Why this banner exists: the fused path shipped with NO markdown-styling
+// rule for a long time while 3-pass `P2_APPLY` rule 11 had it — `make X
+// bold _` silently mis-fired on every non-groq provider (the default!)
+// until PR #195. Adding a rule to only one encoding is a SILENT regression
+// on the other provider set.
+//
+// When you touch a prompt: (1) mirror or document, (2) re-run BOTH
+// `prod.ts --mode fused` AND `--mode 3-pass`, (3) update the parity table
+// in `docs/architecture/transform-blank.md`. That table also lists the
+// CURRENT known gaps (cursor/deictic, heading/list, auto-styling,
+// anchored-insert) — fix-forward candidates, not licence to add more.
+// ============================================================================
 
 // EXTRACT prompt — minimal variant. The previous verbose prompt
 // (extensive shape lists + 18 examples) was over-constraining the
@@ -358,6 +389,12 @@ INSTRUCTION: make it a question
 TARGET: The meeting is at 3pm.[CURSOR]
 RESOLVED: make it a question`;
 
+// ⚠️ PARITY: rules added here (markdown styling, anchored insert, auto-
+// styling, cursor edits, etc.) must be mirrored into `FUSED_SYSTEM` —
+// fused is the DEFAULT path for non-groq providers and silently lacks
+// anything you add here only. See the TWO-PATH PARITY banner at the top
+// of the Prompts section + docs/architecture/transform-blank.md
+// § "Two-path parity".
 export const P2_APPLY_SYSTEM = `You receive:
 - INSTRUCTION: a short imperative editing command
 - TARGET: the text to apply the instruction to
@@ -829,6 +866,12 @@ REWRITE: hii my name is *wilfred*.`;
 // only show up on long buffers (the reported case was ~1.3k chars).
 const FUSED_NONE_RETRY_FLOOR = 400;
 
+// ⚠️ PARITY: this single prompt must encode every behaviour the 3-pass
+// family (P1_EXTRACT + P1_5_RESOLVE + P2_APPLY + P2_GENERATIVE) splits
+// across multiple constants. Editing a rule here? Mirror it into the
+// matching 3-pass constant (or vice-versa) and re-bench both modes.
+// See the TWO-PATH PARITY banner at the top of the Prompts section +
+// docs/architecture/transform-blank.md § "Two-path parity".
 export const FUSED_SYSTEM = `Read the input and produce a structured edit result.
 
 The input is a sentence with an underscore (_) signalling either an IMPERATIVE INSTRUCTION the user wants applied to surrounding text, OR a command to manage a continuously-running agent task, OR a lookup placeholder (none of those).
@@ -854,6 +897,8 @@ NONE rules — bail when ANY apply:
 - META-TRIGGER for FluidBlank to answer using ambient context — bail to NONE when the ENTIRE input is a short generic answer-request with no real content to transform. Patterns: bare "_", "answer _", "this _", "answer this _", "fill _", "fill in _", "the answer _", "what is the answer _", "what is the question _", "what is the label _". These have no TARGET text — the user is signalling that the surrounding FORM FIELD (which only FluidBlank sees) carries the question. Don't fabricate a conversational response.
 
 GENERATIVE — when the imperative asks to CREATE/GENERATE ("write a poem", "compose an email", "give me 5 startup ideas") AND the input is ONLY that instruction plus _ (no other body text), VERDICT=TRANSFORM, TARGET is empty, FULL_REWRITE contains the generated content. Structure with REAL LINE BREAKS (actual newlines) — poems break each line on its own line, lists put each item on its own line, emails use blank lines between paragraphs. NEVER use " / " (slash) or "\\n" literal text as a line separator; emit the actual newline.
+
+MARKDOWN STYLING — when the instruction asks to DECORATE a named span ("make wilfred bold", "bold the word X", "italicize Y", "underline Z", "strike through W", "make X code") you are NOT rewriting or extracting — you wrap that span in markdown markers IN PLACE. The named span may appear ANYWHERE in the input — including in a sentence BEFORE the instruction, across a period, comma, or line break. VERDICT=TRANSFORM; TARGET = the ENTIRE input minus the instruction phrase + _; FULL_REWRITE = that whole TARGET verbatim, byte-for-byte, with ONLY markdown markers added around the named span (bold → \`**span**\`, italic → \`*span*\`, strike → \`~~span~~\`, code → \`\\\`span\\\`\`). Match the named span case-insensitively but PRESERVE its original casing in the output. NEVER bail to NONE because the styled word sits in a prior sentence — find it and decorate it.
 
 FILL PLACEHOLDER (takes precedence over ADD/APPEND below) — when the instruction supplies a VALUE for a named FIELD ("add recipient name Karen", "set date to Monday", "company Acme", "add my name Wilfred", "manager Karen") AND the TARGET already contains a matching placeholder — a bracketed/templated slot (\`[Recipient Name]\`, \`[Your Name]\`, \`[Name]\`, \`[Date]\`, \`[Company]\`, \`[Position]\`, \`{{name}}\`, \`<name>\`, \`___\`, \`xxx\`) or a "Label:" line with an empty value — REPLACE that placeholder IN PLACE with the value and remove the instruction. Do NOT append a new line; do NOT leave the placeholder. Match by keyword overlap between the field word(s) in the instruction and the placeholder text: "recipient name" → \`[Recipient Name]\` (or the closest name slot, e.g. \`[Name]\` / \`[Your Name]\`), "company"/"employer" → \`[Company]\`, "date"/"last day"/"end date" → \`[Date]\` / \`[Last Working Day]\`, "position"/"role"/"title" → \`[Position]\` / \`[Your Role]\`, "name" → the name slot. The value to insert is the instruction's trailing tokens after the field name. Only when NO placeholder plausibly matches does the ADD/APPEND rule below apply. This holds no matter how far the placeholder sits from the trailing _ (e.g. greeting at the top, command at the bottom of a long letter).
 
@@ -914,6 +959,12 @@ VERDICT: TRANSFORM
 INSTRUCTION: uppercase the brands
 TARGET: i bought apple and samsung phones online
 FULL_REWRITE: i bought APPLE and SAMSUNG phones online
+
+INPUT: My name is Wilfred and I work on opencues. make wilfred bold _
+VERDICT: TRANSFORM
+INSTRUCTION: make wilfred bold
+TARGET: My name is Wilfred and I work on opencues.
+FULL_REWRITE: My name is **Wilfred** and I work on opencues.
 
 INPUT: pluralize and make past tense _ the child runs to the park
 VERDICT: TRANSFORM
