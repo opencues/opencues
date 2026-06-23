@@ -35,6 +35,7 @@ import { describeLLMCall, dispatchChat, getProvider, type ProviderAdapter } from
 import { classifyLlmError, type FluidBlankErrorReason } from './fluid-blank-source';
 import { detectPartialTransform } from './transform-partial-detector';
 import { translateBufferCursorToTargetCursor } from './transform-cursor-translate';
+import { injectCursorSentinel, stripCursorSentinel } from '../cursor-sentinel';
 import {
   renderIdentityContextCatalogForTransform,
   postProcessContext,
@@ -107,6 +108,8 @@ GENERATIVE — when the imperative asks to CREATE/GENERATE ("write a poem", "com
 MARKDOWN STYLING — when the instruction asks to DECORATE a named span ("make wilfred bold", "bold the word X", "italicize Y", "underline Z", "strike through W", "make X code") you are NOT rewriting or extracting — you wrap that span in markdown markers IN PLACE. The named span may appear ANYWHERE in the input — including in a sentence BEFORE the instruction, across a period, comma, or line break. VERDICT=TRANSFORM; TARGET = the ENTIRE input minus the instruction phrase + _; FULL_REWRITE = that whole TARGET verbatim, byte-for-byte, with ONLY markdown markers added around the named span (bold → \`**span**\`, italic → \`*span*\`, strike → \`~~span~~\`, code → \`\\\`span\\\`\`). Match the named span case-insensitively but PRESERVE its original casing in the output. NEVER bail to NONE because the styled word sits in a prior sentence — find it and decorate it.
 
 STRUCTURE — when the instruction asks to reshape the TARGET into a markdown block structure: "turn into a list" / "make a list" / "make these bullet points" / "convert to bullets" → put EACH item on its own line prefixed with \`- \` (split the comma- or sequence-separated items; strip filler like "first"/"then"). "make it a heading" / "make this a title" → prefix the line with \`# \`. VERDICT=TRANSFORM, FULL_REWRITE = the restructured TARGET. Keep the items' content verbatim; only the structure changes.
+
+CURSOR ANCHOR — the input may contain a \`[CURSOR]\` marker showing where the user's caret was. When the INSTRUCTION is POSITIONAL — it says to do something "here" or to "this line"/"this paragraph" — apply the edit AT the \`[CURSOR]\` location in FULL_REWRITE: "add a line break here" / "new line here" → insert ONE real newline at \`[CURSOR]\`; "add a paragraph break here" / "new paragraph here" / "split this paragraph here" → insert a blank line (two real newlines) at \`[CURSOR]\`; "insert <text> here" / "add <text> here" → insert <text> at \`[CURSOR]\`. Remove the instruction phrase + _ as usual; preserve all other text verbatim. For NON-positional instructions (translate, capitalise, fix typos, make formal, shorten, rephrase, summarise, bold X, …) IGNORE the \`[CURSOR]\` marker — treat the input as if it weren't there. NEVER emit the literal text "[CURSOR]" in FULL_REWRITE.
 
 FILL PLACEHOLDER (takes precedence over ADD/APPEND below) — when the instruction supplies a VALUE for a named FIELD ("add recipient name Karen", "set date to Monday", "company Acme", "add my name Wilfred", "manager Karen") AND the TARGET already contains a matching placeholder — a bracketed/templated slot (\`[Recipient Name]\`, \`[Your Name]\`, \`[Name]\`, \`[Date]\`, \`[Company]\`, \`[Position]\`, \`{{name}}\`, \`<name>\`, \`___\`, \`xxx\`) or a "Label:" line with an empty value — REPLACE that placeholder IN PLACE with the value and remove the instruction. Do NOT append a new line; do NOT leave the placeholder. Match by keyword overlap between the field word(s) in the instruction and the placeholder text: "recipient name" → \`[Recipient Name]\` (or the closest name slot, e.g. \`[Name]\` / \`[Your Name]\`), "company"/"employer" → \`[Company]\`, "date"/"last day"/"end date" → \`[Date]\` / \`[Last Working Day]\`, "position"/"role"/"title" → \`[Position]\` / \`[Your Role]\`, "name" → the name slot. The value to insert is the instruction's trailing tokens after the field name. Only when NO placeholder plausibly matches does the ADD/APPEND rule below apply. This holds no matter how far the placeholder sits from the trailing _ (e.g. greeting at the top, command at the bottom of a long letter).
 
@@ -777,6 +780,25 @@ export class TransformBlankSource implements CueSource {
     const rawExtractText = context.richText ?? context.asTypedText ?? context.text;
     const extractText = rawExtractText;
     const sourceTag = context.richText ? 'rich-text' : context.asTypedText ? 'as-typed' : 'visible';
+    // CURSOR ANCHOR — positional instructions ("add a line break here",
+    // "split this paragraph here", "insert X here") need to know WHERE the
+    // user's caret was. Inject a [CURSOR] marker into the input at the
+    // translated caret offset. GATED on a positional cue in the input so
+    // the ~95% of non-positional transforms don't carry a marker that
+    // could distract the single fused classify+apply call. The prompt's
+    // CURSOR ANCHOR rule tells the model to ignore [CURSOR] for
+    // non-positional instructions; the gate is belt-and-braces for the
+    // fused single-call shape (3-pass could afford an always-on marker
+    // because its EXTRACT classifier ran cursor-blind).
+    const POSITIONAL_CUE = /\b(here|this line|this paragraph|new line|new paragraph|line break|paragraph break)\b/i;
+    let inputForLLM = extractText;
+    if (POSITIONAL_CUE.test(extractText)) {
+      const curOffset = translateBufferCursorToTargetCursor(context.text, context.cursor ?? -1, extractText);
+      if (curOffset >= 0) {
+        inputForLLM = injectCursorSentinel(extractText, curOffset);
+        this.log(`TransformBlank FUSED: [CURSOR] injected at offset ${curOffset}/${extractText.length} (positional cue)`);
+      }
+    }
     // FULL_REWRITE budget — fused emits the WHOLE final buffer (May
     // 2026 contract change). Output is ~input-length plus VERDICT/
     // INSTRUCTION/TARGET label headers. May 23 2026: raised floor
@@ -845,8 +867,11 @@ export class TransformBlankSource implements CueSource {
     // is in place — the dominant payoff window.
     const PREDICTION_MIN_CHARS = 200;
     const fusedPrediction = extractText.length >= PREDICTION_MIN_CHARS ? extractText : undefined;
-    const fusedRaw = await this.callLLM(fusedSystem, `INPUT: ${extractText}`, fusedTokens, undefined, context.signal, fusedPrediction);
-    const fParsed = parseFused(fusedRaw);
+    const fusedRaw = await this.callLLM(fusedSystem, `INPUT: ${inputForLLM}`, fusedTokens, undefined, context.signal, fusedPrediction);
+    const fParsedRaw = parseFused(fusedRaw);
+    // Strip any [CURSOR] the model leaked into FULL_REWRITE — input-only
+    // marker, must never reach the buffer.
+    const fParsed = { ...fParsedRaw, rewrite: stripCursorSentinel(fParsedRaw.rewrite) };
     // Resolve IDENTITY.md sentinels + ambient blank-context tokens in
     // FULL_REWRITE before the result routes through the runtime's three-
     // way merge. Preserves unknown brackets so LLM-emitted placeholders

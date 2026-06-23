@@ -989,3 +989,47 @@ wiring was removed with the 3-pass path and would be a separate feature,
 not a prompt addition. Heading and "add bolding where appropriate"
 (auto-styling) aren't bench-scorable via `finalText` (markers are
 stripped to a markdown.styled event) so they're untested here.
+
+---
+
+## Experiment 12 — Restoring [CURSOR] anchor in the fused path
+
+**Context:** Experiment 11 found the only fix-forward gap a prompt rule
+couldn't close was caret-relative "here" edits ("add a line break here",
+"split this paragraph here", "insert X here") — they need the `[CURSOR]`
+marker injected at the user's caret, which was removed with the 3-pass
+pipeline. This restores it for the fused path.
+
+**Design difference from 3-pass:** the old 3-pass injected `[CURSOR]` into
+the APPLY pass only, so its EXTRACT classifier ran cursor-blind. The
+fused path does classify+apply in ONE call, so an always-on marker would
+sit in the input for the ~95% of non-positional transforms and could
+distract classification. Fix: **gate injection on a positional cue**
+(`/\b(here|this line|this paragraph|new line|new paragraph|line break|
+paragraph break)\b/i`) in the input — only inject when the instruction
+plausibly needs it. The prompt's CURSOR ANCHOR rule still tells the model
+to ignore `[CURSOR]` for non-positional instructions (belt-and-braces),
+and `stripCursorSentinel` removes any leaked marker from FULL_REWRITE.
+
+**Wiring:** `runFusedAndBuild` translates the buffer caret to the input's
+coordinate space (`translateBufferCursorToTargetCursor`) and injects via
+`injectCursorSentinel`; the prediction (cerebras predicted-outputs) keeps
+the clean text, not the marked input.
+
+**Verification:**
+- Unit: 5 new tests (`transform-blank-cursor.test.ts`) — inject on
+  positional + cursor; no inject for non-positional (gate); no inject
+  without a cursor; strip leaked marker; prompt carries the rule.
+- Agentic (live cursor on CC): `first part split this paragraph here _
+  second part` (caret at the trigger) → `first part\n\nsecond part`
+  (`[CURSOR]` injected at the right offset, paragraph break placed there,
+  instruction removed). Single-newline variant ("add a line break here")
+  and a non-positional control (no marker, clean rewrite, no leak) both
+  correct.
+- Broad fused bench within run-to-run variance (gate keeps the
+  non-positional suite marker-free).
+
+**Result:** all four documented fix-forward gaps are now addressed —
+list-ification (Experiment 11 STRUCTURE rule) and cursor/deictic
+positional edits (this experiment); anchored-insert / drop / deictic-"it"
+never needed a rule.
