@@ -11,7 +11,7 @@
  *
  * Single fused pipeline — ONE LLM call emits:
  *
- *   { verdict: TRANSFORM|NONE|TASK_*, instruction, target, rewrite }
+ *   { verdict: TRANSFORM|NONE|TASK_*, instruction, rewrite }
  *
  * The call classifies the input, extracts the instruction + target, and
  * produces the full rewritten buffer in one shot. For TRANSFORM cases the
@@ -54,8 +54,8 @@ import {
 // ============================================================================
 //
 // TransformBlank uses a SINGLE fused prompt (`FUSED_SYSTEM`): ONE LLM call
-// does classify + extract + apply, emitting VERDICT + INSTRUCTION + TARGET +
-// FULL_REWRITE together. When you touch the prompt, re-run
+// does classify + extract + apply, emitting VERDICT + INSTRUCTION +
+// FULL_REWRITE together (TARGET dropped from the output June 2026 — debug-only, see EXPERIMENTS.md Experiment 13). When you touch the prompt, re-run
 // `prod.ts` and update `docs/architecture/transform-blank.md`.
 // ============================================================================
 
@@ -63,7 +63,7 @@ import {
 // FUSED system prompt — the single TransformBlank LLM call
 // ============================================================================
 //
-// Single call that emits VERDICT + INSTRUCTION + TARGET + REWRITE in one shot.
+// Single call that emits VERDICT + INSTRUCTION + FULL_REWRITE in one shot.
 // Runs on every provider. Benchmark evidence: tests/benchmarks/transform-blank/
 // EXPERIMENTS.md § Experiments 6-8.
 //
@@ -83,10 +83,9 @@ export const FUSED_SYSTEM = `Read the input and produce a structured edit result
 
 The input is a sentence with an underscore (_) signalling either an IMPERATIVE INSTRUCTION the user wants applied to surrounding text, OR a command to manage a continuously-running agent task, OR a lookup placeholder (none of those).
 
-Output exactly four labelled lines (FULL_REWRITE may span multiple lines):
+Output exactly three labelled lines (FULL_REWRITE may span multiple lines):
 VERDICT: TRANSFORM | NONE | TASK_ARM | TASK_ADD | TASK_STOP | TASK_SHOW
 INSTRUCTION: <the imperative phrase OR task prompt, _ removed; or empty>
-TARGET: <the rest of the input after removing instruction + _; or empty>
 FULL_REWRITE: <the ENTIRE final buffer with the instruction applied AND the instruction phrase + _ removed. Contains ONLY what the user should see. Empty when VERDICT is NONE / TASK_*>
 
 LAYOUTS — the instruction sits IMMEDIATELY before _. Three valid:
@@ -138,55 +137,46 @@ EXAMPLES:
 INPUT: change boy to girl _ the boy ran fast
 VERDICT: TRANSFORM
 INSTRUCTION: change boy to girl
-TARGET: the boy ran fast
 FULL_REWRITE: the girl ran fast
 
 INPUT: he/she swap _ he gave the book to John
 VERDICT: TRANSFORM
 INSTRUCTION: he/she swap
-TARGET: he gave the book to John
 FULL_REWRITE: she gave the book to John
 
 INPUT: make it british english _ the color of the harbor is gray
 VERDICT: TRANSFORM
 INSTRUCTION: make it british english
-TARGET: the color of the harbor is gray
 FULL_REWRITE: the colour of the harbour is grey
 
 INPUT: pluralize _ the child found one mouse
 VERDICT: TRANSFORM
 INSTRUCTION: pluralize
-TARGET: the child found one mouse
 FULL_REWRITE: the children found mice
 
 INPUT: change pet from dog to cat _ the dog wagged its tail and barked at the postman
 VERDICT: TRANSFORM
 INSTRUCTION: change pet from dog to cat
-TARGET: the dog wagged its tail and barked at the postman
 FULL_REWRITE: the cat swished its tail and meowed at the postman
 
 INPUT: i bought apple and samsung phones online uppercase the brands _
 VERDICT: TRANSFORM
 INSTRUCTION: uppercase the brands
-TARGET: i bought apple and samsung phones online
 FULL_REWRITE: i bought APPLE and SAMSUNG phones online
 
 INPUT: My name is Wilfred and I work on opencues. make wilfred bold _
 VERDICT: TRANSFORM
 INSTRUCTION: make wilfred bold
-TARGET: My name is Wilfred and I work on opencues.
 FULL_REWRITE: My name is **Wilfred** and I work on opencues.
 
 INPUT: pluralize and make past tense _ the child runs to the park
 VERDICT: TRANSFORM
 INSTRUCTION: pluralize | make past tense
-TARGET: the child runs to the park
 FULL_REWRITE: the children ran to the parks
 
 INPUT: write a poem about the sea _
 VERDICT: TRANSFORM
 INSTRUCTION: write a poem about the sea
-TARGET:
 FULL_REWRITE: Waves whisper to the shore,
 endless rhythm, salt-bright air,
 the sea holds every story.
@@ -194,7 +184,6 @@ the sea holds every story.
 INPUT: Build a responsive website with HTML, CSS, and JavaScript, with a homepage and a contact form. add a paragraph about security _
 VERDICT: TRANSFORM
 INSTRUCTION: add a paragraph about security
-TARGET: Build a responsive website with HTML, CSS, and JavaScript, with a homepage and a contact form.
 FULL_REWRITE: Build a responsive website with HTML, CSS, and JavaScript, with a homepage and a contact form.
 
 Security is a priority: serve the site over HTTPS, validate and sanitize all form inputs, guard against SQL injection and XSS, and store any credentials using strong, salted hashing.
@@ -204,9 +193,6 @@ INPUT: Dear [Recipient Name],
 I am writing to formally resign, effective [Date]. add recipient name Karen _
 VERDICT: TRANSFORM
 INSTRUCTION: add recipient name Karen
-TARGET: Dear [Recipient Name],
-
-I am writing to formally resign, effective [Date].
 FULL_REWRITE: Dear Karen,
 
 I am writing to formally resign, effective [Date].
@@ -214,43 +200,36 @@ I am writing to formally resign, effective [Date].
 INPUT: agentically correct spelling _
 VERDICT: TASK_ARM
 INSTRUCTION: correct spelling
-TARGET:
 FULL_REWRITE:
 
 INPUT: capital of france _
 VERDICT: NONE
 INSTRUCTION:
-TARGET:
 FULL_REWRITE:
 
 INPUT: click _ to continue
 VERDICT: NONE
 INSTRUCTION:
-TARGET:
 FULL_REWRITE:
 
 INPUT: answer this _
 VERDICT: NONE
 INSTRUCTION:
-TARGET:
 FULL_REWRITE:
 
 INPUT: answer _
 VERDICT: NONE
 INSTRUCTION:
-TARGET:
 FULL_REWRITE:
 
 INPUT: fill in _
 VERDICT: NONE
 INSTRUCTION:
-TARGET:
 FULL_REWRITE:
 
 INPUT: what is the answer _
 VERDICT: NONE
 INSTRUCTION:
-TARGET:
 FULL_REWRITE:`;
 
 // ============================================================================
@@ -268,9 +247,12 @@ interface FusedResult {
 
 /**
  * Parser for the fused output (`FUSED_SYSTEM` prompt). Reads VERDICT +
- * INSTRUCTION + TARGET + (FULL_)REWRITE. The TARGET field is multi-line-
- * tolerant (sandwiched layout) but stops at the REWRITE label via a
- * lookahead, since REWRITE itself can also span multiple lines.
+ * INSTRUCTION + (FULL_)REWRITE. As of June 2026 the prompt no longer asks
+ * for a TARGET line (it was a debug-only echo ≈ the whole buffer — dropped
+ * to save output tokens; EXPERIMENTS.md Experiment 13). The TARGET regex
+ * is kept tolerant so a model that still emits one is parsed (into the
+ * now-vestigial `target` field) rather than leaking it into REWRITE.
+ * REWRITE can span multiple lines and is captured to EOF.
  */
 function parseFused(raw: string): FusedResult {
   const verdictMatch = raw.match(/^VERDICT:[ \t]*(TRANSFORM|NONE|TASK_ARM|TASK_ADD|TASK_STOP|TASK_SHOW)[ \t]*$/im);
@@ -709,7 +691,7 @@ export class TransformBlankSource implements CueSource {
       const priorVariants = variantChoice.others;
 
       // FUSED is the only TransformBlank pipeline. One LLM hop emits
-      // VERDICT + INSTRUCTION + TARGET + FULL_REWRITE; runFusedAndBuild
+      // VERDICT + INSTRUCTION + FULL_REWRITE; runFusedAndBuild
       // consumes it and builds the CueResult. A null result is a genuine cede
       // (NONE on a short lookup, or a parse miss) — return empty and let
       // FluidBlank / the next source handle the `_`.
@@ -759,7 +741,7 @@ export class TransformBlankSource implements CueSource {
 
   /**
    * Single-call fused pipeline. One LLM hop emits VERDICT + INSTRUCTION +
-   * TARGET + REWRITE; this method consumes those and builds the final
+   * FULL_REWRITE; this method consumes those and builds the final
    * CueResult (or returns null on a genuine cede / parse miss, so the
    * caller returns empty and the next source handles the `_`).
    *
@@ -983,8 +965,9 @@ export class TransformBlankSource implements CueSource {
       spanStart: 0,
       spanEnd: context.text.length,
       metadata: {
-        // INSTRUCTION + TARGET kept for debug + event payloads — they
-        // are CoT scaffolding the model produced, NOT splice geometry.
+        // INSTRUCTION kept for debug + event payloads. TARGET is no longer
+        // emitted (dropped June 2026; `f.target` is empty) — it was CoT
+        // scaffolding, NOT splice geometry.
         // `transformTarget` is intentionally omitted from the metadata
         // shape the runtime reads for substitution: its presence on a
         // result is the signal to take the surgical-splice path. Whole-

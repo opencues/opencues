@@ -1033,3 +1033,50 @@ the clean text, not the marked input.
 list-ification (Experiment 11 STRUCTURE rule) and cursor/deictic
 positional edits (this experiment); anchored-insert / drop / deictic-"it"
 never needed a rule.
+
+---
+
+## Experiment 13 — Dropping the TARGET echo from the fused output
+
+**Hypothesis:** the fused output emits `TARGET:` (≈ the whole buffer
+echoed) AND `FULL_REWRITE:` (≈ the whole buffer) — roughly 2× the buffer
+in output tokens per transform. `f.target` is **debug-only** (the
+resolver merges `FULL_REWRITE` vs `originalText`, never the LLM's
+TARGET — `transformTargetDebug`), so dropping it from the output contract
+should cut output tokens (latency + cost) without hurting accuracy.
+
+**Change:** removed the `TARGET:` line from the output contract and from
+every example in `FUSED_SYSTEM` (3-field output: VERDICT / INSTRUCTION /
+FULL_REWRITE). Kept TARGET as a *concept* in the rule prose. Parser left
+tolerant of a stray TARGET line.
+
+**Results (251 cases, back-to-back per provider to control server load):**
+
+| Provider | Predicted outputs? | Accuracy base → drop | Latency base → drop |
+|---|---|---|---|
+| cerebras | YES | 210 → 208–209 | 528ms → 480ms (within noise) |
+| groq | no | 205 → 210 | ~faster (parallelism-confounded) |
+| **gemini-3.1-flash-lite** | no | 224 → 222 | **604ms → 556ms (~8%)** |
+
+**Findings:**
+1. **Accuracy is flat on all three** — the TARGET restate was NOT a
+   load-bearing chain-of-thought anchor on this suite. Dropping it is safe.
+2. **The latency win only materialises WITHOUT predicted outputs.** On
+   cerebras the TARGET echo ≈ the input, so speculative decoding already
+   accepts it at input-rate — there's nothing to save (neutral, within
+   noise). On gemini (no speculative decoding) the echo is genuinely
+   generated, so removing it is a clean ~8% latency cut. groq directional
+   but parallelism-confounded.
+3. Net: a **modest global efficiency win** — real latency on
+   non-predicted-outputs providers, a small cost trim everywhere (fewer
+   billed output tokens), neutral on the cerebras default, flat accuracy,
+   and a simpler 3-field prompt.
+
+**Lesson:** "fewer output tokens = faster" is provider-dependent —
+speculative decoding (cerebras Predicted Outputs) can make an
+echo-the-input field nearly free, so the bench MUST be read per-provider.
+The win lives on the providers that don't speculate.
+
+**Bench wiring:** gemini added to `prod.ts` `PROVIDERS`
+(`--provider gemini`, `GEMINI_API_KEY`) to measure this — kept as a
+standing third provider for the prod bench.

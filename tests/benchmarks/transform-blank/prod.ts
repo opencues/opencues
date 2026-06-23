@@ -42,6 +42,7 @@ const BOLD = '\x1b[1m';
 
 const CEREBRAS_KEY = process.env.CEREBRAS_API_KEY;
 const GROQ_KEY = process.env.GROQ_API_KEY;
+const GEMINI_KEY = process.env.GEMINI_API_KEY;
 // The inference-provider key is validated in buildSource (only the
 // selected provider's key is required). GROQ_KEY is always needed — the
 // judge is pinned to groq gpt-oss-120b regardless of inference provider.
@@ -96,6 +97,7 @@ const httpAdapter: HttpAdapter = {
 
 const CEREBRAS_MODEL = process.env.OPENCUES_CEREBRAS_MODEL ?? 'gpt-oss-120b';
 const GROQ_MODEL = process.env.OPENCUES_GROQ_MODEL ?? 'openai/gpt-oss-120b';
+const GEMINI_MODEL = process.env.OPENCUES_GEMINI_MODEL ?? 'gemini-3.1-flash-lite';
 
 // Provider wiring. TransformBlank runs a SINGLE fused pipeline on every
 // provider (the prompt lives solely in @opencues/core's FUSED_SYSTEM), so
@@ -103,6 +105,7 @@ const GROQ_MODEL = process.env.OPENCUES_GROQ_MODEL ?? 'openai/gpt-oss-120b';
 const PROVIDERS: Record<string, { endpoint: string; key: string | undefined; model: string }> = {
   cerebras: { endpoint: 'https://api.cerebras.ai/v1/chat/completions', key: CEREBRAS_KEY, model: CEREBRAS_MODEL },
   groq:     { endpoint: 'https://api.groq.com/openai/v1/chat/completions', key: GROQ_KEY, model: GROQ_MODEL },
+  gemini:   { endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent', key: GEMINI_KEY, model: GEMINI_MODEL },
 };
 
 function buildSource(providerId: string): TransformBlankSource {

@@ -118,17 +118,27 @@ instruction + target, and produces the rewrite in a single prompt.
 
 ### The contract
 
-The fused call emits four labelled lines (`FULL_REWRITE` may span
+The fused call emits three labelled lines (`FULL_REWRITE` may span
 multiple lines):
 
 ```
 VERDICT: TRANSFORM | NONE | TASK_ARM | TASK_ADD | TASK_STOP | TASK_SHOW
 INSTRUCTION: <the imperative phrase OR task prompt, _ removed; or empty>
-TARGET: <the rest of the input after removing instruction + _; or empty>
 FULL_REWRITE: <the ENTIRE final buffer with the instruction applied AND
                the instruction phrase + _ removed. Contains ONLY what the
                user should see. Empty when VERDICT is NONE / TASK_*>
 ```
+
+> A fourth field, `TARGET:` (≈ the whole buffer echoed back), was emitted
+> until June 2026 but was **debug-only** — the resolver merges
+> `FULL_REWRITE` against `originalText`, never the LLM's TARGET. It was
+> dropped from the output to save tokens: a real ~8% latency win on
+> providers without speculative decoding (gemini, groq, …), neutral on
+> cerebras (predicted outputs already accepted the echo at input-rate),
+> flat accuracy across all three. `TARGET` survives only as a *concept*
+> in the rules (it's how the prompt explains what gets edited). See
+> EXPERIMENTS.md § Experiment 13. The parser stays tolerant of a stray
+> TARGET line for back-compat.
 
 The verdicts split into three branches:
 
@@ -321,10 +331,9 @@ budget = max(FLOOR=768, ceil(input_chars / 3) + REASONING_HEADROOM=400)
 
 ### Output parsing — label-based, not strict JSON
 
-The fused call emits four labelled lines
-(`VERDICT:` / `INSTRUCTION:` / `TARGET:` / `FULL_REWRITE:`, the last
-spanning multiple lines) and `parseFused` extracts them with tolerant
-regexes. It deliberately does NOT use a JSON-schema constrained-decoding
+The fused call emits three labelled lines
+(`VERDICT:` / `INSTRUCTION:` / `FULL_REWRITE:`, the last spanning
+multiple lines) and `parseFused` extracts them with tolerant regexes. It deliberately does NOT use a JSON-schema constrained-decoding
 mode: `FULL_REWRITE` is the entire rewritten buffer (arbitrary newlines,
 markdown, dense scripts), which doesn't schematize cleanly, and the
 label format with a permissive parser handles a missing prefix or
