@@ -736,6 +736,12 @@ export class Resolver {
       enableFluidBlank: settings.get('fluid-blank-mode') === 'on',
       enableTransformBlank: settings.get('transform-blank-mode') === 'on',
       enableConfigIntent: settings.get('fluid-config-mode') === 'on',
+      // Live getter: BlankIntent gate active → BlankSource claim + the
+      // FluidBlank/Transform/ConfigIntent cede checks all switch to the
+      // shared line-scoped keyword window (in lockstep with BlankFill).
+      // Read live so a `blank-intent-mode` flip takes effect without a
+      // source rebuild. See keyword-window.ts.
+      blankIntentLineScoped: () => this.configLoader.opencuesState.settings.get('blank-intent-mode') === 'on',
       enableSentenceCues: settings.get('sentence-cues-mode') === 'on',
       enableWordCues: settings.get('word-cues-mode') === 'on',
       // `max-thinking` (default on). Threaded into every LLM source's

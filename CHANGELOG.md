@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — BlankIntent typed-STEP: `volume up _` / `brightness down _` (runtime 0.4.3)
+
+Completes the action set. The gate already extracted `step up`/`step down`; the runtime now honours it. Unlike SET (which carries an absolute target), STEP is relative, so the runtime reads the current value (`runBlankGetValue`), applies `± blankStep` (volume 6 / brightness 10), clamps 0–100, sets, and reads back. Same guards as SET: only settable blanks (with `blankStep`), keyword consent unchanged; a non-numeric current value or a step verdict on a lookup blank degrades to a plain get. Verified live (`volume up _` 50→56, `brightness down _` 50→40); +5 unit tests (up/down/clamp/non-numeric-degrade/non-settable-degrade) + agentic scenario 209 (set 50 → up 56% → down 50%). runtime 1719 green.
+
+### Added — BlankIntent line-scoped Phase-1 window: one shared predicate across all 5 keyword-match sites (core 0.5.1 / runtime 0.4.2)
+
+When the gate is on, the per-blank `blankProximity` knob (the thing the LLM replaces) is no longer the gate: the keyword window is **line-scoped** (a keyword on the `_`'s line reaches the classifier; a keyword on a previous line doesn't), so `volume 30 _` / `brightness 70 _` and any same-line invocation work regardless of each blank's tuned proximity. Gate **off** = per-blank proximity exactly as before.
+
+The load-bearing part is **consistency**. Five sites independently decide who owns a `_` — `BlankFill.matchKeyword` (runtime claim) plus four core sources (`BlankSource` claim + the `FluidBlank` / `TransformBlank` / `ConfigIntent` cede checks). An earlier attempt widened only `BlankFill`, so it claimed `brightness 90 _` while `FluidBlank` (still on proximity 0) didn't cede and answered "percent" — two sources firing on one `_` (a race). The fix routes **all five** through a single `keywordInWindow` predicate in `@opencues/core` (`keyword-window.ts`), selected by a live `blankIntentLineScoped` getter threaded from the resolver. The window physically can't drift between sites now.
+
+Also reverts the brightness `blankProximity` band-aid (line-scope handles it). +6 core window-predicate tests, +6 BlankFill line-scope tests (same-line far match, cross-line miss, off/unwired fall back to proximity); resolver cede sources verified non-regressed (transform/fluid/config-intent/sentence) and the brightness race confirmed gone (206 stable ×3). core 911 + runtime 1714 green.
+
+### Added — BlankIntent typed-SET: `volume 30 _` / `brightness 70 _` actually set (runtime 0.4.1)
+
+BlankIntent already extracted the action+value from a `_` invocation (`volume 30 _` → `set 30`) but the runtime discarded it and always ran `get`, so typed-number SET silently showed the *current* value instead of setting. Now the gate threads its verdict into the dispatch: an `action: 'set'` + numeric value on a **settable** blank (one with `blankStep` — volume/brightness) runs `set <value>` then reads the (clamped) value back via `get`. Everything else is unchanged:
+- Non-settable blanks (weather/stocks/…) ignore a stray `set` and run `get` (the value is their lookup query, never a write).
+- Non-numeric values degrade to `get` (defensive).
+- Only reaches a blank whose keyword the user typed (consent unchanged); SET is bounded 0–100, local, reversible.
+- `step` (`volume up _`) — now wired (runtime 0.4.3): reads current, ±`blankStep`, clamps, sets.
+
+Also fixes **brightness `blankProximity` 0 → 3** (matching volume), so `brightness 70 _` matches the keyword at all (previously the inline value pushed `_` out of range and it fell through to fluid-blank). Verified live on CC (`volume 30 _` → 30%, `brightness 70 _` → 70%); 4 new unit tests (set dispatches set+readback, non-settable degrades, non-numeric degrades, plain get) + 2 agentic scenarios (set 20→80 / 40→90 prove the value actually changes). Built on the merged BlankIntent gate (PR #201).
+
 ### Added — BlankIntent: LLM invocation gate for keyword script-blanks (core 0.5.0 / runtime 0.4.0, `feat/blank-intent` branch, OFF by default)
 
 New optional `blank-intent-mode: off | on` scalar. Today a registered blank keyword within `blankProximity` words of `_` runs the blank's script **unconditionally** — so `the weather was lovely today _` wrongly fires a weather fetch, while a wide proximity window is needed to catch real invocations like `what is the weather in london _`. One distance knob can't give both precision and recall. BlankIntent keeps the keyword as the deterministic **consent atom** ("may run") and puts one LLM call behind it for **precision** ("should run + how"): `weather london _` → INVOKE; `the weather was lovely today _` → CEDE (script suppressed). Generalises the `fluid-config` classifier pattern to the safe subset of blanks; supersedes the reverted shape system without touching the cycling/selector-satellite machinery whose coupling caused that revert.

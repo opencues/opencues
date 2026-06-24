@@ -31,6 +31,7 @@
 
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
 import { BlankConfig } from '../cues-md';
+import { keywordInWindow, lineOfWords } from '../keyword-window';
 import { describeLLMCall, dispatchChat, getProvider, type ProviderAdapter } from '../llm-provider';
 import { classifyLlmError, type FluidBlankErrorReason } from './fluid-blank-source';
 import { detectPartialTransform } from './transform-partial-detector';
@@ -396,6 +397,9 @@ export interface TransformBlankSourceConfig {
    * a keyword-bound BlankSource would claim it (mirrors fluid-blank
    * cede logic). */
   blanks?: Record<string, BlankConfig>;
+  /** Live getter: true when the BlankIntent gate is active → shared
+   *  line-scoped cede window instead of per-blank proximity. Default false. */
+  lineScoped?: () => boolean;
   /**
    * Optional logger — called at every pipeline stage so a host can
    * surface what the fused pipeline is doing. Wire to the runtime's
@@ -484,6 +488,7 @@ export class TransformBlankSource implements CueSource {
   private temperatureOverride: number | undefined;
   private maxThinking: boolean;
   private blanks: Record<string, BlankConfig>;
+  private lineScoped: () => boolean;
   private log: (msg: string) => void;
   private emit: (event: TransformBlankEvent) => void;
   private formatErrorAsSubstitute: ((reason: FluidBlankErrorReason, err?: Error) => string) | undefined;
@@ -499,6 +504,7 @@ export class TransformBlankSource implements CueSource {
     this.maxThinking = config.maxThinking ?? true;
     this.priority = config.priority ?? 93;
     this.blanks = config.blanks ?? {};
+    this.lineScoped = config.lineScoped ?? (() => false);
     this.log = config.log ?? (() => { /* default: silent */ });
     this.emit = config.onEvent ?? (() => { /* default: silent */ });
     this.formatErrorAsSubstitute = config.formatErrorAsSubstitute;
@@ -510,7 +516,12 @@ export class TransformBlankSource implements CueSource {
     if (blankIndex === -1) return false;
 
     // Cede to keyword-bound BlankSource if a registered blank's keyword is
-    // within blankProximity of the `_` (mirror fluid-blank cede logic).
+    // in the active window of the `_` (mirror fluid-blank cede logic). The
+    // shared `keywordInWindow` keeps this in lockstep with BlankFill +
+    // BlankSource — per-blank proximity normally, line-scoped when the
+    // BlankIntent gate is active. See keyword-window.ts.
+    const scoped = this.lineScoped();
+    const lineOf = scoped ? lineOfWords(context.text) : undefined;
     for (const blk of Object.values(this.blanks)) {
       if (!blk.blankKeywords?.length) continue;
       const proximity = blk.blankProximity ?? 0;
@@ -523,8 +534,9 @@ export class TransformBlankSource implements CueSource {
           }
           if (!ok) continue;
           const endIdx = i + parts.length - 1;
-          const gap = Math.abs(endIdx - blankIndex) - 1;
-          if (gap <= proximity) return false;
+          if (keywordInWindow(endIdx, blankIndex, proximity, { lineScoped: scoped, lineOf })) {
+            return false;
+          }
         }
       }
     }

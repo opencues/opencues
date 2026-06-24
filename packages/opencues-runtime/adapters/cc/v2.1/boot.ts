@@ -21,7 +21,7 @@ import { Statusline } from '../../../src/modules/statusline';
 import { TTS } from '../../../src/modules/tts';
 import { Resolver } from '../../../src/modules/resolver';
 import { AgentRewrite } from '../../../src/modules/agent-rewrite';
-import { BlankFill } from '../../../src/modules/blank-fill';
+import { BlankFill, type BlankIntentDecision } from '../../../src/modules/blank-fill';
 import { BlankLoadingAnimator, parseCustomFrames, parseRgbColors, parseAnsiColors, parseFrameIntervalMs, DEFAULT_RGB_PALETTE, DEFAULT_ANSI_PALETTE } from '../../../src/modules/blank-loading';
 import { MarkdownRender } from '../../../src/modules/markdown-render';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
@@ -605,17 +605,20 @@ export function boot(host: HostInfo): BootResult {
   // (`off`) never freezes the gate off. Degrades to 'invoke' (today's
   // proximity behaviour) on no key / packaging / LLM error.
   let _biBuilt = false;
-  let _biClassifier: { classify: (t: string, b: string, blanks: Record<string, unknown>) => Promise<{ verdict: 'invoke' | 'cede' }> } | null = null;
-  const blankIntentGate = async (text: string, blankName: string): Promise<'invoke' | 'cede'> => {
-    if ((configLoader.opencuesState.settings.get('blank-intent-mode') ?? 'off') !== 'on') return 'invoke';
+  let _biClassifier: { classify: (t: string, b: string, blanks: Record<string, unknown>) => Promise<{ verdict: 'invoke' | 'cede'; action?: 'get' | 'set' | 'step' | null; value?: string | null }> } | null = null;
+  const BI_GET_INVOKE: BlankIntentDecision = { verdict: 'invoke', action: 'get', value: null };
+  const blankIntentGate = async (text: string, blankName: string): Promise<BlankIntentDecision> => {
+    if ((configLoader.opencuesState.settings.get('blank-intent-mode') ?? 'off') !== 'on') return BI_GET_INVOKE;
     if (!_biBuilt) {
       _biBuilt = true;
       _biClassifier = buildBlankIntentClassifier(configLoader, apiKeys, msg => log('debug', msg));
     }
-    if (!_biClassifier) return 'invoke';
+    if (!_biClassifier) return BI_GET_INVOKE;
     const blanksRecord = Object.fromEntries(configLoader.blanks) as Record<string, unknown>;
-    const verdict = await _biClassifier.classify(text, blankName, blanksRecord);
-    return verdict.verdict === 'invoke' ? 'invoke' : 'cede';
+    const v = await _biClassifier.classify(text, blankName, blanksRecord);
+    return v.verdict === 'invoke'
+      ? { verdict: 'invoke', action: v.action ?? 'get', value: v.value ?? null }
+      : { verdict: 'cede' };
   };
   const blankFill = new BlankFill(adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading, blankIntentGate);
   configLoader.load().then(() => blankFill.subscribe()).catch(() => { /* logged */ });
