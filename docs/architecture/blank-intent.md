@@ -356,6 +356,40 @@ path + add agentic exec-consent scenarios. The PoC de-risks that work.
 > lesson warns about. Suite is also small (30 cases) — expand per-blank
 > before shipping.
 
+### Breadth + multilingual (`multilingual.ts`)
+
+A 28-case stress bench (broad English phrasings; English-keyword +
+non-Latin values; fully non-English invocations; English + foreign prose):
+
+| Provider | Total |
+|---|---|
+| gemini-3.1-flash-lite | **28/28 (100%)** |
+| cerebras gpt-oss-120b | **27/28 (96%)** |
+| groq gpt-oss-120b | **26/28 (93%)** |
+
+Findings:
+- **The classifier is fully multilingual with zero per-language work** — one
+  line ("the input may be in any language") got every foreign-language
+  invocation routed (`qué tiempo hace en madrid`, `météo à paris`,
+  `lautstärke auf 30`, `東京の天気`, `北京的天气`, `precio de bitcoin`),
+  every **non-Latin value** extracted (`weather 東京 / Москва / القاهرة`),
+  and every **foreign prose** case correctly CEDEd (`el volumen estaba
+  genial`, `das wetter war heute schön`, `昨日の天気は最高だった`).
+- Misses were minor + model-dependent: number-word normalisation
+  (`set volume to half` → value `half` instead of `50`, cerebras+groq) and
+  one groq prose over-fire (`bitcoin has been in the news a lot _` →
+  INVOKE; cerebras + gemini ceded it).
+
+> **⚠️ Architectural caveat — the gate, not the model, is the multilingual
+> limiter.** The fully-foreign invocations *pass the classifier*, but in
+> production Phase-1's **English-keyword** pre-gate would NOT fire on
+> `qué tiempo hace en madrid _` (no `weather` token) — so the classifier
+> would never run and it'd cede. The model is multilingual-ready; the
+> **keyword list** bounds reach. To actually serve foreign-language users,
+> the lever is **multilingual keywords** (or a multilingual Phase-1
+> pre-gate), not the classifier. This is a real design choice to make
+> before claiming multilingual support.
+
 ## Relationship to prior work
 
 - **`shape-driven-blanks.md`** — the reverted regex-gate answer to the same
