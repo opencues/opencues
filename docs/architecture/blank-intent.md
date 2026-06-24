@@ -40,6 +40,21 @@
 > `the volume was great _`-style prose) and is deferred. Surfaced by the
 > side-effect sweep, agentic scenario `11-copula-heuristic` fails under
 > flag-on for this reason (expected).
+>
+> **Known limitation — multiple keyword-blank `_` in ONE buffer cede.**
+> Each slot's classify call receives the whole buffer; a buffer with two
+> `_` and two tools (`volume _ weather paris _`, typically from a paste)
+> reads as an ambiguous multi-invocation and the classifier cedes BOTH, so
+> neither fires. Normal incremental typing is unaffected — the first `_`
+> resolves before the second is typed, so each classify sees a single
+> invocation. Non-destructive (slots stay inert). A per-slot clause slice
+> would fix it; deferred.
+>
+> **Positive interaction (not a limitation):** a transform-blank
+> instruction that merely contains a blank keyword (`make the volume
+> section bold _`) correctly CEDEs the keyword blank, so transform-blank
+> handles it — a precision WIN over the proximity gate, which would have
+> wrongly fired the volume blank.
 
 ## The problem
 
