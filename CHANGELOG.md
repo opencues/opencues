@@ -15,7 +15,9 @@ BlankIntent already extracted the action+value from a `_` invocation (`volume 30
 - Only reaches a blank whose keyword the user typed (consent unchanged); SET is bounded 0–100, local, reversible.
 - `step` (`volume up _`) is extracted but not yet wired — shows the current value (follow-up).
 
-Also fixes **brightness `blankProximity` 0 → 3** (matching volume), so `brightness 70 _` matches the keyword at all (previously the inline value pushed `_` out of range and it fell through to fluid-blank). Verified live on CC (`volume 30 _` → 30%, `brightness 70 _` → 70%); 4 new unit tests (set dispatches set+readback, non-settable degrades, non-numeric degrades, plain get) + 2 agentic scenarios (set 20→80 / 40→90 prove the value actually changes). Built on the merged BlankIntent gate (PR #201).
+**Phase-1 loose window — the gate now replaces `blankProximity` tuning.** Previously BlankIntent only saw slots the *old* per-blank proximity gate already produced, so `brightness 70 _` (brightness proximity 0 → only the adjacent `brightness _` matched) never reached the classifier. Now, when the gate is active, `matchKeyword` widens to a single loose window (12 words) for every blank instead of each blank's tuned `blankProximity` — that knob is exactly what the LLM replaces. A keyword anywhere within the window reaches the gate, which INVOKEs a real invocation or CEDEs prose. Verified live: `brightness 70 _` sets via the loose window (no per-blank tuning), and `…brightness…perfect earlier today _` (keyword 8 words back) correctly CEDEs. Gate **off** = tuned per-blank proximity exactly as before (master behaviour).
+
+Verified live on CC (`volume 30 _` → 30%, `brightness 70 _` → 70%); 8 new unit tests (set dispatches set+readback, non-settable/non-numeric degrade, plain get, + the loose-window matrix: on-wired matches, off doesn't, on-but-unwired doesn't, adjacent always matches) + 2 agentic scenarios (set 20→80 / 40→90 prove the value actually changes). Built on the merged BlankIntent gate (PR #201).
 
 ### Added — BlankIntent: LLM invocation gate for keyword script-blanks (core 0.5.0 / runtime 0.4.0, `feat/blank-intent` branch, OFF by default)
 
