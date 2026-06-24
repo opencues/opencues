@@ -1,88 +1,62 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { CountriesBlank } from './countries';
+import type { CountryFacts } from './countries-data';
 
-function fetchOk(body: unknown, status = 200): typeof fetch {
-  return vi.fn(async () => ({
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-    text: async () => JSON.stringify(body),
-  } as Response)) as unknown as typeof fetch;
-}
+// Small fixture dataset (matches the bundled-table shape). Keys are
+// normalised (lowercase, alnum + single spaces) like the generator emits.
+const DATA: Record<string, CountryFacts> = {
+  france: { name: 'France', capital: 'Paris', population: 67750000, region: 'Europe', area: 551695, currency: { code: 'EUR', name: 'Euro' }, languages: ['French'] },
+  india: { name: 'India', capital: 'New Delhi', population: 1428000000, region: 'Asia', area: 3287590, currency: { code: 'INR', name: 'Indian rupee' }, languages: ['Hindi', 'English', 'Tamil', 'Telugu'] },
+  'united states': { name: 'United States', capital: 'Washington D.C.', population: 331000000, region: 'Americas', area: 9372610, currency: { code: 'USD', name: 'US Dollar' }, languages: ['English'] },
+};
+const fixture = () => new CountriesBlank({ data: DATA });
 
-const FRANCE = [{
-  name: { common: 'France' },
-  capital: ['Paris'],
-  population: 67750000,
-  region: 'Europe',
-  area: 551695,
-  currencies: { EUR: { name: 'Euro', symbol: '€' } },
-  languages: { fra: 'French' },
-}];
-
-describe('CountriesBlank', () => {
+describe('CountriesBlank (bundled dataset)', () => {
   it('returns "<fact>: no country" when keyword has no country context', async () => {
-    const ctl = new CountriesBlank({ fetchFn: fetchOk(FRANCE) });
-    expect(await ctl.get('population of', [])).toBe('population: no country');
+    expect(await fixture().get('population of', [])).toBe('population: no country');
   });
 
   it('extracts country from context + formats population in M', async () => {
-    const ctl = new CountriesBlank({ fetchFn: fetchOk(FRANCE) });
-    expect(await ctl.get('population of', ['france'])).toBe('France population: 67.8M');
+    expect(await fixture().get('population of', ['france'])).toBe('France population: 67.8M');
   });
 
   it('extracts capital correctly', async () => {
-    const ctl = new CountriesBlank({ fetchFn: fetchOk(FRANCE) });
-    expect(await ctl.get('capital of', ['france'])).toBe('France capital: Paris');
+    expect(await fixture().get('capital of', ['france'])).toBe('France capital: Paris');
   });
 
   it('formats currency as "<name> (<code>)"', async () => {
-    const ctl = new CountriesBlank({ fetchFn: fetchOk(FRANCE) });
-    expect(await ctl.get('currency of', ['france'])).toBe('France currency: Euro (EUR)');
+    expect(await fixture().get('currency of', ['france'])).toBe('France currency: Euro (EUR)');
   });
 
   it('formats area with km² suffix', async () => {
-    const ctl = new CountriesBlank({ fetchFn: fetchOk(FRANCE) });
-    expect(await ctl.get('area of', ['france'])).toBe('France area: 551,695 km²');
+    expect(await fixture().get('area of', ['france'])).toBe('France area: 551,695 km²');
   });
 
   it('returns first 3 languages joined', async () => {
-    const india = [{ ...FRANCE[0], languages: { hin: 'Hindi', eng: 'English', tam: 'Tamil', tel: 'Telugu' } }];
-    const ctl = new CountriesBlank({ fetchFn: fetchOk(india) });
-    expect(await ctl.get('languages of', ['india'])).toBe('India languages: Hindi, English, Tamil');
+    expect(await fixture().get('languages of', ['india'])).toBe('India languages: Hindi, English, Tamil');
   });
 
-  it('caches on country (multiple facts → single fetch)', async () => {
-    const fetchFn = vi.fn(fetchOk(FRANCE));
-    const ctl = new CountriesBlank({ fetchFn: fetchFn as unknown as typeof fetch, cacheTtlMs: 60_000 });
-    await ctl.get('population of', ['france']);
-    await ctl.get('capital of', ['france']);
-    await ctl.get('currency of', ['france']);
-    expect(fetchFn).toHaveBeenCalledTimes(1);
-  });
-
-  it('returns "<country>: not found" for HTTP 404', async () => {
-    const ctl = new CountriesBlank({ fetchFn: fetchOk({}, 404) });
-    expect(await ctl.get('population of', ['atlantis'])).toBe('atlantis: not found');
-  });
-
-  it('returns "<country>: error" on fetch throw', async () => {
-    const fetchFn = vi.fn(async () => { throw new Error('net'); }) as unknown as typeof fetch;
-    const ctl = new CountriesBlank({ fetchFn });
-    expect(await ctl.get('population of', ['france'])).toBe('france: error');
+  it('returns "<country>: not found" for an unknown country', async () => {
+    expect(await fixture().get('population of', ['atlantis'])).toBe('atlantis: not found');
   });
 
   it('handles multi-word country names ("united states")', async () => {
-    const fetchFn = vi.fn(fetchOk(FRANCE));
-    const ctl = new CountriesBlank({ fetchFn: fetchFn as unknown as typeof fetch });
-    await ctl.get('population of', ['united', 'states']);
-    const url = String((fetchFn as { mock: { calls: unknown[][] } }).mock.calls[0][0]);
-    expect(url).toContain('united%20states');
+    expect(await fixture().get('capital of', ['united', 'states'])).toBe('United States capital: Washington D.C.');
   });
 
   it('formats population >= 1B as "X.YB"', async () => {
-    const india = [{ ...FRANCE[0], population: 1428000000 }];
-    const ctl = new CountriesBlank({ fetchFn: fetchOk(india) });
-    expect(await ctl.get('population of', ['india'])).toBe('India population: 1.4B');
+    expect(await fixture().get('population of', ['india'])).toBe('India population: 1.4B');
+  });
+
+  // Pins that the BUNDLED table is wired + loads. Uses stable facts that
+  // won't change (Paris is France's capital; Japan's currency is JPY).
+  describe('real bundled data', () => {
+    it('resolves a stable capital from the bundle', async () => {
+      expect(await new CountriesBlank().get('capital of', ['france'])).toBe('France capital: Paris');
+    });
+    it('resolves an alias (usa) + a stable currency code', async () => {
+      expect(await new CountriesBlank().get('currency of', ['japan'])).toContain('(JPY)');
+      expect(await new CountriesBlank().get('capital of', ['usa'])).toBe('United States capital: Washington D.C.');
+    });
   });
 });
