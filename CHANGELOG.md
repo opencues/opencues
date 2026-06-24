@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2026-06-25] — checkpoint
+
+Snapshot tag (`v2026.06.25`). Headline: **BlankIntent** ships behind `blank-intent-mode` (OFF by default) — an LLM invocation gate for keyword script-blanks with line-scoped Phase-1, typed get/set/step, and a single shared keyword-window predicate across all five claim/cede sites; plus the **countries** blank moving to a bundled offline dataset. Packages at this checkpoint: `@opencues/core` 0.5.1, `@opencues/runtime` 0.4.4. (All packages remain `private` — this is a source checkpoint, not an npm publish; the npm handover is tracked in `docs/launch/npm-handover.md`.)
+
 ### Fixed — countries blank: bundled offline dataset (restcountries.com fully deprecated) (runtime 0.4.4)
 
 The `countries` blank (`capital of france _`, `population of japan _`, …) returned `"<country>: not found"` for every lookup. Root cause: its data source, **restcountries.com, fully deprecated its REST API** (June 2026) — every path (`/v3.1`, `/v5`, even the static legacy dump) now 301-redirects to a deprecation notice (`{"success":false, "errors":["This API version has been deprecated…"]}`), so the blank's fetch got a non-array body → `!data?.length` → "not found". Depending on a free third-party API is exactly what broke.
