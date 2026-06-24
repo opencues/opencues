@@ -105,6 +105,14 @@ export class BlankFill {
      *  for backward compat with external callers that haven't wired the
      *  shared owner). */
     blankLoading?: BlankLoadingAnimator,
+    /** BlankIntent gate (off by default; wired by boot-common only when
+     *  `blank-intent-mode: on`). Consulted in `maybeRunScripts` BEFORE a
+     *  keyword-matched script-blank runs: `'invoke'` runs it as today,
+     *  `'cede'` suppresses the script so the keyword behaves as prose.
+     *  When omitted, every keyword-matched slot runs unconditionally
+     *  (the proximity gate — today's behaviour). NEVER throws (the
+     *  classifier degrades to `'invoke'` on any LLM failure). */
+    private blankIntentGate?: (text: string, blankName: string) => Promise<'invoke' | 'cede'>,
   ) {
     if (blankLoading) this._loading = blankLoading;
   }
@@ -363,6 +371,13 @@ export class BlankFill {
       if (this._pendingScripts.has(dedupKey)) continue;
       this._pendingScripts.add(dedupKey);
 
+      // The actual `get` dispatch for this slot, wrapped so the
+      // BlankIntent gate (below) can run it conditionally. The dedup key
+      // is already reserved above, so a re-scan during the gate's latency
+      // won't double-dispatch. (`continue` inside this closure becomes
+      // `return` — it's a function body now, not the loop.)
+      const doDispatch = (): void => {
+
       // Context words: every word except the matched keyword span and the blank.
       // Index-based filter (vs v1's string-match) handles multi-word keywords
       // correctly (multi-word keywords would be incorrectly filtered
@@ -442,7 +457,7 @@ export class BlankFill {
           // cached value is fresh.
           this._pendingScripts.delete(dedupKey);
           this.applyAsyncFill(slot, entry.output);
-          continue;
+          return;
         }
       }
 
@@ -478,7 +493,7 @@ export class BlankFill {
           // (no .then/.catch ever fires to stop it).
           this._pendingScripts.delete(dedupKey);
           this._loadingAnimator().stop(slot.index, 'blank-fill');
-          continue;
+          return;
         }
         // OS-level sandbox config — populated when the blank's
         // frontmatter declares `sandbox: strict`. The host's spawn
@@ -571,6 +586,50 @@ export class BlankFill {
         this._loadingAnimator().stop(slot.index, 'blank-fill');
         this.adapter.log('error', `BlankFill: script promise rejected for ${slot.blankName}`, err);
       });
+
+      }; // end doDispatch
+
+      // BlankIntent gate (off by default). When wired (blank-intent-mode
+      // on, native host with a resolved blanks-bucket LLM), ask the
+      // classifier whether this `_` is a genuine invocation before running
+      // the blank. INVOKE → doDispatch(); CEDE → suppress (the keyword
+      // behaves as prose). Every slot that reaches here is an exec/fetch
+      // tier blank — list blanks (stepValues) were skipped above, and only
+      // script / impl / built-in-by-convention blanks get this far (the
+      // dispatch requires `script || canBlankInvoke`). We do NOT gate on
+      // `blankScript || impl`: the shipped fetch blanks (weather, stocks,
+      // countries, …) OMIT `impl:` and resolve to a built-in class by
+      // convention, so gating on the field would leave the entire fetch
+      // tier ungated. The classifier never throws (it degrades to invoke on
+      // any LLM failure); a thrown gate is caught here and also treated as
+      // invoke. The staleness re-check drops a verdict that arrived after
+      // the user kept typing, so we never splice a fill against a changed
+      // buffer.
+      if (this.blankIntentGate) {
+        const gate = this.blankIntentGate;
+        const gateText = text;
+        void (async () => {
+          let verdict: 'invoke' | 'cede' = 'invoke';
+          try {
+            verdict = await gate(gateText, slot.blankName);
+          } catch (err) {
+            this.adapter.log('debug', `BlankFill: BlankIntent gate threw — degrading to invoke for ${slot.blankName}`, err);
+            verdict = 'invoke';
+          }
+          if (this._lastInputText !== gateText) {
+            this._pendingScripts.delete(dedupKey);
+            return;
+          }
+          if (verdict === 'cede') {
+            this.adapter.log('debug', `BlankFill: BlankIntent CEDE — suppressing ${slot.blankName} for "${gateText}"`);
+            this._pendingScripts.delete(dedupKey);
+            return;
+          }
+          doDispatch();
+        })();
+      } else {
+        doDispatch();
+      }
     }
   }
 

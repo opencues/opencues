@@ -352,6 +352,82 @@ export function buildAgentLLMResolver(
   // to their reduced level. See @opencues/core/model-thinking.ts.
   return { ...out, maxThinking: (s.get('max-thinking') ?? 'on') !== 'off' };
 }
+
+/**
+ * Construct the BlankIntent classifier (the LLM gate `BlankFill` consults
+ * before running a keyword-matched script-blank). Returns null — and the
+ * gate is simply absent (today's proximity behaviour) — when:
+ *   - `blank-intent-mode` is not `on` (off by default), OR
+ *   - `@opencues/core` / its node-http-adapter can't be required (chrome
+ *     packaging or a Bun host without the native adapter), OR
+ *   - no API key resolves for the blanks-bucket provider.
+ *
+ * Resolves the LLM the same way `buildAgentLLMResolver` does, but reads
+ * the BLANKS bucket (`blanks-llm-provider`) with optional per-feature
+ * `blank-intent-{provider,model,endpoint}` overrides. Constructed ONCE at
+ * boot: flipping `blank-intent-mode: on` takes effect on the next host
+ * restart (documented in the upgrade path); the live gate re-checks the
+ * scalar each call so flipping it OFF disables the gate without a restart.
+ */
+export function buildBlankIntentClassifier(
+  configLoader: ConfigLoader,
+  apiKeys: Readonly<Record<string, string | undefined>>,
+  log: (msg: string) => void,
+): { classify: (text: string, blank: string, blanks: Record<string, unknown>) => Promise<{ verdict: 'invoke' | 'cede' }> } | null {
+  const s = configLoader.opencuesState.settings;
+  if ((s.get('blank-intent-mode') ?? 'off') !== 'on') return null;
+
+  let core: {
+    resolveLLM?: (opts: unknown) => { provider: unknown; model: string; endpoint: string; apiKey: string } | null;
+    BlankIntentClassifier?: new (cfg: unknown) => { classify: (text: string, blank: string, blanks: Record<string, unknown>) => Promise<{ verdict: 'invoke' | 'cede' }> };
+  } | null = null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    core = require('@opencues/core');
+  } catch {
+    return null;
+  }
+  if (!core?.resolveLLM || !core?.BlankIntentClassifier) return null;
+
+  // Blanks-bucket precedence (mirrors build-sources.ts): per-feature
+  // override > blanks bucket > global. `inherit` collapses the bucket.
+  const blanksBucket = configLoader.opencuesState.blanksLlmProvider;
+  const blanksBucketProvider = blanksBucket === 'inherit' ? undefined : blanksBucket;
+  const blanksBucketModel = blanksBucketProvider ? s.get('blanks-llm-model') : undefined;
+  const blanksBucketEndpoint = blanksBucketProvider ? s.get('blanks-llm-endpoint') : undefined;
+
+  const resolved = core.resolveLLM({
+    featureProvider: s.get('blank-intent-provider'),
+    featureModel: s.get('blank-intent-model'),
+    endpointOverride: s.get('blank-intent-endpoint') ?? blanksBucketEndpoint ?? s.get('llm-endpoint'),
+    globalProvider: blanksBucketProvider ?? s.get('llm-provider'),
+    globalModel: blanksBucketProvider ? (blanksBucketModel ?? undefined) : s.get('llm-model'),
+    apiKeys,
+  });
+  if (!resolved) {
+    log('BlankIntent: blank-intent-mode on but no API key resolved — gate disabled (proximity fallback)');
+    return null;
+  }
+
+  let httpAdapter: unknown;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { NodeHttpAdapter } = require('@opencues/core/node-http-adapter');
+    httpAdapter = new NodeHttpAdapter({ maxSockets: 2, timeout: 30000 });
+  } catch {
+    return null;
+  }
+
+  log('BlankIntent: gate ENABLED (blank-intent-mode on)');
+  return new core.BlankIntentClassifier({
+    httpAdapter,
+    provider: resolved.provider,
+    endpoint: resolved.endpoint,
+    apiKey: resolved.apiKey,
+    model: resolved.model,
+    log,
+  });
+}
 import { Navigation } from './modules/navigation';
 import { DimRender } from './modules/dim-render';
 import { Cycling } from './modules/cycling';
@@ -687,8 +763,38 @@ export function buildSharedRuntime(
   // BlankFill subscribes only after ConfigLoader.load resolves so its
   // initial scan sees the populated blanksByWord map. Same pattern
   // both hosts had inline.
+  // BlankIntent gate (off by default). When `blank-intent-mode: on`, an
+  // LLM call decides whether a keyword-matched script-blank is a genuine
+  // invocation (INVOKE → run) or just prose (CEDE → suppress the script).
+  //
+  // The classifier is built LAZILY on the first gated keystroke — NOT here.
+  // `configLoader.load()` is async (resolves below), so reading the scalar
+  // synchronously at construction would see the pre-load default (`off`)
+  // and the gate would never wire even with the flag on. Building lazily
+  // (after load, when the first keyword-matched `_` arrives) reads the
+  // loaded settings AND makes a live flip-ON take effect without a restart.
+  // Absent getApiKeys / no key / packaging → gate degrades to 'invoke'
+  // (BlankFill runs scripts as today).
+  let _biBuilt = false;
+  let _biClassifier: { classify: (t: string, b: string, blanks: Record<string, unknown>) => Promise<{ verdict: 'invoke' | 'cede' }> } | null = null;
+  const blankIntentGate: ((text: string, blankName: string) => Promise<'invoke' | 'cede'>) | undefined =
+    getApiKeys
+      ? async (text, blankName) => {
+          if ((configLoader.opencuesState.settings.get('blank-intent-mode') ?? 'off') !== 'on') return 'invoke';
+          if (!_biBuilt) {
+            _biBuilt = true;
+            _biClassifier = buildBlankIntentClassifier(configLoader, getApiKeys(), msg => log('debug', msg));
+          }
+          if (!_biClassifier) return 'invoke'; // no key / packaging → degrade to today's behaviour
+          const blanksRecord = Object.fromEntries(configLoader.blanks) as Record<string, unknown>;
+          const verdict = await _biClassifier.classify(text, blankName, blanksRecord);
+          return verdict.verdict === 'invoke' ? 'invoke' : 'cede';
+        }
+      : undefined;
+
   const blankFill = new BlankFill(
     adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading,
+    blankIntentGate,
   );
   configLoader.load()
     .then(() => blankFill.subscribe())

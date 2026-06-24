@@ -33,7 +33,7 @@ import { createSourceReclassifier, resetSharedBufferState } from '../../../src/b
 import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import { AgentTaskState } from '../../../src/state/agent-task';
 import { applyDirectives } from '../../../src/render-directives';
-import { buildAgentLLMResolver, buildBlankContextProvider, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildAgentLLMResolver, buildBlankContextProvider, buildBlankIntentClassifier, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { startEventBridge } from '../../../src/event-bridge';
 import type {
   BlankInvokeSpec,
@@ -597,7 +597,27 @@ export function boot(host: HostInfo): BootResult {
     };
   });
 
-  const blankFill = new BlankFill(adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading);
+  // BlankIntent gate (off by default). CC constructs BlankFill inline
+  // (predating buildSharedRuntime), so the gate is wired here too — same
+  // lazy pattern: built on the first gated keystroke (after ConfigLoader
+  // has loaded settings), re-reading `blank-intent-mode` live so a
+  // flip-ON takes effect without a restart and the pre-load default
+  // (`off`) never freezes the gate off. Degrades to 'invoke' (today's
+  // proximity behaviour) on no key / packaging / LLM error.
+  let _biBuilt = false;
+  let _biClassifier: { classify: (t: string, b: string, blanks: Record<string, unknown>) => Promise<{ verdict: 'invoke' | 'cede' }> } | null = null;
+  const blankIntentGate = async (text: string, blankName: string): Promise<'invoke' | 'cede'> => {
+    if ((configLoader.opencuesState.settings.get('blank-intent-mode') ?? 'off') !== 'on') return 'invoke';
+    if (!_biBuilt) {
+      _biBuilt = true;
+      _biClassifier = buildBlankIntentClassifier(configLoader, apiKeys, msg => log('debug', msg));
+    }
+    if (!_biClassifier) return 'invoke';
+    const blanksRecord = Object.fromEntries(configLoader.blanks) as Record<string, unknown>;
+    const verdict = await _biClassifier.classify(text, blankName, blanksRecord);
+    return verdict.verdict === 'invoke' ? 'invoke' : 'cede';
+  };
+  const blankFill = new BlankFill(adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading, blankIntentGate);
   configLoader.load().then(() => blankFill.subscribe()).catch(() => { /* logged */ });
   void blankFill; // silence unused — referenced by future phases
 
