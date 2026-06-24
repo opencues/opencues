@@ -28,12 +28,17 @@ import type { BlankConfig } from '../cues-md';
 // ── fixtures ────────────────────────────────────────────────────────────
 const VOLUME: BlankConfig = { name: 'volume', blankKeywords: ['volume'], blankScript: '~/.cues/volume.sh', blankStep: 5 };
 const WEATHER: BlankConfig = { name: 'weather', blankKeywords: ['weather', 'forecast'], impl: 'WeatherBlank' };
+// Built-in-by-convention: NO blankScript, NO impl — the shipped fetch
+// blanks (countries, stocks, …) look exactly like this; the runtime
+// resolves <PascalCase(name)>Blank. Must STILL be gated (else the whole
+// fetch tier bypasses the gate).
+const COUNTRIES: BlankConfig = { name: 'countries', blankKeywords: ['capital of', 'population of'] };
 const LIST_BLANK: BlankConfig = { name: 'affirm', blankKeywords: ['affirm'], stepValues: ['a', 'b'] };
 const NO_KW: BlankConfig = { name: 'nokw', blankScript: '~/x.sh' };
 const DISABLED: BlankConfig = { name: 'off', blankKeywords: ['off'], blankScript: '~/x.sh', enabled: false };
 
 const BLANKS: Record<string, BlankConfig> = {
-  volume: VOLUME, weather: WEATHER, affirm: LIST_BLANK, nokw: NO_KW, off: DISABLED,
+  volume: VOLUME, weather: WEATHER, countries: COUNTRIES, affirm: LIST_BLANK, nokw: NO_KW, off: DISABLED,
 };
 
 function recordingAdapter(responses: readonly string[], recorded: { system: string; user: string }[]): HttpAdapter {
@@ -76,10 +81,16 @@ describe('isGatedBlank', () => {
     assert.strictEqual(isGatedBlank(VOLUME), true);
     assert.strictEqual(isGatedBlank(WEATHER), true);
   });
-  it('skips list blanks (stepValues, no script)', () => {
+  it('gates built-in-by-convention blanks (no script, no impl — the shipped fetch tier)', () => {
+    // This is the regression: countries/stocks/etc omit impl: and would
+    // otherwise be excluded → classifier cedes them → real invocations
+    // silently suppressed.
+    assert.strictEqual(isGatedBlank(COUNTRIES), true);
+  });
+  it('skips list blanks (stepValues — handled by onUnderscoreKey, not maybeRunScripts)', () => {
     assert.strictEqual(isGatedBlank(LIST_BLANK), false);
   });
-  it('skips script blanks with no keyword', () => {
+  it('skips blanks with no keyword', () => {
     assert.strictEqual(isGatedBlank(NO_KW), false);
   });
   it('skips disabled blanks', () => {
@@ -92,6 +103,7 @@ describe('buildCatalog', () => {
     const cat = buildCatalog(BLANKS);
     assert.ok(cat.names.has('volume'));
     assert.ok(cat.names.has('weather'));
+    assert.ok(cat.names.has('countries'), 'built-in-by-convention (no impl/script) still in catalog');
     assert.ok(!cat.names.has('affirm'), 'list blank excluded');
     assert.ok(!cat.names.has('nokw'), 'no-keyword blank excluded');
     assert.ok(!cat.names.has('off'), 'disabled blank excluded');

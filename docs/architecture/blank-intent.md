@@ -27,6 +27,19 @@
 > English-keyword-bound, so foreign-language invocations cede even though
 > the classifier itself is multilingual (multilingual keywords are a
 > separate follow-up).
+>
+> **Known interaction — copula FILL phrasings cede.** With the gate on,
+> copula-form value requests (`volume is _`, `volume was _`, `volume
+> equals _`) are classified as prose and CEDE, so the `blankReplace: auto`
+> copula-FILL feature (which fills `volume is 6%`) does NOT fire under the
+> gate — the user gets the value via the bare invocation (`volume _`)
+> instead. This is the classifier reading "X is \_" as a sentence
+> fragment; it's defensible precision but it's a real capability change
+> when the flag is on. Tuning the prompt to INVOKE copula-form requests
+> would need a bench re-run (risks the 100%-precision the gate holds on
+> `the volume was great _`-style prose) and is deferred. Surfaced by the
+> side-effect sweep, agentic scenario `11-copula-heuristic` fails under
+> flag-on for this reason (expected).
 
 ## The problem
 

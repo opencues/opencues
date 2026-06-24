@@ -89,13 +89,28 @@ export interface BlankCatalog {
   readonly names: ReadonlySet<string>;
 }
 
-/** A blank is gated by BlankIntent iff it runs a script/impl AND is
- *  keyword-bound. List blanks (stepValues, no script) are dispatched via
- *  `onUnderscoreKey`, not `maybeRunScripts`, so they're out of scope. */
+/**
+ * A blank is gated by BlankIntent iff it is keyword-bound and is NOT a
+ * pure list blank (stepValues). This matches exactly what `BlankFill.
+ * maybeRunScripts` dispatches: list blanks are handled synchronously in
+ * `onUnderscoreKey` (skipped at the top of maybeRunScripts), and
+ * everything else with a keyword runs a script / impl / built-in-by-
+ * convention class via the script-or-blankInvoke path — i.e. the
+ * exec/fetch tier the gate exists to gate.
+ *
+ * NOTE: we deliberately do NOT require `blankScript || impl`. The shipped
+ * fetch blanks (weather, stocks, crypto, dictionary, countries,
+ * hackernews) OMIT `impl:` — the runtime resolves them by convention to
+ * `<PascalCase(name)>Blank` in its built-in registry. Requiring an
+ * explicit impl/script field would silently exclude every built-in fetch
+ * blank from the catalog, and the classifier would then CEDE all of them
+ * (unknown tool) — suppressing real invocations. Keyword + not-a-list is
+ * the correct, drift-proof predicate.
+ */
 export function isGatedBlank(blk: BlankConfig): boolean {
-  const hasExec = !!blk.blankScript || !!blk.impl;
   const hasKeywords = !!blk.blankKeywords && blk.blankKeywords.length > 0;
-  return hasExec && hasKeywords && blk.enabled !== false;
+  const isListBlank = Array.isArray(blk.stepValues) && blk.stepValues.length > 0;
+  return hasKeywords && !isListBlank && blk.enabled !== false;
 }
 
 /** Sanitize a tool name for the prompt: lowercase, [a-z0-9-] only,

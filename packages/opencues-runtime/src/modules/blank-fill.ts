@@ -590,16 +590,22 @@ export class BlankFill {
       }; // end doDispatch
 
       // BlankIntent gate (off by default). When wired (blank-intent-mode
-      // on, native host with a resolved blanks-bucket LLM) AND the blank
-      // runs a script/impl, ask the classifier whether this `_` is a
-      // genuine invocation. INVOKE → doDispatch(); CEDE → suppress the
-      // script (the keyword behaves as prose). The classifier never throws
-      // (it degrades to invoke on any LLM failure); a thrown gate is
-      // caught here and also treated as invoke (today's behaviour). The
-      // staleness re-check drops a verdict that arrived after the user
-      // kept typing, so we never splice a fill against a changed buffer.
-      const isExecBlank = !!blank.blankScript || !!(blank as { impl?: string }).impl;
-      if (this.blankIntentGate && isExecBlank) {
+      // on, native host with a resolved blanks-bucket LLM), ask the
+      // classifier whether this `_` is a genuine invocation before running
+      // the blank. INVOKE → doDispatch(); CEDE → suppress (the keyword
+      // behaves as prose). Every slot that reaches here is an exec/fetch
+      // tier blank — list blanks (stepValues) were skipped above, and only
+      // script / impl / built-in-by-convention blanks get this far (the
+      // dispatch requires `script || canBlankInvoke`). We do NOT gate on
+      // `blankScript || impl`: the shipped fetch blanks (weather, stocks,
+      // countries, …) OMIT `impl:` and resolve to a built-in class by
+      // convention, so gating on the field would leave the entire fetch
+      // tier ungated. The classifier never throws (it degrades to invoke on
+      // any LLM failure); a thrown gate is caught here and also treated as
+      // invoke. The staleness re-check drops a verdict that arrived after
+      // the user kept typing, so we never splice a fill against a changed
+      // buffer.
+      if (this.blankIntentGate) {
         const gate = this.blankIntentGate;
         const gateText = text;
         void (async () => {

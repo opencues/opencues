@@ -106,4 +106,40 @@ describe('BlankFill × BlankIntent gate', () => {
     // the stale 'weather london _' dispatch must be dropped
     expect(spawnSpy).not.toHaveBeenCalled();
   });
+
+  it('REGRESSION: a built-in blank (no blankScript, blankInvoke path) is ALSO gated', async () => {
+    // The shipped fetch blanks (weather/stocks/countries/…) omit impl: and
+    // run via blankInvoke. Gating on `blankScript || impl` left them ungated
+    // — this pins the fix (gate every maybeRunScripts dispatch).
+    const BUILTIN_CUE = `---
+type: blank
+name: facts
+blankKeywords: capital of
+blankProximity: 5
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      // Built-in blanks dispatch via blankInvoke — the host must advertise
+      // that capability (real CC does) or the slot is skipped before the
+      // gate. This is exactly why the field-based gate check missed them.
+      // Mirror the default cap set (so text-change source detection works)
+      // and add blank-invoke.
+      capabilities: ['shimmer', 'render-override', 'dim-ranges', 'highlight-range', 'selection', 'spawn-process', 'file-read', 'file-write', 'force-render', 'change-source', 'blank-invoke'],
+      files: { '/mock/CUES.md': TIPS, '/proj/blanks/facts/BLANK.md': BUILTIN_CUE },
+    });
+    adapter.stubBlankInvoke('facts:get', 'Paris\n');
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    let ceded = false;
+    const gate: Gate = async () => { ceded = true; return 'cede'; };
+    const bf = new BlankFill(adapter, loader, undefined, undefined, undefined, undefined, undefined, gate);
+    bf.subscribe();
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    adapter.pushText('capital of france _');
+    await tick();
+    expect(ceded).toBe(true); // the gate WAS consulted for the built-in blank
+    expect(spawnSpy).not.toHaveBeenCalled();
+    expect(adapter.blankInvokeCalls.length).toBe(0); // CEDE → no blankInvoke dispatch
+  });
 });
