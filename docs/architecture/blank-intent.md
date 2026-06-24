@@ -217,9 +217,18 @@ Concretely:
    in the runtime's own catalog — so even a successful steer can't execute
    a tool the validator can't tie back to user-typed consent.
 
-The PoC supports this: precision/recall were carried by **keywords + the
-(first-party) few-shot examples**, not the per-blank descriptions — so
-dropping third-party prose costs little and removes the surface.
+**This is bench-confirmed (`tests/benchmarks/blank-intent/catalog-trust.ts`).**
+A three-way catalog comparison — `minimal` (name + keywords + action enum)
+vs `structured` (+ fixed value-type/category) vs `full` (+ free-text
+description) — over third-party-style blanks including *opaque acronyms*
+(`aqi`, `fx`) scored **9/9 third-party + 2/2 first-party controls in ALL
+three modes, on all three providers (cerebras / groq / gemini)**. The
+keyword carries the routing signal (the user typed `aqi` → route to `aqi`),
+the value is in the input (`tokyo`), and prose-rejection rides on sentence
+shape — none of it needs the description. So **withholding third-party
+free-text costs nothing measurable** while removing the injection surface
+entirely. `minimal` alone is sufficient; the structured fields are a
+nice-to-have, not a requirement.
 
 ### Residual
 
