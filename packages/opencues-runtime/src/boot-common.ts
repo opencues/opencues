@@ -766,20 +766,28 @@ export function buildSharedRuntime(
   // BlankIntent gate (off by default). When `blank-intent-mode: on`, an
   // LLM call decides whether a keyword-matched script-blank is a genuine
   // invocation (INVOKE → run) or just prose (CEDE → suppress the script).
-  // Constructed once at boot; the wrapper re-checks the scalar live so a
-  // flip-OFF disables it without restart. Absent classifier (mode off / no
-  // key / packaging) → undefined gate → BlankFill runs scripts as today.
-  const blankIntentClassifier = getApiKeys
-    ? buildBlankIntentClassifier(configLoader, getApiKeys(), msg => log('debug', msg))
-    : null;
+  //
+  // The classifier is built LAZILY on the first gated keystroke — NOT here.
+  // `configLoader.load()` is async (resolves below), so reading the scalar
+  // synchronously at construction would see the pre-load default (`off`)
+  // and the gate would never wire even with the flag on. Building lazily
+  // (after load, when the first keyword-matched `_` arrives) reads the
+  // loaded settings AND makes a live flip-ON take effect without a restart.
+  // Absent getApiKeys / no key / packaging → gate degrades to 'invoke'
+  // (BlankFill runs scripts as today).
+  let _biBuilt = false;
+  let _biClassifier: { classify: (t: string, b: string, blanks: Record<string, unknown>) => Promise<{ verdict: 'invoke' | 'cede' }> } | null = null;
   const blankIntentGate: ((text: string, blankName: string) => Promise<'invoke' | 'cede'>) | undefined =
-    blankIntentClassifier
+    getApiKeys
       ? async (text, blankName) => {
-          // Live re-check: flipping `blank-intent-mode: off` mid-session
-          // disables the gate immediately (flip-ON still needs a restart).
           if ((configLoader.opencuesState.settings.get('blank-intent-mode') ?? 'off') !== 'on') return 'invoke';
+          if (!_biBuilt) {
+            _biBuilt = true;
+            _biClassifier = buildBlankIntentClassifier(configLoader, getApiKeys(), msg => log('debug', msg));
+          }
+          if (!_biClassifier) return 'invoke'; // no key / packaging → degrade to today's behaviour
           const blanksRecord = Object.fromEntries(configLoader.blanks) as Record<string, unknown>;
-          const verdict = await blankIntentClassifier.classify(text, blankName, blanksRecord);
+          const verdict = await _biClassifier.classify(text, blankName, blanksRecord);
           return verdict.verdict === 'invoke' ? 'invoke' : 'cede';
         }
       : undefined;
