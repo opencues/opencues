@@ -32,6 +32,17 @@ export interface BlankSlot {
   readonly proximity: number;
 }
 
+/**
+ * The decision the BlankIntent gate returns to `maybeRunScripts`.
+ *   - `cede`   → suppress the blank (the keyword was prose).
+ *   - `invoke` → run it. `action`/`value` are the classifier's extracted
+ *     intent; `set` + a numeric `value` performs a real set on a SETTABLE
+ *     blank (one with `blankStep`), otherwise the default `get` runs.
+ */
+export type BlankIntentDecision =
+  | { verdict: 'cede' }
+  | { verdict: 'invoke'; action: 'get' | 'set' | 'step'; value: string | null };
+
 export class BlankFill {
   private _slots: readonly BlankSlot[] = [];
   private _unsubText: Unsubscribe | null = null;
@@ -107,12 +118,15 @@ export class BlankFill {
     blankLoading?: BlankLoadingAnimator,
     /** BlankIntent gate (off by default; wired by boot-common only when
      *  `blank-intent-mode: on`). Consulted in `maybeRunScripts` BEFORE a
-     *  keyword-matched script-blank runs: `'invoke'` runs it as today,
-     *  `'cede'` suppresses the script so the keyword behaves as prose.
-     *  When omitted, every keyword-matched slot runs unconditionally
-     *  (the proximity gate — today's behaviour). NEVER throws (the
-     *  classifier degrades to `'invoke'` on any LLM failure). */
-    private blankIntentGate?: (text: string, blankName: string) => Promise<'invoke' | 'cede'>,
+     *  keyword-matched script-blank runs. Returns the extracted verdict:
+     *  `cede` suppresses the blank (keyword behaves as prose); `invoke`
+     *  runs it, and for a SETTABLE blank (one with `blankStep`) an
+     *  `action: 'set'` + numeric `value` performs a real set (`volume 30
+     *  _`) instead of a get. When omitted, every keyword-matched slot runs
+     *  a plain get unconditionally (the proximity gate — today's
+     *  behaviour). NEVER throws (the classifier degrades to a get-invoke
+     *  on any LLM failure). */
+    private blankIntentGate?: (text: string, blankName: string) => Promise<BlankIntentDecision>,
   ) {
     if (blankLoading) this._loading = blankLoading;
   }
@@ -608,28 +622,85 @@ export class BlankFill {
       if (this.blankIntentGate) {
         const gate = this.blankIntentGate;
         const gateText = text;
+        const gateBlank = blank;
         void (async () => {
-          let verdict: 'invoke' | 'cede' = 'invoke';
+          let decision: BlankIntentDecision = { verdict: 'invoke', action: 'get', value: null };
           try {
-            verdict = await gate(gateText, slot.blankName);
+            decision = await gate(gateText, slot.blankName);
           } catch (err) {
-            this.adapter.log('debug', `BlankFill: BlankIntent gate threw — degrading to invoke for ${slot.blankName}`, err);
-            verdict = 'invoke';
+            this.adapter.log('debug', `BlankFill: BlankIntent gate threw — degrading to get-invoke for ${slot.blankName}`, err);
+            decision = { verdict: 'invoke', action: 'get', value: null };
           }
           if (this._lastInputText !== gateText) {
             this._pendingScripts.delete(dedupKey);
             return;
           }
-          if (verdict === 'cede') {
+          if (decision.verdict === 'cede') {
             this.adapter.log('debug', `BlankFill: BlankIntent CEDE — suppressing ${slot.blankName} for "${gateText}"`);
             this._pendingScripts.delete(dedupKey);
             return;
+          }
+          // Typed-SET: an `action: 'set'` + numeric value on a SETTABLE
+          // blank (one with `blankStep` — volume / brightness) performs a
+          // real set, then falls through to doDispatch's `get` to read the
+          // (possibly clamped) value back and splice it. `set` only ever
+          // reaches a blank whose keyword the user typed (consent), and
+          // only settable blanks honour it — a `set` verdict on a lookup
+          // blank (weather/stocks/…) degrades to a plain get. Non-numeric
+          // values also degrade to get (defensive; the gate extracts
+          // numbers for set but providers vary).
+          const isSettable = (gateBlank as { blankStep?: unknown }).blankStep !== undefined
+            && (gateBlank as { blankStep?: unknown }).blankStep !== null;
+          if (decision.action === 'set' && decision.value && /^\d+$/.test(decision.value.trim()) && isSettable) {
+            this.adapter.log('debug', `BlankFill: BlankIntent SET ${slot.blankName} → ${decision.value} (then read back)`);
+            await this.runBlankSet(slot.blankName, decision.value.trim(), gateBlank as Record<string, unknown>);
+            if (this._lastInputText !== gateText) { this._pendingScripts.delete(dedupKey); return; }
           }
           doDispatch();
         })();
       } else {
         doDispatch();
       }
+    }
+  }
+
+  /**
+   * Dispatch a `set <value>` for a settable blank (BlankIntent typed-SET)
+   * and await it, so the subsequent `get` read-back reflects the new
+   * (clamped) value. Mirrors Cycling's `invokeOrSpawn('set', …)` — host-
+   * native `blankInvoke` first, shell `set` fallback. The set scripts emit
+   * nothing on stdout (they set + exit 0), so this returns void; the value
+   * shown comes from the read-back `get`. Never throws — a failed set
+   * still falls through to the get (which shows the unchanged value).
+   */
+  private async runBlankSet(blankName: string, value: string, blank: Record<string, unknown>): Promise<void> {
+    const script = blank.blankScript as string | undefined;
+    const home = process.env.HOME ?? '~';
+    const scriptPath = script ? (script.startsWith('~') ? home + script.slice(1) : script) : '';
+    const processEnv: Readonly<Record<string, string | undefined>> =
+      (typeof process !== 'undefined' && process.env) ? process.env : {};
+    const declaredSecrets = (blank as { userBlankSecrets?: readonly string[] }).userBlankSecrets ?? [];
+    const env = buildSafeScriptEnv(processEnv, declaredSecrets, {});
+    try {
+      let handle = this.adapter.blankInvoke?.({
+        blankName,
+        action: 'set',
+        args: [value],
+        env,
+        timeoutMs: 4000,
+      }) ?? null;
+      if (!handle) {
+        if (!script || !this.adapter.capabilities.includes('spawn-process')) return;
+        handle = this.adapter.spawnProcess({
+          command: 'bash',
+          args: [scriptPath, 'set', value],
+          env,
+          timeoutMs: 4000,
+        });
+      }
+      await handle.result;
+    } catch (e) {
+      this.adapter.log('debug', `BlankFill: typed-SET dispatch failed for ${blankName}`, e);
     }
   }
 

@@ -14,7 +14,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { BlankFill } from './blank-fill';
+import { BlankFill, type BlankIntentDecision } from './blank-fill';
 import { ConfigLoader } from './config-loader';
 import { MockAdapter, wrapTipsAsCuesMd } from '../../testing/mock-adapter';
 
@@ -28,7 +28,10 @@ blankScript: ./weather.sh
 ---
 `;
 
-type Gate = (text: string, blankName: string) => Promise<'invoke' | 'cede'>;
+type Gate = (text: string, blankName: string) => Promise<BlankIntentDecision>;
+const INVOKE: BlankIntentDecision = { verdict: 'invoke', action: 'get', value: null };
+const CEDE: BlankIntentDecision = { verdict: 'cede' };
+const SET = (value: string): BlankIntentDecision => ({ verdict: 'invoke', action: 'set', value });
 
 async function setup(gate?: Gate) {
   const adapter = new MockAdapter({
@@ -46,7 +49,7 @@ const tick = () => new Promise(r => setTimeout(r, 0));
 
 describe('BlankFill × BlankIntent gate', () => {
   it('CEDE suppresses the script (no spawn)', async () => {
-    const { adapter } = await setup(async () => 'cede');
+    const { adapter } = await setup(async () => CEDE);
     const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
     adapter.pushText('the weather was lovely today _');
     await tick();
@@ -54,7 +57,7 @@ describe('BlankFill × BlankIntent gate', () => {
   });
 
   it('INVOKE runs the script as today', async () => {
-    const { adapter } = await setup(async () => 'invoke');
+    const { adapter } = await setup(async () => INVOKE);
     const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
     adapter.pushText('weather london _');
     await tick();
@@ -83,7 +86,7 @@ describe('BlankFill × BlankIntent gate', () => {
 
   it('passes (text, blankName) to the gate', async () => {
     const calls: Array<[string, string]> = [];
-    const gate: Gate = async (text, blank) => { calls.push([text, blank]); return 'cede'; };
+    const gate: Gate = async (text, blank) => { calls.push([text, blank]); return CEDE; };
     const { adapter } = await setup(gate);
     adapter.pushText('weather paris _');
     await tick();
@@ -91,7 +94,7 @@ describe('BlankFill × BlankIntent gate', () => {
   });
 
   it('STALENESS: a verdict that resolves after the buffer changed does not dispatch', async () => {
-    let release!: (v: 'invoke' | 'cede') => void;
+    let release!: (v: BlankIntentDecision) => void;
     const gate: Gate = () => new Promise(r => { release = r; });
     const { adapter } = await setup(gate);
     const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
@@ -101,7 +104,7 @@ describe('BlankFill × BlankIntent gate', () => {
     adapter.pushText('weather london is nice');
     await tick();
     // now the stale gate finally resolves INVOKE
-    release('invoke');
+    release(INVOKE);
     await tick();
     // the stale 'weather london _' dispatch must be dropped
     expect(spawnSpy).not.toHaveBeenCalled();
@@ -132,7 +135,7 @@ blankProximity: 5
     const loader = new ConfigLoader(adapter);
     await loader.load();
     let ceded = false;
-    const gate: Gate = async () => { ceded = true; return 'cede'; };
+    const gate: Gate = async () => { ceded = true; return CEDE; };
     const bf = new BlankFill(adapter, loader, undefined, undefined, undefined, undefined, undefined, gate);
     bf.subscribe();
     const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
@@ -141,5 +144,80 @@ blankProximity: 5
     expect(ceded).toBe(true); // the gate WAS consulted for the built-in blank
     expect(spawnSpy).not.toHaveBeenCalled();
     expect(adapter.blankInvokeCalls.length).toBe(0); // CEDE → no blankInvoke dispatch
+  });
+});
+
+// Typed-SET: a `set <value>` verdict on a SETTABLE blank (one with
+// `blankStep`) dispatches `set <value>` then a read-back `get`. On a
+// non-settable blank, or a non-numeric value, it degrades to a plain get.
+const SETTABLE_CUE = `---
+type: blank
+name: volume
+blankKeywords: volume
+blankProximity: 3
+blankStep: 6
+blankScript: ./volume.sh
+---
+`;
+async function setupSettable(gate?: Gate) {
+  const adapter = new MockAdapter({
+    cwd: '/proj',
+    files: { '/mock/CUES.md': TIPS, '/proj/blanks/volume/BLANK.md': SETTABLE_CUE },
+  });
+  const loader = new ConfigLoader(adapter);
+  await loader.load();
+  const bf = new BlankFill(adapter, loader, undefined, undefined, undefined, undefined, undefined, gate);
+  bf.subscribe();
+  return { adapter, loader, bf };
+}
+const setArgs = (spy: ReturnType<typeof vi.spyOn>) =>
+  spy.mock.calls.map(c => (c[0] as { args: string[] }).args);
+
+describe('BlankFill × BlankIntent typed-SET', () => {
+  it('SET on a settable blank dispatches `set <value>` THEN a read-back `get`', async () => {
+    const { adapter } = await setupSettable(async () => SET('30'));
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    adapter.pushText('volume 30 _');
+    // set is awaited before the get → allow both microtask hops.
+    await tick(); await tick(); await tick();
+    const calls = setArgs(spawnSpy);
+    expect(calls.some(a => a.includes('set') && a.includes('30'))).toBe(true);
+    expect(calls.some(a => a.includes('get'))).toBe(true);
+    // ordering: set fired before get
+    const setIdx = calls.findIndex(a => a.includes('set'));
+    const getIdx = calls.findIndex(a => a.includes('get'));
+    expect(setIdx).toBeGreaterThanOrEqual(0);
+    expect(setIdx).toBeLessThan(getIdx);
+  });
+
+  it('SET on a NON-settable blank (no blankStep) degrades to a plain get', async () => {
+    // weather has no blankStep → a stray `set` verdict must NOT issue a set.
+    const { adapter } = await setup(async () => SET('30'));
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    adapter.pushText('weather 30 _');
+    await tick(); await tick();
+    const calls = setArgs(spawnSpy);
+    expect(calls.some(a => a.includes('set'))).toBe(false);
+    expect(calls.some(a => a.includes('get'))).toBe(true);
+  });
+
+  it('SET with a non-numeric value degrades to a plain get (defensive)', async () => {
+    const { adapter } = await setupSettable(async () => SET('loud'));
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    adapter.pushText('volume loud _');
+    await tick(); await tick();
+    const calls = setArgs(spawnSpy);
+    expect(calls.some(a => a.includes('set'))).toBe(false);
+    expect(calls.some(a => a.includes('get'))).toBe(true);
+  });
+
+  it('a plain get-invoke on a settable blank does NOT issue a set', async () => {
+    const { adapter } = await setupSettable(async () => INVOKE);
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    adapter.pushText('volume _');
+    await tick(); await tick();
+    const calls = setArgs(spawnSpy);
+    expect(calls.some(a => a.includes('set'))).toBe(false);
+    expect(calls.some(a => a.includes('get'))).toBe(true);
   });
 });

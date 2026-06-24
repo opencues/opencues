@@ -4,6 +4,11 @@ type: blank
 tip: screen brightness
 speak: true
 blankKeywords: brightness
+# Match volume's proximity (3) so an inline value is reachable:
+# "brightness 70 _" keeps the keyword within range of the `_` (the "70"
+# sits between them). Without this (proximity 0) only the adjacent
+# "brightness _" matched, and "brightness 70 _" fell through to fluid-blank.
+blankProximity: 3
 blankStep: 10
 blankAutoPopulate: true
 blankSuffix: %

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — BlankIntent typed-SET: `volume 30 _` / `brightness 70 _` actually set (runtime 0.4.1)
+
+BlankIntent already extracted the action+value from a `_` invocation (`volume 30 _` → `set 30`) but the runtime discarded it and always ran `get`, so typed-number SET silently showed the *current* value instead of setting. Now the gate threads its verdict into the dispatch: an `action: 'set'` + numeric value on a **settable** blank (one with `blankStep` — volume/brightness) runs `set <value>` then reads the (clamped) value back via `get`. Everything else is unchanged:
+- Non-settable blanks (weather/stocks/…) ignore a stray `set` and run `get` (the value is their lookup query, never a write).
+- Non-numeric values degrade to `get` (defensive).
+- Only reaches a blank whose keyword the user typed (consent unchanged); SET is bounded 0–100, local, reversible.
+- `step` (`volume up _`) is extracted but not yet wired — shows the current value (follow-up).
+
+Also fixes **brightness `blankProximity` 0 → 3** (matching volume), so `brightness 70 _` matches the keyword at all (previously the inline value pushed `_` out of range and it fell through to fluid-blank). Verified live on CC (`volume 30 _` → 30%, `brightness 70 _` → 70%); 4 new unit tests (set dispatches set+readback, non-settable degrades, non-numeric degrades, plain get) + 2 agentic scenarios (set 20→80 / 40→90 prove the value actually changes). Built on the merged BlankIntent gate (PR #201).
+
 ### Added — BlankIntent: LLM invocation gate for keyword script-blanks (core 0.5.0 / runtime 0.4.0, `feat/blank-intent` branch, OFF by default)
 
 New optional `blank-intent-mode: off | on` scalar. Today a registered blank keyword within `blankProximity` words of `_` runs the blank's script **unconditionally** — so `the weather was lovely today _` wrongly fires a weather fetch, while a wide proximity window is needed to catch real invocations like `what is the weather in london _`. One distance knob can't give both precision and recall. BlankIntent keeps the keyword as the deterministic **consent atom** ("may run") and puts one LLM call behind it for **precision** ("should run + how"): `weather london _` → INVOKE; `the weather was lovely today _` → CEDE (script suppressed). Generalises the `fluid-config` classifier pattern to the safe subset of blanks; supersedes the reverted shape system without touching the cycling/selector-satellite machinery whose coupling caused that revert.

@@ -373,7 +373,7 @@ export function buildBlankIntentClassifier(
   configLoader: ConfigLoader,
   apiKeys: Readonly<Record<string, string | undefined>>,
   log: (msg: string) => void,
-): { classify: (text: string, blank: string, blanks: Record<string, unknown>) => Promise<{ verdict: 'invoke' | 'cede' }> } | null {
+): { classify: (text: string, blank: string, blanks: Record<string, unknown>) => Promise<{ verdict: 'invoke' | 'cede'; action?: 'get' | 'set' | 'step' | null; value?: string | null }> } | null {
   const s = configLoader.opencuesState.settings;
   if ((s.get('blank-intent-mode') ?? 'off') !== 'on') return null;
 
@@ -431,7 +431,7 @@ export function buildBlankIntentClassifier(
 import { Navigation } from './modules/navigation';
 import { DimRender } from './modules/dim-render';
 import { Cycling } from './modules/cycling';
-import { BlankFill } from './modules/blank-fill';
+import { BlankFill, type BlankIntentDecision } from './modules/blank-fill';
 import { BlankLoadingAnimator, parseCustomFrames, parseRgbColors, parseAnsiColors, parseFrameIntervalMs, DEFAULT_RGB_PALETTE, DEFAULT_ANSI_PALETTE } from './modules/blank-loading';
 import { MarkdownRender } from './modules/markdown-render';
 import { HighlightState } from './state/highlight-state';
@@ -776,19 +776,22 @@ export function buildSharedRuntime(
   // Absent getApiKeys / no key / packaging → gate degrades to 'invoke'
   // (BlankFill runs scripts as today).
   let _biBuilt = false;
-  let _biClassifier: { classify: (t: string, b: string, blanks: Record<string, unknown>) => Promise<{ verdict: 'invoke' | 'cede' }> } | null = null;
-  const blankIntentGate: ((text: string, blankName: string) => Promise<'invoke' | 'cede'>) | undefined =
+  let _biClassifier: { classify: (t: string, b: string, blanks: Record<string, unknown>) => Promise<{ verdict: 'invoke' | 'cede'; action?: 'get' | 'set' | 'step' | null; value?: string | null }> } | null = null;
+  const GET_INVOKE: BlankIntentDecision = { verdict: 'invoke', action: 'get', value: null };
+  const blankIntentGate: ((text: string, blankName: string) => Promise<BlankIntentDecision>) | undefined =
     getApiKeys
       ? async (text, blankName) => {
-          if ((configLoader.opencuesState.settings.get('blank-intent-mode') ?? 'off') !== 'on') return 'invoke';
+          if ((configLoader.opencuesState.settings.get('blank-intent-mode') ?? 'off') !== 'on') return GET_INVOKE;
           if (!_biBuilt) {
             _biBuilt = true;
             _biClassifier = buildBlankIntentClassifier(configLoader, getApiKeys(), msg => log('debug', msg));
           }
-          if (!_biClassifier) return 'invoke'; // no key / packaging → degrade to today's behaviour
+          if (!_biClassifier) return GET_INVOKE; // no key / packaging → degrade to today's behaviour
           const blanksRecord = Object.fromEntries(configLoader.blanks) as Record<string, unknown>;
-          const verdict = await _biClassifier.classify(text, blankName, blanksRecord);
-          return verdict.verdict === 'invoke' ? 'invoke' : 'cede';
+          const v = await _biClassifier.classify(text, blankName, blanksRecord);
+          return v.verdict === 'invoke'
+            ? { verdict: 'invoke', action: v.action ?? 'get', value: v.value ?? null }
+            : { verdict: 'cede' };
         }
       : undefined;
 
