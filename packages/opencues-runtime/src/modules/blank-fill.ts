@@ -652,12 +652,30 @@ export class BlankFill {
           // blank (weather/stocks/…) degrades to a plain get. Non-numeric
           // values also degrade to get (defensive; the gate extracts
           // numbers for set but providers vary).
-          const isSettable = (gateBlank as { blankStep?: unknown }).blankStep !== undefined
-            && (gateBlank as { blankStep?: unknown }).blankStep !== null;
+          const stepRaw = (gateBlank as { blankStep?: unknown }).blankStep;
+          const stepSize = typeof stepRaw === 'number' ? stepRaw
+            : (typeof stepRaw === 'string' && /^\d+$/.test(stepRaw) ? parseInt(stepRaw, 10) : null);
+          const isSettable = stepSize !== null;
           if (decision.action === 'set' && decision.value && /^\d+$/.test(decision.value.trim()) && isSettable) {
             this.adapter.log('debug', `BlankFill: BlankIntent SET ${slot.blankName} → ${decision.value} (then read back)`);
             await this.runBlankSet(slot.blankName, decision.value.trim(), gateBlank as Record<string, unknown>);
             if (this._lastInputText !== gateText) { this._pendingScripts.delete(dedupKey); return; }
+          } else if (decision.action === 'step'
+              && (decision.value === 'up' || decision.value === 'down')
+              && isSettable) {
+            // Typed-STEP: `volume up _` / `brightness down _`. The verdict
+            // is RELATIVE (no target), so read the current value, add/sub
+            // `blankStep`, clamp 0–100, and set — then doDispatch reads the
+            // new value back. Same consent + settable guards as SET; a
+            // non-numeric current (unparseable get) degrades to a plain get.
+            const current = await this.runBlankGetValue(slot.blankName, gateBlank as Record<string, unknown>);
+            if (this._lastInputText !== gateText) { this._pendingScripts.delete(dedupKey); return; }
+            if (current !== null) {
+              const next = Math.max(0, Math.min(100, decision.value === 'up' ? current + stepSize! : current - stepSize!));
+              this.adapter.log('debug', `BlankFill: BlankIntent STEP ${slot.blankName} ${decision.value} → ${current}±${stepSize}=${next} (then read back)`);
+              await this.runBlankSet(slot.blankName, String(next), gateBlank as Record<string, unknown>);
+              if (this._lastInputText !== gateText) { this._pendingScripts.delete(dedupKey); return; }
+            }
           }
           doDispatch();
         })();
@@ -704,6 +722,49 @@ export class BlankFill {
       await handle.result;
     } catch (e) {
       this.adapter.log('debug', `BlankFill: typed-SET dispatch failed for ${blankName}`, e);
+    }
+  }
+
+  /**
+   * Read a settable blank's CURRENT numeric value (for BlankIntent
+   * typed-STEP, which needs `current ± blankStep`). Dispatches a `get`
+   * and parses the first integer out of stdout (handles "54", "54%",
+   * etc.). Returns null on any failure / non-numeric output, so the
+   * caller can degrade to a plain get. Host-native `blankInvoke` first,
+   * shell `get` fallback — mirrors `runBlankSet`.
+   */
+  private async runBlankGetValue(blankName: string, blank: Record<string, unknown>): Promise<number | null> {
+    const script = blank.blankScript as string | undefined;
+    const home = process.env.HOME ?? '~';
+    const scriptPath = script ? (script.startsWith('~') ? home + script.slice(1) : script) : '';
+    const processEnv: Readonly<Record<string, string | undefined>> =
+      (typeof process !== 'undefined' && process.env) ? process.env : {};
+    const declaredSecrets = (blank as { userBlankSecrets?: readonly string[] }).userBlankSecrets ?? [];
+    const env = buildSafeScriptEnv(processEnv, declaredSecrets, {});
+    try {
+      let handle = this.adapter.blankInvoke?.({
+        blankName,
+        action: 'get',
+        args: [],
+        env,
+        timeoutMs: 4000,
+      }) ?? null;
+      if (!handle) {
+        if (!script || !this.adapter.capabilities.includes('spawn-process')) return null;
+        handle = this.adapter.spawnProcess({
+          command: 'bash',
+          args: [scriptPath, 'get'],
+          env,
+          timeoutMs: 4000,
+        });
+      }
+      const res = await handle.result;
+      if (res.exitCode !== 0 || res.timedOut) return null;
+      const m = (res.stdout ?? '').match(/-?\d+/);
+      return m ? parseInt(m[0], 10) : null;
+    } catch (e) {
+      this.adapter.log('debug', `BlankFill: typed-STEP read failed for ${blankName}`, e);
+      return null;
     }
   }
 

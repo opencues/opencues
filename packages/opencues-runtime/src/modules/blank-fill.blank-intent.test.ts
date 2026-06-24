@@ -32,6 +32,7 @@ type Gate = (text: string, blankName: string) => Promise<BlankIntentDecision>;
 const INVOKE: BlankIntentDecision = { verdict: 'invoke', action: 'get', value: null };
 const CEDE: BlankIntentDecision = { verdict: 'cede' };
 const SET = (value: string): BlankIntentDecision => ({ verdict: 'invoke', action: 'set', value });
+const STEP = (dir: 'up' | 'down'): BlankIntentDecision => ({ verdict: 'invoke', action: 'step', value: dir });
 
 async function setup(gate?: Gate) {
   const adapter = new MockAdapter({
@@ -215,6 +216,60 @@ describe('BlankFill × BlankIntent typed-SET', () => {
     const { adapter } = await setupSettable(async () => INVOKE);
     const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
     adapter.pushText('volume _');
+    await tick(); await tick();
+    const calls = setArgs(spawnSpy);
+    expect(calls.some(a => a.includes('set'))).toBe(false);
+    expect(calls.some(a => a.includes('get'))).toBe(true);
+  });
+});
+
+describe('BlankFill × BlankIntent typed-STEP', () => {
+  // SETTABLE_CUE has blankStep: 6. Stub the get to a number so STEP can
+  // compute current ± step; the set then dispatches the new ABSOLUTE value.
+  it('STEP up reads current, sets current + blankStep (54 → 60)', async () => {
+    const { adapter } = await setupSettable(async () => STEP('up'));
+    adapter.stubBlankInvoke('volume:get', '54\n'); // read-back value
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    adapter.pushText('volume up _');
+    await tick(); await tick(); await tick(); await tick();
+    const calls = setArgs(spawnSpy);
+    expect(calls.some(a => a.includes('set') && a.includes('60'))).toBe(true);
+  });
+
+  it('STEP down sets current - blankStep (54 → 48)', async () => {
+    const { adapter } = await setupSettable(async () => STEP('down'));
+    adapter.stubBlankInvoke('volume:get', '54\n');
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    adapter.pushText('volume down _');
+    await tick(); await tick(); await tick(); await tick();
+    const calls = setArgs(spawnSpy);
+    expect(calls.some(a => a.includes('set') && a.includes('48'))).toBe(true);
+  });
+
+  it('STEP clamps at 100 (98 + 6 → 100)', async () => {
+    const { adapter } = await setupSettable(async () => STEP('up'));
+    adapter.stubBlankInvoke('volume:get', '98\n');
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    adapter.pushText('volume up _');
+    await tick(); await tick(); await tick(); await tick();
+    const calls = setArgs(spawnSpy);
+    expect(calls.some(a => a.includes('set') && a.includes('100'))).toBe(true);
+  });
+
+  it('STEP with a non-numeric current value degrades to a plain get (no set)', async () => {
+    const { adapter } = await setupSettable(async () => STEP('up'));
+    adapter.stubBlankInvoke('volume:get', 'loud\n'); // unparseable
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    adapter.pushText('volume up _');
+    await tick(); await tick(); await tick(); await tick();
+    const calls = setArgs(spawnSpy);
+    expect(calls.some(a => a.includes('set'))).toBe(false);
+  });
+
+  it('STEP on a NON-settable blank (no blankStep) degrades to a plain get', async () => {
+    const { adapter } = await setup(async () => STEP('up')); // weather: no blankStep
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    adapter.pushText('weather up _');
     await tick(); await tick();
     const calls = setArgs(spawnSpy);
     expect(calls.some(a => a.includes('set'))).toBe(false);

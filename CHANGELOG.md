@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — BlankIntent typed-STEP: `volume up _` / `brightness down _` (runtime 0.4.3)
+
+Completes the action set. The gate already extracted `step up`/`step down`; the runtime now honours it. Unlike SET (which carries an absolute target), STEP is relative, so the runtime reads the current value (`runBlankGetValue`), applies `± blankStep` (volume 6 / brightness 10), clamps 0–100, sets, and reads back. Same guards as SET: only settable blanks (with `blankStep`), keyword consent unchanged; a non-numeric current value or a step verdict on a lookup blank degrades to a plain get. Verified live (`volume up _` 50→56, `brightness down _` 50→40); +5 unit tests (up/down/clamp/non-numeric-degrade/non-settable-degrade) + agentic scenario 209 (set 50 → up 56% → down 50%). runtime 1719 green.
+
 ### Added — BlankIntent line-scoped Phase-1 window: one shared predicate across all 5 keyword-match sites (core 0.5.1 / runtime 0.4.2)
 
 When the gate is on, the per-blank `blankProximity` knob (the thing the LLM replaces) is no longer the gate: the keyword window is **line-scoped** (a keyword on the `_`'s line reaches the classifier; a keyword on a previous line doesn't), so `volume 30 _` / `brightness 70 _` and any same-line invocation work regardless of each blank's tuned proximity. Gate **off** = per-blank proximity exactly as before.
@@ -21,7 +25,7 @@ BlankIntent already extracted the action+value from a `_` invocation (`volume 30
 - Non-settable blanks (weather/stocks/…) ignore a stray `set` and run `get` (the value is their lookup query, never a write).
 - Non-numeric values degrade to `get` (defensive).
 - Only reaches a blank whose keyword the user typed (consent unchanged); SET is bounded 0–100, local, reversible.
-- `step` (`volume up _`) is extracted but not yet wired — shows the current value (follow-up).
+- `step` (`volume up _`) — now wired (runtime 0.4.3): reads current, ±`blankStep`, clamps, sets.
 
 Also fixes **brightness `blankProximity` 0 → 3** (matching volume), so `brightness 70 _` matches the keyword at all (previously the inline value pushed `_` out of range and it fell through to fluid-blank). Verified live on CC (`volume 30 _` → 30%, `brightness 70 _` → 70%); 4 new unit tests (set dispatches set+readback, non-settable degrades, non-numeric degrades, plain get) + 2 agentic scenarios (set 20→80 / 40→90 prove the value actually changes). Built on the merged BlankIntent gate (PR #201).
 
