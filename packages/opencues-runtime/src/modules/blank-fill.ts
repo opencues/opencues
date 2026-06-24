@@ -43,22 +43,6 @@ export type BlankIntentDecision =
   | { verdict: 'cede' }
   | { verdict: 'invoke'; action: 'get' | 'set' | 'step'; value: string | null };
 
-/**
- * Phase-1 keyword window used when the BlankIntent gate is active. The
- * gate (Phase 2) owns PRECISION, so Phase 1 only needs to ask "is a tool
- * keyword plausibly in play near `_`" — it uses this loose window instead
- * of each blank's tuned `blankProximity`. That per-blank knob is exactly
- * what the LLM replaces; with the gate on, a keyword anywhere within this
- * many words of `_` reaches the classifier, which then INVOKEs a real
- * invocation or CEDEs prose. 12 comfortably covers verbose invocations
- * ("what is the current weather forecast for london right now _") without
- * spanning whole paragraphs (the LLM cedes a far/prose match anyway).
- * Approximates the "loose line-scoped window" from the design doc;
- * `scan()` collapses newlines so a literal line scope would need a larger
- * refactor.
- */
-const BLANK_INTENT_LOOSE_PROXIMITY = 12;
-
 export class BlankFill {
   private _slots: readonly BlankSlot[] = [];
   private _unsubText: Unsubscribe | null = null;
@@ -1365,16 +1349,6 @@ export class BlankFill {
       const span = this.dynDefs.findSpanContaining(idx);
       return span !== null;
     };
-    // Phase-1 window. When the BlankIntent gate is ACTIVE (wired + mode
-    // on), it owns precision, so we widen the keyword scan to a single
-    // loose window for EVERY blank — the per-blank `blankProximity` knob is
-    // what the LLM replaces. `volume 30 _` / `brightness 70 _` (and any
-    // verbose invocation) then reach the gate regardless of each blank's
-    // tuned proximity; the classifier INVOKEs real invocations and CEDEs
-    // prose. When the gate is off, the tuned per-blank proximity applies
-    // exactly as before (master behaviour).
-    const gateActive = this.blankIntentGate !== undefined
-      && (this.configLoader.opencuesState.settings.get('blank-intent-mode') ?? 'off') === 'on';
     for (let j = blankIdx - 1; j >= 0; j -= 1) {
       for (const [name, blank] of this.configLoader.blanks.entries()) {
         const blankKeywords = (blank as { blankKeywords?: readonly string[] }).blankKeywords;
@@ -1390,14 +1364,7 @@ export class BlankFill {
         // dictionary, where the user types extra words between the
         // trigger phrase and `_`) MUST set blankProximity explicitly.
         // Matches the cede default in blank-source.ts.
-        //
-        // With the gate active, the loose window replaces the tuned value
-        // (Math.max so a blank that already declares a WIDER proximity —
-        // e.g. sentinel at 16 — keeps it).
-        const tunedProximity = (blank as { blankProximity?: number }).blankProximity ?? 0;
-        const blankProximity = gateActive
-          ? Math.max(tunedProximity, BLANK_INTENT_LOOSE_PROXIMITY)
-          : tunedProximity;
+        const blankProximity = (blank as { blankProximity?: number }).blankProximity ?? 0;
         if ((blankIdx - j - 1) > blankProximity) continue;
         for (const kw of blankKeywords) {
           const kwLc = kw.toLowerCase();
