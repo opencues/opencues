@@ -65,6 +65,24 @@ identity-context-mode: safe
 # See docs/architecture/fluid-config.md.
 fluid-config-mode: on
 
+# blank-intent-mode — LLM invocation gate for keyword script-blanks
+# (volume, brightness, weather, stocks, crypto, dictionary, countries,
+# hackernews). Today a registered keyword within `blankProximity` words
+# of `_` runs the blank's script UNCONDITIONALLY — so "the weather was
+# lovely today _" wrongly fires a weather fetch. With this on, one LLM
+# call gates each keyword-matched script-blank: a genuine invocation
+# ("weather london _") runs; prose that merely mentions the keyword
+# ("the weather was lovely today _") CEDEs and the script never fires.
+# The keyword is still REQUIRED (the consent atom) — the LLM only refines
+# precision, it can never summon a fetch/exec the user didn't name. On
+# any LLM error / missing key it falls back to today's proximity gate, so
+# local blanks keep working offline.
+#   off (default) : keyword-near-`_` runs the script unconditionally.
+#   on            : each keyword-matched script-blank pays one ~250ms LLM
+#                   call (cached after first hit) to decide invoke vs cede.
+# See docs/architecture/blank-intent.md.
+blank-intent-mode: off
+
 # blank-context-mode — blanks expose their current values as ambient
 # tokens for fluid-blank, so a `_` lookup can reach stock prices,
 # weather, crypto rates etc. WITHOUT typing the keyword. e.g. "buy

@@ -65,6 +65,20 @@ export {
 } from './sources/config-intent-source';
 
 export {
+  BlankIntentClassifier,
+  buildCatalog,
+  buildSystemPrompt,
+  parseBlankIntentOutput,
+  validateVerdict,
+  isGatedBlank,
+  type BlankIntentClassifierConfig,
+  type BlankIntentEvent,
+  type BlankIntentVerdict,
+  type BlankCatalog,
+  type CatalogEntry,
+} from './sources/blank-intent-source';
+
+export {
   SentenceCueSource,
   segmentSentences,
   parseSingleSentenceAlts,

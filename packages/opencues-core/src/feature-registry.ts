@@ -322,6 +322,16 @@ export const FEATURES: readonly FeatureSpec[] = [
     ],
   },
   {
+    scalar: 'blank-intent-mode',
+    camelCase: 'blankIntentMode',
+    description: 'LLM invocation gate for keyword script-blanks — CEDE prose, INVOKE real invocations (volume/weather/stocks/…)',
+    menuTip: 'When you type a script-blank keyword near `_`, an LLM decides whether it is a real invocation ("weather london _" → fetch) or just prose ("the weather was lovely today _" → no fetch). Keyword still required (consent); the LLM only refines precision. Falls back to the proximity gate on any LLM error.',
+    values: [
+      { id: 'off', description: 'Disabled (default) — keyword-near-`_` runs the blank script unconditionally (proximity gate, today\'s behaviour)' },
+      { id: 'on',  description: 'Enabled — one LLM call gates each keyword-matched script-blank; prose that merely mentions the keyword CEDEs instead of firing the script' },
+    ],
+  },
+  {
     scalar: 'sentence-cues-mode',
     camelCase: 'sentenceCuesMode',
     description: 'Sentence-scope cues — whole-sentence alternatives via `scope: sentence` cue declarations',
