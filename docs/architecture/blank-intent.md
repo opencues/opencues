@@ -1,32 +1,54 @@
 # Blank-Intent — keyword-gated LLM invocation gate
 
-> **Status: SHIPPED behind `blank-intent-mode` (OFF by default), on the
-> `feat/blank-intent` branch — NOT merged to master.** v1 is **enforcing**
-> and **keyword-required for every gated blank (Tier B)**: when the flag is
-> on, a keyword-matched script-blank runs only if the classifier returns
-> INVOKE; prose that merely mentions the keyword CEDEs (the script is
-> suppressed). The LLM only REFINES an invocation the user signalled by
-> typing the keyword — it can never summon a fetch/exec the user didn't
-> name. On any LLM error it falls back to today's proximity gate. When the
-> flag is OFF (default) behaviour is byte-identical to master.
+> **Status: SHIPPED behind `blank-intent-mode` (OFF by default).** Merged
+> to master and released in the **v2026.06.25** checkpoint (core 0.5.1 /
+> runtime 0.4.4). v1 is **enforcing** and **keyword-required for every
+> gated blank (Tier B)**: when the flag is on, a keyword-matched
+> script-blank runs only if the classifier returns INVOKE; prose that
+> merely mentions the keyword CEDEs (the script is suppressed). The LLM
+> only REFINES an invocation the user signalled by typing the keyword — it
+> can never summon a fetch/exec the user didn't name. On any LLM error it
+> falls back to the proximity gate. When the flag is OFF (default)
+> behaviour is byte-identical to master.
+>
+> **Shipped surface:**
+> - **Cede/invoke gate** — prose mentioning a keyword CEDEs; real
+>   invocations INVOKE.
+> - **Typed actions get / set / step** — `volume _` reads, `volume 30 _`
+>   sets, `volume up _` / `brightness down _` step by `blankStep` (clamped
+>   0–100). The gate extracts `{action, value}`; `BlankFill` threads it into
+>   the dispatch (set → read-back; step → read current ± step → set).
+>   Non-settable blanks (no `blankStep`) and non-numeric values degrade to a
+>   plain get. See [Typed actions](#typed-actions--get--set--step) below.
+> - **Line-scoped Phase-1** — when the gate is on, the keyword window is the
+>   `_`'s LINE (not per-blank `blankProximity`), via the single shared
+>   predicate `packages/opencues-core/src/keyword-window.ts`
+>   (`keywordInWindow` / `lineOfWords`) called by **all five** keyword-match
+>   sites: `BlankFill.matchKeyword`, `BlankSource` claim, and the
+>   `FluidBlank` / `TransformBlank` / `ConfigIntent` cede checks. Routing
+>   every site through one predicate makes window drift between them
+>   structurally impossible (it caused a two-sources-fire-on-one-`_` race
+>   during development). A live `blankIntentLineScoped` getter is threaded
+>   from the resolver → `build-sources` → each source. See
+>   [Phase 1](#phase-1--deterministic-pre-gate-instant-free-offline-safe).
 >
 > **Runtime:** `BlankIntentClassifier`
 > (`packages/opencues-core/src/sources/blank-intent-source.ts`) — the gate
-> `BlankFill.maybeRunScripts` consults; wired in `boot-common.ts`
-> (`buildBlankIntentClassifier`). The prod bench
-> (`tests/benchmarks/blank-intent/prod.ts`) drives the REAL source (22/22 =
-> 100% on cerebras / groq / gemini); `run.ts` is the original PoC with a
-> bench-local prompt copy (kept for history). The shape system this
-> supersedes stays reverted (`dev/shape-system` +
-> `docs/architecture/shape-driven-blanks.md`).
+> `BlankFill.maybeRunScripts` consults; built by `buildBlankIntentClassifier`
+> and wired in BOTH `boot-common.ts` (OC / gemini / shell / chrome path) and
+> the CC band `adapters/cc/v2.1/boot.ts` (which constructs `BlankFill`
+> inline). The prod bench (`tests/benchmarks/blank-intent/prod.ts`) drives
+> the REAL source (22/22 = 100% on cerebras / groq / gemini); `run.ts` is
+> the original PoC (kept for history). The shape system this supersedes
+> stays reverted (`dev/shape-system` + `docs/architecture/shape-driven-blanks.md`).
 >
 > **v1 limitations (deliberate):** CEDE leaves the `_` inert (script
 > suppressed); fall-through to a FluidBlank lookup is a follow-up. Tier A
 > (keyword-free summon for bounded local blanks like volume/brightness) is
-> deferred — all gated blanks are Tier B. The Phase-1 keyword pre-gate is
-> English-keyword-bound, so foreign-language invocations cede even though
+> deferred — all gated blanks are Tier B. Phase-1 is line-scoped but the
+> keyword LIST is English, so foreign-language invocations cede even though
 > the classifier itself is multilingual (multilingual keywords are a
-> separate follow-up).
+> separate follow-up). User-facing summary: `docs/features/blank-intent.md`.
 >
 > **Known interaction — copula FILL phrasings cede.** With the gate on,
 > copula-form value requests (`volume is _`, `volume was _`, `volume
@@ -112,15 +134,32 @@ execution, selector-satellite emission, and cycling paths are **untouched**
 
 ### Phase 1 — deterministic pre-gate (instant, free, offline-safe)
 
-Is a registered blank keyword present in the current line near `_`? Uses
-the existing keyword scan with a *loose* line-scoped window (no tuned
-proximity — the LLM does precision now). **No keyword → stop. No LLM
+Is a registered blank keyword on the same LINE as `_`? When the gate is
+on, the keyword scan is **line-scoped** — a keyword anywhere on the `_`'s
+line reaches Phase 2; a keyword on a previous line does not. The per-blank
+`blankProximity` knob (which the LLM replaces for precision) is no longer
+used while the gate is active. **No keyword on the line → stop. No LLM
 call.** This:
 
 - Bounds the LLM cost to "a tool is plausibly in play" — the ~95% of `_`s
   that aren't blank invocations never reach Phase 2.
 - Keeps the consent atom: for exec/fetch blanks, the user must have typed
   the tool's keyword.
+
+**Implementation (the load-bearing consistency invariant).** Five sites
+independently decide whether a keyword blank claims a `_` — `BlankFill.
+matchKeyword` (runtime, script dispatch), `BlankSource` claim, and the
+`FluidBlank` / `TransformBlank` / `ConfigIntent` cede checks (resolver).
+They MUST agree on the window, or two sources fire on one `_` (the race
+that bit development: `BlankFill` set `brightness 90` while `FluidBlank`
+answered "percent"). So all five route through the single predicate
+`keywordInWindow(keywordEndIdx, blankIdx, blankProximity, { lineScoped,
+lineOf })` in `packages/opencues-core/src/keyword-window.ts`
+(`lineOfWords()` builds the per-word line numbers). `lineScoped` is a live
+getter (`blankIntentLineScoped`, reads `blank-intent-mode` each call)
+threaded resolver → `build-sources` → each source; `BlankFill` reads it
+directly. Gate on → line-scoped; gate off → per-blank proximity (master
+behaviour). The window cannot drift between sites by construction.
 
 ### Phase 2 — LLM intent refine (only when a keyword is present)
 
@@ -165,6 +204,27 @@ fetch/exec the user didn't name. This preserves:
 `BlankIntent` does not violate these because the **consent boundary
 (keyword) is unchanged for the dangerous tier** — only the precision
 mechanism behind it changes.
+
+## Typed actions — get / set / step
+
+The classifier doesn't just decide invoke/cede — it extracts the **action
+and value**, and `BlankFill` honours them for **settable** blanks (those
+with `blankStep`, i.e. volume / brightness). Consent is unchanged: a typed
+action only ever reaches a blank whose keyword the user typed; values are
+clamped 0–100; `set`/`step` are local + reversible.
+
+| Input | Verdict | Runtime |
+|---|---|---|
+| `volume _` | `get` | reads current → "54%" |
+| `volume 30 _` | `set 30` | `runBlankSet(30)` → read-back `get` → "30%" |
+| `volume up _` / `brightness down _` | `step up`/`down` | `runBlankGetValue()` reads current → `± blankStep` (volume 6 / brightness 10), clamp 0–100 → `set` → "56%" |
+
+Degradation (all fall back to a plain `get`): a `set`/`step` verdict on a
+**non-settable** blank (weather/stocks/… — no `blankStep`; their value is
+a lookup query, never a write); a **non-numeric** `set` value; any gate /
+LLM error. Step extracts direction only (no magnitude) in v1 — `volume up
+by 20 _` would need a prompt change. Implemented in `blank-fill.ts`'s gate
+IIFE (`runBlankSet` / `runBlankGetValue`).
 
 ## Classifier details (reuse existing infra)
 
@@ -457,7 +517,10 @@ Findings:
    Lean Tier A; revisit if the safety bench surfaces a misroute cost.
 2. **One-call unification** — fold into the `fluid-config` router, or keep a
    distinct `BlankIntentSource`? Decide after the isolated bench.
-3. **GET vs SET consent asymmetry** — a GET (read volume, fetch weather)
-   has lighter consequences than a SET (change volume) or a parameterized
-   fetch (exfil vector). Should SET/parameterized-fetch require a heavier
-   gate than GET even within Tier B? Bench the safety set with this split.
+3. **GET vs SET consent asymmetry** — RESOLVED for v1: SET/STEP enforce the
+   SAME keyword consent as GET (a typed `set`/`step` only refines an
+   invocation the user already signalled by typing the keyword; only
+   settable local blanks honour it; values clamp 0–100). No heavier gate
+   was added — the action changes, the consent boundary doesn't. Revisit if
+   a parameterized-fetch exfil vector is ever introduced (none today; the
+   fetch blanks are GET-only and ignore stray `set`).
