@@ -9,7 +9,7 @@
 import type { HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../adapter';
 import type { ConfigLoader } from './config-loader';
 import { splitWords } from './navigation';
-import { resolveReplaceMode, isBlankConfigCycleable, type EffectiveReplaceMode } from '@opencues/core';
+import { resolveReplaceMode, isBlankConfigCycleable, keywordInWindow, lineOfWords, type EffectiveReplaceMode } from '@opencues/core';
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
@@ -199,10 +199,13 @@ export class BlankFill {
   scan(text: string): readonly BlankSlot[] {
     const cleanText = text.replace(/[\u200B\u200C]/g, '');
     const words = cleanText.split(/\s+/).filter(Boolean);
+    // Per-word line numbers (same order as the flat split) for the shared
+    // line-scoped keyword window used when the BlankIntent gate is active.
+    const lineOf = lineOfWords(cleanText);
     const slots: BlankSlot[] = [];
     for (let i = 0; i < words.length; i += 1) {
       if (words[i] !== '_') continue;
-      const found = this.matchKeyword(words, i);
+      const found = this.matchKeyword(words, i, lineOf);
       if (found) slots.push(found);
     }
     this._slots = slots;
@@ -1322,7 +1325,7 @@ export class BlankFill {
   }
 
   /** Walk backward from blankIdx looking for a blank's blankKeywords match. */
-  private matchKeyword(words: readonly string[], blankIdx: number): BlankSlot | null {
+  private matchKeyword(words: readonly string[], blankIdx: number, lineOf?: readonly number[]): BlankSlot | null {
     // Universal-Integration filter: when the host has no cycling
     // surface (chrome's normal-`<input>` branch), skip cycleable blanks
     // (volume, brightness, opencues-settings, list blanks). The same
@@ -1349,6 +1352,15 @@ export class BlankFill {
       const span = this.dynDefs.findSpanContaining(idx);
       return span !== null;
     };
+    // Window. When the BlankIntent gate is ACTIVE (wired + mode on), the
+    // keyword window is LINE-SCOPED for every blank via the SHARED
+    // `keywordInWindow` predicate — identical to the resolver's BlankSource
+    // claim + the FluidBlank/Transform/ConfigIntent cede checks, so the
+    // five sites can never disagree on who owns the `_` (the June 2026
+    // race). When the gate is off, each blank's tuned `blankProximity`
+    // applies exactly as before (master behaviour).
+    const gateActive = this.blankIntentGate !== undefined
+      && (this.configLoader.opencuesState.settings.get('blank-intent-mode') ?? 'off') === 'on';
     for (let j = blankIdx - 1; j >= 0; j -= 1) {
       for (const [name, blank] of this.configLoader.blanks.entries()) {
         const blankKeywords = (blank as { blankKeywords?: readonly string[] }).blankKeywords;
@@ -1365,7 +1377,9 @@ export class BlankFill {
         // trigger phrase and `_`) MUST set blankProximity explicitly.
         // Matches the cede default in blank-source.ts.
         const blankProximity = (blank as { blankProximity?: number }).blankProximity ?? 0;
-        if ((blankIdx - j - 1) > blankProximity) continue;
+        // The keyword's last word is at `j`; gate-on → same line as `_`,
+        // gate-off → within blankProximity words.
+        if (!keywordInWindow(j, blankIdx, blankProximity, { lineScoped: gateActive, lineOf })) continue;
         for (const kw of blankKeywords) {
           const kwLc = kw.toLowerCase();
           const kwWords = kwLc.split(/\s+/);

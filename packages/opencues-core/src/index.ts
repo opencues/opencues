@@ -65,6 +65,14 @@ export {
 } from './sources/config-intent-source';
 
 export {
+  keywordInWindow,
+  keywordGap,
+  lineOfWords,
+  LINE_SCOPE_FALLBACK_PROXIMITY,
+  type KeywordWindowOptions,
+} from './keyword-window';
+
+export {
   BlankIntentClassifier,
   buildCatalog,
   buildSystemPrompt,

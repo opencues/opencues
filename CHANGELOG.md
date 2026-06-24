@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — BlankIntent line-scoped Phase-1 window: one shared predicate across all 5 keyword-match sites (core 0.5.1 / runtime 0.4.2)
+
+When the gate is on, the per-blank `blankProximity` knob (the thing the LLM replaces) is no longer the gate: the keyword window is **line-scoped** (a keyword on the `_`'s line reaches the classifier; a keyword on a previous line doesn't), so `volume 30 _` / `brightness 70 _` and any same-line invocation work regardless of each blank's tuned proximity. Gate **off** = per-blank proximity exactly as before.
+
+The load-bearing part is **consistency**. Five sites independently decide who owns a `_` — `BlankFill.matchKeyword` (runtime claim) plus four core sources (`BlankSource` claim + the `FluidBlank` / `TransformBlank` / `ConfigIntent` cede checks). An earlier attempt widened only `BlankFill`, so it claimed `brightness 90 _` while `FluidBlank` (still on proximity 0) didn't cede and answered "percent" — two sources firing on one `_` (a race). The fix routes **all five** through a single `keywordInWindow` predicate in `@opencues/core` (`keyword-window.ts`), selected by a live `blankIntentLineScoped` getter threaded from the resolver. The window physically can't drift between sites now.
+
+Also reverts the brightness `blankProximity` band-aid (line-scope handles it). +6 core window-predicate tests, +6 BlankFill line-scope tests (same-line far match, cross-line miss, off/unwired fall back to proximity); resolver cede sources verified non-regressed (transform/fluid/config-intent/sentence) and the brightness race confirmed gone (206 stable ×3). core 911 + runtime 1714 green.
+
 ### Added — BlankIntent typed-SET: `volume 30 _` / `brightness 70 _` actually set (runtime 0.4.1)
 
 BlankIntent already extracted the action+value from a `_` invocation (`volume 30 _` → `set 30`) but the runtime discarded it and always ran `get`, so typed-number SET silently showed the *current* value instead of setting. Now the gate threads its verdict into the dispatch: an `action: 'set'` + numeric value on a **settable** blank (one with `blankStep` — volume/brightness) runs `set <value>` then reads the (clamped) value back via `get`. Everything else is unchanged:

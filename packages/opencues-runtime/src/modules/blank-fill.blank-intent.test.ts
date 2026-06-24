@@ -221,3 +221,66 @@ describe('BlankFill × BlankIntent typed-SET', () => {
     expect(calls.some(a => a.includes('get'))).toBe(true);
   });
 });
+
+// Phase-1 line-scoped window (runtime side). When the gate is active,
+// BlankFill.matchKeyword uses the SHARED keyword-window predicate
+// (line-scoped) instead of per-blank `blankProximity` — identical to the
+// resolver sources, so they can't disagree on who owns the `_`.
+describe('BlankFill × BlankIntent Phase-1 line-scoped window', () => {
+  // brightness-shaped: keyword-bound, NO blankProximity → defaults to 0.
+  const BRIGHT_CUE = `---
+type: blank
+name: brightness
+blankKeywords: brightness
+blankStep: 10
+blankScript: ./b.sh
+---
+`;
+  async function setupMode(mode: 'on' | 'off', gate?: Gate) {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: {
+        '/mock/CUES.md': TIPS,
+        '/proj/blanks/brightness/BLANK.md': BRIGHT_CUE,
+        '/proj/.cues/OPENCUES.md': `---\nblank-intent-mode: ${mode}\n---\n`,
+      },
+    });
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/.cues/OPENCUES.md' });
+    await loader.load();
+    const bf = new BlankFill(adapter, loader, undefined, undefined, undefined, undefined, undefined, gate);
+    return { bf };
+  }
+  const names = (bf: BlankFill, text: string) => bf.scan(text).map(s => s.blankName);
+
+  it('gate ON + wired: non-adjacent keyword on the same line ("brightness 30 _", proximity 0) matches', async () => {
+    const { bf } = await setupMode('on', async () => INVOKE);
+    expect(names(bf, 'brightness 30 _')).toContain('brightness');
+  });
+
+  it('gate ON: a FAR keyword on the SAME line still matches (line-scope is not word-capped)', async () => {
+    const { bf } = await setupMode('on', async () => INVOKE);
+    expect(names(bf, 'brightness in the room of this house was really quite nice and pleasant 50 _')).toContain('brightness');
+  });
+
+  it('gate ON: a keyword on a PREVIOUS line does NOT match (line-scoped)', async () => {
+    const { bf } = await setupMode('on', async () => INVOKE);
+    expect(names(bf, 'i adjusted the brightness\nplease set it to 50 _')).not.toContain('brightness');
+  });
+
+  it('gate OFF: "brightness 30 _" produces NO slot (tuned proximity 0 — master behaviour)', async () => {
+    const { bf } = await setupMode('off', async () => INVOKE);
+    expect(names(bf, 'brightness 30 _')).not.toContain('brightness');
+  });
+
+  it('mode ON but gate NOT wired: tuned proximity applies (line-scope needs an active gate)', async () => {
+    const { bf } = await setupMode('on', undefined);
+    expect(names(bf, 'brightness 30 _')).not.toContain('brightness');
+  });
+
+  it('adjacent "brightness _" matches in BOTH states', async () => {
+    const on = await setupMode('on', async () => INVOKE);
+    const off = await setupMode('off');
+    expect(names(on.bf, 'brightness _')).toContain('brightness');
+    expect(names(off.bf, 'brightness _')).toContain('brightness');
+  });
+});
