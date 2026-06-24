@@ -9,10 +9,14 @@
 
 import { CueSource, CueContext, CueSourceResult, CueResult } from '../types';
 import { BlankConfig } from '../cues-md';
+import { keywordInWindow, lineOfWords } from '../keyword-window';
 
 export interface BlankSourceConfig {
   /** All blanks that have blankKeywords defined */
   blanks: Record<string, BlankConfig>;
+  /** Live getter: true when the BlankIntent gate is active → shared
+   *  line-scoped claim window instead of per-blank proximity. Default false. */
+  lineScoped?: () => boolean;
   /** I/O adapter: calls blankScript get to read the current live value.
    * May return synchronously or a Promise — async implementations avoid blocking the event loop. */
   readState: (blankName: string, matchedKeyword?: string, contextWords?: string[]) => string | null | Promise<string | null>;
@@ -61,10 +65,12 @@ export class BlankSource implements CueSource {
   readonly isCycleable = false;
 
   private blanks: Record<string, BlankConfig>;
+  private lineScoped: () => boolean;
   private readState: (blankName: string, matchedKeyword?: string, contextWords?: string[]) => string | null | Promise<string | null>;
 
   constructor(config: BlankSourceConfig) {
     this.blanks = config.blanks;
+    this.lineScoped = config.lineScoped ?? (() => false);
     this.readState = config.readState;
   }
 
@@ -103,6 +109,13 @@ export class BlankSource implements CueSource {
       return -1;
     };
 
+    // Window: per-blank `blankProximity` normally; the shared line-scoped
+    // window when the BlankIntent gate is active. Keeps this claim in
+    // lockstep with the FluidBlank/Transform/ConfigIntent cede checks +
+    // BlankFill (see keyword-window.ts). `gap` still drives the
+    // closest-match tie-break (bestGap).
+    const scoped = this.lineScoped();
+    const lineOf = scoped ? lineOfWords(context.text) : undefined;
     let bestGap = Infinity;
     for (const [, blk] of Object.entries(this.blanks)) {
       if (!blk.blankKeywords?.length) continue;
@@ -116,7 +129,7 @@ export class BlankSource implements CueSource {
           // For multi-word keywords, proximity is measured from the last word of the phrase to the blank
           const endIdx = idx + kwLen - 1;
           const gap = Math.abs(endIdx - blankIndex) - 1;
-          if (gap <= proximity && gap < bestGap) {
+          if (keywordInWindow(endIdx, blankIndex, proximity, { lineScoped: scoped, lineOf }) && gap < bestGap) {
             matched = blk;
             matchedKeyword = kw;
             matchedKeywordIndex = idx;

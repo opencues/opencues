@@ -9,7 +9,7 @@
 import type { HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../adapter';
 import type { ConfigLoader } from './config-loader';
 import { splitWords } from './navigation';
-import { resolveReplaceMode, isBlankConfigCycleable, type EffectiveReplaceMode } from '@opencues/core';
+import { resolveReplaceMode, isBlankConfigCycleable, keywordInWindow, lineOfWords, type EffectiveReplaceMode } from '@opencues/core';
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
@@ -31,6 +31,17 @@ export interface BlankSlot {
   /** Words between keywordEnd and the `_` (0 = adjacent). */
   readonly proximity: number;
 }
+
+/**
+ * The decision the BlankIntent gate returns to `maybeRunScripts`.
+ *   - `cede`   → suppress the blank (the keyword was prose).
+ *   - `invoke` → run it. `action`/`value` are the classifier's extracted
+ *     intent; `set` + a numeric `value` performs a real set on a SETTABLE
+ *     blank (one with `blankStep`), otherwise the default `get` runs.
+ */
+export type BlankIntentDecision =
+  | { verdict: 'cede' }
+  | { verdict: 'invoke'; action: 'get' | 'set' | 'step'; value: string | null };
 
 export class BlankFill {
   private _slots: readonly BlankSlot[] = [];
@@ -105,6 +116,17 @@ export class BlankFill {
      *  for backward compat with external callers that haven't wired the
      *  shared owner). */
     blankLoading?: BlankLoadingAnimator,
+    /** BlankIntent gate (off by default; wired by boot-common only when
+     *  `blank-intent-mode: on`). Consulted in `maybeRunScripts` BEFORE a
+     *  keyword-matched script-blank runs. Returns the extracted verdict:
+     *  `cede` suppresses the blank (keyword behaves as prose); `invoke`
+     *  runs it, and for a SETTABLE blank (one with `blankStep`) an
+     *  `action: 'set'` + numeric `value` performs a real set (`volume 30
+     *  _`) instead of a get. When omitted, every keyword-matched slot runs
+     *  a plain get unconditionally (the proximity gate — today's
+     *  behaviour). NEVER throws (the classifier degrades to a get-invoke
+     *  on any LLM failure). */
+    private blankIntentGate?: (text: string, blankName: string) => Promise<BlankIntentDecision>,
   ) {
     if (blankLoading) this._loading = blankLoading;
   }
@@ -177,10 +199,13 @@ export class BlankFill {
   scan(text: string): readonly BlankSlot[] {
     const cleanText = text.replace(/[\u200B\u200C]/g, '');
     const words = cleanText.split(/\s+/).filter(Boolean);
+    // Per-word line numbers (same order as the flat split) for the shared
+    // line-scoped keyword window used when the BlankIntent gate is active.
+    const lineOf = lineOfWords(cleanText);
     const slots: BlankSlot[] = [];
     for (let i = 0; i < words.length; i += 1) {
       if (words[i] !== '_') continue;
-      const found = this.matchKeyword(words, i);
+      const found = this.matchKeyword(words, i, lineOf);
       if (found) slots.push(found);
     }
     this._slots = slots;
@@ -363,6 +388,13 @@ export class BlankFill {
       if (this._pendingScripts.has(dedupKey)) continue;
       this._pendingScripts.add(dedupKey);
 
+      // The actual `get` dispatch for this slot, wrapped so the
+      // BlankIntent gate (below) can run it conditionally. The dedup key
+      // is already reserved above, so a re-scan during the gate's latency
+      // won't double-dispatch. (`continue` inside this closure becomes
+      // `return` — it's a function body now, not the loop.)
+      const doDispatch = (): void => {
+
       // Context words: every word except the matched keyword span and the blank.
       // Index-based filter (vs v1's string-match) handles multi-word keywords
       // correctly (multi-word keywords would be incorrectly filtered
@@ -442,7 +474,7 @@ export class BlankFill {
           // cached value is fresh.
           this._pendingScripts.delete(dedupKey);
           this.applyAsyncFill(slot, entry.output);
-          continue;
+          return;
         }
       }
 
@@ -478,7 +510,7 @@ export class BlankFill {
           // (no .then/.catch ever fires to stop it).
           this._pendingScripts.delete(dedupKey);
           this._loadingAnimator().stop(slot.index, 'blank-fill');
-          continue;
+          return;
         }
         // OS-level sandbox config — populated when the blank's
         // frontmatter declares `sandbox: strict`. The host's spawn
@@ -571,6 +603,168 @@ export class BlankFill {
         this._loadingAnimator().stop(slot.index, 'blank-fill');
         this.adapter.log('error', `BlankFill: script promise rejected for ${slot.blankName}`, err);
       });
+
+      }; // end doDispatch
+
+      // BlankIntent gate (off by default). When wired (blank-intent-mode
+      // on, native host with a resolved blanks-bucket LLM), ask the
+      // classifier whether this `_` is a genuine invocation before running
+      // the blank. INVOKE → doDispatch(); CEDE → suppress (the keyword
+      // behaves as prose). Every slot that reaches here is an exec/fetch
+      // tier blank — list blanks (stepValues) were skipped above, and only
+      // script / impl / built-in-by-convention blanks get this far (the
+      // dispatch requires `script || canBlankInvoke`). We do NOT gate on
+      // `blankScript || impl`: the shipped fetch blanks (weather, stocks,
+      // countries, …) OMIT `impl:` and resolve to a built-in class by
+      // convention, so gating on the field would leave the entire fetch
+      // tier ungated. The classifier never throws (it degrades to invoke on
+      // any LLM failure); a thrown gate is caught here and also treated as
+      // invoke. The staleness re-check drops a verdict that arrived after
+      // the user kept typing, so we never splice a fill against a changed
+      // buffer.
+      if (this.blankIntentGate) {
+        const gate = this.blankIntentGate;
+        const gateText = text;
+        const gateBlank = blank;
+        void (async () => {
+          let decision: BlankIntentDecision = { verdict: 'invoke', action: 'get', value: null };
+          try {
+            decision = await gate(gateText, slot.blankName);
+          } catch (err) {
+            this.adapter.log('debug', `BlankFill: BlankIntent gate threw — degrading to get-invoke for ${slot.blankName}`, err);
+            decision = { verdict: 'invoke', action: 'get', value: null };
+          }
+          if (this._lastInputText !== gateText) {
+            this._pendingScripts.delete(dedupKey);
+            return;
+          }
+          if (decision.verdict === 'cede') {
+            this.adapter.log('debug', `BlankFill: BlankIntent CEDE — suppressing ${slot.blankName} for "${gateText}"`);
+            this._pendingScripts.delete(dedupKey);
+            return;
+          }
+          // Typed-SET: an `action: 'set'` + numeric value on a SETTABLE
+          // blank (one with `blankStep` — volume / brightness) performs a
+          // real set, then falls through to doDispatch's `get` to read the
+          // (possibly clamped) value back and splice it. `set` only ever
+          // reaches a blank whose keyword the user typed (consent), and
+          // only settable blanks honour it — a `set` verdict on a lookup
+          // blank (weather/stocks/…) degrades to a plain get. Non-numeric
+          // values also degrade to get (defensive; the gate extracts
+          // numbers for set but providers vary).
+          const stepRaw = (gateBlank as { blankStep?: unknown }).blankStep;
+          const stepSize = typeof stepRaw === 'number' ? stepRaw
+            : (typeof stepRaw === 'string' && /^\d+$/.test(stepRaw) ? parseInt(stepRaw, 10) : null);
+          const isSettable = stepSize !== null;
+          if (decision.action === 'set' && decision.value && /^\d+$/.test(decision.value.trim()) && isSettable) {
+            this.adapter.log('debug', `BlankFill: BlankIntent SET ${slot.blankName} → ${decision.value} (then read back)`);
+            await this.runBlankSet(slot.blankName, decision.value.trim(), gateBlank as Record<string, unknown>);
+            if (this._lastInputText !== gateText) { this._pendingScripts.delete(dedupKey); return; }
+          } else if (decision.action === 'step'
+              && (decision.value === 'up' || decision.value === 'down')
+              && isSettable) {
+            // Typed-STEP: `volume up _` / `brightness down _`. The verdict
+            // is RELATIVE (no target), so read the current value, add/sub
+            // `blankStep`, clamp 0–100, and set — then doDispatch reads the
+            // new value back. Same consent + settable guards as SET; a
+            // non-numeric current (unparseable get) degrades to a plain get.
+            const current = await this.runBlankGetValue(slot.blankName, gateBlank as Record<string, unknown>);
+            if (this._lastInputText !== gateText) { this._pendingScripts.delete(dedupKey); return; }
+            if (current !== null) {
+              const next = Math.max(0, Math.min(100, decision.value === 'up' ? current + stepSize! : current - stepSize!));
+              this.adapter.log('debug', `BlankFill: BlankIntent STEP ${slot.blankName} ${decision.value} → ${current}±${stepSize}=${next} (then read back)`);
+              await this.runBlankSet(slot.blankName, String(next), gateBlank as Record<string, unknown>);
+              if (this._lastInputText !== gateText) { this._pendingScripts.delete(dedupKey); return; }
+            }
+          }
+          doDispatch();
+        })();
+      } else {
+        doDispatch();
+      }
+    }
+  }
+
+  /**
+   * Dispatch a `set <value>` for a settable blank (BlankIntent typed-SET)
+   * and await it, so the subsequent `get` read-back reflects the new
+   * (clamped) value. Mirrors Cycling's `invokeOrSpawn('set', …)` — host-
+   * native `blankInvoke` first, shell `set` fallback. The set scripts emit
+   * nothing on stdout (they set + exit 0), so this returns void; the value
+   * shown comes from the read-back `get`. Never throws — a failed set
+   * still falls through to the get (which shows the unchanged value).
+   */
+  private async runBlankSet(blankName: string, value: string, blank: Record<string, unknown>): Promise<void> {
+    const script = blank.blankScript as string | undefined;
+    const home = process.env.HOME ?? '~';
+    const scriptPath = script ? (script.startsWith('~') ? home + script.slice(1) : script) : '';
+    const processEnv: Readonly<Record<string, string | undefined>> =
+      (typeof process !== 'undefined' && process.env) ? process.env : {};
+    const declaredSecrets = (blank as { userBlankSecrets?: readonly string[] }).userBlankSecrets ?? [];
+    const env = buildSafeScriptEnv(processEnv, declaredSecrets, {});
+    try {
+      let handle = this.adapter.blankInvoke?.({
+        blankName,
+        action: 'set',
+        args: [value],
+        env,
+        timeoutMs: 4000,
+      }) ?? null;
+      if (!handle) {
+        if (!script || !this.adapter.capabilities.includes('spawn-process')) return;
+        handle = this.adapter.spawnProcess({
+          command: 'bash',
+          args: [scriptPath, 'set', value],
+          env,
+          timeoutMs: 4000,
+        });
+      }
+      await handle.result;
+    } catch (e) {
+      this.adapter.log('debug', `BlankFill: typed-SET dispatch failed for ${blankName}`, e);
+    }
+  }
+
+  /**
+   * Read a settable blank's CURRENT numeric value (for BlankIntent
+   * typed-STEP, which needs `current ± blankStep`). Dispatches a `get`
+   * and parses the first integer out of stdout (handles "54", "54%",
+   * etc.). Returns null on any failure / non-numeric output, so the
+   * caller can degrade to a plain get. Host-native `blankInvoke` first,
+   * shell `get` fallback — mirrors `runBlankSet`.
+   */
+  private async runBlankGetValue(blankName: string, blank: Record<string, unknown>): Promise<number | null> {
+    const script = blank.blankScript as string | undefined;
+    const home = process.env.HOME ?? '~';
+    const scriptPath = script ? (script.startsWith('~') ? home + script.slice(1) : script) : '';
+    const processEnv: Readonly<Record<string, string | undefined>> =
+      (typeof process !== 'undefined' && process.env) ? process.env : {};
+    const declaredSecrets = (blank as { userBlankSecrets?: readonly string[] }).userBlankSecrets ?? [];
+    const env = buildSafeScriptEnv(processEnv, declaredSecrets, {});
+    try {
+      let handle = this.adapter.blankInvoke?.({
+        blankName,
+        action: 'get',
+        args: [],
+        env,
+        timeoutMs: 4000,
+      }) ?? null;
+      if (!handle) {
+        if (!script || !this.adapter.capabilities.includes('spawn-process')) return null;
+        handle = this.adapter.spawnProcess({
+          command: 'bash',
+          args: [scriptPath, 'get'],
+          env,
+          timeoutMs: 4000,
+        });
+      }
+      const res = await handle.result;
+      if (res.exitCode !== 0 || res.timedOut) return null;
+      const m = (res.stdout ?? '').match(/-?\d+/);
+      return m ? parseInt(m[0], 10) : null;
+    } catch (e) {
+      this.adapter.log('debug', `BlankFill: typed-STEP read failed for ${blankName}`, e);
+      return null;
     }
   }
 
@@ -1192,7 +1386,7 @@ export class BlankFill {
   }
 
   /** Walk backward from blankIdx looking for a blank's blankKeywords match. */
-  private matchKeyword(words: readonly string[], blankIdx: number): BlankSlot | null {
+  private matchKeyword(words: readonly string[], blankIdx: number, lineOf?: readonly number[]): BlankSlot | null {
     // Universal-Integration filter: when the host has no cycling
     // surface (chrome's normal-`<input>` branch), skip cycleable blanks
     // (volume, brightness, opencues-settings, list blanks). The same
@@ -1219,6 +1413,15 @@ export class BlankFill {
       const span = this.dynDefs.findSpanContaining(idx);
       return span !== null;
     };
+    // Window. When the BlankIntent gate is ACTIVE (wired + mode on), the
+    // keyword window is LINE-SCOPED for every blank via the SHARED
+    // `keywordInWindow` predicate — identical to the resolver's BlankSource
+    // claim + the FluidBlank/Transform/ConfigIntent cede checks, so the
+    // five sites can never disagree on who owns the `_` (the June 2026
+    // race). When the gate is off, each blank's tuned `blankProximity`
+    // applies exactly as before (master behaviour).
+    const gateActive = this.blankIntentGate !== undefined
+      && (this.configLoader.opencuesState.settings.get('blank-intent-mode') ?? 'off') === 'on';
     for (let j = blankIdx - 1; j >= 0; j -= 1) {
       for (const [name, blank] of this.configLoader.blanks.entries()) {
         const blankKeywords = (blank as { blankKeywords?: readonly string[] }).blankKeywords;
@@ -1235,7 +1438,9 @@ export class BlankFill {
         // trigger phrase and `_`) MUST set blankProximity explicitly.
         // Matches the cede default in blank-source.ts.
         const blankProximity = (blank as { blankProximity?: number }).blankProximity ?? 0;
-        if ((blankIdx - j - 1) > blankProximity) continue;
+        // The keyword's last word is at `j`; gate-on → same line as `_`,
+        // gate-off → within blankProximity words.
+        if (!keywordInWindow(j, blankIdx, blankProximity, { lineScoped: gateActive, lineOf })) continue;
         for (const kw of blankKeywords) {
           const kwLc = kw.toLowerCase();
           const kwWords = kwLc.split(/\s+/);

@@ -25,6 +25,7 @@
 
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter, AmbientContext } from '../types';
 import { BlankConfig } from '../cues-md';
+import { keywordInWindow, lineOfWords } from '../keyword-window';
 import { useStrictJson, buildJsonResponseFormat, describeLLMCall, dispatchChat, getProvider, type ProviderAdapter } from '../llm-provider';
 import { renderIdentityContextCatalog, postProcessContext, type Identity, type ContextMode } from '../identity-context';
 import { renderBlankContextCatalog, mergeCatalogs, type BlankContextSnapshot, type BlankContextMode } from '../blank-context';
@@ -594,6 +595,11 @@ export interface FluidBlankSourceConfig {
    * claim. Now fluid mirrors BlankSource's claim rules so the dead zone is
    * gone. */
   blanks?: Record<string, BlankConfig>;
+  /** Live getter: true when the BlankIntent gate is active, so the
+   *  keyword cede check uses the shared line-scoped window instead of
+   *  per-blank proximity (keeps this source in lockstep with BlankFill /
+   *  BlankSource). Defaults to always-false. */
+  lineScoped?: () => boolean;
   /**
    * Optional pipeline-event subscriber. Mirrors
    * `TransformBlankSourceConfig.onEvent` — receives a typed
@@ -737,6 +743,7 @@ export class FluidBlankSource implements CueSource {
   private temperatureOverride: number | undefined;
   private maxThinking: boolean;
   private blanks: Record<string, BlankConfig>;
+  private lineScoped: () => boolean;
   private emit: (event: FluidBlankEvent) => void;
   private log: (msg: string) => void;
   private logInfo: (msg: string) => void;
@@ -784,6 +791,7 @@ export class FluidBlankSource implements CueSource {
     this.maxThinking = config.maxThinking ?? true;
     this.priority = config.priority ?? 92;
     this.blanks = config.blanks ?? {};
+    this.lineScoped = config.lineScoped ?? (() => false);
     this.emit = config.onEvent ?? (() => { /* default: silent */ });
     this.log = config.log ?? (() => { /* default: silent */ });
     this.logInfo = config.logInfo ?? this.log;
@@ -833,6 +841,11 @@ export class FluidBlankSource implements CueSource {
     // within `blankProximity` words of the `_`. Loose-match (keyword
     // present anywhere) leaves a dead zone for inputs like `what is git
     // as in github _` where the keyword is too far to claim.
+    // Window: per-blank `blankProximity` normally; the SHARED line-scoped
+    // window when the BlankIntent gate is active (so this cede check stays
+    // in lockstep with BlankFill + BlankSource — see keyword-window.ts).
+    const scoped = this.lineScoped();
+    const lineOf = scoped ? lineOfWords(context.text) : undefined;
     for (const blk of Object.values(this.blanks)) {
       if (!blk.blankKeywords?.length) continue;
       const proximity = blk.blankProximity ?? 0;
@@ -845,8 +858,9 @@ export class FluidBlankSource implements CueSource {
           }
           if (!ok) continue;
           const endIdx = i + parts.length - 1;
-          const gap = Math.abs(endIdx - blankIndex) - 1;
-          if (gap <= proximity) return false;   // BlankSource will claim
+          if (keywordInWindow(endIdx, blankIndex, proximity, { lineScoped: scoped, lineOf })) {
+            return false;   // BlankSource / BlankFill will claim
+          }
         }
       }
     }
