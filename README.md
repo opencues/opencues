@@ -303,7 +303,7 @@ Each install pins a specific upstream version (e.g. Claude Code 2.1.110 or 2.1.1
 - **Word cues** — navigate to any word, cycle through LLM-suggested alternatives, keep typing.
 - **Sentence cues** — declare `scope: sentence` on a cue and the whole sentence becomes cyclable. The shipped `more-formal` cue rewrites informal sentences to formal register.
 - **Blanks** — type `_` and get a completion: free-form generation (`draft an email about X _`), translation / formatting / past-tense / etc. (`translate to french _`, `format as bullet points _`), short factual answers (`what is the word for X _`), prompt rewrites (`improve prompt _`), and keyword-bound system actions (`volume _`, `brightness _`).
-- **Script-backed blanks** — `volume _` / `brightness _` call shell scripts so cycling actually changes your OS state.
+- **Script-backed blanks** — `volume _` / `brightness _` call shell scripts so cycling actually changes your OS state. Type a value to set it directly (`volume 30 _`) or nudge it (`volume up _`). Opt into `blank-intent-mode` and an LLM gate decides whether a matched keyword *actually* fires — `the weather was lovely today _` won't trigger a weather fetch, `weather in london _` will.
 - **Selector + satellite** — `opencues settings _` becomes two linked words (the setting + its current value); cycling the selector swaps the satellite.
 - **Inline agent** — `agentically correct spelling _` arms a continuous rewrite loop until you `stop task _`.
 - **Auditors** — declare grammar/clarity/tone concerns in `auditors/<name>/AUDITOR.md`; they compose into one LLM call per agent tick.

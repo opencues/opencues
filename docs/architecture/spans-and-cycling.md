@@ -396,6 +396,17 @@ the alt's words elsewhere in the new text and re-anchor `entry.index`.
 For `kind: 'blank-fill'`, any text mismatch clears the entry (the
 "user moved on" semantic).
 
+**Typed actions (BlankIntent).** `BlankFill.maybeRunScripts` runs the
+script-backed blanks (volume / brightness / weather / …). Beyond the
+default `get`, it dispatches two typed actions when the buffer supplies
+them: `volume 30 _` → SET (`runBlankSet`), `volume up _` /
+`brightness down _` → STEP (±`blankStep`, clamped 0–100). When
+`blank-intent-mode: on`, an LLM gate runs before the script fire and can
+CEDE (leave `_` inert) — the typed action/value rides the INVOKE verdict.
+The gate is OFF by default; with it off this path is byte-identical to
+the pre-feature `get`-only behaviour. See
+[`blank-intent.md`](blank-intent.md).
+
 ---
 
 ## The Resolver loop

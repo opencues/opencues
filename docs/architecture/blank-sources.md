@@ -46,6 +46,18 @@ also routes through `threeWayMerge`; see
 [`agent-task.md`](agent-task.md). Its merge primitive is the same
 one TransformBlank-fused reuses.
 
+**Keyword-window coordination (BlankIntent + the cede checks).**
+`BlankSource`, `FluidBlankSource`, `TransformBlankSource`, and
+`ConfigIntentSource` all decide "is this `_` mine?" using the SAME
+keyword-window predicate (`keywordInWindow()` in
+`@opencues/core/keyword-window.ts`) — so a keyword that claims a `_`
+for `BlankSource` is the same keyword the other three cede on. When
+`blank-intent-mode: on`, the window switches from per-blank proximity
+to same-line scope across all five sites (the fifth is
+`BlankFill.matchKeyword` in the runtime), and an LLM gate decides
+INVOKE vs CEDE for the script fire. See
+[`blank-intent.md`](blank-intent.md).
+
 ---
 
 ## Two substitute mechanisms
@@ -218,5 +230,8 @@ primitive already pays for.
   field for BlankSource / FluidBlankSource.
 - [`spans-and-cycling.md`](spans-and-cycling.md) — the DynDef
   cycling layer that passive cues use.
+- [`blank-intent.md`](blank-intent.md) — the optional LLM invocation
+  gate for keyword script-blanks + the shared keyword-window predicate
+  the four claim/cede sites route through.
 - `docs/features/word-cue-routing.md` — per-word dispatch via
   `RoutedWordSourceGroup`.

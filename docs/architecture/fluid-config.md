@@ -363,6 +363,7 @@ AND the validator will reject any attempt to apply them.
 - [`spans-and-cycling.md`](spans-and-cycling.md) — selector-satellite cycling, span priorities, the `clearOnEdit` cleanup path.
 - [`security-audit.md`](security-audit.md) — fluid-config's bounded-codomain rationale slots into row #21 (no side-effect channel for LLM-derived buffer text).
 - [`blank-replace-modes.md`](blank-replace-modes.md) — sister doc for FluidBlank's KEEP/WIPE/AUTO modes; ConfigIntent's wipe is structurally different (summon-phrase-scoped via `summonPhraseStart` through `text.length`, not a `blankReplace` mode) so it doesn't share the heuristic.
+- [`blank-intent.md`](blank-intent.md) — the sibling LLM gate for *user* blanks (volume / weather / …). ConfigIntent classifies `_` → a FEATURES scalar (bounded codomain, settings-only); BlankIntent gates whether a keyword-matched script blank actually fires (exec/fetch, keyword-required consent atom). When `blank-intent-mode: on`, both share the same keyword-window predicate so ConfigIntent and the script blanks cede on the same keyword window.
 
 ---
 
