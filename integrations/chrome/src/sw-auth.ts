@@ -43,7 +43,6 @@ export const FETCH_ALLOWED_ORIGINS: readonly string[] = [
   'https://api.open-meteo.com',
   'https://hacker-news.firebaseio.com',
   'https://api.coingecko.com',
-  'https://restcountries.com',
   'https://api.dictionaryapi.dev',
   'https://status.claude.com',
   'https://api.github.com',
