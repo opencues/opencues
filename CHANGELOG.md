@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — chrome: drop dead `restcountries.com` host permission (chrome 0.2.35)
+
+The countries blank moved to a bundled offline dataset (restcountries.com fully deprecated, June 2026), but the chrome extension still declared `https://restcountries.com/*` in `manifest.json` host_permissions and `FETCH_ALLOWED_ORIGINS` in `sw-auth.ts`. Both are now removed — the origin is never fetched, so the permission was dead surface a reviewer would flag at store-submission time. Lockstep `manifest.json` + `package.json` bump (0.2.34 → 0.2.35).
+
 ## [2026-06-25] — checkpoint
 
 Snapshot tag (`v2026.06.25`). Headline: **BlankIntent** ships behind `blank-intent-mode` (OFF by default) — an LLM invocation gate for keyword script-blanks with line-scoped Phase-1, typed get/set/step, and a single shared keyword-window predicate across all five claim/cede sites; plus the **countries** blank moving to a bundled offline dataset. Packages at this checkpoint: `@opencues/core` 0.5.1, `@opencues/runtime` 0.4.4. (All packages remain `private` — this is a source checkpoint, not an npm publish; the npm handover is tracked in `docs/launch/npm-handover.md`.)

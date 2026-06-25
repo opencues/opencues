@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OpenCues",
-  "version": "0.2.34",
+  "version": "0.2.35",
   "description": "LLM-powered word alternatives for text editors",
   "permissions": [
     "storage",
@@ -21,7 +21,6 @@
     "https://api.open-meteo.com/*",
     "https://hacker-news.firebaseio.com/*",
     "https://api.coingecko.com/*",
-    "https://restcountries.com/*",
     "https://api.dictionaryapi.dev/*",
     "https://status.claude.com/*",
     "https://api.github.com/*"
