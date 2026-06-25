@@ -809,8 +809,16 @@ export class ConfigLoader {
     // when OPENCUES_BRIDGE=1 is also set, so a stray user with the
     // env baked in their shell can't accidentally disable the
     // debounce on their real-world session.
-    const debounce = (process.env.OPENCUES_BRIDGE === '1'
-        && process.env.OPENCUES_BRIDGE_NO_RELOAD_DEBOUNCE === '1')
+    // `process` does not exist in a browser content-script (chrome). Guard
+    // with typeof so this whole reload path doesn't throw `process is not
+    // defined` — that ReferenceError was killing config hot-reload (and the
+    // keystroke handler) on chrome, so pushed scalars like blank-intent-mode
+    // never propagated and the gate never engaged.
+    const bridgeNoDebounce =
+      typeof process !== 'undefined'
+      && process.env?.OPENCUES_BRIDGE === '1'
+      && process.env?.OPENCUES_BRIDGE_NO_RELOAD_DEBOUNCE === '1';
+    const debounce = bridgeNoDebounce
       ? 0
       : (this.options.reloadDebounceMs ?? 2000);
     if (Date.now() - this._lastLoadAt < debounce) return;

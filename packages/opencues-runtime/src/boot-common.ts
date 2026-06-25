@@ -373,6 +373,14 @@ export function buildBlankIntentClassifier(
   configLoader: ConfigLoader,
   apiKeys: Readonly<Record<string, string | undefined>>,
   log: (msg: string) => void,
+  // Optional HTTP adapter override. Browser hosts (chrome) MUST pass their
+  // fetch-based adapter here: `NodeHttpAdapter` uses `node:https`, which does
+  // not exist in a content script, and esbuild aliases it to a no-op stub —
+  // so without this the classifier builds but can never make a request (and
+  // historically threw → null → the whole gate silently degraded to GET in
+  // chrome). Native hosts (CC/OC) omit it and get NodeHttpAdapter. Mirrors
+  // the Resolver's `httpAdapter` option. See docs/architecture/chrome-runtime-compat.md.
+  httpAdapterOverride?: unknown,
 ): { classify: (text: string, blank: string, blanks: Record<string, unknown>) => Promise<{ verdict: 'invoke' | 'cede'; action?: 'get' | 'set' | 'step' | null; value?: string | null }> } | null {
   const s = configLoader.opencuesState.settings;
   if ((s.get('blank-intent-mode') ?? 'off') !== 'on') return null;
@@ -410,12 +418,18 @@ export function buildBlankIntentClassifier(
   }
 
   let httpAdapter: unknown;
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { NodeHttpAdapter } = require('@opencues/core/node-http-adapter');
-    httpAdapter = new NodeHttpAdapter({ maxSockets: 2, timeout: 30000 });
-  } catch {
-    return null;
+  if (httpAdapterOverride !== undefined) {
+    // Browser host (chrome) supplied a fetch-based adapter — use it directly,
+    // never touch NodeHttpAdapter (node:https / stubbed in the bundle).
+    httpAdapter = httpAdapterOverride;
+  } else {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { NodeHttpAdapter } = require('@opencues/core/node-http-adapter');
+      httpAdapter = new NodeHttpAdapter({ maxSockets: 2, timeout: 30000 });
+    } catch {
+      return null;
+    }
   }
 
   log('BlankIntent: gate ENABLED (blank-intent-mode on)');
@@ -491,6 +505,14 @@ export interface BuildSharedRuntimeOptions {
    *  in which case CLI providers are conservatively dropped from the
    *  cycling menu. */
   readonly isCliProviderAvailable?: (providerId: string) => boolean;
+  /** HTTP adapter for the BlankIntent gate's classifier. Browser hosts
+   *  (chrome) MUST pass their fetch-based adapter — the classifier otherwise
+   *  falls back to NodeHttpAdapter (node:https), which can't run in a content
+   *  script, so the gate silently degrades to a plain GET. Native hosts
+   *  (CC/OC) omit it and get NodeHttpAdapter. Same Node-vs-browser split the
+   *  Resolver handles via its own `httpAdapter` option.
+   *  See docs/architecture/chrome-runtime-compat.md. */
+  readonly blankIntentHttpAdapter?: unknown;
 }
 
 /**
@@ -672,7 +694,7 @@ export function buildSharedRuntime(
   adapter: HostAdapter,
   opts: BuildSharedRuntimeOptions,
 ): SharedRuntime {
-  const { log, configSearchPaths, settingsFile, getApiKeys, isCliProviderAvailable } = opts;
+  const { log, configSearchPaths, settingsFile, getApiKeys, isCliProviderAvailable, blankIntentHttpAdapter } = opts;
 
   // Fire-and-forget direct-launch drift advisory. Runs once per boot,
   // catches users who launched the host directly (bypassing
@@ -775,18 +797,34 @@ export function buildSharedRuntime(
   // loaded settings AND makes a live flip-ON take effect without a restart.
   // Absent getApiKeys / no key / packaging → gate degrades to 'invoke'
   // (BlankFill runs scripts as today).
-  let _biBuilt = false;
   let _biClassifier: { classify: (t: string, b: string, blanks: Record<string, unknown>) => Promise<{ verdict: 'invoke' | 'cede'; action?: 'get' | 'set' | 'step' | null; value?: string | null }> } | null = null;
   const GET_INVOKE: BlankIntentDecision = { verdict: 'invoke', action: 'get', value: null };
   const blankIntentGate: ((text: string, blankName: string) => Promise<BlankIntentDecision>) | undefined =
     getApiKeys
       ? async (text, blankName) => {
-          if ((configLoader.opencuesState.settings.get('blank-intent-mode') ?? 'off') !== 'on') return GET_INVOKE;
-          if (!_biBuilt) {
-            _biBuilt = true;
-            _biClassifier = buildBlankIntentClassifier(configLoader, getApiKeys(), msg => log('debug', msg));
+          const biMode = configLoader.opencuesState.settings.get('blank-intent-mode') ?? 'off';
+          if (biMode !== 'on') {
+            // A gated keyword reached the gate but the mode reads off → plain
+            // GET (no classify). Logged so "I set blank-intent-mode: on but
+            // nothing happens" is diagnosable — esp. on chrome, where the
+            // settings come from a pushed/converged bundle that can lag or
+            // drop the scalar. Reports the value + map size so an EMPTY map
+            // (settings never reached this runtime) is distinguishable from a
+            // genuine off.
+            const s = configLoader.opencuesState.settings;
+            log('debug', `BlankIntent: gate OFF for "${blankName}" — blank-intent-mode=${biMode} (settings map: ${s.size} keys, debug-mode=${s.get('debug-mode') ?? 'absent'}, voice-mode=${s.get('voice-mode') ?? 'absent'})`);
+            return GET_INVOKE;
           }
-          if (!_biClassifier) return GET_INVOKE; // no key / packaging → degrade to today's behaviour
+          if (!_biClassifier) {
+            // Build (or RE-build) until it succeeds — never cache a null.
+            // The classifier is null when keys haven't arrived yet (chrome
+            // pushes them async after boot) or core packaging isn't ready;
+            // caching that failure once would leave the gate dead for the
+            // whole session even after keys land. Once built, it's reused.
+            // The browser HTTP adapter (chrome) is threaded in here.
+            _biClassifier = buildBlankIntentClassifier(configLoader, getApiKeys(), msg => log('debug', msg), blankIntentHttpAdapter);
+            if (!_biClassifier) return GET_INVOKE; // no key yet / packaging → today's behaviour, retry next keystroke
+          }
           const blanksRecord = Object.fromEntries(configLoader.blanks) as Record<string, unknown>;
           const v = await _biClassifier.classify(text, blankName, blanksRecord);
           return v.verdict === 'invoke'
@@ -794,6 +832,17 @@ export function buildSharedRuntime(
             : { verdict: 'cede' };
         }
       : undefined;
+
+  // Boot-time gate-wiring trace. Fires once per boot (no keystroke needed) so
+  // we can tell, on any host, whether the BlankIntent gate was even
+  // constructed — `getApiKeys` absent → gate undefined → the whole
+  // blank-intent path is dead regardless of the mode scalar. This is the
+  // single fact that distinguishes "gate not wired" from "gate wired but
+  // mode off" when debugging hosts like chrome.
+  // INFO level on purpose: this fires at boot BEFORE config loads, so
+  // debug-mode isn't known yet — a 'debug' line here would be suppressed and
+  // look like it never ran. INFO guarantees it reaches the log on every boot.
+  log('debug', `BlankIntent: boot — gate ${blankIntentGate ? 'WIRED (getApiKeys present)' : 'NOT WIRED (getApiKeys absent → blank-intent path inert)'}`);
 
   const blankFill = new BlankFill(
     adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading,
