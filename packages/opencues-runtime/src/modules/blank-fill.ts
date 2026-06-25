@@ -393,7 +393,7 @@ export class BlankFill {
       // is already reserved above, so a re-scan during the gate's latency
       // won't double-dispatch. (`continue` inside this closure becomes
       // `return` — it's a function body now, not the loop.)
-      const doDispatch = (): void => {
+      const doDispatch = (typedAction?: 'set' | 'step'): void => {
 
       // Context words: every word except the matched keyword span and the blank.
       // Index-based filter (vs v1's string-match) handles multi-word keywords
@@ -473,7 +473,7 @@ export class BlankFill {
           // see `_pendingScripts.has(dedupKey)` and skip even after the
           // cached value is fresh.
           this._pendingScripts.delete(dedupKey);
-          this.applyAsyncFill(slot, entry.output);
+          this.applyAsyncFill(slot, entry.output, typedAction);
           return;
         }
       }
@@ -597,7 +597,7 @@ export class BlankFill {
             this._resultCache.delete(oldest);
           }
         }
-        this.applyAsyncFill(slot, stdout);
+        this.applyAsyncFill(slot, stdout, typedAction);
       }).catch(err => {
         this._pendingScripts.delete(dedupKey);
         this._loadingAnimator().stop(slot.index, 'blank-fill');
@@ -656,10 +656,12 @@ export class BlankFill {
           const stepSize = typeof stepRaw === 'number' ? stepRaw
             : (typeof stepRaw === 'string' && /^\d+$/.test(stepRaw) ? parseInt(stepRaw, 10) : null);
           const isSettable = stepSize !== null;
+          let typedAction: 'set' | 'step' | undefined;
           if (decision.action === 'set' && decision.value && /^\d+$/.test(decision.value.trim()) && isSettable) {
             this.adapter.log('debug', `BlankFill: BlankIntent SET ${slot.blankName} → ${decision.value} (then read back)`);
             await this.runBlankSet(slot.blankName, decision.value.trim(), gateBlank as Record<string, unknown>);
             if (this._lastInputText !== gateText) { this._pendingScripts.delete(dedupKey); return; }
+            typedAction = 'set';
           } else if (decision.action === 'step'
               && (decision.value === 'up' || decision.value === 'down')
               && isSettable) {
@@ -675,9 +677,10 @@ export class BlankFill {
               this.adapter.log('debug', `BlankFill: BlankIntent STEP ${slot.blankName} ${decision.value} → ${current}±${stepSize}=${next} (then read back)`);
               await this.runBlankSet(slot.blankName, String(next), gateBlank as Record<string, unknown>);
               if (this._lastInputText !== gateText) { this._pendingScripts.delete(dedupKey); return; }
+              typedAction = 'step';
             }
           }
-          doDispatch();
+          doDispatch(typedAction);
         })();
       } else {
         doDispatch();
@@ -774,7 +777,7 @@ export class BlankFill {
    * adapter.pushText (calls onChange), since this runs outside any
    * dispatch.
    */
-  private applyAsyncFill(slot: BlankSlot, fillValue: string): void {
+  private applyAsyncFill(slot: BlankSlot, fillValue: string, typedAction?: 'set' | 'step'): void {
     const currentText = this.adapter.getText();
     const cleaned = currentText.replace(/[\u200B\u200C]/g, '');
     const words = splitWords(cleaned);
@@ -837,6 +840,16 @@ export class BlankFill {
       primaryFill = primaryFill + blank.blankSuffix;
     }
 
+    // Typed-SET/STEP final-state render. Mirror config-intent's
+    // "<setting> <value>" display: keep the keyword as the label and show
+    // the read-back value as its value, so "volume 40 _" → "volume 40%".
+    // The value shown is the read-back (post-clamp), not the typed input,
+    // so "volume 150 _" lands as "volume 100%". The typed value word(s)
+    // between keyword and `_` are consumed by the clearEnd override below.
+    if (typedAction) {
+      primaryFill = `${slot.keyword} ${primaryFill}`;
+    }
+
     // New unified `blankReplace` field, when set explicitly, supersedes
     // the legacy flag path (consumeAll/consumeContext/clearKeywords).
     // Resolves via the fluid heuristic when set to 'auto'. Existing
@@ -881,10 +894,16 @@ export class BlankFill {
       return;
     }
 
-    const { clearEnd, expansion } = explicitMode !== null
+    const baseRange = explicitMode !== null
       ? computeFillRangeForMode(blank ?? {}, slot, explicitMode)
       : computeFillRange(blank ?? {}, slot);
-    this.adapter.log('info', `BlankFill: substituting "${slot.keyword} _" → "${preview(primaryFill, 60)}" (blank=${slot.blankName}${lines.length > 1 ? `, ${lines.length} alt(s)` : ''}${isDismissible ? ', dismissible' : ''})`);
+    // Typed-SET/STEP consumes keyword + typed value words (the fill above
+    // already re-includes the keyword as its label), so the value word
+    // isn't orphaned: "volume 40 _" → "volume 40%", not "volume 40 40%".
+    const { clearEnd, expansion } = typedAction
+      ? { clearEnd: slot.index - 1, expansion: undefined as string | undefined }
+      : baseRange;
+    this.adapter.log('info', `BlankFill: substituting "${slot.keyword} _" → "${preview(primaryFill, 60)}" (blank=${slot.blankName}${typedAction ? `, typed-${typedAction}` : ''}${lines.length > 1 ? `, ${lines.length} alt(s)` : ''}${isDismissible ? ', dismissible' : ''})`);
     this.adapter.emitEvent?.('blank.substituted', {
       blankName: slot.blankName,
       keyword: slot.keyword,

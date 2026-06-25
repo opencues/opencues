@@ -171,6 +171,31 @@ async function setupSettable(gate?: Gate) {
   bf.subscribe();
   return { adapter, loader, bf };
 }
+
+// A SECOND settable blank (different keyword, step, AND a blankSuffix) to
+// prove the typed-SET final-state render is blank-generic, not volume-
+// specific: it keys on slot.keyword + the read-back, never a hard-coded name.
+const BRIGHTNESS_CUE = `---
+type: blank
+name: brightness
+blankKeywords: brightness
+blankProximity: 3
+blankStep: 10
+blankSuffix: %
+blankScript: ./brightness.sh
+---
+`;
+async function setupBrightness(gate?: Gate) {
+  const adapter = new MockAdapter({
+    cwd: '/proj',
+    files: { '/mock/CUES.md': TIPS, '/proj/blanks/brightness/BLANK.md': BRIGHTNESS_CUE },
+  });
+  const loader = new ConfigLoader(adapter);
+  await loader.load();
+  const bf = new BlankFill(adapter, loader, undefined, undefined, undefined, undefined, undefined, gate);
+  bf.subscribe();
+  return { adapter, loader, bf };
+}
 const setArgs = (spy: ReturnType<typeof vi.spyOn>) =>
   spy.mock.calls.map(c => (c[0] as { args: string[] }).args);
 
@@ -221,6 +246,60 @@ describe('BlankFill × BlankIntent typed-SET', () => {
     expect(calls.some(a => a.includes('set'))).toBe(false);
     expect(calls.some(a => a.includes('get'))).toBe(true);
   });
+
+  // BUFFER CONTRACT (the regression these tests exist for). The dispatch
+  // tests above proved the value changes; this pins what the user SEES.
+  // The bug: the typed value word ("40") sat between keyword and `_`, the
+  // `keep`-mode splice consumed only "volume" + "_", and the read-back was
+  // appended — leaving "volume 40 40". Fix renders the config-intent-style
+  // final state "<keyword> <read-back>", consuming the typed value.
+  it('SET renders "<keyword> <read-back>" — the typed value is NOT orphaned', async () => {
+    const { adapter } = await setupSettable(async () => SET('40'));
+    adapter.stubBlankInvoke('volume:set', '');      // set emits nothing
+    adapter.stubBlankInvoke('volume:get', '40\n');  // read-back
+    adapter.pushText('volume 40 _');
+    await tick(); await tick(); await tick(); await tick();
+    expect(adapter.getText()).toBe('volume 40');
+    // The bug shape — orphaned input word + appended read-back — must not appear.
+    expect(adapter.getText()).not.toMatch(/volume\s+40\s+40/);
+  });
+
+  it('SET shows the READ-BACK value, not the typed input (clamp fidelity)', async () => {
+    const { adapter } = await setupSettable(async () => SET('150'));
+    adapter.stubBlankInvoke('volume:set', '');
+    adapter.stubBlankInvoke('volume:get', '100\n'); // script clamped 150 → 100
+    adapter.pushText('volume 150 _');
+    await tick(); await tick(); await tick(); await tick();
+    expect(adapter.getText()).toBe('volume 100');   // final state, not the typed 150
+    expect(adapter.getText()).not.toContain('150');
+  });
+
+  // GENERALISATION: a DIFFERENT settable blank (brightness, with a
+  // blankSuffix) renders the same clean final state — proves the fix isn't
+  // volume-specific and that blankSuffix composes with the keyword prefix.
+  it('generalises to a second settable blank (brightness, with suffix)', async () => {
+    const { adapter } = await setupBrightness(async () => SET('70'));
+    adapter.stubBlankInvoke('brightness:set', '');
+    adapter.stubBlankInvoke('brightness:get', '70\n');
+    adapter.pushText('brightness 70 _');
+    await tick(); await tick(); await tick(); await tick();
+    expect(adapter.getText()).toBe('brightness 70%'); // keyword + read-back + suffix
+    expect(adapter.getText()).not.toMatch(/brightness\s+70\s+70/);
+  });
+
+  // EDGE: keyword not at position 0 ("set the volume to 40 _"). The typed
+  // value + intervening words between keyword and `_` are consumed; content
+  // BEFORE the keyword is preserved (consume-context semantics). Documents
+  // the actual behaviour for prefixed phrasings.
+  it('prefixed phrasing: consumes keyword→blank, preserves the lead-in', async () => {
+    const { adapter } = await setupSettable(async () => SET('40'));
+    adapter.stubBlankInvoke('volume:set', '');
+    adapter.stubBlankInvoke('volume:get', '40\n');
+    adapter.pushText('set the volume to 40 _');
+    await tick(); await tick(); await tick(); await tick();
+    expect(adapter.getText()).toBe('set the volume 40'); // lead-in kept, "to 40" consumed
+    expect(adapter.getText()).not.toMatch(/40\s+40/);    // no orphaned value
+  });
 });
 
 describe('BlankFill × BlankIntent typed-STEP', () => {
@@ -254,6 +333,19 @@ describe('BlankFill × BlankIntent typed-STEP', () => {
     await tick(); await tick(); await tick(); await tick();
     const calls = setArgs(spawnSpy);
     expect(calls.some(a => a.includes('set') && a.includes('100'))).toBe(true);
+  });
+
+  it('STEP renders "<keyword> <read-back>" — the direction word is NOT orphaned', async () => {
+    // Buffer contract for STEP (mirrors the SET buffer tests). `volume up _`
+    // must render the final state "volume <value>", consuming the "up"
+    // direction word — not leave "volume up 60".
+    const { adapter } = await setupSettable(async () => STEP('up'));
+    adapter.stubBlankInvoke('volume:set', '');
+    adapter.stubBlankInvoke('volume:get', '60\n');
+    adapter.pushText('volume up _');
+    await tick(); await tick(); await tick(); await tick();
+    expect(adapter.getText()).toBe('volume 60');
+    expect(adapter.getText()).not.toContain('up'); // direction word consumed
   });
 
   it('STEP with a non-numeric current value degrades to a plain get (no set)', async () => {
