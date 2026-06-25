@@ -221,6 +221,33 @@ describe('BlankFill × BlankIntent typed-SET', () => {
     expect(calls.some(a => a.includes('set'))).toBe(false);
     expect(calls.some(a => a.includes('get'))).toBe(true);
   });
+
+  // BUFFER CONTRACT (the regression these tests exist for). The dispatch
+  // tests above proved the value changes; this pins what the user SEES.
+  // The bug: the typed value word ("40") sat between keyword and `_`, the
+  // `keep`-mode splice consumed only "volume" + "_", and the read-back was
+  // appended — leaving "volume 40 40". Fix renders the config-intent-style
+  // final state "<keyword> <read-back>", consuming the typed value.
+  it('SET renders "<keyword> <read-back>" — the typed value is NOT orphaned', async () => {
+    const { adapter } = await setupSettable(async () => SET('40'));
+    adapter.stubBlankInvoke('volume:set', '');      // set emits nothing
+    adapter.stubBlankInvoke('volume:get', '40\n');  // read-back
+    adapter.pushText('volume 40 _');
+    await tick(); await tick(); await tick(); await tick();
+    expect(adapter.getText()).toBe('volume 40');
+    // The bug shape — orphaned input word + appended read-back — must not appear.
+    expect(adapter.getText()).not.toMatch(/volume\s+40\s+40/);
+  });
+
+  it('SET shows the READ-BACK value, not the typed input (clamp fidelity)', async () => {
+    const { adapter } = await setupSettable(async () => SET('150'));
+    adapter.stubBlankInvoke('volume:set', '');
+    adapter.stubBlankInvoke('volume:get', '100\n'); // script clamped 150 → 100
+    adapter.pushText('volume 150 _');
+    await tick(); await tick(); await tick(); await tick();
+    expect(adapter.getText()).toBe('volume 100');   // final state, not the typed 150
+    expect(adapter.getText()).not.toContain('150');
+  });
 });
 
 describe('BlankFill × BlankIntent typed-STEP', () => {
@@ -254,6 +281,19 @@ describe('BlankFill × BlankIntent typed-STEP', () => {
     await tick(); await tick(); await tick(); await tick();
     const calls = setArgs(spawnSpy);
     expect(calls.some(a => a.includes('set') && a.includes('100'))).toBe(true);
+  });
+
+  it('STEP renders "<keyword> <read-back>" — the direction word is NOT orphaned', async () => {
+    // Buffer contract for STEP (mirrors the SET buffer tests). `volume up _`
+    // must render the final state "volume <value>", consuming the "up"
+    // direction word — not leave "volume up 60".
+    const { adapter } = await setupSettable(async () => STEP('up'));
+    adapter.stubBlankInvoke('volume:set', '');
+    adapter.stubBlankInvoke('volume:get', '60\n');
+    adapter.pushText('volume up _');
+    await tick(); await tick(); await tick(); await tick();
+    expect(adapter.getText()).toBe('volume 60');
+    expect(adapter.getText()).not.toContain('up'); // direction word consumed
   });
 
   it('STEP with a non-numeric current value degrades to a plain get (no set)', async () => {

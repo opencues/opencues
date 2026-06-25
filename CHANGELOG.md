@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — BlankIntent typed-SET/STEP leaves a clean final-state buffer (runtime 0.4.5)
+
+`volume 40 _` set the volume correctly but rendered `volume 40 40%` — the typed value word (`40`) sat between the keyword and `_`, the volume blank's `blankReplace: keep` splice consumed only `volume` + `_`, and the read-back was appended, orphaning the input value. Now typed-SET/STEP render the **final state** in the same `<label> <value>` shape config-intent uses (`voice mode off _` → `voice-mode off`): `volume 40 _` → `volume 40%`, `volume up _` → `volume 46%`. The value shown is the **read-back** (post-clamp), so `volume 150 _` lands as `volume 100%`. Plain GET (`volume _`) is unchanged. `applyAsyncFill` gained an optional `typedAction` param that prepends the keyword to the fill and widens the consumed range to swallow the typed value; threaded from the SET/STEP branch through `doDispatch`. Verified live on CC + OC and pinned by three new deterministic buffer-contract tests in `blank-fill.blank-intent.test.ts` (the prior tests asserted the value *changed* but never the buffer text — the gap that let this ship).
+
 ### Fixed — chrome: drop dead `restcountries.com` host permission (chrome 0.2.35)
 
 The countries blank moved to a bundled offline dataset (restcountries.com fully deprecated, June 2026), but the chrome extension still declared `https://restcountries.com/*` in `manifest.json` host_permissions and `FETCH_ALLOWED_ORIGINS` in `sw-auth.ts`. Both are now removed — the origin is never fetched, so the permission was dead surface a reviewer would flag at store-submission time. Lockstep `manifest.json` + `package.json` bump (0.2.34 → 0.2.35).
