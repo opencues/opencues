@@ -148,8 +148,11 @@ either has a matching OpenCuesState field OR is in the
 reads from the settings Map instead of the typed enum).
 
 Features that are read from the settings Map today:
-`fluidBlankMode`, `wordCuesMode`, `transformBlankMode` — all
-consumed in `resolver.ts` as boolean gates.
+`fluidBlankMode`, `wordCuesMode`, `transformBlankMode`,
+`fluidConfigMode`, `blankIntentMode` — all consumed in `resolver.ts`
+as boolean gates (`blankIntentMode` also threads a live `lineScoped`
+getter into the four claim/cede sources — see
+[`blank-intent.md`](blank-intent.md)).
 
 ---
 
