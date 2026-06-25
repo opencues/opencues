@@ -335,6 +335,64 @@ describe('BlankFill × BlankIntent loading coverage', () => {
     releaseGate(INVOKE);                  // let it finish so nothing leaks
     await tick(); await tick();
   });
+
+  // The "no dead gap" property: the loader started before the gate must NOT
+  // be stopped until the dispatch produces a result — i.e. it runs
+  // continuously gate → dispatch, not flash-stop-flash.
+  it('does not stop the loader between the gate and the dispatch (continuous coverage)', async () => {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/blanks/volume/BLANK.md': SETTABLE_CUE },
+    });
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const animator = new BlankLoadingAnimator({ adapter, mode: () => 'off', frameIntervalMs: () => 100 });
+    const startSpy = vi.spyOn(animator, 'start');
+    const stopSpy = vi.spyOn(animator, 'stop');
+    let releaseGate: (d: BlankIntentDecision) => void = () => {};
+    const gate: Gate = () => new Promise<BlankIntentDecision>((res) => { releaseGate = res; });
+    const bf = new BlankFill(adapter, loader, undefined, undefined, undefined, undefined, animator, gate);
+    bf.subscribe();
+    adapter.stubBlankInvoke('volume:get', '40\n'); // read-back for the dispatch
+
+    adapter.pushText('volume _');         // `_` at index 1
+    await tick(); await tick();
+    // Mid-gate: loader is running and has NOT been stopped (no premature stop).
+    expect(startSpy).toHaveBeenCalledWith(1, 'blank-fill');
+    expect(stopSpy).not.toHaveBeenCalled();
+
+    releaseGate(INVOKE);
+    await tick(); await tick(); await tick(); await tick();
+    // After the result: stopped exactly once, at the end.
+    expect(stopSpy).toHaveBeenCalledWith(1, 'blank-fill');
+  });
+
+  // No-leak on CEDE: when the gate suppresses the blank, the loader started
+  // for the classify window must be released (not left spinning forever).
+  it('releases the loader when the gate CEDEs (no leak)', async () => {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/blanks/volume/BLANK.md': SETTABLE_CUE },
+    });
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const animator = new BlankLoadingAnimator({ adapter, mode: () => 'off', frameIntervalMs: () => 100 });
+    const startSpy = vi.spyOn(animator, 'start');
+    const stopSpy = vi.spyOn(animator, 'stop');
+    let releaseGate: (d: BlankIntentDecision) => void = () => {};
+    const gate: Gate = () => new Promise<BlankIntentDecision>((res) => { releaseGate = res; });
+    const bf = new BlankFill(adapter, loader, undefined, undefined, undefined, undefined, animator, gate);
+    bf.subscribe();
+
+    adapter.pushText('the volume was lovely _');
+    await tick(); await tick();
+    expect(startSpy).toHaveBeenCalledWith(expect.any(Number), 'blank-fill'); // animated during classify
+
+    releaseGate(CEDE);
+    await tick(); await tick();
+    // CEDE suppresses the script — but the loader must be released.
+    expect(stopSpy).toHaveBeenCalledWith(expect.any(Number), 'blank-fill');
+  });
 });
 
 describe('BlankFill × BlankIntent typed-STEP', () => {
