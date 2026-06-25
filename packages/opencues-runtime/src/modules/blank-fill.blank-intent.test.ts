@@ -15,6 +15,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { BlankFill, type BlankIntentDecision } from './blank-fill';
+import { BlankLoadingAnimator } from './blank-loading';
 import { ConfigLoader } from './config-loader';
 import { MockAdapter, wrapTipsAsCuesMd } from '../../testing/mock-adapter';
 
@@ -299,6 +300,40 @@ describe('BlankFill × BlankIntent typed-SET', () => {
     await tick(); await tick(); await tick(); await tick();
     expect(adapter.getText()).toBe('set the volume 40'); // lead-in kept, "to 40" consumed
     expect(adapter.getText()).not.toMatch(/40\s+40/);    // no orphaned value
+  });
+});
+
+describe('BlankFill × BlankIntent loading coverage', () => {
+  // The lag fix: a gated script-blank must animate its `_` DURING the gate's
+  // LLM classification (~250-300ms), not only at the post-gate dispatch.
+  // Otherwise the slot sits dead for the whole classify window. Pin that
+  // start(slotIndex, 'blank-fill') fires WHILE the gate promise is pending.
+  it('starts the slot loader before the gate resolves (covers the classify window)', async () => {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/blanks/volume/BLANK.md': SETTABLE_CUE },
+    });
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const animator = new BlankLoadingAnimator({ adapter, mode: () => 'off', frameIntervalMs: () => 100 });
+    const startSpy = vi.spyOn(animator, 'start');
+    // A gate that stays PENDING until we release it — so any loader start we
+    // observe happened strictly during classification, before any dispatch.
+    let releaseGate: (d: BlankIntentDecision) => void = () => {};
+    const gate: Gate = () => new Promise<BlankIntentDecision>((res) => { releaseGate = res; });
+    const bf = new BlankFill(adapter, loader, undefined, undefined, undefined, undefined, animator, gate);
+    bf.subscribe();
+
+    adapter.pushText('volume 30 _');     // slot at index 2
+    await tick(); await tick();          // run the gate IIFE up to `await gate`
+
+    // Loader is animating the `_` while the gate is still unresolved.
+    const gateWindowStarts = startSpy.mock.calls.filter(c => c[1] === 'blank-fill');
+    expect(gateWindowStarts.length).toBeGreaterThanOrEqual(1);
+    expect(startSpy).toHaveBeenCalledWith(2, 'blank-fill');
+
+    releaseGate(INVOKE);                  // let it finish so nothing leaks
+    await tick(); await tick();
   });
 });
 

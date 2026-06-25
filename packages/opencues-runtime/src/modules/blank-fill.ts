@@ -474,6 +474,9 @@ export class BlankFill {
           // cached value is fresh.
           this._pendingScripts.delete(dedupKey);
           this.applyAsyncFill(slot, entry.output, typedAction);
+          // End the gate-window loader (started before the gate on the gated
+          // path). No-op on the ungated path, where it was never started.
+          this._loadingAnimator().stop(slot.index, 'blank-fill');
           return;
         }
       }
@@ -627,6 +630,14 @@ export class BlankFill {
         const gateText = text;
         const gateBlank = blank;
         void (async () => {
+          // Animate the `_` DURING the gate's LLM classification (~250-300ms),
+          // not just the post-gate dispatch — otherwise every gated script-blank
+          // (volume / weather / stocks / …) shows a dead `_` for the whole
+          // classify window (the lag users notice). Held with the SAME
+          // 'blank-fill' owner doDispatch reuses, so it animates continuously
+          // gate → dispatch → result; stopped here on any non-dispatch exit
+          // (stale / cede), and on doDispatch's cache-hit path.
+          this._loadingAnimator().start(slot.index, 'blank-fill');
           let decision: BlankIntentDecision = { verdict: 'invoke', action: 'get', value: null };
           try {
             decision = await gate(gateText, slot.blankName);
@@ -635,11 +646,13 @@ export class BlankFill {
             decision = { verdict: 'invoke', action: 'get', value: null };
           }
           if (this._lastInputText !== gateText) {
+            this._loadingAnimator().stop(slot.index, 'blank-fill');
             this._pendingScripts.delete(dedupKey);
             return;
           }
           if (decision.verdict === 'cede') {
             this.adapter.log('debug', `BlankFill: BlankIntent CEDE — suppressing ${slot.blankName} for "${gateText}"`);
+            this._loadingAnimator().stop(slot.index, 'blank-fill');
             this._pendingScripts.delete(dedupKey);
             return;
           }
@@ -660,7 +673,7 @@ export class BlankFill {
           if (decision.action === 'set' && decision.value && /^\d+$/.test(decision.value.trim()) && isSettable) {
             this.adapter.log('debug', `BlankFill: BlankIntent SET ${slot.blankName} → ${decision.value} (then read back)`);
             await this.runBlankSet(slot.blankName, decision.value.trim(), gateBlank as Record<string, unknown>);
-            if (this._lastInputText !== gateText) { this._pendingScripts.delete(dedupKey); return; }
+            if (this._lastInputText !== gateText) { this._loadingAnimator().stop(slot.index, 'blank-fill'); this._pendingScripts.delete(dedupKey); return; }
             typedAction = 'set';
           } else if (decision.action === 'step'
               && (decision.value === 'up' || decision.value === 'down')
@@ -671,12 +684,12 @@ export class BlankFill {
             // new value back. Same consent + settable guards as SET; a
             // non-numeric current (unparseable get) degrades to a plain get.
             const current = await this.runBlankGetValue(slot.blankName, gateBlank as Record<string, unknown>);
-            if (this._lastInputText !== gateText) { this._pendingScripts.delete(dedupKey); return; }
+            if (this._lastInputText !== gateText) { this._loadingAnimator().stop(slot.index, 'blank-fill'); this._pendingScripts.delete(dedupKey); return; }
             if (current !== null) {
               const next = Math.max(0, Math.min(100, decision.value === 'up' ? current + stepSize! : current - stepSize!));
               this.adapter.log('debug', `BlankFill: BlankIntent STEP ${slot.blankName} ${decision.value} → ${current}±${stepSize}=${next} (then read back)`);
               await this.runBlankSet(slot.blankName, String(next), gateBlank as Record<string, unknown>);
-              if (this._lastInputText !== gateText) { this._pendingScripts.delete(dedupKey); return; }
+              if (this._lastInputText !== gateText) { this._loadingAnimator().stop(slot.index, 'blank-fill'); this._pendingScripts.delete(dedupKey); return; }
               typedAction = 'step';
             }
           }
