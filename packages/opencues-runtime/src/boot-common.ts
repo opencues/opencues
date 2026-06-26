@@ -426,7 +426,7 @@ export function buildBlankIntentClassifier(
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { NodeHttpAdapter } = require('@opencues/core/node-http-adapter');
-      httpAdapter = new NodeHttpAdapter({ maxSockets: 2, timeout: 30000 });
+      httpAdapter = new NodeHttpAdapter({ maxSockets: 2, timeout: 30000 }); // BROWSER-SAFE-ALLOW: native-host fallback only — chrome passes httpAdapterOverride above
     } catch {
       return null;
     }

@@ -57,6 +57,11 @@ step "shell-portability lint" bash scripts/lint-shell-portability.sh
 # or carry a LEGACY-NAME-ALLOW marker on the same line.
 step "legacy-names lint" bash scripts/lint-legacy-names.sh
 
+# Catches runtime/core code that's silently dead in chrome's content script
+# (unguarded `process`, unmarked NodeHttpAdapter) — the class the esbuild
+# build can't see. See docs/architecture/chrome-runtime-compat.md.
+step "runtime browser-safe lint (chrome content-script compat)" bash scripts/lint-runtime-browser-safe.sh
+
 # ─── 2. Version-bump gate ──────────────────────────────────────────
 step "version-bump gate (vs origin/master)" bash scripts/lint-version-bump.sh
 

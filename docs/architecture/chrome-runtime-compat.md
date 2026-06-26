@@ -143,6 +143,28 @@ do the same on browser hosts.
 
 ---
 
+## Enforcement
+
+Rules 1 and 2 are caught automatically by **`scripts/lint-runtime-browser-safe.sh`**
+(wired into `scripts/pre-pr.sh` and the CI `runtime-browser-safe` job). It
+flags, in `packages/opencues-{core,runtime}/src`:
+
+- `process.X` accesses that aren't `typeof process`-guarded (within a few
+  lines), not an esbuild-`define`d key, and not in an allowlisted Node-only
+  module;
+- `new NodeHttpAdapter` without a `// BROWSER-SAFE-ALLOW: <reason>` marker.
+
+These are the two shapes the esbuild build **cannot** see (it covers unmarked
+`node:*` imports). Opt a specific line out with a `// BROWSER-SAFE-ALLOW:
+<reason>` marker (e.g. a `NodeHttpAdapter` that's only a native-host fallback),
+or add a genuinely Node-only module to the `NODE_ONLY` allowlist at the top of
+the script.
+
+What the lint **can't** prove: a feature that's wired in chrome but inert
+end-to-end (the silent-degrade itself). That gap wants a Playwright chrome E2E
+that fires a gated `_` and asserts the gate engages — a tracked follow-up. The
+`debug` boot/gate diagnostics above are the interim safety net.
+
 ## Related
 
 - `docs/architecture/cerebras.md`, `docs/features/chrome-sync.md` — chrome's
