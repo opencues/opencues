@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — BlankIntent gate now works in chrome (was silently dead) (runtime 0.4.7, chrome 0.2.42)
+
+The BlankIntent gate (`blank-intent-mode` — typed-SET `volume 40 _`, weather/stocks classification, CEDE-on-prose) worked on every native host but was **completely inert in chrome**, silently degrading every `_` to a plain GET (`volume 40 _` → `volume 40 100%`). Three stacked causes, all browser-only and all silent:
+
+1. **`process is not defined`** — `ConfigLoader.maybeReload` read `process.env.OPENCUES_BRIDGE` unguarded; `process` doesn't exist in a content script, so the `ReferenceError` killed config hot-reload and the keystroke handler. Fixed with a `typeof process !== 'undefined'` guard (general fix; helps any non-Node host).
+2. **gate never wired** — the chrome adapter band called `buildSharedRuntime` without `getApiKeys`, so `blankIntentGate` was built as `undefined` and never consulted. Now passes `getApiKeys: () => apiKeys` (mirrors OC).
+3. **classifier null in the browser** — `buildBlankIntentClassifier` constructed a `NodeHttpAdapter` (`node:https`, stubbed in the chrome bundle), so it returned `null` and the gate fell through to GET with no log. The classifier now accepts an `httpAdapter` override, threaded from `BuildSharedRuntimeOptions.blankIntentHttpAdapter`; the chrome band passes its fetch-based `host.httpAdapter` (same Node-vs-browser split the Resolver already handles). It also no longer caches a `null` classifier (chrome keys arrive async post-boot — it retries the build until it succeeds).
+
+Plus `debug`-level boot + gate-OFF diagnostics so a silently-degraded gate is observable with `debug-mode: on`. **New canonical doc `docs/architecture/chrome-runtime-compat.md`** captures the Node-vs-browser rules + a pre-ship checklist so runtime features stop shipping Node-only code that's dead in chrome; CLAUDE.md gets a matching drift-bug-pattern row. Verified live in chrome; full runtime suite green (1727).
+
 ### Fixed — loading animation covers the BlankIntent gate window (runtime 0.4.6)
 
 Gated script-blanks (volume / brightness / weather / stocks / crypto / dictionary / hackernews / countries — everything under `blank-intent-mode: on`) showed a dead `_` for the whole ~250–500ms gate classification, then a brief glyph only for the post-gate dispatch — a visible lag with no feedback. Root cause: the loader was started inside `doDispatch` (the script GET), which runs *after* the gate resolves; the gate's `await gate(...)` had no loader owner. Now the `_` loader starts **before** the gate call (same `blank-fill` owner `doDispatch` reuses) so it animates continuously gate → dispatch → result, and is stopped on every non-dispatch exit (stale / cede / cache-hit). Live trace: the old flash → ~500ms-dead → flash became one continuous start→stop spanning the whole operation. Resolver-owned LLM sources (transform-blank, config-intent) were already covered — the resolver holds the loader during their call — so this only affects the gate path. Pinned by a new test asserting `start(slotIndex, 'blank-fill')` fires while the gate promise is still pending.

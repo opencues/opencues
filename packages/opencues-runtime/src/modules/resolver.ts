@@ -620,7 +620,7 @@ export class Resolver {
           // Lazy require so tests without opencues-core/node-http-adapter still load.
           // eslint-disable-next-line @typescript-eslint/no-var-requires
           const { NodeHttpAdapter } = require('@opencues/core/node-http-adapter');
-          this._httpAdapter = new NodeHttpAdapter({ maxSockets: 2, timeout: 30000 });
+          this._httpAdapter = new NodeHttpAdapter({ maxSockets: 2, timeout: 30000 }); // BROWSER-SAFE-ALLOW: native-host fallback only — reached when this.options.httpAdapter is unset (chrome always passes it)
         } catch (err) {
           this.adapter.log('error', 'Resolver: NodeHttpAdapter load failed', err);
           return;

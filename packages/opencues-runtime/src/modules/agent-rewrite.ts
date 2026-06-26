@@ -821,7 +821,7 @@ export class AgentRewrite {
     if (this._httpAgent) return this._httpAgent;
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { NodeHttpAdapter } = require('@opencues/core/node-http-adapter');
-    this._httpAgent = new NodeHttpAdapter({ maxSockets: 2, timeout: 30000 });
+    this._httpAgent = new NodeHttpAdapter({ maxSockets: 2, timeout: 30000 }); // BROWSER-SAFE-ALLOW: native-host fallback only — getHttpAgent is bypassed in chrome (options.httpAdapter wins at the call site)
     return this._httpAgent!;
   }
 }

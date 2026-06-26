@@ -124,6 +124,21 @@ jobs:
       - name: Run legacy-names lint
         run: bash scripts/lint-legacy-names.sh
 
+  runtime-browser-safe:
+    name: runtime browser-safe lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    # Catches runtime/core code that's silently dead in chrome's content
+    # script — unguarded `process` (ReferenceError) and unmarked
+    # `new NodeHttpAdapter` (node:https, stubbed → no-op). The esbuild build
+    # can't see either. See docs/architecture/chrome-runtime-compat.md and the
+    # BlankIntent-gate-dead-in-chrome row in CLAUDE.md § drift-bug patterns.
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run runtime browser-safe lint
+        run: bash scripts/lint-runtime-browser-safe.sh
+
   # ── install-dependent gates ──────────────────────────────────────────
   cc-patch-boot-smoke:
     name: CC patch boot smoke
