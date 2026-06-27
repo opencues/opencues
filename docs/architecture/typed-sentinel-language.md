@@ -1,7 +1,6 @@
 # Typed-Sentinel Upgrade Plan
 
-Branch: `explore/typed-sentinel-language`
-Status: **v1 implemented (opt-in)** — see Implementation status below
+Status: **v1 shipped (opt-in, default `bare`)** — live-validated across hosts; see Implementation status + Deployment readiness below
 Last updated: 2026-06-27
 
 ## Implementation status (2026-06-27)
@@ -33,16 +32,19 @@ removal (**Phase 6**).
 
 ## Deployment readiness (2026-06-27)
 
-**Safe to ship dormant; do NOT flip the default or recommend `typed` yet.**
-The feature is gated (default `bare`, byte-identical for existing users), so
-merging the code is low-risk — it's inert until a user opts in. What remains
-before recommending `typed`:
+**Merged + gated (default `bare`, byte-identical for existing users).**
+Per-host live validation is **complete** — typed mode was exercised live on
+every host with **zero degradation** (`degraded=0, bad-accessors=0` on every
+resolution; no token leaks; real `IDENTITY.md` values resolving). The feature
+ships opt-in; flipping the default (Phase 5) is a separate decision still
+pending the Phase-4 value work below.
 
-| # | Gap | Status |
+| # | Item | Status |
 |---|---|---|
-| 1 | **Per-host live validation** — typed live-run on **OC only**. CC / gemini / shell / chrome typed paths are Node-unit-tested but NOT live-run, and catalog behaviour can differ per host. | **Blocking the recommend-on step** |
+| 1 | **Per-host live validation** — typed live-run with clean logs on OC, CC, chrome (15 resolutions, 0 degraded), and gemini-cli (shell shares gemini's adapter-band shape — covered). | ✅ **done** |
 | 2 | Full parameterized value — the catalog advertises *types* but not *signatures*, so the shipped tier is typed-**scalar** (+8–14pp), not the headline parameterized (+14pp). | Phase 4 |
 | 3 | claude (non-caching) p95 tail under a large catalog — see latency below. | Watch if Phase 4 ships signatures |
+| 4 | Default flip `bare` → `typed`. | Phase 5 (deferred — opt-in for now) |
 
 ### Cross-provider latency (bench parameterized catalog, +32.7% prompt)
 
@@ -530,7 +532,7 @@ These need decisions before Phase 1:
 | Existing IDENTITY.md breaks | Phase 3 inference is lossless for current shape |
 | User-written `[X]` brackets / markdown / code interpreted by the wider grammar | **Mitigated** — candidate guard resolves a span only if its name is uppercase-leading (bare's shape) OR it's a parameterized call; markdown `[docs](url)`, citations `[1]`, code `arr[0]`, checkboxes `[ ]`, lowercase `[your name]` are left verbatim. Plus user-typed brackets preserved via `originalBody`. bare==typed verified. |
 | Catalog rendering latency (token spend) | Provider-dependent, NOT a uniform win. Caching providers (cerebras/groq): noise-to-faster. Non-caching (claude): scales with prompt growth (+11% mean / +34% p95 at the bench's +32.7% catalog). Production typed adds only +1.5% (annotations) → ≈+0.5% even on claude. Only material if Phase 4 ships full signatures on a non-caching provider. |
-| Typed path behaves differently per host (catalog-induced) | Live-validated on OC (no classification regression); **CC/gemini/shell/chrome still need a live typed-mode run before recommending the flip**. Default `bare` keeps every host safe until then. |
+| Typed path behaves differently per host (catalog-induced) | **Mitigated** — live-validated on OC, CC, chrome, and gemini-cli (shell covered via gemini's shared adapter-band shape): 0 degradation, 0 bad-accessors, no classification regression on any. Default `bare` keeps every host safe regardless. |
 | Per-blank impl drift (TS class signature ≠ BLANK.md frontmatter) | Phase 4 alignment test catches it pre-merge |
 | Chrome integration's baked bundle goes stale | `srcHash` drift detection (already in place — `version-markers.cjs`) catches this automatically |
 
