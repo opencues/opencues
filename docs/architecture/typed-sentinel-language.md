@@ -12,7 +12,11 @@ The core grammar is **shipped behind `sentinel-language: typed`** (default
 - **Engine** — `packages/opencues-core/src/typed-sentinel.ts`: catalog
   renderer, recursive parser, innermost-first resolver with the
   validate-and-degrade contract + the runtime bridges (scalar lookup,
-  fn→instance-token bridge, JSON accessor). 36 unit tests.
+  fn→instance-token bridge, JSON accessor). 41 unit tests (incl. a
+  **candidate guard** so the wider `[...]` grammar never strips
+  markdown/code/citation brackets — `[docs](url)`, `[1]`, `arr[0]`,
+  `[ ]`, lowercase `[your name]` — that bare's uppercase-only regex
+  leaves alone; bare==typed verified on all of them).
 - **Gate** — `sentinel-language` scalar in `feature-registry.ts` +
   `OpenCuesState`; threaded to sources via `CueContext.sentinelLanguage`.
 - **Wiring** — typed catalog rendering + post-LLM resolution in **both**
@@ -26,6 +30,42 @@ fluid-blank paths; **Phase 3 (IDENTITY type inference)** is auto-derived
 `signature:` / `returns:` declaration surface (**Phase 4** — v1 auto-derives
 types so no dead metadata ships), the default flip (**Phase 5**), and legacy
 removal (**Phase 6**).
+
+## Deployment readiness (2026-06-27)
+
+**Safe to ship dormant; do NOT flip the default or recommend `typed` yet.**
+The feature is gated (default `bare`, byte-identical for existing users), so
+merging the code is low-risk — it's inert until a user opts in. What remains
+before recommending `typed`:
+
+| # | Gap | Status |
+|---|---|---|
+| 1 | **Per-host live validation** — typed live-run on **OC only**. CC / gemini / shell / chrome typed paths are Node-unit-tested but NOT live-run, and catalog behaviour can differ per host. | **Blocking the recommend-on step** |
+| 2 | Full parameterized value — the catalog advertises *types* but not *signatures*, so the shipped tier is typed-**scalar** (+8–14pp), not the headline parameterized (+14pp). | Phase 4 |
+| 3 | claude (non-caching) p95 tail under a large catalog — see latency below. | Watch if Phase 4 ships signatures |
+
+### Cross-provider latency (bench parameterized catalog, +32.7% prompt)
+
+The runtime resolver is microseconds either way (engine resolve ≈ bare
+`postProcessContext`; both <15µs — negligible vs any LLM call). LLM-side
+latency depends entirely on the provider's prompt-prefix caching:
+
+| Provider | p50 | mean | p95 | Prefix cache |
+|---|---|---|---|---|
+| **cerebras** | −1.7% | +4.1% | +4.3% | ✅ auto |
+| **groq** | −9.4% | −12.0% | −15.9% | ✅ auto |
+| **claude (haiku)** | +9.2% | +10.7% | **+34.1%** | ❌ none (this path) |
+
+On the prefix-caching providers (cerebras/groq — OpenCues' defaults) typed is
+free-to-faster. claude has no auto prefix cache here, so a bigger catalog
+lands directly on TTFT.
+
+**Critical scaling note:** these are the bench's full parameterized catalog
+(+32.7% prompt). **Production typed rendering only adds type annotations
+(+1.5% prompt)** — so claude's real impact today is ≈ +0.5% (a rounding
+error). The +34% p95 only becomes relevant **if Phase 4 ships full
+parameterized signatures (+32.7%) AND the user runs a non-caching provider**;
+mitigate then with prompt-prefix caching or a per-provider catalog-size cap.
 
 ## What this plan covers
 
@@ -488,8 +528,9 @@ These need decisions before Phase 1:
 | Risk | Mitigation |
 |---|---|
 | Existing IDENTITY.md breaks | Phase 3 inference is lossless for current shape |
-| User-written `[X]` brackets in prose get interpreted | Already a problem today; new parser keeps the same scope (only resolves brackets that match a catalog id) |
-| Catalog rendering blows up token spend | Probe data: prompt grows 33% but latency drops 10-25%. Net win. |
+| User-written `[X]` brackets / markdown / code interpreted by the wider grammar | **Mitigated** — candidate guard resolves a span only if its name is uppercase-leading (bare's shape) OR it's a parameterized call; markdown `[docs](url)`, citations `[1]`, code `arr[0]`, checkboxes `[ ]`, lowercase `[your name]` are left verbatim. Plus user-typed brackets preserved via `originalBody`. bare==typed verified. |
+| Catalog rendering latency (token spend) | Provider-dependent, NOT a uniform win. Caching providers (cerebras/groq): noise-to-faster. Non-caching (claude): scales with prompt growth (+11% mean / +34% p95 at the bench's +32.7% catalog). Production typed adds only +1.5% (annotations) → ≈+0.5% even on claude. Only material if Phase 4 ships full signatures on a non-caching provider. |
+| Typed path behaves differently per host (catalog-induced) | Live-validated on OC (no classification regression); **CC/gemini/shell/chrome still need a live typed-mode run before recommending the flip**. Default `bare` keeps every host safe until then. |
 | Per-blank impl drift (TS class signature ≠ BLANK.md frontmatter) | Phase 4 alignment test catches it pre-merge |
 | Chrome integration's baked bundle goes stale | `srcHash` drift detection (already in place — `version-markers.cjs`) catches this automatically |
 
