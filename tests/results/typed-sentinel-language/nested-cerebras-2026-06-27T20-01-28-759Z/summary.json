@@ -1,0 +1,12 @@
+{
+  "provider": "cerebras",
+  "model": "gpt-oss-120b",
+  "summary": {
+    "n": 10,
+    "nested": 1,
+    "outerHit": 1,
+    "innerHit": 1,
+    "literalHit": 1,
+    "overall": 1
+  }
+}

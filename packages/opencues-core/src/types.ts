@@ -153,6 +153,16 @@ export interface CueContext {
     mode: 'safe' | 'raw';
   };
 
+  /**
+   * Sentinel grammar for rendering + resolving identity-/blank-context
+   * tokens. `undefined` / `'bare'` → flat `[TOKEN]` form (the default,
+   * byte-identical to pre-feature behaviour). `'typed'` → the
+   * parameterized + nested + field-access grammar, parsed + resolved by
+   * `@opencues/core`'s typed-sentinel engine. Threaded from
+   * OPENCUES.md's `sentinel-language` scalar via the runtime resolver.
+   */
+  sentinelLanguage?: 'bare' | 'typed';
+
   /** Additional context for the analysis */
   metadata?: Record<string, unknown>;
 

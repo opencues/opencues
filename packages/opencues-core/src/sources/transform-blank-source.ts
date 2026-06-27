@@ -49,6 +49,12 @@ import {
   type BlankContextSnapshot,
   type BlankContextMode,
 } from '../blank-context';
+import {
+  resolveTypedSentinels,
+  catalogScalarLookup,
+  instanceTokenFnBridge,
+  jsonFieldAccessor,
+} from '../typed-sentinel';
 
 // ============================================================================
 // Prompts — ported verbatim from tests/benchmarks/transform-blank/
@@ -567,7 +573,7 @@ export class TransformBlankSource implements CueSource {
     if (!uc) return { block: '', ctx: undefined };
     const ctx: Identity = { fields: uc.fields, catalog: uc.catalog };
     const mode: ContextMode = uc.mode;
-    const block = renderIdentityContextCatalogForTransform(ctx, mode);
+    const block = renderIdentityContextCatalogForTransform(ctx, mode, context.sentinelLanguage);
     if (block) {
       this.log(`TransformBlank: identity-context: injected (mode=${mode}, ${ctx.fields.length} field${ctx.fields.length === 1 ? '' : 's'})`);
     }
@@ -594,7 +600,7 @@ export class TransformBlankSource implements CueSource {
     if (!bc) return { block: '', snapshot: undefined };
     const snapshot: BlankContextSnapshot = { fields: bc.fields, catalog: bc.catalog };
     const mode: BlankContextMode = bc.mode;
-    const block = renderBlankContextCatalogForTransform(snapshot, mode);
+    const block = renderBlankContextCatalogForTransform(snapshot, mode, context.sentinelLanguage);
     if (block) {
       this.log(`TransformBlank: blank-context: injected (mode=${mode}, ${snapshot.fields.length} slot${snapshot.fields.length === 1 ? '' : 's'})`);
     }
@@ -614,6 +620,7 @@ export class TransformBlankSource implements CueSource {
     originalBody: string,
     ctx: Identity | undefined,
     blankSnapshot?: BlankContextSnapshot | undefined,
+    sentinelLanguage: 'bare' | 'typed' = 'bare',
   ): string {
     const hasIdentity = ctx && ctx.catalog.size > 0;
     const hasBlank = blankSnapshot && blankSnapshot.catalog.size > 0;
@@ -623,6 +630,27 @@ export class TransformBlankSource implements CueSource {
       : hasIdentity
         ? ctx!.catalog
         : blankSnapshot!.catalog;
+    // Typed grammar (opt-in via `sentinel-language: typed`): resolve the
+    // parameterized + nested + field-access forms with the typed-sentinel
+    // engine. The scalar lookup is a strict superset of bare matching
+    // (exact + canonical), so any flat `[TOKEN]` resolves identically; the
+    // engine additionally handles `[STOCK PRICE(ticker=NVDA)]` (bridged to
+    // the pre-fetched `[STOCK NVDA]` instance) and nested composition, with
+    // validate-and-degrade on unknown ids / bad accessors.
+    if (sentinelLanguage === 'typed') {
+      const scalarLookup = catalogScalarLookup(catalog);
+      const r = resolveTypedSentinels(rewrite, {
+        scalarLookup,
+        callFn: instanceTokenFnBridge(scalarLookup),
+        applyAccessor: jsonFieldAccessor,
+        originalBody,
+        preserveUnknown: true,
+      });
+      if (r.report.resolved.length || r.report.badAccessors.length) {
+        this.log(`TransformBlank: typed-sentinel resolved=${r.report.resolved.length}, degraded=${r.report.degraded.length}, bad-accessors=${r.report.badAccessors.length}, preserved=${r.report.preserved.length}`);
+      }
+      return r.output;
+    }
     const pp = postProcessContext(rewrite, {
       catalog,
       originalBody,
@@ -872,7 +900,7 @@ export class TransformBlankSource implements CueSource {
     // for non-user entities ([Recipient Name], [Date]) survive untouched.
     const f = {
       ...fParsed,
-      rewrite: this.resolveSentinels(fParsed.rewrite, context.text, fusedUserCtx, fusedBlankSnapshot),
+      rewrite: this.resolveSentinels(fParsed.rewrite, context.text, fusedUserCtx, fusedBlankSnapshot, context.sentinelLanguage),
     };
     this.log(`TransformBlank FUSED (${Date.now() - fusedStart}ms, max_tokens=${fusedTokens}, source=${sourceTag}): verdict=${f.verdict}, instruction="${f.instruction}", target="${preview(f.target)}", rewrite="${preview(f.rewrite)}"`);
     this.emit({

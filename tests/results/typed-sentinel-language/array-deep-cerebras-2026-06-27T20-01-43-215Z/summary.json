@@ -1,0 +1,44 @@
+{
+  "provider": "cerebras",
+  "model": "gpt-oss-120b",
+  "full": {
+    "overall": {
+      "n": 31,
+      "selection": 1,
+      "limit": 1,
+      "noFabrication": 0.8064516129032258,
+      "bailedAppropriately": 1,
+      "format": 1,
+      "overall": 0.9612903225806453
+    },
+    "byDim": {
+      "cardinality-explicit": 0.9714285714285714,
+      "cardinality-implicit": 1,
+      "cardinality-unspecified": 0.9333333333333332,
+      "filter": 1,
+      "sort": 0.95,
+      "aggregation": 1,
+      "element-access": 0.8800000000000001
+    }
+  },
+  "narrow": {
+    "overall": {
+      "n": 31,
+      "selection": 0.9354838709677419,
+      "limit": 1,
+      "noFabrication": 0.9032258064516129,
+      "bailedAppropriately": 0.9032258064516129,
+      "format": 1,
+      "overall": 0.9483870967741937
+    },
+    "byDim": {
+      "cardinality-explicit": 1,
+      "cardinality-implicit": 1,
+      "cardinality-unspecified": 1,
+      "filter": 0.96,
+      "sort": 1,
+      "aggregation": 0.9333333333333332,
+      "element-access": 0.76
+    }
+  }
+}

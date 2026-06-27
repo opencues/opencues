@@ -1,0 +1,116 @@
+{
+  "provider": "cerebras",
+  "model": "gpt-oss-120b",
+  "languages": [
+    "bare",
+    "typed-scalar",
+    "parameterized",
+    "natural",
+    "json-call",
+    "hybrid"
+  ],
+  "summaries": {
+    "bare": {
+      "overall": 0.7823529411764708,
+      "selection": 0.7058823529411765,
+      "parameters": 0.5882352941176471,
+      "format": 0.7941176470588235,
+      "hallucination": 0.9411764705882353,
+      "cardinality": 0.8823529411764706,
+      "byCategory": {
+        "scalar": 0.9333333333333332,
+        "param-single": 0.6333333333333334,
+        "param-multi": 0.8,
+        "array": 0.76,
+        "field-select": 0.7000000000000001,
+        "composition": 0.68,
+        "unsupported": 1
+      }
+    },
+    "typed-scalar": {
+      "overall": 0.8647058823529414,
+      "selection": 0.6764705882352942,
+      "parameters": 0.9411764705882353,
+      "format": 0.7941176470588235,
+      "hallucination": 0.9705882352941176,
+      "cardinality": 0.9411764705882353,
+      "byCategory": {
+        "scalar": 0.9333333333333332,
+        "param-single": 0.7999999999999999,
+        "param-multi": 0.9,
+        "array": 0.9199999999999999,
+        "field-select": 0.8,
+        "composition": 0.72,
+        "unsupported": 1
+      }
+    },
+    "parameterized": {
+      "overall": 0.9470588235294118,
+      "selection": 0.8823529411764706,
+      "parameters": 1,
+      "format": 0.9117647058823529,
+      "hallucination": 0.9411764705882353,
+      "cardinality": 1,
+      "byCategory": {
+        "scalar": 0.9333333333333332,
+        "param-single": 0.9,
+        "param-multi": 1,
+        "array": 1,
+        "field-select": 1,
+        "composition": 0.8400000000000001,
+        "unsupported": 1
+      }
+    },
+    "natural": {
+      "overall": 0.9470588235294118,
+      "selection": 0.8823529411764706,
+      "parameters": 0.9705882352941176,
+      "format": 0.9705882352941176,
+      "hallucination": 0.9411764705882353,
+      "cardinality": 0.9705882352941176,
+      "byCategory": {
+        "scalar": 1,
+        "param-single": 0.9,
+        "param-multi": 0.95,
+        "array": 1,
+        "field-select": 1,
+        "composition": 0.8,
+        "unsupported": 1
+      }
+    },
+    "json-call": {
+      "overall": 0.9588235294117647,
+      "selection": 0.9411764705882353,
+      "parameters": 0.9705882352941176,
+      "format": 0.9705882352941176,
+      "hallucination": 0.9117647058823529,
+      "cardinality": 1,
+      "byCategory": {
+        "scalar": 1,
+        "param-single": 0.9,
+        "param-multi": 1,
+        "array": 1,
+        "field-select": 1,
+        "composition": 0.8400000000000001,
+        "unsupported": 1
+      }
+    },
+    "hybrid": {
+      "overall": 0.9470588235294118,
+      "selection": 0.8823529411764706,
+      "parameters": 1,
+      "format": 0.9117647058823529,
+      "hallucination": 0.9411764705882353,
+      "cardinality": 1,
+      "byCategory": {
+        "scalar": 0.9333333333333332,
+        "param-single": 0.9,
+        "param-multi": 1,
+        "array": 1,
+        "field-select": 1,
+        "composition": 0.8400000000000001,
+        "unsupported": 1
+      }
+    }
+  }
+}
