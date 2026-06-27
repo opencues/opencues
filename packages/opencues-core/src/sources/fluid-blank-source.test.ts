@@ -767,6 +767,70 @@ describe('FluidBlankSource with ambient context', () => {
     assert.deepStrictEqual(result.results[0]!.alternatives, ['_', 'wilfred@example.com']);
   });
 
+  it('typed mode: annotates the catalog token with its type + resolves a flat token', async () => {
+    const { adapter, bodies } = makeRecordingAdapter(['SPAN: my email _\nANSWER: [EMAIL]']);
+    const src = new FluidBlankSource({ ...baseConfig, httpAdapter: adapter });
+    const result = await src.getCues({
+      text: 'my email _',
+      words: ['my', 'email', '_'],
+      identityContext: {
+        fields: [{ key: 'email', token: '[EMAIL]', value: 'wilfred@example.com', description: "user's email" }],
+        catalog: new Map([['[EMAIL]', 'wilfred@example.com']]),
+        mode: 'safe',
+      },
+      sentinelLanguage: 'typed',
+    });
+    const systemMsg = JSON.parse(bodies[0]).messages.find((m: { role: string }) => m.role === 'system').content;
+    assert.match(systemMsg, /\[EMAIL: string\]/); // typed annotation
+    assert.deepStrictEqual(result.results[0]!.alternatives, ['_', 'wilfred@example.com']);
+  });
+
+  it('typed mode: resolves a NESTED composition via the instance-token bridge', async () => {
+    // [WEATHER TEMP(city=[WORK CITY])] → city=London → bridged to [WEATHER LONDON]=14°C
+    const { adapter } = makeRecordingAdapter(['SPAN: weather where i work _\nANSWER: [WEATHER TEMP(city=[WORK CITY])]']);
+    const src = new FluidBlankSource({ ...baseConfig, httpAdapter: adapter });
+    const result = await src.getCues({
+      text: 'weather where i work _',
+      words: ['weather', 'where', 'i', 'work', '_'],
+      identityContext: {
+        fields: [{ key: 'workCity', token: '[WORK CITY]', value: 'London', description: 'work city' }],
+        catalog: new Map([['[WORK CITY]', 'London']]),
+        mode: 'safe',
+      },
+      blankContext: {
+        fields: [{ token: '[WEATHER LONDON]', description: 'temp in London', value: '14°C' }],
+        catalog: new Map([['[WEATHER LONDON]', '14°C']]),
+        mode: 'safe',
+      },
+      sentinelLanguage: 'typed',
+    });
+    assert.deepStrictEqual(result.results[0]!.alternatives, ['_', '14°C']);
+  });
+
+  it('bare mode (default) does NOT engage the typed engine on a parameterized form', async () => {
+    const { adapter } = makeRecordingAdapter(['SPAN: weather where i work _\nANSWER: [WEATHER TEMP(city=[WORK CITY])]']);
+    const src = new FluidBlankSource({ ...baseConfig, httpAdapter: adapter });
+    const result = await src.getCues({
+      text: 'weather where i work _',
+      words: ['weather', 'where', 'i', 'work', '_'],
+      identityContext: {
+        fields: [{ key: 'workCity', token: '[WORK CITY]', value: 'London', description: 'work city' }],
+        catalog: new Map([['[WORK CITY]', 'London']]),
+        mode: 'safe',
+      },
+      blankContext: {
+        fields: [{ token: '[WEATHER LONDON]', description: 'temp in London', value: '14°C' }],
+        catalog: new Map([['[WEATHER LONDON]', '14°C']]),
+        mode: 'safe',
+      },
+      // sentinelLanguage omitted → bare. Flat regex resolves inner [WORK CITY]
+      // only; outer parameterized wrapper stays literal; never reaches 14°C.
+    });
+    const answer = result.results[0]!.alternatives[1];
+    assert.match(answer, /\[WEATHER TEMP\(city=London\)\]/);
+    assert.doesNotMatch(answer, /14°C/);
+  });
+
   it('post-processes: hallucinated unlisted token is stripped before reaching the buffer', async () => {
     // Claude-style hallucination case: LLM invents `[DATE OF BIRTH]`
     // which isn't in the catalog. The post-processor must strip it

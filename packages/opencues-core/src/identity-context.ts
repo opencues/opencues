@@ -210,13 +210,17 @@ function autoDescribe(key: string): string {
  * Returns an empty string when the catalog has no entries, so the
  * caller can append the result verbatim without conditional logic.
  */
-export function renderIdentityContextCatalog(ctx: Identity, mode: ContextMode): string {
+export function renderIdentityContextCatalog(ctx: Identity, mode: ContextMode, language: 'bare' | 'typed' = 'bare'): string {
   if (mode === 'off' || ctx.fields.length === 0) return '';
   const header = `USER CONTEXT — available tokens (emit verbatim; the runtime substitutes the real value before it reaches the user's buffer):`;
+  // Typed grammar (opt-in): annotate each scalar token with its return type
+  // (`[FIRST NAME]` → `[FIRST NAME: string]`). Rules below unchanged.
+  const typeAnno = (token: string): string =>
+    language === 'typed' ? token.replace(/\]$/, ': string]') : token;
   const lines = ctx.fields.map(f =>
     mode === 'raw'
-      ? `- ${f.token} — ${f.description} (value: ${f.value})`
-      : `- ${f.token} — ${f.description}`,
+      ? `- ${typeAnno(f.token)} — ${f.description} (value: ${f.value})`
+      : `- ${typeAnno(f.token)} — ${f.description}`,
   );
   const rules = `RULES for these tokens (strict):
 1. Emit the token EXACTLY as written above. Format is [UPPERCASE WORDS SEPARATED BY ONE SPACE]. Do NOT use snake_case or camelCase. Do NOT translate.

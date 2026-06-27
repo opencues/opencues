@@ -21,7 +21,7 @@ Evidence: `tests/benchmarks/typed-sentinel-language/` — 8 probes, ~3000 case-r
 
 Implementation:
 - **`packages/opencues-core/src/typed-sentinel.ts`** — pure engine: `renderTypedCatalog`, `parseTypedSentinels` (recursive bracket parser), `resolveTypedSentinels` (innermost-first with the **validate-and-degrade** contract — a bad accessor drops to the base value, an unknown id strips/preserves, malformed input never throws), plus the runtime bridges (`catalogScalarLookup`, `instanceTokenFnBridge`, `jsonFieldAccessor`). 36 unit tests.
-- Gated catalog rendering + post-LLM resolution wired into `transform-blank-source.ts` behind `CueContext.sentinelLanguage` (threaded from OPENCUES.md via the resolver). 8 integration tests prove typed resolution + that the `bare` path never engages the typed engine.
+- Gated catalog rendering + post-LLM resolution wired into **both** `transform-blank-source.ts` and `fluid-blank-source.ts` behind `CueContext.sentinelLanguage` (threaded from OPENCUES.md via the resolver). 11 integration tests (8 transform + 3 fluid-blank) prove typed resolution + nested-bridge composition + that the `bare` path never engages the typed engine. FluidBlank keeps its exhaustive-catalog `preserveUnknown:false` strip; TransformBlank keeps `preserveUnknown:true`.
 - `sentinel-language` added to the FEATURES registry + `OpenCuesState` (alignment test green).
 
 **Not a spec change** — `sentinel-language` is a reference-impl rendering knob (like `debug-mode` / `voice-mode`), `SPEC_VERSION` unchanged. The explicit BLANK.md `signature:` / `returns:` declaration surface (plan Phase 4) is a documented follow-on; v1 auto-derives types so nothing ships dead.

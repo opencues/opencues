@@ -29,6 +29,7 @@ import { keywordInWindow, lineOfWords } from '../keyword-window';
 import { useStrictJson, buildJsonResponseFormat, describeLLMCall, dispatchChat, getProvider, type ProviderAdapter } from '../llm-provider';
 import { renderIdentityContextCatalog, postProcessContext, type Identity, type ContextMode } from '../identity-context';
 import { renderBlankContextCatalog, mergeCatalogs, type BlankContextSnapshot, type BlankContextMode } from '../blank-context';
+import { resolveTypedSentinels, catalogScalarLookup, instanceTokenFnBridge, jsonFieldAccessor } from '../typed-sentinel';
 
 // ─── Ambient-context sanitization + injection ──────────────────────
 //
@@ -988,7 +989,7 @@ export class FluidBlankSource implements CueSource {
         ? { fields: context.identityContext.fields, catalog: context.identityContext.catalog }
         : undefined;
       const userMode: ContextMode = context.identityContext?.mode ?? 'off';
-      const userCatalogBlock = userCtx ? renderIdentityContextCatalog(userCtx, userMode) : '';
+      const userCatalogBlock = userCtx ? renderIdentityContextCatalog(userCtx, userMode, context.sentinelLanguage) : '';
       if (userCtx && userCatalogBlock) {
         this.logInfo(`FluidBlank: identity-context: injected (mode=${userMode}, ${userCtx.fields.length} field${userCtx.fields.length === 1 ? '' : 's'})`);
       } else if (context.identityContext) {
@@ -1003,7 +1004,7 @@ export class FluidBlankSource implements CueSource {
         ? { fields: context.blankContext.fields, catalog: context.blankContext.catalog }
         : undefined;
       const bcMode: BlankContextMode = context.blankContext?.mode ?? 'off';
-      const blankContextBlock = bcSnapshot ? renderBlankContextCatalog(bcSnapshot, bcMode) : '';
+      const blankContextBlock = bcSnapshot ? renderBlankContextCatalog(bcSnapshot, bcMode, context.sentinelLanguage) : '';
       if (bcSnapshot && blankContextBlock) {
         this.logInfo(`FluidBlank: blank-context: injected (mode=${bcMode}, ${bcSnapshot.fields.length} token${bcSnapshot.fields.length === 1 ? '' : 's'})`);
       }
@@ -1064,16 +1065,35 @@ export class FluidBlankSource implements CueSource {
       const blankCtxCatalog = bcSnapshot?.catalog ?? new Map<string, string>();
       const mergedCatalog = mergeCatalogs(sentinelCatalog, blankCtxCatalog);
       if (mergedCatalog.size > 0) {
-        const pp = postProcessContext(answer, {
-          catalog: mergedCatalog,
-          // Pass context.text as originalBody so any bracket-token
-          // the user typed in their buffer (e.g. writing docs about
-          // the sentinel API) is preserved verbatim.
-          originalBody: context.text,
-        });
-        finalAnswer = pp.output;
-        if (pp.report.resolved.length || pp.report.tolerantMatches.length || pp.report.stripped.length) {
-          this.logInfo(`FluidBlank: ctx-post-processed (resolved=${pp.report.resolved.length}, tolerant=${pp.report.tolerantMatches.length}, stripped=${pp.report.stripped.length})`);
+        if (context.sentinelLanguage === 'typed') {
+          // Typed grammar (opt-in): resolve parameterized + nested + accessor
+          // forms via the typed-sentinel engine. preserveUnknown:false mirrors
+          // the bare path below — FluidBlank's catalog is EXHAUSTIVE by
+          // contract, so an unresolved token is stripped, not kept.
+          const scalarLookup = catalogScalarLookup(mergedCatalog);
+          const r = resolveTypedSentinels(answer, {
+            scalarLookup,
+            callFn: instanceTokenFnBridge(scalarLookup),
+            applyAccessor: jsonFieldAccessor,
+            originalBody: context.text,
+            preserveUnknown: false,
+          });
+          finalAnswer = r.output;
+          if (r.report.resolved.length || r.report.degraded.length || r.report.badAccessors.length) {
+            this.logInfo(`FluidBlank: typed-sentinel resolved=${r.report.resolved.length}, degraded=${r.report.degraded.length}, bad-accessors=${r.report.badAccessors.length}`);
+          }
+        } else {
+          const pp = postProcessContext(answer, {
+            catalog: mergedCatalog,
+            // Pass context.text as originalBody so any bracket-token
+            // the user typed in their buffer (e.g. writing docs about
+            // the sentinel API) is preserved verbatim.
+            originalBody: context.text,
+          });
+          finalAnswer = pp.output;
+          if (pp.report.resolved.length || pp.report.tolerantMatches.length || pp.report.stripped.length) {
+            this.logInfo(`FluidBlank: ctx-post-processed (resolved=${pp.report.resolved.length}, tolerant=${pp.report.tolerantMatches.length}, stripped=${pp.report.stripped.length})`);
+          }
         }
       }
 

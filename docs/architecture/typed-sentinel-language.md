@@ -15,17 +15,17 @@ The core grammar is **shipped behind `sentinel-language: typed`** (default
   fn→instance-token bridge, JSON accessor). 36 unit tests.
 - **Gate** — `sentinel-language` scalar in `feature-registry.ts` +
   `OpenCuesState`; threaded to sources via `CueContext.sentinelLanguage`.
-- **Wiring** — typed catalog rendering + post-LLM resolution in
-  `transform-blank-source.ts` behind the gate. 8 integration tests.
+- **Wiring** — typed catalog rendering + post-LLM resolution in **both**
+  `transform-blank-source.ts` and `fluid-blank-source.ts` behind the gate.
+  11 integration tests (8 transform + 3 fluid-blank).
 
 Maps to the phases below: **Phase 1 (parser + back-compat)** and
-**Phase 2 (catalog rendering switch)** are done for the transform path;
-**Phase 3 (IDENTITY type inference)** is auto-derived (all identity fields
-render `: string`). Deferred: the explicit BLANK.md `signature:` /
-`returns:` declaration surface (**Phase 4** — v1 auto-derives types so no
-dead metadata ships), the default flip (**Phase 5**), and legacy removal
-(**Phase 6**). The fluid-blank path still uses the bare resolver; wiring it
-mirrors the transform path and is the next increment.
+**Phase 2 (catalog rendering switch)** are done for both the transform and
+fluid-blank paths; **Phase 3 (IDENTITY type inference)** is auto-derived
+(all identity fields render `: string`). Deferred: the explicit BLANK.md
+`signature:` / `returns:` declaration surface (**Phase 4** — v1 auto-derives
+types so no dead metadata ships), the default flip (**Phase 5**), and legacy
+removal (**Phase 6**).
 
 ## What this plan covers
 
