@@ -307,6 +307,80 @@ the published rate.
 
 ---
 
+## Efficiency model — cost, classify latency, and the gate
+
+An "always-on image generator" sounds expensive; the design makes it cheap by
+**gating every costly call behind a near-free classifier, and firing only on the
+explicit `_` keystroke.**
+
+### Cost per action
+
+| User action | Calls | Cost |
+|---|---|---|
+| Normal text ending in `_` (not an image) | 1 classify | **~$0.0001** (≈ free; CEDE, no image call) |
+| Generate an image | 1 classify + 1 generate | **~$0.003** |
+| Edit an image | 1 classify + 1 edit | **~$0.02** |
+
+The only spend that scales is the image call itself, and it fires **once per
+deliberate request**, at the cheapest model/size that works. Everything around
+it (trigger, classify, storage, sizing) is built to add ~zero cost:
+
+- **`_`-gating = explicit consent.** Nothing runs on other keystrokes — no
+  polling, no speculative/background generation. The `_` is the user's "yes."
+- **Cheap gate protects expensive calls.** The classifier (~$0.0001, ~0.3 s)
+  decides whether to spend the $0.003/$0.02. A misfire costs a hundredth of a
+  cent, not an image. Same shape as the blank-intent gate.
+- **One call resolves intent *and* target** (ordinal/descriptor) — no second
+  round-trip. Image calls are single-shot (no multi-pass).
+- **Smallest viable size.** Edits run at the **256 master** (the benchmarked
+  floor), not 1024. Generate at 512, downscale locally (free), never pay for
+  1024 unasked.
+- **Ephemeral = zero infra.** Masters live in memory, dropped on reload — no
+  storage, DB, or CDN cost between sessions.
+- **Cerebras prefix-caching** keeps the classifier's big stable system prompt
+  cached, so each classify only processes the short user text.
+- **Failures cede, don't retry-spam.**
+
+### Classify latency (measured)
+
+~0.25–0.45 s warm (cerebras gpt-oss-120b, prefix-cached) — e.g. 257/281/293/454
+ms in harness runs. It's **sequential before** the image call (you need the
+verdict first), so it adds ~0.3 s:
+
+- generate ≈ 0.28 s classify + 0.8 s gen ≈ **~1.1 s**
+- edit ≈ 0.28 s classify + 1.8 s edit ≈ **~2.1 s**
+
+That ~0.3 s is the **price of language-invariance**. The keyword alternative
+("draw"/"image:") is ~0 ms but English-anchored — explicitly rejected (cf. the
+`model_override` removal and the ConfigIntent language-invariant boundary).
+
+### The classifier: standalone in the harness, shared in the real thing
+
+> ⚠️ **The harness uses its OWN standalone classifier** (a fresh cerebras call
+> in `research/image-gen-demo/server.mjs`). It does **not** touch the runtime's
+> classifier infra — it's a prototype outside the resolver.
+
+OpenCues already has this classifier family, and image-intent should **join**
+it, not duplicate it:
+
+- `BlankIntentClassifier` (blank-intent gate)
+- `ConfigIntentSource` (fluid-config — semantic `_` → settings)
+- `FluidBlankSource` / `TransformBlankSource` (semantic `_` lookups / rewrites)
+
+These already classify `_`-triggered text, already pay the ~0.3 s, already use
+the cerebras-cached pattern and the shared keyword-window + cede discipline. So
+the real question isn't "is the classify cheap" but **"should image-intent share
+the existing classification pass or get its own call?"**
+
+- **Share the pass:** one classify decides fluid-blank / config-change /
+  image-gen / edit / … → ~zero *new* latency (the runtime is already classifying).
+- **Its own call:** isolates the prompt, but adds a round-trip.
+
+**Open decision (validate on the bench):** widening one classifier's job risks
+recall — we saw SUMMON-in-classifier drop −24 pp until split into its own call
+(the "one job per call" lesson). So share-vs-split is a real trade-off to
+measure, not assume. The harness sidesteps it by being standalone.
+
 ## Integration notes for OpenCues (future)
 
 Nothing in the runtime calls image endpoints today — all providers in
