@@ -80,11 +80,15 @@ function makeLoader(){
   return el;
 }
 
-// keep any prose the user wrote before the trigger words (classifier returns the verbatim trigger)
-function restorePrefix(loader, saved, trigger){
-  const t=(trigger||'').trim(); if(!t || !loader.parentNode) return;
-  const i=saved.toLowerCase().lastIndexOf(t.toLowerCase());
-  if(i>0){ loader.parentNode.insertBefore(document.createTextNode(saved.slice(0,i)), loader); clog('text.persist',{kept:saved.slice(0,i)}); }
+// strip ONLY the trigger words sitting just before the loader (classifier returns the verbatim
+// trigger); any prose the user wrote before that is left untouched. Called at completion.
+function stripTrigger(loader, trigger){
+  const t=(trigger||'').trim(); if(!t) return;
+  const prev=loader.previousSibling;
+  if(prev && prev.nodeType===Node.TEXT_NODE){
+    const txt=prev.textContent; const i=txt.toLowerCase().lastIndexOf(t.toLowerCase());
+    if(i>=0){ prev.textContent=txt.slice(0,i); clog('text.persist',{kept:txt.slice(0,i)}); }
+  }
 }
 
 function nearestImage(){
@@ -112,42 +116,41 @@ box.addEventListener('input', () => {
   if(!cmd) return;
   lastHandled=upto; busy=true;
 
-  // remove the command text; drop the animating-glyph loader in its place (the `_` keeps animating)
-  const saved=node.textContent.slice(s,caret);
-  const range=document.createRange(); range.setStart(node,s); range.setEnd(node,caret); range.deleteContents();
+  // Animate ONLY the `_` in place. The command text stays visible while loading
+  // (like a base-OpenCues summon phrase); nothing else is touched, so no flicker.
+  const range=document.createRange(); range.setStart(node, caret-1); range.setEnd(node, caret); range.deleteContents();
   const loader=makeLoader(); range.insertNode(loader); caretAfter(loader);
   clog('trigger', {cmd, images:imageList().length}, 'info');
   busy=false;
-  classifyAndAct(cmd, loader, saved);
+  classifyAndAct(cmd, loader);
 });
 
-async function classifyAndAct(cmd, loader, saved){
+async function classifyAndAct(cmd, loader){
   const images = imageList().map(({ordinal,id,label})=>({ordinal,id,label}));
   let c; const t0=performance.now();
   try { c=await (await fetch('/classify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:cmd,images})})).json(); }
-  catch(e){ loader.stopAnim(); loader.replaceWith(document.createTextNode(saved)); clog('classify.error',{err:e.message},'err'); return; }
+  catch(e){ loader.stopAnim(); loader.replaceWith(document.createTextNode('_')); clog('classify.error',{err:e.message},'err'); return; }
   const ms=Math.round(performance.now()-t0);
 
-  if (c.error || c.verdict==='CEDE') { loader.stopAnim(); loader.replaceWith(document.createTextNode(saved)); clog('cede',{cmd, ms, err:c.error||null},'info'); return; }
+  // CEDE/error: it wasn't an image command — just turn the loader back into the `_`. Nothing else was touched.
+  if (c.error || c.verdict==='CEDE') { loader.stopAnim(); loader.replaceWith(document.createTextNode('_')); clog('cede',{cmd, ms, err:c.error||null},'info'); return; }
 
-  restorePrefix(loader, saved, c.trigger); // preserve any text the user wrote before the request
-
-  if (c.verdict==='GENERATE') { clog('generate.start',{prompt:c.prompt, ms},'gen'); doGenerate(c.prompt, loader); return; }
+  if (c.verdict==='GENERATE') { clog('generate.start',{prompt:c.prompt, ms},'gen'); doGenerate(c.prompt, loader, c.trigger); return; }
 
   if (c.verdict==='EDIT') {
     const list=imageList();
     let targetId = (c.target!=null && list[c.target-1]) ? list[c.target-1].id : nearestImage();
     if (!targetId || !masters.has(targetId)) {
-      loader.stopAnim(); const n=document.createElement('span'); n.className='oc-note'; n.contentEditable='false'; n.textContent='[no editable image]'; loader.replaceWith(n);
+      loader.stopAnim(); loader.replaceWith(document.createTextNode('_')); // restore `_`; leave the user's text intact
       clog('edit.cede',{reason: targetId?'master frozen/expired':'no target', ms},'err'); return;
     }
     const ord=list.findIndex(x=>x.id===targetId)+1;
     clog('edit.start',{ordinal:ord, id:targetId, instruction:c.instruction, by:(c.target!=null?'named':'cursor-adjacent'), ms},'edit');
-    doEdit(targetId, c.instruction, loader); // glyph keeps animating at the command slot until the edit lands
+    doEdit(targetId, c.instruction, loader, c.trigger); // command text stays visible + `_` animates until the edit lands
   }
 }
 
-async function doGenerate(prompt, loader){
+async function doGenerate(prompt, loader, trigger){
   const model=modelSel.value, disp=parseInt(sizeSel.value,10);
   const t0=performance.now();
   let res; try { res=await (await fetch('/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt,size:512,model})})).json(); }
@@ -159,21 +162,23 @@ async function doGenerate(prompt, loader){
   const master=await resize(res.dataUrl,MASTER_PX), shown=await resize(res.dataUrl,disp);
   const id='oc'+(nextId++);
   const img=document.createElement('img'); img.dataset.ocId=id; img.src=shown; img.width=disp; img.height=disp; img.alt=prompt; img.contentEditable='false';
+  stripTrigger(loader, trigger); // now (only now) remove the command words, keeping any prefix
   masters.set(id,{master,prompt}); loader.replaceWith(img); addCost(PRICE[model]||PRICE.gen);
   clog('generate.done',{id, ordinal:imageList().findIndex(x=>x.id===id)+1, gen_ms:res.ms, rt, native:`${res.width}x${res.height}`, master:MASTER_PX, disp},'ok');
 }
 
-async function doEdit(id, instruction, loader){
+async function doEdit(id, instruction, loader, trigger){
   const rec=masters.get(id); const disp=parseInt(sizeSel.value,10);
-  if(!rec||!imgById(id)){ loader.stopAnim(); loader.remove(); clog('edit.fail',{id,reason:'gone'},'err'); return; }
+  if(!rec||!imgById(id)){ loader.stopAnim(); loader.replaceWith(document.createTextNode('_')); clog('edit.fail',{id,reason:'gone'},'err'); return; }
   const t0=performance.now();
   let res; try { res=await (await fetch('/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({imageDataUrl:rec.master,instruction})})).json(); }
   catch(e){ res={ok:false,error:e.message}; }
   const rt=Math.round(performance.now()-t0);
-  loader.stopAnim(); loader.remove();           // remove the slot loader; the image updates in place
+  loader.stopAnim();
   const live=imgById(id);
-  if(!masters.has(id)||!live){ clog('edit.discarded',{id,rt},'info'); return; }
-  if(!res.ok){ clog('edit.fail',{id,rt,err:res.error},'err'); return; }
+  if(!masters.has(id)||!live){ loader.remove(); clog('edit.discarded',{id,rt},'info'); return; }
+  if(!res.ok){ loader.replaceWith(document.createTextNode('_')); clog('edit.fail',{id,rt,err:res.error},'err'); return; } // keep command text + restore `_` so the user can retry
+  stripTrigger(loader, trigger); loader.remove();  // success: now strip the command words; image updates in place
   const newMaster=await resize(res.dataUrl,MASTER_PX), shown=await resize(res.dataUrl,disp);
   masters.set(id,{master:newMaster, prompt:rec.prompt+' | '+instruction});
   live.src=shown; live.classList.remove('sel'); addCost(PRICE.edit);
