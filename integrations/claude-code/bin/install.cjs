@@ -725,18 +725,33 @@ function validateFork(fork) {
   // line). Keep in sync — when the patch starts requiring a new
   // submodule, append it here so a new install can't silently ship a
   // broken bundle.
-  const smokeProbes = [
+  // REQUIRED probes — a load failure here means the core runtime is broken
+  // (the #117 dist-copy bug class), so refuse the fork.
+  const requiredProbes = [
     '@opencues/runtime',
     '@opencues/runtime/dist/adapters/cc/v2.1/boot.js',
     '@opencues/runtime/dist/src/blanks/index.js',
     '@opencues/runtime/dist/src/security/spawn-sandbox.js',
     '@opencues/runtime/dist/src/security/sandbox-runner.js',
+  ];
+  // OPTIONAL probes — features that degrade gracefully when their (often
+  // native / heavy) transitive deps are absent. user-blanks (the JS
+  // sandbox) needs acorn + isolated-vm; a fork that copied dist but not
+  // those deps should still SHIP (built-in + .sh blanks keep working) —
+  // only JS user-blanks are disabled. registry.js is engineered to LOAD
+  // even when those deps are missing (esm-rewrite + node-loader lazy-
+  // require them), so this normally passes; if it ever doesn't, WARN and
+  // ship rather than refuse the whole fork. Mirrors the "optional"
+  // classification in scripts/check-runtime-loads-on-bun.sh.
+  const optionalProbes = [
     '@opencues/runtime/dist/src/user-blanks/registry.js',
   ];
-  for (const spec of smokeProbes) {
-    const probe = spawnSync(process.execPath, [
-      '-e', `require(${JSON.stringify(spec)})`,
-    ], { cwd: fork.root, env: process.env });
+  const probeLoad = (spec) => spawnSync(process.execPath, [
+    '-e', `require(${JSON.stringify(spec)})`,
+  ], { cwd: fork.root, env: process.env });
+
+  for (const spec of requiredProbes) {
+    const probe = probeLoad(spec);
     if (probe.status !== 0) {
       const stderr = (probe.stderr || '').toString().split('\n').slice(0, 4).join('\n');
       return {
@@ -745,6 +760,14 @@ function validateFork(fork) {
                 `setup.sh's copy step probably missed a new dist subdir; the recursive copy in setup.sh § 5 should cover ` +
                 `every dist/*/ subdir.\n  ${stderr.replace(/\n/g, '\n  ')}`,
       };
+    }
+  }
+  for (const spec of optionalProbes) {
+    const probe = probeLoad(spec);
+    if (probe.status !== 0) {
+      const stderr = (probe.stderr || '').toString().split('\n').slice(0, 2).join('\n');
+      console.warn(`  ⚠ optional module require(${JSON.stringify(spec)}) failed — JS user-blanks disabled on this fork ` +
+                   `(built-in + .sh blanks unaffected). Likely a missing transitive dep (acorn / isolated-vm).\n      ${stderr.replace(/\n/g, '\n      ')}`);
     }
   }
   return { ok: true };

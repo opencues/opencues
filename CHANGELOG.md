@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — fork install no longer refuses over an optional feature's missing transitive deps (`@opencues/runtime` 0.5.0 → 0.5.1, `@opencues/claude-code` 0.2.3 → 0.2.4)
+
+A fresh CC install (`opencues install claude-code`) hard-failed validation with `boot-smoke FAILED for require("…/user-blanks/registry.js")` whenever the fork's `node_modules` lacked the JS-user-blank sandbox's transitive deps (`acorn`, `acorn-walk`, `isolated-vm`) — which the fork-assembly copies dist but not deps, so it always lacks them. Two structural causes, both fixed:
+
+1. **`esm-rewrite.ts` top-level-imported `acorn`/`acorn-walk`** — so requiring `registry.js` pulled acorn at module-load time and threw when it was absent. This is the same bug class CLAUDE.md documents for `isolated-vm` in `node-loader` (top-level native/heavy import that should be lazy). Fixed by making the acorn imports type-only + lazy-`require()`ing them inside `rewriteEsmToCjsShim` (mirrors `node-loader`'s `getIvm`). **`registry.js` — and the whole runtime — now LOADS without acorn**; only an actual JS user-blank rewrite needs the parser, and its absence disables that one blank (registry's try/catch), not the runtime. Verified: `check-runtime-loads-on-bun.sh` now reports the registry loads cleanly (was "load failed"); the rewrite still works when acorn is present.
+2. **CC's `validateFork` treated user-blanks as REQUIRED.** Split the boot-smoke probes into required (core runtime — refuse the fork on failure, the #117 dist-copy guard) vs **optional** (`user-blanks/registry.js` — warn + ship). A degradable feature can no longer refuse the whole install. Mirrors the "optional" classification already in `check-runtime-loads-on-bun.sh`.
+
+Result: `opencues install claude-code` now succeeds + validates on a fork without the sandbox deps (built-in + `.sh` blanks unaffected; JS user-blanks degrade gracefully). Full runtime suite green (1731); user-blank tests 74/74.
+
 ### Added — typed-sentinel language (opt-in `sentinel-language: typed`) (`@opencues/core` 0.5.1 → 0.6.0, `@opencues/runtime` 0.4.7 → 0.5.0)
 
 Identity-/blank-context sentinel tokens can now use a **typed, parameterized, nestable grammar** instead of the flat `[TOKEN]` form. Gated behind a new `sentinel-language: bare | typed` scalar (default `bare` — every existing user is byte-identical; only an explicit `typed` opts in).
