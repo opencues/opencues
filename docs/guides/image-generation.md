@@ -381,6 +381,71 @@ recall — we saw SUMMON-in-classifier drop −24 pp until split into its own ca
 (the "one job per call" lesson). So share-vs-split is a real trade-off to
 measure, not assume. The harness sidesteps it by being standalone.
 
+## Cross-medium delivery (the output ladder)
+
+The image-blank works on more than rich-DOM hosts. The feature is identical
+everywhere — `_`-gate + classifier + generate/edit are unchanged — **only the
+last-inch *delivery* differs per host.** Think of it as a capability,
+`imageOutputMode() → insert | clipboard | path`, that degrades gracefully.
+
+**Key correction (June 2026):** CC, OpenCode, and gemini-cli all accept
+**Ctrl+V image paste**, so they are NOT text-only input surfaces. The generated
+image can become a real multimodal attachment on the outgoing message, not just
+a text reference. The terminal hosts move *up* the ladder.
+
+| Medium | Real image? | Delivery |
+|---|---|---|
+| chrome contenteditable / web rich editors | ✅ inline | `insertImage` DOM node (binary sidecar) |
+| **Claude Code / OpenCode / gemini-cli** | ✅ yes | **file-path injection** (default) or **clipboard** — both ingest as a real image |
+| markdown-aware web inputs | ✅ rendered | `![](path)` text substitute |
+| Android (accessibility service) | ⚠️ partial | path / clipboard, app-dependent (`commitContent` not generally reachable) |
+
+### Two delivery mechanisms for the Ctrl+V hosts
+
+**(a) File-path injection — DEFAULT for CLI hosts.** Generate → temp file →
+inject the path as text → the host resolves the path to a real image attachment.
+- Rides the **existing text-substitute pipeline** — no binary sidecar, no
+  clipboard platform code.
+- These CLIs already resolve image paths / `@file` refs to real images, so it's
+  a full image input, not a degraded text experience.
+- The file persists → free reload-survival + the agentic host can `Read` it
+  (a generated image becomes a tool input, e.g. `draw a diagram _`).
+
+**(b) Clipboard delivery — optional, richer, fiddlier.** Generate → write PNG to
+the system clipboard → host's native Ctrl+V ingests.
+- Platform-specific clipboard-image plumbing (Linux `wl-copy`/`xclip`, macOS
+  `osascript`, **WSL→Windows is genuinely awkward**), plus the
+  synthesize-paste-vs-ask-user question.
+- Use only where the platform clipboard-image path is reliable.
+
+**Recommendation:** path-injection as the default CLI delivery (robust,
+portable, reuses existing machinery, agent-consumable); clipboard as an opt-in
+richer mode; inline-insert for chrome. Almost every host lands on a real-image
+rung — the text-only fallback is rarely the endpoint.
+
+### Editing across mediums
+
+The edit reference generalizes: the DOM node (chrome) / the path or
+last-pasted attachment (CLIs). kontext-dev runs on the master → re-deliver:
+**overwrite the same file** so the path/link stays stable (any renderer shows
+the new image), or write a new path and update the substitute text.
+
+### Per-medium persistence asymmetry (deliberate)
+
+The "ephemeral, no reload survival" decision was a **chrome** decision
+(in-memory master). On **file-path hosts the file *is* the master**, so edits
+survive naturally. This asymmetry is intentional, not accidental — document it
+per host so a future change doesn't "fix" one to match the other by mistake.
+
+### Verify before implementing
+
+- [ ] Confirm CC / OpenCode / gemini-cli each ingest a generated PNG **by file
+      path** (not only interactive Ctrl+V) — the path-injection default hinges
+      on this. (Drag-drop / `@file` / paste-of-path behaviors differ per host.)
+- [ ] Decide synthesize-paste vs ask-user for any clipboard delivery.
+- [ ] Prefer the host's *normal* ingest paths over calling internal image-attach
+      functions directly (seam-anchor fragility across host upgrades).
+
 ## Integration notes for OpenCues (future)
 
 Nothing in the runtime calls image endpoints today — all providers in
