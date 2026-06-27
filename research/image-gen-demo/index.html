@@ -16,7 +16,11 @@
   /* OpenCues blank loader: a single glyph animating IN PLACE (same as a text blank).
      Frames/interval mirror packages/opencues-runtime/src/modules/blank-loading.ts
      (braille-rotate, 150ms). Just text — no box, no spinner, no external indicator. */
-  .oc-glyph { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; display: inline-block; width: 1ch; text-align: center; color: #5566cc; }
+  /* The animating char is written inline as text (as OpenCues writes it into the buffer).
+     Use the surrounding font so braille glyphs don't fall back to tofu. In real chrome the
+     COLOUR comes from the CSS Custom Highlight API (blank-loading-colors-rgb); here a plain
+     colour stands in. No CSS animation — the glyph swaps via JS, exactly like blank-loading.ts. */
+  .oc-glyph { font: inherit; color: #5566cc; }
   .oc-note { color: #b00; font-size: 12px; background: #fee; padding: 1px 6px; border-radius: 4px; }
   .controls { margin: 12px 0; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; font-size: 13px; }
   button { font-size: 13px; padding: 4px 10px; border: 1px solid #bbb; border-radius: 6px; background: #fafafa; cursor: pointer; }
