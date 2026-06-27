@@ -446,6 +446,98 @@ per host so a future change doesn't "fix" one to match the other by mistake.
 - [ ] Prefer the host's *normal* ingest paths over calling internal image-attach
       functions directly (seam-anchor fragility across host upgrades).
 
+## Experimenting on other platforms (post-chrome)
+
+**Chrome is the reference implementation; every other host is tested *after* it.**
+Reason: only the **delivery rung** changes per host (see Cross-medium delivery
+above) — the whole core (`_`-gate, classifier, generate/edit, blank loader,
+session masters, lifecycle logging) is shared and gets proven on chrome first.
+So per-host work is small and mostly about *delivery* + confirming the shared
+core carries over. We can't test the others yet because each needs its adapter
+band + the delivery code, and we want chrome to factor out the shared core first.
+
+### What's already proven (don't re-test per host)
+
+The harness validated, host-agnostically: classifier (language-invariant),
+generate (flux/schnell→256 master→display), edit (kontext-dev, ≥256 floor),
+target resolution (ordinal / cursor-adjacency / select), ephemeral masters,
+the real blank loader, and the 15-point lifecycle log. Per-host experiments
+assume these and test only what's host-specific.
+
+### Stage 0 — capability probe (manual, NO OpenCues code) — do this first
+
+The single highest-value step per host, and it needs no integration code: find
+out **how the host's input accepts an image.** Generate a PNG to a file (the
+harness or a one-off fal call does this), then in the *real* host try each
+ingestion method and record which yields a genuine image attachment:
+
+| Host | Ctrl+V clipboard image | type/paste a file path | `@file` reference | drag-drop |
+|---|---|---|---|---|
+| Claude Code | ? | ? | ? | ? |
+| OpenCode | ? | ? | ? | ? |
+| gemini-cli | ? | ? | ? | ? |
+| shell (OpenTUI) | ? | ? | ? | ? |
+| Android | ? | ? | ? | ? |
+
+Fill this in by hand. The winning column is that host's **default delivery
+rung** (we expect file-path for the CLIs; verify, don't assume — it's the
+load-bearing assumption from Cross-medium delivery). This probe can even run
+before chrome is done — it's pure host behavior.
+
+### Stage 1–4 — per-host experiment sequence (after chrome ships)
+
+1. **Delivery wiring (minimal).** Implement only the winning rung from Stage 0
+   (path-injection first). Reuse the chrome core unchanged; the host adapter
+   gets `imageOutputMode()` + the deliver call (write file / set clipboard /
+   insert path). Nothing else should change.
+2. **Generate experiment.** `a red apple _` → confirm a real image lands in the
+   host's input (attachment or rendered), and that the **base blank loader
+   renders** in that host (terminals already animate the `_` for text blanks —
+   confirm it reuses that, doesn't reinvent).
+3. **Edit experiment.** Establish the host's image *reference* (path / last
+   attachment), then `make it blue _` → confirm kontext-dev runs on the master
+   and re-delivery updates the right image. Note the per-medium persistence
+   (file-based hosts: the file *is* the master → edits survive; that asymmetry
+   is intentional).
+4. **Loader + log verification.** Confirm the lifecycle emits via `adapter.log`
+   with a `[<host>][imggen]` prefix into `/tmp/opencues.log` (the harness's
+   `clog` phases are the exact line set). Grep `[imggen]` per host to compare
+   traces against chrome's known-good run.
+
+### Per-host notes / unknowns to resolve during the experiment
+
+- **Claude Code / OpenCode / gemini-cli** — accept Ctrl+V images (confirmed by
+  the user); expected default = **file-path injection**. Open: does each ingest
+  a *path* (not just interactive paste)? Does the terminal render a preview, or
+  is it attach-only? Bonus: the generated file is `Read`-able by the agent.
+- **shell (OpenTUI)** — same OpenTUI base as OpenCode; expect similar behavior,
+  but confirm OpenTUI's input accepts an image path / clipboard at all.
+- **Android (accessibility service)** — hardest. Text-field injection is
+  text-only; `commitContent` image insertion is app-specific. Expect to land on
+  **path or clipboard**, app-dependent — probe several target apps, don't
+  generalize from one.
+- **Loader on terminals** — the braille-rotate glyph already animates for text
+  blanks on CC/OC/gemini; the image loader must reuse that exact path, not a new
+  animation. Verify, since this demo only proved it visually in a browser.
+
+### Record results back here
+
+After each host's experiment, fill the Stage-0 table and add a one-line verdict
+(rung chosen, render-vs-attach, edit-persistence) so the matrix becomes the
+real cross-host capability map instead of the current "expected" one.
+
+### Harness → real-adapter gaps (carry these into the chrome impl)
+
+The prototype is minimal/sufficient for proving logic, but two simplifications
+must be fixed when promoting (they don't affect the experiment plan, only the
+real code):
+
+- **Single-text-node command parsing.** The harness reads the command from one
+  caret text node; a real contenteditable line can span nodes (text after an
+  inline image). The adapter must resolve the command range across nodes.
+- **`fast-sdxl` model option** is comparison-only (deliberately bad output) —
+  drop it from any shipped surface; it exists in the harness to show contrast.
+
 ## Integration notes for OpenCues (future)
 
 Nothing in the runtime calls image endpoints today — all providers in
