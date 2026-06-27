@@ -16,7 +16,7 @@
   /* OpenCues blank loader: a single glyph animating IN PLACE (same as a text blank).
      Frames/interval mirror packages/opencues-runtime/src/modules/blank-loading.ts
      (braille-rotate, 150ms). Just text — no box, no spinner, no external indicator. */
-  .oc-glyph { font-family: inherit; color: #5566cc; }
+  .oc-glyph { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; display: inline-block; width: 1ch; text-align: center; color: #5566cc; }
   .oc-note { color: #b00; font-size: 12px; background: #fee; padding: 1px 6px; border-radius: 4px; }
   .controls { margin: 12px 0; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; font-size: 13px; }
   button { font-size: 13px; padding: 4px 10px; border: 1px solid #bbb; border-radius: 6px; background: #fafafa; cursor: pointer; }
@@ -74,8 +74,10 @@ function caretAfter(node){ const s=getSelection(); s.removeAllRanges(); s.addRan
 
 // the OpenCues blank loader: one glyph cycling in place
 function makeLoader(){
-  const el=document.createElement('span'); el.className='oc-glyph'; el.contentEditable='false'; el.textContent='_';
-  let i=0; const t=setInterval(()=>{ i=(i+1)%LOAD_FRAMES.length; el.textContent=LOAD_FRAMES[i]; }, LOAD_MS);
+  // braille-rotate: '_' is the intro frame (index 0); the loop spins ONLY the 6 dots
+  // (loopStartIdx=1, matching blank-loading.ts) — never flashes back to '_'.
+  const el=document.createElement('span'); el.className='oc-glyph'; el.contentEditable='false'; el.textContent=LOAD_FRAMES[0];
+  let i=0; const t=setInterval(()=>{ i=i+1; if(i>=LOAD_FRAMES.length) i=1; el.textContent=LOAD_FRAMES[i]; }, LOAD_MS);
   el.stopAnim=()=>clearInterval(t);
   return el;
 }
