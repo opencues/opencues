@@ -20,7 +20,7 @@
      Use the surrounding font so braille glyphs don't fall back to tofu. In real chrome the
      COLOUR comes from the CSS Custom Highlight API (blank-loading-colors-rgb); here a plain
      colour stands in. No CSS animation — the glyph swaps via JS, exactly like blank-loading.ts. */
-  .oc-glyph { font: inherit; color: #5566cc; }
+  .oc-glyph { font: inherit; } /* colour is set per-frame in JS from the OpenCues palette */
   .oc-note { color: #b00; font-size: 12px; background: #fee; padding: 1px 6px; border-radius: 4px; }
   .controls { margin: 12px 0; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; font-size: 13px; }
   button { font-size: 13px; padding: 4px 10px; border: 1px solid #bbb; border-radius: 6px; background: #fafafa; cursor: pointer; }
@@ -58,9 +58,13 @@ const sizeSel = document.getElementById('size');
 
 const MASTER_PX = 256;
 const PRICE = { gen: 0.003, 'flux/dev': 0.025, 'fast-sdxl': 0.0009, edit: 0.02 };
-// mirror of OpenCues blank-loading.ts (braille-rotate @150ms) — real integration reuses BlankLoading
-const LOAD_FRAMES = ['_','⠁','⠈','⠐','⠠','⠄','⠂'];
-const LOAD_MS = 150;
+// EXACT shipped OpenCues default (defaults/OPENCUES.md): blank-loading-animation: bounce,
+// per-frame colours red→amber→emerald→cyan→blue, 150ms. colour[i]=palette[frameIdx % palette.length]
+// (blank-loading.ts getActiveColor). Real integration reuses BlankLoading; chrome paints the
+// colour via the CSS Custom Highlight API — here it's set inline per tick.
+const LOAD_FRAMES = ['_','-','‾','-'];                                             // BOUNCE_FRAMES
+const LOAD_COLORS = ['#ef4444','#f59e0b','#10b981','#06b6d4','#3b82f6'];           // DEFAULT_RGB_PALETTE
+const LOAD_MS = 150;                                                               // FRAME_INTERVAL_DEFAULT_MS
 let spent = 0, nextId = 1, busy = false, lastHandled = '';
 const masters = new Map();   // id -> { master(256 dataUrl), prompt }  (session-only)
 
@@ -78,10 +82,11 @@ function caretAfter(node){ const s=getSelection(); s.removeAllRanges(); s.addRan
 
 // the OpenCues blank loader: one glyph cycling in place
 function makeLoader(){
-  // braille-rotate: '_' is the intro frame (index 0); the loop spins ONLY the 6 dots
-  // (loopStartIdx=1, matching blank-loading.ts) — never flashes back to '_'.
-  const el=document.createElement('span'); el.className='oc-glyph'; el.contentEditable='false'; el.textContent=LOAD_FRAMES[0];
-  let i=0; const t=setInterval(()=>{ i=i+1; if(i>=LOAD_FRAMES.length) i=1; el.textContent=LOAD_FRAMES[i]; }, LOAD_MS);
+  // bounce is a palindrome (_ - ‾ -) that returns to '_' each cycle — loop through all frames.
+  // Recolour per frame from the palette, exactly like blank-loading.ts getActiveColor.
+  const el=document.createElement('span'); el.className='oc-glyph'; el.contentEditable='false';
+  el.textContent=LOAD_FRAMES[0]; el.style.color=LOAD_COLORS[0];
+  let i=0; const t=setInterval(()=>{ i=(i+1)%LOAD_FRAMES.length; el.textContent=LOAD_FRAMES[i]; el.style.color=LOAD_COLORS[i%LOAD_COLORS.length]; }, LOAD_MS);
   el.stopAnim=()=>clearInterval(t);
   return el;
 }
