@@ -36,6 +36,26 @@ Env vars (paid external dependency — **never commit keys**):
 
 ---
 
+## Model picks (decision matrix)
+
+The one-line policy: **fal.ai `flux/schnell` at ≥512 → downscale locally**, with
+`flux/dev` as the quality escalation and Together AI as the model bench.
+
+| Job | Model | Provider | Why |
+|---|---|---|---|
+| **Default / workhorse** | `flux/schnell` | fal.ai | Best speed-for-quality measured: ~0.5s, recognizable, $0.003/img. Same speed class as fast-sdxl but actually usable. |
+| **Quality / hero images** | `flux/dev` (28 steps) | fal.ai | Cleanest output, ~1s, ~$0.025. Use only when schnell isn't crisp enough. |
+| **Multi-model A/B + future-proofing** | catalog: `FLUX.2`, `gemini-3-pro-image`, `gpt-image-1.5`, `seedream-4`, `imagen-4`, `qwen-image` | Together AI | One key, ~25 models, one endpoint. For evaluation, not the hot path. |
+| **Cost-critical batch (later)** | `flux/schnell` | Runware | ~$0.0006/img — 5× cheaper if we ever bulk-generate. |
+| **Avoid** | `fast-sdxl` | — | Same speed as flux/schnell, produces abstract blobs. No reason to use it. |
+| **Avoid for latency** | `gemini-2.5-flash-image`, `gpt-image-1` | — | ~5–40s. Fine for a deliberate async action; wrong for anything snappy. |
+
+**Untested, evaluate next:** `FLUX.2 [klein]` (newer, sub-second — may beat
+schnell) and `Z-Image-Turbo`. Both available on Together, so cheap to A/B when
+we get there.
+
+---
+
 ## The problem: fast, small raster out
 
 OpenCues' text blanks resolve in well under a second. The hope was a raster
