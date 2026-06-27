@@ -49,11 +49,13 @@ Decide the intent:
 
 You understand every language; classify by meaning, never by keywords. If there are no existing images, never choose EDIT.
 
+"trigger": the EXACT verbatim substring of the user's text that forms the request, so the app can remove just those words and PRESERVE any surrounding text the user wrote (e.g. for "Here's my idea: a red apple", trigger is "a red apple"). For CEDE, "".
+
 Existing images (ordinal: label):
 {IMAGES}
 
 Respond with ONLY a JSON object, no prose:
-{"verdict":"GENERATE|EDIT|CEDE","prompt":"","instruction":"","target":null}`;
+{"verdict":"GENERATE|EDIT|CEDE","prompt":"","instruction":"","target":null,"trigger":""}`;
 
 async function classify({ text, images }) {
   if (!CEREBRAS_KEY) return { verdict: 'CEDE', error: 'CEREBRAS_API_KEY not set' };
@@ -70,7 +72,7 @@ async function classify({ text, images }) {
     let txt = j.choices?.[0]?.message?.content || '';
     const m = txt.match(/\{[\s\S]*\}/); if (m) txt = m[0];
     const out = JSON.parse(txt);
-    return { verdict: out.verdict || 'CEDE', prompt: out.prompt || '', instruction: out.instruction || '', target: out.target ?? null };
+    return { verdict: out.verdict || 'CEDE', prompt: out.prompt || '', instruction: out.instruction || '', target: out.target ?? null, trigger: out.trigger || '' };
   } catch (e) { return { verdict: 'CEDE', error: 'classify: ' + e.message }; }
 }
 

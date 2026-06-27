@@ -80,6 +80,13 @@ function makeLoader(){
   return el;
 }
 
+// keep any prose the user wrote before the trigger words (classifier returns the verbatim trigger)
+function restorePrefix(loader, saved, trigger){
+  const t=(trigger||'').trim(); if(!t || !loader.parentNode) return;
+  const i=saved.toLowerCase().lastIndexOf(t.toLowerCase());
+  if(i>0){ loader.parentNode.insertBefore(document.createTextNode(saved.slice(0,i)), loader); clog('text.persist',{kept:saved.slice(0,i)}); }
+}
+
 function nearestImage(){
   const sel=getSelection(); if(!sel.rangeCount) return null;
   const seld=box.querySelector('img.sel'); if(seld) return seld.dataset.ocId;
@@ -122,6 +129,8 @@ async function classifyAndAct(cmd, loader, saved){
   const ms=Math.round(performance.now()-t0);
 
   if (c.error || c.verdict==='CEDE') { loader.stopAnim(); loader.replaceWith(document.createTextNode(saved)); clog('cede',{cmd, ms, err:c.error||null},'info'); return; }
+
+  restorePrefix(loader, saved, c.trigger); // preserve any text the user wrote before the request
 
   if (c.verdict==='GENERATE') { clog('generate.start',{prompt:c.prompt, ms},'gen'); doGenerate(c.prompt, loader); return; }
 
@@ -172,6 +181,15 @@ async function doEdit(id, instruction, loader){
 }
 
 document.getElementById('clear').addEventListener('click', ()=>{ const n=masters.size; box.innerHTML=''; masters.clear(); lastHandled=''; clog('session.clear',{frozen:n},'info'); box.focus(); });
+
+// orphan-master GC: when an image node is removed from the box (backspace/cut), drop its master
+new MutationObserver(muts=>{
+  for(const m of muts) for(const n of m.removedNodes){
+    if(n.nodeType!==1) continue;
+    const gone = n.matches?.('img[data-oc-id]') ? [n] : [...(n.querySelectorAll?.('img[data-oc-id]')||[])];
+    for(const im of gone){ const id=im.dataset.ocId; if(id && masters.has(id) && !imgById(id)){ masters.delete(id); clog('master.gc',{id, remaining:masters.size},'info'); } }
+  }
+}).observe(box, {childList:true, subtree:true});
 
 clog('ready',{},'info');
 </script>
