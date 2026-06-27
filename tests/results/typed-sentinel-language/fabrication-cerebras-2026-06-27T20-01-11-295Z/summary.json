@@ -1,0 +1,62 @@
+{
+  "provider": "cerebras",
+  "model": "gpt-oss-120b",
+  "languages": [
+    "bare",
+    "typed-scalar",
+    "parameterized",
+    "natural",
+    "json-call",
+    "hybrid"
+  ],
+  "summaries": {
+    "bare": {
+      "n": 34,
+      "fabricatedCases": 0,
+      "fabricatedParams": 0,
+      "respectsCatalog": 1,
+      "emittedAnything": 0.7352941176470589,
+      "emittedValidNoParam": 0.7352941176470589
+    },
+    "typed-scalar": {
+      "n": 34,
+      "fabricatedCases": 0,
+      "fabricatedParams": 0,
+      "respectsCatalog": 1,
+      "emittedAnything": 0.6764705882352942,
+      "emittedValidNoParam": 0.6764705882352942
+    },
+    "parameterized": {
+      "n": 34,
+      "fabricatedCases": 0,
+      "fabricatedParams": 0,
+      "respectsCatalog": 1,
+      "emittedAnything": 0.7058823529411765,
+      "emittedValidNoParam": 0.7058823529411765
+    },
+    "natural": {
+      "n": 34,
+      "fabricatedCases": 0,
+      "fabricatedParams": 0,
+      "respectsCatalog": 1,
+      "emittedAnything": 0.7352941176470589,
+      "emittedValidNoParam": 0.7352941176470589
+    },
+    "json-call": {
+      "n": 34,
+      "fabricatedCases": 0,
+      "fabricatedParams": 0,
+      "respectsCatalog": 1,
+      "emittedAnything": 0.8235294117647058,
+      "emittedValidNoParam": 0.8235294117647058
+    },
+    "hybrid": {
+      "n": 34,
+      "fabricatedCases": 0,
+      "fabricatedParams": 0,
+      "respectsCatalog": 1,
+      "emittedAnything": 0.7941176470588235,
+      "emittedValidNoParam": 0.7941176470588235
+    }
+  }
+}

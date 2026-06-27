@@ -140,6 +140,18 @@ some prose
     expect(parseOpenCuesMd('---\nidentity-context-mode: enabled\n---').identityContextMode).toBe('off');
   });
 
+  it('sentinel-language: absent → bare (default), only explicit `typed` opts in', () => {
+    // Fail-safe default: every existing user stays on the flat [TOKEN] path
+    // unless they explicitly write `typed`. Unrecognised values → bare (no
+    // behavioural change on a typo).
+    expect(parseOpenCuesMd('---\n---').sentinelLanguage).toBe('bare');
+    expect(parseOpenCuesMd('---\nsentinel-language: bare\n---').sentinelLanguage).toBe('bare');
+    expect(parseOpenCuesMd('---\nsentinel-language: typed\n---').sentinelLanguage).toBe('typed');
+    expect(parseOpenCuesMd('---\nsentinel-language: TYPED\n---').sentinelLanguage).toBe('typed'); // case-insensitive
+    expect(parseOpenCuesMd('---\nsentinel-language: parameterized\n---').sentinelLanguage).toBe('bare'); // unknown → bare
+    expect(parseOpenCuesMd('---\nsentinel-language: on\n---').sentinelLanguage).toBe('bare');
+  });
+
   it('nav-keymap defaults to auto and only accepts ctrl-alt / ctrl-shift', () => {
     expect(parseOpenCuesMd('---\n---').navKeymap).toBe('auto');
     expect(parseOpenCuesMd('---\nnav-keymap: auto\n---').navKeymap).toBe('auto');

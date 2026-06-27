@@ -1316,6 +1316,10 @@ export class Resolver {
           && !noBlankContextConsumer(cleanWords, this.options.keywordBoundSlotIndices?.(text) ?? [])
           ? await this.blankContextProvider()
           : undefined,
+        // Sentinel grammar (bare default / typed opt-in). Threaded so the
+        // catalog renderer + post-LLM resolver in TransformBlank/FluidBlank
+        // pick the typed-sentinel engine path when enabled.
+        sentinelLanguage: this.configLoader.opencuesState.sentinelLanguage,
         // Subscription-routing policy for anthropic-class `with`
         // overrides. Default 'prefer' is set on the OpenCuesState
         // shape itself, so passing it through verbatim is correct —

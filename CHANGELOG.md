@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — typed-sentinel language (opt-in `sentinel-language: typed`) (`@opencues/core` 0.5.1 → 0.6.0, `@opencues/runtime` 0.4.7 → 0.5.0)
+
+Identity-/blank-context sentinel tokens can now use a **typed, parameterized, nestable grammar** instead of the flat `[TOKEN]` form. Gated behind a new `sentinel-language: bare | typed` scalar (default `bare` — every existing user is byte-identical; only an explicit `typed` opts in).
+
+What `typed` enables:
+- **Typed scalars** — `[FIRST NAME: string]`, `[STOCK AAPL: number]` (the catalog annotates each token's return type; the bench's typed-scalar tier lifts selection +8-14pp).
+- **Parameterized fns** — `[STOCK PRICE(ticker=NVDA)]`, bridged to the pre-fetched `[STOCK NVDA]` instance.
+- **Nested composition** — `[WEATHER TEMP(city=[WORK CITY])]`, resolved innermost-first (the inner scalar resolves, then the outer call bridges to its instance).
+- **Field accessors** — `[STOCK(ticker=NVDA): price]` (return-selector) / `[STOCK.price]` (dotted).
+
+Evidence: `tests/benchmarks/typed-sentinel-language/` — 8 probes, ~3000 case-runs, re-validated on master across cerebras + claude (parameterized **+14pp** cross-provider, param-fill **+47pp**, **0** parameter fabrication on bracket languages, nested composition **100% through depth 3**). Design + resolved open decisions: `docs/architecture/typed-sentinel-language.md`.
+
+Implementation:
+- **`packages/opencues-core/src/typed-sentinel.ts`** — pure engine: `renderTypedCatalog`, `parseTypedSentinels` (recursive bracket parser), `resolveTypedSentinels` (innermost-first with the **validate-and-degrade** contract — a bad accessor drops to the base value, an unknown id strips/preserves, malformed input never throws), plus the runtime bridges (`catalogScalarLookup`, `instanceTokenFnBridge`, `jsonFieldAccessor`). 36 unit tests.
+- Gated catalog rendering + post-LLM resolution wired into `transform-blank-source.ts` behind `CueContext.sentinelLanguage` (threaded from OPENCUES.md via the resolver). 8 integration tests prove typed resolution + that the `bare` path never engages the typed engine.
+- `sentinel-language` added to the FEATURES registry + `OpenCuesState` (alignment test green).
+
+**Not a spec change** — `sentinel-language` is a reference-impl rendering knob (like `debug-mode` / `voice-mode`), `SPEC_VERSION` unchanged. The explicit BLANK.md `signature:` / `returns:` declaration surface (plan Phase 4) is a documented follow-on; v1 auto-derives types so nothing ships dead.
+
+Full suite green: core 955 (+177 vitest), runtime 1730. Chrome bundle builds (engine is pure / browser-safe).
+
 ### Fixed — BlankIntent gate now works in chrome (was silently dead) (runtime 0.4.7, chrome 0.2.42)
 
 The BlankIntent gate (`blank-intent-mode` — typed-SET `volume 40 _`, weather/stocks classification, CEDE-on-prose) worked on every native host but was **completely inert in chrome**, silently degrading every `_` to a plain GET (`volume 40 _` → `volume 40 100%`). Three stacked causes, all browser-only and all silent:

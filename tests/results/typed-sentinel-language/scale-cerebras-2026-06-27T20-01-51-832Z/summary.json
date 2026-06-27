@@ -1,0 +1,48 @@
+{
+  "provider": "cerebras",
+  "model": "gpt-oss-120b",
+  "smallSize": 16,
+  "largeSize": 50,
+  "cells": [
+    {
+      "language": "bare",
+      "size": "small",
+      "overall": 0.7823529411764708,
+      "selection": 0.7058823529411765,
+      "parameters": 0.5882352941176471,
+      "format": 0.7941176470588235,
+      "hallucination": 0.9411764705882353,
+      "cardinality": 0.8823529411764706
+    },
+    {
+      "language": "bare",
+      "size": "large",
+      "overall": 0.7823529411764708,
+      "selection": 0.7941176470588235,
+      "parameters": 0.47058823529411764,
+      "format": 0.8823529411764706,
+      "hallucination": 0.8823529411764706,
+      "cardinality": 0.8823529411764706
+    },
+    {
+      "language": "parameterized",
+      "size": "small",
+      "overall": 0.9470588235294118,
+      "selection": 0.8823529411764706,
+      "parameters": 1,
+      "format": 0.9117647058823529,
+      "hallucination": 0.9411764705882353,
+      "cardinality": 1
+    },
+    {
+      "language": "parameterized",
+      "size": "large",
+      "overall": 0.8941176470588237,
+      "selection": 0.7941176470588235,
+      "parameters": 1,
+      "format": 0.8823529411764706,
+      "hallucination": 0.7941176470588235,
+      "cardinality": 1
+    }
+  ]
+}

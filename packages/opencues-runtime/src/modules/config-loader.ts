@@ -144,6 +144,17 @@ export interface OpenCuesState {
    */
   readonly blankContextMode: 'off' | 'safe' | 'raw';
   /**
+   * Sentinel grammar for identity-/blank-context tokens.
+   * `bare` (default): flat `[TOKEN]` form — byte-identical to pre-feature
+   * behaviour for every existing user.
+   * `typed`: parameterized + nested + field-access grammar
+   * (`[STOCK PRICE(ticker=NVDA)]`, `[WEATHER TEMP(city=[WORK CITY])]`),
+   * parsed + resolved by `@opencues/core`'s typed-sentinel engine with the
+   * validate-and-degrade contract.
+   * See docs/architecture/typed-sentinel-language.md.
+   */
+  readonly sentinelLanguage: 'bare' | 'typed';
+  /**
    * Controls when `_` fires its blank.
    *
    * - `immediate` (default): blank fires the instant `_` is inserted.
@@ -229,6 +240,7 @@ export const DEFAULT_OPENCUES_STATE: OpenCuesState = {
   ambientContextMode: 'off',
   identityContextMode: 'safe',
   blankContextMode: 'safe',
+  sentinelLanguage: 'bare',
   blankTriggerMode: 'immediate',
   navKeymap: 'auto',
   cuesLlmProvider: 'inherit',
@@ -320,6 +332,11 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
     : blankContextHasKey ? 'off' // explicit but unrecognised → fail-closed
     : 'safe';                    // absent → new default
   if (blankContextMode === 'raw' && identityContextMode !== 'raw') blankContextMode = 'safe';
+  // Sentinel grammar — `bare` default keeps every existing user on the
+  // flat [TOKEN] path; only an explicit `typed` opts into the richer
+  // grammar. Unrecognised value → `bare` (fail-safe, no behavioural diff).
+  const sentinelLanguage: 'bare' | 'typed' =
+    get('sentinel-language', 'bare').toLowerCase() === 'typed' ? 'typed' : 'bare';
   const blankTriggerMode: 'immediate' | 'spaced' =
     get('blank-trigger-mode', 'immediate').toLowerCase() === 'spaced' ? 'spaced' : 'immediate';
   const navKeymapRaw = get('nav-keymap', 'auto').toLowerCase();
@@ -358,7 +375,7 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   // Tests keep shipping mock `settings:` blocks; they get the
   // file-driven definitions, identical to the pre-refactor behaviour.
   const definitions = mergeDefinitions(getMenuDefinitions(undefined, settings), parseSettingsBlock(lines));
-  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, identityContextMode, blankContextMode, blankTriggerMode, navKeymap, cuesLlmProvider, auditorsLlmProvider, blanksLlmProvider, settings, definitions };
+  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, identityContextMode, blankContextMode, sentinelLanguage, blankTriggerMode, navKeymap, cuesLlmProvider, auditorsLlmProvider, blanksLlmProvider, settings, definitions };
 }
 
 /**
@@ -689,6 +706,7 @@ export class ConfigLoader {
         }
         return candidate;
       })(),
+      sentinelLanguage: (get('sentinel-language', 'bare').toLowerCase() === 'typed' ? 'typed' : 'bare') as 'bare' | 'typed',
       blankTriggerMode: (get('blank-trigger-mode', 'immediate').toLowerCase() === 'spaced' ? 'spaced' : 'immediate') as 'immediate' | 'spaced',
       navKeymap: ((): 'auto' | 'ctrl-alt' | 'ctrl-shift' => {
         const v = get('nav-keymap', 'auto').toLowerCase();

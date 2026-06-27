@@ -1,0 +1,30 @@
+{
+  "provider": "claude",
+  "model": "claude-haiku-4-5",
+  "byDepth": [
+    {
+      "depth": 1,
+      "n": 3,
+      "exact": 1,
+      "structOk": 1,
+      "wellFormed": 1,
+      "offRails": 0
+    },
+    {
+      "depth": 2,
+      "n": 3,
+      "exact": 1,
+      "structOk": 1,
+      "wellFormed": 1,
+      "offRails": 0
+    },
+    {
+      "depth": 3,
+      "n": 3,
+      "exact": 1,
+      "structOk": 1,
+      "wellFormed": 1,
+      "offRails": 0
+    }
+  ]
+}

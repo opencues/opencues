@@ -1,0 +1,40 @@
+{
+  "provider": "cerebras",
+  "model": "gpt-oss-120b",
+  "syntaxes": [
+    "dotted",
+    "field-param",
+    "return-selector",
+    "separate-entries"
+  ],
+  "summaries": {
+    "dotted": {
+      "sel": 1,
+      "field": 1,
+      "param": 1,
+      "format": 1,
+      "overall": 1
+    },
+    "field-param": {
+      "sel": 1,
+      "field": 0.9166666666666666,
+      "param": 1,
+      "format": 1,
+      "overall": 0.9791666666666666
+    },
+    "return-selector": {
+      "sel": 1,
+      "field": 1,
+      "param": 1,
+      "format": 1,
+      "overall": 1
+    },
+    "separate-entries": {
+      "sel": 1,
+      "field": 0.9166666666666666,
+      "param": 1,
+      "format": 1,
+      "overall": 0.9791666666666666
+    }
+  }
+}

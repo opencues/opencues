@@ -346,14 +346,25 @@ function topicCoverage(token: string): string {
 export function renderBlankContextCatalogForTransform(
   snapshot: BlankContextSnapshot,
   mode: BlankContextMode,
+  language: 'bare' | 'typed' = 'bare',
 ): string {
   if (mode === 'off' || snapshot.fields.length === 0) return '';
   const header = `BLANK CONTEXT — ambient live-data tokens (stocks/weather/crypto/… snapshots). When the rewritten content REFERENCES this ambient data, emit the matching token VERBATIM; the runtime substitutes the live value before the result reaches the user's buffer:`;
+  // Typed grammar (opt-in): annotate each token with an inferred return
+  // type (`[STOCK AAPL]` → `[STOCK AAPL: number]`). Price/level/amount-
+  // shaped values infer `number`; everything else `string`. The runtime's
+  // typed-sentinel engine strips the annotation on resolve, so a `typed`
+  // catalog still resolves the same tokens.
+  const inferType = (value: string): string =>
+    /^[$£€]?\s*-?\d[\d,.]*\s*%?$/.test(value.trim()) ? 'number' : 'string';
+  const typeAnno = (token: string, value: string): string =>
+    language === 'typed' ? token.replace(/\]$/, `: ${inferType(value)}]`) : token;
   const lines = snapshot.fields.map(f => {
     const coverage = topicCoverage(f.token);
+    const tok = typeAnno(f.token, f.value);
     const base = mode === 'raw'
-      ? `- ${f.token} — ${f.description} (current value: ${f.value})`
-      : `- ${f.token} — ${f.description}`;
+      ? `- ${tok} — ${f.description} (current value: ${f.value})`
+      : `- ${tok} — ${f.description}`;
     return coverage ? `${base} (covers: ${coverage})` : base;
   });
   const rules = `RULES for these tokens:

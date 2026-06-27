@@ -297,18 +297,27 @@ function identityCoversFor(token: string): string {
 export function renderIdentityContextCatalogForTransform(
   ctx: Identity,
   mode: ContextMode,
+  language: 'bare' | 'typed' = 'bare',
 ): string {
   if (mode === 'off' || ctx.fields.length === 0) return '';
   const header = `USER CONTEXT — tokens for the SENDER / AUTHOR / USER (the person composing this content). The runtime substitutes the real value before it reaches the user's buffer:`;
+  // Typed grammar (opt-in): annotate each scalar token with its return
+  // type — `[FIRST NAME]` → `[FIRST NAME: string]`. The bench's
+  // typed-scalar tier lifts selection +8-14pp; identity fields are all
+  // strings so the annotation is uniform. The rules block below is
+  // unchanged, so the validated SECTION-FIT behaviour is preserved.
+  const typeAnno = (token: string): string =>
+    language === 'typed' ? token.replace(/\]$/, ': string]') : token;
   // Per-field `covers:` synonym hints help the LLM bind natural prose
   // ("my role", "where I work", "DM me") back to the canonical token,
   // mirroring blank-context's catalog. Bench-validated +80pp utilization
   // on conference-talk-abstract inputs.
   const lines = ctx.fields.map(f => {
     const covers = identityCoversFor(f.token);
+    const tok = typeAnno(f.token);
     const base = mode === 'raw'
-      ? `- ${f.token} — ${f.description} (value: ${f.value})`
-      : `- ${f.token} — ${f.description}`;
+      ? `- ${tok} — ${f.description} (value: ${f.value})`
+      : `- ${tok} — ${f.description}`;
     return covers ? `${base} (covers: ${covers})` : base;
   });
   const rules = `RULES for these tokens:

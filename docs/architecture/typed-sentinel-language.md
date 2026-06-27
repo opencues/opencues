@@ -1,8 +1,31 @@
 # Typed-Sentinel Upgrade Plan
 
-Branch: `explore/sentinel-language-bench`
-Status: planning doc
-Last updated: 2026-06-16
+Branch: `explore/typed-sentinel-language`
+Status: **v1 implemented (opt-in)** — see Implementation status below
+Last updated: 2026-06-27
+
+## Implementation status (2026-06-27)
+
+The core grammar is **shipped behind `sentinel-language: typed`** (default
+`bare`, byte-identical for existing users). What's live:
+
+- **Engine** — `packages/opencues-core/src/typed-sentinel.ts`: catalog
+  renderer, recursive parser, innermost-first resolver with the
+  validate-and-degrade contract + the runtime bridges (scalar lookup,
+  fn→instance-token bridge, JSON accessor). 36 unit tests.
+- **Gate** — `sentinel-language` scalar in `feature-registry.ts` +
+  `OpenCuesState`; threaded to sources via `CueContext.sentinelLanguage`.
+- **Wiring** — typed catalog rendering + post-LLM resolution in
+  `transform-blank-source.ts` behind the gate. 8 integration tests.
+
+Maps to the phases below: **Phase 1 (parser + back-compat)** and
+**Phase 2 (catalog rendering switch)** are done for the transform path;
+**Phase 3 (IDENTITY type inference)** is auto-derived (all identity fields
+render `: string`). Deferred: the explicit BLANK.md `signature:` /
+`returns:` declaration surface (**Phase 4** — v1 auto-derives types so no
+dead metadata ships), the default flip (**Phase 5**), and legacy removal
+(**Phase 6**). The fluid-blank path still uses the bare resolver; wiring it
+mirrors the transform path and is the next increment.
 
 ## What this plan covers
 

@@ -563,6 +563,24 @@ export const FEATURES: readonly FeatureSpec[] = [
     pushedBy: ['chrome-host'],
   },
   {
+    // Grammar used to render identity-/blank-context sentinel tokens to
+    // the LLM and to parse them back. `bare` (default) is the flat
+    // [TOKEN] form every existing user is on — byte-identical behaviour.
+    // `typed` switches to the parameterized + nested + field-access
+    // grammar (bench-validated: parameterized +14pp cross-provider,
+    // param-fill +47pp, nested composition 100% through depth 3). The
+    // runtime engine + its evidence: packages/opencues-core/src/typed-sentinel.ts,
+    // docs/architecture/typed-sentinel-language.md.
+    scalar: 'sentinel-language',
+    camelCase: 'sentinelLanguage',
+    description: 'Grammar for rendering + resolving identity-/blank-context sentinel tokens',
+    menuTip: 'Bare = flat [TOKEN] (default). Typed = parameterized + nested signatures ([STOCK PRICE(ticker=NVDA)], [WEATHER TEMP(city=[WORK CITY])]) — higher accuracy on parameter-bearing lookups.',
+    values: [
+      { id: 'bare',  description: 'Flat [TOKEN] form (default) — every existing catalog renders + resolves unchanged' },
+      { id: 'typed', description: 'Typed/parameterized/nested signatures; runtime parses + resolves the richer grammar with validate-and-degrade' },
+    ],
+  },
+  {
     scalar: 'blank-context-mode',
     camelCase: 'blankContextMode',
     description: 'Blanks expose their current values as ambient tokens for fluid-blank',
