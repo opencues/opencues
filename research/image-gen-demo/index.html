@@ -13,14 +13,10 @@
   #box:empty:before { content: attr(data-placeholder); color: #999; }
   #box img { vertical-align: middle; border-radius: 6px; margin: 0 3px; cursor: pointer; }
   #box img.sel { outline: 2px solid #4a7; outline-offset: 1px; }
-  #box img.oc-busy { animation: pulse 1.05s ease-in-out infinite; }
-  /* inline loader — occupies the eventual image's slot, no layout jump, no external text */
-  .oc-load { display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;
-    margin: 0 3px; border-radius: 6px; background: #eef0fb; animation: pulse 1.05s ease-in-out infinite; }
-  .oc-spin { display: inline-block; width: 14px; height: 14px; border: 2px solid #99c; border-top-color: transparent;
-    border-radius: 50%; animation: spin .7s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  @keyframes pulse { 0%,100% { opacity: .5 } 50% { opacity: .95 } }
+  /* OpenCues blank loader: a single glyph animating IN PLACE (same as a text blank).
+     Frames/interval mirror packages/opencues-runtime/src/modules/blank-loading.ts
+     (braille-rotate, 150ms). Just text — no box, no spinner, no external indicator. */
+  .oc-glyph { font-family: inherit; color: #5566cc; }
   .oc-note { color: #b00; font-size: 12px; background: #fee; padding: 1px 6px; border-radius: 4px; }
   .controls { margin: 12px 0; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; font-size: 13px; }
   button { font-size: 13px; padding: 4px 10px; border: 1px solid #bbb; border-radius: 6px; background: #fafafa; cursor: pointer; }
@@ -33,9 +29,9 @@
 <body>
 <h1>OpenCues image-gen prototype</h1>
 <p class="hint">
-  Type a request ending in <code>_</code> — any language; intent (generate vs edit) is classified by an LLM, not keywords.<br>
+  Type a request ending in <code>_</code> — any language; intent is classified by an LLM, not keywords.<br>
   generate: <code>a red apple _</code> &nbsp; edit (cursor by an image, or name it): <code>make it blue _</code> / <code>edit the first one: add a plant _</code><br>
-  Loading shows inline where the image will appear. Click an image to target it. Masters are session-only — <b>Clear</b> or reload freezes images.
+  The <code>_</code> animates in place (the normal OpenCues blank loader) until done. Click an image to target it. Masters are session-only.
 </p>
 
 <div class="controls">
@@ -58,16 +54,16 @@ const sizeSel = document.getElementById('size');
 
 const MASTER_PX = 256;
 const PRICE = { gen: 0.003, 'flux/dev': 0.025, 'fast-sdxl': 0.0009, edit: 0.02 };
+// mirror of OpenCues blank-loading.ts (braille-rotate @150ms) — real integration reuses BlankLoading
+const LOAD_FRAMES = ['_','⠁','⠈','⠐','⠠','⠄','⠂'];
+const LOAD_MS = 150;
 let spent = 0, nextId = 1, busy = false, lastHandled = '';
 const masters = new Map();   // id -> { master(256 dataUrl), prompt }  (session-only)
 
-// Unified logger: browser panel + server file (/clientlog -> /tmp/oc-imggen.log).
-// Every line here is a candidate adapter.log() call for the real integration.
 function clog(phase, data={}, cls='info') {
   const d=document.createElement('div'); d.className='ev '+cls;
   d.textContent=`[${new Date().toLocaleTimeString()}] ${phase} ${JSON.stringify(data)}`; events.prepend(d);
-  try { navigator.sendBeacon?.('/clientlog', new Blob([JSON.stringify({phase, ...data})], {type:'application/json'}))
-        || fetch('/clientlog',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phase, ...data})}); } catch {}
+  try { fetch('/clientlog',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phase, ...data})}); } catch {}
 }
 function addCost(n){ spent+=n; costEl.textContent=`spent: $${spent.toFixed(4)}`; }
 function resize(dataUrl, px){ return new Promise(r=>{ const im=new Image(); im.onload=()=>{ const c=document.createElement('canvas'); c.width=px;c.height=px; c.getContext('2d').drawImage(im,0,0,px,px); r(c.toDataURL('image/png')); }; im.src=dataUrl; }); }
@@ -75,6 +71,14 @@ function imageList(){ return [...box.querySelectorAll('img[data-oc-id]')].map((e
 function imgById(id){ return box.querySelector(`img[data-oc-id="${id}"]`); }
 function rangeAfter(node){ const r=document.createRange(); r.setStartAfter(node); r.collapse(true); return r; }
 function caretAfter(node){ const s=getSelection(); s.removeAllRanges(); s.addRange(rangeAfter(node)); }
+
+// the OpenCues blank loader: one glyph cycling in place
+function makeLoader(){
+  const el=document.createElement('span'); el.className='oc-glyph'; el.contentEditable='false'; el.textContent='_';
+  let i=0; const t=setInterval(()=>{ i=(i+1)%LOAD_FRAMES.length; el.textContent=LOAD_FRAMES[i]; }, LOAD_MS);
+  el.stopAnim=()=>clearInterval(t);
+  return el;
+}
 
 function nearestImage(){
   const sel=getSelection(); if(!sel.rangeCount) return null;
@@ -101,14 +105,12 @@ box.addEventListener('input', () => {
   if(!cmd) return;
   lastHandled=upto; busy=true;
 
-  // Optimistic INLINE loader: remove the command text, drop a loader where the image will go.
+  // remove the command text; drop the animating-glyph loader in its place (the `_` keeps animating)
   const saved=node.textContent.slice(s,caret);
   const range=document.createRange(); range.setStart(node,s); range.setEnd(node,caret); range.deleteContents();
-  const loader=document.createElement('span'); loader.className='oc-load'; loader.contentEditable='false'; loader.innerHTML='<span class="oc-spin"></span>';
-  range.insertNode(loader); caretAfter(loader);
+  const loader=makeLoader(); range.insertNode(loader); caretAfter(loader);
   clog('trigger', {cmd, images:imageList().length}, 'info');
-  busy=false; // allow typing / further triggers while this one runs
-
+  busy=false;
   classifyAndAct(cmd, loader, saved);
 });
 
@@ -116,42 +118,34 @@ async function classifyAndAct(cmd, loader, saved){
   const images = imageList().map(({ordinal,id,label})=>({ordinal,id,label}));
   let c; const t0=performance.now();
   try { c=await (await fetch('/classify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:cmd,images})})).json(); }
-  catch(e){ loader.replaceWith(document.createTextNode(saved)); clog('classify.error',{err:e.message},'err'); return; }
+  catch(e){ loader.stopAnim(); loader.replaceWith(document.createTextNode(saved)); clog('classify.error',{err:e.message},'err'); return; }
   const ms=Math.round(performance.now()-t0);
 
-  if (c.error || c.verdict==='CEDE') {
-    loader.replaceWith(document.createTextNode(saved)); // restore the user's text — it wasn't an image command
-    clog('cede',{cmd, ms, err:c.error||null},'info'); return;
-  }
+  if (c.error || c.verdict==='CEDE') { loader.stopAnim(); loader.replaceWith(document.createTextNode(saved)); clog('cede',{cmd, ms, err:c.error||null},'info'); return; }
 
-  if (c.verdict==='GENERATE') {
-    clog('generate.start',{prompt:c.prompt, ms},'gen');
-    doGenerate(c.prompt, loader); return;
-  }
+  if (c.verdict==='GENERATE') { clog('generate.start',{prompt:c.prompt, ms},'gen'); doGenerate(c.prompt, loader); return; }
 
   if (c.verdict==='EDIT') {
     const list=imageList();
     let targetId = (c.target!=null && list[c.target-1]) ? list[c.target-1].id : nearestImage();
-    loader.remove(); // edit happens on an existing image, not at the text spot
     if (!targetId || !masters.has(targetId)) {
-      const n=document.createElement('span'); n.className='oc-note'; n.contentEditable='false'; n.textContent='[no editable image]';
-      const r=getSelection().getRangeAt(0); r.insertNode(n);
+      loader.stopAnim(); const n=document.createElement('span'); n.className='oc-note'; n.contentEditable='false'; n.textContent='[no editable image]'; loader.replaceWith(n);
       clog('edit.cede',{reason: targetId?'master frozen/expired':'no target', ms},'err'); return;
     }
     const ord=list.findIndex(x=>x.id===targetId)+1;
     clog('edit.start',{ordinal:ord, id:targetId, instruction:c.instruction, by:(c.target!=null?'named':'cursor-adjacent'), ms},'edit');
-    doEdit(targetId, c.instruction);
+    doEdit(targetId, c.instruction, loader); // glyph keeps animating at the command slot until the edit lands
   }
 }
 
 async function doGenerate(prompt, loader){
   const model=modelSel.value, disp=parseInt(sizeSel.value,10);
-  loader.style.width=disp+'px'; loader.style.height=disp+'px'; // grow into the image slot
   const t0=performance.now();
   let res; try { res=await (await fetch('/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt,size:512,model})})).json(); }
   catch(e){ res={ok:false,error:e.message}; }
   const rt=Math.round(performance.now()-t0);
-  if(!loader.isConnected){ clog('generate.discarded',{rt},'info'); return; }
+  if(!loader.isConnected){ loader.stopAnim?.(); clog('generate.discarded',{rt},'info'); return; }
+  loader.stopAnim();
   if(!res.ok){ const n=document.createElement('span'); n.className='oc-note'; n.contentEditable='false'; n.textContent=`[gen failed: ${res.error}]`; loader.replaceWith(n); clog('generate.fail',{rt,err:res.error},'err'); return; }
   const master=await resize(res.dataUrl,MASTER_PX), shown=await resize(res.dataUrl,disp);
   const id='oc'+(nextId++);
@@ -160,20 +154,20 @@ async function doGenerate(prompt, loader){
   clog('generate.done',{id, ordinal:imageList().findIndex(x=>x.id===id)+1, gen_ms:res.ms, rt, native:`${res.width}x${res.height}`, master:MASTER_PX, disp},'ok');
 }
 
-async function doEdit(id, instruction){
-  const rec=masters.get(id); const img=imgById(id); const disp=parseInt(sizeSel.value,10);
-  if(!rec||!img){ clog('edit.fail',{id,reason:'gone'},'err'); return; }
-  img.classList.add('oc-busy'); // inline loading state ON the image (no external text)
+async function doEdit(id, instruction, loader){
+  const rec=masters.get(id); const disp=parseInt(sizeSel.value,10);
+  if(!rec||!imgById(id)){ loader.stopAnim(); loader.remove(); clog('edit.fail',{id,reason:'gone'},'err'); return; }
   const t0=performance.now();
   let res; try { res=await (await fetch('/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({imageDataUrl:rec.master,instruction})})).json(); }
   catch(e){ res={ok:false,error:e.message}; }
   const rt=Math.round(performance.now()-t0);
+  loader.stopAnim(); loader.remove();           // remove the slot loader; the image updates in place
   const live=imgById(id);
   if(!masters.has(id)||!live){ clog('edit.discarded',{id,rt},'info'); return; }
-  if(!res.ok){ live.classList.remove('oc-busy'); clog('edit.fail',{id,rt,err:res.error},'err'); return; }
+  if(!res.ok){ clog('edit.fail',{id,rt,err:res.error},'err'); return; }
   const newMaster=await resize(res.dataUrl,MASTER_PX), shown=await resize(res.dataUrl,disp);
   masters.set(id,{master:newMaster, prompt:rec.prompt+' | '+instruction});
-  live.src=shown; live.classList.remove('oc-busy','sel'); addCost(PRICE.edit);
+  live.src=shown; live.classList.remove('sel'); addCost(PRICE.edit);
   clog('edit.done',{id, edit_ms:res.ms, rt, master:MASTER_PX},'ok');
 }
 
