@@ -1063,3 +1063,46 @@ npx tsx tests/benchmarks/typed-sentinel-language/run.ts \
 
 Audit logs per run carry the raw outputs + per-case scores. Useful
 for hand-grading new categories or chasing a specific failure mode.
+
+---
+
+## Re-validation on master (2026-06-27)
+
+The full probe set was re-run after lifting this bench onto a clean
+`master` base (branch `explore/typed-sentinel-language`), to confirm the
+June-16 findings reproduce against current master + the shipped provider
+helpers. They do — every headline holds within seed noise.
+
+**Main bench — bare → parameterized lift (2 providers):**
+
+| Provider | bare overall | parameterized overall | Δ | bare param-fill → param |
+|---|---|---|---|---|
+| cerebras | 78.2% | 94.7% | **+16.5pp** | 58.8% → **100%** (+41pp) |
+| claude   | 81.8% | 95.3% | **+13.5pp** | 44.1% → **100%** (+56pp) |
+
+Both match the original dossier (cerebras 79.4→95.9, claude 81.8→95.3)
+within ~1pp. Parameter-fill remains the dominant lever; hybrid still
+fails to beat parameterized; `unsupported` stays 100% (no hallucinated
+sentinels). Composition is again the weakest category on both providers
+(cerebras 84%, claude 80%).
+
+**Safety + capability probes (cerebras):**
+
+| Probe | Result | Dossier claim | Verdict |
+|---|---|---|---|
+| fabrication (param invention) | **0/34 cases, all 6 languages** | bracket langs = 0 | ✅ confirmed (even stronger) |
+| nested composition | **100%** overall / 100% inner-hit / 100% literal-hit | 100% | ✅ confirmed |
+| field-access | return-selector **100%**, dotted 100%, field-param 97.9% | return-selector best | ✅ confirmed |
+| array-deep | FULL 96.1% / NARROW 94.8% | mostly solved, 1 caveat | ✅ confirmed |
+| scale (50-entry) | parameterized 89.4% vs bare 78.2% = **+11.2pp** | +10-12pp | ✅ confirmed |
+
+**The one honest caveat reproduced too.** The "0 fabrication" guarantee
+holds for FUNCTION PARAMETERS (the fabrication probe: 0/34 everywhere).
+It does NOT extend to ARRAY ACCESSORS: array-deep's NoFab dimension is
+80.6% (FULL) / 90.3% (NARROW) and element-access is the weakest
+dimension (88% / 76%) — models still spontaneously reach for `.first` /
+`[N]` because "collections have .first" is a strong prior. This is
+exactly the dossier's documented `.first` caveat and the reason the
+upgrade plan requires an explicit `ordering:` clause + per-array accessor
+documentation. A typed-sentinel runtime parser MUST treat array accessors
+as a validate-and-degrade surface, not a trusted one.
