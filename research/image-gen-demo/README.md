@@ -1,47 +1,52 @@
 # Image-gen integration prototype (research harness)
 
-A runnable stand-in for the real OpenCues image-blank, used to observe the
-**integration side effects** (async insert, cancel-on-edit, undo, sizing,
-failure handling) without touching any host adapter. Part of the
-`research/image-generation-notes` branch — not shipped.
+A runnable stand-in for the OpenCues image-blank — **generate + edit** with the
+agreed design — used to observe integration side effects without touching any
+host adapter. Part of `research/image-generation-notes`; not shipped.
 
 ## Run
 
 ```bash
-source ~/.bashrc                       # loads FAL_KEY (server-side only)
+source ~/.bashrc                       # FAL_KEY + CEREBRAS_API_KEY (server-side only)
 node research/image-gen-demo/server.mjs
 ```
-Open <http://localhost:8788> (WSL2 forwards localhost to the Windows browser).
+Open <http://localhost:8788>.
 
-## Try
+## Design realized here
 
-In the input box, type a trigger ending in `_`:
-- `draw a red apple _`
-- `image: sunset over water _`
+- **Language-invariant intent.** Every `_`-terminated phrase is classified by a
+  fast LLM (cerebras gpt-oss-120b) into `GENERATE | EDIT | CEDE` — no keyword
+  list. Works in any language ("dessine…", "リンゴを緑にして").
+- **Generate** → fal `flux/schnell` @512 → a **256 session master** → display
+  copy at the chosen px, inserted where the command was (command text wiped).
+- **Edit** → fal `flux-kontext/dev` on the target's 256 master → replace in
+  place (the ≥256 floor: edits below collapse).
+- **Targeting (precedence):** explicit reference from the classifier
+  (`make the first one… ` / "the apple one") → cursor-adjacency → else cede.
+  Click an image to force-select it as the target.
+- **Two+ images:** keyed session registry; ordinals come from DOM order; the
+  classifier resolves "first/second/the-X-one" against the image labels.
+- **Ephemeral masters:** held in memory only. **Clear/Submit or reload freezes
+  every image** (master dropped → edits cede). Nothing is persisted.
 
-The trigger text is removed, a spinner placeholder appears in place, and the
-image is generated (fal) and inserted. You can also paste an image directly.
+## Side effects to watch
 
-## Side effects to watch (the point of this harness)
+- classify latency (~0.3–0.8s) before generate/edit starts (status line shows it)
+- generate ~0.5–1s, edit ~2s; type during either — text is preserved
+- failure → inline note, surrounding content untouched (no landmine)
+- editing a frozen image (after Clear) → cedes with a note
+- undo (Ctrl+Z) on an inserted/edited image — observe what contenteditable does
+- cost tally (corner): ~$0.003 gen, ~$0.02 edit, classify ~free
 
-- **Latency** — ~0.5–1 s for flux/schnell; the placeholder is the UX bridge.
-- **Type-during-generation** — keep typing after the trigger; the caret moves
-  past the placeholder and your text is preserved (no buffer corruption).
-- **Cancel-on-edit** — delete the placeholder before it resolves; the result
-  is discarded (logged), nothing is inserted.
-- **Failure** — pick `fast-sdxl` or kill the network; the placeholder becomes
-  an inline `[image failed: …]`, surrounding text untouched (no landmine).
-- **Quality** — switch the model dropdown: `flux/schnell` good, `flux/dev`
-  best/slower, `fast-sdxl` deliberately bad (abstract blobs) for contrast.
-- **Sizing** — generate at 512, downscale locally to 100/200/300px on insert.
-- **Undo** — Ctrl+Z behavior on the inserted image is an observed side effect
-  (contenteditable may not make it a single step — note what it does).
-- **Cost** — running tally in the corner (~$0.003/img on flux/schnell).
+## Endpoints
 
-## What this proves / doesn't
+- `POST /classify {text, images:[{ordinal,label}]}` → `{verdict, prompt, instruction, target}`
+- `POST /generate {prompt, size, model}` → `{ok, dataUrl, ms, ...}` (inline)
+- `POST /edit {imageDataUrl, instruction}` → `{ok, dataUrl, ms, ...}` (inline)
 
-Proves the insert-mechanics + async-flow that the real chrome adapter would
-need. Does **not** touch `HostAdapter` / `setText` / the resolver — promoting
-this into the real extension means adding `supportsImageInsert()` +
-`insertImage()` to the adapter contract and an `ImageBlank` source, gated to
-rich-DOM hosts only. See `docs/guides/image-generation.md`.
+## Not the real integration
+
+No `HostAdapter` / `setText` / resolver. Promotion = `supportsImageInsert()` +
+`insertImage()` on the adapter, an `ImageBlank` source feeding the same
+classifier, an images provider-bucket, gated to rich-DOM hosts. See
+`docs/guides/image-generation.md`.
