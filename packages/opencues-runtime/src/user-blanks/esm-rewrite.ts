@@ -21,9 +21,31 @@
 // use spaces of equal length where possible) so error messages from
 // the embedded source still point at the user's original line.
 
-import { parse } from 'acorn';
-import { simple as walkSimple } from 'acorn-walk';
+// `acorn` + `acorn-walk` are imported TYPE-ONLY at module scope and
+// lazy-`require()`d inside `rewriteEsmToCjsShim` (INFOSEC F1 pattern,
+// mirroring node-loader's `getIvm` for isolated-vm). Requiring THIS
+// module must never pull acorn at load time: registry.js loads it
+// eagerly, and a host/fork that lacks acorn (Bun hosts, a CC fork whose
+// setup copied dist but not transitive deps) must still LOAD the runtime
+// — CC's `validateFork` boot-smoke + `check-runtime-loads-on-bun.sh`
+// both `require(registry.js)`. Only an actual JS user-blank rewrite needs
+// the parser; its absence degrades that one blank (registry.ts's
+// try/catch), it does not break the whole runtime.
 import type { Node } from 'acorn';
+
+let _acorn: typeof import('acorn') | null = null;
+let _acornWalk: typeof import('acorn-walk') | null = null;
+/** Lazy-load the acorn parser. Throws (caught by registry.ts) only when a
+ *  JS user-blank is actually rewritten on a host without acorn installed. */
+function loadAcorn(): { parse: typeof import('acorn').parse; walkSimple: typeof import('acorn-walk').simple } {
+  if (!_acorn || !_acornWalk) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    _acorn = require('acorn');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    _acornWalk = require('acorn-walk');
+  }
+  return { parse: _acorn!.parse, walkSimple: _acornWalk!.simple };
+}
 
 interface AcornProgram extends Node {
   body: Node[];
@@ -47,6 +69,7 @@ export interface RewriteResult {
 }
 
 export function rewriteEsmToCjsShim(source: string): RewriteResult {
+  const { parse, walkSimple } = loadAcorn();
   const warnings: string[] = [];
   let ast: AcornProgram;
   try {
