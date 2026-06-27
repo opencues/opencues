@@ -10,7 +10,7 @@
 // Research harness on research/image-generation-notes — touches no host adapter.
 
 import http from 'node:http';
-import { readFileSync } from 'node:fs';
+import { readFileSync, appendFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -18,6 +18,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 8788;
 const FAL_KEY = process.env.FAL_KEY;
 const CEREBRAS_KEY = process.env.CEREBRAS_API_KEY;
+
+// dedicated harness log (NOT /tmp/opencues.log — don't pollute the real host log)
+const LOG_FILE = '/tmp/oc-imggen.log';
+function L(obj) {
+  const line = `[${new Date().toISOString()}][imggen] ${JSON.stringify(obj)}`;
+  console.log(line);
+  try { appendFileSync(LOG_FILE, line + '\n'); } catch {}
+}
 
 const GEN_MODEL = { 'flux/schnell': 'fal-ai/flux/schnell', 'flux/dev': 'fal-ai/flux/dev', 'fast-sdxl': 'fal-ai/fast-sdxl' };
 const EDIT_MODEL = 'fal-ai/flux-kontext/dev';
@@ -105,9 +113,21 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     return res.end(readFileSync(join(__dirname, 'index.html'), 'utf8'));
   }
-  if (req.method === 'POST' && req.url === '/classify') return json(res, await classify(await readBody(req)));
-  if (req.method === 'POST' && req.url === '/generate') return json(res, await falGenerate(await readBody(req)));
-  if (req.method === 'POST' && req.url === '/edit')     return json(res, await falEdit(await readBody(req)));
+  if (req.method === 'POST' && req.url === '/classify') {
+    const body = await readBody(req); const t0 = Date.now(); const out = await classify(body);
+    L({ op: 'classify', text: (body.text || '').slice(0, 80), images: (body.images || []).length, verdict: out.verdict, target: out.target ?? null, instruction: (out.instruction || '').slice(0, 60), prompt: (out.prompt || '').slice(0, 60), ms: Date.now() - t0, error: out.error });
+    return json(res, out);
+  }
+  if (req.method === 'POST' && req.url === '/generate') {
+    const body = await readBody(req); const out = await falGenerate(body);
+    L({ op: 'generate', prompt: (body.prompt || '').slice(0, 80), model: body.model, size: body.size, ok: out.ok, dim: out.ok ? `${out.width}x${out.height}` : null, ms: out.ms, seed: out.seed, error: out.error });
+    return json(res, out);
+  }
+  if (req.method === 'POST' && req.url === '/edit') {
+    const body = await readBody(req); const out = await falEdit(body);
+    L({ op: 'edit', instruction: (body.instruction || '').slice(0, 80), ok: out.ok, dim: out.ok ? `${out.width}x${out.height}` : null, ms: out.ms, error: out.error });
+    return json(res, out);
+  }
   res.writeHead(404); res.end('not found');
 });
 
