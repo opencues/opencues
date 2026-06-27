@@ -395,6 +395,20 @@ export function resolveTypedSentinels(
     const span = spans[i]!;
     let replacement: string;
 
+    // CANDIDATE GUARD (buffer-safety): only treat a span as a sentinel if
+    // it actually looks like one — an uppercase-leading token name (the same
+    // shape bare's `/\[[A-Z][A-Z0-9 _-]*\]/` matches) OR a parameterized
+    // call (has args). This leaves markdown links `[docs](url)`, citations
+    // `[1]`, code `arr[0]`, checkboxes `[ ]`, and lowercase placeholders
+    // `[your name]` untouched — exactly as the bare post-processor does.
+    // Without this, the wider `[...]` grammar would strip them and corrupt
+    // the buffer. A user-typed bracket is also preserved below via
+    // originalBody, but that only covers text the user typed, not
+    // LLM-generated markdown — this guard covers both.
+    const nameLooksLikeToken = /^[A-Z][A-Z0-9 _-]*$/.test(span.token.name.trim());
+    const isCandidate = nameLooksLikeToken || Object.keys(span.token.args).length > 0;
+    if (!isCandidate) continue; // leave the span verbatim
+
     if (opts.originalBody && opts.originalBody.includes(span.text)) {
       report.preserved.push(span.text);
       replacement = span.text; // user-typed — untouched

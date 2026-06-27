@@ -301,3 +301,33 @@ describe('resolveTypedSentinels — safety + edge cases', () => {
     assert.strictEqual(r.output, 'Wilfred and [');
   });
 });
+
+describe('resolveTypedSentinels — buffer safety: non-token brackets untouched', () => {
+  // The wider `[...]` grammar must NOT strip markdown / code / lowercase
+  // brackets that aren't catalog tokens — same protection bare's
+  // uppercase-only regex gives. Buffer-destruction guard.
+  it('preserves a markdown link [label](url)', () => {
+    const r = resolveTypedSentinels('see [docs](https://x.com) please', baseOpts({ preserveUnknown: false }));
+    assert.strictEqual(r.output, 'see [docs](https://x.com) please');
+  });
+
+  it('preserves a numeric citation [1] and code index arr[0]', () => {
+    const r = resolveTypedSentinels('item [1] in arr[0]', baseOpts({ preserveUnknown: false }));
+    assert.strictEqual(r.output, 'item [1] in arr[0]');
+  });
+
+  it('preserves a markdown checkbox [ ] and a lowercase placeholder [your name]', () => {
+    const r = resolveTypedSentinels('* [ ] todo for [your name]', baseOpts({ preserveUnknown: false }));
+    assert.strictEqual(r.output, '* [ ] todo for [your name]');
+  });
+
+  it('still resolves a real uppercase token amid markdown', () => {
+    const r = resolveTypedSentinels('Hi [FIRST NAME], see [docs](url)', baseOpts({ preserveUnknown: false }));
+    assert.strictEqual(r.output, 'Hi Wilfred, see [docs](url)');
+  });
+
+  it('still resolves a parameterized call even with a lowercase-ish name (has args)', () => {
+    const r = resolveTypedSentinels('[STOCK PRICE(ticker=NVDA)]', baseOpts());
+    assert.strictEqual(r.output, '$880');
+  });
+});
