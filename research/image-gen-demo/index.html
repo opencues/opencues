@@ -13,7 +13,14 @@
   #box:empty:before { content: attr(data-placeholder); color: #999; }
   #box img { vertical-align: middle; border-radius: 6px; margin: 0 3px; cursor: pointer; }
   #box img.sel { outline: 2px solid #4a7; outline-offset: 1px; }
-  .oc-busy { display:inline-block; width:0; height:0; font-size:0; }
+  #box img.oc-busy { animation: pulse 1.05s ease-in-out infinite; }
+  /* inline loader — occupies the eventual image's slot, no layout jump, no external text */
+  .oc-load { display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;
+    margin: 0 3px; border-radius: 6px; background: #eef0fb; animation: pulse 1.05s ease-in-out infinite; }
+  .oc-spin { display: inline-block; width: 14px; height: 14px; border: 2px solid #99c; border-top-color: transparent;
+    border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse { 0%,100% { opacity: .5 } 50% { opacity: .95 } }
   .oc-note { color: #b00; font-size: 12px; background: #fee; padding: 1px 6px; border-radius: 4px; }
   .controls { margin: 12px 0; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; font-size: 13px; }
   button { font-size: 13px; padding: 4px 10px; border: 1px solid #bbb; border-radius: 6px; background: #fafafa; cursor: pointer; }
@@ -21,16 +28,14 @@
   #log h2 { font-size: 12px; color: #666; margin: 0 0 4px; text-transform: uppercase; letter-spacing: .04em; }
   .ev { font: 12px/1.45 ui-monospace, monospace; padding: 1px 0; border-bottom: 1px solid #f4f4f4; white-space: pre-wrap; }
   .ev.ok{color:#161} .ev.err{color:#b00} .ev.info{color:#555} .ev.gen{color:#247} .ev.edit{color:#724}
-  #status { font-weight: 600; color: #449; }
 </style>
 </head>
 <body>
 <h1>OpenCues image-gen prototype</h1>
 <p class="hint">
-  Type a request ending in <code>_</code> — any language. Intent (generate vs edit) is classified by an LLM, not keywords:<br>
-  generate: <code>a red apple _</code> &nbsp; <code>dessine un coucher de soleil _</code><br>
-  edit (cursor next to an image, or name it): <code>make it blue _</code> &nbsp; <code>edit the first one: add a plant _</code><br>
-  Click an image to select it as the edit target. Masters are session-only — <b>Clear</b> or reload freezes images (no more edits).
+  Type a request ending in <code>_</code> — any language; intent (generate vs edit) is classified by an LLM, not keywords.<br>
+  generate: <code>a red apple _</code> &nbsp; edit (cursor by an image, or name it): <code>make it blue _</code> / <code>edit the first one: add a plant _</code><br>
+  Loading shows inline where the image will appear. Click an image to target it. Masters are session-only — <b>Clear</b> or reload freezes images.
 </p>
 
 <div class="controls">
@@ -38,156 +43,143 @@
   <label>display: <select id="size"><option value="120">120px</option><option value="200" selected>200px</option><option value="300">300px</option></select></label>
   <button id="clear">Clear / Submit (freeze)</button>
   <span id="cost">spent: $0.000</span>
-  <span id="status"></span>
 </div>
 
 <div id="box" contenteditable="true" spellcheck="false" data-placeholder="Type a request ending in _  (e.g. a red apple _)"></div>
 
-<div id="log"><h2>side-effect log</h2><div id="events"></div></div>
+<div id="log"><h2>process log (mirrored to /tmp/oc-imggen.log)</h2><div id="events"></div></div>
 
 <script>
 const box = document.getElementById('box');
 const events = document.getElementById('events');
 const costEl = document.getElementById('cost');
-const statusEl = document.getElementById('status');
 const modelSel = document.getElementById('model');
 const sizeSel = document.getElementById('size');
 
-const MASTER_PX = 256;            // session master size (edit floor)
+const MASTER_PX = 256;
 const PRICE = { gen: 0.003, 'flux/dev': 0.025, 'fast-sdxl': 0.0009, edit: 0.02 };
 let spent = 0, nextId = 1, busy = false, lastHandled = '';
-const masters = new Map();        // id -> { master(dataUrl 256), prompt }  (session-only, never persisted)
+const masters = new Map();   // id -> { master(256 dataUrl), prompt }  (session-only)
 
-function log(msg, cls='info') { const d=document.createElement('div'); d.className='ev '+cls; d.textContent=`[${new Date().toLocaleTimeString()}] ${msg}`; events.prepend(d); }
-function setStatus(s){ statusEl.textContent = s || ''; }
-function addCost(n){ spent+=n; costEl.textContent = `spent: $${spent.toFixed(4)}`; }
-
-// downscale a dataURL to a square of px via canvas
-function resize(dataUrl, px){ return new Promise(res=>{ const im=new Image(); im.onload=()=>{ const c=document.createElement('canvas'); c.width=px;c.height=px; c.getContext('2d').drawImage(im,0,0,px,px); res(c.toDataURL('image/png')); }; im.src=dataUrl; }); }
-
-// ordered registry from DOM (visual order = ordinals)
-function imageList(){ return [...box.querySelectorAll('img[data-oc-id]')].map((el,i)=>({ ordinal:i+1, id:el.dataset.ocId, label: masters.get(el.dataset.ocId)?.prompt || 'image', el })); }
+// Unified logger: browser panel + server file (/clientlog -> /tmp/oc-imggen.log).
+// Every line here is a candidate adapter.log() call for the real integration.
+function clog(phase, data={}, cls='info') {
+  const d=document.createElement('div'); d.className='ev '+cls;
+  d.textContent=`[${new Date().toLocaleTimeString()}] ${phase} ${JSON.stringify(data)}`; events.prepend(d);
+  try { navigator.sendBeacon?.('/clientlog', new Blob([JSON.stringify({phase, ...data})], {type:'application/json'}))
+        || fetch('/clientlog',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({phase, ...data})}); } catch {}
+}
+function addCost(n){ spent+=n; costEl.textContent=`spent: $${spent.toFixed(4)}`; }
+function resize(dataUrl, px){ return new Promise(r=>{ const im=new Image(); im.onload=()=>{ const c=document.createElement('canvas'); c.width=px;c.height=px; c.getContext('2d').drawImage(im,0,0,px,px); r(c.toDataURL('image/png')); }; im.src=dataUrl; }); }
+function imageList(){ return [...box.querySelectorAll('img[data-oc-id]')].map((el,i)=>({ordinal:i+1,id:el.dataset.ocId,label:masters.get(el.dataset.ocId)?.prompt||'image',el})); }
 function imgById(id){ return box.querySelector(`img[data-oc-id="${id}"]`); }
+function rangeAfter(node){ const r=document.createRange(); r.setStartAfter(node); r.collapse(true); return r; }
+function caretAfter(node){ const s=getSelection(); s.removeAllRanges(); s.addRange(rangeAfter(node)); }
 
-// nearest image to the caret (cursor-adjacency fallback)
 function nearestImage(){
   const sel=getSelection(); if(!sel.rangeCount) return null;
-  const r=sel.getRangeAt(0); const imgs=imageList(); if(!imgs.length) return null;
-  // prefer a selected one, else the last image that appears before the caret, else the first
   const seld=box.querySelector('img.sel'); if(seld) return seld.dataset.ocId;
+  const r=sel.getRangeAt(0); const imgs=imageList(); if(!imgs.length) return null;
   let pick=imgs[0];
-  for(const it of imgs){ const pos=r.compareBoundaryPoints(Range.START_TO_END, rangeAfter(it.el)); if(pos>=0) break; pick=it; }
+  for(const it of imgs){ if(r.compareBoundaryPoints(Range.START_TO_END, rangeAfter(it.el))>=0) break; pick=it; }
   return pick.id;
 }
-function rangeAfter(node){ const r=document.createRange(); r.setStartAfter(node); r.collapse(true); return r; }
 
-// select-on-click
-box.addEventListener('click', e=>{ if(e.target.tagName==='IMG'){ box.querySelectorAll('img.sel').forEach(i=>i.classList.remove('sel')); e.target.classList.add('sel'); log(`selected image (ordinal ${imageList().findIndex(x=>x.el===e.target)+1})`,'info'); } });
-
-// remove the command text (from last sentence/line boundary up to caret) — returns the marker insertion range
-function removeCommand(textNode, caret){
-  const upto = textNode.textContent.slice(0, caret);
-  const b = Math.max(upto.lastIndexOf('.'), upto.lastIndexOf('!'), upto.lastIndexOf('?'), upto.lastIndexOf('\n'));
-  let start = b+1; while(start<caret && /\s/.test(textNode.textContent[start])) start++;
-  const range = document.createRange(); range.setStart(textNode, start); range.setEnd(textNode, caret); range.deleteContents();
-  return range;
-}
+box.addEventListener('click', e=>{ if(e.target.tagName==='IMG'){ box.querySelectorAll('img.sel').forEach(i=>i.classList.remove('sel')); e.target.classList.add('sel'); clog('select',{ordinal:imageList().findIndex(x=>x.el===e.target)+1}); } });
 
 box.addEventListener('input', () => {
   if (busy) return;
-  const sel = getSelection(); if (!sel.rangeCount) return;
-  const node = sel.anchorNode; if (!node || node.nodeType !== Node.TEXT_NODE) return;
-  const caret = sel.anchorOffset;
-  const upto = node.textContent.slice(0, caret);
-  if (!upto.trimEnd().endsWith('_')) return;
-  if (upto === lastHandled) return;
-  lastHandled = upto;
-  // command text = from last boundary to the '_'
-  const b = Math.max(upto.lastIndexOf('.'), upto.lastIndexOf('!'), upto.lastIndexOf('?'), upto.lastIndexOf('\n'));
-  let s = b+1; while(s<upto.length && /\s/.test(upto[s])) s++;
-  const cmd = upto.slice(s).replace(/_\s*$/, '').trim();
-  if (!cmd) return;
-  classifyAndAct(node, caret, cmd);
+  const sel=getSelection(); if(!sel.rangeCount) return;
+  const node=sel.anchorNode; if(!node||node.nodeType!==Node.TEXT_NODE) return;
+  const caret=sel.anchorOffset;
+  const upto=node.textContent.slice(0,caret);
+  if(!upto.trimEnd().endsWith('_')) return;
+  if(upto===lastHandled) return;
+  const b=Math.max(upto.lastIndexOf('.'),upto.lastIndexOf('!'),upto.lastIndexOf('?'),upto.lastIndexOf('\n'));
+  let s=b+1; while(s<upto.length && /\s/.test(upto[s])) s++;
+  const cmd=upto.slice(s).replace(/_\s*$/,'').trim();
+  if(!cmd) return;
+  lastHandled=upto; busy=true;
+
+  // Optimistic INLINE loader: remove the command text, drop a loader where the image will go.
+  const saved=node.textContent.slice(s,caret);
+  const range=document.createRange(); range.setStart(node,s); range.setEnd(node,caret); range.deleteContents();
+  const loader=document.createElement('span'); loader.className='oc-load'; loader.contentEditable='false'; loader.innerHTML='<span class="oc-spin"></span>';
+  range.insertNode(loader); caretAfter(loader);
+  clog('trigger', {cmd, images:imageList().length}, 'info');
+  busy=false; // allow typing / further triggers while this one runs
+
+  classifyAndAct(cmd, loader, saved);
 });
 
-async function classifyAndAct(textNode, caret, cmd){
+async function classifyAndAct(cmd, loader, saved){
   const images = imageList().map(({ordinal,id,label})=>({ordinal,id,label}));
-  setStatus('classifying…');
-  let c;
-  try { c = await (await fetch('/classify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:cmd, images})})).json(); }
-  catch(e){ setStatus(''); log('classify failed: '+e.message,'err'); return; }
-  setStatus('');
-  if (c.error) { log('classify error: '+c.error,'err'); return; }
+  let c; const t0=performance.now();
+  try { c=await (await fetch('/classify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:cmd,images})})).json(); }
+  catch(e){ loader.replaceWith(document.createTextNode(saved)); clog('classify.error',{err:e.message},'err'); return; }
+  const ms=Math.round(performance.now()-t0);
 
-  if (c.verdict === 'CEDE') { log(`CEDE: "${cmd}" — not an image request`,'info'); return; }
-
-  if (c.verdict === 'GENERATE') {
-    log(`GENERATE: "${c.prompt}"`,'gen');
-    const range = removeCommand(textNode, caret);
-    const marker = document.createElement('span'); marker.className='oc-busy'; marker.contentEditable='false';
-    range.insertNode(marker);
-    const after = rangeAfter(marker); const sel=getSelection(); sel.removeAllRanges(); sel.addRange(after);
-    busy=false; doGenerate(c.prompt, marker);
-    return;
+  if (c.error || c.verdict==='CEDE') {
+    loader.replaceWith(document.createTextNode(saved)); // restore the user's text — it wasn't an image command
+    clog('cede',{cmd, ms, err:c.error||null},'info'); return;
   }
 
-  if (c.verdict === 'EDIT') {
-    const list = imageList();
-    if (!list.length) { log('EDIT requested but no images present — ceding','info'); return; }
-    // target: explicit ordinal from classifier, else cursor adjacency
-    let targetId = null;
-    if (c.target != null && list[c.target-1]) targetId = list[c.target-1].id;
-    if (!targetId) targetId = nearestImage();
-    removeCommand(textNode, caret);
-    if (!targetId || !masters.has(targetId)) { insertNote(textNode, 'no editable image (master frozen/expired)'); log('EDIT: no live master for target — ceding','err'); return; }
-    const ord = list.findIndex(x=>x.id===targetId)+1;
-    log(`EDIT image #${ord}: "${c.instruction}" ${c.target!=null?'(named)':'(cursor-adjacent)'}`,'edit');
+  if (c.verdict==='GENERATE') {
+    clog('generate.start',{prompt:c.prompt, ms},'gen');
+    doGenerate(c.prompt, loader); return;
+  }
+
+  if (c.verdict==='EDIT') {
+    const list=imageList();
+    let targetId = (c.target!=null && list[c.target-1]) ? list[c.target-1].id : nearestImage();
+    loader.remove(); // edit happens on an existing image, not at the text spot
+    if (!targetId || !masters.has(targetId)) {
+      const n=document.createElement('span'); n.className='oc-note'; n.contentEditable='false'; n.textContent='[no editable image]';
+      const r=getSelection().getRangeAt(0); r.insertNode(n);
+      clog('edit.cede',{reason: targetId?'master frozen/expired':'no target', ms},'err'); return;
+    }
+    const ord=list.findIndex(x=>x.id===targetId)+1;
+    clog('edit.start',{ordinal:ord, id:targetId, instruction:c.instruction, by:(c.target!=null?'named':'cursor-adjacent'), ms},'edit');
     doEdit(targetId, c.instruction);
   }
 }
 
-function insertNote(textNode, msg){ const n=document.createElement('span'); n.className='oc-note'; n.contentEditable='false'; n.textContent='['+msg+']'; const r=getSelection().getRangeAt(0); r.insertNode(n); }
-
-async function doGenerate(prompt, marker){
-  const model = modelSel.value, disp = parseInt(sizeSel.value,10);
-  setStatus('generating…');
-  const t0 = performance.now();
-  let res; try { res = await (await fetch('/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt, size:512, model})})).json(); }
+async function doGenerate(prompt, loader){
+  const model=modelSel.value, disp=parseInt(sizeSel.value,10);
+  loader.style.width=disp+'px'; loader.style.height=disp+'px'; // grow into the image slot
+  const t0=performance.now();
+  let res; try { res=await (await fetch('/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt,size:512,model})})).json(); }
   catch(e){ res={ok:false,error:e.message}; }
-  const rt = Math.round(performance.now()-t0); setStatus('');
-  if (!marker.isConnected) { log(`gen discarded (marker removed) after ${rt}ms`,'info'); return; }
-  if (!res.ok) { const n=document.createElement('span'); n.className='oc-note'; n.contentEditable='false'; n.textContent=`[gen failed: ${res.error}]`; marker.replaceWith(n); log(`GENERATE failed (${rt}ms): ${res.error}`,'err'); return; }
-  const master = await resize(res.dataUrl, MASTER_PX);     // session master (256)
-  const shown  = await resize(res.dataUrl, disp);          // display copy
-  const id = 'oc'+(nextId++);
-  const img = document.createElement('img'); img.dataset.ocId=id; img.src=shown; img.width=disp; img.height=disp; img.alt=prompt; img.contentEditable='false';
-  masters.set(id, { master, prompt });
-  marker.replaceWith(img);
-  addCost(PRICE[model] || PRICE.gen);
-  log(`GENERATE ok #${imageList().findIndex(x=>x.id===id)+1} id=${id} gen=${res.ms}ms rt=${rt}ms native=${res.width}² master=${MASTER_PX}² disp=${disp}px`,'ok');
+  const rt=Math.round(performance.now()-t0);
+  if(!loader.isConnected){ clog('generate.discarded',{rt},'info'); return; }
+  if(!res.ok){ const n=document.createElement('span'); n.className='oc-note'; n.contentEditable='false'; n.textContent=`[gen failed: ${res.error}]`; loader.replaceWith(n); clog('generate.fail',{rt,err:res.error},'err'); return; }
+  const master=await resize(res.dataUrl,MASTER_PX), shown=await resize(res.dataUrl,disp);
+  const id='oc'+(nextId++);
+  const img=document.createElement('img'); img.dataset.ocId=id; img.src=shown; img.width=disp; img.height=disp; img.alt=prompt; img.contentEditable='false';
+  masters.set(id,{master,prompt}); loader.replaceWith(img); addCost(PRICE[model]||PRICE.gen);
+  clog('generate.done',{id, ordinal:imageList().findIndex(x=>x.id===id)+1, gen_ms:res.ms, rt, native:`${res.width}x${res.height}`, master:MASTER_PX, disp},'ok');
 }
 
 async function doEdit(id, instruction){
-  const rec = masters.get(id); const img = imgById(id); const disp = parseInt(sizeSel.value,10);
-  if (!rec || !img) { log('EDIT: master/node gone','err'); return; }
-  setStatus('editing…');
-  const t0 = performance.now();
-  let res; try { res = await (await fetch('/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({imageDataUrl:rec.master, instruction})})).json(); }
+  const rec=masters.get(id); const img=imgById(id); const disp=parseInt(sizeSel.value,10);
+  if(!rec||!img){ clog('edit.fail',{id,reason:'gone'},'err'); return; }
+  img.classList.add('oc-busy'); // inline loading state ON the image (no external text)
+  const t0=performance.now();
+  let res; try { res=await (await fetch('/edit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({imageDataUrl:rec.master,instruction})})).json(); }
   catch(e){ res={ok:false,error:e.message}; }
-  const rt = Math.round(performance.now()-t0); setStatus('');
-  if (!masters.has(id) || !imgById(id)) { log(`edit discarded (image gone/frozen) after ${rt}ms`,'info'); return; }
-  if (!res.ok) { log(`EDIT failed (${rt}ms): ${res.error} — image left untouched`,'err'); return; }
-  const newMaster = await resize(res.dataUrl, MASTER_PX);
-  const shown = await resize(res.dataUrl, disp);
-  masters.set(id, { master:newMaster, prompt: rec.prompt+' | '+instruction });
-  imgById(id).src = shown; imgById(id).classList.remove('sel');
-  addCost(PRICE.edit);
-  log(`EDIT ok id=${id} edit=${res.ms}ms rt=${rt}ms (new master ${MASTER_PX}²)`,'ok');
+  const rt=Math.round(performance.now()-t0);
+  const live=imgById(id);
+  if(!masters.has(id)||!live){ clog('edit.discarded',{id,rt},'info'); return; }
+  if(!res.ok){ live.classList.remove('oc-busy'); clog('edit.fail',{id,rt,err:res.error},'err'); return; }
+  const newMaster=await resize(res.dataUrl,MASTER_PX), shown=await resize(res.dataUrl,disp);
+  masters.set(id,{master:newMaster, prompt:rec.prompt+' | '+instruction});
+  live.src=shown; live.classList.remove('oc-busy','sel'); addCost(PRICE.edit);
+  clog('edit.done',{id, edit_ms:res.ms, rt, master:MASTER_PX},'ok');
 }
 
-document.getElementById('clear').addEventListener('click', ()=>{ box.innerHTML=''; masters.clear(); lastHandled=''; log(`session cleared — ${'images frozen, masters dropped (no more edits)'}`,'info'); box.focus(); });
+document.getElementById('clear').addEventListener('click', ()=>{ const n=masters.size; box.innerHTML=''; masters.clear(); lastHandled=''; clog('session.clear',{frozen:n},'info'); box.focus(); });
 
-log('ready — type a request ending in _','info');
+clog('ready',{},'info');
 </script>
 </body>
 </html>

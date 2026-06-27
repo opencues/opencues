@@ -113,6 +113,9 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     return res.end(readFileSync(join(__dirname, 'index.html'), 'utf8'));
   }
+  if (req.method === 'POST' && req.url === '/clientlog') {
+    const b = await readBody(req); L({ op: 'client', ...b }); res.writeHead(204); return res.end();
+  }
   if (req.method === 'POST' && req.url === '/classify') {
     const body = await readBody(req); const t0 = Date.now(); const out = await classify(body);
     L({ op: 'classify', text: (body.text || '').slice(0, 80), images: (body.images || []).length, verdict: out.verdict, target: out.target ?? null, instruction: (out.instruction || '').slice(0, 60), prompt: (out.prompt || '').slice(0, 60), ms: Date.now() - t0, error: out.error });
