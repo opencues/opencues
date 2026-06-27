@@ -434,9 +434,24 @@ These need decisions before Phase 1:
    **Recommendation:** start with two-tokens (works at scale), reserve
    template syntax for a Phase 7 if real usage demands it.
 
-3. **Nested call depth limit** — max 3 levels feels safe but bench
+3. **Nested call depth limit** — ~~max 3 levels feels safe but bench
    only tested 1 level. Run a deeper-nesting probe before Phase 1 to
-   confirm models don't go off the rails at depth 2+.
+   confirm models don't go off the rails at depth 2+.~~ **RESOLVED
+   (2026-06-27).** The `nested-depth.ts` probe tested depth 1/2/3 over
+   a chainable catalog (`WATCH TICKER → COMPANY NAME(ticker) → HQ
+   CITY(company) → WEATHER TEMP(city)`). **Both cerebras gpt-oss-120b
+   and claude haiku scored 100% exact / 100% well-formed / 0% off-rails
+   at every depth**, including the full 3-fn chain
+   `[WEATHER TEMP(city=[HQ CITY(company=[COMPANY NAME(ticker=[WATCH
+   TICKER])])])]` (4 bracket levels) and a multi-arg mixed case
+   `[CONVERT(amount=[STOCK PRICE(ticker=[WATCH TICKER])], from=USD,
+   to=[HOME CURRENCY])]`. **Decision: NO hard depth cap for v1** —
+   depth 3 is reliably supported; deeper is plausibly fine but untested.
+   The parser must still **validate-and-degrade** each emitted token id
+   against the catalog (see the array-accessor caveat in FINDINGS.md),
+   so a malformed deep nest degrades gracefully rather than needing a
+   pre-emptive numeric cap. Re-run the probe if a smaller/cheaper model
+   becomes the default inference path.
 
 4. **`array-ordering` clause format** — free-text in description or
    a structured `ordering:` field?

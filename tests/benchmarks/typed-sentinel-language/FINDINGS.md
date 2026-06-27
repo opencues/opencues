@@ -1106,3 +1106,29 @@ exactly the dossier's documented `.first` caveat and the reason the
 upgrade plan requires an explicit `ordering:` clause + per-array accessor
 documentation. A typed-sentinel runtime parser MUST treat array accessors
 as a validate-and-degrade surface, not a trusted one.
+
+---
+
+## Probe 9 — nesting depth (2026-06-27, `nested-depth.ts`)
+
+Added to clear upgrade-plan open-decision #3 (depth-1 was the deepest
+the original suite tested). Chainable catalog where each fn's return
+type feeds the next arg (`WATCH TICKER → COMPANY NAME(ticker) → HQ
+CITY(company) → WEATHER TEMP(city)`); 9 cases, 3 per depth tier.
+
+| Depth | Cerebras exact / off-rails | Claude exact / off-rails |
+|---|---|---|
+| 1 | 100% / 0% | 100% / 0% |
+| 2 | 100% / 0% | 100% / 0% |
+| 3 | 100% / 0% | 100% / 0% |
+
+Verified the outputs are genuinely deep (not grader leniency): the
+3-fn chain renders as `[WEATHER TEMP(city=[HQ CITY(company=[COMPANY
+NAME(ticker=[WATCH TICKER])])])]` (4 bracket levels) and the multi-arg
+mixed case as `[CONVERT(amount=[STOCK PRICE(ticker=[WATCH TICKER])],
+from=USD, to=[HOME CURRENCY])]` — correct nested + scalar + literal
+args together.
+
+**Conclusion:** models do NOT degrade at depth 2-3 — no hard depth cap
+is warranted for v1. Pair with the parser's validate-and-degrade
+contract (the array-accessor caveat above) rather than a numeric limit.
