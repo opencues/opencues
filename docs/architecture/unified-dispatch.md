@@ -81,15 +81,36 @@ whole question, preserving the sentence — its call, not a regex's.
 
 ## Stages
 
-- **Stage 1 (this):** the pure classifier engine (`unified-dispatch.ts` —
+- **Stage 1 (done):** the pure classifier engine (`unified-dispatch.ts` —
   schema + prompt + parser) + the `dispatch-mode` flag (default `heuristic`).
-  Fully unit-tested. NOT yet wired into the live resolve loop.
-- **Stage 2:** wire it behind the flag — when `dispatch-mode: model`, the
-  resolver routes each `_` through the classifier and applies the decision,
-  bypassing the keyword/proximity/blankReplace heuristics. Prove it preserves
-  the weather sentence end-to-end; keep the heuristic path as default.
-- **Stage 3:** once proven, make `model` the default; the keyword path becomes
-  an optional offline fast-path the model can confirm. Retire `blankProximity`
-  / `blankReplace: auto` for data blanks.
+  Fully unit-tested.
+- **Stage 2 (partial — this branch):** the SAFE first step — when
+  `dispatch-mode: model`, BlankFill **cedes its read-only DATA keyword blanks**
+  (weather/stocks/crypto — no `blankStep`) so a conversational query is no
+  longer claimed + wiped by `blankReplace: auto`. Action blanks (settable —
+  `blankStep`) keep their deterministic path. Default `heuristic` → byte-
+  identical to today. **Live-verified:** the keyword wipe is gone (`what's the
+  weather like in oslo _` is no longer mangled to `what's the Oslo: 21°C…`).
+
+  **Finding (honest):** ceding alone is NOT sufficient — the query is left
+  UNRESOLVED (`Resolver.resolve: got 0 results`), because (a) other cede
+  mechanisms (a sibling source claims the "weather" keyword) stop fluid-blank
+  from picking it up, and (b) even if fluid fired, answering LIVE weather for
+  an arbitrary city needs the **Phase 4 param-safe on-demand fetch** (a
+  separate branch). So the full conversational-data path requires the
+  classifier IN the loop (to explicitly route lookup→fluid + choose the span)
+  AND the on-demand fetch capability. The two initiatives converge here.
+
+- **Stage 2b (remaining):** the careful part — a **classify-first gate** in the
+  runtime resolver: on `_` (model-mode), run the classifier, then dispatch to
+  exactly ONE handler (execute `action`; route `lookup`→fluid with the
+  model-chosen span; `transform`→transform; `none`→nothing). This is the
+  race-sensitive core-dispatch change (the classifier is async; today both
+  BlankFill and the sources run on the same `_` — they must be coordinated so
+  exactly one acts). Done as a focused change, not rushed.
+
+- **Stage 3:** make `model` the default; retire `blankProximity` /
+  `blankReplace: auto` for data blanks; keyword path becomes an optional
+  offline fast-path the model can confirm.
 
 Each stage is its own checkpoint so the latency can be *felt* before widening.
