@@ -30,6 +30,7 @@ import { useStrictJson, buildJsonResponseFormat, describeLLMCall, dispatchChat, 
 import { renderIdentityContextCatalog, postProcessContext, type Identity, type ContextMode } from '../identity-context';
 import { renderBlankContextCatalog, mergeCatalogs, type BlankContextSnapshot, type BlankContextMode } from '../blank-context';
 import { resolveTypedSentinels, catalogScalarLookup, instanceTokenFnBridge, jsonFieldAccessor } from '../typed-sentinel';
+import { matchBlankShape } from '../blank-shapes';
 
 // ─── Ambient-context sanitization + injection ──────────────────────
 //
@@ -837,31 +838,27 @@ export class FluidBlankSource implements CueSource {
     // preserved untouched, which is strictly better than substituting
     // the entire sentence with an LLM-guessed answer.
     if (TASK_TRIGGER_GUARD.test(context.text)) return false;
-    // Cede the slot to BlankFill if any registered blank would actually
-    // claim it. Mirror BlankSource's claim rules: keyword present AND
-    // within `blankProximity` words of the `_`. Loose-match (keyword
-    // present anywhere) leaves a dead zone for inputs like `what is git
-    // as in github _` where the keyword is too far to claim.
-    // Window: per-blank `blankProximity` normally; the SHARED line-scoped
-    // window when the BlankIntent gate is active (so this cede check stays
-    // in lockstep with BlankFill + BlankSource — see keyword-window.ts).
+    // TYPE-BASED CEDE (shaped blanks): cede iff a declared SHAPE claims this
+    // `_` — exact grammar, so an anchored shape can't match prose. This is what
+    // stops fluid from wrongly ceding conversational input to a keyword blank.
+    if (matchBlankShape(context.text, this.blanks)) return false;
+    // LEGACY CEDE (non-shaped blanks only): a blank that hasn't migrated to
+    // shapes still cedes via keyword+`blankProximity`. Shaped blanks are
+    // skipped here — they're governed solely by the shape match above.
     const scoped = this.lineScoped();
     const lineOf = scoped ? lineOfWords(context.text) : undefined;
     for (const blk of Object.values(this.blanks)) {
+      if (blk.blankShapes?.length) continue;
       if (!blk.blankKeywords?.length) continue;
       const proximity = blk.blankProximity ?? 0;
       for (const phrase of blk.blankKeywords) {
         const parts = phrase.toLowerCase().split(/\s+/);
         for (let i = 0; i <= lower.length - parts.length; i++) {
           let ok = true;
-          for (let j = 0; j < parts.length; j++) {
-            if (lower[i + j] !== parts[j]) { ok = false; break; }
-          }
+          for (let j = 0; j < parts.length; j++) { if (lower[i + j] !== parts[j]) { ok = false; break; } }
           if (!ok) continue;
           const endIdx = i + parts.length - 1;
-          if (keywordInWindow(endIdx, blankIndex, proximity, { lineScoped: scoped, lineOf })) {
-            return false;   // BlankSource / BlankFill will claim
-          }
+          if (keywordInWindow(endIdx, blankIndex, proximity, { lineScoped: scoped, lineOf })) return false;
         }
       }
     }
@@ -896,11 +893,9 @@ export class FluidBlankSource implements CueSource {
       // where TransformBlank got far enough to mark the slot; a hard LLM
       // failure skips that. Bail so the buffer is preserved; multi-
       // paragraph edits belong to TransformBlank, not a fluid lookup.
-      if (determineReplaceMode(context.text) === 'WIPE' && /\n[ \t]*\n/.test(context.text)) {
-        this.logInfo('FluidBlank: refusing WIPE on a multi-paragraph buffer (fail-safe — preserving user content)');
-        this.emit({ type: 'bailed', reason: 'wipe-multiparagraph-guard', latencyMs: 0 });
-        return { results: [] };
-      }
+      // (No multi-paragraph WIPE guard — fluid only ever FILLs the `_`, so it
+      // can't destroy surrounding content. The guard it replaced existed only
+      // to stop WIPE from collapsing paragraphs.)
       const effectiveProvider = this.provider;
       const effectiveModel = this.model;
       const effectiveText = context.text;
@@ -919,10 +914,9 @@ export class FluidBlankSource implements CueSource {
       const variantChoice = this._selectVariant(cacheKey);
       if (variantChoice.kind === 'cache') {
         this.log(`FluidBlank: variant-cache HIT — serving cached answer (pool size ${variantChoice.others.length + 1})`);
-        // Determine replace-mode from the buffer (same logic the fresh
-        // path uses post-dispatch). The cached answer is the answer
-        // string; mode is purely a function of buffer text.
-        const cachedMode = determineReplaceMode(effectiveText);
+        // Static resolution: always FILL (replace only the `_`); the cache
+        // result sets no span, so the runtime fills the gap.
+        const cachedMode = 'FILL' as const;
         this.emit({
           type: 'completed',
           span: effectiveText,
@@ -1129,35 +1123,13 @@ export class FluidBlankSource implements CueSource {
       // no regression, real gain. Falls back to the pure heuristic when the
       // model omitted MODE / emitted garbage (label-format path on a weak
       // model; strict-JSON providers always emit it).
-      const heuristicMode = determineReplaceMode(effectiveText);
-      let mode: 'FILL' | 'WIPE';
-      if (heuristicMode === 'FILL') {
-        mode = 'FILL';
-        if (modelMode === 'WIPE') {
-          this.logInfo('FluidBlank: keeping heuristic FILL (non-destructive floor); model proposed WIPE');
-        }
-      } else {
-        mode = modelMode ?? 'WIPE';
-        if (modelMode === 'FILL') {
-          this.logInfo('FluidBlank: model rescued heuristic WIPE → FILL (language-invariant sentence shape)');
-        } else if (!modelMode) {
-          this.logInfo('FluidBlank: mode from heuristic=WIPE (model omitted MODE)');
-        }
-      }
-      // Defense-in-depth backstop — NEVER WIPE a multi-paragraph buffer.
-      // Two upstream checks already cover this (the pre-dispatch guard bails
-      // when heuristic=WIPE on a multi-paragraph buffer; the FILL floor
-      // above forces FILL when heuristic=FILL), so in the current control
-      // flow this is unreachable. It stays as a deliberate, cheap redundant
-      // guard on a DATA-LOSS invariant: any future change to the floor or
-      // the pre-dispatch guard that let a WIPE through on a multi-paragraph
-      // buffer would be caught here instead of destroying the user's
-      // content. The cost is four lines; the failure it prevents is the
-      // "2 paragraphs collapsed to 1" landmine.
-      if (mode === 'WIPE' && /\n[ \t]*\n/.test(effectiveText)) {
-        this.logInfo('FluidBlank: downgrading proposed WIPE → FILL on a multi-paragraph buffer (data-loss fail-safe)');
-        mode = 'FILL';
-      }
+      // STATIC RESOLUTION: fluid ALWAYS fills just the `_` (non-destructive).
+      // The FILL/WIPE heuristic, the model's MODE vote, and the multi-paragraph
+      // data-loss guard are all retired — you cannot destroy the buffer if you
+      // only ever fill the gap the user left. Weaving the value into prose is a
+      // separate, user-invoked transform step. `modelMode`/`determineReplaceMode`
+      // no longer steer placement.
+      const mode: 'FILL' | 'WIPE' = 'FILL';
 
       // Record the fresh answer into the variant pool — subsequent
       // identical-buffer triggers will cycle through cached variants
@@ -1185,13 +1157,7 @@ export class FluidBlankSource implements CueSource {
       // Alternatives stay ['_', answer] — cycling back to `_` clears the
       // lookup phrase to a bare blank rather than restoring the full
       // queried text. The lookup phrase is consumed by the substitution.
-      if (mode === 'WIPE') {
-        const range = findSpanCharRange(span, context.text);
-        if (range) {
-          result.spanStart = range[0];
-          result.spanEnd = range[1];
-        }
-      }
+      // (Static resolution: no WIPE span — the runtime replaces only the `_`.)
 
       // `fluid-blank.completed` is intentionally NOT emitted from here.
       // It's emitted from the RESOLVER's substitute branch AFTER the

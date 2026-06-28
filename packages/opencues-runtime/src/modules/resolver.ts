@@ -733,7 +733,10 @@ export class Resolver {
       // OPENCUES.md. Missing settings → off. Explicit "on" → on.
       // See packages/opencues-core/src/sources/build-sources.ts for what
       // each flag gates.
-      enableFluidBlank: settings.get('fluid-blank-mode') === 'on',
+      // Fluid is the ALWAYS-ON base layer: every `_` not claimed by a blank
+      // shape resolves through fluid. (`fluid-blank-mode` retired in the
+      // static-resolution design.)
+      enableFluidBlank: true,
       enableTransformBlank: settings.get('transform-blank-mode') === 'on',
       enableConfigIntent: settings.get('fluid-config-mode') === 'on',
       // Live getter: BlankIntent gate active → BlankSource claim + the

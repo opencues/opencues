@@ -147,6 +147,20 @@ export interface PromptConfig {
 /** @deprecated Use BlankConfig instead */
 export type ActionConfig = BlankConfig;
 
+/**
+ * One deterministic invocation shape for a blank (type-based routing). An
+ * anchored regex over the buffer; on match the blank claims the `_` with the
+ * given action, extracting the set/step value from capture group `valueGroup`.
+ */
+export interface BlankShape {
+  /** Anchored regex source, e.g. `^volume\\s+(\\d+)\\s*%?\\s*_$`. */
+  pattern: string;
+  /** Action implied by a match. */
+  action: 'get' | 'set' | 'step';
+  /** 1-based capture group carrying the value (for set/step). Omit for get. */
+  valueGroup?: number;
+}
+
 export interface BlankConfig {
   name: string;
   /** When false, the blank is parsed but skipped at registration time so it
@@ -324,6 +338,16 @@ export interface BlankConfig {
    * wins. See docs/architecture/blank-replace-modes.md.
    */
   blankReplace?: 'keep' | 'wipe' | 'wipe-all' | 'auto';
+  /**
+   * Deterministic invocation grammar (EXPERIMENT — type-based routing). Each
+   * shape is an anchored regex over the buffer + the action it implies; a
+   * match claims the `_` for this blank with ZERO LLM and NO proximity check
+   * (the query unambiguously fits this blank's declared type). `valueGroup`
+   * is the capture-group index carrying the set/step value. Example (volume):
+   *   [{"pattern":"^volume\\s+(\\d+)\\s*%?\\s*_$","action":"set","valueGroup":1}]
+   * See docs/architecture/blank-shapes.md.
+   */
+  blankShapes?: BlankShape[];
   /** LLM model identifier for script-based LLM calls (e.g. 'openai/gpt-oss-120b') */
   model?: string;
   /** Max output tokens for this blank's LLM calls (when the blank's
@@ -925,6 +949,7 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   blankReadOnly?: boolean;
   blankDismissible?: boolean;
   blankSuffix?: string;
+  blankShapes?: BlankShape[];
   stepValues?: string[];
   blankKeywordExpansions?: Record<string, string>;
   blankSatellite?: boolean;
@@ -1052,6 +1077,7 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'blankReadOnly': fm.blankReadOnly = value === 'true'; break;
       case 'blankDismissible': fm.blankDismissible = value === 'true'; break;
       case 'blankSuffix': fm.blankSuffix = value; break;
+      case 'blankShapes': try { fm.blankShapes = JSON.parse(value); } catch { /* ignore malformed shapes */ } break;
       case 'stepValues': try { fm.stepValues = JSON.parse(value); } catch { /* ignore */ } break;
       case 'blankKeywordExpansions': try { fm.blankKeywordExpansions = JSON.parse(value); } catch { /* ignore */ } break;
       case 'blankSatellite': fm.blankSatellite = value === 'true'; break;
@@ -1224,6 +1250,7 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
       if (frontmatter.blankReadOnly !== undefined) blank.blankReadOnly = frontmatter.blankReadOnly;
       if (frontmatter.blankDismissible !== undefined) blank.blankDismissible = frontmatter.blankDismissible;
       if (frontmatter.blankSuffix !== undefined) blank.blankSuffix = frontmatter.blankSuffix;
+      if (frontmatter.blankShapes !== undefined) blank.blankShapes = frontmatter.blankShapes;
       if (frontmatter.stepValues !== undefined) blank.stepValues = frontmatter.stepValues;
       if (frontmatter.blankKeywordExpansions !== undefined) blank.blankKeywordExpansions = frontmatter.blankKeywordExpansions;
       if (frontmatter.blankSatellite !== undefined) blank.blankSatellite = frontmatter.blankSatellite;

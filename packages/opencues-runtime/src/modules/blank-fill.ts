@@ -9,7 +9,7 @@
 import type { HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../adapter';
 import type { ConfigLoader } from './config-loader';
 import { splitWords } from './navigation';
-import { resolveReplaceMode, isBlankConfigCycleable, keywordInWindow, lineOfWords, type EffectiveReplaceMode } from '@opencues/core';
+import { resolveReplaceMode, isBlankConfigCycleable, keywordInWindow, lineOfWords, matchBlankShape, type EffectiveReplaceMode } from '@opencues/core';
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
@@ -30,6 +30,12 @@ export interface BlankSlot {
   readonly keywordEnd: number;
   /** Words between keywordEnd and the `_` (0 = adjacent). */
   readonly proximity: number;
+  /** Set when this slot was claimed by a DETERMINISTIC blankShape match
+   *  (type-based routing) rather than the keyword+proximity scan. Carries the
+   *  shape's action/value so the dispatch runs with ZERO LLM — no BlankIntent
+   *  classify. `shapeValue` holds the set value or step direction. */
+  readonly shapeAction?: 'get' | 'set' | 'step';
+  readonly shapeValue?: string;
 }
 
 /**
@@ -208,6 +214,44 @@ export class BlankFill {
       const found = this.matchKeyword(words, i, lineOf);
       if (found) slots.push(found);
     }
+    // TYPE-BASED ROUTING (experiment) — deterministic blankShape match. If the
+    // whole buffer matches a blank's declared invocation grammar, that blank
+    // is the unambiguous owner of the `_`: ZERO LLM, NO blankProximity. This
+    // both (a) supplies a deterministic action/value (set/step/get) and (b)
+    // CREATES the slot when keyword+proximity missed it (e.g. `volume 30 _`,
+    // where the `30` between keyword and `_` fails proximity:0). A non-match
+    // changes nothing — the `_` falls through to the normal sources.
+    const shape = matchBlankShape(cleanText, this.configLoader.blanks as ReadonlyMap<string, { blankShapes?: import('@opencues/core').BlankShape[] }>);
+    if (shape) {
+      const usIdx = words.indexOf('_');
+      if (usIdx >= 0) {
+        // Locate the blank's keyword span in the buffer so applyAsyncFill's
+        // clearing behaves exactly as the keyword path would. Shapes are
+        // anchored at the buffer start, so the keyword is at/near word 0.
+        const blankCfg = this.configLoader.blanks.get(shape.blankName) as { blankKeywords?: readonly string[] } | undefined;
+        let kwStart = 0, kwEnd = 0;
+        const kws = blankCfg?.blankKeywords ?? [];
+        outer: for (const kw of kws) {
+          const parts = kw.toLowerCase().split(/\s+/);
+          for (let i = 0; i + parts.length <= usIdx; i++) {
+            if (parts.every((p, j) => words[i + j]?.toLowerCase() === p)) { kwStart = i; kwEnd = i + parts.length - 1; break outer; }
+          }
+        }
+        const existing = slots.find(s => s.index === usIdx && s.blankName === shape.blankName);
+        if (existing) {
+          // Keyword scan already made the slot — just attach the shape verdict.
+          slots[slots.indexOf(existing)] = { ...existing, shapeAction: shape.action, shapeValue: shape.value };
+        } else {
+          // Proximity missed it — create the slot (the bypass that fixes
+          // `volume 30 _` / `brightness 50 _`).
+          slots.push({
+            index: usIdx, keyword: kws[0] ?? shape.blankName, blankName: shape.blankName,
+            keywordStart: kwStart, keywordEnd: kwEnd, proximity: Math.max(0, usIdx - kwEnd - 1),
+            shapeAction: shape.action, shapeValue: shape.value,
+          });
+        }
+      }
+    }
     this._slots = slots;
     return slots;
   }
@@ -355,6 +399,16 @@ export class BlankFill {
     const home = process.env.HOME ?? '~';
 
     for (const slot of slots) {
+      // TYPE-BASED ROUTING (opt-in per blank). A blank that DECLARES shapes is
+      // shape-gated: it fires ONLY on a deterministic shape match, so a keyword
+      // merely present in conversational prose does NOT fire it (it falls to
+      // fluid). A blank WITHOUT shapes keeps the legacy keyword behavior — so
+      // existing blanks migrate to shapes one at a time. (List/stepValues
+      // blanks are handled separately in onUnderscoreKey.)
+      {
+        const sc = this.configLoader.blanks.get(slot.blankName) as { blankShapes?: unknown[] } | undefined;
+        if (sc?.blankShapes?.length && !slot.shapeAction) continue;
+      }
       // Skip slots the user has dismissed by cycling
       // the fill back to `_`. Without this, the script re-spawns immediately
       // and the dismissal sticks for ~zero milliseconds.
@@ -608,6 +662,40 @@ export class BlankFill {
       });
 
       }; // end doDispatch
+
+      // TYPE-BASED ROUTING — deterministic shape dispatch (ZERO LLM). When
+      // scan() tagged this slot from a blankShape match, run its action/value
+      // directly: no BlankIntent classify, no proximity. This is the measurable
+      // Tier-1 — a real set/step/get invocation resolved with no model call.
+      // Mirrors the gate's typed-set/step path, but the verdict is the regex's.
+      if (slot.shapeAction) {
+        const stepRaw0 = (blank as { blankStep?: unknown }).blankStep;
+        const stepSize0 = typeof stepRaw0 === 'number' ? stepRaw0
+          : (typeof stepRaw0 === 'string' && /^\d+$/.test(stepRaw0) ? parseInt(stepRaw0, 10) : null);
+        const settable0 = stepSize0 !== null;
+        this.adapter.log('info', `[blank-shapes] deterministic match: ${slot.blankName}/${slot.shapeAction}${slot.shapeValue ? '=' + slot.shapeValue : ''} (0 LLM)`);
+        const shapeText = text;
+        void (async () => {
+          this._loadingAnimator().start(slot.index, 'blank-fill');
+          let typedAction: 'set' | 'step' | undefined;
+          if (slot.shapeAction === 'set' && slot.shapeValue && /^\d+$/.test(slot.shapeValue) && settable0) {
+            await this.runBlankSet(slot.blankName, slot.shapeValue, blank as Record<string, unknown>);
+            if (this._lastInputText !== shapeText) { this._loadingAnimator().stop(slot.index, 'blank-fill'); this._pendingScripts.delete(dedupKey); return; }
+            typedAction = 'set';
+          } else if (slot.shapeAction === 'step' && (slot.shapeValue === 'up' || slot.shapeValue === 'down') && settable0) {
+            const current = await this.runBlankGetValue(slot.blankName, blank as Record<string, unknown>);
+            if (this._lastInputText !== shapeText) { this._loadingAnimator().stop(slot.index, 'blank-fill'); this._pendingScripts.delete(dedupKey); return; }
+            if (current !== null) {
+              const next = Math.max(0, Math.min(100, slot.shapeValue === 'up' ? current + stepSize0! : current - stepSize0!));
+              await this.runBlankSet(slot.blankName, String(next), blank as Record<string, unknown>);
+              if (this._lastInputText !== shapeText) { this._loadingAnimator().stop(slot.index, 'blank-fill'); this._pendingScripts.delete(dedupKey); return; }
+              typedAction = 'step';
+            }
+          }
+          doDispatch(typedAction);
+        })();
+        continue;
+      }
 
       // BlankIntent gate (off by default). When wired (blank-intent-mode
       // on, native host with a resolved blanks-bucket LLM), ask the

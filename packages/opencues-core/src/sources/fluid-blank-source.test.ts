@@ -222,22 +222,22 @@ describe('FluidBlankSource', () => {
     assert.strictEqual(r.spanEnd, undefined);
   });
 
-  it('returns multi-word span for WIPE mode', async () => {
+  it('always FILLs (static resolution) — no multi-word span, even on a terse phrase', async () => {
+    // Static-resolution design: fluid only ever fills the `_`; it never WIPEs a
+    // surrounding span. A terse fragment that used to WIPE now FILLs the gap.
     const src = new FluidBlankSource({
       ...baseConfig,
       httpAdapter: makeMockAdapter([
-        'SPAN: capital of france _\nANSWER: Paris',
+        'SPAN: capital of france _\nMODE: WIPE\nANSWER: Paris',
       ]),
     });
     const result = await src.getCues(ctxFromText('trivia tonight capital of france _'));
     assert.strictEqual(result.results.length, 1);
     const r = result.results[0]!;
-    assert.strictEqual(r.metadata?.fluidBlankMode, 'WIPE');
-    // Character offsets: "trivia tonight " is 15 chars, then "capital of france _" is 19 chars
-    assert.strictEqual(r.spanStart, 15);
-    assert.strictEqual(r.spanEnd, 34);
-    // Alternatives stay ['_', answer] — the lookup phrase is consumed by
-    // substitution; cycling back goes to bare `_` rather than restoring it.
+    assert.strictEqual(r.metadata?.fluidBlankMode, 'FILL');
+    // No span → the runtime replaces only the `_` (non-destructive).
+    assert.strictEqual(r.spanStart, undefined);
+    assert.strictEqual(r.spanEnd, undefined);
     assert.deepStrictEqual(r.alternatives, ['_', 'Paris']);
   });
 
@@ -324,20 +324,19 @@ describe('FluidBlankSource — model-decided MODE field', () => {
     assert.strictEqual(r.spanEnd, undefined);
   });
 
-  it('model MODE: WIPE is honoured when the heuristic also says WIPE (defers to model)', async () => {
-    // Heuristic WIPE + model WIPE → WIPE, multi-word span set. Confirms the
-    // deferral path still produces a WIPE for genuine terse lookups.
+  it('IGNORES a model MODE: WIPE — fluid always FILLs (static resolution)', async () => {
+    // Static-resolution design: the model's MODE vote is ignored; fluid only
+    // ever fills the `_`. A terse phrase that used to WIPE now FILLs the gap.
     const src = new FluidBlankSource({
       ...baseConfig,
       httpAdapter: makeMockAdapter([
         'SPAN: capital of france _\nANSWER: Paris\nMODE: WIPE',
       ]),
     });
-    assert.strictEqual(determineReplaceMode('capital of france _'), 'WIPE');
     const r = (await src.getCues(ctxFromText('trivia capital of france _'))).results[0]!;
-    assert.strictEqual(r.metadata?.fluidBlankMode, 'WIPE');
-    assert.strictEqual(r.spanStart, 7);
-    assert.strictEqual(r.spanEnd, 7 + 'capital of france _'.length);
+    assert.strictEqual(r.metadata?.fluidBlankMode, 'FILL');
+    assert.strictEqual(r.spanStart, undefined);
+    assert.strictEqual(r.spanEnd, undefined);
   });
 
   it('empty ANSWER followed by a MODE line bails — never splices "MODE: WIPE" into the buffer (regression)', async () => {
@@ -356,9 +355,9 @@ describe('FluidBlankSource — model-decided MODE field', () => {
     assert.deepStrictEqual(result.results, []);
   });
 
-  it('falls back to the heuristic when the model omits MODE', async () => {
-    // No MODE line — the runtime uses determineReplaceMode('capital of
-    // france _') === 'WIPE'. (Mirrors a weaker label-format model.)
+  it('always FILLs even on a terse phrase with no MODE line (no heuristic WIPE)', async () => {
+    // The determineReplaceMode heuristic no longer steers placement — fluid
+    // FILLs regardless, so a terse fragment fills the gap rather than wiping.
     const src = new FluidBlankSource({
       ...baseConfig,
       httpAdapter: makeMockAdapter([
@@ -366,7 +365,7 @@ describe('FluidBlankSource — model-decided MODE field', () => {
       ]),
     });
     const r = (await src.getCues(ctxFromText('trivia capital of france _'))).results[0]!;
-    assert.strictEqual(r.metadata?.fluidBlankMode, 'WIPE');
+    assert.strictEqual(r.metadata?.fluidBlankMode, 'FILL');
   });
 
   it('falls back to the heuristic when MODE is unrecognised', async () => {

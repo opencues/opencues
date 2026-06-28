@@ -145,6 +145,7 @@ export {
   type PromptConfig,
   type SourceConfig,
   type BlankConfig,
+  type BlankShape,
   type ActionConfig,
   type AuditorConfig,
   type BlankParser,
@@ -298,3 +299,4 @@ export {
   type SeedableFile,
 } from './feature-registry';
 
+export { matchBlankShape, type BlankShapeMatch } from './blank-shapes';
