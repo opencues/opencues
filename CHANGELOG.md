@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — settable script blanks (volume/brightness) + late loading spinner (`@opencues/runtime` 0.5.6 → 0.5.7)
+
+Live testing on OpenCode surfaced two regressions from the gate-parity pass:
+
+- **`volume`/`brightness` were broken.** The previous fix excluded *all* `blankSatellite` blanks from the gate — but volume/brightness use `blankSatellite` for DISPLAY while being settable (`blankStep`), so they got pulled out of the gate and fell back to the keyword GET path: `volume 30 _` returned the stale current value (`80%`), ignoring the `30`, with no clamp. Fix: the discriminator is now `blankSatellite && !blankStep` — only PURE menu blanks (`opencues settings`, no `blankStep`) stay on BlankFill; settable script blanks route through the gate (`runScriptAction` set/step + `[0,100]` clamp). `runScriptAction` also applies `blankSuffix` so the gate renders `30%`, matching the keyword path. Verified: `volume 30 _`→`30%`, `volume 9999 _`→`100%`, `turn the volume up a bit _`→ step.
+- **Loading spinner started too late** (after the ~1s classify call), so the `_` looked dead/broken during the slowest phase. Fix: the spinner now starts in the gate BEFORE the classify call and stays up continuously through the action execute/fetch.
+
 ### Fixed — unified-dispatch gate parity with the retired keyword path (`@opencues/runtime` 0.5.5 → 0.5.6)
 
 Agentic-suite triage of the model-only dispatch surfaced three gate-path regressions vs the keyword path it replaced; all fixed + re-verified on OpenCode:

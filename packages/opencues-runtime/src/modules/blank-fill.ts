@@ -763,7 +763,13 @@ export class BlankFill {
     // Read back the resulting value as the display string to splice. For a
     // pure `get` (read-only/data script), pass the arg through so keyword
     // scripts that take a subject (e.g. a dictionary word) still work.
-    return this.runBlankGetString(blankName, blank, action === 'get' ? arg : undefined);
+    const raw = await this.runBlankGetString(blankName, blank, action === 'get' ? arg : undefined);
+    if (raw === null) return null;
+    // Apply blankSuffix (e.g. volume's "%") for a numeric value, matching the
+    // keyword path's display (applyAsyncFill does the same) so the gate renders
+    // "30%" not a bare "30".
+    const suffix = (blank as { blankSuffix?: string }).blankSuffix;
+    return (suffix && /^-?\d+(?:\.\d+)?$/.test(raw)) ? raw + suffix : raw;
   }
 
   /**
@@ -1446,12 +1452,15 @@ export class BlankFill {
         // Ceding here means `scan()` returns no slots for these, so
         // `maybeRunScripts` never double-fires against the gate. stepValues
         // LIST blanks are unaffected (handled by `onUnderscoreKey`, not this
-        // path). `blankSatellite` blanks are NOT ceded — they need the
-        // two-word selector+satellite registration only `applyAsyncFill`
-        // provides (the gate excludes them from its catalog to match). No gate
-        // wired (unit tests / no classifier) → keyword path runs as before.
-        const isSatellite = !!(blank as { blankSatellite?: unknown }).blankSatellite;
-        if (this.gateActive?.() && !isSatellite) continue;
+        // path). PURE selector-satellite MENU blanks (blankSatellite with NO
+        // blankStep — opencues settings) are NOT ceded: they need the two-word
+        // selector+satellite registration only `applyAsyncFill` provides (the
+        // gate excludes them from its catalog to match). SETTABLE blanks that
+        // use blankSatellite only for DISPLAY (volume/brightness — they have
+        // blankStep) ARE ceded to the gate. No gate wired → keyword path runs.
+        const b = blank as { blankSatellite?: unknown; blankStep?: unknown };
+        const isPureMenu = !!b.blankSatellite && b.blankStep === undefined;
+        if (this.gateActive?.() && !isPureMenu) continue;
         // Default blankProximity to 0 (keyword must be DIRECTLY adjacent
         // to _, no words between) when not explicitly set. The previous
         // default (no limit, when the field was undefined) caused

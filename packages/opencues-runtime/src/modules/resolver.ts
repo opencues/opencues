@@ -425,11 +425,9 @@ export class Resolver {
    *  rest of the sentence). Returns true if it consumed the `_`. */
   private async executeDispatchAction(text: string, d: import('@opencues/core').DispatchDecision): Promise<boolean> {
     if (!d.blank || !d.action) return false;
-    // Animate the `_` slot during the (possibly slow) invoke/fetch so the
-    // user sees a spinner, not a dead `_` — same UX the keyword path gave.
-    const usIdx = splitWords(text).findIndex(w => w.word.replace(/[​‌]/g, '') === '_');
-    if (this.blankLoading && usIdx >= 0) this.blankLoading.start(usIdx, 'resolver');
-    const stopAnim = (): void => { if (this.blankLoading && usIdx >= 0) this.blankLoading.stop(usIdx, 'resolver'); };
+    // The `_` loading spinner is owned by the GATE (it wraps classify + this
+    // call continuously — see resolveAndApply), so no start/stop here.
+    const stopAnim = (): void => { /* gate owns the animation lifecycle */ };
     // Map the model's action+arg onto the host blankInvoke contract.
     //  - get : args=[arg, arg] — the FIRST is the keyword (StocksBlank /
     //          CryptoBlank read args[0]); the SECOND lands in `context`
@@ -1210,6 +1208,19 @@ export class Resolver {
     // `explicitUnderscoreRecent()`. (Direct unit/test calls default true.)
     let dispatchRoute: import('@opencues/core').DispatchDecision['route'] | undefined;
     if (this.dispatchClassifier && allowBlanks && text.includes('_')) {
+      // Start the `_` loading spinner BEFORE the classify call — classify is
+      // the slow part (~600ms-1s), so without this the `_` sits dead and the
+      // system looks broken. The animation stays up continuously through the
+      // classify AND the action execute/fetch (executeDispatchAction does not
+      // re-manage it); the finally stops it. For lookup/transform/none the
+      // main resolve block below re-animates for the source fetch.
+      const gateSlots: number[] = [];
+      if (this.blankLoading) {
+        const ws = splitWords(text.replace(/[​‌]/g, ''));
+        for (let i = 0; i < ws.length; i++) {
+          if (ws[i]!.word.replace(/[​‌]/g, '') === '_') { this.blankLoading.start(i, 'resolver'); gateSlots.push(i); }
+        }
+      }
       try {
         const visible = text.replace(/[​‌]/g, '');
         const decision = await this.dispatchClassifier.classify(visible);
@@ -1225,6 +1236,8 @@ export class Resolver {
         }
       } catch (e) {
         this.adapter.log('debug', `UnifiedDispatch: gate error (${e instanceof Error ? e.message : String(e)}) — falling through`);
+      } finally {
+        if (this.blankLoading) for (const i of gateSlots) this.blankLoading.stop(i, 'resolver');
       }
     }
 
