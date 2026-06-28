@@ -154,15 +154,6 @@ export interface BuildSourcesOptions {
    */
   enableConfigIntent?: boolean;
   /**
-   * Live getter: true when the BlankIntent gate is active
-   * (`blank-intent-mode: on`). Threaded into BlankSource (claim) and the
-   * FluidBlank/Transform/ConfigIntent cede checks so all of them use the
-   * shared LINE-SCOPED keyword window — keeping them in lockstep with
-   * BlankFill's runtime claim. Default (omitted) = always-false = per-blank
-   * `blankProximity` (master behaviour). See keyword-window.ts.
-   */
-  blankIntentLineScoped?: () => boolean;
-  /**
    * Side-effect callback invoked by ConfigIntentSource to write the
    * inferred (setting, value) into OPENCUES.md. Runtime wires
    * `ConfigLoader.applyOpenCuesScalar` here — it writes the file AND
@@ -581,7 +572,6 @@ export function buildSourcesFromConfig(
     }
     if (Object.keys(keywordBlanks).length > 0) {
       sources.push(new BlankSource({
-        lineScoped: options.blankIntentLineScoped,
         blanks: keywordBlanks,
         readState: options.readBlankState,
       }));
@@ -608,7 +598,6 @@ export function buildSourcesFromConfig(
       options.log?.('buildSources: skipping config-intent — no applyOpencuesScalar callback provided');
     } else {
       sources.push(new ConfigIntentSource({
-        lineScoped: options.blankIntentLineScoped,
         httpAdapter: wrapAdapterForBlank(resolved),
         provider: resolved.provider,
         endpoint: resolved.endpoint,
@@ -634,7 +623,6 @@ export function buildSourcesFromConfig(
       fallbackForLog('fluid-blank', options.fluidBlank?.provider || blanksBucketProvider || globalProvider || 'groq');
     } else {
       sources.push(new FluidBlankSource({
-        lineScoped: options.blankIntentLineScoped,
         httpAdapter: wrapAdapterForBlank(resolved),
         provider: resolved.provider,
         endpoint: resolved.endpoint,
@@ -664,7 +652,6 @@ export function buildSourcesFromConfig(
       fallbackForLog('transform-blank', options.transformBlank?.provider || blanksBucketProvider || globalProvider || 'groq');
     } else {
       sources.push(new TransformBlankSource({
-        lineScoped: options.blankIntentLineScoped,
         httpAdapter: wrapAdapterForBlank(resolved),
         provider: resolved.provider,
         endpoint: resolved.endpoint,

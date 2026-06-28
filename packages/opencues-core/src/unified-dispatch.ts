@@ -1,18 +1,18 @@
 /**
- * Unified model-driven dispatch (Stage 1 — PURE engine).
+ * Unified model-driven dispatch — the PURE engine for the SOLE `_` router.
  *
  * Replaces the five opinionated `_`-routing mechanisms (keyword exact-match,
  * blankProximity, blankReplace:auto, the source-claim race, BlankIntent) with
- * ONE model decision per `_`, gated behind `dispatch-mode: model` (default
- * `heuristic`). The model reads the buffer and decides which blank, what
- * action, what argument, and the substitution span; the runtime EXECUTES the
- * decision and enforces the safety floors (no buffer destruction; no exec with
- * an unsanitized arg; executor validates the command).
+ * ONE model decision per `_`. The model reads the buffer and decides which
+ * blank, what action, what argument, and the substitution span; the runtime
+ * EXECUTES the decision and enforces the safety floors (no buffer destruction;
+ * no exec with an unsanitized arg — the executor clamps set/step to [0,100] and
+ * passes args as discrete argv elements, never a shell string).
  *
- * Design + the floors + the staging: docs/architecture/unified-dispatch.md.
+ * Design + the floors: docs/architecture/unified-dispatch.md.
  *
  * This module is PURE — prompt construction + decision parsing only. No I/O,
- * no LLM. Stage 2 wires it into the resolver behind the flag.
+ * no LLM. The runtime wires it in via the Resolver's classify-first gate.
  */
 
 // ────────────────────────────────────────────────────────────────────

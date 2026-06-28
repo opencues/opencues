@@ -21,7 +21,7 @@ import { Statusline } from '../../../src/modules/statusline';
 import { TTS } from '../../../src/modules/tts';
 import { Resolver } from '../../../src/modules/resolver';
 import { AgentRewrite } from '../../../src/modules/agent-rewrite';
-import { BlankFill, type BlankIntentDecision } from '../../../src/modules/blank-fill';
+import { BlankFill } from '../../../src/modules/blank-fill';
 import { BlankLoadingAnimator, parseCustomFrames, parseRgbColors, parseAnsiColors, parseFrameIntervalMs, DEFAULT_RGB_PALETTE, DEFAULT_ANSI_PALETTE } from '../../../src/modules/blank-loading';
 import { MarkdownRender } from '../../../src/modules/markdown-render';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
@@ -33,7 +33,7 @@ import { createSourceReclassifier, resetSharedBufferState } from '../../../src/b
 import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import { AgentTaskState } from '../../../src/state/agent-task';
 import { applyDirectives } from '../../../src/render-directives';
-import { buildAgentLLMResolver, buildBlankContextProvider, buildBlankIntentClassifier, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildAgentLLMResolver, buildBlankContextProvider, buildDispatchClassifier, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { startEventBridge } from '../../../src/event-bridge';
 import type {
   BlankInvokeSpec,
@@ -597,30 +597,15 @@ export function boot(host: HostInfo): BootResult {
     };
   });
 
-  // BlankIntent gate (off by default). CC constructs BlankFill inline
-  // (predating buildSharedRuntime), so the gate is wired here too — same
-  // lazy pattern: built on the first gated keystroke (after ConfigLoader
-  // has loaded settings), re-reading `blank-intent-mode` live so a
-  // flip-ON takes effect without a restart and the pre-load default
-  // (`off`) never freezes the gate off. Degrades to 'invoke' (today's
-  // proximity behaviour) on no key / packaging / LLM error.
-  let _biBuilt = false;
-  let _biClassifier: { classify: (t: string, b: string, blanks: Record<string, unknown>) => Promise<{ verdict: 'invoke' | 'cede'; action?: 'get' | 'set' | 'step' | null; value?: string | null }> } | null = null;
-  const BI_GET_INVOKE: BlankIntentDecision = { verdict: 'invoke', action: 'get', value: null };
-  const blankIntentGate = async (text: string, blankName: string): Promise<BlankIntentDecision> => {
-    if ((configLoader.opencuesState.settings.get('blank-intent-mode') ?? 'off') !== 'on') return BI_GET_INVOKE;
-    if (!_biBuilt) {
-      _biBuilt = true;
-      _biClassifier = buildBlankIntentClassifier(configLoader, apiKeys, msg => log('debug', msg));
-    }
-    if (!_biClassifier) return BI_GET_INVOKE;
-    const blanksRecord = Object.fromEntries(configLoader.blanks) as Record<string, unknown>;
-    const v = await _biClassifier.classify(text, blankName, blanksRecord);
-    return v.verdict === 'invoke'
-      ? { verdict: 'invoke', action: v.action ?? 'get', value: v.value ?? null }
-      : { verdict: 'cede' };
-  };
-  const blankFill = new BlankFill(adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading, blankIntentGate);
+  // Unified-dispatch classifier — the SOLE `_` router. CC builds its
+  // modules inline (predating buildSharedRuntime), so build it here (before
+  // BlankFill, which cedes to it). Reads keys live; resolves its LLM lazily
+  // on the first `_`.
+  const dispatchClassifier = buildDispatchClassifier(configLoader, () => apiKeys, msg => log('debug', msg));
+  // When the gate is the active `_` router, BlankFill cedes every keyword
+  // script/data blank to it (gate executes them); BlankFill keeps only
+  // stepValues list-blank auto-populate + span preservation.
+  const blankFill = new BlankFill(adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading, () => !!dispatchClassifier);
   configLoader.load().then(() => blankFill.subscribe()).catch(() => { /* logged */ });
   void blankFill; // silence unused — referenced by future phases
 
@@ -668,7 +653,11 @@ export function boot(host: HostInfo): BootResult {
     formatLLMErrorAsSubstitute: nativeHostFormatLLMError,
     keywordBoundSlotIndices: (text: string) => blankFill.scan(text).map(s => s.index),
   }, spanFillState, agentTaskState, blankLoading, markdownRender, selectorSatelliteState,
-  buildBlankContextProvider(configLoader, host.blanks, log));
+  buildBlankContextProvider(configLoader, host.blanks, log),
+  // Unified-dispatch classifier (built above) — the SOLE `_` router.
+  dispatchClassifier,
+  // BlankFill reused as the script executor for `action` decisions.
+  blankFill);
   if (hasAnyKey) {
     // AgentRewrite — cadence-driven holistic rewrite with three-way merge.
     const agentRewrite = new AgentRewrite(adapter, dynDefs, agentTaskState, {

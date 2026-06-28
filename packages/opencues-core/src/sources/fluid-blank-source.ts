@@ -828,6 +828,21 @@ export class FluidBlankSource implements CueSource {
     const lower = context.words.map(w => w.toLowerCase());
     const blankIndex = lower.indexOf('_');
     if (blankIndex === -1) return false;
+    // Unified-dispatch authority: when the runtime's classify-first gate
+    // ran, it OWNS the routing decision. FluidBlank claims the `_` only
+    // when the model routed it to `lookup`; any other route (action /
+    // transform / none) means a different handler owns this `_`, so cede
+    // unconditionally. `undefined` route = no gate ran (unit tests, a host
+    // without the classifier) → fall through to the heuristics below.
+    if (context.dispatchRoute !== undefined && context.dispatchRoute !== 'lookup') return false;
+    // When the model EXPLICITLY routed this `_` to lookup, fluid is the
+    // chosen handler — claim it and SKIP the keyword-cede + task-guard
+    // heuristics below. Those exist to defer to a keyword blank, but the
+    // gate already owns keyword blanks (it routes them to `action`), so a
+    // `lookup` verdict means there is no competing claim. This is what fixes
+    // the cede-collision (`the capital of france is _` — "capital of" is the
+    // countries keyword, which used to make fluid cede even on a real lookup).
+    if (context.dispatchRoute === 'lookup') return true;
     // Cede the slot when the input looks like a transform-blank task
     // command — reserved keywords for ARM/ADD/STOP/SHOW. Matches the
     // canonical orderings AND their reversed forms (so a typo like

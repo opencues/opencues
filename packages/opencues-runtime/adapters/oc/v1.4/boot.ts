@@ -242,7 +242,11 @@ export function boot(host: HostInfo): BootResult {
     formatLLMErrorAsSubstitute: nativeHostFormatLLMError,
     keywordBoundSlotIndices: (text: string) => shared.blankFill.scan(text).map(s => s.index),
   }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState,
-  buildBlankContextProvider(configLoader, host.blanks, log));
+  buildBlankContextProvider(configLoader, host.blanks, log),
+  // Unified-dispatch classifier — the SOLE `_` router (built in buildSharedRuntime).
+  shared.dispatchClassifier,
+  // BlankFill reused as the script executor for `action` decisions.
+  shared.blankFill);
   // Subscribe AFTER ConfigLoader.load — otherwise rebuildResolver sees
   // no cuesConfig/blanksConfig and bails. Mirrors CC v2.1 boot.
   configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });

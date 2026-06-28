@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — unified model-driven dispatch is now the SOLE `_` router; five heuristics retired (`@opencues/core` 0.6.2 → 0.6.3, `@opencues/runtime` 0.5.4 → 0.5.5)
+
+Completes the unified-dispatch arc: the model classifier is now **always on** (no `dispatch-mode` flag) and **authoritative** over every `_`. One LLM call per `_` decides routing — `action` / `lookup` / `transform` / `none` — and the runtime executes it; the deterministic code stopped deciding and became a safe executor. This replaces the five opinionated mechanisms that mangled conversational input (`what's the weather like in oslo _` → the keyword + `blankReplace: auto` wipe).
+
+- **`dispatch-mode` flag removed.** It's just how `_` works now (the classifier reads the **blanks** LLM bucket; advanced `dispatch-provider:` / `dispatch-model:` overrides remain). Removed from FEATURES + `OpenCuesState`.
+- **Authoritative routing.** `dispatchRoute` is threaded on `CueContext`; FluidBlank claims a `_` only on `lookup`, TransformBlank only on `transform`, neither on `none`/`action`. When the model routes to lookup/transform the source claims **even over a colliding keyword** — fixes the cede-collision where `the capital of france is _` was dropped (both the `countries` keyword blank and fluid ceded → 0 results). Settings (ConfigIntent) + sentence/word cues stay independent (outside the blank classifier's codomain).
+- **Script blanks routed by the model, executed with a clamp floor.** `volume 30 _` / `turn it up a bit _` → the classifier picks blank + action + arg; `BlankFill.runScriptAction` clamps `set`/`step` to `[0,100]` and passes the arg as a discrete argv element (never a shell string). Reuses the tested exec/sandbox engine.
+- **BlankIntent deleted entirely** — subsumed by this gate (the core classifier, `blank-intent-mode`, the 5-site keyword-window lockstep, its benches + 14 agentic scenarios are gone). BlankFill now cedes every keyword script/data blank to the gate (`gateActive`), keeping only stepValues list-blank auto-populate + span preservation.
+- **Wired on every host** (cc / oc / gemini / chrome / shell) via `buildSharedRuntime` (CC builds inline). Browser hosts pass `dispatchHttpAdapter`.
+- **Floors kept, not deleted.** `determineReplaceMode` (the old `blankReplace: auto` heuristic) survives as fluid-blank's FILL/WIPE **data-loss floor**; `blankProximity` survives as the no-classifier fallback window. Both are inert on the live path — opinions removed, safety floors retained ("open judgment → model, data-loss invariant → hardcoded floor").
+
+**Trade-off (accepted):** every `_` is an LLM call — no offline / no-key operation (degrades to `none`), ~200–1000ms latency softened by the cerebras prefix-cache + a per-buffer-text classify cache.
+
+Live-verified on OpenCode (cerebras gpt-oss-120b) across the full route matrix: conversational weather → real data + sentence preserved; `capital of france` lookup → Paris (collision fixed); `volume 20 _`/`volume 80 _` → clamped set with state-change proof; `fix typos _ …` → transform; prose mention → no fire. Suites green: core 977, runtime 1698. Full design: `docs/architecture/unified-dispatch.md`.
+
 ### Added — unified model-driven dispatch, Stage 2b (classify-first gate, live) (`@opencues/core` 0.6.1 → 0.6.2, `@opencues/runtime` 0.5.3 → 0.5.4)
 
 Wires the Stage 1 classifier into the live resolve loop behind `dispatch-mode: model` (still default `heuristic` — opt-in, no change for anyone who doesn't flip it). On every `_` in model-mode, ONE classifier call decides routing and the resolver dispatches to exactly one handler:

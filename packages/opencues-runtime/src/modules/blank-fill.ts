@@ -32,17 +32,6 @@ export interface BlankSlot {
   readonly proximity: number;
 }
 
-/**
- * The decision the BlankIntent gate returns to `maybeRunScripts`.
- *   - `cede`   → suppress the blank (the keyword was prose).
- *   - `invoke` → run it. `action`/`value` are the classifier's extracted
- *     intent; `set` + a numeric `value` performs a real set on a SETTABLE
- *     blank (one with `blankStep`), otherwise the default `get` runs.
- */
-export type BlankIntentDecision =
-  | { verdict: 'cede' }
-  | { verdict: 'invoke'; action: 'get' | 'set' | 'step'; value: string | null };
-
 export class BlankFill {
   private _slots: readonly BlankSlot[] = [];
   private _unsubText: Unsubscribe | null = null;
@@ -116,17 +105,15 @@ export class BlankFill {
      *  for backward compat with external callers that haven't wired the
      *  shared owner). */
     blankLoading?: BlankLoadingAnimator,
-    /** BlankIntent gate (off by default; wired by boot-common only when
-     *  `blank-intent-mode: on`). Consulted in `maybeRunScripts` BEFORE a
-     *  keyword-matched script-blank runs. Returns the extracted verdict:
-     *  `cede` suppresses the blank (keyword behaves as prose); `invoke`
-     *  runs it, and for a SETTABLE blank (one with `blankStep`) an
-     *  `action: 'set'` + numeric `value` performs a real set (`volume 30
-     *  _`) instead of a get. When omitted, every keyword-matched slot runs
-     *  a plain get unconditionally (the proximity gate — today's
-     *  behaviour). NEVER throws (the classifier degrades to a get-invoke
-     *  on any LLM failure). */
-    private blankIntentGate?: (text: string, blankName: string) => Promise<BlankIntentDecision>,
+    /** True when the unified-dispatch classify-first gate (Resolver) owns
+     *  `_` routing for this host. When set, BlankFill CEDES every keyword
+     *  script/data/fetch blank — the gate is the sole router and executes
+     *  them via `runScriptAction` / `blankInvoke`. BlankFill then only does
+     *  the things the gate doesn't: stepValues list-blank auto-populate
+     *  (`onUnderscoreKey`) + span preservation / clearOnEdit. Omitted /
+     *  false (unit tests, a host with no classifier) → the keyword path
+     *  runs as before. */
+    private gateActive?: () => boolean,
   ) {
     if (blankLoading) this._loading = blankLoading;
   }
@@ -609,95 +596,14 @@ export class BlankFill {
 
       }; // end doDispatch
 
-      // BlankIntent gate (off by default). When wired (blank-intent-mode
-      // on, native host with a resolved blanks-bucket LLM), ask the
-      // classifier whether this `_` is a genuine invocation before running
-      // the blank. INVOKE → doDispatch(); CEDE → suppress (the keyword
-      // behaves as prose). Every slot that reaches here is an exec/fetch
-      // tier blank — list blanks (stepValues) were skipped above, and only
-      // script / impl / built-in-by-convention blanks get this far (the
-      // dispatch requires `script || canBlankInvoke`). We do NOT gate on
-      // `blankScript || impl`: the shipped fetch blanks (weather, stocks,
-      // countries, …) OMIT `impl:` and resolve to a built-in class by
-      // convention, so gating on the field would leave the entire fetch
-      // tier ungated. The classifier never throws (it degrades to invoke on
-      // any LLM failure); a thrown gate is caught here and also treated as
-      // invoke. The staleness re-check drops a verdict that arrived after
-      // the user kept typing, so we never splice a fill against a changed
-      // buffer.
-      if (this.blankIntentGate) {
-        const gate = this.blankIntentGate;
-        const gateText = text;
-        const gateBlank = blank;
-        void (async () => {
-          // Animate the `_` DURING the gate's LLM classification (~250-300ms),
-          // not just the post-gate dispatch — otherwise every gated script-blank
-          // (volume / weather / stocks / …) shows a dead `_` for the whole
-          // classify window (the lag users notice). Held with the SAME
-          // 'blank-fill' owner doDispatch reuses, so it animates continuously
-          // gate → dispatch → result; stopped here on any non-dispatch exit
-          // (stale / cede), and on doDispatch's cache-hit path.
-          this._loadingAnimator().start(slot.index, 'blank-fill');
-          let decision: BlankIntentDecision = { verdict: 'invoke', action: 'get', value: null };
-          try {
-            decision = await gate(gateText, slot.blankName);
-          } catch (err) {
-            this.adapter.log('debug', `BlankFill: BlankIntent gate threw — degrading to get-invoke for ${slot.blankName}`, err);
-            decision = { verdict: 'invoke', action: 'get', value: null };
-          }
-          if (this._lastInputText !== gateText) {
-            this._loadingAnimator().stop(slot.index, 'blank-fill');
-            this._pendingScripts.delete(dedupKey);
-            return;
-          }
-          if (decision.verdict === 'cede') {
-            this.adapter.log('debug', `BlankFill: BlankIntent CEDE — suppressing ${slot.blankName} for "${gateText}"`);
-            this._loadingAnimator().stop(slot.index, 'blank-fill');
-            this._pendingScripts.delete(dedupKey);
-            return;
-          }
-          // Typed-SET: an `action: 'set'` + numeric value on a SETTABLE
-          // blank (one with `blankStep` — volume / brightness) performs a
-          // real set, then falls through to doDispatch's `get` to read the
-          // (possibly clamped) value back and splice it. `set` only ever
-          // reaches a blank whose keyword the user typed (consent), and
-          // only settable blanks honour it — a `set` verdict on a lookup
-          // blank (weather/stocks/…) degrades to a plain get. Non-numeric
-          // values also degrade to get (defensive; the gate extracts
-          // numbers for set but providers vary).
-          const stepRaw = (gateBlank as { blankStep?: unknown }).blankStep;
-          const stepSize = typeof stepRaw === 'number' ? stepRaw
-            : (typeof stepRaw === 'string' && /^\d+$/.test(stepRaw) ? parseInt(stepRaw, 10) : null);
-          const isSettable = stepSize !== null;
-          let typedAction: 'set' | 'step' | undefined;
-          if (decision.action === 'set' && decision.value && /^\d+$/.test(decision.value.trim()) && isSettable) {
-            this.adapter.log('debug', `BlankFill: BlankIntent SET ${slot.blankName} → ${decision.value} (then read back)`);
-            await this.runBlankSet(slot.blankName, decision.value.trim(), gateBlank as Record<string, unknown>);
-            if (this._lastInputText !== gateText) { this._loadingAnimator().stop(slot.index, 'blank-fill'); this._pendingScripts.delete(dedupKey); return; }
-            typedAction = 'set';
-          } else if (decision.action === 'step'
-              && (decision.value === 'up' || decision.value === 'down')
-              && isSettable) {
-            // Typed-STEP: `volume up _` / `brightness down _`. The verdict
-            // is RELATIVE (no target), so read the current value, add/sub
-            // `blankStep`, clamp 0–100, and set — then doDispatch reads the
-            // new value back. Same consent + settable guards as SET; a
-            // non-numeric current (unparseable get) degrades to a plain get.
-            const current = await this.runBlankGetValue(slot.blankName, gateBlank as Record<string, unknown>);
-            if (this._lastInputText !== gateText) { this._loadingAnimator().stop(slot.index, 'blank-fill'); this._pendingScripts.delete(dedupKey); return; }
-            if (current !== null) {
-              const next = Math.max(0, Math.min(100, decision.value === 'up' ? current + stepSize! : current - stepSize!));
-              this.adapter.log('debug', `BlankFill: BlankIntent STEP ${slot.blankName} ${decision.value} → ${current}±${stepSize}=${next} (then read back)`);
-              await this.runBlankSet(slot.blankName, String(next), gateBlank as Record<string, unknown>);
-              if (this._lastInputText !== gateText) { this._loadingAnimator().stop(slot.index, 'blank-fill'); this._pendingScripts.delete(dedupKey); return; }
-              typedAction = 'step';
-            }
-          }
-          doDispatch(typedAction);
-        })();
-      } else {
-        doDispatch();
-      }
+      // Plain keyword-path dispatch. The invoke/cede + typed set/step
+      // judgment that used to live here (the BlankIntent classifier) is now
+      // owned by the unified-dispatch classify-first gate in the Resolver —
+      // when that gate is active this code never runs (every keyword blank
+      // is ceded in `matchKeyword`, so `scan()` returns no slots). This
+      // branch is the no-classifier fallback (a host that didn't wire the
+      // gate / unit tests): run the blank's `get` unconditionally.
+      doDispatch();
     }
   }
 
@@ -782,6 +688,82 @@ export class BlankFill {
       this.adapter.log('debug', `BlankFill: typed-STEP read failed for ${blankName}`, e);
       return null;
     }
+  }
+
+  /**
+   * Read a settable/script blank's CURRENT value as a DISPLAY STRING
+   * (e.g. "30%", "Oslo: 27°C"). Trimmed stdout from a `get`. Returns
+   * null on failure. Sibling of `runBlankGetValue` (which parses an int
+   * for stepping) — this returns the human-facing string for splicing.
+   */
+  private async runBlankGetString(blankName: string, blank: Record<string, unknown>, arg?: string): Promise<string | null> {
+    const script = blank.blankScript as string | undefined;
+    const home = process.env.HOME ?? '~';
+    const scriptPath = script ? (script.startsWith('~') ? home + script.slice(1) : script) : '';
+    const processEnv: Readonly<Record<string, string | undefined>> =
+      (typeof process !== 'undefined' && process.env) ? process.env : {};
+    const declaredSecrets = (blank as { userBlankSecrets?: readonly string[] }).userBlankSecrets ?? [];
+    const env = buildSafeScriptEnv(processEnv, declaredSecrets, {});
+    // `arg` is passed as a discrete argv element (never a shell string),
+    // so it cannot inject — the script sees it as a literal $2.
+    const args = arg ? [arg] : [];
+    try {
+      let handle = this.adapter.blankInvoke?.({ blankName, action: 'get', args, env, timeoutMs: 4000 }) ?? null;
+      if (!handle) {
+        if (!script || !this.adapter.capabilities.includes('spawn-process')) return null;
+        handle = this.adapter.spawnProcess({ command: 'bash', args: [scriptPath, 'get', ...args], env, timeoutMs: 4000 });
+      }
+      const res = await handle.result;
+      if (res.exitCode !== 0 || res.timedOut) return null;
+      const out = (res.stdout ?? '').trim();
+      return out || null;
+    } catch (e) {
+      this.adapter.log('debug', `BlankFill: get-string failed for ${blankName}`, e);
+      return null;
+    }
+  }
+
+  /**
+   * Unified-dispatch script executor. The classify-first gate (Resolver)
+   * calls this when the model routed a `_` to a SCRIPT/settable blank
+   * (volume / brightness) — including intent-only phrasings with no
+   * keyword ("turn it up a bit _"). Reuses the same exec helpers the old
+   * keyword path used. Applies the deterministic SAFETY FLOOR (the model
+   * owns the judgment, code owns the bound):
+   *   - set  : numeric arg CLAMPED to [0,100]; non-numeric → plain get.
+   *   - step : current ± `blankStep`, CLAMPED to [0,100]; direction from
+   *            the arg ("down/lower/decrease/dim" → down, else up).
+   *   - get  : read current value.
+   * The arg is always passed as a discrete argv element — never a shell
+   * string — so an LLM-chosen value can't inject a command. Returns the
+   * display string to splice (e.g. "30%"), or null to leave the `_`.
+   */
+  async runScriptAction(blankName: string, action: 'get' | 'set' | 'step', arg: string | undefined): Promise<string | null> {
+    const blank = this.configLoader.blanks.get(blankName) as Record<string, unknown> | undefined;
+    if (!blank) return null;
+    const script = blank.blankScript as string | undefined;
+    if (!script && !this.adapter.capabilities.includes('blank-invoke')) return null;
+    const stepRaw = (blank as { blankStep?: unknown }).blankStep;
+    const stepSize = typeof stepRaw === 'number' ? stepRaw
+      : (typeof stepRaw === 'string' && /^\d+$/.test(stepRaw) ? parseInt(stepRaw, 10) : null);
+    const settable = stepSize !== null;
+    if (action === 'set' && settable && arg && /^-?\d+$/.test(arg.trim())) {
+      const clamped = Math.max(0, Math.min(100, parseInt(arg.trim(), 10)));
+      this.adapter.log('debug', `BlankFill: dispatch SET ${blankName} → ${clamped} (clamped from "${arg}")`);
+      await this.runBlankSet(blankName, String(clamped), blank);
+    } else if (action === 'step' && settable) {
+      const dir = /\b(down|lower|decrease|less|dim|reduce|quieter|softer)\b/i.test(arg ?? '') ? 'down' : 'up';
+      const current = await this.runBlankGetValue(blankName, blank);
+      if (current !== null) {
+        const next = Math.max(0, Math.min(100, dir === 'up' ? current + stepSize! : current - stepSize!));
+        this.adapter.log('debug', `BlankFill: dispatch STEP ${blankName} ${dir} → ${current}±${stepSize}=${next}`);
+        await this.runBlankSet(blankName, String(next), blank);
+      }
+    }
+    // Read back the resulting value as the display string to splice. For a
+    // pure `get` (read-only/data script), pass the arg through so keyword
+    // scripts that take a subject (e.g. a dictionary word) still work.
+    return this.runBlankGetString(blankName, blank, action === 'get' ? arg : undefined);
   }
 
   /**
@@ -1445,33 +1427,27 @@ export class BlankFill {
       const span = this.dynDefs.findSpanContaining(idx);
       return span !== null;
     };
-    // Window. When the BlankIntent gate is ACTIVE (wired + mode on), the
-    // keyword window is LINE-SCOPED for every blank via the SHARED
-    // `keywordInWindow` predicate — identical to the resolver's BlankSource
-    // claim + the FluidBlank/Transform/ConfigIntent cede checks, so the
-    // five sites can never disagree on who owns the `_` (the June 2026
-    // race). When the gate is off, each blank's tuned `blankProximity`
-    // applies exactly as before (master behaviour).
-    const gateActive = this.blankIntentGate !== undefined
-      && (this.configLoader.opencuesState.settings.get('blank-intent-mode') ?? 'off') === 'on';
+    // Keyword window: per-blank `blankProximity` (master behaviour). This
+    // path only runs as the no-classifier fallback — when the unified
+    // dispatch gate is active, every keyword blank is ceded above, so this
+    // detector never reaches a real claim. Line-scoping (the old BlankIntent
+    // lockstep window) is therefore always off here.
+    const lineScopedWindow = false;
     for (let j = blankIdx - 1; j >= 0; j -= 1) {
       for (const [name, blank] of this.configLoader.blanks.entries()) {
         const blankKeywords = (blank as { blankKeywords?: readonly string[] }).blankKeywords;
         if (!blankKeywords || blankKeywords.length === 0) continue;
         if (!supportsCycling && isBlankConfigCycleable(blank as Parameters<typeof isBlankConfigCycleable>[0])) continue;
-        // UNIFIED DISPATCH Stage 2b (`dispatch-mode: model`) — BlankFill cedes
-        // the keyword match for blanks the resolver's classify-first gate can
-        // EXECUTE: built-in data blanks (weather/stocks/crypto, no shell). The
-        // gate invokes them via blankInvoke at a model-chosen span, removing
-        // the keyword wipe + the proximity/blankReplace opinions for exactly
-        // the case that motivated the feature ("what's the weather like in
-        // oslo _"). SCRIPT blanks (volume/brightness — `blankScript`, an
-        // LLM-arg→shell exec) are NOT ceded: routing an LLM-chosen arg into a
-        // subprocess is the Phase 4 `param-safe` security surface and stays on
-        // the existing keyword-gated path until that floor is reviewed (Stage
-        // 2c). Default `heuristic` → never fires (byte-identical to today).
-        const isScriptBlank = !!(blank as { blankScript?: unknown }).blankScript;
-        if (this.configLoader.opencuesState.dispatchMode === 'model' && !isScriptBlank) continue;
+        // UNIFIED DISPATCH — when the classify-first gate (Resolver) is the
+        // active `_` router, BlankFill cedes EVERY keyword blank: the gate is
+        // the sole router and executes them (data via `blankInvoke`, script
+        // via `runScriptAction` with the clamp floor) at a model-chosen span.
+        // Ceding here means `scan()` returns no slots for these, so
+        // `maybeRunScripts` never double-fires against the gate. stepValues
+        // LIST blanks are unaffected (handled by `onUnderscoreKey`, not this
+        // path). No gate wired (unit tests / no classifier) → keyword path
+        // runs as before.
+        if (this.gateActive?.()) continue;
         // Default blankProximity to 0 (keyword must be DIRECTLY adjacent
         // to _, no words between) when not explicitly set. The previous
         // default (no limit, when the field was undefined) caused
@@ -1485,7 +1461,7 @@ export class BlankFill {
         const blankProximity = (blank as { blankProximity?: number }).blankProximity ?? 0;
         // The keyword's last word is at `j`; gate-on → same line as `_`,
         // gate-off → within blankProximity words.
-        if (!keywordInWindow(j, blankIdx, blankProximity, { lineScoped: gateActive, lineOf })) continue;
+        if (!keywordInWindow(j, blankIdx, blankProximity, { lineScoped: lineScopedWindow, lineOf })) continue;
         for (const kw of blankKeywords) {
           const kwLc = kw.toLowerCase();
           const kwWords = kwLc.split(/\s+/);

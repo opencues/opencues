@@ -80,6 +80,20 @@ export interface CueContext {
   domain?: string;
 
   /**
+   * Unified-dispatch route decision for the `_` in this buffer. Set by
+   * the runtime's classify-first gate (one model call per `_`): the model
+   * decides whether this `_` is a data/settings `action`, a free-form
+   * `lookup` (fluid-blank), a `transform` (rewrite), or `none`. The gate
+   * is AUTHORITATIVE over the blank sources — FluidBlankSource claims the
+   * `_` only when `route === 'lookup'`, TransformBlankSource only when
+   * `route === 'transform'`. `action` is executed by the runtime before
+   * the source resolve (the sources never see it); `none` means no blank
+   * fires. `undefined` = no gate ran (unit tests / a host without the
+   * classifier) → sources fall back to their own claim heuristics.
+   */
+  dispatchRoute?: 'action' | 'lookup' | 'transform' | 'none';
+
+  /**
    * Character offset into `text` where the user's caret currently
    * sits. Sources can inject a `[CURSOR]` sentinel here so the LLM
    * can anchor positional instructions ("insert X here _", "add a

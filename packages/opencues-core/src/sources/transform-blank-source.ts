@@ -521,6 +521,16 @@ export class TransformBlankSource implements CueSource {
     const blankIndex = lower.indexOf('_');
     if (blankIndex === -1) return false;
 
+    // Unified-dispatch authority: when the runtime's classify-first gate
+    // ran, TransformBlank claims the `_` only when the model routed it to
+    // `transform`. Any other route (action / lookup / none) → cede. An
+    // `undefined` route means no gate ran → fall through to the heuristics.
+    if (context.dispatchRoute !== undefined && context.dispatchRoute !== 'transform') return false;
+    // Model EXPLICITLY routed to transform → claim, skipping the keyword-cede
+    // + imperative-verb heuristics below (the gate owns keyword blanks, so a
+    // `transform` verdict has no competing claim).
+    if (context.dispatchRoute === 'transform') return true;
+
     // Cede to keyword-bound BlankSource if a registered blank's keyword is
     // in the active window of the `_` (mirror fluid-blank cede logic). The
     // shared `keywordInWindow` keeps this in lockstep with BlankFill +

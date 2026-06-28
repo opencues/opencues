@@ -407,9 +407,17 @@ export class Resolver {
           mode: 'safe' | 'raw' }
       | undefined
     >,
-    /** Unified-dispatch Stage 2b — the `_`-dispatch classifier for
-     *  `dispatch-mode: model`. Undefined in heuristic mode. */
+    /** Unified-dispatch classifier — the SOLE `_` router. One model call
+     *  per `_` decides action/lookup/transform/none. Undefined only when a
+     *  host didn't wire it / `@opencues/core` is unavailable (then `_`
+     *  dispatch is inert and sources fall back to their own heuristics). */
     private dispatchClassifier?: { classify: (text: string) => Promise<import('@opencues/core').DispatchDecision> },
+    /** BlankFill — reused as the SCRIPT executor for `action` decisions
+     *  on settable/script blanks (volume / brightness). The gate routes
+     *  (model judgment); `runScriptAction` runs with the deterministic
+     *  clamp floor (code-owned safety). Undefined → script `action`s are
+     *  skipped (data blanks via `blankInvoke` still work). */
+    private blankFill?: { runScriptAction: (blankName: string, action: 'get' | 'set' | 'step', arg: string | undefined) => Promise<string | null> },
   ) {}
 
   /** Execute a model `action` decision: invoke the blank + substitute the
@@ -436,17 +444,25 @@ export class Resolver {
       action = /\b(down|lower|decrease|less|dim)\b/i.test(d.arg ?? '') ? 'down' : 'up';
       args = [];
     }
+    let value = '';
     const handle = this.adapter.blankInvoke({ blankName: d.blank, action, args });
     if (!handle) {
-      // Not a built-in registry blank — almost certainly a script blank
-      // (volume/brightness). The classify-first gate defers; BlankFill's
-      // keyword path handles it (see its model-mode cede carve-out). The
-      // LLM-arg→shell exec floor lands in Stage 2c.
-      this.adapter.log('debug', `UnifiedDispatch: ${d.blank}.${action} not blankInvoke-able (script blank?) — deferring to keyword path`);
-      return false;
+      // Not a host-native (blankInvoke) blank — a SCRIPT/settable blank
+      // (volume/brightness). Run it through BlankFill's executor, which
+      // applies the deterministic clamp floor (set 0–100, step ±blankStep)
+      // and passes the arg as a discrete argv element (no shell injection).
+      // This is what lets the model route a script blank with NO keyword
+      // ("turn it up a bit _"). Returns the display string to splice.
+      if (!this.blankFill) {
+        this.adapter.log('debug', `UnifiedDispatch: ${d.blank}.${action} not blankInvoke-able and no BlankFill executor wired — skipping`);
+        return false;
+      }
+      const scriptVal = await this.blankFill.runScriptAction(d.blank, d.action, d.arg);
+      if (!scriptVal) return false;
+      value = scriptVal;
+    } else {
+      try { value = ((await handle.result).stdout ?? '').trim(); } catch { return false; }
     }
-    let value = '';
-    try { value = ((await handle.result).stdout ?? '').trim(); } catch { return false; }
     if (!value) return false;
     const us = text.indexOf('_');
     const start = d.replaceStart ?? (us >= 0 ? us : text.length);
@@ -784,12 +800,6 @@ export class Resolver {
       enableFluidBlank: settings.get('fluid-blank-mode') === 'on',
       enableTransformBlank: settings.get('transform-blank-mode') === 'on',
       enableConfigIntent: settings.get('fluid-config-mode') === 'on',
-      // Live getter: BlankIntent gate active → BlankSource claim + the
-      // FluidBlank/Transform/ConfigIntent cede checks all switch to the
-      // shared line-scoped keyword window (in lockstep with BlankFill).
-      // Read live so a `blank-intent-mode` flip takes effect without a
-      // source rebuild. See keyword-window.ts.
-      blankIntentLineScoped: () => this.configLoader.opencuesState.settings.get('blank-intent-mode') === 'on',
       enableSentenceCues: settings.get('sentence-cues-mode') === 'on',
       enableWordCues: settings.get('word-cues-mode') === 'on',
       // `max-thinking` (default on). Threaded into every LLM source's
@@ -1159,17 +1169,25 @@ export class Resolver {
       textLen: text.length,
       generation,
     });
-    // UNIFIED DISPATCH Stage 2b — classify-first gate. When `dispatch-mode:
-    // model`, ONE classifier call decides routing. An `action` route is
-    // EXECUTED here (invoke blank + substitute at the model-chosen span,
-    // default = just the `_` so the sentence is preserved) and short-circuits
-    // the source resolve. lookup/transform/none fall through to the normal
-    // sources — BlankFill has ceded its keyword blanks in model-mode, so a
-    // conversational query reaches fluid/transform without the keyword wipe.
-    // Heuristic mode → dispatchClassifier is undefined → this is skipped.
-    if (this.dispatchClassifier
-        && this.configLoader.opencuesState.dispatchMode === 'model'
-        && text.includes('_')) {
+    // UNIFIED DISPATCH — the classify-first gate. EVERY `_` is routed by ONE
+    // model decision (no `dispatch-mode` flag any more — this is just how a
+    // `_` works). The gate is AUTHORITATIVE:
+    //   - action    → EXECUTED here (invoke blank + substitute at the model-
+    //                 chosen span, default = just the `_` so the sentence is
+    //                 preserved) and short-circuits the source resolve.
+    //   - lookup    → fall through; `dispatchRoute='lookup'` lets ONLY
+    //                 FluidBlank claim the `_` (every other blank source cedes).
+    //   - transform → fall through; ONLY TransformBlank claims.
+    //   - none      → fall through with `dispatchRoute='none'`; fluid + transform
+    //                 both cede, so a prose `_` is left alone. ConfigIntent
+    //                 (settings) + sentence/word cues still run — they're
+    //                 outside the blank classifier's codomain.
+    // The classifier is built once per host (buildSharedRuntime) and resolves
+    // its LLM lazily on the first `_`. Absent (no key / a host that didn't
+    // wire it) → dispatchRoute stays undefined and sources fall back to their
+    // own heuristics (back-compat; also the path every unit test takes).
+    let dispatchRoute: import('@opencues/core').DispatchDecision['route'] | undefined;
+    if (this.dispatchClassifier && text.includes('_')) {
       try {
         const visible = text.replace(/[​‌]/g, '');
         const decision = await this.dispatchClassifier.classify(visible);
@@ -1177,8 +1195,12 @@ export class Resolver {
         if (decision.route === 'action') {
           const handled = await this.executeDispatchAction(visible, decision);
           if (handled) { this._inFlightController = null; return; }
+          // Action chosen but not executable (no value / unknown blank) →
+          // treat as `none` so fluid-blank doesn't then "answer" the `_`.
+          dispatchRoute = 'none';
+        } else {
+          dispatchRoute = decision.route;
         }
-        // lookup / transform / none → fall through to the source resolve below.
       } catch (e) {
         this.adapter.log('debug', `UnifiedDispatch: gate error (${e instanceof Error ? e.message : String(e)}) — falling through`);
       }
@@ -1325,6 +1347,11 @@ export class Resolver {
         text,
         words: cleanWords,
         domain: 'claude-code',
+        // Unified-dispatch route (see the classify-first gate above). Makes
+        // the gate authoritative over the blank sources: FluidBlank claims
+        // only on 'lookup', TransformBlank only on 'transform', neither on
+        // 'none'. Undefined when no classifier ran (back-compat / tests).
+        dispatchRoute,
         asTypedText,
         richText,
         // User's caret position. TransformBlank's APPLY pass injects

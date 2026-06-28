@@ -354,105 +354,15 @@ export function buildAgentLLMResolver(
 }
 
 /**
- * Construct the BlankIntent classifier (the LLM gate `BlankFill` consults
- * before running a keyword-matched script-blank). Returns null — and the
- * gate is simply absent (today's proximity behaviour) — when:
- *   - `blank-intent-mode` is not `on` (off by default), OR
- *   - `@opencues/core` / its node-http-adapter can't be required (chrome
- *     packaging or a Bun host without the native adapter), OR
- *   - no API key resolves for the blanks-bucket provider.
- *
- * Resolves the LLM the same way `buildAgentLLMResolver` does, but reads
- * the BLANKS bucket (`blanks-llm-provider`) with optional per-feature
- * `blank-intent-{provider,model,endpoint}` overrides. Constructed ONCE at
- * boot: flipping `blank-intent-mode: on` takes effect on the next host
- * restart (documented in the upgrade path); the live gate re-checks the
- * scalar each call so flipping it OFF disables the gate without a restart.
- */
-export function buildBlankIntentClassifier(
-  configLoader: ConfigLoader,
-  apiKeys: Readonly<Record<string, string | undefined>>,
-  log: (msg: string) => void,
-  // Optional HTTP adapter override. Browser hosts (chrome) MUST pass their
-  // fetch-based adapter here: `NodeHttpAdapter` uses `node:https`, which does
-  // not exist in a content script, and esbuild aliases it to a no-op stub —
-  // so without this the classifier builds but can never make a request (and
-  // historically threw → null → the whole gate silently degraded to GET in
-  // chrome). Native hosts (CC/OC) omit it and get NodeHttpAdapter. Mirrors
-  // the Resolver's `httpAdapter` option. See docs/architecture/chrome-runtime-compat.md.
-  httpAdapterOverride?: unknown,
-): { classify: (text: string, blank: string, blanks: Record<string, unknown>) => Promise<{ verdict: 'invoke' | 'cede'; action?: 'get' | 'set' | 'step' | null; value?: string | null }> } | null {
-  const s = configLoader.opencuesState.settings;
-  if ((s.get('blank-intent-mode') ?? 'off') !== 'on') return null;
-
-  let core: {
-    resolveLLM?: (opts: unknown) => { provider: unknown; model: string; endpoint: string; apiKey: string } | null;
-    BlankIntentClassifier?: new (cfg: unknown) => { classify: (text: string, blank: string, blanks: Record<string, unknown>) => Promise<{ verdict: 'invoke' | 'cede' }> };
-  } | null = null;
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    core = require('@opencues/core');
-  } catch {
-    return null;
-  }
-  if (!core?.resolveLLM || !core?.BlankIntentClassifier) return null;
-
-  // Blanks-bucket precedence (mirrors build-sources.ts): per-feature
-  // override > blanks bucket > global. `inherit` collapses the bucket.
-  const blanksBucket = configLoader.opencuesState.blanksLlmProvider;
-  const blanksBucketProvider = blanksBucket === 'inherit' ? undefined : blanksBucket;
-  const blanksBucketModel = blanksBucketProvider ? s.get('blanks-llm-model') : undefined;
-  const blanksBucketEndpoint = blanksBucketProvider ? s.get('blanks-llm-endpoint') : undefined;
-
-  const resolved = core.resolveLLM({
-    featureProvider: s.get('blank-intent-provider'),
-    featureModel: s.get('blank-intent-model'),
-    endpointOverride: s.get('blank-intent-endpoint') ?? blanksBucketEndpoint ?? s.get('llm-endpoint'),
-    globalProvider: blanksBucketProvider ?? s.get('llm-provider'),
-    globalModel: blanksBucketProvider ? (blanksBucketModel ?? undefined) : s.get('llm-model'),
-    apiKeys,
-  });
-  if (!resolved) {
-    log('BlankIntent: blank-intent-mode on but no API key resolved — gate disabled (proximity fallback)');
-    return null;
-  }
-
-  let httpAdapter: unknown;
-  if (httpAdapterOverride !== undefined) {
-    // Browser host (chrome) supplied a fetch-based adapter — use it directly,
-    // never touch NodeHttpAdapter (node:https / stubbed in the bundle).
-    httpAdapter = httpAdapterOverride;
-  } else {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { NodeHttpAdapter } = require('@opencues/core/node-http-adapter');
-      httpAdapter = new NodeHttpAdapter({ maxSockets: 2, timeout: 30000 }); // BROWSER-SAFE-ALLOW: native-host fallback only — chrome passes httpAdapterOverride above
-    } catch {
-      return null;
-    }
-  }
-
-  log('BlankIntent: gate ENABLED (blank-intent-mode on)');
-  return new core.BlankIntentClassifier({
-    httpAdapter,
-    provider: resolved.provider,
-    endpoint: resolved.endpoint,
-    apiKey: resolved.apiKey,
-    model: resolved.model,
-    log,
-  });
-}
-
-/**
- * Unified-dispatch Stage 2b — build the `_`-dispatch classifier for
- * `dispatch-mode: model`. Returns `{ classify(text) → DispatchDecision }`, or
- * undefined when the mode is off / no key / core unavailable. NEVER throws on
- * classify — degrades to `{ route: 'none' }` (leaves the `_` alone). One LLM
- * call per `_`, cached per buffer text. See docs/architecture/unified-dispatch.md.
+ * Build the unified-dispatch classifier — the SOLE `_` router. Returns
+ * `{ classify(text) → DispatchDecision }`, or undefined when `@opencues/core`
+ * is unavailable. NEVER throws on classify — degrades to `{ route: 'none' }`
+ * (leaves the `_` alone) on no-key / LLM error. One LLM call per `_`, cached
+ * per buffer text. See docs/architecture/unified-dispatch.md.
  */
 export function buildDispatchClassifier(
   configLoader: ConfigLoader,
-  apiKeys: Readonly<Record<string, string | undefined>>,
+  getApiKeys: () => Readonly<Record<string, string | undefined>>,
   log: (msg: string) => void,
   httpAdapterOverride?: unknown,
 ): { classify: (text: string) => Promise<import('@opencues/core').DispatchDecision> } | undefined {
@@ -464,13 +374,10 @@ export function buildDispatchClassifier(
   if (!core?.resolveLLM || !core?.dispatchChat || !core?.getProvider || !core?.buildDispatchSystem) return undefined;
 
   // LLM target + httpAdapter are resolved LAZILY on the first classify
-  // call, NOT here. The Resolver constructs this classifier BEFORE
-  // `configLoader.load()` runs (see the oc/cc band boot order), so at
-  // build time `dispatchMode` is still the default 'heuristic' and the
-  // provider settings are unread. Resolving eagerly would either disable
-  // the gate forever or pin a stale provider. The resolver only ever
-  // calls `classify()` when `dispatchMode === 'model'` (its own gate), so
-  // deferring is safe and reads live config.
+  // call, NOT here. The classifier is constructed BEFORE
+  // `configLoader.load()` runs (boot order), so at build time the provider
+  // settings are unread; resolving eagerly would pin a stale provider (or
+  // disable on a not-yet-arrived chrome key). Deferring reads live config.
   let resolved: import('@opencues/core').ResolvedLLM | null | undefined;
   let httpAdapter: unknown;
   let llmAttempted = false;
@@ -490,9 +397,9 @@ export function buildDispatchClassifier(
       endpointOverride: s.get('llm-endpoint'),
       globalProvider: blanksBucketProvider ?? s.get('llm-provider'),
       globalModel: blanksBucketProvider ? undefined : s.get('llm-model'),
-      apiKeys,
+      apiKeys: getApiKeys(),
     } as Parameters<NonNullable<typeof core.resolveLLM>>[0]) ?? null;
-    if (!resolved) { log('UnifiedDispatch: dispatch-mode model but no API key — disabled'); return false; }
+    if (!resolved) { log('UnifiedDispatch: no API key — `_` dispatch disabled until a key is present'); return false; }
     if (httpAdapter === undefined) {
       if (httpAdapterOverride !== undefined) httpAdapter = httpAdapterOverride;
       else {
@@ -561,7 +468,7 @@ export function buildDispatchClassifier(
 import { Navigation } from './modules/navigation';
 import { DimRender } from './modules/dim-render';
 import { Cycling } from './modules/cycling';
-import { BlankFill, type BlankIntentDecision } from './modules/blank-fill';
+import { BlankFill } from './modules/blank-fill';
 import { BlankLoadingAnimator, parseCustomFrames, parseRgbColors, parseAnsiColors, parseFrameIntervalMs, DEFAULT_RGB_PALETTE, DEFAULT_ANSI_PALETTE } from './modules/blank-loading';
 import { MarkdownRender } from './modules/markdown-render';
 import { HighlightState } from './state/highlight-state';
@@ -595,6 +502,12 @@ export interface SharedRuntime {
    *  BlankFill — saves ~5 sequential script/network calls per resolve
    *  on inputs like `volume _` / `weather _` / `nvidia _`. */
   readonly blankFill: BlankFill;
+  /** Unified-dispatch classifier — the SOLE router for every `_`. One
+   *  model call per `_` decides action/lookup/transform/none; the Resolver
+   *  threads this in and dispatches authoritatively. Built once per host
+   *  here (LLM resolves lazily on the first `_`). Undefined only when
+   *  `@opencues/core` can't be required (degrades to no `_` dispatch). */
+  readonly dispatchClassifier?: { classify: (text: string) => Promise<import('@opencues/core').DispatchDecision> };
 }
 
 export interface BuildSharedRuntimeOptions {
@@ -621,14 +534,13 @@ export interface BuildSharedRuntimeOptions {
    *  in which case CLI providers are conservatively dropped from the
    *  cycling menu. */
   readonly isCliProviderAvailable?: (providerId: string) => boolean;
-  /** HTTP adapter for the BlankIntent gate's classifier. Browser hosts
+  /** HTTP adapter for the unified-dispatch classifier. Browser hosts
    *  (chrome) MUST pass their fetch-based adapter — the classifier otherwise
    *  falls back to NodeHttpAdapter (node:https), which can't run in a content
-   *  script, so the gate silently degrades to a plain GET. Native hosts
-   *  (CC/OC) omit it and get NodeHttpAdapter. Same Node-vs-browser split the
-   *  Resolver handles via its own `httpAdapter` option.
-   *  See docs/architecture/chrome-runtime-compat.md. */
-  readonly blankIntentHttpAdapter?: unknown;
+   *  script, so `_` dispatch silently dies. Native hosts (CC/OC) omit it and
+   *  get NodeHttpAdapter. Same Node-vs-browser split the Resolver handles via
+   *  its own `httpAdapter` option. See docs/architecture/chrome-runtime-compat.md. */
+  readonly dispatchHttpAdapter?: unknown;
 }
 
 /**
@@ -810,7 +722,7 @@ export function buildSharedRuntime(
   adapter: HostAdapter,
   opts: BuildSharedRuntimeOptions,
 ): SharedRuntime {
-  const { log, configSearchPaths, settingsFile, getApiKeys, isCliProviderAvailable, blankIntentHttpAdapter } = opts;
+  const { log, configSearchPaths, settingsFile, getApiKeys, isCliProviderAvailable, dispatchHttpAdapter } = opts;
 
   // Fire-and-forget direct-launch drift advisory. Runs once per boot,
   // catches users who launched the host directly (bypassing
@@ -898,71 +810,27 @@ export function buildSharedRuntime(
     };
   });
 
+  // Unified-dispatch classifier — the SOLE `_` router, built once per host.
+  // Reads API keys live (chrome pushes them async post-boot) and resolves
+  // its LLM target lazily on the first `_`. Browser hosts pass their
+  // fetch-based HTTP adapter via `dispatchHttpAdapter` (native hosts get
+  // NodeHttpAdapter). Undefined only when @opencues/core can't be required.
+  const dispatchClassifier = buildDispatchClassifier(
+    configLoader,
+    getApiKeys ?? (() => ({})),
+    msg => log('debug', msg),
+    dispatchHttpAdapter,
+  );
+
   // BlankFill subscribes only after ConfigLoader.load resolves so its
-  // initial scan sees the populated blanksByWord map. Same pattern
-  // both hosts had inline.
-  // BlankIntent gate (off by default). When `blank-intent-mode: on`, an
-  // LLM call decides whether a keyword-matched script-blank is a genuine
-  // invocation (INVOKE → run) or just prose (CEDE → suppress the script).
-  //
-  // The classifier is built LAZILY on the first gated keystroke — NOT here.
-  // `configLoader.load()` is async (resolves below), so reading the scalar
-  // synchronously at construction would see the pre-load default (`off`)
-  // and the gate would never wire even with the flag on. Building lazily
-  // (after load, when the first keyword-matched `_` arrives) reads the
-  // loaded settings AND makes a live flip-ON take effect without a restart.
-  // Absent getApiKeys / no key / packaging → gate degrades to 'invoke'
-  // (BlankFill runs scripts as today).
-  let _biClassifier: { classify: (t: string, b: string, blanks: Record<string, unknown>) => Promise<{ verdict: 'invoke' | 'cede'; action?: 'get' | 'set' | 'step' | null; value?: string | null }> } | null = null;
-  const GET_INVOKE: BlankIntentDecision = { verdict: 'invoke', action: 'get', value: null };
-  const blankIntentGate: ((text: string, blankName: string) => Promise<BlankIntentDecision>) | undefined =
-    getApiKeys
-      ? async (text, blankName) => {
-          const biMode = configLoader.opencuesState.settings.get('blank-intent-mode') ?? 'off';
-          if (biMode !== 'on') {
-            // A gated keyword reached the gate but the mode reads off → plain
-            // GET (no classify). Logged so "I set blank-intent-mode: on but
-            // nothing happens" is diagnosable — esp. on chrome, where the
-            // settings come from a pushed/converged bundle that can lag or
-            // drop the scalar. Reports the value + map size so an EMPTY map
-            // (settings never reached this runtime) is distinguishable from a
-            // genuine off.
-            const s = configLoader.opencuesState.settings;
-            log('debug', `BlankIntent: gate OFF for "${blankName}" — blank-intent-mode=${biMode} (settings map: ${s.size} keys, debug-mode=${s.get('debug-mode') ?? 'absent'}, voice-mode=${s.get('voice-mode') ?? 'absent'})`);
-            return GET_INVOKE;
-          }
-          if (!_biClassifier) {
-            // Build (or RE-build) until it succeeds — never cache a null.
-            // The classifier is null when keys haven't arrived yet (chrome
-            // pushes them async after boot) or core packaging isn't ready;
-            // caching that failure once would leave the gate dead for the
-            // whole session even after keys land. Once built, it's reused.
-            // The browser HTTP adapter (chrome) is threaded in here.
-            _biClassifier = buildBlankIntentClassifier(configLoader, getApiKeys(), msg => log('debug', msg), blankIntentHttpAdapter);
-            if (!_biClassifier) return GET_INVOKE; // no key yet / packaging → today's behaviour, retry next keystroke
-          }
-          const blanksRecord = Object.fromEntries(configLoader.blanks) as Record<string, unknown>;
-          const v = await _biClassifier.classify(text, blankName, blanksRecord);
-          return v.verdict === 'invoke'
-            ? { verdict: 'invoke', action: v.action ?? 'get', value: v.value ?? null }
-            : { verdict: 'cede' };
-        }
-      : undefined;
-
-  // Boot-time gate-wiring trace. Fires once per boot (no keystroke needed) so
-  // we can tell, on any host, whether the BlankIntent gate was even
-  // constructed — `getApiKeys` absent → gate undefined → the whole
-  // blank-intent path is dead regardless of the mode scalar. This is the
-  // single fact that distinguishes "gate not wired" from "gate wired but
-  // mode off" when debugging hosts like chrome.
-  // INFO level on purpose: this fires at boot BEFORE config loads, so
-  // debug-mode isn't known yet — a 'debug' line here would be suppressed and
-  // look like it never ran. INFO guarantees it reaches the log on every boot.
-  log('debug', `BlankIntent: boot — gate ${blankIntentGate ? 'WIRED (getApiKeys present)' : 'NOT WIRED (getApiKeys absent → blank-intent path inert)'}`);
-
+  // initial scan sees the populated blanksByWord map. When the unified
+  // dispatch classifier is the active `_` router (built above), BlankFill
+  // CEDES every keyword script/data blank to it — `gateActive` makes the
+  // keyword path stand down so the gate is the sole router. BlankFill then
+  // only does stepValues list-blank auto-populate + span preservation.
   const blankFill = new BlankFill(
     adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading,
-    blankIntentGate,
+    () => !!dispatchClassifier,
   );
   configLoader.load()
     .then(() => blankFill.subscribe())
@@ -986,6 +854,7 @@ export function buildSharedRuntime(
     blankLoading,
     markdownRender,
     blankFill,
+    dispatchClassifier,
   };
 }
 

@@ -313,7 +313,7 @@ export function boot(host: HostInfo): BootResult {
     // so without this the gate builds but silently degrades to a plain GET
     // (no blank-intent typed-SET / weather classification in chrome). Same
     // adapter the Resolver uses below. See docs/architecture/chrome-runtime-compat.md.
-    blankIntentHttpAdapter: host.httpAdapter,
+    dispatchHttpAdapter: host.httpAdapter,
   });
   configLoaderRef = shared.configLoader;
 
@@ -429,7 +429,13 @@ export function boot(host: HostInfo): BootResult {
         }
       },
       keywordBoundSlotIndices: (text: string) => shared.blankFill.scan(text).map(s => s.index),
-    }), spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState);
+    }), spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState,
+    // blankContextProvider unused on chrome (no live blank fetch); pass
+    // undefined so the unified-dispatch classifier lands in its slot.
+    undefined,
+    shared.dispatchClassifier,
+    // BlankFill reused as the script executor for `action` decisions.
+    shared.blankFill);
     configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
     liveResolver = resolver;
 
