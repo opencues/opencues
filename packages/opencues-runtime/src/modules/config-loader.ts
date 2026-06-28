@@ -155,6 +155,13 @@ export interface OpenCuesState {
    */
   readonly sentinelLanguage: 'bare' | 'typed';
   /**
+   * `_`-dispatch routing. `heuristic` (default) = today's keyword/proximity/
+   * auto-replace + claim race. `model` = one LLM classifier per `_` owns
+   * routing + action + substitution span (slower, flexible, no offline).
+   * See docs/architecture/unified-dispatch.md.
+   */
+  readonly dispatchMode: 'heuristic' | 'model';
+  /**
    * Controls when `_` fires its blank.
    *
    * - `immediate` (default): blank fires the instant `_` is inserted.
@@ -241,6 +248,7 @@ export const DEFAULT_OPENCUES_STATE: OpenCuesState = {
   identityContextMode: 'safe',
   blankContextMode: 'safe',
   sentinelLanguage: 'bare',
+  dispatchMode: 'heuristic',
   blankTriggerMode: 'immediate',
   navKeymap: 'auto',
   cuesLlmProvider: 'inherit',
@@ -337,6 +345,8 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   // grammar. Unrecognised value → `bare` (fail-safe, no behavioural diff).
   const sentinelLanguage: 'bare' | 'typed' =
     get('sentinel-language', 'bare').toLowerCase() === 'typed' ? 'typed' : 'bare';
+  const dispatchMode: 'heuristic' | 'model' =
+    get('dispatch-mode', 'heuristic').toLowerCase() === 'model' ? 'model' : 'heuristic';
   const blankTriggerMode: 'immediate' | 'spaced' =
     get('blank-trigger-mode', 'immediate').toLowerCase() === 'spaced' ? 'spaced' : 'immediate';
   const navKeymapRaw = get('nav-keymap', 'auto').toLowerCase();
@@ -375,7 +385,7 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   // Tests keep shipping mock `settings:` blocks; they get the
   // file-driven definitions, identical to the pre-refactor behaviour.
   const definitions = mergeDefinitions(getMenuDefinitions(undefined, settings), parseSettingsBlock(lines));
-  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, identityContextMode, blankContextMode, sentinelLanguage, blankTriggerMode, navKeymap, cuesLlmProvider, auditorsLlmProvider, blanksLlmProvider, settings, definitions };
+  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, identityContextMode, blankContextMode, sentinelLanguage, dispatchMode, blankTriggerMode, navKeymap, cuesLlmProvider, auditorsLlmProvider, blanksLlmProvider, settings, definitions };
 }
 
 /**
@@ -707,6 +717,7 @@ export class ConfigLoader {
         return candidate;
       })(),
       sentinelLanguage: (get('sentinel-language', 'bare').toLowerCase() === 'typed' ? 'typed' : 'bare') as 'bare' | 'typed',
+      dispatchMode: (get('dispatch-mode', 'heuristic').toLowerCase() === 'model' ? 'model' : 'heuristic') as 'heuristic' | 'model',
       blankTriggerMode: (get('blank-trigger-mode', 'immediate').toLowerCase() === 'spaced' ? 'spaced' : 'immediate') as 'immediate' | 'spaced',
       navKeymap: ((): 'auto' | 'ctrl-alt' | 'ctrl-shift' => {
         const v = get('nav-keymap', 'auto').toLowerCase();

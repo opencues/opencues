@@ -581,6 +581,25 @@ export const FEATURES: readonly FeatureSpec[] = [
     ],
   },
   {
+    // Routing for a `_` trigger. `heuristic` (default) is today's mix of
+    // keyword exact-match + blankProximity + blankReplace:auto + the
+    // source-claim race — fast + offline, but opinionated (mangles
+    // conversational input). `model` routes every `_` through ONE LLM
+    // classifier that decides which blank, what action, what arg, and the
+    // substitution span — consistent + flexible, but an LLM call per
+    // trigger (latency, no offline). Opt-in. Engine + design:
+    // packages/opencues-core/src/unified-dispatch.ts,
+    // docs/architecture/unified-dispatch.md.
+    scalar: 'dispatch-mode',
+    camelCase: 'dispatchMode',
+    description: 'How a `_` trigger is routed: deterministic heuristics vs one model decision',
+    menuTip: 'Heuristic = fast/offline keyword + proximity + auto-replace (default). Model = one LLM call per `_` decides routing + action + substitution span (slower, flexible, consistent; needs an LLM, no offline).',
+    values: [
+      { id: 'heuristic', description: 'Deterministic keyword/proximity/auto-replace routing (default) — fast, works offline' },
+      { id: 'model', description: 'One model classifier per `_` owns routing + action + substitution span — flexible + consistent, LLM call per trigger' },
+    ],
+  },
+  {
     scalar: 'blank-context-mode',
     camelCase: 'blankContextMode',
     description: 'Blanks expose their current values as ambient tokens for fluid-blank',

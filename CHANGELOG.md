@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — unified model-driven dispatch, Stage 1 (engine + `dispatch-mode` flag, default `heuristic`) (`@opencues/core` 0.6.0 → 0.6.1, `@opencues/runtime` 0.5.1 → 0.5.2)
+
+Foundation for routing every `_` through ONE model decision instead of the five opinionated heuristics (keyword exact-match, `blankProximity`, `blankReplace: auto`, the source-claim race, BlankIntent) — the "minimise opinions, rely on the model" philosophy applied to dispatch. Fixes the class of bug where a conversational sentence (`what's the weather like in oslo _`) is claimed by a keyword blank and `blankReplace: auto` mangles it.
+
+Stage 1 (this): the PURE engine + the gate.
+- `packages/opencues-core/src/unified-dispatch.ts` — `DispatchDecision` schema (`route: action|lookup|transform|none` + blank/action/arg + a MODEL-CHOSEN replace span), the classifier prompt, and a total validate-and-degrade parser (malformed → `none`; out-of-bounds REPLACE clamped). 14 unit tests.
+- `dispatch-mode: heuristic | model` scalar (FEATURES + `OpenCuesState`, default `heuristic`). Opt-in.
+
+The floors kept (safety, not opinions): no buffer destruction, no exec with an unsanitized arg (the `param-safe` model), executor validates the command. Actions still work — the model *decides* "set volume 50", the executor *runs* it.
+
+The trade-off (why opt-in): `model` makes every `_` an LLM call — latency + no offline. Design, floors, staging: `docs/architecture/unified-dispatch.md`.
+
+NOT YET WIRED into the live resolve loop — that's Stage 2 (gated). Suites green: core 977, runtime 1734.
+
+
 ### Fixed — fork install no longer refuses over an optional feature's missing transitive deps (`@opencues/runtime` 0.5.0 → 0.5.1, `@opencues/claude-code` 0.2.3 → 0.2.4)
 
 A fresh CC install (`opencues install claude-code`) hard-failed validation with `boot-smoke FAILED for require("…/user-blanks/registry.js")` whenever the fork's `node_modules` lacked the JS-user-blank sandbox's transitive deps (`acorn`, `acorn-walk`, `isolated-vm`) — which the fork-assembly copies dist but not deps, so it always lacks them. Two structural causes, both fixed:
