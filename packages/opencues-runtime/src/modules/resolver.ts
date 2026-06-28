@@ -407,7 +407,55 @@ export class Resolver {
           mode: 'safe' | 'raw' }
       | undefined
     >,
+    /** Unified-dispatch Stage 2b — the `_`-dispatch classifier for
+     *  `dispatch-mode: model`. Undefined in heuristic mode. */
+    private dispatchClassifier?: { classify: (text: string) => Promise<import('@opencues/core').DispatchDecision> },
   ) {}
+
+  /** Execute a model `action` decision: invoke the blank + substitute the
+   *  result at the model-chosen span (default: just the `_`, preserving the
+   *  rest of the sentence). Returns true if it consumed the `_`. */
+  private async executeDispatchAction(text: string, d: import('@opencues/core').DispatchDecision): Promise<boolean> {
+    if (!this.adapter.blankInvoke || !d.blank || !d.action) return false;
+    // Map the model's action+arg onto the host blankInvoke contract.
+    //  - get : args=[arg, arg] — the FIRST is the keyword (StocksBlank /
+    //          CryptoBlank read args[0]); the SECOND lands in `context`
+    //          (WeatherBlank reads the city from context, ignoring the
+    //          keyword). Duplicating covers both blank shapes. Empty when
+    //          the model gave no arg (terse `weather _` → default city).
+    //  - set : args=[arg].
+    //  - step: blankInvoke has no `step` verb — translate to up/down from
+    //          the arg's direction; default up.
+    let action = d.action as string;
+    let args: string[] = [];
+    if (d.action === 'get') {
+      args = d.arg ? [d.arg, d.arg] : [];
+    } else if (d.action === 'set') {
+      args = d.arg ? [d.arg] : [];
+    } else if (d.action === 'step') {
+      action = /\b(down|lower|decrease|less|dim)\b/i.test(d.arg ?? '') ? 'down' : 'up';
+      args = [];
+    }
+    const handle = this.adapter.blankInvoke({ blankName: d.blank, action, args });
+    if (!handle) {
+      // Not a built-in registry blank — almost certainly a script blank
+      // (volume/brightness). The classify-first gate defers; BlankFill's
+      // keyword path handles it (see its model-mode cede carve-out). The
+      // LLM-arg→shell exec floor lands in Stage 2c.
+      this.adapter.log('debug', `UnifiedDispatch: ${d.blank}.${action} not blankInvoke-able (script blank?) — deferring to keyword path`);
+      return false;
+    }
+    let value = '';
+    try { value = ((await handle.result).stdout ?? '').trim(); } catch { return false; }
+    if (!value) return false;
+    const us = text.indexOf('_');
+    const start = d.replaceStart ?? (us >= 0 ? us : text.length);
+    const end = d.replaceEnd ?? (us >= 0 ? us + 1 : text.length);
+    const newText = text.slice(0, start) + value + text.slice(end);
+    this.adapter.setText(newText);
+    this.adapter.log('info', `UnifiedDispatch: action ${d.blank}.${action}(${d.arg ?? ''}) → "${value.slice(0, 40)}" @[${start},${end})`);
+    return true;
+  }
 
   subscribe(): void {
     this.rebuildResolver();
@@ -1111,6 +1159,30 @@ export class Resolver {
       textLen: text.length,
       generation,
     });
+    // UNIFIED DISPATCH Stage 2b — classify-first gate. When `dispatch-mode:
+    // model`, ONE classifier call decides routing. An `action` route is
+    // EXECUTED here (invoke blank + substitute at the model-chosen span,
+    // default = just the `_` so the sentence is preserved) and short-circuits
+    // the source resolve. lookup/transform/none fall through to the normal
+    // sources — BlankFill has ceded its keyword blanks in model-mode, so a
+    // conversational query reaches fluid/transform without the keyword wipe.
+    // Heuristic mode → dispatchClassifier is undefined → this is skipped.
+    if (this.dispatchClassifier
+        && this.configLoader.opencuesState.dispatchMode === 'model'
+        && text.includes('_')) {
+      try {
+        const visible = text.replace(/[​‌]/g, '');
+        const decision = await this.dispatchClassifier.classify(visible);
+        if (controller.signal.aborted || generation !== this._generation) return;
+        if (decision.route === 'action') {
+          const handled = await this.executeDispatchAction(visible, decision);
+          if (handled) { this._inFlightController = null; return; }
+        }
+        // lookup / transform / none → fall through to the source resolve below.
+      } catch (e) {
+        this.adapter.log('debug', `UnifiedDispatch: gate error (${e instanceof Error ? e.message : String(e)}) — falling through`);
+      }
+    }
 
     const wordSpans = splitWords(text);
     // Skip words we've already resolved. Empty strings get filtered out

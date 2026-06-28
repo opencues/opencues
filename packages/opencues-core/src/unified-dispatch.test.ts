@@ -29,7 +29,8 @@ describe('renderDispatchCatalog / buildDispatchSystem', () => {
   it('system prompt carries the routing rules + catalog', () => {
     const s = buildDispatchSystem(BLANKS);
     assert.match(s, /ROUTE: action \| lookup \| transform \| none/);
-    assert.match(s, /conversational sentence is NOT an action/);
+    assert.match(s, /Routing a conversational weather\/stock\/crypto question to ACTION is CORRECT/);
+    assert.match(s, /distinguish a genuine REQUEST from descriptive prose/);
     assert.match(s, /AVAILABLE BLANKS/);
   });
 });
@@ -38,8 +39,8 @@ const fmt = (o: Partial<Record<string, string>>) =>
   `ROUTE: ${o.ROUTE ?? ''}\nBLANK: ${o.BLANK ?? ''}\nACTION: ${o.ACTION ?? ''}\nARG: ${o.ARG ?? ''}\nREPLACE: ${o.REPLACE ?? ''}`;
 
 describe('parseDispatchDecision — routes', () => {
-  it('lookup — conversational query keeps the sentence (model picks the span)', () => {
-    // "what's the weather like in oslo _" (len 33) → replace just the _ (32-33)
+  it('lookup — general-knowledge query keeps the sentence (model picks the span)', () => {
+    // "the capital of france is _" (no listed blank) → replace just the _
     const d = parseDispatchDecision(fmt({ ROUTE: 'lookup', REPLACE: '32-33' }), 33);
     assert.strictEqual(d.route, 'lookup');
     assert.strictEqual(d.replaceStart, 32);

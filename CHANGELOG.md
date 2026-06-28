@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — unified model-driven dispatch, Stage 2b (classify-first gate, live) (`@opencues/core` 0.6.1 → 0.6.2, `@opencues/runtime` 0.5.3 → 0.5.4)
+
+Wires the Stage 1 classifier into the live resolve loop behind `dispatch-mode: model` (still default `heuristic` — opt-in, no change for anyone who doesn't flip it). On every `_` in model-mode, ONE classifier call decides routing and the resolver dispatches to exactly one handler:
+
+- **`action`** → `executeDispatchAction` invokes the blank via the host `blankInvoke` contract and substitutes the result at the **model-chosen span** (default = just the `_`, so the surrounding sentence survives). This is what replaces `blankReplace: auto` — the replace span is a model decision, not a heuristic. Arg mapping covers both built-in blank shapes (keyword readers like Stocks/Crypto + context readers like Weather) and translates `step` → the host's `up`/`down` verbs.
+- **`lookup`** → falls through to fluid-blank (model-chosen span preserved).
+- **`transform`** → falls through to transform-blank.
+- **`none`** → nothing fires.
+
+Coordination: the gate runs first in the resolver's sequential `resolveAndApply`; an executed `action` short-circuits the source resolve. In model-mode BlankFill **cedes its keyword claim for built-in data blanks** (the gate owns them) but **keeps the keyword path for SCRIPT blanks** (`blankScript` — volume/brightness) so they still fire deterministically. `buildDispatchClassifier` resolves its LLM target lazily on the first `_` (the Resolver is constructed before `configLoader.load()`, so an eager read would pin the default `heuristic`).
+
+Fixes the motivating bug: `what's the weather like in oslo _` now resolves to Oslo's real weather with the sentence intact (was mangled to `what's the Oslo: 21°C…` by the keyword blank + `blankReplace: auto`).
+
+Live-verified on OpenCode (cerebras gpt-oss-120b) across the full route matrix: conversational weather/stocks/crypto → real data + sentence preserved; terse commands → whole-phrase replace; prose mentions → cede; general-knowledge → fluid-blank; rewrites → transform; `volume 30 _` → volume set via the deferred keyword path.
+
+**Deferred to Stage 2c (security):** routing an LLM-chosen arg into a SCRIPT blank's subprocess is the same exec-with-LLM-arg surface as Phase 4's `param-safe`; until that floor is reviewed, script blanks stay keyword-gated (the executor logs a deferral line). Built-in data blanks (pure fetch, no shell) are fully handled now. Suites green: core 177, runtime 1734.
+
 ### Added — unified model-driven dispatch, Stage 1 (engine + `dispatch-mode` flag, default `heuristic`) (`@opencues/core` 0.6.0 → 0.6.1, `@opencues/runtime` 0.5.1 → 0.5.2)
 
 Foundation for routing every `_` through ONE model decision instead of the five opinionated heuristics (keyword exact-match, `blankProximity`, `blankReplace: auto`, the source-claim race, BlankIntent) — the "minimise opinions, rely on the model" philosophy applied to dispatch. Fixes the class of bug where a conversational sentence (`what's the weather like in oslo _`) is claimed by a keyword blank and `blankReplace: auto` mangles it.

@@ -1459,16 +1459,19 @@ export class BlankFill {
         const blankKeywords = (blank as { blankKeywords?: readonly string[] }).blankKeywords;
         if (!blankKeywords || blankKeywords.length === 0) continue;
         if (!supportsCycling && isBlankConfigCycleable(blank as Parameters<typeof isBlankConfigCycleable>[0])) continue;
-        // UNIFIED DISPATCH Stage 2 (`dispatch-mode: model`) — read-only DATA
-        // keyword blanks (weather / stocks / crypto: no `blankStep`) CEDE to
-        // the flexible fluid/transform paths, so a conversational query like
-        // "what's the weather like in oslo _" is no longer claimed by the
-        // keyword blank + wiped by `blankReplace: auto`. ACTION blanks
-        // (settable — they have `blankStep`: volume / brightness) keep their
-        // deterministic keyword path (the model can't set your volume).
-        // Default `heuristic` → this never fires (byte-identical to today).
-        if (this.configLoader.opencuesState.dispatchMode === 'model'
-            && (blank as { blankStep?: unknown }).blankStep === undefined) continue;
+        // UNIFIED DISPATCH Stage 2b (`dispatch-mode: model`) — BlankFill cedes
+        // the keyword match for blanks the resolver's classify-first gate can
+        // EXECUTE: built-in data blanks (weather/stocks/crypto, no shell). The
+        // gate invokes them via blankInvoke at a model-chosen span, removing
+        // the keyword wipe + the proximity/blankReplace opinions for exactly
+        // the case that motivated the feature ("what's the weather like in
+        // oslo _"). SCRIPT blanks (volume/brightness — `blankScript`, an
+        // LLM-arg→shell exec) are NOT ceded: routing an LLM-chosen arg into a
+        // subprocess is the Phase 4 `param-safe` security surface and stays on
+        // the existing keyword-gated path until that floor is reviewed (Stage
+        // 2c). Default `heuristic` → never fires (byte-identical to today).
+        const isScriptBlank = !!(blank as { blankScript?: unknown }).blankScript;
+        if (this.configLoader.opencuesState.dispatchMode === 'model' && !isScriptBlank) continue;
         // Default blankProximity to 0 (keyword must be DIRECTLY adjacent
         // to _, no words between) when not explicitly set. The previous
         // default (no limit, when the field was undefined) caused

@@ -68,12 +68,18 @@ ARG: <the argument — a city / ticker / set-value / step direction; or empty>
 REPLACE: <start>-<end>     (0-based char span of the user's text to replace with the result; or just the _ position)
 
 ROUTING RULES:
-- ROUTE=action — the user issued a COMMAND a listed blank performs: a setting change ("volume 50 _", "brightness up _") or a terse data command ("weather oslo _", "nvda _"). Pick the BLANK, the ACTION (set/step for commands, get for a terse lookup), and the ARG. REPLACE should cover the command phrase the value replaces.
-- ROUTE=lookup — a CONVERSATIONAL question whose answer is a short value ("what's the weather like in oslo _", "how much is bitcoin _"). Don't wipe the sentence: REPLACE only the _ (or the trailing fragment) so the answer reads naturally. fluid-blank will produce the answer.
+- ROUTE=action — the user wants a value or change a LISTED blank provides. Two flavours:
+   • setting change ("volume 50 _", "brightness up _") → ACTION set/step, ARG the value/direction.
+   • data query for a listed blank — TERSE ("weather oslo _", "nvda _") OR CONVERSATIONAL ("what's the weather like in oslo _", "how much is bitcoin _") → ACTION get, ARG the subject (oslo / NVDA / bitcoin).
+  Pick the BLANK whose domain matches, and set REPLACE to where the value belongs:
+   • terse command → replace the WHOLE command phrase ("weather oslo _" → 0-(len)).
+   • conversational sentence → replace ONLY the _ (or the short trailing fragment) so the value reads inside the sentence and the user's words survive.
+  Routing a conversational weather/stock/crypto question to ACTION is CORRECT — it fetches REAL live data the answer needs. Preserve the sentence with the REPLACE span, NOT by avoiding the action.
+- ROUTE=lookup — a conversational question with NO listed blank for its domain (general knowledge: "the capital of France is _"). fluid-blank answers inline; REPLACE only the _.
 - ROUTE=transform — the user wants surrounding text rewritten/generated ("make this formal _", "draft an email _").
-- ROUTE=none — no handler fits; leave the _ alone.
+- ROUTE=none — the text only MENTIONS a blank's keyword in passing, not as a request ("the weather was lovely today _", "i bought apple stock years ago _"), or nothing fits. Leave the _ alone.
 
-KEY: a conversational sentence is NOT an action even if it contains a blank's keyword. "what's the weather like in oslo _" is a LOOKUP (answer inline, keep the sentence), NOT an action that wipes "weather like in oslo".`;
+KEY: distinguish a genuine REQUEST from descriptive prose. "what's the weather like in oslo _" is a request → ACTION get (keep the sentence via REPLACE). "the weather was lovely _" is prose → none.`;
 
 /** Render the available-blanks catalog for the dispatch prompt. */
 export function renderDispatchCatalog(blanks: ReadonlyArray<DispatchBlankSpec>): string {

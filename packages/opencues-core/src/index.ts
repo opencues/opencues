@@ -298,3 +298,12 @@ export {
   type SeedableFile,
 } from './feature-registry';
 
+export {
+  buildDispatchSystem,
+  renderDispatchCatalog,
+  parseDispatchDecision,
+  DISPATCH_SYSTEM,
+  type DispatchDecision,
+  type DispatchBlankSpec,
+} from './unified-dispatch';
+

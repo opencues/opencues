@@ -101,13 +101,40 @@ whole question, preserving the sentence — its call, not a regex's.
   classifier IN the loop (to explicitly route lookup→fluid + choose the span)
   AND the on-demand fetch capability. The two initiatives converge here.
 
-- **Stage 2b (remaining):** the careful part — a **classify-first gate** in the
-  runtime resolver: on `_` (model-mode), run the classifier, then dispatch to
-  exactly ONE handler (execute `action`; route `lookup`→fluid with the
-  model-chosen span; `transform`→transform; `none`→nothing). This is the
-  race-sensitive core-dispatch change (the classifier is async; today both
-  BlankFill and the sources run on the same `_` — they must be coordinated so
-  exactly one acts). Done as a focused change, not rushed.
+- **Stage 2b (done — this branch):** the **classify-first gate** in the runtime
+  resolver (`resolveAndApply`): on `_` (model-mode), run ONE classifier call,
+  then dispatch to exactly ONE handler:
+  - `action` → `executeDispatchAction` invokes the blank via the host
+    `blankInvoke` contract and substitutes the result at the **model-chosen
+    span** (default = just the `_`, so the surrounding sentence survives). This
+    is what replaces `blankReplace: auto` — the span is a model decision, not a
+    heuristic. Arg mapping handles the two built-in blank shapes (keyword-arg
+    readers like Stocks/Crypto AND context readers like Weather) by passing the
+    arg into both slots; `step` is translated to the host's `up`/`down` verbs.
+  - `lookup` → fall through to fluid-blank (model-chosen span preserved).
+  - `transform` → fall through to transform-blank.
+  - `none` → nothing fires (a mere keyword *mention* like "the weather was
+    lovely today _" no longer triggers a fetch).
+
+  Race coordination: the gate runs first inside the resolver's sequential
+  `resolveAndApply`; an executed `action` short-circuits the source resolve. In
+  model-mode BlankFill **cedes its keyword claim for built-in data blanks**
+  (the gate owns them) but **keeps the keyword path for SCRIPT blanks**
+  (`blankScript` — volume/brightness), so those still fire deterministically.
+
+  **Live-verified** (OpenCode, cerebras gpt-oss-120b): weather/stocks/crypto
+  conversational queries resolve to real data with the sentence preserved;
+  terse commands replace the whole phrase; prose mentions cede; general-
+  knowledge falls to fluid-blank; rewrites fall to transform; `volume 30 _`
+  still sets volume via the deferred keyword path.
+
+  **Deferred to Stage 2c (security):** routing an LLM-chosen arg into a SCRIPT
+  blank's subprocess (`volume up _` where the model picked the direction) is
+  the same exec-with-LLM-arg surface as Phase 4's `param-safe`. Until the
+  arg-sanitization floor for that path is reviewed, script blanks stay on their
+  existing keyword-gated path (the executor logs a `deferring to keyword path`
+  line and returns control). Built-in data blanks (pure fetch, no shell) are
+  unaffected and fully handled now.
 
 - **Stage 3:** make `model` the default; retire `blankProximity` /
   `blankReplace: auto` for data blanks; keyword path becomes an optional

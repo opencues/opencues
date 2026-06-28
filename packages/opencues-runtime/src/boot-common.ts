@@ -442,6 +442,122 @@ export function buildBlankIntentClassifier(
     log,
   });
 }
+
+/**
+ * Unified-dispatch Stage 2b — build the `_`-dispatch classifier for
+ * `dispatch-mode: model`. Returns `{ classify(text) → DispatchDecision }`, or
+ * undefined when the mode is off / no key / core unavailable. NEVER throws on
+ * classify — degrades to `{ route: 'none' }` (leaves the `_` alone). One LLM
+ * call per `_`, cached per buffer text. See docs/architecture/unified-dispatch.md.
+ */
+export function buildDispatchClassifier(
+  configLoader: ConfigLoader,
+  apiKeys: Readonly<Record<string, string | undefined>>,
+  log: (msg: string) => void,
+  httpAdapterOverride?: unknown,
+): { classify: (text: string) => Promise<import('@opencues/core').DispatchDecision> } | undefined {
+  let core: typeof import('@opencues/core') | null = null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    core = require('@opencues/core');
+  } catch { return undefined; }
+  if (!core?.resolveLLM || !core?.dispatchChat || !core?.getProvider || !core?.buildDispatchSystem) return undefined;
+
+  // LLM target + httpAdapter are resolved LAZILY on the first classify
+  // call, NOT here. The Resolver constructs this classifier BEFORE
+  // `configLoader.load()` runs (see the oc/cc band boot order), so at
+  // build time `dispatchMode` is still the default 'heuristic' and the
+  // provider settings are unread. Resolving eagerly would either disable
+  // the gate forever or pin a stale provider. The resolver only ever
+  // calls `classify()` when `dispatchMode === 'model'` (its own gate), so
+  // deferring is safe and reads live config.
+  let resolved: import('@opencues/core').ResolvedLLM | null | undefined;
+  let httpAdapter: unknown;
+  let llmAttempted = false;
+  const ensureLLM = (): boolean => {
+    if (resolved) return true;
+    if (llmAttempted && resolved === null) {
+      // Previously failed (no key). Re-attempt — keys can arrive async.
+      resolved = undefined;
+    }
+    llmAttempted = true;
+    const s = configLoader.opencuesState.settings;
+    const blanksBucket = configLoader.opencuesState.blanksLlmProvider;
+    const blanksBucketProvider = blanksBucket === 'inherit' ? undefined : blanksBucket;
+    resolved = core!.resolveLLM!({
+      featureProvider: s.get('dispatch-provider'),
+      featureModel: s.get('dispatch-model'),
+      endpointOverride: s.get('llm-endpoint'),
+      globalProvider: blanksBucketProvider ?? s.get('llm-provider'),
+      globalModel: blanksBucketProvider ? undefined : s.get('llm-model'),
+      apiKeys,
+    } as Parameters<NonNullable<typeof core.resolveLLM>>[0]) ?? null;
+    if (!resolved) { log('UnifiedDispatch: dispatch-mode model but no API key — disabled'); return false; }
+    if (httpAdapter === undefined) {
+      if (httpAdapterOverride !== undefined) httpAdapter = httpAdapterOverride;
+      else {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { NodeHttpAdapter } = require('@opencues/core/node-http-adapter');
+          httpAdapter = new NodeHttpAdapter({ maxSockets: 2, timeout: 30000 }); // BROWSER-SAFE-ALLOW: native-host fallback; chrome passes override
+        } catch { resolved = null; return false; }
+      }
+    }
+    log(`UnifiedDispatch: LLM resolved (provider=${resolved.provider?.id ?? '?'} model=${resolved.model})`);
+    return true;
+  };
+
+  // Build the blank catalog the classifier sees: name + description, and
+  // whether it's an action (has blankStep) or read-only data.
+  const buildSpecs = (): import('@opencues/core').DispatchBlankSpec[] => {
+    const merged = configLoader.mergedBlanksConfig?.blanks ?? {};
+    const specs: import('@opencues/core').DispatchBlankSpec[] = [];
+    for (const [name, cfg] of Object.entries(merged)) {
+      const c = cfg as { blankTip?: string; tip?: string; blankStep?: unknown; blankKeywords?: unknown };
+      if (!c.blankKeywords) continue; // only keyword-triggerable blanks are dispatchable
+      const isAction = c.blankStep !== undefined;
+      specs.push({
+        name,
+        description: c.blankTip ?? c.tip ?? name,
+        actions: isAction ? ['get', 'set', 'step'] : ['get'],
+        readOnly: !isAction,
+      });
+    }
+    return specs;
+  };
+
+  const cache = new Map<string, import('@opencues/core').DispatchDecision>();
+  log('UnifiedDispatch: classifier built (LLM resolves on first `_`)');
+  return {
+    classify: async (text: string): Promise<import('@opencues/core').DispatchDecision> => {
+      const key = text;
+      const cached = cache.get(key);
+      if (cached) return cached;
+      let decision: import('@opencues/core').DispatchDecision = { route: 'none' };
+      if (!ensureLLM() || !resolved) return decision;
+      try {
+        const system = core!.buildDispatchSystem!(buildSpecs());
+        const out = await core!.dispatchChat!(
+          resolved.provider,
+          httpAdapter as Parameters<NonNullable<typeof core.dispatchChat>>[1],
+          {
+            model: resolved.model,
+            messages: [{ role: 'system', content: system }, { role: 'user', content: text }],
+            maxTokens: 96, temperature: 0, seed: 42,
+          },
+          { apiKey: resolved.apiKey, endpoint: resolved.endpoint },
+        );
+        decision = core!.parseDispatchDecision!(out, text.length);
+        log(`UnifiedDispatch: route=${decision.route}${decision.blank ? ` blank=${decision.blank} action=${decision.action} arg=${decision.arg ?? ''}` : ''} replace=${decision.replaceStart ?? '-'}-${decision.replaceEnd ?? '-'}`);
+      } catch (e) {
+        log(`UnifiedDispatch: classify failed (${e instanceof Error ? e.message : String(e)}) — route=none`);
+      }
+      if (cache.size > 64) cache.clear();
+      cache.set(key, decision);
+      return decision;
+    },
+  };
+}
 import { Navigation } from './modules/navigation';
 import { DimRender } from './modules/dim-render';
 import { Cycling } from './modules/cycling';
