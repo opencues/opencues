@@ -1381,13 +1381,16 @@ describe('dispatchChat — prediction-unsupported fallback', () => {
   });
 
   it('does NOT retry on an unrelated provider error', async () => {
+    // NB: must be neither prediction-unsupported NOR rate-limit — both now
+    // legitimately retry (prediction-strip fallback; rate-limit backoff).
+    // A schema error is the genuine "surface it once" case.
     let calls = 0;
-    const http = { post: async () => { calls++; return JSON.stringify({ error: { message: 'rate limited (429)' } }); } };
+    const http = { post: async () => { calls++; return JSON.stringify({ error: { message: 'invalid request: bad schema' } }); } };
     await assert.rejects(
       () => dispatchChat(cerebras, http, { ...baseReq, prediction: 'x' }, { apiKey: 'k' }),
-      /rate limited/,
+      /bad schema/,
     );
-    assert.strictEqual(calls, 1, 'a non-prediction error must not trigger the strip-and-retry');
+    assert.strictEqual(calls, 1, 'a non-prediction, non-rate-limit error must not trigger any retry');
   });
 
   it('does NOT retry when prediction was never sent (single attempt, error surfaces)', async () => {

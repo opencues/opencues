@@ -101,6 +101,14 @@ const MODEL_THINKING: Readonly<Record<string, ModelThinking>> = {
   // `none` value.
   'cerebras:zai-glm-4.7': { max: 'none', off: 'none' },
 
+  // Cerebras gemma-4-31b — NON-reasoning model. Any non-'none'
+  // reasoning_effort routes the answer into the `reasoning` field and
+  // leaves `content` empty (the runtime parses `content` → silent bail).
+  // 'none' is accepted (verified live 2026-06-28: content populated,
+  // 0 reasoning tokens). Mirror zai's none/none so the field, when sent,
+  // is harmless. Added for the Cerebras hackathon model eval.
+  'cerebras:gemma-4-31b': { max: 'none', off: 'none' },
+
   // Groq `openai/gpt-oss-*` — REQUIRES the field. Accepts ONLY
   // 'low' | 'medium' | 'high'; `'none'` returns HTTP 400
   // (`"reasoning_effort must be one of `low`, `medium`, or `high`"`).

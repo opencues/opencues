@@ -13,7 +13,7 @@ each LLM-driven feature.
 
 | Provider | Auth | Default model | Notes |
 |---|---|---|---|
-| **cerebras** *(auto-route default)* | `CEREBRAS_API_KEY` | `gpt-oss-120b` | OpenAI-compat HTTP |
+| **cerebras** *(auto-route default)* | `CEREBRAS_API_KEY` | `gpt-oss-120b` | OpenAI-compat HTTP. Also serves `zai-glm-4.7` and `gemma-4-31b` (see Cerebras models below) |
 | **groq** | `GROQ_API_KEY` | `openai/gpt-oss-120b` | OpenAI-compat HTTP |
 | **gemini** | `GEMINI_API_KEY` | `gemini-3.1-flash-lite` | Google `contents`/`parts` shape |
 | **anthropic** | `ANTHROPIC_API_KEY` | `claude-haiku-4-5-20251001` | Messages API |
@@ -32,6 +32,27 @@ doesn't allow, or when you want a specific (e.g. nano-tier) model.
 The runtime picks the right env key automatically based on which
 provider is selected. Set as many keys as you want — the others stay
 inert until selected.
+
+### Cerebras models
+
+`gpt-oss-120b` is the default and best all-rounder (fastest reasoning
+path, Predicted-Outputs + prefix-cache support). Two more are first-class:
+
+| Model | Reasoning | Best for |
+|---|---|---|
+| `gpt-oss-120b` *(default)* | yes (medium) | everything; reasoning-heavy cues |
+| `zai-glm-4.7` | binary (off) | non-reasoning alternative |
+| `gemma-4-31b` | no | lookups + rewrites at ~2× the speed |
+
+`gemma-4-31b` is a non-reasoning model. On the hackathon bench it tied
+`gpt-oss-120b` on fluid-blank (98.5% vs 99.3%) and edged it on
+transform-blank (~88% vs ~84%) while running ~2× faster (~196ms vs
+~423ms/call). The runtime handles its quirks automatically: it never
+sends `reasoning_effort` (would empty the response), `reasoning_format`,
+or the Predicted-Outputs `prediction` field (which Gemma 400s on). Select
+it per surface, e.g. `blanks-llm-provider: cerebras` +
+`blanks-llm-model: gemma-4-31b`. Full data:
+`tests/results/gemma-hackathon/FINDINGS.md`.
 
 Source: `packages/opencues-core/src/llm-provider.ts`.
 

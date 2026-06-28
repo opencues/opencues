@@ -24,7 +24,28 @@ const agent = new https.Agent({ keepAlive: true, maxSockets: 32 });
 export interface ChatMessage { role: 'system' | 'user' | 'assistant'; content: string; }
 export interface ChatResult { text: string; latencyMs: number; }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Retry wrapper — see fluid-blank/cerebras.ts. The hackathon-tier key
+ *  throttles; the rate-limit branch returns empty content, which would
+ *  silently bail the case. Retry empty responses with exponential backoff
+ *  so accuracy reflects the model, not the key's TPM ceiling. */
 export async function chat(
+  messages: ChatMessage[],
+  opts: { temperature?: number; maxTokens?: number; seed?: number } = {},
+): Promise<ChatResult> {
+  const maxAttempts = Number(process.env.OC_BENCH_RETRIES ?? 6);
+  let lastEmpty: ChatResult = { text: '', latencyMs: 0 };
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const r = await chatOnce(messages, opts);
+    if (r.text.trim().length > 0) return r;
+    lastEmpty = r;
+    await sleep(250 * Math.pow(2, attempt));
+  }
+  return lastEmpty;
+}
+
+async function chatOnce(
   messages: ChatMessage[],
   opts: { temperature?: number; maxTokens?: number; seed?: number } = {},
 ): Promise<ChatResult> {
@@ -40,7 +61,9 @@ export async function chat(
     // transform-blank — see llm-provider.ts).
     // zai-glm-4.7 requires 'none' — any non-none value burns 500-700
     // reasoning tokens for no quality gain (see model-thinking.ts).
-    reasoning_effort: (process.env.OPENCUES_CEREBRAS_REASONING ?? (MODEL === 'zai-glm-4.7' ? 'none' : 'low')) as 'none' | 'low' | 'medium' | 'high',
+    // gemma-4-31b is non-reasoning: a non-'none' value routes output into
+    // the `reasoning` field and empties `content` (parser reads content).
+    reasoning_effort: (process.env.OPENCUES_CEREBRAS_REASONING ?? (MODEL === 'zai-glm-4.7' || MODEL === 'gemma-4-31b' ? 'none' : 'low')) as 'none' | 'low' | 'medium' | 'high',
   });
 
   // Mirror production's gzip request compression (PR June 2026, see

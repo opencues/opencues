@@ -32,10 +32,37 @@ export interface ChatResult { text: string; latencyMs: number; }
  *    500-700 reasoning tokens for no quality gain) */
 function defaultReasoningFor(model: string): 'none' | 'low' | 'medium' | 'high' {
   if (model === 'zai-glm-4.7') return 'none';
+  // gemma-4-31b is non-reasoning: any non-'none' value routes the answer
+  // into the `reasoning` field and leaves `content` empty (the parser
+  // reads `content` → every case would score 0). Force 'none'.
+  if (model === 'gemma-4-31b') return 'none';
   return 'low';
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Retry wrapper — the hackathon-tier key throttles aggressively and the
+ *  adapter would otherwise swallow a rate-limit as empty content (→ silent
+ *  bail → phantom accuracy collapse). Retries empty/rate-limited responses
+ *  with exponential backoff so the measured accuracy reflects the MODEL,
+ *  not the key's TPM ceiling. Up to OC_BENCH_RETRIES (default 6) attempts. */
 export async function chat(
+  messages: ChatMessage[],
+  opts: { temperature?: number; maxTokens?: number; seed?: number; reasoning?: 'none' | 'low' | 'medium' | 'high' } = {},
+): Promise<ChatResult> {
+  const maxAttempts = Number(process.env.OC_BENCH_RETRIES ?? 6);
+  let lastEmpty: ChatResult = { text: '', latencyMs: 0 };
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const r = await chatOnce(messages, opts);
+    if (r.text.trim().length > 0) return r;
+    lastEmpty = r;
+    // Empty = throttle/malformed. Back off: 250ms, 500ms, 1s, 2s, 4s…
+    await sleep(250 * Math.pow(2, attempt));
+  }
+  return lastEmpty;
+}
+
+async function chatOnce(
   messages: ChatMessage[],
   opts: { temperature?: number; maxTokens?: number; seed?: number; reasoning?: 'none' | 'low' | 'medium' | 'high' } = {},
 ): Promise<ChatResult> {
@@ -96,6 +123,12 @@ export async function chat(
   }
 
   const text = parsed.choices?.[0]?.message?.content ?? '';
+  if (process.env.OC_DEBUG_RAW) {
+    const fr = parsed.choices?.[0]?.finish_reason;
+    const rt = parsed.usage?.completion_tokens_details?.reasoning_tokens;
+    const ct = parsed.usage?.completion_tokens;
+    process.stderr.write(`[RAW] finish=${fr} reasoning_tokens=${rt} completion_tokens=${ct} contentLen=${text.length}\n`);
+  }
   return { text, latencyMs };
 }
 

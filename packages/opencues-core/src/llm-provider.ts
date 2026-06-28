@@ -164,8 +164,10 @@ export interface ProviderCapabilities {
    *  gateways (openrouter → anthropic 400s). */
   readonly seed?: boolean;
   /** Predicted-outputs `prediction` speculative-decoding hint
-   *  (cerebras gpt-oss-120b / zai-glm-4.7, openai chat-completions). */
-  readonly prediction?: boolean;
+   *  (cerebras gpt-oss-120b / zai-glm-4.7, openai chat-completions).
+   *  Model-dependent on cerebras — gemma-4-31b 400s on the field
+   *  (`"prediction" is not currently supported`) — so a predicate. */
+  readonly prediction?: boolean | ((model: string) => boolean);
   /** `reasoning_format: "hidden"` — cerebras, gpt-oss-class models only,
    *  so model-dependent (a predicate). */
   readonly reasoningFormatHidden?: boolean | ((model: string) => boolean);
@@ -446,7 +448,9 @@ function buildOpenAIBody(req: ChatRequest, opts?: { includeReasoningEffort?: boo
   // dispatch-level retry-without-prediction in `dispatchChat` is the
   // receive-side belt for a provider that rejects it anyway.) See
   // docs/architecture/cerebras.md § Predicted Outputs.
-  if (opts?.capabilities?.prediction && req.prediction !== undefined && req.prediction.length > 0) {
+  const predCap = opts?.capabilities?.prediction;
+  const predictionOn = typeof predCap === 'function' ? predCap(req.model) : predCap;
+  if (predictionOn && req.prediction !== undefined && req.prediction.length > 0) {
     body.prediction = { type: 'content', content: req.prediction };
   }
   return JSON.stringify(body);
@@ -1012,17 +1016,27 @@ const CEREBRAS: ProviderAdapter = {
   id: 'cerebras',
   // gpt-oss-class models accept seed + prediction + hidden reasoning_format;
   // the predicate keeps reasoning_format off for non-gpt-oss cerebras models.
-  capabilities: { seed: true, prediction: true, reasoningFormatHidden: (m) => /^gpt-oss/i.test(m) },
+  // Predicted Outputs: cerebras supports it on gpt-oss + zai-glm only.
+  // gemma-4-31b 400s on the `prediction` field (`"prediction" is not
+  // currently supported`) — every input ≥200 chars hard-failed → silent
+  // verdict-NONE bail. Allowlist the known-supporting families; new
+  // cerebras models default OFF (safe). Verified live 2026-06-28.
+  capabilities: { seed: true, prediction: (m) => /^gpt-oss/i.test(m) || /^zai-glm/i.test(m), reasoningFormatHidden: (m) => /^gpt-oss/i.test(m) },
   displayName: 'Cerebras',
   defaultEndpoint: 'https://api.cerebras.ai/v1/chat/completions',
   defaultModel: 'gpt-oss-120b',
-  // Cerebras catalogue (May 2026): `gpt-oss-120b`, `qwen-3-235b...`,
-  // `zai-glm-4.7`. `gpt-oss-120b` + `zai-glm-4.7` are paid-only; free
-  // tier collapses to `qwen-3-235b-a22b-instruct-2507` (universally
-  // available 235B MoE). Other Cerebras names reachable via file edit.
+  // Cerebras catalogue (Jun 2026): `gpt-oss-120b`, `zai-glm-4.7`,
+  // `gemma-4-31b`. `gpt-oss-120b` stays the default (fastest reasoning
+  // path + Predicted-Outputs + prefix-cache support). `gemma-4-31b` is a
+  // NON-reasoning model — handled by the model-name gates (no
+  // reasoning_effort, no prediction field, no reasoning_format); benches
+  // at parity with gpt-oss-120b on lookups + rewrites at ~2× the speed
+  // (tests/results/gemma-hackathon/FINDINGS.md). Other Cerebras names
+  // reachable via file edit.
   knownModels: [
     'gpt-oss-120b',
     'zai-glm-4.7',
+    'gemma-4-31b',
   ],
   // qwen-3-235b-a22b-instruct-2507 was removed 2026-06: Cerebras's public
   // catalogue (/v1/models) returned only gpt-oss-120b + zai-glm-4.7 against
@@ -1756,33 +1770,65 @@ export async function dispatchChat(
     return provider.parseResponse(raw);
   };
 
-  try {
-    return await attempt(req);
-  } catch (err) {
-    // Prediction-fallback. The predicted-outputs `prediction` hint is a
-    // perf optimisation, not a correctness feature. Some providers
-    // (cerebras gpt-oss-120b, INTERMITTENTLY) reject it mid-session with
-    // "property 'prediction' is unsupported", which would otherwise hard-
-    // fail the whole transform. When prediction was actually sent (only
-    // TransformBlank's predicted-outputs path sets it) and the error is
-    // that specific rejection, retry ONCE WITHOUT it — a strict subset of
-    // the original request, guaranteed valid, can't recur. Every other
-    // call keeps the original single-attempt behaviour and real errors
-    // still surface unchanged.
-    if (req.prediction !== undefined && isPredictionUnsupportedError(err)) {
-      return attempt({ ...req, prediction: undefined });
+  // Rate-limit retry with exponential backoff. Free / hackathon-tier keys
+  // enforce tight RPM/TPM quotas; the provider throws
+  // `request_quota_exceeded` / `too_many_requests` / `queue_exceeded`.
+  // Without a retry the call hard-fails and the whole transform/lookup
+  // bails (silent verdict-NONE) — observed live 2026-06-28 against a
+  // hackathon cerebras key where 245/251 transform-blank cases bailed
+  // purely from RPM throttling. A bounded backoff degrades a throttled
+  // key to "slower", not "broken". Only fires on genuine rate-limit
+  // errors, so un-throttled calls keep their single-attempt latency.
+  // Default 4 retries (~0.5/1/2/4s); override via OPENCUES_RATE_LIMIT_RETRIES.
+  for (let rlAttempt = 0; ; rlAttempt++) {
+    try {
+      return await attempt(req);
+    } catch (err) {
+      // Prediction-fallback. The predicted-outputs `prediction` hint is a
+      // perf optimisation, not a correctness feature. Some providers
+      // (cerebras gpt-oss-120b, INTERMITTENTLY) reject it mid-session with
+      // "property 'prediction' is unsupported", which would otherwise hard-
+      // fail the whole transform. When prediction was actually sent (only
+      // TransformBlank's predicted-outputs path sets it) and the error is
+      // that specific rejection, retry ONCE WITHOUT it — a strict subset of
+      // the original request, guaranteed valid, can't recur. Every other
+      // call keeps the original single-attempt behaviour and real errors
+      // still surface unchanged.
+      if (req.prediction !== undefined && isPredictionUnsupportedError(err)) {
+        return attempt({ ...req, prediction: undefined });
+      }
+      if (isRateLimitError(err) && rlAttempt < RATE_LIMIT_MAX_RETRIES) {
+        await new Promise((r) => setTimeout(r, RATE_LIMIT_BASE_MS * Math.pow(2, rlAttempt)));
+        continue;
+      }
+      throw err;
     }
-    throw err;
   }
+}
+
+const RATE_LIMIT_MAX_RETRIES = Number(process.env.OPENCUES_RATE_LIMIT_RETRIES ?? 4);
+const RATE_LIMIT_BASE_MS = 500;
+
+/** True when an LLM error is a provider rejecting the request for quota /
+ *  rate-limit reasons (RPM or TPM). Mirrors the token set `looksTransient`
+ *  matches on the raw body, but operates on a thrown Error's message. */
+export function isRateLimitError(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return /too[_ -]?many[_ -]?requests|rate[_ -]?limit|quota[_ -]?exceeded|request_quota_exceeded|queue[_ -]?exceeded|"?429"?/.test(msg);
 }
 
 /** True when an LLM error is a provider rejecting the predicted-outputs
  *  `prediction` field (e.g. cerebras "property 'prediction' is
  *  unsupported"). Matched on both tokens so unrelated errors that merely
  *  mention one word don't trigger the strip-and-retry fallback. */
-function isPredictionUnsupportedError(err: unknown): boolean {
+export function isPredictionUnsupportedError(err: unknown): boolean {
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
-  return msg.includes('prediction') && msg.includes('unsupported');
+  // Match every "prediction (un)supported" phrasing seen in the wild:
+  // openrouter's "property 'prediction' is unsupported" AND cerebras
+  // gemma-4-31b's "\"prediction\" is not currently supported". Keyed on
+  // `prediction` + a support-rejection token so unrelated errors that
+  // merely mention one word don't trigger the strip-and-retry.
+  return msg.includes('prediction') && (msg.includes('unsupported') || msg.includes('not supported') || msg.includes('not currently supported'));
 }
 
 /**
