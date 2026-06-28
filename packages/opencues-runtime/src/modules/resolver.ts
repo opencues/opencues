@@ -424,7 +424,12 @@ export class Resolver {
    *  result at the model-chosen span (default: just the `_`, preserving the
    *  rest of the sentence). Returns true if it consumed the `_`. */
   private async executeDispatchAction(text: string, d: import('@opencues/core').DispatchDecision): Promise<boolean> {
-    if (!this.adapter.blankInvoke || !d.blank || !d.action) return false;
+    if (!d.blank || !d.action) return false;
+    // Animate the `_` slot during the (possibly slow) invoke/fetch so the
+    // user sees a spinner, not a dead `_` — same UX the keyword path gave.
+    const usIdx = splitWords(text).findIndex(w => w.word.replace(/[​‌]/g, '') === '_');
+    if (this.blankLoading && usIdx >= 0) this.blankLoading.start(usIdx, 'resolver');
+    const stopAnim = (): void => { if (this.blankLoading && usIdx >= 0) this.blankLoading.stop(usIdx, 'resolver'); };
     // Map the model's action+arg onto the host blankInvoke contract.
     //  - get : args=[arg, arg] — the FIRST is the keyword (StocksBlank /
     //          CryptoBlank read args[0]); the SECOND lands in `context`
@@ -445,7 +450,7 @@ export class Resolver {
       args = [];
     }
     let value = '';
-    const handle = this.adapter.blankInvoke({ blankName: d.blank, action, args });
+    const handle = this.adapter.blankInvoke?.({ blankName: d.blank, action, args }) ?? null;
     if (!handle) {
       // Not a host-native (blankInvoke) blank — a SCRIPT/settable blank
       // (volume/brightness). Run it through BlankFill's executor, which
@@ -454,15 +459,17 @@ export class Resolver {
       // This is what lets the model route a script blank with NO keyword
       // ("turn it up a bit _"). Returns the display string to splice.
       if (!this.blankFill) {
+        stopAnim();
         this.adapter.log('debug', `UnifiedDispatch: ${d.blank}.${action} not blankInvoke-able and no BlankFill executor wired — skipping`);
         return false;
       }
       const scriptVal = await this.blankFill.runScriptAction(d.blank, d.action, d.arg);
-      if (!scriptVal) return false;
+      if (!scriptVal) { stopAnim(); return false; }
       value = scriptVal;
     } else {
-      try { value = ((await handle.result).stdout ?? '').trim(); } catch { return false; }
+      try { value = ((await handle.result).stdout ?? '').trim(); } catch { stopAnim(); return false; }
     }
+    stopAnim();
     if (!value) return false;
     const us = text.indexOf('_');
     const start = d.replaceStart ?? (us >= 0 ? us : text.length);
@@ -470,6 +477,17 @@ export class Resolver {
     const newText = text.slice(0, start) + value + text.slice(end);
     this.adapter.setText(newText);
     this.adapter.log('info', `UnifiedDispatch: action ${d.blank}.${action}(${d.arg ?? ''}) → "${value.slice(0, 40)}" @[${start},${end})`);
+    // Emit the substitution event (observability contract). The keyword path
+    // emitted `blank.substituted`; the gate path must too so harness/consumers
+    // see data/script-blank fills uniformly regardless of which path ran.
+    this.adapter.emitEvent?.('blank.substituted', {
+      blankName: d.blank,
+      keyword: d.arg ?? '',
+      input: text.slice(0, 200),
+      output: value.slice(0, 200),
+      altCount: 1,
+      dismissible: false,
+    });
     return true;
   }
 
@@ -1186,8 +1204,12 @@ export class Resolver {
     // its LLM lazily on the first `_`. Absent (no key / a host that didn't
     // wire it) → dispatchRoute stays undefined and sources fall back to their
     // own heuristics (back-compat; also the path every unit test takes).
+    // `allowBlanks` gates the classifier on the explicit-`_` arming (same as
+    // the blank sources): a `_` exposed by paste / cursor-split — NOT typed —
+    // must NOT fire a dispatch. onTextChange sets this from
+    // `explicitUnderscoreRecent()`. (Direct unit/test calls default true.)
     let dispatchRoute: import('@opencues/core').DispatchDecision['route'] | undefined;
-    if (this.dispatchClassifier && text.includes('_')) {
+    if (this.dispatchClassifier && allowBlanks && text.includes('_')) {
       try {
         const visible = text.replace(/[​‌]/g, '');
         const decision = await this.dispatchClassifier.classify(visible);

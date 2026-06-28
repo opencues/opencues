@@ -1439,15 +1439,19 @@ export class BlankFill {
         if (!blankKeywords || blankKeywords.length === 0) continue;
         if (!supportsCycling && isBlankConfigCycleable(blank as Parameters<typeof isBlankConfigCycleable>[0])) continue;
         // UNIFIED DISPATCH — when the classify-first gate (Resolver) is the
-        // active `_` router, BlankFill cedes EVERY keyword blank: the gate is
-        // the sole router and executes them (data via `blankInvoke`, script
-        // via `runScriptAction` with the clamp floor) at a model-chosen span.
+        // active `_` router, BlankFill cedes EVERY keyword blank EXCEPT
+        // selector-satellite menu blanks (opencues settings): the gate is the
+        // sole router and executes them (data via `blankInvoke`, script via
+        // `runScriptAction` with the clamp floor) at a model-chosen span.
         // Ceding here means `scan()` returns no slots for these, so
         // `maybeRunScripts` never double-fires against the gate. stepValues
         // LIST blanks are unaffected (handled by `onUnderscoreKey`, not this
-        // path). No gate wired (unit tests / no classifier) → keyword path
-        // runs as before.
-        if (this.gateActive?.()) continue;
+        // path). `blankSatellite` blanks are NOT ceded — they need the
+        // two-word selector+satellite registration only `applyAsyncFill`
+        // provides (the gate excludes them from its catalog to match). No gate
+        // wired (unit tests / no classifier) → keyword path runs as before.
+        const isSatellite = !!(blank as { blankSatellite?: unknown }).blankSatellite;
+        if (this.gateActive?.() && !isSatellite) continue;
         // Default blankProximity to 0 (keyword must be DIRECTLY adjacent
         // to _, no words between) when not explicitly set. The previous
         // default (no limit, when the field was undefined) caused

@@ -420,8 +420,14 @@ export function buildDispatchClassifier(
     const merged = configLoader.mergedBlanksConfig?.blanks ?? {};
     const specs: import('@opencues/core').DispatchBlankSpec[] = [];
     for (const [name, cfg] of Object.entries(merged)) {
-      const c = cfg as { blankTip?: string; tip?: string; blankStep?: unknown; blankKeywords?: unknown };
+      const c = cfg as { blankTip?: string; tip?: string; blankStep?: unknown; blankKeywords?: unknown; blankSatellite?: unknown };
       if (!c.blankKeywords) continue; // only keyword-triggerable blanks are dispatchable
+      // Selector-satellite menu blanks (opencues settings) are NOT routed by
+      // the gate: they need the two-word selector+satellite registration that
+      // only BlankFill's applyAsyncFill provides (the gate does a flat
+      // substitution). They stay on BlankFill's keyword path — see the
+      // matching carve-out in BlankFill.matchKeyword's gate-cede.
+      if (c.blankSatellite) continue;
       const isAction = c.blankStep !== undefined;
       specs.push({
         name,

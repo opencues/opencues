@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — unified-dispatch gate parity with the retired keyword path (`@opencues/runtime` 0.5.5 → 0.5.6)
+
+Agentic-suite triage of the model-only dispatch surfaced three gate-path regressions vs the keyword path it replaced; all fixed + re-verified on OpenCode:
+
+- **Selector-satellite menu blanks** (`opencues settings _`) lost their two-word selector+satellite registration — the gate did a flat substitution. Fix: `blankSatellite` blanks are excluded from the dispatch catalog AND not ceded by BlankFill, so they stay on the tested `applyAsyncFill` keyword path (the gate only owns flat-substitution blanks).
+- **Explicit-`_` gate** — the classifier fired on a `_` exposed by paste / cursor-split, not just an explicitly-typed `_`. Fix: the gate now respects `allowBlanks` (the same `explicitUnderscoreRecent()` arming the blank sources use).
+- **Observability/UX parity** — the gate path now animates the `_` loading spinner during the classify+fetch and emits the `blank.substituted` event (the keyword path did both; consumers + the harness see data/script-blank fills uniformly again).
+
 ### Changed — unified model-driven dispatch is now the SOLE `_` router; five heuristics retired (`@opencues/core` 0.6.2 → 0.6.3, `@opencues/runtime` 0.5.4 → 0.5.5)
 
 Completes the unified-dispatch arc: the model classifier is now **always on** (no `dispatch-mode` flag) and **authoritative** over every `_`. One LLM call per `_` decides routing — `action` / `lookup` / `transform` / `none` — and the runtime executes it; the deterministic code stopped deciding and became a safe executor. This replaces the five opinionated mechanisms that mangled conversational input (`what's the weather like in oslo _` → the keyword + `blankReplace: auto` wipe).
