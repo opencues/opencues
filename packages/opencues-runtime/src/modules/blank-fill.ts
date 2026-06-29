@@ -16,7 +16,6 @@ import type { SelectorSatelliteState } from '../state/selector-satellite';
 import type { DynDefs } from '../state/dyn-defs';
 import { BlankLoadingAnimator, parseCustomFrames, parseRgbColors, parseAnsiColors, parseFrameIntervalMs, DEFAULT_RGB_PALETTE, DEFAULT_ANSI_PALETTE, type BlankLoadingMode } from './blank-loading';
 import { buildSafeScriptEnv } from '../security/safe-env';
-import { threeWayMerge } from './word-diff';
 import { WEAVE_VALUE_TOKEN, type BlankWeaver } from './blank-weave';
 
 export interface BlankSlot {
@@ -91,6 +90,9 @@ export class BlankFill {
   private _resultCache = new Map<string, { output: string; fetchedAt: number; ttlMs: number }>();
   private static readonly RESULT_CACHE_MAX_ENTRIES = 32;
   private static readonly DEFAULT_CACHE_TTL_MS = 2000;
+  // Bound on the integration-weave LLM call. On timeout the fill lands as the
+  // static template, so a hung/slow provider can't leave the `_` spinning.
+  private static readonly WEAVE_TIMEOUT_MS = 6000;
   /**
    * Loading-animation owner for in-flight blank slots. Lazily created
    * on first dispatch; mode read from OPENCUES.md's
@@ -911,132 +913,116 @@ export class BlankFill {
       : { newText: cleaned.slice(0, target.start) + primaryFill + cleaned.slice(target.end),
           newCursor: target.start + primaryFill.length };
 
-    // Populate span for non-consume-all fills when there's
-    // anything cycleable to do: multi-word fill, multiple lines from
-    // the script, or blankDismissible. Index = post-fill word index of
-    // primaryFill's first word (re-derive from the new text since
-    // clear/expansion may have shifted positions).
     const fillStart = newCursor - primaryFill.length;
-    const newWords = splitWords(newText);
-    const startWord = newWords.find(w => w.start === fillStart);
-    // Char range of the substituted region in newText. Anchored at the
-    // keyword's first char (so deleting any character of the keyword
-    // counts as a touch, even though the answer text starts at fillStart).
-    // For blankClearKeywords:true the keyword is gone in newText, so
-    // both kwStartChar and the answer collapse to fillStart.
-    const kwStartChar = newWords[slot.keywordStart]?.start ?? fillStart;
-    const wantsClearOnEdit = blank?.blankClearOnEdit === true;
-    if (this.spanFillState) {
-      const fillWordCount = primaryFill.split(/\s+/).filter(Boolean).length;
-      const altsForSpan = isDismissible ? [...lines, '_'] : lines;
-      // wantsSpan widens to ALSO track single-alt fills when
-      // blankClearOnEdit is set — otherwise the clearOnEdit machinery
-      // has nothing in spanFillState to react to on the next text
-      // change.
-      const wantsSpan = fillWordCount > 1 || altsForSpan.length > 1 || wantsClearOnEdit;
-      if (startWord && wantsSpan) {
-        this.spanFillState.set({
-          index: startWord.index,
-          alternatives: altsForSpan,
-          currentAltIndex: 0,
-          spanLength: Math.max(1, fillWordCount),
-          tip: blank?.tip,
-          clearOnEdit: wantsClearOnEdit,
-          pairCharStart: wantsClearOnEdit ? kwStartChar : undefined,
-          pairCharEnd: wantsClearOnEdit ? newCursor : undefined,
-        }, newText);
-      } else {
-        this.spanFillState.clear();
+
+    // Commit the STATIC fill — splice + cycling/clearOnEdit registration.
+    // Factored into a closure so the weave path can run it ONLY on weave
+    // failure (so the buffer changes exactly once, never value-then-reflow).
+    const commitStatic = (): void => {
+      // Populate span for fills with anything cycleable to do: multi-word
+      // fill, multiple lines, blankDismissible, or clearOnEdit.
+      const newWords = splitWords(newText);
+      const startWord = newWords.find(w => w.start === fillStart);
+      const kwStartChar = newWords[slot.keywordStart]?.start ?? fillStart;
+      const wantsClearOnEdit = blank?.blankClearOnEdit === true;
+      if (this.spanFillState) {
+        const fillWordCount = primaryFill.split(/\s+/).filter(Boolean).length;
+        const altsForSpan = isDismissible ? [...lines, '_'] : lines;
+        const wantsSpan = fillWordCount > 1 || altsForSpan.length > 1 || wantsClearOnEdit;
+        if (startWord && wantsSpan) {
+          this.spanFillState.set({
+            index: startWord.index,
+            alternatives: altsForSpan,
+            currentAltIndex: 0,
+            spanLength: Math.max(1, fillWordCount),
+            tip: blank?.tip,
+            clearOnEdit: wantsClearOnEdit,
+            pairCharStart: wantsClearOnEdit ? kwStartChar : undefined,
+            pairCharEnd: wantsClearOnEdit ? newCursor : undefined,
+          }, newText);
+        } else {
+          this.spanFillState.clear();
+        }
       }
-    }
-
-    // When blankSuffix produced a numeric+unit fill (volume,
-    // brightness), attribute the resulting word to its source blank
-    // via a DynDef so cycling routes to the originating blank.
-    if (this.dynDefs && startWord && blank?.blankSuffix && primaryFill.endsWith(blank.blankSuffix)) {
-      this.dynDefs.set(startWord.index, {
-        originalWord: primaryFill,
-        alternatives: [primaryFill],
-        currentIndex: 0,
-        spanStart: startWord.start,
-        spanEnd: startWord.end,
-        blankName: slot.blankName,
-      });
-    }
-
-    if (this.adapter.pushText) {
-      this.adapter.pushText(newText, newCursor);
-    } else {
-      this.adapter.setText(newText);
-      this.adapter.setCursorOffset(newCursor);
-      this.adapter.forceRender();
-    }
+      // blankSuffix numeric+unit fill (volume, brightness) → attribute the word
+      // to its source blank via a DynDef so cycling routes correctly.
+      if (this.dynDefs && startWord && blank?.blankSuffix && primaryFill.endsWith(blank.blankSuffix)) {
+        this.dynDefs.set(startWord.index, {
+          originalWord: primaryFill,
+          alternatives: [primaryFill],
+          currentIndex: 0,
+          spanStart: startWord.start,
+          spanEnd: startWord.end,
+          blankName: slot.blankName,
+        });
+      }
+      this.commitText(newText, newCursor);
+    };
 
     // ── LLM contextual weave (optional, opt-in, off by default) ──────────
-    // The static fill above has ALREADY committed (instant, never-empty). When
-    // `integration-weave-mode: on` AND this blank declares `integration-weave:
-    // true`, fire one background LLM call that weaves the value's exemplar into
-    // the surrounding prose, then three-way-merge the result so a slow or failed
-    // weave can never block the fill or clobber edits made during the call.
-    if (hasIntegration) {
-      this.maybeWeaveIntegration(blank as Record<string, unknown>, newText, fillStart, newCursor, integrationValue);
+    // When `integration-weave-mode: on` AND this blank declares
+    // `integration-weave: true`, we DON'T commit the static fill. Instead we
+    // keep the loading animation running, WAIT for one blanks-bucket LLM call
+    // that weaves the exemplar into the prior prose, and commit ONCE: the woven
+    // text on success, the static fill on failure/timeout. One buffer change,
+    // never value-then-reflow. Privacy/integrity: the real value never reaches
+    // the LLM — the weaver gets the exemplar's sentinel token and we splice the
+    // value in here (see blank-weave.ts).
+    const weaveExemplar = typeof blank?.integration === 'string' ? blank.integration : '';
+    const willWeave = hasIntegration && !!this.weave && blank?.integrationWeave === true
+      && this.configLoader.opencuesState.settings.get('integration-weave-mode') === 'on'
+      && weaveExemplar.includes('{value}');
+
+    if (!willWeave) {
+      commitStatic();
+      return;
     }
+
+    const weaver = this.weave!;
+    const priorContext = newText.slice(0, fillStart);
+    // The script-get phase stopped the loader before applyAsyncFill ran; restart
+    // it (same slot/owner, same tick → no flicker) so the wait stays animated.
+    this._loadingAnimator().start(slot.index, 'blank-fill');
+    void (async () => {
+      let woven: string | null = null;
+      try {
+        woven = await Promise.race([
+          weaver({ exemplar: weaveExemplar, priorContext }),
+          new Promise<null>(resolve => setTimeout(() => resolve(null), BlankFill.WEAVE_TIMEOUT_MS)),
+        ]);
+      } catch (e) {
+        this.adapter.log('info', `BlankFill: weave error (static fallback) — ${(e as Error)?.message ?? e}`);
+      }
+      this._loadingAnimator().stop(slot.index, 'blank-fill');
+      // Staleness: if the user edited during the wait, the slot they were
+      // filling is gone — drop, don't clobber (matches the async-fill contract).
+      const liveNow = this.adapter.getText().replace(/[​‌]/g, '');
+      if (liveNow !== cleaned) {
+        this.adapter.log('debug', 'BlankFill: weave fill dropped — buffer changed during the call');
+        return;
+      }
+      if (woven) {
+        // Splice the REAL value in for the token (deterministic, local).
+        const swapped = woven.split(WEAVE_VALUE_TOKEN).join(integrationValue);
+        const finalText = newText.slice(0, fillStart) + swapped + newText.slice(newCursor);
+        const finalCursor = Math.min(finalText.length, fillStart + swapped.length);
+        // Woven output is contextual prose — NOT a cycleable/clearOnEdit pair,
+        // so don't register a span watcher (which would wipe it on the next edit).
+        this.spanFillState?.clear();
+        this.adapter.log('info', `BlankFill: woven integration → "${preview(swapped, 60)}"`);
+        this.commitText(finalText, finalCursor);
+        this.adapter.emitEvent?.('blank.woven', { blankName: String(blank?.name ?? ''), output: swapped });
+      } else {
+        // Weave failed / ceded / timed out — land the static fill (one change).
+        commitStatic();
+      }
+    })();
   }
 
-  /**
-   * Background upgrade of a just-committed static integration fill into an
-   * LLM-woven version. Privacy/integrity: the real value (`integrationValue`)
-   * is spliced in HERE, locally, after the response — the weaver only ever sees
-   * the exemplar's sentinel token (see `blank-weave.ts`). Safe by construction:
-   * any failure (gate off, no weaver, LLM error, mangled token, user moved on)
-   * leaves the static fill exactly as it landed.
-   */
-  private maybeWeaveIntegration(
-    blank: Record<string, unknown>,
-    snapshot: string,
-    fillStart: number,
-    fillEnd: number,
-    integrationValue: string,
-  ): void {
-    const weaver = this.weave;
-    if (!weaver) return;
-    if (blank.integrationWeave !== true) return;
-    if (this.configLoader.opencuesState.settings.get('integration-weave-mode') !== 'on') return;
-    const exemplar = blank.integration;
-    if (typeof exemplar !== 'string' || !exemplar.includes('{value}')) return;
-
-    // Context = the prose leading up to where the value landed.
-    const priorContext = snapshot.slice(0, fillStart);
-    void weaver({ exemplar, priorContext })
-      .then((wovenWithToken) => {
-        if (!wovenWithToken) return; // static fallback — already committed
-        // Splice the REAL value in for the token (deterministic, local).
-        const woven = wovenWithToken.split(WEAVE_VALUE_TOKEN).join(integrationValue);
-        // Rewrite = snapshot with the static-fill region replaced by the woven
-        // phrase; three-way-merge against the LIVE buffer so user edits win.
-        const rewrite = snapshot.slice(0, fillStart) + woven + snapshot.slice(fillEnd);
-        const live = this.adapter.getText().replace(/[​‌]/g, '');
-        const { newText: merged } = threeWayMerge(snapshot, rewrite, live);
-        if (merged === live) return; // weave fully dropped by the merge
-        const newCursor = Math.min(merged.length, fillStart + woven.length);
-        // The static fill registered cycling/clearOnEdit state (span + dynDef)
-        // for the RAW value. The woven output is contextual prose, not a
-        // cycleable/clearOnEdit pair — and leaving the stale watchers in place
-        // makes the upcoming setText look like a foreign edit to the blank
-        // span, which a clearOnEdit blank would WIPE. Retire those watchers
-        // BEFORE committing so the woven text lands as plain locked prose.
-        this.spanFillState?.clear();
-        if (this.dynDefs) {
-          for (const w of splitWords(snapshot)) {
-            if (w.start >= fillStart && w.start < fillEnd) this.dynDefs.delete(w.index);
-          }
-        }
-        this.adapter.log('info', `BlankFill: woven integration → "${preview(woven, 60)}"`);
-        if (this.adapter.pushText) this.adapter.pushText(merged, newCursor);
-        else { this.adapter.setText(merged); this.adapter.setCursorOffset(newCursor); this.adapter.forceRender(); }
-        this.adapter.emitEvent?.('blank.woven', { blankName: String(blank.name ?? ''), output: woven });
-      })
-      .catch((e) => { this.adapter.log('info', `BlankFill: weave error (static fill kept) — ${(e as Error)?.message ?? e}`); });
+  /** Commit text via the host's preferred path (pushText when available). */
+  private commitText(text: string, cursor: number): void {
+    if (this.adapter.pushText) this.adapter.pushText(text, cursor);
+    else { this.adapter.setText(text); this.adapter.setCursorOffset(cursor); this.adapter.forceRender(); }
   }
 
   /**

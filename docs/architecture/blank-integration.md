@@ -95,16 +95,18 @@ integration-weave: true
 
 1. Blank fires deterministically (shape) → real value `22°C Clear`. **Stays local.**
 2. The exemplar's `{value}` → a sentinel token: `it's currently ⟦VALUE⟧`.
-3. The static fill commits **first** (instant, never-empty) — `…volume is now 32%`.
-4. In the background, ONE blanks-bucket LLM call receives the **prior buffer**
-   (context) + the **placeholder phrase** (with the token), and weaves it:
-   `Planning a trip to Oslo.\nweather oslo _` → `Right now it's ⟦VALUE⟧ there.`
-5. The runtime swaps `⟦VALUE⟧` → `22°C Clear` deterministically, then
-   **three-way-merges** the woven phrase into the live buffer (so edits made
-   during the call win): `…Right now it's 22°C Clear there.`
-6. On ANY failure (gate off, no key, LLM error, mangled token, user moved on)
-   the static fill from step 3 simply stays — a weave can never block the fill
-   or corrupt the buffer.
+3. The fill is held back and the **loading animation keeps running** while ONE
+   blanks-bucket LLM call (bounded by a ~6 s timeout) receives the **prior
+   buffer** (context) + the **placeholder phrase** (with the token) and weaves
+   it: `Planning a trip to Oslo.\nweather oslo _` → `Right now it's ⟦VALUE⟧ there.`
+4. The runtime swaps `⟦VALUE⟧` → `22°C Clear` deterministically and commits the
+   woven phrase **once**: `…Right now it's 22°C Clear there.` The buffer changes
+   a single time (loader → woven), never value-then-reflow.
+5. On ANY failure (gate off, no key, LLM error, mangled token, timeout) the
+   commit lands the **static template** instead (`…it's currently 22°C Clear`) —
+   still one change, never blocked, never corrupted.
+6. If the user edits during the wait, the fill is dropped (their edit wins) —
+   the same staleness contract every async blank fill already honours.
 
 ### Authoring + gating
 
@@ -129,8 +131,11 @@ integration-weave: true
   `FUSED_WEAVE_SYSTEM` prompt + `WEAVE_VALUE_TOKEN`. The weaver returns the
   woven phrase *still containing the token*; the value swap happens in the
   caller, so the value never enters this module.
-- `BlankFill.maybeWeaveIntegration` (`blank-fill.ts`) — fires after the static
-  commit, swaps the value in, three-way-merges (`word-diff.ts`).
+- `BlankFill.applyAsyncFill` (`blank-fill.ts`) — when a fill will weave, it
+  holds the static commit, keeps the loader running, awaits the weaver (bounded
+  by `WEAVE_TIMEOUT_MS`), then commits ONCE: the value spliced into the woven
+  phrase on success, or the static template (`commitStatic`) on failure/timeout.
+  A staleness check drops the fill if the buffer changed during the wait.
 - Wired into every band via `buildBlankWeaver`: CC inline
   (`adapters/cc/v2.1/boot.ts`), OC/gemini/shell via `boot-common.ts` (native
   NodeHttpAdapter fallback), and chrome via `adapters/chrome/v1/boot.ts`
