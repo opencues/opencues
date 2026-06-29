@@ -1,9 +1,14 @@
-import { defineConfig } from 'vitest/config';
+import { defineConfig, configDefaults } from 'vitest/config';
 
 export default defineConfig({
   test: {
     globals: false,
     include: ['src/**/*.test.ts', 'testing/**/*.test.ts', 'adapters/**/*.test.ts'],
+    // Never discover into git worktrees (`.claude/worktrees/<name>/` — created
+    // by Claude Code's worktree isolation). They hold full repo copies at old
+    // commits with stale/unbuilt dist; globbing their `*.test.ts` copies makes
+    // dist-loading + CLI-spawning tests fail there and pollute the run.
+    exclude: [...configDefaults.exclude, '**/.claude/**', '**/worktrees/**'],
     // `--no-isolate` equivalent: don't reset modules between test files.
     // ~30% faster locally (14s → 10s on the 1671-test suite), ~25s off
     // CI's test step. Trade-off: tests that rely on a hot module's

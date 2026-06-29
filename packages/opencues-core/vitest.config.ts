@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { defineConfig, configDefaults } from 'vitest/config';
 
 // @opencues/core has TWO test runners. Most test files in this
 // package were written for Node's built-in `node:test` runner
@@ -27,6 +27,9 @@ export default defineConfig({
       'src/conformance.test.ts',
       'src/sources/fluid-blank-error-substitute.test.ts',
     ],
+    // Never discover into git worktrees (`.claude/worktrees/`) — stale repo
+    // copies with unbuilt dist; their test copies pollute the run.
+    exclude: [...configDefaults.exclude, '**/.claude/**', '**/worktrees/**'],
     // `isolate: false` — don't reset modules between test files.
     // Mirrors the runtime config. Small absolute win here (the vitest-
     // loadable subset is fast already), but kept consistent so the
