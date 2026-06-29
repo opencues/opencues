@@ -5,8 +5,6 @@ description: Selector + satellite for OpenCues runtime settings
 blankKeywords: opencues, settings, config
 impl: OpenCuesSettingsBlank
 blankSatellite: true
-blankAutoPopulate: true
-blankProximity: 2
 spec: opencues/0.1-alpha
 ---
 

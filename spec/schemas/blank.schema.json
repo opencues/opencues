@@ -38,31 +38,35 @@
       "type": "string",
       "description": "Short single-phrase display hint."
     },
-    "blankTip": {
-      "type": "string",
-      "description": "Multi-line display hint for runtimes with a side pane."
-    },
     "type": {
       "type": "string",
       "const": "blank",
       "description": "Discriminator. Usually inferred from path."
     },
+    "blankShapes": {
+      "type": "array",
+      "description": "Anchored regex grammar routing a _ deterministically. Each shape is matched against the line containing _. When omitted, synthesized from blankKeywords (+ blankStep).",
+      "items": {
+        "type": "object",
+        "required": ["pattern", "action"],
+        "properties": {
+          "pattern": { "type": "string", "description": "Anchored regex, e.g. ^volume\\s+(\\d+)\\s*_$" },
+          "action": { "type": "string", "enum": ["get", "set", "step"] },
+          "valueGroup": { "type": "number", "description": "1-based capture group carrying the set/step value." }
+        }
+      }
+    },
     "blankStep": {
       "type": "number",
-      "description": "Increment size for numeric blanks."
-    },
-    "blankFormat": {
-      "type": "string",
-      "enum": ["integer", "float", "string"],
-      "default": "string"
+      "description": "Increment size for numeric blanks; also synthesizes set/step shapes from keywords."
     },
     "blankSuffix": {
       "type": "string",
       "default": ""
     },
-    "blankAutoPopulate": {
-      "type": "boolean",
-      "default": true
+    "integration": {
+      "type": "string",
+      "description": "Additive output template with a {value} slot, e.g. 'volume is now {value}'. Shapes the inserted value only."
     },
     "blankSatellite": {
       "type": "boolean",
@@ -73,17 +77,6 @@
       "type": "boolean",
       "default": false,
       "description": "_ becomes the last cycling option."
-    },
-    "blankReadOnly": {
-      "type": "boolean",
-      "default": false,
-      "description": "Skip set/up/down."
-    },
-    "blankProximity": {
-      "type": "number",
-      "minimum": 0,
-      "default": 0,
-      "description": "Max number of words allowed between the keyword and _. 0 = adjacent (default); N >= 1 = up to N words may sit between them."
     },
     "as-context": {
       "type": "string",
@@ -99,12 +92,7 @@
     "blankClearKeywords": {
       "type": "boolean",
       "default": false,
-      "description": "After fill, strip the keyword from the resulting text."
-    },
-    "blankKeywordExpansions": {
-      "type": "object",
-      "additionalProperties": { "type": "string" },
-      "description": "Map short-form keywords to expanded forms (e.g. nvda → Nvidia)."
+      "description": "After a non-shaped fill, strip the blank's own keyword from the resulting text."
     },
     "stepValues": {
       "type": "array",

@@ -1,6 +1,6 @@
 # core — shared rules across cue-spec and blank-spec
 
-> **Status:** `0.2-alpha`. Expect changes.
+> **Status:** `0.3-alpha`. Expect changes.
 
 This document covers concerns shared by `cue-spec.md`, `blank-spec.md`, and `auditor-spec.md`: the project search-path, the master `CUES.md` / `BLANKS.md` / `AUDITORS.md` files at the root, host compatibility, hot-reload, routing, and the promotion path from runtime-specific knobs to standard fields.
 
@@ -178,7 +178,7 @@ Resolution algorithm:
 2. On priority ties, declaration order wins (sources from earlier search-path entries first; then file-system order within a directory).
 3. If no source claims the word, the word produces no cue (it's not navigable).
 
-For blanks, routing is by `blankKeywords` exact match, with `blankProximity` controlling word distance from `_`. Tie resolution: by source priority (declaration order if equal). The fluid-blank fallback (when implemented) handles `_` with no `blankKeywords` match. Runtimes that ship a transform-blank surface alongside fluid-blank SHOULD ensure their fluid-blank fallback refuses inputs that look like transform-blank task triggers — otherwise a mistyped task command falls through to the lookup pipeline and gets hallucinated as an answer (see [`@opencues/runtime`'s `SPEC.md` § Task-trigger guard](../packages/opencues-runtime/SPEC.md#task-trigger-guard) for the OpenCues runtime's implementation).
+For blanks, routing is by `blankShapes` — anchored whole-line grammar matched against the line containing `_` (keywords desugar to shapes; a keyword claims a `_` on its line). Tie resolution: by source priority (declaration order if equal). The fluid-blank fallback (when implemented) handles `_` that no shape claims. Runtimes that ship a transform-blank surface alongside fluid-blank SHOULD ensure their fluid-blank fallback refuses inputs that look like transform-blank task triggers — otherwise a mistyped task command falls through to the lookup pipeline and gets hallucinated as an answer (see [`@opencues/runtime`'s `SPEC.md` § Task-trigger guard](../packages/opencues-runtime/SPEC.md#task-trigger-guard) for the OpenCues runtime's implementation).
 
 ---
 
@@ -296,7 +296,6 @@ A conformant validator (`opencues validate` or equivalent) MUST report the follo
 | `blank-no-binding` | error | `BLANK.md` declares zero binding profiles (no `stepValues` / `blankScript` / `impl`). |
 | `blank-multiple-bindings` | error | `BLANK.md` declares more than one binding profile. |
 | `blank-script-missing` | error | `blankScript:` references a relative path that doesn't exist on disk. |
-| `blank-readonly-conflict` | warn | `blankReadOnly: true` paired with a binding that produces multiple values. |
 | `blank-script-on-chrome` | warn | `on-host: chrome` declared alongside `blankScript:` (browser can't spawn). |
 | `blank-missing-description` | warn | `BLANK.md` lacks a `description:`. |
 | `auditor-missing-name` | error | `AUDITOR.md` frontmatter has no `name`. |

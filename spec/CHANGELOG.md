@@ -14,18 +14,59 @@ breaking.
 
 ## [Unreleased]
 
-### Enforced
+---
 
-- **Spec-version refusal gate** — the `0.x` normative claim "A
-  conforming reader MUST refuse to parse a file whose declared spec
-  version is higher than the reader's pinned `SPEC_VERSION`" is now
-  actually enforced by the reference implementation. Previously the
-  parsers ignored the `spec:` frontmatter field and the conformance
-  fixture for `spec-too-new` was regex-matched against the fixture
-  content rather than exercised against the runtime. Reference impl
-  details + 39 unit/integration tests are in the root `CHANGELOG.md`;
-  the spec itself is unchanged — what changed is that the existing
-  rule now actually holds at runtime.
+## [0.3.0-alpha] — 2026-06-29
+
+Spec bump: blank routing + frontmatter surface slim-down. The blank
+trigger model moves from per-blank `blankProximity` keyword distance to
+deterministic, line-scoped `blankShapes` (keywords desugar to shapes).
+Several optional frontmatter keys are removed from the standard. A
+`0.2-alpha` reader will refuse `spec: opencues/0.3-alpha` files per the
+"newer-spec-refuse" rule (`SPEC.md` § Version policy). The omit-default
+stays `0.1-alpha`.
+
+### Added
+
+- **`blankShapes`** — anchored regex grammar (`{pattern, action,
+  valueGroup?}`) matched against the line containing `_`. The single
+  routing mechanism: a shape match claims the `_` deterministically with
+  a typed action (`get` / `set` / `step`). When omitted, runtimes
+  synthesize shapes from `blankKeywords` (+ `blankStep`).
+- **`integration`** — additive output template with a `{value}` slot
+  (`"volume is now {value}"`); shapes the inserted value only, never
+  surrounding text.
+
+### Changed
+
+- **Blank trigger model** — routing is now line-scoped: a keyword (or
+  shape) claims a `_` on its line, and a command MUST lead its line with
+  `_` at the trailing edge. Prose that merely mentions a keyword mid-line
+  no longer fires. Replaces the per-blank `blankProximity` word-distance
+  model.
+
+### Removed
+
+- **`blankProximity`** — superseded by the line-scoped shape window.
+- **`blankFormat`** — display-format hint (unused).
+- **`blankAutoPopulate`** — auto-fill is now always on by default.
+- **`blankReadOnly`** — cycleability is inferred (a blank cycles iff it
+  declares `blankSatellite` / `stepValues` / `blankStep`).
+- **`blankTip`** — folded into `tip` (one display-hint field).
+- **`blankKeywordExpansions`** — superseded by self-contained blank
+  output (the blank prints the display form it wants).
+- **`blankReplace`** (runtime extension) — the replace/consume-mode
+  machinery was deleted; fill is always-FILL with shape-derived clearing.
+
+### Schema
+
+- `spec/schemas/blank.schema.json` — added `blankShapes` + `integration`;
+  removed the six keys above.
+
+### Conformance
+
+- Removed `routing/blank-proximity.json`; added `routing/blank-shapes.json`.
+- Updated `valid/blank/*` fixtures to the new key set.
 
 ---
 

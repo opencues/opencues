@@ -1,6 +1,6 @@
 # blank-spec — the Blank file format & runtime contract
 
-> **Status:** `0.2-alpha`. Expect changes.
+> **Status:** `0.3-alpha`. Expect changes.
 
 A **blank** is the user→system surface: when a user writes `_` (underscore) in their text, the runtime substitutes a value sourced from somewhere — a list, a shell script, an in-process function. Blanks are how text touches the world: volume, weather, stock prices, dictionary entries, settings toggles. This document specifies the `BLANK.md` file format and what a conformant runtime MUST do with one.
 
@@ -19,10 +19,10 @@ Every blank is folder-shaped — there is no flat-file alternative. A declarativ
 ├── BLANK.md                  (required)
 │   ├── YAML frontmatter      (required)
 │   │   ├── name              (required)
-│   │   ├── blankKeywords     (required — the trigger)
+│   │   ├── blankKeywords | blankShapes   (the trigger — keywords desugar to shapes)
 │   │   ├── stepValues | blankScript | impl   (exactly one — the binding)
 │   │   ├── description       (recommended)
-│   │   └── blankStep, blankFormat, blankSatellite, …  (optional)
+│   │   └── blankStep, blankSuffix, integration, blankSatellite, …  (optional)
 │   └── Markdown body         (optional — documentation only)
 │
 ├── <name>-blank.sh           (when blankScript is declared — sibling executable)
@@ -36,7 +36,7 @@ Every blank is folder-shaped — there is no flat-file alternative. A declarativ
 A blank fires when **all** of these hold:
 
 1. The user's text contains `_` (the blank marker).
-2. One of the blank's `blankKeywords` appears within `blankProximity` words of `_` (default `0`, i.e. immediately adjacent). `blankProximity` counts the words *between* the keyword and `_`: `0` = adjacent, `1` = up to one word between, etc.
+2. One of the blank's `blankShapes` matches the LINE containing `_` (anchored, whole-line grammar). When a blank declares no `blankShapes`, the runtime synthesizes them from `blankKeywords`: a keyword claims a `_` on the SAME LINE (line-scoped), capturing any words between the keyword and `_` as the `get` arg. Either way, routing is deterministic and the command must lead its line with `_` at the trailing edge — prose that merely mentions a keyword mid-line does NOT fire.
 3. The runtime has loaded the blank source.
 
 Blanks fire deterministically. The `description:` field is documentation only — it does NOT control invocation. (Contrast with [SKILL.md](https://github.com/anthropics/skills), where `description` is the LLM's invocation hook.)
@@ -70,17 +70,13 @@ A blank source MUST also declare **exactly one** binding profile (see § Binding
 | `type` | `"blank"` | inferred from path | Discriminator. Files under `blanks/` are blanks by location; explicit `type: blank` is rarely needed. |
 | `priority` | number | `50` | Higher wins on routing ties when multiple blanks could claim the same `_` slot (rare — usually disambiguated by `blankKeywords`). Range 0–100 by convention. |
 | `enabled` | boolean | `true` | `false` = blank is parsed but not registered. Use the master `BLANKS.md` `disable: [<id>]` to skip a blank from a project layer without modifying the source file itself. |
-| `blankStep` | number | none | Increment size for numeric blanks (Up/Down step). |
-| `blankFormat` | `"integer"` \| `"float"` \| `"string"` | `"string"` | Display formatting hint. |
+| `blankShapes` | JSON list of `{pattern, action, valueGroup?}` | derived from `blankKeywords` | Anchored regex grammar that routes a `_` deterministically. Each shape's `pattern` is matched (case-insensitive) against the LINE containing `_`; on match the blank claims it with `action` (`"get"` / `"set"` / `"step"`) and the value from capture group `valueGroup`. e.g. `[{"pattern":"^volume\\s+(\\d+)\\s*_$","action":"set","valueGroup":1}]`. When omitted, the runtime synthesizes shapes from `blankKeywords` (+ `blankStep` for set/step). See § Routing. |
+| `blankStep` | number | none | Increment size for numeric blanks (set/step `up`/`down`). Also adds set/step shapes when `blankShapes` is synthesized from keywords. |
 | `blankSuffix` | string | `""` | Appended to the displayed value (`"%"`, `"°C"`, `"$"`). |
-| `blankAutoPopulate` | boolean | `true` | Whether to fire `get` on first match. |
+| `integration` | string | none | Additive output template with a `{value}` slot (`"volume is now {value}"`). The runtime renders the blank's output through it, weaving connective text around the value. Add-only — it only shapes the inserted value, never surrounding text. |
 | `blankSatellite` | boolean | `false` | Two-word selector + value pattern. See § Flag obligations. |
 | `blankDismissible` | boolean | `false` | `_` becomes the last cycling option. |
-| `blankReadOnly` | boolean | `false` | Skip `set` / `up` / `down`. |
-| `blankProximity` | number | `0` | Max number of words allowed *between* the keyword and `_`. `0` = keyword must be adjacent to `_`; `N` ≥ 1 = up to N words may sit between them. |
-| `blankTip` | string | none | Multi-line display hint. Distinct from `tip:`: runtimes that show only short hints SHOULD use `tip`; runtimes with a side pane MAY use `blankTip`. If a file declares both, runtimes pick whichever fits their UI. |
-| `blankClearKeywords` | boolean | `false` | After fill, strip the keyword (and any context words between keyword and `_`) from the resulting text. Used when the keyword is purely a trigger and shouldn't survive in the output (e.g. `volume _` → `50%`, not `volume 50%`). |
-| `blankKeywordExpansions` | mapping `<keyword>: <expansion>` | none | Map short-form keywords to their expanded form (e.g. `nvda: Nvidia`). The expanded form is passed to `get` as `context` instead of the raw keyword. Authors MAY use the dotted shape `blankKeywordExpansions.nvda: Nvidia` for terse YAML. |
+| `blankClearKeywords` | boolean | `false` | After a non-shaped fill, strip the blank's own keyword from the resulting text (e.g. a bare `keyword _` whose script returns a self-contained value). Shaped blanks clear their command span automatically (a captured arg / typed set-step / `integration:` template consumes `keyword … _`), so this is only for the legacy keyword path. |
 | `stepValues` | YAML list | none | Binding profile — declarative rotation. |
 | `blankScript` | string (relative path) | none | Binding profile — shell script. |
 | `impl` | string | implicit from `name` | Binding profile — in-process class name. |
@@ -90,7 +86,7 @@ A blank source MUST also declare **exactly one** binding profile (see § Binding
 | `speak` | boolean | `false` | Per-blank TTS hint. Reserved here so authors have a portable place to declare intent; TTS itself is non-standard. |
 | `spec` | string | `"opencues/0.1-alpha"` | Spec version this file targets. Files that omit `spec:` MUST be treated as `opencues/0.1-alpha`. Runtimes MUST refuse files declaring a newer `spec:` than they support. |
 
-> **Runtime extensions to this table.** The reference runtime parses additional fluid-blank-specific keys not (yet) elevated to this standard: `blankReplace` (`keep` | `wipe` | `wipe-all` | `auto`, controls how the resolved value substitutes into the buffer), `blankSatelliteSeparator`, `blankClearOnEdit`, `altCount`, and the credential fields `secrets:` / `secret-hosts.*`. These are runtime-only knobs documented in [`@opencues/runtime`'s `SPEC.md`](../packages/opencues-runtime/SPEC.md); other implementations MAY ignore them. They become candidates for the promotion path (see `core.md`) once a second runtime adopts them.
+> **Runtime extensions to this table.** The reference runtime parses additional keys not (yet) elevated to this standard: `blankSatelliteSeparator`, `blankClearOnEdit`, and the credential fields `secrets:` / `secret-hosts.*`. These are runtime-only knobs documented in [`@opencues/runtime`'s `SPEC.md`](../packages/opencues-runtime/SPEC.md); other implementations MAY ignore them. They become candidates for the promotion path (see `core.md`) once a second runtime adopts them.
 
 ### Body
 
@@ -302,27 +298,24 @@ All methods are async. The `keyword` argument carries which `blankKeywords` entr
 
 ### Lifecycle — what happens after a trigger
 
-1. **Match** — runtime detects `_` adjacent to a `blankKeywords` match.
-2. **Populate** — if `blankAutoPopulate: true`, the runtime calls `get(keyword, context)` and substitutes the result at the `_` position.
+1. **Match** — runtime detects `_` on a line a `blankShapes` pattern claims (or a synthesized keyword shape).
+2. **Populate** — the runtime calls `get(keyword, context)` (or `set`/`step` per the matched shape's action) and substitutes the result at the `_` position.
 3. **Cycle** — on a runtime-defined cycling input, the runtime calls `up()` / `down()` (or, for `stepValues`, indexes the list directly).
 4. **Accept** — on a runtime-defined accept input, the runtime calls `set(value)` if defined.
 5. **Dismiss** — if `blankDismissible: true`, `_` is the final cycling option; selecting it suppresses re-population for this slot until the user cycles away.
 
 ### What a runtime MUST do
 
-- Honor `blankAutoPopulate: false` by NOT calling `get` on first match (only on explicit invoke).
-- Honor `blankReadOnly: true` by suppressing `set`/`up`/`down` calls.
-- Substitute the result of `get` at the `_` position, formatted per `blankFormat` and suffixed with `blankSuffix`.
-- Treat cycle attempts on read-only single-value blanks as no-ops (no error UX).
+- Substitute the result of `get` at the `_` position, suffixed with `blankSuffix` and (when declared) rendered through the `integration:` template.
+- Treat cycle attempts on single-value blanks as no-ops (no error UX). A blank is cycleable only when it declares how to cycle (`blankSatellite` / `stepValues` / `blankStep`).
 - Skip blanks whose host-compat excludes the running host.
 
 ### Flag obligations
 
 - **`blankSatellite: true`** — `get` MAY return `<selector>\t<satellite>` (tab-separated). The runtime MUST splice both as adjacent words. Cycling targets the selector; satellite is updated via `set <selector> <value>`.
 - **`blankDismissible: true`** — runtime MUST append `_` to the cycling list. Selecting it sets a "dismissed" flag for that slot; runtime MUST NOT re-populate until the user explicitly cycles away.
-- **`blankProximity: N`** — up to N words may sit *between* the keyword and `_`. Default 0 (adjacent). With `N = 2`, `"weather in paris _"` matches (2 words between); `"weather in central paris _"` does not (3 words between, exceeds N).
-- **`blankKeywordExpansions.<key>`** — when `<key>` triggers, the runtime MAY pass the expanded form as `context` instead of the raw keyword.
-- **`blankStep`, `blankFormat`, `blankSuffix`** — numeric/format hints. Runtime MUST honor for numeric blanks.
+- **`blankShapes`** — each `{pattern, action, valueGroup?}` is matched (case-insensitive) against the LINE containing `_`; the first match claims it. `valueGroup` (1-based) extracts the `set`/`step` value. A blank with shapes is routed solely by them; the keyword window does not apply.
+- **`blankStep`, `blankSuffix`** — numeric step size + display unit. Runtime MUST honor for numeric blanks.
 
 ---
 
@@ -413,7 +406,7 @@ A `BLANK.md` file is **valid** iff:
 
 A runtime is **conformant** iff it satisfies every MUST in § Runtime contract for the binding profiles it supports.
 
-For the consolidated linting matrix (severity, rule names, what each rule checks), see [`core.md` § Linting rules](./core.md#linting-rules). Blank-specific rules: missing `description` (warn), `blankReadOnly: true` plus a multi-value binding (warn), `on-host: chrome` plus `blankScript:` (warn), multiple binding profiles (error).
+For the consolidated linting matrix (severity, rule names, what each rule checks), see [`core.md` § Linting rules](./core.md#linting-rules). Blank-specific rules: missing `description` (warn), `on-host: chrome` plus `blankScript:` (warn), multiple binding profiles (error).
 
 ---
 
@@ -445,8 +438,7 @@ blankKeywords: volume
 blankScript: ./volume-blank.sh
 blankStep: 6
 blankSuffix: "%"
-blankFormat: integer
-blankAutoPopulate: true
+integration: volume is now {value}
 ---
 ```
 
@@ -462,9 +454,6 @@ name: stocks
 description: Live stock prices — major US tickers
 blankKeywords: nvidia, nvda, apple, aapl, googl, msft, amzn
 impl: StocksBlank
-blankAutoPopulate: true
-blankReadOnly: true
-blankFormat: string
 ---
 ```
 
@@ -478,11 +467,8 @@ name: weather
 description: Local weather — temperature + conditions for a city
 blankKeywords: weather, forecast, temp
 impl: WeatherBlank
-blankAutoPopulate: true
-blankReadOnly: true
-blankProximity: 2
-blankFormat: string
-blankTip: "Open-Meteo (cached 5min)"
+integration: it's currently {value}
+tip: "Open-Meteo (cached 5min)"
 on-host: [chrome, claude-code, gemini-cli, opencode]
 spec: opencues/0.1-alpha
 ---

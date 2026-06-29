@@ -33,7 +33,7 @@ its area + the "read before editing" guard.
 |---|---|
 | [`spans-and-cycling.md`](spans-and-cycling.md) | The cycling/span/dim/nav system. Two span systems (blank-fill vs static-alt), the cycling priority order (selector/satellite → spanFill → list blank → blankStep DynDef → static alts), shift+prune flow, every bug we've fixed. Read before touching `cycling.ts`, `dyn-defs.ts`, `span-fill.ts`, `dim-render.ts`, or `navigation.ts`. |
 | [`blank-sources.md`](blank-sources.md) | Family of source classes (BlankSource / FluidBlankSource / TransformBlankSource / SentenceCueSource / ConfigIntentSource / ConfigSource / LocalCueSource) + the two substitute mechanisms (deterministic slot splice vs three-way-merge). Decision table for adding a new source. Read before touching the resolver substitute dispatch. |
-| [`blank-replace-modes.md`](blank-replace-modes.md) | The unified `blankReplace` field (`keep` / `wipe` / `wipe-all` / `auto`) + the deterministic copula/equation/question heuristic `auto` runs. Migration cheat-sheet for every shipped blank. |
+| [`blank-integration.md`](blank-integration.md) | Blank routing (`blankShapes` + keyword desugaring, line-scoped) + output placement (always-FILL, shape-derived clearing) + the additive `integration:` output template. Replaces the deleted replace/consume-mode docs. |
 
 ---
 
