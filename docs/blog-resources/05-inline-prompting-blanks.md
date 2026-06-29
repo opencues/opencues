@@ -46,20 +46,19 @@ From `docs/features/cue-blanks.md`:
 3. **Dynamic list blanks** — script returns multiple lines, each becomes a
    cycling alternative. `HN posts _` → live headlines.
 4. **Read-only blanks** — fetches data once, no cycling. `nvda _` → `121.45`.
-5. **Consume-all blanks** — clears the entire input region and replaces it
-   with multi-word cycling alternatives. The prompt improver works this way:
-   you type a draft prompt, and it rewrites the whole thing in place.
 
 Plus two **fluid** modes (no keyword needed):
 
-6. **Fluid blank** — free-form lookup. `FluidBlankSource` segments the
-   query span and answers it. Two-pass pipeline (P1 SEGMENT + P3 ANSWER).
+5. **Fluid blank** — free-form lookup. `FluidBlankSource` segments the
+   query span and answers it (always-FILL, FUSED single-call pipeline).
    Handles math, factual, translation, unit conversion, codes, etc. without
    per-mode classification.
-7. **Transform blank** — imperative instruction. `TransformBlankSource`
+6. **Transform blank** — imperative instruction. `TransformBlankSource`
    detects "rewrite this text per <instruction>" and substitutes the
-   rewrite. (See [`06-inline-agents.md`](06-inline-agents.md) for the deep
-   dive.)
+   rewrite over the whole buffer. This is where free-form rewrites now live:
+   the old "consume-all" prompt-improver blank was retired, and
+   `improve prompt _` routes here as an imperative instruction. (See
+   [`06-inline-agents.md`](06-inline-agents.md) for the deep dive.)
 
 Resolution order on a `_`:
 ```
@@ -171,8 +170,8 @@ From `damon.md`:
 | Countries | Read-only (live) | `population of france _` → fact |
 | Dictionary | Read-only (live) | `define ephemeral _` → definition |
 | OpenCues Settings | Selector + Satellite | `opencues settings _` → cycles settings, writes to file |
-| Answer | Consume-all | Free-form Q&A (LLM round-trip) |
-| Prompt Improver | Consume-all | Rewrites the surrounding prompt text in place |
+| Answer | Fluid lookup | Free-form Q&A — routes through `FluidBlankSource` |
+| Prompt Improver | Transform blank | `improve prompt _` — rewrites the surrounding prompt via `TransformBlankSource` |
 | Fluid Blank | Free-form lookup | Any unbound `_` |
 
 ## The HCI angle (for blog #4)
@@ -206,18 +205,20 @@ From `damon.md`:
 - **Re-evaluation can surprise.** Edit the prefix of a math blank and the
   number changes. This is correct but can feel "alive" in unsettling ways
   the first time. (The fix is the ownership lock — see above.)
-- **Consume-all blanks need dedicated cycling storage.** They overwrite the
-  standard WordDef array, so the runtime keeps a separate state class
-  (`SpanFillState`) to avoid clobbering. See `consume-all-blanks.md`.
+- **Whole-buffer rewrites need dedicated span storage.** Transform-blank
+  rewrites overwrite a multi-word region rather than a single word, so the
+  runtime keeps a separate state class (`SpanFillState`) to avoid clobbering
+  the standard WordDef array. See
+  [`../architecture/blank-integration.md`](../architecture/blank-integration.md).
 
 ## Where this material lives
 
 - `concept.md` — the user-→-system direction definition
-- `docs/glossary.md` — Blank, Blanks (two flavours), Cue-Blank, Consume-All,
-  Consume-Context entries
+- `docs/glossary.md` — Blank, Blanks (two flavours), Cue-Blank entries
 - `docs/features/fill-in-the-blank.md` — core `_` mechanics
 - `docs/features/cue-blanks.md` — the comprehensive reference
-- `docs/features/consume-all-blanks.md` — the prompt-improver pattern
+- `docs/architecture/blank-integration.md` — blank routing + the
+  transform-blank prompt-improver pattern
 - `docs/architecture/transform-blank.md` — the "universal interaction handle"
   framing
 - `damon.md` § "Cue Types" sections 2-5 — diagrammed flows for each blank

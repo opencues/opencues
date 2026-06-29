@@ -33,18 +33,19 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 ### Auto-populate
 - [ ] `volume _` — `_` replaced with actual system volume (e.g. `50%`)
 - [ ] Value is dimmed (gray)
-- [ ] Status line empty (no `blankTip` set)
+- [ ] Status line empty (no `tip` set)
 
 ### Cycling
 - [ ] Navigate to the value, Up — increases by 6 (e.g. `50%` → `56%`), actual volume changes
 - [ ] Down — decreases by 6, actual volume changes
 - [ ] Displayed value includes `%` suffix and matches actual system volume
 
-### Keywords + proximity
-- [ ] `volume _` — matches (adjacent, proximity 0)
+### Keywords + line-scoped routing
+- [ ] `volume _` — matches (keyword leads the line, `_` at the trailing edge)
 - [ ] `audio _` — matches ("audio" keyword)
 - [ ] `sound _` — matches ("sound" keyword)
-- [ ] `volume is _` — does NOT match (1 word gap exceeds proximity 0)
+- [ ] `volume 30 _` — matches (`30` captured as the set value between keyword and `_`)
+- [ ] `the volume is _` — does NOT match (prose; "volume" doesn't lead the line)
 
 ### Fresh value
 - [ ] Type `volume _`, let it populate
@@ -143,22 +144,24 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 - [ ] Edit `CUES.md` — changes take effect in ~2s without restart
 - [ ] Edit `defaults/blanks/volume/BLANK.md` — changes take effect in ~2s without restart
 
-## Prompt improver (consume-all blank)
+## Prompt improver (transform blank)
 
-### Auto-populate
-- [ ] `improve prompt _` — keywords cleared, entire input replaced with improved prompt (multi-word span)
-- [ ] Cursor lands at end of populated text
-- [ ] Whole span dims gray
+(Free-form rewrites route through `TransformBlankSource` — the old consume-all
+blank was retired. `improve prompt _` is an imperative instruction.)
 
-### Cycling alternatives
-- [ ] Navigate to the first word of the span, Up/Down — cycles through 3 improved versions + original prompt
-- [ ] Status line shows "Prompt improver" tip during cycling
-- [ ] Each cycle replaces the entire span (not just the first word)
+### Substitution
+- [ ] `improve prompt _ <draft text>` — the draft is rewritten in place via the whole-buffer three-way merge
+- [ ] Cursor lands at end of the rewritten text
+- [ ] Rewritten span dims gray
+
+### Revert
+- [ ] Navigate into the rewritten span, Down — reverts to the original draft (DynDef revert)
+- [ ] Up — restores the rewritten version
 
 ### Cleanup: typing over the span
-- [ ] After span is populated, delete it and type `hello my name is` — no stale span
-- [ ] Navigate to `hello` — shows grammar alternatives (e.g. "hi", "hey"), NOT prompt improver alternatives
-- [ ] Status line tip is empty or shows grammar tip, NOT "Prompt improver"
+- [ ] After the rewrite lands, delete it and type `hello my name is` — no stale span
+- [ ] Navigate to `hello` — shows grammar alternatives (e.g. "hi", "hey"), NOT transform-blank state
+- [ ] Status line tip is empty or shows grammar tip
 - [ ] Same check after navigating away first (deactivating highlight), THEN typing — same result
 
 ### Cleanup: opencues settings

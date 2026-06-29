@@ -269,7 +269,7 @@ cryptographic provenance and (for `impl: ./blank.js`) automatic
 capability-diff review on update. See
 [`docs/architecture/security-audit.md` § Pre-registry follow-ups](../architecture/security-audit.md).
 
-The same logic applies more strictly to auditors, where the entire surface is user-trusted only in v1.0 (no registry distribution at all). See [`docs/guides/adding-an-auditor.md` § 5 Trust model](./adding-an-auditor.md) and [`openstandard-notes.md` § Distribution asymmetry](../../openstandard-notes.md).
+The same logic applies more strictly to auditors, where the entire surface is user-trusted only in v1.0 (no registry distribution at all). See [`docs/guides/adding-an-auditor.md` § 5 Trust model](./adding-an-auditor.md).
 
 ## Checklist
 

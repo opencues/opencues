@@ -4,11 +4,19 @@
 # Created by `opencues new blank {{NAME}}`.
 # ─────────────────────────────────────────────────────────────────────
 #
-# A blank is a `_`-triggered slot. The user types your keyword followed
-# by `_`, and your script / runtime class fills the slot with a value.
+# A blank is a `_`-triggered slot. The user types a command whose keyword
+# LEADS the line ending in `_` (e.g. `{{NAME}} _`, `{{NAME}} paris _`),
+# and your script / runtime class fills the slot with a value.
 # Pick ONE shape below by uncommenting its block and deleting the rest.
 # Colocate any scripts in this same folder (e.g. ./{{NAME}}-blank.sh)
 # and reference with a relative path.
+#
+# Routing is DETERMINISTIC and line-scoped: `blankKeywords` desugar into
+# anchored `blankShapes` (a get shape, plus set/step shapes when
+# `blankStep` is present). The keyword must lead its line with `_` at the
+# trailing edge — prose that merely mentions a keyword mid-line never
+# fires. Authoring `blankShapes:` explicitly overrides the synthesized
+# grammar (see SHAPE 5).
 #
 # Real shipped examples (cat any to see the pattern in production):
 #   defaults/blanks/volume/BLANK.md         — SHAPE 1: typed blank + script
@@ -18,50 +26,53 @@
 #   defaults/blanks/stocks/BLANK.md         — SHAPE 4: runtime-class (TS)
 #   defaults/blanks/weather/BLANK.md        — SHAPE 4: runtime-class
 #   defaults/blanks/hackernews/BLANK.md     — SHAPE 4: runtime-class
-#   defaults/blanks/prompt/BLANK.md         — SHAPE 4: runtime-class (consume-all)
 
 name: {{NAME}}
 type: blank
 
 # ─────────────────────────────────────────────────────────────────────
-# SHAPE 1: Typed blank — typing `_` near keyword auto-populates
+# SHAPE 1: Typed blank — keyword leads the line, `_` auto-populates
 # ─────────────────────────────────────────────────────────────────────
-# When the user types `_` within `blankProximity` words of a keyword,
-# the runtime calls `blankScript get` to read the current value, fills
-# the blank, then calls `blankScript set <value>` on cycle. Good for:
-# system state (volume, brightness) and read-only API lookups.
+# When the user types `{{NAME}} _` (keyword leading the line), the runtime
+# calls `blankScript get` to read the current value and fills the blank.
+# Declare `blankStep` to make it cycleable: Up/Down then steps the value
+# and calls `blankScript set <value>`. Typed commands work too — `{{NAME}}
+# 30 _` (set) and `{{NAME}} up _` (step). Good for: system state (volume,
+# brightness) and read-only API lookups.
+#
+# Auto-populate is automatic — any shape match fills the `_`. Cycleability
+# is INFERRED: a blank cycles only if it declares blankStep / stepValues /
+# blankSatellite; otherwise it's read-only by construction (no flag).
 #
 # Fields (all optional except blankKeywords + blankScript):
-#   blankKeywords:        comma-separated triggers (required)
-#   blankScript:          script that responds to `get` / `set <value>`
-#                         (required for live-value blanks; alternative:
-#                         stepValues for static lists — see SHAPE 2)
-#   blankAutoPopulate:    fill `_` immediately on typing (default false;
-#                         most live-value blanks want true)
-#   blankFormat:          integer | float | string  (default string)
-#   blankSuffix:          appended to numeric display (e.g. "%", "px")
-#   blankStep:            step size for cycling (numeric blanks only)
-#   blankReadOnly:        disable cycling — use for live API data
-#   blankTip:             statusline tip when the blank is highlighted
-#   blankProximity:       words-distance from keyword to `_` (default 5)
+#   blankKeywords:  comma-separated triggers (required — desugar to shapes)
+#   blankScript:    script that responds to `get` / `set <value>` / `up` /
+#                   `down` (required for live-value blanks; alternative:
+#                   stepValues for static lists — see SHAPE 2)
+#   blankStep:      step size for numeric cycling. Its presence makes the
+#                   blank settable (synthesizes set/step shapes) and marks
+#                   it cycleable. Float precision is taken from the step.
+#   blankSuffix:    appended to numeric display (e.g. "%", "px")
+#   tip:            statusline tip when the blank is highlighted
+#   integration:    additive output template with a {value} slot, e.g.
+#                   "{{NAME}} is now {value}" (shapes the inserted value
+#                   only — never deletes surrounding text)
 
 # blankKeywords: {{NAME}}
 # blankScript: ./{{NAME}}-blank.sh
-# blankAutoPopulate: true
-# blankFormat: integer
 # blankSuffix: %
 # blankStep: 5
-# blankTip: "system {{NAME}}"
+# tip: "system {{NAME}}"
 
 # ─────────────────────────────────────────────────────────────────────
 # SHAPE 2: List blank — cycles a fixed list (no script)
 # ─────────────────────────────────────────────────────────────────────
-# Combines a typed-blank keyword trigger with a fixed cycle list.
-# No script needed. See defaults/blanks/affirmations/BLANK.md.
+# Combines a keyword trigger with a fixed cycle list. No script needed.
+# See defaults/blanks/affirmations/BLANK.md.
 #
 # Fields:
 #   blankKeywords:    comma-separated triggers
-#   stepValues:       JSON array of strings to cycle through
+#   stepValues:       JSON array of strings to cycle through (cycleable)
 #   tip:              statusline tip on highlight
 #   blankDismissible: allow clearing (default false; affirmations uses true)
 
@@ -77,7 +88,8 @@ type: blank
 # Cycle the SELECTOR (first word) to switch settings; cycle the
 # SATELLITE (second word) to change the current setting's value. Used
 # by the opencues blank for runtime settings (voice-mode, debug-mode, etc.).
-# See defaults/blanks/opencues/BLANK.md.
+# `blankSatellite: true` makes the blank cycleable. See
+# defaults/blanks/opencues/BLANK.md.
 #
 # Extra fields:
 #   blankSatellite:           true — enable selector+satellite shape
@@ -88,8 +100,6 @@ type: blank
 #                             selector (true = matched-pair cleanup)
 
 # blankKeywords: opencues settings, config
-# blankAutoPopulate: true
-# blankFormat: string
 # blankScript: ./{{NAME}}-blank.sh
 # blankSatellite: true
 # blankSatelliteSeparator: ' '
@@ -104,27 +114,36 @@ type: blank
 #   1. packages/opencues-runtime/src/blanks/{{NAME}}.ts (implements Blank)
 #   2. Register in each host's blanksRegistry (see opencues-bootstrap.ts
 #      for OC, blanks/index.ts for chrome)
-#   3. cue.md declares blankKeywords + blankReadOnly + blankFormat —
-#      no blankScript: at all.
+#   3. BLANK.md declares blankKeywords + impl — no blankScript: at all.
+#      Omit blankStep / stepValues / blankSatellite and the blank is
+#      read-only (fetch once, no cycling) — inferred, not declared.
 #
-# See defaults/blanks/stocks/BLANK.md (real-world: 7 ticker keyword
-# expansions, blankReadOnly: true so cycling is no-op, all dispatch
-# happens in StocksBlank in TS).
+# See defaults/blanks/stocks/BLANK.md (real-world: ticker keywords, read-
+# only, all dispatch happens in StocksBlank in TS).
 #
-# Bonus: blankKeywordExpansions.<keyword>: <expansion> — replaces the
-# matched trigger word with a friendlier display name. e.g. typing
-# "rddt _" with `blankKeywordExpansions.rddt: Reddit` produces
-# "Reddit $133.44". One entry per keyword.
+# Display form: the blank's get() returns the exact string it wants shown
+# (e.g. StocksBlank returns "Reddit $133.44", not bare "$133.44"). There
+# is no keyword-rewrite knob — a blank owns its own presentation. Wrap it
+# further with an `integration:` template if you want connective text.
 
 # blankKeywords: rddt, nvda, aapl
-# blankAutoPopulate: true
-# blankFormat: string
-# blankTip: Stock price
-# blankReadOnly: true
-# blankProximity: 1
-# blankKeywordExpansions.rddt: Reddit
-# blankKeywordExpansions.nvda: Nvidia
-# blankKeywordExpansions.aapl: Apple
+# impl: '@opencues/runtime StocksBlank'
+# tip: Stock price
+
+# ─────────────────────────────────────────────────────────────────────
+# SHAPE 5: Explicit blankShapes (advanced — custom routing grammar)
+# ─────────────────────────────────────────────────────────────────────
+# When the synthesized keyword grammar isn't enough, author the anchored
+# shapes directly. Each shape is `{pattern, action, valueGroup?}`, matched
+# (case-insensitive) against the LINE containing `_`. `action` is one of
+# get / set / step; `valueGroup` is the 1-based capture group carrying the
+# set/step value. Explicit shapes WIN over the keyword-synthesized grammar
+# for runtime dispatch + cede, but `blankKeywords` is still required (the
+# resolver's auto-populate/cycling path keys off it).
+
+# blankKeywords: {{NAME}}
+# blankScript: ./{{NAME}}-blank.sh
+# blankShapes: [{"pattern":"^{{NAME}}\\s+(\\d+)\\s*_$","action":"set","valueGroup":1},{"pattern":"^{{NAME}}\\s*_$","action":"get"}]
 
 # ─────────────────────────────────────────────────────────────────────
 # HOST COMPATIBILITY (advanced)

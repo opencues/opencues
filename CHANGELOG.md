@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — blank API slim-down: shapes route, dead dials removed (`SPEC_VERSION` 0.2 → 0.3)
+
+The blank trigger model is now deterministic, line-scoped `blankShapes`
+(anchored whole-line grammar; `blankKeywords` desugar into shapes via
+`synthesizeKeywordShapes`). A keyword/shape claims a `_` only when it
+**leads the line** ending in `_` — prose that mentions a keyword mid-line
+no longer fires. Fill is **always additive (FILL)**; command-span clearing
+is **shape-derived** (a captured arg / typed set-step / `integration:`
+template consumes the `keyword … _` command span; a bare keyword get keeps
+its label).
+
+- **Added** `blankShapes` (anchored `{pattern, action, valueGroup?}`
+  routing) and `integration` (additive `{value}` output template) to the
+  blank spec + `blank.schema.json`. `SPEC_VERSION` → `0.3`; omit-default
+  stays `0.1-alpha`. Full ceremony in `spec/CHANGELOG.md` `[0.3.0-alpha]`.
+- **Removed** the replace/consume dials (`blankReplace`, `blankConsumeAll`,
+  `blankConsumeContext`) and the per-blank knobs `blankProximity`,
+  `blankAutoPopulate` (auto-fill is now always-on), `blankReadOnly`
+  (cycleability is inferred from `blankStep` / `stepValues` /
+  `blankSatellite`), `blankFormat` (inferred from `blankStep`), `blankTip`
+  (folded into `tip`), and `blankKeywordExpansions` (a blank emits its own
+  display form). All are gracefully ignored if still present in old files.
+- **Removed** the `blank-intent-mode` LLM invocation gate and
+  `BlankIntentClassifier` — deterministic line-scoped shape matching makes
+  the gate redundant. The shared keyword window is now unconditionally
+  line-scoped (`keyword-window.ts`). Fluid is always-FILL (the WIPE path
+  was retired); the prompt-improver consume-all flow is gone —
+  `improve prompt _` now routes through `TransformBlankSource`.
+- **Docs/spec/templates** cross-validated against the code paths and
+  updated (the `opencues new blank` scaffold, `BLANKS.md` template,
+  integration docs, `CONTRIBUTING.md`, `SPEC.md`, feature/architecture
+  docs). The deleted design docs `blank-intent.md`,
+  `blank-replace-modes.md`, `consume-all-blanks.md`,
+  `consume-context-blanks.md` are superseded by
+  `docs/architecture/blank-integration.md` + `blank-sources.md`.
+
 ### Fixed — fork install no longer refuses over an optional feature's missing transitive deps (`@opencues/runtime` 0.5.0 → 0.5.1, `@opencues/claude-code` 0.2.3 → 0.2.4)
 
 A fresh CC install (`opencues install claude-code`) hard-failed validation with `boot-smoke FAILED for require("…/user-blanks/registry.js")` whenever the fork's `node_modules` lacked the JS-user-blank sandbox's transitive deps (`acorn`, `acorn-walk`, `isolated-vm`) — which the fork-assembly copies dist but not deps, so it always lacks them. Two structural causes, both fixed:
@@ -97,7 +133,7 @@ New optional `blank-intent-mode: off | on` scalar. Today a registered blank keyw
 - **v1 is enforcing + keyword-required (Tier B) for every gated blank** (volume/brightness/weather/stocks/crypto/dictionary/countries/hackernews). The LLM may only REFINE an invocation the user signalled by typing the keyword — a verdict naming a different/unknown tool is rejected (`validateVerdict`), so it can never summon a fetch/exec the user didn't name. Preserves the no-LLM-output→side-effect invariant from `ambient-context.md`/`fluid-config.md`.
 - **Graceful degradation**: no key / LLM error / timeout → fall back to today's proximity gate. The gate is a strict upgrade, never a hard dependency; local blanks keep working offline.
 - **Catalog injection surface closed**: the per-blank tool catalog is generated from frontmatter using only runtime-owned bounded fields (sanitized `name` + `blankKeywords` + a fixed get/set/step action enum) — NO author free-text reaches the model (bench-confirmed sufficient in `catalog-trust.ts`).
-- **Implementation**: `BlankIntentClassifier` (`packages/opencues-core/src/sources/blank-intent-source.ts`) — the gate `BlankFill.maybeRunScripts` consults before dispatch; wired in `boot-common.ts` (`buildBlankIntentClassifier`, resolves the blanks bucket). Off by default → master behaviour byte-identical. Prod bench `tests/benchmarks/blank-intent/prod.ts` drives the REAL source: **22/22 (100%) recall+precision+safety on cerebras, groq, gemini**. 27 new unit/scenario tests (classifier parse/validate/catalog/degrade + BlankFill cede/invoke/degrade/staleness). Feature lives on `feat/blank-intent` for live testing; not merged to master. Design: `docs/architecture/blank-intent.md`.
+- **Implementation**: `BlankIntentClassifier` (`packages/opencues-core/src/sources/blank-intent-source.ts`) — the gate `BlankFill.maybeRunScripts` consults before dispatch; wired in `boot-common.ts` (`buildBlankIntentClassifier`, resolves the blanks bucket). Off by default → master behaviour byte-identical. Prod bench `tests/benchmarks/blank-intent/prod.ts` drives the REAL source: **22/22 (100%) recall+precision+safety on cerebras, groq, gemini**. 27 new unit/scenario tests (classifier parse/validate/catalog/degrade + BlankFill cede/invoke/degrade/staleness). Feature lives on `feat/blank-intent` for live testing; not merged to master. Design doc `docs/architecture/blank-intent.md` (removed June 2026 when the gate was retired — see the Unreleased "blank API slim-down" entry).
 
 ### Changed — fused output drops the debug-only `TARGET` echo (core 0.4.3 / chrome 0.2.34)
 

@@ -40,9 +40,13 @@ version: 1
 # four shapes:
 #
 # 1. Typed blank with script
-#    Fields: blankKeywords, blankScript, blankAutoPopulate, blankFormat,
-#            blankSuffix, blankStep, blankReadOnly, blankProximity,
-#            blankTip, blankDismissible
+#    Fields: blankKeywords, blankScript, blankSuffix, blankStep, tip,
+#            blankDismissible
+#    Optional: blankShapes (anchored line grammar — keywords desugar into
+#            it), integration (additive `{value}` output template)
+#    Auto-populate is always on; numeric stepping + precision are inferred
+#    from blankStep; read-only is inferred (cycleable iff blankStep is set);
+#    routing is line-scoped (keyword leads the line containing `_`).
 #    Example: defaults/blanks/volume/BLANK.md
 #
 # 2. List blank (no script — fixed cycle list)
@@ -56,8 +60,9 @@ version: 1
 #
 # 4. Runtime-class blank (LLM/HTTP-backed — TS class, no script)
 #    Implementation: packages/opencues-runtime/src/blanks/<name>.ts
-#    BLANK.md just declares blankKeywords + blankReadOnly + blankFormat
-#    Examples: defaults/blanks/{stocks,weather,hackernews,prompt}/BLANK.md
+#    BLANK.md just declares blankKeywords (read-only is inferred — a
+#    fetch-only blank with no blankStep doesn't cycle)
+#    Examples: defaults/blanks/{stocks,weather,hackernews}/BLANK.md
 #
 # ─────────────────────────────────────────────────────────────────────
 # EXAMPLE: folder-based blank with a colocated script
@@ -80,8 +85,6 @@ version: 1
 #   speak: true
 #   blankKeywords: volume, vol
 #   blankScript: ./volume-blank.sh
-#   blankAutoPopulate: true
-#   blankFormat: integer
 #   blankSuffix: %
 #   blankStep: 5
 #   ---

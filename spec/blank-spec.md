@@ -270,7 +270,7 @@ runs for those profiles.
 
 `blankScript:` is genuinely useful. Hardware control (volume, brightness), OS state (clipboard, notifications), filesystem operations — these need a shell. Forbidding scripts altogether would push them out into ad-hoc user runtime classes (`impl:`) that compile into the runtime binary, which is a worse failure mode (now you need to fork the runtime to add a script). The carve-out keeps scripts available for user-authored use and shipped defaults; it just doesn't open the registry door for them.
 
-The same trust-model logic applies to auditors, where the standard takes a stronger position (no registry distribution at all in v1.0). See [`spec/auditor-spec.md` § Trust model](./auditor-spec.md) and [`openstandard-notes.md` § Distribution asymmetry](../openstandard-notes.md).
+The same trust-model logic applies to auditors, where the standard takes a stronger position (no registry distribution at all in v1.0). See [`spec/auditor-spec.md` § Trust model](./auditor-spec.md).
 
 ---
 
