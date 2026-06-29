@@ -122,11 +122,16 @@ With blankKeywords: volume, sound, audio
   the _ is loud         → no match (no keyword, _ not at the end)
 ```
 
-Multi-word phrases work too. From `damon.md`:
+Multi-word keywords work too — a keyword like `spanish weather` desugars to
+a shape whose words are joined with `\s+`, so it must lead the line as a unit:
 ```
-spanish weather 15°C is warmer than london weather _
+With blankKeywords: spanish weather
+  spanish weather _          → matches (the phrase leads, _ at end)
+  spanish weather oslo _     → matches (oslo captured as the arg)
+  the spanish weather is _   → no match (line leads with "the")
 ```
-Matches the *second* "weather" (the one adjacent to `_`).
+(Under the older proximity model a keyword could match mid-line near `_`;
+line-scoped routing replaced that — the command must lead its line.)
 
 ## Ownership: the most important contract
 

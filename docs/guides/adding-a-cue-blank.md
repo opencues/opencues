@@ -4,7 +4,7 @@ last_updated: 2026-04-29
 
 # Adding a Cue-Blank
 
-A **cue-blank** is a blank (`_`) bound to a keyword via `blankKeywords`. The user types a keyword adjacent to `_` (e.g., `volume _`), the underscore auto-populates with a current value, and Up/Down cycling changes the actual external state. Everything that touches the world is `_`-gated — there is no word-cycling on plain text without `_`.
+A **cue-blank** is a blank (`_`) bound to a keyword via `blankKeywords`. The user types a command whose keyword **leads the line** ending in `_` (e.g., `volume _`, `weather paris _`), the underscore auto-populates with a current value, and Up/Down cycling changes the actual external state. Everything that touches the world is `_`-gated — there is no word-cycling on plain text without `_`.
 
 Cue-blanks ship as either:
 - A folder under `defaults/blanks/<name>/` with a colocated shell script (OS-level work like volume, brightness)
