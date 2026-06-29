@@ -21,6 +21,7 @@ each LLM-driven feature.
 | **openai-subscription** *(subscription)* | `codex login` | `gpt-5.4-mini` | OpenAI's Responses API via your ChatGPT plan |
 | **openrouter** | `OPENROUTER_API_KEY` | `openai/gpt-oss-120b:free` | OpenAI-compat HTTP |
 | **claude-cli** *(subscription)* | `claude` login | `haiku` | Claude's subscription via local subprocess |
+| **ollama** *(local)* | none (optional `OLLAMA_API_KEY`) | `gemma4:e2b` | Native `/api/chat`, fully offline — see below |
 
 The two subscription providers (`openai-subscription` and `claude-cli`)
 use your existing AI plan — no per-token billing. Use them on
@@ -342,6 +343,70 @@ If a subscription provider fails (auth expired, rate-limited, binary
 missing, network blip), the call fails — there's no silent retry
 against an HTTP provider. Run `opencues doctor` to see which
 subscription providers are detected on PATH.
+
+## Local models via Ollama
+
+The `ollama` provider runs models **fully on your machine** — no API key,
+no per-token cost, and inference never leaves the device. That makes it
+the most private option, and the one provider OpenCues will route
+prose-bearing surfaces (word-cues, auditors, agent-rewrite) through
+without a second thought.
+
+### Setup
+
+```bash
+# 1. Install Ollama (https://ollama.com) and start the server.
+ollama serve &
+
+# 2. Pull a model. Gemma 4 E2B is the validated default — small GPU
+#    footprint (~1.4 GB VRAM via MatFormer), correct on OpenCues' tasks.
+ollama pull gemma4:e2b
+
+# 3. Point OpenCues at it.
+```
+
+```yaml
+# ~/.cues/OPENCUES.md — global (everything local)
+llm-provider: ollama
+llm-model: gemma4:e2b
+
+# …or local for the deliberate `_` surface only, cloud for keystroke cues:
+blanks-llm-provider: ollama
+blanks-llm-model: gemma4:e2b
+```
+
+The endpoint defaults to `http://localhost:11434/api/chat`. Override with
+`llm-endpoint:` (or a bucket/feature `-endpoint:`) for a remote Ollama or
+a reverse proxy; set `OLLAMA_API_KEY` if that proxy authenticates.
+
+### Why native `/api/chat`, not the OpenAI-compatible `/v1`
+
+Ollama exposes an OpenAI-compatible `/v1/chat/completions`, but it gives
+**no way to disable a thinking model's reasoning channel**. A thinking
+model (Gemma 4, Qwen3, …) then spends OpenCues' deliberately small token
+budget reasoning and returns empty output — every blank/cue silently
+dies. The `ollama` provider therefore talks to the **native `/api/chat`**
+endpoint with `think: false`, which is the whole reason it's a bespoke
+provider and not a `llm-endpoint:` override of `openai`. (This is why you
+**cannot** make a local thinking model work by pointing `openai` at
+`localhost:11434/v1` — use `llm-provider: ollama`.)
+
+### Performance & footguns
+
+- **Latency:** much slower than the cloud gpt-oss tier. On a laptop GPU
+  (RTX 2070, 8 GB) Gemma 4 E2B is ~2-3 s per transform warm, with a
+  one-time model-load tax (~10 s) on first use. Prompt-prefix caching
+  (Ollama's KV reuse) keeps repeat calls fast. **Not recommended for
+  keystroke-latency word-cues** — best on the `_` blank surface.
+- **Keep the model warm:** `OLLAMA_KEEP_ALIVE=-1 ollama serve` pins the
+  model in VRAM so you don't re-pay the load tax after 5 min idle.
+- **Cycling menu:** `ollama` is a valid value for every provider bucket
+  but is **hidden from the cycling menu** (`exposeInMenu: false`) — set it
+  by editing OPENCUES.md, so you never cycle onto a local server that
+  isn't running.
+- **No fallback peer:** a local-private request never falls out to a cloud
+  provider (that would break the privacy guarantee). If the Ollama server
+  is down, the call fails — start `ollama serve`.
 
 ## Adding a new provider
 

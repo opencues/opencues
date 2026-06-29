@@ -441,6 +441,7 @@ export const FEATURES: readonly FeatureSpec[] = [
       { id: 'openai',    description: 'OpenAI — gpt-5.4-mini default' },
       { id: 'openrouter', description: 'OpenRouter (multi-model router)', exposeInMenu: false },
       { id: 'claude-code-cli', description: 'claude-code-cli (subprocess)', exposeInMenu: false },
+      { id: 'ollama',     description: 'Ollama (local) — private, free, needs a running Ollama server', exposeInMenu: false },
     ],
   },
   {
@@ -457,6 +458,7 @@ export const FEATURES: readonly FeatureSpec[] = [
       { id: 'openai',    description: 'OpenAI — gpt-5.4-mini default' },
       { id: 'openrouter', description: 'OpenRouter (multi-model router)', exposeInMenu: false },
       { id: 'claude-code-cli', description: 'claude-code-cli (subprocess)', exposeInMenu: false },
+      { id: 'ollama',     description: 'Ollama (local) — private, free, needs a running Ollama server', exposeInMenu: false },
     ],
   },
   {
@@ -474,6 +476,7 @@ export const FEATURES: readonly FeatureSpec[] = [
       { id: 'openai',       description: 'OpenAI — gpt-5.4-mini default' },
       { id: 'openrouter',   description: 'OpenRouter (multi-model router)', exposeInMenu: false },
       { id: 'claude-code-cli', description: 'claude-code-cli (subprocess)', exposeInMenu: false },
+      { id: 'ollama',     description: 'Ollama (local) — private, free, needs a running Ollama server', exposeInMenu: false },
     ],
   },
 
