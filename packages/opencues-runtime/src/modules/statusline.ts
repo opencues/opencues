@@ -87,7 +87,7 @@ export class Statusline {
     private configLoader?: ConfigLoader,
     /**
      * Optional. When the highlight is on a span fill, the blank's
-     * blankTip wins over cueMap lookup (which would miss filled words
+     * tip wins over cueMap lookup (which would miss filled words
      * like "13.9°C" or "Reddit").
      */
     private spanFillState?: SpanFillState,
@@ -240,7 +240,7 @@ export class Statusline {
     }
 
     // Span fill takes priority. When the highlight is on
-    // any word inside an active span, render the blank's blankTip
+    // any word inside an active span, render the blank's tip
     // (e.g. "Daily affirmations", "Prompt improver") and treat the
     // span as a single cycleable unit (cueBlank=true so the shell
     // consumer prints just the tip instead of "(N/M) - tip").
@@ -255,7 +255,7 @@ export class Statusline {
         highlightedWord: cleanHighlighted,
         currentAltIndex: span.currentAltIndex,
         alts: span.alternatives.map(clean),
-        cueTip: tipsHidden ? null : span.blankTip ?? null,
+        cueTip: tipsHidden ? null : span.tip ?? null,
         altCueTips: null,
         cueBlank: true,
         wordCount: words.filter(w => clean(w.word).length > 0).length,

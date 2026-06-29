@@ -4,7 +4,7 @@ type: blank
 blankKeywords: is claude down, claude status, claude api status
 blankAutoPopulate: true
 blankFormat: string
-blankTip: Claude / Anthropic service status
+tip: Claude / Anthropic service status
 blankDismissible: true
 # Auto: bare "is claude down _" / "claude status _" → wipe → just the
 # Yes/No + reason ("No — all systems operational"). Copula phrasings

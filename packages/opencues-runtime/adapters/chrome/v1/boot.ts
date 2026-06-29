@@ -292,14 +292,9 @@ export function boot(host: HostInfo): BootResult {
   // Universal state + ConfigLoader + Navigation/DimRender/Cycling/BlankFill
   // all live in boot-common.ts so the chrome and opencode bands can't
   // drift on subscription order or constructor args.
-  // Live mutable apiKeys bag, built BEFORE buildSharedRuntime so the
-  // BlankIntent gate (constructed inside it) receives a `getApiKeys` thunk.
-  // `updateApiKeys` mutates this in place, so the gate reads current keys
-  // even though chrome's keys arrive async (host push) after boot. Without
-  // passing this, `blankIntentGate` is undefined and the ENTIRE gate path
-  // (blank-intent typed-SET, weather/stocks classification, …) silently
-  // never fires in chrome — the bug that made `volume 40 _` a plain GET in
-  // the browser while CC/OC worked. OC's band does the same (getApiKeys: () => apiKeys).
+  // Live mutable apiKeys bag. `updateApiKeys` mutates this in place so the
+  // resolver reads current keys even though chrome's keys arrive async (host
+  // push) after boot. OC's band does the same (getApiKeys: () => apiKeys).
   const apiKeys: Record<string, string | undefined> = { ...(host.llmApiKeys ?? {}) };
   if (host.llmApiKey && !apiKeys.GROQ_API_KEY) apiKeys.GROQ_API_KEY = host.llmApiKey;
 
@@ -308,12 +303,6 @@ export function boot(host: HostInfo): BootResult {
     configSearchPaths: ['/chrome-storage/.cues'],
     settingsFile: '/chrome-storage/.cues/OPENCUES.md',
     getApiKeys: () => apiKeys,
-    // The BlankIntent gate's classifier must use chrome's fetch-based HTTP
-    // adapter — NodeHttpAdapter (node:https) is stubbed in the browser bundle,
-    // so without this the gate builds but silently degrades to a plain GET
-    // (no blank-intent typed-SET / weather classification in chrome). Same
-    // adapter the Resolver uses below. See docs/architecture/chrome-runtime-compat.md.
-    blankIntentHttpAdapter: host.httpAdapter,
   });
   configLoaderRef = shared.configLoader;
 

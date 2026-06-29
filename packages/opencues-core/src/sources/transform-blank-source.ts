@@ -404,9 +404,6 @@ export interface TransformBlankSourceConfig {
    * a keyword-bound BlankSource would claim it (mirrors fluid-blank
    * cede logic). */
   blanks?: Record<string, BlankConfig>;
-  /** Live getter: true when the BlankIntent gate is active → shared
-   *  line-scoped cede window instead of per-blank proximity. Default false. */
-  lineScoped?: () => boolean;
   /**
    * Optional logger — called at every pipeline stage so a host can
    * surface what the fused pipeline is doing. Wire to the runtime's
@@ -495,7 +492,6 @@ export class TransformBlankSource implements CueSource {
   private temperatureOverride: number | undefined;
   private maxThinking: boolean;
   private blanks: Record<string, BlankConfig>;
-  private lineScoped: () => boolean;
   private log: (msg: string) => void;
   private emit: (event: TransformBlankEvent) => void;
   private formatErrorAsSubstitute: ((reason: FluidBlankErrorReason, err?: Error) => string) | undefined;
@@ -511,7 +507,6 @@ export class TransformBlankSource implements CueSource {
     this.maxThinking = config.maxThinking ?? true;
     this.priority = config.priority ?? 93;
     this.blanks = config.blanks ?? {};
-    this.lineScoped = config.lineScoped ?? (() => false);
     this.log = config.log ?? (() => { /* default: silent */ });
     this.emit = config.onEvent ?? (() => { /* default: silent */ });
     this.formatErrorAsSubstitute = config.formatErrorAsSubstitute;
@@ -524,14 +519,13 @@ export class TransformBlankSource implements CueSource {
 
     // TYPE-BASED CEDE (shaped blanks): cede iff a declared SHAPE claims the `_`.
     if (matchBlankShape(context.text, this.blanks)) return false;
-    // LEGACY CEDE (non-shaped blanks only): keyword+`blankProximity` until they
-    // migrate to shapes. Shaped blanks are governed solely by the shape above.
-    const scoped = this.lineScoped();
-    const lineOf = scoped ? lineOfWords(context.text) : undefined;
+    // LEGACY CEDE (non-shaped blanks only): keyword on the same line as `_`
+    // until they migrate to shapes. Shaped blanks are governed solely by the
+    // shape above.
+    const lineOf = lineOfWords(context.text);
     for (const blk of Object.values(this.blanks)) {
       if (blk.blankShapes?.length) continue;
       if (!blk.blankKeywords?.length) continue;
-      const proximity = blk.blankProximity ?? 0;
       for (const phrase of blk.blankKeywords) {
         const parts = phrase.toLowerCase().split(/\s+/);
         for (let i = 0; i <= lower.length - parts.length; i++) {
@@ -539,7 +533,7 @@ export class TransformBlankSource implements CueSource {
           for (let j = 0; j < parts.length; j++) { if (lower[i + j] !== parts[j]) { ok = false; break; } }
           if (!ok) continue;
           const endIdx = i + parts.length - 1;
-          if (keywordInWindow(endIdx, blankIndex, proximity, { lineScoped: scoped, lineOf })) return false;
+          if (keywordInWindow(endIdx, blankIndex, { lineOf })) return false;
         }
       }
     }

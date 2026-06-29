@@ -34,7 +34,6 @@ const SETTINGS_MAP_ONLY: ReadonlySet<string> = new Set([
   'wordCuesMode',       // consumed in resolver.ts:enableWordCues
   'transformBlankMode', // consumed by transform-blank pipeline gate
   'fluidConfigMode',    // consumed in resolver.ts:enableConfigIntent
-  'blankIntentMode',    // consumed in boot-common.ts (BlankIntent gate wiring)
   'sentenceCuesMode',   // consumed in resolver.ts:enableSentenceCues
   'maxThinking',        // consumed in resolver.ts (buildSources maxThinking)
                         // + boot-common buildAgentLLMResolver; a plain

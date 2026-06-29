@@ -45,7 +45,7 @@ export interface SpanFillEntry {
    * when the highlight lands on the span — bypasses cueMap lookup which
    * would miss filled words like "13.9°C" or "Reddit".
    */
-  readonly blankTip?: string;
+  readonly tip?: string;
   /**
    * From `blankClearOnEdit` frontmatter. When true, an edit that
    * touches the substituted region (keyword + answer) splices the

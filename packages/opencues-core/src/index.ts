@@ -36,12 +36,8 @@ export {
 
 export {
   FluidBlankSource,
-  determineReplaceMode,
-  resolveReplaceMode,
   type FluidBlankSourceConfig,
   type FluidBlankEvent,
-  type EffectiveReplaceMode,
-  type BlankReplaceFlags,
 } from './sources/fluid-blank-source';
 
 export {
@@ -71,20 +67,6 @@ export {
   LINE_SCOPE_FALLBACK_PROXIMITY,
   type KeywordWindowOptions,
 } from './keyword-window';
-
-export {
-  BlankIntentClassifier,
-  buildCatalog,
-  buildSystemPrompt,
-  parseBlankIntentOutput,
-  validateVerdict,
-  isGatedBlank,
-  type BlankIntentClassifierConfig,
-  type BlankIntentEvent,
-  type BlankIntentVerdict,
-  type BlankCatalog,
-  type CatalogEntry,
-} from './sources/blank-intent-source';
 
 export {
   SentenceCueSource,

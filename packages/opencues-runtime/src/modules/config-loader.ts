@@ -739,7 +739,7 @@ export class ConfigLoader {
   /**
    * Case-insensitive lookup. Falls back to blanksByWord when the word
    * isn't a tip-having entry but IS a blank or blankKeyword — synthesises
-   * a LocalCueLookupResult from the blank's `tip` / `blankTip` so the
+   * a LocalCueLookupResult from the blank's `tip` so the
    * statusline shows e.g. "system volume" when the user highlights
    * `volume`. The blank side wasn't in cueMap because BLANKS.md and
    * folder CUE.md / BLANK.md don't go through the tips JSON path.
@@ -752,12 +752,9 @@ export class ConfigLoader {
     if (!ent) return null;
     const c = ent.blank as unknown as {
       tip?: string;
-      blankTip?: string;
       speak?: boolean;
     };
-    const tipText = (typeof c.tip === 'string' && c.tip)
-      || (typeof c.blankTip === 'string' && c.blankTip)
-      || '';
+    const tipText = (typeof c.tip === 'string' && c.tip) || '';
     if (!tipText) return null;
     return {
       word: lc,
@@ -830,8 +827,8 @@ export class ConfigLoader {
     // `process` does not exist in a browser content-script (chrome). Guard
     // with typeof so this whole reload path doesn't throw `process is not
     // defined` — that ReferenceError was killing config hot-reload (and the
-    // keystroke handler) on chrome, so pushed scalars like blank-intent-mode
-    // never propagated and the gate never engaged.
+    // keystroke handler) on chrome, so pushed scalars like voice-mode
+    // never propagated.
     const bridgeNoDebounce =
       typeof process !== 'undefined'
       && process.env?.OPENCUES_BRIDGE === '1'

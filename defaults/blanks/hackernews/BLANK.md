@@ -5,7 +5,7 @@ blankKeywords: hn, hackernews
 blankKeywordExpansions.hn: HackerNews
 blankAutoPopulate: true
 blankFormat: string
-blankTip: Hacker News
+tip: Hacker News
 blankReadOnly: true
 blankDismissible: true
 blankProximity: 3

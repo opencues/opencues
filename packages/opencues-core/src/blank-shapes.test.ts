@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert';
 import { matchBlankShape } from './blank-shapes';
-import type { BlankConfig } from './cues-md';
+import { synthesizeKeywordShapes, type BlankConfig } from './cues-md';
 
 const VOLUME_SHAPES: BlankConfig['blankShapes'] = [
   { pattern: '^volume\\s*_$', action: 'get' },
@@ -60,5 +60,52 @@ describe('matchBlankShape', () => {
       ['volume', { blankShapes: VOLUME_SHAPES }],
     ]);
     assert.deepStrictEqual(matchBlankShape('volume 50 _', bad), { blankName: 'volume', action: 'set', value: '50' });
+  });
+
+  // LINE-SCOPED: a shape matches the LINE containing `_`, so a command on
+  // the last line claims even with prior content above — but prose that
+  // merely leads the line never matches (anchored grammar).
+  it('matches a command on the last line with prior content above', () => {
+    assert.deepStrictEqual(
+      matchBlankShape('some earlier notes here.\nvolume 30 _', b),
+      { blankName: 'volume', action: 'set', value: '30' },
+    );
+  });
+
+  it('does NOT match when the keyword is on a PREVIOUS line', () => {
+    assert.strictEqual(matchBlankShape('volume notes\njust a plain line _', b), null);
+  });
+
+  it('de-greedy: prose that only mentions the keyword mid-line never matches', () => {
+    assert.strictEqual(matchBlankShape('the volume was lovely today _', b), null);
+  });
+});
+
+describe('synthesizeKeywordShapes (keyword → shape desugaring)', () => {
+  it('a non-settable keyword yields get-with-arg + bare-get, routed by matchBlankShape', () => {
+    const shapes = synthesizeKeywordShapes(['weather', 'forecast'], false);
+    const b = new Map([['weather', { blankShapes: shapes }]]);
+    assert.deepStrictEqual(matchBlankShape('weather oslo _', b), { blankName: 'weather', action: 'get', value: 'oslo' });
+    assert.deepStrictEqual(matchBlankShape('forecast _', b), { blankName: 'weather', action: 'get', value: undefined });
+    // Synonym alternation works.
+    assert.strictEqual(matchBlankShape('forecast tokyo _', b)?.value, 'tokyo');
+  });
+
+  it('a settable keyword (blankStep) also yields set + step shapes', () => {
+    const shapes = synthesizeKeywordShapes(['volume'], true);
+    const b = new Map([['volume', { blankShapes: shapes }]]);
+    assert.deepStrictEqual(matchBlankShape('volume 30 _', b), { blankName: 'volume', action: 'set', value: '30' });
+    assert.deepStrictEqual(matchBlankShape('volume up _', b), { blankName: 'volume', action: 'step', value: 'up' });
+    assert.deepStrictEqual(matchBlankShape('volume _', b), { blankName: 'volume', action: 'get', value: undefined });
+  });
+
+  it('multi-word keywords join their words with flexible whitespace', () => {
+    const shapes = synthesizeKeywordShapes(['what is the word for'], false);
+    const b = new Map([['dict', { blankShapes: shapes }]]);
+    assert.strictEqual(matchBlankShape('what is the word for serendipity _', b)?.value, 'serendipity');
+  });
+
+  it('returns [] for an empty keyword list', () => {
+    assert.deepStrictEqual(synthesizeKeywordShapes([], false), []);
   });
 });

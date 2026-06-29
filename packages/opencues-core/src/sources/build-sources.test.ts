@@ -294,17 +294,12 @@ describe('isBlankConfigCycleable — structural inference', () => {
     assert.strictEqual(isBlankConfigCycleable(stub({ blankStep: 6 })), true);
   });
 
-  it('blankScript present (no readOnly override) → cycleable (script default-deny)', () => {
-    assert.strictEqual(isBlankConfigCycleable(stub({ blankScript: './x.sh' })), true);
+  it('blankScript alone → NOT cycleable (read-only by default; cyclers self-declare)', () => {
+    assert.strictEqual(isBlankConfigCycleable(stub({ blankScript: './x.sh' })), false);
   });
 
-  it('blankReadOnly: true overrides all signals → not cycleable', () => {
-    assert.strictEqual(isBlankConfigCycleable(stub({
-      blankReadOnly: true,
-      blankScript: './x.sh',
-      blankSatellite: true,
-      stepValues: ['a', 'b'],
-    })), false);
+  it('blankScript + a cycle declaration (blankStep) → cycleable', () => {
+    assert.strictEqual(isBlankConfigCycleable(stub({ blankScript: './x.sh', blankStep: 6 })), true);
   });
 
   it('impl-only blank (compute: weather/stocks/answer) → not cycleable', () => {

@@ -4,7 +4,7 @@ type: blank
 blankKeywords: bitcoin, btc, ethereum, eth, solana, sol, cardano, ada, ripple, xrp, dogecoin, doge, polygon, matic, polkadot, dot, avalanche, avax, chainlink, link, uniswap, uni, litecoin, ltc, binance, bnb, tron, trx, shiba, shib
 blankAutoPopulate: true
 blankFormat: string
-blankTip: Crypto price (USD)
+tip: Crypto price (USD)
 blankReadOnly: true
 blankProximity: 1
 blankKeywordExpansions.btc: Bitcoin

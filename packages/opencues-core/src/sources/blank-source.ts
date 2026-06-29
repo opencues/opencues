@@ -14,9 +14,6 @@ import { keywordInWindow, lineOfWords } from '../keyword-window';
 export interface BlankSourceConfig {
   /** All blanks that have blankKeywords defined */
   blanks: Record<string, BlankConfig>;
-  /** Live getter: true when the BlankIntent gate is active → shared
-   *  line-scoped claim window instead of per-blank proximity. Default false. */
-  lineScoped?: () => boolean;
   /** I/O adapter: calls blankScript get to read the current live value.
    * May return synchronously or a Promise — async implementations avoid blocking the event loop. */
   readState: (blankName: string, matchedKeyword?: string, contextWords?: string[]) => string | null | Promise<string | null>;
@@ -30,26 +27,23 @@ export interface BlankSourceConfig {
  * cycleable blanks at registration so they don't silently fill the
  * first value and ignore the rest.
  *
- * Signals (in priority order):
- *   - blankReadOnly: true             → false (explicit override)
- *   - blankSatellite: true            → true  (selector/satellite shape)
+ * A blank is cycleable IFF it declares HOW to cycle. Cyclers self-declare:
+ *   - blankSatellite: true            → true  (selector/satellite toggle)
  *   - stepValues.length > 1           → true  (list cycling)
  *   - blankStep present               → true  (numeric step cycling)
- *   - blankScript:                    → true  (script-backed default;
- *                                              opt out via blankReadOnly)
- *   - impl: <class>                   → false (impl blanks single-shot
- *                                              by default; satellite-shaped
- *                                              impl blanks like
- *                                              OpenCuesSettings set
- *                                              blankSatellite above)
- *   - everything else (e.g. compute)  → false
+ *   - everything else                 → false (fetch blanks, plain scripts,
+ *                                              impl blanks — read-only by
+ *                                              default)
+ *
+ * Note: a fetch blank whose script returns MULTIPLE lines still rotates its
+ * results via the SpanFillState alternatives path (`hn _` → Up/Down through
+ * the titles) — that's independent of this inference, which only governs the
+ * get/set/step cycle affordance + the no-cycling-host prune.
  */
 export function isBlankConfigCycleable(blk: BlankConfig): boolean {
-  if (blk.blankReadOnly) return false;
   if (blk.blankSatellite) return true;
   if (blk.stepValues && blk.stepValues.length > 1) return true;
   if (blk.blankStep !== undefined) return true;
-  if (blk.blankScript) return true;
   return false;
 }
 
@@ -65,12 +59,10 @@ export class BlankSource implements CueSource {
   readonly isCycleable = false;
 
   private blanks: Record<string, BlankConfig>;
-  private lineScoped: () => boolean;
   private readState: (blankName: string, matchedKeyword?: string, contextWords?: string[]) => string | null | Promise<string | null>;
 
   constructor(config: BlankSourceConfig) {
     this.blanks = config.blanks;
-    this.lineScoped = config.lineScoped ?? (() => false);
     this.readState = config.readState;
   }
 
@@ -109,27 +101,24 @@ export class BlankSource implements CueSource {
       return -1;
     };
 
-    // Window: per-blank `blankProximity` normally; the shared line-scoped
-    // window when the BlankIntent gate is active. Keeps this claim in
-    // lockstep with the FluidBlank/Transform/ConfigIntent cede checks +
-    // BlankFill (see keyword-window.ts). `gap` still drives the
+    // Window: line-scoped — a keyword claims when it's on the same line as
+    // the `_`. Shared with the FluidBlank/Transform/ConfigIntent cede checks
+    // + BlankFill (see keyword-window.ts). `gap` still drives the
     // closest-match tie-break (bestGap).
-    const scoped = this.lineScoped();
-    const lineOf = scoped ? lineOfWords(context.text) : undefined;
+    const lineOf = lineOfWords(context.text);
     let bestGap = Infinity;
     for (const [, blk] of Object.entries(this.blanks)) {
       if (!blk.blankKeywords?.length) continue;
-      const proximity = blk.blankProximity ?? 0;
 
       for (const kw of blk.blankKeywords) {
         const kwParts = kw.split(/\s+/);
         const kwLen = kwParts.length;
         let idx = findPhrase(kw, 0);
         while (idx !== -1) {
-          // For multi-word keywords, proximity is measured from the last word of the phrase to the blank
+          // For multi-word keywords, the window is measured from the last word of the phrase to the blank
           const endIdx = idx + kwLen - 1;
           const gap = Math.abs(endIdx - blankIndex) - 1;
-          if (keywordInWindow(endIdx, blankIndex, proximity, { lineScoped: scoped, lineOf }) && gap < bestGap) {
+          if (keywordInWindow(endIdx, blankIndex, { lineOf }) && gap < bestGap) {
             matched = blk;
             matchedKeyword = kw;
             matchedKeywordIndex = idx;
@@ -144,18 +133,18 @@ export class BlankSource implements CueSource {
       return { results };
     }
 
-    // Collect keyword word positions within proximity of the blank (for blankClearKeywords)
-    // Multi-word keywords expand to all their constituent word indices
+    // Collect keyword word positions on the same line as the blank (for
+    // blankClearKeywords). Multi-word keywords expand to all their
+    // constituent word indices.
     let matchedKeywordIndices: number[] = [];
     if (matched.blankKeywords) {
-      const clearProximity = matched.blankProximity ?? 0;
       for (const kw of matched.blankKeywords) {
         const kwParts = kw.split(/\s+/);
         const kwLen = kwParts.length;
         let idx = findPhrase(kw, 0);
         while (idx !== -1) {
           const endIdx = idx + kwLen - 1;
-          if (endIdx !== blankIndex && Math.abs(endIdx - blankIndex) - 1 <= clearProximity) {
+          if (endIdx !== blankIndex && keywordInWindow(endIdx, blankIndex, { lineOf })) {
             for (let k = 0; k < kwLen; k++) matchedKeywordIndices.push(idx + k);
           }
           idx = findPhrase(kw, idx + 1);
@@ -163,42 +152,6 @@ export class BlankSource implements CueSource {
       }
       matchedKeywordIndices = [...new Set(matchedKeywordIndices)].sort((a, b) => b - a);
     }
-
-    // blankConsumeContext: expand keyword indices to include words BETWEEN keyword and blank
-    // "I think the word for love in Japanese _ is beautiful" → clears "word for love in Japanese"
-    // Surrounding text ("I think the", "is beautiful") is preserved
-    if (matched.blankConsumeContext) {
-      const kwStart = matchedKeywordIndex;
-      const kwEnd = kwStart + (matchedKeyword?.split(/\s+/).length ?? 1);
-      const rangeStart = Math.min(kwStart, blankIndex);
-      const rangeEnd = Math.max(kwEnd, blankIndex);
-      for (let i = rangeStart; i < rangeEnd; i++) {
-        if (i !== blankIndex && !matchedKeywordIndices.includes(i)) {
-          matchedKeywordIndices.push(i);
-        }
-      }
-      matchedKeywordIndices = [...new Set(matchedKeywordIndices)].sort((a, b) => b - a);
-    }
-
-    // blankConsumeAll: expand keyword indices to include ALL non-blank words
-    // This causes the entire input to be cleared when the blank auto-populates
-    if (matched.blankConsumeAll) {
-      for (let i = 0; i < context.words.length; i++) {
-        if (i !== blankIndex && !matchedKeywordIndices.includes(i)) {
-          matchedKeywordIndices.push(i);
-        }
-      }
-      matchedKeywordIndices = [...new Set(matchedKeywordIndices)].sort((a, b) => b - a);
-    }
-
-    // Keyword expansion: if config maps this keyword to a display name, pass it through
-    // Computed early so all paths (list, satellite, dynamic list, generic) can use it
-    const expansion = matchedKeyword
-      ? matched.blankKeywordExpansions?.[matchedKeyword.toLowerCase()]
-      : undefined;
-    const keywordExpansion = expansion && matchedKeywordIndex >= 0
-      ? { keyword: context.words[matchedKeywordIndex], expansion, wordIndex: matchedKeywordIndex }
-      : undefined;
 
     // List-based cycling: stepValues provides ordered alternatives directly
     if (matched.stepValues?.length) {
@@ -209,14 +162,13 @@ export class BlankSource implements CueSource {
         alternatives: alts,
         source: 'blank',
         priority: this.priority,
-        cueTip: matched.blankTip ?? matched.tip,
+        cueTip: matched.tip,
         metadata: {
           blankName: matched.name,
           listBlank: true,
           blankClearKeywords: matched.blankClearKeywords || false,
           blankClearOnEdit: matched.blankClearOnEdit || false,
           blankKeywordIndices: matchedKeywordIndices,
-          ...(keywordExpansion ? { blankKeywordExpansion: keywordExpansion } : {}),
         },
       });
       return { results };
@@ -242,7 +194,7 @@ export class BlankSource implements CueSource {
         alternatives: [selectorText],
         source: 'blank',
         priority: this.priority,
-        cueTip: matched.blankTip ?? matched.tip,
+        cueTip: matched.tip,
         metadata: {
           blankName: matched.name,
           blankScript: matched.blankScript,
@@ -252,7 +204,6 @@ export class BlankSource implements CueSource {
           blankClearKeywords: matched.blankClearKeywords || false,
           blankClearOnEdit: matched.blankClearOnEdit || false,
           blankKeywordIndices: matchedKeywordIndices,
-          ...(keywordExpansion ? { blankKeywordExpansion: keywordExpansion } : {}),
         },
       });
       return { results };
@@ -269,26 +220,15 @@ export class BlankSource implements CueSource {
           alternatives: alts,
           source: 'blank',
           priority: this.priority,
-          cueTip: matched.blankTip ?? matched.tip,
+          cueTip: matched.tip,
           metadata: {
             blankName: matched.name,
             listBlank: true,
             blankClearKeywords: matched.blankClearKeywords || false,
             blankClearOnEdit: matched.blankClearOnEdit || false,
             blankKeywordIndices: matchedKeywordIndices,
-            ...(keywordExpansion ? { blankKeywordExpansion: keywordExpansion } : {}),
-          },
+            },
         });
-        return { results };
-      }
-    }
-
-    const format = matched.blankFormat;
-
-    // Validate based on format — only reject non-numeric values when format is explicitly numeric
-    if (format && format !== 'string') {
-      const numVal = Number(rawValue);
-      if (isNaN(numVal)) {
         return { results };
       }
     }
@@ -296,10 +236,9 @@ export class BlankSource implements CueSource {
     // Determine step size: only when explicitly configured
     const step = matched.blankStep;
 
+    // Auto-fill is the default — the blank's value lands on `_`.
     const displayValue = matched.blankSuffix ? rawValue + matched.blankSuffix : rawValue;
-    const baseAlts = matched.blankAutoPopulate
-      ? [displayValue]
-      : ['_'];
+    const baseAlts = [displayValue];
     const alternatives = matched.blankDismissible ? [...baseAlts, '_'] : baseAlts;
 
     results.push({
@@ -308,16 +247,13 @@ export class BlankSource implements CueSource {
       alternatives,
       source: 'blank',
       priority: this.priority,
-      cueTip: matched.blankTip ?? matched.tip,
+      cueTip: matched.tip,
       metadata: {
         blankName: matched.name,
         blankScript: matched.blankScript,
         ...(step != null ? { blankStep: step } : {}),
-        ...(format ? { blankFormat: format } : {}),
-        blankReadOnly: matched.blankReadOnly,
         blankSuffix: matched.blankSuffix,
         ...(matched.blankDismissible ? { listBlank: true, blankDismissible: true } : {}),
-        ...(keywordExpansion ? { blankKeywordExpansion: keywordExpansion } : {}),
         blankClearKeywords: matched.blankClearKeywords || false,
         blankClearOnEdit: matched.blankClearOnEdit || false,
         blankKeywordIndices: matchedKeywordIndices,

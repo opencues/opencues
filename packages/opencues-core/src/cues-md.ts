@@ -161,6 +161,45 @@ export interface BlankShape {
   valueGroup?: number;
 }
 
+/** Escape a literal string for safe inclusion in a regex. */
+function escapeForRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Desugar `blankKeywords` into `blankShapes`. Keywords are the FRIENDLY
+ * shorthand; shapes are the single routing mechanism. A blank that only
+ * declares keywords gets the standard command grammar synthesized:
+ *
+ *   - get with arg  `^(?:kw)\s+(.+?)\s*_$`   ("weather oslo _")
+ *   - get bare      `^(?:kw)\s*_$`           ("weather _")
+ *   - (settable, i.e. blankStep present) also:
+ *       set         `^(?:kw)\s+(\d+)\s*%?\s*_$`   ("volume 30 _")
+ *       step        `^(?:kw)\s+(up|down)\s*_$`    ("volume up _")
+ *
+ * Order matters — matchBlankShape returns the FIRST matching shape, so the
+ * specific numeric/step patterns precede the catch-all get-with-arg. Multi-
+ * word keywords ("what is the word for") join their words with `\s+`. A blank
+ * that needs grammar beyond this writes `blankShapes` explicitly (which wins —
+ * synthesis only fires when no shapes were authored).
+ */
+export function synthesizeKeywordShapes(keywords: readonly string[], settable: boolean): BlankShape[] {
+  const alts = keywords
+    .map(k => k.trim())
+    .filter(Boolean)
+    .map(k => k.split(/\s+/).map(escapeForRegex).join('\\s+'));
+  if (alts.length === 0) return [];
+  const kw = `(?:${alts.join('|')})`;
+  const shapes: BlankShape[] = [];
+  if (settable) {
+    shapes.push({ pattern: `^${kw}\\s+(\\d+)\\s*%?\\s*_$`, action: 'set', valueGroup: 1 });
+    shapes.push({ pattern: `^${kw}\\s+(up|down)\\s*_$`, action: 'step', valueGroup: 1 });
+  }
+  shapes.push({ pattern: `^${kw}\\s+(.+?)\\s*_$`, action: 'get', valueGroup: 1 });
+  shapes.push({ pattern: `^${kw}\\s*_$`, action: 'get' });
+  return shapes;
+}
+
 export interface BlankConfig {
   name: string;
   /** When false, the blank is parsed but skipped at registration time so it
@@ -173,24 +212,6 @@ export interface BlankConfig {
   blankKeywords?: string[];
   /** Increment/decrement step size when cycling a blank */
   blankStep?: number;
-  /** When true, auto-fill the blank with the current value on analysis */
-  blankAutoPopulate?: boolean;
-  /**
-   * BlankFill result-cache TTL in milliseconds. When > 0, the script's
-   * stdout from `<blankName> get <keyword> ...contextWords` is memoised
-   * for this window — a subsequent invocation with identical args
-   * within the window reuses the stored value instead of re-spawning.
-   * 0 disables the cache. Omitted → runtime default (currently 2000ms).
-   * Tune higher for slow-moving ambient sources (stocks 5000-15000ms,
-   * weather 60000ms); leave at default for action blanks (volume,
-   * brightness) so cycling stays responsive without masking real-world
-   * value drift.
-   */
-  blankCacheTtlMs?: number;
-  /** Value format: integer (default), float, or string */
-  blankFormat?: 'integer' | 'float' | 'string';
-  /** Tip shown when the auto-populated value is highlighted */
-  blankTip?: string;
   /** Script for blank get/set. */
   blankScript?: string;
   /**
@@ -297,47 +318,20 @@ export interface BlankConfig {
    *  default. Set to 'rw' if the script needs to write state files
    *  alongside itself. /tmp is always rw (fresh tmpfs). */
   sandboxFs?: 'ro' | 'rw';
-  /** Max words allowed between keyword and _ (0 = adjacent, undefined = no limit) */
-  blankProximity?: number;
-  /** If true, cycling (Up/Down) is disabled — display-only blank */
-  blankReadOnly?: boolean;
   /** If true, `_` is appended as the last cycling option so the user can dismiss the value */
   blankDismissible?: boolean;
   /** Suffix appended to the displayed value (e.g. "%" shows "50%"). Stripped before arithmetic, re-appended for display. */
   blankSuffix?: string;
   /** Ordered list of values to cycle through on a blank */
   stepValues?: string[];
-  /** Map from keyword (lowercase) to display expansion applied at auto-populate time (e.g. { rddt: "Reddit" }) */
-  blankKeywordExpansions?: Record<string, string>;
   /** If true, blank auto-populates as two independent words: selector (word N) + satellite (word N+1) */
   blankSatellite?: boolean;
   /** Display separator between selector and satellite in the text (default: ' '). Script always outputs tab-delimited. */
   blankSatelliteSeparator?: string;
-  /** If true, keyword context words are removed from text when blank auto-populates */
+  /** If true, the blank's own keyword is removed from text when it fills (the gentle keyword-clear; never touches surrounding prose) */
   blankClearKeywords?: boolean;
   /** If true, pair cleanup (selector/satellite edit) removes the spawned words from text */
   blankClearOnEdit?: boolean;
-  /** If true, words between keyword and blank are added to blankKeywordIndices (clears keyword + context, preserves surrounding text) */
-  blankConsumeContext?: boolean;
-  /** If true, ALL non-blank word indices are added to blankKeywordIndices (clears entire input on auto-populate) */
-  blankConsumeAll?: boolean;
-  /**
-   * Unified replacement mode — when the blank fires, where does the
-   * answer text land?
-   *
-   *   'keep'     — only `_` becomes the answer. Keyword + context stays.
-   *   'wipe'     — keyword + context + `_` becomes the answer.
-   *   'wipe-all' — the entire input becomes the answer (consume-all).
-   *   'auto'     — apply the fluid heuristic: copula/equation/question
-   *                marker before `_` → keep ("X is _"); else → wipe.
-   *
-   * Default is 'auto'. Legacy fields (blankClearKeywords,
-   * blankConsumeContext, blankConsumeAll) still parse and map onto
-   * this field: clearKeywords|consumeContext → 'wipe', consumeAll →
-   * 'wipe-all'. If both new and legacy fields are set, the new field
-   * wins. See docs/architecture/blank-replace-modes.md.
-   */
-  blankReplace?: 'keep' | 'wipe' | 'wipe-all' | 'auto';
   /**
    * Deterministic invocation grammar (EXPERIMENT — type-based routing). Each
    * shape is an anchored regex over the buffer + the action it implies; a
@@ -348,25 +342,11 @@ export interface BlankConfig {
    * See docs/architecture/blank-shapes.md.
    */
   blankShapes?: BlankShape[];
-  /** LLM model identifier for script-based LLM calls (e.g. 'openai/gpt-oss-120b') */
-  model?: string;
-  /** Max output tokens for this blank's LLM calls (when the blank's
-   *  impl makes one). Per-blank override; falls back to source-class
-   *  default when absent. See SourceConfig.maxTokens for full semantics. */
-  maxTokens?: number;
-  /** Sampling temperature for this blank's LLM calls. Per-blank
-   *  override; falls back to source-class default. */
-  temperature?: number;
-  /** API endpoint URL for script-based LLM calls (default: Groq) */
-  apiUrl?: string;
-  /** Environment variable name holding the API key (default: GROQ_API_KEY) */
-  apiKeyEnv?: string;
-  /** Number of alternatives the script should return (default: 3) */
-  altCount?: number;
-  /** If true, include the original input as the last cycling alternative (default: true) */
-  includeOriginal?: boolean;
-  /** Named prompts parsed from ## sections in the CUE.md / BLANK.md body (e.g. { Extract: "...", Transform: "..." }) */
-  prompts?: Record<string, string>;
+  /** Additive integration template — how this blank's OUTPUT reads woven into
+   *  text. `{value}` is replaced by the resolved output; the rest is connective
+   *  "fluff". ADD-ONLY by construction (it only shapes the inserted value, never
+   *  deletes surrounding text). e.g. `integration: "volume is now {value}"`. */
+  integration?: string;
   /**
    * Explicit host allow-list. When set, narrows the default (all hosts) to
    * this set. Use the canonical host names: claude-code, opencode, chrome,
@@ -940,29 +920,16 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   speak?: boolean;
   blankKeywords?: string;
   blankStep?: number;
-  blankCacheTtlMs?: number;
-  blankAutoPopulate?: boolean;
-  blankFormat?: 'integer' | 'float' | 'string';
-  blankTip?: string;
   blankScript?: string;
-  blankProximity?: number;
-  blankReadOnly?: boolean;
   blankDismissible?: boolean;
   blankSuffix?: string;
   blankShapes?: BlankShape[];
+  integration?: string;
   stepValues?: string[];
-  blankKeywordExpansions?: Record<string, string>;
   blankSatellite?: boolean;
   blankSatelliteSeparator?: string;
   blankClearKeywords?: boolean;
   blankClearOnEdit?: boolean;
-  blankConsumeContext?: boolean;
-  blankConsumeAll?: boolean;
-  blankReplace?: 'keep' | 'wipe' | 'wipe-all' | 'auto';
-  apiUrl?: string;
-  apiKeyEnv?: string;
-  altCount?: number;
-  includeOriginal?: boolean;
   /** OS-level sandbox opt-in for scripted blanks. See BlankConfig.sandbox. */
   sandbox?: 'strict' | 'off';
   sandboxNet?: 'allow' | 'deny';
@@ -1064,42 +1031,16 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'speak': fm.speak = value === 'true'; break;
       case 'blankKeywords': fm.blankKeywords = value; break;
       case 'blankStep': fm.blankStep = parseInt(value, 10) || undefined; break;
-      case 'blankCacheTtlMs': {
-        const n = parseInt(value, 10);
-        if (Number.isFinite(n) && n >= 0) fm.blankCacheTtlMs = n;
-        break;
-      }
-      case 'blankAutoPopulate': fm.blankAutoPopulate = value === 'true'; break;
-      case 'blankFormat': fm.blankFormat = value as 'integer' | 'float' | 'string'; break;
-      case 'blankTip': fm.blankTip = value; break;
       case 'blankScript': fm.blankScript = value; break;
-      case 'blankProximity': fm.blankProximity = parseInt(value, 10); break;
-      case 'blankReadOnly': fm.blankReadOnly = value === 'true'; break;
       case 'blankDismissible': fm.blankDismissible = value === 'true'; break;
       case 'blankSuffix': fm.blankSuffix = value; break;
       case 'blankShapes': try { fm.blankShapes = JSON.parse(value); } catch { /* ignore malformed shapes */ } break;
+      case 'integration': fm.integration = value; break;
       case 'stepValues': try { fm.stepValues = JSON.parse(value); } catch { /* ignore */ } break;
-      case 'blankKeywordExpansions': try { fm.blankKeywordExpansions = JSON.parse(value); } catch { /* ignore */ } break;
       case 'blankSatellite': fm.blankSatellite = value === 'true'; break;
       case 'blankSatelliteSeparator': fm.blankSatelliteSeparator = value.replace(/^['"]|['"]$/g, ''); break;
       case 'blankClearKeywords': fm.blankClearKeywords = value === 'true'; break;
       case 'blankClearOnEdit': fm.blankClearOnEdit = value === 'true'; break;
-      case 'blankConsumeContext': fm.blankConsumeContext = value === 'true'; break;
-      case 'blankConsumeAll': fm.blankConsumeAll = value === 'true'; break;
-      case 'blankReplace': case 'blank-replace': {
-        // Accept only the four canonical modes. Anything else falls
-        // through to undefined → resolveReplaceMode picks the legacy
-        // alias OR 'auto' default.
-        const v = value.toLowerCase().trim();
-        if (v === 'keep' || v === 'wipe' || v === 'wipe-all' || v === 'auto') {
-          fm.blankReplace = v;
-        }
-        break;
-      }
-      case 'apiUrl': case 'apiurl': fm.apiUrl = value; break;
-      case 'apiKeyEnv': case 'apikeyenv': fm.apiKeyEnv = value; break;
-      case 'altCount': case 'altcount': fm.altCount = parseInt(value, 10) || 3; break;
-      case 'includeOriginal': case 'includeoriginal': fm.includeOriginal = value === 'true'; break;
       // Host-compat overrides. Accept both hyphenated (canonical YAML) and
       // camelCase forms. Try JSON-array first; fall back to comma-separated.
       case 'on-host': case 'onHost': fm.onHost = parseHostList(value); break;
@@ -1166,14 +1107,8 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
         break;
       }
       default:
-        // Dot-notation: blankKeywordExpansions.rddt: Reddit
-        if (key.startsWith('blankKeywordExpansions.')) {
-          const subkey = key.slice('blankKeywordExpansions.'.length).toLowerCase();
-          if (!fm.blankKeywordExpansions) fm.blankKeywordExpansions = {};
-          fm.blankKeywordExpansions[subkey] = value;
-        }
         // Dot-notation: secret-hosts.GROQ_API_KEY: [api.groq.com]
-        else if (key.startsWith('secret-hosts.') || key.startsWith('secretHosts.')) {
+        if (key.startsWith('secret-hosts.') || key.startsWith('secretHosts.')) {
           const prefix = key.startsWith('secret-hosts.') ? 'secret-hosts.' : 'secretHosts.';
           const secretName = key.slice(prefix.length);
           if (!fm.userBlankSecretBindings) fm.userBlankSecretBindings = {};
@@ -1242,31 +1177,21 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
         blank.blankKeywords = frontmatter.blankKeywords.split(',').map(k => k.trim().toLowerCase());
       }
       if (frontmatter.blankStep !== undefined) blank.blankStep = frontmatter.blankStep;
-      if (frontmatter.blankCacheTtlMs !== undefined) blank.blankCacheTtlMs = frontmatter.blankCacheTtlMs;
-      if (frontmatter.blankAutoPopulate !== undefined) blank.blankAutoPopulate = frontmatter.blankAutoPopulate;
-      if (frontmatter.blankFormat !== undefined) blank.blankFormat = frontmatter.blankFormat;
-      if (frontmatter.blankTip !== undefined) blank.blankTip = frontmatter.blankTip;
-      if (frontmatter.blankProximity !== undefined) blank.blankProximity = frontmatter.blankProximity;
-      if (frontmatter.blankReadOnly !== undefined) blank.blankReadOnly = frontmatter.blankReadOnly;
       if (frontmatter.blankDismissible !== undefined) blank.blankDismissible = frontmatter.blankDismissible;
       if (frontmatter.blankSuffix !== undefined) blank.blankSuffix = frontmatter.blankSuffix;
       if (frontmatter.blankShapes !== undefined) blank.blankShapes = frontmatter.blankShapes;
+      // Desugar keywords → shapes (the single routing mechanism). Explicit
+      // shapes win; synthesis only fills in when none were authored.
+      if (blank.blankShapes === undefined && blank.blankKeywords?.length) {
+        const synthesized = synthesizeKeywordShapes(blank.blankKeywords, blank.blankStep !== undefined);
+        if (synthesized.length > 0) blank.blankShapes = synthesized;
+      }
+      if (frontmatter.integration !== undefined) blank.integration = frontmatter.integration;
       if (frontmatter.stepValues !== undefined) blank.stepValues = frontmatter.stepValues;
-      if (frontmatter.blankKeywordExpansions !== undefined) blank.blankKeywordExpansions = frontmatter.blankKeywordExpansions;
       if (frontmatter.blankSatellite !== undefined) blank.blankSatellite = frontmatter.blankSatellite;
       if (frontmatter.blankSatelliteSeparator !== undefined) blank.blankSatelliteSeparator = frontmatter.blankSatelliteSeparator;
       if (frontmatter.blankClearKeywords !== undefined) blank.blankClearKeywords = frontmatter.blankClearKeywords;
       if (frontmatter.blankClearOnEdit !== undefined) blank.blankClearOnEdit = frontmatter.blankClearOnEdit;
-      if (frontmatter.blankConsumeContext !== undefined) blank.blankConsumeContext = frontmatter.blankConsumeContext;
-      if (frontmatter.blankConsumeAll !== undefined) blank.blankConsumeAll = frontmatter.blankConsumeAll;
-      if (frontmatter.blankReplace !== undefined) blank.blankReplace = frontmatter.blankReplace;
-      if (frontmatter.model !== undefined) blank.model = frontmatter.model;
-      if (frontmatter.maxTokens !== undefined) blank.maxTokens = frontmatter.maxTokens;
-      if (frontmatter.temperature !== undefined) blank.temperature = frontmatter.temperature;
-      if (frontmatter.apiUrl !== undefined) blank.apiUrl = frontmatter.apiUrl;
-      if (frontmatter.apiKeyEnv !== undefined) blank.apiKeyEnv = frontmatter.apiKeyEnv;
-      if (frontmatter.altCount !== undefined) blank.altCount = frontmatter.altCount;
-      if (frontmatter.includeOriginal !== undefined) blank.includeOriginal = frontmatter.includeOriginal;
       if (frontmatter.sandbox !== undefined) blank.sandbox = frontmatter.sandbox;
       if (frontmatter.sandboxNet !== undefined) blank.sandboxNet = frontmatter.sandboxNet;
       if (frontmatter.sandboxFs !== undefined) blank.sandboxFs = frontmatter.sandboxFs;
@@ -1304,20 +1229,6 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
       if (frontmatter.maxFetchesPerMinute !== undefined) blank.maxFetchesPerMinute = frontmatter.maxFetchesPerMinute;
       if (frontmatter.maxLlmPerMinute !== undefined) blank.maxLlmPerMinute = frontmatter.maxLlmPerMinute;
       if (frontmatter.maxStorageBytes !== undefined) blank.maxStorageBytes = frontmatter.maxStorageBytes;
-      // Parse ## sections from body as named prompts
-      const promptSections: Record<string, string> = {};
-      const sectionPattern = /^## (.+)$/gm;
-      let sMatch: RegExpExecArray | null;
-      const positions: { name: string; start: number }[] = [];
-      while ((sMatch = sectionPattern.exec(body)) !== null) {
-        positions.push({ name: sMatch[1].trim(), start: sMatch.index + sMatch[0].length });
-      }
-      for (let pi = 0; pi < positions.length; pi++) {
-        const end = pi + 1 < positions.length ? positions[pi + 1].start - positions[pi + 1].name.length - 4 : body.length;
-        const text = body.slice(positions[pi].start, end).trim();
-        if (text) promptSections[positions[pi].name] = text;
-      }
-      if (Object.keys(promptSections).length > 0) blank.prompts = promptSections;
       // Resolve relative script paths
       if (frontmatter.blankScript) {
         blank.blankScript = frontmatter.blankScript.startsWith('./')

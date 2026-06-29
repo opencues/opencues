@@ -22,9 +22,21 @@ export interface BlankShapeMatch {
   readonly value?: string;
 }
 
-/** Strip zero-width markers a host may have injected, then trim. */
-function normalize(text: string): string {
-  return text.replace(/[​‌]/g, '').trim();
+/**
+ * Strip zero-width markers, then return the LINE containing the (last) `_`,
+ * trimmed. Shapes are LINE-scoped: a command like `weather oslo _` claims its
+ * `_` even when there's prior content on earlier lines ("notes…\nweather oslo
+ * _"). Returns null when there's no `_`. Anchoring to the line (not the whole
+ * buffer) is what lets shapes replace the old line-scoped keyword window.
+ */
+function lineWithBlank(text: string): string | null {
+  const s = text.replace(/[​‌]/g, '');
+  const us = s.lastIndexOf('_');
+  if (us === -1) return null;
+  const start = s.lastIndexOf('\n', us) + 1; // 0 when there's no preceding newline
+  let end = s.indexOf('\n', us);
+  if (end === -1) end = s.length;
+  return s.slice(start, end).trim();
 }
 
 /**
@@ -40,8 +52,8 @@ export function matchBlankShape(
   blanks: ReadonlyMap<string, Pick<BlankConfig, 'blankShapes'>>
     | Readonly<Record<string, Pick<BlankConfig, 'blankShapes'>>>,
 ): BlankShapeMatch | null {
-  const t = normalize(text);
-  if (!t.includes('_')) return null;
+  const t = lineWithBlank(text);
+  if (t === null || !t.includes('_')) return null;
   const entries: Iterable<[string, Pick<BlankConfig, 'blankShapes'>]> =
     blanks instanceof Map ? blanks.entries() : Object.entries(blanks);
   for (const [name, cfg] of entries) {

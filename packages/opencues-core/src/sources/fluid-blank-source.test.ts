@@ -6,7 +6,7 @@
 
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert';
-import { FluidBlankSource, determineReplaceMode, resolveReplaceMode, renderAmbientBlock } from './fluid-blank-source';
+import { FluidBlankSource, renderAmbientBlock } from './fluid-blank-source';
 import { HttpAdapter, CueContext, AmbientContext } from '../types';
 import { getProvider } from '../llm-provider';
 
@@ -23,127 +23,6 @@ function makeMockAdapter(responses: string[]): HttpAdapter {
 function ctxFromText(text: string): CueContext {
   return { text, words: text.split(/\s+/) };
 }
-
-// ---------------------------------------------------------------------------
-// determineReplaceMode
-// ---------------------------------------------------------------------------
-
-describe('determineReplaceMode', () => {
-  it('returns FILL for inputs ending with copula + _', () => {
-    assert.strictEqual(determineReplaceMode('The capital of France is _'), 'FILL');
-    assert.strictEqual(determineReplaceMode('The CEO of Apple is _'), 'FILL');
-    assert.strictEqual(determineReplaceMode('Numbers are _'), 'FILL');
-  });
-
-  it('returns WIPE when copula is not immediately before _', () => {
-    // "by _" — preposition, not copula
-    assert.strictEqual(determineReplaceMode('The Mona Lisa was painted by _'), 'WIPE');
-  });
-
-  it('returns FILL for inputs ending with = _', () => {
-    assert.strictEqual(determineReplaceMode('4 * 12 = _'), 'FILL');
-    assert.strictEqual(determineReplaceMode('square root of 144 = _'), 'FILL');
-  });
-
-  it('returns FILL for inputs ending with ? _', () => {
-    assert.strictEqual(determineReplaceMode("what's the capital of france? _"), 'FILL');
-    assert.strictEqual(determineReplaceMode('how many planets are there? _'), 'FILL');
-  });
-
-  it('returns FILL for inputs with _ mid-sentence (textbook-style)', () => {
-    assert.strictEqual(determineReplaceMode('Water boils at _ degrees Celsius'), 'FILL');
-    assert.strictEqual(determineReplaceMode('There are _ continents'), 'FILL');
-  });
-
-  it('returns WIPE for bare-noun-phrase + _ inputs', () => {
-    assert.strictEqual(determineReplaceMode('capital of france _'), 'WIPE');
-    assert.strictEqual(determineReplaceMode('unicode for em dash _'), 'WIPE');
-    assert.strictEqual(determineReplaceMode('writing my paper capital of france _'), 'WIPE');
-    assert.strictEqual(determineReplaceMode('founder of microsoft _'), 'WIPE');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// resolveReplaceMode — unified `blankReplace` resolver
-// ---------------------------------------------------------------------------
-
-describe('resolveReplaceMode', () => {
-  it('explicit keep wins regardless of input', () => {
-    assert.strictEqual(resolveReplaceMode({ blankReplace: 'keep' }, 'foo _'), 'keep');
-    assert.strictEqual(resolveReplaceMode({ blankReplace: 'keep' }, 'foo is _'), 'keep');
-  });
-
-  it('explicit wipe wins regardless of input', () => {
-    assert.strictEqual(resolveReplaceMode({ blankReplace: 'wipe' }, 'foo _'), 'wipe');
-    assert.strictEqual(resolveReplaceMode({ blankReplace: 'wipe' }, 'foo is _'), 'wipe');
-  });
-
-  it('explicit wipe-all wins regardless of input', () => {
-    assert.strictEqual(resolveReplaceMode({ blankReplace: 'wipe-all' }, 'foo _'), 'wipe-all');
-  });
-
-  it('auto: bare keyword phrase → wipe', () => {
-    assert.strictEqual(resolveReplaceMode({ blankReplace: 'auto' }, 'foo _'), 'wipe');
-    assert.strictEqual(resolveReplaceMode({ blankReplace: 'auto' }, 'capital of france _'), 'wipe');
-  });
-
-  it('auto: copula before _ → keep', () => {
-    assert.strictEqual(resolveReplaceMode({ blankReplace: 'auto' }, 'capital of france is _'), 'keep');
-    assert.strictEqual(resolveReplaceMode({ blankReplace: 'auto' }, '4 + 4 = _'), 'keep');
-  });
-
-  it('auto: every copula variant before _ → keep (is/are/was/were/am/be/equals)', () => {
-    for (const cop of ['is', 'are', 'was', 'were', 'am', 'be', 'equals']) {
-      assert.strictEqual(
-        resolveReplaceMode({ blankReplace: 'auto' }, `the answer ${cop} _`),
-        'keep',
-        `expected keep for "the answer ${cop} _"`,
-      );
-    }
-  });
-
-  it('auto: copula NOT immediately before _ → wipe', () => {
-    // "is" appears in the middle but not adjacent to `_`.
-    assert.strictEqual(resolveReplaceMode({ blankReplace: 'auto' }, 'this is the answer _'), 'wipe');
-    // "are" appears mid-phrase only.
-    assert.strictEqual(resolveReplaceMode({ blankReplace: 'auto' }, 'today the affirmations are top _'), 'wipe');
-  });
-
-  it('auto: question / colon markers → keep', () => {
-    assert.strictEqual(resolveReplaceMode({ blankReplace: 'auto' }, 'what is x? _'), 'keep');
-    assert.strictEqual(resolveReplaceMode({ blankReplace: 'auto' }, 'today: _'), 'keep');
-  });
-
-  it('legacy consumeAll true → wipe-all (when blankReplace unset)', () => {
-    assert.strictEqual(resolveReplaceMode({ blankConsumeAll: true }, 'anything _'), 'wipe-all');
-  });
-
-  it('legacy consumeContext true → wipe (when blankReplace unset)', () => {
-    assert.strictEqual(resolveReplaceMode({ blankConsumeContext: true }, 'anything _'), 'wipe');
-  });
-
-  it('legacy clearKeywords true → wipe (when blankReplace unset)', () => {
-    assert.strictEqual(resolveReplaceMode({ blankClearKeywords: true }, 'anything _'), 'wipe');
-  });
-
-  it('no flags + no blankReplace → falls through to heuristic', () => {
-    // The caller chooses whether to call resolveReplaceMode in the
-    // first place. When called here, returns the auto-resolved value.
-    assert.strictEqual(resolveReplaceMode({}, 'foo _'), 'wipe');
-    assert.strictEqual(resolveReplaceMode({}, 'foo is _'), 'keep');
-  });
-
-  it('explicit blankReplace overrides legacy flags', () => {
-    assert.strictEqual(
-      resolveReplaceMode({ blankReplace: 'keep', blankConsumeAll: true }, 'foo _'),
-      'keep',
-    );
-    assert.strictEqual(
-      resolveReplaceMode({ blankReplace: 'wipe-all', blankClearKeywords: true }, 'foo _'),
-      'wipe-all',
-    );
-  });
-});
 
 // ---------------------------------------------------------------------------
 // FluidBlankSource
@@ -166,22 +45,24 @@ describe('FluidBlankSource', () => {
     assert.strictEqual(src.supports(ctxFromText('no blank here')), false);
   });
 
-  it('supports() cedes only when a registered blank would actually claim the slot (proximity-aware)', () => {
-    // Dictionary blank with `what is` keyword + blankProximity 3.
+  it('supports() cedes when a registered blank keyword is on the same line as _ (line-scoped)', () => {
+    // Dictionary blank with `what is` keyword (no proximity knob — the
+    // window is line-scoped).
     const blanks = {
-      dictionary: { name: 'dictionary', blankKeywords: ['what is'], blankProximity: 3 },
+      dictionary: { name: 'dictionary', blankKeywords: ['what is'] },
     };
     const src = new FluidBlankSource({
       ...baseConfig,
       httpAdapter: makeMockAdapter([]),
       blanks,
     });
-    // Within proximity → BlankSource will claim, fluid cedes.
+    // Keyword on the same line → BlankSource will claim, fluid cedes —
+    // regardless of how many words sit between the keyword and `_`.
     assert.strictEqual(src.supports(ctxFromText('what is git _')), false);
     assert.strictEqual(src.supports(ctxFromText('what is the answer _')), false);
-    // Out of proximity → BlankSource declines, fluid handles it (was the
-    // dead zone before this fix).
-    assert.strictEqual(src.supports(ctxFromText('what is git as in github _')), true);
+    assert.strictEqual(src.supports(ctxFromText('what is git as in github _')), false);
+    // Keyword on a PREVIOUS line → fluid handles the `_`.
+    assert.strictEqual(src.supports(ctxFromText('what is git\nexplain it simply _')), true);
     // No keyword in input → fluid handles.
     assert.strictEqual(src.supports(ctxFromText('etymology of paradigm _')), true);
   });
@@ -276,7 +157,7 @@ describe('FluidBlankSource', () => {
 
 // ---------------------------------------------------------------------------
 // Model-decided MODE field — the model emits a MODE line (FILL/WIPE); the
-// runtime trusts it, falling back to determineReplaceMode only when absent
+// runtime IGNORES it (fluid is always-FILL / static resolution), but absent
 // or unrecognised. Model proposes, runtime validates.
 // ---------------------------------------------------------------------------
 
@@ -288,36 +169,29 @@ describe('FluidBlankSource — model-decided MODE field', () => {
     model: 'test-model',
   };
 
-  it('keeps heuristic FILL as a non-destructive floor even when the model proposes WIPE', async () => {
-    // "X is _" → the heuristic returns FILL (high-confidence sentence with
-    // a trailing gap). The model is WIPE-biased here, but a WIPE would
-    // collapse "the answer is " → "42". The FILL floor refuses that: the
-    // model may not escalate a heuristic-FILL into a destructive WIPE.
+  it('always FILLs even when the model proposes WIPE on a copula sentence (static resolution)', async () => {
+    // "X is _" — the model is WIPE-biased here, but a WIPE would collapse
+    // "the answer is " → "42". Fluid is always-FILL now, so the model's WIPE
+    // vote is ignored and only the `_` is replaced.
     const src = new FluidBlankSource({
       ...baseConfig,
       httpAdapter: makeMockAdapter([
         'SPAN: the answer is _\nANSWER: 42\nMODE: WIPE',
       ]),
     });
-    assert.strictEqual(determineReplaceMode('the answer is _'), 'FILL');
     const r = (await src.getCues(ctxFromText('the answer is _'))).results[0]!;
     assert.strictEqual(r.metadata?.fluidBlankMode, 'FILL');
     assert.strictEqual(r.spanStart, undefined);
     assert.strictEqual(r.spanEnd, undefined);
   });
 
-  it('model MODE: FILL rescues a heuristic WIPE (language-invariant sentence shape)', async () => {
-    // "capital of france _" → the English heuristic returns WIPE. When the
-    // heuristic says WIPE the runtime DEFERS to the model — here it picks
-    // FILL (this is the path that rescues non-English copula sentences the
-    // English regex can't parse). FILL → span left unset (only _ replaced).
+  it('always FILLs a terse phrase even when the model proposes FILL (span left unset)', async () => {
     const src = new FluidBlankSource({
       ...baseConfig,
       httpAdapter: makeMockAdapter([
         'SPAN: capital of france _\nANSWER: Paris\nMODE: FILL',
       ]),
     });
-    assert.strictEqual(determineReplaceMode('capital of france _'), 'WIPE');
     const r = (await src.getCues(ctxFromText('capital of france _'))).results[0]!;
     assert.strictEqual(r.metadata?.fluidBlankMode, 'FILL');
     assert.strictEqual(r.spanStart, undefined);
@@ -355,9 +229,9 @@ describe('FluidBlankSource — model-decided MODE field', () => {
     assert.deepStrictEqual(result.results, []);
   });
 
-  it('always FILLs even on a terse phrase with no MODE line (no heuristic WIPE)', async () => {
-    // The determineReplaceMode heuristic no longer steers placement — fluid
-    // FILLs regardless, so a terse fragment fills the gap rather than wiping.
+  it('always FILLs even on a terse phrase with no MODE line', async () => {
+    // No FILL/WIPE heuristic remains — fluid FILLs regardless, so a terse
+    // fragment fills the gap rather than wiping.
     const src = new FluidBlankSource({
       ...baseConfig,
       httpAdapter: makeMockAdapter([
@@ -387,7 +261,6 @@ describe('FluidBlankSource — model-decided MODE field', () => {
     // so the user's prior paragraph is preserved — a bare-lookup WIPE would
     // collapse two paragraphs into one.
     const text = 'first paragraph of real content.\n\nthe answer is _';
-    assert.strictEqual(determineReplaceMode(text), 'FILL');
     const src = new FluidBlankSource({
       ...baseConfig,
       httpAdapter: makeMockAdapter([
@@ -959,7 +832,6 @@ describe('FluidBlank fail-safe: multi-paragraph WIPE guard', () => {
       httpAdapter: makeMockAdapter(['SPAN: The capital of France is _\nANSWER: Paris']),
     });
     const text = 'Some notes here.\n\nMore notes. The capital of France is _';
-    assert.strictEqual(determineReplaceMode(text), 'FILL');
     const out = await src.getCues(ctxFromText(text));
     assert.strictEqual(out.results.length, 1, 'FILL on multi-paragraph is safe and must proceed');
   });
