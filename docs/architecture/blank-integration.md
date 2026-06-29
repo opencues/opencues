@@ -131,16 +131,21 @@ integration-weave: true
   caller, so the value never enters this module.
 - `BlankFill.maybeWeaveIntegration` (`blank-fill.ts`) — fires after the static
   commit, swaps the value in, three-way-merges (`word-diff.ts`).
-- Wired from `boot-common.ts` (shared bands) + `adapters/cc/v2.1/boot.ts` (CC
-  inline) via `buildBlankWeaver`. Native hosts fall back to NodeHttpAdapter;
-  chrome would pass `host.httpAdapter` (not yet wired — degrades to static).
+- Wired into every band via `buildBlankWeaver`: CC inline
+  (`adapters/cc/v2.1/boot.ts`), OC/gemini/shell via `boot-common.ts` (native
+  NodeHttpAdapter fallback), and chrome via `adapters/chrome/v1/boot.ts`
+  passing its fetch-based `host.httpAdapter` (NodeHttpAdapter is stubbed in the
+  browser bundle).
+- Emits a `blank.woven` event (`blankName` + `output`) when the weave commits.
 
-### Follow-ups
+### Tests + bench
 
-- Chrome httpAdapter wiring (currently degrades to static there).
-- A weaving-quality bench (register fidelity, token-survival rate across
-  providers) — the runtime contract (token preserved, value spliced, static
-  fallback) is unit-tested; LLM-quality is not yet benched.
+- Runtime contract (deterministic, mock weaver): token-swap +
+  static-fallback in `blank-weave.test.ts`; the clearOnEdit-wipe regression +
+  privacy guarantee in `blank-weave-fill.scenarios.test.ts`.
+- LLM quality: `tests/benchmarks/integration-weave/prod.ts` measures
+  token-survival across providers — cerebras + groq both 100% at the June 2026
+  baseline.
 
 ---
 
