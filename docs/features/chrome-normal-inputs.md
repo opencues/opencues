@@ -79,9 +79,9 @@ registration. Single-answer blanks survive.
 | Fluid blank (free-form `_` lookup, incl. `answer _` meta-triggers)   | ✅ | Single substitution at the `_`. |
 | List blank (affirmations, stepValues)                               | ❌ | Pruned — cycleable. The list shape means the user has multiple choices to step between; without a cycling surface there's nothing to step. |
 | Selector / satellite (`opencues settings _`)                        | ❌ | Pruned — `blankSatellite: true` means cycling-required. |
-| Script-backed cycling blanks (`volume _`, `brightness _`)           | ❌ | Pruned — `blankScript:` defaults to cycleable. Opt back in via `blankReadOnly: true` if the script truly is one-shot. |
+| Numeric/step blanks (`volume _`, `brightness _` — declare `blankStep`) | ❌ | Pruned — `blankStep` declares cycling. |
 | Word-cues (alternatives, spelling, tips)                            | ❌ | Pruned at source-build time — cues are alternatives-by-definition. Zero LLM token spend in normal-input mode. |
-| Cue-blanks via `blankScript:` that are single-shot                  | ⚠ Opt-in   | Add `blankReadOnly: true` to the blank's frontmatter to mark it universal-compatible. Default-deny since scripts are opaque. |
+| Single-shot fetch blanks via `blankScript:` (weather, stocks)       | ✅ | Read-only by default — a plain `blankScript:` without `blankStep`/`stepValues`/`blankSatellite` is non-cycleable, so it survives universal hosts with no opt-out flag. |
 
 Blanks fire reactively on text-change, so typing `weather london _`
 fills as soon as the `_` lands.
@@ -108,15 +108,13 @@ Two parallel filter paths both consult the same
    two paths exist independently; both must filter or the
    guarantee leaks.
 
-The inference (no frontmatter needed) for each `BlankConfig`:
+The inference (no frontmatter needed) for each `BlankConfig` — a blank is
+cycleable IFF it declares how to cycle:
 
-- `blankReadOnly: true` → not cycleable (explicit override)
 - `blankSatellite: true` → cycleable
 - `stepValues.length > 1` → cycleable
 - `blankStep` numeric → cycleable
-- `blankScript:` → cycleable (default-deny; opt out with
-  `blankReadOnly: true`)
-- otherwise (impl-only compute blanks) → not cycleable
+- otherwise (plain scripts, fetch blanks, impl-only compute blanks) → not cycleable (read-only by default)
 
 ## What doesn't work
 

@@ -75,15 +75,14 @@ if (httpAdapterOverride !== undefined) {
 }
 ```
 The chrome adapter band (`adapters/chrome/v1/boot.ts`) builds a fetch-based
-adapter (`host.httpAdapter`) and threads it in. Two runtime consumers do this
-today:
+adapter (`host.httpAdapter`) and threads it in. The canonical consumer today:
 - **`Resolver`** — via its `httpAdapter` option (`resolver.ts`). The original
-  pattern.
-- **`buildBlankIntentClassifier`** — via the `httpAdapterOverride` param,
-  threaded from `BuildSharedRuntimeOptions.blankIntentHttpAdapter`
-  (`boot-common.ts`). Added when this bug was fixed.
+  pattern. (A second consumer, the now-retired `buildBlankIntentClassifier`,
+  threaded the same adapter via an `httpAdapterOverride` param when this bug
+  was first fixed; the BlankIntent gate was deleted in the June 2026 slim-down,
+  but the rule it established stands.)
 
-If you add a third HTTP-making module, **copy this shape**. A `NodeHttpAdapter`
+If you add another HTTP-making module, **copy this shape**. A `NodeHttpAdapter`
 constructed unconditionally is a chrome outage waiting to happen — and it
 fails *silently* (the stub resolves, so there's no error; requests just never
 complete).
@@ -92,18 +91,14 @@ complete).
 
 ## Fail *loud*, not silent
 
-The reason this bug took so long: every failure mode in chrome was **silent**.
-`buildBlankIntentClassifier` returned `null` (no key / no core / Node adapter)
-and the gate degraded to a plain GET with no log. Two diagnostics now make the
-gate path observable (both `debug`-level, enable `debug-mode: on`):
-
-- `BlankIntent: boot — gate WIRED / NOT WIRED` — once per boot. Tells you
-  whether the gate object was even constructed (i.e. did `getApiKeys` reach
-  `buildSharedRuntime`).
-- `BlankIntent: gate OFF for "<blank>" — blank-intent-mode=… (settings map: N
-  keys, …)` — when a gated keyword fires but the mode reads off. The map-size
-  distinguishes "empty settings map (config never reached this runtime)" from
-  "genuine off".
+The reason the original bug took so long: every failure mode in chrome was
+**silent**. The (now-retired) `buildBlankIntentClassifier` returned `null`
+(no key / no core / Node adapter) and the gate degraded to a plain GET with no
+log. The fix added boot-time + per-decision `debug`-level diagnostics (enable
+`debug-mode: on`) so the path was observable — a boot line reporting whether
+the HTTP-capable object was constructed at all, and a per-decision line
+distinguishing "empty settings map (config never reached this runtime)" from a
+genuine off. The classifier is gone, but the diagnostic shape is the template.
 
 **When you add a feature that can silently degrade on one host, add a
 boot-time + a per-decision diagnostic the same way.** A `debug` log that says

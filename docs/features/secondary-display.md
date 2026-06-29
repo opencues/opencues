@@ -12,7 +12,7 @@ Tips come from several sources depending on the word type:
 |---|---|---|
 | **Selector word** | `CUES.md` `settings:` block (setting-level line) | `voice-mode` → "Gates TTS globally" |
 | **Satellite word** | `CUES.md` `settings:` block (per-value line, falls back to setting-level) | `active` → "TTS reads tips aloud on navigation" |
-| **Cue-blank value** | `blankTip` in the blank's `BLANK.md` | `72` → "System volume" |
+| **Cue-blank value** | `tip` in the blank's `BLANK.md` | `72` → "System volume" |
 | **Cue-blank keyword** | Live `blankInvoke get` output, falls back to `tip` in `BLANK.md` | `volume` → "85" |
 | **Local cue (folder-based)** | `cues/<name>/CUE.md` body JSON via instant `cueMap` lookup | `ultrathink` → "Add 'ultrathink' to prompt for max reasoning" |
 | **LLM-analyzed word** | LLM response via opencues-core resolver | `happy` → "glad, joyful, content" |
@@ -49,7 +49,7 @@ The JSON file (`_hlExport`) contains these fields:
 | `currentAltIndex` | number \| undefined | Position within the alternatives list (0-based). Only set when a word with alternatives is highlighted. `undefined` when inactive or the word has no alts. |
 | `cueBlank` | true \| undefined | True if the word is a blank (auto-populated value or keyword with a tip). Only set to `true` when applicable. `undefined` (not `false`) otherwise. |
 | `timestamp` | number | `Date.now()` when the export was written |
-| `_debug` | object | Debug info: word, isCA, blankTip, registered blank keys, cueValues |
+| `_debug` | object | Debug info: word, isCA, tip, registered blank keys, cueValues |
 
 **Tip resolution priority:** See [Tip Priority](tip-priority.md) for the full resolution order across all word types (selector/satellite, cue-blank values, cue-blank keywords, local cues, LLM).
 
@@ -72,7 +72,7 @@ The `highlight-statusline.sh` script is a self-contained bash script that reads 
 - **Selector word:** `tip` only — shows the setting-level tip from `CUES.md` `settings:` block (displayed as cue-blank)
 - **Satellite word:** `tip` only — shows the per-value tip from `CUES.md` `settings:` block, falls back to setting-level (displayed as cue-blank)
 - **Cue-blank keyword:** `tip` only — the word is already highlighted in the input, so repeating it is redundant
-- **Cue-blank value:** `tip` only — only shown if `blankTip` is set in the blank's config
+- **Cue-blank value:** `tip` only — only shown if `tip` is set in the blank's config
 - **No tip:** Output suppressed entirely
 
 The script suppresses output entirely for words that have neither alts nor a tip, so the status line stays clean.
@@ -86,7 +86,7 @@ The script suppresses output entirely for words that have neither alts nor a tip
 - `CueResult.cueTip` provides the primary tip text for the focused word
 - `CueResult.altCueTips` maps each alternative to its own tip, enabling per-alternative tip display during cycling
 - `WordDef.speak` flag indicates whether the tip should be read aloud via TTS
-- Cue-blank values use `blankTip` from the blank's config; suppressed if unset
+- Cue-blank values use `tip` from the blank's config; suppressed if unset
 - Cue-blank keywords use live `blankInvoke get` output with fallback to `tip` from config
 - Selector/satellite tips are read from the backing config file (`CUES.md` `settings:` block), not from static metadata
 

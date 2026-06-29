@@ -290,7 +290,7 @@ Step 3 is optional at creation time. The selector+satellite UI picks up the new 
 
 - **Fixed enum of cases, each with its own fixed enum of values** → selector + satellite.
 - **One cyclable list, keyword tells you which list** → list blank (static `stepValues` or dynamic list).
-- **One blank showing one value that writes back** → standard cue-blank with `blankAutoPopulate`.
+- **One blank showing one value that writes back** → standard cue-blank.
 - **Two words that must change together on a shared axis with shared cycle state** → linked words.
 - **Your "value" is semantically a multi-word phrase** → multi-word span.
 

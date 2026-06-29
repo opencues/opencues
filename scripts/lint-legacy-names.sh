@@ -41,12 +41,35 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
 # Banned identifiers. Each entry is an ERE. Renames append here.
+#
+# Two flavours live here:
+#   - RENAMES — the old name has a current replacement (USER.md → IDENTITY.md).  # LEGACY-NAME-ALLOW: lint header
+#   - REMOVALS — the identifier was deleted outright with no successor
+#     (the June 2026 blank-API slim-down). Banning them stops a deleted,
+#     now-inert key/scalar from creeping back into shipping code where it
+#     would silently no-op. Historical narrative comments that EXPLAIN the
+#     removal carry a `LEGACY-NAME-ALLOW` marker.
 BANNED_PATTERNS=(
   'SENTINELS\.md'
   'USER\.md'
   '\bsentinels-mode\b'
   '\buser-context-mode\b'
   '\bopencues sentinels\b'
+  # ── June 2026 blank-API slim-down — removed scalar + gate identifiers ──
+  # These are clean code-level removals with no successor and no
+  # legitimate remaining reference in shipping code.
+  '\bblank-intent-mode\b'
+  '\bblankIntentMode\b'
+  '\bbuildBlankIntentClassifier\b'
+  '\bblankIntentHttpAdapter\b'
+  '\bBlankIntentDecision\b'
+  # NOTE: the removed BLANK.md frontmatter keys (blankReplace,
+  # blankConsumeAll/Context, blankProximity, blankAutoPopulate,
+  # blankReadOnly, blankFormat, blankTip, blankKeywordExpansions) are
+  # deliberately NOT banned. They are gracefully ignored if present and
+  # still appear (inert) in the shipped defaults/blanks/*/BLANK.md
+  # templates, which are intentionally left untouched. Banning them would
+  # force a large allowlist for no behavioural benefit.
 )
 
 # File-level allowlist — paths whose job is to handle the rename.

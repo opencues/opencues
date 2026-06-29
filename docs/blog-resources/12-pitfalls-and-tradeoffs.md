@@ -175,16 +175,16 @@ The bug was in the test setup, not the production code. Worth mentioning
 because it shows how easily benchmark infrastructure can mask real
 behaviour.
 
-### Multi-word phrases in keyword matching
+### Line-scoped keyword routing
 
 From `cue-blanks.md`:
-> Multiple occurrences — with `blankKeywords: weather` and
-> `blankProximity: 0`:
-> - `spanish weather 15°C is warmer than london weather _` — matches
->   (the second `weather` is adjacent to `_`)
+> A blank claims a `_` when its keyword (or shape) **leads the line**
+> containing `_`, with `_` at the trailing edge.
 
-The naive implementation would match the *first* "weather" and miss
-the user's intent. The keyword nearest the `_` wins.
+The naive implementation matched a keyword anywhere within a word-distance
+window — which let prose that merely *mentioned* a keyword fire the blank
+(`the weather was lovely today _`). Anchoring to "command leads the line"
+makes routing deterministic and impossible to over-claim.
 
 ### 0-byte CUES.md self-heal
 

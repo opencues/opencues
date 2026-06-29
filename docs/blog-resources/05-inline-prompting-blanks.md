@@ -108,17 +108,18 @@ user can clear it (by editing the word).
 
 ## Keyword matching: the binding rule
 
-For keyword-bound blanks (volume, stocks, weather), the runtime scans words
-in the input (case-insensitive) against each blank's `blankKeywords`. Match
-within `blankProximity` words of the `_` (default 0 = adjacent). First
-match wins.
+For keyword-bound blanks (volume, stocks, weather), `blankKeywords` desugar
+to anchored shapes that route the line containing `_`. A blank claims a `_`
+when its keyword (or shape) leads the line, with `_` at the trailing edge —
+line-scoped, deterministic. First match wins.
 
 ```
-With blankKeywords: volume, sound, audio  blankProximity: 0
-  volume _              → matches (gap = 0)
-  set audio _           → matches (audio is adjacent)
-  volume is _           → no match (gap = 1)
-  the _ is loud         → no match (no keyword)
+With blankKeywords: volume, sound, audio
+  volume _              → matches (volume leads, _ at end)
+  volume 30 _           → matches (30 captured as the set value)
+  set audio _           → no match (line leads with "set")
+  the volume is loud _  → no match (prose; volume doesn't lead the line)
+  the _ is loud         → no match (no keyword, _ not at the end)
 ```
 
 Multi-word phrases work too. From `damon.md`:

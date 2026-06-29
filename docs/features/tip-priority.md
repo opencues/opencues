@@ -15,7 +15,7 @@ Every highlighted word can show a tip in the secondary display (status line). Ti
 | 1 | Satellite (per-value) | `active` under selector `voice-mode` | "TTS reads tips aloud on navigation" | `OPENCUES.md` (settings menu auto-derived from `FEATURES` + `MENU_TUNABLES`), nested value line |
 | 2 | Satellite (fallback) | `on` under selector `debug-mode`, no per-value tip defined | "Enable debug logging output" | `OPENCUES.md` (settings menu auto-derived from `FEATURES` + `MENU_TUNABLES`), setting-level line |
 | 3 | Selector | `voice-mode` | "Gates TTS globally" | `OPENCUES.md` (settings menu auto-derived from `FEATURES` + `MENU_TUNABLES`), setting-level line |
-| 4 | Cue-blank value | `72` after `volume` | "System volume" | Blank's `BLANK.md` `blankTip` field |
+| 4 | Cue-blank value | `72` after `volume` | "System volume" | Blank's `BLANK.md` `tip` field |
 | 5 | Cue-blank keyword | `volume` (the trigger word) | "85" (live reading) | `blankInvoke get` output; falls back to `tip` in `BLANK.md` |
 | 6 | Local cue (folder-based) | `ultrathink` | "Add 'ultrathink' to prompt for max reasoning" | `cues/<name>/CUE.md` body JSON via `cueMap` (built in `ConfigLoader`) |
 | 7 | LLM-analyzed word | `happy` | "glad, joyful, content" | LLM response via opencues-core resolver |
@@ -30,7 +30,7 @@ The navigation export code checks three branches in order. The first match wins;
 
 1. **Blank-bound word** — the WordDef has `metadata.blankName` set (auto-populated by the blank pipeline)
    - Selector/satellite sub-branch (`metadata.selectorWord` or `metadata.satelliteWord`): reads `OPENCUES.md` (settings menu auto-derived from `FEATURES` + `MENU_TUNABLES`) (priorities 1-3)
-   - Regular cue-blank value: reads `cueTip` from the WordDef, set by `blankTip` in the blank's `BLANK.md` (priority 4)
+   - Regular cue-blank value: reads `cueTip` from the WordDef, set by `tip` in the blank's `BLANK.md` (priority 4)
 2. **Cue-blank keyword** — the word text matches a registered `blankKeywords` entry
    - Calls `blankInvoke({ action: 'get' })` for a live reading; falls back to `tip` from `BLANK.md` (priority 5)
 3. **General word** — no blank metadata, not a cue-blank keyword
@@ -59,7 +59,7 @@ When a word is cycled, the tip is updated inline within each cycling branch:
 
 - **Selector cycling**: reads `_openCuesTips[nextSetting]`
 - **Satellite cycling**: reads `_openCuesSatTips[setting][newValue]`, falls back to `_openCuesTips[setting]`
-- **Regular cue-blank cycling**: tip is unchanged (stays as `blankTip` from `BLANK.md`)
+- **Regular cue-blank cycling**: tip is unchanged (stays as `tip` from `BLANK.md`)
 - **General word cycling**: `cueTip` stays from the WordDef; `altCueTips[newAlt]` replaces it in the export if present
 
 ---
@@ -106,7 +106,7 @@ Satellite tip resolution: `_openCuesSatTips[setting][value]` first, then `_openC
 
 - `CueResult.cueTip` carries the primary tip for any word
 - `CueResult.altCueTips` maps each alternative to its own tip (for per-alt display during cycling)
-- Cue-blanks use `blankTip` from the blank's config
+- Cue-blanks use `tip` from the blank's config
 - Selector/satellite tips are derived from `@opencues/core`'s `FEATURES` + `MENU_TUNABLES` registry, not from per-cue `CUE.md` files (file-level `settings:` block in `OPENCUES.md` is an optional override)
 
 ### Integration responsibilities
