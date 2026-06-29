@@ -1034,6 +1034,7 @@ export class BlankFill {
         this.adapter.log('info', `BlankFill: woven integration → "${preview(woven, 60)}"`);
         if (this.adapter.pushText) this.adapter.pushText(merged, newCursor);
         else { this.adapter.setText(merged); this.adapter.setCursorOffset(newCursor); this.adapter.forceRender(); }
+        this.adapter.emitEvent?.('blank.woven', { blankName: String(blank.name ?? ''), output: woven });
       })
       .catch((e) => { this.adapter.log('info', `BlankFill: weave error (static fill kept) — ${(e as Error)?.message ?? e}`); });
   }
