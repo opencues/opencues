@@ -16,6 +16,7 @@ import {
   resolveLLM,
   PROVIDER_IDS,
 } from './llm-provider';
+import { classifyLlmError } from './sources/fluid-blank-source';
 
 describe('ollama provider — native /api/chat (local, think:false)', () => {
   it('is registered', () => {
@@ -77,5 +78,20 @@ describe('ollama provider — native /api/chat (local, think:false)', () => {
     assert.strictEqual(resolved?.provider.id, 'ollama');
     assert.strictEqual(resolved?.model, 'gemma4:e2b');
     assert.strictEqual(resolved?.endpoint, 'http://localhost:11434/api/chat');
+  });
+
+  it('classifyLlmError: Ollama\'s "model \'X\' not found" → model-not-found (not a silent bail)', () => {
+    // Regression: the model name sits BETWEEN "model" and "not found", so
+    // the adjacent `model not found` literal missed it and the whole
+    // classifier fell through to null → no substitute → silent failure
+    // when a local model wasn\'t pulled. parseOllamaResponse surfaces this
+    // exact string.
+    const err = new Error("provider error: model 'gemma4:e2b' not found");
+    assert.strictEqual(classifyLlmError(err), 'model-not-found');
+  });
+
+  it('classifyLlmError: ECONNREFUSED (ollama server down) → network', () => {
+    const err = new Error('connect ECONNREFUSED 127.0.0.1:11434');
+    assert.strictEqual(classifyLlmError(err), 'network');
   });
 });
