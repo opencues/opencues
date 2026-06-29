@@ -418,14 +418,20 @@ export class BlankFill {
       // `return` — it's a function body now, not the loop.)
       const doDispatch = (typedAction?: 'set' | 'step'): void => {
 
-      // Context words: every word except the matched keyword span and the blank.
-      // Index-based filter (vs v1's string-match) handles multi-word keywords
-      // correctly (multi-word keywords would be incorrectly filtered
-      // by a string-match approach).
+      // Context words: ONLY the words between the keyword and the `_` — the
+      // captured arg region (e.g. ["france"] in `capital of france _`). This
+      // mirrors the anchored shape's valueGroup. The pre-#216 collector
+      // gathered the WHOLE buffer minus the keyword span, so words from
+      // EARLIER LINES leaked in: a shaped blank's command is line-scoped (it
+      // only reaches this dispatch via a `matchBlankShape` hit — the gate
+      // above — and a shape leads + ends its own line), but the context still
+      // swept up every prior line. Live repro: a `countries` blank whose
+      // `capital of france _` sat below a paragraph of website-design prose
+      // got that whole paragraph as "context" and the script echoed back a
+      // 495-char garbage fill. Bounding context to (keywordEnd, `_`) keeps it
+      // to the actual argument; prior lines and any trailing text are excluded.
       const contextWords: string[] = [];
-      for (let wi = 0; wi < words.length; wi += 1) {
-        if (wi >= slot.keywordStart && wi <= slot.keywordEnd) continue;
-        if (wi === slot.index) continue;
+      for (let wi = slot.keywordEnd + 1; wi < slot.index; wi += 1) {
         contextWords.push(words[wi]);
       }
 

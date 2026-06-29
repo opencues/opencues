@@ -466,6 +466,71 @@ blankScript: ./stocks.sh
     expect(args.slice(2)).toEqual(['reddit stock', 'today']);
   });
 
+  // Regression: prior-line context flood (June 2026 — #216 manual test).
+  //
+  // A shaped blank's command leads its OWN line (`capital of france _`) and
+  // dispatches via the deterministic shape path — line-scoped, so prose on
+  // an EARLIER line is unrelated. The bug was the CONTEXT we sent with the
+  // get: the old collector gathered the WHOLE buffer minus the keyword span,
+  // so every word from the prior lines leaked in. Live repro: a `countries`
+  // blank got the user's entire first-line website-design paragraph as
+  // "context" and the script echoed back a 495-char garbage string that
+  // overwrote the `_`. Fix: context is ONLY the arg region between the
+  // keyword and the `_` (mirrors the anchored shape's valueGroup), so prior
+  // lines can never flood the get.
+  it('prior-line prose does not flood get context (arg region only)', async () => {
+    const SCRIPT_CTRL = `---
+type: blank
+name: countries
+blankKeywords: capital of
+blankScript: ./countries.sh
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/blanks/countries/BLANK.md': SCRIPT_CTRL },
+    });
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    // Unrelated prose on line 1; the command `capital of france _` leads line 2.
+    adapter.pushText('design and develop responsive website with modern ui\ncapital of france _');
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+    const args = spawnSpy.mock.calls[0][0].args;
+    // ['./countries.sh', 'get', 'capital of', 'france'] — ONLY 'france'
+    // (the word between the keyword and the `_`). None of line 1's prose leaks.
+    expect(args.slice(2)).toEqual(['capital of', 'france']);
+    expect(args).not.toContain('website');
+    expect(args).not.toContain('responsive');
+  });
+
+  it('prior-line prose does not flood a bare get (empty context)', async () => {
+    const SCRIPT_CTRL = `---
+type: blank
+name: countries
+blankKeywords: countries
+blankScript: ./countries.sh
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/blanks/countries/BLANK.md': SCRIPT_CTRL },
+    });
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    // A paragraph on line 1; bare `countries _` leads line 2.
+    adapter.pushText('here is a long sentence about many unrelated things\ncountries _');
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+    const args = spawnSpy.mock.calls[0][0].args;
+    // Bare get — only the keyword, no context words at all.
+    expect(args.slice(2)).toEqual(['countries']);
+  });
+
   it('async path: expands ~ in script path', async () => {
     const SCRIPT_CTRL = `---
 type: blank
