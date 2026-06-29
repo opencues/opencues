@@ -77,6 +77,25 @@ openai  chat-latest   †   90.0% / 2766 / $30.44   86.1% /  970 / $7.72    86.6
 † OpenAI rows: nano @ $0.20/$1.25, mini @ $0.75/$4.50, chat-latest @ $5/$30 per M tokens.
 ‡ `gemini-3.5-flash` 2026-05-19 spot-bench (fused only, thinking off) — regression vs `flash-lite` (−3.5pp acc, +15% latency). See [`../results/gemini-3.5-flash-2026-05-19.md`](../results/gemini-3.5-flash-2026-05-19.md).
 
+**Local (Ollama) — `gemma4:e2b`, fused, 2026-06-29 (251-case suite):**
+
+```
+                          fused (acc / per-case ms)   notes
+─────────────────────────────────────────────────────────────────────────────────────────
+cerebras gpt-oss-120b     81.7% /  607               same-session baseline (251 cases)
+ollama   gemma4:e2b       59.8% / ~2000              local/private/free; RTX 2070 Max-Q, ~2s warm
+```
+
+Same-session, same pinned-Groq judge, both fused. Run with
+`npx tsx tests/benchmarks/transform-blank/prod.ts --provider ollama` (an
+Ollama server must be running; `OPENCUES_OLLAMA_MODEL` overrides the model).
+The ~22pp gap is **concentrated** — `gemma4:e2b` is within ≤10pp on the
+mechanical edits people fire `_` for most (literal / math / format / simple
+rewrites) and falls off a cliff (−30 to −50pp) on reasoning-heavy +
+generative work (conditional, code, creative / tone, multilingual,
+context-referring). Usable as a private default for the common case; not the
+model for complex transforms.
+
 **Fluid-blank (137 cases) — accuracy / per-case ms / $-per-correct:**
 
 ```

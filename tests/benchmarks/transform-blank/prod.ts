@@ -32,6 +32,7 @@ import type { HttpAdapter, CueContext } from '../../../packages/opencues-core/sr
 import { CASES, type TransformCase } from './cases';
 import { judge, type JudgeInput } from './judge';
 import * as https from 'https';
+import * as http from 'http';
 
 const RESET = '\x1b[0m';
 const RED = '\x1b[31m';
@@ -53,15 +54,22 @@ if (!GROQ_KEY)     { console.error('Set GROQ_API_KEY (judge pin)'); process.exit
 // Adds 2-retry on transient connect errors (ETIMEDOUT / ECONNRESET /
 // ENETUNREACH) so a single network blip doesn't kill a 231-case run.
 const agent = new https.Agent({ keepAlive: true, maxSockets: 32 });
+const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 32 });
 function postOnce(url: string, body: string, headers?: Record<string, string>): Promise<string> {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
-    const req = https.request({
+    // Local providers (ollama) are plaintext http://; cloud providers are
+    // https://. Pick the transport + agent by protocol so the bench can
+    // drive a local Ollama server, not just TLS endpoints.
+    const isHttp = u.protocol === 'http:';
+    const transport = isHttp ? http : https;
+    const req = transport.request({
       hostname: u.hostname,
+      port: u.port || (isHttp ? 80 : 443),
       path: u.pathname + (u.search ?? ''),
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(headers ?? {}), 'Content-Length': Buffer.byteLength(body) },
-      agent,
+      agent: isHttp ? httpAgent : agent,
       timeout: 30_000,
     }, (res) => {
       let buf = '';
@@ -98,6 +106,9 @@ const httpAdapter: HttpAdapter = {
 const CEREBRAS_MODEL = process.env.OPENCUES_CEREBRAS_MODEL ?? 'gpt-oss-120b';
 const GROQ_MODEL = process.env.OPENCUES_GROQ_MODEL ?? 'openai/gpt-oss-120b';
 const GEMINI_MODEL = process.env.OPENCUES_GEMINI_MODEL ?? 'gemini-3.1-flash-lite';
+// Local Ollama (native /api/chat, think:false). Key is a non-empty dummy —
+// the provider is optionalAuth; Ollama ignores the Authorization header.
+const OLLAMA_MODEL = process.env.OPENCUES_OLLAMA_MODEL ?? 'gemma4:e2b';
 
 // Provider wiring. TransformBlank runs a SINGLE fused pipeline on every
 // provider (the prompt lives solely in @opencues/core's FUSED_SYSTEM), so
@@ -106,6 +117,7 @@ const PROVIDERS: Record<string, { endpoint: string; key: string | undefined; mod
   cerebras: { endpoint: 'https://api.cerebras.ai/v1/chat/completions', key: CEREBRAS_KEY, model: CEREBRAS_MODEL },
   groq:     { endpoint: 'https://api.groq.com/openai/v1/chat/completions', key: GROQ_KEY, model: GROQ_MODEL },
   gemini:   { endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent', key: GEMINI_KEY, model: GEMINI_MODEL },
+  ollama:   { endpoint: 'http://localhost:11434/api/chat', key: 'ollama', model: OLLAMA_MODEL },
 };
 
 function buildSource(providerId: string): TransformBlankSource {
