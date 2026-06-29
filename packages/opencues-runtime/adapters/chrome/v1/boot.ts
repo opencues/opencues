@@ -303,6 +303,10 @@ export function boot(host: HostInfo): BootResult {
     configSearchPaths: ['/chrome-storage/.cues'],
     settingsFile: '/chrome-storage/.cues/OPENCUES.md',
     getApiKeys: () => apiKeys,
+    // Chrome's fetch-based adapter for the integration-weave LLM call —
+    // NodeHttpAdapter (node:https) is stubbed in the browser bundle, so the
+    // weaver needs the host's adapter explicitly (mirrors the Resolver below).
+    httpAdapter: host.httpAdapter as import('@opencues/core').HttpAdapterShape | undefined,
   });
   configLoaderRef = shared.configLoader;
 

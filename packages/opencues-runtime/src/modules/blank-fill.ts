@@ -1019,6 +1019,18 @@ export class BlankFill {
         const { newText: merged } = threeWayMerge(snapshot, rewrite, live);
         if (merged === live) return; // weave fully dropped by the merge
         const newCursor = Math.min(merged.length, fillStart + woven.length);
+        // The static fill registered cycling/clearOnEdit state (span + dynDef)
+        // for the RAW value. The woven output is contextual prose, not a
+        // cycleable/clearOnEdit pair — and leaving the stale watchers in place
+        // makes the upcoming setText look like a foreign edit to the blank
+        // span, which a clearOnEdit blank would WIPE. Retire those watchers
+        // BEFORE committing so the woven text lands as plain locked prose.
+        this.spanFillState?.clear();
+        if (this.dynDefs) {
+          for (const w of splitWords(snapshot)) {
+            if (w.start >= fillStart && w.start < fillEnd) this.dynDefs.delete(w.index);
+          }
+        }
         this.adapter.log('info', `BlankFill: woven integration → "${preview(woven, 60)}"`);
         if (this.adapter.pushText) this.adapter.pushText(merged, newCursor);
         else { this.adapter.setText(merged); this.adapter.setCursorOffset(newCursor); this.adapter.forceRender(); }
