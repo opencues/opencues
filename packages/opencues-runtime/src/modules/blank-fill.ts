@@ -983,12 +983,15 @@ export class BlankFill {
     // The script-get phase stopped the loader before applyAsyncFill ran; restart
     // it (same slot/owner, same tick → no flicker) so the wait stays animated.
     this._loadingAnimator().start(slot.index, 'blank-fill');
+    // Timeout is configurable via `integration-weave-timeout-ms` (default 6s),
+    // so a hung provider can't leave the `_` spinning — and tests can shorten it.
+    const weaveTimeoutMs = parseInt(this.configLoader.opencuesState.settings.get('integration-weave-timeout-ms') ?? '', 10) || BlankFill.WEAVE_TIMEOUT_MS;
     void (async () => {
       let woven: string | null = null;
       try {
         woven = await Promise.race([
           weaver({ exemplar: weaveExemplar, priorContext }),
-          new Promise<null>(resolve => setTimeout(() => resolve(null), BlankFill.WEAVE_TIMEOUT_MS)),
+          new Promise<null>(resolve => setTimeout(() => resolve(null), weaveTimeoutMs)),
         ]);
       } catch (e) {
         this.adapter.log('info', `BlankFill: weave error (static fallback) — ${(e as Error)?.message ?? e}`);

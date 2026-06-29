@@ -31,13 +31,13 @@ blankClearOnEdit: true
 
 const flush = async () => { for (let i = 0; i < 8; i++) await new Promise(r => setTimeout(r, 0)); };
 
-async function setupWeave(weaver: BlankWeaver, weaveMode = 'on') {
+async function setupWeave(weaver: BlankWeaver, weaveMode = 'on', extraSettings = '') {
   const adapter = new MockAdapter({
     cwd: '/proj',
     files: {
       '/mock/CUES.md': TIPS,
       '/proj/blanks/dim/BLANK.md': DIM_CUE,
-      '/proj/.cues/OPENCUES.md': `---\nintegration-weave-mode: ${weaveMode}\n---\n`,
+      '/proj/.cues/OPENCUES.md': `---\nintegration-weave-mode: ${weaveMode}\n${extraSettings}\n---\n`,
     },
   });
   adapter.stubBlankInvoke('dim:get', '30\n');
@@ -100,5 +100,68 @@ describe('integration-weave — clearOnEdit wipe regression', () => {
     await flush();
     expect(weaver).not.toHaveBeenCalled();
     expect(adapter.getText()).toContain('set to 30%');
+  });
+});
+
+describe('integration-weave — wait-first, single-change contract', () => {
+  // A weaver whose promise we resolve by hand, to inspect the buffer WHILE the
+  // weave is in flight.
+  function deferredWeaver() {
+    let resolve!: (v: string | null) => void;
+    const promise = () => new Promise<string | null>(r => { resolve = r; });
+    const fn = vi.fn(promise);
+    return { fn, resolve: (v: string | null) => resolve(v) };
+  }
+
+  it('does NOT commit the static fill before the weave — buffer changes ONCE', async () => {
+    const d = deferredWeaver();
+    const { adapter } = await setupWeave(d.fn);
+
+    adapter.pushText('lights ready.\ndim _');
+    await flush(); // dispatch + get done; weave is now in flight (unresolved)
+
+    // The whole point of wait-first: the static template must NOT have landed.
+    expect(d.fn).toHaveBeenCalledOnce();
+    expect(adapter.getText()).not.toContain('set to 30%');
+
+    d.resolve(`we set it to ${WEAVE_VALUE_TOKEN} now`);
+    await flush();
+
+    // Exactly one content change: straight to the woven text, no static stop.
+    expect(adapter.getText()).toBe('lights ready.\nwe set it to 30% now');
+  });
+
+  it('drops the fill if the user edits during the weave wait (no clobber)', async () => {
+    const d = deferredWeaver();
+    const { adapter } = await setupWeave(d.fn);
+
+    adapter.pushText('lights ready.\ndim _');
+    await flush(); // weave in flight
+
+    // User keeps typing while the LLM call is outstanding.
+    adapter.pushText('changed my mind entirely');
+    await flush();
+
+    d.resolve(`we set it to ${WEAVE_VALUE_TOKEN} now`);
+    await flush();
+
+    // The late weave must not splice into the user's new buffer.
+    expect(adapter.getText()).not.toContain('30%');
+    expect(adapter.getText()).not.toContain('we set it to');
+  });
+
+  it('falls back to the static template when the weave exceeds the timeout', async () => {
+    // Weaver resolves at ~250ms; timeout pinned to 30ms via the setting.
+    const slow = vi.fn(() => new Promise<string | null>(r => setTimeout(() => r(`woven ${WEAVE_VALUE_TOKEN}`), 250)));
+    const { adapter } = await setupWeave(slow, 'on', 'integration-weave-timeout-ms: 30');
+
+    adapter.pushText('lights ready.\ndim _');
+    // Wait past the 30ms timeout (but before the 250ms weave would resolve).
+    await new Promise(r => setTimeout(r, 90));
+    await flush();
+
+    // Timeout fired → static template landed (one change), the `_` is filled.
+    expect(adapter.getText()).toContain('set to 30%');
+    expect(adapter.getText()).not.toContain('_');
   });
 });
