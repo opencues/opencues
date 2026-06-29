@@ -52,7 +52,7 @@ When `_` matches no blank, a runtime MAY provide a **fluid-blank fallback** (typ
 | Field | Type | Notes |
 |---|---|---|
 | `name` | string | Unique identifier. By convention, this is also the in-process class name when `impl:` is implicit. |
-| `blankKeywords` | comma-separated list **or** YAML list | Words that, when adjacent to `_`, fire this blank. |
+| `blankKeywords` | comma-separated list **or** YAML list | Words that fire this blank when one **leads the line** containing `_` (line-scoped — see § Trigger model). Desugar into anchored `blankShapes`. |
 
 A blank source MUST also declare **exactly one** binding profile (see § Binding profiles). Zero binding profiles = invalid (no behavior). More than one = invalid (ambiguous).
 

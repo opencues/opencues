@@ -33,7 +33,7 @@ conformance/
     ├── per-word-dispatch.json
     ├── priority-tiebreak.json
     ├── catch-all-fallback.json
-    └── blank-proximity.json
+    └── blank-shapes.json
 ```
 
 ## How to use the suite
@@ -244,7 +244,7 @@ The 0.1-alpha suite is **seed**, not exhaustive. Coverage:
 | Invalid BLANK.md | 5 | Missing name, missing keywords, no binding, multiple bindings, script missing |
 | Invalid AUDITOR.md | 2 | Missing name, empty body |
 | Wire fixtures | 10 | Single/multi-line, whitespace tolerance, numeric skip, `=` synonym |
-| Routing scenarios | 4 | Per-word dispatch, priority tiebreak, catch-all fallback, blank proximity |
+| Routing scenarios | 4 | Per-word dispatch, priority tiebreak, catch-all fallback, blank shapes |
 
 Expand by appending fixtures — the runner discovers files structurally, no central registry to update.
 

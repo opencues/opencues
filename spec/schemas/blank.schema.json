@@ -32,7 +32,7 @@
         { "type": "string", "description": "Comma-separated list." },
         { "type": "array", "items": { "type": "string" } }
       ],
-      "description": "Words that, when adjacent to _, fire this blank."
+      "description": "Words that fire this blank when one leads the line containing _ (line-scoped). Desugar into anchored blankShapes."
     },
     "tip": {
       "type": "string",
