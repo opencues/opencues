@@ -89,6 +89,20 @@ fluid-blank-mode: on
 word-cues-mode: on
 transform-blank-mode: on
 
+# integration-weave-mode — let a blank with `integration-weave: true` weave
+# its `integration:` output into the surrounding prose with one LLM call,
+# instead of the static `{value}` template. The blank's REAL value is never
+# sent to the provider: the LLM only sees the exemplar with `{value}` replaced
+# by a sentinel token, and the runtime swaps the real value back in AFTER the
+# response. Falls back to the static template on any failure, so a weave can
+# never block the fill or corrupt the buffer.
+#   off (default): `integration:` is a static `{value}` template, zero LLM.
+#   on           : opted-in blanks pay one ~300-700ms LLM call per fill to
+#                  weave the value into context (the static fill lands first,
+#                  then the woven version merges in).
+# See docs/architecture/blank-integration.md.
+integration-weave-mode: off
+
 # blank-trigger-mode — when `_` actually fires its blank.
 #   immediate (default): blank fires the moment `_` is inserted —
 #                        the original v0.1 behaviour, snappy but

@@ -19,6 +19,8 @@
 
 import type { HostAdapter, LogLevel } from './adapter';
 import type { ResolvedAgentLLM } from './modules/agent-rewrite';
+import { buildBlankWeaver, type BlankWeaver } from './modules/blank-weave';
+import type { HttpAdapterShape } from '@opencues/core';
 
 /* ─── Direct-launch drift advisory ───────────────────────────────────────
  *
@@ -416,6 +418,11 @@ export interface BuildSharedRuntimeOptions {
    *  in which case CLI providers are conservatively dropped from the
    *  cycling menu. */
   readonly isCliProviderAvailable?: (providerId: string) => boolean;
+  /** Optional HTTP adapter for the `integration-weave` LLM call. Chrome
+   *  passes its fetch-based `host.httpAdapter`; native hosts omit it and the
+   *  weaver lazily falls back to NodeHttpAdapter. When the feature is off
+   *  (default) this is never consulted. */
+  readonly httpAdapter?: HttpAdapterShape;
 }
 
 /**
@@ -689,8 +696,15 @@ export function buildSharedRuntime(
   // initial scan sees the populated blanksByWord map. Same pattern
   // both hosts had inline. Routing is deterministic (blankShapes) — the
   // old LLM BlankIntent gate was retired.
+  // Optional integration-weave LLM (blanks bucket). Built only when the host
+  // exposed an API-key bag; the weaver itself no-ops to static when the
+  // feature is off, no key resolves, or the http adapter is unavailable.
+  const blankWeaver: BlankWeaver | null = getApiKeys
+    ? buildBlankWeaver(configLoader, getApiKeys, opts.httpAdapter, (lvl, msg) => log(lvl, msg))
+    : null;
   const blankFill = new BlankFill(
     adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading,
+    blankWeaver,
   );
   configLoader.load()
     .then(() => blankFill.subscribe())

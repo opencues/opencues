@@ -16,6 +16,8 @@ import type { SelectorSatelliteState } from '../state/selector-satellite';
 import type { DynDefs } from '../state/dyn-defs';
 import { BlankLoadingAnimator, parseCustomFrames, parseRgbColors, parseAnsiColors, parseFrameIntervalMs, DEFAULT_RGB_PALETTE, DEFAULT_ANSI_PALETTE, type BlankLoadingMode } from './blank-loading';
 import { buildSafeScriptEnv } from '../security/safe-env';
+import { threeWayMerge } from './word-diff';
+import { WEAVE_VALUE_TOKEN, type BlankWeaver } from './blank-weave';
 
 export interface BlankSlot {
   /** Word index of the `_`. */
@@ -110,6 +112,11 @@ export class BlankFill {
      *  for backward compat with external callers that haven't wired the
      *  shared owner). */
     blankLoading?: BlankLoadingAnimator,
+    /** Optional LLM weaver (blanks bucket) for `integration-weave`. Built by
+     *  the boot layer from `buildBlankWeaver`; null on hosts/configs with no
+     *  blanks-bucket key. When absent, `integration:` stays a static template.
+     *  The real value is never passed to it — see `blank-weave.ts`. */
+    private weave?: BlankWeaver | null,
   ) {
     if (blankLoading) this._loading = blankLoading;
   }
@@ -842,6 +849,10 @@ export class BlankFill {
     // or the blank's replace flags (get path), so no command prefix survives.
     const hasIntegration = typeof blank?.integration === 'string'
       && (blank.integration as string).includes('{value}');
+    // The exact string that fills `{value}` (post-suffix). Captured BEFORE the
+    // static render so the LLM weave can splice it into the sentinel token
+    // afterwards — the value itself never reaches the weaver.
+    const integrationValue = primaryFill;
     if (hasIntegration) {
       primaryFill = this.renderIntegration(blank as Record<string, unknown>, primaryFill);
     } else if (typedAction) {
@@ -960,6 +971,59 @@ export class BlankFill {
       this.adapter.setCursorOffset(newCursor);
       this.adapter.forceRender();
     }
+
+    // ── LLM contextual weave (optional, opt-in, off by default) ──────────
+    // The static fill above has ALREADY committed (instant, never-empty). When
+    // `integration-weave-mode: on` AND this blank declares `integration-weave:
+    // true`, fire one background LLM call that weaves the value's exemplar into
+    // the surrounding prose, then three-way-merge the result so a slow or failed
+    // weave can never block the fill or clobber edits made during the call.
+    if (hasIntegration) {
+      this.maybeWeaveIntegration(blank as Record<string, unknown>, newText, fillStart, newCursor, integrationValue);
+    }
+  }
+
+  /**
+   * Background upgrade of a just-committed static integration fill into an
+   * LLM-woven version. Privacy/integrity: the real value (`integrationValue`)
+   * is spliced in HERE, locally, after the response — the weaver only ever sees
+   * the exemplar's sentinel token (see `blank-weave.ts`). Safe by construction:
+   * any failure (gate off, no weaver, LLM error, mangled token, user moved on)
+   * leaves the static fill exactly as it landed.
+   */
+  private maybeWeaveIntegration(
+    blank: Record<string, unknown>,
+    snapshot: string,
+    fillStart: number,
+    fillEnd: number,
+    integrationValue: string,
+  ): void {
+    const weaver = this.weave;
+    if (!weaver) return;
+    if (blank.integrationWeave !== true) return;
+    if (this.configLoader.opencuesState.settings.get('integration-weave-mode') !== 'on') return;
+    const exemplar = blank.integration;
+    if (typeof exemplar !== 'string' || !exemplar.includes('{value}')) return;
+
+    // Context = the prose leading up to where the value landed.
+    const priorContext = snapshot.slice(0, fillStart);
+    void weaver({ exemplar, priorContext })
+      .then((wovenWithToken) => {
+        if (!wovenWithToken) return; // static fallback — already committed
+        // Splice the REAL value in for the token (deterministic, local).
+        const woven = wovenWithToken.split(WEAVE_VALUE_TOKEN).join(integrationValue);
+        // Rewrite = snapshot with the static-fill region replaced by the woven
+        // phrase; three-way-merge against the LIVE buffer so user edits win.
+        const rewrite = snapshot.slice(0, fillStart) + woven + snapshot.slice(fillEnd);
+        const live = this.adapter.getText().replace(/[​‌]/g, '');
+        const { newText: merged } = threeWayMerge(snapshot, rewrite, live);
+        if (merged === live) return; // weave fully dropped by the merge
+        const newCursor = Math.min(merged.length, fillStart + woven.length);
+        this.adapter.log('info', `BlankFill: woven integration → "${preview(woven, 60)}"`);
+        if (this.adapter.pushText) this.adapter.pushText(merged, newCursor);
+        else { this.adapter.setText(merged); this.adapter.setCursorOffset(newCursor); this.adapter.forceRender(); }
+      })
+      .catch((e) => { this.adapter.log('info', `BlankFill: weave error (static fill kept) — ${(e as Error)?.message ?? e}`); });
   }
 
   /**

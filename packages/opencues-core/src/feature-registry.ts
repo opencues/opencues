@@ -322,6 +322,16 @@ export const FEATURES: readonly FeatureSpec[] = [
     ],
   },
   {
+    scalar: 'integration-weave-mode',
+    camelCase: 'integrationWeaveMode',
+    description: 'LLM contextual weaving of a blank\'s `integration:` exemplar (the value is swapped in AFTER the call — never sent to the provider)',
+    menuTip: 'Let a blank with `integration-weave: true` weave its output into surrounding prose via one LLM call. The real value is substituted for a sentinel token after the response, so it never reaches the provider; falls back to the static `{value}` template on any failure.',
+    values: [
+      { id: 'off', description: 'Disabled (default) — `integration:` is a static `{value}` template, zero LLM' },
+      { id: 'on',  description: 'Enabled — blanks declaring `integration-weave: true` weave their exemplar into context; the real value is spliced in deterministically post-response' },
+    ],
+  },
+  {
     scalar: 'sentence-cues-mode',
     camelCase: 'sentenceCuesMode',
     description: 'Sentence-scope cues — whole-sentence alternatives via `scope: sentence` cue declarations',

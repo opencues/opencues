@@ -347,6 +347,15 @@ export interface BlankConfig {
    *  "fluff". ADD-ONLY by construction (it only shapes the inserted value, never
    *  deletes surrounding text). e.g. `integration: "volume is now {value}"`. */
   integration?: string;
+  /** Opt this blank into LLM contextual weaving of its `integration` exemplar
+   *  (requires `integration-weave-mode: on`). When set, the runtime sends the
+   *  exemplar — with `{value}` replaced by a sentinel TOKEN, never the real
+   *  value — plus the prior buffer to one blanks-bucket LLM call, which weaves
+   *  the placeholder phrase into the surrounding prose. The real value is
+   *  swapped in for the token deterministically AFTER the response, so it never
+   *  reaches the provider and can't be altered. Falls back to the static
+   *  `{value}` substitution on any failure. Default (omitted) = static. */
+  integrationWeave?: boolean;
   /**
    * Explicit host allow-list. When set, narrows the default (all hosts) to
    * this set. Use the canonical host names: claude-code, opencode, chrome,
@@ -925,6 +934,7 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   blankSuffix?: string;
   blankShapes?: BlankShape[];
   integration?: string;
+  integrationWeave?: boolean;
   stepValues?: string[];
   blankSatellite?: boolean;
   blankSatelliteSeparator?: string;
@@ -1036,6 +1046,7 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'blankSuffix': fm.blankSuffix = value; break;
       case 'blankShapes': try { fm.blankShapes = JSON.parse(value); } catch { /* ignore malformed shapes */ } break;
       case 'integration': fm.integration = value; break;
+      case 'integration-weave': fm.integrationWeave = value === 'true'; break;
       case 'stepValues': try { fm.stepValues = JSON.parse(value); } catch { /* ignore */ } break;
       case 'blankSatellite': fm.blankSatellite = value === 'true'; break;
       case 'blankSatelliteSeparator': fm.blankSatelliteSeparator = value.replace(/^['"]|['"]$/g, ''); break;
@@ -1187,6 +1198,7 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
         if (synthesized.length > 0) blank.blankShapes = synthesized;
       }
       if (frontmatter.integration !== undefined) blank.integration = frontmatter.integration;
+      if (frontmatter.integrationWeave !== undefined) blank.integrationWeave = frontmatter.integrationWeave;
       if (frontmatter.stepValues !== undefined) blank.stepValues = frontmatter.stepValues;
       if (frontmatter.blankSatellite !== undefined) blank.blankSatellite = frontmatter.blankSatellite;
       if (frontmatter.blankSatelliteSeparator !== undefined) blank.blankSatelliteSeparator = frontmatter.blankSatelliteSeparator;
