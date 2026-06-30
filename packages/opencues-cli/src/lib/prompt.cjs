@@ -50,25 +50,27 @@ const stripPrefix = (Base) => class extends Base {
 // text going bold/bright. So:
 //   - pointer()  → '' (no ❯ column)
 //   - separator() → '' (no trailing … chrome after the message)
-//   - focus emphasis (`em`) is bold, not cyan-underline — bold composes with
-//     the caller's foreground colours (a `\x1b[39m` reset inside the label
-//     would cancel a colour-based emphasis but not the bold attribute).
+//   - focus emphasis is owned entirely by choiceMessage (bold for normal
+//     rows; gray→bright-white for `dim:true` rows). enquirer's own `em` style
+//     is neutralised to identity so it can't re-add its default cyan UNDERLINE
+//     on the focused row.
 //   - choices flagged `dim:true` (e.g. a "Done" row) render dimmed until
 //     focused, then bright-white — the "gray until selected" behaviour.
 class OcSelect extends stripPrefix(Select) {
   constructor(options) {
     super(options);
     this._dimIds = (options && options._dimIds) || new Set();
-    this.styles.em = bold;
+    this.styles.em = (s) => s; // identity — kill enquirer's underline-on-focus
   }
   pointer() { return ''; }
   separator() { return ''; }
   choiceMessage(choice, i) {
     const msg = this.resolve(choice.message, this.state, choice, i);
+    const focused = this.index === i;
     if (this._dimIds.has(choice.name)) {
-      return this.index === i ? brightWhite(msg) : dim(msg);
+      return focused ? brightWhite(msg) : dim(msg);
     }
-    return msg;
+    return focused ? bold(msg) : msg;
   }
 }
 const OcConfirm = stripPrefix(Confirm);
