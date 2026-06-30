@@ -4,7 +4,7 @@ last_updated: 2026-04-29
 
 # Adding a Cue-Blank
 
-A **cue-blank** is a blank (`_`) bound to a keyword via `blankKeywords`. The user types a command whose keyword **leads the line** ending in `_` (e.g., `volume _`, `weather paris _`), the underscore auto-populates with a current value, and Up/Down cycling changes the actual external state. Everything that touches the world is `_`-gated — there is no word-cycling on plain text without `_`.
+A **cue-blank** is a blank (`_`) bound to a keyword via `blankKeywords`. The user types a command whose keyword **leads the sentence** ending in `_` (e.g., `volume _`, `weather paris _`), the underscore auto-populates with a current value, and Up/Down cycling changes the actual external state. Everything that touches the world is `_`-gated — there is no word-cycling on plain text without `_`.
 
 Cue-blanks ship as either:
 - A folder under `defaults/blanks/<name>/` with a colocated shell script (OS-level work like volume, brightness)
@@ -60,7 +60,7 @@ blankScript: ./volume-blank.sh
 ---
 ```
 
-Relative `blankScript` paths (starting with `./`) are resolved against the folder. Folder-based is the canonical form. `blankKeywords` desugar at parse time into anchored `blankShapes` — a bare-get shape (`volume _`), a captured-arg get (`volume <x> _`), and (because `blankStep` is present, marking the blank settable) set + step shapes (`volume 30 _`, `volume up _`). A blank auto-populates whenever one of its shapes matches the line containing `_`.
+Relative `blankScript` paths (starting with `./`) are resolved against the folder. Folder-based is the canonical form. `blankKeywords` desugar at parse time into anchored `blankShapes` — a bare-get shape (`volume _`), a captured-arg get (`volume <x> _`), and (because `blankStep` is present, marking the blank settable) set + step shapes (`volume 30 _`, `volume up _`). A blank auto-populates whenever one of its shapes matches the sentence containing `_` (the segment after the last sentence terminator (`.`/`!`/`?` + whitespace, or CJK `。！？．`) or newline before `_`).
 
 ### BlankConfig fields
 
@@ -70,8 +70,8 @@ Relative `blankScript` paths (starting with `./`) are resolved against the folde
 | `type` | Yes | string | Always `blank`. |
 | `tip` | No | string | Label shown in the status line when the keyword/value is highlighted (live `get` output overrides). |
 | `blankScript` | Yes (for OS-bound blanks) | string | Path to the script for `get` / `set` / `up` / `down`. Use `./<name>-blank.sh` (relative to the BLANK.md). |
-| `blankKeywords` | Yes | string\|string[] | Friendly shorthand: keywords that bind a `_` to this blank when one leads the line containing `_`. Desugar at parse time into anchored `blankShapes`. Multi-word phrases allowed. Required: the resolver's auto-populate / cycling path (`BlankSource`) keys off `blankKeywords`, so a blank still needs them even when it also declares `blankShapes`. |
-| `blankShapes` | No | BlankShape[] | Explicit anchored routing grammar (`{pattern, action: get\|set\|step, valueGroup?}`), matched against the line containing `_`. The low-level routing mechanism; keywords desugar into it. Authoring `blankShapes` **overrides** the synthesized grammar for the runtime dispatch + fluid/transform cede (it wins over `blankKeywords`-derived shapes), but does not replace the `blankKeywords` requirement above. |
+| `blankKeywords` | Yes | string\|string[] | Friendly shorthand: keywords that bind a `_` to this blank when one leads the sentence containing `_`. Desugar at parse time into anchored `blankShapes`. Multi-word phrases allowed. Required: the resolver's auto-populate / cycling path (`BlankSource`) keys off `blankKeywords`, so a blank still needs them even when it also declares `blankShapes`. |
+| `blankShapes` | No | BlankShape[] | Explicit anchored routing grammar (`{pattern, action: get\|set\|step, valueGroup?}`), matched against the sentence containing `_`. The low-level routing mechanism; keywords desugar into it. Authoring `blankShapes` **overrides** the synthesized grammar for the runtime dispatch + fluid/transform cede (it wins over `blankKeywords`-derived shapes), but does not replace the `blankKeywords` requirement above. |
 | `integration` | No | string | Additive output template describing how the blank's value reads in context, e.g. `"volume is now {value}"`. ADD-ONLY — never deletes surrounding text. |
 | `blankStep` | No | number | Increment/decrement amount for numeric blanks. Its presence also marks the blank **settable** (synthesizes set + step shapes from keywords). |
 | `blankSuffix` | No | string | Suffix appended to the displayed value (e.g. `%` shows `50%`). |
@@ -82,7 +82,7 @@ Relative `blankScript` paths (starting with `./`) are resolved against the folde
 | `stepValues` | No | string[] | Static list of values to cycle through. |
 | `speak` | No | boolean | Read the tip aloud via TTS when navigated to (default: false). |
 
-> **Removed in the June 2026 slim-down** (all gracefully ignored if still present in old files): `blankAutoPopulate` (populate is now automatic on any shape match), `blankProximity` (routing is unconditionally line-scoped), `blankReadOnly` (cycleability is inferred — a blank with no `blankStep` / `stepValues` / `blankSatellite` isn't cycleable), `blankFormat` (numeric stepping is inferred from `blankStep`), `blankTip` (use `tip`), `blankKeywordExpansions`, and the replace/consume dials `blankReplace` / `blankConsumeAll` / `blankConsumeContext` (fill is always additive; command-span clearing is shape-derived).
+> **Removed in the June 2026 slim-down** (all gracefully ignored if still present in old files): `blankAutoPopulate` (populate is now automatic on any shape match), `blankProximity` (routing is unconditionally sentence-scoped), `blankReadOnly` (cycleability is inferred — a blank with no `blankStep` / `stepValues` / `blankSatellite` isn't cycleable), `blankFormat` (numeric stepping is inferred from `blankStep`), `blankTip` (use `tip`), `blankKeywordExpansions`, and the replace/consume dials `blankReplace` / `blankConsumeAll` / `blankConsumeContext` (fill is always additive; command-span clearing is shape-derived).
 
 ## 2. Write the blank script (OS-level)
 
@@ -126,7 +126,7 @@ esac
 
 ## 3. How it works at runtime
 
-1. User types `volume _` and the analyzer matches `volume`'s anchored shape leading the line containing `_`.
+1. User types `volume _` and the analyzer matches `volume`'s anchored shape leading the sentence containing `_`.
 2. The runtime calls `blankInvoke({ blankName: 'volume', action: 'get', args: ['volume'] })`.
 3. The host adapter's registry runs the registered class OR spawns `bash volume-blank.sh get`.
 4. The returned value (e.g., `50`) replaces `_` (display: `50%` because of `blankSuffix`). `metadata.blankName` is set on the WordDef, protecting it from LLM overwrites.

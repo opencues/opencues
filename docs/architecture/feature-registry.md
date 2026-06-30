@@ -151,8 +151,8 @@ Features that are read from the settings Map today:
 `fluidBlankMode`, `wordCuesMode`, `transformBlankMode`,
 `fluidConfigMode` — all consumed in `resolver.ts` as boolean gates.
 (The `blankIntentMode` gate was retired in the June 2026 slim-down;
-the keyword window is now unconditionally line-scoped, so there is no
-longer a runtime toggle threading a `lineScoped` getter into the
+the keyword window is now unconditionally sentence-scoped, so there is no
+longer a runtime toggle threading a scoping getter into the
 claim/cede sources — see [`blank-integration.md`](blank-integration.md).)
 
 ---

@@ -32,7 +32,7 @@
         { "type": "string", "description": "Comma-separated list." },
         { "type": "array", "items": { "type": "string" } }
       ],
-      "description": "Words that fire this blank when one leads the line containing _ (line-scoped). Desugar into anchored blankShapes."
+      "description": "Words that fire this blank when one leads the sentence containing _ (sentence-scoped: the segment after the last sentence terminator or newline before _). Desugar into anchored blankShapes."
     },
     "tip": {
       "type": "string",
@@ -45,7 +45,7 @@
     },
     "blankShapes": {
       "type": "array",
-      "description": "Anchored regex grammar routing a _ deterministically. Each shape is matched against the line containing _. When omitted, synthesized from blankKeywords (+ blankStep).",
+      "description": "Anchored regex grammar routing a _ deterministically. Each shape is matched against the sentence containing _ (the segment after the last sentence terminator or newline before _). When omitted, synthesized from blankKeywords (+ blankStep).",
       "items": {
         "type": "object",
         "required": ["pattern", "action"],

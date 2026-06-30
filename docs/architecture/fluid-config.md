@@ -65,8 +65,8 @@ than being interpreted as a generic rewrite. If the classifier says
 NONE, TransformBlank then gets its shot, then FluidBlank.
 
 The cede logic in `supports()` mirrors what TransformBlank and FluidBlank
-already do: if a registered blank's keyword leads the line containing the
-`_` (the shared line-scoped keyword-window predicate), ConfigIntent
+already do: if a registered blank's keyword leads the sentence containing the
+`_` (the shared sentence-scoped keyword-window predicate), ConfigIntent
 declines so BlankSource takes the slot.
 
 The settings-flip syntax (`change to opus _`, `switch to cerebras _`,
@@ -364,7 +364,7 @@ AND the validator will reject any attempt to apply them.
 - [`spans-and-cycling.md`](spans-and-cycling.md) — selector-satellite cycling, span priorities, the `clearOnEdit` cleanup path.
 - [`security-audit.md`](security-audit.md) — fluid-config's bounded-codomain rationale slots into row #21 (no side-effect channel for LLM-derived buffer text).
 - [`blank-sources.md`](blank-sources.md) — the `CueSource` family + the splice/merge substitute mechanisms. ConfigIntent's wipe is summon-phrase-scoped (via `summonPhraseStart` through `text.length`), structurally distinct from FluidBlank's always-additive fill.
-- [`blank-integration.md`](blank-integration.md) — blank routing for *user* blanks (volume / weather / …). ConfigIntent classifies `_` → a FEATURES scalar (bounded codomain, settings-only); user blanks are routed by anchored shapes. Both ConfigIntent and the script blanks cede via the same shared line-scoped keyword-window predicate.
+- [`blank-integration.md`](blank-integration.md) — blank routing for *user* blanks (volume / weather / …). ConfigIntent classifies `_` → a FEATURES scalar (bounded codomain, settings-only); user blanks are routed by anchored shapes. Both ConfigIntent and the script blanks cede via the same shared sentence-scoped keyword-window predicate.
 
 ---
 

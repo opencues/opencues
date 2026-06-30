@@ -54,7 +54,7 @@ Defined in `blanks/<name>/BLANK.md` (one folder per blank).
 
 ## Cue-Blanks
 
-**Cue-Blank** — A blank (`_`) that has been bound to a keyword via `blankKeywords` (or an explicit `blankShapes` grammar). When the user types a command leading the line (e.g., `volume _`), the blank auto-populates with the blank's current value and Up/Down cycling changes the actual system state (calls a runtime `Blank` class or a `blankScript`). Routing is line-scoped: the keyword/shape must lead the line containing `_`, with `_` at the trailing edge — prose that merely mentions a keyword mid-line does not fire. All external-state interactions are `_`-gated — there is no word-cycling on plain text without `_`.
+**Cue-Blank** — A blank (`_`) that has been bound to a keyword via `blankKeywords` (or an explicit `blankShapes` grammar). When the user types a command leading the sentence (e.g., `volume _`), the blank auto-populates with the blank's current value and Up/Down cycling changes the actual system state (calls a runtime `Blank` class or a `blankScript`). Routing is sentence-scoped: the keyword/shape must lead the sentence containing `_` (the segment after the last sentence terminator (`.`/`!`/`?` + whitespace, or CJK `。！？．`) or newline before `_` — so `let me check. volume _` fires just like `notes\nvolume _`), with `_` at the trailing edge — prose that merely mentions a keyword mid-sentence does not fire. All external-state interactions are `_`-gated — there is no word-cycling on plain text without `_`.
 
 Configured in `blanks/{name}/BLANK.md` with `blankKeywords` (or `blankShapes`), `blankStep`, `blankScript`, `blankSuffix`, `integration`, `tip`, `blankDismissible`, `blankClearKeywords`, `blankClearOnEdit`, `blankSatellite`. Keywords can be multi-word phrases (e.g. `opencues settings` as one keyword), and desugar to anchored shapes. See `docs/architecture/blank-integration.md`, `docs/features/cue-blanks.md`, and `docs/guides/adding-a-cue-blank.md`.
 
@@ -94,7 +94,7 @@ A **cue source** is anything that provides alternatives for words. All cue sourc
 
 **Remote Cues** — Alternatives computed externally using an LLM (~200-500ms). Each `cues/<name>/CUE.md` (or `blanks/<name>/BLANK.md`) becomes a config-driven source that sends a prompt to the LLM and parses the response. In code: `ConfigSource`.
 
-**BlankSource** — Keyword-bound blank dispatcher. Watches every `_` and claims the slot when any registered blank's shape (or synthesized keyword shape) matches the line containing `_`. Auto-populates with the blank's current value via `blankScript get` or runtime-class `blankInvoke`. Up/Down cycling writes back. Priority 95 (above fluid-blank).
+**BlankSource** — Keyword-bound blank dispatcher. Watches every `_` and claims the slot when any registered blank's shape (or synthesized keyword shape) matches the sentence containing `_`. Auto-populates with the blank's current value via `blankScript get` or runtime-class `blankInvoke`. Up/Down cycling writes back. Priority 95 (above fluid-blank).
 
 **TransformBlankSource** — Imperative-instruction `_` source. A single fused LLM call (classify + rewrite in one pass) emits the full rewritten buffer, which is three-way-merged into the live text; a generative branch handles inputs with no target ("write a poem _"). Also routes agent-task commands via TASK_* verdicts. Priority 93 — between keyword-bound `BlankSource` (95) and `FluidBlankSource` (92). When `supports()` runs, it cedes to any keyword-bound match before claiming. See `docs/features/transform-blank.md`.
 
