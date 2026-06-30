@@ -136,6 +136,10 @@ async function select(message, choices, opts = {}) {
     promptLine: message ? undefined : false,
     // initial focus index (e.g. confirm() lands on the safe default)
     initial: typeof opts.initial === 'number' ? opts.initial : undefined,
+    // Bounded scroll viewport — keeps a long list from rendering taller than
+    // the terminal (which enquirer can't fully erase on submit, leaving the
+    // list stranded in scrollback).
+    limit: typeof opts.limit === 'number' ? opts.limit : undefined,
   });
   try {
     const name = await prompt.run();

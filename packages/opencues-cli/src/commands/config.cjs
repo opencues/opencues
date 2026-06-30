@@ -124,7 +124,11 @@ async function interactive(ctx, _m) {
     console.log('');
     console.log(dim('Settings  ·  ↑↓ move · Enter change · green = changed from default'));
 
-    const pick = await prompt.select('', choices);
+    // Cap the rendered height to the terminal so the long list scrolls within
+    // a viewport (and enquirer can fully erase it on exit — otherwise the
+    // overflow stays stranded in scrollback after Done).
+    const limit = Math.max(8, (process.stdout.rows || 24) - 6);
+    const pick = await prompt.select('', choices, { limit });
     if (!pick || pick.done) break;
     await editScalar(ctx, m, pick.scalar);
   }
