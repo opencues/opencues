@@ -126,6 +126,7 @@ export type BridgeEventBody =
   | { type: 'resolver.completed'; text: string; textLen: number; cleanWords: number; resultCount: number; latencyMs: number; generation: number; routing: ReadonlyArray<{ wordIndex: number; word: string; sourceId: string }>; skipped: ReadonlyArray<{ wordIndex: number; word: string }> }
   | { type: 'blank.invoked'; blankName: string; keyword: string; contextWords: readonly string[] }
   | { type: 'blank.substituted'; blankName: string; keyword: string; input: string; output: string; altCount: number; dismissible: boolean }
+  | { type: 'blank.woven'; blankName: string; output: string }
   | { type: 'agent-rewrite.round-started'; taskId: string | null; prompt: string; textLen: number; cursor: number }
   | { type: 'agent-rewrite.round-completed'; taskId: string | null; applied: number; dropped: number; userHunks: number; latencyMs: number }
   | { type: 'transform-blank.started'; textLen: number; blankIdx: number }

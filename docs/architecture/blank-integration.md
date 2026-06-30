@@ -5,8 +5,9 @@ so the runtime can weave the value into the buffer with connective "fluff"
 instead of dropping a bare value. It is **add-only by construction** — it
 only ever shapes the *inserted value*, never the user's surrounding text.
 
-> Status: the **static** form (below) is shipped. The **LLM-driven** form
-> (§ Future direction) is designed but deliberately deferred.
+> Status: BOTH forms are shipped. The **static** form (below) is the default
+> and runs zero-LLM. The **LLM-woven** form (§ LLM contextual weaving) is
+> opt-in behind `integration-weave-mode: on` + per-blank `integration-weave: true`.
 
 ---
 
@@ -64,58 +65,92 @@ phrase around the value. There is no reading of "what came before."
 
 ---
 
-## Future direction: LLM-driven contextual weaving (deferred)
+## LLM contextual weaving (opt-in)
 
-The static frame can't adapt to surrounding prose. The intended evolution:
-**`integration:` becomes an *exemplar* — it indicates the shape/register of
-`{value}` — and an LLM that can see the surrounding text writes the connective
-fluff to integrate the value naturally.**
+The static frame can't adapt to surrounding prose. The opt-in evolution:
+**an LLM weaves the `integration:` exemplar into the surrounding text — but it
+never sees the real value.** The deterministic shape fetches the **data**; the
+LLM does the **presentation**; the runtime splices the data into the
+presentation deterministically afterward.
 
-The deterministic shape fetches the **data**; the LLM does the
-**presentation**, using the author's exemplar as a style guide. This keeps the
-"static data, format afterwards, the blank owns its presentation" philosophy —
-just with the formatting done per-context instead of by a fixed string.
+### The privacy/integrity invariant
 
-### Sketch
+The load-bearing property: **the value never reaches the provider.** The LLM
+weaves connective text around a sentinel **token**, and the runtime swaps the
+real value in for the token *after* the response — locally, in `BlankFill`.
+This buys two things the static template and a naive "send the value" design
+can't:
 
-1. Blank fires deterministically (shape) → real value `Oslo: 22°C Clear`.
-2. Blank declares an exemplar, e.g. `integration: it's a clear evening, about
-   18°C` — teaches register + shape, not a literal template.
-3. One LLM call receives **the buffer context** (the prose around the command),
-   **the value**, and **the exemplar**.
-4. It returns the value woven into the flow:
-   - `Planning a trip to Oslo.\nweather oslo _`
-     → `Planning a trip to Oslo.\nRight now it's 22°C and clear there.`
-   - `weather oslo _` alone → `It's currently 22°C and clear in Oslo.`
-5. Merge-protected (reuses the transform / three-way-merge machinery) so a
-   late LLM response never clobbers edits made during the call.
+1. **Privacy** — the value (a stock price, the weather, anything personal)
+   stays on the machine; it's never in the provider's logs.
+2. **Integrity** — the LLM can't hallucinate, reformat, translate, or drop the
+   value. It only writes fluff around a token; the runtime fills the token.
+
+### Flow
+
+```
+integration: it's currently {value}
+integration-weave: true
+```
+
+1. Blank fires deterministically (shape) → real value `22°C Clear`. **Stays local.**
+2. The exemplar's `{value}` → a sentinel token: `it's currently ⟦VALUE⟧`.
+3. The fill is held back and the **loading animation keeps running** while ONE
+   blanks-bucket LLM call (bounded by a ~6 s timeout) receives the **prior
+   buffer** (context) + the **placeholder phrase** (with the token) and weaves
+   it: `Planning a trip to Oslo.\nweather oslo _` → `Right now it's ⟦VALUE⟧ there.`
+4. The runtime swaps `⟦VALUE⟧` → `22°C Clear` deterministically and commits the
+   woven phrase **once**: `…Right now it's 22°C Clear there.` The buffer changes
+   a single time (loader → woven), never value-then-reflow.
+5. On ANY failure (gate off, no key, LLM error, mangled token, timeout) the
+   commit lands the **static template** instead (`…it's currently 22°C Clear`) —
+   still one change, never blocked, never corrupted.
+6. If the user edits during the wait, the fill is dropped (their edit wins) —
+   the same staleness contract every async blank fill already honours.
+
+### Authoring + gating
+
+- Per-blank: `integration-weave: true` (the `integration:` exemplar must keep
+  its `{value}` slot — that's the swap point).
+- Global: `integration-weave-mode: off | on` (off by default). Both must be set.
+- Provider: the **blanks** bucket (`blanks-llm-provider`). The `_` keystroke is
+  the consent gate, same as every other blank LLM call.
 
 ### Distinct from the other verbs
 
 | Verb | Role |
 |---|---|
-| blank + static integration | fixed frame, `{value}` substituted, 0 LLM (shipped) |
-| blank + LLM integration | value woven into surrounding prose via an exemplar (deferred) |
+| blank + static integration | fixed frame, `{value}` substituted, 0 LLM (default) |
+| blank + woven integration | value spliced into LLM-written fluff via a token; value never sent (opt-in) |
 | transform | rewrites the whole buffer by intent |
 | fluid | looks up a free-form answer |
 
-### Open design decisions (resolve before building)
+### Implementation
 
-1. **It's an LLM call** — opt-in per blank; trades the 0-latency static path
-   for context-aware weaving. Be deliberate about the cost.
-2. **Context scope** — with anchored shapes the command leads its line, so the
-   natural "around it" is the **prior buffer** (earlier lines/sentences), not
-   same-line text.
-3. **Exemplar format** — free example sentence (`it's a mild, clear evening`,
-   max LLM freedom) vs a `{value}`-bearing template the LLM may adapt
-   (`it's currently {value}`, more anchored). Leaning free-example.
+- `packages/opencues-runtime/src/modules/blank-weave.ts` — the weaver +
+  `FUSED_WEAVE_SYSTEM` prompt + `WEAVE_VALUE_TOKEN`. The weaver returns the
+  woven phrase *still containing the token*; the value swap happens in the
+  caller, so the value never enters this module.
+- `BlankFill.applyAsyncFill` (`blank-fill.ts`) — when a fill will weave, it
+  holds the static commit, keeps the loader running, awaits the weaver (bounded
+  by `WEAVE_TIMEOUT_MS`), then commits ONCE: the value spliced into the woven
+  phrase on success, or the static template (`commitStatic`) on failure/timeout.
+  A staleness check drops the fill if the buffer changed during the wait.
+- Wired into every band via `buildBlankWeaver`: CC inline
+  (`adapters/cc/v2.1/boot.ts`), OC/gemini/shell via `boot-common.ts` (native
+  NodeHttpAdapter fallback), and chrome via `adapters/chrome/v1/boot.ts`
+  passing its fetch-based `host.httpAdapter` (NodeHttpAdapter is stubbed in the
+  browser bundle).
+- Emits a `blank.woven` event (`blankName` + `output`) when the weave commits.
 
-### Why deferred
+### Tests + bench
 
-The static form covers the common case at zero cost and zero risk. The
-LLM form is a genuine feature (call cost, prompt design, a bench for weaving
-quality) and was parked to keep the current simplification pass focused on
-*removing* machinery rather than adding it.
+- Runtime contract (deterministic, mock weaver): token-swap +
+  static-fallback in `blank-weave.test.ts`; the clearOnEdit-wipe regression +
+  privacy guarantee in `blank-weave-fill.scenarios.test.ts`.
+- LLM quality: `tests/benchmarks/integration-weave/prod.ts` measures
+  token-survival across providers — cerebras + groq both 100% at the June 2026
+  baseline.
 
 ---
 

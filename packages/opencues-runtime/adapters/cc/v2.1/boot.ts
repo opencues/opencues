@@ -34,6 +34,7 @@ import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import { AgentTaskState } from '../../../src/state/agent-task';
 import { applyDirectives } from '../../../src/render-directives';
 import { buildAgentLLMResolver, buildBlankContextProvider, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildBlankWeaver } from '../../../src/modules/blank-weave';
 import { startEventBridge } from '../../../src/event-bridge';
 import type {
   BlankInvokeSpec,
@@ -599,7 +600,10 @@ export function boot(host: HostInfo): BootResult {
 
   // Routing is deterministic (blankShapes) — the old LLM BlankIntent gate
   // was retired.
-  const blankFill = new BlankFill(adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading);
+  // integration-weave LLM (blanks bucket, native NodeHttpAdapter fallback).
+  // No-ops to static unless `integration-weave-mode: on` + a blank opts in.
+  const blankWeaver = buildBlankWeaver(configLoader, () => apiKeys, undefined, (lvl, msg) => log(lvl, msg));
+  const blankFill = new BlankFill(adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading, blankWeaver);
   configLoader.load().then(() => blankFill.subscribe()).catch(() => { /* logged */ });
   void blankFill; // silence unused — referenced by future phases
 

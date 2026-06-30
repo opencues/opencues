@@ -35,6 +35,8 @@ const SETTINGS_MAP_ONLY: ReadonlySet<string> = new Set([
   'transformBlankMode', // consumed by transform-blank pipeline gate
   'fluidConfigMode',    // consumed in resolver.ts:enableConfigIntent
   'sentenceCuesMode',   // consumed in resolver.ts:enableSentenceCues
+  'integrationWeaveMode', // consumed in blank-fill.ts applyAsyncFill weave gate
+                          // (read from settings map; no resolver/typed field)
   'maxThinking',        // consumed in resolver.ts (buildSources maxThinking)
                         // + boot-common buildAgentLLMResolver; a plain
                         // on/off toggle, no narrow-typed consumer needs it.
