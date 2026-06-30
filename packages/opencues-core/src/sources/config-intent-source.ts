@@ -825,7 +825,7 @@ export interface ConfigIntentSourceConfig {
    * WHY a `_` didn't fire. Wire to `nativeHostFormatLLMError` from
    * boot-common.ts in native hosts.
    */
-  formatErrorAsSubstitute?: (reason: FluidBlankErrorReason, err?: Error) => string;
+  formatErrorAsSubstitute?: (reason: FluidBlankErrorReason, err?: Error, ctx?: { provider?: string; model?: string; endpoint?: string }) => string;
 }
 
 /**
@@ -871,7 +871,7 @@ export class ConfigIntentSource implements CueSource {
   private blanks: Record<string, BlankConfig>;
   private log: (msg: string) => void;
   private emit: (event: ConfigIntentEvent) => void;
-  private formatErrorAsSubstitute: ((reason: FluidBlankErrorReason, err?: Error) => string) | undefined;
+  private formatErrorAsSubstitute: ((reason: FluidBlankErrorReason, err?: Error, ctx?: { provider?: string; model?: string; endpoint?: string }) => string) | undefined;
 
   /**
    * Per-input cache of raw LLM responses. ConfigIntent is a
@@ -1004,7 +1004,7 @@ export class ConfigIntentSource implements CueSource {
       // needs the inline signal.
       const reason = classifyLlmError(err);
       if (reason !== null && this.formatErrorAsSubstitute) {
-        const text = this.formatErrorAsSubstitute(reason, err);
+        const text = this.formatErrorAsSubstitute(reason, err, { provider: this.provider.id, model: this.model, endpoint: this.endpoint });
         if (text && text.length > 0) {
           return {
             results: [{

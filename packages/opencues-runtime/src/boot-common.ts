@@ -567,7 +567,27 @@ function readPrewarmIntervalMs(configLoader: ConfigLoader): number {
 
 export function nativeHostFormatLLMError(
   reason: 'invalid-api-key' | 'network' | 'rate-limit' | 'endpoint-not-found' | 'model-not-found' | 'insufficient-credits' | 'bad-request',
+  _err?: Error,
+  ctx?: { provider?: string; model?: string; endpoint?: string },
 ): string {
+  // Local `ollama` fails in ways the cloud-centric hints below don't
+  // cover: the server may not be installed/running, or the model may not
+  // be pulled. The generic "check connectivity" / "make llm-model a valid
+  // pair" text is useless there — tell the user the actual fix (`ollama
+  // serve` / `ollama pull <model>`). Guarded by provider id so it only
+  // fires for the local provider.
+  if (ctx?.provider === 'ollama') {
+    const model = ctx.model && ctx.model.length > 0 ? ctx.model : 'the model';
+    switch (reason) {
+      case 'model-not-found':
+        return `[OpenCues: Ollama model '${model}' is not installed — run \`ollama pull ${ctx.model ?? '<model>'}\` (see your pulled models with \`ollama list\`)]`;
+      case 'network':
+      case 'endpoint-not-found':
+        return '[OpenCues: Ollama is not reachable — install it from ollama.com and start it with `ollama serve` (then `ollama pull` a model). Check `llm-endpoint:` if you run Ollama on a non-default host/port.]';
+      // invalid-api-key / rate-limit / insufficient-credits don't apply to
+      // a local server — fall through to the generic text below.
+    }
+  }
   // Provider's own JSON error deliberately NOT inlined — it can be
   // ugly, leak details, or vary wildly across providers. The reason
   // class + actionable hint is enough.

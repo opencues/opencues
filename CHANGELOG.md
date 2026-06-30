@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — `ollama` provider: local models over Ollama's native `/api/chat` (`@opencues/core` 0.10.0 → 0.11.0, `@opencues/runtime` 0.7.0 → 0.8.0, `opencues` CLI 0.2.7 → 0.2.8)
+
+New first-class LLM provider that runs models **fully on the user's machine** via a local Ollama server. No API key, no per-token cost, and inference never leaves the device — so it's the one provider OpenCues will route prose-bearing surfaces (word-cues, auditors, agent-rewrite) through with zero leak risk (`trainsOnInput` is implicitly false). Opt in with `llm-provider: ollama` (global) or `blanks-llm-provider: ollama` (the `_` surface only); default model `gemma4:e2b`.
+
+Two deliberate departures from the OpenAI-compatible providers:
+
+1. **Native `/api/chat`, not `/v1/chat/completions`.** Ollama's OpenAI-compatible `/v1` gives no way to disable a thinking model's reasoning channel (verified Ollama 0.30.11 — `think`, `reasoning_effort`, `chat_template_kwargs` all ignored on `/v1`). A thinking model (Gemma 4, Qwen3, …) then spends OpenCues' deliberately small `max_completion_tokens` budget reasoning and returns EMPTY `content` → every blank/cue silently dies. The provider talks to the native endpoint with `think: false`, which is why it's a bespoke provider and not a `llm-endpoint:` override of `openai`. `num_ctx` is set generously (16k) because Ollama otherwise defaults a model's context to a small VRAM-derived value (≈4k) that truncates FUSED_SYSTEM-class prompts.
+
+2. **`optionalAuth`** — local Ollama needs no key (a key is still sent when `OLLAMA_API_KEY` is set, for authenticating reverse proxies). NOT in `PROVIDER_AUTO_ORDER` (a reachable local server must never silently hijack the auto-route from a configured cloud provider) and hidden from the cycling menu (`exposeInMenu: false`, so users never cycle onto a maybe-offline local server); set it by editing OPENCUES.md. No HTTP fallback peer — a local-private request never falls out to a cloud provider.
+
+**Failure-mode robustness (Ollama not installed / model not pulled).** Since the provider has no cloud fallback by design, error messaging is the only safety net — two gaps fixed:
+- **Silent failure when a model isn't pulled.** Ollama returns `model 'gemma4:e2b' not found`; the model name sits between "model" and "not found", so `classifyLlmError`'s adjacent `model not found` pattern missed it → `null` reason → no substitute → the user typed `_` and saw *nothing*. Added a `model[^.\n]{0,40}not found` alternative so it classifies as `model-not-found`.
+- **Cloud-centric guidance.** `nativeHostFormatLLMError` now takes provider context (threaded from each source's `this.provider.id` / `this.model` / `this.endpoint` via the `formatErrorAsSubstitute` callback's new 3rd arg, updated across TransformBlank / FluidBlank / ConfigIntent). For `provider: ollama` it emits the actual fix — `model-not-found` → ``run `ollama pull <model>` `` ; `network`/`endpoint-not-found` → ``install from ollama.com and start `ollama serve` ``. Cloud providers keep the generic messages.
+
+Touch points: new `OLLAMA` adapter + `parseOllamaResponse` + `FALLBACK_PAIRS` entry in `llm-provider.ts`; `ollama` added to `PROVIDER_IDS`; `VALID_BUCKET_PROVIDERS` in `config-loader.ts`; provider-bucket menus in `feature-registry.ts` (hidden); `PROVIDER_DISPLAY`/`PROVIDER_DEFAULT_MODEL` in `help.cjs`; `classifyLlmError` model-not-found pattern + `formatErrorAsSubstitute` ctx arg (3 sources) + `nativeHostFormatLLMError` ollama branches. New `llm-provider.ollama.test.ts` (9 cases incl. classifier) + `boot-common.ollama-errors.test.ts` (7 cases); the all-providers round-trip test now allows local providers their loopback http endpoint. Validated end-to-end against Gemma 4 E2B through OC's real `TransformBlankSource`, plus both failure modes (missing model, dead server). Docs: `docs/guides/llm-providers.md` § "Local models via Ollama".
+
 ### Added — cerebras `gemma-4-31b` as a first-class model + dispatch rate-limit retry (`@opencues/core` 0.9.0 → 0.10.0)
 
 `gemma-4-31b` is now in Cerebras's `knownModels` and handled correctly end-to-end. `gpt-oss-120b` stays the default. Select it per surface, e.g. `blanks-llm-provider: cerebras` + `blanks-llm-model: gemma-4-31b`.

@@ -431,7 +431,7 @@ export interface TransformBlankSourceConfig {
    * preserve silent-fail behaviour (legacy default for back-compat with
    * tests + chrome).
    */
-  formatErrorAsSubstitute?: (reason: FluidBlankErrorReason, err?: Error) => string;
+  formatErrorAsSubstitute?: (reason: FluidBlankErrorReason, err?: Error, ctx?: { provider?: string; model?: string; endpoint?: string }) => string;
 }
 
 export class TransformBlankSource implements CueSource {
@@ -493,7 +493,7 @@ export class TransformBlankSource implements CueSource {
   private blanks: Record<string, BlankConfig>;
   private log: (msg: string) => void;
   private emit: (event: TransformBlankEvent) => void;
-  private formatErrorAsSubstitute: ((reason: FluidBlankErrorReason, err?: Error) => string) | undefined;
+  private formatErrorAsSubstitute: ((reason: FluidBlankErrorReason, err?: Error, ctx?: { provider?: string; model?: string; endpoint?: string }) => string) | undefined;
 
   constructor(config: TransformBlankSourceConfig) {
     this.httpAdapter = config.httpAdapter;
@@ -727,7 +727,7 @@ export class TransformBlankSource implements CueSource {
       const reason = classifyLlmError(err);
       const blankIdx = context.words.indexOf('_');
       if (reason !== null && blankIdx >= 0 && this.formatErrorAsSubstitute) {
-        const text = this.formatErrorAsSubstitute(reason, err);
+        const text = this.formatErrorAsSubstitute(reason, err, { provider: this.provider.id, model: this.model, endpoint: this.endpoint });
         if (text && text.length > 0) {
           return {
             results: [{

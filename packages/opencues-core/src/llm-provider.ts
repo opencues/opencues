@@ -22,9 +22,9 @@
 
 import { resolveReasoningEffort } from './model-thinking';
 
-export type ProviderId = 'groq' | 'openrouter' | 'gemini' | 'openai' | 'openai-subscription' | 'anthropic' | 'cerebras' | 'claude-code-cli' | 'opencode-zen';
+export type ProviderId = 'groq' | 'openrouter' | 'gemini' | 'openai' | 'openai-subscription' | 'anthropic' | 'cerebras' | 'claude-code-cli' | 'opencode-zen' | 'ollama';
 
-export const PROVIDER_IDS: readonly ProviderId[] = ['groq', 'openrouter', 'gemini', 'openai', 'openai-subscription', 'anthropic', 'cerebras', 'claude-code-cli', 'opencode-zen'];
+export const PROVIDER_IDS: readonly ProviderId[] = ['groq', 'openrouter', 'gemini', 'openai', 'openai-subscription', 'anthropic', 'cerebras', 'claude-code-cli', 'opencode-zen', 'ollama'];
 
 /**
  * Legacy provider-id aliases. User configs created before the rename
@@ -479,6 +479,24 @@ function parseOpenAIResponse(rawJson: string): string {
     throw new Error(`provider error: ${data.message} (code=${data.code}${data.type ? `, type=${data.type}` : ''})`);
   }
   return data.choices?.[0]?.message?.content ?? '';
+}
+
+/**
+ * Parse Ollama's NATIVE `/api/chat` response shape (`{ message: { content } }`)
+ * — NOT the OpenAI `/v1` shape. The `ollama` provider talks to `/api/chat`
+ * (not `/v1/chat/completions`) because that's the only endpoint where
+ * `think: false` reaches the model; on `/v1` a thinking model (Gemma 4,
+ * Qwen, …) spends OpenCues' small token budget in the reasoning channel and
+ * returns empty `content`. Mirrors `parseOpenAIResponse`'s error handling:
+ * native errors arrive as a top-level `{ error: "..." }` string.
+ */
+function parseOllamaResponse(rawJson: string): string {
+  const data = JSON.parse(rawJson) as {
+    message?: { content?: string };
+    error?: string;
+  };
+  if (data.error) throw new Error(`provider error: ${data.error}`);
+  return data.message?.content ?? '';
 }
 
 // ---------------------------------------------------------------------
@@ -1412,6 +1430,80 @@ export function withFreePool(
   };
 }
 
+/**
+ * Ollama — local models over Ollama's native `/api/chat` endpoint.
+ *
+ * The most PRIVATE provider: inference never leaves the machine, so it's the
+ * one place prose-bearing sources (word-cues, auditors, agent-rewrite) can run
+ * with zero leak risk (`trainsOnInput` is implicitly false).
+ *
+ * Two deliberate departures from the OpenAI-compatible providers:
+ *
+ *   1. **Native `/api/chat`, not `/v1/chat/completions`.** Ollama exposes an
+ *      OpenAI-compatible `/v1`, but it gives no way to disable a thinking
+ *      model's reasoning channel (verified Ollama 0.30.11 — `think`,
+ *      `reasoning_effort`, `chat_template_kwargs` all ignored on `/v1`). A
+ *      thinking model (Gemma 4, Qwen3, …) then spends OpenCues' deliberately
+ *      small `max_completion_tokens` budget reasoning and returns EMPTY
+ *      `content` → every blank/cue silently dies. The native endpoint honours
+ *      `think: false`, which is the whole reason this is a bespoke provider
+ *      and not a `llm-endpoint:` override of `openai`.
+ *
+ *   2. **`optionalAuth`** — local Ollama needs no key. A key is still sent
+ *      when present (`OLLAMA_API_KEY`) for users who front Ollama with an
+ *      authenticating reverse proxy.
+ *
+ * `num_ctx` is set generously (16k) because Ollama otherwise defaults a
+ * model's context to a small VRAM-derived value (≈4k) that truncates
+ * OpenCues' FUSED_SYSTEM-class prompts. Sliding-window-attention models keep
+ * the KV cache tiny at 16k, so the VRAM cost is negligible.
+ *
+ * NOT in `PROVIDER_AUTO_ORDER`: a reachable local server must never silently
+ * hijack the auto-route from a cloud provider the user actually configured —
+ * Ollama is explicit opt-in via `llm-provider: ollama`.
+ */
+const OLLAMA: ProviderAdapter = {
+  id: 'ollama',
+  displayName: 'Ollama (local)',
+  defaultEndpoint: 'http://localhost:11434/api/chat',
+  defaultModel: 'gemma4:e2b',
+  // Bounds the fluid-config classifier's NL model-picking. Any pulled model
+  // works via a direct OPENCUES.md edit; this is just the validated shortlist.
+  knownModels: ['gemma4:e2b'],
+  envKeyName: 'OLLAMA_API_KEY',
+  optionalAuth: true,
+  buildRequest(req, ctx) {
+    const options: Record<string, unknown> = {
+      temperature: req.temperature ?? 0,
+      // Override Ollama's small default context (truncates OpenCues prompts).
+      num_ctx: 16384,
+    };
+    if (req.maxTokens !== undefined) options.num_predict = req.maxTokens;
+    const body: Record<string, unknown> = {
+      model: req.model,
+      messages: req.messages,
+      // Keep the token budget for the ANSWER, never the reasoning channel.
+      // OpenCues' blank/cue paths want the direct result, not a chain of
+      // thought — `ctx.maxThinking` is deliberately ignored here.
+      think: false,
+      stream: false,
+      options,
+    };
+    // Native `format` accepts a JSON schema object (or the string "json").
+    // Map OpenCues' structured-output spec straight onto it.
+    if (req.responseFormat) body.format = req.responseFormat.schema;
+    return {
+      url: ctx.endpoint ?? this.defaultEndpoint,
+      body: JSON.stringify(body),
+      headers: {
+        'Content-Type': 'application/json',
+        ...(ctx.apiKey ? { Authorization: `Bearer ${ctx.apiKey}` } : {}),
+      },
+    };
+  },
+  parseResponse: parseOllamaResponse,
+};
+
 const PROVIDERS: Readonly<Record<ProviderId, ProviderAdapter>> = {
   groq: GROQ,
   openrouter: OPENROUTER,
@@ -1422,6 +1514,7 @@ const PROVIDERS: Readonly<Record<ProviderId, ProviderAdapter>> = {
   cerebras: CEREBRAS,
   'claude-code-cli': CLAUDE_CLI,
   'opencode-zen': OPENCODE_ZEN,
+  ollama: OLLAMA,
 };
 
 /**
@@ -1927,6 +2020,11 @@ const FALLBACK_PAIRS: Readonly<Record<ProviderId, ProviderId | undefined>> = {
   // opencode-zen has its own pool-walking dispatcher
   // (dispatchWithFreePool); no cross-provider fallback needed.
   'opencode-zen': undefined,
+  // ollama builds a NATIVE /api/chat body (think:false, options.num_ctx) —
+  // no OpenAI-shape peer can stand in without rebuilding it, and falling a
+  // local-private request OUT to a cloud provider would silently break the
+  // privacy guarantee. No fallback by design.
+  ollama: undefined,
 };
 
 /**

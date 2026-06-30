@@ -261,6 +261,7 @@ const PROVIDER_DISPLAY = {
   'claude-code-cli': 'Claude Code (CLI, subscription)',
   'openai-subscription': 'OpenAI (ChatGPT subscription)',
   'opencode-zen': 'OpenCode Zen',
+  ollama: 'Ollama (local)',
 };
 
 // Default model fallback for pre-build. Live data sourced from
@@ -275,6 +276,7 @@ const PROVIDER_DEFAULT_MODEL = {
   'claude-code-cli': 'haiku',
   'openai-subscription': 'gpt-5.4-mini',
   'opencode-zen': 'big-pickle',
+  ollama:     'gemma4:e2b',
 };
 // Strip cosmetic prefixes/suffixes for display ('openai/foo' → 'foo',
 // 'foo:free' → 'foo'). Keeps the meaningful model identity, trims chrome.

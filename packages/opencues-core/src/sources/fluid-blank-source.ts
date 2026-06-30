@@ -562,7 +562,7 @@ export interface FluidBlankSourceConfig {
    * without a separate error surface (chrome) — native hosts (CC/OC) can
    * keep silent + use the statusline instead.
    */
-  formatErrorAsSubstitute?: (reason: FluidBlankErrorReason, err?: Error) => string;
+  formatErrorAsSubstitute?: (reason: FluidBlankErrorReason, err?: Error, ctx?: { provider?: string; model?: string; endpoint?: string }) => string;
 }
 
 /** Classified failure reasons for FluidBlank — limited to USER-ACTIONABLE
@@ -640,7 +640,12 @@ function classifyHttpError(err: Error): FluidBlankErrorReason | null {
   // silent default. Checked BEFORE the generic 404 branch so a model 404
   // is attributed to the MODEL (actionable: fix the pair), not the
   // endpoint URL.
-  if (/model_not_found|not_found_error|model[^.\n]{0,40}does not exist|do(?:es)? not have access|no access to (?:the )?model|model not found|unknown model|invalid model|model[^.\n]{0,40}not available/i.test(msg)) return 'model-not-found';
+  // `model[^.\n]{0,40}not found` also catches Ollama's native phrasing
+  // `model 'gemma4:e2b' not found` — where the model name sits BETWEEN
+  // "model" and "not found", so the adjacent literal `model not found`
+  // alternative misses it and the whole thing used to fall through to a
+  // SILENT bail (no substitute) when a local model wasn't pulled.
+  if (/model_not_found|not_found_error|model[^.\n]{0,40}does not exist|do(?:es)? not have access|no access to (?:the )?model|model not found|model[^.\n]{0,40}not found|unknown model|invalid model|model[^.\n]{0,40}not available/i.test(msg)) return 'model-not-found';
   if (/\b404\b/.test(msg)) return 'endpoint-not-found';
   // 400 — bad request. Most commonly: wrong model name for the chosen
   // provider, malformed body, or mismatched provider/model combo
@@ -675,7 +680,7 @@ export class FluidBlankSource implements CueSource {
   private emit: (event: FluidBlankEvent) => void;
   private log: (msg: string) => void;
   private logInfo: (msg: string) => void;
-  private formatErrorAsSubstitute: ((reason: FluidBlankErrorReason, err?: Error) => string) | undefined;
+  private formatErrorAsSubstitute: ((reason: FluidBlankErrorReason, err?: Error, ctx?: { provider?: string; model?: string; endpoint?: string }) => string) | undefined;
 
   /**
    * Per-input variant pool — caches prior LLM answers for each
@@ -735,7 +740,7 @@ export class FluidBlankSource implements CueSource {
     err?: Error,
   ): CueResult | null {
     if (!this.formatErrorAsSubstitute) return null;
-    const text = this.formatErrorAsSubstitute(reason, err);
+    const text = this.formatErrorAsSubstitute(reason, err, { provider: this.provider.id, model: this.model, endpoint: this.endpoint });
     if (!text || text.length === 0) return null;
     return {
       wordIndex: blankIdx,

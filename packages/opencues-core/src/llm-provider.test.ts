@@ -591,7 +591,13 @@ describe('getProvider / listProviders / PROVIDER_IDS', () => {
         { model: p!.defaultModel, messages: [{ role: 'user', content: 'x' }] },
         { apiKey: 'test' },
       );
-      assert.match(built.url, /^https:\/\//);
+      // Cloud providers are https; local providers (ollama) talk to a
+      // loopback http endpoint by design.
+      if (p!.optionalAuth && /^http:\/\/(localhost|127\.0\.0\.1)/.test(built.url)) {
+        assert.match(built.url, /^http:\/\/(localhost|127\.0\.0\.1):\d+\//);
+      } else {
+        assert.match(built.url, /^https:\/\//);
+      }
       assert.ok(built.body.length > 0);
     }
   });

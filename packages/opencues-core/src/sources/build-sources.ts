@@ -213,6 +213,10 @@ export interface BuildSourcesOptions {
   formatLLMErrorAsSubstitute?: (
     reason: 'invalid-api-key' | 'network' | 'rate-limit' | 'endpoint-not-found' | 'model-not-found' | 'insufficient-credits' | 'bad-request',
     err?: Error,
+    // Provider context lets the formatter give provider-specific guidance
+    // (e.g. local `ollama` → "run `ollama pull <model>`" / "start
+    // `ollama serve`" instead of the cloud-centric API-key/connectivity hints).
+    ctx?: { provider?: string; model?: string; endpoint?: string },
   ) => string;
   /**
    * Optional info-level log sink. Used by FluidBlankSource for lines
