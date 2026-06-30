@@ -116,6 +116,22 @@ class OcSelect extends stripPrefix(Select) {
   // Don't echo the picked answer on submit — enquirer's default prints
   // `this.selected.name`, which is our synthetic id (e.g. "c0").
   format() { return ''; }
+
+  // Wrap each frame in a synchronized-output block (DEC private mode 2026) so
+  // the terminal paints the erase + redraw atomically — otherwise the brief
+  // erased state between enquirer's clear() and write() shows as a flash on
+  // arrow-key navigation (esp. over WSL / remote terminals). Terminals that
+  // don't understand 2026 ignore the (zero-width) sequences.
+  async render() {
+    const out = this.stdout || process.stdout;
+    const sync = out && out.isTTY;
+    if (sync) out.write('\x1b[?2026h');
+    try {
+      return await super.render();
+    } finally {
+      if (sync) out.write('\x1b[?2026l');
+    }
+  }
 }
 
 const OcInput = stripPrefix(Input);
