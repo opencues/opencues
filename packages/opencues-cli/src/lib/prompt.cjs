@@ -1,22 +1,24 @@
 // lib/prompt.cjs — interactive prompt toolkit (the input counterpart to
-// lib/style.cjs's output helpers). Thin wrapper over `prompts` (terkelg) — a
-// small, widely-used, CJS prompt library that handles the cross-terminal raw-
-// input quirks (WSL, tmux, varied emulators) that a hand-rolled readline
-// version kept tripping on. We keep this wrapper so:
-//   - commands depend on a stable in-house API (select/confirm/input/secret),
-//     not on `prompts` directly — swapping the lib later touches only this file;
-//   - the TTY-aware contract is enforced here, not per command.
+// lib/style.cjs's output helpers). Thin wrapper over `enquirer` — a small,
+// widely-used, CJS, *themeable* prompt library (npm/yarn use it). Chosen over a
+// hand-rolled readline version (failed cross-terminal raw input on WSL) and
+// over `prompts` (no way to drop the `?` prefix or recolor the pointer).
+//
+// Commands depend on this in-house API (select/confirm/input/secret), not on
+// `enquirer` directly, so the lib is swappable in one file and the styling is
+// owned here. The caller builds each choice's `label` (so column layout /
+// status text lives in the command); this file owns the chrome: no `?` prefix,
+// a white selection arrow, dimmed-and-skipped disabled rows, separators.
 //
 // HARD RULES (so interactivity never breaks scripting):
-//   1. TTY-aware — `isInteractive()` is false in CI / pipes / when
-//      `--no-interactive` or OPENCUES_NO_INTERACTIVE is set. Callers MUST gate
-//      on it and fall back to flags. The prompts here throw in a non-TTY.
-//   2. Flags still win — a command goes interactive only when the user omitted
-//      the positional args, never as the only path.
+//   1. TTY-aware — `isInteractive()` is false in CI / pipes / `--no-interactive`
+//      / OPENCUES_NO_INTERACTIVE; the prompts here throw in a non-TTY.
+//   2. Flags still win — go interactive only when positional args were omitted.
 
 'use strict';
 
-const prompts = require('prompts');
+const { Select, Confirm, Input, Password } = require('enquirer');
+const { dim, brightWhite } = require('./style.cjs');
 
 /** Is a human present on a real terminal (and not opted out)? */
 function isInteractive() {
@@ -34,53 +36,68 @@ function assertTTY(what) {
   }
 }
 
-// Ctrl-C / Esc anywhere → resolve the prompt as "cancelled" rather than
-// `prompts`' default of killing the process mid-command.
-const onCancel = () => true; // true = stop the prompt chain; value stays undefined
+// White selection arrow (enquirer's default is a cyan ▸); no `?` prefix.
+class OcSelect extends Select {
+  pointer(choice, i) {
+    return this.index === i ? brightWhite('❯') : ' ';
+  }
+}
 
 /**
- * Arrow-key single-select. `choices` is an array of
- * `{ label, value, hint?, disabled? }`. Returns the chosen `value`, or
- * `opts.cancelValue ?? null` on cancel. Disabled rows are shown but skipped.
+ * Single-select menu. `choices`: `{ label, value, disabled?, separator? }`.
+ * `label` is the fully-formatted row (the command owns column layout). Returns
+ * the chosen `value`, or `opts.cancelValue ?? null` on Esc/Ctrl-C. Disabled
+ * rows are dimmed + skipped; `separator: true` renders a non-selectable divider.
  */
 async function select(message, choices, opts = {}) {
   assertTTY('select');
-  const initial = Math.max(0, choices.findIndex(c => !c.disabled));
-  const resp = await prompts({
-    type: 'select',
-    name: 'value',
-    message,
-    initial,
-    choices: choices.map(c => ({
-      title: c.label,
-      value: c.value,
-      description: c.hint,
-      disabled: Boolean(c.disabled),
-    })),
-  }, { onCancel });
-  return Object.prototype.hasOwnProperty.call(resp, 'value') ? resp.value : (opts.cancelValue ?? null);
+  const valueById = new Map();
+  const echoices = choices.map((c, i) => {
+    const id = `c${i}`;
+    valueById.set(id, c.value);
+    return c.separator
+      ? { role: 'separator', message: c.label || dim('────') }
+      : { name: id, message: c.disabled ? dim(c.label) : c.label, disabled: Boolean(c.disabled) };
+  });
+  const prompt = new OcSelect({ name: 'value', message, prefix: '', choices: echoices });
+  try {
+    const name = await prompt.run();
+    return valueById.has(name) ? valueById.get(name) : (opts.cancelValue ?? null);
+  } catch {
+    return opts.cancelValue ?? null; // Esc / Ctrl-C
+  }
 }
 
-/** y/N confirm. Returns a boolean; cancel → `opts.default` (false). */
+/** y/N confirm. Cancel → `opts.default` (false). */
 async function confirm(message, opts = {}) {
   assertTTY('confirm');
   const def = opts.default ?? false;
-  const resp = await prompts({ type: 'confirm', name: 'value', message, initial: def }, { onCancel });
-  return resp.value === undefined ? def : Boolean(resp.value);
+  try {
+    return Boolean(await new Confirm({ name: 'v', message, initial: def, prefix: '' }).run());
+  } catch {
+    return def;
+  }
 }
 
 /** Free-text input. Empty / cancel → `opts.default` (or ''). */
 async function input(message, opts = {}) {
   assertTTY('input');
-  const resp = await prompts({ type: 'text', name: 'value', message, initial: opts.default }, { onCancel });
-  return resp.value === undefined || resp.value === '' ? (opts.default || '') : String(resp.value);
+  try {
+    const v = await new Input({ name: 'v', message, initial: opts.default, prefix: '' }).run();
+    return v && String(v).trim() ? String(v).trim() : (opts.default || '');
+  } catch {
+    return opts.default || '';
+  }
 }
 
 /** Masked input (for API keys etc.). Cancel → ''. */
 async function secret(message) {
   assertTTY('secret');
-  const resp = await prompts({ type: 'password', name: 'value', message }, { onCancel });
-  return resp.value === undefined ? '' : String(resp.value);
+  try {
+    return String((await new Password({ name: 'v', message, prefix: '' }).run()) || '');
+  } catch {
+    return '';
+  }
 }
 
 module.exports = { isInteractive, select, confirm, input, secret };

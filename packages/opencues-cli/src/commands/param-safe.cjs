@@ -18,7 +18,7 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
-const { tag, bold, dim, fileLink, banner, cliVersion } = require('../lib/style.cjs');
+const { tag, bold, dim, green, yellow, fileLink, banner, cliVersion } = require('../lib/style.cjs');
 const prompt = require('../lib/prompt.cjs');
 
 const HOME = process.env.OPENCUES_HOME || path.join(os.homedir(), '.cues');
@@ -115,17 +115,25 @@ async function interactive(ctx) {
       .filter(n => { const i = blankInfo(n); return !(i && i.blankScript); });
     const toggleable = [...new Set([...declared, ...allowList])].sort();
 
+    // Two-column rows: name + a status word. Audited core reads "fixed"
+    // (locked by code identity); toggleable blanks read trusted / untrusted,
+    // with an "unreachable" note if there's no reachable BLANK.md.
+    const nameW = Math.max(4, ...[...AUDITED_CORE, ...toggleable].map(n => n.length));
+    const row = (name, status) => `${name.padEnd(nameW)}   ${status}`;
+
     const choices = [];
     for (const n of AUDITED_CORE) {
-      choices.push({ label: `${tag('ok')} ${n}`, value: null, hint: 'audited core — always on', disabled: true });
+      choices.push({ label: row(n, dim('fixed')), value: null, disabled: true });
     }
     for (const n of toggleable) {
       const on = allowList.includes(n);
       const info = blankInfo(n);
-      const notes = [on ? 'trusted' : 'not trusted', info ? '' : 'no BLANK.md / not reachable'].filter(Boolean).join(' · ');
-      choices.push({ label: `${on ? '✅' : '⚪'} ${n}`, value: { toggle: n }, hint: notes });
+      const status = on ? green('trusted') : dim('untrusted');
+      const note = info ? '' : '   ' + yellow('unreachable');
+      choices.push({ label: row(n, status + note), value: { toggle: n } });
     }
-    choices.push({ label: dim('— done —'), value: { done: true } });
+    choices.push({ separator: true });
+    choices.push({ label: bold('Done'), value: { done: true } });
 
     if (process.stdout.isTTY) console.clear();
     console.log(banner({ version: cliVersion(ctx), tagline: 'param-safe trust list' }));
