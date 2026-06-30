@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — integration-weave: LLM contextual weaving of a blank's output (`@opencues/core` → 0.9.0, `@opencues/runtime` → 0.7.0, chrome → 0.2.44)
+
+A blank declaring `integration-weave: true` can weave its `integration:`
+exemplar into the surrounding prose with one LLM call, instead of the static
+`{value}` template — e.g. `getting ready.\nvolume 30 _` → *"Getting ready,
+the volume is now 30%."* **OFF by default** (`integration-weave-mode: off`),
+per-blank opt-in. The blank's **real value is never sent to the provider**:
+the LLM only sees the exemplar with `{value}` replaced by a sentinel token,
+and the runtime swaps the real value back in *after* the response. The fill
+**waits** for the weave then commits **once** (woven on success, static on
+any failure/timeout — `integration-weave-timeout-ms`, default 6s), and a
+staleness check drops the woven result if the buffer changed during the call.
+
+- New `blank.woven` event; `integration-weave-mode` in the FEATURES registry;
+  per-blank `integration-weave` frontmatter key. Wired into CC / chrome boot
+  + `buildSharedRuntime` (OC). **Reference-impl only — no `SPEC_VERSION`
+  bump:** a second implementation that ignores the keys renders the spec'd
+  static `{value}` template (graceful degrade).
+- Bench: `tests/benchmarks/integration-weave` (token-survival) — 100% on
+  cerebras + groq (the real value's sentinel survives the round-trip).
+
 ### Changed — blank routing is sentence-scoped (`SPEC_VERSION` 0.3 → 0.4, `@opencues/core` → 0.8.0)
 
 Shaped-blank routing now matches the **sentence** containing `_`, not just
