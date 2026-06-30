@@ -12,6 +12,7 @@
 // this can never wrongly capture a query (a non-match is a clean cede).
 
 import type { BlankConfig } from './cues-md';
+import { segmentStart } from './segment';
 
 export interface BlankShapeMatch {
   /** Blank whose shape matched. */
@@ -23,17 +24,23 @@ export interface BlankShapeMatch {
 }
 
 /**
- * Strip zero-width markers, then return the LINE containing the (last) `_`,
- * trimmed. Shapes are LINE-scoped: a command like `weather oslo _` claims its
- * `_` even when there's prior content on earlier lines ("notes…\nweather oslo
- * _"). Returns null when there's no `_`. Anchoring to the line (not the whole
- * buffer) is what lets shapes replace the old line-scoped keyword window.
+ * Strip zero-width markers, then return the command SEGMENT containing the
+ * (last) `_`, trimmed. Shapes are SENTENCE-scoped: a command like `weather oslo
+ * _` claims its `_` when it leads its sentence — whether that sentence starts at
+ * a newline ("notes…\nweather oslo _") OR after a sentence terminator on the
+ * same line ("let me check. weather oslo _" → "weather oslo _"). The
+ * segment START comes from the shared `segmentStart` (the same boundary
+ * fluid-config's `summonPhraseStart` uses, so the two routers agree); the END
+ * stays at the next newline / buffer end. Returns null when there's no `_`.
+ * Anchoring to the sentence (not the whole buffer) is what lets shapes replace
+ * the old line-scoped keyword window without a stray keyword in prose hijacking
+ * a `_`.
  */
 function lineWithBlank(text: string): string | null {
   const s = text.replace(/[​‌]/g, '');
   const us = s.lastIndexOf('_');
   if (us === -1) return null;
-  const start = s.lastIndexOf('\n', us) + 1; // 0 when there's no preceding newline
+  const start = segmentStart(s, us); // last sentence terminator OR newline before `_`
   let end = s.indexOf('\n', us);
   if (end === -1) end = s.length;
   return s.slice(start, end).trim();

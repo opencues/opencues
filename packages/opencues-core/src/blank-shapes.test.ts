@@ -62,9 +62,9 @@ describe('matchBlankShape', () => {
     assert.deepStrictEqual(matchBlankShape('volume 50 _', bad), { blankName: 'volume', action: 'set', value: '50' });
   });
 
-  // LINE-SCOPED: a shape matches the LINE containing `_`, so a command on
-  // the last line claims even with prior content above — but prose that
-  // merely leads the line never matches (anchored grammar).
+  // SEGMENT-SCOPED: a shape matches the SENTENCE/line containing `_`, so a
+  // command on the last line claims even with prior content above — but prose
+  // that merely leads the segment never matches (anchored grammar).
   it('matches a command on the last line with prior content above', () => {
     assert.deepStrictEqual(
       matchBlankShape('some earlier notes here.\nvolume 30 _', b),
@@ -78,6 +78,39 @@ describe('matchBlankShape', () => {
 
   it('de-greedy: prose that only mentions the keyword mid-line never matches', () => {
     assert.strictEqual(matchBlankShape('the volume was lovely today _', b), null);
+  });
+
+  // SENTENCE-scoped: a command claims its `_` when it leads its SENTENCE, not
+  // just its physical line. A sentence terminator (`.`/`!`/`?` + space, or a
+  // CJK terminator) resets the anchor the same way a newline does — so the
+  // shaped-blank router agrees with fluid-config's `summonPhraseStart`.
+  it('matches a command after a sentence terminator on the SAME line', () => {
+    assert.deepStrictEqual(
+      matchBlankShape('let me check the audio. volume 30 _', b),
+      { blankName: 'volume', action: 'set', value: '30' },
+    );
+  });
+
+  it('matches after ! and ? terminators too', () => {
+    assert.strictEqual(matchBlankShape('done! volume up _', b)?.value, 'up');
+    assert.strictEqual(matchBlankShape('what now? volume _', b)?.action, 'get');
+  });
+
+  it('matches after a CJK terminator (no trailing space)', () => {
+    assert.strictEqual(matchBlankShape('こんにちは世界。volume 40 _', b)?.value, '40');
+  });
+
+  it('decimal/version dots do NOT split (precision held)', () => {
+    // "3.5" has no space after the dot, so it is NOT a boundary; the segment
+    // stays the whole line → leads with "the" → no match. (The set shape wants
+    // an integer anyway, so even a wrong split would cede cleanly.)
+    assert.strictEqual(matchBlankShape('the cost was 3.5 dollars volume _', b), null);
+    // But a real sentence end before the command DOES fire it.
+    assert.strictEqual(matchBlankShape('the cost was 3.5 dollars. volume _', b)?.action, 'get');
+  });
+
+  it('prose ending in a period that is NOT a command still cedes', () => {
+    assert.strictEqual(matchBlankShape('i turned the volume down. what a day _', b), null);
   });
 });
 

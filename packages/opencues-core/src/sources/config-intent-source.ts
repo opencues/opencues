@@ -59,6 +59,7 @@
 
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
 import { keywordInWindow, lineOfWords } from '../keyword-window';
+import { segmentStart } from '../segment';
 import { BlankConfig } from '../cues-md';
 import { describeLLMCall, dispatchChat, getProvider, listProviders, type ProviderAdapter } from '../llm-provider';
 import { classifyLlmError, type FluidBlankErrorReason } from './fluid-blank-source';
@@ -844,14 +845,13 @@ export interface ConfigIntentSourceConfig {
  * Japanese buffer like `こんにちは世界。voice mode off _` found no boundary
  * and wiped the user's whole sentence (a language-dependent data-loss bug).
  * A line break is always a boundary. No boundary found → 0.
+ *
+ * Delegates to the shared `segmentStart` (scanning the whole buffer) so this
+ * router and the shaped-blank router (`lineWithBlank`) anchor commands on the
+ * exact same sentence/line boundary — they can't drift.
  */
 export function summonPhraseStart(text: string): number {
-  const re = /[.!?](?=\s)|[。！？．]|\n/g;
-  let start = 0;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) start = m.index + m[0].length;
-  while (start < text.length && /\s/.test(text.charAt(start))) start++;
-  return start;
+  return segmentStart(text);
 }
 
 export class ConfigIntentSource implements CueSource {

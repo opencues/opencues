@@ -282,3 +282,4 @@ export {
 } from './feature-registry';
 
 export { matchBlankShape, type BlankShapeMatch } from './blank-shapes';
+export { segmentStart } from './segment';
