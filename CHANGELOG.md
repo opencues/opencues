@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — interactive CLI toolkit + interactive `param-safe` (`opencues` CLI 0.2.9 → 0.2.10)
+
+New zero-dependency interactive prompt toolkit (`lib/prompt.cjs`, raw `node:readline` — no third-party prompt lib) as the input counterpart to `lib/style.cjs`: `select` (arrow-key pick), `confirm`, `input`, `secret`. **TTY-aware** — interactive only when a human is on a real terminal; non-TTY / `--no-interactive` / `OPENCUES_NO_INTERACTIVE` fall back to flags, so scripting never breaks. `opencues param-safe` with no subcommand now opens an in-place trust manager (toggle blanks, audited core shown but locked, `impl`/`network` surfaced + a confirm step on enable); every explicit subcommand stays one-shot. Writes the same `param-safe-allow:` line — hand-editing still works. 5 toolkit tests (fake-TTY keypress drive).
+
 ### Added — typed-sentinel Phase 4: on-demand parameterized blank fetch (opt-in, capability-gated) (`@opencues/core` 0.11.0 → 0.12.0, `@opencues/runtime` 0.8.0 → 0.9.0)
 
 The full parameterized tier for `sentinel-language: typed`. A blank that declares `param-safe: true` + a `signature:` is rendered as a LIVE FUNCTION (`[STOCK(ticker: string): number]`); when the LLM emits `[STOCK(ticker=TSLA)]` the runtime calls `StocksBlank.get('TSLA')` on-demand — even for a ticker that wasn't pre-fetched as an as-context slot — and substitutes the live value. Extends to fluid-blank + transform-blank. Closes the gap where v1 (typed-scalar) could only resolve pre-fetched instances.

@@ -19,6 +19,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
 const { tag, bold, dim, fileLink, banner, cliVersion } = require('../lib/style.cjs');
+const prompt = require('../lib/prompt.cjs');
 
 const HOME = process.env.OPENCUES_HOME || path.join(os.homedir(), '.cues');
 const OPENCUES_PATH = path.join(HOME, 'OPENCUES.md');
@@ -80,10 +81,14 @@ function blankInfo(name) {
   return null;
 }
 
-module.exports = function paramSafe(argv, ctx) {
+module.exports = async function paramSafe(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
   const positional = argv.filter(a => !a.startsWith('-'));
   const [sub, name] = positional;
+
+  // Interactive menu only with no subcommand on a real terminal; every
+  // explicit subcommand (and any non-TTY context) stays one-shot + scriptable.
+  if (!sub && prompt.isInteractive()) return interactive(ctx);
 
   console.log(banner({ version: cliVersion(ctx), tagline: 'param-safe trust list' }));
   console.log('');
@@ -94,6 +99,61 @@ module.exports = function paramSafe(argv, ctx) {
   console.error(`${tag('err')} unknown subcommand "${sub}". Try: list | allow <blank> | remove <blank>`);
   process.exit(1);
 };
+
+// Interactive trust manager: a status list you toggle in place. Audited core
+// is shown but not toggleable; enabling a custom blank shows its impl/network
+// and asks for confirmation (trust with eyes open). Writes the same
+// `param-safe-allow:` line, so hand-editing keeps working.
+async function interactive(ctx) {
+  for (;;) {
+    const md = read(OPENCUES_PATH);
+    const allowList = readAllow(md);
+    const typed = md && /^\s*sentinel-language\s*:\s*typed\s*$/m.test(md);
+    // Toggleable = declared-param-safe (non-core, non-script) ∪ currently-trusted.
+    const declared = listDeclaredParamSafe()
+      .filter(n => !AUDITED_CORE.includes(n))
+      .filter(n => { const i = blankInfo(n); return !(i && i.blankScript); });
+    const toggleable = [...new Set([...declared, ...allowList])].sort();
+
+    const choices = [];
+    for (const n of AUDITED_CORE) {
+      choices.push({ label: `${tag('ok')} ${n}`, value: null, hint: 'audited core — always on', disabled: true });
+    }
+    for (const n of toggleable) {
+      const on = allowList.includes(n);
+      const info = blankInfo(n);
+      const notes = [on ? 'trusted' : 'not trusted', info ? '' : 'no BLANK.md / not reachable'].filter(Boolean).join(' · ');
+      choices.push({ label: `${on ? '✅' : '⚪'} ${n}`, value: { toggle: n }, hint: notes });
+    }
+    choices.push({ label: dim('— done —'), value: { done: true } });
+
+    if (process.stdout.isTTY) console.clear();
+    console.log(banner({ version: cliVersion(ctx), tagline: 'param-safe trust list' }));
+    console.log('');
+    if (!typed) console.log(`${tag('warn')} ${dim('sentinel-language is not `typed` — the on-demand path is inert until you set it.')}\n`);
+
+    const pick = await prompt.select('Trust list  ·  ↑↓ move · Enter toggle · q quit', choices);
+    if (!pick || pick.done) break;
+
+    const n = pick.toggle;
+    if (allowList.includes(n)) {
+      writeAllow(allowList.filter(x => x !== n));
+    } else {
+      const info = blankInfo(n);
+      console.log('');
+      console.log(bold(`Trusting "${n}" — it will be called with arguments the LLM chooses:`));
+      console.log(`  impl:    ${(info && info.impl) || dim('(built-in class)')}`);
+      console.log(`  network: ${(info && info.network) || dim('(none declared)')}`);
+      console.log(`  sandbox: ${(info && info.sandbox) || dim('(none declared)')}`);
+      const ok = await prompt.confirm(`Trust "${n}"?`, { default: false });
+      if (ok) writeAllow([...allowList, n]);
+    }
+  }
+  if (process.stdout.isTTY) console.clear();
+  console.log(banner({ version: cliVersion(ctx), tagline: 'param-safe trust list' }));
+  console.log('');
+  list();
+}
 
 function list() {
   const md = read(OPENCUES_PATH);
@@ -176,9 +236,12 @@ function remove(name) {
 function printHelp() {
   console.log(`opencues param-safe — manage the param-safe trust list
 
+  (no args)            interactive trust manager (on a terminal) — toggle in place
   list                 audited core + your trusted blanks + declared-but-not-enabled
   allow <blank>        trust a blank for LLM-arg invocation (shows impl/network first)
   remove <blank>       untrust a blank
+
+  --no-interactive     force the static list instead of the interactive menu
 
 Source of truth is the \`param-safe-allow:\` line in ~/.cues/OPENCUES.md —
 this command just edits it for you. A pack can't write that file, so trust is
