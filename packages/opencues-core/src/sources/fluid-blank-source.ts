@@ -28,7 +28,7 @@ import { BlankConfig } from '../cues-md';
 import { useStrictJson, buildJsonResponseFormat, describeLLMCall, dispatchChat, getProvider, type ProviderAdapter } from '../llm-provider';
 import { renderIdentityContextCatalog, postProcessContext, type Identity, type ContextMode } from '../identity-context';
 import { renderBlankContextCatalog, mergeCatalogs, type BlankContextSnapshot, type BlankContextMode } from '../blank-context';
-import { resolveTypedSentinels, catalogScalarLookup, instanceTokenFnBridge, jsonFieldAccessor, collectParamSafeFetches } from '../typed-sentinel';
+import { resolveTypedSentinels, catalogScalarLookup, instanceTokenFnBridge, jsonFieldAccessor, collectAiCallableFetches } from '../typed-sentinel';
 import { blankClaimsUnderscore } from '../blank-shapes';
 
 // ─── Ambient-context sanitization + injection ──────────────────────
@@ -935,12 +935,12 @@ export class FluidBlankSource implements CueSource {
       // the catalog right after the examples (preserving token binding) and
       // the FILL/WIPE steering doesn't wedge between examples and catalog.
       // See MODE_RULES doc comment for why position matters.
-      // Phase 4 — append the param-safe LIVE FUNCTIONS block (typed only) so a
+      // Phase 4 — append the ai-callable LIVE FUNCTIONS block (typed only) so a
       // factual question with no pre-fetched value ("how much is amd stock _")
       // lets the LLM emit `[STOCK(ticker=AMD)]`, which the on-demand pass below
       // resolves. Mirrors TransformBlank's prompt wiring.
-      const liveFnBlock = (context.sentinelLanguage === 'typed' && context.paramSafeFnsBlock)
-        ? context.paramSafeFnsBlock : '';
+      const liveFnBlock = (context.sentinelLanguage === 'typed' && context.aiCallableFnsBlock)
+        ? context.aiCallableFnsBlock : '';
       const fullSystem = `${FUSED_SYSTEM_PROMPT}${userCatalogBlock}${blankContextBlock}${liveFnBlock}\n\n${MODE_RULES}`;
       const fusedUser = `INPUT: ${effectiveText}${ambientBlock}`;
       // Per-feature override: `fluid-blank-max-tokens:` in OPENCUES.md.
@@ -975,11 +975,11 @@ export class FluidBlankSource implements CueSource {
       const sentinelCatalog = userCtx?.catalog ?? new Map<string, string>();
       const blankCtxCatalog = bcSnapshot?.catalog ?? new Map<string, string>();
       const mergedCatalog = mergeCatalogs(sentinelCatalog, blankCtxCatalog);
-      // Phase 4 — on-demand param-safe fetch can resolve a `[STOCK(ticker=AMD)]`
+      // Phase 4 — on-demand ai-callable fetch can resolve a `[STOCK(ticker=AMD)]`
       // the LLM emitted even with NO pre-fetched catalog, so don't short-circuit
       // when the gate is live (typed + a fetchable fn registry + blankFetch).
       const hasOnDemand = context.sentinelLanguage === 'typed'
-        && !!context.paramSafeFns && context.paramSafeFns.size > 0 && !!context.blankFetch;
+        && !!context.aiCallableFns && context.aiCallableFns.size > 0 && !!context.blankFetch;
       if (mergedCatalog.size > 0 || hasOnDemand) {
         if (context.sentinelLanguage === 'typed') {
           // Typed grammar (opt-in): resolve parameterized + nested + accessor
@@ -988,14 +988,14 @@ export class FluidBlankSource implements CueSource {
           // contract, so an unresolved token is stripped, not kept.
           let workingCatalog = mergedCatalog;
           // ON-DEMAND parameterized fetch (mirror of TransformBlank): for any
-          // param-safe fn-call the LLM emitted that isn't already on the shelf,
+          // ai-callable fn-call the LLM emitted that isn't already on the shelf,
           // fetch via the capability-gated blankFetch (runtime enforces
-          // param-safe + never a script blank), then merge so the bridge below
+          // ai-callable + never a script blank), then merge so the bridge below
           // resolves it. This is what makes `how much is amd stock _` work.
-          if (context.paramSafeFns && context.paramSafeFns.size > 0 && context.blankFetch) {
+          if (context.aiCallableFns && context.aiCallableFns.size > 0 && context.blankFetch) {
             const blankFetch = context.blankFetch;
             const sl0 = catalogScalarLookup(mergedCatalog);
-            const fetches = collectParamSafeFetches(answer, context.paramSafeFns, sl0)
+            const fetches = collectAiCallableFetches(answer, context.aiCallableFns, sl0)
               .filter(f => !mergedCatalog.has(f.instanceToken));
             if (fetches.length) {
               const results = await Promise.all(fetches.map(async f => {
@@ -1006,7 +1006,7 @@ export class FluidBlankSource implements CueSource {
               let got = 0;
               for (const r of results) if (r.val != null && r.val !== '') { aug.set(r.tok, r.val); got++; }
               workingCatalog = aug;
-              this.logInfo(`FluidBlank: param-safe on-demand fetch — ${fetches.length} call(s), ${got} resolved`);
+              this.logInfo(`FluidBlank: ai-callable on-demand fetch — ${fetches.length} call(s), ${got} resolved`);
             }
           }
           const scalarLookup = catalogScalarLookup(workingCatalog);

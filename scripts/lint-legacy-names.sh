@@ -63,6 +63,13 @@ BANNED_PATTERNS=(
   '\bbuildBlankIntentClassifier\b'
   '\bblankIntentHttpAdapter\b'
   '\bBlankIntentDecision\b'
+  # ── June 2026 param-safe → ai-callable rename ──            # LEGACY-NAME-ALLOW: lint header
+  # Back-compat reads (cli alias, cues-md case, config-loader fallback,
+  # ai-callable.cjs read/migrate) carry per-line LEGACY-NAME-ALLOW markers.
+  '\bparam-safe\b'
+  '\bparamSafe\b'
+  '\bParamSafe\b'
+  '\bPARAM_SAFE\b'
   # NOTE: the removed BLANK.md frontmatter keys (blankReplace,
   # blankConsumeAll/Context, blankProximity, blankAutoPopulate,
   # blankReadOnly, blankFormat, blankTip, blankKeywordExpansions) are

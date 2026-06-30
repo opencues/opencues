@@ -153,16 +153,16 @@ describe('TransformBlank typed-sentinel — bare path unchanged', () => {
 });
 
 describe('TransformBlank typed-sentinel — Phase 4 on-demand parameterized fetch', () => {
-  const paramSafeFns = new Map([['STOCK', { blankName: 'stocks', tokenPrefix: 'STOCK' }]]);
+  const aiCallableFns = new Map([['STOCK', { blankName: 'stocks', tokenPrefix: 'STOCK' }]]);
 
-  it('fetches a param-safe call on-demand and resolves it', async () => {
+  it('fetches a ai-callable call on-demand and resolves it', async () => {
     const calls: Array<[string, string]> = [];
     const blankFetch = async (name: string, arg: string) => { calls.push([name, arg]); return arg === 'TSLA' ? '$220.10' : undefined; };
     const src = makeSource(makeAdapter([fused('TSLA is at [STOCK(ticker=TSLA)] now')], []));
     const c: CueContext = {
       text: 'tsla price _', words: ['tsla', 'price', '_'], blankIndices: [2],
       blankContext: { fields: [], catalog: new Map(), mode: 'safe' },
-      sentinelLanguage: 'typed', paramSafeFns, blankFetch,
+      sentinelLanguage: 'typed', aiCallableFns, blankFetch,
     };
     const rewrite = (await src.getCues(c)).results[0]?.alternatives[1] ?? '';
     assert.match(rewrite, /TSLA is at \$220\.10 now/);
@@ -175,23 +175,23 @@ describe('TransformBlank typed-sentinel — Phase 4 on-demand parameterized fetc
     const c: CueContext = {
       text: 'x _', words: ['x', '_'], blankIndices: [1],
       blankContext: { fields: [], catalog: new Map(), mode: 'safe' },
-      sentinelLanguage: 'typed', paramSafeFns, blankFetch,
+      sentinelLanguage: 'typed', aiCallableFns, blankFetch,
     };
     const rewrite = (await src.getCues(c)).results[0]?.alternatives[1] ?? '';
     assert.match(rewrite, /\[STOCK\(ticker=ZZZZ\)\]/); // preserveUnknown — token survives, buffer intact
   });
 
-  it('CAPABILITY GATE: a fn-call NOT in the param-safe registry is never fetched', async () => {
+  it('CAPABILITY GATE: a fn-call NOT in the ai-callable registry is never fetched', async () => {
     let fetched = false;
     const blankFetch = async () => { fetched = true; return 'X'; };
     const src = makeSource(makeAdapter([fused('[VOLUME(level=80)]')], []));
     const c: CueContext = {
       text: 'x _', words: ['x', '_'], blankIndices: [1],
       blankContext: { fields: [], catalog: new Map(), mode: 'safe' },
-      sentinelLanguage: 'typed', paramSafeFns, blankFetch, // only STOCK is param-safe
+      sentinelLanguage: 'typed', aiCallableFns, blankFetch, // only STOCK is ai-callable
     };
     await src.getCues(c);
-    assert.strictEqual(fetched, false, 'a non-param-safe fn-call must never reach blankFetch');
+    assert.strictEqual(fetched, false, 'a non-ai-callable fn-call must never reach blankFetch');
   });
 
   it('does NOT fetch when sentinel-language is bare (gate off)', async () => {
@@ -201,8 +201,8 @@ describe('TransformBlank typed-sentinel — Phase 4 on-demand parameterized fetc
     const c: CueContext = {
       text: 'x _', words: ['x', '_'], blankIndices: [1],
       blankContext: { fields: [], catalog: new Map(), mode: 'safe' },
-      // sentinelLanguage omitted → bare; paramSafeFns/blankFetch present but unused
-      paramSafeFns, blankFetch,
+      // sentinelLanguage omitted → bare; aiCallableFns/blankFetch present but unused
+      aiCallableFns, blankFetch,
     };
     await src.getCues(c);
     assert.strictEqual(fetched, false, 'bare mode must not engage on-demand fetch');

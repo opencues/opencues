@@ -18,7 +18,7 @@ import {
   resolveTypedSentinels,
   type TypedCatalogEntry,
   type ResolveTypedOptions,
-  collectParamSafeFetches as resolveImport,
+  collectAiCallableFetches as resolveImport,
 } from './typed-sentinel';
 
 // ────────────────────────────────────────────────────────────────────
@@ -333,14 +333,14 @@ describe('resolveTypedSentinels — buffer safety: non-token brackets untouched'
   });
 });
 
-describe('collectParamSafeFetches (Phase 4 on-demand pre-pass)', () => {
+describe('collectAiCallableFetches (Phase 4 on-demand pre-pass)', () => {
   const reg = new Map([
     ['STOCK', { blankName: 'stocks', tokenPrefix: 'STOCK' }],
     ['WEATHER', { blankName: 'weather', tokenPrefix: 'WEATHER' }],
   ]);
   const look = (n: string) => (n === 'WATCH TICKER' ? 'NVDA' : undefined);
 
-  it('collects a literal-arg param-safe fn-call', () => {
+  it('collects a literal-arg ai-callable fn-call', () => {
     const f = resolveImport('[STOCK(ticker=TSLA)] today', reg, look);
     assert.deepStrictEqual(f, [{ blankName: 'stocks', arg: 'TSLA', instanceToken: '[STOCK TSLA]' }]);
   });
@@ -351,7 +351,7 @@ describe('collectParamSafeFetches (Phase 4 on-demand pre-pass)', () => {
     assert.deepStrictEqual(resolveImport('[STOCK(ticker=[WATCH TICKER])]', reg, look), []);
   });
 
-  it('CAPABILITY GATE: ignores a fn-call not in the param-safe registry', () => {
+  it('CAPABILITY GATE: ignores a fn-call not in the ai-callable registry', () => {
     assert.deepStrictEqual(resolveImport('[VOLUME(level=80)]', reg, look), []);
   });
 

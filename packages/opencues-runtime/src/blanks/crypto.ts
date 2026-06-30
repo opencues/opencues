@@ -56,7 +56,7 @@ export class CryptoBlank implements Blank {
   async get(keyword?: string): Promise<string> {
     if (!keyword) return '';
     // Known alias → CoinGecko id (btc → bitcoin). Otherwise treat the arg AS
-    // a CoinGecko id (dogecoin, solana, …) so the param-safe on-demand path
+    // a CoinGecko id (dogecoin, solana, …) so the ai-callable on-demand path
     // works for ANY coin, not just the hardcoded aliases. SANITIZE to
     // [a-z0-9-] — the on-demand arg is LLM-chosen and flows into the URL.
     const id = this._coins[keyword.toLowerCase().trim()]

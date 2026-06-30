@@ -95,7 +95,7 @@ All of this is owned by `prompt.cjs` so every menu matches automatically.
 5. **Confirm destructive actions** with `prompt.confirm(msg, { default:false })`.
 6. **Keep every explicit subcommand one-shot** so scripting still works.
 
-The reference implementation is **`src/commands/param-safe.cjs`** (a toggle list
+The reference implementation is **`src/commands/ai-callable.cjs`** (a toggle list
 + a trust confirm). Copy its shape.
 
 ## Files
@@ -105,7 +105,7 @@ The reference implementation is **`src/commands/param-safe.cjs`** (a toggle list
 - `src/lib/prompt.cjs` — interactive toolkit (all menu styling).
 - `src/lib/prompt.test.cjs` — scripting-contract tests (the TTY gate is the
   thing that must never regress; interactive rendering is validated by hand).
-- `src/commands/param-safe.cjs` — reference interactive command.
+- `src/commands/ai-callable.cjs` — reference interactive command.
 
 ## Dependencies
 

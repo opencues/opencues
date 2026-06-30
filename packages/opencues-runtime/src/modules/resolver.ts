@@ -409,9 +409,9 @@ export class Resolver {
     >,
     /** Phase 4 — capability-gated on-demand blank fetch for the typed-sentinel
      *  parameterized tier. Built by `buildBlankFetchProvider`; undefined when
-     *  no blank opts into `param-safe`. */
+     *  no blank opts into `ai-callable`. */
     private blankFetchProvider?: {
-      getParamSafeFns: () => ReadonlyMap<string, { blankName: string; tokenPrefix: string }>;
+      getAiCallableFns: () => ReadonlyMap<string, { blankName: string; tokenPrefix: string }>;
       getRenderedBlock: () => string;
       blankFetch: (blankName: string, arg: string) => Promise<string | undefined>;
     },
@@ -1325,14 +1325,14 @@ export class Resolver {
         // catalog renderer + post-LLM resolver in TransformBlank/FluidBlank
         // pick the typed-sentinel engine path when enabled.
         sentinelLanguage: this.configLoader.opencuesState.sentinelLanguage,
-        // Phase 4 — param-safe fn registry + capability-gated on-demand fetch.
-        // Only populated when the gate is wired (a blank opted into param-safe)
+        // Phase 4 — ai-callable fn registry + capability-gated on-demand fetch.
+        // Only populated when the gate is wired (a blank opted into ai-callable)
         // AND sentinel-language is typed; otherwise both are undefined and the
         // core resolver's on-demand path is a no-op.
-        paramSafeFns: this.configLoader.opencuesState.sentinelLanguage === 'typed'
-          ? this.blankFetchProvider?.getParamSafeFns()
+        aiCallableFns: this.configLoader.opencuesState.sentinelLanguage === 'typed'
+          ? this.blankFetchProvider?.getAiCallableFns()
           : undefined,
-        paramSafeFnsBlock: this.configLoader.opencuesState.sentinelLanguage === 'typed'
+        aiCallableFnsBlock: this.configLoader.opencuesState.sentinelLanguage === 'typed'
           ? this.blankFetchProvider?.getRenderedBlock()
           : undefined,
         blankFetch: this.blankFetchProvider?.blankFetch,
