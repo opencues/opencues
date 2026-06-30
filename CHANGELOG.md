@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — blank routing is sentence-scoped (`SPEC_VERSION` 0.3 → 0.4, `@opencues/core` → 0.8.0)
+
+Shaped-blank routing now matches the **sentence** containing `_`, not just
+the physical line. A keyword/shape claims a `_` when it leads its sentence —
+the segment after the last sentence terminator (`.`/`!`/`?` + whitespace, or
+a CJK `。`/`！`/`？`/`．`) or newline before `_`. So `let me check. volume _`
+fires the volume blank just like `notes\nvolume _` does; previously only a
+newline started a new routing segment. The whitespace lookahead keeps
+decimals (`3.5`) and versions (`gpt-5.4`) from splitting, and a command must
+still **lead** its sentence — a keyword mentioned mid-sentence does not fire.
+
+- **Shared boundary** — `segmentStart` (`packages/opencues-core/src/segment.ts`)
+  is the single sentence/line boundary, used by both shaped-blank routing
+  (`lineWithBlank`) and fluid-config's `summonPhraseStart`, so the two can't
+  drift. Bench: `tests/benchmarks/blank-routing` (deterministic A/B) — recall
+  47% → 100%, precision held at 100%.
+- **Shared cede predicate** — `blankClaimsUnderscore` centralises the
+  "does a blank claim this `_`?" check that FluidBlank / TransformBlank /
+  ConfigIntent each used to copy inline. ConfigIntent had drifted (didn't
+  skip shaped blanks), so an incidental keyword in prose made it cede and a
+  real settings command fell through to fluid-blank; now all three share one
+  predicate.
+- **Spec** — normative trigger text updated to "sentence" in
+  `spec/blank-spec.md` + `core.md`; `SPEC_VERSION` → `0.4` (omit-default
+  stays `0.1-alpha`); routing conformance fixture + `spec/CHANGELOG.md`
+  `[0.4.0-alpha]` updated. A `0.3-alpha` reader refuses `0.4-alpha` files.
+
 ### Changed — blank API slim-down: shapes route, dead dials removed (`SPEC_VERSION` 0.2 → 0.3)
 
 The blank trigger model is now deterministic, line-scoped `blankShapes`

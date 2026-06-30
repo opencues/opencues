@@ -12,6 +12,8 @@
 // this can never wrongly capture a query (a non-match is a clean cede).
 
 import type { BlankConfig } from './cues-md';
+import { segmentStart } from './segment';
+import { keywordInWindow, lineOfWords } from './keyword-window';
 
 export interface BlankShapeMatch {
   /** Blank whose shape matched. */
@@ -23,17 +25,23 @@ export interface BlankShapeMatch {
 }
 
 /**
- * Strip zero-width markers, then return the LINE containing the (last) `_`,
- * trimmed. Shapes are LINE-scoped: a command like `weather oslo _` claims its
- * `_` even when there's prior content on earlier lines ("notes…\nweather oslo
- * _"). Returns null when there's no `_`. Anchoring to the line (not the whole
- * buffer) is what lets shapes replace the old line-scoped keyword window.
+ * Strip zero-width markers, then return the command SEGMENT containing the
+ * (last) `_`, trimmed. Shapes are SENTENCE-scoped: a command like `weather oslo
+ * _` claims its `_` when it leads its sentence — whether that sentence starts at
+ * a newline ("notes…\nweather oslo _") OR after a sentence terminator on the
+ * same line ("let me check. weather oslo _" → "weather oslo _"). The
+ * segment START comes from the shared `segmentStart` (the same boundary
+ * fluid-config's `summonPhraseStart` uses, so the two routers agree); the END
+ * stays at the next newline / buffer end. Returns null when there's no `_`.
+ * Anchoring to the sentence (not the whole buffer) is what lets shapes replace
+ * the old line-scoped keyword window without a stray keyword in prose hijacking
+ * a `_`.
  */
 function lineWithBlank(text: string): string | null {
   const s = text.replace(/[​‌]/g, '');
   const us = s.lastIndexOf('_');
   if (us === -1) return null;
-  const start = s.lastIndexOf('\n', us) + 1; // 0 when there's no preceding newline
+  const start = segmentStart(s, us); // last sentence terminator OR newline before `_`
   let end = s.indexOf('\n', us);
   if (end === -1) end = s.length;
   return s.slice(start, end).trim();
@@ -75,4 +83,52 @@ export function matchBlankShape(
     }
   }
   return null;
+}
+
+type ClaimBlank = Pick<BlankConfig, 'blankShapes' | 'blankKeywords'>;
+
+/**
+ * Does some keyword/shaped blank CLAIM this `_`? The SINGLE shared cede
+ * predicate for the three semantic-`_` sources (FluidBlank / TransformBlank /
+ * ConfigIntent): each returns `false` from `supports()` when this returns true,
+ * yielding the `_` to the blank. Centralised so the three can't drift — the
+ * June 2026 long-buffer bug was ConfigIntent carrying a stale inline copy that
+ * (unlike the other two) didn't skip shaped blanks, so an incidental keyword in
+ * prose (`The volume is now 30%`) on the `_`'s line made it cede and a real
+ * settings command (`voice mode off _`) silently fell through to fluid-blank.
+ *
+ *   - TYPE-BASED: a declared SHAPE matches the `_`'s segment (anchored grammar,
+ *     e.g. `volume 30 _`). Exact, so prose can never trigger it.
+ *   - LEGACY (non-shaped blanks only): a keyword sits on the same line as `_`
+ *     (shared `keywordInWindow`). Shaped blanks are governed solely by the
+ *     shape match above — a stray keyword in prose doesn't claim.
+ */
+export function blankClaimsUnderscore(
+  text: string,
+  words: readonly string[],
+  blanks: ReadonlyMap<string, ClaimBlank> | Readonly<Record<string, ClaimBlank>>,
+): boolean {
+  if (matchBlankShape(text, blanks)) return true;
+  const lower = words.map(w => w.toLowerCase());
+  const blankIndex = lower.indexOf('_');
+  if (blankIndex === -1) return false;
+  const lineOf = lineOfWords(text);
+  const entries: Iterable<ClaimBlank> =
+    blanks instanceof Map ? blanks.values() : Object.values(blanks);
+  for (const blk of entries) {
+    if (blk.blankShapes?.length) continue;
+    if (!blk.blankKeywords?.length) continue;
+    for (const phrase of blk.blankKeywords) {
+      const parts = phrase.toLowerCase().split(/\s+/);
+      for (let i = 0; i <= lower.length - parts.length; i += 1) {
+        let ok = true;
+        for (let j = 0; j < parts.length; j += 1) {
+          if (lower[i + j] !== parts[j]) { ok = false; break; }
+        }
+        if (!ok) continue;
+        if (keywordInWindow(i + parts.length - 1, blankIndex, { lineOf })) return true;
+      }
+    }
+  }
+  return false;
 }

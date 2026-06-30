@@ -16,6 +16,41 @@ breaking.
 
 ---
 
+## [0.4.0-alpha] — 2026-06-30
+
+Spec bump: the blank routing boundary moves from the physical **line** to
+the **sentence**. A keyword/shape now claims a `_` when it leads the
+sentence containing `_`, where a sentence begins at the last sentence
+terminator (`.`/`!`/`?` + whitespace, or a CJK/fullwidth `。`/`！`/`？`/`．`)
+OR newline before `_`. Previously only a newline started a new routing
+segment, so a command after a sentence terminator on the same line
+(`let me check. volume _`) did not fire. The change is backward-compatible
+in practice — strictly *more* commands route, none that fired before stop —
+but the normative trigger text changed, so a `0.3-alpha` reader will refuse
+`spec: opencues/0.4-alpha` files per the "newer-spec-refuse" rule
+(`SPEC.md` § Version policy). The omit-default stays `0.1-alpha`.
+
+### Changed
+
+- **Blank trigger model** — `blankShapes` (and synthesized keyword shapes)
+  are matched against the SENTENCE containing `_`, not the physical line.
+  The segment begins at the last sentence terminator (`.`/`!`/`?` followed
+  by whitespace — the whitespace lookahead keeps decimals like `3.5` /
+  versions like `gpt-5.4` from splitting — or a CJK `。`/`！`/`？`/`．`) or
+  newline before `_`. A command must still lead its segment with `_` at the
+  trailing edge; a keyword merely mentioned mid-sentence does not fire.
+  (`spec/blank-spec.md` § Trigger model, `core.md` § Routing.)
+
+### Conformance
+
+- `spec/conformance/routing/blank-shapes.json` — added sentence-boundary
+  cases (`let me check. volume _` → volume, `done! weather oslo _` →
+  weather, CJK `世界。weather kyoto _` → weather) and negative cases
+  (`i turned the volume down. what a day _` → null; a connective before the
+  keyword, `first the lights. then weather tokyo _` → null).
+
+---
+
 ## [0.3.0-alpha] — 2026-06-29
 
 Spec bump: blank routing + frontmatter surface slim-down. The blank

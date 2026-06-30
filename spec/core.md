@@ -1,6 +1,6 @@
 # core — shared rules across cue-spec and blank-spec
 
-> **Status:** `0.3-alpha`. Expect changes.
+> **Status:** `0.4-alpha`. Expect changes.
 
 This document covers concerns shared by `cue-spec.md`, `blank-spec.md`, and `auditor-spec.md`: the project search-path, the master `CUES.md` / `BLANKS.md` / `AUDITORS.md` files at the root, host compatibility, hot-reload, routing, and the promotion path from runtime-specific knobs to standard fields.
 
@@ -178,7 +178,7 @@ Resolution algorithm:
 2. On priority ties, declaration order wins (sources from earlier search-path entries first; then file-system order within a directory).
 3. If no source claims the word, the word produces no cue (it's not navigable).
 
-For blanks, routing is by `blankShapes` — anchored whole-line grammar matched against the line containing `_` (keywords desugar to shapes; a keyword claims a `_` on its line). Tie resolution: by source priority (declaration order if equal). The fluid-blank fallback (when implemented) handles `_` that no shape claims. Runtimes that ship a transform-blank surface alongside fluid-blank SHOULD ensure their fluid-blank fallback refuses inputs that look like transform-blank task triggers — otherwise a mistyped task command falls through to the lookup pipeline and gets hallucinated as an answer (see [`@opencues/runtime`'s `SPEC.md` § Task-trigger guard](../packages/opencues-runtime/SPEC.md#task-trigger-guard) for the OpenCues runtime's implementation).
+For blanks, routing is by `blankShapes` — anchored whole-segment grammar matched against the SENTENCE containing `_` (keywords desugar to shapes; a keyword claims a `_` when it leads its sentence — the segment after the last sentence terminator (`.`/`!`/`?` + whitespace, or CJK `。！？．`) or newline before `_`). Tie resolution: by source priority (declaration order if equal). The fluid-blank fallback (when implemented) handles `_` that no shape claims. Runtimes that ship a transform-blank surface alongside fluid-blank SHOULD ensure their fluid-blank fallback refuses inputs that look like transform-blank task triggers — otherwise a mistyped task command falls through to the lookup pipeline and gets hallucinated as an answer (see [`@opencues/runtime`'s `SPEC.md` § Task-trigger guard](../packages/opencues-runtime/SPEC.md#task-trigger-guard) for the OpenCues runtime's implementation).
 
 ---
 

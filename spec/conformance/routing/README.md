@@ -29,7 +29,7 @@ Blank-routing scenarios use a different shape:
 
 ```json
 {
-  "description": "Blank shapes route the line containing _ (keywords desugar to shapes)",
+  "description": "Blank shapes route the sentence containing _ (keywords desugar to shapes)",
   "blanks": [
     { "name": "volume",  "blankKeywords": ["volume"] },
     { "name": "weather", "blankKeywords": ["weather"] }
@@ -51,7 +51,7 @@ Blank-routing scenarios use a different shape:
 | [`per-word-dispatch.json`](./per-word-dispatch.json) | Each word goes to exactly one source — the highest priority match. |
 | [`priority-tiebreak.json`](./priority-tiebreak.json) | Equal-priority sources fall back to declaration order. |
 | [`catch-all-fallback.json`](./catch-all-fallback.json) | DEFAULT source claims words no DOMAIN source matched. |
-| [`blank-shapes.json`](./blank-shapes.json) | `blankShapes` (or synthesized keyword shapes) route the line containing `_`; a command must lead its line. |
+| [`blank-shapes.json`](./blank-shapes.json) | `blankShapes` (or synthesized keyword shapes) route the sentence containing `_`; a command must lead its sentence (terminator/newline boundary). |
 
 ## What's covered
 
@@ -59,7 +59,7 @@ Blank-routing scenarios use a different shape:
 - Multi-source priority resolution
 - DOMAIN vs DEFAULT (catch-all) semantics
 - Declaration-order tiebreak on equal priority
-- Blank-shape line-scoped dispatch (command leads its line; mid-line keyword mention does not fire)
+- Blank-shape sentence-scoped dispatch (command leads its sentence — terminator or newline boundary; mid-sentence keyword mention does not fire)
 
 ## What's not covered (deliberately)
 

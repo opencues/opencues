@@ -25,12 +25,11 @@
 
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter, AmbientContext } from '../types';
 import { BlankConfig } from '../cues-md';
-import { keywordInWindow, lineOfWords } from '../keyword-window';
 import { useStrictJson, buildJsonResponseFormat, describeLLMCall, dispatchChat, getProvider, type ProviderAdapter } from '../llm-provider';
 import { renderIdentityContextCatalog, postProcessContext, type Identity, type ContextMode } from '../identity-context';
 import { renderBlankContextCatalog, mergeCatalogs, type BlankContextSnapshot, type BlankContextMode } from '../blank-context';
 import { resolveTypedSentinels, catalogScalarLookup, instanceTokenFnBridge, jsonFieldAccessor } from '../typed-sentinel';
-import { matchBlankShape } from '../blank-shapes';
+import { blankClaimsUnderscore } from '../blank-shapes';
 
 // ─── Ambient-context sanitization + injection ──────────────────────
 //
@@ -764,28 +763,11 @@ export class FluidBlankSource implements CueSource {
     // preserved untouched, which is strictly better than substituting
     // the entire sentence with an LLM-guessed answer.
     if (TASK_TRIGGER_GUARD.test(context.text)) return false;
-    // TYPE-BASED CEDE (shaped blanks): cede iff a declared SHAPE claims this
-    // `_` — exact grammar, so an anchored shape can't match prose. This is what
-    // stops fluid from wrongly ceding conversational input to a keyword blank.
-    if (matchBlankShape(context.text, this.blanks)) return false;
-    // LEGACY CEDE (non-shaped blanks only): a blank that hasn't migrated to
-    // shapes still cedes via keyword on the same line as `_`. Shaped blanks
-    // are skipped here — they're governed solely by the shape match above.
-    const lineOf = lineOfWords(context.text);
-    for (const blk of Object.values(this.blanks)) {
-      if (blk.blankShapes?.length) continue;
-      if (!blk.blankKeywords?.length) continue;
-      for (const phrase of blk.blankKeywords) {
-        const parts = phrase.toLowerCase().split(/\s+/);
-        for (let i = 0; i <= lower.length - parts.length; i++) {
-          let ok = true;
-          for (let j = 0; j < parts.length; j++) { if (lower[i + j] !== parts[j]) { ok = false; break; } }
-          if (!ok) continue;
-          const endIdx = i + parts.length - 1;
-          if (keywordInWindow(endIdx, blankIndex, { lineOf })) return false;
-        }
-      }
-    }
+    // Cede when a keyword/shaped blank claims this `_` (shape match, or a
+    // non-shaped blank's keyword on the same line). SHARED predicate —
+    // identical for FluidBlank / TransformBlank / ConfigIntent so they can't
+    // drift (see blankClaimsUnderscore).
+    if (blankClaimsUnderscore(context.text, context.words, this.blanks)) return false;
     return true;
   }
 
