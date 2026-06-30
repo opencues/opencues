@@ -130,7 +130,7 @@ async function interactive(ctx) {
     for (const n of toggleable) {
       const on = allowList.includes(n);
       const info = blankInfo(n);
-      const status = dim(on ? 'trusted' : 'untrusted');
+      const status = dim(on ? 'on' : 'off');
       const note = info ? '' : '   ' + yellow('unreachable');
       choices.push({ label: row(on ? ON : OFF, n, status + note), value: { toggle: n } });
     }
@@ -145,11 +145,11 @@ async function interactive(ctx) {
     console.log('');
     if (!typed) console.log(`${tag('warn')} ${dim('sentinel-language is not `typed` — the on-demand path is inert until you set it.')}\n`);
 
-    console.log(dim('Always on · built-in · trusted by code:'));
+    console.log(dim('Built-in · always on · trusted by code:'));
     console.log('  ' + AUDITED_CORE.map(n => `${ON} ${n}`).join('    '));
     console.log('');
 
-    const pick = await prompt.select('Trust list  ·  ↑↓ move · Enter toggle', choices);
+    const pick = await prompt.select('Third-party  ·  ↑↓ move · Enter toggle on/off', choices);
     if (!pick || pick.done) break;
 
     const n = pick.toggle;
