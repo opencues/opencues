@@ -395,19 +395,32 @@ function routeWord(sources: Array<{ name: string; priority?: number; match?: str
 }
 
 /**
- * Spec blank routing algorithm — LINE-SCOPED shapes. A blank claims a `_`
- * when one of its keywords (or an explicit `blankShapes` pattern) leads the
- * LINE containing `_`, with `_` at the trailing edge. Keywords desugar to
- * the standard shape `^<kw>( <args>)? _$`. A command must lead its line;
- * prose that merely mentions a keyword mid-line does not fire. Mirrors
- * `matchBlankShape` + `synthesizeKeywordShapes` in the reference runtime.
- * Implemented inline so this runner validates the fixtures self-consistently;
- * a second runner SHOULD exercise the same fixtures against its dispatcher.
+ * Spec blank routing algorithm (0.4) — SENTENCE-SCOPED shapes. A blank claims a
+ * `_` when one of its keywords (or an explicit `blankShapes` pattern) leads the
+ * SENTENCE containing `_`, with `_` at the trailing edge. A sentence begins at
+ * the last sentence terminator (`.`/`!`/`?` + whitespace, or a CJK `。！？．`) OR
+ * newline before `_` — so `let me check. volume _` routes, not just
+ * `notes\nvolume _`. Keywords desugar to the standard shape `^<kw>( <args>)? _$`.
+ * A command must lead its sentence; prose that merely mentions a keyword
+ * mid-sentence does not fire. Mirrors `matchBlankShape` + `segmentStart` +
+ * `synthesizeKeywordShapes` in the reference runtime. Implemented inline (with
+ * its OWN boundary scan) so this runner validates the fixtures self-consistently
+ * — a second runner SHOULD exercise the same fixtures against its dispatcher.
  */
+function segmentStartConf(text: string, pos: number): number {
+  const re = /[.!?](?=\s)|[。！？．]|\n/g;
+  const upto = text.slice(0, pos);
+  let start = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(upto)) !== null) start = m.index + m[0].length;
+  while (start < text.length && /\s/.test(text.charAt(start))) start += 1;
+  return start;
+}
+
 function routeBlank(blanks: Array<{ name: string; blankKeywords?: string[]; blankShapes?: Array<{ pattern: string }> }>, text: string): string | null {
   const us = text.lastIndexOf('_');
   if (us === -1) return null;
-  const start = text.lastIndexOf('\n', us) + 1;
+  const start = segmentStartConf(text, us);
   let end = text.indexOf('\n', us);
   if (end === -1) end = text.length;
   const line = text.slice(start, end).trim().toLowerCase();

@@ -1,14 +1,24 @@
 {
-  "description": "Blank shapes route the line containing _. Keywords desugar to shapes (a keyword claims a _ on its line, capturing any words between as the get arg). A command must LEAD its line with _ at the trailing edge; prose that merely mentions a keyword mid-line does not fire.",
+  "description": "Blank shapes route the SENTENCE containing _ (0.4). Keywords desugar to shapes (a keyword claims a _ when it leads its sentence, capturing any words between as the get arg). A sentence begins at the last terminator (./!/? + space, or CJK 。！？．) OR newline before _. A command must LEAD its sentence with _ at the trailing edge; prose that merely mentions a keyword mid-sentence does not fire.",
   "blanks": [
     { "name": "volume",  "blankKeywords": ["volume"] },
     { "name": "weather", "blankKeywords": ["weather"] }
   ],
   "expectations": [
-    { "text": "volume _",              "routesTo": "volume"  },
-    { "text": "weather paris _",       "routesTo": "weather" },
-    { "text": "weather in oslo _",     "routesTo": "weather" },
-    { "text": "the volume was loud _", "routesTo": null      },
-    { "text": "i love the weather today _", "routesTo": null }
+    { "text": "volume _",                       "routesTo": "volume"  },
+    { "text": "weather paris _",                "routesTo": "weather" },
+    { "text": "weather in oslo _",              "routesTo": "weather" },
+    { "text": "the volume was loud _",          "routesTo": null      },
+    { "text": "i love the weather today _",     "routesTo": null      },
+
+    { "text": "some notes here\nvolume _",      "routesTo": "volume"  },
+
+    { "text": "let me check. volume _",         "routesTo": "volume"  },
+    { "text": "done with that! weather oslo _", "routesTo": "weather" },
+    { "text": "what now? volume _",             "routesTo": "volume"  },
+    { "text": "こんにちは世界。weather kyoto _",    "routesTo": "weather" },
+
+    { "text": "i turned the volume down. what a day _", "routesTo": null },
+    { "text": "first the lights. then weather tokyo _", "routesTo": null }
   ]
 }

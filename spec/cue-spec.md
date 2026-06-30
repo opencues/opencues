@@ -1,6 +1,6 @@
 # cue-spec — the Cue file format & runtime contract
 
-> **Status:** `0.3-alpha`. Expect changes.
+> **Status:** `0.4-alpha`. Expect changes.
 
 A **cue** is the LLM→user surface: while a user types plain text, a cue source proposes alternatives for words it recognises. The user can cycle through them with a keyboard input (or any runtime-defined trigger). This document specifies the `CUE.md` file format and what a conformant runtime MUST do with one.
 

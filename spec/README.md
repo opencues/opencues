@@ -1,6 +1,6 @@
 # OpenCues — Open Standard
 
-> **Status:** `0.3-alpha`. Expect changes.
+> **Status:** `0.4-alpha`. Expect changes.
 
 This directory holds three open file-format standards — **Cues**, **Blanks**, and **Auditors** — that any text editor, IDE, or LLM-pipeline can implement to interoperate. Each surface has its own spec file and its own conformance contract; a runtime can implement one and be conformant for that surface (you don't have to implement all three). Licensed under the same terms as this repository (see [`LICENSE`](../LICENSE)).
 

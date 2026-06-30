@@ -1,6 +1,6 @@
 # blank-spec — the Blank file format & runtime contract
 
-> **Status:** `0.3-alpha`. Expect changes.
+> **Status:** `0.4-alpha`. Expect changes.
 
 A **blank** is the user→system surface: when a user writes `_` (underscore) in their text, the runtime substitutes a value sourced from somewhere — a list, a shell script, an in-process function. Blanks are how text touches the world: volume, weather, stock prices, dictionary entries, settings toggles. This document specifies the `BLANK.md` file format and what a conformant runtime MUST do with one.
 
@@ -36,7 +36,7 @@ Every blank is folder-shaped — there is no flat-file alternative. A declarativ
 A blank fires when **all** of these hold:
 
 1. The user's text contains `_` (the blank marker).
-2. One of the blank's `blankShapes` matches the LINE containing `_` (anchored, whole-line grammar). When a blank declares no `blankShapes`, the runtime synthesizes them from `blankKeywords`: a keyword claims a `_` on the SAME LINE (line-scoped), capturing any words between the keyword and `_` as the `get` arg. Either way, routing is deterministic and the command must lead its line with `_` at the trailing edge — prose that merely mentions a keyword mid-line does NOT fire.
+2. One of the blank's `blankShapes` matches the SENTENCE containing `_` (anchored, whole-segment grammar). When a blank declares no `blankShapes`, the runtime synthesizes them from `blankKeywords`: a keyword claims a `_` when it leads the SENTENCE (sentence-scoped), capturing any words between the keyword and `_` as the `get` arg. A sentence begins at the last sentence terminator (`.`/`!`/`?` followed by whitespace, or a CJK/fullwidth `。`/`！`/`？`/`．`) OR newline before `_` — so a command leading a new sentence on the same line (`let me check. volume _`) routes the same as one on its own line (`notes\nvolume _`). Either way, routing is deterministic and the command must lead its sentence with `_` at the trailing edge — prose that merely mentions a keyword mid-sentence does NOT fire.
 3. The runtime has loaded the blank source.
 
 Blanks fire deterministically. The `description:` field is documentation only — it does NOT control invocation. (Contrast with [SKILL.md](https://github.com/anthropics/skills), where `description` is the LLM's invocation hook.)
@@ -52,7 +52,7 @@ When `_` matches no blank, a runtime MAY provide a **fluid-blank fallback** (typ
 | Field | Type | Notes |
 |---|---|---|
 | `name` | string | Unique identifier. By convention, this is also the in-process class name when `impl:` is implicit. |
-| `blankKeywords` | comma-separated list **or** YAML list | Words that fire this blank when one **leads the line** containing `_` (line-scoped — see § Trigger model). Desugar into anchored `blankShapes`. |
+| `blankKeywords` | comma-separated list **or** YAML list | Words that fire this blank when one **leads the sentence** containing `_` (sentence-scoped — see § Trigger model). Desugar into anchored `blankShapes`. |
 
 A blank source MUST also declare **exactly one** binding profile (see § Binding profiles). Zero binding profiles = invalid (no behavior). More than one = invalid (ambiguous).
 
@@ -70,7 +70,7 @@ A blank source MUST also declare **exactly one** binding profile (see § Binding
 | `type` | `"blank"` | inferred from path | Discriminator. Files under `blanks/` are blanks by location; explicit `type: blank` is rarely needed. |
 | `priority` | number | `50` | Higher wins on routing ties when multiple blanks could claim the same `_` slot (rare — usually disambiguated by `blankKeywords`). Range 0–100 by convention. |
 | `enabled` | boolean | `true` | `false` = blank is parsed but not registered. Use the master `BLANKS.md` `disable: [<id>]` to skip a blank from a project layer without modifying the source file itself. |
-| `blankShapes` | JSON list of `{pattern, action, valueGroup?}` | derived from `blankKeywords` | Anchored regex grammar that routes a `_` deterministically. Each shape's `pattern` is matched (case-insensitive) against the LINE containing `_`; on match the blank claims it with `action` (`"get"` / `"set"` / `"step"`) and the value from capture group `valueGroup`. e.g. `[{"pattern":"^volume\\s+(\\d+)\\s*_$","action":"set","valueGroup":1}]`. When omitted, the runtime synthesizes shapes from `blankKeywords` (+ `blankStep` for set/step). See § Routing. |
+| `blankShapes` | JSON list of `{pattern, action, valueGroup?}` | derived from `blankKeywords` | Anchored regex grammar that routes a `_` deterministically. Each shape's `pattern` is matched (case-insensitive) against the SENTENCE containing `_` (segment after the last sentence terminator / newline before `_`); on match the blank claims it with `action` (`"get"` / `"set"` / `"step"`) and the value from capture group `valueGroup`. e.g. `[{"pattern":"^volume\\s+(\\d+)\\s*_$","action":"set","valueGroup":1}]`. When omitted, the runtime synthesizes shapes from `blankKeywords` (+ `blankStep` for set/step). See § Routing. |
 | `blankStep` | number | none | Increment size for numeric blanks (set/step `up`/`down`). Also adds set/step shapes when `blankShapes` is synthesized from keywords. |
 | `blankSuffix` | string | `""` | Appended to the displayed value (`"%"`, `"°C"`, `"$"`). |
 | `integration` | string | none | Additive output template with a `{value}` slot (`"volume is now {value}"`). The runtime renders the blank's output through it, weaving connective text around the value. Add-only — it only shapes the inserted value, never surrounding text. |
@@ -314,7 +314,7 @@ All methods are async. The `keyword` argument carries which `blankKeywords` entr
 
 - **`blankSatellite: true`** — `get` MAY return `<selector>\t<satellite>` (tab-separated). The runtime MUST splice both as adjacent words. Cycling targets the selector; satellite is updated via `set <selector> <value>`.
 - **`blankDismissible: true`** — runtime MUST append `_` to the cycling list. Selecting it sets a "dismissed" flag for that slot; runtime MUST NOT re-populate until the user explicitly cycles away.
-- **`blankShapes`** — each `{pattern, action, valueGroup?}` is matched (case-insensitive) against the LINE containing `_`; the first match claims it. `valueGroup` (1-based) extracts the `set`/`step` value. A blank with shapes is routed solely by them; the keyword window does not apply.
+- **`blankShapes`** — each `{pattern, action, valueGroup?}` is matched (case-insensitive) against the SENTENCE containing `_` (the segment after the last sentence terminator / newline before `_`); the first match claims it. `valueGroup` (1-based) extracts the `set`/`step` value. A blank with shapes is routed solely by them; the keyword window does not apply.
 - **`blankStep`, `blankSuffix`** — numeric step size + display unit. Runtime MUST honor for numeric blanks.
 
 ---

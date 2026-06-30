@@ -1,6 +1,6 @@
 # Cues Specification
 
-**Current version: `0.3` (draft)**
+**Current version: `0.4` (draft)**
 
 This document declares the **Cues spec** — the durable, host-agnostic format that
 describes word-cues and blank-fills. It is separate from any single
