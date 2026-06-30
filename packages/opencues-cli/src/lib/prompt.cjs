@@ -136,10 +136,11 @@ async function select(message, choices, opts = {}) {
     promptLine: message ? undefined : false,
     // initial focus index (e.g. confirm() lands on the safe default)
     initial: typeof opts.initial === 'number' ? opts.initial : undefined,
-    // Bounded scroll viewport — keeps a long list from rendering taller than
-    // the terminal (which enquirer can't fully erase on submit, leaving the
-    // list stranded in scrollback).
-    limit: typeof opts.limit === 'number' ? opts.limit : undefined,
+    // Clamp at the ends instead of wrapping — Down on the last row (Done)
+    // stops, it doesn't jump back to the top. Opt back into wrap with
+    // scroll:true. (NOTE: enquirer's scroll:false also disables its scrolling
+    // viewport, so it's incompatible with `limit` — don't set both.)
+    scroll: opts.scroll === undefined ? false : opts.scroll,
   });
   try {
     const name = await prompt.run();
