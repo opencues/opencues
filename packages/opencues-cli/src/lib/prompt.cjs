@@ -63,13 +63,16 @@ function select(message, choices, opts = {}) {
     out.write(bold(message) + '\n');
     renderRows(true);
 
-    readline.emitKeypressEvents(stdin);
+    // Read raw bytes and parse the escape sequences directly — more reliable
+    // across terminals than readline.emitKeypressEvents (which lazily attaches
+    // its decoder and can silently no-op).
     const wasRaw = Boolean(stdin.isRaw);
     if (stdin.setRawMode) stdin.setRawMode(true);
     stdin.resume();
+    stdin.setEncoding('utf8');
 
     const cleanup = () => {
-      stdin.removeListener('keypress', onKey);
+      stdin.removeListener('data', onData);
       if (stdin.setRawMode) stdin.setRawMode(wasRaw);
       stdin.pause();
     };
@@ -83,20 +86,23 @@ function select(message, choices, opts = {}) {
       renderRows(false);
     };
 
-    function onKey(_str, key) {
-      if (!key) return;
-      if (key.name === 'up' || key.name === 'k') move(-1);
-      else if (key.name === 'down' || key.name === 'j') move(1);
-      else if (key.name === 'return' || key.name === 'enter') {
+    function onData(chunk) {
+      const s = String(chunk);
+      // A chunk may batch multiple keys (paste / fast input); handle byte-wise.
+      if (s === '\x1b[A' || s === '\x1bOA' || s === 'k') return move(-1);   // up
+      if (s === '\x1b[B' || s === '\x1bOB' || s === 'j') return move(1);    // down
+      if (s === '\r' || s === '\n') {                                          // enter
         cleanup();
-        resolve(choices[idx] ? choices[idx].value : null);
-      } else if (key.name === 'escape' || key.name === 'q' || (key.ctrl && key.name === 'c')) {
+        return resolve(choices[idx] ? choices[idx].value : null);
+      }
+      if (s === '\x03' || s === 'q' || s === '\x1b') {                     // ctrl-c / q / esc
         cleanup();
         out.write(dim('  (cancelled)\n'));
-        resolve(opts.cancelValue ?? null);
+        return resolve(opts.cancelValue ?? null);
       }
+      // ignore everything else (other escape seqs, mouse, etc.)
     }
-    stdin.on('keypress', onKey);
+    stdin.on('data', onData);
   });
 }
 
@@ -136,26 +142,26 @@ function secret(message) {
   const stdin = process.stdin;
   return new Promise((resolve) => {
     out.write(`${message} `);
-    readline.emitKeypressEvents(stdin);
     const wasRaw = Boolean(stdin.isRaw);
     if (stdin.setRawMode) stdin.setRawMode(true);
     stdin.resume();
+    stdin.setEncoding('utf8');
     let buf = '';
     const done = (val) => {
-      stdin.removeListener('keypress', onKey);
+      stdin.removeListener('data', onData);
       if (stdin.setRawMode) stdin.setRawMode(wasRaw);
       stdin.pause();
       out.write('\n');
       resolve(val);
     };
-    function onKey(str, key) {
-      if (!key) return;
-      if (key.name === 'return' || key.name === 'enter') return done(buf);
-      if (key.ctrl && key.name === 'c') return done('');
-      if (key.name === 'backspace') { if (buf) { buf = buf.slice(0, -1); out.write('\b \b'); } return; }
-      if (str && str.length === 1 && str >= ' ') { buf += str; out.write('*'); }
+    function onData(chunk) {
+      const s = String(chunk);
+      if (s === '\r' || s === '\n') return done(buf);
+      if (s === '\x03') return done('');                                       // ctrl-c
+      if (s === '\x7f' || s === '\b') { if (buf) { buf = buf.slice(0, -1); out.write('\b \b'); } return; } // backspace
+      if (s >= ' ' && s.length === 1) { buf += s; out.write('*'); }
     }
-    stdin.on('keypress', onKey);
+    stdin.on('data', onData);
   });
 }
 

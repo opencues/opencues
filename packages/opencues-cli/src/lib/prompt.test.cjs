@@ -49,13 +49,15 @@ async function withFakeTTY(fn) {
   }
 }
 
-// Emit keypress events on the next tick so select's listener is attached first.
+// Map symbolic key names → the raw byte sequences a terminal sends, then emit
+// them as 'data' (select/secret now parse raw bytes, not keypress events).
+const KEY = { up: '\x1b[A', down: '\x1b[B', return: '\r', enter: '\r', q: 'q', esc: '\x1b' };
 function feed(stdin, keys) {
   let i = 0;
   const tick = () => {
     if (i >= keys.length) return;
-    const name = keys[i++];
-    stdin.emit('keypress', '', { name });
+    const k = keys[i++];
+    stdin.emit('data', KEY[k] ?? k);
     setImmediate(tick);
   };
   setImmediate(tick);
