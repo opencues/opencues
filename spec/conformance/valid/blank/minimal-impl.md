@@ -4,9 +4,6 @@ name: stocks
 description: Live stock prices — major US tickers
 blankKeywords: nvidia, nvda, apple, aapl, googl, msft, amzn
 impl: StocksBlank
-blankAutoPopulate: true
-blankReadOnly: true
-blankFormat: string
 spec: opencues/0.1-alpha
 ---
 

@@ -60,7 +60,7 @@ export class TTS {
     private dynDefs: DynDefs,
     private configLoader: ConfigLoader,
     private options: TTSOptions,
-    /** Optional. When the highlight is in a span fill, speak the span's blankTip. */
+    /** Optional. When the highlight is in a span fill, speak the span's tip. */
     private spanFillState?: SpanFillState,
     /** Optional. When the highlight is on a selector/satellite, speak the setting/value tip. */
     private selectorSatelliteState?: SelectorSatelliteState,
@@ -130,11 +130,11 @@ export class TTS {
       tipSource = onSelector ? 'selector' : 'satellite';
     } else if (inSpan) {
       // Span TTS gated on the originating blank's `speak`. Without
-      // that gate, every multi-word fill would announce its blankTip
+      // that gate, every multi-word fill would announce its tip
       // on each cycle (affirmations, prompt improver, etc.) regardless
       // of the user's voice preference for that blank.
       // blankName isn't on SpanFillEntry today; look up by tip match
-      // — works for now since blankTip is unique per blank.
+      // — works for now since tip is unique per blank.
       // Also suppress when current alt is `_` (dismissed).
       const curAlt = span!.alternatives[span!.currentAltIndex];
       if (curAlt === '_') {
@@ -143,17 +143,17 @@ export class TTS {
         /* index already tracked by _lastSeenIndex above */
         return null;
       }
-      // Find the originating blank by blankTip match.
+      // Find the originating blank by tip match.
       let speakOK = false;
       for (const ctrl of this.configLoader.blanks.values()) {
-        const cAny = ctrl as { speak?: boolean; tip?: string; blankTip?: string };
-        if ((cAny.blankTip ?? cAny.tip) === span!.blankTip) {
+        const cAny = ctrl as { speak?: boolean; tip?: string };
+        if (cAny.tip === span!.tip) {
           speakOK = !!cAny.speak;
           break;
         }
       }
       if (!speakOK) return null;
-      tip = span!.blankTip;
+      tip = span!.tip;
       tipSource = 'span';
     } else {
       const lookup = this.configLoader.lookup(original);

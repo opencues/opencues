@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-04-29
+last_updated: 2026-06-29
 ---
 
 # Cue-Blanks — Claude Code
@@ -8,24 +8,23 @@ Implements feature [11](../../../docs/features/cue-blanks.md). See that doc for 
 
 **Implementation:** Navigation + dimming + cycling + `blankInvoke` dispatch all live in `@opencues/runtime`. The CC bootstrap (`patches/opencuesRuntime.ts`) registers TS-class blanks into the host's `blanksRegistry`.
 
-A cue-blank is a blank (`_`) bound to a keyword via `blankKeywords`. The user types a keyword adjacent to `_`, the runtime auto-populates with a current value via `blankInvoke`, and Up/Down cycling changes the actual external state. Everything that touches the world is `_`-gated — there is no word-cycling on plain text without `_`.
+A cue-blank is a blank (`_`) bound to a keyword via `blankKeywords` (which desugars into anchored `blankShapes`). The user types a keyword that leads the line containing `_` — args may sit between the keyword and `_` (e.g. `weather paris _`) — the runtime auto-populates with a current value via `blankInvoke`, and Up/Down cycling changes the actual external state. Everything that touches the world is `_`-gated — there is no word-cycling on plain text without `_`.
 
 ## Overview
 
-Five flavours of cue-blank:
+Four flavours of cue-blank:
 
-- **Auto-populated cue-blanks** — `_` populates from `blankInvoke('<name>', { action: 'get' })`. Up/Down call `up` / `down` (or `set` for selector/satellite). Example: `volume _` → `50%`.
+- **Auto-populated cue-blanks** — `_` populates from `blankInvoke('<name>', { action: 'get' })`. Auto-populate is always-on: any shape match fills the `_`. Up/Down call `up` / `down` (or `set` for selector/satellite). Example: `volume _` → `50%`.
 - **List blanks** — cue.md has `stepValues: [...]`. No script; the runtime cycles the list.
 - **Dynamic list blanks** — `blankInvoke get` returns multi-line output; each line becomes a cycling alternative (e.g., HN headlines).
-- **Read-only blanks** — `blankReadOnly: true` fetches data once and disables cycling (e.g., stocks).
-- **Consume-all blanks** — `blankConsumeAll: true` replaces the entire input with a multi-word result (e.g., the prompt improver). Uses dedicated `_consumeAllAlts` storage. See [Consume-All Blanks](../../../docs/features/consume-all-blanks.md).
+- **Read-only blanks** — read-only is inferred: a blank that omits `blankStep` / `stepValues` / `blankSatellite` is read-only by construction, so it fetches data once and never cycles (e.g., stocks).
 
 ## How It Works
 
 ```
 User types: "set volume _"
            ↓
-Analysis matches `volume` (a blankKeywords entry) adjacent to `_`
+Analysis matches `volume` (a blankKeywords entry) leading the line containing `_`
            ↓
 Runtime calls blankInvoke({ blankName: 'volume', action: 'get', args: ['volume'] })
            ↓
@@ -45,7 +44,7 @@ then blankInvoke({ action: 'get' }) runs ~200ms later for the new display value
 Cue-blanks are checked **first** in `_cycleAlt()`:
 
 1. **Cue-blank values** (`metadata.blankName`) → `blankInvoke up/down`, then `get`, return
-2. **Consume-all alts** → cycle `_consumeAllAlts` (dedicated storage, separate from `_dynDefs`)
+2. **Dynamic-list (span) alts** → cycle `_consumeAllAlts` (dedicated storage for multi-line `get()` output, separate from `_dynDefs`)
 3. **Dynamic alts** → cycle `_dynDefs.words[i].alts`
 4. **Linked words** → co-dependent words cycle together
 
@@ -70,7 +69,6 @@ tip: system volume
 speak: true
 blankKeywords: volume, vol, sound, audio
 blankStep: 6
-blankAutoPopulate: true
 blankSuffix: '%'
 blankScript: ./volume-blank.sh
 ---
@@ -151,7 +149,7 @@ Config changes hot-reload within ~2s. `setup.sh` is only needed if you add a com
 
 ### Cue-Blank Not Triggering
 
-1. Verify the `_` is adjacent to (or within `blankProximity` of) a registered keyword
+1. Verify a registered keyword leads the line containing `_` (args may sit between the keyword and `_`, e.g. `weather paris _`)
 2. Check the runtime's `blanksByWord` map at startup — every keyword from every blank's `blankKeywords` should be there
 3. Hot-reload: edit any cue.md and save → analyzer re-runs within ~2s
 
@@ -193,12 +191,10 @@ COM initialization uses `COINIT_APARTMENTTHREADED` with MTA fallback — require
 
 SpeakCtl.exe requires `/reference:System.Speech.dll` — setup.sh handles this with a special case for the `SpeakCtl` base name.
 
-## CC-Specific: Consume-All Blanks
+## CC-Specific: Dynamic-List (Span) Cycling Storage
 
-Blanks with `blankConsumeAll: true` replace the entire input text with a multi-word result. The existing keyword-clearing logic handles the clearing — `blankConsumeAll` just expands `blankKeywordIndices` to include every non-blank position.
-
-**Cycling uses dedicated storage (`_consumeAllAlts`)** instead of `_dynDefs` because:
-- After clearing shifts the blank index, multiple WordDefs collide at index 0 (grammar + cue-blank)
+Dynamic-list blanks — whose `get()` returns multi-line output, with each line a cycling alternative (e.g., Hacker News headlines) — fill a span wider than the single `_` position. They cycle through dedicated `_consumeAllAlts` storage instead of `_dynDefs` because:
+- The multi-word span shifts the blank index, so multiple WordDefs collide at index 0 (grammar + cue-blank)
 - The tips-only fast path replaces `_dynDefs` entirely, losing the cue-blank alts
 - Per-word clearing deletes `_dynSpans` entries when words change between cycles
 
@@ -206,10 +202,10 @@ The alternatives flow through `_pendingAutoPopulate.consumeAllAlts` (set in the 
 
 State that must be updated after each cycle: `_hlText`, `_hlState.text`, `_hlState.wordIndex`, `_dynLastAnalyzed`, `_dynPrevWords`, `_dynSpans`, and `_consumeAllAlts.spanLength`.
 
-**Example:** The prompt improver (`blanks/prompt/`, implemented as `PromptImproverBlank` in `@opencues/runtime`) uses a two-step LLM pipeline (extract → transform) to rewrite the user's prompt and returns 3 alternatives + the original.
+> **Removed (June 2026):** the `blankConsumeAll` / `blankReplace` / `blankConsumeContext` dials and the prompt-improver "consume-all" blank flavour are gone. Fill is now always additive (FILL only); command-span clearing is shape-derived (a captured arg, a typed set/step, or an `integration:` template consumes the whole "keyword … _" command span, while a bare keyword get keeps its label). Free-form prompt rewrites route through `TransformBlankSource` (imperative instructions) and lookups through `FluidBlankSource` (always-FILL). The `_consumeAllAlts` storage described above survives only as the backing for dynamic-list (span) cycling. See [blank-integration](../../../docs/architecture/blank-integration.md).
 
 ## Related
 
 - [Cue-Blanks feature spec](../../../docs/features/cue-blanks.md) — concept
-- [Consume-All Blanks](../../../docs/features/consume-all-blanks.md)
+- [Blank Integration](../../../docs/architecture/blank-integration.md) — blank routing (`blankShapes` / `blankKeywords`) + output placement (`integration:` template)
 - [Adding a Cue-Blank](../../../docs/guides/adding-a-cue-blank.md)

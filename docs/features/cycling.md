@@ -27,12 +27,11 @@ The levels are checked in order. The first match wins.
 
 Modes:
 
-- **Script-based** (default): `blankInvoke('<name>', { action: 'up'|'down' })` runs synchronously, then `blankInvoke('<name>', { action: 'get' })` returns the new live value. The `blankFormat` field determines how the value is parsed for display.
+- **Script-based** (default): `blankInvoke('<name>', { action: 'up'|'down' })` runs synchronously, then `blankInvoke('<name>', { action: 'get' })` returns the new live value. `blankStep` sets the step size; `blankSuffix` the display unit.
 - **List-based** (`stepValues`): The blank auto-populates with the first value and Up/Down cycles through the list. Multi-word values are span-tracked automatically. No script is needed.
 - **Dynamic list** (multi-line `get` output): Each line becomes a cycling alternative — same behaviour as `stepValues` but populated from live data (e.g., RSS feeds, API results).
-- **Consume-all** (`blankConsumeAll: true`): Clears the entire input and replaces it with a multi-word result. Cycling swaps the full text as a span. Requires dedicated cycling storage because the standard WordDef array is overwritten by analysis. See [Consume-All Blanks](consume-all-blanks.md).
 
-All list-based blanks (static `stepValues`, dynamic multi-line, and consume-all) support `blankDismissible: true` — appends `_` as the last cycling option so the user can dismiss the value. Dismissed positions are tracked to prevent auto-populate from re-firing.
+All list-based blanks (static `stepValues`, dynamic multi-line) support `blankDismissible: true` — appends `_` as the last cycling option so the user can dismiss the value. Dismissed positions are tracked to prevent auto-populate from re-firing.
 
 Example list blank (`defaults/blanks/affirmations/BLANK.md`):
 ```yaml
@@ -51,7 +50,7 @@ Type `affirmation _` → blank auto-populates with "I am strong", Up/Down cycles
 
 **Condition**: `globalThis._consumeAllAlts` exists AND the current word (resolved via span) matches `_consumeAllAlts.index`.
 
-Used by blanks with `blankConsumeAll: true` that replace the entire input with multi-word cycling alternatives. Uses dedicated storage independent of `_dynDefs` because the standard WordDef array is overwritten by tips/grammar analysis. Span-aware: replaces the full span, updates `_dynSpans`, and prevents re-analysis by updating `_dynLastAnalyzed`/`_dynPrevWords`. Supports `blankDismissible` (cycling to `_` tracks dismissal). See [Consume-All Blanks](consume-all-blanks.md).
+Used by multi-line blanks (e.g. `hn _` returning many story titles) whose multi-word result is cycled as a span. Uses dedicated storage independent of `_dynDefs` because the standard WordDef array is overwritten by tips/grammar analysis. Span-aware: replaces the full span, updates `_dynSpans`, and prevents re-analysis by updating `_dynLastAnalyzed`/`_dynPrevWords`. Supports `blankDismissible` (cycling to `_` tracks dismissal).
 
 ### 3. Alternative cycling
 

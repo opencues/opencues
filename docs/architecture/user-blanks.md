@@ -31,7 +31,6 @@ name: gh-issues
 type: blank
 tip: open issue count for a github repo
 blankKeywords: gh
-blankAutoPopulate: true
 impl: ./blank.js
 network: [api.github.com]
 storage: gh-issues
@@ -223,20 +222,21 @@ blank fails visibly.
 
 ## How the answer lands in the buffer
 
-The blank returns a string from `get()`. Where that string ends up
-depends on the **`blankReplace`** field:
+The blank returns a string from `get()`. Placement is **shape-derived**
+(the replace/consume modes were deleted):
 
-- `keep` — only `_` becomes the answer; keyword + surrounding text stays.
-- `wipe` — `keyword + context + _` all become the answer.
-- `wipe-all` — the entire buffer becomes the answer.
-- `auto` — a deterministic heuristic decides `keep` vs `wipe` from
-  the buffer's last token (copula → `keep`, bare phrase → `wipe`).
+- A shaped invocation that captured an **arg** (`gh opencues/x _`), a typed
+  **set/step**, or a blank with an `integration:` template → the whole
+  command span (`keyword … _`) is consumed and only the rendered value
+  lands.
+- A **bare keyword get** (`gh _`, no captured arg, no template) → the
+  keyword is kept as a label and the value fills the `_`.
 
-Most new blanks should default to `auto`. When using `wipe` / `auto`,
-embed identifying context in the answer (e.g. `"London: 14°C Overcast"`,
-not just `"14°C Overcast"`) so the output is self-contained.
+Embed identifying context in the answer (e.g. `"London: 14°C Overcast"`,
+not just `"14°C Overcast"`) so a cleared-span output is self-contained, or
+declare an `integration:` template (`"it's currently {value}"`) to weave it.
 
-Full reference: `docs/architecture/blank-replace-modes.md`.
+Full reference: `docs/architecture/blank-integration.md`.
 
 ## Output sanitization
 

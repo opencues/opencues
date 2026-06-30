@@ -77,6 +77,6 @@ The primary `.md` sources used to build these extracts (paths from repo root):
 - `docs/overview.md` — dual-layer architecture
 - `docs/glossary.md` — terminology
 - `docs/prompt-design-learnings.md` — LLM optimization principles
-- `docs/features/cue-blanks.md`, `transform-blank.md`, `agent-task.md`, `consume-all-blanks.md`, `word-cue-routing.md`, `host-compat.md`, `chrome-sync.md`
+- `docs/features/cue-blanks.md`, `transform-blank.md`, `agent-task.md`, `word-cue-routing.md`, `host-compat.md`, `chrome-sync.md`
 - `docs/architecture/agent-task.md`, `transform-blank.md`, `spans-and-cycling.md`, `repo-structure.md`
 - `integrations/{claude-code,opencode,chrome}/docs/*.md`

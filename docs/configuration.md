@@ -66,7 +66,6 @@ Frontmatter keys at the top of `~/.cues/OPENCUES.md`. The same scalars are cycla
 | `transform-blank-mode` | `on` / `off` | `on` | Imperative `_` + agent-task lifecycle (`agentically X _`) registered. |
 | `sentence-cues-mode` | `on` / `off` | `off` | Cues with `scope: sentence` (whole-sentence rewrites) registered. |
 | `fluid-config-mode` | `on` / `off` | `off` | Natural-language settings phrases (`enable debug logging _` → flips `debug-mode`). FEATURES-only scope; never routes to user blanks. |
-| `blank-intent-mode` | `on` / `off` | `off` | LLM gate for keyword script-blanks: prose that mentions a keyword CEDEs (`the weather was lovely today _`), real invocations INVOKE (`weather london _`). Keyword still required (consent); the LLM refines precision + extracts typed get/set/step (`volume 30 _`, `volume up _`). Falls back to the proximity gate on error. See `docs/architecture/blank-intent.md`. |
 | `blank-trigger-mode` | `immediate` / `spaced` | `immediate` | Whether `_` fires on insertion or only on a confirming space. `spaced` lets markdown `_italic_` typists keep their formatting. |
 | `ambient-context-mode` | `on` / `off` | `off` | (Chrome only) Forward focused field's label / placeholder / page-title to fluid-blank for disambiguating lookups. |
 | `identity-context-mode` | `off` / `safe` / `raw` | `off` | Inject `~/.cues/IDENTITY.md` personal data into fluid-blank as identity-context tokens. `safe` = tokens-only catalog, values substituted post-LLM; `raw` = values inlined into the prompt. |

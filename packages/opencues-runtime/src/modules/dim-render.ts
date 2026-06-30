@@ -371,13 +371,14 @@ export class DimRender {
     if (this.configLoader.cueMap.has(lc)) return false;
     const entry = this.configLoader.blanksByWord.get(lc);
     if (!entry) return false;
-    // The word resolved to a blank keyword. Check if any `_` is within
-    // proximity. blankProximity defaults to 0 (keyword must be
-    // directly adjacent to `_`); blanks with looser phrasing set it
-    // explicitly (e.g. volume = 3, dictionary = 20).
-    const proximity = entry.blank.blankProximity ?? 0;
-    const lower = wordIdx - proximity - 1;
-    const upper = wordIdx + proximity + 1;
+    // The word resolved to a blank keyword. Suppress the keyword's dim only
+    // when no `_` is nearby. The keyword window is line-scoped now (per-blank
+    // blankProximity was retired), but this cosmetic gate has no line info in
+    // `words`, so it uses a fixed wide window — matching keyword-window.ts's
+    // `LINE_SCOPE_FALLBACK_PROXIMITY` fallback when no `lineOf` is threaded.
+    const DIM_GATE_WINDOW = 12;
+    const lower = wordIdx - DIM_GATE_WINDOW - 1;
+    const upper = wordIdx + DIM_GATE_WINDOW + 1;
     const start = Math.max(0, lower);
     const end = Math.min(words.length - 1, upper);
     for (let i = start; i <= end; i++) {

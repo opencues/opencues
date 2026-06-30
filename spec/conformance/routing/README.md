@@ -29,15 +29,15 @@ Blank-routing scenarios use a different shape:
 
 ```json
 {
-  "description": "Blank proximity controls keyword↔_ distance",
+  "description": "Blank shapes route the line containing _ (keywords desugar to shapes)",
   "blanks": [
-    { "name": "volume",  "blankKeywords": ["volume"],  "blankProximity": 1 },
-    { "name": "weather", "blankKeywords": ["weather"], "blankProximity": 3 }
+    { "name": "volume",  "blankKeywords": ["volume"] },
+    { "name": "weather", "blankKeywords": ["weather"] }
   ],
   "expectations": [
     { "text": "volume _",           "routesTo": "volume"  },
-    { "text": "weather in paris _", "routesTo": "weather" },
-    { "text": "volume up loud _",   "routesTo": null      }
+    { "text": "weather paris _",    "routesTo": "weather" },
+    { "text": "the volume was loud _", "routesTo": null   }
   ]
 }
 ```
@@ -51,7 +51,7 @@ Blank-routing scenarios use a different shape:
 | [`per-word-dispatch.json`](./per-word-dispatch.json) | Each word goes to exactly one source — the highest priority match. |
 | [`priority-tiebreak.json`](./priority-tiebreak.json) | Equal-priority sources fall back to declaration order. |
 | [`catch-all-fallback.json`](./catch-all-fallback.json) | DEFAULT source claims words no DOMAIN source matched. |
-| [`blank-proximity.json`](./blank-proximity.json) | `blankProximity` controls keyword→`_` word distance. |
+| [`blank-shapes.json`](./blank-shapes.json) | `blankShapes` (or synthesized keyword shapes) route the line containing `_`; a command must lead its line. |
 
 ## What's covered
 
@@ -59,8 +59,7 @@ Blank-routing scenarios use a different shape:
 - Multi-source priority resolution
 - DOMAIN vs DEFAULT (catch-all) semantics
 - Declaration-order tiebreak on equal priority
-- Blank-keyword exact-match dispatch
-- `blankProximity` boundary cases (proximity=1, proximity=3, beyond proximity)
+- Blank-shape line-scoped dispatch (command leads its line; mid-line keyword mention does not fire)
 
 ## What's not covered (deliberately)
 

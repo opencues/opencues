@@ -328,7 +328,7 @@ module.exports = function seedConfigs(argv, ctx) {
   // ── 2.5 SHIPPED-MD REFRESH — pull latest frontmatter for shipped
   //       cues/blanks/auditors, layer user values on top. Without this,
   //       changes to defaults' contract fields (on-host, sandbox,
-  //       blankReplace) silently strand on existing installs — exactly
+  //       blankScript) silently strand on existing installs — exactly
   //       what bit users when the security push retired `codex` and
   //       added `gemini-cli` to on-host: lists across shipped blanks.
   //       User-customisable fields (priority, keywords, blankStep,
@@ -922,9 +922,9 @@ function mergeOpencuesMd(defaultsContent, userContent) {
 // supplies values for non-contract fields and the body.
 //
 // Contract fields ALWAYS refresh from defaults — these encode runtime/
-// security policy (on-host, sandbox, blankReplace, site scoping) and
-// must stay in sync as the shipping schema evolves. Everything else
-// (priority, keywords, match, blankStep, blankSuffix, blankFormat,
+// security policy (on-host, sandbox, site scoping) and must stay in
+// sync as the shipping schema evolves. Everything else (priority,
+// keywords, match, blankStep, blankSuffix, blankShapes, integration,
 // classify, description, etc.) is treated as user-customisable.
 //
 // Body handling: keep user's body if non-empty AND differs from
@@ -932,7 +932,7 @@ function mergeOpencuesMd(defaultsContent, userContent) {
 // CUE.md files. Empty/missing user body → use defaults'.
 const SHIPPED_MD_CONTRACT_FIELDS = new Set([
   'on-host', 'not-on-host', 'on-site', 'not-on-site',
-  'sandbox', 'blankReplace', 'type', 'name', 'spec',
+  'sandbox', 'type', 'name', 'spec',
   // `blankScript` is policy too: it dictates whether the resolver
   // spawns a subprocess (with all the sandbox/secrets/exit-code
   // surface that brings) or routes through blankInvoke / impl: class

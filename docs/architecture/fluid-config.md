@@ -65,8 +65,9 @@ than being interpreted as a generic rewrite. If the classifier says
 NONE, TransformBlank then gets its shot, then FluidBlank.
 
 The cede logic in `supports()` mirrors what TransformBlank and FluidBlank
-already do: if a registered blank's keyword sits within `blankProximity`
-of the `_`, ConfigIntent declines so BlankSource takes the slot.
+already do: if a registered blank's keyword leads the line containing the
+`_` (the shared line-scoped keyword-window predicate), ConfigIntent
+declines so BlankSource takes the slot.
 
 The settings-flip syntax (`change to opus _`, `switch to cerebras _`,
 `use anthropic for cues _`) is what ConfigIntent classifies — it runs
@@ -362,8 +363,8 @@ AND the validator will reject any attempt to apply them.
 - [`feature-registry.md`](feature-registry.md) — the FEATURES + MENU_TUNABLES + BUILTIN_BLANKS registry that fluid-config dispatches against.
 - [`spans-and-cycling.md`](spans-and-cycling.md) — selector-satellite cycling, span priorities, the `clearOnEdit` cleanup path.
 - [`security-audit.md`](security-audit.md) — fluid-config's bounded-codomain rationale slots into row #21 (no side-effect channel for LLM-derived buffer text).
-- [`blank-replace-modes.md`](blank-replace-modes.md) — sister doc for FluidBlank's KEEP/WIPE/AUTO modes; ConfigIntent's wipe is structurally different (summon-phrase-scoped via `summonPhraseStart` through `text.length`, not a `blankReplace` mode) so it doesn't share the heuristic.
-- [`blank-intent.md`](blank-intent.md) — the sibling LLM gate for *user* blanks (volume / weather / …). ConfigIntent classifies `_` → a FEATURES scalar (bounded codomain, settings-only); BlankIntent gates whether a keyword-matched script blank actually fires (exec/fetch, keyword-required consent atom). When `blank-intent-mode: on`, both share the same keyword-window predicate so ConfigIntent and the script blanks cede on the same keyword window.
+- [`blank-sources.md`](blank-sources.md) — the `CueSource` family + the splice/merge substitute mechanisms. ConfigIntent's wipe is summon-phrase-scoped (via `summonPhraseStart` through `text.length`), structurally distinct from FluidBlank's always-additive fill.
+- [`blank-integration.md`](blank-integration.md) — blank routing for *user* blanks (volume / weather / …). ConfigIntent classifies `_` → a FEATURES scalar (bounded codomain, settings-only); user blanks are routed by anchored shapes. Both ConfigIntent and the script blanks cede via the same shared line-scoped keyword-window predicate.
 
 ---
 

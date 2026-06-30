@@ -33,7 +33,7 @@ result shape + a small metadata vocabulary.
 | Source | Trigger | LLM output | Substitute mechanism |
 |---|---|---|---|
 | **`BlankSource`** (`blank-source.ts`) | `<keyword> _` matches a folder under `blanks/` | None — runs a script / sync stepValues / built-in JS impl | Deterministic splice via `blank-fill.ts`. Slot bounds come from the parser (keyword + `_` positions), not from LLM. |
-| **`FluidBlankSource`** (`fluid-blank-source.ts`) | unbound `_` (no `BlankSource` match) | Short answer (e.g. "Paris") | Deterministic splice via `blank-fill.ts`. `blankReplace` mode (`keep`/`wipe`/`wipe-all`/`auto`) picks the splice range from the slot, not the LLM. |
+| **`FluidBlankSource`** (`fluid-blank-source.ts`) | unbound `_` (no `BlankSource` match) | Short answer (e.g. "Paris") | Always-FILL: substitutes only the `_`, preserving surrounding prose. No replace modes. |
 | **`TransformBlankSource`** (`transform-blank-source.ts`) | imperative phrase next to `_` (e.g. "make past tense _") | The whole final buffer (`FULL_REWRITE`) from a single fused LLM call | **One path.** Always `threeWayMerge` against the live buffer. |
 | **`SentenceCueSource`** (`sentence-cue-source.ts`) | one cue per sentence at `scope: sentence` | Sentence alternatives | Passive — registers a DynDef; cycling swaps the sentence via the existing word-cue cycle path. Never touches the buffer until the user presses Ctrl+Alt+Up. |
 | **`ConfigIntentSource`** (`config-intent-source.ts`) | unbound `_` interpreted as a settings change ("make it louder _") | Setting + value classification | Selector-satellite shaped result with `clearOnEdit: true`; substitute wipes the summon phrase via `spanStart=summonPhraseStart(text), spanEnd=text.length` (the last sentence terminator / line break before `_`, or 0 if none) so prior user content before the settings command is preserved, then hands off to standard cycling. |
@@ -51,12 +51,12 @@ one TransformBlank-fused reuses.
 `ConfigIntentSource` all decide "is this `_` mine?" using the SAME
 keyword-window predicate (`keywordInWindow()` in
 `@opencues/core/keyword-window.ts`) — so a keyword that claims a `_`
-for `BlankSource` is the same keyword the other three cede on. When
-`blank-intent-mode: on`, the window switches from per-blank proximity
-to same-line scope across all five sites (the fifth is
-`BlankFill.matchKeyword` in the runtime), and an LLM gate decides
-INVOKE vs CEDE for the script fire. See
-[`blank-intent.md`](blank-intent.md).
+for `BlankSource` is the same keyword the other three cede on. The
+window is always **line-scoped** (a keyword claims a `_` on its line)
+across all five sites (the fifth is `BlankFill.matchKeyword` in the
+runtime). Shaped blanks bypass the window entirely — they're claimed
+by their `blankShapes` match via `matchBlankShape`. See
+[`blank-integration.md`](blank-integration.md).
 
 ---
 
@@ -162,13 +162,9 @@ FluidBlank stays on the deterministic slot splice because:
 1. The LLM in FluidBlank produces a short answer ("Paris"), not a
    buffer. There's no span-vs-buffer scope ambiguity.
 2. The slot bounds (`target.start`, `target.end`) come from the
-   parser's known keyword position. The LLM has no input into them.
-3. `blankReplace` modes (`keep` / `wipe` / `wipe-all` / `auto`)
-   determine the splice range from the slot + a deterministic
-   heuristic; none of them concat-tail content the answer covered.
-
-The replace-mode work for FluidBlank already covered the "what does
-the splice replace?" question — see [`blank-replace-modes.md`](blank-replace-modes.md).
+   parser's known `_` position. The LLM has no input into them.
+3. FluidBlank is always-FILL — it replaces only the `_`, never a wider
+   span, so it can never concat-tail content the answer covered.
 
 ---
 
@@ -207,8 +203,10 @@ primitive already pays for.
   itself (the same one AgentRewrite uses; see [`agent-task.md`](agent-task.md)).
 - `packages/opencues-runtime/src/modules/blank-fill.ts` +
   `blank-fill.test.ts` — pins the deterministic slot splice path for
-  BlankSource + FluidBlankSource. Covers each `blankReplace` mode
-  plus the legacy flag paths.
+  BlankSource + FluidBlankSource. Fill is always additive; clearing of
+  the command span is shape-derived (captured arg / typed set-step /
+  `integration:` template consumes the span; a bare keyword get keeps
+  its label).
 - `tests/benchmarks/transform-blank/` — `prod.ts` validates the LLM
   contract end-to-end (`--provider cerebras|groq`). The single fused
   pipeline runs on every provider; the old groq-only 3-pass path was
@@ -226,12 +224,10 @@ primitive already pays for.
   internals (single fused call) + prompt design + EXPERIMENTS history.
 - [`agent-task.md`](agent-task.md) — AgentRewrite + the three-way
   merge invariants in detail.
-- [`blank-replace-modes.md`](blank-replace-modes.md) — `blankReplace`
-  field for BlankSource / FluidBlankSource.
+- [`blank-integration.md`](blank-integration.md) — blank routing
+  (`blankShapes` + keyword desugar), always-FILL output placement, and
+  the additive `integration:` template.
 - [`spans-and-cycling.md`](spans-and-cycling.md) — the DynDef
   cycling layer that passive cues use.
-- [`blank-intent.md`](blank-intent.md) — the optional LLM invocation
-  gate for keyword script-blanks + the shared keyword-window predicate
-  the four claim/cede sites route through.
 - `docs/features/word-cue-routing.md` — per-word dispatch via
   `RoutedWordSourceGroup`.

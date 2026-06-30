@@ -12,7 +12,7 @@ Typing `_` (underscore) creates a blank that the system fills contextually. Blan
 
 Every `_` slot routes through the same priority chain. The three sources race; the highest-priority one that *claims* the slot wins.
 
-1. **`BlankSource` (priority 95)** — keyword-bound. If any registered blank's `blankKeywords` matches a phrase within `blankProximity` words of the `_` (default 0 — strictly adjacent), that blank claims the slot. Auto-populates with the blank's current value (script `get` or runtime-class `blankInvoke`). Up/Down cycling writes back. Examples: `volume _` → `50%`, `nvda _` → `$209.25`, `define ephemeral _` → `lasting briefly`. See [Cue-Blanks](cue-blanks.md).
+1. **`BlankSource` (priority 95)** — keyword-bound. If any registered blank's `blankKeywords` leads the line containing `_` (line-scoped — the command leads its line, `_` at the trailing edge), that blank claims the slot. Auto-populates with the blank's current value (script `get` or runtime-class `blankInvoke`). Up/Down cycling writes back. Examples: `volume _` → `50%`, `nvda _` → `$209.25`, `define ephemeral _` → `lasting briefly`. See [Cue-Blanks](cue-blanks.md).
 
 2. **`TransformBlankSource` (priority 93)** — imperative instructions. A single fused LLM call that classifies and rewrites in one pass, plus a generative branch when the input has no target. Cedes to any keyword-bound match first (re-checks `blankKeywords` in `supports()`); otherwise the fused call classifies whether the input is actually a transform.
    - **Transform mode**: `change boy to girl _`, `make this past tense _`, `translate to french _`. The fused call classifies the instruction + target and emits the full rewritten buffer in one pass; a whole-buffer three-way merge folds it into the live text.
@@ -21,7 +21,7 @@ Every `_` slot routes through the same priority chain. The three sources race; t
 
    See [Transform Blanks](transform-blank.md) and the canonical reference at `docs/architecture/transform-blank.md`. Opt-in via `transform-blank-mode: on`.
 
-3. **`FluidBlankSource` (priority 92)** — free-form lookup. A single fused LLM call segments the lookup span around `_` (handling ambient phrasing, embedded WH-questions, compact factual claims), produces the canonical short answer, and classifies placement: the whole span is replaced with the answer (WIPE mode) or just the `_` is filled (FILL mode). The **model decides** FILL vs WIPE (a `MODE` line in the fused output), so the choice is language-invariant; a deterministic copula/equation/question heuristic (`is _` / `= _` / `? _`) is kept as a data-loss floor that forces FILL on the sentence shapes a WIPE would collapse. See [docs/architecture/blank-replace-modes.md § Keyword `auto` blanks vs fluid-blank](../architecture/blank-replace-modes.md). Opt-in via `fluid-blank-mode: on`.
+3. **`FluidBlankSource` (priority 92)** — free-form lookup. A single fused LLM call segments the lookup span around `_` (handling ambient phrasing, embedded WH-questions, compact factual claims) and produces the canonical short answer. Fill is **always additive**: only the `_` is replaced with the answer; the surrounding words are never overwritten. (The fused prompt still emits a `MODE` line for cross-provider prompt-cache stability, but the runtime ignores it — the destructive WIPE path was retired in the June 2026 slim-down so a failed or surprising classification can never collapse the user's buffer.) See [docs/architecture/blank-sources.md](../architecture/blank-sources.md). Opt-in via `fluid-blank-mode: on`.
 
 ---
 

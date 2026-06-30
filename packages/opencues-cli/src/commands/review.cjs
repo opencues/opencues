@@ -384,7 +384,6 @@ function collectDeclared(fm) {
     secrets: fm.userBlankSecrets || [],
     secretBindings: fm.userBlankSecretBindings || {},
     output: fm.userBlankOutput || 'safe',
-    replace: fm.blankReplace || '(unset)',
     sandbox: fm.sandbox || 'off',
     maxFetchesPerMinute: fm.maxFetchesPerMinute,
     maxLlmPerMinute: fm.maxLlmPerMinute,
@@ -421,7 +420,6 @@ function printManifest(declared, findings) {
     }
   }
   console.log(`  output:        ${declared.output}`);
-  console.log(`  blankReplace:  ${declared.replace}`);
   console.log(`  sandbox:       ${declared.sandbox}`);
   if (declared.maxFetchesPerMinute) console.log(`  max-fetches/min: ${declared.maxFetchesPerMinute}`);
   if (declared.maxLlmPerMinute) console.log(`  max-llm/min:     ${declared.maxLlmPerMinute}`);

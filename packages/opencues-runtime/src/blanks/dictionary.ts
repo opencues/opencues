@@ -62,8 +62,8 @@ export class DictionaryBlank implements Blank {
       const def = data?.[0]?.meanings?.[0]?.definitions?.[0]?.definition || '';
       // Truncate hard for status-line use (one line, no ellipsis sprawl).
       const value = def.length > 100 ? `${def.slice(0, 97).trim()}...` : def;
-      // Embed word so `blankReplace: auto` produces self-contained
-      // output when the trigger is wiped.
+      // Embed word so the output is self-contained: a shaped get clears
+      // the whole command span, leaving only this.
       const out = value ? `${word}: ${value}` : `${word}: no definition`;
       this._cache.set(word, { value: out, ts: Date.now() });
       return out;

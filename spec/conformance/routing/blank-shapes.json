@@ -1,0 +1,14 @@
+{
+  "description": "Blank shapes route the line containing _. Keywords desugar to shapes (a keyword claims a _ on its line, capturing any words between as the get arg). A command must LEAD its line with _ at the trailing edge; prose that merely mentions a keyword mid-line does not fire.",
+  "blanks": [
+    { "name": "volume",  "blankKeywords": ["volume"] },
+    { "name": "weather", "blankKeywords": ["weather"] }
+  ],
+  "expectations": [
+    { "text": "volume _",              "routesTo": "volume"  },
+    { "text": "weather paris _",       "routesTo": "weather" },
+    { "text": "weather in oslo _",     "routesTo": "weather" },
+    { "text": "the volume was loud _", "routesTo": null      },
+    { "text": "i love the weather today _", "routesTo": null }
+  ]
+}

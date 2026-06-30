@@ -736,15 +736,6 @@ describe('parseCuesMd: per-source maxTokens + temperature overrides', () => {
     }
   });
 
-  it('parseSingleCueMd lifts maxTokens + temperature onto BlankConfig (type:blank path)', () => {
-    const content = '---\nname: my-blank\ntype: blank\nblankKeywords: trigger\nmaxTokens: 200\ntemperature: 0.7\n---\nbody';
-    const cfg = parseSingleCueMd(content, '/blanks/my-blank');
-    const blank = cfg.blanks?.['my-blank'];
-    assert.ok(blank, 'blank should be built');
-    assert.strictEqual(blank.maxTokens, 200);
-    assert.strictEqual(blank.temperature, 0.7);
-  });
-
   it('parsePromptSection lifts maxTokens + temperature from inline ### YAML', () => {
     const md = [
       '## Prompt',

@@ -194,7 +194,6 @@ they want a richer signature (e.g. typing `portfolio` as
 **Current — `defaults/blanks/stocks/BLANK.md`:**
 ```yaml
 blankKeywords: nvidia, nvda, apple, aapl, ...
-blankFormat: string
 as-context: safe
 context-slots: NVDA, AAPL, TSLA, MSFT, GOOGL
 ```
@@ -238,7 +237,6 @@ The model can then emit `[STOCKS(ticker="NVDA").price]` per Probe 3.
 **Current — `defaults/blanks/hackernews/BLANK.md`** (limited info):
 ```yaml
 blankKeywords: hn, hackernews, hacker news
-blankFormat: string
 ```
 
 **After:**
@@ -267,7 +265,6 @@ The model spontaneously composes:
 **Current — `defaults/blanks/volume/BLANK.md`:**
 ```yaml
 blankKeywords: volume, vol
-blankFormat: number
 ```
 
 **After:**

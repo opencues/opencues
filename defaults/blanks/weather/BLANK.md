@@ -4,7 +4,7 @@ type: blank
 blankKeywords: weather, forecast, temp, temperature
 blankAutoPopulate: true
 blankFormat: string
-blankTip: Weather
+tip: Weather
 blankDismissible: true
 blankProximity: 3
 # Auto: bare "weather london _" → wipe → "London: 13°C Overcast"

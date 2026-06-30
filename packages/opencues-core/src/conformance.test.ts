@@ -395,46 +395,36 @@ function routeWord(sources: Array<{ name: string; priority?: number; match?: str
 }
 
 /**
- * Spec blank routing algorithm — keyword match within `blankProximity` words
- * of `_` (counting words *between* keyword and `_`, not positional distance).
- * Default proximity is 0 (adjacent only). Mirrors `BlankSource.getCues()`'s
- * gap calculation in `sources/blank-source.ts` (gap = |endIdx - blankIdx| - 1).
- * Implemented inline so this runner can validate the fixtures self-consistently
- * without importing the runtime; a second runner SHOULD exercise the same
- * fixtures against the production dispatcher.
+ * Spec blank routing algorithm — LINE-SCOPED shapes. A blank claims a `_`
+ * when one of its keywords (or an explicit `blankShapes` pattern) leads the
+ * LINE containing `_`, with `_` at the trailing edge. Keywords desugar to
+ * the standard shape `^<kw>( <args>)? _$`. A command must lead its line;
+ * prose that merely mentions a keyword mid-line does not fire. Mirrors
+ * `matchBlankShape` + `synthesizeKeywordShapes` in the reference runtime.
+ * Implemented inline so this runner validates the fixtures self-consistently;
+ * a second runner SHOULD exercise the same fixtures against its dispatcher.
  */
-function routeBlank(blanks: Array<{ name: string; blankKeywords: string[]; blankProximity?: number }>, text: string): string | null {
-  const words = text.split(/\s+/).map(w => w.toLowerCase());
-  const blankIdx = words.lastIndexOf('_');
-  if (blankIdx === -1) return null;
-
-  let bestGap = Infinity;
-  let matchedName: string | null = null;
+function routeBlank(blanks: Array<{ name: string; blankKeywords?: string[]; blankShapes?: Array<{ pattern: string }> }>, text: string): string | null {
+  const us = text.lastIndexOf('_');
+  if (us === -1) return null;
+  const start = text.lastIndexOf('\n', us) + 1;
+  let end = text.indexOf('\n', us);
+  if (end === -1) end = text.length;
+  const line = text.slice(start, end).trim().toLowerCase();
+  if (!line.endsWith('_')) return null;
 
   for (const blank of blanks) {
-    const proximity = blank.blankProximity ?? 0;
-    for (const kw of blank.blankKeywords) {
-      const kwParts = kw.toLowerCase().split(/\s+/);
-      const kwLen = kwParts.length;
-      // Scan every starting position for a phrase match.
-      for (let i = 0; i <= words.length - kwLen; i++) {
-        let phraseMatch = true;
-        for (let j = 0; j < kwLen; j++) {
-          if (words[i + j] !== kwParts[j]) { phraseMatch = false; break; }
-        }
-        if (!phraseMatch) continue;
-        const endIdx = i + kwLen - 1;
-        if (endIdx >= blankIdx) continue;  // keyword must precede `_`
-        const gap = Math.abs(endIdx - blankIdx) - 1;
-        if (gap <= proximity && gap < bestGap) {
-          bestGap = gap;
-          matchedName = blank.name;
-        }
-      }
+    // Explicit shapes win.
+    for (const shape of blank.blankShapes ?? []) {
+      try { if (new RegExp(shape.pattern, 'i').test(line)) return blank.name; } catch { /* skip bad pattern */ }
+    }
+    // Synthesized keyword shapes: keyword leads the line, `_` at the end.
+    for (const kw of blank.blankKeywords ?? []) {
+      const k = kw.toLowerCase();
+      if (line === `${k} _` || (line.startsWith(`${k} `) && line.endsWith(' _'))) return blank.name;
     }
   }
-
-  return matchedName;
+  return null;
 }
 
 describe('routing/*.json', () => {

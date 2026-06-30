@@ -4,7 +4,7 @@ last_updated: 2026-04-29
 
 # Adding a Cue-Blank
 
-A **cue-blank** is a blank (`_`) bound to a keyword via `blankKeywords`. The user types a keyword adjacent to `_` (e.g., `volume _`), the underscore auto-populates with a current value, and Up/Down cycling changes the actual external state. Everything that touches the world is `_`-gated — there is no word-cycling on plain text without `_`.
+A **cue-blank** is a blank (`_`) bound to a keyword via `blankKeywords`. The user types a command whose keyword **leads the line** ending in `_` (e.g., `volume _`, `weather paris _`), the underscore auto-populates with a current value, and Up/Down cycling changes the actual external state. Everything that touches the world is `_`-gated — there is no word-cycling on plain text without `_`.
 
 Cue-blanks ship as either:
 - A folder under `defaults/blanks/<name>/` with a colocated shell script (OS-level work like volume, brightness)
@@ -32,7 +32,7 @@ After editing, drop your `<name>-blank.sh` next to the BLANK.md (for typed-blank
 If you'd rather copy-and-edit a working example than fill in a template, the shipped `example/` packs are deliberately tiny (~30-70 lines each) with every field commented inline:
 
 - [`defaults/cues/example/CUE.md`](../../defaults/cues/example/CUE.md) — minimal word-cue. Matches `hi|hey|hello`, returns three formal-greeting alternatives via the LLM. Shows: `name`, `parser`, `scope: words`, `priority`, `match`, prompt body.
-- [`defaults/blanks/example/BLANK.md`](../../defaults/blanks/example/BLANK.md) + [`time-blank.sh`](../../defaults/blanks/example/time-blank.sh) — minimal script-blank. `time _` fires the script which prints `date '+%H:%M'`. Shows: `blankKeywords`, `blankProximity`, `blankAutoPopulate`, `blankReadOnly`, `blankScript`, the get/set script contract.
+- [`defaults/blanks/example/BLANK.md`](../../defaults/blanks/example/BLANK.md) + [`time-blank.sh`](../../defaults/blanks/example/time-blank.sh) — minimal script-blank. `time _` fires the script which prints `date '+%H:%M'`. Shows: `blankKeywords`, `blankScript`, the get/set script contract. (Auto-populate is automatic for any keyword/shape blank; read-only is inferred — a blank with no `blankStep` / `stepValues` / `blankSatellite` simply isn't cycleable.)
 
 Production packs (legal/medical/financial/volume/brightness/weather) are bigger because they need more fields for production reasons; the example packs strip those back to "what fires the simplest version".
 
@@ -55,13 +55,12 @@ tip: system volume
 speak: true
 blankKeywords: volume, vol, sound, audio
 blankStep: 6
-blankAutoPopulate: true
 blankSuffix: '%'
 blankScript: ./volume-blank.sh
 ---
 ```
 
-Relative `blankScript` paths (starting with `./`) are resolved against the folder. Folder-based is the canonical form.
+Relative `blankScript` paths (starting with `./`) are resolved against the folder. Folder-based is the canonical form. `blankKeywords` desugar at parse time into anchored `blankShapes` — a bare-get shape (`volume _`), a captured-arg get (`volume <x> _`), and (because `blankStep` is present, marking the blank settable) set + step shapes (`volume 30 _`, `volume up _`). A blank auto-populates whenever one of its shapes matches the line containing `_`.
 
 ### BlankConfig fields
 
@@ -69,25 +68,21 @@ Relative `blankScript` paths (starting with `./`) are resolved against the folde
 |-------|----------|------|-------------|
 | `name` | Yes | string | Identifier (e.g. `volume`). Also inferred from folder name. |
 | `type` | Yes | string | Always `blank`. |
-| `tip` | No | string | Label shown in the status line when the keyword is highlighted (live `get` output overrides). |
+| `tip` | No | string | Label shown in the status line when the keyword/value is highlighted (live `get` output overrides). |
 | `blankScript` | Yes (for OS-bound blanks) | string | Path to the script for `get` / `set` / `up` / `down`. Use `./<name>-blank.sh` (relative to the BLANK.md). |
-| `blankKeywords` | Yes | string\|string[] | Context words that bind a `_` to this blank. Multi-word phrases allowed. |
-| `blankStep` | No | number | Increment/decrement amount for numeric blanks. |
-| `blankAutoPopulate` | No | boolean | Auto-fill `_` with current value on analysis. |
-| `blankProximity` | No | number | Max words allowed between keyword and `_` (default 0 = adjacent). |
-| `blankFormat` | No | enum | `integer` (default), `float`, or `string`. |
-| `blankTip` | No | string | Tip shown when the auto-populated value is highlighted. |
+| `blankKeywords` | Yes | string\|string[] | Friendly shorthand: keywords that bind a `_` to this blank when one leads the line containing `_`. Desugar at parse time into anchored `blankShapes`. Multi-word phrases allowed. Required: the resolver's auto-populate / cycling path (`BlankSource`) keys off `blankKeywords`, so a blank still needs them even when it also declares `blankShapes`. |
+| `blankShapes` | No | BlankShape[] | Explicit anchored routing grammar (`{pattern, action: get\|set\|step, valueGroup?}`), matched against the line containing `_`. The low-level routing mechanism; keywords desugar into it. Authoring `blankShapes` **overrides** the synthesized grammar for the runtime dispatch + fluid/transform cede (it wins over `blankKeywords`-derived shapes), but does not replace the `blankKeywords` requirement above. |
+| `integration` | No | string | Additive output template describing how the blank's value reads in context, e.g. `"volume is now {value}"`. ADD-ONLY — never deletes surrounding text. |
+| `blankStep` | No | number | Increment/decrement amount for numeric blanks. Its presence also marks the blank **settable** (synthesizes set + step shapes from keywords). |
 | `blankSuffix` | No | string | Suffix appended to the displayed value (e.g. `%` shows `50%`). |
-| `blankReadOnly` | No | boolean | Cycling disabled (display-only). |
 | `blankDismissible` | No | boolean | Append `_` as the final cycling option so the user can dismiss the value. |
-| `blankKeywordExpansions` | No | object | Map keyword → display name (e.g. `rddt` → `Reddit`). |
-| `blankClearKeywords` | No | boolean | Remove keyword context words from text on auto-populate. |
+| `blankClearKeywords` | No | boolean | Remove keyword context words from text on populate. |
 | `blankClearOnEdit` | No | boolean | Remove spawned words when user edits them. |
-| `blankConsumeAll` | No | boolean | Clear entire input on populate (see [consume-all-blanks](../features/consume-all-blanks.md)). |
-| `blankConsumeContext` | No | boolean | Clear words between keyword and `_` (see [consume-context-blanks](../features/consume-context-blanks.md)). |
-| `blankSatellite` | No | boolean | Auto-populate as selector + satellite (see [selector-satellite](../features/selector-satellite.md)). |
+| `blankSatellite` | No | boolean | Populate as selector + satellite (see [selector-satellite](../features/selector-satellite.md)). |
 | `stepValues` | No | string[] | Static list of values to cycle through. |
 | `speak` | No | boolean | Read the tip aloud via TTS when navigated to (default: false). |
+
+> **Removed in the June 2026 slim-down** (all gracefully ignored if still present in old files): `blankAutoPopulate` (populate is now automatic on any shape match), `blankProximity` (routing is unconditionally line-scoped), `blankReadOnly` (cycleability is inferred — a blank with no `blankStep` / `stepValues` / `blankSatellite` isn't cycleable), `blankFormat` (numeric stepping is inferred from `blankStep`), `blankTip` (use `tip`), `blankKeywordExpansions`, and the replace/consume dials `blankReplace` / `blankConsumeAll` / `blankConsumeContext` (fill is always additive; command-span clearing is shape-derived).
 
 ## 2. Write the blank script (OS-level)
 
@@ -131,7 +126,7 @@ esac
 
 ## 3. How it works at runtime
 
-1. User types `volume _` and the analyzer matches `volume` (a `blankKeywords` entry) adjacent to `_`.
+1. User types `volume _` and the analyzer matches `volume`'s anchored shape leading the line containing `_`.
 2. The runtime calls `blankInvoke({ blankName: 'volume', action: 'get', args: ['volume'] })`.
 3. The host adapter's registry runs the registered class OR spawns `bash volume-blank.sh get`.
 4. The returned value (e.g., `50`) replaces `_` (display: `50%` because of `blankSuffix`). `metadata.blankName` is set on the WordDef, protecting it from LLM overwrites.
@@ -175,7 +170,7 @@ This applies to both read-only API blanks (e.g. stocks, weather) and dynamic lis
    - OC: `integrations/opencode/patches/opencuesBootstrap.ts`
    - Gemini: `integrations/gemini-cli/patches/opencuesBootstrap.ts`
    - Chrome: `integrations/chrome/src/blanks/index.ts`
-4. **Add the blank's `BLANK.md`** under `defaults/blanks/<name>/BLANK.md` declaring `blankKeywords`, `blankFormat`, `blankAutoPopulate`, etc. The `blankScript:` field is **omitted** for hoisted blanks; the host's `blankInvoke` dispatches by blank name.
+4. **Add the blank's `BLANK.md`** under `defaults/blanks/<name>/BLANK.md` declaring `blankKeywords` (plus `impl`, `network`, etc.). The `blankScript:` field is **omitted** for hoisted blanks; the host's `blankInvoke` dispatches by blank name.
 
 **Example `BLANK.md` (no blankScript field):**
 ```yaml
@@ -183,13 +178,12 @@ This applies to both read-only API blanks (e.g. stocks, weather) and dynamic lis
 name: stocks
 type: blank
 blankKeywords: reddit, rddt, nvidia, nvda, apple, aapl
-blankAutoPopulate: true
-blankFormat: string
-blankTip: Stock price
-blankReadOnly: true
-blankProximity: 2
+tip: Stock price
+impl: '@opencues/runtime StocksBlank'
 ---
 ```
+
+(No `blankStep` / `stepValues` / `blankSatellite` → the blank is read-only: it fetches once and isn't cycleable. That's now inferred, not declared.)
 
 `@opencues/runtime`'s `BlankFill` module sees the BLANK.md, looks up `blankInvoke('stocks', { action: 'get', args: [keyword, ...contextWords] })`, the host's registry resolves `'stocks'` to the `StocksBlank` instance, and the class's `get()` returns the price.
 
@@ -204,26 +198,24 @@ The blank cycling cascade has two paths, and a blank must route to the correct o
 1. **Numeric stepping** — parses the displayed value as a number, adds/subtracts `blankStep`, calls `blankInvoke set <value>`. Used by volume, brightness.
 2. **List cycling** — cycles through `alts[]` array by index. Used by hackernews, affirmations, and any blank with `blankDismissible: true`.
 
-**The routing rule:** if the blank's metadata has `listBlank: true` (auto-set when `blankDismissible: true` or `stepValues: [...]` or multi-line output), it uses the list path. Otherwise it uses the numeric path.
+**The routing rule:** if the blank's metadata has `listBlank: true` (auto-set when `blankDismissible: true` or `stepValues: [...]` or multi-line output), it uses the list path. Otherwise, if `blankStep` is declared, it uses the numeric path. A blank with neither is read-only (no cycling).
 
-**The pitfall:** if a blank returns a value that *looks* like a number (e.g., `10.9°C`) but isn't meant to be stepped, the numeric path will parse it and increment it (`10.9°C` → `11.9` → `12.9`). This happens when:
-- The blank has `blankFormat: string` but NOT `listBlank: true`
-- The value contains digits that `parseFloat()` can extract
+**The pitfall:** if a blank returns a value that *looks* like a number (e.g., `10.9°C`) but isn't meant to be stepped, declaring `blankStep` would make the numeric path parse and increment it (`10.9°C` → `11.9` → `12.9`). The fix is structural: don't declare `blankStep` on a non-numeric blank — without it the blank is read-only, and if it has multiple alts mark it dismissible/list so it routes to the list path.
 
-**The fix:** blanks that return non-numeric string values AND have multiple alts (e.g., `blankDismissible: true`) must have `listBlank: true` in their metadata. This is now automatic: `blankDismissible: true` sets `listBlank: true` on the WordDef's metadata in `BlankSource`. But if you're manually constructing WordDefs for a custom blank, remember to set it explicitly.
+**The fix:** blanks that return non-numeric string values AND have multiple alts (e.g., `blankDismissible: true`) get `listBlank: true` in their metadata automatically — `blankDismissible: true` sets it in `BlankSource`. If you're manually constructing WordDefs for a custom blank, set it explicitly.
 
 **When to use each:**
 | Config | Cycling path | Example |
 |--------|-------------|---------|
-| `blankStep` or numeric `blankFormat` only | Numeric stepping | volume (`50%` → `56%`) |
+| `blankStep` declared | Numeric stepping | volume (`50%` → `56%`) |
 | `blankDismissible: true` | List cycling (automatic) | weather (`10°C Drizzle` ↔ `_`) |
 | `stepValues: [...]` | List cycling (automatic) | affirmations |
 | Multi-line script output | List cycling (automatic) | hackernews |
-| `blankReadOnly: true` only | No cycling (returns null) | stocks |
+| none of the above | No cycling (read-only, inferred) | stocks |
 
 ### Span invalidation: only word changes kill the span
 
-For list/consume-all blanks (`blankDismissible`, multi-line output), the resolved value is stored as a span covering one or more word positions. The runtime only invalidates this span when the **words at those positions change** — it does not invalidate on trailing spaces, punctuation appended elsewhere, or other non-word edits. This is intentional so the user can keep typing around a resolved blank without losing it.
+For list blanks (`blankDismissible`, `stepValues`, multi-line output), the resolved value is stored as a span covering one or more word positions. The runtime only invalidates this span when the **words at those positions change** — it does not invalidate on trailing spaces, punctuation appended elsewhere, or other non-word edits. This is intentional so the user can keep typing around a resolved blank without losing it.
 
 **Implication for custom blanks:** if you're building a blank that should survive normal typing, this behaviour is already there. If your blank's resolved value should be cleared the moment the user edits *anywhere* in the line, use `blankClearOnEdit: true` instead.
 
@@ -277,7 +269,7 @@ cryptographic provenance and (for `impl: ./blank.js`) automatic
 capability-diff review on update. See
 [`docs/architecture/security-audit.md` § Pre-registry follow-ups](../architecture/security-audit.md).
 
-The same logic applies more strictly to auditors, where the entire surface is user-trusted only in v1.0 (no registry distribution at all). See [`docs/guides/adding-an-auditor.md` § 5 Trust model](./adding-an-auditor.md) and [`openstandard-notes.md` § Distribution asymmetry](../../openstandard-notes.md).
+The same logic applies more strictly to auditors, where the entire surface is user-trusted only in v1.0 (no registry distribution at all). See [`docs/guides/adding-an-auditor.md` § 5 Trust model](./adding-an-auditor.md).
 
 ## Checklist
 
@@ -286,16 +278,15 @@ The same logic applies more strictly to auditors, where the entire surface is us
 - [ ] Script (if any) is executable (`chmod +x`)
 - [ ] Script handles `get`, `set <value>`, `up`, `down` as needed
 - [ ] Script queries live system value (no file caching)
-- [ ] `blankKeywords` set; `blankAutoPopulate` set if you want `_` to fill on analysis
-- [ ] For read-only blanks: `blankReadOnly: true`
-- [ ] For keyword expansion: `blankKeywordExpansions.<keyword>: Display Name`
-- [ ] For consume-all: `blankConsumeAll: true` + `blankClearKeywords: true`.
+- [ ] `blankKeywords` set (auto-populate fires automatically when a shape matches); or `blankShapes` declared explicitly for custom grammar
+- [ ] For cycleable blanks: declare `blankStep` (numeric), `stepValues` (list), or `blankSatellite`. Omitting all three = read-only (inferred).
+- [ ] For self-contained output: rely on shape-derived clearing (a captured arg / typed set-step / `integration:` template consumes the command span). For `wipe`-style answers the blank's `get()` should embed identifying context (`"NVDA: $198.47"`, not bare `"$198.47"`).
+- [ ] (Optional) `integration:` template set if you want connective text woven around the value (additive only)
 - [ ] For TS-class blanks: registered in each host's `blanksRegistry`
 - [ ] For TS-class blanks: `setup.sh` re-run so the runtime build includes the new class
 - [ ] For `impl: ./blank.js`: declared `network:` allow-list lists every hostname the JS fetches
 - [ ] For `impl: ./blank.js`: every `secrets:` entry has a matching `secret-hosts.<NAME>: [host, ...]` (unbound secrets are refused at load)
 - [ ] For `impl: ./blank.js`: `output: rich` is set ONLY if the blank legitimately needs HTML / control chars (otherwise default `safe` strips them)
-- [ ] `blankReplace:` set to `keep` / `wipe` / `wipe-all` / `auto` (see `docs/architecture/blank-replace-modes.md`). For `wipe` and `auto`, the blank's `get()` embeds identifying context in the answer (`"NVDA: $198.47"`, not bare `"$198.47"`)
 - [ ] Restart the host (config hot-reloads in ~2s; class registration requires restart)
 
 > **No need to run `setup.sh`** for BLANK.md / script edits — `.md` config files hot-reload within ~2s. `setup.sh` is only needed when editing the TypeScript patches/runtime sources.

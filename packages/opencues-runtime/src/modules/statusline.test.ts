@@ -243,7 +243,7 @@ describe('Statusline write behaviour', () => {
     expect(written).toBeNull();
   });
 
-  it('span-fill highlight emits blankTip + cueBlank=true', async () => {
+  it('span-fill highlight emits tip + cueBlank=true', async () => {
     const { SpanFillState } = await import('../state/span-fill');
     const adapter = new MockAdapter();
     adapter.pushText('affirm I am strong');
@@ -255,7 +255,7 @@ describe('Statusline write behaviour', () => {
       alternatives: ['I am strong', 'I am brave', '_'],
       currentAltIndex: 0,
       spanLength: 3,
-      blankTip: 'Daily affirmations',
+      tip: 'Daily affirmations',
     }, 'affirm I am strong');
     const sl = new Statusline(adapter, hlState, dynDefs, {
       exportPath: '/tmp/x.json',
@@ -288,7 +288,7 @@ describe('Statusline write behaviour', () => {
       alternatives: ['I am strong', 'I am brave', '_'],
       currentAltIndex: 0,
       spanLength: 3,
-      blankTip: 'Daily affirmations',
+      tip: 'Daily affirmations',
     }, 'affirm I am strong');
     const sl = new Statusline(adapter, hlState, dynDefs, {
       exportPath: '/tmp/x.json',
@@ -404,7 +404,7 @@ settings:
       alternatives: ['I am strong'],
       currentAltIndex: 0,
       spanLength: 3,
-      blankTip: 'Daily affirmations',
+      tip: 'Daily affirmations',
     }, 'foo I am strong');
     const sl = new Statusline(adapter, hlState, dynDefs, {
       exportPath: '/tmp/x.json',

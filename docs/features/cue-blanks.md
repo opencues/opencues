@@ -4,15 +4,14 @@ last_updated: 2026-05-05
 
 # Cue-Blanks
 
-A **cue-blank** is a blank (`_`) bound to a keyword via `blankKeywords`. The user types a keyword adjacent to an underscore (e.g., `volume _`), the underscore auto-populates with a current value, and Up/Down cycling changes the actual external state. Everything that touches the world is `_`-gated — there is no word-cycling on plain text without `_`.
+A **cue-blank** is a blank (`_`) bound to a keyword via `blankKeywords`. The user types a command whose keyword **leads the line** ending in `_` (e.g., `volume _`, `weather paris _`), the underscore auto-populates with a current value, and Up/Down cycling changes the actual external state. Everything that touches the world is `_`-gated — there is no word-cycling on plain text without `_`.
 
 There are five flavours:
 
 - **Auto-populated cue-blanks** — `_` populates from `blankInvoke('<name>', { action: 'get' })` (or `blankScript get` for the shell-script style). Up/Down call `set` / `up` / `down`. Example: `volume _` → `50%`.
 - **List blanks** — BLANK.md has `stepValues: ["I am brave", "I am strong", …]`. No script; the runtime cycles through the list. Multi-word values are span-tracked.
 - **Dynamic list blanks** — `blankInvoke get` returns multiple lines, each becoming a cycling alternative (e.g., HN front-page titles).
-- **Read-only blanks** — `blankReadOnly: true` fetches data once and disables cycling (e.g., stock prices via Finnhub).
-- **Consume-all blanks** — `blankConsumeAll: true` clears the entire input and replaces it with multi-word cycling alternatives. Uses dedicated cycling storage independent of `_dynDefs`. See [Consume-All Blanks](consume-all-blanks.md). (The shipped prompt-improver blank that once exercised this was retired in June 2026 — "improve prompt _" is now served by the generalized TransformBlank source — but the mechanism remains available to custom blanks.)
+- **Read-only blanks** — a plain `blankScript:`/`impl:` blank with no `blankStep`/`stepValues`/`blankSatellite` fetches data once and is non-cycleable by default (e.g., stock prices via Finnhub). A multi-line `get` still rotates its results via the alternatives stash.
 
 Cue-blanks are checked **first** in the cycling function (`_cycleAlt`) before any alternative or linked-word cycling.
 
@@ -20,7 +19,7 @@ Cue-blanks are checked **first** in the cycling function (`_cycleAlt`) before an
 
 ## How It Works
 
-1. **Detection** — at analysis time, every `_` is matched against the registered cue-blanks. If a `blankKeywords` entry hits within `blankProximity` words, the `_` is bound to that blank.
+1. **Detection** — at analysis time, every `_` is matched against the registered cue-blanks. If a blank's shape (or synthesized keyword shape) matches the line containing `_` — the command leading its line, `_` at the trailing edge — the `_` is bound to that blank.
 2. **Auto-populate** — `blankInvoke({ blankName, action: 'get', args: [keyword, ...context] })` returns the current value; the `_` is replaced with that value, and `metadata.blankName` is set on the resulting WordDef.
 3. **On cycle (Up/Down)** — the cycling function checks the bound blank and calls `up` / `down` (or `set` for selector/satellite) via `blankInvoke`. The class implementation (or `blankScript`) updates external state and returns the new display value.
 4. **Debounced spawn** — for shell-script blanks, rapid key presses only trigger one subprocess per ~50ms; the timer fires with the final accumulated value.
@@ -115,22 +114,16 @@ in `packages/opencues-runtime/src/blanks/index.ts`.
 | `tip` | string | name | Tip text shown in the secondary display when focused |
 | `blankScript` | string | (required for OS-bound blanks) | Path to the script for `get` / `set` / `up` / `down`. Use `./{name}-blank.sh` for folder-based blanks — relative to the BLANK.md location |
 | `speak` | boolean | false | Read the tip aloud via TTS on navigation |
-| `blankKeywords` | string[] | (none) | Context words that bind a `_` to this blank (e.g., `volume, vol, sound`). Multi-word phrases allowed. |
-| `blankStep` | number | (none) | Increment/decrement step size for numeric blanks |
-| `blankAutoPopulate` | boolean | false | Auto-fill blank with current value on analysis |
-| `blankProximity` | number | 0 | Max words allowed between keyword and `_` (0 = adjacent) |
-| `blankFormat` | enum | `'integer'` | Value format: `integer`, `float`, or `string` |
-| `blankTip` | string | (none) | Tip shown when the auto-populated blank value is highlighted |
+| `blankKeywords` | string[] | (none) | Trigger words that bind a `_` to this blank (e.g., `volume, vol, sound`). Multi-word phrases allowed. Desugar to anchored `blankShapes`. |
+| `blankShapes` | JSON list | (synthesized from keywords) | Anchored regex grammar `{pattern, action, valueGroup?}` routing the `_`'s line deterministically. See [blank-integration.md](../architecture/blank-integration.md). |
+| `blankStep` | number | (none) | Increment/decrement step size for numeric blanks (also synthesizes set/step shapes) |
 | `blankSuffix` | string | (none) | Suffix appended to the displayed value (e.g. `%` shows `50%`). Stripped before arithmetic. Script always receives plain numbers. |
-| `blankReadOnly` | boolean | false | Cycling disabled (display-only blank) |
+| `integration` | string | (none) | Additive output template with a `{value}` slot (e.g. `volume is now {value}`); shapes the inserted value only |
 | `blankDismissible` | boolean | false | Append `_` as a final cycling option so the user can dismiss the value |
-| `blankKeywordExpansions` | object | (none) | Map from keyword (lowercase) to display name (e.g. `rddt` → `Reddit`) |
-| `blankClearKeywords` | boolean | `false` | Remove keyword context words from text on auto-populate |
+| `blankClearKeywords` | boolean | `false` | After a non-shaped fill, strip the blank's own keyword from the text |
 | `blankClearOnEdit` | boolean | `false` | Remove spawned words when user edits to something not in alts |
 | `stepValues` | string[] | (none) | Static list of values to cycle through |
 | `blankSatellite` | boolean | false | Auto-populate as two independent words (selector + satellite) |
-| `blankConsumeAll` | boolean | false | Clear all input on populate (see consume-all-blanks.md) |
-| `blankConsumeContext` | boolean | false | Clear words between keyword and `_` (see consume-context-blanks.md) |
 
 Cue-blanks are folder-based: `blanks/{name}/BLANK.md` with YAML frontmatter (config fields) and any colocated scripts. Folder name = blank id. Discovered automatically by `discoverFolderConfigs` and merged into the runtime's blanks registry at config load time.
 
@@ -220,21 +213,20 @@ The two changes arrive through different code paths:
 
 ---
 
-## Keyword Matching
+## Keyword Matching (line-scoped shapes)
 
-The system scans words in the input (case-insensitive) against each blank's `blankKeywords`, checking **all occurrences** of each keyword, subject to `blankProximity`. The keyword must be within `blankProximity` words of the `_` — if a keyword appears multiple times, any occurrence within range is sufficient. The first blank with a matching keyword wins.
+`blankKeywords` desugar to anchored `blankShapes`. A blank claims a `_` when
+its keyword (or shape) **leads the line** containing `_`, with `_` at the
+trailing edge. Routing is deterministic and line-scoped — prose that merely
+mentions a keyword mid-line does NOT fire. The first blank with a matching
+shape wins. Examples with `blankKeywords: volume, sound, audio`:
 
-Gap = number of words strictly between the keyword and `_` (not counting either). Examples with `blankKeywords: volume, sound, audio`:
+- `volume _` — matches (`volume` leads, `_` at end)
+- `volume 30 _` — matches; `30` is captured as the set value
+- `audio up _` — matches; `up` is captured as a step (when `blankStep` is set)
+- `set audio _` — no match (line leads with `set`, not the keyword)
+- `the volume is loud _` — no match (prose; `volume` doesn't lead the line)
+- `the _ is loud` — no match (no keyword, and `_` isn't at the trailing edge)
 
-With `blankProximity: 0` (default, adjacent only):
-- `volume _` — matches (gap = 0)
-- `set audio _` — matches (`audio` and `_` are adjacent, gap = 0; words before the keyword don't count)
-- `volume is _` — no match (gap = 1, exceeds limit)
-- `the _ is loud` — no match (no keyword present)
-
-With `blankProximity: 1`:
-- `volume is _` — matches (gap = 1, within limit)
-- `volume was not _` — no match (gap = 2, exceeds limit)
-
-Multiple occurrences — with `blankKeywords: weather` and `blankProximity: 0`:
-- `spanish weather 15°C is warmer than london weather _` — matches (the second `weather` is adjacent to `_`)
+With prior content on earlier lines, the command on the last line still
+fires: `some notes here.\nvolume 30 _` → matches.

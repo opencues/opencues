@@ -304,9 +304,9 @@ describe('ConfigIntentSource', () => {
     assert.strictEqual(src.supports(ctxFromText('enable debug logging _')), true);
   });
 
-  it('supports() cedes when a keyword-bound blank would claim the _', () => {
+  it('supports() cedes when a keyword-bound blank is on the same line as _', () => {
     const blanks = {
-      volume: { name: 'volume', blankKeywords: ['volume'], blankProximity: 3 },
+      volume: { name: 'volume', blankKeywords: ['volume'] },
     };
     const src = new ConfigIntentSource({
       ...baseConfig,
@@ -314,10 +314,12 @@ describe('ConfigIntentSource', () => {
       applyScalar: noopApply().fn,
       blanks,
     });
-    // Keyword in range → BlankSource will claim, ConfigIntent cedes.
+    // Keyword on the same line → BlankSource will claim, ConfigIntent cedes.
     assert.strictEqual(src.supports(ctxFromText('change volume _')), false);
-    // Keyword OUT of range → ConfigIntent stays in.
-    assert.strictEqual(src.supports(ctxFromText('change volume because we hate quiet music _')), true);
+    // Line-scoped: keyword anywhere on the `_`'s line still cedes.
+    assert.strictEqual(src.supports(ctxFromText('change volume because we hate quiet music _')), false);
+    // Keyword on a PREVIOUS line → ConfigIntent stays in.
+    assert.strictEqual(src.supports(ctxFromText('change volume settings\nturn it down _')), true);
   });
 
   it('priority defaults to 94 (above transform-blank 93, below BlankSource 95)', () => {

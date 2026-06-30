@@ -149,10 +149,11 @@ reads from the settings Map instead of the typed enum).
 
 Features that are read from the settings Map today:
 `fluidBlankMode`, `wordCuesMode`, `transformBlankMode`,
-`fluidConfigMode`, `blankIntentMode` — all consumed in `resolver.ts`
-as boolean gates (`blankIntentMode` also threads a live `lineScoped`
-getter into the four claim/cede sources — see
-[`blank-intent.md`](blank-intent.md)).
+`fluidConfigMode` — all consumed in `resolver.ts` as boolean gates.
+(The `blankIntentMode` gate was retired in the June 2026 slim-down;
+the keyword window is now unconditionally line-scoped, so there is no
+longer a runtime toggle threading a `lineScoped` getter into the
+claim/cede sources — see [`blank-integration.md`](blank-integration.md).)
 
 ---
 

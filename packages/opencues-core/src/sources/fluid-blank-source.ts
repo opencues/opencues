@@ -30,6 +30,7 @@ import { useStrictJson, buildJsonResponseFormat, describeLLMCall, dispatchChat, 
 import { renderIdentityContextCatalog, postProcessContext, type Identity, type ContextMode } from '../identity-context';
 import { renderBlankContextCatalog, mergeCatalogs, type BlankContextSnapshot, type BlankContextMode } from '../blank-context';
 import { resolveTypedSentinels, catalogScalarLookup, instanceTokenFnBridge, jsonFieldAccessor } from '../typed-sentinel';
+import { matchBlankShape } from '../blank-shapes';
 
 // ─── Ambient-context sanitization + injection ──────────────────────
 //
@@ -457,70 +458,6 @@ ANSWER: United Kingdom`;
  */
 export const MODE_RULES = `MODE RULES — classify by SHAPE, holds in any language: WIPE when the input is a terse standalone lookup phrase the ANSWER replaces ("capital of france _" → Paris). FILL when the input is a sentence and the ANSWER fills a gap keeping the surrounding words: _ after a copula/equation/question ("the cube root of 27 is _" → 3; "la capital de españa es _") or _ mid-sentence ("Water boils at _ degrees Celsius"). SPAN=NONE → FILL.`;
 
-/**
- * Decide whether the user wants the answer to FILL the `_` (preserve the
- * surrounding sentence) or WIPE the entire lookup phrase.
- *
- * Heuristic — purely deterministic, no LLM call:
- *   - input ends with copula/equation/question marker before `_` → FILL
- *     ("...is _", "...are _", "...= _", "...? _", "...: _")
- *   - else → WIPE
- *
- * `_` mid-sentence is treated as FILL by default (the only realistic way
- * `_` appears mid-sentence is in textbook-style fill-in-the-blank inputs
- * like "Water boils at _ degrees Celsius"). In live typing flow, `_` is
- * always at the trailing edge of what the user has typed.
- */
-export function determineReplaceMode(input: string): 'FILL' | 'WIPE' {
-  const s = input.trim();
-  if (!s.endsWith('_')) return 'FILL';
-  if (/(?:\b(?:is|are|was|were|am|be|equals)|=|:|\?)\s+_$/i.test(s)) return 'FILL';
-  return 'WIPE';
-}
-
-/**
- * Resolve a keyword-bound blank's effective replacement mode from
- * its frontmatter flags + the current buffer text.
- *
- * Precedence (highest first):
- *   1. Explicit `blankReplace` field (`keep` | `wipe` | `wipe-all` | `auto`).
- *   2. Legacy `blankConsumeAll: true` → `wipe-all`.
- *   3. Legacy `blankConsumeContext: true` OR `blankClearKeywords: true` → `wipe`.
- *   4. Default → `auto`.
- *
- * `auto` resolves via `determineReplaceMode(input)`:
- *   - FILL → `keep` (preserve surrounding text, fill just `_`).
- *   - WIPE → `wipe` (drop keyword + context + `_`, drop in answer).
- *
- * `input` is the buffer text leading up to (and including) the `_`
- * being filled. For typical typing flow this is the whole buffer.
- */
-export type EffectiveReplaceMode = 'keep' | 'wipe' | 'wipe-all';
-
-export interface BlankReplaceFlags {
-  readonly blankReplace?: 'keep' | 'wipe' | 'wipe-all' | 'auto';
-  readonly blankConsumeAll?: boolean;
-  readonly blankConsumeContext?: boolean;
-  readonly blankClearKeywords?: boolean;
-}
-
-export function resolveReplaceMode(
-  blank: BlankReplaceFlags,
-  input: string,
-): EffectiveReplaceMode {
-  // Explicit new-field wins outright.
-  if (blank.blankReplace === 'keep') return 'keep';
-  if (blank.blankReplace === 'wipe') return 'wipe';
-  if (blank.blankReplace === 'wipe-all') return 'wipe-all';
-  // Explicit 'auto' falls through to the heuristic.
-  // Legacy flags (when blankReplace is absent or 'auto') still map.
-  if (blank.blankReplace === undefined) {
-    if (blank.blankConsumeAll === true) return 'wipe-all';
-    if (blank.blankConsumeContext === true || blank.blankClearKeywords === true) return 'wipe';
-  }
-  // No explicit signal → fluid heuristic.
-  return determineReplaceMode(input) === 'WIPE' ? 'wipe' : 'keep';
-}
 
 /**
  * Pattern matching transform-blank task-trigger keywords (ARM / ADD /
@@ -585,22 +522,14 @@ export interface FluidBlankSourceConfig {
    *  reduced level for faster lookups. */
   maxThinking?: boolean;
   /** Source priority. Default 92 — sits below keyword-bound BlankSource
-   * (95) so a blank claims a slot whose keyword is in proximity, fluid
+   * (95) so a blank claims a slot whose keyword is on the `_`'s line, fluid
    * handles everything else. */
   priority?: number;
   /** All registered keyword-bound blanks. fluid-blank cedes the slot when a
-   * blank would actually claim the `_` (its keyword matches AND fits within
-   * `blankProximity`). Earlier we ceded on any keyword match anywhere in the
-   * input — that left a dead zone for inputs like `what is git as in github
-   * _` where dictionary's `what is` was present but too far from `_` to
-   * claim. Now fluid mirrors BlankSource's claim rules so the dead zone is
-   * gone. */
+   * blank would actually claim the `_` — either a declared `blankShapes`
+   * match, or (for non-shaped blanks) its keyword on the same line as `_`.
+   * Mirrors BlankSource's claim rules so the two can't disagree. */
   blanks?: Record<string, BlankConfig>;
-  /** Live getter: true when the BlankIntent gate is active, so the
-   *  keyword cede check uses the shared line-scoped window instead of
-   *  per-blank proximity (keeps this source in lockstep with BlankFill /
-   *  BlankSource). Defaults to always-false. */
-  lineScoped?: () => boolean;
   /**
    * Optional pipeline-event subscriber. Mirrors
    * `TransformBlankSourceConfig.onEvent` — receives a typed
@@ -744,7 +673,6 @@ export class FluidBlankSource implements CueSource {
   private temperatureOverride: number | undefined;
   private maxThinking: boolean;
   private blanks: Record<string, BlankConfig>;
-  private lineScoped: () => boolean;
   private emit: (event: FluidBlankEvent) => void;
   private log: (msg: string) => void;
   private logInfo: (msg: string) => void;
@@ -792,7 +720,6 @@ export class FluidBlankSource implements CueSource {
     this.maxThinking = config.maxThinking ?? true;
     this.priority = config.priority ?? 92;
     this.blanks = config.blanks ?? {};
-    this.lineScoped = config.lineScoped ?? (() => false);
     this.emit = config.onEvent ?? (() => { /* default: silent */ });
     this.log = config.log ?? (() => { /* default: silent */ });
     this.logInfo = config.logInfo ?? this.log;
@@ -837,31 +764,25 @@ export class FluidBlankSource implements CueSource {
     // preserved untouched, which is strictly better than substituting
     // the entire sentence with an LLM-guessed answer.
     if (TASK_TRIGGER_GUARD.test(context.text)) return false;
-    // Cede the slot to BlankFill if any registered blank would actually
-    // claim it. Mirror BlankSource's claim rules: keyword present AND
-    // within `blankProximity` words of the `_`. Loose-match (keyword
-    // present anywhere) leaves a dead zone for inputs like `what is git
-    // as in github _` where the keyword is too far to claim.
-    // Window: per-blank `blankProximity` normally; the SHARED line-scoped
-    // window when the BlankIntent gate is active (so this cede check stays
-    // in lockstep with BlankFill + BlankSource — see keyword-window.ts).
-    const scoped = this.lineScoped();
-    const lineOf = scoped ? lineOfWords(context.text) : undefined;
+    // TYPE-BASED CEDE (shaped blanks): cede iff a declared SHAPE claims this
+    // `_` — exact grammar, so an anchored shape can't match prose. This is what
+    // stops fluid from wrongly ceding conversational input to a keyword blank.
+    if (matchBlankShape(context.text, this.blanks)) return false;
+    // LEGACY CEDE (non-shaped blanks only): a blank that hasn't migrated to
+    // shapes still cedes via keyword on the same line as `_`. Shaped blanks
+    // are skipped here — they're governed solely by the shape match above.
+    const lineOf = lineOfWords(context.text);
     for (const blk of Object.values(this.blanks)) {
+      if (blk.blankShapes?.length) continue;
       if (!blk.blankKeywords?.length) continue;
-      const proximity = blk.blankProximity ?? 0;
       for (const phrase of blk.blankKeywords) {
         const parts = phrase.toLowerCase().split(/\s+/);
         for (let i = 0; i <= lower.length - parts.length; i++) {
           let ok = true;
-          for (let j = 0; j < parts.length; j++) {
-            if (lower[i + j] !== parts[j]) { ok = false; break; }
-          }
+          for (let j = 0; j < parts.length; j++) { if (lower[i + j] !== parts[j]) { ok = false; break; } }
           if (!ok) continue;
           const endIdx = i + parts.length - 1;
-          if (keywordInWindow(endIdx, blankIndex, proximity, { lineScoped: scoped, lineOf })) {
-            return false;   // BlankSource / BlankFill will claim
-          }
+          if (keywordInWindow(endIdx, blankIndex, { lineOf })) return false;
         }
       }
     }
@@ -896,11 +817,9 @@ export class FluidBlankSource implements CueSource {
       // where TransformBlank got far enough to mark the slot; a hard LLM
       // failure skips that. Bail so the buffer is preserved; multi-
       // paragraph edits belong to TransformBlank, not a fluid lookup.
-      if (determineReplaceMode(context.text) === 'WIPE' && /\n[ \t]*\n/.test(context.text)) {
-        this.logInfo('FluidBlank: refusing WIPE on a multi-paragraph buffer (fail-safe — preserving user content)');
-        this.emit({ type: 'bailed', reason: 'wipe-multiparagraph-guard', latencyMs: 0 });
-        return { results: [] };
-      }
+      // (No multi-paragraph WIPE guard — fluid only ever FILLs the `_`, so it
+      // can't destroy surrounding content. The guard it replaced existed only
+      // to stop WIPE from collapsing paragraphs.)
       const effectiveProvider = this.provider;
       const effectiveModel = this.model;
       const effectiveText = context.text;
@@ -919,10 +838,9 @@ export class FluidBlankSource implements CueSource {
       const variantChoice = this._selectVariant(cacheKey);
       if (variantChoice.kind === 'cache') {
         this.log(`FluidBlank: variant-cache HIT — serving cached answer (pool size ${variantChoice.others.length + 1})`);
-        // Determine replace-mode from the buffer (same logic the fresh
-        // path uses post-dispatch). The cached answer is the answer
-        // string; mode is purely a function of buffer text.
-        const cachedMode = determineReplaceMode(effectiveText);
+        // Static resolution: always FILL (replace only the `_`); the cache
+        // result sets no span, so the runtime fills the gap.
+        const cachedMode = 'FILL' as const;
         this.emit({
           type: 'completed',
           span: effectiveText,
@@ -1102,62 +1020,14 @@ export class FluidBlankSource implements CueSource {
       // read result.metadata.context defensively).
       const ctx = '';
 
-      // Replacement mode — FILL (substitute only `_`, keep the surrounding
-      // words) vs WIPE (replace the whole lookup phrase). The MODEL emits a
-      // MODE line (see MODE RULES in FUSED_SYSTEM_PROMPT) and owns the OPEN
-      // content judgement: "is this a terse query phrase, or a sentence with
-      // a gap?". But FILL is also the NON-DESTRUCTIVE mode, so we keep a
-      // deterministic data-loss FLOOR — the same category of safety
-      // invariant as the multi-paragraph guard below:
-      //
-      //   - heuristic FILL  → FILL, AUTHORITATIVELY. determineReplaceMode
-      //     returns FILL only on high-confidence "sentence with a trailing
-      //     gap" shapes (copula / equation / question adjacency, or `_`
-      //     mid-sentence). Those are exactly the cases where a WIPE would
-      //     collapse text the user deliberately typed ("3 + 4 = _" must
-      //     stay "3 + 4 = 7", not reduce to "7"; "...? _" keeps the
-      //     question). The model is WIPE-biased on these (bench-observed),
-      //     so it may NOT escalate a heuristic-FILL into a destructive WIPE.
-      //   - heuristic WIPE  → DEFER TO THE MODEL. The heuristic's regex is
-      //     English-anchored, so it WIPEs a non-English sentence it can't
-      //     parse ("la racine cubique de 27 est _"); the model rescues those
-      //     to FILL. A genuine terse lookup stays WIPE either way. This is
-      //     where the language-invariance win lands.
-      //
-      // Net: behaviour is unchanged on every case the English anchor already
-      // got right, and strictly improved on non-English copula sentences —
-      // no regression, real gain. Falls back to the pure heuristic when the
-      // model omitted MODE / emitted garbage (label-format path on a weak
-      // model; strict-JSON providers always emit it).
-      const heuristicMode = determineReplaceMode(effectiveText);
-      let mode: 'FILL' | 'WIPE';
-      if (heuristicMode === 'FILL') {
-        mode = 'FILL';
-        if (modelMode === 'WIPE') {
-          this.logInfo('FluidBlank: keeping heuristic FILL (non-destructive floor); model proposed WIPE');
-        }
-      } else {
-        mode = modelMode ?? 'WIPE';
-        if (modelMode === 'FILL') {
-          this.logInfo('FluidBlank: model rescued heuristic WIPE → FILL (language-invariant sentence shape)');
-        } else if (!modelMode) {
-          this.logInfo('FluidBlank: mode from heuristic=WIPE (model omitted MODE)');
-        }
-      }
-      // Defense-in-depth backstop — NEVER WIPE a multi-paragraph buffer.
-      // Two upstream checks already cover this (the pre-dispatch guard bails
-      // when heuristic=WIPE on a multi-paragraph buffer; the FILL floor
-      // above forces FILL when heuristic=FILL), so in the current control
-      // flow this is unreachable. It stays as a deliberate, cheap redundant
-      // guard on a DATA-LOSS invariant: any future change to the floor or
-      // the pre-dispatch guard that let a WIPE through on a multi-paragraph
-      // buffer would be caught here instead of destroying the user's
-      // content. The cost is four lines; the failure it prevents is the
-      // "2 paragraphs collapsed to 1" landmine.
-      if (mode === 'WIPE' && /\n[ \t]*\n/.test(effectiveText)) {
-        this.logInfo('FluidBlank: downgrading proposed WIPE → FILL on a multi-paragraph buffer (data-loss fail-safe)');
-        mode = 'FILL';
-      }
+      // STATIC RESOLUTION: fluid ALWAYS fills just the `_` (non-destructive).
+      // The old FILL/WIPE machinery — the deterministic heuristic, the model's
+      // MODE vote, and the multi-paragraph data-loss guard — is all retired:
+      // you cannot destroy the buffer if you only ever fill the gap the user
+      // left. Weaving the value into surrounding prose is a separate,
+      // user-invoked transform step (the REWRITE verb). The model still emits
+      // a MODE line per FUSED_SYSTEM_PROMPT, but the runtime ignores it.
+      const mode: 'FILL' | 'WIPE' = 'FILL';
 
       // Record the fresh answer into the variant pool — subsequent
       // identical-buffer triggers will cycle through cached variants
@@ -1185,13 +1055,7 @@ export class FluidBlankSource implements CueSource {
       // Alternatives stay ['_', answer] — cycling back to `_` clears the
       // lookup phrase to a bare blank rather than restoring the full
       // queried text. The lookup phrase is consumed by the substitution.
-      if (mode === 'WIPE') {
-        const range = findSpanCharRange(span, context.text);
-        if (range) {
-          result.spanStart = range[0];
-          result.spanEnd = range[1];
-        }
-      }
+      // (Static resolution: no WIPE span — the runtime replaces only the `_`.)
 
       // `fluid-blank.completed` is intentionally NOT emitted from here.
       // It's emitted from the RESOLVER's substitute branch AFTER the
@@ -1413,9 +1277,9 @@ const FLUID_FUSED_SCHEMA: Record<string, unknown> = {
 };
 
 // `mode` is the model's FILL/WIPE classification (see MODE RULES in the
-// prompt). `null` when the model omitted it or emitted an unrecognised
-// value — the caller falls back to the deterministic determineReplaceMode
-// heuristic in that case. Model proposes, runtime validates.
+// prompt). Parsed for wire-format completeness but IGNORED by the runtime —
+// fluid is always-FILL now (static resolution). `null` when the model omitted
+// it or emitted an unrecognised value.
 interface FusedResult { span: string | null; answer: string | null; mode: 'FILL' | 'WIPE' | null; }
 
 function normalizeMode(raw: string | undefined | null): 'FILL' | 'WIPE' | null {

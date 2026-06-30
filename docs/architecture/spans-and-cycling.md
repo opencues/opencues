@@ -114,7 +114,7 @@ interface SpanFillEntry {
   currentAltIndex: number;
   spanLength: number;
   readonly kind?: 'blank-fill' | 'static-alt';  // strict-equality vs preserve
-  readonly blankTip?: string;
+  readonly tip?: string;
 }
 ```
 
@@ -396,16 +396,16 @@ the alt's words elsewhere in the new text and re-anchor `entry.index`.
 For `kind: 'blank-fill'`, any text mismatch clears the entry (the
 "user moved on" semantic).
 
-**Typed actions (BlankIntent).** `BlankFill.maybeRunScripts` runs the
+**Typed actions (shape-routed).** `BlankFill.maybeRunScripts` runs the
 script-backed blanks (volume / brightness / weather / …). Beyond the
 default `get`, it dispatches two typed actions when the buffer supplies
 them: `volume 30 _` → SET (`runBlankSet`), `volume up _` /
-`brightness down _` → STEP (±`blankStep`, clamped 0–100). When
-`blank-intent-mode: on`, an LLM gate runs before the script fire and can
-CEDE (leave `_` inert) — the typed action/value rides the INVOKE verdict.
-The gate is OFF by default; with it off this path is byte-identical to
-the pre-feature `get`-only behaviour. See
-[`blank-intent.md`](blank-intent.md).
+`brightness down _` → STEP (±`blankStep`, clamped 0–100). The action is
+chosen by which anchored shape matched (`get` / `set` / `step`) — the
+keyword must lead the line containing `_`, so an anchored shape match is
+itself the invocation proof. (The old `blank-intent-mode` LLM gate was
+retired in the June 2026 slim-down — deterministic shape matching
+obviates it.) See [`blank-integration.md`](blank-integration.md).
 
 ---
 
@@ -778,7 +778,7 @@ Start: text "<consume-all keyword> write a poem _"
                 index: 0, spanLength: 4 (words in first alt),
                 alternatives: [...4 items],
                 currentAltIndex: 0,
-                blankTip: '...'
+                tip: '...'
              }, "A vivid poem about loss")
           ── adapter.setText("A vivid poem about loss")  [runtime]
        

@@ -813,9 +813,6 @@ export interface ConfigIntentSourceConfig {
    * FluidBlankSource and TransformBlankSource).
    */
   blanks?: Record<string, BlankConfig>;
-  /** Live getter: true when the BlankIntent gate is active → shared
-   *  line-scoped cede window instead of per-blank proximity. Default false. */
-  lineScoped?: () => boolean;
   /** Source priority. Default 94 — between BlankSource (95) and TransformBlank (93). */
   priority?: number;
   log?: (msg: string) => void;
@@ -872,7 +869,6 @@ export class ConfigIntentSource implements CueSource {
   private temperatureOverride: number | undefined;
   private applyScalar: (setting: string, value: string) => void | Promise<void>;
   private blanks: Record<string, BlankConfig>;
-  private lineScoped: () => boolean;
   private log: (msg: string) => void;
   private emit: (event: ConfigIntentEvent) => void;
   private formatErrorAsSubstitute: ((reason: FluidBlankErrorReason, err?: Error) => string) | undefined;
@@ -918,7 +914,6 @@ export class ConfigIntentSource implements CueSource {
     this.temperatureOverride = config.temperature;
     this.applyScalar = config.applyScalar;
     this.blanks = config.blanks ?? {};
-    this.lineScoped = config.lineScoped ?? (() => false);
     this.priority = config.priority ?? 94;
     this.log = config.log ?? (() => { /* silent */ });
     this.emit = config.onEvent ?? (() => { /* silent */ });
@@ -931,15 +926,12 @@ export class ConfigIntentSource implements CueSource {
     if (blankIndex === -1) return false;
 
     // Cede to keyword-bound BlankSource if a registered blank's keyword is
-    // in the active window of the `_` — the shared `keywordInWindow` keeps
-    // all three semantic-`_` sources + BlankFill + BlankSource on the same
-    // boundary (per-blank proximity, or line-scoped when the BlankIntent
-    // gate is active). See keyword-window.ts.
-    const scoped = this.lineScoped();
-    const lineOf = scoped ? lineOfWords(context.text) : undefined;
+    // on the same line as the `_` — the shared `keywordInWindow` keeps all
+    // three semantic-`_` sources + BlankFill + BlankSource on the same
+    // line-scoped boundary. See keyword-window.ts.
+    const lineOf = lineOfWords(context.text);
     for (const blk of Object.values(this.blanks)) {
       if (!blk.blankKeywords?.length) continue;
-      const proximity = blk.blankProximity ?? 0;
       for (const phrase of blk.blankKeywords) {
         const parts = phrase.toLowerCase().split(/\s+/);
         for (let i = 0; i <= lower.length - parts.length; i++) {
@@ -949,7 +941,7 @@ export class ConfigIntentSource implements CueSource {
           }
           if (!ok) continue;
           const endIdx = i + parts.length - 1;
-          if (keywordInWindow(endIdx, blankIndex, proximity, { lineScoped: scoped, lineOf })) {
+          if (keywordInWindow(endIdx, blankIndex, { lineOf })) {
             return false;
           }
         }

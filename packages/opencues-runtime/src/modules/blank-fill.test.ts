@@ -93,12 +93,16 @@ describe('BlankFill detection', () => {
     expect(slots.map(s => s.blankName)).toEqual(['affirmations', 'prompt']);
   });
 
-  it('honours blankProximity: prompt requires keyword adjacent to _', async () => {
-    // "prompt for image _" — keyword "prompt" is 2 words away (> 0). No match.
+  it('line-scoped window: keyword anywhere on the `_`s line claims it', async () => {
+    // "prompt for image _" — keyword "prompt" is on the same line as `_`,
+    // so it claims regardless of distance (the per-blank blankProximity
+    // knob was retired; routing precision is shapes' job).
     const { bf } = await setup('prompt for image _');
-    expect(bf.scan('prompt for image _')).toHaveLength(0);
-    // Same setup but adjacent — "prompt _" → matches.
+    expect(bf.scan('prompt for image _')).toHaveLength(1);
+    // Adjacent still matches.
     expect(bf.scan('prompt _')).toHaveLength(1);
+    // Keyword on a PREVIOUS line → no claim (line-scoped).
+    expect(bf.scan('prompt for image\nrender it _')).toHaveLength(0);
   });
 
   it('matches synonyms: vol / sound / audio all map to volume', async () => {
@@ -237,25 +241,25 @@ describe('buildClearKeywordText helper', () => {
     const r = buildClearKeywordText('weather\u200B _', { index: 1, keywordStart: 0, keywordEnd: 0 }, 'x');
     expect(r.newText).toBe('x');
   });
-  it('replaces single-word keyword with expansion when given', () => {
-    const r = buildClearKeywordText('rddt _', { index: 1, keywordStart: 0, keywordEnd: 0 }, '$180.50', 'Reddit');
-    expect(r.newText).toBe('Reddit $180.50');
-    expect(r.newCursor).toBe(14);
+  it('clears a single-word keyword adjacent to the blank', () => {
+    const r = buildClearKeywordText('rddt _', { index: 1, keywordStart: 0, keywordEnd: 0 }, '$180.50');
+    expect(r.newText).toBe('$180.50');
+    expect(r.newCursor).toBe(7);
   });
-  it('collapses multi-word keyword span into single expansion entry', () => {
-    const r = buildClearKeywordText('big tech _', { index: 2, keywordStart: 0, keywordEnd: 1 }, '$100', 'BigTech');
-    expect(r.newText).toBe('BigTech $100');
+  it('collapses a multi-word keyword span', () => {
+    const r = buildClearKeywordText('big tech _', { index: 2, keywordStart: 0, keywordEnd: 1 }, '$100');
+    expect(r.newText).toBe('$100');
   });
-  it('expansion preserves context words after keyword', () => {
-    const r = buildClearKeywordText('hn for today _', { index: 3, keywordStart: 0, keywordEnd: 0 }, 'Story', 'HackerNews');
-    expect(r.newText).toBe('HackerNews for today Story');
+  it('keyword-clear preserves context words after the keyword', () => {
+    // keywordEnd=0 clears just "hn"; "for today" survives, `_` → "Story".
+    const r = buildClearKeywordText('hn for today _', { index: 3, keywordStart: 0, keywordEnd: 0 }, 'Story');
+    expect(r.newText).toBe('for today Story');
   });
-  it('clearEnd widens to slot.index-1 (consumes context)', () => {
+  it('clearEnd widens to slot.index-1 (consumes the whole command span)', () => {
     const r = buildClearKeywordText(
       'what is the word for happy _',
       { index: 6, keywordStart: 0, keywordEnd: 4 },
       'glad',
-      undefined,
       5, // slot.index - 1
     );
     expect(r.newText).toBe('glad');
@@ -265,7 +269,6 @@ describe('buildClearKeywordText helper', () => {
       'how to say hi _ to her',
       { index: 4, keywordStart: 0, keywordEnd: 2 },
       'hello',
-      undefined,
       3,
     );
     expect(r.newText).toBe('hello to her');
@@ -304,41 +307,13 @@ describe('computeCleanupRange helper', () => {
 
 describe('computeFillRange', () => {
   const slot = { index: 6, keyword: 'what is the word for', keywordEnd: 4 };
-  it('blankConsumeContext sets clearEnd = slot.index - 1', () => {
-    const r = computeFillRange({ blankConsumeContext: true }, slot);
-    expect(r).toEqual({ clearEnd: 5, expansion: undefined });
-  });
-  it('blankClearKeywords alone sets clearEnd = slot.keywordEnd', () => {
+  it('blankClearKeywords sets clearEnd = slot.keywordEnd', () => {
     const r = computeFillRange({ blankClearKeywords: true }, slot);
-    expect(r).toEqual({ clearEnd: 4, expansion: undefined });
-  });
-  it('expansion only sets expansion, no clearEnd widening', () => {
-    const r = computeFillRange(
-      { blankKeywordExpansions: { 'what is the word for': 'WORD' } },
-      slot,
-    );
-    expect(r).toEqual({ clearEnd: undefined, expansion: 'WORD' });
-  });
-  it('blankConsumeContext suppresses expansion', () => {
-    const r = computeFillRange(
-      {
-        blankConsumeContext: true,
-        blankKeywordExpansions: { 'what is the word for': 'WORD' },
-      },
-      slot,
-    );
-    expect(r).toEqual({ clearEnd: 5, expansion: undefined });
-  });
-  it('clearKeywords + consumeContext together: consumeContext wins', () => {
-    const r = computeFillRange(
-      { blankClearKeywords: true, blankConsumeContext: true },
-      slot,
-    );
-    expect(r.clearEnd).toBe(5); // = slot.index - 1, not 4
+    expect(r).toEqual({ clearEnd: 4 });
   });
   it('no flags returns no-op range', () => {
     const r = computeFillRange({}, slot);
-    expect(r).toEqual({ clearEnd: undefined, expansion: undefined });
+    expect(r).toEqual({ clearEnd: undefined });
   });
 });
 
@@ -491,6 +466,71 @@ blankScript: ./stocks.sh
     expect(args.slice(2)).toEqual(['reddit stock', 'today']);
   });
 
+  // Regression: prior-line context flood (June 2026 — #216 manual test).
+  //
+  // A shaped blank's command leads its OWN line (`capital of france _`) and
+  // dispatches via the deterministic shape path — line-scoped, so prose on
+  // an EARLIER line is unrelated. The bug was the CONTEXT we sent with the
+  // get: the old collector gathered the WHOLE buffer minus the keyword span,
+  // so every word from the prior lines leaked in. Live repro: a `countries`
+  // blank got the user's entire first-line website-design paragraph as
+  // "context" and the script echoed back a 495-char garbage string that
+  // overwrote the `_`. Fix: context is ONLY the arg region between the
+  // keyword and the `_` (mirrors the anchored shape's valueGroup), so prior
+  // lines can never flood the get.
+  it('prior-line prose does not flood get context (arg region only)', async () => {
+    const SCRIPT_CTRL = `---
+type: blank
+name: countries
+blankKeywords: capital of
+blankScript: ./countries.sh
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/blanks/countries/BLANK.md': SCRIPT_CTRL },
+    });
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    // Unrelated prose on line 1; the command `capital of france _` leads line 2.
+    adapter.pushText('design and develop responsive website with modern ui\ncapital of france _');
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+    const args = spawnSpy.mock.calls[0][0].args;
+    // ['./countries.sh', 'get', 'capital of', 'france'] — ONLY 'france'
+    // (the word between the keyword and the `_`). None of line 1's prose leaks.
+    expect(args.slice(2)).toEqual(['capital of', 'france']);
+    expect(args).not.toContain('website');
+    expect(args).not.toContain('responsive');
+  });
+
+  it('prior-line prose does not flood a bare get (empty context)', async () => {
+    const SCRIPT_CTRL = `---
+type: blank
+name: countries
+blankKeywords: countries
+blankScript: ./countries.sh
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/blanks/countries/BLANK.md': SCRIPT_CTRL },
+    });
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    // A paragraph on line 1; bare `countries _` leads line 2.
+    adapter.pushText('here is a long sentence about many unrelated things\ncountries _');
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+    const args = spawnSpy.mock.calls[0][0].args;
+    // Bare get — only the keyword, no context words at all.
+    expect(args.slice(2)).toEqual(['countries']);
+  });
+
   it('async path: expands ~ in script path', async () => {
     const SCRIPT_CTRL = `---
 type: blank
@@ -513,51 +553,6 @@ blankScript: ~/.claude/actions/stock.sh
     const args = spawnSpy.mock.calls[0][0].args;
     expect(args[0]).toBe(`${process.env.HOME ?? '~'}/.claude/actions/stock.sh`);
     expect(args[0].startsWith('~')).toBe(false);
-  });
-
-  it('async path: builds CUES_* env vars from blank config', async () => {
-    // opencues-core's parseSingleCueMd reads `## Extract` / `## Transform`
-    // markdown sections into blanks.X.prompts (NOT a YAML `prompts:` key).
-    const SCRIPT_CTRL = `---
-type: blank
-name: prompt
-blankKeywords: prompt
-blankProximity: 10
-blankScript: ./prompt.sh
-model: openai/gpt-4
-apiUrl: https://example.com
-apiKeyEnv: TEST_KEY
-altCount: 3
-includeOriginal: true
----
-
-## Classifier
-
-classify this
-
-## Alt-Gen
-
-generate alts
-`;
-    const adapter = new MockAdapter({
-      cwd: '/proj',
-      files: { '/mock/CUES.md': TIPS, '/proj/blanks/prompt/BLANK.md': SCRIPT_CTRL },
-    });
-    const loader = new ConfigLoader(adapter);
-    await loader.load();
-    const bf = new BlankFill(adapter, loader);
-    bf.subscribe();
-    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
-    adapter.pushText('prompt _');
-    const env = spawnSpy.mock.calls[0][0].env;
-    expect(env).toBeDefined();
-    expect(env!.CUES_MODEL).toBe('openai/gpt-4');
-    expect(env!.CUES_API_URL).toBe('https://example.com');
-    expect(env!.CUES_API_KEY_ENV).toBe('TEST_KEY');
-    expect(env!.CUES_ALT_COUNT).toBe('3');
-    expect(env!.CUES_INCLUDE_ORIGINAL).toBe('true');
-    expect(env!.CUES_PROMPT_CLASSIFIER).toBe('classify this');
-    expect(env!.CUES_PROMPT_ALT_GEN).toBe('generate alts');
   });
 
   it('async path: dedupes concurrent spawns for same (text, slot)', async () => {
@@ -653,14 +648,16 @@ blankClearKeywords: true
     expect(adapter.setTextCalls.at(-1)).toBe('hi');
   });
 
-  it('async path: blankClearKeywords applies after script result splices in', async () => {
+  it('async path: a shaped get-with-arg clears the whole command span', async () => {
+    // `weather` desugars to shapes. "weather paris _" captures "paris" as the
+    // arg, so the whole command span ("weather paris") is consumed and only
+    // the script output lands. Unified shape-clearing — supersedes the old
+    // blankClearKeywords (which only cleared the bare keyword).
     const CLR_CTRL = `---
 type: blank
 name: weather
 blankKeywords: weather
-blankProximity: 10
 blankScript: ./weather.sh
-blankClearKeywords: true
 ---
 `;
     const adapter = new MockAdapter({
@@ -675,19 +672,17 @@ blankClearKeywords: true
       result: Promise.resolve({ exitCode: 0, stdout: '15°C cloudy', stderr: '', timedOut: false }),
       kill: () => {},
     }));
-    adapter.pushText('weather in Paris _');
+    adapter.pushText('weather paris _');
     await new Promise(r => setTimeout(r, 0));
     expect(spawnSpy).toHaveBeenCalledTimes(1);
-    // Latest pushText call should reflect the cleared keyword.
-    expect(adapter.getText()).toBe('in Paris 15°C cloudy');
+    expect(adapter.getText()).toBe('15°C cloudy');
   });
 
-  it('async path: no clear when blankClearKeywords is unset (existing behaviour preserved)', async () => {
+  it('async path: a BARE shaped get keeps the keyword as a label', async () => {
     const PLAIN = `---
 type: blank
 name: weather2
 blankKeywords: weather
-blankProximity: 10
 blankScript: ./weather.sh
 ---
 `;
@@ -703,44 +698,19 @@ blankScript: ./weather.sh
       result: Promise.resolve({ exitCode: 0, stdout: '15°C cloudy', stderr: '', timedOut: false }),
       kill: () => {},
     }));
-    adapter.pushText('weather in Paris _');
+    adapter.pushText('weather _');
     await new Promise(r => setTimeout(r, 0));
-    // Keyword preserved; only `_` is replaced. Splice path keeps original spacing.
-    expect(adapter.getText()).toBe('weather in Paris 15°C cloudy');
+    // Bare get (no captured arg) → keyword kept as the label, `_` filled.
+    expect(adapter.getText()).toBe('weather 15°C cloudy');
   });
 
-  it('sync path: blankKeywordExpansions replaces short-form keyword with long form', async () => {
-    const EXP_CTRL = `---
-type: blank
-name: greeting
-blankKeywords: hi
-blankProximity: 10
-stepValues: ["world"]
-blankKeywordExpansions.hi: Hello
----
-`;
-    const adapter = new MockAdapter({
-      cwd: '/proj',
-      files: { '/mock/CUES.md': TIPS, '/proj/blanks/greeting/BLANK.md': EXP_CTRL },
-    });
-    adapter.pushText('hi ');
-    const loader = new ConfigLoader(adapter);
-    await loader.load();
-    const bf = new BlankFill(adapter, loader);
-    bf.subscribe();
-    expect(bf.onUnderscoreKey(makeKeyEvent('hi ', 3))).toBe(true);
-    expect(adapter.setTextCalls.at(-1)).toBe('Hello world');
-  });
-
-  it('sync path: blankClearKeywords wins when both clear + expansion are set', async () => {
+  it('sync path: blankClearKeywords drops the keyword on a list blank', async () => {
     const BOTH = `---
 type: blank
 name: bye
 blankKeywords: bye
-blankProximity: 10
 stepValues: ["see ya"]
 blankClearKeywords: true
-blankKeywordExpansions.bye: Goodbye
 ---
 `;
     const adapter = new MockAdapter({
@@ -753,128 +723,8 @@ blankKeywordExpansions.bye: Goodbye
     const bf = new BlankFill(adapter, loader);
     bf.subscribe();
     expect(bf.onUnderscoreKey(makeKeyEvent('bye ', 4))).toBe(true);
-    // Goodbye is suppressed because clear wins.
+    // Keyword cleared → just the value.
     expect(adapter.setTextCalls.at(-1)).toBe('see ya');
-  });
-
-  it('async path: blankKeywordExpansions applies after script result', async () => {
-    const EXP_CTRL = `---
-type: blank
-name: stocks
-blankKeywords: rddt
-blankProximity: 10
-blankScript: ./stocks.sh
-blankKeywordExpansions.rddt: Reddit
----
-`;
-    const adapter = new MockAdapter({
-      cwd: '/proj',
-      files: { '/mock/CUES.md': TIPS, '/proj/blanks/stocks/BLANK.md': EXP_CTRL },
-    });
-    const loader = new ConfigLoader(adapter);
-    await loader.load();
-    const bf = new BlankFill(adapter, loader);
-    bf.subscribe();
-    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
-      result: Promise.resolve({ exitCode: 0, stdout: '$180.50', stderr: '', timedOut: false }),
-      kill: () => {},
-    }));
-    adapter.pushText('rddt _');
-    await new Promise(r => setTimeout(r, 0));
-    expect(adapter.getText()).toBe('Reddit $180.50');
-  });
-
-  it('async path: blankConsumeContext drops keyword and context words around the blank', async () => {
-    const ANSWER_CTRL = `---
-type: blank
-name: answer
-blankKeywords: how to say
-blankProximity: 10
-blankScript: ./answer.sh
-blankConsumeContext: true
-blankClearKeywords: true
----
-`;
-    const adapter = new MockAdapter({
-      cwd: '/proj',
-      files: { '/mock/CUES.md': TIPS, '/proj/blanks/answer/BLANK.md': ANSWER_CTRL },
-    });
-    const loader = new ConfigLoader(adapter);
-    await loader.load();
-    const bf = new BlankFill(adapter, loader);
-    bf.subscribe();
-    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
-      result: Promise.resolve({ exitCode: 0, stdout: 'glad', stderr: '', timedOut: false }),
-      kill: () => {},
-    }));
-    adapter.pushText('how to say happy _');
-    await new Promise(r => setTimeout(r, 0));
-    expect(adapter.getText()).toBe('glad');
-  });
-
-  it('sync path: blankConsumeContext drops keyword and context words around the blank', async () => {
-    const CTX_CTRL = `---
-type: blank
-name: ctxsync
-blankKeywords: how to say
-blankProximity: 10
-stepValues: ["hi"]
-blankConsumeContext: true
----
-`;
-    const adapter = new MockAdapter({
-      cwd: '/proj',
-      files: { '/mock/CUES.md': TIPS, '/proj/blanks/ctxsync/BLANK.md': CTX_CTRL },
-    });
-    adapter.pushText('how to say hello ');
-    const loader = new ConfigLoader(adapter);
-    await loader.load();
-    const bf = new BlankFill(adapter, loader);
-    bf.subscribe();
-    expect(bf.onUnderscoreKey(makeKeyEvent('how to say hello ', 17))).toBe(true);
-    expect(adapter.setTextCalls.at(-1)).toBe('hi');
-  });
-
-  it('async path: blankConsumeAll replaces entire input with first stdout line', async () => {
-    const PROMPT_CTRL = `---
-type: blank
-name: prompt
-blankKeywords: improve prompt
-blankProximity: 10
-blankScript: ./prompt.sh
-blankConsumeAll: true
-blankClearKeywords: true
----
-`;
-    const adapter = new MockAdapter({
-      cwd: '/proj',
-      files: { '/mock/CUES.md': TIPS, '/proj/blanks/prompt/BLANK.md': PROMPT_CTRL },
-    });
-    const loader = new ConfigLoader(adapter);
-    await loader.load();
-    const consumeAll = new SpanFillState();
-    const bf = new BlankFill(adapter, loader, consumeAll);
-    bf.subscribe();
-    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
-      result: Promise.resolve({
-        exitCode: 0,
-        stdout: 'Improved version one\nImproved version two\nImproved version three\n',
-        stderr: '',
-        timedOut: false,
-      }),
-      kill: () => {},
-    }));
-    adapter.pushText('improve prompt write code _');
-    await new Promise(r => setTimeout(r, 0));
-    // First line replaces ALL — keyword/context all gone.
-    expect(adapter.getText()).toBe('Improved version one');
-    // Stash carries 3 alternatives starting at currentAltIndex 0.
-    expect(consumeAll.current).toMatchObject({
-      index: 0,
-      alternatives: ['Improved version one', 'Improved version two', 'Improved version three'],
-      currentAltIndex: 0,
-      spanLength: 3,
-    });
   });
 
   it('async path: dispatches via blankInvoke when blank has no blankScript (runtime-hoisted blank)', async () => {
@@ -913,82 +763,6 @@ blankAutoPopulate: true
     expect(adapter.blankInvokeCalls.length).toBe(1);
     // Keyword stays (no blankClearKeywords) — `_` is replaced with stdout.
     expect(adapter.getText()).toBe('hn top story title');
-  });
-
-  it('async path: blankConsumeAll via blankInvoke replaces input and stashes alts (chrome path)', async () => {
-    // Pins the chrome prompt-improver path: a sandboxed host
-    // (blankInvoke, no spawnProcess) MUST get the same consume-all
-    // behaviour as the shell-spawn path. Regression guard for
-    // "improve prompt resolves to original word" + "spans break on
-    // multi-word fills" — both happened when the runtime didn't reach
-    // the consume-all branch under blankInvoke routing.
-    const PROMPT_CTRL = `---
-type: blank
-name: prompt
-blankKeywords: improve prompt
-blankProximity: 10
-blankScript: ./prompt.sh
-blankConsumeAll: true
-blankClearKeywords: true
----
-`;
-    const adapter = new MockAdapter({
-      cwd: '/proj',
-      files: { '/mock/CUES.md': TIPS, '/proj/blanks/prompt/BLANK.md': PROMPT_CTRL },
-    });
-    adapter.stubBlankInvoke(
-      'prompt:get',
-      'Improved version one\nImproved version two\nImproved version three\n',
-    );
-    const loader = new ConfigLoader(adapter);
-    await loader.load();
-    const consumeAll = new SpanFillState();
-    const bf = new BlankFill(adapter, loader, consumeAll);
-    bf.subscribe();
-    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
-    adapter.pushText('improve prompt write code _');
-    await new Promise(r => setTimeout(r, 0));
-    // Sandboxed host: blankInvoke wins, spawnProcess never called.
-    expect(spawnSpy).not.toHaveBeenCalled();
-    expect(adapter.blankInvokeCalls.length).toBe(1);
-    // Buffer replaced with first alt.
-    expect(adapter.getText()).toBe('Improved version one');
-    // Span fill stashed with all three alts so cycling Up/Down rotates them.
-    expect(consumeAll.current).toMatchObject({
-      index: 0,
-      alternatives: ['Improved version one', 'Improved version two', 'Improved version three'],
-      currentAltIndex: 0,
-      spanLength: 3,
-    });
-  });
-
-  it('async path: blankConsumeAll with single-line stdout fills but does not stash', async () => {
-    const PROMPT_CTRL = `---
-type: blank
-name: prompt
-blankKeywords: improve prompt
-blankProximity: 10
-blankScript: ./prompt.sh
-blankConsumeAll: true
----
-`;
-    const adapter = new MockAdapter({
-      cwd: '/proj',
-      files: { '/mock/CUES.md': TIPS, '/proj/blanks/prompt/BLANK.md': PROMPT_CTRL },
-    });
-    const loader = new ConfigLoader(adapter);
-    await loader.load();
-    const consumeAll = new SpanFillState();
-    const bf = new BlankFill(adapter, loader, consumeAll);
-    bf.subscribe();
-    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
-      result: Promise.resolve({ exitCode: 0, stdout: 'lone improvement', stderr: '', timedOut: false }),
-      kill: () => {},
-    }));
-    adapter.pushText('improve prompt foo _');
-    await new Promise(r => setTimeout(r, 0));
-    expect(adapter.getText()).toBe('lone improvement');
-    expect(consumeAll.current).toBeNull();
   });
 
   it('multi-word stepValues fill registers a SpanFillState entry', async () => {
@@ -1063,7 +837,7 @@ blankKeywords: affirm
 blankProximity: 10
 stepValues: ["I am strong", "I am brave"]
 blankDismissible: true
-blankTip: Daily affirmations
+tip: Daily affirmations
 ---
 `;
     const adapter = new MockAdapter({
@@ -1083,7 +857,7 @@ blankTip: Daily affirmations
       cursorOffset: 7,
     });
     expect(span.current?.alternatives).toEqual(['I am strong', 'I am brave', '_']);
-    expect(span.current?.blankTip).toBe('Daily affirmations');
+    expect(span.current?.tip).toBe('Daily affirmations');
   });
 
   it('dismissed slot blocks sync auto-populate on subsequent _ key', async () => {
@@ -1151,7 +925,7 @@ blankKeywords: hn
 blankProximity: 10
 blankScript: ./hn.sh
 blankDismissible: true
-blankTip: Hacker News
+tip: Hacker News
 ---
 `;
     const adapter = new MockAdapter({
@@ -1181,7 +955,7 @@ blankTip: Hacker News
       'third story title',
       '_', // dismissible appended
     ]);
-    expect(span.current?.blankTip).toBe('Hacker News');
+    expect(span.current?.tip).toBe('Hacker News');
     expect(span.current?.spanLength).toBe(3);
   });
 
@@ -1413,15 +1187,13 @@ blankClearOnEdit: true
       result: Promise.resolve({ exitCode: 0, stdout: 'voice-mode\tactive', stderr: '', timedOut: false }),
       kill: () => {},
     }));
-    // Surround the keyword with text on both sides.
-    adapter.pushText('before cfg _ after');
+    // Shaped command leads the line, `_` at the end.
+    adapter.pushText('cfg _');
     await new Promise(r => setTimeout(r, 0));
-    // Keyword stays (no blankClearKeywords), pair filled.
-    expect(adapter.getText()).toBe('before cfg voice-mode active after');
-    // User edits inside pair (capital E).
-    adapter.pushText('before cfg voicE-mode active after');
-    // Pair removed; "before cfg " and " after" preserved.
-    expect(adapter.getText()).toBe('before cfg  after');
+    // Keyword stays (bare get keeps the label), satellite pair filled.
+    expect(adapter.getText()).toBe('cfg voice-mode active');
+    // User edits inside the pair (capital E) → clearOnEdit wipes the pair.
+    adapter.pushText('cfg voicE-mode active');
     expect(ss.current).toBeNull();
   });
 
@@ -1485,96 +1257,6 @@ blankSatellite: true
     // Falls through to single-fill splice path; no satellite stash.
     expect(ss.current).toBeNull();
     expect(adapter.getText()).toContain('just-one-token');
-  });
-
-  it('span-fill invalidation: user editing the consume-all text clears the stash', async () => {
-    const PROMPT_CTRL = `---
-type: blank
-name: prompt
-blankKeywords: improve prompt
-blankProximity: 10
-blankScript: ./prompt.sh
-blankConsumeAll: true
----
-`;
-    const adapter = new MockAdapter({
-      cwd: '/proj',
-      files: { '/mock/CUES.md': TIPS, '/proj/blanks/prompt/BLANK.md': PROMPT_CTRL },
-    });
-    const loader = new ConfigLoader(adapter);
-    await loader.load();
-    const consumeAll = new SpanFillState();
-    const bf = new BlankFill(adapter, loader, consumeAll);
-    bf.subscribe();
-    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
-      result: Promise.resolve({
-        exitCode: 0,
-        stdout: 'first alt\nsecond alt\nthird alt',
-        stderr: '',
-        timedOut: false,
-      }),
-      kill: () => {},
-    }));
-    adapter.pushText('improve prompt foo _');
-    await new Promise(r => setTimeout(r, 0));
-    expect(consumeAll.current).not.toBeNull();
-    // User types something — text differs from lastFilledText.
-    adapter.pushText('first alt edited');
-    expect(consumeAll.current).toBeNull();
-  });
-
-  it('span-fill invalidation: matching text (e.g. after a cycle) keeps the stash', async () => {
-    const PROMPT_CTRL = `---
-type: blank
-name: prompt
-blankKeywords: improve prompt
-blankProximity: 10
-blankScript: ./prompt.sh
-blankConsumeAll: true
----
-`;
-    const adapter = new MockAdapter({
-      cwd: '/proj',
-      files: { '/mock/CUES.md': TIPS, '/proj/blanks/prompt/BLANK.md': PROMPT_CTRL },
-    });
-    const loader = new ConfigLoader(adapter);
-    await loader.load();
-    const consumeAll = new SpanFillState();
-    const bf = new BlankFill(adapter, loader, consumeAll);
-    bf.subscribe();
-    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
-      result: Promise.resolve({ exitCode: 0, stdout: 'first\nsecond', stderr: '', timedOut: false }),
-      kill: () => {},
-    }));
-    adapter.pushText('improve prompt foo _');
-    await new Promise(r => setTimeout(r, 0));
-    // Simulate Cycling updating lastFilledText then pushing matching text.
-    consumeAll.set(consumeAll.current, 'second');
-    adapter.pushText('second');
-    expect(consumeAll.current).not.toBeNull();
-  });
-
-  it('honours blankAutoPopulate: false on the blank', async () => {
-    const NO_AUTO = `---
-type: blank
-name: noauto
-blankKeywords: noauto
-blankProximity: 10
-stepValues: ["X"]
-blankAutoPopulate: false
----
-`;
-    const adapter = new MockAdapter({
-      cwd: '/proj',
-      files: { '/mock/CUES.md': TIPS, '/proj/blanks/noauto/BLANK.md': NO_AUTO },
-    });
-    adapter.pushText('noauto ');
-    const loader = new ConfigLoader(adapter);
-    await loader.load();
-    const bf = new BlankFill(adapter, loader);
-    bf.subscribe();
-    expect(bf.onUnderscoreKey(makeKeyEvent('noauto ', 7))).toBe(false);
-    expect(adapter.setTextCalls).toHaveLength(0);
   });
 
   // Keyword-blank clearOnEdit (non-selector/satellite path). Mirrors
@@ -1659,177 +1341,26 @@ ignore: []
     });
   });
 
-  // ─── blankReplace: keep | wipe | wipe-all | auto ─────────────────────
+  // ─── Shape-routed keyword blank (keywords desugar to shapes) ─────────
   //
-  // The unified replacement-mode field. When set, overrides the legacy
-  // flag path (blankConsumeAll / blankConsumeContext / blankClearKeywords).
-  // `auto` applies the fluid heuristic: copula/equation/question
-  // marker before `_` → keep, else → wipe.
-  describe('blankReplace mode (unified replacement field)', () => {
-    // Use a synthetic `demo` keyword so the test fixture doesn't
-    // collide conceptually with the real claude-status blank (whose
-    // keywords are "is claude down", "claude status", etc.).
-    function makeBlank(replaceMode: 'keep' | 'wipe' | 'wipe-all' | 'auto'): string {
-      return `---
-type: blank
-name: demo
-blankKeywords: demo
-blankProximity: 10
-blankScript: ./demo.sh
-blankReplace: ${replaceMode}
----
-`;
-    }
+  // Keywords are the friendly shorthand; they desugar to anchored shapes,
+  // the single routing mechanism. A command must LEAD its line with `_` at
+  // the end. A captured arg clears the whole command span; a bare get keeps
+  // the keyword as a label. Prose that merely mentions the keyword mid-line
+  // never fires (de-greedy — there's no loose keyword window anymore).
+  describe('shape-routed keyword blank', () => {
     const TIPS_MIN = `---
 ignore: []
 ---
 
 ## Tips
 `;
-    function setup(replaceMode: 'keep' | 'wipe' | 'wipe-all' | 'auto') {
-      const adapter = new MockAdapter({
-        cwd: '/proj',
-        files: { '/mock/CUES.md': TIPS_MIN, '/proj/blanks/demo/BLANK.md': makeBlank(replaceMode) },
-      });
-      const loader = new ConfigLoader(adapter);
-      const bf = new BlankFill(adapter, loader);
-      const spawnSpy = vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
-        result: Promise.resolve({ exitCode: 0, stdout: 'OK', stderr: '', timedOut: false }),
-        kill: () => {},
-      }));
-      return { adapter, loader, bf, spawnSpy };
-    }
-
-    it('keep: only `_` is replaced; keyword + context stays', async () => {
-      const { adapter, loader, bf } = setup('keep');
-      await loader.load();
-      bf.subscribe();
-      adapter.pushText('demo of x _');
-      await new Promise(r => setTimeout(r, 0));
-      expect(adapter.getText()).toBe('demo of x OK');
-    });
-
-    it('wipe: keyword + context + `_` all become the answer', async () => {
-      const { adapter, loader, bf } = setup('wipe');
-      await loader.load();
-      bf.subscribe();
-      adapter.pushText('demo of x _');
-      await new Promise(r => setTimeout(r, 0));
-      expect(adapter.getText()).toBe('OK');
-    });
-
-    it('wipe-all: entire buffer becomes the answer', async () => {
-      const { adapter, loader, bf } = setup('wipe-all');
-      await loader.load();
-      bf.subscribe();
-      adapter.pushText('hello world demo _ more text after');
-      await new Promise(r => setTimeout(r, 0));
-      expect(adapter.getText()).toBe('OK');
-    });
-
-    it('auto: bare keyword phrase ("demo _") → wipe', async () => {
-      const { adapter, loader, bf } = setup('auto');
-      await loader.load();
-      bf.subscribe();
-      adapter.pushText('demo _');
-      await new Promise(r => setTimeout(r, 0));
-      expect(adapter.getText()).toBe('OK');
-    });
-
-    it('auto: copula before `_` ("demo is _") → keep', async () => {
-      const { adapter, loader, bf } = setup('auto');
-      await loader.load();
-      bf.subscribe();
-      adapter.pushText('demo is _');
-      await new Promise(r => setTimeout(r, 0));
-      expect(adapter.getText()).toBe('demo is OK');
-    });
-
-    it('auto: every copula variant immediately before `_` → keep', async () => {
-      // Exercise all copulas the heuristic recognises (is/are/was/were/
-      // am/be/equals). One blank per case for isolation.
-      for (const cop of ['are', 'was', 'were', 'am', 'be', 'equals']) {
-        const { adapter, loader, bf } = setup('auto');
-        await loader.load();
-        bf.subscribe();
-        adapter.pushText(`demo ${cop} _`);
-        await new Promise(r => setTimeout(r, 0));
-        expect(adapter.getText()).toBe(`demo ${cop} OK`);
-      }
-    });
-
-    it('auto: text BEFORE the keyword stays put when bare → wipe drops keyword + context only', async () => {
-      // "hello world demo _" — preceding "hello world" is NOT part
-      // of the keyword/context window; only "demo _" is wiped.
-      const { adapter, loader, bf } = setup('auto');
-      await loader.load();
-      bf.subscribe();
-      adapter.pushText('hello world demo _');
-      await new Promise(r => setTimeout(r, 0));
-      expect(adapter.getText()).toBe('hello world OK');
-    });
-
-    it('auto: text BEFORE the keyword stays put when copula → keep', async () => {
-      // "hello world demo is _" — heuristic detects "is _", FILL
-      // mode, only `_` is replaced.
-      const { adapter, loader, bf } = setup('auto');
-      await loader.load();
-      bf.subscribe();
-      adapter.pushText('hello world demo is _');
-      await new Promise(r => setTimeout(r, 0));
-      expect(adapter.getText()).toBe('hello world demo is OK');
-    });
-
-    it('auto: mid-phrase "are" (not adjacent to `_`) → wipe', async () => {
-      const { adapter, loader, bf } = setup('auto');
-      await loader.load();
-      bf.subscribe();
-      // "are" appears but not adjacent to `_` → heuristic returns WIPE.
-      adapter.pushText('demo reports are urgent _');
-      await new Promise(r => setTimeout(r, 0));
-      expect(adapter.getText()).toBe('OK');
-    });
-
-    it('auto: equation marker before `_` ("demo = _") → keep', async () => {
-      const { adapter, loader, bf } = setup('auto');
-      await loader.load();
-      bf.subscribe();
-      adapter.pushText('demo = _');
-      await new Promise(r => setTimeout(r, 0));
-      expect(adapter.getText()).toBe('demo = OK');
-    });
-
-    it('auto: question marker before `_` ("demo was what ? _") → keep', async () => {
-      const { adapter, loader, bf } = setup('auto');
-      await loader.load();
-      bf.subscribe();
-      // Use a whitespace-separated `?` so splitWords keeps the keyword
-      // intact (a glued "demo?" wouldn't match the blank's keyword).
-      adapter.pushText('demo was what ? _');
-      await new Promise(r => setTimeout(r, 0));
-      expect(adapter.getText()).toBe('demo was what ? OK');
-    });
-
-    it('auto: multi-word context ("demo of x _") → wipe', async () => {
-      const { adapter, loader, bf } = setup('auto');
-      await loader.load();
-      bf.subscribe();
-      adapter.pushText('demo of x _');
-      await new Promise(r => setTimeout(r, 0));
-      expect(adapter.getText()).toBe('OK');
-    });
-
-    it('explicit `blankReplace` overrides legacy `blankClearKeywords`', async () => {
-      // Set both — blankReplace: keep should win even though
-      // legacy clearKeywords:true would normally drop the keyword.
+    function setup() {
       const blankMd = `---
 type: blank
 name: demo
 blankKeywords: demo
-blankProximity: 10
 blankScript: ./demo.sh
-blankReplace: keep
-blankClearKeywords: true
 ---
 `;
       const adapter = new MockAdapter({
@@ -1842,43 +1373,63 @@ blankClearKeywords: true
         result: Promise.resolve({ exitCode: 0, stdout: 'OK', stderr: '', timedOut: false }),
         kill: () => {},
       }));
+      return { adapter, loader, bf };
+    }
+
+    it('captured arg clears the whole command span', async () => {
+      const { adapter, loader, bf } = setup();
+      await loader.load();
+      bf.subscribe();
+      adapter.pushText('demo of x _');
+      await new Promise(r => setTimeout(r, 0));
+      expect(adapter.getText()).toBe('OK');
+    });
+
+    it('bare get keeps the keyword as a label', async () => {
+      const { adapter, loader, bf } = setup();
       await loader.load();
       bf.subscribe();
       adapter.pushText('demo _');
       await new Promise(r => setTimeout(r, 0));
-      // keep wins → keyword stays.
       expect(adapter.getText()).toBe('demo OK');
+    });
+
+    it('de-greedy: keyword mid-line (not leading) does NOT fire', async () => {
+      const { adapter, loader, bf } = setup();
+      await loader.load();
+      bf.subscribe();
+      adapter.pushText('hello world demo _');
+      await new Promise(r => setTimeout(r, 0));
+      // "demo" doesn't lead the line → no shape match → nothing fires.
+      expect(adapter.getText()).toBe('hello world demo _');
     });
   });
 });
 
 describe('BlankFill result cache (skip spawn on repeat invocation within TTL)', () => {
-  // Mirror the proven `blankReplace` block's setup pattern exactly —
-  // same TIPS_MIN, same makeBlank shape, spy installed BEFORE
-  // loader.load + bf.subscribe inside setup, test then awaits load +
-  // subscribe.
+  // Spy installed BEFORE loader.load + bf.subscribe inside setup; test
+  // then awaits load + subscribe. FILL is the default mode now (no
+  // replace dial needed).
   const TIPS_MIN = `---
 ignore: []
 ---
 `;
 
-  function makeBlank(opts: { ttl?: number } = {}): string {
-    const ttlLine = opts.ttl !== undefined ? `\nblankCacheTtlMs: ${opts.ttl}` : '';
+  function makeBlank(): string {
     return `---
 type: blank
 name: demo
 blankKeywords: demo
 blankProximity: 10
 blankScript: ./demo.sh
-blankReplace: keep${ttlLine}
 ---
 `;
   }
 
-  function makeScenario(opts: { ttl?: number } = {}) {
+  function makeScenario() {
     const adapter = new MockAdapter({
       cwd: '/proj',
-      files: { '/mock/CUES.md': TIPS_MIN, '/proj/blanks/demo/BLANK.md': makeBlank(opts) },
+      files: { '/mock/CUES.md': TIPS_MIN, '/proj/blanks/demo/BLANK.md': makeBlank() },
     });
     const loader = new ConfigLoader(adapter);
     const bf = new BlankFill(adapter, loader);
@@ -1924,30 +1475,6 @@ blankReplace: keep${ttlLine}
     expect(adapter.getText()).toBe('demo RESULT_0');
   });
 
-  it('past TTL → spawn fires again', async () => {
-    const { adapter, loader, bf, spawnSpy } = makeScenario({ ttl: 50 });
-    await loader.load();
-    bf.subscribe();
-    adapter.pushText('demo _');
-    await new Promise(r => setTimeout(r, 0));
-    expect(spawnSpy).toHaveBeenCalledTimes(1);
-    await new Promise(r => setTimeout(r, 80));   // past TTL
-    reArmAndPush(adapter, 'demo _');
-    await new Promise(r => setTimeout(r, 0));
-    expect(spawnSpy).toHaveBeenCalledTimes(2);
-    expect(adapter.getText()).toBe('demo RESULT_1');
-  });
-
-  it('blankCacheTtlMs: 0 disables the cache (every call spawns)', async () => {
-    const { adapter, loader, bf, spawnSpy } = makeScenario({ ttl: 0 });
-    await loader.load();
-    bf.subscribe();
-    adapter.pushText('demo _');
-    await new Promise(r => setTimeout(r, 0));
-    reArmAndPush(adapter, 'demo _');
-    await new Promise(r => setTimeout(r, 0));
-    expect(spawnSpy).toHaveBeenCalledTimes(2);
-  });
 
   it('failed result (exitCode !== 0) is NOT cached — next call still spawns', async () => {
     const adapter = new MockAdapter({

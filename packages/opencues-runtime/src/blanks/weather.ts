@@ -84,8 +84,8 @@ export class WeatherBlank implements Blank {
 
       const temp = `${Math.round(current.temperature_2m)}°C`;
       const desc = WMO_CODES[current.weather_code] ?? '';
-      // Embed the location so `blankReplace: auto` callers produce
-      // self-contained output when the trigger phrase is wiped.
+      // Embed the location so the output is self-contained: a shaped get
+      // clears the whole command span ("weather oslo"), leaving only this.
       const prettyLocation = location
         .split(/\s+/)
         .map(w => w.charAt(0).toUpperCase() + w.slice(1))

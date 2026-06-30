@@ -9,7 +9,7 @@
 import type { HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../adapter';
 import type { ConfigLoader } from './config-loader';
 import { splitWords } from './navigation';
-import { resolveReplaceMode, isBlankConfigCycleable, keywordInWindow, lineOfWords, type EffectiveReplaceMode } from '@opencues/core';
+import { isBlankConfigCycleable, keywordInWindow, lineOfWords, matchBlankShape } from '@opencues/core';
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
@@ -30,18 +30,12 @@ export interface BlankSlot {
   readonly keywordEnd: number;
   /** Words between keywordEnd and the `_` (0 = adjacent). */
   readonly proximity: number;
+  /** Set when this slot was claimed by a DETERMINISTIC blankShape match
+   *  (type-based routing). Carries the shape's action/value so the dispatch
+   *  runs with ZERO LLM. `shapeValue` holds the set value or step direction. */
+  readonly shapeAction?: 'get' | 'set' | 'step';
+  readonly shapeValue?: string;
 }
-
-/**
- * The decision the BlankIntent gate returns to `maybeRunScripts`.
- *   - `cede`   → suppress the blank (the keyword was prose).
- *   - `invoke` → run it. `action`/`value` are the classifier's extracted
- *     intent; `set` + a numeric `value` performs a real set on a SETTABLE
- *     blank (one with `blankStep`), otherwise the default `get` runs.
- */
-export type BlankIntentDecision =
-  | { verdict: 'cede' }
-  | { verdict: 'invoke'; action: 'get' | 'set' | 'step'; value: string | null };
 
 export class BlankFill {
   private _slots: readonly BlankSlot[] = [];
@@ -83,8 +77,8 @@ export class BlankFill {
    * Cache invariants:
    *  - GET path only — BlankFill never calls `set` here, so cached
    *    entries are always idempotent read-results.
-   *  - Per-blank TTL (frontmatter `blankCacheTtlMs`, default 2000ms,
-   *    0 disables). Tuned for "instant on re-cycle" without masking
+   *  - Fixed process-wide TTL (DEFAULT_CACHE_TTL_MS, 2000ms).
+   *    Tuned for "instant on re-cycle" without masking
    *    real-world value drift (system volume changed externally, BTC
    *    moved 30s ago). Action blanks (volume/brightness) keep the
    *    default; ambient blanks (weather/stocks) may opt for higher
@@ -116,17 +110,6 @@ export class BlankFill {
      *  for backward compat with external callers that haven't wired the
      *  shared owner). */
     blankLoading?: BlankLoadingAnimator,
-    /** BlankIntent gate (off by default; wired by boot-common only when
-     *  `blank-intent-mode: on`). Consulted in `maybeRunScripts` BEFORE a
-     *  keyword-matched script-blank runs. Returns the extracted verdict:
-     *  `cede` suppresses the blank (keyword behaves as prose); `invoke`
-     *  runs it, and for a SETTABLE blank (one with `blankStep`) an
-     *  `action: 'set'` + numeric `value` performs a real set (`volume 30
-     *  _`) instead of a get. When omitted, every keyword-matched slot runs
-     *  a plain get unconditionally (the proximity gate — today's
-     *  behaviour). NEVER throws (the classifier degrades to a get-invoke
-     *  on any LLM failure). */
-    private blankIntentGate?: (text: string, blankName: string) => Promise<BlankIntentDecision>,
   ) {
     if (blankLoading) this._loading = blankLoading;
   }
@@ -200,13 +183,51 @@ export class BlankFill {
     const cleanText = text.replace(/[\u200B\u200C]/g, '');
     const words = cleanText.split(/\s+/).filter(Boolean);
     // Per-word line numbers (same order as the flat split) for the shared
-    // line-scoped keyword window used when the BlankIntent gate is active.
+    // line-scoped keyword window.
     const lineOf = lineOfWords(cleanText);
     const slots: BlankSlot[] = [];
     for (let i = 0; i < words.length; i += 1) {
       if (words[i] !== '_') continue;
       const found = this.matchKeyword(words, i, lineOf);
       if (found) slots.push(found);
+    }
+    // TYPE-BASED ROUTING (experiment) — deterministic blankShape match. If the
+    // whole buffer matches a blank's declared invocation grammar, that blank
+    // is the unambiguous owner of the `_`: ZERO LLM, NO blankProximity. This
+    // both (a) supplies a deterministic action/value (set/step/get) and (b)
+    // CREATES the slot when keyword+proximity missed it (e.g. `volume 30 _`,
+    // where the `30` between keyword and `_` fails proximity:0). A non-match
+    // changes nothing — the `_` falls through to the normal sources.
+    const shape = matchBlankShape(cleanText, this.configLoader.blanks as ReadonlyMap<string, { blankShapes?: import('@opencues/core').BlankShape[] }>);
+    if (shape) {
+      const usIdx = words.indexOf('_');
+      if (usIdx >= 0) {
+        // Locate the blank's keyword span in the buffer so applyAsyncFill's
+        // clearing behaves exactly as the keyword path would. Shapes are
+        // anchored at the buffer start, so the keyword is at/near word 0.
+        const blankCfg = this.configLoader.blanks.get(shape.blankName) as { blankKeywords?: readonly string[] } | undefined;
+        let kwStart = 0, kwEnd = 0;
+        const kws = blankCfg?.blankKeywords ?? [];
+        outer: for (const kw of kws) {
+          const parts = kw.toLowerCase().split(/\s+/);
+          for (let i = 0; i + parts.length <= usIdx; i++) {
+            if (parts.every((p, j) => words[i + j]?.toLowerCase() === p)) { kwStart = i; kwEnd = i + parts.length - 1; break outer; }
+          }
+        }
+        const existing = slots.find(s => s.index === usIdx && s.blankName === shape.blankName);
+        if (existing) {
+          // Keyword scan already made the slot — just attach the shape verdict.
+          slots[slots.indexOf(existing)] = { ...existing, shapeAction: shape.action, shapeValue: shape.value };
+        } else {
+          // Proximity missed it — create the slot (the bypass that fixes
+          // `volume 30 _` / `brightness 50 _`).
+          slots.push({
+            index: usIdx, keyword: kws[0] ?? shape.blankName, blankName: shape.blankName,
+            keywordStart: kwStart, keywordEnd: kwEnd, proximity: Math.max(0, usIdx - kwEnd - 1),
+            shapeAction: shape.action, shapeValue: shape.value,
+          });
+        }
+      }
     }
     this._slots = slots;
     return slots;
@@ -355,6 +376,16 @@ export class BlankFill {
     const home = process.env.HOME ?? '~';
 
     for (const slot of slots) {
+      // TYPE-BASED ROUTING (opt-in per blank). A blank that DECLARES shapes is
+      // shape-gated: it fires ONLY on a deterministic shape match, so a keyword
+      // merely present in conversational prose does NOT fire it (it falls to
+      // fluid). A blank WITHOUT shapes keeps the legacy keyword behavior — so
+      // existing blanks migrate to shapes one at a time. (List/stepValues
+      // blanks are handled separately in onUnderscoreKey.)
+      {
+        const sc = this.configLoader.blanks.get(slot.blankName) as { blankShapes?: unknown[] } | undefined;
+        if (sc?.blankShapes?.length && !slot.shapeAction) continue;
+      }
       // Skip slots the user has dismissed by cycling
       // the fill back to `_`. Without this, the script re-spawns immediately
       // and the dismissal sticks for ~zero milliseconds.
@@ -363,18 +394,10 @@ export class BlankFill {
         | (Record<string, unknown> & {
             stepValues?: readonly string[];
             blankScript?: string;
-            blankAutoPopulate?: boolean;
             blankClearKeywords?: boolean;
-            model?: string;
-            apiUrl?: string;
-            apiKeyEnv?: string;
-            altCount?: number;
-            includeOriginal?: boolean;
-            prompts?: Record<string, string>;
           })
         | undefined;
       if (!blank) continue;
-      if (blank.blankAutoPopulate === false) continue;
       // stepValues path is handled synchronously in onUnderscoreKey.
       if (Array.isArray(blank.stepValues) && blank.stepValues.length > 0) continue;
       const script = blank.blankScript;
@@ -395,14 +418,20 @@ export class BlankFill {
       // `return` — it's a function body now, not the loop.)
       const doDispatch = (typedAction?: 'set' | 'step'): void => {
 
-      // Context words: every word except the matched keyword span and the blank.
-      // Index-based filter (vs v1's string-match) handles multi-word keywords
-      // correctly (multi-word keywords would be incorrectly filtered
-      // by a string-match approach).
+      // Context words: ONLY the words between the keyword and the `_` — the
+      // captured arg region (e.g. ["france"] in `capital of france _`). This
+      // mirrors the anchored shape's valueGroup. The pre-#216 collector
+      // gathered the WHOLE buffer minus the keyword span, so words from
+      // EARLIER LINES leaked in: a shaped blank's command is line-scoped (it
+      // only reaches this dispatch via a `matchBlankShape` hit — the gate
+      // above — and a shape leads + ends its own line), but the context still
+      // swept up every prior line. Live repro: a `countries` blank whose
+      // `capital of france _` sat below a paragraph of website-design prose
+      // got that whole paragraph as "context" and the script echoed back a
+      // 495-char garbage fill. Bounding context to (keywordEnd, `_`) keeps it
+      // to the actual argument; prior lines and any trailing text are excluded.
       const contextWords: string[] = [];
-      for (let wi = 0; wi < words.length; wi += 1) {
-        if (wi >= slot.keywordStart && wi <= slot.keywordEnd) continue;
-        if (wi === slot.index) continue;
+      for (let wi = slot.keywordEnd + 1; wi < slot.index; wi += 1) {
         contextWords.push(words[wi]);
       }
 
@@ -424,34 +453,13 @@ export class BlankFill {
         (typeof process !== 'undefined' && process.env) ? process.env : {};
       const declaredSecrets = (blank as { userBlankSecrets?: readonly string[] })
         .userBlankSecrets ?? [];
-      const extras: Record<string, string> = {};
-      if (blank.model) extras.CUES_MODEL = blank.model;
-      if (blank.apiUrl) extras.CUES_API_URL = blank.apiUrl;
-      if (blank.apiKeyEnv) extras.CUES_API_KEY_ENV = blank.apiKeyEnv;
-      if (blank.altCount !== undefined) extras.CUES_ALT_COUNT = String(blank.altCount);
-      if (blank.includeOriginal !== undefined) extras.CUES_INCLUDE_ORIGINAL = String(blank.includeOriginal);
-      if (blank.prompts) {
-        for (const [k, v] of Object.entries(blank.prompts)) {
-          const envKey = 'CUES_PROMPT_' + k.toUpperCase().replace(/[^A-Z0-9]/g, '_');
-          extras[envKey] = String(v);
-        }
-      }
-      const env: Record<string, string> = buildSafeScriptEnv(processEnv, declaredSecrets, extras);
+      const env: Record<string, string> = buildSafeScriptEnv(processEnv, declaredSecrets, {});
 
       // Cache lookup. Args identical to a recent call → reuse the
-      // stored stdout instead of paying the spawn cost again. Per-blank
-      // TTL via frontmatter `blankCacheTtlMs` (default 2000ms; 0 = disabled).
-      // Frontmatter parser may pass the value through as either a
-      // number or a string-of-digits depending on the YAML shape, so
-      // coerce here.
+      // stored stdout instead of paying the spawn cost again. Fixed
+      // process-wide TTL (DEFAULT_CACHE_TTL_MS).
       const cacheKey = `${slot.blankName}::${slot.keyword}|${contextWords.join('|')}`;
-      const rawTtl = (blank as { blankCacheTtlMs?: unknown }).blankCacheTtlMs;
-      const parsedTtl = typeof rawTtl === 'number'
-        ? rawTtl
-        : typeof rawTtl === 'string' && /^-?\d+$/.test(rawTtl)
-          ? parseInt(rawTtl, 10)
-          : null;
-      const ttlMs = parsedTtl !== null ? parsedTtl : BlankFill.DEFAULT_CACHE_TTL_MS;
+      const ttlMs = BlankFill.DEFAULT_CACHE_TTL_MS;
       if (ttlMs > 0) {
         const entry = this._resultCache.get(cacheKey);
         if (entry && Date.now() - entry.fetchedAt < entry.ttlMs) {
@@ -473,15 +481,26 @@ export class BlankFill {
           // see `_pendingScripts.has(dedupKey)` and skip even after the
           // cached value is fresh.
           this._pendingScripts.delete(dedupKey);
-          this.applyAsyncFill(slot, entry.output, typedAction);
-          // End the gate-window loader (started before the gate on the gated
-          // path). No-op on the ungated path, where it was never started.
-          this._loadingAnimator().stop(slot.index, 'blank-fill');
+          // Defer the fill to a macrotask. The fresh (post-spawn) path is
+          // naturally deferred via the spawn promise, so it lands AFTER the
+          // triggering keystroke's own buffer write settles. Applying the
+          // cache hit SYNCHRONOUSLY here instead races that write and gets
+          // clobbered — the cached value never appeared on a quick re-type
+          // (cache-hit-fill race). setTimeout(0) mirrors the fresh path's
+          // timing; applyAsyncFill's staleness guard still drops it if the
+          // user moved on.
+          const cachedOutput = entry.output;
+          setTimeout(() => {
+            this.applyAsyncFill(slot, cachedOutput, typedAction);
+            // End the gate-window loader (started before the gate on the
+            // gated path). No-op on the ungated path, where it was never started.
+            this._loadingAnimator().stop(slot.index, 'blank-fill');
+          }, 0);
           return;
         }
       }
 
-      this.adapter.log('debug', `BlankFill: invoke ${slot.blankName} get ${slot.keyword}`, { contextWords, envExtras: extraEnvKeys(blank), scriptPath });
+      this.adapter.log('debug', `BlankFill: invoke ${slot.blankName} get ${slot.keyword}`, { contextWords, scriptPath });
       this.adapter.emitEvent?.('blank.invoked', {
         blankName: slot.blankName,
         keyword: slot.keyword,
@@ -609,100 +628,50 @@ export class BlankFill {
 
       }; // end doDispatch
 
-      // BlankIntent gate (off by default). When wired (blank-intent-mode
-      // on, native host with a resolved blanks-bucket LLM), ask the
-      // classifier whether this `_` is a genuine invocation before running
-      // the blank. INVOKE → doDispatch(); CEDE → suppress (the keyword
-      // behaves as prose). Every slot that reaches here is an exec/fetch
-      // tier blank — list blanks (stepValues) were skipped above, and only
-      // script / impl / built-in-by-convention blanks get this far (the
-      // dispatch requires `script || canBlankInvoke`). We do NOT gate on
-      // `blankScript || impl`: the shipped fetch blanks (weather, stocks,
-      // countries, …) OMIT `impl:` and resolve to a built-in class by
-      // convention, so gating on the field would leave the entire fetch
-      // tier ungated. The classifier never throws (it degrades to invoke on
-      // any LLM failure); a thrown gate is caught here and also treated as
-      // invoke. The staleness re-check drops a verdict that arrived after
-      // the user kept typing, so we never splice a fill against a changed
-      // buffer.
-      if (this.blankIntentGate) {
-        const gate = this.blankIntentGate;
-        const gateText = text;
-        const gateBlank = blank;
+      // TYPE-BASED ROUTING — deterministic shape dispatch (ZERO LLM). When
+      // scan() tagged this slot from a blankShape match, run its action/value
+      // directly: no BlankIntent classify, no proximity. This is the measurable
+      // Tier-1 — a real set/step/get invocation resolved with no model call.
+      // Mirrors the gate's typed-set/step path, but the verdict is the regex's.
+      if (slot.shapeAction) {
+        const stepRaw0 = (blank as { blankStep?: unknown }).blankStep;
+        const stepSize0 = typeof stepRaw0 === 'number' ? stepRaw0
+          : (typeof stepRaw0 === 'string' && /^\d+$/.test(stepRaw0) ? parseInt(stepRaw0, 10) : null);
+        const settable0 = stepSize0 !== null;
+        this.adapter.log('info', `[blank-shapes] deterministic match: ${slot.blankName}/${slot.shapeAction}${slot.shapeValue ? '=' + slot.shapeValue : ''} (0 LLM)`);
+        const shapeText = text;
         void (async () => {
-          // Animate the `_` DURING the gate's LLM classification (~250-300ms),
-          // not just the post-gate dispatch — otherwise every gated script-blank
-          // (volume / weather / stocks / …) shows a dead `_` for the whole
-          // classify window (the lag users notice). Held with the SAME
-          // 'blank-fill' owner doDispatch reuses, so it animates continuously
-          // gate → dispatch → result; stopped here on any non-dispatch exit
-          // (stale / cede), and on doDispatch's cache-hit path.
           this._loadingAnimator().start(slot.index, 'blank-fill');
-          let decision: BlankIntentDecision = { verdict: 'invoke', action: 'get', value: null };
-          try {
-            decision = await gate(gateText, slot.blankName);
-          } catch (err) {
-            this.adapter.log('debug', `BlankFill: BlankIntent gate threw — degrading to get-invoke for ${slot.blankName}`, err);
-            decision = { verdict: 'invoke', action: 'get', value: null };
-          }
-          if (this._lastInputText !== gateText) {
-            this._loadingAnimator().stop(slot.index, 'blank-fill');
-            this._pendingScripts.delete(dedupKey);
-            return;
-          }
-          if (decision.verdict === 'cede') {
-            this.adapter.log('debug', `BlankFill: BlankIntent CEDE — suppressing ${slot.blankName} for "${gateText}"`);
-            this._loadingAnimator().stop(slot.index, 'blank-fill');
-            this._pendingScripts.delete(dedupKey);
-            return;
-          }
-          // Typed-SET: an `action: 'set'` + numeric value on a SETTABLE
-          // blank (one with `blankStep` — volume / brightness) performs a
-          // real set, then falls through to doDispatch's `get` to read the
-          // (possibly clamped) value back and splice it. `set` only ever
-          // reaches a blank whose keyword the user typed (consent), and
-          // only settable blanks honour it — a `set` verdict on a lookup
-          // blank (weather/stocks/…) degrades to a plain get. Non-numeric
-          // values also degrade to get (defensive; the gate extracts
-          // numbers for set but providers vary).
-          const stepRaw = (gateBlank as { blankStep?: unknown }).blankStep;
-          const stepSize = typeof stepRaw === 'number' ? stepRaw
-            : (typeof stepRaw === 'string' && /^\d+$/.test(stepRaw) ? parseInt(stepRaw, 10) : null);
-          const isSettable = stepSize !== null;
           let typedAction: 'set' | 'step' | undefined;
-          if (decision.action === 'set' && decision.value && /^\d+$/.test(decision.value.trim()) && isSettable) {
-            this.adapter.log('debug', `BlankFill: BlankIntent SET ${slot.blankName} → ${decision.value} (then read back)`);
-            await this.runBlankSet(slot.blankName, decision.value.trim(), gateBlank as Record<string, unknown>);
-            if (this._lastInputText !== gateText) { this._loadingAnimator().stop(slot.index, 'blank-fill'); this._pendingScripts.delete(dedupKey); return; }
+          if (slot.shapeAction === 'set' && slot.shapeValue && /^\d+$/.test(slot.shapeValue) && settable0) {
+            await this.runBlankSet(slot.blankName, slot.shapeValue, blank as Record<string, unknown>);
+            if (this._lastInputText !== shapeText) { this._loadingAnimator().stop(slot.index, 'blank-fill'); this._pendingScripts.delete(dedupKey); return; }
             typedAction = 'set';
-          } else if (decision.action === 'step'
-              && (decision.value === 'up' || decision.value === 'down')
-              && isSettable) {
-            // Typed-STEP: `volume up _` / `brightness down _`. The verdict
-            // is RELATIVE (no target), so read the current value, add/sub
-            // `blankStep`, clamp 0–100, and set — then doDispatch reads the
-            // new value back. Same consent + settable guards as SET; a
-            // non-numeric current (unparseable get) degrades to a plain get.
-            const current = await this.runBlankGetValue(slot.blankName, gateBlank as Record<string, unknown>);
-            if (this._lastInputText !== gateText) { this._loadingAnimator().stop(slot.index, 'blank-fill'); this._pendingScripts.delete(dedupKey); return; }
+          } else if (slot.shapeAction === 'step' && (slot.shapeValue === 'up' || slot.shapeValue === 'down') && settable0) {
+            const current = await this.runBlankGetValue(slot.blankName, blank as Record<string, unknown>);
+            if (this._lastInputText !== shapeText) { this._loadingAnimator().stop(slot.index, 'blank-fill'); this._pendingScripts.delete(dedupKey); return; }
             if (current !== null) {
-              const next = Math.max(0, Math.min(100, decision.value === 'up' ? current + stepSize! : current - stepSize!));
-              this.adapter.log('debug', `BlankFill: BlankIntent STEP ${slot.blankName} ${decision.value} → ${current}±${stepSize}=${next} (then read back)`);
-              await this.runBlankSet(slot.blankName, String(next), gateBlank as Record<string, unknown>);
-              if (this._lastInputText !== gateText) { this._loadingAnimator().stop(slot.index, 'blank-fill'); this._pendingScripts.delete(dedupKey); return; }
+              const next = Math.max(0, Math.min(100, slot.shapeValue === 'up' ? current + stepSize0! : current - stepSize0!));
+              await this.runBlankSet(slot.blankName, String(next), blank as Record<string, unknown>);
+              if (this._lastInputText !== shapeText) { this._loadingAnimator().stop(slot.index, 'blank-fill'); this._pendingScripts.delete(dedupKey); return; }
               typedAction = 'step';
             }
           }
           doDispatch(typedAction);
         })();
-      } else {
-        doDispatch();
+        continue;
       }
+
+      // Non-shaped slot (no blankShapes match tagged it). Dispatch a plain
+      // get. Shaped invocations (get/set/step) were handled + `continue`d
+      // above via the deterministic shape path; the old LLM BlankIntent gate
+      // was retired — an anchored shape match IS the invocation proof.
+      doDispatch();
     }
   }
 
   /**
-   * Dispatch a `set <value>` for a settable blank (BlankIntent typed-SET)
+   * Dispatch a `set <value>` for a settable blank (shaped typed-SET)
    * and await it, so the subsequent `get` read-back reflects the new
    * (clamped) value. Mirrors Cycling's `invokeOrSpawn('set', …)` — host-
    * native `blankInvoke` first, shell `set` fallback. The set scripts emit
@@ -742,8 +711,8 @@ export class BlankFill {
   }
 
   /**
-   * Read a settable blank's CURRENT numeric value (for BlankIntent
-   * typed-STEP, which needs `current ± blankStep`). Dispatches a `get`
+   * Read a settable blank's CURRENT numeric value (for shaped typed-STEP,
+   * which needs `current ± blankStep`). Dispatches a `get`
    * and parses the first integer out of stdout (handles "54", "54%",
    * etc.). Returns null on any failure / non-numeric output, so the
    * caller can degrade to a plain get. Host-native `blankInvoke` first,
@@ -785,6 +754,20 @@ export class BlankFill {
   }
 
   /**
+   * Apply a blank's ADDITIVE integration template to its output. The blank
+   * exposes how its output reads woven into text via `integration:` (a string
+   * with `{value}`); we render the real output through it, adding connective
+   * "fluff" AROUND the value. Add-only by construction — it only shapes the
+   * value being inserted, never the user's surrounding text. No template (or
+   * empty value) → the value passes through unchanged.
+   */
+  private renderIntegration(blank: Record<string, unknown> | undefined, value: string): string {
+    const tpl = blank?.integration as string | undefined;
+    if (!tpl || !value || !tpl.includes('{value}')) return value;
+    return tpl.replace(/\{value\}/g, value);
+  }
+
+  /**
    * Apply an async fill: re-read the host's text via getText, find the
    * matching `_` at the slot's word index, splice stdout in. Push via
    * adapter.pushText (calls onChange), since this runs outside any
@@ -798,17 +781,13 @@ export class BlankFill {
     const blank = this.configLoader.blanks.get(slot.blankName) as
       | (Record<string, unknown> & {
           blankClearKeywords?: boolean;
-          blankConsumeContext?: boolean;
-          blankConsumeAll?: boolean;
           blankDismissible?: boolean;
           blankSatellite?: boolean;
           blankSatelliteSeparator?: string;
           blankClearOnEdit?: boolean;
           blankScript?: string;
-          blankTip?: string;
           blankSuffix?: string;
           tip?: string;
-          blankKeywordExpansions?: Record<string, string>;
         })
       | undefined;
 
@@ -853,69 +832,53 @@ export class BlankFill {
       primaryFill = primaryFill + blank.blankSuffix;
     }
 
-    // Typed-SET/STEP final-state render. Mirror config-intent's
-    // "<setting> <value>" display: keep the keyword as the label and show
-    // the read-back value as its value, so "volume 40 _" → "volume 40%".
-    // The value shown is the read-back (post-clamp), not the typed input,
-    // so "volume 150 _" lands as "volume 100%". The typed value word(s)
-    // between keyword and `_` are consumed by the clearEnd override below.
-    if (typedAction) {
+    // ADDITIVE integration template: when the blank declares `integration:`
+    // with a `{value}` slot, wrap the (already-suffixed) output in that
+    // connective text — "30%" → "volume is now 30%". The template IS the
+    // rendering, so it SUPERSEDES the typed-action "<keyword> <value>"
+    // default below. Add-only by construction: it only shapes the inserted
+    // value, never the user's surrounding text. The keyword + typed value
+    // words are still consumed by the clearEnd override (typedAction path)
+    // or the blank's replace flags (get path), so no command prefix survives.
+    const hasIntegration = typeof blank?.integration === 'string'
+      && (blank.integration as string).includes('{value}');
+    if (hasIntegration) {
+      primaryFill = this.renderIntegration(blank as Record<string, unknown>, primaryFill);
+    } else if (typedAction) {
+      // Typed-SET/STEP final-state render. Mirror config-intent's
+      // "<setting> <value>" display: keep the keyword as the label and show
+      // the read-back value as its value, so "volume 40 _" → "volume 40%".
+      // The value shown is the read-back (post-clamp), not the typed input,
+      // so "volume 150 _" lands as "volume 100%". The typed value word(s)
+      // between keyword and `_` are consumed by the clearEnd override below.
       primaryFill = `${slot.keyword} ${primaryFill}`;
     }
 
-    // New unified `blankReplace` field, when set explicitly, supersedes
-    // the legacy flag path (consumeAll/consumeContext/clearKeywords).
-    // Resolves via the fluid heuristic when set to 'auto'. Existing
-    // blanks with no `blankReplace` continue to use the legacy flags
-    // unchanged — this is purely additive.
-    const blankFlags = blank as
-      | (Record<string, unknown> & {
-          blankReplace?: 'keep' | 'wipe' | 'wipe-all' | 'auto';
-          blankConsumeAll?: boolean;
-          blankConsumeContext?: boolean;
-          blankClearKeywords?: boolean;
-        })
-      | undefined;
-    const explicitMode: EffectiveReplaceMode | null = blankFlags?.blankReplace !== undefined
-      ? resolveReplaceMode(blankFlags, cleaned)
-      : null;
-
-    // Consume-all short-circuits the splice/expand/clear pipeline.
-    if (explicitMode === 'wipe-all' || (explicitMode === null && blank?.blankConsumeAll === true)) {
-      this.adapter.log('info', `BlankFill: consume-all ${slot.blankName} → "${preview(primaryFill, 60)}" (${lines.length} alt(s))`);
-      const newText = primaryFill;
-      const newCursor = newText.length;
-      const altsForSpan = isDismissible ? [...lines, '_'] : lines;
-      if (this.spanFillState && altsForSpan.length > 1) {
-        this.spanFillState.set({
-          index: 0,
-          alternatives: altsForSpan,
-          currentAltIndex: 0,
-          spanLength: newText.split(/\s+/).filter(Boolean).length,
-          blankTip: blank?.blankTip ?? blank?.tip,
-        }, newText);
-      } else if (this.spanFillState) {
-        this.spanFillState.clear();
-      }
-      if (this.adapter.pushText) {
-        this.adapter.pushText(newText, newCursor);
-      } else {
-        this.adapter.setText(newText);
-        this.adapter.setCursorOffset(newCursor);
-        this.adapter.forceRender();
-      }
-      return;
-    }
-
-    const baseRange = explicitMode !== null
-      ? computeFillRangeForMode(blank ?? {}, slot, explicitMode)
+    // FILL is the only mode. The destructive replace dials (blankReplace /
+    // blankConsumeContext / blankConsumeAll) are gone — a blank can only ever
+    // FILL the `_` or clear the COMMAND span it owns, never a heuristic span
+    // over surrounding prose. The clear span is SHAPE-DERIVED, and we only
+    // clear it when the output is SELF-CONTAINED:
+    //
+    //   - typed set/step ("volume 40 _") — the fill re-includes the keyword
+    //     as a label ("volume 40%") or the integration template renders it.
+    //   - an integration template is present — the template IS the rendering
+    //     ("volume is now 30%"), so the typed keyword must go.
+    //   - the shape captured an ARG ("weather oslo _", "nvda _", "define X _")
+    //     — the arg was part of the query and the output embeds it, so the
+    //     whole "<keyword> <arg>" command span is consumed.
+    //
+    // A BARE keyword GET with no captured arg and no integration ("brightness
+    // _") instead just FILLs the `_`, KEEPING the keyword as the label
+    // ("brightness 50%") — clearing it would strand a context-free value.
+    // Legacy non-shaped keyword blanks fall through to the gentle
+    // keyword-clear path (blankClearKeywords); plain `_` in prose just
+    // fills at the cursor.
+    const shapeCapturedArg = slot.shapeValue !== undefined && slot.shapeValue.length > 0;
+    const clearsCommandSpan = typedAction !== undefined || hasIntegration || shapeCapturedArg;
+    const { clearEnd } = clearsCommandSpan
+      ? { clearEnd: slot.index - 1 }
       : computeFillRange(blank ?? {}, slot);
-    // Typed-SET/STEP consumes keyword + typed value words (the fill above
-    // already re-includes the keyword as its label), so the value word
-    // isn't orphaned: "volume 40 _" → "volume 40%", not "volume 40 40%".
-    const { clearEnd, expansion } = typedAction
-      ? { clearEnd: slot.index - 1, expansion: undefined as string | undefined }
-      : baseRange;
     this.adapter.log('info', `BlankFill: substituting "${slot.keyword} _" → "${preview(primaryFill, 60)}" (blank=${slot.blankName}${typedAction ? `, typed-${typedAction}` : ''}${lines.length > 1 ? `, ${lines.length} alt(s)` : ''}${isDismissible ? ', dismissible' : ''})`);
     this.adapter.emitEvent?.('blank.substituted', {
       blankName: slot.blankName,
@@ -932,8 +895,8 @@ export class BlankFill {
       spanAsUnit: blank?.blankClearOnEdit === true,
     });
 
-    const { newText, newCursor } = clearEnd !== undefined || expansion != null
-      ? buildClearKeywordText(cleaned, slot, primaryFill, expansion, clearEnd)
+    const { newText, newCursor } = clearEnd !== undefined
+      ? buildClearKeywordText(cleaned, slot, primaryFill, clearEnd)
       : { newText: cleaned.slice(0, target.start) + primaryFill + cleaned.slice(target.end),
           newCursor: target.start + primaryFill.length };
 
@@ -966,7 +929,7 @@ export class BlankFill {
           alternatives: altsForSpan,
           currentAltIndex: 0,
           spanLength: Math.max(1, fillWordCount),
-          blankTip: blank?.blankTip ?? blank?.tip,
+          tip: blank?.tip,
           clearOnEdit: wantsClearOnEdit,
           pairCharStart: wantsClearOnEdit ? kwStartChar : undefined,
           pairCharEnd: wantsClearOnEdit ? newCursor : undefined,
@@ -1202,12 +1165,10 @@ export class BlankFill {
     slot: BlankSlot,
     blank: {
       blankClearKeywords?: boolean;
-      blankConsumeContext?: boolean;
       blankSatellite?: boolean;
       blankSatelliteSeparator?: string;
       blankClearOnEdit?: boolean;
       blankScript?: string;
-      blankKeywordExpansions?: Record<string, string>;
     },
     fillValue: string,
     cleaned: string,
@@ -1219,9 +1180,9 @@ export class BlankFill {
     if (!selectorRaw || !satelliteRaw) return;
     const sep = blank.blankSatelliteSeparator || ' ';
     const pair = `${selectorRaw}${sep}${satelliteRaw}`;
-    const { clearEnd, expansion } = computeFillRange(blank, slot);
-    const { newText, newCursor } = clearEnd !== undefined || expansion != null
-      ? buildClearKeywordText(cleaned, slot, pair, expansion, clearEnd)
+    const { clearEnd } = computeFillRange(blank, slot);
+    const { newText, newCursor } = clearEnd !== undefined
+      ? buildClearKeywordText(cleaned, slot, pair, clearEnd)
       : { newText: cleaned.slice(0, target.start) + pair + cleaned.slice(target.end),
           newCursor: target.start + pair.length };
 
@@ -1309,54 +1270,24 @@ export class BlankFill {
     const blank = this.configLoader.blanks.get(slot.blankName) as
       | (Record<string, unknown> & {
           stepValues?: readonly string[];
-          blankAutoPopulate?: boolean;
           blankClearKeywords?: boolean;
-          blankConsumeContext?: boolean;
           blankDismissible?: boolean;
-          blankTip?: string;
           tip?: string;
-          blankKeywordExpansions?: Record<string, string>;
         })
       | undefined;
     if (!blank) return false;
-    if (blank.blankAutoPopulate === false) return false;
     if (this.dismissedBlanks?.has(slot.index)) return false;
     const stepValues = blank.stepValues;
     if (!Array.isArray(stepValues) || stepValues.length === 0) return false;
     const fillValue = stepValues[0];
 
-    // Mirror applyAsyncFill: when `blankReplace` is set explicitly,
-    // route through the new mode dispatcher. Otherwise fall back to
-    // the legacy flag-driven computeFillRange so unmigrated blanks
-    // (stepValues + no flags) keep their current behaviour.
-    const blankFlags = blank as {
-      blankReplace?: 'keep' | 'wipe' | 'wipe-all' | 'auto';
-      blankConsumeAll?: boolean;
-      blankConsumeContext?: boolean;
-      blankClearKeywords?: boolean;
-    };
-    const explicitMode: EffectiveReplaceMode | null = blankFlags.blankReplace !== undefined
-      ? resolveReplaceMode(blankFlags, insertedText)
-      : null;
+    // List blanks (stepValues) FILL the `_` and, at most, clear their own
+    // keyword via the gentle keyword-clear path. No replace modes, no
+    // wipe-all — a list blank can never wipe surrounding prose.
+    const { clearEnd } = computeFillRange(blank, slot);
 
-    // wipe-all on a stepValues blank is unusual but coherent — entire
-    // buffer becomes the fill. Short-circuit before the splice logic.
-    if (explicitMode === 'wipe-all' || (explicitMode === null && blank.blankConsumeAll === true)) {
-      const newText = fillValue;
-      const newCursor = newText.length;
-      this.adapter.log('info', `BlankFill: wipe-all (sync stepValues) ${slot.blankName} → "${preview(fillValue, 60)}"`);
-      this.adapter.setText(newText);
-      this.adapter.setCursorOffset(newCursor);
-      this.adapter.forceRender();
-      return true;
-    }
-
-    const { clearEnd, expansion } = explicitMode !== null
-      ? computeFillRangeForMode(blank, slot, explicitMode)
-      : computeFillRange(blank, slot);
-
-    const { newText, newCursor } = clearEnd !== undefined || expansion != null
-      ? buildClearKeywordText(insertedText, slot, fillValue, expansion, clearEnd)
+    const { newText, newCursor } = clearEnd !== undefined
+      ? buildClearKeywordText(insertedText, slot, fillValue, clearEnd)
       : { newText: insertedText.slice(0, insertedWord.start) + fillValue + insertedText.slice(insertedWord.end),
           newCursor: insertedWord.start + fillValue.length };
 
@@ -1390,7 +1321,7 @@ export class BlankFill {
           alternatives: altsForSpan,
           currentAltIndex: 0,
           spanLength: Math.max(1, spanLength),
-          blankTip: blank.blankTip ?? blank.tip,
+          tip: blank.tip,
           clearOnEdit: wantsClearOnEdit,
           pairCharStart: wantsClearOnEdit ? kwStartChar : undefined,
           pairCharEnd: wantsClearOnEdit ? newCursor : undefined,
@@ -1445,34 +1376,20 @@ export class BlankFill {
       const span = this.dynDefs.findSpanContaining(idx);
       return span !== null;
     };
-    // Window. When the BlankIntent gate is ACTIVE (wired + mode on), the
-    // keyword window is LINE-SCOPED for every blank via the SHARED
-    // `keywordInWindow` predicate — identical to the resolver's BlankSource
-    // claim + the FluidBlank/Transform/ConfigIntent cede checks, so the
-    // five sites can never disagree on who owns the `_` (the June 2026
-    // race). When the gate is off, each blank's tuned `blankProximity`
-    // applies exactly as before (master behaviour).
-    const gateActive = this.blankIntentGate !== undefined
-      && (this.configLoader.opencuesState.settings.get('blank-intent-mode') ?? 'off') === 'on';
+    // Window. The keyword window is LINE-SCOPED for every blank via the
+    // SHARED `keywordInWindow` predicate — identical to the resolver's
+    // BlankSource claim + the FluidBlank/Transform/ConfigIntent cede checks,
+    // so the five sites can never disagree on who owns the `_` (the June
+    // 2026 race). A keyword claims when it's on the same line as the `_`.
+    // Precise routing is the job of `blankShapes`; shaped blanks bypass this
+    // window (they're shape-gated downstream).
     for (let j = blankIdx - 1; j >= 0; j -= 1) {
       for (const [name, blank] of this.configLoader.blanks.entries()) {
         const blankKeywords = (blank as { blankKeywords?: readonly string[] }).blankKeywords;
         if (!blankKeywords || blankKeywords.length === 0) continue;
         if (!supportsCycling && isBlankConfigCycleable(blank as Parameters<typeof isBlankConfigCycleable>[0])) continue;
-        // Default blankProximity to 0 (keyword must be DIRECTLY adjacent
-        // to _, no words between) when not explicitly set. The previous
-        // default (no limit, when the field was undefined) caused
-        // accidental claims when a registered keyword appeared earlier
-        // in the user's prose — e.g. a poem containing "bright" 13 words
-        // back claimed `_` for the brightness blank. Blanks that
-        // legitimately need wider proximity (e.g. "what is X _"
-        // dictionary, where the user types extra words between the
-        // trigger phrase and `_`) MUST set blankProximity explicitly.
-        // Matches the cede default in blank-source.ts.
-        const blankProximity = (blank as { blankProximity?: number }).blankProximity ?? 0;
-        // The keyword's last word is at `j`; gate-on → same line as `_`,
-        // gate-off → within blankProximity words.
-        if (!keywordInWindow(j, blankIdx, blankProximity, { lineScoped: gateActive, lineOf })) continue;
+        // The keyword's last word is at `j`; claims iff on the same line as `_`.
+        if (!keywordInWindow(j, blankIdx, { lineOf })) continue;
         for (const kw of blankKeywords) {
           const kwLc = kw.toLowerCase();
           const kwWords = kwLc.split(/\s+/);
@@ -1514,107 +1431,45 @@ export class BlankFill {
   }
 }
 
-/** Debug helper — keys actually injected into the script env. */
-function extraEnvKeys(blank: Record<string, unknown>): string[] {
-  const keys: string[] = [];
-  if (blank.model) keys.push('CUES_MODEL');
-  if (blank.apiUrl) keys.push('CUES_API_URL');
-  if (blank.apiKeyEnv) keys.push('CUES_API_KEY_ENV');
-  if (blank.altCount !== undefined) keys.push('CUES_ALT_COUNT');
-  if (blank.includeOriginal !== undefined) keys.push('CUES_INCLUDE_ORIGINAL');
-  if (blank.prompts && typeof blank.prompts === 'object') {
-    for (const k of Object.keys(blank.prompts as object)) {
-      keys.push('CUES_PROMPT_' + k.toUpperCase().replace(/[^A-Z0-9]/g, '_'));
-    }
-  }
-  return keys;
-}
 
 /**
- * Derive the (clearEnd, expansion) pair that the helper loop will
- * apply, given a blank's flags. Lets callers stay short.
+ * Derive the `clearEnd` the splice will use, given a blank's flags.
  *
- *   - blankConsumeContext: clearEnd = slot.index - 1 (drop keyword +
- *     anything between it and the blank).
- *   - blankClearKeywords (alone): clearEnd = slot.keywordEnd (just the
+ *   - blankClearKeywords: clearEnd = slot.keywordEnd (drop just the
  *     keyword span).
- *   - blankKeywordExpansions[keyword] (alone): no clear range widening
- *     beyond the keyword span; expansion fills the start.
- *   - Both clear flags + expansion: expansion is suppressed (clear wins).
+ *   - otherwise: undefined (only the `_` is replaced).
+ *
+ * This is the legacy keyword-blank path only. Shaped invocations derive
+ * their command-span clear directly (clearEnd = slot.index - 1) at the
+ * call site, so they never pass through here.
  */
 export function computeFillRange(
   blank: {
     blankClearKeywords?: boolean;
-    blankConsumeContext?: boolean;
-    blankKeywordExpansions?: Record<string, string>;
   },
   slot: { index: number; keyword: string; keywordEnd: number },
-): { clearEnd: number | undefined; expansion: string | undefined } {
-  const consumeContext = blank.blankConsumeContext === true;
-  const clearKw = blank.blankClearKeywords === true;
-  let clearEnd: number | undefined;
-  if (consumeContext) clearEnd = slot.index - 1;
-  else if (clearKw) clearEnd = slot.keywordEnd;
-  const expansion = (clearKw || consumeContext)
-    ? undefined
-    : blank.blankKeywordExpansions?.[slot.keyword];
-  return { clearEnd, expansion };
+): { clearEnd: number | undefined } {
+  const clearEnd: number | undefined = blank.blankClearKeywords === true ? slot.keywordEnd : undefined;
+  return { clearEnd };
 }
 
 /**
- * Derive `(clearEnd, expansion)` from the resolved `EffectiveReplaceMode`:
- *
- *   - 'keep'     — no clearing. Expansion applies (display-name override).
- *   - 'wipe'     — drop the full keyword + context range (= legacy
- *                  blankConsumeContext). Expansion suppressed.
- *   - 'wipe-all' — handled upstream as a short-circuit; not expected here.
- *
- * This is the new dispatcher built on top of `resolveReplaceMode`. The
- * older `computeFillRange` stays for tests + any caller that wants the
- * raw legacy-flag behaviour, but applyAsyncFill routes through this
- * function so explicit `blankReplace:` + the fluid heuristic win.
- */
-export function computeFillRangeForMode(
-  blank: {
-    blankKeywordExpansions?: Record<string, string>;
-  },
-  slot: { index: number; keyword: string; keywordEnd: number },
-  mode: EffectiveReplaceMode,
-): { clearEnd: number | undefined; expansion: string | undefined } {
-  if (mode === 'wipe') {
-    return { clearEnd: slot.index - 1, expansion: undefined };
-  }
-  // 'keep' (or 'wipe-all' which the caller should have short-circuited).
-  // Expansion (rddt → Reddit etc.) applies only in keep mode.
-  return {
-    clearEnd: undefined,
-    expansion: blank.blankKeywordExpansions?.[slot.keyword],
-  };
-}
-
-/**
- * Char-position splice that handles keyword clearing, keyword
- * expansion, and consume-context while preserving
- * surrounding whitespace structure (newlines, paragraph breaks,
- * indentation, bullet markers). v1 used a word-split + word-join
- * approach which collapsed all whitespace runs to single spaces —
- * that destroyed bullet/paragraph layouts whenever `config _` (or any
- * blank with blankClearKeywords / blankConsumeContext) fired inside
- * formatted prose. Char-position splice fixes it.
+ * Char-position splice that handles keyword clearing and shape-derived
+ * command-span clearing while preserving surrounding whitespace structure
+ * (newlines, paragraph breaks, indentation, bullet markers). v1 used a
+ * word-split + word-join approach which collapsed all whitespace runs to
+ * single spaces — that destroyed bullet/paragraph layouts whenever
+ * `config _` (or any blank with blankClearKeywords) fired inside formatted
+ * prose. Char-position splice fixes it.
  *
  *   - The range [keywordStart..clearEnd] (word indices) is dropped
  *     (default clearEnd = keywordEnd → clears just the keyword span).
- *     When clearEnd = slot.index - 1, words between keyword and blank
- *     are also dropped — that's blankConsumeContext.
- *   - If `expansion` is given, it's inserted at keywordStart (replacing
- *     the dropped keyword). Callers should suppress `expansion` when
- *     consume-context is widening clearEnd to the blank — leaving an
- *     expansion in place after dropping its surrounding context produces
- *     incoherent output.
+ *     When clearEnd = slot.index - 1 (shaped get/set/step), the words
+ *     between keyword and blank are also dropped — the whole command span.
  *   - The slot.index entry (the `_` token) is replaced with `fillValue`.
  *
  * Whitespace handling:
- *   - When the cleared range is contiguous with the blank (consumeContext
+ *   - When the cleared range is contiguous with the blank (shaped-clear
  *     case), one drop+insert: drop chars [kwStart..blankEnd), insert
  *     fillValue. Surrounding whitespace preserved as-is.
  *   - When the cleared range is NOT contiguous with the blank
@@ -1626,7 +1481,6 @@ export function buildClearKeywordText(
   text: string,
   slot: { index: number; keywordStart: number; keywordEnd: number },
   fillValue: string,
-  expansion?: string,
   clearEnd?: number,
 ): { newText: string; newCursor: number } {
   const cleaned = text.replace(/[\u200B\u200C]/g, '');
@@ -1648,12 +1502,8 @@ export function buildClearKeywordText(
   let cursor: number;
 
   if (clearReachesBlank) {
-    const expansionPart = expansion ?? '';
-    // Space between expansion and fillValue when both present, so
-    // "Reddit" + "$180.50" reads "Reddit $180.50" not "Reddit$180.50".
-    const sep = expansionPart && fillValue ? ' ' : '';
-    newText = cleaned.slice(0, kwStart) + expansionPart + sep + fillValue + cleaned.slice(blankEnd);
-    cursor = kwStart + expansionPart.length + sep.length + fillValue.length;
+    newText = cleaned.slice(0, kwStart) + fillValue + cleaned.slice(blankEnd);
+    cursor = kwStart + fillValue.length;
   } else {
     // Drop keyword + one trailing horizontal whitespace char so we don't
     // leave a double-space when the kept text follows. Newlines NEVER
@@ -1662,11 +1512,7 @@ export function buildClearKeywordText(
     const trailing = cleaned[kwSkipEnd];
     if (trailing === ' ' || trailing === '\t') kwSkipEnd += 1;
     const middle = cleaned.slice(kwSkipEnd, blankStart);
-    const expansionPart = expansion ?? '';
-    // If we have an expansion AND middle doesn't already start with a
-    // separator, add a space so expansion + middle don't run together.
-    const expansionSep = expansionPart && middle && !/^\s/.test(middle) ? ' ' : '';
-    const prefix = cleaned.slice(0, kwStart) + expansionPart + expansionSep + middle;
+    const prefix = cleaned.slice(0, kwStart) + middle;
     newText = prefix + fillValue + cleaned.slice(blankEnd);
     cursor = prefix.length + fillValue.length;
   }

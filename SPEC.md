@@ -1,6 +1,6 @@
 # Cues Specification
 
-**Current version: `0.2` (draft)**
+**Current version: `0.3` (draft)**
 
 This document declares the **Cues spec** — the durable, host-agnostic format that
 describes word-cues and blank-fills. It is separate from any single
@@ -26,7 +26,7 @@ The `0.1` spec defines the wire format of:
 
 3. **`blanks/<name>/BLANK.md`** — folder-based blank configs (declarative
    blanks: scripted, list-stepped, runtime-class-backed). Frontmatter declares
-   `blankKeywords`, `blankScript`, `blankReplace`, etc.
+   `blankKeywords`, `blankScript`, `blankShapes`, `integration`, etc.
 
 4. **`OPENCUES.md`** — runtime system settings (scalar key/value pairs;
    schema owned by the FEATURES + MENU_TUNABLES registry in

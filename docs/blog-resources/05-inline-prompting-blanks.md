@@ -46,20 +46,19 @@ From `docs/features/cue-blanks.md`:
 3. **Dynamic list blanks** — script returns multiple lines, each becomes a
    cycling alternative. `HN posts _` → live headlines.
 4. **Read-only blanks** — fetches data once, no cycling. `nvda _` → `121.45`.
-5. **Consume-all blanks** — clears the entire input region and replaces it
-   with multi-word cycling alternatives. The prompt improver works this way:
-   you type a draft prompt, and it rewrites the whole thing in place.
 
 Plus two **fluid** modes (no keyword needed):
 
-6. **Fluid blank** — free-form lookup. `FluidBlankSource` segments the
-   query span and answers it. Two-pass pipeline (P1 SEGMENT + P3 ANSWER).
+5. **Fluid blank** — free-form lookup. `FluidBlankSource` segments the
+   query span and answers it (always-FILL, FUSED single-call pipeline).
    Handles math, factual, translation, unit conversion, codes, etc. without
    per-mode classification.
-7. **Transform blank** — imperative instruction. `TransformBlankSource`
+6. **Transform blank** — imperative instruction. `TransformBlankSource`
    detects "rewrite this text per <instruction>" and substitutes the
-   rewrite. (See [`06-inline-agents.md`](06-inline-agents.md) for the deep
-   dive.)
+   rewrite over the whole buffer. This is where free-form rewrites now live:
+   the old "consume-all" prompt-improver blank was retired, and
+   `improve prompt _` routes here as an imperative instruction. (See
+   [`06-inline-agents.md`](06-inline-agents.md) for the deep dive.)
 
 Resolution order on a `_`:
 ```
@@ -108,24 +107,30 @@ user can clear it (by editing the word).
 
 ## Keyword matching: the binding rule
 
-For keyword-bound blanks (volume, stocks, weather), the runtime scans words
-in the input (case-insensitive) against each blank's `blankKeywords`. Match
-within `blankProximity` words of the `_` (default 0 = adjacent). First
-match wins.
+For keyword-bound blanks (volume, stocks, weather), `blankKeywords` desugar
+to anchored shapes that route the line containing `_`. A blank claims a `_`
+when its keyword (or shape) leads the line, with `_` at the trailing edge —
+line-scoped, deterministic. First match wins.
 
 ```
-With blankKeywords: volume, sound, audio  blankProximity: 0
-  volume _              → matches (gap = 0)
-  set audio _           → matches (audio is adjacent)
-  volume is _           → no match (gap = 1)
-  the _ is loud         → no match (no keyword)
+With blankKeywords: volume, sound, audio
+  volume _              → matches (volume leads, _ at end)
+  volume 30 _           → matches (30 captured as the set value)
+  set audio _           → no match (line leads with "set")
+  the volume is loud _  → no match (prose; volume doesn't lead the line)
+  the _ is loud         → no match (no keyword, _ not at the end)
 ```
 
-Multi-word phrases work too. From `damon.md`:
+Multi-word keywords work too — a keyword like `spanish weather` desugars to
+a shape whose words are joined with `\s+`, so it must lead the line as a unit:
 ```
-spanish weather 15°C is warmer than london weather _
+With blankKeywords: spanish weather
+  spanish weather _          → matches (the phrase leads, _ at end)
+  spanish weather oslo _     → matches (oslo captured as the arg)
+  the spanish weather is _   → no match (line leads with "the")
 ```
-Matches the *second* "weather" (the one adjacent to `_`).
+(Under the older proximity model a keyword could match mid-line near `_`;
+line-scoped routing replaced that — the command must lead its line.)
 
 ## Ownership: the most important contract
 
@@ -165,8 +170,8 @@ From `damon.md`:
 | Countries | Read-only (live) | `population of france _` → fact |
 | Dictionary | Read-only (live) | `define ephemeral _` → definition |
 | OpenCues Settings | Selector + Satellite | `opencues settings _` → cycles settings, writes to file |
-| Answer | Consume-all | Free-form Q&A (LLM round-trip) |
-| Prompt Improver | Consume-all | Rewrites the surrounding prompt text in place |
+| Answer | Fluid lookup | Free-form Q&A — routes through `FluidBlankSource` |
+| Prompt Improver | Transform blank | `improve prompt _` — rewrites the surrounding prompt via `TransformBlankSource` |
 | Fluid Blank | Free-form lookup | Any unbound `_` |
 
 ## The HCI angle (for blog #4)
@@ -200,18 +205,20 @@ From `damon.md`:
 - **Re-evaluation can surprise.** Edit the prefix of a math blank and the
   number changes. This is correct but can feel "alive" in unsettling ways
   the first time. (The fix is the ownership lock — see above.)
-- **Consume-all blanks need dedicated cycling storage.** They overwrite the
-  standard WordDef array, so the runtime keeps a separate state class
-  (`SpanFillState`) to avoid clobbering. See `consume-all-blanks.md`.
+- **Whole-buffer rewrites need dedicated span storage.** Transform-blank
+  rewrites overwrite a multi-word region rather than a single word, so the
+  runtime keeps a separate state class (`SpanFillState`) to avoid clobbering
+  the standard WordDef array. See
+  [`../architecture/blank-integration.md`](../architecture/blank-integration.md).
 
 ## Where this material lives
 
 - `concept.md` — the user-→-system direction definition
-- `docs/glossary.md` — Blank, Blanks (two flavours), Cue-Blank, Consume-All,
-  Consume-Context entries
+- `docs/glossary.md` — Blank, Blanks (two flavours), Cue-Blank entries
 - `docs/features/fill-in-the-blank.md` — core `_` mechanics
 - `docs/features/cue-blanks.md` — the comprehensive reference
-- `docs/features/consume-all-blanks.md` — the prompt-improver pattern
+- `docs/architecture/blank-integration.md` — blank routing + the
+  transform-blank prompt-improver pattern
 - `docs/architecture/transform-blank.md` — the "universal interaction handle"
   framing
 - `damon.md` § "Cue Types" sections 2-5 — diagrammed flows for each blank

@@ -55,19 +55,20 @@ edits needed.
 | Individual `BlankConfig` (via `isBlankConfigCycleable`) | derived | See below |
 
 `isBlankConfigCycleable(blk)` reads each `BlankConfig`'s shape and
-returns true iff:
+returns true iff the blank declares **how** to cycle:
 
-1. `blankReadOnly: true` → **false** (explicit user opt-out, beats every other signal)
-2. `blankSatellite: true` → **true** (selector/satellite shape — `opencues settings _`)
-3. `stepValues.length > 1` → **true** (list cycling — `affirmation _`)
-4. `blankStep` numeric → **true** (numeric step — `volume _`, `brightness _`)
-5. `blankScript:` present → **true** (script-backed, default-deny on universal hosts; opt out with `blankReadOnly: true`)
-6. otherwise → **false** (single-shot impl blanks like weather/stocks/answer)
+1. `blankSatellite: true` → **true** (selector/satellite shape — `opencues settings _`)
+2. `stepValues.length > 1` → **true** (list cycling — `affirmation _`)
+3. `blankStep` numeric → **true** (numeric step — `volume _`, `brightness _`)
+4. otherwise → **false** (fetch blanks, plain scripts, single-shot impl blanks like weather/stocks — read-only by default)
 
-The script-backed default is **default-deny**: a script is opaque
-(we can't introspect a shell file), so we assume cycling. If a
-user ships a one-shot script that emits a single value, they set
-`blankReadOnly: true` explicitly to opt in to universal hosts.
+A blank is **read-only by default**: cyclers self-declare via
+`blankSatellite` / `stepValues` / `blankStep`. A plain `blankScript:`
+(weather/stocks/dictionary) is one-shot and survives universal hosts
+without any opt-out flag. (A fetch blank whose script returns MULTIPLE
+lines still rotates its results via the SpanFillState alternatives path —
+that's independent of this inference, which only governs the get/set/step
+cycle affordance + the no-cycling-host prune.)
 
 ## The adapter contract
 

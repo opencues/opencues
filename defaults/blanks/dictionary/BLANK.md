@@ -4,7 +4,7 @@ type: blank
 blankKeywords: define, definition of, meaning of, what does, what is
 blankAutoPopulate: true
 blankFormat: string
-blankTip: Dictionary definition
+tip: Dictionary definition
 blankReadOnly: true
 blankProximity: 3
 # Auto: bare "define ephemeral _" → wipe → "ephemeral: lasting for a very short time"

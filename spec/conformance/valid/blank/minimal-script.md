@@ -6,8 +6,6 @@ blankKeywords: volume
 blankScript: ./volume-blank.sh
 blankStep: 6
 blankSuffix: "%"
-blankFormat: integer
-blankAutoPopulate: true
 spec: opencues/0.1-alpha
 ---
 
