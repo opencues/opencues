@@ -18,7 +18,7 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
-const { tag, bold, dim, green, yellow, fileLink, banner, cliVersion } = require('../lib/style.cjs');
+const { tag, bold, dim, green, yellow, fileLink, banner, cliVersion, G } = require('../lib/style.cjs');
 const prompt = require('../lib/prompt.cjs');
 
 const HOME = process.env.OPENCUES_HOME || path.join(os.homedir(), '.cues');
@@ -115,32 +115,37 @@ async function interactive(ctx) {
       .filter(n => { const i = blankInfo(n); return !(i && i.blankScript); });
     const toggleable = [...new Set([...declared, ...allowList])].sort();
 
-    // Two-column rows: name + a status word. Audited core reads "fixed"
-    // (locked by code identity); toggleable blanks read trusted / untrusted,
-    // with an "unreachable" note if there's no reachable BLANK.md.
+    // Each row leads with a coloured ring marker (green filled ● = on /
+    // trusted / fixed, gray hollow ○ = off / untrusted), then name + a dim
+    // status word. Audited core reads "fixed" (locked by code identity);
+    // toggleable blanks read trusted / untrusted, with an "unreachable" note
+    // if there's no reachable BLANK.md.
+    const ON = green(G.ringOn);
+    const OFF = dim(G.ringOff);
     const nameW = Math.max(4, ...[...AUDITED_CORE, ...toggleable].map(n => n.length));
-    const row = (name, status) => `${name.padEnd(nameW)}   ${status}`;
+    const row = (mark, name, status) => `${mark}  ${name.padEnd(nameW)}   ${status}`;
 
     const choices = [];
     for (const n of AUDITED_CORE) {
-      choices.push({ label: row(n, dim('fixed')), value: null, disabled: true });
+      choices.push({ label: row(ON, n, dim('fixed')), value: null, disabled: true });
     }
     for (const n of toggleable) {
       const on = allowList.includes(n);
       const info = blankInfo(n);
-      const status = on ? green('trusted') : dim('untrusted');
+      const mark = on ? ON : OFF;
+      const status = dim(on ? 'trusted' : 'untrusted');
       const note = info ? '' : '   ' + yellow('unreachable');
-      choices.push({ label: row(n, status + note), value: { toggle: n } });
+      choices.push({ label: row(mark, n, status + note), value: { toggle: n } });
     }
     choices.push({ separator: true });
-    choices.push({ label: bold('Done'), value: { done: true } });
+    choices.push({ label: 'Done', value: { done: true }, dim: true });
 
     if (process.stdout.isTTY) console.clear();
     console.log(banner({ version: cliVersion(ctx), tagline: 'param-safe trust list' }));
     console.log('');
     if (!typed) console.log(`${tag('warn')} ${dim('sentinel-language is not `typed` — the on-demand path is inert until you set it.')}\n`);
 
-    const pick = await prompt.select('Trust list  ·  ↑↓ move · Enter toggle · q quit', choices);
+    const pick = await prompt.select('Trust list  ·  ↑↓ move · Enter toggle', choices);
     if (!pick || pick.done) break;
 
     const n = pick.toggle;

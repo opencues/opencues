@@ -8,7 +8,9 @@
 // `enquirer` directly, so the lib is swappable in one file and the styling is
 // owned here. The caller builds each choice's `label` (so column layout /
 // status text lives in the command); this file owns the chrome: no `?` prefix,
-// a white selection arrow, dimmed-and-skipped disabled rows, separators.
+// no pointer arrow (rows carry their own coloured ring marker), bold focus,
+// dimmed-and-skipped disabled rows, separators, and `dim:true` rows that stay
+// gray until focused.
 //
 // HARD RULES (so interactivity never breaks scripting):
 //   1. TTY-aware — `isInteractive()` is false in CI / pipes / `--no-interactive`
@@ -18,7 +20,7 @@
 'use strict';
 
 const { Select, Confirm, Input, Password } = require('enquirer');
-const { dim, brightWhite } = require('./style.cjs');
+const { dim, bold, brightWhite } = require('./style.cjs');
 
 /** Is a human present on a real terminal (and not opted out)? */
 function isInteractive() {
@@ -43,10 +45,30 @@ const stripPrefix = (Base) => class extends Base {
   async prefix() { return ''; }
 };
 
-// White selection arrow (enquirer's default is a cyan ▸); no `?` prefix.
+// Our menus don't use a pointer arrow — the row's own marker (a coloured
+// ring built by the caller) carries the state, and focus is shown by the row
+// text going bold/bright. So:
+//   - pointer()  → '' (no ❯ column)
+//   - separator() → '' (no trailing … chrome after the message)
+//   - focus emphasis (`em`) is bold, not cyan-underline — bold composes with
+//     the caller's foreground colours (a `\x1b[39m` reset inside the label
+//     would cancel a colour-based emphasis but not the bold attribute).
+//   - choices flagged `dim:true` (e.g. a "Done" row) render dimmed until
+//     focused, then bright-white — the "gray until selected" behaviour.
 class OcSelect extends stripPrefix(Select) {
-  pointer(choice, i) {
-    return this.index === i ? brightWhite('❯') : ' ';
+  constructor(options) {
+    super(options);
+    this._dimIds = (options && options._dimIds) || new Set();
+    this.styles.em = bold;
+  }
+  pointer() { return ''; }
+  separator() { return ''; }
+  choiceMessage(choice, i) {
+    const msg = this.resolve(choice.message, this.state, choice, i);
+    if (this._dimIds.has(choice.name)) {
+      return this.index === i ? brightWhite(msg) : dim(msg);
+    }
+    return msg;
   }
 }
 const OcConfirm = stripPrefix(Confirm);
@@ -62,14 +84,16 @@ const OcPassword = stripPrefix(Password);
 async function select(message, choices, opts = {}) {
   assertTTY('select');
   const valueById = new Map();
+  const dimIds = new Set();
   const echoices = choices.map((c, i) => {
     const id = `c${i}`;
     valueById.set(id, c.value);
+    if (c.dim) dimIds.add(id);
     return c.separator
       ? { role: 'separator', message: c.label || dim('────') }
       : { name: id, message: c.disabled ? dim(c.label) : c.label, disabled: Boolean(c.disabled) };
   });
-  const prompt = new OcSelect({ name: 'value', message, prefix: '', choices: echoices });
+  const prompt = new OcSelect({ name: 'value', message, prefix: '', choices: echoices, _dimIds: dimIds });
   try {
     const name = await prompt.run();
     return valueById.has(name) ? valueById.get(name) : (opts.cancelValue ?? null);
