@@ -38,10 +38,10 @@ const accent      = brightWhite;
 const G = utf8
   ? { check: '🗸', cross: '✗', warn: '⚠', dot: '•', arrow: '→',
       gutter: '▎', treeStart: '│', rule: '─', treeMid: '├─', treeEnd: '└─', treeStem: '│ ',
-      missing: '·', prompt: '›', ringOn: '●', ringOff: '○' }
+      missing: '·', prompt: '›', ringOn: '●', ringOff: '○', pointer: '❯' }
   : { check: '+', cross: 'x', warn: '!', dot: '*', arrow: '->',
       gutter: '|', treeStart: '|', rule: '-', treeMid: '+-', treeEnd: '+-', treeStem: '| ',
-      missing: '-', prompt: '>', ringOn: '(*)', ringOff: '( )' };
+      missing: '-', prompt: '>', ringOn: '(*)', ringOff: '( )', pointer: '>' };
 
 function wordmark() {
   return bold('OpenCues') + accent('_');

@@ -35,9 +35,13 @@ function read(p) { try { return fs.readFileSync(p, 'utf8'); } catch { return nul
 /** Parse the comma-separated `param-safe-allow:` value from OPENCUES.md. */
 function readAllow(md) {
   if (!md) return [];
-  const m = md.match(/^\s*param-safe-allow\s*:\s*(.*)$/m);
+  // Horizontal whitespace only after the colon — a bare `\s*` would cross the
+  // newline of an EMPTY value and swallow the `---` frontmatter fence on the
+  // next line, reading it as a fake trusted entry (then writeAllow persisted
+  // it). The `^-+$` guard drops any stray fence token already on disk.
+  const m = md.match(/^[ \t]*param-safe-allow[ \t]*:[ \t]*(.*)$/m);
   if (!m) return [];
-  return m[1].split(',').map(s => s.trim()).filter(Boolean);
+  return m[1].split(',').map(s => s.trim()).filter(s => s && !/^-+$/.test(s));
 }
 
 /** Upsert `param-safe-allow: <list>` into the OPENCUES.md frontmatter. */
@@ -121,35 +125,48 @@ async function interactive(ctx) {
     // widths on some fonts, which shifts every column after them. Audited
     // core is NOT in this list — it can't be toggled, so it shows in an
     // "always on" header above instead of as a dimmed, "(disabled)"-tagged row.
+    // Layout mirrors the CLI house style (see style.cjs `tree()` + this
+    // command's own `list()`): bold section title + dim description, items at
+    // a 2-space gutter. Headers print at col 0; the enquirer list renders the
+    // selectable rows, each indented to the same gutter so every line — header
+    // item, toggle row, empty-state note, Done — sits in one of two columns
+    // regardless of state.
+    // The prompt lib owns row chrome: the 2-col selection gutter (white `❯`),
+    // the on/off status ● (from `ring`), and turning the label white when the
+    // row is selected. The command just supplies plain, columnar text — name,
+    // on/off word, and an aligned note column. Headers below use IND so their
+    // items line up under the lib's gutter+ring.
     const ON = green(G.ringOn);
-    const OFF = dim(G.ringOn);
+    const IND = '  ';
     const nameW = Math.max(4, ...toggleable.map(n => n.length));
-    const row = (mark, name, status) => `${mark}  ${name.padEnd(nameW)}   ${status}`;
+    const STATW = 3; // 'off'
+    const row = (name, on, note) =>
+      `${name.padEnd(nameW)}  ${(on ? 'on' : 'off').padEnd(STATW)}${note ? '  ' + note : ''}`;
 
     const choices = [];
     for (const n of toggleable) {
       const on = allowList.includes(n);
       const info = blankInfo(n);
-      const status = dim(on ? 'on' : 'off');
-      const note = info ? '' : '   ' + yellow('unreachable');
-      choices.push({ label: row(on ? ON : OFF, n, status + note), value: { toggle: n } });
+      const note = info ? '' : yellow('unreachable');
+      choices.push({ label: row(n, on, note), ring: on, value: { toggle: n } });
     }
     if (!toggleable.length) {
-      choices.push({ label: dim('(no custom blanks declare param-safe)'), value: null, disabled: true });
+      choices.push({ label: '(no custom blanks declare param-safe)', value: null, disabled: true });
     }
-    choices.push({ separator: true });
+    choices.push({ spacer: true });
     choices.push({ label: 'Done', value: { done: true }, dim: true });
 
     if (process.stdout.isTTY) console.clear();
     console.log(banner({ version: cliVersion(ctx), tagline: 'param-safe trust list' }));
     console.log('');
-    if (!typed) console.log(`${tag('warn')} ${dim('sentinel-language is not `typed` — the on-demand path is inert until you set it.')}\n`);
+    if (!typed) console.log(`${IND}${dim('sentinel-language is not `typed` — the on-demand path is inert until you set it.')}\n`);
 
-    console.log(dim('Built-in · always on · trusted by code:'));
-    console.log('  ' + AUDITED_CORE.map(n => `${ON} ${n}`).join('    '));
+    console.log(bold('Built-in') + '  ' + dim('· always on · trusted by code'));
+    console.log(IND + AUDITED_CORE.map(n => `${ON} ${n}`).join('   '));
     console.log('');
+    console.log(bold('Third-party') + '  ' + dim('· ↑↓ move · Enter toggle on/off'));
 
-    const pick = await prompt.select('Third-party  ·  ↑↓ move · Enter toggle on/off', choices);
+    const pick = await prompt.select('', choices);
     if (!pick || pick.done) break;
 
     const n = pick.toggle;
@@ -157,11 +174,14 @@ async function interactive(ctx) {
       writeAllow(allowList.filter(x => x !== n));
     } else {
       const info = blankInfo(n);
+      const fw = 8;
+      const field = (k, v) => console.log(`${IND}${dim(k.padEnd(fw))}${v}`);
       console.log('');
-      console.log(bold(`Trusting "${n}" — it will be called with arguments the LLM chooses:`));
-      console.log(`  impl:    ${(info && info.impl) || dim('(built-in class)')}`);
-      console.log(`  network: ${(info && info.network) || dim('(none declared)')}`);
-      console.log(`  sandbox: ${(info && info.sandbox) || dim('(none declared)')}`);
+      console.log(`${IND}${bold(`Trusting "${n}"`)} ${dim('— it will be called with arguments the LLM chooses')}`);
+      field('impl', (info && info.impl) || dim('(built-in class)'));
+      field('network', (info && info.network) || dim('(none declared)'));
+      field('sandbox', (info && info.sandbox) || dim('(none declared)'));
+      console.log('');
       const ok = await prompt.confirm(`Trust "${n}"?`, { default: false });
       if (ok) writeAllow([...allowList, n]);
     }

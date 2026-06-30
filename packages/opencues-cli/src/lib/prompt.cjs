@@ -19,8 +19,8 @@
 
 'use strict';
 
-const { Select, Confirm, Input, Password } = require('enquirer');
-const { dim, bold, brightWhite } = require('./style.cjs');
+const { dim, green, brightWhite, G } = require('./style.cjs');
+const { Select, Input, Password } = require('enquirer');
 
 /** Is a human present on a real terminal (and not opted out)? */
 function isInteractive() {
@@ -50,16 +50,25 @@ const stripPrefix = (Base) => class extends Base {
 // text going bold/bright. So:
 //   - pointer()  → '' (no ❯ column)
 //   - separator() → '' (no trailing … chrome after the message)
-//   - focus emphasis is owned entirely by choiceMessage (bold for normal
-//     rows; gray→bright-white for `dim:true` rows). enquirer's own `em` style
-//     is neutralised to identity so it can't re-add its default cyan UNDERLINE
-//     on the focused row.
-//   - choices flagged `dim:true` (e.g. a "Done" row) render dimmed until
-//     focused, then bright-white — the "gray until selected" behaviour.
+// Each row is composed in choiceMessage from three independent parts so the
+// two states never fight each other in ANSI:
+//   1. gutter  — the SELECTION cursor: white `❯` on the focused row, two
+//      spaces otherwise. (enquirer's native pointer is left empty so we own
+//      the gutter width + colour.)
+//   2. ring    — the ON/OFF status: green `●` (on) / gray `●` (off), drawn by
+//      the lib from a choice's `ring` boolean. ALWAYS keeps its colour, even
+//      when the row is selected.
+//   3. text    — the row label. Plain when idle; turns bright-white when the
+//      row is selected (`dim:true` rows are gray when idle instead of plain).
+// enquirer's own `em` style is neutralised to identity so it can't re-add its
+// default cyan underline on the focused row.
+const POINTER = brightWhite(G.pointer) + ' ';
+const NOPOINT = '  ';
 class OcSelect extends stripPrefix(Select) {
   constructor(options) {
     super(options);
     this._dimIds = (options && options._dimIds) || new Set();
+    this._ringById = (options && options._ringById) || new Map();
     this.styles.em = (s) => s; // identity — kill enquirer's underline-on-focus
   }
   pointer() { return ''; }
@@ -67,13 +76,21 @@ class OcSelect extends stripPrefix(Select) {
   choiceMessage(choice, i) {
     const msg = this.resolve(choice.message, this.state, choice, i);
     const focused = this.index === i;
-    if (this._dimIds.has(choice.name)) {
-      return focused ? brightWhite(msg) : dim(msg);
-    }
-    return focused ? bold(msg) : msg;
+    const gutter = focused ? POINTER : NOPOINT;
+    const ring = this._ringById.has(choice.name)
+      ? (this._ringById.get(choice.name) ? green(G.ringOn) : dim(G.ringOn)) + ' '
+      : '';
+    // Selected row's text always turns white; the ring keeps its on/off colour.
+    const text = focused
+      ? brightWhite(msg)
+      : (this._dimIds.has(choice.name) ? dim(msg) : msg);
+    return gutter + ring + text;
   }
+  // Don't echo the picked answer on submit — enquirer's default prints
+  // `this.selected.name`, which is our synthetic id (e.g. "c0").
+  format() { return ''; }
 }
-const OcConfirm = stripPrefix(Confirm);
+
 const OcInput = stripPrefix(Input);
 const OcPassword = stripPrefix(Password);
 
@@ -87,17 +104,34 @@ async function select(message, choices, opts = {}) {
   assertTTY('select');
   const valueById = new Map();
   const dimIds = new Set();
+  const ringById = new Map();
   const echoices = choices.map((c, i) => {
     const id = `c${i}`;
     valueById.set(id, c.value);
     if (c.dim) dimIds.add(id);
+    // `ring: true|false` → the lib draws a green/gray status ● before the label.
+    if (typeof c.ring === 'boolean') ringById.set(id, c.ring);
+    // A `spacer` is a non-selectable blank line (a disabled empty row —
+    // enquirer's own `role:'separator'` forces a ───── rule we don't want).
+    // message is a single space, not '' — enquirer falls back to the choice
+    // *name* when message is empty, which would print "c3".
+    if (c.spacer) return { name: id, message: ' ', disabled: true, hint: '' };
     return c.separator
       ? { role: 'separator', message: c.label || dim('────') }
       // hint:'' on disabled rows suppresses enquirer's auto-injected
       // "(disabled)" tag (array.js: hint == null → '(disabled)').
       : { name: id, message: c.disabled ? dim(c.label) : c.label, disabled: Boolean(c.disabled), hint: c.disabled ? '' : undefined };
   });
-  const prompt = new OcSelect({ name: 'value', message, prefix: '', choices: echoices, _dimIds: dimIds });
+  // An empty message suppresses enquirer's prompt line entirely (it would
+  // otherwise render with a stray leading space from its `[prefix, message,
+  // …].join(' ')`). Callers that want a header print it themselves at col 0.
+  const prompt = new OcSelect({
+    name: 'value', message: message || '', prefix: '', choices: echoices,
+    _dimIds: dimIds, _ringById: ringById,
+    promptLine: message ? undefined : false,
+    // initial focus index (e.g. confirm() lands on the safe default)
+    initial: typeof opts.initial === 'number' ? opts.initial : undefined,
+  });
   try {
     const name = await prompt.run();
     return valueById.has(name) ? valueById.get(name) : (opts.cancelValue ?? null);
@@ -106,15 +140,21 @@ async function select(message, choices, opts = {}) {
   }
 }
 
-/** y/N confirm. Cancel → `opts.default` (false). */
+/**
+ * Yes / No confirm — rendered as a two-row arrow-select so the UX matches
+ * select() (white ❯, bold focus) rather than a typed y/N line. Initial focus
+ * lands on the default (No, unless `opts.default` is true). The caller's
+ * `message` prints as a header line above the two rows. Cancel → the default.
+ */
 async function confirm(message, opts = {}) {
   assertTTY('confirm');
   const def = opts.default ?? false;
-  try {
-    return Boolean(await new OcConfirm({ name: 'v', message, initial: def }).run());
-  } catch {
-    return def;
-  }
+  if (message) process.stdout.write(message + '\n');
+  const picked = await select('', [
+    { label: 'Yes', value: true },
+    { label: 'No', value: false },
+  ], { initial: def ? 0 : 1, cancelValue: def });
+  return picked == null ? def : picked;
 }
 
 /** Free-text input. Empty / cancel → `opts.default` (or ''). */
