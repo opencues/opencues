@@ -1,46 +1,25 @@
-// Unit tests for the zero-dep prompt toolkit. Drives `select`/`confirm` with a
-// fake interactive stdin/stdout (EventEmitter) + synthetic keypress events, so
-// the navigation + parse logic is pinned without a real terminal.
+// Unit tests for the prompt toolkit. Uses `prompts.inject()` (the library's
+// own test hook) to drive select/confirm without a real terminal, behind a
+// faked-TTY guard so isInteractive() passes.
 
 'use strict';
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { EventEmitter } = require('node:events');
+const prompts = require('prompts');
 
-function makeFakeStdin() {
-  const s = new EventEmitter();
-  s.isTTY = true;
-  s.isRaw = false;
-  s.setRawMode = (v) => { s.isRaw = v; };
-  s.resume = () => {};
-  s.pause = () => {};
-  s.setEncoding = () => {};
-  return s;
-}
-function makeFakeStdout() {
-  const s = new EventEmitter();
-  s.isTTY = true;
-  s.columns = 80;
-  s.rows = 24;
-  s.write = () => true; // swallow render output (incl. readline cursor escapes)
-  return s;
-}
-
-/** Swap in fake TTY streams, run `fn(stdin)`, restore. */
-async function withFakeTTY(fn) {
+/** Run `fn(prompt)` with process.std{in,out}.isTTY forced true. */
+async function withTTY(fn) {
   const realIn = Object.getOwnPropertyDescriptor(process, 'stdin');
   const realOut = Object.getOwnPropertyDescriptor(process, 'stdout');
   const realEnv = process.env.OPENCUES_NO_INTERACTIVE;
   delete process.env.OPENCUES_NO_INTERACTIVE;
-  const stdin = makeFakeStdin();
-  Object.defineProperty(process, 'stdin', { value: stdin, configurable: true });
-  Object.defineProperty(process, 'stdout', { value: makeFakeStdout(), configurable: true });
-  // Fresh require so isInteractive() reads the swapped streams.
+  Object.defineProperty(process, 'stdin', { value: { isTTY: true }, configurable: true });
+  Object.defineProperty(process, 'stdout', { value: { isTTY: true, write: () => true, columns: 80, rows: 24 }, configurable: true });
   delete require.cache[require.resolve('./prompt.cjs')];
   const prompt = require('./prompt.cjs');
   try {
-    return await fn(prompt, stdin);
+    return await fn(prompt);
   } finally {
     Object.defineProperty(process, 'stdin', realIn);
     Object.defineProperty(process, 'stdout', realOut);
@@ -49,74 +28,49 @@ async function withFakeTTY(fn) {
   }
 }
 
-// Map symbolic key names → the raw byte sequences a terminal sends, then emit
-// them as 'data' (select/secret now parse raw bytes, not keypress events).
-const KEY = { up: '\x1b[A', down: '\x1b[B', return: '\r', enter: '\r', q: 'q', esc: '\x1b' };
-function feed(stdin, keys) {
-  let i = 0;
-  const tick = () => {
-    if (i >= keys.length) return;
-    const k = keys[i++];
-    stdin.emit('data', KEY[k] ?? k);
-    setImmediate(tick);
-  };
-  setImmediate(tick);
-}
-
-test('select: down then enter picks the second choice', async () => {
-  const val = await withFakeTTY(async (prompt, stdin) => {
-    const p = prompt.select('pick', [
-      { label: 'a', value: 'A' },
-      { label: 'b', value: 'B' },
-      { label: 'c', value: 'C' },
+test('select: returns the chosen choice value', async () => {
+  await withTTY(async (prompt) => {
+    prompts.inject([{ toggle: 'myfetch' }]);
+    const v = await prompt.select('pick', [
+      { label: 'a', value: 'A', disabled: true },
+      { label: 'myfetch', value: { toggle: 'myfetch' } },
+      { label: 'done', value: { done: true } },
     ]);
-    feed(stdin, ['down', 'return']);
-    return p;
+    assert.deepStrictEqual(v, { toggle: 'myfetch' });
   });
-  assert.strictEqual(val, 'B');
 });
 
-test('select: skips a disabled first row when moving', async () => {
-  const val = await withFakeTTY(async (prompt, stdin) => {
-    const p = prompt.select('pick', [
-      { label: 'header', value: null, disabled: true },
-      { label: 'x', value: 'X' },
-      { label: 'y', value: 'Y' },
-    ]);
-    feed(stdin, ['down', 'return']); // starts on X (first enabled), down → Y
-    return p;
+test('select: cancel → null', async () => {
+  await withTTY(async (prompt) => {
+    prompts.inject([new Error('cancel')]); // injecting an Error simulates cancel
+    const v = await prompt.select('pick', [{ label: 'a', value: 'A' }]);
+    assert.strictEqual(v, null);
   });
-  assert.strictEqual(val, 'Y');
 });
 
-test('select: q cancels → null', async () => {
-  const val = await withFakeTTY(async (prompt, stdin) => {
-    const p = prompt.select('pick', [{ label: 'a', value: 'A' }]);
-    feed(stdin, ['q']);
-    return p;
+test('confirm: returns the injected boolean', async () => {
+  await withTTY(async (prompt) => {
+    prompts.inject([true]);
+    assert.strictEqual(await prompt.confirm('ok?'), true);
   });
-  assert.strictEqual(val, null);
 });
 
-test('confirm: empty answer uses the default', async () => {
-  const val = await withFakeTTY(async (prompt, stdin) => {
-    const p = prompt.confirm('ok?', { default: true });
-    // confirm uses readline.question on the stream; simulate the line.
-    setImmediate(() => stdin.emit('keypress', '\r', { name: 'return' }));
-    // readline reads 'data'/'line' — feed an empty line directly:
-    setImmediate(() => stdin.emit('data', '\n'));
-    return p;
+test('confirm: cancel falls back to the default', async () => {
+  await withTTY(async (prompt) => {
+    prompts.inject([new Error('cancel')]);
+    assert.strictEqual(await prompt.confirm('ok?', { default: true }), true);
   });
-  assert.strictEqual(val, true);
 });
 
-test('isInteractive: false when OPENCUES_NO_INTERACTIVE is set', async () => {
-  await withFakeTTY(async (prompt) => {
-    process.env.OPENCUES_NO_INTERACTIVE = '1';
-    // re-require to re-read env
-    delete require.cache[require.resolve('./prompt.cjs')];
-    const p2 = require('./prompt.cjs');
-    assert.strictEqual(p2.isInteractive(), false);
-    delete process.env.OPENCUES_NO_INTERACTIVE;
-  });
+test('isInteractive: false in a non-TTY (piped) context', () => {
+  // The test runner's stdin is not a TTY → interactive must be off.
+  delete require.cache[require.resolve('./prompt.cjs')];
+  const prompt = require('./prompt.cjs');
+  assert.strictEqual(prompt.isInteractive(), false);
+});
+
+test('select: throws in a non-TTY (callers must gate + fall back)', async () => {
+  delete require.cache[require.resolve('./prompt.cjs')];
+  const prompt = require('./prompt.cjs');
+  await assert.rejects(() => prompt.select('x', [{ label: 'a', value: 'A' }]), /interactive terminal/);
 });

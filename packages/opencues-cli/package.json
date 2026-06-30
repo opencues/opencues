@@ -32,5 +32,8 @@
   "publishConfig": {
     "registry": "https://npm.pkg.github.com",
     "access": "restricted"
+  },
+  "dependencies": {
+    "prompts": "^2.4.2"
   }
 }

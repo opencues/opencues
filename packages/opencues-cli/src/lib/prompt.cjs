@@ -1,22 +1,22 @@
-// lib/prompt.cjs — zero-dependency interactive prompt toolkit (the input
-// counterpart to lib/style.cjs's output helpers). Raw `node:readline` only,
-// no third-party prompt library — matches the CLI's no-deps posture.
+// lib/prompt.cjs — interactive prompt toolkit (the input counterpart to
+// lib/style.cjs's output helpers). Thin wrapper over `prompts` (terkelg) — a
+// small, widely-used, CJS prompt library that handles the cross-terminal raw-
+// input quirks (WSL, tmux, varied emulators) that a hand-rolled readline
+// version kept tripping on. We keep this wrapper so:
+//   - commands depend on a stable in-house API (select/confirm/input/secret),
+//     not on `prompts` directly — swapping the lib later touches only this file;
+//   - the TTY-aware contract is enforced here, not per command.
 //
 // HARD RULES (so interactivity never breaks scripting):
 //   1. TTY-aware — `isInteractive()` is false in CI / pipes / when
-//      `--no-interactive` or OPENCUES_NO_INTERACTIVE is set. Callers MUST
-//      gate on it and fall back to flags. Calling a prompt in a non-TTY
-//      throws (it would hang waiting on stdin otherwise).
-//   2. Flags still win — a command should go interactive only when the user
-//      omitted the positional args, never as the only path.
-//
-// Primitives: select (arrow-key single pick), confirm (y/N), input (text),
-// secret (masked). multiselect/toggle can be added on top of these later.
+//      `--no-interactive` or OPENCUES_NO_INTERACTIVE is set. Callers MUST gate
+//      on it and fall back to flags. The prompts here throw in a non-TTY.
+//   2. Flags still win — a command goes interactive only when the user omitted
+//      the positional args, never as the only path.
 
 'use strict';
 
-const readline = require('node:readline');
-const { cyan, dim, bold } = require('./style.cjs');
+const prompts = require('prompts');
 
 /** Is a human present on a real terminal (and not opted out)? */
 function isInteractive() {
@@ -34,135 +34,53 @@ function assertTTY(what) {
   }
 }
 
+// Ctrl-C / Esc anywhere → resolve the prompt as "cancelled" rather than
+// `prompts`' default of killing the process mid-command.
+const onCancel = () => true; // true = stop the prompt chain; value stays undefined
+
 /**
  * Arrow-key single-select. `choices` is an array of
- * `{ label, value, hint?, disabled? }`. Up/Down (or k/j) move, Enter selects,
- * q/Esc/Ctrl-C cancel (→ resolves null). Disabled rows are shown but skipped.
+ * `{ label, value, hint?, disabled? }`. Returns the chosen `value`, or
+ * `opts.cancelValue ?? null` on cancel. Disabled rows are shown but skipped.
  */
-function select(message, choices, opts = {}) {
+async function select(message, choices, opts = {}) {
   assertTTY('select');
-  const out = process.stdout;
-  const stdin = process.stdin;
-
-  return new Promise((resolve) => {
-    let idx = choices.findIndex(c => !c.disabled);
-    if (idx < 0) idx = 0;
-
-    const renderRows = (firstPaint) => {
-      if (!firstPaint) readline.moveCursor(out, 0, -choices.length);
-      for (let i = 0; i < choices.length; i += 1) {
-        readline.clearLine(out, 0);
-        const c = choices[i];
-        const pointer = i === idx && !c.disabled ? cyan('❯') : ' ';
-        const label = c.disabled ? dim(c.label) : (i === idx ? cyan(c.label) : c.label);
-        const hint = c.hint ? '  ' + dim(c.hint) : '';
-        out.write(`${pointer} ${label}${hint}\n`);
-      }
-    };
-
-    out.write(bold(message) + '\n');
-    renderRows(true);
-
-    // Read raw bytes and parse the escape sequences directly — more reliable
-    // across terminals than readline.emitKeypressEvents (which lazily attaches
-    // its decoder and can silently no-op).
-    const wasRaw = Boolean(stdin.isRaw);
-    if (stdin.setRawMode) stdin.setRawMode(true);
-    stdin.resume();
-    stdin.setEncoding('utf8');
-
-    const cleanup = () => {
-      stdin.removeListener('data', onData);
-      if (stdin.setRawMode) stdin.setRawMode(wasRaw);
-      stdin.pause();
-    };
-
-    const move = (dir) => {
-      let n = idx;
-      for (let guard = 0; guard < choices.length; guard += 1) {
-        n = (n + dir + choices.length) % choices.length;
-        if (!choices[n].disabled) { idx = n; break; }
-      }
-      renderRows(false);
-    };
-
-    function onData(chunk) {
-      const s = String(chunk);
-      // A chunk may batch multiple keys (paste / fast input); handle byte-wise.
-      if (s === '\x1b[A' || s === '\x1bOA' || s === 'k') return move(-1);   // up
-      if (s === '\x1b[B' || s === '\x1bOB' || s === 'j') return move(1);    // down
-      if (s === '\r' || s === '\n') {                                          // enter
-        cleanup();
-        return resolve(choices[idx] ? choices[idx].value : null);
-      }
-      if (s === '\x03' || s === 'q' || s === '\x1b') {                     // ctrl-c / q / esc
-        cleanup();
-        out.write(dim('  (cancelled)\n'));
-        return resolve(opts.cancelValue ?? null);
-      }
-      // ignore everything else (other escape seqs, mouse, etc.)
-    }
-    stdin.on('data', onData);
-  });
+  const initial = Math.max(0, choices.findIndex(c => !c.disabled));
+  const resp = await prompts({
+    type: 'select',
+    name: 'value',
+    message,
+    initial,
+    choices: choices.map(c => ({
+      title: c.label,
+      value: c.value,
+      description: c.hint,
+      disabled: Boolean(c.disabled),
+    })),
+  }, { onCancel });
+  return Object.prototype.hasOwnProperty.call(resp, 'value') ? resp.value : (opts.cancelValue ?? null);
 }
 
-/** y/N confirm. Returns a boolean; empty answer → `opts.default` (false). */
-function confirm(message, opts = {}) {
+/** y/N confirm. Returns a boolean; cancel → `opts.default` (false). */
+async function confirm(message, opts = {}) {
   assertTTY('confirm');
   const def = opts.default ?? false;
-  const hint = def ? '[Y/n]' : '[y/N]';
-  return new Promise((resolve) => {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    rl.question(`${message} ${dim(hint)} `, (ans) => {
-      rl.close();
-      const a = ans.trim().toLowerCase();
-      if (a === '') return resolve(def);
-      resolve(a === 'y' || a === 'yes');
-    });
-  });
+  const resp = await prompts({ type: 'confirm', name: 'value', message, initial: def }, { onCancel });
+  return resp.value === undefined ? def : Boolean(resp.value);
 }
 
-/** Free-text input. Empty answer → `opts.default` (or ''). */
-function input(message, opts = {}) {
+/** Free-text input. Empty / cancel → `opts.default` (or ''). */
+async function input(message, opts = {}) {
   assertTTY('input');
-  const suffix = opts.default ? dim(` (${opts.default})`) : '';
-  return new Promise((resolve) => {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    rl.question(`${message}${suffix} `, (ans) => {
-      rl.close();
-      resolve(ans.trim() || opts.default || '');
-    });
-  });
+  const resp = await prompts({ type: 'text', name: 'value', message, initial: opts.default }, { onCancel });
+  return resp.value === undefined || resp.value === '' ? (opts.default || '') : String(resp.value);
 }
 
-/** Masked input (for API keys etc.). Echoes `*` per char. */
-function secret(message) {
+/** Masked input (for API keys etc.). Cancel → ''. */
+async function secret(message) {
   assertTTY('secret');
-  const out = process.stdout;
-  const stdin = process.stdin;
-  return new Promise((resolve) => {
-    out.write(`${message} `);
-    const wasRaw = Boolean(stdin.isRaw);
-    if (stdin.setRawMode) stdin.setRawMode(true);
-    stdin.resume();
-    stdin.setEncoding('utf8');
-    let buf = '';
-    const done = (val) => {
-      stdin.removeListener('data', onData);
-      if (stdin.setRawMode) stdin.setRawMode(wasRaw);
-      stdin.pause();
-      out.write('\n');
-      resolve(val);
-    };
-    function onData(chunk) {
-      const s = String(chunk);
-      if (s === '\r' || s === '\n') return done(buf);
-      if (s === '\x03') return done('');                                       // ctrl-c
-      if (s === '\x7f' || s === '\b') { if (buf) { buf = buf.slice(0, -1); out.write('\b \b'); } return; } // backspace
-      if (s >= ' ' && s.length === 1) { buf += s; out.write('*'); }
-    }
-    stdin.on('data', onData);
-  });
+  const resp = await prompts({ type: 'password', name: 'value', message }, { onCancel });
+  return resp.value === undefined ? '' : String(resp.value);
 }
 
 module.exports = { isInteractive, select, confirm, input, secret };
