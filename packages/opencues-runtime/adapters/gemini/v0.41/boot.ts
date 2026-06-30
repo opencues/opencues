@@ -20,7 +20,7 @@ import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
 import { applyDirectives } from '../../../src/render-directives';
-import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, buildBlankContextProvider, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { startEventBridge } from '../../../src/event-bridge';
 import { EventEmitter } from '../../../src/lib/event-emitter';
 import type {
@@ -393,7 +393,8 @@ export function boot(host: HostInfo): BootResult {
     formatLLMErrorAsSubstitute: nativeHostFormatLLMError,
     keywordBoundSlotIndices: (text: string) => shared.blankFill.scan(text).map(s => s.index),
   }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState,
-  buildBlankContextProvider(configLoader, host.blanks, log));
+  buildBlankContextProvider(configLoader, host.blanks, log),
+  buildBlankFetchProvider(configLoader, host.blanks, log));
   // Subscribe AFTER ConfigLoader.load — otherwise rebuildResolver sees
   // no cuesConfig/blanksConfig and bails.
   configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });

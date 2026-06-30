@@ -328,6 +328,75 @@ export function jsonFieldAccessor(value: string, field: string): string | undefi
   } catch { return undefined; }
 }
 
+// ── Phase 4: on-demand parameterized resolution (PURE pre-pass) ──────────
+// The catalog renders a param-safe blank as `[STOCK(ticker: string): number]`
+// (fn name = the bare instance-token prefix). The LLM emits `[STOCK(ticker=
+// NVDA)]`. This pure pass extracts the (blankName, arg, instanceToken) tuples
+// the RUNTIME should fetch; the runtime awaits its capability-gated blankFetch
+// for each, merges `instanceToken → value` into the catalog, then runs the
+// normal sync resolver (whose bridge finds the freshly-fetched instance). All
+// async I/O + the capability enforcement stay in the runtime; this stays pure.
+
+/** Registry of param-safe fns, keyed (canonically) by the fn display-name
+ *  the LLM emits === the bare instance-token prefix. */
+export interface ParamSafeFn {
+  /** Runtime blank to call get(arg) on (e.g. `stocks`). */
+  readonly blankName: string;
+  /** Bare instance-token prefix the fetched value is keyed under
+   *  (e.g. `STOCK` → instance token `[STOCK NVDA]`). */
+  readonly tokenPrefix: string;
+}
+
+export interface ParamSafeFetch {
+  readonly blankName: string;
+  readonly arg: string;
+  /** The bare instance token to populate in the catalog once fetched. */
+  readonly instanceToken: string;
+}
+
+/** Canonicalise a fn/display name for registry matching (case + space-insensitive). */
+function canonName(name: string): string {
+  return name.toUpperCase().replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Scan the LLM output for top-level param-safe fn-calls and return the
+ * fetches the runtime should perform. Only fn-calls whose name matches a
+ * registered ParamSafeFn are collected — the `paramSafe` registry IS the
+ * capability gate (built only from `param-safe: true` blanks). A call's single
+ * argument is resolved as a literal or a nested SCALAR (via scalarLookup);
+ * nested fn-args are skipped (no recursive fetch in v1). Deduped per
+ * (blank, arg). Pure + total.
+ */
+export function collectParamSafeFetches(
+  text: string,
+  paramSafe: ReadonlyMap<string, ParamSafeFn>,
+  scalarLookup: (displayName: string) => string | undefined,
+): ParamSafeFetch[] {
+  if (paramSafe.size === 0) return [];
+  const out: ParamSafeFetch[] = [];
+  const seen = new Set<string>();
+  for (const span of parseTypedSentinels(text)) {
+    const tok = span.token;
+    const argNames = Object.keys(tok.args);
+    if (argNames.length === 0) continue; // scalar, not a fn-call
+    const fn = paramSafe.get(canonName(tok.name));
+    if (!fn) continue; // not a param-safe fn → capability gate denies the fetch
+    const v = tok.args[argNames[0]!]!; // param-safe blanks take one slot arg
+    // SECURITY: LITERAL args ONLY. A nested-token arg (`[STOCK(ticker=[X])]`)
+    // is NOT resolved — that path could route an identity scalar (e.g.
+    // `[WORK CITY]`) into a third-party fetch URL (PII egress to a non-LLM
+    // endpoint). The LLM must supply a plain literal; a nested arg is dropped.
+    if (typeof v !== 'string' || v.trim() === '') continue;
+    const arg = v.trim();
+    const key = `${fn.blankName} ${arg.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ blankName: fn.blankName, arg, instanceToken: `[${fn.tokenPrefix} ${arg}]` });
+  }
+  return out;
+}
+
 const UNRESOLVED = Symbol('unresolved');
 
 /** Resolve a single token tree to a string, or UNRESOLVED if it can't.

@@ -318,6 +318,28 @@ export interface BlankConfig {
    *  default. Set to 'rw' if the script needs to write state files
    *  alongside itself. /tmp is always rw (fresh tmpfs). */
   sandboxFs?: 'ro' | 'rw';
+  /**
+   * TYPED-SENTINEL (Phase 4) — the parameterized call signature this blank
+   * exposes when `sentinel-language: typed`. Mirrors the bench's
+   * parameterized form: `(ticker: string)`. Rendered into the typed catalog
+   * as `[<TOKEN-PREFIX>(ticker: string): <returns>]`. Omit for blanks that
+   * take no arg. */
+  signature?: string;
+  /** TYPED-SENTINEL (Phase 4) — return-type annotation for the typed
+   *  catalog: `string` | `number` | `array<string>` | a struct shape. */
+  returns?: string;
+  /**
+   * TYPED-SENTINEL (Phase 4) — CAPABILITY GATE. When true, the runtime MAY
+   * call this blank's `get(arg)` with an LLM-PROVIDED argument at resolve
+   * time (`[STOCK(ticker=TSLA)]` → `StocksBlank.get('TSLA')`), enabling the
+   * full parameterized lookup tier. SECURITY: only set on bounded-codomain
+   * FETCH blanks (stocks / weather / crypto / countries / dictionary) — NEVER
+   * on a blank with `blankScript` (exec) or any unbounded side-effect, since
+   * the argument is attacker-influencable LLM output. The parser HARD-REFUSES
+   * `paramSafe` on a script blank (see parseExtendedFrontmatter). Default
+   * (absent/false): the blank is instance-only — it resolves via pre-fetched
+   * blank-context tokens, never an on-demand LLM-arg call. */
+  paramSafe?: boolean;
   /** If true, `_` is appended as the last cycling option so the user can dismiss the value */
   blankDismissible?: boolean;
   /** Suffix appended to the displayed value (e.g. "%" shows "50%"). Stripped before arithmetic, re-appended for display. */
@@ -801,6 +823,13 @@ function parseBlanksSection(content: string): Record<string, BlankConfig> | unde
     const raw = JSON.parse(jsonBlock) as Record<string, BlankConfig>;
     for (const [key, entry] of Object.entries(raw)) {
       if (entry && !entry.name) entry.name = key;
+      // SECURITY GUARD (Phase 4) — same as the folder-BLANK.md path: a
+      // script blank must never be param-safe (LLM-arg → shell). Strip it.
+      if (entry && entry.paramSafe && entry.blankScript) {
+        // eslint-disable-next-line no-console
+        console.warn(`[opencues] BLANKS.md "${key}": param-safe IGNORED — a script blank cannot be called with an LLM-provided argument.`);
+        delete entry.paramSafe;
+      }
     }
     return raw;
   } catch {
@@ -929,6 +958,9 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   speak?: boolean;
   blankKeywords?: string;
   blankStep?: number;
+  signature?: string;
+  returns?: string;
+  paramSafe?: boolean;
   blankScript?: string;
   blankDismissible?: boolean;
   blankSuffix?: string;
@@ -1040,6 +1072,9 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'tip': fm.tip = value; break;
       case 'speak': fm.speak = value === 'true'; break;
       case 'blankKeywords': fm.blankKeywords = value; break;
+      case 'signature': fm.signature = value; break;
+      case 'returns': fm.returns = value; break;
+      case 'param-safe': case 'paramSafe': fm.paramSafe = value === 'true'; break;
       case 'blankStep': fm.blankStep = parseInt(value, 10) || undefined; break;
       case 'blankScript': fm.blankScript = value; break;
       case 'blankDismissible': fm.blankDismissible = value === 'true'; break;
@@ -1210,6 +1245,21 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
       if (frontmatter.asContext !== undefined) blank.asContext = frontmatter.asContext;
       if (frontmatter.contextTtl !== undefined) blank.contextTtl = frontmatter.contextTtl;
       if (frontmatter.contextSlots !== undefined) blank.contextSlots = frontmatter.contextSlots;
+      if (frontmatter.signature !== undefined) blank.signature = frontmatter.signature;
+      if (frontmatter.returns !== undefined) blank.returns = frontmatter.returns;
+      if (frontmatter.paramSafe === true) {
+        // SECURITY GUARD (Phase 4): `param-safe` authorises the runtime to
+        // call this blank's get() with an LLM-PROVIDED argument at resolve
+        // time. A blank that runs a SCRIPT (exec) must NEVER be param-safe —
+        // the attacker-influencable arg would reach a shell. Refuse + warn;
+        // the blank stays instance-only (resolves via pre-fetched tokens).
+        if (frontmatter.blankScript) {
+          // eslint-disable-next-line no-console
+          console.warn(`[opencues] BLANK.md "${name}": param-safe IGNORED — a script blank (blankScript) must not be callable with an LLM-provided argument. Remove blankScript or param-safe.`);
+        } else {
+          blank.paramSafe = true;
+        }
+      }
       if (frontmatter.contextBind !== undefined) blank.contextBind = frontmatter.contextBind;
       if (frontmatter.contextBindSplit !== undefined) blank.contextBindSplit = frontmatter.contextBindSplit;
       if (frontmatter.splitValuesInTokenNamesAck !== undefined) blank.splitValuesInTokenNamesAck = frontmatter.splitValuesInTokenNamesAck;

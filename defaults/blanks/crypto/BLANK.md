@@ -31,6 +31,14 @@ blankReplace: auto
 # route through fluid-blank without typing the keyword.
 as-context: safe
 context-slots: BTC, ETH
+# TYPED-SENTINEL Phase 4 — param-safe ON-DEMAND fetch. With `sentinel-language:
+# typed`, the catalog advertises `[CRYPTO(symbol: string): number]` and the
+# runtime may call CryptoBlank.get(<symbol>) with an LLM-provided symbol — e.g.
+# `[CRYPTO(symbol=SOL)]` — even for a coin not pre-fetched. SAFE: bounded
+# codomain (a symbol → a USD price), no exec/side-effect, no blankScript.
+signature: (symbol: string)
+returns: number
+param-safe: true
 ---
 
 Implementation: built-in `CryptoBlank` in `@opencues/runtime`

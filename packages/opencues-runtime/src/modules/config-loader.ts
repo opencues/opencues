@@ -155,6 +155,16 @@ export interface OpenCuesState {
    */
   readonly sentinelLanguage: 'bare' | 'typed';
   /**
+   * USER-OWNED param-safe trust list (typed-sentinel Phase 4). Blank names the
+   * user has explicitly authorised to be called with an LLM-PROVIDED argument
+   * on-demand, BEYOND the audited built-in fetch classes (stocks/weather/crypto)
+   * which are param-safe by code identity. A blank's `param-safe: true`
+   * frontmatter is necessary but NOT sufficient — a pack can never self-grant;
+   * the user must list it here (hand-edit OPENCUES.md or `opencues param-safe
+   * allow <name>`). Empty by default. Parsed from `param-safe-allow:`.
+   */
+  readonly paramSafeAllow: readonly string[];
+  /**
    * Controls when `_` fires its blank.
    *
    * - `immediate` (default): blank fires the instant `_` is inserted.
@@ -241,6 +251,7 @@ export const DEFAULT_OPENCUES_STATE: OpenCuesState = {
   identityContextMode: 'safe',
   blankContextMode: 'safe',
   sentinelLanguage: 'bare',
+  paramSafeAllow: [],
   blankTriggerMode: 'immediate',
   navKeymap: 'auto',
   cuesLlmProvider: 'inherit',
@@ -337,6 +348,10 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   // grammar. Unrecognised value → `bare` (fail-safe, no behavioural diff).
   const sentinelLanguage: 'bare' | 'typed' =
     get('sentinel-language', 'bare').toLowerCase() === 'typed' ? 'typed' : 'bare';
+  // USER-owned param-safe trust list (comma-separated blank names). A pack
+  // can't write OPENCUES.md, so listing a name here is a deliberate user act.
+  const paramSafeAllow: readonly string[] = get('param-safe-allow', '')
+    .split(',').map(s => s.trim()).filter(Boolean);
   const blankTriggerMode: 'immediate' | 'spaced' =
     get('blank-trigger-mode', 'immediate').toLowerCase() === 'spaced' ? 'spaced' : 'immediate';
   const navKeymapRaw = get('nav-keymap', 'auto').toLowerCase();
@@ -375,7 +390,7 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   // Tests keep shipping mock `settings:` blocks; they get the
   // file-driven definitions, identical to the pre-refactor behaviour.
   const definitions = mergeDefinitions(getMenuDefinitions(undefined, settings), parseSettingsBlock(lines));
-  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, identityContextMode, blankContextMode, sentinelLanguage, blankTriggerMode, navKeymap, cuesLlmProvider, auditorsLlmProvider, blanksLlmProvider, settings, definitions };
+  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, identityContextMode, blankContextMode, sentinelLanguage, paramSafeAllow, blankTriggerMode, navKeymap, cuesLlmProvider, auditorsLlmProvider, blanksLlmProvider, settings, definitions };
 }
 
 /**
@@ -707,6 +722,7 @@ export class ConfigLoader {
         return candidate;
       })(),
       sentinelLanguage: (get('sentinel-language', 'bare').toLowerCase() === 'typed' ? 'typed' : 'bare') as 'bare' | 'typed',
+      paramSafeAllow: get('param-safe-allow', '').split(',').map(s => s.trim()).filter(Boolean),
       blankTriggerMode: (get('blank-trigger-mode', 'immediate').toLowerCase() === 'spaced' ? 'spaced' : 'immediate') as 'immediate' | 'spaced',
       navKeymap: ((): 'auto' | 'ctrl-alt' | 'ctrl-shift' => {
         const v = get('nav-keymap', 'auto').toLowerCase();

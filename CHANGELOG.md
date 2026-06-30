@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — typed-sentinel Phase 4: on-demand parameterized blank fetch (opt-in, capability-gated) (`@opencues/core` 0.11.0 → 0.12.0, `@opencues/runtime` 0.8.0 → 0.9.0)
+
+The full parameterized tier for `sentinel-language: typed`. A blank that declares `param-safe: true` + a `signature:` is rendered as a LIVE FUNCTION (`[STOCK(ticker: string): number]`); when the LLM emits `[STOCK(ticker=TSLA)]` the runtime calls `StocksBlank.get('TSLA')` on-demand — even for a ticker that wasn't pre-fetched as an as-context slot — and substitutes the live value. Extends to fluid-blank + transform-blank. Closes the gap where v1 (typed-scalar) could only resolve pre-fetched instances.
+
+**Security model (capability gate, FOUR layers — see security-audit.md #23):**
+- **Opt-in per blank** — `param-safe: true` required; absent → instance-only, no LLM-arg call.
+- **Script-blank ban at parse** — `cues-md.ts` hard-refuses `param-safe` on any `blankScript` blank (both folder-BLANK.md + BLANKS.md-JSON paths) + warns: an LLM-controlled arg can never reach a shell.
+- **Runtime chokepoint** — `buildBlankFetchProvider.blankFetch` re-enforces `param-safe && !blankScript` on every call (never trusts the caller); the param-safe registry is built only from opted-in blanks + gated on `blank-context-mode` on; the whole path is OFF unless `sentinel-language: typed`.
+- **Runtime arg floor** (`paramSafeArgWithinFloor`, defense-in-depth) — before `get()` runs, an empty / over-200-char / control-char / URL-structure-char arg is refused. Each shipped param-safe blank ALSO validates/encodes its own arg (stocks → `[A-Z0-9.]`, weather → `encodeURIComponent`, crypto → `[a-z0-9-]`); **AUTHOR CONTRACT**: param-safe is open to any non-script `impl:` blank a user opts into, so authors MUST treat the arg as hostile. Documented residual: nested resolution (`[WEATHER(city=[WORK CITY])]`) can route an identity scalar to a third-party data API.
+
+Implementation: `collectParamSafeFetches` (pure pre-pass) + async on-demand fetch in core; `buildBlankFetchProvider` (capability-gated, hot-reloading registry) + `paramSafeArgWithinFloor` + `CueContext.{paramSafeFns,paramSafeFnsBlock,blankFetch}` threaded via the resolver and wired into all native bands (cc/oc/gemini/shell). `defaults/blanks/{stocks,weather,crypto}` opt in (bounded-codomain fetch). Tests: frontmatter + security-guard + collector + arg-floor + on-demand integration. **OFF by default** (`sentinel-language: bare`); default users + non-param-safe blanks are unaffected.
+
 ### Added — `ollama` provider: local models over Ollama's native `/api/chat` (`@opencues/core` 0.10.0 → 0.11.0, `@opencues/runtime` 0.7.0 → 0.8.0, `opencues` CLI 0.2.7 → 0.2.8)
 
 New first-class LLM provider that runs models **fully on the user's machine** via a local Ollama server. No API key, no per-token cost, and inference never leaves the device — so it's the one provider OpenCues will route prose-bearing surfaces (word-cues, auditors, agent-rewrite) through with zero leak risk (`trainsOnInput` is implicitly false). Opt in with `llm-provider: ollama` (global) or `blanks-llm-provider: ollama` (the `_` surface only); default model `gemma4:e2b`.

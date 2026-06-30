@@ -16,9 +16,9 @@ describe('CryptoBlank', () => {
     expect(await ctl.get()).toBe('');
   });
 
-  it('returns "Unknown: <kw>" for keywords not in the coin map', async () => {
-    const ctl = new CryptoBlank({ fetchFn: fetchOk({}) });
-    expect(await ctl.get('not-a-coin')).toBe('Unknown: not-a-coin');
+  it('treats an unmapped keyword AS a CoinGecko id (param-safe on-demand)', async () => {
+    const ctl = new CryptoBlank({ fetchFn: fetchOk({ dogecoin: { usd: 0.12 } }) });
+    expect(await ctl.get('dogecoin')).toBe('DOGECOIN: $0.1200');
   });
 
   it('formats price >= $1 with commas + 2 decimals', async () => {

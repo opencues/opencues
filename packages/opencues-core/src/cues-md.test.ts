@@ -786,3 +786,29 @@ describe('parseCuesMd: real CUES.md', () => {
     assert.deepStrictEqual(validateCuesMd(cfg), []);
   });
 });
+
+describe('Phase 4 — typed-sentinel blank fields (signature/returns/param-safe)', () => {
+  const parse = (fm: string) => parseSingleCueMd(`---\n${fm}\n---`, '/x').blanks?.['b'];
+
+  it('parses signature + returns + param-safe on a fetch blank', () => {
+    const b = parse('name: b\ntype: blank\nblankKeywords: x\nsignature: (ticker: string)\nreturns: number\nparam-safe: true');
+    assert.strictEqual(b?.signature, '(ticker: string)');
+    assert.strictEqual(b?.returns, 'number');
+    assert.strictEqual(b?.paramSafe, true);
+  });
+
+  it('defaults param-safe to undefined (instance-only) when absent', () => {
+    const b = parse('name: b\ntype: blank\nblankKeywords: x\nsignature: (t: string)');
+    assert.strictEqual(b?.paramSafe, undefined);
+  });
+
+  it('SECURITY: refuses param-safe on a script blank (LLM-arg must never reach a shell)', () => {
+    const orig = console.warn;
+    let warned = '';
+    console.warn = (m?: unknown) => { warned = String(m); };
+    const b = parse('name: b\ntype: blank\nblankKeywords: x\nblankScript: ./x.sh\nparam-safe: true');
+    console.warn = orig;
+    assert.strictEqual(b?.paramSafe, undefined, 'param-safe must be stripped on a script blank');
+    assert.match(warned, /IGNORED/);
+  });
+});

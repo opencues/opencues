@@ -21,6 +21,21 @@ import type { HostAdapter, LogLevel } from './adapter';
 import type { ResolvedAgentLLM } from './modules/agent-rewrite';
 import { buildBlankWeaver, type BlankWeaver } from './modules/blank-weave';
 import type { HttpAdapterShape } from '@opencues/core';
+import { StocksBlank } from './blanks/stocks';
+import { WeatherBlank } from './blanks/weather';
+import { CryptoBlank } from './blanks/crypto';
+
+/**
+ * Audited built-in fetch classes that may be `param-safe` (LLM-arg-callable) by
+ * CODE IDENTITY. Each has been reviewed for arg safety: it validates/encodes
+ * its argument before any URL/query (`StocksBlank` → `[A-Z0-9.]`, `WeatherBlank`
+ * → encodeURIComponent, `CryptoBlank` → `[a-z0-9-]`) and returns a bounded
+ * codomain. A blank is param-safe iff it is `instanceof` one of these OR the
+ * USER explicitly trusted it via `param-safe-allow` — a pack can never
+ * self-grant by shipping the frontmatter flag. To add a class here, audit its
+ * `get(arg)` arg handling first.
+ */
+const AUDITED_PARAM_SAFE_CLASSES = [StocksBlank, WeatherBlank, CryptoBlank] as const;
 
 /* ─── Direct-launch drift advisory ───────────────────────────────────────
  *
@@ -550,6 +565,154 @@ export function buildBlankContextProvider(
     if (timerHandle) clearTimeout(timerHandle);
   };
   return provider;
+}
+
+/** Max length of an LLM-provided `param-safe` fetch argument. A single
+ *  data-lookup value (ticker / crypto id / city name) is short; anything
+ *  longer is abuse, not a lookup. */
+export const PARAM_SAFE_ARG_MAX = 200;
+
+/**
+ * Defense-in-depth shape floor for an LLM-provided `param-safe` fetch argument.
+ * Returns false (→ the runtime refuses the fetch) when the arg is empty, over
+ * `PARAM_SAFE_ARG_MAX`, contains a control char / CRLF / null, or contains a
+ * URL-structure / injection char (`& ? # / \ @ % < > " ` { } | ^`). It does NOT
+ * replace each blank's own arg validation/encoding — it bounds the blast radius
+ * of a custom `param-safe` blank that forgets to encode. Legitimate values
+ * (letters, digits, spaces, accents, `.`/`-`/`'`/`,`) pass.
+ */
+export function paramSafeArgWithinFloor(arg: string): boolean {
+  if (arg.length === 0 || arg.length > PARAM_SAFE_ARG_MAX) return false;
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1F\x7F]/.test(arg)) return false; // control / CRLF / null
+  if (/[&?#/\\@%<>"`{}|^]/.test(arg)) return false;    // URL-structure / injection
+  return true;
+}
+
+/**
+ * Phase 4 — capability-gated on-demand blank-fetch provider for the
+ * typed-sentinel parameterized tier. Returns `{ getParamSafeFns, blankFetch }`:
+ *
+ *   - getParamSafeFns(): the LIVE registry (canonical token-prefix →
+ *     {blankName, tokenPrefix}) of blanks with `param-safe: true` AND no
+ *     `blankScript` AND a runtime impl on this host AND `blank-context-mode`
+ *     on. This registry IS the capability gate — core only fetches fn-calls
+ *     present here. Rebuilt per call so a param-safe flip hot-reloads.
+ *   - blankFetch(blankName, arg): calls the blank's `get(arg)` with an
+ *     LLM-PROVIDED argument. RE-ENFORCES the capability on EVERY call
+ *     (defense in depth — never trust the caller), so a script blank can
+ *     never be invoked here even if the registry were somehow tampered with.
+ *
+ * Returns undefined when no blanks are wired, so the whole path is a
+ * structural no-op until a blank opts into `param-safe`.
+ */
+export function buildBlankFetchProvider(
+  configLoader: ConfigLoader,
+  blanks: ReadonlyMap<string, import('./blanks/types').Blank> | undefined,
+  log: (level: LogLevel, msg: string) => void,
+): {
+  getParamSafeFns: () => ReadonlyMap<string, { blankName: string; tokenPrefix: string }>;
+  getRenderedBlock: () => string;
+  blankFetch: (blankName: string, arg: string) => Promise<string | undefined>;
+} | undefined {
+  if (!blanks || blanks.size === 0) return undefined;
+  let core: { deriveBlankContextToken?: (n: string, s: string) => string } | null = null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    core = require('@opencues/core');
+  } catch { return undefined; }
+  if (!core?.deriveBlankContextToken) return undefined;
+
+  // Authorised for LLM-arg invocation RIGHT NOW? Reads live config so a flip
+  // (or removal) of param-safe / the trust list hot-reloads, and re-checks the
+  // script-blank ban + the capability gate on EVERY call.
+  const isParamSafe = (blankName: string): boolean => {
+    const cfg = configLoader.mergedBlanksConfig?.blanks?.[blankName];
+    // Necessary preconditions: opted in + not a script blank (LLM-arg → shell).
+    if (!cfg || cfg.paramSafe !== true || cfg.blankScript) return false;
+    // CAPABILITY GATE — `param-safe: true` alone is NOT sufficient (a pack can
+    // ship it; installing ≠ enabling). Honour it only when EITHER:
+    //   (a) the blank is one of the audited built-in fetch classes (trusted by
+    //       CODE IDENTITY — `instanceof`, spoof-proof: a pack's `impl: ./x.js`
+    //       can never be an instance of a core class), OR
+    //   (b) the USER explicitly trusted this name via `param-safe-allow` in
+    //       OPENCUES.md (which a pack can't write).
+    const inst = blanks.get(blankName);
+    if (inst && AUDITED_PARAM_SAFE_CLASSES.some(C => inst instanceof C)) return true;
+    return configLoader.opencuesState.paramSafeAllow.includes(blankName);
+  };
+  const prefixOf = (blankName: string): string =>
+    core!.deriveBlankContextToken!(blankName, 'X').slice(1).split(' ')[0]!; // "[STOCK X]" → "STOCK"
+  const canon = (s: string): string => s.toUpperCase().replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+
+  const getParamSafeFns = (): ReadonlyMap<string, { blankName: string; tokenPrefix: string }> => {
+    const reg = new Map<string, { blankName: string; tokenPrefix: string }>();
+    if (configLoader.opencuesState.blankContextMode === 'off') return reg; // blank-data opt-in
+    const merged = configLoader.mergedBlanksConfig?.blanks ?? {};
+    for (const name of Object.keys(merged)) {
+      if (!isParamSafe(name) || !blanks.has(name)) continue;
+      const prefix = prefixOf(name);
+      reg.set(canon(prefix), { blankName: name, tokenPrefix: prefix });
+    }
+    return reg;
+  };
+
+  const blankFetch = async (blankName: string, arg: string): Promise<string | undefined> => {
+    // SECURITY chokepoint — re-verify the capability on every call. A blank
+    // that isn't param-safe, or is a script blank, is NEVER invoked here.
+    if (!isParamSafe(blankName)) {
+      log('warn', `[param-safe] refused on-demand fetch "${blankName}" — not param-safe or is a script blank`);
+      return undefined;
+    }
+    // DEFENSE-IN-DEPTH arg floor. The PRIMARY defense is each blank
+    // validating/encoding its own arg (StocksBlank → `[A-Z0-9.]`, WeatherBlank
+    // → encodeURIComponent). But `param-safe` is open to ANY non-script `impl:`
+    // blank a user opts into — including their own JS — and a blank that
+    // forgets to encode would interpolate this LLM-chosen string straight into
+    // a URL. So bound it here too: reject control chars / CRLF / null (never
+    // legitimate; header- & null-injection vectors), the URL-structure chars
+    // that have no place in a single data-lookup value (`& ? # / \ @ % < > " ` { } | ^`),
+    // and anything over ARG_MAX. Legitimate args (tickers, crypto ids, city
+    // names with spaces/accents/`.`/`-`/`'`) pass untouched. Authors MUST still
+    // treat the arg as hostile — this is belt-and-suspenders, not a substitute.
+    if (!paramSafeArgWithinFloor(arg)) {
+      log('warn', `[param-safe] refused on-demand fetch "${blankName}" — argument failed the shape floor (control/URL char or length cap)`);
+      return undefined;
+    }
+    const blank = blanks.get(blankName);
+    if (!blank) return undefined;
+    try {
+      // Blanks disagree on where the arg lives: StocksBlank/CryptoBlank read
+      // the first param (keyword); WeatherBlank ignores it and reads the
+      // SECOND param (context) — so pass the LLM arg in BOTH positions to
+      // satisfy every get() convention.
+      const v = await blank.get(arg, [arg]);
+      return typeof v === 'string' && v.length > 0 ? v : undefined;
+    } catch (e) {
+      log('warn', `[param-safe] fetch "${blankName}(${arg})" failed: ${e instanceof Error ? e.message : String(e)}`);
+      return undefined;
+    }
+  };
+
+  // Render the param-safe FUNCTIONS block for the typed catalog so the LLM
+  // emits `[STOCK(ticker=NVDA)]` calls. Built from each blank's signature/
+  // returns/description (live config). Empty when no param-safe blank applies.
+  const getRenderedBlock = (): string => {
+    const reg = getParamSafeFns();
+    if (reg.size === 0) return '';
+    const merged = configLoader.mergedBlanksConfig?.blanks ?? {};
+    const lines: string[] = [];
+    for (const { blankName, tokenPrefix } of reg.values()) {
+      const cfg = merged[blankName];
+      const sig = cfg?.signature ?? '(arg: string)';
+      const ret = cfg?.returns ?? 'string';
+      const desc = cfg?.tip ?? `live ${blankName} value for the argument`;
+      lines.push(`- [${tokenPrefix}${sig}: ${ret}] — ${desc}`);
+    }
+    return `\n\nLIVE FUNCTIONS — these fetch live data for ANY argument, not only the values pre-listed above. When the content names an entity one of these can fetch (a stock ticker, a city's weather, …), emit the function CALL with that entity as the argument; the runtime fetches the live value and substitutes it.\nThis OVERRIDES the "write a natural placeholder" rule for any entity a function covers: prefer the CALL [STOCK(ticker=AMZN)] over a generic placeholder like [Amazon Stock Price] or [Today's Price]. Use the ticker symbol / city / id as the argument; if the prose names a company, use its ticker (Amazon→AMZN, Netflix→NFLX, Reddit→RDDT).\n${lines.join('\n')}\nExamples: "Amazon's share price" → [STOCK(ticker=AMZN)] · "weather in Berlin" → [WEATHER(city=Berlin)] · "solana's price" → [CRYPTO(symbol=SOL)].`;
+  };
+
+  return { getParamSafeFns, getRenderedBlock, blankFetch };
 }
 
 /** Read the `blank-context-prewarm-ms` setting. Returns 0 when
