@@ -58,8 +58,8 @@
  */
 
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
-import { keywordInWindow, lineOfWords } from '../keyword-window';
 import { segmentStart } from '../segment';
+import { blankClaimsUnderscore } from '../blank-shapes';
 import { BlankConfig } from '../cues-md';
 import { describeLLMCall, dispatchChat, getProvider, listProviders, type ProviderAdapter } from '../llm-provider';
 import { classifyLlmError, type FluidBlankErrorReason } from './fluid-blank-source';
@@ -925,28 +925,14 @@ export class ConfigIntentSource implements CueSource {
     const blankIndex = lower.indexOf('_');
     if (blankIndex === -1) return false;
 
-    // Cede to keyword-bound BlankSource if a registered blank's keyword is
-    // on the same line as the `_` — the shared `keywordInWindow` keeps all
-    // three semantic-`_` sources + BlankFill + BlankSource on the same
-    // line-scoped boundary. See keyword-window.ts.
-    const lineOf = lineOfWords(context.text);
-    for (const blk of Object.values(this.blanks)) {
-      if (!blk.blankKeywords?.length) continue;
-      for (const phrase of blk.blankKeywords) {
-        const parts = phrase.toLowerCase().split(/\s+/);
-        for (let i = 0; i <= lower.length - parts.length; i++) {
-          let ok = true;
-          for (let j = 0; j < parts.length; j++) {
-            if (lower[i + j] !== parts[j]) { ok = false; break; }
-          }
-          if (!ok) continue;
-          const endIdx = i + parts.length - 1;
-          if (keywordInWindow(endIdx, blankIndex, { lineOf })) {
-            return false;
-          }
-        }
-      }
-    }
+    // Cede when a keyword/shaped blank claims this `_` (shape match, or a
+    // non-shaped blank's keyword on the same line). SHARED predicate —
+    // identical for FluidBlank / TransformBlank / ConfigIntent so they can't
+    // drift. The June 2026 long-buffer bug was ConfigIntent carrying a stale
+    // inline copy that didn't skip shaped blanks: an incidental "volume" in a
+    // woven `The volume is now 30%` made it cede, so `voice mode off _` fell
+    // through to fluid-blank instead of flipping the setting.
+    if (blankClaimsUnderscore(context.text, context.words, this.blanks)) return false;
 
     return true;
   }

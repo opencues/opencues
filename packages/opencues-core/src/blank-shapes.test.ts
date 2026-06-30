@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert';
-import { matchBlankShape } from './blank-shapes';
+import { matchBlankShape, blankClaimsUnderscore } from './blank-shapes';
 import { synthesizeKeywordShapes, type BlankConfig } from './cues-md';
 
 const VOLUME_SHAPES: BlankConfig['blankShapes'] = [
@@ -111,6 +111,45 @@ describe('matchBlankShape', () => {
 
   it('prose ending in a period that is NOT a command still cedes', () => {
     assert.strictEqual(matchBlankShape('i turned the volume down. what a day _', b), null);
+  });
+});
+
+// The SINGLE cede predicate shared by FluidBlank / TransformBlank /
+// ConfigIntent. Testing it once covers all three — that's the whole point of
+// centralising it (the June 2026 long-buffer bug was ConfigIntent carrying a
+// stale inline copy that diverged from the other two).
+describe('blankClaimsUnderscore (shared cede predicate)', () => {
+  const words = (t: string) => t.replace(/[​‌]/g, '').split(/\s+/).filter(Boolean);
+  const VB = new Map<string, Pick<BlankConfig, 'blankShapes' | 'blankKeywords'>>([
+    ['volume', { blankShapes: VOLUME_SHAPES, blankKeywords: ['volume'] }],
+  ]);
+
+  it('a shaped command claims its `_`', () => {
+    assert.strictEqual(blankClaimsUnderscore('volume 30 _', words('volume 30 _'), VB), true);
+    assert.strictEqual(blankClaimsUnderscore('volume _', words('volume _'), VB), true);
+  });
+
+  // THE REGRESSION (June 2026): a stray keyword in PROSE must NOT claim, so a
+  // following settings command still routes to ConfigIntent. The word "volume"
+  // sits in the woven `The volume is now 30%`, on the same line as `_`, but
+  // `volume` is a SHAPED blank → the legacy keyword cede is skipped, and the
+  // `_`'s segment ("voice mode off _") matches no shape → no claim.
+  it('a stray keyword in prose does NOT claim (shaped blank skips keyword cede)', () => {
+    const t = 'let me check the audio. The volume is now 30%. voice mode off _';
+    assert.strictEqual(blankClaimsUnderscore(t, words(t), VB), false);
+  });
+
+  it('a NON-shaped keyword blank still claims via keyword on the line (legacy)', () => {
+    const legacy = new Map<string, Pick<BlankConfig, 'blankShapes' | 'blankKeywords'>>([
+      ['notes', { blankKeywords: ['note'] }], // no shapes → legacy keyword cede applies
+    ]);
+    assert.strictEqual(blankClaimsUnderscore('note this down _', words('note this down _'), legacy), true);
+    // …but a stray "note" with the keyword on a PREVIOUS line does not.
+    assert.strictEqual(blankClaimsUnderscore('note above\nplain line _', words('note above\nplain line _'), legacy), false);
+  });
+
+  it('no `_` → no claim', () => {
+    assert.strictEqual(blankClaimsUnderscore('volume 30', words('volume 30'), VB), false);
   });
 });
 

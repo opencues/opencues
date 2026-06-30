@@ -13,6 +13,7 @@
 
 import type { BlankConfig } from './cues-md';
 import { segmentStart } from './segment';
+import { keywordInWindow, lineOfWords } from './keyword-window';
 
 export interface BlankShapeMatch {
   /** Blank whose shape matched. */
@@ -82,4 +83,52 @@ export function matchBlankShape(
     }
   }
   return null;
+}
+
+type ClaimBlank = Pick<BlankConfig, 'blankShapes' | 'blankKeywords'>;
+
+/**
+ * Does some keyword/shaped blank CLAIM this `_`? The SINGLE shared cede
+ * predicate for the three semantic-`_` sources (FluidBlank / TransformBlank /
+ * ConfigIntent): each returns `false` from `supports()` when this returns true,
+ * yielding the `_` to the blank. Centralised so the three can't drift — the
+ * June 2026 long-buffer bug was ConfigIntent carrying a stale inline copy that
+ * (unlike the other two) didn't skip shaped blanks, so an incidental keyword in
+ * prose (`The volume is now 30%`) on the `_`'s line made it cede and a real
+ * settings command (`voice mode off _`) silently fell through to fluid-blank.
+ *
+ *   - TYPE-BASED: a declared SHAPE matches the `_`'s segment (anchored grammar,
+ *     e.g. `volume 30 _`). Exact, so prose can never trigger it.
+ *   - LEGACY (non-shaped blanks only): a keyword sits on the same line as `_`
+ *     (shared `keywordInWindow`). Shaped blanks are governed solely by the
+ *     shape match above — a stray keyword in prose doesn't claim.
+ */
+export function blankClaimsUnderscore(
+  text: string,
+  words: readonly string[],
+  blanks: ReadonlyMap<string, ClaimBlank> | Readonly<Record<string, ClaimBlank>>,
+): boolean {
+  if (matchBlankShape(text, blanks)) return true;
+  const lower = words.map(w => w.toLowerCase());
+  const blankIndex = lower.indexOf('_');
+  if (blankIndex === -1) return false;
+  const lineOf = lineOfWords(text);
+  const entries: Iterable<ClaimBlank> =
+    blanks instanceof Map ? blanks.values() : Object.values(blanks);
+  for (const blk of entries) {
+    if (blk.blankShapes?.length) continue;
+    if (!blk.blankKeywords?.length) continue;
+    for (const phrase of blk.blankKeywords) {
+      const parts = phrase.toLowerCase().split(/\s+/);
+      for (let i = 0; i <= lower.length - parts.length; i += 1) {
+        let ok = true;
+        for (let j = 0; j < parts.length; j += 1) {
+          if (lower[i + j] !== parts[j]) { ok = false; break; }
+        }
+        if (!ok) continue;
+        if (keywordInWindow(i + parts.length - 1, blankIndex, { lineOf })) return true;
+      }
+    }
+  }
+  return false;
 }

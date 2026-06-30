@@ -31,7 +31,6 @@
 
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
 import { BlankConfig } from '../cues-md';
-import { keywordInWindow, lineOfWords } from '../keyword-window';
 import { describeLLMCall, dispatchChat, getProvider, type ProviderAdapter } from '../llm-provider';
 import { classifyLlmError, type FluidBlankErrorReason } from './fluid-blank-source';
 import { detectPartialTransform } from './transform-partial-detector';
@@ -55,7 +54,7 @@ import {
   instanceTokenFnBridge,
   jsonFieldAccessor,
 } from '../typed-sentinel';
-import { matchBlankShape } from '../blank-shapes';
+import { blankClaimsUnderscore } from '../blank-shapes';
 
 // ============================================================================
 // Prompts — ported verbatim from tests/benchmarks/transform-blank/
@@ -517,26 +516,11 @@ export class TransformBlankSource implements CueSource {
     const blankIndex = lower.indexOf('_');
     if (blankIndex === -1) return false;
 
-    // TYPE-BASED CEDE (shaped blanks): cede iff a declared SHAPE claims the `_`.
-    if (matchBlankShape(context.text, this.blanks)) return false;
-    // LEGACY CEDE (non-shaped blanks only): keyword on the same line as `_`
-    // until they migrate to shapes. Shaped blanks are governed solely by the
-    // shape above.
-    const lineOf = lineOfWords(context.text);
-    for (const blk of Object.values(this.blanks)) {
-      if (blk.blankShapes?.length) continue;
-      if (!blk.blankKeywords?.length) continue;
-      for (const phrase of blk.blankKeywords) {
-        const parts = phrase.toLowerCase().split(/\s+/);
-        for (let i = 0; i <= lower.length - parts.length; i++) {
-          let ok = true;
-          for (let j = 0; j < parts.length; j++) { if (lower[i + j] !== parts[j]) { ok = false; break; } }
-          if (!ok) continue;
-          const endIdx = i + parts.length - 1;
-          if (keywordInWindow(endIdx, blankIndex, { lineOf })) return false;
-        }
-      }
-    }
+    // Cede when a keyword/shaped blank claims this `_` (shape match, or a
+    // non-shaped blank's keyword on the same line). SHARED predicate —
+    // identical for FluidBlank / TransformBlank / ConfigIntent so they can't
+    // drift (see blankClaimsUnderscore).
+    if (blankClaimsUnderscore(context.text, context.words, this.blanks)) return false;
 
     // Always claim. EXTRACT is the authoritative classifier — if the
     // input isn't actually a transform, EXTRACT returns VERDICT: NONE
