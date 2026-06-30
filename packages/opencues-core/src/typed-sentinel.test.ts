@@ -345,9 +345,10 @@ describe('collectParamSafeFetches (Phase 4 on-demand pre-pass)', () => {
     assert.deepStrictEqual(f, [{ blankName: 'stocks', arg: 'TSLA', instanceToken: '[STOCK TSLA]' }]);
   });
 
-  it('resolves a nested SCALAR arg via scalarLookup', () => {
-    const f = resolveImport('[STOCK(ticker=[WATCH TICKER])]', reg, look);
-    assert.deepStrictEqual(f, [{ blankName: 'stocks', arg: 'NVDA', instanceToken: '[STOCK NVDA]' }]);
+  it('SECURITY: a nested-token arg is NOT resolved (literal args only — no PII egress)', () => {
+    // `[STOCK(ticker=[WATCH TICKER])]` must NOT route the identity/instance
+    // scalar into the fetch. A nested arg is dropped, not resolved.
+    assert.deepStrictEqual(resolveImport('[STOCK(ticker=[WATCH TICKER])]', reg, look), []);
   });
 
   it('CAPABILITY GATE: ignores a fn-call not in the param-safe registry', () => {

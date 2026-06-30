@@ -22,6 +22,7 @@ import { describe, it, expect } from 'vitest';
 import { buildBlankFetchProvider, paramSafeArgWithinFloor, PARAM_SAFE_ARG_MAX } from './boot-common';
 import { DEFAULT_OPENCUES_STATE, type ConfigLoader } from './modules/config-loader';
 import type { Blank } from './blanks/types';
+import { StocksBlank } from './blanks/stocks';
 
 class SpyBlank implements Blank {
   readonly readOnly = true;
@@ -30,11 +31,24 @@ class SpyBlank implements Blank {
   async get(slot?: string): Promise<string> { this.calls.push(slot ?? ''); return this.value; }
 }
 
+// A real audited core class with a stubbed fetch — instanceof StocksBlank, so
+// it's param-safe by CODE IDENTITY without needing a user trust entry.
+function realStocks(value = 232.69): StocksBlank {
+  return new StocksBlank({
+    apiKey: 'k',
+    fetchFn: (async () => ({ ok: true, json: async () => ({ c: value }) })) as unknown as typeof fetch,
+  });
+}
+
 type BlankCfg = { name: string; paramSafe?: boolean; blankScript?: string; signature?: string; returns?: string; blankTip?: string };
 
-function makeLoader(blanks: Record<string, BlankCfg>, blankContextMode: 'off' | 'safe' | 'raw' = 'safe'): ConfigLoader {
+function makeLoader(
+  blanks: Record<string, BlankCfg>,
+  blankContextMode: 'off' | 'safe' | 'raw' = 'safe',
+  paramSafeAllow: readonly string[] = [],
+): ConfigLoader {
   return {
-    opencuesState: { ...DEFAULT_OPENCUES_STATE, blankContextMode, settings: new Map() },
+    opencuesState: { ...DEFAULT_OPENCUES_STATE, blankContextMode, paramSafeAllow, settings: new Map() },
     identity: { fields: [], catalog: new Map() },
     mergedBlanksConfig: { blanks },
   } as unknown as ConfigLoader;
@@ -43,26 +57,62 @@ function makeLoader(blanks: Record<string, BlankCfg>, blankContextMode: 'off' | 
 const noop = () => {};
 
 describe('buildBlankFetchProvider — happy path', () => {
-  it('registers a param-safe fetch blank + blankFetch calls get(arg)', async () => {
-    const spy = new SpyBlank('stocks', 'AMZN: $232.69');
+  it('audited core class is param-safe by code identity + blankFetch calls get(arg)', async () => {
     const prov = buildBlankFetchProvider(
-      makeLoader({ stocks: { name: 'stocks', paramSafe: true, signature: '(ticker: string)', returns: 'number', blankTip: 'Stock price' } }),
-      new Map([['stocks', spy]]), noop,
+      makeLoader({ stocks: { name: 'stocks', paramSafe: true, signature: '(ticker: string)', returns: 'number' } }),
+      new Map([['stocks', realStocks(232.69)]]), noop, // real StocksBlank → instanceof gate passes, NO trust entry
     )!;
     expect(prov).toBeTruthy();
     expect([...prov.getParamSafeFns().keys()]).toEqual(['STOCK']);
     const v = await prov.blankFetch('stocks', 'AMZN');
-    expect(v).toBe('AMZN: $232.69');
-    expect(spy.calls).toEqual(['AMZN']); // get() called once, with the LLM arg
+    expect(v).toBe('AMZN: $232.69'); // get(arg) ran through the real (sanitizing) class
   });
 
   it('getRenderedBlock advertises the signature', () => {
     const prov = buildBlankFetchProvider(
-      makeLoader({ stocks: { name: 'stocks', paramSafe: true, signature: '(ticker: string)', returns: 'number', blankTip: 'Stock price' } }),
-      new Map([['stocks', new SpyBlank('stocks', 'x')]]), noop,
+      makeLoader({ stocks: { name: 'stocks', paramSafe: true, signature: '(ticker: string)', returns: 'number' } }),
+      new Map([['stocks', realStocks()]]), noop,
     )!;
     expect(prov.getRenderedBlock()).toMatch(/\[STOCK\(ticker: string\): number\]/);
     expect(prov.getRenderedBlock()).toMatch(/LIVE FUNCTIONS/);
+  });
+});
+
+describe('buildBlankFetchProvider — CAPABILITY GATE (code-identity + user trust)', () => {
+  // A pack can ship `param-safe: true`, but installing ≠ enabling: the flag is
+  // honoured ONLY for an audited core class (instanceof) OR a name the USER put
+  // in param-safe-allow. This is the security-first redesign — a pack can never
+  // self-grant LLM-arg invocation.
+  it('a NON-audited blank with the flag but NO user trust is REFUSED (pack self-grant denied)', async () => {
+    const spy = new SpyBlank('evil', 'pwned');
+    const prov = buildBlankFetchProvider(
+      makeLoader({ evil: { name: 'evil', paramSafe: true, signature: '(x: string)' } }), // flag set, but...
+      new Map([['evil', spy]]), noop,                                                    // not audited, not trusted
+    )!;
+    expect(prov.getParamSafeFns().size).toBe(0);          // NOT in the registry
+    const v = await prov.blankFetch('evil', 'anything');
+    expect(v).toBeUndefined();                            // refused at the chokepoint
+    expect(spy.calls).toEqual([]);                        // get() NEVER invoked
+  });
+
+  it('a NON-audited blank the USER trusted (param-safe-allow) IS honoured', async () => {
+    const spy = new SpyBlank('myfetch', 'custom-value');
+    const prov = buildBlankFetchProvider(
+      makeLoader({ myfetch: { name: 'myfetch', paramSafe: true, signature: '(q: string)' } }, 'safe', ['myfetch']),
+      new Map([['myfetch', spy]]), noop,
+    )!;
+    expect([...prov.getParamSafeFns().values()].map(v => v.blankName)).toEqual(['myfetch']);
+    const v = await prov.blankFetch('myfetch', 'query');
+    expect(v).toBe('custom-value');
+    expect(spy.calls).toEqual(['query']);
+  });
+
+  it('audited core class is honoured WITHOUT any user trust entry', () => {
+    const prov = buildBlankFetchProvider(
+      makeLoader({ stocks: { name: 'stocks', paramSafe: true } }), // no param-safe-allow
+      new Map([['stocks', realStocks()]]), noop,
+    )!;
+    expect([...prov.getParamSafeFns().values()].map(v => v.blankName)).toEqual(['stocks']);
   });
 });
 
@@ -123,7 +173,7 @@ describe('buildBlankFetchProvider — mode + host-impl gates', () => {
         volume: { name: 'volume', paramSafe: true, blankScript: '/v.sh' }, // script → banned
       }),
       new Map([
-        ['stocks', new SpyBlank('stocks', 's')],
+        ['stocks', realStocks()],                    // audited core → registers
         ['weather', new SpyBlank('weather', 'w')],
         ['volume', new SpyBlank('volume', 'v')],
       ]), noop,
@@ -158,12 +208,14 @@ describe('buildBlankFetchProvider — ARG SHAPE FLOOR (defense-in-depth)', () =>
   });
 
   it('blankFetch refuses a floor-failing arg — get() is NEVER called', async () => {
-    const spy = new SpyBlank('stocks', 'leaked');
+    // User-trusted SpyBlank (so it passes the capability gate) — proving the
+    // FLOOR, not the gate, is what stops the injection arg before get().
+    const spy = new SpyBlank('myfetch', 'leaked');
     const prov = buildBlankFetchProvider(
-      makeLoader({ stocks: { name: 'stocks', paramSafe: true, signature: '(ticker: string)', returns: 'number', blankTip: 'Stock price' } }),
-      new Map([['stocks', spy]]), noop,
+      makeLoader({ myfetch: { name: 'myfetch', paramSafe: true, signature: '(q: string)' } }, 'safe', ['myfetch']),
+      new Map([['myfetch', spy]]), noop,
     )!;
-    const v = await prov.blankFetch('stocks', 'AMZN&token=stolen');
+    const v = await prov.blankFetch('myfetch', 'AMZN&token=stolen');
     expect(v).toBeUndefined();
     expect(spy.calls).toEqual([]); // get() never reached — refused at the floor
   });

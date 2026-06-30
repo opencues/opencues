@@ -21,6 +21,21 @@ import type { HostAdapter, LogLevel } from './adapter';
 import type { ResolvedAgentLLM } from './modules/agent-rewrite';
 import { buildBlankWeaver, type BlankWeaver } from './modules/blank-weave';
 import type { HttpAdapterShape } from '@opencues/core';
+import { StocksBlank } from './blanks/stocks';
+import { WeatherBlank } from './blanks/weather';
+import { CryptoBlank } from './blanks/crypto';
+
+/**
+ * Audited built-in fetch classes that may be `param-safe` (LLM-arg-callable) by
+ * CODE IDENTITY. Each has been reviewed for arg safety: it validates/encodes
+ * its argument before any URL/query (`StocksBlank` → `[A-Z0-9.]`, `WeatherBlank`
+ * → encodeURIComponent, `CryptoBlank` → `[a-z0-9-]`) and returns a bounded
+ * codomain. A blank is param-safe iff it is `instanceof` one of these OR the
+ * USER explicitly trusted it via `param-safe-allow` — a pack can never
+ * self-grant by shipping the frontmatter flag. To add a class here, audit its
+ * `get(arg)` arg handling first.
+ */
+const AUDITED_PARAM_SAFE_CLASSES = [StocksBlank, WeatherBlank, CryptoBlank] as const;
 
 /* ─── Direct-launch drift advisory ───────────────────────────────────────
  *
@@ -609,10 +624,22 @@ export function buildBlankFetchProvider(
   if (!core?.deriveBlankContextToken) return undefined;
 
   // Authorised for LLM-arg invocation RIGHT NOW? Reads live config so a flip
-  // (or removal) of param-safe hot-reloads, and re-checks the script-blank ban.
+  // (or removal) of param-safe / the trust list hot-reloads, and re-checks the
+  // script-blank ban + the capability gate on EVERY call.
   const isParamSafe = (blankName: string): boolean => {
     const cfg = configLoader.mergedBlanksConfig?.blanks?.[blankName];
-    return !!cfg && cfg.paramSafe === true && !cfg.blankScript;
+    // Necessary preconditions: opted in + not a script blank (LLM-arg → shell).
+    if (!cfg || cfg.paramSafe !== true || cfg.blankScript) return false;
+    // CAPABILITY GATE — `param-safe: true` alone is NOT sufficient (a pack can
+    // ship it; installing ≠ enabling). Honour it only when EITHER:
+    //   (a) the blank is one of the audited built-in fetch classes (trusted by
+    //       CODE IDENTITY — `instanceof`, spoof-proof: a pack's `impl: ./x.js`
+    //       can never be an instance of a core class), OR
+    //   (b) the USER explicitly trusted this name via `param-safe-allow` in
+    //       OPENCUES.md (which a pack can't write).
+    const inst = blanks.get(blankName);
+    if (inst && AUDITED_PARAM_SAFE_CLASSES.some(C => inst instanceof C)) return true;
+    return configLoader.opencuesState.paramSafeAllow.includes(blankName);
   };
   const prefixOf = (blankName: string): string =>
     core!.deriveBlankContextToken!(blankName, 'X').slice(1).split(' ')[0]!; // "[STOCK X]" → "STOCK"

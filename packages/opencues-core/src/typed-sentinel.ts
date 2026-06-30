@@ -383,12 +383,12 @@ export function collectParamSafeFetches(
     const fn = paramSafe.get(canonName(tok.name));
     if (!fn) continue; // not a param-safe fn → capability gate denies the fetch
     const v = tok.args[argNames[0]!]!; // param-safe blanks take one slot arg
-    let arg: string | undefined;
-    if (typeof v === 'string') arg = v;
-    else if (Object.keys(v.args).length === 0) arg = scalarLookup(v.name); // nested scalar
-    // (nested fn arg → skip: no recursive on-demand fetch in v1)
-    if (arg === undefined || arg.trim() === '') continue;
-    arg = arg.trim();
+    // SECURITY: LITERAL args ONLY. A nested-token arg (`[STOCK(ticker=[X])]`)
+    // is NOT resolved — that path could route an identity scalar (e.g.
+    // `[WORK CITY]`) into a third-party fetch URL (PII egress to a non-LLM
+    // endpoint). The LLM must supply a plain literal; a nested arg is dropped.
+    if (typeof v !== 'string' || v.trim() === '') continue;
+    const arg = v.trim();
     const key = `${fn.blankName} ${arg.toLowerCase()}`;
     if (seen.has(key)) continue;
     seen.add(key);
