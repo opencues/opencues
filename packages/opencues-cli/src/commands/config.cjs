@@ -20,7 +20,6 @@ const os = require('node:os');
 const { tag, bold, dim, green, fileLink, banner, cliVersion } = require('../lib/style.cjs');
 const prompt = require('../lib/prompt.cjs');
 const { readScalars, writeScalar } = require('../lib/opencues-md.cjs');
-const aiCallable = require('./ai-callable.cjs');
 const fs = require('node:fs');
 
 const HOME = process.env.OPENCUES_HOME || path.join(os.homedir(), '.cues');
@@ -114,11 +113,6 @@ async function interactive(ctx) {
       const note = changed ? green(`${changed} changed`) : dim('all default');
       return { label: `${sec.title.padEnd(titleW)}   ${note}`, value: { section: i } };
     });
-    // AI-callable trust list — another OPENCUES.md setting (`ai-callable-allow:`),
-    // but with its own toggle/trust UX, so it opens its dedicated manager.
-    const trusted = aiCallable.trustedCount();
-    const acNote = trusted ? green(`${trusted} trusted`) : dim('built-in only');
-    choices.push({ label: `${'AI-callable blanks'.padEnd(titleW)}   ${acNote}`, value: { aiCallable: true } });
     choices.push({ spacer: true });
     choices.push({ label: 'Done', value: { done: true }, dim: true });
 
@@ -129,7 +123,6 @@ async function interactive(ctx) {
 
     const pick = await prompt.select('', choices);
     if (!pick || pick.done) break;
-    if (pick.aiCallable) { await aiCallable.manage(ctx); continue; }
     await browseSection(ctx, pick.section);
   }
 }
