@@ -115,27 +115,27 @@ async function interactive(ctx) {
       .filter(n => { const i = blankInfo(n); return !(i && i.blankScript); });
     const toggleable = [...new Set([...declared, ...allowList])].sort();
 
-    // Each row leads with a coloured ring marker (green filled ● = on /
-    // trusted / fixed, gray hollow ○ = off / untrusted), then name + a dim
-    // status word. Audited core reads "fixed" (locked by code identity);
-    // toggleable blanks read trusted / untrusted, with an "unreachable" note
-    // if there's no reachable BLANK.md.
+    // Each row leads with a coloured ring marker — green ● = on (trusted),
+    // gray ● = off (untrusted). Same glyph, colour-only: a full/empty pair
+    // (●/○) are East-Asian *ambiguous* width and render at different cell
+    // widths on some fonts, which shifts every column after them. Audited
+    // core is NOT in this list — it can't be toggled, so it shows in an
+    // "always on" header above instead of as a dimmed, "(disabled)"-tagged row.
     const ON = green(G.ringOn);
-    const OFF = dim(G.ringOff);
-    const nameW = Math.max(4, ...[...AUDITED_CORE, ...toggleable].map(n => n.length));
+    const OFF = dim(G.ringOn);
+    const nameW = Math.max(4, ...toggleable.map(n => n.length));
     const row = (mark, name, status) => `${mark}  ${name.padEnd(nameW)}   ${status}`;
 
     const choices = [];
-    for (const n of AUDITED_CORE) {
-      choices.push({ label: row(ON, n, dim('fixed')), value: null, disabled: true });
-    }
     for (const n of toggleable) {
       const on = allowList.includes(n);
       const info = blankInfo(n);
-      const mark = on ? ON : OFF;
       const status = dim(on ? 'trusted' : 'untrusted');
       const note = info ? '' : '   ' + yellow('unreachable');
-      choices.push({ label: row(mark, n, status + note), value: { toggle: n } });
+      choices.push({ label: row(on ? ON : OFF, n, status + note), value: { toggle: n } });
+    }
+    if (!toggleable.length) {
+      choices.push({ label: dim('(no custom blanks declare param-safe)'), value: null, disabled: true });
     }
     choices.push({ separator: true });
     choices.push({ label: 'Done', value: { done: true }, dim: true });
@@ -144,6 +144,10 @@ async function interactive(ctx) {
     console.log(banner({ version: cliVersion(ctx), tagline: 'param-safe trust list' }));
     console.log('');
     if (!typed) console.log(`${tag('warn')} ${dim('sentinel-language is not `typed` — the on-demand path is inert until you set it.')}\n`);
+
+    console.log(dim('Always on · built-in · trusted by code:'));
+    console.log('  ' + AUDITED_CORE.map(n => `${ON} ${n}`).join('    '));
+    console.log('');
 
     const pick = await prompt.select('Trust list  ·  ↑↓ move · Enter toggle', choices);
     if (!pick || pick.done) break;

@@ -91,7 +91,9 @@ async function select(message, choices, opts = {}) {
     if (c.dim) dimIds.add(id);
     return c.separator
       ? { role: 'separator', message: c.label || dim('────') }
-      : { name: id, message: c.disabled ? dim(c.label) : c.label, disabled: Boolean(c.disabled) };
+      // hint:'' on disabled rows suppresses enquirer's auto-injected
+      // "(disabled)" tag (array.js: hint == null → '(disabled)').
+      : { name: id, message: c.disabled ? dim(c.label) : c.label, disabled: Boolean(c.disabled), hint: c.disabled ? '' : undefined };
   });
   const prompt = new OcSelect({ name: 'value', message, prefix: '', choices: echoices, _dimIds: dimIds });
   try {
