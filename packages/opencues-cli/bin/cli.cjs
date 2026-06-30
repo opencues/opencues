@@ -36,6 +36,7 @@ const COMMANDS = {
   'set-key':      () => require('../src/commands/set-key.cjs'),
   identity:       () => require('../src/commands/identity.cjs'),
   context:        () => require('../src/commands/context.cjs'),
+  config:         () => require('../src/commands/config.cjs'),
   'ai-callable':   () => require('../src/commands/ai-callable.cjs'),
   'param-safe':   () => require('../src/commands/ai-callable.cjs'), // LEGACY-NAME-ALLOW: back-compat alias for renamed command
   cleanup:        () => require('../src/commands/cleanup.cjs'),

@@ -75,6 +75,9 @@ class OcSelect extends stripPrefix(Select) {
   separator() { return ''; }
   choiceMessage(choice, i) {
     const msg = this.resolve(choice.message, this.state, choice, i);
+    // Section headings render as-is (caller styles them) — no gutter, no
+    // focus styling, non-selectable.
+    if (choice.role === 'heading') return msg;
     const focused = this.index === i;
     const gutter = focused ? POINTER : NOPOINT;
     const ring = this._ringById.has(choice.name)
@@ -116,6 +119,8 @@ async function select(message, choices, opts = {}) {
     // message is a single space, not '' — enquirer falls back to the choice
     // *name* when message is empty, which would print "c3".
     if (c.spacer) return { name: id, message: ' ', disabled: true, hint: '' };
+    // A `heading` is a non-selectable bold section title (caller styles it).
+    if (c.heading != null) return { role: 'heading', message: c.heading };
     return c.separator
       ? { role: 'separator', message: c.label || dim('────') }
       // hint:'' on disabled rows suppresses enquirer's auto-injected
