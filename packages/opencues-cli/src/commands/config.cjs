@@ -118,7 +118,7 @@ async function interactive(ctx) {
     // but with its own toggle/trust UX, so it opens its dedicated manager.
     const trusted = aiCallable.trustedCount();
     const acNote = trusted ? green(`${trusted} trusted`) : dim('built-in only');
-    choices.push({ label: `${'AI-callable'.padEnd(titleW)}   ${acNote}`, value: { aiCallable: true } });
+    choices.push({ label: `${'AI-callable blanks'.padEnd(titleW)}   ${acNote}`, value: { aiCallable: true } });
     choices.push({ spacer: true });
     choices.push({ label: 'Done', value: { done: true }, dim: true });
 
