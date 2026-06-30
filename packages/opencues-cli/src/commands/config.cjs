@@ -90,7 +90,7 @@ module.exports = async function config(argv, ctx) {
   const m = model(ctx);
   if (!m) { console.error(`${tag('err')} failed to load @opencues/core (run \`pnpm build\`).`); process.exit(1); }
 
-  if (!sub && prompt.isInteractive()) return interactive(ctx, m);
+  if (!sub && prompt.isInteractive()) return interactive(ctx);
 
   console.log(banner({ version: cliVersion(ctx), tagline: 'settings' }));
   console.log('');
@@ -101,31 +101,54 @@ module.exports = async function config(argv, ctx) {
   process.exit(1);
 };
 
-async function interactive(ctx, _m) {
+// Two-level browser: sections menu → that section's settings → value picker.
+// Each screen stays short enough to fit any terminal (no scrolling viewport,
+// which enquirer can only do by rotating + wrapping the list).
+async function interactive(ctx) {
   for (;;) {
-    const m = model(ctx); // re-read each loop so values reflect prior writes
-    const allScalars = m.sections.flatMap(s => s.scalars);
-    const nameW = Math.max(4, ...allScalars.map(sc => friendly(sc).length));
-
-    const choices = [];
-    for (const sec of m.sections) {
-      choices.push({ heading: bold(sec.title) });
-      for (const sc of sec.scalars) {
-        const val = m.effective(sc);
-        const shown = m.isDefault(sc) ? dim(val) : green(val);
-        choices.push({ label: `${friendly(sc).padEnd(nameW)}   ${shown}`, value: { scalar: sc } });
-      }
-    }
+    const m = model(ctx); // re-read each loop so counts reflect prior writes
+    const titleW = Math.max(4, ...m.sections.map(s => s.title.length));
+    const choices = m.sections.map((sec, i) => {
+      const changed = sec.scalars.filter(sc => !m.isDefault(sc)).length;
+      const note = changed ? green(`${changed} changed`) : dim('all default');
+      return { label: `${sec.title.padEnd(titleW)}   ${note}`, value: { section: i } };
+    });
     choices.push({ spacer: true });
     choices.push({ label: 'Done', value: { done: true }, dim: true });
 
     if (process.stdout.isTTY) console.clear();
     console.log(banner({ version: cliVersion(ctx), tagline: 'settings' }));
     console.log('');
-    console.log(dim('Settings  ·  ↑↓ move · Enter change · green = changed from default'));
+    console.log(dim('Settings  ·  ↑↓ move · Enter open · green = changed from default'));
 
     const pick = await prompt.select('', choices);
     if (!pick || pick.done) break;
+    await browseSection(ctx, pick.section);
+  }
+}
+
+// One section's settings → value picker. Back returns to the sections menu.
+async function browseSection(ctx, sectionIdx) {
+  for (;;) {
+    const m = model(ctx);
+    const sec = m.sections[sectionIdx];
+    if (!sec) break;
+    const nameW = Math.max(4, ...sec.scalars.map(sc => friendly(sc).length));
+    const choices = sec.scalars.map(sc => {
+      const val = m.effective(sc);
+      const shown = m.isDefault(sc) ? dim(val) : green(val);
+      return { label: `${friendly(sc).padEnd(nameW)}   ${shown}`, value: { scalar: sc } };
+    });
+    choices.push({ spacer: true });
+    choices.push({ label: 'Back', value: { back: true }, dim: true });
+
+    if (process.stdout.isTTY) console.clear();
+    console.log(banner({ version: cliVersion(ctx), tagline: 'settings' }));
+    console.log('');
+    console.log(bold(sec.title) + '  ' + dim('· ↑↓ move · Enter change · Back to sections'));
+
+    const pick = await prompt.select('', choices);
+    if (!pick || pick.back) break;
     await editScalar(ctx, m, pick.scalar);
   }
 }

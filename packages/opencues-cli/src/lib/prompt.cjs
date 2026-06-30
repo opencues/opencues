@@ -73,6 +73,30 @@ class OcSelect extends stripPrefix(Select) {
   }
   pointer() { return ''; }
   separator() { return ''; }
+  // Indices of the actually-selectable rows (skip headings / separators /
+  // disabled spacers).
+  _selectable() {
+    const out = [];
+    for (let i = 0; i < this.choices.length; i += 1) {
+      const c = this.choices[i];
+      if (c && !c.disabled && c.role !== 'heading' && c.role !== 'separator') out.push(i);
+    }
+    return out;
+  }
+  // Clamp at the true ends instead of wrapping — Down on the last selectable
+  // row stops, it doesn't cycle to the top. (We don't use enquirer's scrolling
+  // viewport — it scrolls by rotating the choices array, which both wraps and
+  // breaks index math; menus are kept short enough to fit instead.)
+  down() {
+    const sel = this._selectable();
+    if (sel.length && this.index >= sel[sel.length - 1]) return this.alert();
+    return super.down();
+  }
+  up() {
+    const sel = this._selectable();
+    if (sel.length && this.index <= sel[0]) return this.alert();
+    return super.up();
+  }
   choiceMessage(choice, i) {
     const msg = this.resolve(choice.message, this.state, choice, i);
     // Section headings render as-is (caller styles them) — no gutter, no
@@ -136,11 +160,6 @@ async function select(message, choices, opts = {}) {
     promptLine: message ? undefined : false,
     // initial focus index (e.g. confirm() lands on the safe default)
     initial: typeof opts.initial === 'number' ? opts.initial : undefined,
-    // Clamp at the ends instead of wrapping — Down on the last row (Done)
-    // stops, it doesn't jump back to the top. Opt back into wrap with
-    // scroll:true. (NOTE: enquirer's scroll:false also disables its scrolling
-    // viewport, so it's incompatible with `limit` — don't set both.)
-    scroll: opts.scroll === undefined ? false : opts.scroll,
   });
   try {
     const name = await prompt.run();
