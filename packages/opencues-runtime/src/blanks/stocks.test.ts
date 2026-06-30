@@ -15,9 +15,14 @@ describe('StocksBlank', () => {
     expect(await ctl.get()).toBe('');
   });
 
-  it('returns "Unknown: <kw>" for keywords not in the ticker map', async () => {
+  it('treats an unmapped keyword AS a ticker symbol (param-safe on-demand)', async () => {
     const ctl = new StocksBlank({ apiKey: 'x', fetchFn: fetchOk({ c: 1 }) });
-    expect(await ctl.get('not-a-ticker')).toBe('Unknown: not-a-ticker');
+    expect(await ctl.get('amd')).toBe('AMD: $1.00');
+  });
+
+  it('sanitizes the ticker arg to [A-Z0-9.] (no URL injection from an LLM arg)', async () => {
+    const ctl = new StocksBlank({ apiKey: 'x', fetchFn: fetchOk({ c: 1 }) });
+    expect(await ctl.get('amd&token=evil')).toBe('AMDTOKENEVIL: $1.00');
   });
 
   it('returns "<TICKER>: no API key" when apiKey is missing', async () => {

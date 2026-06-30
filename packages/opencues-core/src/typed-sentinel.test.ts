@@ -18,6 +18,7 @@ import {
   resolveTypedSentinels,
   type TypedCatalogEntry,
   type ResolveTypedOptions,
+  collectParamSafeFetches as resolveImport,
 } from './typed-sentinel';
 
 // ────────────────────────────────────────────────────────────────────
@@ -329,5 +330,40 @@ describe('resolveTypedSentinels — buffer safety: non-token brackets untouched'
   it('still resolves a parameterized call even with a lowercase-ish name (has args)', () => {
     const r = resolveTypedSentinels('[STOCK PRICE(ticker=NVDA)]', baseOpts());
     assert.strictEqual(r.output, '$880');
+  });
+});
+
+describe('collectParamSafeFetches (Phase 4 on-demand pre-pass)', () => {
+  const reg = new Map([
+    ['STOCK', { blankName: 'stocks', tokenPrefix: 'STOCK' }],
+    ['WEATHER', { blankName: 'weather', tokenPrefix: 'WEATHER' }],
+  ]);
+  const look = (n: string) => (n === 'WATCH TICKER' ? 'NVDA' : undefined);
+
+  it('collects a literal-arg param-safe fn-call', () => {
+    const f = resolveImport('[STOCK(ticker=TSLA)] today', reg, look);
+    assert.deepStrictEqual(f, [{ blankName: 'stocks', arg: 'TSLA', instanceToken: '[STOCK TSLA]' }]);
+  });
+
+  it('resolves a nested SCALAR arg via scalarLookup', () => {
+    const f = resolveImport('[STOCK(ticker=[WATCH TICKER])]', reg, look);
+    assert.deepStrictEqual(f, [{ blankName: 'stocks', arg: 'NVDA', instanceToken: '[STOCK NVDA]' }]);
+  });
+
+  it('CAPABILITY GATE: ignores a fn-call not in the param-safe registry', () => {
+    assert.deepStrictEqual(resolveImport('[VOLUME(level=80)]', reg, look), []);
+  });
+
+  it('ignores plain scalars (not fn-calls)', () => {
+    assert.deepStrictEqual(resolveImport('[FIRST NAME] [STOCK AAPL]', reg, look), []);
+  });
+
+  it('dedupes repeated (blank,arg)', () => {
+    const f = resolveImport('[STOCK(ticker=NVDA)] and [STOCK(ticker=nvda)]', reg, look);
+    assert.strictEqual(f.length, 1);
+  });
+
+  it('empty registry → no fetches', () => {
+    assert.deepStrictEqual(resolveImport('[STOCK(ticker=NVDA)]', new Map(), look), []);
   });
 });

@@ -33,7 +33,7 @@ import { createSourceReclassifier, resetSharedBufferState } from '../../../src/b
 import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import { AgentTaskState } from '../../../src/state/agent-task';
 import { applyDirectives } from '../../../src/render-directives';
-import { buildAgentLLMResolver, buildBlankContextProvider, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildAgentLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { buildBlankWeaver } from '../../../src/modules/blank-weave';
 import { startEventBridge } from '../../../src/event-bridge';
 import type {
@@ -651,7 +651,8 @@ export function boot(host: HostInfo): BootResult {
     formatLLMErrorAsSubstitute: nativeHostFormatLLMError,
     keywordBoundSlotIndices: (text: string) => blankFill.scan(text).map(s => s.index),
   }, spanFillState, agentTaskState, blankLoading, markdownRender, selectorSatelliteState,
-  buildBlankContextProvider(configLoader, host.blanks, log));
+  buildBlankContextProvider(configLoader, host.blanks, log),
+  buildBlankFetchProvider(configLoader, host.blanks, log));
   if (hasAnyKey) {
     // AgentRewrite — cadence-driven holistic rewrite with three-way merge.
     const agentRewrite = new AgentRewrite(adapter, dynDefs, agentTaskState, {

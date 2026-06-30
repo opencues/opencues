@@ -52,7 +52,13 @@ export class StocksBlank implements Blank {
 
   async get(keyword?: string): Promise<string> {
     if (!keyword) return '';
-    const ticker = this._tickers[keyword.toLowerCase()];
+    // Known company-name/alias → ticker (tesla → TSLA). Otherwise treat the
+    // arg AS a ticker symbol — this is what makes the param-safe on-demand
+    // path work for ANY ticker (AMD, INTC), not just the hardcoded aliases.
+    // SANITIZE to [A-Z0-9.] — the on-demand arg is LLM-chosen and flows into
+    // the Finnhub URL, so bound it to a valid symbol shape (param-safe floor).
+    const mapped = this._tickers[keyword.toLowerCase()];
+    const ticker = (mapped ?? keyword).toUpperCase().replace(/[^A-Z0-9.]/g, '');
     if (!ticker) return `Unknown: ${keyword}`;
 
     const cached = this._cache.get(ticker);

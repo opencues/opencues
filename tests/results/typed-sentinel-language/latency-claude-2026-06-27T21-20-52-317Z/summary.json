@@ -1,0 +1,373 @@
+{
+  "provider": "claude",
+  "model": "claude-haiku-4-5",
+  "runsPerCase": 3,
+  "bare": {
+    "language": "bare",
+    "systemPromptChars": 1647,
+    "perCase": [
+      {
+        "caseId": "s1",
+        "latencyMedianMs": 743,
+        "outputChars": 19
+      },
+      {
+        "caseId": "s2",
+        "latencyMedianMs": 788,
+        "outputChars": 26
+      },
+      {
+        "caseId": "s3",
+        "latencyMedianMs": 665,
+        "outputChars": 16
+      },
+      {
+        "caseId": "s4",
+        "latencyMedianMs": 608,
+        "outputChars": 35
+      },
+      {
+        "caseId": "s5",
+        "latencyMedianMs": 664,
+        "outputChars": 21
+      },
+      {
+        "caseId": "s6",
+        "latencyMedianMs": 688,
+        "outputChars": 27
+      },
+      {
+        "caseId": "p1",
+        "latencyMedianMs": 654,
+        "outputChars": 31
+      },
+      {
+        "caseId": "p2",
+        "latencyMedianMs": 718,
+        "outputChars": 46
+      },
+      {
+        "caseId": "p3",
+        "latencyMedianMs": 674,
+        "outputChars": 31
+      },
+      {
+        "caseId": "p4",
+        "latencyMedianMs": 645,
+        "outputChars": 31
+      },
+      {
+        "caseId": "p5",
+        "latencyMedianMs": 739,
+        "outputChars": 46
+      },
+      {
+        "caseId": "p6",
+        "latencyMedianMs": 675,
+        "outputChars": 49
+      },
+      {
+        "caseId": "pm1",
+        "latencyMedianMs": 673,
+        "outputChars": 52
+      },
+      {
+        "caseId": "pm2",
+        "latencyMedianMs": 708,
+        "outputChars": 52
+      },
+      {
+        "caseId": "pm3",
+        "latencyMedianMs": 720,
+        "outputChars": 40
+      },
+      {
+        "caseId": "pm4",
+        "latencyMedianMs": 1126,
+        "outputChars": 48
+      },
+      {
+        "caseId": "a1",
+        "latencyMedianMs": 681,
+        "outputChars": 32
+      },
+      {
+        "caseId": "a2",
+        "latencyMedianMs": 660,
+        "outputChars": 35
+      },
+      {
+        "caseId": "a3",
+        "latencyMedianMs": 642,
+        "outputChars": 33
+      },
+      {
+        "caseId": "a4",
+        "latencyMedianMs": 861,
+        "outputChars": 46
+      },
+      {
+        "caseId": "a5",
+        "latencyMedianMs": 669,
+        "outputChars": 43
+      },
+      {
+        "caseId": "f1",
+        "latencyMedianMs": 728,
+        "outputChars": 43
+      },
+      {
+        "caseId": "f2",
+        "latencyMedianMs": 738,
+        "outputChars": 30
+      },
+      {
+        "caseId": "f3",
+        "latencyMedianMs": 668,
+        "outputChars": 45
+      },
+      {
+        "caseId": "f4",
+        "latencyMedianMs": 661,
+        "outputChars": 44
+      },
+      {
+        "caseId": "c1",
+        "latencyMedianMs": 714,
+        "outputChars": 69
+      },
+      {
+        "caseId": "c2",
+        "latencyMedianMs": 790,
+        "outputChars": 93
+      },
+      {
+        "caseId": "c3",
+        "latencyMedianMs": 788,
+        "outputChars": 65
+      },
+      {
+        "caseId": "c4",
+        "latencyMedianMs": 698,
+        "outputChars": 46
+      },
+      {
+        "caseId": "c5",
+        "latencyMedianMs": 676,
+        "outputChars": 49
+      },
+      {
+        "caseId": "u1",
+        "latencyMedianMs": 646,
+        "outputChars": 33
+      },
+      {
+        "caseId": "u2",
+        "latencyMedianMs": 656,
+        "outputChars": 34
+      },
+      {
+        "caseId": "u3",
+        "latencyMedianMs": 653,
+        "outputChars": 20
+      },
+      {
+        "caseId": "u4",
+        "latencyMedianMs": 609,
+        "outputChars": 31
+      }
+    ],
+    "latency": {
+      "p50": 675,
+      "p95": 790,
+      "mean": 706.6470588235294,
+      "min": 608,
+      "max": 1126
+    },
+    "outputCharsMean": 40.029411764705884
+  },
+  "parameterized": {
+    "language": "parameterized",
+    "systemPromptChars": 2185,
+    "perCase": [
+      {
+        "caseId": "s1",
+        "latencyMedianMs": 637,
+        "outputChars": 19
+      },
+      {
+        "caseId": "s2",
+        "latencyMedianMs": 590,
+        "outputChars": 26
+      },
+      {
+        "caseId": "s3",
+        "latencyMedianMs": 660,
+        "outputChars": 16
+      },
+      {
+        "caseId": "s4",
+        "latencyMedianMs": 747,
+        "outputChars": 35
+      },
+      {
+        "caseId": "s5",
+        "latencyMedianMs": 1630,
+        "outputChars": 393
+      },
+      {
+        "caseId": "s6",
+        "latencyMedianMs": 678,
+        "outputChars": 27
+      },
+      {
+        "caseId": "p1",
+        "latencyMedianMs": 847,
+        "outputChars": 39
+      },
+      {
+        "caseId": "p2",
+        "latencyMedianMs": 676,
+        "outputChars": 52
+      },
+      {
+        "caseId": "p3",
+        "latencyMedianMs": 720,
+        "outputChars": 37
+      },
+      {
+        "caseId": "p4",
+        "latencyMedianMs": 765,
+        "outputChars": 39
+      },
+      {
+        "caseId": "p5",
+        "latencyMedianMs": 1059,
+        "outputChars": 52
+      },
+      {
+        "caseId": "p6",
+        "latencyMedianMs": 691,
+        "outputChars": 57
+      },
+      {
+        "caseId": "pm1",
+        "latencyMedianMs": 728,
+        "outputChars": 70
+      },
+      {
+        "caseId": "pm2",
+        "latencyMedianMs": 781,
+        "outputChars": 70
+      },
+      {
+        "caseId": "pm3",
+        "latencyMedianMs": 727,
+        "outputChars": 58
+      },
+      {
+        "caseId": "pm4",
+        "latencyMedianMs": 725,
+        "outputChars": 66
+      },
+      {
+        "caseId": "a1",
+        "latencyMedianMs": 610,
+        "outputChars": 37
+      },
+      {
+        "caseId": "a2",
+        "latencyMedianMs": 841,
+        "outputChars": 40
+      },
+      {
+        "caseId": "a3",
+        "latencyMedianMs": 737,
+        "outputChars": 39
+      },
+      {
+        "caseId": "a4",
+        "latencyMedianMs": 1108,
+        "outputChars": 44
+      },
+      {
+        "caseId": "a5",
+        "latencyMedianMs": 718,
+        "outputChars": 48
+      },
+      {
+        "caseId": "f1",
+        "latencyMedianMs": 816,
+        "outputChars": 51
+      },
+      {
+        "caseId": "f2",
+        "latencyMedianMs": 643,
+        "outputChars": 38
+      },
+      {
+        "caseId": "f3",
+        "latencyMedianMs": 809,
+        "outputChars": 51
+      },
+      {
+        "caseId": "f4",
+        "latencyMedianMs": 763,
+        "outputChars": 50
+      },
+      {
+        "caseId": "c1",
+        "latencyMedianMs": 839,
+        "outputChars": 77
+      },
+      {
+        "caseId": "c2",
+        "latencyMedianMs": 817,
+        "outputChars": 117
+      },
+      {
+        "caseId": "c3",
+        "latencyMedianMs": 789,
+        "outputChars": 76
+      },
+      {
+        "caseId": "c4",
+        "latencyMedianMs": 820,
+        "outputChars": 34
+      },
+      {
+        "caseId": "c5",
+        "latencyMedianMs": 920,
+        "outputChars": 37
+      },
+      {
+        "caseId": "u1",
+        "latencyMedianMs": 650,
+        "outputChars": 33
+      },
+      {
+        "caseId": "u2",
+        "latencyMedianMs": 761,
+        "outputChars": 31
+      },
+      {
+        "caseId": "u3",
+        "latencyMedianMs": 676,
+        "outputChars": 20
+      },
+      {
+        "caseId": "u4",
+        "latencyMedianMs": 630,
+        "outputChars": 31
+      }
+    ],
+    "latency": {
+      "p50": 737,
+      "p95": 1059,
+      "mean": 782.5882352941177,
+      "min": 590,
+      "max": 1630
+    },
+    "outputCharsMean": 56.1764705882353
+  }
+}

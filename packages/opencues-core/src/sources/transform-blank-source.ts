@@ -53,6 +53,7 @@ import {
   catalogScalarLookup,
   instanceTokenFnBridge,
   jsonFieldAccessor,
+  collectParamSafeFetches,
 } from '../typed-sentinel';
 import { blankClaimsUnderscore } from '../blank-shapes';
 
@@ -572,10 +573,20 @@ export class TransformBlankSource implements CueSource {
     snapshot: BlankContextSnapshot | undefined;
   } {
     const bc = context.blankContext;
-    if (!bc) return { block: '', snapshot: undefined };
+    if (!bc) {
+      // No ambient blank-context snapshot, but param-safe LIVE FUNCTIONS may
+      // still apply (typed mode) — render them so the LLM can emit calls.
+      const fnBlock = context.sentinelLanguage === 'typed' ? (context.paramSafeFnsBlock ?? '') : '';
+      return { block: fnBlock, snapshot: undefined };
+    }
     const snapshot: BlankContextSnapshot = { fields: bc.fields, catalog: bc.catalog };
     const mode: BlankContextMode = bc.mode;
-    const block = renderBlankContextCatalogForTransform(snapshot, mode, context.sentinelLanguage);
+    let block = renderBlankContextCatalogForTransform(snapshot, mode, context.sentinelLanguage);
+    // Phase 4 — append the param-safe LIVE FUNCTIONS block (typed only) so the
+    // LLM emits `[STOCK(ticker=NVDA)]` calls the on-demand pass can resolve.
+    if (context.sentinelLanguage === 'typed' && context.paramSafeFnsBlock) {
+      block = block + context.paramSafeFnsBlock;
+    }
     if (block) {
       this.log(`TransformBlank: blank-context: injected (mode=${mode}, ${snapshot.fields.length} slot${snapshot.fields.length === 1 ? '' : 's'})`);
     }
@@ -590,21 +601,28 @@ export class TransformBlankSource implements CueSource {
    * survive untouched. No-op when sentinels is absent or its
    * catalog is empty.
    */
-  private resolveSentinels(
+  private async resolveSentinels(
     rewrite: string,
     originalBody: string,
     ctx: Identity | undefined,
     blankSnapshot?: BlankContextSnapshot | undefined,
     sentinelLanguage: 'bare' | 'typed' = 'bare',
-  ): string {
+    paramSafeFns?: ReadonlyMap<string, { blankName: string; tokenPrefix: string }>,
+    blankFetch?: (blankName: string, arg: string) => Promise<string | undefined>,
+  ): Promise<string> {
     const hasIdentity = ctx && ctx.catalog.size > 0;
     const hasBlank = blankSnapshot && blankSnapshot.catalog.size > 0;
-    if (!hasIdentity && !hasBlank) return rewrite;
+    // On-demand param-safe fetch can resolve tokens even with no pre-fetched
+    // catalog, so don't short-circuit when the gate is live.
+    const hasOnDemand = sentinelLanguage === 'typed' && !!paramSafeFns && paramSafeFns.size > 0 && !!blankFetch;
+    if (!hasIdentity && !hasBlank && !hasOnDemand) return rewrite;
     const catalog = hasIdentity && hasBlank
       ? mergeCatalogs(ctx!.catalog, blankSnapshot!.catalog)
       : hasIdentity
         ? ctx!.catalog
-        : blankSnapshot!.catalog;
+        : hasBlank
+          ? blankSnapshot!.catalog
+          : new Map<string, string>();
     // Typed grammar (opt-in via `sentinel-language: typed`): resolve the
     // parameterized + nested + field-access forms with the typed-sentinel
     // engine. The scalar lookup is a strict superset of bare matching
@@ -613,7 +631,29 @@ export class TransformBlankSource implements CueSource {
     // the pre-fetched `[STOCK NVDA]` instance) and nested composition, with
     // validate-and-degrade on unknown ids / bad accessors.
     if (sentinelLanguage === 'typed') {
-      const scalarLookup = catalogScalarLookup(catalog);
+      let workingCatalog = catalog;
+      // Phase 4 — ON-DEMAND parameterized fetch. For param-safe fn-calls the
+      // LLM emitted whose instance isn't already on the shelf, fetch via the
+      // capability-gated blankFetch (runtime enforces param-safe + never a
+      // script blank), then merge the results into the catalog so the bridge
+      // below resolves them. Pre-fetched instances skip the call.
+      if (paramSafeFns && paramSafeFns.size > 0 && blankFetch) {
+        const sl0 = catalogScalarLookup(catalog);
+        const fetches = collectParamSafeFetches(rewrite, paramSafeFns, sl0)
+          .filter(f => !catalog.has(f.instanceToken));
+        if (fetches.length) {
+          const results = await Promise.all(fetches.map(async f => {
+            try { return { tok: f.instanceToken, val: await blankFetch(f.blankName, f.arg) }; }
+            catch { return { tok: f.instanceToken, val: undefined as string | undefined }; }
+          }));
+          const aug = new Map(catalog);
+          let got = 0;
+          for (const r of results) if (r.val != null && r.val !== '') { aug.set(r.tok, r.val); got++; }
+          workingCatalog = aug;
+          this.log(`TransformBlank: param-safe on-demand fetch — ${fetches.length} call(s), ${got} resolved`);
+        }
+      }
+      const scalarLookup = catalogScalarLookup(workingCatalog);
       const r = resolveTypedSentinels(rewrite, {
         scalarLookup,
         callFn: instanceTokenFnBridge(scalarLookup),
@@ -875,7 +915,7 @@ export class TransformBlankSource implements CueSource {
     // for non-user entities ([Recipient Name], [Date]) survive untouched.
     const f = {
       ...fParsed,
-      rewrite: this.resolveSentinels(fParsed.rewrite, context.text, fusedUserCtx, fusedBlankSnapshot, context.sentinelLanguage),
+      rewrite: await this.resolveSentinels(fParsed.rewrite, context.text, fusedUserCtx, fusedBlankSnapshot, context.sentinelLanguage, context.paramSafeFns, context.blankFetch),
     };
     this.log(`TransformBlank FUSED (${Date.now() - fusedStart}ms, max_tokens=${fusedTokens}, source=${sourceTag}): verdict=${f.verdict}, instruction="${f.instruction}", target="${preview(f.target)}", rewrite="${preview(f.rewrite)}"`);
     this.emit({

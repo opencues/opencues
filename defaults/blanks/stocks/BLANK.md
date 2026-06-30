@@ -27,6 +27,16 @@ blankReplace: auto
 # here and add `portfolio: NVDA,AAPL,…` to ~/.cues/IDENTITY.md.
 as-context: safe
 context-slots: NVDA, AAPL, TSLA, MSFT, GOOGL
+# TYPED-SENTINEL Phase 4 — param-safe ON-DEMAND fetch. When
+# `sentinel-language: typed`, the catalog advertises `[STOCK(ticker: string):
+# number]` and the runtime may call StocksBlank.get(<ticker>) with an
+# LLM-provided ticker (e.g. `[STOCK(ticker=TSLA)]`) even when TSLA wasn't
+# pre-fetched as an as-context slot. SAFE because: bounded codomain (a ticker
+# → a price string), no exec/side-effect, no blankScript. The parser refuses
+# param-safe on any script blank.
+signature: (ticker: string)
+returns: number
+param-safe: true
 ---
 
 Implementation: built-in `StocksBlank` in `@opencues/runtime`

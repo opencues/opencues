@@ -1,0 +1,373 @@
+{
+  "provider": "groq",
+  "model": "openai/gpt-oss-120b",
+  "runsPerCase": 3,
+  "bare": {
+    "language": "bare",
+    "systemPromptChars": 1647,
+    "perCase": [
+      {
+        "caseId": "s1",
+        "latencyMedianMs": 160,
+        "outputChars": 19
+      },
+      {
+        "caseId": "s2",
+        "latencyMedianMs": 110,
+        "outputChars": 26
+      },
+      {
+        "caseId": "s3",
+        "latencyMedianMs": 179,
+        "outputChars": 16
+      },
+      {
+        "caseId": "s4",
+        "latencyMedianMs": 159,
+        "outputChars": 35
+      },
+      {
+        "caseId": "s5",
+        "latencyMedianMs": 108,
+        "outputChars": 11
+      },
+      {
+        "caseId": "s6",
+        "latencyMedianMs": 241,
+        "outputChars": 27
+      },
+      {
+        "caseId": "p1",
+        "latencyMedianMs": 157,
+        "outputChars": 31
+      },
+      {
+        "caseId": "p2",
+        "latencyMedianMs": 159,
+        "outputChars": 46
+      },
+      {
+        "caseId": "p3",
+        "latencyMedianMs": 136,
+        "outputChars": 29
+      },
+      {
+        "caseId": "p4",
+        "latencyMedianMs": 123,
+        "outputChars": 12
+      },
+      {
+        "caseId": "p5",
+        "latencyMedianMs": 145,
+        "outputChars": 25
+      },
+      {
+        "caseId": "p6",
+        "latencyMedianMs": 138,
+        "outputChars": 30
+      },
+      {
+        "caseId": "pm1",
+        "latencyMedianMs": 240,
+        "outputChars": 25
+      },
+      {
+        "caseId": "pm2",
+        "latencyMedianMs": 246,
+        "outputChars": 52
+      },
+      {
+        "caseId": "pm3",
+        "latencyMedianMs": 212,
+        "outputChars": 25
+      },
+      {
+        "caseId": "pm4",
+        "latencyMedianMs": 275,
+        "outputChars": 26
+      },
+      {
+        "caseId": "a1",
+        "latencyMedianMs": 122,
+        "outputChars": 32
+      },
+      {
+        "caseId": "a2",
+        "latencyMedianMs": 137,
+        "outputChars": 35
+      },
+      {
+        "caseId": "a3",
+        "latencyMedianMs": 127,
+        "outputChars": 33
+      },
+      {
+        "caseId": "a4",
+        "latencyMedianMs": 142,
+        "outputChars": 46
+      },
+      {
+        "caseId": "a5",
+        "latencyMedianMs": 240,
+        "outputChars": 43
+      },
+      {
+        "caseId": "f1",
+        "latencyMedianMs": 144,
+        "outputChars": 43
+      },
+      {
+        "caseId": "f2",
+        "latencyMedianMs": 233,
+        "outputChars": 30
+      },
+      {
+        "caseId": "f3",
+        "latencyMedianMs": 162,
+        "outputChars": 23
+      },
+      {
+        "caseId": "f4",
+        "latencyMedianMs": 149,
+        "outputChars": 27
+      },
+      {
+        "caseId": "c1",
+        "latencyMedianMs": 220,
+        "outputChars": 67
+      },
+      {
+        "caseId": "c2",
+        "latencyMedianMs": 362,
+        "outputChars": 55
+      },
+      {
+        "caseId": "c3",
+        "latencyMedianMs": 395,
+        "outputChars": 55
+      },
+      {
+        "caseId": "c4",
+        "latencyMedianMs": 372,
+        "outputChars": 34
+      },
+      {
+        "caseId": "c5",
+        "latencyMedianMs": 518,
+        "outputChars": 49
+      },
+      {
+        "caseId": "u1",
+        "latencyMedianMs": 173,
+        "outputChars": 29
+      },
+      {
+        "caseId": "u2",
+        "latencyMedianMs": 115,
+        "outputChars": 24
+      },
+      {
+        "caseId": "u3",
+        "latencyMedianMs": 99,
+        "outputChars": 20
+      },
+      {
+        "caseId": "u4",
+        "latencyMedianMs": 106,
+        "outputChars": 28
+      }
+    ],
+    "latency": {
+      "p50": 159,
+      "p95": 372,
+      "mean": 194.23529411764707,
+      "min": 99,
+      "max": 518
+    },
+    "outputCharsMean": 32.588235294117645
+  },
+  "parameterized": {
+    "language": "parameterized",
+    "systemPromptChars": 2185,
+    "perCase": [
+      {
+        "caseId": "s1",
+        "latencyMedianMs": 101,
+        "outputChars": 19
+      },
+      {
+        "caseId": "s2",
+        "latencyMedianMs": 91,
+        "outputChars": 26
+      },
+      {
+        "caseId": "s3",
+        "latencyMedianMs": 144,
+        "outputChars": 16
+      },
+      {
+        "caseId": "s4",
+        "latencyMedianMs": 135,
+        "outputChars": 35
+      },
+      {
+        "caseId": "s5",
+        "latencyMedianMs": 125,
+        "outputChars": 21
+      },
+      {
+        "caseId": "s6",
+        "latencyMedianMs": 114,
+        "outputChars": 27
+      },
+      {
+        "caseId": "p1",
+        "latencyMedianMs": 126,
+        "outputChars": 39
+      },
+      {
+        "caseId": "p2",
+        "latencyMedianMs": 237,
+        "outputChars": 52
+      },
+      {
+        "caseId": "p3",
+        "latencyMedianMs": 157,
+        "outputChars": 37
+      },
+      {
+        "caseId": "p4",
+        "latencyMedianMs": 208,
+        "outputChars": 39
+      },
+      {
+        "caseId": "p5",
+        "latencyMedianMs": 141,
+        "outputChars": 52
+      },
+      {
+        "caseId": "p6",
+        "latencyMedianMs": 149,
+        "outputChars": 57
+      },
+      {
+        "caseId": "pm1",
+        "latencyMedianMs": 161,
+        "outputChars": 70
+      },
+      {
+        "caseId": "pm2",
+        "latencyMedianMs": 327,
+        "outputChars": 70
+      },
+      {
+        "caseId": "pm3",
+        "latencyMedianMs": 141,
+        "outputChars": 43
+      },
+      {
+        "caseId": "pm4",
+        "latencyMedianMs": 227,
+        "outputChars": 44
+      },
+      {
+        "caseId": "a1",
+        "latencyMedianMs": 127,
+        "outputChars": 37
+      },
+      {
+        "caseId": "a2",
+        "latencyMedianMs": 136,
+        "outputChars": 40
+      },
+      {
+        "caseId": "a3",
+        "latencyMedianMs": 149,
+        "outputChars": 38
+      },
+      {
+        "caseId": "a4",
+        "latencyMedianMs": 135,
+        "outputChars": 43
+      },
+      {
+        "caseId": "a5",
+        "latencyMedianMs": 142,
+        "outputChars": 48
+      },
+      {
+        "caseId": "f1",
+        "latencyMedianMs": 192,
+        "outputChars": 51
+      },
+      {
+        "caseId": "f2",
+        "latencyMedianMs": 184,
+        "outputChars": 38
+      },
+      {
+        "caseId": "f3",
+        "latencyMedianMs": 116,
+        "outputChars": 51
+      },
+      {
+        "caseId": "f4",
+        "latencyMedianMs": 170,
+        "outputChars": 50
+      },
+      {
+        "caseId": "c1",
+        "latencyMedianMs": 226,
+        "outputChars": 73
+      },
+      {
+        "caseId": "c2",
+        "latencyMedianMs": 221,
+        "outputChars": 117
+      },
+      {
+        "caseId": "c3",
+        "latencyMedianMs": 313,
+        "outputChars": 33
+      },
+      {
+        "caseId": "c4",
+        "latencyMedianMs": 281,
+        "outputChars": 34
+      },
+      {
+        "caseId": "c5",
+        "latencyMedianMs": 326,
+        "outputChars": 54
+      },
+      {
+        "caseId": "u1",
+        "latencyMedianMs": 117,
+        "outputChars": 29
+      },
+      {
+        "caseId": "u2",
+        "latencyMedianMs": 110,
+        "outputChars": 24
+      },
+      {
+        "caseId": "u3",
+        "latencyMedianMs": 182,
+        "outputChars": 20
+      },
+      {
+        "caseId": "u4",
+        "latencyMedianMs": 103,
+        "outputChars": 28
+      }
+    ],
+    "latency": {
+      "p50": 144,
+      "p95": 313,
+      "mean": 171,
+      "min": 91,
+      "max": 327
+    },
+    "outputCharsMean": 42.794117647058826
+  }
+}

@@ -16,6 +16,15 @@ blankReplace: auto
 # to ("what's it like outside _", "do i need a jacket _").
 as-context: safe
 context-bind: workCity
+# TYPED-SENTINEL Phase 4 — param-safe ON-DEMAND fetch. With `sentinel-language:
+# typed`, the catalog advertises `[WEATHER(city: string): string]` and the
+# runtime may call WeatherBlank.get(<city>) with an LLM-provided city — e.g.
+# `[WEATHER(city=Berlin)]` — even for a city not pre-fetched as a slot. SAFE:
+# bounded codomain (a city → a weather string), no exec/side-effect, no
+# blankScript. (Parser refuses param-safe on any script blank.)
+signature: (city: string)
+returns: string
+param-safe: true
 ---
 
 Implementation: built-in `WeatherBlank` in `@opencues/runtime`
