@@ -110,11 +110,17 @@ module.exports = async function aiCallable(argv, ctx) {
   process.exit(1);
 };
 
+// Embeddable entry points for `opencues config` (the AI-callable section).
+// `manage` runs the same interactive trust manager with a 'Back' affordance;
+// `trustedCount` reports how many custom blanks the user has trusted.
+module.exports.manage = (ctx) => interactive(ctx, { embedded: true });
+module.exports.trustedCount = () => readAllow(read(OPENCUES_PATH)).length;
+
 // Interactive trust manager: a status list you toggle in place. Audited core
 // is shown but not toggleable; enabling a custom blank shows its impl/network
 // and asks for confirmation (trust with eyes open). Writes the same
 // `ai-callable-allow:` line, so hand-editing keeps working.
-async function interactive(ctx) {
+async function interactive(ctx, opts = {}) {
   for (;;) {
     const md = read(OPENCUES_PATH);
     const allowList = readAllow(md);
@@ -160,7 +166,8 @@ async function interactive(ctx) {
       choices.push({ label: '(no custom blanks declare ai-callable)', value: null, disabled: true });
     }
     choices.push({ spacer: true });
-    choices.push({ label: 'Done', value: { done: true }, dim: true });
+    // 'Back' when embedded in `opencues config`; 'Done' when standalone.
+    choices.push({ label: opts.embedded ? 'Back' : 'Done', value: { done: true }, dim: true });
 
     if (process.stdout.isTTY) console.clear();
     console.log(banner({ version: cliVersion(ctx), tagline: 'ai-callable trust list' }));
@@ -192,6 +199,9 @@ async function interactive(ctx) {
       if (ok) writeAllow([...allowList, n]);
     }
   }
+  // Standalone exit shows the final static list; embedded (from `config`)
+  // returns silently so the caller can redraw its own menu.
+  if (opts.embedded) return;
   if (process.stdout.isTTY) console.clear();
   console.log(banner({ version: cliVersion(ctx), tagline: 'ai-callable trust list' }));
   console.log('');
