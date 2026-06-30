@@ -8,7 +8,7 @@ Implements feature [11](../../../docs/features/cue-blanks.md). See that doc for 
 
 **Implementation:** Navigation + dimming + cycling + `blankInvoke` dispatch all live in `@opencues/runtime`. The CC bootstrap (`patches/opencuesRuntime.ts`) registers TS-class blanks into the host's `blanksRegistry`.
 
-A cue-blank is a blank (`_`) bound to a keyword via `blankKeywords` (which desugars into anchored `blankShapes`). The user types a keyword that leads the line containing `_` — args may sit between the keyword and `_` (e.g. `weather paris _`) — the runtime auto-populates with a current value via `blankInvoke`, and Up/Down cycling changes the actual external state. Everything that touches the world is `_`-gated — there is no word-cycling on plain text without `_`.
+A cue-blank is a blank (`_`) bound to a keyword via `blankKeywords` (which desugars into anchored `blankShapes`). The user types a keyword that leads the sentence containing `_` (the segment after the last sentence terminator (`.`/`!`/`?` + whitespace, or CJK `。！？．`) or newline before `_`) — args may sit between the keyword and `_` (e.g. `weather paris _`) — the runtime auto-populates with a current value via `blankInvoke`, and Up/Down cycling changes the actual external state. Everything that touches the world is `_`-gated — there is no word-cycling on plain text without `_`.
 
 ## Overview
 
@@ -24,7 +24,7 @@ Four flavours of cue-blank:
 ```
 User types: "set volume _"
            ↓
-Analysis matches `volume` (a blankKeywords entry) leading the line containing `_`
+Analysis matches `volume` (a blankKeywords entry) leading the sentence containing `_`
            ↓
 Runtime calls blankInvoke({ blankName: 'volume', action: 'get', args: ['volume'] })
            ↓
@@ -149,7 +149,7 @@ Config changes hot-reload within ~2s. `setup.sh` is only needed if you add a com
 
 ### Cue-Blank Not Triggering
 
-1. Verify a registered keyword leads the line containing `_` (args may sit between the keyword and `_`, e.g. `weather paris _`)
+1. Verify a registered keyword leads the sentence containing `_` (args may sit between the keyword and `_`, e.g. `weather paris _`)
 2. Check the runtime's `blanksByWord` map at startup — every keyword from every blank's `blankKeywords` should be there
 3. Hot-reload: edit any cue.md and save → analyzer re-runs within ~2s
 

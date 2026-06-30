@@ -4,7 +4,7 @@ last_updated: 2026-05-05
 
 # Cue-Blanks
 
-A **cue-blank** is a blank (`_`) bound to a keyword via `blankKeywords`. The user types a command whose keyword **leads the line** ending in `_` (e.g., `volume _`, `weather paris _`), the underscore auto-populates with a current value, and Up/Down cycling changes the actual external state. Everything that touches the world is `_`-gated — there is no word-cycling on plain text without `_`.
+A **cue-blank** is a blank (`_`) bound to a keyword via `blankKeywords`. The user types a command whose keyword **leads the sentence** ending in `_` (e.g., `volume _`, `weather paris _`), the underscore auto-populates with a current value, and Up/Down cycling changes the actual external state. Everything that touches the world is `_`-gated — there is no word-cycling on plain text without `_`.
 
 There are five flavours:
 
@@ -19,7 +19,7 @@ Cue-blanks are checked **first** in the cycling function (`_cycleAlt`) before an
 
 ## How It Works
 
-1. **Detection** — at analysis time, every `_` is matched against the registered cue-blanks. If a blank's shape (or synthesized keyword shape) matches the line containing `_` — the command leading its line, `_` at the trailing edge — the `_` is bound to that blank.
+1. **Detection** — at analysis time, every `_` is matched against the registered cue-blanks. If a blank's shape (or synthesized keyword shape) matches the sentence containing `_` — the command leading its sentence, `_` at the trailing edge — the `_` is bound to that blank.
 2. **Auto-populate** — `blankInvoke({ blankName, action: 'get', args: [keyword, ...context] })` returns the current value; the `_` is replaced with that value, and `metadata.blankName` is set on the resulting WordDef.
 3. **On cycle (Up/Down)** — the cycling function checks the bound blank and calls `up` / `down` (or `set` for selector/satellite) via `blankInvoke`. The class implementation (or `blankScript`) updates external state and returns the new display value.
 4. **Debounced spawn** — for shell-script blanks, rapid key presses only trigger one subprocess per ~50ms; the timer fires with the final accumulated value.
@@ -213,20 +213,25 @@ The two changes arrive through different code paths:
 
 ---
 
-## Keyword Matching (line-scoped shapes)
+## Keyword Matching (sentence-scoped shapes)
 
 `blankKeywords` desugar to anchored `blankShapes`. A blank claims a `_` when
-its keyword (or shape) **leads the line** containing `_`, with `_` at the
-trailing edge. Routing is deterministic and line-scoped — prose that merely
-mentions a keyword mid-line does NOT fire. The first blank with a matching
-shape wins. Examples with `blankKeywords: volume, sound, audio`:
+its keyword (or shape) **leads the sentence** containing `_`, with `_` at the
+trailing edge. The sentence is the segment after the last sentence terminator
+(`.`/`!`/`?` + whitespace, or CJK `。！？．`) or newline before `_`. Routing is
+deterministic and sentence-scoped — prose that merely mentions a keyword
+mid-sentence does NOT fire. The first blank with a matching shape wins.
+Examples with `blankKeywords: volume, sound, audio`:
 
 - `volume _` — matches (`volume` leads, `_` at end)
+- `let me check. volume _` — matches (`volume` leads the sentence after `.`)
 - `volume 30 _` — matches; `30` is captured as the set value
 - `audio up _` — matches; `up` is captured as a step (when `blankStep` is set)
-- `set audio _` — no match (line leads with `set`, not the keyword)
-- `the volume is loud _` — no match (prose; `volume` doesn't lead the line)
+- `set audio _` — no match (sentence leads with `set`, not the keyword)
+- `the volume is loud _` — no match (prose; `volume` doesn't lead the sentence)
 - `the _ is loud` — no match (no keyword, and `_` isn't at the trailing edge)
 
-With prior content on earlier lines, the command on the last line still
-fires: `some notes here.\nvolume 30 _` → matches.
+With prior content earlier in the buffer, the command leading the final
+sentence still fires — whether separated by a newline
+(`some notes here.\nvolume 30 _`) or by a sentence terminator on the same
+line (`some notes here. volume 30 _`) → both match.

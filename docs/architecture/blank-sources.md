@@ -52,7 +52,9 @@ one TransformBlank-fused reuses.
 keyword-window predicate (`keywordInWindow()` in
 `@opencues/core/keyword-window.ts`) — so a keyword that claims a `_`
 for `BlankSource` is the same keyword the other three cede on. The
-window is always **line-scoped** (a keyword claims a `_` on its line)
+window is always **sentence-scoped** (a keyword claims a `_` when it leads
+the sentence containing `_` — the segment after the last sentence terminator
+(`.`/`!`/`?` + whitespace, or CJK `。！？．`) or newline before `_`)
 across all five sites (the fifth is `BlankFill.matchKeyword` in the
 runtime). Shaped blanks bypass the window entirely — they're claimed
 by their `blankShapes` match via `matchBlankShape`. See

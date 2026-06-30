@@ -108,29 +108,32 @@ user can clear it (by editing the word).
 ## Keyword matching: the binding rule
 
 For keyword-bound blanks (volume, stocks, weather), `blankKeywords` desugar
-to anchored shapes that route the line containing `_`. A blank claims a `_`
-when its keyword (or shape) leads the line, with `_` at the trailing edge —
-line-scoped, deterministic. First match wins.
+to anchored shapes that route the sentence containing `_`. A blank claims a `_`
+when its keyword (or shape) leads the sentence, with `_` at the trailing edge —
+sentence-scoped, deterministic. The sentence is the segment after the last
+sentence terminator (`.`/`!`/`?` + whitespace, or CJK `。！？．`) or newline
+before `_`. First match wins.
 
 ```
 With blankKeywords: volume, sound, audio
   volume _              → matches (volume leads, _ at end)
+  let me check. volume _ → matches (volume leads the sentence after ".")
   volume 30 _           → matches (30 captured as the set value)
-  set audio _           → no match (line leads with "set")
-  the volume is loud _  → no match (prose; volume doesn't lead the line)
+  set audio _           → no match (sentence leads with "set")
+  the volume is loud _  → no match (prose; volume doesn't lead the sentence)
   the _ is loud         → no match (no keyword, _ not at the end)
 ```
 
 Multi-word keywords work too — a keyword like `spanish weather` desugars to
-a shape whose words are joined with `\s+`, so it must lead the line as a unit:
+a shape whose words are joined with `\s+`, so it must lead the sentence as a unit:
 ```
 With blankKeywords: spanish weather
   spanish weather _          → matches (the phrase leads, _ at end)
   spanish weather oslo _     → matches (oslo captured as the arg)
-  the spanish weather is _   → no match (line leads with "the")
+  the spanish weather is _   → no match (sentence leads with "the")
 ```
-(Under the older proximity model a keyword could match mid-line near `_`;
-line-scoped routing replaced that — the command must lead its line.)
+(Under the older proximity model a keyword could match mid-sentence near `_`;
+sentence-scoped routing replaced that — the command must lead its sentence.)
 
 ## Ownership: the most important contract
 

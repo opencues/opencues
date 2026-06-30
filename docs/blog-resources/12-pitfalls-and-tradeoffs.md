@@ -175,16 +175,18 @@ The bug was in the test setup, not the production code. Worth mentioning
 because it shows how easily benchmark infrastructure can mask real
 behaviour.
 
-### Line-scoped keyword routing
+### Sentence-scoped keyword routing
 
 From `cue-blanks.md`:
-> A blank claims a `_` when its keyword (or shape) **leads the line**
+> A blank claims a `_` when its keyword (or shape) **leads the sentence**
 > containing `_`, with `_` at the trailing edge.
 
 The naive implementation matched a keyword anywhere within a word-distance
 window — which let prose that merely *mentioned* a keyword fire the blank
-(`the weather was lovely today _`). Anchoring to "command leads the line"
-makes routing deterministic and impossible to over-claim.
+(`the weather was lovely today _`). Anchoring to "command leads the sentence"
+(the segment after the last sentence terminator or newline before `_`, so
+`let me check. volume _` fires) makes routing deterministic and impossible
+to over-claim.
 
 ### 0-byte CUES.md self-heal
 

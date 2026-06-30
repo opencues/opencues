@@ -402,8 +402,9 @@ default `get`, it dispatches two typed actions when the buffer supplies
 them: `volume 30 _` → SET (`runBlankSet`), `volume up _` /
 `brightness down _` → STEP (±`blankStep`, clamped 0–100). The action is
 chosen by which anchored shape matched (`get` / `set` / `step`) — the
-keyword must lead the line containing `_`, so an anchored shape match is
-itself the invocation proof. (The old `blank-intent-mode` LLM gate was
+keyword must lead the sentence containing `_` (the segment after the last
+sentence terminator (`.`/`!`/`?` + whitespace, or CJK `。！？．`) or newline
+before `_`), so an anchored shape match is itself the invocation proof. (The old `blank-intent-mode` LLM gate was
 retired in the June 2026 slim-down — deterministic shape matching
 obviates it.) See [`blank-integration.md`](blank-integration.md).
 

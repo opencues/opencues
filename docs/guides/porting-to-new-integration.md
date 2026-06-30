@@ -142,7 +142,7 @@ When an alternative contains spaces (e.g., "Sundar Pichai" replacing "Sundar"), 
 ### Blank dispatch order
 
 When a `_` is present, sources fire in priority order (highest first):
-1. **`BlankSource` (95)** — keyword-bound. If any registered blank's blank shape (or keyword) leads the line containing `_`, that blank claims the slot. Auto-populates via the blank's script or runtime class.
+1. **`BlankSource` (95)** — keyword-bound. If any registered blank's blank shape (or keyword) leads the sentence containing `_` (the segment after the last sentence terminator (`.`/`!`/`?` + whitespace, or CJK `。！？．`) or newline before `_`), that blank claims the slot. Auto-populates via the blank's script or runtime class.
 2. **`FluidBlankSource` (92)** — free-form lookup. Two-pass LLM (P1 SEGMENT + P3 ANSWER) for any `_` no keyword-bound blank claimed.
 
 The host's responsibility is to pass the full text + word indices through to the resolver and splice the `_` substitution into place when the result arrives. The host doesn't need to know which source fired — `CueResult.source` carries that information.
