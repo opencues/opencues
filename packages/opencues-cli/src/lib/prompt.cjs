@@ -36,12 +36,22 @@ function assertTTY(what) {
   }
 }
 
+// Drop enquirer's `?` message prefix. A falsy `prefix:` option is ignored
+// (enquirer falls back to the question symbol), so the method must be
+// overridden to return ''.
+const stripPrefix = (Base) => class extends Base {
+  async prefix() { return ''; }
+};
+
 // White selection arrow (enquirer's default is a cyan ▸); no `?` prefix.
-class OcSelect extends Select {
+class OcSelect extends stripPrefix(Select) {
   pointer(choice, i) {
     return this.index === i ? brightWhite('❯') : ' ';
   }
 }
+const OcConfirm = stripPrefix(Confirm);
+const OcInput = stripPrefix(Input);
+const OcPassword = stripPrefix(Password);
 
 /**
  * Single-select menu. `choices`: `{ label, value, disabled?, separator? }`.
@@ -73,7 +83,7 @@ async function confirm(message, opts = {}) {
   assertTTY('confirm');
   const def = opts.default ?? false;
   try {
-    return Boolean(await new Confirm({ name: 'v', message, initial: def, prefix: '' }).run());
+    return Boolean(await new OcConfirm({ name: 'v', message, initial: def }).run());
   } catch {
     return def;
   }
@@ -83,7 +93,7 @@ async function confirm(message, opts = {}) {
 async function input(message, opts = {}) {
   assertTTY('input');
   try {
-    const v = await new Input({ name: 'v', message, initial: opts.default, prefix: '' }).run();
+    const v = await new OcInput({ name: 'v', message, initial: opts.default }).run();
     return v && String(v).trim() ? String(v).trim() : (opts.default || '');
   } catch {
     return opts.default || '';
@@ -94,7 +104,7 @@ async function input(message, opts = {}) {
 async function secret(message) {
   assertTTY('secret');
   try {
-    return String((await new Password({ name: 'v', message, prefix: '' }).run()) || '');
+    return String((await new OcPassword({ name: 'v', message }).run()) || '');
   } catch {
     return '';
   }
