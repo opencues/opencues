@@ -1294,7 +1294,10 @@ export async function dispatchWithFreePool(
     const downUntil = _opencodeZenHealth.get(model) ?? 0;
     if (downUntil > now()) continue; // skip — still in cool-down
     try {
-      const result = await dispatchChat(OPENCODE_ZEN, httpAdapter, { ...req, model }, ctx);
+      // Opt OUT of dispatchChat's rate-limit backoff: the pool's recovery for
+      // a 429 is to WALK to the next free model immediately, not to wait out
+      // one throttled model's quota.
+      const result = await dispatchChat(OPENCODE_ZEN, httpAdapter, { ...req, model }, { ...ctx, noRateLimitRetry: true });
       // parseResponse already throws on error envelopes — if we got
       // here with an empty string we treat that as a transient failure
       // too (some free models return empty body on overload).
@@ -1698,7 +1701,7 @@ export async function dispatchChat(
   provider: ProviderAdapter,
   httpAdapter: HttpAdapterShape,
   req: ChatRequest,
-  ctx: { apiKey: string; endpoint?: string; signal?: AbortSignal; maxThinking?: boolean; onUsage?: (u: UsageReport) => void },
+  ctx: { apiKey: string; endpoint?: string; signal?: AbortSignal; maxThinking?: boolean; onUsage?: (u: UsageReport) => void; noRateLimitRetry?: boolean },
 ): Promise<string> {
   // CLI-transport providers (e.g. claude-cli daemon, openai-subscription)
   // handle their own lifecycle and return the assistant text directly.
@@ -1780,6 +1783,9 @@ export async function dispatchChat(
   // key to "slower", not "broken". Only fires on genuine rate-limit
   // errors, so un-throttled calls keep their single-attempt latency.
   // Default 4 retries (~0.5/1/2/4s); override via OPENCUES_RATE_LIMIT_RETRIES.
+  // Read at call-time (not module-load) so the runtime + tests can tune it
+  // without a reimport; `noRateLimitRetry` (the free-pool walker) forces 0.
+  const maxRlRetries = ctx.noRateLimitRetry ? 0 : RATE_LIMIT_MAX_RETRIES();
   for (let rlAttempt = 0; ; rlAttempt++) {
     try {
       return await attempt(req);
@@ -1797,7 +1803,13 @@ export async function dispatchChat(
       if (req.prediction !== undefined && isPredictionUnsupportedError(err)) {
         return attempt({ ...req, prediction: undefined });
       }
-      if (isRateLimitError(err) && rlAttempt < RATE_LIMIT_MAX_RETRIES) {
+      // `noRateLimitRetry` opts a caller OUT of the backoff — used by
+      // `dispatchWithFreePool`, which handles a 429 by WALKING to the next
+      // free model immediately. Retrying a throttled pool member with
+      // exponential backoff (~7.5s) before walking would defeat the pool's
+      // whole purpose (route around throttled models); the pool's peer is the
+      // better recovery than waiting for one model's quota to clear.
+      if (isRateLimitError(err) && rlAttempt < maxRlRetries) {
         await new Promise((r) => setTimeout(r, RATE_LIMIT_BASE_MS * Math.pow(2, rlAttempt)));
         continue;
       }
@@ -1806,7 +1818,7 @@ export async function dispatchChat(
   }
 }
 
-const RATE_LIMIT_MAX_RETRIES = Number(process.env.OPENCUES_RATE_LIMIT_RETRIES ?? 4);
+const RATE_LIMIT_MAX_RETRIES = (): number => Number(process.env.OPENCUES_RATE_LIMIT_RETRIES ?? 4);
 const RATE_LIMIT_BASE_MS = 500;
 
 /** True when an LLM error is a provider rejecting the request for quota /

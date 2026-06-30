@@ -7,7 +7,7 @@
 // 404 endpoint, network down, rate-limit) shows a message in their
 // buffer. Transient or model-internal issues don't bother the user.
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi, afterEach } from 'vitest';
 import { FluidBlankSource, type FluidBlankErrorReason } from './fluid-blank-source';
 import type { HttpAdapter } from '../types';
 import type { ProviderAdapter } from '../llm-provider';
@@ -55,6 +55,8 @@ const SAMPLE_CONTEXT = {
 };
 
 describe('FluidBlankSource — user-actionable error substitution', () => {
+  afterEach(() => { vi.unstubAllEnvs(); });
+
   it('401 → substitutes _ with the host-supplied "invalid-api-key" message', async () => {
     let observedReason: FluidBlankErrorReason | undefined;
     const fluid = makeFluid({
@@ -162,6 +164,10 @@ describe('FluidBlankSource — user-actionable error substitution', () => {
   });
 
   it('429 → "rate-limit" substitute', async () => {
+    // This pins error CLASSIFICATION, not retry. dispatchChat now backs off on
+    // a 429 (~7.5s over 4 attempts); turn that off here so the persistent-429
+    // mock surfaces the substitute immediately instead of timing out.
+    vi.stubEnv('OPENCUES_RATE_LIMIT_RETRIES', '0');
     let observedReason: FluidBlankErrorReason | undefined;
     const fluid = makeFluid({
       throwError: new Error('HTTP 429: Too Many Requests'),

@@ -143,21 +143,24 @@ describe('dispatchChat — HTTP transport contract', () => {
     );
   });
 
-  it('does not retry on transient errors (retry policy belongs to withFallback wrapper)', async () => {
-    // Pin that dispatchChat itself is a pure pass-through. Retry behavior
-    // lives in `withFallback` (llm-provider.ts) — wrapping the adapter
-    // before passing it here is the only way to opt into peer-fallback.
+  it('does not retry on non-rate-limit transient errors (peer-fallback belongs to withFallback)', async () => {
+    // Pin that dispatchChat does NOT do peer-fallback retry — that lives in
+    // `withFallback` (llm-provider.ts), which wraps the adapter to switch
+    // PROVIDERS on failure. The one self-retry dispatchChat owns is the
+    // rate-limit backoff (a throttled SAME-provider key degrades to "slower",
+    // not "broken"), covered in llm-provider.gemma.test.ts and opt-out-able via
+    // `noRateLimitRetry`. A generic 5xx is neither — it surfaces once.
     let calls = 0;
     const provider = makeFakeProvider({});
     const adapter: HttpAdapterShape = {
-      post: async () => { calls++; throw new Error('429 rate-limited'); },
+      post: async () => { calls++; throw new Error('503 service overloaded'); },
     };
 
     await assert.rejects(
       dispatchChat(provider, adapter, { model: 'm', messages: [] }, { apiKey: 'k' }),
-      /rate-limited/,
+      /overloaded/,
     );
-    assert.strictEqual(calls, 1, 'dispatchChat must not retry');
+    assert.strictEqual(calls, 1, 'dispatchChat must not peer-retry a generic transient error');
   });
 
   // ── Transport-tag dispatch ───────────────────────────────────────────

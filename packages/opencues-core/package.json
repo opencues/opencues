@@ -17,7 +17,7 @@
   "scripts": {
     "build": "tsc && node ../../scripts/build-shipped-manifest.cjs",
     "typecheck": "tsc --noEmit",
-    "test": "find dist -name '*.test.js' ! -name 'feature-registry*.test.js' ! -name 'llm-provider.drift.test.js' ! -name 'llm-provider.temperature.test.js' ! -name 'llm-provider.max-thinking.test.js' ! -name 'model-thinking.test.js' ! -name 'conformance.test.js' | xargs node --test && vitest run",
+    "test": "find dist -name '*.test.js' ! -name 'feature-registry*.test.js' ! -name 'llm-provider.drift.test.js' ! -name 'llm-provider.temperature.test.js' ! -name 'llm-provider.max-thinking.test.js' ! -name 'llm-provider.gemma.test.js' ! -name 'model-thinking.test.js' ! -name 'conformance.test.js' | xargs node --test && vitest run",
     "prepublishOnly": "node ../../scripts/prepublish-guard.cjs",
     "smoke:providers": "tsc --skipLibCheck --rootDir . --outDir dist-smoke scripts/smoke-providers.ts && node dist-smoke/scripts/smoke-providers.js",
     "bench:providers": "tsc --skipLibCheck --rootDir . --outDir dist-smoke scripts/bench-providers.ts && node dist-smoke/scripts/bench-providers.js",
