@@ -199,9 +199,20 @@ async function main() {
   console.log(`Judge: groq gpt-oss-120b (pinned)`);
   console.log(`Cases: ${CASES.length}  parallel=${parallel}\n`);
 
+  // --only-file <path>: surgically re-run just the case ids listed in the
+  // file (one id per line). Used to re-test failures cleanly (e.g. strip
+  // throttle-induced bails) without re-running the whole suite.
+  const onlyFile = argVal('--only-file');
+  let cases = CASES;
+  if (onlyFile) {
+    const ids = new Set(require('fs').readFileSync(onlyFile, 'utf8').split('\n').map((s: string) => s.trim()).filter(Boolean));
+    cases = CASES.filter(c => ids.has(c.id));
+    console.log(`${DIM}--only-file: re-running ${cases.length} of ${CASES.length} cases${RESET}`);
+  }
+
   const source = buildSource(provider);
   const wall0 = Date.now();
-  const outcomes = await runWithConcurrency(CASES, c => runOne(c, source), parallel);
+  const outcomes = await runWithConcurrency(cases, c => runOne(c, source), parallel);
   const wallMs = Date.now() - wall0;
 
   for (const o of outcomes) console.log(o.output);

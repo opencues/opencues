@@ -97,6 +97,21 @@ If we ever ship per-tab / per-textbox routing hints, the place to compute them w
 Cerebras supports [Predicted Outputs](https://inference-docs.cerebras.ai/capabilities/predicted-outputs) — a client-side speculative-decoding hint where you pre-supply the expected output. The server validates token-by-token against the actual generation; matching tokens come from cache (billed at the input rate), mismatches regenerate (billed at the output rate).
 
 Model support: `gpt-oss-120b` (the model we route to) + `zai-glm-4.7`.
+**`gemma-4-31b` does NOT support it** — it returns `400 "prediction" is
+not currently supported`. The `capabilities.prediction` predicate gates
+the field to `^gpt-oss` / `^zai-glm` only, so it's never sent to Gemma
+(new Cerebras models default OFF — safe). A dispatch-level retry-without-
+prediction is the receive-side belt if any model rejects it anyway (the
+detector matches both `unsupported` and `not currently supported`
+phrasings). Verified live 2026-06-28; see
+`tests/results/gemma-hackathon/FINDINGS.md`.
+
+> **gemma-4-31b is non-reasoning.** It's not in the prefix-cache or
+> Predicted-Outputs support sets above, and the runtime never forwards
+> `reasoning_effort` / `reasoning_format` to it (the `isReasoningModelName`
+> gate excludes it; any effort value empties its `content`). It still
+> benches at parity-or-better vs `gpt-oss-120b` at ~2× the speed because
+> the task doesn't need reasoning. `gpt-oss-120b` remains the default.
 
 ### When OpenCues uses it
 

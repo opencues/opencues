@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — cerebras `gemma-4-31b` as a first-class model + dispatch rate-limit retry (`@opencues/core` 0.9.0 → 0.10.0)
+
+`gemma-4-31b` is now in Cerebras's `knownModels` and handled correctly end-to-end. `gpt-oss-120b` stays the default. Select it per surface, e.g. `blanks-llm-provider: cerebras` + `blanks-llm-model: gemma-4-31b`.
+
+It's a **non-reasoning** model, so the runtime adapts its wire shape automatically (no special config):
+
+1. **No `reasoning_effort` / `reasoning_format`** — already excluded by the `isReasoningModelName` gate; a `MODEL_THINKING['cerebras:gemma-4-31b']` entry documents the intent. Any effort value would route Gemma's answer into the `reasoning` field and empty `content`.
+2. **No Predicted-Outputs `prediction` field** — Gemma returns `400 "prediction" is not currently supported`. The `capabilities.prediction` capability became a model predicate (`^gpt-oss` / `^zai-glm` only); new Cerebras models default OFF. The dispatch-level retry-without-prediction's detector was broadened to match `not currently supported` as well as `unsupported`.
+3. **Rate-limit retry-with-backoff in `dispatchChat`** (general, not Gemma-specific) — on `request_quota_exceeded` / `too_many_requests` / `429` / `queue_exceeded` the dispatch now retries with exponential backoff (default 4, `OPENCUES_RATE_LIMIT_RETRIES`) instead of hard-failing. A throttled key degrades to "slower," not "broken." Un-throttled calls keep single-attempt latency.
+
+Benches at parity-or-better vs `gpt-oss-120b` — fluid-blank 98.5% (vs 99.3%), transform-blank ~88% (vs ~84%) — at ~2× the speed (~196ms vs ~423ms/call). Reasoning does not help it (verified). Full data + methodology: `tests/results/gemma-hackathon/FINDINGS.md`. Tests: `packages/opencues-core/src/llm-provider.gemma.test.ts` (13). No spec change (`SPEC_VERSION` unchanged — reference-impl model + dispatch resilience).
+
 ### Added — integration-weave: LLM contextual weaving of a blank's output (`@opencues/core` → 0.9.0, `@opencues/runtime` → 0.7.0, chrome → 0.2.44)
 
 A blank declaring `integration-weave: true` can weave its `integration:`
