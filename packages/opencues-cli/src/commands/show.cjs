@@ -209,3 +209,6 @@ function printHelp() {
   console.log('');
   console.log('Use `opencues list` to see what\'s defined.');
 }
+
+// Exported for show.test.cjs — the pure discovery/matching helpers.
+module.exports.__test__ = { enumerateNames, findMatches, parseFrontmatter, searchPaths };
