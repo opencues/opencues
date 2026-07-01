@@ -13,6 +13,7 @@ import {
   summonPhraseStart,
   resolveSummonStart,
   parseSummonOutput,
+  hasLikelyIntent,
 } from './config-intent-source';
 import type { CueContext, HttpAdapter } from '../types';
 import { getProvider } from '../llm-provider';
@@ -786,5 +787,38 @@ describe('resolveSummonStart — model span with regex floor + data-loss guard',
     const t = 'voice mode off _';
     assert.strictEqual(resolveSummonStart(t, t), 0);
     assert.strictEqual(resolveSummonStart(t, null), 0);
+  });
+});
+
+// ============================================================================
+// hasLikelyIntent — the cheap pre-filter gate. `gemma` was added as a curated
+// model alias so it trips the gate on bare-name phrasings, at parity with
+// `haiku` (both models sit in their provider's knownModels; the classifier
+// resolves gemma → cerebras/gemma-4-31b, haiku → anthropic/claude-haiku).
+// ============================================================================
+
+describe('hasLikelyIntent — model-alias parity (gemma ↔ haiku)', () => {
+  it('trips on bucket-scoped model phrasings', () => {
+    assert.strictEqual(hasLikelyIntent('use gemma for blanks _'), true);
+    assert.strictEqual(hasLikelyIntent('use gemma for cues _'), true);
+    assert.strictEqual(hasLikelyIntent('use haiku for blanks _'), true);
+  });
+
+  it('trips on BARE model-name phrasings (no bucket word) — gemma at parity with haiku', () => {
+    // These have no bucket/provider word — only the curated model alias trips
+    // the gate. Before `gemma` was added, "use gemma _" was silently skipped
+    // while "use haiku _" fired. This pins the parity.
+    assert.strictEqual(hasLikelyIntent('use gemma _'), true);
+    assert.strictEqual(hasLikelyIntent('use haiku _'), true);
+    assert.strictEqual(hasLikelyIntent('switch to gemma _'), true);
+  });
+
+  it('does NOT trip on ordinary lookup/transform buffers with no model/setting token', () => {
+    // The gate is intentionally loose (a false-positive only costs a NONE
+    // classification downstream), so these are picked to contain zero
+    // provider/model/bucket/setting tokens.
+    assert.strictEqual(hasLikelyIntent('the capital of france _'), false);
+    assert.strictEqual(hasLikelyIntent('translate to spanish _ hola'), false);
+    assert.strictEqual(hasLikelyIntent('fix typos _ teh cat'), false);
   });
 });

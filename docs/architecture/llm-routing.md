@@ -105,7 +105,18 @@ use claude opus for auditors _        → auditors-llm-provider: anthropic
 route everything to gemini _          → blanks-llm-provider: gemini (blanks = default scope)
 switch to anthropic _                 → blanks-llm-provider: anthropic
 use cerebras _                        → blanks-llm-provider: cerebras
+use gemma for blanks _                → blanks-llm-provider: cerebras
+                                        blanks-llm-model: gemma-4-31b
 ```
+
+> **Gemma on Cerebras (private preview).** `gemma-4-31b` is in cerebras's
+> `knownModels`, so it's selectable by name — via the `opencues config`
+> menu (`blanks-llm-model`) or natural language (`use gemma for blanks _`,
+> `use gemma for cues _`) — exactly like `haiku` on anthropic. It is
+> **NOT** the cerebras default (`gpt-oss-120b` stays the default) while it
+> is in preview. It benches faster than gpt-oss-120b with comparable
+> accuracy on lookups/rewrites, but trails on multilingual transforms
+> (`tests/results/gemma-benchmark-2026-07-01/FINDINGS.md`).
 
 ### What the classifier may emit
 

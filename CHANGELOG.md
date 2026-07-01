@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — `gemma` selectable by name in the fluid-config classifier (parity with `haiku`) (`@opencues/core` 0.13.3 → 0.13.4)
+
+`gemma-4-31b` was already in cerebras `knownModels` (so it resolves via the config menu and bucket-scoped phrasings like `use gemma for blanks _`), but `gemma` was missing from the fluid-config pre-filter's curated model-alias list — so bare-name phrasings (`use gemma _`, `switch to gemma _`) were silently skipped while `use haiku _` fired. Added `gemma` to the alias set for full parity. Verified live: `use gemma for blanks _` → cerebras/gemma-4-31b (0.92). **Not** the cerebras default (gpt-oss-120b stays default) — gemma is private preview. Regression test pins the gemma↔haiku parity; docs note in `docs/architecture/llm-routing.md`.
+
 ### Fixed — `opencues identity` now honours `$OPENCUES_HOME` (`opencues` CLI 0.2.32 → 0.2.33)
 
 `opencues identity` hardcoded its target to `os.homedir()/.cues/IDENTITY.md`, silently ignoring `$OPENCUES_HOME` — so `OPENCUES_HOME=… opencues identity set …` wrote the real `~/.cues/IDENTITY.md` instead of the override. Now resolved per-call via `$OPENCUES_HOME || ~/.cues`, matching the search-path convention every other CLI command uses. Regression tests pin both the write target and `identity path`; the HOME-based E2E helper strips ambient `$OPENCUES_HOME` for hermeticity.
