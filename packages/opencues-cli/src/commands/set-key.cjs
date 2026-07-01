@@ -45,7 +45,7 @@ async function pickProvider() {
   }));
   choices.push({ spacer: true });
   choices.push({ label: 'Cancel', value: null, dim: true });
-  console.log(dim('Which provider?  ·  ↑↓ move · Enter select · green ● = key already set'));
+  console.log(dim('Which provider?  ·  ↑↓ move · Enter select'));
   return prompt.select('', choices);
 }
 
