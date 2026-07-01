@@ -1135,7 +1135,9 @@ module.exports = async function doctor(argv, ctx) {
   // Warnings first, then info notices — most actionable at the top.
   const ordered = [...findings].sort((a, b) => (a.sev === 'warn' ? 0 : 1) - (b.sev === 'warn' ? 0 : 1));
   for (const f of ordered) {
-    console.log(`  ${tag(f.sev === 'warn' ? 'warn' : 'info')} ${f.msg}`);
+    // warn keeps the ⚠ (with an extra space); info uses the big gray ● ring.
+    const mark = f.sev === 'warn' ? `${tag('warn')} ` : dim(G.ringOn);
+    console.log(`  ${mark} ${f.msg}`);
     if (f.fix) console.log(`     ${dim(f.fix)}`);
   }
   await maybePrintUpdateNotice(ctx);
