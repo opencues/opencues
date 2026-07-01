@@ -21,6 +21,11 @@
 
 const { dim, green, brightWhite, G } = require('./style.cjs');
 const { Select, Input, Password } = require('enquirer');
+// enquirer's own ansi-colors — used to give inputs a white-bg/black-text block
+// cursor. `utils.inverse` reads a color's `.stack` to find its `bg…` variant,
+// so it needs an ansi-colors chainable (our plain style wrappers have no stack).
+let AC = null;
+try { AC = require(require.resolve('ansi-colors', { paths: [require.resolve('enquirer')] })); } catch { /* optional */ }
 
 /** Is a human present on a real terminal (and not opted out)? */
 function isInteractive() {
@@ -140,9 +145,10 @@ class OcSelect extends stripPrefix(Select) {
 class OcInput extends stripPrefix(Input) {
   constructor(options) {
     super(options);
-    // White the value text you're editing, but LEAVE `primary` alone so the
-    // inverse block cursor keeps its highlighted-black look.
-    this.styles.placeholder = brightWhite;
+    this.styles.placeholder = brightWhite; // value text you're editing → white
+    // Block cursor = inverse(primary). Default cyan → white so it's a white
+    // block with black text (matches the white value text).
+    if (AC && AC.white) this.styles.primary = AC.white;
   }
 }
 const OcPassword = stripPrefix(Password);
