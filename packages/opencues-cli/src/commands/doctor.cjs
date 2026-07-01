@@ -9,17 +9,28 @@ const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const compatLib = require('../lib/compat.cjs');
-const { tag, bold, dim, banner, fileLink, tree, existsMark, G, cliVersion } = require('../lib/style.cjs');
+const { tag, bold, dim, green, banner, fileLink, G, cliVersion } = require('../lib/style.cjs');
 
-// Build a section accumulator: ok/bad push rows; render emits as a tree.
+// Build a section accumulator. ok/bad rows lead with a status ring (green ●
+// present / gray ● absent); info/raw rows have a blank gutter. `raw` keeps its
+// custom end marker (a tag, not an existence tick).
 function section(title, description) {
-  const rows = [];
+  const rows = []; // { label, value, ring:boolean|null, marker? }
   return {
-    ok:   (label, present) => rows.push([label, '', existsMark(present)]),
-    bad:  (label, present) => rows.push([label, '', existsMark(present)]),
-    info: (label, value)   => rows.push([label, value || '']),
-    raw:  (label, value, marker) => rows.push([label, value || '', marker || '']),
-    render: () => { console.log(tree({ title, description, rows })); console.log(''); },
+    ok:   (label, present) => rows.push({ label, value: '', ring: !!present }),
+    bad:  (label, present) => rows.push({ label, value: '', ring: !!present }),
+    info: (label, value)   => rows.push({ label, value: value || '', ring: null }),
+    raw:  (label, value, marker) => rows.push({ label, value: value || '', ring: null, marker: marker || '' }),
+    render: () => {
+      console.log(bold(title) + (description ? '  ' + dim(description) : ''));
+      const w = Math.max(0, ...rows.map(r => r.label.length));
+      for (const r of rows) {
+        const ring = r.ring === null ? '  ' : (r.ring ? green(G.ringOn) : dim(G.ringOn)) + ' ';
+        const tail = r.marker ? '  ' + r.marker : '';
+        console.log(`  ${ring}${r.label.padEnd(w)}  ${r.value}${tail}`.replace(/\s+$/, ''));
+      }
+      console.log('');
+    },
   };
 }
 

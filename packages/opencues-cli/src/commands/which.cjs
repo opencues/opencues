@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
-const { tree, fileLink, existsMark, dim, G } = require('../lib/style.cjs');
+const { fileLink, bold, dim, green, G } = require('../lib/style.cjs');
 
 module.exports = function which(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -62,19 +62,22 @@ module.exports = function which(argv, ctx) {
     ]],
   ];
 
+  // Each row leads with a status ring: green ● = path present, gray ● = not
+  // present, no ring for informational (non-path) rows.
+  const LABEL_W = 34;
   for (const [title, rows] of sections) {
     console.log('');
-    const treeRows = rows.map(([label, p]) => {
+    console.log(bold(title));
+    for (const [label, p] of rows) {
       const isPath = p && p !== '(unset)' && !p.startsWith('(');
       const exists = isPath ? statSafe(p) : null;
       const value = isPath ? fileLink(p, p) : (p ? dim(p) : '');
-      const marker = exists === null ? '' : existsMark(exists);
-      return [label, value, marker];
-    });
-    console.log(tree({ title, rows: treeRows, labelWidth: 34 }));
+      const ring = exists === null ? '  ' : (exists ? green(G.ringOn) : dim(G.ringOn)) + ' ';
+      console.log(`  ${ring}${label.padEnd(LABEL_W)}  ${value}`);
+    }
   }
   console.log('');
-  console.log(dim(`Legend: ${existsMark(true)} exists  ${existsMark(false)} not present`));
+  console.log(dim(`Legend: ${green(G.ringOn)} present  ${dim(G.ringOn)} not present`));
 };
 
 function statSafe(p) {
