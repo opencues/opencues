@@ -44,17 +44,27 @@ async function explore(paths, ctx) {
       console.error('opencues show: no cues/blanks defined. Run `opencues list`.');
       process.exit(1);
     }
-    const nameW = Math.max(4, ...defined.map(d => d.name.length));
+    const cues = defined.filter(d => d.kind === 'cue').map(d => d.name);
+    const blanks = defined.filter(d => d.kind === 'blank').map(d => d.name);
+
+    // Grouped into Cues / Blanks sections rather than one flat alpha list.
+    const choices = [];
+    if (cues.length) {
+      choices.push({ heading: bold('Cues') });
+      for (const n of cues) choices.push({ label: n, value: { name: n } });
+    }
+    if (blanks.length) {
+      choices.push({ heading: bold('Blanks') });
+      for (const n of blanks) choices.push({ label: n, value: { name: n } });
+    }
+    choices.push({ spacer: true });
+    choices.push({ label: 'Done', value: { done: true }, dim: true });
 
     if (process.stdout.isTTY) console.clear();
     console.log(banner({ version: cliVersion(ctx), tagline: 'explore cues + blanks' }));
     console.log('');
     console.log(dim('↑↓ move · Enter open · view source, scope, and every field'));
-    const pick = await prompt.select('', [
-      ...defined.map(d => ({ label: `${d.name.padEnd(nameW)}   ${dim(d.kind)}`, value: { name: d.name } })),
-      { spacer: true },
-      { label: 'Done', value: { done: true }, dim: true },
-    ]);
+    const pick = await prompt.select('', choices);
     if (!pick || pick.done) return;
 
     // Detail view for the picked name.
