@@ -140,8 +140,9 @@ class OcSelect extends stripPrefix(Select) {
 class OcInput extends stripPrefix(Input) {
   constructor(options) {
     super(options);
+    // White the value text you're editing, but LEAVE `primary` alone so the
+    // inverse block cursor keeps its highlighted-black look.
     this.styles.placeholder = brightWhite;
-    this.styles.primary = brightWhite; // also whitens the cursor block (inverse of primary)
   }
 }
 const OcPassword = stripPrefix(Password);
