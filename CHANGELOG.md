@@ -7,9 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added — show picker + identity interview on the toolkit (`opencues` CLI 0.2.17 → 0.2.18)
+### Added — show explorer + identity interview on the toolkit (`opencues` CLI 0.2.17 → 0.2.19)
 
-`opencues show` with no name now opens a `select` over every defined cue/blank (folder-based, deduped across search paths). `opencues identity`'s interview moved off raw `node:readline` onto the house `input()` toolkit (no `?` prefix; the default pre-fills the field, clearing skips) — a new `input({ allowEmpty })` option makes "clear to skip" distinguishable from "accept the pre-fill". (`edit` was left as-is — it deliberately exposes only `cues`, so a picker adds nothing.)
+`opencues show` with no name is now an explorer: a `select` over every defined cue/blank (folder-based, deduped across search paths) → a **formatted** detail view (source + scope + every frontmatter field as an aligned tree, long values truncated, body shown dimmed, multi-match priority order) → Back to the list. The scriptable `show <name>` uses the same formatted renderer instead of dumping raw markdown. `opencues identity`'s interview moved off raw `node:readline` onto the house `input()` toolkit (no `?` prefix; the default pre-fills the field, clearing skips) — a new `input({ allowEmpty })` option makes "clear to skip" distinguishable from "accept the pre-fill". (`edit` was left as-is — it deliberately exposes only `cues`, so a picker adds nothing.)
 
 ### Added — import trust gate + install confirm migration (`opencues` CLI 0.2.16 → 0.2.17)
 
