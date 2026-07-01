@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — guard unguarded `process.env` in the rate-limit retry reader (`@opencues/core` 0.13.2 → 0.13.3)
+
+`RATE_LIMIT_MAX_RETRIES` in `llm-provider.ts` read `process.env.OPENCUES_RATE_LIMIT_RETRIES` without a `typeof process` guard, which would throw in chrome content scripts (no `process`). Wrapped the access; `?? 4` semantics preserved so `OPENCUES_RATE_LIMIT_RETRIES=0` still means zero retries. Caught by the `runtime-browser-safe` lint (pre-existing on master).
+
 ### Added — no-arg `opencues` interactive launcher (`opencues` CLI 0.2.31 → 0.2.32)
 
 Bare `opencues` on a terminal now opens an interactive menu that routes into each command's own flow — Settings, API keys, Identity, Debug logging, Explore cues & blanks, Install/Run a host, Diagnostics, Check API keys, All commands — with a Back-to-menu / Quit loop. Non-TTY / piped is unchanged: it still prints the static status + command list (`help`). Ties the control-panel commands together behind one entry point.

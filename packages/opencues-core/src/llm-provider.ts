@@ -1911,7 +1911,8 @@ export async function dispatchChat(
   }
 }
 
-const RATE_LIMIT_MAX_RETRIES = (): number => Number(process.env.OPENCUES_RATE_LIMIT_RETRIES ?? 4);
+const RATE_LIMIT_MAX_RETRIES = (): number =>
+  Number((typeof process !== 'undefined' ? process.env.OPENCUES_RATE_LIMIT_RETRIES : undefined) ?? 4);
 const RATE_LIMIT_BASE_MS = 500;
 
 /** True when an LLM error is a provider rejecting the request for quota /
