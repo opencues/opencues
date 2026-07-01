@@ -130,6 +130,11 @@ describe('needsQuoting', () => {
 function runCli(args, opts = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'oc-sent-'));
   const env = { ...process.env, HOME: tmp, FORCE_COLOR: '0', NO_COLOR: '1' };
+  // These tests exercise HOME-based resolution; strip any ambient
+  // $OPENCUES_HOME so a dev with it set in their shell doesn't redirect
+  // the write out of the sandbox HOME. (The dedicated OPENCUES_HOME tests
+  // below set it explicitly.)
+  delete env.OPENCUES_HOME;
   if (opts.userMd) {
     fs.mkdirSync(path.join(tmp, '.cues'), { recursive: true });
     fs.writeFileSync(path.join(tmp, '.cues', 'IDENTITY.md'), opts.userMd, 'utf8');
@@ -311,6 +316,37 @@ describe('opencues identity — E2E', () => {
     const r = runCli(['set', 'k', `foo\x1bbar`]);
     assert.notStrictEqual(r.status, 0);
     assert.match(r.stderr, /forbidden control characters/);
+  });
+
+  it('honours $OPENCUES_HOME over ~/.cues for the write target', () => {
+    // Regression: identity used to hardcode os.homedir()/.cues, silently
+    // ignoring $OPENCUES_HOME and always writing the real ~/.cues/IDENTITY.md
+    // even when the caller pointed OPENCUES_HOME elsewhere.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'oc-sent-'));
+    const ocHome = path.join(tmp, 'custom', '.cues');
+    fs.mkdirSync(ocHome, { recursive: true });
+    const env = { ...process.env, HOME: tmp, OPENCUES_HOME: ocHome, FORCE_COLOR: '0', NO_COLOR: '1' };
+    const r = spawnSync('node', [CLI, 'identity', 'set', 'jobTitle', 'Founder'], { env, encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    // Write landed under $OPENCUES_HOME …
+    const ocFile = path.join(ocHome, 'IDENTITY.md');
+    assert.ok(fs.existsSync(ocFile), 'IDENTITY.md should be written under $OPENCUES_HOME');
+    assert.deepStrictEqual(parseSentinelsMd(fs.readFileSync(ocFile, 'utf8')), [
+      { key: 'jobTitle', value: 'Founder' },
+    ]);
+    // … and NOT under $HOME/.cues.
+    assert.ok(!fs.existsSync(path.join(tmp, '.cues', 'IDENTITY.md')),
+      '$HOME/.cues/IDENTITY.md must NOT be created when $OPENCUES_HOME is set');
+  });
+
+  it('path: reflects $OPENCUES_HOME when set', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'oc-sent-'));
+    const ocHome = path.join(tmp, 'custom', '.cues');
+    fs.mkdirSync(ocHome, { recursive: true });
+    const env = { ...process.env, HOME: tmp, OPENCUES_HOME: ocHome, FORCE_COLOR: '0', NO_COLOR: '1' };
+    const r = spawnSync('node', [CLI, 'identity', 'path'], { env, encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(r.stdout.trim(), path.join(ocHome, 'IDENTITY.md'));
   });
 
   it('preserves the file body (docstring) across writes', () => {

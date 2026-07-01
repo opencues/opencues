@@ -25,7 +25,15 @@ const { execSync } = require('node:child_process');
 const { tag, bold, dim, green, fileLink, banner, cliVersion } = require('../lib/style.cjs');
 const prompt = require('../lib/prompt.cjs');
 
-const IDENTITY_MD_PATH = path.join(os.homedir(), '.cues', 'IDENTITY.md');
+// Resolve per-call (not at module load) so $OPENCUES_HOME + a test's
+// HOME override are honoured — mirrors the search-path convention every
+// other CLI command uses (ai-callable.cjs / config.cjs / set-key.cjs).
+// Was hardcoded to os.homedir(), which silently ignored $OPENCUES_HOME
+// and always wrote the real ~/.cues/IDENTITY.md.
+function identityMdPath() {
+  const home = process.env.OPENCUES_HOME || path.join(os.homedir(), '.cues');
+  return path.join(home, 'IDENTITY.md');
+}
 
 // Lazy-load the validator from built core. Resolves a few candidate
 // paths so the CLI works from a clone (REPO_ROOT/packages/...) as well
@@ -103,7 +111,7 @@ function cmdList(argv) {
   }
   if (fields.length === 0) {
     console.log(`${tag('info')} no identity defined yet — run ${bold('opencues identity')} to add some`);
-    console.log(dim(`file: ${IDENTITY_MD_PATH}`));
+    console.log(dim(`file: ${identityMdPath()}`));
     return 0;
   }
   // Aligned three-column table: field · token · value, with a dim header row.
@@ -118,7 +126,7 @@ function cmdList(argv) {
     console.log(`  ${bold(r.key.padEnd(keyW))}   ${green(r.token.padEnd(tokW))}   ${r.value}`);
   }
   console.log('');
-  console.log(`${dim(`${fields.length} field${fields.length === 1 ? '' : 's'} ·`)} ${fileLink(IDENTITY_MD_PATH, IDENTITY_MD_PATH)}`);
+  console.log(`${dim(`${fields.length} field${fields.length === 1 ? '' : 's'} ·`)} ${fileLink(identityMdPath(), identityMdPath())}`);
   console.log(dim('activate token substitution with  ') + bold('identity-context-mode: safe'));
   return 0;
 }
@@ -142,7 +150,7 @@ function cmdSet(argv) {
       console.error('The runtime keeps the first definition; this set would be silently dropped.');
       console.error(`Either rename ${bold(key)} to avoid collision, or run ${bold(`opencues identity remove ${r.context.conflictingKey}`)} first.`);
     } else if (r.error === 'capacity-exceeded') {
-      console.error(dim(`IDENTITY.md path: ${IDENTITY_MD_PATH}`));
+      console.error(dim(`IDENTITY.md path: ${identityMdPath()}`));
     }
     // Exit codes: shape errors (invalid-key, value-*, capacity) → 2,
     // state errors (collision) → 1. Matches the unix convention.
@@ -152,7 +160,7 @@ function cmdSet(argv) {
   const token = deriveToken(key);
   const verb = r.action === 'added' ? 'added' : r.action === 'updated' ? 'updated' : 'unchanged';
   console.log(`${tag('ok')} ${verb} ${bold(key)} → ${dim(token)} = ${value}`);
-  console.log(dim(`file: ${IDENTITY_MD_PATH}`));
+  console.log(dim(`file: ${identityMdPath()}`));
   return 0;
 }
 
@@ -180,7 +188,7 @@ function cmdRemove(argv) {
 function cmdPath() {
   // Pure scriptable: just print the absolute path, no banner, no
   // styling. `opencues identity path | xargs $EDITOR` etc.
-  process.stdout.write(IDENTITY_MD_PATH + '\n');
+  process.stdout.write(identityMdPath() + '\n');
   return 0;
 }
 
@@ -195,7 +203,7 @@ async function cmdInterview(ctx) {
   console.log(dim('Each answer becomes an identity field token the LLM can emit; the runtime'));
   console.log(dim('substitutes your real value before it reaches the buffer. Press Enter to'));
   console.log(dim('accept the pre-filled value, or clear it to skip a field.'));
-  console.log(dim(`File: ${IDENTITY_MD_PATH}`));
+  console.log(dim(`File: ${identityMdPath()}`));
   console.log('');
 
   // Preload existing values so re-running the interview is a no-op for
@@ -225,7 +233,7 @@ async function cmdInterview(ctx) {
     if (!interviewKeys.has(key)) result.push({ key, value });
   }
   writeUserMd(result);
-  console.log(`${tag('ok')} wrote ${result.length} identity field${result.length === 1 ? '' : 's'} → ${fileLink(IDENTITY_MD_PATH, IDENTITY_MD_PATH)}`);
+  console.log(`${tag('ok')} wrote ${result.length} identity field${result.length === 1 ? '' : 's'} → ${fileLink(identityMdPath(), identityMdPath())}`);
   console.log('');
   console.log(dim('Activate identity field substitution in OPENCUES.md:'));
   console.log(`  ${bold('identity-context-mode: safe')}`);
@@ -245,8 +253,8 @@ async function cmdInterview(ctx) {
 // core's own test cases.
 
 function readUserMd() {
-  if (!fs.existsSync(IDENTITY_MD_PATH)) return '';
-  return fs.readFileSync(IDENTITY_MD_PATH, 'utf8');
+  if (!fs.existsSync(identityMdPath())) return '';
+  return fs.readFileSync(identityMdPath(), 'utf8');
 }
 
 function parseSentinelsMd(content) {
@@ -288,7 +296,7 @@ function stripInlineComment(rest) {
 }
 
 function writeUserMd(fields) {
-  fs.mkdirSync(path.dirname(IDENTITY_MD_PATH), { recursive: true });
+  fs.mkdirSync(path.dirname(identityMdPath()), { recursive: true });
   // Preserve the original body (anything after the closing `---`) so
   // the user's docstring + spec-reference notes survive. New file
   // ships with the same boilerplate as `opencues seed-configs`.
@@ -303,7 +311,7 @@ function writeUserMd(fields) {
     return `${f.key}:${' '.repeat(longestKey - f.key.length + 4)}${v}`;
   });
   const out = `---\n${lines.join('\n')}\n---\n${body.startsWith('\n') ? body : '\n' + body}`;
-  fs.writeFileSync(IDENTITY_MD_PATH, out, 'utf8');
+  fs.writeFileSync(identityMdPath(), out, 'utf8');
 }
 
 function needsQuoting(value) {
@@ -397,5 +405,5 @@ function printHelp() {
 
 // Exported for tests.
 module.exports.__test__ = {
-  parseSentinelsMd, deriveToken, needsQuoting, stripInlineComment, IDENTITY_MD_PATH,
+  parseSentinelsMd, deriveToken, needsQuoting, stripInlineComment, identityMdPath,
 };
