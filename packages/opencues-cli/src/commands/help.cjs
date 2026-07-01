@@ -383,3 +383,11 @@ module.exports = function help(argv, ctx) {
     console.log(tree({ title: s.title, description: s.description, labelWidth: LABEL_W, rows: s.rows }));
   }
 };
+
+// Reusable elaborate status block (Paths + Keys ● grid + Providers) so the
+// no-arg launcher shows the same header `help` does. Assumes the banner was
+// already printed by the caller.
+module.exports.printStatus = function printStatus(ctx) {
+  console.log(dim(G.treeStart));
+  console.log(configTree(configRows(ctx)));
+};
