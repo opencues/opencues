@@ -56,7 +56,7 @@ const INTERVIEW_FIELDS = [
   { key: 'firstName',  prompt: 'First name',           defaultFrom: () => firstWord(gitConfig('user.name')) },
   { key: 'lastName',   prompt: 'Last name',            defaultFrom: () => restWords(gitConfig('user.name')) },
   { key: 'fullName',   prompt: 'Full name',            defaultFrom: () => gitConfig('user.name') },
-  { key: 'pronouns',   prompt: 'Pronouns (he/him, she/her, they/them, …)' },
+  { key: 'pronouns',   prompt: 'Pronouns' },
   { key: 'email',      prompt: 'Email',                defaultFrom: () => gitConfig('user.email') },
   { key: 'phone',      prompt: 'Phone' },
   { key: 'company',    prompt: 'Company' },
@@ -204,11 +204,15 @@ async function cmdInterview(ctx) {
   const existing = new Map(parseSentinelsMd(readUserMd()).map(f => [f.key, f.value]));
   const result = [];
 
+  // Aligned columns: label + token, padded so every value entry lines up.
+  const labelW = Math.max(...INTERVIEW_FIELDS.map(f => f.prompt.length));
+  const tokW = Math.max(...INTERVIEW_FIELDS.map(f => deriveToken(f.key).length));
   for (const field of INTERVIEW_FIELDS) {
     const current = existing.get(field.key);
     const smart = current || (field.defaultFrom ? safe(field.defaultFrom) : '');
-    const tokenHint = dim(`(→ ${deriveToken(field.key)})`);
-    const answer = await prompt.input(`${field.prompt} ${tokenHint}`, { default: smart, allowEmpty: true });
+    const token = deriveToken(field.key);
+    const message = `${field.prompt.padEnd(labelW)}  ${dim(token.padEnd(tokW))}`;
+    const answer = await prompt.input(message, { default: smart, allowEmpty: true });
     const value = (answer || '').trim();
     if (value) result.push({ key: field.key, value });
   }
