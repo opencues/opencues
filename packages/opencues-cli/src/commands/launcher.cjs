@@ -4,7 +4,10 @@
 
 'use strict';
 
-const { banner, cliVersion, dim } = require('../lib/style.cjs');
+const fs = require('node:fs');
+const path = require('node:path');
+const os = require('node:os');
+const { banner, cliVersion, dim, green, yellow, G } = require('../lib/style.cjs');
 const prompt = require('../lib/prompt.cjs');
 
 // Each row runs a command with no args → its interactive flow. `[label, desc,
@@ -32,9 +35,16 @@ module.exports = async function launcher(argv, ctx) {
     if (process.stdout.isTTY) console.clear();
     console.log(banner({ version: cliVersion(ctx) }));
     console.log('');
+    // Compact status — recomputed each loop so it reflects prior actions
+    // (e.g. after adding a key). green ● = keys set, yellow ● = none yet.
+    const s = status(ctx);
+    console.log(dim(`  ~/.cues  ·  ${s.cues} cues · ${s.blanks} blanks · ${s.auditors} auditors`));
+    const keyRing = s.setKeys ? green(G.ringOn) : yellow(G.ringOn);
+    console.log(`  ${keyRing} ${dim(s.setKeys ? `${s.setKeys}/${s.totalKeys} API keys set` : 'no API keys set — pick "API keys" below')}`);
+    console.log('');
     console.log(dim('What would you like to do?  ·  ↑↓ move · Enter select'));
 
-    const choices = ACTIONS.map((a, i) => ({ label: `${a[0].padEnd(w)}   ${dim('· ' + a[1])}`, value: i }));
+    const choices = ACTIONS.map((a, i) => ({ label: `${a[0].padEnd(w)}   ${dim(a[1])}`, value: i }));
     choices.push({ spacer: true });
     choices.push({ label: 'Quit', value: 'quit', dim: true });
 
@@ -56,3 +66,37 @@ module.exports = async function launcher(argv, ctx) {
     if (after !== 'menu') return;
   }
 };
+
+// Compact launcher status: folder-based cue/blank/auditor counts + how many
+// provider keys are configured (env or ~/.cues/.env).
+function status(ctx) {
+  const cuesDir = path.join(os.homedir(), '.cues');
+  const countKind = (sub, primary) => {
+    let n = 0;
+    try {
+      for (const e of fs.readdirSync(path.join(cuesDir, sub), { withFileTypes: true })) {
+        if (!e.isDirectory()) continue;
+        if (fs.existsSync(path.join(cuesDir, sub, e.name, primary))
+         || fs.existsSync(path.join(cuesDir, sub, e.name, primary.toLowerCase()))) n += 1;
+      }
+    } catch { /* dir absent → 0 */ }
+    return n;
+  };
+
+  let keyNames = ['GROQ_API_KEY', 'CEREBRAS_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'GEMINI_API_KEY'];
+  try {
+    const reg = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/llm-provider.js'));
+    keyNames = reg.listProviders().map(p => p.envKeyName).filter(Boolean);
+  } catch { /* core not built — use the fallback list */ }
+  const envFile = path.join(cuesDir, '.env');
+  const envContents = fs.existsSync(envFile) ? fs.readFileSync(envFile, 'utf8') : '';
+  const isSet = (k) => !!process.env[k] || new RegExp(`^${k}=\\S`, 'm').test(envContents);
+
+  return {
+    cues: countKind('cues', 'CUE.md'),
+    blanks: countKind('blanks', 'BLANK.md'),
+    auditors: countKind('auditors', 'AUDITOR.md'),
+    setKeys: keyNames.filter(isSet).length,
+    totalKeys: keyNames.length,
+  };
+}
