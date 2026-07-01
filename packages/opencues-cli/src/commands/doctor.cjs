@@ -9,7 +9,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const compatLib = require('../lib/compat.cjs');
-const { tag, bold, dim, green, banner, fileLink, G, cliVersion } = require('../lib/style.cjs');
+const { tag, bold, dim, green, yellow, banner, fileLink, G, cliVersion } = require('../lib/style.cjs');
 
 // Build a section accumulator. ok/bad rows lead with a status ring (green ●
 // present / gray ● absent); info/raw rows have a blank gutter. `raw` keeps its
@@ -1135,8 +1135,8 @@ module.exports = async function doctor(argv, ctx) {
   // Warnings first, then info notices — most actionable at the top.
   const ordered = [...findings].sort((a, b) => (a.sev === 'warn' ? 0 : 1) - (b.sev === 'warn' ? 0 : 1));
   for (const f of ordered) {
-    // warn keeps the ⚠ (with an extra space); info uses the big gray ● ring.
-    const mark = f.sev === 'warn' ? `${tag('warn')} ` : dim(G.ringOn);
+    // Big ring: yellow ● = warning, gray ● = info notice.
+    const mark = f.sev === 'warn' ? yellow(G.ringOn) : dim(G.ringOn);
     console.log(`  ${mark} ${f.msg}`);
     if (f.fix) console.log(`     ${dim(f.fix)}`);
   }
