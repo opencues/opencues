@@ -26,21 +26,6 @@ const fs = require('node:fs');
 const HOME = process.env.OPENCUES_HOME || path.join(os.homedir(), '.cues');
 const OPENCUES_PATH = path.join(HOME, 'OPENCUES.md');
 
-// Section grouping for the browser. Every registry scalar should appear in one
-// section; any that doesn't falls into a "More" catch-all (so a newly-added
-// registry scalar is never silently hidden — see config.test.cjs which pins
-// full coverage). Long-term home for this is a `group` field on the registry.
-const SECTIONS = [
-  { title: 'Cues',               scalars: ['word-cues-mode', 'sentence-cues-mode', 'fluid-config-mode'] },
-  { title: 'Blanks',             scalars: ['fluid-blank-mode', 'transform-blank-mode', 'blank-trigger-mode', 'integration-weave-mode'] },
-  { title: 'Context & identity', scalars: ['blank-context-mode', 'ambient-context-mode', 'identity-context-mode', 'sentinel-language'] },
-  { title: 'Agent & thinking',   scalars: ['agent-debounce-ms', 'max-concurrent-auditors', 'max-thinking'] },
-  { title: 'Voice & navigation', scalars: ['voice-mode', 'tips-mode', 'cursor-navigate', 'nav-keymap'] },
-  { title: 'LLM routing',        scalars: ['cues-llm-provider', 'cues-llm-model', 'auditors-llm-provider', 'auditors-llm-model', 'blanks-llm-provider', 'blanks-llm-model'] },
-  { title: 'Appearance',         scalars: ['blank-loading-animation', 'blank-loading-interval-ms', 'dim-mix'] },
-  { title: 'Diagnostics',        scalars: ['debug-mode', 'blank-context-prewarm-ms'] },
-];
-
 function loadRegistry(ctx) {
   const tries = [];
   if (ctx && ctx.REPO_ROOT) tries.push(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/feature-registry.js'));
@@ -72,13 +57,21 @@ function model(ctx) {
     return !(cur != null && cur !== '' && cur !== d.valueOrder[0]);
   };
 
-  // Sections in declared order, plus a catch-all for any uncategorised scalar.
-  const known = new Set(SECTIONS.flatMap(s => s.scalars));
-  const sections = SECTIONS
-    .map(s => ({ title: s.title, scalars: s.scalars.filter(sc => defs.has(sc)) }))
-    .filter(s => s.scalars.length);
-  const orphans = [...defs.keys()].filter(sc => !known.has(sc));
-  if (orphans.length) sections.push({ title: 'More', scalars: orphans });
+  // Sections come from each scalar's registry `group` (single source of
+  // truth), ordered by SETTINGS_GROUP_ORDER. Any unlisted group — or an
+  // ungrouped scalar ('More') — is appended after, so nothing is ever hidden.
+  const order = reg.SETTINGS_GROUP_ORDER || [];
+  const byGroup = new Map();
+  for (const [scalar, d] of defs) {
+    const g = d.group || 'More';
+    if (!byGroup.has(g)) byGroup.set(g, []);
+    byGroup.get(g).push(scalar);
+  }
+  const sections = [];
+  for (const title of order) {
+    if (byGroup.has(title)) { sections.push({ title, scalars: byGroup.get(title) }); byGroup.delete(title); }
+  }
+  for (const [title, scalars] of byGroup) sections.push({ title, scalars });
 
   return { defs, def, effective, isDefault, sections };
 }
@@ -221,9 +214,6 @@ function set(m, scalar, value) {
   console.log(`${tag('ok')} ${scalar} = ${green(value)} ${dim(`(${OPENCUES_PATH})`)}`);
 }
 
-// Exported for config.test.cjs (section-coverage pin).
-module.exports.SECTIONS = SECTIONS;
-
 function printHelp() {
   console.log(`opencues config — browse + change OpenCues settings
 
@@ -237,3 +227,6 @@ function printHelp() {
 Settings live in ~/.cues/OPENCUES.md; this command edits that file. The schema
 is the FEATURES + MENU_TUNABLES registry in @opencues/core.`);
 }
+
+// Exported for config.test.cjs — the registry-driven section builder.
+module.exports.__test__ = { model };

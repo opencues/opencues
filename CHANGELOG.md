@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — config sections come from the registry `group` field (`@opencues/core` 0.13.0 → 0.13.1, `opencues` CLI 0.2.29 → 0.2.30)
+
+`opencues config`'s section grouping moved out of a hardcoded `SECTIONS` map in the CLI and into the registry: each `FeatureSpec`/`MenuTunableSpec` now declares its `group:` (colocated with the scalar), ordered by a new `SETTINGS_GROUP_ORDER` export. `getMenuDefinitions` surfaces `group`, and `config` derives its sections from it — so adding a feature auto-places it in a section with zero CLI edits, killing the last drift surface in the settings system. The coverage invariant moved to `feature-registry-menu.drift.test.ts` (every menu scalar has a group in `SETTINGS_GROUP_ORDER`); the CLI test now pins that `config` renders every scalar in exactly one section, in order.
+
 ### Changed — output formatting: check-keys ● grid + context house style (`opencues` CLI 0.2.23 → 0.2.24)
 
 `opencues check-keys` now shows a status ring per provider (green ● works / red ● failed / gray ● unset) instead of tag glyphs. `opencues context` moved off its inline colour helpers onto the shared `style.cjs`: a banner, a per-source ring row (green ● active / yellow ● raw / gray ● off), aligned green token columns with descriptions, and file links. (`list` and `which` were already grouped/tree-formatted, left as-is.)

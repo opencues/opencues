@@ -25,6 +25,7 @@ import {
   MENU_TUNABLES,
   getMenuDefinitions,
   getCyclableValues,
+  SETTINGS_GROUP_ORDER,
 } from './feature-registry';
 
 const OPENCUES_MD = resolve(__dirname, '../../../defaults/OPENCUES.md');
@@ -94,6 +95,30 @@ describe('menu definitions ↔ FEATURES + MENU_TUNABLES', () => {
         ).toBe(true);
       }
     }
+  });
+
+  // Group coverage — `opencues config` renders sections from each scalar's
+  // `group:`; an ungrouped or off-order scalar would land in the "More"
+  // catch-all. Pin that every menu scalar has a group listed in
+  // SETTINGS_GROUP_ORDER so adding a feature can't silently drop it there.
+  it('every menu entry declares a group', () => {
+    const missing: string[] = [];
+    for (const [scalar, def] of menu) {
+      if (!def.group) missing.push(scalar);
+    }
+    expect(missing,
+      `these menu scalars have no group: (add group: to their FEATURES/MENU_TUNABLES entry): ${missing.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('every menu group is listed in SETTINGS_GROUP_ORDER', () => {
+    const order = new Set(SETTINGS_GROUP_ORDER);
+    const stray = [...menu.values()]
+      .map(d => d.group)
+      .filter((g): g is string => !!g && !order.has(g));
+    expect([...new Set(stray)],
+      `groups used by a scalar but missing from SETTINGS_GROUP_ORDER: ${[...new Set(stray)].join(', ')}`,
+    ).toEqual([]);
   });
 });
 
