@@ -111,6 +111,32 @@ describe('menu definitions ↔ FEATURES + MENU_TUNABLES', () => {
     ).toEqual([]);
   });
 
+  // A MENU_TUNABLE's first value IS its default (menu's initial render), and
+  // `opencues config` uses valueOrder[0] as the "default" it dims / compares
+  // against. Pin that it matches what defaults/OPENCUES.md ships, so a fresh
+  // user's tunable never shows as "changed from default" (the agent-debounce-ms
+  // 150-vs-1000 bug). FEATURES are excluded on purpose: their registry default
+  // is the CONSERVATIVE code fallback (absent → off), while the shipped seed
+  // may deliberately opt the user into `on`/`safe` — that divergence is intended.
+  it('MENU_TUNABLE defaults (valueOrder[0]) match defaults/OPENCUES.md', () => {
+    const source = readFileSync(OPENCUES_MD, 'utf8');
+    const fm = source.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? source;
+    const shipped = new Map<string, string>();
+    for (const line of fm.split('\n')) {
+      const m = line.match(/^([a-z][\w-]*):[ \t]*(\S+)[ \t]*$/);
+      if (m) shipped.set(m[1], m[2]);
+    }
+    const tunables = new Set(MENU_TUNABLES.map(t => t.scalar));
+    const mismatches: string[] = [];
+    for (const [scalar, def] of menu) {
+      if (!tunables.has(scalar) || !shipped.has(scalar)) continue;
+      if (def.valueOrder[0] !== shipped.get(scalar)) {
+        mismatches.push(`${scalar}: OPENCUES.md ships '${shipped.get(scalar)}' but registry default is '${def.valueOrder[0]}'`);
+      }
+    }
+    expect(mismatches, mismatches.join('\n')).toEqual([]);
+  });
+
   it('every menu group is listed in SETTINGS_GROUP_ORDER', () => {
     const order = new Set(SETTINGS_GROUP_ORDER);
     const stray = [...menu.values()]

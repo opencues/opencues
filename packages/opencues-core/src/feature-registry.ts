@@ -661,11 +661,12 @@ export const MENU_TUNABLES: readonly MenuTunableSpec[] = [
     scalar: 'agent-debounce-ms',
     group: 'Agent & thinking',
     menuTip: 'Pause after last keystroke before AgentRewrite fires (ms). Misparse → 1000.',
+    // Default first (matches the shipped OPENCUES.md + the consumer fallback).
     values: [
+      { id: '1000', description: 'Default — balanced' },
       { id: '150',  description: 'Twitchy — fires almost immediately; great with cached rewrites, costly on cache misses' },
       { id: '250',  description: 'Snappy — fires before most users finish a word; noticeably more responsive than the default' },
       { id: '500',  description: 'Aggressive — fires shortly after each pause' },
-      { id: '1000', description: 'Default — balanced' },
       { id: '2000', description: 'Relaxed — only fires after a clear stop' },
     ],
   },
@@ -673,10 +674,11 @@ export const MENU_TUNABLES: readonly MenuTunableSpec[] = [
     scalar: 'blank-context-prewarm-ms',
     group: 'Diagnostics',
     menuTip: 'Background refresh interval for the blank-context cache. Eliminates the ~200ms HTTP fan-out tax on the first `_` after launch by refreshing stocks/weather/crypto/HN in the background. `off` reverts to legacy lazy refresh.',
+    // Default first (consumer fallback is 35000 when the scalar is absent).
     values: [
+      { id: '35000',  description: 'Default — 35s; comfortably inside the 60s TTL so user-triggered calls always hit warm cache' },
       { id: 'off',    description: 'Disabled — cache refreshes lazily on prompt-build (legacy behaviour). Use on rate-limited keys.' },
       { id: '15000',  description: 'Aggressive — 15s; cache always fresh, ~40 HTTP calls/min to upstream sources' },
-      { id: '35000',  description: 'Default — 35s; comfortably inside the 60s TTL so user-triggered calls always hit warm cache' },
       { id: '60000',  description: 'Conservative — 60s; cache may refresh once on the first call after a long pause' },
       { id: '120000', description: 'Minimal — 120s; only suitable when context tokens change rarely' },
     ],
@@ -707,9 +709,10 @@ export const MENU_TUNABLES: readonly MenuTunableSpec[] = [
     scalar: 'blank-loading-interval-ms',
     group: 'Appearance',
     menuTip: 'Per-frame duration in ms. Lower = snappier, higher = each colour stays visible longer.',
+    // Default first (matches the shipped OPENCUES.md `blank-loading-interval-ms: 150`).
     values: [
-      { id: '75',  description: 'Rapid — 75ms per frame, blurs into motion' },
       { id: '150', description: 'Snappy (default) — 150ms per frame' },
+      { id: '75',  description: 'Rapid — 75ms per frame, blurs into motion' },
       { id: '300', description: 'Slow — 300ms per frame, each colour holds twice as long' },
     ],
   },
@@ -718,10 +721,11 @@ export const MENU_TUNABLES: readonly MenuTunableSpec[] = [
     group: 'Appearance',
     menuTip: 'How far the dim (unfocused) colour is mixed toward the page background. 0 = identical to host text colour; 100 = fully blended (invisible).',
     hostScope: ['chrome'],
+    // Default first (chrome's derive-colours default is dimMix 0.45).
     values: [
+      { id: '45',  description: 'Default — moderate fade' },
       { id: '0',   description: 'Off — no dim; cue + non-cue words render identically' },
       { id: '25',  description: 'Subtle — barely faded' },
-      { id: '45',  description: 'Default — moderate fade' },
       { id: '65',  description: 'Strong — clearly faded' },
       { id: '85',  description: 'Heavy — nearly invisible non-cue text' },
     ],

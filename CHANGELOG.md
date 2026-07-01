@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — menu-tunable defaults (valueOrder[0]) now match the shipped defaults (`@opencues/core` 0.13.1 → 0.13.2)
+
+Four `MENU_TUNABLES` listed a non-default value first, so `opencues config` (and the in-editor cycling menu's initial render) reported the wrong default — e.g. `agent-debounce-ms` showed `150` when the real default is `1000`. Reordered so the default is first, matching the shipped `defaults/OPENCUES.md` / consumer fallback: `agent-debounce-ms` → 1000, `blank-loading-interval-ms` → 150, `blank-context-prewarm-ms` → 35000, `dim-mix` → 45. A new drift test pins that every shipped MENU_TUNABLE's `valueOrder[0]` equals its `defaults/OPENCUES.md` value (FEATURES are excluded — their registry default is the conservative code fallback, which the seed config may deliberately opt past). Updated the `show` CLI-inspection regression test for the new formatted detail view.
+
 ### Changed — config sections come from the registry `group` field (`@opencues/core` 0.13.0 → 0.13.1, `opencues` CLI 0.2.29 → 0.2.30)
 
 `opencues config`'s section grouping moved out of a hardcoded `SECTIONS` map in the CLI and into the registry: each `FeatureSpec`/`MenuTunableSpec` now declares its `group:` (colocated with the scalar), ordered by a new `SETTINGS_GROUP_ORDER` export. `getMenuDefinitions` surfaces `group`, and `config` derives its sections from it — so adding a feature auto-places it in a section with zero CLI edits, killing the last drift surface in the settings system. The coverage invariant moved to `feature-registry-menu.drift.test.ts` (every menu scalar has a group in `SETTINGS_GROUP_ORDER`); the CLI test now pins that `config` renders every scalar in exactly one section, in order.
