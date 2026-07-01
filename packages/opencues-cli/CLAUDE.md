@@ -96,7 +96,7 @@ All of this is owned by `prompt.cjs` so every menu matches automatically.
 6. **Keep every explicit subcommand one-shot** so scripting still works.
 
 The reference implementation is **`src/commands/config.cjs`** (a two-level
-sections → settings → value-picker browser). Copy its shape.
+sections → settings → value browser). Copy its shape.
 
 ## Files
 
@@ -105,7 +105,9 @@ sections → settings → value-picker browser). Copy its shape.
 - `src/lib/prompt.cjs` — interactive toolkit (all menu styling).
 - `src/lib/prompt.test.cjs` — scripting-contract tests (the TTY gate is the
   thing that must never regress; interactive rendering is validated by hand).
-- `src/commands/config.cjs` — reference interactive command (two-level browser).
+- `src/commands/config.cjs` — reference interactive command (the settings browser).
+- `src/lib/ai-callable.cjs` — the AI-callable trust manager, a module embedded
+  by `config` (not a standalone command; `manage()` + `trustedCount()`).
 
 ## Dependencies
 
