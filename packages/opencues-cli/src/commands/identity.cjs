@@ -22,7 +22,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { execSync } = require('node:child_process');
-const { tag, bold, dim, fileLink, banner, cliVersion } = require('../lib/style.cjs');
+const { tag, bold, dim, green, fileLink, banner, cliVersion } = require('../lib/style.cjs');
 const prompt = require('../lib/prompt.cjs');
 
 const IDENTITY_MD_PATH = path.join(os.homedir(), '.cues', 'IDENTITY.md');
@@ -106,14 +106,20 @@ function cmdList(argv) {
     console.log(dim(`file: ${IDENTITY_MD_PATH}`));
     return 0;
   }
-  // Tidy two-column display: key, derived token, value.
-  const rows = fields.map(f => [f.key, deriveToken(f.key), f.value]);
-  const widths = [0, 0].map((_, i) => Math.max(...rows.map(r => r[i].length)));
-  for (const [key, token, value] of rows) {
-    console.log(`  ${bold(key.padEnd(widths[0]))}  ${dim(token.padEnd(widths[1]))}  ${value}`);
+  // Aligned three-column table: field · token · value, with a dim header row.
+  const rows = fields.map(f => ({ key: f.key, token: deriveToken(f.key), value: f.value }));
+  const keyW = Math.max('field'.length, ...rows.map(r => r.key.length));
+  const tokW = Math.max('token'.length, ...rows.map(r => r.token.length));
+
+  console.log(bold('Identity fields') + dim(`  (${fields.length})`));
+  console.log('');
+  console.log(`  ${dim('field'.padEnd(keyW))}   ${dim('token'.padEnd(tokW))}   ${dim('value')}`);
+  for (const r of rows) {
+    console.log(`  ${bold(r.key.padEnd(keyW))}   ${green(r.token.padEnd(tokW))}   ${r.value}`);
   }
   console.log('');
-  console.log(dim(`${fields.length} identity field${fields.length === 1 ? '' : 's'} — ${IDENTITY_MD_PATH}`));
+  console.log(`${dim(`${fields.length} field${fields.length === 1 ? '' : 's'} ·`)} ${fileLink(IDENTITY_MD_PATH, IDENTITY_MD_PATH)}`);
+  console.log(dim('activate token substitution with  ') + bold('identity-context-mode: safe'));
   return 0;
 }
 
