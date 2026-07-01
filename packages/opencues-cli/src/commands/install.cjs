@@ -11,6 +11,8 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
 const { tag, step, bold, dim, banner, cliVersion } = require('../lib/style.cjs');
+const prompt = require('../lib/prompt.cjs');
+const { pickHost } = require('../lib/pick-host.cjs');
 
 // Host name resolution comes from @opencues/core (HOSTS + HOST_ALIASES +
 // resolveHost). 'chrome-host' is the lone special case kept local — it's
@@ -83,6 +85,10 @@ module.exports = async function install(argv, ctx) {
     passthrough.push(a);
   }
 
+  if (!target && prompt.isInteractive()) {
+    target = await pickHost(HOSTS, { verb: 'Install which host', allowAll: true });
+    if (!target) return; // cancelled
+  }
   if (!target) {
     console.error(`opencues install: missing <host>. One of: ${HOSTS.join(', ')}, --all`);
     console.error('Run `opencues install --help` for details.\n');
