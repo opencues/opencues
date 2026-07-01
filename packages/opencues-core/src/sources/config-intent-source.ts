@@ -203,7 +203,7 @@ const LIKELY_INTENT_KEYWORDS: ReadonlySet<string> = (() => {
     'opus', 'haiku', 'sonnet', 'fable', 'claude',
     'cerebras', 'groq', 'openai', 'anthropic', 'gemini',
     'openrouter', 'nano', 'mini', 'flash', 'llama',
-    'gpt-oss', 'gpt-5',
+    'gpt-oss', 'gpt-5', 'gemma',
   ];
   for (const k of curated) addToken(k);
 
@@ -219,7 +219,7 @@ const LIKELY_INTENT_KEYWORDS: ReadonlySet<string> = (() => {
  *  match "blanket". O(K) string scans where K = keyword count.
  *  Measured at < 0.5ms on a 32-char buffer with the full keyword set.
  */
-function hasLikelyIntent(text: string): boolean {
+export function hasLikelyIntent(text: string): boolean {
   const lower = text.toLowerCase();
   for (const kw of LIKELY_INTENT_KEYWORDS) {
     if (kw.includes(' ') || kw.includes('-')) {
