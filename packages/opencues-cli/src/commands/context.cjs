@@ -22,8 +22,10 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
+const { tag, bold, dim, green, yellow, fileLink, banner, cliVersion, G } = require('../lib/style.cjs');
 
 const HOME = os.homedir();
+const tilde = p => (p && p.startsWith(HOME) ? '~' + p.slice(HOME.length) : p);
 const CUES_DIR = path.join(HOME, '.cues');
 const IDENTITY_PATH = path.join(CUES_DIR, 'IDENTITY.md');
 const OPENCUES_PATH = path.join(CUES_DIR, 'OPENCUES.md');
@@ -99,16 +101,16 @@ function discoverBlanks(core) {
 
 // ─── Output formatters ─────────────────────────────────────────────────────
 
-const COLOUR = process.stdout.isTTY && !process.env.NO_COLOR;
-const dim = s => COLOUR ? `\x1b[2m${s}\x1b[0m` : s;
-const bold = s => COLOUR ? `\x1b[1m${s}\x1b[0m` : s;
-const green = s => COLOUR ? `\x1b[32m${s}\x1b[0m` : s;
-const yellow = s => COLOUR ? `\x1b[33m${s}\x1b[0m` : s;
-const red = s => COLOUR ? `\x1b[31m${s}\x1b[0m` : s;
-
+// Status ring for a context mode: green ● active (safe/on), yellow ● raw
+// (footgun — values reach the LLM), gray ● off.
+function modeRing(mode) {
+  if (mode === 'raw') return yellow(G.ringOn);
+  if (mode === 'safe' || mode === 'on') return green(G.ringOn);
+  return dim(G.ringOn);
+}
 function modeLabel(mode) {
+  if (mode === 'raw') return yellow('raw') + dim('  ⚠ values reach LLM');
   if (mode === 'safe' || mode === 'on') return green(mode);
-  if (mode === 'raw') return yellow(mode + ' ⚠ values reach LLM');
   return dim(mode);
 }
 
@@ -159,64 +161,56 @@ function list(argv, _ctx) {
   }
 
   // Human-readable layout.
-  console.log(bold('opencues context — current state'));
+  console.log(banner({ version: cliVersion(_ctx), tagline: 'LLM prompt context' }));
   console.log('');
-  console.log(`  identity-context-mode  ${modeLabel(modes.identityContextMode)}`);
-  console.log(`  blank-context-mode     ${modeLabel(modes.blankContextMode)}`);
-  console.log(`  ambient-context-mode   ${modeLabel(modes.ambientContextMode)}  ${dim('(chrome only)')}`);
+
+  // Mode summary — one ring row per source.
+  console.log(bold('Sources'));
+  const srcW = 16;
+  const modeRow = (mode, name, note) =>
+    `  ${modeRing(mode)} ${bold(name.padEnd(srcW))}  ${modeLabel(mode)}${note ? `  ${dim('· ' + note)}` : ''}`;
+  console.log(modeRow(modes.identityContextMode, 'identity-context', 'fields from IDENTITY.md'));
+  console.log(modeRow(modes.blankContextMode, 'blank-context', 'stocks, weather, crypto…'));
+  console.log(modeRow(modes.ambientContextMode, 'ambient-context', 'chrome only'));
   console.log('');
 
   // ─── Identity context ───────────────────────────────────────
-  console.log(bold('IDENTITY CONTEXT'));
   if (idFile.content === null) {
-    console.log(`  ${dim('no file at')} ${idFile.path}`);
-    console.log(`  ${dim('run')} opencues identity ${dim('to create one')}`);
+    console.log(bold('Identity') + dim('  · no file'));
+    console.log(`  ${dim('run')} ${bold('opencues identity')} ${dim('to create one')}`);
   } else {
-    console.log(`  ${dim('file:')} ${idFile.path}`);
-    console.log(`  ${dim('fields:')} ${identity.fields.length}`);
-    if (identity.fields.length > 0) {
-      for (const f of identity.fields) {
-        const valHint = modes.identityContextMode === 'raw'
-          ? `  ${dim('= ' + JSON.stringify(f.value))}`
-          : '';
-        console.log(`    ${f.token}${valHint}  ${dim('— ' + f.description)}`);
-      }
+    console.log(bold('Identity') + dim(`  · ${identity.fields.length} field${identity.fields.length === 1 ? '' : 's'} · `) + fileLink(tilde(idFile.path), idFile.path));
+    const tokW = Math.max(0, ...identity.fields.map(f => f.token.length));
+    for (const f of identity.fields) {
+      const valHint = modes.identityContextMode === 'raw' ? `  ${dim('= ' + JSON.stringify(f.value))}` : '';
+      console.log(`  ${green(f.token.padEnd(tokW))}   ${dim(f.description)}${valHint}`);
     }
   }
   console.log('');
 
   // ─── Blank context ──────────────────────────────────────────
-  console.log(bold('BLANK CONTEXT'));
+  console.log(bold('Blank context') + (blankRows.length ? dim(`  · ${blankRows.length} opted in`) : ''));
   if (modes.blankContextMode === 'off') {
-    console.log(`  ${dim('disabled — set blank-context-mode: safe in OPENCUES.md')}`);
+    console.log(`  ${dim('disabled — set')} ${bold('blank-context-mode: safe')} ${dim('in OPENCUES.md')}`);
   }
   if (blankRows.length === 0) {
-    console.log(`  ${dim('no blanks opted in via as-context: safe')}`);
-    console.log(`  ${dim('add `as-context: safe` to a blank\'s BLANK.md frontmatter')}`);
+    console.log(`  ${dim("no blanks opted in — add `as-context: safe` to a BLANK.md")}`);
   } else {
     for (const b of blankRows) {
-      const bindInfo = b.bind
-        ? `bind=${b.bind}${b.split ? ` split="${b.split}"` : ''}`
-        : `slots=${JSON.stringify(b.slots.map(s => s.slot))}`;
+      const bindInfo = b.bind ? `bind=${b.bind}${b.split ? ` split="${b.split}"` : ''}` : `slots=${JSON.stringify(b.slots.map(s => s.slot))}`;
       console.log(`  ${bold(b.name)}  ${dim(`(${b.mode}, ttl ${b.ttl}s, ${bindInfo})`)}`);
-      if (b.slots.length === 0) {
-        console.log(`    ${dim('no slots resolved')}`);
-      } else {
-        for (const s of b.slots) {
-          console.log(`    ${s.token}  ${dim('— ' + s.description)}`);
-        }
-      }
-      for (const w of b.warnings) {
-        console.log(`    ${red('!')} ${w}`);
-      }
+      const tokW = Math.max(0, ...b.slots.map(s => s.token.length));
+      if (b.slots.length === 0) console.log(`    ${dim('no slots resolved')}`);
+      for (const s of b.slots) console.log(`    ${green(s.token.padEnd(tokW))}   ${dim(s.description)}`);
+      for (const w of b.warnings) console.log(`    ${tag('warn')} ${w}`);
     }
   }
   console.log('');
 
   // ─── Ambient context ────────────────────────────────────────
-  console.log(bold('AMBIENT CONTEXT'));
+  console.log(bold('Ambient context') + dim('  · chrome only'));
   if (modes.ambientContextMode === 'off') {
-    console.log(`  ${dim('disabled — chrome only; set ambient-context-mode: on in OPENCUES.md')}`);
+    console.log(`  ${dim('disabled — set')} ${bold('ambient-context-mode: on')} ${dim('in OPENCUES.md')}`);
   } else {
     console.log(`  ${green('enabled')}  ${dim('(label + placeholder + page-title for the focused field)')}`);
   }

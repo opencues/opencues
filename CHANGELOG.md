@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — output formatting: check-keys ● grid + context house style (`opencues` CLI 0.2.23 → 0.2.24)
+
+`opencues check-keys` now shows a status ring per provider (green ● works / red ● failed / gray ● unset) instead of tag glyphs. `opencues context` moved off its inline colour helpers onto the shared `style.cjs`: a banner, a per-source ring row (green ● active / yellow ● raw / gray ● off), aligned green token columns with descriptions, and file links. (`list` and `which` were already grouped/tree-formatted, left as-is.)
+
 ### Added — show explorer + identity interview on the toolkit (`opencues` CLI 0.2.17 → 0.2.19)
 
 `opencues show` with no name is now an explorer: a `select` over every defined cue/blank (folder-based, deduped across search paths) → a **formatted** detail view (source + scope + every frontmatter field as an aligned tree, long values truncated, body shown dimmed, multi-match priority order) → Back to the list. The scriptable `show <name>` uses the same formatted renderer instead of dumping raw markdown. `opencues identity`'s interview moved off raw `node:readline` onto the house `input()` toolkit (no `?` prefix; the default pre-fills the field, clearing skips) — a new `input({ allowEmpty })` option makes "clear to skip" distinguishable from "accept the pre-fill". (`edit` was left as-is — it deliberately exposes only `cues`, so a picker adds nothing.)
