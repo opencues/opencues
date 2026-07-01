@@ -54,6 +54,7 @@ async function explore(paths, ctx) {
       for (const n of cues) choices.push({ label: n, value: { name: n } });
     }
     if (blanks.length) {
+      if (cues.length) choices.push({ spacer: true }); // breathing room between sections
       choices.push({ heading: bold('Blanks') });
       for (const n of blanks) choices.push({ label: n, value: { name: n } });
     }
