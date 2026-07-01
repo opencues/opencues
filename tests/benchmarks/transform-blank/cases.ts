@@ -27,6 +27,8 @@ export interface TransformCase {
   };
 }
 
+import { EXPANSION_CASES } from './cases-expansion';
+
 export const CASES: TransformCase[] = [
   // ============================================================
   // LITERAL — direct find/replace, single span (10 cases)
@@ -2599,4 +2601,5 @@ export const CASES: TransformCase[] = [
       note: 'German instruction + German body → formalized German (in-place transform).',
     },
   },
+  ...EXPANSION_CASES,
 ];

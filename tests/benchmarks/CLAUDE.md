@@ -47,7 +47,7 @@ tests/benchmarks/
 │   │                       #   `--provider cerebras|groq` `--parallel N`.
 │   │                       #   NO bench-local prompt: EXTRACT/APPLY/VERIFY +
 │   │                       #   FUSED live ONLY in transform-blank-source.ts.
-│   ├── cases.ts            # 231 cases across 18 categories
+│   ├── cases.ts            # 487 cases across 19 categories (see cases-expansion.ts)
 │   ├── groq.ts             # ▸ 5-provider router (env-var switch)
 │   ├── groq-impl.ts        # ▸ Groq adapter (judge pin + router)
 │   ├── cerebras.ts         # ▸ Cerebras adapter (router)
@@ -162,7 +162,7 @@ transient judge rate-limit during parallel sweeps.
 
 | Pipeline | Task | Suite | Modes |
 |---|---|---|---|
-| **transform-blank** | Imperative rewrite (`change boy to girl _ the boy ran`) | 231 cases, 18 categories | `extract-apply-verify` (3-pass, default), `extract-apply` (2-pass), `single-call`, `fused`, `fused-verify`, plus minimal-* variants |
+| **transform-blank** | Imperative rewrite (`change boy to girl _ the boy ran`) | 487 cases, 19 categories | `extract-apply-verify` (3-pass, default), `extract-apply` (2-pass), `single-call`, `fused`, `fused-verify`, plus minimal-* variants |
 | **fluid-blank** | Short factual lookup (`capital of france _`) | 137 cases + bench suites (math, factual, unit, color, http, roman, translation, spelling) | `answer` (2-pass), `classified` (3-call hybrid, legacy), `fused` (1-call), `specialized-*` |
 | **agent-rewrite** | Continuous in-place rewrite cadence | Separate suite | Custom — see `agent-rewrite/CONTINUE.md` |
 | **fluid-blank-ambient** | Field-aware fluid-blank — does the single FUSED LLM call use the field's label/placeholder/page-title to shape the answer? | 137 standard + 18 in-prompt + 21 held-out (3 ambient classes: helps / neutral / anti) | `fused-bench.ts` drives the production `FUSED_SYSTEM_PROMPT` across all three suites |
@@ -404,7 +404,7 @@ and [`docs/architecture/ambient-context.md`](../../docs/architecture/ambient-con
 
 - **5 providers wired**: groq, gemini, cerebras, claude, openai
   (incl. chat-latest alias).
-- **Two main pipelines**: transform-blank (231 cases), fluid-blank
+- **Two main pipelines**: transform-blank (487 cases), fluid-blank
   (137 cases) plus 7 category-specific fluid bench suites.
 - **Recommended defaults** (see BENCHMARKS.md):
   - transform-blank → groq gpt-oss · 3-pass (accuracy ceiling)
