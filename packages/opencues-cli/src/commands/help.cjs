@@ -153,18 +153,28 @@ function configRows(ctx) {
   // registry; FINNHUB_API_KEY (stocks blank, non-LLM) is the lone
   // hardcoded entry. Split into two rows for layout — 4 + (rest)
   // keeps the grid square. Adding a provider auto-flows into the rows.
-  const allLlmEnvKeys = core
-    ? core.listProviders().map(p => p.envKeyName)
-    : ['GROQ_API_KEY', 'CEREBRAS_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'GEMINI_API_KEY'];
-  const KEYS_ROW_A = allLlmEnvKeys.slice(0, 4);
-  const KEYS_ROW_B = [...allLlmEnvKeys.slice(4), 'FINNHUB_API_KEY'];
-  const KEY_WIDTH = Math.max(...[...KEYS_ROW_A, ...KEYS_ROW_B].map(k => k.length));
-  const SEP = '  │  ';                          // 5 visible chars
-  const KEYS_SLOT_W = KEY_WIDTH + 1 + 1;        // key + space + tick
-  const renderKeys = names => names.map(k => {
-    const set = !!process.env[k] || new RegExp(`^${k}=\\S`, 'm').test(envContents);
-    return `${bold(k.padEnd(KEY_WIDTH))} ${set ? green(G.check) : dim(G.missing)}`;
-  }).join(dim(SEP));
+  const allKeys = [...new Set([
+    ...(core
+      ? core.listProviders().map(p => p.envKeyName).filter(Boolean) // some providers (e.g. local) have no env key
+      : ['GROQ_API_KEY', 'CEREBRAS_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'GEMINI_API_KEY']),
+    'FINNHUB_API_KEY', // stocks blank (non-LLM) — the lone hardcoded entry
+  ])];
+  const KEY_WIDTH = Math.max(...allKeys.map(k => k.length));
+  const SEP = '  │  ';                          // 5 visible chars (providers row spacing)
+  const keyIsSet = k => !!process.env[k] || new RegExp(`^${k}=\\S`, 'm').test(envContents);
+  // green ● = key present, gray ● = missing.
+  const keyCell = k => `${bold(k.padEnd(KEY_WIDTH))} ${keyIsSet(k) ? green(G.ringOn) : dim(G.ringOn)}`;
+  // Adaptive grid: fit as many equal-width, aligned columns as the terminal
+  // allows so rows never soft-wrap into a jumble. Content starts at VALUE_COL.
+  const VALUE_COL = 28;
+  const KEY_GAP = '   ';
+  const KEY_CELL_W = KEY_WIDTH + 2;             // key + space + ring glyph
+  const keyAvail = (process.stdout.columns || parseInt(process.env.COLUMNS, 10) || 80) - VALUE_COL;
+  const KEY_COLS = Math.max(1, Math.floor((keyAvail + KEY_GAP.length) / (KEY_CELL_W + KEY_GAP.length)));
+  const keyRows = [];
+  for (let i = 0; i < allKeys.length; i += KEY_COLS) {
+    keyRows.push(allKeys.slice(i, i + KEY_COLS).map(keyCell).join(KEY_GAP));
+  }
 
   // Three buckets, single row. Size each slot to fit its actual
   // content (label + provider + ' · ' + full model id) — no truncation.
@@ -215,8 +225,8 @@ function configRows(ctx) {
     { label: 'Paths:',
       value: `${pathSummary}  ${dim(`(${cues} cues, ${blanks} blanks, ${auditors} auditors)`)}` },
     { label: 'Keys:',
-      value: renderKeys(KEYS_ROW_A),
-      continuations: [renderKeys(KEYS_ROW_B)] },
+      value: keyRows[0],
+      continuations: keyRows.slice(1) },
     { label: 'Providers:',
       value: surfaceRow1,
       continuations: providerContinuations },
