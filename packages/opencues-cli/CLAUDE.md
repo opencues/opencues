@@ -185,6 +185,9 @@ owning one file it writes.
   by `config` (not a standalone command; `manage()` + `trustedCount()`).
 - `src/commands/{show,debug}.cjs` — reference for the formatted-detail explorer
   and the on/off toggle patterns.
+- `src/commands/launcher.cjs` — the no-arg `opencues` interactive menu (routes
+  into each command; non-TTY falls back to `help`). Registered in `cli.cjs` as
+  the `argv.length === 0` default.
 
 ## Dependencies
 

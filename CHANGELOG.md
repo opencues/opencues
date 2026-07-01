@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — no-arg `opencues` interactive launcher (`opencues` CLI 0.2.31 → 0.2.32)
+
+Bare `opencues` on a terminal now opens an interactive menu that routes into each command's own flow — Settings, API keys, Identity, Debug logging, Explore cues & blanks, Install/Run a host, Diagnostics, Check API keys, All commands — with a Back-to-menu / Quit loop. Non-TTY / piped is unchanged: it still prints the static status + command list (`help`). Ties the control-panel commands together behind one entry point.
+
 ### Fixed — menu-tunable defaults (valueOrder[0]) now match the shipped defaults (`@opencues/core` 0.13.1 → 0.13.2)
 
 Four `MENU_TUNABLES` listed a non-default value first, so `opencues config` (and the in-editor cycling menu's initial render) reported the wrong default — e.g. `agent-debounce-ms` showed `150` when the real default is `1000`. Reordered so the default is first, matching the shipped `defaults/OPENCUES.md` / consumer fallback: `agent-debounce-ms` → 1000, `blank-loading-interval-ms` → 150, `blank-context-prewarm-ms` → 35000, `dim-mix` → 45. A new drift test pins that every shipped MENU_TUNABLE's `valueOrder[0]` equals its `defaults/OPENCUES.md` value (FEATURES are excluded — their registry default is the conservative code fallback, which the seed config may deliberately opt past). Updated the `show` CLI-inspection regression test for the new formatted detail view.
