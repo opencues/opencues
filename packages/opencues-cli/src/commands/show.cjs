@@ -6,16 +6,14 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
+const { dim } = require('../lib/style.cjs');
+const prompt = require('../lib/prompt.cjs');
 
-module.exports = function show(argv, ctx) {
+module.exports = async function show(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
 
   let name = null;
   for (const a of argv) { if (!a.startsWith('-') && !name) name = a; }
-  if (!name) {
-    console.error('opencues show: missing <name>. Try `opencues list` to find one.');
-    process.exit(2);
-  }
 
   const HOME = os.homedir();
   const paths = [
@@ -23,6 +21,29 @@ module.exports = function show(argv, ctx) {
     path.join(process.cwd(), '.cues'),
     path.join(HOME, '.cues'),
   ].filter(Boolean).filter(p => fs.existsSync(p));
+
+  // Interactive: pick from every defined cue/blank when no name is given.
+  if (!name && prompt.isInteractive()) {
+    const defined = enumerateNames(paths);
+    if (defined.length === 0) {
+      console.error('opencues show: no cues/blanks defined. Run `opencues list`.');
+      process.exit(1);
+    }
+    const nameW = Math.max(4, ...defined.map(d => d.name.length));
+    console.log(dim('Show which cue / blank?  ·  ↑↓ move · Enter select'));
+    name = await prompt.select('', [
+      ...defined.map(d => ({ label: `${d.name.padEnd(nameW)}   ${dim(d.kind)}`, value: d.name })),
+      { spacer: true },
+      { label: 'Cancel', value: null, dim: true },
+    ]);
+    if (!name) return;
+    console.log('');
+  }
+
+  if (!name) {
+    console.error('opencues show: missing <name>. Try `opencues list` to find one.');
+    process.exit(2);
+  }
 
   // Search every kind across every path. Print all matches in priority
   // order so the user sees the override chain. Per the standard the
@@ -69,6 +90,27 @@ module.exports = function show(argv, ctx) {
     console.log('');
   }
 };
+
+// Enumerate folder-based cue/blank names across every search path (deduped,
+// sorted) — the pick list when `show` is run with no name.
+function enumerateNames(paths) {
+  const seen = new Set();
+  const out = [];
+  for (const dir of paths) {
+    for (const sub of ['cues', 'blanks']) {
+      let entries = [];
+      try { entries = fs.readdirSync(path.join(dir, sub), { withFileTypes: true }); } catch {}
+      for (const e of entries) {
+        if (!e.isDirectory()) continue;
+        const key = `${sub}:${e.name}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({ name: e.name, kind: sub.replace(/s$/, '') });
+      }
+    }
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
 
 function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 

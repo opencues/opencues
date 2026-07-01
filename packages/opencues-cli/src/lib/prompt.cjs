@@ -202,14 +202,19 @@ async function confirm(message, opts = {}) {
   return picked == null ? def : picked;
 }
 
-/** Free-text input. Empty / cancel → `opts.default` (or ''). */
+/**
+ * Free-text input. `opts.default` pre-fills the field. On empty submit:
+ * returns `opts.default` normally, or '' when `opts.allowEmpty` is set (so a
+ * caller can distinguish "accepted the pre-fill" from "cleared it to skip").
+ */
 async function input(message, opts = {}) {
   assertTTY('input');
+  const onEmpty = () => (opts.allowEmpty ? '' : (opts.default || ''));
   try {
     const v = await new OcInput({ name: 'v', message, initial: opts.default }).run();
-    return v && String(v).trim() ? String(v).trim() : (opts.default || '');
+    return v && String(v).trim() ? String(v).trim() : onEmpty();
   } catch {
-    return opts.default || '';
+    return onEmpty();
   }
 }
 

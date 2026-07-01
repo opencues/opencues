@@ -22,8 +22,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { execSync } = require('node:child_process');
-const readline = require('node:readline');
 const { tag, bold, dim, fileLink, banner, cliVersion } = require('../lib/style.cjs');
+const prompt = require('../lib/prompt.cjs');
 
 const IDENTITY_MD_PATH = path.join(os.homedir(), '.cues', 'IDENTITY.md');
 
@@ -186,50 +186,40 @@ async function cmdInterview(ctx) {
   }
   console.log(banner({ version: cliVersion(ctx), tagline: 'set up your identity fields' }));
   console.log('');
-  console.log(dim('Each answer becomes a identity field token the LLM can emit; the runtime'));
+  console.log(dim('Each answer becomes an identity field token the LLM can emit; the runtime'));
   console.log(dim('substitutes your real value before it reaches the buffer. Press Enter to'));
-  console.log(dim('accept the [default] in brackets, or Enter on its own to skip a field.'));
+  console.log(dim('accept the pre-filled value, or clear it to skip a field.'));
   console.log(dim(`File: ${IDENTITY_MD_PATH}`));
   console.log('');
 
   // Preload existing values so re-running the interview is a no-op for
   // fields the user already populated (Enter accepts the existing
-  // value). Encourages re-running after `git config user.name` etc.
-  // change.
+  // value). Encourages re-running after `git config user.name` etc. change.
   const existing = new Map(parseSentinelsMd(readUserMd()).map(f => [f.key, f.value]));
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  const ask = (q) => new Promise(resolve => rl.question(q, a => resolve(a)));
   const result = [];
 
-  try {
-    for (const field of INTERVIEW_FIELDS) {
-      const current = existing.get(field.key);
-      const smart = current || (field.defaultFrom ? safe(field.defaultFrom) : '');
-      const tokenHint = dim(`(→ ${deriveToken(field.key)})`);
-      const promptLine = smart
-        ? `${field.prompt} ${tokenHint} [${smart}]: `
-        : `${field.prompt} ${tokenHint}: `;
-      const answer = (await ask(promptLine)).trim();
-      const value = answer || smart;
-      if (value) result.push({ key: field.key, value });
-    }
-    console.log('');
-    // Preserve any user-added keys we didn't ask about (e.g. an
-    // earlier `opencues identity set favoriteEditor vim`). Append
-    // them after the interview-collected ones.
-    const interviewKeys = new Set(INTERVIEW_FIELDS.map(f => f.key));
-    for (const [key, value] of existing) {
-      if (!interviewKeys.has(key)) result.push({ key, value });
-    }
-    writeUserMd(result);
-    console.log(`${tag('ok')} wrote ${result.length} identity field${result.length === 1 ? '' : 's'} → ${fileLink(IDENTITY_MD_PATH, IDENTITY_MD_PATH)}`);
-    console.log('');
-    console.log(dim('Activate identity field substitution in OPENCUES.md:'));
-    console.log(`  ${bold('identity-context-mode: safe')}`);
-    return 0;
-  } finally {
-    rl.close();
+  for (const field of INTERVIEW_FIELDS) {
+    const current = existing.get(field.key);
+    const smart = current || (field.defaultFrom ? safe(field.defaultFrom) : '');
+    const tokenHint = dim(`(→ ${deriveToken(field.key)})`);
+    const answer = await prompt.input(`${field.prompt} ${tokenHint}`, { default: smart, allowEmpty: true });
+    const value = (answer || '').trim();
+    if (value) result.push({ key: field.key, value });
   }
+  console.log('');
+  // Preserve any user-added keys we didn't ask about (e.g. an earlier
+  // `opencues identity set favoriteEditor vim`). Append them after the
+  // interview-collected ones.
+  const interviewKeys = new Set(INTERVIEW_FIELDS.map(f => f.key));
+  for (const [key, value] of existing) {
+    if (!interviewKeys.has(key)) result.push({ key, value });
+  }
+  writeUserMd(result);
+  console.log(`${tag('ok')} wrote ${result.length} identity field${result.length === 1 ? '' : 's'} → ${fileLink(IDENTITY_MD_PATH, IDENTITY_MD_PATH)}`);
+  console.log('');
+  console.log(dim('Activate identity field substitution in OPENCUES.md:'));
+  console.log(`  ${bold('identity-context-mode: safe')}`);
+  return 0;
 }
 
 // ────────────────────────────────────────────────────────────────────────────

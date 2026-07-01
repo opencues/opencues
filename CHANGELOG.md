@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — show picker + identity interview on the toolkit (`opencues` CLI 0.2.17 → 0.2.18)
+
+`opencues show` with no name now opens a `select` over every defined cue/blank (folder-based, deduped across search paths). `opencues identity`'s interview moved off raw `node:readline` onto the house `input()` toolkit (no `?` prefix; the default pre-fills the field, clearing skips) — a new `input({ allowEmpty })` option makes "clear to skip" distinguishable from "accept the pre-fill". (`edit` was left as-is — it deliberately exposes only `cues`, so a picker adds nothing.)
+
 ### Added — import trust gate + install confirm migration (`opencues` CLI 0.2.16 → 0.2.17)
 
 `opencues import` now shows what a downloaded pack contains (cue/blank counts, flagging script blanks that run code) and requires an explicit Yes/No before installing it — the security consent moment for third-party config. `--yes`/`-y` bypasses for scripting; non-TTY proceeds (validation already ran). Also fixed a latent bug where the download promise wasn't awaited. `opencues install`'s hand-rolled `[Y/n]` / `[Y/n/details]` dependency prompts now use the house `confirm()` / Yes-Details-No `select()` instead of a blocking `readSync` (the dead `promptSync` helper is removed).
