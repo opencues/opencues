@@ -1130,10 +1130,13 @@ module.exports = async function doctor(argv, ctx) {
     await maybePrintUpdateNotice(ctx);
     return 0;
   }
-  console.log(bold('## Suggested fixes'));
-  for (const f of findings) {
+  console.log(bold('Suggested fixes') + dim(`  (${findings.length})`));
+  console.log('');
+  // Warnings first, then info notices — most actionable at the top.
+  const ordered = [...findings].sort((a, b) => (a.sev === 'warn' ? 0 : 1) - (b.sev === 'warn' ? 0 : 1));
+  for (const f of ordered) {
     console.log(`  ${tag(f.sev === 'warn' ? 'warn' : 'info')} ${f.msg}`);
-    if (f.fix) console.log(`     ${dim(G.arrow)} ${f.fix}`);
+    if (f.fix) console.log(`     ${dim(f.fix)}`);
   }
   await maybePrintUpdateNotice(ctx);
   const errors = findings.filter(f => f.sev === 'warn').length;
