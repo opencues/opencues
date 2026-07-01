@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — `opencues identity` now honours `$OPENCUES_HOME` (`opencues` CLI 0.2.32 → 0.2.33)
+
+`opencues identity` hardcoded its target to `os.homedir()/.cues/IDENTITY.md`, silently ignoring `$OPENCUES_HOME` — so `OPENCUES_HOME=… opencues identity set …` wrote the real `~/.cues/IDENTITY.md` instead of the override. Now resolved per-call via `$OPENCUES_HOME || ~/.cues`, matching the search-path convention every other CLI command uses. Regression tests pin both the write target and `identity path`; the HOME-based E2E helper strips ambient `$OPENCUES_HOME` for hermeticity.
+
 ### Fixed — guard unguarded `process.env` in the rate-limit retry reader (`@opencues/core` 0.13.2 → 0.13.3)
 
 `RATE_LIMIT_MAX_RETRIES` in `llm-provider.ts` read `process.env.OPENCUES_RATE_LIMIT_RETRIES` without a `typeof process` guard, which would throw in chrome content scripts (no `process`). Wrapped the access; `?? 4` semantics preserved so `OPENCUES_RATE_LIMIT_RETRIES=0` still means zero retries. Caught by the `runtime-browser-safe` lint (pre-existing on master).
