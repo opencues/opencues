@@ -21,9 +21,10 @@ const path = require('node:path');
 const os = require('node:os');
 const https = require('node:https');
 const { spawnSync } = require('node:child_process');
-const { tag, bold, dim, fileLink, banner, cliVersion } = require('../lib/style.cjs');
+const { tag, bold, dim, yellow, fileLink, banner, cliVersion } = require('../lib/style.cjs');
+const prompt = require('../lib/prompt.cjs');
 
-module.exports = function importCmd(argv, ctx) {
+module.exports = async function importCmd(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
 
   let source = null;
@@ -91,7 +92,7 @@ module.exports = function importCmd(argv, ctx) {
     } else {
       console.log(`${tag('info')} downloading ${dim(resolved.url)}`);
       const tarballPath = path.join(stageDir, 'pack.tar.gz');
-      downloadToFile(resolved.url, tarballPath);
+      await downloadToFile(resolved.url, tarballPath);
       console.log(`${tag('info')} extracting`);
       extractTarGz(tarballPath, stageDir);
       fs.rmSync(tarballPath, { force: true });
@@ -108,6 +109,27 @@ module.exports = function importCmd(argv, ctx) {
         console.error(`\nimport refused: ${errors.length} validation error(s).`);
         console.error('Use --unsafe-allow-scripts if you trust this pack and need its scripts.');
         process.exit(1);
+      }
+    }
+
+    // Trust gate — this is third-party config from the internet. Surface what
+    // it contains (flagging script blanks, which run code on your machine) and
+    // require an explicit yes before it lands. `--yes` bypasses for scripting;
+    // a non-TTY caller can't be prompted so it proceeds (validation already ran).
+    const pre = summariseContents(stageDir);
+    const scriptCount = countScriptDecls(stageDir);
+    console.log('');
+    console.log(`${bold('This pack contains:')} ${pre.cues} cue(s), ${pre.blanks} blank(s)`
+      + (scriptCount ? `, ${yellow(`${scriptCount} script blank(s)`)}` : ''));
+    if (scriptCount) console.log(`  ${dim('script blanks run code on your machine when their `_` is triggered.')}`);
+    const bypass = argv.includes('--yes') || argv.includes('-y');
+    if (prompt.isInteractive() && !bypass) {
+      console.log('');
+      const ok = await prompt.confirm(`Install pack "${packName}"?`, { default: false });
+      if (!ok) {
+        fs.rmSync(stageDir, { recursive: true, force: true });
+        console.log(`${tag('info')} cancelled — nothing installed.`);
+        return;
       }
     }
 
@@ -317,6 +339,18 @@ function summariseContents(dir) {
   return out;
 }
 
+// Count blank definitions that declare a script/blankScript (they execute
+// code on the user's machine) — surfaced in the trust gate.
+function countScriptDecls(dir) {
+  let n = 0;
+  walk(dir, (file) => {
+    if (!file.endsWith('.md')) return;
+    const content = fs.readFileSync(file, 'utf8');
+    if (/^\s*(?:script|blankScript):\s*\S/m.test(content)) n += 1;
+  });
+  return n;
+}
+
 function copyDir(src, dst) {
   fs.mkdirSync(dst, { recursive: true });
   for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
@@ -344,6 +378,7 @@ function printHelp() {
   console.log('  --name <override>            install as a different pack name');
   console.log('  --project                    install under <cwd>/.cues/ (default: ~/.cues/)');
   console.log('  --force                      overwrite existing pack');
+  console.log('  --yes, -y                    skip the trust confirmation (for scripting)');
   console.log('  --dry-run                    print plan, do not execute');
   console.log('  --unsafe-allow-scripts       allow absolute/traversing script: paths');
   console.log('                               (default: refuse for safety)');

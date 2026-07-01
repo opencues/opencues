@@ -1,6 +1,6 @@
 {
   "name": "opencues",
-  "version": "0.2.16",
+  "version": "0.2.17",
   "private": true,
   "description": "OpenCues — single-command front door for installing, configuring, and launching OpenCues across all editor integrations.",
   "bin": {

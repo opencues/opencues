@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — import trust gate + install confirm migration (`opencues` CLI 0.2.16 → 0.2.17)
+
+`opencues import` now shows what a downloaded pack contains (cue/blank counts, flagging script blanks that run code) and requires an explicit Yes/No before installing it — the security consent moment for third-party config. `--yes`/`-y` bypasses for scripting; non-TTY proceeds (validation already ran). Also fixed a latent bug where the download promise wasn't awaited. `opencues install`'s hand-rolled `[Y/n]` / `[Y/n/details]` dependency prompts now use the house `confirm()` / Yes-Details-No `select()` instead of a blocking `readSync` (the dead `promptSync` helper is removed).
+
 ### Added — interactive pickers for set-key / install / uninstall / run / new (`opencues` CLI 0.2.15 → 0.2.16)
 
 Commands that error on a missing argument now open a picker on a terminal (flags still win; non-TTY still errors, so scripting is unchanged): `set-key` → provider `select` (green ● = key already set) + masked key entry; `install` / `uninstall` / `run` → host `select` via a shared `lib/pick-host.cjs` (install/uninstall include an `all` row); `new` → kind `select` (cue / blank) + name `input`.

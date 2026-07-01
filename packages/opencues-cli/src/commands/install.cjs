@@ -114,7 +114,7 @@ module.exports = async function install(argv, ctx) {
   // Preflight: surface platform-specific gotchas BEFORE the install runs
   // so the user isn't surprised by them after the install reports success.
   // Today this is macOS-only — see preflightChecks for the rationale.
-  preflightChecks(folders);
+  await preflightChecks(folders);
 
   // Workspace-deps gate: when invoked from a clone, any newly declared
   // dep in @opencues/{core,runtime,cli} that hasn't been `pnpm install`'d
@@ -209,7 +209,7 @@ async function maybePrintUpdateNotice(ctx) {
 // Warning here keeps the discovery path: "tried to install" → "told
 // about gotchas up front" instead of "install looked fine" → "feature
 // mysteriously broken weeks later".
-function preflightChecks(folders) {
+async function preflightChecks(folders) {
   const os = require('node:os');
   const platform = os.platform();
   if (platform !== 'darwin' && platform !== 'linux') return;
@@ -423,11 +423,11 @@ function preflightChecks(folders) {
   // What's NEVER auto-offered: audio tools (pactl/wpctl/amixer) —
   // multiple competing audio stacks, user picks. They appear in the
   // warning table only.
-  offerAutoInstall(warnings, platform);
-  if (needVendorBun) offerVendorBun();
+  await offerAutoInstall(warnings, platform);
+  if (needVendorBun) await offerVendorBun();
 }
 
-function offerVendorBun() {
+async function offerVendorBun() {
   const argv = process.argv.slice(2);
   if (argv.includes('--no-prompts')) return;
   const autoYes = argv.includes('--yes') || argv.includes('-y');
@@ -439,17 +439,17 @@ function offerVendorBun() {
   console.log(`    ${dim('downloads:')} curl -fsSL https://bun.sh/install | BUN_INSTALL=~/.opencues/vendor/bun bash`);
   console.log('');
 
-  let answer = 'y';
+  let doInstall = true;
   if (!autoYes) {
     if (!process.stdin.isTTY) {
       console.log(`    ${dim('(non-interactive shell — skipping. Re-run with `--yes` to install.)')}`);
       console.log('');
       return;
     }
-    answer = (promptSync('  Install bun now? [Y/n] ', 'y') || 'y').trim().toLowerCase();
+    doInstall = await prompt.confirm('Install bun now?', { default: true });
   }
 
-  if (answer === '' || answer === 'y' || answer === 'yes') {
+  if (doInstall) {
     fs.mkdirSync(bunDir, { recursive: true });
     const cmd = `curl -fsSL https://bun.sh/install | BUN_INSTALL="${bunDir}" bash`;
     console.log(`  ${dim('running:')} ${cmd}`);
@@ -467,7 +467,7 @@ function offerVendorBun() {
   }
 }
 
-function offerAutoInstall(warnings, platform) {
+async function offerAutoInstall(warnings, platform) {
   // Respect non-interactive markers.
   const argv = process.argv.slice(2);
   if (argv.includes('--no-prompts')) return;
@@ -488,25 +488,34 @@ function offerAutoInstall(warnings, platform) {
   console.log(`    ${cmd}`);
   console.log('');
 
-  let answer = 'y';
+  let doInstall = true;
   if (!autoYes) {
     if (!process.stdin.isTTY) {
       console.log(`    ${dim('(non-interactive shell — skipping. Re-run with `--yes` to install.)')}`);
       console.log('');
       return;
     }
-    answer = (promptSync('  Install now? [Y/n/details] ', 'y') || 'y').trim().toLowerCase();
-    while (answer === 'd' || answer === 'details') {
-      for (const w of installable) {
-        console.log(`    ${bold('•')} ${w.item}`);
-        console.log(`      ${dim('package:')} ${w.autoInstall[pm.name]}`);
-        console.log(`      ${dim('impact: ')} ${w.impact}`);
+    for (;;) {
+      console.log(dim('  ↑↓ move · Enter select'));
+      const choice = await prompt.select('', [
+        { label: `Yes  ${dim('· run the command above')}`, value: 'yes' },
+        { label: `Show details  ${dim('· what each package is + its impact')}`, value: 'details' },
+        { label: 'No', value: 'no', dim: true },
+      ]);
+      if (choice === 'details') {
+        for (const w of installable) {
+          console.log(`    ${bold('•')} ${w.item}`);
+          console.log(`      ${dim('package:')} ${w.autoInstall[pm.name]}`);
+          console.log(`      ${dim('impact: ')} ${w.impact}`);
+        }
+        continue;
       }
-      answer = (promptSync('  Install now? [Y/n] ', 'y') || 'y').trim().toLowerCase();
+      doInstall = choice === 'yes';
+      break;
     }
   }
 
-  if (answer === '' || answer === 'y' || answer === 'yes') {
+  if (doInstall) {
     console.log(`  ${dim('running:')} ${cmd}`);
     const result = spawnSync('sh', ['-c', cmd], { stdio: 'inherit' });
     if (result.status === 0) {
@@ -539,25 +548,6 @@ function detectPackageManager(platform) {
 // Minimal synchronous prompt. Returns the user's typed line (without
 // newline) or `defaultValue` if they hit Enter immediately. Used for
 // the auto-install offer — small enough not to warrant a dep.
-function promptSync(question, defaultValue) {
-  process.stdout.write(question);
-  try {
-    const fd = require('fs').openSync('/dev/tty', 'rs');
-    const buf = Buffer.alloc(1024);
-    let bytes = 0;
-    let total = 0;
-    while ((bytes = require('fs').readSync(fd, buf, total, 1, null)) > 0) {
-      if (buf[total] === 0x0a /* \n */) break;
-      total += bytes;
-      if (total >= buf.length) break;
-    }
-    require('fs').closeSync(fd);
-    const line = buf.slice(0, total).toString('utf8').trim();
-    return line.length === 0 ? defaultValue : line;
-  } catch {
-    return defaultValue;
-  }
-}
 
 // `command -v <name>` returns 0 when the tool is on PATH. Quietly.
 function onPath(name) {
