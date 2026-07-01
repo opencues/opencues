@@ -25,6 +25,10 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { bold, dim, green, yellow, red, fileLink, G } = require('../lib/style.cjs');
+
+// Severity ring: red ● error, yellow ● warn, gray ● info.
+const sevRing = (sev) => sev === 'error' ? red(G.ringOn) : sev === 'warn' ? yellow(G.ringOn) : dim(G.ringOn);
 
 const MAX_SOURCE_BYTES = 8 * 1024;
 
@@ -145,30 +149,30 @@ module.exports = async function review(argv, ctx) {
       printLlmReview(llmResult, declared);
     } catch (err) {
       console.log('');
-      console.log('## LLM review');
-      console.log(`  ⚠  unavailable: ${err.message}`);
+      console.log(bold('LLM review'));
+      console.log(`  ${yellow(G.ringOn)} unavailable: ${err.message}`);
       if (!hardBlocked) return 2;
     }
   }
 
   // ─── Final verdict ─────────────────────────────────────────────────────
   console.log('');
-  console.log('## Verdict');
+  console.log(bold('Verdict'));
   if (hardBlocked) {
-    console.log('  ✗ FAIL — pack contains hard-blocked patterns or would refuse to load');
+    console.log(`  ${red(G.ringOn)} ${bold('FAIL')} — pack contains hard-blocked patterns or would refuse to load`);
     return 1;
   }
   const warnCount = findings.filter(f => f.sev === 'warn').length;
   if (llmResult && llmResult.verdict === 'unsafe') {
-    console.log('  ✗ UNSAFE — LLM flagged dangerous patterns');
+    console.log(`  ${red(G.ringOn)} ${bold('UNSAFE')} — LLM flagged dangerous patterns`);
     return 1;
   }
   if (warnCount > 0 || (llmResult && llmResult.verdict === 'caution')) {
-    console.log('  ⚠  CAUTION — review the warnings above before installing');
+    console.log(`  ${yellow(G.ringOn)} ${bold('CAUTION')} — review the warnings above before installing`);
     return 0;
   }
-  console.log('  ✓ pack passes static review');
-  if (llmResult && llmResult.verdict === 'safe') console.log('  ✓ LLM second opinion: safe');
+  console.log(`  ${green(G.ringOn)} pack passes static review`);
+  if (llmResult && llmResult.verdict === 'safe') console.log(`  ${green(G.ringOn)} LLM second opinion: safe`);
   return 0;
 };
 
@@ -397,72 +401,72 @@ function collectDeclared(fm) {
 // ─── Output ──────────────────────────────────────────────────────────────
 
 function printHeader(blankMdPath, folder, fm) {
-  console.log(`opencues review — ${blankMdPath}\n`);
-  console.log('## Pack');
-  console.log(`  folder:        ${folder}`);
-  console.log(`  name:          ${fm.name || '(unset)'}`);
-  console.log(`  type:          ${fm.type || '(unset)'}`);
-  console.log(`  blankKeywords: ${JSON.stringify(fm.blankKeywords || [])}`);
+  console.log(bold('opencues review') + '  ' + dim(fileLink(blankMdPath, blankMdPath)));
+  console.log('');
+  console.log(bold('Pack'));
+  const row = (k, v) => console.log(`  ${dim(k.padEnd(13))} ${v}`);
+  row('folder', folder);
+  row('name', fm.name || dim('(unset)'));
+  row('type', fm.type || dim('(unset)'));
+  row('blankKeywords', dim(JSON.stringify(fm.blankKeywords || [])));
   console.log('');
 }
 
 function printManifest(declared, findings) {
-  console.log('## Declared capabilities');
-  if (declared.impl) console.log(`  impl:          ${declared.impl}`);
-  if (declared.blankScript) console.log(`  blankScript:   ${declared.blankScript}`);
-  console.log(`  network:       ${JSON.stringify(declared.network)}`);
-  console.log(`  llm:           ${declared.llm ?? '(none)'}`);
-  console.log(`  storage:       ${declared.storage ?? '(none)'}`);
-  console.log(`  secrets:       ${JSON.stringify(declared.secrets)}`);
+  console.log(bold('Declared capabilities'));
+  const row = (k, v) => console.log(`  ${dim(k.padEnd(15))} ${v}`);
+  if (declared.impl) row('impl', declared.impl);
+  if (declared.blankScript) row('blankScript', declared.blankScript);
+  row('network', JSON.stringify(declared.network));
+  row('llm', declared.llm ?? dim('(none)'));
+  row('storage', declared.storage ?? dim('(none)'));
+  row('secrets', JSON.stringify(declared.secrets));
   if (Object.keys(declared.secretBindings).length > 0) {
     for (const [k, v] of Object.entries(declared.secretBindings)) {
-      console.log(`    secret-hosts.${k}: ${JSON.stringify(v)}`);
+      console.log(`  ${dim(`  secret-hosts.${k}`)} ${JSON.stringify(v)}`);
     }
   }
-  console.log(`  output:        ${declared.output}`);
-  console.log(`  sandbox:       ${declared.sandbox}`);
-  if (declared.maxFetchesPerMinute) console.log(`  max-fetches/min: ${declared.maxFetchesPerMinute}`);
-  if (declared.maxLlmPerMinute) console.log(`  max-llm/min:     ${declared.maxLlmPerMinute}`);
-  if (declared.maxStorageBytes) console.log(`  max-storage:     ${declared.maxStorageBytes}`);
+  row('output', declared.output);
+  row('sandbox', declared.sandbox);
+  if (declared.maxFetchesPerMinute) row('max-fetches/min', declared.maxFetchesPerMinute);
+  if (declared.maxLlmPerMinute) row('max-llm/min', declared.maxLlmPerMinute);
+  if (declared.maxStorageBytes) row('max-storage', declared.maxStorageBytes);
   console.log('');
 
-  console.log('## Static findings');
+  console.log(bold('Static findings') + (findings.length ? dim(`  (${findings.length})`) : ''));
   if (findings.length === 0) {
-    console.log('  (none — pack passes all static checks)');
+    console.log(`  ${green(G.ringOn)} ${dim('none — pack passes all static checks')}`);
   } else {
-    for (const f of findings) {
-      const icon = f.sev === 'error' ? '✗' : f.sev === 'warn' ? '⚠' : 'ℹ';
-      console.log(`  ${icon} [${f.sev}] ${f.msg}`);
-    }
+    for (const f of findings) console.log(`  ${sevRing(f.sev)} ${f.msg}`);
   }
 }
 
 function printLlmReview(r, declared) {
   console.log('');
-  console.log('## LLM second opinion');
-  if (r.providerLabel) console.log(`  model:   ${r.providerLabel}`);
-  console.log(`  verdict: ${r.verdict}`);
-  if (r.summary) console.log(`  summary: ${r.summary}`);
+  console.log(bold('LLM second opinion'));
+  if (r.providerLabel) console.log(`  ${dim('model'.padEnd(8))} ${r.providerLabel}`);
+  console.log(`  ${dim('verdict'.padEnd(8))} ${r.verdict}`);
+  if (r.summary) console.log(`  ${dim('summary'.padEnd(8))} ${r.summary}`);
   if (r.red_flags && r.red_flags.length > 0) {
-    console.log('  red flags:');
-    for (const flag of r.red_flags) console.log(`    - ${flag}`);
+    console.log(`  ${dim('red flags')}`);
+    for (const flag of r.red_flags) console.log(`    ${yellow(G.ringOn)} ${flag}`);
   }
   console.log('');
-  console.log('## Cross-check');
+  console.log(bold('Cross-check'));
   // Compare LLM-reported hosts to declared.
   const declaredHosts = new Set(declared.network.map(h => String(h).toLowerCase()));
   const llmHosts = new Set((r.reported_hosts || []).map(h => String(h).toLowerCase()));
   const undeclared = [...llmHosts].filter(h => !declaredHosts.has(h));
   const unused = [...declaredHosts].filter(h => !llmHosts.has(h));
   if (undeclared.length === 0 && unused.length === 0) {
-    console.log('  ✓ LLM-reported hosts match declared network: allow-list');
+    console.log(`  ${green(G.ringOn)} LLM-reported hosts match declared network: allow-list`);
   } else {
     if (undeclared.length > 0) {
-      console.log(`  ⚠ LLM reports hosts not in network: [${undeclared.join(', ')}]`);
-      console.log('    (the runtime would block these; pack would behave unexpectedly)');
+      console.log(`  ${yellow(G.ringOn)} LLM reports hosts not in network: [${undeclared.join(', ')}]`);
+      console.log(`    ${dim('(the runtime would block these; pack would behave unexpectedly)')}`);
     }
     if (unused.length > 0) {
-      console.log(`  ℹ network: declares hosts the LLM didn't see used: [${unused.join(', ')}]`);
+      console.log(`  ${dim(G.ringOn)} network: declares hosts the LLM didn't see used: [${unused.join(', ')}]`);
     }
   }
   // Compare secret usage.
@@ -470,8 +474,8 @@ function printLlmReview(r, declared) {
   const llmSecrets = new Set(r.reported_secrets || []);
   const claimed = [...llmSecrets].filter(s => !declaredSecrets.has(s));
   if (claimed.length > 0) {
-    console.log(`  ⚠ LLM reports secrets not in secrets: [${claimed.join(', ')}]`);
-    console.log('    (the runtime would set these to undefined)');
+    console.log(`  ${yellow(G.ringOn)} LLM reports secrets not in secrets: [${claimed.join(', ')}]`);
+    console.log(`    ${dim('(the runtime would set these to undefined)')}`);
   }
 }
 

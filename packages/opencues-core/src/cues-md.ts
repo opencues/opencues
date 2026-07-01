@@ -336,10 +336,10 @@ export interface BlankConfig {
    * FETCH blanks (stocks / weather / crypto / countries / dictionary) — NEVER
    * on a blank with `blankScript` (exec) or any unbounded side-effect, since
    * the argument is attacker-influencable LLM output. The parser HARD-REFUSES
-   * `paramSafe` on a script blank (see parseExtendedFrontmatter). Default
+   * `aiCallable` on a script blank (see parseExtendedFrontmatter). Default
    * (absent/false): the blank is instance-only — it resolves via pre-fetched
    * blank-context tokens, never an on-demand LLM-arg call. */
-  paramSafe?: boolean;
+  aiCallable?: boolean;
   /** If true, `_` is appended as the last cycling option so the user can dismiss the value */
   blankDismissible?: boolean;
   /** Suffix appended to the displayed value (e.g. "%" shows "50%"). Stripped before arithmetic, re-appended for display. */
@@ -824,11 +824,11 @@ function parseBlanksSection(content: string): Record<string, BlankConfig> | unde
     for (const [key, entry] of Object.entries(raw)) {
       if (entry && !entry.name) entry.name = key;
       // SECURITY GUARD (Phase 4) — same as the folder-BLANK.md path: a
-      // script blank must never be param-safe (LLM-arg → shell). Strip it.
-      if (entry && entry.paramSafe && entry.blankScript) {
+      // script blank must never be ai-callable (LLM-arg → shell). Strip it.
+      if (entry && entry.aiCallable && entry.blankScript) {
         // eslint-disable-next-line no-console
-        console.warn(`[opencues] BLANKS.md "${key}": param-safe IGNORED — a script blank cannot be called with an LLM-provided argument.`);
-        delete entry.paramSafe;
+        console.warn(`[opencues] BLANKS.md "${key}": ai-callable IGNORED — a script blank cannot be called with an LLM-provided argument.`);
+        delete entry.aiCallable;
       }
     }
     return raw;
@@ -960,7 +960,7 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   blankStep?: number;
   signature?: string;
   returns?: string;
-  paramSafe?: boolean;
+  aiCallable?: boolean;
   blankScript?: string;
   blankDismissible?: boolean;
   blankSuffix?: string;
@@ -1074,7 +1074,9 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'blankKeywords': fm.blankKeywords = value; break;
       case 'signature': fm.signature = value; break;
       case 'returns': fm.returns = value; break;
-      case 'param-safe': case 'paramSafe': fm.paramSafe = value === 'true'; break;
+      case 'ai-callable': case 'aiCallable':
+      case 'param-safe': case 'paramSafe': // LEGACY-NAME-ALLOW: back-compat for the pre-rename frontmatter key
+        fm.aiCallable = value === 'true'; break;
       case 'blankStep': fm.blankStep = parseInt(value, 10) || undefined; break;
       case 'blankScript': fm.blankScript = value; break;
       case 'blankDismissible': fm.blankDismissible = value === 'true'; break;
@@ -1247,17 +1249,17 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
       if (frontmatter.contextSlots !== undefined) blank.contextSlots = frontmatter.contextSlots;
       if (frontmatter.signature !== undefined) blank.signature = frontmatter.signature;
       if (frontmatter.returns !== undefined) blank.returns = frontmatter.returns;
-      if (frontmatter.paramSafe === true) {
-        // SECURITY GUARD (Phase 4): `param-safe` authorises the runtime to
+      if (frontmatter.aiCallable === true) {
+        // SECURITY GUARD (Phase 4): `ai-callable` authorises the runtime to
         // call this blank's get() with an LLM-PROVIDED argument at resolve
-        // time. A blank that runs a SCRIPT (exec) must NEVER be param-safe —
+        // time. A blank that runs a SCRIPT (exec) must NEVER be ai-callable —
         // the attacker-influencable arg would reach a shell. Refuse + warn;
         // the blank stays instance-only (resolves via pre-fetched tokens).
         if (frontmatter.blankScript) {
           // eslint-disable-next-line no-console
-          console.warn(`[opencues] BLANK.md "${name}": param-safe IGNORED — a script blank (blankScript) must not be callable with an LLM-provided argument. Remove blankScript or param-safe.`);
+          console.warn(`[opencues] BLANK.md "${name}": ai-callable IGNORED — a script blank (blankScript) must not be callable with an LLM-provided argument. Remove blankScript or ai-callable.`);
         } else {
-          blank.paramSafe = true;
+          blank.aiCallable = true;
         }
       }
       if (frontmatter.contextBind !== undefined) blank.contextBind = frontmatter.contextBind;

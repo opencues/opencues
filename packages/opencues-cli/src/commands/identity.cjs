@@ -22,8 +22,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { execSync } = require('node:child_process');
-const readline = require('node:readline');
-const { tag, bold, dim, fileLink, banner, cliVersion } = require('../lib/style.cjs');
+const { tag, bold, dim, green, fileLink, banner, cliVersion } = require('../lib/style.cjs');
+const prompt = require('../lib/prompt.cjs');
 
 const IDENTITY_MD_PATH = path.join(os.homedir(), '.cues', 'IDENTITY.md');
 
@@ -56,7 +56,7 @@ const INTERVIEW_FIELDS = [
   { key: 'firstName',  prompt: 'First name',           defaultFrom: () => firstWord(gitConfig('user.name')) },
   { key: 'lastName',   prompt: 'Last name',            defaultFrom: () => restWords(gitConfig('user.name')) },
   { key: 'fullName',   prompt: 'Full name',            defaultFrom: () => gitConfig('user.name') },
-  { key: 'pronouns',   prompt: 'Pronouns (he/him, she/her, they/them, …)' },
+  { key: 'pronouns',   prompt: 'Pronouns' },
   { key: 'email',      prompt: 'Email',                defaultFrom: () => gitConfig('user.email') },
   { key: 'phone',      prompt: 'Phone' },
   { key: 'company',    prompt: 'Company' },
@@ -106,14 +106,20 @@ function cmdList(argv) {
     console.log(dim(`file: ${IDENTITY_MD_PATH}`));
     return 0;
   }
-  // Tidy two-column display: key, derived token, value.
-  const rows = fields.map(f => [f.key, deriveToken(f.key), f.value]);
-  const widths = [0, 0].map((_, i) => Math.max(...rows.map(r => r[i].length)));
-  for (const [key, token, value] of rows) {
-    console.log(`  ${bold(key.padEnd(widths[0]))}  ${dim(token.padEnd(widths[1]))}  ${value}`);
+  // Aligned three-column table: field · token · value, with a dim header row.
+  const rows = fields.map(f => ({ key: f.key, token: deriveToken(f.key), value: f.value }));
+  const keyW = Math.max('field'.length, ...rows.map(r => r.key.length));
+  const tokW = Math.max('token'.length, ...rows.map(r => r.token.length));
+
+  console.log(bold('Identity fields') + dim(`  (${fields.length})`));
+  console.log('');
+  console.log(`  ${dim('field'.padEnd(keyW))}   ${dim('token'.padEnd(tokW))}   ${dim('value')}`);
+  for (const r of rows) {
+    console.log(`  ${bold(r.key.padEnd(keyW))}   ${green(r.token.padEnd(tokW))}   ${r.value}`);
   }
   console.log('');
-  console.log(dim(`${fields.length} identity field${fields.length === 1 ? '' : 's'} — ${IDENTITY_MD_PATH}`));
+  console.log(`${dim(`${fields.length} field${fields.length === 1 ? '' : 's'} ·`)} ${fileLink(IDENTITY_MD_PATH, IDENTITY_MD_PATH)}`);
+  console.log(dim('activate token substitution with  ') + bold('identity-context-mode: safe'));
   return 0;
 }
 
@@ -186,50 +192,44 @@ async function cmdInterview(ctx) {
   }
   console.log(banner({ version: cliVersion(ctx), tagline: 'set up your identity fields' }));
   console.log('');
-  console.log(dim('Each answer becomes a identity field token the LLM can emit; the runtime'));
+  console.log(dim('Each answer becomes an identity field token the LLM can emit; the runtime'));
   console.log(dim('substitutes your real value before it reaches the buffer. Press Enter to'));
-  console.log(dim('accept the [default] in brackets, or Enter on its own to skip a field.'));
+  console.log(dim('accept the pre-filled value, or clear it to skip a field.'));
   console.log(dim(`File: ${IDENTITY_MD_PATH}`));
   console.log('');
 
   // Preload existing values so re-running the interview is a no-op for
   // fields the user already populated (Enter accepts the existing
-  // value). Encourages re-running after `git config user.name` etc.
-  // change.
+  // value). Encourages re-running after `git config user.name` etc. change.
   const existing = new Map(parseSentinelsMd(readUserMd()).map(f => [f.key, f.value]));
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  const ask = (q) => new Promise(resolve => rl.question(q, a => resolve(a)));
   const result = [];
 
-  try {
-    for (const field of INTERVIEW_FIELDS) {
-      const current = existing.get(field.key);
-      const smart = current || (field.defaultFrom ? safe(field.defaultFrom) : '');
-      const tokenHint = dim(`(→ ${deriveToken(field.key)})`);
-      const promptLine = smart
-        ? `${field.prompt} ${tokenHint} [${smart}]: `
-        : `${field.prompt} ${tokenHint}: `;
-      const answer = (await ask(promptLine)).trim();
-      const value = answer || smart;
-      if (value) result.push({ key: field.key, value });
-    }
-    console.log('');
-    // Preserve any user-added keys we didn't ask about (e.g. an
-    // earlier `opencues identity set favoriteEditor vim`). Append
-    // them after the interview-collected ones.
-    const interviewKeys = new Set(INTERVIEW_FIELDS.map(f => f.key));
-    for (const [key, value] of existing) {
-      if (!interviewKeys.has(key)) result.push({ key, value });
-    }
-    writeUserMd(result);
-    console.log(`${tag('ok')} wrote ${result.length} identity field${result.length === 1 ? '' : 's'} → ${fileLink(IDENTITY_MD_PATH, IDENTITY_MD_PATH)}`);
-    console.log('');
-    console.log(dim('Activate identity field substitution in OPENCUES.md:'));
-    console.log(`  ${bold('identity-context-mode: safe')}`);
-    return 0;
-  } finally {
-    rl.close();
+  // Aligned columns: label + token, padded so every value entry lines up.
+  const labelW = Math.max(...INTERVIEW_FIELDS.map(f => f.prompt.length));
+  const tokW = Math.max(...INTERVIEW_FIELDS.map(f => deriveToken(f.key).length));
+  for (const field of INTERVIEW_FIELDS) {
+    const current = existing.get(field.key);
+    const smart = current || (field.defaultFrom ? safe(field.defaultFrom) : '');
+    const token = deriveToken(field.key);
+    const message = `${field.prompt.padEnd(labelW)}  ${dim(token.padEnd(tokW))}`;
+    const answer = await prompt.input(message, { default: smart, allowEmpty: true });
+    const value = (answer || '').trim();
+    if (value) result.push({ key: field.key, value });
   }
+  console.log('');
+  // Preserve any user-added keys we didn't ask about (e.g. an earlier
+  // `opencues identity set favoriteEditor vim`). Append them after the
+  // interview-collected ones.
+  const interviewKeys = new Set(INTERVIEW_FIELDS.map(f => f.key));
+  for (const [key, value] of existing) {
+    if (!interviewKeys.has(key)) result.push({ key, value });
+  }
+  writeUserMd(result);
+  console.log(`${tag('ok')} wrote ${result.length} identity field${result.length === 1 ? '' : 's'} → ${fileLink(IDENTITY_MD_PATH, IDENTITY_MD_PATH)}`);
+  console.log('');
+  console.log(dim('Activate identity field substitution in OPENCUES.md:'));
+  console.log(`  ${bold('identity-context-mode: safe')}`);
+  return 0;
 }
 
 // ────────────────────────────────────────────────────────────────────────────

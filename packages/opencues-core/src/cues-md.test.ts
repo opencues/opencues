@@ -787,28 +787,28 @@ describe('parseCuesMd: real CUES.md', () => {
   });
 });
 
-describe('Phase 4 — typed-sentinel blank fields (signature/returns/param-safe)', () => {
+describe('Phase 4 — typed-sentinel blank fields (signature/returns/ai-callable)', () => {
   const parse = (fm: string) => parseSingleCueMd(`---\n${fm}\n---`, '/x').blanks?.['b'];
 
-  it('parses signature + returns + param-safe on a fetch blank', () => {
-    const b = parse('name: b\ntype: blank\nblankKeywords: x\nsignature: (ticker: string)\nreturns: number\nparam-safe: true');
+  it('parses signature + returns + ai-callable on a fetch blank', () => {
+    const b = parse('name: b\ntype: blank\nblankKeywords: x\nsignature: (ticker: string)\nreturns: number\nai-callable: true');
     assert.strictEqual(b?.signature, '(ticker: string)');
     assert.strictEqual(b?.returns, 'number');
-    assert.strictEqual(b?.paramSafe, true);
+    assert.strictEqual(b?.aiCallable, true);
   });
 
-  it('defaults param-safe to undefined (instance-only) when absent', () => {
+  it('defaults ai-callable to undefined (instance-only) when absent', () => {
     const b = parse('name: b\ntype: blank\nblankKeywords: x\nsignature: (t: string)');
-    assert.strictEqual(b?.paramSafe, undefined);
+    assert.strictEqual(b?.aiCallable, undefined);
   });
 
-  it('SECURITY: refuses param-safe on a script blank (LLM-arg must never reach a shell)', () => {
+  it('SECURITY: refuses ai-callable on a script blank (LLM-arg must never reach a shell)', () => {
     const orig = console.warn;
     let warned = '';
     console.warn = (m?: unknown) => { warned = String(m); };
-    const b = parse('name: b\ntype: blank\nblankKeywords: x\nblankScript: ./x.sh\nparam-safe: true');
+    const b = parse('name: b\ntype: blank\nblankKeywords: x\nblankScript: ./x.sh\nai-callable: true');
     console.warn = orig;
-    assert.strictEqual(b?.paramSafe, undefined, 'param-safe must be stripped on a script blank');
+    assert.strictEqual(b?.aiCallable, undefined, 'ai-callable must be stripped on a script blank');
     assert.match(warned, /IGNORED/);
   });
 });

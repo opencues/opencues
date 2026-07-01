@@ -97,9 +97,11 @@ describe('CLI inspection commands — rename-rot regression suite', () => {
   it('show <name>: resolves a folder entry by its canonical filename', () => {
     expect(() => show(['bar'], ctx)).not.toThrow();
     const out = logs.join('\n');
-    expect(out).toContain('Matches for "bar"');
+    // Formatted detail view (June 2026): "<name>  (blank)" header + aligned
+    // frontmatter rows, replacing the old "Matches for …" raw dump.
+    expect(out).toMatch(/bar\s+\(blank\)/);
     expect(out).toContain('BLANK.md');
-    expect(out).toContain('blankKeywords: bar');
+    expect(out).toMatch(/blankKeywords\s+bar/);
   });
 
   // ── validate: must NOT emit spurious "no cue.md" warnings against ──

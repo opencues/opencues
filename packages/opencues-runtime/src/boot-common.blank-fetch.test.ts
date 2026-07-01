@@ -7,19 +7,19 @@
  * can't silently widen it.
  *
  * Pinned:
- *   - happy path — a `param-safe` fetch blank is in the registry; blankFetch
+ *   - happy path — a `ai-callable` fetch blank is in the registry; blankFetch
  *     calls get(arg) and returns the value; getRenderedBlock advertises it.
- *   - CAPABILITY GATE — a blank without `param-safe` is NOT in the registry
+ *   - CAPABILITY GATE — a blank without `ai-callable` is NOT in the registry
  *     AND blankFetch refuses it (get() is NEVER called).
- *   - SCRIPT-BLANK GATE (defense in depth) — a blank with BOTH `param-safe`
+ *   - SCRIPT-BLANK GATE (defense in depth) — a blank with BOTH `ai-callable`
  *     and `blankScript` is excluded from the registry AND refused at fetch,
  *     so an LLM-influenced arg can never reach a shell.
  *   - blank-context-mode gate — registry empty when `off`.
- *   - host-impl gate — a param-safe config with no runtime Blank is skipped.
+ *   - host-impl gate — a ai-callable config with no runtime Blank is skipped.
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildBlankFetchProvider, paramSafeArgWithinFloor, PARAM_SAFE_ARG_MAX } from './boot-common';
+import { buildBlankFetchProvider, aiCallableArgWithinFloor, AI_CALLABLE_ARG_MAX } from './boot-common';
 import { DEFAULT_OPENCUES_STATE, type ConfigLoader } from './modules/config-loader';
 import type { Blank } from './blanks/types';
 import { StocksBlank } from './blanks/stocks';
@@ -32,7 +32,7 @@ class SpyBlank implements Blank {
 }
 
 // A real audited core class with a stubbed fetch — instanceof StocksBlank, so
-// it's param-safe by CODE IDENTITY without needing a user trust entry.
+// it's ai-callable by CODE IDENTITY without needing a user trust entry.
 function realStocks(value = 232.69): StocksBlank {
   return new StocksBlank({
     apiKey: 'k',
@@ -40,15 +40,15 @@ function realStocks(value = 232.69): StocksBlank {
   });
 }
 
-type BlankCfg = { name: string; paramSafe?: boolean; blankScript?: string; signature?: string; returns?: string; blankTip?: string };
+type BlankCfg = { name: string; aiCallable?: boolean; blankScript?: string; signature?: string; returns?: string; blankTip?: string };
 
 function makeLoader(
   blanks: Record<string, BlankCfg>,
   blankContextMode: 'off' | 'safe' | 'raw' = 'safe',
-  paramSafeAllow: readonly string[] = [],
+  aiCallableAllow: readonly string[] = [],
 ): ConfigLoader {
   return {
-    opencuesState: { ...DEFAULT_OPENCUES_STATE, blankContextMode, paramSafeAllow, settings: new Map() },
+    opencuesState: { ...DEFAULT_OPENCUES_STATE, blankContextMode, aiCallableAllow, settings: new Map() },
     identity: { fields: [], catalog: new Map() },
     mergedBlanksConfig: { blanks },
   } as unknown as ConfigLoader;
@@ -57,20 +57,20 @@ function makeLoader(
 const noop = () => {};
 
 describe('buildBlankFetchProvider — happy path', () => {
-  it('audited core class is param-safe by code identity + blankFetch calls get(arg)', async () => {
+  it('audited core class is ai-callable by code identity + blankFetch calls get(arg)', async () => {
     const prov = buildBlankFetchProvider(
-      makeLoader({ stocks: { name: 'stocks', paramSafe: true, signature: '(ticker: string)', returns: 'number' } }),
+      makeLoader({ stocks: { name: 'stocks', aiCallable: true, signature: '(ticker: string)', returns: 'number' } }),
       new Map([['stocks', realStocks(232.69)]]), noop, // real StocksBlank → instanceof gate passes, NO trust entry
     )!;
     expect(prov).toBeTruthy();
-    expect([...prov.getParamSafeFns().keys()]).toEqual(['STOCK']);
+    expect([...prov.getAiCallableFns().keys()]).toEqual(['STOCK']);
     const v = await prov.blankFetch('stocks', 'AMZN');
     expect(v).toBe('AMZN: $232.69'); // get(arg) ran through the real (sanitizing) class
   });
 
   it('getRenderedBlock advertises the signature', () => {
     const prov = buildBlankFetchProvider(
-      makeLoader({ stocks: { name: 'stocks', paramSafe: true, signature: '(ticker: string)', returns: 'number' } }),
+      makeLoader({ stocks: { name: 'stocks', aiCallable: true, signature: '(ticker: string)', returns: 'number' } }),
       new Map([['stocks', realStocks()]]), noop,
     )!;
     expect(prov.getRenderedBlock()).toMatch(/\[STOCK\(ticker: string\): number\]/);
@@ -79,29 +79,29 @@ describe('buildBlankFetchProvider — happy path', () => {
 });
 
 describe('buildBlankFetchProvider — CAPABILITY GATE (code-identity + user trust)', () => {
-  // A pack can ship `param-safe: true`, but installing ≠ enabling: the flag is
+  // A pack can ship `ai-callable: true`, but installing ≠ enabling: the flag is
   // honoured ONLY for an audited core class (instanceof) OR a name the USER put
-  // in param-safe-allow. This is the security-first redesign — a pack can never
+  // in ai-callable-allow. This is the security-first redesign — a pack can never
   // self-grant LLM-arg invocation.
   it('a NON-audited blank with the flag but NO user trust is REFUSED (pack self-grant denied)', async () => {
     const spy = new SpyBlank('evil', 'pwned');
     const prov = buildBlankFetchProvider(
-      makeLoader({ evil: { name: 'evil', paramSafe: true, signature: '(x: string)' } }), // flag set, but...
+      makeLoader({ evil: { name: 'evil', aiCallable: true, signature: '(x: string)' } }), // flag set, but...
       new Map([['evil', spy]]), noop,                                                    // not audited, not trusted
     )!;
-    expect(prov.getParamSafeFns().size).toBe(0);          // NOT in the registry
+    expect(prov.getAiCallableFns().size).toBe(0);          // NOT in the registry
     const v = await prov.blankFetch('evil', 'anything');
     expect(v).toBeUndefined();                            // refused at the chokepoint
     expect(spy.calls).toEqual([]);                        // get() NEVER invoked
   });
 
-  it('a NON-audited blank the USER trusted (param-safe-allow) IS honoured', async () => {
+  it('a NON-audited blank the USER trusted (ai-callable-allow) IS honoured', async () => {
     const spy = new SpyBlank('myfetch', 'custom-value');
     const prov = buildBlankFetchProvider(
-      makeLoader({ myfetch: { name: 'myfetch', paramSafe: true, signature: '(q: string)' } }, 'safe', ['myfetch']),
+      makeLoader({ myfetch: { name: 'myfetch', aiCallable: true, signature: '(q: string)' } }, 'safe', ['myfetch']),
       new Map([['myfetch', spy]]), noop,
     )!;
-    expect([...prov.getParamSafeFns().values()].map(v => v.blankName)).toEqual(['myfetch']);
+    expect([...prov.getAiCallableFns().values()].map(v => v.blankName)).toEqual(['myfetch']);
     const v = await prov.blankFetch('myfetch', 'query');
     expect(v).toBe('custom-value');
     expect(spy.calls).toEqual(['query']);
@@ -109,23 +109,23 @@ describe('buildBlankFetchProvider — CAPABILITY GATE (code-identity + user trus
 
   it('audited core class is honoured WITHOUT any user trust entry', () => {
     const prov = buildBlankFetchProvider(
-      makeLoader({ stocks: { name: 'stocks', paramSafe: true } }), // no param-safe-allow
+      makeLoader({ stocks: { name: 'stocks', aiCallable: true } }), // no ai-callable-allow
       new Map([['stocks', realStocks()]]), noop,
     )!;
-    expect([...prov.getParamSafeFns().values()].map(v => v.blankName)).toEqual(['stocks']);
+    expect([...prov.getAiCallableFns().values()].map(v => v.blankName)).toEqual(['stocks']);
   });
 });
 
 describe('buildBlankFetchProvider — CAPABILITY GATE', () => {
-  it('a blank WITHOUT param-safe is not registered AND blankFetch refuses it (get never called)', async () => {
+  it('a blank WITHOUT ai-callable is not registered AND blankFetch refuses it (get never called)', async () => {
     const spy = new SpyBlank('stocks', 'leaked');
     const prov = buildBlankFetchProvider(
-      makeLoader({ stocks: { name: 'stocks' /* paramSafe absent */ } }),
+      makeLoader({ stocks: { name: 'stocks' /* aiCallable absent */ } }),
       new Map([['stocks', spy]]), noop,
     );
     // Provider exists (blanks present) but the registry is empty.
     expect(prov).toBeTruthy();
-    expect(prov!.getParamSafeFns().size).toBe(0);
+    expect(prov!.getAiCallableFns().size).toBe(0);
     const v = await prov!.blankFetch('stocks', 'AMZN');
     expect(v).toBeUndefined();
     expect(spy.calls).toEqual([]); // get() NEVER invoked
@@ -133,13 +133,13 @@ describe('buildBlankFetchProvider — CAPABILITY GATE', () => {
 });
 
 describe('buildBlankFetchProvider — SCRIPT-BLANK GATE (LLM-arg → shell ban)', () => {
-  it('a param-safe blank that ALSO has blankScript is excluded AND refused (get never called)', async () => {
+  it('a ai-callable blank that ALSO has blankScript is excluded AND refused (get never called)', async () => {
     const spy = new SpyBlank('volume', 'should-not-run');
     const prov = buildBlankFetchProvider(
-      makeLoader({ volume: { name: 'volume', paramSafe: true, blankScript: '/x.sh' } }),
+      makeLoader({ volume: { name: 'volume', aiCallable: true, blankScript: '/x.sh' } }),
       new Map([['volume', spy]]), noop,
     )!;
-    expect(prov.getParamSafeFns().size).toBe(0); // not in the registry
+    expect(prov.getAiCallableFns().size).toBe(0); // not in the registry
     const v = await prov.blankFetch('volume', '99');
     expect(v).toBeUndefined();             // refused at the chokepoint
     expect(spy.calls).toEqual([]);         // the script blank's get() NEVER ran
@@ -149,15 +149,15 @@ describe('buildBlankFetchProvider — SCRIPT-BLANK GATE (LLM-arg → shell ban)'
 describe('buildBlankFetchProvider — mode + host-impl gates', () => {
   it('registry is empty when blank-context-mode is off', () => {
     const prov = buildBlankFetchProvider(
-      makeLoader({ stocks: { name: 'stocks', paramSafe: true } }, 'off'),
+      makeLoader({ stocks: { name: 'stocks', aiCallable: true } }, 'off'),
       new Map([['stocks', new SpyBlank('stocks', 'x')]]), noop,
     )!;
-    expect(prov.getParamSafeFns().size).toBe(0);
+    expect(prov.getAiCallableFns().size).toBe(0);
   });
 
-  it('a param-safe config with no runtime Blank impl is skipped', () => {
+  it('a ai-callable config with no runtime Blank impl is skipped', () => {
     const prov = buildBlankFetchProvider(
-      makeLoader({ stocks: { name: 'stocks', paramSafe: true } }),
+      makeLoader({ stocks: { name: 'stocks', aiCallable: true } }),
       new Map(), // no host impl
       noop,
     );
@@ -165,12 +165,12 @@ describe('buildBlankFetchProvider — mode + host-impl gates', () => {
     expect(prov).toBeUndefined();
   });
 
-  it('mixed config: only the param-safe non-script blank is registered', () => {
+  it('mixed config: only the ai-callable non-script blank is registered', () => {
     const prov = buildBlankFetchProvider(
       makeLoader({
-        stocks: { name: 'stocks', paramSafe: true, signature: '(ticker: string)' },
-        weather: { name: 'weather' },                          // not param-safe
-        volume: { name: 'volume', paramSafe: true, blankScript: '/v.sh' }, // script → banned
+        stocks: { name: 'stocks', aiCallable: true, signature: '(ticker: string)' },
+        weather: { name: 'weather' },                          // not ai-callable
+        volume: { name: 'volume', aiCallable: true, blankScript: '/v.sh' }, // script → banned
       }),
       new Map([
         ['stocks', realStocks()],                    // audited core → registers
@@ -178,18 +178,18 @@ describe('buildBlankFetchProvider — mode + host-impl gates', () => {
         ['volume', new SpyBlank('volume', 'v')],
       ]), noop,
     )!;
-    expect([...prov.getParamSafeFns().values()].map(v => v.blankName)).toEqual(['stocks']);
+    expect([...prov.getAiCallableFns().values()].map(v => v.blankName)).toEqual(['stocks']);
   });
 });
 
 describe('buildBlankFetchProvider — ARG SHAPE FLOOR (defense-in-depth)', () => {
   // The primary defense is each blank encoding its own arg; this floor bounds
-  // the blast radius of a custom param-safe blank that forgets to. It must
+  // the blast radius of a custom ai-callable blank that forgets to. It must
   // accept normal lookup values and refuse control/URL-injection chars + huge
   // args BEFORE get() runs.
   it('accepts legitimate lookup values (ticker, crypto id, city with spaces/accents/punctuation)', () => {
     for (const ok of ['AMZN', 'btc-usd', 'bitcoin', 'São Paulo', 'St. John\'s', 'Washington, D.C.', 'new york']) {
-      expect(paramSafeArgWithinFloor(ok)).toBe(true);
+      expect(aiCallableArgWithinFloor(ok)).toBe(true);
     }
   });
 
@@ -201,9 +201,9 @@ describe('buildBlankFetchProvider — ARG SHAPE FLOOR (defense-in-depth)', () =>
       'a?b', 'a#b', 'a@b', 'a%2e',     // ? # @ %
       'a\\b', 'a<b>', 'a"b', 'a`b',    // backslash, angle, quote, backtick
       'a\nb', 'a\rb', 'a\x00b', 'a\x1fb', // CRLF / null / control
-      'x'.repeat(PARAM_SAFE_ARG_MAX + 1), // length cap
+      'x'.repeat(AI_CALLABLE_ARG_MAX + 1), // length cap
     ]) {
-      expect(paramSafeArgWithinFloor(bad)).toBe(false);
+      expect(aiCallableArgWithinFloor(bad)).toBe(false);
     }
   });
 
@@ -212,7 +212,7 @@ describe('buildBlankFetchProvider — ARG SHAPE FLOOR (defense-in-depth)', () =>
     // FLOOR, not the gate, is what stops the injection arg before get().
     const spy = new SpyBlank('myfetch', 'leaked');
     const prov = buildBlankFetchProvider(
-      makeLoader({ myfetch: { name: 'myfetch', paramSafe: true, signature: '(q: string)' } }, 'safe', ['myfetch']),
+      makeLoader({ myfetch: { name: 'myfetch', aiCallable: true, signature: '(q: string)' } }, 'safe', ['myfetch']),
       new Map([['myfetch', spy]]), noop,
     )!;
     const v = await prov.blankFetch('myfetch', 'AMZN&token=stolen');

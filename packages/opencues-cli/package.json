@@ -1,6 +1,6 @@
 {
   "name": "opencues",
-  "version": "0.2.9",
+  "version": "0.2.32",
   "private": true,
   "description": "OpenCues — single-command front door for installing, configuring, and launching OpenCues across all editor integrations.",
   "bin": {
@@ -32,5 +32,8 @@
   "publishConfig": {
     "registry": "https://npm.pkg.github.com",
     "access": "restricted"
+  },
+  "dependencies": {
+    "enquirer": "^2.4.1"
   }
 }

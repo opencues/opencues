@@ -125,6 +125,15 @@ export interface FeatureSpec {
   readonly menuTip?: string;
 
   /**
+   * Section this setting belongs to in the `opencues config` browser — one
+   * of `SETTINGS_GROUP_ORDER`. Colocated with the scalar so adding a feature
+   * auto-places it; the CLI no longer keeps a separate section map. Unset →
+   * the browser's "More" catch-all (a registry test asserts every menu scalar
+   * has a group, so that never happens silently).
+   */
+  readonly group?: string;
+
+  /**
    * Optional config file the feature reads from ~/.cues/.
    * Triggers seed-configs (if template) + chrome-host push (if pushedBy).
    */
@@ -283,6 +292,7 @@ export const FEATURES: readonly FeatureSpec[] = [
   // ── Surface availability ─────────────────────────────────────────
   {
     scalar: 'fluid-blank-mode',
+    group: 'Blanks',
     camelCase: 'fluidBlankMode',
     description: 'Free-form `_` lookups (LLM pipeline)',
     menuTip: 'Free-form `_` lookups (P1+P3 LLM pipeline)',
@@ -293,6 +303,7 @@ export const FEATURES: readonly FeatureSpec[] = [
   },
   {
     scalar: 'word-cues-mode',
+    group: 'Cues',
     camelCase: 'wordCuesMode',
     description: 'LLM word alternatives surfaced on plain text',
     menuTip: 'Per-word cues (RoutedWordSourceGroup) on plain text — domain alternatives, synonyms',
@@ -303,6 +314,7 @@ export const FEATURES: readonly FeatureSpec[] = [
   },
   {
     scalar: 'transform-blank-mode',
+    group: 'Blanks',
     camelCase: 'transformBlankMode',
     description: 'Imperative `_` slots + agent-task lifecycle (`agentically X _`, `add task X _`)',
     menuTip: 'Imperative `_` slots + agent-task lifecycle (`agentically X _`, `add task X _`, `stop task _`)',
@@ -313,6 +325,7 @@ export const FEATURES: readonly FeatureSpec[] = [
   },
   {
     scalar: 'fluid-config-mode',
+    group: 'Cues',
     camelCase: 'fluidConfigMode',
     description: 'Semantic `_` → settings-change routing (LLM classifier over the FEATURES registry)',
     menuTip: 'Route `_` to a settings change when no keyword matched ("stop showing tips _" → tips-mode=off). Only routes to OPENCUES settings, never user blanks.',
@@ -323,6 +336,7 @@ export const FEATURES: readonly FeatureSpec[] = [
   },
   {
     scalar: 'integration-weave-mode',
+    group: 'Blanks',
     camelCase: 'integrationWeaveMode',
     description: 'LLM contextual weaving of a blank\'s `integration:` exemplar (the value is swapped in AFTER the call — never sent to the provider)',
     menuTip: 'Let a blank with `integration-weave: true` weave its output into surrounding prose via one LLM call. The real value is substituted for a sentinel token after the response, so it never reaches the provider; falls back to the static `{value}` template on any failure.',
@@ -333,6 +347,7 @@ export const FEATURES: readonly FeatureSpec[] = [
   },
   {
     scalar: 'sentence-cues-mode',
+    group: 'Cues',
     camelCase: 'sentenceCuesMode',
     description: 'Sentence-scope cues — whole-sentence alternatives via `scope: sentence` cue declarations',
     menuTip: 'Whole-sentence alternative rewrites (e.g. more-formal). Highlights span the sentence; sentence-scope wins over overlapping word-cues.',
@@ -343,6 +358,7 @@ export const FEATURES: readonly FeatureSpec[] = [
   },
   {
     scalar: 'blank-trigger-mode',
+    group: 'Blanks',
     camelCase: 'blankTriggerMode',
     description: 'When `_` fires its blank — immediately on insertion vs only after a space follows',
     menuTip: 'Defer blank firing until `_` is followed by a space (lets you type markdown `_italic_` without the first `_` triggering)',
@@ -353,6 +369,7 @@ export const FEATURES: readonly FeatureSpec[] = [
   },
   {
     scalar: 'tips-mode',
+    group: 'Voice & navigation',
     camelCase: 'tipsMode',
     description: 'Static tip groups from defaults/cues/*/CUE.md',
     menuTip: 'Toggles tip display',
@@ -363,6 +380,7 @@ export const FEATURES: readonly FeatureSpec[] = [
   },
   {
     scalar: 'voice-mode',
+    group: 'Voice & navigation',
     camelCase: 'voiceMode',
     description: 'TTS for highlighted words',
     menuTip: 'Gates TTS globally',
@@ -373,6 +391,7 @@ export const FEATURES: readonly FeatureSpec[] = [
   },
   {
     scalar: 'cursor-navigate',
+    group: 'Voice & navigation',
     camelCase: 'cursorNavigate',
     description: 'Auto-highlight word under cursor',
     menuTip: 'Auto-highlight word at cursor',
@@ -383,6 +402,7 @@ export const FEATURES: readonly FeatureSpec[] = [
   },
   {
     scalar: 'nav-keymap',
+    group: 'Voice & navigation',
     camelCase: 'navKeymap',
     description: 'Modifier combo for word navigation + alternative cycling. `auto` resolves to ctrl-alt on every host. Chrome hard-pins ctrl-alt (ctrl-shift+arrow extends browser text selection). On macOS Terminal.app, enable "Use Option as Meta key" so Ctrl+Option+arrow survives as Meta-prefixed CSI — adapters coalesce it into the runtime\'s `alt`.',
     menuTip: 'Modifier combo for word nav (Left/Right) + alt cycling (Up/Down). `auto` → ctrl-alt everywhere. macOS Terminal.app users: enable "Use Option as Meta key" in profile settings.',
@@ -394,6 +414,7 @@ export const FEATURES: readonly FeatureSpec[] = [
   },
   {
     scalar: 'debug-mode',
+    group: 'Diagnostics',
     camelCase: 'debugMode',
     description: 'Verbose runtime logging (every cue/blank decision)',
     menuTip: 'Enable debug logging output',
@@ -404,6 +425,7 @@ export const FEATURES: readonly FeatureSpec[] = [
   },
   {
     scalar: 'max-thinking',
+    group: 'Agent & thinking',
     camelCase: 'maxThinking',
     description: 'How hard reasoning-capable models think. Each model has a bench-tuned ceiling (cerebras → medium, gpt-oss / gpt-5 → low); `on` uses that ceiling, `off` drops to a reduced level (cerebras → low, others → none) for faster, cheaper output. See packages/opencues-core/src/model-thinking.ts.',
     menuTip: 'Trade reasoning depth for speed. `on` lets each model think up to its ceiling; `off` minimises thinking for snappier blanks/cues.',
@@ -429,6 +451,7 @@ export const FEATURES: readonly FeatureSpec[] = [
   // is the point of the three-bucket simplification.
   {
     scalar: 'cues-llm-provider',
+    group: 'LLM routing',
     camelCase: 'cuesLlmProvider',
     description: 'LLM provider for cue sources (word-cues, sentence-cues). Inherits llm-provider by default.',
     menuTip: 'Pick the provider for cue sources (word-cues, sentence-cues). Refuses training-pool providers (opencode-zen) — prose surface.',
@@ -446,6 +469,7 @@ export const FEATURES: readonly FeatureSpec[] = [
   },
   {
     scalar: 'auditors-llm-provider',
+    group: 'LLM routing',
     camelCase: 'auditorsLlmProvider',
     description: 'LLM provider for auditor sources + agent-rewrite. Inherits llm-provider by default.',
     menuTip: 'Pick the provider for auditors + agent-rewrite (background prose rewriters). Refuses training-pool providers (opencode-zen).',
@@ -463,6 +487,7 @@ export const FEATURES: readonly FeatureSpec[] = [
   },
   {
     scalar: 'blanks-llm-provider',
+    group: 'LLM routing',
     camelCase: 'blanksLlmProvider',
     description: 'LLM provider for blank-class sources (fluid-blank, transform-blank, fluid-config, keyword blanks). Inherits llm-provider by default.',
     menuTip: 'Pick the provider for blanks (the opt-in `_` surface). `opencode-zen` + `blanks-llm-model: free` routes blanks through OpenCode Zen\'s free pool (no API key; provider trains on blank inputs).',
@@ -495,6 +520,7 @@ export const FEATURES: readonly FeatureSpec[] = [
   // default → model1 → model2 → … → default.
   {
     scalar: 'cues-llm-model',
+    group: 'LLM routing',
     camelCase: 'cuesLlmModel',
     description: 'LLM model for the cues bucket. Valid values depend on `cues-llm-provider`.',
     menuTip: 'Pick the model for cues. Menu walks the current cues-llm-provider\'s known models.',
@@ -505,6 +531,7 @@ export const FEATURES: readonly FeatureSpec[] = [
   },
   {
     scalar: 'auditors-llm-model',
+    group: 'LLM routing',
     camelCase: 'auditorsLlmModel',
     description: 'LLM model for the auditors + agent-rewrite bucket. Valid values depend on `auditors-llm-provider`.',
     menuTip: 'Pick the model for auditors. Menu walks the current auditors-llm-provider\'s known models.',
@@ -515,6 +542,7 @@ export const FEATURES: readonly FeatureSpec[] = [
   },
   {
     scalar: 'blanks-llm-model',
+    group: 'LLM routing',
     camelCase: 'blanksLlmModel',
     description: 'LLM model for the blanks bucket. Valid values depend on `blanks-llm-provider`.',
     menuTip: 'Pick the model for blanks. Menu walks the current blanks-llm-provider\'s known models.',
@@ -528,6 +556,7 @@ export const FEATURES: readonly FeatureSpec[] = [
   // ── Context injection ────────────────────────────────────────────
   {
     scalar: 'ambient-context-mode',
+    group: 'Context & identity',
     camelCase: 'ambientContextMode',
     description: 'Field label/placeholder/page-title sent with fluid-blank lookups (chrome only)',
     menuTip: 'Share focused-field label/placeholder/page-title with fluid-blank for disambiguation. Sensitive fields excluded. Chrome only.',
@@ -542,6 +571,7 @@ export const FEATURES: readonly FeatureSpec[] = [
     // three are explicit "context" sources). No runtime back-compat
     // read — `opencues seed-configs` self-heals the legacy scalar.
     scalar: 'identity-context-mode',
+    group: 'Context & identity',
     camelCase: 'identityContextMode',
     description: 'Personal identity data injected into fluid-blank as context tokens',
     menuTip: 'Inject ~/.cues/IDENTITY.md fields (first name, email, etc.) as identity-context tokens into fluid-blank for personalised lookups.',
@@ -575,6 +605,7 @@ export const FEATURES: readonly FeatureSpec[] = [
     // runtime engine + its evidence: packages/opencues-core/src/typed-sentinel.ts,
     // docs/architecture/typed-sentinel-language.md.
     scalar: 'sentinel-language',
+    group: 'Context & identity',
     camelCase: 'sentinelLanguage',
     description: 'Grammar for rendering + resolving identity-/blank-context sentinel tokens',
     menuTip: 'Bare = flat [TOKEN] (default). Typed = parameterized + nested signatures ([STOCK PRICE(ticker=NVDA)], [WEATHER TEMP(city=[WORK CITY])]) — higher accuracy on parameter-bearing lookups.',
@@ -585,6 +616,7 @@ export const FEATURES: readonly FeatureSpec[] = [
   },
   {
     scalar: 'blank-context-mode',
+    group: 'Context & identity',
     camelCase: 'blankContextMode',
     description: 'Blanks expose their current values as ambient tokens for fluid-blank',
     menuTip: 'Expose context-eligible blanks (stocks, weather, crypto, …) as ambient tokens fluid-blank can reach without typing the keyword. See docs/features/blank-as-context.md.',
@@ -610,6 +642,8 @@ export interface MenuTunableSpec {
   readonly scalar: string;
   /** Menu tip shown when cycling this setting. */
   readonly menuTip: string;
+  /** Section in the `opencues config` browser — one of `SETTINGS_GROUP_ORDER`. */
+  readonly group?: string;
   /** Cyclable values. First entry is the recommended default for the menu's initial render. */
   readonly values: readonly ValueSpec[];
   /**
@@ -625,28 +659,33 @@ export interface MenuTunableSpec {
 export const MENU_TUNABLES: readonly MenuTunableSpec[] = [
   {
     scalar: 'agent-debounce-ms',
+    group: 'Agent & thinking',
     menuTip: 'Pause after last keystroke before AgentRewrite fires (ms). Misparse → 1000.',
+    // Default first (matches the shipped OPENCUES.md + the consumer fallback).
     values: [
+      { id: '1000', description: 'Default — balanced' },
       { id: '150',  description: 'Twitchy — fires almost immediately; great with cached rewrites, costly on cache misses' },
       { id: '250',  description: 'Snappy — fires before most users finish a word; noticeably more responsive than the default' },
       { id: '500',  description: 'Aggressive — fires shortly after each pause' },
-      { id: '1000', description: 'Default — balanced' },
       { id: '2000', description: 'Relaxed — only fires after a clear stop' },
     ],
   },
   {
     scalar: 'blank-context-prewarm-ms',
+    group: 'Diagnostics',
     menuTip: 'Background refresh interval for the blank-context cache. Eliminates the ~200ms HTTP fan-out tax on the first `_` after launch by refreshing stocks/weather/crypto/HN in the background. `off` reverts to legacy lazy refresh.',
+    // Default first (consumer fallback is 35000 when the scalar is absent).
     values: [
+      { id: '35000',  description: 'Default — 35s; comfortably inside the 60s TTL so user-triggered calls always hit warm cache' },
       { id: 'off',    description: 'Disabled — cache refreshes lazily on prompt-build (legacy behaviour). Use on rate-limited keys.' },
       { id: '15000',  description: 'Aggressive — 15s; cache always fresh, ~40 HTTP calls/min to upstream sources' },
-      { id: '35000',  description: 'Default — 35s; comfortably inside the 60s TTL so user-triggered calls always hit warm cache' },
       { id: '60000',  description: 'Conservative — 60s; cache may refresh once on the first call after a long pause' },
       { id: '120000', description: 'Minimal — 120s; only suitable when context tokens change rarely' },
     ],
   },
   {
     scalar: 'max-concurrent-auditors',
+    group: 'Agent & thinking',
     menuTip: 'Cap on parallel auditor calls per tick. 0 = uncapped. Bound LLM cost when many auditors are active.',
     values: [
       { id: '0', description: 'Uncapped — all enabled auditors fire each tick' },
@@ -656,6 +695,7 @@ export const MENU_TUNABLES: readonly MenuTunableSpec[] = [
   },
   {
     scalar: 'blank-loading-animation',
+    group: 'Appearance',
     menuTip: 'Glyph progression shown at `_` while its source resolves. Stays in one column; restores to `_` on complete.',
     values: [
       { id: 'bounce',         description: '`_` `-` `‾` `-` — vertical pulse, returns to `_` (default)' },
@@ -667,21 +707,25 @@ export const MENU_TUNABLES: readonly MenuTunableSpec[] = [
   },
   {
     scalar: 'blank-loading-interval-ms',
+    group: 'Appearance',
     menuTip: 'Per-frame duration in ms. Lower = snappier, higher = each colour stays visible longer.',
+    // Default first (matches the shipped OPENCUES.md `blank-loading-interval-ms: 150`).
     values: [
-      { id: '75',  description: 'Rapid — 75ms per frame, blurs into motion' },
       { id: '150', description: 'Snappy (default) — 150ms per frame' },
+      { id: '75',  description: 'Rapid — 75ms per frame, blurs into motion' },
       { id: '300', description: 'Slow — 300ms per frame, each colour holds twice as long' },
     ],
   },
   {
     scalar: 'dim-mix',
+    group: 'Appearance',
     menuTip: 'How far the dim (unfocused) colour is mixed toward the page background. 0 = identical to host text colour; 100 = fully blended (invisible).',
     hostScope: ['chrome'],
+    // Default first (chrome's derive-colours default is dimMix 0.45).
     values: [
+      { id: '45',  description: 'Default — moderate fade' },
       { id: '0',   description: 'Off — no dim; cue + non-cue words render identically' },
       { id: '25',  description: 'Subtle — barely faded' },
-      { id: '45',  description: 'Default — moderate fade' },
       { id: '65',  description: 'Strong — clearly faded' },
       { id: '85',  description: 'Heavy — nearly invisible non-cue text' },
     ],
@@ -721,10 +765,11 @@ export function getMenuDefinitions(
   settings?: ReadonlyMap<string, string>,
 ): Map<string, {
   readonly tip?: string;
+  readonly group?: string;
   readonly valueOrder: readonly string[];
   readonly valueTips: ReadonlyMap<string, string>;
 }> {
-  const out = new Map<string, { tip?: string; valueOrder: readonly string[]; valueTips: ReadonlyMap<string, string> }>();
+  const out = new Map<string, { tip?: string; group?: string; valueOrder: readonly string[]; valueTips: ReadonlyMap<string, string> }>();
 
   // Features first (in declaration order), then tunables. Match the
   // original OPENCUES.md ordering so the menu's first-setting probe
@@ -742,6 +787,7 @@ export function getMenuDefinitions(
     for (const v of cyclable) tips.set(v.id, v.description);
     out.set(f.scalar, {
       tip: f.menuTip ?? f.description,
+      group: f.group,
       valueOrder: cyclable.map(v => v.id),
       valueTips: tips,
     });
@@ -755,12 +801,30 @@ export function getMenuDefinitions(
     for (const v of t.values) tips.set(v.id, v.description);
     out.set(t.scalar, {
       tip: t.menuTip,
+      group: t.group,
       valueOrder: t.values.map(v => v.id),
       valueTips: tips,
     });
   }
   return out;
 }
+
+/**
+ * Section display order for the `opencues config` browser. Each FEATURE /
+ * MENU_TUNABLE declares its `group:`; this array orders the sections. A group
+ * not listed here is appended after (alphabetically) — but every current
+ * group IS listed, pinned by a registry test.
+ */
+export const SETTINGS_GROUP_ORDER: readonly string[] = [
+  'Cues',
+  'Blanks',
+  'Context & identity',
+  'Agent & thinking',
+  'Voice & navigation',
+  'LLM routing',
+  'Appearance',
+  'Diagnostics',
+];
 
 /**
  * Look up a feature by scalar name. Returns undefined for unknown

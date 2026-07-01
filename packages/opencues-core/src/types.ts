@@ -164,20 +164,20 @@ export interface CueContext {
   sentinelLanguage?: 'bare' | 'typed';
 
   /**
-   * TYPED-SENTINEL Phase 4 — param-safe fn registry (capability gate). Maps a
+   * TYPED-SENTINEL Phase 4 — ai-callable fn registry (capability gate). Maps a
    * canonical fn display-name (e.g. `STOCK`) to its runtime blank + instance-
-   * token prefix. Built by the runtime ONLY from `param-safe: true` blanks;
+   * token prefix. Built by the runtime ONLY from `ai-callable: true` blanks;
    * its presence is what authorises an on-demand fetch. Absent → instance-only.
    */
-  paramSafeFns?: ReadonlyMap<string, { blankName: string; tokenPrefix: string }>;
+  aiCallableFns?: ReadonlyMap<string, { blankName: string; tokenPrefix: string }>;
   /** TYPED-SENTINEL Phase 4 — pre-rendered "LIVE FUNCTIONS" catalog block
-   *  (param-safe signatures) appended to the typed catalog so the LLM emits
+   *  (ai-callable signatures) appended to the typed catalog so the LLM emits
    *  parameterized calls. Built by the runtime; empty/undefined → no fns. */
-  paramSafeFnsBlock?: string;
+  aiCallableFnsBlock?: string;
   /**
    * TYPED-SENTINEL Phase 4 — capability-gated on-demand blank fetch. Called by
    * the typed resolver with an LLM-PROVIDED argument ONLY for blanks present in
-   * `paramSafeFns`. The runtime enforces param-safe + never routes a script
+   * `aiCallableFns`. The runtime enforces ai-callable + never routes a script
    * blank here. Returns the fetched value or undefined (→ graceful degrade).
    */
   blankFetch?: (blankName: string, arg: string) => Promise<string | undefined>;

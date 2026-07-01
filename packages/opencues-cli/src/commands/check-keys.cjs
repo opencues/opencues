@@ -7,7 +7,7 @@ const https = require('node:https');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { tag, bold, dim, banner, cliVersion } = require('../lib/style.cjs');
+const { bold, dim, green, red, banner, cliVersion, G } = require('../lib/style.cjs');
 
 module.exports = async function checkKeys(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -58,19 +58,20 @@ module.exports = async function checkKeys(argv, ctx) {
   const checks = [...llmChecks, { provider: 'finnhub', env: 'FINNHUB_API_KEY', fn: checkFinnhub }];
   let bad = 0;
   for (const c of checks) {
+    // Status ring: green ● = key works, red ● = key failed, gray ● = unset.
     const key = get(c.env);
     if (!key) {
-      console.log(`  ${tag('info')} ${bold(c.provider.padEnd(8))} ${dim(`${c.env} unset`)}`);
+      console.log(`  ${dim(G.ringOn)} ${bold(c.provider.padEnd(10))} ${dim(`${c.env} unset`)}`);
       continue;
     }
     const isTty = process.stdout.isTTY;
-    if (isTty) process.stdout.write(`  ${tag('info')} ${bold(c.provider.padEnd(8))} ${dim('checking…')}`);
+    if (isTty) process.stdout.write(`  ${dim(G.ringOn)} ${bold(c.provider.padEnd(10))} ${dim('checking…')}`);
     try {
       const res = await c.fn(key);
-      const line = `  ${tag('ok')} ${bold(c.provider.padEnd(8))} ${dim(res || 'ok')}\n`;
+      const line = `  ${green(G.ringOn)} ${bold(c.provider.padEnd(10))} ${dim(res || 'ok')}\n`;
       process.stdout.write(isTty ? `\r\x1b[K${line}` : line);
     } catch (err) {
-      const line = `  ${tag('err')} ${bold(c.provider.padEnd(8))} ${dim(err.message)}\n`;
+      const line = `  ${red(G.ringOn)} ${bold(c.provider.padEnd(10))} ${dim(err.message)}\n`;
       process.stdout.write(isTty ? `\r\x1b[K${line}` : line);
       bad++;
     }

@@ -7,6 +7,8 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
 const { tag, step, bold, dim, banner, cliVersion } = require('../lib/style.cjs');
+const prompt = require('../lib/prompt.cjs');
+const { pickHost } = require('../lib/pick-host.cjs');
 
 const HOST_ALIASES = {
   'claude-code': 'claude-code',
@@ -27,7 +29,7 @@ const HOST_ALIASES = {
 const HOSTS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'shell'];
 const HOST_FOLDERS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'shell'];
 
-module.exports = function uninstall(argv, ctx) {
+module.exports = async function uninstall(argv, ctx) {
   // Symmetric to `opencues install skill / plugin` — dispatch before
   // the help check + host resolver so subcommands don't fall through.
   if (argv[0] === 'skill') return uninstallSkill(argv.slice(1), ctx);
@@ -44,6 +46,10 @@ module.exports = function uninstall(argv, ctx) {
     passthrough.push(a);
   }
 
+  if (!target && prompt.isInteractive()) {
+    target = await pickHost(HOSTS, { verb: 'Uninstall which host', allowAll: true });
+    if (!target) return; // cancelled
+  }
   if (!target) {
     console.error(`opencues uninstall: missing <host>. One of: ${HOSTS.join(', ')}, --all`);
     console.error('Run `opencues uninstall --help` for details.\n');

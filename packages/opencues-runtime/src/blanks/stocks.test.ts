@@ -15,7 +15,7 @@ describe('StocksBlank', () => {
     expect(await ctl.get()).toBe('');
   });
 
-  it('treats an unmapped keyword AS a ticker symbol (param-safe on-demand)', async () => {
+  it('treats an unmapped keyword AS a ticker symbol (ai-callable on-demand)', async () => {
     const ctl = new StocksBlank({ apiKey: 'x', fetchFn: fetchOk({ c: 1 }) });
     expect(await ctl.get('amd')).toBe('AMD: $1.00');
   });

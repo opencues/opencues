@@ -25,6 +25,7 @@
 // when you add a new integration whose launch shape is novel.
 
 const { spawnSync } = require('node:child_process');
+const { bold, dim, red, green, yellow } = require('../lib/style.cjs');
 
 // Per-host process matchers. Each entry maps a host name to one or
 // more substring patterns that uniquely identify a running instance.
@@ -106,13 +107,6 @@ function killOne(pid, force) {
   try { process.kill(pid, force ? 'SIGKILL' : 'SIGTERM'); return true; }
   catch (e) { return false; }
 }
-
-const COLOR = process.stdout.isTTY && !process.env.NO_COLOR;
-const dim = s => COLOR ? `\x1b[2m${s}\x1b[0m` : s;
-const bold = s => COLOR ? `\x1b[1m${s}\x1b[0m` : s;
-const red = s => COLOR ? `\x1b[31m${s}\x1b[0m` : s;
-const green = s => COLOR ? `\x1b[32m${s}\x1b[0m` : s;
-const yellow = s => COLOR ? `\x1b[33m${s}\x1b[0m` : s;
 
 function abbrevArgs(args, max = 80) {
   if (args.length <= max) return args;

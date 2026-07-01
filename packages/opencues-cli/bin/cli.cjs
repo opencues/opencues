@@ -36,7 +36,8 @@ const COMMANDS = {
   'set-key':      () => require('../src/commands/set-key.cjs'),
   identity:       () => require('../src/commands/identity.cjs'),
   context:        () => require('../src/commands/context.cjs'),
-  'param-safe':   () => require('../src/commands/param-safe.cjs'),
+  launcher:       () => require('../src/commands/launcher.cjs'), // no-arg interactive menu
+  config:         () => require('../src/commands/config.cjs'),
   cleanup:        () => require('../src/commands/cleanup.cjs'),
   'check-keys':   () => require('../src/commands/check-keys.cjs'),
   update:         () => require('../src/commands/update.cjs'),
@@ -55,7 +56,9 @@ const ALIASES = {
 const argv = process.argv.slice(2);
 let command = argv[0] && (ALIASES[argv[0]] || argv[0]);
 const rest = (argv[0] && (ALIASES[argv[0]] || COMMANDS[argv[0]])) ? argv.slice(1) : argv;
-if (!command || !COMMANDS[command]) command = 'help';
+// No args at all → the interactive launcher (falls back to help in a non-TTY).
+// An unknown command → help (usage).
+if (!command || !COMMANDS[command]) command = (argv.length === 0) ? 'launcher' : 'help';
 
 const ctx = { pkg, PKG_DIR, REPO_ROOT };
 

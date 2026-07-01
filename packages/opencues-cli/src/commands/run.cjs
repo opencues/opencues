@@ -12,6 +12,8 @@ const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const style = require('../lib/style.cjs');
+const prompt = require('../lib/prompt.cjs');
+const { pickHost } = require('../lib/pick-host.cjs');
 const { pickNavCombo } = require('../lib/nav-combo.cjs');
 
 // Print the brand banner + a host/command/cwd tree + a one-line
@@ -193,7 +195,7 @@ function loadHostResolver(ctx) {
   }
 }
 
-module.exports = function run(argv, ctx) {
+module.exports = async function run(argv, ctx) {
   // --help / -h is intercepted ONLY when it appears before the host
   // name (or there is no host). Once a host has been named, every
   // remaining flag — including --help, --version, --continue, --resume,
@@ -233,6 +235,10 @@ module.exports = function run(argv, ctx) {
     else passthrough.push(a);
   }
 
+  if (!target && prompt.isInteractive()) {
+    target = await pickHost(HOSTS, { verb: 'Run which host' });
+    if (!target) return; // cancelled
+  }
   if (!target) {
     console.error(`opencues run: missing <host>. One of: ${HOSTS.join(', ')}`);
     console.error('Run `opencues run --help` for details.\n');

@@ -34,7 +34,7 @@ const SNAPSHOT = {
 };
 
 // LIVE FUNCTIONS block — mirror of boot-common.getRenderedBlock (keep in sync),
-// with all three param-safe functions (stocks + weather + crypto).
+// with all three ai-callable functions (stocks + weather + crypto).
 const LIVE_FUNCTIONS = `\n\nLIVE FUNCTIONS — these fetch live data for ANY argument, not only the values pre-listed above. When the content names an entity one of these can fetch (a stock ticker, a city's weather, …), emit the function CALL with that entity as the argument; the runtime fetches the live value and substitutes it.
 This OVERRIDES the "write a natural placeholder" rule for any entity a function covers: prefer the CALL [STOCK(ticker=AMZN)] over a generic placeholder like [Amazon Stock Price] or [Today's Price]. Use the ticker symbol / city / id as the argument; if the prose names a company, use its ticker (Amazon→AMZN, Netflix→NFLX, Reddit→RDDT).
 - [STOCK(ticker: string): number] — Stock price
@@ -45,7 +45,7 @@ Examples: "Amazon's share price" → [STOCK(ticker=AMZN)] · "how's Netflix doin
 const SYSTEM = `${FUSED_SYSTEM}${renderBlankCtx(SNAPSHOT, 'safe', 'typed')}${LIVE_FUNCTIONS}`;
 
 // Cases — generative transforms naming a NON-pre-fetched entity, across all
-// three param-safe functions. Each expects a specific [FN(argName=arg)] call.
+// three ai-callable functions. Each expects a specific [FN(argName=arg)] call.
 const CASES: Array<{ id: string; input: string; fn: string; argName: string; arg: string }> = [
   // stocks (pre-fetched: NVDA/AAPL/TSLA/MSFT/GOOGL)
   { id: 'amazon',   input: "write one short sentence about amazon's current share price _", fn: 'STOCK', argName: 'ticker', arg: 'AMZN' },

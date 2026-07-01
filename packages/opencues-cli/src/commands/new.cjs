@@ -9,6 +9,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { tag, bold, dim, fileLink, banner, cliVersion } = require('../lib/style.cjs');
+const prompt = require('../lib/prompt.cjs');
 
 const KINDS = new Set(['cue', 'blank']);
 const KIND_TO_DIR = { cue: 'cues', blank: 'blanks' };
@@ -18,7 +19,7 @@ const KIND_TO_DIR = { cue: 'cues', blank: 'blanks' };
 const KIND_TO_FILENAME = { cue: 'CUE.md', blank: 'BLANK.md' };
 const KIND_TEMPLATE = { cue: 'cue', blank: 'blank' };
 
-module.exports = function newCmd(argv, ctx) {
+module.exports = async function newCmd(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
 
   let kind = null, name = null;
@@ -28,6 +29,24 @@ module.exports = function newCmd(argv, ctx) {
     if (a.startsWith('-')) continue;
     if (!kind) kind = a;
     else if (!name) name = a;
+  }
+
+  // Interactive on a terminal when args are omitted.
+  if (!kind && prompt.isInteractive()) {
+    console.log(banner({ version: cliVersion(ctx), tagline: 'scaffold a cue / blank' }));
+    console.log('');
+    console.log(dim('What kind?  ·  ↑↓ move · Enter select'));
+    kind = await prompt.select('', [
+      { label: `cue     ${dim('· LLM word / sentence alternatives')}`, value: 'cue' },
+      { label: `blank   ${dim('· `_`-gated fill-in')}`, value: 'blank' },
+      { spacer: true },
+      { label: 'Cancel', value: null, dim: true },
+    ]);
+    if (!kind) return;
+  }
+  if (kind && !name && prompt.isInteractive()) {
+    name = await prompt.input(`Name for the ${kind} ${dim('(lowercase, hyphens)')}`);
+    if (!name) { console.log(`${tag('info')} cancelled — nothing created.`); return; }
   }
 
   if (!kind || !name) {
