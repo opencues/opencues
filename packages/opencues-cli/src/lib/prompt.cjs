@@ -134,7 +134,16 @@ class OcSelect extends stripPrefix(Select) {
   }
 }
 
-const OcInput = stripPrefix(Input);
+// The pre-filled value being edited renders with enquirer's `placeholder`
+// style (cyan+dim by default) — recolour it white so "the field you're filling
+// out" reads as normal editable text, not a cyan hint.
+class OcInput extends stripPrefix(Input) {
+  constructor(options) {
+    super(options);
+    this.styles.placeholder = brightWhite;
+    this.styles.primary = brightWhite; // also whitens the cursor block (inverse of primary)
+  }
+}
 const OcPassword = stripPrefix(Password);
 
 /**
