@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — `switch model to gemma` resolved to the wrong model in the config-intent classifier (`@opencues/core` 0.13.4 → 0.13.5)
+
+`switch model to gemma _` was silently resolving to `cerebras:gpt-oss-120b` instead of `gemma-4-31b`. The classifier's few-shot examples had no anchor mapping the informal "gemma" alias to the private-preview model id, so it emitted `MODEL:` empty per the "unrecognised model" rule — the apply path then fell back to the provider's `defaultModel` (gpt-oss-120b for cerebras). The equivalent `haiku` phrasing only appeared to work because Anthropic's `defaultModel` happens to literally be the haiku model id, masking the same gap. Added a `SYSTEM_PROMPT` few-shot example anchoring `switch model to gemma` → `cerebras / gemma-4-31b`. Verified live via the agentic harness: resolves to gemma-4-31b (conf 0.92) and correctly writes `blanks-llm-model` to `OPENCUES.md`.
+
 ### Added — `gemma` selectable by name in the fluid-config classifier (parity with `haiku`) (`@opencues/core` 0.13.3 → 0.13.4)
 
 `gemma-4-31b` was already in cerebras `knownModels` (so it resolves via the config menu and bucket-scoped phrasings like `use gemma for blanks _`), but `gemma` was missing from the fluid-config pre-filter's curated model-alias list — so bare-name phrasings (`use gemma _`, `switch to gemma _`) were silently skipped while `use haiku _` fired. Added `gemma` to the alias set for full parity. Verified live: `use gemma for blanks _` → cerebras/gemma-4-31b (0.92). **Not** the cerebras default (gpt-oss-120b stays default) — gemma is private preview. Regression test pins the gemma↔haiku parity; docs note in `docs/architecture/llm-routing.md`.
