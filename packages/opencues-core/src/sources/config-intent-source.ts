@@ -416,6 +416,15 @@ PROVIDER: gemini
 MODEL:
 CONFIDENCE: 0.8
 
+INPUT: switch model to gemma _
+INTENT: PROVIDER
+SETTING:
+VALUE:
+SCOPE: blanks
+PROVIDER: cerebras
+MODEL: gemma-4-31b
+CONFIDENCE: 0.85
+
 INPUT: switch to anthropic _
 INTENT: PROVIDER
 SETTING:
