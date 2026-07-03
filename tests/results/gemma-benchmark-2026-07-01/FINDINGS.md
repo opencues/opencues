@@ -191,3 +191,100 @@ correct in spirit, just unmeasurable at N=6.
 were broadened — `linked-n5` (accept "gluten-free pasta") and
 `multilingual-n5` (accept the declarative vous form). All other both-fails
 are genuine model failures kept as-is.
+
+---
+
+## Cues speed (2026-07-01) — word-cues + sentence-cues
+
+Extends the transform/fluid-blank latency numbers to the cue pipelines.
+gemma-4-31b vs gpt-oss-120b on cerebras.
+
+| Pipeline | gemma | gpt-oss | speedup | accuracy |
+|---|---|---|---|---|
+| **word-cues** (median latency, n=8 sequential) | **284ms** (min 198 / max 319) | 456ms (min 240 / max 892) | **1.6×** | both produce solid alts |
+| **sentence-cues** (avg buffer latency) | **233ms** | 673ms | **2.9×** | 32/34 (94.1%) vs 33/34 (97.1%) |
+
+Word-cues sample (gemma): `attorney → lawyer, counsel, litigator`;
+`unprecedented → unparalleled, novel, groundbreaking`. Sentence-cues:
+gemma dropped 1 `edge-technical` case (tech-jargon sentence); otherwise
+tied. gemma's non-reasoning path shows the biggest win on sentence-cues
+(2.9×) — short-output structured task where gpt-oss's reasoning overhead
+hurts most.
+
+**Full speed table across all pipelines (gemma / gpt-oss on cerebras):**
+
+| Pipeline | gemma | gpt-oss | speedup |
+|---|---|---|---|
+| sentence-cues | 233ms | 673ms | 2.9× |
+| transform-blank | 451ms | 1028ms | 2.3× |
+| word-cues | 284ms | 456ms | 1.6× |
+| fluid-blank | 427ms | 607ms | 1.4× |
+
+gemma is faster on every pipeline (1.4–2.9×), accuracy at/near parity
+except multilingual transforms (77% vs 90%).
+
+---
+
+## Token-latency scaling (2026-07-01) — speed vs tokens-in / tokens-out
+
+Sweeps to separate **prefill** (latency vs input tokens, fixed tiny output)
+from **decode** (latency vs output tokens, fixed tiny input). Latency +
+token counts read from the cerebras `usage` block; sequential calls,
+median of N (in: N=5, out: N=4). Plot: `token-latency-scaling.png`
+(data: `token-latency-scaling.csv`).
+
+### Prefill — latency vs INPUT tokens (fixed ~8-token output)
+
+| prompt tokens | gemma | gpt-oss |
+|---|---|---|
+| ~210 | 178ms | 212ms |
+| ~725 | 193ms | 406ms |
+| ~1,400 | 227ms | 311ms |
+| ~2,800 | 273ms | 270ms |
+| ~5,500 | 335ms | 447ms |
+| ~11,000 | 577ms | 570ms |
+
+**Slope ≈ 0.033–0.037 ms per input token** for both. Prefill is nearly
+free in OpenCues's range: a 210 → 11,000-token input adds only ~400ms
+(cerebras wafer-scale prefill). gemma's edge here is a **lower fixed
+baseline** (~178ms vs ~212ms), not a different slope.
+
+### Decode — latency vs OUTPUT tokens (fixed tiny input)
+
+| completion tokens | gemma | gpt-oss (+reasoning) |
+|---|---|---|
+| 16 | 458ms* | 203ms (+13r) |
+| 64 | 294ms | 291ms (+16r) |
+| 256 | 457ms | 685ms (+16r) |
+| 512 | 760ms | 725ms (+23r) |
+| 1024 | 1420ms | 1200ms (+15r) |
+| 1377 / 2048 | 1658ms | 1741ms (+21r) |
+
+`*`16-token gemma point is a cold-start outlier. **Slope: gemma ~0.88
+ms/output-token (~1,130 tok/s); gpt-oss ~0.76 ms/output-token (~1,320
+tok/s).** Decode throughput is comparable — gpt-oss's raw decode is even
+slightly faster for long generation. (On this prose task gpt-oss's
+reasoning tax is tiny, 13–23 tokens; on structured/classification tasks
+it's larger and it also stops-early on mechanical generation — its
+"list integers to N" run bailed at ~35 tokens.)
+
+### Synthesis — WHERE gemma's speed win comes from
+
+gemma's advantage is concentrated in the **low-latency / short-output
+regime**: a lower fixed baseline (~178 vs ~212ms) + **zero reasoning
+tokens**. Both prefill and decode *throughput* are comparable between the
+two. So:
+
+- **Short outputs (< ~100 tokens) → gemma wins big.** Every OpenCues cue/
+  blank output is short (word-cues, sentence rewrites, fluid-blank
+  answers, transform edits), so fixed overhead + reasoning tax dominate
+  → the 1.4–2.9× wins measured across pipelines.
+- **Long outputs → the gap closes.** At 1k+ output tokens, decode
+  throughput dominates and the two converge (gpt-oss even edges raw
+  tok/s). But OpenCues never generates long outputs, so this regime
+  doesn't apply to the product.
+
+**Bottom line:** gemma is the right pick precisely because OpenCues lives
+in the short-output regime where its lower overhead + no-reasoning path
+pay off. The token-scaling curves confirm the speed win is structural
+(overhead + reasoning), not a throughput fluke.
