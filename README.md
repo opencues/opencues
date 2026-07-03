@@ -1,16 +1,27 @@
+<div align="right">
+  <a href="#"><img width="180" height="29" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/OpenCues_logo.svg"></a>
+</div>
+<br><br>
+<div align="center">
+  <a href="#"><img width="600" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Hero.svg"></a>
+</div>
+
 <!-- TODO[logo]: drop a centered logo block. opencode pattern:
 <p align="center">
   <a href="https://opencues.com">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
       <source media="(prefers-color-scheme: light)" srcset="assets/logo-light.svg">
-      <img alt="OpenCues" src="assets/logo-light.svg" width="320">
+      <img alt="OpenCues" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/logo-light.svg" width="320">
     </picture>
   </a>
 </p>
 -->
+<br><br>
 
-# OpenCues
+<p align="left"><a href="#"><img height="18" width="93" alt="Cues" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-01.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://www.reddit.com/user/inventor_black/" target="_blank" rel="noopener noreferrer"><img height="18" width="177" alt="Blanks" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-02.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://www.reddit.com/user/ClaudeAI-mod-bot/" target="_blank" rel="noopener noreferrer"><img height="18" width="168" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-02.1.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://luma.com/OpenSourceIRL" target="_blank" rel="noopener noreferrer"><img height="18" width="161" alt="Auditors" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-03.svg"></a></p>
+
+#
 
 <!-- TODO[badges]: uncomment + fill DISCORD_ID + INVITE once those exist.
 The license badge text needs to match LICENSE (currently Proprietary → flip
@@ -30,6 +41,9 @@ the publish target broadens. Star + Build are wireable today.
 
 The three file formats (Cues / Blanks / Auditors) are open standards — designed so a non-JS port or alternative runtime *could* ship — and the spec at [`spec/`](spec/) is the field reference for anyone authoring those files. Today only the reference runtime in this repo implements them, powering all five integrations as thin host adapters over a shared core.
 
+<a href="#"><img width="100%" alt="Video placeholder" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Video_placeholder_1200x300.svg"></a>
+<br>
+
 <!-- TODO[hero]: pick ONE of these three (or ship all three over time):
 
 (a) Animated demo gif. ~10s loop of: type "the happy dog" → cycle "happy",
@@ -47,22 +61,43 @@ The three file formats (Cues / Blanks / Auditors) are open standards — designe
     Drop a thumbnail at assets/hero.png linking to the YT URL:
     [![Demo video](assets/hero.png)](https://youtu.be/VIDEO_ID)
 -->
+<br>
 
+><br>
 > **In 30 seconds — the vocabulary**
->
-> - **Cue** — a word the runtime offers alternatives for. You navigate to it with Ctrl+Alt+arrow and cycle synonyms with Ctrl+Alt+Up/Down. The buffer stays as you typed it until you cycle.
-> - **Blank** — a `_` you type. The runtime auto-fills it (`draft an email to my landlord _` → the email body, `hello world translate to french _` → `bonjour le monde`, `a b c format as bullet points _` → bullets). Each blank is gated by a keyword or by free-form lookup.
-> - **Auditor** — an inline rewriter that composes with other auditors (grammar, clarity, tone, ...) into one LLM call per agent tick.
->
-> Everything else in this README assumes these three.
+><br><br>
+> **Cue** — a word the runtime offers alternatives for. You navigate to it with Ctrl+Alt+arrow and cycle synonyms with Ctrl+Alt+Up/Down. The buffer stays as you typed it until you cycle.
+><br><br>
+> **Blank** — a `_` you type. The runtime auto-fills it (`draft an email to my landlord _` → the email body, `hello world translate to french _` → `bonjour le monde`, `a b c format as bullet points _` → bullets). Each blank is gated by a keyword or by free-form lookup.
+><br><br>
+>**Auditor** — an inline rewriter that composes with other auditors (grammar, clarity, tone, ...) into one LLM call per agent tick.
+><br><br>
+> Everything else in this README assumes these three.<br><br>
+<br><br>
 
-## Quickstart (beta)
 
+<p align="left"><a href="https://www.apache.org/licenses/LICENSE-2.0.txt" target="_blank" rel="noopener noreferrer"><img height="18" width="104" alt="Ownership 4" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-04.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="#"><img height="18" width="157" alt="Ownership 5" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-05.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="#"><img height="18" width="121" alt="Ownership 6" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-06.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="#"><img height="18" width="112" alt="Ownership 7" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-07.svg"></a></p>
+
+#
+
+<br><br><br><br>
+
+# Quickstart (beta)
+
+
+><br>
 > ⚠️ **Beta install — this section will shrink post-launch.**
 > Right now OpenCues isn't on npm, so you install from a clone of this
 > repo (steps 1-3 below). When `npm install -g opencues` ships, steps
 > 1 and 3 become one command and step 2 becomes a `set-key` subcommand.
-> Step 4 (the per-integration install) stays the same shape.
+> Step 4 (the per-integration install) stays the same shape.<br><br>
+
+<br><br>
+
+<p align="left"><a href="#"><img height="18" width="67" alt="Supports 8" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-08.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://opencode.ai" target="_blank" rel="noopener noreferrer"><img height="18" width="129" alt="Supports 9" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-09.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://claude.com/product/claude-code" target="_blank" rel="noopener noreferrer"><img height="18" width="144" alt="Supports 10" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-10.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://geminicli.com" target="_blank" rel="noopener noreferrer"><img height="18" width="126" alt="Supports 11" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-11.svg"></a></p>
+
+
+#
 
 ### 1. System prerequisites (one-time per machine)
 
@@ -119,6 +154,7 @@ in `~/.opencues/vendor/` so `opencues uninstall <host>` cleans them
 up; system packages prompt for sudo once and stay where your package
 manager put them. Pass `--no-prompts` to skip every offer (CI mode).
 
+><br>
 > **Native module fallback.** The runtime sandbox uses
 > [`isolated-vm`](https://github.com/laverdet/isolated-vm), a native
 > C++ binding. Prebuilt binaries cover linux/darwin x64+arm64 and
@@ -127,7 +163,11 @@ manager put them. Pass `--no-prompts` to skip every offer (CI mode).
 > rebuild`, which needs `build-essential` + `python3` on Linux or
 > `xcode-select --install` on macOS. The installer probes the binding
 > on every run; if it can't load, you get one actionable line with
-> the right fix for your platform before any host build starts.
+> the right fix for your platform before any host build starts.<br><br>
+
+<br>
+
+#
 
 ### 2. Get an LLM API key
 
@@ -147,6 +187,10 @@ Groq, OpenAI, Anthropic, Gemini, OpenRouter, and OpenCode Zen are all
 supported too — see [LLM providers](#llm-providers) below for the env
 var names and how to switch.
 
+<br>
+
+#
+
 ### 3. Bootstrap the `opencues` CLI
 
 ```bash
@@ -163,6 +207,10 @@ exec $SHELL -l
 # Verify
 opencues --version
 ```
+
+<br>
+
+#
 
 ### 4. Install an integration
 
@@ -211,6 +259,10 @@ After install, run `opencues doctor` to verify everything's wired
 boundaries). And `opencues update` later checks npm + rebuilds every
 detected integration in one command.
 
+<br>
+
+#
+
 ### Try it out
 
 OpenCues is **cues for the prompt you're giving an AI** — scaffolds that
@@ -220,9 +272,16 @@ surfaces are:
 - **Blanks** — type `_` and the runtime fills it. Use these to *write*
   the prompt: ask the AI to improve it, draft an email, translate, format
   a list, etc.
+
+<a href="#"><img width="100%" alt="Video placeholder" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Video_placeholder_1200x300.svg"></a>
+<br>
+
 - **Cues** — words you've already typed get inline alternatives. Use
   these to *refine* the prompt: navigate to a cued word and cycle
   synonyms or domain-aware replacements.
+
+<a href="#"><img width="100%" alt="Video placeholder" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Video_placeholder_1200x300.svg"></a>
+<br>
 
 #### Blanks — scaffolds for the prompt you're about to send
 
@@ -264,6 +323,10 @@ dropping a folder under `~/.cues/cues/<name>/CUE.md`. Hot-reload
 picks them up within ~2 seconds. Full authoring guide:
 [`docs/guides/adding-a-cue-blank.md`](docs/guides/adding-a-cue-blank.md).
 
+<br>
+
+#
+
 ### Stuck?
 
 ```bash
@@ -275,7 +338,9 @@ If cycling does nothing on Linux, your desktop is probably eating Ctrl+Alt+arrow
 
 For per-host installs, deeper troubleshooting, and uninstall: [`docs/install.md`](docs/install.md).
 
-## Supported editors
+<br><br><br><br>
+
+# Supported editors
 
 | Editor | Status | macOS | Linux | WSL | Windows native | Install |
 |--------|--------|:---:|:---:|:---:|:---:|---|
@@ -292,7 +357,9 @@ Per-host READMEs: [Claude Code](integrations/claude-code/README.md) · [OpenCode
 
 Each install pins a specific upstream version (e.g. Claude Code 2.1.110 or 2.1.150, OpenCode 1.14.17), clones it into its own dir (`~/claude-code-cues/`, `~/opencode-cues/`), and patches that copy. **Your native editor installs are never touched.** Uninstall is `opencues uninstall <host>`.
 
-## What you get
+<br><br><br><br>
+
+# What you get
 
 | Keys | Action |
 |------|--------|
@@ -303,7 +370,7 @@ Each install pins a specific upstream version (e.g. Claude Code 2.1.110 or 2.1.1
 - **Word cues** — navigate to any word, cycle through LLM-suggested alternatives, keep typing.
 - **Sentence cues** — declare `scope: sentence` on a cue and the whole sentence becomes cyclable. The shipped `more-formal` cue rewrites informal sentences to formal register.
 - **Blanks** — type `_` and get a completion: free-form generation (`draft an email about X _`), translation / formatting / past-tense / etc. (`translate to french _`, `format as bullet points _`), short factual answers (`what is the word for X _`), prompt rewrites (`improve prompt _`), and keyword-bound system actions (`volume _`, `brightness _`).
-- **Script-backed blanks** — `volume _` / `brightness _` call shell scripts so cycling actually changes your OS state. Type a value to set it directly (`volume 30 _`) or nudge it (`volume up _`). Routing is deterministic: a keyword fires only when it *leads the sentence* containing `_` (the segment after the last sentence terminator or newline before `_`, so `let me check. weather in london _` fires too), so `weather in london _` triggers a fetch but `the weather was lovely today _` (prose, keyword mid-sentence) never does.
+- **Script-backed blanks** — `volume _` / `brightness _` call shell scripts so cycling actually changes your OS state.
 - **Selector + satellite** — `opencues settings _` becomes two linked words (the setting + its current value); cycling the selector swaps the satellite.
 - **Inline agent** — `agentically correct spelling _` arms a continuous rewrite loop until you `stop task _`.
 - **Auditors** — declare grammar/clarity/tone concerns in `auditors/<name>/AUDITOR.md`; they compose into one LLM call per agent tick.
@@ -313,7 +380,9 @@ Each install pins a specific upstream version (e.g. Claude Code 2.1.110 or 2.1.1
 
 Full feature catalogue: [`docs/features/`](docs/features/) (40+ feature concepts grouped into 10 chapters).
 
-## The three file formats
+<br><br><br><br>
+
+# The three file formats
 
 OpenCues defines three surface formats. Each has its own spec file. Most users only interact with one or two — pick what you need; you don't have to use all three.
 
@@ -325,11 +394,22 @@ OpenCues defines three surface formats. Each has its own spec file. Most users o
 
 Each surface ships as a folder under `<root>/{cues,blanks,auditors}/<name>/` with an uppercase entry file (`CUE.md`, `BLANK.md`, `AUDITOR.md`). Master files (`CUES.md`, `BLANKS.md`, `AUDITORS.md`) configure the surface as a whole. All behaviour lives in `.md` files, never in integration code.
 
+<a href="#"><img width="100%" alt="Video placeholder" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Video_placeholder_1200x300.svg"></a>
+<br>
+
+<a href="#"><img width="100%" alt="Video placeholder" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Video_placeholder_1200x300.svg"></a>
+<br>
+
 **Authoring your own cues / blanks / auditors?** The spec docs above are the field reference for what every frontmatter field does. [`spec/conformance/`](spec/conformance/) ships an executable fixture tree — valid examples your authored files should look like, invalid examples for the gotchas. The reference runtime in this repo uses it as its own regression net (`packages/opencues-core/src/conformance.test.ts`). A non-JS port could exercise the same fixtures someday; none exists today.
+
+<a href="#"><img width="100%" alt="Video placeholder" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Video_placeholder_1200x300.svg"></a>
+<br>
 
 Spec status: `0.1-alpha`; changes tracked in [`spec/CHANGELOG.md`](spec/CHANGELOG.md).
 
-## Configuration
+<br><br><br><br>
+
+# Configuration
 
 Your user-level config lives at `~/.cues/` — one `OPENCUES.md` (runtime settings) plus the three master files and their per-source folders. Project-level overrides at `<cwd>/.cues/` merge on top for native hosts. Hot-reload picks up edits in ~2s.
 
@@ -343,7 +423,14 @@ Cycleable runtime settings (voice-mode, debug-mode, fluid-blank-mode, sentence-c
 
 Full config reference, scalar table, and authoring guide: [`docs/configuration.md`](docs/configuration.md).
 
-## LLM providers
+<br><br><br><br>
+
+# LLM providers
+<br>
+<div align="center">
+  <a href="#"><img width="600" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Hero-2.svg"></a>
+</div>
+<br><br>
 
 OpenCues supports **seven providers** out of the box: **Cerebras** (recommended
 default), Groq, OpenAI, Anthropic, OpenRouter, Gemini, and OpenCode Zen.
@@ -362,6 +449,12 @@ export GROQ_API_KEY="gsk-..."           # same weights, slightly slower
 #            OPENROUTER_API_KEY / OPENCODE_ZEN_API_KEY
 ```
 
+<a href="#"><img width="100%" alt="Video placeholder" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Video_placeholder_1200x300.svg"></a>
+<br>
+
+<br>
+
+#
 ### Switching provider for the whole runtime
 
 The active provider is a scalar in `~/.cues/OPENCUES.md` frontmatter. Open
@@ -378,6 +471,13 @@ Hot-reload picks it up in ~2 seconds — no restart. The status line shows
 the resolved provider + model when a cue fires; tail `/tmp/opencues.log`
 if you want the full trace.
 
+
+<br>
+
+<a href="#"><img width="100%" alt="Video placeholder" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Video_placeholder_1200x300.svg"></a>
+<br>
+
+#
 ### Switching the model within a provider
 
 Same file, `llm-model` scalar:
@@ -392,6 +492,13 @@ llm-model: openai/gpt-oss-120b   # whatever model name your provider exposes
 If unset, the runtime picks a sensible default per provider (cf.
 [`docs/guides/llm-providers.md`](docs/guides/llm-providers.md)).
 
+
+<br>
+
+<a href="#"><img width="100%" alt="Video placeholder" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Video_placeholder_1200x300.svg"></a>
+<br>
+
+#
 ### Per-feature routing (advanced)
 
 Pick a different provider / model just for *blanks* (the `_` surface) via
@@ -400,23 +507,35 @@ through a free or cheaper tier while keeping cues / auditors /
 agent-rewrite on a higher-quality model. Full per-feature table in the
 provider guide.
 
+
+<br>
+
+#
 ### Failover
 
 Setting **both** `CEREBRAS_API_KEY` and `GROQ_API_KEY` enables automatic
 429/5xx failover between them — same `gpt-oss-120b` weights mean no
 quality shift when one provider rate-limits. Recommended for heavy use.
 
+
+<br>
+
+#
 ### Free mode (no API key)
 
 Add `blank-llm-provider: free` to `~/.cues/OPENCUES.md` and **blanks** (FluidBlank / TransformBlank / ConfigIntent) route through [OpenCode Zen](https://opencode.ai/zen)'s free model pool — anonymously, no key required. The runtime walks the pool on transient failures and surfaces the resolved model in the status line.
 
-> ⚠️ **Data warning.** OpenCode Zen's free tier ToS says **your inputs may be used to train the underlying models**. Free mode is **blank-only by design** — cues, auditors, agent-rewrite (which run automatically on prose) never use this path, and `llm-provider: free` (the cue path) is refused at startup. Only `_` triggers go through the free pool, and only the surrounding context window — but treat anything you type next to a `_` in free mode as public.
+><br>
+> ⚠️ **Data warning.** OpenCode Zen's free tier ToS says **your inputs may be used to train the underlying models**. Free mode is **blank-only by design** — cues, auditors, agent-rewrite (which run automatically on prose) never use this path, and `llm-provider: free` (the cue path) is refused at startup. Only `_` triggers go through the free pool, and only the surrounding context window — but treat anything you type next to a `_` in free mode as public.<br><br>
 
-> ⚠️ **The pool changes.** Free models on OpenCode Zen rotate in and out — promotions end, models move behind paid tiers, new ones arrive. As of May 2026 the working set is `big-pickle` + `deepseek-v4-flash-free` + `nemotron-3-super-free`; the other two we benched (`qwen3.6-plus-free`, `minimax-m2.5-free`) have already moved to the paid OpenCode Go tier. The runtime health-caches dead entries for 30s and walks the rest, but the **canonical live list** is `GET https://opencode.ai/zen/v1/models` — re-check before relying on any specific model.
+><br>
+> ⚠️ **The pool changes.** Free models on OpenCode Zen rotate in and out — promotions end, models move behind paid tiers, new ones arrive. As of May 2026 the working set is `big-pickle` + `deepseek-v4-flash-free` + `nemotron-3-super-free`; the other two we benched (`qwen3.6-plus-free`, `minimax-m2.5-free`) have already moved to the paid OpenCode Go tier. The runtime health-caches dead entries for 30s and walks the rest, but the **canonical live list** is `GET https://opencode.ai/zen/v1/models` — re-check before relying on any specific model.<br><br>
 
 Per-provider setup, per-feature routing, and the bench data behind the recommendations: [`docs/guides/llm-providers.md`](docs/guides/llm-providers.md).
 
-## Security
+<br><br><br><br>
+
+# Security
 
 The runtime sandboxes third-party blanks via a Figma-style capability contract: a JS blank only gets `network`, `llm`, `storage`, or `secrets` access if its `BLANK.md` frontmatter declares it. Secrets without a matching `secret-hosts.<NAME>` binding are **refused at load time**. Output sanitization, sliding-window quotas, and an AST-based ESM rewriter (no dynamic `import()`) bound the blast radius.
 
@@ -437,7 +556,14 @@ Full threat model, capability tables, and per-surface boundaries:
 - [`docs/architecture/chrome-security.md`](docs/architecture/chrome-security.md) — Chrome's six boundaries
 - [`docs/architecture/ambient-context.md`](docs/architecture/ambient-context.md), [`docs/architecture/user-context.md`](docs/architecture/user-context.md) — the two opt-in context features
 
-## Contributing
+<br><br><br><br>
+
+# Contributing
+<br>
+<div align="center">
+  <a href="#"><img width="600" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Hero-3.svg"></a>
+</div>
+<br><br>
 
 - **Build an integration** — bring OpenCues to a new editor or IDE: see [`docs/guides/adding-an-integration.md`](docs/guides/adding-an-integration.md). The standards are at [`spec/`](spec/) and the conformance suite at [`spec/conformance/`](spec/conformance/).
 - **Add a cue, blank, or auditor** — `opencues new cue <name>` / `opencues new blank <name>` scaffolds a starting file. Full guide: [`docs/guides/adding-a-cue-blank.md`](docs/guides/adding-a-cue-blank.md).
@@ -445,7 +571,15 @@ Full threat model, capability tables, and per-surface boundaries:
 
 New to the terminology? [`docs/glossary.md`](docs/glossary.md) covers cues, blanks, cue-blanks, sources, parsers, master files, and routing.
 
-## Status
+<br><br>
+
+<p align="left"><a href="#"><img height="18" width="85" alt="Community" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Community-12.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://opencues.com/contributors" target="_blank" rel="noopener noreferrer"><img height="18" width="137" alt="Contributors" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Community-13.svg"></a></p>
+
+#
+
+<br><br><br><br>
+
+# Status
 
 | Component | Version | Status |
 |---|---|---|
@@ -461,7 +595,9 @@ New to the terminology? [`docs/glossary.md`](docs/glossary.md) covers cues, blan
 
 Version-bump runbooks for each integration: [`integrations/<host>/UPGRADING.md`](integrations).
 
-## Community
+<br><br><br><br>
+
+# Community
 
 <!-- TODO[community]: fill in Discord invite, Reddit go-live, and Discussions
 once enabled. The pre-launch checklist (.internal/pre-launch-readme.md)
@@ -480,7 +616,7 @@ tracks state.
 some stars. The widget polls api.star-history.com and renders without a
 GitHub API key. Place under Community, above License.
 
-## Star history
+# Star history
 
 [![Star History Chart](https://api.star-history.com/svg?repos=opencues/opencues&type=Date)](https://star-history.com/#opencues/opencues&Date)
 -->
@@ -489,7 +625,7 @@ GitHub API key. Place under Community, above License.
 configured (currently a stub). One-line shape if GitHub Sponsors only;
 expand to a logo wall if you take corporate sponsors later.
 
-## Sponsors
+# Sponsors
 
 If OpenCues helps you, consider [sponsoring development](https://github.com/sponsors/opencues).
 -->
@@ -497,7 +633,7 @@ If OpenCues helps you, consider [sponsoring development](https://github.com/spon
 <!-- TODO[contributors]: once there are >5 external contributors, enable
 the all-contributors bot OR drop in the simpler GitHub avatar wall:
 
-## Contributors
+# Contributors
 
 <a href="https://github.com/opencues/opencues/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=opencues/opencues" />
@@ -511,7 +647,9 @@ add a "Used by" logo wall under Community. Standard OSS social-proof
 shape. Skip until at least 3 logos exist.
 -->
 
-## License
+<br><br><br><br>
+
+# License
 
 Proprietary. All rights reserved. See [LICENSE](LICENSE).
 
