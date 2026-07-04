@@ -74,8 +74,27 @@ Step 1/4: Step 1 — enter plan mode — coach offline (no LLM key); type next _
 
 Missing key → immediate; network failures → after 2 consecutive failed
 coach calls (recovery resumes live coaching automatically). Everything
-deterministic (start/stop/next/skip, step counter, Esc ×3) is
-unaffected.
+deterministic (start/stop/next/skip, step counter, Esc ×3, idle nudges
+— which fall back to a static "Still there?" line) is unaffected.
+
+## Idle nudges + lesson memory
+
+Go quiet mid-step and the coach checks in on its own — a context-aware
+nudge referencing your partial input and what you've already completed
+("Finish typing “give me an overview…” and press Enter."). A second
+idle window escalates once with the escape valve (`· stuck? skip _
+skips this step`), then the coach goes QUIET — two nudges per stall,
+never nagging. Any activity resets the cycle. Nudges are advisory:
+they never advance steps (no new evidence) and never stop the
+tutorial.
+
+The coach also keeps a **lesson journal** — one line per completed
+step recording how you completed it — in context for every check-in,
+so guidance and nudges build on the whole lesson, not just your last
+few keystrokes. (Known limit: explicit recap questions — "what have I
+done so far?" — are answered with the next action rather than a
+summary on cerebras gpt-oss; the journal is in context, the model is
+just terse. Coach-quality bench will tune this.)
 
 ## Writing a tutorial
 
@@ -131,6 +150,7 @@ The Claude Code ones are verified against the official CC docs.
 |---|---|---|
 | `tutorials-mode` | on (absent) | `off` disables the feature entirely |
 | `tutorial-debounce-ms` | 300 | pause length before a coach check-in |
+| `tutorial-nudge-ms` | 30000 | idle window before a proactive nudge (`0` disables) |
 
 The coach call uses the **auditors** LLM bucket
 (`auditors-llm-provider:` → global `llm-provider:` fallback) — it is a

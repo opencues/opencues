@@ -214,6 +214,7 @@ export function boot(host: HostInfo): BootResult {
     tutorialsDirs: configSearchPaths.map(p => `${p}/tutorials`),
     resolveLLM: () => buildAgentLLMResolver(configLoader, apiKeys),
     cadenceMs: () => parseInt(configLoader.opencuesState.settings.get('tutorial-debounce-ms') ?? '', 10),
+    nudgeMs: () => parseInt(configLoader.opencuesState.settings.get('tutorial-nudge-ms') ?? '', 10),
     log: msg => log('debug', msg),
   });
   tutorialCoach.subscribe();

@@ -220,6 +220,63 @@ describe('TutorialCoach journeys (deterministic contracts)', () => {
     void failing;
   });
 
+  it('idle nudge (no LLM): fires at the window, escalates once with skip _, then stays quiet; activity resets', async () => {
+    const h = makeHarness(); // resolveLLM null → deterministic nudge path
+    await h.type('start tutorial 1 _');
+    // Activity keeps resetting the window — no nudge while engaged.
+    await vi.advanceTimersByTimeAsync(20_000);
+    await h.type('working on it');
+    await vi.advanceTimersByTimeAsync(29_000);
+    expect(h.events.filter(e => e.type === 'tutorial.nudge')).toHaveLength(0);
+    // Full idle window from the last activity → nudge 1.
+    await vi.advanceTimersByTimeAsync(2_000);
+    let nudges = h.events.filter(e => e.type === 'tutorial.nudge');
+    expect(nudges).toHaveLength(1);
+    expect(nudges[0].body).toMatchObject({ nudgeNumber: 1, deterministic: true });
+    expect(h.coach.status()?.coach).toContain('Still there?');
+    // Another full window of silence → nudge 2 offers skip _.
+    await vi.advanceTimersByTimeAsync(31_000);
+    nudges = h.events.filter(e => e.type === 'tutorial.nudge');
+    expect(nudges).toHaveLength(2);
+    expect(h.coach.status()?.coach).toContain('skip _');
+    // Third window → QUIET (cap reached, no nagging).
+    await vi.advanceTimersByTimeAsync(62_000);
+    expect(h.events.filter(e => e.type === 'tutorial.nudge')).toHaveLength(2);
+    // New activity resets the cap — the user came back, stalling again
+    // deserves fresh nudges.
+    await h.type('back again');
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(h.events.filter(e => e.type === 'tutorial.nudge')).toHaveLength(3);
+    // Nudges never advance the step.
+    expect(h.coach.status()).toMatchObject({ step: 1 });
+  });
+
+  it('idle nudge stops on deactivate and never fires when disabled', async () => {
+    const h = makeHarness();
+    await h.type('start tutorial 1 _');
+    await h.type('stop tutorial _');
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(h.events.filter(e => e.type === 'tutorial.nudge')).toHaveLength(0);
+  });
+
+  it('lesson journal: completed steps ride into the coach context with their evidence', async () => {
+    const h = makeHarness();
+    await h.type('start tutorial 1 _');
+    await vi.advanceTimersByTimeAsync(300);
+    await h.type('git status');
+    await h.type('', 'git status');   // submit closes step 1 evidence-wise
+    await h.type('done _');           // manual advance → journals step 1
+    await h.type('done _');           // → journals step 2
+    const j = (h.coach as unknown as { _journal: string[] })._journal;
+    expect(j).toHaveLength(2);
+    expect(j[0]).toContain('Step 1 (Step 1 — first) ✓');
+    expect(j[1]).toContain('Step 2 (Step 2 — second) ✓');
+    // Journal is wiped on restart.
+    await h.type('stop tutorial _');
+    await h.type('start tutorial 1 _');
+    expect((h.coach as unknown as { _journal: string[] })._journal).toHaveLength(0);
+  });
+
   it('unknown tutorial → not-found event + transient catalogue notice', async () => {
     const h = makeHarness();
     await h.type('start tutorial 99 _');

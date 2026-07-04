@@ -154,6 +154,7 @@ interface TraceEntry {
 const TRACE_MAX = 10;
 const COACH_MAX_CHARS = 140;
 const DEFAULT_CADENCE_MS = 300;
+const DEFAULT_NUDGE_MS = 30_000;
 
 export interface TutorialCoachOptions {
   /** `<searchPath>/tutorials` dirs, priority order (project first). */
@@ -163,6 +164,9 @@ export interface TutorialCoachOptions {
   readonly resolveLLM: () => ResolvedAgentLLM | null;
   /** Debounce between text-change and coach tick. Default 300ms. */
   readonly cadenceMs?: number | (() => number);
+  /** Idle window before a proactive nudge. Default 30s; 0 disables.
+   *  Thunk form re-read per arm so `tutorial-nudge-ms` hot-reloads. */
+  readonly nudgeMs?: number | (() => number);
   readonly log?: (msg: string) => void;
   /** Test seam. Defaults to a lazy NodeHttpAdapter on native hosts. */
   readonly httpAdapter?: { post(url: string, body: string, headers: Record<string, string>): Promise<string> };
@@ -202,6 +206,19 @@ export class TutorialCoach {
   /** Consecutive failed coach calls — 2+ flips the coach line to the
    *  deterministic offline hint. Reset on any successful tick. */
   private _consecutiveErrors = 0;
+  /** Idle-nudge machinery. The timer re-arms on every user activity
+   *  (text, salient key) and on step advance; fires at most twice per
+   *  step (nudge 1 re-orients, nudge 2 offers skip _, then quiet — an
+   *  assistant that nags forever is worse than none). */
+  private _idleTimer: ReturnType<typeof setTimeout> | null = null;
+  private _nudgeCount = 0;
+  private _idleSince = 0;
+  /** Lesson journal — one line per COMPLETED step recording how it was
+   *  completed (the evidence at advance time). Rides into every coach
+   *  call as LESSON SO FAR, so the coach and its nudges have context
+   *  across the whole lesson, not just the recent trace ring. Bounded
+   *  by stepCount; wiped on start/stop. */
+  private _journal: string[] = [];
 
   /** Deterministic degraded-mode line: current step + how to advance
    *  manually + the exit. Idempotent per step (deduped by content). */
@@ -273,6 +290,7 @@ export class TutorialCoach {
   unsubscribe(): void {
     if (this._unsubText) { this._unsubText(); this._unsubText = null; }
     if (this._debounceTimer) { clearTimeout(this._debounceTimer); this._debounceTimer = null; }
+    if (this._idleTimer) { clearTimeout(this._idleTimer); this._idleTimer = null; }
   }
 
   /**
@@ -333,6 +351,7 @@ export class TutorialCoach {
       // exit is discoverable mid-press without any model round-trip.
       this._coachLine = `Esc ×${3 - this._escCount} more to exit the tutorial`;
       this._escResetTimer = setTimeout(() => { this._escCount = 0; }, 2_500);
+      this.armIdleTimer();
       this.refreshStatusline();
       return; // escape presses never feed the trace/tick
     }
@@ -354,6 +373,7 @@ export class TutorialCoach {
     } else {
       this.pushTrace({ kind: 'key', text: label, count: 1 });
     }
+    this.armIdleTimer();
     this.scheduleTick();
   }
 
@@ -401,6 +421,7 @@ export class TutorialCoach {
         this.pushTrace({ kind: 'typed', text });
       }
     }
+    this.armIdleTimer();
     this.scheduleTick();
   }
 
@@ -434,6 +455,7 @@ export class TutorialCoach {
         this._doc = doc;
         this._stepIndex = 0;
         this._trace = [];
+        this._journal = [];
         this._coachLine = `Step 1/${doc.steps.length} — ${doc.steps[0].title} · Esc ×3 exits`;
         this.consumePhrase(text, ctl.phraseStart);
         this.adapter.emitEvent?.('tutorial.started', {
@@ -441,6 +463,7 @@ export class TutorialCoach {
         });
         this._logFn(`Tutorial: started "${doc.name}" (${doc.steps.length} steps)`);
         this.refreshStatusline();
+        this.armIdleTimer();
         return;
       }
       case 'stop': {
@@ -484,6 +507,16 @@ export class TutorialCoach {
   private advanceStep(reason: 'user' | 'coach'): void {
     if (!this._doc) return;
     const from = this._stepIndex;
+    // Journal the completed step with the evidence that closed it.
+    const doneStep = this._doc.steps[from];
+    const evidence = this._trace.length > 0 ? this._trace[this._trace.length - 1] : null;
+    const how = reason === 'user'
+      ? 'user advanced manually'
+      : evidence === null ? 'completed'
+        : evidence.kind === 'submitted' ? `submitted: "${evidence.text.slice(0, 60)}"`
+          : evidence.kind === 'key' ? `pressed: ${evidence.text}${(evidence.count ?? 1) > 1 ? ` (×${evidence.count})` : ''}`
+            : `typed: "${evidence.text.slice(0, 60)}"`;
+    this._journal.push(`Step ${from + 1} (${doneStep.title}) ✓ — ${how}`);
     if (from + 1 >= this._doc.steps.length) {
       const name = this._doc.name;
       const stepCount = this._doc.steps.length;
@@ -502,6 +535,7 @@ export class TutorialCoach {
     });
     this._logFn(`Tutorial: step ${from + 1} → ${this._stepIndex + 1} (${reason})`);
     this.refreshStatusline();
+    this.armIdleTimer();
   }
 
   private deactivate(): void {
@@ -510,6 +544,9 @@ export class TutorialCoach {
     this._coachLine = null;
     this._offTrack = false;
     this._trace = [];
+    this._journal = [];
+    this._nudgeCount = 0;
+    if (this._idleTimer) { clearTimeout(this._idleTimer); this._idleTimer = null; }
     if (this._debounceTimer) { clearTimeout(this._debounceTimer); this._debounceTimer = null; }
   }
 
@@ -572,6 +609,95 @@ export class TutorialCoach {
     const c = this.options.cadenceMs;
     const n = typeof c === 'function' ? c() : c;
     return typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : DEFAULT_CADENCE_MS;
+  }
+
+  // ── idle nudge (proactive check-in) ──────────────────────────────────
+
+  private nudgeWindow(): number {
+    const c = this.options.nudgeMs;
+    const n = typeof c === 'function' ? c() : c;
+    if (n === 0) return 0; // explicit disable
+    return typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : DEFAULT_NUDGE_MS;
+  }
+
+  /** (Re)arm the idle timer. Called on every user activity, on step
+   *  advance, and at activation. Any activity also resets the per-step
+   *  nudge counter — the cap exists to stop NAGGING, not to stop
+   *  nudging a user who came back and stalled again. */
+  private armIdleTimer(resetCount = true): void {
+    if (this._idleTimer) { clearTimeout(this._idleTimer); this._idleTimer = null; }
+    if (resetCount) this._nudgeCount = 0;
+    if (!this._doc) return;
+    const win = this.nudgeWindow();
+    if (win <= 0) return;
+    this._idleSince = Date.now();
+    this._idleTimer = setTimeout(() => { void this.fireNudge(); }, win);
+    (this._idleTimer as { unref?: () => void }).unref?.();
+  }
+
+  private async fireNudge(): Promise<void> {
+    this._idleTimer = null;
+    if (!this._doc) return;
+    if (this._nudgeCount >= 2) return; // said our piece — stay quiet
+    if (this._inFlight) { this.armIdleTimer(false); return; } // let the tick land first
+    const doc = this._doc;
+    const stepAtDispatch = this._stepIndex;
+    const idleMs = Date.now() - this._idleSince;
+    this._nudgeCount++;
+    const nudgeNumber = this._nudgeCount;
+    const skipHint = nudgeNumber >= 2 ? ' · stuck? skip _ skips this step' : '';
+    const resolved = this.options.resolveLLM();
+    if (!resolved) {
+      // Deterministic nudge — same idea, no model.
+      const i = Math.min(stepAtDispatch, doc.steps.length - 1);
+      this._coachLine = `Still there? Step ${i + 1}/${doc.steps.length}: ${doc.steps[i].title}${skipHint || ' — type next _ when done'}`;
+      this._offTrack = false;
+      this.adapter.emitEvent?.('tutorial.nudge', { step: i + 1, nudgeNumber, idleMs, deterministic: true, coach: this._coachLine });
+      this.refreshStatusline();
+      this.armIdleTimer(false);
+      return;
+    }
+    this._inFlight = true;
+    const started = Date.now();
+    try {
+      const out = await dispatchChat(
+        resolved.provider as unknown as Parameters<typeof dispatchChat>[0],
+        this.getHttpAgent() as Parameters<typeof dispatchChat>[1],
+        {
+          model: resolved.model,
+          messages: [
+            { role: 'system', content: this.systemPrompt(doc) },
+            { role: 'user', content: this.userPrompt(stepAtDispatch, { idleMs, nudgeNumber }) },
+          ],
+          maxTokens: 2048,
+          temperature: 0,
+          seed: 42,
+        },
+        { apiKey: resolved.apiKey, endpoint: resolved.endpoint, maxThinking: resolved.maxThinking ?? true },
+      );
+      const latencyMs = Date.now() - started;
+      if (this._doc !== doc || this._stepIndex !== stepAtDispatch) return; // world moved on
+      const verdict = parseCoachResponse(out);
+      // A nudge is ADVISORY: no new evidence arrived, so the verdict can
+      // never advance a step and never marks off-track — only the COACH
+      // line is taken (plus the deterministic skip hint on nudge 2).
+      // CONTROL: STOP is also ignored here — quitting is a response to
+      // the USER's words, and the user said nothing.
+      if (verdict) {
+        this._coachLine = (verdict.coach.slice(0, COACH_MAX_CHARS - skipHint.length) + skipHint);
+        this._offTrack = false;
+        this.adapter.emitEvent?.('tutorial.nudge', { step: stepAtDispatch + 1, nudgeNumber, idleMs, latencyMs, coach: this._coachLine, model: resolved.model });
+        this.refreshStatusline();
+      } else {
+        this.adapter.emitEvent?.('tutorial.nudge', { step: stepAtDispatch + 1, nudgeNumber, idleMs, latencyMs, parseError: true });
+      }
+    } catch (err) {
+      this._logFn(`Tutorial: nudge call failed — ${err instanceof Error ? err.message : String(err)}`);
+      this.adapter.emitEvent?.('tutorial.nudge', { step: stepAtDispatch + 1, nudgeNumber, idleMs, error: true });
+    } finally {
+      this._inFlight = false;
+      this.armIdleTimer(false); // next nudge (or quiet if capped) after another window
+    }
   }
 
   private scheduleTick(): void {
@@ -715,7 +841,7 @@ Rules:
 - Detection is your job — the user should NEVER have to announce completion. When the step's expected key presses appear in the trace (e.g. shift+tab ×2 for a mode toggle, arrows + enter for a picker), that IS completion: STEP_DONE.
 - If the activity clearly belongs to a LATER step than the current one (e.g. the current step is a mode toggle you can't fully verify, but they're already typing the next step's request), the current step is behind them: STEP_DONE. EXCEPTION: a step's own coach notes always override this — when they mark the order as strict (skipping = OFF_TRACK), enforce the order instead.
 - COACH is ONE line (max 100 chars): the next micro-action ("Press Enter to open the model picker"), a fix ("add: don't implement yet"), or brief encouragement. Follow any coach notes in the step body.
-- Meta-questions to you ("help", "what do I do now?", "where am I?") are NOT off-track — answer them: STATUS IN_PROGRESS, COACH restates the current micro-action. OFF_TRACK is reserved for actions that contradict the step.
+- Meta-questions to you ("help", "what do I do now?", "where am I?") are NOT off-track — answer them: STATUS IN_PROGRESS, COACH restates the current micro-action. When they ask what they've DONE so far, answer from LESSON SO FAR in a few words, then the next action (e.g. "You've run /init and gotten an overview — now ask how to run the tests."). OFF_TRACK is reserved for actions that contradict the step.
 - TRUST COMPLETION CLAIMS on steps you can't observe: if the user explicitly claims they completed an outside-the-input-box action ("done", "I did it", "I'm in plan mode now") and the trace doesn't contradict them, that's STEP_DONE. Never hold a user hostage to key-press evidence you might simply have missed.
 - USER CONTROLS you must know (and mention when relevant): the user can type "stop tutorial _" to exit the tutorial at any time, and "skip _" to force-skip the current step. When they want to quit, are frustrated, or ask how to exit → COACH must include: type stop tutorial _ to exit. When they've been stuck on the same step for several checks despite your coaching → give the EXACT text to type, and mention skip _ as the escape.
 - Coach in the user's language: if they're typing in French, coach in French; same for any language. The control phrases (stop tutorial _, skip _) and commands (/init, /model) stay verbatim in English.
@@ -733,7 +859,7 @@ STEPS (${doc.steps.length} total):
 ${steps}`;
   }
 
-  private userPrompt(stepIndex: number): string {
+  private userPrompt(stepIndex: number, nudge?: { idleMs: number; nudgeNumber: number }): string {
     const trace = this._trace.length === 0
       ? '(no activity yet)'
       : this._trace.map(t => {
@@ -742,7 +868,13 @@ ${steps}`;
         return `- typed: "${t.text}"`;
       }).join('\n');
     const buffer = this._lastText.trim().length === 0 ? '(empty)' : this._lastText;
-    return `CURRENT STEP: ${stepIndex + 1}\nRECENT ACTIVITY:\n${trace}\nCURRENT BUFFER: ${buffer}`;
+    const journal = this._journal.length === 0
+      ? ''
+      : `LESSON SO FAR:\n${this._journal.map(l => `- ${l}`).join('\n')}\n`;
+    const nudgeBlock = nudge
+      ? `\nNUDGE CHECK-IN: the user has been idle for ~${Math.round(nudge.idleMs / 1000)}s on the current step (nudge ${nudge.nudgeNumber} of 2). Give ONE short, warm, context-aware nudge — reference their partial input or what they've already completed when helpful. There is NO new evidence, so STATUS must not be STEP_DONE.`
+      : '';
+    return `CURRENT STEP: ${stepIndex + 1}\n${journal}RECENT ACTIVITY:\n${trace}\nCURRENT BUFFER: ${buffer}${nudgeBlock}`;
   }
 
   private getHttpAgent(): NonNullable<TutorialCoachOptions['httpAdapter']> {

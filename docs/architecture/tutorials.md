@@ -130,10 +130,34 @@ later-step evidence completes the current step UNLESS the step's coach
 notes demand strict order); meta-question handling ("help" is
 IN_PROGRESS, not OFF_TRACK); responding in the user's language;
 surfacing `stop tutorial _` / `skip _` on quit-intent and stuck-loops;
-hint-mode discipline. These were all hardened by an adversarial
+hint-mode discipline; recap-from-journal phrasing. These were all hardened by an adversarial
 "dumb user" probe suite — when touching the system prompt, re-run that
 class of probe (quit attempts, bare "done" claims, wrong-order inputs,
 gibberish, French) on the harness before shipping.
+
+## Idle nudge + lesson journal
+
+`armIdleTimer()` re-arms on every user activity (text, salient keys,
+Escape presses), on step advance, and at activation; window from
+`tutorial-nudge-ms` (default 30s, `0` disables, thunk hot-reloads).
+`fireNudge()`: max 2 per stall (counter resets on any activity — the
+cap stops NAGGING, not re-nudging a returned user); nudge 2 appends a
+deterministic `· stuck? skip _ skips this step`; in-flight coach call →
+re-arm and yield. LLM path sends the normal context + a `NUDGE
+CHECK-IN` block; the verdict is ADVISORY — only COACH is taken (no
+step advance: no new evidence arrived; CONTROL: STOP ignored: the user
+said nothing). No-LLM path emits a deterministic "Still there?" line.
+Events: `tutorial.nudge {step, nudgeNumber, idleMs, latencyMs, coach |
+deterministic | error | parseError}`.
+
+The **lesson journal** (`_journal`) records one line per COMPLETED step
+with the evidence that closed it (`Step 2 (…) ✓ — submitted: "write a
+plan…"`), bounded by stepCount, wiped on start/stop, rendered as
+`LESSON SO FAR:` in every coach/nudge user message. This is the
+cross-step memory — the trace ring alone is 10 entries and forgets
+early steps. Known limit: cerebras gpt-oss under-uses it for explicit
+recap questions (answers with the next action instead); the journal is
+in context, tune in the coach-quality bench.
 
 ## Modal suppression
 
