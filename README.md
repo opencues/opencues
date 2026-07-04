@@ -36,7 +36,7 @@ what is the capital city of france _                                →  Paris
 4 + 4 = _                                                            →  4 + 4 = 8
 ```
 
-OpenCues is platform, model, and provider agnostic, engineered from the ground up to enable native inline AI. Works in Claude Code, OpenCode, Gemini CLI, Chrome, and a standalone shell wrapper.
+OpenCues is platform, model, and provider agnostic, engineered from the ground up to enable native inline AI.
 
 > ⚠️ **Private beta.** `npm install -g opencues` isn't live yet. Install from a clone instead — see **[BETA-INSTALL.md](BETA-INSTALL.md)**. Everything past the install step below is accurate today.
 
