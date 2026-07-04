@@ -61,43 +61,70 @@ Source: `packages/opencues-core/src/llm-provider.ts`.
 
 ## How to configure
 
-Edit `~/.cues/OPENCUES.md` (frontmatter holds settings; body is documentation):
+Edit `~/.cues/OPENCUES.md` (frontmatter holds settings; body is documentation).
+Precedence, highest wins: **per-cue/per-blank > per-feature (advanced,
+file-edit-only) > bucket > global > auto-fallback.** For the common
+case, you want the bucket tier — `opencues config` only exposes
+buckets + global in its menu; per-feature stays a file-edit-only
+escape hatch.
 
-### Global default — applies to every surface
+### Global default — applies to every surface left on auto
 
 ```yaml
-llm-provider: groq
-llm-model: openai/gpt-oss-120b
+llm-provider: cerebras
+llm-model: gpt-oss-120b
 # llm-endpoint: …    # rare — only for self-hosted gateways
 ```
 
-### Per-feature override — finer granularity
+### Bucket override — the primary per-surface knob
 
-Four surfaces accept their own provider+model+endpoint:
+Three buckets, each with one provider/model scalar pair — see
+[`docs/architecture/llm-routing.md`](../architecture/llm-routing.md)
+for the full design:
 
 ```yaml
-# 1. Word cues — synonyms / antonyms / linked alternatives
-#    Spelling, legal, medical, etc. all flow through this tier
-#    because they're config-driven word-scope cues (see
-#    `defaults/cues/`). Override an individual cue's provider via
-#    its frontmatter.
+cues-llm-provider: cerebras        # word-cues, sentence-cues
+cues-llm-model: gpt-oss-120b
+
+auditors-llm-provider: cerebras    # auditors, agent-rewrite
+auditors-llm-model: gpt-oss-120b
+
+blanks-llm-provider: cerebras      # fluid-blank, transform-blank, fluid-config, keyword blanks
+blanks-llm-model: gpt-oss-120b
+```
+
+Each defaults to `inherit` (falls through to the global `llm-provider`).
+`blanks` is the only bucket that exposes `opencode-zen` — see
+[Free mode](#free-mode-no-api-key) above.
+
+### Per-feature override (advanced, file-edit-only)
+
+A narrower, older tier — four individual surfaces still accept their
+own provider+model+endpoint, kept for callers that need finer control
+than the bucket they belong to:
+
+```yaml
+# Word cues — synonyms / antonyms / linked alternatives
 word-cues-provider: groq
 word-cues-model: openai/gpt-oss-120b
 
-# 2. Fluid blank — free-form `_` lookups (P1 SEGMENT + P3 ANSWER)
+# Fluid blank — free-form `_` lookups
 fluid-blank-provider: cerebras
 fluid-blank-model: gpt-oss-120b
 
-# 3. Transform blank — imperative-instruction edits
+# Transform blank — imperative-instruction edits
 transform-blank-provider: groq
 transform-blank-model: openai/gpt-oss-120b
 
-# 4. Agent rewrite — full-buffer rewrite agent
+# Agent rewrite — full-buffer rewrite agent (lives in the auditors bucket)
 agent-provider: cerebras
 agent-model: gpt-oss-120b
 ```
 
-Each per-feature key falls back to the global setting when unset.
+Each per-feature key falls back to its bucket (then the global
+setting) when unset. These are deliberately **not** in the
+`opencues config` menu — they're a power-user override, not a
+discoverable setting.
 
 ### Per-cue / per-blank override — finest granularity
 
@@ -114,8 +141,8 @@ priority: 70
 ```
 
 This cue alone will use Anthropic; everything else inherits the
-global / per-feature settings. Useful when one specialist domain
-benefits from a different model character.
+bucket / global settings. Useful when one specialist domain benefits
+from a different model character.
 
 The shipped spelling cue lives at `defaults/cues/spelling/CUE.md` —
 add `provider:` / `model:` to its frontmatter (or to a project-level
@@ -127,9 +154,10 @@ without affecting the rest of `word-cues-*`.
 | Tier | Where | Keys |
 |---|---|---|
 | **Per-cue / per-blank** | `CUE.md` / `BLANK.md` frontmatter | `provider:`, `model:`, `endpoint:` |
-| **Per-feature** | `~/.cues/OPENCUES.md` frontmatter | `<feature>-provider:`, `<feature>-model:`, `<feature>-endpoint:` |
-| **Global** | `~/.cues/OPENCUES.md` frontmatter | `llm-provider:`, `llm-model:`, `llm-endpoint:` |
-| **Built-in default** | n/a | groq + `openai/gpt-oss-120b` |
+| **Per-feature** *(advanced, file-edit-only)* | `~/.cues/OPENCUES.md` frontmatter | `<feature>-provider:`, `<feature>-model:`, `<feature>-endpoint:` |
+| **Bucket** | `~/.cues/OPENCUES.md` frontmatter, or `opencues config` | `cues-llm-provider:`/`cues-llm-model:`, `auditors-llm-*`, `blanks-llm-*` |
+| **Global** | `~/.cues/OPENCUES.md` frontmatter, or `opencues config` | `llm-provider:`, `llm-model:`, `llm-endpoint:` |
+| **Built-in default** | n/a | cerebras + `gpt-oss-120b` |
 
 The most-specific tier wins. Provider and model are *paired* — if a
 tier specifies a provider but not a model, the model falls back to
@@ -180,23 +208,32 @@ become each other's failover.
 
 ## Reasoning effort
 
-OpenCues passes `reasoning_effort: 'low'` to providers that honour it
-(Groq's `gpt-oss-*` line, Cerebras's `gpt-oss-*`, OpenAI's reasoning
-models when the heuristic detects them). The flag is silently dropped
-for providers/models that don't accept it.
+**This is now a user-exposed scalar, not a hardcoded value.** The
+`max-thinking: on | off` scalar in `OPENCUES.md` (default `on`) picks
+between a per-model `{ max, off }` ceiling pair in
+`packages/opencues-core/src/model-thinking.ts`'s `MODEL_THINKING`
+table — e.g. `cerebras:gpt-oss-120b` ceilings at `medium` when `on`,
+drops to `low` when `off`; other provider/model pairs have their own
+ceilings. `reasoning_effort` is silently dropped for providers/models
+that don't accept it at all.
 
-**Don't bump above `low`.** The 2026-05-08 bench showed:
-- `medium` regresses fluid-blank by 50%+ (model outputs prose instead
-  of the structured `SPAN: / CONTEXT:` format).
-- `high` regresses transform-blank on Groq specifically (overthinks
-  composed instructions).
-- Quality saturates at `low` for every OpenCues task surface.
+The 2026-05-08 bench behind the original `'low'`-only default still
+holds as the *rationale* for conservative ceilings: `medium` regressed
+fluid-blank by 50%+ (prose instead of the structured `SPAN: /
+CONTEXT:` format) and `high` regressed transform-blank on Groq
+specifically (overthinks composed instructions) — which is why the
+ceilings in `MODEL_THINKING` are calibrated per model rather than one
+global "always low" rule.
 
-The reasoning_effort field isn't user-exposed in CUES.md right now —
-it's hardcoded to `'low'` by each source. Adding per-feature override
-is a small change if a future surface needs it.
+Full design, the resolution chokepoint (`resolveReasoningEffort()`),
+and per-model ceiling rationale:
+[`docs/architecture/max-thinking.md`](../architecture/max-thinking.md).
 
 ## Pricing (May 2026)
+
+Provider pricing lives on their own pages, not in this repo's code —
+treat this table as a directional snapshot and check the provider's
+current pricing page before making a cost-sensitive decision.
 
 | Provider | Input ($/M) | Output ($/M) | Notes |
 |---|---|---|---|
@@ -216,9 +253,10 @@ fluid-blank quality (per the bench); Groq wins on short-prompt TTFT.
 ## Host integration notes
 
 ### Claude Code (`integrations/claude-code/`)
-The patch (`opencuesRuntime.ts`) reads all five env keys at startup
-and forwards them as `host.llmApiKeys`. No code change to switch
-providers — just edit `~/.cues/CUES.md`.
+The patch (`opencuesRuntime.ts`) reads all six env keys (GROQ,
+OPENROUTER, GEMINI, OPENAI, ANTHROPIC, CEREBRAS) at startup and
+forwards them as `host.llmApiKeys`. No code change to switch
+providers — just edit `~/.cues/OPENCUES.md`.
 
 ### OpenCode (`integrations/opencode/`)
 Same — `opencuesBootstrap.ts` reads all keys from `process.env` and

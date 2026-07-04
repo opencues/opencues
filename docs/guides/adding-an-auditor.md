@@ -108,26 +108,27 @@ A registry would mean any user could install a pack from anyone, and the failure
 
 **Sharing your auditor**: publish the `AUDITOR.md` file as documentation (a gist, a blog post, a repo with a README that includes the file body verbatim). Users who want to install it copy the file manually. There is no shortcut. Treat the prompt body as code that runs against the user's text — because that's what it is.
 
-A future revision of the standard MAY add a registry with cryptographic provenance and stronger output validation. v1.0 does not.
+A future revision of the standard MAY add a registry with cryptographic provenance. v1.0 does not.
 
-In addition to the trust gate at install time, the runtime applies **lightweight output validation** to every auditor's rewrite (regardless of provenance):
+In addition to the trust gate at install time, the runtime runs every
+merged rewrite through `validateLLMRewrite()`
+(`packages/opencues-runtime/src/modules/agent-rewrite.ts`) before
+committing it to the buffer — this is a **sanity net against bad LLM
+output, not a content/security filter**. It rejects (discards the
+round, logs the reason, tries again next tick) exactly four shapes:
 
-- Length-delta cap: rewrites that change the buffer length by > 1.5× the input are rejected.
-- Character-class drift: rewrites that introduce zero-width Unicode or control characters are flagged.
-- Unexpected-content emergence: rewrites that introduce URLs, markdown images, or code fences when the input had none are flagged, unless `expected-changes:` in the auditor's frontmatter declares those classes.
+- **Identical to snapshot** — a no-op round.
+- **Empty/whitespace-only** on a non-empty snapshot.
+- **Suspiciously short** — under 30% of the snapshot's length (only checked when the snapshot is over 20 chars).
+- **Strict-prefix truncation** — under 80% of the snapshot's length AND the snapshot starts with the rewrite verbatim (the model stopped mid-sentence).
 
-If your auditor legitimately needs to introduce, say, redaction markers (`[REDACTED]`) or formatted citations, declare them:
-
-```yaml
----
-name: pii-redact
-description: Replace emails / phone numbers / addresses with [REDACTED]
-priority: 50
-expected-changes: [redaction-marker]
----
-```
-
-The `expected-changes:` allowlist tells the validator which content classes are normal output for this auditor. Common values: `redaction-marker`, `url`, `markdown-image`, `code-fence`. Without the declaration, the runtime treats unexpected emergence as a flag.
+There's no length-delta ceiling, no character-class scanning, and no
+per-auditor `expected-changes:` declaration — an auditor that
+legitimately needs to introduce URLs, redaction markers, or code
+fences doesn't need to declare anything; those checks don't exist.
+The four checks above are about catching a broken/truncated LLM
+response, not policing what an auditor is allowed to output — that's
+still fully the trust model in this section, not a runtime filter.
 
 ## 6. Per-project disable
 
@@ -158,7 +159,6 @@ The auditor is filtered out at this layer's composition. cd out of the project, 
 - **Putting output-format instructions in the body.** "Output as JSON" — overrides the runtime contract; the merge layer can't parse it. Just write the rewrite concern in prose.
 - **Using `match:` or `keywords:`.** Inert — auditors don't have triggers; remove these fields if you copied a CUE.md template by accident.
 - **Per-auditor `provider:`.** Currently inert in the OpenCues runtime. Under isolated mode each auditor is its own LLM call so per-auditor routing is structurally possible, but the standard hasn't required it yet and the runtime doesn't read the field. Use `auditors-provider:` / `auditors-model:` in OPENCUES.md if you want a non-default model for the auditor pass.
-- **Forgetting `expected-changes:` on a redacting/citing/linking auditor.** The runtime's output validator flags rewrites that introduce URLs, markdown images, code fences, or `[REDACTED]`-style markers when the input had none. Legitimate auditors that produce these outputs MUST declare them — `expected-changes: [redaction-marker]` (or `[url]`, `[markdown-image]`, `[code-fence]`) in frontmatter — or their rewrites will be silently dropped.
 - **Forgetting `transform-blank-mode: on`.** Without it, `agentically X _` falls through fluid-blank as a lookup query and your auditor never gets composed. Default `on` in fresh `defaults/OPENCUES.md`, but existing user installs may not have it (seed-configs is first-time-only).
 
 ## 9. Spec references

@@ -11,10 +11,7 @@ state, day-to-day operations. One CLI normalizes "install / update
 very different install models underneath.
 
 For the high-level mental model see [`docs/overview.md`](../overview.md);
-this page is the per-subcommand reference, organized by **lifecycle
-stage** (Setup → Authoring → Run/inspect). Want a one-line-per-command
-lookup sorted by how often you'll actually reach for it instead? See
-[`cli-cheatsheet.md`](cli-cheatsheet.md) — same commands, different cut.
+this page is the per-subcommand reference.
 
 ```
 $ opencues --help
@@ -47,15 +44,9 @@ opencues install opencode            # patch the OpenCode fork at ~/opencode-cue
 opencues install chrome              # build the MV3 extension into integrations/chrome/dist/
 opencues install chrome --wsl        # also mirror to the Windows desktop install dir
 opencues install gemini-cli          # patch the Gemini CLI 0.41.x fork at ~/gemini-cli-cues
-opencues install chrome-host --extension-id <id>  # the native-messaging host for live ~/.cues/ sync + script exec
+opencues install shell                # standalone Bun + OpenTUI app, no upstream fork (oc-shell / oc-edit)
 opencues install --all               # install every detected host
 ```
-
-`chrome-host` is a separate sub-action from `chrome` — it installs the
-local native-messaging host that watches `~/.cues/` and pushes bundles
-into the running extension, rather than building the extension itself.
-It writes nothing to `~/.cues/`, so it skips `seed-configs` and shares
-no install steps with the `chrome` target.
 
 Forwards extra args to the underlying installer after `--`:
 
@@ -82,17 +73,20 @@ Owns all writes to the user-level `~/.cues/` tree. Idempotent + safe to
 re-run. Invoked automatically (with `--silent`) by every `opencues install <host>`,
 and runnable standalone whenever you suspect drift.
 
-Four phases on every invocation:
+Four phases on every invocation. Note this command owns `OPENCUES.md`
++ `AUDITORS.md` + the `cues/`/`blanks/`/`auditors/`/`scripts/` folder
+dirs — it never touches `CUES.md`/`BLANKS.md` (those are `opencues
+init`'s job, for project-level scaffolding; see below):
 
-1. **SEED** — first-time copy of `defaults/CUES.md + cues/ + blanks/ + scripts/` → `~/.cues/`. Skips files that already exist with content (preserves user edits).
+1. **SEED** — first-time copy of `defaults/{OPENCUES.md,AUDITORS.md,cues/,blanks/,scripts/}` → `~/.cues/`. Skips files that already exist with content (preserves user edits).
 2. **SYNC** — overwrites stale library files (`.sh` / `.cs` / `.ps1` from `defaults/{blanks,scripts}/`) every install. Never overwrites `.md` (user content). Catches drift when path-resolution logic changes between repo versions.
-3. **HEAL** — re-seeds a 0-byte `~/.cues/CUES.md`. The runtime's `OpenCuesSettingsBlank` silently no-ops on empty content, so a 0-byte file would silently break `opencues ___` / `config ___` blank-fills on every native host (CC + OC). Chrome unaffected — uses bake-time fallback.
+3. **HEAL** — re-seeds a 0-byte `~/.cues/OPENCUES.md` from `defaults/OPENCUES.md`, and merges in any new scalars a fresh install shipped that an existing user's file predates (keeping the user's existing values). A 0-byte `OPENCUES.md` would otherwise silently break every runtime-settings read (`opencues settings _`, hot-reload, feature toggles) on every native host (CC + OC). Chrome unaffected — uses bake-time fallback.
 4. **COMPILE** (WSL only) — compiles colocated `.cs` → `.exe` next to the script that uses them (`BrightCtl.exe` next to `brightness.sh`, `VolCtl.exe` next to `volume.sh`, `SpeakCtl.exe` next to `speak.sh`). Idempotent — only compiles when `.exe` is older than `.cs`.
 
 | Flag | Effect |
 |---|---|
 | (none) | User-level. Runs all four phases. |
-| `--project` | Writes into `<cwd>/.cues/` instead (only the SEED phase — sync/heal/compile are user-level only). Skips `CUES.md` (its frontmatter is runtime-owned; no project-level overrides for system settings). |
+| `--project` | Writes into `<cwd>/.cues/` instead — only `cues/`/`blanks/`/`auditors/` folders (no `scripts/`, no `OPENCUES.md`; sync/heal/compile are user-level only). For `CUES.md`/`BLANKS.md`/`AUDITORS.md` master-file scaffolding at the project level, use `opencues init --project`. |
 | `--silent` | Suppress non-error output (used when chained from `opencues install`). |
 | `--dry-run` | Print the plan; do not copy / compile anything. |
 
@@ -188,13 +182,16 @@ and the `INDEX:alt` format-spec line that the LLM should follow.
 Walks every search-path layer (env / project / user), parses every
 `.md`, and reports issues:
 
-- Schema problems (missing required fields, malformed YAML)
-- Host-compat contradictions (`on-host:` lists chrome but the
-  blank has `blankScript: ./*.sh`)
-- Multiple defaults without a priority discriminator
-- Tip JSON parse failures inside folder-based `cues/<name>/CUE.md` body blocks
+- Schema problems (malformed frontmatter, a cue with neither `match:` nor `keywords:`, a blank with no `blankKeywords`, an `impl:`/`blankScript:` pointing at a file that doesn't exist)
+- Host-compat resolving to zero hosts (the entry can never run)
+- Blank-specific footguns: no binding profile declared (unreachable at runtime), a `blankScript` that isn't executable, `sandbox:` left unset, `impl:` declaring no capabilities, secret bindings that are orphaned/unreachable/unused
+- Endpoint config problems (invalid or non-default `-endpoint:` overrides)
+- Empty cue/auditor body (no tip-group JSON, no prompt text — nothing for the source to actually do)
 
-Exit 0 on success, 1 on errors. Suitable for CI.
+Each finding is tagged with its lint-rule code (see `spec/core.md` §
+Linting rules) — `--json` for machine-readable output, `--strict` to
+treat warnings as errors. Exit 0 on success, 1 on errors (or warnings
+under `--strict`). Suitable for CI.
 
 ### `import <source>` — install a community config pack
 
@@ -218,7 +215,7 @@ Two-pass review before you trust a pack: (1) a deterministic static
 parse (reuses `validate`'s logic — counts declared capabilities,
 red flags, suspicious source patterns), (2) an opt-in LLM second
 opinion (`--llm`; pure text-in/text-out, no tool access, pack content
-wrapped in `<untrusted>` delimiters). The static parse is the
+wrapped in `<untrusted-source>` delimiters). The static parse is the
 authority; the LLM verdict can only downgrade a rating, never upgrade
 one. `opencues import` runs this automatically and requires an
 explicit confirm before installing.
@@ -441,6 +438,7 @@ opencues list --blanks | grep -c domain  # how many domain blanks exist
 | `opencode` | Patches the fork at `~/opencode-cues` | Quiet by default; `--verbose` for full output |
 | `chrome` | esbuild-builds the MV3 extension into `integrations/chrome/dist/` | `--wsl` also mirrors to the Windows desktop install dir |
 | `gemini-cli` | Clones the fork at `~/gemini-cli-cues`, installs deps, builds + installs `@opencues/{core,runtime}`, drops `opencuesBootstrap.ts` in, patches 4 source files, runs `npm run build` | Pinned to Gemini CLI 0.41.x via `integrations/gemini-cli/pin.json` |
+| `shell` | No upstream fork — preflights Bun/tmux, `bun install`s OpenTUI deps, auto-installs a vendored tmux if none usable | Vendored tools land in `~/.opencues/vendor/`; exposes `oc-shell` (wraps your interactive shell in a private tmux session) / `oc-edit` |
 
 ---
 

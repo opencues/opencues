@@ -235,9 +235,11 @@ violates this invariant and the threat model must be re-reviewed.
 
 ## Conformance
 
-Conformance fixtures live at
-[`conformance/identity/`](./conformance/identity/) (added alongside
-this spec). The fixture shape:
+Conformance fixtures are planned at `conformance/identity/` but have
+not landed yet — tracked as an explicit coverage gap in
+[`conformance/README.md`](./conformance/README.md#versioning) until
+the `0.1-alpha` → `0.2-alpha` fixture fork happens. Until then, this
+spec text is authoritative. Planned fixture shape:
 
 - `valid/` — IDENTITY.md files a conformant parser MUST accept,
   paired with the expected derived-token set.

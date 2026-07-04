@@ -64,10 +64,16 @@ Relative `blankScript` paths (starting with `./`) are resolved against the folde
 
 ### BlankConfig fields
 
+Not exhaustive — this covers the fields you'll touch authoring a
+typical script-backed or list blank. `BlankConfig` has more (sandbox,
+context/ai-callable, host/site scoping, user-blank capabilities, …);
+see `packages/opencues-core/src/cues-md.ts`'s interface for the full set.
+
 | Field | Required | Type | Description |
 |-------|----------|------|-------------|
 | `name` | Yes | string | Identifier (e.g. `volume`). Also inferred from folder name. |
 | `type` | Yes | string | Always `blank`. |
+| `impl` | Yes (for runtime-class blanks) | string | Names a built-in `@opencues/runtime` TS class (e.g. `StocksBlank`) or points at user-shipped JS (`./blank.js`). Alternative to `blankScript` for LLM/HTTP-backed blanks — see the runtime-class section below. |
 | `tip` | No | string | Label shown in the status line when the keyword/value is highlighted (live `get` output overrides). |
 | `blankScript` | Yes (for OS-bound blanks) | string | Path to the script for `get` / `set` / `up` / `down`. Use `./<name>-blank.sh` (relative to the BLANK.md). |
 | `blankKeywords` | Yes | string\|string[] | Friendly shorthand: keywords that bind a `_` to this blank when one leads the sentence containing `_`. Desugar at parse time into anchored `blankShapes`. Multi-word phrases allowed. Required: the resolver's auto-populate / cycling path (`BlankSource`) keys off `blankKeywords`, so a blank still needs them even when it also declares `blankShapes`. |

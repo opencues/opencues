@@ -1,14 +1,11 @@
 ---
-last_updated: 2026-07-04
+last_updated: 2026-05-19
 ---
 
 # `opencues` CLI cheat sheet
 
 Every `opencues` verb in one page, sorted by how often you'll reach
-for it. Each row links to the relevant guide where one exists. Want
-the full per-command detail organized by lifecycle stage (Setup →
-Authoring → Run/inspect) instead? See
-[`cli-reference.md`](cli-reference.md) — same commands, different cut.
+for it. Each row links to the relevant guide where one exists.
 
 > **Tip:** `opencues help <command>` prints the full help for any
 > command. `opencues help` lists every command without descriptions.
@@ -19,7 +16,7 @@ Authoring → Run/inspect) instead? See
 
 | Command | What it does | When you reach for it |
 |---|---|---|
-| `opencues install <host>` | One-shot installer for `claude-code` / `opencode` / `chrome` / `chrome-host` / `gemini-cli`. Handles fork clone + build + patch end-to-end. | First-time setup; after pulling new core changes. |
+| `opencues install <host>` | One-shot installer for `claude-code` / `opencode` / `chrome` / `chrome-host` / `gemini-cli` / `shell`. Handles fork clone + build + patch end-to-end (`shell` has no upstream fork — preflights Bun/tmux instead). | First-time setup; after pulling new core changes. |
 | `opencues run <host>` | Launch the patched host with the right env (`OPENCUES_HOME` etc). Also exposed as bare `claude-cues`, `opencode`, `gemini-cli` once installed. | Daily — same shape as launching the editor normally. |
 | `opencues new <cue\|blank> <name>` | Scaffold a folder with a pre-filled template. `--project` for `<cwd>/.cues/`, `--dry-run` to preview. | Adding a new cue or blank. See [adding-a-cue-blank.md](adding-a-cue-blank.md). |
 | `opencues doctor` | Cross-host install diagnostics. Checks every integration's build-state, every shipped default's presence, every API key. | Anything looks off. **First thing to try when stuck.** |
