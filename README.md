@@ -30,10 +30,10 @@ publish cutover) and Discord badge (once DISCORD_ID/INVITE are real):
 Rather than navigating to a chat interface or AI-enabled input box, define a query in plain text: an LLM discovers your query and answers it inline, right where you wrote it.
 
 ```
-what is the capital city of france _   →  Paris
-4 + 4 = _                              →  4 + 4 = 8
-the attorney filed today               →  cycle "attorney" (Ctrl+Alt+Up)  →  the lawyer filed today
-draft an email to my landlord asking for a rent reduction _  →  (the email, written)
+hey can u send me that report when u get a sec make this formal _  →  Could you please send me that report at your earliest convenience?
+draft an email to my landlord asking for a rent reduction _        →  (the email, written)
+what is the capital city of france _                                →  Paris
+4 + 4 = _                                                            →  4 + 4 = 8
 ```
 
 OpenCues is platform, model, and provider agnostic, engineered from the ground up to enable native inline AI. Works in Claude Code, OpenCode, Gemini CLI, Chrome, and a standalone shell wrapper.
@@ -84,8 +84,9 @@ Each pins its own upstream fork and never touches your native editor install. Pe
 
 # What you get
 
-- **Cues** — navigate to a word, cycle LLM-suggested alternatives, keep typing.
-- **Blanks** — type `_` for free-form generation, translation, formatting, prompt rewrites, or keyword-bound system actions (`volume _`, `weather _`).
+- **Blanks** — type `_` for free-form generation, translation, formatting, full-register rewrites, or keyword-bound system actions (`volume _`, `weather _`).
+- **Sentence rewrites** — cycle a whole sentence to a different register (formal, concise, ...) with one keystroke, no `_` needed.
+- **Word cues** — navigate to a single word and cycle a smaller LLM-suggested alternative.
 - **Personal + ambient context** (opt-in) — `my email _` substitutes your real address; fluid lookups can read the page you're on.
 - **Hot-reload** — every `.md` config picks up edits in ~2s, no restart.
 
