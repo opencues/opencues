@@ -1,67 +1,39 @@
 ---
-last_updated: 2026-04-06
+last_updated: 2026-07-04
 ---
 
 # Linked Words
 
-Linked words are words that must change together when any one of them cycles. When the user cycles "boy" to "girl", the pronoun "his" simultaneously becomes "her". The LLM detects these semantic relationships and returns them as index arrays on each word definition.
+> ⚠️ **Not implemented in the current runtime.** This page describes a
+> feature that existed in the pre-refactor Claude Code patch (the
+> `globalThis`-based `_cycleAlt`/`_dynDefs` system) and has NOT been
+> carried over to `@opencues/runtime`'s modular `Cycling`/`DynDefs`
+> system. Read this as a design record / possible-future-work
+> reference, not as current behavior.
+
+Linked words are words that must change together when any one of them cycles. When the user cycles "boy" to "girl", the pronoun "his" would simultaneously become "her". The idea was for an LLM prompt to detect these semantic relationships and return them as index arrays on each word definition.
 
 ---
 
-## How It Works
+## Current status
 
-1. **LLM detection**: The linked words prompt analyses the input and returns `linked` index arrays on each `CueResult` — e.g., word 0 ("boy") gets `linked: [3]` and word 3 ("his") gets `linked: [0]`
-2. **Storage**: `linked` arrays are stored on the `WordDef` objects in `globalThis._dynDefs.words`
-3. **Cycling trigger**: When the user presses Up/Down on a highlighted word, `_cycleAlt` checks `_dWord.linked`
-4. **Propagation**: All linked words are updated to the same `currentAltIndex` and their text is replaced in a single pass
+- **`CueResult.linked?: number[]`** still exists on the type (`packages/opencues-core/src/types.ts:28`), and the resolver still merges `linked` arrays across sources when present (`resolver.ts:323-333`) — this plumbing was never removed.
+- **Nothing produces real `linked` data today.** A `prompts/linked.txt` reference file still sits in `packages/opencues-core/prompts/`, but no source class loads or dispatches it — grepping for `linked.txt`/`LINKED_PROMPT` across `opencues-core/src/` returns zero hits. `LocalCueSource` always sets `linked: null` on its own entries; it only merges the field through if some other source populates it, which none currently do.
+- **Nothing consumes `linked` in the runtime.** `packages/opencues-runtime/src/modules/cycling.ts` has zero references to `linked` — cycling a word today never propagates to any other word, co-dependent or not.
 
-Detected relationship types include:
-- **Gender agreement**: "The boy loves his dog" -- boy links to his
-- **Number agreement**: "The cats chase their toys" -- cats links to their and toys
-- **Verb agreement**: "She runs" -- she links to runs
-- **Possession**: "John loves his car" -- John links to his
+So the field is a vestige: real in the type system, inert everywhere else. If you're implementing a new integration, you can safely ignore `linked` — nothing sets it and nothing reads it.
 
 ---
 
-## CueResult Contract
+## If this gets reimplemented
 
-The `CueResult` interface in `types.ts` defines the linked field:
+The original design, for reference:
 
-```typescript
-linked?: number[];
-```
+1. An LLM prompt would analyze the input and return `linked` index arrays on each `CueResult` — e.g., word 0 ("boy") gets `linked: [3]` and word 3 ("his") gets `linked: [0]`. Relationship types envisioned: gender agreement, number agreement, verb agreement, possession.
+2. The relationship is symmetric — if word A lists B, word B lists A.
+3. When cycling a word with a non-empty `linked` array, every linked word's `currentAltIndex` would update to match, with all text replacements committed as a single atomic buffer update (never partially visible).
 
-On `WordDef` (the runtime representation), this becomes:
-
-```typescript
-linked?: number[] | null;
-```
-
-Each entry is a zero-based word index into the whitespace-split word array. The relationship is symmetric: if word A lists B in its `linked` array, word B lists A in its `linked` array. The resolver merges `linked` arrays from multiple sources.
-
-When building `WordDef` objects from `CueResult`, the integration stores `linked` directly:
-
-```javascript
-var _wdef = { index: _r.wordIndex, word: _r.word, alts: ..., linked: _r.linked || null, ... };
-```
-
----
-
-## Cycling Behaviour
-
-The linked-word cycling logic lives in `_cycleAlt` inside `@opencues/runtime`. After the primary word is cycled to `_nextAlt`:
-
-1. **Guard**: Check `_dWord.linked && _dWord.linked.length > 0`
-2. **Iterate**: For each linked index `_lIdx`:
-   - Skip if out of bounds (`_lIdx < 0 || _lIdx >= _allW.length`)
-   - Find the linked word's definition (`_lDef`) in `_dWords`
-   - Skip if the linked word has no alt at `_nextAlt` (`_lDef.alts.length <= _nextAlt`)
-3. **Update index**: Set `_lDef.currentAltIndex = _nextAlt` (same position as the primary word)
-4. **Get new text**: `_lNew = _lDef.alts[_nextAlt]`
-5. **Replace in text**: Locate `_lOld` (the current text at `_lIdx`) by scanning forward through word positions using `_updW` (a map of already-updated indices), then splice `_lNew` into `_newText`
-6. **Track**: Record `_updW[_lIdx] = _lNew` so subsequent linked replacements use correct positions
-
-All linked replacements happen in the same pass before the text is committed to `globalThis._hlText` and `globalThis._hlState.text`. The user sees a single atomic update.
+Any reimplementation would need to fit into the CURRENT architecture: DynDefs-keyed state, the `Cycling.step()` priority chain (see [Word Cycling](cycling.md)), and the shared `HostAdapter.setText` commit path — not the retired globalThis mechanism described in older revisions of this doc.
 
 ---
 
@@ -69,14 +41,10 @@ All linked replacements happen in the same pass before the text is committed to 
 
 ### Standard (opencues-core)
 
-- `CueResult.linked` array on each word contains indices of all co-dependent words
-- The resolver merges `linked` arrays from multiple sources (e.g., LLM-detected gender + number agreement)
-- Linked relationships are symmetric: if word A links to B, word B links to A
-- The linked words prompt is a standard opencues-core prompt that detects semantic relationships automatically
+- `CueResult.linked` is part of the standard's data shape and the resolver merge logic honors it if populated — but no shipped source populates it today
+- The standard does not mandate a specific detection prompt or mechanism; `linked` is meant to accept relationships from ANY source (LLM-detected or otherwise)
 
 ### Integration responsibilities
 
-- When cycling any word, check its `linked` array and update ALL linked words' `currentAltIndex` to match
-- Replace the text of every linked word simultaneously so the user sees a single coordinated change
-- Apply the highlighted visual state to all linked words when any one of them is focused
-- Ensure linked word updates are atomic: partial updates (some words changed, others not) must not be visible to the user
+- None today — no integration needs to implement linked-word propagation, since no source emits `linked` data to propagate
+- If you build a source that DOES populate `linked`, your integration is responsible for the propagation behavior described above (it isn't provided by the shared `@opencues/runtime` `Cycling` module)

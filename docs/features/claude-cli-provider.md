@@ -42,13 +42,14 @@ agent-rewrite-model: haiku                          # latest Haiku (auto-tracks 
 agent-rewrite-model: claude-haiku-4-5-20251001      # pinned to one version
 agent-rewrite-model: claude-sonnet-4-6              # pinned Sonnet
 agent-rewrite-model: claude-opus-4-7                # pinned Opus
+agent-rewrite-model: claude-fable-5                 # pinned Fable
 ```
 
-Use an **alias** (`haiku` / `sonnet` / `opus`) when you want the latest
-release of a family automatically. Use a **full name** when you want
-reproducibility (your config keeps the same model even when Anthropic
-ships a new generation — useful if you're benchmarking or want to lock
-in a tested setup).
+Use an **alias** (`haiku` / `sonnet` / `opus` / `fable`) when you want
+the latest release of a family automatically. Use a **full name** when
+you want reproducibility (your config keeps the same model even when
+Anthropic ships a new generation — useful if you're benchmarking or
+want to lock in a tested setup).
 
 Either form picks the right latency-tuning automatically. The daemon
 maps both `haiku` and `claude-haiku-*-*` to the same flag set internally.
@@ -62,6 +63,7 @@ We measured the per-model wall-clock latency through `claude -p`:
 | haiku  | 840ms  | 874ms  | transform-blank, fluid-blank, agent-rewrite |
 | sonnet | 1338ms | 1445ms | fluid-blank (borderline), agent-rewrite |
 | opus   | 1982ms | 2900ms | agent-rewrite (when quality matters), transform-blank |
+| fable  | *(not yet benched)* | *(not yet benched)* | pre-bench tuning mirrors opus |
 
 **Word-cues are not supported** via `claude-cli` — they need sub-500ms
 response and even Haiku via the CLI is over budget. Leave word-cues on

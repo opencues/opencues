@@ -12,17 +12,19 @@ There are five flavours:
 - **List blanks** — BLANK.md has `stepValues: ["I am brave", "I am strong", …]`. No script; the runtime cycles through the list. Multi-word values are span-tracked.
 - **Dynamic list blanks** — `blankInvoke get` returns multiple lines, each becoming a cycling alternative (e.g., HN front-page titles).
 - **Read-only blanks** — a plain `blankScript:`/`impl:` blank with no `blankStep`/`stepValues`/`blankSatellite` fetches data once and is non-cycleable by default (e.g., stock prices via Finnhub). A multi-line `get` still rotates its results via the alternatives stash.
+- **Selector + satellite blanks** — `blankSatellite: true` auto-populates as TWO linked words (e.g. `opencues settings _` → `voice-mode active`); see [Selector + Satellite](selector-satellite.md) for the dedicated mechanics.
 
-Cue-blanks are checked **first** in the cycling function (`_cycleAlt`) before any alternative or linked-word cycling.
+Cue-blanks are checked at **priority 1-2** in `Cycling.step()`'s dispatch chain (see [Word Cycling](cycling.md)) — after selector/satellite and span-fill, but before plain static-alternative cycling.
 
 ---
 
 ## How It Works
 
 1. **Detection** — at analysis time, every `_` is matched against the registered cue-blanks. If a blank's shape (or synthesized keyword shape) matches the sentence containing `_` — the command leading its sentence, `_` at the trailing edge — the `_` is bound to that blank.
-2. **Auto-populate** — `blankInvoke({ blankName, action: 'get', args: [keyword, ...context] })` returns the current value; the `_` is replaced with that value, and `metadata.blankName` is set on the resulting WordDef.
-3. **On cycle (Up/Down)** — the cycling function checks the bound blank and calls `up` / `down` (or `set` for selector/satellite) via `blankInvoke`. The class implementation (or `blankScript`) updates external state and returns the new display value.
-4. **Debounced spawn** — for shell-script blanks, rapid key presses only trigger one subprocess per ~50ms; the timer fires with the final accumulated value.
+2. **Auto-populate** — `blankInvoke({ blankName, action: 'get', args: [keyword, ...context] })` returns the current value; the `_` is replaced with that value, and `metadata.blankName` is set on the resulting `DynDef`.
+3. **On cycle (Up/Down)** — `Cycling.step()` checks the bound blank and calls `up` / `down` (or `set` for selector/satellite) via `blankInvoke`. The class implementation (or `blankScript`) updates external state and returns the new display value.
+
+Each keypress spawns/invokes immediately — there's no debounce or coalescing of rapid up/down presses today (an unimplemented proposal for one exists in the CC adapter's REPAIR.md, but no current code path does it).
 
 ---
 
@@ -144,7 +146,7 @@ bash {blankScript} {action} {args...}
 
 **Spawn behavior:**
 - **`get` is synchronous** — the runtime awaits stdout to populate the blank
-- **`up` / `down` / `set` are detached fire-and-forget** for OS-state changes; debounced to one spawn per ~50ms
+- **`up` / `down` / `set` are detached fire-and-forget** for OS-state changes — each keypress spawns immediately, with no debounce/coalescing today
 - **Path resolution** — `~` is expanded to `$HOME`. Folder-based blanks use `./{name}-blank.sh` relative to the BLANK.md
 - **WSL** — scripts run in the Linux environment. To talk to Windows applications, use `powershell.exe` or compiled `.exe` helpers inside the script
 

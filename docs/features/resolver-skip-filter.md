@@ -30,10 +30,15 @@ at index `i`:
 
 | # | Condition | Action |
 |---|---|---|
-| 1 | The word IS `_` (blank) | **Always re-resolve.** Blank context can change between resolves; the answer depends on it. |
+| 1a | The word IS `_` AND it falls inside an existing `DynDef`'s span (`findSpanContaining(i)`) | **Skip.** The answer is already cached — typical case: the user cycled the def back to `currentIndex=0` to view the original query, then nudged the buffer elsewhere. Re-resolving would burn a redundant LLM round-trip for a cache hit. |
+| 1b | The word IS `_` AND this resolve pass wasn't declared to come from an explicit `_` keystroke (`allowBlanks` is false) | **Skip.** Mirrors the explicit-`_` gate in `onTextChange` — a `_` in the buffer only routes to blank sources when the caller confirms it came from an actual keystroke (not paste, programmatic `setText`, or cursor-relocation exposing a pre-existing `_`). Direct unit-test calls default `allowBlanks` to `true`. |
+| 1c | The word IS `_`, doesn't match 1a or 1b | **Always re-resolve.** Blank context can change between resolves; the answer depends on it. |
 | 2 | `i` falls inside an active `SpanFillState` range (a blank-fill spanning multiple words) | **Skip.** Cycling owns these positions; the LLM would compete with the user's selection. |
 | 3 | `findSpanContaining(i)` returns a multi-word static-alt span | **Skip.** Both the origin position and every inner position are owned by the cycled span. |
-| 4 | A `DynDef` already exists at `i` AND `existing.originalWord === text[i]` OR `existing.alternatives[currentIndex].split(/\s+/)[0] === text[i]` | **Skip.** Either the word is unchanged since resolution, or the user has cycled to one of the alternatives — in both cases cycling owns the position. |
+| 4 | A `DynDef` already exists at `i` with **more than one alternative** (`alternatives.length > 1` — a def with just one alternative has nothing to protect) AND `existing.originalWord === text[i]` OR `existing.alternatives[currentIndex].split(/\s+/)[0] === text[i]` | **Skip.** Either the word is unchanged since resolution, or the user has cycled to one of the alternatives — in both cases cycling owns the position. |
+
+(This is really five checks, not four — the blank-word case (1) splits
+into three sub-cases depending on caching and the explicit-`_` gate.)
 
 Words that pass all four checks are kept; everything else is replaced
 with `''` in the `cleanWords` array passed to
@@ -84,8 +89,8 @@ sufficient — the rest is governed by the multi-word span machinery
 
 ## Code reference
 
-- `packages/opencues-runtime/src/modules/resolver.ts:158` —
-  `resolveAndApply` builds `cleanWords` with the four conditions
+- `packages/opencues-runtime/src/modules/resolver.ts:1139` —
+  `resolveAndApply` builds `cleanWords` with the conditions above
 - Empty strings are filtered out by `RoutedWordSourceGroup.resolve`
   in `@opencues/core/src/sources/routed-word-source-group.ts` (every
   child `ConfigSource` ignores blank entries too)

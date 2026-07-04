@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-04-06
+last_updated: 2026-07-04
 ---
 
 # Word Navigation
@@ -10,24 +10,29 @@ Word navigation lets users move a highlight cursor between interactive words in 
 
 ## How It Works
 
-1. **Press** Ctrl+Alt+Left or Ctrl+Alt+Right to activate navigation and highlight a word
-2. **Filter**: The system splits the input on whitespace, then builds `_targetIdx` — an array of word indices that pass the navigation filter (see Navigation Targets below)
-3. **Index**: Words are indexed right-to-left — the rightmost navigable word is index 0. Left increments the index (moves toward the start), Right decrements it (moves toward the end)
-4. **Deactivate**: Pressing Right when already at the rightmost target, pressing Escape, or typing any character clears the highlight and resets `_hlState`
+Implemented by the `Navigation` module (`packages/opencues-runtime/src/modules/navigation.ts`), which owns a shared `HighlightState` object.
+
+1. **Press** Ctrl+Alt+Left or Ctrl+Alt+Right to activate navigation and highlight a word (modifier combo is configurable via `nav-keymap` — see [Cursor Navigate](cursor-navigate.md)).
+2. **Compute targets**: on every keystroke, `Navigation.computeTargets()` walks the whitespace-split word list and returns the indices that are navigable (see Navigation Targets below).
+3. **Walk from the right**: targets are stepped "from the right" — first activation lands on the rightmost target. Ctrl+Alt+Left moves further from the right (toward the start); Ctrl+Alt+Right moves closer to the right. Neither wraps.
+4. **Deactivate**: pressing Ctrl+Alt+Right when already at the rightmost target, or pressing Escape, clears the highlight. A plain text edit deactivates too, unless `cursor-navigate: active` is on (see below), in which case the highlight follows the cursor instead of clearing.
 
 ---
 
 ## Navigation Targets
 
-A word is navigable if it passes the navigation filter. After analysis, a word at index `i` is navigable if any of these are true:
+`computeTargets()` builds the candidate list, then layers span and selector/satellite handling on top:
 
-- **Local cue tip** (`_hasTipAlt`) — word exists in `globalThis._localCueMap` (case-insensitive lookup)
-- **Dynamic alternative** (`_hasDynAlt`) — `globalThis._dynDefs.words` has an entry at that index with either `alts.length > 1` (and the current word appears in the alts list) or `metadata.blankName` set (a cue-blank-bound auto-populated value)
-- **Span original** — the word is the original position of a multi-word span (e.g., "Jeff" in "Jeff Bezos"). Note: `_isInSpan` and `_isSpanOriginal` evaluate to the same thing in practice — both select only the original position of a span; non-original span positions like "Bezos" are skipped
+- **cueMap match** — the word (lowercased) is a key in the config loader's `navigableWords` set (built from every loaded `CUE.md`/`BLANK.md`).
+- **DynDef entry** — `DynDefs.get(wordIndex)` returns a def for that position (LLM alternatives, blank-fill substitution, selector/satellite, span fill — anything currently tracked as cycleable).
+- If **no word matches either** and cueMap is genuinely loaded (non-empty), the result is **silence** — an empty target list, not a fallback to "every word." No cue source has an opinion, so nothing is navigable.
+- If cueMap is missing/empty **and** there are no DynDefs (fresh install, or a test scaffold with no `ConfigLoader` wired), the whole word list becomes navigable so the system isn't dead out of the box.
 
-Plain words without alts and without a blank binding are NOT navigable. There is no word-cycling on plain text — all external state is `_`-gated.
+On top of that base set:
+- **Multi-word spans** — only the span's origin index is navigable; inner positions ("Bezos" in "Jeff Bezos") are dropped so a multi-word value counts as one nav stop.
+- **Selector + satellite** — both halves of an active selector/satellite pair are force-included (even if neither word is in cueMap), with their own inner positions (for multi-word settings/values) dropped the same way.
 
-The combined filter pushes index `i` into `_targetIdx` if any of the above conditions are true and the word is not a non-original span position.
+Plain words with no cue, no blank binding, and no active DynDef are NOT navigable — there is no word-cycling on plain text; all external state is `_`-gated or cue-gated.
 
 ---
 
@@ -35,30 +40,28 @@ The combined filter pushes index `i` into `_targetIdx` if any of the above condi
 
 | Key | Action |
 |-----|--------|
-| Ctrl+Alt+Left | Activate navigation (if inactive) or move highlight one target toward the start of the line |
-| Ctrl+Alt+Right | Move highlight one target toward the end of the line, or deactivate if already at the rightmost target |
+| Ctrl+Alt+Left | Activate navigation (if inactive, lands on the rightmost target) or move one target further from the right |
+| Ctrl+Alt+Right | Move one target closer to the right, or deactivate if already at the rightmost target |
 | Ctrl+Alt+Up | Cycle to next alternative (or invoke cue-blank `up` action if blank-bound) |
 | Ctrl+Alt+Down | Cycle to previous alternative (or invoke cue-blank `down` action if blank-bound) |
-| Escape | Clear highlight and reset `_hlState` |
-| Any text change | Clear highlight and reset `_hlState` (detected by comparing `_hlText !== _oldText`) |
+| Escape | Clear the highlight |
+| Any text change | Clears the highlight, UNLESS `cursor-navigate: active`, in which case the highlight follows the cursor to whichever navigable word it lands in (or clears if the cursor is in whitespace) |
 
-If `highlightWrap` is enabled in config, Left and Right wrap around using modulo arithmetic instead of deactivating at the edges.
-
-Both the Ink key-property path (`leftArrow`/`rightArrow` with `ctrl` + `meta`/`option`/`alt`) and raw escape sequences (`\x1B[1;7D` for Left, `\x1B[1;7C` for Right, modifier 7) are handled to cover different terminal emulators.
+The modifier combo (`ctrl+alt` by default) is resolved per-keystroke by `resolveNavKeymap()` and configurable via the `nav-keymap` scalar, so flipping it in `OPENCUES.md` hot-reloads without re-subscribing.
 
 ---
 
 ## Highlight State
 
-All navigation state lives in `globalThis._hlState`, an object with these fields:
+Navigation state lives in a shared `HighlightState` object (`packages/opencues-runtime/src/state/highlight-state.ts`), not a per-host global:
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `active` | boolean | Whether a word is currently highlighted |
-| `index` | number \| null | Position within the `_targetIdx` array (0 = rightmost target) |
-| `wordIndex` | number \| null | Actual index into the whitespace-split word array — computed as `_targetIdx[_targetIdx.length - 1 - index]` |
-| `text` | string | Snapshot of the input text when navigation was activated |
-The state is reset to `{active:false, index:null, wordIndex:null, text:""}` on Escape, on Right past the last target, or when the input text changes.
+| `wordIndex` | number \| null | The actual word index (into the whitespace-split array) that's highlighted — not an offset into a separate target-index array |
+| `text` | string | Snapshot of the input text at the last activate/update |
+
+`HighlightState` exposes an `onChange` subscription so other modules (notably Statusline) can react synchronously the same tick a highlight activates or deactivates.
 
 ---
 
@@ -66,16 +69,13 @@ The state is reset to `{active:false, index:null, wordIndex:null, text:""}` on E
 
 ### Standard (opencues-core)
 
-- `WordDef` provides `index`, `word`, and `alts` for every word in the input
-- Navigation targets are words where `alts.length > 1` or words with `metadata.blankName` (cue-blank auto-populated values)
-- `CueResolver.analyze()` returns the full word list with classification already applied
-- No navigation state is tracked in opencues-core; it only identifies which words are navigable
+- `CueResult`/`WordDef`-equivalent data provides alternatives + metadata for every word in the input
+- Navigation targets are words with cue/DynDef coverage, per the rules above
+- The resolver returns the classified word list; navigability itself is a runtime-layer decision (`Navigation.computeTargets`), not something opencues-core computes directly
 
 ### Integration responsibilities
 
-- Map keyboard shortcuts (or mouse/touch events) to move between navigable words
-- Filter the `WordDef[]` array to determine the ordered set of navigation targets
-- Track which word is currently focused (`highlightIndex` or equivalent)
-- Move the editor cursor or viewport to the focused word's position
-- Distinguish navigation targets by type (alt word, cue-blank-bound) if the UI treats them differently
-- Communicate the focused word to the cycling and visual-cues subsystems
+- Supply a `HostAdapter` with key subscription (`onKey`), text-change (`onTextChange`), and cursor-change (`onCursorChange`) hooks — `Navigation` does the rest
+- Render the highlight at `HighlightState.wordIndex` when `active` is true
+- Move the editor cursor/viewport to the focused word's position if the host wants visual cursor-follow
+- Communicate the focused word to the cycling and visual-cues subsystems (in the shared runtime, this is automatic — `Cycling` and `DimRender` both read the same `HighlightState`)

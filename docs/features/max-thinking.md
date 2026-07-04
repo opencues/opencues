@@ -18,12 +18,20 @@ ever think) and a reduced **off** level:
 | Provider / model            | ceiling (`on`) | reduced (`off`) |
 |-----------------------------|----------------|-----------------|
 | Cerebras gpt-oss-120b       | medium         | low             |
-| Cerebras zai-glm-4.7        | medium         | low             |
-| Groq gpt-oss-120b / 20b     | low            | none            |
+| Cerebras zai-glm-4.7        | none           | none            |
+| Cerebras gemma-4-31b        | none           | none            |
+| Groq gpt-oss-120b / 20b     | low            | low             |
 | OpenAI gpt-5.4 / mini / nano| low            | none            |
-| OpenRouter gpt-oss          | low            | none            |
-| OpenCode Zen free pool      | low            | none            |
+| OpenRouter gpt-oss          | low            | low             |
+| OpenCode Zen free pool      | low            | low             |
 | Anthropic / Gemini          | (no reasoning — `max-thinking` has no effect) | |
+
+`zai-glm-4.7`'s reasoning knob is binary in practice (`none` cleanly
+disables it; any other value burns extra reasoning tokens regardless
+of level), so both tiers pin `none`. `gemma-4-31b` is non-reasoning
+entirely. Groq/OpenRouter/OpenCode Zen's gpt-oss models reject
+`reasoning_effort: 'none'` outright (HTTP 400) — their floor is `low`,
+not `none`.
 
 `on` is the default and reproduces the behaviour OpenCues has always
 had — each model already used its ceiling. `off` is the opt-in "go
