@@ -15,6 +15,7 @@ import { startEventBridge } from '../../../src/event-bridge';
 import { Statusline } from '../../../src/modules/statusline';
 import { Resolver } from '../../../src/modules/resolver';
 import { AgentRewrite } from '../../../src/modules/agent-rewrite';
+import { TutorialCoach } from '../../../src/modules/tutorial';
 import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
@@ -196,6 +197,19 @@ export function boot(host: HostInfo): BootResult {
     spanFillState, selectorSatelliteState, agentTaskState,
   } = shared;
 
+  // TutorialCoach — modal guided-scenario runtime (prototype). Keyword-
+  // bound control phrases (`start tutorial 1 _`), debounced coach LLM
+  // tick on the auditors bucket, tutorial.* events. While active it
+  // suppresses the Resolver entirely (modal override) via the
+  // externallySuppressed gate below.
+  const tutorialCoach = new TutorialCoach(adapter, configLoader, {
+    tutorialsDirs: configSearchPaths.map(p => `${p}/tutorials`),
+    resolveLLM: () => buildAgentLLMResolver(configLoader, apiKeys),
+    cadenceMs: () => parseInt(configLoader.opencuesState.settings.get('tutorial-debounce-ms') ?? '', 10),
+    log: msg => log('debug', msg),
+  });
+  tutorialCoach.subscribe();
+
   // Statusline (file-based) + in-process snapshot hook so the OpenCode
   // footer can render the tip natively. Both sinks are opt-in; either
   // or both can be wired.
@@ -205,6 +219,7 @@ export function boot(host: HostInfo): BootResult {
       onSnapshot: host.statusSnapshotHook
         ? (payload) => host.statusSnapshotHook!(payload)
         : undefined,
+      tutorialStatus: () => tutorialCoach.status(),
     }, configLoader, spanFillState, selectorSatelliteState, agentTaskState);
     statusline.subscribe();
   }
@@ -243,6 +258,7 @@ export function boot(host: HostInfo): BootResult {
     missingKeyFallbackMessage: hasAnyKey ? undefined : NATIVE_HOST_MISSING_KEY_MESSAGE,
     formatLLMErrorAsSubstitute: nativeHostFormatLLMError,
     keywordBoundSlotIndices: (text: string) => shared.blankFill.scan(text).map(s => s.index),
+    externallySuppressed: (text: string) => tutorialCoach.shouldSuppressResolve(text),
   }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState,
   // Blank-as-context provider — invoked per resolve when
   // blank-context-mode is on. Reads host's blanks registry to fetch

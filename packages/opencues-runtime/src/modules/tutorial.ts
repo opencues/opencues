@@ -1,0 +1,534 @@
+// TutorialCoach — modal guided-scenario runtime (PROTOTYPE).
+//
+// A tutorial is an ordered script of steps the user works through inside
+// their real editor, authored as `tutorials/<name>/TUTORIAL.md` under any
+// `.cues/` search path. The coach is a debounced background LLM call that
+// receives the WHOLE tutorial script (stable → provider prefix-cache) plus
+// the user's recent typed activity, and returns (a) whether the current
+// step is satisfied and (b) ONE short coaching line shown on the
+// statusline. The model owns progress judgement; the runtime owns only
+// safety floors (step index clamped to bounds, never moves backward,
+// advances at most one step per tick).
+//
+// STRUCTURAL INVARIANTS (mirrors ambient-context, security-audit row #21):
+//   - Coach output is DISPLAY-ONLY. It feeds the statusline field and the
+//     step counter — never the buffer, never an exec/side-effect layer.
+//     A malicious TUTORIAL.md can at worst show wrong text and mis-advance
+//     its own step counter.
+//   - The runtime observes ONLY typed text. A buffer transitioning
+//     non-empty → empty is recorded as a `submitted` event (Enter was
+//     pressed); everything else is invisible and the tutorial script's
+//     prose has to coach around it (`done _` is the honest fallback).
+//   - While a tutorial is active the Resolver is suppressed entirely
+//     (ResolverOptions.externallySuppressed) — tutorial mode overrides
+//     normal cue/blank behaviour, and `stop tutorial _` restores it with
+//     zero settings churn because nothing was ever written to OPENCUES.md.
+//
+// Control phrases (keyword-bound, `_`-gated like every blank trigger):
+//   start tutorial <id|name> _   activate (bare `start tutorial _` = first found)
+//   stop tutorial _              deactivate
+//   done _ / next _              advance past an unobservable step
+//   skip _                       force-advance a typed step
+//
+// Observability: every transition emits a structured event
+// (tutorial.started / tutorial.tick / tutorial.step-advanced /
+// tutorial.completed / tutorial.stopped) via adapter.emitEvent — the
+// agentic harness's oc-events / scenario assertions see the coach loop
+// the same way they see transform-blank passes.
+
+import type { HostAdapter, TextChangeEvent, Unsubscribe } from '../adapter';
+import type { ConfigLoader } from './config-loader';
+import type { ResolvedAgentLLM } from './agent-rewrite';
+import { dispatchChat } from '@opencues/core';
+
+// ──────────────────────────────────────────────────────────────────────
+// TUTORIAL.md parsing
+// ──────────────────────────────────────────────────────────────────────
+
+export interface TutorialStep {
+  /** Heading text after `## ` (e.g. "Step 1" or "Step 1 — enter plan mode"). */
+  readonly title: string;
+  /** Full step body — instruction prose + optional `coach:` notes. The
+   *  body rides into the system prompt VERBATIM; fidelity lives in the
+   *  file, not in a schema. */
+  readonly body: string;
+}
+
+export interface TutorialDoc {
+  readonly name: string;
+  readonly id: string | null;
+  readonly title: string;
+  readonly steps: readonly TutorialStep[];
+}
+
+/** Parse a TUTORIAL.md — frontmatter (name/id/title) + `## ` step sections.
+ *  Returns null when the doc has no steps (not a usable tutorial). */
+export function parseTutorialMd(raw: string, fallbackName: string): TutorialDoc | null {
+  let name = fallbackName;
+  let id: string | null = null;
+  let title = fallbackName;
+  let body = raw;
+  const fm = raw.match(/^---\n([\s\S]*?)\n---\n?/);
+  if (fm) {
+    body = raw.slice(fm[0].length);
+    for (const line of fm[1].split('\n')) {
+      const m = line.match(/^([A-Za-z][A-Za-z0-9_-]*):\s*(.+?)\s*$/);
+      if (!m) continue;
+      const key = m[1].toLowerCase();
+      if (key === 'name') name = m[2];
+      else if (key === 'id') id = m[2].replace(/^#/, '');
+      else if (key === 'title') title = m[2];
+    }
+  }
+  const steps: TutorialStep[] = [];
+  const parts = body.split(/^##\s+/m);
+  for (const part of parts.slice(1)) {
+    const nl = part.indexOf('\n');
+    const stepTitle = (nl === -1 ? part : part.slice(0, nl)).trim();
+    const stepBody = (nl === -1 ? '' : part.slice(nl + 1)).trim();
+    if (stepTitle.length > 0) steps.push({ title: stepTitle, body: stepBody });
+  }
+  if (steps.length === 0) return null;
+  return { name, id, title, steps };
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Control-phrase detection
+// ──────────────────────────────────────────────────────────────────────
+
+// Phrase must LEAD the sentence containing the trailing `_` — same trigger
+// model as blank shapes (spec/blank-spec.md § Trigger model).
+const RE_START = /(^|[\n.!?]\s+)start\s+tutorial(?:\s+#?(\S+))?\s*_\s*$/i;
+const RE_STOP = /(^|[\n.!?]\s+)stop\s+tutorial\s*_\s*$/i;
+const RE_ADVANCE = /(^|[\n.!?]\s+)(done|next|skip)\s*_\s*$/i;
+
+export type ControlPhrase =
+  | { kind: 'start'; arg: string | null; phraseStart: number }
+  | { kind: 'stop'; phraseStart: number }
+  | { kind: 'advance'; word: string; phraseStart: number };
+
+export function matchControlPhrase(text: string, active: boolean): ControlPhrase | null {
+  let m = RE_START.exec(text);
+  if (m) return { kind: 'start', arg: m[2] ?? null, phraseStart: m.index + m[1].length };
+  m = RE_STOP.exec(text);
+  if (m) return { kind: 'stop', phraseStart: m.index + m[1].length };
+  if (active) {
+    m = RE_ADVANCE.exec(text);
+    if (m) return { kind: 'advance', word: m[2].toLowerCase(), phraseStart: m.index + m[1].length };
+  }
+  return null;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Coach state + module
+// ──────────────────────────────────────────────────────────────────────
+
+/** Statusline-facing snapshot. Also mirrored into tutorial.* events. */
+export interface TutorialStatus {
+  readonly name: string;
+  readonly title: string;
+  /** 1-based current step. */
+  readonly step: number;
+  readonly stepCount: number;
+  readonly stepTitle: string;
+  readonly coach: string | null;
+}
+
+interface TraceEntry {
+  readonly kind: 'typed' | 'submitted';
+  readonly text: string;
+}
+
+const TRACE_MAX = 10;
+const COACH_MAX_CHARS = 140;
+const DEFAULT_CADENCE_MS = 300;
+
+export interface TutorialCoachOptions {
+  /** `<searchPath>/tutorials` dirs, priority order (project first). */
+  readonly tutorialsDirs: readonly string[];
+  /** Same lazy resolver AgentRewrite uses (auditors bucket). Null = no
+   *  key; the coach then degrades to static step instructions. */
+  readonly resolveLLM: () => ResolvedAgentLLM | null;
+  /** Debounce between text-change and coach tick. Default 300ms. */
+  readonly cadenceMs?: number | (() => number);
+  readonly log?: (msg: string) => void;
+  /** Test seam. Defaults to a lazy NodeHttpAdapter on native hosts. */
+  readonly httpAdapter?: { post(url: string, body: string, headers: Record<string, string>): Promise<string> };
+}
+
+export class TutorialCoach {
+  private _unsubText: Unsubscribe | null = null;
+  private _doc: TutorialDoc | null = null;
+  /** 0-based current step index. */
+  private _stepIndex = 0;
+  private _coachLine: string | null = null;
+  private _trace: TraceEntry[] = [];
+  private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private _inFlight = false;
+  /** Buffer snapshot the in-flight tick was built from — stale-drop guard. */
+  private _tickSnapshot = '';
+  private _lastText = '';
+  /** Our own consume-writes, so their echo isn't recorded as user activity. */
+  private _selfWrites: string[] = [];
+  private _httpAgent: TutorialCoachOptions['httpAdapter'] | null = null;
+  private readonly _logFn: (msg: string) => void;
+
+  constructor(
+    private adapter: HostAdapter,
+    private configLoader: ConfigLoader,
+    private options: TutorialCoachOptions,
+  ) {
+    this._logFn = options.log ?? ((msg) => adapter.log('debug', msg));
+  }
+
+  get active(): boolean { return this._doc !== null; }
+
+  /** Resolver suppression predicate — active tutorial OR a control phrase
+   *  mid-typing. Wired into ResolverOptions.externallySuppressed so normal
+   *  cue/blank sources never race the tutorial's own trigger handling. */
+  shouldSuppressResolve(text: string): boolean {
+    if (this._doc !== null) return true;
+    return matchControlPhrase(text, false) !== null;
+  }
+
+  /** Statusline payload feed. Null when no tutorial is active. */
+  status(): TutorialStatus | null {
+    if (!this._doc) return null;
+    const i = Math.min(this._stepIndex, this._doc.steps.length - 1);
+    return {
+      name: this._doc.name,
+      title: this._doc.title,
+      step: i + 1,
+      stepCount: this._doc.steps.length,
+      stepTitle: this._doc.steps[i].title,
+      coach: this._coachLine,
+    };
+  }
+
+  subscribe(): void {
+    this._unsubText = this.adapter.onTextChange(e => this.onTextChange(e));
+  }
+
+  unsubscribe(): void {
+    if (this._unsubText) { this._unsubText(); this._unsubText = null; }
+    if (this._debounceTimer) { clearTimeout(this._debounceTimer); this._debounceTimer = null; }
+  }
+
+  // ── text-change pipeline ─────────────────────────────────────────────
+
+  private onTextChange(e: TextChangeEvent): void {
+    const text = e.text;
+    const prev = this._lastText;
+    this._lastText = text;
+    // Skip echoes of our own consume-writes (and runtime writes generally
+    // when active — the coach reads USER activity only).
+    const selfIdx = this._selfWrites.indexOf(text);
+    if (selfIdx !== -1) { this._selfWrites.splice(selfIdx, 1); return; }
+    if (e.source !== 'user') return;
+    if (text === prev) return;
+
+    // Feature gate — read lazily so OPENCUES.md hot-reload applies.
+    if (this.configLoader.opencuesState.settings.get('tutorials-mode') === 'off') return;
+
+    const ctl = matchControlPhrase(text, this.active);
+    if (ctl) { void this.handleControl(ctl, text); return; }
+    if (!this._doc) return;
+
+    // Record activity for the coach trace.
+    if (text.trim().length === 0 && prev.trim().length > 0) {
+      // Buffer went non-empty → empty: the user submitted (Enter).
+      this.pushTrace({ kind: 'submitted', text: prev.trim() });
+    } else if (text.trim().length > 0) {
+      // Coalesce consecutive typed snapshots — the trace holds the final
+      // state between submits, not every keystroke.
+      if (this._trace.length > 0 && this._trace[this._trace.length - 1].kind === 'typed') {
+        this._trace[this._trace.length - 1] = { kind: 'typed', text };
+      } else {
+        this.pushTrace({ kind: 'typed', text });
+      }
+    }
+    this.scheduleTick();
+  }
+
+  private pushTrace(entry: TraceEntry): void {
+    this._trace.push(entry);
+    if (this._trace.length > TRACE_MAX) this._trace.shift();
+  }
+
+  // ── control phrases ──────────────────────────────────────────────────
+
+  private async handleControl(ctl: ControlPhrase, text: string): Promise<void> {
+    switch (ctl.kind) {
+      case 'start': {
+        const doc = await this.loadTutorial(ctl.arg);
+        if (!doc) {
+          this._logFn(`Tutorial: no tutorial found for "${ctl.arg ?? '(first)'}" under ${this.options.tutorialsDirs.join(', ')}`);
+          this.adapter.emitEvent?.('tutorial.not-found', { arg: ctl.arg });
+          return;
+        }
+        this._doc = doc;
+        this._stepIndex = 0;
+        this._trace = [];
+        this._coachLine = `Step 1/${doc.steps.length} — ${doc.steps[0].title}`;
+        this.consumePhrase(text, ctl.phraseStart);
+        this.adapter.emitEvent?.('tutorial.started', {
+          name: doc.name, id: doc.id, title: doc.title, stepCount: doc.steps.length,
+        });
+        this._logFn(`Tutorial: started "${doc.name}" (${doc.steps.length} steps)`);
+        this.refreshStatusline();
+        return;
+      }
+      case 'stop': {
+        if (!this._doc) { this.consumePhrase(text, ctl.phraseStart); return; }
+        const name = this._doc.name;
+        this.deactivate();
+        this.consumePhrase(text, ctl.phraseStart);
+        this.adapter.emitEvent?.('tutorial.stopped', { name, reason: 'user' });
+        this._logFn(`Tutorial: stopped "${name}"`);
+        this.refreshStatusline();
+        return;
+      }
+      case 'advance': {
+        if (!this._doc) return;
+        this.consumePhrase(text, ctl.phraseStart);
+        this.advanceStep('user');
+        return;
+      }
+    }
+  }
+
+  /** Remove the control phrase from the buffer (shape-derived clearing —
+   *  the command span is consumed, prior content survives). */
+  private consumePhrase(text: string, phraseStart: number): void {
+    const kept = text.slice(0, phraseStart).replace(/\s+$/, '');
+    this._selfWrites.push(kept);
+    if (this._selfWrites.length > 4) this._selfWrites.shift();
+    this._lastText = kept;
+    // Deferred one tick — a write issued INSIDE the host's text-change
+    // dispatch is clobbered when the host finishes applying the very
+    // change that triggered us (observed on OpenTUI: `done _` stayed in
+    // the buffer while an await-deferred write for `start tutorial 1 _`
+    // landed fine).
+    setTimeout(() => {
+      if (this.adapter.pushText) this.adapter.pushText(kept, kept.length);
+      else { this.adapter.setText(kept); this.adapter.setCursorOffset(kept.length); }
+      this.refreshStatusline();
+    }, 0);
+  }
+
+  private advanceStep(reason: 'user' | 'coach'): void {
+    if (!this._doc) return;
+    const from = this._stepIndex;
+    if (from + 1 >= this._doc.steps.length) {
+      const name = this._doc.name;
+      const stepCount = this._doc.steps.length;
+      this.deactivate();
+      this.adapter.emitEvent?.('tutorial.completed', { name, stepCount, reason });
+      this._logFn(`Tutorial: completed "${name}" 🎉`);
+      this.refreshStatusline();
+      return;
+    }
+    this._stepIndex = from + 1;
+    const next = this._doc.steps[this._stepIndex];
+    this._coachLine = `✓ — Step ${this._stepIndex + 1}/${this._doc.steps.length}: ${next.title}`;
+    this.adapter.emitEvent?.('tutorial.step-advanced', {
+      name: this._doc.name, fromStep: from + 1, toStep: this._stepIndex + 1, reason,
+    });
+    this._logFn(`Tutorial: step ${from + 1} → ${this._stepIndex + 1} (${reason})`);
+    this.refreshStatusline();
+  }
+
+  private deactivate(): void {
+    this._doc = null;
+    this._stepIndex = 0;
+    this._coachLine = null;
+    this._trace = [];
+    if (this._debounceTimer) { clearTimeout(this._debounceTimer); this._debounceTimer = null; }
+  }
+
+  private refreshStatusline(): void {
+    try { this.adapter.forceRender?.(); } catch { /* host may not support */ }
+  }
+
+  // ── tutorial discovery ───────────────────────────────────────────────
+
+  private async loadTutorial(arg: string | null): Promise<TutorialDoc | null> {
+    for (const dir of this.options.tutorialsDirs) {
+      let entries;
+      try { entries = await this.adapter.readDir?.(dir); } catch { entries = null; }
+      if (!entries) continue;
+      for (const entry of entries) {
+        if (!entry.isDirectory) continue;
+        let raw: string | null = null;
+        try { raw = await this.adapter.readFile(`${dir}/${entry.name}/TUTORIAL.md`); } catch { raw = null; }
+        if (!raw) continue;
+        const doc = parseTutorialMd(raw, entry.name);
+        if (!doc) continue;
+        if (arg === null) return doc;
+        const want = arg.replace(/^#/, '').toLowerCase();
+        if (doc.id?.toLowerCase() === want || doc.name.toLowerCase() === want) return doc;
+        // `#01` style ids: compare numerically too (1 == 01).
+        if (doc.id && /^\d+$/.test(want) && /^\d+$/.test(doc.id)
+          && parseInt(doc.id, 10) === parseInt(want, 10)) return doc;
+      }
+    }
+    return null;
+  }
+
+  // ── coach tick (debounced LLM call) ──────────────────────────────────
+
+  private cadence(): number {
+    const c = this.options.cadenceMs;
+    const n = typeof c === 'function' ? c() : c;
+    return typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : DEFAULT_CADENCE_MS;
+  }
+
+  private scheduleTick(): void {
+    if (!this._doc) return;
+    if (this._debounceTimer) clearTimeout(this._debounceTimer);
+    this._debounceTimer = setTimeout(() => {
+      this._debounceTimer = null;
+      void this.tick();
+    }, this.cadence());
+  }
+
+  private async tick(): Promise<void> {
+    if (!this._doc || this._inFlight) return;
+    const resolved = this.options.resolveLLM();
+    if (!resolved) return; // no key — static instructions only
+    const doc = this._doc;
+    const stepAtDispatch = this._stepIndex;
+    this._tickSnapshot = this._lastText;
+    this._inFlight = true;
+    const started = Date.now();
+    try {
+      const out = await dispatchChat(
+        resolved.provider as unknown as Parameters<typeof dispatchChat>[0],
+        this.getHttpAgent() as Parameters<typeof dispatchChat>[1],
+        {
+          model: resolved.model,
+          messages: [
+            { role: 'system', content: this.systemPrompt(doc) },
+            { role: 'user', content: this.userPrompt(stepAtDispatch) },
+          ],
+          maxTokens: 2048, // reasoning models spend tokens thinking before the 3 output lines
+          temperature: 0,
+          seed: 42,
+        },
+        { apiKey: resolved.apiKey, endpoint: resolved.endpoint, maxThinking: resolved.maxThinking ?? true },
+      );
+      const latencyMs = Date.now() - started;
+      // Stale-drop: tutorial stopped, step moved (user typed done _), or
+      // buffer changed while in flight → discard; next tick re-asks.
+      if (this._doc !== doc || this._stepIndex !== stepAtDispatch) {
+        this.adapter.emitEvent?.('tutorial.tick', { stale: true, latencyMs });
+        return;
+      }
+      const verdict = parseCoachResponse(out);
+      if (!verdict) {
+        this._logFn(`Tutorial: unparseable coach response (${latencyMs}ms): ${out.slice(0, 120)}`);
+        this.adapter.emitEvent?.('tutorial.tick', { parseError: true, latencyMs });
+        return;
+      }
+      // Safety floors — trust the model, clamp the blast radius:
+      // never backward, at most +1 forward per tick.
+      const wantsAdvance = verdict.status === 'STEP_DONE'
+        || (verdict.step !== null && verdict.step > stepAtDispatch + 1);
+      this._coachLine = verdict.coach.slice(0, COACH_MAX_CHARS);
+      this.adapter.emitEvent?.('tutorial.tick', {
+        step: stepAtDispatch + 1,
+        claimedStep: verdict.step,
+        status: verdict.status,
+        coach: this._coachLine,
+        latencyMs,
+        model: resolved.model,
+        provider: resolved.provider.id,
+      });
+      if (wantsAdvance) this.advanceStep('coach');
+      else this.refreshStatusline();
+    } catch (err) {
+      // Fail-safe: a dead coach degrades to static instructions — never
+      // touches the buffer, never loses progress.
+      const latencyMs = Date.now() - started;
+      this._logFn(`Tutorial: coach call failed (${latencyMs}ms) — ${err instanceof Error ? err.message : String(err)}`);
+      this.adapter.emitEvent?.('tutorial.tick', { error: true, latencyMs });
+    } finally {
+      this._inFlight = false;
+      // If the buffer moved while we were in flight, re-ask.
+      if (this._doc && this._lastText !== this._tickSnapshot) this.scheduleTick();
+    }
+  }
+
+  private systemPrompt(doc: TutorialDoc): string {
+    // Stable per tutorial per session — lands in the provider's prompt
+    // prefix cache (see docs/architecture/cerebras.md). Per-tick data
+    // stays in the user message.
+    const steps = doc.steps
+      .map((s, i) => `### Step ${i + 1}: ${s.title}\n${s.body}`)
+      .join('\n\n');
+    return `You are a TUTORIAL COACH embedded in a text editor's input box. The user is working through a scripted tutorial step by step. You can observe ONLY what they type into the input box. You cannot see their screen, menus, or key presses — except that a "submitted" event in the trace means they pressed Enter (the buffer was sent and cleared).
+
+On every check-in, judge the user's progress on the CURRENT step and give one short coaching line.
+
+Rules:
+- Judge ONLY from the typed activity in the trace and the current buffer.
+- STATUS is one of:
+  IN_PROGRESS — the user is working on the current step (or nothing relevant typed yet)
+  STEP_DONE   — the typed activity satisfies the current step's goal
+  OFF_TRACK   — the typing contradicts the current step's goal
+- COACH is ONE line (max 100 chars): the next micro-action ("Press Enter to open the model picker"), a fix ("add: don't implement yet"), or brief encouragement. Follow any coach notes in the step body.
+- Steps the user can only complete outside the input box end when they type "done" — the runtime handles that word; only remind them of it when the step's own text says to.
+- Never invent steps. Answer for the CURRENT step only.
+
+Respond in EXACTLY this format (three lines, nothing else):
+STEP: <current step number>
+STATUS: <IN_PROGRESS|STEP_DONE|OFF_TRACK>
+COACH: <one line>
+
+TUTORIAL: ${doc.title}
+STEPS (${doc.steps.length} total):
+
+${steps}`;
+  }
+
+  private userPrompt(stepIndex: number): string {
+    const trace = this._trace.length === 0
+      ? '(nothing typed yet)'
+      : this._trace.map(t => t.kind === 'submitted'
+        ? `- submitted (pressed Enter): "${t.text}"`
+        : `- typed: "${t.text}"`).join('\n');
+    const buffer = this._lastText.trim().length === 0 ? '(empty)' : this._lastText;
+    return `CURRENT STEP: ${stepIndex + 1}\nRECENT ACTIVITY:\n${trace}\nCURRENT BUFFER: ${buffer}`;
+  }
+
+  private getHttpAgent(): NonNullable<TutorialCoachOptions['httpAdapter']> {
+    if (this.options.httpAdapter) return this.options.httpAdapter;
+    if (this._httpAgent) return this._httpAgent;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { NodeHttpAdapter } = require('@opencues/core/node-http-adapter');
+    this._httpAgent = new NodeHttpAdapter({ maxSockets: 2, timeout: 30000 }) as NonNullable<TutorialCoachOptions['httpAdapter']>; // BROWSER-SAFE-ALLOW: native-host fallback only — getHttpAgent is bypassed when options.httpAdapter is supplied (chrome)
+    return this._httpAgent!;
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Response parsing — tolerant three-line format
+// ──────────────────────────────────────────────────────────────────────
+
+export interface CoachVerdict {
+  readonly step: number | null;
+  readonly status: 'IN_PROGRESS' | 'STEP_DONE' | 'OFF_TRACK';
+  readonly coach: string;
+}
+
+export function parseCoachResponse(raw: string): CoachVerdict | null {
+  const stepM = raw.match(/^\s*STEP:\s*(\d+)\s*$/mi);
+  const statusM = raw.match(/^\s*STATUS:\s*(IN_PROGRESS|STEP_DONE|OFF_TRACK)\s*$/mi);
+  const coachM = raw.match(/^\s*COACH:\s*(.+?)\s*$/mi);
+  if (!statusM || !coachM) return null;
+  return {
+    step: stepM ? parseInt(stepM[1], 10) : null,
+    status: statusM[1].toUpperCase() as CoachVerdict['status'],
+    coach: coachM[1],
+  };
+}

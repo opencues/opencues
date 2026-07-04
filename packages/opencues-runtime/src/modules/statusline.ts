@@ -40,6 +40,20 @@ export interface StatuslineOptions {
    * succeed — both sinks are driven by the same maybeWrite pass.
    */
   readonly onSnapshot?: (payload: StatuslinePayload) => void;
+  /**
+   * Optional. Live tutorial-mode status feed (TutorialCoach.status).
+   * When it returns non-null, the payload carries a `tutorial` block —
+   * step counter + one coaching line — that consumers render as the
+   * dominant statusline content while a tutorial is active.
+   */
+  readonly tutorialStatus?: () => {
+    readonly name: string;
+    readonly title: string;
+    readonly step: number;
+    readonly stepCount: number;
+    readonly stepTitle: string;
+    readonly coach: string | null;
+  } | null;
 }
 
 export interface StatuslinePayload {
@@ -71,6 +85,20 @@ export interface StatuslinePayload {
     readonly sticky: boolean;
     readonly provider?: string;
     readonly model?: string;
+  } | null;
+  /**
+   * Tutorial-mode block. Non-null while a tutorial is active — step
+   * counter + the live coaching line. Consumers should render this as
+   * the dominant statusline content (tutorial mode overrides normal
+   * cue/tip display). null / absent when no tutorial is running.
+   */
+  tutorial?: {
+    readonly name: string;
+    readonly title: string;
+    readonly step: number;
+    readonly stepCount: number;
+    readonly stepTitle: string;
+    readonly coach: string | null;
   } | null;
 }
 
@@ -348,7 +376,12 @@ export class Statusline {
     // through every return — health is orthogonal to highlight state.
     const built = this.buildPayload(ctx);
     const providerError = this.currentProviderError();
-    const payload: StatuslinePayload = providerError !== undefined ? { ...built, providerError } : built;
+    let payload: StatuslinePayload = providerError !== undefined ? { ...built, providerError } : built;
+    // Tutorial block is orthogonal to highlight state (like providerError)
+    // — merge here so it survives the `active: false` early branch too.
+    if (this.options.tutorialStatus) {
+      payload = { ...payload, tutorial: this.options.tutorialStatus() };
+    }
     // Strip timestamp before content-comparison so identical-state renders
     // don't trigger writes purely because of clock change.
     const { timestamp: _t, ...stable } = payload;
