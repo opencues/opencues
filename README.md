@@ -63,11 +63,19 @@ claude-cues                          # launch — native `claude` is untouched
 
 Full walkthrough, prerequisites, and per-host detail: [`docs/install.md`](docs/install.md). `opencues doctor` diagnoses anything that looks wrong.
 
+<!-- VIDEO: quickstart walkthrough (~30-45s), replace this comment with the
+     real embed once available. -->
+<a href="#"><img width="100%" alt="Video placeholder — quickstart walkthrough" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Video_placeholder_1200x300.svg"></a>
+
+#
+
 <br><br><br><br>
 
-# Supported editors
+# Integrations
 
-<p align="left"><a href="#supported-editors"><img width="67" alt="Supports:" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-08.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://opencode.ai" target="_blank" rel="noopener noreferrer"><img width="129" alt="OpenCode" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-09.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://claude.com/product/claude-code" target="_blank" rel="noopener noreferrer"><img width="144" alt="Claude Code" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-10.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://geminicli.com" target="_blank" rel="noopener noreferrer"><img width="126" alt="Gemini CLI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-11.svg"></a></p>
+#
+
+<p align="left"><a href="#integrations"><img width="67" alt="Supports:" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-08.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://opencode.ai" target="_blank" rel="noopener noreferrer"><img width="129" alt="OpenCode" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-09.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://claude.com/product/claude-code" target="_blank" rel="noopener noreferrer"><img width="144" alt="Claude Code" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-10.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://geminicli.com" target="_blank" rel="noopener noreferrer"><img width="126" alt="Gemini CLI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-11.svg"></a></p>
 
 | Editor | Status | Install |
 |---|---|---|
