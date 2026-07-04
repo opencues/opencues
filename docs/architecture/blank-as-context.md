@@ -78,7 +78,7 @@ Resolution rules:
 
 ## New module: `@opencues/core/src/blank-context.ts`
 
-Mirrors the shape of `sentinels.ts`. Exports:
+Mirrors the shape of `identity-context.ts`. Exports:
 
 ```ts
 export type BlankContextMode = 'off' | 'safe' | 'raw';
@@ -122,7 +122,7 @@ export function renderBlankContextCatalog(
 ```
 
 Token-naming convention pinned by FINDINGS as `safe-tokens`. Prompt
-shape mirrors `renderSentinelsCatalog` so the LLM sees one unified
+shape mirrors `renderIdentityContextCatalog` so the LLM sees one unified
 context block with no mode shift.
 
 ## New module: `@opencues/runtime/src/modules/blank-context-cache.ts`
@@ -206,16 +206,16 @@ other host — no `chrome.alarms` path needed.
 ## Sentinel integration — one catalog, two sources
 
 Today fluid-blank renders one `<context>` block via
-`renderSentinelsCatalog`. v1 appends the blank-context block to the
+`renderIdentityContextCatalog`. v1 appends the blank-context block to the
 same prompt section. From the LLM's view there's no distinction —
 both kinds of tokens are "context I might use." The post-processor's
 hallucination-strip already handles arbitrary token names, so the
-existing `sentinels.postProcessSentinels` is reused with a **merged
+existing `identity-context.postProcessContext` is reused with a **merged
 catalog**:
 
 ```ts
-const mergedCatalog = new Map([...sentinels.catalog, ...blankContext.catalog]);
-const result = postProcessSentinels(output, { catalog: mergedCatalog, originalBody });
+const mergedCatalog = new Map([...identityContext.catalog, ...blankContext.catalog]);
+const result = postProcessContext(output, { catalog: mergedCatalog, originalBody });
 ```
 
 Single substitution pass, no new code path. The post-processor's
@@ -259,8 +259,8 @@ field added to `OpenCuesState` in `config-loader.ts` per the
 | `packages/opencues-core/src/blank-context.ts` | **NEW** — types, `deriveBlankContextToken`, `planBlankContextSlots`, `renderBlankContextCatalog` |
 | `packages/opencues-core/src/blank-context.test.ts` | **NEW** — parser, planner, renderer unit tests |
 | `packages/opencues-core/src/feature-registry.ts` | Append `blank-context-mode` entry |
-| `packages/opencues-core/src/sentinels.ts` | (no change — post-processor already handles arbitrary tokens) |
-| `packages/opencues-core/src/sources/fluid-blank-source.ts` | Accept `blankContext?: BlankContextSnapshot` in source options; append `renderBlankContextCatalog(snapshot, mode)` to system prompt; pass merged catalog to `postProcessSentinels` |
+| `packages/opencues-core/src/identity-context.ts` | (no change — post-processor already handles arbitrary tokens) |
+| `packages/opencues-core/src/sources/fluid-blank-source.ts` | Accept `blankContext?: BlankContextSnapshot` in source options; append `renderBlankContextCatalog(snapshot, mode)` to system prompt; pass merged catalog to `postProcessContext` |
 | `packages/opencues-runtime/src/modules/config-loader.ts` | Add typed `blankContextMode: 'off'\|'safe'\|'raw'` field; parse the scalar |
 | `packages/opencues-runtime/src/modules/blank-context-cache.ts` | **NEW** — snapshot cache |
 | `packages/opencues-runtime/src/modules/blank-context-cache.test.ts` | **NEW** — TTL, cap, error behaviour |

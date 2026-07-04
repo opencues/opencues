@@ -186,7 +186,7 @@ typed buffer as the CONTENT (`danielsunderland`), merging into
 `https://linkedin.com/in/danielsunderland`. When `identity-context-mode`
 is also on, the typed hint takes precedence over IDENTITY.md catalog
 sentinels — full priority rule + bench evidence in
-`docs/architecture/sentinels.md` § *Steering — typed hint vs
+`docs/architecture/identity-context.md` § *Steering — typed hint vs
 catalog token*.
 
 ---

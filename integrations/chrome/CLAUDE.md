@@ -460,11 +460,13 @@ symlinks before the boundary check — a symlink at
 even though the link itself is inside CUE_ROOT, because realpath
 returns the underlying target.
 
-**5. Env-key whitelist** (`host/host.cjs:filterMessageEnv`). Only
-keys matching `/^CUES_[A-Z0-9_]+$/` from `msg.env` survive into the
-spawned process. A malicious cue pack frontmatter that tried to
-smuggle `PATH=/tmp/evil` or `LD_PRELOAD` through the message is
-filtered out.
+**5. Deny-by-default env construction** (`host/host.cjs:filterMessageEnv`,
+INFOSEC F2). The host builds its spawn env from its own tight
+`HOST_BASE_ENV_ALLOWLIST`, not `process.env` — `filterMessageEnv` then
+applies a deny-list (`HOST_DANGEROUS_ENV_PATTERN` — `LD_*`/`DYLD_*`/
+`NODE_OPTIONS`/etc.) as belt-and-braces. A malicious cue pack
+frontmatter that tried to smuggle `PATH=/tmp/evil` or `LD_PRELOAD`
+through the message is filtered out.
 
 **6. Per-call timeout**. Default 10s in the host, configurable per
 exec, plus a 5s safety net in the SW. No script can hang the

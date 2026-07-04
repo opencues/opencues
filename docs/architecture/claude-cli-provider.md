@@ -66,6 +66,7 @@ Per-model p50 / p95 (from
 | Haiku  | **840ms**  | **874ms**  | `--exclude-dynamic-system-prompt-sections --disable-slash-commands --append-system-prompt` + env `CLAUDE_CODE_DISABLE_THINKING=1`, `MAX_THINKING_TOKENS=0` |
 | Sonnet | **1338ms** | **1445ms** | same flags + `--effort low` + env `CLAUDE_CODE_DISABLE_THINKING=1` ONLY (the other env var interferes on Sonnet) |
 | Opus   | **1982ms** | **2900ms** | same as Haiku (no `--effort`); thinking still helps Opus structurally but the flag combination causes regressions |
+| Fable  | *(not yet benched)* | *(not yet benched)* | pre-bench tuning mirrors Opus (no `--effort`, thinking disabled) — re-tune once `tests/benchmarks/thinking-budget/` gets a fable row |
 
 The per-model flag table is baked into `MODEL_FLAGS` in
 `packages/opencues-core/src/providers/claude-cli-daemon.ts`. Re-run the
@@ -88,8 +89,14 @@ resolveModelFamily('claude-haiku-3-5')            → 'haiku'
 resolveModelFamily('claude-haiku-4-5-20251001')   → 'haiku'
 resolveModelFamily('claude-sonnet-4-6')           → 'sonnet'
 resolveModelFamily('claude-opus-4-7')             → 'opus'
+resolveModelFamily('claude-fable-5')              → 'fable'
 resolveModelFamily('gpt-4o-mini')                 → throws
 ```
+
+Match order matters: `fable` is checked before `opus` in
+`resolveModelFamily` since both are substring-matched permissively —
+if that order were reversed, a hypothetical future name containing
+both substrings could misresolve.
 
 Substring match — generation-agnostic within a family because flag
 tuning is structural (e.g. Haiku 3.5 / 4 / 4.5 all benefit from the
@@ -215,7 +222,7 @@ failure does. Re-run `claude auth` and the next call lazily respawns.
   `dispatchChat` transport-tag contract: HTTP path identical pre- and
   post-refactor, CLI path routes to `invokeCli`, never touches httpAdapter.
 - `packages/opencues-core/src/providers/claude-cli-daemon.test.ts` —
-  14 tests with injected fake spawn (no actual claude binary needed for
+  21 tests with injected fake spawn (no actual claude binary needed for
   CI): lazy spawn, per-model flag application, serial queueing,
   crash-mid-flight rejection, non-success result rejection, shutdown,
   line-delimited parser handles split chunks, idle reap, post-reap

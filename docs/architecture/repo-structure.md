@@ -46,8 +46,9 @@ opencues/
 │   └── opencues-runtime/        # publishes as @opencues/runtime
 │       └── adapters/
 │           ├── cc/v2.1/         # was: claude-code/v2.1/
-│           ├── oc/v1.4/         # was: opencode/v1.4/
-│           └── gemini/v0.41/    # gemini-cli adapter band
+│           ├── oc/v1.4/, oc/v1.14/  # was: opencode/v1.4/ — multi-band since the v1.14 cross-minor bump
+│           ├── gemini/v0.41/    # gemini-cli adapter band
+│           └── shell/v1/        # standalone terminal integration — no upstream fork
 │
 ├── integrations/                # Host glue — each is its own release unit
 │   ├── cc/                      # was: claude-code/
@@ -168,7 +169,7 @@ expecting a normal Node setup, pnpm is the safer default.
 | 1 | Document target architecture; reconcile top-level docs | done (`865cfd4`) |
 | 2 | Per-integration `package.json` with version + compat metadata | done (`3886cb4`) |
 | 3 | Adopt pnpm workspaces | done |
-| 4a | Rename packages + integrations to `@opencues/*` scope, opaque codes (source only) | done (`e731f03`) |
+| 4a | Rename packages to `@opencues/*` scope, opaque adapter-band codes | **partially done** (`e731f03`) — `packages/opencues-runtime/adapters/{cc,oc,chrome,gemini,shell}/` landed; the `integrations/{claude-code,opencode,gemini-cli,chrome,shell}/` folder rename to short codes has **not** happened yet (still full names as of this writing — see CLAUDE.md's "Re-org in progress" note, Stage 4 of this tracker) |
 | 4b | Re-deploy `~/.claude/node_modules/@opencues/*` via setup.sh; verify CC end-to-end | done (smoke-tested: cycling, voice-mode toggle, weather blank, TTS, statusline) |
 | 5 | Add Turborepo build orchestration | done (this commit) |
 | 6′ | Installer scaffolding for all three (no publish) — `bin/install.cjs` + `bin` field; works as `pnpm --filter X dev-install` today, becomes `npx @opencues/X` post-publish | done (this commit) |
