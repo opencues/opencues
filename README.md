@@ -74,14 +74,14 @@ Full walkthrough, prerequisites, and per-host detail: [`docs/install.md`](docs/i
 
 # Integrations
 
-| Editor | Status | Install |
-|---|---|---|
-| Claude Code | Available | `opencues install claude-code` |
-| OpenCode | Available | `opencues install opencode` |
-| Gemini CLI | Beta | `opencues install gemini-cli` |
-| Chrome | Beta | `opencues install chrome` |
-| Shell (`oc-shell`) | Beta | `opencues install shell` |
-| VS Code | Planned | — |
+<table width="100%">
+<tr><th>Editor</th><th>Status</th><th>Install</th></tr>
+<tr><td>Claude Code</td><td>Available</td><td><code>opencues install claude-code</code></td></tr>
+<tr><td>OpenCode</td><td>Available</td><td><code>opencues install opencode</code></td></tr>
+<tr><td>Gemini CLI</td><td>Beta</td><td><code>opencues install gemini-cli</code></td></tr>
+<tr><td>Chrome</td><td>Beta</td><td><code>opencues install chrome</code></td></tr>
+<tr><td>Shell (<code>oc-shell</code>)</td><td>Beta</td><td><code>opencues install shell</code></td></tr>
+</table>
 
 Each pins its own upstream fork and never touches your native editor install. Per-host detail: [Claude Code](integrations/claude-code/README.md) · [OpenCode](integrations/opencode/README.md) · [Gemini CLI](integrations/gemini-cli/README.md) · [Chrome](integrations/chrome/README.md) · [Shell](integrations/shell/README.md). Windows: not supported natively, run inside WSL2 (see [`docs/install.md`](docs/install.md)).
 
