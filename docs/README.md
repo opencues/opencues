@@ -36,7 +36,12 @@ docs/
 ├── install.md                 # deep per-host install reference (the top-level README has the quickstart)
 ├── configuration.md           # every OPENCUES.md scalar + the CUES.md/BLANKS.md/AUDITORS.md masters
 ├── prompt-design-learnings.md # cross-cutting prompt-engineering lessons
-├── install/                   # install-process deep-dives (walkthrough, tmux prebuilt publishing)
+├── install/                   # install-process deep-dives — see install/README.md
+├── benchmarks/                # dated benchmark write-ups (snapshots) — see benchmarks/README.md;
+│                               # live numbers + runnable bench code live in tests/benchmarks/ instead
+├── launch/                    # pre-launch runbooks (e.g. npm-name handover) — see root CLAUDE.md § Pre-launch
+├── maintainers/                # maintainer-only docs (e.g. PUBLISHING.md)
+├── blog/, blog-resources/     # content-creation working area — separate from reference docs, out of scope here
 ├── guides/                    # task-oriented how-tos — see guides/README.md
 ├── architecture/              # implementation reference docs — see architecture/README.md
 └── features/                  # feature concept reference — see features/README.md

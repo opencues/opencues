@@ -33,6 +33,10 @@ That's it. Every feature in OpenCues is one of these two things, dressed up.
                          └── settings         (opencues _, voice-mode _)
 ```
 
+## A continuous variant: Auditors
+
+Auditors are the same **LLM → you** direction as Cues, stretched to cover the whole buffer instead of one word at a time. Where a cue proposes alternatives you cycle through, an auditor declares one ongoing concern (grammar, clarity, tone, jargon, ...) and the runtime keeps a rewrite applying itself as you type — shown as dimmed text you can revert, never something you have to accept first. Same direction, same "the system offers, you didn't ask" contract; the difference is scope (whole buffer, not one word) and cadence (continuous, not per-word). See `spec/auditor-spec.md` and `docs/guides/adding-an-auditor.md`.
+
 ## Why the split matters
 
 The two surfaces have **fundamentally different contracts**:
@@ -65,14 +69,16 @@ The two surfaces have **fundamentally different contracts**:
 
 The shape: **`_` for anything that touches the world. Plain text is LLM-only. Nothing else.**
 
-## Settings (`OPENCUES.md` frontmatter) — every cue surface is opt-in
+## Settings (`OPENCUES.md` frontmatter) — opt-in per surface
 
 ```yaml
-fluid-blank-mode: on          # free-form `_` lookups
 word-cues-mode: on            # domain synonym cycling on plain text (per-source match/keywords)
+transform-blank-mode: on      # imperative `_` instructions + agent-task lifecycle
+# Fluid-blank (free-form `_` lookup) has no toggle — it's the always-on
+# base layer every `_` not claimed by a shape falls through to.
 # Spelling: ships as a regular cue at `~/.cues/cues/spelling.md` —
 # enabled by default like any other cue. No separate flag.
 ```
 
-Missing setting → off. Shipped defaults turn all three on; flip to `off` to disable a surface.
+Missing setting → off. Shipped defaults turn both real toggles on; flip either to `off` to disable that surface.
 
