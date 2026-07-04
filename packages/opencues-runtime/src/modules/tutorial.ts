@@ -164,7 +164,6 @@ export interface TutorialCoachOptions {
 
 export class TutorialCoach {
   private _unsubText: Unsubscribe | null = null;
-  private _unsubKey: Unsubscribe | null = null;
   private _doc: TutorialDoc | null = null;
   /** 0-based current step index. */
   private _stepIndex = 0;
@@ -214,25 +213,27 @@ export class TutorialCoach {
 
   subscribe(): void {
     this._unsubText = this.adapter.onTextChange(e => this.onTextChange(e));
-    // Passive key observation (null filter = every key; return false =
-    // never consumed, so Navigation/Cycling behaviour is untouched).
-    // Salient presses land in the coach trace so steps that happen
-    // OUTSIDE the input box (mode toggles, pickers) are detectable —
-    // the user never has to type `done`.
-    this._unsubKey = this.adapter.onKey(null, e => { this.onKey(e); return false; });
   }
 
   unsubscribe(): void {
     if (this._unsubText) { this._unsubText(); this._unsubText = null; }
-    if (this._unsubKey) { this._unsubKey(); this._unsubKey = null; }
     if (this._debounceTimer) { clearTimeout(this._debounceTimer); this._debounceTimer = null; }
   }
 
-  /** Salient = not plain typing (that shows up as buffer changes):
-   *  tab / escape / arrows always; enter only on an empty buffer (a
-   *  non-empty submit is already traced as `submitted`); any key with
-   *  ctrl/alt/meta. */
-  private onKey(e: KeyEvent): void {
+  /**
+   * Passive key observation feeding the coach trace. HOSTS MUST WIRE
+   * THIS AS THE FIRST KEY HANDLER — before buildSharedRuntime subscribes
+   * Navigation/Cycling — because key dispatch is emit-until-consumed:
+   * a late subscriber never sees Ctrl+Alt+arrows (Navigation consumes
+   * them), which blinds the coach to exactly the presses cycling
+   * tutorials teach. Observation only — callers must NOT treat any key
+   * as consumed on the tutorial's behalf.
+   *
+   * Salient = not plain typing (that shows up as buffer changes):
+   * tab / escape / arrows always; enter only on an empty buffer (a
+   * non-empty submit is already traced as `submitted`); any key with
+   * ctrl/alt/meta. */
+  observeKey(e: KeyEvent): void {
     if (!this._doc) return;
     const k = e.key.toLowerCase();
     const mods = e.modifiers;

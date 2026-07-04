@@ -167,6 +167,14 @@ export function boot(host: HostInfo): BootResult {
   const adapter = new OpenCodeV14Adapter(bindings);
   Runtime.create(adapter).catch(err => log('error', 'Runtime.create failed', err));
 
+  // Tutorial key observation — MUST be the first key subscriber (key
+  // dispatch is emit-until-consumed; Navigation consumes Ctrl+Alt+arrows,
+  // so a late subscriber is blind to exactly the presses cycling
+  // tutorials teach). Late-bound ref: the coach itself is constructed
+  // after buildSharedRuntime (it needs the ConfigLoader).
+  let tutorialCoachRef: TutorialCoach | null = null;
+  keyEvents.subscribe(e => { tutorialCoachRef?.observeKey(e); return false; });
+
   // Universal state + ConfigLoader + Navigation/DimRender/Cycling/BlankFill
   // all live in boot-common.ts so the chrome and opencode bands can't
   // drift on subscription order or constructor args. Tips come from
@@ -209,6 +217,7 @@ export function boot(host: HostInfo): BootResult {
     log: msg => log('debug', msg),
   });
   tutorialCoach.subscribe();
+  tutorialCoachRef = tutorialCoach; // arms the early key observer above
 
   // Statusline (file-based) + in-process snapshot hook so the OpenCode
   // footer can render the tip natively. Both sinks are opt-in; either
