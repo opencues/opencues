@@ -5,15 +5,17 @@ title: Claude Code basics — plan, model, commit
 ---
 
 Learn the plan-first workflow: enter plan mode, ask for a plan, switch
-model, then commit the work to git.
+model, then commit the work to git. Progress is detected automatically
+from what you type and press — just follow the coaching line.
 
 ## Step 1 — enter plan mode
 Enter plan mode by pressing Shift+Tab twice. You'll see "plan mode" in
-the input border. This step happens outside the input box — type `done`
-when you're in plan mode.
+the input border.
 coach:
-  - Nothing typed yet → tell them to press Shift+Tab twice, then type done
-  - They typed something else → remind them this step is just Shift+Tab twice, then the word done
+  - No activity yet → tell them to press Shift+Tab twice
+  - Trace shows "pressed: shift+tab" once → one more Shift+Tab to go
+  - Trace shows "pressed: shift+tab (×2)" or more → STEP_DONE
+  - They started typing a planning request already → they're past this step: STEP_DONE
 
 ## Step 2 — ask for a plan
 Ask Claude to write a PLAN for a small change (for example adding a
@@ -29,8 +31,8 @@ Switch to a different model using the /model picker.
 coach:
   - Nothing typed → tell them to type /model
   - Buffer is exactly "/model" → tell them to press Enter to open the picker
-  - They submitted "/model" → tell them to pick a model with arrows + Enter, then type done
-  - They typed done → the runtime advances (handled outside your judgement)
+  - They submitted "/model" → tell them to pick a model with the arrow keys, then Enter
+  - After submitting "/model", trace shows arrow presses and/or "pressed: enter" → they picked a model: STEP_DONE
 
 ## Step 4 — commit to git
 Ask Claude to commit the work to git on a new branch.

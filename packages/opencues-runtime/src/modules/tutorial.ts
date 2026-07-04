@@ -15,10 +15,14 @@
 //     step counter — never the buffer, never an exec/side-effect layer.
 //     A malicious TUTORIAL.md can at worst show wrong text and mis-advance
 //     its own step counter.
-//   - The runtime observes ONLY typed text. A buffer transitioning
-//     non-empty → empty is recorded as a `submitted` event (Enter was
-//     pressed); everything else is invisible and the tutorial script's
-//     prose has to coach around it (`done _` is the honest fallback).
+//   - The runtime observes typed text AND salient key presses (the
+//     adapter's onKey stream — passive, never consumed): Tab/Shift+Tab,
+//     Enter, Escape, arrows, and modifier combos. A buffer transitioning
+//     non-empty → empty is additionally recorded as a `submitted` event.
+//     Together these make "unobservable" steps (mode toggles, pickers)
+//     detectable without the user having to type `done` — seamlessness
+//     is the point. `done _` / `next _` / `skip _` remain as manual
+//     escape hatches but tutorials should never require them.
 //   - While a tutorial is active the Resolver is suppressed entirely
 //     (ResolverOptions.externallySuppressed) — tutorial mode overrides
 //     normal cue/blank behaviour, and `stop tutorial _` restores it with
@@ -36,7 +40,7 @@
 // agentic harness's oc-events / scenario assertions see the coach loop
 // the same way they see transform-blank passes.
 
-import type { HostAdapter, TextChangeEvent, Unsubscribe } from '../adapter';
+import type { HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../adapter';
 import type { ConfigLoader } from './config-loader';
 import type { ResolvedAgentLLM } from './agent-rewrite';
 import { dispatchChat } from '@opencues/core';
@@ -135,8 +139,10 @@ export interface TutorialStatus {
 }
 
 interface TraceEntry {
-  readonly kind: 'typed' | 'submitted';
+  readonly kind: 'typed' | 'submitted' | 'key';
   readonly text: string;
+  /** For 'key' entries — consecutive-repeat count ("shift+tab ×2"). */
+  count?: number;
 }
 
 const TRACE_MAX = 10;
@@ -158,6 +164,7 @@ export interface TutorialCoachOptions {
 
 export class TutorialCoach {
   private _unsubText: Unsubscribe | null = null;
+  private _unsubKey: Unsubscribe | null = null;
   private _doc: TutorialDoc | null = null;
   /** 0-based current step index. */
   private _stepIndex = 0;
@@ -207,11 +214,45 @@ export class TutorialCoach {
 
   subscribe(): void {
     this._unsubText = this.adapter.onTextChange(e => this.onTextChange(e));
+    // Passive key observation (null filter = every key; return false =
+    // never consumed, so Navigation/Cycling behaviour is untouched).
+    // Salient presses land in the coach trace so steps that happen
+    // OUTSIDE the input box (mode toggles, pickers) are detectable —
+    // the user never has to type `done`.
+    this._unsubKey = this.adapter.onKey(null, e => { this.onKey(e); return false; });
   }
 
   unsubscribe(): void {
     if (this._unsubText) { this._unsubText(); this._unsubText = null; }
+    if (this._unsubKey) { this._unsubKey(); this._unsubKey = null; }
     if (this._debounceTimer) { clearTimeout(this._debounceTimer); this._debounceTimer = null; }
+  }
+
+  /** Salient = not plain typing (that shows up as buffer changes):
+   *  tab / escape / arrows always; enter only on an empty buffer (a
+   *  non-empty submit is already traced as `submitted`); any key with
+   *  ctrl/alt/meta. */
+  private onKey(e: KeyEvent): void {
+    if (!this._doc) return;
+    const k = e.key.toLowerCase();
+    const mods = e.modifiers;
+    const isEnter = k === 'return' || k === 'enter';
+    const salient = ['tab', 'escape', 'up', 'down', 'left', 'right'].includes(k)
+      || (isEnter && e.text.trim().length === 0)
+      || mods.ctrl || mods.alt || mods.meta;
+    if (!salient) return;
+    const label = [
+      mods.ctrl ? 'ctrl' : '', mods.alt ? 'alt' : '',
+      mods.shift ? 'shift' : '', mods.meta ? 'meta' : '',
+      isEnter ? 'enter' : k,
+    ].filter(Boolean).join('+');
+    const last = this._trace[this._trace.length - 1];
+    if (last && last.kind === 'key' && last.text === label) {
+      last.count = (last.count ?? 1) + 1;
+    } else {
+      this.pushTrace({ kind: 'key', text: label, count: 1 });
+    }
+    this.scheduleTick();
   }
 
   // ── text-change pipeline ─────────────────────────────────────────────
@@ -444,8 +485,18 @@ export class TutorialCoach {
         model: resolved.model,
         provider: resolved.provider.id,
       });
-      if (wantsAdvance) this.advanceStep('coach');
-      else this.refreshStatusline();
+      if (wantsAdvance) {
+        this.advanceStep('coach');
+        // Auto-walk: when the evidence already belongs to a step beyond
+        // the one we just advanced to (the model claimed further ahead),
+        // re-ask immediately so progress catches up one clamped step per
+        // tick instead of stalling until the next user action.
+        if (this._doc && verdict.step !== null && verdict.step > this._stepIndex + 1) {
+          this.scheduleTick();
+        }
+      } else {
+        this.refreshStatusline();
+      }
     } catch (err) {
       // Fail-safe: a dead coach degrades to static instructions — never
       // touches the buffer, never loses progress.
@@ -466,18 +517,24 @@ export class TutorialCoach {
     const steps = doc.steps
       .map((s, i) => `### Step ${i + 1}: ${s.title}\n${s.body}`)
       .join('\n\n');
-    return `You are a TUTORIAL COACH embedded in a text editor's input box. The user is working through a scripted tutorial step by step. You can observe ONLY what they type into the input box. You cannot see their screen, menus, or key presses — except that a "submitted" event in the trace means they pressed Enter (the buffer was sent and cleared).
+    return `You are a TUTORIAL COACH embedded in a text editor's input box. The user is working through a scripted tutorial step by step. You observe their activity as a trace of events:
+- typed: "<text>" — the current state of what they typed into the input box
+- submitted (pressed Enter): "<text>" — they sent that text and the buffer cleared
+- pressed: <key> (×N) — a salient key press outside normal typing (tab, shift+tab, enter on an empty buffer, escape, arrow keys, ctrl/alt combos). Steps that happen OUTSIDE the input box (mode toggles, pickers, menus) are detected from these.
+
+You cannot see their screen — only this trace and the current buffer.
 
 On every check-in, judge the user's progress on the CURRENT step and give one short coaching line.
 
 Rules:
-- Judge ONLY from the typed activity in the trace and the current buffer.
+- Judge ONLY from the trace and the current buffer.
 - STATUS is one of:
-  IN_PROGRESS — the user is working on the current step (or nothing relevant typed yet)
-  STEP_DONE   — the typed activity satisfies the current step's goal
-  OFF_TRACK   — the typing contradicts the current step's goal
+  IN_PROGRESS — the user is working on the current step (or no relevant activity yet)
+  STEP_DONE   — the activity (typing, submits, or key presses) satisfies the current step's goal
+  OFF_TRACK   — the activity contradicts the current step's goal
+- Detection is your job — the user should NEVER have to announce completion. When the step's expected key presses appear in the trace (e.g. shift+tab ×2 for a mode toggle, arrows + enter for a picker), that IS completion: STEP_DONE.
+- If the activity clearly belongs to a LATER step than the current one (e.g. the current step is a mode toggle you can't fully verify, but they're already typing the next step's request), the current step is behind them: STEP_DONE.
 - COACH is ONE line (max 100 chars): the next micro-action ("Press Enter to open the model picker"), a fix ("add: don't implement yet"), or brief encouragement. Follow any coach notes in the step body.
-- Steps the user can only complete outside the input box end when they type "done" — the runtime handles that word; only remind them of it when the step's own text says to.
 - Never invent steps. Answer for the CURRENT step only.
 
 Respond in EXACTLY this format (three lines, nothing else):
@@ -493,10 +550,12 @@ ${steps}`;
 
   private userPrompt(stepIndex: number): string {
     const trace = this._trace.length === 0
-      ? '(nothing typed yet)'
-      : this._trace.map(t => t.kind === 'submitted'
-        ? `- submitted (pressed Enter): "${t.text}"`
-        : `- typed: "${t.text}"`).join('\n');
+      ? '(no activity yet)'
+      : this._trace.map(t => {
+        if (t.kind === 'submitted') return `- submitted (pressed Enter): "${t.text}"`;
+        if (t.kind === 'key') return `- pressed: ${t.text}${(t.count ?? 1) > 1 ? ` (×${t.count})` : ''}`;
+        return `- typed: "${t.text}"`;
+      }).join('\n');
     const buffer = this._lastText.trim().length === 0 ? '(empty)' : this._lastText;
     return `CURRENT STEP: ${stepIndex + 1}\nRECENT ACTIVITY:\n${trace}\nCURRENT BUFFER: ${buffer}`;
   }
