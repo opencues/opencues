@@ -73,7 +73,7 @@ Full walkthrough, prerequisites, and per-host detail: [`docs/install.md`](docs/i
 # Integrations
 
 <table width="100%">
-<tr><th>Editor</th><th>Status</th><th>Install</th></tr>
+<tr><th>Host</th><th>Status</th><th>Install</th></tr>
 <tr><td>Claude Code</td><td>Available</td><td><code>opencues install claude-code</code></td></tr>
 <tr><td>OpenCode</td><td>Available</td><td><code>opencues install opencode</code></td></tr>
 <tr><td>Gemini CLI</td><td>Beta</td><td><code>opencues install gemini-cli</code></td></tr>
@@ -81,7 +81,7 @@ Full walkthrough, prerequisites, and per-host detail: [`docs/install.md`](docs/i
 <tr><td>Shell (<code>oc-shell</code>)</td><td>Beta</td><td><code>opencues install shell</code></td></tr>
 </table>
 
-Each pins its own upstream fork and never touches your native editor install. Per-host detail: [Claude Code](integrations/claude-code/README.md) · [OpenCode](integrations/opencode/README.md) · [Gemini CLI](integrations/gemini-cli/README.md) · [Chrome](integrations/chrome/README.md) · [Shell](integrations/shell/README.md). Windows: not supported natively, run inside WSL2 (see [`docs/install.md`](docs/install.md)).
+Each pins its own upstream fork and never touches your native host install. Per-host detail: [Claude Code](integrations/claude-code/README.md) · [OpenCode](integrations/opencode/README.md) · [Gemini CLI](integrations/gemini-cli/README.md) · [Chrome](integrations/chrome/README.md) · [Shell](integrations/shell/README.md). Windows: not supported natively, run inside WSL2 (see [`docs/install.md`](docs/install.md)).
 
 #
 
@@ -91,11 +91,13 @@ Each pins its own upstream fork and never touches your native editor install. Pe
 
 # What you get
 
-- **Blanks** — type `_` for free-form generation, translation, formatting, full-register rewrites, or keyword-bound system actions (`volume _`, `weather _`).
-- **Sentence rewrites** — cycle a whole sentence to a different register (formal, concise, ...) with one keystroke, no `_` needed.
-- **Word cues** — navigate to a single word and cycle a smaller LLM-suggested alternative.
-- **Personal + ambient context** (opt-in) — `my email _` substitutes your real address; fluid lookups can read the page you're on.
-- **Hot-reload** — every `.md` config picks up edits in ~2s, no restart.
+| Feature | What it does |
+|---|---|
+| **Blanks** | Type `_` for free-form generation, translation, formatting, full-register rewrites, or keyword-bound system actions (`volume _`, `weather _`). |
+| **Sentence rewrites** | Cycle a whole sentence to a different register (formal, concise, ...) with one keystroke, no `_` needed. |
+| **Word cues** | Navigate to a single word and cycle a smaller LLM-suggested alternative. |
+| **Personal + ambient context** (opt-in) | `my email _` substitutes your real address; fluid lookups can read the page you're on. |
+| **Hot-reload** | Every `.md` config picks up edits in ~2s, no restart. |
 
 Full feature catalogue (42 concepts): [`docs/features/README.md`](docs/features/README.md).
 
@@ -154,7 +156,7 @@ Full threat model: [`docs/architecture/security-audit.md`](docs/architecture/sec
 
 <br>
 
-New editor integration → [`docs/guides/adding-an-integration.md`](docs/guides/adding-an-integration.md). New cue/blank → [`docs/guides/adding-a-cue-blank.md`](docs/guides/adding-a-cue-blank.md). Working on the reference runtime itself → [`CONTRIBUTING.md`](CONTRIBUTING.md). New to the terms → [`docs/glossary.md`](docs/glossary.md).
+New host integration → [`docs/guides/adding-an-integration.md`](docs/guides/adding-an-integration.md). New cue/blank → [`docs/guides/adding-a-cue-blank.md`](docs/guides/adding-a-cue-blank.md). Working on the reference runtime itself → [`CONTRIBUTING.md`](CONTRIBUTING.md). New to the terms → [`docs/glossary.md`](docs/glossary.md).
 
 <br><br><br><br>
 
