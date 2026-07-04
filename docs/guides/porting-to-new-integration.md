@@ -1,10 +1,12 @@
 ---
-last_updated: 2026-04-07
+last_updated: 2026-07-04
 ---
 
 # Porting OpenCues to a New Integration
 
 This guide documents the contract between opencues-core and integrations, plus non-obvious behaviours and pitfalls discovered during the Claude Code implementation. Read this before building a Chrome extension, VS Code extension, or any new integration.
+
+> **Relationship to [`adding-an-integration.md`](adding-an-integration.md):** that guide is the step-by-step process — the file checklist, the formal `HostAdapter` contract, adapter bands, patch strategy. This doc is the conceptual/behavioural companion — the resolver contract, the runtime invariants, and the hard-won pitfalls that don't fit a checklist. Read `adding-an-integration.md` for the *how*; read this for the *why* and the *gotchas*. The adapter interfaces sketched below (`HttpAdapter`, filesystem callbacks) are illustrative of what a host must supply — the concrete, current contract is `HostAdapter` in `packages/opencues-runtime/src/modules/`, detailed in `adding-an-integration.md`.
 
 ---
 
@@ -141,11 +143,13 @@ When an alternative contains spaces (e.g., "Sundar Pichai" replacing "Sundar"), 
 
 ### Blank dispatch order
 
-When a `_` is present, sources fire in priority order (highest first):
+When a `_` is present, sources fire in priority order (highest first) — see [`docs/architecture/blank-sources.md`](../architecture/blank-sources.md) for the canonical, fuller reference:
 1. **`BlankSource` (95)** — keyword-bound. If any registered blank's blank shape (or keyword) leads the sentence containing `_` (the segment after the last sentence terminator (`.`/`!`/`?` + whitespace, or CJK `。！？．`) or newline before `_`), that blank claims the slot. Auto-populates via the blank's script or runtime class.
-2. **`FluidBlankSource` (92)** — free-form lookup. Two-pass LLM (P1 SEGMENT + P3 ANSWER) for any `_` no keyword-bound blank claimed.
+2. **`ConfigIntentSource` (94)** — natural-language settings-change classifier (`fluid-config-mode`). Routes ONLY to FEATURES-registry scalars, never to user blanks.
+3. **`TransformBlankSource` (93)** — imperative-instruction rewrite (`improve prompt _`, `translate to french _`). A single fused LLM call classifies + rewrites in one pass; substitutes via a whole-buffer three-way merge rather than a bounded-span splice.
+4. **`FluidBlankSource` (92)** — free-form lookup, for any `_` none of the above claimed.
 
-The host's responsibility is to pass the full text + word indices through to the resolver and splice the `_` substitution into place when the result arrives. The host doesn't need to know which source fired — `CueResult.source` carries that information.
+The host's responsibility is to pass the full text + word indices through to the resolver and splice the `_` substitution into place when the result arrives (BlankSource: deterministic slot splice; TransformBlank/AgentRewrite: three-way merge against the live buffer). The host doesn't need to know which source fired — `CueResult.source` carries that information.
 
 ### Per-word clearing
 

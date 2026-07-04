@@ -1,13 +1,13 @@
 ---
-last_updated: 2026-05-23
+last_updated: 2026-07-04
 ---
 
 # LLM Providers
 
-OpenCues ships with **eight built-in providers** (six HTTP, two
-subscription-backed) plus auto-fallback between wire-compatible peers.
-Configuration is per-surface — pick a different provider/model for
-each LLM-driven feature.
+OpenCues ships with **ten built-in providers** (seven HTTP, two
+subscription-backed, one local) plus auto-fallback between
+wire-compatible peers. Configuration is per-surface — pick a
+different provider/model for each LLM-driven feature.
 
 ## Built-in providers
 
@@ -20,15 +20,17 @@ each LLM-driven feature.
 | **openai** | `OPENAI_API_KEY` | `gpt-5.4-mini` | paid API, full model catalogue |
 | **openai-subscription** *(subscription)* | `codex login` | `gpt-5.4-mini` | OpenAI's Responses API via your ChatGPT plan |
 | **openrouter** | `OPENROUTER_API_KEY` | `openai/gpt-oss-120b:free` | OpenAI-compat HTTP |
-| **claude-cli** *(subscription)* | `claude` login | `haiku` | Claude's subscription via local subprocess |
+| **claude-code-cli** *(subscription, alias `claude-cli`)* | `claude` login | `haiku` | Claude's subscription via local subprocess |
+| **opencode-zen** *(blanks-only, free)* | none | `free` | OpenCode's free model pool — **trains on input**, so it's exposed only to the `blanks` bucket (the `_` keystroke is the consent gate). See [Free mode](#free-mode-no-api-key) below. |
 | **ollama** *(local)* | none (optional `OLLAMA_API_KEY`) | `gemma4:e2b` | Native `/api/chat`, fully offline — see below |
 
-The two subscription providers (`openai-subscription` and `claude-cli`)
-use your existing AI plan — no per-token billing. Use them on
-expensive surfaces (agent-rewrite, transform-blank) when you want the
-quality of frontier models without the per-call cost. The paid HTTP
-providers stay available for surfaces that need a model your plan
-doesn't allow, or when you want a specific (e.g. nano-tier) model.
+The two subscription providers (`openai-subscription` and
+`claude-code-cli`) use your existing AI plan — no per-token billing.
+Use them on expensive surfaces (agent-rewrite, transform-blank) when
+you want the quality of frontier models without the per-call cost.
+The paid HTTP providers stay available for surfaces that need a model
+your plan doesn't allow, or when you want a specific (e.g. nano-tier)
+model.
 
 The runtime picks the right env key automatically based on which
 provider is selected. Set as many keys as you want — the others stay
@@ -205,6 +207,7 @@ is a small change if a future surface needs it.
 | anthropic (haiku 4.5) | $1.00 | $5.00 | |
 | openrouter | varies by model | | `:free` tier available for many models |
 | gemini (3.1-flash-lite) | $0.25 | $1.50 | May 2026 GA; replaces 2.5-flash |
+| opencode-zen | $0 | $0 | free pool, blanks-only — trains on input, see [Free mode](#free-mode-no-api-key) |
 
 Cerebras is roughly 2× Groq's cost for the same `gpt-oss-120b`
 weights. The trade-off: Cerebras wins on long-prompt latency and
@@ -343,6 +346,51 @@ If a subscription provider fails (auth expired, rate-limited, binary
 missing, network blip), the call fails — there's no silent retry
 against an HTTP provider. Run `opencues doctor` to see which
 subscription providers are detected on PATH.
+
+## Free mode (no API key)
+
+`opencode-zen` routes the **blanks** bucket (fluid-blank, transform-blank,
+fluid-config, keyword blanks — the opt-in `_` surface) through
+[OpenCode Zen](https://opencode.ai/zen)'s free model pool, anonymously,
+with no API key at all. Set both scalars in `~/.cues/OPENCUES.md`:
+
+```yaml
+---
+blanks-llm-provider: opencode-zen
+blanks-llm-model: free
+---
+```
+
+The runtime resolves `free` to whatever's currently in the pool, walks
+past dead/throttled entries on transient failure, and surfaces the
+resolved model in the status line so you know what actually answered.
+
+### Why blanks-only
+
+`opencode-zen`'s ToS says **your inputs may be used to train the
+underlying models** — this is the one provider in the catalogue where
+`trainsOnInput` is true. That's why it's exposed *only* in the `blanks`
+bucket and refused outright for `cues` / `auditors`: cues and
+auditors fire automatically on prose you type in the normal course of
+using the editor, with no separate consent step. Blanks fire only on
+an explicit `_` keystroke — that keystroke **is** the consent gate.
+Setting `llm-provider: opencode-zen` (the global/cues path) is refused
+at startup for exactly this reason. Only the `_` trigger, and only the
+surrounding context window that source sends, goes through the free
+pool — but treat anything you type next to a `_` while on this
+provider as public. See [`docs/architecture/llm-routing.md`](../architecture/llm-routing.md)
+for the trust-class guard's implementation.
+
+### The pool changes
+
+Free models on OpenCode Zen rotate in and out — promotions end, models
+move behind paid tiers, new ones arrive. As of May 2026 the working set
+is `big-pickle` + `deepseek-v4-flash-free` + `nemotron-3-super-free`;
+two others benched earlier (`qwen3.6-plus-free`, `minimax-m2.5-free`)
+have already moved to the paid OpenCode Go tier. The runtime
+health-caches dead entries for 30s and walks the rest, but the
+**canonical live list** is `GET https://opencode.ai/zen/v1/models` —
+check that before relying on any specific model name.
 
 ## Local models via Ollama
 
