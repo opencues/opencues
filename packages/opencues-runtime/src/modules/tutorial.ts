@@ -136,6 +136,12 @@ export interface TutorialStatus {
   readonly stepCount: number;
   readonly stepTitle: string;
   readonly coach: string | null;
+  /** True when the last coach verdict was OFF_TRACK — the user's
+   *  activity contradicts the current step. Consumers should render
+   *  the coach line as a correction (e.g. ✗ prefix / warning colour)
+   *  rather than neutral guidance. Cleared on the next on-track tick,
+   *  step advance, or control phrase. */
+  readonly offTrack: boolean;
 }
 
 interface TraceEntry {
@@ -168,6 +174,7 @@ export class TutorialCoach {
   /** 0-based current step index. */
   private _stepIndex = 0;
   private _coachLine: string | null = null;
+  private _offTrack = false;
   private _trace: TraceEntry[] = [];
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private _inFlight = false;
@@ -208,6 +215,7 @@ export class TutorialCoach {
       stepCount: this._doc.steps.length,
       stepTitle: this._doc.steps[i].title,
       coach: this._coachLine,
+      offTrack: this._offTrack,
     };
   }
 
@@ -371,6 +379,7 @@ export class TutorialCoach {
       return;
     }
     this._stepIndex = from + 1;
+    this._offTrack = false;
     const next = this._doc.steps[this._stepIndex];
     this._coachLine = `✓ — Step ${this._stepIndex + 1}/${this._doc.steps.length}: ${next.title}`;
     this.adapter.emitEvent?.('tutorial.step-advanced', {
@@ -384,6 +393,7 @@ export class TutorialCoach {
     this._doc = null;
     this._stepIndex = 0;
     this._coachLine = null;
+    this._offTrack = false;
     this._trace = [];
     if (this._debounceTimer) { clearTimeout(this._debounceTimer); this._debounceTimer = null; }
   }
@@ -477,6 +487,7 @@ export class TutorialCoach {
       const wantsAdvance = verdict.status === 'STEP_DONE'
         || (verdict.step !== null && verdict.step > stepAtDispatch + 1);
       this._coachLine = verdict.coach.slice(0, COACH_MAX_CHARS);
+      this._offTrack = verdict.status === 'OFF_TRACK';
       this.adapter.emitEvent?.('tutorial.tick', {
         step: stepAtDispatch + 1,
         claimedStep: verdict.step,
@@ -534,7 +545,7 @@ Rules:
   STEP_DONE   — the activity (typing, submits, or key presses) satisfies the current step's goal
   OFF_TRACK   — the activity contradicts the current step's goal
 - Detection is your job — the user should NEVER have to announce completion. When the step's expected key presses appear in the trace (e.g. shift+tab ×2 for a mode toggle, arrows + enter for a picker), that IS completion: STEP_DONE.
-- If the activity clearly belongs to a LATER step than the current one (e.g. the current step is a mode toggle you can't fully verify, but they're already typing the next step's request), the current step is behind them: STEP_DONE.
+- If the activity clearly belongs to a LATER step than the current one (e.g. the current step is a mode toggle you can't fully verify, but they're already typing the next step's request), the current step is behind them: STEP_DONE. EXCEPTION: a step's own coach notes always override this — when they mark the order as strict (skipping = OFF_TRACK), enforce the order instead.
 - COACH is ONE line (max 100 chars): the next micro-action ("Press Enter to open the model picker"), a fix ("add: don't implement yet"), or brief encouragement. Follow any coach notes in the step body.
 - Never invent steps. Answer for the CURRENT step only.
 
