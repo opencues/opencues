@@ -33,6 +33,8 @@ Rather than navigating to a chat interface or AI-enabled input box, define a que
 |---|---|
 | `hey can u send me that report when u get a sec make this formal _` | Could you please send me that report at your earliest convenience? |
 | `draft an email to my landlord asking for a rent reduction _` | (the email, written) |
+| `what's the ffmpeg command to convert a video to an efficient web-ready mp4 _` | `ffmpeg -i input.mov -c:v libx264 -preset slow -crf 23 -c:a aac -b:a 128k -movflags +faststart output.mp4` |
+| `hello world translate to french _` | bonjour le monde |
 | `what is the capital city of france _` | Paris |
 | `4 + 4 = _` | 4 + 4 = 8 |
 
