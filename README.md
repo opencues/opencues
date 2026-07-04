@@ -25,7 +25,18 @@ publish cutover) and Discord badge (once DISCORD_ID/INVITE are real):
 [![npm](https://img.shields.io/npm/v/opencues)](https://npmjs.com/package/opencues)
 [![Discord](https://img.shields.io/discord/DISCORD_ID?label=Discord)](https://discord.gg/INVITE) -->
 
-**Real-time guidance as you type.** Cues offer alternatives for words you've already typed; blanks fill in whatever you summon with `_`; auditors keep one background concern (grammar, tone, ...) continuously applied. All three are just `.md` config files — no code. Works in Claude Code, OpenCode, Gemini CLI, Chrome, and a standalone shell wrapper.
+**OpenCues ushers in a new standard for AI interaction, dispensing with the turn-based chat box paradigm.** Access intelligence models from any surface, at any time, seamlessly.
+
+Rather than navigating to a chat interface or AI-enabled input box, define a query in plain text: an LLM discovers your query and answers it inline, right where you wrote it.
+
+```
+what is the capital city of france _   →  Paris
+4 + 4 = _                              →  4 + 4 = 8
+the boy ran fast                       →  cycle "boy" (Ctrl+Alt+Up)  →  the kid ran fast
+draft an email to my landlord asking for a rent reduction _  →  (the email, written)
+```
+
+OpenCues is platform, model, and provider agnostic, engineered from the ground up to enable native inline AI. Works in Claude Code, OpenCode, Gemini CLI, Chrome, and a standalone shell wrapper.
 
 > ⚠️ **Private beta.** `npm install -g opencues` isn't live yet. Install from a clone instead — see **[BETA-INSTALL.md](BETA-INSTALL.md)**. Everything past the install step below is accurate today.
 
@@ -34,11 +45,6 @@ publish cutover) and Discord badge (once DISCORD_ID/INVITE are real):
      YouTube (GitHub won't inline-embed it — link a thumbnail instead):
      [![Demo](assets/hero-thumb.png)](https://youtu.be/VIDEO_ID) -->
 <a href="#"><img width="100%" alt="Video placeholder — hero demo" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Video_placeholder_1200x300.svg"></a>
-
-```
-the boy ran fast          →  cycle "boy" (Ctrl+Alt+Up)  →  the kid ran fast
-draft an email to my landlord asking for a rent reduction _  →  (the email, written)
-```
 
 #
 
@@ -80,14 +86,13 @@ Each pins its own upstream fork and never touches your native editor install. Pe
 
 - **Cues** — navigate to a word, cycle LLM-suggested alternatives, keep typing.
 - **Blanks** — type `_` for free-form generation, translation, formatting, prompt rewrites, or keyword-bound system actions (`volume _`, `weather _`).
-- **Auditors** — declare a concern (grammar, clarity, tone) once; it applies continuously, shown as revertable dimmed text.
 - **Personal + ambient context** (opt-in) — `my email _` substitutes your real address; fluid lookups can read the page you're on.
 - **Hot-reload** — every `.md` config picks up edits in ~2s, no restart.
 
 Full feature catalogue (42 concepts): [`docs/features/README.md`](docs/features/README.md).
 
-<!-- VIDEO: feature tour (~30s of cues + blanks + an auditor firing), replace
-     this comment with the real embed once available. -->
+<!-- VIDEO: feature tour (~30s of cues + blanks in action), replace this
+     comment with the real embed once available. -->
 <a href="#"><img width="100%" alt="Video placeholder — feature tour" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Video_placeholder_1200x300.svg"></a>
 
 <br><br><br><br>
@@ -101,7 +106,7 @@ Two directions of intent — see [`concept.md`](concept.md):
 | LLM → you | **Cues** | plain text |
 | you → system | **Blanks** | text containing `_` |
 
-**Auditors** are a continuous, whole-buffer variant of the Cues direction. All three are open file formats — `CUE.md` / `BLANK.md` / `AUDITOR.md` — so another runtime could implement them independently; the standard lives at [`spec/`](spec/README.md), this repo ships the reference implementation.
+Both are open file formats — `CUE.md` / `BLANK.md` — so another runtime could implement them independently; the standard lives at [`spec/`](spec/README.md), this repo ships the reference implementation.
 
 Authoring your own: `opencues new cue <name>` / `opencues new blank <name>` scaffolds a starting file. Guide: [`docs/guides/adding-a-cue-blank.md`](docs/guides/adding-a-cue-blank.md).
 
@@ -141,7 +146,7 @@ Full threat model: [`docs/architecture/security-audit.md`](docs/architecture/sec
 
 <br>
 
-New editor integration → [`docs/guides/adding-an-integration.md`](docs/guides/adding-an-integration.md). New cue/blank/auditor → [`docs/guides/adding-a-cue-blank.md`](docs/guides/adding-a-cue-blank.md). Working on the reference runtime itself → [`CONTRIBUTING.md`](CONTRIBUTING.md). New to the terms → [`docs/glossary.md`](docs/glossary.md).
+New editor integration → [`docs/guides/adding-an-integration.md`](docs/guides/adding-an-integration.md). New cue/blank → [`docs/guides/adding-a-cue-blank.md`](docs/guides/adding-a-cue-blank.md). Working on the reference runtime itself → [`CONTRIBUTING.md`](CONTRIBUTING.md). New to the terms → [`docs/glossary.md`](docs/glossary.md).
 
 <br><br><br><br>
 
