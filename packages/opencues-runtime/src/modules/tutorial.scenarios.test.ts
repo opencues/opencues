@@ -176,6 +176,50 @@ describe('TutorialCoach journeys (deterministic contracts)', () => {
     expect(h.coach.shouldSuppressResolve('anything at all')).toBe(false); // released
   });
 
+  it('no LLM: degraded mode is loud + fully navigable end-to-end', async () => {
+    const h = makeHarness(); // resolveLLM returns null throughout
+    await h.type('start tutorial 1 _');
+    await vi.advanceTimersByTimeAsync(300);
+    // User types step activity → debounced tick fires → offline hint
+    // (deterministic) instead of silence.
+    await h.type('git status');
+    await vi.advanceTimersByTimeAsync(400); // past the 300ms coach debounce
+    expect(h.coach.status()?.coach).toContain('coach offline (no LLM key)');
+    expect(h.coach.status()?.coach).toContain('type next _ when done');
+    expect(h.coach.status()?.offTrack).toBe(false);
+    // Manual advancement carries the whole journey.
+    await h.type('next _', 'git status');
+    expect(h.coach.status()).toMatchObject({ step: 2 });
+    await h.type('next _');
+    await h.type('next _'); // last step → completed
+    expect(h.coach.active).toBe(false);
+    expect(h.events.map(e => e.type)).toContain('tutorial.completed');
+  });
+
+  it('coach unreachable (2 consecutive network failures) → offline hint; recovery clears it', async () => {
+    const h = makeHarness();
+    let failing = true;
+    // A resolved LLM whose dispatch always throws (dead network).
+    h.resolveLLM.mockImplementation((() => ({
+      provider: {
+        id: 'test', defaultModel: 'm',
+        buildRequest: () => { if (failing) throw new Error('ECONNREFUSED'); return { url: 'u', body: 'b', headers: {} }; },
+        parseResponse: () => 'STEP: 1\nSTATUS: IN_PROGRESS\nCOACH: back online',
+      },
+      model: 'm', endpoint: 'e', apiKey: 'k',
+    })) as never);
+    await h.type('start tutorial 1 _');
+    await vi.advanceTimersByTimeAsync(300);
+    await h.type('attempt one');
+    await vi.advanceTimersByTimeAsync(400); // failure 1 — still the static line
+    expect(h.coach.status()?.coach).not.toContain('coach offline');
+    await h.type('attempt one two', 'attempt one');
+    await vi.advanceTimersByTimeAsync(400); // failure 2 — degrade loudly
+    expect(h.coach.status()?.coach).toContain('coach offline (coach unreachable)');
+    expect(h.events.filter(e => e.type === 'tutorial.tick' && e.body?.error).length).toBe(2);
+    void failing;
+  });
+
   it('unknown tutorial → not-found event + transient catalogue notice', async () => {
     const h = makeHarness();
     await h.type('start tutorial 99 _');

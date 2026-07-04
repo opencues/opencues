@@ -199,6 +199,21 @@ export class TutorialCoach {
    *  floor. */
   private _escCount = 0;
   private _escResetTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Consecutive failed coach calls — 2+ flips the coach line to the
+   *  deterministic offline hint. Reset on any successful tick. */
+  private _consecutiveErrors = 0;
+
+  /** Deterministic degraded-mode line: current step + how to advance
+   *  manually + the exit. Idempotent per step (deduped by content). */
+  private setOfflineCoachLine(why: string): void {
+    if (!this._doc) return;
+    const i = Math.min(this._stepIndex, this._doc.steps.length - 1);
+    const line = `Step ${i + 1}/${this._doc.steps.length}: ${this._doc.steps[i].title} — coach offline (${why}); type next _ when done · Esc ×3 exits`;
+    if (this._coachLine === line) return;
+    this._coachLine = line;
+    this._offTrack = false;
+    this.refreshStatusline();
+  }
   /** Transient user-facing notice (e.g. "no tutorial found") shown via
    *  the statusline tutorial block while no tutorial is active. */
   private _notice: { text: string; until: number; offTrack?: boolean } | null = null;
@@ -571,7 +586,13 @@ export class TutorialCoach {
   private async tick(): Promise<void> {
     if (!this._doc || this._inFlight) return;
     const resolved = this.options.resolveLLM();
-    if (!resolved) return; // no key — static instructions only
+    if (!resolved) {
+      // No LLM (missing key / provider unresolved). Degrade LOUDLY, not
+      // silently: the tutorial keeps working as static instruction
+      // cards with manual advancement — but only if the user is told.
+      this.setOfflineCoachLine('no LLM key');
+      return;
+    }
     const doc = this._doc;
     const stepAtDispatch = this._stepIndex;
     this._tickSnapshot = this._lastText;
@@ -600,6 +621,7 @@ export class TutorialCoach {
         this.adapter.emitEvent?.('tutorial.tick', { stale: true, latencyMs });
         return;
       }
+      this._consecutiveErrors = 0;
       const verdict = parseCoachResponse(out);
       if (!verdict) {
         this._logFn(`Tutorial: unparseable coach response (${latencyMs}ms): ${out.slice(0, 120)}`);
@@ -653,10 +675,14 @@ export class TutorialCoach {
       }
     } catch (err) {
       // Fail-safe: a dead coach degrades to static instructions — never
-      // touches the buffer, never loses progress.
+      // touches the buffer, never loses progress. After two consecutive
+      // failures (one could be a blip), surface the manual-advance
+      // affordance so the user isn't left typing into a void.
       const latencyMs = Date.now() - started;
       this._logFn(`Tutorial: coach call failed (${latencyMs}ms) — ${err instanceof Error ? err.message : String(err)}`);
       this.adapter.emitEvent?.('tutorial.tick', { error: true, latencyMs });
+      this._consecutiveErrors++;
+      if (this._consecutiveErrors >= 2) this.setOfflineCoachLine('coach unreachable');
     } finally {
       this._inFlight = false;
       // If the buffer moved while we were in flight, re-ask.
