@@ -5,7 +5,7 @@
      then "use their svgs for now" per explicit instruction. -->
 
 <div align="right">
-  <a href="#"><img width="180" height="29" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/OpenCues_logo.svg"></a>
+  <a href="#"><img width="180" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/OpenCues_logo.svg"></a>
 </div>
 
 <br><br>
@@ -16,7 +16,7 @@
 
 <br><br>
 
-<p align="left"><a href="#"><img height="18" width="93" alt="Associations:" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-01.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://www.reddit.com/user/inventor_black/" target="_blank" rel="noopener noreferrer"><img height="18" width="177" alt="Mod of r/ClaudeAI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-02.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://www.reddit.com/user/ClaudeAI-mod-bot/" target="_blank" rel="noopener noreferrer"><img height="18" width="168" alt="Bot at r/ClaudeAI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-02.1.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://luma.com/OpenSourceIRL" target="_blank" rel="noopener noreferrer"><img height="18" width="161" alt="OpenSourceIRL" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-03.svg"></a></p>
+<p align="left"><a href="#"><img width="93" alt="Associations:" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-01.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://www.reddit.com/user/inventor_black/" target="_blank" rel="noopener noreferrer"><img width="177" alt="Mod of r/ClaudeAI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-02.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://www.reddit.com/user/ClaudeAI-mod-bot/" target="_blank" rel="noopener noreferrer"><img width="168" alt="Bot at r/ClaudeAI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-02.1.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://luma.com/OpenSourceIRL" target="_blank" rel="noopener noreferrer"><img width="161" alt="OpenSourceIRL" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-03.svg"></a></p>
 
 #
 
@@ -42,7 +42,7 @@ draft an email to my landlord asking for a rent reduction _  →  (the email, wr
 
 #
 
-<p align="left"><a href="LICENSE"><img height="18" width="104" alt="License" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-04.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="spec/README.md"><img height="18" width="157" alt="Open Standard" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-05.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="spec/blank-spec.md"><img height="18" width="121" alt="Blanks.md" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-06.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="spec/cue-spec.md"><img height="18" width="112" alt="Cues.md" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-07.svg"></a></p>
+<p align="left"><a href="LICENSE"><img width="104" alt="License" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-04.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="spec/README.md"><img width="157" alt="Open Standard" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-05.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="spec/blank-spec.md"><img width="121" alt="Blanks.md" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-06.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="spec/cue-spec.md"><img width="112" alt="Cues.md" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-07.svg"></a></p>
 
 <br><br><br><br>
 
@@ -61,7 +61,7 @@ Full walkthrough, prerequisites, and per-host detail: [`docs/install.md`](docs/i
 
 # Supported editors
 
-<p align="left"><a href="#supported-editors"><img height="18" width="67" alt="Supports:" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-08.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://opencode.ai" target="_blank" rel="noopener noreferrer"><img height="18" width="129" alt="OpenCode" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-09.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://claude.com/product/claude-code" target="_blank" rel="noopener noreferrer"><img height="18" width="144" alt="Claude Code" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-10.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://geminicli.com" target="_blank" rel="noopener noreferrer"><img height="18" width="126" alt="Gemini CLI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-11.svg"></a></p>
+<p align="left"><a href="#supported-editors"><img width="67" alt="Supports:" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-08.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://opencode.ai" target="_blank" rel="noopener noreferrer"><img width="129" alt="OpenCode" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-09.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://claude.com/product/claude-code" target="_blank" rel="noopener noreferrer"><img width="144" alt="Claude Code" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-10.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://geminicli.com" target="_blank" rel="noopener noreferrer"><img width="126" alt="Gemini CLI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-11.svg"></a></p>
 
 | Editor | Status | Install |
 |---|---|---|
@@ -147,7 +147,7 @@ New editor integration → [`docs/guides/adding-an-integration.md`](docs/guides/
 
 # Community
 
-<p align="left"><img height="18" width="85" alt="Community:" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Community-12.svg"><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://github.com/opencues/opencues/graphs/contributors"><img height="18" width="137" alt="Contributors" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Community-13.svg"></a></p>
+<p align="left"><img width="85" alt="Community:" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Community-12.svg"><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://github.com/opencues/opencues/graphs/contributors"><img width="137" alt="Contributors" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Community-13.svg"></a></p>
 
 [Twitter/X — @openCues_](https://x.com/openCues_) · [GitHub Issues](https://github.com/opencues/opencues/issues) · `hello@opencues.com`
 
