@@ -373,17 +373,36 @@ src = open(p).read()
 if 'opencuesTip' in src: sys.exit(0)
 src = src.replace(
   'import { Global } from "@/global"',
-  'import { Global } from "@/global"\nimport { opencuesTip } from "../../opencues"',
+  'import { Global } from "@/global"\nimport { opencuesTip, opencuesTutorial } from "../../opencues"',
 )
 src = src.replace(
   '''function View(props: { api: TuiPluginApi }) {
   return (''',
   '''function OpencuesTip(props: { api: TuiPluginApi }) {
   const theme = () => props.api.theme.current
+  // Command spans (text the user should literally type/press) render in
+  // the success colour + bold so they read as commands, not prose. The
+  // step head goes error-coloured when the coach flags OFF_TRACK.
+  const headFg = () => {
+    const t = theme() as any
+    return opencuesTutorial()!.offTrack ? (t.error ?? t.success) : t.success
+  }
   return (
-    <Show when={opencuesTip()}>
-      <text fg={theme().textMuted}>{opencuesTip()}</text>
-    </Show>
+    <>
+      <Show when={opencuesTutorial()}>
+        <text>
+          <span style={{ fg: headFg(), bold: true }}>{opencuesTutorial()!.head} </span>
+          {opencuesTutorial()!.segments.map((seg) =>
+            seg.command
+              ? <span style={{ fg: theme().success, bold: true }}>{seg.text}</span>
+              : <span style={{ fg: theme().textMuted }}>{seg.text}</span>,
+          )}
+        </text>
+      </Show>
+      <Show when={!opencuesTutorial() && opencuesTip()}>
+        <text fg={theme().textMuted}>{opencuesTip()}</text>
+      </Show>
+    </>
   )
 }
 
@@ -423,7 +442,7 @@ src = open(p).read()
 if 'opencuesTip' in src: sys.exit(0)
 src = src.replace(
   'import { Global } from "@/global"',
-  'import { Global } from "@/global"\nimport { opencuesTip } from "../../opencues"',
+  'import { Global } from "@/global"\nimport { opencuesTip, opencuesTutorial } from "../../opencues"',
 )
 # The sidebar footer's box stacks vertically (path → version). Insert
 # the OpencuesTip line between them, mirroring the home footer's

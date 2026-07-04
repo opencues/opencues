@@ -214,10 +214,19 @@ error | parseError | stale}` ·
 `tutorial.not-found {arg,available}`.
 
 Statusline: `StatuslinePayload.tutorial`
-`{name,title,step,stepCount,stepTitle,coach,offTrack}` — merged in
+`{name,title,step,stepCount,stepTitle,coach,coachSegments,offTrack}` — merged in
 `maybeWrite` (orthogonal to highlight state, like `providerError`).
 `step: 0, stepCount: 0` is a transient notice (not-found catalogue,
 exit confirmation), fed by the module's `_notice`.
+
+Command markup: coach lines use backticks around literal type/press
+text (`parseCoachMarkup` → `coachSegments`; `coach` is the stripped
+plain string). Deterministic lines are authored with the markup; the
+system prompt instructs the model to backtick commands in COACH. The
+OC footer (patch_footer_tsx + the bootstrap's `opencuesTutorial`
+signal) renders command spans success-coloured + bold and the step
+head error-coloured while offTrack — the reference rendering for
+other hosts.
 
 ## Security posture
 

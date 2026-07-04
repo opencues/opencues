@@ -53,6 +53,7 @@ export interface StatuslineOptions {
     readonly stepCount: number;
     readonly stepTitle: string;
     readonly coach: string | null;
+    readonly coachSegments: ReadonlyArray<{ readonly text: string; readonly command: boolean }> | null;
     readonly offTrack: boolean;
   } | null;
 }
@@ -100,6 +101,7 @@ export interface StatuslinePayload {
     readonly stepCount: number;
     readonly stepTitle: string;
     readonly coach: string | null;
+    readonly coachSegments: ReadonlyArray<{ readonly text: string; readonly command: boolean }> | null;
     readonly offTrack: boolean;
   } | null;
 }

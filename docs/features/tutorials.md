@@ -172,6 +172,15 @@ consumers render as the dominant content:
 warning colour); `step: 0, stepCount: 0` marks a transient notice (the
 not-found catalogue, the exit confirmation).
 
+Commands vs prose: anything the user should literally type or press is
+marked in the raw coach line with backticks (deterministic lines are
+authored that way; the coach model is instructed to do the same) and
+arrives pre-parsed as `coachSegments: [{text, command}]` alongside the
+plain `coach` string. Rich consumers render command spans distinctly —
+the OpenCode footer shows them in the theme's success colour + bold,
+with the ⛳ step head flipping to the error colour while off-track.
+Plain consumers just use `coach` (markup already stripped).
+
 ## Safety model (summary)
 
 Coach output is display-only — it feeds the status line and a

@@ -52,6 +52,16 @@ function getCuesRoots(): string[] {
 // payload (deduped, so footer renders only flip when tip actually changes).
 const [opencuesTip, setOpencuesTip] = createSignal<string | null>(null)
 export { opencuesTip }
+// Tutorial-mode footer block — step counter + coach line split into
+// prose/command segments so the footer can render commands (things the
+// user should literally type/press) in a distinct colour. null when no
+// tutorial is running.
+const [opencuesTutorial, setOpencuesTutorial] = createSignal<{
+  head: string
+  segments: Array<{ text: string; command: boolean }>
+  offTrack: boolean
+} | null>(null)
+export { opencuesTutorial }
 
 export interface PromptInputAccess {
   /** Reads the current text from the SolidJS store. */
@@ -463,6 +473,22 @@ export function startOpenCues(opts: {
     //   - agentTask null/missing: nothing appended
     //   - agentTask present:      "[task: <prompt>]"  (no in-flight spinner)
     statusSnapshotHook: (payload: any) => {
+      // Tutorial block is dominant while active — the footer renders it
+      // INSTEAD of the word/tip part (tutorial mode overrides normal
+      // cue display; docs/features/tutorials.md § Status line).
+      const tut = payload?.tutorial as {
+        step: number; stepCount: number; coach: string | null
+        coachSegments: Array<{ text: string; command: boolean }> | null
+        offTrack: boolean
+      } | null | undefined
+      if (tut) {
+        const head = tut.stepCount > 0 ? `⛳ ${tut.step}/${tut.stepCount}` : '⛳'
+        const segments = tut.coachSegments
+          ?? (tut.coach ? [{ text: tut.coach, command: false }] : [])
+        setOpencuesTutorial({ head, segments, offTrack: !!tut.offTrack })
+      } else {
+        setOpencuesTutorial(null)
+      }
       const agentTask = payload?.agentTask as string | null | undefined
       const agentBadge = agentTask ? `[task: ${agentTask}]` : null
 

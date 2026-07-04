@@ -127,6 +127,32 @@ export function matchControlPhrase(text: string, active: boolean): ControlPhrase
 // Coach state + module
 // ──────────────────────────────────────────────────────────────────────
 
+/** One piece of a coach line. `command: true` marks text the user
+ *  should literally type or press — consumers render it distinctly
+ *  (colour/bold) so commands are never mistaken for prose. */
+export interface CoachSegment {
+  readonly text: string;
+  readonly command: boolean;
+}
+
+/** Parse backtick markup in a coach line: `like this` spans are
+ *  commands. Returns the plain display string (markup stripped) and
+ *  the ordered segments. Unbalanced backticks degrade to plain text. */
+export function parseCoachMarkup(line: string): { plain: string; segments: readonly CoachSegment[] } {
+  const segments: CoachSegment[] = [];
+  const re = /`([^`]+)`/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(line)) !== null) {
+    if (m.index > last) segments.push({ text: line.slice(last, m.index), command: false });
+    segments.push({ text: m[1], command: true });
+    last = m.index + m[0].length;
+  }
+  if (last < line.length) segments.push({ text: line.slice(last), command: false });
+  if (segments.length === 0) segments.push({ text: line, command: false });
+  return { plain: segments.map(s => s.text).join(''), segments };
+}
+
 /** Statusline-facing snapshot. Also mirrored into tutorial.* events. */
 export interface TutorialStatus {
   readonly name: string;
@@ -136,6 +162,10 @@ export interface TutorialStatus {
   readonly stepCount: number;
   readonly stepTitle: string;
   readonly coach: string | null;
+  /** Coach line split into prose vs command spans (backtick markup in
+   *  the raw line). Same content as `coach` — rich consumers render
+   *  commands in a distinct colour; plain consumers use `coach`. */
+  readonly coachSegments: readonly CoachSegment[] | null;
   /** True when the last coach verdict was OFF_TRACK — the user's
    *  activity contradicts the current step. Consumers should render
    *  the coach line as a correction (e.g. ✗ prefix / warning colour)
@@ -225,7 +255,7 @@ export class TutorialCoach {
   private setOfflineCoachLine(why: string): void {
     if (!this._doc) return;
     const i = Math.min(this._stepIndex, this._doc.steps.length - 1);
-    const line = `Step ${i + 1}/${this._doc.steps.length}: ${this._doc.steps[i].title} — coach offline (${why}); type next _ when done · Esc ×3 exits`;
+    const line = `Step ${i + 1}/${this._doc.steps.length}: ${this._doc.steps[i].title} — coach offline (${why}); type \`next _\` when done · \`Esc ×3\` exits`;
     if (this._coachLine === line) return;
     this._coachLine = line;
     this._offTrack = false;
@@ -264,21 +294,25 @@ export class TutorialCoach {
       // Transient failure notice (failed `start tutorial N _`). step 0 /
       // stepCount 0 marks it as a notice, not a running tutorial.
       if (this._notice && Date.now() < this._notice.until) {
+        const parsed = parseCoachMarkup(this._notice.text);
         return {
           name: 'tutorials', title: 'tutorials', step: 0, stepCount: 0,
-          stepTitle: '', coach: this._notice.text, offTrack: this._notice.offTrack ?? true,
+          stepTitle: '', coach: parsed.plain, coachSegments: parsed.segments,
+          offTrack: this._notice.offTrack ?? true,
         };
       }
       return null;
     }
     const i = Math.min(this._stepIndex, this._doc.steps.length - 1);
+    const parsed = this._coachLine !== null ? parseCoachMarkup(this._coachLine) : null;
     return {
       name: this._doc.name,
       title: this._doc.title,
       step: i + 1,
       stepCount: this._doc.steps.length,
       stepTitle: this._doc.steps[i].title,
-      coach: this._coachLine,
+      coach: parsed?.plain ?? null,
+      coachSegments: parsed?.segments ?? null,
       offTrack: this._offTrack,
     };
   }
@@ -337,7 +371,7 @@ export class TutorialCoach {
         const id = this._doc.id;
         this.deactivate();
         this._notice = {
-          text: `Tutorial exited — type start tutorial ${id ?? name} _ to pick it back up`,
+          text: `Tutorial exited — type \`start tutorial ${id ?? name} _\` to pick it back up`,
           until: Date.now() + 10_000,
           offTrack: false,
         };
@@ -349,7 +383,7 @@ export class TutorialCoach {
       }
       // Countdown hint — deterministic, overwrites the coach line so the
       // exit is discoverable mid-press without any model round-trip.
-      this._coachLine = `Esc ×${3 - this._escCount} more to exit the tutorial`;
+      this._coachLine = `\`Esc\` ×${3 - this._escCount} more to exit the tutorial`;
       this._escResetTimer = setTimeout(() => { this._escCount = 0; }, 2_500);
       this.armIdleTimer();
       this.refreshStatusline();
@@ -456,7 +490,7 @@ export class TutorialCoach {
         this._stepIndex = 0;
         this._trace = [];
         this._journal = [];
-        this._coachLine = `Step 1/${doc.steps.length} — ${doc.steps[0].title} · Esc ×3 exits`;
+        this._coachLine = `Step 1/${doc.steps.length} — ${doc.steps[0].title} · \`Esc ×3\` exits`;
         this.consumePhrase(text, ctl.phraseStart);
         this.adapter.emitEvent?.('tutorial.started', {
           name: doc.name, id: doc.id, title: doc.title, stepCount: doc.steps.length,
@@ -645,12 +679,12 @@ export class TutorialCoach {
     const idleMs = Date.now() - this._idleSince;
     this._nudgeCount++;
     const nudgeNumber = this._nudgeCount;
-    const skipHint = nudgeNumber >= 2 ? ' · stuck? skip _ skips this step' : '';
+    const skipHint = nudgeNumber >= 2 ? ' · stuck? `skip _` skips this step' : '';
     const resolved = this.options.resolveLLM();
     if (!resolved) {
       // Deterministic nudge — same idea, no model.
       const i = Math.min(stepAtDispatch, doc.steps.length - 1);
-      this._coachLine = `Still there? Step ${i + 1}/${doc.steps.length}: ${doc.steps[i].title}${skipHint || ' — type next _ when done'}`;
+      this._coachLine = `Still there? Step ${i + 1}/${doc.steps.length}: ${doc.steps[i].title}${skipHint || ' — type `next _` when done'}`;
       this._offTrack = false;
       this.adapter.emitEvent?.('tutorial.nudge', { step: i + 1, nudgeNumber, idleMs, deterministic: true, coach: this._coachLine });
       this.refreshStatusline();
@@ -764,7 +798,7 @@ export class TutorialCoach {
         const id = doc.id;
         this.deactivate();
         this._notice = {
-          text: `Tutorial stopped — type start tutorial ${id ?? name} _ to pick it back up`,
+          text: `Tutorial stopped — type \`start tutorial ${id ?? name} _\` to pick it back up`,
           until: Date.now() + 10_000,
           offTrack: false,
         };
@@ -841,6 +875,7 @@ Rules:
 - Detection is your job — the user should NEVER have to announce completion. When the step's expected key presses appear in the trace (e.g. shift+tab ×2 for a mode toggle, arrows + enter for a picker), that IS completion: STEP_DONE.
 - If the activity clearly belongs to a LATER step than the current one (e.g. the current step is a mode toggle you can't fully verify, but they're already typing the next step's request), the current step is behind them: STEP_DONE. EXCEPTION: a step's own coach notes always override this — when they mark the order as strict (skipping = OFF_TRACK), enforce the order instead.
 - COACH is ONE line (max 100 chars): the next micro-action ("Press Enter to open the model picker"), a fix ("add: don't implement yet"), or brief encouragement. Follow any coach notes in the step body.
+- In COACH, wrap anything the user should LITERALLY type or press in backticks: commands (\`/init\`, \`git status\`, \`skip _\`), exact text to enter, key names (\`Enter\`, \`Shift+Tab\`). The display renders these distinctly so the user can tell commands from prose. Do not backtick ordinary words.
 - Meta-questions to you ("help", "what do I do now?", "where am I?") are NOT off-track — answer them: STATUS IN_PROGRESS, COACH restates the current micro-action. When they ask what they've DONE so far, answer from LESSON SO FAR in a few words, then the next action (e.g. "You've run /init and gotten an overview — now ask how to run the tests."). OFF_TRACK is reserved for actions that contradict the step.
 - TRUST COMPLETION CLAIMS on steps you can't observe: if the user explicitly claims they completed an outside-the-input-box action ("done", "I did it", "I'm in plan mode now") and the trace doesn't contradict them, that's STEP_DONE. Never hold a user hostage to key-press evidence you might simply have missed.
 - USER CONTROLS you must know (and mention when relevant): the user can type "stop tutorial _" to exit the tutorial at any time, and "skip _" to force-skip the current step. When they want to quit, are frustrated, or ask how to exit → COACH must include: type stop tutorial _ to exit. When they've been stuck on the same step for several checks despite your coaching → give the EXACT text to type, and mention skip _ as the escape.

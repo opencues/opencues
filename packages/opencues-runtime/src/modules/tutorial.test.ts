@@ -4,7 +4,7 @@
 // detection, the pieces that don't need a live host.
 
 import { describe, it, expect } from 'vitest';
-import { parseTutorialMd, matchControlPhrase, parseCoachResponse } from './tutorial';
+import { parseTutorialMd, matchControlPhrase, parseCoachResponse, parseCoachMarkup } from './tutorial';
 
 const SAMPLE = `---
 name: claude-code-basics
@@ -126,5 +126,30 @@ describe('parseCoachResponse', () => {
     // Only STOP is a recognised control — anything else is ignored.
     const junk = parseCoachResponse('STATUS: IN_PROGRESS\nCOACH: hi\nCONTROL: ADVANCE');
     expect(junk).toMatchObject({ control: null });
+  });
+});
+
+describe('parseCoachMarkup', () => {
+  it('splits prose and command spans', () => {
+    const r = parseCoachMarkup('type `next _` when done · `Esc ×3` exits');
+    expect(r.plain).toBe('type next _ when done · Esc ×3 exits');
+    expect(r.segments).toEqual([
+      { text: 'type ', command: false },
+      { text: 'next _', command: true },
+      { text: ' when done · ', command: false },
+      { text: 'Esc ×3', command: true },
+      { text: ' exits', command: false },
+    ]);
+  });
+
+  it('no markup → one prose segment', () => {
+    const r = parseCoachMarkup('just keep going');
+    expect(r.segments).toEqual([{ text: 'just keep going', command: false }]);
+  });
+
+  it('unbalanced backtick degrades to plain text', () => {
+    const r = parseCoachMarkup('type `broken');
+    expect(r.plain).toBe('type `broken');
+    expect(r.segments.every(s => !s.command)).toBe(true);
   });
 });
