@@ -132,8 +132,14 @@ default + mode-gate composition rules are normative.
 
 | Scalar | Values | Default | Defined in |
 |---|---|---|---|
-| `identity-context-mode` | `off` / `safe` / `raw` (`raw` MUST be hidden from cycling menus) | `off` | [`identity-context-spec.md`](./identity-context-spec.md) |
-| `blank-context-mode` | `off` / `safe` / `raw` | `off` | [`blank-spec.md`](./blank-spec.md) § Sentinel aspects |
+| `identity-context-mode` | `off` / `safe` / `raw` (`raw` MUST be hidden from cycling menus) | `safe` | [`identity-context-spec.md`](./identity-context-spec.md) |
+| `blank-context-mode` | `off` / `safe` / `raw` | `safe` | [`blank-spec.md`](./blank-spec.md) § Sentinel aspects |
+
+> Both defaulted to `off` before June 2026; the reference runtime flipped
+> both to `safe` (PR #161) since token-name-only catalogs carry no PII to
+> the provider — `off` was a stricter-than-necessary default for the
+> common case. This is a wire-contract default, so a conformant runtime
+> that ships `off` here diverges from spec.
 
 **Mode-gate composition.** When `blank-context-mode: raw` is set but
 `identity-context-mode` is NOT `raw`, conformant runtimes MUST
@@ -236,11 +242,11 @@ A conformant runtime SHOULD ship a CLI exposing at least these commands. Names a
 
 | Command | Semantics |
 |---|---|
-| `validate [--path <dir>]` | Run the linting rules above against a search-path directory. Exit 0 if all pass (or only `info`/`warn`); exit 1 if any `error` rule fires. |
-| `list [--path <dir>] [--type cue\|blank\|auditor]` | Enumerate discovered sources, one per line. MUST display `name`, `description`, source kind (cue / blank / auditor), and trigger summary (`match:` / `keywords:` / `blankKeywords:` for cues and blanks; `priority:` for auditors). |
+| `validate [--project] [--user] [--strict] [--json]` | Run the linting rules above against the search path (project + user by default; `--project`/`--user` restrict to one). Exit 0 if all pass (or only `info`/`warn`); exit 1 if any `error` rule fires. Flag names are runtime-specific — a directory-targeting flag (rather than the reference impl's cwd-relative `--project`) is an equally conformant shape. |
+| `list [--cues] [--blanks] [--auditors] [--all\|-a]` | Enumerate discovered sources, one per line (defaults to cues; the kind flags restrict the listing; `--all` shows every kind). MUST display `name`, `description`, source kind (cue / blank / auditor), and trigger summary (`match:` / `keywords:` / `blankKeywords:` for cues and blanks; `priority:` for auditors). |
 | `seed-configs [--silent]` | Copy shipped defaults into the user search path on first install; idempotent on subsequent runs. Idempotently migrate legacy filenames. Runtime-specific in detail. |
 
-Runtimes MAY add commands; the three above are the interop surface that authoring tools (editors, CI, doc generators) can rely on.
+Runtimes MAY add commands; the three above are the interop surface that authoring tools (editors, CI, doc generators) can rely on. Flag *names* are non-normative (each runtime's CLI conventions differ) — only the command names and their semantics are part of the interop surface.
 
 ---
 
@@ -281,36 +287,51 @@ The principle: **at parse time, accept the unfamiliar; at validate time, surface
 
 ## Linting rules
 
-A conformant validator (`opencues validate` or equivalent) MUST report the following. Severity column: `error` blocks load; `warn` allows load but surfaces the issue; `info` is observational.
+A conformant validator (`opencues validate` or equivalent) MUST report the rules in the first table below. Severity column: `error` blocks load; `warn` allows load but surfaces the issue; `info` is observational.
 
 | Rule | Severity | What it checks |
 |---|---|---|
 | `cue-missing-name` | error | `CUE.md` frontmatter has no `name`. |
 | `cue-missing-trigger` | error | `CUE.md` declares neither `match:` nor `keywords:`. |
-| `cue-empty-body` | error | `CUE.md` body has neither a JSON tip-group block nor non-empty prompt text. |
-| `cue-missing-description` | warn | `CUE.md` lacks a `description:`. |
-| `cue-multiple-defaults` | warn | More than one DEFAULT cue source at the same priority. |
-| `cue-host-contradiction` | warn | Explicit `on-host` contradicts auto-detection from script extensions. |
+| `cue-empty-body` | warn | `CUE.md` body has neither a JSON tip-group block nor non-empty prompt text. |
 | `blank-missing-name` | error | `BLANK.md` lacks `name`. |
-| `blank-missing-keywords` | error | `BLANK.md` lacks `blankKeywords`. |
-| `blank-no-binding` | error | `BLANK.md` declares zero binding profiles (no `stepValues` / `blankScript` / `impl`). |
+| `blank-missing-keywords` | error | `BLANK.md` lacks both `blankKeywords` AND `blankShapes` — `blankKeywords` is friendly shorthand that desugars to `blankShapes` (the actual routing mechanism, § Routing), so a blank declaring `blankShapes` directly is equally reachable and must NOT be flagged. |
+| `blank-no-binding` | warn | `BLANK.md` declares zero binding profiles (no `stepValues` / `blankScript` / `impl`) — allowed to be a warn rather than error because implicit-impl-by-name MAY still resolve the blank at runtime. |
 | `blank-multiple-bindings` | error | `BLANK.md` declares more than one binding profile. |
 | `blank-script-missing` | error | `blankScript:` references a relative path that doesn't exist on disk. |
-| `blank-script-on-chrome` | warn | `on-host: chrome` declared alongside `blankScript:` (browser can't spawn). |
-| `blank-missing-description` | warn | `BLANK.md` lacks a `description:`. |
 | `auditor-missing-name` | error | `AUDITOR.md` frontmatter has no `name`. |
 | `auditor-empty-body` | error | `AUDITOR.md` body is empty or whitespace-only. |
-| `auditor-missing-description` | warn | `AUDITOR.md` lacks a `description:`. |
-| `auditor-name-mismatch` | warn | `name:` differs from the folder basename. |
-| `disable-unknown` | warn | A master file's `disable:` lists a name with no corresponding source folder at any layer. |
 | `unknown-host` | error | A host name in `on-host` / `not-on-host` is not in the known set. |
-| `unknown-field` | warn | A frontmatter key is not in the canonical schema for this surface. Helps catch typos. |
 | `name-collision` | error | Two loaded sources share the same `name:` within a single layer. |
 | `spec-too-new` | error | File declares a `spec:` newer than the runtime supports. |
-| `master-zero-byte` | warn | `CUES.md`, `BLANKS.md`, or `AUDITORS.md` exists but is 0 bytes. |
-| `field-summary` | info | Summary count of sources discovered, broken down by type. |
+| `parse-failed` | error | A source file's frontmatter + body failed to parse. |
+| `master-malformed` | error | A master file (`CUES.md` / `BLANKS.md` / `AUDITORS.md`) has unparseable frontmatter. |
+| `source-empty-folder` | warn | A source folder exists but has no primary entry file (`CUE.md` / `BLANK.md` / `AUDITOR.md`). |
 
 Runtimes MAY add their own implementation-specific rules under a vendor prefix (e.g. `opencues-cc-…`).
+
+### Reference-runtime-only rules (not spec-mandated)
+
+The OpenCues reference validator (`opencues validate`) additionally implements these checks. They're useful and other runtimes MAY adopt them, but they aren't required for conformance — promote a rule to the table above via the usual [promotion path](#promotion-path--runtime-specific-to-standard) if it proves universally useful.
+
+| Rule | Severity | What it checks |
+|---|---|---|
+| `blank-script-not-executable` | warn | `blankScript:` target exists but lacks the executable bit. |
+| `blank-sandbox-unset` | warn | A script-backed blank has no explicit sandbox declaration. |
+| `blank-impl-missing` | error | `impl:` points at a JS file that doesn't exist. |
+| `blank-impl-no-capabilities` | warn | A JS `impl:` blank declares no capability grants (network/LLM/storage/secrets). |
+| `blank-secret-binding-orphan` | warn | `secrets:` names a binding no capability references. |
+| `blank-secret-binding-unreachable` | warn | A secret binding is declared but unreachable from the blank's own capability grants. |
+| `blank-secret-unused` | warn | A bound secret is never referenced in the blank's body/script. |
+| `endpoint-invalid` | error | A custom `endpoint:` fails basic URL validation. |
+| `endpoint-custom` | warn | A custom `endpoint:` overrides the provider default (informational flag, not necessarily wrong). |
+| `host-compat-empty` | warn | Host-compat resolution (`on-host`/`not-on-host`) produces zero hosts — the entry can never run. |
+
+### Spec text without a reference implementation yet (tracked gap)
+
+These rules are useful validator behaviour that a future spec revision may promote into the MUST-report table, but they are **not implemented by the reference `opencues validate` today** — don't rely on them:
+
+`cue-missing-description`, `cue-multiple-defaults`, `cue-host-contradiction`, `blank-missing-description`, `blank-script-on-chrome`, `auditor-missing-description`, `auditor-name-mismatch`, `disable-unknown`, `unknown-field`, `master-zero-byte`, `field-summary`.
 
 ---
 

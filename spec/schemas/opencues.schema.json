@@ -61,13 +61,13 @@
     "identity-context-mode": {
       "type": "string",
       "enum": ["off", "safe", "raw"],
-      "default": "off",
+      "default": "safe",
       "description": "Gates IDENTITY.md personal-data injection into fluid-blank and transform-blank as sentinel tokens. `safe`: tokens-only catalog to LLM, values substituted post-response. `raw`: values inlined into prompt (PII reaches provider logs; hidden from cycling menu). See spec/identity-context-spec.md."
     },
     "blank-context-mode": {
       "type": "string",
       "enum": ["off", "safe", "raw"],
-      "default": "off",
+      "default": "safe",
       "description": "Gates blank-as-context (blanks with as-context: safe|raw expose their values as ambient [BLANK NAME] tokens). Mode-gate composition: `raw` MUST be downgraded to `safe` when identity-context-mode is not also `raw`."
     },
     "ambient-context-mode": {

@@ -289,10 +289,14 @@ function checkCueBody(file, parsed, lint) {
   }
 }
 
-// blank-missing-keywords.
+// blank-missing-keywords. blankKeywords is friendly shorthand that desugars
+// to blankShapes (the actual routing mechanism, per core.md § Routing) — a
+// blank declaring blankShapes directly is equally reachable and must not
+// be flagged.
 function checkBlankKeywords(file, frontmatter, lint) {
   if (frontmatter && frontmatter.blankKeywords) return;
-  lint('blank-missing-keywords', 'error', file, `frontmatter has no blankKeywords field — blank would never fire`);
+  if (frontmatter && Array.isArray(frontmatter.blankShapes) && frontmatter.blankShapes.length > 0) return;
+  lint('blank-missing-keywords', 'error', file, `frontmatter has no blankKeywords or blankShapes field — blank would never fire`);
 }
 
 // blank-multiple-bindings + blank-no-binding. Reads raw content for
