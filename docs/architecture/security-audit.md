@@ -18,6 +18,12 @@ Companion deep-dives:
   invariant, structural reliance on "OpenCues has no tool / exec
   layer for fluid-blank prompts."
 
+Two sibling security docs, differently scoped: root [`SECURITY.md`](../../SECURITY.md)
+(how to report a vulnerability + a coarser trust-model summary) and
+[`spec/SECURITY.md`](../../spec/SECURITY.md) (the open standard's own
+normative security claims — what a conformant third-party runtime MUST
+honour, independent of this reference implementation).
+
 ## Load-bearing structural invariants
 
 These are the structural properties the whole security model

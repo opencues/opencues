@@ -4,7 +4,7 @@ This document provides context for Claude sessions working on this project.
 
 ## Project Overview
 
-**OpenCues** provides LLM-powered word alternatives and `_`-gated blank fill-ins for text editors. The system reduces to two ideas: **Cues** (LLM → user, on plain text) and **Blanks** (user → system, on `_`). See `concept.md` at the repo root.
+**OpenCues** provides LLM-powered word alternatives and `_`-gated blank fill-ins for text editors. The system reduces to two ideas: **Cues** (LLM → user, on plain text) and **Blanks** (user → system, on `_`). **Auditors** are a continuous, whole-buffer variant of the Cues direction — one declared concern (grammar, clarity, tone, ...) applied as an ongoing, revertable rewrite rather than a per-word cycle. See `concept.md` at the repo root and `spec/auditor-spec.md`.
 
 **Architecture** (two libraries + integrations):
 - **`@opencues/core`** — *what alternatives exist*. Pure TypeScript: parsers
