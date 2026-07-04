@@ -68,8 +68,6 @@ Full walkthrough, prerequisites, and per-host detail: [`docs/install.md`](docs/i
      real embed once available. -->
 <a href="#"><img width="100%" alt="Video placeholder — quickstart walkthrough" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Video_placeholder_1200x300.svg"></a>
 
-#
-
 <br><br><br><br>
 
 # Integrations
