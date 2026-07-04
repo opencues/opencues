@@ -185,6 +185,9 @@ export class TutorialCoach {
   private _selfWrites: string[] = [];
   private _httpAgent: TutorialCoachOptions['httpAdapter'] | null = null;
   private readonly _logFn: (msg: string) => void;
+  /** Transient user-facing notice (e.g. "no tutorial found") shown via
+   *  the statusline tutorial block while no tutorial is active. */
+  private _notice: { text: string; until: number } | null = null;
 
   constructor(
     private adapter: HostAdapter,
@@ -206,7 +209,17 @@ export class TutorialCoach {
 
   /** Statusline payload feed. Null when no tutorial is active. */
   status(): TutorialStatus | null {
-    if (!this._doc) return null;
+    if (!this._doc) {
+      // Transient failure notice (failed `start tutorial N _`). step 0 /
+      // stepCount 0 marks it as a notice, not a running tutorial.
+      if (this._notice && Date.now() < this._notice.until) {
+        return {
+          name: 'tutorials', title: 'tutorials', step: 0, stepCount: 0,
+          stepTitle: '', coach: this._notice.text, offTrack: true,
+        };
+      }
+      return null;
+    }
     const i = Math.min(this._stepIndex, this._doc.steps.length - 1);
     return {
       name: this._doc.name,
@@ -313,9 +326,20 @@ export class TutorialCoach {
         const doc = await this.loadTutorial(ctl.arg);
         if (!doc) {
           this._logFn(`Tutorial: no tutorial found for "${ctl.arg ?? '(first)'}" under ${this.options.tutorialsDirs.join(', ')}`);
-          this.adapter.emitEvent?.('tutorial.not-found', { arg: ctl.arg });
+          const available = await this.listTutorials();
+          const listing = available.length === 0
+            ? 'none installed — add one under ~/.cues/tutorials/'
+            : available.map(t => t.id ? `${t.id}: ${t.name}` : t.name).join(' · ');
+          this._notice = {
+            text: `No tutorial "${ctl.arg ?? ''}" — available → ${listing}`.slice(0, 200),
+            until: Date.now() + 10_000,
+          };
+          setTimeout(() => { this._notice = null; this.refreshStatusline(); }, 10_100);
+          this.adapter.emitEvent?.('tutorial.not-found', { arg: ctl.arg, available: listing });
+          this.refreshStatusline();
           return;
         }
+        this._notice = null;
         this._doc = doc;
         this._stepIndex = 0;
         this._trace = [];
@@ -403,6 +427,30 @@ export class TutorialCoach {
   }
 
   // ── tutorial discovery ───────────────────────────────────────────────
+
+  /** Enumerate installed tutorials (id + name) across the search dirs.
+   *  Used for the not-found notice so a failed start tells the user
+   *  what they CAN type instead of failing silently. */
+  private async listTutorials(): Promise<Array<{ id: string | null; name: string }>> {
+    const out: Array<{ id: string | null; name: string }> = [];
+    const seen = new Set<string>();
+    for (const dir of this.options.tutorialsDirs) {
+      let entries;
+      try { entries = await this.adapter.readDir?.(dir); } catch { entries = null; }
+      if (!entries) continue;
+      for (const entry of entries) {
+        if (!entry.isDirectory || seen.has(entry.name)) continue;
+        let raw: string | null = null;
+        try { raw = await this.adapter.readFile(`${dir}/${entry.name}/TUTORIAL.md`); } catch { raw = null; }
+        if (!raw) continue;
+        const doc = parseTutorialMd(raw, entry.name);
+        if (!doc) continue;
+        seen.add(entry.name);
+        out.push({ id: doc.id, name: doc.name });
+      }
+    }
+    return out.sort((a, b) => (parseInt(a.id ?? '999', 10) || 999) - (parseInt(b.id ?? '999', 10) || 999));
+  }
 
   private async loadTutorial(arg: string | null): Promise<TutorialDoc | null> {
     for (const dir of this.options.tutorialsDirs) {
@@ -547,6 +595,10 @@ Rules:
 - Detection is your job — the user should NEVER have to announce completion. When the step's expected key presses appear in the trace (e.g. shift+tab ×2 for a mode toggle, arrows + enter for a picker), that IS completion: STEP_DONE.
 - If the activity clearly belongs to a LATER step than the current one (e.g. the current step is a mode toggle you can't fully verify, but they're already typing the next step's request), the current step is behind them: STEP_DONE. EXCEPTION: a step's own coach notes always override this — when they mark the order as strict (skipping = OFF_TRACK), enforce the order instead.
 - COACH is ONE line (max 100 chars): the next micro-action ("Press Enter to open the model picker"), a fix ("add: don't implement yet"), or brief encouragement. Follow any coach notes in the step body.
+- Meta-questions to you ("help", "what do I do now?", "where am I?") are NOT off-track — answer them: STATUS IN_PROGRESS, COACH restates the current micro-action. OFF_TRACK is reserved for actions that contradict the step.
+- TRUST COMPLETION CLAIMS on steps you can't observe: if the user explicitly claims they completed an outside-the-input-box action ("done", "I did it", "I'm in plan mode now") and the trace doesn't contradict them, that's STEP_DONE. Never hold a user hostage to key-press evidence you might simply have missed.
+- USER CONTROLS you must know (and mention when relevant): the user can type "stop tutorial _" to exit the tutorial at any time, and "skip _" to force-skip the current step. When they want to quit, are frustrated, or ask how to exit → COACH must include: type stop tutorial _ to exit. When they've been stuck on the same step for several checks despite your coaching → give the EXACT text to type, and mention skip _ as the escape.
+- Coach in the user's language: if they're typing in French, coach in French; same for any language. The control phrases (stop tutorial _, skip _) and commands (/init, /model) stay verbatim in English.
 - Never invent steps. Answer for the CURRENT step only.
 
 Respond in EXACTLY this format (three lines, nothing else):
