@@ -39,12 +39,11 @@ OpenCues is platform, model, and provider agnostic, engineered from the ground u
 
 | You type | You get |
 |---|---|
-| `hey can u send me that report when u get a sec make this formal _` | Could you please send me that report at your earliest convenience? |
-| `draft an email to my landlord asking for a rent reduction _` | (the email, written) |
-| `ffmpeg command to convert a video to web-ready mp4 _` | `ffmpeg -i input.mov -c:v libx264 -preset slow -crf 23 -c:a aac -b:a 128k -movflags +faststart output.mp4` |
-| `hello world translate to french _` | bonjour le monde |
-| `what is the capital city of france _` | Paris |
-| `4 + 4 = _` | 4 + 4 = 8 |
+| hey can u send me that report when u get a sec make this formal _ | Could you please send me that report at your earliest convenience? |
+| 4 + 4 = _ | 4 + 4 = 8 |
+| hello world translate to japanese _ | こんにちは世界 |
+| draft an email to my landlord asking for a rent reduction _ | (the email, written) |
+| ffmpeg command to convert a video to web-ready mp4 _ | ffmpeg -i input.mov -c:v libx264 -preset slow -crf 23 -c:a aac -b:a 128k -movflags +faststart output.mp4 |
 
 #
 
@@ -75,10 +74,6 @@ Full walkthrough, prerequisites, and per-host detail: [`docs/install.md`](docs/i
 
 # Integrations
 
-#
-
-<p align="left"><a href="#integrations"><img width="67" alt="Supports:" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-08.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://opencode.ai" target="_blank" rel="noopener noreferrer"><img width="129" alt="OpenCode" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-09.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://claude.com/product/claude-code" target="_blank" rel="noopener noreferrer"><img width="144" alt="Claude Code" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-10.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://geminicli.com" target="_blank" rel="noopener noreferrer"><img width="126" alt="Gemini CLI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-11.svg"></a></p>
-
 | Editor | Status | Install |
 |---|---|---|
 | Claude Code | Available | `opencues install claude-code` |
@@ -89,6 +84,10 @@ Full walkthrough, prerequisites, and per-host detail: [`docs/install.md`](docs/i
 | VS Code | Planned | — |
 
 Each pins its own upstream fork and never touches your native editor install. Per-host detail: [Claude Code](integrations/claude-code/README.md) · [OpenCode](integrations/opencode/README.md) · [Gemini CLI](integrations/gemini-cli/README.md) · [Chrome](integrations/chrome/README.md) · [Shell](integrations/shell/README.md). Windows: not supported natively, run inside WSL2 (see [`docs/install.md`](docs/install.md)).
+
+#
+
+<p align="left"><a href="#integrations"><img width="67" alt="Supports:" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-08.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://opencode.ai" target="_blank" rel="noopener noreferrer"><img width="129" alt="OpenCode" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-09.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://claude.com/product/claude-code" target="_blank" rel="noopener noreferrer"><img width="144" alt="Claude Code" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-10.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://geminicli.com" target="_blank" rel="noopener noreferrer"><img width="126" alt="Gemini CLI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-11.svg"></a></p>
 
 <br><br><br><br>
 
