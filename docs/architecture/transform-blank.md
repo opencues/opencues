@@ -39,8 +39,8 @@ substitutes an answer at `_`. But people often want the opposite:
 instruction.
 
 ```
-You type:   the boy ran fast change boy to girl _
-You see:    the girl ran fast
+You type:   she don't like it when he go there fix grammar _
+You see:    she doesn't like it when he goes there
 ```
 
 That's transform-blank. The instruction is the imperative phrase next
@@ -83,7 +83,7 @@ non-transform `_` is acceptable for the cleanliness gain.
 
 ```
 <TARGET> <INSTRUCTION> _
-e.g.  the boy ran fast change boy to girl _
+e.g.  she don't like it when he go there fix grammar _
 ```
 
 This is the only shape live typing can produce: `_` triggers the
@@ -213,7 +213,7 @@ carry real semantic load and should NOT be pruned. The notable ones:
 - **Composed instructions** ("X and Y") — pipe-join in `INSTRUCTION`
   (`make past tense | remove pronouns`) and apply BOTH simultaneously;
   the result must be grammatical under both constraints. Don't split a
-  single edit (`change boy to girl`, `make it formal`).
+  single edit (`fix grammar`, `make it formal`).
 - **Preserve structure** — `\n\n` paragraph breaks round-trip verbatim;
   multi-paragraph in → multi-paragraph out.
 - **Markdown styling** — `make X bold` / `italicize Y` / etc. decorate
@@ -518,10 +518,10 @@ determined by benchmarks, not preference.
 With `debug-mode: on`, the source emits a structured trace:
 
 ```
-TransformBlank: starting (textLen=42, blankIdx=4)
+TransformBlank: starting (textLen=48, blankIdx=10)
 TransformBlank: identity-context: injected (mode=safe, 3 fields)
-TransformBlank FUSED (351ms, max_tokens=820): verdict=TRANSFORM, instruction="change boy to girl"
-TransformBlank: substituting "the boy ran fast change boy to girl _" → "the girl ran fast" (origLen=42, rewriteLen=18, defAt=0)
+TransformBlank FUSED (351ms, max_tokens=820): verdict=TRANSFORM, instruction="fix grammar"
+TransformBlank: substituting "she don't like it when he go there fix grammar _" → "she doesn't like it when he goes there" (origLen=48, rewriteLen=38, defAt=0)
 ```
 
 The log function is wired in `resolver.ts:rebuildResolver` as
