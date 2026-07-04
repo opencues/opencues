@@ -32,7 +32,7 @@ Rather than navigating to a chat interface or AI-enabled input box, define a que
 ```
 what is the capital city of france _   →  Paris
 4 + 4 = _                              →  4 + 4 = 8
-the boy ran fast                       →  cycle "boy" (Ctrl+Alt+Up)  →  the kid ran fast
+the attorney filed today               →  cycle "attorney" (Ctrl+Alt+Up)  →  the lawyer filed today
 draft an email to my landlord asking for a rent reduction _  →  (the email, written)
 ```
 
