@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-04-22
+last_updated: 2026-07-04
 ---
 
 # CLI Reference — `opencues`
@@ -10,7 +10,7 @@ state, day-to-day operations. One CLI normalizes "install / update
 / debug" across three hosts (CC, OpenCode, Chrome), each with
 very different install models underneath.
 
-For the high-level mental model see `damon.md` § "The `opencues` CLI";
+For the high-level mental model see [`docs/overview.md`](../overview.md);
 this page is the per-subcommand reference.
 
 ```
@@ -20,6 +20,13 @@ $ opencues --help
 prints the canonical command list. Every subcommand also takes
 `--help` for its own usage detail. Bash/zsh/fish completion is
 available via `opencues completion <shell>`.
+
+Bare `opencues` (no subcommand) on a terminal opens the **interactive
+launcher** instead — a menu that routes into each command's own
+interactive flow (Settings, API keys, Identity, Debug logging, Explore
+cues & blanks, Install/Run a host, Diagnostics, All commands). Non-TTY
+/ piped input falls back to the same static status + command list
+`--help` prints, so scripting is unaffected.
 
 ---
 
@@ -90,6 +97,37 @@ fresh-cloning or pulling new commits.
 ```bash
 opencues update
 ```
+
+### `update-configs` — pull new shipped defaults into `~/.cues/`
+
+A thin wrapper around `seed-configs` for the narrower "I just pulled
+new opencues code, get any new shipped cues/blanks onto my disk"
+workflow. Deliberately separate from `update` — `update` rebuilds +
+redeploys a host integration, a different concern; running it
+shouldn't silently rewrite `~/.cues/` too.
+
+```bash
+opencues update-configs
+```
+
+### `config` — browse + change OpenCues settings
+
+Interactive settings browser (on a TTY) over every `OPENCUES.md`
+scalar — the schema is the `FEATURES` + `MENU_TUNABLES` registry in
+`@opencues/core`, so adding a feature there makes it appear here for
+free. Grouped into sections (Cues / Blanks / Context & identity /
+Agent / Voice & navigation / LLM routing / Appearance / Diagnostics).
+
+```bash
+opencues config                      # interactive settings browser
+opencues config list                 # print every setting + its current value
+opencues config get <scalar>         # print one setting's effective value
+opencues config set <scalar> <value> # change a setting (validated against the registry)
+```
+
+Writes `~/.cues/OPENCUES.md`. Hidden footgun values
+(`exposeInMenu:false`, e.g. `identity-context-mode: raw`) stay
+file-edit-only — they don't appear in the browser or `list`.
 
 ### `set-key <provider> <key>` — store an API key
 
@@ -164,6 +202,22 @@ Pack layout matches `defaults/`: top-level `CUES.md` + folders for
 `cues/` and `blanks/`. Imports are additive; existing
 files are preserved unless `--force`.
 
+### `review <source>` — security review of a third-party config pack
+
+Two-pass review before you trust a pack: (1) a deterministic static
+parse (reuses `validate`'s logic — counts declared capabilities,
+red flags, suspicious source patterns), (2) an opt-in LLM second
+opinion (`--llm`; pure text-in/text-out, no tool access, pack content
+wrapped in `<untrusted>` delimiters). The static parse is the
+authority; the LLM verdict can only downgrade a rating, never upgrade
+one. `opencues import` runs this automatically and requires an
+explicit confirm before installing.
+
+```bash
+opencues review github:user/repo
+opencues review ./my-local-pack/ --llm
+```
+
 ---
 
 ## Run / inspect
@@ -229,6 +283,60 @@ Read-only health check across every install. Looks for common
 breakages (missing `.env`, stale tweakcc state, unbuilt artefacts,
 node version mismatches, etc.) and suggests fixes. Run when something
 behaves unexpectedly, or before reporting a bug.
+
+### `identity` — manage IDENTITY.md identity fields
+
+`~/.cues/IDENTITY.md` is a YAML frontmatter file where each key
+becomes an identity-context token (`firstName: Wilfred` → `[FIRST
+NAME]`) that FluidBlank/TransformBlank can substitute in. See
+[`docs/architecture/identity-context.md`](../architecture/identity-context.md).
+
+```bash
+opencues identity                  # interactive interview
+opencues identity list             # show current identity fields
+opencues identity list --json      # JSON output (scriptable)
+opencues identity set <key> <val>  # add or update one (also: add)
+opencues identity remove <key>     # remove one (also: rm)
+```
+
+### `context` — inspect every context source reaching the LLM
+
+Unified read-only view across the three optional context sources: identity-context
+(`~/.cues/IDENTITY.md`), blank-context (ambient blank tokens — stocks,
+weather, …), and ambient-context (chrome-only field metadata). Shows
+what the LLM would actually see in the prompt, gated by each source's
+mode scalar.
+
+```bash
+opencues context list              # human-readable summary
+opencues context list --json       # JSON for scripting
+```
+
+### `cleanup` — find + kill orphan host processes
+
+Long-running `opencues run <host>` invocations sometimes leak (terminal
+closes, the wrapper script dies, the underlying process double-forks
+and outlives its parent). Reports + reaps them. Also runs automatically
+at the start of every `opencues run <host>` (a fresh run supersedes
+prior instances of the same host).
+
+```bash
+opencues cleanup          # list orphan processes
+opencues cleanup --kill   # reap them
+```
+
+### `statusline <enable|disable|status>` — Claude Code status-line integration
+
+Opt-in surface for CC's `statusLine` slot — kept as a separate command
+(rather than folded into `opencues install claude-code`) because
+`~/.claude/` is Claude Code's own directory and writing to it on every
+install would surprise users with a custom statusline already set up.
+
+```bash
+opencues statusline enable
+opencues statusline status
+opencues statusline disable --project
+```
 
 ### `list` — every defined cue / blank + source
 

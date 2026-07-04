@@ -28,7 +28,7 @@ for it. Each row links to the relevant guide where one exists.
 
 | Command | What it does | When you reach for it |
 |---|---|---|
-| `opencues set-key <provider> <key>` | Store an API key in `~/.cues/.env` (chmod 600). Providers: `groq`, `openai`, `finnhub`. | Shell-agnostic alternative to `export GROQ_API_KEY=...` in `~/.bashrc`. |
+| `opencues set-key <provider> <key>` | Store an API key in `~/.cues/.env` (chmod 600). Providers: `cerebras`, `groq`, `gemini`, `anthropic`, `openai`, `openrouter`, `opencode-zen`, `finnhub`. | Shell-agnostic alternative to `export GROQ_API_KEY=...` in `~/.bashrc`. |
 | `opencues check-keys` | Probe each configured provider with a tiny test call. Confirms keys actually work (vs just being present). | After `set-key` or after rotating a key. |
 | `opencues init` | Scaffold `<cwd>/.cues/` with empty templated `CUES.md`, `BLANKS.md`, `AUDITORS.md`. | Starting a new project that needs project-scoped cues / blanks. |
 | `opencues seed-configs` | Copy shipped `defaults/*` into `~/.cues/`. Idempotent — preserves user edits, heals 0-byte files, refreshes contract fields without clobbering user fields. | After a `git pull` that touched `defaults/`. Runs automatically as part of `opencues install`. |
