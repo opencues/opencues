@@ -29,12 +29,12 @@ publish cutover) and Discord badge (once DISCORD_ID/INVITE are real):
 
 Rather than navigating to a chat interface or AI-enabled input box, define a query in plain text: an LLM discovers your query and answers it inline, right where you wrote it.
 
-```
-hey can u send me that report when u get a sec make this formal _  →  Could you please send me that report at your earliest convenience?
-draft an email to my landlord asking for a rent reduction _        →  (the email, written)
-what is the capital city of france _                                →  Paris
-4 + 4 = _                                                            →  4 + 4 = 8
-```
+| You type | You get |
+|---|---|
+| `hey can u send me that report when u get a sec make this formal _` | Could you please send me that report at your earliest convenience? |
+| `draft an email to my landlord asking for a rent reduction _` | (the email, written) |
+| `what is the capital city of france _` | Paris |
+| `4 + 4 = _` | 4 + 4 = 8 |
 
 OpenCues is platform, model, and provider agnostic, engineered from the ground up to enable native inline AI.
 
@@ -49,8 +49,6 @@ OpenCues is platform, model, and provider agnostic, engineered from the ground u
 <p align="left"><a href="LICENSE"><img width="104" alt="License" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-04.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="spec/README.md"><img width="157" alt="Open Standard" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-05.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="spec/blank-spec.md"><img width="121" alt="Blanks.md" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-06.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="spec/cue-spec.md"><img width="112" alt="Cues.md" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-07.svg"></a></p>
 
 <br><br><br><br>
-
-> ⚠️ **Private beta.** `npm install -g opencues` isn't live yet. Install from a clone instead — see **[BETA-INSTALL.md](BETA-INSTALL.md)**. Everything past the install step below is accurate today.
 
 # Quickstart
 
@@ -68,6 +66,8 @@ Full walkthrough, prerequisites, and per-host detail: [`docs/install.md`](docs/i
 <a href="#"><img width="100%" alt="Video placeholder — quickstart walkthrough" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Video_placeholder_1200x300.svg"></a>
 
 #
+
+> ⚠️ **Private beta.** `npm install -g opencues` isn't live yet. Install from a clone instead — see **[BETA-INSTALL.md](BETA-INSTALL.md)**. Everything past the install step below is accurate today.
 
 <br><br><br><br>
 
