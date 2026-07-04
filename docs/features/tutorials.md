@@ -1,6 +1,6 @@
 # Tutorials
 
-**Experimental (prototype — OpenCode only today).**
+**Experimental (prototype — OpenCode + Shell hosts today).**
 
 Guided, in-editor scenarios that walk you through a workflow step by
 step — "enter plan mode, ask for a plan, switch model, commit to git" —

@@ -18,6 +18,7 @@ import { Runtime } from '../../../src/runtime';
 import { ShellV1Adapter, type ShellBindings } from './adapter';
 import { startEventBridge } from '../../../src/event-bridge';
 import { Statusline } from '../../../src/modules/statusline';
+import { TutorialCoach } from '../../../src/modules/tutorial';
 import { Resolver } from '../../../src/modules/resolver';
 import { AgentRewrite } from '../../../src/modules/agent-rewrite';
 import { TTS } from '../../../src/modules/tts';
@@ -124,6 +125,12 @@ export function boot(host: HostInfo): BootResult {
   const adapter = new ShellV1Adapter(bindings);
   Runtime.create(adapter).catch(err => log('error', 'Runtime.create failed', err));
 
+  // Tutorial key observation — MUST be the first key subscriber (key
+  // dispatch is emit-until-consumed; Navigation consumes Ctrl+Alt
+  // arrows). See docs/architecture/tutorials.md § host wiring contract.
+  let tutorialCoachRef: TutorialCoach | null = null;
+  keyEvents.subscribe(e => { tutorialCoachRef?.observeKey(e); return false; });
+
   const HOME = process.env.HOME ?? '~';
   const configSearchPaths = [
     ...(process.env.OPENCUES_HOME ? [process.env.OPENCUES_HOME] : []),
@@ -148,12 +155,25 @@ export function boot(host: HostInfo): BootResult {
     spanFillState, selectorSatelliteState, agentTaskState,
   } = shared;
 
+  // TutorialCoach — modal guided-scenario runtime. Same wiring as
+  // oc/v1.14; suppresses the Resolver while active via the
+  // externallySuppressed gate below.
+  const tutorialCoach = new TutorialCoach(adapter, configLoader, {
+    tutorialsDirs: configSearchPaths.map(p => `${p}/tutorials`),
+    resolveLLM: () => buildAgentLLMResolver(configLoader, apiKeys),
+    cadenceMs: () => parseInt(configLoader.opencuesState.settings.get('tutorial-debounce-ms') ?? '', 10),
+    log: msg => log('debug', msg),
+  });
+  tutorialCoach.subscribe();
+  tutorialCoachRef = tutorialCoach; // arms the early key observer above
+
   if (host.statusFilePath || host.statusSnapshotHook) {
     const statusline = new Statusline(adapter, hlState, dynDefs, {
       exportPath: host.statusFilePath ?? '',
       onSnapshot: host.statusSnapshotHook
         ? (payload) => host.statusSnapshotHook!(payload)
         : undefined,
+      tutorialStatus: () => tutorialCoach.status(),
     }, configLoader, spanFillState, selectorSatelliteState, agentTaskState);
     statusline.subscribe();
   }
@@ -185,6 +205,7 @@ export function boot(host: HostInfo): BootResult {
     missingKeyFallbackMessage: hasAnyKey ? undefined : NATIVE_HOST_MISSING_KEY_MESSAGE,
     formatLLMErrorAsSubstitute: nativeHostFormatLLMError,
     keywordBoundSlotIndices: (text: string) => shared.blankFill.scan(text).map(s => s.index),
+    externallySuppressed: (text: string) => tutorialCoach.shouldSuppressResolve(text),
   }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState,
   buildBlankContextProvider(configLoader, host.blanks, log),
   buildBlankFetchProvider(configLoader, host.blanks, log));

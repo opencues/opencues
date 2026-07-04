@@ -1,6 +1,6 @@
 # Tutorials — modal guided scenarios with a live LLM coach
 
-**Status: experimental prototype (OpenCode band only). Read this before
+**Status: experimental prototype (OpenCode + Shell bands). Read this before
 touching `packages/opencues-runtime/src/modules/tutorial.ts`, the
 `externallySuppressed` seam in `resolver.ts`, or the `tutorial` block in
 `statusline.ts`.**
@@ -231,9 +231,11 @@ and add the security-audit row when this ships.
 
 ## Deferred / known gaps
 
-- CC / gemini / shell / chrome band wiring (each needs the module
-  mount + the first-subscriber observeKey contract + a coach-line
-  surface; chrome has no statusline — use the `onSnapshot` hook).
+- CC / gemini / chrome band wiring (each needs the module mount + the
+  first-subscriber observeKey contract + a coach-line surface; chrome
+  has no statusline — use the `onSnapshot` hook). The shell port took
+  ~20 mechanical lines following this contract and passed scenario 42
+  unmodified — the pattern generalizes.
 - `tutorials-mode` FeatureSpec in the registry (today it's a raw
   settings-map read, default on) + `seed-configs` copying
   `defaults/tutorials/` + a CC statusline script extractor for the
