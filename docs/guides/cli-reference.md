@@ -11,7 +11,10 @@ state, day-to-day operations. One CLI normalizes "install / update
 very different install models underneath.
 
 For the high-level mental model see [`docs/overview.md`](../overview.md);
-this page is the per-subcommand reference.
+this page is the per-subcommand reference, organized by **lifecycle
+stage** (Setup → Authoring → Run/inspect). Want a one-line-per-command
+lookup sorted by how often you'll actually reach for it instead? See
+[`cli-cheatsheet.md`](cli-cheatsheet.md) — same commands, different cut.
 
 ```
 $ opencues --help
@@ -44,8 +47,15 @@ opencues install opencode            # patch the OpenCode fork at ~/opencode-cue
 opencues install chrome              # build the MV3 extension into integrations/chrome/dist/
 opencues install chrome --wsl        # also mirror to the Windows desktop install dir
 opencues install gemini-cli          # patch the Gemini CLI 0.41.x fork at ~/gemini-cli-cues
+opencues install chrome-host --extension-id <id>  # the native-messaging host for live ~/.cues/ sync + script exec
 opencues install --all               # install every detected host
 ```
+
+`chrome-host` is a separate sub-action from `chrome` — it installs the
+local native-messaging host that watches `~/.cues/` and pushes bundles
+into the running extension, rather than building the extension itself.
+It writes nothing to `~/.cues/`, so it skips `seed-configs` and shares
+no install steps with the `chrome` target.
 
 Forwards extra args to the underlying installer after `--`:
 

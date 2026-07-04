@@ -1,3 +1,7 @@
+---
+last_updated: 2026-07-04
+---
+
 # Quickstart
 
 Get OpenCues running in Claude Code in under 5 minutes.

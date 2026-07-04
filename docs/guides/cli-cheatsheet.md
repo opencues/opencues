@@ -1,11 +1,14 @@
 ---
-last_updated: 2026-05-19
+last_updated: 2026-07-04
 ---
 
 # `opencues` CLI cheat sheet
 
 Every `opencues` verb in one page, sorted by how often you'll reach
-for it. Each row links to the relevant guide where one exists.
+for it. Each row links to the relevant guide where one exists. Want
+the full per-command detail organized by lifecycle stage (Setup →
+Authoring → Run/inspect) instead? See
+[`cli-reference.md`](cli-reference.md) — same commands, different cut.
 
 > **Tip:** `opencues help <command>` prints the full help for any
 > command. `opencues help` lists every command without descriptions.

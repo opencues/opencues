@@ -21,7 +21,7 @@ different provider/model for each LLM-driven feature.
 | **openai-subscription** *(subscription)* | `codex login` | `gpt-5.4-mini` | OpenAI's Responses API via your ChatGPT plan |
 | **openrouter** | `OPENROUTER_API_KEY` | `openai/gpt-oss-120b:free` | OpenAI-compat HTTP |
 | **claude-code-cli** *(subscription, alias `claude-cli`)* | `claude` login | `haiku` | Claude's subscription via local subprocess |
-| **opencode-zen** *(blanks-only, free)* | none | `free` | OpenCode's free model pool — **trains on input**, so it's exposed only to the `blanks` bucket (the `_` keystroke is the consent gate). See [Free mode](#free-mode-no-api-key) below. |
+| **opencode-zen** *(blanks-only, free)* | none | `free` (routes to `nemotron-3-super-free`) | OpenCode's free model pool — **trains on input**, so it's exposed only to the `blanks` bucket (the `_` keystroke is the consent gate). See [Free mode](#free-mode-no-api-key) below. |
 | **ollama** *(local)* | none (optional `OLLAMA_API_KEY`) | `gemma4:e2b` | Native `/api/chat`, fully offline — see below |
 
 The two subscription providers (`openai-subscription` and
@@ -381,16 +381,30 @@ pool — but treat anything you type next to a `_` while on this
 provider as public. See [`docs/architecture/llm-routing.md`](../architecture/llm-routing.md)
 for the trust-class guard's implementation.
 
-### The pool changes
+### Latency and the pool
 
 Free models on OpenCode Zen rotate in and out — promotions end, models
-move behind paid tiers, new ones arrive. As of May 2026 the working set
-is `big-pickle` + `deepseek-v4-flash-free` + `nemotron-3-super-free`;
-two others benched earlier (`qwen3.6-plus-free`, `minimax-m2.5-free`)
-have already moved to the paid OpenCode Go tier. The runtime
-health-caches dead entries for 30s and walks the rest, but the
-**canonical live list** is `GET https://opencode.ai/zen/v1/models` —
-check that before relying on any specific model name.
+move behind paid tiers, new ones arrive. The runtime walks a fixed
+priority order (accuracy-desc, from the May 2026 fluid-blank bench,
+`tests/results/opencode-zen-free/`) and health-caches dead entries for
+30s:
+
+| Model | Accuracy | Latency (p50) | Notes |
+|---|---|---|---|
+| `nemotron-3-super-free` | 86.7% | ~14000ms | preferred — slow but solid |
+| `deepseek-v4-flash-free` | 46.7% | ~5000ms | fast, mediocre |
+| `big-pickle` | 40.0% | ~5000ms | a deepseek-v4-flash variant — same speed, worse accuracy |
+
+**The preferred model is a ~14 second median response.** That's the
+real cost of "free" — weigh it against the paid tiers above before
+routing a latency-sensitive surface through this pool. Two other
+models benched earlier (`qwen3.6-plus-free`, `minimax-m2.5-free`) have
+already moved to the paid OpenCode Go tier and are no longer in
+rotation. The **canonical live list** is
+`GET https://opencode.ai/zen/v1/models` — check that before relying on
+any specific model name; today there's no user-facing knob to
+reorder this priority (the runtime always tries highest-accuracy
+first, then falls through on failure).
 
 ## Local models via Ollama
 

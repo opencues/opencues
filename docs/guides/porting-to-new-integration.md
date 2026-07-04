@@ -50,6 +50,17 @@ Integrations convert `CueResult` to their internal word definition format (Claud
 
 ## Integration responsibilities
 
+> **Ownership note:** the sections below describe the CONCEPTS a host
+> must support — they do NOT mean your integration reimplements this
+> logic itself. `@opencues/runtime`'s Navigation, Cycling, and
+> DimRender modules already own navigability rules, cycling priority,
+> and dim/highlight decisions; your `HostAdapter` implementation
+> supplies the low-level primitives (paint a range, move the cursor,
+> replace text) that those modules call into. See
+> [`adding-an-integration.md`](adding-an-integration.md)'s adapter
+> contract for the concrete interface — don't reimplement
+> Navigation/Cycling/DimRender/BlankFill yourself.
+
 ### 1. HTTP adapter
 
 opencues-core's `ConfigSource` needs an HTTP adapter for LLM calls:
@@ -66,24 +77,28 @@ For Chrome: use `fetch()`. For Node.js: use the provided `NodeHttpAdapter` (HTTP
 
 `discoverFolderConfigs()` needs `readFile` and `readDir` callbacks. For Chrome: these could read from IndexedDB, a bundled config, or a server endpoint.
 
-### 3. Rendering
+### 3. Rendering (primitives you supply; the runtime decides when)
 
-The integration must:
-- **Dim** words that have alternatives (navigable positions)
-- **Highlight** the currently selected word (bold/underline/color)
-- **Replace text** when cycling through alternatives
+The runtime's DimRender module decides WHICH words to dim and WHICH to
+highlight; your `HostAdapter` supplies the primitive it calls:
+- **Dim** — the runtime tells you which ranges have alternatives (navigable positions)
+- **Highlight** — the runtime tells you which range is currently selected (bold/underline/color, your choice)
+- **Replace text** — the runtime calls your `setText` when cycling changes the buffer
 
-### 4. Navigation
+### 4. Navigation (rules the runtime applies; useful to understand)
 
-Ctrl+Alt+Left/Right (or equivalent) moves between navigable words. A word is navigable if:
+Ctrl+Alt+Left/Right (or equivalent) moves between navigable words. The runtime's Navigation module decides a word is navigable if:
 - It has alternatives (`alts.length > 1`)
 - It's a cue-blank keyword (registered in `blanksByWord`)
 - It has `metadata.blankName` (cue-blank-bound value — **exception: navigable with 1 alt**)
 - It's part of a multi-word span (navigable at the span's original index)
 
-### 5. Cycling
+Your adapter doesn't compute this — it's useful background for
+understanding what you'll observe the runtime doing.
 
-Up/Down at a navigable position cycles alternatives. Priority order:
+### 5. Cycling (priority the runtime applies; useful to understand)
+
+Up/Down at a navigable position cycles alternatives. The runtime's Cycling module applies this priority order:
 1. **Cue-blank values** (`metadata.blankName`) — call `blankInvoke` (`up`/`down`/`set`), then `get` for the new value
 2. **Consume-all spans** — cycle the dedicated `_consumeAllAlts` storage
 3. **Alternative cycling** — cycle through `alternatives` array
