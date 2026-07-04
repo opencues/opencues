@@ -24,9 +24,9 @@ available via `opencues completion <shell>`.
 Bare `opencues` (no subcommand) on a terminal opens the **interactive
 launcher** instead — a menu that routes into each command's own
 interactive flow (Settings, API keys, Identity, Debug logging, Explore
-cues & blanks, Install/Run a host, Diagnostics, All commands). Non-TTY
-/ piped input falls back to the same static status + command list
-`--help` prints, so scripting is unaffected.
+cues & blanks, Install a host, Run a host, Diagnostics, Check API keys,
+All commands). Non-TTY / piped input falls back to the same static
+status + command list `--help` prints, so scripting is unaffected.
 
 ---
 

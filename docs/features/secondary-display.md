@@ -53,6 +53,8 @@ The JSON file (`_hlExport`) contains these fields:
 
 **Tip resolution priority:** See [Tip Priority](tip-priority.md) for the full resolution order across all word types (selector/satellite, cue-blank values, cue-blank keywords, local cues, LLM).
 
+Provider failures (bad key, out of credit, rate-limited, model missing) can also ride this export via an optional `providerError` field — see [Provider Health](provider-health.md). **Note: as of this writing no shipping host wires the required `ProviderHealth` bus into `Statusline`, so this field is not populated in practice yet.**
+
 ---
 
 ## Status Line

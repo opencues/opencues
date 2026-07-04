@@ -19,7 +19,7 @@ shipped bundle. That choice constrains everything below.
 | `tweakcc/` | The patched-into-place tweakcc install (gitignored — cloned during setup, lives at `<CC_FORK>/.cues/tweakcc/`) |
 | `../../packages/opencues-runtime/adapters/cc/v2.1/boot.ts` | Adapter band — declares the host capabilities + boots the runtime with the bindings the patch supplies |
 | `../../packages/opencues-runtime/adapters/cc/REPAIR.md` | Version-bump playbook |
-| `docs/` | Integration-specific reference (cycling, alternatives, blank fill, status line, etc.) |
+| `docs/` | CC-specific reference: cue-blanks + WSL guide, status-line setup, CLI prompting tips. Host-agnostic feature concepts (navigation, cycling, blanks, etc.) live at `docs/features/` now — see root `docs/features/README.md`. |
 
 ## The install flow
 
