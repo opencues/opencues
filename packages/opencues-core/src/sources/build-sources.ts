@@ -136,7 +136,7 @@ export interface BuildSourcesOptions {
    * Enable the transform-blank source — a single-call FUSED handler
    * for IMPERATIVE instructions placed next to `_`. Where
    * fluid-blank handles "capital of france _", transform-blank handles
-   * "fix grammar _ she don't like it when he go there". Priority 93 — sits ABOVE
+   * "hey can u send me that report make this formal _". Priority 93 — sits ABOVE
    * fluid-blank (92) and only claims when the surrounding text starts
    * with an imperative verb. See transform-blank-source.ts and
    * tests/benchmarks/transform-blank/.
@@ -646,7 +646,7 @@ export function buildSourcesFromConfig(
 
   // Transform-blank: IMPERATIVE-instruction handler (EXTRACT + APPLY +
   // VERIFY). Priority 93 — sits ABOVE fluid-blank (92), so an
-  // imperative-shaped input ("fix grammar _ ...") routes here
+  // imperative-shaped input ("... make this formal _") routes here
   // instead of being treated as a lookup. Cedes to keyword-bound
   // BlankSource if applicable AND only claims when the surrounding text
   // starts with an imperative verb (heuristic in supports()).

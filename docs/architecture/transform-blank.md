@@ -39,8 +39,8 @@ substitutes an answer at `_`. But people often want the opposite:
 instruction.
 
 ```
-You type:   she don't like it when he go there fix grammar _
-You see:    she doesn't like it when he goes there
+You type:   hey can u send me that report when u get a sec make this formal _
+You see:    Could you please send me that report at your earliest convenience?
 ```
 
 That's transform-blank. The instruction is the imperative phrase next
@@ -83,7 +83,7 @@ non-transform `_` is acceptable for the cleanliness gain.
 
 ```
 <TARGET> <INSTRUCTION> _
-e.g.  she don't like it when he go there fix grammar _
+e.g.  hey can u send me that report when u get a sec make this formal _
 ```
 
 This is the only shape live typing can produce: `_` triggers the
@@ -518,10 +518,10 @@ determined by benchmarks, not preference.
 With `debug-mode: on`, the source emits a structured trace:
 
 ```
-TransformBlank: starting (textLen=48, blankIdx=10)
+TransformBlank: starting (textLen=65, blankIdx=15)
 TransformBlank: identity-context: injected (mode=safe, 3 fields)
-TransformBlank FUSED (351ms, max_tokens=820): verdict=TRANSFORM, instruction="fix grammar"
-TransformBlank: substituting "she don't like it when he go there fix grammar _" → "she doesn't like it when he goes there" (origLen=48, rewriteLen=38, defAt=0)
+TransformBlank FUSED (351ms, max_tokens=820): verdict=TRANSFORM, instruction="make this formal"
+TransformBlank: substituting "hey can u send me that report when u get a sec make this formal _" → "Could you please send me that report at your earliest convenience?" (origLen=65, rewriteLen=66, defAt=0)
 ```
 
 The log function is wired in `resolver.ts:rebuildResolver` as
