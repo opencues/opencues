@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-04-06
+last_updated: 2026-07-04
 ---
 
 # Visual Cues
@@ -10,62 +10,45 @@ Visual cues are the styling changes applied to words in the input to indicate wh
 
 ## How It Works
 
-1. **Render pass**: On every render, the integration strips existing ANSI codes from the input to get clean text, splits on whitespace to get a word list, then iterates character-by-character to apply styling
-2. **Dim pass**: For each word, the system checks whether it should be dimmed (see What Gets Dimmed below). Dimmed words are collected into `_numRanges` — an array of `{start, end}` character ranges
-3. **Highlight pass**: The highlight range (`_hlStart`, `_hlEnd`) covers the focused word and any span words (via `spanLength`). Linked words are NOT visually highlighted together — they share cycling behaviour but are rendered independently
-4. **Character loop**: Each character in the rendered value is checked against the ranges. If inside a highlight range, highlight styling is applied. If inside a dim range, dim styling is applied. Otherwise, the original styling passes through
-5. **External highlights**: Words that have external highlights (e.g., shimmer effects from the host editor) are excluded from both dim and highlight overrides to avoid conflicts
+Implemented by the `DimRender` module (`packages/opencues-runtime/src/modules/dim-render.ts`), which computes a set of dim ranges plus (at most) one highlight range, expressed as a `RenderDirectives` object the host applies over its own already-rendered text.
+
+1. **Compute dim ranges**: for every word that's navigable (same cueMap/DynDef rule Navigation uses) and isn't the currently-highlighted word or inside an active span/selector/satellite block, add its character range to `dimRanges`. Multi-word spans emit one range covering the whole span, not one per word.
+2. **Compute the highlight range**: if a word is highlighted (`HighlightState.active`), its range — extended across the whole span if it's part of one, or across both halves if it's an active selector/satellite pair — becomes the single highlight range.
+3. **Host applies directives**: `packages/opencues-runtime/src/render-directives.ts`'s `applyRenderDirectives` walks the host's already-ANSI-rendered string character-by-character, distinguishing visible chars from existing escape sequences, and inserts the dim/highlight ANSI codes at the directive boundaries. Existing ANSI codes (the host's own syntax highlighting) are preserved.
 
 ---
 
 ## What Gets Dimmed
 
-A word at index `_ni` is added to `_numRanges` (and therefore dimmed) if any of the following conditions are true and it is not the currently highlighted word:
+A word is dimmed if it's navigable per the same rule `Navigation.computeTargets()` uses (cueMap match, or a `DynDef` entry — LLM alternatives, blank-fill value, span member), it isn't the highlighted word, and it isn't inside the currently-active span/selector/satellite block (those get one whole-region highlight instead of per-word dim, so they don't look like random word-fading). A few refinements on top:
 
-| Condition | Check | Source |
-|-----------|-------|--------|
-| **Cue-blank keyword** | `blanksByWord.has(_w.toLowerCase())` — word is a registered blank keyword | `writeDynamicRendering` |
-| **Tip word** | `globalThis._localCueMap.has(_w.toLowerCase())` — word exists in the local cue map (case-insensitive). Checked directly in the render loop for instant dimming without waiting for the analysis pipeline | `writeDynamicRendering` |
-| **Dynamic alternative** | `_dynDef` found where `d.alts.length > 1 && d.alts.indexOf(_w) >= 0` — the LLM returned multiple alternatives and the current word is among them | `writeDynamicRendering` |
-| **Cue-blank value** (1-alt exception) | `d.metadata && d.metadata.blankName` — dimmed even when `alts.length` is 0 or 1. The only case where a word with fewer than 2 alternatives gets dimmed | `writeDynamicRendering` |
-| **Span member** | `globalThis._dynSpans[_ni]` is set — the word is part of a multi-word span (e.g., "Bezos" in "Jeff Bezos"). Excluded if the span is currently highlighted (`_spanInfo.originalIndex === _hlWordIdx`) | `writeDynamicRendering` |
+- **Multi-word spans** — each span's *origin* emits one dim range covering the whole span; inner positions don't get their own range.
+- **CJK / spaceless substitutes** — when a def carries a live-matching character span (`spanStart`/`spanEnd`), that's used instead of the word-derived range, so a spaceless CJK substitute (fewer whitespace-tokens than characters) dims completely rather than partially. A stale span (buffer edited, def not yet cleared) is skipped rather than painted over new text.
+- **Bare blank keywords are gated** — a word that's ONLY a blank keyword (not also a word-cue match or `## Tips` entry) doesn't dim until `_` is nearby. Otherwise every prose mention of "volume" or "bitcoin" would falsely suggest it's interactive when no `_` is in play.
 
 ---
 
 ## Rendering
 
-Styling is applied per-character using raw ANSI escape codes. Each code starts with `\x1b[0m` (reset) to clear any prior styling and prevent leaks between adjacent characters.
+Two ANSI attribute pairs (`packages/opencues-runtime/src/render-directives.ts`), not per-color escape codes:
 
 ### Dim
 
 ```
-\x1b[0m\x1b[90m  +  char  +  \x1b[0m
+\x1b[2m  (dim attribute ON)  ...  \x1b[22m  (normal intensity, OFF)
 ```
 
-SGR 90 is dark gray foreground. All dimmed words use this single style regardless of their dim reason (tip, blank, span member, etc.).
+This dims via the terminal's own "faint" SGR attribute, not a specific gray foreground color — so it composes with whatever foreground color the host's own syntax highlighting already applied.
 
 ### Highlight
 
-The highlight color is configurable. Default is bold bright white:
+```
+\x1b[97m  (bright white foreground ON)  ...  \x1b[39m  (default foreground, OFF)
+```
 
-| Color | ANSI sequence | SGR codes |
-|-------|---------------|-----------|
-| white (default) | `\x1b[0m\x1b[1;97m` | bold + bright white |
-| cyan | `\x1b[0m\x1b[1;96m` | bold + bright cyan |
-| yellow | `\x1b[0m\x1b[1;93m` | bold + bright yellow |
-| inverse | `\x1b[0m\x1b[7m` | reverse video |
-| underline | `\x1b[0m\x1b[4m` | underline |
+Deliberately a foreground-color change, not inverse video (`\x1b[7m`) — inverse washed out the dim layer underneath on some terminals; bright-white-on-dim reads better. There is no user-configurable highlight color today (no scalar for it in `feature-registry.ts` — the closest related knob, `dim-mix`, is a chrome-only CSS blend-strength setting for the browser integration, not an ANSI color choice).
 
-When a highlighted word is part of a multi-word span (`spanLength > 1`), the highlight range extends across all words in the span.
-
-### Precedence
-
-The character loop applies styles in this order:
-
-1. **Inverse mode** (`\x1b[7m` active) — pass through unchanged (cursor styling)
-2. **Highlight** — if character is in `[_hlStart, _hlEnd)`, apply highlight color
-3. **Dim** — if character is in any `_numRanges` entry, apply dim
-4. **Normal** — pass through original styling
+Markdown-styled ranges (bold/italic/code-span/strikethrough/headings, emitted by TransformBlank's markdown-aware substitution) use their own separate ANSI pairs layered independently of the dim/highlight logic above.
 
 ---
 
@@ -73,16 +56,12 @@ The character loop applies styles in this order:
 
 ### Standard (opencues-core)
 
-- `WordDef.alts` length determines whether a word is navigable (dimmed vs. normal)
-- `metadata.blankName` identifies cue-blank values, which are dimmed even with only 1 alt (the 1-alt exception)
-- Linked word indices (`CueResult.linked`) define which words share cycling behaviour (they are not visually highlighted together)
-- The three visual states (normal, dimmed, highlighted) are defined by the standard; rendering is not
+- `CueResult.alternatives` length and `metadata.blankName` together determine whether a word is navigable/dimmable (same signal `Navigation` and `DimRender` both key off)
+- The three visual states (normal, dimmed, highlighted) are a runtime-layer concept — opencues-core classifies words, it doesn't decide how they're painted
 
 ### Integration responsibilities
 
+- Implement `applyRenderDirectives`-equivalent logic, or supply the primitives (`onRender` hook applying dim/highlight ranges) the shared runtime's `DimRender` calls into
 - Render the three visual states using platform-appropriate styling (ANSI codes, CSS classes, editor decorations, etc.)
-- Apply dimmed state to all words where `alts.length > 1`, plus cue-blank keywords, tip words, cue-blank values, and span members
-- Apply highlighted state to the currently focused word and any span words (linked words share cycling but are rendered independently)
 - Update visual states in real time as the user navigates and as new analysis results arrive
-- Respect external highlight regions (e.g., host editor shimmer) by skipping visual overrides for those words
-- Ensure styling does not interfere with the editor's own syntax highlighting or theme
+- Ensure styling does not interfere with the editor's own syntax highlighting or theme — the shared runtime's approach (dim = brightness attribute, highlight = foreground color swap) is designed to compose with existing colors rather than reset them

@@ -205,9 +205,14 @@ AgentRewrite):
 | professionalism | ~50% | model has its own style opinions; over-edits clean prose |
 | mixed-task | ~80% | composed prompts ("X AND Y") harder for the model |
 
-**Aggregate**: 120/128 (93.8%) on the full suite, ~379ms per case.
 Stylistic-task failures are model judgement, not pipeline bugs —
 don't prompt-tune to suppress them; that hurts the mechanical tasks.
+(The specific aggregate pass-rate and case count cited in older
+revisions of this doc referenced `tests/benchmarks/agent-task/`, which
+was deleted in the May 2026 AgentLoop→AgentRewrite retirement — see
+`tests/benchmarks/agent-rewrite/CONTINUE.md`. The replacement suite's
+case/category count changes as it grows; re-run it for a current
+number rather than trusting a cited figure here.)
 
 ---
 
@@ -217,7 +222,6 @@ Per debounce cycle (gpt-oss-120b @ Groq, EDITS format):
 - Build candidates: <1ms
 - LLM edit pass: ~300–500ms (most docs); 1.7s for a 200-word doc
 - Apply DynDefs + setText: ~10–50ms
-- **Total: ~379ms avg across the 128-case suite**
 
 Same 500ms debounce as the resolver. The agent runs ON TOP of
 resolver's results — no second clock. Cache hits skip the LLM
@@ -268,15 +272,17 @@ Quick locator:
   (search for `handleTaskCommand`)
 - **Statusline**: `packages/opencues-runtime/src/modules/statusline.ts`
   (agentTask field in the payload)
-- **Benchmarks** (all under `tests/benchmarks/agent-task/`):
-  - `run.ts` — main suite, 128 cases across 16 categories
-    (`--parallel 8`, `--category <name>`, `--case <id>`,
-    `--format DECISIONS|EDITS`)
-  - `convergence.ts` — pins the cache contract: re-running on
-    unchanged text fires zero LLM calls (6/6 scenarios)
-  - `scale.ts` — 25/50/100/200-word docs, measures latency + recall
-  - `robustness.ts` — 16 stubbed-transport scenarios for failure-mode
-    coverage (empty body, malformed JSON, rate limits, throws, etc.)
+- **Benchmarks** (`tests/benchmarks/agent-rewrite/` — replaced the
+  deleted `tests/benchmarks/agent-task/` in the May 2026
+  AgentLoop→AgentRewrite retirement; see that directory's
+  `CONTINUE.md` for the migration history):
+  - `cases.ts` — categorized cases (spelling, capitalisation,
+    translation, grammar, paragraph-structure, idempotent, style,
+    long-doc, …) — check the file directly for the current count,
+    it's grown since the retirement
+  - `run.ts` — main runner (`--parallel`, `--category`, `--case`, `--verbose`)
+  - `live-typing.ts` — stress test simulating user typing during the
+    LLM call, asserting user content always survives the merge
 - **Implementation reference**: `docs/architecture/agent-task.md` — pipeline shape, prompt design rationale, response format choice, and the empirical lessons that justify each.
 - **Cache reference**: `docs/architecture/agent-rewrite-cache.md` — two-tier skip-on-stable + LRU cache, key composition, determinism assumption, and extension points (size, persistence, approximate keys, negative caching, telemetry).
 

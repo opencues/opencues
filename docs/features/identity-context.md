@@ -4,8 +4,13 @@ Stop typing your name, email, work city, and other personal facts
 into every form. Tell OpenCues once via `~/.cues/IDENTITY.md`; from then
 on the `_` blank uses your real data when it's relevant.
 
-**Off by default.** Opt in via `identity-context-mode: safe` in
-`~/.cues/OPENCUES.md`. Phase 1 wires fluid-blank only.
+**`safe` by default** (`identity-context-mode: safe` in
+`~/.cues/OPENCUES.md`) — tokens-only catalog reaches the LLM, values
+substitute post-response, PII stays on the host. Set `off` to disable
+entirely (IDENTITY.md never read). `raw` mode (values inlined into the
+prompt) is implementation-complete but deliberately not exposed in the
+`opencues config` menu — a deliberate file edit only. Phase 1 wires
+fluid-blank only.
 
 > **Naming note (June 2026 rename).** Identity context was previously
 > called "sentinels"; the file used to be `SENTINELS.md` (and earlier

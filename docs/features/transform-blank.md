@@ -99,8 +99,12 @@ won't be re-triggered on the rewritten text.
 
 ## What kinds of instructions work
 
-The benchmark covers **212 cases across 18 categories**. Median pass
-rate ~83%, ~1.4s per case end-to-end on Groq gpt-oss-120b.
+The benchmark has grown since this doc was first written — 212 cases
+across 18 categories originally, expanded to **487 cases across 19
+categories** as of the 2026-07 suite (`tests/benchmarks/transform-blank/cases.ts`
++ `cases-expansion.ts`). Overall pass rate ~83% on gpt-oss-120b
+(`tests/results/gemma-benchmark-2026-07-01/FINDINGS.md`), ~1.4s per
+case end-to-end on Groq gpt-oss-120b.
 
 ### Strong categories (90-100% pass rate)
 

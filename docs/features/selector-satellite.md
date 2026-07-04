@@ -27,11 +27,28 @@ The sharp distinction from linked words: with linked words the alts lists are al
 
 ## The Two Roles
 
-**Selector (word N).** Identified by a `selectorWord` flag on its word definition. Carries a pointer to its satellite (`childIndex`) and a `currentSetting` field that is the authoritative logical state (distinct from the display text, though they usually match). Its alts list is the enumeration of all available setting names. Cycling it is read-only navigation across settings.
+Unlike the framing above might suggest, the pair isn't modeled as two independent `WordDef`s cross-linked by pointers. The reference implementation (`packages/opencues-runtime/src/state/selector-satellite.ts`) tracks BOTH halves as fields on one shared `SelectorSatelliteEntry` object:
 
-**Satellite (word N+1).** Identified by a `satelliteWord` flag. Carries a pointer back to its parent (`parentIndex`). Its alts list is **derived from whichever setting the selector currently points at** — it is rebuilt every time the selector moves. Cycling it triggers persistence.
+```ts
+interface SelectorSatelliteEntry {
+  selectorIndex: number;    // word index of the selector's first word
+  selectorLength: number;   // word count (1 for "voice-mode", 2+ for "display mode")
+  satelliteIndex: number;   // word index of the satellite's first word
+  satelliteLength: number;  // word count (1 for "active", 2+ for "plain text")
+  currentSetting: string;   // currently-displayed setting name
+  currentValue: string;     // currently-displayed value for that setting
+  separator: string;
+  clearOnEdit: boolean;
+  pairCharStart: number;    // char range of the whole pair, for clearOnEdit splicing
+  pairCharEnd: number;
+}
+```
 
-The parent↔child link lives entirely in metadata. Selector and satellite are **not a span of each other** — they are two fully independent, individually navigable units.
+**Selector.** `Cycling.cycleSelectorSatellite()` treats a highlight landing in `[selectorIndex, selectorIndex + selectorLength)` as selector-cycling. `currentSetting` is the authoritative logical state; its "alts list" (the enumeration of all available setting names) is derived on the fly from the registry, not stored as a persistent array. Cycling it is read-only navigation across settings.
+
+**Satellite.** A highlight in `[satelliteIndex, satelliteIndex + satelliteLength)` is satellite-cycling. Its valid values are looked up fresh from `currentSetting` on every cycle (via the registry) — there's no separately-maintained "satellite's alts list" that gets rebuilt; it's just re-derived each time from whatever `currentSetting` currently is. Cycling it triggers persistence.
+
+Selector and satellite are still two independently-navigable ranges — `Navigation.computeTargets()` force-includes both indices — but the shared-state-object design means there's no cross-pointer traversal at read time; both halves are fields on the one entry `Cycling`/`Navigation`/`DimRender` all read from `SelectorSatelliteState.current`.
 
 ---
 
@@ -102,10 +119,10 @@ No writes. Moving the selector is browsing.
 
 ### Satellite (write-through)
 
-1. Walk the parent pointer to find which setting we're writing.
-2. Advance in the satellite's current alts list (the valid values for that setting).
+1. Read `currentSetting` directly off the shared `SelectorSatelliteEntry` — no pointer-walk needed, since selector and satellite are fields on the same object.
+2. Advance to the next valid value for that setting (looked up fresh from the registry).
 3. Call the script to persist: `set <setting> <newValue>`.
-4. **Update the integration's in-memory current-values mirror immediately** so runtime consumers see the change before the next config reload.
+4. **Update the runtime's in-memory config state immediately** (`ConfigLoader.opencuesState`) so downstream consumers see the change before the next hot-reload pass.
 5. Rewrite only the satellite word in the text.
 
 The in-memory mirror update (step 4) is what makes cycling feel live — without it, downstream gates would lag behind by a hot-reload cycle.
