@@ -185,6 +185,14 @@ export class TutorialCoach {
   private _selfWrites: string[] = [];
   private _httpAgent: TutorialCoachOptions['httpAdapter'] | null = null;
   private readonly _logFn: (msg: string) => void;
+  /** Consecutive bare-Escape presses — the DETERMINISTIC escape hatch.
+   *  3 within the window exits tutorial mode with zero LLM involvement,
+   *  zero phrase knowledge, in any language, even with a dead API key.
+   *  Every other escape path (stop tutorial _, coach-honoured stop) is
+   *  richer but requires knowledge or a working model; this one is the
+   *  floor. */
+  private _escCount = 0;
+  private _escResetTimer: ReturnType<typeof setTimeout> | null = null;
   /** Transient user-facing notice (e.g. "no tutorial found") shown via
    *  the statusline tutorial block while no tutorial is active. */
   private _notice: { text: string; until: number; offTrack?: boolean } | null = null;
@@ -258,6 +266,52 @@ export class TutorialCoach {
     if (!this._doc) return;
     const k = e.key.toLowerCase();
     const mods = e.modifiers;
+    const anyMod = mods.ctrl || mods.alt || mods.meta || mods.shift;
+
+    // Deterministic escape hatch: 3 bare Escapes within 2.5s of each
+    // other → exit tutorial mode. Runs BEFORE any trace/LLM logic so it
+    // works with no API key, no network, no phrase knowledge. Passive —
+    // the host's own Escape behaviour (clear input, interrupt) is
+    // untouched; requiring three presses keeps a normal double-Esc
+    // (CC's clear-input) from killing the tutorial by accident.
+    if ((k === 'escape' || k === 'esc') && !anyMod) {
+      // Escape still lands in the trace (tutorials can teach Esc — e.g.
+      // claude-code-power's double-Escape step; the next tick sees it),
+      // but escape presses never SCHEDULE a tick: the countdown hint
+      // below must not race an LLM verdict.
+      const last = this._trace[this._trace.length - 1];
+      if (last && last.kind === 'key' && last.text === 'escape') {
+        last.count = (last.count ?? 1) + 1;
+      } else {
+        this.pushTrace({ kind: 'key', text: 'escape', count: 1 });
+      }
+      this._escCount++;
+      if (this._escResetTimer) clearTimeout(this._escResetTimer);
+      if (this._escCount >= 3) {
+        this._escCount = 0;
+        const name = this._doc.name;
+        const id = this._doc.id;
+        this.deactivate();
+        this._notice = {
+          text: `Tutorial exited — type start tutorial ${id ?? name} _ to pick it back up`,
+          until: Date.now() + 10_000,
+          offTrack: false,
+        };
+        setTimeout(() => { this._notice = null; this.refreshStatusline(); }, 10_100);
+        this.adapter.emitEvent?.('tutorial.stopped', { name, reason: 'escape-key' });
+        this._logFn(`Tutorial: exited "${name}" via Esc ×3`);
+        this.refreshStatusline();
+        return;
+      }
+      // Countdown hint — deterministic, overwrites the coach line so the
+      // exit is discoverable mid-press without any model round-trip.
+      this._coachLine = `Esc ×${3 - this._escCount} more to exit the tutorial`;
+      this._escResetTimer = setTimeout(() => { this._escCount = 0; }, 2_500);
+      this.refreshStatusline();
+      return; // escape presses never feed the trace/tick
+    }
+    if (this._escCount > 0) this._escCount = 0;
+
     const isEnter = k === 'return' || k === 'enter';
     const salient = ['tab', 'escape', 'up', 'down', 'left', 'right'].includes(k)
       || (isEnter && e.text.trim().length === 0)
@@ -351,7 +405,7 @@ export class TutorialCoach {
         this._doc = doc;
         this._stepIndex = 0;
         this._trace = [];
-        this._coachLine = `Step 1/${doc.steps.length} — ${doc.steps[0].title}`;
+        this._coachLine = `Step 1/${doc.steps.length} — ${doc.steps[0].title} · Esc ×3 exits`;
         this.consumePhrase(text, ctl.phraseStart);
         this.adapter.emitEvent?.('tutorial.started', {
           name: doc.name, id: doc.id, title: doc.title, stepCount: doc.steps.length,
