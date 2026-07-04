@@ -38,8 +38,6 @@ what is the capital city of france _                                →  Paris
 
 OpenCues is platform, model, and provider agnostic, engineered from the ground up to enable native inline AI.
 
-> ⚠️ **Private beta.** `npm install -g opencues` isn't live yet. Install from a clone instead — see **[BETA-INSTALL.md](BETA-INSTALL.md)**. Everything past the install step below is accurate today.
-
 <!-- VIDEO: hero demo (~30-60s), replace this comment with the real embed.
      GitHub-hosted asset (renders inline): ![demo](https://github.com/opencues/opencues/assets/.../demo.mp4)
      YouTube (GitHub won't inline-embed it — link a thumbnail instead):
@@ -51,6 +49,8 @@ OpenCues is platform, model, and provider agnostic, engineered from the ground u
 <p align="left"><a href="LICENSE"><img width="104" alt="License" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-04.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="spec/README.md"><img width="157" alt="Open Standard" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-05.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="spec/blank-spec.md"><img width="121" alt="Blanks.md" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-06.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="spec/cue-spec.md"><img width="112" alt="Cues.md" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-07.svg"></a></p>
 
 <br><br><br><br>
+
+> ⚠️ **Private beta.** `npm install -g opencues` isn't live yet. Install from a clone instead — see **[BETA-INSTALL.md](BETA-INSTALL.md)**. Everything past the install step below is accurate today.
 
 # Quickstart
 
