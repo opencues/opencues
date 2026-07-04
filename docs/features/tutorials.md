@@ -151,11 +151,35 @@ The Claude Code ones are verified against the official CC docs.
 | `tutorials-mode` | on (absent) | `off` disables the feature entirely |
 | `tutorial-debounce-ms` | 300 | pause length before a coach check-in |
 | `tutorial-nudge-ms` | 30000 | idle window before a proactive nudge (`0` disables) |
+| `tutorial-voice` | off | `on` speaks step advances, nudges, and completion via the host TTS (never per-tick) |
 
 The coach call uses the **auditors** LLM bucket
 (`auditors-llm-provider:` → global `llm-provider:` fallback) — it is a
 background prose-reading concern, same trust class as agent-rewrite.
 Coach ticks average ~300-550ms on cerebras.
+
+## Progress, resume, and curriculum
+
+Progress persists to `~/.cues/tutorial-progress.json` (written on every
+step advance / stop / completion; never load-bearing — chrome simply
+skips it). Restarting a tutorial you left mid-way resumes where you
+stopped, lesson journal included: "Welcome back — resuming at step
+2/3: …". A completed tutorial starts fresh next time.
+
+Completion gets a celebration instead of a silent vanish — a 20s recap
+notice built from the journal, plus the curriculum link when the
+tutorial declares one (`next: cc-fix-a-bug` frontmatter):
+
+```
+🎉 Git basics — complete (3/3): check the working tree → create a
+branch → stage and commit · next up: type `start tutorial cc-first-session _`
+```
+
+The next-up phrase is a command span (renders coloured) — one typed
+line chains lessons into a curriculum. The shipped tutorials chain:
+git-basics → cc-first-session → (claude-code-basics →
+claude-code-power, cc-first-session → cc-fix-a-bug →
+cc-custom-command).
 
 ## Status line
 

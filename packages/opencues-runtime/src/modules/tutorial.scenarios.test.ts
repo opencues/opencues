@@ -12,6 +12,7 @@ import type { TextChangeEvent, KeyEvent } from '../adapter';
 const TUTORIAL_MD = `---
 name: demo
 id: 1
+next: demo-two
 title: Demo tutorial
 ---
 
@@ -28,13 +29,16 @@ Do the third thing.
 function makeHarness() {
   const events: Array<{ type: string; body?: Record<string, unknown> }> = [];
   const writes: string[] = [];
+  const files = new Map<string, string>();
+  const spoken: string[] = [];
   let textHandler: ((e: TextChangeEvent) => void) | null = null;
   const adapter = {
     onTextChange: (h: (e: TextChangeEvent) => void) => { textHandler = h; return () => { textHandler = null; }; },
     readDir: async (path: string) => path.endsWith('/tutorials')
       ? [{ name: 'demo', isDirectory: true }]
       : null,
-    readFile: async (path: string) => path.endsWith('demo/TUTORIAL.md') ? TUTORIAL_MD : null,
+    readFile: async (path: string) => path.endsWith('demo/TUTORIAL.md') ? TUTORIAL_MD : (files.get(path) ?? null),
+    writeFile: async (path: string, content: string) => { files.set(path, content); },
     pushText: (text: string) => { writes.push(text); },
     setText: (text: string) => { writes.push(text); },
     setCursorOffset: () => { /* noop */ },
@@ -42,12 +46,17 @@ function makeHarness() {
     emitEvent: (type: string, body?: Record<string, unknown>) => { events.push({ type, body }); },
     log: () => { /* noop */ },
   };
-  const configLoader = { opencuesState: { settings: new Map<string, string>() } };
+  const settings = new Map<string, string>();
+  const configLoader = { opencuesState: { settings } };
   const resolveLLM = vi.fn(() => null); // no LLM — deterministic paths only
   const coach = new TutorialCoach(
     adapter as never,
     configLoader as never,
-    { tutorialsDirs: ['/cues/tutorials'], resolveLLM, log: () => { /* noop */ } },
+    {
+      tutorialsDirs: ['/cues/tutorials'], resolveLLM, log: () => { /* noop */ },
+      progressFile: '/cues/tutorial-progress.json',
+      speak: (t: string) => { spoken.push(t); },
+    },
   );
   coach.subscribe();
 
@@ -64,7 +73,7 @@ function makeHarness() {
       text: '', cursorOffset: 0,
     } as KeyEvent);
   };
-  return { coach, events, writes, resolveLLM, type, key };
+  return { coach, events, writes, resolveLLM, type, key, files, spoken, settings };
 }
 
 beforeEach(() => { vi.useFakeTimers(); });
@@ -271,10 +280,58 @@ describe('TutorialCoach journeys (deterministic contracts)', () => {
     expect(j).toHaveLength(2);
     expect(j[0]).toContain('Step 1 (Step 1 — first) ✓');
     expect(j[1]).toContain('Step 2 (Step 2 — second) ✓');
-    // Journal is wiped on restart.
+    // Restarting mid-tutorial RESUMES — journal restored from the
+    // progress file (lesson memory survives a restart by design).
     await h.type('stop tutorial _');
+    await vi.advanceTimersByTimeAsync(50);
     await h.type('start tutorial 1 _');
-    expect((h.coach as unknown as { _journal: string[] })._journal).toHaveLength(0);
+    expect((h.coach as unknown as { _journal: string[] })._journal).toHaveLength(2);
+    expect(h.coach.status()?.coach).toContain('Welcome back');
+  });
+
+  it('progress persists: stop mid-way → resume with journal; completion recap carries the next link', async () => {
+    const h = makeHarness();
+    await h.type('start tutorial 1 _');
+    await vi.advanceTimersByTimeAsync(300);
+    await h.type('done _');            // step 1 → 2, journaled
+    await h.type('stop tutorial _');
+    await vi.advanceTimersByTimeAsync(50); // let the async save land
+    const saved = JSON.parse(h.files.get('/cues/tutorial-progress.json')!);
+    expect(saved.demo).toMatchObject({ step: 1, completed: false });
+    expect(saved.demo.journal).toHaveLength(1);
+    // Resume: back at step 2 with the journal restored.
+    await h.type('start tutorial 1 _');
+    expect(h.coach.status()).toMatchObject({ step: 2 });
+    expect(h.coach.status()?.coach).toContain('Welcome back');
+    // Finish → recap notice with the full journey + curriculum link.
+    await h.type('done _');
+    await h.type('done _');
+    await vi.advanceTimersByTimeAsync(50);
+    expect(h.coach.active).toBe(false);
+    const notice = h.coach.status();
+    expect(notice?.coach).toContain('🎉');
+    expect(notice?.coach).toContain('complete (3/3)');
+    expect(notice?.coach).toContain('start tutorial demo-two _');
+    expect(notice?.coachSegments?.some(s => s.command && s.text === 'start tutorial demo-two _')).toBe(true);
+    const done = JSON.parse(h.files.get('/cues/tutorial-progress.json')!);
+    expect(done.demo).toMatchObject({ completed: true });
+    // Completed record → next start begins fresh, not resumed.
+    await vi.advanceTimersByTimeAsync(21_000);
+    await h.type('start tutorial 1 _');
+    expect(h.coach.status()).toMatchObject({ step: 1 });
+  });
+
+  it('voice: speaks step advances + completion only when tutorial-voice is on', async () => {
+    const h = makeHarness();
+    await h.type('start tutorial 1 _');
+    await h.type('done _');
+    expect(h.spoken).toHaveLength(0);          // default off
+    h.settings.set('tutorial-voice', 'on');
+    await h.type('done _');
+    expect(h.spoken.at(-1)).toContain('Step 3 of 3');
+    await h.type('done _');                     // completes
+    expect(h.spoken.at(-1)).toContain('Tutorial complete');
+    expect(h.spoken.at(-1)).toContain('demo-two');
   });
 
   it('unknown tutorial → not-found event + transient catalogue notice', async () => {

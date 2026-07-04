@@ -1,6 +1,7 @@
 ---
 name: cc-fix-a-bug
 id: 6
+next: cc-custom-command
 title: Fix a bug the right way — describe, options, apply, verify
 ---
 

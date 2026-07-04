@@ -202,6 +202,23 @@ keeps working; the tutorial is a labelled self-guided checklist.
 Degrading LOUDLY is the point — the silent version had users typing
 into a void.
 
+## Persistence, curriculum, voice, time-on-step
+
+- `progressFile` option (boot-wired to `~/.cues/tutorial-progress.json`)
+  — `{[name]: {step, journal, completed, updatedAt}}`. Saved on
+  advance/stop/completion (journal SNAPSHOTTED synchronously — the
+  async write races deactivate()'s wipe, live-caught bug). `start`
+  resumes an uncompleted record (step + journal restored, "Welcome
+  back" line); completed records start fresh. Omit the option to
+  disable (chrome).
+- `next:` frontmatter → TutorialDoc.next; completion recap notice (20s)
+  is journal-derived + offers `start tutorial <next> _` as a command
+  span. tutorial.completed event carries `next`.
+- `speak` option + `tutorial-voice` scalar (default off) — speaks step
+  advances, nudges, completion via host TTS (same spawn shape as the
+  TTS module). NEVER per-tick.
+- `TIME ON CURRENT STEP: ~Ns` rides the coach/nudge user message.
+
 ## Observability
 
 Structured events (agentic-harness first-class):

@@ -1,6 +1,7 @@
 ---
 name: claude-code-basics
 id: 1
+next: claude-code-power
 title: Claude Code basics — plan, model, commit
 ---
 

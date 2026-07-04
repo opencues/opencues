@@ -1,6 +1,7 @@
 ---
 name: cc-first-session
 id: 5
+next: cc-fix-a-bug
 title: Your first Claude Code session — init, orient, first change
 ---
 

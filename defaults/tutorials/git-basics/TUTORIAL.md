@@ -1,6 +1,7 @@
 ---
 name: git-basics
 id: 3
+next: cc-first-session
 title: Git basics — status, branch, commit
 ---
 

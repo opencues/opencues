@@ -62,6 +62,9 @@ export interface TutorialDoc {
   readonly name: string;
   readonly id: string | null;
   readonly title: string;
+  /** Curriculum link — the tutorial to suggest on completion
+   *  (`next: cc-fix-a-bug` frontmatter; name or id). */
+  readonly next: string | null;
   readonly steps: readonly TutorialStep[];
 }
 
@@ -71,6 +74,7 @@ export function parseTutorialMd(raw: string, fallbackName: string): TutorialDoc 
   let name = fallbackName;
   let id: string | null = null;
   let title = fallbackName;
+  let next: string | null = null;
   let body = raw;
   const fm = raw.match(/^---\n([\s\S]*?)\n---\n?/);
   if (fm) {
@@ -82,6 +86,7 @@ export function parseTutorialMd(raw: string, fallbackName: string): TutorialDoc 
       if (key === 'name') name = m[2];
       else if (key === 'id') id = m[2].replace(/^#/, '');
       else if (key === 'title') title = m[2];
+      else if (key === 'next') next = m[2];
     }
   }
   const steps: TutorialStep[] = [];
@@ -93,7 +98,7 @@ export function parseTutorialMd(raw: string, fallbackName: string): TutorialDoc 
     if (stepTitle.length > 0) steps.push({ title: stepTitle, body: stepBody });
   }
   if (steps.length === 0) return null;
-  return { name, id, title, steps };
+  return { name, id, title, next, steps };
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -197,6 +202,15 @@ export interface TutorialCoachOptions {
   /** Idle window before a proactive nudge. Default 30s; 0 disables.
    *  Thunk form re-read per arm so `tutorial-nudge-ms` hot-reloads. */
   readonly nudgeMs?: number | (() => number);
+  /** Progress persistence file (JSON). Omit to disable persistence
+   *  (chrome — no fs). Read at start (resume), written on every step
+   *  advance / stop / completion. */
+  readonly progressFile?: string;
+  /** Optional speaker (host TTS). Gated by the `tutorial-voice` scalar
+   *  (default off); used SPARINGLY — step advances, nudges, completion
+   *  — never per-tick (a coach that narrates every keystroke is
+   *  unbearable). */
+  readonly speak?: (text: string) => void;
   readonly log?: (msg: string) => void;
   /** Test seam. Defaults to a lazy NodeHttpAdapter on native hosts. */
   readonly httpAdapter?: { post(url: string, body: string, headers: Record<string, string>): Promise<string> };
@@ -249,6 +263,9 @@ export class TutorialCoach {
    *  across the whole lesson, not just the recent trace ring. Bounded
    *  by stepCount; wiped on start/stop. */
   private _journal: string[] = [];
+  /** When the current step became active — time-on-step rides into the
+   *  coach/nudge context so guidance can acknowledge effort. */
+  private _stepStartedAt = 0;
 
   /** Deterministic degraded-mode line: current step + how to advance
    *  manually + the exit. Idempotent per step (deduped by content). */
@@ -487,14 +504,28 @@ export class TutorialCoach {
         }
         this._notice = null;
         this._doc = doc;
+        this._lastDocName = doc.name;
         this._stepIndex = 0;
         this._trace = [];
         this._journal = [];
-        this._coachLine = `Step 1/${doc.steps.length} — ${doc.steps[0].title} · \`Esc ×3\` exits`;
+        this._stepStartedAt = Date.now();
+        // Resume: saved mid-tutorial progress puts the user back where
+        // they left off (journal included, so lesson memory survives a
+        // restart). A completed record starts fresh.
+        const saved = (await this.loadProgress())[doc.name];
+        if (saved && !saved.completed && saved.step > 0 && saved.step < doc.steps.length) {
+          this._stepIndex = saved.step;
+          this._journal = Array.isArray(saved.journal) ? [...saved.journal] : [];
+          this._coachLine = `Welcome back — resuming at step ${saved.step + 1}/${doc.steps.length}: ${doc.steps[saved.step].title} · \`Esc ×3\` exits`;
+        } else {
+          this._coachLine = `Step 1/${doc.steps.length} — ${doc.steps[0].title} · \`Esc ×3\` exits`;
+        }
         this.consumePhrase(text, ctl.phraseStart);
         this.adapter.emitEvent?.('tutorial.started', {
           name: doc.name, id: doc.id, title: doc.title, stepCount: doc.steps.length,
+          resumedAtStep: this._stepIndex > 0 ? this._stepIndex + 1 : undefined,
         });
+        this.maybeSpeak(this._coachLine ?? '');
         this._logFn(`Tutorial: started "${doc.name}" (${doc.steps.length} steps)`);
         this.refreshStatusline();
         this.armIdleTimer();
@@ -503,6 +534,7 @@ export class TutorialCoach {
       case 'stop': {
         if (!this._doc) { this.consumePhrase(text, ctl.phraseStart); return; }
         const name = this._doc.name;
+        this.saveProgress({ step: this._stepIndex });
         this.deactivate();
         this.consumePhrase(text, ctl.phraseStart);
         this.adapter.emitEvent?.('tutorial.stopped', { name, reason: 'user' });
@@ -553,17 +585,35 @@ export class TutorialCoach {
     this._journal.push(`Step ${from + 1} (${doneStep.title}) ✓ — ${how}`);
     if (from + 1 >= this._doc.steps.length) {
       const name = this._doc.name;
+      const title = this._doc.title;
+      const next = this._doc.next;
       const stepCount = this._doc.steps.length;
+      // Completion recap — the journal tells the story; the curriculum
+      // link offers the next lesson. Shown as a 20s notice so the
+      // ending lands instead of silently vanishing.
+      const recap = this._journal.map(l => l.replace(/^Step \d+ \(([^)]*)\).*/, '$1')).join(' → ');
+      const nextBit = next ? ` · next up: type \`start tutorial ${next} _\`` : '';
+      this.saveProgress({ step: 0, completed: true });
       this.deactivate();
-      this.adapter.emitEvent?.('tutorial.completed', { name, stepCount, reason });
+      this._notice = {
+        text: `🎉 ${title} — complete (${stepCount}/${stepCount})${recap ? `: ${recap}` : ''}${nextBit}`.slice(0, 220),
+        until: Date.now() + 20_000,
+        offTrack: false,
+      };
+      setTimeout(() => { this._notice = null; this.refreshStatusline(); }, 20_100);
+      this.adapter.emitEvent?.('tutorial.completed', { name, stepCount, reason, next: next ?? undefined });
+      this.maybeSpeak(`Tutorial complete! ${stepCount} of ${stepCount}.${next ? ' Next up: ' + next : ''}`);
       this._logFn(`Tutorial: completed "${name}" 🎉`);
       this.refreshStatusline();
       return;
     }
     this._stepIndex = from + 1;
     this._offTrack = false;
+    this._stepStartedAt = Date.now();
+    this.saveProgress({ step: this._stepIndex });
     const next = this._doc.steps[this._stepIndex];
     this._coachLine = `✓ — Step ${this._stepIndex + 1}/${this._doc.steps.length}: ${next.title}`;
+    this.maybeSpeak(`Step ${this._stepIndex + 1} of ${this._doc.steps.length}: ${next.title}`);
     this.adapter.emitEvent?.('tutorial.step-advanced', {
       name: this._doc.name, fromStep: from + 1, toStep: this._stepIndex + 1, reason,
     });
@@ -584,9 +634,46 @@ export class TutorialCoach {
     if (this._debounceTimer) { clearTimeout(this._debounceTimer); this._debounceTimer = null; }
   }
 
+  /** Speak via the host TTS iff `tutorial-voice: on`. Plain text only
+   *  (markup stripped); fire-and-forget. */
+  private maybeSpeak(text: string): void {
+    if (!this.options.speak) return;
+    if (this.configLoader.opencuesState.settings.get('tutorial-voice') !== 'on') return;
+    try { this.options.speak(parseCoachMarkup(text).plain); } catch { /* never load-bearing */ }
+  }
+
   private refreshStatusline(): void {
     try { this.adapter.forceRender?.(); } catch { /* host may not support */ }
   }
+
+  // ── progress persistence ─────────────────────────────────────────────
+
+  private async loadProgress(): Promise<Record<string, { step: number; journal?: string[]; completed?: boolean }>> {
+    if (!this.options.progressFile) return {};
+    try {
+      const raw = await this.adapter.readFile(this.options.progressFile);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch { return {}; }
+  }
+
+  /** Fire-and-forget write — persistence is never load-bearing. */
+  private saveProgress(update: { step: number; completed?: boolean } | null): void {
+    if (!this.options.progressFile || !this._lastDocName) return;
+    const name = this._lastDocName;
+    // Snapshot NOW — the write runs async and deactivate() may wipe the
+    // journal before it lands (live-caught: stop-path saves persisted
+    // an empty journal, so resume lost the lesson memory).
+    const journal = [...this._journal];
+    void this.loadProgress().then(all => {
+      if (update === null) delete all[name];
+      else all[name] = { step: update.step, journal, completed: update.completed ?? false, updatedAt: Date.now() } as never;
+      return this.adapter.writeFile(this.options.progressFile!, JSON.stringify(all, null, 2));
+    }).catch(() => { /* soft */ });
+  }
+
+  /** Doc name survives deactivate for the final save. */
+  private _lastDocName: string | null = null;
 
   // ── tutorial discovery ───────────────────────────────────────────────
 
@@ -721,6 +808,7 @@ export class TutorialCoach {
         this._coachLine = (verdict.coach.slice(0, COACH_MAX_CHARS - skipHint.length) + skipHint);
         this._offTrack = false;
         this.adapter.emitEvent?.('tutorial.nudge', { step: stepAtDispatch + 1, nudgeNumber, idleMs, latencyMs, coach: this._coachLine, model: resolved.model });
+        this.maybeSpeak(this._coachLine);
         this.refreshStatusline();
       } else {
         this.adapter.emitEvent?.('tutorial.nudge', { step: stepAtDispatch + 1, nudgeNumber, idleMs, latencyMs, parseError: true });
@@ -906,10 +994,13 @@ ${steps}`;
     const journal = this._journal.length === 0
       ? ''
       : `LESSON SO FAR:\n${this._journal.map(l => `- ${l}`).join('\n')}\n`;
+    const timeOnStep = this._stepStartedAt > 0
+      ? `\nTIME ON CURRENT STEP: ~${Math.max(1, Math.round((Date.now() - this._stepStartedAt) / 1000))}s`
+      : '';
     const nudgeBlock = nudge
       ? `\nNUDGE CHECK-IN: the user has been idle for ~${Math.round(nudge.idleMs / 1000)}s on the current step (nudge ${nudge.nudgeNumber} of 2). Give ONE short, warm, context-aware nudge — reference their partial input or what they've already completed when helpful. There is NO new evidence, so STATUS must not be STEP_DONE.`
       : '';
-    return `CURRENT STEP: ${stepIndex + 1}\n${journal}RECENT ACTIVITY:\n${trace}\nCURRENT BUFFER: ${buffer}${nudgeBlock}`;
+    return `CURRENT STEP: ${stepIndex + 1}${timeOnStep}\n${journal}RECENT ACTIVITY:\n${trace}\nCURRENT BUFFER: ${buffer}${nudgeBlock}`;
   }
 
   private getHttpAgent(): NonNullable<TutorialCoachOptions['httpAdapter']> {

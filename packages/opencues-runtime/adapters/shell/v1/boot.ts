@@ -163,6 +163,20 @@ export function boot(host: HostInfo): BootResult {
     resolveLLM: () => buildAgentLLMResolver(configLoader, apiKeys),
     cadenceMs: () => parseInt(configLoader.opencuesState.settings.get('tutorial-debounce-ms') ?? '', 10),
     nudgeMs: () => parseInt(configLoader.opencuesState.settings.get('tutorial-nudge-ms') ?? '', 10),
+    progressFile: process.env.OPENCUES_HOME
+      ? `${process.env.OPENCUES_HOME}/tutorial-progress.json`
+      : `${HOME}/.cues/tutorial-progress.json`,
+    speak: (host.ttsScriptPath && adapter.capabilities.includes('spawn-process'))
+      ? (text: string) => {
+        try {
+          adapter.spawnProcess({
+            command: 'bash',
+            args: [host.ttsScriptPath!, text, host.ttsRate !== undefined ? String(host.ttsRate) : '2'],
+            detached: true,
+          });
+        } catch { /* voice is never load-bearing */ }
+      }
+      : undefined,
     log: msg => log('debug', msg),
   });
   tutorialCoach.subscribe();
