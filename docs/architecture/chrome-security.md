@@ -252,7 +252,7 @@ mode the catalog inlines values (opt-in, better prose register).
 
 Two attack-class-specific rules baked into the catalog prompt
 (both validated end-to-end at
-`tests/benchmarks/sentinels/e2e-combined.ts`):
+`tests/benchmarks/user-context/e2e-combined.ts`):
 
 - **Rule 8 — ONE FIELD, ONE ANSWER.** A hostile label that
   asks the model to bundle multiple catalog values into one
@@ -274,7 +274,7 @@ field even when feature is on.
 Same structural property as Boundary 9: the post-processed
 answer lands as user-visible buffer text. There is no parallel
 channel for the model to exfiltrate values through.
-See `docs/architecture/sentinels.md` for the full threat
+See `docs/architecture/identity-context.md` for the full threat
 model and `security-audit.md` row #22.
 
 ### Boundary 11 — Sensitive-field exclusion (cross-cutting)
