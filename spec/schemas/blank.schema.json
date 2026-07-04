@@ -4,7 +4,11 @@
   "title": "OpenCues blank.md frontmatter",
   "description": "JSON Schema for the YAML frontmatter of a blank.md file. Spec: opencues/0.1-alpha. See /spec/blank-spec.md.",
   "type": "object",
-  "required": ["name", "blankKeywords"],
+  "required": ["name", "type"],
+  "anyOf": [
+    { "required": ["blankKeywords"] },
+    { "required": ["blankShapes"] }
+  ],
   "oneOf": [
     { "required": ["stepValues"] },
     { "required": ["blankScript"] },
@@ -41,7 +45,7 @@
     "type": {
       "type": "string",
       "const": "blank",
-      "description": "Discriminator. Usually inferred from path."
+      "description": "Discriminator. Required — the reference parser dispatches purely on this field; a BLANK.md omitting it is never converted into a blank, regardless of folder location."
     },
     "blankShapes": {
       "type": "array",
@@ -114,11 +118,11 @@
     },
     "on-host": {
       "type": "array",
-      "items": { "type": "string", "enum": ["chrome", "claude-code", "gemini-cli", "opencode"] }
+      "items": { "type": "string", "enum": ["chrome", "claude-code", "gemini-cli", "opencode", "shell", "terminal"] }
     },
     "not-on-host": {
       "type": "array",
-      "items": { "type": "string", "enum": ["chrome", "claude-code", "gemini-cli", "opencode"] }
+      "items": { "type": "string", "enum": ["chrome", "claude-code", "gemini-cli", "opencode", "shell", "terminal"] }
     },
     "spec": {
       "type": "string",

@@ -53,8 +53,17 @@
     },
     "scope": {
       "type": "string",
-      "enum": ["words", "blanks", "all"],
-      "description": "Where this source applies. Inferred from path; explicit only when overriding."
+      "enum": ["words", "blanks", "sentence", "all"],
+      "description": "Where this source applies. Inferred from path; explicit only when overriding. 'sentence' needs neither match: nor keywords: and is gated by the runtime's sentence-cues-mode toggle (off by default)."
+    },
+    "provider": {
+      "type": "string",
+      "description": "Override the LLM provider for this source (e.g. groq, openrouter, gemini, openai, anthropic, cerebras). Runtime-specific recognised set."
+    },
+    "endpoint": {
+      "type": "string",
+      "format": "uri",
+      "description": "Override the HTTP endpoint URL. Rare — only useful when pointing at a self-hosted gateway speaking the resolved provider's wire shape."
     },
     "classify": {
       "type": "string",
@@ -66,12 +75,12 @@
     },
     "on-host": {
       "type": "array",
-      "items": { "type": "string", "enum": ["chrome", "claude-code", "gemini-cli", "opencode"] },
+      "items": { "type": "string", "enum": ["chrome", "claude-code", "gemini-cli", "opencode", "shell", "terminal"] },
       "description": "Allow-list of host names that may load this source."
     },
     "not-on-host": {
       "type": "array",
-      "items": { "type": "string", "enum": ["chrome", "claude-code", "gemini-cli", "opencode"] },
+      "items": { "type": "string", "enum": ["chrome", "claude-code", "gemini-cli", "opencode", "shell", "terminal"] },
       "description": "Deny-list, applied after on-host."
     },
     "spec": {
