@@ -4,8 +4,9 @@ For blog post #5: "Inline Agents".
 
 OpenCues has TWO inline-agent surfaces, both invoked through `_`:
 
-1. **Transform-blank** (one-shot) — type `fix grammar _ she don't like it
-   when he go there`, the system rewrites the surrounding text once.
+1. **Transform-blank** (one-shot) — type `hey can u send me that report
+   when u get a sec make this formal _`, the system rewrites the surrounding
+   text once.
 2. **Agent-task** (continuous) — type `agentically correct spelling _`, the
    system arms a debounced loop that re-evaluates the whole document on
    every pause and applies edits inline.
@@ -24,16 +25,16 @@ From `docs/architecture/transform-blank.md`:
 > to **edit** the text around `_` per an instruction.
 >
 > ```
-> You type:   fix grammar _ she don't like it when he go there
-> You see:    she doesn't like it when he goes there
+> You type:   hey can u send me that report when u get a sec make this formal _
+> You see:    Could you please send me that report at your earliest convenience?
 > ```
 
-Two layouts both work:
-- `<INSTRUCTION> _ <TARGET>` — `fix grammar _ she don't like it when he go there`
-- `<TARGET> <INSTRUCTION> _` — `she don't like it when he go there fix grammar _`
-
-> Real users mostly do (b) — they type their text first, then realize they
-> want to transform it, and add the imperative at the end.
+`_` fires the moment you type it, so live typing can only ever produce
+`<TARGET> <INSTRUCTION> _` — you type the body first, then realize you
+want to transform it, and add the imperative at the end. (The parser
+also accepts an inverted `<INSTRUCTION> _ <TARGET>` shape and a
+sandwiched form, for pasted text or bench inputs that arrive as one
+complete string — see `docs/architecture/transform-blank.md`.)
 
 ### The 3-pass pipeline
 

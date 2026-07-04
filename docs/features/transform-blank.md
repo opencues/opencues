@@ -5,15 +5,16 @@ runtime rewrites the surrounding text per the instruction (or generates
 new content from scratch when no surrounding text is given).
 
 ```
-You type:   she don't like it when he go there fix grammar _
-You see:    she doesn't like it when he goes there
-Press ↓ :   she don't like it when he go there fix grammar _   (revert)
-Press ↑ :   she doesn't like it when he goes there              (apply)
+You type:   hey can u send me that report when u get a sec make this formal _
+You see:    Could you please send me that report at your earliest convenience?
+Press ↓ :   hey can u send me that report when u get a sec make this formal _   (revert)
+Press ↑ :   Could you please send me that report at your earliest convenience?  (apply)
 ```
 
 Where **fluid-blank** answers questions at `_` ("capital of france _" → Paris),
-**transform-blank** edits text around `_` ("she don't like it fix grammar _"
-→ "she doesn't like it") OR generates new content ("write a poem _" → a poem).
+**transform-blank** rewrites the surrounding text per the instruction (a full
+register change, a tense flip, a reformat — not just a word swap) OR generates
+new content from scratch ("write a poem _" → a poem).
 
 ---
 
@@ -41,7 +42,7 @@ fluid-blank-mode: on  # both blank handlers can coexist; instructions go to
 
 ```
 <TARGET> <INSTRUCTION> _
-e.g.  she don't like it when he go there fix grammar _
+e.g.  hey can u send me that report when u get a sec make this formal _
 ```
 
 Body first, instruction last, `_` triggers the rewrite. This is the
@@ -170,9 +171,9 @@ With `debug-mode: on` the runtime emits a trace for the fused call to
 `/tmp/opencues.log`:
 
 ```
-TransformBlank: starting (textLen=48, blankIdx=10)
-TransformBlank FUSED (351ms, max_tokens=820, source=trailing): verdict=TRANSFORM, instruction="fix grammar", target="she don't like it when he go there", rewrite="she doesn't like it when he goes there"
-TransformBlank: substituting "she don't like it when he go there fix grammar _" → "she doesn't like it when he goes there" (origLen=48, rewriteLen=38, defAt=0)
+TransformBlank: starting (textLen=65, blankIdx=15)
+TransformBlank FUSED (351ms, max_tokens=820, source=trailing): verdict=TRANSFORM, instruction="make this formal", target="hey can u send me that report when u get a sec", rewrite="Could you please send me that report at your earliest convenience?"
+TransformBlank: substituting "hey can u send me that report when u get a sec make this formal _" → "Could you please send me that report at your earliest convenience?" (origLen=65, rewriteLen=66, defAt=0)
 ```
 
 Composed instructions show the pipe-joined instruction in the same
