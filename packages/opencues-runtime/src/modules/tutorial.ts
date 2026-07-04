@@ -187,7 +187,7 @@ export class TutorialCoach {
   private readonly _logFn: (msg: string) => void;
   /** Transient user-facing notice (e.g. "no tutorial found") shown via
    *  the statusline tutorial block while no tutorial is active. */
-  private _notice: { text: string; until: number } | null = null;
+  private _notice: { text: string; until: number; offTrack?: boolean } | null = null;
 
   constructor(
     private adapter: HostAdapter,
@@ -215,7 +215,7 @@ export class TutorialCoach {
       if (this._notice && Date.now() < this._notice.until) {
         return {
           name: 'tutorials', title: 'tutorials', step: 0, stepCount: 0,
-          stepTitle: '', coach: this._notice.text, offTrack: true,
+          stepTitle: '', coach: this._notice.text, offTrack: this._notice.offTrack ?? true,
         };
       }
       return null;
@@ -540,6 +540,24 @@ export class TutorialCoach {
       }
       // Safety floors — trust the model, clamp the blast radius:
       // never backward, at most +1 forward per tick.
+      // The coach's one permitted action: stop on the user's explicit
+      // request. Releases the modal override (fail-open) — a spurious
+      // STOP costs the user a restart, never their buffer or settings.
+      if (verdict.control === 'STOP') {
+        const name = doc.name;
+        const id = doc.id;
+        this.deactivate();
+        this._notice = {
+          text: `Tutorial stopped — type start tutorial ${id ?? name} _ to pick it back up`,
+          until: Date.now() + 10_000,
+          offTrack: false,
+        };
+        setTimeout(() => { this._notice = null; this.refreshStatusline(); }, 10_100);
+        this.adapter.emitEvent?.('tutorial.stopped', { name, reason: 'coach-user-request', latencyMs });
+        this._logFn(`Tutorial: stopped "${name}" (coach honoured user request)`);
+        this.refreshStatusline();
+        return;
+      }
       const wantsAdvance = verdict.status === 'STEP_DONE'
         || (verdict.step !== null && verdict.step > stepAtDispatch + 1);
       this._coachLine = verdict.coach.slice(0, COACH_MAX_CHARS);
@@ -609,10 +627,11 @@ Rules:
 - Coach in the user's language: if they're typing in French, coach in French; same for any language. The control phrases (stop tutorial _, skip _) and commands (/init, /model) stay verbatim in English.
 - Never invent steps. Answer for the CURRENT step only.
 
-Respond in EXACTLY this format (three lines, nothing else):
+Respond in EXACTLY this format (three lines — plus the optional CONTROL line — nothing else):
 STEP: <current step number>
 STATUS: <IN_PROGRESS|STEP_DONE|OFF_TRACK>
 COACH: <one line>
+CONTROL: STOP   ← include this fourth line ONLY when the user EXPLICITLY asks to stop/quit/exit the tutorial (in any language: "please stop this tutorial", "quitte le tutoriel", …). The runtime then ends the tutorial for them. Do NOT emit it for frustration, insults, or struggling alone — for those, keep coaching and offer "stop tutorial _" in COACH. When you emit CONTROL: STOP, make COACH a brief goodbye.
 
 TUTORIAL: ${doc.title}
 STEPS (${doc.steps.length} total):
@@ -650,16 +669,25 @@ export interface CoachVerdict {
   readonly step: number | null;
   readonly status: 'IN_PROGRESS' | 'STEP_DONE' | 'OFF_TRACK';
   readonly coach: string;
+  /** The coach's single permitted ACTION: 'STOP' ends tutorial mode on
+   *  the user's explicit request ("please stop this tutorial"). This is
+   *  the one deliberate exception to display-only coach output — it
+   *  RELEASES the modal override (fail-open direction), never acquires
+   *  anything, and the deterministic `stop tutorial _` phrase remains
+   *  as the always-works path. */
+  readonly control: 'STOP' | null;
 }
 
 export function parseCoachResponse(raw: string): CoachVerdict | null {
   const stepM = raw.match(/^\s*STEP:\s*(\d+)\s*$/mi);
   const statusM = raw.match(/^\s*STATUS:\s*(IN_PROGRESS|STEP_DONE|OFF_TRACK)\s*$/mi);
   const coachM = raw.match(/^\s*COACH:\s*(.+?)\s*$/mi);
+  const controlM = raw.match(/^\s*CONTROL:\s*(STOP)\s*$/mi);
   if (!statusM || !coachM) return null;
   return {
     step: stepM ? parseInt(stepM[1], 10) : null,
     status: statusM[1].toUpperCase() as CoachVerdict['status'],
     coach: coachM[1],
+    control: controlM ? 'STOP' : null,
   };
 }

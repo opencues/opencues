@@ -99,7 +99,7 @@ describe('matchControlPhrase', () => {
 describe('parseCoachResponse', () => {
   it('parses the three-line format', () => {
     const v = parseCoachResponse('STEP: 2\nSTATUS: STEP_DONE\nCOACH: Nice — next step.');
-    expect(v).toEqual({ step: 2, status: 'STEP_DONE', coach: 'Nice — next step.' });
+    expect(v).toEqual({ step: 2, status: 'STEP_DONE', coach: 'Nice — next step.', control: null });
   });
 
   it('tolerates surrounding prose and case drift', () => {
@@ -116,5 +116,15 @@ describe('parseCoachResponse', () => {
   it('missing STEP is tolerated (null)', () => {
     const v = parseCoachResponse('STATUS: OFF_TRACK\nCOACH: fix it');
     expect(v).toMatchObject({ step: null, status: 'OFF_TRACK' });
+  });
+
+  it('parses the optional CONTROL: STOP line', () => {
+    const v = parseCoachResponse('STEP: 2\nSTATUS: IN_PROGRESS\nCOACH: Bye!\nCONTROL: STOP');
+    expect(v).toMatchObject({ control: 'STOP' });
+    const noCtl = parseCoachResponse('STEP: 2\nSTATUS: IN_PROGRESS\nCOACH: keep going');
+    expect(noCtl).toMatchObject({ control: null });
+    // Only STOP is a recognised control — anything else is ignored.
+    const junk = parseCoachResponse('STATUS: IN_PROGRESS\nCOACH: hi\nCONTROL: ADVANCE');
+    expect(junk).toMatchObject({ control: null });
   });
 });
