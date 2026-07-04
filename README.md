@@ -20,14 +20,10 @@
 
 #
 
-[![License](https://img.shields.io/badge/license-proprietary-lightgrey.svg)](LICENSE)
-[![Build](https://github.com/opencues/opencues/actions/workflows/ci.yml/badge.svg)](https://github.com/opencues/opencues/actions)
 <!-- TODO: add once live — npm version badge (after the BETA-INSTALL.md → real
 publish cutover) and Discord badge (once DISCORD_ID/INVITE are real):
 [![npm](https://img.shields.io/npm/v/opencues)](https://npmjs.com/package/opencues)
-[![Discord](https://img.shields.io/discord/DISCORD_ID?label=Discord)](https://discord.gg/INVITE)
-TODO[license-flip]: swap the badge above to license-MIT-blue.svg at the same
-time LICENSE flips — see the License section's TODO at the bottom of this file. -->
+[![Discord](https://img.shields.io/discord/DISCORD_ID?label=Discord)](https://discord.gg/INVITE) -->
 
 **Real-time guidance as you type.** Cues offer alternatives for words you've already typed; blanks fill in whatever you summon with `_`; auditors keep one background concern (grammar, tone, ...) continuously applied. All three are just `.md` config files — no code. Works in Claude Code, OpenCode, Gemini CLI, Chrome, and a standalone shell wrapper.
 
@@ -43,6 +39,10 @@ time LICENSE flips — see the License section's TODO at the bottom of this file
 the boy ran fast          →  cycle "boy" (Ctrl+Alt+Up)  →  the kid ran fast
 draft an email to my landlord asking for a rent reduction _  →  (the email, written)
 ```
+
+#
+
+<p align="left"><a href="LICENSE"><img height="18" width="104" alt="License" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-04.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="spec/README.md"><img height="18" width="157" alt="Open Standard" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-05.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="spec/blank-spec.md"><img height="18" width="121" alt="Blanks.md" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-06.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="spec/cue-spec.md"><img height="18" width="112" alt="Cues.md" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-07.svg"></a></p>
 
 <br><br><br><br>
 
@@ -105,8 +105,6 @@ Two directions of intent — see [`concept.md`](concept.md):
 
 Authoring your own: `opencues new cue <name>` / `opencues new blank <name>` scaffolds a starting file. Guide: [`docs/guides/adding-a-cue-blank.md`](docs/guides/adding-a-cue-blank.md).
 
-<p align="left"><a href="LICENSE"><img height="18" width="104" alt="License" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-04.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="spec/README.md"><img height="18" width="157" alt="Open Standard" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-05.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="spec/blank-spec.md"><img height="18" width="121" alt="Blanks.md" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-06.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="spec/cue-spec.md"><img height="18" width="112" alt="Cues.md" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-07.svg"></a></p>
-
 <br><br><br><br>
 
 # Configuration & LLM providers
@@ -161,4 +159,4 @@ New editor integration → [`docs/guides/adding-an-integration.md`](docs/guides/
 
 Proprietary. All rights reserved. See [LICENSE](LICENSE).
 
-<!-- TODO[license-flip]: switch to MIT at private-beta-end — update this line, the badge above, and LICENSE itself. -->
+<!-- TODO[license-flip]: switch to MIT at private-beta-end — update this line and LICENSE itself. -->
