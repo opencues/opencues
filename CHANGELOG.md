@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — combined-mode CUE.md silently dropped its LLM half; bracketed `keywords:` lists lost their first/last entry (`@opencues/core` 0.13.5 → 0.13.6)
+
+Found while auditing `spec/cue-spec.md` for accuracy against the reference implementation — both were real parsing bugs, not just doc drift.
+
+- **Combined mode** (a single `CUE.md` pairing a static JSON tips block with `match:`/`keywords:` + prompt-body LLM text, per `spec/cue-spec.md`'s worked "legal" example) never actually built the LLM half. `parseSingleCueMd` `break`ed unconditionally as soon as the JSON block parsed, so `result.promptConfig` was never populated — only the static-block words (e.g. `herein`) ever got alternatives; everything meant to fall through to the model (`contract`, `agreement`, …) silently matched nothing. Now the parser only stops at the static block when frontmatter declares neither `match:` nor `keywords:` (a pure-static cue); when either is present it falls through and builds `promptConfig` too. `spec/conformance/valid/cue/combined.md` — already a fixture — now asserts both halves are present (previously the suite's `hasTips || hasPrompt` OR-assertion silently accepted the missing half).
+- **`keywords: [a, b, c]`** (YAML bracket-list syntax, documented as valid in `spec/cue-spec.md`) stored the literal bracketed string rather than stripping brackets like `on-host:`/`on-site:` already do — so `RoutedWordSourceGroup`'s downstream `.split(',')` left the first keyword prefixed with `[` and the last suffixed with `]`, and neither could ever match. Comma-separated plain strings were unaffected. Added `normalizeKeywordsValue()` (reuses `parseHostList`'s bracket/JSON-array handling) applied at all three `keywords:` assignment sites (frontmatter, `### <name>` subsection YAML, legacy single-grammar body).
+
+Regression tests added to `cues-md.test.ts` for both. `docs/architecture` and `spec/` docs updated in the same pass to describe the now-correct behavior.
+
 ### Fixed — `switch model to gemma` resolved to the wrong model in the config-intent classifier (`@opencues/core` 0.13.4 → 0.13.5)
 
 `switch model to gemma _` was silently resolving to `cerebras:gpt-oss-120b` instead of `gemma-4-31b`. The classifier's few-shot examples had no anchor mapping the informal "gemma" alias to the private-preview model id, so it emitted `MODEL:` empty per the "unrecognised model" rule — the apply path then fell back to the provider's `defaultModel` (gpt-oss-120b for cerebras). The equivalent `haiku` phrasing only appeared to work because Anthropic's `defaultModel` happens to literally be the haiku model id, masking the same gap. Added a `SYSTEM_PROMPT` few-shot example anchoring `switch model to gemma` → `cerebras / gemma-4-31b`. Verified live via the agentic harness: resolves to gemma-4-31b (conf 0.92) and correctly writes `blanks-llm-model` to `OPENCUES.md`.

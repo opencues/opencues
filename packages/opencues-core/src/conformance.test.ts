@@ -64,6 +64,13 @@ describe('valid/cue/*.md', () => {
       const hasTips = config.tips && config.tips.length > 0;
       const hasPrompt = config.promptConfig && Object.keys(config.promptConfig.sources).length > 0;
       expect(hasTips || hasPrompt).toBe(true);
+      // combined.md specifically declares match:/keywords: alongside a
+      // static JSON block — it MUST produce BOTH halves (static override +
+      // LLM fallback), not just whichever one satisfies the OR above.
+      if (file === 'combined.md') {
+        expect(hasTips).toBe(true);
+        expect(hasPrompt).toBe(true);
+      }
     });
   }
 });

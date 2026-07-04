@@ -812,3 +812,92 @@ describe('Phase 4 — typed-sentinel blank fields (signature/returns/ai-callable
     assert.match(warned, /IGNORED/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Combined mode — a CUE.md with both a static JSON tips block AND
+// match:/keywords: in frontmatter should populate BOTH result.tips (the
+// static overrides) and result.promptConfig (the LLM fallback for
+// everything else). Previously the parser `break`d unconditionally after
+// a JSON block parsed, so the LLM half was silently never built.
+// ---------------------------------------------------------------------------
+
+describe('parseCuesMd: combined mode (static tips + LLM fallback)', () => {
+  const legalCue = [
+    '---',
+    'name: legal',
+    'description: Legal terminology',
+    'match: contract|agreement|clause|herein|whereas',
+    '---',
+    '',
+    '```json',
+    '[{',
+    '  "id": "legal-overrides",',
+    '  "words": {',
+    '    "herein": { "tip": "Avoid; replace with explicit reference", "alts": ["in this agreement", "above", "hereunder"] }',
+    '  }',
+    '}]',
+    '```',
+    '',
+    'For other matched terms, suggest 3 alternatives that preserve legal meaning.',
+    'Format: INDEX:alt1,alt2,alt3',
+  ].join('\n');
+
+  it('builds both result.tips and result.promptConfig when frontmatter declares match:/keywords:', () => {
+    const cfg = parseSingleCueMd(legalCue, '/cues/legal');
+    assert.ok(cfg.tips && cfg.tips.length > 0, 'static tips should still be populated');
+    const src = cfg.promptConfig?.sources?.['legal'];
+    assert.ok(src, 'combined mode must also build an LLM source, not just the static block');
+    assert.strictEqual(src?.match, 'contract|agreement|clause|herein|whereas');
+    assert.match(src?.promptText ?? '', /suggest 3 alternatives/);
+  });
+
+  it('stays static-only (no promptConfig) when frontmatter declares neither match: nor keywords:', () => {
+    const content = [
+      '---',
+      'name: grammar',
+      '---',
+      '```json',
+      '[{ "id": "grammar", "words": { "teh": { "tip": "typo", "alts": ["the"] } } }]',
+      '```',
+    ].join('\n');
+    const cfg = parseSingleCueMd(content, '/cues/grammar');
+    assert.ok(cfg.tips && cfg.tips.length > 0);
+    assert.strictEqual(cfg.promptConfig, undefined, 'pure-static cue must not acquire an unroutable LLM source');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// `keywords:` bracket-list syntax — a YAML array (`[a, b, c]`) must parse
+// identically to a comma-separated string. Previously only on-host/on-site
+// went through bracket-stripping; keywords stored the literal bracketed
+// text, so the first/last entries kept a stray `[`/`]` and could never
+// match after RoutedWordSourceGroup's `.split(',')`.
+// ---------------------------------------------------------------------------
+
+describe('parseCuesMd: keywords: bracket-list syntax', () => {
+  it('parseSingleCueMd normalizes a bracketed keywords: list to comma-separated', () => {
+    const content = '---\nname: thinking\nkeywords: [ultrathink, Tab, deep thinking, think harder]\n---\nPrompt body.';
+    const cfg = parseSingleCueMd(content, '/cues/thinking');
+    const src = cfg.promptConfig?.sources?.['thinking'];
+    assert.strictEqual(src?.keywords, 'ultrathink, Tab, deep thinking, think harder');
+  });
+
+  it('parseSingleCueMd still accepts plain comma-separated keywords:', () => {
+    const content = '---\nname: thinking\nkeywords: ultrathink, Tab, deep thinking\n---\nPrompt body.';
+    const cfg = parseSingleCueMd(content, '/cues/thinking');
+    assert.strictEqual(cfg.promptConfig?.sources?.['thinking'].keywords, 'ultrathink, Tab, deep thinking');
+  });
+
+  it('parseCuesMd normalizes bracketed keywords: in a ### subsection', () => {
+    const md = [
+      '## Prompt',
+      '### thinking',
+      '```yaml',
+      'keywords: [ultrathink, deep thinking]',
+      '```',
+      'prompt body',
+    ].join('\n');
+    const cfg = parseCuesMd(md);
+    assert.strictEqual(cfg.promptConfig?.sources?.['thinking'].keywords, 'ultrathink, deep thinking');
+  });
+});
