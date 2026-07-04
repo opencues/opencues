@@ -482,7 +482,7 @@ export function startOpenCues(opts: {
         offTrack: boolean
       } | null | undefined
       if (tut) {
-        const head = tut.stepCount > 0 ? `⛳ ${tut.step}/${tut.stepCount}` : '⛳'
+        const head = tut.stepCount > 0 ? `Tutorial ${tut.step}/${tut.stepCount}:` : 'Tutorial:'
         const segments = tut.coachSegments
           ?? (tut.coach ? [{ text: tut.coach, command: false }] : [])
         setOpencuesTutorial({ head, segments, offTrack: !!tut.offTrack })

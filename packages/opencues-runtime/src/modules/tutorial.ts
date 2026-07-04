@@ -272,7 +272,7 @@ export class TutorialCoach {
   private setOfflineCoachLine(why: string): void {
     if (!this._doc) return;
     const i = Math.min(this._stepIndex, this._doc.steps.length - 1);
-    const line = `Step ${i + 1}/${this._doc.steps.length}: ${this._doc.steps[i].title} — coach offline (${why}); type \`next _\` when done · \`Esc ×3\` exits`;
+    const line = `Step ${i + 1}/${this._doc.steps.length}: ${this._doc.steps[i].title} — coach offline (${why}); type \`next _\` when done`;
     if (this._coachLine === line) return;
     this._coachLine = line;
     this._offTrack = false;
@@ -516,7 +516,7 @@ export class TutorialCoach {
         if (saved && !saved.completed && saved.step > 0 && saved.step < doc.steps.length) {
           this._stepIndex = saved.step;
           this._journal = Array.isArray(saved.journal) ? [...saved.journal] : [];
-          this._coachLine = `Welcome back — resuming at step ${saved.step + 1}/${doc.steps.length}: ${doc.steps[saved.step].title} · \`Esc ×3\` exits`;
+          this._coachLine = `Welcome back — resuming at step ${saved.step + 1}/${doc.steps.length}: ${doc.steps[saved.step].title}`;
         } else {
           this._coachLine = `Step 1/${doc.steps.length} — ${doc.steps[0].title} · \`Esc ×3\` exits`;
         }
