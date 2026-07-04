@@ -116,4 +116,4 @@ place). Re-edit any time — changes hot-reload on the next keystroke.
 - [`docs/architecture/identity-context.md`](../architecture/identity-context.md) — design + threat model
 - [`docs/architecture/ambient-context.md`](../architecture/ambient-context.md) — the related feature
 - [`docs/features/blank-as-context.md`](blank-as-context.md) — the sibling feature for ambient blank tokens
-- [`tests/benchmarks/sentinels/FINDINGS.md`](../../tests/benchmarks/sentinels/FINDINGS.md) — bench evidence that shaped the design
+- [`tests/benchmarks/user-context/FINDINGS.md`](../../tests/benchmarks/user-context/FINDINGS.md) — bench evidence that shaped the design

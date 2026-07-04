@@ -85,12 +85,14 @@ The state machine that keeps multi-word substitutions, cycle progress, and per-e
 
 ## LLM context inputs
 
-Optional information the FluidBlank LLM call receives in addition to the user's prompt. Both OFF by default and gated on a scalar in `OPENCUES.md`. Read [`docs/architecture/ambient-context.md`](../architecture/ambient-context.md) and [`docs/architecture/sentinels.md`](../architecture/sentinels.md) before wiring fluid-blank output into any side-effect channel.
+Optional information the FluidBlank LLM call receives in addition to the user's prompt. Both OFF by default and gated on a scalar in `OPENCUES.md`. Read [`docs/architecture/ambient-context.md`](../architecture/ambient-context.md) and [`docs/architecture/identity-context.md`](../architecture/identity-context.md) before wiring fluid-blank output into any side-effect channel.
 
 | # | Feature | Description |
 |---|---------|-------------|
 | 32 | [Ambient Context](ambient-context.md) | FluidBlank optionally receives the focused field's label / placeholder / page-title so `_` lookups disambiguate per context (e.g. "destination" on flights.google.com vs airbnb.com). OFF by default. Chrome only — needs DOM. Host-agnostic at the `HostAdapter` contract level. |
 | 33 | [Identity Context](identity-context.md) | FluidBlank optionally injects the user's own personal data (`~/.cues/IDENTITY.md` frontmatter) as identity-context tokens so `_` lookups personalise without re-typing. `safe` mode keeps PII off the LLM provider's logs; `raw` opts in to inlining. OFF by default. Phase 1 wires fluid-blank only. |
+| 39 | [Blank as Context](blank-as-context.md) | Local blanks (weather, stocks, calendar, …) surfaced as ambient catalog context for fluid-blank/transform-blank — same security model as identity-context, for parameterised dynamic data instead of static personal fields. |
+| 40 | [Max Thinking](max-thinking.md) | `max-thinking` scalar trades reasoning depth for speed on reasoning-capable models (Groq / Cerebras / OpenAI gpt-oss + gpt-5 families). |
 
 ## Surfacing
 
@@ -111,6 +113,8 @@ Where `.cues/` lives, when changes reload, how `defaults/` seeds a fresh install
 | 16 | [Hot-Reload Config](hot-reload-config.md) | Config file changes take effect without restart |
 | 24 | [Shipped Defaults](shipped-defaults.md) | `<repo>/defaults/` as the seed + bake source for `opencues seed-configs` and the Chrome extension's bundled fallback |
 | 28 | [Config Search Paths](config-search-paths.md) | Three-layer precedence (`$OPENCUES_HOME → <cwd>/.cues → ~/.cues`), the `OPENCUES.md` system-settings user-level-only special case, and how `seed-configs` populates `~/.cues/` |
+| 41 | [claude-cli Provider](claude-cli-provider.md) | Route opencues' agent surfaces through a Claude Pro/Max subscription (via the local `claude` CLI) instead of a pay-per-token `ANTHROPIC_API_KEY`. |
+| 42 | [Cues Skill + Plugin](cues-skill-and-plugin.md) *(experimental, WIP)* | A Claude skill / plugin that side-effect-writes `.cues/CUES.md` from within a chat conversation with the user's AI assistant. |
 
 ## Chrome specifics
 

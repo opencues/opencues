@@ -246,7 +246,7 @@ could see (by name in `safe`, by value in `raw`).
 
 ## See also
 
-- `docs/features/sentinels.md` — the sister feature; same threat model,
+- `docs/features/identity-context.md` — the sister feature; same threat model,
   static data only.
 - `docs/features/ambient-context.md` — page-level metadata; the third
   member of the context-shaping family.
