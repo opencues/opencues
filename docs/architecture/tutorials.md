@@ -283,7 +283,11 @@ and add the security-audit row when this ships.
 
 - CC / gemini / chrome band wiring (each needs the module mount + the
   first-subscriber observeKey contract + a coach-line surface; chrome
-  has no statusline — use the `onSnapshot` hook). The shell port took
+  has no statusline — use the `onSnapshot` hook). Chrome's tutorial
+  head reuses the popup's `.brand-badge` C_ text mark
+  (`src/popup/popup.html`) — the extension has NO svg logo asset;
+  manifest icons are PNGs (`integrations/chrome/icons/`) and the brand
+  is a CSS-styled text badge, same wordmark the OC footer renders. The shell port took
   ~20 mechanical lines following this contract and passed scenario 42
   unmodified — the pattern generalizes.
 - `tutorials-mode` FeatureSpec in the registry (today it's a raw
