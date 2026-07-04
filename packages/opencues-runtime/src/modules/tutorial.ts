@@ -302,9 +302,17 @@ export class TutorialCoach {
       // Buffer went non-empty → empty: the user submitted (Enter).
       this.pushTrace({ kind: 'submitted', text: prev.trim() });
     } else if (text.trim().length > 0) {
-      // Coalesce consecutive typed snapshots — the trace holds the final
-      // state between submits, not every keystroke.
-      if (this._trace.length > 0 && this._trace[this._trace.length - 1].kind === 'typed') {
+      // Coalesce ONLY continued typing (the new text extends / trims the
+      // previous snapshot) — a change of direction (different prefix)
+      // is a distinct ATTEMPT and must stay its own entry. Full
+      // replacement-coalescing collapsed "/memory" → "/setup" → "/start"
+      // into one morphing entry, making it impossible for the coach to
+      // count failed attempts (reveal-after-N-failures, stuck
+      // escalation).
+      const last = this._trace[this._trace.length - 1];
+      const continues = last?.kind === 'typed'
+        && (text.startsWith(last.text) || last.text.startsWith(text));
+      if (continues) {
         this._trace[this._trace.length - 1] = { kind: 'typed', text };
       } else {
         this.pushTrace({ kind: 'typed', text });
