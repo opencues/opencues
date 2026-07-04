@@ -354,6 +354,15 @@ export function startOpenCues(opts: TerminalBootOpts): BootResult {
     cursorStatePath: `/tmp/opencues-cursor-state-${process.pid}.json`,
     statusSnapshotHook: (payload: any) => {
       if (!opts.onTipChange) return;
+      // Tutorial block is dominant while active — one plain-text line
+      // (C_ brand + step counter + coach). Segment colouring needs an
+      // app.tsx renderer; plain text first so the coach is VISIBLE.
+      const tut = payload?.tutorial as { step: number; stepCount: number; coach: string | null; stepTitle: string } | null | undefined;
+      if (tut) {
+        const head = tut.stepCount > 0 ? `C_ Tutorial ${tut.step}/${tut.stepCount}:` : 'C_ Tutorial:';
+        opts.onTipChange(`${head} ${tut.coach ?? tut.stepTitle}`);
+        return;
+      }
       const agentTask = payload?.agentTask as string | null | undefined;
       const agentBadge = agentTask ? `[task: ${agentTask}]` : null;
       let wordPart: string | null = null;

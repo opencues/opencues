@@ -505,6 +505,12 @@ function startOpenCues(opts) {
     statusSnapshotHook: (payload) => {
       if (!opts.onTipChange)
         return;
+      const tut = payload?.tutorial;
+      if (tut) {
+        const head = tut.stepCount > 0 ? `C_ Tutorial ${tut.step}/${tut.stepCount}:` : "C_ Tutorial:";
+        opts.onTipChange(`${head} ${tut.coach ?? tut.stepTitle}`);
+        return;
+      }
       const agentTask = payload?.agentTask;
       const agentBadge = agentTask ? `[task: ${agentTask}]` : null;
       let wordPart = null;
