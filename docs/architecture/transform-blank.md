@@ -637,31 +637,45 @@ an experiment in `EXPERIMENTS.md`.
   the whole rewrite; it doesn't highlight individual word changes as
   separately-cycleable linked spans.
 
-### Fix-forward gaps — capabilities lost with the 3-pass retirement
+### Fix-forward gaps — status after Experiments 11-12
 
-These capabilities lived **only** in the retired 3-pass `P2_APPLY` (+
-the P1.5 deictic resolver + cursor-sentinel injection). They are now
-absent on **all** providers until re-authored directly into
-`FUSED_SYSTEM`. Treat them as known fix-forward work, not silent bugs:
+These four capabilities lived **only** in the retired 3-pass `P2_APPLY`
+(+ the P1.5 deictic resolver + cursor-sentinel injection), and were
+initially assumed lost with the 3-pass retirement (Experiment 10). A
+follow-up benchmark (`EXPERIMENTS.md, Experiment 11`) found the "gaps"
+were mostly theoretical — a capable model already handles most of this
+class through the whole-buffer `FULL_REWRITE` with no explicit rule.
+**As of Experiment 12, all four are addressed:**
 
-- **Caret-relative / deictic edits** — "add a line break here", "shorten
-  it", "make this line bold", "split this paragraph here", "fix this
-  typo". The fused call sends no `[CURSOR]` and resolves no deictic
-  referents ("this/that/it" → an explicit span), so this whole class
-  degrades. This is the largest gap.
 - **Heading / list-ification** — "make it a heading" (→ `# `), "turn
-  into a list" (→ `- `). Same shape as the old `make X bold` parity bug.
+  into a list" (→ `- `). Genuinely broken on groq at baseline (emitted
+  prose, not bullets); fixed by adding one `STRUCTURE` rule to
+  `FUSED_SYSTEM` (Experiment 11). 8/8 gap cases pass on cerebras, no
+  regression on the standard suite.
 - **Anchored insertion** — "add X after the dear line", "drop X in" (vs
-  "drop X" = delete). The fused prompt appends at the end of the body;
-  it loses anchored-relative insertion and the drop-verb
-  disambiguation.
-- **Auto-styling** — "add bolding where appropriate", "highlight key
-  terms" (pick 2–5 spans yourself). The fused prompt handles
-  *named-span* styling but not pick-your-own-spans.
+  "drop X" = delete). Never actually broken — cerebras passed this at
+  baseline with no rule needed (Experiment 11). No prompt change made
+  (adding a rule for behavior the model already has would be opinion
+  without benefit).
+- **Deictic edits** — "shorten it", "make this line bold", "fix this
+  typo". Also passed at baseline with no rule (Experiment 11) — the
+  whole-buffer view gives the model enough context to resolve
+  "it"/"this" itself.
+- **Caret-relative "here" edits** — "add a line break here", "split
+  this paragraph here". The one gap that genuinely needed new wiring:
+  restored via a `[CURSOR]` sentinel injected into the fused call,
+  gated on a positional-cue regex so the marker doesn't distract
+  classification on the ~95% of non-positional transforms (Experiment
+  12). Verified live on Claude Code with a real cursor position.
 
-Re-authoring any of these is a `FUSED_SYSTEM` prompt edit + a `prod.ts`
-re-bench. See `EXPERIMENTS.md, Experiment 10` for the accepted-regression
-note.
+**Auto-styling (pick-your-own-spans) remains a separate, genuinely
+unimplemented feature** — see [Markdown Styling](../features/markdown-styling.md).
+"add bolding where appropriate" / "highlight key terms" require the
+model to choose which spans deserve styling; the `MARKDOWN STYLING`
+rule only fires for a *named* span ("make wilfred bold") and was never
+benchmarked as part of Experiments 11-12 (not `finalText`-scorable —
+markers are stripped to a `markdown.styled` event before the bench
+observes the result).
 
 ---
 

@@ -1,6 +1,6 @@
 # Install
 
-Per-host installation, what each install does, where things land, and how to recover when something fails. For a 5-minute Claude Code quickstart, see [`README.md` § Quickstart](../README.md#quickstart-5-minutes); this doc is the deep version.
+Per-host installation, what each install does, where things land, and how to recover when something fails. For a 5-minute Claude Code quickstart, see [`README.md` § Quickstart](../README.md#quickstart-5-minutes); this doc is the deep version. For a click-by-click, touch-counted walkthrough of all five integrations (useful when auditing install friction), see [`docs/install/walkthrough.md`](install/walkthrough.md).
 
 ## Prerequisites
 
@@ -151,7 +151,7 @@ If `opencues install <host>` exits non-zero, it's usually one of these:
 | Linux: Ctrl+Alt+arrow switches workspace instead of cycling cues | Your DE owns those keys | See the next section |
 | `claude-cues` launches but typing does nothing visible | Runtime didn't boot, or `voice-mode: inactive` and you expected TTS | `tail /tmp/opencues.log` for the boot lines; `opencues doctor` cross-checks every install boundary |
 | OpenCode/shell install fails at `bun install` | Bun isn't installed | Re-run `opencues install opencode` (or `shell`) and answer **Y** to the "Install bun?" preflight prompt — drops a contained copy in `~/.opencues/vendor/bun/`. Or install system-wide: `curl -fsSL https://bun.sh/install \| bash`. |
-| Shell install: `oc-install-tmux` fails on missing build deps | Source-build path needs gcc + libevent + ncurses + bison | `opencues install shell` runs the preflight first — answer **Y** to the system-package offer to apt/brew-install. Or install them yourself: `sudo apt install build-essential libevent-dev libncurses-dev pkg-config bison`. Prebuilt tmux tarballs (zero build deps) land when a `tmux-prebuilt-<ver>` GitHub release is published. |
+| Shell install: `oc-install-tmux` fails on missing build deps | Source-build path needs gcc + libevent + ncurses + bison | `opencues install shell` runs the preflight first — answer **Y** to the system-package offer to apt/brew-install. Or install them yourself: `sudo apt install build-essential libevent-dev libncurses-dev pkg-config bison`. Prebuilt tmux tarballs (zero build deps) land when a `tmux-prebuilt-<ver>` GitHub release is published — see [`docs/install/tmux-prebuilt.md`](install/tmux-prebuilt.md) for how those are built and published. |
 | doctor reports "missing version marker" on every host | Install pre-dates the version-marker era (introduced post-v0.1) | Re-run `opencues install <host>` once — writes the marker for future drift detection. One-time clear. |
 | Chrome extension loads but does nothing on a page | Bundle didn't sync or extension is stale | Hard-reload at `chrome://extensions` (reload icon on the OpenCues card) + hard-refresh the page |
 

@@ -57,6 +57,7 @@ User-triggered substitutions at `_`. The trio is BlankSource (keyword), FluidBla
 | 29 | [Transform Blanks](transform-blank.md) | Imperative-instruction blanks at `_` — a single fused LLM call (classify + rewrite in one pass) that rewrites the surrounding text per the instruction. Plus a generative branch for "write a poem _" / "compose an email _" prompts. The third leg of the blank trio alongside BlankSource (keyword) and FluidBlankSource (lookup). |
 | 31 | [Blank Loading Animation](blank-loading.md) | Per-frame glyph + colour cycling at `_` slots while their source resolves. Five OPENCUES.md scalars (mode, frames, RGB palette, ANSI palette, interval). Thunk-shaped re-read so hot edits propagate; capability-routed RGB vs ANSI per host. |
 | 36 | [Blank Trigger Mode](blank-trigger-mode.md) | Controls when `_` fires its blank. `immediate` (default): trigger on insertion (v0.1 behaviour). `spaced`: trigger only when a confirming space follows — lets markdown `_italic_` typists keep their formatting without the first `_` substituting. Cycleable via `opencues settings _`. |
+| 44 | [Markdown Styling](markdown-styling.md) | LLM-origin text (TransformBlank rewrites, FluidBlank fills) may contain `**bold**`/`*italic*`/`` `code` ``/`~~strike~~`/headings/lists — stripped before writing to the buffer and rendered natively per host (ANSI in terminals, `execCommand` in chrome) instead of showing literal markers. Also the entry point for TransformBlank's `make X bold` named-span-decoration instruction. |
 | 37 | [Fluid Config](fluid-config.md) | Type `enable debug logging _` (or any natural-language settings phrase) and OpenCues classifies the intent, flips the setting in `~/.cues/OPENCUES.md`, wipes your summon words, and leaves the standard `opencues settings _` selector-satellite menu pre-positioned at the now-current state. Backspace deletes the pair as one span. FEATURES-only scope — never routes to user blanks (volume / brightness / weather / stocks / etc.). OFF by default. Validated across 5 providers at 100% precision + 90-100% recall on the holdout suite. |
 
 ## State & invariants
@@ -103,6 +104,8 @@ How runtime state reaches the user (status line, auto-submit) and how cues/blank
 | 13 | [Auto-Submit](auto-submit.md) | Automatic analysis as you type |
 | 15 | [Secondary Display](secondary-display.md) | Show cue-tips in a secondary area |
 | — | [Host Compat](host-compat.md) | `on-host:` / `not-on-host:` frontmatter scopes a cue/blank/auditor to a subset of integrations |
+| 43 | [Missing-Key Fallback](missing-key-fallback.md) | When no blanks-bucket LLM source could be wired (zero working API keys), `_` substitutes a visible, host-specific in-buffer hint instead of silently doing nothing. Chrome points at the extension popup; native hosts mention `~/.cues/.env`. |
+| 45 | [Provider Health](provider-health.md) | Classifies LLM-call failures (auth / quota / rate-limit / outage / model-missing) into a status-line signal. Shipped as a library module with full scenario-test coverage; **not yet wired into any live host** — see the doc's "Current wiring state" section before relying on it. |
 
 ## Configuration & loading
 

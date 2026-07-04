@@ -297,6 +297,6 @@ boundaries.
 ## See also
 
 - [`docs/architecture/repo-structure.md`](../../docs/architecture/repo-structure.md) — overall repo shape + stage tracker
-- [`integrations/claude-code/docs/`](docs/) — feature reference (navigation, cycling, alternatives, blanks, status line, etc.)
+- [`integrations/claude-code/docs/`](docs/) — CC-specific reference: cue-blanks + WSL guide, status-line setup, CLI prompting tips. Host-agnostic feature reference (navigation, cycling, blanks, status line concepts, etc.) now lives centrally at [`docs/features/`](../../docs/features/README.md) — read that first, this dir only for CC-specific detail.
 - [`integrations/claude-code/patches/README.md`](patches/README.md) — patch architecture + development notes
 - [`CLAUDE.md`](../../CLAUDE.md) — internal project notes including the `claude-cues` vs `claude` install distinction
