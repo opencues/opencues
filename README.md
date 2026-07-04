@@ -16,7 +16,7 @@
 
 <br><br>
 
-<p align="left"><a href="#supported-editors"><img height="18" width="67" alt="Supports:" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-08.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://opencode.ai" target="_blank" rel="noopener noreferrer"><img height="18" width="129" alt="OpenCode" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-09.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://claude.com/product/claude-code" target="_blank" rel="noopener noreferrer"><img height="18" width="144" alt="Claude Code" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-10.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://geminicli.com" target="_blank" rel="noopener noreferrer"><img height="18" width="126" alt="Gemini CLI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-11.svg"></a></p>
+<p align="left"><a href="#"><img height="18" width="93" alt="Associations:" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-01.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://www.reddit.com/user/inventor_black/" target="_blank" rel="noopener noreferrer"><img height="18" width="177" alt="Mod of r/ClaudeAI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-02.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://www.reddit.com/user/ClaudeAI-mod-bot/" target="_blank" rel="noopener noreferrer"><img height="18" width="168" alt="Bot at r/ClaudeAI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-02.1.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://luma.com/OpenSourceIRL" target="_blank" rel="noopener noreferrer"><img height="18" width="161" alt="OpenSourceIRL" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-03.svg"></a></p>
 
 #
 
@@ -44,8 +44,6 @@ the boy ran fast          →  cycle "boy" (Ctrl+Alt+Up)  →  the kid ran fast
 draft an email to my landlord asking for a rent reduction _  →  (the email, written)
 ```
 
-📖 [Docs](docs/README.md) · 📐 [Spec](spec/README.md) · 🐛 [Issues](https://github.com/opencues/opencues/issues) · 📄 [License](LICENSE)
-
 <br><br><br><br>
 
 # Quickstart
@@ -62,6 +60,8 @@ Full walkthrough, prerequisites, and per-host detail: [`docs/install.md`](docs/i
 <br><br><br><br>
 
 # Supported editors
+
+<p align="left"><a href="#supported-editors"><img height="18" width="67" alt="Supports:" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-08.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://opencode.ai" target="_blank" rel="noopener noreferrer"><img height="18" width="129" alt="OpenCode" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-09.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://claude.com/product/claude-code" target="_blank" rel="noopener noreferrer"><img height="18" width="144" alt="Claude Code" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-10.svg"></a><img height="18" width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://geminicli.com" target="_blank" rel="noopener noreferrer"><img height="18" width="126" alt="Gemini CLI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-11.svg"></a></p>
 
 | Editor | Status | Install |
 |---|---|---|
