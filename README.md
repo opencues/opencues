@@ -39,11 +39,11 @@ OpenCues is platform, model, and provider agnostic, engineered from the ground u
 
 | You type | You get |
 |---|---|
-| hey can u send me that report when u get a sec make this formal ＿ | Could you please send me that report at your earliest convenience? |
-| 4 + 4 = ＿ | 4 + 4 = 8 |
-| hello world translate to japanese ＿ | こんにちは世界 |
-| draft an email to my landlord asking for a rent reduction ＿ | (the email, written) |
-| ffmpeg command to convert a video to web-ready mp4 ＿ | ffmpeg -i input.mov -c:v libx264 -preset slow -crf 23 -c:a aac -b:a 128k -movflags +faststart output.mp4 |
+| hey can u send me that report when u get a sec make this formal _ | Could you please send me that report at your earliest convenience? |
+| 4 + 4 = _ | 4 + 4 = 8 |
+| hello world translate to japanese _ | こんにちは世界 |
+| draft an email to my landlord asking for a rent reduction _ | (the email, written) |
+| ffmpeg command to convert a video to web-ready mp4 _ | ffmpeg -i input.mov -c:v libx264 -preset slow -crf 23 -c:a aac -b:a 128k -movflags +faststart output.mp4 |
 
 #
 
@@ -91,10 +91,10 @@ Each pins its own upstream fork and never touches your native editor install. Pe
 
 # What you get
 
-- **Blanks** — type `＿` for free-form generation, translation, formatting, full-register rewrites, or keyword-bound system actions (`volume ＿`, `weather ＿`).
-- **Sentence rewrites** — cycle a whole sentence to a different register (formal, concise, ...) with one keystroke, no `＿` needed.
+- **Blanks** — type `_` for free-form generation, translation, formatting, full-register rewrites, or keyword-bound system actions (`volume _`, `weather _`).
+- **Sentence rewrites** — cycle a whole sentence to a different register (formal, concise, ...) with one keystroke, no `_` needed.
 - **Word cues** — navigate to a single word and cycle a smaller LLM-suggested alternative.
-- **Personal + ambient context** (opt-in) — `my email ＿` substitutes your real address; fluid lookups can read the page you're on.
+- **Personal + ambient context** (opt-in) — `my email _` substitutes your real address; fluid lookups can read the page you're on.
 - **Hot-reload** — every `.md` config picks up edits in ~2s, no restart.
 
 Full feature catalogue (42 concepts): [`docs/features/README.md`](docs/features/README.md).
@@ -112,7 +112,7 @@ Two directions of intent — see [`concept.md`](concept.md):
 | Direction | Surface | Trigger |
 |---|---|---|
 | LLM → you | **Cues** | plain text |
-| you → system | **Blanks** | text containing `＿` |
+| you → system | **Blanks** | text containing `_` |
 
 Both are open file formats — `CUE.md` / `BLANK.md` — so another runtime could implement them independently; the standard lives at [`spec/`](spec/README.md), this repo ships the reference implementation.
 
