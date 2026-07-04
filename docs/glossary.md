@@ -72,13 +72,17 @@ OpenCues is configured via `.md` files in the project root. These files are the 
 
 **CUES.md** — The cue master config (cue source declarations + project metadata). Frontmatter has `name` / `domain` / `version`. Body has `## Tips` (static word tips), `## Ignore` (words the runtime never suggests alts for), and `## Prompt` with `### <source-name>` LLM-backed cue sources. Lives at user-level (`~/.cues/CUES.md`) OR project-level (`<cwd>/.cues/CUES.md`); project wins on name conflicts. Parsed via `parseCuesMd` → wrapped in `RoutedWordSourceGroup`. **Does NOT carry runtime system settings** — those are in OPENCUES.md (despite the similar name). A pre-2026 design plan to merge the two files was abandoned.
 
+**BLANKS.md** — The blank master config, mirroring CUES.md's role for the blanks surface: project metadata + a top-level `disable: [<id>, ...]` list that subtracts blank ids from this layer's composition. Parsed via `parseBlanksSection`, populates `ConfigLoader`'s `result.blanks`.
+
+**AUDITORS.md** — The auditor master config: project metadata + `disable: [<id>, ...]` to exclude auditors at the project layer without touching the user-level library. See `docs/guides/adding-an-auditor.md`.
+
 **cues/{name}/CUE.md** — One folder per cue source. Folder name = source id. Static cues have a body JSON code block (the words map: `{"ultrathink": {"tip": "...", "alts": [...], "speak": true}}`). LLM cues declare `match:` or `keywords:` in frontmatter and put prompt text in the body. The runtime infers static-vs-LLM from data shape (no `type:` discriminator).
 
 **blanks/{name}/BLANK.md** — One folder per blank. Defines `_`-gated cycling behaviour — script-triggered (volume, brightness), auto-populated (stock prices, weather), list (affirmations), read-only (live API values), and consume-all. Frontmatter holds the BlankConfig fields; scripts are colocated in the same folder. (Filename per the open standard at `spec/blank-spec.md`. Legacy `blank.md` and `cue.md` names are auto-migrated by `seed-configs`.)
 
 **Folder-based config** — Each cue / blank is a self-contained folder: cues use `CUE.md`, blanks use `BLANK.md` (YAML frontmatter for config, body for prompt or words JSON), with optional colocated scripts. Folders in `cues/` and `blanks/` are auto-discovered.
 
-**Host** — One of the OpenCues integrations: `claude-code`, `opencode`, `chrome`, `gemini-cli`. They share the same `.md` config format. Native hosts (CC, OC, gemini-cli) can spawn subprocesses + read the filesystem unconditionally. Chrome can too, but only when chrome-host (the native-messaging bridge) is installed — so chrome's spawn capability is runtime-detected, not a static property.
+**Host** — One of the OpenCues integrations: `claude-code`, `opencode`, `chrome`, `gemini-cli`, `shell` (`terminal` is a deprecated back-compat alias for `shell`). They share the same `.md` config format. Native hosts (CC, OC, gemini-cli, shell) can spawn subprocesses + read the filesystem unconditionally. Chrome can too, but only when chrome-host (the native-messaging bridge) is installed — so chrome's spawn capability is runtime-detected, not a static property.
 
 **Host Compat** — Per-entry declaration of which hosts a cue / blank runs on. Default: every entry advertises as compatible with every host; the runtime fails at runtime if the host genuinely can't fulfil the call (exit 127). Override via `on-host:` (allow-list) and `not-on-host:` (deny-list) frontmatter fields. Surfaced in `opencues list`, validated by `opencues validate`, used by `opencues sync chrome` to filter the bundle. See `docs/features/host-compat.md` for the full spec.
 
@@ -106,7 +110,7 @@ A **cue source** is anything that provides alternatives for words. All cue sourc
 
 **buildSourcesFromConfig** — Factory function that takes parsed `CUES.md` plus discovered `cues/<name>/CUE.md` and `blanks/<name>/BLANK.md` folders and returns `CueSource[]`. Wires:
 - **Word cues**: Each `cues/<name>/CUE.md` becomes a `ConfigSource`; all of them wrap into ONE `RoutedWordSourceGroup` that dispatches per-word.
-- **Blanks**: Keyword-bound entries from `blanks/<name>/BLANK.md` register with `BlankSource` (priority 95). `FluidBlankSource` (priority 92) catches unbound `_`. The shipped `defaults/cues/spelling/CUE.md` cue (priority 80) flags misspelled words on plain text — same `ConfigSource` path as legal/medical/etc.
+- **Blanks**: Keyword-bound entries from `blanks/<name>/BLANK.md` register with `BlankSource` (priority 95). `FluidBlankSource` (priority 92) catches unbound `_`. The shipped `defaults/cues/spelling/CUE.md` cue (priority 10 — the lowest of any shipped source, deliberately, so domain cues win first) flags misspelled words on plain text — same `ConfigSource` path as legal/medical/etc.
 
 > **Terminology note**: "cue source" is the general concept. `CueSource` is the TypeScript interface. `ConfigSource` and `LocalCueSource` are specific implementations.
 
@@ -120,17 +124,15 @@ A **cue source** is anything that provides alternatives for words. All cue sourc
 
 ## Response Parsers
 
-How LLM responses are interpreted. Set via `parser` field in `.md` config. See `docs/guides/parser-types.md` for full details with examples.
+How LLM responses are interpreted. Set via `parser` field in `.md` config. Only two exist in the reference implementation today (`BlankParser` type in `cues-md.ts` is `'alternatives' | 'raw'`) — see `docs/guides/parser-types.md` for full details with examples.
 
 **alternatives** — Parses `INDEX:alt1,alt2,alt3` format. Default parser. Used for word alternatives and grammar blanks.
 
-**compute** — Extracts `COMPUTE=expression` and evaluates as JavaScript math. Used for math blanks.
-
-**answer** — Extracts `ANSWER=value` as a single result. Used for factual blanks.
-
 **raw** — Uses the full LLM response verbatim as one alternative.
 
-> **Terminology note**: "Response parser" refers to these four LLM output formats. `parseCuesMd()` is the config file parser — a different thing.
+> **`compute`/`answer` parsers do not exist.** A `parser: answer` or `parser: math` declaration in a `.md` config's frontmatter is silently ignored by `ConfigSource.parseResponse` (its `switch` falls through to `default: return []` for anything other than `alternatives`/`raw`) — the source produces zero cues at runtime. Math/factual lookups today go through **FluidBlankSource** (a `_`-triggered fused LLM call handling math, facts, translation, etc. without per-mode classification — see § Cue Sources below), not a dedicated response-parser format.
+>
+> **Terminology note**: "Response parser" refers to these LLM output formats. `parseCuesMd()` is the config file parser — a different thing.
 
 ---
 

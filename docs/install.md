@@ -57,10 +57,11 @@ brew install bash tmux brightness  # bash 4+ optional but recommended
 
 | Integration | What you need first | Check |
 |-------------|---------------------|-------|
-| `claude-code` | Claude Code 2.1.110+ on PATH (the installer reinstalls a pinned copy locally; the on-PATH check just confirms you have the auth set up) | `claude --version` |
+| `claude-code` | Claude Code 2.1.x on PATH (the installer reinstalls the pinned copy — current pin `2.1.170`, see `integrations/claude-code/compat.json` — locally; the on-PATH check just confirms you have the auth set up) | `claude --version` |
 | `opencode`    | [bun](https://bun.sh/) (OpenCode is a bun app — the installer clones a fork itself) | `bun --version` |
 | `chrome`      | Chrome 121+ | `chrome://version` |
 | `gemini-cli`  | Node 22+ (installer clones a Gemini CLI 0.41.x fork itself) | `node --version` |
+| `shell`       | [bun](https://bun.sh/) (`oc-edit`/`oc-editd` are bun apps) + tmux 3.2+ (`oc-shell`'s display-popup). Preflight offers to vendor either into `~/.opencues/vendor/` if missing. | `bun --version`, `tmux -V` |
 
 A Claude-Code-only user never needs bun. An OpenCode user needs bun because OpenCode itself is a bun app, not because OpenCues requires it.
 
@@ -74,7 +75,7 @@ pnpm install
 pnpm build
 
 # Store the API key (works on any shell — writes ~/.cues/.env chmod 600).
-# Provider names: groq, cerebras, openai, anthropic, openrouter, gemini.
+# Provider names: groq, cerebras, openai, anthropic, openrouter, gemini, opencode-zen.
 pnpm exec opencues set-key groq your-key
 
 # Or, if you'd rather use env vars in your shell config:
@@ -84,25 +85,28 @@ pnpm exec opencues set-key groq your-key
 
 # Install the integration(s) you want
 pnpm exec opencues install claude-code     # patches Claude Code
-pnpm exec opencues install opencode        # patches an OpenCode 1.4.x or 1.14.x fork
+pnpm exec opencues install opencode        # patches an OpenCode 1.14.x fork
 pnpm exec opencues install chrome          # builds the MV3 extension
 pnpm exec opencues install chrome-host \
   --extension-id <id-from-chrome-extensions>  # optional — live ~/.cues/ sync into Chrome
 pnpm exec opencues install gemini-cli      # patches a Gemini CLI 0.41.x fork
-pnpm exec opencues install --all           # all four (chrome-host is separate)
+pnpm exec opencues install shell           # standalone oc-shell/oc-edit (no upstream fork)
+pnpm exec opencues install --all           # all five (chrome-host is separate)
 
-# Launch (claude-code, opencode, gemini-cli — chrome auto-loads in browser)
+# Launch (claude-code, opencode, gemini-cli, shell — chrome auto-loads in browser)
 pnpm exec opencues run claude-code
 pnpm exec opencues run opencode
 pnpm exec opencues run gemini-cli
+pnpm exec opencues run shell
 ```
 
 | Integration | Install | Compatible with | Launch |
 |---|---|---|---|
-| **Claude Code** | `opencues install claude-code` | Claude Code 2.1.110+ | `opencues run claude-code` (or just `claude-cues` once on PATH) |
-| **OpenCode** | `opencues install opencode` | OpenCode 1.4.x / 1.14.x | `opencues run opencode` |
+| **Claude Code** | `opencues install claude-code` | Claude Code 2.1.x (pin 2.1.170) | `opencues run claude-code` (or just `claude-cues` once on PATH) |
+| **OpenCode** | `opencues install opencode` | OpenCode 1.14.x | `opencues run opencode` |
 | **Chrome** | `opencues install chrome` (+ `opencues install chrome-host` for live `~/.cues/` sync) | Chrome 121+ | Load unpacked at `chrome://extensions` (path printed by installer) |
-| **Gemini CLI** | `opencues install gemini-cli` | Gemini CLI 0.41.2 | `opencues run gemini-cli` |
+| **Gemini CLI** | `opencues install gemini-cli` | Gemini CLI 0.41.x | `opencues run gemini-cli` |
+| **Shell** | `opencues install shell` | No upstream fork — self-owned host | `opencues run shell` (or `oc-shell` once on PATH) |
 
 Per-host install detail, paths touched, uninstall flow: each integration's own README (linked above).
 
@@ -117,6 +121,7 @@ Every `opencues install <host>` is one command, end-to-end — no manual `bun in
 | `chrome` | Build MV3 extension + copy `dist/` to `--target` if provided | ✗ — load unpacked at `chrome://extensions` yourself |
 | `chrome-host` | Drop a local native-messaging host + register it with Chrome (manifest + WSL `.bat` shim + HKCU registry on Windows). Requires `--extension-id <id>` from `chrome://extensions`. After install, edits to `~/.cues/` push into every open tab in ~300ms — no rebuild, no refresh. | ✗ — Chrome spawns the host on demand |
 | `gemini-cli` | Clone the fork + `npm install` fork deps + build our runtime + install into fork's `node_modules/@opencues/` + patch 4 source files (3 TSX + esbuild config) + `npm run build` the fork | ✓ |
+| `shell` | `seed-configs` (shared `~/.cues/`) + preflight offers to vendor bun/tmux into `~/.opencues/vendor/` if missing + build our runtime + install `oc-shell`/`oc-edit`/`oc-editd` on PATH. No upstream fork to patch — self-owned host. | ✓ (runs `oc-shell`, which lazy-spawns `oc-edit`) |
 
 ## Where things land
 
@@ -125,6 +130,7 @@ Every `opencues install <host>` is one command, end-to-end — no manual `bun in
 | `~/claude-code-cues/` | Everything `@opencues/claude-code` owns lives inside this CC fork: `node_modules/@opencues/{core,runtime}/` (runtime), `.cues/{statusline.sh,scripts/,patch-state/}` (support files), and the patched `cli.js`. Uninstall is `rm -rf` of this dir + tweakcc revert. |
 | `~/opencode-cues/` | OpenCode fork the integration clones + patches |
 | `~/gemini-cli-cues/` | Gemini CLI fork the integration clones + patches. `node_modules/@opencues/{core,runtime}/` + `packages/cli/src/ui/opencues.ts` (bootstrap) + 4 patched source files. |
+| `~/.opencues/vendor/{bun,tmux}/` | Shell integration's contained bun/tmux copies, when you opt into vendoring instead of a system install. |
 | `~/.cues/` | User-level configs — `OPENCUES.md` (runtime settings) plus the three master files (`CUES.md`, `BLANKS.md`, `AUDITORS.md`) and their per-source folders. Read by every host. |
 | `<cwd>/.cues/` | Project-level config overrides. Read by native hosts (claude-code, opencode, gemini-cli) automatically via cwd. Chrome with `chrome-host` installed reads `~/.cues/` live (or `$OPENCUES_HOME` if set); without the host, only the extension's bake-time defaults apply. |
 | `<repo>/defaults/` | Seed source for `opencues seed-configs` + Chrome's bake-time defaults. Never read at runtime; part of the code pipeline, not user config. |
@@ -290,6 +296,7 @@ pnpm exec opencues uninstall claude-code   # reverts cli.js + removes ~/claude-c
 pnpm exec opencues uninstall opencode      # git checkout 4 patched files + removes fork node_modules entries
 pnpm exec opencues uninstall gemini-cli    # same shape as opencode
 pnpm exec opencues uninstall chrome        # removes integrations/chrome/dist + (if --target was used) the deploy
+pnpm exec opencues uninstall shell         # removes oc-shell/oc-edit/oc-editd (no fork to revert)
 pnpm exec opencues uninstall --all
 ```
 
