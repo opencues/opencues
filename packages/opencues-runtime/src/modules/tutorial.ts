@@ -181,8 +181,14 @@ export class TutorialCoach {
   /** Buffer snapshot the in-flight tick was built from — stale-drop guard. */
   private _tickSnapshot = '';
   private _lastText = '';
-  /** Our own consume-writes, so their echo isn't recorded as user activity. */
-  private _selfWrites: string[] = [];
+  /** Our own consume-writes, so their echo isn't recorded as user
+   *  activity. TTL-pruned (250ms — mirrors boot-common's
+   *  RUNTIME_WRITE_TTL_MS): a stale entry must never swallow a LATER
+   *  legitimate user event with identical text. The empty string is the
+   *  dangerous case — every consume writes '', and every user submit
+   *  produces '' — which is exactly how a lingering entry ate the
+   *  submit-detection signal (caught by tutorial.scenarios.test.ts). */
+  private _selfWrites: Array<{ text: string; addedAt: number }> = [];
   private _httpAgent: TutorialCoachOptions['httpAdapter'] | null = null;
   private readonly _logFn: (msg: string) => void;
   /** Consecutive bare-Escape presses — the DETERMINISTIC escape hatch.
@@ -206,6 +212,11 @@ export class TutorialCoach {
   }
 
   get active(): boolean { return this._doc !== null; }
+
+  /** Read-only trace view — for tests + future bridge dumps. */
+  traceSnapshot(): ReadonlyArray<{ kind: string; text: string; count?: number }> {
+    return this._trace.map(t => ({ ...t }));
+  }
 
   /** Resolver suppression predicate — active tutorial OR a control phrase
    *  mid-typing. Wired into ResolverOptions.externallySuppressed so normal
@@ -338,8 +349,11 @@ export class TutorialCoach {
     const prev = this._lastText;
     this._lastText = text;
     // Skip echoes of our own consume-writes (and runtime writes generally
-    // when active — the coach reads USER activity only).
-    const selfIdx = this._selfWrites.indexOf(text);
+    // when active — the coach reads USER activity only). TTL-pruned:
+    // past the echo window a matching text is a real user event.
+    const now = Date.now();
+    this._selfWrites = this._selfWrites.filter(w => now - w.addedAt < 250);
+    const selfIdx = this._selfWrites.findIndex(w => w.text === text);
     if (selfIdx !== -1) { this._selfWrites.splice(selfIdx, 1); return; }
     if (e.source !== 'user') return;
     if (text === prev) return;
@@ -437,7 +451,7 @@ export class TutorialCoach {
    *  the command span is consumed, prior content survives). */
   private consumePhrase(text: string, phraseStart: number): void {
     const kept = text.slice(0, phraseStart).replace(/\s+$/, '');
-    this._selfWrites.push(kept);
+    this._selfWrites.push({ text: kept, addedAt: Date.now() });
     if (this._selfWrites.length > 4) this._selfWrites.shift();
     this._lastText = kept;
     // Deferred one tick — a write issued INSIDE the host's text-change
