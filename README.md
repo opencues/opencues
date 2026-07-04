@@ -78,7 +78,7 @@ Full walkthrough, prerequisites, and per-host detail: [`docs/install.md`](docs/i
 <tr><td>OpenCode</td><td>Available</td><td><code>opencues install opencode</code></td></tr>
 <tr><td>Gemini CLI</td><td>Beta</td><td><code>opencues install gemini-cli</code></td></tr>
 <tr><td>Chrome</td><td>Beta</td><td><code>opencues install chrome</code></td></tr>
-<tr><td>Shell (<code>oc-shell</code>)</td><td>Beta</td><td><code>opencues install shell</code></td></tr>
+<tr><td>Shell</td><td>Beta</td><td><code>opencues install shell</code></td></tr>
 </table>
 
 Each pins its own upstream fork and never touches your native host install. Per-host detail: [Claude Code](integrations/claude-code/README.md) · [OpenCode](integrations/opencode/README.md) · [Gemini CLI](integrations/gemini-cli/README.md) · [Chrome](integrations/chrome/README.md) · [Shell](integrations/shell/README.md). Windows: not supported natively, run inside WSL2 (see [`docs/install.md`](docs/install.md)).
@@ -93,7 +93,7 @@ Each pins its own upstream fork and never touches your native host install. Per-
 
 | Feature | What it does |
 |---|---|
-| **Blanks** | Type `_` for free-form generation, translation, formatting, full-register rewrites, or keyword-bound system actions (`volume _`, `weather _`). |
+| **Blanks** | Type `_` for free-form generation, translation, formatting, full rewrites, or keyword-bound system actions (`volume _`, `weather _`). |
 | **Sentence rewrites** | Cycle a whole sentence to a different register (formal, concise, ...) with one keystroke, no `_` needed. |
 | **Word cues** | Navigate to a single word and cycle a smaller LLM-suggested alternative. |
 | **Personal + ambient context** (opt-in) | `my email _` substitutes your real address; fluid lookups can read the page you're on. |
