@@ -29,22 +29,22 @@ publish cutover) and Discord badge (once DISCORD_ID/INVITE are real):
 
 Rather than navigating to a chat interface or AI-enabled input box, define a query in plain text: an LLM discovers your query and answers it inline, right where you wrote it.
 
-| You type | You get |
-|---|---|
-| `hey can u send me that report when u get a sec make this formal _` | Could you please send me that report at your earliest convenience? |
-| `draft an email to my landlord asking for a rent reduction _` | (the email, written) |
-| `what's the ffmpeg command to convert a video to an efficient web-ready mp4 _` | `ffmpeg -i input.mov -c:v libx264 -preset slow -crf 23 -c:a aac -b:a 128k -movflags +faststart output.mp4` |
-| `hello world translate to french _` | bonjour le monde |
-| `what is the capital city of france _` | Paris |
-| `4 + 4 = _` | 4 + 4 = 8 |
-
-OpenCues is platform, model, and provider agnostic, engineered from the ground up to enable native inline AI.
-
 <!-- VIDEO: hero demo (~30-60s), replace this comment with the real embed.
      GitHub-hosted asset (renders inline): ![demo](https://github.com/opencues/opencues/assets/.../demo.mp4)
      YouTube (GitHub won't inline-embed it — link a thumbnail instead):
      [![Demo](assets/hero-thumb.png)](https://youtu.be/VIDEO_ID) -->
 <a href="#"><img width="100%" alt="Video placeholder — hero demo" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Video_placeholder_1200x300.svg"></a>
+
+OpenCues is platform, model, and provider agnostic, engineered from the ground up to enable native inline AI.
+
+| You type | You get |
+|---|---|
+| `hey can u send me that report when u get a sec make this formal _` | Could you please send me that report at your earliest convenience? |
+| `draft an email to my landlord asking for a rent reduction _` | (the email, written) |
+| `ffmpeg command to convert a video to web-ready mp4 _` | `ffmpeg -i input.mov -c:v libx264 -preset slow -crf 23 -c:a aac -b:a 128k -movflags +faststart output.mp4` |
+| `hello world translate to french _` | bonjour le monde |
+| `what is the capital city of france _` | Paris |
+| `4 + 4 = _` | 4 + 4 = 8 |
 
 #
 
@@ -53,6 +53,8 @@ OpenCues is platform, model, and provider agnostic, engineered from the ground u
 <br><br><br><br>
 
 # Quickstart
+
+> ⚠️ **Private beta.** `npm install -g opencues` isn't live yet. Install from a clone instead — see **[BETA-INSTALL.md](BETA-INSTALL.md)**. Everything past the install step below is accurate today.
 
 ```bash
 npm install -g opencues              # see BETA-INSTALL.md until this is live
@@ -68,8 +70,6 @@ Full walkthrough, prerequisites, and per-host detail: [`docs/install.md`](docs/i
 <a href="#"><img width="100%" alt="Video placeholder — quickstart walkthrough" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Video_placeholder_1200x300.svg"></a>
 
 #
-
-> ⚠️ **Private beta.** `npm install -g opencues` isn't live yet. Install from a clone instead — see **[BETA-INSTALL.md](BETA-INSTALL.md)**. Everything past the install step below is accurate today.
 
 <br><br><br><br>
 
