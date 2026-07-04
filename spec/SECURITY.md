@@ -70,4 +70,4 @@ This is the structural defence the standard's threat model rests on. Any runtime
 - [`docs/architecture/sandbox.md`](../docs/architecture/sandbox.md) — OS-confinement mechanism
 - [`docs/architecture/chrome-security.md`](../docs/architecture/chrome-security.md) — Chrome's six boundaries (isTrusted gate, credit-based `_` accounting, on-site filter, host path sandbox, env whitelist, per-call timeout)
 - [`docs/architecture/user-blanks.md`](../docs/architecture/user-blanks.md) — capability contract for JS blanks (the reference-impl side of the `impl: ./blank.js` profile)
-- [`docs/architecture/ambient-context.md`](../docs/architecture/ambient-context.md), [`docs/architecture/user-context.md`](../docs/architecture/user-context.md) — threat models for the two opt-in LLM-context features
+- [`docs/architecture/ambient-context.md`](../docs/architecture/ambient-context.md), [`docs/architecture/identity-context.md`](../docs/architecture/identity-context.md) — threat models for the two opt-in LLM-context features

@@ -16,7 +16,7 @@ for it. Each row links to the relevant guide where one exists.
 
 | Command | What it does | When you reach for it |
 |---|---|---|
-| `opencues install <host>` | One-shot installer for `claude-code` / `opencode` / `chrome` / `chrome-host` / `gemini-cli`. Handles fork clone + build + patch end-to-end. | First-time setup; after pulling new core changes. |
+| `opencues install <host>` | One-shot installer for `claude-code` / `opencode` / `chrome` / `chrome-host` / `gemini-cli` / `shell`. Handles fork clone + build + patch end-to-end (`shell` has no upstream fork — preflights Bun/tmux instead). | First-time setup; after pulling new core changes. |
 | `opencues run <host>` | Launch the patched host with the right env (`OPENCUES_HOME` etc). Also exposed as bare `claude-cues`, `opencode`, `gemini-cli` once installed. | Daily — same shape as launching the editor normally. |
 | `opencues new <cue\|blank> <name>` | Scaffold a folder with a pre-filled template. `--project` for `<cwd>/.cues/`, `--dry-run` to preview. | Adding a new cue or blank. See [adding-a-cue-blank.md](adding-a-cue-blank.md). |
 | `opencues doctor` | Cross-host install diagnostics. Checks every integration's build-state, every shipped default's presence, every API key. | Anything looks off. **First thing to try when stuck.** |
@@ -28,7 +28,7 @@ for it. Each row links to the relevant guide where one exists.
 
 | Command | What it does | When you reach for it |
 |---|---|---|
-| `opencues set-key <provider> <key>` | Store an API key in `~/.cues/.env` (chmod 600). Providers: `groq`, `openai`, `finnhub`. | Shell-agnostic alternative to `export GROQ_API_KEY=...` in `~/.bashrc`. |
+| `opencues set-key <provider> <key>` | Store an API key in `~/.cues/.env` (chmod 600). Providers: `cerebras`, `groq`, `gemini`, `anthropic`, `openai`, `openrouter`, `opencode-zen`, `finnhub`. | Shell-agnostic alternative to `export GROQ_API_KEY=...` in `~/.bashrc`. |
 | `opencues check-keys` | Probe each configured provider with a tiny test call. Confirms keys actually work (vs just being present). | After `set-key` or after rotating a key. |
 | `opencues init` | Scaffold `<cwd>/.cues/` with empty templated `CUES.md`, `BLANKS.md`, `AUDITORS.md`. | Starting a new project that needs project-scoped cues / blanks. |
 | `opencues seed-configs` | Copy shipped `defaults/*` into `~/.cues/`. Idempotent — preserves user edits, heals 0-byte files, refreshes contract fields without clobbering user fields. | After a `git pull` that touched `defaults/`. Runs automatically as part of `opencues install`. |
