@@ -1,5 +1,5 @@
 <div align="right">
-  <a href="#"><img width="180" height="29" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/OpenCues_logo.svg"></a>
+  <a href="#"><img width="180" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/OpenCues_logo.svg"></a>
 </div>
 <br><br>
 <div align="center">
