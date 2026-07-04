@@ -5,13 +5,13 @@
      then "use their svgs for now" per explicit instruction. -->
 
 <div align="right">
-  <a href="#"><img width="182" height="29" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/OpenCues_logo.svg"></a>
+  <a href="#"><img width="180" height="29" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/OpenCues_logo.svg"></a>
 </div>
 
 <br><br>
 
 <div align="center">
-  <a href="#"><img width="600" height="386" alt="OpenCues — inline AI prompting anywhere you type" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Hero.svg"></a>
+  <a href="#"><img width="600" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Hero.svg"></a>
 </div>
 
 <br><br>
@@ -110,7 +110,7 @@ Authoring your own: `opencues new cue <name>` / `opencues new blank <name>` scaf
 # Configuration & LLM providers
 
 <div align="center">
-  <a href="#"><img width="600" height="386" alt="Model agnostic, with on-the-fly LLM switching" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Hero-2.svg"></a>
+  <a href="#"><img width="600" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Hero-2.svg"></a>
 </div>
 
 <br>
@@ -136,7 +136,7 @@ Full threat model: [`docs/architecture/security-audit.md`](docs/architecture/sec
 # Contributing
 
 <div align="center">
-  <a href="#"><img width="600" height="386" alt="Open source needs you — help us shape the future" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Hero-3.svg"></a>
+  <a href="#"><img width="600" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Hero-3.svg"></a>
 </div>
 
 <br>
