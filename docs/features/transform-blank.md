@@ -5,15 +5,15 @@ runtime rewrites the surrounding text per the instruction (or generates
 new content from scratch when no surrounding text is given).
 
 ```
-You type:   the boy ran fast change boy to girl _
-You see:    the girl ran fast
-Press ↓ :   the boy ran fast change boy to girl _   (revert)
-Press ↑ :   the girl ran fast                        (apply)
+You type:   she don't like it when he go there fix grammar _
+You see:    she doesn't like it when he goes there
+Press ↓ :   she don't like it when he go there fix grammar _   (revert)
+Press ↑ :   she doesn't like it when he goes there              (apply)
 ```
 
 Where **fluid-blank** answers questions at `_` ("capital of france _" → Paris),
-**transform-blank** edits text around `_` ("the boy ran change boy to girl _"
-→ "the girl ran") OR generates new content ("write a poem _" → a poem).
+**transform-blank** edits text around `_` ("she don't like it fix grammar _"
+→ "she doesn't like it") OR generates new content ("write a poem _" → a poem).
 
 ---
 
@@ -41,7 +41,7 @@ fluid-blank-mode: on  # both blank handlers can coexist; instructions go to
 
 ```
 <TARGET> <INSTRUCTION> _
-e.g.  the boy ran fast change boy to girl _
+e.g.  she don't like it when he go there fix grammar _
 ```
 
 Body first, instruction last, `_` triggers the rewrite. This is the
@@ -110,7 +110,7 @@ case end-to-end on Groq gpt-oss-120b.
 
 | Category | Example |
 |---|---|
-| literal swap | `the boy ran change boy to girl _` |
+| literal swap | `the cat sat on the mat change cat to dog _` |
 | multi-span | `price is 10 USD plus 2 USD replace USD with EUR _` |
 | concept | `he gave the book to John he/she swap _` |
 | transform | `I run to the store make past tense _` |
@@ -130,7 +130,7 @@ case end-to-end on Groq gpt-oss-120b.
 | creative-rewrite | `Hello, where is the bathroom? translate to pirate speak _` |
 | format-transform | `I need eggs, milk, bread, cheese convert to bullet points _` |
 | multi-paragraph | `<2-3 paragraph story> change protagonist to wizard _` |
-| conditional | `The boy ran. ... change boy to girl but not in the second sentence _` |
+| conditional | `The cat sat. ... change cat to dog but not in the second sentence _` |
 
 ### Weak categories (50-70%)
 
@@ -170,9 +170,9 @@ With `debug-mode: on` the runtime emits a trace for the fused call to
 `/tmp/opencues.log`:
 
 ```
-TransformBlank: starting (textLen=42, blankIdx=4)
-TransformBlank FUSED (351ms, max_tokens=820, source=trailing): verdict=TRANSFORM, instruction="change boy to girl", target="the boy ran fast", rewrite="the girl ran fast"
-TransformBlank: substituting "the boy ran fast change boy to girl _" → "the girl ran fast" (origLen=42, rewriteLen=18, defAt=0)
+TransformBlank: starting (textLen=48, blankIdx=10)
+TransformBlank FUSED (351ms, max_tokens=820, source=trailing): verdict=TRANSFORM, instruction="fix grammar", target="she don't like it when he go there", rewrite="she doesn't like it when he goes there"
+TransformBlank: substituting "she don't like it when he go there fix grammar _" → "she doesn't like it when he goes there" (origLen=48, rewriteLen=38, defAt=0)
 ```
 
 Composed instructions show the pipe-joined instruction in the same

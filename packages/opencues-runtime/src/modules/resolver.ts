@@ -1057,7 +1057,7 @@ export class Resolver {
 
       // Pass the diff-based freshness signal through so the debounced
       // resolve also unblocks blank sources when the `_` is mid-buffer
-      // (e.g. `change boy to girl _ the boy ran fast` — TransformBlank-
+      // (e.g. `fix grammar _ she don't like it when he go there` — TransformBlank-
       // style "instruction _ target"). Without this, only trailing-`_`
       // patterns would arm via the diff fallback; middle-`_` patterns
       // would silently no-op because the explicit-keystroke arm path

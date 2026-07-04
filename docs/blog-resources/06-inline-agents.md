@@ -4,8 +4,8 @@ For blog post #5: "Inline Agents".
 
 OpenCues has TWO inline-agent surfaces, both invoked through `_`:
 
-1. **Transform-blank** (one-shot) — type `change boy to girl _ the boy ran
-   fast`, the system rewrites the surrounding text once.
+1. **Transform-blank** (one-shot) — type `fix grammar _ she don't like it
+   when he go there`, the system rewrites the surrounding text once.
 2. **Agent-task** (continuous) — type `agentically correct spelling _`, the
    system arms a debounced loop that re-evaluates the whole document on
    every pause and applies edits inline.
@@ -24,13 +24,13 @@ From `docs/architecture/transform-blank.md`:
 > to **edit** the text around `_` per an instruction.
 >
 > ```
-> You type:   change boy to girl _ the boy ran fast
-> You see:    the girl ran fast
+> You type:   fix grammar _ she don't like it when he go there
+> You see:    she doesn't like it when he goes there
 > ```
 
 Two layouts both work:
-- `<INSTRUCTION> _ <TARGET>` — `change boy to girl _ the boy ran fast`
-- `<TARGET> <INSTRUCTION> _` — `the boy ran fast change boy to girl _`
+- `<INSTRUCTION> _ <TARGET>` — `fix grammar _ she don't like it when he go there`
+- `<TARGET> <INSTRUCTION> _` — `she don't like it when he go there fix grammar _`
 
 > Real users mostly do (b) — they type their text first, then realize they
 > want to transform it, and add the imperative at the end.
