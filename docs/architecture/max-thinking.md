@@ -34,12 +34,21 @@ The per-model table (`MODEL_THINKING` in `model-thinking.ts`):
 | Key                                   | max     | off  |
 |---------------------------------------|---------|------|
 | `cerebras:gpt-oss-120b`               | medium  | low  |
-| `cerebras:zai-glm-4.7`                | medium  | low  |
-| `groq:openai/gpt-oss-120b` / `-20b`   | low     | none |
+| `cerebras:zai-glm-4.7`                | none    | none |
+| `cerebras:gemma-4-31b`                | none    | none |
+| `groq:openai/gpt-oss-120b` / `-20b`   | low     | low  |
 | `openai:gpt-5.4-mini` / `-5.4` / nano | low     | none |
 | `openai-subscription:gpt-5.4*`        | low     | none |
-| `openrouter:openai/gpt-oss-120b[:free]` | low   | none |
-| `opencode-zen:free` / `big-pickle`    | low     | none |
+| `openrouter:openai/gpt-oss-120b[:free]` | low   | low  |
+| `opencode-zen:free` / `big-pickle`    | low     | low  |
+
+`zai-glm-4.7`'s reasoning knob is binary in practice (`'none'` cleanly
+disables it; any other value burns 500-700 reasoning tokens regardless
+of level) — verified live 2026-06-12, so both tiers pin `'none'`.
+`gemma-4-31b` is non-reasoning entirely. `groq`/`openrouter`/
+`opencode-zen`'s gpt-oss models reject `reasoning_effort: 'none'`
+outright (HTTP 400: "Unsupported reasoning effort... Supported values
+are 'low', 'medium'") — `'low'` is their floor, not `'none'`.
 
 Models **absent** from the table fall back to the provider's
 `defaultReasoningEffort` for `max` and one notch below it for `off`

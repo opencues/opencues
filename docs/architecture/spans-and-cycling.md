@@ -1012,5 +1012,7 @@ TypeScript implementation:
    the LLM.
 
 The vitest suite under `packages/opencues-runtime/src/` is the
-contract. 371 tests across 25 files — every behaviour described above
-is pinned by at least one test.
+contract. The suite has grown substantially since this was last
+counted (74 files, 1399+ tests as of 2026-07 — treat any specific
+count here as a snapshot, not a ceiling) — every behaviour described
+above is pinned by at least one test.

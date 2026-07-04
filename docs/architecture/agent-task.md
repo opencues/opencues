@@ -71,11 +71,15 @@ class across multi-hour sessions.
 
 | Module                       | Lines | Role                                                          |
 |------------------------------|-------|---------------------------------------------------------------|
-| `word-diff.ts`               | ~150  | Pure: `wordDiff`, `applyHunks`, `translateAToC`, `threeWayMerge` |
-| `agent-rewrite.ts`           | ~250  | Timer + LLM call + merge + DynDef placement + cursor          |
-| `word-diff.test.ts`          | ~150  | 27 unit tests — every diff edge case                          |
-| `word-diff.scenarios.test.ts`| ~150  | 13 live-typing scenario tests                                 |
-| `agent-rewrite.test.ts`      | ~250  | 33 integration tests — full pipeline                          |
+| `word-diff.ts`               | 393   | Pure: `wordDiff`, `applyHunks`, `translateAToC`, `threeWayMerge` |
+| `agent-rewrite.ts`           | 1106  | Timer + LLM call + merge + DynDef placement + cursor          |
+| `word-diff.test.ts`          | 363   | 53 unit tests — every diff edge case                          |
+| `word-diff.scenarios.test.ts`| 488   | 48 live-typing scenario tests                                 |
+| `agent-rewrite.test.ts`      | 1283  | 85 integration tests — full pipeline                          |
+
+(Both source files and their test suites have grown substantially
+since this table was first written — treat the numbers as "grows over
+time," not a size ceiling.)
 
 `AgentTaskState` (in `state/agent-task.ts`) is unchanged: holds the
 task prompt + taskId + per-word evaluation cache + edit-signature
