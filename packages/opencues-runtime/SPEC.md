@@ -6,7 +6,7 @@
 
 This file lives under `packages/opencues-runtime/` rather than `spec/` deliberately. Reference-implementation docs colocated with the spec muddle the standard/implementation boundary; every peer open standard (MCP, OpenAPI, JSON Schema, CommonMark) keeps the two cleanly separated. This file is the reference-impl side of that split.
 
-As of `0.1-alpha`, the OpenCues reference runtime is the only runtime that exists; this doc keeps that fact from contaminating the standard. The forward-looking framing throughout ("other runtimes MAY", "another runtime could ship") is structural — the standard is designed so a second runtime could ship, even though none does today.
+As of the current spec version (`0.4-alpha` — see `spec/CHANGELOG.md`), the OpenCues reference runtime is the only runtime that exists; this doc keeps that fact from contaminating the standard. The forward-looking framing throughout ("other runtimes MAY", "another runtime could ship") is structural — the standard is designed so a second runtime could ship, even though none does today.
 
 ---
 
@@ -39,23 +39,38 @@ description: OpenCues runtime settings
 spec: opencues/0.1-alpha
 
 # Text-to-speech
-voice-mode: on              # on | off | active
+voice-mode: active          # active | inactive
 voice: en-us-default        # platform voice id
 
 # Debug logging
-debug-mode: off             # on | off | verbose
+debug-mode: off             # on | off
 
 # Cursor behavior
-cursor-navigate: on         # whether arrow keys navigate cues
-cursor-preservation: on     # restore cursor after blank fill
+cursor-navigate: inactive   # active | inactive — auto-highlight the word under the cursor
 
-# LLM provider routing (default for sources that don't pin a model)
-default-provider: groq
-default-model: claude-haiku-4-5
+# Global LLM provider routing (least-specific tier; see § Settings hierarchy)
+llm-provider: groq
+llm-model: openai/gpt-oss-120b
 
-# Resolver tuning
-resolver-skip-filter: on    # skip already-displayed words on subsequent passes
-resolver-cache-ttl: 300     # seconds
+# Per-bucket LLM routing (cues / auditors / blanks — see § Multi-provider routing)
+cues-llm-provider: inherit
+cues-llm-model: default
+auditors-llm-provider: inherit
+auditors-llm-model: default
+blanks-llm-provider: inherit
+blanks-llm-model: default
+
+# Per-model reasoning-effort ceiling (default on — off is the only state that changes anything)
+max-thinking: on
+
+# Feature gates (all opt-in / off by default unless noted)
+word-cues-mode: off
+transform-blank-mode: off
+sentence-cues-mode: off
+fluid-config-mode: off
+ambient-context-mode: off        # chrome-only
+identity-context-mode: safe      # off | safe | raw — default flipped off -> safe in PR #161 (2026-06-18)
+blank-context-mode: safe         # off | safe | raw — same PR
 
 # Agent (AgentRewrite) tuning
 agent-debounce-ms: 1000     # ms after last keystroke before AgentRewrite ticks. Misparse → 1000.
@@ -63,17 +78,19 @@ agent-window-words: 0       # 0 = full-buffer; N>0 = sliding window of ~N words 
 ---
 ```
 
-None of these affect file format or routing — they all sit downstream of the standard's contracts.
+None of these affect file format or routing — they all sit downstream of the standard's contracts. This is a representative sample, not the full set — see `packages/opencues-core/src/feature-registry.ts`'s `FEATURES` + `MENU_TUNABLES` for the single source of truth on every scalar the reference runtime recognises.
+
+> **Fluid-blank has no mode toggle.** Unlike every other feature above, fluid-blank is the ALWAYS-ON base layer — every `_` not claimed by a blank shape resolves through it (`enableFluidBlank: true` is hardcoded in `Resolver.rebuildResolver`). An earlier `fluid-blank-mode` scalar was retired when the static-resolution design shipped; don't look for it.
 
 ---
 
 ## Multi-provider routing
 
-The OpenCues runtime ships six built-in LLM providers and routes each LLM call through a settings hierarchy. This is **runtime-specific** — other implementations of the standard are free to ship one provider, six, or zero, and to use any settings shape.
+The OpenCues runtime ships ten built-in LLM providers and routes each LLM call through a settings hierarchy. This is **runtime-specific** — other implementations of the standard are free to ship one provider, ten, or zero, and to use any settings shape.
 
 ### Built-in providers
 
-The runtime supports `groq`, `openrouter`, `gemini`, `openai`, `anthropic`, `cerebras`. Each is selected by name; the runtime maps the name to:
+The runtime supports `groq`, `openrouter`, `gemini`, `openai`, `openai-subscription`, `anthropic`, `cerebras`, `claude-code-cli`, `opencode-zen`, `ollama` (`PROVIDER_IDS` in `packages/opencues-core/src/llm-provider.ts`). Each is selected by name; the runtime maps the name to:
 
 - the API endpoint URL,
 - the auth header shape (`Authorization: Bearer …` for OpenAI-compatible hosts; `x-api-key` + `anthropic-version` for Anthropic; `?key=…` query string for Gemini),
@@ -84,16 +101,21 @@ A conformant *OpenCues* install is expected to honour every selectable name. A c
 
 ### Settings hierarchy (most → least specific)
 
-Per-call resolution walks four tiers; the first one that specifies a provider wins. Model resolution is paired — a tier's `model:` only counts when the same tier's `provider:` set the active provider, OR when the tier is at-least as specific as the one that did:
+Per-call resolution walks five tiers; the first one that specifies a provider wins. Model resolution is paired — a tier's `model:` only counts when the same tier's `provider:` set the active provider, OR when the tier is at-least as specific as the one that did:
 
 1. **Per-cue / per-blank** frontmatter: `provider:`, `model:`, `endpoint:` on a single source file.
 2. **Per-feature** root-frontmatter keys: `<feature>-provider:`, `<feature>-model:`, `<feature>-endpoint:` for each LLM-driven feature the runtime exposes. The OpenCues runtime currently exposes:
     - `word-cues-*` — domain word-cue sources
     - `fluid-blank-*` — free-form `_` lookups
     - `transform-blank-*` — imperative-instruction blanks
-    - `agent-*` — full-buffer agent rewrite
-3. **Global default**: `llm-provider:`, `llm-model:`, `llm-endpoint:` in `OPENCUES.md` frontmatter.
-4. **Runtime built-in default** (currently `groq` + `openai/gpt-oss-120b`).
+    - `fluid-config-*` — semantic `_` → settings-change classifier
+    - `sentence-cues-*` — whole-sentence rewrite cues
+    - `agent-*` — full-buffer agent rewrite (reads the auditors bucket, tier 3 below)
+3. **Bucket default**: `cues-llm-provider:`/`cues-llm-model:`, `auditors-llm-provider:`/`auditors-llm-model:`, `blanks-llm-provider:`/`blanks-llm-model:` — one scalar pair per trust-class surface (cues, auditors, blanks). A bucket value of `inherit`/`default` collapses to "fall through to the next tier." See `docs/architecture/llm-routing.md` for the full design (this three-bucket simplification replaced a larger set of per-aspect scalars as the primary menu-level knob; per-feature scalars above still work as file-edit-only advanced overrides).
+4. **Global default**: `llm-provider:`, `llm-model:`, `llm-endpoint:` in `OPENCUES.md` frontmatter.
+5. **Runtime built-in default** (currently `groq` + `openai/gpt-oss-120b`).
+
+Prose-bearing surfaces (word-cues, sentence-cues, auditors, agent-rewrite) refuse to dispatch through a provider with `trainsOnInput: true` (today only `opencode-zen`) regardless of which tier picked it; only the blanks bucket exposes `opencode-zen` in its menu, since the `_` keystroke itself is the user's consent gate.
 
 ### API keys
 
@@ -121,9 +143,10 @@ These are wire-format quirks, not protocol features — they get encoded once in
 |---|---|
 | `voice-mode`, `voice` | Browser hosts can't access OS TTS; native hosts can. Universal but heterogeneous. |
 | `debug-mode` | Every runtime debugs differently. |
-| `cursor-navigate`, `cursor-preservation` | The cursor-cycling state machine isn't part of the file format spec. |
-| `default-provider`, `default-model`, `llm-provider`, `llm-model`, `llm-endpoint`, `<feature>-provider`, `<feature>-model`, `<feature>-endpoint` | LLM provider config is a per-runtime concern. The list of recognised providers, their wire formats, and their env-var conventions are runtime-specific; another runtime could ship a single provider with a hardcoded model and conform to the standard equally. |
-| `resolver-*` | Caching strategy is implementation-private. |
+| `cursor-navigate` | The cursor-cycling state machine isn't part of the file format spec. Cursor-offset preservation across a substitution (docs/features/cursor-preservation.md) is unconditional runtime behavior, not a setting — there is no toggle for it. |
+| `llm-provider`, `llm-model`, `llm-endpoint`, `<feature>-provider`, `<feature>-model`, `<feature>-endpoint`, `cues-llm-*`, `auditors-llm-*`, `blanks-llm-*` | LLM provider config is a per-runtime concern. The list of recognised providers, their wire formats, and their env-var conventions are runtime-specific; another runtime could ship a single provider with a hardcoded model and conform to the standard equally. |
+| `word-cues-mode`, `transform-blank-mode`, `sentence-cues-mode`, `fluid-config-mode`, `ambient-context-mode`, `max-thinking` | Per-feature enable gates + reasoning-effort budget are reference-runtime knobs — a second runtime could ship any subset always-on. |
+| `identity-context-mode`, `blank-context-mode` | Mode-gates for the sentinel-catalog machinery ARE spec-mandated (see [`core.md` § Spec-mandated scalars](../../spec/core.md#spec-mandated-scalars)) — listed here for completeness since they live in the same `OPENCUES.md` file as the runtime-only settings, not because they're runtime-specific. |
 
 Any of these could be promoted to the standard if multiple runtimes adopt them. See [`core.md`](../../spec/core.md) § Promotion path.
 
@@ -155,22 +178,31 @@ When the user types `_` and no `blankKeywords` match, OpenCues attempts a free-f
 
 It registers at **priority 92** — below keyword-bound blanks (95) and below transform blank (93), so explicit bindings always win.
 
-### Two-pass pipeline
+### Fused single-call pipeline
 
-Each unmatched `_` triggers two LLM calls in sequence:
+**As of June 2026, fluid-blank is a single fused LLM call** — the earlier two-pass P1 SEGMENT → P3 ANSWER pipeline (still described in some older docs/comments) was replaced. One call, `FUSED_SYSTEM_PROMPT` in `fluid-blank-source.ts`, both segments the lookup phrase AND produces the answer AND decides FILL-vs-WIPE, returning three labelled lines:
 
-| Pass | Name | Input | Output | Token budget |
-|---|---|---|---|---|
-| P1 | SEGMENT | full input text | `SPAN: <substring>` + `CONTEXT: <surrounding text>` | 256 |
-| P3 | ANSWER | SPAN + CONTEXT from P1 | `ANSWER: <terse value>` | 200 |
+```
+SPAN: <the contiguous substring of the input including _, OR the literal word NONE>
+ANSWER: <the value that should replace the SPAN; empty when SPAN=NONE>
+MODE: <WIPE if the whole input is a terse lookup phrase the ANSWER replaces; FILL if the ANSWER fills a gap in a sentence and the surrounding words stay>
+```
 
-P1 uses 9 extraction rules (A–H in the source, with ~12 worked examples) to identify what part of the input is the lookup phrase. P3 receives that phrase plus context, applies 7 terseness/disambiguation rules, and returns a canonical short answer.
+Why fused: cerebras/claude/gemini are tied-or-better on accuracy and ~2x faster (one round-trip instead of two), and the segmenter can now see ambient field metadata directly — so meta-triggers like bare `_` / `answer _` no longer bail to NONE when the field's label carries the actual question. Bench: `tests/benchmarks/fluid-blank-ambient/fused-bench.ts` — 175/176 (99.4%) on cerebras, matching the prior 2-pass's 99.4% on the same suite. Any edit to `FUSED_SYSTEM_PROMPT` MUST re-run that bench plus `tests/benchmarks/fluid-blank/run.ts --mode fused`.
 
-The runtime performs **no caching** — each `_` triggers fresh P1+P3 calls. Latency cost is two round-trips; the runtime budgets this against the spec's "sub-second" expectation for blanks (see [`concept.md` § Why the split matters](../concept.md)) by using a fast model.
+### Variant-pool caching
+
+Unlike a stateless per-call design, the runtime keeps a **module-level variant pool** (`FluidBlankSource._variantPool`, a static `Map`) keyed on `(buffer + provider + model + maxThinking + ambient + context-modes)`. State machine (mirrors `TransformBlankSource._variantPool`):
+
+- **Building** (pool size < 3): every trigger dispatches fresh, accumulates into the pool.
+- **Cycling** (pool full): re-triggers on the same lookup serve from the cached pool instead of re-dispatching.
+- **Refreshing**: one fresh dispatch, FIFO-evicts the oldest cached entry.
+
+The cache key deliberately OMITS identity/blank-context VALUES (in `safe` mode the LLM only ever sees token names; values substitute post-LLM), so a cached answer carrying `[FIRST NAME]` re-substitutes against whatever the identity value currently is on each hit. Ambient context IS part of the key — the same lookup phrase in different field contexts must not collide.
 
 ### FILL vs WIPE
 
-After ANSWER returns, the runtime decides how the result substitutes. The decision is **deterministic** (no LLM call) — see `determineReplaceMode()` in `fluid-blank-source.ts`.
+The `MODE:` line above is now **LLM-emitted**, not runtime-computed — there is no `determineReplaceMode()` function; the fused prompt's rule is "WIPE if the whole input is a terse lookup phrase the ANSWER replaces; FILL if the ANSWER fills a gap in a sentence and the surrounding words stay":
 
 - **FILL** — the input ends with a copula/equation/question marker immediately before `_` (`is _`, `= _`, `? _`). The answer substitutes only the `_` token; the surrounding sentence is preserved.
 
@@ -211,9 +243,7 @@ const TASK_TRIGGER_GUARD = /\b(?:agentically|(?:stop|add|current|show)\s+task|ta
 
 ### Settings
 
-Fluid blank is opt-in per integration via the `enableFluidBlank` flag passed to `buildSourcesFromConfig()`. The `OPENCUES.md` setting `fluid-blank-mode: on|off` toggles it at runtime; `fluid-blank-provider:` selects which model to use (defaults to the runtime's `default-provider`).
-
-A future spec version may promote `fluid-blank-mode` to `BLANKS.md` if multiple runtimes adopt the same toggle.
+Fluid blank has **no enable/disable toggle** — `enableFluidBlank: true` is hardcoded in `Resolver.rebuildResolver`; it's the always-on base layer every unclaimed `_` falls through to (an earlier `fluid-blank-mode` scalar was retired when this static-resolution design shipped). `fluid-blank-provider:`/`fluid-blank-model:` (per-feature tier) still select which model to use, per the settings hierarchy in § Multi-provider routing.
 
 ---
 
@@ -223,19 +253,25 @@ A second runtime-only blank source (sibling to fluid blank, above). Where fluid 
 
 `TransformBlankSource` (`packages/opencues-core/src/sources/transform-blank-source.ts`) registers at **priority 93** — above fluid (92), below keyword-bound blanks (95). When a `_` slot is up for grabs, the source chain races: keyword blank → transform blank → fluid blank.
 
-### Three-pass pipeline — EXTRACT, APPLY, VERIFY
+### Single fused call
 
-| Pass | Purpose | Output shape |
-|---|---|---|
-| EXTRACT | Classify the input. Is it actually a transform? Split it into instruction + target. | `VERDICT: TRANSFORM\|NONE\|TASK_*`, `INSTRUCTION: …`, `TARGET: …` |
-| APPLY | Execute the instruction on the target. Rewrite. | `REWRITE: <rewritten target>` |
-| VERIFY | Check the rewrite for defects across four categories (agreement, coverage, structural completeness, concept-swap propagation). Repair if needed. | `VERDICT: OK\|REPAIR`, optional corrected rewrite |
+**As of June 2026, transform blank is a SINGLE fused LLM call** on every provider — the earlier three-pass EXTRACT → APPLY → VERIFY pipeline (groq-only) was retired (`docs/architecture/transform-blank.md`, EXPERIMENTS.md § Experiment 10: groq fused benched at parity, ~35% faster). One call, `FUSED_SYSTEM` in `transform-blank-source.ts`, classifies AND rewrites AND handles agent-task commands together, returning labelled lines:
 
-If EXTRACT returns `NONE`, the source bails immediately and fluid blank gets its turn. If EXTRACT returns `TRANSFORM` with an empty TARGET, the source routes to a generative fallback.
+```
+VERDICT: TRANSFORM | NONE | TASK_ARM | TASK_ADD | TASK_STOP | TASK_SHOW
+INSTRUCTION: <the imperative phrase OR task prompt, _ removed; or empty>
+FULL_REWRITE: <the ENTIRE final buffer with the instruction applied AND the instruction
+               phrase + _ removed. Contains ONLY what the user should see. Empty when
+               VERDICT is NONE / TASK_*>
+```
+
+(A `TARGET:` field existed in an earlier iteration of this prompt; it was dropped from the requested output in June 2026 — debug-only now, per EXPERIMENTS.md Experiment 13. The parser still defensively looks for it, but the shipping prompt doesn't ask for it.)
+
+If VERDICT is `NONE`, the source bails immediately and fluid blank gets its turn — unless the buffer is long (>~800 chars), in which case a `NONE` isn't trusted (it might be budget-pressure truncation) and the source cedes without acting on it. If VERDICT is `TRANSFORM` with an empty TARGET/body, the source routes to a generative fallback (`write a poem _` → the generated content lands in `FULL_REWRITE`). Composed "X and Y" instructions (`make past tense and remove pronouns _`) pipe-join in `INSTRUCTION` and are applied TOGETHER in the same `FULL_REWRITE` — there is no separate sequential per-instruction call. There is no VERIFY step at all; the parsed result carries a vestigial `verifyVerdict: 'SKIPPED'` field for event-shape back-compat only.
 
 ### Agent-task lifecycle keywords
 
-EXTRACT also recognises four task-lifecycle commands. These don't run APPLY/VERIFY — they mutate `AgentTaskState` directly via `metadata.taskAction` and strip just the trigger phrase from the buffer (the `trimTriggerFromText` helper in `resolver.ts`):
+The fused call also recognises four task-lifecycle commands, in the same VERDICT enum as above. These leave `FULL_REWRITE` empty — they mutate `AgentTaskState` directly via `metadata.taskAction` and strip just the trigger phrase from the buffer (the `trimTriggerFromText` helper in `resolver.ts`):
 
 | Verdict | Canonical trigger | Effect |
 |---|---|---|
@@ -265,43 +301,15 @@ While a task is armed, `Statusline.buildPayload` populates `agentTask: <truncate
 
 Stable display is the contract. There is **no in-flight spinner** — the badge does not flicker as ticks fire, because that would jitter on every keystroke pause. Reference renderers: `integrations/claude-code/patches/highlight-statusline.sh` (bash, reads the JSON file) and `integrations/opencode/patches/opencuesBootstrap.ts`'s `statusSnapshotHook` (in-process, feeds a SolidJS signal).
 
-### Prompt design — minimal EXTRACT, verbose APPLY
+### Retired: three-pass EXTRACT/APPLY/VERIFY design
 
-A deliberate asymmetry, validated by experiment:
-
-- **EXTRACT** is minimal: one semantic question + 4 layout-spanning examples. Stripping verbose rule lists improved EXTRACT accuracy from 83% → 88–90% because the model was over-pattern-matching against enumerated shapes and bailing on borderline imperatives.
-- **APPLY** is verbose: ~25 worked examples covering concept-swap propagation, role preservation, conditional instructions. Stripping APPLY to minimal rules dropped accuracy from 83% → 81%.
-
-The principle: **classification benefits from openness; execution benefits from explicit rules.**
-
-### Sequential composition for "X and Y"
-
-When a user writes `make past tense and remove pronouns _`, EXTRACT outputs the instructions pipe-joined:
-
-```
-INSTRUCTION: make past tense | remove pronouns
-```
-
-The resolver then runs APPLY **N times sequentially** — output of step 1 becomes the target of step 2. VERIFY sees the original "X and Y" form (not the pipe-joined version) so it can check both transforms applied to the starting text.
-
-This matters: a single APPLY call asked to "pluralize AND make past tense" simultaneously benchmarked at 47% accuracy. Splitting into two sequential calls jumped to 73%.
-
-### Skip-VERIFY rules
-
-VERIFY is skipped when **all** of these hold:
-
-- Draft length within ±15% of target.
-- No `\n\n` in target or draft (multi-paragraph rewrites need VERIFY).
-- Single instruction (composed `X | Y` always needs VERIFY for cross-step agreement).
-- Instruction matches a known low-stakes pattern: literal swap or BrE↔AmE.
-
-Broadening the skip rules (e.g. to all case changes or simple tense flips) HURT accuracy by 2.3pp in benchmarks — those patterns have ambiguous interpretations VERIFY catches.
+Earlier iterations of this pipeline (pre-June-2026, groq-only) ran three separate calls — EXTRACT (classify + split into instruction/target), APPLY (rewrite), VERIFY (defect-check + repair) — with a deliberate minimal-EXTRACT/verbose-APPLY prompt asymmetry, N-sequential-APPLY-calls composition for "X and Y" instructions, and a set of skip-VERIFY heuristics. All of that was retired in favour of the single fused call described above (`docs/architecture/transform-blank.md` § Experiment 10 has the accuracy-parity benchmark that justified the retirement; `EXPERIMENTS.md` in the same directory has the full experiment log, including the historical numbers from the 3-pass era, if you need the "why" behind a specific design choice that carried forward).
 
 ### Parser quirks worth knowing
 
-The output parser uses `[ \t]*` (not `\s*`) for single-line fields. Reason: `\s*` matches newlines, which lets a lazy `.*?` regex extend across lines and accidentally capture the next field's label as the current value. The TARGET field intentionally does NOT use the multiline `m` flag — multi-paragraph targets span newlines and need lazy `[\s\S]*?` to run to the next labeled field.
+The output parser uses `[ \t]*` (not `\s*`) for the single-line `VERDICT:`/`INSTRUCTION:` fields. Reason: `\s*` matches newlines, which lets a lazy `.*?` regex extend across lines and accidentally capture the next field's label as the current value. `FULL_REWRITE:` is the last field in the output and is captured to end-of-string with `[\s\S]*?` so multi-paragraph rewrites (which contain their own newlines) parse correctly.
 
-These look like nit-picks; they were both real production bugs.
+These look like nit-picks; they were real production bugs in an earlier iteration of this parser.
 
 ### Where it sits in the pipeline
 
@@ -312,16 +320,16 @@ user types: "<text> _"
 [ keyword blank (95)?  ] ── matches blankKeywords ───▶ run binding (script/list/impl)
        │ no
        ▼
-[ transform blank (93)? ] ── EXTRACT returns TRANSFORM ──▶ APPLY → maybe VERIFY → emit
-       │ EXTRACT returns NONE
+[ transform blank (93)? ] ── fused call: VERDICT=TRANSFORM ──▶ FULL_REWRITE emitted
+       │ fused call: VERDICT=NONE
        ▼
-[ fluid blank (92)?    ] ── always supports ──▶ SEGMENT → ANSWER → FILL or WIPE
+[ fluid blank (92)    ] ── always supports ──▶ fused call: SPAN+ANSWER+MODE ──▶ FILL or WIPE
        │ disabled
        ▼
 [ leave _ literal ]
 ```
 
-The three runtime sources are independently disable-able. With all three off, `_` stays literal.
+Transform blank and fluid blank are independently disable-able (`transform-blank-mode: on|off`; fluid blank has no toggle — see § Recognised settings above). With transform blank off, every `_` not claimed by a keyword blank falls straight to fluid blank.
 
 ### Reference
 
@@ -333,8 +341,8 @@ The architecture document at `docs/architecture/transform-blank.md` is the canon
 
 ### Provider routing — `provider:` / `model:` / `endpoint:` for blanks
 
-`cue-spec.md` 0.1-alpha already accepts `provider:` / `model:` / `endpoint:` on per-source frontmatter. `blank-spec.md` does not yet — adding the same trio to `BLANK.md` is the obvious next promotion. Low-risk: identical wire format to cues, same resolution hierarchy, no new validation rules.
+`cue-spec.md` already accepts `provider:` / `model:` / `endpoint:` on per-source frontmatter. `blank-spec.md` does not yet — adding the same trio to `BLANK.md` is the obvious next promotion. Low-risk: identical wire format to cues, same resolution hierarchy, no new validation rules.
 
 ### Promotion candidates from this file
 
-`voice-mode` and `debug-mode` are universal in every implementation we have. They are good candidates for promotion to the standard once a second runtime ships, but neither is in scope for `0.1-alpha`.
+`voice-mode` and `debug-mode` are universal in every implementation we have. They are good candidates for promotion to the standard once a second runtime ships, but neither is in scope yet.
