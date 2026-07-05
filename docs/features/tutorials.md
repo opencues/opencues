@@ -152,9 +152,11 @@ The Claude Code ones are verified against the official CC docs.
 | `tutorial-debounce-ms` | 300 | pause length before a coach check-in |
 | `tutorial-nudge-ms` | 30000 | idle window before a proactive nudge (`0` disables) |
 | `tutorial-voice` | off | `on` speaks step advances, nudges, and completion via the host TTS (never per-tick) |
+| `kata-llm-provider` / `kata-llm-model` / `kata-llm-endpoint` | (unset) | pin the coach to a specific provider/model — wins over the auditors bucket; named for the feature's Kata rename |
 
-The coach call uses the **auditors** LLM bucket
-(`auditors-llm-provider:` → global `llm-provider:` fallback) — it is a
+The coach call resolves per the standard precedence ladder:
+`kata-llm-provider:`/`kata-llm-model:` (per-feature, file-edit-only) →
+the **auditors** LLM bucket → global `llm-provider:`. It is a
 background prose-reading concern, same trust class as agent-rewrite.
 Coach ticks average ~300-550ms on cerebras.
 

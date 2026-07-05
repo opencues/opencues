@@ -37,7 +37,8 @@ Wiring (OC band, `adapters/oc/v1.14/boot.ts`):
 
 - Constructed after `buildSharedRuntime` (needs ConfigLoader); key
   observation is registered BEFORE it — see the wiring contract below.
-- `resolveLLM: () => buildAgentLLMResolver(...)` — the coach reads the
+- `resolveLLM: () => buildKataLLMResolver(...)` — per-feature
+  `kata-llm-provider/-model/-endpoint` scalars win, then the
   **auditors bucket** (background prose-reading trust class, refuses
   `trainsOnInput` providers, same as agent-rewrite).
 - `Statusline` gets `tutorialStatus: () => tutorialCoach.status()`.

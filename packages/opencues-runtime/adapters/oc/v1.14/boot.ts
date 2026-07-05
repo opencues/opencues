@@ -19,7 +19,7 @@ import { TutorialCoach } from '../../../src/modules/tutorial';
 import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
-import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { EventEmitter } from '../../../src/lib/event-emitter';
 import type {
   CommonHostInfo,
@@ -212,7 +212,7 @@ export function boot(host: HostInfo): BootResult {
   // externallySuppressed gate below.
   const tutorialCoach = new TutorialCoach(adapter, configLoader, {
     tutorialsDirs: configSearchPaths.map(p => `${p}/tutorials`),
-    resolveLLM: () => buildAgentLLMResolver(configLoader, apiKeys),
+    resolveLLM: () => buildKataLLMResolver(configLoader, apiKeys),
     cadenceMs: () => parseInt(configLoader.opencuesState.settings.get('tutorial-debounce-ms') ?? '', 10),
     nudgeMs: () => parseInt(configLoader.opencuesState.settings.get('tutorial-nudge-ms') ?? '', 10),
     progressFile: process.env.OPENCUES_HOME

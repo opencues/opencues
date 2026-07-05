@@ -34,7 +34,7 @@ import { createSourceReclassifier, resetSharedBufferState } from '../../../src/b
 import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import { AgentTaskState } from '../../../src/state/agent-task';
 import { applyDirectives } from '../../../src/render-directives';
-import { buildAgentLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildAgentLLMResolver, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { buildBlankWeaver } from '../../../src/modules/blank-weave';
 import { startEventBridge } from '../../../src/event-bridge';
 import type {
@@ -619,7 +619,7 @@ export function boot(host: HostInfo): BootResult {
   const HOME_TUT = process.env.HOME ?? '~';
   const tutorialCoach = new TutorialCoach(adapter, configLoader, {
     tutorialsDirs: configSearchPaths.map(p => `${p}/tutorials`),
-    resolveLLM: () => buildAgentLLMResolver(configLoader, apiKeys),
+    resolveLLM: () => buildKataLLMResolver(configLoader, apiKeys),
     cadenceMs: () => parseInt(configLoader.opencuesState.settings.get('tutorial-debounce-ms') ?? '', 10),
     nudgeMs: () => parseInt(configLoader.opencuesState.settings.get('tutorial-nudge-ms') ?? '', 10),
     progressFile: process.env.OPENCUES_HOME
