@@ -46,6 +46,28 @@ see a "wired but inert" feature.
 **The gap: no test loads the real unpacked extension and drives a real
 feature to observable output.** That's what this plan adds.
 
+## What we're building — a run-on-demand E2E system, not a CI gate
+
+This is **not** a required CI check. It's a solid, locally-runnable
+end-to-end harness the team drives on demand (and optionally nightly),
+organized around the two check categories that actually matter here:
+
+1. **Security checks** — a control that *should* block still blocks;
+   nothing has degraded *open*. trust-gate, sensitive-field refusal,
+   site-scoping, secret-binding on the chrome path. These are the
+   highest-value tests: a silently degraded-open control is the worst
+   failure mode and no unit test or static lint sees it.
+2. **Scenario checks** — a real multi-step feature journey runs
+   end-to-end through the actual loaded extension to observable output
+   (type → cue cycle → type → blank fill), the same "assert the runtime
+   contract across a user journey" philosophy as the CC/OC agentic
+   scenarios, but in a real browser.
+
+Framing it as a dev/nightly harness (not a `pre-pr.sh` / required-CI
+gate) keeps browser flakiness and build cost out of the fast path while
+still giving a real end-to-end signal on demand — which is what catches
+the "wired but inert" and "degraded open" classes the lints can't.
+
 ## Approach
 
 Load the **actual built MV3 extension** into Chromium via Playwright's
@@ -141,7 +163,9 @@ mock LLM removes model variance where an exact string is asserted.
 - **M2 — security-control liveness (degraded-open detectors).**
   trust-gate synthetic-event rejection (#13), sensitive-field no-attach
   (#25), site-scoping off-site no-fire (#14). This is the security
-  payoff: a control that silently degraded open now fails CI.
+  payoff: a control that silently degraded open is caught on the next
+  run of the harness. Arguably the primary reason the system exists —
+  worth building even before M1 if security coverage is the priority.
 - **M3 — host-dependent paths (deferred).** Scripted blanks + custom
   user-blanks need a mock native-messaging host process. Heavier; scope
   separately once M0–M2 are stable.
@@ -157,12 +181,14 @@ mock LLM removes model variance where an exact string is asserted.
    `context.route`. **Recommendation:** `context.route` on the provider
    host — no product code needs a test-only endpoint path, and it
    intercepts both content-script and SW fetches.
-3. **CI environment:** these need a browser + build. Gate as a separate
-   CI job (mirrors the existing playwright job), not in `pre-pr.sh`'s
-   fast path. Runs after `npm run build`. **Open:** WSL-local dev run
-   story (the team builds in WSL; does the fixture point at
-   `integrations/chrome/dist/` directly, avoiding the `/mnt/c` sync?
-   Yes — E2E loads the WSL-side `dist/`, not the Windows mirror).
+3. **Run model:** a plain local command — `npm run test:e2e` in
+   `integrations/chrome/` after `npm run build` — that a dev runs on
+   demand (optionally a nightly/manual invocation). **Not** wired into
+   `pre-pr.sh` or a required CI job. The fixture loads the **WSL-side**
+   `integrations/chrome/dist/` directly (Chromium runs headless in WSL),
+   so it needs neither the `/mnt/c` sync nor the Windows extension
+   mirror. Keep it self-contained: `npm run build` → `npm run test:e2e`,
+   no external state.
 4. **Reuse vs new config file.** New `playwright.e2e.config.ts` (extension
    project) alongside the existing write-path config, or one config with
    two projects. **Recommendation:** separate config — different launch
@@ -187,6 +213,8 @@ mock LLM removes model variance where an exact string is asserted.
 
 `integrations/chrome/tests/e2e/` containing: `extension.fixture.ts`,
 `mock-llm.ts`, `seed-config.ts`, `playwright.e2e.config.ts`, and
-`boot.e2e.test.ts` (the boot-line smoke). Wire a `chrome-e2e` CI job.
-Green M0 already closes the highest-severity variant (silent total
-death) and gives M1/M2 their scaffolding.
+`boot.e2e.test.ts` (the boot-line smoke), plus an
+`npm run test:e2e` script. No CI wiring — a local run-on-demand
+command. Green M0 already exercises the highest-severity variant
+(silent total death) and gives the security (M2) + scenario (M1)
+suites their scaffolding.
