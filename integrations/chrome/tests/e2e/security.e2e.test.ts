@@ -76,6 +76,25 @@ test.describe('M2 — security control liveness', () => {
     await expect(pw).toHaveValue(phrase);
   });
 
+  test('sensitive-field: a mistyped CC field (type=text, autocomplete=cc-number) is refused', async ({ context, seed }) => {
+    // The isSensitiveField HEURISTIC layer (not the type allow-list): a
+    // `type="text"` field that autocomplete-declares itself a card number
+    // must still be refused. This is the audit residual #25 surface.
+    const phrase = 'the sky looks _';
+    const llm = new MockLlm().setFallback(fluidBlankReply(phrase, ANSWER, 'FILL'));
+    await llm.install(context);
+    await seed(fluidBlankSeed(true));
+
+    const page = await context.newPage();
+    await page.goto('/tests/e2e/pages/textarea.html');
+    const cc = page.locator('#cc'); // <input type="text" autocomplete="cc-number">
+    await cc.focus();
+    await page.keyboard.type(phrase);
+    await page.waitForTimeout(3000);
+
+    await expect(cc).toHaveValue(phrase);
+  });
+
   test('sensitive-field positive control: a plain text field DOES fill', async ({ context, seed }) => {
     const phrase = 'the sky looks _';
     const llm = new MockLlm().setFallback(fluidBlankReply(phrase, ANSWER, 'FILL'));
