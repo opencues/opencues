@@ -14,8 +14,9 @@
 // provider.
 //
 // Storage format (~/.cues/NOTES.md): one `- ` bullet line per entry.
-// Everything before the first bullet (title, prose) is preserved
-// verbatim on rewrite, so the file stays hand-editable. An optional
+// Writes are line surgery (append one bullet / remove one bullet) so
+// the user's own headers, comments, and spacing are never rewritten —
+// the file stays fully hand-editable. An optional
 // `label: ` prefix (first `: ` within the first 64 chars) makes an
 // entry addressable by name; recall fills the BODY only, so a
 // recalled command lands ready to run/tweak.
@@ -49,6 +50,8 @@ export interface NoteEntry {
   readonly text: string;
   readonly label: string | null;
   readonly body: string;
+  /** Line number of the `- ` bullet in the file (set by parseNotesMd). */
+  readonly line?: number;
 }
 
 const MAX_LABEL_CHARS = 64;
@@ -63,30 +66,41 @@ export function parseEntry(text: string): NoteEntry {
 }
 
 export interface ParsedNotesFile {
-  /** Verbatim content before the first bullet (preserved on rewrite). */
-  readonly prefix: string;
+  /** Raw file content (null/empty file normalises to ''). */
+  readonly content: string;
   readonly entries: readonly NoteEntry[];
 }
 
 export function parseNotesMd(content: string): ParsedNotesFile {
   const lines = content.split('\n');
   const entries: NoteEntry[] = [];
-  let firstBullet = -1;
   for (let i = 0; i < lines.length; i += 1) {
     if (lines[i].startsWith('- ')) {
-      if (firstBullet === -1) firstBullet = i;
       const text = lines[i].slice(2).trim();
-      if (text.length > 0) entries.push(parseEntry(text));
+      if (text.length > 0) entries.push({ ...parseEntry(text), line: i });
     }
   }
-  const prefix = firstBullet === -1 ? content : lines.slice(0, firstBullet).join('\n');
-  return { prefix, entries };
+  return { content, entries };
 }
 
-export function serialiseNotesMd(prefix: string, entries: readonly NoteEntry[]): string {
-  const head = prefix.trim().length === 0 ? '# Notes\n' : prefix.replace(/\n+$/, '') + '\n';
-  const bullets = entries.map(e => `- ${e.text}`).join('\n');
-  return entries.length === 0 ? head : `${head}\n${bullets}\n`;
+// Writes are LINE SURGERY, not a re-serialise: the user's own headers,
+// comments between bullets, and spacing are never the runtime's to
+// rewrite. (The first prototype re-emitted header+bullets and silently
+// ate a hand-written comment sitting between two entries — found by
+// the dumb-user gauntlet.)
+
+/** Append a bullet, bootstrapping the default header for a new file. */
+export function appendNoteLine(content: string, text: string): string {
+  if (content.trim().length === 0) return `# Notes\n\n- ${text}\n`;
+  return content.replace(/\n*$/, '\n') + `- ${text}\n`;
+}
+
+/** Remove exactly one bullet line; everything else stays byte-identical. */
+export function removeNoteLine(content: string, line: number): string {
+  const lines = content.split('\n');
+  if (line < 0 || line >= lines.length) return content;
+  lines.splice(line, 1);
+  return lines.join('\n');
 }
 
 export type NoteWriteOp =
@@ -207,7 +221,7 @@ export class NoteBlank implements Blank {
   private async doAdd(file: ParsedNotesFile, text: string): Promise<string> {
     const r = validateNoteWrite(file.entries, { op: 'add', text }, this._caps);
     if (!r.ok) return formatError(r.detail);
-    if (r.action === 'write') await this._write(serialiseNotesMd(file.prefix, r.entries));
+    if (r.action === 'write') await this._write(appendNoteLine(file.content, text.trim()));
     const saved = parseEntry(text.trim());
     const name = saved.label ?? preview(saved.body, 40);
     const n = r.entries.length;
@@ -226,7 +240,7 @@ export class NoteBlank implements Blank {
     const m = matches[0];
     const r = validateNoteWrite(file.entries, { op: 'remove', index: m.index }, this._caps);
     if (!r.ok) return formatError(r.detail);
-    await this._write(serialiseNotesMd(file.prefix, r.entries));
+    await this._write(removeNoteLine(file.content, m.entry.line ?? -1));
     return `[deleted: ${m.entry.label ?? preview(m.entry.body, 40)}]`;
   }
 
@@ -234,7 +248,13 @@ export class NoteBlank implements Blank {
   private doRecall(file: ParsedNotesFile, query: string): string {
     const matches = searchNotes(file.entries, query);
     if (matches.length === 0) {
-      return formatError(`no note matches "${query}" — save one with \`note add <text> _\``);
+      // Tailor the nudge: "save one" is wrong advice when notes exist
+      // (the dumb-user `note list _` guess hit this) — point at
+      // browsing / loosening the query instead.
+      const n = file.entries.length;
+      return n === 0
+        ? formatError(`no note matches "${query}" — save one with \`note add <text> _\``)
+        : formatError(`no note matches "${query}" — ${n} note${n === 1 ? '' : 's'} saved; try fewer words or browse with \`note _\``);
     }
     return matches.map(m => m.entry.body).join('\n');
   }

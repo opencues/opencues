@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  appendNoteLine,
   DEFAULT_NOTE_CAPS,
   NoteBlank,
   parseEntry,
   parseNotesMd,
+  removeNoteLine,
   searchNotes,
-  serialiseNotesMd,
   validateNoteWrite,
 } from './note';
 
@@ -39,21 +40,29 @@ describe('parseEntry', () => {
   });
 });
 
-describe('parseNotesMd / serialiseNotesMd round-trip', () => {
-  it('preserves hand-written header above the first bullet', () => {
-    const file = '# My stuff\n\nsome prose the user wrote\n\n- one: alpha\n- two: beta\n';
-    const parsed = parseNotesMd(file);
-    expect(parsed.entries.map(e => e.label)).toEqual(['one', 'two']);
-    const out = serialiseNotesMd(parsed.prefix, parsed.entries);
-    expect(out).toContain('# My stuff');
-    expect(out).toContain('some prose the user wrote');
-    expect(out).toContain('- one: alpha');
+describe('write ops are line surgery — hand edits are sacred', () => {
+  const HAND_EDITED = '# My stuff\n\nsome prose the user wrote\n\n- one: alpha\n\nremember to clean these up\n\n- two: beta\n';
+
+  it('parse finds entries around interleaved comments', () => {
+    expect(parseNotesMd(HAND_EDITED).entries.map(e => e.label)).toEqual(['one', 'two']);
   });
 
-  it('empty/missing file gets the default header', () => {
-    const parsed = parseNotesMd('');
-    expect(parsed.entries).toEqual([]);
-    expect(serialiseNotesMd(parsed.prefix, parsed.entries)).toBe('# Notes\n');
+  it('append keeps every hand-written line byte-identical', () => {
+    const out = appendNoteLine(HAND_EDITED, 'three: gamma');
+    expect(out).toBe(HAND_EDITED + '- three: gamma\n');
+  });
+
+  it('remove deletes exactly one bullet line, nothing else', () => {
+    const parsed = parseNotesMd(HAND_EDITED);
+    const out = removeNoteLine(HAND_EDITED, parsed.entries[0].line!);
+    expect(out).not.toContain('- one: alpha');
+    expect(out).toContain('remember to clean these up');
+    expect(out).toContain('- two: beta');
+    expect(out).toContain('some prose the user wrote');
+  });
+
+  it('empty/missing file gets the default header on first add', () => {
+    expect(appendNoteLine('', 'first: x')).toBe('# Notes\n\n- first: x\n');
   });
 });
 

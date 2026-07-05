@@ -209,7 +209,13 @@ export class BlankFill {
     // changes nothing — the `_` falls through to the normal sources.
     const shape = matchBlankShape(cleanText, this.configLoader.blanks as ReadonlyMap<string, { blankShapes?: import('@opencues/core').BlankShape[] }>);
     if (shape) {
-      const usIdx = words.indexOf('_');
+      // matchBlankShape anchors on the LAST `_` (lineWithBlank uses
+      // lastIndexOf) — attach the verdict to that same `_`. Using the
+      // FIRST `_` mis-claimed an earlier, unrelated `_` in the buffer
+      // ("fill later _ ok. note add snack _" fired the blank on the
+      // "later" slot with a nonsense query) — found by the note-blank
+      // dumb-user gauntlet.
+      const usIdx = words.lastIndexOf('_');
       if (usIdx >= 0) {
         // Locate the blank's keyword span in the buffer so applyAsyncFill's
         // clearing behaves exactly as the keyword path would. Shapes are

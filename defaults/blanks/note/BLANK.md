@@ -53,5 +53,6 @@ newest first. Notes never reach an LLM provider.
 ## Editing the file directly
 
 `~/.cues/NOTES.md` is a plain markdown bullet list — edit, reorder,
-or bulk-delete entries by hand; changes hot-reload. Anything above
-the first bullet is preserved verbatim.
+or bulk-delete entries by hand; changes hot-reload. Runtime writes
+are line surgery (append/remove one bullet), so your own headers,
+comments, and spacing are never rewritten.

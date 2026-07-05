@@ -208,6 +208,19 @@ describe('note blank — guidance and edges', () => {
     expect(text.startsWith('note kubectl ')).toBe(true);
   });
 
+  it('an earlier unrelated `_` in the buffer is NOT claimed by the note command', async () => {
+    // Regression pin for the shape-attach fix (words.indexOf → lastIndexOf):
+    // the shape verdict must land on the `_` the shape matched (the note
+    // command's own), never an earlier `_` the user left for fluid-blank.
+    const s = await setupNotes();
+    s.adapter.pushText('fill later _ ok. note add snack _');
+    await flush();
+    const text = s.adapter.getText();
+    expect(text.startsWith('fill later _ ok. ')).toBe(true);   // untouched
+    expect(text).toContain('[note saved: snack · 1 note]');
+    expect(s.notes()).toContain('- snack');
+  });
+
   it('KNOWN LIMIT: a sentence terminator inside the note body breaks the shape match', async () => {
     // Shapes are sentence-scoped (segment.ts): `. ` splits the command
     // segment, so the `note` keyword no longer leads it and the blank
