@@ -244,7 +244,7 @@ function App(props: AppOpts) {
             {tipRows().map((row, i) =>
               i === 0 && row.startsWith('C_ ')
                 ? <box style={{ flexDirection: 'row', height: 1 }}>
-                    <text fg="#1a1a1a" bg="#ffffff" attributes={TextAttributes.BOLD}>C_</text>
+                    <text fg="#ffffff" attributes={TextAttributes.BOLD | TextAttributes.INVERSE}>C_</text>
                     <text>{row.slice(2)}</text>
                   </box>
                 : <text>{row}</text>)}
@@ -278,7 +278,7 @@ function App(props: AppOpts) {
         {tip() != null
           ? <text fg="#ffffff">{tip()}</text>
           : <box style={{ flexDirection: 'row' }}>
-              <text fg="#1a1a1a" bg="#ffffff" attributes={TextAttributes.BOLD}>C_</text>
+              <text fg="#ffffff" attributes={TextAttributes.BOLD | TextAttributes.INVERSE}>C_</text>
               <text fg="#ffffff"> OpenCues_  ·  Submit: Ctrl+Alt+S   ·   Cancel: Ctrl+Alt+Q</text>
             </box>}
       </box>

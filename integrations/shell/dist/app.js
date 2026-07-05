@@ -895,10 +895,9 @@ function App(props) {
               height: 1
             });
             _$insertNode(_el$8, _$createTextNode(`C_`));
-            _$setProp(_el$8, "fg", "#1a1a1a");
-            _$setProp(_el$8, "bg", "#ffffff");
+            _$setProp(_el$8, "fg", "#ffffff");
             _$insert(_el$0, () => row.slice(2));
-            _$effect((_$p) => _$setProp(_el$8, "attributes", TextAttributes.BOLD, _$p));
+            _$effect((_$p) => _$setProp(_el$8, "attributes", TextAttributes.BOLD | TextAttributes.INVERSE, _$p));
             return _el$7;
           })() : (() => {
             var _el$1 = _$createElement("text");
@@ -964,11 +963,10 @@ function App(props) {
           flexDirection: "row"
         });
         _$insertNode(_el$16, _$createTextNode(`C_`));
-        _$setProp(_el$16, "fg", "#1a1a1a");
-        _$setProp(_el$16, "bg", "#ffffff");
+        _$setProp(_el$16, "fg", "#ffffff");
         _$insertNode(_el$18, _$createTextNode(` OpenCues_ \xB7 Submit: Ctrl+Alt+S \xB7 Cancel: Ctrl+Alt+Q`));
         _$setProp(_el$18, "fg", "#ffffff");
-        _$effect((_$p) => _$setProp(_el$16, "attributes", TextAttributes.BOLD, _$p));
+        _$effect((_$p) => _$setProp(_el$16, "attributes", TextAttributes.BOLD | TextAttributes.INVERSE, _$p));
         return _el$15;
       })();
     })());
