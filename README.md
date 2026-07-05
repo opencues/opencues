@@ -37,13 +37,14 @@ Rather than navigating to a chat interface or AI-enabled input box, define a que
 
 OpenCues is platform, model, and provider agnostic, engineered from the ground up to enable native inline AI.
 
-| You type | You get |
-|---|---|
-| hey can u send me that report when u get a sec make this formal _ | Could you please send me that report at your earliest convenience? |
-| 4 + 4 = _ | 4 + 4 = 8 |
-| hello world translate to japanese _ | こんにちは世界 |
-| draft an email to my landlord asking for a rent reduction _ | (the email, written) |
-| ffmpeg command to convert a video to web-ready mp4 _ | ffmpeg -i input.mov -c:v libx264 -preset slow -crf 23 -c:a aac -b:a 128k -movflags +faststart output.mp4 |
+<table width="100%">
+<tr><th>You type</th><th>You get</th></tr>
+<tr><td>hey can u send me that report when u get a sec make this formal _</td><td>Could you please send me that report at your earliest convenience?</td></tr>
+<tr><td>4 + 4 = _</td><td>4 + 4 = 8</td></tr>
+<tr><td>hello world translate to japanese _</td><td>こんにちは世界</td></tr>
+<tr><td>draft an email to my landlord asking for a rent reduction _</td><td>(the email, written)</td></tr>
+<tr><td>ffmpeg command to convert a video to web-ready mp4 _</td><td>ffmpeg -i input.mov -c:v libx264 -preset slow -crf 23 -c:a aac -b:a 128k -movflags +faststart output.mp4</td></tr>
+</table>
 
 #
 
@@ -97,13 +98,14 @@ Each pins its own upstream fork and never touches your native host install.
 
 # What you get
 
-| Feature | What it does |
-|---|---|
-| **Blanks** | Type `_` for free-form generation, translation, formatting, full rewrites, or keyword-bound system actions (`volume _`, `weather _`). |
-| **Sentence rewrites** | Cycle a whole sentence to a different register (formal, concise, ...) with one keystroke, no `_` needed. |
-| **Word cues** | Navigate to a single word and cycle a smaller LLM-suggested alternative. |
-| **Personal + ambient context** (opt-in) | `my email _` substitutes your real address; fluid lookups can read the page you're on. |
-| **Hot-reload** | Every `.md` config picks up edits in ~2s, no restart. |
+<table width="100%">
+<tr><th>Feature</th><th>What it does</th></tr>
+<tr><td><b>Blanks</b></td><td>Type <code>_</code> for free-form generation, translation, formatting, full rewrites, or keyword-bound system actions (<code>volume _</code>, <code>weather _</code>).</td></tr>
+<tr><td><b>Sentence rewrites</b></td><td>Cycle a whole sentence to a different register (formal, concise, ...) with one keystroke, no <code>_</code> needed.</td></tr>
+<tr><td><b>Word cues</b></td><td>Navigate to a single word and cycle a smaller LLM-suggested alternative.</td></tr>
+<tr><td><b>Personal + ambient context</b> (opt-in)</td><td><code>my email _</code> substitutes your real address; fluid lookups can read the page you're on.</td></tr>
+<tr><td><b>Hot-reload</b></td><td>Every <code>.md</code> config picks up edits in ~2s, no restart.</td></tr>
+</table>
 
 Full feature catalogue (42 concepts): [`docs/features/README.md`](docs/features/README.md).
 
@@ -117,10 +119,11 @@ Full feature catalogue (42 concepts): [`docs/features/README.md`](docs/features/
 
 Two directions of intent — see [`concept.md`](concept.md):
 
-| Direction | Surface | Trigger |
-|---|---|---|
-| LLM → you | **Cues** | plain text |
-| you → system | **Blanks** | text containing `_` |
+<table width="100%">
+<tr><th>Direction</th><th>Surface</th><th>Trigger</th></tr>
+<tr><td>LLM → you</td><td><b>Cues</b></td><td>plain text</td></tr>
+<tr><td>you → system</td><td><b>Blanks</b></td><td>text containing <code>_</code></td></tr>
+</table>
 
 Both are open file formats — `CUE.md` / `BLANK.md` — so another runtime could implement them independently; the standard lives at [`spec/`](spec/README.md), this repo ships the reference implementation.
 
@@ -166,14 +169,17 @@ Full threat model: [`docs/architecture/security-audit.md`](docs/architecture/sec
 
 <br>
 
-| What | Where |
-|---|---|
-| New host integration | [`docs/guides/adding-an-integration.md`](docs/guides/adding-an-integration.md) |
-| New cue/blank | [`docs/guides/adding-a-cue-blank.md`](docs/guides/adding-a-cue-blank.md) |
-| Working on the reference runtime | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
-| New to the terms | [`docs/glossary.md`](docs/glossary.md) |
+<table width="100%">
+<tr><th>What</th><th>Where</th></tr>
+<tr><td>New host integration</td><td><a href="docs/guides/adding-an-integration.md"><code>docs/guides/adding-an-integration.md</code></a></td></tr>
+<tr><td>New cue/blank</td><td><a href="docs/guides/adding-a-cue-blank.md"><code>docs/guides/adding-a-cue-blank.md</code></a></td></tr>
+<tr><td>Working on the reference runtime</td><td><a href="CONTRIBUTING.md"><code>CONTRIBUTING.md</code></a></td></tr>
+<tr><td>New to the terms</td><td><a href="docs/glossary.md"><code>docs/glossary.md</code></a></td></tr>
+</table>
 
 Join the community — questions, feedback, and the people building alongside you. We're also part of [OpenSourceIRL](https://luma.com/OpenSourceIRL), a community for people building in the open.
+
+#
 
 <p align="left"><img width="85" alt="Community:" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Community-12.svg"><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://github.com/opencues/opencues/graphs/contributors"><img width="137" alt="Contributors" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Community-13.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://x.com/openCues_" target="_blank" rel="noopener noreferrer"><img width="112" alt="X / Twitter" src="assets/twitter.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://www.reddit.com/r/OpenCues/" target="_blank" rel="noopener noreferrer"><img width="94" alt="Reddit" src="assets/reddit.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://www.instagram.com/opencues/" target="_blank" rel="noopener noreferrer"><img width="117" alt="Instagram" src="assets/instagram.svg"></a></p>
 
