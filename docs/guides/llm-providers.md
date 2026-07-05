@@ -261,7 +261,10 @@ provider's env-var name from the first source that has it:
 3. **`~/.cues/.env`** — written by `opencues set-key` (chmod 0600)
 
 So `opencues set-key cerebras csk_...` is a one-and-done setup: no
-shell-rc edits, no exports. The bag is built once at boot — restart
+shell-rc edits, no exports. For OpenRouter there is a one-click
+variant — `opencues set-key openrouter --oauth` opens a browser
+approval on openrouter.ai (OAuth PKCE) and stores the issued key
+without any dashboard visit. The bag is built once at boot — restart
 the host (or `opencues run <host>`) after storing a new key. When
 anything is picked up from the shell env or the file, the host logs
 one `LLM keys detected: ...` line (var names + sources, never values).

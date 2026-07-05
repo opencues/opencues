@@ -82,6 +82,31 @@ module.exports = async function setKey(argv, ctx) {
   const positional = argv.filter(a => !a.startsWith('-'));
   let [provider, key] = positional;
 
+  // `opencues set-key openrouter --oauth` (or bare `set-key --oauth`) —
+  // one-click PKCE: browser approval on openrouter.ai instead of a
+  // dashboard visit + copy-paste. The key lands in ~/.cues/.env exactly
+  // like a pasted one. OpenRouter is the only provider with a
+  // programmatic key-issuance flow today.
+  if (argv.includes('--oauth')) {
+    provider = provider || 'openrouter';
+    if (provider !== 'openrouter') {
+      console.error(`opencues set-key: --oauth is only supported for openrouter (got "${provider}").`);
+      process.exit(2);
+    }
+    const { runOauthFlow } = require('../lib/openrouter-oauth.cjs');
+    try {
+      const oauthKey = await runOauthFlow({
+        onStatus: (line) => console.log(`${tag('info')} ${line}`),
+      });
+      writeKey(PROVIDERS.openrouter || 'OPENROUTER_API_KEY', oauthKey);
+    } catch (err) {
+      console.error(`${tag('err')} OpenRouter OAuth failed: ${err.message}`);
+      console.error(dim('Fallback: create a key at https://openrouter.ai/keys and run `opencues set-key openrouter <key>`.'));
+      process.exit(1);
+    }
+    return;
+  }
+
   // Interactive provider pick when omitted on a real terminal.
   if (!provider && prompt.isInteractive()) {
     provider = await pickProvider(PROVIDERS);
@@ -161,6 +186,7 @@ function printHelp(PROVIDERS) {
   console.log('  opencues set-key                 # interactive');
   console.log('  opencues set-key cerebras csk_...');
   console.log('  opencues set-key groq gsk_...');
+  console.log('  opencues set-key openrouter --oauth   # one-click: browser approval, no dashboard');
   console.log('  opencues set-key finnhub abc123');
 }
 

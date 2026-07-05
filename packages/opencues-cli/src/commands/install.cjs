@@ -597,6 +597,7 @@ function printKeyDetectionReport(ctx) {
     // one state that must not pass silently — every LLM feature is inert.
     console.log(bold('LLM keys') + '  ' + dim('· none found — LLM cues/blanks stay inert until one is set'));
     console.log(`  ${dim('fastest:')} ${bold('opencues set-key')} ${dim('— stores the key in ~/.cues/.env; hosts read it at boot')}`);
+    console.log(`  ${dim('one-click:')} ${bold('opencues set-key openrouter --oauth')} ${dim('— browser approval, no dashboard visit')}`);
   }
   console.log('');
 }
