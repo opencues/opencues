@@ -81,7 +81,9 @@ Full walkthrough, prerequisites, and per-host detail: [`docs/install.md`](docs/i
 <tr><td>Shell</td><td>Beta</td><td><code>opencues install shell</code></td></tr>
 </table>
 
-Each pins its own upstream fork and never touches your native host install. Per-host detail: [Claude Code](integrations/claude-code/README.md) · [OpenCode](integrations/opencode/README.md) · [Gemini CLI](integrations/gemini-cli/README.md) · [Chrome](integrations/chrome/README.md) · [Shell](integrations/shell/README.md). Windows: not supported natively, run inside WSL2 (see [`docs/install.md`](docs/install.md)).
+Each pins its own upstream fork and never touches your native host install. Per-host detail: [Claude Code](https://claude.com/product/claude-code) · [OpenCode](https://opencode.ai) · [Gemini CLI](https://geminicli.com) · [Chrome](https://www.google.com/chrome/) · [Shell](integrations/shell/README.md).
+
+> ⚠️ **Windows**: not supported natively, run inside WSL2 (see [`docs/install.md`](docs/install.md)).
 
 #
 
