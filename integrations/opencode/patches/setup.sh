@@ -380,32 +380,66 @@ src = src.replace(
   return (''',
   '''function OpencuesTip(props: { api: TuiPluginApi }) {
   const theme = () => props.api.theme.current
-  // Command spans (text the user should literally type/press) render in
-  // the success colour + bold so they read as commands, not prose. The
-  // step head goes error-coloured when the coach flags OFF_TRACK.
-  const headFg = () => {
-    const t = theme() as any
-    return opencuesTutorial()!.offTrack ? (t.error ?? t.success) : t.success
-  }
   return (
-    <>
-      <Show when={opencuesTutorial()}>
+    <Show when={!opencuesTutorial() && opencuesTip()}>
+      <text fg={theme().textMuted}>{opencuesTip()}</text>
+    </Show>
+  )
+}
+
+// Tutorial block — its own full-width rows ABOVE the footer widgets.
+// Head line (C_ plate + counter, theme text) then the coach body
+// word-wrapped to at most 3 rows: prose/decoration in textMuted (gray),
+// actionable tokens (commands/keys/titles) in theme text (white). No
+// bold — weight discipline per docs/features/tutorials.md.
+function wrapOpencuesSegs(segs: Array<{ text: string; command: boolean; bold?: boolean; dim?: boolean }>, width: number) {
+  const rows: Array<Array<{ text: string; command: boolean; bold?: boolean; dim?: boolean }>> = []
+  let cur: Array<{ text: string; command: boolean; bold?: boolean; dim?: boolean }> = []
+  let len = 0
+  for (const s of segs) {
+    let text = s.text
+    while (text.length > 0) {
+      const space = width - len
+      if (text.length <= space) {
+        cur.push({ ...s, text })
+        len += text.length
+        text = ""
+      } else {
+        let cut = text.lastIndexOf(" ", space)
+        if (cut < space * 0.5) cut = space
+        cur.push({ ...s, text: text.slice(0, cut) })
+        rows.push(cur)
+        cur = []
+        len = 0
+        text = text.slice(cut).trimStart()
+      }
+    }
+  }
+  if (cur.length > 0) rows.push(cur)
+  return rows.slice(0, 3)
+}
+
+function OpencuesTutorialBlock(props: { api: TuiPluginApi }) {
+  const theme = () => props.api.theme.current
+  const width = () => Math.max(20, (process.stdout.columns ?? 80) - 4)
+  return (
+    <Show when={opencuesTutorial()}>
+      <box style={{ flexDirection: "column", width: "100%" }}>
         <text>
-          <span style={{ fg: theme().text, bold: true, reverse: true }}>C_</span>
-          <span style={{ fg: headFg(), bold: true }}> {opencuesTutorial()!.head} </span>
-          {opencuesTutorial()!.segments.map((seg) =>
-            seg.command || (seg as any).bold
-              ? <span style={{ fg: theme().text, bold: true }}>{seg.text}</span>
-              : (seg as any).dim
-                ? <span style={{ fg: theme().textMuted }}>{seg.text}</span>
-                : <span style={{ fg: theme().text }}>{seg.text}</span>,
-          )}
+          <span style={{ fg: theme().background, bg: theme().text }}>C_</span>
+          <span style={{ fg: theme().text }}> {opencuesTutorial()!.head}</span>
         </text>
-      </Show>
-      <Show when={!opencuesTutorial() && opencuesTip()}>
-        <text fg={theme().textMuted}>{opencuesTip()}</text>
-      </Show>
-    </>
+        {wrapOpencuesSegs(opencuesTutorial()!.segments, width()).map((row) => (
+          <text>
+            {row.map((seg) =>
+              seg.command || seg.bold
+                ? <span style={{ fg: theme().text }}>{seg.text}</span>
+                : <span style={{ fg: theme().textMuted }}>{seg.text}</span>,
+            )}
+          </text>
+        ))}
+      </box>
+    </Show>
   )
 }
 
@@ -413,13 +447,20 @@ function View(props: { api: TuiPluginApi }) {
   return (''',
 )
 src = src.replace(
-  '''      <Mcp api={props.api} />
+  '''      <Directory api={props.api} />
+      <Mcp api={props.api} />
       <box flexGrow={1} />
       <Version api={props.api} />''',
-  '''      <Mcp api={props.api} />
-      <box flexGrow={1} />
-      <OpencuesTip api={props.api} />
-      <Version api={props.api} />''',
+  '''      <box style={{ flexDirection: "column", width: "100%" }}>
+        <OpencuesTutorialBlock api={props.api} />
+        <box style={{ flexDirection: "row", width: "100%", gap: 2 }}>
+          <Directory api={props.api} />
+          <Mcp api={props.api} />
+          <box flexGrow={1} />
+          <OpencuesTip api={props.api} />
+          <Version api={props.api} />
+        </box>
+      </box>''',
 )
 open(p, 'w').write(src)
 PY
