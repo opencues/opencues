@@ -513,7 +513,7 @@ export class TutorialCoach {
           const available = await this.listTutorials();
           const listing = available.length === 0
             ? 'none installed — add one under ~/.cues/tutorials/'
-            : available.map(t => t.id ? `${t.id}: ${t.name}` : t.name).join(' · ');
+            : available.map(t => t.id ? `\`${t.id}: ${t.name}\`` : `\`${t.name}\``).join(' · ');
           this._notice = {
             text: `No tutorial "${ctl.arg ?? ''}" — available → ${listing}`.slice(0, 200),
             until: Date.now() + 10_000,
