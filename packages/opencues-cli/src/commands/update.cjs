@@ -28,9 +28,10 @@ const HOST_ALIASES = {
   opencode: 'opencode', oc: 'opencode',
   chrome: 'chrome',
   'gemini-cli': 'gemini-cli', geminicli: 'gemini-cli', gemini: 'gemini-cli',
-  terminal: 'shell', term: 'shell', 'oc-edit': 'shell',
+  shell: 'shell', terminal: 'shell', term: 'shell', 'oc-edit': 'shell',
+  vscode: 'vscode', code: 'vscode', 'vs-code': 'vscode',
 };
-const ALL_HOSTS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'shell'];
+const ALL_HOSTS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'shell', 'vscode'];
 
 // Internal helpers exposed for tests. The function itself is the
 // default export; lock primitives are reached via `_internal`.
@@ -533,6 +534,7 @@ function resolveInstallRoot(host, ctx) {
     case 'gemini-cli':  return path.join(HOME, 'gemini-cli-cues', '.opencues');
     case 'shell':       return path.join(ctx.REPO_ROOT, 'integrations/shell/node_modules/@opencues');
     case 'chrome':      return path.join(ctx.REPO_ROOT, 'integrations/chrome/dist');
+    case 'vscode':      return path.join(ctx.REPO_ROOT, 'integrations/vscode/node_modules/@opencues');
     default: return null;
   }
 }

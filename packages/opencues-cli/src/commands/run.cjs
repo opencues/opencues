@@ -183,13 +183,14 @@ function loadHostResolver(ctx) {
     return { HOSTS: core.HOSTS.slice().sort(), resolve: core.resolveHost };
   } catch {
     return {
-      HOSTS: ['chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell'],
+      HOSTS: ['chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell', 'vscode'],
       resolve: (n) => ({
         'claude-code': 'claude-code', 'claudecode': 'claude-code', 'claude': 'claude-code', 'cc': 'claude-code',
         'opencode': 'opencode', 'oc': 'opencode',
         'chrome': 'chrome',
         'gemini-cli': 'gemini-cli', 'geminicli': 'gemini-cli', 'gemini': 'gemini-cli',
         'shell': 'shell', 'term': 'shell', 'oc-edit': 'shell',
+        'vscode': 'vscode', 'code': 'vscode', 'vs-code': 'vscode',
       })[n?.toLowerCase?.()] ?? null,
     };
   }
@@ -271,6 +272,7 @@ module.exports = async function run(argv, ctx) {
   if (folder === 'chrome') return runChrome(ctx);
   if (folder === 'gemini-cli') return runGemini(passthrough, argv, ctx);
   if (folder === 'shell') return runShell(passthrough, ctx);
+  if (folder === 'vscode') return runVscode(ctx);
 };
 
 /**
@@ -586,6 +588,31 @@ function runChrome(ctx) {
   console.log(style.dim('If already loaded, reload the page you want OpenCues active on.'));
 }
 
+function runVscode(ctx) {
+  // Like chrome, `run` doesn't spawn anything — VS Code loads the
+  // extension itself. The value of `opencues run vscode` is the
+  // ensureFreshBundle drift check that already ran before dispatch
+  // (rebuild on source change); here we surface the reload step, the
+  // one part self-heal can't do (the chrome-mirror-shaped gap in
+  // integrations/vscode/PLAN.md § Upgrade path).
+  const fs = require('node:fs');
+  const bundle = path.join(ctx.REPO_ROOT, 'integrations', 'vscode', 'dist', 'extension.js');
+  if (!fs.existsSync(bundle)) {
+    console.error(`${style.tag('err')} extension bundle not found at ${bundle}`);
+    console.error(`     Install first: ${style.bold('opencues install vscode')}`);
+    process.exit(1);
+  }
+  printLaunchBanner(ctx, 'vscode', [
+    ['host', 'vscode  ' + style.dim('(extensions are loaded by VS Code itself)')],
+  ], { persistent: true });
+  console.log(style.bold('Activate in VS Code:'));
+  console.log('');
+  console.log(`  ${style.dim('1.')} Reload VS Code windows (${style.bold('Developer: Reload Window')})`);
+  console.log(`  ${style.dim('2.')} Open a markdown / plaintext / commit-message file`);
+  console.log('');
+  console.log(style.dim('The bundle was drift-checked just now — a reload always picks up the latest build.'));
+}
+
 function printHelp() {
   console.log('opencues run <host> [opencues-flags] [-- host-flags]');
   console.log('');
@@ -602,6 +629,7 @@ function printHelp() {
   console.log('  chrome        print Chrome reload instructions (no programmatic launch)');
   console.log('  gemini-cli    node packages/cli/dist/index.js inside the fork (default: $HOME/gemini-cli-cues)');
   console.log('  shell         integrations/shell/bin/oc-shell  (wraps $SHELL in tmux; Alt+Shift+↑ for the input box)');
+  console.log('  vscode        drift-check the extension bundle + print VS Code reload instructions');
   console.log('');
   console.log('Opencues-owned flags (consumed by `opencues run`, NOT forwarded):');
   console.log('  --bin <name>      (claude-code only) override which binary to exec');

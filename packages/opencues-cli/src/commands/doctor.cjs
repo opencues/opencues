@@ -782,6 +782,38 @@ module.exports = async function doctor(argv, ctx) {
     s.render();
   }
 
+  // ── VS Code install (self-owned extension) ────────────────────────────
+  // No upstream fork — staged @opencues/{core,runtime} + the esbuild
+  // bundle live inside the repo at integrations/vscode/. The extension
+  // reaches VS Code via extensions-dir symlinks written by install.
+  {
+    const s = section('VS Code', 'self-owned extension (bundled runtime)');
+    const vscDir = path.join(ctx.REPO_ROOT, 'integrations/vscode');
+    const vscRt = path.join(vscDir, 'node_modules/@opencues/runtime');
+    const vscCore = path.join(vscDir, 'node_modules/@opencues/core');
+    const vscBundle = path.join(vscDir, 'dist/extension.js');
+    s.ok(`integration dir at ${vscDir}`, fs.existsSync(vscDir));
+    s.ok(`node_modules/@opencues/runtime (staged)`, fs.existsSync(vscRt));
+    s.ok(`node_modules/@opencues/core (staged)`, fs.existsSync(vscCore));
+    s.ok(`dist/extension.js (bundle)`, fs.existsSync(vscBundle));
+    const extLinks = [
+      path.join(HOME, '.vscode/extensions/opencues.opencues-vscode'),
+      path.join(HOME, '.vscode-server/extensions/opencues.opencues-vscode'),
+    ].filter(p => fs.existsSync(p));
+    s.ok(`extensions-dir link${extLinks.length ? ` (${extLinks.length})` : ''}`, extLinks.length > 0);
+    if (fs.existsSync(vscBundle) && extLinks.length === 0) {
+      findings.push({
+        sev: 'warn',
+        msg: 'VS Code extension built but not linked into any extensions dir — VS Code will not load it',
+        fix: 'opencues install vscode   # re-links; or node integrations/vscode/bin/install.cjs install --extensions-dir <dir>',
+      });
+    }
+    if (!fs.existsSync(vscBundle)) {
+      findings.push({ sev: 'info', msg: 'VS Code integration not installed', fix: 'opencues install vscode' });
+    }
+    s.render();
+  }
+
   // ── Gemini CLI install ────────────────────────────────────────────────
   {
     const s = section('Gemini CLI', 'patched Gemini CLI fork + installed runtime');

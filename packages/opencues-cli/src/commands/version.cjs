@@ -22,7 +22,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { banner, tree, dim, cliVersion } = require('../lib/style.cjs');
 
-const HOSTS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'shell'];
+const HOSTS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'shell', 'vscode'];
 
 module.exports = function version(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -146,7 +146,7 @@ function readUpstreamVersion(host, markerDir) {
     // markerDir is <fork>/.opencues; upstream pkg at <fork>/package.json
     pkgPath = path.join(path.dirname(markerDir), 'package.json');
   } else {
-    return null; // chrome (extension self) + shell (self-owned) — no upstream
+    return null; // chrome (extension self) + shell/vscode (self-owned) — no upstream
   }
   try {
     const p = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
@@ -168,7 +168,7 @@ function forkRootFromMarkerDir(host, markerDir) {
   // version-markers passes us the marker DIR; show the user the FORK
   // root (its parent) since that's what they recognise from install
   // commands.
-  if (host === 'shell' || host === 'chrome') return markerDir;
+  if (host === 'shell' || host === 'chrome' || host === 'vscode') return markerDir;
   return path.dirname(markerDir);
 }
 

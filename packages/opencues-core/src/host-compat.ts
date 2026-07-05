@@ -31,14 +31,14 @@
  */
 
 /** Every integration host. Keep alphabetical for stable equality checks. */
-export const HOSTS = ['chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell'] as const;
+export const HOSTS = ['chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell', 'vscode'] as const;
 export type Host = typeof HOSTS[number];
 
 /** Hosts that can spawn subprocesses + access the filesystem WITHOUT an
  *  auxiliary helper. Chrome can also spawn subprocesses, but only when
  *  chrome-host (the native-messaging bridge) is installed — so chrome's
  *  capability is runtime-detected, not a static property. */
-export const NATIVE_HOSTS: readonly Host[] = ['claude-code', 'gemini-cli', 'opencode', 'shell'];
+export const NATIVE_HOSTS: readonly Host[] = ['claude-code', 'gemini-cli', 'opencode', 'shell', 'vscode'];
 
 /**
  * The subset of frontmatter fields host-compat resolution looks at. Accepts
@@ -164,6 +164,8 @@ export const HOST_ALIASES: Readonly<Record<string, Host>> = {
   'term': 'shell',
   'oc-shell': 'shell',
   'oc-edit': 'shell',
+  'code': 'vscode',
+  'vs-code': 'vscode',
 };
 
 /**
@@ -175,7 +177,7 @@ export const HOST_ALIASES: Readonly<Record<string, Host>> = {
  * @example
  *   resolveHost('cc')          // 'claude-code'
  *   resolveHost('claude-code') // 'claude-code'
- *   resolveHost('vscode')      // null
+ *   resolveHost('helix')       // null
  */
 export function resolveHost(input: string | null | undefined): Host | null {
   if (!input) return null;

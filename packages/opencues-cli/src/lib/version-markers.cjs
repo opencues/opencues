@@ -200,6 +200,7 @@ function checkDrift(markerDir, ctx) {
 //   ~/gemini-cli-cues/
 //   <repo>/integrations/shell/node_modules/@opencues/   (self-owned host)
 //   <repo>/integrations/chrome/dist/                    (built MV3 bundle)
+//   <repo>/integrations/vscode/node_modules/@opencues/  (self-owned host)
 //
 // Returns: [{ host, root, drift }] for every root that exists on disk.
 function enumerateInstalledHosts(ctx) {
@@ -210,6 +211,7 @@ function enumerateInstalledHosts(ctx) {
     { host: 'gemini-cli',        root: path.join(HOME, 'gemini-cli-cues', '.opencues') },
     { host: 'shell',             root: path.join(ctx.REPO_ROOT, 'integrations/shell/node_modules/@opencues') },
     { host: 'chrome',            root: path.join(ctx.REPO_ROOT, 'integrations/chrome/dist') },
+    { host: 'vscode',            root: path.join(ctx.REPO_ROOT, 'integrations/vscode/node_modules/@opencues') },
   ];
   const results = [];
   for (const c of candidates) {

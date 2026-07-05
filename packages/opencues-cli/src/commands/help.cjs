@@ -325,7 +325,7 @@ module.exports = function help(argv, ctx) {
   // Last section omits the trailing connector.
   const sections = [
     { title: 'Setup', description: 'install integrations, manage configs + API keys', rows: [
-      ['install <host>',     'Install a host integration (claude-code|opencode|chrome|gemini-cli|--all)'],
+      ['install <host>',     'Install a host integration (claude-code|opencode|chrome|gemini-cli|shell|vscode|--all)'],
       ['uninstall <host>',   'Roll back an installation'],
       ['seed-configs',       'Copy repo defaults into ~/.cues/ (first-time + sync)'],
       ['update-configs',     'Pull new shipped cues/blanks into ~/.cues/ (after a `git pull`)'],
@@ -343,7 +343,7 @@ module.exports = function help(argv, ctx) {
       ['import <source>',       'Download a community config pack (gist/github/url/local)'],
     ]},
     { title: 'Run / inspect', description: 'launch hosts and inspect runtime state', rows: [
-      ['run <host>',         'Launch the patched host (claude-code | opencode | chrome | gemini-cli)'],
+      ['run <host>',         'Launch the patched host (claude-code | opencode | chrome | gemini-cli | shell | vscode)'],
       ['sync <host>',        "Bundle .cues/ into a host that doesn't auto-discover (chrome)"],
       ['which',              'Print every relevant path (installs, configs, logs)'],
       ['version',            'Print CLI version + per-integration versions/compat'],

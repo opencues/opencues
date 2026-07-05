@@ -48,6 +48,12 @@ module.exports = function which(argv, ctx) {
       ...wslChromeDeployRows(),
       ['(other deploy targets are wherever you passed --target; chrome reload state lives in Chrome itself)', ''],
     ]],
+    ['VS Code state (self-owned extension)', [
+      ['Repo build output',          path.join(ctx.REPO_ROOT, 'integrations', 'vscode', 'dist')],
+      ['Staged runtime + core',      path.join(ctx.REPO_ROOT, 'integrations', 'vscode', 'node_modules', '@opencues')],
+      ['Extensions-dir link',        path.join(HOME, '.vscode', 'extensions', 'opencues.opencues-vscode')],
+      ['Extensions-dir link (WSL/SSH remote)', path.join(HOME, '.vscode-server', 'extensions', 'opencues.opencues-vscode')],
+    ]],
     ['Gemini CLI install state (per fork)', [
       ['Default fork dir',           path.join(HOME, 'gemini-cli-cues')],
       ['Built core',                 path.join(HOME, 'gemini-cli-cues', 'node_modules', '@opencues', 'core')],

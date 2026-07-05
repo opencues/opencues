@@ -25,9 +25,12 @@ const HOST_ALIASES = {
   'shell':    'shell',
   'term':        'shell',
   'oc-edit':     'shell',
+  'vscode':      'vscode',
+  'code':        'vscode',
+  'vs-code':     'vscode',
 };
-const HOSTS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'shell'];
-const HOST_FOLDERS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'shell'];
+const HOSTS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'shell', 'vscode'];
+const HOST_FOLDERS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'shell', 'vscode'];
 
 module.exports = async function uninstall(argv, ctx) {
   // Symmetric to `opencues install skill / plugin` — dispatch before

@@ -10,7 +10,7 @@ const COMMANDS = [
   'set-key', 'check-keys', 'update', 'debug', 'completion',
   'which', 'version', 'help',
 ];
-const HOSTS = ['claude-code', 'claudecode', 'claude', 'cc', 'opencode', 'oc', 'chrome', 'gemini-cli', 'geminicli', 'gemini', 'shell', 'term', 'oc-edit'];
+const HOSTS = ['claude-code', 'claudecode', 'claude', 'cc', 'opencode', 'oc', 'chrome', 'gemini-cli', 'geminicli', 'gemini', 'shell', 'term', 'oc-edit', 'vscode', 'code', 'vs-code'];
 const KINDS = ['cue', 'blank'];
 const FILES = ['cues', 'blanks', 'opencues'];
 
