@@ -121,6 +121,14 @@ Two directions of intent — see [`concept.md`](concept.md):
 | LLM → you | **Cues** | plain text |
 | you → system | **Blanks** | text containing `_` |
 
+The two surfaces have fundamentally different contracts:
+
+| Property | Cues | Blanks |
+|---|---|---|
+| User intent | implicit (LLM proposes) | explicit (you summoned it) |
+| Failure mode | invisible (skip the cycling) | visible (`_` stays unfilled) |
+| Determinism | best-effort (LLM judgement) | required (must succeed or fail clearly) |
+
 Both are open file formats — `CUE.md` / `BLANK.md` — so another runtime could implement them independently; the standard lives at [`spec/`](spec/README.md), this repo ships the reference implementation.
 
 Authoring your own: `opencues new cue <name>` / `opencues new blank <name>` scaffolds a starting file. Guide: [`docs/guides/adding-a-cue-blank.md`](docs/guides/adding-a-cue-blank.md).
@@ -152,7 +160,18 @@ Full reference: [`docs/configuration.md`](docs/configuration.md) · [`docs/guide
 
 # Security
 
-Third-party blanks run under a capability contract — a JS blank only gets `network`/`llm`/`storage`/`secrets` access if declared, and secrets without a matching host binding are refused at load time. Check a pack before trusting it:
+OpenCues has no tool handlers or exec layer for LLM output — no MCP-tool execution, no agentic actions, no side-effect channel. Worst-case, an LLM response lands as user-visible text in the buffer you review before submitting. That single invariant is what keeps prompt injection a UX failure instead of a data-exfiltration channel, across every surface below.
+
+22 of 25 tracked attack classes closed, 2 closed-with-caveat, 1 tracked for the future pack registry ([full audit table](docs/architecture/security-audit.md)).
+
+| Defense | What it covers |
+|---|---|
+| Sandbox isolation | Third-party blank JS runs in a real V8 isolate (`isolated-vm`) — its own realm, own intrinsics, no sandbox-escape via constructor-chain pivots |
+| Capability gates | A blank only gets `network`/`llm`/`storage`/`secrets` access if declared; secrets without a matching host binding are refused at load time |
+| Resource quotas | Sliding-window caps on fetches, LLM calls, and storage writes — no polling hammer, no runaway LLM burn |
+| Output sanitization | Blank output is stripped of HTML/script tags, zero-width chars, and bidi overrides before it reaches the buffer |
+
+Check a pack before trusting it:
 
 ```bash
 opencues review ./untrusted-pack/
