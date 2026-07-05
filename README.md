@@ -135,7 +135,7 @@ Authoring your own: `opencues new cue <name>` / `opencues new blank <name>` scaf
 
 <br>
 
-Config lives at `~/.cues/` — one `OPENCUES.md` for runtime settings, plus per-surface source folders. Seven providers supported (Cerebras recommended default, plus Groq/OpenAI/Anthropic/Gemini/OpenRouter/OpenCode Zen); set an env key or `opencues set-key` and you're done.
+Config lives at `~/.cues/` — one `OPENCUES.md` for runtime settings, plus per-surface source folders. Seven providers supported; set an env key or `opencues set-key` and you're done.
 
 Full reference: [`docs/configuration.md`](docs/configuration.md) · [`docs/guides/llm-providers.md`](docs/guides/llm-providers.md) (switching provider/model, free mode, failover).
 
