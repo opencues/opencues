@@ -66,13 +66,13 @@ describe('printKeyDetectionReport', () => {
 
     printKeyDetectionReport({ REPO_ROOT });
     const content = lines.filter((l) => l.trim() !== '');
-    // Single line — the full per-key inventory belongs to doctor.
+    // Single line, resolution only — no key names or sources (presence
+    // isn't validity; check-keys verifies, doctor inventories).
     assert.strictEqual(content.length, 1, `expected one report line, got:\n${content.join('\n')}`);
     // cerebras leads PROVIDER_AUTO_ORDER, so it is the pick even though
-    // its key came from the file; the line says which and from where.
-    assert.match(content[0], /LLM provider: cerebras — CEREBRAS_API_KEY · ~\/\.cues\/\.env/);
-    // The unused groq key is NOT enumerated.
-    assert.ok(!content[0].includes('GROQ_API_KEY'));
+    // its key came from the file.
+    assert.match(content[0], /LLM provider: cerebras\s*$/);
+    assert.ok(!content[0].includes('API_KEY'), 'no key names on the resolution line');
     assert.ok(!content[0].includes('secret'), 'report must never print key material');
   });
 
@@ -84,9 +84,7 @@ describe('printKeyDetectionReport', () => {
 
     printKeyDetectionReport({ REPO_ROOT });
     const out = lines.join('\n');
-    // Shell-sourced keys carry NO source note — shell env is the
-    // assumed default; only ~/.cues/.env is annotated.
-    assert.match(out, /LLM provider: openai — OPENAI_API_KEY\s*$/m);
+    assert.match(out, /LLM provider: openai\s*$/m);
   });
 
   it('explicit scalar with no key for it → one warn pointing at check-keys', () => {

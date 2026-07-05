@@ -580,15 +580,12 @@ function printKeyDetectionReport(ctx) {
     const provider = explicit || providers.pickAutoProvider(bag);
     if (!provider) return;
     const row = detected.find((d) => d.providerId === provider);
-    if (row) {
-      // Source annotated ONLY for the file case (doctor's convention):
-      // a shell export is the assumed default, but `· ~/.cues/.env` is
-      // the set-key user's confirmation that the stored key took effect.
-      const src = row.source === 'env-file' ? ' · ~/.cues/.env' : '';
-      console.log(`${green(G.ringOn)} LLM provider: ${bold(provider)} ${dim(`— ${row.envKeyName}${src}`)}`);
-    } else if (providers.getProvider(provider)?.transport === 'cli') {
-      // Subscription CLI set explicitly — no env key involved.
-      console.log(`${green(G.ringOn)} LLM provider: ${bold(provider)} ${dim('— subscription CLI, no API key needed')}`);
+    if (row || providers.getProvider(provider)?.transport === 'cli') {
+      // Just the resolution — no key name, no source. Presence of a key
+      // doesn't prove it WORKS, so naming it here would imply a
+      // verification that never ran (`opencues check-keys` is the live
+      // probe; doctor has the per-key detail).
+      console.log(`${green(G.ringOn)} LLM provider: ${bold(provider)}`);
     } else {
       // Explicit scalar names a provider we found no key for — the one
       // detected-state misconfig worth a line here.
