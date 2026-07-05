@@ -22,3 +22,6 @@ tests/agentic/
 
 # Internal docs — strategy, handoffs, audits not for public consumption.
 .internal/
+
+# External clone — not part of this repo.
+tester/
