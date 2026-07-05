@@ -240,8 +240,15 @@ function App(props: AppOpts) {
           />
         </box>
         {tip() != null && (
-          <box style={{ height: tipRows().length, width: '100%', paddingLeft: 1, paddingRight: 1, flexDirection: 'column' }}>
-            {tipRows().map((row) => <text>{row}</text>)}
+          <box style={{ height: tipRows().length + 1, width: '100%', paddingLeft: 1, paddingRight: 1, flexDirection: 'column' }}>
+            {tipRows().map((row, i) =>
+              i === 0 && row.startsWith('C_ ')
+                ? <box style={{ flexDirection: 'row', height: 1 }}>
+                    <text fg="#1a1a1a" bg="#ffffff" attributes={TextAttributes.BOLD}>C_</text>
+                    <text>{row.slice(2)}</text>
+                  </box>
+                : <text>{row}</text>)}
+            <text> </text>
           </box>
         )}
       </box>

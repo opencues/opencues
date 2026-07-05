@@ -3,8 +3,8 @@ var __require = import.meta.require;
 
 // src/app.tsx
 import { createComponent as _$createComponent } from "@opentui/solid";
-import { createTextNode as _$createTextNode } from "@opentui/solid";
 import { effect as _$effect } from "@opentui/solid";
+import { createTextNode as _$createTextNode } from "@opentui/solid";
 import { insert as _$insert } from "@opentui/solid";
 import { memo as _$memo } from "@opentui/solid";
 import { insertNode as _$insertNode } from "@opentui/solid";
@@ -884,14 +884,30 @@ function App(props) {
       _$insert(_el$, (() => {
         var _c$ = _$memo(() => tip() != null);
         return () => _c$() && (() => {
-          var _el$4 = _$createElement("box");
-          _$insert(_el$4, () => tipRows().map((row) => (() => {
-            var _el$5 = _$createElement("text");
-            _$insert(_el$5, row);
-            return _el$5;
-          })()));
+          var _el$4 = _$createElement("box"), _el$5 = _$createElement("text");
+          _$insertNode(_el$4, _el$5);
+          _$insert(_el$4, () => tipRows().map((row, i) => i === 0 && row.startsWith("C_ ") ? (() => {
+            var _el$7 = _$createElement("box"), _el$8 = _$createElement("text"), _el$0 = _$createElement("text");
+            _$insertNode(_el$7, _el$8);
+            _$insertNode(_el$7, _el$0);
+            _$setProp(_el$7, "style", {
+              flexDirection: "row",
+              height: 1
+            });
+            _$insertNode(_el$8, _$createTextNode(`C_`));
+            _$setProp(_el$8, "fg", "#1a1a1a");
+            _$setProp(_el$8, "bg", "#ffffff");
+            _$insert(_el$0, () => row.slice(2));
+            _$effect((_$p) => _$setProp(_el$8, "attributes", TextAttributes.BOLD, _$p));
+            return _el$7;
+          })() : (() => {
+            var _el$1 = _$createElement("text");
+            _$insert(_el$1, row);
+            return _el$1;
+          })()), _el$5);
+          _$insertNode(_el$5, _$createTextNode(` `));
           _$effect((_$p) => _$setProp(_el$4, "style", {
-            height: tipRows().length,
+            height: tipRows().length + 1,
             width: "100%",
             paddingLeft: 1,
             paddingRight: 1,
@@ -904,30 +920,30 @@ function App(props) {
     })();
   }
   return (() => {
-    var _el$6 = _$createElement("box"), _el$7 = _$createElement("box"), _el$8 = _$createElement("textarea"), _el$9 = _$createElement("box");
-    _$insertNode(_el$6, _el$7);
-    _$insertNode(_el$6, _el$9);
-    _$setProp(_el$6, "style", {
+    var _el$10 = _$createElement("box"), _el$11 = _$createElement("box"), _el$12 = _$createElement("textarea"), _el$13 = _$createElement("box");
+    _$insertNode(_el$10, _el$11);
+    _$insertNode(_el$10, _el$13);
+    _$setProp(_el$10, "style", {
       flexDirection: "column",
       width: "100%",
       height: "100%",
       paddingLeft: 1,
       paddingRight: 1
     });
-    _$insertNode(_el$7, _el$8);
-    _$setProp(_el$7, "style", {
+    _$insertNode(_el$11, _el$12);
+    _$setProp(_el$11, "style", {
       flexGrow: 1,
       width: "100%"
     });
     _$use((t) => {
       textarea = t;
-    }, _el$8);
-    _$setProp(_el$8, "style", {
+    }, _el$12);
+    _$setProp(_el$12, "style", {
       width: "100%",
       height: "100%"
     });
-    _$setProp(_el$8, "wrapMode", "word");
-    _$setProp(_el$9, "style", {
+    _$setProp(_el$12, "wrapMode", "word");
+    _$setProp(_el$13, "style", {
       height: 1,
       width: "100%",
       flexDirection: "row",
@@ -935,30 +951,30 @@ function App(props) {
       paddingLeft: 1,
       paddingRight: 1
     });
-    _$insert(_el$9, (() => {
+    _$insert(_el$13, (() => {
       var _c$2 = _$memo(() => tip() != null);
       return () => _c$2() ? (() => {
-        var _el$0 = _$createElement("text");
-        _$setProp(_el$0, "fg", "#ffffff");
-        _$insert(_el$0, tip);
-        return _el$0;
+        var _el$14 = _$createElement("text");
+        _$setProp(_el$14, "fg", "#ffffff");
+        _$insert(_el$14, tip);
+        return _el$14;
       })() : (() => {
-        var _el$1 = _$createElement("box"), _el$10 = _$createElement("text"), _el$12 = _$createElement("text");
-        _$insertNode(_el$1, _el$10);
-        _$insertNode(_el$1, _el$12);
-        _$setProp(_el$1, "style", {
+        var _el$15 = _$createElement("box"), _el$16 = _$createElement("text"), _el$18 = _$createElement("text");
+        _$insertNode(_el$15, _el$16);
+        _$insertNode(_el$15, _el$18);
+        _$setProp(_el$15, "style", {
           flexDirection: "row"
         });
-        _$insertNode(_el$10, _$createTextNode(`C_`));
-        _$setProp(_el$10, "fg", "#1a1a1a");
-        _$setProp(_el$10, "bg", "#ffffff");
-        _$insertNode(_el$12, _$createTextNode(` OpenCues_ \xB7 Submit: Ctrl+Alt+S \xB7 Cancel: Ctrl+Alt+Q`));
-        _$setProp(_el$12, "fg", "#ffffff");
-        _$effect((_$p) => _$setProp(_el$10, "attributes", TextAttributes.BOLD, _$p));
-        return _el$1;
+        _$insertNode(_el$16, _$createTextNode(`C_`));
+        _$setProp(_el$16, "fg", "#1a1a1a");
+        _$setProp(_el$16, "bg", "#ffffff");
+        _$insertNode(_el$18, _$createTextNode(` OpenCues_ \xB7 Submit: Ctrl+Alt+S \xB7 Cancel: Ctrl+Alt+Q`));
+        _$setProp(_el$18, "fg", "#ffffff");
+        _$effect((_$p) => _$setProp(_el$16, "attributes", TextAttributes.BOLD, _$p));
+        return _el$15;
       })();
     })());
-    return _el$6;
+    return _el$10;
   })();
 }
 function runTmux(tmuxBin, args) {
