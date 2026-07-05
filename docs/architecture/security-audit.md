@@ -96,10 +96,55 @@ Status colour: 🟢 green = closed, 🟡 amber = closed with caveat, ⚪ N/A.
 
 ## Open follow-ups
 
-The amber items each have a known next step:
+The amber / partially-covered items each have a known next step.
 
-- **#17** — Windows native still has no OS-sandbox wrapper.
-  Investigate AppContainer / Job Objects when there's concrete demand.
+**OS sandbox coverage (#17).** Linux gets `bwrap` (deny-by-default,
+PID/IPC-namespaced). Two gaps remain: macOS `sandbox-exec` has no
+PID/IPC-namespacing equivalent (weaker confinement than Linux), and
+**Windows native has no sandbox wrapper at all** — scripted blanks run
+unconfined with a one-time per-blank warn. Next step: investigate
+AppContainer / Job Objects for Windows when there's concrete demand;
+separately, turn the pre-existing-install "warn" into a dispatcher
+*refusal* once the ecosystem has migrated (v2).
+
+**Chrome sensitive-field detection (#25).** A site that mistypes a
+password field as `<input type="text">`, gives it a bland `name`
+(`field1`, `q`), and sets no `autocomplete` slips past all three
+detection layers, so OpenCues could read the credential into the LLM
+pipeline. Currently an accepted residual (no worse than any browser
+extension). Possible hardening: a value-shape heuristic (entropy /
+masking detection) or a conservative default-refuse on ambiguous short
+single-line fields.
+
+**Chrome end-to-end silent-degrade coverage (test gap, not a live
+vulnerability).** The recurring bug shape is "a feature is wired but
+runs completely inert in chrome" — an unguarded `process.env`, a
+`NodeHttpAdapter` that stubs out in the bundle, or node-only code dead
+in the content script — failing with **no error surfaced** (see the
+`docs/architecture/chrome-runtime-compat.md` bug class + the
+`lint-runtime-browser-safe` gate). The static lints catch the two
+build-visible shapes; the end-to-end "wired but inert" shape still has
+no Playwright chrome E2E driving a real feature to observable output.
+Existing `tests/playwright/*.pw.test.ts` cover write-path undo
+behaviour, not feature-liveness. A regression here can silently ship a
+dead feature — or, worse, mask a security control that degraded *open*.
+Planning doc: `docs/architecture/chrome-e2e-plan.md`.
+
+**Deferred feature phases (re-threat-model when built).** Gated behind
+explicit design work, not open holes:
+- **identity-context Phase 3** — raw-mode free-text body injection,
+  letting *packs* consume identity data via a `sentinels-hosts.<field>`
+  binding enforced by the fetch body-scan, per-pack capability, and an
+  audit log. Widens who can touch PII; re-review rows #21/#22 before it
+  lands. See `docs/architecture/identity-context.md`.
+- **ambient-context scope** — chrome-only gatherer today, single-field
+  only. Any widening (sibling field values, more hosts) re-opens row
+  #21's threat model. See `docs/architecture/ambient-context.md`.
+
+The whole supply-chain class (pack signing, author pinning,
+capability-diff-at-update, revocation, …) is tracked separately under
+**Pre-registry follow-ups** below — none of it applies until a registry
+exists, but it's the largest future surface.
 
 ## Pre-install review — `opencues review`
 
