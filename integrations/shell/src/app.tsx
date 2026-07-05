@@ -52,8 +52,16 @@ function App(props: AppOpts) {
   // clipping at the pane edge. Deterministic manual wrap — OpenTUI
   // <text> doesn't reliably wrap inside a sized box. Recomputed per
   // render so pane resizes re-wrap.
-  const tipRows = (): string[] => {
+  // Split the tutorial head ("C_ Tutorial 2/3:") from the body — the
+  // head renders on its OWN line (plate + white), the body wraps below.
+  const tipParts = (): { head: string | null; body: string } | null => {
     const t = tip();
+    if (t == null) return null;
+    const m = t.match(/^C_ (Tutorial[^:]*:)\s*([\s\S]*)$/);
+    return m ? { head: m[1], body: m[2] } : { head: null, body: t };
+  };
+  const tipRows = (): string[] => {
+    const t = tipParts()?.body ?? null;
     if (t == null) return [];
     const width = Math.max(20, (process.stdout.columns ?? 80) - 4);
     const rows: string[] = [];
@@ -70,22 +78,22 @@ function App(props: AppOpts) {
     }
     return rows.length > 0 ? rows : [''];
   };
-  // Inline-markup renderer for tip rows — weight, not colour: prose is
-  // DIMMED, useful text (\u0060commands\u0060 the user literally types/presses,
-  // **emphasis**) is BOLD at default colour. Parsed per row after wrapping.
+  // Inline-markup renderer for tip rows — two content levels, no bold:
+  // prose + ~decoration~ render DIM (gray); useful text (\u0060commands\u0060 the
+  // user literally types/presses, **emphasis**) renders plain white.
   const renderSpans = (row: string) => {
     const out: any[] = [];
     const re = /\u0060([^\u0060]+)\u0060|\*\*([^*]+)\*\*|~([^~]+)~/g;
     let last = 0;
     let m: RegExpExecArray | null;
     while ((m = re.exec(row)) !== null) {
-      if (m.index > last) out.push(<text>{row.slice(last, m.index)}</text>);
+      if (m.index > last) out.push(<text attributes={TextAttributes.DIM}>{row.slice(last, m.index)}</text>);
       if (m[3] !== undefined) out.push(<text attributes={TextAttributes.DIM}>{m[3]}</text>);
-      else out.push(<text attributes={TextAttributes.BOLD}>{m[1] ?? m[2]}</text>);
+      else out.push(<text fg="#ffffff">{m[1] ?? m[2]}</text>);
       last = m.index + m[0].length;
     }
-    if (last < row.length) out.push(<text>{row.slice(last)}</text>);
-    return out.length > 0 ? out : [<text>{row}</text>];
+    if (last < row.length) out.push(<text attributes={TextAttributes.DIM}>{row.slice(last)}</text>);
+    return out.length > 0 ? out : [<text attributes={TextAttributes.DIM}>{row}</text>];
   };
   let textarea: TextareaRenderable | undefined;
   const syntax = SyntaxStyle.create();
@@ -257,15 +265,14 @@ function App(props: AppOpts) {
           />
         </box>
         {tip() != null && (
-          <box style={{ height: tipRows().length + 1, width: '100%', flexDirection: 'column' }}>
-            {tipRows().map((row, i) =>
-              i === 0 && row.startsWith('C_ ')
-                ? <box style={{ flexDirection: 'row', height: 1 }}>
-                    <text fg="#ffffff" attributes={TextAttributes.INVERSE}>C_</text>
-                    <text attributes={TextAttributes.DIM}>{(row.slice(2).match(/^ Tutorial[^:]*:/) ?? [''])[0]}</text>
-                    {renderSpans(row.slice(2).replace(/^ Tutorial[^:]*:/, ''))}
-                  </box>
-                : <box style={{ flexDirection: 'row', height: 1 }}>{renderSpans(row)}</box>)}
+          <box style={{ height: (tipParts()?.head ? 1 : 0) + tipRows().length + 1, width: '100%', flexDirection: 'column' }}>
+            {tipParts()?.head && (
+              <box style={{ flexDirection: 'row', height: 1 }}>
+                <text fg="#ffffff" attributes={TextAttributes.INVERSE}>C_</text>
+                <text fg="#ffffff"> {tipParts()!.head}</text>
+              </box>
+            )}
+            {tipRows().map((row) => <box style={{ flexDirection: 'row', height: 1 }}>{renderSpans(row)}</box>)}
             <text> </text>
           </box>
         )}
