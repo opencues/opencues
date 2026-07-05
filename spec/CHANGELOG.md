@@ -14,6 +14,10 @@ breaking.
 
 ## [Unreleased]
 
+### Fixed
+
+- `core.md` § Hot-reload: corrected the reference-runtime cadence description. The reference implementation reloads config off user input with a ~2s debounce plus a ~5s background poll (`config-loader.ts`), not a ~100ms filesystem poll — the previously cited `event-bridge.ts` `POLL_INTERVAL_MS` timer is the inject-file/state poller, unrelated to config reload. The SHOULD pickup window is restated as "within a couple of seconds" to match the reference implementation (was "a few hundred milliseconds", which the reference runtime itself never met).
+
 ---
 
 ## [0.4.0-alpha] — 2026-06-30

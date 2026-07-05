@@ -230,7 +230,7 @@ The constants `HOSTS` and `NATIVE_HOSTS` in OpenCues' `@opencues/core` library (
 
 ## Hot-reload
 
-A conformant runtime SHOULD detect changes to any file in the search path and apply them without restart. The reference cadence is a fixed-interval filesystem poll (~100ms in `@opencues/runtime`, see `event-bridge.ts`'s `POLL_INTERVAL_MS`); a runtime MAY instead drive the poll off user-input events as long as edits are picked up within a few hundred milliseconds of saving. Atomic / locked files SHOULD be skipped until they settle.
+A conformant runtime SHOULD detect changes to any file in the search path and apply them without restart, picking edits up within a couple of seconds of saving. The mechanism is the runtime's choice — fixed-interval polling, OS file watchers, or user-input-driven re-checks all qualify. The reference cadence in `@opencues/runtime` is a user-input-driven reload with a ~2s debounce (`config-loader.ts`'s `reloadDebounceMs`) plus a ~5s background poll (`backgroundPollMs`) so edits land even when the user isn't typing. (The ~100ms `POLL_INTERVAL_MS` timer in `event-bridge.ts` is the inject-file/state poller, not config reload — a prior revision of this section cited it in error.) Atomic / locked files SHOULD be skipped until they settle.
 
 A runtime that mutates files in the search path (e.g. an `OpenCuesSettingsBlank`-equivalent) MUST suppress its own re-read for at least 2 seconds after writing, to avoid races where the in-memory state and the file disagree mid-flight.
 
