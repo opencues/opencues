@@ -1051,9 +1051,11 @@ Rules:
 - COACH is ONE line (max 100 chars): the next micro-action ("Press Enter to open the model picker"), a fix ("add: don't implement yet"), or brief encouragement. Follow any coach notes in the step body.
 - In COACH, wrap anything the user should LITERALLY type or press in backticks: commands (\`/init\`, \`git status\`, \`skip _\`), exact text to enter, key names (\`Enter\`, \`Shift+Tab\`). The display renders these distinctly so the user can tell commands from prose. Do not backtick ordinary words. You may **bold** one key word for emphasis when it genuinely helps.
 - Meta-questions to you ("help", "what do I do now?", "where am I?") are NOT off-track — answer them: STATUS IN_PROGRESS, COACH restates the current micro-action. When they ask what they've DONE so far, answer from LESSON SO FAR in a few words, then the next action (e.g. "You've run /init and gotten an overview — now ask how to run the tests."). OFF_TRACK is reserved for actions that contradict the step.
-- TRUST COMPLETION CLAIMS on steps you can't observe: if the user explicitly claims they completed an outside-the-input-box action ("done", "I did it", "I'm in plan mode now") and the trace doesn't contradict them, that's STEP_DONE. Never hold a user hostage to key-press evidence you might simply have missed.
+- TRUST COMPLETION CLAIMS **only** on steps you cannot observe: if a step happens outside the input box (a key press, a menu, a mode toggle) and the user explicitly claims completion ("done", "I did it", "I'm in plan mode now"), that's STEP_DONE — never hold them hostage to key-press evidence you might have missed. BUT if the step's goal IS observable (they must TYPE or SUBMIT specific content), a bare claim like "done, I pasted it" with no such entry in the trace is NOT completion: stay on the step and ask for the actual content.
 - USER CONTROLS you must know (and mention when relevant): the user can type "stop kata _" to exit the kata at any time, and "skip _" to force-skip the current step. When they want to quit, are frustrated, or ask how to exit → COACH must include: type stop kata _ to exit. When they've been stuck on the same step for several checks despite your coaching → give the EXACT text to type, and mention skip _ as the escape.
 - Coach in the user's language: if they're typing in French, coach in French; same for any language. The control phrases (stop kata _, skip _) and commands (/init, /model) stay verbatim in English.
+- When a step's coach notes set an attempt threshold ("after 3 wrong attempts, reveal…"), compare it against the DISTINCT ATTEMPTS THIS STEP number provided in the check-in. Count reached → OBEY the note and give the exact answer; continuing to hint past the threshold is wrong.
+- Never repeat your previous coach line verbatim — each check-in adds information, rephrases more concretely, or escalates.
 - Never invent steps. Answer for the CURRENT step only.
 
 Respond in EXACTLY this format (three lines — plus the optional CONTROL line — nothing else):
@@ -1080,13 +1082,18 @@ ${steps}`;
     const journal = this._journal.length === 0
       ? ''
       : `LESSON SO FAR:\n${this._journal.map(l => `- ${l}`).join('\n')}\n`;
+    // Deterministic attempt count — models are unreliable at counting
+    // trace entries themselves (gemma never reveals-after-3 without
+    // this); typed/submitted entries are attempts, key presses aren't.
+    const attempts = this._trace.filter(t => t.kind !== 'key').length;
+    const attemptsLine = `\nDISTINCT ATTEMPTS THIS STEP: ${attempts}`;
     const timeOnStep = this._stepStartedAt > 0
       ? `\nTIME ON CURRENT STEP: ~${Math.max(1, Math.round((Date.now() - this._stepStartedAt) / 1000))}s`
       : '';
     const nudgeBlock = nudge
       ? `\nNUDGE CHECK-IN: the user has been idle for ~${Math.round(nudge.idleMs / 1000)}s on the current step (nudge ${nudge.nudgeNumber} of 2). Give ONE short, warm, context-aware nudge — reference their partial input or what they've already completed when helpful. There is NO new evidence, so STATUS must not be STEP_DONE.`
       : '';
-    return `CURRENT STEP: ${stepIndex + 1}${timeOnStep}\n${journal}RECENT ACTIVITY:\n${trace}\nCURRENT BUFFER: ${buffer}${nudgeBlock}`;
+    return `CURRENT STEP: ${stepIndex + 1}${timeOnStep}${attemptsLine}\n${journal}RECENT ACTIVITY:\n${trace}\nCURRENT BUFFER: ${buffer}${nudgeBlock}`;
   }
 
   private getHttpAgent(): NonNullable<KataCoachOptions['httpAdapter']> {
