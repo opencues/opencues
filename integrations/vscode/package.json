@@ -1,0 +1,82 @@
+{
+  "name": "opencues-vscode",
+  "displayName": "OpenCues",
+  "description": "OpenCues for VS Code — LLM word alternatives, `_`-gated blank fill-ins, and auditors in prose editors.",
+  "version": "0.1.0",
+  "private": true,
+  "publisher": "opencues",
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "engines": {
+    "vscode": "^1.85.0",
+    "node": ">=18"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:markdown",
+    "onLanguage:plaintext",
+    "onLanguage:git-commit",
+    "onLanguage:restructuredtext",
+    "onLanguage:latex"
+  ],
+  "contributes": {
+    "commands": [
+      { "command": "opencues.navLeft", "title": "OpenCues: Navigate to Previous Cue" },
+      { "command": "opencues.navRight", "title": "OpenCues: Navigate to Next Cue" },
+      { "command": "opencues.cycleUp", "title": "OpenCues: Cycle Alternative Up" },
+      { "command": "opencues.cycleDown", "title": "OpenCues: Cycle Alternative Down" },
+      { "command": "opencues.escape", "title": "OpenCues: Dismiss Highlight" },
+      { "command": "opencues.toggle", "title": "OpenCues: Enable/Disable in This Window" }
+    ],
+    "keybindings": [
+      { "command": "opencues.navLeft", "key": "ctrl+alt+left", "when": "editorTextFocus && opencues.cueActive" },
+      { "command": "opencues.navRight", "key": "ctrl+alt+right", "when": "editorTextFocus && opencues.cueActive" },
+      { "command": "opencues.cycleUp", "key": "ctrl+alt+up", "when": "editorTextFocus && opencues.cueActive" },
+      { "command": "opencues.cycleDown", "key": "ctrl+alt+down", "when": "editorTextFocus && opencues.cueActive" },
+      { "command": "opencues.escape", "key": "escape", "when": "editorTextFocus && opencues.highlightActive && !suggestWidgetVisible && !renameInputVisible && !findWidgetVisible" }
+    ],
+    "configuration": {
+      "title": "OpenCues",
+      "properties": {
+        "opencues.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable OpenCues in this window."
+        },
+        "opencues.languages": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["markdown", "plaintext", "git-commit", "restructuredtext", "latex"],
+          "description": "Language IDs OpenCues attaches to. Prose languages only by default — `_` is a code identifier character, and whole-buffer analysis is wrong for source files."
+        },
+        "opencues.maxCueDocumentWords": {
+          "type": "number",
+          "default": 500,
+          "description": "Word-cue / sentence-cue analysis is disabled above this document word count (blanks and `_`-invoked rewrites keep working at any size). 0 disables the gate."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "npm run typecheck && node esbuild.config.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/opencues/opencues",
+    "directory": "integrations/vscode"
+  }
+}
