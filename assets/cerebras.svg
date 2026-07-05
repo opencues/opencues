@@ -1,11 +1,8 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Generator: Adobe Illustrator 16.0.0, SVG Export Plug-In . SVG Version: 6.00 Build 0)  -->
-<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
-	 viewBox="0 12.191 39.248 4.023" enable-background="new 0 12.191 39.248 4.023" preserveAspectRatio="xMidYMid meet"
+	 viewBox="0 0 285.0226 29.2154" preserveAspectRatio="xMidYMid meet"
 	 xml:space="preserve">
+  <g transform="scale(7.262093) translate(0.000 -12.191)">
 <polygon fill="#93989F" points="2.592,14.175 0,15.387 0,12.963 "/>
-<circle fill="#DE6239" cx="7.496" cy="14.175" r="1.984"/>
 <g>
 	<path fill="#93989F" d="M12.149,15.555c-0.828,0-1.283-0.596-1.283-1.305c0-0.708,0.455-1.304,1.283-1.304
 		c0.631,0,0.977,0.338,1.131,0.786h-0.335c-0.137-0.317-0.37-0.504-0.796-0.504c-0.627,0-0.948,0.476-0.948,1.021
@@ -65,4 +62,6 @@
 		c-0.271-0.066-0.515-0.232-0.515-0.515c0-0.342,0.353-0.535,0.673-0.535c0.356,0,0.67,0.19,0.705,0.592h-0.313
 		C38.882,14,38.685,13.912,38.501,13.912z"/>
 </g>
+  </g>
+  <circle fill="#DE6239" cx="55.1671" cy="14.6075" r="14.6077"/>
 </svg>
