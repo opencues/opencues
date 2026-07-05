@@ -140,6 +140,8 @@ export interface CoachSegment {
   readonly command: boolean;
   /** **bold** emphasis (non-command). */
   readonly bold?: boolean;
+  /** ~dim~ decoration — meta text (hints, separators) renderers de-emphasise. */
+  readonly dim?: boolean;
 }
 
 /** Parse backtick markup in a coach line: `like this` spans are
@@ -148,13 +150,14 @@ export interface CoachSegment {
 export function parseCoachMarkup(line: string): { plain: string; segments: readonly CoachSegment[] } {
   const segments: CoachSegment[] = [];
   // Backtick commands and **bold** emphasis; anything unmatched stays prose.
-  const re = /`([^`]+)`|\*\*([^*]+)\*\*/g;
+  const re = /`([^`]+)`|\*\*([^*]+)\*\*|~([^~]+)~/g;
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(line)) !== null) {
     if (m.index > last) segments.push({ text: line.slice(last, m.index), command: false });
     if (m[1] !== undefined) segments.push({ text: m[1], command: true });
-    else segments.push({ text: m[2], command: false, bold: true });
+    else if (m[2] !== undefined) segments.push({ text: m[2], command: false, bold: true });
+    else segments.push({ text: m[3], command: false, dim: true });
     last = m.index + m[0].length;
   }
   if (last < line.length) segments.push({ text: line.slice(last), command: false });
@@ -536,7 +539,7 @@ export class TutorialCoach {
           this._journal = Array.isArray(saved.journal) ? [...saved.journal] : [];
           this._coachLine = `Welcome back to **${doc.title}** — next: ${cleanStepTitle(doc.steps[saved.step].title)}`;
         } else {
-          this._coachLine = `**${doc.title}** — first: ${cleanStepTitle(doc.steps[0].title)} · \`Esc ×3\` exits`;
+          this._coachLine = `**${doc.title}** — first: ${cleanStepTitle(doc.steps[0].title)}~ · Esc ×3 exits~`;
         }
         this.consumePhrase(text, ctl.phraseStart);
         this.adapter.emitEvent?.('tutorial.started', {

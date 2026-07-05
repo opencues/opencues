@@ -75,17 +75,17 @@ function App(props: AppOpts) {
   // **emphasis**) is BOLD at default colour. Parsed per row after wrapping.
   const renderSpans = (row: string) => {
     const out: any[] = [];
-    const re = /\u0060([^\u0060]+)\u0060|\*\*([^*]+)\*\*/g;
+    const re = /\u0060([^\u0060]+)\u0060|\*\*([^*]+)\*\*|~([^~]+)~/g;
     let last = 0;
     let m: RegExpExecArray | null;
     while ((m = re.exec(row)) !== null) {
-      if (m.index > last) out.push(<text attributes={TextAttributes.DIM}>{row.slice(last, m.index)}</text>);
-      if (m[1] !== undefined) out.push(<text attributes={TextAttributes.BOLD}>{m[1]}</text>);
-      else out.push(<text attributes={TextAttributes.BOLD}>{m[2]}</text>);
+      if (m.index > last) out.push(<text>{row.slice(last, m.index)}</text>);
+      if (m[3] !== undefined) out.push(<text attributes={TextAttributes.DIM}>{m[3]}</text>);
+      else out.push(<text attributes={TextAttributes.BOLD}>{m[1] ?? m[2]}</text>);
       last = m.index + m[0].length;
     }
-    if (last < row.length) out.push(<text attributes={TextAttributes.DIM}>{row.slice(last)}</text>);
-    return out.length > 0 ? out : [<text attributes={TextAttributes.DIM}>{row}</text>];
+    if (last < row.length) out.push(<text>{row.slice(last)}</text>);
+    return out.length > 0 ? out : [<text>{row}</text>];
   };
   let textarea: TextareaRenderable | undefined;
   const syntax = SyntaxStyle.create();
@@ -262,7 +262,8 @@ function App(props: AppOpts) {
               i === 0 && row.startsWith('C_ ')
                 ? <box style={{ flexDirection: 'row', height: 1 }}>
                     <text fg="#ffffff" attributes={TextAttributes.INVERSE}>C_</text>
-                    {renderSpans(row.slice(2))}
+                    <text attributes={TextAttributes.DIM}>{(row.slice(2).match(/^ Tutorial[^:]*:/) ?? [''])[0]}</text>
+                    {renderSpans(row.slice(2).replace(/^ Tutorial[^:]*:/, ''))}
                   </box>
                 : <box style={{ flexDirection: 'row', height: 1 }}>{renderSpans(row)}</box>)}
             <text> </text>

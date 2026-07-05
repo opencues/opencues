@@ -366,7 +366,7 @@ export function startOpenCues(opts: TerminalBootOpts): BootResult {
         // Re-emit the inline markup (backtick commands, **bold**) so the
         // app's tip renderer can style spans; plain fallback otherwise.
         const marked = tut.coachSegments
-          ? tut.coachSegments.map(seg => seg.command ? '\u0060' + seg.text + '\u0060' : (seg.bold ? '**' + seg.text + '**' : seg.text)).join('')
+          ? tut.coachSegments.map(seg => seg.command ? '\u0060' + seg.text + '\u0060' : (seg.bold ? '**' + seg.text + '**' : (seg.dim ? '~' + seg.text + '~' : seg.text))).join('')
           : (tut.coach ?? tut.stepTitle);
         opts.onTipChange(`${head} ${marked}`);
         return;
