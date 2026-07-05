@@ -1037,3 +1037,8 @@ function printHelp(ctx) {
   console.log('  opencues install --all --dry-run');
   console.log('  opencues install skill cues');
 }
+
+// Test-only export — the report is invoked internally at the end of a
+// successful install; exposing it lets install.keyreport.test.cjs drive
+// both states (keys detected / zero keys) without running an installer.
+module.exports.printKeyDetectionReport = printKeyDetectionReport;
