@@ -1,9 +1,9 @@
-// TutorialCoach — modal guided-scenario runtime (PROTOTYPE).
+// KataCoach — modal guided-scenario runtime (PROTOTYPE).
 //
-// A tutorial is an ordered script of steps the user works through inside
-// their real editor, authored as `tutorials/<name>/TUTORIAL.md` under any
+// A kata is an ordered script of steps the user works through inside
+// their real editor, authored as `katas/<name>/KATA.md` under any
 // `.cues/` search path. The coach is a debounced background LLM call that
-// receives the WHOLE tutorial script (stable → provider prefix-cache) plus
+// receives the WHOLE kata script (stable → provider prefix-cache) plus
 // the user's recent typed activity, and returns (a) whether the current
 // step is satisfied and (b) ONE short coaching line shown on the
 // statusline. The model owns progress judgement; the runtime owns only
@@ -13,7 +13,7 @@
 // STRUCTURAL INVARIANTS (mirrors ambient-context, security-audit row #21):
 //   - Coach output is DISPLAY-ONLY. It feeds the statusline field and the
 //     step counter — never the buffer, never an exec/side-effect layer.
-//     A malicious TUTORIAL.md can at worst show wrong text and mis-advance
+//     A malicious KATA.md can at worst show wrong text and mis-advance
 //     its own step counter.
 //   - The runtime observes typed text AND salient key presses (the
 //     adapter's onKey stream — passive, never consumed): Tab/Shift+Tab,
@@ -22,21 +22,21 @@
 //     Together these make "unobservable" steps (mode toggles, pickers)
 //     detectable without the user having to type `done` — seamlessness
 //     is the point. `done _` / `next _` / `skip _` remain as manual
-//     escape hatches but tutorials should never require them.
-//   - While a tutorial is active the Resolver is suppressed entirely
-//     (ResolverOptions.externallySuppressed) — tutorial mode overrides
-//     normal cue/blank behaviour, and `stop tutorial _` restores it with
+//     escape hatches but katas should never require them.
+//   - While a kata is active the Resolver is suppressed entirely
+//     (ResolverOptions.externallySuppressed) — kata mode overrides
+//     normal cue/blank behaviour, and `stop kata _` restores it with
 //     zero settings churn because nothing was ever written to OPENCUES.md.
 //
 // Control phrases (keyword-bound, `_`-gated like every blank trigger):
-//   start tutorial <id|name> _   activate (bare `start tutorial _` = first found)
-//   stop tutorial _              deactivate
+//   start kata <id|name> _   activate (bare `start kata _` = first found)
+//   stop kata _              deactivate
 //   done _ / next _              advance past an unobservable step
 //   skip _                       force-advance a typed step
 //
 // Observability: every transition emits a structured event
-// (tutorial.started / tutorial.tick / tutorial.step-advanced /
-// tutorial.completed / tutorial.stopped) via adapter.emitEvent — the
+// (kata.started / kata.tick / kata.step-advanced /
+// kata.completed / kata.stopped) via adapter.emitEvent — the
 // agentic harness's oc-events / scenario assertions see the coach loop
 // the same way they see transform-blank passes.
 
@@ -46,10 +46,10 @@ import type { ResolvedAgentLLM } from './agent-rewrite';
 import { dispatchChat } from '@opencues/core';
 
 // ──────────────────────────────────────────────────────────────────────
-// TUTORIAL.md parsing
+// KATA.md parsing
 // ──────────────────────────────────────────────────────────────────────
 
-export interface TutorialStep {
+export interface KataStep {
   /** Heading text after `## ` (e.g. "Step 1" or "Step 1 — enter plan mode"). */
   readonly title: string;
   /** Full step body — instruction prose + optional `coach:` notes. The
@@ -58,19 +58,19 @@ export interface TutorialStep {
   readonly body: string;
 }
 
-export interface TutorialDoc {
+export interface KataDoc {
   readonly name: string;
   readonly id: string | null;
   readonly title: string;
-  /** Curriculum link — the tutorial to suggest on completion
+  /** Curriculum link — the kata to suggest on completion
    *  (`next: cc-fix-a-bug` frontmatter; name or id). */
   readonly next: string | null;
-  readonly steps: readonly TutorialStep[];
+  readonly steps: readonly KataStep[];
 }
 
-/** Parse a TUTORIAL.md — frontmatter (name/id/title) + `## ` step sections.
- *  Returns null when the doc has no steps (not a usable tutorial). */
-export function parseTutorialMd(raw: string, fallbackName: string): TutorialDoc | null {
+/** Parse a KATA.md — frontmatter (name/id/title) + `## ` step sections.
+ *  Returns null when the doc has no steps (not a usable kata). */
+export function parseKataMd(raw: string, fallbackName: string): KataDoc | null {
   let name = fallbackName;
   let id: string | null = null;
   let title = fallbackName;
@@ -89,7 +89,7 @@ export function parseTutorialMd(raw: string, fallbackName: string): TutorialDoc 
       else if (key === 'next') next = m[2];
     }
   }
-  const steps: TutorialStep[] = [];
+  const steps: KataStep[] = [];
   const parts = body.split(/^##\s+/m);
   for (const part of parts.slice(1)) {
     const nl = part.indexOf('\n');
@@ -107,13 +107,13 @@ export function parseTutorialMd(raw: string, fallbackName: string): TutorialDoc 
 
 // Phrase must LEAD the sentence containing the trailing `_` — same trigger
 // model as blank shapes (spec/blank-spec.md § Trigger model).
-const RE_START = /(^|[\n.!?]\s+)(start|restart)\s+tutorial(?:\s+#?(\S+))?\s*_\s*$/i;
-const RE_STOP = /(^|[\n.!?]\s+)stop\s+tutorial\s*_\s*$/i;
+const RE_START = /(^|[\n.!?]\s+)(start|restart)\s+kata(?:\s+#?(\S+))?\s*_\s*$/i;
+const RE_STOP = /(^|[\n.!?]\s+)stop\s+kata\s*_\s*$/i;
 // Advance words fire on a TRAILING match (start or any whitespace
 // before them) — unlike start/stop they don't need to lead a sentence.
 // The natural moment to skip is with your step attempt still in the
 // buffer ("git checkout main skip _"); requiring sentence-leading made
-// that silently dead (live-reported). Only checked while a tutorial is
+// that silently dead (live-reported). Only checked while a kata is
 // ACTIVE, and the resolver is suppressed then, so a trailing `_` has no
 // competing meaning.
 const RE_ADVANCE = /(^|\s)(done|next|skip)\s*_\s*$/i;
@@ -174,14 +174,14 @@ export function parseCoachMarkup(line: string): { plain: string; segments: reado
 
 /** Strip a redundant "Step N —/:" prefix from an authored step title —
  *  the statusline head already carries the counter, so displaying
- *  "Tutorial 3/4: Step 3 — switch model" says it three times. */
+ *  "Kata 3/4: Step 3 — switch model" says it three times. */
 export function cleanStepTitle(t: string): string {
   const cleaned = t.replace(/^step\s*\d+\s*(?:[—–\-:.]\s*)?/i, '').trim();
   return cleaned.length > 0 ? cleaned : t;
 }
 
-/** Statusline-facing snapshot. Also mirrored into tutorial.* events. */
-export interface TutorialStatus {
+/** Statusline-facing snapshot. Also mirrored into kata.* events. */
+export interface KataStatus {
   readonly name: string;
   readonly title: string;
   /** 1-based current step. */
@@ -213,22 +213,22 @@ const COACH_MAX_CHARS = 140;
 const DEFAULT_CADENCE_MS = 300;
 const DEFAULT_NUDGE_MS = 30_000;
 
-export interface TutorialCoachOptions {
-  /** `<searchPath>/tutorials` dirs, priority order (project first). */
-  readonly tutorialsDirs: readonly string[];
+export interface KataCoachOptions {
+  /** `<searchPath>/katas` dirs, priority order (project first). */
+  readonly katasDirs: readonly string[];
   /** Same lazy resolver AgentRewrite uses (auditors bucket). Null = no
    *  key; the coach then degrades to static step instructions. */
   readonly resolveLLM: () => ResolvedAgentLLM | null;
   /** Debounce between text-change and coach tick. Default 300ms. */
   readonly cadenceMs?: number | (() => number);
   /** Idle window before a proactive nudge. Default 30s; 0 disables.
-   *  Thunk form re-read per arm so `tutorial-nudge-ms` hot-reloads. */
+   *  Thunk form re-read per arm so `kata-nudge-ms` hot-reloads. */
   readonly nudgeMs?: number | (() => number);
   /** Progress persistence file (JSON). Omit to disable persistence
    *  (chrome — no fs). Read at start (resume), written on every step
    *  advance / stop / completion. */
   readonly progressFile?: string;
-  /** Optional speaker (host TTS). Gated by the `tutorial-voice` scalar
+  /** Optional speaker (host TTS). Gated by the `kata-voice` scalar
    *  (default off); used SPARINGLY — step advances, nudges, completion
    *  — never per-tick (a coach that narrates every keystroke is
    *  unbearable). */
@@ -238,9 +238,9 @@ export interface TutorialCoachOptions {
   readonly httpAdapter?: { post(url: string, body: string, headers: Record<string, string>): Promise<string> };
 }
 
-export class TutorialCoach {
+export class KataCoach {
   private _unsubText: Unsubscribe | null = null;
-  private _doc: TutorialDoc | null = null;
+  private _doc: KataDoc | null = null;
   /** 0-based current step index. */
   private _stepIndex = 0;
   private _coachLine: string | null = null;
@@ -257,14 +257,14 @@ export class TutorialCoach {
    *  legitimate user event with identical text. The empty string is the
    *  dangerous case — every consume writes '', and every user submit
    *  produces '' — which is exactly how a lingering entry ate the
-   *  submit-detection signal (caught by tutorial.scenarios.test.ts). */
+   *  submit-detection signal (caught by kata.scenarios.test.ts). */
   private _selfWrites: Array<{ text: string; addedAt: number }> = [];
-  private _httpAgent: TutorialCoachOptions['httpAdapter'] | null = null;
+  private _httpAgent: KataCoachOptions['httpAdapter'] | null = null;
   private readonly _logFn: (msg: string) => void;
   /** Consecutive bare-Escape presses — the DETERMINISTIC escape hatch.
-   *  3 within the window exits tutorial mode with zero LLM involvement,
+   *  3 within the window exits kata mode with zero LLM involvement,
    *  zero phrase knowledge, in any language, even with a dead API key.
-   *  Every other escape path (stop tutorial _, coach-honoured stop) is
+   *  Every other escape path (stop kata _, coach-honoured stop) is
    *  richer but requires knowledge or a working model; this one is the
    *  floor. */
   private _escCount = 0;
@@ -300,14 +300,14 @@ export class TutorialCoach {
     this._offTrack = false;
     this.refreshStatusline();
   }
-  /** Transient user-facing notice (e.g. "no tutorial found") shown via
-   *  the statusline tutorial block while no tutorial is active. */
+  /** Transient user-facing notice (e.g. "no kata found") shown via
+   *  the statusline kata block while no kata is active. */
   private _notice: { text: string; until: number; offTrack?: boolean } | null = null;
 
   constructor(
     private adapter: HostAdapter,
     private configLoader: ConfigLoader,
-    private options: TutorialCoachOptions,
+    private options: KataCoachOptions,
   ) {
     this._logFn = options.log ?? ((msg) => adapter.log('debug', msg));
   }
@@ -319,23 +319,23 @@ export class TutorialCoach {
     return this._trace.map(t => ({ ...t }));
   }
 
-  /** Resolver suppression predicate — active tutorial OR a control phrase
+  /** Resolver suppression predicate — active kata OR a control phrase
    *  mid-typing. Wired into ResolverOptions.externallySuppressed so normal
-   *  cue/blank sources never race the tutorial's own trigger handling. */
+   *  cue/blank sources never race the kata's own trigger handling. */
   shouldSuppressResolve(text: string): boolean {
     if (this._doc !== null) return true;
     return matchControlPhrase(text, false) !== null;
   }
 
-  /** Statusline payload feed. Null when no tutorial is active. */
-  status(): TutorialStatus | null {
+  /** Statusline payload feed. Null when no kata is active. */
+  status(): KataStatus | null {
     if (!this._doc) {
-      // Transient failure notice (failed `start tutorial N _`). step 0 /
-      // stepCount 0 marks it as a notice, not a running tutorial.
+      // Transient failure notice (failed `start kata N _`). step 0 /
+      // stepCount 0 marks it as a notice, not a running kata.
       if (this._notice && Date.now() < this._notice.until) {
         const parsed = parseCoachMarkup(this._notice.text);
         return {
-          name: 'tutorials', title: 'tutorials', step: 0, stepCount: 0,
+          name: 'katas', title: 'katas', step: 0, stepCount: 0,
           stepTitle: '', coach: parsed.plain, coachSegments: parsed.segments,
           offTrack: this._notice.offTrack ?? true,
         };
@@ -372,8 +372,8 @@ export class TutorialCoach {
    * Navigation/Cycling — because key dispatch is emit-until-consumed:
    * a late subscriber never sees Ctrl+Alt+arrows (Navigation consumes
    * them), which blinds the coach to exactly the presses cycling
-   * tutorials teach. Observation only — callers must NOT treat any key
-   * as consumed on the tutorial's behalf.
+   * katas teach. Observation only — callers must NOT treat any key
+   * as consumed on the kata's behalf.
    *
    * Salient = not plain typing (that shows up as buffer changes):
    * tab / escape / arrows always; enter only on an empty buffer (a
@@ -386,11 +386,11 @@ export class TutorialCoach {
     const anyMod = mods.ctrl || mods.alt || mods.meta || mods.shift;
 
     // Deterministic escape hatch: 3 bare Escapes within 2.5s of each
-    // other → exit tutorial mode. Runs BEFORE any trace/LLM logic so it
+    // other → exit kata mode. Runs BEFORE any trace/LLM logic so it
     // works with no API key, no network, no phrase knowledge. Passive —
     // the host's own Escape behaviour (clear input, interrupt) is
     // untouched; requiring three presses keeps a normal double-Esc
-    // (CC's clear-input) from killing the tutorial by accident.
+    // (CC's clear-input) from killing the kata by accident.
     // Accept meta/alt/shift-flavoured Escape too: terminals encode a
     // bare ESC as a sequence prefix, so rapid consecutive presses are
     // delivered ESC-prefixed and surface as {meta: true, name:
@@ -398,7 +398,7 @@ export class TutorialCoach {
     // the hatch (live-reported on oc-shell inside tmux). Only Ctrl+Esc
     // is excluded (OS-level chord).
     if ((k === 'escape' || k === 'esc') && !mods.ctrl) {
-      // Escape still lands in the trace (tutorials can teach Esc — e.g.
+      // Escape still lands in the trace (katas can teach Esc — e.g.
       // claude-code-power's double-Escape step; the next tick sees it),
       // but escape presses never SCHEDULE a tick: the countdown hint
       // below must not race an LLM verdict.
@@ -416,19 +416,19 @@ export class TutorialCoach {
         const id = this._doc.id;
         this.deactivate();
         this._notice = {
-          text: `Tutorial exited — type \`start tutorial ${id ?? name} _\` to pick it back up`,
+          text: `Kata exited — type \`start kata ${id ?? name} _\` to pick it back up`,
           until: Date.now() + 10_000,
           offTrack: false,
         };
         setTimeout(() => { this._notice = null; this.refreshStatusline(); }, 10_100);
-        this.adapter.emitEvent?.('tutorial.stopped', { name, reason: 'escape-key' });
-        this._logFn(`Tutorial: exited "${name}" via Esc ×3`);
+        this.adapter.emitEvent?.('kata.stopped', { name, reason: 'escape-key' });
+        this._logFn(`Kata: exited "${name}" via Esc ×3`);
         this.refreshStatusline();
         return;
       }
       // Countdown hint — deterministic, overwrites the coach line so the
       // exit is discoverable mid-press without any model round-trip.
-      this._coachLine = `\`Esc\` ×${3 - this._escCount} more to exit the tutorial · or type \`stop tutorial _\``;
+      this._coachLine = `\`Esc\` ×${3 - this._escCount} more to exit the kata · or type \`stop kata _\``;
       this._escResetTimer = setTimeout(() => { this._escCount = 0; }, 2_500);
       this.armIdleTimer();
       this.refreshStatusline();
@@ -476,7 +476,7 @@ export class TutorialCoach {
     // IS the user submitting. Everything else in the trace remains
     // user-source only.
     if (this._doc && text.trim().length === 0 && prev.trim().length > 0
-      && this.configLoader.opencuesState.settings.get('tutorials-mode') !== 'off') {
+      && this.configLoader.opencuesState.settings.get('katas-mode') !== 'off') {
       this.pushTrace({ kind: 'submitted', text: prev.trim() });
       this.armIdleTimer();
       this.scheduleTick();
@@ -486,7 +486,7 @@ export class TutorialCoach {
     if (text === prev) return;
 
     // Feature gate — read lazily so OPENCUES.md hot-reload applies.
-    if (this.configLoader.opencuesState.settings.get('tutorials-mode') === 'off') return;
+    if (this.configLoader.opencuesState.settings.get('katas-mode') === 'off') return;
 
     const ctl = matchControlPhrase(text, this.active);
     if (ctl) { void this.handleControl(ctl, text); return; }
@@ -525,19 +525,19 @@ export class TutorialCoach {
   private async handleControl(ctl: ControlPhrase, text: string): Promise<void> {
     switch (ctl.kind) {
       case 'start': {
-        const doc = await this.loadTutorial(ctl.arg);
+        const doc = await this.loadKata(ctl.arg);
         if (!doc) {
-          this._logFn(`Tutorial: no tutorial found for "${ctl.arg ?? '(first)'}" under ${this.options.tutorialsDirs.join(', ')}`);
-          const available = await this.listTutorials();
+          this._logFn(`Kata: no kata found for "${ctl.arg ?? '(first)'}" under ${this.options.katasDirs.join(', ')}`);
+          const available = await this.listKatas();
           const listing = available.length === 0
-            ? 'none installed — add one under ~/.cues/tutorials/'
+            ? 'none installed — add one under ~/.cues/katas/'
             : available.map(t => t.id ? `\`${t.id}: ${t.name}\`` : `\`${t.name}\``).join(' · ');
           this._notice = {
-            text: `No tutorial "${ctl.arg ?? ''}" — available → ${listing}`.slice(0, 200),
+            text: `No kata "${ctl.arg ?? ''}" — available → ${listing}`.slice(0, 200),
             until: Date.now() + 10_000,
           };
           setTimeout(() => { this._notice = null; this.refreshStatusline(); }, 10_100);
-          this.adapter.emitEvent?.('tutorial.not-found', { arg: ctl.arg, available: listing });
+          this.adapter.emitEvent?.('kata.not-found', { arg: ctl.arg, available: listing });
           this.refreshStatusline();
           return;
         }
@@ -548,7 +548,7 @@ export class TutorialCoach {
         this._trace = [];
         this._journal = [];
         this._stepStartedAt = Date.now();
-        // Resume: saved mid-tutorial progress puts the user back where
+        // Resume: saved mid-kata progress puts the user back where
         // they left off (journal included, so lesson memory survives a
         // restart). A completed record starts fresh.
         const saved = ctl.fresh ? undefined : (await this.loadProgress())[doc.name];
@@ -560,12 +560,12 @@ export class TutorialCoach {
           this._coachLine = `**${doc.title}** — first: ${cleanStepTitle(doc.steps[0].title)}~ · Esc ×3 exits~`;
         }
         this.consumePhrase(text, ctl.phraseStart);
-        this.adapter.emitEvent?.('tutorial.started', {
+        this.adapter.emitEvent?.('kata.started', {
           name: doc.name, id: doc.id, title: doc.title, stepCount: doc.steps.length,
           resumedAtStep: this._stepIndex > 0 ? this._stepIndex + 1 : undefined,
         });
         this.maybeSpeak(this._coachLine ?? '');
-        this._logFn(`Tutorial: started "${doc.name}" (${doc.steps.length} steps)`);
+        this._logFn(`Kata: started "${doc.name}" (${doc.steps.length} steps)`);
         this.refreshStatusline();
         this.armIdleTimer();
         return;
@@ -576,8 +576,8 @@ export class TutorialCoach {
         this.saveProgress({ step: this._stepIndex });
         this.deactivate();
         this.consumePhrase(text, ctl.phraseStart);
-        this.adapter.emitEvent?.('tutorial.stopped', { name, reason: 'user' });
-        this._logFn(`Tutorial: stopped "${name}"`);
+        this.adapter.emitEvent?.('kata.stopped', { name, reason: 'user' });
+        this._logFn(`Kata: stopped "${name}"`);
         this.refreshStatusline();
         return;
       }
@@ -600,7 +600,7 @@ export class TutorialCoach {
     // Deferred one tick — a write issued INSIDE the host's text-change
     // dispatch is clobbered when the host finishes applying the very
     // change that triggered us (observed on OpenTUI: `done _` stayed in
-    // the buffer while an await-deferred write for `start tutorial 1 _`
+    // the buffer while an await-deferred write for `start kata 1 _`
     // landed fine).
     setTimeout(() => {
       if (this.adapter.pushText) this.adapter.pushText(kept, kept.length);
@@ -631,7 +631,7 @@ export class TutorialCoach {
       // link offers the next lesson. Shown as a 20s notice so the
       // ending lands instead of silently vanishing.
       const recap = this._journal.map(l => cleanStepTitle(l.replace(/^Step \d+ \(([^)]*)\).*/, '$1'))).join(' → ');
-      const nextBit = next ? ` · next up: type \`start tutorial ${next} _\`` : '';
+      const nextBit = next ? ` · next up: type \`start kata ${next} _\`` : '';
       this.saveProgress({ step: 0, completed: true });
       this.deactivate();
       // Actionable link BEFORE the decorative journey — single-line
@@ -642,9 +642,9 @@ export class TutorialCoach {
         offTrack: false,
       };
       setTimeout(() => { this._notice = null; this.refreshStatusline(); }, 20_100);
-      this.adapter.emitEvent?.('tutorial.completed', { name, stepCount, reason, next: next ?? undefined });
-      this.maybeSpeak(`Tutorial complete! ${stepCount} of ${stepCount}.${next ? ' Next up: ' + next : ''}`);
-      this._logFn(`Tutorial: completed "${name}" 🎉`);
+      this.adapter.emitEvent?.('kata.completed', { name, stepCount, reason, next: next ?? undefined });
+      this.maybeSpeak(`Kata complete! ${stepCount} of ${stepCount}.${next ? ' Next up: ' + next : ''}`);
+      this._logFn(`Kata: completed "${name}" 🎉`);
       this.refreshStatusline();
       return;
     }
@@ -655,10 +655,10 @@ export class TutorialCoach {
     const next = this._doc.steps[this._stepIndex];
     this._coachLine = `✓ Now: ${cleanStepTitle(next.title)}`;
     this.maybeSpeak(`Step ${this._stepIndex + 1} of ${this._doc.steps.length}: ${cleanStepTitle(next.title)}`);
-    this.adapter.emitEvent?.('tutorial.step-advanced', {
+    this.adapter.emitEvent?.('kata.step-advanced', {
       name: this._doc.name, fromStep: from + 1, toStep: this._stepIndex + 1, reason,
     });
-    this._logFn(`Tutorial: step ${from + 1} → ${this._stepIndex + 1} (${reason})`);
+    this._logFn(`Kata: step ${from + 1} → ${this._stepIndex + 1} (${reason})`);
     this.refreshStatusline();
     this.armIdleTimer();
   }
@@ -675,11 +675,11 @@ export class TutorialCoach {
     if (this._debounceTimer) { clearTimeout(this._debounceTimer); this._debounceTimer = null; }
   }
 
-  /** Speak via the host TTS iff `tutorial-voice: on`. Plain text only
+  /** Speak via the host TTS iff `kata-voice: on`. Plain text only
    *  (markup stripped); fire-and-forget. */
   private maybeSpeak(text: string): void {
     if (!this.options.speak) return;
-    if (this.configLoader.opencuesState.settings.get('tutorial-voice') !== 'on') return;
+    if (this.configLoader.opencuesState.settings.get('kata-voice') !== 'on') return;
     try { this.options.speak(parseCoachMarkup(text).plain); } catch { /* never load-bearing */ }
   }
 
@@ -716,24 +716,24 @@ export class TutorialCoach {
   /** Doc name survives deactivate for the final save. */
   private _lastDocName: string | null = null;
 
-  // ── tutorial discovery ───────────────────────────────────────────────
+  // ── kata discovery ───────────────────────────────────────────────
 
-  /** Enumerate installed tutorials (id + name) across the search dirs.
+  /** Enumerate installed katas (id + name) across the search dirs.
    *  Used for the not-found notice so a failed start tells the user
    *  what they CAN type instead of failing silently. */
-  private async listTutorials(): Promise<Array<{ id: string | null; name: string }>> {
+  private async listKatas(): Promise<Array<{ id: string | null; name: string }>> {
     const out: Array<{ id: string | null; name: string }> = [];
     const seen = new Set<string>();
-    for (const dir of this.options.tutorialsDirs) {
+    for (const dir of this.options.katasDirs) {
       let entries;
       try { entries = await this.adapter.readDir?.(dir); } catch { entries = null; }
       if (!entries) continue;
       for (const entry of entries) {
         if (!entry.isDirectory || seen.has(entry.name)) continue;
         let raw: string | null = null;
-        try { raw = await this.adapter.readFile(`${dir}/${entry.name}/TUTORIAL.md`); } catch { raw = null; }
+        try { raw = await this.adapter.readFile(`${dir}/${entry.name}/KATA.md`); } catch { raw = null; }
         if (!raw) continue;
-        const doc = parseTutorialMd(raw, entry.name);
+        const doc = parseKataMd(raw, entry.name);
         if (!doc) continue;
         seen.add(entry.name);
         out.push({ id: doc.id, name: doc.name });
@@ -742,17 +742,17 @@ export class TutorialCoach {
     return out.sort((a, b) => (parseInt(a.id ?? '999', 10) || 999) - (parseInt(b.id ?? '999', 10) || 999));
   }
 
-  private async loadTutorial(arg: string | null): Promise<TutorialDoc | null> {
-    for (const dir of this.options.tutorialsDirs) {
+  private async loadKata(arg: string | null): Promise<KataDoc | null> {
+    for (const dir of this.options.katasDirs) {
       let entries;
       try { entries = await this.adapter.readDir?.(dir); } catch { entries = null; }
       if (!entries) continue;
       for (const entry of entries) {
         if (!entry.isDirectory) continue;
         let raw: string | null = null;
-        try { raw = await this.adapter.readFile(`${dir}/${entry.name}/TUTORIAL.md`); } catch { raw = null; }
+        try { raw = await this.adapter.readFile(`${dir}/${entry.name}/KATA.md`); } catch { raw = null; }
         if (!raw) continue;
-        const doc = parseTutorialMd(raw, entry.name);
+        const doc = parseKataMd(raw, entry.name);
         if (!doc) continue;
         if (arg === null) return doc;
         const want = arg.replace(/^#/, '').toLowerCase();
@@ -814,7 +814,7 @@ export class TutorialCoach {
       const i = Math.min(stepAtDispatch, doc.steps.length - 1);
       this._coachLine = `Still there? ${cleanStepTitle(doc.steps[i].title)}${skipHint || ' — type `next _` when done'}`;
       this._offTrack = false;
-      this.adapter.emitEvent?.('tutorial.nudge', { step: i + 1, nudgeNumber, idleMs, deterministic: true, coach: this._coachLine });
+      this.adapter.emitEvent?.('kata.nudge', { step: i + 1, nudgeNumber, idleMs, deterministic: true, coach: this._coachLine });
       this.refreshStatusline();
       this.armIdleTimer(false);
       return;
@@ -848,15 +848,15 @@ export class TutorialCoach {
       if (verdict) {
         this._coachLine = (verdict.coach.slice(0, COACH_MAX_CHARS - skipHint.length) + skipHint);
         this._offTrack = false;
-        this.adapter.emitEvent?.('tutorial.nudge', { step: stepAtDispatch + 1, nudgeNumber, idleMs, latencyMs, coach: this._coachLine, model: resolved.model });
+        this.adapter.emitEvent?.('kata.nudge', { step: stepAtDispatch + 1, nudgeNumber, idleMs, latencyMs, coach: this._coachLine, model: resolved.model });
         this.maybeSpeak(this._coachLine);
         this.refreshStatusline();
       } else {
-        this.adapter.emitEvent?.('tutorial.nudge', { step: stepAtDispatch + 1, nudgeNumber, idleMs, latencyMs, parseError: true });
+        this.adapter.emitEvent?.('kata.nudge', { step: stepAtDispatch + 1, nudgeNumber, idleMs, latencyMs, parseError: true });
       }
     } catch (err) {
-      this._logFn(`Tutorial: nudge call failed — ${err instanceof Error ? err.message : String(err)}`);
-      this.adapter.emitEvent?.('tutorial.nudge', { step: stepAtDispatch + 1, nudgeNumber, idleMs, error: true });
+      this._logFn(`Kata: nudge call failed — ${err instanceof Error ? err.message : String(err)}`);
+      this.adapter.emitEvent?.('kata.nudge', { step: stepAtDispatch + 1, nudgeNumber, idleMs, error: true });
     } finally {
       this._inFlight = false;
       this.armIdleTimer(false); // next nudge (or quiet if capped) after another window
@@ -877,7 +877,7 @@ export class TutorialCoach {
     const resolved = this.options.resolveLLM();
     if (!resolved) {
       // No LLM (missing key / provider unresolved). Degrade LOUDLY, not
-      // silently: the tutorial keeps working as static instruction
+      // silently: the kata keeps working as static instruction
       // cards with manual advancement — but only if the user is told.
       this.setOfflineCoachLine('no LLM key');
       return;
@@ -904,17 +904,17 @@ export class TutorialCoach {
         { apiKey: resolved.apiKey, endpoint: resolved.endpoint, maxThinking: resolved.maxThinking ?? true },
       );
       const latencyMs = Date.now() - started;
-      // Stale-drop: tutorial stopped, step moved (user typed done _), or
+      // Stale-drop: kata stopped, step moved (user typed done _), or
       // buffer changed while in flight → discard; next tick re-asks.
       if (this._doc !== doc || this._stepIndex !== stepAtDispatch) {
-        this.adapter.emitEvent?.('tutorial.tick', { stale: true, latencyMs });
+        this.adapter.emitEvent?.('kata.tick', { stale: true, latencyMs });
         return;
       }
       this._consecutiveErrors = 0;
       const verdict = parseCoachResponse(out);
       if (!verdict) {
-        this._logFn(`Tutorial: unparseable coach response (${latencyMs}ms): ${out.slice(0, 120)}`);
-        this.adapter.emitEvent?.('tutorial.tick', { parseError: true, latencyMs });
+        this._logFn(`Kata: unparseable coach response (${latencyMs}ms): ${out.slice(0, 120)}`);
+        this.adapter.emitEvent?.('kata.tick', { parseError: true, latencyMs });
         return;
       }
       // Safety floors — trust the model, clamp the blast radius:
@@ -927,13 +927,13 @@ export class TutorialCoach {
         const id = doc.id;
         this.deactivate();
         this._notice = {
-          text: `Tutorial stopped — type \`start tutorial ${id ?? name} _\` to pick it back up`,
+          text: `Kata stopped — type \`start kata ${id ?? name} _\` to pick it back up`,
           until: Date.now() + 10_000,
           offTrack: false,
         };
         setTimeout(() => { this._notice = null; this.refreshStatusline(); }, 10_100);
-        this.adapter.emitEvent?.('tutorial.stopped', { name, reason: 'coach-user-request', latencyMs });
-        this._logFn(`Tutorial: stopped "${name}" (coach honoured user request)`);
+        this.adapter.emitEvent?.('kata.stopped', { name, reason: 'coach-user-request', latencyMs });
+        this._logFn(`Kata: stopped "${name}" (coach honoured user request)`);
         this.refreshStatusline();
         return;
       }
@@ -941,7 +941,7 @@ export class TutorialCoach {
         || (verdict.step !== null && verdict.step > stepAtDispatch + 1);
       this._coachLine = verdict.coach.slice(0, COACH_MAX_CHARS);
       this._offTrack = verdict.status === 'OFF_TRACK';
-      this.adapter.emitEvent?.('tutorial.tick', {
+      this.adapter.emitEvent?.('kata.tick', {
         step: stepAtDispatch + 1,
         claimedStep: verdict.step,
         status: verdict.status,
@@ -968,8 +968,8 @@ export class TutorialCoach {
       // failures (one could be a blip), surface the manual-advance
       // affordance so the user isn't left typing into a void.
       const latencyMs = Date.now() - started;
-      this._logFn(`Tutorial: coach call failed (${latencyMs}ms) — ${err instanceof Error ? err.message : String(err)}`);
-      this.adapter.emitEvent?.('tutorial.tick', { error: true, latencyMs });
+      this._logFn(`Kata: coach call failed (${latencyMs}ms) — ${err instanceof Error ? err.message : String(err)}`);
+      this.adapter.emitEvent?.('kata.tick', { error: true, latencyMs });
       this._consecutiveErrors++;
       if (this._consecutiveErrors >= 2) this.setOfflineCoachLine('coach unreachable');
     } finally {
@@ -979,14 +979,14 @@ export class TutorialCoach {
     }
   }
 
-  private systemPrompt(doc: TutorialDoc): string {
-    // Stable per tutorial per session — lands in the provider's prompt
+  private systemPrompt(doc: KataDoc): string {
+    // Stable per kata per session — lands in the provider's prompt
     // prefix cache (see docs/architecture/cerebras.md). Per-tick data
     // stays in the user message.
     const steps = doc.steps
       .map((s, i) => `### Step ${i + 1}: ${s.title}\n${s.body}`)
       .join('\n\n');
-    return `You are a TUTORIAL COACH embedded in a text editor's input box. The user is working through a scripted tutorial step by step. You observe their activity as a trace of events:
+    return `You are a KATA COACH embedded in a text editor's input box. The user is working through a scripted kata step by step. You observe their activity as a trace of events:
 - typed: "<text>" — the current state of what they typed into the input box
 - submitted (pressed Enter): "<text>" — they sent that text and the buffer cleared
 - pressed: <key> (×N) — a salient key press outside normal typing (tab, shift+tab, enter on an empty buffer, escape, arrow keys, ctrl/alt combos). Steps that happen OUTSIDE the input box (mode toggles, pickers, menus) are detected from these.
@@ -1007,17 +1007,17 @@ Rules:
 - In COACH, wrap anything the user should LITERALLY type or press in backticks: commands (\`/init\`, \`git status\`, \`skip _\`), exact text to enter, key names (\`Enter\`, \`Shift+Tab\`). The display renders these distinctly so the user can tell commands from prose. Do not backtick ordinary words. You may **bold** one key word for emphasis when it genuinely helps.
 - Meta-questions to you ("help", "what do I do now?", "where am I?") are NOT off-track — answer them: STATUS IN_PROGRESS, COACH restates the current micro-action. When they ask what they've DONE so far, answer from LESSON SO FAR in a few words, then the next action (e.g. "You've run /init and gotten an overview — now ask how to run the tests."). OFF_TRACK is reserved for actions that contradict the step.
 - TRUST COMPLETION CLAIMS on steps you can't observe: if the user explicitly claims they completed an outside-the-input-box action ("done", "I did it", "I'm in plan mode now") and the trace doesn't contradict them, that's STEP_DONE. Never hold a user hostage to key-press evidence you might simply have missed.
-- USER CONTROLS you must know (and mention when relevant): the user can type "stop tutorial _" to exit the tutorial at any time, and "skip _" to force-skip the current step. When they want to quit, are frustrated, or ask how to exit → COACH must include: type stop tutorial _ to exit. When they've been stuck on the same step for several checks despite your coaching → give the EXACT text to type, and mention skip _ as the escape.
-- Coach in the user's language: if they're typing in French, coach in French; same for any language. The control phrases (stop tutorial _, skip _) and commands (/init, /model) stay verbatim in English.
+- USER CONTROLS you must know (and mention when relevant): the user can type "stop kata _" to exit the kata at any time, and "skip _" to force-skip the current step. When they want to quit, are frustrated, or ask how to exit → COACH must include: type stop kata _ to exit. When they've been stuck on the same step for several checks despite your coaching → give the EXACT text to type, and mention skip _ as the escape.
+- Coach in the user's language: if they're typing in French, coach in French; same for any language. The control phrases (stop kata _, skip _) and commands (/init, /model) stay verbatim in English.
 - Never invent steps. Answer for the CURRENT step only.
 
 Respond in EXACTLY this format (three lines — plus the optional CONTROL line — nothing else):
 STEP: <current step number>
 STATUS: <IN_PROGRESS|STEP_DONE|OFF_TRACK>
 COACH: <one line>
-CONTROL: STOP   ← include this fourth line ONLY when the user EXPLICITLY asks to stop/quit/exit the tutorial (in any language: "please stop this tutorial", "quitte le tutoriel", …). The runtime then ends the tutorial for them. Do NOT emit it for frustration, insults, or struggling alone — for those, keep coaching and offer "stop tutorial _" in COACH. When you emit CONTROL: STOP, make COACH a brief goodbye.
+CONTROL: STOP   ← include this fourth line ONLY when the user EXPLICITLY asks to stop/quit/exit the kata (in any language: "please stop this kata", "quitte le tutoriel", …). The runtime then ends the kata for them. Do NOT emit it for frustration, insults, or struggling alone — for those, keep coaching and offer "stop kata _" in COACH. When you emit CONTROL: STOP, make COACH a brief goodbye.
 
-TUTORIAL: ${doc.title}
+KATA: ${doc.title}
 STEPS (${doc.steps.length} total):
 
 ${steps}`;
@@ -1044,12 +1044,12 @@ ${steps}`;
     return `CURRENT STEP: ${stepIndex + 1}${timeOnStep}\n${journal}RECENT ACTIVITY:\n${trace}\nCURRENT BUFFER: ${buffer}${nudgeBlock}`;
   }
 
-  private getHttpAgent(): NonNullable<TutorialCoachOptions['httpAdapter']> {
+  private getHttpAgent(): NonNullable<KataCoachOptions['httpAdapter']> {
     if (this.options.httpAdapter) return this.options.httpAdapter;
     if (this._httpAgent) return this._httpAgent;
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { NodeHttpAdapter } = require('@opencues/core/node-http-adapter');
-    this._httpAgent = new NodeHttpAdapter({ maxSockets: 2, timeout: 30000 }) as NonNullable<TutorialCoachOptions['httpAdapter']>; // BROWSER-SAFE-ALLOW: native-host fallback only — getHttpAgent is bypassed when options.httpAdapter is supplied (chrome)
+    this._httpAgent = new NodeHttpAdapter({ maxSockets: 2, timeout: 30000 }) as NonNullable<KataCoachOptions['httpAdapter']>; // BROWSER-SAFE-ALLOW: native-host fallback only — getHttpAgent is bypassed when options.httpAdapter is supplied (chrome)
     return this._httpAgent!;
   }
 }
@@ -1062,11 +1062,11 @@ export interface CoachVerdict {
   readonly step: number | null;
   readonly status: 'IN_PROGRESS' | 'STEP_DONE' | 'OFF_TRACK';
   readonly coach: string;
-  /** The coach's single permitted ACTION: 'STOP' ends tutorial mode on
-   *  the user's explicit request ("please stop this tutorial"). This is
+  /** The coach's single permitted ACTION: 'STOP' ends kata mode on
+   *  the user's explicit request ("please stop this kata"). This is
    *  the one deliberate exception to display-only coach output — it
    *  RELEASES the modal override (fail-open direction), never acquires
-   *  anything, and the deterministic `stop tutorial _` phrase remains
+   *  anything, and the deterministic `stop kata _` phrase remains
    *  as the always-works path. */
   readonly control: 'STOP' | null;
 }

@@ -118,9 +118,9 @@ export interface ResolverOptions {
    * Modal-override gate. When this returns true for the incoming text,
    * the resolver skips the entire dispatch (no cue/blank/LLM work) for
    * that change — pending debounce is cancelled too. Wired by boots
-   * that mount a modal module (TutorialCoach today): while a tutorial
+   * that mount a modal module (KataCoach today): while a kata
    * is active, tutorial mode overrides all normal cue/blank behaviour,
-   * and control phrases (`start tutorial 1 _`) must never race
+   * and control phrases (`start kata 1 _`) must never race
    * fluid-blank's `_` fast-path. Omit for normal behaviour.
    */
   readonly externallySuppressed?: (text: string) => boolean;

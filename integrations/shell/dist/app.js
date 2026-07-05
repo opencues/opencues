@@ -505,9 +505,9 @@ function startOpenCues(opts) {
     statusSnapshotHook: (payload) => {
       if (!opts.onTipChange)
         return;
-      const tut = payload?.tutorial;
+      const tut = payload?.kata;
       if (tut) {
-        const head = tut.stepCount > 0 ? `C_ Tutorial ${tut.step}/${tut.stepCount}:` : "C_ Tutorial:";
+        const head = tut.stepCount > 0 ? `C_ Kata ${tut.step}/${tut.stepCount}:` : "C_ Kata:";
         const marked = tut.coachSegments ? tut.coachSegments.map((seg) => seg.command ? "`" + seg.text + "`" : seg.bold ? "**" + seg.text + "**" : seg.dim ? "~" + seg.text + "~" : seg.text).join("") : tut.coach ?? tut.stepTitle;
         opts.onTipChange(`${head} ${marked}`);
         return;
@@ -749,7 +749,7 @@ function App(props) {
     const t = tip();
     if (t == null)
       return null;
-    const m = t.match(/^C_ (Tutorial[^:]*:)\s*([\s\S]*)$/);
+    const m = t.match(/^C_ (Kata[^:]*:)\s*([\s\S]*)$/);
     return m ? {
       head: m[1],
       body: m[2]

@@ -18,7 +18,7 @@ import { DimRender } from '../../../src/modules/dim-render';
 import { Cycling } from '../../../src/modules/cycling';
 import { ConfigLoader } from '../../../src/modules/config-loader';
 import { Statusline } from '../../../src/modules/statusline';
-import { TutorialCoach } from '../../../src/modules/tutorial';
+import { KataCoach } from '../../../src/modules/kata';
 import { TTS } from '../../../src/modules/tts';
 import { Resolver } from '../../../src/modules/resolver';
 import { AgentRewrite } from '../../../src/modules/agent-rewrite';
@@ -496,11 +496,11 @@ export function boot(host: HostInfo): BootResult {
 
   const adapter = new ClaudeCodeV21Adapter(bindings);
 
-  // Tutorial key observation — MUST be the first key subscriber (key
+  // Kata key observation — MUST be the first key subscriber (key
   // dispatch is emit-until-consumed; Navigation consumes Ctrl+Alt
-  // arrows). See docs/architecture/tutorials.md § host wiring contract.
-  let tutorialCoachRef: TutorialCoach | null = null;
-  adapter.onKey(null, (e) => { tutorialCoachRef?.observeKey(e); return false; });
+  // arrows). See docs/architecture/katas.md § host wiring contract.
+  let kataCoachRef: KataCoach | null = null;
+  adapter.onKey(null, (e) => { kataCoachRef?.observeKey(e); return false; });
 
   // Direct-launch drift advisory. CC's per-band boot wires modules by
   // hand and predates `buildSharedRuntime` (where every other host gets
@@ -614,21 +614,21 @@ export function boot(host: HostInfo): BootResult {
   configLoader.load().then(() => blankFill.subscribe()).catch(() => { /* logged */ });
   void blankFill; // silence unused — referenced by future phases
 
-  // TutorialCoach — modal guided-scenario runtime. Same wiring as
-  // oc/v1.14 (docs/architecture/tutorials.md).
+  // KataCoach — modal guided-scenario runtime. Same wiring as
+  // oc/v1.14 (docs/architecture/katas.md).
   const HOME_TUT = process.env.HOME ?? '~';
-  const tutorialCoach = new TutorialCoach(adapter, configLoader, {
-    tutorialsDirs: configSearchPaths.map(p => `${p}/tutorials`),
+  const kataCoach = new KataCoach(adapter, configLoader, {
+    katasDirs: configSearchPaths.map(p => `${p}/katas`),
     resolveLLM: () => buildKataLLMResolver(configLoader, apiKeys),
-    cadenceMs: () => parseInt(configLoader.opencuesState.settings.get('tutorial-debounce-ms') ?? '', 10),
-    nudgeMs: () => parseInt(configLoader.opencuesState.settings.get('tutorial-nudge-ms') ?? '', 10),
+    cadenceMs: () => parseInt(configLoader.opencuesState.settings.get('kata-debounce-ms') ?? '', 10),
+    nudgeMs: () => parseInt(configLoader.opencuesState.settings.get('kata-nudge-ms') ?? '', 10),
     progressFile: process.env.OPENCUES_HOME
-      ? `${process.env.OPENCUES_HOME}/tutorial-progress.json`
-      : `${HOME_TUT}/.cues/tutorial-progress.json`,
+      ? `${process.env.OPENCUES_HOME}/kata-progress.json`
+      : `${HOME_TUT}/.cues/kata-progress.json`,
     log: msg => log('debug', msg),
   });
-  tutorialCoach.subscribe();
-  tutorialCoachRef = tutorialCoach; // arms the early key observer above
+  kataCoach.subscribe();
+  kataCoachRef = kataCoach; // arms the early key observer above
 
   // Statusline only if the host advertised a path. Don't write to a default
   // location — that risks colliding with another opencues instance.
@@ -636,7 +636,7 @@ export function boot(host: HostInfo): BootResult {
     const statusline = new Statusline(adapter, hlState, dynDefs, {
       exportPath: host.statusFilePath,
       refreshHook: host.refreshStatusline,
-      tutorialStatus: () => tutorialCoach.status(),
+      kataStatus: () => kataCoach.status(),
     }, configLoader, spanFillState, selectorSatelliteState, agentTaskState);
     statusline.subscribe();
   }
@@ -674,7 +674,7 @@ export function boot(host: HostInfo): BootResult {
     missingKeyFallbackMessage: hasAnyKey ? undefined : NATIVE_HOST_MISSING_KEY_MESSAGE,
     formatLLMErrorAsSubstitute: nativeHostFormatLLMError,
     keywordBoundSlotIndices: (text: string) => blankFill.scan(text).map(s => s.index),
-    externallySuppressed: (text: string) => tutorialCoach.shouldSuppressResolve(text),
+    externallySuppressed: (text: string) => kataCoach.shouldSuppressResolve(text),
   }, spanFillState, agentTaskState, blankLoading, markdownRender, selectorSatelliteState,
   buildBlankContextProvider(configLoader, host.blanks, log),
   buildBlankFetchProvider(configLoader, host.blanks, log));

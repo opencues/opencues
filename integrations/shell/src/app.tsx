@@ -47,17 +47,17 @@ interface AppOpts {
 function App(props: AppOpts) {
   const renderer = useRenderer();
   const [tip, setTip] = createSignal<string | null>(null);
-  // Word-wrap the tip into up to 3 rows so long lines (tutorial coach,
+  // Word-wrap the tip into up to 3 rows so long lines (kata coach,
   // completion recap, catalogue notices) GROW the bar instead of
   // clipping at the pane edge. Deterministic manual wrap — OpenTUI
   // <text> doesn't reliably wrap inside a sized box. Recomputed per
   // render so pane resizes re-wrap.
-  // Split the tutorial head ("C_ Tutorial 2/3:") from the body — the
+  // Split the kata head ("C_ Kata 2/3:") from the body — the
   // head renders on its OWN line (plate + white), the body wraps below.
   const tipParts = (): { head: string | null; body: string } | null => {
     const t = tip();
     if (t == null) return null;
-    const m = t.match(/^C_ (Tutorial[^:]*:)\s*([\s\S]*)$/);
+    const m = t.match(/^C_ (Kata[^:]*:)\s*([\s\S]*)$/);
     return m ? { head: m[1], body: m[2] } : { head: null, body: t };
   };
   const tipRows = (): string[] => {

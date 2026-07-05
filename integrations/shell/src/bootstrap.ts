@@ -354,15 +354,15 @@ export function startOpenCues(opts: TerminalBootOpts): BootResult {
     cursorStatePath: `/tmp/opencues-cursor-state-${process.pid}.json`,
     statusSnapshotHook: (payload: any) => {
       if (!opts.onTipChange) return;
-      // Tutorial block is dominant while active — one plain-text line
+      // Kata block is dominant while active — one plain-text line
       // (C_ brand + step counter + coach). Segment colouring needs an
       // app.tsx renderer; plain text first so the coach is VISIBLE.
-      const tut = payload?.tutorial as {
+      const tut = payload?.kata as {
         step: number; stepCount: number; coach: string | null; stepTitle: string;
         coachSegments: Array<{ text: string; command: boolean; bold?: boolean }> | null;
       } | null | undefined;
       if (tut) {
-        const head = tut.stepCount > 0 ? `C_ Tutorial ${tut.step}/${tut.stepCount}:` : 'C_ Tutorial:';
+        const head = tut.stepCount > 0 ? `C_ Kata ${tut.step}/${tut.stepCount}:` : 'C_ Kata:';
         // Re-emit the inline markup (backtick commands, **bold**) so the
         // app's tip renderer can style spans; plain fallback otherwise.
         const marked = tut.coachSegments

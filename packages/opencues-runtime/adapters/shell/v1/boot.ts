@@ -18,7 +18,7 @@ import { Runtime } from '../../../src/runtime';
 import { ShellV1Adapter, type ShellBindings } from './adapter';
 import { startEventBridge } from '../../../src/event-bridge';
 import { Statusline } from '../../../src/modules/statusline';
-import { TutorialCoach } from '../../../src/modules/tutorial';
+import { KataCoach } from '../../../src/modules/kata';
 import { Resolver } from '../../../src/modules/resolver';
 import { AgentRewrite } from '../../../src/modules/agent-rewrite';
 import { TTS } from '../../../src/modules/tts';
@@ -125,11 +125,11 @@ export function boot(host: HostInfo): BootResult {
   const adapter = new ShellV1Adapter(bindings);
   Runtime.create(adapter).catch(err => log('error', 'Runtime.create failed', err));
 
-  // Tutorial key observation — MUST be the first key subscriber (key
+  // Kata key observation — MUST be the first key subscriber (key
   // dispatch is emit-until-consumed; Navigation consumes Ctrl+Alt
-  // arrows). See docs/architecture/tutorials.md § host wiring contract.
-  let tutorialCoachRef: TutorialCoach | null = null;
-  keyEvents.subscribe(e => { tutorialCoachRef?.observeKey(e); return false; });
+  // arrows). See docs/architecture/katas.md § host wiring contract.
+  let kataCoachRef: KataCoach | null = null;
+  keyEvents.subscribe(e => { kataCoachRef?.observeKey(e); return false; });
 
   const HOME = process.env.HOME ?? '~';
   const configSearchPaths = [
@@ -155,17 +155,17 @@ export function boot(host: HostInfo): BootResult {
     spanFillState, selectorSatelliteState, agentTaskState,
   } = shared;
 
-  // TutorialCoach — modal guided-scenario runtime. Same wiring as
+  // KataCoach — modal guided-scenario runtime. Same wiring as
   // oc/v1.14; suppresses the Resolver while active via the
   // externallySuppressed gate below.
-  const tutorialCoach = new TutorialCoach(adapter, configLoader, {
-    tutorialsDirs: configSearchPaths.map(p => `${p}/tutorials`),
+  const kataCoach = new KataCoach(adapter, configLoader, {
+    katasDirs: configSearchPaths.map(p => `${p}/katas`),
     resolveLLM: () => buildKataLLMResolver(configLoader, apiKeys),
-    cadenceMs: () => parseInt(configLoader.opencuesState.settings.get('tutorial-debounce-ms') ?? '', 10),
-    nudgeMs: () => parseInt(configLoader.opencuesState.settings.get('tutorial-nudge-ms') ?? '', 10),
+    cadenceMs: () => parseInt(configLoader.opencuesState.settings.get('kata-debounce-ms') ?? '', 10),
+    nudgeMs: () => parseInt(configLoader.opencuesState.settings.get('kata-nudge-ms') ?? '', 10),
     progressFile: process.env.OPENCUES_HOME
-      ? `${process.env.OPENCUES_HOME}/tutorial-progress.json`
-      : `${HOME}/.cues/tutorial-progress.json`,
+      ? `${process.env.OPENCUES_HOME}/kata-progress.json`
+      : `${HOME}/.cues/kata-progress.json`,
     speak: (host.ttsScriptPath && adapter.capabilities.includes('spawn-process'))
       ? (text: string) => {
         try {
@@ -179,8 +179,8 @@ export function boot(host: HostInfo): BootResult {
       : undefined,
     log: msg => log('debug', msg),
   });
-  tutorialCoach.subscribe();
-  tutorialCoachRef = tutorialCoach; // arms the early key observer above
+  kataCoach.subscribe();
+  kataCoachRef = kataCoach; // arms the early key observer above
 
   if (host.statusFilePath || host.statusSnapshotHook) {
     const statusline = new Statusline(adapter, hlState, dynDefs, {
@@ -188,7 +188,7 @@ export function boot(host: HostInfo): BootResult {
       onSnapshot: host.statusSnapshotHook
         ? (payload) => host.statusSnapshotHook!(payload)
         : undefined,
-      tutorialStatus: () => tutorialCoach.status(),
+      kataStatus: () => kataCoach.status(),
     }, configLoader, spanFillState, selectorSatelliteState, agentTaskState);
     statusline.subscribe();
   }
@@ -220,7 +220,7 @@ export function boot(host: HostInfo): BootResult {
     missingKeyFallbackMessage: hasAnyKey ? undefined : NATIVE_HOST_MISSING_KEY_MESSAGE,
     formatLLMErrorAsSubstitute: nativeHostFormatLLMError,
     keywordBoundSlotIndices: (text: string) => shared.blankFill.scan(text).map(s => s.index),
-    externallySuppressed: (text: string) => tutorialCoach.shouldSuppressResolve(text),
+    externallySuppressed: (text: string) => kataCoach.shouldSuppressResolve(text),
   }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState,
   buildBlankContextProvider(configLoader, host.blanks, log),
   buildBlankFetchProvider(configLoader, host.blanks, log));

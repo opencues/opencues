@@ -1,10 +1,10 @@
-// Unit tests for the tutorial module's pure functions. The multi-step
+// Unit tests for the kata module's pure functions. The multi-step
 // journey (start → coach tick → done → stop) is pinned end-to-end by the
-// agentic scenario 42-tutorial-mode.json — these cover parsing + phrase
+// agentic scenario 42-kata-mode.json — these cover parsing + phrase
 // detection, the pieces that don't need a live host.
 
 import { describe, it, expect } from 'vitest';
-import { parseTutorialMd, matchControlPhrase, parseCoachResponse, parseCoachMarkup } from './tutorial';
+import { parseKataMd, matchControlPhrase, parseCoachResponse, parseCoachMarkup } from './kata';
 
 const SAMPLE = `---
 name: claude-code-basics
@@ -23,9 +23,9 @@ coach:
 Ask Claude to write a PLAN.
 `;
 
-describe('parseTutorialMd', () => {
+describe('parseKataMd', () => {
   it('parses frontmatter + steps', () => {
-    const doc = parseTutorialMd(SAMPLE, 'fallback');
+    const doc = parseKataMd(SAMPLE, 'fallback');
     expect(doc).not.toBeNull();
     expect(doc!.name).toBe('claude-code-basics');
     expect(doc!.id).toBe('1');
@@ -37,52 +37,52 @@ describe('parseTutorialMd', () => {
   });
 
   it('falls back to folder name without frontmatter', () => {
-    const doc = parseTutorialMd('## Step 1\ndo a thing\n', 'my-folder');
+    const doc = parseKataMd('## Step 1\ndo a thing\n', 'my-folder');
     expect(doc!.name).toBe('my-folder');
     expect(doc!.steps).toHaveLength(1);
   });
 
   it('returns null when no steps', () => {
-    expect(parseTutorialMd('---\nname: x\n---\njust prose', 'x')).toBeNull();
+    expect(parseKataMd('---\nname: x\n---\njust prose', 'x')).toBeNull();
   });
 
   it('strips leading # from id', () => {
-    const doc = parseTutorialMd('---\nid: #01\n---\n## Step 1\nbody', 'x');
+    const doc = parseKataMd('---\nid: #01\n---\n## Step 1\nbody', 'x');
     expect(doc!.id).toBe('01');
   });
 });
 
 describe('matchControlPhrase', () => {
   it('matches start with id arg', () => {
-    const m = matchControlPhrase('start tutorial 1 _', false);
+    const m = matchControlPhrase('start kata 1 _', false);
     expect(m).toEqual({ kind: 'start', arg: '1', phraseStart: 0, fresh: false });
   });
 
   it('matches start with #NN and name args', () => {
     // `#` prefix is consumed by the trigger regex; the arg comes back bare.
-    expect(matchControlPhrase('start tutorial #01 _', false))
+    expect(matchControlPhrase('start kata #01 _', false))
       .toMatchObject({ kind: 'start', arg: '01' });
-    expect(matchControlPhrase('start tutorial claude-code-basics _', false))
+    expect(matchControlPhrase('start kata claude-code-basics _', false))
       .toMatchObject({ kind: 'start', arg: 'claude-code-basics' });
   });
 
-  it('restart tutorial N _ requests a fresh start (ignores saved progress)', () => {
-    expect(matchControlPhrase('restart tutorial 1 _', false))
+  it('restart kata N _ requests a fresh start (ignores saved progress)', () => {
+    expect(matchControlPhrase('restart kata 1 _', false))
       .toMatchObject({ kind: 'start', arg: '1', fresh: true });
-    expect(matchControlPhrase('start tutorial 1 _', false))
+    expect(matchControlPhrase('start kata 1 _', false))
       .toMatchObject({ kind: 'start', fresh: false });
   });
 
   it('matches bare start (no arg)', () => {
-    expect(matchControlPhrase('start tutorial _', false))
+    expect(matchControlPhrase('start kata _', false))
       .toMatchObject({ kind: 'start', arg: null });
   });
 
   it('phrase must lead the sentence containing _', () => {
     // Mid-sentence mention does NOT trigger.
-    expect(matchControlPhrase('I want to start tutorial 1 _', false)).toBeNull();
+    expect(matchControlPhrase('I want to start kata 1 _', false)).toBeNull();
     // New sentence after prior content DOES, and phraseStart preserves the prior span.
-    const m = matchControlPhrase('hii world. start tutorial 1 _', false);
+    const m = matchControlPhrase('hii world. start kata 1 _', false);
     expect(m).toMatchObject({ kind: 'start', arg: '1' });
     expect(m!.phraseStart).toBe('hii world. '.length);
   });
@@ -100,17 +100,17 @@ describe('matchControlPhrase', () => {
     expect(m!.phraseStart).toBe('git checkout main '.length);
     // Mid-WORD must not fire ("whiskip _" is not a command).
     expect(matchControlPhrase('whiskip _', true)).toBeNull();
-    // And still inert while no tutorial runs.
+    // And still inert while no kata runs.
     expect(matchControlPhrase('git checkout main skip _', false)).toBeNull();
   });
 
   it('requires the trailing _', () => {
-    expect(matchControlPhrase('start tutorial 1', false)).toBeNull();
+    expect(matchControlPhrase('start kata 1', false)).toBeNull();
     expect(matchControlPhrase('done', true)).toBeNull();
   });
 
   it('matches stop regardless of arg-less form', () => {
-    expect(matchControlPhrase('stop tutorial _', true)).toMatchObject({ kind: 'stop' });
+    expect(matchControlPhrase('stop kata _', true)).toMatchObject({ kind: 'stop' });
   });
 });
 

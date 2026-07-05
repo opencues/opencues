@@ -106,7 +106,7 @@ How runtime state reaches the user (status line, auto-submit) and how cues/blank
 | — | [Host Compat](host-compat.md) | `on-host:` / `not-on-host:` frontmatter scopes a cue/blank/auditor to a subset of integrations |
 | 43 | [Missing-Key Fallback](missing-key-fallback.md) | When no blanks-bucket LLM source could be wired (zero working API keys), `_` substitutes a visible, host-specific in-buffer hint instead of silently doing nothing. Chrome points at the extension popup; native hosts mention `~/.cues/.env`. |
 | 45 | [Provider Health](provider-health.md) | Classifies LLM-call failures (auth / quota / rate-limit / outage / model-missing) into a status-line signal. Shipped as a library module with full scenario-test coverage; **not yet wired into any live host** — see the doc's "Current wiring state" section before relying on it. |
-| 46 | [Tutorials](tutorials.md) *(experimental, OC only)* | Modal guided scenarios (`start tutorial 1 _`) authored as `tutorials/<name>/TUTORIAL.md`: a debounced LLM coach detects progress from typed text + submits + salient key presses, coaches the next micro-action on the status line, and enforces step order. Deterministic floor throughout: `stop tutorial _`, `next _`/`skip _`, Esc ×3 escape hatch, loud no-LLM degraded mode. |
+| 46 | [Katas](katas.md) *(experimental, OC only)* | Modal guided scenarios (`start kata 1 _`) authored as `katas/<name>/KATA.md`: a debounced LLM coach detects progress from typed text + submits + salient key presses, coaches the next micro-action on the status line, and enforces step order. Deterministic floor throughout: `stop kata _`, `next _`/`skip _`, Esc ×3 escape hatch, loud no-LLM degraded mode. |
 
 ## Configuration & loading
 

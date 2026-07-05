@@ -371,7 +371,7 @@ export function buildAgentLLMResolver(
 }
 
 /**
- * Kata (tutorial) coach LLM resolver — per-feature scalars win, then the
+ * Kata (kata) coach LLM resolver — per-feature scalars win, then the
  * auditors bucket (the coach is a background prose-reading concern, same
  * trust class as agent-rewrite), then global. Precedence:
  *   kata-llm-provider/-model/-endpoint > auditors-llm-* > llm-*.

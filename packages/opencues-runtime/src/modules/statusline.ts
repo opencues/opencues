@@ -41,12 +41,12 @@ export interface StatuslineOptions {
    */
   readonly onSnapshot?: (payload: StatuslinePayload) => void;
   /**
-   * Optional. Live tutorial-mode status feed (TutorialCoach.status).
-   * When it returns non-null, the payload carries a `tutorial` block —
+   * Optional. Live kata-mode status feed (KataCoach.status).
+   * When it returns non-null, the payload carries a `kata` block —
    * step counter + one coaching line — that consumers render as the
-   * dominant statusline content while a tutorial is active.
+   * dominant statusline content while a kata is active.
    */
-  readonly tutorialStatus?: () => {
+  readonly kataStatus?: () => {
     readonly name: string;
     readonly title: string;
     readonly step: number;
@@ -89,12 +89,12 @@ export interface StatuslinePayload {
     readonly model?: string;
   } | null;
   /**
-   * Tutorial-mode block. Non-null while a tutorial is active — step
+   * Kata-mode block. Non-null while a kata is active — step
    * counter + the live coaching line. Consumers should render this as
-   * the dominant statusline content (tutorial mode overrides normal
-   * cue/tip display). null / absent when no tutorial is running.
+   * the dominant statusline content (kata mode overrides normal
+   * cue/tip display). null / absent when no kata is running.
    */
-  tutorial?: {
+  kata?: {
     readonly name: string;
     readonly title: string;
     readonly step: number;
@@ -381,10 +381,10 @@ export class Statusline {
     const built = this.buildPayload(ctx);
     const providerError = this.currentProviderError();
     let payload: StatuslinePayload = providerError !== undefined ? { ...built, providerError } : built;
-    // Tutorial block is orthogonal to highlight state (like providerError)
+    // Kata block is orthogonal to highlight state (like providerError)
     // — merge here so it survives the `active: false` early branch too.
-    if (this.options.tutorialStatus) {
-      payload = { ...payload, tutorial: this.options.tutorialStatus() };
+    if (this.options.kataStatus) {
+      payload = { ...payload, kata: this.options.kataStatus() };
     }
     // Strip timestamp before content-comparison so identical-state renders
     // don't trigger writes purely because of clock change.

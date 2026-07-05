@@ -373,7 +373,7 @@ src = open(p).read()
 if 'opencuesTip' in src: sys.exit(0)
 src = src.replace(
   'import { Global } from "@/global"',
-  'import { Global } from "@/global"\nimport { opencuesTip, opencuesTutorial } from "../../opencues"',
+  'import { Global } from "@/global"\nimport { opencuesTip, opencuesKata } from "../../opencues"',
 )
 src = src.replace(
   '''function View(props: { api: TuiPluginApi }) {
@@ -381,17 +381,17 @@ src = src.replace(
   '''function OpencuesTip(props: { api: TuiPluginApi }) {
   const theme = () => props.api.theme.current
   return (
-    <Show when={!opencuesTutorial() && opencuesTip()}>
+    <Show when={!opencuesKata() && opencuesTip()}>
       <text fg={theme().textMuted}>{opencuesTip()}</text>
     </Show>
   )
 }
 
-// Tutorial block — its own full-width rows ABOVE the footer widgets.
+// Kata block — its own full-width rows ABOVE the footer widgets.
 // Head line (C_ plate + counter, theme text) then the coach body
 // word-wrapped to at most 3 rows: prose/decoration in textMuted (gray),
 // actionable tokens (commands/keys/titles) in theme text (white). No
-// bold — weight discipline per docs/features/tutorials.md.
+// bold — weight discipline per docs/features/katas.md.
 function wrapOpencuesSegs(segs: Array<{ text: string; command: boolean; bold?: boolean; dim?: boolean }>, width: number) {
   const rows: Array<Array<{ text: string; command: boolean; bold?: boolean; dim?: boolean }>> = []
   let cur: Array<{ text: string; command: boolean; bold?: boolean; dim?: boolean }> = []
@@ -419,17 +419,17 @@ function wrapOpencuesSegs(segs: Array<{ text: string; command: boolean; bold?: b
   return rows.slice(0, 3)
 }
 
-function OpencuesTutorialBlock(props: { api: TuiPluginApi }) {
+function OpencuesKataBlock(props: { api: TuiPluginApi }) {
   const theme = () => props.api.theme.current
   const width = () => Math.max(20, (process.stdout.columns ?? 80) - 4)
   return (
-    <Show when={opencuesTutorial()}>
+    <Show when={opencuesKata()}>
       <box style={{ flexDirection: "column", width: "100%" }}>
         <text>
           <span style={{ fg: theme().background, bg: theme().text }}>C_</span>
-          <span style={{ fg: theme().text }}> {opencuesTutorial()!.head}</span>
+          <span style={{ fg: theme().text }}> {opencuesKata()!.head}</span>
         </text>
-        {wrapOpencuesSegs(opencuesTutorial()!.segments, width()).map((row) => (
+        {wrapOpencuesSegs(opencuesKata()!.segments, width()).map((row) => (
           <text>
             {row.map((seg) =>
               seg.command || seg.bold
@@ -452,7 +452,7 @@ src = src.replace(
       <box flexGrow={1} />
       <Version api={props.api} />''',
   '''      <box style={{ flexDirection: "column", width: "100%" }}>
-        <OpencuesTutorialBlock api={props.api} />
+        <OpencuesKataBlock api={props.api} />
         <box style={{ flexDirection: "row", width: "100%", gap: 2 }}>
           <Directory api={props.api} />
           <Mcp api={props.api} />
@@ -486,7 +486,7 @@ src = open(p).read()
 if 'opencuesTip' in src: sys.exit(0)
 src = src.replace(
   'import { Global } from "@/global"',
-  'import { Global } from "@/global"\nimport { opencuesTip, opencuesTutorial } from "../../opencues"',
+  'import { Global } from "@/global"\nimport { opencuesTip, opencuesKata } from "../../opencues"',
 )
 # The sidebar footer's box stacks vertically (path → version). Insert
 # the OpencuesTip line between them, mirroring the home footer's

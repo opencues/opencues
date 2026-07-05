@@ -39,11 +39,11 @@ coach:
 ## Step 4 — clear your input with double Escape
 Type anything into the input, then press Escape twice: the input clears
 (and is saved to history — recall it with the Up arrow). Single Escape
-also interrupts Claude mid-response. Note: while a tutorial is running
-you'll see "Esc ×1 more to exit the tutorial" — that's the tutorial's
-own escape hatch counting; a THIRD Escape would exit this tutorial, so
+also interrupts Claude mid-response. Note: while a kata is running
+you'll see "Esc ×1 more to exit the kata" — that's the kata's
+own escape hatch counting; a THIRD Escape would exit this kata, so
 stop at two.
 coach:
-  - No activity yet → tell them to type a few words, then press Escape twice (and warn: not three — three exits the tutorial)
+  - No activity yet → tell them to type a few words, then press Escape twice (and warn: not three — three exits the kata)
   - They typed something but no escape presses → tell them to press Escape twice
   - Trace shows "pressed: escape" twice or (×2) after typing → STEP_DONE

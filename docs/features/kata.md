@@ -1,4 +1,4 @@
-# Tutorials
+# Katas
 
 **Experimental (prototype — OpenCode + Shell hosts today).**
 
@@ -10,7 +10,7 @@ progress automatically from what you type and press. You never announce
 completion; you just do the thing.
 
 ```
-you type:  start tutorial 1 _
+you type:  start kata 1 _
 statusline: ⛳ 1/4 · Step 1 — enter plan mode · Esc ×3 exits
 
 you press Shift+Tab twice
@@ -20,10 +20,10 @@ you type:  add a --verbose flag right now
 statusline: ✗ Ask Claude to write a plan first — add "don't implement yet"
 ```
 
-Tutorial mode is **modal**: while a tutorial runs, normal OpenCues LLM
+Kata mode is **modal**: while a kata runs, normal OpenCues LLM
 behaviour (word-cues, fluid/transform blanks, config-intent,
 sentence-cues) is suppressed so nothing races the lesson. Local
-features that a tutorial might teach — navigation, cycling,
+features that a kata might teach — navigation, cycling,
 keyword-bound blanks like `capital of france _` — keep working.
 Stopping restores everything instantly; nothing is written to your
 settings.
@@ -32,21 +32,21 @@ settings.
 
 | You type | Effect |
 |---|---|
-| `start tutorial 1 _` | start by id (also by name: `start tutorial git-basics _`) |
-| `start tutorial _` | start the first installed tutorial |
-| `stop tutorial _` | exit — always works, no model involved |
+| `start kata 1 _` | start by id (also by name: `start kata git-basics _`) |
+| `start kata _` | start the first installed kata |
+| `stop kata _` | exit — always works, no model involved |
 | `next _` / `done _` | manually advance past the current step |
 | `skip _` | force-skip a step you're stuck on |
 
 An unknown id shows the installed catalogue in the status line
-(`No tutorial "9" — available → 1: claude-code-basics · 2: …`).
+(`No kata "9" — available → 1: claude-code-basics · 2: …`).
 
 **You rarely need the advance phrases.** Progress is detected from your
 typed text, your submits (the buffer clearing after Enter), and salient
 key presses (Tab/Shift+Tab, Escape, arrows, Enter on an empty input) —
 so steps that happen outside the input box (mode toggles, pickers)
 complete on their own. You can also just *tell* the coach: "please stop
-this tutorial" (any language) ends it; "done" / "I did it" on a step it
+this kata" (any language) ends it; "done" / "I did it" on a step it
 can't observe is trusted.
 
 ## Escaping — guaranteed
@@ -56,16 +56,16 @@ The escape ladder, weakest assumption first:
 1. **Esc ×3** — press Escape three times in a row. Deterministic:
    works with no API key, no network, no phrase knowledge, in any
    language. The first press shows a countdown ("Esc ×2 more to exit
-   the tutorial"). Three presses (not two) so Claude Code's normal
-   double-Esc clear-input can't exit a tutorial by accident.
-2. `stop tutorial _` — deterministic phrase.
-3. "please stop this tutorial" — the coach honours an explicit quit
+   the kata"). Three presses (not two) so Claude Code's normal
+   double-Esc clear-input can't exit a kata by accident.
+2. `stop kata _` — deterministic phrase.
+3. "please stop this kata" — the coach honours an explicit quit
    request in any language (requires a working model).
-4. `skip _` — per-step relief without abandoning the tutorial.
+4. `skip _` — per-step relief without abandoning the kata.
 
 ## When there's no LLM
 
-Tutorials stay fully usable without a working model — they degrade to a
+Katas stay fully usable without a working model — they degrade to a
 labelled self-guided checklist. The status line says so explicitly:
 
 ```
@@ -86,7 +86,7 @@ idle window escalates once with the escape valve (`· stuck? skip _
 skips this step`), then the coach goes QUIET — two nudges per stall,
 never nagging. Any activity resets the cycle. Nudges are advisory:
 they never advance steps (no new evidence) and never stop the
-tutorial.
+kata.
 
 The coach also keeps a **lesson journal** — one line per completed
 step recording how you completed it — in context for every check-in,
@@ -96,10 +96,10 @@ done so far?" — are answered with the next action rather than a
 summary on cerebras gpt-oss; the journal is in context, the model is
 just terse. Coach-quality bench will tune this.)
 
-## Writing a tutorial
+## Writing a kata
 
-One folder, one file: `~/.cues/tutorials/<name>/TUTORIAL.md` (or
-project-level `<project>/.cues/tutorials/`). Hot-loaded at `start` —
+One folder, one file: `~/.cues/katas/<name>/KATA.md` (or
+project-level `<project>/.cues/katas/`). Hot-loaded at `start` —
 no restart, no rebuild.
 
 ```markdown
@@ -123,7 +123,7 @@ coach:
 Everything under a step heading is a **script for the coach** — it
 rides into the model verbatim, so fidelity is an authoring choice:
 one loose line, or keystroke-by-keystroke choreography. Useful
-patterns, all demonstrated by the shipped tutorials:
+patterns, all demonstrated by the shipped katas:
 
 - **Strict order** — `STRICT ORDER — if they do X before Y, that is
   OFF_TRACK: remind them to …`. Enforces sequence: the same input can
@@ -139,7 +139,7 @@ patterns, all demonstrated by the shipped tutorials:
   and reveals after the user has earned it. See `hint-demo` (id 8).
   Note: hint discipline is model judgement, not a hard gate.
 
-Shipped tutorials (`defaults/tutorials/`): `claude-code-basics`,
+Shipped katas (`defaults/katas/`): `claude-code-basics`,
 `opencues-basics`, `git-basics`, `claude-code-power`,
 `cc-first-session`, `cc-fix-a-bug`, `cc-custom-command`, `hint-demo`.
 The Claude Code ones are verified against the official CC docs.
@@ -148,10 +148,10 @@ The Claude Code ones are verified against the official CC docs.
 
 | Scalar (OPENCUES.md) | Default | Effect |
 |---|---|---|
-| `tutorials-mode` | on (absent) | `off` disables the feature entirely |
-| `tutorial-debounce-ms` | 300 | pause length before a coach check-in |
-| `tutorial-nudge-ms` | 30000 | idle window before a proactive nudge (`0` disables) |
-| `tutorial-voice` | off | `on` speaks step advances, nudges, and completion via the host TTS (never per-tick) |
+| `katas-mode` | on (absent) | `off` disables the feature entirely |
+| `kata-debounce-ms` | 300 | pause length before a coach check-in |
+| `kata-nudge-ms` | 30000 | idle window before a proactive nudge (`0` disables) |
+| `kata-voice` | off | `on` speaks step advances, nudges, and completion via the host TTS (never per-tick) |
 | `kata-llm-provider` / `kata-llm-model` / `kata-llm-endpoint` | (unset) | pin the coach to a specific provider/model — wins over the auditors bucket; named for the feature's Kata rename |
 
 The coach call resolves per the standard precedence ladder:
@@ -162,34 +162,34 @@ Coach ticks average ~300-550ms on cerebras.
 
 ## Progress, resume, and curriculum
 
-Progress persists to `~/.cues/tutorial-progress.json` (written on every
+Progress persists to `~/.cues/kata-progress.json` (written on every
 step advance / stop / completion; never load-bearing — chrome simply
-skips it). Restarting a tutorial you left mid-way resumes where you
+skips it). Restarting a kata you left mid-way resumes where you
 stopped, lesson journal included: "Welcome back — resuming at step
-2/3: …". A completed tutorial starts fresh next time.
+2/3: …". A completed kata starts fresh next time.
 
 Completion gets a celebration instead of a silent vanish — a 20s recap
 notice built from the journal, plus the curriculum link when the
-tutorial declares one (`next: cc-fix-a-bug` frontmatter):
+kata declares one (`next: cc-fix-a-bug` frontmatter):
 
 ```
 🎉 Git basics — complete (3/3): check the working tree → create a
-branch → stage and commit · next up: type `start tutorial cc-first-session _`
+branch → stage and commit · next up: type `start kata cc-first-session _`
 ```
 
 The next-up phrase is a command span (renders coloured) — one typed
-line chains lessons into a curriculum. The shipped tutorials chain:
+line chains lessons into a curriculum. The shipped katas chain:
 git-basics → cc-first-session → (claude-code-basics →
 claude-code-power, cc-first-session → cc-fix-a-bug →
 cc-custom-command).
 
 ## Status line
 
-While a tutorial runs, the status JSON carries a `tutorial` block that
+While a kata runs, the status JSON carries a `kata` block that
 consumers render as the dominant content:
 
 ```json
-{"tutorial": {"name": "git-basics", "title": "…", "step": 2,
+{"kata": {"name": "git-basics", "title": "…", "step": 2,
   "stepCount": 3, "stepTitle": "Step 2 — create a branch",
   "coach": "Use -b to create a new branch, e.g. …", "offTrack": true}}
 ```
@@ -212,7 +212,7 @@ Plain consumers just use `coach` (markup already stripped).
 Coach output is display-only — it feeds the status line and a
 bounds-clamped step counter (never backward, at most one step per
 check-in), never your buffer, never a side-effect layer. The single
-exception: the coach may STOP the tutorial on your explicit request,
-which only *releases* the modal state. A malicious TUTORIAL.md can at
+exception: the coach may STOP the kata on your explicit request,
+which only *releases* the modal state. A malicious KATA.md can at
 worst show wrong text and mis-advance its own step counter. Full
-analysis: [docs/architecture/tutorials.md](../architecture/tutorials.md).
+analysis: [docs/architecture/katas.md](../architecture/katas.md).

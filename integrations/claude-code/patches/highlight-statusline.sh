@@ -67,15 +67,15 @@ printf '%s' "${BOLD}${GREEN}$(whoami)@$(hostname -s)${RESET}:${BOLD}${BLUE}$(pwd
 if [ -f "$HIGHLIGHT_FILE" ]; then
   content=$(cat "$HIGHLIGHT_FILE" 2>/dev/null)
 
-  # Tutorial mode is dominant: render "C_ Tutorial S/N: <coach>" and stop.
-  tut_step=$(echo "$content" | sed -n 's/.*"tutorial":{[^}]*"step":\([0-9]*\).*/\1/p')
+  # Kata mode is dominant: render "C_ Kata S/N: <coach>" and stop.
+  tut_step=$(echo "$content" | sed -n 's/.*"kata":{[^}]*"step":\([0-9]*\).*/\1/p')
   if [ -n "$tut_step" ]; then
-    tut_count=$(echo "$content" | sed -n 's/.*"tutorial":{[^}]*"stepCount":\([0-9]*\).*/\1/p')
-    tut_coach=$(echo "$content" | sed -n 's/.*"tutorial":{[^}]*"coach":"\([^"]*\)".*/\1/p')
+    tut_count=$(echo "$content" | sed -n 's/.*"kata":{[^}]*"stepCount":\([0-9]*\).*/\1/p')
+    tut_coach=$(echo "$content" | sed -n 's/.*"kata":{[^}]*"coach":"\([^"]*\)".*/\1/p')
     if [ -n "$tut_count" ] && [ "$tut_count" != "0" ]; then
-      printf 'C_ Tutorial %s/%s: %s\n' "$tut_step" "$tut_count" "$tut_coach"
+      printf 'C_ Kata %s/%s: %s\n' "$tut_step" "$tut_count" "$tut_coach"
     else
-      printf 'C_ Tutorial: %s\n' "$tut_coach"
+      printf 'C_ Kata: %s\n' "$tut_coach"
     fi
     exit 0
   fi
