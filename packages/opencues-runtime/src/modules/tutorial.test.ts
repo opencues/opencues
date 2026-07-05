@@ -86,6 +86,17 @@ describe('matchControlPhrase', () => {
     expect(matchControlPhrase('skip _', true)).toMatchObject({ kind: 'advance', word: 'skip' });
   });
 
+  it('advance words fire trailing after other text (live-reported: appended skip _ was dead)', () => {
+    const m = matchControlPhrase('git checkout main skip _', true);
+    expect(m).toMatchObject({ kind: 'advance', word: 'skip' });
+    // Consume preserves the prior text: phraseStart points at "skip".
+    expect(m!.phraseStart).toBe('git checkout main '.length);
+    // Mid-WORD must not fire ("whiskip _" is not a command).
+    expect(matchControlPhrase('whiskip _', true)).toBeNull();
+    // And still inert while no tutorial runs.
+    expect(matchControlPhrase('git checkout main skip _', false)).toBeNull();
+  });
+
   it('requires the trailing _', () => {
     expect(matchControlPhrase('start tutorial 1', false)).toBeNull();
     expect(matchControlPhrase('done', true)).toBeNull();

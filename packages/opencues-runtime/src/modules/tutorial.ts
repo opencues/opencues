@@ -109,7 +109,14 @@ export function parseTutorialMd(raw: string, fallbackName: string): TutorialDoc 
 // model as blank shapes (spec/blank-spec.md § Trigger model).
 const RE_START = /(^|[\n.!?]\s+)start\s+tutorial(?:\s+#?(\S+))?\s*_\s*$/i;
 const RE_STOP = /(^|[\n.!?]\s+)stop\s+tutorial\s*_\s*$/i;
-const RE_ADVANCE = /(^|[\n.!?]\s+)(done|next|skip)\s*_\s*$/i;
+// Advance words fire on a TRAILING match (start or any whitespace
+// before them) — unlike start/stop they don't need to lead a sentence.
+// The natural moment to skip is with your step attempt still in the
+// buffer ("git checkout main skip _"); requiring sentence-leading made
+// that silently dead (live-reported). Only checked while a tutorial is
+// ACTIVE, and the resolver is suppressed then, so a trailing `_` has no
+// competing meaning.
+const RE_ADVANCE = /(^|\s)(done|next|skip)\s*_\s*$/i;
 
 export type ControlPhrase =
   | { kind: 'start'; arg: string | null; phraseStart: number }
