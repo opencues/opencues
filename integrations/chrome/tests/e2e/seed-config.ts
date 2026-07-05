@@ -9,6 +9,10 @@
 export interface OpencuesMdOpts {
   debug?: boolean;
   fluidBlank?: boolean;
+  /** word-cues are gated behind `word-cues-mode: on` (resolver.ts:751) —
+   *  off by default, so a folder word-cue is discovered + merged but the
+   *  resolver builds no source for it unless this is set. */
+  wordCues?: boolean;
   extra?: Record<string, string>;
 }
 
@@ -17,9 +21,12 @@ export interface OpencuesMdOpts {
 export function opencuesMd(opts: OpencuesMdOpts = {}): string {
   const scalars: Record<string, string> = {
     'llm-provider': 'groq',
+    'cues-llm-provider': 'groq',
     'blanks-llm-provider': 'groq',
+    'word-cues-provider': 'groq',
     'debug-mode': opts.debug ? 'on' : 'off',
     'fluid-blank-mode': opts.fluidBlank === false ? 'off' : 'on',
+    'word-cues-mode': opts.wordCues ? 'on' : 'off',
     'voice-mode': 'inactive',
     'tips-mode': 'off',
     ...(opts.extra ?? {}),
@@ -59,53 +66,50 @@ export function fluidBlankSeed(debug = true) {
   };
 }
 
-/** A word-cue folder scoped to example.com — used by the site-filter
- *  security test. Served from localhost it MUST be filtered out. */
-export function offSiteCueSeed(debug = true) {
-  const cue = `---
-name: offsite-probe
+// A unique marker embedded in the probe cue's prompt body. It rides the
+// word-cue LLM call's system prompt, so the mock can detect whether the
+// cue's LLM call fired at all — i.e. whether the source was registered
+// (on-site match) or filtered out (off-site). No cycling needed.
+export const SITE_PROBE_MARKER = 'OCE2E_SITE_PROBE_MARKER';
+
+function probeCue(name: string, onSite: string): string {
+  return `---
+name: ${name}
 scope: words
 priority: 90
 match: .*
-on-site: [example.com]
-classify: Off-site probe — must never fire on localhost
+on-site: [${onSite}]
+classify: ${SITE_PROBE_MARKER} site probe
 ---
 
-Replace every word with the token LEAKED.
+${SITE_PROBE_MARKER} — replace every word with the token PROBED.
 Output format — one line per word:
-INDEX:LEAKED
+INDEX:PROBED
 `;
+}
+
+/** A word-cue folder scoped to example.com — served from localhost it
+ *  MUST be filtered out, so its LLM call never fires. */
+export function offSiteCueSeed(debug = true) {
   return {
     bundleFiles: {
-      'OPENCUES.md': opencuesMd({ debug }),
+      'OPENCUES.md': opencuesMd({ debug, wordCues: true, fluidBlank: false }),
       'CUES.md': cuesMd(),
-      'cues/offsite-probe/CUE.md': cue,
+      'cues/offsite-probe/CUE.md': probeCue('offsite-probe', 'example.com'),
     },
     hostKeys: GROQ_KEY,
   };
 }
 
-/** Same probe cue but scoped to localhost — the POSITIVE control that
- *  proves the harness would observe a leak if the filter degraded open. */
+/** Same probe cue scoped to localhost — the POSITIVE control: it IS
+ *  registered here, so its LLM call fires. Proves the harness would
+ *  observe a leak if the off-site filter degraded open. */
 export function onSiteCueSeed(debug = true) {
-  const cue = `---
-name: onsite-probe
-scope: words
-priority: 90
-match: .*
-on-site: [localhost]
-classify: On-site probe — should fire on localhost
----
-
-Replace every word with the token FIRED.
-Output format — one line per word:
-INDEX:FIRED
-`;
   return {
     bundleFiles: {
-      'OPENCUES.md': opencuesMd({ debug }),
+      'OPENCUES.md': opencuesMd({ debug, wordCues: true, fluidBlank: false }),
       'CUES.md': cuesMd(),
-      'cues/onsite-probe/CUE.md': cue,
+      'cues/onsite-probe/CUE.md': probeCue('onsite-probe', 'localhost'),
     },
     hostKeys: GROQ_KEY,
   };

@@ -52,9 +52,19 @@ Loads the WSL-side `dist/` directly via `--headless=new` (no display, no
 |---|---|---|
 | M0 harness | extension loads, SW registers, config seeds, runtime boots + attaches | ✅ |
 | M1 scenario | fluid-blank `_` lookup substitutes end-to-end | ✅ |
-| M2 security | trust-gate (synthetic-event refusal), sensitive-field (password no-attach), each with a positive control | ✅ |
-| M2 security | site-filter off-site cue dropped | ⏸ `test.fixme` — a seeded folder-cue isn't discovered from the storage bundle under Playwright (chrome cue-discovery-from-seed gap, not the control). See the TODO in `security.e2e.test.ts`. |
+| M2 security | trust-gate (synthetic-event refusal), sensitive-field password no-attach + mistyped-CC heuristic (residual #25), site-filter off-site cue never fires — each with a positive control | ✅ |
 | M3 host-dependent | scripted blanks / custom user-blanks (need a mock native-messaging host) | deferred |
+
+All three security controls are mutation-verified: disabling the
+control in source (isTrusted+credit gate, isSensitiveField,
+applySiteCompatFilter) turns the corresponding test red, so each is a
+genuine degraded-open detector, not a false pass.
+
+> Note on folder cues from a seeded bundle: word-cues are gated behind
+> `word-cues-mode: on` (resolver.ts) — a seeded folder-cue is discovered
+> and merged, but the resolver builds no source for it unless the mode is
+> on. The site-filter fixtures set `word-cues-mode: on`; see
+> `seed-config.ts:opencuesMd`.
 
 Adding a check: drop a `*.e2e.test.ts` under `tests/e2e/`, seed config
 with `seed()`, install a `MockLlm` if the feature calls an LLM, and

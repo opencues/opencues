@@ -66,6 +66,13 @@ export class MockLlm {
     return this.calls.length;
   }
 
+  /** True if any served request's message content matched — e.g. a
+   *  marker embedded in a specific source's prompt, to detect whether
+   *  that source's LLM call fired at all. */
+  sawContent(re: RegExp): boolean {
+    return this.calls.some((c) => re.test((c.messages ?? []).map((m) => m.content).join('\n')));
+  }
+
   async install(context: BrowserContext): Promise<void> {
     await context.route(PROVIDER_HOST_RE, async (route) => {
       let body: OpenAiRequest = {};

@@ -1,12 +1,18 @@
 # Chrome end-to-end (silent-degrade) test — plan
 
 > Status: **M0–M2 IMPLEMENTED** (`integrations/chrome/tests/e2e/`, run
-> with `npm run test:e2e:chrome`). Harness + scenario liveness + two of
-> three security controls are live and green; site-filter is a documented
-> `test.fixme`; M3 (host-dependent) is deferred. See
-> `integrations/chrome/tests/e2e/README.md` for the status table. This
-> doc is the design rationale. Tracked from `security-audit.md` § Open
-> follow-ups.
+> with `npm run test:e2e:chrome`). Harness + scenario liveness + all
+> three security controls (trust-gate, sensitive-field, site-filter) are
+> live and green, and each is **mutation-verified** (disabling the
+> control in source turns its test red). M3 (host-dependent) is deferred.
+> See `integrations/chrome/tests/e2e/README.md` for the status table.
+> This doc is the design rationale. Tracked from `security-audit.md` §
+> Open follow-ups.
+>
+> The site-filter "cue-discovery-from-seed" item that first looked like a
+> blocker turned out not to be a discovery bug at all: folder-cue
+> discovery from the storage bundle works; word-cues are simply gated
+> behind `word-cues-mode: on` (resolver.ts), which the fixture now sets.
 
 ## The bug class this targets
 

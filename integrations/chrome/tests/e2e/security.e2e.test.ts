@@ -8,7 +8,7 @@
 // trivial pass caused by the feature being dead everywhere.
 
 import { test, expect } from './extension.fixture';
-import { fluidBlankSeed } from './seed-config';
+import { fluidBlankSeed, offSiteCueSeed, onSiteCueSeed, SITE_PROBE_MARKER } from './seed-config';
 import { MockLlm, fluidBlankReply } from './mock-llm';
 
 const ANSWER = 'OCE2ESECVALUE'; // underscore-free so a fill is unambiguous
@@ -110,22 +110,39 @@ test.describe('M2 — security control liveness', () => {
     await expect(t).toHaveValue(`the sky looks ${ANSWER}`, { timeout: 15_000 });
   });
 
-  // TODO(site-filter): a seeded folder-cue (cues/<name>/CUE.md) is not
-  // discovered from the storage bundle under Playwright — ConfigLoader
-  // logs "loaded 0 cue entries" and the resolver builds with only
-  // [fluid-blank], even though readBundledDir() reads the same
-  // getBundleIndex() the seed writes. No parse/filter warning fires, so
-  // the folder is invisible to discovery (not dropped). Blocker is chrome
-  // folder-cue discovery-from-seed, not the site-filter control itself.
-  // Kept as a documented gap rather than a silent omission. Next step:
-  // trace ConfigLoader's folder prewalk vs getBundleIndex readiness at
-  // boot, or seed via the bake-time dist/configs path instead of storage.
-  test.fixme('site-filter: an off-site cue is filtered out on localhost', async ({ context, seed }) => {
-    // Intended shape once discovery-from-seed works:
-    //   seed offSiteCueSeed() (on-site: [example.com]) → type the word →
-    //   assert NO cue substitution on localhost; and the onSiteCueSeed()
-    //   (on-site: [localhost]) positive control DOES fire — proving the
-    //   filter, not a dead cue, is what blocked it.
-    void context; void seed;
+  // The observable is whether the probe cue's LLM call fires. Its prompt
+  // carries SITE_PROBE_MARKER, so the mock can tell a registered cue
+  // (call fired) from a filtered one (never called) — no cycling needed.
+  test('site-filter: an off-site cue never fires on localhost', async ({ context, seed }) => {
+    const marker = new RegExp(SITE_PROBE_MARKER);
+    const llm = new MockLlm().reply(marker, '0:PROBED');
+    await llm.install(context);
+    await seed(offSiteCueSeed(true)); // on-site: [example.com]
+
+    const page = await context.newPage();
+    await page.goto('/tests/e2e/pages/contenteditable.html');
+    await page.locator('#ce').focus();
+    await page.keyboard.type('sky is blue today');
+    await page.waitForTimeout(4000);
+
+    // LIVE: example.com-scoped cue is filtered at bundle read on
+    // localhost → never registered → its LLM call never fires.
+    expect(llm.sawContent(marker), 'off-site cue fired on localhost — site-filter degraded open').toBe(false);
+  });
+
+  test('site-filter positive control: the same cue scoped to localhost DOES fire', async ({ context, seed }) => {
+    const marker = new RegExp(SITE_PROBE_MARKER);
+    const llm = new MockLlm().reply(marker, '0:PROBED');
+    await llm.install(context);
+    await seed(onSiteCueSeed(true)); // on-site: [localhost]
+
+    const page = await context.newPage();
+    await page.goto('/tests/e2e/pages/contenteditable.html');
+    await page.locator('#ce').focus();
+    await page.keyboard.type('sky is blue today');
+
+    // Proves the off-site block above isn't a trivial pass: the identical
+    // cue, scoped to localhost, IS registered and its LLM call fires.
+    await expect.poll(() => llm.sawContent(marker), { timeout: 12_000 }).toBe(true);
   });
 });
