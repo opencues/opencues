@@ -1922,6 +1922,11 @@ function isReadOnlyPath(path: string): boolean {
   // OPENCUES.md is writable: OpenCuesSettingsBlank cycles voice-mode /
   // tips-mode / debug-mode etc. by rewriting the YAML scalar.
   if (rel === '.cues/OPENCUES.md') return false;
+  // NOTES.md is writable: the note collection blank appends/removes
+  // bullet entries. Without this, chrome-side writes land in storage
+  // but reads fall through to bake-time (null) — add works, recall
+  // finds nothing. Caught by the note E2E scenario.
+  if (rel === '.cues/NOTES.md') return false;
   return true;
 }
 
@@ -2192,7 +2197,11 @@ async function readBundledConfig(runtimePath: string): Promise<string | null> {
  *  use them.
  */
 async function writeFile(path: string, content: string): Promise<void> {
-  if (path === ROOT + '/.cues/OPENCUES.md') {
+  // Files relayed to the chrome-host for a DISK write (the file is the
+  // single source of truth; storage is a cache). The host validates
+  // the basename against WRITABLE_BASENAMES + path-sandboxes to
+  // CUE_ROOT. Falls back to storage-only when the host is absent.
+  if (path === ROOT + '/.cues/OPENCUES.md' || path === ROOT + '/.cues/NOTES.md') {
     try {
       const reply = await chrome.runtime.sendMessage({
         type: 'opencues:write-file',
@@ -2589,6 +2598,13 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     // do not add a parallel write path. Security-audit.md row #24.
     identityMdReadFile: () => readFile(`${ROOT}/.cues/IDENTITY.md`),
     identityMdWriteFile: (content) => writeFile(`${ROOT}/.cues/IDENTITY.md`, content),
+    // Note collection blank — keyword-bound `note add/…/delete _`.
+    // Writes go through @opencues/runtime's validateNoteWrite
+    // chokepoint BEFORE this writer is called. chrome.storage-backed:
+    // the store is per-browser until chrome-host push/pull covers
+    // NOTES.md (same situation as IDENTITY.md writes).
+    notesMdReadFile: () => readFile(`${ROOT}/.cues/NOTES.md`),
+    notesMdWriteFile: (content) => writeFile(`${ROOT}/.cues/NOTES.md`, content),
   });
   blankInvoke = createBlankInvoke(blanks);
 

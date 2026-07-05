@@ -295,6 +295,9 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
   const identityMdPathExpr =
     `(process.env.OPENCUES_HOME?(process.env.OPENCUES_HOME+"/IDENTITY.md"):` +
     `((process.env.HOME||"~")+"/.cues/IDENTITY.md"))`;
+  const notesMdPathExpr =
+    `(process.env.OPENCUES_HOME?(process.env.OPENCUES_HOME+"/NOTES.md"):` +
+    `((process.env.HOME||"~")+"/.cues/NOTES.md"))`;
   // CUES roots for the sandbox + audit log. First entry is where the
   // log lands. Mirrors OC/gemini.
   const cuesRootsExpr =
@@ -330,6 +333,7 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `var __ocCtl=__oc_req(${blanksPath});` +
     `var __ocFs=${requireFn}("fs");var __ocOcMd=${opencuesMdPathExpr};` +
     `var __ocIdMd=${identityMdPathExpr};` +
+    `var __ocNtMd=${notesMdPathExpr};` +
     `__ocReg=__ocCtl.createDefaultBlanksRegistry({` +
     `finnhubApiKey:process.env.FINNHUB_API_KEY,` +
     `opencuesMdIO:{` +
@@ -343,6 +347,13 @@ export function writeOpenCuesRuntimeV2(oldFile: string): string | null {
     `identityMdIO:{` +
     `readFile:function(){return new Promise(function(r){__ocFs.readFile(__ocIdMd,"utf8",function(e,d){r(e?null:d);});});},` +
     `writeFile:function(c){return new Promise(function(r,j){__ocFs.writeFile(__ocIdMd,c,"utf8",function(e){e?j(e):r();});});}` +
+    `},` +
+    // Note collection blank — keyword-bound `note add/…/delete _`.
+    // validateNoteWrite runs INSIDE NoteBlank before writeFile is
+    // invoked; do not add a parallel write path.
+    `notesMdIO:{` +
+    `readFile:function(){return new Promise(function(r){__ocFs.readFile(__ocNtMd,"utf8",function(e,d){r(e?null:d);});});},` +
+    `writeFile:function(c){return new Promise(function(r,j){__ocFs.writeFile(__ocNtMd,c,"utf8",function(e){e?j(e):r();});});}` +
     `}` +
     `});` +
     // User-shipped JS blanks: walk every .cues/blanks/<name>/BLANK.md,

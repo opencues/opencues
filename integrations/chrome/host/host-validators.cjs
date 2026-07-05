@@ -32,6 +32,11 @@ const WRITABLE_BASENAMES = new Set([
   'OPENCUES.md',
   'IDENTITY.md',
   'CUES.md',
+  // NOTES.md — the note collection blank's store. Data-only (parsed
+  // as bullet text, never executed / auto-loaded as code); writes are
+  // validated by validateNoteWrite in @opencues/runtime before the
+  // relay is invoked. Same threat class as IDENTITY.md.
+  'NOTES.md',
 ]);
 
 /**
