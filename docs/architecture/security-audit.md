@@ -17,6 +17,11 @@ Companion deep-dives:
   feature: off-by-default, single-field scope, no-system-data
   invariant, structural reliance on "OpenCues has no tool / exec
   layer for fluid-blank prompts."
+- `docs/architecture/security-findings.md` — the detailed findings log
+  behind this summary: per-finding repro / impact / fix for each
+  static-analysis pass (F1–F10, DA1–DA7, and the NF1–NF3 second pass),
+  plus the dynamic-confirmation record. This table is the at-a-glance
+  status; that doc is the evidence.
 
 Two sibling security docs, differently scoped: root [`SECURITY.md`](../../SECURITY.md)
 (how to report a vulnerability + a coarser trust-model summary) and
@@ -73,7 +78,7 @@ Status colour: 🟢 green = closed, 🟡 amber = closed with caveat, ⚪ N/A.
 | 3 | Malicious blank — ESM rewrite escape | Crafted source where `export default` inside a string survives parse but gets rewritten | AST-based rewriter via acorn — only syntactic `export default` is rewritten; string/template/comment literals are never touched. | None — AST parse is byte-exact. | 🟢 |
 | 4 | Malicious blank — dynamic import escape | Blank uses `import('./other.js')` to load unsandboxed code | acorn-walk catches `ImportExpression` at load time → throws "dynamic import not supported". | None. | 🟢 |
 | 5 | Network exfil via allow-list smuggle | Pack declares `network: [api.legit.com, evil.com]` and POSTs secrets to evil.com (plaintext or encoded — base64 / fragmentation / hex) | **Two-layer guard.** (a) **Primary (INFOSEC F4 — May 2026)**: when any declared secret has a non-empty `secret-hosts.<NAME>` binding, EVERY outbound `ctx.fetch` host must be in the UNION of those bindings — payload doesn't matter. Defeats encoded exfil structurally (attacker can't reach `evil.com` regardless of how the value is encoded). (b) **Secondary**: within the allow-list, scan URL/headers/body for bound secret values; refuse if a value appears at a host that isn't in THAT specific secret's binding. Catches multi-secret cross-talk. **Required** — a blank that declares `secrets:` without matching `secret-hosts.<NAME>` is refused at load time. **INFOSEC F2 (June 2026)**: scripted blanks (`blankScript:`) now also get a deny-by-default env via `buildSafeScriptEnv` — provider keys reach the child only when the blank's frontmatter `secrets: [NAME]` declared them. Pre-F2 the scripted-blank path spread the full `process.env` regardless of declaration. | None. | 🟢 |
-| 6 | LLM body exfil | Pack embeds `Bearer ${ctx.secrets.X}` in the prompt to leak via the LLM endpoint | Both user-blank loaders resolve the provider endpoint up-front and run `enforceSecretBindings` on the `${system}\n${prompt}` body against that destination before dispatch, applying the same `secret-hosts` enforcement as the `ctx.fetch` path (#5). **INFOSEC NF1 (July 2026, `@opencues/runtime` 0.10.1):** this guard existed only on the in-process loader (`registry.ts`, Node native hosts — Claude Code / Gemini CLI). The Bun-subprocess loader (`subprocess-loader.ts`, opencode / shell) enforced the binding on `ctx.fetch` but **not** `ctx.llm` — the two capability-handler builders had drifted since #148 — so on those two hosts a bound secret stuffed into an LLM prompt reached the provider unchecked. `subprocess-loader.ts:buildCapabilityHandler` now mirrors `registry.ts`'s `handler.llm` guard. | LLM endpoint can still log prompts — secret values flowing to a bound LLM host land in provider logs (out of scope; user trust in provider). **Open residual (NF1 second-pass):** the Layer-2 literal-value scan is string-coercion based (`` `${req.system ?? ''}\n${req.prompt}` ``), but neither loader validates the request shape at the untrusted IPC boundary — a non-string `prompt`/`system` (e.g. `ctx.llm({ prompt: { x: ctx.secrets.SECRET_B } })`) stringifies to `[object Object]` in the scan while the object's secret value is JSON-serialized into the wire body, defeating the multi-secret cross-talk check on both loaders. See Open follow-ups. | 🟡 |
+| 6 | LLM body exfil | Pack embeds `Bearer ${ctx.secrets.X}` in the prompt to leak via the LLM endpoint | Both user-blank loaders resolve the provider endpoint up-front and run `enforceSecretBindings` on the `${system}\n${prompt}` body against that destination before dispatch, applying the same `secret-hosts` enforcement as the `ctx.fetch` path (#5). **INFOSEC NF1 (July 2026, `@opencues/runtime` 0.10.1):** this guard existed only on the in-process loader (`registry.ts`, Node native hosts — Claude Code / Gemini CLI). The Bun-subprocess loader (`subprocess-loader.ts`, opencode / shell) enforced the binding on `ctx.fetch` but **not** `ctx.llm` — the two capability-handler builders had drifted since #148 — so on those two hosts a bound secret stuffed into an LLM prompt reached the provider unchecked. `subprocess-loader.ts:buildCapabilityHandler` now mirrors `registry.ts`'s `handler.llm` guard. **NF1 second-pass (closed same PR):** the Layer-2 scan is string-coercion based (`` `${system}\n${prompt}` ``) and the IPC boundary does no request-shape validation, so a non-string `prompt`/`system` (`ctx.llm({ prompt: { x: secret } })`) previously stringified to `[object Object]` in the scan while the real value serialized into the wire body downstream. Both loaders now coerce `prompt`/`system` to strings ONCE and forward the coerced values, so the scanned bytes equal the wire bytes; pinned by `subprocess-loader.nf1.test.ts`. | LLM endpoint can still log prompts — secret values flowing to a bound LLM host land in provider logs (out of scope; user trust in provider). | 🟢 |
 | 7 | Secret exposure to unrelated blanks | Blank A reads `FINNHUB_API_KEY` that's only meant for Blank B | Per-blank `secrets: [NAME]` allow-list; loader populates `ctx.secrets` only with declared names. Required `secret-hosts.<NAME>` per name forces authors to think about each one. `opencues validate` flags unused secrets + orphan/unreachable bindings. | None. | 🟢 |
 | 8 | Resource exhaustion — fetch hammering | Blank polls `api.x.com` 100/s to DoS or run up an API bill | Sliding-60s window: 120 fetches/min default, hard ceiling 600/min. | None. | 🟢 |
 | 9 | Resource exhaustion — LLM burn | Blank fires LLM call per keystroke | 30 LLM/min default, 120/min hard ceiling. | None. | 🟢 |
@@ -98,21 +103,17 @@ Status colour: 🟢 green = closed, 🟡 amber = closed with caveat, ⚪ N/A.
 
 The amber items each have a known next step:
 
-- **#6** — The LLM-body secret scan is string-coercion based, so a
-  non-string `prompt`/`system` crossing the user-blank IPC boundary
-  (`subprocess-runner.cjs` `JSON.parse`s the request with no shape
-  validation) evades the Layer-2 literal-value check while still
-  serializing the secret into the wire body. Next step: reject or
-  `String()`-coerce `prompt`/`system` **before both the scan and the
-  `llmFn` dispatch**, in `registry.ts` and `subprocess-loader.ts`.
-  Preferably extract the resolve-endpoint + `enforceSecretBindings`
-  block into one shared helper both loaders call — NF1 was exactly a
-  drift between these two hand-mirrored builders, and a copied guard
-  re-arms that failure mode. (Related housekeeping: fold the durable
-  content of the standalone `docs/INFOSEC_FINDINGS.md` into this doc,
-  or add it to CLAUDE.md's pre-launch removal list — it is a raw
-  internal findings dump at the repo docs root, outside this canonical
-  security home.)
+- **#6 (hardening, not an open hole)** — the `ctx.llm` secret guard
+  now lives, byte-for-byte, in both `registry.ts` (in-process) and
+  `subprocess-loader.ts` (Bun subprocess). NF1 itself was a drift
+  between these two hand-mirrored capability-handler builders, so the
+  copied guard re-arms that failure mode. Extract the resolve-endpoint
+  + `enforceSecretBindings` + prompt/system-coercion block into one
+  shared helper both loaders call (the `isBlankConfigCycleable` pattern
+  — one predicate, two import sites, drift structurally impossible).
+  Not urgent (both sites are correct today and pinned by
+  `subprocess-loader.nf1.test.ts`), but it closes the class rather than
+  the instance.
 
 - **#17** — Windows native still has no OS-sandbox wrapper.
   Investigate AppContainer / Job Objects when there's concrete demand.

@@ -250,7 +250,7 @@ function handleMessage(msg) {
 // F3 (INFOSEC) validators live in host-validators.cjs so they're unit-
 // testable in isolation. Reviewers: don't expand WRITABLE_BASENAMES /
 // INTERPRETER_ALLOWLIST without re-reading docs/architecture/
-// security-audit.md row #15 + the F3 finding in INFOSEC_FINDINGS.md.
+// security-audit.md row #15 + the F3 finding in security-findings.md.
 const {
   WRITABLE_BASENAMES,
   isWritableTarget,
