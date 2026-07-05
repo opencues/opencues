@@ -541,7 +541,7 @@ export function loadUserBlankSubprocess(
 
 // ─── Capability handler builder ─────────────────────────────────────────
 
-function buildCapabilityHandler(
+export function buildCapabilityHandler(
   caps: BlankCapabilities,
   opts: LoaderOptions,
 ): CapabilityHandler {
@@ -607,15 +607,27 @@ function buildCapabilityHandler(
     }
 
     handler.llm = async (req) => {
+      // Coerce prompt/system to strings ONCE and forward the coerced
+      // values, so the bytes the secret-scan reads are exactly the
+      // bytes that reach the wire. The IPC boundary does no shape
+      // validation (subprocess-runner.cjs JSON.parses the request), so
+      // a non-string field — `ctx.llm({ prompt: { x: ctx.secrets.X } })`
+      // — would otherwise stringify to "[object Object]" in the scan
+      // yet serialize the secret into the request body downstream,
+      // defeating the multi-secret cross-talk check (INFOSEC NF1
+      // second-pass).
+      const prompt = typeof req.prompt === 'string' ? req.prompt : String(req.prompt);
+      const system = req.system == null ? undefined : String(req.system);
+      const safeReq = { ...req, prompt, system };
       if (boundSecrets.length > 0) {
         enforceSecretBindings({
           hostname: llmHostname,
           url: '',
           headers: '',
-          body: `${req.system ?? ''}\n${req.prompt}`,
+          body: `${system ?? ''}\n${prompt}`,
         }, boundSecrets);
       }
-      return llmFn(provider, req);
+      return llmFn(provider, safeReq);
     };
   }
 

@@ -325,15 +325,24 @@ function buildContextFromCaps(
 
     ctx.llm = async (req) => {
       quota.recordLlm();
+      // Coerce prompt/system to strings ONCE and forward the coerced
+      // values so the secret-scan reads exactly the bytes that reach
+      // the wire — a non-string field would otherwise stringify to
+      // "[object Object]" in the scan while serializing the secret into
+      // the request body downstream (INFOSEC NF1 second-pass). Mirrors
+      // subprocess-loader.ts's handler.llm.
+      const prompt = typeof req.prompt === 'string' ? req.prompt : String(req.prompt);
+      const system = req.system == null ? undefined : String(req.system);
+      const safeReq = { ...req, prompt, system };
       if (boundSecrets.length > 0) {
         enforceSecretBindings({
           hostname: llmHostname,
           url: '',
           headers: '',
-          body: `${req.system ?? ''}\n${req.prompt}`,
+          body: `${system ?? ''}\n${prompt}`,
         }, boundSecrets);
       }
-      return llmFn(provider, req);
+      return llmFn(provider, safeReq);
     };
   }
 
