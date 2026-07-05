@@ -75,6 +75,10 @@ describe('createDefaultBlanksRegistry semantics', () => {
         readFile: async () => null,
         writeFile: async () => {},
       },
+      notesMdIO: {
+        readFile: async () => null,
+        writeFile: async () => {},
+      },
     });
     for (const spec of BUILTIN_BLANKS) {
       expect(reg.has(spec.name), `missing ${spec.name} in full-context registry`).toBe(true);
