@@ -240,7 +240,7 @@ function App(props: AppOpts) {
           />
         </box>
         {tip() != null && (
-          <box style={{ height: tipRows().length + 1, width: '100%', paddingLeft: 1, paddingRight: 1, flexDirection: 'column' }}>
+          <box style={{ height: tipRows().length + 1, width: '100%', flexDirection: 'column' }}>
             {tipRows().map((row, i) =>
               i === 0 && row.startsWith('C_ ')
                 ? <box style={{ flexDirection: 'row', height: 1 }}>

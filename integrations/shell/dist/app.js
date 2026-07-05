@@ -909,8 +909,6 @@ function App(props) {
           _$effect((_$p) => _$setProp(_el$4, "style", {
             height: tipRows().length + 1,
             width: "100%",
-            paddingLeft: 1,
-            paddingRight: 1,
             flexDirection: "column"
           }, _$p));
           return _el$4;
