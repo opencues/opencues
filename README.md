@@ -68,6 +68,10 @@ Full walkthrough, prerequisites, and per-host detail: [`docs/install.md`](docs/i
      real embed once available. -->
 <a href="#"><img width="100%" alt="Video placeholder — quickstart walkthrough" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Video_placeholder_1200x300.svg"></a>
 
+#
+
+<a href="docs/guides/cli-reference.md"><img width="153" alt="OpenCues CLI" src="assets/opencues-cli.svg"></a>
+
 <br><br><br><br>
 
 # Integrations
