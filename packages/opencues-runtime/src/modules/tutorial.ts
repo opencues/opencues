@@ -162,6 +162,14 @@ export function parseCoachMarkup(line: string): { plain: string; segments: reado
   return { plain: segments.map(s => s.text).join(''), segments };
 }
 
+/** Strip a redundant "Step N —/:" prefix from an authored step title —
+ *  the statusline head already carries the counter, so displaying
+ *  "Tutorial 3/4: Step 3 — switch model" says it three times. */
+export function cleanStepTitle(t: string): string {
+  const cleaned = t.replace(/^step\s*\d+\s*(?:[—–\-:.]\s*)?/i, '').trim();
+  return cleaned.length > 0 ? cleaned : t;
+}
+
 /** Statusline-facing snapshot. Also mirrored into tutorial.* events. */
 export interface TutorialStatus {
   readonly name: string;
@@ -276,7 +284,7 @@ export class TutorialCoach {
   private setOfflineCoachLine(why: string): void {
     if (!this._doc) return;
     const i = Math.min(this._stepIndex, this._doc.steps.length - 1);
-    const line = `Step ${i + 1}/${this._doc.steps.length}: ${this._doc.steps[i].title} — coach offline (${why}); type \`next _\` when done`;
+    const line = `${cleanStepTitle(this._doc.steps[i].title)} — coach offline (${why}); type \`next _\` when done`;
     if (this._coachLine === line) return;
     this._coachLine = line;
     this._offTrack = false;
@@ -526,9 +534,9 @@ export class TutorialCoach {
         if (saved && !saved.completed && saved.step > 0 && saved.step < doc.steps.length) {
           this._stepIndex = saved.step;
           this._journal = Array.isArray(saved.journal) ? [...saved.journal] : [];
-          this._coachLine = `Welcome back — resuming at step ${saved.step + 1}/${doc.steps.length}: ${doc.steps[saved.step].title}`;
+          this._coachLine = `Welcome back — ${cleanStepTitle(doc.steps[saved.step].title)}`;
         } else {
-          this._coachLine = `Step 1/${doc.steps.length} — ${doc.steps[0].title} · \`Esc ×3\` exits`;
+          this._coachLine = `${cleanStepTitle(doc.steps[0].title)} · \`Esc ×3\` exits`;
         }
         this.consumePhrase(text, ctl.phraseStart);
         this.adapter.emitEvent?.('tutorial.started', {
@@ -601,7 +609,7 @@ export class TutorialCoach {
       // Completion recap — the journal tells the story; the curriculum
       // link offers the next lesson. Shown as a 20s notice so the
       // ending lands instead of silently vanishing.
-      const recap = this._journal.map(l => l.replace(/^Step \d+ \(([^)]*)\).*/, '$1')).join(' → ');
+      const recap = this._journal.map(l => cleanStepTitle(l.replace(/^Step \d+ \(([^)]*)\).*/, '$1'))).join(' → ');
       const nextBit = next ? ` · next up: type \`start tutorial ${next} _\`` : '';
       this.saveProgress({ step: 0, completed: true });
       this.deactivate();
@@ -624,8 +632,8 @@ export class TutorialCoach {
     this._stepStartedAt = Date.now();
     this.saveProgress({ step: this._stepIndex });
     const next = this._doc.steps[this._stepIndex];
-    this._coachLine = `✓ — Step ${this._stepIndex + 1}/${this._doc.steps.length}: ${next.title}`;
-    this.maybeSpeak(`Step ${this._stepIndex + 1} of ${this._doc.steps.length}: ${next.title}`);
+    this._coachLine = `✓ ${cleanStepTitle(next.title)}`;
+    this.maybeSpeak(`Step ${this._stepIndex + 1} of ${this._doc.steps.length}: ${cleanStepTitle(next.title)}`);
     this.adapter.emitEvent?.('tutorial.step-advanced', {
       name: this._doc.name, fromStep: from + 1, toStep: this._stepIndex + 1, reason,
     });
@@ -783,7 +791,7 @@ export class TutorialCoach {
     if (!resolved) {
       // Deterministic nudge — same idea, no model.
       const i = Math.min(stepAtDispatch, doc.steps.length - 1);
-      this._coachLine = `Still there? Step ${i + 1}/${doc.steps.length}: ${doc.steps[i].title}${skipHint || ' — type `next _` when done'}`;
+      this._coachLine = `Still there? ${cleanStepTitle(doc.steps[i].title)}${skipHint || ' — type `next _` when done'}`;
       this._offTrack = false;
       this.adapter.emitEvent?.('tutorial.nudge', { step: i + 1, nudgeNumber, idleMs, deterministic: true, coach: this._coachLine });
       this.refreshStatusline();
