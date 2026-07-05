@@ -138,6 +138,8 @@ export function matchControlPhrase(text: string, active: boolean): ControlPhrase
 export interface CoachSegment {
   readonly text: string;
   readonly command: boolean;
+  /** **bold** emphasis (non-command). */
+  readonly bold?: boolean;
 }
 
 /** Parse backtick markup in a coach line: `like this` spans are
@@ -145,12 +147,14 @@ export interface CoachSegment {
  *  the ordered segments. Unbalanced backticks degrade to plain text. */
 export function parseCoachMarkup(line: string): { plain: string; segments: readonly CoachSegment[] } {
   const segments: CoachSegment[] = [];
-  const re = /`([^`]+)`/g;
+  // Backtick commands and **bold** emphasis; anything unmatched stays prose.
+  const re = /`([^`]+)`|\*\*([^*]+)\*\*/g;
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = re.exec(line)) !== null) {
     if (m.index > last) segments.push({ text: line.slice(last, m.index), command: false });
-    segments.push({ text: m[1], command: true });
+    if (m[1] !== undefined) segments.push({ text: m[1], command: true });
+    else segments.push({ text: m[2], command: false, bold: true });
     last = m.index + m[0].length;
   }
   if (last < line.length) segments.push({ text: line.slice(last), command: false });
@@ -971,7 +975,7 @@ Rules:
 - Detection is your job — the user should NEVER have to announce completion. When the step's expected key presses appear in the trace (e.g. shift+tab ×2 for a mode toggle, arrows + enter for a picker), that IS completion: STEP_DONE.
 - If the activity clearly belongs to a LATER step than the current one (e.g. the current step is a mode toggle you can't fully verify, but they're already typing the next step's request), the current step is behind them: STEP_DONE. EXCEPTION: a step's own coach notes always override this — when they mark the order as strict (skipping = OFF_TRACK), enforce the order instead.
 - COACH is ONE line (max 100 chars): the next micro-action ("Press Enter to open the model picker"), a fix ("add: don't implement yet"), or brief encouragement. Follow any coach notes in the step body.
-- In COACH, wrap anything the user should LITERALLY type or press in backticks: commands (\`/init\`, \`git status\`, \`skip _\`), exact text to enter, key names (\`Enter\`, \`Shift+Tab\`). The display renders these distinctly so the user can tell commands from prose. Do not backtick ordinary words.
+- In COACH, wrap anything the user should LITERALLY type or press in backticks: commands (\`/init\`, \`git status\`, \`skip _\`), exact text to enter, key names (\`Enter\`, \`Shift+Tab\`). The display renders these distinctly so the user can tell commands from prose. Do not backtick ordinary words. You may **bold** one key word for emphasis when it genuinely helps.
 - Meta-questions to you ("help", "what do I do now?", "where am I?") are NOT off-track — answer them: STATUS IN_PROGRESS, COACH restates the current micro-action. When they ask what they've DONE so far, answer from LESSON SO FAR in a few words, then the next action (e.g. "You've run /init and gotten an overview — now ask how to run the tests."). OFF_TRACK is reserved for actions that contradict the step.
 - TRUST COMPLETION CLAIMS on steps you can't observe: if the user explicitly claims they completed an outside-the-input-box action ("done", "I did it", "I'm in plan mode now") and the trace doesn't contradict them, that's STEP_DONE. Never hold a user hostage to key-press evidence you might simply have missed.
 - USER CONTROLS you must know (and mention when relevant): the user can type "stop tutorial _" to exit the tutorial at any time, and "skip _" to force-skip the current step. When they want to quit, are frustrated, or ask how to exit → COACH must include: type stop tutorial _ to exit. When they've been stuck on the same step for several checks despite your coaching → give the EXACT text to type, and mention skip _ as the escape.

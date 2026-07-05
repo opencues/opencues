@@ -357,10 +357,18 @@ export function startOpenCues(opts: TerminalBootOpts): BootResult {
       // Tutorial block is dominant while active — one plain-text line
       // (C_ brand + step counter + coach). Segment colouring needs an
       // app.tsx renderer; plain text first so the coach is VISIBLE.
-      const tut = payload?.tutorial as { step: number; stepCount: number; coach: string | null; stepTitle: string } | null | undefined;
+      const tut = payload?.tutorial as {
+        step: number; stepCount: number; coach: string | null; stepTitle: string;
+        coachSegments: Array<{ text: string; command: boolean; bold?: boolean }> | null;
+      } | null | undefined;
       if (tut) {
         const head = tut.stepCount > 0 ? `C_ Tutorial ${tut.step}/${tut.stepCount}:` : 'C_ Tutorial:';
-        opts.onTipChange(`${head} ${tut.coach ?? tut.stepTitle}`);
+        // Re-emit the inline markup (backtick commands, **bold**) so the
+        // app's tip renderer can style spans; plain fallback otherwise.
+        const marked = tut.coachSegments
+          ? tut.coachSegments.map(seg => seg.command ? '\u0060' + seg.text + '\u0060' : (seg.bold ? '**' + seg.text + '**' : seg.text)).join('')
+          : (tut.coach ?? tut.stepTitle);
+        opts.onTipChange(`${head} ${marked}`);
         return;
       }
       const agentTask = payload?.agentTask as string | null | undefined;

@@ -70,6 +70,23 @@ function App(props: AppOpts) {
     }
     return rows.length > 0 ? rows : [''];
   };
+  // Inline-markup renderer for tip rows: \u0060command\u0060 spans render
+  // green (things the user literally types/presses), **bold** renders
+  // bold. Prose stays default. Parsed per row after wrapping.
+  const renderSpans = (row: string) => {
+    const out: any[] = [];
+    const re = /\u0060([^\u0060]+)\u0060|\*\*([^*]+)\*\*/g;
+    let last = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(row)) !== null) {
+      if (m.index > last) out.push(<text>{row.slice(last, m.index)}</text>);
+      if (m[1] !== undefined) out.push(<text fg="#7ee787">{m[1]}</text>);
+      else out.push(<text attributes={TextAttributes.BOLD}>{m[2]}</text>);
+      last = m.index + m[0].length;
+    }
+    if (last < row.length) out.push(<text>{row.slice(last)}</text>);
+    return out.length > 0 ? out : [<text>{row}</text>];
+  };
   let textarea: TextareaRenderable | undefined;
   const syntax = SyntaxStyle.create();
 
@@ -245,9 +262,9 @@ function App(props: AppOpts) {
               i === 0 && row.startsWith('C_ ')
                 ? <box style={{ flexDirection: 'row', height: 1 }}>
                     <text fg="#ffffff" attributes={TextAttributes.INVERSE}>C_</text>
-                    <text>{row.slice(2)}</text>
+                    {renderSpans(row.slice(2))}
                   </box>
-                : <text>{row}</text>)}
+                : <box style={{ flexDirection: 'row', height: 1 }}>{renderSpans(row)}</box>)}
             <text> </text>
           </box>
         )}
