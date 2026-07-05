@@ -59,6 +59,9 @@ built).
 | D11 | Key handling | Contributed commands + keybindings (VS Code exposes no raw key events). Handlers synthesize `KeyEvent`s into `dispatchKey`. `when` clauses scoped by context keys so OpenCues only shadows multi-cursor when a cue is navigable | Ctrl+Alt+Up/Down is add-cursor-above/below on Win/Linux — see Quirks Q1 |
 | D12 | Write path | `setText` diffs old→new into minimal `TextEditor.edit` range edits (one undo entry; cursor + decorations survive). Never whole-buffer replace | chrome's one-history-entry lesson (`project_chrome_replaceall_undo`) |
 | D13 | Source reclassification | **Mandatory**, not optional. VS Code echoes programmatic edits back through `onDidChangeTextDocument` (the Lexical/ProseMirror shape). Every write path wraps with `createSourceReclassifier` (250 ms TTL) or runtime writes fire as `'user'` and Navigation deactivates | `boot-common.ts:createSourceReclassifier` + the documented runaway-loop bug |
+| D14 | Cue-analysis bound for large documents | **v1: word-cue/sentence-cue analysis gated by document size** (default ≤ ~500 words; configurable). `RoutedWordSourceGroup` dispatches EVERY word in the buffer and the shipped spelling catch-all claims `match: .*`, so a 2,000-word file would send ~2,000 words per completed-word pause — cost, latency, and the never-overload-the-LLM batching failure. Blanks / FluidBlank / TransformBlank stay available at any size (user-invoked via `_`); AgentRewrite bounded by `agent-window-words` (default ON for this band). Proper fix — a `cues-window-words` cursor window in the runtime resolver, mirroring `agent-window-words` — is a shared-module follow-up (benefits chrome long-field cases too), not a v1 blocker | `routed-word-source-group.ts:getCues` (verified: full word list, minus in-progress word, LRU keyed on exact word set — any completed word is a cache miss); `defaults/cues/spelling/CUE.md:10` |
+| D15 | Remote/WSL execution | `extensionKind: ["workspace"]` in the manifest — the extension MUST run in the remote extension host (WSL/SSH/containers) where `~/.cues/`, Node, and `spawnProcess` live. A UI-kind classification silently breaks config + blanks | VS Code remote architecture; this machine's own setup is WSL |
+| D16 | TTS | Wire via the `speakFn` seam (the chrome Web Speech path), not the spawn path — `tts.ts` hard-codes `command: 'bash'` + a staged `speak.sh`, which breaks on Windows VS Code hosts. Fallback order: `speakFn` → platform-checked script → skip | `tts.ts` spawn path; chrome `speakFn` precedent |
 
 ---
 
@@ -73,6 +76,60 @@ built).
 | Copilot / chat input | No extension API | Never (no seam exists) |
 | QuickInput / InputBox | Value get/set only | Skip |
 | Integrated terminal | No buffer access | Skip — covered by `oc-shell` |
+
+---
+
+## Verified runtime mechanics (checked in code, 2026-07-05)
+
+Three behaviours that differ in a whole-document host vs the
+prompt-sized buffers every existing host has:
+
+1. **Blank detection is token-based, not char-based.**
+   `context.words.some(w => w === '_')` (`blank-source.ts:70`,
+   `config-source.ts:118`, `routed-word-source-group.ts:171`) — a
+   standalone whitespace-delimited `_`. Markdown's `_emphasis_` and
+   code's `snake_case` do NOT flip the buffer into blank scope. (The
+   porting guide's "ANY `_` character" phrasing overstates the
+   implementation.)
+2. **…but the scope filter is buffer-global.** One lone `_` token
+   anywhere in the document disables ALL word-cues document-wide until
+   it's consumed. Transient in a prompt buffer; potentially persistent
+   in a document (a fill-in template, a leftover from a prior session).
+   Document in README; a cursor-window resolve (D14 follow-up) fixes it
+   structurally.
+3. **Word-cue dispatch is whole-buffer.** See D14. This is the single
+   biggest v1 scale risk and the reason for the document-size gate.
+
+---
+
+## Feature support by surface
+
+What actually works where. "Full editor" = allowlisted-language
+`TextEditor` under the D14 size gate; "large doc" = allowlisted but
+over the gate; "SCM input" = the phase-2 no-cycling surface.
+
+| Feature | Full editor | Large doc | SCM input (P2) | Notes |
+|---|---|---|---|---|
+| Word-cues (LLM alternatives, spelling) | ✅ | ❌ gated (D14) | ❌ pruned (no cycling) | |
+| Static tips / tip groups | ✅ status bar + hover | ✅ | ✅ status bar | display-only, no cycling needed |
+| Sentence-cues (`scope: sentence`) | ✅ | ❌ gated (D14 — per-sentence calls scale with doc) | ❌ pruned | passive DynDefs; multiple coexist |
+| Keyword/shape blanks — compute/get (weather, stocks, dictionary, time) | ✅ | ✅ | ✅ | single-answer results pass the no-cycling filter |
+| Keyword/shape blanks — list / script-cycling (countries, volume, brightness) | ✅ | ✅ | ❌ pruned | need Ctrl+Alt+arrows + paint |
+| Selector/satellite (`opencues settings _`) | ✅ | ✅ | ❌ pruned | cycling-dependent |
+| FluidBlank (free-form `_`) | ✅ | ✅ | ✅ | WIPE guard already protects multi-paragraph buffers |
+| TransformBlank (`fix typos _`, `translate _`) | ✅ | ✅ (whole-buffer call — user-invoked, cost is consented) | ✅ | three-way merge protects concurrent edits |
+| ConfigIntent / fluid-config | ✅ | ✅ | ❌ pruned (emits selector-satellite) | |
+| AgentRewrite / auditors | ✅ | ✅ with `agent-window-words` ON (D14) | ⚠️ probe off in v1 — revisit | `supportsAgentRewrite` probe |
+| Markdown styling render | ✅ **all six range types** — first non-terminal host to do so (chrome manages 3/6) | ✅ | ❌ no decorations | bold/italic/strike/code via decorations; heading/list soft-styled; un-expressible ranges DROP (never garbled syntax) |
+| Identity-context | ✅ | ✅ | ✅ | provider-side, host-agnostic |
+| Blank-context / ai-callable blanks | ✅ | ✅ | ✅ | native host |
+| Ambient-context | ❌ v1 (chrome-only gatherer) | ❌ | ❌ | future: filename/languageId/nearest heading as the field metadata |
+| Voice-mode TTS | ✅ via `speakFn` (D16) | ✅ | ✅ | spawn path Windows-broken |
+| Secondary display | ✅ StatusBarItem (+ hover tips) | ✅ | ✅ | |
+| Dim / navigation / highlight | ✅ decorations | ✅ (nav works even when cues gated — blanks still register) | ❌ | |
+
+Off-allowlist languages (code files): everything off. The allowlist is
+the consent gate, same role the `_` keystroke plays for blank routing.
 
 ---
 
@@ -103,6 +160,8 @@ produces a yes/no recorded back into this file.
 - **`package.json`** — dual-purpose: `@opencues/vscode` workspace
   package AND the VS Code extension manifest:
   - `engines.vscode` (pick current stable minus ~6 months for reach),
+    **`extensionKind: ["workspace"]`** (D15 — must run in the remote
+    extension host on WSL/SSH),
     `activationEvents: ["onLanguage:markdown", "onLanguage:git-commit", …]`
     (derived from the default allowlist),
   - `contributes.commands` (nav/cycle/escape/toggle),
@@ -146,11 +205,17 @@ behaviour model for dynamic probes.
   `editor.selection` (real — unlike shell's hardcoded `null`).
 - **`boot.ts`** — `boot(host: HostInfo): BootResult`. Wires
   `buildSharedRuntime` (config search paths:
-  `$OPENCUES_HOME` → `<workspace root>/.cues` → `~/.cues`), then
-  conditionally: Statusline (`statusSnapshotHook`), Resolver,
-  AgentRewrite (`supportsAgentRewrite` probe; respects
-  `agent-window-words`), TTS if trivially available. Installs
+  `$OPENCUES_HOME` → `<workspace root>/.cues` → `~/.cues`; never
+  `process.cwd()` — Q13). **`await configLoader.load()` before wiring
+  Resolver/BlankFill** (Q12). Then conditionally: Statusline
+  (`statusSnapshotHook`, driven on every state change — Q19), Resolver
+  (constructed with the shared `MarkdownRender` instance — Q17),
+  AgentRewrite (`supportsAgentRewrite` probe; `agent-window-words`
+  default ON per D14), TTS via `speakFn` (D16). Installs
   `createSourceReclassifier` and exposes it to the glue's write paths.
+  The band's `resetBufferState` includes `MarkdownRender.resetState()`
+  (Q17). Cue-source building honours the D14 document-size gate via
+  the `supportsCycling`-style live-probe pattern.
   Returns the standard `BootResult` (`dispatchKey`,
   `notifyTextChange`, `notifyCursorChange`, `collectRenderDirectives`,
   `resetBufferState`, `dispose`).
@@ -192,12 +257,19 @@ Split into `extension.ts` (activation/wiring) + `target.ts`
   Maintain `opencues.cueActive` via `setContext` from the runtime's
   highlight/nav state so the keybindings only exist while meaningful.
 - **Writes out**: `setText` → text diff → minimal `TextEditor.edit`
-  range edits (single undo entry); `pushText` on the same path,
-  queued if no edit slot is available. Both wrapped by the
-  reclassifier (D13).
-- **Render**: `collectRenderDirectives` consumed per change/cycle;
-  wholesale repaint of each decoration type per batch so VS Code's
-  automatic decoration range-tracking never fights the runtime (Q2).
+  range edits, ALL segments atomically in one `edit()` callback (one
+  undo entry; multi-segment splices are where cursors snap and
+  reconcilers partially revert — chrome key-learnings #5–#7), with
+  selections explicitly preserved/rebuilt. `pushText` applies
+  immediately + triggers a repaint (Q10). Both wrapped by the
+  reclassifier (D13). Edit failure → Q9 handling.
+- **Eligibility gates**: language allowlist AND scheme/writability
+  (Q16) AND single selection (Q15 — multi-cursor suspends dispatch)
+  AND external-mutation detector armed (Q14).
+- **Render**: `collectRenderDirectives` consumed per change/cycle AND
+  after every async fill (Q10); ranges coalesced per decoration type
+  (Q11), then wholesale repaint per batch so VS Code's automatic
+  decoration range-tracking never fights the runtime (Q2).
   Decoration types: dim (opacity ~0.55), highlight
   (background/border, `ThemeColor`-aware), markdown ranges
   (bold/italic/code/strike/heading/list via font-style decorations),
@@ -276,11 +348,17 @@ migrated to the core source of truth yet:
    browser-safe work (`lint-runtime-browser-safe.sh` guarantees) +
    `FetchHttpAdapter`; `spawnProcess`/script blanks drop out,
    capability flags degrade gracefully.
-5. Windowed virtual buffer for code files (hand the runtime the
+5. **`cues-window-words`** — a cursor-window bound on word-cue /
+   sentence-cue analysis in the runtime resolver, mirroring
+   `agent-window-words` (shared-module change; lifts the D14 size gate
+   and fixes the buffer-global `_` scope filter as a side effect).
+   Benefits any future large-buffer host, so land it as prep work per
+   the `adding-an-integration.md` shared-gaps convention.
+6. Windowed virtual buffer for code files (hand the runtime the
    cursor's paragraph, translate offsets in the adapter) — strains the
    whole-buffer three-way-merge assumptions in
    `docs/architecture/blank-sources.md`; needs its own design pass.
-6. Ghost-text (inline completion) / inlay-hint rendering experiments
+7. Ghost-text (inline completion) / inlay-hint rendering experiments
    for cue tips.
 
 ---
@@ -297,7 +375,17 @@ migrated to the core source of truth yet:
 | Q6 | Split editors: two `TextEditor`s, one `TextDocument` | Target keyed by document; active editor supplies cursor; no reset on same-document editor switch |
 | Q7 | Extension host restart / window reload wipes the runtime silently | Acceptable — clean boot; state is per-session by design. Note in CLAUDE.md |
 | Q8 | Multiple windows = independent extension hosts | Independent runtimes by construction; shared `~/.cues` hot-reload keeps configs consistent |
-| Q9 | `TextEditor.edit` can fail (editor closed mid-await) | Check return value; on failure, log + `resetBufferState()` — never retry blind (no-logical-landmines rule) |
+| Q9 | `TextEditor.edit` can fail (editor closed mid-await) OR silently lose to a concurrent edit — no reliable "did the write take" signal | Check return value; on failure, log + `resetBufferState()` — never retry blind (no-logical-landmines rule). Don't build fallbacks on post-edit buffer-length checks (chrome key-learning: length-comparison fallback chains double-fire) |
+| Q10 | Async fills (blank scripts, resolver post-processing) have no upcoming key dispatch to drain pending state — the value "sits there" until the user types (CC #5, OC LF-8, gemini LF-1) | `pushText` applies immediately + explicit decoration repaint after EVERY async write. There is no React/host render to piggyback on — drive the repaint yourself. Pin in `boot.test.ts` |
+| Q11 | Overlapping dim ranges (cue word nested inside a span dim) paint patchy (CC #7) | Sort + merge overlapping/adjacent ranges per decoration type BEFORE `setDecorations` — wholesale repaint (Q2) needs coalesced input, not just a repaint |
+| Q12 | Resolver/BlankFill wired before async config load resolves → zero sources registered, LLM never fires, no error (OC LF-6) | `await configLoader.load()` before wiring resolver + blank-fill in `boot.ts`. Pure ordering discipline |
+| Q13 | Config loaded from `process.cwd()` — extension host cwd is arbitrary (OC LF-4) | Search paths explicitly `$OPENCUES_HOME` → workspace root `.cues/` → `~/.cues/`; never `process.cwd()` |
+| Q14 | Other extensions / formatters mutate the buffer (format-on-save, Copilot accept, snippet insert, file-reload on branch switch) — `onDidChangeTextDocument` doesn't say who edited | Heuristic external-mutation detector: multi-range edits, or large edits not adjacent to the cursor, that aren't a pending runtime write → treat as external → `resetBufferState()`. S3 spike validates |
+| Q15 | Multi-cursor: N selections typing simultaneously; runtime assumes one cursor | `selections.length > 1` → deactivate highlight + suppress dispatch + block cycle commands (context key goes false) until back to a single selection |
+| Q16 | Readonly / diff / virtual documents (scheme ≠ `file`/`untitled`) accept decorations but reject edits | Gate target eligibility by scheme + writability alongside the language allowlist |
+| Q17 | Stale `MarkdownRender` cache re-injects style markers into the next document's first LLM call | `MarkdownRender.resetState()` is part of every `resetBufferState()`; construct ONE shared `MarkdownRender(adapter)` and pass it to the `Resolver` constructor so rich-text re-injection survives chained transforms |
+| Q18 | Silent activation/boot failure — extension errors land in the Extension Host output channel nobody reads (the chrome BlankIntent-inert-for-hours class) | Status bar item has an explicit error state; boot logs a `[vscode]`-prefixed line to `/tmp/opencues.log`; doctor checks marker drift + bundle presence. Anything that can degrade on one host gets a boot diagnostic |
+| Q19 | Status surface refreshes only on host events, not on typing/cycling (CC #4) | `statusSnapshotHook` pushes on every runtime state change; the StatusBarItem is driven, never polled |
 
 ---
 
