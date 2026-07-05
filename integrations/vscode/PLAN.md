@@ -419,15 +419,28 @@ scaffold 0.5, band 1, glue 1–1.5, wiring 0.5, testing 0.5. Risk
 concentrates in Phase 3's event-model quirks (paste/IME/undo), which is
 why they are front-loaded as Phase-0 spikes.
 
-## Open questions (decide before Phase 1)
+## Open questions — resolved as built (2026-07-05)
 
-1. **`opencues run vscode` semantics.** Recommended: run the drift
-   check/rebuild (`ensureFreshBundle`) and print load/reload
-   instructions, mirroring chrome's reload story — rather than
-   launching `code` itself.
-2. **Default-on vs opt-in.** Recommended: enabled by default on the
-   prose allowlist (matches every other host), with
-   `opencues.languages` + `opencues.enabled` in settings for
-   tightening.
-3. **Notebook markdown cells in v1** — pending spike S1; include if
-   free, defer if quirky.
+1. **`opencues run vscode` semantics** — DECIDED: drift check/rebuild
+   via the generic `ensureFreshBundle`, then print reload
+   instructions (chrome's pattern). Implemented in
+   `packages/opencues-cli/src/commands/run.cjs:runVscode`.
+2. **Default-on vs opt-in** — DECIDED: enabled by default on the prose
+   allowlist; `opencues.languages` + `opencues.enabled` +
+   `opencues.maxCueDocumentWords` in `contributes.configuration`.
+3. **Notebook markdown cells in v1** — still pending spike S1; include
+   if free, defer if quirky.
+
+## Remaining to-dos (v1 shipped to branch `vscode`, 2026-07-05)
+
+- [ ] **Phase-0 spikes S1–S3** in a real VS Code window (notebook-cell
+  decorations; context-key keybinding scoping vs multi-cursor;
+  undo/paste/IME external-mutation detection). S2/S3 are the riskiest
+  untested assumptions in the glue.
+- [ ] **Manual test pass** — the 10-step checklist in
+  [`CLAUDE.md`](CLAUDE.md) § Manual test pass.
+- [ ] Fold tester feedback back into the quirks register / REPAIR.md;
+  update this file's status line.
+- [ ] Phase 6 deferred increments (section above) — each is its own
+  future PR; `cues-window-words` (#5) is the highest-value follow-up
+  (lifts the D14 gate properly).
