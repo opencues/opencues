@@ -595,8 +595,10 @@ export class TutorialCoach {
       const nextBit = next ? ` · next up: type \`start tutorial ${next} _\`` : '';
       this.saveProgress({ step: 0, completed: true });
       this.deactivate();
+      // Actionable link BEFORE the decorative journey — single-line
+      // statuslines clip the tail, and the tail must never be the link.
       this._notice = {
-        text: `🎉 ${title} — complete (${stepCount}/${stepCount})${recap ? `: ${recap}` : ''}${nextBit}`.slice(0, 220),
+        text: `🎉 ${title} — complete (${stepCount}/${stepCount})${nextBit}${recap ? ` — ${recap}` : ''}`.slice(0, 220),
         until: Date.now() + 20_000,
         offTrack: false,
       };
