@@ -54,6 +54,30 @@ after your reload time — content script never re-executed.
 For chrome-only changes (anything under `integrations/chrome/src/`),
 step 1 is unnecessary — chrome bundles its own TS directly.
 
+## End-to-end tests — run after any chrome-affecting change
+
+`tests/e2e/` loads the **real unpacked extension** in headless Chromium
+and drives features + security controls to observable output — the
+"compiles clean but silently dead / degraded-open in chrome" bug class
+that unit tests and the static lints can't catch.
+
+```bash
+npm run build && npm run test:e2e:chrome    # ~35s, run-on-demand (NOT a CI gate)
+```
+
+Covers: boot/attach, fluid-blank end-to-end, and the trust-gate /
+sensitive-field / site-filter security controls (each mutation-verified
+to go red when the control is degraded in source). Distinct from the
+write-path suite (`playwright.config.ts` / `*.pw.test.ts`), which loads
+a stub bundle and never boots the extension.
+
+**Because it's not in CI, the discipline is manual:** touched
+`src/**`, or `@opencues/{core,runtime}` code that runs in the content
+script / SW? Ask the user to run this (or offer to), and rebuild first —
+it loads `dist/`, so a stale build silently tests old code. Full
+details: `tests/e2e/README.md`; design rationale:
+`docs/architecture/chrome-e2e-plan.md`.
+
 ## LLM API keys — multi-provider + real-time
 
 Chrome reads its provider keys from `chrome.storage`, not
