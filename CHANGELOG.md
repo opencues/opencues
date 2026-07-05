@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security — Bun-subprocess user-blank path enforced secret-destination bindings on `ctx.llm()` (`@opencues/runtime` 0.10.0 → 0.10.1, INFOSEC NF1)
+
+The subprocess-based user-blank loader (opencode / shell integration, added in #148 as the Bun-compatible sandbox path for `isolated-vm`) guarded `ctx.fetch()` against exfiltrating a `secret-hosts`-bound secret but never applied the equivalent `enforceSecretBindings` check to `ctx.llm()` — a blank could stuff a bound secret into an LLM prompt and it would reach the provider unchecked. The in-process loader (native hosts) already had this guard; the two capability-handler builders had drifted. `subprocess-loader.ts`'s `buildCapabilityHandler` now resolves the LLM endpoint hostname and calls `enforceSecretBindings` before forwarding, mirroring `registry.ts`'s in-process path exactly. Also hardened `defaults/blanks/{volume,brightness}/volume-blank.sh` and `brightness-blank.sh` with an independent digit-only guard before the value reaches an `awk` command-substitution interpolation (INFOSEC NF2) — not currently reachable given upstream validation, but the scripts no longer rely entirely on every caller getting that right.
+
+### Security — dependency bumps for 9 advisories surfaced by a fresh `pnpm audit` (INFOSEC NF3)
+
+All transitive: `undici` (7 CVEs, via `jsdom`, test-environment-only — pinned `>=7.28.0` in `pnpm-workspace.yaml` overrides) and `@babel/core` (via `integrations/shell`'s `@opentui/solid`, low severity, build-time-only — pinned `>=7.29.6`). Also removed the unused `@anthropic-ai/sdk` devDependency from `integrations/chrome` (zero imports repo-wide) — it existed only to pull in a vulnerable `form-data` transitively.
+
 ### Fixed — `switch model to gemma` resolved to the wrong model in the config-intent classifier (`@opencues/core` 0.13.4 → 0.13.5)
 
 `switch model to gemma _` was silently resolving to `cerebras:gpt-oss-120b` instead of `gemma-4-31b`. The classifier's few-shot examples had no anchor mapping the informal "gemma" alias to the private-preview model id, so it emitted `MODEL:` empty per the "unrecognised model" rule — the apply path then fell back to the provider's `defaultModel` (gpt-oss-120b for cerebras). The equivalent `haiku` phrasing only appeared to work because Anthropic's `defaultModel` happens to literally be the haiku model id, masking the same gap. Added a `SYSTEM_PROMPT` few-shot example anchoring `switch model to gemma` → `cerebras / gemma-4-31b`. Verified live via the agentic harness: resolves to gemma-4-31b (conf 0.92) and correctly writes `blanks-llm-model` to `OPENCUES.md`.

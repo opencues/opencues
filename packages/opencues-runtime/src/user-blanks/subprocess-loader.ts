@@ -584,7 +584,39 @@ function buildCapabilityHandler(
   if (caps.llm && opts.llm) {
     const provider = caps.llm;
     const llmFn = opts.llm;
-    handler.llm = async (req) => llmFn(provider, req);
+
+    // Resolve the LLM endpoint up front so we know which host the
+    // prompt+system body will be sent to. Mirrors registry.ts's
+    // in-process buildContextFromCaps — without this, a blank could
+    // exfiltrate a secret-hosts-bound secret by stuffing it into the
+    // prompt, since the destination binding never runs on ctx.fetch's
+    // sibling path otherwise (INFOSEC NF1).
+    let llmHostname = '';
+    if (opts.secrets && boundSecrets.length > 0) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+        const core = require('@opencues/core') as typeof import('@opencues/core');
+        const resolved = core.resolveLLM({
+          apiKeys: opts.secrets as Record<string, string>,
+          globalProvider: provider,
+        });
+        if (resolved) {
+          try { llmHostname = new URL(resolved.endpoint).hostname.toLowerCase(); } catch { /* leave empty → all bound secrets refused on llm path */ }
+        }
+      } catch { /* core not available — skip scan */ }
+    }
+
+    handler.llm = async (req) => {
+      if (boundSecrets.length > 0) {
+        enforceSecretBindings({
+          hostname: llmHostname,
+          url: '',
+          headers: '',
+          body: `${req.system ?? ''}\n${req.prompt}`,
+        }, boundSecrets);
+      }
+      return llmFn(provider, req);
+    };
   }
 
   if (caps.storage && opts.storage) {

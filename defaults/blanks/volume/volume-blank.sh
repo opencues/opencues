@@ -88,6 +88,14 @@ case "$DIRECTION" in
     ;;
 
   set)
+    # Independent guard (INFOSEC NF2): don't trust the caller to have
+    # validated VALUE — clamp() only rewrites non-conforming input when
+    # bash's numeric test happens to succeed, and VALUE is interpolated
+    # into an `awk "BEGIN{...}"` string below. Reject anything that
+    # isn't a plain non-negative integer before it reaches that string.
+    case "$VALUE" in
+      ''|*[!0-9]*) exit 0 ;;
+    esac
     VALUE=$(clamp "$VALUE")
 
     # WSL: VolCtl.exe.
