@@ -107,7 +107,7 @@ export function parseKataMd(raw: string, fallbackName: string): KataDoc | null {
 
 // Phrase must LEAD the sentence containing the trailing `_` — same trigger
 // model as blank shapes (spec/blank-spec.md § Trigger model).
-const RE_START = /(^|[\n.!?]\s+)(start|restart)\s+kata(?:\s+#?(\S+))?\s*_\s*$/i;
+const RE_START = /(^|[\n.!?]\s+)(start|restart)\s+kata(?:\s+#?(.+?))?\s*_\s*$/i;
 const RE_STOP = /(^|[\n.!?]\s+)stop\s+kata\s*_\s*$/i;
 // Advance words fire on a TRAILING match (start or any whitespace
 // before them) — unlike start/stop they don't need to lead a sentence.
@@ -125,7 +125,7 @@ export type ControlPhrase =
 
 export function matchControlPhrase(text: string, active: boolean): ControlPhrase | null {
   let m = RE_START.exec(text);
-  if (m) return { kind: 'start', arg: m[3] ?? null, phraseStart: m.index + m[1].length, fresh: m[2].toLowerCase() === 'restart' };
+  if (m) return { kind: 'start', arg: m[3]?.trim() ?? null, phraseStart: m.index + m[1].length, fresh: m[2].toLowerCase() === 'restart' };
   m = RE_STOP.exec(text);
   if (m) return { kind: 'stop', phraseStart: m.index + m[1].length };
   if (active) {
@@ -525,7 +525,20 @@ export class KataCoach {
   private async handleControl(ctl: ControlPhrase, text: string): Promise<void> {
     switch (ctl.kind) {
       case 'start': {
-        const doc = await this.loadKata(ctl.arg);
+        let doc = await this.loadKata(ctl.arg);
+        // Fuzzy fallback — deterministic match failed but the user named
+        // SOMETHING ("start kata the git one _"). One bounded-codomain
+        // LLM pick over the installed catalogue (same safety shape as
+        // fluid-config: the model can only choose among installed names;
+        // exact id/name matches never consult it; validation floor
+        // rejects anything outside the list).
+        if (!doc && ctl.arg) {
+          const picked = await this.llmPickKata(ctl.arg);
+          if (picked) {
+            doc = await this.loadKata(picked);
+            if (doc) this.adapter.emitEvent?.('kata.matched', { arg: ctl.arg, picked });
+          }
+        }
         if (!doc) {
           this._logFn(`Kata: no kata found for "${ctl.arg ?? '(first)'}" under ${this.options.katasDirs.join(', ')}`);
           const available = await this.listKatas();
@@ -717,6 +730,38 @@ export class KataCoach {
   private _lastDocName: string | null = null;
 
   // ── kata discovery ───────────────────────────────────────────────
+
+  /** Fuzzy kata pick: one LLM call choosing among INSTALLED names only.
+   *  Returns a validated installed name, or null (no LLM / no pick /
+   *  hallucinated name). Never throws. */
+  private async llmPickKata(arg: string): Promise<string | null> {
+    const resolved = this.options.resolveLLM();
+    if (!resolved) return null;
+    const available = await this.listKatas();
+    if (available.length === 0) return null;
+    try {
+      const out = await dispatchChat(
+        resolved.provider as unknown as Parameters<typeof dispatchChat>[0],
+        this.getHttpAgent() as Parameters<typeof dispatchChat>[1],
+        {
+          model: resolved.model,
+          messages: [
+            { role: 'system', content: `The user wants to start a kata (guided practice scenario) but their request didn't exactly match an installed name. Pick the single best match from the INSTALLED list, or NONE if nothing plausibly matches. Reply with EXACTLY one line: KATA: <name> or KATA: NONE.\n\nINSTALLED:\n${available.map(k => `- ${k.name}`).join('\n')}` },
+            { role: 'user', content: arg },
+          ],
+          maxTokens: 1024,
+          temperature: 0,
+          seed: 42,
+        },
+        { apiKey: resolved.apiKey, endpoint: resolved.endpoint, maxThinking: resolved.maxThinking ?? true },
+      );
+      const m = out.match(/KATA:\s*(\S+)/i);
+      if (!m || /^none$/i.test(m[1])) return null;
+      // FLOOR: only an installed name is honoured.
+      const hit = available.find(k => k.name.toLowerCase() === m[1].toLowerCase());
+      return hit ? hit.name : null;
+    } catch { return null; }
+  }
 
   /** Enumerate installed katas (id + name) across the search dirs.
    *  Used for the not-found notice so a failed start tells the user
