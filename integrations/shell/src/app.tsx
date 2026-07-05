@@ -47,6 +47,29 @@ interface AppOpts {
 function App(props: AppOpts) {
   const renderer = useRenderer();
   const [tip, setTip] = createSignal<string | null>(null);
+  // Word-wrap the tip into up to 3 rows so long lines (tutorial coach,
+  // completion recap, catalogue notices) GROW the bar instead of
+  // clipping at the pane edge. Deterministic manual wrap — OpenTUI
+  // <text> doesn't reliably wrap inside a sized box. Recomputed per
+  // render so pane resizes re-wrap.
+  const tipRows = (): string[] => {
+    const t = tip();
+    if (t == null) return [];
+    const width = Math.max(20, (process.stdout.columns ?? 80) - 4);
+    const rows: string[] = [];
+    let rest = t.trim();
+    while (rest.length > 0 && rows.length < 3) {
+      if (rest.length <= width) { rows.push(rest); break; }
+      let cut = rest.lastIndexOf(' ', width);
+      if (cut < width * 0.6) cut = width; // no good break point — hard cut
+      rows.push(rest.slice(0, cut));
+      rest = rest.slice(cut).trimStart();
+    }
+    if (rest.length > 0 && rows.length === 3 && rows[2].length > 1) {
+      rows[2] = rows[2].slice(0, Math.max(0, width - 1)) + '…';
+    }
+    return rows.length > 0 ? rows : [''];
+  };
   let textarea: TextareaRenderable | undefined;
   const syntax = SyntaxStyle.create();
 
@@ -217,8 +240,8 @@ function App(props: AppOpts) {
           />
         </box>
         {tip() != null && (
-          <box style={{ height: 1, width: '100%', paddingLeft: 1, paddingRight: 1 }}>
-            <text>{tip()}</text>
+          <box style={{ height: tipRows().length, width: '100%', paddingLeft: 1, paddingRight: 1, flexDirection: 'column' }}>
+            {tipRows().map((row) => <text>{row}</text>)}
           </box>
         )}
       </box>
