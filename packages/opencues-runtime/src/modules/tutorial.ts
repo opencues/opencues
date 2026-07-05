@@ -534,9 +534,9 @@ export class TutorialCoach {
         if (saved && !saved.completed && saved.step > 0 && saved.step < doc.steps.length) {
           this._stepIndex = saved.step;
           this._journal = Array.isArray(saved.journal) ? [...saved.journal] : [];
-          this._coachLine = `Welcome back to **${doc.title}** — ${cleanStepTitle(doc.steps[saved.step].title)}`;
+          this._coachLine = `Welcome back to **${doc.title}** — next: ${cleanStepTitle(doc.steps[saved.step].title)}`;
         } else {
-          this._coachLine = `**${doc.title}** — ${cleanStepTitle(doc.steps[0].title)} · \`Esc ×3\` exits`;
+          this._coachLine = `**${doc.title}** — first: ${cleanStepTitle(doc.steps[0].title)} · \`Esc ×3\` exits`;
         }
         this.consumePhrase(text, ctl.phraseStart);
         this.adapter.emitEvent?.('tutorial.started', {
@@ -632,7 +632,7 @@ export class TutorialCoach {
     this._stepStartedAt = Date.now();
     this.saveProgress({ step: this._stepIndex });
     const next = this._doc.steps[this._stepIndex];
-    this._coachLine = `✓ ${cleanStepTitle(next.title)}`;
+    this._coachLine = `✓ Now: ${cleanStepTitle(next.title)}`;
     this.maybeSpeak(`Step ${this._stepIndex + 1} of ${this._doc.steps.length}: ${cleanStepTitle(next.title)}`);
     this.adapter.emitEvent?.('tutorial.step-advanced', {
       name: this._doc.name, fromStep: from + 1, toStep: this._stepIndex + 1, reason,
