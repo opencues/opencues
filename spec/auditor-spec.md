@@ -123,13 +123,28 @@ A future revision MAY introduce a registry mechanism with cryptographic provenan
 
 ### Output validation
 
-Independent of trust, runtimes SHOULD apply lightweight output validation to every auditor's rewrite (regardless of provenance):
+Independent of trust, runtimes SHOULD apply lightweight sanity checks
+to every auditor's rewrite (regardless of provenance) to catch
+malformed LLM output before it lands in the buffer. This is a
+recommendation for content-agnostic sanity checks, not a
+content/security filter — it does not police WHAT an auditor is
+allowed to output (that's the trust model above), only whether the
+rewrite looks like a coherent response at all.
 
-- Length-delta cap: reject rewrites where `|output| / |input|` exceeds a runtime-configured threshold (the OpenCues runtime uses `1.5` by default).
-- Character-class drift: flag rewrites that introduce zero-width Unicode, control characters, or unexpected character classes not present in the input.
-- Unexpected-content emergence: flag rewrites that introduce URLs, markdown images, or code fences when the input contained none, unless the auditor's `expected-changes:` declares them.
+**Reference runtime status (v1.0):** the OpenCues runtime implements
+this today as four checks in `validateLLMRewrite()` — reject if the
+rewrite is identical to the input (no-op round), empty/whitespace-only
+on a non-empty input, suspiciously short (under 30% of input length,
+for inputs over 20 chars), or a strict prefix of the input (truncated
+mid-sentence). Rewrites that fail are discarded and retried on the
+next agent tick; there is no user-facing surfacing today.
 
-These checks catch the "single bad auditor" failure mode that isolation alone doesn't. The runtime MAY surface flagged rewrites for user review or silently drop them; the standard does not specify the user-facing behaviour.
+A length-delta ceiling, character-class drift detection, and an
+`expected-changes:` allowlist for auditors that legitimately introduce
+new content classes (URLs, redaction markers, code fences) are
+reasonable further sanity checks a runtime MAY add, but are **not
+implemented by the reference runtime** — don't rely on them, and
+don't declare `expected-changes:` expecting it to do anything today.
 
 ---
 
@@ -155,7 +170,7 @@ These checks catch the "single bad auditor" failure mode that isolation alone do
 | `enabled` | boolean | `true` | Set `false` to keep the file but skip composition. |
 | `on-host` | array of strings | (auto-detected) | Host-compat allow-list (`chrome`, `claude-code`, `gemini-cli`, `opencode`). See [`core.md` § Host compatibility](./core.md#host-compatibility). |
 | `not-on-host` | array of strings | `[]` | Host-compat deny-list. |
-| `expected-changes` | array of strings | `[]` | Optional declaration of content classes this auditor expects to introduce (`url`, `markdown-image`, `redaction-marker`, `code-fence`). Used by output-validation to suppress false positives — e.g. a `pii-redact` auditor declares `[redaction-marker]` so its `[REDACTED]` insertions don't trip the unexpected-content-emergence check. See § Trust model. |
+| `expected-changes` | array of strings | `[]` | Reserved for a future output-validation scheme (content classes an auditor expects to introduce, e.g. `redaction-marker`). **Not consumed by the reference runtime today** — declaring it has no effect. See § Trust model. |
 
 ### Body
 
@@ -213,7 +228,7 @@ A conformant runtime MUST:
 A conformant runtime SHOULD:
 
 - Use isolated mode by default. Reserve composed mode for environments where every auditor is provably first-party (e.g. a single-tenant deployment with auditor authoring locked to the operator).
-- Apply lightweight output validation per § Trust model (length-delta cap, character-class drift, unexpected-content emergence) regardless of composition mode.
+- Apply lightweight sanity checks to rewrites per § Trust model (at minimum: reject no-op/empty/suspiciously-short/truncated rewrites) regardless of composition mode.
 - Run isolated-mode calls in parallel — total latency = `max(N)`, not `sum(N)`.
 
 A conformant runtime MUST NOT:

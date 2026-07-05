@@ -307,7 +307,7 @@ Each install pins a specific upstream version (e.g. Claude Code 2.1.110 or 2.1.1
 - **Selector + satellite** — `opencues settings _` becomes two linked words (the setting + its current value); cycling the selector swaps the satellite.
 - **Inline agent** — `agentically correct spelling _` arms a continuous rewrite loop until you `stop task _`.
 - **Auditors** — declare grammar/clarity/tone concerns in `auditors/<name>/AUDITOR.md`; they compose into one LLM call per agent tick.
-- **Personal context** (opt-in) — `~/.cues/USER.md` declares your name, email, work city; `my email _` substitutes the real value. `safe` mode keeps the value off the LLM provider's logs.
+- **Personal context** (opt-in) — `~/.cues/IDENTITY.md` declares your name, email, work city; `my email _` substitutes the real value. `safe` mode keeps the value off the LLM provider's logs.
 - **Ambient context** (opt-in, Chrome) — fluid lookups receive the focused field's label + page title so `destination _` answers differently on a flight site vs Airbnb.
 - **Hot-reload** — every `.md` config file picks up edits in ~2s with no restart.
 
@@ -327,7 +327,7 @@ Each surface ships as a folder under `<root>/{cues,blanks,auditors}/<name>/` wit
 
 **Authoring your own cues / blanks / auditors?** The spec docs above are the field reference for what every frontmatter field does. [`spec/conformance/`](spec/conformance/) ships an executable fixture tree — valid examples your authored files should look like, invalid examples for the gotchas. The reference runtime in this repo uses it as its own regression net (`packages/opencues-core/src/conformance.test.ts`). A non-JS port could exercise the same fixtures someday; none exists today.
 
-Spec status: `0.1-alpha`; changes tracked in [`spec/CHANGELOG.md`](spec/CHANGELOG.md).
+Spec status: `0.4-alpha`; changes tracked in [`spec/CHANGELOG.md`](spec/CHANGELOG.md).
 
 ## Configuration
 
@@ -395,10 +395,12 @@ If unset, the runtime picks a sensible default per provider (cf.
 ### Per-feature routing (advanced)
 
 Pick a different provider / model just for *blanks* (the `_` surface) via
-`blank-llm-provider` + `blank-llm-model`. Useful for routing blanks
-through a free or cheaper tier while keeping cues / auditors /
-agent-rewrite on a higher-quality model. Full per-feature table in the
-provider guide.
+`blanks-llm-provider` + `blanks-llm-model` — one of three buckets (`cues`,
+`auditors`, `blanks`), each with its own provider/model scalar pair. Useful
+for routing blanks through a free or cheaper tier while keeping cues /
+auditors / agent-rewrite on a higher-quality model. Full per-bucket table in
+[`docs/architecture/llm-routing.md`](docs/architecture/llm-routing.md) and
+the provider guide.
 
 ### Failover
 
@@ -408,7 +410,7 @@ quality shift when one provider rate-limits. Recommended for heavy use.
 
 ### Free mode (no API key)
 
-Add `blank-llm-provider: free` to `~/.cues/OPENCUES.md` and **blanks** (FluidBlank / TransformBlank / ConfigIntent) route through [OpenCode Zen](https://opencode.ai/zen)'s free model pool — anonymously, no key required. The runtime walks the pool on transient failures and surfaces the resolved model in the status line.
+Set `blanks-llm-provider: opencode-zen` + `blanks-llm-model: free` in `~/.cues/OPENCUES.md` and **blanks** (FluidBlank / TransformBlank / ConfigIntent) route through [OpenCode Zen](https://opencode.ai/zen)'s free model pool — anonymously, no key required. The runtime walks the pool on transient failures and surfaces the resolved model in the status line.
 
 > ⚠️ **Data warning.** OpenCode Zen's free tier ToS says **your inputs may be used to train the underlying models**. Free mode is **blank-only by design** — cues, auditors, agent-rewrite (which run automatically on prose) never use this path, and `llm-provider: free` (the cue path) is refused at startup. Only `_` triggers go through the free pool, and only the surrounding context window — but treat anything you type next to a `_` in free mode as public.
 
@@ -429,13 +431,13 @@ opencues review ./untrusted-pack/ --llm   # + LLM second opinion
 
 Static parse is authoritative; the LLM can downgrade a verdict but never upgrade past a hard-blocked pattern.
 
-**Optional features (OFF by default).** Ambient context (Chrome reads the focused field's label + page title for disambiguating fluid lookups) and user context (`~/.cues/USER.md` personal data sent as sentinel tokens, real values substituted post-LLM in `safe` mode) both require explicit opt-in via `~/.cues/OPENCUES.md`. Sensitive fields (password / OTP / payment / PII heuristics) refuse to attach regardless.
+**Optional context features.** Ambient context (Chrome reads the focused field's label + page title for disambiguating fluid lookups) is **off by default**. Identity context (`~/.cues/IDENTITY.md` personal data sent as sentinel tokens) defaults to **`safe` mode** since 2026-06-18 — only token names + descriptions reach the LLM, real values substituted post-LLM on the host; set `identity-context-mode: off` in `~/.cues/OPENCUES.md` to disable entirely. Sensitive fields (password / OTP / payment / PII heuristics) refuse to attach regardless.
 
 Full threat model, capability tables, and per-surface boundaries:
 - [`docs/architecture/security-audit.md`](docs/architecture/security-audit.md) — umbrella threat model
 - [`docs/architecture/user-blanks.md`](docs/architecture/user-blanks.md) — capability contract for JS blanks
 - [`docs/architecture/chrome-security.md`](docs/architecture/chrome-security.md) — Chrome's six boundaries
-- [`docs/architecture/ambient-context.md`](docs/architecture/ambient-context.md), [`docs/architecture/user-context.md`](docs/architecture/user-context.md) — the two opt-in context features
+- [`docs/architecture/ambient-context.md`](docs/architecture/ambient-context.md), [`docs/architecture/identity-context.md`](docs/architecture/identity-context.md) — the two opt-in context features
 
 ## Contributing
 
@@ -449,10 +451,10 @@ New to the terminology? [`docs/glossary.md`](docs/glossary.md) covers cues, blan
 
 | Component | Version | Status |
 |---|---|---|
-| `spec/` | 0.1-alpha | Field names + semantics may change before 1.0. Tracked in [`spec/CHANGELOG.md`](spec/CHANGELOG.md). |
+| `spec/` | 0.4-alpha | Field names + semantics may change before 1.0. Tracked in [`spec/CHANGELOG.md`](spec/CHANGELOG.md). |
 | `@opencues/core` | 0.x | Workspace dep, pre-publish. Public API may change. |
 | `@opencues/runtime` | 0.x | Workspace dep, pre-publish. Public API may change. |
-| Claude Code integration | Available | Tested on Claude Code 2.1.110 (cli.js) and 2.1.150 (native bun-binary). |
+| Claude Code integration | Available | Pinned at Claude Code 2.1.170 (native bun-binary). Also tested: 2.1.110 (cli.js), 2.1.150, 2.1.158. |
 | OpenCode integration | Available | Pinned at OpenCode 1.14.17. |
 | Gemini CLI integration | Beta | Pinned at Gemini CLI 0.41.2. |
 | Chrome integration | Beta | MV3 extension, Chrome 121+. |

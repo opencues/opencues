@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-04-29
+last_updated: 2026-07-04
 ---
 
 # Word Cycling
@@ -10,28 +10,38 @@ Word cycling replaces the focused word with an alternative. It is the **vertical
 
 ## How It Works
 
-1. **Press** Ctrl+Alt+Up or Ctrl+Alt+Down while a word is highlighted
-2. **Priority check**: The `_cycleAlt` function evaluates the highlighted word against a three-level priority chain (see Cycling Priority below). The first level that matches handles the press; the rest are skipped.
-3. **Text replacement**: The matched handler computes a new word, splices it into `globalThis._hlText` at the correct character offset, and returns `{text, lenDiff, wStart, newLen}` so the input zone can reposition the cursor.
-4. **State update**: `globalThis._hlState.text` is updated to match the new text. For alternative cycling, the highlight export JSON is written to `/tmp/opencues-status-<pid>.json` for the status line.
+Implemented by the `Cycling` module (`packages/opencues-runtime/src/modules/cycling.ts`).
+
+1. **Press** Ctrl+Alt+Up or Ctrl+Alt+Down while a word is highlighted (`HighlightState.active`).
+2. **Priority check**: `Cycling.step()` evaluates the highlighted word against a **five-level priority chain** (see Cycling Priority below), highest first. The first level that applies handles the press; the rest are skipped.
+3. **Text replacement**: the matched handler computes the new text and calls the host's `setText`, which repositions the cursor per the length delta.
+4. **State update**: the relevant state object (`DynDefs`, `SpanFillState`, `SelectorSatelliteState`, or a plain `WordDef` in `DynDefs`) is updated to reflect the new position/value. `HighlightState`'s `onChange` subscribers (notably Statusline) react synchronously the same tick.
 
 ---
 
 ## Cycling Priority
 
-The levels are checked in order. The first match wins.
+Checked in this order — the first match wins:
 
-### 1. Cue-blanks (auto-populated `_`)
+### -1. Selector + satellite
 
-**Condition**: The word's `_dynDefs` entry has `metadata.blankName` set — a position auto-populated from a blank bound via `blankKeywords`.
+**Condition**: a `SelectorSatelliteState.current` entry exists and the highlighted word falls on either half of the pair.
 
-Modes:
+The "opencues settings" pattern: highlighting the selector half cycles setting names; highlighting the satellite half cycles that setting's value. Both write back through the blank's script/class via `blankInvoke`.
 
-- **Script-based** (default): `blankInvoke('<name>', { action: 'up'|'down' })` runs synchronously, then `blankInvoke('<name>', { action: 'get' })` returns the new live value. `blankStep` sets the step size; `blankSuffix` the display unit.
-- **List-based** (`stepValues`): The blank auto-populates with the first value and Up/Down cycles through the list. Multi-word values are span-tracked automatically. No script is needed.
-- **Dynamic list** (multi-line `get` output): Each line becomes a cycling alternative — same behaviour as `stepValues` but populated from live data (e.g., RSS feeds, API results).
+### 0. Span fill
 
-All list-based blanks (static `stepValues`, dynamic multi-line) support `blankDismissible: true` — appends `_` as the last cycling option so the user can dismiss the value. Dismissed positions are tracked to prevent auto-populate from re-firing.
+**Condition**: `SpanFillState.current` is set and the highlight falls within it.
+
+Takes precedence over list/static cycling when the highlight sits inside a consume-all span (e.g. an agent-improved prompt) or a multi-word `stepValues` span (e.g. affirmations spanning several words) — cycles through the stashed alts for that span.
+
+### 1. List blank (`stepValues`)
+
+**Condition**: the highlighted word resolves to a blank whose config declares `stepValues`.
+
+The blank auto-populates with the first value; Up/Down rotates through the list in place. Multi-word values are span-tracked automatically. No script is needed.
+
+All list-based blanks support `blankDismissible: true` — appends `_` as the last cycling option so the user can dismiss the value.
 
 Example list blank (`defaults/blanks/affirmations/BLANK.md`):
 ```yaml
@@ -46,38 +56,19 @@ blankDismissible: true
 ```
 Type `affirmation _` → blank auto-populates with "I am strong", Up/Down cycles through the list. Cycle past the last value → `_` to dismiss.
 
-### 2. Consume-all cycling
+### 2. Blank-fill DynDef (`blankStep`)
 
-**Condition**: `globalThis._consumeAllAlts` exists AND the current word (resolved via span) matches `_consumeAllAlts.index`.
+**Condition**: the highlighted word has a `DynDef` with `blankName` set (an auto-populated value from a keyword-bound blank), and that blank declares `blankStep`.
 
-Used by multi-line blanks (e.g. `hn _` returning many story titles) whose multi-word result is cycled as a span. Uses dedicated storage independent of `_dynDefs` because the standard WordDef array is overwritten by tips/grammar analysis. Span-aware: replaces the full span, updates `_dynSpans`, and prevents re-analysis by updating `_dynLastAnalyzed`/`_dynPrevWords`. Supports `blankDismissible` (cycling to `_` tracks dismissal).
+`blankInvoke('<name>', { action: 'up'|'down' })` runs (script, in-process class, or dynamic multi-line `get` output — same handling either way), and the resulting live value replaces the word. `blankStep` sets the step size; `blankSuffix` the display unit.
 
-### 3. Alternative cycling
+### 3. Static alternatives
 
-**Condition**: A `_dWord` entry exists in `globalThis._dynDefs.words` with `alts.length > 1`. If no entry exists but the word is in `globalThis._localCueMap` (tip-lookup fallback), a `_tipDef` is created on the fly and pushed into `_dynDefs.words`.
+**Condition**: none of the above matched, and the word has (or can be built into) a `DynDef` with more than one alternative — an LLM word-cue, or a fallback tip-only def built on the fly from cueMap.
 
-- `currentAltIndex` tracks position in the alts array. `alts[0]` is always the original word.
-- Next index: `(currentAltIndex + dir + alts.length) % alts.length` — wraps in both directions.
-- **Span-aware replacement**: If the word is part of a multi-word span (tracked in `globalThis._dynSpans`), the replacement splices across all span positions. After replacement, `_dynSpans` is updated: multi-word results register entries for each sub-word; single-word results clear the span entries.
-- **TTS**: If `_dWord.speak` is true, the alt's tip is spoken via `SpeakCtl.exe` or `speak.sh` after an 80 ms debounce.
-- **Underscore re-analysis**: If `_` appears in the updated text and the surrounding context changed, a fresh LLM analysis is queued.
-
----
-
-## Linked Word Cycling
-
-When a word definition has a `linked` array (indices of co-dependent words), cycling one word simultaneously updates all linked words to the same `currentAltIndex`.
-
-The linked-word update loop:
-
-1. Compute `_nextAlt` for the primary word
-2. For each index in `_dWord.linked`:
-   - Find the linked word's definition in `_dWords`
-   - If it has an alt at `_nextAlt`, set `_lDef.currentAltIndex = _nextAlt` and replace its text in the already-modified `_newText`
-   - Track replacements in `_updW` (a map of index to new word) so subsequent linked replacements use correct character offsets
-3. All replacements happen in a single pass before `_hlText` is finalized
-
-Linked groups are resolved and merged across sources by `CueResolver` in opencues-core. The integration only needs to apply the indices it receives.
+- `currentAltIndex` tracks position in the alternatives array (`alts[0]` is always the original word).
+- Cycling wraps in both directions: `(currentAltIndex + direction + alts.length) % alts.length`.
+- **Multi-word spans**: if the highlighted index is an inner position of an existing span, cycling redirects to the span's origin instead, so the whole span rotates as one unit.
 
 ---
 
@@ -86,15 +77,11 @@ Linked groups are resolved and merged across sources by `CueResolver` in opencue
 ### Standard (opencues-core)
 
 - `CueResult.alternatives` array provides the ordered list of replacements (`alts[0]` is always the original word)
-- `CueResult.linked` array contains indices of co-dependent words that must cycle together
-- Priority order is defined by the standard: cue-blanks > consume-all > alternative cycling
 - `CueResult.metadata.blankName` identifies blank-bound words
-- Linked-word groups are resolved and merged across sources by the resolver
+- opencues-core does not define the cycling priority order itself — that's a runtime-layer decision (`Cycling.step()`'s five-level chain above)
 
 ### Integration responsibilities
 
-- Perform the actual text replacement in the editor buffer when the user cycles
-- Maintain `currentAltIndex` per word and handle wrap-around (`alts.length`)
-- Implement `blankInvoke` for cue-blank cycling (registry lookup → spawnProcess fallback)
-- When cycling a linked word, update ALL linked words' `currentAltIndex` and replace their text simultaneously
-- Map Up/Down (or equivalent) input events to cycle direction
+- Supply a `HostAdapter` (`setText`, `onKey`, `blankInvoke`) — `Cycling` does the rest in the shared runtime
+- Render the updated text and reposition the cursor per the length delta the setText call implies
+- Map Up/Down (or equivalent) input events, with the configured `nav-keymap` modifier combo, to `Cycling.step(event, direction)`

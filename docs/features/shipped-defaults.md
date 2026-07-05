@@ -13,7 +13,7 @@ It is *not* picked up as an ambient project config — devs working on opencues 
 
 ## What lives in `defaults/`
 
-Same shape as any user-level `~/.cues/` or project-level `.cues/`:
+There is no top-level `CUES.md`/`BLANKS.md` in `defaults/` today — only the always-present runtime-settings and auditor master files, plus the folder-based cue/blank/auditor sources (`opencues init` generates fresh, empty `CUES.md`/`BLANKS.md`/`AUDITORS.md` templates for a NEW project — that's a separate code path from `seed-configs`, not a copy from `defaults/`):
 
 ```
 defaults/
@@ -21,32 +21,46 @@ defaults/
 │                        # llm-provider, agent-debounce-ms, ...) — frontmatter only.
 │                        # User-level only at runtime; schema declared in @opencues/core
 │                        # via FEATURES + MENU_TUNABLES.
-├── CUES.md              # Cue master: project metadata + ## Tips / ## Ignore /
-│                        # ## Prompt cue sources. User OR project level.
-│                        # Ships here so `seed-configs` can drop a starter file.
+├── AUDITORS.md           # Auditor master (always-present template).
+├── IDENTITY.md          # Personal-data template, fully commented out.
 ├── cues/                # Folder-based cue sources (one folder per source)
-│   ├── grammar/CUE.md   # Static cues: body JSON words map
 │   ├── legal/CUE.md     # LLM cues: match:/keywords: in frontmatter, prompt in body
 │   ├── medical/CUE.md
-│   └── financial/CUE.md
+│   ├── financial/CUE.md
+│   ├── more-formal/CUE.md   # scope: sentence cue
+│   ├── spelling/CUE.md      # catch-all, lowest priority
+│   ├── tips-{claude-code,opencode,gemini-cli,shell}/CUE.md
+│   └── example/CUE.md       # minimal worked example for authors
+├── auditors/
+│   ├── grammar/AUDITOR.md
+│   └── clarity/AUDITOR.md   # disabled by default; opt in
 └── blanks/              # Folder-based cue-blanks + colocated scripts
     ├── volume/
     │   ├── BLANK.md
-    │   ├── volume.sh
     │   ├── volume-blank.sh
     │   └── VolCtl.cs
     ├── brightness/
     │   ├── BLANK.md
-    │   └── brightness.sh
+    │   ├── brightness-blank.sh
+    │   └── BrightCtl.cs
     ├── stocks/BLANK.md
     ├── weather/BLANK.md
     ├── hackernews/BLANK.md
-    ├── prompt/BLANK.md
-    ├── answer/BLANK.md
-    ├── affirmations/BLANK.md
-    ├── numbers/BLANK.md
-    └── opencues/BLANK.md
+    ├── countries/BLANK.md
+    ├── crypto/BLANK.md
+    ├── dictionary/BLANK.md
+    ├── claude-status/BLANK.md
+    ├── gh-issues/{BLANK.md,blank.js}
+    ├── sentinel/BLANK.md
+    ├── opencues/BLANK.md        # the settings selector+satellite blank
+    └── example/{BLANK.md,time-blank.sh}
 ```
+
+The `prompt`/`answer`/`affirmations`/`numbers` blanks referenced in older
+revisions of this doc no longer exist — `prompt`/`answer` were retired
+(their intents now route through FluidBlank/TransformBlank on the
+user's configured provider instead of a bespoke Groq-only blank), and
+`affirmations`/`numbers` were removed in the same slim-down.
 
 ---
 
@@ -54,9 +68,9 @@ defaults/
 
 | Consumer | When | What it does |
 |---|---|---|
-| `opencues seed-configs` | On every invocation (standalone or chained from `opencues install <host>`) | Four phases: (1) **SEED** first-time copy to `~/.cues/` — preserves non-empty user files; (2) **SYNC** library files (`.sh` / `.cs` / `.ps1`) from `defaults/{blanks,scripts}/` every run — overwrites stale, never overwrites `.md`; (3) **HEAL** re-seed 0-byte `OPENCUES.md` (the runtime settings file — empty would silently break `opencues ___` / `config ___` blank-fills); (4) **COMPILE** colocated `.cs` → `.exe` (WSL only). |
-| Chrome `esbuild.config.mjs` | Every `pnpm --filter @opencues/chrome build` | Inlines `defaults/cues/*`, `defaults/blanks/*`, and `defaults/CUES.md` into the bundle as `__DEFAULT_*__` constants. The runtime uses these as fallbacks when the bundled `configs/` dir is absent or hasn't been sync'd. |
-| `packages/opencues-core/src/cues-md.test.ts` | Unit test | Reads `defaults/CUES.md` and `defaults/BLANKS.md` as real-world fixtures (the "real CUES.md" / "real BLANKS.md" describe blocks). |
+| `opencues seed-configs` | On every invocation (standalone or chained from `opencues install <host>`) | Four phases: (1) **SEED** first-time copy of `OPENCUES.md` + `AUDITORS.md` + the `cues/`/`blanks/`/`auditors/`/`scripts/` folders to `~/.cues/` — preserves non-empty user files; (2) **SYNC** library files (`.sh` / `.cs` / `.ps1`) from `defaults/{blanks,scripts}/` every run — overwrites stale, never overwrites `.md`; (3) **HEAL** re-seed a 0-byte `OPENCUES.md` (the runtime settings file — empty would silently break every runtime-settings read); (4) **COMPILE** colocated `.cs` → `.exe` (WSL only). It never touches `CUES.md`/`BLANKS.md` — those aren't shipped in `defaults/` at all. |
+| Chrome `esbuild.config.mjs` | Every `pnpm --filter @opencues/chrome build` | Inlines `defaults/cues/*` and `defaults/blanks/*` into the bundle as `__DEFAULT_*__` constants. The runtime uses these as fallbacks when the bundled `configs/` dir is absent or hasn't been sync'd. |
+| `packages/opencues-core/src/cues-md.test.ts` | Unit test | Has `describe` blocks that would read `defaults/CUES.md`/`defaults/BLANKS.md` as real-world fixtures, but both are guarded by `existsSync` and self-skip via `it.skip` since neither file exists today — this coverage is currently dormant, not active. |
 
 Nothing reads `defaults/` at host runtime. The runtime only reads `~/.cues/` (user-level), `<cwd>/.cues/` (project-level), and — for chrome — the synced `dist/configs/` bundle.
 

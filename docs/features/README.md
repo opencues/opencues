@@ -57,6 +57,7 @@ User-triggered substitutions at `_`. The trio is BlankSource (keyword), FluidBla
 | 29 | [Transform Blanks](transform-blank.md) | Imperative-instruction blanks at `_` — a single fused LLM call (classify + rewrite in one pass) that rewrites the surrounding text per the instruction. Plus a generative branch for "write a poem _" / "compose an email _" prompts. The third leg of the blank trio alongside BlankSource (keyword) and FluidBlankSource (lookup). |
 | 31 | [Blank Loading Animation](blank-loading.md) | Per-frame glyph + colour cycling at `_` slots while their source resolves. Five OPENCUES.md scalars (mode, frames, RGB palette, ANSI palette, interval). Thunk-shaped re-read so hot edits propagate; capability-routed RGB vs ANSI per host. |
 | 36 | [Blank Trigger Mode](blank-trigger-mode.md) | Controls when `_` fires its blank. `immediate` (default): trigger on insertion (v0.1 behaviour). `spaced`: trigger only when a confirming space follows — lets markdown `_italic_` typists keep their formatting without the first `_` substituting. Cycleable via `opencues settings _`. |
+| 44 | [Markdown Styling](markdown-styling.md) | LLM-origin text (TransformBlank rewrites, FluidBlank fills) may contain `**bold**`/`*italic*`/`` `code` ``/`~~strike~~`/headings/lists — stripped before writing to the buffer and rendered natively per host (ANSI in terminals, `execCommand` in chrome) instead of showing literal markers. Also the entry point for TransformBlank's `make X bold` named-span-decoration instruction. |
 | 37 | [Fluid Config](fluid-config.md) | Type `enable debug logging _` (or any natural-language settings phrase) and OpenCues classifies the intent, flips the setting in `~/.cues/OPENCUES.md`, wipes your summon words, and leaves the standard `opencues settings _` selector-satellite menu pre-positioned at the now-current state. Backspace deletes the pair as one span. FEATURES-only scope — never routes to user blanks (volume / brightness / weather / stocks / etc.). OFF by default. Validated across 5 providers at 100% precision + 90-100% recall on the holdout suite. |
 
 ## State & invariants
@@ -85,12 +86,14 @@ The state machine that keeps multi-word substitutions, cycle progress, and per-e
 
 ## LLM context inputs
 
-Optional information the FluidBlank LLM call receives in addition to the user's prompt. Both OFF by default and gated on a scalar in `OPENCUES.md`. Read [`docs/architecture/ambient-context.md`](../architecture/ambient-context.md) and [`docs/architecture/sentinels.md`](../architecture/sentinels.md) before wiring fluid-blank output into any side-effect channel.
+Optional information the FluidBlank LLM call receives in addition to the user's prompt. Both OFF by default and gated on a scalar in `OPENCUES.md`. Read [`docs/architecture/ambient-context.md`](../architecture/ambient-context.md) and [`docs/architecture/identity-context.md`](../architecture/identity-context.md) before wiring fluid-blank output into any side-effect channel.
 
 | # | Feature | Description |
 |---|---------|-------------|
 | 32 | [Ambient Context](ambient-context.md) | FluidBlank optionally receives the focused field's label / placeholder / page-title so `_` lookups disambiguate per context (e.g. "destination" on flights.google.com vs airbnb.com). OFF by default. Chrome only — needs DOM. Host-agnostic at the `HostAdapter` contract level. |
 | 33 | [Identity Context](identity-context.md) | FluidBlank optionally injects the user's own personal data (`~/.cues/IDENTITY.md` frontmatter) as identity-context tokens so `_` lookups personalise without re-typing. `safe` mode keeps PII off the LLM provider's logs; `raw` opts in to inlining. OFF by default. Phase 1 wires fluid-blank only. |
+| 39 | [Blank as Context](blank-as-context.md) | Local blanks (weather, stocks, calendar, …) surfaced as ambient catalog context for fluid-blank/transform-blank — same security model as identity-context, for parameterised dynamic data instead of static personal fields. |
+| 40 | [Max Thinking](max-thinking.md) | `max-thinking` scalar trades reasoning depth for speed on reasoning-capable models (Groq / Cerebras / OpenAI gpt-oss + gpt-5 families). |
 
 ## Surfacing
 
@@ -101,6 +104,8 @@ How runtime state reaches the user (status line, auto-submit) and how cues/blank
 | 13 | [Auto-Submit](auto-submit.md) | Automatic analysis as you type |
 | 15 | [Secondary Display](secondary-display.md) | Show cue-tips in a secondary area |
 | — | [Host Compat](host-compat.md) | `on-host:` / `not-on-host:` frontmatter scopes a cue/blank/auditor to a subset of integrations |
+| 43 | [Missing-Key Fallback](missing-key-fallback.md) | When no blanks-bucket LLM source could be wired (zero working API keys), `_` substitutes a visible, host-specific in-buffer hint instead of silently doing nothing. Chrome points at the extension popup; native hosts mention `~/.cues/.env`. |
+| 45 | [Provider Health](provider-health.md) | Classifies LLM-call failures (auth / quota / rate-limit / outage / model-missing) into a status-line signal. Shipped as a library module with full scenario-test coverage; **not yet wired into any live host** — see the doc's "Current wiring state" section before relying on it. |
 
 ## Configuration & loading
 
@@ -111,6 +116,8 @@ Where `.cues/` lives, when changes reload, how `defaults/` seeds a fresh install
 | 16 | [Hot-Reload Config](hot-reload-config.md) | Config file changes take effect without restart |
 | 24 | [Shipped Defaults](shipped-defaults.md) | `<repo>/defaults/` as the seed + bake source for `opencues seed-configs` and the Chrome extension's bundled fallback |
 | 28 | [Config Search Paths](config-search-paths.md) | Three-layer precedence (`$OPENCUES_HOME → <cwd>/.cues → ~/.cues`), the `OPENCUES.md` system-settings user-level-only special case, and how `seed-configs` populates `~/.cues/` |
+| 41 | [claude-cli Provider](claude-cli-provider.md) | Route opencues' agent surfaces through a Claude Pro/Max subscription (via the local `claude` CLI) instead of a pay-per-token `ANTHROPIC_API_KEY`. |
+| 42 | [Cues Skill + Plugin](cues-skill-and-plugin.md) *(experimental, WIP)* | A Claude skill / plugin that side-effect-writes `.cues/CUES.md` from within a chat conversation with the user's AI assistant. |
 
 ## Chrome specifics
 

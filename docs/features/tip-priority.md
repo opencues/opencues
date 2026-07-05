@@ -1,102 +1,47 @@
 ---
-last_updated: 2026-04-09
+last_updated: 2026-07-04
 ---
 
 # Tip Priority
 
-Every highlighted word can show a tip in the secondary display (status line). Tips come from multiple sources. When a word matches more than one source, a fixed priority order determines which tip wins.
+Every highlighted word can show a tip in the secondary display (status line). Tips come from multiple sources. When a word matches more than one source, a fixed priority order determines which tip wins. Implemented in `Statusline.snapshot()` (`packages/opencues-runtime/src/modules/statusline.ts`).
 
 ---
 
 ## Priority Table
 
-| Priority | Word type | Example | Tip shown | Source |
-|---|---|---|---|---|
-| 1 | Satellite (per-value) | `active` under selector `voice-mode` | "TTS reads tips aloud on navigation" | `OPENCUES.md` (settings menu auto-derived from `FEATURES` + `MENU_TUNABLES`), nested value line |
-| 2 | Satellite (fallback) | `on` under selector `debug-mode`, no per-value tip defined | "Enable debug logging output" | `OPENCUES.md` (settings menu auto-derived from `FEATURES` + `MENU_TUNABLES`), setting-level line |
-| 3 | Selector | `voice-mode` | "Gates TTS globally" | `OPENCUES.md` (settings menu auto-derived from `FEATURES` + `MENU_TUNABLES`), setting-level line |
-| 4 | Cue-blank value | `72` after `volume` | "System volume" | Blank's `BLANK.md` `tip` field |
-| 5 | Cue-blank keyword | `volume` (the trigger word) | "85" (live reading) | `blankInvoke get` output; falls back to `tip` in `BLANK.md` |
-| 6 | Local cue (folder-based) | `ultrathink` | "Add 'ultrathink' to prompt for max reasoning" | `cues/<name>/CUE.md` body JSON via `cueMap` (built in `ConfigLoader`) |
-| 7 | LLM-analyzed word | `happy` | "glad, joyful, content" | LLM response via opencues-core resolver |
+Checked in this order — the first match wins:
+
+| Priority | Word type | Tip shown |
+|---|---|---|
+| 1 | Selector (settings menu) | The setting's own `tip` from the `FEATURES`/`MENU_TUNABLES` registry definition |
+| 1 | Satellite (settings menu) | The setting's per-value tip (`valueTips.get(currentValue)`) |
+| 2 | Span-fill (any word inside an active consume-all or list-blank span) | The blank's `tip` (e.g. "Daily affirmations") |
+| 3 | Blank-attributed value (e.g. `50%` after `volume`) | **None — suppressed on purpose.** The value is already visible in the buffer; a tip would be redundant ("system volume blank 50%"). |
+| 4 | General word (including blank keywords like the word `volume` itself, and plain LLM/local cue words) | `configLoader.lookup(word).cueTip`, preferring `altCueTips[currentAlt]` when set |
+
+**Important correction from earlier revisions of this doc**: a blank's *value* word never shows a live "current reading" tip via a `blankInvoke get` call — there is no such code path in the current statusline. A blank's *keyword* word (the trigger, e.g. "volume") gets whatever static/LLM tip its cue-lookup entry has, formatted with `cueBlank: true` (the consumer prints the tip alone, without a "(N/M)" alt-position suffix) — it does not invoke the blank's script live.
+
+`tips-mode: off` suppresses the tip text at every priority level (word/alts data still gets exposed for the status line, just no tip string).
 
 ---
 
 ## How Priority Is Enforced
 
-### Display path (which tip is shown)
+`Statusline.snapshot()` checks four branches in order, each an early return:
 
-The navigation export code checks three branches in order. The first match wins; the rest are skipped:
+1. **Selector/satellite** — is the highlighted word index within the active `SelectorSatelliteState`'s selector or satellite range? If so, look up the tip from `configLoader.opencuesState.definitions.get(currentSetting)` (selector: `.tip`; satellite: `.valueTips.get(currentValue)`).
+2. **Span-fill** — is the highlighted word index inside the active `SpanFillState`? If so, use the span's own `tip`.
+3. **Blank-attributed DynDef** (`def?.blankName` set) — return with `cueTip: null` unconditionally. This is priority-3 in the table above.
+4. **Everything else** — look up the word (using its *original* word, stable across cycling) via `configLoader.lookup()`; prefer `altCueTips[currentDisplayedWord]` over the primary `cueTip` if the lookup has per-alt tips. Whether this word is `cueBlank: true` (tip-alone display) is decided separately, by checking if the word is in `configLoader.blanksByWord` — independent of whether the lookup itself found a tip.
 
-1. **Blank-bound word** — the WordDef has `metadata.blankName` set (auto-populated by the blank pipeline)
-   - Selector/satellite sub-branch (`metadata.selectorWord` or `metadata.satelliteWord`): reads `OPENCUES.md` (settings menu auto-derived from `FEATURES` + `MENU_TUNABLES`) (priorities 1-3)
-   - Regular cue-blank value: reads `cueTip` from the WordDef, set by `tip` in the blank's `BLANK.md` (priority 4)
-2. **Cue-blank keyword** — the word text matches a registered `blankKeywords` entry
-   - Calls `blankInvoke({ action: 'get' })` for a live reading; falls back to `tip` from `BLANK.md` (priority 5)
-3. **General word** — no blank metadata, not a cue-blank keyword
-   - Reads `cueTip` from `_dynDefs`, populated by local cue lookup or LLM analysis (priorities 6-7)
-   - Local cues resolve instantly (~0ms); LLM results arrive asynchronously and overwrite if they carry a tip
-
-The guard that prevents branch 3 from overriding branches 1-2 is the `!_cbDw` and `!_isCA` condition on the general branch. Blank-bound words and cue-blank keywords are never read from `_dynDefs` for display.
-
-### Analysis path (which words get sent to the LLM)
-
-The same word types are protected from unnecessary LLM analysis, but using different mechanisms that achieve the same result:
-
-| Word type | How it's skipped | Mechanism |
-|---|---|---|
-| **Cue-blank keyword** | blank-keyword check | Explicit skip before the `_hasAlts` check |
-| **Cue-blank value** (including selector/satellite) | `_hasAlts` check | WordDef already has `alts.length > 1` from auto-populate, so it's treated as already resolved |
-| **Local cue match** | `_tipsHandled` check | `lookupMultiple` found a match in `_localCueMap`, so no LLM needed |
-| **Common word** (the, a, is, ...) | Stopword regex | Hard-coded skip list |
-| **Ignored word** | `_cuesIgnoreWords` set | User-authored `ignore:` array in `CUES.md` frontmatter |
-
-The result is consistent: blank-bound words, cue-blank keywords, and locally-resolved words are never sent to the LLM, and their tips are never overwritten by LLM results.
-
-### Cycling path (which tip is shown after cycling)
-
-When a word is cycled, the tip is updated inline within each cycling branch:
-
-- **Selector cycling**: reads `_openCuesTips[nextSetting]`
-- **Satellite cycling**: reads `_openCuesSatTips[setting][newValue]`, falls back to `_openCuesTips[setting]`
-- **Regular cue-blank cycling**: tip is unchanged (stays as `tip` from `BLANK.md`)
-- **General word cycling**: `cueTip` stays from the WordDef; `altCueTips[newAlt]` replaces it in the export if present
+A word inside a multi-word blank/fluid/transform substitute span resolves to the ORIGINATING def (via `DynDefs.findSpanContaining`) before any of the above runs, so e.g. highlighting "email" inside an LLM-drafted email body doesn't surface an unrelated word-cue tip for "email" as a standalone word.
 
 ---
 
 ## The settings menu (registry-derived)
 
-Settings, valid values, and tips are declared in `@opencues/core`'s `FEATURES` + `MENU_TUNABLES` registry (`packages/opencues-core/src/feature-registry.ts`). The runtime derives the cycling menu at boot. Users who want a custom menu can ship a `settings:` block in `OPENCUES.md` frontmatter as an overlay — when present, the file-level block fully replaces the registry defaults. Example registry entry shape:
-
-```yaml
----
-version: 1
-voice-mode: active
-settings:
-  voice-mode:
-    tip: Gates TTS globally
-    values:
-      active: TTS reads tips aloud on navigation
-      inactive: TTS is silenced
----
-```
-
-- **Setting name**: any indented line with a key and no value after the colon (e.g. `voice-mode:`)
-- **`tip:`**: reserved key — selector tip shown when this setting is highlighted
-- **`values:`**: reserved key — opens the valid-values block
-- **Value entries**: any line inside `values:` with a key and value (e.g. `active: TTS reads tips aloud`)
-
-Indentation depth does not matter — the parser detects structure by key names and whether a value is present after the colon, not by counting spaces.
-
-The parser hydrates two globals on every hot-reload cycle:
-
-| Global | Type | Contents |
-|---|---|---|
-| `_openCuesTips` | `Record<string, string>` | Setting name to selector tip (from `tip:` lines) |
-| `_openCuesSatTips` | `Record<string, Record<string, string>>` | Setting name to { value: tip } (from value entries) |
-| `_openCuesSettings` | `Record<string, string[]>` | Setting name to list of valid values (keys from value entries) |
-
-Satellite tip resolution: `_openCuesSatTips[setting][value]` first, then `_openCuesTips[setting]` as fallback.
+Settings, valid values, and tips are declared in `@opencues/core`'s `FEATURES` + `MENU_TUNABLES` registry (`packages/opencues-core/src/feature-registry.ts`), not in per-cue `CUE.md` files or a raw parsed `settings:` block held in module-level globals. `ConfigLoader` derives `opencuesState.definitions` (a `Map` from setting name to `{ tip, values, valueTips, ... }`) from the registry at boot and on every hot-reload; `Statusline` reads directly from that map. See [`docs/architecture/feature-registry.md`](../architecture/feature-registry.md) for the registry's full shape.
 
 ---
 
@@ -107,12 +52,11 @@ Satellite tip resolution: `_openCuesSatTips[setting][value]` first, then `_openC
 - `CueResult.cueTip` carries the primary tip for any word
 - `CueResult.altCueTips` maps each alternative to its own tip (for per-alt display during cycling)
 - Cue-blanks use `tip` from the blank's config
-- Selector/satellite tips are derived from `@opencues/core`'s `FEATURES` + `MENU_TUNABLES` registry, not from per-cue `CUE.md` files (file-level `settings:` block in `OPENCUES.md` is an optional override)
+- Selector/satellite tips are derived from `@opencues/core`'s `FEATURES` + `MENU_TUNABLES` registry, not from per-cue `CUE.md` files
 
 ### Integration responsibilities
 
-- Implement the three-branch display priority: blank-bound words first, then cue-blank keywords, then general words
-- Ensure blank-bound words and cue-blank keywords are excluded from LLM analysis (either by explicit skip or by the `_hasAlts` guard)
-- For selector/satellite words, read tips from the backing config's `settings:` block and hot-reload them
-- Update the cycling tip inline within each cycling branch — don't rely on a separate refresh
+- Implement the four-branch priority order: selector/satellite, then span-fill, then blank-value-suppression, then general word lookup
+- Suppress the tip (not the whole status entry) for blank-attributed values — the value is already visible in the buffer
+- For selector/satellite words, read tips from the registry-derived definitions and hot-reload them
 - When no tip resolves for a word, suppress the secondary display entirely (don't show an empty tip)

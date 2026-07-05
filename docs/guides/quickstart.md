@@ -7,13 +7,13 @@ Get OpenCues running in Claude Code in under 5 minutes.
 - Node.js 22+ (`node --version`)
 - [pnpm](https://pnpm.io/installation) (`corepack enable pnpm` works)
 - Claude Code installed (`which claude`)
-- A free [Groq API key](https://console.groq.com)
+- A [Cerebras API key](https://cloud.cerebras.ai/platform/) (recommended default — lowest latency free tier; Groq/OpenAI/Anthropic/Gemini/OpenRouter/OpenCode Zen all work too, see [LLM providers](llm-providers.md))
 
 ## 2. Install
 
 ```bash
-# Add your Groq key (must be in ~/.bashrc so Claude Code sees it)
-echo 'export GROQ_API_KEY="your-key"' >> ~/.bashrc && source ~/.bashrc
+# Add your Cerebras key (must be in ~/.bashrc so Claude Code sees it)
+echo 'export CEREBRAS_API_KEY="your-key"' >> ~/.bashrc && source ~/.bashrc
 
 # Clone, install workspace deps, build
 git clone https://github.com/opencues/opencues ~/opencues

@@ -143,11 +143,11 @@ Three phases makes both impossible by construction.
 
 ## Code reference
 
-- `packages/opencues-runtime/src/state/dyn-defs.ts:120` —
+- `packages/opencues-runtime/src/state/dyn-defs.ts:222` —
   `pruneStale` (the three-phase algorithm)
-- `packages/opencues-runtime/src/state/dyn-defs.ts:173` —
+- `packages/opencues-runtime/src/state/dyn-defs.ts:275` —
   `_defMatchesAt` (the matching predicate)
-- `packages/opencues-runtime/src/state/dyn-defs.ts:191` —
+- `packages/opencues-runtime/src/state/dyn-defs.ts:292` —
   `_findUniqueMatch` (the disambiguator)
 - Scenario tests: `cycling.scenarios.test.ts` covers
   - relocate single-word, single-cycle through prefix edit

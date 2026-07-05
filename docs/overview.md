@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-04-01
+last_updated: 2026-07-04
 ---
 
 # OpenCues Architecture
@@ -10,41 +10,49 @@ For the full list of features any integration should implement, see `features/RE
 
 ## Overview
 
-OpenCues has two directions of intent: **Cues** (LLM → user — alternatives offered on plain text) and **Blanks** (user → system — substitutions summoned via `_`). Cue-Blanks are blanks bound to a keyword, pulling external state (volume, stocks). Everything that touches the world is `_`-gated.
+OpenCues has two directions of intent: **Cues** (LLM → user — alternatives offered on plain text) and **Blanks** (user → system — substitutions summoned via `_`). Cue-Blanks are blanks bound to a keyword, pulling external state (volume, stocks). Everything that touches the world is `_`-gated. **Auditors** extend the Cues direction to the whole buffer — a continuous, revertable rewrite for one declared concern (grammar, clarity, tone, ...) instead of a per-word cycle; see `spec/auditor-spec.md` and [`docs/guides/adding-an-auditor.md`](guides/adding-an-auditor.md).
 
-The architecture has two layers:
+The architecture has three layers:
 
 1. **Config Standard** (`CUES.md` + `cues/<name>/CUE.md` + `blanks/<name>/BLANK.md`) — Markdown files that define all prompts, modes, and behaviour. The standard is the protocol — integrations read these files.
-2. **Core Library** (`@opencues/core`) — Pure TypeScript reference implementation. Parses config files, runs LLM sources, resolves results. No I/O or platform dependencies.
+2. **Core Library** (`@opencues/core`) — Pure TypeScript reference implementation. Parses config files, builds `CueSource` instances, runs LLM sources, resolves results. No I/O or platform dependencies. This is "what alternatives exist."
+3. **Runtime Library** (`@opencues/runtime`) — Host-agnostic orchestration: the `HostAdapter` contract, `ConfigLoader` (hot-reload, search-path merge), `Resolver` (wraps `@opencues/core`'s `buildSourcesFromConfig`/`createResolver` and re-resolves on every debounced text change), Navigation/Cycling/BlankFill/DimRender modules, and per-host adapter bands. Knows nothing about LLMs. This is "how the user interacts with those alternatives."
 
-Integrations (Claude Code, future editors) use opencues-core to load the config standard and provide the UI layer.
-
+Integrations (Claude Code, OpenCode, Chrome, Gemini CLI, Shell) are thin per-host adapters on top of `@opencues/runtime`, which in turn depends on `@opencues/core`.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     CUES CORE (pure TypeScript)                 │
-│  - CueSource interface                                          │
-│  - CueResult interface                                          │
-│  - CueResolver class (orchestrates sources)                     │
-│  - No I/O, no platform dependencies                             │
+│                @opencues/core (pure TypeScript)                 │
+│  - CueSource interface (+ isCycleable)                           │
+│  - CueResult interface                                           │
+│  - CueResolver class (orchestrates sources)                      │
+│  - buildSourcesFromConfig() — CuesMdConfig -> CueSource[]         │
+│  - No I/O, no platform dependencies                              │
 └─────────────────────────────────────────────────────────────────┘
                               │
-              ┌───────────────┼───────────────┐
-              ▼               ▼               ▼
-┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│ CUE SOURCES     │ │ CUE SOURCES     │ │ CUE SOURCES     │
-│ LocalCueSource  │ │ ConfigSource    │ │ Classified      │
-│ (loads JSON)    │ │ (from .md file) │ │ SourceGroup     │
-└─────────────────┘ └─────────────────┘ └─────────────────┘
+              ┌───────────────┼───────────────────────────┐
+              ▼               ▼                           ▼
+┌─────────────────┐ ┌─────────────────┐        ┌─────────────────────┐
+│ LocalCueSource  │ │ ConfigSource /  │  ...    │ BlankSource /       │
+│ (static tips)   │ │ RoutedWordGroup │        │ FluidBlankSource /   │
+│                 │ │ (LLM word-cues) │        │ TransformBlankSource │
+└─────────────────┘ └─────────────────┘        └─────────────────────┘
                               │
-              ┌───────────────┼───────────────┐
-              ▼               ▼               ▼
-┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│ CLI ADAPTER     │ │ CHROME ADAPTER  │ │ VSCODE ADAPTER  │
-│ - ANSI colors   │ │ - Tooltips      │ │ - Decorations   │
-│ - Key handlers  │ │ - Content script│ │ - Hover provider│
-│ - File triggers │ │ - chrome.storage│ │ - Commands      │
-└─────────────────┘ └─────────────────┘ └─────────────────┘
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              @opencues/runtime (host-agnostic)                  │
+│  - HostAdapter contract, ConfigLoader, Resolver                  │
+│  - Navigation / Cycling / BlankFill / DimRender modules          │
+│  - Per-host adapter bands: cc, oc, gemini, chrome, shell          │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+              ┌───────────────┼───────────────┬───────────────┐
+              ▼               ▼               ▼               ▼
+┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
+│ Claude Code │ │  OpenCode   │ │   Chrome    │ │ Gemini CLI  │  ...+Shell
+│ tweakcc     │ │ patched fork│ │ MV3 ext.    │ │ patched fork│
+│ patch       │ │             │ │             │ │             │
+└─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘
 ```
 
 ## Installation
@@ -58,7 +66,7 @@ pnpm build
 For end-user installation (host integrations):
 
 ```bash
-pnpm exec opencues install claude-code     # or: opencode | chrome | gemini-cli | --all
+pnpm exec opencues install claude-code     # or: opencode | chrome | gemini-cli | shell | --all
 ```
 
 See the top-level [README.md](../README.md) for the full quickstart.
@@ -70,16 +78,23 @@ See the top-level [README.md](../README.md) for the full quickstart.
 ├── packages/
 │   ├── opencues-core/              # Pure TypeScript, no I/O
 │   │   ├── src/
-│   │   │   ├── types.ts        # Interfaces
-│   │   │   ├── resolver.ts     # CueResolver
-│   │   │   └── sources/
-│   │   │       ├── local-cue-source.ts   # LocalCueSource
-│   │   │       ├── config-source.ts     # ConfigSource (generic, config-driven)
-│   │   │       ├── build-sources.ts     # buildSourcesFromConfig factory
-│   │   │       └── parsers.ts           # Response parsers
-│       └── dist/               # Compiled output
+│   │   │   ├── types.ts               # Interfaces (CueSource, CueResult, CueContext, ...)
+│   │   │   ├── resolver.ts            # CueResolver, createResolver
+│   │   │   ├── cues-md.ts             # CUES.md/BLANK.md parser
+│   │   │   ├── discover.ts            # discoverFolderConfigs — folder-based config discovery
+│   │   │   └── sources/                # 20+ source classes: LocalCueSource, ConfigSource,
+│   │   │                               # RoutedWordSourceGroup, BlankSource, FluidBlankSource,
+│   │   │                               # TransformBlankSource, ConfigIntentSource,
+│   │   │                               # SentenceCueSource, build-sources.ts, parsers.ts, ...
+│   │   └── dist/                       # Compiled output
+│   ├── opencues-runtime/            # Host-agnostic runtime — see docs/architecture/
+│   │   ├── src/                       # Navigation, Cycling, BlankFill, ConfigLoader, Resolver, ...
+│   │   ├── adapters/                   # Per-host adapter bands (cc, oc, gemini, chrome, shell)
+│   │   └── dist/
+│   ├── opencues-cli/                # The `opencues` command
+│   └── opencues-park/               # npm-name placeholder (published; superseded on real-CLI launch)
 │
-└── package.json                # Workspace root
+└── package.json                    # Workspace root
 ```
 
 ## Core Interfaces
@@ -93,10 +108,11 @@ interface CueResult {
   wordIndex: number;        // Position in text (0-indexed)
   word: string;             // The actual word
   alternatives: string[];   // Original word at [0], then alternatives
-  tip?: string;             // Hint text for status line
+  cueTip?: string;          // Hint text for status line
   altCueTips?: Record<string, string>;  // Per-alternative tips
-  linked?: number[];        // Indices of words that cycle together
-  source: string;           // 'tips' | 'grammar' | 'math'
+  linked?: number[];        // Indices of words that cycle together (currently unused by any
+                             // runtime module — the field exists but no source populates it)
+  source: string;           // 'tips' | <cue/blank source name> | 'fluid-blank' | ...
   priority: number;         // Higher wins on merge
 }
 ```
@@ -123,6 +139,12 @@ Interface for cue providers:
 interface CueSource {
   id: string;                      // Unique identifier
   priority: number;                // Resolution order (higher first)
+  isCycleable: boolean;             // True for sources the user cycles through with the keyboard
+                                     // (word-cues, selector/satellite blanks, list blanks). False
+                                     // for single-answer sources (fluid-blank, transform-blank).
+                                     // Hosts with no cycling surface (chrome's plain <input>/
+                                     // <textarea> attach mode) drop cycleable sources at
+                                     // registration — see docs/architecture/universal-integration.md.
   supports(context: CueContext): boolean;
   getCues(context: CueContext): Promise<CueSourceResult>;
 }
@@ -133,15 +155,21 @@ interface CueSource {
 ### Basic Usage (Node.js)
 
 ```typescript
-import { CueResolver, LocalCueSource, parseCuesMd } from '@opencues/core';
+import { CueResolver, LocalCueSource, discoverFolderConfigs } from '@opencues/core';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-// Load tips from folder-based cues/<name>/CUE.md (body JSON)
-const cuesDir = path.join(os.homedir(), '.cues', 'cues');
-const folderConfigs = await discoverFolderConfigs(cuesDir, fsAdapter);
-const localCueData = aggregateLocalCueData(folderConfigs);
+// Discover folder-based cue configs (cues/<name>/CUE.md — static tips + LLM sources)
+const cuesRoot = path.join(os.homedir(), '.cues');
+const discovered = discoverFolderConfigs({
+  basePath: cuesRoot,
+  readFile: (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return null; } },
+  readDir: (p) => { try { return fs.readdirSync(p, { withFileTypes: true }).map(e => ({ name: e.name, isDirectory: e.isDirectory() })); } catch { return null; } },
+});
+
+// The static-mode words/groups map, if any cues/<name>/CUE.md shipped a JSON tips block
+const localCueData = discovered.cuesConfig?.tips ?? [];
 
 // Create resolver with the tips source
 const resolver = new CueResolver([
@@ -160,8 +188,8 @@ console.log(result.results);
 //     wordIndex: 1,
 //     word: 'ultrathink',
 //     alternatives: ['ultrathink', 'Tab', 'deep thinking'],
-//     tip: 'Add ultrathink to prompt for max reasoning',
-//     source: 'local',
+//     cueTip: 'Add ultrathink to prompt for max reasoning',
+//     source: 'tips',
 //     priority: 100
 //   }
 // ]
@@ -170,17 +198,26 @@ console.log(result.results);
 ### Multiple Sources
 
 ```typescript
-import { createResolver, buildSourcesFromConfig, parseCuesMd, LocalCueSource } from 'opencues-core';
+import { createResolver, buildSourcesFromConfig, discoverFolderConfigs, LocalCueSource } from '@opencues/core';
 
 // Tips source (high priority, instant)
 const tipsSource = new LocalCueSource(tipsData, { priority: 100 });
 
-// Config-driven sources from .md files (folder-based)
-const cuesCfg = parseCuesMd(fs.readFileSync('CUES.md', 'utf8'));
-const cuesFolders = await discoverFolderConfigs('.cues/cues', fsAdapter);
-const blanksFolders = await discoverFolderConfigs('.cues/blanks', fsAdapter);
-const configSources = buildSourcesFromConfig(cuesCfg, cuesFolders, blanksFolders, {
-  httpAdapter, endpoint, apiKey, defaultModel: 'openai/gpt-oss-120b',
+// Discover folder-based cue + blank configs under .cues/
+const discovered = discoverFolderConfigs({ basePath: '.cues', readFile, readDir });
+
+// buildSourcesFromConfig builds every LLM-backed CueSource (word-cues wrapped in one
+// RoutedWordSourceGroup, plus BlankSource/FluidBlankSource/TransformBlankSource/...) from the
+// discovered CuesMdConfig. `httpAdapter` is required; apiKeys/globalProvider/enable* flags are
+// optional — see BuildSourcesOptions in sources/build-sources.ts for the full (much larger)
+// options surface a production host actually threads through (per-bucket + per-feature LLM
+// routing, disable lists, event callbacks, ...).
+const configSources = buildSourcesFromConfig(discovered.cuesConfig, discovered.blanksConfig, {
+  httpAdapter,
+  apiKeys: { GROQ_API_KEY: process.env.GROQ_API_KEY },
+  globalProvider: 'groq',
+  enableWordCues: true,
+  enableFluidBlank: true,
 });
 
 const resolver = createResolver([tipsSource, ...configSources]);
@@ -192,14 +229,19 @@ const result = await resolver.resolve(context);
 
 ### Browser Usage (Chrome Extension)
 
-```typescript
-// Browser integration example
-import { createResolver, buildSourcesFromConfig, parseCuesMd, LocalCueSource } from 'opencues-core';
+In practice, chrome's actual integration goes through `@opencues/runtime`'s host-agnostic modules (see `integrations/chrome/`) rather than calling `@opencues/core` directly — but the underlying core API is the same one used everywhere:
 
-// Load tips and config (chrome reads from the synced bundle, not the filesystem)
+```typescript
+// Simplified — the real chrome bootstrap (opencues-bootstrap.ts) builds this via @opencues/runtime
+import { createResolver, buildSourcesFromConfig, parseLocalCueFile, LocalCueSource } from '@opencues/core';
+
+// Load tips and config (chrome reads from the synced bundle in chrome.storage.local,
+// not the filesystem — see docs/features/chrome-sync.md)
 const tipsData = parseLocalCueFile(tipsJson);
-const cuesCfg = parseCuesMd(cuesMdContent);
-const sources = buildSourcesFromConfig(cuesCfg, cuesFolders, blanksFolders, { httpAdapter, endpoint, apiKey, defaultModel });
+const discovered = discoverFolderConfigs({ basePath: '.cues', readFile, readDir });
+const sources = buildSourcesFromConfig(discovered.cuesConfig, discovered.blanksConfig, {
+  httpAdapter, apiKeys, globalProvider,
+});
 const resolver = createResolver([new LocalCueSource(tipsData), ...sources]);
 
 // Use in content script
@@ -299,16 +341,15 @@ The `LocalCueSource` can be combined with file watching for hot reload:
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { discoverFolderConfigs, aggregateLocalCueData } from '@opencues/core';
+import { discoverFolderConfigs, LocalCueSource } from '@opencues/core';
 
-const cuesDir = path.join(os.homedir(), '.cues', 'cues');
-const initial = aggregateLocalCueData(await discoverFolderConfigs(cuesDir, fsAdapter));
-const source = new LocalCueSource(initial);
+const cuesRoot = path.join(os.homedir(), '.cues');
+const opts = { basePath: cuesRoot, readFile, readDir };
+const source = new LocalCueSource(discoverFolderConfigs(opts).cuesConfig?.tips ?? []);
 
 // Watch for changes
-fs.watch(cuesDir, { recursive: true }, async () => {
-  const next = aggregateLocalCueData(await discoverFolderConfigs(cuesDir, fsAdapter));
-  source.updateData(next);
+fs.watch(cuesRoot, { recursive: true }, () => {
+  source.updateData(discoverFolderConfigs(opts).cuesConfig?.tips ?? []);
   console.log('Tips reloaded');
 });
 ```
@@ -346,6 +387,7 @@ Implement the `CueSource` interface:
 class MyCustomSource implements CueSource {
   id = 'my-source';
   priority = 75;
+  isCycleable = true;  // false if this source produces a single answer with no cycling
 
   supports(context: CueContext): boolean {
     return context.domain === 'my-domain';
@@ -388,14 +430,14 @@ class MyCustomSource implements CueSource {
 For simple use cases, use the pure function directly:
 
 ```typescript
-import { lookupWord, parseLocalCueFile, LocalCueData } from 'opencues-core';
+import { lookupWord, parseLocalCueFile, LocalCueData } from '@opencues/core';
 
 const data: LocalCueData = parseLocalCueFile(jsonContent);
 
 // Pure function lookup - no async, no I/O
 const result = lookupWord('ultrathink', data);
 if (result) {
-  console.log(result.tip);          // "Add ultrathink to prompt..."
+  console.log(result.cueTip);       // "Add ultrathink to prompt..."
   console.log(result.alternatives); // ["ultrathink", "Tab", "deep thinking"]
   console.log(result.altCueTips);      // { ultrathink: "...", Tab: "...", ... }
 }
@@ -422,8 +464,8 @@ pnpm --filter @opencues/runtime test     # runtime only
 
 ## Future Extensions
 
-1. **VS Code Extension**: Use `@opencues/core` with VS Code decoration API
-2. **Web Application**: Use `@opencues/core` directly with any web framework (the chrome extension under `integrations/chrome/` is the reference)
+1. **VS Code Extension**: Use `@opencues/core` + `@opencues/runtime` with VS Code's decoration API for a new `HostAdapter`
+2. **Web Application**: Build a new `HostAdapter` on `@opencues/runtime` for any web framework (the chrome extension under `integrations/chrome/`, which itself depends on both `@opencues/core` and `@opencues/runtime`, is the reference)
 3. **Database Source**: Implement `CueSource` for database-backed cues
 4. **Real-time Sync**: Use file watchers or WebSocket for live updates
 5. **Analytics**: Track which cues are most useful via metrics

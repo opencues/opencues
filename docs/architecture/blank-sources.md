@@ -48,17 +48,35 @@ one TransformBlank-fused reuses.
 
 **Keyword-window coordination (BlankIntent + the cede checks).**
 `BlankSource`, `FluidBlankSource`, `TransformBlankSource`, and
-`ConfigIntentSource` all decide "is this `_` mine?" using the SAME
-keyword-window predicate (`keywordInWindow()` in
-`@opencues/core/keyword-window.ts`) — so a keyword that claims a `_`
-for `BlankSource` is the same keyword the other three cede on. The
-window is always **sentence-scoped** (a keyword claims a `_` when it leads
-the sentence containing `_` — the segment after the last sentence terminator
-(`.`/`!`/`?` + whitespace, or CJK `。！？．`) or newline before `_`)
-across all five sites (the fifth is `BlankFill.matchKeyword` in the
-runtime). Shaped blanks bypass the window entirely — they're claimed
-by their `blankShapes` match via `matchBlankShape`. See
-[`blank-integration.md`](blank-integration.md).
+`ConfigIntentSource` all decide "is this `_` mine?" off the SAME
+underlying rule, so a keyword that claims a `_` for `BlankSource` is
+the same keyword the other three cede on — but the call path isn't
+uniform, and there are actually **two tiers**, not one flat window:
+
+1. **Shape tier (sentence-scoped, primary).** `BlankFill.matchKeyword`
+   and `FluidBlankSource`/`TransformBlankSource`/`ConfigIntentSource`'s
+   cede checks all route through `blankClaimsUnderscore()`
+   (`blank-shapes.ts`), which first tries `matchBlankShape()` — SENTENCE-scoped
+   via the shared `segmentStart` boundary (a keyword claims a `_` when
+   it leads the sentence containing it: the segment after the last
+   sentence terminator (`.`/`!`/`?` + whitespace, or CJK `。！？．`) or
+   newline before `_`). Almost every shipped blank has `blankShapes`
+   (keywords desugar into them), so this tier is what most `_`
+   dispatch actually hits today.
+2. **Legacy keyword-only fallback (line-scoped).** Only for a blank
+   with `blankKeywords` but NO `blankShapes` does `blankClaimsUnderscore()`
+   fall through to `keywordInWindow()` (`@opencues/core/keyword-window.ts`)
+   directly — genuinely LINE-scoped (same line as the `_`, not
+   sentence-boundary-aware). `BlankSource` also calls `keywordInWindow()`
+   directly for this same legacy path.
+
+So "one shared predicate, no drift" still holds, but the predicate is
+`blankClaimsUnderscore` (which layers sentence-scoped shape matching
+over a line-scoped keyword-window fallback), not `keywordInWindow`
+alone — don't read `keywordInWindow`'s own doc comment ("the window is
+LINE-SCOPED") as describing the whole system's behavior; it's accurate
+only for the narrower fallback tier. Shaped blanks never hit tier 2 at
+all. See [`blank-integration.md`](blank-integration.md).
 
 ---
 

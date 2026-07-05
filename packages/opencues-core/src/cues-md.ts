@@ -534,6 +534,21 @@ function parseHostList(value: string): string[] {
   return v.split(',').map(s => s.trim()).filter(s => s.length > 0);
 }
 
+/**
+ * Normalize a `keywords:` value written as a YAML bracket list
+ * (`[a, b, c]`) into a plain comma-separated string — the shape every
+ * downstream consumer (RoutedWordSourceGroup's `.split(',')`) expects.
+ * Plain comma-separated input is returned unchanged (preserves existing
+ * whitespace exactly; only the bracket form needed fixing). Without
+ * this, `keywords: [a, b, c]` stored the literal bracketed string, and
+ * the first/last keyword kept its stray `[`/`]` and could never match.
+ */
+function normalizeKeywordsValue(value: string): string {
+  const v = value.trim();
+  if (!(v.startsWith('[') && v.endsWith(']'))) return value;
+  return parseHostList(v).join(', ');
+}
+
 function parseFrontmatter(content: string): { frontmatter: CuesMdFrontmatter; body: string } {
   const match = content.match(FRONTMATTER_RE);
   if (!match) {
@@ -749,7 +764,7 @@ function parsePromptSection(content: string): PromptConfig {
         continue;
       }
       if (kv.match) source.match = kv.match;
-      if (kv.keywords) source.keywords = kv.keywords;
+      if (kv.keywords) source.keywords = normalizeKeywordsValue(kv.keywords);
       if (kv.classify) source.classify = kv.classify;
       if (kv.priority) source.priority = parseInt(kv.priority, 10) || undefined;
       if (kv.enabled !== undefined) source.enabled = kv.enabled !== 'false';
@@ -798,7 +813,7 @@ function parsePromptSection(content: string): PromptConfig {
           const text = extractTextOutsideCodeBlocks(content);
           const source: SourceConfig = { name: 'grammar' };
           if (kv.match) source.match = kv.match;
-          if (kv.keywords) source.keywords = kv.keywords;
+          if (kv.keywords) source.keywords = normalizeKeywordsValue(kv.keywords);
           if (kv.classify) source.classify = kv.classify;
           if (kv.priority) source.priority = parseInt(kv.priority, 10) || undefined;
           if (kv.model) source.model = kv.model;
@@ -1050,7 +1065,7 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'parser': fm.parser = value as BlankParser; break;
       case 'priority': fm.priority = parseInt(value, 10) || undefined; break;
       case 'match': fm.match = value; break;
-      case 'keywords': fm.keywords = value; break;
+      case 'keywords': fm.keywords = normalizeKeywordsValue(value); break;
       case 'classify': fm.classify = value; break;
       case 'model': fm.model = value; break;
       case 'provider': fm.provider = value; break;
@@ -1308,6 +1323,12 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
       //     words map, populates result.tips)
       //   - otherwise ⇒ LLM cue source (prompt in body, match/keywords
       //     in frontmatter, populates result.promptConfig)
+      //   - both, when frontmatter declares match:/keywords: ⇒ combined
+      //     mode: the static block still populates result.tips, but we
+      //     fall through to also build result.promptConfig so the LLM
+      //     handles the long tail. Without the match/keywords check, a
+      //     pure-static cue (no routing signal) would fall through too
+      //     and construct an unroutable ConfigSource with neither.
       const jsonBlock = extractCodeBlock(body, 'json');
       if (jsonBlock) {
         try {
@@ -1320,7 +1341,7 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
               ? [{ id: name, ...data }]
               : [{ id: name, words: data as Record<string, unknown> }];
           }
-          break; // static cue — done
+          if (!frontmatter.match && !frontmatter.keywords) break; // static-only cue — done
         } catch { /* malformed JSON — fall through to prompt parsing */ }
       }
 

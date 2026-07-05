@@ -8,12 +8,15 @@ trackers, …).
 **Off by default.** Opt in per-blank via the `as-context:` frontmatter
 key + the global `blank-context-mode:` scalar in `OPENCUES.md`.
 
-**Status:** design + bench validated (May 2026). Not yet wired to the
-production runtime — `tests/benchmarks/blank-sentinels-matrix/` proves
-the representation reliably resolves at scale across the four scoring
-axes (correctToken / verbatim / hallucination / leak). See its
-`FINDINGS.md` for the matrix and `docs/architecture/blank-as-context.md`
-when it lands for the production wiring plan.
+**Status:** shipped and wired into the production runtime. `blank-context.ts`
+(catalog derivation/rendering), `blank-context-cache.ts` (snapshot cache
++ pre-warm timer), the `blank-context-mode` registry scalar, the
+`as-context:`/`context-ttl:`/`context-slots:`/`context-bind:` frontmatter
+fields, and the resolver/adapter wiring are all live — see
+`docs/architecture/blank-as-context.md` for the production wiring detail.
+`tests/benchmarks/blank-sentinels-matrix/` is the bench that validated
+the representation at scale across the four scoring axes (correctToken /
+verbatim / hallucination / leak); see its `FINDINGS.md` for the matrix.
 
 ## What it is
 
@@ -246,11 +249,11 @@ could see (by name in `safe`, by value in `raw`).
 
 ## See also
 
-- `docs/features/sentinels.md` — the sister feature; same threat model,
+- `docs/features/identity-context.md` — the sister feature; same threat model,
   static data only.
 - `docs/features/ambient-context.md` — page-level metadata; the third
   member of the context-shaping family.
 - `tests/benchmarks/blank-sentinels-matrix/FINDINGS.md` — bench
   evidence that shaped the representation choice.
-- `docs/architecture/blank-as-context.md` *(to land)* — production
-  wiring plan, snapshot adapter contract, eviction policy.
+- `docs/architecture/blank-as-context.md` — production
+  wiring, snapshot adapter contract, eviction policy.

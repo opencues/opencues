@@ -201,7 +201,7 @@ well: same results.
 
 Unit tests pin both wrappers' arg/policy construction:
 `packages/opencues-runtime/src/security/sandbox-runner.test.ts` (21
-tests for bwrap) + `sandbox-exec.test.ts` (14 tests for
+tests for bwrap) + `sandbox-exec.test.ts` (16 tests for
 sandbox-exec + dispatcher). Linux integration tests at
 `sandbox-runner.integration.test.ts` actually exec bwrap with real
 scripts (9 tests).

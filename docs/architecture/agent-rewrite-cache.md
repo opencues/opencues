@@ -17,7 +17,7 @@ the agentic harness and the event-bridge.
 
 ### Tier 1 — skip-on-stable (`_lastStableSnapshot`)
 
-`agent-rewrite.ts:188-191` tracks the last `(snapshot, task, cursor)`
+`agent-rewrite.ts:219-221` tracks the last `(snapshot, task, cursor)`
 triple where the round produced no surviving hunks (LLM returned
 identical text, or the three-way merge dropped every hunk). On the
 next tick, if `(adapter.getText(), state.prompt, getCursorOffset())`
@@ -37,10 +37,10 @@ on a settled buffer.
 
 ### Tier 2 — `_rewriteCache` (LRU map)
 
-`agent-rewrite.ts:178`. A `Map<string, string>` keyed on a five-part
+`agent-rewrite.ts:209`. A `Map<string, string>` keyed on a five-part
 fingerprint. On miss, the LLM call fires and the result is stored.
 
-**Cache key** (line 779-781):
+**Cache key** (line 919):
 
 ```ts
 makeCacheKey(snapshot, task, cursor, windowWords, auditorSignature)
@@ -55,7 +55,7 @@ makeCacheKey(snapshot, task, cursor, windowWords, auditorSignature)
 | `windowWords` | flipping the `agent-window-words` setting at runtime must invalidate naturally (different LLM input → different output) |
 | `auditorSignature` | a stable hash over every active auditor's `(name, priority, promptText)` — toggling or editing an auditor changes what each isolated-mode call sees |
 
-**Auditor signature** (line 788-791):
+**Auditor signature** (line 928):
 
 ```ts
 auditors.map(a => `${a.name}\u0001${a.priority}\u0001${a.promptText}`).join('\u0002')

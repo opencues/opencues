@@ -1,10 +1,12 @@
 ---
-last_updated: 2026-04-07
+last_updated: 2026-07-04
 ---
 
 # Porting OpenCues to a New Integration
 
 This guide documents the contract between opencues-core and integrations, plus non-obvious behaviours and pitfalls discovered during the Claude Code implementation. Read this before building a Chrome extension, VS Code extension, or any new integration.
+
+> **Relationship to [`adding-an-integration.md`](adding-an-integration.md):** that guide is the step-by-step process — the file checklist, the formal `HostAdapter` contract, adapter bands, patch strategy. This doc is the conceptual/behavioural companion — the resolver contract, the runtime invariants, and the hard-won pitfalls that don't fit a checklist. Read `adding-an-integration.md` for the *how*; read this for the *why* and the *gotchas*. The adapter interfaces sketched below (`HttpAdapter`, filesystem callbacks) are illustrative of what a host must supply — the concrete, current contract is `HostAdapter` in `packages/opencues-runtime/src/modules/`, detailed in `adding-an-integration.md`.
 
 ---
 
@@ -48,6 +50,17 @@ Integrations convert `CueResult` to their internal word definition format (Claud
 
 ## Integration responsibilities
 
+> **Ownership note:** the sections below describe the CONCEPTS a host
+> must support — they do NOT mean your integration reimplements this
+> logic itself. `@opencues/runtime`'s Navigation, Cycling, and
+> DimRender modules already own navigability rules, cycling priority,
+> and dim/highlight decisions; your `HostAdapter` implementation
+> supplies the low-level primitives (paint a range, move the cursor,
+> replace text) that those modules call into. See
+> [`adding-an-integration.md`](adding-an-integration.md)'s adapter
+> contract for the concrete interface — don't reimplement
+> Navigation/Cycling/DimRender/BlankFill yourself.
+
 ### 1. HTTP adapter
 
 opencues-core's `ConfigSource` needs an HTTP adapter for LLM calls:
@@ -64,24 +77,28 @@ For Chrome: use `fetch()`. For Node.js: use the provided `NodeHttpAdapter` (HTTP
 
 `discoverFolderConfigs()` needs `readFile` and `readDir` callbacks. For Chrome: these could read from IndexedDB, a bundled config, or a server endpoint.
 
-### 3. Rendering
+### 3. Rendering (primitives you supply; the runtime decides when)
 
-The integration must:
-- **Dim** words that have alternatives (navigable positions)
-- **Highlight** the currently selected word (bold/underline/color)
-- **Replace text** when cycling through alternatives
+The runtime's DimRender module decides WHICH words to dim and WHICH to
+highlight; your `HostAdapter` supplies the primitive it calls:
+- **Dim** — the runtime tells you which ranges have alternatives (navigable positions)
+- **Highlight** — the runtime tells you which range is currently selected (bold/underline/color, your choice)
+- **Replace text** — the runtime calls your `setText` when cycling changes the buffer
 
-### 4. Navigation
+### 4. Navigation (rules the runtime applies; useful to understand)
 
-Ctrl+Alt+Left/Right (or equivalent) moves between navigable words. A word is navigable if:
+Ctrl+Alt+Left/Right (or equivalent) moves between navigable words. The runtime's Navigation module decides a word is navigable if:
 - It has alternatives (`alts.length > 1`)
 - It's a cue-blank keyword (registered in `blanksByWord`)
 - It has `metadata.blankName` (cue-blank-bound value — **exception: navigable with 1 alt**)
 - It's part of a multi-word span (navigable at the span's original index)
 
-### 5. Cycling
+Your adapter doesn't compute this — it's useful background for
+understanding what you'll observe the runtime doing.
 
-Up/Down at a navigable position cycles alternatives. Priority order:
+### 5. Cycling (priority the runtime applies; useful to understand)
+
+Up/Down at a navigable position cycles alternatives. The runtime's Cycling module applies this priority order:
 1. **Cue-blank values** (`metadata.blankName`) — call `blankInvoke` (`up`/`down`/`set`), then `get` for the new value
 2. **Consume-all spans** — cycle the dedicated `_consumeAllAlts` storage
 3. **Alternative cycling** — cycle through `alternatives` array
@@ -116,7 +133,7 @@ Sources are queried in priority order (highest first). When two sources return r
 - **Higher priority wins** — lower priority result is discarded
 - **Same priority** — alternatives are deduplicated and merged (case-sensitive)
 
-Key priorities: `BlankSource` (95) > `FluidBlankSource` (92) > shipped spelling cue (80, `ConfigSource`) > other word-cue `ConfigSource` instances (50-75)
+Key priorities: `BlankSource` (95) > `ConfigIntentSource` (94) > `TransformBlankSource` (93) > `FluidBlankSource` (92) > `SentenceCueSource` (85) > other word-cue `ConfigSource` instances (50-75) > shipped spelling cue (10, `ConfigSource` — lowest by design, the catch-all fallback; see `defaults/cues/spelling/CUE.md`)
 
 ### Tips protection
 
@@ -141,11 +158,13 @@ When an alternative contains spaces (e.g., "Sundar Pichai" replacing "Sundar"), 
 
 ### Blank dispatch order
 
-When a `_` is present, sources fire in priority order (highest first):
+When a `_` is present, sources fire in priority order (highest first) — see [`docs/architecture/blank-sources.md`](../architecture/blank-sources.md) for the canonical, fuller reference:
 1. **`BlankSource` (95)** — keyword-bound. If any registered blank's blank shape (or keyword) leads the sentence containing `_` (the segment after the last sentence terminator (`.`/`!`/`?` + whitespace, or CJK `。！？．`) or newline before `_`), that blank claims the slot. Auto-populates via the blank's script or runtime class.
-2. **`FluidBlankSource` (92)** — free-form lookup. Two-pass LLM (P1 SEGMENT + P3 ANSWER) for any `_` no keyword-bound blank claimed.
+2. **`ConfigIntentSource` (94)** — natural-language settings-change classifier (`fluid-config-mode`). Routes ONLY to FEATURES-registry scalars, never to user blanks.
+3. **`TransformBlankSource` (93)** — imperative-instruction rewrite (`improve prompt _`, `translate to french _`). A single fused LLM call classifies + rewrites in one pass; substitutes via a whole-buffer three-way merge rather than a bounded-span splice.
+4. **`FluidBlankSource` (92)** — free-form lookup, for any `_` none of the above claimed.
 
-The host's responsibility is to pass the full text + word indices through to the resolver and splice the `_` substitution into place when the result arrives. The host doesn't need to know which source fired — `CueResult.source` carries that information.
+The host's responsibility is to pass the full text + word indices through to the resolver and splice the `_` substitution into place when the result arrives (BlankSource: deterministic slot splice; TransformBlank/AgentRewrite: three-way merge against the live buffer). The host doesn't need to know which source fired — `CueResult.source` carries that information.
 
 ### Per-word clearing
 

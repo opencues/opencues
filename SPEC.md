@@ -1,9 +1,17 @@
-# Cues Specification
+# OpenCues Specification
 
 **Current version: `0.4` (draft)**
 
-This document declares the **Cues spec** — the durable, host-agnostic format that
-describes word-cues and blank-fills. It is separate from any single
+This document is a short front door. The full standard — **Cues**, **Blanks**,
+and **Auditors**, plus the shared `core.md` rules and the `identity-context`
+sentinel format — lives in [`spec/`](spec/README.md); start there for the
+complete surface-by-surface breakdown, the JSON schemas, and the conformance
+fixture tree. This file exists for the version policy and a top-level pointer;
+it deliberately doesn't duplicate `spec/README.md`'s content, to avoid the two
+drifting out of sync.
+
+The durable, host-agnostic format described by the standard covers word-cues,
+blank-fills, and inline-rewrite auditors. It is separate from any single
 implementation. A conforming reader is anything that can parse the formats
 below and surface them to a user; this repo ships the reference implementation
 (`@opencues/core` + `@opencues/runtime`), but the spec is intended to be
@@ -14,7 +22,8 @@ and third-party readers pin to it the same way bundlers pin to ESM levels.
 
 ## What the spec covers
 
-The `0.1` spec defines the wire format of:
+See [`spec/README.md`](spec/README.md#documents) for the full per-file
+breakdown. Summary — the spec defines the wire format of:
 
 1. **`CUES.md`** — the cue master config: frontmatter (project metadata) +
    `## Tips` / `## Ignore` / `## Prompt` sections (LLM cue source declarations).
@@ -74,7 +83,8 @@ The `0.1` spec defines the wire format of:
    defence) and bracket-strings already present in the user's
    buffer MUST be preserved verbatim. The mode is gated by the
    `identity-context-mode` scalar in `OPENCUES.md` (`off` /
-   `safe` / `raw`; default `off`).
+   `safe` / `raw`; default `safe` since PR #161, 2026-06-18 — was
+   `off` before that).
 
 ## What the spec does NOT cover
 
@@ -103,7 +113,8 @@ The `0.1` spec defines the wire format of:
 
 ## Where the spec lives
 
-- This file — high-level overview + version policy.
+- This file — top-level pointer + version policy.
+- [`spec/`](spec/README.md) — the full per-surface spec files, JSON schemas, and conformance fixtures. Canonical.
 - `packages/opencues-core/src/spec-version.ts` — the exported constant.
 - The canonical parsers (`cues-md.ts`, `discover.ts`, frontmatter readers
   across the sources tree) — the executable form of the spec.

@@ -1,5 +1,15 @@
 # Security Policy
 
+> **Three security docs exist in this repo, scoped differently:** this file
+> covers *how to report a vulnerability* + a summary trust model. The
+> **canonical, actively-maintained technical threat model** (26 numbered
+> attack classes with current defenses + residual risk) lives at
+> [`docs/architecture/security-audit.md`](docs/architecture/security-audit.md)
+> — if this file's "Boundaries" / "Threat actors" / "Known gaps" sections
+> below ever seem to disagree with that one, trust `security-audit.md`. The
+> open standard's own security claims (what a conformant third-party runtime
+> MUST honour) live at [`spec/SECURITY.md`](spec/SECURITY.md).
+
 ## Reporting a Vulnerability
 
 If you discover a security vulnerability in OpenCues, please report it

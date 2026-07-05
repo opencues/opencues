@@ -1,45 +1,49 @@
 ---
-last_updated: 2026-04-06
+last_updated: 2026-07-04
 ---
 
 # Cursor Position Preservation
 
-When a word changes length during cycling, the cursor position must adjust so the user's editing position does not jump. The system calculates a length delta and applies it conditionally based on where the replacement occurs relative to the cursor.
+When a word changes length during cycling, the cursor position must adjust so the user's editing position does not jump. Every cycling path (`Cycling` module, `packages/opencues-runtime/src/modules/cycling.ts`) computes the replacement's exact character range from the live buffer, then applies the same three-way cursor rule.
 
 ---
 
 ## How It Works
 
-1. **When cycling or incrementing**, the code locates the highlighted word's start position (`_wStart`) by walking the word array and calling `text.indexOf(word, wordPos)` for each word up to the target index
-2. **The old word is spliced out** and the new word is spliced in: `text.slice(0, _wStart) + newWord + text.slice(_wEnd)`
-3. **The cursor offset is adjusted** based on the replacement position relative to the current offset
-4. **A new `InputZone`** is created via `InputZone.fromText(newText, config, newOffset)`, which triggers React's re-render with both the updated text and the corrected cursor position
+1. **Compute the replacement range** from the live word positions (`splitWords(event.text)`), not from a cached span — spans on a `DynDef` can drift across multi-word cycles, so recomputing from the live buffer every time is the single source of truth.
+2. **Splice**: `before = text.slice(0, rangeStart)`, `after = text.slice(rangeEnd)`, `newText = before + nextWord + after`.
+3. **Adjust the cursor** per the three-way rule below.
+4. **Commit**: `adapter.setText(newText)` then `adapter.setCursorOffset(clampedCursor)` — the host applies both.
 
 ---
 
 ## Offset Calculation
 
-The offset logic is a single conditional:
+Every cycling path (list-blank, blank-step, static-alts) uses the same three-way conditional, not a two-way one:
 
-```
-var _lenDiff = _newWord.length - _word.length;
-var _newOffset = _wStart < inputZone.offset
-    ? inputZone.offset + _lenDiff
-    : inputZone.offset;
+```ts
+const lenDiff = nextWord.length - (rangeEnd - rangeStart);
+const newCursor = cursorOffset <= rangeStart
+  ? cursorOffset                        // cursor before the word: unchanged
+  : cursorOffset >= rangeEnd
+    ? cursorOffset + lenDiff             // cursor after the word: shifts by the delta
+    : rangeStart + nextWord.length;      // cursor INSIDE the word: snaps to its new end
+const clampedCursor = Math.max(0, Math.min(newCursor, newText.length));
 ```
 
 | Condition | Result |
 |-----------|--------|
-| Replacement is **before** the cursor (`_wStart < offset`) | Offset shifts by `_lenDiff` (positive if word grew, negative if it shrank) |
-| Replacement is **at or after** the cursor (`_wStart >= offset`) | Offset unchanged |
+| Cursor **before** the replaced range (`cursor <= rangeStart`) | Unchanged |
+| Cursor **after** the replaced range (`cursor >= rangeEnd`) | Shifts by `lenDiff` (positive if the word grew, negative if it shrank) |
+| Cursor **inside** the replaced range | Snaps to the end of the new word — there's no meaningful "same relative position" once the old word is gone |
 
-This handles all cases:
-- **Step increment** (e.g., "9" -> "10"): `_lenDiff = 1`, cursor moves right by 1 if it was after the word
-- **Alt cycling** (e.g., "dog" -> "puppy"): `_lenDiff = 2`, cursor moves right by 2 if it was after the word
-- **Shorter replacement** (e.g., "puppy" -> "cat"): `_lenDiff = -2`, cursor moves left by 2 if it was after the word
-- **Cursor at end of text**: The cursor is always after the replacement, so it tracks correctly as text grows or shrinks
+This covers:
+- **Step increment** (e.g., "9" → "10"): `lenDiff = 1`.
+- **Alt cycling** (e.g., "dog" → "puppy"): `lenDiff = 2`.
+- **Shorter replacement** (e.g., "puppy" → "cat"): `lenDiff = -2`.
+- **Cursor at end of text**: always past `rangeEnd`, so it tracks correctly as text grows or shrinks.
 
-The same logic applies in both the Up (increment/next-alt) and Down (decrement/prev-alt) key handlers, using identical `_lenDiff` / `_newOffset` / `fromText` patterns.
+Every downstream span-bound `DynDef` (e.g. a later sentence-cue in a multi-paragraph buffer) also gets its cached char offsets shifted by `lenDiff` when the splice happens (`DynDefs.shiftCharSpansAfter`) — without this, a def that starts after the replaced range would point at stale characters and mis-splice on its own next cycle.
 
 ---
 
@@ -53,7 +57,7 @@ The same logic applies in both the Up (increment/next-alt) and Down (decrement/p
 
 ### Integration responsibilities
 
-- When text changes (cycling, auto-populate, span replacement), calculate the new cursor offset based on the insertion/deletion position and the length delta
-- Handle the "cursor at end" special case so the cursor tracks the growing text
+- Supply `setText` + `setCursorOffset` on the `HostAdapter` — the shared runtime's `Cycling` module computes the offset and calls both
+- If implementing cycling outside the shared runtime, recompute the replacement range from the LIVE buffer on every cycle (not a cached span) and apply the three-way cursor rule above
 - Adjust for multi-word span replacements where a single word expands to multiple words or vice versa
 - Ensure cursor repositioning happens atomically with the text replacement to avoid visual flicker

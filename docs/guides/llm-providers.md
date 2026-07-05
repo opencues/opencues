@@ -1,13 +1,13 @@
 ---
-last_updated: 2026-05-23
+last_updated: 2026-07-04
 ---
 
 # LLM Providers
 
-OpenCues ships with **eight built-in providers** (six HTTP, two
-subscription-backed) plus auto-fallback between wire-compatible peers.
-Configuration is per-surface — pick a different provider/model for
-each LLM-driven feature.
+OpenCues ships with **ten built-in providers** (seven HTTP, two
+subscription-backed, one local) plus auto-fallback between
+wire-compatible peers. Configuration is per-surface — pick a
+different provider/model for each LLM-driven feature.
 
 ## Built-in providers
 
@@ -20,15 +20,17 @@ each LLM-driven feature.
 | **openai** | `OPENAI_API_KEY` | `gpt-5.4-mini` | paid API, full model catalogue |
 | **openai-subscription** *(subscription)* | `codex login` | `gpt-5.4-mini` | OpenAI's Responses API via your ChatGPT plan |
 | **openrouter** | `OPENROUTER_API_KEY` | `openai/gpt-oss-120b:free` | OpenAI-compat HTTP |
-| **claude-cli** *(subscription)* | `claude` login | `haiku` | Claude's subscription via local subprocess |
+| **claude-code-cli** *(subscription, alias `claude-cli`)* | `claude` login | `haiku` | Claude's subscription via local subprocess |
+| **opencode-zen** *(blanks-only, free)* | none | `free` (routes to `nemotron-3-super-free`) | OpenCode's free model pool — **trains on input**, so it's exposed only to the `blanks` bucket (the `_` keystroke is the consent gate). See [Free mode](#free-mode-no-api-key) below. |
 | **ollama** *(local)* | none (optional `OLLAMA_API_KEY`) | `gemma4:e2b` | Native `/api/chat`, fully offline — see below |
 
-The two subscription providers (`openai-subscription` and `claude-cli`)
-use your existing AI plan — no per-token billing. Use them on
-expensive surfaces (agent-rewrite, transform-blank) when you want the
-quality of frontier models without the per-call cost. The paid HTTP
-providers stay available for surfaces that need a model your plan
-doesn't allow, or when you want a specific (e.g. nano-tier) model.
+The two subscription providers (`openai-subscription` and
+`claude-code-cli`) use your existing AI plan — no per-token billing.
+Use them on expensive surfaces (agent-rewrite, transform-blank) when
+you want the quality of frontier models without the per-call cost.
+The paid HTTP providers stay available for surfaces that need a model
+your plan doesn't allow, or when you want a specific (e.g. nano-tier)
+model.
 
 The runtime picks the right env key automatically based on which
 provider is selected. Set as many keys as you want — the others stay
@@ -59,43 +61,70 @@ Source: `packages/opencues-core/src/llm-provider.ts`.
 
 ## How to configure
 
-Edit `~/.cues/OPENCUES.md` (frontmatter holds settings; body is documentation):
+Edit `~/.cues/OPENCUES.md` (frontmatter holds settings; body is documentation).
+Precedence, highest wins: **per-cue/per-blank > per-feature (advanced,
+file-edit-only) > bucket > global > auto-fallback.** For the common
+case, you want the bucket tier — `opencues config` only exposes
+buckets + global in its menu; per-feature stays a file-edit-only
+escape hatch.
 
-### Global default — applies to every surface
+### Global default — applies to every surface left on auto
 
 ```yaml
-llm-provider: groq
-llm-model: openai/gpt-oss-120b
+llm-provider: cerebras
+llm-model: gpt-oss-120b
 # llm-endpoint: …    # rare — only for self-hosted gateways
 ```
 
-### Per-feature override — finer granularity
+### Bucket override — the primary per-surface knob
 
-Four surfaces accept their own provider+model+endpoint:
+Three buckets, each with one provider/model scalar pair — see
+[`docs/architecture/llm-routing.md`](../architecture/llm-routing.md)
+for the full design:
 
 ```yaml
-# 1. Word cues — synonyms / antonyms / linked alternatives
-#    Spelling, legal, medical, etc. all flow through this tier
-#    because they're config-driven word-scope cues (see
-#    `defaults/cues/`). Override an individual cue's provider via
-#    its frontmatter.
+cues-llm-provider: cerebras        # word-cues, sentence-cues
+cues-llm-model: gpt-oss-120b
+
+auditors-llm-provider: cerebras    # auditors, agent-rewrite
+auditors-llm-model: gpt-oss-120b
+
+blanks-llm-provider: cerebras      # fluid-blank, transform-blank, fluid-config, keyword blanks
+blanks-llm-model: gpt-oss-120b
+```
+
+Each defaults to `inherit` (falls through to the global `llm-provider`).
+`blanks` is the only bucket that exposes `opencode-zen` — see
+[Free mode](#free-mode-no-api-key) above.
+
+### Per-feature override (advanced, file-edit-only)
+
+A narrower, older tier — four individual surfaces still accept their
+own provider+model+endpoint, kept for callers that need finer control
+than the bucket they belong to:
+
+```yaml
+# Word cues — synonyms / antonyms / linked alternatives
 word-cues-provider: groq
 word-cues-model: openai/gpt-oss-120b
 
-# 2. Fluid blank — free-form `_` lookups (P1 SEGMENT + P3 ANSWER)
+# Fluid blank — free-form `_` lookups
 fluid-blank-provider: cerebras
 fluid-blank-model: gpt-oss-120b
 
-# 3. Transform blank — imperative-instruction edits
+# Transform blank — imperative-instruction edits
 transform-blank-provider: groq
 transform-blank-model: openai/gpt-oss-120b
 
-# 4. Agent rewrite — full-buffer rewrite agent
+# Agent rewrite — full-buffer rewrite agent (lives in the auditors bucket)
 agent-provider: cerebras
 agent-model: gpt-oss-120b
 ```
 
-Each per-feature key falls back to the global setting when unset.
+Each per-feature key falls back to its bucket (then the global
+setting) when unset. These are deliberately **not** in the
+`opencues config` menu — they're a power-user override, not a
+discoverable setting.
 
 ### Per-cue / per-blank override — finest granularity
 
@@ -112,8 +141,8 @@ priority: 70
 ```
 
 This cue alone will use Anthropic; everything else inherits the
-global / per-feature settings. Useful when one specialist domain
-benefits from a different model character.
+bucket / global settings. Useful when one specialist domain benefits
+from a different model character.
 
 The shipped spelling cue lives at `defaults/cues/spelling/CUE.md` —
 add `provider:` / `model:` to its frontmatter (or to a project-level
@@ -125,9 +154,10 @@ without affecting the rest of `word-cues-*`.
 | Tier | Where | Keys |
 |---|---|---|
 | **Per-cue / per-blank** | `CUE.md` / `BLANK.md` frontmatter | `provider:`, `model:`, `endpoint:` |
-| **Per-feature** | `~/.cues/OPENCUES.md` frontmatter | `<feature>-provider:`, `<feature>-model:`, `<feature>-endpoint:` |
-| **Global** | `~/.cues/OPENCUES.md` frontmatter | `llm-provider:`, `llm-model:`, `llm-endpoint:` |
-| **Built-in default** | n/a | groq + `openai/gpt-oss-120b` |
+| **Per-feature** *(advanced, file-edit-only)* | `~/.cues/OPENCUES.md` frontmatter | `<feature>-provider:`, `<feature>-model:`, `<feature>-endpoint:` |
+| **Bucket** | `~/.cues/OPENCUES.md` frontmatter, or `opencues config` | `cues-llm-provider:`/`cues-llm-model:`, `auditors-llm-*`, `blanks-llm-*` |
+| **Global** | `~/.cues/OPENCUES.md` frontmatter, or `opencues config` | `llm-provider:`, `llm-model:`, `llm-endpoint:` |
+| **Built-in default** | n/a | cerebras + `gpt-oss-120b` |
 
 The most-specific tier wins. Provider and model are *paired* — if a
 tier specifies a provider but not a model, the model falls back to
@@ -178,23 +208,32 @@ become each other's failover.
 
 ## Reasoning effort
 
-OpenCues passes `reasoning_effort: 'low'` to providers that honour it
-(Groq's `gpt-oss-*` line, Cerebras's `gpt-oss-*`, OpenAI's reasoning
-models when the heuristic detects them). The flag is silently dropped
-for providers/models that don't accept it.
+**This is now a user-exposed scalar, not a hardcoded value.** The
+`max-thinking: on | off` scalar in `OPENCUES.md` (default `on`) picks
+between a per-model `{ max, off }` ceiling pair in
+`packages/opencues-core/src/model-thinking.ts`'s `MODEL_THINKING`
+table — e.g. `cerebras:gpt-oss-120b` ceilings at `medium` when `on`,
+drops to `low` when `off`; other provider/model pairs have their own
+ceilings. `reasoning_effort` is silently dropped for providers/models
+that don't accept it at all.
 
-**Don't bump above `low`.** The 2026-05-08 bench showed:
-- `medium` regresses fluid-blank by 50%+ (model outputs prose instead
-  of the structured `SPAN: / CONTEXT:` format).
-- `high` regresses transform-blank on Groq specifically (overthinks
-  composed instructions).
-- Quality saturates at `low` for every OpenCues task surface.
+The 2026-05-08 bench behind the original `'low'`-only default still
+holds as the *rationale* for conservative ceilings: `medium` regressed
+fluid-blank by 50%+ (prose instead of the structured `SPAN: /
+CONTEXT:` format) and `high` regressed transform-blank on Groq
+specifically (overthinks composed instructions) — which is why the
+ceilings in `MODEL_THINKING` are calibrated per model rather than one
+global "always low" rule.
 
-The reasoning_effort field isn't user-exposed in CUES.md right now —
-it's hardcoded to `'low'` by each source. Adding per-feature override
-is a small change if a future surface needs it.
+Full design, the resolution chokepoint (`resolveReasoningEffort()`),
+and per-model ceiling rationale:
+[`docs/architecture/max-thinking.md`](../architecture/max-thinking.md).
 
 ## Pricing (May 2026)
+
+Provider pricing lives on their own pages, not in this repo's code —
+treat this table as a directional snapshot and check the provider's
+current pricing page before making a cost-sensitive decision.
 
 | Provider | Input ($/M) | Output ($/M) | Notes |
 |---|---|---|---|
@@ -205,6 +244,7 @@ is a small change if a future surface needs it.
 | anthropic (haiku 4.5) | $1.00 | $5.00 | |
 | openrouter | varies by model | | `:free` tier available for many models |
 | gemini (3.1-flash-lite) | $0.25 | $1.50 | May 2026 GA; replaces 2.5-flash |
+| opencode-zen | $0 | $0 | free pool, blanks-only — trains on input, see [Free mode](#free-mode-no-api-key) |
 
 Cerebras is roughly 2× Groq's cost for the same `gpt-oss-120b`
 weights. The trade-off: Cerebras wins on long-prompt latency and
@@ -213,9 +253,10 @@ fluid-blank quality (per the bench); Groq wins on short-prompt TTFT.
 ## Host integration notes
 
 ### Claude Code (`integrations/claude-code/`)
-The patch (`opencuesRuntime.ts`) reads all five env keys at startup
-and forwards them as `host.llmApiKeys`. No code change to switch
-providers — just edit `~/.cues/CUES.md`.
+The patch (`opencuesRuntime.ts`) reads all six env keys (GROQ,
+OPENROUTER, GEMINI, OPENAI, ANTHROPIC, CEREBRAS) at startup and
+forwards them as `host.llmApiKeys`. No code change to switch
+providers — just edit `~/.cues/OPENCUES.md`.
 
 ### OpenCode (`integrations/opencode/`)
 Same — `opencuesBootstrap.ts` reads all keys from `process.env` and
@@ -343,6 +384,65 @@ If a subscription provider fails (auth expired, rate-limited, binary
 missing, network blip), the call fails — there's no silent retry
 against an HTTP provider. Run `opencues doctor` to see which
 subscription providers are detected on PATH.
+
+## Free mode (no API key)
+
+`opencode-zen` routes the **blanks** bucket (fluid-blank, transform-blank,
+fluid-config, keyword blanks — the opt-in `_` surface) through
+[OpenCode Zen](https://opencode.ai/zen)'s free model pool, anonymously,
+with no API key at all. Set both scalars in `~/.cues/OPENCUES.md`:
+
+```yaml
+---
+blanks-llm-provider: opencode-zen
+blanks-llm-model: free
+---
+```
+
+The runtime resolves `free` to whatever's currently in the pool, walks
+past dead/throttled entries on transient failure, and surfaces the
+resolved model in the status line so you know what actually answered.
+
+### Why blanks-only
+
+`opencode-zen`'s ToS says **your inputs may be used to train the
+underlying models** — this is the one provider in the catalogue where
+`trainsOnInput` is true. That's why it's exposed *only* in the `blanks`
+bucket and refused outright for `cues` / `auditors`: cues and
+auditors fire automatically on prose you type in the normal course of
+using the editor, with no separate consent step. Blanks fire only on
+an explicit `_` keystroke — that keystroke **is** the consent gate.
+Setting `llm-provider: opencode-zen` (the global/cues path) is refused
+at startup for exactly this reason. Only the `_` trigger, and only the
+surrounding context window that source sends, goes through the free
+pool — but treat anything you type next to a `_` while on this
+provider as public. See [`docs/architecture/llm-routing.md`](../architecture/llm-routing.md)
+for the trust-class guard's implementation.
+
+### Latency and the pool
+
+Free models on OpenCode Zen rotate in and out — promotions end, models
+move behind paid tiers, new ones arrive. The runtime walks a fixed
+priority order (accuracy-desc, from the May 2026 fluid-blank bench,
+`tests/results/opencode-zen-free/`) and health-caches dead entries for
+30s:
+
+| Model | Accuracy | Latency (p50) | Notes |
+|---|---|---|---|
+| `nemotron-3-super-free` | 86.7% | ~14000ms | preferred — slow but solid |
+| `deepseek-v4-flash-free` | 46.7% | ~5000ms | fast, mediocre |
+| `big-pickle` | 40.0% | ~5000ms | a deepseek-v4-flash variant — same speed, worse accuracy |
+
+**The preferred model is a ~14 second median response.** That's the
+real cost of "free" — weigh it against the paid tiers above before
+routing a latency-sensitive surface through this pool. Two other
+models benched earlier (`qwen3.6-plus-free`, `minimax-m2.5-free`) have
+already moved to the paid OpenCode Go tier and are no longer in
+rotation. The **canonical live list** is
+`GET https://opencode.ai/zen/v1/models` — check that before relying on
+any specific model name; today there's no user-facing knob to
+reorder this priority (the runtime always tries highest-accuracy
+first, then falls through on failure).
 
 ## Local models via Ollama
 

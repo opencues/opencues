@@ -67,8 +67,7 @@ A blank source MUST also declare **exactly one** binding profile (see § Binding
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
-| `type` | `"blank"` | inferred from path | Discriminator. Files under `blanks/` are blanks by location; explicit `type: blank` is rarely needed. |
-| `priority` | number | `50` | Higher wins on routing ties when multiple blanks could claim the same `_` slot (rare — usually disambiguated by `blankKeywords`). Range 0–100 by convention. |
+| `type` | `"blank"` | **required** | Discriminator. The reference parser dispatches purely on `type:` — a `BLANK.md` omitting it is never converted into a blank at all (no `blankKeywords`/binding fields get populated), regardless of the file living under `blanks/`. Every shipped `defaults/blanks/*/BLANK.md` declares it explicitly. |
 | `enabled` | boolean | `true` | `false` = blank is parsed but not registered. Use the master `BLANKS.md` `disable: [<id>]` to skip a blank from a project layer without modifying the source file itself. |
 | `blankShapes` | JSON list of `{pattern, action, valueGroup?}` | derived from `blankKeywords` | Anchored regex grammar that routes a `_` deterministically. Each shape's `pattern` is matched (case-insensitive) against the SENTENCE containing `_` (segment after the last sentence terminator / newline before `_`); on match the blank claims it with `action` (`"get"` / `"set"` / `"step"`) and the value from capture group `valueGroup`. e.g. `[{"pattern":"^volume\\s+(\\d+)\\s*_$","action":"set","valueGroup":1}]`. When omitted, the runtime synthesizes shapes from `blankKeywords` (+ `blankStep` for set/step). See § Routing. |
 | `blankStep` | number | none | Increment size for numeric blanks (set/step `up`/`down`). Also adds set/step shapes when `blankShapes` is synthesized from keywords. |
@@ -86,34 +85,13 @@ A blank source MUST also declare **exactly one** binding profile (see § Binding
 | `speak` | boolean | `false` | Per-blank TTS hint. Reserved here so authors have a portable place to declare intent; TTS itself is non-standard. |
 | `spec` | string | `"opencues/0.1-alpha"` | Spec version this file targets. Files that omit `spec:` MUST be treated as `opencues/0.1-alpha`. Runtimes MUST refuse files declaring a newer `spec:` than they support. |
 
-> **Runtime extensions to this table.** The reference runtime parses additional keys not (yet) elevated to this standard: `blankSatelliteSeparator`, `blankClearOnEdit`, and the credential fields `secrets:` / `secret-hosts.*`. These are runtime-only knobs documented in [`@opencues/runtime`'s `SPEC.md`](../packages/opencues-runtime/SPEC.md); other implementations MAY ignore them. They become candidates for the promotion path (see `core.md`) once a second runtime adopts them.
+> **Runtime extensions to this table.** The reference runtime parses additional keys not (yet) elevated to this standard: `blankSatelliteSeparator`, `blankClearOnEdit`, the credential fields `secrets:` / `secret-hosts.*`, the blank-as-context parameter-binding fields `contextSlots` / `contextBind` (`context-bind`) / `contextBindSplit` (`context-bind-split`) / `splitValuesInTokenNamesAck` (`split-values-in-token-names: ok`) — see [`docs/features/blank-as-context.md`](../docs/features/blank-as-context.md) for their behavior, not yet promoted here — and the capability/quota fields `userBlankOutput`, `maxFetchesPerMinute`, `maxLlmPerMinute`, `maxStorageBytes`. These are runtime-only knobs documented in [`@opencues/runtime`'s `SPEC.md`](../packages/opencues-runtime/SPEC.md); other implementations MAY ignore them. They become candidates for the promotion path (see `core.md`) once a second runtime adopts them.
 
 ### Body
 
 The body is typically a short human-readable description or stays empty. For declarative blanks (`stepValues`) and in-process blanks (`impl`), the body is purely documentation.
 
 For shell-script blanks, the body MAY include usage examples or version notes. Runtimes MUST ignore the body for execution; it's documentation-only.
-
-#### Named prompt sections
-
-A blank that drives an LLM-backed binding (an `impl:` class that calls a model, for instance) MAY declare named prompt fragments using `## <Name>` Markdown headings in the body:
-
-```markdown
----
-name: my-blank
-impl: MyBlank
----
-
-## Extract
-Identify the lookup phrase. Return SPAN: <text> or SPAN: NONE.
-
-## Answer
-Given the SPAN, return ANSWER: <terse value>.
-```
-
-Runtimes that recognise these names MUST parse them into a `prompts: { Extract: …, Answer: … }` map available to the bound implementation. Runtimes that don't recognise a section name MUST preserve it (no error) — it's documentation for the next reader.
-
-Section names are case-sensitive and MUST match the heading text after `## `. Sections are unordered; nested `### ` subheadings are content within their parent section.
 
 ---
 
@@ -339,8 +317,9 @@ ambient catalog token. The token name is derived from the blank's
 A conformant runtime that observes `as-context: safe|raw`:
 
 - MUST gate emission on the `blank-context-mode` scalar in
-  `OPENCUES.md` (`off` / `safe` / `raw`; default `off`). A blank
-  with `as-context: raw` does NOT bypass this gate.
+  `OPENCUES.md` (`off` / `safe` / `raw`; default `safe` — see
+  `core.md` § Spec-mandated scalars). A blank with `as-context: raw`
+  does NOT bypass this gate.
 - MUST apply the same post-processor rules as for IDENTITY.md
   tokens: resolve catalog hits, strip unknown brackets, preserve
   user-typed bracket strings in the input.

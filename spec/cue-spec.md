@@ -247,7 +247,7 @@ A `CUE.md` file is **valid** iff:
 
 A runtime is **conformant** iff it satisfies every MUST in § Runtime contract.
 
-For the consolidated linting matrix (severity, rule names, what each rule checks), see [`core.md` § Linting rules](./core.md#linting-rules). Cue-specific rules: missing `description` (warn), zero or multiple defaults at the same priority (warn), `on-host` contradicting an auto-detected host (warn).
+For the consolidated linting matrix (severity, rule names, what each rule checks), see [`core.md` § Linting rules](./core.md#linting-rules). Cue-specific rules: missing `description` (warn), zero or multiple defaults at the same priority (warn), `on-host` contradicting an auto-detected host (warn) — these three are spec text without a reference-runtime implementation yet; see `core.md`'s tracked-gap list.
 
 ---
 
@@ -321,8 +321,6 @@ Format: INDEX:alt1,alt2
 
 ---
 
----
-
 ## Author self-test — validating a `match:` regex
 
 A cue source's `match:` is the only thing standing between "fires correctly" and "fires on every plain word the user types." Before shipping a source, walk through this checklist:
@@ -330,7 +328,7 @@ A cue source's `match:` is the only thing standing between "fires correctly" and
 1. **Write 5–10 realistic text snippets** the source SHOULD fire on (true positives). Verify the regex matches.
 2. **Write 5–10 snippets it should NOT fire on** (true negatives — common words, unrelated jargon). Verify no match.
 3. **Write 2–3 ambiguous edge cases.** A word like "shall" might be legal jargon OR everyday English; decide which side this source claims.
-4. **Run `opencues list --type cue --match-test "<text>"`** (or equivalent) to see which source claims each word in a sample paragraph. If the wrong source wins, adjust `priority:` or tighten the regex.
+4. **Inspect declared triggers with `opencues list --cues`** (or equivalent) to see every source's `match:`/`keywords:`/`priority:` side by side, then reason through which one wins on a sample paragraph. The reference CLI does not ship a live match-tester flag today — a runtime MAY add one (e.g. `--match-test "<text>"`) as a nice-to-have; until then, this is a manual regex-tracing step.
 5. **Check for unintended substring matches.** `match: state` will fire on "statement," "estate," "statistics." If you mean the word, anchor with `\b`.
 
 Resist the urge to write a regex that catches everything. A narrow, accurate `match:` plus a DEFAULT source for the long tail is almost always better than one over-greedy regex.

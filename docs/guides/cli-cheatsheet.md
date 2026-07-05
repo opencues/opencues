@@ -16,7 +16,7 @@ for it. Each row links to the relevant guide where one exists.
 
 | Command | What it does | When you reach for it |
 |---|---|---|
-| `opencues install <host>` | One-shot installer for `claude-code` / `opencode` / `chrome` / `chrome-host` / `gemini-cli`. Handles fork clone + build + patch end-to-end. | First-time setup; after pulling new core changes. |
+| `opencues install <host>` | One-shot installer for `claude-code` / `opencode` / `chrome` / `chrome-host` / `gemini-cli` / `shell`. Handles fork clone + build + patch end-to-end (`shell` has no upstream fork — preflights Bun/tmux instead). | First-time setup; after pulling new core changes. |
 | `opencues run <host>` | Launch the patched host with the right env (`OPENCUES_HOME` etc). Also exposed as bare `claude-cues`, `opencode`, `gemini-cli` once installed. | Daily — same shape as launching the editor normally. |
 | `opencues new <cue\|blank> <name>` | Scaffold a folder with a pre-filled template. `--project` for `<cwd>/.cues/`, `--dry-run` to preview. | Adding a new cue or blank. See [adding-a-cue-blank.md](adding-a-cue-blank.md). |
 | `opencues doctor` | Cross-host install diagnostics. Checks every integration's build-state, every shipped default's presence, every API key. | Anything looks off. **First thing to try when stuck.** |
@@ -28,8 +28,10 @@ for it. Each row links to the relevant guide where one exists.
 
 | Command | What it does | When you reach for it |
 |---|---|---|
-| `opencues set-key <provider> <key>` | Store an API key in `~/.cues/.env` (chmod 600). Providers: `groq`, `openai`, `finnhub`. | Shell-agnostic alternative to `export GROQ_API_KEY=...` in `~/.bashrc`. |
+| `opencues config` | Interactive browser (on a TTY) over every `OPENCUES.md` scalar, grouped into sections. `config list` / `config get <scalar>` / `config set <scalar> <value>` for scriptable use. | Changing any runtime setting without hand-editing YAML. |
+| `opencues set-key <provider> <key>` | Store an API key in `~/.cues/.env` (chmod 600). Providers: `cerebras`, `groq`, `gemini`, `anthropic`, `openai`, `openrouter`, `opencode-zen`, `finnhub`. | Shell-agnostic alternative to `export GROQ_API_KEY=...` in `~/.bashrc`. |
 | `opencues check-keys` | Probe each configured provider with a tiny test call. Confirms keys actually work (vs just being present). | After `set-key` or after rotating a key. |
+| `opencues identity` | Interactive interview (or `set` / `remove` / `list`) for `~/.cues/IDENTITY.md` — the personal-data fields FluidBlank/TransformBlank substitute (`my email _` → your real address). | Setting up identity-context once per machine. |
 | `opencues init` | Scaffold `<cwd>/.cues/` with empty templated `CUES.md`, `BLANKS.md`, `AUDITORS.md`. | Starting a new project that needs project-scoped cues / blanks. |
 | `opencues seed-configs` | Copy shipped `defaults/*` into `~/.cues/`. Idempotent — preserves user edits, heals 0-byte files, refreshes contract fields without clobbering user fields. | After a `git pull` that touched `defaults/`. Runs automatically as part of `opencues install`. |
 | `opencues update-configs` | Pull new shipped defaults into `~/.cues/` without re-running an install. | When you want the latest shipped cues/blanks but not a runtime/core rebuild. |
@@ -45,6 +47,7 @@ for it. Each row links to the relevant guide where one exists.
 | `opencues show <name>` | Print the resolved config for one cue / blank / auditor — frontmatter + body + which file it came from. | Debugging a config that's not behaving as expected. |
 | `opencues validate [--project]` | Lint every `.md` config — bad regex, missing required fields, unknown scope, etc. Exit code 0 if clean. | Before committing a config change. |
 | `opencues logs [--tail] [--grep PATTERN]` | Read or tail `/tmp/opencues.log` with optional filter. | Tracing a single resolve cycle. |
+| `opencues context [--json]` | Unified read-only view across every optional context source (identity-context, blank-context, ambient-context) — shows exactly what the LLM would see in the prompt, gated by each source's mode scalar. | Sanity-checking what personal/ambient data is actually reaching the model. |
 | `opencues version` | CLI version + per-integration versions + which install of each is on PATH. | Bug reports — paste the output. |
 
 ---
@@ -58,6 +61,8 @@ for it. Each row links to the relevant guide where one exists.
 | `opencues sync <host>` | Push local `~/.cues/` configs into a sandbox that can't read the filesystem (today: chrome). `--watch` for live sync. | Iterating on chrome-extension configs without re-installing. |
 | `opencues import <source>` | Download a third-party config pack from a URL or local path and install it under `~/.cues/`. | Trying someone else's curated cue set. |
 | `opencues edit <file>` | Open the named config in `$EDITOR`. | Quick one-off edits without hunting the path. |
+| `opencues cleanup [--kill]` | Find (and optionally reap) orphaned `opencues run <host>` processes that outlived their parent. Runs automatically at the start of every `run`. | A leaked process from a closed terminal is still burning cycles. |
+| `opencues statusline <enable\|disable\|status>` | Opt in Claude Code's `statusLine` slot to OpenCues' status line. Kept separate from `install claude-code` so it never surprises a user with an existing custom statusline. | First-time CC status-line setup. |
 
 ---
 

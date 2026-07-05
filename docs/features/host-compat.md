@@ -102,7 +102,7 @@ not-on-host: chrome, opencode
 ---
 ```
 
-Valid host names: **`chrome`**, **`claude-code`**, **`gemini-cli`**, **`opencode`**, **`terminal`**.
+Valid host names: **`chrome`**, **`claude-code`**, **`gemini-cli`**, **`opencode`**, **`shell`** (alias `terminal` kept for back-compat in `on-host:`/`not-on-host:` directives).
 
 Unknown names are silently dropped at runtime; `opencues validate` prints
 warnings about them so typos are caught.
@@ -117,30 +117,30 @@ warnings about them so typos are caught.
 import { inferHostCompat, formatHostList, HOSTS, NATIVE_HOSTS } from '@opencues/core';
 
 inferHostCompat({});
-// → { hosts: ['chrome', 'claude-code', 'gemini-cli', 'opencode'], all: true, source: 'auto' }
+// → { hosts: ['chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell'], all: true, source: 'auto' }
 
 inferHostCompat({ 'on-host': ['chrome'] });
 // → { hosts: ['chrome'], all: false, source: 'on-host' }
 
 inferHostCompat({ 'not-on-host': ['chrome'] });
-// → { hosts: ['claude-code', 'gemini-cli', 'opencode'], all: false, source: 'not-on-host' }
+// → { hosts: ['claude-code', 'gemini-cli', 'opencode', 'shell'], all: false, source: 'not-on-host' }
 
-formatHostList(['claude-code', 'gemini-cli', 'opencode']);
-// → 'claude-code, gemini-cli, opencode'
-formatHostList(['chrome', 'claude-code', 'gemini-cli', 'opencode']);
+formatHostList(['claude-code', 'gemini-cli', 'opencode', 'shell']);
+// → 'claude-code, gemini-cli, opencode, shell'
+formatHostList(['chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell']);
 // → 'all'
 ```
 
 | Constant | Value |
 |---|---|
-| `HOSTS` | `['chrome', 'claude-code', 'gemini-cli', 'opencode']` |
-| `NATIVE_HOSTS` | `['claude-code', 'gemini-cli', 'opencode']` — hosts that have subprocess + filesystem capability unconditionally (no auxiliary helper needed) |
+| `HOSTS` | `['chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell']` |
+| `NATIVE_HOSTS` | `['claude-code', 'gemini-cli', 'opencode', 'shell']` — hosts that have subprocess + filesystem capability unconditionally (no auxiliary helper needed) |
 
 | Function | Returns |
 |---|---|
 | `inferHostCompat(input)` | `{ hosts, all, source }` — `source` is `'auto'` / `'on-host'` / `'not-on-host'` |
 | `unknownHostNames(value)` | `string[]` of host names that aren't in `HOSTS` (validator helper) |
-| `formatHostList(hosts)` | Human display: `"all"` or `"claude-code, gemini-cli, opencode"` |
+| `formatHostList(hosts)` | Human display: `"all"` or the comma-joined host list |
 
 ---
 
@@ -155,27 +155,6 @@ Two motivations:
 The OpenStandard's design principle: **default to working, declare exceptions, validate everything.** Host-compat is a clean instance of that.
 
 ---
-
-## Practitioner notes (from CLAUDE.md, May 2026)
-
-### Default-attempt model
-
-Every cue / blank has an implicit (or explicit) host-compat list: which of `{chrome, claude-code, gemini-cli, opencode}` it works on. Native hosts (CC, OC, gemini-cli) can spawn subprocesses + read the filesystem natively. Chrome can do both — config sync via the chrome-host's filesystem watch, subprocess via the chrome-host's `exec` protocol — but only when `opencues install chrome-host` has been run. Without the host, chrome is sandboxed and scripted blanks fail with exit 127.
-
-Default: every cue / blank advertises as compatible with every host. The runtime attempts the call; if the host can't fulfil it (e.g. chrome without chrome-host trying to spawn `.sh`), it fails at runtime (exit 127) rather than being hidden behind a misleading "incompatible host" marker.
-
-Historical note: `inferHostCompat` used to auto-exclude chrome for entries with `script: ./X.sh` / `.py` / etc., on the assumption chrome couldn't run subprocesses. With chrome-host (May 2026 native-messaging bridge) chrome CAN run POSIX scripts via the host process, so the heuristic became actively wrong. Removed in favour of explicit overrides.
-
-### Override frontmatter
-
-```yaml
-on-host: [claude-code, opencode, gemini-cli]   # allow-list (chrome would fail)
-not-on-host: [chrome]                          # equivalent deny-list
-```
-
-Resolution: `on-host` (if set) is the allow-list; `not-on-host` removes denials from whichever set was chosen. Surfaced by `opencues list` (per-entry marker, hidden when "all"), validated by `opencues validate` (typos + contradictions).
-
-API: `@opencues/core`'s `inferHostCompat()`, `formatHostList()`, `unknownHostNames()`, `HOSTS`, `NATIVE_HOSTS`.
 
 ## Site scoping (chrome) — `on-site` / `not-on-site`
 

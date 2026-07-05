@@ -117,13 +117,19 @@ which fails the check, even though the symlink itself sits inside
 
 `integrations/chrome/host/host.cjs:sandboxArg`.
 
-### Boundary 5 — Env-key whitelist
+### Boundary 5 — Deny-by-default env construction (INFOSEC F2)
 
-The host accepts env vars from the message only when the key matches
-`/^CUES_[A-Z0-9_]+$/`. A malicious frontmatter that tried to smuggle
-`PATH=/tmp/evil:/bin` (or `LD_PRELOAD`, `DYLD_INSERT_LIBRARIES`, …)
-through `msg.env` is filtered out before spawn — only the well-known
-CUES_* prefix (model, API URL, etc.) survives.
+The host builds its spawn env from its own tight
+`HOST_BASE_ENV_ALLOWLIST` (PATH/HOME/locale/desktop-integration vars)
+— it no longer spreads `process.env` (the pre-F2 design did, which let
+a `blankScript:`-bearing pack `curl` out any `*_API_KEY` the host
+process had loaded, undeclared). The runtime's `buildSafeScriptEnv`
+validates declared-secret names before they reach the wire;
+`filterMessageEnv` applies a second-line deny-list
+(`HOST_DANGEROUS_ENV_PATTERN` — `LD_*`/`DYLD_*`/`NODE_OPTIONS`/
+`PYTHONPATH`/etc.) as belt-and-braces. A malicious frontmatter that
+tried to smuggle `LD_PRELOAD`/`DYLD_INSERT_LIBRARIES`/etc. through
+`msg.env` is filtered out before spawn by the deny-list.
 
 `integrations/chrome/host/host.cjs:filterMessageEnv`.
 
@@ -252,7 +258,7 @@ mode the catalog inlines values (opt-in, better prose register).
 
 Two attack-class-specific rules baked into the catalog prompt
 (both validated end-to-end at
-`tests/benchmarks/sentinels/e2e-combined.ts`):
+`tests/benchmarks/user-context/e2e-combined.ts`):
 
 - **Rule 8 — ONE FIELD, ONE ANSWER.** A hostile label that
   asks the model to bundle multiple catalog values into one
@@ -274,7 +280,7 @@ field even when feature is on.
 Same structural property as Boundary 9: the post-processed
 answer lands as user-visible buffer text. There is no parallel
 channel for the model to exfiltrate values through.
-See `docs/architecture/sentinels.md` for the full threat
+See `docs/architecture/identity-context.md` for the full threat
 model and `security-audit.md` row #22.
 
 ### Boundary 11 — Sensitive-field exclusion (cross-cutting)
@@ -407,10 +413,10 @@ window`. Tracked here as a residual; see audit doc row #13.
 | `inferSiteCompat` core | `packages/opencues-core/src/host-compat.test.ts` | 9 |
 | Path sandbox | manual smoke (`/etc/passwd`, symlink, traversal) | 3 |
 | ESM AST rewriter | `packages/opencues-runtime/src/user-blanks/esm-rewrite.test.ts` | 13 |
-| Secret-binding leak guard | `packages/opencues-runtime/src/user-blanks/secret-leak-guard.test.ts` | 11 |
+| Secret-binding leak guard | `packages/opencues-runtime/src/user-blanks/secret-leak-guard.test.ts` | 15 |
 | User-blank loader (Node) | `packages/opencues-runtime/src/user-blanks/node-loader.test.ts` | 19 |
 | Sandbox-runner (bwrap) | `packages/opencues-runtime/src/security/sandbox-runner.test.ts` | 21 |
 | Sandbox-runner (bwrap, real exec) | `packages/opencues-runtime/src/security/sandbox-runner.integration.test.ts` | 9 |
-| Sandbox-exec (macOS) + dispatcher | `packages/opencues-runtime/src/security/sandbox-exec.test.ts` | 14 |
+| Sandbox-exec (macOS) + dispatcher | `packages/opencues-runtime/src/security/sandbox-exec.test.ts` | 16 |
 
 Anything new touching these surfaces needs its assertion added.

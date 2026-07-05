@@ -29,12 +29,12 @@
     },
     "on-host": {
       "type": "array",
-      "items": { "type": "string", "enum": ["chrome", "claude-code", "gemini-cli", "opencode"] },
+      "items": { "type": "string", "enum": ["chrome", "claude-code", "gemini-cli", "opencode", "shell", "terminal"] },
       "description": "Allow-list of host names that may load this auditor."
     },
     "not-on-host": {
       "type": "array",
-      "items": { "type": "string", "enum": ["chrome", "claude-code", "gemini-cli", "opencode"] },
+      "items": { "type": "string", "enum": ["chrome", "claude-code", "gemini-cli", "opencode", "shell", "terminal"] },
       "description": "Deny-list, applied after on-host."
     },
     "spec": {

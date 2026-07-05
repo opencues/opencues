@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-04-22
+last_updated: 2026-07-04
 ---
 
 # CLI Reference — `opencues`
@@ -10,7 +10,7 @@ state, day-to-day operations. One CLI normalizes "install / update
 / debug" across three hosts (CC, OpenCode, Chrome), each with
 very different install models underneath.
 
-For the high-level mental model see `damon.md` § "The `opencues` CLI";
+For the high-level mental model see [`docs/overview.md`](../overview.md);
 this page is the per-subcommand reference.
 
 ```
@@ -20,6 +20,28 @@ $ opencues --help
 prints the canonical command list. Every subcommand also takes
 `--help` for its own usage detail. Bash/zsh/fish completion is
 available via `opencues completion <shell>`.
+
+Bare `opencues` (no subcommand) on a terminal opens the **interactive
+launcher** instead — a menu that routes into each command's own
+interactive flow (Settings, API keys, Identity, Debug logging, Explore
+cues & blanks, Install a host, Run a host, Diagnostics, Check API keys,
+All commands). Non-TTY / piped input falls back to the same static
+status + command list `--help` prints, so scripting is unaffected.
+
+---
+
+## The 5 you'll actually use
+
+| Command | What it does |
+|---|---|
+| `opencues install <host>` | One-time setup for an editor/host |
+| `opencues run <host>` | Launch it |
+| `opencues set-key <provider> <key>` | Add an LLM API key |
+| `opencues doctor` | Something's wrong — diagnostics |
+| `opencues update` | Pull latest + rebuild everything |
+
+Everything below is the full reference. For every command sorted by
+frequency instead, see the [cheat sheet](cli-cheatsheet.md).
 
 ---
 
@@ -37,6 +59,7 @@ opencues install opencode            # patch the OpenCode fork at ~/opencode-cue
 opencues install chrome              # build the MV3 extension into integrations/chrome/dist/
 opencues install chrome --wsl        # also mirror to the Windows desktop install dir
 opencues install gemini-cli          # patch the Gemini CLI 0.41.x fork at ~/gemini-cli-cues
+opencues install shell                # standalone Bun + OpenTUI app, no upstream fork (oc-shell / oc-edit)
 opencues install --all               # install every detected host
 ```
 
@@ -65,17 +88,20 @@ Owns all writes to the user-level `~/.cues/` tree. Idempotent + safe to
 re-run. Invoked automatically (with `--silent`) by every `opencues install <host>`,
 and runnable standalone whenever you suspect drift.
 
-Four phases on every invocation:
+Four phases on every invocation. Note this command owns `OPENCUES.md`
++ `AUDITORS.md` + the `cues/`/`blanks/`/`auditors/`/`scripts/` folder
+dirs — it never touches `CUES.md`/`BLANKS.md` (those are `opencues
+init`'s job, for project-level scaffolding; see below):
 
-1. **SEED** — first-time copy of `defaults/CUES.md + cues/ + blanks/ + scripts/` → `~/.cues/`. Skips files that already exist with content (preserves user edits).
+1. **SEED** — first-time copy of `defaults/{OPENCUES.md,AUDITORS.md,cues/,blanks/,scripts/}` → `~/.cues/`. Skips files that already exist with content (preserves user edits).
 2. **SYNC** — overwrites stale library files (`.sh` / `.cs` / `.ps1` from `defaults/{blanks,scripts}/`) every install. Never overwrites `.md` (user content). Catches drift when path-resolution logic changes between repo versions.
-3. **HEAL** — re-seeds a 0-byte `~/.cues/CUES.md`. The runtime's `OpenCuesSettingsBlank` silently no-ops on empty content, so a 0-byte file would silently break `opencues ___` / `config ___` blank-fills on every native host (CC + OC). Chrome unaffected — uses bake-time fallback.
+3. **HEAL** — re-seeds a 0-byte `~/.cues/OPENCUES.md` from `defaults/OPENCUES.md`, and merges in any new scalars a fresh install shipped that an existing user's file predates (keeping the user's existing values). A 0-byte `OPENCUES.md` would otherwise silently break every runtime-settings read (`opencues settings _`, hot-reload, feature toggles) on every native host (CC + OC). Chrome unaffected — uses bake-time fallback.
 4. **COMPILE** (WSL only) — compiles colocated `.cs` → `.exe` next to the script that uses them (`BrightCtl.exe` next to `brightness.sh`, `VolCtl.exe` next to `volume.sh`, `SpeakCtl.exe` next to `speak.sh`). Idempotent — only compiles when `.exe` is older than `.cs`.
 
 | Flag | Effect |
 |---|---|
 | (none) | User-level. Runs all four phases. |
-| `--project` | Writes into `<cwd>/.cues/` instead (only the SEED phase — sync/heal/compile are user-level only). Skips `CUES.md` (its frontmatter is runtime-owned; no project-level overrides for system settings). |
+| `--project` | Writes into `<cwd>/.cues/` instead — only `cues/`/`blanks/`/`auditors/` folders (no `scripts/`, no `OPENCUES.md`; sync/heal/compile are user-level only). For `CUES.md`/`BLANKS.md`/`AUDITORS.md` master-file scaffolding at the project level, use `opencues init --project`. |
 | `--silent` | Suppress non-error output (used when chained from `opencues install`). |
 | `--dry-run` | Print the plan; do not copy / compile anything. |
 
@@ -90,6 +116,37 @@ fresh-cloning or pulling new commits.
 ```bash
 opencues update
 ```
+
+### `update-configs` — pull new shipped defaults into `~/.cues/`
+
+A thin wrapper around `seed-configs` for the narrower "I just pulled
+new opencues code, get any new shipped cues/blanks onto my disk"
+workflow. Deliberately separate from `update` — `update` rebuilds +
+redeploys a host integration, a different concern; running it
+shouldn't silently rewrite `~/.cues/` too.
+
+```bash
+opencues update-configs
+```
+
+### `config` — browse + change OpenCues settings
+
+Interactive settings browser (on a TTY) over every `OPENCUES.md`
+scalar — the schema is the `FEATURES` + `MENU_TUNABLES` registry in
+`@opencues/core`, so adding a feature there makes it appear here for
+free. Grouped into sections (Cues / Blanks / Context & identity /
+Agent / Voice & navigation / LLM routing / Appearance / Diagnostics).
+
+```bash
+opencues config                      # interactive settings browser
+opencues config list                 # print every setting + its current value
+opencues config get <scalar>         # print one setting's effective value
+opencues config set <scalar> <value> # change a setting (validated against the registry)
+```
+
+Writes `~/.cues/OPENCUES.md`. Hidden footgun values
+(`exposeInMenu:false`, e.g. `identity-context-mode: raw`) stay
+file-edit-only — they don't appear in the browser or `list`.
 
 ### `set-key <provider> <key>` — store an API key
 
@@ -140,13 +197,16 @@ and the `INDEX:alt` format-spec line that the LLM should follow.
 Walks every search-path layer (env / project / user), parses every
 `.md`, and reports issues:
 
-- Schema problems (missing required fields, malformed YAML)
-- Host-compat contradictions (`on-host:` lists chrome but the
-  blank has `blankScript: ./*.sh`)
-- Multiple defaults without a priority discriminator
-- Tip JSON parse failures inside folder-based `cues/<name>/CUE.md` body blocks
+- Schema problems (malformed frontmatter, a cue with neither `match:` nor `keywords:`, a blank with no `blankKeywords`, an `impl:`/`blankScript:` pointing at a file that doesn't exist)
+- Host-compat resolving to zero hosts (the entry can never run)
+- Blank-specific footguns: no binding profile declared (unreachable at runtime), a `blankScript` that isn't executable, `sandbox:` left unset, `impl:` declaring no capabilities, secret bindings that are orphaned/unreachable/unused
+- Endpoint config problems (invalid or non-default `-endpoint:` overrides)
+- Empty cue/auditor body (no tip-group JSON, no prompt text — nothing for the source to actually do)
 
-Exit 0 on success, 1 on errors. Suitable for CI.
+Each finding is tagged with its lint-rule code (see `spec/core.md` §
+Linting rules) — `--json` for machine-readable output, `--strict` to
+treat warnings as errors. Exit 0 on success, 1 on errors (or warnings
+under `--strict`). Suitable for CI.
 
 ### `import <source>` — install a community config pack
 
@@ -163,6 +223,22 @@ opencues import ./my-local-pack/             # for testing
 Pack layout matches `defaults/`: top-level `CUES.md` + folders for
 `cues/` and `blanks/`. Imports are additive; existing
 files are preserved unless `--force`.
+
+### `review <source>` — security review of a third-party config pack
+
+Two-pass review before you trust a pack: (1) a deterministic static
+parse (reuses `validate`'s logic — counts declared capabilities,
+red flags, suspicious source patterns), (2) an opt-in LLM second
+opinion (`--llm`; pure text-in/text-out, no tool access, pack content
+wrapped in `<untrusted-source>` delimiters). The static parse is the
+authority; the LLM verdict can only downgrade a rating, never upgrade
+one. `opencues import` runs this automatically and requires an
+explicit confirm before installing.
+
+```bash
+opencues review github:user/repo
+opencues review ./my-local-pack/ --llm
+```
 
 ---
 
@@ -229,6 +305,60 @@ Read-only health check across every install. Looks for common
 breakages (missing `.env`, stale tweakcc state, unbuilt artefacts,
 node version mismatches, etc.) and suggests fixes. Run when something
 behaves unexpectedly, or before reporting a bug.
+
+### `identity` — manage IDENTITY.md identity fields
+
+`~/.cues/IDENTITY.md` is a YAML frontmatter file where each key
+becomes an identity-context token (`firstName: Wilfred` → `[FIRST
+NAME]`) that FluidBlank/TransformBlank can substitute in. See
+[`docs/architecture/identity-context.md`](../architecture/identity-context.md).
+
+```bash
+opencues identity                  # interactive interview
+opencues identity list             # show current identity fields
+opencues identity list --json      # JSON output (scriptable)
+opencues identity set <key> <val>  # add or update one (also: add)
+opencues identity remove <key>     # remove one (also: rm)
+```
+
+### `context` — inspect every context source reaching the LLM
+
+Unified read-only view across the three optional context sources: identity-context
+(`~/.cues/IDENTITY.md`), blank-context (ambient blank tokens — stocks,
+weather, …), and ambient-context (chrome-only field metadata). Shows
+what the LLM would actually see in the prompt, gated by each source's
+mode scalar.
+
+```bash
+opencues context list              # human-readable summary
+opencues context list --json       # JSON for scripting
+```
+
+### `cleanup` — find + kill orphan host processes
+
+Long-running `opencues run <host>` invocations sometimes leak (terminal
+closes, the wrapper script dies, the underlying process double-forks
+and outlives its parent). Reports + reaps them. Also runs automatically
+at the start of every `opencues run <host>` (a fresh run supersedes
+prior instances of the same host).
+
+```bash
+opencues cleanup          # list orphan processes
+opencues cleanup --kill   # reap them
+```
+
+### `statusline <enable|disable|status>` — Claude Code status-line integration
+
+Opt-in surface for CC's `statusLine` slot — kept as a separate command
+(rather than folded into `opencues install claude-code`) because
+`~/.claude/` is Claude Code's own directory and writing to it on every
+install would surprise users with a custom statusline already set up.
+
+```bash
+opencues statusline enable
+opencues statusline status
+opencues statusline disable --project
+```
 
 ### `list` — every defined cue / blank + source
 
@@ -323,6 +453,7 @@ opencues list --blanks | grep -c domain  # how many domain blanks exist
 | `opencode` | Patches the fork at `~/opencode-cues` | Quiet by default; `--verbose` for full output |
 | `chrome` | esbuild-builds the MV3 extension into `integrations/chrome/dist/` | `--wsl` also mirrors to the Windows desktop install dir |
 | `gemini-cli` | Clones the fork at `~/gemini-cli-cues`, installs deps, builds + installs `@opencues/{core,runtime}`, drops `opencuesBootstrap.ts` in, patches 4 source files, runs `npm run build` | Pinned to Gemini CLI 0.41.x via `integrations/gemini-cli/pin.json` |
+| `shell` | No upstream fork — preflights Bun/tmux, `bun install`s OpenTUI deps, auto-installs a vendored tmux if none usable | Vendored tools land in `~/.opencues/vendor/`; exposes `oc-shell` (wraps your interactive shell in a private tmux session) / `oc-edit` |
 
 ---
 

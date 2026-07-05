@@ -183,7 +183,18 @@ The pnpm workspace glob `integrations/*` picks this up automatically.
 
 ### 4. Installer entry — `integrations/<host>/bin/install.cjs`
 
-The npx entry point. Wraps `patches/setup.sh` with install/uninstall sub-commands and `--target` / `--dry-run` / `--help` flags. Mirror `integrations/gemini-cli/bin/install.cjs` — single source of truth for the install's blast radius (paths it touches, files it removes on uninstall).
+The npx entry point. Wraps `patches/setup.sh` with install/uninstall sub-commands and `--target` / `--dry-run` / `--help` flags. Mirror `integrations/gemini-cli/bin/install.cjs` — single source of truth for the install's blast radius (paths it touches, files it removes on uninstall). Shape:
+
+```js
+// --target <path>   Path to <host> fork dir (default: $HOME/<host>-cues)
+// --dry-run         Print the plan, don't execute
+const HOME = os.homedir();
+const DEFAULT_FORK = path.join(HOME, '<host>-cues');
+
+function pathsForFork(fork) { /* every path this install touches or removes */ }
+function doInstall() { /* clone/patch/build, or print the plan under --dry-run */ }
+function doUninstall() { /* revert patches, optionally rm -rf the fork */ }
+```
 
 ### 5. Setup script — `integrations/<host>/patches/setup.sh`
 
@@ -240,7 +251,21 @@ the runtime restarts per session.
 
 ### 8. Repair guide — `packages/opencues-runtime/adapters/<short>/REPAIR.md`
 
-Document host-specific known-fixes baked into the adapter. Entries should be: file, symptom, why, fix. Mirror `adapters/oc/REPAIR.md` or `adapters/gemini/REPAIR.md`. This is the page someone reads after an upstream version bump breaks something.
+Document host-specific known-fixes baked into the adapter. Entries should be: file, symptom, why, fix. Mirror `adapters/oc/REPAIR.md` or `adapters/gemini/REPAIR.md`. This is the page someone reads after an upstream version bump breaks something. Open with the same load-bearing disclaimer every existing one carries — it's the single most useful sentence in the file:
+
+```markdown
+# <Host> adapter — repair & version-bump guide
+
+> **The runtime package is intentionally never in this loop.** If you
+> find yourself editing `packages/opencues-runtime/src/**` to fix a
+> <Host> version bump, stop and ask why — those modules don't know
+> what host they're running in. Repairs live in the adapter band only.
+
+## Host quirks (<Host> vX.Y) — read this before debugging anything
+
+### 1. `bindings.getText` is a stale closure after <event>
+**Symptom:** ...  **Why:** ...  **Fix:** ...
+```
 
 ### 9. Integration CLAUDE.md — `integrations/<host>/CLAUDE.md`
 
@@ -257,7 +282,29 @@ Mirror `integrations/gemini-cli/CLAUDE.md`.
 
 ### 10. Integration README — `integrations/<host>/README.md`
 
-User-facing install + usage docs. Include: install command, supported versions, what the install touches, uninstall, troubleshooting.
+User-facing install + usage docs. Mirror `integrations/gemini-cli/README.md`'s section order — every existing integration README follows it, so a user who's read one can navigate any other:
+
+```markdown
+# OpenCues for <Host>
+
+## Install
+### Prerequisites
+### Install command
+### Custom fork location
+### Verbose output
+## Run
+## Uninstall
+## Verify
+## Configuration
+## Where things live (blast radius)
+## Update workflow
+## See also
+```
+
+"Where things live (blast radius)" is the section users read before
+trusting the installer with their real editor config — list every
+path it touches (fork location, patched files, config dirs) and what
+`uninstall` reverts vs. leaves alone.
 
 ---
 

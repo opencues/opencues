@@ -68,14 +68,33 @@ Frontmatter keys at the top of `~/.cues/OPENCUES.md`. The same scalars are cycla
 | `fluid-config-mode` | `on` / `off` | `off` | Natural-language settings phrases (`enable debug logging _` → flips `debug-mode`). FEATURES-only scope; never routes to user blanks. |
 | `blank-trigger-mode` | `immediate` / `spaced` | `immediate` | Whether `_` fires on insertion or only on a confirming space. `spaced` lets markdown `_italic_` typists keep their formatting. |
 | `ambient-context-mode` | `on` / `off` | `off` | (Chrome only) Forward focused field's label / placeholder / page-title to fluid-blank for disambiguating lookups. |
-| `identity-context-mode` | `off` / `safe` / `raw` | `off` | Inject `~/.cues/IDENTITY.md` personal data into fluid-blank as identity-context tokens. `safe` = tokens-only catalog, values substituted post-LLM; `raw` = values inlined into the prompt. |
+| `identity-context-mode` | `off` / `safe` / `raw` | `safe` | Inject `~/.cues/IDENTITY.md` personal data into fluid-blank as identity-context tokens. `safe` = tokens-only catalog, values substituted post-LLM; `raw` = values inlined into the prompt. Defaulted to `off` before PR #161 (2026-06-18). |
 | `agent-debounce-ms` | number | `1000` | Pause-after-keystroke before the inline agent fires. Misparse → 1000. |
-| `llm-provider` | `groq` / `cerebras` / `openai` / `anthropic` / `openrouter` / `gemini` | `groq` | Default LLM provider for every surface. Per-surface override below. |
-| `llm-model` | string | provider-default | Default model for the default provider. |
-| `<surface>-provider`, `<surface>-model`, `<surface>-endpoint` | per-provider strings | — | Per-surface routing. `<surface>` is one of `word-cues`, `fluid-blank`, `transform-blank`, `agent-rewrite`, `auditors`, `fluid-config`, `sentence-cues`. See [`docs/guides/llm-providers.md`](guides/llm-providers.md). |
-| `<surface>-max-tokens`, `<surface>-temperature` | number | source-default | Per-surface tunable for max_tokens + sampling temperature. Useful for matching a model's context window or pinning determinism. |
+| `llm-provider` | `cerebras` / `groq` / `openai` / `anthropic` / `openrouter` / `gemini` (+ `opencode-zen` / `ollama` / `claude-code-cli`, file-edit-only) | `cerebras` | Global fallback LLM provider, used by any bucket left on `inherit`. |
+| `llm-model` | string | provider-default | Default model for the global provider. |
+| `blank-context-mode` | `off` / `safe` / `raw` | `safe` | Local blanks (weather, stocks, ...) surfaced as ambient catalog context for fluid-blank/transform-blank. Same mode semantics as `identity-context-mode`; defaulted to `off` before PR #161. |
+| `integration-weave-mode` | `on` / `off` | `off` | Let a blank with `integration-weave: true` weave its output into surrounding prose via one LLM call, instead of the static `{value}` template. |
+| `max-thinking` | `on` / `off` | `on` | Per-model reasoning-effort ceiling for reasoning-capable models (Groq/Cerebras/OpenAI gpt-oss + gpt-5). `off` trades reasoning depth for speed. |
+| `sentinel-language` | `bare` / `typed` | `bare` | `typed` upgrades identity/blank-context tokens to a typed grammar, unlocking the `ai-callable` on-demand parameterized-fetch tier. |
+| `blank-loading-animation`, `blank-loading-interval-ms` | mode / number | `bounce` / `150` | Per-frame glyph + timing for the loading indicator shown at a `_` slot while its source resolves. |
+| `nav-keymap` | `auto` / `ctrl-alt` / `ctrl-shift` | `auto` | Modifier combo for word navigation + alt cycling. `auto` resolves to ctrl-alt everywhere. |
+| `dim-mix` | `0`-`100` | `45` | (Chrome only) How far the dim (unfocused) colour blends toward the page background. |
 
-Full reference for every key: [`packages/opencues-core/src/feature-registry.ts`](../packages/opencues-core/src/feature-registry.ts) (the FEATURES + MENU_TUNABLES single source of truth).
+### LLM routing — three buckets
+
+Most surfaces route through **three buckets**, each with one provider/model scalar pair, rather than per-surface scalars:
+
+| Bucket | Scalars | Covers |
+|---|---|---|
+| `cues` | `cues-llm-provider`, `cues-llm-model` | word-cues, sentence-cues (prose-bearing) |
+| `auditors` | `auditors-llm-provider`, `auditors-llm-model` | auditors, agent-rewrite (background prose rewriter) |
+| `blanks` | `blanks-llm-provider`, `blanks-llm-model` | fluid-blank, transform-blank, fluid-config, keyword blanks (the opt-in `_` surface) |
+
+Each provider scalar defaults to `inherit` (falls through to the global `llm-provider`). `blanks` is the only bucket that exposes `opencode-zen` (free pool, trains on input — the `_` keystroke is the user's consent gate); `cues` and `auditors` refuse training-pool providers since they're prose-bearing.
+
+Precedence, highest wins: **per-source override > per-feature override > bucket scalar > global `llm-provider` > auto-fallback.** Per-aspect overrides (`word-cues-provider`, `agent-provider`, `fluid-blank-provider`, `<surface>-max-tokens`, `<surface>-temperature`, ...) remain available as file-edit-only advanced knobs, deliberately kept out of the `opencues config` menu. Full design: [`docs/architecture/llm-routing.md`](architecture/llm-routing.md).
+
+Full reference for every key: [`packages/opencues-core/src/feature-registry.ts`](../packages/opencues-core/src/feature-registry.ts) (the FEATURES + MENU_TUNABLES single source of truth), or run `opencues config` for a browsable, always-current menu.
 
 ### Hoisted-blank writes are race-protected
 
