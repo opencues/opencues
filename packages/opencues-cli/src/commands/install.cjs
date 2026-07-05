@@ -592,6 +592,15 @@ function printKeyDetectionReport(ctx) {
       console.log(`${tag('warn')} LLM provider: ${bold(provider)} ${dim(`(llm-provider: in ~/.cues/OPENCUES.md) — no key detected for it; run`)} ${bold('opencues check-keys')}`);
     }
   } else {
+    // No env keys anywhere — but an explicit subscription-CLI scalar
+    // (claude-code-cli / openai-subscription) is a complete, keyless
+    // setup: state the resolution instead of a false "inert" warning.
+    const explicitCli = readGlobalProviderScalar();
+    if (explicitCli && providers.getProvider(explicitCli)?.transport === 'cli') {
+      console.log(`${green(G.ringOn)} LLM provider: ${bold(explicitCli)}`);
+      console.log('');
+      return;
+    }
     console.log(bold('LLM keys') + '  ' + dim('· none found — LLM cues/blanks stay inert until one is set'));
     console.log(`  ${dim('fastest:')} ${bold('opencues set-key')} ${dim('— stores the key in ~/.cues/.env; hosts read it at boot')}`);
     // Subscription CLIs offer a zero-key path when the binary is

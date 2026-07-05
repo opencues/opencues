@@ -29,6 +29,7 @@ beforeEach(() => {
   tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'opencues-keyreport-'));
   savedEnv.HOME = process.env.HOME;
   savedEnv.USERPROFILE = process.env.USERPROFILE;
+  savedEnv.PATH = process.env.PATH;
   process.env.HOME = tmpHome;
   delete process.env.USERPROFILE;
   for (const k of ALL_ENV_KEYS) {
@@ -85,6 +86,55 @@ describe('printKeyDetectionReport', () => {
     printKeyDetectionReport({ REPO_ROOT });
     const out = lines.join('\n');
     assert.match(out, /LLM provider: openai\s*$/m);
+  });
+
+  it('subscription-CLI scalar + zero env keys → resolution line, NOT the "none found" warning', () => {
+    // A claude-code-cli setup is keyless by design — "LLM cues/blanks
+    // stay inert" would be false and alarming here.
+    fs.mkdirSync(path.join(tmpHome, '.cues'), { recursive: true });
+    fs.writeFileSync(path.join(tmpHome, '.cues', 'OPENCUES.md'), '---\nllm-provider: claude-code-cli\n---\n');
+
+    printKeyDetectionReport({ REPO_ROOT });
+    const out = lines.join('\n');
+    assert.match(out, /LLM provider: claude-code-cli\s*$/m);
+    assert.ok(!out.includes('none found'));
+    assert.ok(!out.includes('set-key'));
+  });
+
+  it('subscription-CLI scalar wins even when env keys exist', () => {
+    process.env.GROQ_API_KEY = 'gsk_shell';
+    fs.mkdirSync(path.join(tmpHome, '.cues'), { recursive: true });
+    fs.writeFileSync(path.join(tmpHome, '.cues', 'OPENCUES.md'), '---\nllm-provider: claude-code-cli\n---\n');
+
+    printKeyDetectionReport({ REPO_ROOT });
+    const out = lines.join('\n');
+    assert.match(out, /LLM provider: claude-code-cli\s*$/m);
+    assert.ok(!out.includes('groq'));
+  });
+
+  it('zero keys + subscription binary on PATH → that zero-key option line appears', () => {
+    // Machine-independent: a fake `claude` shim in a controlled PATH.
+    const binDir = path.join(tmpHome, 'bin');
+    fs.mkdirSync(binDir, { recursive: true });
+    fs.writeFileSync(path.join(binDir, 'claude'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    process.env.PATH = binDir;
+
+    printKeyDetectionReport({ REPO_ROOT });
+    const out = lines.join('\n');
+    assert.match(out, /none found/);
+    assert.match(out, /claude detected .*llm-provider: claude-code-cli/);
+    assert.ok(!out.includes('codex'), 'codex is not on the controlled PATH — its line must not print');
+  });
+
+  it('zero keys + empty PATH → no subscription option lines', () => {
+    const emptyDir = path.join(tmpHome, 'emptybin');
+    fs.mkdirSync(emptyDir, { recursive: true });
+    process.env.PATH = emptyDir;
+
+    printKeyDetectionReport({ REPO_ROOT });
+    const out = lines.join('\n');
+    assert.match(out, /none found/);
+    assert.ok(!out.includes('zero-key option'));
   });
 
   it('explicit scalar with no key for it → one warn pointing at check-keys', () => {

@@ -163,3 +163,7 @@ function printHelp(PROVIDERS) {
   console.log('  opencues set-key groq gsk_...');
   console.log('  opencues set-key finnhub abc123');
 }
+
+// Test-only export — pins the registry-driven provider map (ordering,
+// coverage, fallback) without driving the interactive command.
+module.exports.providerMap = providerMap;
