@@ -16,6 +16,48 @@ breaking.
 
 ---
 
+## [0.5.0-alpha] — 2026-07-06
+
+Spec bump: `identity-context-mode: safe` becomes **bidirectional**. The
+mode previously claimed only the catalog direction (values never enter
+prompt blocks; the LLM emits tokens the runtime hydrates locally).
+`0.5` adds the buffer direction as a normative requirement —
+**dehydration**: catalog values the user TYPED into the buffer MUST be
+replaced with their canonical tokens before any buffer-derived text
+ships in an LLM request, on every dispatch channel (messages,
+speculative prediction hints, ambient/context blocks). See
+`identity-context-spec.md` § Dehydration for the six normative
+requirements (coverage, matching floor, visible residual, buffer
+immutability, round-trip precedence, fail-safe).
+
+No file-format or frontmatter change — `IDENTITY.md` files authored
+against `0.4` parse identically. The bump is normative-behaviour-only
+(the meaning of the spec-mandated `safe` value strengthens), following
+the `0.3 → 0.4` precedent.
+
+### Changed
+
+- `identity-context-spec.md` § Modes — `safe` is documented as the
+  default (an absent scalar MUST resolve to `safe`; explicit
+  unrecognised values MUST fail closed to `off`), fixing a
+  contradiction with `core.md` § Spec-mandated scalars that had
+  survived since the default flip. The two-tier rule is now
+  explicitly required at EVERY re-parse site.
+- `identity-context-spec.md` § Security claims — "Default-off"
+  replaced by "Default-safe" + "Bidirectional in safe mode" (a reader
+  implementing only the catalog half MUST NOT claim `safe`
+  conformance against `0.5`).
+
+### Added
+
+- `identity-context-spec.md` § Dehydration (outbound) — the normative
+  contract for the buffer-direction scrub and its interaction with
+  the post-processor's user-typed-bracket preservation rule
+  (preserve wins on the ambiguous both-present case; conflicts
+  SHOULD be surfaced).
+
+---
+
 ## [0.4.0-alpha] — 2026-06-30
 
 Spec bump: the blank routing boundary moves from the physical **line** to

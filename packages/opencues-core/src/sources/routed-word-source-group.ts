@@ -31,6 +31,7 @@ import {
   CueResult,
 } from '../types';
 import { ConfigSource } from './config-source';
+import { getDehydrator } from '../dehydrate';
 
 export interface RoutedWordSourceGroupConfig {
   /** Group identifier (default: 'word-cues'). */
@@ -197,10 +198,21 @@ export class RoutedWordSourceGroup implements CueSource {
     // editing flows.
     const inProgressIdx = findInProgressTrailingWord(context);
 
+    // DEHYDRATION (identity-context safe mode): PII words are dropped
+    // from LLM dispatch entirely — exactly like unrouted words (no cue,
+    // not navigable). Your name doesn't get sent out for synonyms.
+    // Over-dropping (a common surname word) only costs a cue;
+    // under-dropping ships a value to the provider.
+    const idCtx = context.identityContext;
+    const dehydrator = idCtx && idCtx.mode === 'safe' && idCtx.catalog.size > 0
+      ? getDehydrator(idCtx.catalog)
+      : undefined;
+
     // Collect (word, originalIndex) for every cycleable word in the input.
     const items = context.words
       .map((word, idx) => ({ word, idx }))
-      .filter(({ word, idx }) => word !== '_' && word.length > 0 && idx !== inProgressIdx);
+      .filter(({ word, idx }) => word !== '_' && word.length > 0 && idx !== inProgressIdx)
+      .filter(({ word }) => !dehydrator?.isPiiWord(word));
 
     // Route each word. Words with no matching source are silently dropped
     // (= no cue / not navigable). That's the user's choice when they don't

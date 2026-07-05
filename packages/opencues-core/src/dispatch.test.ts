@@ -21,8 +21,9 @@
  */
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert';
-import { dispatchChat, type HttpAdapterShape } from './llm-provider';
+import { dispatchChat, setOutboundDehydrationGuard, getOutboundDehydrationGuard, applyOutboundDehydrationFloor, type HttpAdapterShape } from './llm-provider';
 import type { ProviderAdapter, ChatRequest, BuiltRequest } from './llm-provider';
+import { getDehydrator } from './dehydrate';
 
 interface CapturedPost { url: string; body: string; headers: Record<string, string> }
 
@@ -244,5 +245,81 @@ describe('dispatchChat — HTTP transport contract', () => {
       dispatchChat(provider, adapter, { model: 'm', messages: [] }, { apiKey: 'k' }),
       /daemon spawn failed/,
     );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Outbound PII floor (buffer-dehydration, defense-in-depth)
+// ─────────────────────────────────────────────────────────────────────────
+
+describe('dispatchChat — outbound PII floor', () => {
+  const CATALOG = new Map<string, string>([
+    ['[FULL NAME]', 'Zorbath Quillfeather'],
+    ['[WORK CITY]', 'Reykjavik'],
+  ]);
+
+  // Each test registers + unregisters; never leak the guard across tests.
+  async function withGuard<T>(fn: () => Promise<T>): Promise<T> {
+    setOutboundDehydrationGuard(() => getDehydrator(CATALOG));
+    try { return await fn(); }
+    finally { setOutboundDehydrationGuard(null); }
+  }
+
+  it('unregistered guard: requests pass through byte-identical', async () => {
+    assert.strictEqual(getOutboundDehydrationGuard(), null);
+    const seenReqs: ChatRequest[] = [];
+    const provider = makeFakeProvider({ onBuild: (req) => { seenReqs.push(req); } });
+    const { adapter } = makeCapture();
+    await dispatchChat(provider, adapter, {
+      model: 'm',
+      messages: [{ role: 'user', content: 'note for Zorbath Quillfeather' }],
+    }, { apiKey: 'k' });
+    assert.strictEqual(seenReqs.length, 1);
+    assert.strictEqual(seenReqs[0].messages[0].content, 'note for Zorbath Quillfeather');
+  });
+
+  it('registered guard scrubs residual values in messages + prediction', async () => {
+    await withGuard(async () => {
+      const seenReqs: ChatRequest[] = [];
+      const provider = makeFakeProvider({ onBuild: (req) => { seenReqs.push(req); } });
+      const { adapter } = makeCapture();
+      await dispatchChat(provider, adapter, {
+        model: 'm',
+        messages: [
+          { role: 'system', content: 'you are helpful' },
+          { role: 'user', content: 'Zorbath Quillfeather moved to Reykjavik' },
+        ],
+        prediction: 'Zorbath Quillfeather moved to Reykjavik',
+      }, { apiKey: 'k' });
+      assert.strictEqual(seenReqs.length, 1);
+      assert.strictEqual(seenReqs[0].messages[1].content, '[FULL NAME] moved to [WORK CITY]');
+      assert.strictEqual(seenReqs[0].prediction, '[FULL NAME] moved to [WORK CITY]');
+      assert.strictEqual(seenReqs[0].messages[0].content, 'you are helpful'); // untouched
+    });
+  });
+
+  it('clean requests are not rewritten (no false-positive object churn)', async () => {
+    await withGuard(async () => {
+      const req: ChatRequest = {
+        model: 'm',
+        messages: [{ role: 'user', content: 'nothing personal here' }],
+      };
+      const out = applyOutboundDehydrationFloor(req);
+      assert.strictEqual(out, req); // same reference — zero-cost pass-through
+    });
+  });
+
+  it('a throwing guard thunk fails open (request unchanged)', async () => {
+    setOutboundDehydrationGuard(() => { throw new Error('boom'); });
+    try {
+      const req: ChatRequest = {
+        model: 'm',
+        messages: [{ role: 'user', content: 'Zorbath Quillfeather' }],
+      };
+      const out = applyOutboundDehydrationFloor(req);
+      assert.strictEqual(out, req);
+    } finally {
+      setOutboundDehydrationGuard(null);
+    }
   });
 });

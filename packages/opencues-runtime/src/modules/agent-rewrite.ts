@@ -29,7 +29,7 @@ import type { AgentTaskState } from '../state/agent-task';
 import { hashWordText } from '../state/agent-task';
 import { splitWords } from './navigation';
 import { wordDiff, threeWayMerge, translateAToC, type DiffHunk } from './word-diff';
-import { CURSOR_SENTINEL as CORE_CURSOR_SENTINEL, stripCursorSentinel, useStrictJson, buildJsonResponseFormat, dispatchChat } from '@opencues/core';
+import { CURSOR_SENTINEL as CORE_CURSOR_SENTINEL, stripCursorSentinel, useStrictJson, buildJsonResponseFormat, dispatchChat, getDehydrator, postProcessContext, applyOutboundDehydrationFloor } from '@opencues/core';
 
 /**
  * Subset of the @opencues/core `ProviderAdapter` shape that
@@ -164,6 +164,22 @@ export interface AgentRewriteOptions {
    * `max-concurrent-auditors:` in OPENCUES.md.
    */
   readonly maxConcurrentAuditors?: () => number;
+  /**
+   * Optional identity-dehydration thunk (buffer-dehydration feature).
+   * Returns the IDENTITY.md token→value catalog when
+   * `identity-context-mode: safe` (null in `off`/`raw` or with an empty
+   * catalog). When present, each round's outbound DOCUMENT is
+   * dehydrated (values → [TOKEN]s) before dispatch and the LLM's
+   * rewrite is hydrated back BEFORE the three-way merge — merge,
+   * hunks, DynDefs, and cursor math all stay in value space, so
+   * token-length ≠ value-length can never drift an offset.
+   *
+   * Lazy thunk (like `resolveLLM`) so IDENTITY.md / mode edits
+   * hot-reload without restart. Wired by boot-common's
+   * `buildIdentityDehydrationThunk`.
+   * See docs/architecture/hydration-dehydration.md.
+   */
+  readonly identityDehydration?: () => { catalog: ReadonlyMap<string, string> } | null;
 }
 
 /**
@@ -593,7 +609,23 @@ export class AgentRewrite {
     const window = computeWindow(text, cursor, windowWords);
     const windowedText = text.slice(window.start, window.end);
     const windowedCursor = cursor - window.start;
-    const docWithCursor = windowedText.slice(0, windowedCursor) + CURSOR_SENTINEL + windowedText.slice(windowedCursor);
+    // DEHYDRATION (outbound PII scrub) — window + cursor are computed on
+    // ORIGINAL coordinates first; the [CURSOR] sentinel is then injected
+    // into the DEHYDRATED copy at the mapped offset (mapOffset snaps a
+    // mid-value caret to the token boundary so the sentinel never splits
+    // a value into leakable fragments). The rewrite is hydrated back to
+    // value space below, BEFORE the window splice / three-way merge.
+    const identity = this.options.identityDehydration?.() ?? null;
+    const dehydrator = identity && identity.catalog.size > 0
+      ? getDehydrator(identity.catalog, (m) => this._logFn(`AgentRewrite: ${m}`))
+      : null;
+    const dWin = dehydrator?.dehydrate(windowedText);
+    const outboundWindow = dWin?.changed ? dWin.text : windowedText;
+    const outboundCursor = dWin?.changed ? dWin.mapOffset(windowedCursor, 'right') : windowedCursor;
+    if (dWin?.changed) {
+      this._logFn(`AgentRewrite: dehydrated ${dWin.spans.length} value(s) → tokens (outbound PII scrub)`);
+    }
+    const docWithCursor = outboundWindow.slice(0, outboundCursor) + CURSOR_SENTINEL + outboundWindow.slice(outboundCursor);
     if (window.start > 0 || window.end < text.length) {
       this._logFn(`AgentRewrite: window mode (chars ${window.start}–${window.end} of ${text.length}, ~${windowWords} words)`);
     }
@@ -623,7 +655,7 @@ export class AgentRewrite {
         { role: 'system' as const, content: systemContent },
         { role: 'user' as const, content: userMsg },
       ],
-      maxTokens: Math.max(1024, Math.ceil(windowedText.length * 1.5) + 256),
+      maxTokens: Math.max(1024, Math.ceil(outboundWindow.length * 1.5) + 256),
       temperature: 0,
       // reasoningEffort omitted — provider adapter applies its
       // bench-derived default (see ProviderAdapter.defaultReasoningEffort
@@ -661,11 +693,16 @@ export class AgentRewrite {
         return null;
       }
     }
+    // OUTBOUND PII FLOOR — this HTTP branch is the ONE dispatchChat
+    // bypass (buildRequest + postWithFallback direct), so the same
+    // registered floor is applied here explicitly. No-op when the guard
+    // is unregistered or nothing matched.
+    const flooredRequest = applyOutboundDehydrationFloor(chatRequest, (m) => this._logFn(m));
     let url: string;
     let body: string;
     let headers: Record<string, string>;
     if (provider) {
-      const built = provider.buildRequest(chatRequest, { apiKey, endpoint, maxThinking: resolved?.maxThinking ?? true });
+      const built = provider.buildRequest(flooredRequest, { apiKey, endpoint, maxThinking: resolved?.maxThinking ?? true });
       url = built.url;
       body = built.body;
       headers = built.headers;
@@ -681,14 +718,14 @@ export class AgentRewrite {
       // (llama-*) 400 on the field, while its gpt-oss companions need it.
       // Mirror the core name heuristic so we only send it to reasoning-
       // capable models. seed + temperature are valid for the Groq target.
-      const legacyIsReasoningModel = /gpt-oss|gpt-5|^o[1-4]/i.test(chatRequest.model);
+      const legacyIsReasoningModel = /gpt-oss|gpt-5|^o[1-4]/i.test(flooredRequest.model);
       const legacyBody: Record<string, unknown> = {
-        model: chatRequest.model,
-        messages: chatRequest.messages,
-        max_tokens: chatRequest.maxTokens,
-        temperature: chatRequest.temperature,
-        ...(legacyIsReasoningModel ? { reasoning_effort: chatRequest.reasoningEffort ?? 'low' } : {}),
-        seed: chatRequest.seed,
+        model: flooredRequest.model,
+        messages: flooredRequest.messages,
+        max_tokens: flooredRequest.maxTokens,
+        temperature: flooredRequest.temperature,
+        ...(legacyIsReasoningModel ? { reasoning_effort: flooredRequest.reasoningEffort ?? 'low' } : {}),
+        seed: flooredRequest.seed,
       };
       if (chatRequest.responseFormat) {
         legacyBody.response_format = {
@@ -754,6 +791,31 @@ export class AgentRewrite {
       windowedRewrite = parseRewriteOutput(out);
     }
     if (windowedRewrite === null) return null;
+    // HYDRATION — restore real values for the tokens the dehydration
+    // pass introduced (and any catalog token the model emitted) BEFORE
+    // the window splice, so everything downstream (validateLLMRewrite,
+    // the rewrite cache, threeWayMerge, DynDef placement, cursor
+    // translation) stays in value space. preserveUnknown is MANDATORY
+    // here: stripping an unknown bracket would delete user content.
+    // Hydration failure discards the round — the buffer is untouched
+    // and the next tick recovers (no logical landmines).
+    if (identity && identity.catalog.size > 0) {
+      try {
+        const pp = postProcessContext(windowedRewrite, {
+          catalog: identity.catalog,
+          originalBody: windowedText, // TRUE pre-dehydration window text
+          preserveUnknown: true,
+          introducedTokens: dWin?.introduced,
+        });
+        if (pp.report.ambiguous.length) {
+          this._logFn(`AgentRewrite: ${pp.report.ambiguous.length} ambiguous token(s) (user-typed AND dehydrated) preserved as tokens`);
+        }
+        windowedRewrite = pp.output;
+      } catch (err) {
+        this._logFn(`AgentRewrite: hydration failed — discarding round (buffer untouched): ${err instanceof Error ? err.message : String(err)}`);
+        return null;
+      }
+    }
     // Splice the window rewrite back into the surrounding (unchanged)
     // text so the merge layer sees a full-buffer rewrite. The merge's
     // diff against the snapshot will only produce hunks within the

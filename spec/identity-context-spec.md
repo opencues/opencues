@@ -1,12 +1,15 @@
 # identity-context-spec — the `IDENTITY.md` file format & sentinel token contract
 
-> **Status:** `0.4-alpha`. Expect changes.
+> **Status:** `0.5-alpha`. Expect changes.
 
 `IDENTITY.md` is the **user's personal-data catalog**. Each frontmatter
 field derives a canonical bracket-token (a *sentinel*) the LLM can
-emit to refer to that field without the value reaching the prompt. A
+emit to refer to that field without the value reaching the prompt.
+In `safe` mode (the default) the exchange is dehydrated in both
+directions: catalog values typed into the buffer are replaced with
+their tokens before any text ships to an LLM (**dehydration**), and a
 post-processor substitutes resolved tokens back to values before the
-LLM output reaches the user's buffer. Opt-in via the
+LLM output reaches the user's buffer (**hydration**). Gated by the
 `identity-context-mode` scalar in `OPENCUES.md`.
 
 This document specifies the file format, the token derivation rules
@@ -129,9 +132,14 @@ catalog reaches the LLM:
 
 | Value | Behaviour |
 |---|---|
-| `off` (default) | Catalog never read. Conformant readers MUST NOT load `IDENTITY.md` into runtime state. |
-| `safe` | Token names + descriptions reach the LLM (no values). LLM emits tokens; runtime post-processor substitutes values locally. PII stays on the host. |
-| `raw` | Token names, descriptions, AND values reach the LLM. PII is in the provider's logs. |
+| `off` | Catalog never read. Conformant readers MUST NOT load `IDENTITY.md` into runtime state. |
+| `safe` (default) | Dehydrated in BOTH directions. Outbound: token names + descriptions reach the LLM (no values), AND catalog values present in user-typed buffer text MUST be replaced with their tokens before any LLM dispatch (see § Dehydration). Inbound: LLM emits tokens; runtime post-processor (hydration) substitutes values locally. PII stays on the host. |
+| `raw` | Token names, descriptions, AND values reach the LLM; user-typed buffer text ships unscrubbed. PII is in the provider's logs. |
+
+An ABSENT scalar MUST be treated as `safe` (per `core.md` § Spec-mandated
+scalars; default flipped from `off` in `0.4`). An explicit unrecognised
+value MUST fail closed to `off` — the privacy gate must not silently
+flip on a typo.
 
 `raw` is implementation-complete but MUST be hidden from interactive
 cycling menus (the reference impl sets `exposeInMenu: false` on the
@@ -163,6 +171,45 @@ raw:     [FIRST NAME] — first name (value: Wilfred)
 
 The exact prompt shape is implementation-defined — the standard
 fixes the catalog being injected, not the prose around it.
+
+### Dehydration (outbound) — new in `0.5`
+
+`safe` mode's guarantee is bidirectional: PII must not reach the
+provider even when the user TYPED it into the buffer. Before any
+buffer-derived text ships in an LLM request (messages, speculative
+prediction hints, ambient/context blocks — every channel), a
+conformant runtime MUST replace occurrences of catalog VALUES with
+their canonical tokens (**dehydration**, the inverse of the
+post-processor's **hydration**).
+
+Normative requirements:
+
+1. **Coverage.** Every LLM-bound copy of buffer text is dehydrated —
+   one uncovered dispatch channel defeats the mode's security claim.
+2. **Matching.** At minimum: case-insensitive, word-boundary,
+   longest-value-first (so a full name wins over a first name at the
+   same position). Boundary rules MUST NOT prevent matching values
+   embedded in scriptio-continua text (CJK).
+3. **Visible residual.** Values too short or too common to match
+   safely MAY be skipped, but every skip MUST be surfaced
+   (diagnostic log / doctor) — a silent residual is non-conformant.
+4. **Buffer immutability.** Dehydration produces outbound COPIES
+   only. The user's buffer, spans, and cursor state are never
+   mutated by the scrub.
+5. **Round-trip.** The hydration pass MUST restore the original
+   values for tokens the dehydration pass introduced. The
+   "preserve user-typed bracket strings" rule (§ Post-processing
+   rule 3) compares against the PRE-dehydration text; when the user
+   typed a literal token AND its value appears in the same buffer,
+   preservation wins (never inject PII into a deliberate
+   placeholder) and the conflict SHOULD be surfaced.
+6. **Fail safe.** A dehydration failure MUST NOT destroy or corrupt
+   buffer content; worst case is a visible token or an unscrubbed
+   dispatch accompanied by a loud diagnostic.
+
+In `raw` mode dehydration MUST NOT run (values are permitted to
+ship). In `off` mode there is no catalog, so there is nothing to
+scrub.
 
 ### Post-processing
 
@@ -206,8 +253,17 @@ the other is a footgun the spec closes deliberately.
 
 ## Security claims
 
-- **Default-off.** Conformant readers MUST default the scalar to
-  `off`. Users opt in.
+- **Default-safe.** An absent scalar MUST resolve to `safe`; an
+  explicit unrecognised value MUST fail closed to `off`. EVERY code
+  path that re-parses the scalar (initial load, hot reload, inline
+  scalar-cycling re-parses) MUST apply the same two-tier rule — a
+  single site defaulting differently silently downgrades the
+  privacy gate mid-session.
+- **Bidirectional in safe mode.** `safe` claims PII does not reach
+  the provider — both the catalog direction (token-only prompt
+  blocks) and the buffer direction (outbound dehydration, § above).
+  A reader implementing only the catalog half MUST NOT describe
+  itself as `safe`-conformant against `0.5`.
 - **Validator chokepoint.** Every code path that mutates
   `IDENTITY.md` MUST go through a single write-validator. Adding a
   second site that bypasses the validator is a regression — see

@@ -373,8 +373,26 @@ export interface PostProcessOptions {
   /** Token → value catalog (from Identity.catalog). */
   catalog: ReadonlyMap<string, string>;
   /** Pre-edit body text. Any bracket-token already present here is
-   *  preserved verbatim — the user's text wins over substitution. */
+   *  preserved verbatim — the user's text wins over substitution.
+   *
+   *  MUST be the TRUE pre-dehydration user text (`context.text`), never
+   *  a dehydrated copy. Dehydration (`dehydrate.ts`) only ever produces
+   *  outbound copies precisely so this stays true: an INTRODUCED token
+   *  is absent from the real originalBody and therefore hydrates via
+   *  rule 2, while a genuinely user-typed bracket is present and stays
+   *  preserved. Passing the dehydrated string here would make rule 1
+   *  "preserve" every introduced token instead of hydrating it — the
+   *  round-trip silently breaks. Pinned by
+   *  `dehydrate.test.ts` ("PINS the originalBody trap"). */
   originalBody?: string;
+  /** Tokens the outbound dehydration pass introduced for this call
+   *  (`DehydrationResult.introduced`). Used to DETECT the ambiguous
+   *  both-present case — the user typed the literal token AND their
+   *  real value appeared elsewhere in the same buffer. Precedence is
+   *  unchanged (preserve wins — hydrating would inject real PII into a
+   *  spot where the user deliberately wrote a placeholder); the token
+   *  is recorded on `report.ambiguous` so callers can warn. */
+  introducedTokens?: ReadonlySet<string>;
   /** When true, unresolved bracket-tokens (no catalog hit, not in
    *  originalBody) survive in the output instead of being stripped.
    *  Used by TransformBlank where the LLM legitimately emits
@@ -395,6 +413,12 @@ export interface PostProcessReport {
   stripped: string[];
   /** Bracket-tokens left untouched because they were in originalBody. */
   preserved: string[];
+  /** Both-present conflicts: the token was preserved (rule 1) but the
+   *  dehydration pass ALSO introduced it for this call — the user typed
+   *  the literal token somewhere AND their real value appeared elsewhere
+   *  in the same buffer. Preserve wins (fails safe: visible token, never
+   *  PII injected into a deliberate placeholder); callers should warn. */
+  ambiguous: string[];
 }
 
 export interface PostProcessResult {
@@ -420,21 +444,26 @@ export function postProcessContext(
   llmOutput: string,
   opts: PostProcessOptions,
 ): PostProcessResult {
-  const { catalog, originalBody, preserveUnknown = false } = opts;
+  const { catalog, originalBody, preserveUnknown = false, introducedTokens } = opts;
   const canonicalIndex = buildCanonicalIndex(catalog);
   const report: PostProcessReport = {
     resolved: [],
     tolerantMatches: [],
     stripped: [],
     preserved: [],
+    ambiguous: [],
   };
 
   const output = llmOutput.replace(TOKEN_RE, (match) => {
     // 1. User-typed bracket-string wins — preserved untouched even if
     //    it happens to match the catalog (writing documentation about
-    //    sentinels, hand-written placeholder, etc.).
+    //    sentinels, hand-written placeholder, etc.). If dehydration
+    //    ALSO introduced this token, the occurrence is ambiguous
+    //    (per-occurrence disambiguation is impossible after an LLM
+    //    rewrite) — preserve still wins, but record it so callers warn.
     if (originalBody && originalBody.includes(match)) {
       report.preserved.push(match);
+      if (introducedTokens?.has(match)) report.ambiguous.push(match);
       return match;
     }
     // 2. Verbatim catalog match.

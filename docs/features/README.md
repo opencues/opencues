@@ -86,12 +86,12 @@ The state machine that keeps multi-word substitutions, cycle progress, and per-e
 
 ## LLM context inputs
 
-Optional information the FluidBlank LLM call receives in addition to the user's prompt. Both OFF by default and gated on a scalar in `OPENCUES.md`. Read [`docs/architecture/ambient-context.md`](../architecture/ambient-context.md) and [`docs/architecture/identity-context.md`](../architecture/identity-context.md) before wiring fluid-blank output into any side-effect channel.
+Optional information the FluidBlank LLM call receives in addition to the user's prompt. Each gated on a scalar in `OPENCUES.md` (ambient context OFF by default; identity context defaults to `safe`). Read [`docs/architecture/ambient-context.md`](../architecture/ambient-context.md) and [`docs/architecture/identity-context.md`](../architecture/identity-context.md) before wiring fluid-blank output into any side-effect channel.
 
 | # | Feature | Description |
 |---|---------|-------------|
 | 32 | [Ambient Context](ambient-context.md) | FluidBlank optionally receives the focused field's label / placeholder / page-title so `_` lookups disambiguate per context (e.g. "destination" on flights.google.com vs airbnb.com). OFF by default. Chrome only — needs DOM. Host-agnostic at the `HostAdapter` contract level. |
-| 33 | [Identity Context](identity-context.md) | FluidBlank optionally injects the user's own personal data (`~/.cues/IDENTITY.md` frontmatter) as identity-context tokens so `_` lookups personalise without re-typing. `safe` mode keeps PII off the LLM provider's logs; `raw` opts in to inlining. OFF by default. Phase 1 wires fluid-blank only. |
+| 33 | [Identity Context](identity-context.md) | The user's own personal data (`~/.cues/IDENTITY.md` frontmatter) as identity-context tokens so `_` lookups and rewrites personalise without re-typing. `safe` mode (the default) is bidirectional — the catalog ships token-only AND typed values are dehydrated from outbound buffer text, hydrated back locally; `raw` opts in to inlining. Catalog wired for fluid-blank + transform-blank. |
 | 39 | [Blank as Context](blank-as-context.md) | Local blanks (weather, stocks, calendar, …) surfaced as ambient catalog context for fluid-blank/transform-blank — same security model as identity-context, for parameterised dynamic data instead of static personal fields. |
 | 40 | [Max Thinking](max-thinking.md) | `max-thinking` scalar trades reasoning depth for speed on reasoning-capable models (Groq / Cerebras / OpenAI gpt-oss + gpt-5 families). |
 

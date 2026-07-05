@@ -1284,24 +1284,19 @@ export class Resolver {
           ? (this.adapter.getAmbientContext?.() ?? undefined)
           : undefined,
         // Optional identity context (identity-context-mode personal data). Gated by
-        // `identity-context-mode` in OPENCUES.md (`off` by default — when
-        // `off` we don't even forward the parsed catalog, so a future
-        // misconfigured source can't accidentally read it). When on,
-        // ship the catalog + mode through to FluidBlank / TransformBlank;
-        // no other source consumes this field today by design.
+        // `identity-context-mode` in OPENCUES.md (when `off` we don't
+        // even forward the parsed catalog, so a future misconfigured
+        // source can't accidentally read it).
         //
-        // ALSO skipped via `noBlankContextConsumer` for the same reason as
-        // `blankContext` below: the two consumer sources (FluidBlank,
-        // TransformBlank) both cede when every `_` is claimed by a
-        // keyword-bound BlankFill slot (or when there's no `_` at all),
-        // so forwarding the catalog would just pass it down to be
-        // discarded. Symmetric with the blank-context gate; the
-        // identity catalog is already cached in-memory at the
-        // ConfigLoader so the cost saving is small (no IO), but the
-        // payload-size and structural-symmetry win is worth the
-        // 1-line gate.
+        // NO `noBlankContextConsumer` gate here (dropped for the buffer-
+        // dehydration feature): in `safe` mode EVERY LLM-bound source
+        // (word-cues, sentence-cues, config-intent, config-source raw)
+        // now consumes the catalog to dehydrate its outbound text — not
+        // just FluidBlank/TransformBlank. The identity catalog is an
+        // in-memory Map at the ConfigLoader (no IO), so forwarding it
+        // unconditionally costs nothing. blankContext below KEEPS the
+        // gate — that one is a network/script fetch.
         identityContext: this.configLoader.opencuesState.identityContextMode !== 'off'
-          && !noBlankContextConsumer(cleanWords, this.options.keywordBoundSlotIndices?.(text) ?? [])
           ? {
               fields: this.configLoader.identity.fields,
               catalog: this.configLoader.identity.catalog,
