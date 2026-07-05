@@ -534,9 +534,9 @@ export class TutorialCoach {
         if (saved && !saved.completed && saved.step > 0 && saved.step < doc.steps.length) {
           this._stepIndex = saved.step;
           this._journal = Array.isArray(saved.journal) ? [...saved.journal] : [];
-          this._coachLine = `Welcome back — ${cleanStepTitle(doc.steps[saved.step].title)}`;
+          this._coachLine = `Welcome back to **${doc.title}** — ${cleanStepTitle(doc.steps[saved.step].title)}`;
         } else {
-          this._coachLine = `${cleanStepTitle(doc.steps[0].title)} · \`Esc ×3\` exits`;
+          this._coachLine = `**${doc.title}** — ${cleanStepTitle(doc.steps[0].title)} · \`Esc ×3\` exits`;
         }
         this.consumePhrase(text, ctl.phraseStart);
         this.adapter.emitEvent?.('tutorial.started', {
