@@ -134,6 +134,10 @@ Config lives at `~/.cues/` — one `OPENCUES.md` for runtime settings, plus per-
 
 Full reference: [`docs/configuration.md`](docs/configuration.md) · [`docs/guides/llm-providers.md`](docs/guides/llm-providers.md) (switching provider/model, free mode, failover).
 
+#
+
+**Providers:** <a href="https://cloud.cerebras.ai" target="_blank" rel="noopener noreferrer"><img width="176" height="18" alt="Cerebras Systems" src="assets/cerebras.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://groq.com" target="_blank" rel="noopener noreferrer"><img width="83" height="18" alt="Groq" src="assets/groq.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://ai.google.dev" target="_blank" rel="noopener noreferrer"><img width="98" height="18" alt="Gemini" src="assets/gemini.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://www.anthropic.com" target="_blank" rel="noopener noreferrer"><img width="117" height="18" alt="Anthropic" src="assets/anthropic.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://openai.com" target="_blank" rel="noopener noreferrer"><img width="102" height="18" alt="OpenAI" src="assets/openai.svg"></a>
+
 <br><br><br><br>
 
 # Security
