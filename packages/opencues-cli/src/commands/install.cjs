@@ -569,27 +569,27 @@ function printKeyDetectionReport(ctx) {
   }
   const detected = envKeys.detectProviderKeys().filter((d) => d.source);
   if (detected.length > 0) {
-    console.log(bold('LLM keys') + '  ' + dim('· detected — cues/blanks will use these'));
-    const rank = (id) => { const i = providers.PROVIDER_AUTO_ORDER.indexOf(id); return i < 0 ? 99 : i; };
-    detected.sort((a, b) => rank(a.providerId) - rank(b.providerId));
-    const nameW = Math.max(...detected.map((d) => d.providerId.length));
-    for (const d of detected) {
-      const src = d.source === 'env-file' ? '~/.cues/.env' : 'shell env';
-      console.log(`  ${green(G.ringOn)} ${bold(d.providerId.padEnd(nameW))}  ${dim(`${d.envKeyName} · ${src}`)}`);
-    }
-    // Effective default: an explicit `llm-provider:` scalar wins;
-    // otherwise the auto-route picks from the detected keys — mirrors
-    // resolveLLM's precedence so the printed default is the real one.
+    // One line: the provider the runtime will actually use + where its
+    // key came from. NOT an inventory of every detected key — `opencues
+    // doctor` owns the full per-key table; the install ending stays
+    // clean. Effective provider mirrors resolveLLM's precedence:
+    // explicit `llm-provider:` scalar wins, else the auto-route pick.
     const explicit = readGlobalProviderScalar();
-    if (explicit) {
-      console.log(`  ${dim('default provider:')} ${bold(explicit)} ${dim('(llm-provider: in ~/.cues/OPENCUES.md)')}`);
+    const bag = {};
+    for (const d of detected) bag[d.envKeyName] = 'set';
+    const provider = explicit || providers.pickAutoProvider(bag);
+    if (!provider) return;
+    const row = detected.find((d) => d.providerId === provider);
+    if (row) {
+      const src = row.source === 'env-file' ? '~/.cues/.env' : 'shell env';
+      console.log(`${green(G.ringOn)} LLM provider: ${bold(provider)} ${dim(`— ${row.envKeyName} · ${src}`)}`);
+    } else if (providers.getProvider(provider)?.transport === 'cli') {
+      // Subscription CLI set explicitly — no env key involved.
+      console.log(`${green(G.ringOn)} LLM provider: ${bold(provider)} ${dim('— subscription CLI, no API key needed')}`);
     } else {
-      const bag = {};
-      for (const d of detected) bag[d.envKeyName] = 'set';
-      const auto = providers.pickAutoProvider(bag);
-      if (auto) {
-        console.log(`  ${dim('default provider:')} ${bold(auto)} ${dim('(auto — override with `llm-provider:` in ~/.cues/OPENCUES.md)')}`);
-      }
+      // Explicit scalar names a provider we found no key for — the one
+      // detected-state misconfig worth a line here.
+      console.log(`${tag('warn')} LLM provider: ${bold(provider)} ${dim(`(llm-provider: in ~/.cues/OPENCUES.md) — no key detected for it; run`)} ${bold('opencues check-keys')}`);
     }
   } else {
     console.log(bold('LLM keys') + '  ' + dim('· none found — LLM cues/blanks stay inert until one is set'));

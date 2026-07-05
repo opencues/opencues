@@ -59,29 +59,42 @@ describe('printKeyDetectionReport', () => {
     assert.match(out, /~\/\.cues\/\.env/);
   });
 
-  it('detected keys → per-key source rows + auto default provider', () => {
+  it('detected keys → ONE line naming the provider in use + its key source', () => {
     process.env.GROQ_API_KEY = 'gsk_shell_secret';
     fs.mkdirSync(path.join(tmpHome, '.cues'), { recursive: true });
     fs.writeFileSync(path.join(tmpHome, '.cues', '.env'), 'CEREBRAS_API_KEY=csk_file_secret\n', { mode: 0o600 });
 
     printKeyDetectionReport({ REPO_ROOT });
-    const out = lines.join('\n');
-    assert.match(out, /groq\s+GROQ_API_KEY · shell env/);
-    assert.match(out, /cerebras\s+CEREBRAS_API_KEY · ~\/\.cues\/\.env/);
-    // cerebras leads PROVIDER_AUTO_ORDER, so it is the auto pick even
-    // though its key came from the file.
-    assert.match(out, /default provider: cerebras \(auto/);
-    assert.ok(!out.includes('secret'), 'report must never print key material');
+    const content = lines.filter((l) => l.trim() !== '');
+    // Single line — the full per-key inventory belongs to doctor.
+    assert.strictEqual(content.length, 1, `expected one report line, got:\n${content.join('\n')}`);
+    // cerebras leads PROVIDER_AUTO_ORDER, so it is the pick even though
+    // its key came from the file; the line says which and from where.
+    assert.match(content[0], /LLM provider: cerebras — CEREBRAS_API_KEY · ~\/\.cues\/\.env/);
+    // The unused groq key is NOT enumerated.
+    assert.ok(!content[0].includes('GROQ_API_KEY'));
+    assert.ok(!content[0].includes('secret'), 'report must never print key material');
   });
 
   it('explicit llm-provider: scalar wins over the auto pick', () => {
+    process.env.GROQ_API_KEY = 'gsk_shell';
+    process.env.OPENAI_API_KEY = 'oa_shell';
+    fs.mkdirSync(path.join(tmpHome, '.cues'), { recursive: true });
+    fs.writeFileSync(path.join(tmpHome, '.cues', 'OPENCUES.md'), '---\nllm-provider: openai\n---\n');
+
+    printKeyDetectionReport({ REPO_ROOT });
+    const out = lines.join('\n');
+    assert.match(out, /LLM provider: openai — OPENAI_API_KEY · shell env/);
+  });
+
+  it('explicit scalar with no key for it → one warn pointing at check-keys', () => {
     process.env.GROQ_API_KEY = 'gsk_shell';
     fs.mkdirSync(path.join(tmpHome, '.cues'), { recursive: true });
     fs.writeFileSync(path.join(tmpHome, '.cues', 'OPENCUES.md'), '---\nllm-provider: openai\n---\n');
 
     printKeyDetectionReport({ REPO_ROOT });
     const out = lines.join('\n');
-    assert.match(out, /default provider: openai \(llm-provider: in ~\/\.cues\/OPENCUES\.md\)/);
-    assert.ok(!out.includes('(auto'));
+    assert.match(out, /LLM provider: openai .*no key detected/);
+    assert.match(out, /check-keys/);
   });
 });
