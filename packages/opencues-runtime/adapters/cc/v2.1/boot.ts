@@ -11,6 +11,7 @@
 // surface tiny and decouples the runtime's internal layout from the patch.
 
 import { Runtime } from '../../../src/runtime';
+import { buildBootApiKeys } from '@opencues/core';
 import { ClaudeCodeV21Adapter, type HostBindings, normaliseKeyEvent, toggleZeroWidth } from './adapter';
 import { installMacDoubleEscStdinRewrite } from '../../../src/modules/mac-keyboard';
 import { Navigation } from '../../../src/modules/navigation';
@@ -537,9 +538,12 @@ export function boot(host: HostInfo): BootResult {
   dimRender.subscribe();
   // Build the multi-provider key bag here (rather than next to the
   // Resolver constructor below) so Cycling's satellite-cycle filter
-  // sees the same keys the Resolver will dispatch against.
-  const apiKeys: Record<string, string | undefined> = { ...(host.llmApiKeys ?? {}) };
-  if (host.llmApiKey && !apiKeys.GROQ_API_KEY) apiKeys.GROQ_API_KEY = host.llmApiKey;
+  // sees the same keys the Resolver will dispatch against. Beyond the
+  // host-passed keys, buildBootApiKeys fills any registry env var the
+  // bootstrap didn't forward from process.env, then from ~/.cues/.env
+  // (written by `opencues set-key`) — a shell export always wins over
+  // the file.
+  const apiKeys = buildBootApiKeys(host.llmApiKeys, host.llmApiKey, (m) => log('info', m));
   const cycling = new Cycling(
     adapter, hlState, dynDefs, configLoader,
     spanFillState, dismissedBlanks, selectorSatelliteState,

@@ -10,7 +10,7 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
-const { tag, step, bold, dim, banner, cliVersion } = require('../lib/style.cjs');
+const { tag, step, bold, dim, green, banner, cliVersion, G } = require('../lib/style.cjs');
 const prompt = require('../lib/prompt.cjs');
 const { pickHost } = require('../lib/pick-host.cjs');
 
@@ -175,6 +175,7 @@ module.exports = async function install(argv, ctx) {
   // slow registry round-trip never blocks the real work. Failure-silent.
   if (exitCode === 0) {
     console.log('');
+    printKeyDetectionReport(ctx);
     console.log(`${tag('info')} verify your environment supports every feature: ${bold('opencues doctor')}`);
     await maybePrintUpdateNotice(ctx);
   }
@@ -550,6 +551,80 @@ function detectPackageManager(platform) {
 // the auto-install offer — small enough not to warrant a dep.
 
 // `command -v <name>` returns 0 when the tool is on PATH. Quietly.
+// ── Existing-key detection report ────────────────────────────────────
+// Runs at the end of a successful install so the "no key → every LLM
+// feature silently inert" state is surfaced at the moment the user can
+// act on it, not the first time a cue mysteriously no-ops. Detection
+// sources: shell env + ~/.cues/.env (core's detectProviderKeys), plus
+// subscription CLI binaries (claude / codex) for the zero-key case.
+// Purely informational — never blocks, never touches the network
+// (`opencues check-keys` is the live probe).
+function printKeyDetectionReport(ctx) {
+  let providers, envKeys;
+  try {
+    providers = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/llm-provider.js'));
+    envKeys = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/env-keys.js'));
+  } catch {
+    return; // core not built — `opencues doctor` covers this state
+  }
+  const detected = envKeys.detectProviderKeys().filter((d) => d.source);
+  if (detected.length > 0) {
+    console.log(bold('LLM keys') + '  ' + dim('· detected — cues/blanks will use these'));
+    const rank = (id) => { const i = providers.PROVIDER_AUTO_ORDER.indexOf(id); return i < 0 ? 99 : i; };
+    detected.sort((a, b) => rank(a.providerId) - rank(b.providerId));
+    const nameW = Math.max(...detected.map((d) => d.providerId.length));
+    for (const d of detected) {
+      const src = d.source === 'env-file' ? '~/.cues/.env' : 'shell env';
+      console.log(`  ${green(G.ringOn)} ${bold(d.providerId.padEnd(nameW))}  ${dim(`${d.envKeyName} · ${src}`)}`);
+    }
+    // Effective default: an explicit `llm-provider:` scalar wins;
+    // otherwise the auto-route picks from the detected keys — mirrors
+    // resolveLLM's precedence so the printed default is the real one.
+    const explicit = readGlobalProviderScalar();
+    if (explicit) {
+      console.log(`  ${dim('default provider:')} ${bold(explicit)} ${dim('(llm-provider: in ~/.cues/OPENCUES.md)')}`);
+    } else {
+      const bag = {};
+      for (const d of detected) bag[d.envKeyName] = 'set';
+      const auto = providers.pickAutoProvider(bag);
+      if (auto) {
+        console.log(`  ${dim('default provider:')} ${bold(auto)} ${dim('(auto — override with `llm-provider:` in ~/.cues/OPENCUES.md)')}`);
+      }
+    }
+  } else {
+    console.log(bold('LLM keys') + '  ' + dim('· none found — LLM cues/blanks stay inert until one is set'));
+    console.log(`  ${dim('fastest:')} ${bold('opencues set-key')} ${dim('— stores the key in ~/.cues/.env; hosts read it at boot')}`);
+    // Subscription CLIs offer a zero-key path when the binary is
+    // already installed. Suggested, never auto-applied: the CLI-daemon
+    // transport is markedly slower than the API providers, so switching
+    // silently would regress latency-sensitive word-cues without the
+    // user knowing why.
+    const SUBSCRIPTION_CLIS = [
+      { id: 'claude-code-cli', bin: 'claude', plan: 'Claude subscription' },
+      { id: 'openai-subscription', bin: 'codex', plan: 'ChatGPT subscription' },
+    ];
+    for (const s of SUBSCRIPTION_CLIS) {
+      if (!onPath(s.bin)) continue;
+      console.log(`  ${dim('zero-key option:')} ${bold(s.bin)} detected — use your ${s.plan} by setting ${bold(`llm-provider: ${s.id}`)} in ~/.cues/OPENCUES.md`);
+    }
+  }
+  console.log('');
+}
+
+// The global `llm-provider:` scalar from ~/.cues/OPENCUES.md, or null.
+function readGlobalProviderScalar() {
+  try {
+    const os = require('node:os');
+    const { readScalar } = require('../lib/opencues-md.cjs');
+    const file = path.join(os.homedir(), '.cues', 'OPENCUES.md');
+    if (!fs.existsSync(file)) return null;
+    const value = readScalar(fs.readFileSync(file, 'utf8'), 'llm-provider');
+    return value && value !== 'inherit' ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 function onPath(name) {
   try {
     const { execSync } = require('node:child_process');

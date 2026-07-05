@@ -12,6 +12,7 @@
 // lives in the host-agnostic `opencues-runtime` modules.
 
 import { Runtime } from '../../../src/runtime';
+import { buildBootApiKeys } from '@opencues/core';
 import { GeminiV041Adapter, type GeminiBindings } from './adapter';
 import { Statusline } from '../../../src/modules/statusline';
 import { Resolver } from '../../../src/modules/resolver';
@@ -335,8 +336,10 @@ export function boot(host: HostInfo): BootResult {
     : `${HOME}/.cues/OPENCUES.md`;
   // Build the multi-provider key bag here so Cycling's satellite
   // filter sees the same bag the Resolver dispatches against below.
-  const apiKeys: Record<string, string | undefined> = { ...(host.llmApiKeys ?? {}) };
-  if (host.llmApiKey && !apiKeys.GROQ_API_KEY) apiKeys.GROQ_API_KEY = host.llmApiKey;
+  // buildBootApiKeys also fills any registry env var the bootstrap
+  // didn't forward from process.env, then from ~/.cues/.env
+  // (`opencues set-key`) — a shell export always wins over the file.
+  const apiKeys = buildBootApiKeys(host.llmApiKeys, host.llmApiKey, (m) => log('info', m));
   const shared = buildSharedRuntime(adapter, {
     log, configSearchPaths, settingsFile,
     getApiKeys: () => apiKeys,

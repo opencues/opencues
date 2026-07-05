@@ -18,6 +18,7 @@
 //     chrome.storage whenever the popup writes.
 
 import { Runtime } from '../../../src/runtime';
+import { buildBootApiKeys } from '@opencues/core';
 import { ChromeV1Adapter, type ChromeBindings } from './adapter';
 import { Statusline } from '../../../src/modules/statusline';
 import { Resolver } from '../../../src/modules/resolver';
@@ -295,8 +296,10 @@ export function boot(host: HostInfo): BootResult {
   // Live mutable apiKeys bag. `updateApiKeys` mutates this in place so the
   // resolver reads current keys even though chrome's keys arrive async (host
   // push) after boot. OC's band does the same (getApiKeys: () => apiKeys).
-  const apiKeys: Record<string, string | undefined> = { ...(host.llmApiKeys ?? {}) };
-  if (host.llmApiKey && !apiKeys.GROQ_API_KEY) apiKeys.GROQ_API_KEY = host.llmApiKey;
+  // buildBootApiKeys keeps the construction uniform across bands; its
+  // process.env / ~/.cues/.env augmentation is guard-gated and a no-op in
+  // the browser (chrome's keys arrive pre-merged via the storage push).
+  const apiKeys = buildBootApiKeys(host.llmApiKeys, host.llmApiKey, (m) => log('info', m));
 
   const shared = buildSharedRuntime(adapter, {
     log,

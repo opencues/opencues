@@ -10,6 +10,7 @@
 // host-agnostic `opencues-runtime` modules.
 
 import { Runtime } from '../../../src/runtime';
+import { buildBootApiKeys } from '@opencues/core';
 import { OpenCodeV14Adapter, type OpenCodeBindings } from './adapter';
 import { startEventBridge } from '../../../src/event-bridge';
 import { Statusline } from '../../../src/modules/statusline';
@@ -182,9 +183,11 @@ export function boot(host: HostInfo): BootResult {
   // Build the multi-provider key bag here so Cycling can read it via
   // the buildSharedRuntime callback — keeps the satellite-cycle's
   // llm-provider filter in sync with whatever keys the host
-  // ultimately wires into the Resolver below.
-  const apiKeys: Record<string, string | undefined> = { ...(host.llmApiKeys ?? {}) };
-  if (host.llmApiKey && !apiKeys.GROQ_API_KEY) apiKeys.GROQ_API_KEY = host.llmApiKey;
+  // ultimately wires into the Resolver below. buildBootApiKeys also
+  // fills any registry env var the bootstrap didn't forward from
+  // process.env, then from ~/.cues/.env (`opencues set-key`) — a
+  // shell export always wins over the file.
+  const apiKeys = buildBootApiKeys(host.llmApiKeys, host.llmApiKey, (m) => log('info', m));
   const shared = buildSharedRuntime(adapter, {
     log, configSearchPaths, settingsFile,
     getApiKeys: () => apiKeys,

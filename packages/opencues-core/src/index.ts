@@ -169,6 +169,19 @@ export {
   type ResponseFormat,
 } from './llm-provider';
 
+// Existing-key detection — boot-time API-key bag construction from
+// host-passed keys + shell env + ~/.cues/.env (see env-keys.ts header)
+export {
+  buildBootApiKeys,
+  augmentApiKeysFromEnv,
+  detectProviderKeys,
+  readCuesEnvFile,
+  cuesEnvFilePath,
+  parseEnvFileContent,
+  type DetectedProviderKey,
+  type KeySource,
+} from './env-keys';
+
 // Per-model thinking-budget resolution for the `max-thinking` setting
 export {
   resolveReasoningEffort,

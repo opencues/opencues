@@ -25,26 +25,22 @@ module.exports = async function checkKeys(argv, ctx) {
   }
   const get = (k) => process.env[k] || fileEnv[k];
 
-  // Map provider id → live-probe function. Each function hits the
-  // provider's lightest endpoint (model list, free) using the user's
-  // key, surfacing 401/403/network errors. Keep keyed by provider id
-  // since each probe is unique per-provider's auth shape.
-  const PROBE_FN = {
-    groq: checkGroq, cerebras: checkCerebras, openai: checkOpenAI,
-    anthropic: checkAnthropic, openrouter: checkOpenRouter, gemini: checkGemini,
-  };
-
-  // Provider list sourced from @opencues/core's PROVIDERS registry —
-  // adding a provider auto-flows into check-keys (just add a PROBE_FN
-  // entry above). Falls back to the hardcoded list if core isn't built.
+  // Probes derive from each provider's `keyProbe` in @opencues/core's
+  // PROVIDERS registry — the same table chrome's boot-time
+  // verifyLlmKeyAtBoot reads, so the two surfaces can't drift. Adding a
+  // provider with a `keyProbe` auto-flows into check-keys with no CLI
+  // edit. Falls back to a hardcoded list if core isn't built.
   let registry = null;
   try {
     registry = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/llm-provider.js'));
   } catch { /* core not built — fall back below */ }
   const llmChecks = registry
-    ? registry.listProviders().map(p => ({
-        provider: p.id, env: p.envKeyName, fn: PROBE_FN[p.id],
-      })).filter(c => c.fn)  // skip any provider missing a probe
+    ? registry.listProviders().filter(p => p.keyProbe).map(p => ({
+        provider: p.id,
+        env: p.envKeyName,
+        fn: (key) => httpJson(p.keyProbe.url, p.keyProbe.headers(key))
+          .then(j => `${(j[p.keyProbe.listField] || []).length} models available`),
+      }))
     : [
         { provider: 'groq',       env: 'GROQ_API_KEY',       fn: checkGroq },
         { provider: 'cerebras',   env: 'CEREBRAS_API_KEY',   fn: checkCerebras },
@@ -80,8 +76,10 @@ module.exports = async function checkKeys(argv, ctx) {
   if (bad > 0) process.exit(1);
 };
 
-// Each provider's lightest read-only endpoint (model list, free).
-// 401 / 403 surface as descriptive errors via the HTTP wrapper.
+// Fallback probes for when @opencues/core isn't built (each provider's
+// lightest read-only endpoint — the built path reads the registry's
+// `keyProbe` instead). 401 / 403 surface as descriptive errors via the
+// HTTP wrapper.
 function checkGroq(key) {
   return httpJson('https://api.groq.com/openai/v1/models', { Authorization: `Bearer ${key}` })
     .then(j => `${(j.data || []).length} models available`);

@@ -26,7 +26,7 @@ import type {
 import { createSourceReclassifier } from '@opencues/runtime/dist/src/boot-common';
 import { createTrustGate } from './trust-gate';
 import { applySiteCompatFilter as siteFilter } from './site-filter';
-import { parseSingleCueMd } from '@opencues/core';
+import { parseSingleCueMd, listProviders } from '@opencues/core';
 import { ChromeUserBlank } from './user-blank-loader';
 import { createBlankInvoke } from '@opencues/runtime/dist/src/blanks';
 import { wordDiff } from '@opencues/runtime/dist/src/modules/word-diff';
@@ -2338,18 +2338,23 @@ export interface RuntimeStartOptions {
 // (createBlankInvoke) lives in the runtime so all hosts share it.
 let blankInvoke: ((spec: BlankInvokeSpec) => ProcessHandle | null) | null = null;
 
-/** Provider → env-var name. Matches packages/opencues-core's PROVIDERS
- *  table. Kept in sync manually because the chrome bundle imports a
- *  bake-time slice of core and we don't want to drag the full provider
- *  registry just for the audit. */
-const PROVIDER_ENV_KEY: Record<string, string> = {
-  groq: 'GROQ_API_KEY',
-  cerebras: 'CEREBRAS_API_KEY',
-  openai: 'OPENAI_API_KEY',
-  anthropic: 'ANTHROPIC_API_KEY',
-  openrouter: 'OPENROUTER_API_KEY',
-  gemini: 'GEMINI_API_KEY',
-};
+/** Provider metadata slices derived from @opencues/core's PROVIDERS
+ *  registry (already in this bundle via the runtime's resolver — the
+ *  old hand-synced copies drifted whenever core added a provider).
+ *  CLI-transport providers are excluded: external auth, no env key. */
+const ENV_KEYED_PROVIDERS = listProviders().filter((p) => p.envKeyName && p.transport !== 'cli');
+const PROVIDER_ENV_KEY: Record<string, string> = Object.fromEntries(
+  ENV_KEYED_PROVIDERS.map((p) => [p.id, p.envKeyName]),
+);
+/** env-var name → provider id (inverse of PROVIDER_ENV_KEY). */
+const ENV_TO_PROVIDER: Record<string, string> = Object.fromEntries(
+  ENV_KEYED_PROVIDERS.map((p) => [p.envKeyName, p.id]),
+);
+/** Providers that work keyless (free pool / local) — a missing key is a
+ *  supported state, not a misconfiguration the audit should warn about. */
+const OPTIONAL_AUTH_PROVIDERS = new Set<string>(
+  ENV_KEYED_PROVIDERS.filter((p) => p.optionalAuth).map((p) => p.id),
+);
 
 /** Scan the user's merged CUES.md / OPENCUES.md for provider directives
  *  (`llm-provider:` and `<feature>-provider:`), cross-check against the
@@ -2391,9 +2396,16 @@ async function auditProvidersAgainstKeys(keys: Record<string, string>): Promise<
       problems.push(`  - "${d.feature === 'global' ? 'llm-provider' : d.feature + '-provider'}: ${d.provider}" — unknown provider`);
       continue;
     }
-    const envKey = PROVIDER_ENV_KEY[d.provider];
-    if (!keys[envKey]) {
-      problems.push(`  - "${d.feature === 'global' ? 'llm-provider' : d.feature + '-provider'}: ${d.provider}" — needs ${envKey}`);
+    // Keyless-capable providers (opencode-zen free pool, local ollama)
+    // are valid without a key — don't flag them.
+    if (OPTIONAL_AUTH_PROVIDERS.has(d.provider)) continue;
+    // `keys` is keyed by PROVIDER ID — the caller translates env-var
+    // names via ENV_TO_PROVIDER before handing the map over. (The
+    // pre-registry version looked up by env-var name here, which never
+    // matched the id-keyed map: every directive warned "needs KEY"
+    // even when the key was present.)
+    if (!keys[d.provider]) {
+      problems.push(`  - "${d.feature === 'global' ? 'llm-provider' : d.feature + '-provider'}: ${d.provider}" — needs ${PROVIDER_ENV_KEY[d.provider]}`);
     }
   }
   if (problems.length === 0) return;
@@ -2418,17 +2430,16 @@ async function auditProvidersAgainstKeys(keys: Record<string, string>): Promise<
   );
 }
 
-/** Each provider's lightest read-only endpoint (model list, free).
- *  Mirrors `opencues check-keys` (packages/opencues-cli/src/commands/
- *  check-keys.cjs). Keep in sync if the CLI adds providers. */
-const PROVIDER_KEY_CHECKS: Record<string, (key: string) => { url: string; headers: Record<string, string> }> = {
-  groq:       (k) => ({ url: 'https://api.groq.com/openai/v1/models',                   headers: { Authorization: `Bearer ${k}` } }),
-  cerebras:   (k) => ({ url: 'https://api.cerebras.ai/v1/models',                       headers: { Authorization: `Bearer ${k}` } }),
-  openai:     (k) => ({ url: 'https://api.openai.com/v1/models',                        headers: { Authorization: `Bearer ${k}` } }),
-  anthropic:  (k) => ({ url: 'https://api.anthropic.com/v1/models',                     headers: { 'x-api-key': k, 'anthropic-version': '2023-06-01' } }),
-  openrouter: (k) => ({ url: 'https://openrouter.ai/api/v1/models',                     headers: { Authorization: `Bearer ${k}` } }),
-  gemini:     (k) => ({ url: 'https://generativelanguage.googleapis.com/v1beta/models',                headers: { 'x-goog-api-key': k } }), // INFOSEC F8: header not URL
-};
+/** Each provider's lightest read-only endpoint (model list, free) —
+ *  derived from the registry's `keyProbe` (the same table `opencues
+ *  check-keys` probes from), so a new core provider auto-flows here.
+ *  INFOSEC F8 (keys in headers, never URLs) is enforced at the
+ *  registry entries. */
+const PROVIDER_KEY_CHECKS: Record<string, (key: string) => { url: string; headers: Record<string, string> }> = Object.fromEntries(
+  listProviders()
+    .filter((p) => p.keyProbe)
+    .map((p) => [p.id, (k: string) => ({ url: p.keyProbe!.url, headers: p.keyProbe!.headers(k) })]),
+);
 
 /** Verify LLM keys at boot — runs once after the runtime is constructed.
  *  Mirrors `opencues check-keys` so chrome users get the same up-front
@@ -2448,17 +2459,10 @@ async function verifyLlmKeyAtBoot(opts: RuntimeStartOptions): Promise<void> {
   // opts.llmApiKeys is keyed by ENV-VAR NAME (`GROQ_API_KEY`,
   // `CEREBRAS_API_KEY`, …) because the runtime resolver looks up keys
   // by env-var name. But PROVIDER_KEY_CHECKS below is keyed by
-  // PROVIDER ID (`groq`, `cerebras`, …). Translate before iterating
+  // PROVIDER ID (`groq`, `cerebras`, …). Translate via the
+  // registry-derived ENV_TO_PROVIDER (module scope) before iterating
   // — otherwise every non-legacy provider silently misses the check
   // and the boot audit only ever reports `OK (groq)`.
-  const ENV_TO_PROVIDER: Record<string, string> = {
-    GROQ_API_KEY: 'groq',
-    CEREBRAS_API_KEY: 'cerebras',
-    GEMINI_API_KEY: 'gemini',
-    OPENAI_API_KEY: 'openai',
-    ANTHROPIC_API_KEY: 'anthropic',
-    OPENROUTER_API_KEY: 'openrouter',
-  };
   if (opts.llmApiKeys) {
     for (const [envOrId, key] of Object.entries(opts.llmApiKeys)) {
       if (!key) continue;

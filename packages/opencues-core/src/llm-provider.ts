@@ -228,6 +228,22 @@ export interface ProviderAdapter {
    */
   readonly optionalAuth?: boolean;
   /**
+   * Cheapest read-only authenticated endpoint for verifying this
+   * provider's API key — the single source for `opencues check-keys`
+   * and chrome's boot-time `verifyLlmKeyAtBoot`, which previously kept
+   * hand-synced copies of the same table. `headers` builds the auth
+   * headers from the key (INFOSEC F8: keys go in headers, never URLs).
+   * `listField` names the JSON array in a 200 response so callers can
+   * report "N models available". Omitted for CLI-transport providers
+   * (external auth, nothing to probe with a key) and optional-auth
+   * pool providers (a missing key is a supported state, not an error).
+   */
+  readonly keyProbe?: {
+    readonly url: string;
+    readonly headers: (apiKey: string) => Record<string, string>;
+    readonly listField: string;
+  };
+  /**
    * When true, this provider's ToS allows the operator to train on
    * submitted inputs. The resolver refuses to wire prose-bearing
    * sources (word-cues, sentence-cues, auditors, agent-rewrite)
@@ -598,6 +614,11 @@ const GROQ: ProviderAdapter = {
   // its gpt-oss companions. Reachable via direct OPENCUES.md edit; the
   // classifier just doesn't surface it.
   envKeyName: 'GROQ_API_KEY',
+  keyProbe: {
+    url: 'https://api.groq.com/openai/v1/models',
+    headers: (k) => ({ Authorization: `Bearer ${k}` }),
+    listField: 'data',
+  },
   // gpt-oss-120b at `medium`+`high` overshoots OpenCues' fluid-blank
   // (1500ms) and word-cue (500ms) budgets at Groq's throughput; `low`
   // is the only level that fits every pipeline. `high` also collapses
@@ -640,6 +661,11 @@ const OPENROUTER: ProviderAdapter = {
     'google/gemini-3.1-flash-lite',
   ],
   envKeyName: 'OPENROUTER_API_KEY',
+  keyProbe: {
+    url: 'https://openrouter.ai/api/v1/models',
+    headers: (k) => ({ Authorization: `Bearer ${k}` }),
+    listField: 'data',
+  },
   // OpenRouter is a multi-model router — `low` is the cross-model safe
   // default that mirrors what every call site used to hardcode. Picks
   // a sensible level for whichever underlying gpt-oss / gpt-5 / o-series
@@ -687,6 +713,11 @@ const OPENAI: ProviderAdapter = {
     'gpt-5.4-nano',
   ],
   envKeyName: 'OPENAI_API_KEY',
+  keyProbe: {
+    url: 'https://api.openai.com/v1/models',
+    headers: (k) => ({ Authorization: `Bearer ${k}` }),
+    listField: 'data',
+  },
   // `low` (not `none`) — bench showed `none` is fastest on fluid-blank,
   // but it drops transform-blank-fused 85.3%→28.1% on gpt-5.4-mini
   // (see floor-bump comment below). `low` is the safe default that
@@ -847,6 +878,13 @@ const GEMINI: ProviderAdapter = {
   // (always point at the current Gemini 3.x family). flash-lite kept its
   // own name. Smoke runner verifies against live API on each release.
   envKeyName: 'GEMINI_API_KEY',
+  // INFOSEC F8: x-goog-api-key header, never `?key=` — keeps the secret
+  // out of URL access logs / proxy logs / browser history.
+  keyProbe: {
+    url: 'https://generativelanguage.googleapis.com/v1beta/models',
+    headers: (k) => ({ 'x-goog-api-key': k }),
+    listField: 'models',
+  },
   buildRequest(req, ctx) {
     const endpointTemplate = ctx.endpoint ?? this.defaultEndpoint;
     const url = endpointTemplate.replace('{model}', encodeURIComponent(req.model));
@@ -941,6 +979,11 @@ const ANTHROPIC: ProviderAdapter = {
     'claude-fable-5',
   ],
   envKeyName: 'ANTHROPIC_API_KEY',
+  keyProbe: {
+    url: 'https://api.anthropic.com/v1/models',
+    headers: (k) => ({ 'x-api-key': k, 'anthropic-version': '2023-06-01' }),
+    listField: 'data',
+  },
   buildRequest(req, ctx) {
     const systemMessages = req.messages.filter((m) => m.role === 'system');
     const nonSystem = req.messages
@@ -1060,6 +1103,11 @@ const CEREBRAS: ProviderAdapter = {
   // catalogue (/v1/models) returned only gpt-oss-120b + zai-glm-4.7 against
   // a live key. The smoke runner catches this regression structurally.
   envKeyName: 'CEREBRAS_API_KEY',
+  keyProbe: {
+    url: 'https://api.cerebras.ai/v1/models',
+    headers: (k) => ({ Authorization: `Bearer ${k}` }),
+    listField: 'data',
+  },
   // Cerebras's wafer-scale silicon serves gpt-oss-120b fast enough that
   // `medium` fits every OpenCues pipeline (358ms p50 fluid-blank,
   // well under the 500ms word-cue budget). The only provider in the

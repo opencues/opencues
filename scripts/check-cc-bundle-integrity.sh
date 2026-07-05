@@ -128,6 +128,9 @@ REQUIRED_SPECS=(
   "@opencues/runtime/dist/src/blanks/index.js"
   "@opencues/runtime/dist/src/security/spawn-sandbox.js"
   "@opencues/runtime/dist/src/security/sandbox-runner.js"
+  # Fork layout flattens core's dist/ into the package root (setup.sh
+  # § 5), so core specs are `@opencues/core/<file>.js`, not dist paths.
+  "@opencues/core/env-keys.js"
 )
 OPTIONAL_SPECS=(
   "@opencues/runtime/dist/src/user-blanks/registry.js"

@@ -13,7 +13,10 @@ const os = require('node:os');
 const { tag, bold, dim, green, fileLink, banner, cliVersion, G } = require('../lib/style.cjs');
 const prompt = require('../lib/prompt.cjs');
 
-const PROVIDERS = {
+// Fallback provider → env-var snapshot, used only when @opencues/core
+// isn't built yet. The live list derives from core's PROVIDERS registry
+// (see providerMap) so a new core provider auto-flows into set-key.
+const FALLBACK_PROVIDERS = {
   cerebras:     'CEREBRAS_API_KEY',
   groq:         'GROQ_API_KEY',
   gemini:       'GEMINI_API_KEY',
@@ -21,8 +24,29 @@ const PROVIDERS = {
   openai:       'OPENAI_API_KEY',
   openrouter:   'OPENROUTER_API_KEY',
   'opencode-zen': 'OPENCODE_ZEN_API_KEY',
-  finnhub:      'FINNHUB_API_KEY',
 };
+
+// Provider → env-var map, registry-driven per the CLI convention.
+// CLI-transport providers (claude-code-cli, openai-subscription) have
+// no env key and are excluded. Ordered by PROVIDER_AUTO_ORDER (the
+// actual auto-fallback chain) so the picker leads with the provider a
+// fresh key unlocks first. Finnhub is the lone non-LLM service key,
+// appended last.
+function providerMap(ctx) {
+  let map;
+  try {
+    const registry = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/llm-provider.js'));
+    const adapters = registry.listProviders().filter((p) => p.envKeyName && p.transport !== 'cli');
+    const order = registry.PROVIDER_AUTO_ORDER;
+    const rank = (id) => { const i = order.indexOf(id); return i < 0 ? order.length : i; };
+    adapters.sort((a, b) => rank(a.id) - rank(b.id));
+    map = Object.fromEntries(adapters.map((p) => [p.id, p.envKeyName]));
+  } catch {
+    map = { ...FALLBACK_PROVIDERS };
+  }
+  map.finnhub = 'FINNHUB_API_KEY';
+  return map;
+}
 
 // Computed per-call, not at module load — tests (and OPENCUES_HOME users)
 // override HOME after the module is required.
@@ -36,7 +60,7 @@ function keyIsSet(envName) {
 
 // Interactive provider picker. Each row shows the env var + a ring: green ●
 // when a value is already stored, gray ● when not.
-async function pickProvider() {
+async function pickProvider(PROVIDERS) {
   const nameW = Math.max(...Object.keys(PROVIDERS).map(p => p.length));
   const choices = Object.entries(PROVIDERS).map(([p, envName]) => ({
     label: `${p.padEnd(nameW)}   ${dim(envName)}`,
@@ -50,7 +74,8 @@ async function pickProvider() {
 }
 
 module.exports = async function setKey(argv, ctx) {
-  if (argv.includes('--help') || argv.includes('-h')) return printHelp();
+  const PROVIDERS = providerMap(ctx);
+  if (argv.includes('--help') || argv.includes('-h')) return printHelp(PROVIDERS);
   console.log(banner({ version: cliVersion(ctx), tagline: 'store an API key' }));
   console.log('');
 
@@ -59,7 +84,7 @@ module.exports = async function setKey(argv, ctx) {
 
   // Interactive provider pick when omitted on a real terminal.
   if (!provider && prompt.isInteractive()) {
-    provider = await pickProvider();
+    provider = await pickProvider(PROVIDERS);
     if (!provider) return; // cancelled
   }
   // Interactive masked key entry when the provider is known but the key isn't.
@@ -114,20 +139,21 @@ function writeKey(envName, key) {
   const nowSet = keyIsSet(envName) ? green(G.ringOn) : dim(G.ringOn);
   console.log(`${tag('ok')} stored ${bold(envName)} ${nowSet} in ${fileLink(ENV_FILE, ENV_FILE)}`);
   console.log('');
-  console.log(dim('Note: integrations currently read API keys from process env vars, not from'));
-  console.log(dim('      ~/.cues/.env directly. Export in your shell to make it visible:'));
-  console.log(`        ${bold(`export ${envName}=...`)}`);
-  console.log('');
-  console.log(dim('      Or source the env file in your shell rc:'));
-  console.log(`        ${bold(`set -a && source ${ENV_FILE} && set +a`)}`);
+  console.log(dim('Native hosts (Claude Code / OpenCode / Gemini CLI / shell) read ~/.cues/.env'));
+  console.log(dim('at boot — restart the host (or launch via `opencues run <host>`) to pick it'));
+  console.log(dim('up. Chrome receives it live via the native-messaging host. A shell-exported'));
+  console.log(dim('env var always wins over the file.'));
 }
 
-function printHelp() {
+function printHelp(PROVIDERS) {
   console.log('opencues set-key [<provider>] [<key>]');
   console.log('');
   console.log('Store an API key in ~/.cues/.env (chmod 600). Replaces any existing');
   console.log('value for the same provider. With no arguments on a terminal, opens an');
   console.log('interactive provider picker + masked key entry.');
+  console.log('');
+  console.log('Native hosts read ~/.cues/.env at boot (shell-exported env vars win);');
+  console.log('chrome receives it live via the native-messaging host.');
   console.log('');
   console.log(`Providers: ${Object.keys(PROVIDERS).join(', ')}`);
   console.log('');
