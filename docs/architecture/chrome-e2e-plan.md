@@ -1,8 +1,12 @@
 # Chrome end-to-end (silent-degrade) test — plan
 
-> Status: **PLAN / RFC**. Not yet implemented. Tracked from
-> `security-audit.md` § Open follow-ups ("Chrome end-to-end
-> silent-degrade coverage").
+> Status: **M0–M2 IMPLEMENTED** (`integrations/chrome/tests/e2e/`, run
+> with `npm run test:e2e:chrome`). Harness + scenario liveness + two of
+> three security controls are live and green; site-filter is a documented
+> `test.fixme`; M3 (host-dependent) is deferred. See
+> `integrations/chrome/tests/e2e/README.md` for the status table. This
+> doc is the design rationale. Tracked from `security-audit.md` § Open
+> follow-ups.
 
 ## The bug class this targets
 
