@@ -104,10 +104,10 @@ describe('TutorialCoach journeys (deterministic contracts)', () => {
     await h.type('start tutorial 1 _');
     h.key('escape');
     expect(h.coach.active).toBe(true);
-    expect(h.coach.status()?.coach).toBe('Esc ×2 more to exit the tutorial');
+    expect(h.coach.status()?.coach).toContain('Esc ×2 more to exit the tutorial');
     h.key('escape');
     expect(h.coach.active).toBe(true);
-    expect(h.coach.status()?.coach).toBe('Esc ×1 more to exit the tutorial');
+    expect(h.coach.status()?.coach).toContain('Esc ×1 more to exit the tutorial');
     h.key('escape');
     expect(h.coach.active).toBe(false);
     const stopped = h.events.find(e => e.type === 'tutorial.stopped');
@@ -119,13 +119,23 @@ describe('TutorialCoach journeys (deterministic contracts)', () => {
     expect(h.resolveLLM).not.toHaveBeenCalled();
   });
 
+  it('meta-flavoured Escape counts toward the hatch (terminal ESC-prefix encoding)', async () => {
+    const h = makeHarness();
+    await h.type('start tutorial 1 _');
+    h.key('escape');                    // bare
+    h.key('escape', { meta: true });    // ESC-prefixed delivery
+    h.key('escape', { meta: true });
+    expect(h.coach.active).toBe(false); // exited — presses 2-3 not eaten
+    expect(h.events.find(e => e.type === 'tutorial.stopped')?.body?.reason).toBe('escape-key');
+  });
+
   it('Esc counter resets after the 2.5s window and on other keys', async () => {
     const h = makeHarness();
     await h.type('start tutorial 1 _');
     h.key('escape');
     await vi.advanceTimersByTimeAsync(2600); // window expires
     h.key('escape');
-    expect(h.coach.status()?.coach).toBe('Esc ×2 more to exit the tutorial'); // reset, not ×1
+    expect(h.coach.status()?.coach).toContain('Esc ×2 more to exit the tutorial'); // reset, not ×1
     h.key('tab'); // any other key resets the chain
     h.key('escape');
     h.key('escape');

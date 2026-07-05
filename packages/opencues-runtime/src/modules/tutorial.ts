@@ -369,7 +369,13 @@ export class TutorialCoach {
     // the host's own Escape behaviour (clear input, interrupt) is
     // untouched; requiring three presses keeps a normal double-Esc
     // (CC's clear-input) from killing the tutorial by accident.
-    if ((k === 'escape' || k === 'esc') && !anyMod) {
+    // Accept meta/alt/shift-flavoured Escape too: terminals encode a
+    // bare ESC as a sequence prefix, so rapid consecutive presses are
+    // delivered ESC-prefixed and surface as {meta: true, name:
+    // 'escape'} — requiring no-modifiers silently ate presses 2-3 of
+    // the hatch (live-reported on oc-shell inside tmux). Only Ctrl+Esc
+    // is excluded (OS-level chord).
+    if ((k === 'escape' || k === 'esc') && !mods.ctrl) {
       // Escape still lands in the trace (tutorials can teach Esc — e.g.
       // claude-code-power's double-Escape step; the next tick sees it),
       // but escape presses never SCHEDULE a tick: the countdown hint
@@ -400,7 +406,7 @@ export class TutorialCoach {
       }
       // Countdown hint — deterministic, overwrites the coach line so the
       // exit is discoverable mid-press without any model round-trip.
-      this._coachLine = `\`Esc\` ×${3 - this._escCount} more to exit the tutorial`;
+      this._coachLine = `\`Esc\` ×${3 - this._escCount} more to exit the tutorial · or type \`stop tutorial _\``;
       this._escResetTimer = setTimeout(() => { this._escCount = 0; }, 2_500);
       this.armIdleTimer();
       this.refreshStatusline();

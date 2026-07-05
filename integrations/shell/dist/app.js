@@ -3,8 +3,8 @@ var __require = import.meta.require;
 
 // src/app.tsx
 import { createComponent as _$createComponent } from "@opentui/solid";
-import { effect as _$effect } from "@opentui/solid";
 import { createTextNode as _$createTextNode } from "@opentui/solid";
+import { effect as _$effect } from "@opentui/solid";
 import { insert as _$insert } from "@opentui/solid";
 import { memo as _$memo } from "@opentui/solid";
 import { insertNode as _$insertNode } from "@opentui/solid";
@@ -744,6 +744,29 @@ process.on("SIGINT", () => {});
 function App(props) {
   const renderer = useRenderer();
   const [tip, setTip] = createSignal(null);
+  const tipRows = () => {
+    const t = tip();
+    if (t == null)
+      return [];
+    const width = Math.max(20, (process.stdout.columns ?? 80) - 4);
+    const rows = [];
+    let rest = t.trim();
+    while (rest.length > 0 && rows.length < 3) {
+      if (rest.length <= width) {
+        rows.push(rest);
+        break;
+      }
+      let cut = rest.lastIndexOf(" ", width);
+      if (cut < width * 0.6)
+        cut = width;
+      rows.push(rest.slice(0, cut));
+      rest = rest.slice(cut).trimStart();
+    }
+    if (rest.length > 0 && rows.length === 3 && rows[2].length > 1) {
+      rows[2] = rows[2].slice(0, Math.max(0, width - 1)) + "\u2026";
+    }
+    return rows.length > 0 ? rows : [""];
+  };
   let textarea;
   const syntax = SyntaxStyle2.create();
   onMount(() => {
@@ -861,15 +884,19 @@ function App(props) {
       _$insert(_el$, (() => {
         var _c$ = _$memo(() => tip() != null);
         return () => _c$() && (() => {
-          var _el$4 = _$createElement("box"), _el$5 = _$createElement("text");
-          _$insertNode(_el$4, _el$5);
-          _$setProp(_el$4, "style", {
-            height: 1,
+          var _el$4 = _$createElement("box");
+          _$insert(_el$4, () => tipRows().map((row) => (() => {
+            var _el$5 = _$createElement("text");
+            _$insert(_el$5, row);
+            return _el$5;
+          })()));
+          _$effect((_$p) => _$setProp(_el$4, "style", {
+            height: tipRows().length,
             width: "100%",
             paddingLeft: 1,
-            paddingRight: 1
-          });
-          _$insert(_el$5, tip);
+            paddingRight: 1,
+            flexDirection: "column"
+          }, _$p));
           return _el$4;
         })();
       })(), null);
