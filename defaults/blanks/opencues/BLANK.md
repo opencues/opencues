@@ -13,7 +13,7 @@ blankClearOnEdit: true
 # readFile/writeFile against ~/.cues/OPENCUES.md on every native host).
 # The resolver tries blankInvoke first and never falls back to spawn
 # for this name, so no blankScript: / sandbox: is needed.
-on-host: chrome, claude-code, gemini-cli, opencode, shell
+on-host: chrome, claude-code, gemini-cli, opencode, shell, vscode
 # Blank-as-context: deliberately OFF. OpenCues settings feeding back
 # into prompts is a loop hazard — the LLM could be steered by current
 # settings into recommending other settings, and substitution would

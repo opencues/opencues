@@ -221,10 +221,11 @@ The standard reserves these host identifiers:
 - `chrome`
 - `gemini-cli`
 - `shell` (`terminal` is a deprecated back-compat alias resolving to `shell`)
+- `vscode`
 
 Runtimes MAY define additional host names. Other implementations SHOULD ignore unknown host names rather than failing.
 
-The constants `HOSTS` and `NATIVE_HOSTS` in OpenCues' `@opencues/core` library (`packages/opencues-core/src/host-compat.ts`) are non-normative reference values that enumerate the above set; `shell`, `claude-code`, `gemini-cli`, and `opencode` are members of `NATIVE_HOSTS` (can spawn subprocesses and touch the filesystem without a bridge); `chrome` is the lone non-native host. Conformant runtimes MUST resolve the legacy `terminal` alias to `shell` for back-compat.
+The constants `HOSTS` and `NATIVE_HOSTS` in OpenCues' `@opencues/core` library (`packages/opencues-core/src/host-compat.ts`) are non-normative reference values that enumerate the above set; `shell`, `claude-code`, `gemini-cli`, `opencode`, and `vscode` are members of `NATIVE_HOSTS` (can spawn subprocesses and touch the filesystem without a bridge); `chrome` is the lone non-native host. Conformant runtimes MUST resolve the legacy `terminal` alias to `shell` for back-compat.
 
 ---
 

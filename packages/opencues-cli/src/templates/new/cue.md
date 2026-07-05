@@ -101,7 +101,7 @@ priority: 50
 # ─────────────────────────────────────────────────────────────────────
 # HOST COMPATIBILITY (advanced)
 # ─────────────────────────────────────────────────────────────────────
-# Most cues run on every integration (claude-code, opencode, chrome, gemini-cli).
+# Most cues run on every integration (claude-code, opencode, chrome, gemini-cli, shell, vscode).
 # Pure LLM cues like this one have no host-specific dependencies
 # — leave the fields below alone.
 #
@@ -109,10 +109,10 @@ priority: 50
 #   on-host:     [chrome, claude-code, ...]   — allow-list (overrides auto)
 #   not-on-host: [chrome]                     — deny-list (filters from auto / on-host)
 #
-# Host names: chrome, claude-code, gemini-cli, opencode.
+# Host names: chrome, claude-code, gemini-cli, opencode, shell, vscode.
 # See docs/features/host-compat.md.
 
-# on-host: chrome, claude-code, gemini-cli, opencode
+# on-host: chrome, claude-code, gemini-cli, opencode, shell, vscode
 # not-on-host: chrome
 ---
 Suggest 3 alternatives for each highlighted word, considering the

@@ -266,6 +266,13 @@ forwards.
 Same — `opencuesBootstrap.ts` reads all keys from `process.env` and
 forwards via `host.llmApiKeys`.
 
+### VS Code (`integrations/vscode/`)
+Same six keys, with one addition: the extension host is rarely
+launched from a shell that exported them, so the key bag merges
+`process.env` over `~/.cues/.env` (the `opencues set-key` store) —
+env wins on conflicts. Setting a key via `opencues set-key` then
+reloading the window is the normal path.
+
 ### Chrome extension (`integrations/chrome/`)
 Browser-side fetches require **host_permissions** in
 `manifest.json`. The current manifest permits all six provider

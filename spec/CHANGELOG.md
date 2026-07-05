@@ -14,6 +14,13 @@ breaking.
 
 ## [Unreleased]
 
+### Added
+
+- `vscode` reserved as a known host name (`spec/core.md` § Known host
+  names; member of the native set). `on-host` enums in the cue /
+  blank / auditor JSON schemas extended accordingly. Vocabulary-only —
+  no wire-format change, so `SPEC_VERSION` is unchanged.
+
 ---
 
 ## [0.4.0-alpha] — 2026-06-30

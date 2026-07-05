@@ -33,6 +33,7 @@ host and the runtime.
 - **Chrome** (`integrations/chrome/`) — MV3 extension; CSS Custom Highlight API for in-page rendering
 - **Gemini CLI** (`integrations/gemini-cli/`) — patches Gemini CLI 0.41.x; React/Ink host with a render-kick + ZWS-toggle pull model. See its CLAUDE.md for the React quirks (it's the first React/Ink host so the integration was non-trivial).
 - **Shell** (`integrations/shell/`) — standalone Bun + OpenTUI + SolidJS app. User-facing entry point is `oc-shell` (wraps the user's interactive shell in a private tmux session with an Alt+Shift+↑ input box); `oc-edit` is the internal Bun host lazy-spawned inside that session and is not directly user-invokable. **Self-owned host** — no upstream fork to patch. Built on the same OpenTUI primitives as OpenCode, so the adapter band (`adapters/shell/v1/`) is structurally a near-clone of `adapters/oc/v1.14/`. Canonical host name: `shell` (alias `terminal` kept for back-compat in `on-host:` directives).
+- **VS Code** (`integrations/vscode/`) — **self-owned host**: the extension is our own build artifact (`package.json` doubles as the manifest; esbuild bundles the staged runtime; no fork, no pin). Decoration-based rendering, contributed-command key dispatch, prose language allowlist (markdown/plaintext/git-commit/rst/latex by default), `extensionKind: workspace` so it runs remote-side on WSL/SSH. First genuinely large-buffer host — word-cue analysis is size-gated (`opencues.maxCueDocumentWords`, no-cycling profile over the gate). Design + risk register: `integrations/vscode/PLAN.md`; band: `adapters/vscode/v1/`.
 
 > Re-org in progress — folders rename to `cc/`, `oc/`, `chrome/` in Stage 4 of
 > the repo restructure. See `docs/architecture/repo-structure.md` for the
@@ -566,6 +567,7 @@ two paths behave differently:
 | **claude-code** | `$OPENCUES_HOME` → `<cwd>/.cues/` → `~/.cues/` | Automatic (cwd-based merge) |
 | **opencode** | same | same |
 | **gemini-cli** | same | same |
+| **vscode** | same (`<cwd>` = first workspace folder) | same |
 | **chrome** | `chrome.storage.local['opencues_bundle']` (pushed live by the native-messaging host) → `<extension>/dist/configs/` (bake-time) → esbuild `__DEFAULT_*__` constants | Live — `opencues install chrome-host` watches `~/.cues/` and pushes; bake-time fallback via `opencues sync chrome` |
 
 For the native hosts, project wins on name conflicts. Missing dirs are
@@ -665,15 +667,16 @@ done
 |---|---|---|---|
 | `SPEC.md` (open-standard) | `cues-spec` | 0.2 (draft) | exported as `SPEC_VERSION` from `@opencues/core` |
 | `package.json` (monorepo root) | `opencues` | 0.1.0 | private |
-| `packages/opencues-core/` | `@opencues/core` | 0.13.5 | private |
-| `packages/opencues-runtime/` | `@opencues/runtime` | 0.10.0 | private |
-| `packages/opencues-cli/` | `opencues` (real CLI) | 0.2.33 | private |
+| `packages/opencues-core/` | `@opencues/core` | 0.14.0 | private |
+| `packages/opencues-runtime/` | `@opencues/runtime` | 0.11.0 | private |
+| `packages/opencues-cli/` | `opencues` (real CLI) | 0.2.35 | private |
 | `packages/opencues-park/` | `opencues` (placeholder) | 0.0.1 | **PUBLISHED on npm** |
 | `integrations/claude-code/` | `@opencues/claude-code` | 0.2.4 | private |
 | `integrations/opencode/` | `@opencues/opencode` | 0.2.2 | private |
 | `integrations/chrome/` | `@opencues/chrome` | 0.2.44 | private |
 | `integrations/gemini-cli/` | `@opencues/gemini-cli` | 0.2.2 | private |
 | `integrations/shell/` | `@opencues/shell` | 0.2.2 | private |
+| `integrations/vscode/` | `opencues-vscode` (VS Code forbids scoped extension ids) | 0.1.0 | private |
 
 Two packages share the bare `opencues` name — the real CLI at `packages/opencues-cli/` (still private) and the parking placeholder at `packages/opencues-park/` (published as v0.0.1 to the public npm registry, owned by the `opencues` org via the `developers` team). Launch handover is described in the npm-name pre-launch checklist above; the real CLI's v0.1.0 cleanly supersedes the placeholder's v0.0.1 on first publish.
 

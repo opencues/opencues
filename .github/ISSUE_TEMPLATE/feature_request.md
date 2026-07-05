@@ -19,6 +19,8 @@ How you'd like it to work.
 - [ ] OpenCode integration (patches)
 - [ ] Chrome extension
 - [ ] Gemini CLI integration (patches)
+- [ ] Shell integration (oc-shell)
+- [ ] VS Code extension
 - [ ] New integration (specify editor)
 - [ ] Documentation
 

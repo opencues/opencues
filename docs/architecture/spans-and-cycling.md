@@ -36,7 +36,7 @@ packages/opencues-runtime/
 │       ├── blank-fill.ts         ← detects `_`, runs scripts/LLM, registers
 │       │                            spans, owns SpanFillState invalidation
 │       └── resolver.ts           ← runs the LLM Resolver, populates DynDefs
-└── adapters/{cc,oc,chrome}/v*/boot.ts ← per-host wiring
+└── adapters/{cc,oc,chrome,gemini,shell,vscode}/v*/boot.ts ← per-host wiring
 ```
 
 ---

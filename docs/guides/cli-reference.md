@@ -45,6 +45,7 @@ opencues install chrome              # build the MV3 extension into integrations
 opencues install chrome --wsl        # also mirror to the Windows desktop install dir
 opencues install gemini-cli          # patch the Gemini CLI 0.41.x fork at ~/gemini-cli-cues
 opencues install shell                # standalone Bun + OpenTUI app, no upstream fork (oc-shell / oc-edit)
+opencues install vscode              # self-owned VS Code extension — builds + links into the extensions dir
 opencues install --all               # install every detected host
 ```
 
@@ -237,6 +238,7 @@ Convenience wrapper that just `exec`s the right binary:
 opencues run claude-code     # runs ~/claude-code-cues/.../claude-code
 opencues run opencode        # runs ~/opencode-cues/...
 opencues run gemini-cli      # runs node packages/cli/dist/index.js inside ~/gemini-cli-cues
+opencues run vscode          # drift-checks the extension bundle + prints the reload step
 ```
 
 You can also invoke the patched binaries directly; `opencues run`
@@ -439,6 +441,7 @@ opencues list --blanks | grep -c domain  # how many domain blanks exist
 | `chrome` | esbuild-builds the MV3 extension into `integrations/chrome/dist/` | `--wsl` also mirrors to the Windows desktop install dir |
 | `gemini-cli` | Clones the fork at `~/gemini-cli-cues`, installs deps, builds + installs `@opencues/{core,runtime}`, drops `opencuesBootstrap.ts` in, patches 4 source files, runs `npm run build` | Pinned to Gemini CLI 0.41.x via `integrations/gemini-cli/pin.json` |
 | `shell` | No upstream fork — preflights Bun/tmux, `bun install`s OpenTUI deps, auto-installs a vendored tmux if none usable | Vendored tools land in `~/.opencues/vendor/`; exposes `oc-shell` (wraps your interactive shell in a private tmux session) / `oc-edit` |
+| `vscode` | No upstream fork — stages `@opencues/{core,runtime}`, esbuilds `dist/extension.js`, symlinks the extension folder into detected extensions dirs (incl. `~/.vscode-server` for WSL/SSH remotes) | Reload VS Code windows after install/rebuild; `--extensions-dir <dir>` overrides detection |
 
 ---
 

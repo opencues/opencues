@@ -26,7 +26,7 @@ the publish target broadens. Star + Build are wireable today.
 [![GitHub stars](https://img.shields.io/github/stars/opencues/opencues?style=social)](https://github.com/opencues/opencues)
 -->
 
-**Real-time guidance as you type.** Define cues, blanks, and auditors in `.md` config files; the runtime turns them into inline alternatives, `_`-gated substitutions, and live rewrites. Install today in Claude Code, OpenCode, Gemini CLI, Chrome, and a standalone shell wrapper (`oc-shell`).
+**Real-time guidance as you type.** Define cues, blanks, and auditors in `.md` config files; the runtime turns them into inline alternatives, `_`-gated substitutions, and live rewrites. Install today in Claude Code, OpenCode, Gemini CLI, Chrome, VS Code, and a standalone shell wrapper (`oc-shell`).
 
 The three file formats (Cues / Blanks / Auditors) are open standards — designed so a non-JS port or alternative runtime *could* ship — and the spec at [`spec/`](spec/) is the field reference for anyone authoring those files. Today only the reference runtime in this repo implements them, powering all five integrations as thin host adapters over a shared core.
 
@@ -205,6 +205,7 @@ Full doc: [`integrations/chrome/README.md`](integrations/chrome/README.md).
 | OpenCode | `opencues install opencode` (offers a contained bun install) | [`integrations/opencode/README.md`](integrations/opencode/README.md) |
 | Gemini CLI | `opencues install gemini-cli` | [`integrations/gemini-cli/README.md`](integrations/gemini-cli/README.md) |
 | Shell (standalone) | `opencues install shell` (offers contained bun + tmux) | [`integrations/shell/README.md`](integrations/shell/README.md) |
+| VS Code | `opencues install vscode` (then reload VS Code windows) | [`integrations/vscode/README.md`](integrations/vscode/README.md) |
 
 After install, run `opencues doctor` to verify everything's wired
 (bundled-runtime versions, feature backends per platform, install
@@ -284,9 +285,9 @@ For per-host installs, deeper troubleshooting, and uninstall: [`docs/install.md`
 | **Gemini CLI** | Beta | ✓ | ✓ | ✓ | — | `opencues install gemini-cli` |
 | **Chrome** | Beta | ✓ | ✓ | ✓ (target Windows Chrome via `--wsl`) | — (build on WSL) | `opencues install chrome` |
 | **Shell (`oc-shell`)** | Beta | ✓ | ✓ | ✓ | — | `opencues install shell` |
-| **VS Code** | Planned | — | — | — | — | — |
+| **VS Code** | Beta | ✓ | ✓ | ✓ (extension runs remote-side) | — | `opencues install vscode` |
 
-Per-host READMEs: [Claude Code](integrations/claude-code/README.md) · [OpenCode](integrations/opencode/README.md) · [Gemini CLI](integrations/gemini-cli/README.md) · [Chrome](integrations/chrome/README.md) · [Shell](integrations/shell/README.md).
+Per-host READMEs: [Claude Code](integrations/claude-code/README.md) · [OpenCode](integrations/opencode/README.md) · [Gemini CLI](integrations/gemini-cli/README.md) · [Chrome](integrations/chrome/README.md) · [Shell](integrations/shell/README.md) · [VS Code](integrations/vscode/README.md).
 
 **Platform notes.** Native Windows isn't supported — the installers are bash + POSIX coreutils. Windows users run via WSL2 (Chrome integration deploys to the Windows side via `--wsl`). `package.json` carries `"os": ["darwin", "linux"]` so `npm install` refuses up front on `win32` instead of failing mid-install. Per-feature platform support (volume / brightness / TTS / sandbox) is tabled in [`docs/install.md`](docs/install.md#per-feature-platform-support).
 

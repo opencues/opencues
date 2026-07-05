@@ -162,6 +162,6 @@ type: blank
 # blankInvoke (chrome.storage on chrome, fs-backed readFile/writeFile
 # on native hosts). See docs/features/host-compat.md.
 
-# on-host: chrome, claude-code, gemini-cli, opencode
+# on-host: chrome, claude-code, gemini-cli, opencode, shell, vscode
 # not-on-host: chrome
 ---

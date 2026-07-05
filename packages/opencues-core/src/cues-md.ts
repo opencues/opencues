@@ -381,7 +381,7 @@ export interface BlankConfig {
   /**
    * Explicit host allow-list. When set, narrows the default (all hosts) to
    * this set. Use the canonical host names: claude-code, opencode, chrome,
-   * gemini-cli. See @opencues/core's `inferHostCompat()` for the resolution rules.
+   * gemini-cli, shell, vscode. See @opencues/core's `inferHostCompat()` for the resolution rules.
    */
   onHost?: string[];
   /**

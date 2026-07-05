@@ -48,7 +48,8 @@ opencues/
 │           ├── cc/v2.1/         # was: claude-code/v2.1/
 │           ├── oc/v1.4/, oc/v1.14/  # was: opencode/v1.4/ — multi-band since the v1.14 cross-minor bump
 │           ├── gemini/v0.41/    # gemini-cli adapter band
-│           └── shell/v1/        # standalone terminal integration — no upstream fork
+│           ├── shell/v1/        # standalone terminal integration — no upstream fork
+│           └── vscode/v1/       # VS Code extension band — self-owned, no upstream fork
 │
 ├── integrations/                # Host glue — each is its own release unit
 │   ├── cc/                      # was: claude-code/
@@ -62,7 +63,9 @@ opencues/
 │   │   └── ...
 │   ├── chrome/                  # was: chrome-extension/
 │   │   └── ...
-│   └── gemini-cli/              # gemini-cli integration
+│   ├── gemini-cli/              # gemini-cli integration
+│   │   └── ...
+│   └── vscode/                  # VS Code extension (package.json doubles as manifest)
 │       └── ...
 │
 ├── configs/                     # Shipped default configs (was: at repo root)

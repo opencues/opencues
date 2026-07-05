@@ -10,7 +10,7 @@ assignees: ''
 A clear description of what's wrong.
 
 **Host**
-Which integration: claude-code | opencode | chrome | gemini-cli
+Which integration: claude-code | opencode | chrome | gemini-cli | shell | vscode
 
 **To reproduce**
 1. Type `...` in [host]

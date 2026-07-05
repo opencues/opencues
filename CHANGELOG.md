@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — VS Code integration (`@opencues/runtime` 0.10.0 → 0.11.0, `@opencues/core` 0.13.6 → 0.14.0, `opencues` CLI 0.2.34 → 0.2.35, new `opencues-vscode` 0.1.0)
+
+New self-owned host: a VS Code extension (`integrations/vscode/`) with a `vscode/v1` adapter band. No upstream fork or patching — `package.json` doubles as the extension manifest (unscoped `opencues-vscode`, publisher `opencues`; VS Code forbids scoped extension ids) and esbuild bundles the staged `@opencues/{core,runtime}` dist into `dist/extension.js`. Highlights:
+
+- **One re-targeted runtime per window** (chrome's `publishTarget` pattern): a single current-editor pointer, `resetBufferState()` on real document switches, undo/redo (via `TextDocumentChangeEvent.reason`), detected external mutations (formatter / paste / Copilot-accept heuristic), and rejected edits. Split editors on the same document share state without reset churn.
+- **Decoration-based rendering** — the first non-terminal host to render all six markdown styling range types; wholesale repaint per directive batch with per-type range coalescing; `render-rgb-color` for the blank-loading animator.
+- **Prose language allowlist** (`opencues.languages`, default markdown/plaintext/git-commit/rst/latex) + a **document word gate** (`opencues.maxCueDocumentWords`, default 500): VS Code is the first genuinely large-buffer host, and `RoutedWordSourceGroup` dispatches every word in the buffer — over the gate the document degrades to the existing no-cycling profile (`_`-invoked features keep working). `agent-window-words` defaults to 400 on this band only.
+- **Keybindings scoped by context keys** (`opencues.cueActive`) so Ctrl+Alt+arrows only shadow multi-cursor while a cue is navigable; multi-cursor suspends OpenCues.
+- **Full native blank surface** (sandboxed `spawnProcess` + runtime-class blanks ported from shell); LLM keys merge process env over `~/.cues/.env` so `opencues set-key` works without a shell launch; `statusSnapshotHook` drives a status bar item with a visible boot-error state.
+- CLI: `opencues install|run|uninstall|update|doctor|which vscode` (+ `code`/`vs-code` aliases); install symlinks the extension into detected extensions dirs (incl. `~/.vscode-server` for WSL/SSH remotes — the extension is `extensionKind: ["workspace"]`); drift self-heal covers the bundle via the standard version marker.
+- Spec surface: `vscode` added to the known-host names in `spec/core.md` and the `on-host` enums in the cue/blank/auditor JSON schemas (no `SPEC_VERSION` bump — host-name vocabulary, not a wire-format change).
+- Also fixes `opencues update shell` erroring as unknown host (the alias map lacked the canonical `shell` key).
+
+Design + risk register: `integrations/vscode/PLAN.md`. Band quirks: `packages/opencues-runtime/adapters/vscode/REPAIR.md`.
+
 ### Fixed — `opencues validate` false-positived `blank-missing-keywords` on shape-only blanks (`opencues` CLI 0.2.33 → 0.2.34)
 
 Found while auditing `spec/core.md`/`spec/blank-spec.md` for accuracy: `blankKeywords` is documented (and actually implemented) as friendly shorthand that desugars to `blankShapes` — the real routing mechanism — so a `BLANK.md` declaring `blankShapes` directly with no `blankKeywords` is a fully reachable, valid blank. The `checkBlankKeywords` lint rule didn't know this and unconditionally required `blankKeywords`, so a legitimately shape-routed blank got flagged as unreachable. Now accepts either field. `spec/core.md`'s linting-rules table updated to describe the corrected behavior (and, while auditing it, split into "reference-implemented", "reference-runtime-only", and "spec text without an implementation yet" — the table had drifted substantially from `validate.cjs` in both directions: 2 wrong severities, ~13 undocumented implemented rules, ~11 documented-but-unimplemented rules).

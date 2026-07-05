@@ -1,6 +1,6 @@
 ---
 last_updated: 2026-07-05
-status: draft — not yet started
+status: v1 built (band + scaffold + glue + wiring); Phase-0 spikes and the manual test pass still pending on a real VS Code window
 ---
 
 # VS Code Integration Plan (`vscode` host)
@@ -108,17 +108,25 @@ What actually works where. "Full editor" = allowlisted-language
 `TextEditor` under the D14 size gate; "large doc" = allowlisted but
 over the gate; "SCM input" = the phase-2 no-cycling surface.
 
+> Implementation note (v1, as built): the D14 gate is implemented via
+> the existing `supportsCycling: false` profile — over-gate documents
+> behave exactly like chrome's plain-`<input>` mode (every cycleable
+> source pruned; `_`-invoked single-answer features survive). That
+> reuses a tested profile instead of inventing a word-cue-only filter;
+> the `cues-window-words` follow-up (Deferred #5) restores cycling on
+> large docs properly.
+
 | Feature | Full editor | Large doc | SCM input (P2) | Notes |
 |---|---|---|---|---|
 | Word-cues (LLM alternatives, spelling) | ✅ | ❌ gated (D14) | ❌ pruned (no cycling) | |
 | Static tips / tip groups | ✅ status bar + hover | ✅ | ✅ status bar | display-only, no cycling needed |
 | Sentence-cues (`scope: sentence`) | ✅ | ❌ gated (D14 — per-sentence calls scale with doc) | ❌ pruned | passive DynDefs; multiple coexist |
 | Keyword/shape blanks — compute/get (weather, stocks, dictionary, time) | ✅ | ✅ | ✅ | single-answer results pass the no-cycling filter |
-| Keyword/shape blanks — list / script-cycling (countries, volume, brightness) | ✅ | ✅ | ❌ pruned | need Ctrl+Alt+arrows + paint |
-| Selector/satellite (`opencues settings _`) | ✅ | ✅ | ❌ pruned | cycling-dependent |
+| Keyword/shape blanks — list / script-cycling (countries, volume, brightness) | ✅ | ❌ pruned | ❌ pruned | need Ctrl+Alt+arrows + paint |
+| Selector/satellite (`opencues settings _`) | ✅ | ❌ pruned | ❌ pruned | cycling-dependent |
 | FluidBlank (free-form `_`) | ✅ | ✅ | ✅ | WIPE guard already protects multi-paragraph buffers |
 | TransformBlank (`fix typos _`, `translate _`) | ✅ | ✅ (whole-buffer call — user-invoked, cost is consented) | ✅ | three-way merge protects concurrent edits |
-| ConfigIntent / fluid-config | ✅ | ✅ | ❌ pruned (emits selector-satellite) | |
+| ConfigIntent / fluid-config | ✅ | ❌ pruned | ❌ pruned (emits selector-satellite) | |
 | AgentRewrite / auditors | ✅ | ✅ with `agent-window-words` ON (D14) | ⚠️ probe off in v1 — revisit | `supportsAgentRewrite` probe |
 | Markdown styling render | ✅ **all six range types** — first non-terminal host to do so (chrome manages 3/6) | ✅ | ❌ no decorations | bold/italic/strike/code via decorations; heading/list soft-styled; un-expressible ranges DROP (never garbled syntax) |
 | Identity-context | ✅ | ✅ | ✅ | provider-side, host-agnostic |
