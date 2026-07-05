@@ -107,7 +107,7 @@ export function parseTutorialMd(raw: string, fallbackName: string): TutorialDoc 
 
 // Phrase must LEAD the sentence containing the trailing `_` — same trigger
 // model as blank shapes (spec/blank-spec.md § Trigger model).
-const RE_START = /(^|[\n.!?]\s+)start\s+tutorial(?:\s+#?(\S+))?\s*_\s*$/i;
+const RE_START = /(^|[\n.!?]\s+)(start|restart)\s+tutorial(?:\s+#?(\S+))?\s*_\s*$/i;
 const RE_STOP = /(^|[\n.!?]\s+)stop\s+tutorial\s*_\s*$/i;
 // Advance words fire on a TRAILING match (start or any whitespace
 // before them) — unlike start/stop they don't need to lead a sentence.
@@ -119,13 +119,13 @@ const RE_STOP = /(^|[\n.!?]\s+)stop\s+tutorial\s*_\s*$/i;
 const RE_ADVANCE = /(^|\s)(done|next|skip)\s*_\s*$/i;
 
 export type ControlPhrase =
-  | { kind: 'start'; arg: string | null; phraseStart: number }
+  | { kind: 'start'; arg: string | null; phraseStart: number; fresh?: boolean }
   | { kind: 'stop'; phraseStart: number }
   | { kind: 'advance'; word: string; phraseStart: number };
 
 export function matchControlPhrase(text: string, active: boolean): ControlPhrase | null {
   let m = RE_START.exec(text);
-  if (m) return { kind: 'start', arg: m[2] ?? null, phraseStart: m.index + m[1].length };
+  if (m) return { kind: 'start', arg: m[3] ?? null, phraseStart: m.index + m[1].length, fresh: m[2].toLowerCase() === 'restart' };
   m = RE_STOP.exec(text);
   if (m) return { kind: 'stop', phraseStart: m.index + m[1].length };
   if (active) {
@@ -469,6 +469,19 @@ export class TutorialCoach {
     this._selfWrites = this._selfWrites.filter(w => now - w.addedAt < 250);
     const selfIdx = this._selfWrites.findIndex(w => w.text === text);
     if (selfIdx !== -1) { this._selfWrites.splice(selfIdx, 1); return; }
+    // Submit detection runs for ANY non-self-write wipe: on CC the
+    // host's clear-after-Enter arrives as source 'runtime' (only OC
+    // delivers it as 'user'), and no runtime module ever wipes the
+    // buffer to empty on its own — so nonempty→empty that isn't ours
+    // IS the user submitting. Everything else in the trace remains
+    // user-source only.
+    if (this._doc && text.trim().length === 0 && prev.trim().length > 0
+      && this.configLoader.opencuesState.settings.get('tutorials-mode') !== 'off') {
+      this.pushTrace({ kind: 'submitted', text: prev.trim() });
+      this.armIdleTimer();
+      this.scheduleTick();
+      return;
+    }
     if (e.source !== 'user') return;
     if (text === prev) return;
 
@@ -479,11 +492,9 @@ export class TutorialCoach {
     if (ctl) { void this.handleControl(ctl, text); return; }
     if (!this._doc) return;
 
-    // Record activity for the coach trace.
-    if (text.trim().length === 0 && prev.trim().length > 0) {
-      // Buffer went non-empty → empty: the user submitted (Enter).
-      this.pushTrace({ kind: 'submitted', text: prev.trim() });
-    } else if (text.trim().length > 0) {
+    // Record activity for the coach trace (submits handled above,
+    // source-agnostically).
+    if (text.trim().length > 0) {
       // Coalesce ONLY continued typing (the new text extends / trims the
       // previous snapshot) — a change of direction (different prefix)
       // is a distinct ATTEMPT and must stay its own entry. Full
@@ -540,7 +551,7 @@ export class TutorialCoach {
         // Resume: saved mid-tutorial progress puts the user back where
         // they left off (journal included, so lesson memory survives a
         // restart). A completed record starts fresh.
-        const saved = (await this.loadProgress())[doc.name];
+        const saved = ctl.fresh ? undefined : (await this.loadProgress())[doc.name];
         if (saved && !saved.completed && saved.step > 0 && saved.step < doc.steps.length) {
           this._stepIndex = saved.step;
           this._journal = Array.isArray(saved.journal) ? [...saved.journal] : [];

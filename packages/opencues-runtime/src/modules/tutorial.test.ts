@@ -55,7 +55,7 @@ describe('parseTutorialMd', () => {
 describe('matchControlPhrase', () => {
   it('matches start with id arg', () => {
     const m = matchControlPhrase('start tutorial 1 _', false);
-    expect(m).toEqual({ kind: 'start', arg: '1', phraseStart: 0 });
+    expect(m).toEqual({ kind: 'start', arg: '1', phraseStart: 0, fresh: false });
   });
 
   it('matches start with #NN and name args', () => {
@@ -64,6 +64,13 @@ describe('matchControlPhrase', () => {
       .toMatchObject({ kind: 'start', arg: '01' });
     expect(matchControlPhrase('start tutorial claude-code-basics _', false))
       .toMatchObject({ kind: 'start', arg: 'claude-code-basics' });
+  });
+
+  it('restart tutorial N _ requests a fresh start (ignores saved progress)', () => {
+    expect(matchControlPhrase('restart tutorial 1 _', false))
+      .toMatchObject({ kind: 'start', arg: '1', fresh: true });
+    expect(matchControlPhrase('start tutorial 1 _', false))
+      .toMatchObject({ kind: 'start', fresh: false });
   });
 
   it('matches bare start (no arg)', () => {
