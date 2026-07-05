@@ -7,8 +7,8 @@ import { createTextNode as _$createTextNode } from "@opentui/solid";
 import { memo as _$memo } from "@opentui/solid";
 import { insertNode as _$insertNode } from "@opentui/solid";
 import { use as _$use } from "@opentui/solid";
-import { effect as _$effect } from "@opentui/solid";
 import { setProp as _$setProp } from "@opentui/solid";
+import { effect as _$effect } from "@opentui/solid";
 import { insert as _$insert } from "@opentui/solid";
 import { createElement as _$createElement } from "@opentui/solid";
 import { render, useKeyboard, useRenderer } from "@opentui/solid";
@@ -778,13 +778,14 @@ function App(props) {
         out.push((() => {
           var _el$ = _$createElement("text");
           _$insert(_el$, () => row.slice(last, m.index));
+          _$effect((_$p) => _$setProp(_el$, "attributes", TextAttributes.DIM, _$p));
           return _el$;
         })());
       if (m[1] !== undefined)
         out.push((() => {
           var _el$2 = _$createElement("text");
-          _$setProp(_el$2, "fg", "#7ee787");
           _$insert(_el$2, () => m[1]);
+          _$effect((_$p) => _$setProp(_el$2, "attributes", TextAttributes.BOLD, _$p));
           return _el$2;
         })());
       else
@@ -800,11 +801,13 @@ function App(props) {
       out.push((() => {
         var _el$4 = _$createElement("text");
         _$insert(_el$4, () => row.slice(last));
+        _$effect((_$p) => _$setProp(_el$4, "attributes", TextAttributes.DIM, _$p));
         return _el$4;
       })());
     return out.length > 0 ? out : [(() => {
       var _el$5 = _$createElement("text");
       _$insert(_el$5, row);
+      _$effect((_$p) => _$setProp(_el$5, "attributes", TextAttributes.DIM, _$p));
       return _el$5;
     })()];
   };

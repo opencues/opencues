@@ -395,7 +395,7 @@ src = src.replace(
           <span style={{ fg: headFg(), bold: true }}> {opencuesTutorial()!.head} </span>
           {opencuesTutorial()!.segments.map((seg) =>
             seg.command
-              ? <span style={{ fg: theme().success, bold: true }}>{seg.text}</span>
+              ? <span style={{ fg: theme().text, bold: true }}>{seg.text}</span>
               : <span style={{ fg: theme().textMuted }}>{seg.text}</span>,
           )}
         </text>
