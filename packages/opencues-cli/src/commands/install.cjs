@@ -567,55 +567,36 @@ function printKeyDetectionReport(ctx) {
   } catch {
     return; // core not built — `opencues doctor` covers this state
   }
+  // One line: the provider the runtime will actually use. Mirrors
+  // resolveLLM's precedence exactly — explicit `llm-provider:` scalar,
+  // else pickAutoProvider (env keys first, then the zero-key
+  // subscription-CLI rung: claude/codex binary present). No key names,
+  // no source inventory — presence isn't validity (`opencues
+  // check-keys` is the live probe) and doctor owns the per-key table.
   const detected = envKeys.detectProviderKeys().filter((d) => d.source);
-  if (detected.length > 0) {
-    // One line: the provider the runtime will actually use + where its
-    // key came from. NOT an inventory of every detected key — `opencues
-    // doctor` owns the full per-key table; the install ending stays
-    // clean. Effective provider mirrors resolveLLM's precedence:
-    // explicit `llm-provider:` scalar wins, else the auto-route pick.
-    const explicit = readGlobalProviderScalar();
-    const bag = {};
-    for (const d of detected) bag[d.envKeyName] = 'set';
-    const provider = explicit || providers.pickAutoProvider(bag);
-    if (!provider) return;
-    const row = detected.find((d) => d.providerId === provider);
-    if (row || providers.getProvider(provider)?.transport === 'cli') {
-      // Just the resolution — no key name, no source. Presence of a key
-      // doesn't prove it WORKS, so naming it here would imply a
-      // verification that never ran (`opencues check-keys` is the live
-      // probe; doctor has the per-key detail).
+  const bag = {};
+  for (const d of detected) bag[d.envKeyName] = 'set';
+  const explicit = readGlobalProviderScalar();
+  const provider = explicit || providers.pickAutoProvider(bag);
+  if (provider) {
+    const adapter = providers.getProvider(provider);
+    const hasKey = detected.some((d) => d.providerId === provider);
+    if (adapter?.transport === 'cli' && !explicit) {
+      // The zero-key subscription rung fired — say so, and name the
+      // upgrade path (the one actionable fact in this state).
+      console.log(`${green(G.ringOn)} LLM provider: ${bold(provider)} ${dim('— via your subscription; `opencues set-key` adds a faster API provider')}`);
+    } else if (hasKey || adapter?.transport === 'cli' || adapter?.optionalAuth) {
       console.log(`${green(G.ringOn)} LLM provider: ${bold(provider)}`);
     } else {
       // Explicit scalar names a provider we found no key for — the one
-      // detected-state misconfig worth a line here.
+      // misconfig worth a line here.
       console.log(`${tag('warn')} LLM provider: ${bold(provider)} ${dim(`(llm-provider: in ~/.cues/OPENCUES.md) — no key detected for it; run`)} ${bold('opencues check-keys')}`);
     }
   } else {
-    // No env keys anywhere — but an explicit subscription-CLI scalar
-    // (claude-code-cli / openai-subscription) is a complete, keyless
-    // setup: state the resolution instead of a false "inert" warning.
-    const explicitCli = readGlobalProviderScalar();
-    if (explicitCli && providers.getProvider(explicitCli)?.transport === 'cli') {
-      console.log(`${green(G.ringOn)} LLM provider: ${bold(explicitCli)}`);
-      console.log('');
-      return;
-    }
+    // Nothing usable anywhere: no keys, no subscription binaries. The
+    // one state that must not pass silently — every LLM feature is inert.
     console.log(bold('LLM keys') + '  ' + dim('· none found — LLM cues/blanks stay inert until one is set'));
     console.log(`  ${dim('fastest:')} ${bold('opencues set-key')} ${dim('— stores the key in ~/.cues/.env; hosts read it at boot')}`);
-    // Subscription CLIs offer a zero-key path when the binary is
-    // already installed. Suggested, never auto-applied: the CLI-daemon
-    // transport is markedly slower than the API providers, so switching
-    // silently would regress latency-sensitive word-cues without the
-    // user knowing why.
-    const SUBSCRIPTION_CLIS = [
-      { id: 'claude-code-cli', bin: 'claude', plan: 'Claude subscription' },
-      { id: 'openai-subscription', bin: 'codex', plan: 'ChatGPT subscription' },
-    ];
-    for (const s of SUBSCRIPTION_CLIS) {
-      if (!onPath(s.bin)) continue;
-      console.log(`  ${dim('zero-key option:')} ${bold(s.bin)} detected — use your ${s.plan} by setting ${bold(`llm-provider: ${s.id}`)} in ~/.cues/OPENCUES.md`);
-    }
   }
   console.log('');
 }

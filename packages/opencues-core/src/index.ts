@@ -146,6 +146,12 @@ export {
 export {
   PROVIDER_IDS,
   PROVIDER_AUTO_ORDER,
+  SUBSCRIPTION_AUTO_FALLBACK,
+  SUBSCRIPTION_CLI_BINARIES,
+  pickAutoProvider,
+  defaultCliAvailable,
+  resetCliAvailabilityCacheForTests,
+  setCliAvailabilityForTests,
   getProvider,
   isProviderValueCyclable,
   listProviders,

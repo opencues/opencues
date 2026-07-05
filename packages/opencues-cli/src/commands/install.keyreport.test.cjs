@@ -15,7 +15,7 @@ const path = require('node:path');
 
 const REPO_ROOT = path.resolve(__dirname, '../../../..');
 const { printKeyDetectionReport } = require('./install.cjs');
-const { listProviders } = require(path.join(REPO_ROOT, 'packages/opencues-core/dist/llm-provider.js'));
+const { listProviders, resetCliAvailabilityCacheForTests } = require(path.join(REPO_ROOT, 'packages/opencues-core/dist/llm-provider.js'));
 
 const ALL_ENV_KEYS = listProviders().map((p) => p.envKeyName).filter(Boolean);
 const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
@@ -36,6 +36,15 @@ beforeEach(() => {
     savedEnv[k] = process.env[k];
     delete process.env[k];
   }
+  // Empty controlled PATH by default so pickAutoProvider's
+  // subscription-CLI probe never sees the developer's real claude/codex
+  // — tests that WANT a binary drop a shim into their own PATH dir.
+  const emptyBin = path.join(tmpHome, 'default-empty-bin');
+  fs.mkdirSync(emptyBin, { recursive: true });
+  process.env.PATH = emptyBin;
+  // The probe caches per process — reset between tests since each test
+  // controls PATH independently.
+  resetCliAvailabilityCacheForTests();
   lines = [];
   origLog = console.log;
   console.log = (...args) => lines.push(stripAnsi(args.join(' ')));
@@ -112,29 +121,20 @@ describe('printKeyDetectionReport', () => {
     assert.ok(!out.includes('groq'));
   });
 
-  it('zero keys + subscription binary on PATH → that zero-key option line appears', () => {
+  it('zero keys + claude binary on PATH → the subscription rung RESOLVES (green line, not a warning)', () => {
     // Machine-independent: a fake `claude` shim in a controlled PATH.
+    // This is the seamless path — auto-fallback fires, nothing to do.
     const binDir = path.join(tmpHome, 'bin');
     fs.mkdirSync(binDir, { recursive: true });
     fs.writeFileSync(path.join(binDir, 'claude'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
     process.env.PATH = binDir;
+    resetCliAvailabilityCacheForTests();
 
     printKeyDetectionReport({ REPO_ROOT });
     const out = lines.join('\n');
-    assert.match(out, /none found/);
-    assert.match(out, /claude detected .*llm-provider: claude-code-cli/);
-    assert.ok(!out.includes('codex'), 'codex is not on the controlled PATH — its line must not print');
-  });
-
-  it('zero keys + empty PATH → no subscription option lines', () => {
-    const emptyDir = path.join(tmpHome, 'emptybin');
-    fs.mkdirSync(emptyDir, { recursive: true });
-    process.env.PATH = emptyDir;
-
-    printKeyDetectionReport({ REPO_ROOT });
-    const out = lines.join('\n');
-    assert.match(out, /none found/);
-    assert.ok(!out.includes('zero-key option'));
+    assert.match(out, /LLM provider: claude-code-cli/);
+    assert.match(out, /set-key.*faster/, 'the one actionable fact: how to upgrade to the API tier');
+    assert.ok(!out.includes('none found'), 'a working subscription setup must not read as inert');
   });
 
   it('explicit scalar with no key for it → one warn pointing at check-keys', () => {

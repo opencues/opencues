@@ -11,7 +11,7 @@
 // surface tiny and decouples the runtime's internal layout from the patch.
 
 import { Runtime } from '../../../src/runtime';
-import { buildBootApiKeys } from '@opencues/core';
+import { buildBootApiKeys, pickAutoProvider } from '@opencues/core';
 import { ClaudeCodeV21Adapter, type HostBindings, normaliseKeyEvent, toggleZeroWidth } from './adapter';
 import { installMacDoubleEscStdinRewrite } from '../../../src/modules/mac-keyboard';
 import { Navigation } from '../../../src/modules/navigation';
@@ -642,7 +642,11 @@ export function boot(host: HostInfo): BootResult {
   // can build sources from cuesConfig + blanksConfig.
   // `apiKeys` is constructed above (next to Cycling) so the cycling
   // filter sees the same bag.
-  const hasAnyKey = Object.values(apiKeys).some(Boolean);
+  // "Usable LLM" = any env key OR the zero-key subscription-CLI rung
+  // (pickAutoProvider's last rung: claude/codex binary present). Without
+  // the second clause a keyless subscription setup would show the
+  // missing-key hint and skip AgentRewrite while dispatch actually works.
+  const hasAnyKey = Object.values(apiKeys).some(Boolean) || pickAutoProvider(apiKeys) !== null;
   // Resolver is constructed even with no keys so the MissingKeyFallbackSource
   // can substitute a visible in-buffer hint on `_` instead of silent no-op.
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {

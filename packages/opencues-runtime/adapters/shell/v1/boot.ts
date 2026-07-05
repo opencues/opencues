@@ -15,7 +15,7 @@
 // require rebooting OpenCode users.
 
 import { Runtime } from '../../../src/runtime';
-import { buildBootApiKeys } from '@opencues/core';
+import { buildBootApiKeys, pickAutoProvider } from '@opencues/core';
 import { ShellV1Adapter, type ShellBindings } from './adapter';
 import { startEventBridge } from '../../../src/event-bridge';
 import { Statusline } from '../../../src/modules/statusline';
@@ -176,7 +176,11 @@ export function boot(host: HostInfo): BootResult {
 
   // `apiKeys` is built above (before buildSharedRuntime) so Cycling's
   // satellite filter sees the same bag.
-  const hasAnyKey = Object.values(apiKeys).some(Boolean);
+  // "Usable LLM" = any env key OR the zero-key subscription-CLI rung
+  // (pickAutoProvider's last rung: claude/codex binary present). Without
+  // the second clause a keyless subscription setup would show the
+  // missing-key hint and skip AgentRewrite while dispatch actually works.
+  const hasAnyKey = Object.values(apiKeys).some(Boolean) || pickAutoProvider(apiKeys) !== null;
   // Resolver constructed even with no keys so MissingKeyFallbackSource
   // surfaces a visible in-buffer hint on `_` instead of silent no-op.
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {

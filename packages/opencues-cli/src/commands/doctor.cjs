@@ -995,7 +995,10 @@ module.exports = async function doctor(argv, ctx) {
       const raw = (scalars[bucketScalarName] || '').toLowerCase();
       if (raw && raw !== 'inherit') return { provider: raw, source: bucketScalarName };
       if (globalScalar) return { provider: globalScalar.toLowerCase(), source: 'llm-provider' };
-      if (autoPicked) return { provider: autoPicked, source: 'auto (env key)' };
+      if (autoPicked) {
+        const viaSubscription = providers.getProvider(autoPicked)?.transport === 'cli';
+        return { provider: autoPicked, source: viaSubscription ? 'auto (subscription CLI — no keys set)' : 'auto (env key)' };
+      }
       return { provider: null, source: 'none' };
     };
     // Mirror normalizeModelScalar in opencues-runtime/src/modules/resolver.ts:
@@ -1054,17 +1057,11 @@ module.exports = async function doctor(argv, ctx) {
       const s = section('Subscription providers', 'CLI-transport providers that use external auth (no env key)');
       const { spawnSync } = require('child_process');
       for (const adapter of cliProviders) {
-        // Map CLI-transport provider id → binary name needed for auth
-        // setup. claude-cli → `claude`. openai-subscription needs
-        // `codex` for the one-time `codex login` (the runtime then
-        // reads ~/.codex/auth.json directly; codex isn't on the hot
-        // path). Default to the id for any future CLI provider whose
-        // binary matches its id.
-        const BIN_BY_ID = {
-          'claude-code-cli': 'claude',
-          'openai-subscription': 'codex',
-        };
-        const bin = BIN_BY_ID[adapter.id] || adapter.id;
+        // Binary per CLI-transport provider — from core's registry map
+        // (the same one pickAutoProvider's zero-key subscription rung
+        // probes), defaulting to the id for any future CLI provider
+        // whose binary matches its id.
+        const bin = providers.SUBSCRIPTION_CLI_BINARIES?.[adapter.id] || adapter.id;
         const which = spawnSync('which', [bin], { encoding: 'utf8' });
         const installed = which.status === 0;
         s.ok(`${adapter.displayName} (${bin} on PATH)`, installed);
@@ -1094,12 +1091,26 @@ module.exports = async function doctor(argv, ctx) {
         return !!process.env[p.envKeyName];
       });
   if (!hasAnyLlmKey) {
-    const firstChoice = providers.getProvider(providers.PROVIDER_AUTO_ORDER[0]);
-    findings.push({
-      sev: 'warn',
-      msg: 'no LLM provider key set — every LLM-driven cue/blank will be inert',
-      fix: `opencues set-key ${firstChoice?.id ?? 'cerebras'} (stores in ~/.cues/.env, read at host boot) — or export ${firstChoice?.envKeyName ?? 'CEREBRAS_API_KEY'}=...`,
-    });
+    // Zero keys — but the runtime's auto-route has a subscription-CLI
+    // rung (claude/codex binary present → claude-code-cli /
+    // openai-subscription). When that rung would fire, the setup WORKS:
+    // downgrade to info naming the route + the faster path.
+    const subscriptionPick = providers.pickAutoProvider?.({}) ?? null;
+    const subscriptionAdapter = subscriptionPick ? providers.getProvider(subscriptionPick) : null;
+    if (subscriptionAdapter?.transport === 'cli') {
+      findings.push({
+        sev: 'info',
+        msg: `no API keys — LLM calls route through your ${providers.SUBSCRIPTION_CLI_BINARIES?.[subscriptionPick] ?? subscriptionPick} subscription (${subscriptionPick}). Works out of the box; slower than the API tier`,
+        fix: 'opencues set-key (a stored API key automatically takes over the auto-route)',
+      });
+    } else {
+      const firstChoice = providers.getProvider(providers.PROVIDER_AUTO_ORDER[0]);
+      findings.push({
+        sev: 'warn',
+        msg: 'no LLM provider key set — every LLM-driven cue/blank will be inert',
+        fix: `opencues set-key ${firstChoice?.id ?? 'cerebras'} (stores in ~/.cues/.env, read at host boot) — or export ${firstChoice?.envKeyName ?? 'CEREBRAS_API_KEY'}=...`,
+      });
+    }
   } else {
     // First-in-auto-order key missing AND a non-default provider is set
     // → user has likely overridden llm-provider:, verify their setup.

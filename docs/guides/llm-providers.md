@@ -266,6 +266,13 @@ the host (or `opencues run <host>`) after storing a new key. When
 anything is picked up from the shell env or the file, the host logs
 one `LLM keys detected: ...` line (var names + sources, never values).
 
+With **no keys anywhere**, the auto-route has one more rung: if the
+`claude` (or `codex`) binary is on PATH, dispatch falls back to the
+subscription-CLI provider (`claude-code-cli` / `openai-subscription`)
+— a keyless Claude Code install works out of the box, and adding a
+key later upgrades the route automatically. See
+`docs/architecture/llm-routing.md` § Precedence ladder.
+
 ## Host integration notes
 
 ### Claude Code (`integrations/claude-code/`)

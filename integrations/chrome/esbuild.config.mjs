@@ -90,7 +90,12 @@ const common = {
   // chrome and the silent-skip path fires. Without this, the
   // chrome build hard-fails at "node:path wasn't found on the
   // file system but is built into node."
-  external: ['node:fs', 'node:path'],
+  //
+  // node:child_process: core's env-keys/llm-provider lazily require it
+  // (~/.cues/.env read + the zero-key subscription-CLI probe). Both are
+  // typeof-process-guarded so the require is unreachable in a content
+  // script — external for the same emit-as-is reason.
+  external: ['node:fs', 'node:path', 'node:child_process'],
 };
 
 // Content script — IIFE (injected into page context)

@@ -665,13 +665,13 @@ done
 |---|---|---|---|
 | `SPEC.md` (open-standard) | `cues-spec` | 0.2 (draft) | exported as `SPEC_VERSION` from `@opencues/core` |
 | `package.json` (monorepo root) | `opencues` | 0.1.0 | private |
-| `packages/opencues-core/` | `@opencues/core` | 0.14.0 | private |
-| `packages/opencues-runtime/` | `@opencues/runtime` | 0.11.0 | private |
-| `packages/opencues-cli/` | `opencues` (real CLI) | 0.2.35 | private |
+| `packages/opencues-core/` | `@opencues/core` | 0.15.0 | private |
+| `packages/opencues-runtime/` | `@opencues/runtime` | 0.12.0 | private |
+| `packages/opencues-cli/` | `opencues` (real CLI) | 0.2.36 | private |
 | `packages/opencues-park/` | `opencues` (placeholder) | 0.0.1 | **PUBLISHED on npm** |
 | `integrations/claude-code/` | `@opencues/claude-code` | 0.2.4 | private |
 | `integrations/opencode/` | `@opencues/opencode` | 0.2.2 | private |
-| `integrations/chrome/` | `@opencues/chrome` | 0.2.45 | private |
+| `integrations/chrome/` | `@opencues/chrome` | 0.2.46 | private |
 | `integrations/gemini-cli/` | `@opencues/gemini-cli` | 0.2.2 | private |
 | `integrations/shell/` | `@opencues/shell` | 0.2.2 | private |
 
