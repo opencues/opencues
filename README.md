@@ -99,7 +99,7 @@ Each pins its own upstream fork and never touches your native host install.
 | Feature | What it does |
 |---|---|
 | **Blanks** | Type `_` for free-form generation, translation, formatting, full rewrites, or keyword-bound system actions (`volume _`, `weather _`). |
-| **Sentence rewrites** | Cycle a whole sentence to a different register (formal, concise, ...) with one keystroke, no `_` needed. |
+| **Sentence rewrites** | Cycle a whole sentence to a different register (formal, concise, ...) seamlessly, no `_` needed. |
 | **Word cues** | Navigate to a single word and cycle a smaller LLM-suggested alternative. |
 | **Personal + ambient context** (opt-in) | `my email _` substitutes your real address; fluid lookups can read the page you're on. |
 | **Hot-reload** | Every `.md` config picks up edits in ~2s, no restart. |
@@ -124,6 +124,11 @@ Two directions of intent — see [`concept.md`](concept.md):
 Both are open file formats — `CUE.md` / `BLANK.md` — so another runtime could implement them independently; the standard lives at [`spec/`](spec/README.md), this repo ships the reference implementation.
 
 Authoring your own: `opencues new cue <name>` / `opencues new blank <name>` scaffolds a starting file. Guide: [`docs/guides/adding-a-cue-blank.md`](docs/guides/adding-a-cue-blank.md).
+
+<!-- VIDEO: how-it-works walkthrough (~30-45s, e.g. a cue cycle + a blank
+     fill side by side), replace this comment with the real embed once
+     available. -->
+<a href="#"><img width="100%" alt="Video placeholder — how it works" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Video_placeholder_1200x300.svg"></a>
 
 <br><br><br><br>
 
