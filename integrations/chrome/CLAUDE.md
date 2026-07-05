@@ -62,7 +62,7 @@ and drives features + security controls to observable output — the
 that unit tests and the static lints can't catch.
 
 ```bash
-npm run build && npm run test:e2e:chrome    # ~35s, run-on-demand (NOT a CI gate)
+npm run build && npm run test:e2e:chrome    # ~11s (3 workers), run-on-demand (NOT a CI gate)
 ```
 
 Covers: boot/attach, fluid-blank end-to-end, and the trust-gate /

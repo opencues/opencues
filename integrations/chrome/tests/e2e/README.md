@@ -29,10 +29,18 @@ Loads the WSL-side `dist/` directly via `--headless=new` (no display, no
 `/mnt/c` sync, no native-messaging host — config is seeded into
 `chrome.storage` by the fixture).
 
+**~11s** for all 10 tests. The extension is loaded **once per worker**
+(worker-scoped context) and reused; `fullyParallel` + 3 workers spreads
+individual tests across workers so the ~3–4s "prove nothing happened"
+absence-waits overlap instead of summing. Per-test isolation on the
+shared context is restored by the auto `_isolate` fixture (unroute,
+close pages, clear `chrome.storage` after each test).
+
 ## How it works
 
-- `extension.fixture.ts` — launches a persistent context with the
-  extension loaded, waits for the service worker, and exposes `seed()`,
+- `extension.fixture.ts` — loads the extension into a **worker-scoped**
+  persistent context (once per worker, reused across its tests), waits
+  for the service worker, and exposes `seed()`,
   which writes the `chrome.storage.local` keys the native host would push
   (`opencues_bundle`, `opencues_host_keys`) via the SW context **before**
   the page's content script boots.

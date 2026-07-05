@@ -12,6 +12,13 @@
 // run under Playwright. So `seed()` writes the same chrome.storage.local
 // keys the host would push, via the service-worker context, BEFORE the
 // page's content script boots.
+//
+// Performance: loading the unpacked extension + waiting for the service
+// worker is the dominant per-test cost (~2-4s). `context` and
+// `serviceWorker` are therefore WORKER-scoped — launched once per worker
+// and reused across every test in it. Test isolation is restored by the
+// auto `_isolate` fixture, which after each test unroutes handlers,
+// closes pages, and clears chrome.storage so the next test starts clean.
 
 import {
   test as base,
@@ -38,12 +45,21 @@ export interface SeedData {
 
 const RUNTIME_PREFIX = 'opencues_runtime:/chrome-storage/.cues/';
 
-export const test = base.extend<{
-  context: BrowserContext;
-  serviceWorker: Worker;
-  seed: (data: SeedData) => Promise<void>;
-}>({
-  context: async ({}, use) => {
+export const test = base.extend<
+  {
+    context: BrowserContext;
+    seed: (data: SeedData) => Promise<void>;
+    _isolate: void;
+  },
+  {
+    // `context` is a reserved built-in (test-scoped) fixture name, so the
+    // shared persistent context lives under its own name and `context`
+    // below is a thin test-scoped alias — tests keep using `context`.
+    extContext: BrowserContext;
+    serviceWorker: Worker;
+  }
+>({
+  extContext: [async ({}, use) => {
     const context = await chromium.launchPersistentContext('', {
       channel: 'chromium',
       headless: true,
@@ -57,13 +73,30 @@ export const test = base.extend<{
     });
     await use(context);
     await context.close();
+  }, { scope: 'worker' }],
+
+  serviceWorker: [async ({ extContext }, use) => {
+    let [sw] = extContext.serviceWorkers();
+    if (!sw) sw = await extContext.waitForEvent('serviceworker', { timeout: 15_000 });
+    await use(sw);
+  }, { scope: 'worker' }],
+
+  // Test-scoped alias so tests can destructure `context` unchanged while
+  // the underlying persistent context is shared per worker.
+  context: async ({ extContext }, use) => {
+    await use(extContext);
   },
 
-  serviceWorker: async ({ context }, use) => {
-    let [sw] = context.serviceWorkers();
-    if (!sw) sw = await context.waitForEvent('serviceworker', { timeout: 15_000 });
-    await use(sw);
-  },
+  // Per-test isolation on the shared worker context. Runs automatically;
+  // after each test it removes that test's route handlers, closes its
+  // pages (so their content scripts stop hitting the mock), and clears
+  // chrome.storage so the next test's seed() starts from empty.
+  _isolate: [async ({ extContext, serviceWorker }, use) => {
+    await use();
+    await extContext.unrouteAll({ behavior: 'ignoreErrors' }).catch(() => {});
+    await Promise.all(extContext.pages().map((p) => p.close().catch(() => {})));
+    await serviceWorker.evaluate(() => chrome.storage.local.clear()).catch(() => {});
+  }, { auto: true }],
 
   seed: async ({ serviceWorker }, use) => {
     await use(async (data: SeedData) => {

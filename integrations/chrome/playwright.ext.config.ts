@@ -21,10 +21,13 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: './tests/e2e',
   testMatch: /.*\.e2e\.test\.ts/,
-  // Extension tests share one persistent browser context per worker;
-  // keep them serial within a file to avoid storage cross-talk.
-  fullyParallel: false,
-  workers: 1,
+  // The extension is loaded once per worker (worker-scoped context in
+  // extension.fixture.ts) and reused; the auto `_isolate` fixture resets
+  // storage/routes/pages between tests. That makes tests independent, so
+  // fullyParallel spreads individual tests (not just files) across
+  // workers — the ~3-4s absence-waits then overlap instead of summing.
+  fullyParallel: true,
+  workers: process.env.CI ? 2 : 3,
   forbidOnly: !!process.env.CI,
   retries: 0,
   reporter: 'list',
