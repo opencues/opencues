@@ -112,34 +112,6 @@ Full feature catalogue (42 concepts): [`docs/features/README.md`](docs/features/
 
 <br><br><br><br>
 
-# How it works
-
-Two directions of intent — see [`concept.md`](concept.md):
-
-| Direction | Surface | Trigger |
-|---|---|---|
-| LLM → you | **Cues** | plain text |
-| you → system | **Blanks** | text containing `_` |
-
-The two surfaces have fundamentally different contracts:
-
-| Property | Cues | Blanks |
-|---|---|---|
-| User intent | implicit (LLM proposes) | explicit (you summoned it) |
-| Failure mode | invisible (skip the cycling) | visible (`_` stays unfilled) |
-| Determinism | best-effort (LLM judgement) | required (must succeed or fail clearly) |
-
-Both are open file formats — `CUE.md` / `BLANK.md` — so another runtime could implement them independently; the standard lives at [`spec/`](spec/README.md), this repo ships the reference implementation.
-
-Authoring your own: `opencues new cue <name>` / `opencues new blank <name>` scaffolds a starting file. Guide: [`docs/guides/adding-a-cue-blank.md`](docs/guides/adding-a-cue-blank.md).
-
-<!-- VIDEO: how-it-works walkthrough (~30-45s, e.g. a cue cycle + a blank
-     fill side by side), replace this comment with the real embed once
-     available. -->
-<a href="#"><img width="100%" alt="Video placeholder — how it works" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Video_placeholder_1200x300.svg"></a>
-
-<br><br><br><br>
-
 # Configuration & LLM providers
 
 <div align="center">
