@@ -42,8 +42,6 @@ All three share the same navigable system — you move between words and interac
 
 **Blank** — An underscore (`_`) placed by the user as a cue to the system: "fill this in." The direction is reversed compared to regular cues — the user is cueing the system, not the other way around.
 
-Blanks are automatically computed and **re-evaluated on every edit**. When the surrounding text changes, the blank's value updates. This means a blank is never permanently filled — it can always return to `_` and be re-evaluated in its new context.
-
 Blanks come in two flavours: **keyword-bound** (a registered keyword next to `_` claims the slot — `volume _`, `nvda _`, `define X _`) and **fluid** (no keyword match — `FluidBlankSource` segments the lookup phrase and answers it: `capital of france _` → `Paris`, `4 * 12 = _` → `48`, `unicode for em dash _` → `U+2014`).
 
 **Think of blanks as user-placed autocomplete.** Unlike traditional autocomplete that guesses what comes next, blanks let you decide *where* the completion appears. This works anywhere — LLM prompts, documents, mobile text fields — and enables new interaction paradigms where the user and system collaborate fluidly before submission.
