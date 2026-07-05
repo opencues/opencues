@@ -16,9 +16,11 @@
 
 <br><br>
 
+#
+
 <p align="left"><a href="#"><img width="85" alt="Associations:" src="assets/associations.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://www.reddit.com/user/inventor_black/" target="_blank" rel="noopener noreferrer"><img width="177" alt="Mod of r/ClaudeAI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-02.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://www.reddit.com/user/ClaudeAI-mod-bot/" target="_blank" rel="noopener noreferrer"><img width="168" alt="Bot at r/ClaudeAI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-02.1.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://luma.com/OpenSourceIRL" target="_blank" rel="noopener noreferrer"><img width="161" alt="OpenSourceIRL" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-03.svg"></a></p>
 
-#
+<br><br><br>
 
 <!-- TODO: add once live — npm version badge (after the BETA-INSTALL.md → real
 publish cutover) and Discord badge (once DISCORD_ID/INVITE are real):
@@ -172,7 +174,7 @@ Join the community — questions, feedback, and the people building alongside yo
 
 #
 
-<p align="left"><img width="85" alt="Community:" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Community-12.svg"><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://github.com/opencues/opencues/graphs/contributors"><img width="137" alt="Contributors" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Community-13.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://x.com/openCues_" target="_blank" rel="noopener noreferrer"><img width="112" alt="X / Twitter" src="assets/twitter.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://www.reddit.com/r/OpenCues/" target="_blank" rel="noopener noreferrer"><img width="94" alt="Reddit" src="assets/reddit.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://www.instagram.com/opencues/" target="_blank" rel="noopener noreferrer"><img width="117" alt="Instagram" src="assets/instagram.svg"></a></p>
+<p align="left"><img width="85" alt="Community:" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Community-12.svg"><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://github.com/opencues/opencues/graphs/contributors"><img width="137" alt="Contributors" src="assets/contributors.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://x.com/openCues_" target="_blank" rel="noopener noreferrer"><img width="112" alt="X / Twitter" src="assets/twitter.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://www.reddit.com/r/OpenCues/" target="_blank" rel="noopener noreferrer"><img width="94" alt="Reddit" src="assets/reddit.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://www.instagram.com/opencues/" target="_blank" rel="noopener noreferrer"><img width="117" alt="Instagram" src="assets/instagram.svg"></a></p>
 
 <!-- TODO[community]: add Discord + GitHub Discussions once live (tracked in .internal/pre-launch-readme.md) -->
 
@@ -183,3 +185,9 @@ Join the community — questions, feedback, and the people building alongside yo
 Proprietary. All rights reserved. See [LICENSE](LICENSE).
 
 <!-- TODO[license-flip]: switch to Apache-2.0 at private-beta-end — update this line and LICENSE itself. -->
+
+<br><br><br><br>
+
+#
+
+<p align="left"><img width="51" alt="Design" src="assets/design.svg"><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://jbrandford.com" target="_blank" rel="noopener noreferrer"><img width="129" alt="Author" src="assets/author.svg"></a></p>
