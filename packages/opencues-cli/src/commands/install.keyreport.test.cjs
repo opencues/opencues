@@ -84,7 +84,9 @@ describe('printKeyDetectionReport', () => {
 
     printKeyDetectionReport({ REPO_ROOT });
     const out = lines.join('\n');
-    assert.match(out, /LLM provider: openai — OPENAI_API_KEY · shell env/);
+    // Shell-sourced keys carry NO source note — shell env is the
+    // assumed default; only ~/.cues/.env is annotated.
+    assert.match(out, /LLM provider: openai — OPENAI_API_KEY\s*$/m);
   });
 
   it('explicit scalar with no key for it → one warn pointing at check-keys', () => {

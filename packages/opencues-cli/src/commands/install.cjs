@@ -581,8 +581,11 @@ function printKeyDetectionReport(ctx) {
     if (!provider) return;
     const row = detected.find((d) => d.providerId === provider);
     if (row) {
-      const src = row.source === 'env-file' ? '~/.cues/.env' : 'shell env';
-      console.log(`${green(G.ringOn)} LLM provider: ${bold(provider)} ${dim(`— ${row.envKeyName} · ${src}`)}`);
+      // Source annotated ONLY for the file case (doctor's convention):
+      // a shell export is the assumed default, but `· ~/.cues/.env` is
+      // the set-key user's confirmation that the stored key took effect.
+      const src = row.source === 'env-file' ? ' · ~/.cues/.env' : '';
+      console.log(`${green(G.ringOn)} LLM provider: ${bold(provider)} ${dim(`— ${row.envKeyName}${src}`)}`);
     } else if (providers.getProvider(provider)?.transport === 'cli') {
       // Subscription CLI set explicitly — no env key involved.
       console.log(`${green(G.ringOn)} LLM provider: ${bold(provider)} ${dim('— subscription CLI, no API key needed')}`);
