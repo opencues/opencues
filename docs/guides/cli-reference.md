@@ -30,6 +30,21 @@ status + command list `--help` prints, so scripting is unaffected.
 
 ---
 
+## The 5 you'll actually use
+
+| Command | What it does |
+|---|---|
+| `opencues install <host>` | One-time setup for an editor/host |
+| `opencues run <host>` | Launch it |
+| `opencues set-key <provider> <key>` | Add an LLM API key |
+| `opencues doctor` | Something's wrong — diagnostics |
+| `opencues update` | Pull latest + rebuild everything |
+
+Everything below is the full reference. For every command sorted by
+frequency instead, see the [cheat sheet](cli-cheatsheet.md).
+
+---
+
 ## Setup
 
 ### `install <host>` — install a host integration
