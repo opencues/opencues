@@ -166,15 +166,16 @@ Full threat model: [`docs/architecture/security-audit.md`](docs/architecture/sec
 
 <br>
 
-New host integration → [`docs/guides/adding-an-integration.md`](docs/guides/adding-an-integration.md). New cue/blank → [`docs/guides/adding-a-cue-blank.md`](docs/guides/adding-a-cue-blank.md). Working on the reference runtime itself → [`CONTRIBUTING.md`](CONTRIBUTING.md). New to the terms → [`docs/glossary.md`](docs/glossary.md).
+| What | Where |
+|---|---|
+| New host integration | [`docs/guides/adding-an-integration.md`](docs/guides/adding-an-integration.md) |
+| New cue/blank | [`docs/guides/adding-a-cue-blank.md`](docs/guides/adding-a-cue-blank.md) |
+| Working on the reference runtime | [`CONTRIBUTING.md`](CONTRIBUTING.md) |
+| New to the terms | [`docs/glossary.md`](docs/glossary.md) |
 
-<br><br><br><br>
-
-# Community
+Join the community — questions, feedback, and the people building alongside you. We're also part of [OpenSourceIRL](https://luma.com/OpenSourceIRL), a community for people building in the open.
 
 <p align="left"><img width="85" alt="Community:" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Community-12.svg"><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://github.com/opencues/opencues/graphs/contributors"><img width="137" alt="Contributors" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Community-13.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://x.com/openCues_" target="_blank" rel="noopener noreferrer"><img width="112" alt="X / Twitter" src="assets/twitter.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://www.reddit.com/r/OpenCues/" target="_blank" rel="noopener noreferrer"><img width="94" alt="Reddit" src="assets/reddit.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://www.instagram.com/opencues/" target="_blank" rel="noopener noreferrer"><img width="117" alt="Instagram" src="assets/instagram.svg"></a></p>
-
-[GitHub Issues](https://github.com/opencues/opencues/issues) · `hello@opencues.com`
 
 <!-- TODO[community]: add Discord + GitHub Discussions once live (tracked in .internal/pre-launch-readme.md) -->
 
