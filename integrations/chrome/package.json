@@ -27,7 +27,8 @@
     "watch": "node esbuild.config.mjs --watch",
     "dev-install": "node bin/install.cjs install",
     "dev-uninstall": "node bin/install.cjs uninstall",
-    "prepublishOnly": "node ../../scripts/prepublish-guard.cjs"
+    "prepublishOnly": "node ../../scripts/prepublish-guard.cjs",
+    "test:e2e:chrome": "playwright test -c playwright.ext.config.ts"
   },
   "dependencies": {
     "@opencues/core": "workspace:*",
