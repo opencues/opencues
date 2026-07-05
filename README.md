@@ -70,7 +70,7 @@ Full walkthrough, prerequisites, and per-host detail: [`docs/install.md`](docs/i
 
 #
 
-<a href="docs/guides/cli-reference.md"><img width="153" alt="OpenCues CLI" src="assets/opencues-cli.svg"></a>
+<a href="docs/guides/cli-reference.md#the-5-youll-actually-use"><img width="153" alt="OpenCues CLI" src="assets/opencues-cli.svg"></a>
 
 <br><br><br><br>
 
