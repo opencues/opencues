@@ -48,7 +48,8 @@ opencues/
 │           ├── cc/v2.1/         # was: claude-code/v2.1/
 │           ├── oc/v1.4/, oc/v1.14/  # was: opencode/v1.4/ — multi-band since the v1.14 cross-minor bump
 │           ├── gemini/v0.41/    # gemini-cli adapter band
-│           └── shell/v1/        # standalone terminal integration — no upstream fork
+│           ├── shell/v1/        # standalone terminal integration — no upstream fork
+│           └── apple-notes/v1/  # macOS Notes.app daemon band — no upstream fork, no-cycling profile
 │
 ├── integrations/                # Host glue — each is its own release unit
 │   ├── cc/                      # was: claude-code/
@@ -62,7 +63,9 @@ opencues/
 │   │   └── ...
 │   ├── chrome/                  # was: chrome-extension/
 │   │   └── ...
-│   └── gemini-cli/              # gemini-cli integration
+│   ├── gemini-cli/              # gemini-cli integration
+│   │   └── ...
+│   └── apple-notes/             # macOS Notes.app JXA daemon (self-owned)
 │       └── ...
 │
 ├── configs/                     # Shipped default configs (was: at repo root)

@@ -36,6 +36,25 @@ importers:
         specifier: ^4.1.0
         version: 4.1.8(@types/node@22.19.20)(jsdom@29.1.1)(vite@6.4.3(@types/node@22.19.20))
 
+  integrations/apple-notes:
+    dependencies:
+      '@opencues/core':
+        specifier: workspace:*
+        version: link:../../packages/opencues-core
+      '@opencues/runtime':
+        specifier: workspace:*
+        version: link:../../packages/opencues-runtime
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.20
+      typescript:
+        specifier: ^5.5.0
+        version: 5.8.2
+      vitest:
+        specifier: ^4.0.0
+        version: 4.1.8(@types/node@22.19.20)(jsdom@29.1.1)(vite@6.4.3(@types/node@22.19.20))
+
   integrations/chrome:
     dependencies:
       '@opencues/core':

@@ -102,7 +102,7 @@ not-on-host: chrome, opencode
 ---
 ```
 
-Valid host names: **`chrome`**, **`claude-code`**, **`gemini-cli`**, **`opencode`**, **`shell`** (alias `terminal` kept for back-compat in `on-host:`/`not-on-host:` directives).
+Valid host names: **`apple-notes`**, **`chrome`**, **`claude-code`**, **`gemini-cli`**, **`opencode`**, **`shell`** (alias `terminal` kept for back-compat in `on-host:`/`not-on-host:` directives; `notes`/`applenotes` alias `apple-notes`).
 
 Unknown names are silently dropped at runtime; `opencues validate` prints
 warnings about them so typos are caught.
@@ -117,24 +117,24 @@ warnings about them so typos are caught.
 import { inferHostCompat, formatHostList, HOSTS, NATIVE_HOSTS } from '@opencues/core';
 
 inferHostCompat({});
-// → { hosts: ['chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell'], all: true, source: 'auto' }
+// → { hosts: ['apple-notes', 'chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell'], all: true, source: 'auto' }
 
 inferHostCompat({ 'on-host': ['chrome'] });
 // → { hosts: ['chrome'], all: false, source: 'on-host' }
 
 inferHostCompat({ 'not-on-host': ['chrome'] });
-// → { hosts: ['claude-code', 'gemini-cli', 'opencode', 'shell'], all: false, source: 'not-on-host' }
+// → { hosts: ['apple-notes', 'claude-code', 'gemini-cli', 'opencode', 'shell'], all: false, source: 'not-on-host' }
 
-formatHostList(['claude-code', 'gemini-cli', 'opencode', 'shell']);
-// → 'claude-code, gemini-cli, opencode, shell'
-formatHostList(['chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell']);
+formatHostList(['apple-notes', 'claude-code', 'gemini-cli', 'opencode', 'shell']);
+// → 'apple-notes, claude-code, gemini-cli, opencode, shell'
+formatHostList(['apple-notes', 'chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell']);
 // → 'all'
 ```
 
 | Constant | Value |
 |---|---|
-| `HOSTS` | `['chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell']` |
-| `NATIVE_HOSTS` | `['claude-code', 'gemini-cli', 'opencode', 'shell']` — hosts that have subprocess + filesystem capability unconditionally (no auxiliary helper needed) |
+| `HOSTS` | `['apple-notes', 'chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell']` |
+| `NATIVE_HOSTS` | `['apple-notes', 'claude-code', 'gemini-cli', 'opencode', 'shell']` — hosts that have subprocess + filesystem capability unconditionally (no auxiliary helper needed) |
 
 | Function | Returns |
 |---|---|

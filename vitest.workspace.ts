@@ -21,6 +21,7 @@ import { defineWorkspace } from 'vitest/config';
 export default defineWorkspace([
   'packages/opencues-core',
   'packages/opencues-runtime',
+  'integrations/apple-notes',
   'integrations/chrome',
   'integrations/claude-code/tweakcc',
 ]);

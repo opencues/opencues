@@ -363,6 +363,8 @@ module.exports = function help(argv, ctx) {
       ['opencode',    'OpenCues for OpenCode (patches a TS fork)'],
       ['chrome',      'OpenCues Chrome MV3 extension'],
       ['gemini-cli',  "OpenCues for Gemini CLI 0.41.x (patches the fork's React/Ink TSX)"],
+      ['shell',       'OpenCues shell wrapper (tmux slide-pane input box)'],
+      ['apple-notes', 'OpenCues for Apple Notes (macOS JXA polling daemon)'],
     ]},
     { title: 'Configs', description: 'where OpenCues looks for cues/blanks (highest priority first)', rows: [
       ['Project-level:', bold('<cwd>/.cues/')],

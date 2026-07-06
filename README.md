@@ -60,7 +60,7 @@ OpenCues is platform, model, and provider agnostic, engineered from the ground u
 ```bash
 npm install -g opencues              # see BETA-INSTALL.md until this is live
 opencues set-key cerebras csk-...    # cerebras.ai — free tier, lowest latency
-opencues install claude-code         # or: opencode | gemini-cli | chrome | shell
+opencues install claude-code         # or: opencode | gemini-cli | chrome | shell | apple-notes
 claude-cues                          # launch — native `claude` is untouched
 ```
 
@@ -85,6 +85,7 @@ Full walkthrough, prerequisites, and per-host detail: [`docs/install.md`](docs/i
 | Gemini CLI | Beta | `opencues install gemini-cli` |
 | Chrome | Beta | `opencues install chrome` |
 | Shell | Beta | `opencues install shell` |
+| Apple Notes | Beta | `opencues install apple-notes` (macOS only) |
 
 Each pins its own upstream fork and never touches your native host install.
 

@@ -29,8 +29,9 @@ const HOST_ALIASES = {
   chrome: 'chrome',
   'gemini-cli': 'gemini-cli', geminicli: 'gemini-cli', gemini: 'gemini-cli',
   terminal: 'shell', term: 'shell', 'oc-edit': 'shell',
+  'apple-notes': 'apple-notes', applenotes: 'apple-notes', notes: 'apple-notes',
 };
-const ALL_HOSTS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'shell'];
+const ALL_HOSTS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'shell', 'apple-notes'];
 
 // Internal helpers exposed for tests. The function itself is the
 // default export; lock primitives are reached via `_internal`.
@@ -532,6 +533,7 @@ function resolveInstallRoot(host, ctx) {
     case 'opencode':    return path.join(HOME, 'opencode-cues', '.opencues');
     case 'gemini-cli':  return path.join(HOME, 'gemini-cli-cues', '.opencues');
     case 'shell':       return path.join(ctx.REPO_ROOT, 'integrations/shell/node_modules/@opencues');
+    case 'apple-notes': return path.join(ctx.REPO_ROOT, 'integrations/apple-notes/node_modules/@opencues');
     case 'chrome':      return path.join(ctx.REPO_ROOT, 'integrations/chrome/dist');
     default: return null;
   }
@@ -696,6 +698,11 @@ function detectInstalled(HOME, REPO_ROOT) {
   const termRt = path.join(REPO_ROOT, 'integrations/shell/node_modules/@opencues/runtime');
   if (fs.existsSync(termRt)) {
     out.push({ host: 'shell', folder: 'shell', evidence: `${termRt} exists` });
+  }
+  // Apple Notes: self-owned daemon — same staged-runtime shape as shell.
+  const anRt = path.join(REPO_ROOT, 'integrations/apple-notes/node_modules/@opencues/runtime/dist');
+  if (fs.existsSync(anRt)) {
+    out.push({ host: 'apple-notes', folder: 'apple-notes', evidence: `${anRt} exists` });
   }
   return out;
 }

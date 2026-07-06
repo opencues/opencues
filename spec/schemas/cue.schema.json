@@ -75,12 +75,12 @@
     },
     "on-host": {
       "type": "array",
-      "items": { "type": "string", "enum": ["chrome", "claude-code", "gemini-cli", "opencode", "shell", "terminal"] },
+      "items": { "type": "string", "enum": ["apple-notes", "chrome", "claude-code", "gemini-cli", "opencode", "shell", "terminal"] },
       "description": "Allow-list of host names that may load this source."
     },
     "not-on-host": {
       "type": "array",
-      "items": { "type": "string", "enum": ["chrome", "claude-code", "gemini-cli", "opencode", "shell", "terminal"] },
+      "items": { "type": "string", "enum": ["apple-notes", "chrome", "claude-code", "gemini-cli", "opencode", "shell", "terminal"] },
       "description": "Deny-list, applied after on-host."
     },
     "spec": {
