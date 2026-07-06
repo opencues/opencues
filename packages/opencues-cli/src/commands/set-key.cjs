@@ -10,7 +10,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { tag, bold, dim, green, fileLink, banner, cliVersion, G } = require('../lib/style.cjs');
+const { bold, dim, green, red, yellow, fileLink, banner, cliVersion, G } = require('../lib/style.cjs');
 const prompt = require('../lib/prompt.cjs');
 
 // Fallback provider → env-var snapshot, used only when @opencues/core
@@ -96,11 +96,18 @@ module.exports = async function setKey(argv, ctx) {
     const { runOauthFlow } = require('../lib/openrouter-oauth.cjs');
     try {
       const oauthKey = await runOauthFlow({
-        onStatus: (line) => console.log(`${tag('info')} ${line}`),
+        onStatus: (line) => {
+          // House style: a leading dim ● at the 2-col gutter (never a • / tick);
+          // a multi-line status (the fallback URL) indents its continuation
+          // under the text so the URL doesn't collide with the gutter.
+          const [head, ...rest] = String(line).split('\n');
+          console.log(`  ${dim(G.ringOn)} ${head}`);
+          for (const cont of rest) console.log(`    ${dim(cont.trim())}`);
+        },
       });
       writeKey(PROVIDERS.openrouter || 'OPENROUTER_API_KEY', oauthKey);
     } catch (err) {
-      console.error(`${tag('err')} OpenRouter OAuth failed: ${err.message}`);
+      console.error(`  ${red(G.ringOn)} OpenRouter OAuth failed: ${err.message}`);
       console.error(dim('Fallback: create a key at https://openrouter.ai/keys and run `opencues set-key openrouter <key>`.'));
       process.exit(1);
     }
@@ -115,7 +122,7 @@ module.exports = async function setKey(argv, ctx) {
   // Interactive masked key entry when the provider is known but the key isn't.
   if (provider && PROVIDERS[provider] && !key && prompt.isInteractive()) {
     key = await prompt.secret(`Paste the value for ${bold(PROVIDERS[provider])}`);
-    if (!key) { console.log(`${tag('info')} cancelled — nothing stored.`); return; }
+    if (!key) { console.log(`  ${dim(G.ringOn)} cancelled — nothing stored.`); return; }
   }
 
   if (!provider || !key) {
@@ -158,11 +165,12 @@ function writeKey(envName, key) {
   try { fs.chmodSync(envDir, 0o700); } catch {}
 
   if (preExistingMode !== null && (preExistingMode & 0o077) !== 0) {
-    console.log(`${tag('warn')} previous ${fileLink(ENV_FILE, ENV_FILE)} mode was ${preExistingMode.toString(8).padStart(4, '0')} (group/other readable); tightened to 0600.`);
+    console.log(`  ${yellow(G.ringOn)} previous ${fileLink(ENV_FILE, ENV_FILE)} mode was ${preExistingMode.toString(8).padStart(4, '0')} (group/other readable); tightened to 0600.`);
   }
 
-  const nowSet = keyIsSet(envName) ? green(G.ringOn) : dim(G.ringOn);
-  console.log(`${tag('ok')} stored ${bold(envName)} ${nowSet} in ${fileLink(ENV_FILE, ENV_FILE)}`);
+  // Leading green ● (house style — never a tick); no trailing ring (the leading
+  // one already carries "stored ok", and we just wrote it so it's always set).
+  console.log(`  ${green(G.ringOn)} stored ${bold(envName)} in ${fileLink(ENV_FILE, ENV_FILE)}`);
   console.log('');
   console.log(dim('Native hosts (Claude Code / OpenCode / Gemini CLI / shell) read ~/.cues/.env'));
   console.log(dim('at boot — restart the host (or launch via `opencues run <host>`) to pick it'));

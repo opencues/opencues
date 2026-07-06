@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Rebased onto the buffer-dehydration release (2026-07-07).** The three key-onboarding entries immediately below were authored pre-rebase; their net effect on the merged tree is `@opencues/core` 0.15.0 → **0.16.0**, `@opencues/runtime` 0.11.3 → **0.12.0**, `@opencues/chrome` 0.2.61 → **0.2.62**, `opencues` CLI → **0.2.37**. package.json is authoritative where the per-entry version refs differ.
 
+### Changed — `set-key` output uses the `●`-ring house style (`opencues` CLI 0.2.38 → 0.2.39)
+
+The `--oauth` progress + the shared "stored" success line used `tag()` glyphs (`🗸` tick, `•` bullet, `⚠`) and a redundant trailing ring, against the CLI's own rule (leading coloured `●`, never a tick/dot/cross — see `packages/opencues-cli/CLAUDE.md`). Now every status line is a leading `●` at the 2-col gutter — dim `●` for in-progress steps, green `●` for the stored key, yellow `●` for the perms warning, red `●` for a failure — and the fallback auth URL indents under its text. Applies to the normal `set-key` path too (the "stored" line is shared).
+
 ### Fixed — `set-key openrouter --oauth` hung the CLI after success (`opencues` CLI 0.2.37 → 0.2.38)
 
 The loopback callback served its "you can close this tab" page keep-alive, so `server.close()` only stopped accepting new connections and then waited for the browser's still-open socket to end on its own — that lingering socket kept the Node event loop alive, so the process never exited back to the shell after a successful auth (the key WAS stored; the terminal just never returned). Now the callback response sends `Connection: close` and the flow calls `server.closeAllConnections()` before `close()`, so the socket dies immediately and the CLI returns. Pinned by a keep-alive-agent regression test (`openrouter-oauth.test.cjs`, now 9 tests).
