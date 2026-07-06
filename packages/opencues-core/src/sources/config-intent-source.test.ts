@@ -194,6 +194,20 @@ describe('validateAgainstRegistry', () => {
     assert.match(r.reason ?? '', /unknown setting/);
   });
 
+  it('host-scope guard: a chrome-only setting is rejected on a non-chrome host', () => {
+    // statusbar-position is scoped to chrome. On a CLI host (or no host)
+    // it must be refused even though it's a valid FEATURE, so a
+    // hallucinated cross-host emit can never write it.
+    const onCC = validateAgainstRegistry({ kind: 'setting', setting: 'statusbar-position', value: 'top', confidence: 0.9 }, 'claude-code');
+    assert.strictEqual(onCC.ok, false);
+    assert.match(onCC.reason ?? '', /scoped to/);
+    const noHost = validateAgainstRegistry({ kind: 'setting', setting: 'statusbar-position', value: 'top', confidence: 0.9 });
+    assert.strictEqual(noHost.ok, false);
+    // ...but accepted on chrome.
+    const onChrome = validateAgainstRegistry({ kind: 'setting', setting: 'statusbar-position', value: 'top', confidence: 0.9 }, 'chrome');
+    assert.strictEqual(onChrome.ok, true);
+  });
+
   it('rejects a value not listed under the setting', () => {
     const r = validateAgainstRegistry({ kind: 'setting', setting: 'debug-mode', value: 'maybe', confidence: 0.9 });
     assert.strictEqual(r.ok, false);
