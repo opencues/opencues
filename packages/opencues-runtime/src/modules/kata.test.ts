@@ -93,6 +93,21 @@ describe('matchControlPhrase', () => {
     expect(matchControlPhrase('skip _', true)).toMatchObject({ kind: 'advance', word: 'skip' });
   });
 
+  it('stop kata _ matches at start AND after a newline+content (live-reported: stop dead after typing)', () => {
+    expect(matchControlPhrase('stop kata _', false)).toMatchObject({ kind: 'stop' });
+    // Typed after email content on a fresh line — the `\s*` after the
+    // terminator lets it match even with no space between `\n` and `stop`.
+    expect(matchControlPhrase('Hi Sarah,\nstop kata _', false)).toMatchObject({ kind: 'stop' });
+  });
+
+  it('bare stop _ exits only while a kata is active (live-reported: `stop _` did nothing)', () => {
+    expect(matchControlPhrase('stop _', true)).toMatchObject({ kind: 'stop' });
+    // Inert when no kata runs — `stop _` must not hijack a normal buffer.
+    expect(matchControlPhrase('stop _', false)).toBeNull();
+    // Trailing after content while active, like the advance words.
+    expect(matchControlPhrase('ok done writing stop _', true)).toMatchObject({ kind: 'stop' });
+  });
+
   it('advance words fire trailing after other text (live-reported: appended skip _ was dead)', () => {
     const m = matchControlPhrase('git checkout main skip _', true);
     expect(m).toMatchObject({ kind: 'advance', word: 'skip' });

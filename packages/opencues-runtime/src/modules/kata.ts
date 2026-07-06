@@ -107,8 +107,13 @@ export function parseKataMd(raw: string, fallbackName: string): KataDoc | null {
 
 // Phrase must LEAD the sentence containing the trailing `_` — same trigger
 // model as blank shapes (spec/blank-spec.md § Trigger model).
-const RE_START = /(^|[\n.!?]\s+)(start|restart)\s+kata(?:\s+#?(.+?))?\s*_\s*$/i;
-const RE_STOP = /(^|[\n.!?]\s+)stop\s+kata\s*_\s*$/i;
+const RE_START = /(^|[\n.!?]\s*)(start|restart)\s+kata(?:\s+#?(.+?))?\s*_\s*$/i;
+const RE_STOP = /(^|[\n.!?]\s*)stop\s+kata\s*_\s*$/i;
+// While a kata is ACTIVE a bare `stop _` also exits — the "kata" word is
+// optional once you're in one (the user reported `stop _` not working;
+// they were already mid-kata). Trailing match like the advance words, and
+// the resolver is suppressed while active so a trailing `_` is unambiguous.
+const RE_STOP_ACTIVE = /(^|\s)stop\s*_\s*$/i;
 // Advance words fire on a TRAILING match (start or any whitespace
 // before them) — unlike start/stop they don't need to lead a sentence.
 // The natural moment to skip is with your step attempt still in the
@@ -129,6 +134,8 @@ export function matchControlPhrase(text: string, active: boolean): ControlPhrase
   m = RE_STOP.exec(text);
   if (m) return { kind: 'stop', phraseStart: m.index + m[1].length };
   if (active) {
+    m = RE_STOP_ACTIVE.exec(text);
+    if (m) return { kind: 'stop', phraseStart: m.index + m[1].length };
     m = RE_ADVANCE.exec(text);
     if (m) return { kind: 'advance', word: m[2].toLowerCase(), phraseStart: m.index + m[1].length };
   }
@@ -436,9 +443,17 @@ export class KataCoach {
     }
     if (this._escCount > 0) this._escCount = 0;
 
+    // Enter is always salient. On CC/OC it also shows up as a
+    // non-empty→empty submit (buffer clears) — but on hosts where Enter
+    // inserts a newline instead of submitting (chrome normal-inputs,
+    // shell's multi-line editor) the buffer stays non-empty, so gating
+    // Enter on an empty buffer meant the coach never saw it. Recording
+    // the keypress unconditionally gives every host the "pressed enter"
+    // signal; the submit-detection in onTextChange still adds the richer
+    // "submitted: <text>" entry on hosts that clear.
     const isEnter = k === 'return' || k === 'enter';
     const salient = ['tab', 'escape', 'up', 'down', 'left', 'right'].includes(k)
-      || (isEnter && e.text.trim().length === 0)
+      || isEnter
       || mods.ctrl || mods.alt || mods.meta;
     if (!salient) return;
     const label = [
