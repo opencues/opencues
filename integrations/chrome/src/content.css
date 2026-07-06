@@ -58,3 +58,33 @@
   opacity: 1;
   transform: translateY(0);
 }
+
+/* Kata mode — the coach line is a full sentence, not a short tip, so the
+ * box widens and wraps to multiple lines instead of clipping with an
+ * ellipsis. Structured into a head row (badge + step counter) and a
+ * word-wrapped body. */
+.oc-status-bar--kata {
+  max-width: min(560px, 92vw);
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.4;
+}
+
+.oc-status-bar--kata .oc-kata-head {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.oc-status-bar--kata .oc-kata-badge {
+  background: #fff;
+  color: #000;
+  padding: 0 3px;
+  margin-right: 6px;
+  font-weight: 700;
+}
+
+.oc-status-bar--kata .oc-kata-body {
+  font-weight: 400;
+  opacity: 0.92;
+}

@@ -38,10 +38,37 @@ function hide(): void {
   if (el) el.classList.remove('oc-status-bar--visible');
 }
 
-/** Show the bar with the given text. */
+/** Show the bar with the given text (single-line tip / cycling mode). */
 function show(text: string): void {
   const div = ensureEl();
+  div.classList.remove('oc-status-bar--kata');
   div.textContent = text;
+  div.classList.add('oc-status-bar--visible');
+}
+
+/** Show the bar in kata mode — a bold head row (badge + counter) over a
+ *  word-wrapped coach body. Wider + multi-line via the `--kata` modifier. */
+function showKata(head: string, body: string): void {
+  const div = ensureEl();
+  div.textContent = '';
+  div.classList.add('oc-status-bar--kata');
+
+  const headEl = document.createElement('div');
+  headEl.className = 'oc-kata-head';
+  const badge = document.createElement('span');
+  badge.className = 'oc-kata-badge';
+  badge.textContent = 'C_';
+  headEl.appendChild(badge);
+  headEl.appendChild(document.createTextNode(head));
+  div.appendChild(headEl);
+
+  if (body) {
+    const bodyEl = document.createElement('div');
+    bodyEl.className = 'oc-kata-body';
+    bodyEl.textContent = body;
+    div.appendChild(bodyEl);
+  }
+
   div.classList.add('oc-status-bar--visible');
 }
 
@@ -59,10 +86,10 @@ export function applyStatuslinePayload(payload: StatuslinePayload): void {
   // (`C_ Kata N/M: <coach>`).
   const kata = payload.kata;
   if (kata) {
-    const head = kata.stepCount > 0 ? `Kata ${kata.step}/${kata.stepCount}:` : 'Kata:';
+    const head = kata.stepCount > 0 ? `Kata ${kata.step}/${kata.stepCount}` : 'Kata';
     const body = kata.coach
       ?? (kata.coachSegments ? kata.coachSegments.map(s => s.text).join('') : '');
-    show(`C_ ${head}${body ? ' ' + body : ''}`.trimEnd());
+    showKata(head, body);
     return;
   }
 
