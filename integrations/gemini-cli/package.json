@@ -1,6 +1,6 @@
 {
   "name": "@opencues/gemini-cli",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "description": "OpenCues for Gemini CLI — patches a Gemini CLI fork to add real-time word alternatives, blanks, and cue-controls.",
   "compatibility": {

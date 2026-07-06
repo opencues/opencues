@@ -447,6 +447,24 @@ export function startOpenCues(opts: {
     cursorStatePath: `/tmp/opencues-cursor-state-${process.pid}.json`,
     // Statusline format mirrors Claude Code + OpenCode.
     statusSnapshotHook: (payload: any) => {
+      // Kata block is dominant while active — it overrides the normal
+      // word/tip footer content (kata mode; docs/features/kata.md § Status
+      // line). Gemini's Footer is a single horizontal column, so the coach
+      // renders as one line (`C_ Kata N/M: <coach>`) rather than the
+      // multi-row block the OC/shell footers paint.
+      const tut = payload?.kata as {
+        step: number; stepCount: number; coach: string | null
+        coachSegments: Array<{ text: string; command: boolean }> | null
+        offTrack: boolean
+      } | null | undefined;
+      if (tut) {
+        const head = tut.stepCount > 0 ? `Kata ${tut.step}/${tut.stepCount}:` : 'Kata:';
+        const body = tut.coach
+          ?? (tut.coachSegments ? tut.coachSegments.map(s => s.text).join('') : '');
+        setOpenCuesTip(`C_ ${head}${body ? ' ' + body : ''}`.trimEnd());
+        return;
+      }
+
       const agentTask = payload?.agentTask as string | null | undefined;
       const agentBadge = agentTask ? `[task: ${agentTask}]` : null;
 
