@@ -64,8 +64,16 @@
  * ellipsis. Structured into a head row (badge + step counter) and a
  * word-wrapped body. */
 .oc-status-bar--kata {
-  max-width: min(560px, 92vw);
+  /* Span the full width (both margins pinned) so the coach line has room
+   * and fills the line instead of shrink-wrapping + overflowing off the
+   * right edge. `overflow-wrap: anywhere` breaks any long unbroken token
+   * so nothing is clipped. */
+  left: 16px;
+  right: 16px;
+  max-width: none;
   white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   overflow: visible;
   text-overflow: clip;
   line-height: 1.4;
