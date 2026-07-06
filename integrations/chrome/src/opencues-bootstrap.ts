@@ -51,10 +51,6 @@ declare const __DEFAULT_KATA_FOLDERS__: Record<string, string>;
 
 const ROOT = '/chrome-storage';
 
-// Latched from the statusline payload — true while a kata is running.
-// Gates salient-key forwarding in normal-input mode (installKeyListener).
-let _kataActive = false;
-
 // Per-readFile trace logging is OFF by default — at ~20 lines per
 // boot it was the loudest thing in DevTools. Gated behind the
 // user-facing `debug-mode: on` setting. Flip it via the opencues
@@ -2697,14 +2693,8 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     writeFile,
     readDir,
     log,
-    // CE.6 — render statusline tip into the floating div. Also latch
-    // whether a kata is active — normal-input mode otherwise forwards no
-    // keys to the runtime, so the kata coach's key observation (Enter /
-    // Tab / arrows / Escape) would be blind. See installKeyListener.
-    statusSnapshotHook: (payload) => {
-      _kataActive = !!(payload as { kata?: unknown } | null)?.kata;
-      applyStatuslinePayload(payload as Parameters<typeof applyStatuslinePayload>[0]);
-    },
+    // CE.6 — render statusline tip into the floating div.
+    statusSnapshotHook: (payload) => applyStatuslinePayload(payload as Parameters<typeof applyStatuslinePayload>[0]),
     // CE.6 — TTS via Web Speech, gated on host providing the speak fn.
     speakFn: (text, rate) => speech.speak(text, rate ? Number(rate) : 2),
     // CE.7 — Resolver constructs ALWAYS (even keyless) so the
@@ -3192,17 +3182,18 @@ function installKeyListener(): void {
     // this carve-out every blank silently no-ops in normal-input mode.
     const normalInput = isNormalInput(target);
     const isBareUnderscore = e.key === '_' && !e.ctrlKey && !e.altKey && !e.metaKey;
-    // While a kata is active, also forward the salient keys the coach
-    // observes (Enter / Tab / Escape / arrows) so its key-based step
-    // detection works in normal inputs. These are passively observed —
-    // observeKey returns false, so dispatchKey below never consumes them
-    // and browser-default behaviour (newline, focus move, …) is preserved.
-    const isKataObservedKey = _kataActive && (
-      e.key === 'Enter' || e.key === 'Tab' || e.key === 'Escape'
+    // Always forward the salient keys the kata coach observes (Enter / Tab
+    // / Escape / arrows) — UNCONDITIONALLY, not gated on any "kata active"
+    // flag. A dropped keypress is worse than a forwarded one: these are
+    // passively observed (the coach's observeKey returns false, and does
+    // nothing at all when no kata is running), so dispatchKey below never
+    // consumes them and browser-default behaviour (newline, cursor move,
+    // focus change) is always preserved. The runtime decides what to do
+    // with the key; the host just delivers it.
+    const isSalientKey = e.key === 'Enter' || e.key === 'Tab' || e.key === 'Escape'
       || e.key === 'ArrowUp' || e.key === 'ArrowDown'
-      || e.key === 'ArrowLeft' || e.key === 'ArrowRight'
-    );
-    if (normalInput && !isBareUnderscore && !isKataObservedKey) return;
+      || e.key === 'ArrowLeft' || e.key === 'ArrowRight';
+    if (normalInput && !isBareUnderscore && !isSalientKey) return;
     // Shadow-DOM piercing: on web-component editors with
     // delegatesFocus (Reddit's <shreddit-composer>), document.activeElement
     // reports the shadow HOST — usually an ANCESTOR of `target` —
