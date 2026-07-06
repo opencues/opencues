@@ -22,12 +22,35 @@ interface StatuslinePayload {
 
 let el: HTMLDivElement | null = null;
 
+// Peek-through: the bar stays fully visible AND click-through
+// (pointer-events:none), but hides itself whenever the cursor moves over
+// its box so the user can read / click what it covers, then reappears
+// when the cursor leaves. Done by geometry (a document-level pointermove
+// that hittests the bar's rect) rather than :hover — because a
+// click-through element never receives hover, and a hover-then-disable
+// approach flickers. Only the OpenCues bar reacts; nothing else on the
+// page is touched.
+function installPeek(node: HTMLDivElement): void {
+  const onMove = (e: PointerEvent): void => {
+    if (!node.classList.contains('oc-status-bar--visible')) {
+      if (node.classList.contains('oc-status-bar--peek')) node.classList.remove('oc-status-bar--peek');
+      return;
+    }
+    const r = node.getBoundingClientRect();
+    const over = e.clientX >= r.left && e.clientX <= r.right
+      && e.clientY >= r.top && e.clientY <= r.bottom;
+    node.classList.toggle('oc-status-bar--peek', over);
+  };
+  document.addEventListener('pointermove', onMove, { passive: true });
+}
+
 function ensureEl(): HTMLDivElement {
   if (el) return el;
   el = document.createElement('div');
   el.className = 'oc-status-bar';
   el.setAttribute('aria-live', 'polite');
   document.body.appendChild(el);
+  installPeek(el);
   return el;
 }
 

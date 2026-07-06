@@ -59,16 +59,21 @@
   transform: translateY(0);
 }
 
+/* Peek-through: while the cursor is over the bar's box, hide it (opacity 0)
+ * so the user can read / click what's underneath. Toggled by JS geometry
+ * (installPeek in runtime-statusbar.ts), not :hover — the bar is always
+ * click-through (pointer-events:none). Comes after --visible / --kata in
+ * source so it wins the opacity cascade (same specificity). The base
+ * opacity transition makes it a smooth fade in/out. */
+.oc-status-bar--peek {
+  opacity: 0;
+}
+
 /* Kata mode — the coach line is a full sentence, not a short tip, so the
  * box widens and wraps to multiple lines instead of clipping with an
  * ellipsis. Structured into a head row (badge + step counter) and a
  * word-wrapped body. */
 .oc-status-bar--kata {
-  /* Semi-transparent in kata (tutor) mode so the user can see the page
-   * content underneath — the bar stays click-through (pointer-events:none
-   * from the base rule). Overrides the --visible opacity:1 (this rule
-   * comes later in source order, same specificity). */
-  opacity: 0.8;
   /* Span the full width (both margins pinned) so the coach line has room
    * and fills the line instead of shrink-wrapping + overflowing off the
    * right edge. `overflow-wrap: anywhere` breaks any long unbroken token
