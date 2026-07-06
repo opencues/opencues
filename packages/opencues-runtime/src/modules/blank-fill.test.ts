@@ -1406,6 +1406,197 @@ blankScript: ./demo.sh
   });
 });
 
+describe('BlankFill — invalid/edge input hardening', () => {
+  it('whitespace-only region between keyword and `_` behaves like a bare get (no empty-string arg token)', async () => {
+    const SCRIPT_CTRL = `---
+type: blank
+name: weather
+blankKeywords: weather
+blankScript: ./weather.sh
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/blanks/weather/BLANK.md': SCRIPT_CTRL },
+    });
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess');
+    // Extra spaces between the keyword and `_`, but no actual context word.
+    adapter.pushText('weather    _');
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+    const args = spawnSpy.mock.calls[0][0].args;
+    // Must be exactly ['./weather.sh', 'get', 'weather'] — no stray empty
+    // strings from splitting on the extra whitespace.
+    expect(args.slice(2)).toEqual(['weather']);
+    expect(args).not.toContain('');
+  });
+
+  it('an extremely long script stdout (50k chars) lands intact with no truncation', async () => {
+    const SCRIPT_CTRL = `---
+type: blank
+name: stocks
+blankKeywords: stock
+blankScript: ./stocks.sh
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/blanks/stocks/BLANK.md': SCRIPT_CTRL },
+    });
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    const huge = 'x'.repeat(50000);
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: huge, stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    adapter.pushText('stock _');
+    await new Promise(r => setTimeout(r, 0));
+    // Bare get keeps the keyword as a label, so the buffer is "stock " + huge.
+    expect(adapter.getText()).toBe(`stock ${huge}`);
+    expect(adapter.getText().length).toBe(6 + huge.length);
+  });
+
+  it('empty-string / whitespace-only stdout is a silent no-op (no substitution, no crash)', async () => {
+    const SCRIPT_CTRL = `---
+type: blank
+name: stocks
+blankKeywords: stock
+blankScript: ./stocks.sh
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/blanks/stocks/BLANK.md': SCRIPT_CTRL },
+    });
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: '   \n  ', stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    adapter.pushText('stock _');
+    await new Promise(r => setTimeout(r, 0));
+    // Nothing landed — the `_` is still there untouched (trim()'d stdout
+    // was empty, so applyAsyncFill was never called).
+    expect(adapter.getText()).toBe('stock _');
+  });
+
+  it('a captured arg that literally repeats the keyword text does not double-match or corrupt the command span', async () => {
+    const SCRIPT_CTRL = `---
+type: blank
+name: weather
+blankKeywords: weather
+blankScript: ./weather.sh
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/blanks/weather/BLANK.md': SCRIPT_CTRL },
+    });
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: 'sunny', stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    adapter.pushText('weather weather _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+    const args = spawnSpy.mock.calls[0][0].args;
+    // matchKeyword scans BACKWARD from `_` and claims the NEAREST
+    // preceding keyword occurrence — the second "weather" is the actual
+    // command; the first is inert prior text (same "prior prose doesn't
+    // flood context" rule the countries-blank regression test pins).
+    // So this is a BARE get (no captured arg) using the nearer occurrence.
+    expect(args.slice(2)).toEqual(['weather']);
+    expect(adapter.getText()).toBe('weather sunny');
+  });
+
+  // BUG FOUND (documented, not fixed — see instructions). Expected:
+  // two keyword-bound blanks, each with its own `_` (even on separate
+  // lines), each resolve independently using their OWN script + context.
+  //
+  // Actual: blank-fill.ts:210 computes `const usIdx = words.indexOf('_')`
+  // — the FIRST `_` in the WHOLE buffer — and attaches whatever single
+  // shape verdict `matchBlankShape` returned (which only ever examines
+  // the LINE OF THE LAST `_` — see `lineWithBlank` in
+  // packages/opencues-core/src/blank-shapes.ts:40) to that FIRST `_`'s
+  // slot, even when the verdict's blankName belongs to a DIFFERENT
+  // blank than the one whose keyword actually precedes the first `_`.
+  // When no existing slot matches (index, blankName) the code creates a
+  // brand-new bogus slot at the first `_`'s position carrying the LAST
+  // blank's identity, with keywordStart/keywordEnd defaulted to (0,0)
+  // (its keyword-position search only looks BEFORE `usIdx`, so it never
+  // finds the real keyword, which sits after the first `_`).
+  //
+  // Compounding gate (blank-fill.ts:396): `if (sc?.blankShapes?.length &&
+  // !slot.shapeAction) continue;` skips ANY slot for a shape-declaring
+  // blank that didn't get a shapeAction attached. Since matchBlankShape
+  // only ever tags ONE slot total, BOTH of the real, correctly-detected
+  // keyword slots get skipped by this gate — only the bogus cross-wired
+  // slot survives and dispatches.
+  //
+  // Net effect verified via a direct repro: 'weather paris _\nstock
+  // nvda _' resolves to "NVDA:100\nstock nvda _" — the FIRST `_` (which
+  // belongs to "weather") gets overwritten with the STOCKS script's
+  // output (using a garbage context word leaked from the weather line),
+  // and the SECOND `_` (the real stocks slot) is never touched at all.
+  //
+  // Proposed fix direction: `matchBlankShape` should report which `_`
+  // (word index) the line it examined belongs to, and blank-fill.ts's
+  // shape-handling block should use THAT index instead of unconditionally
+  // taking `words.indexOf('_')` (the first occurrence in the buffer).
+  it.fails('two different keyword-bound blanks, each with their own `_`, should resolve independently (currently only one — the wrong one — fires)', async () => {
+    const WEATHER = `---
+type: blank
+name: weather
+blankKeywords: weather
+blankScript: ./weather.sh
+---
+`;
+    const STOCKS = `---
+type: blank
+name: stocks
+blankKeywords: stock
+blankScript: ./stocks.sh
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: {
+        '/mock/CUES.md': TIPS,
+        '/proj/blanks/weather/BLANK.md': WEATHER,
+        '/proj/blanks/stocks/BLANK.md': STOCKS,
+      },
+    });
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation((spec) => {
+      const stdout = spec.args.includes('weather') ? '15C' : 'NVDA:100';
+      return { result: Promise.resolve({ exitCode: 0, stdout, stderr: '', timedOut: false }), kill: () => {} };
+    });
+    adapter.pushText('weather paris _\nstock nvda _');
+    await new Promise(r => setTimeout(r, 10));
+    // What SHOULD happen: each blank's own `_` resolves with its own
+    // script's output. What ACTUALLY happens: "NVDA:100\nstock nvda _"
+    // (documented above) — this assertion fails against current
+    // behavior, which is exactly what pins the bug via it.fails().
+    expect(adapter.getText()).toBe('15C\nNVDA:100');
+  });
+});
+
 describe('BlankFill result cache (skip spawn on repeat invocation within TTL)', () => {
   // Spy installed BEFORE loader.load + bf.subscribe inside setup; test
   // then awaits load + subscribe. FILL is the default mode now (no

@@ -158,6 +158,82 @@ describe('Cycling', () => {
   });
 });
 
+describe('Cycling — zero-alternative + invalid-input hardening', () => {
+  it('a cueMap entry with a literal EMPTY alts array does nothing (distinct from "unknown word")', async () => {
+    // Different from "returns false when word has no alternatives in cue
+    // map" (that word is absent from the map entirely). Here the word IS
+    // present in the map but its `alts` array is empty — buildDefFrom's
+    // `lookup.alternatives.length === 0` guard must catch this shape too.
+    const TIPS_EMPTY_ALTS = wrapTipsAsCuesMd({
+      domain: 'test',
+      version: 1,
+      concepts: [{ id: 'words', words: { solo: { tip: '', alts: [] } } }],
+    });
+    const adapter = new MockAdapter({ files: { '/mock/CUES.md': TIPS_EMPTY_ALTS } });
+    adapter.pushText('solo word');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    await loader.load();
+    const cycling = new Cycling(adapter, hlState, dynDefs, loader);
+    cycling.subscribe();
+    hlState.activate(0, 'solo word');
+    expect(adapter.fireKey('up', { ctrl: true, alt: true })).toBe(false);
+    expect(adapter.setTextCalls).toEqual([]);
+    expect(dynDefs.get(0)).toBeUndefined();
+  });
+
+  it('direction=0 passed directly to step() is an idempotent no-op cycle (defense-in-depth)', async () => {
+    // step()'s public type is `1 | -1`, but nothing at runtime stops a
+    // caller from passing another integer (JS has no type enforcement).
+    // The modulo formula `((idx + direction) % len + len) % len` is
+    // mathematically well-defined for ANY integer direction, so this
+    // pins that a stray 0 doesn't crash and leaves the cycle where it
+    // started (same alt re-applied).
+    const { adapter, hlState, cycling } = await setup('fast');
+    hlState.activate(0, 'fast');
+    const event = { key: 'up', modifiers: { ctrl: true, alt: true, shift: false, meta: false }, text: 'fast', cursorOffset: 4 };
+    const consumed = cycling.step(event, 0 as unknown as 1);
+    expect(consumed).toBe(true);
+    // Same alt re-applied — the buffer's visible content is unchanged.
+    expect(adapter.setTextCalls.at(-1)).toBe('fast');
+  });
+
+  it('a single call with a HUGE direction magnitude lands on the same index as N sequential unit steps (modulo equivalence)', async () => {
+    // "fast" has 4 total alternatives (original + quick/rapid/swift).
+    // 7 sequential +1 steps from index 0 land on index 3 ("swift") —
+    // verified by the existing wraparound test. A single call with
+    // direction=7 must land on the exact same index via the modulo
+    // formula, even though the public type only allows ±1.
+    const { adapter: adapterSeq, hlState: hlSeq } = await setup('fast');
+    hlSeq.activate(0, 'fast');
+    for (let i = 0; i < 7; i++) adapterSeq.fireKey('up', { ctrl: true, alt: true });
+    const sequentialResult = adapterSeq.setTextCalls.at(-1);
+    expect(sequentialResult).toBe('swift');
+
+    const { adapter, hlState, cycling } = await setup('fast');
+    hlState.activate(0, 'fast');
+    const event = { key: 'up', modifiers: { ctrl: true, alt: true, shift: false, meta: false }, text: 'fast', cursorOffset: 4 };
+    const consumed = cycling.step(event, 7 as unknown as 1);
+    expect(consumed).toBe(true);
+    expect(adapter.setTextCalls.at(-1)).toBe(sequentialResult);
+  });
+
+  it('a single call with a large NEGATIVE direction magnitude lands on the same index as N sequential Down steps', async () => {
+    const { adapter: adapterSeq, hlState: hlSeq } = await setup('fast');
+    hlSeq.activate(0, 'fast');
+    for (let i = 0; i < 7; i++) adapterSeq.fireKey('down', { ctrl: true, alt: true });
+    const sequentialResult = adapterSeq.setTextCalls.at(-1);
+
+    const { adapter, hlState, cycling } = await setup('fast');
+    hlState.activate(0, 'fast');
+    const event = { key: 'down', modifiers: { ctrl: true, alt: true, shift: false, meta: false }, text: 'fast', cursorOffset: 4 };
+    const consumed = cycling.step(event, -7 as unknown as 1);
+    expect(consumed).toBe(true);
+    expect(adapter.setTextCalls.at(-1)).toBe(sequentialResult);
+  });
+});
+
 describe('Cycling static-alt multi-word spans', () => {
   // Cue source returns an alt that contains a space (LLM legitimately
   // suggests "legal eagle" for "attorney", "Jeff Bezos" for "ceo", etc).
