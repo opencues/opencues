@@ -22,15 +22,13 @@ All three share the same navigable system — you move between words and interac
 
 ## Cues
 
-**Cue** — The complete package: a word that OpenCues has enriched with alternatives, a tip, linked behaviour, or other functionality. When someone says "I added a cue for ultrathink," they mean the word now appears indicated and has OpenCues functionality behind it.
+**Cue** — The complete package: a word that OpenCues has enriched with alternatives, a tip, or other functionality. When someone says "I added a cue for ultrathink," they mean the word now appears indicated and has OpenCues functionality behind it.
 
 **Indicated Cue** — The visual signal within the text that a cue exists. For example, a word appearing dimmed signals that alternatives and other information are available. The indicated cue is what the user sees; the cue is the full data behind it.
 
 **Alternatives** — The set of values a word can be replaced with when the user cycles (e.g., "happy" → "sad", "excited", "content"). The original word is always at index 0.
 
 **Cue-Tip** — Hint text displayed in the secondary display area when a word is highlighted. Provides context about what the word means or why an alternative was suggested. Sometimes shortened to "tip" in config files.
-
-**Linked Words** — Words that must change together when any one of them cycles. For example, changing "boy" also changes "his" to "her" to maintain agreement. Part of the cues system.
 
 **Multi-Word Group** — An alternative that consists of multiple words (e.g., "Sundar Pichai"). Tracked as a single unit that cycles together.
 
