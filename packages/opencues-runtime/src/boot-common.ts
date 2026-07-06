@@ -371,6 +371,27 @@ export function buildAgentLLMResolver(
 }
 
 /**
+ * AgentRewrite `identityDehydration` thunk body (buffer-dehydration
+ * feature). Returns the IDENTITY.md token→value catalog when
+ * `identity-context-mode: safe` and the catalog is non-empty; null
+ * otherwise (`off` = feature disabled, `raw` = values are permitted to
+ * ship, empty catalog = nothing to scrub). Callers wrap it in an arrow
+ * (`identityDehydration: () => identityDehydrationFor(configLoader)`)
+ * so IDENTITY.md / mode edits hot-reload per tick — the same pattern
+ * as `buildAgentLLMResolver`. The catalog Map identity doubles as the
+ * dehydrator-compile cache key (fresh Map per ConfigLoader reload).
+ * See docs/architecture/hydration-dehydration.md.
+ */
+export function identityDehydrationFor(
+  configLoader: ConfigLoader,
+): { catalog: ReadonlyMap<string, string> } | null {
+  if (configLoader.opencuesState.identityContextMode !== 'safe') return null;
+  const catalog = configLoader.identity?.catalog;
+  if (!catalog || catalog.size === 0) return null;
+  return { catalog };
+}
+
+/**
  * Kata (kata) coach LLM resolver — per-feature scalars win, then the
  * auditors bucket (the coach is a background prose-reading concern, same
  * trust class as agent-rewrite), then global. Precedence:
@@ -835,6 +856,24 @@ export function buildSharedRuntime(
   const configLoader = new ConfigLoader(adapter, { configSearchPaths, settingsFile });
   configLoader.subscribe();
   configLoader.load().catch(err => log('error', 'ConfigLoader.load failed', err));
+
+  // OUTBOUND PII FLOOR (buffer-dehydration, defense-in-depth): register
+  // the dispatchChat-level guard. Per-source dehydration is the primary
+  // mechanism; this floor scrubs any residual catalog value a future /
+  // missed source ships, with a loud warning. Thunk re-reads config per
+  // dispatch so mode flips + IDENTITY.md edits hot-reload. Lazy-require
+  // keeps parity with buildAgentLLMResolver's no-hard-core-dep stance.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const core = require('@opencues/core') as {
+      setOutboundDehydrationGuard?: (g: (() => unknown) | null) => void;
+      getDehydrator?: (c: ReadonlyMap<string, string>) => unknown;
+    };
+    core.setOutboundDehydrationGuard?.(() => {
+      const id = identityDehydrationFor(configLoader);
+      return id && core.getDehydrator ? core.getDehydrator(id.catalog) : null;
+    });
+  } catch { /* bare boots without core keep the unguarded (pre-feature) behaviour */ }
 
   // State classes. Order is dependency-irrelevant but matches the
   // historical declaration order in both per-host boot.ts files.

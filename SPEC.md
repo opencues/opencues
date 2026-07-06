@@ -1,6 +1,6 @@
 # OpenCues Specification
 
-**Current version: `0.5` (draft)**
+**Current version: `0.6` (draft)**
 
 This document is a short front door. The full standard — **Cues**, **Blanks**,
 and **Auditors**, plus the shared `core.md` rules and the `identity-context`

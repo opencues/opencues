@@ -128,6 +128,11 @@ REQUIRED_SPECS=(
   "@opencues/runtime/dist/src/blanks/index.js"
   "@opencues/runtime/dist/src/security/spawn-sandbox.js"
   "@opencues/runtime/dist/src/security/sandbox-runner.js"
+  # Buffer dehydration (outbound PII scrub) — top-level core dist file,
+  # FLATTENED to the package root by setup.sh's `cp dist/*.js core/`
+  # step; exercised here so a future copy-step regression can't
+  # silently disable the scrub in user forks.
+  "@opencues/core/dehydrate.js"
 )
 OPTIONAL_SPECS=(
   "@opencues/runtime/dist/src/user-blanks/registry.js"

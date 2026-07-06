@@ -1,6 +1,6 @@
 # auditor-spec — the Auditor file format & runtime contract
 
-> **Status:** `0.5-alpha`. Expect changes.
+> **Status:** `0.6-alpha`. Expect changes.
 
 An **auditor** is the third surface of the standard. Where a cue operates on one word and a blank operates on one `_` slot, an auditor operates on the **whole buffer**: it declares one concern (grammar, clarity, jargon flagging, PII redaction, tone) that an inline rewrite agent should attend to as the user types.
 

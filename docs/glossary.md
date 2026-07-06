@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-04-03
+last_updated: 2026-07-06
 ---
 
 # Glossary
@@ -102,7 +102,7 @@ A **cue source** is anything that provides alternatives for words. All cue sourc
 
 **TransformBlankSource** — Imperative-instruction `_` source. A single fused LLM call (classify + rewrite in one pass) emits the full rewritten buffer, which is three-way-merged into the live text; a generative branch handles inputs with no target ("write a poem _"). Also routes agent-task commands via TASK_* verdicts. Priority 93 — between keyword-bound `BlankSource` (95) and `FluidBlankSource` (92). When `supports()` runs, it cedes to any keyword-bound match before claiming. See `docs/features/transform-blank.md`.
 
-**FluidBlankSource** — Free-form `_` lookup. Single FUSED LLM call emits both SPAN and ANSWER in one breath; the call also optionally receives sanitized ambient field metadata (when `ambient-context-mode: on`) so the segmenter can use the field's label as the question source for meta-triggers like `_` / `answer _`. Also optionally receives identity context (when `identity-context-mode: safe` or `: raw`) — `~/.cues/IDENTITY.md` frontmatter as a catalog of sentinel tokens (`[FIRST NAME]`, `[EMAIL]`, etc.) so lookups personalise; a runtime post-processor substitutes real values after the LLM responds (safe mode keeps PII off the provider's logs). Handles math, factual, translation, unit conversion, codes, etc. without per-mode classification. Fires on `_` slots that no `BlankSource` or `TransformBlankSource` claimed. Opt-in via `fluid-blank-mode: on`.
+**FluidBlankSource** — Free-form `_` lookup. Single FUSED LLM call emits both SPAN and ANSWER in one breath; the call also optionally receives sanitized ambient field metadata (when `ambient-context-mode: on`) so the segmenter can use the field's label as the question source for meta-triggers like `_` / `answer _`. Also optionally receives identity context (when `identity-context-mode: safe` or `: raw`) — `~/.cues/IDENTITY.md` frontmatter as a catalog of sentinel tokens (`[FIRST NAME]`, `[EMAIL]`, etc.) so lookups personalise; safe mode is bidirectional: typed catalog values are dehydrated to tokens before dispatch, and a runtime post-processor (hydration) substitutes real values after the LLM responds — PII stays off the provider's logs in both directions (see § Identity context below). Handles math, factual, translation, unit conversion, codes, etc. without per-mode classification. Fires on `_` slots that no `BlankSource` or `TransformBlankSource` claimed. Opt-in via `fluid-blank-mode: on`.
 
 **RoutedWordSourceGroup** — Wraps multiple folder-based word-cue sources (each `cues/<name>/CUE.md`) and dispatches each highlighted word to ONE child source via per-word routing. Uses fast-path rules only — no LLM classifier. Every source MUST declare `match:` (regex) or `keywords:` (list); sources without either are dropped. Words that no source claims produce no cue (not navigable). Words destined for the same source are batched into one parallel LLM call. Replaces the old "combine all sources into one giant prompt" model. See `docs/features/word-cue-routing.md`.
 
@@ -119,6 +119,14 @@ A **cue source** is anything that provides alternatives for words. All cue sourc
 ## LLM dispatch routing
 
 **Bucket scalar** — A persistent provider/model pair stored in `~/.cues/OPENCUES.md` that gates one TRIO of surfaces. Three buckets (`cues-llm-*`, `auditors-llm-*`, `blanks-llm-*`); each writes to disk and survives every keystroke until the user changes it. The settings-flip syntax (`change to opus _`, `switch to cerebras _`, plus the satellite cycling menu) writes bucket scalars. See `docs/architecture/llm-routing.md`.
+
+---
+
+## Identity context — hydration & dehydration
+
+**Dehydration** — The outbound half of `identity-context-mode: safe` (the default): before any buffer-derived text ships in an LLM request, identity catalog values (`~/.cues/IDENTITY.md` frontmatter) that the user typed into the buffer are replaced with their canonical `[TOKEN]`s. Covers every LLM-bound channel (9 today) plus a defense-in-depth floor at `dispatchChat`. Produces outbound copies only — the buffer is never mutated. Canonical reference: `docs/architecture/hydration-dehydration.md`.
+
+**Hydration** — The inbound half: the runtime post-processor (`postProcessContext` in `@opencues/core`'s `identity-context.ts`, retroactively named) that binds `[TOKEN]`s in LLM output back to real values locally, after the response and before the text reaches the user's buffer. Existed before dehydration (it's how `safe` mode's catalog direction has always worked); the name pairs it with its new inverse. See `docs/architecture/hydration-dehydration.md`.
 
 ---
 

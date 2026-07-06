@@ -34,7 +34,7 @@ import { createSourceReclassifier, resetSharedBufferState } from '../../../src/b
 import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import { AgentTaskState } from '../../../src/state/agent-task';
 import { applyDirectives } from '../../../src/render-directives';
-import { buildAgentLLMResolver, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { buildBlankWeaver } from '../../../src/modules/blank-weave';
 import { startEventBridge } from '../../../src/event-bridge';
 import type {
@@ -537,6 +537,22 @@ export function boot(host: HostInfo): BootResult {
   configLoader.subscribe(); // hot-reload on text-change drift
   configLoader.load().catch(err => log('error', 'ConfigLoader.load failed', err));
 
+  // OUTBOUND PII FLOOR (buffer-dehydration) — CC's per-band boot wires
+  // modules by hand (predates buildSharedRuntime, where every other
+  // host registers this for free), so the dispatchChat-level guard is
+  // registered here explicitly. Mirrors boot-common.buildSharedRuntime.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const core = require('@opencues/core') as {
+      setOutboundDehydrationGuard?: (g: (() => unknown) | null) => void;
+      getDehydrator?: (c: ReadonlyMap<string, string>) => unknown;
+    };
+    core.setOutboundDehydrationGuard?.(() => {
+      const id = identityDehydrationFor(configLoader);
+      return id && core.getDehydrator ? core.getDehydrator(id.catalog) : null;
+    });
+  } catch { /* core unavailable — pre-feature behaviour */ }
+
   // Subscribe modules synchronously so the very first key dispatch is wired.
   const navigation = new Navigation(adapter, hlState, dynDefs, configLoader, spanFillState, selectorSatelliteState);
   navigation.subscribe();
@@ -687,6 +703,9 @@ export function boot(host: HostInfo): BootResult {
       // Re-resolves per tick — picks up OPENCUES.md `agent-provider:` /
       // `agent-model:` / `llm-provider:` edits without a restart.
       resolveLLM: () => buildAgentLLMResolver(configLoader, apiKeys),
+      // Buffer-dehydration: outbound DOCUMENT scrubbed to [TOKEN]s in
+      // identity-context safe mode; rewrite hydrated before the merge.
+      identityDehydration: () => identityDehydrationFor(configLoader),
       // Sliding-window mode (lazy thunk so OPENCUES.md edits take effect
       // without a restart). 0 = full-buffer; e.g. 200 = cursor ± 100
       // words, expanded to paragraph boundaries.

@@ -26,7 +26,7 @@ import { AgentRewrite } from '../../../src/modules/agent-rewrite';
 import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
-import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, buildKataLLMResolver, resetSharedBufferState } from '../../../src/boot-common';
+import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, resetSharedBufferState } from '../../../src/boot-common';
 import { EventEmitter } from '../../../src/lib/event-emitter';
 import type {
   CommonHostInfo,
@@ -461,6 +461,9 @@ export function boot(host: HostInfo): BootResult {
         defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
         httpAdapter,
         resolveLLM: () => buildAgentLLMResolver(configLoader, apiKeys),
+        // Buffer-dehydration: outbound DOCUMENT scrubbed to [TOKEN]s in
+        // identity-context safe mode; rewrite hydrated before the merge.
+        identityDehydration: () => identityDehydrationFor(configLoader),
         // Sliding-window mode (lazy thunk so OPENCUES.md edits take effect
         // without a restart). 0 = full-buffer; useful for long docs in
         // textareas where token cost dominates.

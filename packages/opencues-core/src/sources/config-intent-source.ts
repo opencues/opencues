@@ -63,6 +63,8 @@ import { blankClaimsUnderscore } from '../blank-shapes';
 import { BlankConfig } from '../cues-md';
 import { describeLLMCall, dispatchChat, getProvider, listProviders, type ProviderAdapter } from '../llm-provider';
 import { classifyLlmError, type FluidBlankErrorReason } from './fluid-blank-source';
+import { getDehydrator, type CompiledDehydrator } from '../dehydrate';
+import { postProcessContext } from '../identity-context';
 import {
   FEATURES,
   getCyclableValues,
@@ -1026,7 +1028,24 @@ export class ConfigIntentSource implements CueSource {
     // the NONE path is never slowed by it. `.catch` keeps an early-cede /
     // error path from leaving a floating rejection (the method itself
     // never throws — regex floor on any failure).
-    const spanStartPromise = this.resolveCommandSpanStart(context.text, context.signal);
+    // DEHYDRATION (outbound PII scrub) — in identity-context `safe`
+    // mode, catalog values in the buffer ship as [TOKEN]s. Input-only:
+    // the classifier's output is validated against the FEATURES
+    // registry, so no PII-bearing value could validly round-trip; the
+    // summon call hydrates its echoed phrase before any offset math
+    // (resolveCommandSpanStart). All spans stay computed on the
+    // ORIGINAL text.
+    const idCtx = context.identityContext;
+    const dehydrator = idCtx && idCtx.mode === 'safe' && idCtx.catalog.size > 0
+      ? getDehydrator(idCtx.catalog, (m) => this.log(`ConfigIntent: ${m}`))
+      : undefined;
+    const dText = dehydrator?.dehydrate(context.text);
+    const outboundText = dText?.changed ? dText.text : context.text;
+    if (dText?.changed) {
+      this.log(`ConfigIntent: dehydrated ${dText.spans.length} value(s) → tokens (outbound PII scrub)`);
+    }
+
+    const spanStartPromise = this.resolveCommandSpanStart(context.text, context.signal, dehydrator, idCtx?.catalog);
     spanStartPromise.catch(() => {});
 
     // VARIANT POOL — cache raw LLM response. Re-run parse/validate/
@@ -1046,7 +1065,7 @@ export class ConfigIntentSource implements CueSource {
       // is tight because the classifier output is tiny (VERDICT,
       // SETTING, VALUE, CONFIDENCE) — bumping helps only if the
       // model wraps the output in extra prose.
-      raw = await this.callLLM(this.systemPrompt, `INPUT: ${context.text}`, this.maxTokensOverride ?? 128, context.signal);
+      raw = await this.callLLM(this.systemPrompt, `INPUT: ${outboundText}`, this.maxTokensOverride ?? 128, context.signal);
       this._recordFreshResponse(cacheKey, raw);
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
@@ -1241,7 +1260,12 @@ export class ConfigIntentSource implements CueSource {
    *      overlaps rather than stacks. Never throws (regex floor on any
    *      failure), memoised.
    */
-  private async resolveCommandSpanStart(text: string, signal?: AbortSignal): Promise<number> {
+  private async resolveCommandSpanStart(
+    text: string,
+    signal?: AbortSignal,
+    dehydrator?: CompiledDehydrator,
+    catalog?: ReadonlyMap<string, string>,
+  ): Promise<number> {
     const cached = ConfigIntentSource._summonStartCache.get(text);
     if (cached !== undefined) {
       this.log(`ConfigIntent: summon-span cache HIT (start=${cached})`);
@@ -1257,8 +1281,20 @@ export class ConfigIntentSource implements CueSource {
       // Ambiguous (start === 0): the model disambiguates bare-command vs
       // non-punctuated prior content.
       try {
-        const raw = await this.callLLM(SUMMON_PROMPT, `INPUT: ${text}`, this.maxTokensOverride ?? 96, signal);
-        const summon = parseSummonOutput(raw);
+        // Outbound is dehydrated (PII scrub); the model's echoed summon
+        // phrase is then HYDRATED back to value space BEFORE any offset
+        // math — resolveSummonStart's `endsWith` runs against the
+        // original text. If hydration can't restore exact bytes (the
+        // documented case-drift residual), `endsWith` misses and the
+        // regex floor takes over — safe degradation, never a wrong span.
+        const dOut = dehydrator?.dehydrate(text);
+        const raw = await this.callLLM(SUMMON_PROMPT, `INPUT: ${dOut?.changed ? dOut.text : text}`, this.maxTokensOverride ?? 96, signal);
+        let summon = parseSummonOutput(raw);
+        if (summon && catalog && catalog.size > 0) {
+          try {
+            summon = postProcessContext(summon, { catalog, preserveUnknown: true }).output;
+          } catch { /* keep raw summon — regex floor covers a miss */ }
+        }
         start = resolveSummonStart(text, summon);
         const via = summon && text.endsWith(summon.trim()) && start === text.length - summon.trim().length ? 'model' : 'regex-floor';
         this.log(`ConfigIntent: summon-span via ${via} (start=${start}, summon=${JSON.stringify(summon)})`);

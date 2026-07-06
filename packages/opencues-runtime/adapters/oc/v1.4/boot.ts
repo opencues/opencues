@@ -18,7 +18,7 @@ import { AgentRewrite } from '../../../src/modules/agent-rewrite';
 import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
-import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, identityDehydrationFor, buildBlankContextProvider, buildBlankFetchProvider, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { EventEmitter } from '../../../src/lib/event-emitter';
 import type {
   CommonHostInfo,
@@ -263,6 +263,9 @@ export function boot(host: HostInfo): BootResult {
       // null means "use the static fallback" — usually transient until
       // OPENCUES.md is fully loaded.
       resolveLLM: () => buildAgentLLMResolver(configLoader, apiKeys),
+      // Buffer-dehydration: outbound DOCUMENT scrubbed to [TOKEN]s in
+      // identity-context safe mode; rewrite hydrated before the merge.
+      identityDehydration: () => identityDehydrationFor(configLoader),
       windowWords: () => parseInt(configLoader.opencuesState.settings.get('agent-window-words') ?? '0', 10) || 0,
       cadenceMs: () => parseInt(configLoader.opencuesState.settings.get('agent-debounce-ms') ?? '', 10),
       auditorPrompts: () => configLoader.composeAuditorPrompts(),

@@ -25,7 +25,7 @@
  * permanent rule — old unannotated files keep working forever; the
  * default never moves forward).
  */
-export const SPEC_VERSION = '0.5' as const;
+export const SPEC_VERSION = '0.6' as const;
 
 export type SpecVersion = typeof SPEC_VERSION;
 

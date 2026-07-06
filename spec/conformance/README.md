@@ -202,10 +202,19 @@ still `0.1-alpha` flat. **Coverage gap** until the fork lands:
 - `routing/` — mode-gate composition (the rule that
   `blank-context-mode: raw` MUST downgrade to `safe` when
   `identity-context-mode` is NOT `raw`).
+- `dehydration/` (`0.5-alpha` surface) — buffer-text → dehydrated-text
+  pairs pinning the matching floor (case-insensitive, word-boundary,
+  longest-value-first, CJK adjacency) + round-trip pairs pinning the
+  hydrate-restores-original invariant and the both-present
+  preserve-wins precedence. See `identity-context-spec.md`
+  § Dehydration.
 
-A second implementation targeting `0.2-alpha` should treat the
-spec text in `identity-context-spec.md` and `blank-spec.md`
+A second implementation targeting `0.2-alpha` or later should treat
+the spec text in `identity-context-spec.md` and `blank-spec.md`
 § Sentinel aspects as authoritative until these fixtures land.
+(The reference implementation's executable equivalents:
+`packages/opencues-core/src/dehydrate.test.ts` +
+`sources/dehydration-outbound.test.ts`.)
 
 ## Runner template
 

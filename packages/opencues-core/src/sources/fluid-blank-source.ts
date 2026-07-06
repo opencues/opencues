@@ -29,6 +29,7 @@ import { useStrictJson, buildJsonResponseFormat, describeLLMCall, dispatchChat, 
 import { renderIdentityContextCatalog, postProcessContext, type Identity, type ContextMode } from '../identity-context';
 import { renderBlankContextCatalog, mergeCatalogs, type BlankContextSnapshot, type BlankContextMode } from '../blank-context';
 import { resolveTypedSentinels, catalogScalarLookup, instanceTokenFnBridge, jsonFieldAccessor, collectAiCallableFetches } from '../typed-sentinel';
+import { getDehydrator } from '../dehydrate';
 import { blankClaimsUnderscore } from '../blank-shapes';
 
 // ─── Ambient-context sanitization + injection ──────────────────────
@@ -495,6 +496,11 @@ export type FluidBlankEvent =
    *  consumers can surface which provider is being called without
    *  cross-referencing config. */
   | { type: 'started'; textLen: number; blankIdx: number; llm: string }
+  /** Outbound PII scrub fired — `count` catalog values (buffer + ambient)
+   *  were replaced with [TOKEN]s before dispatch (identity-context safe
+   *  mode). Display-only telemetry; the buffer is untouched. See
+   *  docs/architecture/hydration-dehydration.md. */
+  | { type: 'dehydrated'; count: number }
   /** FUSED segment+answer completed (single LLM call). */
   | { type: 'pass-completed'; pass: 'FUSED'; latencyMs: number; span: string; answer: string }
   /** Pipeline finished and produced a substitution. */
@@ -942,7 +948,31 @@ export class FluidBlankSource implements CueSource {
       const liveFnBlock = (context.sentinelLanguage === 'typed' && context.aiCallableFnsBlock)
         ? context.aiCallableFnsBlock : '';
       const fullSystem = `${FUSED_SYSTEM_PROMPT}${userCatalogBlock}${blankContextBlock}${liveFnBlock}\n\n${MODE_RULES}`;
-      const fusedUser = `INPUT: ${effectiveText}${ambientBlock}`;
+      // DEHYDRATION (outbound PII scrub) — in `safe` mode, real identity
+      // values the user TYPED are replaced with their [TOKEN]s before
+      // the text ships to the provider; the post-processor below
+      // hydrates them back. The ambient block is scrubbed with the same
+      // pass (a personalised page label can echo PII). Outbound COPIES
+      // only — `context.text`/`effectiveText` stay original, so cache
+      // keys, spans, and originalBody all remain in value space.
+      // See docs/architecture/hydration-dehydration.md.
+      let outboundText = effectiveText;
+      let outboundAmbient = ambientBlock;
+      let introducedTokens: ReadonlySet<string> = new Set<string>();
+      if (userMode === 'safe' && userCtx && userCtx.catalog.size > 0) {
+        const dehydrator = getDehydrator(userCtx.catalog, (m) => this.logInfo(`FluidBlank: ${m}`));
+        const dText = dehydrator.dehydrate(effectiveText);
+        const dAmb = ambientBlock ? dehydrator.dehydrate(ambientBlock) : undefined;
+        outboundText = dText.text;
+        if (dAmb) outboundAmbient = dAmb.text;
+        if (dText.changed || dAmb?.changed) {
+          introducedTokens = new Set([...dText.introduced, ...(dAmb?.introduced ?? [])]);
+          const dehydratedCount = dText.spans.length + (dAmb?.spans.length ?? 0);
+          this.logInfo(`FluidBlank: dehydrated ${dehydratedCount} value(s) → tokens (outbound PII scrub)`);
+          this.emit({ type: 'dehydrated', count: dehydratedCount });
+        }
+      }
+      const fusedUser = `INPUT: ${outboundText}${outboundAmbient}`;
       // Per-feature override: `fluid-blank-max-tokens:` in OPENCUES.md.
       // 512 default is bench-tuned for short-factual answers.
       const fusedOut = await this.callLLM(fullSystem, fusedUser, this.maxTokensOverride ?? 512,
@@ -1014,9 +1044,13 @@ export class FluidBlankSource implements CueSource {
             scalarLookup,
             callFn: instanceTokenFnBridge(scalarLookup),
             applyAccessor: jsonFieldAccessor,
-            originalBody: context.text,
+            originalBody: context.text, // TRUE pre-dehydration text — never the outbound copy
             preserveUnknown: false,
+            introducedTokens,
           });
+          if (r.report.ambiguous.length) {
+            this.log(`FluidBlank: ${r.report.ambiguous.length} ambiguous token(s) (user-typed AND dehydrated) preserved as tokens`);
+          }
           finalAnswer = r.output;
           if (r.report.resolved.length || r.report.degraded.length || r.report.badAccessors.length) {
             this.logInfo(`FluidBlank: typed-sentinel resolved=${r.report.resolved.length}, degraded=${r.report.degraded.length}, bad-accessors=${r.report.badAccessors.length}`);
@@ -1026,9 +1060,14 @@ export class FluidBlankSource implements CueSource {
             catalog: mergedCatalog,
             // Pass context.text as originalBody so any bracket-token
             // the user typed in their buffer (e.g. writing docs about
-            // the sentinel API) is preserved verbatim.
+            // the sentinel API) is preserved verbatim. MUST be the true
+            // pre-dehydration text, never the outbound copy.
             originalBody: context.text,
+            introducedTokens,
           });
+          if (pp.report.ambiguous.length) {
+            this.log(`FluidBlank: ${pp.report.ambiguous.length} ambiguous token(s) (user-typed AND dehydrated) preserved as tokens`);
+          }
           finalAnswer = pp.output;
           if (pp.report.resolved.length || pp.report.tolerantMatches.length || pp.report.stripped.length) {
             this.logInfo(`FluidBlank: ctx-post-processed (resolved=${pp.report.resolved.length}, tolerant=${pp.report.tolerantMatches.length}, stripped=${pp.report.stripped.length})`);

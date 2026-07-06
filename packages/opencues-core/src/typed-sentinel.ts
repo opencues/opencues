@@ -251,8 +251,15 @@ export interface ResolveTypedOptions {
    *  accessor is dropped and the base value is used (resolve-rest). */
   readonly applyAccessor?: (value: string, accessor: string) => string | undefined;
   /** The user's pre-LLM buffer; an exact bracket substring found here is
-   *  user-typed and preserved verbatim (mirrors postProcessContext). */
+   *  user-typed and preserved verbatim (mirrors postProcessContext).
+   *  MUST be the TRUE pre-dehydration text, never a dehydrated copy —
+   *  see the pin on `PostProcessOptions.originalBody` in
+   *  identity-context.ts. */
   readonly originalBody?: string;
+  /** Tokens the outbound dehydration pass introduced for this call.
+   *  Both-present occurrences stay preserved (fail-safe) and are
+   *  recorded on `report.ambiguous` — mirrors postProcessContext. */
+  readonly introducedTokens?: ReadonlySet<string>;
   /** Keep an unresolved token as its raw text instead of stripping it.
    *  TransformBlank passes true (LLM placeholders for non-user entities
    *  survive); FluidBlank passes false (catalog declared exhaustive). */
@@ -264,6 +271,9 @@ export interface TypedResolveReport {
   readonly degraded: Array<{ raw: string; reason: string }>;
   readonly preserved: string[];
   readonly badAccessors: Array<{ raw: string; accessor: string }>;
+  /** Preserved tokens that dehydration ALSO introduced this call —
+   *  both-present conflicts; preserve wins, callers warn. */
+  readonly ambiguous: string[];
 }
 
 export interface TypedResolveResult {
@@ -453,7 +463,7 @@ export function resolveTypedSentinels(
   text: string,
   opts: ResolveTypedOptions,
 ): TypedResolveResult {
-  const report: TypedResolveReport = { resolved: [], degraded: [], preserved: [], badAccessors: [] };
+  const report: TypedResolveReport = { resolved: [], degraded: [], preserved: [], badAccessors: [], ambiguous: [] };
   const spans = parseTypedSentinels(text);
   if (spans.length === 0) return { output: text, report };
 
@@ -480,6 +490,7 @@ export function resolveTypedSentinels(
 
     if (opts.originalBody && opts.originalBody.includes(span.text)) {
       report.preserved.push(span.text);
+      if (opts.introducedTokens?.has(span.text)) report.ambiguous.push(span.text);
       replacement = span.text; // user-typed — untouched
     } else {
       const r = resolveNode(span.token, opts, report);
