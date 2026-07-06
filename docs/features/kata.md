@@ -1,6 +1,6 @@
 # Katas
 
-**Experimental (prototype — OpenCode + Shell hosts today).**
+**Experimental — runs on all five hosts (OpenCode, Claude Code, Gemini CLI, Shell, Chrome).**
 
 Guided, in-editor scenarios that walk you through a workflow step by
 step — "enter plan mode, ask for a plan, switch model, commit to git" —
@@ -42,10 +42,15 @@ An unknown id shows the installed catalogue in the status line
 (`No kata "9" — available → 1: claude-code-basics · 2: …`).
 
 **You rarely need the advance phrases.** Progress is detected from your
-typed text, your submits (the buffer clearing after Enter), and salient
-key presses (Tab/Shift+Tab, Escape, arrows, Enter on an empty input) —
-so steps that happen outside the input box (mode toggles, pickers)
-complete on their own. You can also just *tell* the coach: "please stop
+typed text, your submits, and salient key presses (Tab/Shift+Tab,
+Escape, arrows, Enter) — so steps that happen outside the input box
+(mode toggles, pickers) complete on their own. A submit is detected two
+ways so pressing Enter to send always registers whatever the host does
+with the key: the buffer clearing after Enter (CLI inputs clear on
+submit) OR an Enter keypress on a non-empty buffer (newline hosts —
+Chrome, Gmail, Shell — insert a newline instead of clearing, so the
+buffer-clear signal never fires). The two paths dedup, so a host that
+both fires Enter and clears never double-counts. You can also just *tell* the coach: "please stop
 this kata" (any language) ends it; "done" / "I did it" on a step it
 can't observe is trusted.
 
@@ -141,8 +146,10 @@ patterns, all demonstrated by the shipped katas:
 
 Shipped katas (`defaults/katas/`): `claude-code-basics`,
 `opencues-basics`, `git-basics`, `claude-code-power`,
-`cc-first-session`, `cc-fix-a-bug`, `cc-custom-command`, `hint-demo`.
-The Claude Code ones are verified against the official CC docs.
+`cc-first-session`, `cc-fix-a-bug`, `cc-custom-command`, `hint-demo`,
+`email`. The Claude Code ones are verified against the official CC
+docs; `email` is host-agnostic (browser-appropriate — draft/greet/body/
+send) so it runs the same on Gmail-in-Chrome as in a CLI.
 
 ## Configuration
 
@@ -215,4 +222,4 @@ check-in), never your buffer, never a side-effect layer. The single
 exception: the coach may STOP the kata on your explicit request,
 which only *releases* the modal state. A malicious KATA.md can at
 worst show wrong text and mis-advance its own step counter. Full
-analysis: [docs/architecture/katas.md](../architecture/katas.md).
+analysis: [docs/architecture/kata.md](../architecture/kata.md).

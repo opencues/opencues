@@ -1,11 +1,12 @@
 # Katas — modal guided scenarios with a live LLM coach
 
-**Status: experimental prototype (OpenCode + Shell bands). Read this before
-touching `packages/opencues-runtime/src/modules/kata.ts`, the
+**Status: experimental prototype, wired on all five host bands (OpenCode,
+Claude Code, Gemini CLI, Shell, Chrome). Read this before touching
+`packages/opencues-runtime/src/modules/kata.ts`, the
 `externallySuppressed` seam in `resolver.ts`, or the `kata` block in
 `statusline.ts`.**
 
-User-facing summary: [docs/features/katas.md](../features/katas.md).
+User-facing summary: [docs/features/kata.md](../features/kata.md).
 
 ## The idea in one paragraph
 
@@ -76,13 +77,22 @@ start/stop:
   one. Full-replacement coalescing collapsed `/memory` → `/setup` →
   `/start` into one morphing entry, making reveal-after-N-failures and
   stuck-escalation uncountable. Don't reintroduce it.
-- `submitted: "<text>"` — buffer transitioned non-empty → empty; the
-  submitted text is the previous buffer. This is how Enter is inferred.
+- `submitted: "<text>"` — a submit. Inferred two ways so it fires
+  regardless of what the host does with Enter: (1) the buffer
+  transitioning non-empty → empty (CLI inputs clear on submit); (2) an
+  Enter keypress on a non-empty buffer (newline hosts — Chrome
+  contenteditable, Gmail, Shell — insert a newline instead of clearing,
+  so the buffer-clear signal never fires). The two paths dedup against
+  each other via a 1s window on the last Enter body (`_lastEnterAt` /
+  `_lastEnterBody` in `observeKey` + the `onTextChange` clear guard), so
+  a host that BOTH fires Enter AND clears doesn't double-count. Without
+  path (2), katas-in-the-browser could never observe a Gmail send — the
+  reported "Enter key doesn't work" bug.
 - `pressed: <label> (×N)` — salient keys only: tab/escape/arrows
-  always, enter only on an EMPTY buffer (a non-empty submit is already
-  a `submitted` entry), anything with ctrl/alt/meta. Plain typing is
-  deliberately excluded (it's the `typed` entries). Consecutive repeats
-  coalesce into a count.
+  always, enter only on an EMPTY buffer (a non-empty Enter is already a
+  `submitted` entry, above), anything with ctrl/alt/meta. Plain typing
+  is deliberately excluded (it's the `typed` entries). Consecutive
+  repeats coalesce into a count.
 
 Runtime-source text events and echoes of the module's own
 consume-writes are excluded. Self-write matching is **TTL-based
@@ -259,19 +269,31 @@ value is ignored). The deterministic paths (phrase, Esc ×3) remain
 regardless of model behaviour. A malicious KATA.md can at worst
 display wrong text, mis-advance its own step counter, or stop itself.
 **Do not** add CONTROL verbs that acquire anything (start, advance
-beyond the clamp, buffer writes) without re-reviewing this posture —
-and add the security-audit row when this ships.
+beyond the clamp, buffer writes) without re-reviewing this posture.
+Full attack-class analysis: **`docs/architecture/security-audit.md`
+row #27** (🟢) — consent gates, display-only output, fail-open
+`CONTROL: STOP`, egress trust class, bounded key observation. Now that
+the coach renders into the **live web page** on chrome, row #27 also
+pins the rendering-safety invariant: the in-page bar paints coach +
+KATA.md text via `textContent` / `createTextNode` only (never
+`innerHTML`), and katas load only from compile-time / extension-only
+sources (never web-page-writable). If you touch `showKata` in
+`integrations/chrome/src/runtime-statusbar.ts`, keep it `textContent`
+— an `innerHTML` there would turn any untrusted KATA.md/coach line into
+DOM XSS in the content script.
 
 ## Testing
 
 - `kata.test.ts` — pure functions (parser, control phrases, coach
   response incl. CONTROL).
-- `kata.scenarios.test.ts` — 11 multi-step journeys (mock adapter,
+- `kata.scenarios.test.ts` — 20 multi-step journeys (mock adapter,
   fake timers) pinning every deterministic contract: activation/
   consumption, done-chain, Esc ×3 (countdown, resets, zero-LLM),
   escape-in-trace, attempt-preserving coalescing, submit detection +
-  self-write TTL, suppression state machine, not-found notice, no-LLM
-  journey, 2-failure escalation.
+  self-write TTL, the Enter-as-submit paths (Enter-with-content →
+  `submitted`, Enter-on-empty → keypress, and the clear/Enter dedup),
+  suppression state machine, not-found notice, no-LLM journey,
+  2-failure escalation.
 - Harness `scenarios/42-kata-mode.json` — live contracts,
   LLM-decoupled per the agentic-scenario rules (not-found, start,
   tick-fired, deterministic advance, stop phrase, Esc ×3).
@@ -282,22 +304,35 @@ and add the security-audit row when this ships.
 
 ## Deferred / known gaps
 
-- CC / gemini / chrome band wiring (each needs the module mount + the
-  first-subscriber observeKey contract + a coach-line surface; chrome
-  has no statusline — use the `onSnapshot` hook). Chrome's kata
-  head reuses the popup's `.brand-badge` C_ text mark
-  (`src/popup/popup.html`) — the extension has NO svg logo asset;
+- **All five bands now mount the module** (CC / OC / gemini / shell /
+  chrome), each following the first-subscriber observeKey contract + a
+  coach-line surface. Chrome — which has no statusline — renders the
+  coach into the in-page status bar
+  (`integrations/chrome/src/runtime-statusbar.ts`, `showKata`), whose
+  position is user-configurable via the chrome-only `statusbar-position`
+  setting (right / bottom / top); its kata head reuses the popup's
+  `.brand-badge` C_ text mark — the extension has NO svg logo asset;
   manifest icons are PNGs (`integrations/chrome/icons/`) and the brand
-  is a CSS-styled text badge, same wordmark the OC footer renders. The shell port took
-  ~20 mechanical lines following this contract and passed scenario 42
-  unmodified — the pattern generalizes.
+  is a CSS-styled text badge, same wordmark the OC footer renders. The
+  shell port took ~20 mechanical lines following this contract and
+  passed scenario 42 unmodified — the pattern generalized to every host.
 - `katas-mode` FeatureSpec in the registry (today it's a raw
   settings-map read, default on) + `seed-configs` copying
   `defaults/katas/` + a CC statusline script extractor for the
-  `kata` block.
-- Progress persistence across restarts (session-only today).
+  `kata` block. (Promoting `katas-mode` into FEATURES is a prerequisite
+  for the spec cut below — a spec-mandated scalar must be registry-owned.)
 - Deterministic hint-withholding gate (hint mode can leak early — model
   judgement only) and a deterministic stuck-escalation backstop.
-- Not a spec change yet: KATA.md joins the open standard (with
-  conformance fixtures + schema + SPEC_VERSION bump) only if the
-  experiment graduates.
+- **Not a spec change yet — candidate for the open standard now that the
+  experiment runs on all hosts.** Only the KATA.md *file format*
+  (frontmatter `name`/`id`/`title`/`next` + `## Step` sections + the
+  `coach:` notes convention + `.cues/katas/` search-path) is spec
+  material — parallel to how `IDENTITY.md` joined in 0.2. The coaching
+  *runtime* (trace model, coach tick, safety floors, escape ladder,
+  degraded mode, statusline block) stays reference-impl, per the spec's
+  "does NOT cover LLM prompt internals / host-side runtime surface"
+  boundary — same split as BLANK.md (spec) vs the `CueSource` classes
+  (not). Cutting it = a new `spec/kata-spec.md` + `spec/schemas/
+  kata.schema.json` + conformance fixtures + a `core.md` spec-mandated
+  `katas-mode` scalar + a `SPEC_VERSION` bump (the full 9-step checklist
+  in the root CLAUDE.md). Tracked as a follow-up PR.
