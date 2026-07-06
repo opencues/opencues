@@ -87,4 +87,25 @@ test.describe('M1 — config-intent (fluid-config)', () => {
     expect(llm.callCount).toBeGreaterThan(0);
     expect((await ta.inputValue()).trim()).toBe('statusbar-position top');
   });
+
+  test('exact user phrase `statusbar top _` — field must confirm the state', async ({ context, seed }) => {
+    const phrase = 'statusbar top _';
+    const llm = new MockLlm()
+      .reply(/CONFIGURATION INTENT CLASSIFIER/, 'SETTING: statusbar-position\nVALUE: top\nCONFIDENCE: 0.95')
+      .reply(/extract the COMMAND SPAN/, phrase)
+      .setFallback('INTENT: NONE\nCONFIDENCE: 0.9');
+    await llm.install(context);
+    await seed(configIntentSeed());
+
+    const page = await context.newPage();
+    await page.goto('/tests/e2e/pages/contenteditable.html');
+    const ce = page.locator('#ce');
+    await ce.focus();
+    await page.keyboard.type(phrase);
+
+    // The field must confirm the setting (not stay as the raw query).
+    await expect(ce).toContainText('statusbar-position', { timeout: 15_000 });
+    await expect(ce).not.toContainText('statusbar top');
+    expect((await ce.textContent())?.trim()).toBe('statusbar-position top');
+  });
 });
