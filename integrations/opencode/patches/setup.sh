@@ -510,9 +510,74 @@ src = src.replace(
   'import { Global } from "@/global"',
   'import { Global } from "@/global"\nimport { opencuesTip, opencuesKata } from "../../opencues"',
 )
-# The sidebar footer's box stacks vertically (path → version). Insert
-# the OpencuesTip line between them, mirroring the home footer's
-# OpencuesTip block (Show-gated, textMuted styling).
+# Kata block + its wrap helper — same component as the home footer, so
+# the coach statusline survives once the user submits a prompt and moves
+# from the home route to the session (sidebar) view. Defined before View.
+src = src.replace(
+  '''function View(props: { api: TuiPluginApi }) {''',
+  '''function wrapOpencuesSegs(segs: Array<{ text: string; command: boolean; bold?: boolean; dim?: boolean }>, width: number) {
+  const rows: Array<Array<{ text: string; command: boolean; bold?: boolean; dim?: boolean }>> = []
+  let cur: Array<{ text: string; command: boolean; bold?: boolean; dim?: boolean }> = []
+  let len = 0
+  for (const s of segs) {
+    let text = s.text
+    while (text.length > 0) {
+      const space = width - len
+      if (text.length <= space) {
+        cur.push({ ...s, text })
+        len += text.length
+        text = ""
+      } else {
+        let cut = text.lastIndexOf(" ", space)
+        if (cut < space * 0.5) cut = space
+        cur.push({ ...s, text: text.slice(0, cut) })
+        rows.push(cur)
+        cur = []
+        len = 0
+        text = text.slice(cut).trimStart()
+      }
+    }
+  }
+  if (cur.length > 0) rows.push(cur)
+  return rows.slice(0, 3)
+}
+
+function OpencuesKataBlock(props: { api: TuiPluginApi }) {
+  const theme = () => props.api.theme.current
+  const width = () => Math.max(20, (process.stdout.columns ?? 80) - 4)
+  return (
+    <Show when={opencuesKata()}>
+      <box style={{ flexDirection: "column", width: "100%" }}>
+        <text>
+          <span style={{ fg: theme().background, bg: theme().text }}>C_</span>
+          <span style={{ fg: theme().text }}> {opencuesKata()!.head}</span>
+        </text>
+        {wrapOpencuesSegs(opencuesKata()!.segments, width()).map((row) => (
+          <text>
+            {row.map((seg) =>
+              seg.command || seg.bold
+                ? <span style={{ fg: theme().text }}>{seg.text}</span>
+                : <span style={{ fg: theme().textMuted }}>{seg.text}</span>,
+            )}
+          </text>
+        ))}
+      </box>
+    </Show>
+  )
+}
+
+function View(props: { api: TuiPluginApi }) {''',
+)
+# The sidebar footer's box stacks vertically. Render the kata block at
+# the TOP of the stack (dominant while active), and insert the tip line
+# between path and version — the tip yields to kata (mirrors home).
+src = src.replace(
+  '''  return (
+    <box gap={1}>''',
+  '''  return (
+    <box gap={1}>
+      <OpencuesKataBlock api={props.api} />''',
+)
 src = src.replace(
   '''      <text>
         <span style={{ fg: theme().textMuted }}>{path().parent}/</span>
@@ -524,7 +589,7 @@ src = src.replace(
         <span style={{ fg: theme().textMuted }}>{path().parent}/</span>
         <span style={{ fg: theme().text }}>{path().name}</span>
       </text>
-      <Show when={opencuesTip()}>
+      <Show when={!opencuesKata() && opencuesTip()}>
         <text fg={theme().textMuted}>{opencuesTip()}</text>
       </Show>
       <text fg={theme().textMuted}>
