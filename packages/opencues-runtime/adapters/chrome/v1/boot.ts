@@ -20,12 +20,13 @@
 import { Runtime } from '../../../src/runtime';
 import { ChromeV1Adapter, type ChromeBindings } from './adapter';
 import { Statusline } from '../../../src/modules/statusline';
+import { KataCoach } from '../../../src/modules/kata';
 import { Resolver } from '../../../src/modules/resolver';
 import { AgentRewrite } from '../../../src/modules/agent-rewrite';
 import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
-import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, resetSharedBufferState } from '../../../src/boot-common';
+import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, buildKataLLMResolver, resetSharedBufferState } from '../../../src/boot-common';
 import { EventEmitter } from '../../../src/lib/event-emitter';
 import type {
   CommonHostInfo,
@@ -289,6 +290,14 @@ export function boot(host: HostInfo): BootResult {
   const adapter = new ChromeV1Adapter(bindings);
   Runtime.create(adapter).catch(err => log('error', 'Runtime.create failed', err));
 
+  // Kata key observation — MUST be the first key subscriber (key dispatch
+  // is emit-until-consumed; a late subscriber is blind to presses that
+  // earlier handlers consume). Late-bound ref: the coach is constructed
+  // after buildSharedRuntime (it needs the ConfigLoader). Mirrors the
+  // OC / CC / shell / gemini bands.
+  let kataCoachRef: KataCoach | null = null;
+  keyEvents.subscribe(e => { kataCoachRef?.observeKey(e); return false; });
+
   // Universal state + ConfigLoader + Navigation/DimRender/Cycling/BlankFill
   // all live in boot-common.ts so the chrome and opencode bands can't
   // drift on subscription order or constructor args.
@@ -315,6 +324,22 @@ export function boot(host: HostInfo): BootResult {
     spanFillState, selectorSatelliteState, agentTaskState,
   } = shared;
 
+  // KataCoach — modal guided-scenario runtime (prototype). Uses the host's
+  // fetch-based httpAdapter (NodeHttpAdapter is stubbed in the browser
+  // bundle) and omits progressFile (chrome has no fs — persistence off).
+  // While active it suppresses the Resolver via externallySuppressed below.
+  // Mirrors the OC / CC / shell / gemini bands.
+  const kataCoach = new KataCoach(adapter, configLoader, {
+    katasDirs: ['/chrome-storage/.cues/katas'],
+    resolveLLM: () => buildKataLLMResolver(configLoader, apiKeys),
+    cadenceMs: () => parseInt(configLoader.opencuesState.settings.get('kata-debounce-ms') ?? '', 10),
+    nudgeMs: () => parseInt(configLoader.opencuesState.settings.get('kata-nudge-ms') ?? '', 10),
+    httpAdapter: host.httpAdapter as { post(url: string, body: string, headers: Record<string, string>): Promise<string> } | undefined,
+    log: msg => log('debug', msg),
+  });
+  kataCoach.subscribe();
+  kataCoachRef = kataCoach; // arms the early key observer above
+
   // Statusline — Chrome has no filesystem, so exportPath is '' (empty).
   // The snapshot hook delivers the payload to the content script, which
   // renders it into a floating div.
@@ -322,6 +347,7 @@ export function boot(host: HostInfo): BootResult {
     const statusline = new Statusline(adapter, hlState, dynDefs, {
       exportPath: '',
       onSnapshot: (payload) => host.statusSnapshotHook!(payload),
+      kataStatus: () => kataCoach.status(),
     }, configLoader, spanFillState, selectorSatelliteState, agentTaskState);
     statusline.subscribe();
   }
@@ -422,6 +448,7 @@ export function boot(host: HostInfo): BootResult {
         }
       },
       keywordBoundSlotIndices: (text: string) => shared.blankFill.scan(text).map(s => s.index),
+      externallySuppressed: (text: string) => kataCoach.shouldSuppressResolve(text),
     }), spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState);
     configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
     liveResolver = resolver;

@@ -370,6 +370,40 @@ export function buildAgentLLMResolver(
   return { ...out, maxThinking: (s.get('max-thinking') ?? 'on') !== 'off' };
 }
 
+/**
+ * Kata (kata) coach LLM resolver — per-feature scalars win, then the
+ * auditors bucket (the coach is a background prose-reading concern, same
+ * trust class as agent-rewrite), then global. Precedence:
+ *   kata-llm-provider/-model/-endpoint > auditors-llm-* > llm-*.
+ * Re-resolved per tick so OPENCUES.md edits hot-reload.
+ */
+export function buildKataLLMResolver(
+  configLoader: ConfigLoader,
+  apiKeys: Readonly<Record<string, string | undefined>>,
+): ResolvedAgentLLM | null {
+  let core: { resolveLLM?: (opts: unknown) => unknown } | null = null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    core = require('@opencues/core');
+  } catch { return null; }
+  if (!core?.resolveLLM) return null;
+  const s = configLoader.opencuesState.settings;
+  const auditorsBucket = configLoader.opencuesState.auditorsLlmProvider;
+  const auditorsBucketProvider = auditorsBucket === 'inherit' ? undefined : auditorsBucket;
+  const auditorsBucketModel = auditorsBucketProvider ? s.get('auditors-llm-model') : undefined;
+  const auditorsBucketEndpoint = auditorsBucketProvider ? s.get('auditors-llm-endpoint') : undefined;
+  const out = core.resolveLLM({
+    featureProvider: s.get('kata-llm-provider'),
+    featureModel: s.get('kata-llm-model'),
+    endpointOverride: s.get('kata-llm-endpoint') ?? auditorsBucketEndpoint ?? s.get('llm-endpoint'),
+    globalProvider: auditorsBucketProvider ?? s.get('llm-provider'),
+    globalModel: auditorsBucketProvider ? (auditorsBucketModel ?? undefined) : s.get('llm-model'),
+    apiKeys,
+  }) as ResolvedAgentLLM | null;
+  if (!out) return null;
+  return { ...out, maxThinking: (s.get('max-thinking') ?? 'on') !== 'off' };
+}
+
 import { Navigation } from './modules/navigation';
 import { DimRender } from './modules/dim-render';
 import { Cycling } from './modules/cycling';
