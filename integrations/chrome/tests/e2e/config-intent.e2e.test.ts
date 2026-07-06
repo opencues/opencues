@@ -102,6 +102,11 @@ test.describe('M1 — config-intent (fluid-config)', () => {
     const ce = page.locator('#ce');
     await ce.focus();
     await page.keyboard.type(phrase);
+    // TRAILING NEWLINES after the `_` — the real-browser condition that
+    // broke the summon span (segmentStart treated them as boundaries and
+    // put the wipe start at the buffer end → empty wipe → raw query left).
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Enter');
 
     // The field must confirm the setting (not stay as the raw query).
     await expect(ce).toContainText('statusbar-position', { timeout: 15_000 });

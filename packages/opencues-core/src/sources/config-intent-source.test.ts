@@ -731,6 +731,18 @@ describe('summonPhraseStart — preserve prior content (no whole-buffer nuke)', 
     assert.strictEqual(summonPhraseStart(t), t.indexOf('voice'));
   });
 
+  it('trailing newlines AFTER the _ do not push the start past the command', () => {
+    // Live-reported on chrome: a contenteditable keeps trailing newlines
+    // after the `_` (`statusbar bottom _\n\n\n\n`). Those must NOT count as
+    // boundaries — scanning past the `_` put the start at the buffer end
+    // (empty wipe → raw query left in the field). Scan only up to the `_`.
+    assert.strictEqual(summonPhraseStart('statusbar bottom _\n\n\n\n'), 0);
+    assert.strictEqual(summonPhraseStart('statusbar top _\n'), 0);
+    // Prior content is still preserved with trailing newlines present.
+    const t = 'hii world. voice mode off _\n\n';
+    assert.strictEqual(summonPhraseStart(t), 'hii world. '.length);
+  });
+
   it('model-version dots are NOT sentence boundaries (lookahead needs whitespace)', () => {
     // "gpt-5.4" must not split — the dot is followed by a digit, not ws.
     assert.strictEqual(summonPhraseStart('use gpt-5.4 for cues _'), 0);

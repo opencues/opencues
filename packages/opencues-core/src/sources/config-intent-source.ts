@@ -885,7 +885,16 @@ export interface ConfigIntentSourceConfig {
  * exact same sentence/line boundary — they can't drift.
  */
 export function summonPhraseStart(text: string): number {
-  return segmentStart(text);
+  // Scan only up to the command's `_` (the last one), NOT the whole buffer.
+  // A contenteditable commonly keeps trailing newlines after the `_`
+  // (`statusbar bottom _\n\n\n\n`); `segmentStart` treats `\n` as a segment
+  // boundary, so scanning the whole buffer put the start at the LAST
+  // trailing newline = buffer end. That made the wipe span empty, so the
+  // selector-satellite confirmation replaced nothing and the raw query was
+  // left in the field (live-reported on chrome). Passing the `_`'s index
+  // makes boundaries after it invisible — segment.ts § pos.
+  const u = text.lastIndexOf('_');
+  return segmentStart(text, u >= 0 ? u : text.length);
 }
 
 export class ConfigIntentSource implements CueSource {
