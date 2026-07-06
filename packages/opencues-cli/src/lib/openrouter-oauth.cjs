@@ -151,13 +151,22 @@ function runOauthFlow({
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      // Destroy any lingering keep-alive sockets BEFORE close(). Otherwise
+      // server.close() only stops accepting new connections and waits for the
+      // browser's kept-alive callback socket to end on its own — that open
+      // socket keeps the Node event loop alive, so the CLI process never exits
+      // back to the shell after a successful auth (the reported hang).
+      server.closeAllConnections?.();
       server.close();
       fn(value);
     };
 
     const server = http.createServer((req, res) => {
       const code = parseCallbackCode(req.url || '');
-      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      // `connection: close` so the browser tears the socket down after this
+      // one response instead of holding it keep-alive — belt to closeAllConnections'
+      // braces (and covers Node < 18.2 where closeAllConnections is absent).
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'connection': 'close' });
       res.end(callbackPage(!!code));
       if (!code) return; // favicon probes etc. — keep waiting
       onStatus('authorization received — exchanging for an API key…');

@@ -112,6 +112,35 @@ describe('runOauthFlow — end to end against the real loopback server', () => {
     assert.ok(!callbackBody.includes('sk-or-v1'), 'callback page must never contain key material');
   });
 
+  it('tears down the browser socket after success — no CLI hang (Connection: close on the callback)', async () => {
+    // Regression: a real browser holds the callback connection keep-alive.
+    // server.close() then waits for that socket to end on its own, the socket
+    // keeps the event loop alive, and the CLI never returns to the shell.
+    // The callback response MUST send `Connection: close` so the socket dies.
+    const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
+    let cbHeaders = null;
+    const key = await runOauthFlow({
+      timeoutMs: 5000,
+      onStatus: () => {},
+      exchange: async () => 'sk-or-v1-keepalive',
+      openBrowser: (authUrl) => {
+        const cb = new URL(new URL(authUrl).searchParams.get('callback_url'));
+        http.get(
+          { hostname: cb.hostname, port: cb.port, path: `${cb.pathname}?code=fake-code`, agent },
+          (res) => { cbHeaders = res.headers; res.resume(); },
+        );
+        return true;
+      },
+    });
+    assert.strictEqual(key, 'sk-or-v1-keepalive');
+    await new Promise((r) => setTimeout(r, 50)); // let the callback response land
+    assert.strictEqual(
+      cbHeaders && cbHeaders.connection, 'close',
+      'callback response must set Connection: close, else the keep-alive socket hangs the CLI',
+    );
+    agent.destroy();
+  });
+
   it('a code-less probe (favicon) does not settle the flow; timeout still fires', async () => {
     await assert.rejects(
       runOauthFlow({
