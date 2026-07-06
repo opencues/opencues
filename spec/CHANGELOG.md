@@ -16,6 +16,39 @@ breaking.
 
 ---
 
+## [0.5.0-alpha] — 2026-07-06
+
+Spec bump: adds the **`KATA.md` guided-scenario file format** as a new
+standard surface ([`kata-spec.md`](./kata-spec.md)). A kata is an ordered,
+in-editor scenario a runtime walks a user through.
+
+Normative additions:
+
+- **`katas/<name>/KATA.md`** under the standard `.cues/` search path
+  (project- and user-level, normal precedence). Frontmatter keys
+  `name` / `id` / `title` / `next` (all optional); `## ` headings
+  delimit ordered steps; a file with zero steps MUST be treated as
+  absent. Step bodies are **opaque** — instruction prose plus the
+  non-normative `coach:` convention — handed verbatim to whatever
+  coaching mechanism a runtime implements.
+- **Curriculum link** (`next:`) resolves to a kata by `name` or `id`;
+  a dangling link degrades silently.
+- **Security floors** a kata-consuming runtime MUST honour: consent to
+  start (no self-start), a deterministic model-independent exit, and
+  display-only coaching (no buffer writes / exec / side-effects; at
+  most a bounded, never-backward step counter).
+
+Deliberately **out of the standard** (reference-impl only): the coaching
+runtime — trace model, coach tick, LLM prompt prose, escape-ladder
+phrasing, progress persistence, rendering. Enablement is a runtime knob
+(the reference impl's `katas-mode` scalar), not a spec-mandated scalar.
+
+New JSON schema: [`schemas/kata.schema.json`](./schemas/kata.schema.json).
+New conformance fixtures: `conformance/valid/kata/`,
+`conformance/invalid/kata/`.
+
+---
+
 ## [0.4.0-alpha] — 2026-06-30
 
 Spec bump: the blank routing boundary moves from the physical **line** to
