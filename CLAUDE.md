@@ -488,7 +488,7 @@ Concretely:
 - `enable debug logging _` → debug-mode on (reliable on cerebras gpt-oss-120b)
 - `voice mode off _` → voice-mode inactive (reliable)
 - `enable X mode _` → X-mode on (reliable for any `*-mode` scalar)
-- `fix typos _ <body>` → reliable TransformBlank classification
+- `<body> fix typos _` → reliable TransformBlank classification. **Order is body-first, instruction-last: `<BODY> <INSTRUCTION> _`** — the canonical shape per `docs/architecture/transform-blank.md` § "The shape — body first, instruction last". The reverse (`fix typos _ <body>`) is NOT canonical; several older scenarios use it and pass only because the fused classifier is lenient — do not copy that order into new scenarios.
 - `make it caps _` (no prior content) → reliable
 
 **Unstable phrasings** (avoid):

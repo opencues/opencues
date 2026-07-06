@@ -352,6 +352,11 @@ function looksLikeImperative(words: string[], blankIdx: number, fullText: string
 export type TransformBlankEvent =
   /** Pipeline started. textLen = full buffer length, blankIdx = the `_` word index. */
   | { type: 'started'; textLen: number; blankIdx: number; llm: string; mode: string }
+  /** Outbound PII scrub fired — `count` catalog values were replaced with
+   *  [TOKEN]s before dispatch (identity-context safe mode). Display-only
+   *  telemetry; the buffer is untouched (dehydration produces an outbound
+   *  copy only). See docs/architecture/hydration-dehydration.md. */
+  | { type: 'dehydrated'; count: number }
   /** The fused pass completed. Emitted with `pass: 'P1'` carrying the
    *  verdict + extracted instruction + target. (The 'P2'/'P3' members
    *  are retained in the union for back-compat with consumers; the
@@ -858,6 +863,7 @@ export class TransformBlankSource implements CueSource {
     const introducedTokens = dInput?.changed ? dInput.introduced : undefined;
     if (dInput?.changed) {
       this.log(`TransformBlank: dehydrated ${dInput.spans.length} value(s) → tokens (outbound PII scrub)`);
+      this.emit({ type: 'dehydrated', count: dInput.spans.length });
     }
     let inputForLLM = outboundText;
     if (POSITIONAL_CUE.test(extractText)) {

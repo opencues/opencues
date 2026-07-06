@@ -496,6 +496,11 @@ export type FluidBlankEvent =
    *  consumers can surface which provider is being called without
    *  cross-referencing config. */
   | { type: 'started'; textLen: number; blankIdx: number; llm: string }
+  /** Outbound PII scrub fired — `count` catalog values (buffer + ambient)
+   *  were replaced with [TOKEN]s before dispatch (identity-context safe
+   *  mode). Display-only telemetry; the buffer is untouched. See
+   *  docs/architecture/hydration-dehydration.md. */
+  | { type: 'dehydrated'; count: number }
   /** FUSED segment+answer completed (single LLM call). */
   | { type: 'pass-completed'; pass: 'FUSED'; latencyMs: number; span: string; answer: string }
   /** Pipeline finished and produced a substitution. */
@@ -962,7 +967,9 @@ export class FluidBlankSource implements CueSource {
         if (dAmb) outboundAmbient = dAmb.text;
         if (dText.changed || dAmb?.changed) {
           introducedTokens = new Set([...dText.introduced, ...(dAmb?.introduced ?? [])]);
-          this.logInfo(`FluidBlank: dehydrated ${dText.spans.length + (dAmb?.spans.length ?? 0)} value(s) → tokens (outbound PII scrub)`);
+          const dehydratedCount = dText.spans.length + (dAmb?.spans.length ?? 0);
+          this.logInfo(`FluidBlank: dehydrated ${dehydratedCount} value(s) → tokens (outbound PII scrub)`);
+          this.emit({ type: 'dehydrated', count: dehydratedCount });
         }
       }
       const fusedUser = `INPUT: ${outboundText}${outboundAmbient}`;
