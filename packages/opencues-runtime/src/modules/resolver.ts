@@ -862,6 +862,9 @@ export class Resolver {
       // don't implement supportsCycling default to true — every
       // pre-existing host has cycling.
       supportsCycling: this.adapter.supportsCycling?.() ?? true,
+      // Host id — host-scopes the config-intent classifier's feature list
+      // (chrome-only FEATURES like statusbar-position stay off other hosts).
+      hostName: this.adapter.hostName,
       // Host-specific in-buffer message shown when NO LLM source could
       // be built (zero working keys). Hosts pass this via ResolverOptions
       // — chrome sets "open the extension popup", native hosts (CC/OC)

@@ -93,9 +93,20 @@ function renderFeatureLine(scalar: string, values: { id: string; description: st
   return `  * ${scalar} (${menuTip})\n${valueLines}`;
 }
 
-const FEATURE_REGISTRY_BLOCK: string = FEATURES
-  .map(f => renderFeatureLine(f.scalar, [...getCyclableValues(f)], f.menuTip ?? f.description))
-  .join('\n');
+// Host-scoped features (e.g. chrome's `statusbar-position`) only appear
+// in the classifier's choice space on the host that owns them — otherwise
+// a CLI host's fluid-config prompt would list a chrome-only setting it
+// can't act on. `hostName` undefined = the universal set (host-scoped
+// features EXCLUDED), which is what the exported default SYSTEM_PROMPT
+// uses; each ConfigIntentSource then swaps in its own host's block.
+function buildFeatureBlock(hostName?: string): string {
+  return FEATURES
+    .filter(f => !f.hostScope || (hostName != null && f.hostScope.includes(hostName)))
+    .map(f => renderFeatureLine(f.scalar, [...getCyclableValues(f)], f.menuTip ?? f.description))
+    .join('\n');
+}
+
+const FEATURE_REGISTRY_BLOCK: string = buildFeatureBlock();
 
 // Build a per-provider listing of canonical model ids (knownModels +
 // defaultModel as the first entry) so the classifier knows what model
@@ -752,12 +763,18 @@ export function parseConfigIntentOutput(raw: string): ConfigIntentVerdict {
  *
  * NoneVerdict always validates (caller cedes).
  */
-export function validateAgainstRegistry(verdict: ConfigIntentVerdict): { ok: boolean; reason?: string } {
+export function validateAgainstRegistry(verdict: ConfigIntentVerdict, hostName?: string): { ok: boolean; reason?: string } {
   if (verdict.kind === 'none') return { ok: true };
 
   if (verdict.kind === 'setting') {
     const feature = FEATURES.find(f => f.scalar === verdict.setting);
     if (!feature) return { ok: false, reason: `unknown setting '${verdict.setting}'` };
+    // Host-scope guard (defense in depth): a host-scoped setting must not
+    // be applied on a host outside its scope — the classifier prompt
+    // already omits it there, but reject it if the LLM emits it anyway.
+    if (feature.hostScope && (hostName == null || !feature.hostScope.includes(hostName))) {
+      return { ok: false, reason: `setting '${verdict.setting}' is scoped to [${feature.hostScope.join(', ')}], not host '${hostName ?? '?'}'` };
+    }
     const allowed = [...getCyclableValues(feature)].map(v => v.id);
     if (!allowed.includes(verdict.value)) {
       return { ok: false, reason: `value '${verdict.value}' is not cyclable for '${verdict.setting}' (allowed: ${allowed.join(', ')})` };
@@ -835,6 +852,14 @@ export interface ConfigIntentSourceConfig {
    * boot-common.ts in native hosts.
    */
   formatErrorAsSubstitute?: (reason: FluidBlankErrorReason, err?: Error, ctx?: { provider?: string; model?: string; endpoint?: string }) => string;
+  /**
+   * Host id (chrome / claude-code / opencode / …). When set, host-scoped
+   * FEATURES (those with a `hostScope`) are included in the classifier's
+   * choice space ONLY on a matching host — a CLI host never sees chrome's
+   * `statusbar-position`, etc. Omitted = universal set (host-scoped
+   * features excluded). Runtime wires `adapter.hostName` here.
+   */
+  hostName?: string;
 }
 
 /**
@@ -881,6 +906,10 @@ export class ConfigIntentSource implements CueSource {
   private log: (msg: string) => void;
   private emit: (event: ConfigIntentEvent) => void;
   private formatErrorAsSubstitute: ((reason: FluidBlankErrorReason, err?: Error, ctx?: { provider?: string; model?: string; endpoint?: string }) => string) | undefined;
+  /** Host id (chrome/claude-code/…), used to host-scope the feature list. */
+  private hostName: string | undefined;
+  /** System prompt with the host-scoped feature block swapped in. */
+  private systemPrompt: string;
 
   /**
    * Per-input cache of raw LLM responses. ConfigIntent is a
@@ -927,6 +956,14 @@ export class ConfigIntentSource implements CueSource {
     this.log = config.log ?? (() => { /* silent */ });
     this.emit = config.onEvent ?? (() => { /* silent */ });
     this.formatErrorAsSubstitute = config.formatErrorAsSubstitute;
+    this.hostName = config.hostName;
+    // Swap the universal feature block for this host's — includes any
+    // host-scoped features (e.g. chrome's statusbar-position) ONLY on the
+    // owning host. No hostName → the universal default (host-scoped
+    // excluded), byte-identical to the exported SYSTEM_PROMPT.
+    this.systemPrompt = config.hostName
+      ? SYSTEM_PROMPT.replace(FEATURE_REGISTRY_BLOCK, buildFeatureBlock(config.hostName))
+      : SYSTEM_PROMPT;
   }
 
   supports(context: CueContext): boolean {
@@ -1000,7 +1037,7 @@ export class ConfigIntentSource implements CueSource {
       // is tight because the classifier output is tiny (VERDICT,
       // SETTING, VALUE, CONFIDENCE) — bumping helps only if the
       // model wraps the output in extra prose.
-      raw = await this.callLLM(SYSTEM_PROMPT, `INPUT: ${context.text}`, this.maxTokensOverride ?? 128, context.signal);
+      raw = await this.callLLM(this.systemPrompt, `INPUT: ${context.text}`, this.maxTokensOverride ?? 128, context.signal);
       this._recordFreshResponse(cacheKey, raw);
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
@@ -1041,7 +1078,7 @@ export class ConfigIntentSource implements CueSource {
       return { results: [], timing: Date.now() - t0, model: this.model };
     }
 
-    const check = validateAgainstRegistry(verdict);
+    const check = validateAgainstRegistry(verdict, this.hostName);
     if (!check.ok) {
       this.log(`ConfigIntent: rejecting invalid verdict — ${check.reason}; raw="${raw.replace(/\n/g, ' / ').slice(0, 200)}"`);
       this.emit({ type: 'bailed', reason: `invalid-verdict: ${check.reason}`, latencyMs: Date.now() - t0 });
