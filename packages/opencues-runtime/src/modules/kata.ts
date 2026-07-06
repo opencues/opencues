@@ -443,14 +443,14 @@ export class KataCoach {
     }
     if (this._escCount > 0) this._escCount = 0;
 
-    // Enter is always salient. On CC/OC it also shows up as a
-    // non-empty→empty submit (buffer clears) — but on hosts where Enter
-    // inserts a newline instead of submitting (chrome normal-inputs,
-    // shell's multi-line editor) the buffer stays non-empty, so gating
-    // Enter on an empty buffer meant the coach never saw it. Recording
-    // the keypress unconditionally gives every host the "pressed enter"
-    // signal; the submit-detection in onTextChange still adds the richer
-    // "submitted: <text>" entry on hosts that clear.
+    // Enter is always recorded — as a KEYPRESS ("pressed: enter"), NOT a
+    // submit. `enter` is not equal to `submit`: a kata step that asks the
+    // user to press Enter is satisfied by the keypress, and the coach sees
+    // it on every host. The separate SUBMIT signal (a non-empty→empty
+    // buffer clear, handled in onTextChange) only fires on hosts where
+    // Enter actually submits + clears (CC/OC); on newline-hosts (gmail /
+    // chrome contenteditable / shell) Enter is a keypress and a newline,
+    // and that's all it is.
     const isEnter = k === 'return' || k === 'enter';
     const salient = ['tab', 'escape', 'up', 'down', 'left', 'right'].includes(k)
       || isEnter
@@ -461,6 +461,7 @@ export class KataCoach {
       mods.shift ? 'shift' : '', mods.meta ? 'meta' : '',
       isEnter ? 'enter' : k,
     ].filter(Boolean).join('+');
+    this._logFn(`Kata: observed key "${label}" (step ${this._stepIndex + 1})`);
     const last = this._trace[this._trace.length - 1];
     if (last && last.kind === 'key' && last.text === label) {
       last.count = (last.count ?? 1) + 1;
