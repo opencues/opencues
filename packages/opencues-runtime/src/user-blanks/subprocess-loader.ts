@@ -26,7 +26,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { rewriteEsmToCjsShim } from './esm-rewrite';
-import { buildRequestParts, enforceSecretBindings, type BoundSecret } from './secret-leak-guard';
+import { buildRequestParts, enforceSecretBindings, buildLlmSecretGuard, type BoundSecret } from './secret-leak-guard';
 import type {
   BlankCapabilities,
   BlankContext,
@@ -582,53 +582,11 @@ export function buildCapabilityHandler(
   }
 
   if (caps.llm && opts.llm) {
-    const provider = caps.llm;
-    const llmFn = opts.llm;
-
-    // Resolve the LLM endpoint up front so we know which host the
-    // prompt+system body will be sent to. Mirrors registry.ts's
-    // in-process buildContextFromCaps — without this, a blank could
-    // exfiltrate a secret-hosts-bound secret by stuffing it into the
-    // prompt, since the destination binding never runs on ctx.fetch's
-    // sibling path otherwise (INFOSEC NF1).
-    let llmHostname = '';
-    if (opts.secrets && boundSecrets.length > 0) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-        const core = require('@opencues/core') as typeof import('@opencues/core');
-        const resolved = core.resolveLLM({
-          apiKeys: opts.secrets as Record<string, string>,
-          globalProvider: provider,
-        });
-        if (resolved) {
-          try { llmHostname = new URL(resolved.endpoint).hostname.toLowerCase(); } catch { /* leave empty → all bound secrets refused on llm path */ }
-        }
-      } catch { /* core not available — skip scan */ }
-    }
-
-    handler.llm = async (req) => {
-      // Coerce prompt/system to strings ONCE and forward the coerced
-      // values, so the bytes the secret-scan reads are exactly the
-      // bytes that reach the wire. The IPC boundary does no shape
-      // validation (subprocess-runner.cjs JSON.parses the request), so
-      // a non-string field — `ctx.llm({ prompt: { x: ctx.secrets.X } })`
-      // — would otherwise stringify to "[object Object]" in the scan
-      // yet serialize the secret into the request body downstream,
-      // defeating the multi-secret cross-talk check (INFOSEC NF1
-      // second-pass).
-      const prompt = typeof req.prompt === 'string' ? req.prompt : String(req.prompt);
-      const system = req.system == null ? undefined : String(req.system);
-      const safeReq = { ...req, prompt, system };
-      if (boundSecrets.length > 0) {
-        enforceSecretBindings({
-          hostname: llmHostname,
-          url: '',
-          headers: '',
-          body: `${system ?? ''}\n${prompt}`,
-        }, boundSecrets);
-      }
-      return llmFn(provider, safeReq);
-    };
+    // Hostname resolution + coerce-then-scan-then-dispatch is shared
+    // with registry.ts's in-process buildContextFromCaps — see
+    // buildLlmSecretGuard (INFOSEC NF1: the two loaders drifted on this
+    // guard once already; don't hand-mirror it a third time).
+    handler.llm = buildLlmSecretGuard(caps.llm, boundSecrets, opts.secrets, opts.llm);
   }
 
   if (caps.storage && opts.storage) {

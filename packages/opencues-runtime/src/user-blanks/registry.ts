@@ -38,7 +38,7 @@ import {
 } from './subprocess-loader';
 import { sanitizeBlankOutput } from './sanitize';
 import { createQuotaTracker, type QuotaConfig, type QuotaTracker } from './quota';
-import { buildRequestParts, enforceSecretBindings, type BoundSecret } from './secret-leak-guard';
+import { buildRequestParts, enforceSecretBindings, buildLlmSecretGuard, type BoundSecret } from './secret-leak-guard';
 
 // ─── BlankConfig shape we need ──────────────────────────────────────────
 //
@@ -301,48 +301,13 @@ function buildContextFromCaps(
   }
 
   if (caps.llm && opts.llm) {
-    const provider = caps.llm;
-    const llmFn = opts.llm;
-
-    // Resolve the LLM endpoint up front so we know which host the
-    // prompt+system body will be sent to. Used to enforce secret
-    // host bindings on the LLM path (a malicious blank could try to
-    // exfil a bound secret through the prompt body).
-    let llmHostname = '';
-    if (opts.secrets && boundSecrets.length > 0) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-        const core = require('@opencues/core') as typeof import('@opencues/core');
-        const resolved = core.resolveLLM({
-          apiKeys: opts.secrets as Record<string, string>,
-          globalProvider: provider,
-        });
-        if (resolved) {
-          try { llmHostname = new URL(resolved.endpoint).hostname.toLowerCase(); } catch { /* leave empty → all bound secrets refused on llm path */ }
-        }
-      } catch { /* core not available — skip scan */ }
-    }
-
+    // Hostname resolution + coerce-then-scan-then-dispatch is shared
+    // with subprocess-loader.ts's handler.llm — see buildLlmSecretGuard
+    // (INFOSEC NF1: the two loaders drifted on this guard once already).
+    const llmDispatch = buildLlmSecretGuard(caps.llm, boundSecrets, opts.secrets, opts.llm);
     ctx.llm = async (req) => {
       quota.recordLlm();
-      // Coerce prompt/system to strings ONCE and forward the coerced
-      // values so the secret-scan reads exactly the bytes that reach
-      // the wire — a non-string field would otherwise stringify to
-      // "[object Object]" in the scan while serializing the secret into
-      // the request body downstream (INFOSEC NF1 second-pass). Mirrors
-      // subprocess-loader.ts's handler.llm.
-      const prompt = typeof req.prompt === 'string' ? req.prompt : String(req.prompt);
-      const system = req.system == null ? undefined : String(req.system);
-      const safeReq = { ...req, prompt, system };
-      if (boundSecrets.length > 0) {
-        enforceSecretBindings({
-          hostname: llmHostname,
-          url: '',
-          headers: '',
-          body: `${system ?? ''}\n${prompt}`,
-        }, boundSecrets);
-      }
-      return llmFn(provider, safeReq);
+      return llmDispatch(req);
     };
   }
 

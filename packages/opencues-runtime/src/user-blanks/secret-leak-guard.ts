@@ -110,6 +110,77 @@ export function buildRequestParts(url: string, init?: RequestInit): RequestParts
  *
  * Throws on either violation; otherwise returns.
  */
+/** Shape of the request object ctx.llm() / handler.llm() receives.
+ *  Typed as `string` per the public BlankContext/LlmAdapter contract,
+ *  but the runtime value crosses an untrusted boundary (user-blank
+ *  code directly, or — on the subprocess loader — a JSON.parse over
+ *  IPC) and must be treated as unreliable until coerced. See
+ *  `buildLlmSecretGuard`. */
+export interface LlmCallRequest {
+  prompt: string;
+  system?: string;
+  model?: string;
+  maxTokens?: number;
+  temperature?: number;
+}
+
+/**
+ * Builds the `ctx.llm()` dispatch function shared by both user-blank
+ * loaders (in-process `node-loader.ts`/`registry.ts` and the
+ * Bun-subprocess `subprocess-loader.ts`). Resolves the LLM endpoint
+ * hostname once — used to enforce `secret-hosts` bindings on the
+ * outgoing prompt+system body — then on every call coerces
+ * `prompt`/`system` to strings BEFORE both scanning and dispatching,
+ * so the bytes `enforceSecretBindings` scans are exactly the bytes
+ * that reach the wire (INFOSEC NF1 + second-pass hardening: a
+ * non-string field would otherwise stringify to `"[object Object]"`
+ * in the scan while the real value serialized into the wire body
+ * downstream).
+ *
+ * Extracted so the two loaders can't drift on this guard again — NF1
+ * itself WAS that drift (fetch guarded on both loaders, llm guarded on
+ * only one), and the second-pass coercion fix had to be hand-applied
+ * to both call sites in the same PR. One shared implementation
+ * structurally prevents a third repeat.
+ */
+export function buildLlmSecretGuard(
+  provider: string,
+  boundSecrets: readonly BoundSecret[],
+  secrets: Readonly<Record<string, string>> | undefined,
+  llmFn: (provider: string, req: LlmCallRequest) => Promise<string>,
+): (req: LlmCallRequest) => Promise<string> {
+  let llmHostname = '';
+  if (secrets && boundSecrets.length > 0) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+      const core = require('@opencues/core') as typeof import('@opencues/core');
+      const resolved = core.resolveLLM({
+        apiKeys: secrets as Record<string, string>,
+        globalProvider: provider,
+      });
+      if (resolved) {
+        try { llmHostname = new URL(resolved.endpoint).hostname.toLowerCase(); }
+        catch { /* leave empty → all bound secrets refused on llm path */ }
+      }
+    } catch { /* core not available — skip scan */ }
+  }
+
+  return async (req) => {
+    const prompt = typeof req.prompt === 'string' ? req.prompt : String(req.prompt);
+    const system = req.system == null ? undefined : String(req.system);
+    const safeReq = { ...req, prompt, system };
+    if (boundSecrets.length > 0) {
+      enforceSecretBindings({
+        hostname: llmHostname,
+        url: '',
+        headers: '',
+        body: `${system ?? ''}\n${prompt}`,
+      }, boundSecrets);
+    }
+    return llmFn(provider, safeReq);
+  };
+}
+
 export function enforceSecretBindings(
   parts: RequestParts,
   secrets: readonly BoundSecret[],
