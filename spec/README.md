@@ -6,13 +6,14 @@ This directory holds three open file-format standards — **Cues**, **Blanks**, 
 
 ## What the standard is
 
-OpenCues defines three surfaces over text (see [`../concept.md`](../concept.md)):
+The whole system reduces to two directions of intent (see [`../concept.md`](../concept.md)):
 
 | Direction | Surface | Operates on | File format | Trigger |
 |---|---|---|---|---|
 | LLM → user | **Cues** — alternatives surfaced over plain text | one word | [`cue-spec.md`](./cue-spec.md) | regex `match` / `keywords` list |
 | user → system | **Blanks** — `_`-gated value substitutions | one `_` slot | [`blank-spec.md`](./blank-spec.md) | `blankShapes`/`blankKeywords` lead the line, `_` at trailing edge |
-| LLM → buffer | **Auditors** — composed inline rewrite concerns | the whole buffer | [`auditor-spec.md`](./auditor-spec.md) | every rewrite cycle (no per-source gating) |
+
+**Auditors** are a continuous, whole-buffer variant of the Cues direction — one declared concern (grammar, clarity, tone, ...) applied as an ongoing, revertable rewrite instead of a per-word cycle a user has to accept. Same "the system offers, you didn't ask" contract as Cues; different scope (whole buffer) and cadence (every rewrite tick, not per word). Own file format ([`auditor-spec.md`](./auditor-spec.md)) and own conformance contract, same as the other two — the "variant" framing is conceptual, not a reduction in how normatively it's specified.
 
 The standard covers three source-folder entry files (`CUE.md`, `BLANK.md`, `AUDITOR.md`), the master files that aggregate them (`CUES.md`, `BLANKS.md`, `AUDITORS.md`), and the runtime contracts a conformant implementation must satisfy.
 

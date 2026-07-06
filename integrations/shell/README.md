@@ -19,9 +19,8 @@ a private one is vendored under `~/.opencues/vendor/tmux/`.
 ### Prerequisites
 
 You need the `opencues` CLI on PATH. If you haven't set that up yet,
-follow [Quickstart → Bootstrap the `opencues` CLI](../../README.md#2-bootstrap-the-opencues-cli)
-in the root README — that covers Node, pnpm, the clone, and the
-shell alias.
+follow [`BETA-INSTALL.md` § Bootstrap the `opencues` CLI](../../BETA-INSTALL.md#3-bootstrap-the-opencues-cli)
+— that covers Node, pnpm, the clone, and the shell alias.
 
 This integration needs **Bun** (input box is a Bun + OpenTUI app) and
 **tmux 3.2+** (slide-pane uses `display-popup`). You don't have to

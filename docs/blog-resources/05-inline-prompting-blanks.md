@@ -30,7 +30,7 @@ unicode for em dash _         → "U+2014"
 4 * 12 = _                    → "48"
 nvda _                        → "121.45"     (live stock price)
 agentically fix typos _ ...   → arms a continuous LLM editing loop
-change boy to girl _ the boy ran fast → "the girl ran fast"
+hey can u send me that report when u get a sec make this formal _ → "Could you please send me that report at your earliest convenience?"
 ```
 
 Same character, doing wildly different jobs depending on context.

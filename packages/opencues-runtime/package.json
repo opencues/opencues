@@ -35,5 +35,5 @@
     "typescript": "^5.3.0",
     "vitest": "^4.1.0"
   },
-  "license": "UNLICENSED"
+  "license": "Apache-2.0"
 }

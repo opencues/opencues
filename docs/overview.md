@@ -10,7 +10,7 @@ For the full list of features any integration should implement, see `features/RE
 
 ## Overview
 
-OpenCues has two directions of intent: **Cues** (LLM → user — alternatives offered on plain text) and **Blanks** (user → system — substitutions summoned via `_`). Cue-Blanks are blanks bound to a keyword, pulling external state (volume, stocks). Everything that touches the world is `_`-gated.
+OpenCues has two directions of intent: **Cues** (LLM → user — alternatives offered on plain text) and **Blanks** (user → system — substitutions summoned via `_`). Cue-Blanks are blanks bound to a keyword, pulling external state (volume, stocks). Everything that touches the world is `_`-gated. **Auditors** extend the Cues direction to the whole buffer — a continuous, revertable rewrite for one declared concern (grammar, clarity, tone, ...) instead of a per-word cycle; see `spec/auditor-spec.md` and [`docs/guides/adding-an-auditor.md`](guides/adding-an-auditor.md).
 
 The architecture has three layers:
 
