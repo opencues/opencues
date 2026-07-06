@@ -402,7 +402,7 @@ function routeWord(sources: Array<{ name: string; priority?: number; match?: str
 }
 
 /**
- * Spec blank routing algorithm (0.4) — SENTENCE-SCOPED shapes. A blank claims a
+ * Spec blank routing algorithm (0.6) — SENTENCE-SCOPED shapes. A blank claims a
  * `_` when one of its keywords (or an explicit `blankShapes` pattern) leads the
  * SENTENCE containing `_`, with `_` at the trailing edge. A sentence begins at
  * the last sentence terminator (`.`/`!`/`?` + whitespace, or a CJK `。！？．`) OR

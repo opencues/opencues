@@ -62,6 +62,8 @@
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
 import { SourceConfig } from '../cues-md';
 import { describeLLMCall, dispatchChat, type ProviderAdapter } from '../llm-provider';
+import { getDehydrator } from '../dehydrate';
+import { postProcessContext } from '../identity-context';
 
 // ============================================================================
 // Sentence segmenter — regex-based, robust over linguistic perfection
@@ -372,6 +374,16 @@ export class SentenceCueSource implements CueSource {
       ? promptText.trimEnd()
       : `${promptText.trimEnd()}\n\n${SINGLE_SENTENCE_FORMAT_SPEC}`;
 
+    // DEHYDRATION (outbound PII scrub) — in identity-context `safe`
+    // mode, catalog values inside each sentence are replaced with
+    // [TOKEN]s before the sentence ships; returned alternatives are
+    // hydrated back below (preserveUnknown so LLM-emitted placeholders
+    // survive). `span.text`, offsets, and alternatives[0] stay original.
+    const idCtx = context.identityContext;
+    const dehydrator = idCtx && idCtx.mode === 'safe' && idCtx.catalog.size > 0
+      ? getDehydrator(idCtx.catalog, (m) => this.log(`SentenceCue[${this.sourceConfig.name}]: ${m}`))
+      : undefined;
+
     const matched: Array<string[] | 'ceded' | null> = await mapWithConcurrency(
       spans,
       SENTENCE_CUE_CONCURRENCY,
@@ -379,10 +391,28 @@ export class SentenceCueSource implements CueSource {
         if (context.signal?.aborted) return null;
         try {
           const budget = this.sourceConfig.maxTokens ?? estimateSentenceCueBudget([span.text.length]);
-          const raw = await this.callLLM(system, `SENTENCE: ${span.text}`, budget, context.signal);
+          const dSpan = dehydrator?.dehydrate(span.text);
+          const outbound = dSpan?.changed ? dSpan.text : span.text;
+          if (dSpan?.changed) {
+            this.log(`SentenceCue[${this.sourceConfig.name}]: dehydrated ${dSpan.spans.length} value(s) → tokens (outbound PII scrub)`);
+          }
+          const raw = await this.callLLM(system, `SENTENCE: ${outbound}`, budget, context.signal);
           const parsed = parseSingleSentenceAlts(raw);
           if (parsed.ceded) return 'ceded';
-          return parsed.alts.length > 0 ? parsed.alts : null;
+          if (parsed.alts.length === 0) return null;
+          if (!idCtx || idCtx.catalog.size === 0) return parsed.alts;
+          // Hydrate echoed tokens back to values. Failure keeps the raw
+          // alternative (visible token, revertable via alternatives[0]).
+          return parsed.alts.map(alt => {
+            try {
+              return postProcessContext(alt, {
+                catalog: idCtx.catalog,
+                originalBody: span.text, // TRUE pre-dehydration sentence
+                preserveUnknown: true,
+                introducedTokens: dSpan?.introduced,
+              }).output;
+            } catch { return alt; }
+          });
         } catch (e) {
           this.log(`SentenceCue[${this.sourceConfig.name}]: call failed for "${span.text.slice(0, 24)}…" — ${(e as Error).message}`);
           return null;

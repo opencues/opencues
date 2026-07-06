@@ -1911,12 +1911,78 @@ export interface UsageReport {
   readonly predictionAcceptRate: number;
 }
 
+/**
+ * Defense-in-depth OUTBOUND PII FLOOR (buffer-dehydration feature).
+ *
+ * The per-source dehydration passes are the primary mechanism; this
+ * module-level guard is the belt-and-braces floor at the single
+ * transport gateway: when registered (boot-common's buildSharedRuntime,
+ * identity-context `safe` mode only), every dispatchChat request has
+ * its message contents + prediction scrubbed of residual catalog
+ * values. A hit means A SOURCE IS MISSING DEHYDRATION — the request is
+ * scrubbed (never thrown: the floor must not break a feature) and a
+ * loud warning names the miss. Residual tokens in the response hydrate
+ * via the sources' existing catalog-driven post-processors.
+ *
+ * Null / unregistered (bare-core consumers: benches, CLI, tests) and
+ * `raw` mode (values are supposed to ship) → requests pass through
+ * byte-identical. The scrub is deterministic per catalog generation,
+ * so Cerebras prefix-cache identity is preserved across calls.
+ */
+type OutboundDehydrationGuard = () => import('./dehydrate').CompiledDehydrator | null;
+let outboundDehydrationGuard: OutboundDehydrationGuard | null = null;
+
+export function setOutboundDehydrationGuard(guard: OutboundDehydrationGuard | null): void {
+  outboundDehydrationGuard = guard;
+}
+
+/** Test hook — read the currently registered guard. */
+export function getOutboundDehydrationGuard(): OutboundDehydrationGuard | null {
+  return outboundDehydrationGuard;
+}
+
+/** Apply the registered floor to a request. Exported so AgentRewrite's
+ *  HTTP branch (the one dispatchChat bypass) can apply the same floor
+ *  before provider.buildRequest. Returns the request unchanged when no
+ *  guard is registered or nothing matched. */
+export function applyOutboundDehydrationFloor<T extends {
+  messages: ReadonlyArray<{ role: string; content: string }>;
+  prediction?: string;
+}>(req: T, warn?: (msg: string) => void): T {
+  let guard: import('./dehydrate').CompiledDehydrator | null = null;
+  try {
+    guard = outboundDehydrationGuard?.() ?? null;
+  } catch { return req; }
+  if (!guard || guard.size === 0) return req;
+  let caught = 0;
+  const messages = req.messages.map(m => {
+    const d = guard!.dehydrate(m.content);
+    if (!d.changed) return m;
+    caught += d.spans.length;
+    return { ...m, content: d.text };
+  });
+  const dPred = req.prediction !== undefined ? guard.dehydrate(req.prediction) : undefined;
+  if (dPred?.changed) caught += dPred.spans.length;
+  if (caught === 0) return req;
+  const msg = `[opencues] outbound PII floor caught ${caught} residual value(s) — a source is missing dehydration (scrubbed before dispatch)`;
+  if (warn) warn(msg);
+  else if (typeof console !== 'undefined') console.warn(msg);
+  return {
+    ...req,
+    messages,
+    ...(dPred?.changed ? { prediction: dPred.text } : {}),
+  };
+}
+
 export async function dispatchChat(
   provider: ProviderAdapter,
   httpAdapter: HttpAdapterShape,
   req: ChatRequest,
   ctx: { apiKey: string; endpoint?: string; signal?: AbortSignal; maxThinking?: boolean; onUsage?: (u: UsageReport) => void; noRateLimitRetry?: boolean },
 ): Promise<string> {
+  // OUTBOUND PII FLOOR — see applyOutboundDehydrationFloor above. Runs
+  // before BOTH transports (CLI and HTTP) so no branch can bypass it.
+  req = applyOutboundDehydrationFloor(req);
   // CLI-transport providers (e.g. claude-cli daemon, openai-subscription)
   // handle their own lifecycle and return the assistant text directly.
   // The httpAdapter argument is intentionally ignored — caller still

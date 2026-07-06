@@ -17,7 +17,7 @@
 // back to the static `{value}` substitution — a weave can never destroy or
 // corrupt the buffer (the "no logical landmines" rule).
 
-import { resolveLLM, dispatchChat } from '@opencues/core';
+import { resolveLLM, dispatchChat, getDehydrator, postProcessContext } from '@opencues/core';
 import type { ResolvedLLM, HttpAdapterShape, ChatRequest } from '@opencues/core';
 import type { ConfigLoader } from './config-loader';
 
@@ -122,11 +122,28 @@ export function buildBlankWeaver(
       return null;
     }
 
+    // DEHYDRATION (outbound PII scrub) — PRIOR TEXT is surrounding
+    // buffer content; in identity-context `safe` mode, catalog values in
+    // it ship as [TOKEN]s. The woven output is hydrated back below.
+    // (The ⟦VALUE⟧ weave token is not bracket-shaped, so hydration
+    // never touches it.)
+    const idMode = configLoader.opencuesState.identityContextMode;
+    const idCatalog = configLoader.identity?.catalog;
+    const dehydrator = idMode === 'safe' && idCatalog && idCatalog.size > 0
+      ? getDehydrator(idCatalog, (m) => log?.('info', `blank-weave: ${m}`))
+      : null;
+    const priorOriginal = req.priorContext.trim();
+    const dPrior = priorOriginal ? dehydrator?.dehydrate(priorOriginal) : undefined;
+    const outboundPrior = dPrior?.changed ? dPrior.text : priorOriginal;
+    if (dPrior?.changed) {
+      log?.('debug', `blank-weave: dehydrated ${dPrior.spans.length} value(s) → tokens (outbound PII scrub)`);
+    }
+
     const chatReq: ChatRequest = {
       model: resolved.model,
       messages: [
         { role: 'system', content: FUSED_WEAVE_SYSTEM },
-        { role: 'user', content: `PRIOR TEXT:\n${req.priorContext.trim() || '(none)'}\n\nPLACEHOLDER PHRASE:\n${placeholder}` },
+        { role: 'user', content: `PRIOR TEXT:\n${outboundPrior || '(none)'}\n\nPLACEHOLDER PHRASE:\n${placeholder}` },
       ],
       temperature: 0,
     };
@@ -146,7 +163,21 @@ export function buildBlankWeaver(
 
     // The token MUST survive exactly once. If the model dropped, duplicated, or
     // mangled it, we can't safely splice the value — fall back to static.
-    const woven = out.trim().replace(/^["'`]|["'`]$/g, '');
+    let woven = out.trim().replace(/^["'`]|["'`]$/g, '');
+    // HYDRATION — restore values for any [TOKEN] the model echoed from
+    // the dehydrated PRIOR TEXT. Failure keeps the raw woven text
+    // (visible token beats a leak; the token-survival check below still
+    // guards the splice).
+    if (dehydrator && idCatalog) {
+      try {
+        woven = postProcessContext(woven, {
+          catalog: idCatalog,
+          originalBody: priorOriginal, // TRUE pre-dehydration text
+          preserveUnknown: true,
+          introducedTokens: dPrior?.introduced,
+        }).output;
+      } catch { /* keep raw woven */ }
+    }
     const tokenCount = woven.split(WEAVE_VALUE_TOKEN).length - 1;
     if (tokenCount !== 1) {
       log?.('info', `blank-weave: token survived ${tokenCount}× (need exactly 1) — static fallback`);

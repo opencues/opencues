@@ -19,6 +19,7 @@ import { DimRender } from '../../../src/modules/dim-render';
 import { Cycling } from '../../../src/modules/cycling';
 import { ConfigLoader } from '../../../src/modules/config-loader';
 import { Statusline } from '../../../src/modules/statusline';
+import { KataCoach } from '../../../src/modules/kata';
 import { TTS } from '../../../src/modules/tts';
 import { Resolver } from '../../../src/modules/resolver';
 import { AgentRewrite } from '../../../src/modules/agent-rewrite';
@@ -34,7 +35,7 @@ import { createSourceReclassifier, resetSharedBufferState } from '../../../src/b
 import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import { AgentTaskState } from '../../../src/state/agent-task';
 import { applyDirectives } from '../../../src/render-directives';
-import { buildAgentLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { buildBlankWeaver } from '../../../src/modules/blank-weave';
 import { startEventBridge } from '../../../src/event-bridge';
 import type {
@@ -496,6 +497,12 @@ export function boot(host: HostInfo): BootResult {
 
   const adapter = new ClaudeCodeV21Adapter(bindings);
 
+  // Kata key observation — MUST be the first key subscriber (key
+  // dispatch is emit-until-consumed; Navigation consumes Ctrl+Alt
+  // arrows). See docs/architecture/katas.md § host wiring contract.
+  let kataCoachRef: KataCoach | null = null;
+  adapter.onKey(null, (e) => { kataCoachRef?.observeKey(e); return false; });
+
   // Direct-launch drift advisory. CC's per-band boot wires modules by
   // hand and predates `buildSharedRuntime` (where every other host gets
   // this for free). Without this call the warning never fires for CC
@@ -530,6 +537,22 @@ export function boot(host: HostInfo): BootResult {
   configLoaderRef = configLoader; // wire isDebugEnabled to OPENCUES.md
   configLoader.subscribe(); // hot-reload on text-change drift
   configLoader.load().catch(err => log('error', 'ConfigLoader.load failed', err));
+
+  // OUTBOUND PII FLOOR (buffer-dehydration) — CC's per-band boot wires
+  // modules by hand (predates buildSharedRuntime, where every other
+  // host registers this for free), so the dispatchChat-level guard is
+  // registered here explicitly. Mirrors boot-common.buildSharedRuntime.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const core = require('@opencues/core') as {
+      setOutboundDehydrationGuard?: (g: (() => unknown) | null) => void;
+      getDehydrator?: (c: ReadonlyMap<string, string>) => unknown;
+    };
+    core.setOutboundDehydrationGuard?.(() => {
+      const id = identityDehydrationFor(configLoader);
+      return id && core.getDehydrator ? core.getDehydrator(id.catalog) : null;
+    });
+  } catch { /* core unavailable — pre-feature behaviour */ }
 
   // Subscribe modules synchronously so the very first key dispatch is wired.
   const navigation = new Navigation(adapter, hlState, dynDefs, configLoader, spanFillState, selectorSatelliteState);
@@ -611,12 +634,29 @@ export function boot(host: HostInfo): BootResult {
   configLoader.load().then(() => blankFill.subscribe()).catch(() => { /* logged */ });
   void blankFill; // silence unused — referenced by future phases
 
+  // KataCoach — modal guided-scenario runtime. Same wiring as
+  // oc/v1.14 (docs/architecture/katas.md).
+  const HOME_TUT = process.env.HOME ?? '~';
+  const kataCoach = new KataCoach(adapter, configLoader, {
+    katasDirs: configSearchPaths.map(p => `${p}/katas`),
+    resolveLLM: () => buildKataLLMResolver(configLoader, apiKeys),
+    cadenceMs: () => parseInt(configLoader.opencuesState.settings.get('kata-debounce-ms') ?? '', 10),
+    nudgeMs: () => parseInt(configLoader.opencuesState.settings.get('kata-nudge-ms') ?? '', 10),
+    progressFile: process.env.OPENCUES_HOME
+      ? `${process.env.OPENCUES_HOME}/kata-progress.json`
+      : `${HOME_TUT}/.cues/kata-progress.json`,
+    log: msg => log('debug', msg),
+  });
+  kataCoach.subscribe();
+  kataCoachRef = kataCoach; // arms the early key observer above
+
   // Statusline only if the host advertised a path. Don't write to a default
   // location — that risks colliding with another opencues instance.
   if (host.statusFilePath) {
     const statusline = new Statusline(adapter, hlState, dynDefs, {
       exportPath: host.statusFilePath,
       refreshHook: host.refreshStatusline,
+      kataStatus: () => kataCoach.status(),
     }, configLoader, spanFillState, selectorSatelliteState, agentTaskState);
     statusline.subscribe();
   }
@@ -658,6 +698,7 @@ export function boot(host: HostInfo): BootResult {
     missingKeyFallbackMessage: hasAnyKey ? undefined : NATIVE_HOST_MISSING_KEY_MESSAGE,
     formatLLMErrorAsSubstitute: nativeHostFormatLLMError,
     keywordBoundSlotIndices: (text: string) => blankFill.scan(text).map(s => s.index),
+    externallySuppressed: (text: string) => kataCoach.shouldSuppressResolve(text),
   }, spanFillState, agentTaskState, blankLoading, markdownRender, selectorSatelliteState,
   buildBlankContextProvider(configLoader, host.blanks, log),
   buildBlankFetchProvider(configLoader, host.blanks, log));
@@ -670,6 +711,9 @@ export function boot(host: HostInfo): BootResult {
       // Re-resolves per tick — picks up OPENCUES.md `agent-provider:` /
       // `agent-model:` / `llm-provider:` edits without a restart.
       resolveLLM: () => buildAgentLLMResolver(configLoader, apiKeys),
+      // Buffer-dehydration: outbound DOCUMENT scrubbed to [TOKEN]s in
+      // identity-context safe mode; rewrite hydrated before the merge.
+      identityDehydration: () => identityDehydrationFor(configLoader),
       // Sliding-window mode (lazy thunk so OPENCUES.md edits take effect
       // without a restart). 0 = full-buffer; e.g. 200 = cursor ± 100
       // words, expanded to paragraph boundaries.

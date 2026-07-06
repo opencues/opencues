@@ -1,6 +1,6 @@
 # OpenCues Specification
 
-**Current version: `0.4` (draft)**
+**Current version: `0.6` (draft)**
 
 This document is a short front door. The full standard — **Cues**, **Blanks**,
 and **Auditors**, plus the shared `core.md` rules and the `identity-context`
@@ -85,6 +85,13 @@ breakdown. Summary — the spec defines the wire format of:
    `identity-context-mode` scalar in `OPENCUES.md` (`off` /
    `safe` / `raw`; default `safe` since PR #161, 2026-06-18 — was
    `off` before that).
+
+8. **`katas/<name>/KATA.md`** — guided in-editor scenarios (new in
+   `0.5`). Frontmatter (`name` / `id` / `title` / `next` curriculum
+   link) + `## ` step sections whose bodies are opaque coach-prompt
+   material. The **file format** is spec; the coaching runtime (trace,
+   coach tick, escape ladder, rendering) is reference-impl. See
+   [`spec/kata-spec.md`](spec/kata-spec.md).
 
 ## What the spec does NOT cover
 

@@ -14,6 +14,85 @@ breaking.
 
 ## [Unreleased]
 
+### Fixed
+
+- `core.md` § Hot-reload: corrected the reference-runtime cadence description. The reference implementation reloads config off user input with a ~2s debounce plus a ~5s background poll (`config-loader.ts`), not a ~100ms filesystem poll — the previously cited `event-bridge.ts` `POLL_INTERVAL_MS` timer is the inject-file/state poller, unrelated to config reload. The SHOULD pickup window is restated as "within a couple of seconds" to match the reference implementation (was "a few hundred milliseconds", which the reference runtime itself never met).
+
+---
+
+## [0.6.0-alpha] — 2026-07-06
+
+Spec bump: `identity-context-mode: safe` becomes **bidirectional**. The
+mode previously claimed only the catalog direction (values never enter
+prompt blocks; the LLM emits tokens the runtime hydrates locally).
+`0.6` adds the buffer direction as a normative requirement —
+**dehydration**: catalog values the user TYPED into the buffer MUST be
+replaced with their canonical tokens before any buffer-derived text
+ships in an LLM request, on every dispatch channel (messages,
+speculative prediction hints, ambient/context blocks). See
+`identity-context-spec.md` § Dehydration for the six normative
+requirements (coverage, matching floor, visible residual, buffer
+immutability, round-trip precedence, fail-safe).
+
+No file-format or frontmatter change — `IDENTITY.md` files authored
+against `0.4` parse identically. The bump is normative-behaviour-only
+(the meaning of the spec-mandated `safe` value strengthens), following
+the `0.3 → 0.4` precedent.
+
+### Changed
+
+- `identity-context-spec.md` § Modes — `safe` is documented as the
+  default (an absent scalar MUST resolve to `safe`; explicit
+  unrecognised values MUST fail closed to `off`), fixing a
+  contradiction with `core.md` § Spec-mandated scalars that had
+  survived since the default flip. The two-tier rule is now
+  explicitly required at EVERY re-parse site.
+- `identity-context-spec.md` § Security claims — "Default-off"
+  replaced by "Default-safe" + "Bidirectional in safe mode" (a reader
+  implementing only the catalog half MUST NOT claim `safe`
+  conformance against `0.6`).
+
+### Added
+
+- `identity-context-spec.md` § Dehydration (outbound) — the normative
+  contract for the buffer-direction scrub and its interaction with
+  the post-processor's user-typed-bracket preservation rule
+  (preserve wins on the ambiguous both-present case; conflicts
+  SHOULD be surfaced).
+
+---
+
+## [0.5.0-alpha] — 2026-07-06
+
+Spec bump: adds the **`KATA.md` guided-scenario file format** as a new
+standard surface ([`kata-spec.md`](./kata-spec.md)). A kata is an ordered,
+in-editor scenario a runtime walks a user through.
+
+Normative additions:
+
+- **`katas/<name>/KATA.md`** under the standard `.cues/` search path
+  (project- and user-level, normal precedence). Frontmatter keys
+  `name` / `id` / `title` / `next` (all optional); `## ` headings
+  delimit ordered steps; a file with zero steps MUST be treated as
+  absent. Step bodies are **opaque** — instruction prose plus the
+  non-normative `coach:` convention — handed verbatim to whatever
+  coaching mechanism a runtime implements.
+- **Curriculum link** (`next:`) resolves to a kata by `name` or `id`;
+  a dangling link degrades silently.
+- **Security floors** a kata-consuming runtime MUST honour: consent to
+  start (no self-start), a deterministic model-independent exit, and
+  display-only coaching (no buffer writes / exec / side-effects; at
+  most a bounded, never-backward step counter).
+
+Deliberately **out of the standard** (reference-impl only): the coaching
+runtime — trace model, coach tick, LLM prompt prose, escape-ladder
+phrasing, progress persistence, rendering. Enablement is a runtime knob
+(the reference impl's `katas-mode` scalar), not a spec-mandated scalar.
+
+New JSON schema: [`schemas/kata.schema.json`](./schemas/kata.schema.json).
+New conformance fixtures: `conformance/valid/kata/`,
+`conformance/invalid/kata/`.
+
 ---
 
 ## [0.4.0-alpha] — 2026-06-30

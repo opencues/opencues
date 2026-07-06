@@ -82,10 +82,6 @@ This is the rich vein:
    That reframe — autocomplete-the-user-controls vs. autocomplete-the-system-
    controls — is genuinely novel as an interaction primitive.
 
-4. **Re-evaluation contract.** Blanks are *re-evaluated on every edit*. A blank
-   value is never permanent — the surrounding text changing means the blank
-   re-asks. This is unusual; most "fill" operations are commit-once.
-
 ## Where this material lives
 
 - `concept.md` — the canonical 75-line writeup

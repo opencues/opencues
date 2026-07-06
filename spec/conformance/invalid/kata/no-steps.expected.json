@@ -1,0 +1,5 @@
+{
+  "rule": "kata-no-steps",
+  "severity": "error",
+  "summary": "KATA.md declares no `## ` step sections — a kata with zero steps is not usable and MUST be treated as absent"
+}

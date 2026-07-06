@@ -50,6 +50,17 @@ cd "$REPO_ROOT"
 #     would silently no-op. Historical narrative comments that EXPLAIN the
 #     removal carry a `LEGACY-NAME-ALLOW` marker.
 BANNED_PATTERNS=(
+  # tutorials → kata rename (July 2026; feature was unreleased, no aliases)
+  'Tutorial[C]oach'
+  'TUTORIAL\.md'
+  '\btutorials-mode\b'
+  '\btutorial-debounce-ms\b'
+  '\btutorial-nudge-ms\b'
+  '\btutorial-voice\b'
+  'tutorial-progress\.json'
+  'start[ ]tutorial'
+  'opencues[T]utorial'
+
   'SENTINELS\.md'
   'USER\.md'
   '\bsentinels-mode\b'

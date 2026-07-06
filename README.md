@@ -431,7 +431,7 @@ opencues review ./untrusted-pack/ --llm   # + LLM second opinion
 
 Static parse is authoritative; the LLM can downgrade a verdict but never upgrade past a hard-blocked pattern.
 
-**Optional context features.** Ambient context (Chrome reads the focused field's label + page title for disambiguating fluid lookups) is **off by default**. Identity context (`~/.cues/IDENTITY.md` personal data sent as sentinel tokens) defaults to **`safe` mode** since 2026-06-18 — only token names + descriptions reach the LLM, real values substituted post-LLM on the host; set `identity-context-mode: off` in `~/.cues/OPENCUES.md` to disable entirely. Sensitive fields (password / OTP / payment / PII heuristics) refuse to attach regardless.
+**Optional context features.** Ambient context (Chrome reads the focused field's label + page title for disambiguating fluid lookups) is **off by default**. Identity context (`~/.cues/IDENTITY.md` personal data sent as sentinel tokens) defaults to **`safe` mode** since 2026-06-18, and `safe` is bidirectional: only token names + descriptions reach the LLM (real values substituted post-LLM on the host), and if you type your own name, email, or any other IDENTITY.md value into the buffer, it's scrubbed to tokens before the request leaves your machine and restored in the result. Set `identity-context-mode: off` in `~/.cues/OPENCUES.md` to disable entirely. Sensitive fields (password / OTP / payment / PII heuristics) refuse to attach regardless.
 
 Full threat model, capability tables, and per-surface boundaries:
 - [`docs/architecture/security-audit.md`](docs/architecture/security-audit.md) — umbrella threat model
@@ -451,7 +451,7 @@ New to the terminology? [`docs/glossary.md`](docs/glossary.md) covers cues, blan
 
 | Component | Version | Status |
 |---|---|---|
-| `spec/` | 0.4-alpha | Field names + semantics may change before 1.0. Tracked in [`spec/CHANGELOG.md`](spec/CHANGELOG.md). |
+| `spec/` | 0.6-alpha | Field names + semantics may change before 1.0. Tracked in [`spec/CHANGELOG.md`](spec/CHANGELOG.md). |
 | `@opencues/core` | 0.x | Workspace dep, pre-publish. Public API may change. |
 | `@opencues/runtime` | 0.x | Workspace dep, pre-publish. Public API may change. |
 | Claude Code integration | Available | Pinned at Claude Code 2.1.170 (native bun-binary). Also tested: 2.1.110 (cli.js), 2.1.150, 2.1.158. |

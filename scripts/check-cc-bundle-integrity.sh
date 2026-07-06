@@ -131,6 +131,11 @@ REQUIRED_SPECS=(
   # Fork layout flattens core's dist/ into the package root (setup.sh
   # § 5), so core specs are `@opencues/core/<file>.js`, not dist paths.
   "@opencues/core/env-keys.js"
+  # Buffer dehydration (outbound PII scrub) — top-level core dist file,
+  # FLATTENED to the package root by setup.sh's `cp dist/*.js core/`
+  # step; exercised here so a future copy-step regression can't
+  # silently disable the scrub in user forks.
+  "@opencues/core/dehydrate.js"
 )
 OPTIONAL_SPECS=(
   "@opencues/runtime/dist/src/user-blanks/registry.js"

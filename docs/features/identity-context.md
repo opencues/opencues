@@ -6,11 +6,13 @@ on the `_` blank uses your real data when it's relevant.
 
 **`safe` by default** (`identity-context-mode: safe` in
 `~/.cues/OPENCUES.md`) — tokens-only catalog reaches the LLM, values
-substitute post-response, PII stays on the host. Set `off` to disable
-entirely (IDENTITY.md never read). `raw` mode (values inlined into the
-prompt) is implementation-complete but deliberately not exposed in the
-`opencues config` menu — a deliberate file edit only. Phase 1 wires
-fluid-blank only.
+substitute post-response, and anything from IDENTITY.md you typed
+into the buffer is scrubbed to tokens on the way out (see "Your
+typed text is scrubbed too" below). PII stays on the host. Set `off`
+to disable entirely (IDENTITY.md never read). `raw` mode (values
+inlined into the prompt) is implementation-complete but deliberately
+not exposed in the `opencues config` menu — a deliberate file edit
+only. The catalog is wired for fluid-blank and transform-blank.
 
 > **Naming note (June 2026 rename).** Identity context was previously
 > called "sentinels"; the file used to be `SENTINELS.md` (and earlier
@@ -62,7 +64,24 @@ sees real data so it can pick a register that matches your name
 (e.g. "Dear Robert" vs "Hey Bob"). PII reaches the provider. Opt-in
 when prose quality matters more than provider-log privacy.
 
-**`off` (default)** — `IDENTITY.md` is never read.
+**`off`** — `IDENTITY.md` is never read.
+
+## Your typed text is scrubbed too
+
+In `safe` mode the protection runs in both directions. If you type
+your own name, email, or any other value from `IDENTITY.md` into the
+buffer — say `draft an email _ hi, this is Wilfred` — the typed value
+is replaced with its token (`[FIRST NAME]`) before the request leaves
+your machine, and the real value is restored in the result before it
+lands in your buffer. You never see the tokens; the provider never
+sees the values.
+
+Values too short or too common to match safely (a two-letter
+initialism, a field value that's an ordinary dictionary word or a
+month/day name like `June`) are skipped — with a logged warning, so
+you're told rather than silently exposed. With `debug-mode: on`,
+`/tmp/opencues.log` shows a `dehydrated N value(s)` line per request
+so you can verify the scrub is live.
 
 ## Field naming
 
@@ -102,8 +121,9 @@ Full threat model + design:
 
 - **Body text in IDENTITY.md.** The body (free prose after the
   frontmatter's closing `---`) is ignored. Reserved for Phase 3.
-- **Other pipelines.** Transform-blank, word-cues, agent-rewrite,
-  auditors all explicitly skip sentinels. Fluid-blank only.
+- **Other pipelines.** Word-cues, agent-rewrite, and auditors skip
+  the catalog. Fluid-blank and transform-blank only. (The outbound
+  typed-text scrub is separate and covers every LLM-bound pipeline.)
 - **Per-project IDENTITY.md.** Global only. User data isn't
   project data.
 - **Per-pack field requests.** Until packs can declare
