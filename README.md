@@ -182,9 +182,7 @@ Join the community — questions, feedback, and the people building alongside yo
 
 # License
 
-Proprietary. All rights reserved. See [LICENSE](LICENSE).
-
-<!-- TODO[license-flip]: switch to Apache-2.0 at private-beta-end — update this line and LICENSE itself. -->
+[Apache License 2.0](LICENSE).
 
 <br><br><br><br>
 

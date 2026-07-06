@@ -640,7 +640,7 @@ Chrome runs on Windows but builds in WSL — after `npm run build`, copy `integr
 
 **Other**:
 
-- Switch `LICENSE` from "Proprietary. All rights reserved." to the chosen open-source license; the README license section will continue to render the new text without further changes.
+- ~~Switch `LICENSE` to the chosen open-source license~~ — **done (July 2026)**: LICENSE is Apache-2.0; README badge/section and the `@opencues/{core,runtime}` package.json `license` fields updated in the same PR.
 
 **Switch `opencues` npm name from parked placeholder to real CLI**: runbook at [docs/launch/npm-handover.md](docs/launch/npm-handover.md) — covers the 5-step handover, the version-can't-be-reused caveat, and the security-key/TOTP gotcha for org-write commands.
 
