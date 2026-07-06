@@ -40,6 +40,22 @@ export interface StatuslineOptions {
    * succeed — both sinks are driven by the same maybeWrite pass.
    */
   readonly onSnapshot?: (payload: StatuslinePayload) => void;
+  /**
+   * Optional. Live kata-mode status feed (KataCoach.status).
+   * When it returns non-null, the payload carries a `kata` block —
+   * step counter + one coaching line — that consumers render as the
+   * dominant statusline content while a kata is active.
+   */
+  readonly kataStatus?: () => {
+    readonly name: string;
+    readonly title: string;
+    readonly step: number;
+    readonly stepCount: number;
+    readonly stepTitle: string;
+    readonly coach: string | null;
+    readonly coachSegments: ReadonlyArray<{ readonly text: string; readonly command: boolean }> | null;
+    readonly offTrack: boolean;
+  } | null;
 }
 
 export interface StatuslinePayload {
@@ -71,6 +87,22 @@ export interface StatuslinePayload {
     readonly sticky: boolean;
     readonly provider?: string;
     readonly model?: string;
+  } | null;
+  /**
+   * Kata-mode block. Non-null while a kata is active — step
+   * counter + the live coaching line. Consumers should render this as
+   * the dominant statusline content (kata mode overrides normal
+   * cue/tip display). null / absent when no kata is running.
+   */
+  kata?: {
+    readonly name: string;
+    readonly title: string;
+    readonly step: number;
+    readonly stepCount: number;
+    readonly stepTitle: string;
+    readonly coach: string | null;
+    readonly coachSegments: ReadonlyArray<{ readonly text: string; readonly command: boolean }> | null;
+    readonly offTrack: boolean;
   } | null;
 }
 
@@ -348,7 +380,12 @@ export class Statusline {
     // through every return — health is orthogonal to highlight state.
     const built = this.buildPayload(ctx);
     const providerError = this.currentProviderError();
-    const payload: StatuslinePayload = providerError !== undefined ? { ...built, providerError } : built;
+    let payload: StatuslinePayload = providerError !== undefined ? { ...built, providerError } : built;
+    // Kata block is orthogonal to highlight state (like providerError)
+    // — merge here so it survives the `active: false` early branch too.
+    if (this.options.kataStatus) {
+      payload = { ...payload, kata: this.options.kataStatus() };
+    }
     // Strip timestamp before content-comparison so identical-state renders
     // don't trigger writes purely because of clock change.
     const { timestamp: _t, ...stable } = payload;

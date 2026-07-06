@@ -16,12 +16,12 @@ breaking.
 
 ---
 
-## [0.5.0-alpha] — 2026-07-06
+## [0.6.0-alpha] — 2026-07-06
 
 Spec bump: `identity-context-mode: safe` becomes **bidirectional**. The
 mode previously claimed only the catalog direction (values never enter
 prompt blocks; the LLM emits tokens the runtime hydrates locally).
-`0.5` adds the buffer direction as a normative requirement —
+`0.6` adds the buffer direction as a normative requirement —
 **dehydration**: catalog values the user TYPED into the buffer MUST be
 replaced with their canonical tokens before any buffer-derived text
 ships in an LLM request, on every dispatch channel (messages,
@@ -46,7 +46,7 @@ the `0.3 → 0.4` precedent.
 - `identity-context-spec.md` § Security claims — "Default-off"
   replaced by "Default-safe" + "Bidirectional in safe mode" (a reader
   implementing only the catalog half MUST NOT claim `safe`
-  conformance against `0.5`).
+  conformance against `0.6`).
 
 ### Added
 
@@ -55,6 +55,39 @@ the `0.3 → 0.4` precedent.
   the post-processor's user-typed-bracket preservation rule
   (preserve wins on the ambiguous both-present case; conflicts
   SHOULD be surfaced).
+
+---
+
+## [0.5.0-alpha] — 2026-07-06
+
+Spec bump: adds the **`KATA.md` guided-scenario file format** as a new
+standard surface ([`kata-spec.md`](./kata-spec.md)). A kata is an ordered,
+in-editor scenario a runtime walks a user through.
+
+Normative additions:
+
+- **`katas/<name>/KATA.md`** under the standard `.cues/` search path
+  (project- and user-level, normal precedence). Frontmatter keys
+  `name` / `id` / `title` / `next` (all optional); `## ` headings
+  delimit ordered steps; a file with zero steps MUST be treated as
+  absent. Step bodies are **opaque** — instruction prose plus the
+  non-normative `coach:` convention — handed verbatim to whatever
+  coaching mechanism a runtime implements.
+- **Curriculum link** (`next:`) resolves to a kata by `name` or `id`;
+  a dangling link degrades silently.
+- **Security floors** a kata-consuming runtime MUST honour: consent to
+  start (no self-start), a deterministic model-independent exit, and
+  display-only coaching (no buffer writes / exec / side-effects; at
+  most a bounded, never-backward step counter).
+
+Deliberately **out of the standard** (reference-impl only): the coaching
+runtime — trace model, coach tick, LLM prompt prose, escape-ladder
+phrasing, progress persistence, rendering. Enablement is a runtime knob
+(the reference impl's `katas-mode` scalar), not a spec-mandated scalar.
+
+New JSON schema: [`schemas/kata.schema.json`](./schemas/kata.schema.json).
+New conformance fixtures: `conformance/valid/kata/`,
+`conformance/invalid/kata/`.
 
 ---
 

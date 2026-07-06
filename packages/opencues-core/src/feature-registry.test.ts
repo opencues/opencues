@@ -186,6 +186,31 @@ describe('getMenuDefinitions — settings-aware', () => {
   });
 });
 
+describe('feature-registry — host-scoped FEATURES', () => {
+  it('a chrome-scoped FEATURE appears only in chrome\'s menu', () => {
+    // statusbar-position is chrome-only (hostScope: ['chrome']).
+    expect(getMenuDefinitions('chrome').has('statusbar-position')).toBe(true);
+    for (const host of ['claude-code', 'opencode', 'gemini-cli', 'shell']) {
+      expect(getMenuDefinitions(host).has('statusbar-position'), `${host} must NOT show a chrome-only feature`).toBe(false);
+    }
+  });
+
+  it('un-scoped FEATURES stay universal (shown on every host)', () => {
+    for (const host of ['chrome', 'claude-code', 'opencode', 'gemini-cli', 'shell']) {
+      expect(getMenuDefinitions(host).has('debug-mode'), `${host} must show universal features`).toBe(true);
+    }
+  });
+
+  it('a host-scoped FEATURE is still a real FEATURE (reachable by the intent classifier)', () => {
+    // The classifier enumerates FEATURES (not MENU_TUNABLES), so a
+    // chrome-only setting has to be a FEATURE with hostScope — not a
+    // MENU_TUNABLE — for fluid-config to route to it on chrome.
+    const f = findFeature('statusbar-position');
+    expect(f, 'statusbar-position must be a FEATURE').toBeDefined();
+    expect(f!.hostScope).toEqual(['chrome']);
+  });
+});
+
 describe('feature-registry — the canonical features must exist', () => {
   // These are the features wired into the runtime today. If any one is
   // removed from FEATURES, ConfigLoader / FluidBlankSource / chrome-host

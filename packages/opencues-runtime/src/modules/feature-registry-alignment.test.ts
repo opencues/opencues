@@ -47,6 +47,8 @@ const SETTINGS_MAP_ONLY: ReadonlySet<string> = new Set([
   'cuesLlmModel',
   'auditorsLlmModel',
   'blanksLlmModel',
+  'statusbarPosition',  // chrome-only; read via bootResult.getSetting in
+                        // content.ts (like dim-mix). No typed field needed.
 ]);
 
 describe('feature-registry ↔ OpenCuesState alignment', () => {

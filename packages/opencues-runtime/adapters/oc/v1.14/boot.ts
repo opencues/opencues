@@ -15,10 +15,11 @@ import { startEventBridge } from '../../../src/event-bridge';
 import { Statusline } from '../../../src/modules/statusline';
 import { Resolver } from '../../../src/modules/resolver';
 import { AgentRewrite } from '../../../src/modules/agent-rewrite';
+import { KataCoach } from '../../../src/modules/kata';
 import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
-import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, identityDehydrationFor, buildBlankContextProvider, buildBlankFetchProvider, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { EventEmitter } from '../../../src/lib/event-emitter';
 import type {
   CommonHostInfo,
@@ -166,6 +167,14 @@ export function boot(host: HostInfo): BootResult {
   const adapter = new OpenCodeV14Adapter(bindings);
   Runtime.create(adapter).catch(err => log('error', 'Runtime.create failed', err));
 
+  // Kata key observation — MUST be the first key subscriber (key
+  // dispatch is emit-until-consumed; Navigation consumes Ctrl+Alt+arrows,
+  // so a late subscriber is blind to exactly the presses cycling
+  // katas teach). Late-bound ref: the coach itself is constructed
+  // after buildSharedRuntime (it needs the ConfigLoader).
+  let kataCoachRef: KataCoach | null = null;
+  keyEvents.subscribe(e => { kataCoachRef?.observeKey(e); return false; });
+
   // Universal state + ConfigLoader + Navigation/DimRender/Cycling/BlankFill
   // all live in boot-common.ts so the chrome and opencode bands can't
   // drift on subscription order or constructor args. Tips come from
@@ -196,6 +205,35 @@ export function boot(host: HostInfo): BootResult {
     spanFillState, selectorSatelliteState, agentTaskState,
   } = shared;
 
+  // KataCoach — modal guided-scenario runtime (prototype). Keyword-
+  // bound control phrases (`start kata 1 _`), debounced coach LLM
+  // tick on the auditors bucket, kata.* events. While active it
+  // suppresses the Resolver entirely (modal override) via the
+  // externallySuppressed gate below.
+  const kataCoach = new KataCoach(adapter, configLoader, {
+    katasDirs: configSearchPaths.map(p => `${p}/katas`),
+    resolveLLM: () => buildKataLLMResolver(configLoader, apiKeys),
+    cadenceMs: () => parseInt(configLoader.opencuesState.settings.get('kata-debounce-ms') ?? '', 10),
+    nudgeMs: () => parseInt(configLoader.opencuesState.settings.get('kata-nudge-ms') ?? '', 10),
+    progressFile: process.env.OPENCUES_HOME
+      ? `${process.env.OPENCUES_HOME}/kata-progress.json`
+      : `${HOME}/.cues/kata-progress.json`,
+    speak: (host.ttsScriptPath && adapter.capabilities.includes('spawn-process'))
+      ? (text: string) => {
+        try {
+          adapter.spawnProcess({
+            command: 'bash',
+            args: [host.ttsScriptPath!, text, host.ttsRate !== undefined ? String(host.ttsRate) : '2'],
+            detached: true,
+          });
+        } catch { /* voice is never load-bearing */ }
+      }
+      : undefined,
+    log: msg => log('debug', msg),
+  });
+  kataCoach.subscribe();
+  kataCoachRef = kataCoach; // arms the early key observer above
+
   // Statusline (file-based) + in-process snapshot hook so the OpenCode
   // footer can render the tip natively. Both sinks are opt-in; either
   // or both can be wired.
@@ -205,6 +243,7 @@ export function boot(host: HostInfo): BootResult {
       onSnapshot: host.statusSnapshotHook
         ? (payload) => host.statusSnapshotHook!(payload)
         : undefined,
+      kataStatus: () => kataCoach.status(),
     }, configLoader, spanFillState, selectorSatelliteState, agentTaskState);
     statusline.subscribe();
   }
@@ -243,6 +282,7 @@ export function boot(host: HostInfo): BootResult {
     missingKeyFallbackMessage: hasAnyKey ? undefined : NATIVE_HOST_MISSING_KEY_MESSAGE,
     formatLLMErrorAsSubstitute: nativeHostFormatLLMError,
     keywordBoundSlotIndices: (text: string) => shared.blankFill.scan(text).map(s => s.index),
+    externallySuppressed: (text: string) => kataCoach.shouldSuppressResolve(text),
   }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState,
   // Blank-as-context provider — invoked per resolve when
   // blank-context-mode is on. Reads host's blanks registry to fetch

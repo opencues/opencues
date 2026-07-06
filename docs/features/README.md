@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-05-20
+last_updated: 2026-07-04
 ---
 
 # Feature Concepts
@@ -106,6 +106,8 @@ How runtime state reaches the user (status line, auto-submit) and how cues/blank
 | — | [Host Compat](host-compat.md) | `on-host:` / `not-on-host:` frontmatter scopes a cue/blank/auditor to a subset of integrations |
 | 43 | [Missing-Key Fallback](missing-key-fallback.md) | When no blanks-bucket LLM source could be wired (zero working API keys), `_` substitutes a visible, host-specific in-buffer hint instead of silently doing nothing. Chrome points at the extension popup; native hosts mention `~/.cues/.env`. |
 | 45 | [Provider Health](provider-health.md) | Classifies LLM-call failures (auth / quota / rate-limit / outage / model-missing) into a status-line signal. Shipped as a library module with full scenario-test coverage; **not yet wired into any live host** — see the doc's "Current wiring state" section before relying on it. |
+| 46 | [Katas](kata.md) *(experimental, all 5 hosts)* | Modal guided scenarios (`start kata 1 _`) authored as `katas/<name>/KATA.md`: a debounced LLM coach detects progress from typed text + submits + salient key presses, coaches the next micro-action on the status line, and enforces step order. Deterministic floor throughout: `stop kata _`, `next _`/`skip _`, Esc ×3 escape hatch, loud no-LLM degraded mode. Submit detection works on newline hosts (Chrome/Gmail/Shell) via Enter-keypress-on-non-empty-buffer, not just buffer-clear. |
+| 47 | [Status-bar position](statusbar-position.md) *(chrome-only)* | Where Chrome's in-page floating status bar sits — `bottom` (default, full-width), `top` (full-width), or `right` (compact bottom-right panel). A real FEATURE (not a tunable) so the fluid-config intent classifier can route to it (`move the status bar to the top _`), host-scoped to chrome so it never pollutes the CLI hosts' menus. |
 
 ## Configuration & loading
 

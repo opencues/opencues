@@ -52,6 +52,16 @@ function getCuesRoots(): string[] {
 // payload (deduped, so footer renders only flip when tip actually changes).
 const [opencuesTip, setOpencuesTip] = createSignal<string | null>(null)
 export { opencuesTip }
+// Kata-mode footer block — step counter + coach line split into
+// prose/command segments so the footer can render commands (things the
+// user should literally type/press) in a distinct colour. null when no
+// kata is running.
+const [opencuesKata, setOpencuesKata] = createSignal<{
+  head: string
+  segments: Array<{ text: string; command: boolean }>
+  offTrack: boolean
+} | null>(null)
+export { opencuesKata }
 
 export interface PromptInputAccess {
   /** Reads the current text from the SolidJS store. */
@@ -463,6 +473,22 @@ export function startOpenCues(opts: {
     //   - agentTask null/missing: nothing appended
     //   - agentTask present:      "[task: <prompt>]"  (no in-flight spinner)
     statusSnapshotHook: (payload: any) => {
+      // Kata block is dominant while active — the footer renders it
+      // INSTEAD of the word/tip part (kata mode overrides normal
+      // cue display; docs/features/katas.md § Status line).
+      const tut = payload?.kata as {
+        step: number; stepCount: number; coach: string | null
+        coachSegments: Array<{ text: string; command: boolean }> | null
+        offTrack: boolean
+      } | null | undefined
+      if (tut) {
+        const head = tut.stepCount > 0 ? `Kata ${tut.step}/${tut.stepCount}:` : 'Kata:'
+        const segments = tut.coachSegments
+          ?? (tut.coach ? [{ text: tut.coach, command: false }] : [])
+        setOpencuesKata({ head, segments, offTrack: !!tut.offTrack })
+      } else {
+        setOpencuesKata(null)
+      }
       const agentTask = payload?.agentTask as string | null | undefined
       const agentBadge = agentTask ? `[task: ${agentTask}]` : null
 

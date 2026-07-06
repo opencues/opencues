@@ -361,19 +361,37 @@ open(p, 'w').write(src)
 PY
 }
 
+# Revert a fork source file to pristine upstream (git HEAD) before
+# (re)applying anchor-based patches. Patches are uncommitted working-tree
+# edits, so `git checkout HEAD -- <file>` restores the upstream source.
+# Without this, a stale patch from an EARLIER opencues version leaves the
+# anchors half-applied and unmatchable — e.g. a tip-only footer.tsx that
+# predates the kata block: its `<Directory/>…<Version/>` region was
+# already rewritten by the old patch, so the combined patch's anchor for
+# that region never matches and the kata block silently never lands (the
+# "no kata statusline on upgrade" bug). No-op outside a git work tree.
+restore_pristine() {
+  git -C "$OPENCODE_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  git -C "$OPENCODE_DIR" checkout HEAD -- "$1" 2>/dev/null || true
+}
+
 patch_footer_tsx() {
   local footer="$OPENCODE_DIR/packages/opencode/src/cli/cmd/tui/feature-plugins/home/footer.tsx"
   # Older OpenCode layouts don't ship this file — skip silently.
   [[ -f "$footer" ]] || return 0
-  if grep -q "opencuesTip" "$footer"; then return 0; fi
+  # Guard on the NEWEST marker this patch injects (opencuesKata), not an
+  # older one (opencuesTip) — else a fork left tip-only by a prior version
+  # is treated as "already patched" and never gets the kata block.
+  if grep -q "opencuesKata" "$footer"; then return 0; fi
+  restore_pristine "$footer"
   python3 - "$footer" <<'PY'
 import sys
 p = sys.argv[1]
 src = open(p).read()
-if 'opencuesTip' in src: sys.exit(0)
+if 'opencuesKata' in src: sys.exit(0)
 src = src.replace(
   'import { Global } from "@/global"',
-  'import { Global } from "@/global"\nimport { opencuesTip } from "../../opencues"',
+  'import { Global } from "@/global"\nimport { opencuesTip, opencuesKata } from "../../opencues"',
 )
 src = src.replace(
   '''function View(props: { api: TuiPluginApi }) {
@@ -381,8 +399,64 @@ src = src.replace(
   '''function OpencuesTip(props: { api: TuiPluginApi }) {
   const theme = () => props.api.theme.current
   return (
-    <Show when={opencuesTip()}>
+    <Show when={!opencuesKata() && opencuesTip()}>
       <text fg={theme().textMuted}>{opencuesTip()}</text>
+    </Show>
+  )
+}
+
+// Kata block — its own full-width rows ABOVE the footer widgets.
+// Head line (C_ plate + counter, theme text) then the coach body
+// word-wrapped to at most 3 rows: prose/decoration in textMuted (gray),
+// actionable tokens (commands/keys/titles) in theme text (white). No
+// bold — weight discipline per docs/features/katas.md.
+function wrapOpencuesSegs(segs: Array<{ text: string; command: boolean; bold?: boolean; dim?: boolean }>, width: number) {
+  const rows: Array<Array<{ text: string; command: boolean; bold?: boolean; dim?: boolean }>> = []
+  let cur: Array<{ text: string; command: boolean; bold?: boolean; dim?: boolean }> = []
+  let len = 0
+  for (const s of segs) {
+    let text = s.text
+    while (text.length > 0) {
+      const space = width - len
+      if (text.length <= space) {
+        cur.push({ ...s, text })
+        len += text.length
+        text = ""
+      } else {
+        let cut = text.lastIndexOf(" ", space)
+        if (cut < space * 0.5) cut = space
+        cur.push({ ...s, text: text.slice(0, cut) })
+        rows.push(cur)
+        cur = []
+        len = 0
+        text = text.slice(cut).trimStart()
+      }
+    }
+  }
+  if (cur.length > 0) rows.push(cur)
+  return rows.slice(0, 3)
+}
+
+function OpencuesKataBlock(props: { api: TuiPluginApi }) {
+  const theme = () => props.api.theme.current
+  const width = () => Math.max(20, (process.stdout.columns ?? 80) - 4)
+  return (
+    <Show when={opencuesKata()}>
+      <box style={{ flexDirection: "column", width: "100%" }}>
+        <text>
+          <span style={{ fg: theme().background, bg: theme().text }}>C_</span>
+          <span style={{ fg: theme().text }}> {opencuesKata()!.head}</span>
+        </text>
+        {wrapOpencuesSegs(opencuesKata()!.segments, width()).map((row) => (
+          <text>
+            {row.map((seg) =>
+              seg.command || seg.bold
+                ? <span style={{ fg: theme().text }}>{seg.text}</span>
+                : <span style={{ fg: theme().textMuted }}>{seg.text}</span>,
+            )}
+          </text>
+        ))}
+      </box>
     </Show>
   )
 }
@@ -391,13 +465,20 @@ function View(props: { api: TuiPluginApi }) {
   return (''',
 )
 src = src.replace(
-  '''      <Mcp api={props.api} />
+  '''      <Directory api={props.api} />
+      <Mcp api={props.api} />
       <box flexGrow={1} />
       <Version api={props.api} />''',
-  '''      <Mcp api={props.api} />
-      <box flexGrow={1} />
-      <OpencuesTip api={props.api} />
-      <Version api={props.api} />''',
+  '''      <box style={{ flexDirection: "column", width: "100%" }}>
+        <OpencuesKataBlock api={props.api} />
+        <box style={{ flexDirection: "row", width: "100%", gap: 2 }}>
+          <Directory api={props.api} />
+          <Mcp api={props.api} />
+          <box flexGrow={1} />
+          <OpencuesTip api={props.api} />
+          <Version api={props.api} />
+        </box>
+      </box>''',
 )
 open(p, 'w').write(src)
 PY
@@ -415,19 +496,88 @@ patch_sidebar_footer_tsx() {
   #     in the same window.
   local footer="$OPENCODE_DIR/packages/opencode/src/cli/cmd/tui/feature-plugins/sidebar/footer.tsx"
   [[ -f "$footer" ]] || return 0
-  if grep -q "opencuesTip" "$footer"; then return 0; fi
+  # Same marker-drift fix as patch_footer_tsx: the combined patch adds the
+  # `opencuesKata` import, so guard on it (not the older `opencuesTip`) and
+  # restore pristine first so the anchors always match.
+  if grep -q "opencuesKata" "$footer"; then return 0; fi
+  restore_pristine "$footer"
   python3 - "$footer" <<'PY'
 import sys
 p = sys.argv[1]
 src = open(p).read()
-if 'opencuesTip' in src: sys.exit(0)
+if 'opencuesKata' in src: sys.exit(0)
 src = src.replace(
   'import { Global } from "@/global"',
-  'import { Global } from "@/global"\nimport { opencuesTip } from "../../opencues"',
+  'import { Global } from "@/global"\nimport { opencuesTip, opencuesKata } from "../../opencues"',
 )
-# The sidebar footer's box stacks vertically (path → version). Insert
-# the OpencuesTip line between them, mirroring the home footer's
-# OpencuesTip block (Show-gated, textMuted styling).
+# Kata block + its wrap helper — same component as the home footer, so
+# the coach statusline survives once the user submits a prompt and moves
+# from the home route to the session (sidebar) view. Defined before View.
+src = src.replace(
+  '''function View(props: { api: TuiPluginApi }) {''',
+  '''function wrapOpencuesSegs(segs: Array<{ text: string; command: boolean; bold?: boolean; dim?: boolean }>, width: number) {
+  const rows: Array<Array<{ text: string; command: boolean; bold?: boolean; dim?: boolean }>> = []
+  let cur: Array<{ text: string; command: boolean; bold?: boolean; dim?: boolean }> = []
+  let len = 0
+  for (const s of segs) {
+    let text = s.text
+    while (text.length > 0) {
+      const space = width - len
+      if (text.length <= space) {
+        cur.push({ ...s, text })
+        len += text.length
+        text = ""
+      } else {
+        let cut = text.lastIndexOf(" ", space)
+        if (cut < space * 0.5) cut = space
+        cur.push({ ...s, text: text.slice(0, cut) })
+        rows.push(cur)
+        cur = []
+        len = 0
+        text = text.slice(cut).trimStart()
+      }
+    }
+  }
+  if (cur.length > 0) rows.push(cur)
+  return rows.slice(0, 3)
+}
+
+function OpencuesKataBlock(props: { api: TuiPluginApi }) {
+  const theme = () => props.api.theme.current
+  const width = () => Math.max(20, (process.stdout.columns ?? 80) - 4)
+  return (
+    <Show when={opencuesKata()}>
+      <box style={{ flexDirection: "column", width: "100%" }}>
+        <text>
+          <span style={{ fg: theme().background, bg: theme().text }}>C_</span>
+          <span style={{ fg: theme().text }}> {opencuesKata()!.head}</span>
+        </text>
+        {wrapOpencuesSegs(opencuesKata()!.segments, width()).map((row) => (
+          <text>
+            {row.map((seg) =>
+              seg.command || seg.bold
+                ? <span style={{ fg: theme().text }}>{seg.text}</span>
+                : <span style={{ fg: theme().textMuted }}>{seg.text}</span>,
+            )}
+          </text>
+        ))}
+      </box>
+    </Show>
+  )
+}
+
+function View(props: { api: TuiPluginApi }) {''',
+)
+# The sidebar footer's box stacks vertically. Render the kata block at
+# the TOP of the stack (dominant while active), and insert the tip line
+# between path and version — the tip yields to kata (mirrors home).
+src = src.replace(
+  '''  return (
+    <box gap={1}>''',
+  '''  return (
+    <box gap={1}>
+      <OpencuesKataBlock api={props.api} />''',
+)
 src = src.replace(
   '''      <text>
         <span style={{ fg: theme().textMuted }}>{path().parent}/</span>
@@ -439,7 +589,7 @@ src = src.replace(
         <span style={{ fg: theme().textMuted }}>{path().parent}/</span>
         <span style={{ fg: theme().text }}>{path().name}</span>
       </text>
-      <Show when={opencuesTip()}>
+      <Show when={!opencuesKata() && opencuesTip()}>
         <text fg={theme().textMuted}>{opencuesTip()}</text>
       </Show>
       <text fg={theme().textMuted}>

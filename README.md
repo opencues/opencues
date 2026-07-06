@@ -451,7 +451,7 @@ New to the terminology? [`docs/glossary.md`](docs/glossary.md) covers cues, blan
 
 | Component | Version | Status |
 |---|---|---|
-| `spec/` | 0.5-alpha | Field names + semantics may change before 1.0. Tracked in [`spec/CHANGELOG.md`](spec/CHANGELOG.md). |
+| `spec/` | 0.6-alpha | Field names + semantics may change before 1.0. Tracked in [`spec/CHANGELOG.md`](spec/CHANGELOG.md). |
 | `@opencues/core` | 0.x | Workspace dep, pre-publish. Public API may change. |
 | `@opencues/runtime` | 0.x | Workspace dep, pre-publish. Public API may change. |
 | Claude Code integration | Available | Pinned at Claude Code 2.1.170 (native bun-binary). Also tested: 2.1.110 (cli.js), 2.1.150, 2.1.158. |

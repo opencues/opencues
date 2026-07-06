@@ -1,8 +1,8 @@
 # OpenCues — Open Standard
 
-> **Status:** `0.5-alpha`. Expect changes.
+> **Status:** `0.6-alpha`. Expect changes.
 
-This directory holds three open file-format standards — **Cues**, **Blanks**, and **Auditors** — that any text editor, IDE, or LLM-pipeline can implement to interoperate. Each surface has its own spec file and its own conformance contract; a runtime can implement one and be conformant for that surface (you don't have to implement all three). Licensed under the same terms as this repository (see [`LICENSE`](../LICENSE)).
+This directory holds open file-format standards — the three core intent surfaces **Cues**, **Blanks**, and **Auditors**, plus (as of `0.5`) the **Katas** guided-scenario surface — that any text editor, IDE, or LLM-pipeline can implement to interoperate. Each surface has its own spec file and its own conformance contract; a runtime can implement one and be conformant for that surface (you don't have to implement all of them). Licensed under the same terms as this repository (see [`LICENSE`](../LICENSE)).
 
 ## What the standard is
 
@@ -15,7 +15,7 @@ The whole system reduces to two directions of intent (see [`../concept.md`](../c
 
 **Auditors** are a continuous, whole-buffer variant of the Cues direction — one declared concern (grammar, clarity, tone, ...) applied as an ongoing, revertable rewrite instead of a per-word cycle a user has to accept. Same "the system offers, you didn't ask" contract as Cues; different scope (whole buffer) and cadence (every rewrite tick, not per word). Own file format ([`auditor-spec.md`](./auditor-spec.md)) and own conformance contract, same as the other two — the "variant" framing is conceptual, not a reduction in how normatively it's specified.
 
-The standard covers three source-folder entry files (`CUE.md`, `BLANK.md`, `AUDITOR.md`), the master files that aggregate them (`CUES.md`, `BLANKS.md`, `AUDITORS.md`), and the runtime contracts a conformant implementation must satisfy.
+The standard covers three source-folder entry files (`CUE.md`, `BLANK.md`, `AUDITOR.md`), the master files that aggregate them (`CUES.md`, `BLANKS.md`, `AUDITORS.md`), and the runtime contracts a conformant implementation must satisfy. Two further surfaces sit outside the intent-direction model: the user-level `IDENTITY.md` personal-data catalog ([`identity-context-spec.md`](./identity-context-spec.md)) and the `KATA.md` guided-scenario format ([`kata-spec.md`](./kata-spec.md), new in `0.5`) — each with its own spec file and conformance fixtures, neither requiring a master file.
 
 ## What the standard is *not*
 
@@ -31,11 +31,13 @@ The standard covers three source-folder entry files (`CUE.md`, `BLANK.md`, `AUDI
 | [`blank-spec.md`](./blank-spec.md) | The `BLANK.md` format and the blank runtime contract |
 | [`auditor-spec.md`](./auditor-spec.md) | The `AUDITOR.md` format and the auditor runtime contract |
 | [`identity-context-spec.md`](./identity-context-spec.md) | The `IDENTITY.md` format, canonical sentinel-token derivation, and the catalog-injection / post-processing contract |
+| [`kata-spec.md`](./kata-spec.md) | The `KATA.md` guided-scenario format (frontmatter + `## ` step sections + `next:` curriculum link) and the consent / deterministic-exit / display-only floors a kata-consuming runtime must honour. New in `0.5`. |
 | [`core.md`](./core.md) | Shared rules: search-path, host-compat, hot-reload, master `CUES.md` / `BLANKS.md` / `AUDITORS.md`, routing |
 | [`@opencues/runtime`'s `SPEC.md`](../packages/opencues-runtime/SPEC.md) | **Non-standard, lives outside `spec/`.** Documents OpenCues-runtime-only knobs (voice-mode, debug-mode, cursor-navigate) plus implementation details for fluid blank and transform blank. Reference-impl documentation; not part of the standard a future second runtime would need to implement. |
 | [`schemas/cue.schema.json`](./schemas/cue.schema.json) | JSON Schema for `CUE.md` frontmatter. Editor integrations may use this for live validation. |
 | [`schemas/blank.schema.json`](./schemas/blank.schema.json) | JSON Schema for `BLANK.md` frontmatter. |
 | [`schemas/auditor.schema.json`](./schemas/auditor.schema.json) | JSON Schema for `AUDITOR.md` frontmatter. |
+| [`schemas/kata.schema.json`](./schemas/kata.schema.json) | JSON Schema for `KATA.md` frontmatter. |
 | [`schemas/cues-master.schema.json`](./schemas/cues-master.schema.json) | JSON Schema for the `CUES.md` master file. |
 | [`schemas/blanks-master.schema.json`](./schemas/blanks-master.schema.json) | JSON Schema for the `BLANKS.md` master file. |
 | [`schemas/auditors-master.schema.json`](./schemas/auditors-master.schema.json) | JSON Schema for the `AUDITORS.md` master file. |

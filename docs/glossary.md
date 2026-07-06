@@ -148,6 +148,8 @@ How LLM responses are interpreted. Set via `parser` field in `.md` config. Only 
 
 **Secondary Display** — Where additional information (cue-tips) is shown. It is not in the text input box. The integration decides what this is — a status bar, tooltip, hover panel, sidebar, etc.
 
+**Status-bar position** — Chrome-only setting (`statusbar-position` scalar: `bottom` default / `top` / `right`) for where Chrome's in-page floating status bar sits, since Chrome has no host statusline to render into and the bar can occlude page content. `bottom`/`top` are full-width bands; `right` is a compact bottom-right panel. A real FEATURE (not a tunable) so the fluid-config classifier can route to it (`move the status bar to the top _`), host-scoped so it never appears in the CLI hosts' menus. See `docs/features/statusbar-position.md`.
+
 ---
 
 ## Host capability profiles
@@ -162,7 +164,29 @@ How LLM responses are interpreted. Set via `parser` field in `.md` config. Only 
 
 **ValueSpec / exposeInMenu** — Each FEATURES entry's `values` array carries `{id, description, exposeInMenu?}` per value (not just a string list). `exposeInMenu: false` makes a value **parser-valid but absent from the cycling menu** — formal mechanism for hiding footgun modes (today's only user: `identity-context-mode: raw`, which inlines PII into LLM prompts and shouldn't be flipped by a keystroke). Replaces the old "hidden by absence from OPENCUES.md `settings:` block" pattern.
 
+**Host-scoped setting** — A FEATURE (or MENU_TUNABLE) whose `hostScope: [...]` field restricts it to specific hosts. Two paths derive from the one field so they can't drift: (1) the settings/cycling menu only lists it on those hosts, and (2) the fluid-config intent classifier's per-host prompt (built by `buildFeatureBlock(hostName)`) only includes it in the classifier's choice space on those hosts — so an intent phrase can't resolve to a no-op setting on a host where it does nothing. Today's user: `statusbar-position` (`hostScope: ['chrome']`). Use for knobs whose effect only exists on certain hosts.
+
 **isSensitiveField** — The chrome bootstrap's gate that refuses attach + ambient + sentinels on credential-adjacent fields. Three layers: input-type allow-list (`text` / `email` / `search` / `url` / `textarea`), autocomplete-token deny-list (`SENSITIVE_AUTOCOMPLETE_TOKENS`), and name/id heuristic (`SENSITIVE_FIELD_NAME_PATTERN`). Both lists are exported constants in `integrations/chrome/src/opencues-bootstrap.ts` — single source of truth; see `docs/architecture/chrome-security.md` § Sensitive-field gate for the full token enumeration. False positives accepted; never leak credentials.
+
+---
+
+## Katas
+
+**Kata** — A guided, in-editor scenario that walks the user through a workflow step by step (`start kata 1 _`), with a live LLM coach on the status line telling them the next micro-action and detecting progress from what they type and press. Experimental; runs on all five hosts. Authored as `.cues/katas/<name>/KATA.md`. User-facing: `docs/features/kata.md`; architecture: `docs/architecture/kata.md`.
+
+**KATA.md** — The kata file format: frontmatter (`name` / `id` / `title` / optional `next:` curriculum link) + `## Step` sections whose bodies (plus `coach:` notes) ride into the coach's system prompt verbatim. Hot-loaded at `start` — no restart. Candidate for the open standard (file-format only); not yet a spec surface.
+
+**Coach** — The kata's one debounced LLM call per pause. Judges progress on the current step and emits one line of guidance (`STEP:` / `STATUS:` / `COACH:`, optional `CONTROL: STOP`). **Display-only** — feeds the status line and a bounds-clamped step counter, never the buffer and never a side-effect channel. The model owns judgement; the runtime owns the safety floors and every deterministic path.
+
+**Kata mode (modal suppression)** — While a kata runs, normal OpenCues LLM behaviour (word-cues, fluid/transform blanks, config-intent, sentence-cues) is suppressed via the Resolver's `externallySuppressed` predicate so nothing races the lesson. Local features a kata might teach (navigation, cycling, keyword blanks) keep working. Stop is instant and writes nothing — the mode is one in-memory predicate.
+
+**Trace** — The bounded (10-entry) ring of the user's activity the coach sees: `typed` (buffer snapshots, attempt-preserving), `submitted` (a submit — inferred from buffer-clear on CLI hosts OR an Enter keypress on a non-empty buffer on newline hosts like Chrome/Gmail/Shell, deduped), and `pressed` (salient keys only). Wiped on start/stop.
+
+**Escape ladder** — The guaranteed exit, weakest assumption first: **Esc ×3** (deterministic, no key/network/language needed) → `stop kata _` (deterministic phrase) → "please stop this kata" (coach-honoured, any language) → `skip _` (per-step relief). Three Escs so a host's normal double-Esc can't exit by accident.
+
+**Degraded mode** — When no LLM is available (missing key immediately; network failure after 2 consecutive failed calls), a kata degrades **loudly** to a labelled self-guided checklist — the status line says "coach offline (no LLM key)". Everything deterministic (start/stop/next/skip, step counter, Esc ×3) keeps working; live coaching resumes automatically on recovery.
+
+**Lesson journal** — One line per completed step (with the evidence that closed it), kept in context for every coach/nudge check-in so guidance builds on the whole lesson, not just the last few keystrokes. Persists to `~/.cues/kata-progress.json` so a mid-way kata resumes where the user left off.
 
 ---
 
