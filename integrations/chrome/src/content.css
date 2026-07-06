@@ -57,14 +57,6 @@
 .oc-status-bar--visible {
   opacity: 1;
   transform: translateY(0);
-  /* Enable pointer events while visible so :hover can fire — the base
-   * rule sets pointer-events:none (bar is click-through when hidden). */
-  pointer-events: auto;
-}
-
-/* Hover to peek: fade to 0.5 so the user can read what the bar covers. */
-.oc-status-bar--visible:hover {
-  opacity: 0.5;
 }
 
 /* Kata mode — the coach line is a full sentence, not a short tip, so the
@@ -72,6 +64,11 @@
  * ellipsis. Structured into a head row (badge + step counter) and a
  * word-wrapped body. */
 .oc-status-bar--kata {
+  /* Semi-transparent in kata (tutor) mode so the user can see the page
+   * content underneath — the bar stays click-through (pointer-events:none
+   * from the base rule). Overrides the --visible opacity:1 (this rule
+   * comes later in source order, same specificity). */
+  opacity: 0.5;
   /* Span the full width (both margins pinned) so the coach line has room
    * and fills the line instead of shrink-wrapping + overflowing off the
    * right edge. `overflow-wrap: anywhere` breaks any long unbroken token
