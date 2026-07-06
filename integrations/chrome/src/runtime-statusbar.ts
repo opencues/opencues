@@ -11,6 +11,13 @@ interface StatuslinePayload {
   cueTip?: string | null;
   cueBlank?: boolean;
   agentTask?: string | null;
+  kata?: {
+    step: number;
+    stepCount: number;
+    coach?: string | null;
+    coachSegments?: ReadonlyArray<{ text: string; command: boolean }> | null;
+    offTrack?: boolean;
+  } | null;
 }
 
 let el: HTMLDivElement | null = null;
@@ -46,6 +53,19 @@ function show(text: string): void {
  *   - otherwise (no alts)    → tip alone, or hide
  */
 export function applyStatuslinePayload(payload: StatuslinePayload): void {
+  // Kata block is dominant while active — it overrides the normal word/tip
+  // content (kata mode; docs/features/kata.md § Status line). The floating
+  // bar is a single text element, so the coach renders as one line
+  // (`C_ Kata N/M: <coach>`).
+  const kata = payload.kata;
+  if (kata) {
+    const head = kata.stepCount > 0 ? `Kata ${kata.step}/${kata.stepCount}:` : 'Kata:';
+    const body = kata.coach
+      ?? (kata.coachSegments ? kata.coachSegments.map(s => s.text).join('') : '');
+    show(`C_ ${head}${body ? ' ' + body : ''}`.trimEnd());
+    return;
+  }
+
   const agentBadge = payload.agentTask ? `[task: ${payload.agentTask}]` : null;
 
   let wordPart: string | null = null;

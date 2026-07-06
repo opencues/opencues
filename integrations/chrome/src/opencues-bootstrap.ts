@@ -47,6 +47,7 @@ declare const __DEFAULT_OPENCUES_MD__: string;
 declare const __DEFAULT_AUDITORS_MD__: string;
 declare const __DEFAULT_CUE_FOLDERS__: Record<string, string>;
 declare const __DEFAULT_BLANK_FOLDERS__: Record<string, string>;
+declare const __DEFAULT_KATA_FOLDERS__: Record<string, string>;
 
 const ROOT = '/chrome-storage';
 
@@ -1939,6 +1940,8 @@ function readBakeTimeDefault(path: string): string | null {
   if (cueFolder) return __DEFAULT_CUE_FOLDERS__[cueFolder[1]] ?? null;
   const blankFolder = rel.match(/^\.cues\/blanks\/([^/]+)\/BLANK\.md$/);
   if (blankFolder) return __DEFAULT_BLANK_FOLDERS__[blankFolder[1]] ?? null;
+  const kataFolder = rel.match(/^\.cues\/katas\/([^/]+)\/KATA\.md$/);
+  if (kataFolder) return __DEFAULT_KATA_FOLDERS__[kataFolder[1]] ?? null;
   return null;
 }
 
@@ -2250,6 +2253,14 @@ async function readDir(path: string): Promise<readonly { name: string; isDirecto
       isDirectory: true,
     }));
   }
+  // KataCoach reads `.cues/katas` to build its catalogue; each entry is a
+  // folder holding a KATA.md (fetched via readFile → readBakeTimeDefault).
+  if (path === `${ROOT}/.cues/katas`) {
+    return Object.keys(__DEFAULT_KATA_FOLDERS__).map(name => ({
+      name,
+      isDirectory: true,
+    }));
+  }
 
   // Inner folder readDir — ConfigLoader's prewalk recurses into each
   // bake-time entry above, then asks for that folder's contents to
@@ -2264,6 +2275,10 @@ async function readDir(path: string): Promise<readonly { name: string; isDirecto
   const blankInner = path.match(new RegExp(`^${ROOT}/\\.cues/blanks/([^/]+)$`));
   if (blankInner && __DEFAULT_BLANK_FOLDERS__[blankInner[1]]) {
     return [{ name: 'BLANK.md', isDirectory: false }];
+  }
+  const kataInner = path.match(new RegExp(`^${ROOT}/\\.cues/katas/([^/]+)$`));
+  if (kataInner && __DEFAULT_KATA_FOLDERS__[kataInner[1]]) {
+    return [{ name: 'KATA.md', isDirectory: false }];
   }
   return null;
 }
