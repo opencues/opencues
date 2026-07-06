@@ -20,14 +20,31 @@ interface StatuslinePayload {
   } | null;
 }
 
+type Pos = 'right' | 'bottom' | 'top';
 let el: HTMLDivElement | null = null;
-let position: 'right' | 'bottom' | 'top' = 'bottom';
+let position: Pos = 'bottom';
+let positionResolver: (() => Pos) | null = null;
 
-/** Set where the bar sits. Called from content.ts on boot + config change
- *  (chrome-only setting `statusbarPosition`). Applies a --pos-* class. */
-export function setStatusbarPosition(pos: 'right' | 'bottom' | 'top'): void {
+/** Set where the bar sits. Applies a --pos-* class. */
+export function setStatusbarPosition(pos: Pos): void {
   position = pos;
   if (el) applyPosition(el);
+}
+
+/** Register a live resolver for the position — read on every statusline
+ *  update so a change to the `statusbar-position` scalar (via
+ *  `opencues settings _` or the fluid-config intent classifier) takes
+ *  effect immediately. content.ts wires this to bootResult.getSetting. */
+export function setPositionResolver(fn: () => Pos): void {
+  positionResolver = fn;
+  const p = fn();
+  if (p !== position) setStatusbarPosition(p);
+}
+
+function refreshPosition(): void {
+  if (!positionResolver) return;
+  const p = positionResolver();
+  if (p !== position) setStatusbarPosition(p);
 }
 
 function applyPosition(node: HTMLDivElement): void {
@@ -117,6 +134,9 @@ function showKata(head: string, body: string): void {
  *   - otherwise (no alts)    → tip alone, or hide
  */
 export function applyStatuslinePayload(payload: StatuslinePayload): void {
+  // Re-read the position scalar on every update so a cycle / fluid-config
+  // change to `statusbar-position` takes effect immediately.
+  refreshPosition();
   // Kata block is dominant while active — it overrides the normal word/tip
   // content (kata mode; docs/features/kata.md § Status line). The floating
   // bar is a single text element, so the coach renders as one line

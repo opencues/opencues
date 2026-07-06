@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — chrome-only `statusbar-position` setting + host-scoped FEATURES (`@opencues/core` 0.13.7 → 0.13.8, `@opencues/chrome` → 0.2.57)
+
+The chrome in-page status bar (tips / cycling / kata coach) can now be placed via `opencues settings _` → cycle to `statusbar-position`: `bottom` (default, full-width band), `top` (full-width band at the top), or `right` (compact bottom-right panel). Because it's a real FEATURE (not a MENU_TUNABLE like `dim-mix`), the **fluid-config intent classifier can route to it** too — e.g. `move the status bar to the top _`. To keep a chrome-only setting off the CLI hosts' menus, `FeatureSpec` gained an optional `hostScope` (mirroring `MenuTunableSpec.hostScope`); `getMenuDefinitions` now filters FEATURES by host the same way it already did tunables, so `statusbar-position` appears only in chrome's `settings _` menu. Settings-map-only (read in the content script via `bootResult.getSetting('statusbar-position')`, like `dim-mix`) — no typed `OpenCuesState` field (added to `SETTINGS_MAP_ONLY`). The bar re-positions live on the next statusline update (no reload). Also: all chrome status-bar content now wraps to multiple lines instead of clipping with an ellipsis.
+
 ### Changed — comment-only doc-drift fix in build-sources.ts (`@opencues/core` 0.13.6 → 0.13.7)
 
 Transform-blank option comment example updated to a current canonical phrasing; no behaviour change.
