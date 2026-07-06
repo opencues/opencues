@@ -41,5 +41,5 @@ overrides:
   file-type: ">=21.3.1"  # DA6 — GHSA-5v7r-6r5c-r473
   diff: ">=8.0.3"        # DA7 — GHSA-73rr-hh4g-fpgx
   vite: "6.4.3"          # DA5 — GHSA-4w7w-66w2-5vf9 (also: vitest 4 needs vite 6)
-  undici: ">=7.28.0"         # NF3 — jsdom's transitive undici (7 CVEs incl. GHSA-vmh5-mc38-953g); test-path only, no prod exposure
+  undici: "^7.28.0"         # NF3 — jsdom's transitive undici (7 CVEs incl. GHSA-vmh5-mc38-953g); test-path only, no prod exposure
   "@babel/core": ">=7.29.6"  # NF3 — GHSA-4x5r-pxfx-6jf8, transitive via integrations/shell's @opentui/solid

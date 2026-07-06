@@ -22,9 +22,8 @@
 ### Prerequisites
 
 You need the `opencues` CLI on PATH. If you haven't set that up yet,
-follow [Quickstart → Bootstrap the `opencues` CLI](../../README.md#2-bootstrap-the-opencues-cli)
-in the root README — that covers Node, pnpm, the clone, and the
-shell alias.
+follow [`BETA-INSTALL.md` § Bootstrap the `opencues` CLI](../../BETA-INSTALL.md#3-bootstrap-the-opencues-cli)
+— that covers Node, pnpm, the clone, and the shell alias.
 
 This integration also needs **npm** (Gemini CLI's build tool) — it
 ships with Node.js, so if you've installed Node you're set.

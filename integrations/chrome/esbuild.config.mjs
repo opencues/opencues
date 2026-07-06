@@ -1,5 +1,5 @@
 import * as esbuild from 'esbuild';
-import { copyFileSync, mkdirSync, readFileSync, existsSync, readdirSync, writeFileSync } from 'fs';
+import { copyFileSync, mkdirSync, readFileSync, existsSync, readdirSync, writeFileSync, watch as fsWatch } from 'fs';
 
 // Load .env file if it exists (for dev API keys — .env is gitignored)
 const envVars = {};
@@ -93,52 +93,75 @@ const common = {
   external: ['node:fs', 'node:path'],
 };
 
-// Content script — IIFE (injected into page context)
-const contentBuild = esbuild.build({
-  ...common,
-  entryPoints: ['src/content.ts'],
-  outfile: 'dist/content.js',
-  format: 'iife',
-});
+// The three bundles. content + popup are IIFEs (injected into page
+// context); background is an ESM service worker.
+const buildTargets = [
+  { entryPoints: ['src/content.ts'], outfile: 'dist/content.js', format: 'iife' },
+  { entryPoints: ['src/background.ts'], outfile: 'dist/background.js', format: 'esm' },
+  { entryPoints: ['src/popup/popup.ts'], outfile: 'dist/popup/popup.js', format: 'iife' },
+];
 
-// Background service worker — ESM
-const backgroundBuild = esbuild.build({
-  ...common,
-  entryPoints: ['src/background.ts'],
-  outfile: 'dist/background.js',
-  format: 'esm',
-});
+// Copy the static (non-bundled) assets into dist. These are NOT part of
+// esbuild's import graph — content.css / popup.css / popup.html are
+// referenced directly by the manifest / popup.html, so a plain esbuild
+// watch never sees them change. `--watch` mode below re-runs this on
+// every static-file edit via a separate fs.watch.
+function copyStatic() {
+  mkdirSync('dist/popup', { recursive: true });
+  copyFileSync('src/popup/popup.html', 'dist/popup/popup.html');
+  copyFileSync('src/popup/popup.css', 'dist/popup/popup.css');
+  copyFileSync('src/content.css', 'dist/content.css');
 
-// Popup — IIFE
-const popupBuild = esbuild.build({
-  ...common,
-  entryPoints: ['src/popup/popup.ts'],
-  outfile: 'dist/popup/popup.js',
-  format: 'iife',
-});
+  mkdirSync('dist/icons', { recursive: true });
+  for (const size of [16, 32, 48, 128]) {
+    copyFileSync(`icons/icon-${size}.png`, `dist/icons/icon-${size}.png`);
+  }
 
-await Promise.all([contentBuild, backgroundBuild, popupBuild]);
-
-// Copy static files
-mkdirSync('dist/popup', { recursive: true });
-copyFileSync('src/popup/popup.html', 'dist/popup/popup.html');
-copyFileSync('src/popup/popup.css', 'dist/popup/popup.css');
-copyFileSync('src/content.css', 'dist/content.css');
-
-mkdirSync('dist/icons', { recursive: true });
-for (const size of [16, 32, 48, 128]) {
-  copyFileSync(`icons/icon-${size}.png`, `dist/icons/icon-${size}.png`);
+  // Ship a sentinel configs/index.json so the bake-time bundle fetch
+  // in `getBundleIndex()` always gets a 200 on a fresh install (no
+  // `opencues sync chrome` has run yet). Without it the bootstrap logs
+  // a 404 — harmless (it falls back to bake-time __DEFAULT_*__
+  // constants) but noisy in devtools. `opencues sync chrome`
+  // overwrites this with the real bundle index when invoked.
+  mkdirSync('dist/configs', { recursive: true });
+  if (!existsSync('dist/configs/index.json')) {
+    writeFileSync('dist/configs/index.json', JSON.stringify({ schema: 1, files: [] }, null, 2));
+  }
 }
 
-// Ship a sentinel configs/index.json so the bake-time bundle fetch
-// in `getBundleIndex()` always gets a 200 on a fresh install (no
-// `opencues sync chrome` has run yet). Without it the bootstrap logs
-// a 404 — harmless (it falls back to bake-time __DEFAULT_*__
-// constants) but noisy in devtools. `opencues sync chrome`
-// overwrites this with the real bundle index when invoked.
-mkdirSync('dist/configs', { recursive: true });
-if (!existsSync('dist/configs/index.json')) {
-  writeFileSync('dist/configs/index.json', JSON.stringify({ schema: 1, files: [] }, null, 2));
-}
+const isWatch = process.argv.includes('--watch');
 
-console.log('Build complete');
+if (isWatch) {
+  // Live dev loop. esbuild rebuilds each JS bundle on a source change;
+  // a separate fs.watch re-copies the static CSS/HTML the manifest
+  // references directly (esbuild's watcher can't see them — they're
+  // copied, not imported). Directory-level watches survive editors'
+  // atomic (write-temp + rename) saves, which a single-file watch does
+  // not.
+  const contexts = await Promise.all(
+    buildTargets.map((t) => esbuild.context({ ...common, ...t })),
+  );
+  await Promise.all(contexts.map((c) => c.watch()));
+  copyStatic();
+
+  const staticWatch = [
+    { dir: 'src', files: ['content.css'] },
+    { dir: 'src/popup', files: ['popup.css', 'popup.html'] },
+  ];
+  for (const { dir, files } of staticWatch) {
+    fsWatch(dir, (_evt, fname) => {
+      if (fname && files.includes(fname)) {
+        copyStatic();
+        console.log(`[static] re-copied dist after ${dir}/${fname} change`);
+      }
+    });
+  }
+
+  console.log('Watching for changes (JS bundles + CSS/HTML).');
+  console.log('After each save: reload the extension in chrome://extensions, then hard-refresh the page (Cmd+Shift+R).');
+  console.log('Ctrl+C to stop.');
+} else {
+  await Promise.all(buildTargets.map((t) => esbuild.build({ ...common, ...t })));
+  copyStatic();
+  console.log('Build complete');
+}
