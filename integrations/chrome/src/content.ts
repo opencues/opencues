@@ -23,7 +23,7 @@ import {
   notifyExternalReplaceUndo,
   cacheValidCursor,
 } from './opencues-bootstrap';
-import { clearStatusbar } from './runtime-statusbar';
+import { clearStatusbar, setStatusbarPosition } from './runtime-statusbar';
 import { deriveOpenCuesColours } from './derive-colours';
 import { walkPlainText, plainOffsetOfPosition } from './dom-walk';
 import {
@@ -109,6 +109,7 @@ function clearDerivedColours(_el: HTMLElement): void {
 async function init(): Promise<void> {
   log.info('[opencues] content script loaded');
   const config = await loadConfig();
+  setStatusbarPosition(config.statusbarPosition ?? 'bottom');
 
   // Boot the runtime with config from chrome.storage. The runtime
   // owns Navigation, Cycling, BlankFill, Resolver, Statusline, TTS,
@@ -467,6 +468,11 @@ async function init(): Promise<void> {
     }
     config.dimMix = newConfig.dimMix;
     if (currentTarget && !isNormalInput(currentTarget)) applyDerivedColours(currentTarget, resolveLiveDimMix(config.dimMix));
+
+    if (newConfig.statusbarPosition !== config.statusbarPosition) {
+      config.statusbarPosition = newConfig.statusbarPosition;
+      setStatusbarPosition(newConfig.statusbarPosition ?? 'bottom');
+    }
 
     // Real-time key updates — call into the runtime when the API-key
     // set changed. Fingerprint = sorted env-var names (no values,

@@ -47,6 +47,11 @@ export interface StoredConfig {
   /** How far the dim colour is mixed toward the page background (0-1).
    *  0 = identical to host text colour; 1 = invisible. Default 0.45. */
   dimMix: number;
+  /** Where the floating status bar (tips / cycling / kata coach) sits.
+   *  Chrome-only — the CLI hosts render into their own footer/statusline.
+   *  'right' = compact panel bottom-right; 'bottom' = full-width band at
+   *  the bottom; 'top' = full-width band at the top. Default 'bottom'. */
+  statusbarPosition: 'right' | 'bottom' | 'top';
 }
 
 // In-memory fallback used by `loadConfig` when a field hasn't been
@@ -67,4 +72,5 @@ export const DEFAULT_CONFIG: StoredConfig = {
   ttsRate: 2,
   llmApiKeys: {},
   dimMix: 0.45,
+  statusbarPosition: 'bottom',
 };

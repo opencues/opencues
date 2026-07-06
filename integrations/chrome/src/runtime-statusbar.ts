@@ -21,6 +21,19 @@ interface StatuslinePayload {
 }
 
 let el: HTMLDivElement | null = null;
+let position: 'right' | 'bottom' | 'top' = 'bottom';
+
+/** Set where the bar sits. Called from content.ts on boot + config change
+ *  (chrome-only setting `statusbarPosition`). Applies a --pos-* class. */
+export function setStatusbarPosition(pos: 'right' | 'bottom' | 'top'): void {
+  position = pos;
+  if (el) applyPosition(el);
+}
+
+function applyPosition(node: HTMLDivElement): void {
+  node.classList.remove('oc-status-bar--pos-right', 'oc-status-bar--pos-bottom', 'oc-status-bar--pos-top');
+  node.classList.add(`oc-status-bar--pos-${position}`);
+}
 
 // Peek-through: the bar stays fully visible AND click-through
 // (pointer-events:none), but hides itself whenever the cursor moves over
@@ -49,6 +62,7 @@ function ensureEl(): HTMLDivElement {
   el = document.createElement('div');
   el.className = 'oc-status-bar';
   el.setAttribute('aria-live', 'polite');
+  applyPosition(el);
   document.body.appendChild(el);
   installPeek(el);
   return el;

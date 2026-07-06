@@ -76,6 +76,13 @@
     <input type="hidden" id="dimMix" value="45">
     <span id="dimMixValue" style="display:none"></span>
 
+    <label for="statusbarPosition">status bar position</label>
+    <select id="statusbarPosition" title="Where the OpenCues status bar (tips, cycling, and the kata coach) sits on the page. Chrome-only — the CLI hosts render into their own footer.">
+      <option value="bottom">Full width — bottom</option>
+      <option value="top">Full width — top</option>
+      <option value="right">Compact — bottom right</option>
+    </select>
+
     <button id="save">save</button>
     <button id="reset">reset to defaults</button>
     <div id="status"></div>

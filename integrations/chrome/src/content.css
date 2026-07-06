@@ -30,12 +30,13 @@
  * on Chrome today; the italic rule is included as a forward-compat
  * hint and silently ignored when not supported. */
 
-/* Status bar — fixed bottom-right corner. Plain square box: no
- * rounded corners, no shadow, no glow. */
+/* Status bar — fixed floating box. Plain square box: no rounded corners,
+ * no shadow, no glow. Placement + width come from a --pos-* modifier
+ * (set from the chrome-only `statusbarPosition` setting). ALL content
+ * wraps to multiple lines rather than clipping — a long tip / setting /
+ * coach line grows the box instead of getting cut off with an ellipsis. */
 .oc-status-bar {
   position: fixed;
-  bottom: 16px;
-  right: 16px;
   padding: 6px 12px;
   background: #000;
   color: #fff;
@@ -48,15 +49,41 @@
   transform: translateY(8px);
   transition: opacity 0.15s, transform 0.15s;
   pointer-events: none;
-  max-width: 400px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.4;
 }
 
 .oc-status-bar--visible {
   opacity: 1;
   transform: translateY(0);
+}
+
+/* ── Position modes (chrome-only `statusbarPosition` setting) ────────── */
+/* Compact panel, bottom-right — wraps within a narrow column. */
+.oc-status-bar--pos-right {
+  bottom: 16px;
+  right: 16px;
+  left: auto;
+  top: auto;
+  max-width: min(420px, 42vw);
+}
+/* Full-width band along the bottom. */
+.oc-status-bar--pos-bottom {
+  bottom: 16px;
+  left: 16px;
+  right: 16px;
+  top: auto;
+  max-width: none;
+}
+/* Full-width band along the top. */
+.oc-status-bar--pos-top {
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  bottom: auto;
+  max-width: none;
 }
 
 /* Peek-through: while the cursor is over the bar's box, hide it (opacity 0)
@@ -69,26 +96,9 @@
   opacity: 0;
 }
 
-/* Kata mode — the coach line is a full sentence, not a short tip, so the
- * box widens and wraps to multiple lines instead of clipping with an
- * ellipsis. Structured into a head row (badge + step counter) and a
- * word-wrapped body. */
-.oc-status-bar--kata {
-  /* Span the full width (both margins pinned) so the coach line has room
-   * and fills the line instead of shrink-wrapping + overflowing off the
-   * right edge. `overflow-wrap: anywhere` breaks any long unbroken token
-   * so nothing is clipped. */
-  left: 16px;
-  right: 16px;
-  max-width: none;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  overflow: visible;
-  text-overflow: clip;
-  line-height: 1.4;
-}
-
+/* Kata mode — structured into a head row (badge + step counter) over a
+ * word-wrapped coach body. Placement/width/wrap come from the base +
+ * --pos-* rules above; --kata only adds the head/body structure. */
 .oc-status-bar--kata .oc-kata-head {
   font-weight: 600;
   margin-bottom: 2px;

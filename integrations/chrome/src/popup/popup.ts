@@ -273,6 +273,14 @@ async function init(): Promise<void> {
     saveConfig({ dimMix: parseInt(dimMix.value, 10) / 100 });
   });
 
+  // Status-bar position (chrome-only). Live-saves; content.ts re-applies
+  // the --pos-* class on chrome.storage.onChanged (no tab reload).
+  const statusbarPos = document.getElementById('statusbarPosition') as HTMLSelectElement;
+  statusbarPos.value = config.statusbarPosition ?? 'bottom';
+  statusbarPos.addEventListener('change', () => {
+    saveConfig({ statusbarPosition: statusbarPos.value as 'right' | 'bottom' | 'top' });
+  });
+
   document.getElementById('save')!.addEventListener('click', async () => {
     const status = document.getElementById('status')!;
     status.textContent = 'saving + verifying keys…';
@@ -345,6 +353,7 @@ async function init(): Promise<void> {
     ttsRate.value = String(freshConfig.ttsRate);
     dimMix.value = String(Math.round(freshConfig.dimMix * 100));
     dimMixValue.textContent = `${dimMix.value}%`;
+    statusbarPos.value = freshConfig.statusbarPosition ?? 'bottom';
 
     const status = document.getElementById('status')!;
     status.textContent = 'Reset — re-validating keys…';
