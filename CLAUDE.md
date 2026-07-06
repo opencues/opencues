@@ -640,7 +640,7 @@ Chrome runs on Windows but builds in WSL — after `npm run build`, copy `integr
 
 **Other**:
 
-- Switch `LICENSE` from "Proprietary. All rights reserved." to the chosen open-source license; the README license section will continue to render the new text without further changes.
+- ~~Switch `LICENSE` to the chosen open-source license~~ — **done (July 2026)**: LICENSE is Apache-2.0; README badge/section and the `@opencues/{core,runtime}` package.json `license` fields updated in the same PR.
 
 **Switch `opencues` npm name from parked placeholder to real CLI**: runbook at [docs/launch/npm-handover.md](docs/launch/npm-handover.md) — covers the 5-step handover, the version-can't-be-reused caveat, and the security-key/TOTP gotcha for org-write commands.
 
@@ -777,6 +777,7 @@ CI runs the same gates as separate jobs so a green local run mirrors what CI wil
 The follow-up PR class arose specifically because changes to *runtime / boot / install* code interact with downstream consumers without obvious source-level coupling. Concrete contracts:
 
 - **Change `@opencues/runtime/src/boot-common.ts` or anything importing `node:*` modules?** Run `cd integrations/chrome && npm run build`. The chrome esbuild fails on unmarked node imports — `external:` declaration goes in `integrations/chrome/esbuild.config.mjs`.
+- **Change anything that could affect the chrome extension** — `integrations/chrome/src/**`, or `@opencues/{core,runtime}/src/**` code that runs in the content script / service worker (boot, config-loader, resolver, sources, trust-gate, sensitive-field, site-filter, the fetch/LLM path)? **STOP and ASK the user to run the chrome E2E** (`cd integrations/chrome && npm run build && npm run test:e2e:chrome`), or offer to run it yourself. It loads the real unpacked extension and drives features + security controls (trust-gate, sensitive-field, site-filter) to observable output — the "wired but inert / degraded-open in chrome" bug class the unit tests and static lints can't see (`integrations/chrome/tests/e2e/`, ~11s, run-on-demand, NOT in CI). Don't just build-and-hope: a chrome bundle can compile clean and still be silently dead. Because it's not a CI gate, the reminder is manual — this line is that reminder.
 - **Change `integrations/claude-code/bin/install.cjs` or `packages/opencues-cli/src/commands/run.cjs`?** Run `bash scripts/check-install-self-heal.sh`. Or manually: `opencues install <host>` → `opencues run <host>` → `opencues run <host>` again. The second run must be **silent** (no "Rebuilding before launch"). If it isn't, the install path lost the marker write or the run path's drift check is firing incorrectly.
 - **Change `version-markers.cjs` or any code that calls `writeMarker` / `checkDrift`?** Run the PR #42 demo scenarios (A–D) in the PR description manually OR via `scripts/check-install-self-heal.sh`.
 - **Change LLM dispatch error handling (any `catch` in `packages/opencues-core/src/sources/*-source.ts`)?** The catch MUST `this.log(...)` or `this.logInfo(...)` before returning the error envelope. Resolver consumers ignore the `error` field — silent catches eat the only failure signal.
