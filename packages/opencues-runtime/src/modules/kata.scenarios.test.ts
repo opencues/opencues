@@ -319,8 +319,8 @@ describe('KataCoach journeys (deterministic contracts)', () => {
     await h.type('done _');           // → journals step 2
     const j = (h.coach as unknown as { _journal: string[] })._journal;
     expect(j).toHaveLength(2);
-    expect(j[0]).toContain('Step 1 (Step 1 — first) ✓');
-    expect(j[1]).toContain('Step 2 (Step 2 — second) ✓');
+    expect(j[0]).toContain('Step 1 (Step 1 — first) ●');
+    expect(j[1]).toContain('Step 2 (Step 2 — second) ●');
     // Restarting mid-kata RESUMES — journal restored from the
     // progress file (lesson memory survives a restart by design).
     await h.type('stop kata _');
