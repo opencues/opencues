@@ -57,6 +57,14 @@
 .oc-status-bar--visible {
   opacity: 1;
   transform: translateY(0);
+  /* Enable pointer events while visible so :hover can fire — the base
+   * rule sets pointer-events:none (bar is click-through when hidden). */
+  pointer-events: auto;
+}
+
+/* Hover to peek: fade to 0.5 so the user can read what the bar covers. */
+.oc-status-bar--visible:hover {
+  opacity: 0.5;
 }
 
 /* Kata mode — the coach line is a full sentence, not a short tip, so the
