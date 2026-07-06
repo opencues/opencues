@@ -4,7 +4,15 @@
 // detection, the pieces that don't need a live host.
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseKataMd, matchControlPhrase, parseCoachResponse, parseCoachMarkup } from './kata';
+
+// Repo-root-relative path to the spec conformance fixtures. This test file
+// lives at packages/opencues-runtime/src/modules/, so the repo root is four
+// levels up. Read-only — reads committed fixtures, writes nothing.
+const CONFORMANCE = join(dirname(fileURLToPath(import.meta.url)), '../../../../spec/conformance');
 
 const SAMPLE = `---
 name: claude-code-basics
@@ -184,5 +192,37 @@ describe('parseCoachMarkup', () => {
     const r = parseCoachMarkup('type `broken');
     expect(r.plain).toBe('type `broken');
     expect(r.segments.every(s => !s.command)).toBe(true);
+  });
+});
+
+// The reference conformance runner for the KATA.md surface (spec/kata-spec.md
+// § Conformance). parseKataMd is the format parser; valid/kata/* MUST parse to
+// a usable kata, invalid/kata/* MUST be rejected (null) with the declared rule.
+describe('spec conformance — KATA.md fixtures', () => {
+  const validDir = join(CONFORMANCE, 'valid/kata');
+  const invalidDir = join(CONFORMANCE, 'invalid/kata');
+
+  const validFiles = existsSync(validDir) ? readdirSync(validDir).filter(f => f.endsWith('.md')) : [];
+  for (const file of validFiles) {
+    it(`valid/kata/${file} MUST be accepted`, () => {
+      const doc = parseKataMd(readFileSync(join(validDir, file), 'utf8'), file.replace('.md', ''));
+      expect(doc, `${file} MUST parse to a usable kata`).not.toBeNull();
+      expect(doc!.steps.length, `${file} MUST have at least one step`).toBeGreaterThan(0);
+    });
+  }
+
+  const invalidFiles = existsSync(invalidDir) ? readdirSync(invalidDir).filter(f => f.endsWith('.md')) : [];
+  for (const file of invalidFiles) {
+    it(`invalid/kata/${file} MUST be rejected`, () => {
+      const expected = JSON.parse(readFileSync(join(invalidDir, file.replace('.md', '.expected.json')), 'utf8'));
+      const doc = parseKataMd(readFileSync(join(invalidDir, file), 'utf8'), file.replace('.md', ''));
+      // The reference parser signals rejection by returning null (kata absent).
+      expect(doc, `${file} MUST be rejected (${expected.rule})`).toBeNull();
+    });
+  }
+
+  it('fixture tree is present (guards against a broken conformance path)', () => {
+    expect(validFiles.length, 'expected valid/kata fixtures').toBeGreaterThan(0);
+    expect(invalidFiles.length, 'expected invalid/kata fixtures').toBeGreaterThan(0);
   });
 });
