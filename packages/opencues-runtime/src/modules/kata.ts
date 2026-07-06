@@ -675,7 +675,7 @@ export class KataCoach {
         : evidence.kind === 'submitted' ? `submitted: "${evidence.text.slice(0, 60)}"`
           : evidence.kind === 'key' ? `pressed: ${evidence.text}${(evidence.count ?? 1) > 1 ? ` (×${evidence.count})` : ''}`
             : `typed: "${evidence.text.slice(0, 60)}"`;
-    this._journal.push(`Step ${from + 1} (${doneStep.title}) ✓ — ${how}`);
+    this._journal.push(`Step ${from + 1} (${doneStep.title}) ● — ${how}`);
     if (from + 1 >= this._doc.steps.length) {
       const name = this._doc.name;
       const title = this._doc.title;
@@ -707,7 +707,7 @@ export class KataCoach {
     this._stepStartedAt = Date.now();
     this.saveProgress({ step: this._stepIndex });
     const next = this._doc.steps[this._stepIndex];
-    this._coachLine = `✓ Now: ${cleanStepTitle(next.title)}`;
+    this._coachLine = `● Now: ${cleanStepTitle(next.title)}`;
     this.maybeSpeak(`Step ${this._stepIndex + 1} of ${this._doc.steps.length}: ${cleanStepTitle(next.title)}`);
     this.adapter.emitEvent?.('kata.step-advanced', {
       name: this._doc.name, fromStep: from + 1, toStep: this._stepIndex + 1, reason,

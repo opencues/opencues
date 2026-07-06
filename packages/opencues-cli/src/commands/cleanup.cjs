@@ -25,7 +25,7 @@
 // when you add a new integration whose launch shape is novel.
 
 const { spawnSync } = require('node:child_process');
-const { bold, dim, red, green, yellow } = require('../lib/style.cjs');
+const { bold, dim, red, green, yellow, G } = require('../lib/style.cjs');
 
 // Per-host process matchers. Each entry maps a host name to one or
 // more substring patterns that uniquely identify a running instance.
@@ -176,7 +176,7 @@ module.exports = function cleanup(argv, _ctx) {
   if (orphans.length === 0) {
     if (!args.quiet) {
       const scope = args.host ? ` for host '${args.host}'` : '';
-      console.log(`${green('✓')} no orphan host processes${scope}`);
+      console.log(`${green(G.ringOn)} no orphan host processes${scope}`);
     }
     return 0;
   }
@@ -200,7 +200,7 @@ module.exports = function cleanup(argv, _ctx) {
   }
   if (!args.quiet) {
     const verb = args.force ? 'SIGKILL' : 'SIGTERM';
-    console.log(`${green('✓')} ${verb} ${killed}/${orphans.length}${failed ? ` (${failed} failed)` : ''}`);
+    console.log(`${green(G.ringOn)} ${verb} ${killed}/${orphans.length}${failed ? ` (${failed} failed)` : ''}`);
   }
   return failed > 0 ? 1 : 0;
 };

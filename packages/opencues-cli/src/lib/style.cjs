@@ -50,10 +50,15 @@ function wordmark() {
 // UTF-8: single glyph (visually punchy). ASCII: bracketed word (more
 // scannable when stripped of glyph affordance).
 const TAGS_UTF8 = {
-  ok:   () => green(bold(G.check)),
-  warn: () => yellow(bold(G.warn)),
-  err:  () => red(bold(G.cross)),
-  info: () => dim(G.dot),
+  // House rule: status is a LEADING coloured ● ring — never a tick / cross /
+  // dot / ⚠ (see packages/opencues-cli/CLAUDE.md § "The ● ring is the universal
+  // status glyph"). Colour carries the state; the glyph never changes. The old
+  // 🗸 / ⚠ are 2-cell-wide emoji that raggeded the 2-col gutter — a single-cell
+  // ● aligns cleanly.
+  ok:   () => green(G.ringOn),
+  warn: () => yellow(G.ringOn),
+  err:  () => red(G.ringOn),
+  info: () => dim(G.ringOn),
 };
 const TAGS_ASCII = {
   ok:   () => green('[ok]'),

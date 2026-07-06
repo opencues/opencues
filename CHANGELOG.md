@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — status output uses the `●`-ring house style everywhere (no ticks) (`opencues` CLI 0.2.34 → 0.2.35, `@opencues/runtime` 0.11.3 → 0.11.4)
+
+The CLI's own rule is "status is a leading coloured `●` — never a tick / cross / dot / ⚠" (`packages/opencues-cli/CLAUDE.md`), but `tag()` still rendered `🗸` / `⚠` / `✗` / `•` against it, across ~128 call sites in 18 command files. Redefined `tag()`'s UTF-8 glyphs to leading `●` rings (green ok / dim info / yellow warn / red err) — one change, every command now consistent, and alignment improves because the old `🗸` / `⚠` are 2-cell-wide emoji while `●` is single-cell. `TAGS_ASCII` (`[ok]` / `[warn]`) is unchanged for no-UTF8 terminals. Also converted the stray literal ticks: `cleanup`'s two `green('✓')`, `which`'s stale help text ("shows ✓ if present" → green `●`), and the **kata coach** line + lesson journal (`✓ Now:` → `● Now:`; runtime statusline surface). No test pinned the glyphs (one kata journal assertion updated to `●`).
+
 ### Added — buffer dehydration: `identity-context-mode: safe` is now bidirectional (`@opencues/core` 0.14.0 → 0.15.0, `@opencues/runtime` 0.11.2 → 0.11.3, `@opencues/chrome` 0.2.60 → 0.2.61, spec 0.5 → 0.6)
 
 **Observability** (core 0.15.0 / runtime 0.11.3): the outbound scrub now emits a structured **`transform-blank.dehydrated` / `fluid-blank.dehydrated`** event (`{ count }`) via the existing source-event channel, making the PII scrub assertable end-to-end on a real host (the buffer stays hydrated by design, so a text assertion can't prove the outbound scrub). Validated live on OpenCode + real Groq; pinned by agentic scenario `67-identity-context-dehydration-event` (asserts the event fired — runtime contract, not LLM output, per the agentic-scenario rule).
