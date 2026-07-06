@@ -361,16 +361,34 @@ open(p, 'w').write(src)
 PY
 }
 
+# Revert a fork source file to pristine upstream (git HEAD) before
+# (re)applying anchor-based patches. Patches are uncommitted working-tree
+# edits, so `git checkout HEAD -- <file>` restores the upstream source.
+# Without this, a stale patch from an EARLIER opencues version leaves the
+# anchors half-applied and unmatchable — e.g. a tip-only footer.tsx that
+# predates the kata block: its `<Directory/>…<Version/>` region was
+# already rewritten by the old patch, so the combined patch's anchor for
+# that region never matches and the kata block silently never lands (the
+# "no kata statusline on upgrade" bug). No-op outside a git work tree.
+restore_pristine() {
+  git -C "$OPENCODE_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  git -C "$OPENCODE_DIR" checkout HEAD -- "$1" 2>/dev/null || true
+}
+
 patch_footer_tsx() {
   local footer="$OPENCODE_DIR/packages/opencode/src/cli/cmd/tui/feature-plugins/home/footer.tsx"
   # Older OpenCode layouts don't ship this file — skip silently.
   [[ -f "$footer" ]] || return 0
-  if grep -q "opencuesTip" "$footer"; then return 0; fi
+  # Guard on the NEWEST marker this patch injects (opencuesKata), not an
+  # older one (opencuesTip) — else a fork left tip-only by a prior version
+  # is treated as "already patched" and never gets the kata block.
+  if grep -q "opencuesKata" "$footer"; then return 0; fi
+  restore_pristine "$footer"
   python3 - "$footer" <<'PY'
 import sys
 p = sys.argv[1]
 src = open(p).read()
-if 'opencuesTip' in src: sys.exit(0)
+if 'opencuesKata' in src: sys.exit(0)
 src = src.replace(
   'import { Global } from "@/global"',
   'import { Global } from "@/global"\nimport { opencuesTip, opencuesKata } from "../../opencues"',
@@ -478,12 +496,16 @@ patch_sidebar_footer_tsx() {
   #     in the same window.
   local footer="$OPENCODE_DIR/packages/opencode/src/cli/cmd/tui/feature-plugins/sidebar/footer.tsx"
   [[ -f "$footer" ]] || return 0
-  if grep -q "opencuesTip" "$footer"; then return 0; fi
+  # Same marker-drift fix as patch_footer_tsx: the combined patch adds the
+  # `opencuesKata` import, so guard on it (not the older `opencuesTip`) and
+  # restore pristine first so the anchors always match.
+  if grep -q "opencuesKata" "$footer"; then return 0; fi
+  restore_pristine "$footer"
   python3 - "$footer" <<'PY'
 import sys
 p = sys.argv[1]
 src = open(p).read()
-if 'opencuesTip' in src: sys.exit(0)
+if 'opencuesKata' in src: sys.exit(0)
 src = src.replace(
   'import { Global } from "@/global"',
   'import { Global } from "@/global"\nimport { opencuesTip, opencuesKata } from "../../opencues"',
