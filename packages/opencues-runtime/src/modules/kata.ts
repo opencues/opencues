@@ -253,6 +253,10 @@ export class KataCoach {
   private _coachLine: string | null = null;
   private _offTrack = false;
   private _trace: TraceEntry[] = [];
+  /** Dedup an Enter-keypress submit (observeKey) against the buffer-clear
+   *  submit the same Enter triggers on CC/OC (observeKey fires first). */
+  private _lastEnterAt = 0;
+  private _lastEnterBody = '';
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private _inFlight = false;
   /** Buffer snapshot the in-flight tick was built from — stale-drop guard. */
@@ -443,15 +447,31 @@ export class KataCoach {
     }
     if (this._escCount > 0) this._escCount = 0;
 
-    // Enter is always recorded — as a KEYPRESS ("pressed: enter"), NOT a
-    // submit. `enter` is not equal to `submit`: a kata step that asks the
-    // user to press Enter is satisfied by the keypress, and the coach sees
-    // it on every host. The separate SUBMIT signal (a non-empty→empty
-    // buffer clear, handled in onTextChange) only fires on hosts where
-    // Enter actually submits + clears (CC/OC); on newline-hosts (gmail /
-    // chrome contenteditable / shell) Enter is a keypress and a newline,
-    // and that's all it is.
     const isEnter = k === 'return' || k === 'enter';
+
+    // Enter WITH content is a SUBMIT. Kata steps written as "submitted X"
+    // (the Claude Code katas) must complete when the user presses Enter to
+    // send. On CC/OC the buffer also clears and onTextChange records the
+    // submit — deduped here via _lastEnter*. On newline-hosts (chrome /
+    // gmail / shell) Enter inserts a newline and the buffer never clears,
+    // so THIS is the only submit signal. A bare Enter on an EMPTY buffer is
+    // NOT a submit — it falls through to a "pressed: enter" keypress (for
+    // picker / mode-toggle steps that confirm with Enter on nothing typed).
+    if (isEnter && !mods.ctrl && !mods.alt && !mods.meta && !mods.shift) {
+      const body = e.text.trim();
+      if (body.length > 0) {
+        this._lastEnterAt = Date.now();
+        this._lastEnterBody = body;
+        this._logFn(`Kata: observed submit (Enter) "${body.slice(0, 40)}"`);
+        this.pushTrace({ kind: 'submitted', text: body });
+        this.armIdleTimer();
+        this.scheduleTick();
+        return;
+      }
+      // Empty buffer → keypress (below): Enter-on-empty is a picker/mode
+      // confirmation, not a submit.
+    }
+
     const salient = ['tab', 'escape', 'up', 'down', 'left', 'right'].includes(k)
       || isEnter
       || mods.ctrl || mods.alt || mods.meta;
@@ -493,7 +513,12 @@ export class KataCoach {
     // user-source only.
     if (this._doc && text.trim().length === 0 && prev.trim().length > 0
       && this.configLoader.opencuesState.settings.get('katas-mode') !== 'off') {
-      this.pushTrace({ kind: 'submitted', text: prev.trim() });
+      // Dedup: on CC/OC the Enter keypath (observeKey) already recorded
+      // this submit a moment ago, and the same Enter also clears the
+      // buffer here. Don't record it twice.
+      const body = prev.trim();
+      const already = this._lastEnterBody === body && (Date.now() - this._lastEnterAt) < 1000;
+      if (!already) this.pushTrace({ kind: 'submitted', text: body });
       this.armIdleTimer();
       this.scheduleTick();
       return;

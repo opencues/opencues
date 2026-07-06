@@ -176,6 +176,37 @@ describe('KataCoach journeys (deterministic contracts)', () => {
     expect(last).toMatchObject({ kind: 'submitted', text: 'git status' });
   });
 
+  it('Enter WITH content records a SUBMIT (newline-hosts: buffer never clears)', async () => {
+    // chrome/gmail/shell: Enter inserts a newline and the buffer stays
+    // non-empty, so the non-empty→empty path never fires. The keypress
+    // itself IS the submit — so a "submitted X" kata step (the Claude Code
+    // katas) completes when the user presses Enter to send.
+    const h = makeHarness();
+    await h.type('start kata 1 _');
+    await h.type('write a plan');
+    h.coach.observeKey({ key: 'enter', modifiers: { ctrl: false, alt: false, shift: false, meta: false }, text: 'write a plan', cursorOffset: 12 } as KeyEvent);
+    expect(h.coach.traceSnapshot().at(-1)).toMatchObject({ kind: 'submitted', text: 'write a plan' });
+  });
+
+  it('Enter on an EMPTY buffer is a keypress, not a submit (picker/mode confirm)', async () => {
+    const h = makeHarness();
+    await h.type('start kata 1 _');
+    h.key('enter'); // helper passes text: ''
+    expect(h.coach.traceSnapshot().at(-1)).toMatchObject({ kind: 'key', text: 'enter' });
+  });
+
+  it('Enter submit is deduped against the CC/OC buffer-clear (one submit, not two)', async () => {
+    const h = makeHarness();
+    await h.type('start kata 1 _');
+    await vi.advanceTimersByTimeAsync(300);
+    await h.type('git status');
+    // observeKey (Enter) fires first, THEN the host clears the buffer.
+    h.coach.observeKey({ key: 'enter', modifiers: { ctrl: false, alt: false, shift: false, meta: false }, text: 'git status', cursorOffset: 10 } as KeyEvent);
+    await h.type('', 'git status');
+    const submits = h.coach.traceSnapshot().filter(t => t.kind === 'submitted' && t.text === 'git status');
+    expect(submits.length).toBe(1);
+  });
+
   it('stop kata _ deactivates; katas-mode: off gates everything', async () => {
     const h = makeHarness();
     await h.type('start kata 1 _');
