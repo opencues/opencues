@@ -127,7 +127,7 @@ async function main(): Promise<void> {
     const noRawTokens = !rewrite.includes('[CRYPTO') && !rewrite.includes('[WEATHER') && !rewrite.includes('[STOCKS');
     const ok = allFound && noRawTokens;
     if (ok) pass++;
-    const flag = ok ? '✓' : '✗';
+    const flag = ok ? '\x1b[32m●\x1b[0m' : '✗';
     const preview = rewrite.replace(/\s+/g, ' ').slice(0, 180);
     console.log(`  ${flag} ${c.id} (${dt}ms)`);
     console.log(`      input:  ${c.input}`);

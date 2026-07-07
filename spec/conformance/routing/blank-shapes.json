@@ -1,5 +1,5 @@
 {
-  "description": "Blank shapes route the SENTENCE containing _ (0.4). Keywords desugar to shapes (a keyword claims a _ when it leads its sentence, capturing any words between as the get arg). A sentence begins at the last terminator (./!/? + space, or CJK 。！？．) OR newline before _. A command must LEAD its sentence with _ at the trailing edge; prose that merely mentions a keyword mid-sentence does not fire.",
+  "description": "Blank shapes route the SENTENCE containing _ (0.5). Keywords desugar to shapes (a keyword claims a _ when it leads its sentence, capturing any words between as the get arg). A sentence begins at the last terminator (./!/? + space, or CJK 。！？．) OR newline before _. A command must LEAD its sentence with _ at the trailing edge; prose that merely mentions a keyword mid-sentence does not fire.",
   "blanks": [
     { "name": "volume",  "blankKeywords": ["volume"] },
     { "name": "weather", "blankKeywords": ["weather"] }

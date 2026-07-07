@@ -18,14 +18,16 @@
 //     chrome.storage whenever the popup writes.
 
 import { Runtime } from '../../../src/runtime';
+import { buildBootApiKeys } from '@opencues/core';
 import { ChromeV1Adapter, type ChromeBindings } from './adapter';
 import { Statusline } from '../../../src/modules/statusline';
+import { KataCoach } from '../../../src/modules/kata';
 import { Resolver } from '../../../src/modules/resolver';
 import { AgentRewrite } from '../../../src/modules/agent-rewrite';
 import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
-import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, resetSharedBufferState } from '../../../src/boot-common';
+import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, resetSharedBufferState } from '../../../src/boot-common';
 import { EventEmitter } from '../../../src/lib/event-emitter';
 import type {
   CommonHostInfo,
@@ -289,14 +291,24 @@ export function boot(host: HostInfo): BootResult {
   const adapter = new ChromeV1Adapter(bindings);
   Runtime.create(adapter).catch(err => log('error', 'Runtime.create failed', err));
 
+  // Kata key observation — MUST be the first key subscriber (key dispatch
+  // is emit-until-consumed; a late subscriber is blind to presses that
+  // earlier handlers consume). Late-bound ref: the coach is constructed
+  // after buildSharedRuntime (it needs the ConfigLoader). Mirrors the
+  // OC / CC / shell / gemini bands.
+  let kataCoachRef: KataCoach | null = null;
+  keyEvents.subscribe(e => { kataCoachRef?.observeKey(e); return false; });
+
   // Universal state + ConfigLoader + Navigation/DimRender/Cycling/BlankFill
   // all live in boot-common.ts so the chrome and opencode bands can't
   // drift on subscription order or constructor args.
   // Live mutable apiKeys bag. `updateApiKeys` mutates this in place so the
   // resolver reads current keys even though chrome's keys arrive async (host
   // push) after boot. OC's band does the same (getApiKeys: () => apiKeys).
-  const apiKeys: Record<string, string | undefined> = { ...(host.llmApiKeys ?? {}) };
-  if (host.llmApiKey && !apiKeys.GROQ_API_KEY) apiKeys.GROQ_API_KEY = host.llmApiKey;
+  // buildBootApiKeys keeps the construction uniform across bands; its
+  // process.env / ~/.cues/.env augmentation is guard-gated and a no-op in
+  // the browser (chrome's keys arrive pre-merged via the storage push).
+  const apiKeys = buildBootApiKeys(host.llmApiKeys, host.llmApiKey, (m) => log('info', m));
 
   const shared = buildSharedRuntime(adapter, {
     log,
@@ -315,6 +327,22 @@ export function boot(host: HostInfo): BootResult {
     spanFillState, selectorSatelliteState, agentTaskState,
   } = shared;
 
+  // KataCoach — modal guided-scenario runtime (prototype). Uses the host's
+  // fetch-based httpAdapter (NodeHttpAdapter is stubbed in the browser
+  // bundle) and omits progressFile (chrome has no fs — persistence off).
+  // While active it suppresses the Resolver via externallySuppressed below.
+  // Mirrors the OC / CC / shell / gemini bands.
+  const kataCoach = new KataCoach(adapter, configLoader, {
+    katasDirs: ['/chrome-storage/.cues/katas'],
+    resolveLLM: () => buildKataLLMResolver(configLoader, apiKeys),
+    cadenceMs: () => parseInt(configLoader.opencuesState.settings.get('kata-debounce-ms') ?? '', 10),
+    nudgeMs: () => parseInt(configLoader.opencuesState.settings.get('kata-nudge-ms') ?? '', 10),
+    httpAdapter: host.httpAdapter as { post(url: string, body: string, headers: Record<string, string>): Promise<string> } | undefined,
+    log: msg => log('debug', msg),
+  });
+  kataCoach.subscribe();
+  kataCoachRef = kataCoach; // arms the early key observer above
+
   // Statusline — Chrome has no filesystem, so exportPath is '' (empty).
   // The snapshot hook delivers the payload to the content script, which
   // renders it into a floating div.
@@ -322,6 +350,7 @@ export function boot(host: HostInfo): BootResult {
     const statusline = new Statusline(adapter, hlState, dynDefs, {
       exportPath: '',
       onSnapshot: (payload) => host.statusSnapshotHook!(payload),
+      kataStatus: () => kataCoach.status(),
     }, configLoader, spanFillState, selectorSatelliteState, agentTaskState);
     statusline.subscribe();
   }
@@ -422,6 +451,7 @@ export function boot(host: HostInfo): BootResult {
         }
       },
       keywordBoundSlotIndices: (text: string) => shared.blankFill.scan(text).map(s => s.index),
+      externallySuppressed: (text: string) => kataCoach.shouldSuppressResolve(text),
     }), spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState);
     configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
     liveResolver = resolver;
@@ -434,6 +464,9 @@ export function boot(host: HostInfo): BootResult {
         defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
         httpAdapter,
         resolveLLM: () => buildAgentLLMResolver(configLoader, apiKeys),
+        // Buffer-dehydration: outbound DOCUMENT scrubbed to [TOKEN]s in
+        // identity-context safe mode; rewrite hydrated before the merge.
+        identityDehydration: () => identityDehydrationFor(configLoader),
         // Sliding-window mode (lazy thunk so OPENCUES.md edits take effect
         // without a restart). 0 = full-buffer; useful for long docs in
         // textareas where token cost dominates.

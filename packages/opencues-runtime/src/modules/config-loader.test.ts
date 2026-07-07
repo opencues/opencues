@@ -403,6 +403,40 @@ describe('ConfigLoader hot-reload', () => {
     expect(loader.opencuesState.voiceMode).toBe('active');
   });
 
+  it('applyOpenCuesScalar preserves identity-context two-tier defaults (no silent downgrade)', async () => {
+    // SECURITY-LOAD-BEARING pin: the inline re-parse inside
+    // applyOpenCuesScalar used to default identity-context-mode /
+    // blank-context-mode to 'off' while parseOpenCuesMd defaults an
+    // ABSENT key to 'safe'. Cycling ANY satellite scalar (voice-mode
+    // here) on a config without the explicit key then silently
+    // downgraded the in-memory mode to 'off' — and buffer dehydration
+    // (the outbound PII scrub) rides 'safe', so the scrub would have
+    // turned off without a trace.
+    const FILE = `---\nvoice-mode: inactive\n---\n`; // no identity-context-mode key
+    const adapter = new MockAdapter({
+      files: { '/tips.json': '{"concepts":[]}', '/proj/.cues/OPENCUES.md': FILE },
+      cwd: '/proj',
+    });
+    const loader = new ConfigLoader(adapter, {
+      reloadDebounceMs: 0,
+      settingsFile: '/proj/.cues/OPENCUES.md',
+    });
+    await loader.load();
+    expect(loader.opencuesState.identityContextMode).toBe('safe');
+    expect(loader.opencuesState.blankContextMode).toBe('safe');
+    // Cycle an unrelated satellite scalar.
+    loader.applyOpenCuesScalar('voice-mode', 'active');
+    expect(loader.opencuesState.voiceMode).toBe('active');
+    // The modes must survive the inline re-parse.
+    expect(loader.opencuesState.identityContextMode).toBe('safe');
+    expect(loader.opencuesState.blankContextMode).toBe('safe');
+    // Explicit values still respected (off stays off; invalid fails closed).
+    loader.applyOpenCuesScalar('identity-context-mode', 'off');
+    expect(loader.opencuesState.identityContextMode).toBe('off');
+    loader.applyOpenCuesScalar('identity-context-mode', 'enabled');
+    expect(loader.opencuesState.identityContextMode).toBe('off');
+  });
+
   it('reload resumes after the suppression window expires', async () => {
     // The suppression is bounded — once the write has had time to
     // land, hot-reload picks back up so future file edits propagate.

@@ -62,7 +62,7 @@
       "type": "string",
       "enum": ["off", "safe", "raw"],
       "default": "safe",
-      "description": "Gates IDENTITY.md personal-data injection into fluid-blank and transform-blank as sentinel tokens. `safe`: tokens-only catalog to LLM, values substituted post-response. `raw`: values inlined into prompt (PII reaches provider logs; hidden from cycling menu). See spec/identity-context-spec.md."
+      "description": "Gates IDENTITY.md personal-data handling. `safe` (default): bidirectional dehydration — tokens-only catalog to the LLM, catalog values in user-typed buffer text replaced with tokens before every dispatch, values substituted (hydrated) post-response. `raw`: values inlined into prompts and buffer text ships unscrubbed (PII reaches provider logs; hidden from cycling menu). See spec/identity-context-spec.md § Modes + § Dehydration."
     },
     "blank-context-mode": {
       "type": "string",

@@ -62,7 +62,7 @@ const fail = (msg) => {
   process.exit(1);
 };
 
-const ok = (msg) => console.log(`  ✓ ${msg}`);
+const ok = (msg) => console.log(`  \x1b[32m●\x1b[0m ${msg}`);
 
 // Bypass — extremely loud, intentionally hostile to muscle memory.
 if (process.env.OPENCUES_PUBLISH_GUARD_BYPASS === 'i-confirm-public-leak') {

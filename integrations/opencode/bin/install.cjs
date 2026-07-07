@@ -145,7 +145,7 @@ function doInstall() {
     seedConfigs(['--silent'], { REPO_ROOT });
   }
 
-  // Delegate to setup.sh. It owns its own progress output (▸/✓ lines)
+  // Delegate to setup.sh. It owns its own progress output (▸/● lines)
   // + the final "Done. Launch with…" message; we stay silent on success
   // so the user sees one coherent flow rather than three competing
   // banners.

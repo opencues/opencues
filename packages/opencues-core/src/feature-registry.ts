@@ -170,6 +170,17 @@ export interface FeatureSpec {
    * always reflects live settings.
    */
   readonly valuesProvider?: (settings: ReadonlyMap<string, string>) => readonly ValueSpec[];
+
+  /**
+   * Restrict this feature's settings-menu visibility to specific hosts.
+   * When set, only the listed hosts show it in `opencues settings _`.
+   * Omitted = universal (every host). Mirrors MenuTunableSpec.hostScope
+   * — used for features that only DO something on one host (e.g. chrome's
+   * `statusbar-position`, which positions the in-page floating bar the CLI
+   * hosts don't have). The scalar is still a real FEATURE so the
+   * fluid-config intent classifier can route to it on that host.
+   */
+  readonly hostScope?: readonly string[];
 }
 
 /**
@@ -633,6 +644,19 @@ export const FEATURES: readonly FeatureSpec[] = [
       { id: 'raw',  description: 'Live values inlined into the prompt; values reach the LLM provider', exposeInMenu: false },
     ],
   },
+  {
+    scalar: 'statusbar-position',
+    group: 'Appearance',
+    camelCase: 'statusbarPosition',
+    hostScope: ['chrome'],
+    description: 'Where the chrome in-page status bar (tips, cycling, kata coach) sits. Chrome-only — the CLI hosts render into their own footer/statusline. A real FEATURE (not a MENU_TUNABLE) so the fluid-config intent classifier can route to it, e.g. `move the status bar to the top _`.',
+    menuTip: 'Where the floating status bar sits on the page (chrome only).',
+    values: [
+      { id: 'bottom', description: 'Default — full-width band along the bottom' },
+      { id: 'top',    description: 'Full-width band along the top' },
+      { id: 'right',  description: 'Compact panel in the bottom-right corner' },
+    ],
+  },
 ];
 
 /**
@@ -780,6 +804,10 @@ export function getMenuDefinitions(
   // returns the same first scalar.
   const emptySettings: ReadonlyMap<string, string> = new Map();
   for (const f of FEATURES) {
+    // Host-scope filter — when hostScope is set, only include the feature
+    // if the current host matches. Omitted hostScope = universal. Mirrors
+    // the MENU_TUNABLES loop below.
+    if (f.hostScope && hostName && !f.hostScope.includes(hostName)) continue;
     // Dynamic values take precedence when valuesProvider is present —
     // used by `*-llm-model` scalars whose valid range depends on the
     // sibling provider scalar's current value.

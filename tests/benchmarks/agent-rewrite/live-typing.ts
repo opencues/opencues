@@ -161,7 +161,7 @@ async function main(): Promise<void> {
   const results: ScenarioResult[] = [];
   for (const s of SCENARIOS) {
     const r = await runScenario(s);
-    const mark = r.pass ? '✓' : '✗';
+    const mark = r.pass ? '\x1b[32m●\x1b[0m' : '✗';
     console.log(`${mark} ${r.id.padEnd(28)} ${r.latencyMs}ms`);
     for (const n of r.notes) console.log(`    ${n}`);
     if (!r.pass) {

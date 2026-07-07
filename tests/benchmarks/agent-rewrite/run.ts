@@ -153,7 +153,7 @@ async function main(): Promise<void> {
     const chunk = cases.slice(i, i + args.parallel);
     const got = await Promise.all(chunk.map(runCase));
     for (const r of got) {
-      const mark = r.pass ? '✓' : '✗';
+      const mark = r.pass ? '\x1b[32m●\x1b[0m' : '✗';
       console.log(`${mark} ${r.id.padEnd(8)} [${r.category.padEnd(22)}] ${r.latencyMs}ms — ${r.reason}`);
       if (args.verbose || !r.pass) {
         console.log(`    rewrite: ${JSON.stringify(r.llmRewrite.slice(0, 120))}${r.llmRewrite.length > 120 ? '…' : ''}`);

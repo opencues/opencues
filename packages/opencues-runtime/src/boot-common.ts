@@ -370,6 +370,61 @@ export function buildAgentLLMResolver(
   return { ...out, maxThinking: (s.get('max-thinking') ?? 'on') !== 'off' };
 }
 
+/**
+ * AgentRewrite `identityDehydration` thunk body (buffer-dehydration
+ * feature). Returns the IDENTITY.md token→value catalog when
+ * `identity-context-mode: safe` and the catalog is non-empty; null
+ * otherwise (`off` = feature disabled, `raw` = values are permitted to
+ * ship, empty catalog = nothing to scrub). Callers wrap it in an arrow
+ * (`identityDehydration: () => identityDehydrationFor(configLoader)`)
+ * so IDENTITY.md / mode edits hot-reload per tick — the same pattern
+ * as `buildAgentLLMResolver`. The catalog Map identity doubles as the
+ * dehydrator-compile cache key (fresh Map per ConfigLoader reload).
+ * See docs/architecture/hydration-dehydration.md.
+ */
+export function identityDehydrationFor(
+  configLoader: ConfigLoader,
+): { catalog: ReadonlyMap<string, string> } | null {
+  if (configLoader.opencuesState.identityContextMode !== 'safe') return null;
+  const catalog = configLoader.identity?.catalog;
+  if (!catalog || catalog.size === 0) return null;
+  return { catalog };
+}
+
+/**
+ * Kata (kata) coach LLM resolver — per-feature scalars win, then the
+ * auditors bucket (the coach is a background prose-reading concern, same
+ * trust class as agent-rewrite), then global. Precedence:
+ *   kata-llm-provider/-model/-endpoint > auditors-llm-* > llm-*.
+ * Re-resolved per tick so OPENCUES.md edits hot-reload.
+ */
+export function buildKataLLMResolver(
+  configLoader: ConfigLoader,
+  apiKeys: Readonly<Record<string, string | undefined>>,
+): ResolvedAgentLLM | null {
+  let core: { resolveLLM?: (opts: unknown) => unknown } | null = null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    core = require('@opencues/core');
+  } catch { return null; }
+  if (!core?.resolveLLM) return null;
+  const s = configLoader.opencuesState.settings;
+  const auditorsBucket = configLoader.opencuesState.auditorsLlmProvider;
+  const auditorsBucketProvider = auditorsBucket === 'inherit' ? undefined : auditorsBucket;
+  const auditorsBucketModel = auditorsBucketProvider ? s.get('auditors-llm-model') : undefined;
+  const auditorsBucketEndpoint = auditorsBucketProvider ? s.get('auditors-llm-endpoint') : undefined;
+  const out = core.resolveLLM({
+    featureProvider: s.get('kata-llm-provider'),
+    featureModel: s.get('kata-llm-model'),
+    endpointOverride: s.get('kata-llm-endpoint') ?? auditorsBucketEndpoint ?? s.get('llm-endpoint'),
+    globalProvider: auditorsBucketProvider ?? s.get('llm-provider'),
+    globalModel: auditorsBucketProvider ? (auditorsBucketModel ?? undefined) : s.get('llm-model'),
+    apiKeys,
+  }) as ResolvedAgentLLM | null;
+  if (!out) return null;
+  return { ...out, maxThinking: (s.get('max-thinking') ?? 'on') !== 'off' };
+}
+
 import { Navigation } from './modules/navigation';
 import { DimRender } from './modules/dim-render';
 import { Cycling } from './modules/cycling';
@@ -801,6 +856,24 @@ export function buildSharedRuntime(
   const configLoader = new ConfigLoader(adapter, { configSearchPaths, settingsFile });
   configLoader.subscribe();
   configLoader.load().catch(err => log('error', 'ConfigLoader.load failed', err));
+
+  // OUTBOUND PII FLOOR (buffer-dehydration, defense-in-depth): register
+  // the dispatchChat-level guard. Per-source dehydration is the primary
+  // mechanism; this floor scrubs any residual catalog value a future /
+  // missed source ships, with a loud warning. Thunk re-reads config per
+  // dispatch so mode flips + IDENTITY.md edits hot-reload. Lazy-require
+  // keeps parity with buildAgentLLMResolver's no-hard-core-dep stance.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const core = require('@opencues/core') as {
+      setOutboundDehydrationGuard?: (g: (() => unknown) | null) => void;
+      getDehydrator?: (c: ReadonlyMap<string, string>) => unknown;
+    };
+    core.setOutboundDehydrationGuard?.(() => {
+      const id = identityDehydrationFor(configLoader);
+      return id && core.getDehydrator ? core.getDehydrator(id.catalog) : null;
+    });
+  } catch { /* bare boots without core keep the unguarded (pre-feature) behaviour */ }
 
   // State classes. Order is dependency-irrelevant but matches the
   // historical declaration order in both per-host boot.ts files.

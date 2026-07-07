@@ -10,7 +10,7 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
-const { tag, step, bold, dim, banner, cliVersion } = require('../lib/style.cjs');
+const { tag, step, bold, dim, green, banner, cliVersion, G } = require('../lib/style.cjs');
 const prompt = require('../lib/prompt.cjs');
 const { pickHost } = require('../lib/pick-host.cjs');
 
@@ -175,6 +175,7 @@ module.exports = async function install(argv, ctx) {
   // slow registry round-trip never blocks the real work. Failure-silent.
   if (exitCode === 0) {
     console.log('');
+    printKeyDetectionReport(ctx);
     console.log(`${tag('info')} verify your environment supports every feature: ${bold('opencues doctor')}`);
     await maybePrintUpdateNotice(ctx);
   }
@@ -550,6 +551,71 @@ function detectPackageManager(platform) {
 // the auto-install offer — small enough not to warrant a dep.
 
 // `command -v <name>` returns 0 when the tool is on PATH. Quietly.
+// ── Existing-key detection report ────────────────────────────────────
+// Runs at the end of a successful install so the "no key → every LLM
+// feature silently inert" state is surfaced at the moment the user can
+// act on it, not the first time a cue mysteriously no-ops. Detection
+// sources: shell env + ~/.cues/.env (core's detectProviderKeys), plus
+// subscription CLI binaries (claude / codex) for the zero-key case.
+// Purely informational — never blocks, never touches the network
+// (`opencues check-keys` is the live probe).
+function printKeyDetectionReport(ctx) {
+  let providers, envKeys;
+  try {
+    providers = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/llm-provider.js'));
+    envKeys = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/env-keys.js'));
+  } catch {
+    return; // core not built — `opencues doctor` covers this state
+  }
+  // One line: the provider the runtime will actually use. Mirrors
+  // resolveLLM's precedence exactly — explicit `llm-provider:` scalar,
+  // else pickAutoProvider (env keys first, then the zero-key
+  // subscription-CLI rung: claude/codex binary present). No key names,
+  // no source inventory — presence isn't validity (`opencues
+  // check-keys` is the live probe) and doctor owns the per-key table.
+  const detected = envKeys.detectProviderKeys().filter((d) => d.source);
+  const bag = {};
+  for (const d of detected) bag[d.envKeyName] = 'set';
+  const explicit = readGlobalProviderScalar();
+  const provider = explicit || providers.pickAutoProvider(bag);
+  if (provider) {
+    const adapter = providers.getProvider(provider);
+    const hasKey = detected.some((d) => d.providerId === provider);
+    if (adapter?.transport === 'cli' && !explicit) {
+      // The zero-key subscription rung fired — say so, and name the
+      // upgrade path (the one actionable fact in this state).
+      console.log(`${green(G.ringOn)} LLM provider: ${bold(provider)} ${dim('— via your subscription; `opencues set-key` adds a faster API provider')}`);
+    } else if (hasKey || adapter?.transport === 'cli' || adapter?.optionalAuth) {
+      console.log(`${green(G.ringOn)} LLM provider: ${bold(provider)}`);
+    } else {
+      // Explicit scalar names a provider we found no key for — the one
+      // misconfig worth a line here.
+      console.log(`${tag('warn')} LLM provider: ${bold(provider)} ${dim(`(llm-provider: in ~/.cues/OPENCUES.md) — no key detected for it; run`)} ${bold('opencues check-keys')}`);
+    }
+  } else {
+    // Nothing usable anywhere: no keys, no subscription binaries. The
+    // one state that must not pass silently — every LLM feature is inert.
+    console.log(bold('LLM keys') + '  ' + dim('· none found — LLM cues/blanks stay inert until one is set'));
+    console.log(`  ${dim('fastest:')} ${bold('opencues set-key')} ${dim('— stores the key in ~/.cues/.env; hosts read it at boot')}`);
+    console.log(`  ${dim('one-click:')} ${bold('opencues set-key openrouter --oauth')} ${dim('— browser approval, no dashboard visit')}`);
+  }
+  console.log('');
+}
+
+// The global `llm-provider:` scalar from ~/.cues/OPENCUES.md, or null.
+function readGlobalProviderScalar() {
+  try {
+    const os = require('node:os');
+    const { readScalar } = require('../lib/opencues-md.cjs');
+    const file = path.join(os.homedir(), '.cues', 'OPENCUES.md');
+    if (!fs.existsSync(file)) return null;
+    const value = readScalar(fs.readFileSync(file, 'utf8'), 'llm-provider');
+    return value && value !== 'inherit' ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 function onPath(name) {
   try {
     const { execSync } = require('node:child_process');
@@ -962,3 +1028,8 @@ function printHelp(ctx) {
   console.log('  opencues install --all --dry-run');
   console.log('  opencues install skill cues');
 }
+
+// Test-only export — the report is invoked internally at the end of a
+// successful install; exposing it lets install.keyreport.test.cjs drive
+// both states (keys detected / zero keys) without running an installer.
+module.exports.printKeyDetectionReport = printKeyDetectionReport;

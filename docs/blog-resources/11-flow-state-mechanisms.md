@@ -107,23 +107,7 @@ re-install. No build.
 For users tuning their own setup, this is enormous. They never have to
 leave the artifact (their prompt) to fix the tool.
 
-## Mechanism 8: Re-evaluation on edit — blanks stay live
-
-From `docs/glossary.md`:
-> Blanks are automatically computed and re-evaluated on every edit. When
-> the surrounding text changes, the blank's value updates. This means a
-> blank is never permanently filled — it can always return to `_` and be
-> re-evaluated in its new context.
-
-If you fix a typo in `4 * 12 = _`'s context, the answer adjusts. The user
-doesn't have to re-trigger anything. The system *stays caught up to the
-text*.
-
-This is the opposite of commit-once autocomplete (which forgets after
-acceptance). Re-evaluation means blanks compose with editing rather than
-fighting it.
-
-## Mechanism 9: Auto-Submit (blanks-only)
+## Mechanism 8: Auto-Submit (blanks-only)
 
 > **Auto-Submit** — Analysis fires automatically after a pause in typing.
 > Only unseen words are sent to the LLM.
@@ -132,7 +116,7 @@ The user doesn't press a "go" button. Pause typing → analysis fires.
 Pulse → results dim words. The flow continues through the implicit-trigger
 moment.
 
-## Mechanism 10: The 500ms debounce — one clock for everything
+## Mechanism 9: The 500ms debounce — one clock for everything
 
 From `docs/architecture/agent-task.md`:
 
@@ -144,7 +128,7 @@ When the agent-task feature was added, it didn't introduce its own debounce
 "the system processes after I pause" rhythm, not multiple competing
 heartbeats.
 
-## Mechanism 11: Cursor-adjacency exclusion — never edit the word you're typing
+## Mechanism 10: Cursor-adjacency exclusion — never edit the word you're typing
 
 From `docs/architecture/agent-task.md`:
 
@@ -158,7 +142,7 @@ Cursor-adjacent words are excluded from evaluation. The user is *typing*
 
 This is a small specific rule with a big flow consequence.
 
-## Mechanism 12: Ownership locks — what's filled stays filled
+## Mechanism 11: Ownership locks — what's filled stays filled
 
 From `docs/features/cue-blanks.md`:
 
@@ -170,7 +154,7 @@ Once a blank is filled (`volume 50%`), no LLM call will overwrite that
 50%. The user-committed value is locked. The user knows the system won't
 silently mutate things behind them.
 
-## Mechanism 13: Stop semantics that respect ongoing work
+## Mechanism 12: Stop semantics that respect ongoing work
 
 From `docs/architecture/agent-task.md`:
 
@@ -185,7 +169,7 @@ When you stop the agent, the agent's existing work doesn't vanish. You
 keep what you wanted, revert what you didn't, at your own pace. No
 modal "do you want to keep all these edits?" dialog.
 
-## Mechanism 14: The "secondary display" abstraction
+## Mechanism 13: The "secondary display" abstraction
 
 The cue-tip is shown in a host-specific surface (status line in CC,
 tooltip in Chrome, footer in OC). It's *outside the input*. The text

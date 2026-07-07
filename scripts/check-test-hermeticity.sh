@@ -119,4 +119,4 @@ fi
 if [ "$HERMETICITY_FAIL" -ne 0 ]; then
   exit 1
 fi
-echo "✓ Tests pass + real ~/.opencues and ~/.cues unchanged."
+echo "[32m●[0m Tests pass + real ~/.opencues and ~/.cues unchanged."

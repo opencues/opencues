@@ -47,6 +47,54 @@ interface AppOpts {
 function App(props: AppOpts) {
   const renderer = useRenderer();
   const [tip, setTip] = createSignal<string | null>(null);
+  // Word-wrap the tip into up to 3 rows so long lines (kata coach,
+  // completion recap, catalogue notices) GROW the bar instead of
+  // clipping at the pane edge. Deterministic manual wrap — OpenTUI
+  // <text> doesn't reliably wrap inside a sized box. Recomputed per
+  // render so pane resizes re-wrap.
+  // Split the kata head ("C_ Kata 2/3:") from the body — the
+  // head renders on its OWN line (plate + white), the body wraps below.
+  const tipParts = (): { head: string | null; body: string } | null => {
+    const t = tip();
+    if (t == null) return null;
+    const m = t.match(/^C_ (Kata[^:]*:)\s*([\s\S]*)$/);
+    return m ? { head: m[1], body: m[2] } : { head: null, body: t };
+  };
+  const tipRows = (): string[] => {
+    const t = tipParts()?.body ?? null;
+    if (t == null) return [];
+    const width = Math.max(20, (process.stdout.columns ?? 80) - 4);
+    const rows: string[] = [];
+    let rest = t.trim();
+    while (rest.length > 0 && rows.length < 3) {
+      if (rest.length <= width) { rows.push(rest); break; }
+      let cut = rest.lastIndexOf(' ', width);
+      if (cut < width * 0.6) cut = width; // no good break point — hard cut
+      rows.push(rest.slice(0, cut));
+      rest = rest.slice(cut).trimStart();
+    }
+    if (rest.length > 0 && rows.length === 3 && rows[2].length > 1) {
+      rows[2] = rows[2].slice(0, Math.max(0, width - 1)) + '…';
+    }
+    return rows.length > 0 ? rows : [''];
+  };
+  // Inline-markup renderer for tip rows — two content levels, no bold:
+  // prose + ~decoration~ render DIM (gray); useful text (\u0060commands\u0060 the
+  // user literally types/presses, **emphasis**) renders plain white.
+  const renderSpans = (row: string) => {
+    const out: any[] = [];
+    const re = /\u0060([^\u0060]+)\u0060|\*\*([^*]+)\*\*|~([^~]+)~/g;
+    let last = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(row)) !== null) {
+      if (m.index > last) out.push(<text attributes={TextAttributes.DIM}>{row.slice(last, m.index)}</text>);
+      if (m[3] !== undefined) out.push(<text attributes={TextAttributes.DIM}>{m[3]}</text>);
+      else out.push(<text fg="#ffffff">{m[1] ?? m[2]}</text>);
+      last = m.index + m[0].length;
+    }
+    if (last < row.length) out.push(<text attributes={TextAttributes.DIM}>{row.slice(last)}</text>);
+    return out.length > 0 ? out : [<text attributes={TextAttributes.DIM}>{row}</text>];
+  };
   let textarea: TextareaRenderable | undefined;
   const syntax = SyntaxStyle.create();
 
@@ -217,8 +265,15 @@ function App(props: AppOpts) {
           />
         </box>
         {tip() != null && (
-          <box style={{ height: 1, width: '100%', paddingLeft: 1, paddingRight: 1 }}>
-            <text>{tip()}</text>
+          <box style={{ height: (tipParts()?.head ? 1 : 0) + tipRows().length + 1, width: '100%', flexDirection: 'column' }}>
+            {tipParts()?.head && (
+              <box style={{ flexDirection: 'row', height: 1 }}>
+                <text fg="#ffffff" attributes={TextAttributes.INVERSE}>C_</text>
+                <text fg="#ffffff"> {tipParts()!.head}</text>
+              </box>
+            )}
+            {tipRows().map((row) => <box style={{ flexDirection: 'row', height: 1 }}>{renderSpans(row)}</box>)}
+            <text> </text>
           </box>
         )}
       </box>
@@ -248,7 +303,7 @@ function App(props: AppOpts) {
         {tip() != null
           ? <text fg="#ffffff">{tip()}</text>
           : <box style={{ flexDirection: 'row' }}>
-              <text fg="#1a1a1a" bg="#ffffff" attributes={TextAttributes.BOLD}>C_</text>
+              <text fg="#ffffff" attributes={TextAttributes.INVERSE}>C_</text>
               <text fg="#ffffff"> OpenCues_  ·  Submit: Ctrl+Alt+S   ·   Cancel: Ctrl+Alt+Q</text>
             </box>}
       </box>

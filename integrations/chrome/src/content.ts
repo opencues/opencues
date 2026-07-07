@@ -23,7 +23,7 @@ import {
   notifyExternalReplaceUndo,
   cacheValidCursor,
 } from './opencues-bootstrap';
-import { clearStatusbar } from './runtime-statusbar';
+import { clearStatusbar, setPositionResolver } from './runtime-statusbar';
 import { deriveOpenCuesColours } from './derive-colours';
 import { walkPlainText, plainOffsetOfPosition } from './dom-walk';
 import {
@@ -78,6 +78,15 @@ function resolveLiveDimMix(fallback: number): number {
     if (!Number.isNaN(parsed) && parsed >= 0 && parsed <= 100) return parsed / 100;
   }
   return fallback;
+}
+
+// Resolve the live status-bar position from the `statusbar-position`
+// scalar — cycled via `opencues settings _` or set by the fluid-config
+// intent classifier ("move the status bar to the top _"). Default bottom.
+function resolveLivePosition(): 'right' | 'bottom' | 'top' {
+  const raw = _bootResult?.getSetting?.('statusbar-position');
+  if (raw === 'right' || raw === 'bottom' || raw === 'top') return raw;
+  return 'bottom';
 }
 
 function applyDerivedColours(el: HTMLElement, dimMix: number): void {
@@ -139,6 +148,12 @@ async function init(): Promise<void> {
     // isn't present and StocksBlank silently skips. Matches the
     // shell-env model used by native hosts.
   });
+
+  // Status-bar position (chrome-only `statusbar-position` FEATURE). The
+  // resolver reads the live OPENCUES.md scalar via bootResult.getSetting,
+  // re-read on every statusline update so cycling it via `settings _` or
+  // the fluid-config intent classifier takes effect immediately.
+  setPositionResolver(resolveLivePosition);
 
   const attachToFocused = (el: HTMLElement): void => {
     if (el === currentTarget) return;
@@ -467,6 +482,8 @@ async function init(): Promise<void> {
     }
     config.dimMix = newConfig.dimMix;
     if (currentTarget && !isNormalInput(currentTarget)) applyDerivedColours(currentTarget, resolveLiveDimMix(config.dimMix));
+    // statusbar-position is driven by the OPENCUES.md scalar (getSetting
+    // resolver), not popup config — no config-change handling needed.
 
     // Real-time key updates — call into the runtime when the API-key
     // set changed. Fingerprint = sorted env-var names (no values,

@@ -76,6 +76,6 @@ for f in $candidates; do
 done
 
 if [ "$fail" -eq 0 ]; then
-  echo "✓ runtime browser-safe: no unguarded process / unmarked NodeHttpAdapter in chrome-loaded src"
+  echo "[32m●[0m runtime browser-safe: no unguarded process / unmarked NodeHttpAdapter in chrome-loaded src"
 fi
 exit "$fail"

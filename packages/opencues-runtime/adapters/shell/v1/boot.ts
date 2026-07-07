@@ -15,15 +15,17 @@
 // require rebooting OpenCode users.
 
 import { Runtime } from '../../../src/runtime';
+import { buildBootApiKeys, pickAutoProvider } from '@opencues/core';
 import { ShellV1Adapter, type ShellBindings } from './adapter';
 import { startEventBridge } from '../../../src/event-bridge';
 import { Statusline } from '../../../src/modules/statusline';
+import { KataCoach } from '../../../src/modules/kata';
 import { Resolver } from '../../../src/modules/resolver';
 import { AgentRewrite } from '../../../src/modules/agent-rewrite';
 import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
-import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { EventEmitter } from '../../../src/lib/event-emitter';
 import type {
   CommonHostInfo,
@@ -124,6 +126,12 @@ export function boot(host: HostInfo): BootResult {
   const adapter = new ShellV1Adapter(bindings);
   Runtime.create(adapter).catch(err => log('error', 'Runtime.create failed', err));
 
+  // Kata key observation — MUST be the first key subscriber (key
+  // dispatch is emit-until-consumed; Navigation consumes Ctrl+Alt
+  // arrows). See docs/architecture/katas.md § host wiring contract.
+  let kataCoachRef: KataCoach | null = null;
+  keyEvents.subscribe(e => { kataCoachRef?.observeKey(e); return false; });
+
   const HOME = process.env.HOME ?? '~';
   const configSearchPaths = [
     ...(process.env.OPENCUES_HOME ? [process.env.OPENCUES_HOME] : []),
@@ -135,8 +143,10 @@ export function boot(host: HostInfo): BootResult {
     : `${HOME}/.cues/OPENCUES.md`;
   // Build the multi-provider key bag here so Cycling's satellite
   // filter sees the same bag the Resolver dispatches against below.
-  const apiKeys: Record<string, string | undefined> = { ...(host.llmApiKeys ?? {}) };
-  if (host.llmApiKey && !apiKeys.GROQ_API_KEY) apiKeys.GROQ_API_KEY = host.llmApiKey;
+  // buildBootApiKeys also fills any registry env var the bootstrap
+  // didn't forward from process.env, then from ~/.cues/.env
+  // (`opencues set-key`) — a shell export always wins over the file.
+  const apiKeys = buildBootApiKeys(host.llmApiKeys, host.llmApiKey, (m) => log('info', m));
   const shared = buildSharedRuntime(adapter, {
     log, configSearchPaths, settingsFile,
     getApiKeys: () => apiKeys,
@@ -148,12 +158,40 @@ export function boot(host: HostInfo): BootResult {
     spanFillState, selectorSatelliteState, agentTaskState,
   } = shared;
 
+  // KataCoach — modal guided-scenario runtime. Same wiring as
+  // oc/v1.14; suppresses the Resolver while active via the
+  // externallySuppressed gate below.
+  const kataCoach = new KataCoach(adapter, configLoader, {
+    katasDirs: configSearchPaths.map(p => `${p}/katas`),
+    resolveLLM: () => buildKataLLMResolver(configLoader, apiKeys),
+    cadenceMs: () => parseInt(configLoader.opencuesState.settings.get('kata-debounce-ms') ?? '', 10),
+    nudgeMs: () => parseInt(configLoader.opencuesState.settings.get('kata-nudge-ms') ?? '', 10),
+    progressFile: process.env.OPENCUES_HOME
+      ? `${process.env.OPENCUES_HOME}/kata-progress.json`
+      : `${HOME}/.cues/kata-progress.json`,
+    speak: (host.ttsScriptPath && adapter.capabilities.includes('spawn-process'))
+      ? (text: string) => {
+        try {
+          adapter.spawnProcess({
+            command: 'bash',
+            args: [host.ttsScriptPath!, text, host.ttsRate !== undefined ? String(host.ttsRate) : '2'],
+            detached: true,
+          });
+        } catch { /* voice is never load-bearing */ }
+      }
+      : undefined,
+    log: msg => log('debug', msg),
+  });
+  kataCoach.subscribe();
+  kataCoachRef = kataCoach; // arms the early key observer above
+
   if (host.statusFilePath || host.statusSnapshotHook) {
     const statusline = new Statusline(adapter, hlState, dynDefs, {
       exportPath: host.statusFilePath ?? '',
       onSnapshot: host.statusSnapshotHook
         ? (payload) => host.statusSnapshotHook!(payload)
         : undefined,
+      kataStatus: () => kataCoach.status(),
     }, configLoader, spanFillState, selectorSatelliteState, agentTaskState);
     statusline.subscribe();
   }
@@ -173,7 +211,11 @@ export function boot(host: HostInfo): BootResult {
 
   // `apiKeys` is built above (before buildSharedRuntime) so Cycling's
   // satellite filter sees the same bag.
-  const hasAnyKey = Object.values(apiKeys).some(Boolean);
+  // "Usable LLM" = any env key OR the zero-key subscription-CLI rung
+  // (pickAutoProvider's last rung: claude/codex binary present). Without
+  // the second clause a keyless subscription setup would show the
+  // missing-key hint and skip AgentRewrite while dispatch actually works.
+  const hasAnyKey = Object.values(apiKeys).some(Boolean) || pickAutoProvider(apiKeys) !== null;
   // Resolver constructed even with no keys so MissingKeyFallbackSource
   // surfaces a visible in-buffer hint on `_` instead of silent no-op.
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
@@ -185,6 +227,7 @@ export function boot(host: HostInfo): BootResult {
     missingKeyFallbackMessage: hasAnyKey ? undefined : NATIVE_HOST_MISSING_KEY_MESSAGE,
     formatLLMErrorAsSubstitute: nativeHostFormatLLMError,
     keywordBoundSlotIndices: (text: string) => shared.blankFill.scan(text).map(s => s.index),
+    externallySuppressed: (text: string) => kataCoach.shouldSuppressResolve(text),
   }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState,
   buildBlankContextProvider(configLoader, host.blanks, log),
   buildBlankFetchProvider(configLoader, host.blanks, log));
@@ -200,6 +243,9 @@ export function boot(host: HostInfo): BootResult {
       apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
       resolveLLM: () => buildAgentLLMResolver(configLoader, apiKeys),
+      // Buffer-dehydration: outbound DOCUMENT scrubbed to [TOKEN]s in
+      // identity-context safe mode; rewrite hydrated before the merge.
+      identityDehydration: () => identityDehydrationFor(configLoader),
       windowWords: () => parseInt(configLoader.opencuesState.settings.get('agent-window-words') ?? '0', 10) || 0,
       cadenceMs: () => parseInt(configLoader.opencuesState.settings.get('agent-debounce-ms') ?? '', 10),
       auditorPrompts: () => configLoader.composeAuditorPrompts(),

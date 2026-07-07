@@ -91,7 +91,7 @@ async function main() {
     const any = emittedAnyCall(rewrite, c.fn);
     if (hit) exact++;
     if (any) anyCall++;
-    const tag = hit ? '✓' : any ? '~' : '✗';
+    const tag = hit ? '\x1b[32m●\x1b[0m' : any ? '~' : '✗';
     console.log(`${tag} ${c.id.padEnd(10)} expect [${c.fn}(${c.argName}=${c.arg})]  →  ${rewrite.slice(0, 80)}`);
   }
   console.log(`\nexact call: ${exact}/${CASES.length} (${(exact / CASES.length * 100).toFixed(0)}%)   any correct-fn call: ${anyCall}/${CASES.length}`);
