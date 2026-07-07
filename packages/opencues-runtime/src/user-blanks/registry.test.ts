@@ -15,21 +15,27 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { LoadedUserBlank } from './node-loader';
+import type { LoadedUserBlank, loadUserBlank } from './node-loader';
 import type { BlankContext, UserBlankModule } from './types';
+import {
+  buildUserBlankRegistry,
+  wrapUserBlankAsBlank,
+  type BlankConfigLike,
+  type UserBlankRegistryOptions,
+} from './registry';
 
-vi.mock('./node-loader', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./node-loader')>();
-  return {
-    ...actual,
-    loadUserBlank: vi.fn(),
-  };
-});
+// The isolate-backed loader is injected via `loadUserBlankImpl` rather
+// than mocked at the module level. runtime vitest runs `isolate: false`
+// + `pool: 'forks'`, so a `vi.mock('./node-loader')` here would leak into
+// every sibling test file sharing this fork (it did — it crashed the
+// real-loader `sentinel-shadow.test.ts`). A plain `vi.fn()` threaded
+// through opts can't leak.
+const mockLoadUserBlank = vi.fn<typeof loadUserBlank>();
 
-import { buildUserBlankRegistry, wrapUserBlankAsBlank, type BlankConfigLike } from './registry';
-import { loadUserBlank } from './node-loader';
-
-const mockLoadUserBlank = vi.mocked(loadUserBlank);
+/** buildUserBlankRegistry with the fake loader pre-wired. */
+function build(configs: readonly BlankConfigLike[], opts: UserBlankRegistryOptions = {}) {
+  return buildUserBlankRegistry(configs, { loadUserBlankImpl: mockLoadUserBlank, ...opts });
+}
 
 function fakeLoaded(mod: Partial<UserBlankModule>): LoadedUserBlank {
   return {
@@ -188,7 +194,7 @@ describe('buildUserBlankRegistry — required secret-binding refusal', () => {
     const configs: BlankConfigLike[] = [
       { name: 'leaky', impl: '/abs/leaky-blank.js', userBlankSecrets: ['API_KEY'] },
     ];
-    const registry = buildUserBlankRegistry(configs, { log: (lvl, msg) => logs.push({ lvl, msg }) });
+    const registry = build(configs, { log: (lvl, msg) => logs.push({ lvl, msg }) });
     expect(registry.has('leaky')).toBe(false);
     expect(mockLoadUserBlank).not.toHaveBeenCalled();
     const warn = logs.find(l => l.msg.includes('leaky'));
@@ -207,7 +213,7 @@ describe('buildUserBlankRegistry — required secret-binding refusal', () => {
         userBlankSecretBindings: { API_KEY: [] },
       },
     ];
-    const registry = buildUserBlankRegistry(configs, { log: (lvl, msg) => logs.push({ lvl, msg }) });
+    const registry = build(configs, { log: (lvl, msg) => logs.push({ lvl, msg }) });
     expect(registry.has('leaky2')).toBe(false);
     expect(mockLoadUserBlank).not.toHaveBeenCalled();
   });
@@ -222,7 +228,7 @@ describe('buildUserBlankRegistry — required secret-binding refusal', () => {
         userBlankSecretBindings: { BOUND_KEY: ['api.example.com'] },
       },
     ];
-    const registry = buildUserBlankRegistry(configs, { log: (lvl, msg) => logs.push({ lvl, msg }) });
+    const registry = build(configs, { log: (lvl, msg) => logs.push({ lvl, msg }) });
     expect(registry.has('partial')).toBe(false);
     const warn = logs.find(l => l.msg.includes('partial'));
     // Only the unbound one is named in the diagnostic's bracketed list.
@@ -240,7 +246,7 @@ describe('buildUserBlankRegistry — required secret-binding refusal', () => {
         userBlankSecretBindings: { API_KEY: ['api.example.com'] },
       },
     ];
-    const registry = buildUserBlankRegistry(configs, { log: (lvl, msg) => logs.push({ lvl, msg }) });
+    const registry = build(configs, { log: (lvl, msg) => logs.push({ lvl, msg }) });
     expect(registry.has('bound-ok')).toBe(true);
     expect(mockLoadUserBlank).toHaveBeenCalledTimes(1);
     expect(logs.some(l => l.msg.includes('registered user blank "bound-ok"'))).toBe(true);
@@ -249,7 +255,7 @@ describe('buildUserBlankRegistry — required secret-binding refusal', () => {
   it('a blank declaring NO secrets at all is unaffected by the binding check', () => {
     mockLoadUserBlank.mockReturnValue(fakeLoaded({ async get() { return 'x'; } }));
     const configs: BlankConfigLike[] = [{ name: 'plain', impl: '/abs/plain-blank.js' }];
-    const registry = buildUserBlankRegistry(configs);
+    const registry = build(configs);
     expect(registry.has('plain')).toBe(true);
   });
 });
@@ -265,7 +271,7 @@ describe('buildUserBlankRegistry — first-wins collision handling', () => {
       { name: 'dup', impl: '/abs/dup-b.js' },
       { name: 'dup', impl: '/abs/dup-c.js' },
     ];
-    const registry = buildUserBlankRegistry(configs, { log: (lvl, msg) => logs.push({ lvl, msg }) });
+    const registry = build(configs, { log: (lvl, msg) => logs.push({ lvl, msg }) });
     expect(registry.size).toBe(1);
     // Collision check happens BEFORE loadUserBlank is invoked, so the
     // 2nd/3rd entries never even attempt to load.
@@ -285,7 +291,7 @@ describe('buildUserBlankRegistry — first-wins collision handling', () => {
       { name: 'Dup', impl: '/abs/mixed.js' },
       { name: 'DUP', impl: '/abs/upper.js' },
     ];
-    const registry = buildUserBlankRegistry(configs, { log: (lvl, msg) => logs.push({ lvl, msg }) });
+    const registry = build(configs, { log: (lvl, msg) => logs.push({ lvl, msg }) });
     expect(registry.size).toBe(3);
     expect(mockLoadUserBlank).toHaveBeenCalledTimes(3);
     expect(logs.some(l => l.msg.includes('name collision'))).toBe(false);
@@ -298,7 +304,7 @@ describe('buildUserBlankRegistry — first-wins collision handling', () => {
       { name: 'dup', impl: '/abs/dup-b.js' },
       { name: 'unique', impl: '/abs/unique.js' },
     ];
-    const registry = buildUserBlankRegistry(configs);
+    const registry = build(configs);
     expect(registry.size).toBe(2);
     expect(registry.has('dup')).toBe(true);
     expect(registry.has('unique')).toBe(true);
@@ -310,14 +316,14 @@ describe('buildUserBlankRegistry — first-wins collision handling', () => {
 describe('buildUserBlankRegistry — config filtering', () => {
   it('skips entries with no impl:', () => {
     const configs: BlankConfigLike[] = [{ name: 'noimpl' }];
-    const registry = buildUserBlankRegistry(configs);
+    const registry = build(configs);
     expect(registry.size).toBe(0);
     expect(mockLoadUserBlank).not.toHaveBeenCalled();
   });
 
   it('skips a bare-name impl (built-in registry lookup, not a user-blank path)', () => {
     const configs: BlankConfigLike[] = [{ name: 'builtin-ish', impl: 'weather' }];
-    const registry = buildUserBlankRegistry(configs);
+    const registry = build(configs);
     expect(registry.size).toBe(0);
     expect(mockLoadUserBlank).not.toHaveBeenCalled();
   });
@@ -326,7 +332,7 @@ describe('buildUserBlankRegistry — config filtering', () => {
     mockLoadUserBlank.mockImplementation(() => { throw new Error('syntax error in blank.js'); });
     const logs: Array<{ lvl: string; msg: string }> = [];
     const configs: BlankConfigLike[] = [{ name: 'broken', impl: '/abs/broken.js' }];
-    const registry = buildUserBlankRegistry(configs, { log: (lvl, msg) => logs.push({ lvl, msg }) });
+    const registry = build(configs, { log: (lvl, msg) => logs.push({ lvl, msg }) });
     expect(registry.size).toBe(0);
     expect(logs.some(l => l.lvl === 'warn' && l.msg.includes('syntax error in blank.js'))).toBe(true);
   });
@@ -362,7 +368,7 @@ describe('buildUserBlankRegistry — OPENCUES_SKIP_USER_BLANKS guard', () => {
   it('=1 → empty registry AND the loader is never reached (no sandbox spawned)', () => {
     mockLoadUserBlank.mockReturnValue(fakeLoaded({ async get() { return 'x'; } }));
     process.env['OPENCUES_SKIP_USER_BLANKS'] = '1';
-    const registry = buildUserBlankRegistry(implConfigs);
+    const registry = build(implConfigs);
     expect(registry.size).toBe(0);
     // The discriminator: empty because the GUARD returned before the load
     // loop, not because the configs failed — proven by loadUserBlank never
@@ -373,7 +379,7 @@ describe('buildUserBlankRegistry — OPENCUES_SKIP_USER_BLANKS guard', () => {
   it('unset → the guard does NOT fire: the loader IS reached and impl blanks register', () => {
     mockLoadUserBlank.mockReturnValue(fakeLoaded({ async get() { return 'x'; } }));
     delete process.env['OPENCUES_SKIP_USER_BLANKS'];
-    const registry = buildUserBlankRegistry(implConfigs);
+    const registry = build(implConfigs);
     expect(registry.size).toBe(2);
     expect(mockLoadUserBlank).toHaveBeenCalledTimes(2);
   });

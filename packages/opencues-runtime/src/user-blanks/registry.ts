@@ -120,6 +120,18 @@ export interface UserBlankRegistryOptions {
   readonly timeoutMs?: number;
   /** Logger — falls back to console. */
   readonly log?: LoaderOptions['log'];
+  /**
+   * Test seam: override the isolate-backed module loader. Production
+   * NEVER sets this — it defaults to the real `loadUserBlank` (which
+   * spins up an isolated-vm sandbox). Tests inject a fake so the
+   * collision / secret-binding / skip-guard logic runs without a real
+   * V8 isolate (unavailable in the dev/CI environment). Injecting here
+   * — rather than `vi.mock('./node-loader')` — is deliberate: the
+   * runtime's vitest runs with `isolate: false` + `pool: 'forks'`, so a
+   * module-level mock in one test file leaks into every other file that
+   * shares its fork. A plain function passed through opts can't leak.
+   */
+  readonly loadUserBlankImpl?: typeof loadUserBlank;
 }
 
 /**
@@ -158,6 +170,7 @@ export function buildUserBlankRegistry(
   }
 
   const log = opts.log ?? ((lvl, msg) => console.log(`[user-blank] [${lvl}] ${msg}`));
+  const loadImpl = opts.loadUserBlankImpl ?? loadUserBlank;
   const storage = opts.storageRoot
     ? createFileStorageAdapter(opts.storageRoot)
     : undefined;
@@ -216,7 +229,7 @@ export function buildUserBlankRegistry(
 
     let loaded: LoadedUserBlank;
     try {
-      loaded = loadUserBlank(cfg.impl, {
+      loaded = loadImpl(cfg.impl, {
         capabilities: caps,
         storage,
         llm: opts.llm,
