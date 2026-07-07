@@ -365,13 +365,13 @@ function escHtml(s: string): string {
 
 // Classify a diagnostic line by its leading glyph so we can colour-code
 // it. Look PAST leading whitespace so probe lines that indent their
-// glyph (`  ✓ CEREBRAS_API_KEY — 200 OK`) still classify correctly.
+// glyph (`  ● CEREBRAS_API_KEY — 200 OK`) still classify correctly.
 // Deep-indent lines (≥4 spaces) without a glyph are treated as
 // continuation detail.
 function classifyDiagLine(line: string): string {
   const trimmed = line.trimStart();
   const indent = line.length - trimmed.length;
-  if (trimmed.startsWith('✓')) return 'diag-ok';
+  if (trimmed.startsWith('●')) return 'diag-ok';
   if (trimmed.startsWith('✗')) return 'diag-err';
   if (trimmed.startsWith('⚠')) return 'diag-warn';
   if (trimmed.startsWith('·')) return 'diag-info';
@@ -413,7 +413,7 @@ async function runDiagnostic(): Promise<void> {
     return;
   }
   if (!tab?.id) { log('✗ no active tab'); return; }
-  log(`✓ active tab: ${tab.url?.slice(0, 60) ?? '(no url)'}`);
+  log(`● active tab: ${tab.url?.slice(0, 60) ?? '(no url)'}`);
 
   const restricted = !tab.url || /^(chrome|chrome-extension|edge|about|view-source):/.test(tab.url);
   if (restricted) {
@@ -438,7 +438,7 @@ async function runDiagnostic(): Promise<void> {
     log('  → hard-refresh the tab (Ctrl+Shift+R) after reloading the extension');
   }
   if (pingOk && pingInfo) {
-    log(`✓ content script alive — bootVersion=${pingInfo.bootVersion ?? '?'}`);
+    log(`● content script alive — bootVersion=${pingInfo.bootVersion ?? '?'}`);
     log(`  currentTarget: ${pingInfo.currentTarget ?? '(none focused — click into a contenteditable, then re-run)'}`);
     log(`  attachStatus: ${pingInfo.attachStatus ?? '(unknown)'}`);
     if (pingInfo.targetAttachable === false && pingInfo.currentTarget) {
@@ -502,7 +502,7 @@ async function runDiagnostic(): Promise<void> {
       log('✗ no LLM API keys set — substitutions will fail');
       log('  → paste a key into one of the fields above and Save');
     } else {
-      log(`✓ API keys present in storage: ${present.join(', ')}`);
+      log(`● API keys present in storage: ${present.join(', ')}`);
       // Surface host_keys vs user_keys separately so the user can see
       // when a stale chrome-host push is shadowing their popup paste.
       const userNames = Object.keys(userKeys).filter(k => userKeys[k]);
@@ -522,7 +522,7 @@ async function runDiagnostic(): Promise<void> {
     } else {
       const bundle = storage.opencues_bundle as Record<string, unknown>;
       const files = Object.keys((bundle.files ?? {}) as Record<string, unknown>);
-      log(`✓ bundle pushed by host: ${files.length} files`);
+      log(`● bundle pushed by host: ${files.length} files`);
     }
   } catch (err) {
     log(`✗ storage read failed: ${(err as Error).message}`);
@@ -567,7 +567,7 @@ async function probeOneKey(envName: string, key: string, out: (line: string) => 
     const body = await r.text().catch(() => '');
     const snippet = body.slice(0, 200).replace(/\s+/g, ' ').trim();
     if (r.ok) {
-      out(`  ✓ ${envName} — ${r.status} OK (provider accepted the key)`);
+      out(`  ● ${envName} — ${r.status} OK (provider accepted the key)`);
     } else if (r.status === 401 || r.status === 403) {
       out(`  ✗ ${envName} — ${r.status} ${r.statusText}: provider REJECTED the key`);
       if (snippet) out(`    └─ body: ${snippet}`);

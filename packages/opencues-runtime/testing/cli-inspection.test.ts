@@ -150,7 +150,7 @@ describe('CLI inspection commands — rename-rot regression suite', () => {
     which([], ctx);
     const out = logs.join('\n');
     expect(out).toContain(path.join(tmpHome, '.cues'));
-    // Pre-fix: also reported ~/.opencues/ (legacy stub, false-positive ✓).
+    // Pre-fix: also reported ~/.opencues/ (legacy stub, false-positive).
     expect(out).not.toContain(path.join(tmpHome, '.opencues'));
     // Master-config row points at canonical OPENCUES.md.
     expect(out).toContain('OPENCUES.md');

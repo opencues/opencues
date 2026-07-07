@@ -146,7 +146,7 @@ OPTIONAL_SPECS=(
 FAIL=0
 for spec in "${REQUIRED_SPECS[@]}"; do
   if err="$(cd "$TMP" && env -u NODE_PATH "$(command -v node)" -e "require('$spec')" 2>&1)"; then
-    echo "  ✓ $spec  (required)"
+    echo "  [32m●[0m $spec  (required)"
   else
     echo "  ✗ $spec  (REQUIRED) — load failed:"
     echo "$err" | head -4 | sed 's/^/      /'
@@ -155,7 +155,7 @@ for spec in "${REQUIRED_SPECS[@]}"; do
 done
 for spec in "${OPTIONAL_SPECS[@]}"; do
   if err="$(cd "$TMP" && env -u NODE_PATH "$(command -v node)" -e "require('$spec')" 2>&1)"; then
-    echo "  ✓ $spec  (optional)"
+    echo "  [32m●[0m $spec  (optional)"
   else
     echo "  ⚠ $spec  (optional) — load failed; feature silently disabled in user fork:"
     echo "$err" | head -2 | sed 's/^/      /'

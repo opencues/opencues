@@ -40,7 +40,7 @@ if echo "$RUN1_OUT" | grep -q "Rebuilding before launch"; then
   echo "$RUN1_OUT" | head -8 | sed 's/^/    /'
   exit 1
 fi
-echo "  ✓ no rebuild fired"
+echo "  [32m●[0m no rebuild fired"
 
 echo "▸ Run 2 (must not rebuild):"
 RUN2_OUT=$(timeout 15 $CLI run "$SH_HOST" --skip-banner < /dev/null 2>&1 || true)
@@ -52,7 +52,7 @@ if echo "$RUN2_OUT" | grep -q "Rebuilding before launch"; then
   echo "$RUN2_OUT" | head -8 | sed 's/^/    /'
   exit 1
 fi
-echo "  ✓ no rebuild fired"
+echo "  [32m●[0m no rebuild fired"
 
 echo ""
-echo "✓ Install self-heal contract holds: zero false rebuilds across 2 launches."
+echo "[32m●[0m Install self-heal contract holds: zero false rebuilds across 2 launches."

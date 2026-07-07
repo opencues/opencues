@@ -119,7 +119,7 @@ if [[ -n "$LINK_DIR" ]]; then
   done
 fi
 
-echo "✓ Shell build done."
+echo "[32m●[0m Shell build done."
 # Launch / how-to summary is printed by integrations/shell/bin/install.cjs
 # AFTER the tmux vendoring step so the user reads "ready to launch"
 # as the last line, not before a 30-second source-build kicks off.

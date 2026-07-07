@@ -66,4 +66,4 @@ console.log('OK');
   exit 1
 }
 
-echo "  ✓ Bun loads @opencues/runtime user-blanks registry cleanly"
+echo "  [32m●[0m Bun loads @opencues/runtime user-blanks registry cleanly"
