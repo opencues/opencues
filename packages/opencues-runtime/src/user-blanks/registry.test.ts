@@ -331,3 +331,50 @@ describe('buildUserBlankRegistry — config filtering', () => {
     expect(logs.some(l => l.lvl === 'warn' && l.msg.includes('syntax error in blank.js'))).toBe(true);
   });
 });
+
+// ─── OPENCUES_SKIP_USER_BLANKS — agentic-harness memory guard ───────────
+
+/**
+ * Loading a JS user-blank (`impl: ./blank.js`) spins up an isolated-vm
+ * sandbox / user-blank-runner.cjs subprocess (~54 MB resident) even for
+ * shipped impl-blanks nothing invokes. The harness runs up to 16 host shards
+ * in parallel and needs none of them, so it sets OPENCUES_SKIP_USER_BLANKS=1
+ * to skip the whole registry build. Guarded at the single chokepoint
+ * (registry.ts) so every host band + the chrome-host benefits without
+ * per-bootstrap edits.
+ *
+ * Lives in THIS file (not a standalone one) because runtime's vitest runs
+ * with `isolate: false` — two files both `vi.mock('./node-loader')` would
+ * fight over the shared mock. One file owns the loader mock.
+ */
+describe('buildUserBlankRegistry — OPENCUES_SKIP_USER_BLANKS guard', () => {
+  const prev = process.env['OPENCUES_SKIP_USER_BLANKS'];
+  afterEach(() => {
+    if (prev === undefined) delete process.env['OPENCUES_SKIP_USER_BLANKS'];
+    else process.env['OPENCUES_SKIP_USER_BLANKS'] = prev;
+  });
+
+  const implConfigs: BlankConfigLike[] = [
+    { name: 'demo-a', impl: '/abs/demo-a-blank.js' },
+    { name: 'demo-b', impl: '/abs/demo-b-blank.js' },
+  ];
+
+  it('=1 → empty registry AND the loader is never reached (no sandbox spawned)', () => {
+    mockLoadUserBlank.mockReturnValue(fakeLoaded({ async get() { return 'x'; } }));
+    process.env['OPENCUES_SKIP_USER_BLANKS'] = '1';
+    const registry = buildUserBlankRegistry(implConfigs);
+    expect(registry.size).toBe(0);
+    // The discriminator: empty because the GUARD returned before the load
+    // loop, not because the configs failed — proven by loadUserBlank never
+    // being called even though it's stubbed to succeed.
+    expect(mockLoadUserBlank).not.toHaveBeenCalled();
+  });
+
+  it('unset → the guard does NOT fire: the loader IS reached and impl blanks register', () => {
+    mockLoadUserBlank.mockReturnValue(fakeLoaded({ async get() { return 'x'; } }));
+    delete process.env['OPENCUES_SKIP_USER_BLANKS'];
+    const registry = buildUserBlankRegistry(implConfigs);
+    expect(registry.size).toBe(2);
+    expect(mockLoadUserBlank).toHaveBeenCalledTimes(2);
+  });
+});
