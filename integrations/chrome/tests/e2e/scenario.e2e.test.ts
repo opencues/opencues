@@ -33,4 +33,35 @@ test.describe('M1 — feature liveness', () => {
     await expect(ce).toHaveText(`the sky today looks ${ANSWER}`, { timeout: 15_000 });
     expect(llm.callCount, 'LLM was never hit — feature is inert or route missed the SW fetch').toBeGreaterThan(0);
   });
+
+  test('note blank: add persists to storage-backed NOTES.md, recall round-trips', async ({ context, seed }) => {
+    // Fully deterministic — no LLM involved. Proves the whole chrome
+    // chain: shape routing → blankInvoke → NoteBlank → chrome.storage
+    // write → re-read on the next invocation. A build where notesMdIO
+    // isn't threaded leaves the typed command untouched.
+    const NOTE_BLANK_MD = [
+      '---', 'name: note', 'type: blank', 'blankKeywords: note',
+      'blankDismissible: true', 'blankClearKeywords: true', '---', '',
+    ].join('\n');
+    const base = fluidBlankSeed(/* debug */ true);
+    await seed({
+      ...base,
+      bundleFiles: { ...base.bundleFiles, 'blanks/note/BLANK.md': NOTE_BLANK_MD },
+    });
+
+    const page = await context.newPage();
+    await page.goto('/tests/e2e/pages/contenteditable.html');
+    const ce = page.locator('#ce');
+    await ce.focus();
+
+    await page.keyboard.type('note add zoom: https://zoom.us/j/123 _');
+    await expect(ce).toHaveText('[note saved: zoom · 1 note]', { timeout: 15_000 });
+
+    // Recall in the same buffer — the entry must come back from the
+    // storage-backed NOTES.md, label stripped, ready to tweak.
+    await page.keyboard.press('Control+a');
+    await page.keyboard.press('Delete');
+    await page.keyboard.type('note zoom _');
+    await expect(ce).toHaveText('https://zoom.us/j/123', { timeout: 15_000 });
+  });
 });

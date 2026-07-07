@@ -39,6 +39,14 @@ export function createBlanks(options?: {
    */
   identityMdReadFile?: () => Promise<string | null>;
   identityMdWriteFile?: (content: string) => Promise<void>;
+  /**
+   * Optional NOTES.md file accessors. When supplied, the keyword-bound
+   * `note add/…/delete _` collection blank is registered. Chrome wires
+   * these to chrome.storage; writes go through @opencues/runtime's
+   * validateNoteWrite chokepoint BEFORE the writer is called.
+   */
+  notesMdReadFile?: () => Promise<string | null>;
+  notesMdWriteFile?: (content: string) => Promise<void>;
 }): Map<string, BrowserBlank> {
   const opencuesMdIO = (options?.opencuesMdReadFile && options.opencuesMdWriteFile)
     ? { readFile: options.opencuesMdReadFile, writeFile: options.opencuesMdWriteFile }
@@ -46,11 +54,15 @@ export function createBlanks(options?: {
   const identityMdIO = (options?.identityMdReadFile && options.identityMdWriteFile)
     ? { readFile: options.identityMdReadFile, writeFile: options.identityMdWriteFile }
     : undefined;
+  const notesMdIO = (options?.notesMdReadFile && options.notesMdWriteFile)
+    ? { readFile: options.notesMdReadFile, writeFile: options.notesMdWriteFile }
+    : undefined;
   return createDefaultBlanksRegistry({
     finnhubApiKey: options?.finnhubApiKey,
     customTickers: options?.customTickers,
     opencuesMdIO,
     identityMdIO,
+    notesMdIO,
     hostName: 'chrome',
   }) as Map<string, BrowserBlank>;
 }

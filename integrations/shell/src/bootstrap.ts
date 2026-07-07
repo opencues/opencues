@@ -88,6 +88,13 @@ function findIdentityMdPath(): string {
   return path.join(process.env['HOME'] ?? os.homedir(), '.cues', 'IDENTITY.md');
 }
 
+function findNotesMdPath(): string {
+  if (process.env['OPENCUES_HOME']) {
+    return path.join(process.env['OPENCUES_HOME'], 'NOTES.md');
+  }
+  return path.join(process.env['HOME'] ?? os.homedir(), '.cues', 'NOTES.md');
+}
+
 function resolveTtsScript(): string {
   const root = process.env['OPENCUES_HOME'] ?? path.join(process.env['HOME'] ?? os.homedir(), '.cues');
   return path.join(root, 'scripts/speak.sh');
@@ -110,6 +117,17 @@ const blanksRegistry: Map<string, Blank> = createDefaultBlanksRegistry({
     },
     writeFile: async (content) => {
       await fs.writeFile(findIdentityMdPath(), content, 'utf8');
+    },
+  },
+
+  // Note collection blank (`note add/.../delete _`) — validateNoteWrite
+  // runs INSIDE NoteBlank before writeFile is called; never bypass.
+  notesMdIO: {
+    readFile: async () => {
+      try { return await fs.readFile(findNotesMdPath(), 'utf8'); } catch { return null; }
+    },
+    writeFile: async (content) => {
+      await fs.writeFile(findNotesMdPath(), content, 'utf8');
     },
   },
 });

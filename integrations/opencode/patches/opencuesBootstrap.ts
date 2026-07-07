@@ -133,6 +133,13 @@ function findIdentityMdPath(): string {
   return path.join(process.env['HOME'] ?? "~", ".cues", "IDENTITY.md")
 }
 
+function findNotesMdPath(): string {
+  if (process.env['OPENCUES_HOME']) {
+    return path.join(process.env['OPENCUES_HOME'], "NOTES.md")
+  }
+  return path.join(process.env['HOME'] ?? "~", ".cues", "NOTES.md")
+}
+
 // TTS script lives at user-level (~/.cues/scripts/speak.sh), seeded
 // + kept current by `opencues seed-configs` (which all host installers
 // invoke). One canonical path, no walking, no integration coupling —
@@ -159,6 +166,13 @@ const blanksRegistry: Map<string, Blank> = createDefaultBlanksRegistry({
   identityMdIO: {
     readFile: async () => { try { return await fs.readFile(findIdentityMdPath(), "utf8") } catch { return null } },
     writeFile: async (content) => { await fs.writeFile(findIdentityMdPath(), content, "utf8") },
+  },
+  // NOTES.md sibling — the keyword-bound `note add/…/delete _`
+  // collection blank. validateNoteWrite runs INSIDE NoteBlank before
+  // writeFile is called; never bypass.
+  notesMdIO: {
+    readFile: async () => { try { return await fs.readFile(findNotesMdPath(), "utf8") } catch { return null } },
+    writeFile: async (content) => { await fs.writeFile(findNotesMdPath(), content, "utf8") },
   },
 })
 // User-shipped JS blanks: walk every .cues/blanks/<name>/BLANK.md

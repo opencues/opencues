@@ -194,6 +194,10 @@ export const CORE_CONFIG_FILES: readonly string[] = [
   'OPENCUES.md',
   'CUES.md',
   'AUDITORS.md',
+  // NOTES.md — the note collection blank's store (PROTOTYPE, issue
+  // #210). In this list so chrome-host pushes disk edits into
+  // chrome.storage; created on first `note add` (no seed template).
+  'NOTES.md',
 ];
 
 /**
