@@ -6,7 +6,7 @@
  * The shapes are stable contracts — if a real provider changes its API
  * we'd update the adapter; tests here pin the SHAPE we send/expect.
  */
-import { describe, it } from 'node:test';
+import { describe, it, beforeEach } from 'node:test';
 import * as assert from 'node:assert';
 import {
   buildProviderRequest,
@@ -20,7 +20,18 @@ import {
   dispatchChat,
   PROVIDER_IDS,
   _resetWarnDedupForTesting,
+  setCliAvailabilityForTests,
+  SUBSCRIPTION_AUTO_FALLBACK,
 } from './llm-provider';
+
+// Every zero-key expectation in this file models a machine WITHOUT the
+// claude/codex binaries — otherwise the developer's real PATH decides
+// whether pickAutoProvider's subscription-CLI rung fires and the
+// zero-key tests flip per machine. The rung itself is tested with
+// injected probes in llm-provider.autofallback.test.ts.
+beforeEach(() => {
+  for (const id of SUBSCRIPTION_AUTO_FALLBACK) setCliAvailabilityForTests(id, false);
+});
 
 describe('groq provider — OpenAI-compatible (the back-compat default)', () => {
   it('buildRequest: chat-completions URL, bearer auth, OpenAI body', () => {

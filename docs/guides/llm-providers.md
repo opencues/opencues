@@ -250,21 +250,49 @@ Cerebras is roughly 2× Groq's cost for the same `gpt-oss-120b`
 weights. The trade-off: Cerebras wins on long-prompt latency and
 fluid-blank quality (per the bench); Groq wins on short-prompt TTFT.
 
+## Where keys come from — detection order
+
+Every native host builds its key bag at boot via
+`buildBootApiKeys` (`@opencues/core/src/env-keys.ts`), filling each
+provider's env-var name from the first source that has it:
+
+1. **Host-forwarded keys** (the patch bootstrap's `host.llmApiKeys`)
+2. **`process.env`** — a shell export always wins over the file
+3. **`~/.cues/.env`** — written by `opencues set-key` (chmod 0600)
+
+So `opencues set-key cerebras csk_...` is a one-and-done setup: no
+shell-rc edits, no exports. For OpenRouter there is a one-click
+variant — `opencues set-key openrouter --oauth` opens a browser
+approval on openrouter.ai (OAuth PKCE) and stores the issued key
+without any dashboard visit. The bag is built once at boot — restart
+the host (or `opencues run <host>`) after storing a new key. When
+anything is picked up from the shell env or the file, the host logs
+one `LLM keys detected: ...` line (var names + sources, never values).
+
+With **no keys anywhere**, the auto-route has one more rung: if the
+`claude` (or `codex`) binary is on PATH, dispatch falls back to the
+subscription-CLI provider (`claude-code-cli` / `openai-subscription`)
+— a keyless Claude Code install works out of the box, and adding a
+key later upgrades the route automatically. See
+`docs/architecture/llm-routing.md` § Precedence ladder.
+
 ## Host integration notes
 
 ### Claude Code (`integrations/claude-code/`)
 The patch (`opencuesRuntime.ts`) reads all six env keys (GROQ,
 OPENROUTER, GEMINI, OPENAI, ANTHROPIC, CEREBRAS) at startup and
-forwards them as `host.llmApiKeys`. No code change to switch
-providers — just edit `~/.cues/OPENCUES.md`.
+forwards them as `host.llmApiKeys`; the boot-time detection above
+then fills anything the patch didn't forward (including
+`~/.cues/.env` values). No code change to switch providers — just
+edit `~/.cues/OPENCUES.md`.
 
 ### OpenCode (`integrations/opencode/`)
-Same — `opencuesBootstrap.ts` reads all keys from `process.env` and
-forwards.
+Same — `opencuesBootstrap.ts` reads keys from `process.env` and
+forwards; boot-time detection fills the rest.
 
 ### Gemini CLI (`integrations/gemini-cli/`)
-Same — `opencuesBootstrap.ts` reads all keys from `process.env` and
-forwards via `host.llmApiKeys`.
+Same — `opencuesBootstrap.ts` reads keys from `process.env` and
+forwards via `host.llmApiKeys`; boot-time detection fills the rest.
 
 ### Chrome extension (`integrations/chrome/`)
 Browser-side fetches require **host_permissions** in
@@ -279,8 +307,9 @@ user config needed.
 
 The Chrome extension currently has no settings UI for entering API
 keys directly — they must be supplied via `chrome.storage.local`
-(future popup work). Native hosts (CC, OC) read `process.env`
-directly.
+(future popup work). Native hosts (CC, OC) read `process.env` +
+`~/.cues/.env` at boot (see the detection order above); chrome gets
+the same values pushed live by the native-messaging host.
 
 ## Subscription-backed providers
 

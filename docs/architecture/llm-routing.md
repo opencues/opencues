@@ -37,7 +37,21 @@ per-source frontmatter (`provider:` / `model:` in a CUE.md / BLANK.md)
     ▶ bucket scalar (`cues-llm-provider:`, `auditors-llm-provider:`, `blanks-llm-provider:`)
       ▶ global scalar (`llm-provider:`)
         ▶ auto-fallback (first env key in `PROVIDER_AUTO_ORDER`)
+          ▶ subscription-CLI rung (`SUBSCRIPTION_AUTO_FALLBACK`: claude-code-cli, then
+            openai-subscription — fires ONLY at zero env keys, iff the binary is on PATH)
 ```
+
+The subscription rung makes a keyless Claude Code install work out of
+the box: the CC integration patches the `claude` binary itself, so its
+users by definition carry an authenticated subscription. The rung is
+runtime-only detection (nothing written to config), unreachable once
+any auto-order key exists — adding a key upgrades the route
+automatically — and self-disabled in the browser (the binary probe
+returns false without `process`, and chrome has no subprocess
+transport anyway). `resolveLLM` emits a one-time notice naming the
+route + `opencues set-key` as the faster path; opencode-zen's free
+pool is deliberately NOT in the rung (`trainsOnInput` — keyless but
+consent-gated).
 
 Setting `cues-llm-provider: cerebras` pins every cue source to Cerebras
 **unless** a particular word-cue source declares its own

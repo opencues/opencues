@@ -10,6 +10,7 @@
 // host-agnostic `opencues-runtime` modules.
 
 import { Runtime } from '../../../src/runtime';
+import { buildBootApiKeys, pickAutoProvider } from '@opencues/core';
 import { OpenCodeV14Adapter, type OpenCodeBindings } from './adapter';
 import { startEventBridge } from '../../../src/event-bridge';
 import { Statusline } from '../../../src/modules/statusline';
@@ -191,9 +192,11 @@ export function boot(host: HostInfo): BootResult {
   // Build the multi-provider key bag here so Cycling can read it via
   // the buildSharedRuntime callback — keeps the satellite-cycle's
   // llm-provider filter in sync with whatever keys the host
-  // ultimately wires into the Resolver below.
-  const apiKeys: Record<string, string | undefined> = { ...(host.llmApiKeys ?? {}) };
-  if (host.llmApiKey && !apiKeys.GROQ_API_KEY) apiKeys.GROQ_API_KEY = host.llmApiKey;
+  // ultimately wires into the Resolver below. buildBootApiKeys also
+  // fills any registry env var the bootstrap didn't forward from
+  // process.env, then from ~/.cues/.env (`opencues set-key`) — a
+  // shell export always wins over the file.
+  const apiKeys = buildBootApiKeys(host.llmApiKeys, host.llmApiKey, (m) => log('info', m));
   const shared = buildSharedRuntime(adapter, {
     log, configSearchPaths, settingsFile,
     getApiKeys: () => apiKeys,
@@ -270,7 +273,11 @@ export function boot(host: HostInfo): BootResult {
   // to whichever provider the user has configured in OPENCUES.md.
   // `apiKeys` is built above (before buildSharedRuntime) so Cycling's
   // satellite filter sees the same bag the Resolver dispatches against.
-  const hasAnyKey = Object.values(apiKeys).some(Boolean);
+  // "Usable LLM" = any env key OR the zero-key subscription-CLI rung
+  // (pickAutoProvider's last rung: claude/codex binary present). Without
+  // the second clause a keyless subscription setup would show the
+  // missing-key hint and skip AgentRewrite while dispatch actually works.
+  const hasAnyKey = Object.values(apiKeys).some(Boolean) || pickAutoProvider(apiKeys) !== null;
   // Resolver constructed even with no keys so MissingKeyFallbackSource
   // surfaces a visible in-buffer hint on `_` instead of silent no-op.
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {

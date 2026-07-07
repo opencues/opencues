@@ -128,6 +128,9 @@ REQUIRED_SPECS=(
   "@opencues/runtime/dist/src/blanks/index.js"
   "@opencues/runtime/dist/src/security/spawn-sandbox.js"
   "@opencues/runtime/dist/src/security/sandbox-runner.js"
+  # Fork layout flattens core's dist/ into the package root (setup.sh
+  # § 5), so core specs are `@opencues/core/<file>.js`, not dist paths.
+  "@opencues/core/env-keys.js"
   # Buffer dehydration (outbound PII scrub) — top-level core dist file,
   # FLATTENED to the package root by setup.sh's `cp dist/*.js core/`
   # step; exercised here so a future copy-step regression can't

@@ -228,6 +228,22 @@ export interface ProviderAdapter {
    */
   readonly optionalAuth?: boolean;
   /**
+   * Cheapest read-only authenticated endpoint for verifying this
+   * provider's API key — the single source for `opencues check-keys`
+   * and chrome's boot-time `verifyLlmKeyAtBoot`, which previously kept
+   * hand-synced copies of the same table. `headers` builds the auth
+   * headers from the key (INFOSEC F8: keys go in headers, never URLs).
+   * `listField` names the JSON array in a 200 response so callers can
+   * report "N models available". Omitted for CLI-transport providers
+   * (external auth, nothing to probe with a key) and optional-auth
+   * pool providers (a missing key is a supported state, not an error).
+   */
+  readonly keyProbe?: {
+    readonly url: string;
+    readonly headers: (apiKey: string) => Record<string, string>;
+    readonly listField: string;
+  };
+  /**
    * When true, this provider's ToS allows the operator to train on
    * submitted inputs. The resolver refuses to wire prose-bearing
    * sources (word-cues, sentence-cues, auditors, agent-rewrite)
@@ -598,6 +614,11 @@ const GROQ: ProviderAdapter = {
   // its gpt-oss companions. Reachable via direct OPENCUES.md edit; the
   // classifier just doesn't surface it.
   envKeyName: 'GROQ_API_KEY',
+  keyProbe: {
+    url: 'https://api.groq.com/openai/v1/models',
+    headers: (k) => ({ Authorization: `Bearer ${k}` }),
+    listField: 'data',
+  },
   // gpt-oss-120b at `medium`+`high` overshoots OpenCues' fluid-blank
   // (1500ms) and word-cue (500ms) budgets at Groq's throughput; `low`
   // is the only level that fits every pipeline. `high` also collapses
@@ -640,6 +661,11 @@ const OPENROUTER: ProviderAdapter = {
     'google/gemini-3.1-flash-lite',
   ],
   envKeyName: 'OPENROUTER_API_KEY',
+  keyProbe: {
+    url: 'https://openrouter.ai/api/v1/models',
+    headers: (k) => ({ Authorization: `Bearer ${k}` }),
+    listField: 'data',
+  },
   // OpenRouter is a multi-model router — `low` is the cross-model safe
   // default that mirrors what every call site used to hardcode. Picks
   // a sensible level for whichever underlying gpt-oss / gpt-5 / o-series
@@ -687,6 +713,11 @@ const OPENAI: ProviderAdapter = {
     'gpt-5.4-nano',
   ],
   envKeyName: 'OPENAI_API_KEY',
+  keyProbe: {
+    url: 'https://api.openai.com/v1/models',
+    headers: (k) => ({ Authorization: `Bearer ${k}` }),
+    listField: 'data',
+  },
   // `low` (not `none`) — bench showed `none` is fastest on fluid-blank,
   // but it drops transform-blank-fused 85.3%→28.1% on gpt-5.4-mini
   // (see floor-bump comment below). `low` is the safe default that
@@ -847,6 +878,13 @@ const GEMINI: ProviderAdapter = {
   // (always point at the current Gemini 3.x family). flash-lite kept its
   // own name. Smoke runner verifies against live API on each release.
   envKeyName: 'GEMINI_API_KEY',
+  // INFOSEC F8: x-goog-api-key header, never `?key=` — keeps the secret
+  // out of URL access logs / proxy logs / browser history.
+  keyProbe: {
+    url: 'https://generativelanguage.googleapis.com/v1beta/models',
+    headers: (k) => ({ 'x-goog-api-key': k }),
+    listField: 'models',
+  },
   buildRequest(req, ctx) {
     const endpointTemplate = ctx.endpoint ?? this.defaultEndpoint;
     const url = endpointTemplate.replace('{model}', encodeURIComponent(req.model));
@@ -941,6 +979,11 @@ const ANTHROPIC: ProviderAdapter = {
     'claude-fable-5',
   ],
   envKeyName: 'ANTHROPIC_API_KEY',
+  keyProbe: {
+    url: 'https://api.anthropic.com/v1/models',
+    headers: (k) => ({ 'x-api-key': k, 'anthropic-version': '2023-06-01' }),
+    listField: 'data',
+  },
   buildRequest(req, ctx) {
     const systemMessages = req.messages.filter((m) => m.role === 'system');
     const nonSystem = req.messages
@@ -1060,6 +1103,11 @@ const CEREBRAS: ProviderAdapter = {
   // catalogue (/v1/models) returned only gpt-oss-120b + zai-glm-4.7 against
   // a live key. The smoke runner catches this regression structurally.
   envKeyName: 'CEREBRAS_API_KEY',
+  keyProbe: {
+    url: 'https://api.cerebras.ai/v1/models',
+    headers: (k) => ({ Authorization: `Bearer ${k}` }),
+    listField: 'data',
+  },
   // Cerebras's wafer-scale silicon serves gpt-oss-120b fast enough that
   // `medium` fits every OpenCues pipeline (358ms p50 fluid-blank,
   // well under the 500ms word-cue budget). The only provider in the
@@ -1550,16 +1598,89 @@ export const PROVIDER_AUTO_ORDER: readonly ProviderId[] = [
 ];
 
 /**
- * Walk the auto-route preference and pick the first provider whose API
- * key the user has supplied. Returns null when the user has no keys at
- * all — in which case the caller can fall back to a hardcoded literal
- * and silent-no-op (no LLM functionality without keys is the documented
- * "OpenCues is fine without an LLM" mode).
+ * Subscription-CLI binary per CLI-transport provider — the single map
+ * for "which executable proves this provider can work". Doctor and the
+ * install report read this instead of keeping private copies.
  */
-export function pickAutoProvider(apiKeys: Readonly<Record<string, string | undefined>>): ProviderId | null {
+export const SUBSCRIPTION_CLI_BINARIES: Readonly<Record<string, string>> = {
+  'claude-code-cli': 'claude',
+  'openai-subscription': 'codex',
+};
+
+/**
+ * Zero-key auto-fallback order for subscription-CLI providers. Claude
+ * first: the flagship integration patches the `claude` binary itself,
+ * so a CC user by definition has it installed + authenticated.
+ */
+export const SUBSCRIPTION_AUTO_FALLBACK: readonly ProviderId[] = ['claude-code-cli', 'openai-subscription'];
+
+// Probe results cached for the process lifetime — pickAutoProvider runs
+// inside resolveLLM on every dispatch and must not spawn a shell each
+// time. Tests that manipulate PATH reset via the helper below.
+const _cliAvailabilityCache = new Map<string, boolean>();
+export function resetCliAvailabilityCacheForTests(): void {
+  _cliAvailabilityCache.clear();
+}
+/** Seed the probe cache (tests) — models a machine with/without the
+ *  binary regardless of the developer's real PATH. defaultCliAvailable
+ *  consults the cache first, so a seeded value short-circuits the
+ *  shell-out entirely. */
+export function setCliAvailabilityForTests(providerId: string, available: boolean): void {
+  _cliAvailabilityCache.set(providerId, available);
+}
+
+/**
+ * Default subscription-CLI probe: is the provider's binary on PATH?
+ * Node-only — in a browser bundle (chrome content script) this returns
+ * false, so the subscription rung never fires there (chrome has no
+ * subprocess transport anyway). Binary names come from the constant
+ * map above, never from user input.
+ */
+export function defaultCliAvailable(providerId: string): boolean {
+  if (typeof process === 'undefined' || !process.versions?.node) return false;
+  const cached = _cliAvailabilityCache.get(providerId);
+  if (cached !== undefined) return cached;
+  const bin = SUBSCRIPTION_CLI_BINARIES[providerId] ?? providerId;
+  let ok = false;
+  try {
+    // Lazy require — `node:child_process` is external in the chrome
+    // bundle and unreachable there (guard above returns first).
+    const { spawnSync } = require('node:child_process') as typeof import('node:child_process');
+    ok = spawnSync('/bin/sh', ['-c', `command -v ${bin}`], { stdio: 'ignore' }).status === 0;
+  } catch {
+    ok = false;
+  }
+  _cliAvailabilityCache.set(providerId, ok);
+  return ok;
+}
+
+/**
+ * Walk the auto-route preference and pick the first provider whose API
+ * key the user has supplied. When NO env key matches, fall through to
+ * the subscription-CLI rung: a user with an authenticated `claude`
+ * (the very binary the CC integration patches) has a working, keyless,
+ * ToS-sanctioned provider — slower than the API tier, but slower beats
+ * silently inert. The rung is unreachable once any auto-order key
+ * exists, so adding a key upgrades the route automatically with no
+ * config change. Returns null only when there are no keys AND no
+ * subscription binaries — the documented "OpenCues is fine without an
+ * LLM" silent-no-op mode.
+ */
+export function pickAutoProvider(
+  apiKeys: Readonly<Record<string, string | undefined>>,
+  opts: {
+    /** Override the binary probe (tests; chrome injects nothing — the
+     *  default probe self-disables in a browser). */
+    readonly isCliAvailable?: (providerId: string) => boolean;
+  } = {},
+): ProviderId | null {
   for (const id of PROVIDER_AUTO_ORDER) {
     const adapter = PROVIDERS[id];
     if (adapter && apiKeys[adapter.envKeyName]) return id;
+  }
+  const probe = opts.isCliAvailable ?? defaultCliAvailable;
+  for (const id of SUBSCRIPTION_AUTO_FALLBACK) {
+    if (PROVIDERS[id] && probe(id)) return id;
   }
   return null;
 }
@@ -2174,6 +2295,20 @@ export function setCoreWarn(fn: CoreWarnFn | null): void {
   _coreWarn = fn ?? _defaultCoreWarn;
 }
 
+// One-time notice when the zero-key subscription-CLI rung is routing
+// dispatches. Info-grade, not an error — the setup WORKS; the line
+// exists so the provider switch is visible and the faster path named.
+let _notifiedSubscriptionFallback = false;
+function notifySubscriptionFallbackOnce(providerId: string): void {
+  if (_notifiedSubscriptionFallback) return;
+  _notifiedSubscriptionFallback = true;
+  const bin = SUBSCRIPTION_CLI_BINARIES[providerId] ?? providerId;
+  _coreWarn(
+    `[opencues] no API keys found — routing LLM calls through your ${bin} subscription (${providerId}). ` +
+    `Works out of the box; for faster suggestions add an API key: opencues set-key`,
+  );
+}
+
 // Dedup set for the one-time runtime warning. Keyed by `${id}|${url}`.
 const _warnedEndpoints = new Set<string>();
 function warnCustomEndpointOnce(providerId: string, endpoint: string): void {
@@ -2265,6 +2400,13 @@ export function resolveLLM(opts: ResolveLLMOptions): ResolvedLLM | null {
   // is suppressed when no tier picked it), so the literal here only
   // matters for "no keys, but we still need to emit a ProviderId".
   const autoPicked = providerTierIdx >= 0 ? null : pickAutoProvider(opts.apiKeys);
+  // The subscription-CLI rung fired (zero env keys, binary present):
+  // tell the user ONCE which route they're on and how to speed it up —
+  // an invisible provider switch would be undebuggable ("why are cues
+  // slow?") and an unannounced use of their subscription.
+  if (autoPicked && PROVIDERS[autoPicked]?.transport === 'cli') {
+    notifySubscriptionFallbackOnce(autoPicked);
+  }
   const providerId = canonicalizeProviderId(
     providerTierIdx >= 0
       ? tiers[providerTierIdx].p!.trim()

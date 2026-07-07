@@ -11,6 +11,7 @@
 // surface tiny and decouples the runtime's internal layout from the patch.
 
 import { Runtime } from '../../../src/runtime';
+import { buildBootApiKeys, pickAutoProvider } from '@opencues/core';
 import { ClaudeCodeV21Adapter, type HostBindings, normaliseKeyEvent, toggleZeroWidth } from './adapter';
 import { installMacDoubleEscStdinRewrite } from '../../../src/modules/mac-keyboard';
 import { Navigation } from '../../../src/modules/navigation';
@@ -560,9 +561,12 @@ export function boot(host: HostInfo): BootResult {
   dimRender.subscribe();
   // Build the multi-provider key bag here (rather than next to the
   // Resolver constructor below) so Cycling's satellite-cycle filter
-  // sees the same keys the Resolver will dispatch against.
-  const apiKeys: Record<string, string | undefined> = { ...(host.llmApiKeys ?? {}) };
-  if (host.llmApiKey && !apiKeys.GROQ_API_KEY) apiKeys.GROQ_API_KEY = host.llmApiKey;
+  // sees the same keys the Resolver will dispatch against. Beyond the
+  // host-passed keys, buildBootApiKeys fills any registry env var the
+  // bootstrap didn't forward from process.env, then from ~/.cues/.env
+  // (written by `opencues set-key`) — a shell export always wins over
+  // the file.
+  const apiKeys = buildBootApiKeys(host.llmApiKeys, host.llmApiKey, (m) => log('info', m));
   const cycling = new Cycling(
     adapter, hlState, dynDefs, configLoader,
     spanFillState, dismissedBlanks, selectorSatelliteState,
@@ -678,7 +682,11 @@ export function boot(host: HostInfo): BootResult {
   // can build sources from cuesConfig + blanksConfig.
   // `apiKeys` is constructed above (next to Cycling) so the cycling
   // filter sees the same bag.
-  const hasAnyKey = Object.values(apiKeys).some(Boolean);
+  // "Usable LLM" = any env key OR the zero-key subscription-CLI rung
+  // (pickAutoProvider's last rung: claude/codex binary present). Without
+  // the second clause a keyless subscription setup would show the
+  // missing-key hint and skip AgentRewrite while dispatch actually works.
+  const hasAnyKey = Object.values(apiKeys).some(Boolean) || pickAutoProvider(apiKeys) !== null;
   // Resolver is constructed even with no keys so the MissingKeyFallbackSource
   // can substitute a visible in-buffer hint on `_` instead of silent no-op.
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {

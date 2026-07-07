@@ -733,6 +733,10 @@ function validateFork(fork) {
     '@opencues/runtime/dist/src/blanks/index.js',
     '@opencues/runtime/dist/src/security/spawn-sandbox.js',
     '@opencues/runtime/dist/src/security/sandbox-runner.js',
+    // Existing-key detection (~/.cues/.env at boot) — required by every
+    // adapter band's key-bag construction. Fork layout flattens core's
+    // dist/ into the package root, so core specs are not dist/ paths.
+    '@opencues/core/env-keys.js',
   ];
   // OPTIONAL probes — features that degrade gracefully when their (often
   // native / heavy) transitive deps are absent. user-blanks (the JS
