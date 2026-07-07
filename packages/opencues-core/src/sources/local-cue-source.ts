@@ -380,7 +380,6 @@ export function lookupMultiple(
         altCueTips: result.altCueTips,
         speak: result.speak,
         source: 'tips',
-        linked: null,
         currentAltIndex: 0,
       });
     } else {
@@ -414,7 +413,6 @@ export function formatAsWordDefs(
         index: i,
         word: allWords[i],
         alts: null,
-        linked: null,
       });
     }
   }
@@ -523,9 +521,6 @@ export function mergeWordDefs(
       if (!existingDef.metadata && newDef.metadata) {
         existingDef.metadata = newDef.metadata;
       }
-      if (newDef.linked && !existingDef.linked) {
-        existingDef.linked = newDef.linked;
-      }
       if (newDef.speak && !existingDef.speak) {
         existingDef.speak = newDef.speak;
       }
@@ -597,7 +592,6 @@ export function convertCueResultsToWordDefs(
     };
     if (r.cueTip) wdef.cueTip = r.cueTip;
     if (r.altCueTips) wdef.altCueTips = r.altCueTips;
-    if (r.linked) wdef.linked = r.linked;
     if (r.metadata) wdef.metadata = r.metadata;
     defs.push(wdef);
   }
