@@ -109,8 +109,8 @@ What the Claude Code patches handle that the Chrome extension doesn't need, hand
 **Claude Code:** `_resolverGeneration` counter incremented on config rebuild. Results from old generation are discarded.
 **Chrome Extension:** Same — `resolverGeneration` counter in the runtime. **Full parity.**
 
-### Linked Word Atomicity
-**Claude Code:** All linked word replacements in single pass via `_updW` map.
+### Multi-Word Replacement Atomicity
+**Claude Code:** All word replacements in a cycle applied in a single pass via `_updW` map.
 **Chrome Extension:** Same — `updatedWords` map, sequential forward walk. **Full parity.**
 
 ### blankName Merge Guard

@@ -172,7 +172,6 @@ opencues/
 │   │   │   ├── discover.ts        # Folder-based config discovery
 │   │   │   └── sources/           # ConfigSource, RoutedWordSourceGroup, BlankSource, FluidBlankSource, SpellingSource, parsers
 │   │   ├── prompts/               # Prompt references + documentation
-│   │   │   ├── linked.txt         # Linked words prompt
 │   │   │   └── references/        # Prompt documentation
 │   │   └── dist/                  # Built output
 │   └── opencues-runtime/          # Host-agnostic runtime — publishes as @opencues/runtime
@@ -199,7 +198,7 @@ opencues/
 │
 ├── docs/                          # General documentation
 │   ├── overview.md                # System layers, API, interfaces, usage examples
-│   ├── features/                  # One file per feature concept (41 files: 40 features + README)
+│   ├── features/                  # One file per feature concept (45 files: 44 features + README)
 │   │   ├── README.md              # Feature index
 │   │   ├── navigation.md          # Word navigation
 │   │   ├── cycling.md             # Word cycling
@@ -667,9 +666,9 @@ done
 
 | Path | Name | Version | Status |
 |---|---|---|---|
-| `SPEC.md` (open-standard) | `cues-spec` | 0.5 (draft) | exported as `SPEC_VERSION` from `@opencues/core` |
+| `SPEC.md` (open-standard) | `cues-spec` | 0.7 (draft) | exported as `SPEC_VERSION` from `@opencues/core` |
 | `package.json` (monorepo root) | `opencues` | 0.1.0 | private |
-| `packages/opencues-core/` | `@opencues/core` | 0.17.0 | private |
+| `packages/opencues-core/` | `@opencues/core` | 0.18.0 | private |
 | `packages/opencues-runtime/` | `@opencues/runtime` | 0.13.3 | private |
 | `packages/opencues-cli/` | `opencues` (real CLI) | 0.2.40 | private |
 | `packages/opencues-park/` | `opencues` (placeholder) | 0.0.1 | **PUBLISHED on npm** |

@@ -16,8 +16,8 @@
     "groups": [
       { "synonyms": ["boy", "lad", "young man"], "tip": "Male youth", "alts": ["girl", "child", "kid"] },
       { "synonyms": ["girl", "lass", "young woman"], "tip": "Female youth", "alts": ["boy", "child", "kid"] },
-      { "synonyms": ["his", "him"], "tip": "Male pronoun", "alts": ["her", "their", "its"], "linked": ["boy", "lad", "man"] },
-      { "synonyms": ["her", "she"], "tip": "Female pronoun", "alts": ["his", "their", "its"], "linked": ["girl", "lass", "woman"] }
+      { "synonyms": ["his", "him"], "tip": "Male pronoun", "alts": ["her", "their", "its"] },
+      { "synonyms": ["her", "she"], "tip": "Female pronoun", "alts": ["his", "their", "its"] }
     ]
   }
 ]
