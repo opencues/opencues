@@ -60,6 +60,7 @@ opencues install chrome              # build the MV3 extension into integrations
 opencues install chrome --wsl        # also mirror to the Windows desktop install dir
 opencues install gemini-cli          # patch the Gemini CLI 0.41.x fork at ~/gemini-cli-cues
 opencues install shell                # standalone Bun + OpenTUI app, no upstream fork (oc-shell / oc-edit)
+opencues install apple-notes          # macOS only — Notes.app JXA polling daemon (aliases: notes, applenotes)
 opencues install --all               # install every detected host
 ```
 

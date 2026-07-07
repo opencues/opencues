@@ -1,6 +1,6 @@
 # Note collection blank
 
-**Experimental (prototype — issue #210). Runs on all five hosts.**
+**Experimental (prototype — issue #210). Runs on all six hosts.**
 
 A user-curated collection blank: save a snippet once, recall it with a
 couple of words, tweak it in place. The store is a plain markdown
@@ -79,7 +79,9 @@ comments, and spacing are never rewritten.
 
 ## Availability
 
-Ships on `chrome`, `claude-code`, `gemini-cli`, `opencode`, `shell`.
+Ships on `chrome`, `claude-code`, `gemini-cli`, `opencode`, `shell`,
+`apple-notes` (no-cycling profile: the best match fills, but there is
+no key channel to rotate through the other matches).
 No `blankScript:` / sandbox — it's a runtime-class blank (`NoteBlank`
 in `@opencues/runtime`) served through injected `readFile`/`writeFile`
 against the store. Chrome writes go disk-first via the chrome-messaging

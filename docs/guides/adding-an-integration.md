@@ -117,11 +117,12 @@ Before touching code:
 
 1. **Host name.** Pick the canonical name (e.g. `gemini-cli`, `vscode`, `helix`). Use that consistently — directory names, alias maps, schema enums, doc tables.
 2. **Adapter band path.** `packages/opencues-runtime/adapters/<short>/<version>/` (e.g. `gemini/v0.41/`, `cc/v2.1/`, `oc/v1.14/`). The short name is the directory key; major upstream rewrites get a new band, minor versions reuse one.
-3. **Patch strategy.** Four patterns are in use:
+3. **Patch strategy.** Five patterns are in use:
    - **Source patches** (gemini, opencode): host ships `.tsx`/`.ts` source. Apply `str.replace` patches against unique anchor strings, then build the host.
    - **Built-artifact patches** (claude-code via tweakcc): host ships minified `cli.js`. Use regex anchors against the minified structure.
    - **Inline runtime** (chrome): we own the build — runtime is bundled into the extension at build time, no host fork.
    - **Self-owned app** (terminal): there is no upstream host to patch. The integration ships its own TUI app (Bun + OpenTUI + SolidJS, invoked as `oc-edit`). Adapter band lives in the runtime as usual; the integration directory holds the Solid app + a bootstrap that hands the textarea ref directly to `boot()`. See `integrations/shell/` for the worked example.
+   - **Polled external app** (apple-notes): no patch AND no owned UI — a daemon polls the host app over an automation channel (JXA/osascript), synthesizes text-change + cursor events from diffs, and writes back via CAS splice. The worked example for the universal/no-cycling profile and for hosts with no key channel (synthetic `_` arm KeyEvents). See `integrations/apple-notes/` + `adapters/apple-notes/v1/`.
 
 The Gemini recipe below is the **source-patch** flavour. CC's REPAIR.md covers the built-artifact flavour.
 

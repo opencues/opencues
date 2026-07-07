@@ -50,6 +50,13 @@ function findIdentityMdPath(): string {
   return path.join(process.env['HOME'] ?? os.homedir(), '.cues', 'IDENTITY.md');
 }
 
+function findNotesMdPath(): string {
+  if (process.env['OPENCUES_HOME']) {
+    return path.join(process.env['OPENCUES_HOME'], 'NOTES.md');
+  }
+  return path.join(process.env['HOME'] ?? os.homedir(), '.cues', 'NOTES.md');
+}
+
 function discoverUserBlankConfigs(): BlankConfigLike[] {
   const seen = new Set<string>();
   const roots: string[] = [];
@@ -98,6 +105,18 @@ export function buildBlanks(): { registry: Map<string, Blank>; blankInvoke: Retu
       },
       writeFile: async (content: string) => {
         await fsp.writeFile(findIdentityMdPath(), content, 'utf8');
+      },
+    },
+    // Note collection blank (`note add/.../delete _`) — validateNoteWrite
+    // runs INSIDE NoteBlank before writeFile is called; never bypass.
+    // Without this IO the `note` blank factory returns null and the
+    // blank is silently absent on this host (rebase gap vs #257).
+    notesMdIO: {
+      readFile: async () => {
+        try { return await fsp.readFile(findNotesMdPath(), 'utf8'); } catch { return null; }
+      },
+      writeFile: async (content: string) => {
+        await fsp.writeFile(findNotesMdPath(), content, 'utf8');
       },
     },
   });
