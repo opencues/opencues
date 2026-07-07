@@ -36,10 +36,10 @@ const brightWhite = wrap(97, 39);
 const accent      = brightWhite;
 
 const G = utf8
-  ? { check: '🗸', cross: '✗', warn: '⚠', dot: '•', arrow: '→',
+  ? { cross: '✗', warn: '⚠', dot: '•', arrow: '→',
       gutter: '▎', treeStart: '│', rule: '─', treeMid: '├─', treeEnd: '└─', treeStem: '│ ',
       missing: '·', prompt: '›', ringOn: '●', ringOff: '○', pointer: '❯' }
-  : { check: '+', cross: 'x', warn: '!', dot: '*', arrow: '->',
+  : { cross: 'x', warn: '!', dot: '*', arrow: '->',
       gutter: '|', treeStart: '|', rule: '-', treeMid: '+-', treeEnd: '+-', treeStem: '| ',
       missing: '-', prompt: '>', ringOn: '(*)', ringOff: '( )', pointer: '>' };
 
@@ -50,10 +50,15 @@ function wordmark() {
 // UTF-8: single glyph (visually punchy). ASCII: bracketed word (more
 // scannable when stripped of glyph affordance).
 const TAGS_UTF8 = {
-  ok:   () => green(bold(G.check)),
-  warn: () => yellow(bold(G.warn)),
-  err:  () => red(bold(G.cross)),
-  info: () => dim(G.dot),
+  // House rule: status is a LEADING coloured ● ring — never a tick / cross /
+  // dot / ⚠ (see packages/opencues-cli/CLAUDE.md § "The ● ring is the universal
+  // status glyph"). Colour carries the state; the glyph never changes. The old
+  // the old tick / warn emoji are 2-cell-wide and raggeded the 2-col gutter — a single-cell
+  // ● aligns cleanly.
+  ok:   () => green(G.ringOn),
+  warn: () => yellow(G.ringOn),
+  err:  () => red(G.ringOn),
+  info: () => dim(G.ringOn),
 };
 const TAGS_ASCII = {
   ok:   () => green('[ok]'),

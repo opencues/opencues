@@ -139,7 +139,7 @@ for f in $SCRIPTS; do
 done
 
 if [ "$FAIL" = "0" ]; then
-  echo "✓ $COUNT shell scripts pass portability lint."
+  echo "[32m●[0m $COUNT shell scripts pass portability lint."
   exit 0
 else
   echo ""

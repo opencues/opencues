@@ -358,7 +358,7 @@ async function runOnce(c: CaseSpec): Promise<AttemptResult> {
     reasons.push(`${RED}✗ output still contains [CURSOR] after strip${RESET}`);
     pass = false;
   } else {
-    reasons.push(`${GREEN}✓ output sentinel-free${RESET}`);
+    reasons.push(`${GREEN}\x1b[32m●\x1b[0m output sentinel-free${RESET}`);
   }
 
   if (c.category === 'positional' && c.expectNearCursor) {
@@ -375,7 +375,7 @@ async function runOnce(c: CaseSpec): Promise<AttemptResult> {
       // spot. Still pass the test as long as the edit happened — but
       // flag it so we can tune the prompt.
     } else {
-      reasons.push(`${GREEN}✓ "${c.expectNearCursor}" found at offset ${found} (cursor ${c.cursorOffset}, within ±15)${RESET}`);
+      reasons.push(`${GREEN}\x1b[32m●\x1b[0m "${c.expectNearCursor}" found at offset ${found} (cursor ${c.cursorOffset}, within ±15)${RESET}`);
     }
 
     // Newline-preservation check: original \n boundaries must survive
@@ -388,7 +388,7 @@ async function runOnce(c: CaseSpec): Promise<AttemptResult> {
         reasons.push(`${RED}✗ newline count = ${actual}, expected ${expectedTotal} (original=${c.requireOriginalNewlines}, added=${c.expectAddedNewlines ?? 0})${RESET}`);
         pass = false;
       } else {
-        reasons.push(`${GREEN}✓ ${actual} newlines preserved (original=${c.requireOriginalNewlines}, added=${c.expectAddedNewlines ?? 0})${RESET}`);
+        reasons.push(`${GREEN}\x1b[32m●\x1b[0m ${actual} newlines preserved (original=${c.requireOriginalNewlines}, added=${c.expectAddedNewlines ?? 0})${RESET}`);
       }
     }
   }
@@ -398,7 +398,7 @@ async function runOnce(c: CaseSpec): Promise<AttemptResult> {
       reasons.push(`${RED}✗ expected "${c.expectInOutput}" in output — not found${RESET}`);
       pass = false;
     } else {
-      reasons.push(`${GREEN}✓ "${c.expectInOutput}" in output (cursor ignored as expected)${RESET}`);
+      reasons.push(`${GREEN}\x1b[32m●\x1b[0m "${c.expectInOutput}" in output (cursor ignored as expected)${RESET}`);
     }
   }
 

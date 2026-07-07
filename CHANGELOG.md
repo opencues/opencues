@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-> **Rebased onto the buffer-dehydration release (2026-07-07).** The three key-onboarding entries immediately below were authored pre-rebase; their net effect on the merged tree is `@opencues/core` 0.15.0 → **0.16.0**, `@opencues/runtime` 0.11.3 → **0.12.0**, `@opencues/chrome` 0.2.61 → **0.2.62**, `opencues` CLI → **0.2.37**. package.json is authoritative where the per-entry version refs differ.
+> **Rebased onto the buffer-dehydration release (2026-07-07).** The three key-onboarding entries immediately below were authored pre-rebase; their net effect on the merged tree is `@opencues/core` 0.15.0 → **0.16.0**, `@opencues/runtime` 0.11.3 → **0.12.0**, `@opencues/chrome` 0.2.62 → **0.2.63**, `opencues` CLI → **0.2.39**. package.json is authoritative where the per-entry version refs differ.
 
 ### Changed — `set-key` output uses the `●`-ring house style (`opencues` CLI 0.2.38 → 0.2.39)
 
@@ -37,6 +37,14 @@ Onboarding seamlessness pass — a key the user already has now reaches the runt
 ### Fixed — chrome's boot-time provider audit never matched a present key (`@opencues/chrome` 0.2.44 → 0.2.45)
 
 `auditProvidersAgainstKeys` looked up `keys[envKeyName]` (`GEMINI_API_KEY`) but its only caller passes a provider-id-keyed map (`gemini`), so any `llm-provider:` / `<feature>-provider:` directive warned "needs KEY" even when the key was present and working. Lookup now uses the provider id, and keyless-capable providers (`opencode-zen` free pool, local `ollama`) are skipped instead of flagged.
+### Changed — no ticks anywhere: `✓` → green `●` across scripts, benchmarks, install output + chrome popup (`opencues` CLI 0.2.35 → 0.2.36, `@opencues/chrome` 0.2.61 → 0.2.62, `@opencues/claude-code` 0.2.4 → 0.2.5, `@opencues/{opencode,gemini-cli,shell}` 0.2.3 → 0.2.4)
+
+Follow-up to the CLI `tag()` fix — hunts down every remaining `✓`/`🗸` tick outside the CLI command surface and converts it to a green `●`, so the whole repo speaks one status vocabulary (`packages/opencues-cli/CLAUDE.md` § "The `●` ring is the universal status glyph"). Covered: the `scripts/*.{sh,cjs}` lint/check/pre-pr gates, `integrations/*/patches/setup.sh` + `bin/install.cjs` install output, `packages/opencues-core/scripts/*` bench runners, the `tests/benchmarks/**` runners, and the **chrome popup diagnostics** (glyph + the `startsWith('✓')` classifier → `startsWith('●')`, green via the existing `.diag-ok` CSS). Node output uses a `\x1b[32m●\x1b[0m` escape; shell output embeds the ANSI directly (`echo -e` is banned by the portability rule, and `\033` isn't interpreted by bare `echo`). Also removed the now-dead `G.check` (`🗸`) glyph from `style.cjs` (unused since `tag()` moved to `●`). `✗`/`⚠` are left as-is — the ask was ticks. Comment/doc references de-ANSI'd to a plain `●`.
+
+### Changed — status output uses the `●`-ring house style everywhere (no ticks) (`opencues` CLI 0.2.34 → 0.2.35, `@opencues/runtime` 0.11.3 → 0.11.4)
+
+The CLI's own rule is "status is a leading coloured `●` — never a tick / cross / dot / ⚠" (`packages/opencues-cli/CLAUDE.md`), but `tag()` still rendered `🗸` / `⚠` / `✗` / `•` against it, across ~128 call sites in 18 command files. Redefined `tag()`'s UTF-8 glyphs to leading `●` rings (green ok / dim info / yellow warn / red err) — one change, every command now consistent, and alignment improves because the old `🗸` / `⚠` are 2-cell-wide emoji while `●` is single-cell. `TAGS_ASCII` (`[ok]` / `[warn]`) is unchanged for no-UTF8 terminals. Also converted the stray literal ticks: `cleanup`'s two `green('✓')`, `which`'s stale help text ("shows ✓ if present" → green `●`), and the **kata coach** line + lesson journal (`✓ Now:` → `● Now:`; runtime statusline surface). No test pinned the glyphs (one kata journal assertion updated to `●`).
+
 ### Added — buffer dehydration: `identity-context-mode: safe` is now bidirectional (`@opencues/core` 0.14.0 → 0.15.0, `@opencues/runtime` 0.11.2 → 0.11.3, `@opencues/chrome` 0.2.60 → 0.2.61, spec 0.5 → 0.6)
 
 **Observability** (core 0.15.0 / runtime 0.11.3): the outbound scrub now emits a structured **`transform-blank.dehydrated` / `fluid-blank.dehydrated`** event (`{ count }`) via the existing source-event channel, making the PII scrub assertable end-to-end on a real host (the buffer stays hydrated by design, so a text assertion can't prove the outbound scrub). Validated live on OpenCode + real Groq; pinned by agentic scenario `67-identity-context-dehydration-event` (asserts the event fired — runtime contract, not LLM output, per the agentic-scenario rule).

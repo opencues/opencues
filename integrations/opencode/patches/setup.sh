@@ -36,14 +36,14 @@ VERBOSE="${OPENCUES_INSTALL_VERBOSE:-0}"
 
 # ─── progress helpers ────────────────────────────────────────────────
 # run_step <label> <fn-name>
-#   verbose=0 (default): prints "  ▸ <label> ✓" / "✗" + error excerpt
-#   verbose=1:           streams everything live, still prints ✓/✗
+#   verbose=0 (default): prints "  ▸ <label> ●" / "✗" + error excerpt
+#   verbose=1:           streams everything live, still prints ●/✗
 run_step() {
   local label="$1"; shift
   if [[ "$VERBOSE" = "1" ]]; then
     printf '  ▸ %s\n' "$label"
     if "$@"; then
-      printf '  ✓ %s\n' "$label"
+      printf '  [32m●[0m %s\n' "$label"
     else
       local rc=$?
       printf '  ✗ %s (exit %d)\n' "$label" "$rc" >&2
@@ -52,7 +52,7 @@ run_step() {
   else
     printf '  ▸ %s' "$label"
     if "$@" >>"$LOG" 2>&1; then
-      printf ' ✓\n'
+      printf ' [32m●[0m\n'
     else
       local rc=$?
       printf ' ✗\n' >&2
