@@ -1,8 +1,8 @@
 {
   "name": "opencues",
-  "version": "0.2.39",
+  "version": "0.2.40",
   "private": true,
-  "description": "OpenCues — single-command front door for installing, configuring, and launching OpenCues across all editor integrations.",
+  "description": "OpenCues enables native AI integration anywhere you type. Model agnostic and fully open source. Inline agents and prompting.",
   "bin": {
     "opencues": "./bin/cli.cjs"
   },

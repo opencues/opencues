@@ -1,8 +1,8 @@
 {
   "name": "@opencues/shell",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "private": true,
-  "description": "OpenCues for the terminal — `shell` wraps your interactive shell in a tmux session with an Alt+Shift+↑ input box that hosts the OpenCues TUI. Brings full cues, blanks, cycling, agent-rewrite to any shell.",
+  "description": "OpenCues for the shell — native AI integration anywhere you type. Model agnostic and fully open source. Inline agents and prompting.",
   "type": "module",
   "bin": {
     "oc-shell": "./bin/oc-shell",

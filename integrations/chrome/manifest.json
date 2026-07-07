@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "OpenCues",
-  "version": "0.2.64",
-  "description": "LLM-powered word alternatives for text editors",
+  "version": "0.2.65",
+  "description": "OpenCues enables native AI integration anywhere you type. Model agnostic and fully open source. Inline agents and prompting.",
   "permissions": [
     "storage",
     "activeTab",
