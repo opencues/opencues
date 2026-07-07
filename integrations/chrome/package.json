@@ -35,7 +35,6 @@
     "@opencues/runtime": "workspace:*"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
     "@lexical/history": "^0.44.0",
     "@lexical/plain-text": "^0.44.0",
     "@lexical/utils": "^0.44.0",

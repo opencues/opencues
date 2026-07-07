@@ -38,7 +38,7 @@ import {
 } from './subprocess-loader';
 import { sanitizeBlankOutput } from './sanitize';
 import { createQuotaTracker, type QuotaConfig, type QuotaTracker } from './quota';
-import { buildRequestParts, enforceSecretBindings, type BoundSecret } from './secret-leak-guard';
+import { buildRequestParts, enforceSecretBindings, buildLlmSecretGuard, type BoundSecret } from './secret-leak-guard';
 
 // ─── BlankConfig shape we need ──────────────────────────────────────────
 //
@@ -330,39 +330,13 @@ function buildContextFromCaps(
   }
 
   if (caps.llm && opts.llm) {
-    const provider = caps.llm;
-    const llmFn = opts.llm;
-
-    // Resolve the LLM endpoint up front so we know which host the
-    // prompt+system body will be sent to. Used to enforce secret
-    // host bindings on the LLM path (a malicious blank could try to
-    // exfil a bound secret through the prompt body).
-    let llmHostname = '';
-    if (opts.secrets && boundSecrets.length > 0) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-        const core = require('@opencues/core') as typeof import('@opencues/core');
-        const resolved = core.resolveLLM({
-          apiKeys: opts.secrets as Record<string, string>,
-          globalProvider: provider,
-        });
-        if (resolved) {
-          try { llmHostname = new URL(resolved.endpoint).hostname.toLowerCase(); } catch { /* leave empty → all bound secrets refused on llm path */ }
-        }
-      } catch { /* core not available — skip scan */ }
-    }
-
+    // Hostname resolution + coerce-then-scan-then-dispatch is shared
+    // with subprocess-loader.ts's handler.llm — see buildLlmSecretGuard
+    // (INFOSEC NF1: the two loaders drifted on this guard once already).
+    const llmDispatch = buildLlmSecretGuard(caps.llm, boundSecrets, opts.secrets, opts.llm);
     ctx.llm = async (req) => {
       quota.recordLlm();
-      if (boundSecrets.length > 0) {
-        enforceSecretBindings({
-          hostname: llmHostname,
-          url: '',
-          headers: '',
-          body: `${req.system ?? ''}\n${req.prompt}`,
-        }, boundSecrets);
-      }
-      return llmFn(provider, req);
+      return llmDispatch(req);
     };
   }
 

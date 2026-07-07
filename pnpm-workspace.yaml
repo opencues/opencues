@@ -31,9 +31,9 @@ onlyBuiltDependencies:
   - esbuild
   - isolated-vm
 
-# INFOSEC dep CVE pins (DA1-DA7 — June 2026). pnpm 10's `overrides`
-# location is pnpm-workspace.yaml; the `pnpm.overrides` field in
-# package.json is silently ignored. Each entry pins the lowest
+# INFOSEC dep CVE pins (DA1-DA7 — June 2026, NF3 — July 2026). pnpm 10's
+# `overrides` location is pnpm-workspace.yaml; the `pnpm.overrides` field
+# in package.json is silently ignored. Each entry pins the lowest
 # patched version per the relevant advisory.
 overrides:
   seroval: ">=1.4.1"     # DA2 — GHSA-66fc-rw6m-c2q6 etc.
@@ -41,3 +41,5 @@ overrides:
   file-type: ">=21.3.1"  # DA6 — GHSA-5v7r-6r5c-r473
   diff: ">=8.0.3"        # DA7 — GHSA-73rr-hh4g-fpgx
   vite: "6.4.3"          # DA5 — GHSA-4w7w-66w2-5vf9 (also: vitest 4 needs vite 6)
+  undici: "^7.28.0"         # NF3 — jsdom's transitive undici (7 CVEs incl. GHSA-vmh5-mc38-953g); test-path only, no prod exposure
+  "@babel/core": ">=7.29.6"  # NF3 — GHSA-4x5r-pxfx-6jf8, transitive via integrations/shell's @opentui/solid

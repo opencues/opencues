@@ -26,7 +26,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { rewriteEsmToCjsShim } from './esm-rewrite';
-import { buildRequestParts, enforceSecretBindings, type BoundSecret } from './secret-leak-guard';
+import { buildRequestParts, enforceSecretBindings, buildLlmSecretGuard, type BoundSecret } from './secret-leak-guard';
 import type {
   BlankCapabilities,
   BlankContext,
@@ -541,7 +541,7 @@ export function loadUserBlankSubprocess(
 
 // ─── Capability handler builder ─────────────────────────────────────────
 
-function buildCapabilityHandler(
+export function buildCapabilityHandler(
   caps: BlankCapabilities,
   opts: LoaderOptions,
 ): CapabilityHandler {
@@ -582,9 +582,11 @@ function buildCapabilityHandler(
   }
 
   if (caps.llm && opts.llm) {
-    const provider = caps.llm;
-    const llmFn = opts.llm;
-    handler.llm = async (req) => llmFn(provider, req);
+    // Hostname resolution + coerce-then-scan-then-dispatch is shared
+    // with registry.ts's in-process buildContextFromCaps — see
+    // buildLlmSecretGuard (INFOSEC NF1: the two loaders drifted on this
+    // guard once already; don't hand-mirror it a third time).
+    handler.llm = buildLlmSecretGuard(caps.llm, boundSecrets, opts.secrets, opts.llm);
   }
 
   if (caps.storage && opts.storage) {
