@@ -311,7 +311,7 @@ module.exports = function help(argv, ctx) {
   }
 
   const { pkg } = ctx;
-  console.log(banner({ version: pkg.version, tagline: 'LLM cues and `_`-gated blanks for any editor.' }));
+  console.log(banner({ version: pkg.version, tagline: 'Native AI integration anywhere you type. Model agnostic and fully open source. Inline agents and prompting.' }));
   console.log(dim(G.treeStart));   // dim │ — visual link from the C_ badge down into the tree
   console.log(configTree(configRows(ctx)));
   console.log('');

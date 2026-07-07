@@ -669,15 +669,15 @@ done
 |---|---|---|---|
 | `SPEC.md` (open-standard) | `cues-spec` | 0.5 (draft) | exported as `SPEC_VERSION` from `@opencues/core` |
 | `package.json` (monorepo root) | `opencues` | 0.1.0 | private |
-| `packages/opencues-core/` | `@opencues/core` | 0.16.0 | private |
-| `packages/opencues-runtime/` | `@opencues/runtime` | 0.12.0 | private |
-| `packages/opencues-cli/` | `opencues` (real CLI) | 0.2.37 | private |
+| `packages/opencues-core/` | `@opencues/core` | 0.17.0 | private |
+| `packages/opencues-runtime/` | `@opencues/runtime` | 0.13.3 | private |
+| `packages/opencues-cli/` | `opencues` (real CLI) | 0.2.40 | private |
 | `packages/opencues-park/` | `opencues` (placeholder) | 0.0.1 | **PUBLISHED on npm** |
-| `integrations/claude-code/` | `@opencues/claude-code` | 0.2.4 | private |
-| `integrations/opencode/` | `@opencues/opencode` | 0.2.2 | private |
-| `integrations/chrome/` | `@opencues/chrome` | 0.2.62 | private |
-| `integrations/gemini-cli/` | `@opencues/gemini-cli` | 0.2.2 | private |
-| `integrations/shell/` | `@opencues/shell` | 0.2.2 | private |
+| `integrations/claude-code/` | `@opencues/claude-code` | 0.2.7 | private |
+| `integrations/opencode/` | `@opencues/opencode` | 0.2.6 | private |
+| `integrations/chrome/` | `@opencues/chrome` | 0.2.65 | private |
+| `integrations/gemini-cli/` | `@opencues/gemini-cli` | 0.2.6 | private |
+| `integrations/shell/` | `@opencues/shell` | 0.2.6 | private |
 
 Two packages share the bare `opencues` name — the real CLI at `packages/opencues-cli/` (still private) and the parking placeholder at `packages/opencues-park/` (published as v0.0.1 to the public npm registry, owned by the `opencues` org via the `developers` team). Launch handover is described in the npm-name pre-launch checklist above; the real CLI's v0.1.0 cleanly supersedes the placeholder's v0.0.1 on first publish.
 

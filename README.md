@@ -27,7 +27,7 @@ publish cutover) and Discord badge (once DISCORD_ID/INVITE are real):
 [![npm](https://img.shields.io/npm/v/opencues)](https://npmjs.com/package/opencues)
 [![Discord](https://img.shields.io/discord/DISCORD_ID?label=Discord)](https://discord.gg/INVITE) -->
 
-**OpenCues ushers in a new standard for AI interaction, dispensing with the turn-based chat box paradigm.** Access intelligence models from any surface, at any time, seamlessly.
+**OpenCues enables native AI integration anywhere you type.** Model agnostic and fully open source. Inline agents and prompting.
 
 Rather than navigating to a chat interface or AI-enabled input box, define a query in plain text: an LLM discovers your query and answers it inline, right where you wrote it.
 

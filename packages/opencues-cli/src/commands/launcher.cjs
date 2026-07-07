@@ -33,7 +33,7 @@ module.exports = async function launcher(argv, ctx) {
     if (process.stdout.isTTY) console.clear();
     // Same elaborate header help shows — banner + Paths / Keys ● grid /
     // Providers — recomputed each loop so it reflects prior actions.
-    console.log(banner({ version: cliVersion(ctx), tagline: 'LLM cues and `_`-gated blanks for any editor.' }));
+    console.log(banner({ version: cliVersion(ctx), tagline: 'Native AI integration anywhere you type. Model agnostic and fully open source. Inline agents and prompting.' }));
     help.printStatus(ctx);
     console.log('');
     console.log(dim('What would you like to do?  ·  ↑↓ move · Enter select'));

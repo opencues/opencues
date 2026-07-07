@@ -1,8 +1,8 @@
 {
   "name": "@opencues/opencode",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "private": true,
-  "description": "OpenCues for OpenCode \u2014 patches an OpenCode TUI fork to add real-time word alternatives, blanks, and cue-controls.",
+  "description": "OpenCues for OpenCode \u2014 native AI integration anywhere you type. Model agnostic and fully open source. Inline agents and prompting.",
   "compatibility": {
     "opencode": "1.4.x"
   },
