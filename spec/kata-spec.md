@@ -1,6 +1,6 @@
 # kata-spec — the `KATA.md` file format & guided-scenario contract
 
-> **Status:** `0.6-alpha`. Expect changes.
+> **Status:** `0.7-alpha`. Expect changes.
 
 A **kata** is a guided, in-editor scenario: an ordered script a user
 works through in their real editor while a runtime observes their

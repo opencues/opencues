@@ -1,6 +1,6 @@
 # cue-spec — the Cue file format & runtime contract
 
-> **Status:** `0.6-alpha`. Expect changes.
+> **Status:** `0.7-alpha`. Expect changes.
 
 A **cue** is the LLM→user surface: while a user types plain text, a cue source proposes alternatives for words it recognises. The user can cycle through them with a keyboard input (or any runtime-defined trigger). This document specifies the `CUE.md` file format and what a conformant runtime MUST do with one.
 
@@ -198,7 +198,6 @@ A cue source produces zero or more `CueResult` objects per matched word.
 | `cueTip` | string | Display hint shown alongside the cycling. |
 | `altCueTips` | `Record<string, string>` | Per-alternative override tips. |
 | `spanStart`, `spanEnd` | number | Character span (multi-word alternatives). |
-| `linked` | number[] | Other word indices that cycle in lockstep. |
 | `metadata` | object | Source-defined; runtimes MAY ignore. |
 
 ### LLM wire format (`parser: alternatives`)
@@ -230,7 +229,7 @@ For the `raw` parser, the response is opaque to the runtime; sources using `raw`
 ### What a runtime MAY do
 
 - Display `cueTip` in a secondary surface (status line, tooltip, side pane).
-- Implement multi-word spans (`spanStart`/`spanEnd`) and linked-word cycling (`linked`).
+- Implement multi-word spans (`spanStart`/`spanEnd`).
 - Honor per-word `speak: true` hints to read alternatives via TTS. TTS itself is non-standard (see [`@opencues/runtime`'s `SPEC.md`](../packages/opencues-runtime/SPEC.md)); the `speak` field is reserved here only so static-mode authors have a portable place to declare the intent.
 - Cache LLM responses.
 

@@ -35,7 +35,6 @@ Every source returns `CueResult[]`. This is the core data structure integrations
   alternatives: string[];     // Values to cycle through
   cueTip?: string;            // Tip text for secondary display
   altCueTips?: Record<string, string>;  // Per-alternative tips
-  linked?: number[];          // Other word indices that cycle together
   source: string;             // Source ID ('tips', 'grammar', 'blank', etc.)
   priority: number;           // For merge resolution (higher wins)
   spanStart?: number;         // Multi-word span start index
@@ -138,15 +137,6 @@ Key priorities: `BlankSource` (95) > `ConfigIntentSource` (94) > `TransformBlank
 ### Tips protection
 
 When merging results, entries from `source: 'tips'` (local tips file) are NEVER overwritten by LLM results. Similarly, entries with `metadata.blankName` (blanks) are protected from grammar/LLM overwrite. The integration's merge logic must respect these protections.
-
-### Linked word cycling
-
-The `linked` array on a CueResult means: when this word cycles, ALL words at the linked indices must cycle to the same `currentAltIndex`. For example, changing "boy" (index 0, alts: ["boy", "girl"]) must also change "his" (index 3, alts: ["his", "her"]) from index 0 to index 1.
-
-The integration must:
-1. Detect `linked` arrays on WordDefs
-2. When cycling any word with `linked`, update ALL linked words' `currentAltIndex`
-3. Replace ALL linked words' text in the display simultaneously
 
 ### Multi-word spans
 

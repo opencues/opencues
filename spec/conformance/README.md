@@ -1,4 +1,4 @@
-# Conformance suite — opencues/0.6-alpha
+# Conformance suite — opencues/0.7-alpha
 
 A corpus of fixtures any conformant OpenCues implementation can exercise against. This suite is the bridge between "I read [`../cue-spec.md`](../cue-spec.md)" and "the parser actually matches the standard". Used today by `@opencues/core` as its parser regression net (adding a fixture this week caught one drift); designed so a future second runtime could exercise the same fixtures.
 
@@ -186,9 +186,10 @@ spec: opencues/0.1-alpha
 
 …but in practice almost all fixtures omit it (see below). The versioning *model* is a per-version fork: when the spec bumps, `conformance/<old>/` and `conformance/<new>/` would coexist for one minor cycle so an implementer pinned to the old version keeps its fixtures. **In practice that fork has never been cut** — the suite grows in place as a single flat tree. Fixtures omit `spec:` and are read at the omit-default (`opencues/0.1-alpha`); surfaces added by later minors (kata at `0.5`, identity's dehydration at `0.6`) are additive and don't invalidate an older reader's fixtures, so the flat tree has held.
 
-**Status (`0.6-alpha`, July 2026).** The spec has moved `0.1 → 0.6`
+**Status (`0.7-alpha`, July 2026).** The spec has moved `0.1 → 0.7`
 (IDENTITY.md + `as-context:` / `contextTtl:` at `0.2`, Kata at `0.5`,
-bidirectional identity-context dehydration at `0.6`). The suite tracks
+bidirectional identity-context dehydration at `0.6`, removal of the
+never-implemented `CueResult.linked` field at `0.7`). The suite tracks
 it in place. Surfaces now covered: cue / blank / auditor / masters /
 wire / routing (in `@opencues/core`'s runner), KATA.md (driven from
 `@opencues/runtime`'s `kata.test.ts` — `parseKataMd` lives there), and
@@ -214,7 +215,7 @@ error code — `invalid-key` / `value-too-long` / `collision` /
   preserve-wins precedence. See `identity-context-spec.md`
   § Dehydration.
 
-A second implementation targeting `0.6-alpha` should treat
+A second implementation targeting `0.7-alpha` should treat
 the spec text in `identity-context-spec.md` and `blank-spec.md`
 § Sentinel aspects as authoritative until these remaining fixtures land.
 (The reference implementation's executable equivalents:
@@ -276,7 +277,7 @@ Wrap with whatever test framework you use. The reference implementation's runner
 
 ## Status
 
-The 0.6-alpha suite is **seed**, not exhaustive. Coverage:
+The 0.7-alpha suite is **seed**, not exhaustive. Coverage:
 
 | Area | Fixtures | Notes |
 |---|---|---|

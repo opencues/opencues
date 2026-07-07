@@ -67,7 +67,6 @@ The state machine that keeps multi-word substitutions, cycle progress, and per-e
 
 | # | Feature | Description |
 |---|---------|-------------|
-| 5 | [Linked Words](linked-words.md) | Words that must change together |
 | 9 | [Multi-Word Spans](multi-word-spans.md) | Alternatives that are multiple words |
 | 10 | [Per-Word Clearing](per-word-clearing.md) | Preserve alternatives when editing text |
 | 26 | [Resolver Skip Filter](resolver-skip-filter.md) | The four-condition check that prevents the LLM from re-resolving words already owned by cycling — keeps cycle tracks stable and saves tokens |
