@@ -1,6 +1,6 @@
 # Katas
 
-**Experimental — runs on all five hosts (OpenCode, Claude Code, Gemini CLI, Shell, Chrome).**
+**Experimental — runs on five hosts (OpenCode, Claude Code, Gemini CLI, Shell, Chrome). Not on Apple Notes: that host has no keyboard channel or status line for the coach.**
 
 Guided, in-editor scenarios that walk you through a workflow step by
 step — "enter plan mode, ask for a plan, switch model, commit to git" —

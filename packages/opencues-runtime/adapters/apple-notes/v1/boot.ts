@@ -13,9 +13,14 @@
 //
 // Structurally a slimmed clone of adapters/shell/v1/boot.ts: no key
 // channel, no cursor channel, no render directives, no TTS, no
-// AgentRewrite (supportsAgentRewrite() is false), no CursorStateExport.
-// The universal/no-cycling profile prunes cycleable cues/blanks at
-// registration via supportsCycling() — see
+// AgentRewrite (supportsAgentRewrite() is false), no CursorStateExport,
+// and no KataCoach — DELIBERATELY excluded, not deferred: kata's wiring
+// contract requires observeKey as the FIRST key subscriber
+// (docs/architecture/kata.md § host wiring), and this host's only key
+// events are the daemon's synthetic `_` arms; there is no keyboard to
+// observe, no Esc×3 escape hatch, and no statusline surface to render
+// the coach. The universal/no-cycling profile prunes cycleable
+// cues/blanks at registration via supportsCycling() — see
 // docs/architecture/universal-integration.md.
 
 import { Runtime } from '../../../src/runtime';
@@ -25,6 +30,7 @@ import { Statusline } from '../../../src/modules/statusline';
 import { Resolver } from '../../../src/modules/resolver';
 import { ConfigLoader } from '../../../src/modules/config-loader';
 import { buildSharedRuntime, createLogFunction, buildBlankContextProvider, buildBlankFetchProvider, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildBootApiKeys, pickAutoProvider } from '@opencues/core';
 import { EventEmitter } from '../../../src/lib/event-emitter';
 import type {
   CommonHostInfo,
@@ -116,8 +122,10 @@ export function boot(host: HostInfo): BootResult {
   const settingsFile = process.env.OPENCUES_HOME
     ? `${process.env.OPENCUES_HOME}/OPENCUES.md`
     : `${HOME}/.cues/OPENCUES.md`;
-  const apiKeys: Record<string, string | undefined> = { ...(host.llmApiKeys ?? {}) };
-  if (host.llmApiKey && !apiKeys.GROQ_API_KEY) apiKeys.GROQ_API_KEY = host.llmApiKey;
+  // Boot key bag with the standard precedence (host keys → process.env
+  // → ~/.cues/.env from `opencues set-key`) — same call as shell/oc, so
+  // a key the user set once reaches this host too.
+  const apiKeys = buildBootApiKeys(host.llmApiKeys, host.llmApiKey, (m) => log('info', m));
   const shared = buildSharedRuntime(adapter, {
     log, configSearchPaths, settingsFile,
     getApiKeys: () => apiKeys,
@@ -139,7 +147,10 @@ export function boot(host: HostInfo): BootResult {
     statusline.subscribe();
   }
 
-  const hasAnyKey = Object.values(apiKeys).some(Boolean);
+  // "Usable LLM" = any env key OR the zero-key subscription-CLI rung
+  // (pickAutoProvider's last rung: claude/codex binary present) —
+  // mirrors shell/v1 so a keyless subscription setup still dispatches.
+  const hasAnyKey = Object.values(apiKeys).some(Boolean) || pickAutoProvider(apiKeys) !== null;
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
     endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
     apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
