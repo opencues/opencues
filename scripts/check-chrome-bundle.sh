@@ -52,7 +52,7 @@ for f in "${EXPECTED[@]}"; do
 done
 
 if [ "$FAIL" = "0" ]; then
-  echo "✓ Chrome bundle artifacts present in $CHROME_DIST/"
+  echo "[32m●[0m Chrome bundle artifacts present in $CHROME_DIST/"
   exit 0
 else
   echo ""

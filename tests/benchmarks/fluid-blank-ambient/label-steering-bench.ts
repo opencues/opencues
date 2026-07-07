@@ -152,7 +152,7 @@ async function runSuite(label: string, withUserContext: boolean): Promise<number
   for (let i = 0; i < CASES.length; i++) {
     const c = CASES[i];
     const r = results[i];
-    const mark = r.pass ? '\x1b[32m✓\x1b[0m' : '\x1b[31m✗\x1b[0m';
+    const mark = r.pass ? '\x1b[32m\x1b[32m●\x1b[0m\x1b[0m' : '\x1b[31m✗\x1b[0m';
     const lat = `${r.latencyMs}ms`.padStart(7);
     console.log(`${mark} ${lat}  ${c.id.padEnd(36)} → ${r.actual}`);
     if (!r.pass) {

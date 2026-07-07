@@ -262,7 +262,7 @@ async function main(): Promise<void> {
   console.log('candidate                          | task                   | cat       | ms   | result');
   console.log('-----------------------------------+------------------------+-----------+------+--------');
   for (const r of results) {
-    const tag = r.pass ? '✓' : '✗';
+    const tag = r.pass ? '\x1b[32m●\x1b[0m' : '✗';
     const out = (r.out || r.err || '').replace(/\n/g, ' ').slice(0, 60);
     console.log(`${r.cand.padEnd(34)} | ${r.taskId.padEnd(22)} | ${r.category.padEnd(9)} | ${String(Math.round(r.ms)).padStart(4)} | ${tag} ${out}`);
   }

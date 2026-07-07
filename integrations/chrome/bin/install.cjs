@@ -47,12 +47,12 @@ function runStep(label, fn) {
   if (process.env.OPENCUES_INSTALL_VERBOSE === '1') {
     process.stdout.write(`  ▸ ${label}\n`);
     const ok = !!fn();
-    process.stdout.write(`  ${ok ? '✓' : '✗'} ${label}\n`);
+    process.stdout.write(`  ${ok ? '\x1b[32m●\x1b[0m' : '✗'} ${label}\n`);
     return ok;
   }
   process.stdout.write(`  ▸ ${label}`);
   const ok = !!fn();
-  process.stdout.write(ok ? ' ✓\n' : ' ✗\n');
+  process.stdout.write(ok ? ' \x1b[32m●\x1b[0m\n' : ' ✗\n');
   return ok;
 }
 function reportFailure(label) {

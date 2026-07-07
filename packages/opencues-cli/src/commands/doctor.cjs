@@ -1468,7 +1468,7 @@ function findOnPath(bin) {
 /**
  * Print a one-line pin-status check for the given integration.
  * Reads compat.json + the local pin (no network — that's `update --check`).
- * Surfaces drift: pin is tested ✓ / pin is in compat-range but untested ⚠ /
+ * Surfaces drift: pin is tested / pin is in compat-range but untested ⚠ /
  * pin is incompatible (shouldn't happen because installer should refuse,
  * but check anyway).
  */
@@ -1491,7 +1491,7 @@ function reportPinStatus(s, host, ctx, HOME, findings) {
     if (latestTested && pin !== latestTested) {
       s.ok(`pin status   ${pin} (tested, but ${latestTested} is newer-tested)`, true);
     } else {
-      s.ok(`pin status   ${pin} (tested ✓)`, true);
+      s.ok(`pin status   ${pin} (tested)`, true);
     }
   } else if (cls.status === 'compat-untested') {
     s.bad(`pin status   ${pin} (in compat-range ${compat['compat-range']}, NOT tested)`, false);

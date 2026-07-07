@@ -436,7 +436,7 @@ function reportQuality(rows: QualityRow[]): void {
   console.log('candidate                    | task              |  ms   | pass | output');
   console.log('-----------------------------+-------------------+-------+------+--------');
   for (const r of rows) {
-    const tag = r.pass ? '  ✓ ' : '  ✗ ';
+    const tag = r.pass ? '  \x1b[32m●\x1b[0m ' : '  ✗ ';
     console.log(`${r.cand.padEnd(28)} | ${r.taskId.padEnd(17)} | ${fmt(r.ms, 5)} | ${tag} | ${r.out.replace(/\n/g, ' ').slice(0, 60)}${r.err ? ` [${r.err}]` : ''}`);
   }
   console.log('\nPer-candidate quality:');

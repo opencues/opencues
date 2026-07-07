@@ -132,7 +132,7 @@ async function main(): Promise<void> {
   const results = await Promise.all(PROVIDER_IDS.map(smokeOne));
   for (const r of results) {
     const icon =
-      r.status === 'ok' ? '✓' :
+      r.status === 'ok' ? '\x1b[32m●\x1b[0m' :
       r.status === 'throttled' ? '~' :
       r.status === 'skip' ? '·' : '✗';
     const ms = r.ms !== undefined ? ` (${r.ms}ms)` : '';

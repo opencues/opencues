@@ -4,7 +4,7 @@
 # class of follow-up-PR-to-fix-the-PR pattern we hit June 2026
 # (PRs #42 → #48, #47 → #49).
 #
-# Each check is a separate step so the script prints a clear ✓/✗
+# Each check is a separate step so the script prints a clear ●/✗
 # per gate. Failure of any step exits non-zero with that gate's
 # name; subsequent gates still run so the user sees the full report.
 #
@@ -33,7 +33,7 @@ step() {
   echo "▸ $name"
   echo "──────────────────────────────────────────────────────────────"
   if "$@"; then
-    echo "  ✓ $name"
+    echo "  [32m●[0m $name"
   else
     echo "  ✗ $name FAILED"
     FAIL=$((FAIL + 1))
@@ -143,7 +143,7 @@ echo "  failed:  $FAIL"
 echo "  skipped: $SKIPPED"
 if [ "$FAIL" -eq 0 ]; then
   echo ""
-  echo "✓ pre-PR gates pass. Safe to push."
+  echo "[32m●[0m pre-PR gates pass. Safe to push."
   exit 0
 else
   echo ""

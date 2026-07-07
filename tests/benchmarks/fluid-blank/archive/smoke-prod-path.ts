@@ -90,7 +90,7 @@ async function smoke() {
       const mode = r.metadata?.fluidBlankMode;
       const span = r.metadata?.span;
       console.log(`  ANSWER  : ${r.alternatives[1]}`);
-      console.log(`  MODE    : ${mode}  ${mode === c.expectedMode ? '✓' : `✗ expected ${c.expectedMode}`}`);
+      console.log(`  MODE    : ${mode}  ${mode === c.expectedMode ? '\x1b[32m●\x1b[0m' : `✗ expected ${c.expectedMode}`}`);
       console.log(`  P1 SPAN : ${span}`);
       if (typeof r.spanStart === 'number') {
         console.log(`  CHAR RANGE: [${r.spanStart}, ${r.spanEnd}) → "${c.input.slice(r.spanStart, r.spanEnd)}"`);

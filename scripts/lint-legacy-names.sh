@@ -180,7 +180,7 @@ done
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then
-  echo "✓ legacy-names lint clean — no banned identifiers outside allowlist"
+  echo "[32m●[0m legacy-names lint clean — no banned identifiers outside allowlist"
   exit 0
 else
   echo "✗ legacy-names lint: $HIT_COUNT hit(s) above"

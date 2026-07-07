@@ -469,7 +469,7 @@ async function main() {
         templateCounts.set(tmpl, (templateCounts.get(tmpl) ?? 0) + 1);
         shapeCounts.set(shape.name, (shapeCounts.get(shape.name) ?? 0) + 1);
         const preview = c.input.length > 60 ? c.input.slice(0, 57) + '...' : c.input;
-        console.log(`  ✓ [${totalGenerated}] [${shape.name.padEnd(11)}] ${preview} → ${c.expected.answer.slice(0, 30)}`);
+        console.log(`  \x1b[32m●\x1b[0m [${totalGenerated}] [${shape.name.padEnd(11)}] ${preview} → ${c.expected.answer.slice(0, 30)}`);
       } catch (e: any) {
         console.log(`  ✗ ERROR (${e.message}): ${topic.slice(0, 50)}`);
       }

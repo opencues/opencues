@@ -97,7 +97,7 @@ function doInstall() {
     return;
   }
 
-  // Delegate to setup.sh. It owns its own progress output (▸/✓ lines)
+  // Delegate to setup.sh. It owns its own progress output (▸/● lines)
   // + the final "Done. Launch with…" message.
   const setupSh = path.join(PKG_DIR, 'patches', 'setup.sh');
   const setupArgs = [fork];

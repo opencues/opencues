@@ -41,7 +41,7 @@ echo "######################################################################"
 echo "# SUMMARY"
 echo "######################################################################"
 echo "Passed:  ${#PASSED[@]}"
-for s in "${PASSED[@]}"; do echo "  ✓ $s"; done
+for s in "${PASSED[@]}"; do echo "  [32m●[0m $s"; done
 if [[ ${#SKIPPED[@]} -gt 0 ]]; then
   echo "Skipped: ${#SKIPPED[@]}"
   for s in "${SKIPPED[@]}"; do echo "  - $s"; done
