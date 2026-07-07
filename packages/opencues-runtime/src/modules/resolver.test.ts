@@ -398,6 +398,88 @@ describe('Resolver.resolveAndApply', () => {
   });
 });
 
+describe('Resolver — source-build + resolve failure resilience', () => {
+  // Three failure shapes the runtime wrapper must survive without
+  // crashing the host or leaving state that blocks future resolves:
+  //   1. buildSourcesFromConfig (resolverFactory) throws SYNCHRONOUSLY.
+  //   2. resolverFactory returns an EMPTY source list (valid but useless
+  //      config — e.g. every source got filtered out).
+  //   3. The built resolver's `.resolve()` REJECTS asynchronously.
+
+  it('resolverFactory throwing synchronously logs an error and leaves the resolver unusable (not crashed)', async () => {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': CUES_MD },
+    });
+    const hlState = new HighlightState();
+    const dyn = new DynDefs();
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    await loader.load();
+    const resolver = new Resolver(adapter, hlState, dyn, loader, {
+      endpoint: 'https://x', apiKey: 'k', defaultModel: 'm', httpAdapter: {},
+      resolverFactory: () => { throw new Error('synthetic buildSourcesFromConfig failure'); },
+    });
+    resolver.rebuildResolver();
+    // The error is logged (not swallowed silently).
+    expect(adapter.logs.some(l => l.level === 'error' && l.msg.includes('buildSourcesFromConfig'))).toBe(true);
+    // The internal resolver stays null — resolveAndApply on subsequent
+    // text changes must be a safe no-op, not a crash.
+    adapter.pushText('alpha');
+    await expect(resolver.resolveAndApply('alpha')).resolves.toBeUndefined();
+    expect(adapter.setTextCalls).toEqual([]);
+  });
+
+  it('resolverFactory returning an empty source list builds a working (if useless) resolver — no crash, no substitution', async () => {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': CUES_MD },
+    });
+    const hlState = new HighlightState();
+    const dyn = new DynDefs();
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    await loader.load();
+    const resolver = new Resolver(adapter, hlState, dyn, loader, {
+      endpoint: 'https://x', apiKey: 'k', defaultModel: 'm', httpAdapter: {},
+      resolverFactory: () => [],
+    });
+    resolver.rebuildResolver();
+    // Built successfully with 0 sources — logged as info, not error.
+    expect(adapter.logs.some(l => l.level === 'error')).toBe(false);
+    expect(adapter.logs.some(l => l.level === 'info' && l.msg.includes('built with 0 sources'))).toBe(true);
+    adapter.pushText('hello world');
+    await expect(resolver.resolveAndApply('hello world')).resolves.toBeUndefined();
+    // Zero sources → zero results → no DynDefs, no substitution.
+    expect(dyn.get(0)).toBeUndefined();
+    expect(adapter.setTextCalls).toEqual([]);
+  });
+
+  it('an async-rejecting resolve() is caught, logged, and does not block a SUBSEQUENT resolveAndApply from succeeding', async () => {
+    const { adapter, dynDefs, resolver } = setupResolver([]);
+    // Patch in a resolver whose .resolve() rejects on the FIRST call only.
+    let callCount = 0;
+    (resolver as unknown as { _resolver: { resolve(ctx: unknown): Promise<{ results: MockResult[] }> } })._resolver = {
+      resolve: async () => {
+        callCount += 1;
+        if (callCount === 1) throw new Error('synthetic transient LLM failure');
+        return { results: [{ wordIndex: 0, word: 'alpha', alternatives: ['alpha', 'beta'] }] };
+      },
+    };
+    adapter.pushText('alpha');
+    // First call: the rejection must not escape as an unhandled promise
+    // rejection / thrown error out of resolveAndApply.
+    await expect(resolver.resolveAndApply('alpha')).resolves.toBeUndefined();
+    expect(adapter.logs.some(l => l.level === 'error' && l.msg.includes('Resolver.resolve threw'))).toBe(true);
+    expect(dynDefs.get(0)).toBeUndefined();
+
+    // Second call: state (in-flight controller / generation counter) must
+    // not be left corrupted by the failed first call — a normal resolve
+    // afterwards still succeeds.
+    await resolver.resolveAndApply('alpha');
+    expect(dynDefs.get(0)).toBeDefined();
+    expect(dynDefs.get(0)!.alternatives).toEqual(['alpha', 'beta']);
+  });
+});
+
 describe('Resolver — same-text dedupe (regression: double LLM call on `_` trigger)', () => {
   // Regression for the May 2026 bug where OpenCode's Solid prompt
   // re-emitted onContentChange for the same buffer content multiple

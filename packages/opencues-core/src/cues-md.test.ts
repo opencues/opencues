@@ -901,3 +901,160 @@ describe('parseCuesMd: keywords: bracket-list syntax', () => {
     assert.strictEqual(cfg.promptConfig?.sources?.['thinking'].keywords, 'ultrathink, deep thinking');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Depth pass (2026-07): frontmatter/section parsers are hand-rolled
+// line-scanners, not a real YAML library. These tests pin the exact
+// "last wins" / "first colon splits" / "silently drop" contracts that
+// fall out of that implementation, since nothing previously exercised
+// duplicate keys, colon-bearing values, or very long values.
+// ---------------------------------------------------------------------------
+
+describe('parseCuesMd: frontmatter — duplicate keys, malformed lines, long/colon values', () => {
+  it('duplicate frontmatter keys: the LAST occurrence wins (plain overwrite in a for-loop)', () => {
+    const cfg = parseCuesMd('---\nname: first\nname: second\nname: third\n---\n');
+    assert.strictEqual(cfg.frontmatter.name, 'third');
+  });
+
+  it('duplicate "version:" keys: last wins, even when an earlier one was valid and the last is not', () => {
+    const cfg = parseCuesMd('---\nversion: 2\nversion: notanumber\n---\n');
+    // parseInt('notanumber') || undefined -> undefined overwrites the valid 2
+    assert.strictEqual(cfg.frontmatter.version, undefined);
+  });
+
+  it('a value containing extra colons (e.g. a URL) keeps everything after the FIRST colon', () => {
+    const cfg = parseCuesMd('---\ndomain: http://example.com:8080/path\n---\n');
+    assert.strictEqual(cfg.frontmatter.domain, 'http://example.com:8080/path');
+  });
+
+  it('a frontmatter line with no colon at all is silently skipped (not an error, not merged into the previous key)', () => {
+    const cfg = parseCuesMd('---\nname: test\nthis line has no colon\ndomain: claude-code\n---\n');
+    assert.strictEqual(cfg.frontmatter.name, 'test');
+    assert.strictEqual(cfg.frontmatter.domain, 'claude-code');
+  });
+
+  it('a comment line (# ...) inside frontmatter is skipped even between two real keys', () => {
+    const cfg = parseCuesMd('---\nname: test\n# this is a comment: with a colon\ndomain: claude-code\n---\n');
+    assert.strictEqual(cfg.frontmatter.name, 'test');
+    assert.strictEqual(cfg.frontmatter.domain, 'claude-code');
+  });
+
+  it('an unrecognized key is parsed but discarded (only the known key switch cases are kept)', () => {
+    const cfg = parseCuesMd('---\nname: test\ntotally-unknown-key: some value\n---\n');
+    assert.strictEqual(cfg.frontmatter.name, 'test');
+    assert.ok(!('totally-unknown-key' in cfg.frontmatter));
+  });
+
+  it('extremely long value (10k chars) round-trips without truncation', () => {
+    const longName = 'x'.repeat(10_000);
+    const cfg = parseCuesMd(`---\nname: ${longName}\n---\n`);
+    assert.strictEqual(cfg.frontmatter.name?.length, 10_000);
+    assert.strictEqual(cfg.frontmatter.name, longName);
+  });
+
+  it('duplicate ## sections: the LAST one\'s content wins (sections map is a plain overwrite)', () => {
+    const md = [
+      '## Notes',
+      'first version',
+      '## Notes',
+      'second version',
+    ].join('\n');
+    const cfg = parseCuesMd(md);
+    assert.strictEqual(cfg.sections['Notes'], 'second version');
+    assert.ok(!cfg.sections['Notes'].includes('first version'));
+  });
+
+  it('duplicate ## Prompt sections: parsePromptSection runs again and the LAST one wins (not merged)', () => {
+    const md = [
+      '## Prompt',
+      '### first',
+      'First prompt body.',
+      '## Prompt',
+      '### second',
+      'Second prompt body.',
+    ].join('\n');
+    const cfg = parseCuesMd(md);
+    assert.ok(!cfg.promptConfig?.sources?.['first'], 'earlier ## Prompt section should be fully discarded');
+    assert.ok(cfg.promptConfig?.sources?.['second']);
+  });
+
+  it('whitespace-only frontmatter block (only blank lines between the --- fences) behaves like empty frontmatter', () => {
+    const cfg = parseCuesMd('---\n\n   \n\n---\n## Ignore\nhello');
+    assert.deepStrictEqual(cfg.frontmatter, {});
+  });
+
+  it('a key with trailing whitespace before the colon is still recognized (key is trimmed)', () => {
+    const cfg = parseCuesMd('---\nname   : test\n---\n');
+    assert.strictEqual(cfg.frontmatter.name, 'test');
+  });
+
+  it('value with leading/trailing whitespace is trimmed', () => {
+    const cfg = parseCuesMd('---\nname:    test   \n---\n');
+    assert.strictEqual(cfg.frontmatter.name, 'test');
+  });
+
+  it('a value that is only whitespace after the colon leaves the field unset for name (empty string is still assigned since name has no truthiness guard)', () => {
+    const cfg = parseCuesMd('---\nname:    \n---\n');
+    assert.strictEqual(cfg.frontmatter.name, '');
+  });
+});
+
+describe('parseCuesMd: ### subsection YAML — duplicate keys, colon-bearing values', () => {
+  it('duplicate keys inside a ### YAML block: last wins (parseSimpleYamlFlat is also a plain overwrite)', () => {
+    const md = [
+      '## Prompt',
+      '### test',
+      '```yaml',
+      'priority: 10',
+      'priority: 90',
+      '```',
+      'Body.',
+    ].join('\n');
+    const cfg = parseCuesMd(md);
+    assert.strictEqual(cfg.promptConfig!.sources.test.priority, 90);
+  });
+
+  it('a "match:" regex value containing a literal colon (e.g. a time-like pattern) is preserved after the first colon', () => {
+    const md = [
+      '## Prompt',
+      '### test',
+      '```yaml',
+      'match: \\d{2}:\\d{2}',
+      '```',
+      'Body.',
+    ].join('\n');
+    const cfg = parseCuesMd(md);
+    assert.strictEqual(cfg.promptConfig!.sources.test.match, '\\d{2}:\\d{2}');
+  });
+
+  it('a YAML line with no colon inside the block is silently dropped (no key produced)', () => {
+    const md = [
+      '## Prompt',
+      '### test',
+      '```yaml',
+      'priority: 50',
+      'a stray line with no colon',
+      '```',
+      'Body.',
+    ].join('\n');
+    const cfg = parseCuesMd(md);
+    assert.strictEqual(cfg.promptConfig!.sources.test.priority, 50);
+    // No crash, no phantom field — only 'priority' plus the defaulted fields should exist.
+    assert.ok(!('a stray line with no colon' in cfg.promptConfig!.sources.test));
+  });
+
+  it('an empty value after the colon in a ### YAML block does not create the key (parseSimpleYamlFlat requires a truthy value)', () => {
+    const md = [
+      '## Prompt',
+      '### test',
+      '```yaml',
+      'classify: ',
+      'priority: 60',
+      '```',
+      'Body.',
+    ].join('\n');
+    const cfg = parseCuesMd(md);
+    assert.strictEqual(cfg.promptConfig!.sources.test.classify, undefined);
+    assert.strictEqual(cfg.promptConfig!.sources.test.priority, 60);
+  });
+});
