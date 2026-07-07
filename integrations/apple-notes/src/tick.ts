@@ -30,13 +30,17 @@ export function flushDelayMs(now: number, firstPendingAt: number): number {
   return Math.max(0, Math.min(settleDeadline, maxDeadline) - now);
 }
 export const ACTIVE_WINDOW_MS = 60_000;
-// Cadence tuning (2026-07-06): detection latency dominates perceived
-// end-to-end speed (resolve+LLM+write is ~2s once detected). One idle
-// enumeration costs ~100-190ms of osascript, so 4s idle is ~4% duty —
-// cheap for halving-plus the worst-case time-to-notice. Active polls
-// at 1s while the user is editing keep cue pickup near-immediate.
-export const POLL_ACTIVE_MS = 1_000;
-export const POLL_IDLE_MS = 4_000;
+// Cadence tuning (2026-07-07): match the standard OpenCues hosts.
+// Every event-driven host reacts to a keystroke immediately and the
+// resolver debounces 500ms — so on this polled channel the active poll
+// is 500ms, making detection latency ≈ the standard debounce. Idle
+// polls at 2s, the repo-wide "~2 seconds" hot-reload standard. Cost:
+// one idle enumeration is ~100-190ms of osascript (~8% duty at 2s);
+// active polling runs near back-to-back only while the user is
+// actually editing, and enumeration (~90ms bulk fetch at 335 notes)
+// self-throttles the loop — the sleep starts AFTER each tick's work.
+export const POLL_ACTIVE_MS = 500;
+export const POLL_IDLE_MS = 2_000;
 export const POLL_PAUSED_MS = 10_000;
 
 export interface TrackedNote {
@@ -307,7 +311,8 @@ export function applyPoll(
   return events;
 }
 
-/** Adaptive cadence: 2s while notes are changing, 10s idle or paused. */
+/** Adaptive cadence: 500ms while notes are changing (≈ the standard
+ *  resolver debounce), 2s idle (the hot-reload standard), 10s paused. */
 export function pollDelayMs(state: DaemonState, notesRunning: boolean, now: number): number {
   if (!notesRunning) return POLL_PAUSED_MS;
   return now - state.lastActivityAt < ACTIVE_WINDOW_MS ? POLL_ACTIVE_MS : POLL_IDLE_MS;
