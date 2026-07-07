@@ -41,7 +41,6 @@ docs/
 │                               # live numbers + runnable bench code live in tests/benchmarks/ instead
 ├── launch/                    # pre-launch runbooks (e.g. npm-name handover) — see root CLAUDE.md § Pre-launch
 ├── maintainers/                # maintainer-only docs (e.g. PUBLISHING.md)
-├── blog/, blog-resources/     # content-creation working area — separate from reference docs, out of scope here
 ├── guides/                    # task-oriented how-tos — see guides/README.md
 ├── architecture/              # implementation reference docs — see architecture/README.md
 └── features/                  # feature concept reference — see features/README.md

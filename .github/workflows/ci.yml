@@ -16,7 +16,6 @@ on:
       - "**.md"
       - "docs/**"
       - "spec/**"
-      - "blog-resources/**"
       - "LICENSE"
   pull_request:
     branches: [master]
@@ -24,7 +23,6 @@ on:
       - "**.md"
       - "docs/**"
       - "spec/**"
-      - "blog-resources/**"
       - "LICENSE"
 
 # Cancel older runs of the same branch when a new push lands.
