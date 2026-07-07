@@ -114,6 +114,16 @@ export interface ResolverOptions {
    * calls (1+ s) on every `volume _` / `brightness _` / `weather _`.
    */
   readonly keywordBoundSlotIndices?: (text: string) => readonly number[];
+  /**
+   * Modal-override gate. When this returns true for the incoming text,
+   * the resolver skips the entire dispatch (no cue/blank/LLM work) for
+   * that change — pending debounce is cancelled too. Wired by boots
+   * that mount a modal module (KataCoach today): while a kata
+   * is active, tutorial mode overrides all normal cue/blank behaviour,
+   * and control phrases (`start kata 1 _`) must never race
+   * fluid-blank's `_` fast-path. Omit for normal behaviour.
+   */
+  readonly externallySuppressed?: (text: string) => boolean;
 }
 
 interface CuesCoreLike {
@@ -852,6 +862,9 @@ export class Resolver {
       // don't implement supportsCycling default to true — every
       // pre-existing host has cycling.
       supportsCycling: this.adapter.supportsCycling?.() ?? true,
+      // Host id — host-scopes the config-intent classifier's feature list
+      // (chrome-only FEATURES like statusbar-position stay off other hosts).
+      hostName: this.adapter.hostName,
       // Host-specific in-buffer message shown when NO LLM source could
       // be built (zero working keys). Hosts pass this via ResolverOptions
       // — chrome sets "open the extension popup", native hosts (CC/OC)
@@ -928,6 +941,15 @@ export class Resolver {
   private onTextChange(e: TextChangeEvent): void {
     if (e.source !== 'user') return; // ignore our own setText echoes
     if (!this._resolver) return;
+
+    // Modal-override gate (tutorial mode). Suppress the whole dispatch
+    // AND any pending debounce so no cue/blank source fires against a
+    // buffer the modal module owns.
+    if (this.options.externallySuppressed?.(e.text)) {
+      if (this._debounceTimer) { clearTimeout(this._debounceTimer); this._debounceTimer = null; }
+      this.adapter.log('debug', 'Resolver: externally suppressed (modal mode) — skipping dispatch');
+      return;
+    }
 
     // If OPENCUES.md flags changed since last build, rebuild before
     // dispatching. ConfigLoader hot-reloads opencuesState on text-change
@@ -1284,24 +1306,19 @@ export class Resolver {
           ? (this.adapter.getAmbientContext?.() ?? undefined)
           : undefined,
         // Optional identity context (identity-context-mode personal data). Gated by
-        // `identity-context-mode` in OPENCUES.md (`off` by default — when
-        // `off` we don't even forward the parsed catalog, so a future
-        // misconfigured source can't accidentally read it). When on,
-        // ship the catalog + mode through to FluidBlank / TransformBlank;
-        // no other source consumes this field today by design.
+        // `identity-context-mode` in OPENCUES.md (when `off` we don't
+        // even forward the parsed catalog, so a future misconfigured
+        // source can't accidentally read it).
         //
-        // ALSO skipped via `noBlankContextConsumer` for the same reason as
-        // `blankContext` below: the two consumer sources (FluidBlank,
-        // TransformBlank) both cede when every `_` is claimed by a
-        // keyword-bound BlankFill slot (or when there's no `_` at all),
-        // so forwarding the catalog would just pass it down to be
-        // discarded. Symmetric with the blank-context gate; the
-        // identity catalog is already cached in-memory at the
-        // ConfigLoader so the cost saving is small (no IO), but the
-        // payload-size and structural-symmetry win is worth the
-        // 1-line gate.
+        // NO `noBlankContextConsumer` gate here (dropped for the buffer-
+        // dehydration feature): in `safe` mode EVERY LLM-bound source
+        // (word-cues, sentence-cues, config-intent, config-source raw)
+        // now consumes the catalog to dehydrate its outbound text — not
+        // just FluidBlank/TransformBlank. The identity catalog is an
+        // in-memory Map at the ConfigLoader (no IO), so forwarding it
+        // unconditionally costs nothing. blankContext below KEEPS the
+        // gate — that one is a network/script fetch.
         identityContext: this.configLoader.opencuesState.identityContextMode !== 'off'
-          && !noBlankContextConsumer(cleanWords, this.options.keywordBoundSlotIndices?.(text) ?? [])
           ? {
               fields: this.configLoader.identity.fields,
               catalog: this.configLoader.identity.catalog,

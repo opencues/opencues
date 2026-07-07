@@ -27,6 +27,9 @@ export default defineConfig({
       'src/model-thinking.test.ts',
       'src/conformance.test.ts',
       'src/sources/fluid-blank-error-substitute.test.ts',
+      'src/sources/missing-key-fallback-source.test.ts',
+      'src/segment.test.ts',
+      'src/sources/blank-source.test.ts',
     ],
     // Never discover into git worktrees (`.claude/worktrees/`) — stale repo
     // copies with unbuilt dist; their test copies pollute the run.

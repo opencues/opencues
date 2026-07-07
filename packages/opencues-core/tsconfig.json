@@ -36,6 +36,9 @@
     "src/feature-registry-menu.drift.test.ts",
     "src/llm-provider.drift.test.ts",
     "src/conformance.test.ts",
-    "src/sources/fluid-blank-error-substitute.test.ts"
+    "src/sources/fluid-blank-error-substitute.test.ts",
+    "src/segment.test.ts",
+    "src/sources/blank-source.test.ts",
+    "src/sources/missing-key-fallback-source.test.ts"
   ]
 }

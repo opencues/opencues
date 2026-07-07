@@ -108,6 +108,6 @@ function printHelp() {
   console.log('opencues which');
   console.log('');
   console.log('Print every path OpenCues touches: configuration search paths, install dirs');
-  console.log('per host, runtime IPC files, build artefacts. Each path shows ✓ if present,');
-  console.log('- if not. Useful for "is this thing actually installed?" diagnostics.');
+  console.log('per host, runtime IPC files, build artefacts. Each path shows a green ●');
+  console.log('if present, gray if not. Useful for "is this thing actually installed?" diagnostics.');
 }

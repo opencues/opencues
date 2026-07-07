@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opencues.org/schemas/kata.schema.json",
+  "title": "OpenCues KATA.md frontmatter",
+  "description": "JSON Schema for the YAML frontmatter of a KATA.md file. Spec: opencues/0.5-alpha. See /spec/kata-spec.md. All frontmatter keys are optional; a KATA.md with no frontmatter is valid and derives name/title from the folder name. The step sections (## headings) live in the markdown body and are not schema'd here — the body is opaque coach-prompt material per the spec.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+      "description": "Stable identifier. Defaults to the folder name when omitted. Used for `start kata <name> _` invocation and as a `next:` target."
+    },
+    "id": {
+      "oneOf": [
+        { "type": "string" },
+        { "type": "number" }
+      ],
+      "description": "Optional invocation shorthand (`start kata 3 _`). A leading `#` is stripped. Numeric or string; no ordering is implied."
+    },
+    "title": {
+      "type": "string",
+      "description": "Human-readable lesson title. Defaults to name when omitted."
+    },
+    "next": {
+      "type": "string",
+      "description": "Curriculum link — the name or id of the kata to suggest on completion. A dangling link degrades silently."
+    },
+    "spec": {
+      "type": "string",
+      "pattern": "^opencues/\\d+\\.\\d+(-[a-z]+)?$",
+      "default": "opencues/0.1-alpha",
+      "description": "Optional spec-version pin. KATA.md is new in 0.5-alpha; a 0.1-alpha reader ignores the katas/ directory entirely, so omitting spec: is safe."
+    }
+  },
+  "additionalProperties": true
+}

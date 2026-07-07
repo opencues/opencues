@@ -9,38 +9,41 @@
  * sentinel blank ships and these tests later regress, the audit table
  * row #24 ("Sentinel-write via in-editor blank") is invalidated.
  *
- * Vitest harness (matches the rest of `runtime`'s test setup).
+ * `loadUserBlank` is mocked (returns a truthy stub module) so the
+ * collision path runs without a real isolated-vm isolate — matching
+ * `registry.test.ts`. Mocking is REQUIRED, not just convenient: runtime
+ * vitest runs with `isolate: false` + `pool: 'forks'`, so a sibling
+ * file's `vi.mock('./node-loader')` leaks into this file's fork. If this
+ * file relied on the REAL loader it would crash whenever it shares a
+ * fork with `registry.test.ts` (the loader returns the leaked mock's
+ * reset value — undefined — and `wrapUserBlankAsBlank(undefined)` throws).
+ * Owning the mock here makes the outcome order-independent.
  */
 
-import { afterAll, describe, expect, it } from 'vitest';
-import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
+import type { LoadedUserBlank, loadUserBlank } from './node-loader';
+import type { UserBlankModule } from './types';
 import { buildUserBlankRegistry, type BlankConfigLike } from './registry';
 
-// The collision check at registry.ts:145 fires only when a PRIOR
-// entry already landed in the out map — which requires the first
-// entry's `impl:` file to actually load. To exercise the collision
-// path realistically (matching production where real BLANK.md files
-// reference real on-disk modules) we write valid blank stubs to a
-// tmpdir and tear them down once the suite finishes.
-
-const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'oc-shadow-'));
-afterAll(() => fs.rmSync(TMP, { recursive: true, force: true }));
-
-const BLANK_STUB = `
-module.exports = {
-  default: {
+// The isolate-backed loader is INJECTED (loadUserBlankImpl), not mocked at
+// the module level — see registry.test.ts for the isolate:false/forks
+// rationale. Every load resolves to a truthy stub so the first-wins
+// collision path is exercised; the collision check runs BEFORE the load,
+// so the module's content is irrelevant, only that the load succeeds.
+function fakeLoaded(mod: Partial<UserBlankModule>): LoadedUserBlank {
+  return {
+    module: mod as UserBlankModule,
+    folder: '/fake',
     capabilities: {},
-    async get() { return null; },
-  },
-};
-`;
+    dispose: () => {},
+  };
+}
 
-function writeStub(name) {
-  const file = path.join(TMP, `${name}-blank.js`);
-  fs.writeFileSync(file, BLANK_STUB, 'utf8');
-  return file;
+const okLoad = vi.fn<typeof loadUserBlank>(() => fakeLoaded({ async get() { return null; } }));
+
+/** buildUserBlankRegistry with a succeeding fake loader pre-wired. */
+function build(configs: readonly BlankConfigLike[], log: (lvl: string, msg: string) => void) {
+  return buildUserBlankRegistry(configs, { loadUserBlankImpl: okLoad, log });
 }
 
 describe('User-blank registry — pack-shadow protection for sensitive names', () => {
@@ -55,15 +58,11 @@ describe('User-blank registry — pack-shadow protection for sensitive names', (
     // first-wins gate within the user-blank registry itself, which
     // is the second layer of defence.
     const logs: Array<{ lvl: string; msg: string }> = [];
-    const firstImpl = writeStub('first-sentinel');
-    const hostileImpl = writeStub('hostile-sentinel');
     const configs: BlankConfigLike[] = [
-      { name: 'sentinel', impl: firstImpl },
-      { name: 'sentinel', impl: hostileImpl },
+      { name: 'sentinel', impl: '/abs/first-sentinel-blank.js' },
+      { name: 'sentinel', impl: '/abs/hostile-sentinel-blank.js' },
     ];
-    const registry = buildUserBlankRegistry(configs, {
-      log: (lvl, msg) => logs.push({ lvl, msg }),
-    });
+    const registry = build(configs, (lvl, msg) => logs.push({ lvl, msg }));
     // Only the FIRST registration survived.
     expect(registry.size).toBe(1);
     // Loud warn surfaced for the second.
@@ -78,15 +77,11 @@ describe('User-blank registry — pack-shadow protection for sensitive names', (
     // Same defence — pinned here for the existing built-in to ensure
     // we don't regress the precedent the sentinel test relies on.
     const logs: Array<{ lvl: string; msg: string }> = [];
-    const firstImpl = writeStub('first-opencues');
-    const typosquatImpl = writeStub('typosquat-opencues');
     const configs: BlankConfigLike[] = [
-      { name: 'opencues', impl: firstImpl },
-      { name: 'opencues', impl: typosquatImpl },
+      { name: 'opencues', impl: '/abs/first-opencues-blank.js' },
+      { name: 'opencues', impl: '/abs/typosquat-opencues-blank.js' },
     ];
-    const registry = buildUserBlankRegistry(configs, {
-      log: (lvl, msg) => logs.push({ lvl, msg }),
-    });
+    const registry = build(configs, (lvl, msg) => logs.push({ lvl, msg }));
     expect(registry.size).toBe(1);
     const collisionWarn = logs.find(l => l.msg.includes('name collision') && l.msg.includes('opencues'));
     expect(collisionWarn).toBeTruthy();
@@ -96,13 +91,11 @@ describe('User-blank registry — pack-shadow protection for sensitive names', (
   it('different names load independently (no false-positive collision)', () => {
     const logs: Array<{ lvl: string; msg: string }> = [];
     const configs: BlankConfigLike[] = [
-      { name: 'sentinel', impl: writeStub('indep-sentinel') },
-      { name: 'weather',  impl: writeStub('indep-weather') },
-      { name: 'volume',   impl: writeStub('indep-volume') },
+      { name: 'sentinel', impl: '/abs/indep-sentinel-blank.js' },
+      { name: 'weather',  impl: '/abs/indep-weather-blank.js' },
+      { name: 'volume',   impl: '/abs/indep-volume-blank.js' },
     ];
-    const registry = buildUserBlankRegistry(configs, {
-      log: (lvl, msg) => logs.push({ lvl, msg }),
-    });
+    const registry = build(configs, (lvl, msg) => logs.push({ lvl, msg }));
     expect(registry.size).toBe(3);
     const collisionWarn = logs.find(l => l.msg.includes('name collision'));
     expect(collisionWarn).toBeUndefined();
@@ -118,12 +111,10 @@ describe('User-blank registry — pack-shadow protection for sensitive names', (
     // before install.
     const logs: Array<{ lvl: string; msg: string }> = [];
     const configs: BlankConfigLike[] = [
-      { name: 'sentinel', impl: writeStub('lower-case-sentinel') },
-      { name: 'Sentinel', impl: writeStub('mixed-case-sentinel') },
+      { name: 'sentinel', impl: '/abs/lower-case-sentinel-blank.js' },
+      { name: 'Sentinel', impl: '/abs/mixed-case-sentinel-blank.js' },
     ];
-    const registry = buildUserBlankRegistry(configs, {
-      log: (lvl, msg) => logs.push({ lvl, msg }),
-    });
+    const registry = build(configs, (lvl, msg) => logs.push({ lvl, msg }));
     expect(registry.size).toBe(2);
     const collisionWarn = logs.find(l => l.msg.includes('name collision'));
     expect(collisionWarn).toBeUndefined();

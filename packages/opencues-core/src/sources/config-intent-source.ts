@@ -63,6 +63,8 @@ import { blankClaimsUnderscore } from '../blank-shapes';
 import { BlankConfig } from '../cues-md';
 import { describeLLMCall, dispatchChat, getProvider, listProviders, type ProviderAdapter } from '../llm-provider';
 import { classifyLlmError, type FluidBlankErrorReason } from './fluid-blank-source';
+import { getDehydrator, type CompiledDehydrator } from '../dehydrate';
+import { postProcessContext } from '../identity-context';
 import {
   FEATURES,
   getCyclableValues,
@@ -93,9 +95,20 @@ function renderFeatureLine(scalar: string, values: { id: string; description: st
   return `  * ${scalar} (${menuTip})\n${valueLines}`;
 }
 
-const FEATURE_REGISTRY_BLOCK: string = FEATURES
-  .map(f => renderFeatureLine(f.scalar, [...getCyclableValues(f)], f.menuTip ?? f.description))
-  .join('\n');
+// Host-scoped features (e.g. chrome's `statusbar-position`) only appear
+// in the classifier's choice space on the host that owns them — otherwise
+// a CLI host's fluid-config prompt would list a chrome-only setting it
+// can't act on. `hostName` undefined = the universal set (host-scoped
+// features EXCLUDED), which is what the exported default SYSTEM_PROMPT
+// uses; each ConfigIntentSource then swaps in its own host's block.
+function buildFeatureBlock(hostName?: string): string {
+  return FEATURES
+    .filter(f => !f.hostScope || (hostName != null && f.hostScope.includes(hostName)))
+    .map(f => renderFeatureLine(f.scalar, [...getCyclableValues(f)], f.menuTip ?? f.description))
+    .join('\n');
+}
+
+const FEATURE_REGISTRY_BLOCK: string = buildFeatureBlock();
 
 // Build a per-provider listing of canonical model ids (knownModels +
 // defaultModel as the first entry) so the classifier knows what model
@@ -752,12 +765,18 @@ export function parseConfigIntentOutput(raw: string): ConfigIntentVerdict {
  *
  * NoneVerdict always validates (caller cedes).
  */
-export function validateAgainstRegistry(verdict: ConfigIntentVerdict): { ok: boolean; reason?: string } {
+export function validateAgainstRegistry(verdict: ConfigIntentVerdict, hostName?: string): { ok: boolean; reason?: string } {
   if (verdict.kind === 'none') return { ok: true };
 
   if (verdict.kind === 'setting') {
     const feature = FEATURES.find(f => f.scalar === verdict.setting);
     if (!feature) return { ok: false, reason: `unknown setting '${verdict.setting}'` };
+    // Host-scope guard (defense in depth): a host-scoped setting must not
+    // be applied on a host outside its scope — the classifier prompt
+    // already omits it there, but reject it if the LLM emits it anyway.
+    if (feature.hostScope && (hostName == null || !feature.hostScope.includes(hostName))) {
+      return { ok: false, reason: `setting '${verdict.setting}' is scoped to [${feature.hostScope.join(', ')}], not host '${hostName ?? '?'}'` };
+    }
     const allowed = [...getCyclableValues(feature)].map(v => v.id);
     if (!allowed.includes(verdict.value)) {
       return { ok: false, reason: `value '${verdict.value}' is not cyclable for '${verdict.setting}' (allowed: ${allowed.join(', ')})` };
@@ -835,6 +854,14 @@ export interface ConfigIntentSourceConfig {
    * boot-common.ts in native hosts.
    */
   formatErrorAsSubstitute?: (reason: FluidBlankErrorReason, err?: Error, ctx?: { provider?: string; model?: string; endpoint?: string }) => string;
+  /**
+   * Host id (chrome / claude-code / opencode / …). When set, host-scoped
+   * FEATURES (those with a `hostScope`) are included in the classifier's
+   * choice space ONLY on a matching host — a CLI host never sees chrome's
+   * `statusbar-position`, etc. Omitted = universal set (host-scoped
+   * features excluded). Runtime wires `adapter.hostName` here.
+   */
+  hostName?: string;
 }
 
 /**
@@ -860,7 +887,16 @@ export interface ConfigIntentSourceConfig {
  * exact same sentence/line boundary — they can't drift.
  */
 export function summonPhraseStart(text: string): number {
-  return segmentStart(text);
+  // Scan only up to the command's `_` (the last one), NOT the whole buffer.
+  // A contenteditable commonly keeps trailing newlines after the `_`
+  // (`statusbar bottom _\n\n\n\n`); `segmentStart` treats `\n` as a segment
+  // boundary, so scanning the whole buffer put the start at the LAST
+  // trailing newline = buffer end. That made the wipe span empty, so the
+  // selector-satellite confirmation replaced nothing and the raw query was
+  // left in the field (live-reported on chrome). Passing the `_`'s index
+  // makes boundaries after it invisible — segment.ts § pos.
+  const u = text.lastIndexOf('_');
+  return segmentStart(text, u >= 0 ? u : text.length);
 }
 
 export class ConfigIntentSource implements CueSource {
@@ -881,6 +917,10 @@ export class ConfigIntentSource implements CueSource {
   private log: (msg: string) => void;
   private emit: (event: ConfigIntentEvent) => void;
   private formatErrorAsSubstitute: ((reason: FluidBlankErrorReason, err?: Error, ctx?: { provider?: string; model?: string; endpoint?: string }) => string) | undefined;
+  /** Host id (chrome/claude-code/…), used to host-scope the feature list. */
+  private hostName: string | undefined;
+  /** System prompt with the host-scoped feature block swapped in. */
+  private systemPrompt: string;
 
   /**
    * Per-input cache of raw LLM responses. ConfigIntent is a
@@ -927,6 +967,14 @@ export class ConfigIntentSource implements CueSource {
     this.log = config.log ?? (() => { /* silent */ });
     this.emit = config.onEvent ?? (() => { /* silent */ });
     this.formatErrorAsSubstitute = config.formatErrorAsSubstitute;
+    this.hostName = config.hostName;
+    // Swap the universal feature block for this host's — includes any
+    // host-scoped features (e.g. chrome's statusbar-position) ONLY on the
+    // owning host. No hostName → the universal default (host-scoped
+    // excluded), byte-identical to the exported SYSTEM_PROMPT.
+    this.systemPrompt = config.hostName
+      ? SYSTEM_PROMPT.replace(FEATURE_REGISTRY_BLOCK, buildFeatureBlock(config.hostName))
+      : SYSTEM_PROMPT;
   }
 
   supports(context: CueContext): boolean {
@@ -980,7 +1028,24 @@ export class ConfigIntentSource implements CueSource {
     // the NONE path is never slowed by it. `.catch` keeps an early-cede /
     // error path from leaving a floating rejection (the method itself
     // never throws — regex floor on any failure).
-    const spanStartPromise = this.resolveCommandSpanStart(context.text, context.signal);
+    // DEHYDRATION (outbound PII scrub) — in identity-context `safe`
+    // mode, catalog values in the buffer ship as [TOKEN]s. Input-only:
+    // the classifier's output is validated against the FEATURES
+    // registry, so no PII-bearing value could validly round-trip; the
+    // summon call hydrates its echoed phrase before any offset math
+    // (resolveCommandSpanStart). All spans stay computed on the
+    // ORIGINAL text.
+    const idCtx = context.identityContext;
+    const dehydrator = idCtx && idCtx.mode === 'safe' && idCtx.catalog.size > 0
+      ? getDehydrator(idCtx.catalog, (m) => this.log(`ConfigIntent: ${m}`))
+      : undefined;
+    const dText = dehydrator?.dehydrate(context.text);
+    const outboundText = dText?.changed ? dText.text : context.text;
+    if (dText?.changed) {
+      this.log(`ConfigIntent: dehydrated ${dText.spans.length} value(s) → tokens (outbound PII scrub)`);
+    }
+
+    const spanStartPromise = this.resolveCommandSpanStart(context.text, context.signal, dehydrator, idCtx?.catalog);
     spanStartPromise.catch(() => {});
 
     // VARIANT POOL — cache raw LLM response. Re-run parse/validate/
@@ -1000,7 +1065,7 @@ export class ConfigIntentSource implements CueSource {
       // is tight because the classifier output is tiny (VERDICT,
       // SETTING, VALUE, CONFIDENCE) — bumping helps only if the
       // model wraps the output in extra prose.
-      raw = await this.callLLM(SYSTEM_PROMPT, `INPUT: ${context.text}`, this.maxTokensOverride ?? 128, context.signal);
+      raw = await this.callLLM(this.systemPrompt, `INPUT: ${outboundText}`, this.maxTokensOverride ?? 128, context.signal);
       this._recordFreshResponse(cacheKey, raw);
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
@@ -1041,7 +1106,7 @@ export class ConfigIntentSource implements CueSource {
       return { results: [], timing: Date.now() - t0, model: this.model };
     }
 
-    const check = validateAgainstRegistry(verdict);
+    const check = validateAgainstRegistry(verdict, this.hostName);
     if (!check.ok) {
       this.log(`ConfigIntent: rejecting invalid verdict — ${check.reason}; raw="${raw.replace(/\n/g, ' / ').slice(0, 200)}"`);
       this.emit({ type: 'bailed', reason: `invalid-verdict: ${check.reason}`, latencyMs: Date.now() - t0 });
@@ -1195,7 +1260,12 @@ export class ConfigIntentSource implements CueSource {
    *      overlaps rather than stacks. Never throws (regex floor on any
    *      failure), memoised.
    */
-  private async resolveCommandSpanStart(text: string, signal?: AbortSignal): Promise<number> {
+  private async resolveCommandSpanStart(
+    text: string,
+    signal?: AbortSignal,
+    dehydrator?: CompiledDehydrator,
+    catalog?: ReadonlyMap<string, string>,
+  ): Promise<number> {
     const cached = ConfigIntentSource._summonStartCache.get(text);
     if (cached !== undefined) {
       this.log(`ConfigIntent: summon-span cache HIT (start=${cached})`);
@@ -1211,8 +1281,20 @@ export class ConfigIntentSource implements CueSource {
       // Ambiguous (start === 0): the model disambiguates bare-command vs
       // non-punctuated prior content.
       try {
-        const raw = await this.callLLM(SUMMON_PROMPT, `INPUT: ${text}`, this.maxTokensOverride ?? 96, signal);
-        const summon = parseSummonOutput(raw);
+        // Outbound is dehydrated (PII scrub); the model's echoed summon
+        // phrase is then HYDRATED back to value space BEFORE any offset
+        // math — resolveSummonStart's `endsWith` runs against the
+        // original text. If hydration can't restore exact bytes (the
+        // documented case-drift residual), `endsWith` misses and the
+        // regex floor takes over — safe degradation, never a wrong span.
+        const dOut = dehydrator?.dehydrate(text);
+        const raw = await this.callLLM(SUMMON_PROMPT, `INPUT: ${dOut?.changed ? dOut.text : text}`, this.maxTokensOverride ?? 96, signal);
+        let summon = parseSummonOutput(raw);
+        if (summon && catalog && catalog.size > 0) {
+          try {
+            summon = postProcessContext(summon, { catalog, preserveUnknown: true }).output;
+          } catch { /* keep raw summon — regex floor covers a miss */ }
+        }
         start = resolveSummonStart(text, summon);
         const via = summon && text.endsWith(summon.trim()) && start === text.length - summon.trim().length ? 'model' : 'regex-floor';
         this.log(`ConfigIntent: summon-span via ${via} (start=${start}, summon=${JSON.stringify(summon)})`);

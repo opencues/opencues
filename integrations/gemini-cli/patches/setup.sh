@@ -47,7 +47,7 @@ run_step() {
   if [[ "$VERBOSE" = "1" ]]; then
     printf '  ▸ %s\n' "$label"
     if "$@"; then
-      printf '  ✓ %s\n' "$label"
+      printf '  [32m●[0m %s\n' "$label"
     else
       local rc=$?
       printf '  ✗ %s (exit %d)\n' "$label" "$rc" >&2
@@ -56,7 +56,7 @@ run_step() {
   else
     printf '  ▸ %s' "$label"
     if "$@" >>"$LOG" 2>&1; then
-      printf ' ✓\n'
+      printf ' [32m●[0m\n'
     else
       local rc=$?
       printf ' ✗\n' >&2

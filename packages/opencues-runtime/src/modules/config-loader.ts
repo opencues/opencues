@@ -701,27 +701,36 @@ export class ConfigLoader {
     const newSettings = new Map(cur.settings);
     newSettings.set(key, value);
     const get = (k: string, fallback: string): string => newSettings.get(k) ?? fallback;
+    // Identity/blank context modes MUST mirror parseOpenCuesMd's
+    // two-tier semantics (ABSENT key → `safe`, explicit invalid →
+    // `off`). This inline re-parse used to default both to `off`,
+    // which meant any satellite scalar cycle on a config WITHOUT the
+    // explicit key silently downgraded the in-memory mode — since
+    // buffer dehydration rides `safe`, that drift would have turned
+    // the outbound PII scrub off without a trace. Pinned by
+    // config-loader.test.ts ("applyOpenCuesScalar preserves
+    // identity-context two-tier defaults").
+    const parseContextMode = (k: string): 'off' | 'safe' | 'raw' => {
+      const hasKey = newSettings.has(k);
+      const v = get(k, 'safe').toLowerCase();
+      return v === 'safe' ? 'safe'
+        : v === 'raw' ? 'raw'
+        : v === 'off' ? 'off'
+        : hasKey ? 'off'   // explicit but unrecognised → fail-closed
+        : 'safe';          // truly absent → the shipped-seed default
+    };
+    const identityContextMode = parseContextMode('identity-context-mode');
+    let blankContextMode = parseContextMode('blank-context-mode');
+    // raw composition rule: silently downgrade if identity not raw too.
+    if (blankContextMode === 'raw' && identityContextMode !== 'raw') blankContextMode = 'safe';
     const next = {
       voiceMode: (get('voice-mode', 'active') === 'inactive' ? 'inactive' : 'active') as 'inactive' | 'active',
       debugMode: (get('debug-mode', 'off') === 'on' ? 'on' : 'off') as 'on' | 'off',
       tipsMode: (get('tips-mode', 'on') === 'off' ? 'off' : 'on') as 'off' | 'on',
       cursorNavigate: (get('cursor-navigate', 'inactive') === 'active' ? 'active' : 'inactive') as 'active' | 'inactive',
       ambientContextMode: (get('ambient-context-mode', 'off') === 'on' ? 'on' : 'off') as 'on' | 'off',
-      identityContextMode: ((): 'off' | 'safe' | 'raw' => {
-        const v = get('identity-context-mode', 'off').toLowerCase();
-        return v === 'safe' ? 'safe' : v === 'raw' ? 'raw' : 'off';
-      })(),
-      blankContextMode: ((): 'off' | 'safe' | 'raw' => {
-        const v = get('blank-context-mode', 'off').toLowerCase();
-        const candidate: 'off' | 'safe' | 'raw' =
-          v === 'safe' ? 'safe' : v === 'raw' ? 'raw' : 'off';
-        // raw composition rule: silently downgrade if identity not raw too.
-        if (candidate === 'raw') {
-          const sentRaw = get('identity-context-mode', 'off').toLowerCase();
-          if (sentRaw !== 'raw') return 'safe';
-        }
-        return candidate;
-      })(),
+      identityContextMode,
+      blankContextMode,
       sentinelLanguage: (get('sentinel-language', 'bare').toLowerCase() === 'typed' ? 'typed' : 'bare') as 'bare' | 'typed',
       aiCallableAllow: (get('ai-callable-allow', '') || get('param-safe-allow', '')) // LEGACY-NAME-ALLOW: pre-rename scalar
         .split(',').map(s => s.trim()).filter(s => s && !/^-+$/.test(s)),

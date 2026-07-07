@@ -14,6 +14,7 @@ conformance/
 │   ├── cue/<name>.md               ← valid CUE.md examples
 │   ├── blank/<name>.md             ← valid BLANK.md examples
 │   ├── auditor/<name>.md           ← valid AUDITOR.md examples
+│   ├── kata/<name>.md              ← valid KATA.md examples (0.5-alpha)
 │   └── masters/<MASTER>.md         ← valid CUES.md / BLANKS.md / AUDITORS.md / OPENCUES.md
 │
 ├── invalid/                        ← MUST be rejected by any conformant runtime
@@ -22,7 +23,9 @@ conformance/
 │   ├── blank/<name>.md             ← invalid BLANK.md examples
 │   ├── blank/<name>.expected.json
 │   ├── auditor/<name>.md
-│   └── auditor/<name>.expected.json
+│   ├── auditor/<name>.expected.json
+│   ├── kata/<name>.md              ← invalid KATA.md examples (0.5-alpha)
+│   └── kata/<name>.expected.json
 │
 ├── wire/
 │   ├── README.md
@@ -135,6 +138,33 @@ The `expected` array is the structured output your parser MUST produce. The orig
 
 The `sources` list declares the cue sources in scope (frontmatter-equivalent — the body doesn't matter for routing). The `expectations` list pairs an input word with the source `name:` that MUST claim it.
 
+## Kata fixtures
+
+New in `0.5-alpha` ([`../kata-spec.md`](../kata-spec.md)). The `KATA.md`
+surface is a **format** contract — a conformant parser MUST accept every
+`valid/kata/*.md` (parse to a usable kata with ≥1 step) and reject every
+`invalid/kata/*.md` (treat as absent), raising the rule named in the
+sibling `.expected.json`.
+
+Unlike cue/blank/auditor fixtures, the KATA.md parser lives in
+`@opencues/runtime` (`parseKataMd`), not `@opencues/core` — so the
+reference runner for this surface is
+[`packages/opencues-runtime/src/modules/kata.test.ts`](../../packages/opencues-runtime/src/modules/kata.test.ts)
+§ "spec conformance — KATA.md fixtures", which discovers this tree
+structurally. A second runtime exercises them the same way: accept
+`valid/`, reject `invalid/`.
+
+Rule codes used by the invalid fixtures:
+
+| Rule | Meaning |
+|---|---|
+| `kata-no-steps` | The file declares no `## ` step section. A kata with zero steps is not usable and MUST be treated as absent. |
+
+The `.cues/katas/` surface is discovered per the normal search path, so
+kata fixtures are format-only — there is no kata routing or wire-format
+contract (the coaching runtime is reference-impl, not standard; see
+`kata-spec.md` § Out of scope).
+
 ## Out of scope for this suite
 
 - **Cycling behaviour** — what happens after cycle Up/Down on a substituted alt. Cycling is OpenCues-runtime-specific; the standard only specifies the alternatives invariant.
@@ -172,10 +202,19 @@ still `0.1-alpha` flat. **Coverage gap** until the fork lands:
 - `routing/` — mode-gate composition (the rule that
   `blank-context-mode: raw` MUST downgrade to `safe` when
   `identity-context-mode` is NOT `raw`).
+- `dehydration/` (`0.5-alpha` surface) — buffer-text → dehydrated-text
+  pairs pinning the matching floor (case-insensitive, word-boundary,
+  longest-value-first, CJK adjacency) + round-trip pairs pinning the
+  hydrate-restores-original invariant and the both-present
+  preserve-wins precedence. See `identity-context-spec.md`
+  § Dehydration.
 
-A second implementation targeting `0.2-alpha` should treat the
-spec text in `identity-context-spec.md` and `blank-spec.md`
+A second implementation targeting `0.2-alpha` or later should treat
+the spec text in `identity-context-spec.md` and `blank-spec.md`
 § Sentinel aspects as authoritative until these fixtures land.
+(The reference implementation's executable equivalents:
+`packages/opencues-core/src/dehydrate.test.ts` +
+`sources/dehydration-outbound.test.ts`.)
 
 ## Runner template
 
@@ -239,10 +278,12 @@ The 0.1-alpha suite is **seed**, not exhaustive. Coverage:
 | Valid CUE.md | 5 | Static, LLM, combined, full-frontmatter, groups-synonyms |
 | Valid BLANK.md | 5 | stepValues, blankScript, impl, full-frontmatter, selector-satellite |
 | Valid AUDITOR.md | 2 | Minimal, full-frontmatter |
+| Valid KATA.md | 2 | Full-frontmatter, minimal (no frontmatter) |
 | Valid masters | 4 | CUES.md, BLANKS.md, AUDITORS.md, OPENCUES.md |
 | Invalid CUE.md | 5 | Missing name, missing trigger, empty body, unknown host, spec-too-new |
 | Invalid BLANK.md | 5 | Missing name, missing keywords, no binding, multiple bindings, script missing |
 | Invalid AUDITOR.md | 2 | Missing name, empty body |
+| Invalid KATA.md | 1 | No steps |
 | Wire fixtures | 10 | Single/multi-line, whitespace tolerance, numeric skip, `=` synonym |
 | Routing scenarios | 4 | Per-word dispatch, priority tiebreak, catch-all fallback, blank shapes |
 

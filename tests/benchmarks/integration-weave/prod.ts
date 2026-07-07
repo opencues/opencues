@@ -93,7 +93,7 @@ async function main() {
 
   let ok = 0;
   for (const r of results) {
-    const mark = r.survived ? '✓' : '✗';
+    const mark = r.survived ? '\x1b[32m●\x1b[0m' : '✗';
     if (r.survived) ok++;
     // Show the woven phrase with the token rendered as «value» so register reads naturally.
     const display = r.woven.split(WEAVE_VALUE_TOKEN).join('«value»');

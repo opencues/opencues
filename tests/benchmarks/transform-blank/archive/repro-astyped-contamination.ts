@@ -102,7 +102,7 @@ function main(): Promise<void> {
   if (containsOldInstruction && underscoreCount > 1) {
     console.log(`\n${RED}${BOLD}✗ Contamination CONFIRMED — asTypedText carries the prior instruction into EXTRACT input.${RESET}\n`);
   } else {
-    console.log(`\n${GREEN}${BOLD}✓ No contamination detected.${RESET}\n`);
+    console.log(`\n${GREEN}${BOLD}\x1b[32m●\x1b[0m No contamination detected.${RESET}\n`);
     return Promise.resolve();
   }
 
@@ -135,7 +135,7 @@ function main(): Promise<void> {
     } else if (oldInstruction || target.length < 100) {
       console.log(`\n${RED}${BOLD}✗ EXTRACT misbehaved (instruction or target wrong) — partial repro.${RESET}`);
     } else {
-      console.log(`\n${GREEN}${BOLD}✓ EXTRACT handled the contaminated input correctly. Bug must be elsewhere.${RESET}`);
+      console.log(`\n${GREEN}${BOLD}\x1b[32m●\x1b[0m EXTRACT handled the contaminated input correctly. Bug must be elsewhere.${RESET}`);
     }
   });
 }

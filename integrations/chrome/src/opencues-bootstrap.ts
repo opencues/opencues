@@ -26,7 +26,7 @@ import type {
 import { createSourceReclassifier } from '@opencues/runtime/dist/src/boot-common';
 import { createTrustGate } from './trust-gate';
 import { applySiteCompatFilter as siteFilter } from './site-filter';
-import { parseSingleCueMd } from '@opencues/core';
+import { parseSingleCueMd, listProviders } from '@opencues/core';
 import { ChromeUserBlank } from './user-blank-loader';
 import { createBlankInvoke } from '@opencues/runtime/dist/src/blanks';
 import { wordDiff } from '@opencues/runtime/dist/src/modules/word-diff';
@@ -47,6 +47,7 @@ declare const __DEFAULT_OPENCUES_MD__: string;
 declare const __DEFAULT_AUDITORS_MD__: string;
 declare const __DEFAULT_CUE_FOLDERS__: Record<string, string>;
 declare const __DEFAULT_BLANK_FOLDERS__: Record<string, string>;
+declare const __DEFAULT_KATA_FOLDERS__: Record<string, string>;
 
 const ROOT = '/chrome-storage';
 
@@ -1922,6 +1923,11 @@ function isReadOnlyPath(path: string): boolean {
   // OPENCUES.md is writable: OpenCuesSettingsBlank cycles voice-mode /
   // tips-mode / debug-mode etc. by rewriting the YAML scalar.
   if (rel === '.cues/OPENCUES.md') return false;
+  // NOTES.md is writable: the note collection blank appends/removes
+  // bullet entries. Without this, chrome-side writes land in storage
+  // but reads fall through to bake-time (null) — add works, recall
+  // finds nothing. Caught by the note E2E scenario.
+  if (rel === '.cues/NOTES.md') return false;
   return true;
 }
 
@@ -1939,6 +1945,8 @@ function readBakeTimeDefault(path: string): string | null {
   if (cueFolder) return __DEFAULT_CUE_FOLDERS__[cueFolder[1]] ?? null;
   const blankFolder = rel.match(/^\.cues\/blanks\/([^/]+)\/BLANK\.md$/);
   if (blankFolder) return __DEFAULT_BLANK_FOLDERS__[blankFolder[1]] ?? null;
+  const kataFolder = rel.match(/^\.cues\/katas\/([^/]+)\/KATA\.md$/);
+  if (kataFolder) return __DEFAULT_KATA_FOLDERS__[kataFolder[1]] ?? null;
   return null;
 }
 
@@ -2192,7 +2200,11 @@ async function readBundledConfig(runtimePath: string): Promise<string | null> {
  *  use them.
  */
 async function writeFile(path: string, content: string): Promise<void> {
-  if (path === ROOT + '/.cues/OPENCUES.md') {
+  // Files relayed to the chrome-host for a DISK write (the file is the
+  // single source of truth; storage is a cache). The host validates
+  // the basename against WRITABLE_BASENAMES + path-sandboxes to
+  // CUE_ROOT. Falls back to storage-only when the host is absent.
+  if (path === ROOT + '/.cues/OPENCUES.md' || path === ROOT + '/.cues/NOTES.md') {
     try {
       const reply = await chrome.runtime.sendMessage({
         type: 'opencues:write-file',
@@ -2250,6 +2262,14 @@ async function readDir(path: string): Promise<readonly { name: string; isDirecto
       isDirectory: true,
     }));
   }
+  // KataCoach reads `.cues/katas` to build its catalogue; each entry is a
+  // folder holding a KATA.md (fetched via readFile → readBakeTimeDefault).
+  if (path === `${ROOT}/.cues/katas`) {
+    return Object.keys(__DEFAULT_KATA_FOLDERS__).map(name => ({
+      name,
+      isDirectory: true,
+    }));
+  }
 
   // Inner folder readDir — ConfigLoader's prewalk recurses into each
   // bake-time entry above, then asks for that folder's contents to
@@ -2264,6 +2284,10 @@ async function readDir(path: string): Promise<readonly { name: string; isDirecto
   const blankInner = path.match(new RegExp(`^${ROOT}/\\.cues/blanks/([^/]+)$`));
   if (blankInner && __DEFAULT_BLANK_FOLDERS__[blankInner[1]]) {
     return [{ name: 'BLANK.md', isDirectory: false }];
+  }
+  const kataInner = path.match(new RegExp(`^${ROOT}/\\.cues/katas/([^/]+)$`));
+  if (kataInner && __DEFAULT_KATA_FOLDERS__[kataInner[1]]) {
+    return [{ name: 'KATA.md', isDirectory: false }];
   }
   return null;
 }
@@ -2338,18 +2362,23 @@ export interface RuntimeStartOptions {
 // (createBlankInvoke) lives in the runtime so all hosts share it.
 let blankInvoke: ((spec: BlankInvokeSpec) => ProcessHandle | null) | null = null;
 
-/** Provider → env-var name. Matches packages/opencues-core's PROVIDERS
- *  table. Kept in sync manually because the chrome bundle imports a
- *  bake-time slice of core and we don't want to drag the full provider
- *  registry just for the audit. */
-const PROVIDER_ENV_KEY: Record<string, string> = {
-  groq: 'GROQ_API_KEY',
-  cerebras: 'CEREBRAS_API_KEY',
-  openai: 'OPENAI_API_KEY',
-  anthropic: 'ANTHROPIC_API_KEY',
-  openrouter: 'OPENROUTER_API_KEY',
-  gemini: 'GEMINI_API_KEY',
-};
+/** Provider metadata slices derived from @opencues/core's PROVIDERS
+ *  registry (already in this bundle via the runtime's resolver — the
+ *  old hand-synced copies drifted whenever core added a provider).
+ *  CLI-transport providers are excluded: external auth, no env key. */
+const ENV_KEYED_PROVIDERS = listProviders().filter((p) => p.envKeyName && p.transport !== 'cli');
+const PROVIDER_ENV_KEY: Record<string, string> = Object.fromEntries(
+  ENV_KEYED_PROVIDERS.map((p) => [p.id, p.envKeyName]),
+);
+/** env-var name → provider id (inverse of PROVIDER_ENV_KEY). */
+const ENV_TO_PROVIDER: Record<string, string> = Object.fromEntries(
+  ENV_KEYED_PROVIDERS.map((p) => [p.envKeyName, p.id]),
+);
+/** Providers that work keyless (free pool / local) — a missing key is a
+ *  supported state, not a misconfiguration the audit should warn about. */
+const OPTIONAL_AUTH_PROVIDERS = new Set<string>(
+  ENV_KEYED_PROVIDERS.filter((p) => p.optionalAuth).map((p) => p.id),
+);
 
 /** Scan the user's merged CUES.md / OPENCUES.md for provider directives
  *  (`llm-provider:` and `<feature>-provider:`), cross-check against the
@@ -2391,9 +2420,16 @@ async function auditProvidersAgainstKeys(keys: Record<string, string>): Promise<
       problems.push(`  - "${d.feature === 'global' ? 'llm-provider' : d.feature + '-provider'}: ${d.provider}" — unknown provider`);
       continue;
     }
-    const envKey = PROVIDER_ENV_KEY[d.provider];
-    if (!keys[envKey]) {
-      problems.push(`  - "${d.feature === 'global' ? 'llm-provider' : d.feature + '-provider'}: ${d.provider}" — needs ${envKey}`);
+    // Keyless-capable providers (opencode-zen free pool, local ollama)
+    // are valid without a key — don't flag them.
+    if (OPTIONAL_AUTH_PROVIDERS.has(d.provider)) continue;
+    // `keys` is keyed by PROVIDER ID — the caller translates env-var
+    // names via ENV_TO_PROVIDER before handing the map over. (The
+    // pre-registry version looked up by env-var name here, which never
+    // matched the id-keyed map: every directive warned "needs KEY"
+    // even when the key was present.)
+    if (!keys[d.provider]) {
+      problems.push(`  - "${d.feature === 'global' ? 'llm-provider' : d.feature + '-provider'}: ${d.provider}" — needs ${PROVIDER_ENV_KEY[d.provider]}`);
     }
   }
   if (problems.length === 0) return;
@@ -2418,17 +2454,16 @@ async function auditProvidersAgainstKeys(keys: Record<string, string>): Promise<
   );
 }
 
-/** Each provider's lightest read-only endpoint (model list, free).
- *  Mirrors `opencues check-keys` (packages/opencues-cli/src/commands/
- *  check-keys.cjs). Keep in sync if the CLI adds providers. */
-const PROVIDER_KEY_CHECKS: Record<string, (key: string) => { url: string; headers: Record<string, string> }> = {
-  groq:       (k) => ({ url: 'https://api.groq.com/openai/v1/models',                   headers: { Authorization: `Bearer ${k}` } }),
-  cerebras:   (k) => ({ url: 'https://api.cerebras.ai/v1/models',                       headers: { Authorization: `Bearer ${k}` } }),
-  openai:     (k) => ({ url: 'https://api.openai.com/v1/models',                        headers: { Authorization: `Bearer ${k}` } }),
-  anthropic:  (k) => ({ url: 'https://api.anthropic.com/v1/models',                     headers: { 'x-api-key': k, 'anthropic-version': '2023-06-01' } }),
-  openrouter: (k) => ({ url: 'https://openrouter.ai/api/v1/models',                     headers: { Authorization: `Bearer ${k}` } }),
-  gemini:     (k) => ({ url: 'https://generativelanguage.googleapis.com/v1beta/models',                headers: { 'x-goog-api-key': k } }), // INFOSEC F8: header not URL
-};
+/** Each provider's lightest read-only endpoint (model list, free) —
+ *  derived from the registry's `keyProbe` (the same table `opencues
+ *  check-keys` probes from), so a new core provider auto-flows here.
+ *  INFOSEC F8 (keys in headers, never URLs) is enforced at the
+ *  registry entries. */
+const PROVIDER_KEY_CHECKS: Record<string, (key: string) => { url: string; headers: Record<string, string> }> = Object.fromEntries(
+  listProviders()
+    .filter((p) => p.keyProbe)
+    .map((p) => [p.id, (k: string) => ({ url: p.keyProbe!.url, headers: p.keyProbe!.headers(k) })]),
+);
 
 /** Verify LLM keys at boot — runs once after the runtime is constructed.
  *  Mirrors `opencues check-keys` so chrome users get the same up-front
@@ -2448,17 +2483,10 @@ async function verifyLlmKeyAtBoot(opts: RuntimeStartOptions): Promise<void> {
   // opts.llmApiKeys is keyed by ENV-VAR NAME (`GROQ_API_KEY`,
   // `CEREBRAS_API_KEY`, …) because the runtime resolver looks up keys
   // by env-var name. But PROVIDER_KEY_CHECKS below is keyed by
-  // PROVIDER ID (`groq`, `cerebras`, …). Translate before iterating
+  // PROVIDER ID (`groq`, `cerebras`, …). Translate via the
+  // registry-derived ENV_TO_PROVIDER (module scope) before iterating
   // — otherwise every non-legacy provider silently misses the check
   // and the boot audit only ever reports `OK (groq)`.
-  const ENV_TO_PROVIDER: Record<string, string> = {
-    GROQ_API_KEY: 'groq',
-    CEREBRAS_API_KEY: 'cerebras',
-    GEMINI_API_KEY: 'gemini',
-    OPENAI_API_KEY: 'openai',
-    ANTHROPIC_API_KEY: 'anthropic',
-    OPENROUTER_API_KEY: 'openrouter',
-  };
   if (opts.llmApiKeys) {
     for (const [envOrId, key] of Object.entries(opts.llmApiKeys)) {
       if (!key) continue;
@@ -2589,6 +2617,13 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     // do not add a parallel write path. Security-audit.md row #24.
     identityMdReadFile: () => readFile(`${ROOT}/.cues/IDENTITY.md`),
     identityMdWriteFile: (content) => writeFile(`${ROOT}/.cues/IDENTITY.md`, content),
+    // Note collection blank — keyword-bound `note add/…/delete _`.
+    // Writes go through @opencues/runtime's validateNoteWrite
+    // chokepoint BEFORE this writer is called. chrome.storage-backed:
+    // the store is per-browser until chrome-host push/pull covers
+    // NOTES.md (same situation as IDENTITY.md writes).
+    notesMdReadFile: () => readFile(`${ROOT}/.cues/NOTES.md`),
+    notesMdWriteFile: (content) => writeFile(`${ROOT}/.cues/NOTES.md`, content),
   });
   blankInvoke = createBlankInvoke(blanks);
 
@@ -3167,7 +3202,18 @@ function installKeyListener(): void {
     // this carve-out every blank silently no-ops in normal-input mode.
     const normalInput = isNormalInput(target);
     const isBareUnderscore = e.key === '_' && !e.ctrlKey && !e.altKey && !e.metaKey;
-    if (normalInput && !isBareUnderscore) return;
+    // Always forward the salient keys the kata coach observes (Enter / Tab
+    // / Escape / arrows) — UNCONDITIONALLY, not gated on any "kata active"
+    // flag. A dropped keypress is worse than a forwarded one: these are
+    // passively observed (the coach's observeKey returns false, and does
+    // nothing at all when no kata is running), so dispatchKey below never
+    // consumes them and browser-default behaviour (newline, cursor move,
+    // focus change) is always preserved. The runtime decides what to do
+    // with the key; the host just delivers it.
+    const isSalientKey = e.key === 'Enter' || e.key === 'Tab' || e.key === 'Escape'
+      || e.key === 'ArrowUp' || e.key === 'ArrowDown'
+      || e.key === 'ArrowLeft' || e.key === 'ArrowRight';
+    if (normalInput && !isBareUnderscore && !isSalientKey) return;
     // Shadow-DOM piercing: on web-component editors with
     // delegatesFocus (Reddit's <shreddit-composer>), document.activeElement
     // reports the shadow HOST — usually an ANCESTOR of `target` —

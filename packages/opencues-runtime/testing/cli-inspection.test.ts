@@ -24,6 +24,13 @@ const require = createRequire(import.meta.url);
 const REPO_ROOT = path.resolve(__dirname, '../../..');
 const CLI_DIR = path.join(REPO_ROOT, 'packages/opencues-cli/src/commands');
 
+// Strip SGR (colour/dim/bold) escape codes so assertions can match the
+// plain text. The list command dim-styles the section counts, e.g.
+// `Cues \x1b[2m(1)\x1b[22m`, which splits "Cues" from "(1)" for a naive
+// regex. We only care about the words, not the styling.
+// eslint-disable-next-line no-control-regex
+const stripAnsi = (s: string): string => s.replace(/\x1b\[[0-9;]*m/g, '');
+
 // Each command's module.exports is the function we call.
 type Cmd = (argv: string[], ctx: { REPO_ROOT: string; PKG_DIR: string }) => unknown;
 const list     = require(path.join(CLI_DIR, 'list.cjs'))    as Cmd;
@@ -86,8 +93,8 @@ describe('CLI inspection commands — rename-rot regression suite', () => {
   it('list: finds cue + blank with canonical CUE.md / BLANK.md filenames', () => {
     list([], ctx);
     const out = logs.join('\n');
-    expect(out).toMatch(/Cues \(1\)/);
-    expect(out).toMatch(/Blanks \(1\)/);
+    expect(stripAnsi(out)).toMatch(/Cues \(1\)/);
+    expect(stripAnsi(out)).toMatch(/Blanks \(1\)/);
     expect(out).toContain('foo');
     expect(out).toContain('bar');
     expect(out).toContain('CUE.md');
@@ -99,9 +106,9 @@ describe('CLI inspection commands — rename-rot regression suite', () => {
     const out = logs.join('\n');
     // Formatted detail view (June 2026): "<name>  (blank)" header + aligned
     // frontmatter rows, replacing the old "Matches for …" raw dump.
-    expect(out).toMatch(/bar\s+\(blank\)/);
+    expect(stripAnsi(out)).toMatch(/bar\s+\(blank\)/);
     expect(out).toContain('BLANK.md');
-    expect(out).toMatch(/blankKeywords\s+bar/);
+    expect(stripAnsi(out)).toMatch(/blankKeywords\s+bar/);
   });
 
   // ── validate: must NOT emit spurious "no cue.md" warnings against ──
@@ -143,7 +150,7 @@ describe('CLI inspection commands — rename-rot regression suite', () => {
     which([], ctx);
     const out = logs.join('\n');
     expect(out).toContain(path.join(tmpHome, '.cues'));
-    // Pre-fix: also reported ~/.opencues/ (legacy stub, false-positive ✓).
+    // Pre-fix: also reported ~/.opencues/ (legacy stub, false-positive).
     expect(out).not.toContain(path.join(tmpHome, '.opencues'));
     // Master-config row points at canonical OPENCUES.md.
     expect(out).toContain('OPENCUES.md');

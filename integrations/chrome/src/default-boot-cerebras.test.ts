@@ -16,15 +16,26 @@
 // This is a STATELESS test — no network, no real LLM, just verifies
 // the wiring goes to the right place with the right auth.
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   parseCuesMd,
   buildSourcesFromConfig,
   resolveLLM,
+  setCliAvailabilityForTests,
+  SUBSCRIPTION_AUTO_FALLBACK,
   type HttpAdapter,
 } from '@opencues/core';
+
+// These tests model the BROWSER environment, where pickAutoProvider's
+// zero-key subscription-CLI rung can never fire (content scripts have
+// no `process`, so the probe self-disables). The suite runs on Node
+// though — seed the probe off so the developer's real claude/codex on
+// PATH doesn't flip the zero-key expectations.
+beforeEach(() => {
+  for (const id of SUBSCRIPTION_AUTO_FALLBACK) setCliAvailabilityForTests(id, false);
+});
 
 // Stub httpAdapter — required by buildSourcesFromConfig even when no
 // LLM call is exercised in the test. Records any (unexpected) calls

@@ -91,7 +91,7 @@ cd "$STAGE"
 tar -czf "$OUTPUT" bin share 2>/dev/null
 
 size_kb=$(($(wc -c <"$OUTPUT") / 1024))
-echo "✓ wrote $OUTPUT (${size_kb} KB)"
+echo "[32m●[0m wrote $OUTPUT (${size_kb} KB)"
 echo ""
 echo "Upload to a GitHub release tagged 'tmux-prebuilt-${VERSION}':"
 echo "  gh release upload tmux-prebuilt-${VERSION} \"$OUTPUT\" --clobber"

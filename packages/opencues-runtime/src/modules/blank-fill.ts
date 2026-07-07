@@ -209,7 +209,13 @@ export class BlankFill {
     // changes nothing — the `_` falls through to the normal sources.
     const shape = matchBlankShape(cleanText, this.configLoader.blanks as ReadonlyMap<string, { blankShapes?: import('@opencues/core').BlankShape[] }>);
     if (shape) {
-      const usIdx = words.indexOf('_');
+      // matchBlankShape anchors on the LAST `_` (lineWithBlank uses
+      // lastIndexOf) — attach the verdict to that same `_`. Using the
+      // FIRST `_` mis-claimed an earlier, unrelated `_` in the buffer
+      // ("fill later _ ok. note add snack _" fired the blank on the
+      // "later" slot with a nonsense query) — found by the note-blank
+      // dumb-user gauntlet.
+      const usIdx = words.lastIndexOf('_');
       if (usIdx >= 0) {
         // Locate the blank's keyword span in the buffer so applyAsyncFill's
         // clearing behaves exactly as the keyword path would. Shapes are
@@ -855,9 +861,16 @@ export class BlankFill {
     // static render so the LLM weave can splice it into the sentinel token
     // afterwards — the value itself never reaches the weaver.
     const integrationValue = primaryFill;
-    if (hasIntegration) {
+    // `[err] …` results (sentinel validation refusals, note-blank misses)
+    // are FEEDBACK, not output: they must never consume the user's typed
+    // command. Fill only the `_` so the user can fix the query/key and
+    // re-fire, instead of retyping the whole command. Without this, a
+    // recall miss (`note kubectl _`) destroyed the very text the user
+    // needed to adjust.
+    const isErrResult = primaryFill.startsWith('[err]');
+    if (hasIntegration && !isErrResult) {
       primaryFill = this.renderIntegration(blank as Record<string, unknown>, primaryFill);
-    } else if (typedAction) {
+    } else if (typedAction && !isErrResult) {
       // Typed-SET/STEP final-state render. Mirror config-intent's
       // "<setting> <value>" display: keep the keyword as the label and show
       // the read-back value as its value, so "volume 40 _" → "volume 40%".
@@ -888,10 +901,11 @@ export class BlankFill {
     // keyword-clear path (blankClearKeywords); plain `_` in prose just
     // fills at the cursor.
     const shapeCapturedArg = slot.shapeValue !== undefined && slot.shapeValue.length > 0;
-    const clearsCommandSpan = typedAction !== undefined || hasIntegration || shapeCapturedArg;
+    const clearsCommandSpan = !isErrResult
+      && (typedAction !== undefined || hasIntegration || shapeCapturedArg);
     const { clearEnd } = clearsCommandSpan
       ? { clearEnd: slot.index - 1 }
-      : computeFillRange(blank ?? {}, slot);
+      : (isErrResult ? { clearEnd: undefined } : computeFillRange(blank ?? {}, slot));
     this.adapter.log('info', `BlankFill: substituting "${slot.keyword} _" → "${preview(primaryFill, 60)}" (blank=${slot.blankName}${typedAction ? `, typed-${typedAction}` : ''}${lines.length > 1 ? `, ${lines.length} alt(s)` : ''}${isDismissible ? ', dismissible' : ''})`);
     this.adapter.emitEvent?.('blank.substituted', {
       blankName: slot.blankName,

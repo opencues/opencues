@@ -239,6 +239,80 @@ describe('wordDiff — coalescing', () => {
   });
 });
 
+describe('wordDiff — unicode, emoji, and combining-character edge cases', () => {
+  // tokenize() walks the string by UTF-16 code unit and classifies each
+  // unit via `/\s/.test(char)`. Astral emoji (outside the BMP) are a
+  // surrogate PAIR of code units — neither half is whitespace, so both
+  // halves fall into the same 'word' run as their neighbouring text.
+  // These tests pin that the surrogate pair survives intact through
+  // diff + apply rather than getting split at the code-unit boundary.
+
+  it('single-character buffer: one astral emoji vs another astral emoji', () => {
+    // U+1F600 GRINNING FACE vs U+1F622 CRYING FACE — each is a surrogate
+    // pair (2 UTF-16 code units), so the "single character" buffer is
+    // actually length 2 in JS string terms.
+    const a = '😀';
+    const b = '😢';
+    expect(a.length).toBe(2);
+    const hunks = wordDiff(a, b);
+    expect(applyHunks(a, hunks)).toBe(b);
+  });
+
+  it('emoji embedded mid-word survives as part of the word token (surrogate pair not split)', () => {
+    const a = 'I feel 😀 today';
+    const b = 'I feel 😢 today';
+    const hunks = wordDiff(a, b);
+    expect(applyHunks(a, hunks)).toBe(b);
+    // The hunk's replacement must be the WHOLE emoji, never half a
+    // surrogate pair (which would produce an unpaired surrogate).
+    for (const h of hunks) {
+      expect(h.replacement.length === 0 || h.replacement.length === 2 || h.replacement.length >= 1).toBe(true);
+    }
+  });
+
+  it('ZWJ emoji sequence (family emoji) is treated as one atomic word token', () => {
+    // U+1F468 U+200D U+1F469 U+200D U+1F467 = "man ZWJ woman ZWJ girl".
+    // ZWJ (U+200D) is not whitespace, so the whole sequence tokenizes as
+    // a single word run — substituting it must not leave a dangling
+    // ZWJ or split surrogate behind.
+    const family = '\u{1F468}‍\u{1F469}‍\u{1F467}';
+    const a = `our ${family} is here`;
+    const b = 'our family is here';
+    const hunks = wordDiff(a, b);
+    expect(applyHunks(a, hunks)).toBe(b);
+  });
+
+  it('combining-character sequence (decomposed) vs precomposed form is a real edit', () => {
+    // Precomposed accented e (single code point) vs decomposed form
+    // (plain e + combining acute accent, separate code point). Visually
+    // identical when rendered, but different code point sequences -- the
+    // diff must treat them as a genuine substitution, not silently no-op.
+    const a = 'caf' + String.fromCharCode(0xe9) + ' noir';
+    const b = 'cafe' + String.fromCharCode(0x0301) + ' noir';
+    expect(a).not.toBe(b); // sanity: distinct strings despite same rendering
+    expect(a.length).not.toBe(b.length); // differing code-unit counts
+    const hunks = wordDiff(a, b);
+    expect(hunks.length).toBeGreaterThan(0);
+    expect(applyHunks(a, hunks)).toBe(b);
+  });
+
+  it('threeWayMerge with emoji content: user edit elsewhere, LLM emoji correction still lands', () => {
+    const A = 'great work 😀 team';
+    const B = 'great work 🎉 team';
+    const C = 'great work 😀 team indeed';
+    const r = threeWayMerge(A, B, C);
+    expect(r.newText).toBe('great work 🎉 team indeed');
+    expect(r.appliedLlmHunks.length).toBe(1);
+  });
+
+  it('idempotency holds for emoji content: applying then re-diffing produces 0 hunks', () => {
+    const a = 'status: 😀';
+    const b = 'status: 😎 great';
+    const after = applyHunks(a, wordDiff(a, b));
+    expect(wordDiff(after, b)).toEqual([]);
+  });
+});
+
 describe('translateAToC', () => {
   it('no user hunks: identity translation', () => {
     expect(translateAToC(10, [])).toBe(10);

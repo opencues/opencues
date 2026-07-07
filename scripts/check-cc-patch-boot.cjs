@@ -415,7 +415,7 @@ if (usingRealRuntime) {
   }
 }
 
-console.log('✓ CC patch boot smoke clean — boot args constructed without ReferenceError');
+console.log('\x1b[32m●\x1b[0m CC patch boot smoke clean — boot args constructed without ReferenceError');
 console.log(`  boot called with ${required.length} required fields; __ocReg + __ocBI both in scope`);
 if (usingRealRuntime) {
   console.log('  mode: real @opencues/runtime + @opencues/core dist (API drift would fail here)');

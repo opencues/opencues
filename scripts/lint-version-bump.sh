@@ -91,13 +91,13 @@ for entry in "${PACKAGES[@]}"; do
       echo "    Bump version to record the change. See docs/architecture/versioning.md."
       FAIL=1
     else
-      echo "✓ $SRC_DIR + $PKG_JSON: $OLD_VERSION → $NEW_VERSION"
+      echo "[32m●[0m $SRC_DIR + $PKG_JSON: $OLD_VERSION → $NEW_VERSION"
     fi
   fi
 done
 
 if [ "$FAIL" = "0" ]; then
-  echo "✓ Version-bump gate clean."
+  echo "[32m●[0m Version-bump gate clean."
   exit 0
 else
   echo ""

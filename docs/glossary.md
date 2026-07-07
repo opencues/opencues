@@ -1,5 +1,5 @@
 ---
-last_updated: 2026-04-03
+last_updated: 2026-07-06
 ---
 
 # Glossary
@@ -22,15 +22,13 @@ All three share the same navigable system — you move between words and interac
 
 ## Cues
 
-**Cue** — The complete package: a word that OpenCues has enriched with alternatives, a tip, linked behaviour, or other functionality. When someone says "I added a cue for ultrathink," they mean the word now appears indicated and has OpenCues functionality behind it.
+**Cue** — The complete package: a word that OpenCues has enriched with alternatives, a tip, or other functionality. When someone says "I added a cue for ultrathink," they mean the word now appears indicated and has OpenCues functionality behind it.
 
 **Indicated Cue** — The visual signal within the text that a cue exists. For example, a word appearing dimmed signals that alternatives and other information are available. The indicated cue is what the user sees; the cue is the full data behind it.
 
 **Alternatives** — The set of values a word can be replaced with when the user cycles (e.g., "happy" → "sad", "excited", "content"). The original word is always at index 0.
 
 **Cue-Tip** — Hint text displayed in the secondary display area when a word is highlighted. Provides context about what the word means or why an alternative was suggested. Sometimes shortened to "tip" in config files.
-
-**Linked Words** — Words that must change together when any one of them cycles. For example, changing "boy" also changes "his" to "her" to maintain agreement. Part of the cues system.
 
 **Multi-Word Group** — An alternative that consists of multiple words (e.g., "Sundar Pichai"). Tracked as a single unit that cycles together.
 
@@ -41,8 +39,6 @@ All three share the same navigable system — you move between words and interac
 *"Never draw a blank."*
 
 **Blank** — An underscore (`_`) placed by the user as a cue to the system: "fill this in." The direction is reversed compared to regular cues — the user is cueing the system, not the other way around.
-
-Blanks are automatically computed and **re-evaluated on every edit**. When the surrounding text changes, the blank's value updates. This means a blank is never permanently filled — it can always return to `_` and be re-evaluated in its new context.
 
 Blanks come in two flavours: **keyword-bound** (a registered keyword next to `_` claims the slot — `volume _`, `nvda _`, `define X _`) and **fluid** (no keyword match — `FluidBlankSource` segments the lookup phrase and answers it: `capital of france _` → `Paris`, `4 * 12 = _` → `48`, `unicode for em dash _` → `U+2014`).
 
@@ -59,6 +55,8 @@ Defined in `blanks/<name>/BLANK.md` (one folder per blank).
 Configured in `blanks/{name}/BLANK.md` with `blankKeywords` (or `blankShapes`), `blankStep`, `blankScript`, `blankSuffix`, `integration`, `tip`, `blankDismissible`, `blankClearKeywords`, `blankClearOnEdit`, `blankSatellite`. Keywords can be multi-word phrases (e.g. `opencues settings` as one keyword), and desugar to anchored shapes. See `docs/architecture/blank-integration.md`, `docs/features/cue-blanks.md`, and `docs/guides/adding-a-cue-blank.md`.
 
 **Blank-Bound Word** — Internal: a WordDef with `metadata.blankName` set. Indicates the position is owned by a cue-blank's auto-populated value and must not be overwritten by LLM/grammar merges. Only the user can clear it (by editing the word).
+
+**Note collection blank** — Prototype (issue #210) user-curated snippet store: `note add/recall/delete _` over `~/.cues/NOTES.md` (`note _` browses recent). Save a snippet once, recall it by a couple of words, tweak in place. Fully local + deterministic — notes never reach an LLM (`as-context: off`). A runtime-class blank (`NoteBlank` in `@opencues/runtime`) served through injected `readFile`/`writeFile`; writes are **line surgery** (one bullet appended/removed, your own headers untouched) through the `validateNoteWrite` chokepoint (256 notes, 1024 chars/entry, control-char reject, duplicate idempotency). Optional `label: body` entries recall the body only. Ships on all 5 hosts. See `docs/features/note.md`.
 
 **Transform Blank** — A blank that accepts an **imperative instruction** and rewrites the surrounding text (or generates new content when no target exists). Triggered by inputs like `change boy to girl _`, `make this past tense _`, `translate to french _`, or — in generative mode — `write a poem _`, `compose an email _`. Implemented as `TransformBlankSource` (priority 93, between keyword-bound BlankSource at 95 and FluidBlankSource at 92). The pipeline is a single fused LLM call that classifies and rewrites in one pass (emitting a VERDICT, the instruction, the target, and the full rewritten buffer), then a whole-buffer three-way merge into the live text. The same source also routes agent-task commands (`agentically X _`, `add task _`, `stop task _`, `current task _`) via the TASK_ARM/ADD/STOP/SHOW verdicts. See `docs/features/transform-blank.md` and the canonical reference at `docs/architecture/transform-blank.md`.
 
@@ -102,7 +100,7 @@ A **cue source** is anything that provides alternatives for words. All cue sourc
 
 **TransformBlankSource** — Imperative-instruction `_` source. A single fused LLM call (classify + rewrite in one pass) emits the full rewritten buffer, which is three-way-merged into the live text; a generative branch handles inputs with no target ("write a poem _"). Also routes agent-task commands via TASK_* verdicts. Priority 93 — between keyword-bound `BlankSource` (95) and `FluidBlankSource` (92). When `supports()` runs, it cedes to any keyword-bound match before claiming. See `docs/features/transform-blank.md`.
 
-**FluidBlankSource** — Free-form `_` lookup. Single FUSED LLM call emits both SPAN and ANSWER in one breath; the call also optionally receives sanitized ambient field metadata (when `ambient-context-mode: on`) so the segmenter can use the field's label as the question source for meta-triggers like `_` / `answer _`. Also optionally receives identity context (when `identity-context-mode: safe` or `: raw`) — `~/.cues/IDENTITY.md` frontmatter as a catalog of sentinel tokens (`[FIRST NAME]`, `[EMAIL]`, etc.) so lookups personalise; a runtime post-processor substitutes real values after the LLM responds (safe mode keeps PII off the provider's logs). Handles math, factual, translation, unit conversion, codes, etc. without per-mode classification. Fires on `_` slots that no `BlankSource` or `TransformBlankSource` claimed. Opt-in via `fluid-blank-mode: on`.
+**FluidBlankSource** — Free-form `_` lookup. Single FUSED LLM call emits both SPAN and ANSWER in one breath; the call also optionally receives sanitized ambient field metadata (when `ambient-context-mode: on`) so the segmenter can use the field's label as the question source for meta-triggers like `_` / `answer _`. Also optionally receives identity context (when `identity-context-mode: safe` or `: raw`) — `~/.cues/IDENTITY.md` frontmatter as a catalog of sentinel tokens (`[FIRST NAME]`, `[EMAIL]`, etc.) so lookups personalise; safe mode is bidirectional: typed catalog values are dehydrated to tokens before dispatch, and a runtime post-processor (hydration) substitutes real values after the LLM responds — PII stays off the provider's logs in both directions (see § Identity context below). Handles math, factual, translation, unit conversion, codes, etc. without per-mode classification. Fires on `_` slots that no `BlankSource` or `TransformBlankSource` claimed. Opt-in via `fluid-blank-mode: on`.
 
 **RoutedWordSourceGroup** — Wraps multiple folder-based word-cue sources (each `cues/<name>/CUE.md`) and dispatches each highlighted word to ONE child source via per-word routing. Uses fast-path rules only — no LLM classifier. Every source MUST declare `match:` (regex) or `keywords:` (list); sources without either are dropped. Words that no source claims produce no cue (not navigable). Words destined for the same source are batched into one parallel LLM call. Replaces the old "combine all sources into one giant prompt" model. See `docs/features/word-cue-routing.md`.
 
@@ -119,6 +117,14 @@ A **cue source** is anything that provides alternatives for words. All cue sourc
 ## LLM dispatch routing
 
 **Bucket scalar** — A persistent provider/model pair stored in `~/.cues/OPENCUES.md` that gates one TRIO of surfaces. Three buckets (`cues-llm-*`, `auditors-llm-*`, `blanks-llm-*`); each writes to disk and survives every keystroke until the user changes it. The settings-flip syntax (`change to opus _`, `switch to cerebras _`, plus the satellite cycling menu) writes bucket scalars. See `docs/architecture/llm-routing.md`.
+
+---
+
+## Identity context — hydration & dehydration
+
+**Dehydration** — The outbound half of `identity-context-mode: safe` (the default): before any buffer-derived text ships in an LLM request, identity catalog values (`~/.cues/IDENTITY.md` frontmatter) that the user typed into the buffer are replaced with their canonical `[TOKEN]`s. Covers every LLM-bound channel (9 today) plus a defense-in-depth floor at `dispatchChat`. Produces outbound copies only — the buffer is never mutated. Canonical reference: `docs/architecture/hydration-dehydration.md`.
+
+**Hydration** — The inbound half: the runtime post-processor (`postProcessContext` in `@opencues/core`'s `identity-context.ts`, retroactively named) that binds `[TOKEN]`s in LLM output back to real values locally, after the response and before the text reaches the user's buffer. Existed before dehydration (it's how `safe` mode's catalog direction has always worked); the name pairs it with its new inverse. See `docs/architecture/hydration-dehydration.md`.
 
 ---
 
@@ -140,6 +146,8 @@ How LLM responses are interpreted. Set via `parser` field in `.md` config. Only 
 
 **Secondary Display** — Where additional information (cue-tips) is shown. It is not in the text input box. The integration decides what this is — a status bar, tooltip, hover panel, sidebar, etc.
 
+**Status-bar position** — Chrome-only setting (`statusbar-position` scalar: `bottom` default / `top` / `right`) for where Chrome's in-page floating status bar sits, since Chrome has no host statusline to render into and the bar can occlude page content. `bottom`/`top` are full-width bands; `right` is a compact bottom-right panel. A real FEATURE (not a tunable) so the fluid-config classifier can route to it (`move the status bar to the top _`), host-scoped so it never appears in the CLI hosts' menus. See `docs/features/statusbar-position.md`.
+
 ---
 
 ## Host capability profiles
@@ -154,7 +162,29 @@ How LLM responses are interpreted. Set via `parser` field in `.md` config. Only 
 
 **ValueSpec / exposeInMenu** — Each FEATURES entry's `values` array carries `{id, description, exposeInMenu?}` per value (not just a string list). `exposeInMenu: false` makes a value **parser-valid but absent from the cycling menu** — formal mechanism for hiding footgun modes (today's only user: `identity-context-mode: raw`, which inlines PII into LLM prompts and shouldn't be flipped by a keystroke). Replaces the old "hidden by absence from OPENCUES.md `settings:` block" pattern.
 
+**Host-scoped setting** — A FEATURE (or MENU_TUNABLE) whose `hostScope: [...]` field restricts it to specific hosts. Two paths derive from the one field so they can't drift: (1) the settings/cycling menu only lists it on those hosts, and (2) the fluid-config intent classifier's per-host prompt (built by `buildFeatureBlock(hostName)`) only includes it in the classifier's choice space on those hosts — so an intent phrase can't resolve to a no-op setting on a host where it does nothing. Today's user: `statusbar-position` (`hostScope: ['chrome']`). Use for knobs whose effect only exists on certain hosts.
+
 **isSensitiveField** — The chrome bootstrap's gate that refuses attach + ambient + sentinels on credential-adjacent fields. Three layers: input-type allow-list (`text` / `email` / `search` / `url` / `textarea`), autocomplete-token deny-list (`SENSITIVE_AUTOCOMPLETE_TOKENS`), and name/id heuristic (`SENSITIVE_FIELD_NAME_PATTERN`). Both lists are exported constants in `integrations/chrome/src/opencues-bootstrap.ts` — single source of truth; see `docs/architecture/chrome-security.md` § Sensitive-field gate for the full token enumeration. False positives accepted; never leak credentials.
+
+---
+
+## Katas
+
+**Kata** — A guided, in-editor scenario that walks the user through a workflow step by step (`start kata 1 _`), with a live LLM coach on the status line telling them the next micro-action and detecting progress from what they type and press. Experimental; runs on all five hosts. Authored as `.cues/katas/<name>/KATA.md`. User-facing: `docs/features/kata.md`; architecture: `docs/architecture/kata.md`.
+
+**KATA.md** — The kata file format: frontmatter (`name` / `id` / `title` / optional `next:` curriculum link) + `## Step` sections whose bodies (plus `coach:` notes) ride into the coach's system prompt verbatim. Hot-loaded at `start` — no restart. Candidate for the open standard (file-format only); not yet a spec surface.
+
+**Coach** — The kata's one debounced LLM call per pause. Judges progress on the current step and emits one line of guidance (`STEP:` / `STATUS:` / `COACH:`, optional `CONTROL: STOP`). **Display-only** — feeds the status line and a bounds-clamped step counter, never the buffer and never a side-effect channel. The model owns judgement; the runtime owns the safety floors and every deterministic path.
+
+**Kata mode (modal suppression)** — While a kata runs, normal OpenCues LLM behaviour (word-cues, fluid/transform blanks, config-intent, sentence-cues) is suppressed via the Resolver's `externallySuppressed` predicate so nothing races the lesson. Local features a kata might teach (navigation, cycling, keyword blanks) keep working. Stop is instant and writes nothing — the mode is one in-memory predicate.
+
+**Trace** — The bounded (10-entry) ring of the user's activity the coach sees: `typed` (buffer snapshots, attempt-preserving), `submitted` (a submit — inferred from buffer-clear on CLI hosts OR an Enter keypress on a non-empty buffer on newline hosts like Chrome/Gmail/Shell, deduped), and `pressed` (salient keys only). Wiped on start/stop.
+
+**Escape ladder** — The guaranteed exit, weakest assumption first: **Esc ×3** (deterministic, no key/network/language needed) → `stop kata _` (deterministic phrase) → "please stop this kata" (coach-honoured, any language) → `skip _` (per-step relief). Three Escs so a host's normal double-Esc can't exit by accident.
+
+**Degraded mode** — When no LLM is available (missing key immediately; network failure after 2 consecutive failed calls), a kata degrades **loudly** to a labelled self-guided checklist — the status line says "coach offline (no LLM key)". Everything deterministic (start/stop/next/skip, step counter, Esc ×3) keeps working; live coaching resumes automatically on recovery.
+
+**Lesson journal** — One line per completed step (with the evidence that closed it), kept in context for every coach/nudge check-in so guidance builds on the whole lesson, not just the last few keystrokes. Persists to `~/.cues/kata-progress.json` so a mid-way kata resumes where the user left off.
 
 ---
 

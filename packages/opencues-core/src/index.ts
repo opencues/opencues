@@ -146,12 +146,21 @@ export {
 export {
   PROVIDER_IDS,
   PROVIDER_AUTO_ORDER,
+  SUBSCRIPTION_AUTO_FALLBACK,
+  SUBSCRIPTION_CLI_BINARIES,
+  pickAutoProvider,
+  defaultCliAvailable,
+  resetCliAvailabilityCacheForTests,
+  setCliAvailabilityForTests,
   getProvider,
   isProviderValueCyclable,
   listProviders,
   buildProviderRequest,
   parseProviderResponse,
   dispatchChat,
+  setOutboundDehydrationGuard,
+  getOutboundDehydrationGuard,
+  applyOutboundDehydrationFloor,
   resolveLLM,
   validateEndpoint,
   withFallback,
@@ -168,6 +177,19 @@ export {
   type HttpAdapterShape,
   type ResponseFormat,
 } from './llm-provider';
+
+// Existing-key detection — boot-time API-key bag construction from
+// host-passed keys + shell env + ~/.cues/.env (see env-keys.ts header)
+export {
+  buildBootApiKeys,
+  augmentApiKeysFromEnv,
+  detectProviderKeys,
+  readCuesEnvFile,
+  cuesEnvFilePath,
+  parseEnvFileContent,
+  type DetectedProviderKey,
+  type KeySource,
+} from './env-keys';
 
 // Per-model thinking-budget resolution for the `max-thinking` setting
 export {
@@ -255,6 +277,22 @@ export {
   type PostProcessResult,
   type PostProcessReport,
 } from './identity-context';
+
+// Dehydration — outbound value→token scrub (the inverse of the
+// post-processor's hydration). In `identity-context-mode: safe`, every
+// LLM-bound copy of buffer text is dehydrated before dispatch so PII
+// the user TYPED never leaves the machine; the sources hydrate the
+// response back via postProcessContext. Compiled matchers are cached
+// per catalog-Map instance (fresh Map per config hot-reload).
+// See docs/architecture/hydration-dehydration.md.
+export {
+  compileDehydrator,
+  getDehydrator,
+  type CompiledDehydrator,
+  type DehydrationResult,
+  type DehydrationSpan,
+  type DehydrationSkip,
+} from './dehydrate';
 
 // Feature registry — single source of truth for the set of optional
 // features OpenCues exposes via OPENCUES.md scalars. Consumed by
