@@ -63,7 +63,6 @@ Blank-routing scenarios use a different shape:
 
 ## What's not covered (deliberately)
 
-- **`linked:` cross-word coordination** — runtime concern (how a host cycles linked alts together); the standard only specifies the field shape.
 - **Span overlap resolution** — when two multi-word spans overlap, the runtime decides. Out of routing scope.
 - **Sentence-cue overlap with word-cues** — covered by `sentence-cues.md` architecture doc, not the routing algorithm per se.
 - **Auditor composition** — auditors don't route per word; they fire on the whole buffer. See [`../../auditor-spec.md` § Composition](../../auditor-spec.md#composition).

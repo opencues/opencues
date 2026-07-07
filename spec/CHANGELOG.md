@@ -14,6 +14,14 @@ breaking.
 
 ## [Unreleased]
 
+---
+
+## [0.7.0-alpha] — 2026-07-07
+
+### Removed
+
+- **`CueResult.linked` field** removed from the cue data shape (`cue-spec.md` § Runtime data shape table + the "MAY implement linked-word cycling" runtime-contract bullet). The field declared "other word indices that cycle in lockstep" for a Linked Words feature that was never implemented — no source ever populated it and no runtime consumed it. Removing it narrows the standard's surface. A reader that had implemented `linked` cycling against `0.6` MAY keep that behaviour as a non-standard extension; the field is simply no longer part of the standard. The routing suite's "not covered" note about `linked:` cross-word coordination is dropped with it.
+
 ### Fixed
 
 - `core.md` § Hot-reload: corrected the reference-runtime cadence description. The reference implementation reloads config off user input with a ~2s debounce plus a ~5s background poll (`config-loader.ts`), not a ~100ms filesystem poll — the previously cited `event-bridge.ts` `POLL_INTERVAL_MS` timer is the inject-file/state poller, unrelated to config reload. The SHOULD pickup window is restated as "within a couple of seconds" to match the reference implementation (was "a few hundred milliseconds", which the reference runtime itself never met).

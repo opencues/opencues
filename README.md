@@ -106,7 +106,7 @@ Each pins its own upstream fork and never touches your native host install.
 | **Personal + ambient context** (opt-in) | `my email _` substitutes your real address; fluid lookups can read the page you're on. |
 | **Hot-reload** | Every `.md` config picks up edits in ~2s, no restart. |
 
-Full feature catalogue (45 concepts): [`docs/features/README.md`](docs/features/README.md).
+Full feature catalogue (44 concepts): [`docs/features/README.md`](docs/features/README.md).
 
 <!-- VIDEO: feature tour (~30s of cues + blanks in action), replace this
      comment with the real embed once available. -->

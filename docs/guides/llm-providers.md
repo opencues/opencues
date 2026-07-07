@@ -104,7 +104,7 @@ own provider+model+endpoint, kept for callers that need finer control
 than the bucket they belong to:
 
 ```yaml
-# Word cues — synonyms / antonyms / linked alternatives
+# Word cues — synonyms / antonyms / alternatives
 word-cues-provider: groq
 word-cues-model: openai/gpt-oss-120b
 
