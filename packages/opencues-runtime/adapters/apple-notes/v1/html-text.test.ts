@@ -196,4 +196,47 @@ describe('spliceLinesIntoBody', () => {
     const out = spliceLinesIntoBody(body, ['b', '', ''], ['B', '', '']);
     expect(out).toBe('<div>a</div>\n<div>B</div>\n<div><br></div>\n');
   });
+
+  it('a styled anchor line survives a pure-insertion splice (leading anchor)', () => {
+    // diffLines widens a pure insertion with the preceding line as an
+    // anchor: old ['Heading'] → new ['Heading', 'inserted']. The anchor's
+    // text didn't change, so its ORIGINAL raw fragment (with styling)
+    // must be reused — not re-escaped into a plain <div>.
+    const body = '<div><b>Heading</b></div>\n<div>tail</div>\n';
+    const out = spliceLinesIntoBody(body, ['Heading'], ['Heading', 'inserted']);
+    expect(out).toBe(
+      '<div><b>Heading</b></div>\n' +
+      '<div>inserted</div>\n' +
+      '<div>tail</div>\n',
+    );
+  });
+
+  it('a styled anchor line survives as a trailing anchor too', () => {
+    // Insertion at the very top widens FORWARD: old ['Styled'] →
+    // new ['inserted', 'Styled'] — the unchanged suffix keeps its raw.
+    const body = '<div><i>Styled</i></div>\n<div>tail</div>\n';
+    const out = spliceLinesIntoBody(body, ['Styled'], ['inserted', 'Styled']);
+    expect(out).toBe(
+      '<div>inserted</div>\n' +
+      '<div><i>Styled</i></div>\n' +
+      '<div>tail</div>\n',
+    );
+  });
+
+  it('changed lines are still freshly escaped when edges are unchanged', () => {
+    // Middle line changes between two unchanged styled edges: edges keep
+    // raw fragments, the changed line gets standard escaping.
+    const body =
+      '<div><b>top</b></div>\n<div>old & busted</div>\n<div><i>bottom</i></div>\n';
+    const out = spliceLinesIntoBody(
+      body,
+      ['top', 'old & busted', 'bottom'],
+      ['top', 'new & shiny <ok>', 'bottom'],
+    );
+    expect(out).toBe(
+      '<div><b>top</b></div>\n' +
+      '<div>new &amp; shiny &lt;ok&gt;</div>\n' +
+      '<div><i>bottom</i></div>\n',
+    );
+  });
 });

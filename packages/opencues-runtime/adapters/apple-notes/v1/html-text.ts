@@ -137,8 +137,25 @@ function spliceExactLines(
   if (starts.length !== 1) return null;
   const first = lines[starts[0]];
   const last = lines[starts[0] + oldLinesPlain.length - 1];
+  // Text-unchanged lines at the region's edges keep their ORIGINAL raw
+  // fragments. diffLines widens pure insertions/deletions with an
+  // anchor line whose text didn't change — re-escaping it as a plain
+  // `<div>` would strip any styling (heading, bold) the user had there.
+  const oldN = oldLinesPlain.length;
+  const newN = newLinesPlain.length;
+  let pre = 0;
+  while (pre < Math.min(oldN, newN) && oldLinesPlain[pre] === newLinesPlain[pre]) pre++;
+  let suf = 0;
+  while (
+    suf < Math.min(oldN, newN) - pre &&
+    oldLinesPlain[oldN - 1 - suf] === newLinesPlain[newN - 1 - suf]
+  ) suf++;
   const replacement = newLinesPlain
-    .map(l => l === '' ? '<div><br></div>' : `<div>${escapeNotesHtml(l)}</div>`)
+    .map((l, j) => {
+      if (j < pre) return lines[starts[0] + j].raw;
+      if (j >= newN - suf) return lines[starts[0] + oldN - (newN - j)].raw;
+      return l === '' ? '<div><br></div>' : `<div>${escapeNotesHtml(l)}</div>`;
+    })
     .join('\n');
   return (
     bodyHtml.slice(0, first.start) +

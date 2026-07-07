@@ -93,7 +93,14 @@ export function ensureTrailingNewline(s: string): string {
   return s.endsWith('\n') ? s : s + '\n';
 }
 
-/** Record a write hash for echo classification (capped ring per note). */
+/**
+ * Record a write hash for echo classification (capped ring per note).
+ * Accepted residual: a CAS-conflicted fill leaves its intended-text
+ * hash in the ring (entries only leave by cap eviction or untrack), so
+ * a user later producing byte-identical text would be misclassified as
+ * our echo. Requires reproducing one of ≤16 exact full-note plaintexts
+ * — vanishingly unlikely; not worth per-write conflict bookkeeping.
+ */
 export function recordWriteHash(state: DaemonState, id: string, h: string): void {
   let set = state.lastWriteHash.get(id);
   if (!set) { set = new Set(); state.lastWriteHash.set(id, set); }

@@ -65,7 +65,12 @@ Key invariants (all pinned by tests in `src/tick.test.ts` +
 pnpm --filter @opencues/runtime build          # after band changes
 pnpm --filter @opencues/apple-notes build      # after daemon changes
 node integrations/apple-notes/dist/daemon.js   # run directly
-# or the full path: opencues run apple-notes (self-heals on src drift)
+# or: opencues run apple-notes — self-heals on @opencues/{core,runtime}
+# src drift ONLY. The daemon's own src/ and the adapter band are OUTSIDE
+# srcHash (BUNDLED_SOURCE_DIRS is a single global hash — adding them
+# would rebuild every other host on daemon-only edits), so after editing
+# tick.ts/daemon.ts or adapters/apple-notes/v1/* you MUST run the
+# builds above yourself; `opencues run` will happily launch stale dist.
 ```
 
 Tests: `pnpm --filter @opencues/apple-notes test` (pure logic — no

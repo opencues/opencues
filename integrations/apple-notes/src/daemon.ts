@@ -76,7 +76,12 @@ function acquireLockOrExit(): void {
       try { pid = parseInt(fsSync.readFileSync(LOCK_PATH, 'utf8'), 10); } catch { /* unreadable */ }
       let alive = false;
       if (Number.isFinite(pid)) {
-        try { process.kill(pid, 0); alive = true; } catch { /* dead */ }
+        try { process.kill(pid, 0); alive = true; }
+        catch (err) {
+          // EPERM = the pid exists but belongs to another user (multi-
+          // user Mac) — that daemon is alive; only ESRCH means dead.
+          alive = (err as NodeJS.ErrnoException)?.code === 'EPERM';
+        }
       }
       if (alive) {
         console.error(`opencues apple-notes daemon already running (pid ${pid}) — refusing to start a duplicate.`);
@@ -151,7 +156,10 @@ export async function main(): Promise<void> {
   let virtualNoteId: string | null = null;
   let flushTimer: NodeJS.Timeout | null = null;
   let firstPendingAt: number | null = null;
-  let lastRedispatchText: string | null = null;
+  // Per-note redispatch dedupe (a single global string would suppress a
+  // legitimately re-typed identical multi-cue text in another note).
+  // Cleared on user edits so re-typing the same content can re-fire.
+  const lastRedispatchText = new Map<string, string>();
 
   const dropVirtual = (): void => {
     virtualText = null;
@@ -287,8 +295,8 @@ export async function main(): Promise<void> {
     // filled text: if the resolver answers, the next fill consumes a
     // marker (terminates); if it declines, nothing changes and the
     // dedupe guard stops a loop.
-    if (id === state.activeId && containsBlankMarker(newText) && newText !== lastRedispatchText) {
-      lastRedispatchText = newText;
+    if (id === state.activeId && containsBlankMarker(newText) && newText !== lastRedispatchText.get(id)) {
+      lastRedispatchText.set(id, newText);
       log('info', 'unanswered cue remains — re-dispatching', { id });
       const cursor = synthCursor(newText);
       armMarker(newText, cursor - 1);
@@ -388,7 +396,11 @@ export async function main(): Promise<void> {
               // A USER edit invalidates the virtual buffer (their text
               // wins) AND the cached body; our own echo does neither —
               // a flush may still be pending behind it.
-              if (e.source === 'user') { dropVirtual(); knownBody.delete(e.id); }
+              if (e.source === 'user') {
+                dropVirtual();
+                knownBody.delete(e.id);
+                lastRedispatchText.delete(e.id);
+              }
               if (e.armAt !== null) armMarker(e.text, e.armAt);
               bootResult.notifyTextChange(e.text, e.cursor, e.source);
               break;
