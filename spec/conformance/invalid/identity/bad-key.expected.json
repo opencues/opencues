@@ -1,0 +1,5 @@
+{
+  "rule": "invalid-key",
+  "severity": "error",
+  "summary": "IDENTITY.md field key \"../etc/passwd\" fails the [A-Za-z][A-Za-z0-9_-]* shape — path-traversal / shell-meta / unicode keys MUST be rejected at write time"
+}

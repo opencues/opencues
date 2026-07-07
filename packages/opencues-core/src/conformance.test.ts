@@ -43,6 +43,8 @@ import { join } from 'node:path';
 import { parseSingleCueMd, parseSingleAuditorMd, parseCuesMaster, parseBlanksMaster, parseAuditorsMaster, type SingleCueFrontmatter } from './cues-md';
 import { parseAlternatives } from './sources/parsers';
 import { unknownHostNames } from './host-compat';
+import { parseIdentityMd, deriveToken } from './identity-context';
+import { validateSentinelWrite } from './identity-validator';
 
 // Path to spec/conformance/, resolved from this file's location at
 // packages/opencues-core/src/conformance.test.ts
@@ -469,6 +471,71 @@ describe('routing/*.json', () => {
           });
         }
       }
+    });
+  }
+});
+
+// ─── identity surface (IDENTITY.md) ─────────────────────────────────────────
+// parseIdentityMd + validateSentinelWrite both live in @opencues/core, so the
+// identity fixtures are exercised here. (Kata's parser lives in
+// @opencues/runtime, so its fixtures are driven from that package's
+// kata.test.ts for the same reason.)
+
+describe('valid/identity/*.md', () => {
+  const dir = join(ROOT, 'valid', 'identity');
+  if (!existsSync(dir)) return;
+  for (const file of readdirSync(dir)) {
+    if (!file.endsWith('.md')) continue;
+    it(`${file} parses and derives well-formed tokens`, () => {
+      const content = readFileSync(join(dir, file), 'utf8');
+      const id = parseIdentityMd(content);
+      // At least one catalog field survived the parse.
+      expect(id.fields.length).toBeGreaterThan(0);
+      for (const f of id.fields) {
+        // Parser drops empty values, so every surviving field has one.
+        expect(f.value.length).toBeGreaterThan(0);
+        // Token is the canonical derivation of the key…
+        expect(f.token).toBe(deriveToken(f.key));
+        // …with the [UPPER SPACED] shape the spec mandates.
+        expect(f.token).toMatch(/^\[[A-Z0-9][A-Z0-9 ]*\]$/);
+      }
+      // The catalog maps exactly one token per field (no dropped/dup tokens).
+      expect(id.catalog.size).toBe(id.fields.length);
+    });
+  }
+});
+
+// Invalid identity fixtures represent a WRITE that MUST be refused. A whole
+// IDENTITY.md is never "rejected" as a file — parseIdentityMd is deliberately
+// lenient (it silently drops bad fields), so the write-time validator is the
+// gate. We replay each fixture's raw frontmatter fields IN ORDER through
+// validateSentinelWrite (NOT parseIdentityMd, which would pre-drop the
+// offender) and assert the first rejection matches the expected error code.
+describe('invalid/identity/*.md', () => {
+  const dir = join(ROOT, 'invalid', 'identity');
+  if (!existsSync(dir)) return;
+  for (const file of readdirSync(dir)) {
+    if (!file.endsWith('.md')) continue;
+    const expected: ExpectedRejection = JSON.parse(
+      readFileSync(join(dir, file.replace('.md', '.expected.json')), 'utf8'),
+    );
+    it(`${file} is REFUSED by validateSentinelWrite (${expected.rule})`, () => {
+      const content = readFileSync(join(dir, file), 'utf8');
+      const fm = content.match(/^---\n([\s\S]*?)\n---/);
+      const lines = fm ? fm[1].split('\n') : [];
+      let fields: { key: string; value: string }[] = [];
+      let firstError: string | null = null;
+      for (const raw of lines) {
+        if (!raw.trim() || /^\s*#/.test(raw)) continue; // skip blanks + comments
+        const m = raw.match(/^\s*(.+?):\s*(.*)$/);
+        if (!m) continue;
+        const key = m[1].trim().replace(/^["']|["']$/g, '');
+        const value = m[2].trim().replace(/^["']|["']$/g, '');
+        const res = validateSentinelWrite(fields, { op: 'set', key, value });
+        if (!res.ok) { firstError = res.error; break; }
+        fields = [...res.fields];
+      }
+      expect(firstError).toBe(expected.rule);
     });
   }
 });

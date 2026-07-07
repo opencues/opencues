@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opencues.org/schemas/identity.schema.json",
+  "title": "OpenCues IDENTITY.md frontmatter",
+  "description": "JSON Schema for the YAML frontmatter of ~/.cues/IDENTITY.md — the user's personal-data catalog. Spec: opencues/0.6-alpha. See /spec/identity-context-spec.md. Frontmatter is the catalog; the markdown body is reserved and ignored by conformant readers. Each `<key>: <value>` entry derives a canonical [UPPER SPACED] bracket-token (a sentinel) the LLM emits without the value reaching the prompt. Two write-time contracts are NOT expressible in JSON Schema and are enforced by the validator (validateSentinelWrite): (1) no two keys may derive the same token (collision), and (2) the field-count cap (64 by default).",
+  "type": "object",
+  "properties": {
+    "spec": {
+      "type": "string",
+      "pattern": "^opencues/\\d+\\.\\d+(-[a-z]+)?$",
+      "default": "opencues/0.1-alpha",
+      "description": "Optional spec-version pin. IDENTITY.md is new in 0.2-alpha; bidirectional dehydration in safe mode is normative from 0.6-alpha. A reader older than the file's declared spec ignores the catalog."
+    }
+  },
+  "patternProperties": {
+    "^[A-Za-z][A-Za-z0-9_-]*$": {
+      "type": "string",
+      "maxLength": 256,
+      "pattern": "^[^\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]*$",
+      "description": "A catalog field. The key derives a [UPPER SPACED] token (firstName / first_name / first-name all -> [FIRST NAME]); the value is the private data substituted in for that token in safe mode after the LLM responds. Value is capped at 256 chars and MUST NOT contain control characters."
+    }
+  },
+  "additionalProperties": false
+}

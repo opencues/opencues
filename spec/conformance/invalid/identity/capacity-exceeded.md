@@ -1,0 +1,71 @@
+---
+field01: value1
+field02: value2
+field03: value3
+field04: value4
+field05: value5
+field06: value6
+field07: value7
+field08: value8
+field09: value9
+field10: value10
+field11: value11
+field12: value12
+field13: value13
+field14: value14
+field15: value15
+field16: value16
+field17: value17
+field18: value18
+field19: value19
+field20: value20
+field21: value21
+field22: value22
+field23: value23
+field24: value24
+field25: value25
+field26: value26
+field27: value27
+field28: value28
+field29: value29
+field30: value30
+field31: value31
+field32: value32
+field33: value33
+field34: value34
+field35: value35
+field36: value36
+field37: value37
+field38: value38
+field39: value39
+field40: value40
+field41: value41
+field42: value42
+field43: value43
+field44: value44
+field45: value45
+field46: value46
+field47: value47
+field48: value48
+field49: value49
+field50: value50
+field51: value51
+field52: value52
+field53: value53
+field54: value54
+field55: value55
+field56: value56
+field57: value57
+field58: value58
+field59: value59
+field60: value60
+field61: value61
+field62: value62
+field63: value63
+field64: value64
+field65: value65
+---
+
+# 65 catalog fields — one over the 64-field default cap
+# (DEFAULT_SENTINEL_CAPS.maxFields). Replayed as sequential writes, the
+# 65th add MUST be rejected (error: capacity-exceeded).

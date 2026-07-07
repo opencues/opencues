@@ -1,0 +1,5 @@
+{
+  "rule": "value-too-long",
+  "severity": "error",
+  "summary": "value for key bio is 300 chars, over the 256-char default cap (DEFAULT_SENTINEL_CAPS.maxValueLength) — MUST be rejected at write time"
+}

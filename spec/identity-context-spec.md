@@ -172,7 +172,7 @@ raw:     [FIRST NAME] — first name (value: Wilfred)
 The exact prompt shape is implementation-defined — the standard
 fixes the catalog being injected, not the prose around it.
 
-### Dehydration (outbound) — new in `0.5`
+### Dehydration (outbound) — new in `0.6`
 
 `safe` mode's guarantee is bidirectional: PII must not reach the
 provider even when the user TYPED it into the buffer. Before any
@@ -263,7 +263,7 @@ the other is a footgun the spec closes deliberately.
   the provider — both the catalog direction (token-only prompt
   blocks) and the buffer direction (outbound dehydration, § above).
   A reader implementing only the catalog half MUST NOT describe
-  itself as `safe`-conformant against `0.5`.
+  itself as `safe`-conformant against `0.6`.
 - **Validator chokepoint.** Every code path that mutates
   `IDENTITY.md` MUST go through a single write-validator. Adding a
   second site that bypasses the validator is a regression — see

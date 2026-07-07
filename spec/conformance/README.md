@@ -1,4 +1,4 @@
-# Conformance suite — opencues/0.1-alpha
+# Conformance suite — opencues/0.6-alpha
 
 A corpus of fixtures any conformant OpenCues implementation can exercise against. This suite is the bridge between "I read [`../cue-spec.md`](../cue-spec.md)" and "the parser actually matches the standard". Used today by `@opencues/core` as its parser regression net (adding a fixture this week caught one drift); designed so a future second runtime could exercise the same fixtures.
 
@@ -15,6 +15,7 @@ conformance/
 │   ├── blank/<name>.md             ← valid BLANK.md examples
 │   ├── auditor/<name>.md           ← valid AUDITOR.md examples
 │   ├── kata/<name>.md              ← valid KATA.md examples (0.5-alpha)
+│   ├── identity/<name>.md          ← valid IDENTITY.md examples (0.2-alpha)
 │   └── masters/<MASTER>.md         ← valid CUES.md / BLANKS.md / AUDITORS.md / OPENCUES.md
 │
 ├── invalid/                        ← MUST be rejected by any conformant runtime
@@ -25,7 +26,9 @@ conformance/
 │   ├── auditor/<name>.md
 │   ├── auditor/<name>.expected.json
 │   ├── kata/<name>.md              ← invalid KATA.md examples (0.5-alpha)
-│   └── kata/<name>.expected.json
+│   ├── kata/<name>.expected.json
+│   ├── identity/<name>.md          ← invalid IDENTITY.md examples (0.2-alpha)
+│   └── identity/<name>.expected.json
 │
 ├── wire/
 │   ├── README.md
@@ -45,7 +48,7 @@ conformance/
 
 The suite is `@opencues/core`'s regression net. The runner at [`packages/opencues-core/src/conformance.test.ts`](../../packages/opencues-core/src/conformance.test.ts) loads every fixture and asserts the reference parsers + wire-format handler + routing algorithm agree with what the spec describes.
 
-Run it: `cd packages/opencues-core && npx vitest run src/conformance.test.ts`. 54 tests pass; 6 are `.todo` markers naming linter rule codes the parser doesn't emit yet (visible-by-design gaps for a follow-up parser-side change).
+Run it: `cd packages/opencues-core && npx vitest run src/conformance.test.ts`. 70 tests pass; a few `.todo` markers name linter rule codes the parser doesn't emit yet (visible-by-design gaps for a follow-up parser-side change). KATA.md and IDENTITY.md fixtures add their own runners — kata from `@opencues/runtime`'s `kata.test.ts`, identity from this same core runner.
 
 This is the everyday value of the suite today — every parser change runs against the fixture tree before merge.
 
@@ -175,25 +178,27 @@ contract (the coaching runtime is reference-impl, not standard; see
 
 ## Versioning
 
-The suite versions with the spec. Files declare:
+The suite versions with the spec. A fixture MAY pin its target version in frontmatter:
 
 ```yaml
 spec: opencues/0.1-alpha
 ```
 
-When the spec bumps to `0.2-alpha`, the suite forks: `conformance/0.1-alpha/` and `conformance/0.2-alpha/` coexist for one minor cycle, so an implementer running against `0.1-alpha` still has the fixtures pinned at that version.
+…but in practice almost all fixtures omit it (see below). The versioning *model* is a per-version fork: when the spec bumps, `conformance/<old>/` and `conformance/<new>/` would coexist for one minor cycle so an implementer pinned to the old version keeps its fixtures. **In practice that fork has never been cut** — the suite grows in place as a single flat tree. Fixtures omit `spec:` and are read at the omit-default (`opencues/0.1-alpha`); surfaces added by later minors (kata at `0.5`, identity's dehydration at `0.6`) are additive and don't invalidate an older reader's fixtures, so the flat tree has held.
 
-**Status (`0.2-alpha` cut, June 2026).** The spec bumped to `0.2-alpha`
-(IDENTITY.md, `as-context:` / `contextTtl:` on BLANK.md, spec-mandated
-OPENCUES.md scalars). The fork has NOT yet happened — the suite is
-still `0.1-alpha` flat. **Coverage gap** until the fork lands:
+**Status (`0.6-alpha`, July 2026).** The spec has moved `0.1 → 0.6`
+(IDENTITY.md + `as-context:` / `contextTtl:` at `0.2`, Kata at `0.5`,
+bidirectional identity-context dehydration at `0.6`). The suite tracks
+it in place. Surfaces now covered: cue / blank / auditor / masters /
+wire / routing (in `@opencues/core`'s runner), KATA.md (driven from
+`@opencues/runtime`'s `kata.test.ts` — `parseKataMd` lives there), and
+**IDENTITY.md** (`valid/identity/` + `invalid/identity/`, driven from
+`@opencues/core`'s `conformance.test.ts`: valid files MUST parse and
+derive well-formed tokens; invalid files replay their frontmatter
+through `validateSentinelWrite` and MUST be refused with the expected
+error code — `invalid-key` / `value-too-long` / `collision` /
+`capacity-exceeded`). **Remaining coverage gap:**
 
-- `valid/identity/` — IDENTITY.md fixtures (frontmatter + expected
-  derived-token sets) covering the canonical token-derivation
-  algorithm in `identity-context-spec.md`.
-- `invalid/identity/` — files that MUST be rejected (bad key shape,
-  control chars, oversize values, token collisions, capacity
-  overflow).
 - `post-processor/` — LLM-output → post-processed-output pairs for
   verbatim resolve, unknown-strip, originalBody preserve, tolerant
   matching.
@@ -202,16 +207,16 @@ still `0.1-alpha` flat. **Coverage gap** until the fork lands:
 - `routing/` — mode-gate composition (the rule that
   `blank-context-mode: raw` MUST downgrade to `safe` when
   `identity-context-mode` is NOT `raw`).
-- `dehydration/` (`0.5-alpha` surface) — buffer-text → dehydrated-text
+- `dehydration/` (`0.6-alpha` surface) — buffer-text → dehydrated-text
   pairs pinning the matching floor (case-insensitive, word-boundary,
   longest-value-first, CJK adjacency) + round-trip pairs pinning the
   hydrate-restores-original invariant and the both-present
   preserve-wins precedence. See `identity-context-spec.md`
   § Dehydration.
 
-A second implementation targeting `0.2-alpha` or later should treat
+A second implementation targeting `0.6-alpha` should treat
 the spec text in `identity-context-spec.md` and `blank-spec.md`
-§ Sentinel aspects as authoritative until these fixtures land.
+§ Sentinel aspects as authoritative until these remaining fixtures land.
 (The reference implementation's executable equivalents:
 `packages/opencues-core/src/dehydrate.test.ts` +
 `sources/dehydration-outbound.test.ts`.)
@@ -271,7 +276,7 @@ Wrap with whatever test framework you use. The reference implementation's runner
 
 ## Status
 
-The 0.1-alpha suite is **seed**, not exhaustive. Coverage:
+The 0.6-alpha suite is **seed**, not exhaustive. Coverage:
 
 | Area | Fixtures | Notes |
 |---|---|---|
@@ -279,11 +284,13 @@ The 0.1-alpha suite is **seed**, not exhaustive. Coverage:
 | Valid BLANK.md | 5 | stepValues, blankScript, impl, full-frontmatter, selector-satellite |
 | Valid AUDITOR.md | 2 | Minimal, full-frontmatter |
 | Valid KATA.md | 2 | Full-frontmatter, minimal (no frontmatter) |
+| Valid IDENTITY.md | 2 | Minimal single-field, typical multi-field (camelCase / snake_case / kebab-case token derivation) |
 | Valid masters | 4 | CUES.md, BLANKS.md, AUDITORS.md, OPENCUES.md |
 | Invalid CUE.md | 5 | Missing name, missing trigger, empty body, unknown host, spec-too-new |
 | Invalid BLANK.md | 5 | Missing name, missing keywords, no binding, multiple bindings, script missing |
 | Invalid AUDITOR.md | 2 | Missing name, empty body |
 | Invalid KATA.md | 1 | No steps |
+| Invalid IDENTITY.md | 4 | Bad key (invalid-key), oversize value (value-too-long), token collision, capacity overflow |
 | Wire fixtures | 10 | Single/multi-line, whitespace tolerance, numeric skip, `=` synonym |
 | Routing scenarios | 4 | Per-word dispatch, priority tiebreak, catch-all fallback, blank shapes |
 
