@@ -7,6 +7,17 @@ debug-mode: off
 tips-mode: on
 cursor-navigate: inactive
 
+# nav-keymap — modifier combo for word navigation (Left/Right) and
+# alternative cycling (Up/Down).
+#   auto       (default): resolves to ctrl-alt on every host.
+#   ctrl-alt   : Ctrl+Alt+Arrow (Ctrl+Option+Arrow on macOS — in
+#                Terminal.app enable "Use Option as Meta key" so the
+#                combo survives).
+#   ctrl-shift : for terminals that forward ctrl-shift but not
+#                ctrl-alt. Chrome always uses ctrl-alt regardless
+#                (ctrl-shift+arrow extends browser text selection).
+nav-keymap: auto
+
 # max-thinking — how hard reasoning-capable models think before
 # answering. Each verified model has a bench-tuned CEILING (cerebras
 # gpt-oss → medium, groq/openai/openrouter gpt-oss & gpt-5 → low) and a

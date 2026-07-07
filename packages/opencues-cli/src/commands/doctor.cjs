@@ -51,6 +51,12 @@ module.exports = async function doctor(argv, ctx) {
     console.error('opencues doctor: failed to load @opencues/core (run `pnpm build`):', err.message);
     return 1;
   }
+  // Existing-key detection (shell env + ~/.cues/.env). Optional — an
+  // older built core without env-keys.js degrades to env-only checks.
+  let envKeysMod = null;
+  try {
+    envKeysMod = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/env-keys.js'));
+  } catch { /* env-only fallback below */ }
 
   console.log(banner({ version: cliVersion(ctx), tagline: 'cross-host install diagnostics' }));
   console.log('');
@@ -914,14 +920,25 @@ module.exports = async function doctor(argv, ctx) {
   // first-line provider is the one a fresh user without configured
   // overrides will hit.
   {
-    const s = section('Environment', 'API keys exported in this shell session');
+    const s = section('Environment', 'API keys from shell env + ~/.cues/.env (opencues set-key)');
+    // Per-key source detection via core's env-keys module: shell env
+    // wins over ~/.cues/.env, mirroring what the hosts boot with.
+    const keySources = envKeysMod
+      ? Object.fromEntries(envKeysMod.detectProviderKeys().map((d) => [d.envKeyName, d.source]))
+      : null;
+    const fileEnv = envKeysMod ? envKeysMod.readCuesEnvFile() : {};
+    const sourceOf = (envName) => keySources
+      ? (keySources[envName] ?? (process.env[envName] ? 'shell-env' : null))
+      : (process.env[envName] ? 'shell-env' : null);
+    const keyLabel = (base, envName) =>
+      sourceOf(envName) === 'env-file' ? `${base} · via ~/.cues/.env` : base;
     const order = providers.PROVIDER_AUTO_ORDER;
     for (let i = 0; i < order.length; i++) {
       const id = order[i];
       const adapter = providers.getProvider(id);
       if (!adapter) continue;
       const suffix = i === 0 ? ' (LLM — auto-pick when set)' : ' (LLM)';
-      s.ok(`${adapter.envKeyName}${suffix}`, !!process.env[adapter.envKeyName]);
+      s.ok(keyLabel(`${adapter.envKeyName}${suffix}`, adapter.envKeyName), !!sourceOf(adapter.envKeyName));
     }
     // Show every other LLM provider (e.g. openrouter, intentionally
     // excluded from PROVIDER_AUTO_ORDER as a routing layer) so doctor
@@ -932,12 +949,20 @@ module.exports = async function doctor(argv, ctx) {
       // is external (via the user's `claude` install). Skip here;
       // they get their own check block below.
       if (adapter.transport === 'cli' || !adapter.envKeyName) continue;
-      s.ok(`${adapter.envKeyName} (LLM)`, !!process.env[adapter.envKeyName]);
+      s.ok(keyLabel(`${adapter.envKeyName} (LLM)`, adapter.envKeyName), !!sourceOf(adapter.envKeyName));
     }
     // Non-LLM service keys — kept hardcoded; one entry today (FINNHUB
     // for the stocks blank). Lift into a SERVICE_KEYS registry when
-    // there's a second one.
-    s.ok('FINNHUB_API_KEY (stocks blank)', !!process.env.FINNHUB_API_KEY);
+    // there's a second one. NOTE: script-facing keys still come from
+    // process.env at spawn time (the .env file feeds LLM dispatch only),
+    // so a file-only FINNHUB key is shown but flagged.
+    const finnhubSrc = process.env.FINNHUB_API_KEY ? 'shell-env' : (fileEnv.FINNHUB_API_KEY ? 'env-file' : null);
+    s.ok(
+      finnhubSrc === 'env-file'
+        ? 'FINNHUB_API_KEY (stocks blank) · in ~/.cues/.env — scripts need a shell export'
+        : 'FINNHUB_API_KEY (stocks blank)',
+      !!finnhubSrc,
+    );
     s.render();
   }
   // ── LLM routing (three buckets) ────────────────────────────────────────
@@ -952,9 +977,17 @@ module.exports = async function doctor(argv, ctx) {
     const s = section('LLM routing', 'per-bucket effective provider (bucket scalar > global > auto)');
     const settingsFile = path.join(userConfigDir, registry.CORE_SETTINGS_FILE);
     const scalars = readOpencuesScalars(settingsFile);
-    const apiKeysFromEnv = {};
-    for (const adapter of providers.listProviders()) {
-      if (adapter.envKeyName) apiKeysFromEnv[adapter.envKeyName] = process.env[adapter.envKeyName];
+    // Bag mirrors what a native host boots with — shell env + ~/.cues/.env
+    // via core's buildBootApiKeys — so the displayed auto-pick matches the
+    // runtime's actual resolution.
+    let apiKeysFromEnv;
+    if (envKeysMod) {
+      apiKeysFromEnv = envKeysMod.buildBootApiKeys();
+    } else {
+      apiKeysFromEnv = {};
+      for (const adapter of providers.listProviders()) {
+        if (adapter.envKeyName) apiKeysFromEnv[adapter.envKeyName] = process.env[adapter.envKeyName];
+      }
     }
     const globalScalar = scalars['llm-provider'];
     const autoPicked = providers.pickAutoProvider?.(apiKeysFromEnv) ?? null;
@@ -962,7 +995,10 @@ module.exports = async function doctor(argv, ctx) {
       const raw = (scalars[bucketScalarName] || '').toLowerCase();
       if (raw && raw !== 'inherit') return { provider: raw, source: bucketScalarName };
       if (globalScalar) return { provider: globalScalar.toLowerCase(), source: 'llm-provider' };
-      if (autoPicked) return { provider: autoPicked, source: 'auto (env key)' };
+      if (autoPicked) {
+        const viaSubscription = providers.getProvider(autoPicked)?.transport === 'cli';
+        return { provider: autoPicked, source: viaSubscription ? 'auto (subscription CLI — no keys set)' : 'auto (env key)' };
+      }
       return { provider: null, source: 'none' };
     };
     // Mirror normalizeModelScalar in opencues-runtime/src/modules/resolver.ts:
@@ -1021,17 +1057,11 @@ module.exports = async function doctor(argv, ctx) {
       const s = section('Subscription providers', 'CLI-transport providers that use external auth (no env key)');
       const { spawnSync } = require('child_process');
       for (const adapter of cliProviders) {
-        // Map CLI-transport provider id → binary name needed for auth
-        // setup. claude-cli → `claude`. openai-subscription needs
-        // `codex` for the one-time `codex login` (the runtime then
-        // reads ~/.codex/auth.json directly; codex isn't on the hot
-        // path). Default to the id for any future CLI provider whose
-        // binary matches its id.
-        const BIN_BY_ID = {
-          'claude-code-cli': 'claude',
-          'openai-subscription': 'codex',
-        };
-        const bin = BIN_BY_ID[adapter.id] || adapter.id;
+        // Binary per CLI-transport provider — from core's registry map
+        // (the same one pickAutoProvider's zero-key subscription rung
+        // probes), defaulting to the id for any future CLI provider
+        // whose binary matches its id.
+        const bin = providers.SUBSCRIPTION_CLI_BINARIES?.[adapter.id] || adapter.id;
         const which = spawnSync('which', [bin], { encoding: 'utf8' });
         const installed = which.status === 0;
         s.ok(`${adapter.displayName} (${bin} on PATH)`, installed);
@@ -1054,22 +1084,41 @@ module.exports = async function doctor(argv, ctx) {
   // hasAnyLlmKey iterates the registry so adding a provider auto-counts.
   // CLI-transport providers don't have an env key — they count as "key
   // present" when their binary is installed (probed in the block above).
-  const hasAnyLlmKey = providers.listProviders().some(p => {
-    if (p.transport === 'cli') return false; // doesn't count toward "no key" check
-    return !!process.env[p.envKeyName];
-  });
+  const hasAnyLlmKey = envKeysMod
+    ? envKeysMod.detectProviderKeys().some((d) => d.source)
+    : providers.listProviders().some(p => {
+        if (p.transport === 'cli') return false; // doesn't count toward "no key" check
+        return !!process.env[p.envKeyName];
+      });
   if (!hasAnyLlmKey) {
-    const firstChoice = providers.getProvider(providers.PROVIDER_AUTO_ORDER[0]);
-    findings.push({
-      sev: 'warn',
-      msg: 'no LLM provider key set — every LLM-driven cue/blank will be inert',
-      fix: `export ${firstChoice?.envKeyName ?? 'GROQ_API_KEY'}=... (or another supported provider)`,
-    });
+    // Zero keys — but the runtime's auto-route has a subscription-CLI
+    // rung (claude/codex binary present → claude-code-cli /
+    // openai-subscription). When that rung would fire, the setup WORKS:
+    // downgrade to info naming the route + the faster path.
+    const subscriptionPick = providers.pickAutoProvider?.({}) ?? null;
+    const subscriptionAdapter = subscriptionPick ? providers.getProvider(subscriptionPick) : null;
+    if (subscriptionAdapter?.transport === 'cli') {
+      findings.push({
+        sev: 'info',
+        msg: `no API keys — LLM calls route through your ${providers.SUBSCRIPTION_CLI_BINARIES?.[subscriptionPick] ?? subscriptionPick} subscription (${subscriptionPick}). Works out of the box; slower than the API tier`,
+        fix: 'opencues set-key (a stored API key automatically takes over the auto-route)',
+      });
+    } else {
+      const firstChoice = providers.getProvider(providers.PROVIDER_AUTO_ORDER[0]);
+      findings.push({
+        sev: 'warn',
+        msg: 'no LLM provider key set — every LLM-driven cue/blank will be inert',
+        fix: `opencues set-key ${firstChoice?.id ?? 'cerebras'} (stores in ~/.cues/.env, read at host boot) — or export ${firstChoice?.envKeyName ?? 'CEREBRAS_API_KEY'}=...`,
+      });
+    }
   } else {
     // First-in-auto-order key missing AND a non-default provider is set
     // → user has likely overridden llm-provider:, verify their setup.
     const top = providers.getProvider(providers.PROVIDER_AUTO_ORDER[0]);
-    if (top && !process.env[top.envKeyName]) {
+    const topSet = envKeysMod
+      ? envKeysMod.detectProviderKeys().some((d) => d.providerId === top?.id && d.source)
+      : !!(top && process.env[top.envKeyName]);
+    if (top && !topSet) {
       findings.push({
         sev: 'info',
         msg: `${top.envKeyName} unset — auto-fallback's first choice (${top.displayName}) won't pick; ensure CUES.md / OPENCUES.md sets \`llm-provider:\` to a host you have a key for`,
@@ -1468,7 +1517,7 @@ function findOnPath(bin) {
 /**
  * Print a one-line pin-status check for the given integration.
  * Reads compat.json + the local pin (no network — that's `update --check`).
- * Surfaces drift: pin is tested ✓ / pin is in compat-range but untested ⚠ /
+ * Surfaces drift: pin is tested / pin is in compat-range but untested ⚠ /
  * pin is incompatible (shouldn't happen because installer should refuse,
  * but check anyway).
  */
@@ -1491,7 +1540,7 @@ function reportPinStatus(s, host, ctx, HOME, findings) {
     if (latestTested && pin !== latestTested) {
       s.ok(`pin status   ${pin} (tested, but ${latestTested} is newer-tested)`, true);
     } else {
-      s.ok(`pin status   ${pin} (tested ✓)`, true);
+      s.ok(`pin status   ${pin} (tested)`, true);
     }
   } else if (cls.status === 'compat-untested') {
     s.bad(`pin status   ${pin} (in compat-range ${compat['compat-range']}, NOT tested)`, false);

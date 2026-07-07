@@ -88,7 +88,7 @@ async function main(): Promise<void> {
       if (!c) return;
       const res = await runOne(c, system);
       results.push(res);
-      const tag = res.score.pass ? '✓' : '✗';
+      const tag = res.score.pass ? '\x1b[32m●\x1b[0m' : '✗';
       const flags = [
         res.score.schema ? 'sch' : 'SCH',
         res.score.distinct ? 'dst' : 'DST',

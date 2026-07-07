@@ -49,6 +49,22 @@ try {
   }
 } catch { /* no blanks/ dir */ }
 
+// Load katas from defaults/katas/. Folder-only shape: each subdir has a
+// KATA.md. Name = folder name. Bundled so `start kata _` works standalone
+// (no chrome-host / sync required for the shipped katas).
+const kataFolders = {};
+const katasDir = projectRoot + 'defaults/katas/';
+try {
+  for (const d of readdirSync(katasDir, { withFileTypes: true })) {
+    if (!d.isDirectory()) continue;
+    const kataMd = readOr(katasDir + d.name + '/KATA.md', '');
+    if (kataMd) kataFolders[d.name] = kataMd;
+  }
+  if (Object.keys(kataFolders).length > 0) {
+    console.log('Loaded katas:', Object.keys(kataFolders).join(', '));
+  }
+} catch { /* no katas/ dir */ }
+
 const envDefines = {
   // API keys are NOT baked in. The native-messaging host
   // (`opencues install chrome-host`) pushes them on connect from its
@@ -61,6 +77,7 @@ const envDefines = {
   '__DEFAULT_AUDITORS_MD__': JSON.stringify(readOr(projectRoot + 'defaults/AUDITORS.md', '')),
   '__DEFAULT_CUE_FOLDERS__': JSON.stringify(cuesFolders),
   '__DEFAULT_BLANK_FOLDERS__': JSON.stringify(blankFolders),
+  '__DEFAULT_KATA_FOLDERS__': JSON.stringify(kataFolders),
   // Stub Node globals the runtime modules reference. Content scripts
   // have no `process`; these defines replace the lookups at bundle
   // time so the bundled code reads literal '~' / '' / undefined.
@@ -90,7 +107,12 @@ const common = {
   // chrome and the silent-skip path fires. Without this, the
   // chrome build hard-fails at "node:path wasn't found on the
   // file system but is built into node."
-  external: ['node:fs', 'node:path'],
+  //
+  // node:child_process: core's env-keys/llm-provider lazily require it
+  // (~/.cues/.env read + the zero-key subscription-CLI probe). Both are
+  // typeof-process-guarded so the require is unreachable in a content
+  // script — external for the same emit-as-is reason.
+  external: ['node:fs', 'node:path', 'node:child_process'],
 };
 
 // The three bundles. content + popup are IIFEs (injected into page

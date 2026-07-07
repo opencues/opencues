@@ -139,7 +139,7 @@ async function probe({ provider, model }) {
     process.stdout.write(`▸ ${combo.provider.padEnd(11)} ${combo.model.padEnd(38)} `);
     const r = await probe(combo);
     results.push(r);
-    const tag = r.status === 'ok' ? '✓' : r.status === 'skipped' ? '·' : '✗';
+    const tag = r.status === 'ok' ? '\x1b[32m●\x1b[0m' : r.status === 'skipped' ? '·' : '✗';
     const detail = r.status === 'ok' ? `(${r.ms}ms) "${r.reply}"`
                  : r.status === 'skipped' ? `(skipped — ${r.reason})`
                  : `(${r.reason})`;

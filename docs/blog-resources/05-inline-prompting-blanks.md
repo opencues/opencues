@@ -88,22 +88,12 @@ single handle through which the user can:
 One character. Six (or more) jobs. Which job runs is decided by the
 *context around the `_`*, not by the user picking a mode.
 
-## Re-evaluation: blanks are never permanent
+## Ownership: what's filled stays filled
 
-From `docs/glossary.md`:
-> Blanks are automatically computed and **re-evaluated on every edit**. When
-> the surrounding text changes, the blank's value updates. This means a
-> blank is never permanently filled — it can always return to `_` and be
-> re-evaluated in its new context.
-
-This is the second novel HCI piece. Most "fill" UI is commit-once: you
-accept a suggestion, it becomes part of your text, the suggestion machinery
-forgets about it. Blanks stay live. Edit the surrounding context and the
-blank value updates.
-
-The implementation lock that keeps the LLM from clobbering a blank value
-*you've already accepted* is `metadata.blankName` on the WordDef. Only the
-user can clear it (by editing the word).
+Once a blank resolves, the result belongs to the user. The implementation
+lock that keeps the LLM from clobbering a blank value *you've already
+accepted* is `metadata.blankName` on the WordDef. Only the user can clear
+it (by editing the word).
 
 ## Keyword matching: the binding rule
 

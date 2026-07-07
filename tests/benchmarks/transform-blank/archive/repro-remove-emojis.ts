@@ -152,19 +152,19 @@ async function runOne(c: CaseSpec, attempt: number): Promise<boolean> {
     checks.push(`${RED}✗ verdict expected TRANSFORM, got ${parsed.verdict}${RESET}`);
     pass = false;
   } else {
-    checks.push(`${GREEN}✓ verdict=TRANSFORM${RESET}`);
+    checks.push(`${GREEN}\x1b[32m●\x1b[0m verdict=TRANSFORM${RESET}`);
   }
   if (!(parsed.instruction ?? '').toLowerCase().includes(c.expectInstructionContains.toLowerCase())) {
     checks.push(`${RED}✗ instruction missing "${c.expectInstructionContains}" — got "${parsed.instruction}"${RESET}`);
     pass = false;
   } else {
-    checks.push(`${GREEN}✓ instruction contains "${c.expectInstructionContains}"${RESET}`);
+    checks.push(`${GREEN}\x1b[32m●\x1b[0m instruction contains "${c.expectInstructionContains}"${RESET}`);
   }
   if (!(parsed.target ?? '').includes(c.expectTargetContains)) {
     checks.push(`${RED}✗ target missing "${c.expectTargetContains}" — got TARGET length ${(parsed.target ?? '').length}${RESET}`);
     pass = false;
   } else {
-    checks.push(`${GREEN}✓ target contains "${c.expectTargetContains}"${RESET}`);
+    checks.push(`${GREEN}\x1b[32m●\x1b[0m target contains "${c.expectTargetContains}"${RESET}`);
   }
   // Sanity check: INSTRUCTION should appear in INPUT.
   if (parsed.instruction && !input.toLowerCase().includes(parsed.instruction.toLowerCase())) {

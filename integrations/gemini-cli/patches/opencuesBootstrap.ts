@@ -182,6 +182,13 @@ function findIdentityMdPath(): string {
   return path.join(process.env['HOME'] ?? '~', '.cues', 'IDENTITY.md');
 }
 
+function findNotesMdPath(): string {
+  if (process.env['OPENCUES_HOME']) {
+    return path.join(process.env['OPENCUES_HOME'], 'NOTES.md');
+  }
+  return path.join(process.env['HOME'] ?? '~', '.cues', 'NOTES.md');
+}
+
 function resolveTtsScript(): string {
   const root = process.env['OPENCUES_HOME'] ?? path.join(process.env['HOME'] ?? '~', '.cues');
   return path.join(root, 'scripts/speak.sh');
@@ -201,6 +208,13 @@ const blanksRegistry: Map<string, Blank> = createDefaultBlanksRegistry({
   identityMdIO: {
     readFile: async () => { try { return await fs.readFile(findIdentityMdPath(), 'utf8'); } catch { return null; } },
     writeFile: async (content: string) => { await fs.writeFile(findIdentityMdPath(), content, 'utf8'); },
+  },
+
+  // Note collection blank (`note add/.../delete _`) — validateNoteWrite
+  // runs INSIDE NoteBlank before writeFile is called; never bypass.
+  notesMdIO: {
+    readFile: async () => { try { return await fs.readFile(findNotesMdPath(), 'utf8'); } catch { return null; } },
+    writeFile: async (content: string) => { await fs.writeFile(findNotesMdPath(), content, 'utf8'); },
   },
 });
 // Discover user-shipped JS blanks (`impl: ./blank.js` in BLANK.md)
@@ -447,6 +461,24 @@ export function startOpenCues(opts: {
     cursorStatePath: `/tmp/opencues-cursor-state-${process.pid}.json`,
     // Statusline format mirrors Claude Code + OpenCode.
     statusSnapshotHook: (payload: any) => {
+      // Kata block is dominant while active — it overrides the normal
+      // word/tip footer content (kata mode; docs/features/kata.md § Status
+      // line). Gemini's Footer is a single horizontal column, so the coach
+      // renders as one line (`C_ Kata N/M: <coach>`) rather than the
+      // multi-row block the OC/shell footers paint.
+      const tut = payload?.kata as {
+        step: number; stepCount: number; coach: string | null
+        coachSegments: Array<{ text: string; command: boolean }> | null
+        offTrack: boolean
+      } | null | undefined;
+      if (tut) {
+        const head = tut.stepCount > 0 ? `Kata ${tut.step}/${tut.stepCount}:` : 'Kata:';
+        const body = tut.coach
+          ?? (tut.coachSegments ? tut.coachSegments.map(s => s.text).join('') : '');
+        setOpenCuesTip(`C_ ${head}${body ? ' ' + body : ''}`.trimEnd());
+        return;
+      }
+
       const agentTask = payload?.agentTask as string | null | undefined;
       const agentBadge = agentTask ? `[task: ${agentTask}]` : null;
 

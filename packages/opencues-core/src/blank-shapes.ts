@@ -79,6 +79,14 @@ export function matchBlankShape(
       const m = t.match(re);
       if (!m) continue;
       const value = shape.valueGroup != null ? m[shape.valueGroup] : undefined;
+      // A captured arg that contains a standalone `_` means the greedy
+      // `(.+?)` swallowed an EARLIER blank slot into the arg region
+      // ("affirm _ improve prompt _" → affirm's get-with-arg matching
+      // value "_ improve prompt"). That's never a real invocation of
+      // this shape — skip it so the earlier `_` keeps its own owner
+      // and this one falls to whichever shape/keyword genuinely leads
+      // its segment. Clean cede, consistent with the module contract.
+      if (value !== undefined && value.split(/\s+/).includes('_')) continue;
       return { blankName: name, action: shape.action, value };
     }
   }

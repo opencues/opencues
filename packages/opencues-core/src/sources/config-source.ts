@@ -16,6 +16,8 @@ import {
 import { SourceConfig, BlankParser } from '../cues-md';
 import { parseAlternatives, parseRaw } from './parsers';
 import { useStrictJson, buildJsonResponseFormat, dispatchChat, type ProviderAdapter } from '../llm-provider';
+import { getDehydrator, type CompiledDehydrator } from '../dehydrate';
+import { postProcessContext } from '../identity-context';
 
 /**
  * The canonical output-format reminder for `parser: alternatives`
@@ -129,7 +131,17 @@ export class ConfigSource implements CueSource {
     }
 
     try {
-      const input = this.formatInput(context);
+      // DEHYDRATION (outbound PII scrub) — identity-context `safe` mode.
+      // alternatives parser: PII words are OMITTED from the indexed word
+      // list (explicit `i=word` pairs, so gaps keep index alignment) —
+      // your name gets no LLM synonyms. raw parser: the whole buffer is
+      // dehydrated; parsed alternatives are hydrated back below.
+      const idCtx = context.identityContext;
+      const dehydrator = idCtx && idCtx.mode === 'safe' && idCtx.catalog.size > 0
+        ? getDehydrator(idCtx.catalog)
+        : undefined;
+      const dRaw = this.parser !== 'alternatives' ? dehydrator?.dehydrate(context.text) : undefined;
+      const input = this.formatInput(context, dehydrator, dRaw?.changed ? dRaw.text : undefined);
       const separator = this.parser === 'alternatives' ? '\n' : ' ';
       // Strict JSON mode on groq gpt-oss skips the INDEX:alt1,alt2,alt3
       // format-spec append; the schema enforces shape instead.
@@ -170,9 +182,33 @@ export class ConfigSource implements CueSource {
         { apiKey: this.apiKey, endpoint: this.endpoint, maxThinking: this.maxThinking },
       );
 
-      const results = useJson
+      let results = useJson
         ? this.parseJsonResponse(raw, context.words)
         : this.parseResponse(raw, context.words);
+      if (dehydrator) {
+        // Belt-and-braces: never attach alternatives to a PII word even
+        // if the LLM hallucinated an index we omitted from the input.
+        results = results.filter(r => r.word === '_' || !dehydrator.isPiiWord(r.word));
+      }
+      if (this.parser !== 'alternatives' && idCtx && idCtx.catalog.size > 0) {
+        // Hydrate echoed tokens in raw-parser alternatives back to value
+        // space. Failure keeps the raw alternative (visible token, never
+        // lost content); alternatives[0] ('_') stays untouched.
+        results = results.map(r => ({
+          ...r,
+          alternatives: r.alternatives.map((alt, i) => {
+            if (i === 0) return alt;
+            try {
+              return postProcessContext(alt, {
+                catalog: idCtx.catalog,
+                originalBody: context.text, // TRUE pre-dehydration text
+                preserveUnknown: true,
+                introducedTokens: dRaw?.introduced,
+              }).output;
+            } catch { return alt; }
+          }),
+        }));
+      }
       return { results, timing: Date.now() - startTime, model: this.model };
     } catch (error) {
       return {
@@ -183,19 +219,33 @@ export class ConfigSource implements CueSource {
     }
   }
 
-  private formatInput(context: CueContext): string {
+  private formatInput(
+    context: CueContext,
+    dehydrator?: CompiledDehydrator,
+    dehydratedText?: string,
+  ): string {
     if (this.parser === 'alternatives') {
       // Indexed format: 0=word1 1=word2
+      // PII words (identity-context safe mode) are omitted — the pairs
+      // are explicit `i=word`, so a gap preserves index alignment while
+      // keeping the value out of the request body entirely.
       // For words scope, convert numbers to word form for better LLM context
       if (this.scope === 'words') {
         return context.words
-          .map((w, i) => `${i}=${NUM_PATTERN.test(w) ? numToWord(w) : w}`)
+          .map((w, i) => ({ w, i }))
+          .filter(({ w }) => !dehydrator?.isPiiWord(w))
+          .map(({ w, i }) => `${i}=${NUM_PATTERN.test(w) ? numToWord(w) : w}`)
           .join(' ');
       }
-      return context.words.map((w, i) => `${i}=${w}`).join(' ');
+      return context.words
+        .map((w, i) => ({ w, i }))
+        .filter(({ w }) => w === '_' || !dehydrator?.isPiiWord(w))
+        .map(({ w, i }) => `${i}=${w}`)
+        .join(' ');
     }
-    // raw parser: send text with _ replaced by BLANK
-    return context.text.replace(/_/g, 'BLANK');
+    // raw parser: send text with _ replaced by BLANK (dehydrated copy
+    // when identity-context safe mode scrubbed it).
+    return (dehydratedText ?? context.text).replace(/_/g, 'BLANK');
   }
 
   private parseResponse(response: string, words: string[]): CueResult[] {

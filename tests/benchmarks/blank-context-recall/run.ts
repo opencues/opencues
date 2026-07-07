@@ -93,7 +93,7 @@ async function runVariant(variant: Variant): Promise<Result[]> {
   for (const c of CASES) {
     const r = await runOne(c, variant);
     results.push(r);
-    const flag = r.correct ? '✓' : '✗';
+    const flag = r.correct ? '\x1b[32m●\x1b[0m' : '✗';
     const ans = r.rawAnswer.slice(0, 60).replace(/\s+/g, ' ');
     const got = r.emittedTokens.length === 0 ? '(prose)' : r.emittedTokens.join(',');
     console.log(`  ${flag} ${r.caseId} [${r.klass}] expected=${r.expectedLabel} got=${got}  → "${ans}"`);

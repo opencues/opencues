@@ -284,7 +284,7 @@ async function main() {
       const { conformant, nonEmpty } = probe.check(parsed);
       if (conformant) stats.conformant++;
       if (nonEmpty) stats.nonEmpty++;
-      process.stdout.write(conformant ? (nonEmpty ? '✓' : 'e') : 'X');
+      process.stdout.write(conformant ? (nonEmpty ? '\x1b[32m●\x1b[0m' : 'e') : 'X');
     }
     process.stdout.write('\n');
     results.set(probe.name, stats);
@@ -292,7 +292,7 @@ async function main() {
 
   // Report
   console.log();
-  console.log('Legend: ✓=conformant+nonempty  e=conformant+empty  X=parseable+nonconformant  P=parse-fail  E=HTTP-error  x=non-object');
+  console.log('Legend: \x1b[32m●\x1b[0m=conformant+nonempty  e=conformant+empty  X=parseable+nonconformant  P=parse-fail  E=HTTP-error  x=non-object');
   console.log();
   console.log('schema'.padEnd(22) + 'parse  conform  nonEmpty   latency p50/p95 (ms)');
   console.log('─'.repeat(80));

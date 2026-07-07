@@ -217,7 +217,7 @@ function doInstall() {
         const installRoot = fork.installRoot || path.join(fork.root, '.cues');
         const drift = checkSrcHashDrift(installRoot);
         if (drift.fresh) {
-          console.log(`${'\x1b[32m✓\x1b[0m'} ${fork.root} already installed + healthy.`);
+          console.log(`${'\x1b[32m\x1b[32m●\x1b[0m\x1b[0m'} ${fork.root} already installed + healthy.`);
           // Don't double-print the --rebuild hint when fanning out;
           // it'd repeat per fork. Print once at the end.
           warnStaleClaudeCuesAlias(fork);
@@ -242,7 +242,7 @@ function doInstall() {
       // beats "first fork failed and the rest were skipped silently".
       continue;
     }
-    console.log(`\n✓ ${fork.root} (${fork.shape}) installed + validated.`);
+    console.log(`\n\x1b[32m●\x1b[0m ${fork.root} (${fork.shape}) installed + validated.`);
     anyInstalled = true;
     warnStaleClaudeCuesAlias(fork);
   }
@@ -733,6 +733,10 @@ function validateFork(fork) {
     '@opencues/runtime/dist/src/blanks/index.js',
     '@opencues/runtime/dist/src/security/spawn-sandbox.js',
     '@opencues/runtime/dist/src/security/sandbox-runner.js',
+    // Existing-key detection (~/.cues/.env at boot) — required by every
+    // adapter band's key-bag construction. Fork layout flattens core's
+    // dist/ into the package root, so core specs are not dist/ paths.
+    '@opencues/core/env-keys.js',
   ];
   // OPTIONAL probes — features that degrade gracefully when their (often
   // native / heavy) transitive deps are absent. user-blanks (the JS

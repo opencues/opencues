@@ -97,8 +97,8 @@ begin_step() {
   else printf '  ▸ %s' "$CURRENT_STEP" >&3; fi
 }
 end_step() {
-  if [ "$VERBOSE" = "1" ]; then printf '  ✓ %s\n' "$CURRENT_STEP" >&3
-  else printf ' ✓\n' >&3; fi
+  if [ "$VERBOSE" = "1" ]; then printf '  [32m●[0m %s\n' "$CURRENT_STEP" >&3
+  else printf ' [32m●[0m\n' >&3; fi
   CURRENT_STEP=""
 }
 on_error() {

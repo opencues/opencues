@@ -128,6 +128,14 @@ REQUIRED_SPECS=(
   "@opencues/runtime/dist/src/blanks/index.js"
   "@opencues/runtime/dist/src/security/spawn-sandbox.js"
   "@opencues/runtime/dist/src/security/sandbox-runner.js"
+  # Fork layout flattens core's dist/ into the package root (setup.sh
+  # § 5), so core specs are `@opencues/core/<file>.js`, not dist paths.
+  "@opencues/core/env-keys.js"
+  # Buffer dehydration (outbound PII scrub) — top-level core dist file,
+  # FLATTENED to the package root by setup.sh's `cp dist/*.js core/`
+  # step; exercised here so a future copy-step regression can't
+  # silently disable the scrub in user forks.
+  "@opencues/core/dehydrate.js"
 )
 OPTIONAL_SPECS=(
   "@opencues/runtime/dist/src/user-blanks/registry.js"
@@ -141,7 +149,7 @@ OPTIONAL_SPECS=(
 FAIL=0
 for spec in "${REQUIRED_SPECS[@]}"; do
   if err="$(cd "$TMP" && env -u NODE_PATH "$(command -v node)" -e "require('$spec')" 2>&1)"; then
-    echo "  ✓ $spec  (required)"
+    echo "  [32m●[0m $spec  (required)"
   else
     echo "  ✗ $spec  (REQUIRED) — load failed:"
     echo "$err" | head -4 | sed 's/^/      /'
@@ -150,7 +158,7 @@ for spec in "${REQUIRED_SPECS[@]}"; do
 done
 for spec in "${OPTIONAL_SPECS[@]}"; do
   if err="$(cd "$TMP" && env -u NODE_PATH "$(command -v node)" -e "require('$spec')" 2>&1)"; then
-    echo "  ✓ $spec  (optional)"
+    echo "  [32m●[0m $spec  (optional)"
   else
     echo "  ⚠ $spec  (optional) — load failed; feature silently disabled in user fork:"
     echo "$err" | head -2 | sed 's/^/      /'

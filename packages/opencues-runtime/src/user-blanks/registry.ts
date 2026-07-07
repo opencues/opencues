@@ -141,6 +141,22 @@ export function buildUserBlankRegistry(
   opts: UserBlankRegistryOptions = {},
 ): Map<string, Blank> {
   const out = new Map<string, Blank>();
+
+  // OPENCUES_SKIP_USER_BLANKS=1 → return an empty registry without loading
+  // anything. Loading a JS user-blank (`impl: ./blank.js`) spins up an
+  // isolated-vm sandbox or a subprocess-runner (~48 MB resident) — and the
+  // shipped defaults include impl-blanks (gh-issues, …) that get loaded at
+  // boot even when nothing invokes them. The agentic harness runs up to 16
+  // host shards in parallel and needs none of them, so it sets this flag to
+  // avoid ~768 MB of dead sandbox RAM across the pool. Built-in blanks
+  // (volume / weather / stocks / …) are unaffected — they're TS classes in
+  // BUILTIN_BLANKS, not routed through this registry. Guarded at the single
+  // chokepoint so every host band AND the chrome-host benefit with no
+  // per-bootstrap edits. `typeof process` for browser-safety.
+  if (typeof process !== 'undefined' && process.env?.['OPENCUES_SKIP_USER_BLANKS'] === '1') {
+    return out;
+  }
+
   const log = opts.log ?? ((lvl, msg) => console.log(`[user-blank] [${lvl}] ${msg}`));
   const storage = opts.storageRoot
     ? createFileStorageAdapter(opts.storageRoot)

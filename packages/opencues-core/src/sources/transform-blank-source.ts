@@ -56,6 +56,7 @@ import {
   collectAiCallableFetches,
 } from '../typed-sentinel';
 import { blankClaimsUnderscore } from '../blank-shapes';
+import { getDehydrator } from '../dehydrate';
 
 // ============================================================================
 // Prompts — ported verbatim from tests/benchmarks/transform-blank/
@@ -351,6 +352,11 @@ function looksLikeImperative(words: string[], blankIdx: number, fullText: string
 export type TransformBlankEvent =
   /** Pipeline started. textLen = full buffer length, blankIdx = the `_` word index. */
   | { type: 'started'; textLen: number; blankIdx: number; llm: string; mode: string }
+  /** Outbound PII scrub fired — `count` catalog values were replaced with
+   *  [TOKEN]s before dispatch (identity-context safe mode). Display-only
+   *  telemetry; the buffer is untouched (dehydration produces an outbound
+   *  copy only). See docs/architecture/hydration-dehydration.md. */
+  | { type: 'dehydrated'; count: number }
   /** The fused pass completed. Emitted with `pass: 'P1'` carrying the
    *  verdict + extracted instruction + target. (The 'P2'/'P3' members
    *  are retained in the union for back-compat with consumers; the
@@ -609,6 +615,11 @@ export class TransformBlankSource implements CueSource {
     sentinelLanguage: 'bare' | 'typed' = 'bare',
     aiCallableFns?: ReadonlyMap<string, { blankName: string; tokenPrefix: string }>,
     blankFetch?: (blankName: string, arg: string) => Promise<string | undefined>,
+    // Tokens the outbound dehydration pass introduced this call —
+    // both-present conflicts (user typed the literal token AND their
+    // value appeared in the buffer) stay preserved but get warned.
+    // `originalBody` MUST remain the TRUE pre-dehydration text.
+    introducedTokens?: ReadonlySet<string>,
   ): Promise<string> {
     const hasIdentity = ctx && ctx.catalog.size > 0;
     const hasBlank = blankSnapshot && blankSnapshot.catalog.size > 0;
@@ -660,9 +671,13 @@ export class TransformBlankSource implements CueSource {
         applyAccessor: jsonFieldAccessor,
         originalBody,
         preserveUnknown: true,
+        introducedTokens,
       });
       if (r.report.resolved.length || r.report.badAccessors.length) {
         this.log(`TransformBlank: typed-sentinel resolved=${r.report.resolved.length}, degraded=${r.report.degraded.length}, bad-accessors=${r.report.badAccessors.length}, preserved=${r.report.preserved.length}`);
+      }
+      if (r.report.ambiguous.length) {
+        this.log(`TransformBlank: ${r.report.ambiguous.length} ambiguous token(s) (user-typed AND dehydrated) preserved as tokens`);
       }
       return r.output;
     }
@@ -670,9 +685,13 @@ export class TransformBlankSource implements CueSource {
       catalog,
       originalBody,
       preserveUnknown: true,
+      introducedTokens,
     });
     if (pp.report.resolved.length || pp.report.tolerantMatches.length) {
       this.log(`TransformBlank: context post-processed (resolved=${pp.report.resolved.length}, tolerant=${pp.report.tolerantMatches.length}, preserved-unknown=${pp.report.stripped.length})`);
+    }
+    if (pp.report.ambiguous.length) {
+      this.log(`TransformBlank: ${pp.report.ambiguous.length} ambiguous token(s) (user-typed AND dehydrated) preserved as tokens`);
     }
     return pp.output;
   }
@@ -828,12 +847,35 @@ export class TransformBlankSource implements CueSource {
     // fused single-call shape (3-pass could afford an always-on marker
     // because its EXTRACT classifier ran cursor-blind).
     const POSITIONAL_CUE = /\b(here|this line|this paragraph|new line|new paragraph|line break|paragraph break)\b/i;
-    let inputForLLM = extractText;
+    // DEHYDRATION (outbound PII scrub) — in `safe` mode, identity values
+    // the user TYPED are replaced with [TOKEN]s before the buffer ships
+    // to the provider; resolveSentinels hydrates the FULL_REWRITE back
+    // to value space before it leaves this source, so the runtime's
+    // three-way merge / spans / variant pool never see token
+    // coordinates. Outbound COPY only — `extractText`/`context.text`
+    // stay original. See docs/architecture/hydration-dehydration.md.
+    const idCtx = context.identityContext;
+    const dehydrator = idCtx && idCtx.mode === 'safe' && idCtx.catalog.size > 0
+      ? getDehydrator(idCtx.catalog, (m) => this.log(`TransformBlank: ${m}`))
+      : undefined;
+    const dInput = dehydrator?.dehydrate(extractText);
+    const outboundText = dInput?.changed ? dInput.text : extractText;
+    const introducedTokens = dInput?.changed ? dInput.introduced : undefined;
+    if (dInput?.changed) {
+      this.log(`TransformBlank: dehydrated ${dInput.spans.length} value(s) → tokens (outbound PII scrub)`);
+      this.emit({ type: 'dehydrated', count: dInput.spans.length });
+    }
+    let inputForLLM = outboundText;
     if (POSITIONAL_CUE.test(extractText)) {
+      // Cursor is computed on ORIGINAL coordinates, then mapped into the
+      // dehydrated text. mapOffset snaps a mid-value caret to the token
+      // boundary — the sentinel must never split a value
+      // (`Wil[CURSOR]fred` would defeat matching and leak fragments).
       const curOffset = translateBufferCursorToTargetCursor(context.text, context.cursor ?? -1, extractText);
       if (curOffset >= 0) {
-        inputForLLM = injectCursorSentinel(extractText, curOffset);
-        this.log(`TransformBlank FUSED: [CURSOR] injected at offset ${curOffset}/${extractText.length} (positional cue)`);
+        const outOffset = dInput?.changed ? dInput.mapOffset(curOffset, 'right') : curOffset;
+        inputForLLM = injectCursorSentinel(outboundText, outOffset);
+        this.log(`TransformBlank FUSED: [CURSOR] injected at offset ${outOffset}/${outboundText.length} (positional cue${dInput?.changed ? ', dehydrated coords' : ''})`);
       }
     }
     // FULL_REWRITE budget — fused emits the WHOLE final buffer (May
@@ -903,7 +945,11 @@ export class TransformBlankSource implements CueSource {
     // times") naturally has bodies > 200 chars once the first draft
     // is in place — the dominant payoff window.
     const PREDICTION_MIN_CHARS = 200;
-    const fusedPrediction = extractText.length >= PREDICTION_MIN_CHARS ? extractText : undefined;
+    // Prediction ships the DEHYDRATED text: (a) the raw buffer riding
+    // the `prediction` param was a PII leak channel of its own, and
+    // (b) the model's echo is in token space anyway, so speculation
+    // acceptance is higher against the dehydrated bytes.
+    const fusedPrediction = extractText.length >= PREDICTION_MIN_CHARS ? outboundText : undefined;
     const fusedRaw = await this.callLLM(fusedSystem, `INPUT: ${inputForLLM}`, fusedTokens, undefined, context.signal, fusedPrediction);
     const fParsedRaw = parseFused(fusedRaw);
     // Strip any [CURSOR] the model leaked into FULL_REWRITE — input-only
@@ -915,7 +961,7 @@ export class TransformBlankSource implements CueSource {
     // for non-user entities ([Recipient Name], [Date]) survive untouched.
     const f = {
       ...fParsed,
-      rewrite: await this.resolveSentinels(fParsed.rewrite, context.text, fusedUserCtx, fusedBlankSnapshot, context.sentinelLanguage, context.aiCallableFns, context.blankFetch),
+      rewrite: await this.resolveSentinels(fParsed.rewrite, context.text, fusedUserCtx, fusedBlankSnapshot, context.sentinelLanguage, context.aiCallableFns, context.blankFetch, introducedTokens),
     };
     this.log(`TransformBlank FUSED (${Date.now() - fusedStart}ms, max_tokens=${fusedTokens}, source=${sourceTag}): verdict=${f.verdict}, instruction="${f.instruction}", target="${preview(f.target)}", rewrite="${preview(f.rewrite)}"`);
     this.emit({

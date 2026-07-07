@@ -23,6 +23,7 @@ export { DictionaryBlank, type DictionaryBlankOptions } from './dictionary';
 export { CryptoBlank, type CryptoBlankOptions } from './crypto';
 export { CountriesBlank, type CountriesBlankOptions } from './countries';
 export { ClaudeStatusBlank, type ClaudeStatusBlankOptions } from './claude-status';
+export { NoteBlank, type NoteBlankOptions, type NoteCaps } from './note';
 
 // Imports for the BUILTIN_BLANKS registry below. The above `export`
 // lines re-publish them; these `import` lines bring them into scope
@@ -36,6 +37,7 @@ import { DictionaryBlank } from './dictionary';
 import { CryptoBlank } from './crypto';
 import { CountriesBlank } from './countries';
 import { ClaudeStatusBlank } from './claude-status';
+import { NoteBlank } from './note';
 
 // ──────────────────────────────────────────────────────────────────────
 // Built-in blanks registry — single source of truth across hosts.
@@ -108,6 +110,18 @@ export interface BuiltinBlankContext {
     readonly writeFile: (content: string) => Promise<void>;
   };
   /**
+   * Read/write accessors for the user's NOTES.md file. Required to
+   * register the `note` collection blank (PROTOTYPE — issue #210).
+   * Hosts that don't supply this skip the note blank.
+   *
+   * Writes are validated by `validateNoteWrite` in note.ts BEFORE
+   * this writer is called — same chokepoint discipline as sentinel.
+   */
+  readonly notesMdIO?: {
+    readonly readFile: () => Promise<string | null>;
+    readonly writeFile: (content: string) => Promise<void>;
+  };
+  /**
    * Host name passed through to OpenCuesSettingsBlank so the
    * registry's host-scoped tunables (e.g. chrome's `dim-mix`) only
    * surface in the cycling menu on their target host.
@@ -170,6 +184,11 @@ export const BUILTIN_BLANKS: readonly BuiltinBlankSpec[] = [
   //    AS-RETURNED by SentinelBlank.get(); never bypass the writer
   //    or replace its content with a non-validated path.
   { name: 'sentinel',      factory: ctx => ctx.identityMdIO ? new SentinelBlank(ctx.identityMdIO) : null },
+
+  // ── Collection blank (PROTOTYPE — issue #210). Keyword-bound
+  //    add/recall/delete over ~/.cues/NOTES.md; every write goes
+  //    through validateNoteWrite. Skips when no IO supplied.
+  { name: 'note',          factory: ctx => ctx.notesMdIO ? new NoteBlank(ctx.notesMdIO) : null },
 ];
 
 /**

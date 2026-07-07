@@ -270,6 +270,14 @@ export interface BuildSourcesOptions {
    * has cycling continues to register everything.
    */
   supportsCycling?: boolean;
+
+  /**
+   * Host id (chrome / claude-code / …). Used to host-scope the
+   * config-intent classifier's feature list so a chrome-only FEATURE
+   * (e.g. `statusbar-position`) never appears on another host's prompt.
+   * Runtime wires `adapter.hostName`.
+   */
+  hostName?: string;
   /**
    * OPENCUES.md `max-thinking` toggle. `true` (default) lets each
    * reasoning-capable model think up to its per-model ceiling (the
@@ -614,6 +622,7 @@ export function buildSourcesFromConfig(
         log: options.log,
         onEvent: options.onConfigIntentEvent,
         formatErrorAsSubstitute: options.formatLLMErrorAsSubstitute,
+        hostName: options.hostName,
       }));
     }
   }

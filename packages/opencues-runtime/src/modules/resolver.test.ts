@@ -1168,12 +1168,15 @@ describe('Resolver per-resolve AbortController (stale-generation cancellation)',
   });
 });
 
-describe('Resolver identity-context skip for keyword-bound slots (symmetric with blank-context)', () => {
-  // FluidBlank and TransformBlank are the only consumers of
-  // `identityContext`. Both cede when a keyword-bound BlankFill slot
-  // claims the `_`. The catalog itself is cheap (in-memory at
-  // ConfigLoader), so the saving here is symmetric correctness +
-  // payload-size rather than an IO/cost win.
+describe('Resolver identity-context forwarding (dehydration consumers everywhere)', () => {
+  // Since buffer dehydration (July 2026), EVERY LLM-bound source
+  // consumes `identityContext` in safe mode — word-cues, sentence-cues,
+  // config-intent, config-source raw — not just FluidBlank/
+  // TransformBlank. The old `noBlankContextConsumer` gate (skip when
+  // every `_` is keyword-bound / no `_` at all) was therefore dropped
+  // for identity: withholding the catalog from a word-cue dispatch
+  // would ship the user's typed PII un-scrubbed. blankContext KEEPS
+  // the gate (network/script fetch); identity is an in-memory Map.
   interface CapturedIdentityCtx { identityContext?: unknown }
 
   function setup(opts: {
@@ -1209,13 +1212,16 @@ describe('Resolver identity-context skip for keyword-bound slots (symmetric with
     return { resolver, capturedCtxs };
   }
 
-  it('every `_` is keyword-bound → identityContext is NOT forwarded', async () => {
+  it('every `_` is keyword-bound → identityContext IS still forwarded (dehydration)', async () => {
+    // A keyword-claimed `_` cedes FluidBlank/TransformBlank, but the
+    // word-cue path still dispatches the buffer — it needs the catalog
+    // to dehydrate outbound text.
     const { resolver, capturedCtxs } = setup({
       mode: 'safe',
       keywordBoundSlotIndices: text => text === 'volume _' ? [1] : [],
     });
     await resolver.resolveAndApply('volume _');
-    expect(capturedCtxs[0]?.identityContext).toBeUndefined();
+    expect(capturedCtxs[0]?.identityContext).toBeDefined();
   });
 
   it('no keyword-bound slot → identityContext IS forwarded', async () => {
@@ -1236,13 +1242,13 @@ describe('Resolver identity-context skip for keyword-bound slots (symmetric with
     expect(capturedCtxs[0]?.identityContext).toBeUndefined();
   });
 
-  it('no `_` in buffer → identityContext is NOT forwarded (no consumer source can fire)', async () => {
+  it('no `_` in buffer → identityContext IS still forwarded (word-cues dehydrate too)', async () => {
     const { resolver, capturedCtxs } = setup({
       mode: 'safe',
       keywordBoundSlotIndices: () => [],
     });
     await resolver.resolveAndApply('the lawyer filed today');
-    expect(capturedCtxs[0]?.identityContext).toBeUndefined();
+    expect(capturedCtxs[0]?.identityContext).toBeDefined();
   });
 });
 
