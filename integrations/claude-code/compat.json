@@ -3,6 +3,8 @@
   "host-kind": "npm",
   "host-package": "@anthropic-ai/claude-code",
   "current-pin": "2.1.170",
+  "tweakcc-pin": "v4.3.0",
+  "//tweakcc-pin": "setup.sh clones tweakcc and checks out THIS tag (not HEAD). Pinned because tweakcc 4.3.1 (the 14 commits after the v4.3.0 tag, released 2026-07-06) regressed the native-binary .bun-section repack: the repacked claude.exe crashes at startup with `TypeError: Expected CommonJS module to have a function wrapper` (Bun can't load the corrupted module graph) — so OpenCues never boots. v4.3.0 repacks correctly. Bump this only after verifying a newer tag produces a claude.exe that `--version`s cleanly. Override for bisection with TWEAKCC_REF=<tag>.",
   "pin-location": {
     "kind": "npm-package-json",
     "path-from-fork": "package.json",

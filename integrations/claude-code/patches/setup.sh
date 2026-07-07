@@ -168,6 +168,16 @@ COMPAT_JSON="$(dirname "$0")/../compat.json"
 CC_PIN=$(node -e "try{process.stdout.write(JSON.parse(require('fs').readFileSync('$COMPAT_JSON','utf8'))['current-pin']||'')}catch{}" 2>/dev/null || true)
 [ -z "$CC_PIN" ] && CC_PIN="2.1.170"
 
+# tweakcc is pinned to an EXACT tag (not HEAD). tweakcc 4.3.1 regressed
+# the native-binary .bun-section repack — the repacked claude.exe crashes
+# at startup ("Expected CommonJS module to have a function wrapper") and
+# OpenCues never boots. See compat.json:tweakcc-pin. Env TWEAKCC_REF wins
+# (for bisecting a new tag), else compat.json, else the hardcoded fallback.
+if [ -z "${TWEAKCC_REF:-}" ]; then
+  TWEAKCC_REF=$(node -e "try{process.stdout.write(JSON.parse(require('fs').readFileSync('$COMPAT_JSON','utf8'))['tweakcc-pin']||'')}catch{}" 2>/dev/null || true)
+  [ -z "$TWEAKCC_REF" ] && TWEAKCC_REF="v4.3.0"
+fi
+
 if [ ! -f "$CC_FORK_DIR/package.json" ]; then
   echo "Error: $CC_FORK_DIR/package.json missing." >&4
   echo "Create the fork dir first with a package.json that pins claude-code:" >&4
@@ -250,12 +260,22 @@ fi
 end_step
 
 # ─── 3. Clone tweakcc + install its deps ──────────────────────────────
-begin_step "Cloning tweakcc"
+begin_step "Cloning tweakcc (pinned $TWEAKCC_REF)"
 if $KEEP_STATE && [ -d "$TWEAKCC_DIR/.git" ]; then
   echo "  --keep-state: $TWEAKCC_DIR exists, resetting source files we patch"
   (cd "$TWEAKCC_DIR" && git checkout HEAD -- src/types.ts src/defaultSettings.ts src/patches/index.ts 2>/dev/null || true)
 else
   git clone https://github.com/Piebald-AI/tweakcc "$TWEAKCC_DIR"
+  # Pin to the exact tag BEFORE npm install so deps match the pinned tree.
+  # HEAD (4.3.1) has a native-binary repack regression — see the TWEAKCC_REF
+  # comment above + compat.json:tweakcc-pin.
+  if ! (cd "$TWEAKCC_DIR" && git checkout -q "$TWEAKCC_REF" 2>/dev/null); then
+    echo "FATAL: tweakcc checkout of pinned ref '$TWEAKCC_REF' failed." >&4
+    echo "  The tag may not exist in github.com/Piebald-AI/tweakcc, or the clone is incomplete." >&4
+    echo "  Fix compat.json:tweakcc-pin or set TWEAKCC_REF to a valid tag." >&4
+    exit 1
+  fi
+  echo "  tweakcc pinned at: $(cd "$TWEAKCC_DIR" && git describe --tags 2>/dev/null || echo "$TWEAKCC_REF")"
   (cd "$TWEAKCC_DIR" && npm install --legacy-peer-deps --no-audit --no-fund 2>&1 | tail -3)
   # Belt-and-braces — pipefail (top of file) already aborts on a
   # failing `npm install`, but a flake of "exited 0 + node_modules

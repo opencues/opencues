@@ -703,6 +703,36 @@ function validateFork(fork) {
   fork.shape = liveShape;
   fork.target = liveShape === 'cli.js' ? cliJs : nativeBin;
 
+  // Native-binary startup smoke: run the repacked binary and confirm it
+  // actually starts. The marker checks above only prove the extracted +
+  // patched cli.js TEXT is correct — they say nothing about whether
+  // tweakcc's .bun-section REPACK produced a loadable ELF. tweakcc 4.3.1
+  // regressed exactly that: the repacked claude.exe crashed at startup
+  // with `TypeError: Expected CommonJS module to have a function wrapper`
+  // (Bun couldn't load the corrupted module graph), so OpenCues never
+  // booted — yet every text marker was present and validateFork was happy.
+  // `claude.exe --version` exercises the full Bun startup path in <1s
+  // without launching the TUI. (cli.js shape is plain JS run by Node, so
+  // this failure mode can't occur there — native only.) See
+  // compat.json:tweakcc-pin.
+  if (liveShape === 'native') {
+    const smoke = spawnSync(nativeBin, ['--version'], {
+      encoding: 'utf8',
+      timeout: 20000,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const out = `${smoke.stdout || ''}${smoke.stderr || ''}`;
+    if (smoke.status !== 0 || !/Claude Code/.test(out)) {
+      const detail = (out.trim().split('\n')[0] || `exit ${smoke.status}`).slice(0, 200);
+      return {
+        ok: false,
+        reason: `patched native binary does not start: \`claude.exe --version\` -> ${detail}. ` +
+          `Almost always a tweakcc .bun-repack regression — check compat.json:tweakcc-pin ` +
+          `(known-bad: tweakcc 4.3.1; known-good: v4.3.0).`,
+      };
+    }
+  }
+
   // Boot-smoke: actually `require` the runtime + the exact paths the
   // patch's bootstrap pulls. Catches the bug class where files exist
   // on disk + tweakcc markers are present but a transitive require
