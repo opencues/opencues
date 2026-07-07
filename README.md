@@ -106,7 +106,7 @@ Each pins its own upstream fork and never touches your native host install.
 | **Personal + ambient context** (opt-in) | `my email _` substitutes your real address; fluid lookups can read the page you're on. |
 | **Hot-reload** | Every `.md` config picks up edits in ~2s, no restart. |
 
-Full feature catalogue (42 concepts): [`docs/features/README.md`](docs/features/README.md).
+Full feature catalogue (45 concepts): [`docs/features/README.md`](docs/features/README.md).
 
 <!-- VIDEO: feature tour (~30s of cues + blanks in action), replace this
      comment with the real embed once available. -->
@@ -136,7 +136,7 @@ Full reference: [`docs/configuration.md`](docs/configuration.md) · [`docs/guide
 
 OpenCues has no tool handlers or exec layer for LLM output — no MCP-tool execution, no agentic actions, no side-effect channel. Worst-case, an LLM response lands as user-visible text in the buffer you review before submitting. That single invariant is what keeps prompt injection a UX failure instead of a data-exfiltration channel, across every surface below.
 
-22 of 25 tracked attack classes closed, 2 closed-with-caveat, 1 tracked for the future pack registry ([full audit table](docs/architecture/security-audit.md)).
+23 of 27 tracked attack classes closed, 3 closed-with-caveat, 1 tracked for the future pack registry ([full audit table](docs/architecture/security-audit.md)).
 
 | Defense | What it covers |
 |---|---|
