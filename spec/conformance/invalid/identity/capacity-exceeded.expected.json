@@ -1,0 +1,5 @@
+{
+  "rule": "capacity-exceeded",
+  "severity": "error",
+  "summary": "65 fields exceeds the 64-field default cap (DEFAULT_SENTINEL_CAPS.maxFields) — the 65th add MUST be rejected"
+}

@@ -1,0 +1,5 @@
+{
+  "rule": "collision",
+  "severity": "error",
+  "summary": "keys firstName and first_name both derive the token [FIRST NAME] — the second write MUST be rejected so one token never owns two values"
+}
