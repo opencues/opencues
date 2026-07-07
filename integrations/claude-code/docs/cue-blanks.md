@@ -46,7 +46,6 @@ Cue-blanks are checked **first** in `_cycleAlt()`:
 1. **Cue-blank values** (`metadata.blankName`) → `blankInvoke up/down`, then `get`, return
 2. **Dynamic-list (span) alts** → cycle `_consumeAllAlts` (dedicated storage for multi-line `get()` output, separate from `_dynDefs`)
 3. **Dynamic alts** → cycle `_dynDefs.words[i].alts`
-4. **Linked words** → co-dependent words cycle together
 
 All Up/Down handlers (Ink key handlers and raw sequence handlers) delegate to `_cycleAlt` in `@opencues/runtime`.
 
