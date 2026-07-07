@@ -12,16 +12,15 @@ This is the mechanism behind `opencues settings _`, which becomes `opencues sett
 
 ---
 
-## Why This Is Not Linked Words, a Span, or a List Blank
+## Why This Is Not a Span or a List Blank
 
 | Feature | Shape | Cycle behaviour |
 |---|---|---|
-| **Linked words** | N independent words already in the text, each with an alts list. Siblings share a `currentAltIndex` (e.g. `boy`/`his` → `girl`/`her`). | Symmetric. All siblings step to the **same index** in lock-step. |
 | **Multi-word span** | One alternative whose value is physically multiple words (e.g. `"Jeff Bezos"`). Only the origin index is navigable. | One cycle replaces the whole span as a unit. |
 | **List blank** | One blank cycling a flat, static or dynamically-fetched list. | One position, one list, no second word. |
 | **Selector + satellite** | **Two independent words** where one `_` was. Each has its own alts list. Cycling the selector **swaps the satellite's entire alts list** to the new setting's valid values. | Asymmetric. Selector cycle → satellite follows (new text, new alts). Satellite cycle → persists to config; selector unaffected. |
 
-The sharp distinction from linked words: with linked words the alts lists are aligned index-for-index and fixed. With selector+satellite the **satellite's alts list itself is replaced** when the selector moves — "valid values for `voice-mode`" and "valid values for `debug-mode`" are different universes. There is no shared cycle index, no lock-step. They are yoked by semantics (parent→child), not by aligned position.
+The defining behaviour: the **satellite's alts list itself is replaced** when the selector moves — "valid values for `voice-mode`" and "valid values for `debug-mode`" are different universes. There is no shared cycle index and no fixed index-for-index alignment; the two words are yoked by semantics (parent→child), not by aligned position.
 
 ---
 
@@ -308,7 +307,6 @@ Step 3 is optional at creation time. The selector+satellite UI picks up the new 
 - **Fixed enum of cases, each with its own fixed enum of values** → selector + satellite.
 - **One cyclable list, keyword tells you which list** → list blank (static `stepValues` or dynamic list).
 - **One blank showing one value that writes back** → standard cue-blank.
-- **Two words that must change together on a shared axis with shared cycle state** → linked words.
 - **Your "value" is semantically a multi-word phrase** → multi-word span.
 
 If you're reaching for selector+satellite, the telltale signs are: the set of options cyclable on word N+1 **changes based on what word N is currently showing**, and cycling word N+1 has a **persistence side effect**.
