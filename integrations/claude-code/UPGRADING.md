@@ -165,6 +165,25 @@ Edits required:
   to a version with different anchors.
 - **`CLAUDE.md`** at repo root — `Claude Installs` table version cell.
 
+**⚠️ Re-evaluate the tweakcc pin — the CC pin and `tweakcc-pin` are coupled.**
+`compat.json:tweakcc-pin` is fixed at an exact tag (today `v4.3.0`) because
+tweakcc's HEAD is not safe to float (4.3.1 shipped a native-binary `.bun`-repack
+regression that produced a `claude.exe` which crashed at startup). **But a
+NEWER CC version may need a NEWER tweakcc** — a moved anchor or a bun-format
+change can require a tweakcc release that the current pin predates. So on every
+CC bump you must confirm the pinned tweakcc still patches the new binary:
+
+1. Run the reinstall (step 5). The new **`validateFork` startup smoke** runs
+   `claude.exe --version` and refuses the fork if the repacked binary doesn't
+   boot — so a tweakcc/CC mismatch fails loudly at install, not silently at
+   runtime.
+2. If it fails (binary won't boot, or an anchor is missing at apply time),
+   **bisect a newer tweakcc tag** — `TWEAKCC_REF=v4.4.0 opencues install
+   claude-code`, etc. — until `claude.exe --version` prints `Claude Code`
+   cleanly, then bump `compat.json:tweakcc-pin` to that tag (and its note).
+3. Never "fix" a tweakcc/CC mismatch by un-pinning to HEAD — that's the
+   footgun the pin exists to prevent.
+
 ### 4. Uninstall the old patches
 
 ```bash
@@ -234,6 +253,12 @@ Expect the boot line on first keystroke:
 
 Then exercise the four checks from `integrations/claude-code/README.md`'s
 Verify table.
+
+> **No boot line at all + `claude.exe` crashes on launch?** The install's
+> `validateFork` smoke should have caught this, but if you bypassed it: the
+> repacked binary is broken — almost always a tweakcc/CC mismatch. Check
+> `claude.exe --version` (a `TypeError: Expected CommonJS module…` = a bad
+> `.bun` repack) and re-evaluate `compat.json:tweakcc-pin` per step 3.
 
 ### 7. Run the harness
 
