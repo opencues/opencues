@@ -212,10 +212,13 @@ files, ~60 lines, easy to miss one and ship a silent bug.
 ## Hiding values from the cycling menu
 
 `exposeInMenu: false` on a `ValueSpec` makes that value
-**parser-valid but absent from the cycling menu**. Today the only
-hidden value is `identity-context-mode: raw` — a footgun mode (inlines
-PII into LLM prompts) that should require a deliberate file edit,
-not a one-keystroke toggle.
+**parser-valid but absent from the cycling menu**. The hidden values
+today are the two `raw` PII modes — `identity-context-mode: raw` and
+`blank-context-mode: raw` — plus the non-menu provider values
+(`openrouter` / `claude-code-cli` / `ollama`) on each `*-llm-provider`
+bucket. The canonical example is `identity-context-mode: raw` — a
+footgun mode (inlines PII into LLM prompts) that should require a
+deliberate file edit, not a one-keystroke toggle.
 
 ```ts
 { id: 'raw', description: '...PII reaches provider...', exposeInMenu: false }
@@ -240,8 +243,9 @@ refuses to land on it.
 | `registry-drift.test.ts` (runtime) | Every host bootstrap calls `createDefaultBlanksRegistry`; no host hardcodes `new XxxBlank()` |
 | `sensitive-field-docs.drift.test.ts` (chrome) | No doc duplicates the sensitive-field regex outside the canonical `chrome-security.md` |
 
-71 tests total across the registry-adjacent files. Run them all
-before landing a registry change:
+~50 test blocks across the registry-adjacent files (several are
+`it.each` / `test.each` tables that expand to more at runtime). Run
+them all before landing a registry change:
 
 ```bash
 ( cd packages/opencues-core && npx vitest run src/feature-registry*.test.ts src/llm-provider.drift.test.ts )
