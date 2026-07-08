@@ -689,7 +689,7 @@ namespace OpenCues
                     NoteSelfWrite(text);
                     ((ValuePattern)vp).SetValue(text);
                     RestoreCaretToEnd(el);
-                    _caretRestoreUntil = Environment.TickCount + 250;
+                    _caretRestoreUntil = Environment.TickCount + 600;
                     Log("debug", "applied substitution (" + text.Length + " chars, ValuePattern)");
                     return;
                 }
@@ -720,6 +720,7 @@ namespace OpenCues
         // visible. Non-Edit HWNDs (WPF etc.) are left alone - a wrong guess
         // here is worse than the status quo. Message-based (no focus theft),
         // SendMessageTimeout(ABORTIFHUNG) so a wedged app can't hang us.
+        const uint EM_GETSEL = 0x00B0;
         const uint EM_SETSEL = 0x00B1;
         const uint EM_SCROLLCARET = 0x00B7;
         const uint SMTO_ABORTIFHUNG = 0x0002;
@@ -743,8 +744,20 @@ namespace OpenCues
                 if (c != null && (c == "edit" || c.Contains("richedit") || c.Contains(".edit.")))
                 {
                     IntPtr res;
-                    SendMessageTimeoutW(hwnd, EM_SETSEL, new IntPtr(0x7FFFFFFF), new IntPtr(0x7FFFFFFF), SMTO_ABORTIFHUNG, 1000, out res);
-                    SendMessageTimeoutW(hwnd, EM_SCROLLCARET, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out res);
+                    IntPtr ok1 = SendMessageTimeoutW(hwnd, EM_SETSEL, new IntPtr(0x7FFFFFFF), new IntPtr(0x7FFFFFFF), SMTO_ABORTIFHUNG, 1000, out res);
+                    IntPtr ok2 = SendMessageTimeoutW(hwnd, EM_SCROLLCARET, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out res);
+                    if (!quiet)
+                    {
+                        // Read the selection back so the log states WHERE the
+                        // caret actually landed, not just that we asked.
+                        // EM_GETSEL packs start/end in lo/hi words (truncated
+                        // >64k - fine for diagnosis).
+                        IntPtr sel;
+                        SendMessageTimeoutW(hwnd, EM_GETSEL, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out sel);
+                        long s = sel.ToInt64();
+                        Log("debug", "caret restore: EM_SETSEL on '" + c + "' ok=" + (ok1 != IntPtr.Zero) + "/" + (ok2 != IntPtr.Zero)
+                            + " sel=" + (s & 0xFFFF) + ".." + ((s >> 16) & 0xFFFF));
+                    }
                     return;
                 }
                 // Non-Edit UIA composers (Slack and other Chromium-UIA
