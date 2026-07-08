@@ -459,6 +459,7 @@ namespace OpenCues
                     _expectedEcho = text;
                     _lastSentText = text;
                     ((ValuePattern)vp).SetValue(text);
+                    RestoreCaretToEnd(el);
                     Log("debug", "applied substitution (" + text.Length + " chars, ValuePattern)");
                     return;
                 }
@@ -479,6 +480,41 @@ namespace OpenCues
                 Log("warn", "focused field can't be written (no ValuePattern or TextPattern)");
             }
             catch (Exception ex) { Log("warn", "set-text failed: " + ex.Message); }
+        }
+
+        // ValuePattern.SetValue resets the caret (Notepad drops it to the
+        // START of the field), but the user's typing position was at the end
+        // of what they typed - the phase-1 cursor model. For Edit-family
+        // HWNDs, put the caret back at end-of-text with EM_SETSEL using a
+        // huge offset (the control CLAMPS it to the text end, so there is no
+        // index arithmetic to skew on CRLF), then EM_SCROLLCARET so it's
+        // visible. Non-Edit HWNDs (WPF etc.) are left alone - a wrong guess
+        // here is worse than the status quo. Message-based (no focus theft),
+        // SendMessageTimeout(ABORTIFHUNG) so a wedged app can't hang us.
+        const uint EM_SETSEL = 0x00B1;
+        const uint EM_SCROLLCARET = 0x00B7;
+        const uint SMTO_ABORTIFHUNG = 0x0002;
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        static extern IntPtr SendMessageTimeoutW(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, uint flags, uint timeoutMs, out IntPtr result);
+
+        static void RestoreCaretToEnd(AutomationElement el)
+        {
+            try
+            {
+                IntPtr hwnd = new IntPtr(el.Current.NativeWindowHandle);
+                if (hwnd == IntPtr.Zero) return;
+                var sb = new StringBuilder(256);
+                if (GetClassName(hwnd, sb, sb.Capacity) == 0) return;
+                string c = sb.ToString().ToLowerInvariant();
+                // Classic Win32 "Edit", RichEdit variants (Win11 Notepad
+                // "RichEditD2DPT", WordPad "RICHEDIT50W"), WinForms TextBox
+                // ("WindowsForms10.EDIT.app...").
+                if (!(c == "edit" || c.Contains("richedit") || c.Contains(".edit."))) return;
+                IntPtr res;
+                SendMessageTimeoutW(hwnd, EM_SETSEL, new IntPtr(0x7FFFFFFF), new IntPtr(0x7FFFFFFF), SMTO_ABORTIFHUNG, 1000, out res);
+                SendMessageTimeoutW(hwnd, EM_SCROLLCARET, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out res);
+            }
+            catch { }   // caret restore is best-effort; the text write already landed
         }
 
         // Apply a deferred MSAA paste once the set-text stream has been quiet
