@@ -36,13 +36,6 @@ echo "  ▸ building @opencues/core + @opencues/runtime"
   pnpm --filter @opencues/core --filter @opencues/runtime build
 ) >>"$LOG" 2>&1
 
-# ─── Build the daemon ────────────────────────────────────────────────
-echo "  ▸ building @opencues/apple-notes daemon (tsc)"
-(
-  cd "$OPENCUES_ROOT"
-  pnpm --filter @opencues/apple-notes build
-) >>"$LOG" 2>&1
-
 # ─── Stage @opencues/{core,runtime} into local node_modules ─────────
 # Real copies (not workspace symlinks) so the version marker's drift
 # detection has a stable install target, mirroring integrations/shell.
@@ -59,6 +52,17 @@ if [ -f "$OPENCUES_ROOT/packages/opencues-core/node-http-adapter.js" ]; then
   # Lives at the package root, not dist/ — see oc/REPAIR.md § LF-7.
   cp "$OPENCUES_ROOT/packages/opencues-core/node-http-adapter.js" "$CORE_DEST/"
 fi
+
+# ─── Build the daemon ────────────────────────────────────────────────
+# Runs AFTER staging: the daemon's tsc resolves @opencues/{core,runtime}
+# types from the local node_modules copies, so building first would
+# typecheck against the PREVIOUS install's runtime and fail whenever the
+# daemon uses a type added in the same release (e.g. notesMdIO).
+echo "  ▸ building @opencues/apple-notes daemon (tsc)"
+(
+  cd "$OPENCUES_ROOT"
+  pnpm --filter @opencues/apple-notes build
+) >>"$LOG" 2>&1
 
 # ─── Automation permission probe ─────────────────────────────────────
 # Fire the TCC prompt now. A cached deny fails INSTANTLY with -1743 and
