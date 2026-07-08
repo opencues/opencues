@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   ACTIVE_WINDOW_MS,
   MAX_NOTE_CHARS,
+  HOT_WINDOW_MS,
   POLL_ACTIVE_MS,
+  POLL_HOT_MS,
   POLL_IDLE_MS,
+  POLL_PAUSED_MS,
   applyPoll,
   containsBlankMarker,
   diffLines,
@@ -244,10 +247,17 @@ describe('flushDelayMs (settle + max-wait)', () => {
 });
 
 describe('pollDelayMs (adaptive cadence)', () => {
-  it('2s while recently active, 10s idle, 10s paused', () => {
+  it('hot right after a change, active within the window, idle after, paused when Notes is closed', () => {
     const s = initialState(T0);
-    expect(pollDelayMs(s, true, T0 + 1000)).toBe(POLL_ACTIVE_MS);
+    expect(pollDelayMs(s, true, T0 + 1000)).toBe(POLL_HOT_MS);
+    expect(pollDelayMs(s, true, T0 + HOT_WINDOW_MS + 1)).toBe(POLL_ACTIVE_MS);
     expect(pollDelayMs(s, true, T0 + ACTIVE_WINDOW_MS + 1)).toBe(POLL_IDLE_MS);
+    expect(pollDelayMs(s, false, T0 + 1000)).toBe(POLL_PAUSED_MS);
+  });
+  it('a fresh content change re-enters the hot tier', () => {
+    const s = initialState(T0);
+    s.lastActivityAt = T0 + 30_000;
+    expect(pollDelayMs(s, true, T0 + 30_100)).toBe(POLL_HOT_MS);
   });
 });
 

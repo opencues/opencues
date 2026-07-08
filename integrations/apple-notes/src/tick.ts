@@ -39,6 +39,17 @@ export const ACTIVE_WINDOW_MS = 60_000;
 // active polling runs near back-to-back only while the user is
 // actually editing, and enumeration (~90ms bulk fetch at 335 notes)
 // self-throttles the loop — the sleep starts AFTER each tick's work.
+//
+// HOT tier (2026-07-08, "the ping needs to be instant"): for a short
+// window after any content change, poll near back-to-back (150ms).
+// AppleEvents reads return Notes' LIVE document text — no autosave /
+// FSEvents dependency — so during typing and during a blank's loading
+// animation (whose frame echoes are content changes, keeping the
+// window refreshed) detection and echo lag drop to ~one enumeration.
+// The osascript duty cycle is high (~40%) but only within the window;
+// it decays to the 500ms active tier the moment content stops moving.
+export const POLL_HOT_MS = 150;
+export const HOT_WINDOW_MS = 5_000;
 export const POLL_ACTIVE_MS = 500;
 export const POLL_IDLE_MS = 2_000;
 export const POLL_PAUSED_MS = 10_000;
@@ -318,11 +329,15 @@ export function applyPoll(
   return events;
 }
 
-/** Adaptive cadence: 500ms while notes are changing (≈ the standard
- *  resolver debounce), 2s idle (the hot-reload standard), 10s paused. */
+/** Adaptive cadence: 150ms right after a content change (typing /
+ *  loading-animation frames — "instant" detection via live AppleEvents
+ *  reads), 500ms while notes are changing (≈ the standard resolver
+ *  debounce), 2s idle (the hot-reload standard), 10s paused. */
 export function pollDelayMs(state: DaemonState, notesRunning: boolean, now: number): number {
   if (!notesRunning) return POLL_PAUSED_MS;
-  return now - state.lastActivityAt < ACTIVE_WINDOW_MS ? POLL_ACTIVE_MS : POLL_IDLE_MS;
+  const sinceActivity = now - state.lastActivityAt;
+  if (sinceActivity < HOT_WINDOW_MS) return POLL_HOT_MS;
+  return sinceActivity < ACTIVE_WINDOW_MS ? POLL_ACTIVE_MS : POLL_IDLE_MS;
 }
 
 export interface LineDiff {

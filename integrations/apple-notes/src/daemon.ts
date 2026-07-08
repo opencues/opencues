@@ -224,6 +224,23 @@ export async function main(): Promise<void> {
   // any user-sourced poll event, conflict, or splice miss.
   const knownBody = new Map<string, string>();
 
+  // Arm-time cache pre-warm: the FIRST loading frame otherwise pays a
+  // cold readNote (~150-190ms) inside its flush. A resolution is
+  // guaranteed to write within ~150ms of arming (the animator's first
+  // frame), so fetch the body concurrently with the LLM dispatch. Seeded
+  // only when the read's plaintext still matches the tracked snapshot;
+  // a stale seed is CAS-rejected downstream anyway (never corrupting).
+  const prewarmBody = (id: string): void => {
+    if (knownBody.has(id)) return;
+    void bridge.readNote(id).then(read => {
+      if (!read.ok || bodyLooksAttachmentBearing(read.value.body)) return;
+      const current = read.value.plaintext.replace(/\r\n?/g, '\n');
+      if (state.tracked.get(id)?.plaintext === current && !knownBody.has(id)) {
+        knownBody.set(id, read.value.body);
+      }
+    }).catch(() => { /* best-effort */ });
+  };
+
   async function doFill(
     id: string,
     snapshot: { plaintext: string },
@@ -486,6 +503,7 @@ export async function main(): Promise<void> {
                 // never mistaken for an unanswered cue (see doFill).
                 lastRedispatchText.set(e.id, e.text);
                 armMarker(e.text, e.armAt);
+                prewarmBody(e.id);
               }
               bootResult.notifyTextChange(e.text, e.cursor, e.source);
               break;
@@ -502,6 +520,7 @@ export async function main(): Promise<void> {
                 // Same dedupe seed as switch-active (rest-frame guard).
                 lastRedispatchText.set(e.id, e.text);
                 armMarker(e.text, e.armAt);
+                prewarmBody(e.id);
               }
               bootResult.notifyTextChange(e.text, e.cursor, e.source);
               break;
