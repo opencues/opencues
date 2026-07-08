@@ -52,6 +52,7 @@ export interface HostInfo extends CommonHostInfo {
     import('../../../src/adapter').ProcessHandle | null;
   /** Dynamic cycling answer. Phase 1 leaves it undefined → false. */
   supportsCycling?(): boolean;
+  markdownPassthrough?(): boolean;
 }
 
 export interface BootResult {
@@ -116,6 +117,7 @@ export function boot(host: HostInfo): BootResult {
     setCursorOffset: host.setCursorOffset,
     forceRender: host.forceRender,
     supportsCycling: host.supportsCycling,
+    markdownPassthrough: host.markdownPassthrough,
     registerKeyHandler: cb => keyEvents.subscribe(cb),
     registerTextChangeHandler: cb => textEvents.subscribe(cb),
     registerCursorChangeHandler: cb => cursorEvents.subscribe(cb),

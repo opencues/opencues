@@ -45,6 +45,24 @@ the LLM may emit them, the runtime strips them immediately and renders
 the styling as a host-native visual instead. The buffer itself is always
 marker-free plain text.
 
+### The exception — markdown pass-through (`HostAdapter.markdownPassthrough`)
+
+Both arguments above assume the host has *somewhere* to re-render the
+styling. A host with **no styling surface** whose current target is a
+**markdown-native composer** inverts them: Discord renders `**bold**`
+itself at send time, so literal markers in the buffer are the *correct*
+content, and stripping destroys the user's requested styling with
+nowhere to re-render it. Hosts can therefore implement the optional
+`markdownPassthrough?(): boolean` adapter hook (dynamic — re-evaluated
+per substitution, like `supportsCycling`): when it returns true, the
+write chokepoint (`applyMarkdownAwareSplice`) writes the rewrite
+verbatim and emits no `markdown.styled` event. Today's only
+implementation is the windows host, which answers per focused app
+(daemon env `OPENCUES_MD_PASSTHROUGH_APPS`, default `discord`; Slack is
+deliberately excluded because its WYSIWYG composer only interprets
+markup typed live — programmatically inserted markers land literal).
+Hosts that omit the hook keep the strip+render path unchanged.
+
 ---
 
 ## The lifecycle

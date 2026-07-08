@@ -80,6 +80,14 @@ export interface WindowsBindings {
    * Defaults to false when omitted.
    */
   supportsCycling?(): boolean;
+  /**
+   * Dynamic per-app markdown pass-through: true when the focused app
+   * is a markdown-native composer (Discord) that renders `**bold**`
+   * itself at send — the runtime then writes LLM markdown markers
+   * verbatim instead of stripping them (this host has no styling
+   * surface to re-render onto). Defaults to false when omitted.
+   */
+  markdownPassthrough?(): boolean;
 }
 
 // No render capabilities in phase 1 — there is no overlay yet, so the
@@ -116,6 +124,12 @@ export class WindowsV1Adapter implements HostAdapter {
   // phase 2 can make it per-field dynamic without touching this class.
   supportsCycling(): boolean {
     try { return this.bindings.supportsCycling?.() ?? false; } catch { return false; }
+  }
+
+  // Per-app markdown pass-through (see WindowsBindings). Delegates to
+  // the daemon, which knows the focused app.
+  markdownPassthrough(): boolean {
+    try { return this.bindings.markdownPassthrough?.() ?? false; } catch { return false; }
   }
 
   getText(): string {

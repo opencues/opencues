@@ -243,6 +243,19 @@ function echoRuntimeWrite(text, cursor) {
   });
 }
 
+// Apps whose composer renders markdown markers itself at SEND time
+// (Discord shows **bold** styled). For those, the runtime writes LLM
+// markdown VERBATIM instead of stripping it — this host has no styling
+// surface, so a strip would silently destroy the requested styling.
+// Slack is deliberately NOT in the default set: its WYSIWYG composer
+// only interprets markup typed live, so markers would land literal
+// (users who enable Slack's "Format messages with markup" preference
+// can add it via OPENCUES_MD_PASSTHROUGH_APPS).
+const mdPassthroughApps = new Set(
+  (process.env.OPENCUES_MD_PASSTHROUGH_APPS ?? 'discord')
+    .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
+);
+
 // ─── Boot the runtime once ───────────────────────────────────────────────
 const bootResult = boot({
   hostVersion: '0.1.0',
@@ -280,6 +293,7 @@ const bootResult = boot({
   blankInvoke,
   blanks: blanksRegistry,
   supportsCycling: () => false,      // phase 1 — Universal-Integration profile
+  markdownPassthrough: () => attached && mdPassthroughApps.has(String(currentApp || '').toLowerCase()),
   statusFilePath: `/tmp/opencues-status-windows-${process.pid}.json`,
   statusSnapshotHook: (payload) => { updatePresence({ status: summariseStatus(payload) }); },
   log,
