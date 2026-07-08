@@ -744,20 +744,30 @@ namespace OpenCues
                 if (c != null && (c == "edit" || c.Contains("richedit") || c.Contains(".edit.")))
                 {
                     IntPtr res;
+                    // Clamp to absolute end first (the control clamps the
+                    // oversized offset itself - no index arithmetic to skew)...
                     IntPtr ok1 = SendMessageTimeoutW(hwnd, EM_SETSEL, new IntPtr(0x7FFFFFFF), new IntPtr(0x7FFFFFFF), SMTO_ABORTIFHUNG, 1000, out res);
+                    // ...then read WHERE that is and back up over any TRAILING
+                    // newline separators of the text we wrote. When the
+                    // round-tripped value ends with a paragraph separator
+                    // (WordPad's RichEdit read-back does), absolute end IS the
+                    // empty next line - the caret visibly "jumped to a new
+                    // line". End-of-visible-content is what the user means.
+                    // EM_GETSEL packs start/end in lo/hi words (truncated
+                    // >64k - acceptable for phase-1 field sizes).
+                    IntPtr sel;
+                    SendMessageTimeoutW(hwnd, EM_GETSEL, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out sel);
+                    long end = (sel.ToInt64() >> 16) & 0xFFFF;
+                    int back = TrailingSeparatorUnits(_lastSentText, c.Contains("richedit"));
+                    if (back > 0 && end > back)
+                    {
+                        long tgt = end - back;
+                        SendMessageTimeoutW(hwnd, EM_SETSEL, new IntPtr(tgt), new IntPtr(tgt), SMTO_ABORTIFHUNG, 1000, out res);
+                    }
                     IntPtr ok2 = SendMessageTimeoutW(hwnd, EM_SCROLLCARET, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out res);
                     if (!quiet)
-                    {
-                        // Read the selection back so the log states WHERE the
-                        // caret actually landed, not just that we asked.
-                        // EM_GETSEL packs start/end in lo/hi words (truncated
-                        // >64k - fine for diagnosis).
-                        IntPtr sel;
-                        SendMessageTimeoutW(hwnd, EM_GETSEL, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out sel);
-                        long s = sel.ToInt64();
                         Log("debug", "caret restore: EM_SETSEL on '" + c + "' ok=" + (ok1 != IntPtr.Zero) + "/" + (ok2 != IntPtr.Zero)
-                            + " sel=" + (s & 0xFFFF) + ".." + ((s >> 16) & 0xFFFF));
-                    }
+                            + " end=" + end + " back=" + back);
                     return;
                 }
                 // Non-Edit UIA composers (Slack and other Chromium-UIA
@@ -791,6 +801,21 @@ namespace OpenCues
                 KeyChord(VK_CONTROL, VK_END);
             }
             catch { }   // caret restore is best-effort; the text write already landed
+        }
+
+        // How many CARET POSITIONS the trailing newline run of `s` occupies.
+        // RichEdit's index model counts a "\r\n" pair as ONE position; the
+        // classic Edit control counts both characters.
+        static int TrailingSeparatorUnits(string s, bool crlfIsOne)
+        {
+            if (s == null) return 0;
+            int i = s.Length, units = 0;
+            while (i > 0 && (s[i - 1] == '\n' || s[i - 1] == '\r'))
+            {
+                if (i > 1 && s[i - 1] == '\n' && s[i - 2] == '\r') { units += crlfIsOne ? 1 : 2; i -= 2; }
+                else { units += 1; i -= 1; }
+            }
+            return units;
         }
 
         // Chromium applies SetValue (and its caret-to-start reset) on its own
