@@ -179,9 +179,17 @@ export async function main(): Promise<void> {
   const requestWrite = (rawText: string): void => {
     const id = state.activeId ?? virtualNoteId;
     if (!id) { log('warn', 'runtime write with no active note — dropped'); return; }
-    const newText = ensureTrailingNewline(rawText);
-    log('debug', 'requestWrite', { lines: newText.split('\n').length, head: newText.slice(0, 40) });
-    virtualText = newText;
+    // Store the runtime's bytes EXACTLY — getText serves this back, and
+    // the resolver's substitute-time race guard compares it against the
+    // buffer it analyzed byte-for-byte. Normalizing here (an appended
+    // trailing '\n') made the runtime read back a buffer one byte longer
+    // than its own and abort its own substitution (live len=17 vs
+    // original len=16, observed 2026-07-08 — whether a TransformBlank
+    // answer landed was a race against the flush state). The trailing-
+    // newline canonical form is a NOTE-side invariant, so it's applied
+    // at flush time (see flushVirtual), not on the runtime's buffer.
+    log('debug', 'requestWrite', { lines: rawText.split('\n').length, head: rawText.slice(0, 40) });
+    virtualText = rawText;
     virtualNoteId = id;
     const now = Date.now();
     if (firstPendingAt === null) firstPendingAt = now;
@@ -206,14 +214,18 @@ export async function main(): Promise<void> {
       return;
     }
     const id = virtualNoteId;
-    const text = virtualText;
+    const raw = virtualText;
+    // Canonical note form (trailing '\n') is applied HERE, not in
+    // requestWrite — the virtual buffer must stay byte-identical to
+    // what the runtime wrote (see requestWrite).
+    const text = ensureTrailingNewline(raw);
     const snapshot = state.tracked.get(id);
     if (!snapshot) { log('debug', 'flush skipped: note untracked', { id }); dropVirtual(); return; }
     if (text === snapshot.plaintext) { log('debug', 'flush skipped: no change vs snapshot'); dropVirtual(); return; }
     log('debug', 'flushing', { lines: text.split('\n').length, head: text.slice(0, 40) });
     await doFill(id, snapshot, text, timing);
     // Only clear if no newer write arrived while the CAS ran.
-    if (virtualText === text) dropVirtual();
+    if (virtualText === raw) dropVirtual();
   }
 
   // Body cache for consecutive daemon-owned writes (animation frames):
