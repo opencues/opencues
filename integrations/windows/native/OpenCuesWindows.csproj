@@ -1,0 +1,44 @@
+<!--
+  Optional proper-build path for the Windows shim.
+
+  The default install compiles OpenCuesWindows.cs on-demand via
+  Add-Type in Windows PowerShell (no SDK). This csproj is for users /
+  contributors who want a standalone .exe or a phase-2 build that adds
+  the keyboard hook + overlay (harder to express purely in Add-Type).
+
+  Build (needs the .NET SDK with the Windows Desktop workload):
+      dotnet build -c Release
+  Run:
+      bin/Release/net48/OpenCuesWindows.exe --port 51789
+
+  Targets net48 (Framework) so the UIAutomation GAC assemblies resolve
+  the same way Add-Type sees them. A net8.0-windows multi-target can be
+  added later if a self-contained single-file exe is wanted.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWindowsForms>false</UseWindowsForms>
+    <LangVersion>7.3</LangVersion>
+    <AssemblyName>OpenCuesWindows</AssemblyName>
+    <RootNamespace>OpenCues</RootNamespace>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="UIAutomationClient" />
+    <Reference Include="UIAutomationTypes" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="Accessibility" />   <!-- MSAA/IA2 IAccessible (Chromium/Electron read path) -->
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Only the shim source; Program.cs supplies the entry point when
+         building as an exe (Add-Type uses WindowsShim.Run directly). -->
+    <Compile Include="OpenCuesWindows.cs" />
+    <Compile Include="Program.cs" />
+  </ItemGroup>
+
+</Project>

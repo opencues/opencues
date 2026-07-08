@@ -25,3 +25,4 @@ tests/agentic/
 
 # External clone — not part of this repo.
 tester/
+integrations/windows/ui/

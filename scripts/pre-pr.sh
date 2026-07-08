@@ -49,6 +49,12 @@ skip() {
 # ─── 1. Shell portability + strict-mode lint ────────────────────────
 step "shell-portability lint" bash scripts/lint-shell-portability.sh
 
+# ─── 1a. Windows native ASCII guard ────────────────────────────────
+# Windows PowerShell 5.1 reads .ps1/.vbs as ANSI, not UTF-8 — a non-ASCII
+# literal (—, …, →) mojibakes and can break parsing, silently killing the
+# tray. Keep the native launchers + Add-Type'd .cs pure ASCII.
+step "windows native ASCII guard" bash scripts/check-windows-native-ascii.sh
+
 # ─── 1b. Legacy-names lint ─────────────────────────────────────────
 # Catches the rename-drift class — old feature names lingering in    # LEGACY-NAME-ALLOW: aggregator comment
 # shipping code after a rename. Banned identifiers live in           # LEGACY-NAME-ALLOW: aggregator comment

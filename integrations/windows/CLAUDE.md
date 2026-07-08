@@ -1,0 +1,169 @@
+# CLAUDE.md — Windows integration
+
+`@opencues/windows` — a **system-wide** OpenCues host for Windows. Like
+`shell`, it's a **self-owned host**: there is no upstream editor to
+patch. Unlike every other host, the text buffer it operates on isn't in
+its own process — it's whatever Windows app the user is currently typing
+in, reached over UI Automation.
+
+## Architecture — two halves, one socket
+
+```
+Windows (thin shim, no logic)            WSL (the brain)
+native/OpenCuesWindows.cs   ── socket ──▶ src/hostd.cjs
+  UI Automation read/write   127.0.0.1    boots @opencues/runtime via
+  focus tracking             (WSL2 fwd)   adapters/windows/v1/boot.ts
+  sensitive/deny gate        ◀── set-text  reads ~/.cues, uses WSL keys
+```
+
+- **`src/hostd.cjs`** (WSL) — the daemon. Boots the runtime through the
+  `windows` adapter band using WSL's own `~/.cues` + `process.env` keys
+  (this is the literal "plugged into WSL main OC" join — no second
+  config, no sync). Keeps a **local mirror** of the remote field's text
+  so `getText()` never blocks. Translates the wire protocol
+  (`protocol.md`) ↔ the adapter. Publishes a presence file under
+  `/tmp/opencues-hosts/`.
+- **`native/OpenCuesWindows.cs`** (Windows) — the shim. Polls
+  `AutomationElement.FocusedElement`, reads via `ValuePattern` /
+  `TextPattern`, writes via `ValuePattern.SetValue`, and streams text /
+  focus / blur to the daemon. Contains no OpenCues logic. Compiled
+  on-demand by `native/OpenCuesWindows.ps1` (`Add-Type`, Windows
+  PowerShell 5.1 — **no .NET SDK**). A `.csproj` is provided for a
+  proper `dotnet build` later.
+- **`packages/opencues-runtime/adapters/windows/v1/`** — the adapter
+  band. Near-clone of `shell/v1` but `supportsCycling()` returns
+  **false** (phase 1) and the I/O bindings are backed by the daemon's
+  socket + mirror instead of an OpenTUI textarea.
+
+## Why this shape
+
+The runtime is host-agnostic TypeScript and already has an off-process
+driving surface (`src/event-bridge.ts`: inject text/keys, observe
+events). The Windows shim is essentially a **live driver of that same
+surface** across a socket. Running the runtime in WSL (rather than
+porting Node + a native sidecar onto Windows) means the Windows host
+*is* the user's existing OpenCues install — same config, same keys, same
+`/tmp/opencues.log`. The only Windows-native code is the irreducible
+part: touching UIA.
+
+## Tray app + shared settings UI
+
+The productized surface is a tray app, in two builds (same behaviour):
+
+- **`native/OpenCuesTray.ps1`** (+ `OpenCuesTray.vbs` hidden launcher) —
+  no-SDK PowerShell tray. `Add-Type`s the shim, NotifyIcon menu,
+  supervises the daemon (spawn mode). "Settings" opens the browser.
+- **`native/TrayProgram.cs`** + `OpenCuesTray.csproj` — compiled .NET
+  product. Same menu, hosts the shim in-process, opens Settings in an
+  embedded **WebView2** window. Needs the .NET SDK + WebView2 runtime.
+
+Both open the **same settings UI**: the chrome extension's popup,
+refactored behind a host port and served by the daemon.
+
+### The shared settings component (this is the important bit)
+
+The chrome popup (`integrations/chrome/src/popup/`) was refactored so its
+config/keys/status calls go through **`adapters/host-port.ts`**, which
+picks a backing at load:
+
+- chrome extension context → `chrome-storage-adapter` (unchanged behaviour)
+- anything else (WebView2 / browser served by the daemon) →
+  `http-config-adapter` (fetch `/api/*`)
+
+So the popup is **one component with two backends**. On Windows it's
+served by the daemon's **config server** (`src/config-server.cjs`, an
+HTTP server on the socket port + 1, 127.0.0.1-only):
+
+| Endpoint | Backing |
+|---|---|
+| `GET /` + `/popup.{css,js}` | the staged popup assets (`ui/`, built from chrome) |
+| `GET /api/config` | provider/model from `OPENCUES.md`, key **fingerprints** from `.env` |
+| `GET /api/keys` | **real** key values (localhost + same-user — same trust as the `.env` file itself), for input pre-fill |
+| `POST /api/config` | writes keys → `.env`, provider → `llm-provider`, model → `{cues,blanks,auditors}-llm-model`, ttsRate → `tts-rate` |
+| `GET /api/status` | shim connection + attached app (drives the popup's "host connected" state) |
+
+**When you change the chrome popup, this path is exercised too** — run
+the chrome build + E2E per `integrations/chrome/CLAUDE.md`. The two
+adapters keep identical signatures; drift there breaks one host silently.
+
+Config lives at `%USERPROFILE%\.cues` by default (or `OPENCUES_HOME` →
+`\\wsl.localhost\...` to share WSL). Tray state in
+`%LOCALAPPDATA%\OpenCues\tray.json`; logs in `%TEMP%\opencues.log`.
+
+## Phase 1 (shipped) vs phase 2 (planned)
+
+| | Phase 1 (this) | Phase 2 |
+|---|---|---|
+| Profile | `supportsCycling:false` — Universal-Integration | per-field dynamic |
+| Surface | fluid-blank, transform-blank, compute blanks | + word-cues, cycling blanks |
+| Windows I/O | UIA read/write only | + WH_KEYBOARD_LL hook (Ctrl+Alt+arrows) + layered click-through overlay painted from UIA `GetBoundingRectangles` |
+| Cursor | assumed at end (text length) | real caret via `TextPattern2.GetCaretRange` |
+
+`supportsCycling:false` makes the resolver prune every cycleable source
+at build time (verified: a bare-config boot logs
+`Resolver: built with 1 sources [fluid-blank]`). Phase 2 flips the
+binding and the same filter restores them.
+
+## Multi-buffer state — MUST reset on focus change
+
+The Windows host attaches to **many** independent fields across apps in
+one runtime instance. That's the canonical multi-buffer trigger from
+`docs/architecture/universal-integration.md`: the daemon fires
+`bootResult.resetBufferState()` on every `focus` and `blur`. Without it,
+a DynDef with `blankName` set from the previous field silently blocks the
+next field's first blank (the "bare `_` returns nothing" bug). If you add
+a new boundary (e.g. external paste detection), wire a reset there too.
+
+## Security posture (phase 1)
+
+- **Attachability gate lives on the shim** (`IsAttachable`): Edit/Document
+  control types only; never password (`IsPassword`) or fields whose
+  name/id carries a sensitive token; must have a writable `ValuePattern`.
+  Browsers + terminals are deny-listed by foreground process. Result:
+  credentials + non-editable surfaces never enter the LLM pipeline, by
+  construction.
+- **Spawn sandbox** is the shared runtime path — `hostd.cjs` reuses
+  `validateScriptPath` + `wrapWithBwrap` exactly like the shell host, so
+  script blanks are path-validated and (on Linux) bwrap-confined. The
+  daemon runs in WSL, so bwrap is available — a genuine advantage over a
+  hypothetical native-Windows host.
+
+## Dev loop
+
+```bash
+# Build the band + stage into node_modules:
+integrations/windows/patches/setup.sh
+
+# Run the daemon (WSL). It falls back to the repo dist for dev runs:
+OPENCUES_WIN_PORT=51789 node integrations/windows/src/hostd.cjs
+# or: oc-windows
+
+# Drive it WITHOUT Windows (fake shim over the socket) — the fastest
+# inner loop, no Windows needed:
+#   send {t:hello}, {t:focus,text:""}, {t:text,text:"... fix typos _"}
+#   expect a stream of {t:set-text,...} back (loading frames → result).
+# See the e2e probe pattern in the integration's git history / tests.
+```
+
+Debugging: `tail -f /tmp/opencues.log | grep '\[windows\]'`. The daemon
+prints the Windows-side command on start.
+
+## Wire protocol
+
+Versioned, newline-JSON, `protocol.md`. Bump `protocol` (in the
+`welcome`/`hello` handshake) only on a breaking shape change; add new
+message types freely (both sides ignore unknown `t`).
+
+## Known limitations (phase 1)
+
+- **Write requires `ValuePattern`.** Rich Electron/Chromium editors that
+  expose only `TextPattern` are read-only to us and skipped. Browsers are
+  deny-listed anyway (Chrome extension is the surface there).
+- **`ValuePattern.SetValue` replaces the whole value** and typically
+  resets the caret + undo granularity — the standing cost of the UIA
+  write path (same class as the Android `ACTION_SET_TEXT` tradeoff). Fine
+  for `_` blank fills; revisit for phase-2 word-level cycling.
+- **Elevated apps** are invisible to a normal-integrity UIA client
+  (UIPI). A signed UIAccess build is deferred.
+- **WSL2 localhost forwarding** is assumed (Windows → WSL server on
+  localhost). Mirrored-networking setups may need `-DaemonHost <wsl-ip>`.
