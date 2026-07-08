@@ -104,12 +104,36 @@ namespace OpenCues
             return s.Replace("\r\n", "\n").Replace('\r', '\n');
         }
 
+        // Write bracket - knowledge-based attribution. Every write enters the
+        // field through NoteSelfWrite, so the shim KNOWS when a write stream
+        // is in flight; it doesn't have to infer it from read-backs. While the
+        // bracket is open (refreshed per write, closed after WRITE_QUIET_MS of
+        // silence) read-backs are unattributable and are NOT reported to the
+        // daemon. When the stream goes quiet, ONE reconciliation read decides:
+        // field holds our latest write (in any EOL dress) -> silent sync;
+        // field holds a stale self-write (async editor still settling, e.g.
+        // Slack's Quill) -> wait another quiet window; anything else -> a
+        // genuine divergence (user typed / app transformed the text), report
+        // it. BRACKET_MAX_MS hard-caps the whole dance so a pathological app
+        // can never starve user-typing reports. This is what makes an
+        // animation (a frame every ~50ms against a ~150ms poll) safe on a
+        // host that doesn't own the buffer - the other hosts get write/type
+        // attribution for free by living inside the editor process.
+        static bool _bracketOpen = false;
+        static int _bracketQuietAt = 0;    // tick when the bracket may close
+        static int _bracketOpenedAt = 0;   // tick when it opened (for the cap)
+        const int WRITE_QUIET_MS = 350;
+        const int BRACKET_MAX_MS = 5000;
+
         static void NoteSelfWrite(string text)
         {
             _expectedEcho = text;
             _lastSentText = text;
             _recentWrites.Add(new KeyValuePair<string, int>(EolNorm(text), Environment.TickCount));
             if (_recentWrites.Count > RECENT_WRITE_CAP) _recentWrites.RemoveAt(0);
+            int now = Environment.TickCount;
+            if (!_bracketOpen) { _bracketOpen = true; _bracketOpenedAt = now; }
+            _bracketQuietAt = now + WRITE_QUIET_MS;
         }
 
         static bool IsRecentSelfWrite(string cur)
@@ -253,6 +277,7 @@ namespace OpenCues
                 _lastSentText = null;
                 _expectedEcho = null;
                 _recentWrites.Clear();
+                _bracketOpen = false;
                 _attached = false;
                 _attachMode = AttachMode.None;
                 var reader = new Thread(ReaderThread) { IsBackground = true };
@@ -404,6 +429,7 @@ namespace OpenCues
                 _lastSentText = readText;
                 _expectedEcho = null;
                 _recentWrites.Clear();
+                _bracketOpen = false;
                 _attached = true;
                 StatusLine = "on: " + (app ?? "text field");
                 Log("info", "attached: " + (app ?? "text field") + " ("
@@ -415,14 +441,45 @@ namespace OpenCues
             }
 
             // Same element - send text only when it changed and it isn't our
-            // own write echoing back. The ring check catches STALE echoes too
-            // (a read-back of an older animation frame than the latest write).
+            // own write echoing back.
             _attachMode = mode;
             string cur = readText;
             if (cur == null) return;
+
+            // Write bracket open: reads are unattributable while our writes
+            // are in flight - report nothing until the stream is quiet, then
+            // reconcile once (see NoteSelfWrite).
+            if (_bracketOpen)
+            {
+                int now = Environment.TickCount;
+                bool quiet = unchecked(now - _bracketQuietAt) >= 0;
+                bool capped = unchecked(now - _bracketOpenedAt) > BRACKET_MAX_MS;
+                if (!quiet && !capped) return;
+                if (!capped && EolNorm(cur) != EolNorm(_lastSentText) && IsRecentSelfWrite(cur))
+                {
+                    // Async editor still settling on a stale frame - hold the
+                    // bracket for another quiet window.
+                    _bracketQuietAt = now + WRITE_QUIET_MS;
+                    Log("debug", "bracket: field settling on stale frame (" + cur.Length + " chars), holding");
+                    return;
+                }
+                _bracketOpen = false;
+                Log("debug", "bracket: closed after " + unchecked(now - _bracketOpenedAt) + "ms, reconciling");
+                // fall through: the normal checks below decide whether `cur`
+                // is our write (silent sync) or a genuine divergence (report).
+            }
+
             if (_expectedEcho != null && cur == _expectedEcho) { _lastSentText = cur; return; }
             if (cur == _lastSentText) return;
-            if (IsRecentSelfWrite(cur)) { Log("debug", "swallowed stale self-write echo (" + cur.Length + " chars)"); return; }
+            if (IsRecentSelfWrite(cur))
+            {
+                // Our own write in the control's EOL dress (RichEdit echoes
+                // "\r" for a written "\n") or a late stale echo. Adopt the
+                // field's representation so subsequent polls compare equal.
+                _lastSentText = cur;
+                Log("debug", "adopted self-write echo (" + cur.Length + " chars)");
+                return;
+            }
             _lastSentText = cur;
             _expectedEcho = null;
             SendRaw("{\"t\":\"text\",\"text\":" + JStr(cur)
@@ -437,6 +494,7 @@ namespace OpenCues
             _lastSentText = null;
             _expectedEcho = null;
             _recentWrites.Clear();
+            _bracketOpen = false;
             _lastApp = null;
             _attachMode = AttachMode.None;
             _pendingMsaaText = null;

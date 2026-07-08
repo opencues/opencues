@@ -104,6 +104,31 @@ at build time (verified: a bare-config boot logs
 `Resolver: built with 1 sources [fluid-blank]`). Phase 2 flips the
 binding and the same filter restores them.
 
+## Write attribution — the write bracket
+
+Every other host lives inside the editor process, so "the runtime
+wrote" and "the user typed" arrive as separate channels for free. This
+host observes a foreign app's buffer by polling — a read-back can't say
+*who* changed the text. The shim therefore synthesizes attribution from
+the one fact it owns: **every write funnels through `NoteSelfWrite`**.
+
+- While writes are in flight (a *bracket*, refreshed per write, closed
+  after 350ms of quiet) read-backs are unattributable → not reported.
+- On quiet, ONE reconciliation read: latest write in any EOL dress →
+  silent sync; a stale self-write (async editor still settling) → hold
+  the bracket another quiet window; anything else → genuine divergence
+  (user typed / app transformed the text), reported as a text event.
+- A 5s hard cap stops a pathological app from starving typing reports.
+- A TTL ring of recent writes (EOL-normalized — RichEdit echoes `\r`
+  for a written `\n`) backs the reconcile and catches late echoes.
+
+Without this, the loading animation (~50ms frames vs the ~150ms poll)
+reads back as "user typing", the runtime re-resolves mid-substitution,
+and the field oscillates spinner ↔ final ("live text changed" skips
+with nobody at the keyboard). The Android accessibility host has the
+same shape (TEXT_CHANGED events carry no attribution) — reuse this
+pattern there.
+
 ## Multi-buffer state — MUST reset on focus change
 
 The Windows host attaches to **many** independent fields across apps in
