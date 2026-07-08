@@ -79,6 +79,7 @@ namespace OpenCues
         static readonly HashSet<string> _seenSurfaces = new HashSet<string>(StringComparer.Ordinal);
         static string _lastSentText = null;
         static string _expectedEcho = null;   // value we just wrote; ignore its read-back
+        static string _lastApp = null;        // process name of the attached field's app
         static bool _attached = false;
 
         // How the current attachment is read/written: UIA (native Win32 /
@@ -352,6 +353,7 @@ namespace OpenCues
         // CLAUDE.md "Multi-buffer state" note).
         static void StreamAttachment(int elId, string app, string readText, AttachMode mode)
         {
+            _lastApp = app;
             if (elId != _lastElementId)
             {
                 _lastElementId = elId;
@@ -388,6 +390,7 @@ namespace OpenCues
             _lastElementId = int.MinValue;
             _lastSentText = null;
             _expectedEcho = null;
+            _lastApp = null;
             _attachMode = AttachMode.None;
             _pendingMsaaText = null;
             if (_enabled) StatusLine = "idle";
@@ -427,9 +430,44 @@ namespace OpenCues
             return null;
         }
 
+        // Apps whose composer renders EVERY newline as a paragraph block with
+        // vertical margin (Slack's Quill editor), so a blank line ("\n\n")
+        // displays as a double-height gap while Notepad/Discord show the same
+        // characters compactly. For those apps, collapse blank-line runs to
+        // single newlines before writing. Content-only, best-effort visual
+        // parity: the daemon's mirror re-syncs on the next keystroke's text
+        // event (same transient divergence class as RichEdit's \r read-back).
+        // Override with OPENCUES_PARA_APPS (comma-separated process names;
+        // set empty to disable) - no rebuild needed.
+        static readonly HashSet<string> ParagraphBreakApps = ReadParaApps();
+        static HashSet<string> ReadParaApps()
+        {
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var v = Environment.GetEnvironmentVariable("OPENCUES_PARA_APPS");
+            if (v == null) { set.Add("slack"); return set; }
+            foreach (var part in v.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var t = part.Trim();
+                if (t.Length > 0) set.Add(t);
+            }
+            return set;
+        }
+
+        static string NormalizeNewlinesForApp(string text)
+        {
+            if (text == null || _lastApp == null || !ParagraphBreakApps.Contains(_lastApp)) return text;
+            if (text.IndexOf('\n') < 0 && text.IndexOf('\r') < 0) return text;
+            string norm = text.Replace("\r\n", "\n").Replace('\r', '\n');
+            while (norm.Contains("\n\n")) norm = norm.Replace("\n\n", "\n");
+            if (norm != text)
+                Log("debug", "paragraph-app newline collapse for " + _lastApp + " (" + text.Length + " -> " + norm.Length + " chars)");
+            return norm;
+        }
+
         static void ApplySetText(string text)
         {
             if (text == null) return;
+            text = NormalizeNewlinesForApp(text);
 
             // MSAA-attached (Chromium/Electron): the focused UIA element is an
             // empty shell with no writable pattern, so writes go through the
