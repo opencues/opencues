@@ -141,7 +141,7 @@ describe('applyPoll', () => {
     applyPoll(s, [meta('a', 'm1')], [note('a', 'm1', 'q _\n')], hash, T0);
     const filled = 'q answered\n';
     s.lastWriteHash.set('a', new Set([hash(filled)]));
-    s.tracked.set('a', { id: 'a', mod: 'm1', plaintext: filled });
+    s.tracked.set('a', { id: 'a', mod: 'm1', plaintext: filled, userEditAt: T0 });
     // iCloud echoes the fill back with a bumped mod
     const events = applyPoll(s, [meta('a', 'm2')], [note('a', 'm2', filled)], hash, T0 + 1000);
     const change = events.find(e => e.type === 'text-change');
@@ -178,18 +178,57 @@ describe('applyPoll', () => {
     expect(s.activeId).toBeNull();
   });
 
-  it('most recently modified tracked note wins active; switch resets buffer', () => {
+  it('the note the user last typed in wins active; switch resets buffer', () => {
     const s = initialState(T0);
     applyPoll(s, [meta('a', 'm1')], [note('a', 'm1', 'first _\n')], hash, T0);
     const events = applyPoll(
       s,
       [meta('a', 'm1'), meta('b', 'm9')],
       [note('b', 'm9', 'second _\n')],
-      hash, T0,
+      hash, T0 + 1000,
     );
     expect(events).toEqual([
       expect.objectContaining({ type: 'switch-active', id: 'b', text: 'second _\n' }),
     ]);
+  });
+
+  it('a mod-date bump WITHOUT a content change never steals the active buffer', () => {
+    // iCloud sync / deletion bookkeeping bump modificationDate on notes
+    // the user isn't touching; under mod-date election these stole the
+    // buffer mid-resolution (live failure 2026-07-08).
+    const s = initialState(T0);
+    applyPoll(s, [meta('b', 'm1')], [note('b', 'm1', 'other _\n')], hash, T0);
+    applyPoll(s, [meta('a', 'm2'), meta('b', 'm1')], [note('a', 'm2', 'mine _\n')], hash, T0 + 1000);
+    expect(s.activeId).toBe('a');
+    // b re-enumerates with a NEWER mod but byte-identical content
+    const events = applyPoll(s, [meta('a', 'm2'), meta('b', 'm9')], [note('b', 'm9', 'other _\n')], hash, T0 + 2000);
+    expect(s.activeId).toBe('a');
+    expect(events.find(e => e.type === 'switch-active')).toBeUndefined();
+  });
+
+  it('our own fill echo on another note never steals the active buffer', () => {
+    const s = initialState(T0);
+    applyPoll(s, [meta('b', 'm1')], [note('b', 'm1', 'other _\n')], hash, T0);
+    applyPoll(s, [meta('a', 'm2'), meta('b', 'm1')], [note('a', 'm2', 'mine _\n')], hash, T0 + 1000);
+    expect(s.activeId).toBe('a');
+    // our fill on b echoes back with a newer mod (marker consumed)
+    const filled = 'other answered\n';
+    s.lastWriteHash.set('b', new Set([hash(filled)]));
+    const events = applyPoll(s, [meta('a', 'm2'), meta('b', 'm9')], [note('b', 'm9', filled)], hash, T0 + 2000);
+    expect(s.activeId).toBe('a');
+    expect(events.find(e => e.type === 'switch-active')).toBeUndefined();
+    expect(s.tracked.has('b')).toBe(true); // echo exception still tracks it
+  });
+
+  it('a note the user never edited (userEditAt 0) is never elected', () => {
+    const s = initialState(T0);
+    // echo-only track: hash matches a daemon write, user never typed
+    const filled = 'ghost answered\n';
+    s.lastWriteHash.set('g', new Set([hash(filled)]));
+    s.tracked.set('g', { id: 'g', mod: 'm5', plaintext: filled, userEditAt: 0 });
+    const events = applyPoll(s, [meta('g', 'm5')], [], hash, T0 + 1000);
+    expect(s.activeId).toBeNull();
+    expect(events.find(e => e.type === 'switch-active')).toBeUndefined();
   });
 
   it('active stays sticky on modificationDate ties', () => {

@@ -59,6 +59,17 @@ export interface TrackedNote {
   mod: string;
   /** Normalized plaintext snapshot — the runtime buffer when active. */
   plaintext: string;
+  /**
+   * Daemon-observed time of the last USER-sourced content change (0 =
+   * never; e.g. tracked only via the echo exception). The active-note
+   * election key: on every other host the buffer IS the editor the
+   * user is focused in, so the polled equivalent is "the note the
+   * user last typed in" — NOT max(modificationDate), which iCloud
+   * sync, deletions, and our own fill echoes can bump. The mod-date
+   * election let a background bump steal the active buffer
+   * mid-resolution and reset it (observed live 2026-07-08).
+   */
+  userEditAt: number;
 }
 
 export interface DaemonState {
@@ -272,18 +283,24 @@ export function applyPoll(
     if (prev) prevTexts.set(f.id, prev.plaintext);
     if (prev?.plaintext !== text) contentChanged = true;
 
+    // Election stamp: a USER-sourced content change bumps userEditAt;
+    // echoes of our own writes and mod-only bumps carry the prior stamp.
+    const isEcho = state.lastWriteHash.get(f.id)?.has(hash(text)) === true;
+    const noteChanged = prev === undefined || prev.plaintext !== text;
+    const userEditAt = noteChanged && !isEcho ? now : (prev?.userEditAt ?? 0);
+
     if (text.length > MAX_NOTE_CHARS) {
       if (state.tracked.delete(f.id)) events.push({ type: 'untracked', id: f.id, reason: 'oversize' });
     } else if (containsBlankMarker(text)) {
-      state.tracked.set(f.id, { id: f.id, mod: f.mod, plaintext: text });
+      state.tracked.set(f.id, { id: f.id, mod: f.mod, plaintext: text, userEditAt });
     } else if (prev) {
       // Marker gone (user finished / erased) — keep tracking briefly? No:
       // untrack; the note re-enters the moment a marker reappears.
       // EXCEPTION: our own fill removes the marker — the note must stay
       // the active buffer so the runtime sees the filled text, not a
       // buffer swap. Echoes stay tracked; user deletions untrack.
-      if (state.lastWriteHash.get(f.id)?.has(hash(text))) {
-        state.tracked.set(f.id, { id: f.id, mod: f.mod, plaintext: text });
+      if (isEcho) {
+        state.tracked.set(f.id, { id: f.id, mod: f.mod, plaintext: text, userEditAt });
       } else {
         state.tracked.delete(f.id);
         events.push({ type: 'untracked', id: f.id, reason: 'no-marker' });
@@ -295,10 +312,15 @@ export function applyPoll(
   }
   if (contentChanged) state.lastActivityAt = now;
 
-  // Active note = most recently modified tracked note; sticky on ties.
+  // Active note = the note the USER last typed in (userEditAt), sticky
+  // on ties — the polled equivalent of "the buffer is the editor the
+  // user is focused in" on every other host. Never elected: notes the
+  // user hasn't edited this session (userEditAt 0) — background mod
+  // bumps and our own echoes must not steal the buffer (see TrackedNote).
   let best: TrackedNote | null = null;
   for (const t of state.tracked.values()) {
-    if (!best || t.mod > best.mod || (t.mod === best.mod && t.id === state.activeId)) best = t;
+    if (t.userEditAt === 0) continue;
+    if (!best || t.userEditAt > best.userEditAt || (t.userEditAt === best.userEditAt && t.id === state.activeId)) best = t;
   }
 
   const prevActive = state.activeId;
