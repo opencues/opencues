@@ -58,6 +58,19 @@ Key invariants (all pinned by tests in `src/tick.test.ts` +
   while our own echo does not. Do NOT re-suppress frames to "optimize"
   — the animation is a product requirement; the cost is bounded by the
   serialized CAS chain.
+- **FSEvents wake** (daemon.ts `sleepOrWake`): any file event in Notes'
+  group container (`~/Library/Group Containers/group.com.apple.notes`)
+  short-circuits the poll sleep for an immediate tick. Every note write
+  — user autosave, iCloud sync, our own CAS fill — rewrites the
+  indexer-state files within ~1ms, while our own osascript READS fire
+  nothing (measured 2026-07-08), so polls can't self-wake. Detection
+  lag collapses from up-to-POLL_IDLE_MS to ~enumeration+fetch cost; the
+  timer cadence in tick.ts remains the ground-truth fallback (a dead
+  watcher degrades to timer-only polling, never breaks correctness).
+- **Render-phase lag logging** (daemon.ts): every `fill landed` line
+  carries settleMs/queueMs/readMs/spliceMs/casMs/totalMs, and `fill
+  echo observed` carries echoMs — same key=value Ms style as the
+  resolver's totalMs= lines on the other hosts.
 
 ## Iteration loop
 

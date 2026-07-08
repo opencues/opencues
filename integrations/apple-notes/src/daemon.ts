@@ -27,8 +27,9 @@ import {
 } from './tick';
 import { buildBlanks, makeSpawnProcess } from './host-support';
 import { createHash } from 'node:crypto';
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, watch as fsWatch } from 'node:fs';
 import * as fs from 'node:fs/promises';
+import * as os from 'node:os';
 import * as path from 'node:path';
 
 const LOG_PATH = process.env['OPENCUES_LOG'] ?? '/tmp/opencues.log';
@@ -376,6 +377,40 @@ export async function main(): Promise<void> {
     },
   });
 
+  // ── FSEvents wake — collapse detection lag to the poll's own cost ──
+  // Notes.app offers no change-notification API, but every note write
+  // (user autosave, cross-device iCloud sync, our own CAS fill) rewrites
+  // indexer-state files in its group container within ~1ms (measured
+  // 2026-07-08; our own osascript READS fire nothing, so polls can't
+  // self-wake). Any container event short-circuits the poll sleep for
+  // an immediate tick, so detection costs ~enumeration+fetch instead of
+  // up to POLL_IDLE_MS — crucial for the loading-animation frames,
+  // whose echo classification otherwise waits out a full sleep. The
+  // timer cadence stays as the ground-truth fallback: FSEvents dropping
+  // (or the container moving in a future macOS) degrades to today's
+  // behaviour, never breaks it.
+  let wakeQueued = false;
+  let wakeResolve: (() => void) | null = null;
+  const wakeNow = (): void => {
+    if (wakeResolve) { const r = wakeResolve; wakeResolve = null; r(); }
+    else wakeQueued = true;
+  };
+  const sleepOrWake = (ms: number): Promise<void> => {
+    if (wakeQueued) { wakeQueued = false; return Promise.resolve(); }
+    return new Promise(r => {
+      const t = setTimeout(() => { wakeResolve = null; r(); }, ms);
+      wakeResolve = (): void => { clearTimeout(t); r(); };
+    });
+  };
+  const notesContainer = path.join(os.homedir(), 'Library', 'Group Containers', 'group.com.apple.notes');
+  try {
+    const watcher = fsWatch(notesContainer, { persistent: false }, () => wakeNow());
+    process.on('exit', () => watcher.close());
+    log('info', 'FSEvents wake enabled — note edits trigger an immediate poll', { dir: notesContainer });
+  } catch (err) {
+    log('warn', 'FSEvents watch unavailable — timer-only polling', String(err));
+  }
+
   log('info', 'daemon started — watching all unlocked notes for blank markers');
 
   let permissionLost = false;
@@ -391,7 +426,7 @@ export async function main(): Promise<void> {
         seedBaseline(state, list.value.notes);
         baselineSeeded = true;
         log('info', 'baseline seeded — watching for edits from now on', { notes: list.value.notes.length });
-        await sleep(pollDelayMs(state, running, Date.now()));
+        await sleepOrWake(pollDelayMs(state, running, Date.now()));
         continue;
       }
       if (!list.ok) {
@@ -461,7 +496,7 @@ export async function main(): Promise<void> {
         }
       }
     }
-    await sleep(pollDelayMs(state, running, Date.now()));
+    await sleepOrWake(pollDelayMs(state, running, Date.now()));
   }
 }
 
