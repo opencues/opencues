@@ -239,6 +239,18 @@ function countUnderscores(s) {
 // host-echo timing (never re-enters the resolver mid-substitution).
 function echoRuntimeWrite(text, cursor) {
   setImmediate(() => {
+    // Drop superseded echoes. During a write burst (loading-animation
+    // frames → underscore restore → final substitution) an echo queued
+    // for an INTERMEDIATE state would deliver a STALE buffer to the
+    // band's text-change handlers AFTER the final write landed —
+    // stateful modules (selector-satellite clearOnEdit) read that as a
+    // user edit into their span and destructively "clean up" (observed:
+    // ConfigIntent's `debug-mode on` pair wiped to an empty buffer one
+    // tick after substitution). Real editors can't do this to the other
+    // bands — a change event always carries the buffer as it is AT
+    // DELIVERY — so the daemon honours the same invariant: only the
+    // newest write may echo.
+    if (text !== mirrorText) return;
     try { bootResult.notifyTextChange(text, cursor, 'runtime'); } catch { /* boot not ready */ }
   });
 }

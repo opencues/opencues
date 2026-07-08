@@ -198,22 +198,41 @@ message types freely (both sides ignore unknown `t`).
 - **WSL2 localhost forwarding** is assumed (Windows → WSL server on
   localhost). Mirrored-networking setups may need `-DaemonHost <wsl-ip>`.
 
-## Known no-cycling-profile defects (agentic suite, 2026-07-08)
+## The "no-cycling defect family" that wasn't (agentic suite, 2026-07-08/09 — RESOLVED)
 
 Windows is the first no-cycling host driven by the agentic harness
-(opencues-agentic PR #13 wires it in), and the suite surfaced one
-defect family the profile had never exercised: **selector/satellite-
-and list-blank-shaped outputs end in an EMPTY buffer** instead of
-degrading gracefully — the summon phrase / command is consumed but the
-pruned output never lands. That's a data-loss shape ([[no logical
-landmines]]), and it will reproduce on chrome's plain-`<input>` mode
-too — it's a runtime bug class, not a Windows one. Repro scenarios
-(private harness repo): 18-fluid-config-flip, 57-identity-context-
-flip, 60-sentinel-write, 86-integration-pass-blank-fill,
-102-config-intent-preserves-buffer. Suspects: ConfigIntent /
-selector-satellite registration and BlankFill keyword claim aren't
-consulting the same no-cycling prune the resolver's
-`buildSourcesFromConfig` applies (see
-docs/architecture/universal-integration.md). Fix belongs in the
-runtime before this branch merges, or those sources must be pruned
-outright on `supportsCycling: false` hosts.
+(opencues-agentic PR #13), and its first suite run showed five
+scenarios ending in empty/wrong buffers (18-fluid-config-flip,
+57-identity-context-flip, 60-sentinel-write,
+86-integration-pass-blank-fill, 102-config-intent-preserves-buffer).
+The initial hypothesis — a runtime defect where selector/satellite
+outputs are pruned on `supportsCycling: false` after consuming the
+summon text — was **wrong**. A direct-boot repro (band with stubbed
+bindings, stack-traced writes) proved the runtime pipeline correct on
+the no-cycling profile, including selector/satellite REGISTRATION
+(which works fine without cycling; only the chords are inert). The
+real causes were two host-side bugs:
+
+1. **Stale-echo replay (hostd)** — `echoRuntimeWrite`'s deferred echo
+   could deliver an INTERMEDIATE write (the loading animation's
+   underscore-restore) to the band AFTER the final substitution, and
+   stateful text-change handlers (selector-satellite clearOnEdit) read
+   the stale buffer as a user edit into their span → destructive
+   cleanup → empty buffer. Fix: an echo only fires if its text still
+   equals the mirror at delivery ("only the newest write may echo") —
+   the invariant every real editor gives the other bands. Fixed 4/5
+   scenarios.
+2. **`on-host:` allowlists predating the windows host** — the
+   sentinel / note / opencues blanks declare explicit host allowlists
+   in their BLANK.md; `windows` wasn't on them, so folder discovery
+   (correctly) dropped the configs and `set sentinel … _` fell through
+   to fluid-blank. Fix: `windows` added to the three allowlists in
+   `defaults/` (+ seeded copies self-healed). **Porting lesson: any
+   NEW host name must be grep'd against `on-host:` allowlists in
+   shipped defaults** — an allowlist silently excludes every future
+   host (this will bite the next integration too; see
+   docs/guides/porting-to-new-integration.md).
+
+All five scenarios + both note-blank scenarios now pass on windows;
+the touched flows regression-pass on shell. Pinned by the same
+scenarios in the private harness repo.
