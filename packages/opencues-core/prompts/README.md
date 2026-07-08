@@ -22,7 +22,6 @@ There are **no hardcoded prompt constants in `ConfigSource`**. ConfigSource inst
 ```
 prompts/
 ├── README.md            # This file
-├── linked.txt           # Linked words prompt (gender/number agreement)
 └── references/          # Prompt design documentation (historical)
     ├── grammar.md       # Word-alternatives + grammar-blank prompts
     ├── factual.md       # Factual-blank answer prompt

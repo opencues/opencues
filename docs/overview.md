@@ -110,8 +110,6 @@ interface CueResult {
   alternatives: string[];   // Original word at [0], then alternatives
   cueTip?: string;          // Hint text for status line
   altCueTips?: Record<string, string>;  // Per-alternative tips
-  linked?: number[];        // Indices of words that cycle together (currently unused by any
-                             // runtime module — the field exists but no source populates it)
   source: string;           // 'tips' | <cue/blank source name> | 'fluid-blank' | ...
   priority: number;         // Higher wins on merge
 }

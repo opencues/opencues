@@ -24,9 +24,6 @@ export interface CueResult {
   /** Per-alternative cue-tips (keyed by alternative word) */
   altCueTips?: Record<string, string>;
 
-  /** Indices of other words that should cycle together (e.g., "boy" and "he") */
-  linked?: number[];
-
   /** Source identifier (e.g., 'tips', 'grammar', 'math', 'factual') */
   source: string;
 
@@ -362,9 +359,6 @@ export interface WordDef {
 
   /** Source identifier */
   source?: 'tips' | 'llm' | 'grammar' | 'math' | 'factual';
-
-  /** Linked word indices (cycle together) */
-  linked?: number[] | null;
 
   /** Current position in alts array when cycling */
   currentAltIndex?: number;

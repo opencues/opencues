@@ -320,17 +320,10 @@ export class CueResolver {
     // Merge altCueTips
     const altCueTips = { ...existing.altCueTips, ...incoming.altCueTips };
 
-    // Merge linked (deduplicate)
-    const linkedSet = new Set<number>([
-      ...(existing.linked || []),
-      ...(incoming.linked || []),
-    ]);
-
     return {
       ...existing,
       alternatives: Array.from(altSet),
       altCueTips: Object.keys(altCueTips).length > 0 ? altCueTips : undefined,
-      linked: linkedSet.size > 0 ? Array.from(linkedSet) : undefined,
     };
   }
 

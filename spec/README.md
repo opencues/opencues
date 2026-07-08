@@ -1,6 +1,6 @@
 # OpenCues — Open Standard
 
-> **Status:** `0.6-alpha`. Expect changes.
+> **Status:** `0.7-alpha`. Expect changes.
 
 This directory holds open file-format standards — the three core intent surfaces **Cues**, **Blanks**, and **Auditors**, plus (as of `0.5`) the **Katas** guided-scenario surface — that any text editor, IDE, or LLM-pipeline can implement to interoperate. Each surface has its own spec file and its own conformance contract; a runtime can implement one and be conformant for that surface (you don't have to implement all of them). Licensed under the same terms as this repository (see [`LICENSE`](../LICENSE)).
 
@@ -38,6 +38,7 @@ The standard covers three source-folder entry files (`CUE.md`, `BLANK.md`, `AUDI
 | [`schemas/blank.schema.json`](./schemas/blank.schema.json) | JSON Schema for `BLANK.md` frontmatter. |
 | [`schemas/auditor.schema.json`](./schemas/auditor.schema.json) | JSON Schema for `AUDITOR.md` frontmatter. |
 | [`schemas/kata.schema.json`](./schemas/kata.schema.json) | JSON Schema for `KATA.md` frontmatter. |
+| [`schemas/identity.schema.json`](./schemas/identity.schema.json) | JSON Schema for `IDENTITY.md` frontmatter (the personal-data catalog). Key shape + value cap are schema-expressible; token-collision and the field-count cap are write-time validator contracts noted in the schema description. |
 | [`schemas/cues-master.schema.json`](./schemas/cues-master.schema.json) | JSON Schema for the `CUES.md` master file. |
 | [`schemas/blanks-master.schema.json`](./schemas/blanks-master.schema.json) | JSON Schema for the `BLANKS.md` master file. |
 | [`schemas/auditors-master.schema.json`](./schemas/auditors-master.schema.json) | JSON Schema for the `AUDITORS.md` master file. |
