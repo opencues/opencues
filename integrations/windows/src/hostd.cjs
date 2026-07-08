@@ -226,6 +226,23 @@ function countUnderscores(s) {
   return n;
 }
 
+// On every in-process host the editor fires a change event when the
+// runtime writes (shell's textarea onContentChange), which keeps the
+// band's previousText/lastSeenText fresh. This host's field is remote and
+// the shim's write bracket rightly swallows write echoes, so the daemon —
+// the layer that KNOWS what it wrote — feeds the write back itself as a
+// runtime-source change event. Without this, previousText stays at the
+// pre-substitution user text (which ends with `_`), the resolver's
+// no-`_` → `_` transition gate never re-opens, and the SECOND consecutive
+// blank silently dies — the Android R5 bug shape, pinned by
+// tests/r5-consecutive-blanks.e2e.mjs. Deferred a tick to mirror real
+// host-echo timing (never re-enters the resolver mid-substitution).
+function echoRuntimeWrite(text, cursor) {
+  setImmediate(() => {
+    try { bootResult.notifyTextChange(text, cursor, 'runtime'); } catch { /* boot not ready */ }
+  });
+}
+
 // ─── Boot the runtime once ───────────────────────────────────────────────
 const bootResult = boot({
   hostVersion: '0.1.0',
@@ -237,6 +254,7 @@ const bootResult = boot({
     mirrorCursor = text.length;
     expectedEcho = text;
     send({ t: 'set-text', text, cursor: mirrorCursor });
+    echoRuntimeWrite(text, mirrorCursor);
   },
   setCursorOffset: (offset) => {
     mirrorCursor = offset;
@@ -247,6 +265,7 @@ const bootResult = boot({
     mirrorCursor = typeof cursor === 'number' ? cursor : text.length;
     expectedEcho = text;
     send({ t: 'set-text', text, cursor: mirrorCursor });
+    echoRuntimeWrite(text, mirrorCursor);
   },
   forceRender: () => { /* phase 1: no overlay surface to repaint */ },
   readFile: async (p) => { try { return await fsp.readFile(p, 'utf8'); } catch { return null; } },

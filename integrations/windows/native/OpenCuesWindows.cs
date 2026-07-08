@@ -122,18 +122,19 @@ namespace OpenCues
         static bool _bracketOpen = false;
         static int _bracketQuietAt = 0;    // tick when the bracket may close
         static int _bracketOpenedAt = 0;   // tick when it opened (for the cap)
+        static string _bracketBaseline = null;   // field state when the bracket opened
         const int WRITE_QUIET_MS = 350;
         const int BRACKET_MAX_MS = 5000;
 
         static void NoteSelfWrite(string text)
         {
+            int now = Environment.TickCount;
+            if (!_bracketOpen) { _bracketOpen = true; _bracketOpenedAt = now; _bracketBaseline = _lastSentText; }
+            _bracketQuietAt = now + WRITE_QUIET_MS;
             _expectedEcho = text;
             _lastSentText = text;
             _recentWrites.Add(new KeyValuePair<string, int>(EolNorm(text), Environment.TickCount));
             if (_recentWrites.Count > RECENT_WRITE_CAP) _recentWrites.RemoveAt(0);
-            int now = Environment.TickCount;
-            if (!_bracketOpen) { _bracketOpen = true; _bracketOpenedAt = now; }
-            _bracketQuietAt = now + WRITE_QUIET_MS;
         }
 
         static bool IsRecentSelfWrite(string cur)
@@ -465,6 +466,17 @@ namespace OpenCues
                 }
                 _bracketOpen = false;
                 Log("debug", "bracket: closed after " + unchecked(now - _bracketOpenedAt) + "ms, reconciling");
+                // Android R6 lesson (managed editors REVERT external writes,
+                // e.g. Lexical): a reconcile that lands back on the PRE-WRITE
+                // content means this app rejected our writes - name it loudly
+                // so the sweep catalogs the app; the divergence report below
+                // then re-syncs the daemon so the runtime knows the
+                // substitution didn't stick. Escalation (retry via the paste
+                // path) is deferred until a real app exhibits this.
+                if (_bracketBaseline != null && EolNorm(cur) == EolNorm(_bracketBaseline)
+                    && EolNorm(cur) != EolNorm(_lastSentText))
+                    Log("warn", "app '" + (_lastApp ?? "?") + "' REVERTED our write(s) - field returned to pre-write content (" + cur.Length + " chars)");
+                _bracketBaseline = null;
                 // fall through: the normal checks below decide whether `cur`
                 // is our write (silent sync) or a genuine divergence (report).
             }
