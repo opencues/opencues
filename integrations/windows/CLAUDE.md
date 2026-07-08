@@ -159,10 +159,24 @@ message types freely (both sides ignore unknown `t`).
 - **Write requires `ValuePattern`.** Rich Electron/Chromium editors that
   expose only `TextPattern` are read-only to us and skipped. Browsers are
   deny-listed anyway (Chrome extension is the surface there).
-- **`ValuePattern.SetValue` replaces the whole value** and typically
-  resets the caret + undo granularity — the standing cost of the UIA
-  write path (same class as the Android `ACTION_SET_TEXT` tradeoff). Fine
-  for `_` blank fills; revisit for phase-2 word-level cycling.
+- **Non-Edit-family UIA fields still get `ValuePattern.SetValue`**, which
+  replaces the whole value and typically resets the caret + undo
+  granularity (same class as the Android `ACTION_SET_TEXT` tradeoff).
+  Edit/RichEdit/WinForms-TextBox HWNDs take the smoother
+  `EM_SETSEL`+`EM_REPLACESEL` span splice instead (undo survives, only
+  the changed span is touched); a read-back verify catches any control
+  whose EM index model skews offsets (e.g. CRLF-vs-CR on multiline
+  RichEdit) and repairs via `SetValue` — grep the log for
+  `EM_REPLACESEL verify mismatch` to catalog such classes. Known wart:
+  each loading-animation frame is an undoable splice, so Ctrl+Z steps
+  back through spinner frames.
+- **MSAA writes are prefix+suffix-diffed**: the edit window is spliced
+  with a `Left×suffix + Backspace×window + Ctrl+V(fragment)` atomic key
+  burst (window ≤ `OPENCUES_BACKSPACE_MAX`, default 160; caret walk ≤
+  400, `\r` in the kept suffix disqualifies). Only genuine whole-field
+  rewrites fall back to Ctrl+A + paste. After a mid-buffer splice the
+  caret stays after the fragment (not restored to end) — Electron's
+  async Ctrl+V makes a same-burst caret restore racy.
 - **Elevated apps** are invisible to a normal-integrity UIA client
   (UIPI). A signed UIAccess build is deferred.
 - **WSL2 localhost forwarding** is assumed (Windows → WSL server on

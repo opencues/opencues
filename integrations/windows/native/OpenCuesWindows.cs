@@ -6,7 +6,11 @@
 //   2. Stream its text (+ focus/blur) to the WSL-side daemon over a
 //      TCP socket (127.0.0.1:<port>, forwarded into WSL by WSL2).
 //   3. Apply `set-text` commands the daemon sends back (LLM
-//      substitutions, blank fills) via UIA ValuePattern.SetValue.
+//      substitutions, blank fills). Write ladder, smoothest first:
+//      Edit/RichEdit HWNDs -> EM_SETSEL+EM_REPLACESEL span splice
+//      (undo-preserving, verified by read-back); other UIA fields ->
+//      ValuePattern.SetValue; Electron/MSAA -> prefix+suffix-diffed
+//      key burst (Left/Backspace/Ctrl+V) with Ctrl+A+paste fallback.
 //
 // Phase 1: read/write only - no keyboard hook, no overlay. The daemon
 // runs the host as `supportsCycling:false`, so nothing needs chord
@@ -452,12 +456,18 @@ namespace OpenCues
             try
             {
                 // Fast path: a writable ValuePattern (Win32 Edit, WinForms,
-                // WPF, Notepad, Explorer). Whole-value replace, instant.
+                // WPF, Notepad, Explorer). Edit-family HWNDs get a surgical
+                // span replace (EM_SETSEL + EM_REPLACESEL: no whole-value
+                // clobber, caret + undo survive); everything else - and any
+                // EM write that fails read-back verification - takes the
+                // whole-value SetValue.
                 object vp;
                 if (el.TryGetCurrentPattern(ValuePattern.Pattern, out vp) && !((ValuePattern)vp).Current.IsReadOnly)
                 {
                     _expectedEcho = text;
                     _lastSentText = text;
+                    if (TryEmReplaceSel(el, (ValuePattern)vp, text))
+                        return;   // verified applied (logged inside)
                     ((ValuePattern)vp).SetValue(text);
                     Log("debug", "applied substitution (" + text.Length + " chars, ValuePattern)");
                     return;
@@ -809,6 +819,95 @@ namespace OpenCues
             }
         }
 
+        // --- Message-based surgical write (native Edit / RichEdit) ----------
+        // For fields whose HWND is a real Edit-family control, replace ONLY
+        // the changed span via EM_SETSEL + EM_REPLACESEL(fUndo=TRUE) instead
+        // of ValuePattern.SetValue's whole-value clobber. No clipboard, no
+        // key synthesis, no selection flash, and the app's native undo stack
+        // survives. Sent with SendMessageTimeout(ABORTIFHUNG) so a wedged
+        // target can never hang the shim thread. Correctness is enforced
+        // empirically, not structurally: after the edit we read the value
+        // back, and any mismatch (e.g. RichEdit's CR-only index model
+        // skewing offsets on multiline text) is repaired on the spot by the
+        // caller's SetValue fallback - so the worst case is exactly today's
+        // behaviour, and the log says which control classes need index
+        // mapping.
+        const uint EM_SETSEL = 0x00B1;
+        const uint EM_REPLACESEL = 0x00C2;
+        const uint SMTO_ABORTIFHUNG = 0x0002;
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        static extern IntPtr SendMessageTimeoutW(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, uint flags, uint timeoutMs, out IntPtr result);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "SendMessageTimeoutW")]
+        static extern IntPtr SendMessageTimeoutText(IntPtr hWnd, uint msg, IntPtr wParam, string lParam, uint flags, uint timeoutMs, out IntPtr result);
+
+        // Edit-family window classes that speak EM_* messages: classic Win32
+        // "Edit", every RichEdit variant (WordPad "RICHEDIT50W", Win11
+        // Notepad "RichEditD2DPT", ...), and WinForms TextBox
+        // ("WindowsForms10.EDIT.app..."). WPF renders into one big
+        // HwndWrapper with no per-field HWND, so it never matches and stays
+        // on SetValue.
+        static bool IsEditClassHwnd(IntPtr hwnd, out string className)
+        {
+            className = null;
+            if (hwnd == IntPtr.Zero) return false;
+            var sb = new StringBuilder(256);
+            if (GetClassName(hwnd, sb, sb.Capacity) == 0) return false;
+            className = sb.ToString();
+            string c = className.ToLowerInvariant();
+            return c == "edit" || c.Contains("richedit") || c.Contains(".edit.");
+        }
+
+        // Try the surgical EM path. Returns true only if the field now
+        // verifiably holds `text` (read back and compared); on ANY doubt it
+        // returns false and the caller falls through to SetValue.
+        static bool TryEmReplaceSel(AutomationElement el, ValuePattern vp, string text)
+        {
+            try
+            {
+                string className;
+                IntPtr hwnd = new IntPtr(el.Current.NativeWindowHandle);
+                if (!IsEditClassHwnd(hwnd, out className)) return false;
+
+                string oldText = vp.Current.Value ?? "";
+                if (oldText == text) return true;   // nothing to write
+
+                int p = CommonPrefixLen(oldText, text);
+                int s = CommonSuffixLen(oldText, text, p);
+                string fragment = text.Substring(p, text.Length - s - p);
+
+                IntPtr res;
+                // Select exactly the changed span of the OLD text...
+                if (SendMessageTimeoutW(hwnd, EM_SETSEL, new IntPtr(p), new IntPtr(oldText.Length - s), SMTO_ABORTIFHUNG, 2000, out res) == IntPtr.Zero)
+                    return false;
+                // ...and replace it, undoably, with the changed span of the NEW.
+                if (SendMessageTimeoutText(hwnd, EM_REPLACESEL, new IntPtr(1) /* fUndo */, fragment, SMTO_ABORTIFHUNG, 2000, out res) == IntPtr.Zero)
+                    return false;
+                // Phase-1 cursor model assumes end-of-text; EM_REPLACESEL left
+                // the caret after the fragment, which is already the end when
+                // the kept suffix is empty. Restore end otherwise.
+                if (s > 0)
+                    SendMessageTimeoutW(hwnd, EM_SETSEL, new IntPtr(text.Length), new IntPtr(text.Length), SMTO_ABORTIFHUNG, 2000, out res);
+
+                // Verify. A mismatch means this control's EM index model
+                // doesn't match the UIA string (CRLF skew etc.) - report the
+                // class so the sweep catalogs it, and let SetValue repair.
+                string after = null;
+                try { after = vp.Current.Value ?? ""; } catch { }
+                if (after != text)
+                {
+                    Log("warn", "EM_REPLACESEL verify mismatch on class '" + className + "' (old=" + oldText.Length + " new=" + text.Length + " p=" + p + " s=" + s + ") - repairing via SetValue");
+                    return false;
+                }
+                Log("debug", "applied substitution (" + text.Length + " chars, EM_REPLACESEL span " + p + ".." + (oldText.Length - s) + " -> +" + fragment.Length + ", class " + className + ")");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Log("debug", "EM_REPLACESEL path unavailable: " + ex.Message);
+                return false;
+            }
+        }
+
         // --- Simulated-input write (Electron / Chromium / contenteditable) --
         // For editors with no writable ValuePattern (VS Code, Discord, Slack,
         // web text boxes), replace the field via the app's OWN paste path:
@@ -888,6 +987,7 @@ namespace OpenCues
         const ushort VK_A = 0x41;
         const ushort VK_V = 0x56;
         const ushort VK_BACK = 0x08;
+        const ushort VK_LEFT = 0x25;
 
         static INPUT KeyInput(ushort vk, bool up)
         {
@@ -921,46 +1021,74 @@ namespace OpenCues
             return 0;
         }
 
-        // Replace the field via a PREFIX DIFF instead of clearing the whole
-        // field. Keep the unchanged common HEAD of old vs new; the cursor is at
-        // the end, so backspace only the CHANGED SUFFIX and paste only the new
-        // tail. OpenCues edits are almost always tail-localized (the command +
-        // result sit at the cursor), so the change is small even in a HUGE field
-        // -> a tiny backspace burst, no selection, no flash, and it scales.
-        // BACKSPACE_MAX now bounds the CHANGED SUFFIX, not the whole field. Only
-        // a genuine whole-field rewrite (small common prefix -> large changed
-        // suffix) falls back to Ctrl+A + full paste, costing one highlight frame.
-        // No margin on the backspace count: the common prefix must be preserved
-        // exactly (an extra backspace would eat unchanged head text).
+        // Replace the field via a PREFIX + SUFFIX DIFF instead of clearing the
+        // whole field. Trim the unchanged common HEAD and TAIL of old vs new;
+        // what's left is the minimal EDIT WINDOW. From the caret at end:
+        // Left x suffix (walk over the kept tail), Backspace x window (delete
+        // the old window), Ctrl+V (paste only the new window) - one atomic
+        // SendInput burst, no selection, no flash. Tail-localized edits keep
+        // the old behaviour exactly (suffix = 0 -> no Lefts); mid-buffer
+        // rewrites (transform-blank on an inner sentence) now take the smooth
+        // path too instead of falling back to Ctrl+A.
+        // _backspaceMax bounds the EDIT WINDOW (default 160, was 40 when the
+        // window was prefix-only; env OPENCUES_BACKSPACE_MAX overrides without
+        // a rebuild); LEFT_MAX bounds the caret walk. Only a genuine
+        // whole-field rewrite falls back to Ctrl+A + full paste (one highlight
+        // frame). No margin on either count: the kept head and tail must be
+        // preserved exactly.
+        // After a mid-buffer edit the caret is left AFTER the pasted window
+        // (not restored to end): Electron commits Ctrl+V asynchronously, so a
+        // caret-restore chord in the same burst can land BEFORE the paste and
+        // redirect it to the wrong spot. Deliberate v1 tradeoff.
         // `oldText` is the field's current content the shim last read.
-        const int BACKSPACE_MAX = 40;
+        const int LEFT_MAX = 400;
+        static readonly int _backspaceMax = ReadBackspaceMax();
+        static int ReadBackspaceMax()
+        {
+            var v = Environment.GetEnvironmentVariable("OPENCUES_BACKSPACE_MAX");
+            int g;
+            if (!string.IsNullOrEmpty(v) && int.TryParse(v, out g) && g >= 0 && g <= 4000) return g;
+            return 160;
+        }
+
         static void PasteReplace(string text, string oldText)
         {
-            string saved = null;
-            try { saved = GetClipboardText(); } catch { }
-
             int oldLen = oldText != null ? oldText.Length : 0;
-            int p = CommonPrefixLen(oldText, text);   // unchanged head we keep
-            int changed = oldLen - p;                 // suffix chars to delete (cursor is at end)
+            int p = CommonPrefixLen(oldText, text);          // unchanged head we keep
+            int s = CommonSuffixLen(oldText, text, p);       // unchanged tail we keep
+            int changed = oldLen - p - s;                    // old chars inside the edit window
+            string fragment = text.Substring(p, text.Length - s - p);   // new window content
 
-            Log("debug", "diff-paste: prefix=" + p + " changed=" + changed + "/" + oldLen + " newLen=" + text.Length
-                + (changed <= BACKSPACE_MAX ? " -> backspace (no flash)" : " -> Ctrl+A (flash)"));
+            // One Left per kept-suffix char is only sound when one string char
+            // is one caret position. '\n' is a single position in Chromium
+            // fields; a '\r' means CRLF-normalized text whose offsets skew, so
+            // fall back to the whole-field path rather than walk blind.
+            bool caretWalkable = s == 0
+                || (s <= LEFT_MAX && oldText.IndexOf('\r', oldLen - s) < 0);
 
-            if (changed <= BACKSPACE_MAX)
+            Log("debug", "diff-paste: prefix=" + p + " suffix=" + s + " window=" + changed + "/" + oldLen
+                + " frag=" + fragment.Length + " newLen=" + text.Length
+                + (changed <= _backspaceMax && caretWalkable ? " -> windowed (no flash)" : " -> Ctrl+A (flash)"));
+
+            string saved = null;
+            if (changed <= _backspaceMax && caretWalkable)
             {
-                // Small tail edit (append / truncate / trailing replace): delete
-                // the changed suffix, paste only the new tail. No selection ->
-                // no flash. Works regardless of total field size.
-                string tail = text.Substring(p);   // p <= min(oldLen, textLen) <= textLen
-                SetClipboardText(tail);
-                Thread.Sleep(15);
-                ClearAndPaste(changed);   // `changed` backspaces + Ctrl+V (pastes tail), one burst
+                // Targeted window edit. Pure deletions (empty fragment) need
+                // no clipboard at all - just the caret walk + backspaces.
+                if (fragment.Length > 0)
+                {
+                    try { saved = GetClipboardText(); } catch { }
+                    SetClipboardText(fragment);
+                    Thread.Sleep(15);
+                }
+                BurstEdit(s, changed, fragment.Length > 0);
             }
             else
             {
-                // Whole-field rewrite (no small tail to exploit): select-all +
-                // paste the full text. The commit gap lets the selection land
-                // before the paste (else it APPENDS). One highlight frame - rare.
+                // Whole-field rewrite (no small window to exploit): select-all
+                // + paste the full text. The commit gap lets the selection land
+                // before the paste (else it APPENDS). One highlight frame.
+                try { saved = GetClipboardText(); } catch { }
                 SetClipboardText(text);
                 Thread.Sleep(15);
                 int commitMs = _pasteGapMs > 0 ? _pasteGapMs : 15;
@@ -968,10 +1096,14 @@ namespace OpenCues
                 Thread.Sleep(commitMs);
                 KeyChord(VK_CONTROL, VK_V);
             }
-            // Electron reads the clipboard ASYNCHRONOUSLY after Ctrl+V; 300ms
-            // clears that read before we restore the user's previous clipboard.
-            Thread.Sleep(300);
-            if (saved != null) { try { SetClipboardText(saved); } catch { } }
+            if (saved != null)
+            {
+                // Electron reads the clipboard ASYNCHRONOUSLY after Ctrl+V;
+                // 300ms clears that read before we restore the user's previous
+                // clipboard.
+                Thread.Sleep(300);
+                try { SetClipboardText(saved); } catch { }
+            }
         }
 
         // Length of the longest common prefix of a and b (the unchanged head).
@@ -984,28 +1116,52 @@ namespace OpenCues
             return i;
         }
 
-        // n Backspaces THEN Ctrl+V, all in one atomic SendInput burst. The
-        // editor processes the deletes (to empty) and the paste back-to-back off
-        // its input queue with no frame rendered between - no highlight, no
-        // empty-placeholder flash. Backspace deletes are sequential model edits
-        // (unlike Ctrl+A, which needs a selection COMMIT the paste can outrun),
-        // so the paste reliably lands in the emptied field.
-        static void ClearAndPaste(int n)
+        // Length of the longest common suffix of a and b that does NOT overlap
+        // the already-claimed prefix (so prefix + suffix never double-count a
+        // char - old "aaa" vs new "aa" is prefix 2, suffix 0, window "a").
+        static int CommonSuffixLen(string a, string b, int prefix)
         {
-            if (n < 0) n = 0;
-            if (n > 4000) n = 4000;
-            var inputs = new INPUT[n * 2 + 4];
+            if (a == null || b == null) return 0;
+            int n = Math.Min(a.Length, b.Length) - prefix;
+            int i = 0;
+            while (i < n && a[a.Length - 1 - i] == b[b.Length - 1 - i]) i++;
+            return i;
+        }
+
+        // lefts x Left, then backspaces x Backspace, then (optionally) Ctrl+V,
+        // all in one atomic SendInput burst. The editor processes the caret
+        // walk, the deletes, and the paste back-to-back off its input queue
+        // with no frame rendered between - no highlight, no empty-placeholder
+        // flash. Backspace deletes are sequential model edits (unlike Ctrl+A,
+        // which needs a selection COMMIT the paste can outrun), so the paste
+        // reliably lands in the emptied window.
+        static void BurstEdit(int lefts, int backspaces, bool paste)
+        {
+            if (lefts < 0) lefts = 0;
+            if (lefts > LEFT_MAX) lefts = LEFT_MAX;
+            if (backspaces < 0) backspaces = 0;
+            if (backspaces > 4000) backspaces = 4000;
+            var inputs = new INPUT[lefts * 2 + backspaces * 2 + (paste ? 4 : 0)];
             int k = 0;
-            for (int i = 0; i < n; i++)
+            for (int i = 0; i < lefts; i++)
+            {
+                inputs[k++] = KeyInput(VK_LEFT, false);
+                inputs[k++] = KeyInput(VK_LEFT, true);
+            }
+            for (int i = 0; i < backspaces; i++)
             {
                 inputs[k++] = KeyInput(VK_BACK, false);
                 inputs[k++] = KeyInput(VK_BACK, true);
             }
-            inputs[k++] = KeyInput(VK_CONTROL, false);
-            inputs[k++] = KeyInput(VK_V, false);
-            inputs[k++] = KeyInput(VK_V, true);
-            inputs[k++] = KeyInput(VK_CONTROL, true);
-            SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+            if (paste)
+            {
+                inputs[k++] = KeyInput(VK_CONTROL, false);
+                inputs[k++] = KeyInput(VK_V, false);
+                inputs[k++] = KeyInput(VK_V, true);
+                inputs[k++] = KeyInput(VK_CONTROL, true);
+            }
+            if (inputs.Length > 0)
+                SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
         }
 
         // --- Socket send ------------------------------------------------
