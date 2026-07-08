@@ -156,6 +156,13 @@ export async function main(): Promise<void> {
   let virtualNoteId: string | null = null;
   let flushTimer: NodeJS.Timeout | null = null;
   let firstPendingAt: number | null = null;
+  // Render-phase lag instrumentation. Each flush carries the timestamps
+  // of its phase boundaries so `fill landed` can report the breakdown
+  // (settleMs/queueMs/readMs/spliceMs/casMs/totalMs), mirroring the
+  // resolver's totalMs= lines on the other hosts. `echoPending` closes
+  // the loop: landed → the poll observing our own write back (echoMs).
+  interface FlushTiming { firstPendingAt: number; timerFiredAt: number }
+  const echoPending = new Map<string, number>();
   // Per-note redispatch dedupe (a single global string would suppress a
   // legitimately re-typed identical multi-cue text in another note).
   // Cleared on user edits so re-typing the same content can re-fire.
@@ -182,16 +189,17 @@ export async function main(): Promise<void> {
     // the LATEST frame ~once per FLUSH_MAX_WAIT_MS (visible pulse)
     // instead of never settling (frozen `_`) or per-frame (6 writes/s).
     flushTimer = setTimeout(() => {
+      const timing: FlushTiming = { firstPendingAt: firstPendingAt ?? Date.now(), timerFiredAt: Date.now() };
       flushTimer = null;
       firstPendingAt = null;
       // Serialize flushes — one CAS in flight at a time.
-      fillChain = fillChain.then(() => flushVirtual()).catch(err => {
+      fillChain = fillChain.then(() => flushVirtual(timing)).catch(err => {
         log('error', 'fill failed', String(err));
       });
     }, flushDelayMs(now, firstPendingAt));
   };
 
-  async function flushVirtual(): Promise<void> {
+  async function flushVirtual(timing: FlushTiming): Promise<void> {
     if (virtualText === null || virtualNoteId === null) {
       log('debug', 'flush skipped: virtual buffer empty');
       return;
@@ -202,7 +210,7 @@ export async function main(): Promise<void> {
     if (!snapshot) { log('debug', 'flush skipped: note untracked', { id }); dropVirtual(); return; }
     if (text === snapshot.plaintext) { log('debug', 'flush skipped: no change vs snapshot'); dropVirtual(); return; }
     log('debug', 'flushing', { lines: text.split('\n').length, head: text.slice(0, 40) });
-    await doFill(id, snapshot, text);
+    await doFill(id, snapshot, text, timing);
     // Only clear if no newer write arrived while the CAS ran.
     if (virtualText === text) dropVirtual();
   }
@@ -219,11 +227,16 @@ export async function main(): Promise<void> {
     id: string,
     snapshot: { plaintext: string },
     newText: string,
+    timing: FlushTiming,
     retried = false,
   ): Promise<void> {
+    const fillStart = Date.now();
+    let readMs = 0;
     let baseBody = knownBody.get(id) ?? null;
     if (baseBody === null) {
+      const readStart = Date.now();
       const read = await bridge.readNote(id);
+      readMs = Date.now() - readStart;
       if (!read.ok) {
         if (read.kind === 'not-found') {
           state.tracked.delete(id);
@@ -245,13 +258,15 @@ export async function main(): Promise<void> {
       }
       baseBody = read.value.body;
     }
+    const spliceStart = Date.now();
     const diff = diffLines(snapshot.plaintext, newText);
     if (!diff) return;
     const newBody = spliceLinesIntoBody(baseBody, diff.oldLines, diff.newLines);
+    const spliceMs = Date.now() - spliceStart;
     if (newBody === null) {
       if (knownBody.delete(id) && !retried) {
         // Cached body drifted (Notes re-serialization) — one fresh-read retry.
-        return doFill(id, snapshot, newText, true);
+        return doFill(id, snapshot, newText, timing, true);
       }
       log('warn', 'could not locate a unique splice region — fill aborted', {
         id, oldLines: diff.oldLines.length,
@@ -261,7 +276,9 @@ export async function main(): Promise<void> {
     // Record the INTENDED text's hash before the CAS so a poll reading
     // the note in the write window still classifies it as our echo.
     recordWriteHash(state, id, sha(newText));
+    const casStart = Date.now();
     const fill = await bridge.fillNote({ noteId: id, expectedBody: baseBody, newBody });
+    const casMs = Date.now() - casStart;
     if (!fill.ok) {
       knownBody.delete(id);
       log('error', `fill CAS failed (${fill.kind})`, fill.detail);
@@ -270,7 +287,7 @@ export async function main(): Promise<void> {
     if (!fill.value.ok) {
       if (knownBody.delete(id) && !retried) {
         // Stale cache CAS-rejected — retry once against a fresh read.
-        return doFill(id, snapshot, newText, true);
+        return doFill(id, snapshot, newText, timing, true);
       }
       log('info', 'fill CAS conflict — note changed under us, dropped', { id });
       return;
@@ -287,7 +304,25 @@ export async function main(): Promise<void> {
     recordWriteHash(state, id, sha(landed));
     const tracked = state.tracked.get(id);
     if (tracked) state.tracked.set(id, { ...tracked, plaintext: landed });
-    log('info', 'fill landed', { id, lines: diff.newLines.length });
+    const landedAt = Date.now();
+    echoPending.set(id, landedAt);
+    // Phase breakdown of this render, requestWrite → note updated:
+    //   settleMs — flush debounce (frame batching, tick.ts flushDelayMs)
+    //   queueMs  — wait behind the prior in-flight CAS (serialized chain)
+    //   readMs   — pre-fill body read (0 = knownBody cache hit)
+    //   spliceMs — line diff + HTML splice (pure CPU)
+    //   casMs    — CAS-verified write, one osascript round-trip
+    //   totalMs  — first pending runtime write → fill landed
+    log('info', 'fill landed', {
+      id,
+      lines: diff.newLines.length,
+      settleMs: timing.timerFiredAt - timing.firstPendingAt,
+      queueMs: fillStart - timing.timerFiredAt,
+      readMs,
+      spliceMs,
+      casMs,
+      totalMs: landedAt - timing.firstPendingAt,
+    });
 
     // Multi-cue notes: our own write echoes back as source 'runtime',
     // which the resolver rightly ignores — so any OTHER unanswered `_`
@@ -383,6 +418,16 @@ export async function main(): Promise<void> {
         }
         const events = applyPoll(state, list.value.notes, fetched, sha, Date.now());
         for (const e of events) {
+          // Final render phase: our own write observed back by the poll
+          // (echo-classified → source 'runtime'). echoMs = landed → seen;
+          // upper-bounded by the active poll cadence + osascript reads.
+          if ((e.type === 'text-change' || e.type === 'switch-active') && e.source === 'runtime') {
+            const landedAt = echoPending.get(e.id);
+            if (landedAt !== undefined) {
+              echoPending.delete(e.id);
+              log('info', 'fill echo observed', { id: e.id, echoMs: Date.now() - landedAt });
+            }
+          }
           switch (e.type) {
             case 'switch-active':
               log('info', 'active note switched', { id: e.id });
@@ -409,6 +454,7 @@ export async function main(): Promise<void> {
               bootResult.resetBufferState();
               break;
             case 'untracked':
+              echoPending.delete(e.id);
               if (e.reason !== 'no-marker') log('info', 'note untracked', { id: e.id, reason: e.reason });
               break;
           }
