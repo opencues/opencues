@@ -526,7 +526,15 @@ export async function main(): Promise<void> {
               if (e.source === 'user') {
                 dropVirtual();
                 knownBody.delete(e.id);
-                lastRedispatchText.delete(e.id);
+                // Update (never clear) the redispatch dedupe to the
+                // user's current text: the animator's rest frame equals
+                // the CURRENT buffer with `_` restored, so after a mid-
+                // load user edit a cleared seed let the next rest frame
+                // re-dispatch a spurious resolution (observed 20:01 —
+                // a second TransformBlank raced the landing answer).
+                // Redispatch still fires for any landed text that
+                // DIFFERS from the last user/armed text — i.e. answers.
+                lastRedispatchText.set(e.id, e.text);
               }
               if (e.armAt !== null) {
                 // Same dedupe seed as switch-active (rest-frame guard).
