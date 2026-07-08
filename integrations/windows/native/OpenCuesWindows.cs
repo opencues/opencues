@@ -33,6 +33,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Windows.Automation;
+using System.Windows.Automation.Text;   // TextPatternRange - caret restore on Chromium-UIA fields
 using Accessibility;   // MSAA/IA2 IAccessible - the Chromium/Electron read path
 
 namespace OpenCues
@@ -659,6 +660,16 @@ namespace OpenCues
             // animation into ONE clean paste of the final result.
             if (_attachMode == AttachMode.Msaa)
             {
+                // Live micro-frames: a tiny TAIL edit vs the field's current
+                // content (the BlankLoading spinner churning one char near
+                // the trailing `_`) is applied IMMEDIATELY as synthetic
+                // typing - Backspace x del + KEYEVENTF_UNICODE chars in one
+                // atomic burst. No clipboard, no select-all flash, none of
+                // Electron's async-clipboard timing - so Electron apps show
+                // the loading animation live instead of one coalesced paste.
+                // Anything bigger (the final result) stays on the deferred
+                // paste path below. Kill switch: OPENCUES_MSAA_ANIMATE=0.
+                if (TryTypeMsaaMicroEdit(text)) return;
                 _pendingMsaaText = text;
                 _pendingMsaaAtTick = Environment.TickCount;
                 return;
@@ -718,17 +729,35 @@ namespace OpenCues
             try
             {
                 IntPtr hwnd = new IntPtr(el.Current.NativeWindowHandle);
-                if (hwnd == IntPtr.Zero) return;
-                var sb = new StringBuilder(256);
-                if (GetClassName(hwnd, sb, sb.Capacity) == 0) return;
-                string c = sb.ToString().ToLowerInvariant();
+                string c = null;
+                if (hwnd != IntPtr.Zero)
+                {
+                    var sb = new StringBuilder(256);
+                    if (GetClassName(hwnd, sb, sb.Capacity) != 0) c = sb.ToString().ToLowerInvariant();
+                }
                 // Classic Win32 "Edit", RichEdit variants (Win11 Notepad
                 // "RichEditD2DPT", WordPad "RICHEDIT50W"), WinForms TextBox
-                // ("WindowsForms10.EDIT.app...").
-                if (!(c == "edit" || c.Contains("richedit") || c.Contains(".edit."))) return;
-                IntPtr res;
-                SendMessageTimeoutW(hwnd, EM_SETSEL, new IntPtr(0x7FFFFFFF), new IntPtr(0x7FFFFFFF), SMTO_ABORTIFHUNG, 1000, out res);
-                SendMessageTimeoutW(hwnd, EM_SCROLLCARET, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out res);
+                // ("WindowsForms10.EDIT.app...") speak EM_* messages.
+                if (c != null && (c == "edit" || c.Contains("richedit") || c.Contains(".edit.")))
+                {
+                    IntPtr res;
+                    SendMessageTimeoutW(hwnd, EM_SETSEL, new IntPtr(0x7FFFFFFF), new IntPtr(0x7FFFFFFF), SMTO_ABORTIFHUNG, 1000, out res);
+                    SendMessageTimeoutW(hwnd, EM_SCROLLCARET, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out res);
+                    return;
+                }
+                // Non-Edit UIA composers (Slack and other Chromium-UIA
+                // fields, which often have NO per-field HWND at all):
+                // SetValue parks the caret at the START, so every animation
+                // frame yanked it to the front. Collapse a TextPattern range
+                // to the document end and Select() it - Chromium honours a
+                // degenerate-range Select as a caret move.
+                object tpObj;
+                if (el.TryGetCurrentPattern(TextPattern.Pattern, out tpObj))
+                {
+                    TextPatternRange range = ((TextPattern)tpObj).DocumentRange.Clone();
+                    range.MoveEndpointByRange(TextPatternRangeEndpoint.Start, range, TextPatternRangeEndpoint.End);
+                    range.Select();
+                }
             }
             catch { }   // caret restore is best-effort; the text write already landed
         }
@@ -1135,6 +1164,7 @@ namespace OpenCues
         [DllImport("user32.dll", SetLastError = true)] static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
         const uint INPUT_KEYBOARD = 1;
         const uint KEYEVENTF_KEYUP = 0x0002;
+        const uint KEYEVENTF_UNICODE = 0x0004;
         const ushort VK_CONTROL = 0x11;
         const ushort VK_A = 0x41;
         const ushort VK_V = 0x56;
@@ -1147,6 +1177,57 @@ namespace OpenCues
                 type = INPUT_KEYBOARD,
                 U = new InputUnion { ki = new KEYBDINPUT { wVk = vk, wScan = 0, dwFlags = up ? KEYEVENTF_KEYUP : 0, time = 0, dwExtraInfo = IntPtr.Zero } },
             };
+        }
+
+        // A literal unicode character as synthetic typing (layout-independent;
+        // BMP chars in one event, surrogate pairs as two - apps reassemble).
+        static INPUT UnicodeInput(char ch, bool up)
+        {
+            return new INPUT
+            {
+                type = INPUT_KEYBOARD,
+                U = new InputUnion { ki = new KEYBDINPUT { wVk = 0, wScan = ch, dwFlags = (up ? KEYEVENTF_KEYUP : 0) | KEYEVENTF_UNICODE, time = 0, dwExtraInfo = IntPtr.Zero } },
+            };
+        }
+
+        // The typed micro-frame tier of the MSAA write ladder (below the
+        // backspace+paste tier and the Ctrl+A+paste tier): only for edits
+        // small enough to be indistinguishable from a human typing. Assumes
+        // the caret sits at the end of the field (phase-1 cursor model, and
+        // the state every prior write path leaves behind).
+        const int MSAA_TYPE_MAX = 6;
+        static readonly bool _msaaAnimate = Environment.GetEnvironmentVariable("OPENCUES_MSAA_ANIMATE") != "0";
+
+        static bool TryTypeMsaaMicroEdit(string text)
+        {
+            if (!_msaaAnimate) return false;
+            if (_pendingMsaaText != null) return false;   // a big write is queued; field state mid-flight - defer
+            string cur = _lastSentText;
+            if (cur == null) return false;                // unknown baseline - defer to the paste path
+            if (text == cur) return true;                 // nothing to write
+            int p = CommonPrefixLen(cur, text);
+            int del = cur.Length - p;
+            int add = text.Length - p;
+            if (del > MSAA_TYPE_MAX || add > MSAA_TYPE_MAX) return false;
+            string tail = text.Substring(p);
+            if (tail.IndexOf('\n') >= 0 || tail.IndexOf('\r') >= 0) return false;
+            NoteSelfWrite(text);
+            var inputs = new INPUT[del * 2 + tail.Length * 2];
+            int k = 0;
+            for (int i = 0; i < del; i++)
+            {
+                inputs[k++] = KeyInput(VK_BACK, false);
+                inputs[k++] = KeyInput(VK_BACK, true);
+            }
+            for (int i = 0; i < tail.Length; i++)
+            {
+                inputs[k++] = UnicodeInput(tail[i], false);
+                inputs[k++] = UnicodeInput(tail[i], true);
+            }
+            if (inputs.Length > 0)
+                SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+            Log("debug", "applied substitution (" + text.Length + " chars, MSAA/typed micro-frame: -" + del + " +" + tail.Length + ")");
+            return true;
         }
 
         static void KeyChord(ushort modifier, ushort key)
