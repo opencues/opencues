@@ -82,6 +82,48 @@ namespace OpenCues
         static string _lastApp = null;        // process name of the attached field's app
         static bool _attached = false;
 
+        // Ring of recent self-writes (value + tick). The loading animation
+        // writes a frame every ~50ms but the poll reads every ~150ms, so a
+        // read-back is routinely a STALE frame - it matches an OLDER write,
+        // not the single latest _expectedEcho. Treating those as user typing
+        // made the daemon re-resolve mid-animation (spinner <-> final-text
+        // oscillation, "live text changed" skips with no human at the
+        // keyboard). A read-back matching ANY entry younger than the TTL is
+        // our own echo. All touched from the poll thread only - no lock.
+        // (Same self-write-TTL pattern as kata's 250ms trace guard.)
+        static readonly List<KeyValuePair<string, int>> _recentWrites = new List<KeyValuePair<string, int>>();
+        const int RECENT_WRITE_TTL_MS = 3000;
+        const int RECENT_WRITE_CAP = 32;
+
+        // Ring keys are EOL-normalized: controls echo our writes with their
+        // own line separators (RichEdit reads back "\r" for a written "\n"),
+        // and that must still count as our echo, not user typing.
+        static string EolNorm(string s)
+        {
+            if (s == null || (s.IndexOf('\r') < 0)) return s;
+            return s.Replace("\r\n", "\n").Replace('\r', '\n');
+        }
+
+        static void NoteSelfWrite(string text)
+        {
+            _expectedEcho = text;
+            _lastSentText = text;
+            _recentWrites.Add(new KeyValuePair<string, int>(EolNorm(text), Environment.TickCount));
+            if (_recentWrites.Count > RECENT_WRITE_CAP) _recentWrites.RemoveAt(0);
+        }
+
+        static bool IsRecentSelfWrite(string cur)
+        {
+            int now = Environment.TickCount;
+            string norm = EolNorm(cur);
+            for (int i = _recentWrites.Count - 1; i >= 0; i--)
+            {
+                if (unchecked(now - _recentWrites[i].Value) > RECENT_WRITE_TTL_MS) { _recentWrites.RemoveRange(0, i + 1); return false; }
+                if (_recentWrites[i].Key == norm) return true;
+            }
+            return false;
+        }
+
         // How the current attachment is read/written: UIA (native Win32 /
         // WinForms / WPF, via ValuePattern/TextPattern) or MSAA/IA2
         // (Chromium/Electron editors, via oleacc + clipboard-paste write).
@@ -210,6 +252,7 @@ namespace OpenCues
                 _lastElementId = int.MinValue;
                 _lastSentText = null;
                 _expectedEcho = null;
+                _recentWrites.Clear();
                 _attached = false;
                 _attachMode = AttachMode.None;
                 var reader = new Thread(ReaderThread) { IsBackground = true };
@@ -360,6 +403,7 @@ namespace OpenCues
                 _attachMode = mode;
                 _lastSentText = readText;
                 _expectedEcho = null;
+                _recentWrites.Clear();
                 _attached = true;
                 StatusLine = "on: " + (app ?? "text field");
                 Log("info", "attached: " + (app ?? "text field") + " ("
@@ -371,12 +415,14 @@ namespace OpenCues
             }
 
             // Same element - send text only when it changed and it isn't our
-            // own write echoing back.
+            // own write echoing back. The ring check catches STALE echoes too
+            // (a read-back of an older animation frame than the latest write).
             _attachMode = mode;
             string cur = readText;
             if (cur == null) return;
             if (_expectedEcho != null && cur == _expectedEcho) { _lastSentText = cur; return; }
             if (cur == _lastSentText) return;
+            if (IsRecentSelfWrite(cur)) { Log("debug", "swallowed stale self-write echo (" + cur.Length + " chars)"); return; }
             _lastSentText = cur;
             _expectedEcho = null;
             SendRaw("{\"t\":\"text\",\"text\":" + JStr(cur)
@@ -390,6 +436,7 @@ namespace OpenCues
             _lastElementId = int.MinValue;
             _lastSentText = null;
             _expectedEcho = null;
+            _recentWrites.Clear();
             _lastApp = null;
             _attachMode = AttachMode.None;
             _pendingMsaaText = null;
@@ -494,8 +541,7 @@ namespace OpenCues
                 object vp;
                 if (el.TryGetCurrentPattern(ValuePattern.Pattern, out vp) && !((ValuePattern)vp).Current.IsReadOnly)
                 {
-                    _expectedEcho = text;
-                    _lastSentText = text;
+                    NoteSelfWrite(text);
                     ((ValuePattern)vp).SetValue(text);
                     RestoreCaretToEnd(el);
                     Log("debug", "applied substitution (" + text.Length + " chars, ValuePattern)");
@@ -509,8 +555,7 @@ namespace OpenCues
                 if (el.TryGetCurrentPattern(TextPattern.Pattern, out tp))
                 {
                     string oldText = _lastSentText;
-                    _expectedEcho = text;
-                    _lastSentText = text;
+                    NoteSelfWrite(text);
                     PasteReplace(text, oldText);
                     Log("debug", "applied substitution (" + text.Length + " chars, paste)");
                     return;
@@ -569,8 +614,7 @@ namespace OpenCues
             string text = _pendingMsaaText;
             string oldText = _lastSentText;   // field's current content -> backspace count
             _pendingMsaaText = null;
-            _expectedEcho = text;
-            _lastSentText = text;
+            NoteSelfWrite(text);
             PasteReplace(text, oldText);
             Log("debug", "applied substitution (" + text.Length + " chars, MSAA/paste)");
         }
