@@ -104,6 +104,11 @@ export class NotesBridge {
   listNotes(): Promise<BridgeResult<{ notes: NoteMeta[] }>> {
     return this.run('list-notes.js');
   }
+  /** Ids in every account's "Recently Deleted" folder — the exclusion
+   *  set for enumeration (see jxa/deleted-ids.js for why). */
+  listDeletedIds(): Promise<BridgeResult<{ ids: string[] }>> {
+    return this.run('deleted-ids.js');
+  }
   fetchPlaintexts(ids: readonly string[]): Promise<BridgeResult<{ notes: FetchedNote[] }>> {
     return this.run('fetch-plaintexts.js', [JSON.stringify(ids)]);
   }

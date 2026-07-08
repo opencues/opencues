@@ -452,11 +452,29 @@ export async function main(): Promise<void> {
 
   let permissionLost = false;
   let baselineSeeded = false;
+  // Recently-Deleted exclusion set — deleted notes stay in the bulk
+  // enumeration for ~30 days and (if tracked) keep competing for the
+  // active slot whenever sync bumps their modificationDate, resetting
+  // the buffer mid-resolution (observed live 2026-07-08: a deleted
+  // note stole the active buffer and the pending answer was lost).
+  // Refreshed every DELETED_REFRESH_MS (~90ms osascript, ~1% duty);
+  // filtered notes read as "gone" so applyPoll untracks them cleanly.
+  const DELETED_REFRESH_MS = 10_000;
+  let deletedIds = new Set<string>();
+  let deletedRefreshedAt = 0;
   for (;;) {
     const status = await bridge.status();
     const running = status.ok && status.value.running;
     if (running) {
+      if (Date.now() - deletedRefreshedAt > DELETED_REFRESH_MS) {
+        deletedRefreshedAt = Date.now();
+        const del = await bridge.listDeletedIds();
+        if (del.ok) deletedIds = new Set(del.value.ids);
+      }
       const list = await bridge.listNotes();
+      if (list.ok && deletedIds.size > 0) {
+        list.value.notes = list.value.notes.filter(n => !deletedIds.has(n.id));
+      }
       if (list.ok && !baselineSeeded) {
         // First enumeration = baseline only. Pre-existing cues become
         // eligible when their note is next edited (see seedBaseline).
