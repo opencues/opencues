@@ -184,11 +184,36 @@ message types freely (both sides ignore unknown `t`).
 - **Write requires `ValuePattern`.** Rich Electron/Chromium editors that
   expose only `TextPattern` are read-only to us and skipped. Browsers are
   deny-listed anyway (Chrome extension is the surface there).
-- **`ValuePattern.SetValue` replaces the whole value** and typically
-  resets the caret + undo granularity — the standing cost of the UIA
-  write path (same class as the Android `ACTION_SET_TEXT` tradeoff). Fine
-  for `_` blank fills; revisit for phase-2 word-level cycling.
+- **`ValuePattern.SetValue` replaces the whole value** and resets undo
+  granularity — the standing cost of the UIA write path (same class as
+  the Android `ACTION_SET_TEXT` tradeoff). The caret reset is repaired
+  (`RestoreCaretToEnd` — EM_SETSEL clamp-to-end on Edit-family HWNDs);
+  undo is not. Fine for `_` blank fills; revisit for phase-2 word-level
+  cycling. (A surgical EM_REPLACESEL splice + prefix/suffix diff
+  windowing was tried and reverted — see a28d4ab0 / 1386b60d; retry
+  needs CRLF index mapping for RichEdit and MSAA `setSelection` instead
+  of big key bursts on Electron.)
 - **Elevated apps** are invisible to a normal-integrity UIA client
   (UIPI). A signed UIAccess build is deferred.
 - **WSL2 localhost forwarding** is assumed (Windows → WSL server on
   localhost). Mirrored-networking setups may need `-DaemonHost <wsl-ip>`.
+
+## Known no-cycling-profile defects (agentic suite, 2026-07-08)
+
+Windows is the first no-cycling host driven by the agentic harness
+(opencues-agentic PR #13 wires it in), and the suite surfaced one
+defect family the profile had never exercised: **selector/satellite-
+and list-blank-shaped outputs end in an EMPTY buffer** instead of
+degrading gracefully — the summon phrase / command is consumed but the
+pruned output never lands. That's a data-loss shape ([[no logical
+landmines]]), and it will reproduce on chrome's plain-`<input>` mode
+too — it's a runtime bug class, not a Windows one. Repro scenarios
+(private harness repo): 18-fluid-config-flip, 57-identity-context-
+flip, 60-sentinel-write, 86-integration-pass-blank-fill,
+102-config-intent-preserves-buffer. Suspects: ConfigIntent /
+selector-satellite registration and BlankFill keyword claim aren't
+consulting the same no-cycling prune the resolver's
+`buildSourcesFromConfig` applies (see
+docs/architecture/universal-integration.md). Fix belongs in the
+runtime before this branch merges, or those sources must be pruned
+outright on `supportsCycling: false` hosts.
