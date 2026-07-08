@@ -301,6 +301,7 @@ namespace OpenCues
                 {
                     DrainCommands();
                     MaybeFlushMsaaPaste();   // apply any deferred Electron paste once the stream settles
+                    MaybeReassertCaret();    // win Chromium's async caret-reset race after UIA writes
                     if (_enabled)
                     {
                         PollFocus();
@@ -688,6 +689,7 @@ namespace OpenCues
                     NoteSelfWrite(text);
                     ((ValuePattern)vp).SetValue(text);
                     RestoreCaretToEnd(el);
+                    _caretRestoreUntil = Environment.TickCount + 250;
                     Log("debug", "applied substitution (" + text.Length + " chars, ValuePattern)");
                     return;
                 }
@@ -724,7 +726,7 @@ namespace OpenCues
         [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         static extern IntPtr SendMessageTimeoutW(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, uint flags, uint timeoutMs, out IntPtr result);
 
-        static void RestoreCaretToEnd(AutomationElement el)
+        static void RestoreCaretToEnd(AutomationElement el, bool quiet = false)
         {
             try
             {
@@ -748,18 +750,50 @@ namespace OpenCues
                 // Non-Edit UIA composers (Slack and other Chromium-UIA
                 // fields, which often have NO per-field HWND at all):
                 // SetValue parks the caret at the START, so every animation
-                // frame yanked it to the front. Collapse a TextPattern range
-                // to the document end and Select() it - Chromium honours a
-                // degenerate-range Select as a caret move.
+                // frame yanked it to the front. Try a TextPattern
+                // degenerate-range Select (Chromium honours it as a caret
+                // move); fields that don't expose TextPattern get a
+                // synthetic Ctrl+End instead (the field IS focused - that's
+                // how we attached). Chromium may also apply SetValue's caret
+                // reset ASYNCHRONOUSLY after this runs, so ApplySetText arms
+                // a short reassert window (MaybeReassertCaret) that re-runs
+                // this on following ticks to win that race.
                 object tpObj;
                 if (el.TryGetCurrentPattern(TextPattern.Pattern, out tpObj))
                 {
-                    TextPatternRange range = ((TextPattern)tpObj).DocumentRange.Clone();
-                    range.MoveEndpointByRange(TextPatternRangeEndpoint.Start, range, TextPatternRangeEndpoint.End);
-                    range.Select();
+                    try
+                    {
+                        TextPatternRange range = ((TextPattern)tpObj).DocumentRange.Clone();
+                        range.MoveEndpointByRange(TextPatternRangeEndpoint.Start, range, TextPatternRangeEndpoint.End);
+                        range.Select();
+                        if (!quiet) Log("debug", "caret restore: TextPattern select-at-end");
+                        return;
+                    }
+                    catch (Exception ex)
+                    {
+                        if (!quiet) Log("debug", "caret restore: TextPattern select failed (" + ex.Message + ") - falling back to Ctrl+End");
+                    }
                 }
+                else if (!quiet) Log("debug", "caret restore: no TextPattern on field - falling back to Ctrl+End");
+                KeyChord(VK_CONTROL, VK_END);
             }
             catch { }   // caret restore is best-effort; the text write already landed
+        }
+
+        // Chromium applies SetValue (and its caret-to-start reset) on its own
+        // schedule; a caret restore issued immediately after the write can
+        // run BEFORE the reset it is meant to undo. ApplySetText arms this
+        // window; each poll tick inside it re-asserts end-of-text so the
+        // last write of a burst (the final result) ends with the caret where
+        // the user left it.
+        static int _caretRestoreUntil = 0;
+        static void MaybeReassertCaret()
+        {
+            if (_attachMode != AttachMode.Uia || !_attached) return;
+            if (unchecked(Environment.TickCount - _caretRestoreUntil) >= 0) return;
+            AutomationElement el = null;
+            try { el = AutomationElement.FocusedElement; } catch { }
+            if (el != null) RestoreCaretToEnd(el, true);
         }
 
         // Apply a deferred MSAA paste once the set-text stream has been quiet
@@ -1169,6 +1203,7 @@ namespace OpenCues
         const ushort VK_A = 0x41;
         const ushort VK_V = 0x56;
         const ushort VK_BACK = 0x08;
+        const ushort VK_END = 0x23;
 
         static INPUT KeyInput(ushort vk, bool up)
         {
