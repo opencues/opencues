@@ -626,7 +626,7 @@ namespace OpenCues
         {
             var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var v = Environment.GetEnvironmentVariable("OPENCUES_PARA_APPS");
-            if (v == null) { set.Add("slack"); return set; }
+            if (v == null) { set.Add("slack"); set.Add("wordpad"); return set; }
             foreach (var part in v.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
             {
                 var t = part.Trim();
