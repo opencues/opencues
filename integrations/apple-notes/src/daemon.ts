@@ -331,6 +331,14 @@ export async function main(): Promise<void> {
     // filled text: if the resolver answers, the next fill consumes a
     // marker (terminates); if it declines, nothing changes and the
     // dedupe guard stops a loop.
+    //
+    // The dedupe map is seeded at every arm site (not just here): the
+    // loading animation's REST frame restores the slot to `_`, making
+    // the landed text byte-identical to the armed text — without the
+    // seed, that frame re-dispatched a fake 'user' event mid-resolution,
+    // the resolver's live-text guard killed its own in-flight LLM call,
+    // and time-to-answer stretched to multiple aborted attempts
+    // (observed live 2026-07-08: a draft-email fill took ~20s).
     if (id === state.activeId && containsBlankMarker(newText) && newText !== lastRedispatchText.get(id)) {
       lastRedispatchText.set(id, newText);
       log('info', 'unanswered cue remains — re-dispatching', { id });
@@ -460,7 +468,10 @@ export async function main(): Promise<void> {
             const landedAt = echoPending.get(e.id);
             if (landedAt !== undefined) {
               echoPending.delete(e.id);
-              log('info', 'fill echo observed', { id: e.id, echoMs: Date.now() - landedAt });
+              const echoMs = Date.now() - landedAt;
+              // Stale entries (e.g. a note that sat in Recently Deleted
+              // and re-matched minutes later) aren't render lag — drop.
+              if (echoMs <= 10_000) log('info', 'fill echo observed', { id: e.id, echoMs });
             }
           }
           switch (e.type) {
@@ -469,7 +480,13 @@ export async function main(): Promise<void> {
               dropVirtual(); // real note state wins over any pending write
               knownBody.delete(e.id);
               bootResult.resetBufferState();
-              if (e.armAt !== null) armMarker(e.text, e.armAt);
+              if (e.armAt !== null) {
+                // Seed the redispatch dedupe with the armed text so the
+                // animation's `_` rest frame (byte-identical to it) is
+                // never mistaken for an unanswered cue (see doFill).
+                lastRedispatchText.set(e.id, e.text);
+                armMarker(e.text, e.armAt);
+              }
               bootResult.notifyTextChange(e.text, e.cursor, e.source);
               break;
             case 'text-change':
@@ -481,7 +498,11 @@ export async function main(): Promise<void> {
                 knownBody.delete(e.id);
                 lastRedispatchText.delete(e.id);
               }
-              if (e.armAt !== null) armMarker(e.text, e.armAt);
+              if (e.armAt !== null) {
+                // Same dedupe seed as switch-active (rest-frame guard).
+                lastRedispatchText.set(e.id, e.text);
+                armMarker(e.text, e.armAt);
+              }
               bootResult.notifyTextChange(e.text, e.cursor, e.source);
               break;
             case 'active-gone':
