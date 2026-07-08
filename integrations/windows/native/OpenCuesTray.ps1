@@ -102,6 +102,22 @@ if (-not $Distro) { $Distro = Pick $null $cfg.distro 'Ubuntu' }
 if (-not $Hostd -and $cfg.hostd) { $Hostd = $cfg.hostd }
 if (-not $Hostd -and $linuxIntDir) { $Hostd = "$linuxIntDir/src/hostd.cjs" }
 
+# Self-heal a stale persisted hostd path. tray.json outlives repo moves and
+# deleted worktrees, and a dead path makes the tray sit in the systray with
+# NO daemon and NO error — the icon must correlate with reality. If the
+# resolved path no longer exists inside WSL, fall back to the path derived
+# from THIS launch location (the .vbs/.ps1 the user actually ran).
+if ($Mode -ne 'spawn-win' -and $Hostd) {
+    $hostdExists = $false
+    try {
+        $probe = Start-Process -FilePath 'wsl.exe' -ArgumentList "-d $Distro -- test -f '$Hostd'" -WindowStyle Hidden -Wait -PassThru
+        $hostdExists = ($probe.ExitCode -eq 0)
+    } catch {}
+    if (-not $hostdExists -and $linuxIntDir -and $Hostd -ne "$linuxIntDir/src/hostd.cjs") {
+        $Hostd = "$linuxIntDir/src/hostd.cjs"
+    }
+}
+
 # Windows %USERPROFILE%\.cues as a /mnt/c path for the WSL daemon.
 function Get-MntCuesPath {
     $win = Join-Path $env:USERPROFILE '.cues'                 # C:\Users\you\.cues

@@ -166,6 +166,13 @@ namespace OpenCues
         static string _host;
         static int _pollMs = 150;
 
+        // Wakes the poll loop ahead of its tick. Set by: the socket reader
+        // (inbound set-text frames apply at the runtime's real animation
+        // frame rate instead of tick granularity), the global focus-changed
+        // wake handler, and the per-element UIA change events below. The
+        // poll interval remains the fallback cadence when no events fire.
+        static readonly AutoResetEvent _wake = new AutoResetEvent(false);
+
         static Thread _pollThreadRef;
 
         // Start the shim on a background MTA thread and return immediately.
@@ -197,7 +204,9 @@ namespace OpenCues
         public static void Stop()
         {
             _running = false;
+            try { UnhookElementEvents(); } catch { }
             try { if (_wakeHandler != null) { Automation.RemoveAutomationFocusChangedEventHandler(_wakeHandler); _wakeHandler = null; } } catch { }
+            try { _wake.Set(); } catch { }   // release a loop parked in WaitOne
             try { Disconnect(); } catch { }
         }
 
@@ -216,10 +225,56 @@ namespace OpenCues
             if (_wakeHandler != null) return;
             try
             {
-                _wakeHandler = (s, e) => { };
+                _wakeHandler = (s, e) => { try { _wake.Set(); } catch { } };
                 Automation.AddAutomationFocusChangedEventHandler(_wakeHandler);
             }
             catch { _wakeHandler = null; }
+        }
+
+        // Per-element change events - the input-latency fast path. On a UIA
+        // attach, subscribe to ValueChanged + TextChanged on the focused
+        // element; each event just wakes the poll loop, so a keystroke is
+        // read within milliseconds instead of up to a full tick. State stays
+        // poll-thread-only (handlers run on UIA callback threads and touch
+        // nothing but the wake handle). Our own SetValue writes also fire
+        // these - harmless: the woken tick's read is swallowed by the write
+        // bracket. MSAA-attached Electron fields get no reliable UIA events;
+        // they stay on the tick fallback.
+        static AutomationElement _hookedEl = null;
+        static int _hookedElId = int.MinValue;
+        static AutomationPropertyChangedEventHandler _valueChangedHandler;
+        static AutomationEventHandler _textChangedHandler;
+
+        static void HookElementEvents(AutomationElement el, int elId)
+        {
+            if (elId == _hookedElId) return;
+            UnhookElementEvents();
+            try
+            {
+                _valueChangedHandler = (s, e) => { try { _wake.Set(); } catch { } };
+                Automation.AddAutomationPropertyChangedEventHandler(el, TreeScope.Element, _valueChangedHandler, ValuePattern.ValueProperty);
+            }
+            catch { _valueChangedHandler = null; }
+            try
+            {
+                _textChangedHandler = (s, e) => { try { _wake.Set(); } catch { } };
+                Automation.AddAutomationEventHandler(TextPattern.TextChangedEvent, el, TreeScope.Element, _textChangedHandler);
+            }
+            catch { _textChangedHandler = null; }
+            _hookedEl = el;
+            _hookedElId = elId;
+            Log("debug", "change events hooked (value=" + (_valueChangedHandler != null) + " text=" + (_textChangedHandler != null) + ")");
+        }
+
+        static void UnhookElementEvents()
+        {
+            if (_hookedEl == null) { _hookedElId = int.MinValue; return; }
+            try { if (_valueChangedHandler != null) Automation.RemoveAutomationPropertyChangedEventHandler(_hookedEl, _valueChangedHandler); } catch { }
+            try { if (_textChangedHandler != null) Automation.RemoveAutomationEventHandler(TextPattern.TextChangedEvent, _hookedEl, _textChangedHandler); } catch { }
+            _valueChangedHandler = null;
+            _textChangedHandler = null;
+            _hookedEl = null;
+            _hookedElId = int.MinValue;
         }
 
         // Pause/resume attaching. When disabled the shim detaches from every
@@ -261,7 +316,13 @@ namespace OpenCues
                     Log("warn", "poll error: " + ex.Message);
                     Disconnect();
                 }
-                Thread.Sleep(_pollMs);
+                // Event-driven fast path: UIA change events (and daemon
+                // commands) Set() the wake handle, so a keystroke is read
+                // within milliseconds instead of waiting out the tick. The
+                // timeout keeps the classic poll as the fallback for apps
+                // whose UIA event providers are broken or absent (MSAA-
+                // attached Electron fields have no reliable UIA events).
+                _wake.WaitOne(_pollMs);
             }
         }
 
@@ -316,7 +377,7 @@ namespace OpenCues
                 string line;
                 while (_running && (line = reader.ReadLine()) != null)
                 {
-                    if (line.Length > 0) _incoming.Enqueue(line);
+                    if (line.Length > 0) { _incoming.Enqueue(line); _wake.Set(); }
                 }
             }
             catch { /* connection dropped - poll loop reconnects */ }
@@ -384,6 +445,7 @@ namespace OpenCues
             if (IsAttachable(el, app))
             {
                 StreamAttachment(elId, app, ReadValue(el), AttachMode.Uia);
+                HookElementEvents(el, elId);
                 return;
             }
 
@@ -508,6 +570,7 @@ namespace OpenCues
             _recentWrites.Clear();
             _bracketOpen = false;
             _lastApp = null;
+            UnhookElementEvents();
             _attachMode = AttachMode.None;
             _pendingMsaaText = null;
             if (_enabled) StatusLine = "idle";
