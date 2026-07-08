@@ -581,6 +581,35 @@ namespace OpenCues
         }
 
         // --- UIA read/write ---------------------------------------------
+
+        // WordPad's RICHEDIT50W (via the MSAA→UIA proxy) includes RichEdit's
+        // phantom FINAL PARAGRAPH MARK in the ValuePattern value. Left alone
+        // it leaks into the daemon's mirror as if the user typed a trailing
+        // newline, round-trips through every write, and pushes "end of text"
+        // onto an empty next line (caret visibly jumped lines after
+        // substitutions). Strip exactly ONE trailing separator at the READ
+        // boundary so it never enters the pipeline. Scoped to richedit50w
+        // only: Notepad's RichEditD2DPT provider does NOT include the
+        // phantom, so a blanket strip would eat a genuine trailing newline
+        // there.
+        static string StripPhantomTrailingSeparator(AutomationElement el, string value)
+        {
+            if (string.IsNullOrEmpty(value)) return value;
+            char last = value[value.Length - 1];
+            if (last != '\r' && last != '\n') return value;
+            try
+            {
+                IntPtr hwnd = new IntPtr(el.Current.NativeWindowHandle);
+                if (hwnd == IntPtr.Zero) return value;
+                var sb = new StringBuilder(256);
+                if (GetClassName(hwnd, sb, sb.Capacity) == 0) return value;
+                if (!sb.ToString().ToLowerInvariant().Contains("richedit50w")) return value;
+            }
+            catch { return value; }
+            if (value.EndsWith("\r\n")) return value.Substring(0, value.Length - 2);
+            return value.Substring(0, value.Length - 1);
+        }
+
         static string ReadValue(AutomationElement el)
         {
             // Prefer a WRITABLE ValuePattern (native Win32/WinForms/WPF -
@@ -591,14 +620,14 @@ namespace OpenCues
             {
                 object vp;
                 if (el.TryGetCurrentPattern(ValuePattern.Pattern, out vp) && !((ValuePattern)vp).Current.IsReadOnly)
-                    return ((ValuePattern)vp).Current.Value ?? "";
+                    return StripPhantomTrailingSeparator(el, ((ValuePattern)vp).Current.Value ?? "");
             }
             catch { }
             try
             {
                 object tp;
                 if (el.TryGetCurrentPattern(TextPattern.Pattern, out tp))
-                    return ((TextPattern)tp).DocumentRange.GetText(-1) ?? "";
+                    return StripPhantomTrailingSeparator(el, ((TextPattern)tp).DocumentRange.GetText(-1) ?? "");
             }
             catch { }
             // Last resort: a read-only ValuePattern value (better than nothing).
@@ -606,7 +635,7 @@ namespace OpenCues
             {
                 object vp2;
                 if (el.TryGetCurrentPattern(ValuePattern.Pattern, out vp2))
-                    return ((ValuePattern)vp2).Current.Value ?? "";
+                    return StripPhantomTrailingSeparator(el, ((ValuePattern)vp2).Current.Value ?? "");
             }
             catch { }
             return null;
@@ -744,30 +773,22 @@ namespace OpenCues
                 if (c != null && (c == "edit" || c.Contains("richedit") || c.Contains(".edit.")))
                 {
                     IntPtr res;
-                    // Clamp to absolute end first (the control clamps the
-                    // oversized offset itself - no index arithmetic to skew)...
+                    // Clamp to absolute end - the control clamps the oversized
+                    // offset itself, no index arithmetic to skew. This is
+                    // correct because reads STRIP WordPad's phantom final
+                    // paragraph mark before it can leak into the mirror (see
+                    // StripPhantomTrailingSeparator) - so text we write never
+                    // carries a trailing separator the user didn't type, and
+                    // absolute end IS end-of-visible-content.
                     IntPtr ok1 = SendMessageTimeoutW(hwnd, EM_SETSEL, new IntPtr(0x7FFFFFFF), new IntPtr(0x7FFFFFFF), SMTO_ABORTIFHUNG, 1000, out res);
-                    // ...then read WHERE that is and back up over any TRAILING
-                    // newline separators of the text we wrote. When the
-                    // round-tripped value ends with a paragraph separator
-                    // (WordPad's RichEdit read-back does), absolute end IS the
-                    // empty next line - the caret visibly "jumped to a new
-                    // line". End-of-visible-content is what the user means.
-                    // EM_GETSEL packs start/end in lo/hi words (truncated
-                    // >64k - acceptable for phase-1 field sizes).
-                    IntPtr sel;
-                    SendMessageTimeoutW(hwnd, EM_GETSEL, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out sel);
-                    long end = (sel.ToInt64() >> 16) & 0xFFFF;
-                    int back = TrailingSeparatorUnits(_lastSentText, c.Contains("richedit"));
-                    if (back > 0 && end > back)
-                    {
-                        long tgt = end - back;
-                        SendMessageTimeoutW(hwnd, EM_SETSEL, new IntPtr(tgt), new IntPtr(tgt), SMTO_ABORTIFHUNG, 1000, out res);
-                    }
                     IntPtr ok2 = SendMessageTimeoutW(hwnd, EM_SCROLLCARET, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out res);
                     if (!quiet)
+                    {
+                        IntPtr sel;
+                        SendMessageTimeoutW(hwnd, EM_GETSEL, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out sel);
                         Log("debug", "caret restore: EM_SETSEL on '" + c + "' ok=" + (ok1 != IntPtr.Zero) + "/" + (ok2 != IntPtr.Zero)
-                            + " end=" + end + " back=" + back);
+                            + " sel=" + ((sel.ToInt64() >> 16) & 0xFFFF));
+                    }
                     return;
                 }
                 // Non-Edit UIA composers (Slack and other Chromium-UIA
@@ -801,21 +822,6 @@ namespace OpenCues
                 KeyChord(VK_CONTROL, VK_END);
             }
             catch { }   // caret restore is best-effort; the text write already landed
-        }
-
-        // How many CARET POSITIONS the trailing newline run of `s` occupies.
-        // RichEdit's index model counts a "\r\n" pair as ONE position; the
-        // classic Edit control counts both characters.
-        static int TrailingSeparatorUnits(string s, bool crlfIsOne)
-        {
-            if (s == null) return 0;
-            int i = s.Length, units = 0;
-            while (i > 0 && (s[i - 1] == '\n' || s[i - 1] == '\r'))
-            {
-                if (i > 1 && s[i - 1] == '\n' && s[i - 2] == '\r') { units += crlfIsOne ? 1 : 2; i -= 2; }
-                else { units += 1; i -= 1; }
-            }
-            return units;
         }
 
         // Chromium applies SetValue (and its caret-to-start reset) on its own
