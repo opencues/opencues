@@ -5,7 +5,7 @@
      then "use their svgs for now" per explicit instruction. -->
 
 <div align="right">
-  <a href="#"><img width="180" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/OpenCues_logo.svg"></a>
+  <a href="#"><img width="180" height="29" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/OpenCues_logo.svg"></a>
 </div>
 
 <br><br>
@@ -18,7 +18,7 @@
 
 #
 
-<p align="left"><a href="#"><img width="109" alt="Associations:" src="assets/associations.svg"></a><a href="https://www.reddit.com/user/inventor_black/" target="_blank" rel="noopener noreferrer"><img width="177" alt="Mod of r/ClaudeAI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-02.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://www.reddit.com/user/ClaudeAI-mod-bot/" target="_blank" rel="noopener noreferrer"><img width="168" alt="Bot at r/ClaudeAI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-02.1.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://luma.com/OpenSourceIRL" target="_blank" rel="noopener noreferrer"><img width="161" alt="OpenSourceIRL" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-03.svg"></a></p>
+<p align="left"><a href="#"><img width="120" height="18" alt="Associations:" src="assets/associations.svg"></a><a href="https://www.reddit.com/user/inventor_black/" target="_blank" rel="noopener noreferrer"><img width="177" height="18" alt="Mod of r/ClaudeAI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-02.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://www.reddit.com/user/ClaudeAI-mod-bot/" target="_blank" rel="noopener noreferrer"><img width="168" height="18" alt="Bot at r/ClaudeAI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-02.1.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://luma.com/OpenSourceIRL" target="_blank" rel="noopener noreferrer"><img width="161" height="18" alt="OpenSourceIRL" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-03.svg"></a></p>
 
 <br><br><br>
 
@@ -49,7 +49,7 @@ OpenCues is platform, model, and provider agnostic, engineered from the ground u
 
 #
 
-<p align="left"><a href="LICENSE"><img width="216" alt="Apache-2.0 License" src="assets/license.svg"></a><a href="spec/README.md"><img width="157" alt="Open Standard" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-05.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="spec/blank-spec.md"><img width="121" alt="Blanks.md" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-06.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="spec/cue-spec.md"><img width="112" alt="Cues.md" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-07.svg"></a></p>
+<p align="left"><a href="LICENSE"><img width="216" height="18" alt="Apache-2.0 License" src="assets/license.svg"></a><a href="spec/README.md"><img width="157" height="18" alt="Open Standard" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-05.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="spec/blank-spec.md"><img width="121" height="18" alt="Blanks.md" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-06.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="spec/cue-spec.md"><img width="112" height="18" alt="Cues.md" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-07.svg"></a></p>
 
 <br><br><br><br>
 
@@ -72,7 +72,7 @@ Full walkthrough, prerequisites, and per-host detail: [`docs/install.md`](docs/i
 
 #
 
-<p align="left"><a href="docs/guides/cli-reference.md#the-5-youll-actually-use"><img width="178" alt="OpenCues CLI" src="assets/opencues-cli.svg"></a><a href="docs/features/README.md"><img width="109" alt="Features" src="assets/features.svg"></a></p>
+<p align="left"><a href="docs/guides/cli-reference.md#the-5-youll-actually-use"><img width="178" height="18" alt="OpenCues CLI" src="assets/opencues-cli.svg"></a><a href="docs/features/README.md"><img width="109" height="18" alt="Features" src="assets/features.svg"></a></p>
 
 <br><br><br><br>
 
@@ -92,7 +92,7 @@ Each pins its own upstream fork and never touches your native host install.
 
 #
 
-<p align="left"><a href="#integrations"><img width="91" alt="Supports:" src="assets/supports.svg"></a><a href="integrations/opencode/README.md"><img width="129" alt="OpenCode" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-09.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="integrations/claude-code/README.md"><img width="144" alt="Claude Code" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-10.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="integrations/gemini-cli/README.md"><img width="126" alt="Gemini CLI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-11.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="integrations/chrome/README.md"><img width="130" alt="Chrome" src="assets/chrome.svg"></a><a href="integrations/shell/README.md"><img width="82" alt="Shell" src="assets/shell.svg"></a></p>
+<p align="left"><a href="#integrations"><img width="91" height="18" alt="Supports:" src="assets/supports.svg"></a><a href="integrations/opencode/README.md"><img width="129" height="18" alt="OpenCode" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-09.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="integrations/claude-code/README.md"><img width="144" height="18" alt="Claude Code" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-10.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="integrations/gemini-cli/README.md"><img width="126" height="18" alt="Gemini CLI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-11.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="integrations/chrome/README.md"><img width="130" height="18" alt="Chrome" src="assets/chrome.svg"></a><a href="integrations/shell/README.md"><img width="82" height="18" alt="Shell" src="assets/shell.svg"></a></p>
 
 <br><br><br><br>
 
@@ -128,7 +128,7 @@ Full reference: [`docs/configuration.md`](docs/configuration.md) · [`docs/guide
 
 #
 
-<img width="92" alt="Providers:" src="assets/providers.svg"><a href="https://cloud.cerebras.ai" target="_blank" rel="noopener noreferrer"><img width="200" alt="Cerebras Systems" src="assets/cerebras-systems.svg"></a><a href="https://groq.com" target="_blank" rel="noopener noreferrer"><img width="107" alt="Groq" src="assets/groq.svg"></a><a href="https://ai.google.dev" target="_blank" rel="noopener noreferrer"><img width="122" alt="Gemini" src="assets/gemini.svg"></a><a href="https://www.anthropic.com" target="_blank" rel="noopener noreferrer"><img width="141" alt="Anthropic" src="assets/anthropic.svg"></a><a href="https://openai.com" target="_blank" rel="noopener noreferrer"><img width="102" alt="OpenAI" src="assets/openai.svg"></a>
+<img width="92" height="18" alt="Providers:" src="assets/providers.svg"><a href="https://cloud.cerebras.ai" target="_blank" rel="noopener noreferrer"><img width="200" height="18" alt="Cerebras Systems" src="assets/cerebras-systems.svg"></a><a href="https://groq.com" target="_blank" rel="noopener noreferrer"><img width="107" height="18" alt="Groq" src="assets/groq.svg"></a><a href="https://ai.google.dev" target="_blank" rel="noopener noreferrer"><img width="122" height="18" alt="Gemini" src="assets/gemini.svg"></a><a href="https://www.anthropic.com" target="_blank" rel="noopener noreferrer"><img width="141" height="18" alt="Anthropic" src="assets/anthropic.svg"></a><a href="https://openai.com" target="_blank" rel="noopener noreferrer"><img width="102" height="18" alt="OpenAI" src="assets/openai.svg"></a>
 
 <br><br><br><br>
 
@@ -174,7 +174,7 @@ Join the community — questions, feedback, and the people building alongside yo
 
 #
 
-<p align="left"><img width="85" alt="Community:" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Community-12.svg"><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://github.com/opencues/opencues/graphs/contributors"><img width="161" alt="Contributors" src="assets/contributors.svg"></a><a href="https://x.com/openCues_" target="_blank" rel="noopener noreferrer"><img width="142" alt="X / Twitter" src="assets/x-twitter.svg"></a><a href="https://www.reddit.com/r/OpenCues/" target="_blank" rel="noopener noreferrer"><img width="118" alt="Reddit" src="assets/reddit.svg"></a><a href="https://www.instagram.com/opencues/" target="_blank" rel="noopener noreferrer"><img width="117" alt="Instagram" src="assets/instagram.svg"></a></p>
+<p align="left"><img width="85" height="18" alt="Community:" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Community-12.svg"><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://github.com/opencues/opencues/graphs/contributors"><img width="161" height="18" alt="Contributors" src="assets/contributors.svg"></a><a href="https://x.com/openCues_" target="_blank" rel="noopener noreferrer"><img width="142" height="18" alt="X / Twitter" src="assets/x-twitter.svg"></a><a href="https://www.reddit.com/r/OpenCues/" target="_blank" rel="noopener noreferrer"><img width="118" height="18" alt="Reddit" src="assets/reddit.svg"></a><a href="https://www.instagram.com/opencues/" target="_blank" rel="noopener noreferrer"><img width="117" height="18" alt="Instagram" src="assets/instagram.svg"></a></p>
 
 <!-- TODO[community]: add Discord + GitHub Discussions once live (tracked in .internal/pre-launch-readme.md) -->
 
@@ -188,4 +188,4 @@ Join the community — questions, feedback, and the people building alongside yo
 
 #
 
-<p align="left"><img width="75" alt="Design" src="assets/design.svg"><a href="https://jbrandford.com" target="_blank" rel="noopener noreferrer"><img width="128" alt="Author" src="assets/j-brandford.svg"></a></p>
+<p align="left"><img width="75" height="18" alt="Design" src="assets/design.svg"><a href="https://jbrandford.com" target="_blank" rel="noopener noreferrer"><img width="128" height="18" alt="Author" src="assets/j-brandford.svg"></a></p>
