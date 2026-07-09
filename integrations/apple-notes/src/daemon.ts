@@ -21,7 +21,7 @@ import {
 import type { LogLevel } from '@opencues/runtime/dist/src/adapter';
 import { NotesBridge } from './notes-bridge';
 import {
-  applyPoll, containsBlankMarker, diffLines, ensureTrailingNewline, flushDelayMs,
+  applyPoll, canonicalizeForEcho, containsBlankMarker, diffLines, ensureTrailingNewline, flushDelayMs,
   freshMarkerIndex, initialState, isRecentWrite, pollDelayMs, recordWriteHash, seedBaseline, selectChanged, synthCursor, synthCursorNear,
   type DaemonState,
 } from './tick';
@@ -46,6 +46,9 @@ function safeJson(v: unknown): string {
 }
 
 const sha = (s: string): string => createHash('sha256').update(s).digest('hex');
+// Echo-identity hash: typography-folded (see tick.ts canonicalizeForEcho).
+// Splice/CAS paths keep raw bytes; ONLY write-identity uses this.
+const echoHash = (s: string): string => sha(canonicalizeForEcho(s));
 
 const PERMISSION_HELP =
   'Notes automation permission denied (TCC -1743). Fix: System Settings → Privacy & Security → ' +
@@ -383,7 +386,7 @@ export async function main(): Promise<void> {
         // and the answer died). We are HOLDING the authoritative fresh
         // text: resync the tracked snapshot ourselves.
         const trackedNow = state.tracked.get(id);
-        const isOwnEcho = isRecentWrite(state, id, sha(currentText), Date.now());
+        const isOwnEcho = isRecentWrite(state, id, echoHash(currentText), Date.now());
         log('info', `note changed since resolution — ${isOwnEcho ? 'own echo, retrying against resynced snapshot' : 'user edit wins, re-dispatching'}`, {
           id,
           curLen: currentText.length,
@@ -439,7 +442,7 @@ export async function main(): Promise<void> {
     }
     // Record the INTENDED text's hash before the CAS so a poll reading
     // the note in the write window still classifies it as our echo.
-    recordWriteHash(state, id, sha(newText), Date.now());
+    recordWriteHash(state, id, echoHash(newText), Date.now());
     const casStart = Date.now();
     const fill = await bridge.fillNote({ noteId: id, expectedBody: baseBody, newBody });
     const casMs = Date.now() - casStart;
@@ -465,7 +468,7 @@ export async function main(): Promise<void> {
     // as a user edit → note untracked → resetBufferState aborted the
     // in-flight LLM call, every time — resolution could never finish).
     const landed = ensureTrailingNewline(fill.value.plaintext.replace(/\r\n?/g, '\n'));
-    recordWriteHash(state, id, sha(landed), Date.now());
+    recordWriteHash(state, id, echoHash(landed), Date.now());
     const tracked = state.tracked.get(id);
     if (tracked) state.tracked.set(id, { ...tracked, plaintext: landed });
     const landedAt = Date.now();
@@ -669,7 +672,7 @@ export async function main(): Promise<void> {
           if (res.ok) fetched = res.value.notes;
           else log('warn', `plaintext fetch failed (${res.kind})`, res.detail);
         }
-        const events = applyPoll(state, list.value.notes, fetched, sha, Date.now());
+        const events = applyPoll(state, list.value.notes, fetched, echoHash, Date.now());
         for (const e of events) {
           // Final render phase: our own write observed back by the poll
           // (echo-classified → source 'runtime'). echoMs = landed → seen;
@@ -723,7 +726,10 @@ export async function main(): Promise<void> {
               break;
             case 'untracked':
               echoPending.delete(e.id);
-              if (e.reason !== 'no-marker') log('info', 'note untracked', { id: e.id, reason: e.reason });
+              // no-marker untracks are load-bearing evidence: they fire
+              // when a marker-less poll text hash-MISSES the write ring
+              // (i.e. our own answer was classified as a user edit).
+              log('info', 'note untracked', { id: e.id, reason: e.reason });
               break;
             case 'id-remapped': {
               // Same note, new identity (temp → permanent CoreData id).

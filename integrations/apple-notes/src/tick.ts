@@ -124,6 +124,29 @@ export function ensureTrailingNewline(s: string): string {
   return s.endsWith('\n') ? s : s + '\n';
 }
 
+/**
+ * Canonical fold for ECHO-IDENTITY hashing (never for splice/CAS,
+ * which stay byte-exact). Notes' foreground typography pass edits a
+ * RENDERED note seconds after our write lands — straight quotes to
+ * curly, -- to en/em dash, ... to ellipsis — bumping the mod and
+ * re-serializing text that no longer byte-matches what we wrote. The
+ * echo ring then classified our own answer as a user edit and
+ * untracked the note ~2.4s after every fill in a foreground note
+ * (observed live 2026-07-09 17:20/17:21; scripted repros never caught
+ * it because their notes are never open in the UI). Folding the
+ * typography class makes write identity immune to it.
+ */
+export function canonicalizeForEcho(s: string): string {
+  return s
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/\u2026/g, '...')
+    .replace(/[\u200B\u200C\u200D\uFEFF\uFE0E\uFE0F\u2066-\u2069\u200E\u200F]/g, '');
+}
+
 export const WRITE_HASH_TTL_MS = 30_000;
 
 /**

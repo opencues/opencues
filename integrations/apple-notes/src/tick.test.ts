@@ -411,3 +411,25 @@ describe('write-hash TTL (Windows integration fix #2, ported)', () => {
     expect(change).toMatchObject({ source: 'user' });
   });
 });
+
+describe('canonicalizeForEcho (Notes typography pass immunity)', () => {
+  it('folds curly quotes, dashes, ellipsis; strips zero-width and bidi marks', async () => {
+    const { canonicalizeForEcho } = await import('./tick');
+    expect(canonicalizeForEcho('Dear “valued” customer — it’s late…'))
+      .toBe('Dear "valued" customer - it\'s late...');
+    expect(canonicalizeForEcho('a​⁦b⁩️')).toBe('ab');
+  });
+  it('a typography-edited echo still classifies as runtime', async () => {
+    const { canonicalizeForEcho } = await import('./tick');
+    const echo = (x: string): string => `h:${canonicalizeForEcho(x)}`;
+    const s = initialState(T0);
+    applyPoll(s, [meta('a', 'm1')], [note('a', 'm1', 'draft it _\n')], echo, T0);
+    const landedStraight = 'He said "done" -- finally...\n';
+    recordWriteHash(s, 'a', echo(landedStraight), T0 + 1000);
+    const typographyEdited = 'He said “done” — finally…\n';
+    const events = applyPoll(s, [meta('a', 'm2')], [note('a', 'm2', typographyEdited)], echo, T0 + 3000);
+    const change = events.find(e => e.type === 'text-change');
+    expect(change).toMatchObject({ source: 'runtime' });
+    expect(s.tracked.has('a')).toBe(true); // echo exception holds — no untrack
+  });
+});
