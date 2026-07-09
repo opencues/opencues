@@ -22,7 +22,7 @@ import type { LogLevel } from '@opencues/runtime/dist/src/adapter';
 import { NotesBridge } from './notes-bridge';
 import {
   applyPoll, canonicalizeForEcho, containsBlankMarker, diffLines, ensureTrailingNewline, flushDelayMs,
-  freshMarkerIndex, initialState, isRecentWrite, pollDelayMs, recordWriteHash, seedBaseline, selectChanged, synthCursor, synthCursorNear,
+  freshMarkerIndex, initialState, isRecentWrite, markerCursors, pollDelayMs, recordWriteHash, seedBaseline, selectChanged, synthCursor, synthCursorNear,
   type DaemonState,
 } from './tick';
 import { buildBlanks, makeSpawnProcess } from './host-support';
@@ -157,6 +157,16 @@ export async function main(): Promise<void> {
   let lastArmText = '';
   let armRepeat = 0;
   let breakerUntil = 0;
+  // Interrupted-cue recovery (reliability gap: "some prompts work,
+  // others don't"). A user edit ELSEWHERE in the note mid-resolution
+  // aborts the resolution (their edit wins) — but freshMarkerIndex
+  // deliberately never re-arms a marker outside the changed region, so
+  // the cue stranded forever unless the user touched its own line. An
+  // in-flight cue is NOT a stale cue: remember the armed cue's line;
+  // if a marker-less-region edit arrives while that exact line still
+  // exists verbatim and the arm was recent, re-arm it.
+  const ARM_RECOVERY_MS = 30_000;
+  let lastArm: { noteId: string; at: number; line: string } | null = null;
   /** Arm through the breaker. Returns false when suppressed. */
   const armGuarded = (id: string, text: string, armAt: number): boolean => {
     const now = Date.now();
@@ -178,8 +188,28 @@ export async function main(): Promise<void> {
       return false;
     }
     lastRedispatchText.set(id, text);
+    const lineStart = text.lastIndexOf('\n', armAt) + 1;
+    const lineEndIdx = text.indexOf('\n', armAt);
+    lastArm = { noteId: id, at: now, line: text.slice(lineStart, lineEndIdx === -1 ? text.length : lineEndIdx) };
     armMarker(text, armAt);
     return true;
+  };
+
+  /** Re-arm a recently-armed cue whose line survived a user edit
+   *  elsewhere in the note. Returns true when it re-armed. */
+  const recoverInterruptedArm = (id: string, text: string): boolean => {
+    if (!lastArm || lastArm.noteId !== id) return false;
+    if (Date.now() - lastArm.at > ARM_RECOVERY_MS) return false;
+    if (!containsBlankMarker(text)) return false;
+    const lines = text.split('\n');
+    const li = lines.indexOf(lastArm.line);
+    if (li < 0) return false;
+    const lineStart = lines.slice(0, li).join('\n').length + (li > 0 ? 1 : 0);
+    const cursorsInLine = markerCursors(lastArm.line);
+    if (cursorsInLine.length === 0) return false;
+    const armAt = lineStart + cursorsInLine[cursorsInLine.length - 1] - 1;
+    log('info', 'recovering interrupted cue — re-arming after an edit elsewhere', { id });
+    return armGuarded(id, text, armAt);
   };
 
   // ── Virtual buffer + settle-debounced flush ─────────────────────────
@@ -731,6 +761,8 @@ export async function main(): Promise<void> {
               }
               if (e.armAt !== null) {
                 if (armGuarded(e.id, e.text, e.armAt)) prewarmBody(e.id);
+              } else if (e.source === 'user' && recoverInterruptedArm(e.id, e.text)) {
+                prewarmBody(e.id);
               }
               bootResult.notifyTextChange(e.text, e.cursor, e.source);
               break;

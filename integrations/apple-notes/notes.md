@@ -50,6 +50,7 @@ Signatures are grep-able against `/tmp/opencues.log`.
 | 17 | Notes doesn't round-trip emoji byte-identically; dropping the virtual buffer post-flush let normalized bytes leak into the runtime → one discarded resolution per command | 1-char `skipping` on emoji notes; double latency | virtual buffer RETAINED until a user change/switch |
 | 18 | Notes' FOREGROUND typography pass edits rendered notes ~2.4s after our write (smart quotes/dashes/ellipsis) → echo hash missed → our answer classified as a user edit → untrack | `resetState` +2.2-2.4s after landing; no `fill echo observed`; ONLY on UI-open notes | typography-folded echo identity (`canonicalizeForEcho`) — splice/CAS stay byte-exact |
 | 19 | Windows-port findings: unexpiring write ring swallowed identical re-types; no runaway backstop | `_` silently ignored on a re-typed command | 30s TTL on ring entries; same-text arm circuit breaker (typing cannot trip it) |
+| 20 | A user edit ELSEWHERE mid-resolution aborted it, and freshMarkerIndex (correctly) never re-arms markers outside the changed region → the in-flight cue stranded until its own line was touched — "some prompts work, others don't" during active editing | `skipping — live text changed` ±few chars, then silence for that cue | interrupted-cue recovery: an armed cue's line surviving verbatim + arm <30s old → re-armed on edits elsewhere (`recovering interrupted cue`) |
 
 Model-quality issues (NOT pipeline; `cerebras/gemma-4-31b` was never
 bench-validated for this pipeline):
