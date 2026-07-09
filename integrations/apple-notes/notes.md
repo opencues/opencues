@@ -198,3 +198,59 @@ Diagnostic aid added at the same time: the "note changed since
 resolution" drop log now includes `curLen`/`snapLen`/`firstDiff` and
 a ±12-char excerpt of both texts at the divergence point — the next
 snapshot-mismatch investigation starts from bytes, not theories.
+
+## "Translations come back mangled" — two CROSS-HOST runtime bugs (2026-07-09)
+
+Symptom: transform outputs (translations especially) arrived with
+original-language fragments stitched into them ("…Für Mittagessen ist
+gesorgt.\n\nViele Lunch will be provided.\n\nBest, Sam"), and some
+transform answers silently never arrived at all. Initially blamed on
+gemma-4-31b reproduction quality — WRONG. Both bugs live in the shared
+runtime and affect every host; Notes surfaced them first because notes
+exercise whole-document transforms constantly, while input boxes
+rarely do.
+
+**How it was proven model-independent:** an A/B on identical content
+produced the byte-identical artifact on gemma-4-31b AND gpt-oss-120b;
+then a pure-code reproduction with `live === snapshot` — the case
+where `threeWayMerge` must return the rewrite verbatim — produced the
+corruption with no LLM involved. (The bench archive's
+"Frankenstein bilingual buffer" production sighting, attributed at the
+time to max_tokens truncation, is plausibly this same bug —
+`tests/benchmarks/transform-blank/budget-translate-probe.ts` header.)
+
+**Bug 1 — threeWayMerge's paragraph-break heuristic vs commanded
+rewrites** (`packages/opencues-runtime/src/modules/word-diff.ts`).
+The merge's survival rules were built for AgentRewrite: a background
+rewriter must never canonicalise structure the user typed, so any hunk
+whose replacement carries fewer `\n\n` runs than its original is
+dropped. On a full translation, word-diff hunk boundaries slice
+paragraph breaks ASYMMETRICALLY, so a content-critical hunk trips the
+rule, gets dropped, and the original text survives inside the rewrite.
+Fix: `threeWayMerge(…, { mode: 'authoritative' })` for user-COMMANDED
+rewrites (TransformBlank) — untouched buffer → rewrite verbatim;
+typing during the call still wins (the user-overlap rule is kept).
+AgentRewrite's conservative default is unchanged. Pinned by three
+regression tests in `word-diff.test.ts`.
+
+**Bug 2 — real animation frame chars tripping the transform race
+guard** (`packages/opencues-runtime/src/modules/resolver.ts`). The
+guard compares live text against the analyzed original, stripping ZWS
+because CC's spinner animates via invisible ZWS toggles. Hosts whose
+animator writes REAL frame chars (apple-notes `•`/`‾`, terminal hosts)
+made liveText differ by one real character mid-cycle: ~half of
+completed transform answers were discarded as "live text changed", and
+surviving merges saw a fake user edit at the frame position. Fix:
+`stopAllAnimations()` (which restores every slot to `_`) now runs
+BEFORE the guard reads the live buffer.
+
+Verified end-to-end after both fixes: the exact email that corrupted
+pre-fix translates cleanly on gemma-4-31b ("Viele Grüße, Sam", zero
+English fragments). `ARCHITECTURE.md` § 8 carries the correction to
+the earlier model-blame attribution.
+
+Unrelated environmental note from the same session: Notes.app itself
+can time out plaintext fetches when busy (log: "plaintext fetch failed
+(timeout)"); the daemon rides it out and recovers on later polls —
+if commands seem dead AND these warnings are present, it's Notes
+being slow, not the daemon.
