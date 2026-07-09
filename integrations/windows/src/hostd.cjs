@@ -267,20 +267,32 @@ function isRecentWrite(text) {
 // between. Track resolve timestamps; if we exceed the threshold inside the
 // window, trip the breaker — stop feeding the resolver until the field is
 // quiet, then auto-reset. This is the "it heals itself" guarantee.
-const BREAKER_WINDOW_MS = 3000;
-const BREAKER_MAX_RESOLVES = 8;
-const BREAKER_COOLDOWN_MS = 2500;
-let resolveTimes = [];
+// A RUNAWAY resolves the SAME text over and over (our own output echoing
+// back). Normal typing resolves DIFFERENT text on every keystroke, so it
+// must NEVER trip the breaker — the earlier "count all resolves" version
+// tripped on fast typing and swallowed the user's `_`. So: count only
+// CONSECUTIVE resolves of the same normalized text; any genuinely new
+// text resets the counter.
+const BREAKER_SAME_TEXT_MAX = 6;   // same text resolved this many times → loop
+const BREAKER_COOLDOWN_MS = 1500;
+let breakerLastNorm = null;
+let breakerSameCount = 0;
 let breakerUntil = 0;
-function breakerTrips() {
+function breakerTrips(text) {
   const now = Date.now();
-  if (now < breakerUntil) return true;   // still cooling down
-  resolveTimes.push(now);
-  resolveTimes = resolveTimes.filter(t => now - t < BREAKER_WINDOW_MS);
-  if (resolveTimes.length > BREAKER_MAX_RESOLVES) {
+  if (now < breakerUntil) return true;   // cooling down after a real loop
+  const n = normBuf(text);
+  if (n === breakerLastNorm) {
+    breakerSameCount += 1;
+  } else {
+    breakerLastNorm = n;
+    breakerSameCount = 1;
+    return false;                        // new text — never a loop
+  }
+  if (breakerSameCount > BREAKER_SAME_TEXT_MAX) {
     breakerUntil = now + BREAKER_COOLDOWN_MS;
-    resolveTimes = [];
-    log('warn', `runaway breaker TRIPPED — ${BREAKER_MAX_RESOLVES}+ resolves in ${BREAKER_WINDOW_MS}ms; pausing resolves ${BREAKER_COOLDOWN_MS}ms`);
+    breakerSameCount = 0;
+    log('warn', `runaway breaker TRIPPED — same text resolved ${BREAKER_SAME_TEXT_MAX}+ times; pausing ${BREAKER_COOLDOWN_MS}ms`);
     return true;
   }
   return false;
@@ -472,11 +484,11 @@ function handleMessage(msg) {
       const prevCursor = mirrorCursor;
       mirrorText = text;
       mirrorCursor = cursor;
-      // Self-heal 2: circuit-breaker. If we're resolving far too often
-      // (a runaway that leaked past the registry), pause — the field will
-      // go quiet and resolves auto-resume. Keeps the mirror current so the
-      // next genuine edit still works.
-      if (breakerTrips()) return;
+      // Self-heal 2: circuit-breaker. Trips ONLY on the SAME text resolving
+      // repeatedly (a runaway that leaked past the registry) — never on
+      // normal typing (each keystroke is different text). Keeps the mirror
+      // current so the next genuine edit still works.
+      if (breakerTrips(text)) return;
       // Fresh `_` inserted → synthesise the `_` keystroke first so the
       // resolver / BlankFill explicit-`_` gate fires, exactly like the
       // event-bridge `text:` command does.
