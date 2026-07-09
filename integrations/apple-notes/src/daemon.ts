@@ -22,7 +22,7 @@ import type { LogLevel } from '@opencues/runtime/dist/src/adapter';
 import { NotesBridge } from './notes-bridge';
 import {
   applyPoll, containsBlankMarker, diffLines, ensureTrailingNewline, flushDelayMs,
-  initialState, paragraphWindow, pollDelayMs, recordWriteHash, seedBaseline, selectChanged, synthCursor,
+  initialState, pollDelayMs, recordWriteHash, seedBaseline, selectChanged, synthCursor,
   type DaemonState,
 } from './tick';
 import { buildBlanks, makeSpawnProcess } from './host-support';
@@ -142,70 +142,6 @@ export async function main(): Promise<void> {
     });
   };
 
-  // ── Paragraph window — the runtime's buffer is ONE paragraph ───────
-  // See tick.ts paragraphWindow + notes.md § degradation: the runtime
-  // (and therefore every LLM prompt) sees only the blank-line-delimited
-  // paragraph containing the active cue, so command cost/quality stay
-  // constant however long the note grows. "Clearing the AI's context
-  // between commands" = a window MOVE resets the buffer state; content
-  // outside the window is never dispatched, analyzed, or rewritten.
-  // The note-side write path stays whole-note: flush reassembles
-  // prefix + windowRaw + suffix and the usual diff/splice/CAS applies.
-  interface ParagraphWin { noteId: string; prefix: string; suffix: string; base: string }
-  const winRef: { current: ParagraphWin | null } = { current: null };
-
-  /** Route a poll event (full-note coords) into the runtime as a
-   *  window-scoped buffer. Handles: same-window updates (echo frames,
-   *  typing inside the window), window moves (reset + fresh dispatch),
-   *  and arming in window coordinates. */
-  const dispatchWindow = (
-    id: string,
-    text: string,
-    cursor: number,
-    armAt: number | null,
-    source: 'user' | 'runtime',
-    alreadyReset: boolean,
-  ): void => {
-    // Same-window fast path: the note still starts/ends with the
-    // window's surroundings (our own frames or edits inside the window).
-    // The sliced base must remain ONE paragraph — an empty suffix
-    // matches any appended text (endsWith('') is always true), which
-    // silently grew the window to swallow every paragraph typed below
-    // it (observed live 2026-07-09: command 2 ran with the whole note
-    // as its buffer and its rewrite consumed the earlier answer).
-    const isOneParagraph = (s: string): boolean => !/\n\n/.test(s.endsWith('\n') ? s.slice(0, -1) : s);
-    if (
-      winRef.current && winRef.current.noteId === id &&
-      text.length >= winRef.current.prefix.length + winRef.current.suffix.length &&
-      text.startsWith(winRef.current.prefix) && text.endsWith(winRef.current.suffix) &&
-      isOneParagraph(text.slice(winRef.current.prefix.length, text.length - winRef.current.suffix.length)) &&
-      (armAt === null || (armAt >= winRef.current.prefix.length && armAt < text.length - winRef.current.suffix.length))
-    ) {
-      const base = text.slice(winRef.current.prefix.length, text.length - winRef.current.suffix.length);
-      winRef.current.base = base;
-      const wCursor = Math.min(Math.max(cursor - winRef.current.prefix.length, 0), base.length);
-      if (armAt !== null) {
-        lastRedispatchText.set(id, text);
-        armMarker(base, armAt - winRef.current.prefix.length);
-        prewarmBody(id);
-      }
-      bootResult.notifyTextChange(base, wCursor, source);
-      return;
-    }
-    // Window move (different paragraph, different note, or edits that
-    // changed the surroundings): fresh scope, fresh buffer state.
-    const { start, end } = paragraphWindow(text, armAt ?? cursor);
-    if (!alreadyReset) bootResult.resetBufferState();
-    winRef.current = { noteId: id, prefix: text.slice(0, start), suffix: text.slice(end), base: text.slice(start, end) };
-    const wCursor = Math.min(Math.max(cursor - start, 0), winRef.current.base.length);
-    if (armAt !== null) {
-      lastRedispatchText.set(id, text);
-      armMarker(winRef.current.base, armAt - start);
-      prewarmBody(id);
-    }
-    bootResult.notifyTextChange(winRef.current.base, wCursor, source);
-  };
-
   // ── Virtual buffer + settle-debounced flush ─────────────────────────
   // The runtime writes eagerly: the blank-loading animator repaints the
   // `_` slot every ~150ms via setText, and blank-fill/resolver commit
@@ -219,10 +155,6 @@ export async function main(): Promise<void> {
   // frames DO reach the note at frame cadence (see CLAUDE.md).
   let virtualText: string | null = null;
   let virtualNoteId: string | null = null;
-  // Window surroundings captured at requestWrite time — the flush
-  // reconstructs the full note from THESE, not from the live `winRef.current`,
-  // so a window move never mis-assembles a still-pending write.
-  let virtualWin: { prefix: string; suffix: string } | null = null;
   let flushTimer: NodeJS.Timeout | null = null;
   let firstPendingAt: number | null = null;
   // Transient-failure retry budget for the CURRENT virtual content;
@@ -245,7 +177,6 @@ export async function main(): Promise<void> {
   const dropVirtual = (): void => {
     virtualText = null;
     virtualNoteId = null;
-    virtualWin = null;
     firstPendingAt = null;
     flushRetries = 0;
     if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
@@ -267,11 +198,6 @@ export async function main(): Promise<void> {
     virtualText = rawText;
     virtualNoteId = id;
     flushRetries = 0; // fresh content, fresh retry budget
-    // The runtime writes WINDOW bytes; remember the surroundings this
-    // write belongs inside (whole-note passthrough when no window).
-    virtualWin = winRef.current && winRef.current.noteId === id
-      ? { prefix: winRef.current.prefix, suffix: winRef.current.suffix }
-      : { prefix: '', suffix: '' };
     const now = Date.now();
     if (firstPendingAt === null) firstPendingAt = now;
     if (flushTimer) clearTimeout(flushTimer);
@@ -296,14 +222,10 @@ export async function main(): Promise<void> {
     }
     const id = virtualNoteId;
     const raw = virtualText;
-    // Reassemble the full note around the window write, then apply the
-    // canonical trailing '\n' — HERE, never in requestWrite: the
-    // virtual buffer must stay byte-identical to what the runtime
-    // wrote. A window body joined to a non-empty suffix needs its own
-    // terminating '\n' so the paragraphs don't merge.
-    const w = virtualWin ?? { prefix: '', suffix: '' };
-    const body = w.suffix !== '' && !raw.endsWith('\n') ? raw + '\n' : raw;
-    const text = ensureTrailingNewline(w.prefix + body + w.suffix);
+    // Canonical note form (trailing '\n') is applied HERE, not in
+    // requestWrite — the virtual buffer must stay byte-identical to
+    // what the runtime wrote (see requestWrite).
+    const text = ensureTrailingNewline(raw);
     const snapshot = state.tracked.get(id);
     if (!snapshot) { log('debug', 'flush skipped: note untracked', { id }); dropVirtual(); return; }
     if (text === snapshot.plaintext) { log('debug', 'flush skipped: no change vs snapshot'); dropVirtual(); return; }
@@ -456,14 +378,6 @@ export async function main(): Promise<void> {
     recordWriteHash(state, id, sha(landed));
     const tracked = state.tracked.get(id);
     if (tracked) state.tracked.set(id, { ...tracked, plaintext: landed });
-    // Keep the window's fallback base in sync with what landed, so a
-    // getText between flush completion and the echo poll still reads
-    // the post-write window (byte-identity across the flush boundary).
-    if (winRef.current && winRef.current.noteId === id
-        && landed.length >= winRef.current.prefix.length + winRef.current.suffix.length
-        && landed.startsWith(winRef.current.prefix) && landed.endsWith(winRef.current.suffix)) {
-      winRef.current.base = landed.slice(winRef.current.prefix.length, landed.length - winRef.current.suffix.length);
-    }
     const landedAt = Date.now();
     echoPending.set(id, landedAt);
     // Phase breakdown of this render, requestWrite → note updated:
@@ -502,7 +416,8 @@ export async function main(): Promise<void> {
       lastRedispatchText.set(id, newText);
       log('info', 'unanswered cue remains — re-dispatching', { id });
       const cursor = synthCursor(newText);
-      dispatchWindow(id, newText, cursor, cursor - 1, 'user', false);
+      armMarker(newText, cursor - 1);
+      bootResult.notifyTextChange(newText, cursor, 'user');
     }
     return 'landed';
   }
@@ -510,10 +425,8 @@ export async function main(): Promise<void> {
   bootResult = boot({
     hostVersion: require('../package.json').version as string,
     cwd: process.cwd(),
-    // The runtime's buffer is the PARAGRAPH WINDOW, byte-identical to
-    // what it last received (dispatchWindow) or wrote (virtualText).
-    getText: () => virtualText ?? (winRef.current && winRef.current.noteId === state.activeId ? winRef.current.base : activeText()),
-    getCursorOffset: () => synthCursor(virtualText ?? (winRef.current && winRef.current.noteId === state.activeId ? winRef.current.base : activeText())),
+    getText: () => virtualText ?? activeText(),
+    getCursorOffset: () => synthCursor(virtualText ?? activeText()),
     setText: (text: string) => requestWrite(text),
     setCursorOffset: () => { /* no cursor channel */ },
     forceRender: () => { /* no render surface */ },
@@ -678,8 +591,15 @@ export async function main(): Promise<void> {
               dropVirtual(); // real note state wins over any pending write
               knownBody.delete(e.id);
               bootResult.resetBufferState();
-              winRef.current = null; // new note, new scope
-              dispatchWindow(e.id, e.text, e.cursor, e.armAt, e.source, true);
+              if (e.armAt !== null) {
+                // Seed the redispatch dedupe with the armed text so the
+                // animation's `_` rest frame (byte-identical to it) is
+                // never mistaken for an unanswered cue (see doFill).
+                lastRedispatchText.set(e.id, e.text);
+                armMarker(e.text, e.armAt);
+                prewarmBody(e.id);
+              }
+              bootResult.notifyTextChange(e.text, e.cursor, e.source);
               break;
             case 'text-change':
               // A USER edit invalidates the virtual buffer (their text
@@ -698,12 +618,17 @@ export async function main(): Promise<void> {
                 // DIFFERS from the last user/armed text — i.e. answers.
                 lastRedispatchText.set(e.id, e.text);
               }
-              dispatchWindow(e.id, e.text, e.cursor, e.armAt, e.source, false);
+              if (e.armAt !== null) {
+                // Same dedupe seed as switch-active (rest-frame guard).
+                lastRedispatchText.set(e.id, e.text);
+                armMarker(e.text, e.armAt);
+                prewarmBody(e.id);
+              }
+              bootResult.notifyTextChange(e.text, e.cursor, e.source);
               break;
             case 'active-gone':
               dropVirtual();
               bootResult.resetBufferState();
-              winRef.current = null;
               break;
             case 'untracked':
               echoPending.delete(e.id);
@@ -720,7 +645,6 @@ export async function main(): Promise<void> {
               migrate(echoPending);
               migrate(lastRedispatchText);
               if (virtualNoteId === e.from) virtualNoteId = e.to;
-              if (winRef.current && winRef.current.noteId === e.from) winRef.current.noteId = e.to;
               log('info', 'note id remapped (temporary → permanent)', { from: e.from, to: e.to });
               break;
             }

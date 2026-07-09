@@ -130,6 +130,22 @@ contract always operates on ~one command of text there. A note is a
 persistent, growing document; nothing windows the buffer down to the
 command being typed.
 
+> **RETIRED same day (2026-07-09, user decision).** The paragraph
+> window shipped and worked as designed, but the design was wrong for
+> real content: ANSWERS are themselves multi-paragraph (emails have
+> blank lines between salutation/body/signoff), so "type the command
+> directly under the content" only reached back to the content's LAST
+> blank line — "prompts only affect lines up to a return". Scope is
+> whole-note again: every prompt analyzes and may rewrite the entire
+> note. The known cost returns with it: quality/speed degrade as one
+> note accumulates content (gemma's verbatim reproduction of long
+> buffers is the weak link) — keep notes per-task, or accept the
+> degradation. The durable fix remains "full note in, patch out"
+> (TransformBlank emitting only the changed region) — a core, bench-
+> gated change. The section below is kept for the design record; the
+> v1 bugs it lists were real and their FIXES survive (the flush retry
+> is scope-independent and still shipped).
+
 **Fixed 2026-07-09: the PARAGRAPH WINDOW.** The runtime's buffer on
 this host is now the blank-line-delimited paragraph containing the
 active cue (`tick.ts paragraphWindow` + `daemon.ts dispatchWindow`),
