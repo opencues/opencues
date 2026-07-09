@@ -464,6 +464,13 @@ export async function main(): Promise<void> {
   const DELETED_REFRESH_MS = 10_000;
   let deletedIds = new Set<string>();
   let deletedRefreshedAt = 0;
+  // Poll heartbeat — one info line per HEARTBEAT_MS proving the loop is
+  // alive and what it sees (a silent log otherwise can't distinguish
+  // "nothing changed" from "poll loop wedged" — that ambiguity cost a
+  // debugging session on 2026-07-09).
+  const HEARTBEAT_MS = 60_000;
+  let heartbeatAt = Date.now();
+  let ticks = 0;
   for (;;) {
     const status = await bridge.status();
     const running = status.ok && status.value.running;
@@ -476,6 +483,18 @@ export async function main(): Promise<void> {
       const list = await bridge.listNotes();
       if (list.ok && deletedIds.size > 0) {
         list.value.notes = list.value.notes.filter(n => !deletedIds.has(n.id));
+      }
+      ticks++;
+      if (Date.now() - heartbeatAt >= HEARTBEAT_MS) {
+        heartbeatAt = Date.now();
+        log('info', 'poll heartbeat', {
+          ticks,
+          notes: list.ok ? list.value.notes.length : -1,
+          excluded: deletedIds.size,
+          tracked: state.tracked.size,
+          active: state.activeId !== null,
+        });
+        ticks = 0;
       }
       if (list.ok && !baselineSeeded) {
         // First enumeration = baseline only. Pre-existing cues become
