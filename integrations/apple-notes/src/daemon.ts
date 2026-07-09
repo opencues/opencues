@@ -168,10 +168,17 @@ export async function main(): Promise<void> {
   ): void => {
     // Same-window fast path: the note still starts/ends with the
     // window's surroundings (our own frames or edits inside the window).
+    // The sliced base must remain ONE paragraph — an empty suffix
+    // matches any appended text (endsWith('') is always true), which
+    // silently grew the window to swallow every paragraph typed below
+    // it (observed live 2026-07-09: command 2 ran with the whole note
+    // as its buffer and its rewrite consumed the earlier answer).
+    const isOneParagraph = (s: string): boolean => !/\n\n/.test(s.endsWith('\n') ? s.slice(0, -1) : s);
     if (
       winRef.current && winRef.current.noteId === id &&
       text.length >= winRef.current.prefix.length + winRef.current.suffix.length &&
       text.startsWith(winRef.current.prefix) && text.endsWith(winRef.current.suffix) &&
+      isOneParagraph(text.slice(winRef.current.prefix.length, text.length - winRef.current.suffix.length)) &&
       (armAt === null || (armAt >= winRef.current.prefix.length && armAt < text.length - winRef.current.suffix.length))
     ) {
       const base = text.slice(winRef.current.prefix.length, text.length - winRef.current.suffix.length);
@@ -218,6 +225,11 @@ export async function main(): Promise<void> {
   let virtualWin: { prefix: string; suffix: string } | null = null;
   let flushTimer: NodeJS.Timeout | null = null;
   let firstPendingAt: number | null = null;
+  // Transient-failure retry budget for the CURRENT virtual content;
+  // reset whenever the runtime writes fresh bytes or the buffer drops.
+  const FLUSH_RETRY_MAX = 6;
+  const FLUSH_RETRY_DELAY_MS = 400;
+  let flushRetries = 0;
   // Render-phase lag instrumentation. Each flush carries the timestamps
   // of its phase boundaries so `fill landed` can report the breakdown
   // (settleMs/queueMs/readMs/spliceMs/casMs/totalMs), mirroring the
@@ -235,6 +247,7 @@ export async function main(): Promise<void> {
     virtualNoteId = null;
     virtualWin = null;
     firstPendingAt = null;
+    flushRetries = 0;
     if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
   };
 
@@ -253,6 +266,7 @@ export async function main(): Promise<void> {
     log('debug', 'requestWrite', { lines: rawText.split('\n').length, head: rawText.slice(0, 40) });
     virtualText = rawText;
     virtualNoteId = id;
+    flushRetries = 0; // fresh content, fresh retry budget
     // The runtime writes WINDOW bytes; remember the surroundings this
     // write belongs inside (whole-note passthrough when no window).
     virtualWin = winRef.current && winRef.current.noteId === id
@@ -294,8 +308,29 @@ export async function main(): Promise<void> {
     if (!snapshot) { log('debug', 'flush skipped: note untracked', { id }); dropVirtual(); return; }
     if (text === snapshot.plaintext) { log('debug', 'flush skipped: no change vs snapshot'); dropVirtual(); return; }
     log('debug', 'flushing', { lines: text.split('\n').length, head: text.slice(0, 40) });
-    await doFill(id, snapshot, text, timing);
-    // Only clear if no newer write arrived while the CAS ran.
+    const outcome = await doFill(id, snapshot, text, timing);
+    // TRANSIENT failures keep the buffer and retry after the poll has
+    // resynced the snapshot. Without this, an answer whose one-shot
+    // write raced the user's typing was dropped forever ("resyncs next
+    // poll" only ever applied to animation frames, which the animator
+    // rewrites — the final answer is written exactly once; observed
+    // live 2026-07-09: three computed translations, all lost). A user
+    // edit still wins: their text-change event calls dropVirtual and
+    // cancels the retry.
+    if (outcome === 'retry' && virtualText === raw && flushRetries < FLUSH_RETRY_MAX) {
+      flushRetries++;
+      log('info', `fill retry ${flushRetries}/${FLUSH_RETRY_MAX} scheduled (waiting for snapshot resync)`, { id });
+      flushTimer = setTimeout(() => {
+        flushTimer = null;
+        const retryTiming: FlushTiming = { firstPendingAt: timing.firstPendingAt, timerFiredAt: Date.now() };
+        fillChain = fillChain.then(() => flushVirtual(retryTiming)).catch(err => {
+          log('error', 'fill retry failed', String(err));
+        });
+      }, FLUSH_RETRY_DELAY_MS);
+      return;
+    }
+    // Landed, superseded, noop, fatal, or retries exhausted — clear if
+    // no newer write arrived while the CAS ran.
     if (virtualText === raw) dropVirtual();
   }
 
@@ -330,7 +365,7 @@ export async function main(): Promise<void> {
     newText: string,
     timing: FlushTiming,
     retried = false,
-  ): Promise<void> {
+  ): Promise<'landed' | 'retry' | 'fatal' | 'noop'> {
     const fillStart = Date.now();
     let readMs = 0;
     let baseBody = knownBody.get(id) ?? null;
@@ -350,23 +385,32 @@ export async function main(): Promise<void> {
         } else {
           log('error', `read before fill failed (${read.kind})`, read.detail);
         }
-        return;
+        return 'retry';
       }
       const currentText = read.value.plaintext.replace(/\r\n?/g, '\n');
       if (currentText !== snapshot.plaintext) {
-        log('info', 'note changed since resolution — fill dropped (resyncs next poll)', { id });
-        return;
+        let d = 0;
+        while (d < currentText.length && d < snapshot.plaintext.length && currentText[d] === snapshot.plaintext[d]) d++;
+        log('info', 'note changed since resolution — fill dropped (resyncs next poll)', {
+          id,
+          curLen: currentText.length,
+          snapLen: snapshot.plaintext.length,
+          firstDiff: d,
+          cur: JSON.stringify(currentText.slice(Math.max(0, d - 12), d + 24)),
+          snap: JSON.stringify(snapshot.plaintext.slice(Math.max(0, d - 12), d + 24)),
+        });
+        return 'retry';
       }
       if (bodyLooksAttachmentBearing(read.value.body)) {
         state.tracked.delete(id);
         log('warn', 'note has attachments — skipped to avoid destroying them', { id });
-        return;
+        return 'fatal';
       }
       baseBody = read.value.body;
     }
     const spliceStart = Date.now();
     const diff = diffLines(snapshot.plaintext, newText);
-    if (!diff) return;
+    if (!diff) return 'noop';
     // diff.start disambiguates duplicate cue lines (plaintext lines map
     // 1:1 onto body divs — see spliceLinesIntoBody's expectedStart).
     const newBody = spliceLinesIntoBody(baseBody, diff.oldLines, diff.newLines, diff.start);
@@ -379,7 +423,7 @@ export async function main(): Promise<void> {
       log('warn', 'could not locate a unique splice region — fill aborted', {
         id, oldLines: diff.oldLines.length,
       });
-      return;
+      return 'retry';
     }
     // Record the INTENDED text's hash before the CAS so a poll reading
     // the note in the write window still classifies it as our echo.
@@ -390,7 +434,7 @@ export async function main(): Promise<void> {
     if (!fill.ok) {
       knownBody.delete(id);
       log('error', `fill CAS failed (${fill.kind})`, fill.detail);
-      return;
+      return 'retry';
     }
     if (!fill.value.ok) {
       if (knownBody.delete(id) && !retried) {
@@ -398,7 +442,7 @@ export async function main(): Promise<void> {
         return doFill(id, snapshot, newText, timing, true);
       }
       log('info', 'fill CAS conflict — note changed under us, dropped', { id });
-      return;
+      return 'retry';
     }
     knownBody.set(id, newBody);
     // Ground-truth echo baseline: hash what Notes says the note NOW
@@ -460,6 +504,7 @@ export async function main(): Promise<void> {
       const cursor = synthCursor(newText);
       dispatchWindow(id, newText, cursor, cursor - 1, 'user', false);
     }
+    return 'landed';
   }
 
   bootResult = boot({
