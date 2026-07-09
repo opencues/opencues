@@ -6,6 +6,15 @@ patch. Unlike every other host, the text buffer it operates on isn't in
 its own process — it's whatever Windows app the user is currently typing
 in, reached over UI Automation.
 
+> **Implementation deep-dive:** [`IMPLEMENTATION.md`](IMPLEMENTATION.md) —
+> the problems we hit driving real apps (runaway self-transform loop, `_`
+> not resolving, cursor jump, process pollution, the CIM self-match
+> phantom) and the final working shape: singleton lifecycle, the
+> `oc-windows-reset` script, the typed micro-frame animation, caret
+> positioning, and the full touch-surface / reset table. Read it before
+> touching the write path, the tray/daemon lifecycle, or the attribution
+> guards.
+
 ## Architecture — two halves, one socket
 
 ```
