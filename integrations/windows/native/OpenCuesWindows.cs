@@ -680,26 +680,26 @@ namespace OpenCues
             if (text == null) return;
             text = NormalizeNewlinesForApp(text);
 
+            // Live micro-frame fast path (ALL attach modes). A tiny TAIL edit
+            // vs the field's current content - the loading spinner churning one
+            // char near the trailing `_` - is applied IMMEDIATELY as synthetic
+            // typing: Backspace x del + KEYEVENTF_UNICODE chars in one atomic
+            // SendInput burst. No whole-value SetValue (so no caret reset on
+            // WordPad), no clipboard, no select-all flash - the cleanest loading
+            // animation on every app: Notepad/WordPad get it via keystrokes
+            // instead of a per-frame SetValue, Electron gets it live instead of
+            // a coalesced paste. Anything bigger - the real substitution - falls
+            // through to the reliable whole-value paths below. Kill switch:
+            // OPENCUES_TYPE_ANIMATE=0 (legacy OPENCUES_MSAA_ANIMATE=0).
+            if (TryTypeMicroEdit(text)) return;
+
             // MSAA-attached (Chromium/Electron): the focused UIA element is an
-            // empty shell with no writable pattern, so writes go through the
-            // app's own paste path (Ctrl+A + Ctrl+V). Each paste is a visible
-            // select-all-replace + clipboard churn, and the BlankLoading
-            // animation emits many rapid frames + a final result. So DEFER the
-            // paste: stash the latest text and let MaybeFlushMsaaPaste() apply
-            // it once the set-text stream goes quiet - collapsing the whole
-            // animation into ONE clean paste of the final result.
+            // empty shell with no writable pattern, so a big write goes through
+            // the app's own paste path (Ctrl+A + Ctrl+V), DEFERRED until the
+            // set-text stream goes quiet so the final result lands as ONE clean
+            // paste (MaybeFlushMsaaPaste) instead of a select-all flash per frame.
             if (_attachMode == AttachMode.Msaa)
             {
-                // Live micro-frames: a tiny TAIL edit vs the field's current
-                // content (the BlankLoading spinner churning one char near
-                // the trailing `_`) is applied IMMEDIATELY as synthetic
-                // typing - Backspace x del + KEYEVENTF_UNICODE chars in one
-                // atomic burst. No clipboard, no select-all flash, none of
-                // Electron's async-clipboard timing - so Electron apps show
-                // the loading animation live instead of one coalesced paste.
-                // Anything bigger (the final result) stays on the deferred
-                // paste path below. Kill switch: OPENCUES_MSAA_ANIMATE=0.
-                if (TryTypeMsaaMicroEdit(text)) return;
                 _pendingMsaaText = text;
                 _pendingMsaaAtTick = Environment.TickCount;
                 return;
@@ -1299,17 +1299,27 @@ namespace OpenCues
             };
         }
 
-        // The typed micro-frame tier of the MSAA write ladder (below the
-        // backspace+paste tier and the Ctrl+A+paste tier): only for edits
-        // small enough to be indistinguishable from a human typing. Assumes
-        // the caret sits at the end of the field (phase-1 cursor model, and
-        // the state every prior write path leaves behind).
+        // The typed micro-frame fast path, shared by EVERY write path (MSAA
+        // paste ladder, UIA ValuePattern, TextPattern paste): a loading-
+        // animation frame is a tiny tail edit, small enough to be applied as
+        // synthetic typing (Backspace x del + Unicode chars) that's
+        // indistinguishable from a human. This is the cleanest animation on
+        // every app - no whole-value SetValue (no caret reset on WordPad), no
+        // clipboard, no select-all flash. Assumes the caret sits at the end of
+        // the field (phase-1 cursor model, and the state every prior write path
+        // leaves behind) - Backspace deletes from the caret backwards.
         const int MSAA_TYPE_MAX = 6;
-        static readonly bool _msaaAnimate = Environment.GetEnvironmentVariable("OPENCUES_MSAA_ANIMATE") != "0";
+        // Kill switch for the synthetic-typing micro-frame animation (all
+        // apps). Primary name OPENCUES_TYPE_ANIMATE; legacy OPENCUES_MSAA_ANIMATE
+        // still honoured. Either set to "0" disables it (fall back to the
+        // whole-value SetValue / paste path).
+        static readonly bool _typeAnimate =
+            Environment.GetEnvironmentVariable("OPENCUES_TYPE_ANIMATE") != "0" &&
+            Environment.GetEnvironmentVariable("OPENCUES_MSAA_ANIMATE") != "0";
 
-        static bool TryTypeMsaaMicroEdit(string text)
+        static bool TryTypeMicroEdit(string text)
         {
-            if (!_msaaAnimate) return false;
+            if (!_typeAnimate) return false;
             if (_pendingMsaaText != null) return false;   // a big write is queued; field state mid-flight - defer
             string cur = _lastSentText;
             if (cur == null) return false;                // unknown baseline - defer to the paste path
@@ -1335,7 +1345,7 @@ namespace OpenCues
             }
             if (inputs.Length > 0)
                 SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
-            Log("debug", "applied substitution (" + text.Length + " chars, MSAA/typed micro-frame: -" + del + " +" + tail.Length + ")");
+            Log("debug", "applied substitution (" + text.Length + " chars, typed micro-frame: -" + del + " +" + tail.Length + ")");
             return true;
         }
 
