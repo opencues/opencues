@@ -1248,6 +1248,7 @@ namespace OpenCues
         const ushort VK_V = 0x56;
         const ushort VK_BACK = 0x08;
         const ushort VK_END = 0x23;
+        const ushort VK_DELETE = 0x2E;
 
         static INPUT KeyInput(ushort vk, bool up)
         {
@@ -1321,6 +1322,14 @@ namespace OpenCues
             SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
         }
 
+        // Single key press+release (no modifier). Used to DELETE a live
+        // selection on the MSAA whole-field paste path.
+        static void KeyTap(ushort key)
+        {
+            var inputs = new INPUT[] { KeyInput(key, false), KeyInput(key, true) };
+            SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+        }
+
         // Select-all COMMIT gap (ms) for the big-field path. Default 0 -> 15ms.
         // Tunable via OPENCUES_PASTE_GAP_MS without a rebuild.
         static readonly int _pasteGapMs = ReadPasteGapMs();
@@ -1369,15 +1378,24 @@ namespace OpenCues
             }
             else
             {
-                // Whole-field rewrite (no small tail to exploit): select-all +
-                // paste the full text. The commit gap lets the selection land
-                // before the paste (else it APPENDS). One highlight frame - rare.
+                // Whole-field rewrite (no small tail to exploit): select-all,
+                // DELETE the selection to empty the field, then paste into the
+                // empty field. Pasting into a guaranteed-empty field CANNOT
+                // append old content — the failure mode on slow Electron
+                // composers (Discord), where a fast Ctrl+A->Ctrl+V pasted
+                // before the selection committed, leaving old text + new
+                // appended. Each step is its own burst with a commit gap so the
+                // slow composer processes the selection before the delete, and
+                // the delete before the paste. 90ms default (Discord needs
+                // ~50ms+; OPENCUES_PASTE_GAP_MS overrides for slower machines).
                 SetClipboardText(text);
                 Thread.Sleep(15);
-                int commitMs = _pasteGapMs > 0 ? _pasteGapMs : 15;
+                int commitMs = _pasteGapMs > 0 ? _pasteGapMs : 90;
                 KeyChord(VK_CONTROL, VK_A);
                 Thread.Sleep(commitMs);
-                KeyChord(VK_CONTROL, VK_V);
+                KeyTap(VK_DELETE);            // clear the selection -> field now empty
+                Thread.Sleep(commitMs);
+                KeyChord(VK_CONTROL, VK_V);   // paste into the empty field
             }
             // Electron reads the clipboard ASYNCHRONOUSLY after Ctrl+V; 300ms
             // clears that read before we restore the user's previous clipboard.
