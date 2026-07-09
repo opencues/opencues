@@ -680,6 +680,23 @@ namespace OpenCues
             if (text == null) return;
             text = NormalizeNewlinesForApp(text);
 
+            // Stream start (bracket closed): remember the user's current text for
+            // undo BEFORE the loading animation modifies the buffer, so the
+            // final EM_REPLACESEL write can make one Ctrl+Z restore it. One UIA
+            // read per stream (not per frame).
+            if (!_bracketOpen)
+            {
+                _emUndoBaseline = null;
+                try
+                {
+                    var el0 = AutomationElement.FocusedElement;
+                    object vp0;
+                    if (el0 != null && el0.TryGetCurrentPattern(ValuePattern.Pattern, out vp0))
+                        _emUndoBaseline = StripPhantomTrailingSeparator(el0, ((ValuePattern)vp0).Current.Value ?? "");
+                }
+                catch { }
+            }
+
             // Live micro-frame fast path (ALL attach modes). A tiny TAIL edit
             // vs the field's current content - the loading spinner churning one
             // char near the trailing `_` - is applied IMMEDIATELY as synthetic
@@ -726,6 +743,10 @@ namespace OpenCues
                     // changing write). No per-frame caret churn.
                     string prevSent = _lastSentText;
                     NoteSelfWrite(text);
+                    // Native-undo path first (Edit/RichEdit HWNDs): EM_REPLACESEL
+                    // so Ctrl+Z restores the pre-substitution text. Falls through
+                    // to SetValue on non-Edit fields or any verify mismatch.
+                    if (TryEmUndoableWrite(el, (ValuePattern)vp, text)) return;
                     ((ValuePattern)vp).SetValue(text);
                     if (!LooksLikeAnimationFrame(prevSent, text))
                     {
@@ -781,9 +802,14 @@ namespace OpenCues
         const uint EM_GETSEL = 0x00B0;
         const uint EM_SETSEL = 0x00B1;
         const uint EM_SCROLLCARET = 0x00B7;
+        const uint EM_REPLACESEL = 0x00C2;
         const uint SMTO_ABORTIFHUNG = 0x0002;
         [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         static extern IntPtr SendMessageTimeoutW(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam, uint flags, uint timeoutMs, out IntPtr result);
+        // EM_REPLACESEL takes the replacement text as lParam (LPCTSTR); same
+        // export as SendMessageTimeoutW, typed for a string arg.
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "SendMessageTimeoutW")]
+        static extern IntPtr SendMessageTimeoutText(IntPtr hWnd, uint msg, IntPtr wParam, string lParam, uint flags, uint timeoutMs, out IntPtr result);
 
         static void RestoreCaretToEnd(AutomationElement el, bool quiet = false)
         {
@@ -851,6 +877,82 @@ namespace OpenCues
                 KeyChord(VK_CONTROL, VK_END);
             }
             catch { }   // caret restore is best-effort; the text write already landed
+        }
+
+        // Edit-family window classes that speak EM_* messages: classic Win32
+        // "Edit", every RichEdit variant (WordPad "RICHEDIT50W", Win11 Notepad
+        // "RichEditD2DPT"), and WinForms TextBox ("WindowsForms10.EDIT.app...").
+        // WPF renders into one big HwndWrapper with no per-field HWND, so it
+        // never matches and stays on the SetValue path.
+        static bool IsEditClassHwnd(IntPtr hwnd, out string className)
+        {
+            className = null;
+            if (hwnd == IntPtr.Zero) return false;
+            var sb = new StringBuilder(256);
+            if (GetClassName(hwnd, sb, sb.Capacity) == 0) return false;
+            className = sb.ToString();
+            string c = className.ToLowerInvariant();
+            return c == "edit" || c.Contains("richedit") || c.Contains(".edit.");
+        }
+
+        // The user's pre-substitution text (with the trailing `_`), captured at
+        // the START of a write stream — before the loading animation touches the
+        // buffer. TryEmUndoableWrite resets to this so ONE Ctrl+Z restores it.
+        static string _emUndoBaseline = null;
+
+        // Undoable whole-value write for Edit/RichEdit HWNDs. `ValuePattern.
+        // SetValue` maps to WM_SETTEXT, which CLEARS RichEdit's undo buffer — so
+        // Ctrl+Z after a substitution did nothing. `EM_REPLACESEL(fUndo=TRUE)`
+        // writes through the native undo stack instead. To make a SINGLE Ctrl+Z
+        // land on the user's pre-command text (not a leftover animation frame),
+        // first reset the buffer to the captured baseline with fUndo=FALSE (no
+        // undo record, wipes the spinner), THEN write the result with
+        // fUndo=TRUE as ONE undo unit. Read-back verify (EOL-normalised, phantom
+        // mark stripped); any mismatch (CRLF index skew etc.) returns false so
+        // the caller repairs via SetValue — worst case is exactly the old
+        // behaviour. Message-based (SendMessageTimeout ABORTIFHUNG): no focus
+        // theft, can't wedge on a hung app.
+        static bool TryEmUndoableWrite(AutomationElement el, ValuePattern vp, string text)
+        {
+            try
+            {
+                string className;
+                IntPtr hwnd = new IntPtr(el.Current.NativeWindowHandle);
+                if (!IsEditClassHwnd(hwnd, out className)) return false;   // WPF etc → SetValue
+                IntPtr res;
+                // 1. Invisibly restore the baseline so the undo record spans
+                //    baseline→result (animation glyphs never persist in undo).
+                string cur = null;
+                try { cur = StripPhantomTrailingSeparator(el, vp.Current.Value ?? ""); } catch { }
+                if (_emUndoBaseline != null && _emUndoBaseline != cur)
+                {
+                    if (SendMessageTimeoutW(hwnd, EM_SETSEL, IntPtr.Zero, new IntPtr(-1), SMTO_ABORTIFHUNG, 2000, out res) == IntPtr.Zero) return false;
+                    if (SendMessageTimeoutText(hwnd, EM_REPLACESEL, IntPtr.Zero /* fUndo=FALSE */, _emUndoBaseline, SMTO_ABORTIFHUNG, 2000, out res) == IntPtr.Zero) return false;
+                }
+                // 2. Undoable whole-value replace (select-all → replace) — ONE
+                //    undo unit. Select-all is (0, -1): no index arithmetic to
+                //    skew on CRLF, unlike a span splice.
+                if (SendMessageTimeoutW(hwnd, EM_SETSEL, IntPtr.Zero, new IntPtr(-1), SMTO_ABORTIFHUNG, 2000, out res) == IntPtr.Zero) return false;
+                if (SendMessageTimeoutText(hwnd, EM_REPLACESEL, new IntPtr(1) /* fUndo=TRUE */, text, SMTO_ABORTIFHUNG, 2000, out res) == IntPtr.Zero) return false;
+                // EM_REPLACESEL leaves the caret after the inserted text = end.
+                SendMessageTimeoutW(hwnd, EM_SCROLLCARET, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out res);
+
+                string after = null;
+                try { after = StripPhantomTrailingSeparator(el, vp.Current.Value ?? ""); } catch { }
+                if (after == null || EolNorm(after) != EolNorm(text))
+                {
+                    Log("warn", "EM undoable write verify mismatch on '" + className + "' (want=" + text.Length + " got=" + (after == null ? -1 : after.Length) + ") - repairing via SetValue");
+                    return false;
+                }
+                _emUndoBaseline = null;
+                Log("debug", "applied substitution (" + text.Length + " chars, EM_REPLACESEL undoable, class " + className + ")");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Log("debug", "EM undoable write unavailable: " + ex.Message);
+                return false;
+            }
         }
 
         // Chromium applies SetValue (and its caret-to-start reset) on its own
