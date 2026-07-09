@@ -12,6 +12,7 @@ import {
   diffLines,
   initialState,
   pollDelayMs,
+  recordWriteHash,
   selectChanged,
   synthCursor,
 } from './tick';
@@ -218,6 +219,49 @@ describe('applyPoll', () => {
     expect(s.activeId).toBe('a');
     expect(events.find(e => e.type === 'switch-active')).toBeUndefined();
     expect(s.tracked.has('b')).toBe(true); // echo exception still tracks it
+  });
+
+  it('temp→permanent id swap remaps silently — no untrack, no buffer reset', () => {
+    // Notes enumerates a freshly UI-created note under a temporary
+    // CoreData id and swaps it for the permanent id moments later.
+    // Live failure (4 sessions, 2026-07-08/09): the swap read as
+    // delete + new note and killed every in-flight resolution.
+    const s = initialState(T0);
+    applyPoll(s, [meta('tTEMP', 'm1')], [note('tTEMP', 'm1', 'Draft an email _\n')], hash, T0);
+    expect(s.activeId).toBe('tTEMP');
+    const events = applyPoll(s, [meta('pPERM', 'm2')], [note('pPERM', 'm2', 'Draft an email _\n')], hash, T0 + 1000);
+    expect(events).toEqual([{ type: 'id-remapped', from: 'tTEMP', to: 'pPERM' }]);
+    expect(s.activeId).toBe('pPERM');
+    expect(s.tracked.get('pPERM')?.userEditAt).toBe(T0);
+    expect(s.tracked.has('tTEMP')).toBe(false);
+  });
+
+  it('id swap while the user kept typing (prefix match) remaps then reports the edit', () => {
+    const s = initialState(T0);
+    applyPoll(s, [meta('tTEMP', 'm1')], [note('tTEMP', 'm1', 'Draft an email _\n')], hash, T0);
+    expect(s.activeId).toBe('tTEMP');
+    const events = applyPoll(s, [meta('pPERM', 'm2')], [note('pPERM', 'm2', 'Draft an email _ and cc bob\n')], hash, T0 + 1000);
+    expect(events[0]).toEqual({ type: 'id-remapped', from: 'tTEMP', to: 'pPERM' });
+    const change = events.find(e => e.type === 'text-change' || e.type === 'switch-active');
+    expect(change).toMatchObject({ id: 'pPERM', source: 'user' });
+  });
+
+  it('id swap migrates the write-hash ring — echoes still classify as runtime', () => {
+    const s = initialState(T0);
+    applyPoll(s, [meta('tTEMP', 'm1')], [note('tTEMP', 'm1', 'q _\n')], hash, T0);
+    recordWriteHash(s, 'tTEMP', hash('q answered\n'));
+    applyPoll(s, [meta('pPERM', 'm2')], [note('pPERM', 'm2', 'q _\n')], hash, T0 + 1000);
+    // our fill echoes back under the NEW id
+    const events = applyPoll(s, [meta('pPERM', 'm3')], [note('pPERM', 'm3', 'q answered\n')], hash, T0 + 2000);
+    expect(events.find(e => e.type === 'text-change')).toMatchObject({ source: 'runtime' });
+    expect(s.tracked.has('pPERM')).toBe(true);
+  });
+
+  it('a genuine deletion (no content-matching new note) still untracks', () => {
+    const s = initialState(T0);
+    applyPoll(s, [meta('a', 'm1')], [note('a', 'm1', 'q _\n')], hash, T0);
+    const events = applyPoll(s, [meta('b', 'm2')], [note('b', 'm2', 'completely different\n')], hash, T0 + 1000);
+    expect(events.find(e => e.type === 'untracked')).toMatchObject({ id: 'a', reason: 'deleted' });
   });
 
   it('a note the user never edited (userEditAt 0) is never elected', () => {

@@ -269,8 +269,13 @@ export async function main(): Promise<void> {
       readMs = Date.now() - readStart;
       if (!read.ok) {
         if (read.kind === 'not-found') {
-          state.tracked.delete(id);
-          log('info', 'note deleted mid-fill — dropped', { id });
+          // Do NOT untrack here: a freshly UI-created note swaps its
+          // temporary CoreData id for the permanent one mid-lifecycle
+          // and reads as not-found under the old id. The next poll
+          // either remaps the id ('id-remapped' — tracking survives,
+          // the pending write retries under the new id) or confirms a
+          // genuine deletion via enumeration.
+          log('info', 'note not found under this id mid-fill — deferring to the next poll (id swap or deletion)', { id });
         } else {
           log('error', `read before fill failed (${read.kind})`, read.detail);
         }
@@ -591,6 +596,20 @@ export async function main(): Promise<void> {
               echoPending.delete(e.id);
               if (e.reason !== 'no-marker') log('info', 'note untracked', { id: e.id, reason: e.reason });
               break;
+            case 'id-remapped': {
+              // Same note, new identity (temp → permanent CoreData id).
+              // Migrate every id-keyed map; the runtime never notices.
+              const migrate = <V>(m: Map<string, V>): void => {
+                const v = m.get(e.from);
+                if (v !== undefined) { m.set(e.to, v); m.delete(e.from); }
+              };
+              migrate(knownBody);
+              migrate(echoPending);
+              migrate(lastRedispatchText);
+              if (virtualNoteId === e.from) virtualNoteId = e.to;
+              log('info', 'note id remapped (temporary → permanent)', { from: e.from, to: e.to });
+              break;
+            }
           }
         }
       }

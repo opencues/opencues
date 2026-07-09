@@ -215,7 +215,21 @@ export type PollEvent =
   | { type: 'switch-active'; id: string; text: string; cursor: number; source: 'user' | 'runtime'; armAt: number | null }
   | { type: 'text-change'; id: string; text: string; cursor: number; source: 'user' | 'runtime'; armAt: number | null }
   | { type: 'active-gone' }
-  | { type: 'untracked'; id: string; reason: 'oversize' | 'deleted' | 'no-marker' | 'fetch-error' };
+  | { type: 'untracked'; id: string; reason: 'oversize' | 'deleted' | 'no-marker' | 'fetch-error' }
+  /**
+   * The note's identity changed but the note itself didn't: Notes
+   * enumerates a freshly UI-created note under a TEMPORARY CoreData id
+   * (`…/ICNote/tXXXX…`) and swaps it for the permanent id (`…/pNNN`)
+   * a moment later. Before this event existed, the swap read as
+   * delete + new-note: the in-flight fill CAS failed (-1728 "Can't get
+   * object"), tracking dropped, resetBufferState() killed the
+   * resolution — the daemon broke on exactly the natural flow (⌘N,
+   * type a cue) while AppleScript-created probes (permanent id at
+   * birth) always passed. The daemon must migrate every id-keyed map
+   * (body cache, echo pending, redispatch dedupe, virtual-buffer id) —
+   * the runtime is deliberately never told.
+   */
+  | { type: 'id-remapped'; from: string; to: string };
 
 /**
  * Index of the standalone marker the daemon should ARM this event for,
@@ -258,6 +272,45 @@ export function applyPoll(
 ): PollEvent[] {
   const events: PollEvent[] = [];
   const alive = new Set(enumerated.map(n => n.id));
+
+  // Temp→permanent id continuity (see the 'id-remapped' event): a
+  // TRACKED id vanished this tick while a never-seen id appeared whose
+  // fetched text matches the vanished snapshot — exact, or one a prefix
+  // of the other (the user may have kept typing through the swap
+  // window; typing appends). Migrate identity instead of treating it
+  // as delete + new note.
+  const remapSilentIds = new Set<string>();
+  for (const [oldId, trackedNote] of [...state.tracked.entries()]) {
+    if (alive.has(oldId)) continue;
+    const candidate = fetched.find(f => {
+      if (f.plaintext === undefined || f.error !== undefined) return false;
+      if (!alive.has(f.id) || state.known.has(f.id) || state.tracked.has(f.id)) return false;
+      const t = f.plaintext.replace(/\r\n?/g, '\n');
+      if (t === trackedNote.plaintext) return true;
+      // Prefix comparison ignores the canonical trailing '\n' — typing
+      // appends BEFORE it ("q _\n" grows to "q _ more\n", which is not
+      // a string-prefix of the old text without stripping it).
+      const bare = (s: string): string => (s.endsWith('\n') ? s.slice(0, -1) : s);
+      const tB = bare(t);
+      const oldB = bare(trackedNote.plaintext);
+      return tB.startsWith(oldB) || oldB.startsWith(tB);
+    });
+    if (!candidate) continue;
+    if (candidate.plaintext!.replace(/\r\n?/g, '\n') === trackedNote.plaintext) {
+      // Pure identity swap, zero content change — the same-tick fetch
+      // must not read as an edit (no event, no dropVirtual downstream).
+      remapSilentIds.add(candidate.id);
+    }
+    state.tracked.delete(oldId);
+    state.tracked.set(candidate.id, { ...trackedNote, id: candidate.id });
+    const hashes = state.lastWriteHash.get(oldId);
+    if (hashes) {
+      state.lastWriteHash.set(candidate.id, hashes);
+      state.lastWriteHash.delete(oldId);
+    }
+    if (state.activeId === oldId) state.activeId = candidate.id;
+    events.push({ type: 'id-remapped', from: oldId, to: candidate.id });
+  }
 
   // Deleted notes drop out of every map silently (AN-3 mid-flight rule).
   for (const id of [...state.known.keys()]) {
@@ -343,7 +396,8 @@ export function applyPoll(
     state.activeId = best.id;
     events.push({ type: 'switch-active', id: best.id, text: best.plaintext, cursor, source, armAt });
   } else {
-    const wasFetched = fetched.some(f => f.id === best!.id && f.error === undefined);
+    const wasFetched = fetched.some(f => f.id === best!.id && f.error === undefined)
+      && !remapSilentIds.has(best.id);
     if (wasFetched) {
       events.push({ type: 'text-change', id: best.id, text: best.plaintext, cursor, source, armAt });
     }
