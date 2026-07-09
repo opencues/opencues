@@ -287,6 +287,15 @@ export function applyPoll(
       if (!alive.has(f.id) || state.known.has(f.id) || state.tracked.has(f.id)) return false;
       const t = f.plaintext.replace(/\r\n?/g, '\n');
       if (t === trackedNote.plaintext) return true;
+      // OUR OWN WRITE under the new id is the strongest identity proof:
+      // a fill's CAS can land in Notes even when the osascript errors
+      // because the id swapped mid-script — the new note then contains
+      // an animation frame ("Draft an email •") while the tracked
+      // snapshot still says "_", so content comparison fails by exactly
+      // one character and the swap read as deletion, freezing the frame
+      // in the note forever (observed live 2026-07-09 13:44). The
+      // write-hash ring already holds every text we wrote or intended.
+      if (state.lastWriteHash.get(oldId)?.has(hash(t))) return true;
       // Prefix comparison ignores the canonical trailing '\n' — typing
       // appends BEFORE it ("q _\n" grows to "q _ more\n", which is not
       // a string-prefix of the old text without stripping it).

@@ -246,6 +246,26 @@ describe('applyPoll', () => {
     expect(change).toMatchObject({ id: 'pPERM', source: 'user' });
   });
 
+  it('id swap where OUR FRAME landed under the new id remaps via the write-hash ring', () => {
+    // The CAS can land in Notes even when the osascript errors (id
+    // swapped mid-script): the new id then holds our animation frame
+    // ("Draft an email •") while the snapshot says "_" — content/prefix
+    // matching fails by one char. The write-hash ring is the identity
+    // proof. Live failure 2026-07-09 13:44: swap read as deletion, the
+    // frame froze in the note forever.
+    const s = initialState(T0);
+    applyPoll(s, [meta('tTEMP', 'm1')], [note('tTEMP', 'm1', 'Draft an email _ \n')], hash, T0);
+    recordWriteHash(s, 'tTEMP', hash('Draft an email • \n')); // frame write, pre-CAS
+    const events = applyPoll(s, [meta('pPERM', 'm2')], [note('pPERM', 'm2', 'Draft an email • \n')], hash, T0 + 1000);
+    expect(events[0]).toEqual({ type: 'id-remapped', from: 'tTEMP', to: 'pPERM' });
+    expect(events.find(e => e.type === 'untracked')).toBeUndefined();
+    expect(s.activeId).toBe('pPERM');
+    // the frame echo classifies as runtime (ring migrated), note stays tracked
+    const change = events.find(e => e.type === 'text-change');
+    expect(change).toMatchObject({ source: 'runtime' });
+    expect(s.tracked.has('pPERM')).toBe(true);
+  });
+
   it('id swap migrates the write-hash ring — echoes still classify as runtime', () => {
     const s = initialState(T0);
     applyPoll(s, [meta('tTEMP', 'm1')], [note('tTEMP', 'm1', 'q _\n')], hash, T0);
