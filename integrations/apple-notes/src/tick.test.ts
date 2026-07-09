@@ -305,10 +305,12 @@ describe('applyPoll', () => {
     expect(events).toEqual([]);
   });
 
-  it('fetch-error notes are untracked without crashing the tick', () => {
+  it('fetch-error notes untrack only after 3 consecutive failures', () => {
     const s = initialState(T0);
     applyPoll(s, [meta('a', 'm1')], [note('a', 'm1', 'q _\n')], hash, T0);
-    const events = applyPoll(s, [meta('a', 'm2')], [{ id: 'a', error: 'locked' }], hash, T0);
+    applyPoll(s, [meta('a', 'm2')], [{ id: 'a', error: 'locked' }], hash, T0);
+    applyPoll(s, [meta('a', 'm3')], [{ id: 'a', error: 'locked' }], hash, T0);
+    const events = applyPoll(s, [meta('a', 'm4')], [{ id: 'a', error: 'locked' }], hash, T0);
     expect(events).toContainEqual({ type: 'untracked', id: 'a', reason: 'fetch-error' });
   });
 });
@@ -431,5 +433,44 @@ describe('canonicalizeForEcho (Notes typography pass immunity)', () => {
     const change = events.find(e => e.type === 'text-change');
     expect(change).toMatchObject({ source: 'runtime' });
     expect(s.tracked.has('a')).toBe(true); // echo exception holds — no untrack
+  });
+});
+
+describe('selectChanged mod-ambiguity window (harness S2 catch)', () => {
+  it('re-fetches a note whose mod is within the ambiguity window even when unchanged', async () => {
+    const { MOD_AMBIGUITY_MS } = await import('./tick');
+    const s = initialState(T0);
+    const recentIso = new Date(5_000_000).toISOString();
+    s.known.set('a', recentIso);
+    expect(selectChanged(s, [meta('a', recentIso)], 5_000_000 + 1000)).toEqual(['a']);
+    expect(selectChanged(s, [meta('a', recentIso)], 5_000_000 + MOD_AMBIGUITY_MS + 1)).toEqual([]);
+  });
+});
+
+describe('transient fetch errors (id-swap third face, harness S3 catch)', () => {
+  it('a single fetch error keeps the note tracked (remap gets its chance)', () => {
+    const s = initialState(T0);
+    applyPoll(s, [meta('a', 'm1')], [note('a', 'm1', 'q _\n')], hash, T0);
+    const events = applyPoll(s, [meta('a', 'm2')], [{ id: 'a', error: 'gone' }], hash, T0 + 500);
+    expect(events.find(e => e.type === 'untracked')).toBeUndefined();
+    expect(s.tracked.has('a')).toBe(true);
+  });
+  it('three consecutive fetch errors untrack', () => {
+    const s = initialState(T0);
+    applyPoll(s, [meta('a', 'm1')], [note('a', 'm1', 'q _\n')], hash, T0);
+    applyPoll(s, [meta('a', 'm2')], [{ id: 'a', error: 'x' }], hash, T0 + 500);
+    applyPoll(s, [meta('a', 'm3')], [{ id: 'a', error: 'x' }], hash, T0 + 1000);
+    const events = applyPoll(s, [meta('a', 'm4')], [{ id: 'a', error: 'x' }], hash, T0 + 1500);
+    expect(events).toContainEqual({ type: 'untracked', id: 'a', reason: 'fetch-error' });
+  });
+  it('a success resets the failure counter', () => {
+    const s = initialState(T0);
+    applyPoll(s, [meta('a', 'm1')], [note('a', 'm1', 'q _\n')], hash, T0);
+    applyPoll(s, [meta('a', 'm2')], [{ id: 'a', error: 'x' }], hash, T0 + 500);
+    applyPoll(s, [meta('a', 'm3')], [note('a', 'm3', 'q _\n')], hash, T0 + 1000);
+    applyPoll(s, [meta('a', 'm4')], [{ id: 'a', error: 'x' }], hash, T0 + 1500);
+    const events = applyPoll(s, [meta('a', 'm5')], [{ id: 'a', error: 'x' }], hash, T0 + 2000);
+    expect(events.find(e => e.type === 'untracked')).toBeUndefined();
+    expect(s.tracked.has('a')).toBe(true);
   });
 });

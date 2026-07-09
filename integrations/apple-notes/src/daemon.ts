@@ -202,10 +202,15 @@ export async function main(): Promise<void> {
     if (Date.now() - lastArm.at > ARM_RECOVERY_MS) return false;
     if (!containsBlankMarker(text)) return false;
     const lines = text.split('\n');
-    const li = lines.indexOf(lastArm.line);
+    // Fold-compare: Notes' typography pass rewrites the ARMED line
+    // itself (straight → curly quotes on the user's typed text), so a
+    // byte-verbatim match missed and the cue froze on its frame
+    // (harness S5 2026-07-09). Same fold as echo identity.
+    const target = canonicalizeForEcho(lastArm.line);
+    const li = lines.findIndex(l => canonicalizeForEcho(l) === target);
     if (li < 0) return false;
     const lineStart = lines.slice(0, li).join('\n').length + (li > 0 ? 1 : 0);
-    const cursorsInLine = markerCursors(lastArm.line);
+    const cursorsInLine = markerCursors(lines[li]);
     if (cursorsInLine.length === 0) return false;
     const armAt = lineStart + cursorsInLine[cursorsInLine.length - 1] - 1;
     log('info', 'recovering interrupted cue — re-arming after an edit elsewhere', { id });
@@ -709,7 +714,7 @@ export async function main(): Promise<void> {
           permissionLost = false;
           log('info', 'permission restored — resuming.');
         }
-        const changed = selectChanged(state, list.value.notes);
+        const changed = selectChanged(state, list.value.notes, Date.now());
         let fetched: { id: string; mod?: string; plaintext?: string; error?: string }[] = [];
         if (changed.length > 0) {
           const res = await bridge.fetchPlaintexts(changed);

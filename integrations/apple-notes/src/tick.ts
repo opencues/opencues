@@ -98,6 +98,14 @@ export interface DaemonState {
    */
   lastWriteHash: Map<string, Map<string, number>>;
   lastActivityAt: number;
+  /** id → consecutive plaintext-fetch failures. A fetch can error
+   *  TRANSIENTLY — most importantly when a temp CoreData id dies
+   *  between enumeration and fetch (the id swap's third face, harness
+   *  S3 2026-07-09: instant untrack destroyed the tracked entry and
+   *  write ring BEFORE the remap ever had a candidate, the election
+   *  fell back to an old note, and the resolution died). Untrack only
+   *  after 3 consecutive failures. */
+  fetchErrors: Map<string, number>;
 }
 
 export function initialState(now: number): DaemonState {
@@ -107,6 +115,7 @@ export function initialState(now: number): DaemonState {
     activeId: null,
     lastWriteHash: new Map(),
     lastActivityAt: now,
+    fetchErrors: new Map(),
   };
 }
 
@@ -227,12 +236,25 @@ export function synthCursorNear(text: string, prevText: string | undefined): num
   return best;
 }
 
+/** modificationDate has 1-SECOND resolution: keystrokes landing in the
+ *  same second as the previous fetch change the note WITHOUT changing
+ *  its mod string. A cue typed there was invisible to change detection
+ *  FOREVER (harness scenario 2, 2026-07-09: '…to french _' finished in
+ *  the fetch's own second; the daemon polled healthily for 90s and
+ *  never armed it). Any note saved within this window is re-fetched
+ *  regardless of mod match — bounded to the few seconds around typing. */
+export const MOD_AMBIGUITY_MS = 2_500;
+
 /** Which enumerated notes need a plaintext fetch this tick. */
-export function selectChanged(state: DaemonState, notes: readonly { id: string; mod: string | null }[]): string[] {
+export function selectChanged(state: DaemonState, notes: readonly { id: string; mod: string | null }[], now?: number): string[] {
   const changed: string[] = [];
   for (const n of notes) {
     if (n.mod === null) continue;
-    if (state.known.get(n.id) !== n.mod) changed.push(n.id);
+    if (state.known.get(n.id) !== n.mod) { changed.push(n.id); continue; }
+    if (now !== undefined) {
+      const modMs = Date.parse(n.mod);
+      if (Number.isFinite(modMs) && now - modMs < MOD_AMBIGUITY_MS) changed.push(n.id);
+    }
   }
   return changed;
 }
@@ -366,6 +388,9 @@ export function applyPoll(
   for (const id of [...state.known.keys()]) {
     if (!alive.has(id)) state.known.delete(id);
   }
+  for (const id of [...state.fetchErrors.keys()]) {
+    if (!alive.has(id)) state.fetchErrors.delete(id);
+  }
   for (const id of [...state.tracked.keys()]) {
     if (!alive.has(id)) {
       state.tracked.delete(id);
@@ -378,9 +403,15 @@ export function applyPoll(
   const prevTexts = new Map<string, string>();
   for (const f of fetched) {
     if (f.error !== undefined || f.plaintext === undefined || f.mod === undefined) {
-      if (state.tracked.delete(f.id)) events.push({ type: 'untracked', id: f.id, reason: 'fetch-error' });
+      const fails = (state.fetchErrors.get(f.id) ?? 0) + 1;
+      state.fetchErrors.set(f.id, fails);
+      if (fails >= 3 && state.tracked.delete(f.id)) {
+        state.fetchErrors.delete(f.id);
+        events.push({ type: 'untracked', id: f.id, reason: 'fetch-error' });
+      }
       continue;
     }
+    state.fetchErrors.delete(f.id);
     const text = f.plaintext.replace(/\r\n?/g, '\n');
     const prev = state.tracked.get(f.id);
     if (prev) prevTexts.set(f.id, prev.plaintext);
