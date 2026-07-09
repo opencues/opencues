@@ -40,14 +40,17 @@ Cost: minutes. Buys: the next "it does nothing" diagnoses itself.
 
 ## Phase 2 — Fast (the two real levers)
 
-### 2.1 Model: blanks/cues buckets → `gpt-oss-120b` (RECOMMENDED)
-Everything else is at its physical floor. gemma-4-31b is ~2× slower
-per call at its reasoning levels AND is the source of every
-instruction-following failure in the ledger's model section — it was
-never bench-validated for this pipeline; gpt-oss-120b is. One config
-line, reversible, hot-reloads. This is the single biggest speed AND
-reliability win available today. (User decision — declined twice;
-re-recommended with the full evidence now on the table.)
+### 2.1 Model — DECIDED 2026-07-09: `cerebras/gemma-4-31b` everywhere
+User decision: gemma-4-31b is the global default AND all three buckets
+(blanks/cues/auditors). The engineering recommendation remains on
+record (gpt-oss-120b is bench-validated and ~2× faster; every
+instruction-following artifact in the ledger's model section traces to
+gemma), and the ledger's triage rule applies: mangled/hallucinated
+output reproduces against the model via the benches before any
+pipeline suspicion. Known gemma artifact worth remembering: asked
+"what model am I using _" it confabulates (e.g. "Claude 3.5 Sonnet") —
+models don't know their serving identity; the log and `opencues
+doctor` are the truth.
 
 ### 2.2 Transform "full note in, patch out" (core work, 2-3 days)
 TransformBlank currently reproduces its whole buffer per command. On a
