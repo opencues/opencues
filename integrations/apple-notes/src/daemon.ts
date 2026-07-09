@@ -609,6 +609,7 @@ export async function main(): Promise<void> {
   const DELETED_REFRESH_MS = 10_000;
   let deletedIds = new Set<string>();
   let deletedRefreshedAt = 0;
+  const excludedMods = new Map<string, string>();
   // Poll heartbeat — one info line per HEARTBEAT_MS proving the loop is
   // alive and what it sees (a silent log otherwise can't distinguish
   // "nothing changed" from "poll loop wedged" — that ambiguity cost a
@@ -627,6 +628,19 @@ export async function main(): Promise<void> {
       }
       const list = await bridge.listNotes();
       if (list.ok && deletedIds.size > 0) {
+        // Visibility before filtering: an edit inside a Recently-Deleted
+        // note is otherwise INVISIBLE silence — the user types into a
+        // note they deleted earlier (or a recovered one mid-refresh) and
+        // nothing happens with no trace (PLAN.md § 1.3).
+        for (const n of list.value.notes) {
+          if (n.mod !== null && deletedIds.has(n.id) && excludedMods.get(n.id) !== n.mod) {
+            if (excludedMods.has(n.id)) {
+              log('warn', 'edit detected in a Recently-Deleted note — ignored (recover the note to use cues in it)', { id: n.id });
+            }
+            excludedMods.set(n.id, n.mod);
+          }
+        }
+        for (const id of [...excludedMods.keys()]) if (!deletedIds.has(id)) excludedMods.delete(id);
         list.value.notes = list.value.notes.filter(n => !deletedIds.has(n.id));
       }
       ticks++;
@@ -646,7 +660,7 @@ export async function main(): Promise<void> {
         // eligible when their note is next edited (see seedBaseline).
         seedBaseline(state, list.value.notes);
         baselineSeeded = true;
-        log('info', 'baseline seeded — watching for edits from now on', { notes: list.value.notes.length });
+        log('info', 'baseline seeded — watching for edits from now on (any pre-existing `_` cue is inert until its note is edited again)', { notes: list.value.notes.length });
         await sleepOrWake(pollDelayMs(state, running, Date.now()));
         continue;
       }
