@@ -129,6 +129,41 @@ with nobody at the keyboard). The Android accessibility host has the
 same shape (TEXT_CHANGED events carry no attribution) — reuse this
 pattern there.
 
+## Write paths — and the typed micro-frame animation
+
+`ApplySetText` picks one of three write mechanisms by how the focused
+field exposes itself:
+
+| Path | Apps | Mechanism |
+|---|---|---|
+| **UIA `ValuePattern.SetValue`** | Notepad, WordPad, Explorer, Win32/WinForms/WPF | whole-value replace, atomic |
+| **UIA `TextPattern` paste** | Electron/Chromium with a writable-less UIA element but a `TextPattern` | clipboard + Ctrl+A + Ctrl+V |
+| **MSAA deferred paste** | Chromium/Electron whose focused UIA element is an empty read-only shell (text lives in the MSAA/IA2 tree) — Discord | Ctrl+A + Ctrl+V, coalesced once the stream goes quiet |
+
+**Above all three sits ONE shared fast path for loading-animation
+frames: `TryTypeMicroEdit`.** A spinner frame is a tiny tail edit vs
+`_lastSentText` (the glyph churning near the trailing `_`). When the
+changed suffix is ≤6 chars with no newline, it's applied as **synthetic
+typing** — Backspace × del + `KEYEVENTF_UNICODE` chars in one atomic
+`SendInput` burst — instead of a whole-value write. No clipboard, no
+select-all flash, and **no caret reset** (the reason WordPad's cursor
+used to jump: every `SetValue` parks the caret at the field start, so
+restoring it per frame yanked it start→end ~13×/sec). This is the
+cleanest animation on every app; it was MSAA-only until 63be937f, when
+the call was hoisted above the attach-mode branches so Notepad/WordPad
+get it too.
+
+It calls `NoteSelfWrite(text)` like every other path, so the write
+bracket still attributes the frames correctly. It relies on the
+**phase-1 caret-at-end model** (Backspace deletes backwards from the
+caret); a frame with a longer changed suffix, or the caret elsewhere,
+declines and falls through to the whole-value path — where
+`LooksLikeAnimationFrame` is the secondary caret-skip net for
+`SetValue`. Kill switch: `OPENCUES_TYPE_ANIMATE=0` (legacy
+`OPENCUES_MSAA_ANIMATE=0` still honoured). The **real substitution** (a
+big, non-tail write) always takes a whole-value path — typing is only
+for the small frames.
+
 ## Multi-buffer state — MUST reset on focus change
 
 The Windows host attaches to **many** independent fields across apps in
@@ -173,6 +208,36 @@ OPENCUES_WIN_PORT=51789 node integrations/windows/src/hostd.cjs
 Debugging: `tail -f /tmp/opencues.log | grep '\[windows\]'`. The daemon
 prints the Windows-side command on start.
 
+### Singleton discipline — `oc-windows-reset`
+
+The integration is a **singleton by design**: one tray hosting one
+in-process shim + one WSL daemon (kept alive by a heartbeat file, so it
+self-exits if the tray dies). **Two shims writing the same foreign field
+is unwinnable** — they fight over the buffer. Debug sessions and crashes
+leave orphans (standalone `-File OpenCuesWindows.ps1` shims, bare `node
+hostd.cjs` daemons, watchdog loops, stale heartbeat/presence files), so
+when anything looks stuck, don't hand-kill processes — run:
+
+```bash
+integrations/windows/bin/oc-windows-reset   # teardown + relaunch + verify singleton
+#   --down        teardown only, leave stopped
+#   --no-launch   teardown + verify-clean, don't relaunch
+```
+
+It loop-kills everything, clears the stale state files, relaunches ONE
+instance the canonical way (`oc-windows` → hidden tray → daemon + shim),
+and polls until it can *prove* a singleton (port listening, daemon=1,
+tray=1, shim handshake in the log) or fails loudly. It's idempotent — a
+second run tears down the first and converges to the same state.
+
+> **Counting gotcha (baked into the script, don't reintroduce):** a CIM
+> `Where CommandLine -match/-like '…OpenCues…'` query MATCHES ITS OWN
+> command line, so a naive shim/tray count is always off by one (the
+> query sees itself). It reads as a phantom "extra shim that respawns
+> every time you kill it" — it cost a long detour. Every counter in the
+> reset script excludes processes whose cmdline contains
+> `Get-CimInstance`. Do the same for any ad-hoc process check.
+
 ## Wire protocol
 
 Versioned, newline-JSON, `protocol.md`. Bump `protocol` (in the
@@ -192,7 +257,10 @@ message types freely (both sides ignore unknown `t`).
   cycling. (A surgical EM_REPLACESEL splice + prefix/suffix diff
   windowing was tried and reverted — see a28d4ab0 / 1386b60d; retry
   needs CRLF index mapping for RichEdit and MSAA `setSelection` instead
-  of big key bursts on Electron.)
+  of big key bursts on Electron.) Note `SetValue` now only fires for the
+  **real substitution**; the loading-animation frames take the typed
+  micro-edit path (see § Write paths), so there's no per-frame caret
+  churn to repair during the spinner.
 - **Elevated apps** are invisible to a normal-integrity UIA client
   (UIPI). A signed UIAccess build is deferred.
 - **WSL2 localhost forwarding** is assumed (Windows → WSL server on
