@@ -314,6 +314,28 @@ REWRITING the poem into a hostile parody with zero emojis. That is the
 un-benched model, not the pipeline — logged here so note-vandalism
 reports point at the model choice.
 
+## Notes' emoji re-serialization leaking into the runtime buffer (2026-07-09)
+
+Symptom after the drained-gate fix: "prompt effects are slow and
+animations unresponsive" — every command in an emoji-bearing note
+burned a full DISCARDED resolution first: "skipping — live text
+changed (live 363 vs original 362)" — ONE character — then a
+re-dispatch and a second LLM round before landing. The char is Notes
+itself: emoji (variation selectors) don't round-trip byte-identically,
+and after a flush completed the daemon DROPPED the virtual buffer, so
+getText fell back to the tracked snapshot — Notes-normalized bytes the
+runtime never wrote. That drift invalidated the transform guard
+mid-resolution on every command touching emoji content.
+
+Fix: the virtual buffer is RETAINED across flushes — getText serves
+the runtime's own bytes until a genuine user change, note switch, or
+active-gone replaces them (the same contract every other host has for
+free: the buffer changes only via the runtime's writes or user keys).
+Notes' normalized reality still drives the splice diffs (tracked
+snapshot) and echo hashing (as-landed text) — it just never leaks into
+the runtime's view again. Verified: emoji answer + follow-up translate
+lands in ONE attempt, zero skips.
+
 ## Windows-integration fixes, cross-checked and ported (2026-07-09)
 
 The Windows daemon shares our core blindness (no keyboard; infer input

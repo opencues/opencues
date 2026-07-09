@@ -265,7 +265,21 @@ export async function main(): Promise<void> {
     const text = ensureTrailingNewline(raw);
     const snapshot = state.tracked.get(id);
     if (!snapshot) { log('debug', 'flush skipped: note untracked', { id }); dropVirtual(); return; }
-    if (text === snapshot.plaintext) { log('debug', 'flush skipped: no change vs snapshot'); dropVirtual(); return; }
+    if (text === snapshot.plaintext) {
+      // Nothing to write, but KEEP the virtual buffer: getText must go
+      // on serving the runtime's own bytes. Dropping here made getText
+      // fall back to the tracked snapshot — text NOTES re-serialized
+      // (emoji variation selectors don't round-trip byte-identically),
+      // i.e. bytes the runtime never wrote. That one-char drift
+      // invalidated the transform guard mid-resolution ('live 363 vs
+      // original 362'), forcing a discard + full re-resolution per
+      // command (observed 2026-07-09 17:14 — 'slow, animations
+      // unresponsive'). On every other host the buffer only changes
+      // via the runtime's own writes or user keys; retention restores
+      // that contract between flushes.
+      log('debug', 'flush skipped: no change vs snapshot');
+      return;
+    }
     log('debug', 'flushing', { lines: text.split('\n').length, head: text.slice(0, 40) });
     const outcome = await doFill(id, snapshot, text, timing);
     // TRANSIENT failures keep the buffer and retry after the poll has
@@ -288,9 +302,15 @@ export async function main(): Promise<void> {
       }, FLUSH_RETRY_DELAY_MS);
       return;
     }
-    // Landed, superseded, noop, fatal, or retries exhausted — clear if
-    // no newer write arrived while the CAS ran.
-    if (virtualText === raw) dropVirtual();
+    // Landed, superseded, noop, fatal, or retries exhausted. The buffer
+    // is RETAINED either way (see the skip branch above: getText must
+    // keep serving the runtime's own bytes; Notes-normalized echo text
+    // must never leak into the runtime buffer). It clears only on a
+    // genuine user change, a note switch, or active-gone.
+    if (virtualText === raw && flushTimer === null) {
+      firstPendingAt = null;
+      flushRetries = 0;
+    }
   }
 
   // Body cache for consecutive daemon-owned writes (animation frames):
