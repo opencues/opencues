@@ -210,52 +210,130 @@ run tears down the first and converges to the same state.
 
 ---
 
-## 5. Write paths + the typed micro-frame animation
+## 5. Write paths — the convergent surface
 
-`ApplySetText` (`OpenCuesWindows.cs:678`) picks a write mechanism by how
-the focused field exposes itself:
+This is the trickiest part of the host, and it went through several
+wrong turns before converging (see the *relative-vs-absolute* lesson at
+the end — it's the crux). `ApplySetText` (`OpenCuesWindows.cs`) picks a
+mechanism by how the focused field exposes itself:
 
-| Path | Apps | Mechanism |
+| Surface | Apps | Write primitive | Undo | Drift |
+|---|---|---|---|---|
+| **Edit-family HWND** (`IsEditClassHwnd`) | Notepad `RichEditD2DPT`, WordPad `RICHEDIT50W`, WinForms, classic `Edit` | `EM_SETSEL` + `EM_REPLACESEL` per write (`TryEmConvergentWrite`) | **native Ctrl+Z** | none — absolute |
+| **Non-Edit UIA** (writable `ValuePattern`, no Edit HWND) | Slack, other Chromium-UIA composers | `ValuePattern.SetValue` (absolute; app owns its own undo) | app's own | none |
+| **MSAA** (read-only UIA shell, text in the MSAA/IA2 tree) | Discord/Electron | relative backspace micro-frames (`TryTypeMsaaMicroEdit`) **anchored** by an absolute deferred paste | app's own | bounded by the paste anchor |
+
+### The convergent principle
+
+**Every write is (a) absolute and (b) computed against the buffer's
+actual content, read back each call.** Absolute = the write fully
+specifies the result, so a prior divergence can't accumulate. Read-back
+= we never trust an optimistic model. Together that's *convergent*: the
+buffer can't drift no matter how laggy or foreign it is. This is the
+whole reason `TryEmConvergentWrite` reads `cur` (the real value, phantom-
+mark-stripped) at the top of every call before deciding anything.
+
+### Edit-family — `TryEmConvergentWrite`
+
+RichEdit/Edit controls speak `EM_*` messages, which are **value-based**
+so they marshal fine cross-process (our shim drives these apps from a
+*different* process — remember that, it bites TOM below). `EM_REPLACESEL`
+is the key primitive: a select-all + replace is **both absolute** (whole
+value → no drift) **and undo-participating** (unlike `SetValue`, which
+maps to `WM_SETTEXT` and *clears* RichEdit's undo — the reason Ctrl+Z did
+nothing before this).
+
+- **Animation frame** (small delta, `IsSmallDelta` vs `cur`): whole-value
+  `EM_REPLACESEL` with `fUndo=FALSE` — cosmetic, not recorded in undo.
+- **Final result** (large delta): reset to the captured baseline (the `_`
+  command, `fUndo=FALSE`) then write the result (`fUndo=TRUE`) = **one
+  undo unit**, so a single Ctrl+Z restores the pre-command text. The
+  baseline is read from `cur` at write-stream start (`_emUndoBaseline`),
+  not a separate UIA round-trip — that extra read was a lag source in an
+  earlier attempt.
+- **Verify + fallback**: read back (EOL-normalised); any mismatch (a
+  control whose EM index model diverges from the UIA string) returns
+  false and the caller repairs via absolute `SetValue`. Worst case =
+  the old robust-but-no-undo behaviour.
+
+### `EM_HIDESELECTION` — killing the blue flash (important)
+
+`EM_REPLACESEL` needs a selection to replace, so we `EM_SETSEL` first —
+and the control **paints that selection blue**, 13×/sec during the
+spinner. Shrinking the selection to the single changed glyph (target-
+span) did **not** help: even a 1-char selection flashed. The fix is to
+tell the control *don't draw the selection highlight at all* for the
+instant it exists: **`EM_HIDESELECTION(TRUE)` before the write,
+`EM_HIDESELECTION(FALSE)` after.** The text still paints live; only the
+highlight is suppressed. It's toggled per write (never left on, or it
+would hide the *user's* own selections when they highlight text).
+
+Rejected alternatives, and why:
+- **`WM_SETREDRAW`** (suspend *all* painting, then force a repaint):
+  heavier (a full repaint per frame) and Win11 Notepad's Direct2D
+  control *ignores* it — the flash survived.
+- **Keystrokes** (Backspace/type never highlight): would fix the flash
+  but every keystroke is a native undo unit → Ctrl+Z granularity
+  wrecked. That's the whole thing we use `EM_REPLACESEL` to avoid.
+
+`EM_HIDESELECTION` is RichEdit-only; it's a harmless no-op on a classic
+`Edit` (dialog boxes), which aren't animation targets.
+
+### The cross-process wall — why Notepad's undo can't be perfect
+
+On **WordPad**, `EM_REPLACESEL`'s `fUndo=FALSE` is honoured, so the
+animation frames stay out of undo and one Ctrl+Z lands cleanly on the
+command. On **Win11 Notepad** (`RichEditD2DPT`) it is **not** — Notepad
+manages undo at the app level and records every buffer change regardless
+of the flag, so Ctrl+Z steps back through the spinner frames.
+
+The "correct" fix — suspend undo recording during the animation via the
+Text Object Model (`ITextDocument.Undo(tomSuspend/tomResume)`) — is
+**not reachable from here.** The only way to get `ITextDocument` is
+`EM_GETOLEINTERFACE`, which returns a COM pointer valid **only inside the
+target process's address space**. `SendMessage` does not marshal it
+across the process boundary, and our shim is out-of-process. Value-based
+`EM_*` messages (the `fUndo` flag, `EM_SETSEL`, …) marshal fine;
+pointer-returning ones (`EM_GETOLEINTERFACE`) do not. **Do not re-attempt
+TOM from the shim** — it's structurally impossible without in-process
+injection.
+
+So Notepad's undo-includes-the-dots is an *accepted limitation*, not a
+bug to keep chasing. The feasible-but-rejected trades were: skip the
+spinner on Notepad (loses the animation) or `EM_EMPTYUNDOBUFFER` before
+the result (works cross-process, but wipes the user's *prior* undo
+history). We chose to leave it.
+
+### MSAA (Discord) — the anchored exception
+
+Discord's focused element is an empty shell; there's no `ValuePattern`
+to `SetValue` and no Edit HWND for `EM_*`. So it keeps the **relative**
+backspace micro-frame path (`TryTypeMsaaMicroEdit`: `SendInput`
+Backspace×del + `KEYEVENTF_UNICODE`), which is safe there because the
+**final** write is an absolute select-all **paste** — any frame drift is
+wiped when the result lands. Relative writes are acceptable *only* when
+anchored to an absolute checkpoint like this. Kill switch:
+`OPENCUES_TYPE_ANIMATE=0` (legacy `OPENCUES_MSAA_ANIMATE=0`).
+
+### The lesson: relative accumulates, absolute converges
+
+The load-bearing insight, learned the hard way (a whole arc of stray
+dots, double-deletes, overshoot):
+
+| | `SetValue` / `EM_REPLACESEL` (absolute) | Backspace × N (relative) |
 |---|---|---|
-| **UIA `ValuePattern.SetValue`** | Notepad, WordPad, Explorer, Win32/WinForms/WPF | whole-value replace, atomic |
-| **UIA `TextPattern` paste** | Chromium/Electron with a `TextPattern` but no writable `ValuePattern` | clipboard + Ctrl+A + Ctrl+V |
-| **MSAA deferred paste** | Electron whose focused UIA element is an empty read-only shell (text in the MSAA/IA2 tree) — Discord | Ctrl+A + Ctrl+V, coalesced when the stream goes quiet |
+| Operation | writes the whole value | deletes N chars *from where the caret is* |
+| If our model of the buffer drifts | self-corrects next write | **accumulates** — wrong N → overshoot / double-delete / stray glyph |
+| Needs remote buffer to match our mirror | no | **yes** |
 
-**Above all three sits one shared fast path for animation frames:
-`TryTypeMicroEdit`** (`OpenCuesWindows.cs:1320`), called *before* the
-attach-mode branches. This is the "backspace animation."
-
-How it works:
-1. Diff the new text against `_lastSentText` (the last thing we wrote).
-2. Proceed only if it's a **small tail edit** — the changed suffix
-   (from first-difference to end) is ≤ `MSAA_TYPE_MAX` (6) chars, no
-   newline. A loading spinner glyph is 1 char, so it qualifies; the real
-   substitution is big and does not.
-3. `NoteSelfWrite(text)` so the write bracket still attributes it.
-4. `SendInput` one atomic burst: **Backspace × del + `KEYEVENTF_UNICODE`
-   for each new char.** No `SetValue`, no clipboard, no select-all
-   flash, and **no caret reset.**
-
-Why it's the cleanest animation everywhere:
-- **Notepad/WordPad** used to `SetValue` per frame (whole-value replace
-  → caret to start → restore → jump). Now the frames just *type*, so the
-  caret never moves off the end.
-- **Electron/Discord** get the animation live instead of one coalesced
-  paste.
-
-**It relies on the phase-1 caret-at-end model** (Backspace deletes
-*backwards from the caret*). A frame whose changed suffix exceeds 6
-chars, or with the caret elsewhere, **declines** and falls through to
-the whole-value path — where `LooksLikeAnimationFrame` (§6) is the
-secondary caret-skip net. The **real substitution** (a big, non-tail
-write) always takes a whole-value path; typing is only for small frames.
-
-Kill switch: `OPENCUES_TYPE_ANIMATE=0` (legacy `OPENCUES_MSAA_ANIMATE=0`
-still honoured) → falls back to per-frame `SetValue`/paste.
-
-> History: this was MSAA-only (`TryTypeMsaaMicroEdit`) until it was
-> generalised and hoisted above the attach-mode branches — the method
-> was already app-agnostic; only its call-site gate was MSAA-specific.
+On a **polled, laggy, foreign** buffer, drift is a *when* not an *if*, so
+a relative/blind operation is the wrong tool wherever an absolute one
+exists. Backspace-typing was briefly used on Notepad/WordPad (commit
+`63be937f`, reverted) to dodge the caret-reset — but those controls have
+an absolute write, so it traded a self-correcting operation for a
+fragile one to solve a caret problem we'd already solved another way
+(`LooksLikeAnimationFrame`, §6). Use relative writes **only** where no
+absolute write exists (MSAA), and anchor them to an absolute checkpoint.
 
 ---
 
@@ -315,6 +393,24 @@ through `NoteSelfWrite` (shim) / sets `expectedEcho` + `noteWrite`
   its text still equals the mirror at delivery** ("only the newest write
   may echo") — the invariant that stopped a stale intermediate frame
   from being replayed as a user edit into a selector/satellite span.
+
+### Undo must not re-fire the blank (`isPureInsertion`)
+
+Native Ctrl+Z (§5) restores the `_` command text — and the daemon's
+"fresh `_`" path would then re-synthesise the `_` keystroke and re-run
+the blank (the buffer re-processes on undo). The fix is timing-free and
+lives at `hostd.cjs`: a blank fires **only when the `_` was TYPED — a
+*pure insertion* into the current buffer** (the prior text survives as
+the prefix+suffix around the inserted `_`). An **undo / redo / paste**
+wholesale-replaces the buffer, so the pre-`_` content is *not* preserved
+→ `isPureInsertion` is false → the daemon adopts the text into the mirror
+(so `getText()` stays correct) but **returns without `notifyTextChange`**,
+so the resolver never sees it as a change and never re-resolves. A
+genuine **re-run** (retype the command) *is* a pure insertion, so it
+still fires. No result/command bookkeeping, no clocks — robust even on
+apps like Slack that re-render the buffer, because it never has to
+recognise a transformed result. (Watch it: `grep 'suppressed .* re-fire'
+/tmp/opencues.log`.)
 
 ---
 
