@@ -153,8 +153,15 @@ export async function main(): Promise<void> {
   // normal typing can never trip it; a true loop pauses resolution
   // triggers briefly instead of spinning forever, and the log names it.
   const ARM_BREAKER_LIMIT = 3;
-  const ARM_BREAKER_COOLOFF_MS = 10_000;
+  // Windows-integration tuning: repeats only count within a short
+  // window (a real echo loop re-arms in milliseconds; identical
+  // commands minutes apart are legitimate), the cooldown is short (a
+  // false trip must not feel like an outage), and comparison is
+  // typography-folded (Notes rewrites the armed text's quotes).
+  const ARM_REPEAT_WINDOW_MS = 5_000;
+  const ARM_BREAKER_COOLOFF_MS = 2_000;
   let lastArmText = '';
+  let lastArmAt = 0;
   let armRepeat = 0;
   let breakerUntil = 0;
   // Interrupted-cue recovery (reliability gap: "some prompts work,
@@ -174,12 +181,14 @@ export async function main(): Promise<void> {
       log('warn', 'circuit breaker open — arm suppressed', { id, remainingMs: breakerUntil - now });
       return false;
     }
-    if (text === lastArmText) {
+    const canon = canonicalizeForEcho(text);
+    if (canon === lastArmText && now - lastArmAt < ARM_REPEAT_WINDOW_MS) {
       armRepeat++;
     } else {
-      lastArmText = text;
+      lastArmText = canon;
       armRepeat = 1;
     }
+    lastArmAt = now;
     if (armRepeat > ARM_BREAKER_LIMIT) {
       breakerUntil = now + ARM_BREAKER_COOLOFF_MS;
       armRepeat = 0;
@@ -721,7 +730,7 @@ export async function main(): Promise<void> {
           if (res.ok) fetched = res.value.notes;
           else log('warn', `plaintext fetch failed (${res.kind})`, res.detail);
         }
-        const events = applyPoll(state, list.value.notes, fetched, echoHash, Date.now());
+        const events = applyPoll(state, list.value.notes, fetched, echoHash, Date.now(), virtualText);
         for (const e of events) {
           // Final render phase: our own write observed back by the poll
           // (echo-classified → source 'runtime'). echoMs = landed → seen;
@@ -768,6 +777,19 @@ export async function main(): Promise<void> {
                 if (armGuarded(e.id, e.text, e.armAt)) prewarmBody(e.id);
               } else if (e.source === 'user' && recoverInterruptedArm(e.id, e.text)) {
                 prewarmBody(e.id);
+              }
+              // "Only the newest write may echo" (Windows integration
+              // §7): a runtime-classified echo of an OLDER frame, while
+              // a newer write is pending, must not reach the runtime —
+              // it would feed a stale buffer state into the event
+              // stream. Tracked state is already updated (CAS needs the
+              // note's real content); only the notification is dropped.
+              if (
+                e.source === 'runtime' && virtualText !== null &&
+                ensureTrailingNewline(virtualText) !== e.text
+              ) {
+                log('debug', 'stale echo suppressed (newer write pending)', { id: e.id });
+                break;
               }
               bootResult.notifyTextChange(e.text, e.cursor, e.source);
               break;

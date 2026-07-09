@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# oc-notes-reset — one command to a clean, VERIFIED apple-notes daemon
+# singleton (ported from the Windows integration's oc-windows-reset).
+#   oc-notes-reset              teardown + relaunch + verify
+#   oc-notes-reset --down       teardown only
+#   oc-notes-reset --no-launch  teardown + verify clean
+# Counting discipline: process counts exclude this script's own grep.
+set -euo pipefail
+LOCK=/tmp/opencues-apple-notes.lock
+LOG=${OPENCUES_LOG:-/tmp/opencues.log}
+ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
+
+count_daemons() { pgrep -f 'integrations/apple-notes/dist/daemon\.js' | wc -l | tr -d ' '; }
+
+echo "▸ teardown"
+for _ in 1 2 3 4 5; do
+  pkill -f 'integrations/apple-notes/dist/daemon\.js' 2>/dev/null || true
+  sleep 0.4
+  [ "$(count_daemons)" = "0" ] && break
+done
+rm -f "$LOCK" /tmp/opencues-status-*.json
+if [ "$(count_daemons)" != "0" ]; then echo "✗ daemons survived teardown"; exit 1; fi
+echo "  daemons=0, lock cleared"
+
+[ "${1:-}" = "--down" ] && { echo "✓ down"; exit 0; }
+
+if [ "${1:-}" != "--no-launch" ]; then
+  echo "▸ launch"
+  MARK=$(( $(wc -l < "$LOG" 2>/dev/null || echo 0) + 1 ))
+  nohup node "$ROOT/packages/opencues-cli/bin/cli.cjs" run notes --skip-banner --no-rebuild-check \
+    >/tmp/oc-notes-reset-launch.log 2>&1 &
+  echo "▸ verify (30s)"
+  for _ in $(seq 1 30); do
+    sleep 1
+    D=$(count_daemons)
+    STARTED=$(tail -n +"$MARK" "$LOG" 2>/dev/null | grep -c 'daemon started — watching' || true)
+    if [ "$D" = "1" ] && [ "$STARTED" -ge 1 ] && kill -0 "$(cat "$LOCK" 2>/dev/null)" 2>/dev/null; then
+      echo "✓ verified singleton: daemon=1 (pid $(cat "$LOCK")), started handshake in log"
+      exit 0
+    fi
+  done
+  echo "✗ verification failed: daemons=$(count_daemons)"; exit 1
+fi
+echo "✓ clean (no launch requested)"

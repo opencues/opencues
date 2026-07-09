@@ -332,6 +332,16 @@ export function applyPoll(
   fetched: readonly { id: string; mod?: string; plaintext?: string; error?: string }[],
   hash: (s: string) => string,
   now: number,
+  /** The daemon's current virtual buffer (the runtime's last write) for
+   *  the active note, or null. Enables the Windows integration's
+   *  underscore-count echo guard: a ring-hit text that ADDS a
+   *  standalone `_` relative to what we last wrote cannot be our echo
+   *  — a substitution never adds a marker; a fresh user trigger always
+   *  does. Closes the documented residual where a byte-identical
+   *  re-type within the ring TTL was swallowed as our own echo. Rest
+   *  frames stay classified as echoes because the virtual buffer holds
+   *  the same rest-frame text (equal marker counts). */
+  mirrorText?: string | null,
 ): PollEvent[] {
   const events: PollEvent[] = [];
   const alive = new Set(enumerated.map(n => n.id));
@@ -466,8 +476,10 @@ export function applyPoll(
     return events;
   }
 
-  const source: 'user' | 'runtime' =
-    isRecentWrite(state, best.id, hash(best.plaintext), now) ? 'runtime' : 'user';
+  const echoHit = isRecentWrite(state, best.id, hash(best.plaintext), now);
+  const addsMarker = mirrorText != null
+    && markerCursors(best.plaintext).length > markerCursors(mirrorText).length;
+  const source: 'user' | 'runtime' = echoHit && !addsMarker ? 'runtime' : 'user';
 
   const prevText = prevTexts.get(best.id);
   const cursor = synthCursorNear(best.plaintext, prevText);

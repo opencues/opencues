@@ -474,3 +474,25 @@ describe('transient fetch errors (id-swap third face, harness S3 catch)', () => 
     expect(s.tracked.has('a')).toBe(true);
   });
 });
+
+describe('underscore-count echo guard (Windows integration §2.2, ported)', () => {
+  it('a ring-hit RE-TYPE that adds a marker vs the mirror classifies as USER', () => {
+    // Closes the residual: re-typing the identical command within the
+    // ring TTL was swallowed as our own echo.
+    const s = initialState(T0);
+    applyPoll(s, [meta('a', 'm1')], [note('a', 'm1', 'draft it _\n')], hash, T0);
+    recordWriteHash(s, 'a', hash('draft it _\n'), T0); // rest frame in ring
+    // answer landed; user cleared it and re-typed the identical command
+    const events = applyPoll(s, [meta('a', 'm2')], [note('a', 'm2', 'draft it _\n')], hash, T0 + 5000, 'the answer\n');
+    const change = events.find(e => e.type === 'text-change');
+    expect(change).toMatchObject({ source: 'user' });
+  });
+  it('a rest-frame echo with the same text in the mirror stays RUNTIME', () => {
+    const s = initialState(T0);
+    applyPoll(s, [meta('a', 'm1')], [note('a', 'm1', 'draft it _\n')], hash, T0);
+    recordWriteHash(s, 'a', hash('draft it _\n'), T0 + 100);
+    const events = applyPoll(s, [meta('a', 'm2')], [note('a', 'm2', 'draft it _\n')], hash, T0 + 1000, 'draft it _\n');
+    const change = events.find(e => e.type === 'text-change');
+    expect(change).toMatchObject({ source: 'runtime' });
+  });
+});

@@ -58,6 +58,7 @@ Signatures are grep-able against `/tmp/opencues.log`.
 All three were caught by the UI-grounded harness (PLAN.md 1.1) on its
 FIRST run — each invisible to every scripted test, visible within
 minutes of driving the real ⌘N + live-typing flow.
+| 24 | Windows-integration review round 2 (their implementation notes): our echo ring's 30s re-type residual; breaker counted identical arms across unlimited time with a 10s user-hostile cooldown; stale frame echoes fed into the runtime's event stream | re-typed identical command within 30s ignored; breaker risk on repeated identical commands | underscore-count echo guard (ring-hit that ADDS a `_` vs the virtual mirror = user, never echo); breaker: 5s repeat window, 2s cooldown, typography-folded compare; "only the newest write may echo" — stale runtime echoes update tracked but never notify the runtime |
 
 Model-quality issues (NOT pipeline; `cerebras/gemma-4-31b` was never
 bench-validated for this pipeline):
@@ -100,3 +101,21 @@ reproduction fidelity degrade as a note accumulates content.
 - Physical floors: ~150ms per rendered frame (osascript CAS), ~0.3-0.9s
   keystroke→detection, ~6fps animation. The LLM leg is the only lever
   left (model choice; patch-out transform).
+
+## 4. Quick triage
+
+- **Anything weird / frozen / duplicated** → `integrations/apple-notes/bin/oc-notes-reset`
+  — teardown, relaunch, VERIFIED singleton in one command.
+- **A `_` does nothing, log silent** → grep `edit detected in a Recently-Deleted note`
+  (typing in a deleted note) and check the baseline line (cue typed
+  during a daemon restart window is inert until its note is edited).
+- **A `_` does nothing, healthy heartbeats** → ledger 21 class; check
+  `poll heartbeat` cadence and whether the note's mod-second matches
+  the last fetch.
+- **Answer landed then vanished/untracked** → ledger 18 class; grep
+  `fill echo observed` (absent = echo hash miss) and `untracked`.
+- **Mangled/mixed-language output** → the model (ledger's model
+  section), not the pipeline — reproduce via the transform bench before
+  blaming the daemon.
+- **`circuit breaker TRIPPED`** → a genuine same-text loop; the log
+  names the note; 2s self-heal, then diagnose from the preceding arms.

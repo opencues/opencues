@@ -66,6 +66,15 @@ FSEvents wake, 150ms hot tier, body pre-warm, serialized CAS at ~6fps.
 Remaining floor is Apple's: ~150ms per osascript round-trip, 1-second
 modificationDate, no key events.
 
+### 1.4 Open verification: caret behaviour during fills (from the Windows review)
+The Windows host works hard to keep the user's caret stable across
+writes (§5/§6 of its notes). We have never verified what `body =` does
+to the user's caret when a fill lands while their cursor sits mid-note.
+Harness scenario 8: place the caret mid-note, let a fill land below,
+assert the caret didn't jump. If it does, the splice write path needs a
+caret save/restore investigation (AppleScript exposes no caret API —
+may be a documented limitation rather than a fix).
+
 ## Phase 3 — Sequence
 
 1. 1.3 observability gaps (minutes) → restart daemon once, then STOP
