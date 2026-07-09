@@ -246,6 +246,7 @@ export async function main(): Promise<void> {
   const FLUSH_RETRY_MAX = 6;
   const FLUSH_RETRY_DELAY_MS = 400;
   let flushRetries = 0;
+  let lastFillLandedAt = 0;
   // Render-phase lag instrumentation. Each flush carries the timestamps
   // of its phase boundaries so `fill landed` can report the breakdown
   // (settleMs/queueMs/readMs/spliceMs/casMs/totalMs), mirroring the
@@ -516,6 +517,7 @@ export async function main(): Promise<void> {
     const tracked = state.tracked.get(id);
     if (tracked) state.tracked.set(id, { ...tracked, plaintext: landed });
     const landedAt = Date.now();
+    lastFillLandedAt = landedAt;
     echoPending.set(id, landedAt);
     // Phase breakdown of this render, requestWrite → note updated:
     //   settleMs — flush debounce (frame batching, tick.ts flushDelayMs)
@@ -730,7 +732,18 @@ export async function main(): Promise<void> {
           if (res.ok) fetched = res.value.notes;
           else log('warn', `plaintext fetch failed (${res.kind})`, res.detail);
         }
-        const events = applyPoll(state, list.value.notes, fetched, echoHash, Date.now(), virtualText);
+        // The underscore-count echo guard (marker-add vs mirror) may
+        // only judge when the PIPELINE IS QUIET: during an active fill
+        // cycle a STALE rest-frame echo (which legitimately contains
+        // `_`) can arrive after the answer became the newest write —
+        // ring-hit + adds-a-marker then misclassified our own frame as
+        // a fresh user trigger and spuriously re-armed (observed live
+        // 2026-07-09 20:32 on a slow-Notes fill). A genuine re-type can
+        // only happen when nothing is in flight, so the guard loses
+        // nothing by sleeping through fills.
+        const pipelineQuiet = flushTimer === null && firstPendingAt === null
+          && Date.now() - lastFillLandedAt > 3_000;
+        const events = applyPoll(state, list.value.notes, fetched, echoHash, Date.now(), pipelineQuiet ? virtualText : null);
         for (const e of events) {
           // Final render phase: our own write observed back by the poll
           // (echo-classified → source 'runtime'). echoMs = landed → seen;
