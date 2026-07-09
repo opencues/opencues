@@ -261,6 +261,42 @@ function isRecentWrite(text) {
   return false;
 }
 
+// ─── Self-heal 3: only a TYPED `_` fires a blank, not a reverted one ──────
+// Ctrl+Z on a substitution restores the `_` command text; the underscore
+// count rises again and the fresh-`_` synthesis below would RE-FIRE the blank
+// (observed on Discord + Slack: undo lands on `_` then re-processes). Every
+// host with native undo has the same shape.
+//
+// The distinguishing signal is STRUCTURAL and memoryless: a genuine
+// invocation INSERTS `_` into the text you're editing — the prior buffer
+// survives intact as the prefix+suffix around the inserted `_` (a "pure
+// insertion"). An undo / redo / paste REVERTS the whole buffer, so the pre-`_`
+// content is wholesale-replaced (the prior buffer is NOT preserved). We fire
+// only on a pure insertion. This needs no record of prior results — so it's
+// robust to apps like Slack that re-render the buffer (we never have to
+// recognise a transformed result) — and a RE-RUN still fires, because
+// retyping the command inserts `_` into a partial exactly like the first type.
+function commonPrefixLen(a, b) {
+  const n = Math.min(a.length, b.length);
+  let i = 0;
+  while (i < n && a[i] === b[i]) i++;
+  return i;
+}
+function commonSuffixLen(a, b, prefix) {
+  const n = Math.min(a.length, b.length) - prefix;
+  let i = 0;
+  while (i < n && a[a.length - 1 - i] === b[b.length - 1 - i]) i++;
+  return i;
+}
+// True when `text` is `prev` with content only INSERTED (nothing from `prev`
+// removed) — a local edit at the cursor, not a wholesale buffer swap.
+function isPureInsertion(prev, text) {
+  const a = normBuf(prev), b = normBuf(text);
+  const p = commonPrefixLen(a, b);
+  const s = commonSuffixLen(a, b, p);
+  return p + s >= a.length;   // all of `prev` survives as prefix+suffix
+}
+
 // ─── Self-heal 2: runaway circuit-breaker ────────────────────────────────
 // Belt-and-braces: even if some write leaks the registry, a genuine
 // runaway shows as many resolves on the SAME field with no human edit in
@@ -489,16 +525,32 @@ function handleMessage(msg) {
       // normal typing (each keystroke is different text). Keeps the mirror
       // current so the next genuine edit still works.
       if (breakerTrips(text)) return;
-      // Fresh `_` inserted → synthesise the `_` keystroke first so the
-      // resolver / BlankFill explicit-`_` gate fires, exactly like the
-      // event-bridge `text:` command does.
+      // Fresh `_` → synthesise the `_` keystroke so the resolver / BlankFill
+      // explicit-`_` gate fires (exactly like the event-bridge `text:` command)
+      // — but ONLY when the `_` was TYPED (a pure insertion into the current
+      // buffer). If a `_` state was REVERTED to (undo / redo / paste wholesale-
+      // replaces the buffer), do not re-fire: that's what stops Ctrl+Z on a
+      // substitution from re-processing, on every app, with no result/command
+      // bookkeeping. A genuine re-run inserts `_` into a partial → still fires.
       if (countUnderscores(text) > countUnderscores(prevText)) {
-        bootResult.dispatchKey({
-          key: '_',
-          modifiers: { ctrl: false, alt: false, shift: false, meta: false },
-          text: prevText,
-          cursorOffset: prevCursor,
-        });
+        if (isPureInsertion(prevText, text)) {
+          bootResult.dispatchKey({
+            key: '_',
+            modifiers: { ctrl: false, alt: false, shift: false, meta: false },
+            text: prevText,
+            cursorOffset: prevCursor,
+          });
+        } else {
+          // A `_` state was REVERTED to (undo / redo / paste wholesale-replaces
+          // the buffer), not typed. Adopt the text (mirror is already updated)
+          // but do NOT notifyTextChange — the resolver would re-resolve the
+          // restored `_` command off its presence in the buffer (this is the
+          // Ctrl+Z-re-fires-the-blank bug). getText() still returns the current
+          // mirror, so the runtime's view stays correct; we just don't feed it
+          // as a change event.
+          log('debug', 'suppressed `_` re-fire — buffer reverted to a `_` state (undo/redo/paste), not a typed insertion');
+          return;
+        }
       }
       bootResult.notifyTextChange(text, cursor, 'user');
       return;
