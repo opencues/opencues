@@ -258,6 +258,38 @@ pre-fix translates cleanly on gemma-4-31b ("Viele Grüße, Sam", zero
 English fragments). `ARCHITECTURE.md` § 8 carries the correction to
 the earlier model-blame attribution.
 
+## "ONE use before it breaks" — the 1-second modificationDate hole (2026-07-09)
+
+Symptom: the first command in a note works; a follow-up (or even a
+single trailing keystroke) kills everything after it — six flush
+retries all dropped with the SAME byte diff, then silence. The drop
+log's byte detail cracked it in one read:
+
+    cur : "…t all caps _ "   (403 — the user typed a trailing space)
+    snap: "…t all caps _"    (402 — the poll never saw it)
+
+Notes' `modificationDate` has **1-second resolution**. A keystroke that
+lands in the same wall-clock second as the previously-fetched state
+changes the note WITHOUT changing its mod string → `selectChanged`
+skips it forever → the tracked snapshot is permanently stale → every
+fill (frames AND answer) drops on the snapshot guard. "Resyncs next
+poll" was a lie: the poll physically cannot see sub-second edits that
+are followed by inactivity. First use always works (fresh note, fresh
+fetch); fast typing right after any fetch is a coin-flip desync —
+hence "one use before it breaks".
+
+Fix (`daemon.ts` doFill mismatch branch): at drop time the daemon is
+HOLDING the authoritative fresh text it just read — it now resyncs the
+tracked snapshot itself. If the fresh text hashes into our write ring
+→ own echo → retry against the resynced base. Otherwise it's a real
+user edit: their text wins — drop the pending write, resync, and
+RE-DISPATCH (arm the marker nearest the change; an edit AROUND a live
+`_` must not orphan it) so the resolution re-runs against what they
+actually typed — the same semantics as a keystroke during resolve on
+the event-driven hosts. Verified live: create note → trailing-space
+edit inside the same second → "user edit wins, re-dispatching" →
+answer landed 1.1s later.
+
 Unrelated environmental note from the same session: Notes.app itself
 can time out plaintext fetches when busy (log: "plaintext fetch failed
 (timeout)"); the daemon rides it out and recovers on later polls —

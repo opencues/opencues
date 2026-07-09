@@ -22,7 +22,7 @@ import type { LogLevel } from '@opencues/runtime/dist/src/adapter';
 import { NotesBridge } from './notes-bridge';
 import {
   applyPoll, containsBlankMarker, diffLines, ensureTrailingNewline, flushDelayMs,
-  initialState, pollDelayMs, recordWriteHash, seedBaseline, selectChanged, synthCursor,
+  freshMarkerIndex, initialState, pollDelayMs, recordWriteHash, seedBaseline, selectChanged, synthCursor, synthCursorNear,
   type DaemonState,
 } from './tick';
 import { buildBlanks, makeSpawnProcess } from './host-support';
@@ -310,10 +310,24 @@ export async function main(): Promise<void> {
         return 'retry';
       }
       const currentText = read.value.plaintext.replace(/\r\n?/g, '\n');
+      if (bodyLooksAttachmentBearing(read.value.body)) {
+        state.tracked.delete(id);
+        log('warn', 'note has attachments — skipped to avoid destroying them', { id });
+        return 'fatal';
+      }
       if (currentText !== snapshot.plaintext) {
         let d = 0;
         while (d < currentText.length && d < snapshot.plaintext.length && currentText[d] === snapshot.plaintext[d]) d++;
-        log('info', 'note changed since resolution — fill dropped (resyncs next poll)', {
+        // The poll may NEVER resync this: modificationDate has 1-SECOND
+        // resolution, so a keystroke landing in the same second as the
+        // previously-fetched state is invisible to change detection
+        // (observed live 2026-07-09 15:04: a trailing space typed after
+        // `_` desynced the snapshot permanently — six retries dropped
+        // and the answer died). We are HOLDING the authoritative fresh
+        // text: resync the tracked snapshot ourselves.
+        const trackedNow = state.tracked.get(id);
+        const isOwnEcho = state.lastWriteHash.get(id)?.has(sha(currentText)) === true;
+        log('info', `note changed since resolution — ${isOwnEcho ? 'own echo, retrying against resynced snapshot' : 'user edit wins, re-dispatching'}`, {
           id,
           curLen: currentText.length,
           snapLen: snapshot.plaintext.length,
@@ -321,11 +335,33 @@ export async function main(): Promise<void> {
           cur: JSON.stringify(currentText.slice(Math.max(0, d - 12), d + 24)),
           snap: JSON.stringify(snapshot.plaintext.slice(Math.max(0, d - 12), d + 24)),
         });
-        return 'retry';
-      }
-      if (bodyLooksAttachmentBearing(read.value.body)) {
-        state.tracked.delete(id);
-        log('warn', 'note has attachments — skipped to avoid destroying them', { id });
+        if (trackedNow) {
+          state.tracked.set(id, {
+            ...trackedNow,
+            plaintext: currentText,
+            userEditAt: isOwnEcho ? trackedNow.userEditAt : Date.now(),
+          });
+        }
+        knownBody.set(id, read.value.body);
+        if (isOwnEcho) return 'retry';
+        // A real user edit mid-fill: their text wins — drop the pending
+        // write and re-dispatch so the resolution re-runs against what
+        // they actually typed. Identical semantics to a keystroke during
+        // resolve on the event-driven hosts. The in-flight marker stays
+        // armed: an edit AROUND a live `_` (the trailing-space case)
+        // must not orphan it, so fall back to the marker nearest the
+        // change when the edit itself doesn't contain one.
+        dropVirtual();
+        if (id === state.activeId) {
+          const armAt = freshMarkerIndex(currentText, snapshot.plaintext)
+            ?? (containsBlankMarker(currentText) ? synthCursorNear(currentText, snapshot.plaintext) - 1 : null);
+          const cursor = synthCursorNear(currentText, snapshot.plaintext);
+          if (armAt !== null) {
+            lastRedispatchText.set(id, currentText);
+            armMarker(currentText, armAt);
+          }
+          bootResult.notifyTextChange(currentText, cursor, 'user');
+        }
         return 'fatal';
       }
       baseBody = read.value.body;
