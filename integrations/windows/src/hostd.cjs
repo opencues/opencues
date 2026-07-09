@@ -226,6 +226,66 @@ function countUnderscores(s) {
   return n;
 }
 
+// ─── Self-heal 1: recent-writes registry ─────────────────────────────────
+// The daemon writes EVERY byte the field shows during a resolve — each
+// loading-animation frame AND the final substitution, all via
+// setText/pushText. The Windows edit control hands those writes back to
+// us mangled (CR for LF, injected zero-width U+FEFF, spinner-frame
+// churn), so a naive equality echo-check misses them, the daemon treats
+// its OWN output as fresh user typing, re-resolves it, and loops forever
+// ("stuck mid animation"). Fix: record every write (normalized); any
+// incoming text that matches a recent write is OUR echo — swallowed, never
+// resolved. Because the daemon authored every frame, this catches all of
+// them regardless of socket/poll timing (unlike the timing-based bracket).
+const RECENT_WRITE_TTL_MS = 4000;
+const recentWrites = [];   // { norm, at }
+function normBuf(s) {
+  return String(s)
+    .replace(/[\ufeff\u200b\u200c]/g, '')   // zero-width chars the control injects
+    .replace(/\r\n?/g, '\n');               // CR / CRLF the control returns for our LF
+}
+function noteWrite(text) {
+  const now = Date.now();
+  recentWrites.push({ norm: normBuf(text), at: now });
+  // prune
+  while (recentWrites.length && now - recentWrites[0].at > RECENT_WRITE_TTL_MS) recentWrites.shift();
+  if (recentWrites.length > 64) recentWrites.splice(0, recentWrites.length - 64);
+}
+function isRecentWrite(text) {
+  const now = Date.now();
+  const n = normBuf(text);
+  for (let i = recentWrites.length - 1; i >= 0; i--) {
+    if (now - recentWrites[i].at > RECENT_WRITE_TTL_MS) break;
+    if (recentWrites[i].norm === n) return true;
+  }
+  return false;
+}
+
+// ─── Self-heal 2: runaway circuit-breaker ────────────────────────────────
+// Belt-and-braces: even if some write leaks the registry, a genuine
+// runaway shows as many resolves on the SAME field with no human edit in
+// between. Track resolve timestamps; if we exceed the threshold inside the
+// window, trip the breaker — stop feeding the resolver until the field is
+// quiet, then auto-reset. This is the "it heals itself" guarantee.
+const BREAKER_WINDOW_MS = 3000;
+const BREAKER_MAX_RESOLVES = 8;
+const BREAKER_COOLDOWN_MS = 2500;
+let resolveTimes = [];
+let breakerUntil = 0;
+function breakerTrips() {
+  const now = Date.now();
+  if (now < breakerUntil) return true;   // still cooling down
+  resolveTimes.push(now);
+  resolveTimes = resolveTimes.filter(t => now - t < BREAKER_WINDOW_MS);
+  if (resolveTimes.length > BREAKER_MAX_RESOLVES) {
+    breakerUntil = now + BREAKER_COOLDOWN_MS;
+    resolveTimes = [];
+    log('warn', `runaway breaker TRIPPED — ${BREAKER_MAX_RESOLVES}+ resolves in ${BREAKER_WINDOW_MS}ms; pausing resolves ${BREAKER_COOLDOWN_MS}ms`);
+    return true;
+  }
+  return false;
+}
+
 // On every in-process host the editor fires a change event when the
 // runtime writes (shell's textarea onContentChange), which keeps the
 // band's previousText/lastSeenText fresh. This host's field is remote and
@@ -278,6 +338,7 @@ const bootResult = boot({
     mirrorText = text;
     mirrorCursor = text.length;
     expectedEcho = text;
+    noteWrite(text);
     send({ t: 'set-text', text, cursor: mirrorCursor });
     echoRuntimeWrite(text, mirrorCursor);
   },
@@ -289,6 +350,7 @@ const bootResult = boot({
     mirrorText = text;
     mirrorCursor = typeof cursor === 'number' ? cursor : text.length;
     expectedEcho = text;
+    noteWrite(text);
     send({ t: 'set-text', text, cursor: mirrorCursor });
     echoRuntimeWrite(text, mirrorCursor);
   },
@@ -386,11 +448,27 @@ function handleMessage(msg) {
         mirrorCursor = cursor;
         return;
       }
+      // Self-heal 1: the read-back matches a RECENT WRITE of ours (a
+      // loading-animation frame or the substitution itself, mangled by the
+      // control's CR/zero-width churn). It is our own output echoing back,
+      // NOT user typing — adopt it and do NOT re-resolve. This is what
+      // stops the "stuck mid animation" feedback loop at the source.
+      if (isRecentWrite(text)) {
+        expectedEcho = null;
+        mirrorText = text;
+        mirrorCursor = cursor;
+        return;
+      }
       expectedEcho = null;
       const prevText = mirrorText;
       const prevCursor = mirrorCursor;
       mirrorText = text;
       mirrorCursor = cursor;
+      // Self-heal 2: circuit-breaker. If we're resolving far too often
+      // (a runaway that leaked past the registry), pause — the field will
+      // go quiet and resolves auto-resume. Keeps the mirror current so the
+      // next genuine edit still works.
+      if (breakerTrips()) return;
       // Fresh `_` inserted → synthesise the `_` keystroke first so the
       // resolver / BlankFill explicit-`_` gate fires, exactly like the
       // event-bridge `text:` command does.
