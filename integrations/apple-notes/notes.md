@@ -148,3 +148,37 @@ live: a poem command in its own paragraph resolved with textLen=38
 while 85 chars of older content sat untouched above it; a translate
 command typed under its target line saw that line (textLen=82) and
 rewrote only that paragraph.
+
+### Two v1 window bugs, same-day (2026-07-09): "works a couple times, then stops"
+
+1. **The window silently grew back to whole-note scope.** The
+   same-window fast path matched on `startsWith(prefix)` /
+   `endsWith(suffix)` — but a last-paragraph window has `suffix: ''`,
+   and `endsWith('')` is ALWAYS true, so every paragraph the user typed
+   below joined the existing window. By command 2-3 the buffer was the
+   entire note again: slow, low-fidelity, and destructive (observed:
+   command 2 ran with textLen=122 — the whole note — and its rewrite
+   consumed the previous answer). Fix: the sliced base must remain ONE
+   paragraph (no interior blank line) or the window moves. Consequence
+   to know: a multi-paragraph ANSWER echoing back also reads as a
+   window move — harmless on this no-cycling host (there is no revert
+   channel to lose), and the window then narrows to the answer's last
+   paragraph.
+
+2. **A dropped answer was lost forever.** `flushVirtual` cleared the
+   virtual buffer after `doFill` regardless of outcome. The snapshot
+   race guard's "fill dropped (resyncs next poll)" was only ever true
+   for animation frames — the animator rewrites those every ~150ms —
+   but the FINAL answer is written exactly once, so one race against
+   the user's typing discarded it permanently (observed live: three
+   completed translations in a row, all computed, none landed; the
+   user experienced "not responding"). Fix: `doFill` returns
+   landed/retry/fatal/noop; transient outcomes (snapshot race, CAS
+   conflict, id-swap not-found, splice miss) keep the buffer and retry
+   up to 6× at 400ms while the poll resyncs. A user edit still wins:
+   its text-change event drops the buffer and cancels the retry.
+
+Diagnostic aid added at the same time: the "note changed since
+resolution" drop log now includes `curLen`/`snapLen`/`firstDiff` and
+a ±12-char excerpt of both texts at the divergence point — the next
+snapshot-mismatch investigation starts from bytes, not theories.
