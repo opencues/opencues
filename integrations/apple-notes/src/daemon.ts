@@ -482,7 +482,16 @@ export async function main(): Promise<void> {
     // the resolver's live-text guard killed its own in-flight LLM call,
     // and time-to-answer stretched to multiple aborted attempts
     // (observed live 2026-07-08: a draft-email fill took ~20s).
-    if (id === state.activeId && containsBlankMarker(newText) && newText !== lastRedispatchText.get(id)) {
+    // Only when the pipeline is DRAINED: the landed fill must be the
+    // LATEST runtime write. A frame landing while a newer write (the
+    // answer, or a fresher frame) is still pending must never spawn a
+    // competing resolution — overlapping resolutions mutually
+    // assassinate via the live-text guard (observed 2026-07-09 16:56:
+    // typing during animation re-armed per keystroke, a frame fill
+    // re-dispatched against stale text, and the sibling's landing
+    // buffer change killed the real answer at 'live 151 vs 181').
+    const pipelineDrained = virtualText === null || ensureTrailingNewline(virtualText) === newText;
+    if (id === state.activeId && pipelineDrained && containsBlankMarker(newText) && newText !== lastRedispatchText.get(id)) {
       lastRedispatchText.set(id, newText);
       log('info', 'unanswered cue remains — re-dispatching', { id });
       const cursor = synthCursor(newText);

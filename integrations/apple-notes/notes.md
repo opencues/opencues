@@ -290,6 +290,30 @@ the event-driven hosts. Verified live: create note → trailing-space
 edit inside the same second → "user edit wins, re-dispatching" →
 answer landed 1.1s later.
 
+## Overlapping-resolution assassination via frame-fill re-dispatch (2026-07-09)
+
+Symptom: "good for one or two prompts, then they stop responding" —
+typing a follow-up command while the previous answer's animation was
+still flowing spawned a SECOND resolution (a frame fill compared
+against the newest armed text, differed — the user's keystrokes had
+re-armed with slightly different text — and tripped the multi-cue
+re-dispatch). The two resolutions then mutually assassinated: when one
+landed, its buffer change made the other's completed answer fail the
+live-text guard ("skipping — live text changed, 151 vs 181") and be
+discarded. NOT caused by the Windows-port TTL/breaker (zero trips).
+
+Fix: re-dispatch only fires when the pipeline is DRAINED — the landed
+fill must be the LATEST runtime write (`virtualText` empty or equal).
+A frame landing while a newer write is pending can never spawn a
+competing resolution; the drained answer-fill still re-dispatches for
+genuine multi-cue notes, and an aborted resolution's final frame still
+re-dispatches as the recovery path.
+
+Same trace, separate issue: gemma-4-31b answered "Add emojis _" by
+REWRITING the poem into a hostile parody with zero emojis. That is the
+un-benched model, not the pipeline — logged here so note-vandalism
+reports point at the model choice.
+
 ## Windows-integration fixes, cross-checked and ported (2026-07-09)
 
 The Windows daemon shares our core blindness (no keyboard; infer input
