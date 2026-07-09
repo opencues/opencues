@@ -97,3 +97,43 @@ prompt were bench-validated on other models; gemma was never benched.
 This is nondeterministic model quality, independent of the id swap —
 if drafts occasionally come back as a single continuation line rather
 than a full draft, that's this, not the daemon.
+
+## Degradation after 2-3 commands in the SAME note (2026-07-09)
+
+Symptom: the first couple of commands in a note are fast and correct,
+then speed and quality collapse and commands stop executing. Not a
+daemon bug — a scaling property of running every command in one
+long-lived note, colliding with TransformBlank's whole-buffer design.
+
+The note ACCUMULATES each command + answer (observed live: 35 chars at
+the first command → 1,147 chars an hour later). TransformBlank rewrites
+the ENTIRE buffer per command, so each new instruction asks the LLM to
+reproduce the whole accumulated document verbatim plus execute the
+change. Three compounding effects:
+
+1. **Speed** — every command pays a full-document rewrite
+   (reasoning=medium over 1,000+ chars, 12+ line outputs, seconds per
+   attempt, sometimes retried) instead of a one-command rewrite.
+2. **Quality ("lost intelligence")** — verbatim-reproduction fidelity
+   collapses with length: observed a 451-char buffer returned for a
+   1,148-char note (~700 chars of user content dropped). The
+   live-text guard rightly discards such answers — but the user just
+   sees "nothing happened" or a mangled draft.
+3. **Execution** — leftover `_`s in accumulated content re-fire the
+   multi-cue re-dispatch, spawning EXTRA whole-buffer resolutions that
+   race animation frames → `note changed since resolution — fill
+   dropped` storms.
+
+Other hosts never hit this because their buffer is an EPHEMERAL input
+box, consumed and cleared per message — TransformBlank's whole-buffer
+contract always operates on ~one command of text there. A note is a
+persistent, growing document; nothing windows the buffer down to the
+command being typed.
+
+Mitigation today: one note per task (or clear between commands).
+Proper fix (unimplemented, ~a day): scope this host's runtime buffer
+to the ACTIVE PARAGRAPH (last blank line → cue line) instead of the
+whole note, so transform cost/quality stay constant with note length.
+That changes the host's getText contract — see the byte-identity
+warning in `docs/guides/porting-to-new-integration.md` before
+attempting: the window must still round-trip setText bytes exactly.
