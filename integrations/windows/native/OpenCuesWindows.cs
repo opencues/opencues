@@ -715,10 +715,23 @@ namespace OpenCues
                 object vp;
                 if (el.TryGetCurrentPattern(ValuePattern.Pattern, out vp) && !((ValuePattern)vp).Current.IsReadOnly)
                 {
+                    // SetValue resets the caret to the START; RestoreCaretToEnd
+                    // puts it back. But the loading animation writes a frame
+                    // (·•●) ~13x/sec, and restoring after EACH frame yanks the
+                    // caret start->end every frame — visible jumping on WordPad
+                    // (invisible when the buffer is long and the caret's already
+                    // near the end). A frame is a same-length 1-2 char swap of
+                    // the prior write; SKIP the restore for those and only
+                    // restore on the real substitution (a large / length-
+                    // changing write). No per-frame caret churn.
+                    string prevSent = _lastSentText;
                     NoteSelfWrite(text);
                     ((ValuePattern)vp).SetValue(text);
-                    RestoreCaretToEnd(el);
-                    _caretRestoreUntil = Environment.TickCount + 600;
+                    if (!LooksLikeAnimationFrame(prevSent, text))
+                    {
+                        RestoreCaretToEnd(el);
+                        _caretRestoreUntil = Environment.TickCount + 600;
+                    }
                     Log("debug", "applied substitution (" + text.Length + " chars, ValuePattern)");
                     return;
                 }
@@ -738,6 +751,22 @@ namespace OpenCues
                 Log("warn", "focused field can't be written (no ValuePattern or TextPattern)");
             }
             catch (Exception ex) { Log("warn", "set-text failed: " + ex.Message); }
+        }
+
+        // A loading-animation frame is a SAME-LENGTH swap of 1-2 chars vs the
+        // previous write (the spinner glyph replacing `_`, or the next frame).
+        // A genuine substitution changes many chars and/or the length. Used to
+        // skip the per-frame caret restore so the caret doesn't jump during the
+        // spinner. Never misfires on a real substitution (those differ widely
+        // or in length; even a rare same-length ≤2-char substitute only leaves
+        // the caret at the field start for one write — cosmetic, self-corrects).
+        static bool LooksLikeAnimationFrame(string prev, string next)
+        {
+            if (prev == null || next == null || prev.Length != next.Length) return false;
+            int diffs = 0;
+            for (int i = 0; i < prev.Length; i++)
+                if (prev[i] != next[i]) { if (++diffs > 2) return false; }
+            return diffs > 0;
         }
 
         // ValuePattern.SetValue resets the caret (Notepad drops it to the
