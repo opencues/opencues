@@ -448,12 +448,20 @@ function handleMessage(msg) {
         mirrorCursor = cursor;
         return;
       }
-      // Self-heal 1: the read-back matches a RECENT WRITE of ours (a
-      // loading-animation frame or the substitution itself, mangled by the
-      // control's CR/zero-width churn). It is our own output echoing back,
-      // NOT user typing — adopt it and do NOT re-resolve. This is what
-      // stops the "stuck mid animation" feedback loop at the source.
-      if (isRecentWrite(text)) {
+      // Self-heal 1: the read-back matches a RECENT WRITE of ours (the
+      // substitution itself, mangled by the control's CR/zero-width churn).
+      // It is our own output echoing back, NOT user typing — adopt it and
+      // do NOT re-resolve. This stops the multi-line substitution feedback
+      // loop (email → Japanese → …).
+      //
+      // CRITICAL GUARD: only suppress when the read-back does NOT add a `_`.
+      // A substitution output removes the `_` (count can't rise), so this
+      // never blocks the loop-break. But a fresh USER `_` always raises the
+      // count — and the animation's own `_`-restore frame is byte-identical
+      // to the user's command, so without this guard the registry would eat
+      // the user's next genuine trigger ("sometimes `_` doesn't resolve").
+      // Animation-frame echoes are caught by `expectedEcho` above anyway.
+      if (isRecentWrite(text) && countUnderscores(text) <= countUnderscores(mirrorText)) {
         expectedEcho = null;
         mirrorText = text;
         mirrorCursor = cursor;
