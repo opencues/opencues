@@ -130,6 +130,44 @@ export function recordWriteHash(state: DaemonState, id: string, h: string): void
   while (set.size > 16) set.delete(set.values().next().value as string);
 }
 
+/**
+ * Paragraph window — the ACTIVE COMMAND SCOPE inside a long-lived note.
+ *
+ * The runtime's buffer on this host is not the whole note but the
+ * blank-line-delimited paragraph containing the anchor (the armed
+ * marker, else the cursor). Rationale (see notes.md § degradation):
+ * TransformBlank reproduces its whole buffer verbatim per command, so
+ * a note that accumulates commands + answers degrades speed and
+ * fidelity without bound. Scoping the buffer to one paragraph makes
+ * every command constant-cost; the convention is that a command which
+ * operates on earlier content is typed DIRECTLY under it (same
+ * paragraph, no blank line between).
+ *
+ * Returns char offsets [start, end) into `text`; the window INCLUDES
+ * the trailing newline of its last line, so prefix + window + suffix
+ * reassembles the note byte-exactly. The delimiter blank lines belong
+ * to the prefix/suffix.
+ */
+export function paragraphWindow(text: string, anchor: number): { start: number; end: number } {
+  const idx = Math.max(0, Math.min(anchor, text.length));
+  // Walk back to the start of the paragraph: the char after the last
+  // "\n\n" boundary at or before idx (an empty line is a lone '\n').
+  let start = 0;
+  for (let i = idx - 1; i > 0; i--) {
+    if (text[i] === '\n' && text[i - 1] === '\n') { start = i + 1; break; }
+  }
+  // Walk forward to the end: the char after the first '\n' that is
+  // followed by another '\n' (or EOF).
+  let end = text.length;
+  for (let i = idx; i < text.length; i++) {
+    if (text[i] === '\n' && (i + 1 >= text.length || text[i + 1] === '\n')) { end = i + 1; break; }
+  }
+  // Anchor sitting ON a blank line (empty paragraph): degrade to the
+  // whole text — the caller treats it as an un-windowed dispatch.
+  if (start >= end) return { start: 0, end: text.length };
+  return { start, end };
+}
+
 /** A standalone `_` (the blank marker), not snake_case underscores. */
 export function containsBlankMarker(text: string): boolean {
   return /(^|\s)_(?=$|[\s.,;:!?)\]])/m.test(text);

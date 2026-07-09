@@ -344,6 +344,37 @@ describe('pollDelayMs (adaptive cadence)', () => {
   });
 });
 
+describe('paragraphWindow (active command scope)', () => {
+  it('isolates a blank-line-delimited paragraph, trailing newline included', async () => {
+    const { paragraphWindow } = await import('./tick');
+    const text = 'Dear team,\nemail body\n\ndraft a haiku _\n';
+    const w = paragraphWindow(text, text.indexOf('haiku'));
+    expect(text.slice(w.start, w.end)).toBe('draft a haiku _\n');
+    expect(text.slice(0, w.start)).toBe('Dear team,\nemail body\n\n');
+    expect(text.slice(w.end)).toBe('');
+  });
+  it('a command directly under content shares its paragraph (context in scope)', async () => {
+    const { paragraphWindow } = await import('./tick');
+    const text = 'intro\n\nDear team,\nemail body\ntranslate this _\n\ntail\n';
+    const w = paragraphWindow(text, text.indexOf('translate'));
+    expect(text.slice(w.start, w.end)).toBe('Dear team,\nemail body\ntranslate this _\n');
+  });
+  it('prefix + window + suffix reassembles the note byte-exactly', async () => {
+    const { paragraphWindow } = await import('./tick');
+    const text = 'a\n\n\nb\nc\n\nd\n';
+    for (const anchor of [0, 3, 4, 6, 10]) {
+      const w = paragraphWindow(text, anchor);
+      expect(text.slice(0, w.start) + text.slice(w.start, w.end) + text.slice(w.end)).toBe(text);
+    }
+  });
+  it('single-paragraph note windows to the whole text', async () => {
+    const { paragraphWindow } = await import('./tick');
+    const text = 'draft an email _\n';
+    const w = paragraphWindow(text, 16);
+    expect(text.slice(w.start, w.end)).toBe(text);
+  });
+});
+
 describe('diffLines', () => {
   it('returns null on identical text', () => {
     expect(diffLines('a\nb\n', 'a\nb\n')).toBeNull();

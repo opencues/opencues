@@ -130,10 +130,21 @@ contract always operates on ~one command of text there. A note is a
 persistent, growing document; nothing windows the buffer down to the
 command being typed.
 
-Mitigation today: one note per task (or clear between commands).
-Proper fix (unimplemented, ~a day): scope this host's runtime buffer
-to the ACTIVE PARAGRAPH (last blank line → cue line) instead of the
-whole note, so transform cost/quality stay constant with note length.
-That changes the host's getText contract — see the byte-identity
-warning in `docs/guides/porting-to-new-integration.md` before
-attempting: the window must still round-trip setText bytes exactly.
+**Fixed 2026-07-09: the PARAGRAPH WINDOW.** The runtime's buffer on
+this host is now the blank-line-delimited paragraph containing the
+active cue (`tick.ts paragraphWindow` + `daemon.ts dispatchWindow`),
+not the whole note. Every command is constant-cost regardless of note
+length; a window move resets the runtime buffer state ("fresh context
+per command"); content outside the window is never dispatched,
+analyzed, or rewritten. The note-side write path stays whole-note
+(flush reassembles prefix + windowRaw + suffix; diff/splice/CAS
+unchanged), and the getText byte-identity contract holds — the window
+serves back exactly the bytes the runtime last received or wrote.
+
+USER CONVENTION: a command that operates on earlier content must be
+typed DIRECTLY under it (same paragraph — no blank line between).
+A blank line above the command = a fresh, isolated scope. Verified
+live: a poem command in its own paragraph resolved with textLen=38
+while 85 chars of older content sat untouched above it; a translate
+command typed under its target line saw that line (textLen=82) and
+rewrote only that paragraph.
