@@ -436,6 +436,23 @@ function canonicalise(token: string): string {
 
 function buildCanonicalIndex(catalog: ReadonlyMap<string, string>): Map<string, string> {
   const idx = new Map<string, string>();
+  for (const tok of catalog.keys()) {
+    const canonical = canonicalise(tok);
+    idx.set(canonical, tok);
+    // Singular/plural first-segment variant: blank-context derives
+    // singular tokens ([STOCK AAPL]) but models regularly emit the
+    // plural near-miss ([STOCKS AAPL] — observed live 2026-07-09 on
+    // gemma-4-31b). Index the swapped variant so the near-miss RESOLVES
+    // to the live value instead of being stripped. Exact catalog forms
+    // (set above/below) always win over a variant of another token.
+    const m = canonical.match(/^\[([A-Z0-9-]+)( .*)?\]$/);
+    if (m) {
+      const variant = m[1].endsWith('S') ? m[1].slice(0, -1) : `${m[1]}S`;
+      const variantTok = `[${variant}${m[2] ?? ''}]`;
+      if (!idx.has(variantTok)) idx.set(variantTok, tok);
+    }
+  }
+  // Second pass: exact canonical forms override any variant collision.
   for (const tok of catalog.keys()) idx.set(canonicalise(tok), tok);
   return idx;
 }

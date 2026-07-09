@@ -248,6 +248,28 @@ export class BlankFill {
     return slots;
   }
 
+  /**
+   * Indices of `_` slots this module will ACTUALLY claim at fill time —
+   * the input for the Resolver's `keywordBoundSlotIndices` option
+   * (blank-as-context fetch skip). Stricter than `scan()`: the keyword
+   * window makes a slot for ANY same-line keyword, but shaped blanks
+   * (including every keyword-desugared one) only fill on a shape
+   * verdict. Counting window-only slots for shaped blanks skipped the
+   * catalog fetch on exactly the topical queries the catalog exists
+   * for ("nvidia stock price is at _" — scan claimed it, fill-time
+   * routing declined it, FluidBlank ran catalog-less; observed live
+   * 2026-07-09).
+   */
+  claimedSlotIndices(text: string): number[] {
+    return this.scan(text)
+      .filter(s => {
+        if (s.shapeAction !== undefined) return true;
+        const cfg = this.configLoader.blanks.get(s.blankName) as { blankShapes?: readonly unknown[] } | undefined;
+        return !(cfg?.blankShapes && cfg.blankShapes.length > 0);
+      })
+      .map(s => s.index);
+  }
+
   private onTextChange(e: TextChangeEvent): void {
     let keepArmed = false;
     try {

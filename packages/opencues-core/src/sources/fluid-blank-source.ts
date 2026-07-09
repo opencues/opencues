@@ -1010,7 +1010,19 @@ export class FluidBlankSource implements CueSource {
       // when the gate is live (typed + a fetchable fn registry + blankFetch).
       const hasOnDemand = context.sentinelLanguage === 'typed'
         && !!context.aiCallableFns && context.aiCallableFns.size > 0 && !!context.blankFetch;
-      if (mergedCatalog.size > 0 || hasOnDemand) {
+      // Run even with an EMPTY catalog when a context feature is on:
+      // the FUSED prompt's static examples teach the bracket-token form
+      // regardless of whether this dispatch injected a catalog (the
+      // resolver legitimately skips the blank-context fetch on some
+      // passes), so the model can emit a token with nothing to resolve
+      // it against. The strip contract ("catalog is EXHAUSTIVE; any
+      // unknown bracket is a hallucination") must hold on those
+      // dispatches too — observed live 2026-07-09: `[STOCKS NVDA]`
+      // landed raw in a note on a fetch-skipped pass. When BOTH
+      // context features are off, brackets in answers are legit
+      // content and stay untouched (unchanged).
+      const contextFeatureOn = !!context.identityContext || bcMode !== 'off';
+      if (mergedCatalog.size > 0 || hasOnDemand || contextFeatureOn) {
         if (context.sentinelLanguage === 'typed') {
           // Typed grammar (opt-in): resolve parameterized + nested + accessor
           // forms via the typed-sentinel engine. preserveUnknown:false mirrors
@@ -1073,6 +1085,15 @@ export class FluidBlankSource implements CueSource {
             this.logInfo(`FluidBlank: ctx-post-processed (resolved=${pp.report.resolved.length}, tolerant=${pp.report.tolerantMatches.length}, stripped=${pp.report.stripped.length})`);
           }
         }
+      }
+
+      // Post-process stripped the ENTIRE answer (pure hallucinated
+      // token, nothing else) — bail rather than substitute emptiness:
+      // the `_` stays in the buffer and the next text-change retries.
+      if (finalAnswer.trim() === '' && answer.trim() !== '') {
+        this.logInfo('FluidBlank: answer was entirely hallucinated context tokens — bailing (blank stays armed)');
+        this.emit({ type: 'bailed', reason: 'FUSED-answer-stripped-empty', latencyMs: Date.now() - startTime });
+        return { results: [], timing: Date.now() - startTime, model: this.model };
       }
 
       // ctx isn't separately produced in fused mode — the model sees the

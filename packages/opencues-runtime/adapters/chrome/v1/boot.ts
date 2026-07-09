@@ -450,7 +450,7 @@ export function boot(host: HostInfo): BootResult {
           case 'bad-request':        return '[OpenCues: provider returned 400 (bad request) — check the Model name matches the selected Provider in the popup]';
         }
       },
-      keywordBoundSlotIndices: (text: string) => shared.blankFill.scan(text).map(s => s.index),
+      keywordBoundSlotIndices: (text: string) => shared.blankFill.claimedSlotIndices(text),
       externallySuppressed: (text: string) => kataCoach.shouldSuppressResolve(text),
     }), spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState);
     configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
