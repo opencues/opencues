@@ -87,6 +87,15 @@ Id **continuity** in the pure poll layer (`src/tick.ts`, event
 - A mid-fill `not-found` no longer untracks — the next poll resolves
   it as either a swap (remap; the pending write retries under the new
   id) or a genuine deletion (enumeration alive-check).
+- **Refinement (2026-07-09 13:44):** the CAS can LAND in Notes even
+  when its osascript errors (id swapped mid-script) — the new id then
+  holds our ANIMATION FRAME ("Draft an email •") while the snapshot
+  says "_", so content/prefix matching failed by one character, the
+  swap read as deletion, and the frame froze in the note with no
+  marker left to re-arm ("Draft an email _ becomes • and does
+  nothing"). The remap now also matches when the candidate's content
+  hashes into the vanished note's `lastWriteHash` ring — our own
+  write under a new id is the strongest identity proof there is.
 
 ## Secondary finding (same investigation)
 
