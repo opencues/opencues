@@ -95,11 +95,22 @@ export function spliceLineIntoBody(
  * Same exactly-one-match abort contract as `spliceLineIntoBody`;
  * the run must appear exactly once in the body. Line counts may
  * differ (multi-line answers replacing a single cue line).
+ *
+ * `expectedStart` (0-based line index of the region, from the caller's
+ * line diff) disambiguates MULTIPLE content matches: plaintext lines
+ * map 1:1 onto the body's `<div>` sequence (NOTES-PLATFORM.md), so
+ * when the identical cue line appears more than once (live failure
+ * 2026-07-08: a note holding several "Draft an email _" attempts made
+ * every fill abort) the match at the diffed index is provably the
+ * right one. Content is still verified at that index and every write
+ * remains CAS-guarded — ambiguity WITHOUT a matching index still
+ * aborts.
  */
 export function spliceLinesIntoBody(
   bodyHtml: string,
   oldLinesPlain: readonly string[],
   newLinesPlain: readonly string[],
+  expectedStart?: number,
 ): string | null {
   // Phantom-trailing-line normalization: Notes plaintext ends with a
   // terminal `\n`, so a split produces one final '' element that has NO
@@ -116,13 +127,14 @@ export function spliceLinesIntoBody(
     oldL = oldL.slice(0, -1);
     newL = newL.slice(0, -1);
   }
-  return spliceExactLines(bodyHtml, oldL, newL);
+  return spliceExactLines(bodyHtml, oldL, newL, expectedStart);
 }
 
 function spliceExactLines(
   bodyHtml: string,
   oldLinesPlain: readonly string[],
   newLinesPlain: readonly string[],
+  expectedStart?: number,
 ): string | null {
   if (oldLinesPlain.length === 0) return null;
   const lines = splitBodyLines(bodyHtml);
@@ -134,9 +146,16 @@ function spliceExactLines(
     }
     if (all) starts.push(i);
   }
-  if (starts.length !== 1) return null;
-  const first = lines[starts[0]];
-  const last = lines[starts[0] + oldLinesPlain.length - 1];
+  let regionStart: number;
+  if (starts.length === 1) {
+    regionStart = starts[0];
+  } else if (starts.length > 1 && expectedStart !== undefined && starts.includes(expectedStart)) {
+    regionStart = expectedStart;
+  } else {
+    return null;
+  }
+  const first = lines[regionStart];
+  const last = lines[regionStart + oldLinesPlain.length - 1];
   // Text-unchanged lines at the region's edges keep their ORIGINAL raw
   // fragments. diffLines widens pure insertions/deletions with an
   // anchor line whose text didn't change — re-escaping it as a plain
@@ -152,8 +171,8 @@ function spliceExactLines(
   ) suf++;
   const replacement = newLinesPlain
     .map((l, j) => {
-      if (j < pre) return lines[starts[0] + j].raw;
-      if (j >= newN - suf) return lines[starts[0] + oldN - (newN - j)].raw;
+      if (j < pre) return lines[regionStart + j].raw;
+      if (j >= newN - suf) return lines[regionStart + oldN - (newN - j)].raw;
       return l === '' ? '<div><br></div>' : `<div>${escapeNotesHtml(l)}</div>`;
     })
     .join('\n');

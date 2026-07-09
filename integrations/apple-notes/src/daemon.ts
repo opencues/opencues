@@ -291,7 +291,9 @@ export async function main(): Promise<void> {
     const spliceStart = Date.now();
     const diff = diffLines(snapshot.plaintext, newText);
     if (!diff) return;
-    const newBody = spliceLinesIntoBody(baseBody, diff.oldLines, diff.newLines);
+    // diff.start disambiguates duplicate cue lines (plaintext lines map
+    // 1:1 onto body divs — see spliceLinesIntoBody's expectedStart).
+    const newBody = spliceLinesIntoBody(baseBody, diff.oldLines, diff.newLines, diff.start);
     const spliceMs = Date.now() - spliceStart;
     if (newBody === null) {
       if (knownBody.delete(id) && !retried) {

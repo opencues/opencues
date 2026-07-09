@@ -163,9 +163,30 @@ describe('spliceLinesIntoBody', () => {
     expect(spliceLinesIntoBody(body, ['a', 'b'], ['ab'])).toBeNull();
   });
 
-  it('aborts when the run appears twice', () => {
+  it('aborts when the run appears twice and no expectedStart is given', () => {
     const body = '<div>a</div>\n<div>b</div>\n<div>a</div>\n<div>b</div>\n';
     expect(spliceLinesIntoBody(body, ['a', 'b'], ['ab'])).toBeNull();
+  });
+
+  it('expectedStart disambiguates a duplicated run (repeated cue lines)', () => {
+    // Live failure 2026-07-09: a note holding several identical
+    // "Draft an email _" attempts made every fill abort as ambiguous.
+    const body = '<div>q _</div>\n<div>x</div>\n<div>q _</div>\n';
+    const out = spliceLinesIntoBody(body, ['q _'], ['q 42'], 2);
+    expect(out).toBe('<div>q _</div>\n<div>x</div>\n<div>q 42</div>\n');
+    const outFirst = spliceLinesIntoBody(body, ['q _'], ['q 42'], 0);
+    expect(outFirst).toBe('<div>q 42</div>\n<div>x</div>\n<div>q _</div>\n');
+  });
+
+  it('expectedStart that is not one of the matches still aborts', () => {
+    const body = '<div>q _</div>\n<div>x</div>\n<div>q _</div>\n';
+    expect(spliceLinesIntoBody(body, ['q _'], ['q 42'], 1)).toBeNull();
+  });
+
+  it('a unique match wins even when expectedStart points elsewhere (stale diff)', () => {
+    const body = '<div>a</div>\n<div>q _</div>\n<div>c</div>\n';
+    const out = spliceLinesIntoBody(body, ['q _'], ['q 42'], 0);
+    expect(out).toBe('<div>a</div>\n<div>q 42</div>\n<div>c</div>\n');
   });
 
   it('aborts on an empty old run', () => {
