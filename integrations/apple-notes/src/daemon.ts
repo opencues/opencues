@@ -22,7 +22,7 @@ import type { LogLevel } from '@opencues/runtime/dist/src/adapter';
 import { NotesBridge } from './notes-bridge';
 import {
   applyPoll, containsBlankMarker, diffLines, ensureTrailingNewline, flushDelayMs,
-  freshMarkerIndex, initialState, pollDelayMs, recordWriteHash, seedBaseline, selectChanged, synthCursor, synthCursorNear,
+  freshMarkerIndex, initialState, isRecentWrite, pollDelayMs, recordWriteHash, seedBaseline, selectChanged, synthCursor, synthCursorNear,
   type DaemonState,
 } from './tick';
 import { buildBlanks, makeSpawnProcess } from './host-support';
@@ -140,6 +140,43 @@ export async function main(): Promise<void> {
       text: text.slice(0, markerIdx) + text.slice(markerIdx + 1),
       cursorOffset: markerIdx,
     });
+  };
+
+  // ── Circuit breaker (Windows integration fixes #3+#4, ported) ──────
+  // Backstop for UNFORESEEN feedback loops: a real runaway arms the
+  // SAME text repeatedly (an echo bouncing); genuine typing arms
+  // different text every keystroke. So the breaker counts only
+  // CONSECUTIVE same-text arms and resets the moment the text changes —
+  // normal typing can never trip it; a true loop pauses resolution
+  // triggers briefly instead of spinning forever, and the log names it.
+  const ARM_BREAKER_LIMIT = 3;
+  const ARM_BREAKER_COOLOFF_MS = 10_000;
+  let lastArmText = '';
+  let armRepeat = 0;
+  let breakerUntil = 0;
+  /** Arm through the breaker. Returns false when suppressed. */
+  const armGuarded = (id: string, text: string, armAt: number): boolean => {
+    const now = Date.now();
+    if (now < breakerUntil) {
+      log('warn', 'circuit breaker open — arm suppressed', { id, remainingMs: breakerUntil - now });
+      return false;
+    }
+    if (text === lastArmText) {
+      armRepeat++;
+    } else {
+      lastArmText = text;
+      armRepeat = 1;
+    }
+    if (armRepeat > ARM_BREAKER_LIMIT) {
+      breakerUntil = now + ARM_BREAKER_COOLOFF_MS;
+      armRepeat = 0;
+      lastArmText = '';
+      log('warn', `circuit breaker TRIPPED — ${ARM_BREAKER_LIMIT}+ consecutive same-text arms; pausing resolution triggers`, { id, cooloffMs: ARM_BREAKER_COOLOFF_MS });
+      return false;
+    }
+    lastRedispatchText.set(id, text);
+    armMarker(text, armAt);
+    return true;
   };
 
   // ── Virtual buffer + settle-debounced flush ─────────────────────────
@@ -326,7 +363,7 @@ export async function main(): Promise<void> {
         // and the answer died). We are HOLDING the authoritative fresh
         // text: resync the tracked snapshot ourselves.
         const trackedNow = state.tracked.get(id);
-        const isOwnEcho = state.lastWriteHash.get(id)?.has(sha(currentText)) === true;
+        const isOwnEcho = isRecentWrite(state, id, sha(currentText), Date.now());
         log('info', `note changed since resolution — ${isOwnEcho ? 'own echo, retrying against resynced snapshot' : 'user edit wins, re-dispatching'}`, {
           id,
           curLen: currentText.length,
@@ -356,10 +393,7 @@ export async function main(): Promise<void> {
           const armAt = freshMarkerIndex(currentText, snapshot.plaintext)
             ?? (containsBlankMarker(currentText) ? synthCursorNear(currentText, snapshot.plaintext) - 1 : null);
           const cursor = synthCursorNear(currentText, snapshot.plaintext);
-          if (armAt !== null) {
-            lastRedispatchText.set(id, currentText);
-            armMarker(currentText, armAt);
-          }
+          if (armAt !== null) armGuarded(id, currentText, armAt);
           bootResult.notifyTextChange(currentText, cursor, 'user');
         }
         return 'fatal';
@@ -385,7 +419,7 @@ export async function main(): Promise<void> {
     }
     // Record the INTENDED text's hash before the CAS so a poll reading
     // the note in the write window still classifies it as our echo.
-    recordWriteHash(state, id, sha(newText));
+    recordWriteHash(state, id, sha(newText), Date.now());
     const casStart = Date.now();
     const fill = await bridge.fillNote({ noteId: id, expectedBody: baseBody, newBody });
     const casMs = Date.now() - casStart;
@@ -411,7 +445,7 @@ export async function main(): Promise<void> {
     // as a user edit → note untracked → resetBufferState aborted the
     // in-flight LLM call, every time — resolution could never finish).
     const landed = ensureTrailingNewline(fill.value.plaintext.replace(/\r\n?/g, '\n'));
-    recordWriteHash(state, id, sha(landed));
+    recordWriteHash(state, id, sha(landed), Date.now());
     const tracked = state.tracked.get(id);
     if (tracked) state.tracked.set(id, { ...tracked, plaintext: landed });
     const landedAt = Date.now();
@@ -452,7 +486,7 @@ export async function main(): Promise<void> {
       lastRedispatchText.set(id, newText);
       log('info', 'unanswered cue remains — re-dispatching', { id });
       const cursor = synthCursor(newText);
-      armMarker(newText, cursor - 1);
+      armGuarded(id, newText, cursor - 1);
       bootResult.notifyTextChange(newText, cursor, 'user');
     }
     return 'landed';
@@ -628,12 +662,7 @@ export async function main(): Promise<void> {
               knownBody.delete(e.id);
               bootResult.resetBufferState();
               if (e.armAt !== null) {
-                // Seed the redispatch dedupe with the armed text so the
-                // animation's `_` rest frame (byte-identical to it) is
-                // never mistaken for an unanswered cue (see doFill).
-                lastRedispatchText.set(e.id, e.text);
-                armMarker(e.text, e.armAt);
-                prewarmBody(e.id);
+                if (armGuarded(e.id, e.text, e.armAt)) prewarmBody(e.id);
               }
               bootResult.notifyTextChange(e.text, e.cursor, e.source);
               break;
@@ -655,10 +684,7 @@ export async function main(): Promise<void> {
                 lastRedispatchText.set(e.id, e.text);
               }
               if (e.armAt !== null) {
-                // Same dedupe seed as switch-active (rest-frame guard).
-                lastRedispatchText.set(e.id, e.text);
-                armMarker(e.text, e.armAt);
-                prewarmBody(e.id);
+                if (armGuarded(e.id, e.text, e.armAt)) prewarmBody(e.id);
               }
               bootResult.notifyTextChange(e.text, e.cursor, e.source);
               break;

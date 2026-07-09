@@ -141,7 +141,7 @@ describe('applyPoll', () => {
     const s = initialState(T0);
     applyPoll(s, [meta('a', 'm1')], [note('a', 'm1', 'q _\n')], hash, T0);
     const filled = 'q answered\n';
-    s.lastWriteHash.set('a', new Set([hash(filled)]));
+    recordWriteHash(s, 'a', hash(filled), T0);
     s.tracked.set('a', { id: 'a', mod: 'm1', plaintext: filled, userEditAt: T0 });
     // iCloud echoes the fill back with a bumped mod
     const events = applyPoll(s, [meta('a', 'm2')], [note('a', 'm2', filled)], hash, T0 + 1000);
@@ -171,7 +171,7 @@ describe('applyPoll', () => {
   it('drops deleted notes from every map', () => {
     const s = initialState(T0);
     applyPoll(s, [meta('a', 'm1')], [note('a', 'm1', 'q _\n')], hash, T0);
-    s.lastWriteHash.set('a', new Set(['zz']));
+    recordWriteHash(s, 'a', 'zz', T0);
     const events = applyPoll(s, [], [], hash, T0);
     expect(events).toContainEqual({ type: 'untracked', id: 'a', reason: 'deleted' });
     expect(s.known.size).toBe(0);
@@ -214,7 +214,7 @@ describe('applyPoll', () => {
     expect(s.activeId).toBe('a');
     // our fill on b echoes back with a newer mod (marker consumed)
     const filled = 'other answered\n';
-    s.lastWriteHash.set('b', new Set([hash(filled)]));
+    recordWriteHash(s, 'b', hash(filled), T0 + 1500);
     const events = applyPoll(s, [meta('a', 'm2'), meta('b', 'm9')], [note('b', 'm9', filled)], hash, T0 + 2000);
     expect(s.activeId).toBe('a');
     expect(events.find(e => e.type === 'switch-active')).toBeUndefined();
@@ -255,7 +255,7 @@ describe('applyPoll', () => {
     // frame froze in the note forever.
     const s = initialState(T0);
     applyPoll(s, [meta('tTEMP', 'm1')], [note('tTEMP', 'm1', 'Draft an email _ \n')], hash, T0);
-    recordWriteHash(s, 'tTEMP', hash('Draft an email • \n')); // frame write, pre-CAS
+    recordWriteHash(s, 'tTEMP', hash('Draft an email • \n'), T0 + 500); // frame write, pre-CAS
     const events = applyPoll(s, [meta('pPERM', 'm2')], [note('pPERM', 'm2', 'Draft an email • \n')], hash, T0 + 1000);
     expect(events[0]).toEqual({ type: 'id-remapped', from: 'tTEMP', to: 'pPERM' });
     expect(events.find(e => e.type === 'untracked')).toBeUndefined();
@@ -269,7 +269,7 @@ describe('applyPoll', () => {
   it('id swap migrates the write-hash ring — echoes still classify as runtime', () => {
     const s = initialState(T0);
     applyPoll(s, [meta('tTEMP', 'm1')], [note('tTEMP', 'm1', 'q _\n')], hash, T0);
-    recordWriteHash(s, 'tTEMP', hash('q answered\n'));
+    recordWriteHash(s, 'tTEMP', hash('q answered\n'), T0);
     applyPoll(s, [meta('pPERM', 'm2')], [note('pPERM', 'm2', 'q _\n')], hash, T0 + 1000);
     // our fill echoes back under the NEW id
     const events = applyPoll(s, [meta('pPERM', 'm3')], [note('pPERM', 'm3', 'q answered\n')], hash, T0 + 2000);
@@ -288,7 +288,7 @@ describe('applyPoll', () => {
     const s = initialState(T0);
     // echo-only track: hash matches a daemon write, user never typed
     const filled = 'ghost answered\n';
-    s.lastWriteHash.set('g', new Set([hash(filled)]));
+    recordWriteHash(s, 'g', hash(filled), T0);
     s.tracked.set('g', { id: 'g', mod: 'm5', plaintext: filled, userEditAt: 0 });
     const events = applyPoll(s, [meta('g', 'm5')], [], hash, T0 + 1000);
     expect(s.activeId).toBeNull();
@@ -386,5 +386,28 @@ describe('diffLines', () => {
     const a = 'a\nb\n'.split('\n');
     a.splice(d!.start, d!.oldLines.length, ...d!.newLines);
     expect(a.join('\n')).toBe('a\nnew\nb\n');
+  });
+});
+
+describe('write-hash TTL (Windows integration fix #2, ported)', () => {
+  it('a fresh echo of our own write classifies as runtime', async () => {
+    const { isRecentWrite } = await import('./tick');
+    const s = initialState(T0);
+    recordWriteHash(s, 'a', hash('cmd _\n'), T0);
+    expect(isRecentWrite(s, 'a', hash('cmd _\n'), T0 + 5_000)).toBe(true);
+  });
+  it('an identical RE-TYPE after the TTL is a user trigger, never an echo', async () => {
+    const { isRecentWrite, WRITE_HASH_TTL_MS } = await import('./tick');
+    // The rest frame writes the user's literal command into the ring;
+    // an unexpiring ring swallowed a later identical re-type of the
+    // same command ("sometimes _ doesn't resolve").
+    const s = initialState(T0);
+    applyPoll(s, [meta('a', 'm1')], [note('a', 'm1', 'draft an email _\n')], hash, T0);
+    recordWriteHash(s, 'a', hash('draft an email _\n'), T0); // rest frame
+    const later = T0 + WRITE_HASH_TTL_MS + 1_000;
+    expect(isRecentWrite(s, 'a', hash('draft an email _\n'), later)).toBe(false);
+    const events = applyPoll(s, [meta('a', 'm9')], [note('a', 'm9', 'draft an email _\n')], hash, later);
+    const change = events.find(e => e.type === 'text-change' || e.type === 'switch-active');
+    expect(change).toMatchObject({ source: 'user' });
   });
 });

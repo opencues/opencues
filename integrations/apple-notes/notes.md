@@ -290,6 +290,20 @@ the event-driven hosts. Verified live: create note → trailing-space
 edit inside the same second → "user edit wins, re-dispatching" →
 answer landed 1.1s later.
 
+## Windows-integration fixes, cross-checked and ported (2026-07-09)
+
+The Windows daemon shares our core blindness (no keyboard; infer input
+by reading text back; must recognise its own writes). Its four fixes,
+mapped against ours:
+
+| Windows fix | Status here |
+|---|---|
+| #1 recent-writes registry + read-back normalization (CR→LF, strip zero-width) | Already present and STRONGER: `lastWriteHash` ring hashes both the intended text and the AS-LANDED text Notes returns post-write, absorbing arbitrary mangling (our `‾` round-trip = their `\r`/U+FEFF). |
+| #2 registry must not eat a real `_` | **Ported, apple-notes-shaped.** Their marker-count guard would misfire on our rest frames (which legitimately restore `_`), so ours is a TTL: ring entries expire after `WRITE_HASH_TTL_MS` (30s). A fill lifecycle is seconds; a LATER identical re-type of the same command can no longer be classified as our own echo and swallowed. Pinned by tests. |
+| #3 circuit breaker (self-healing on runaways) | **Ported.** `armGuarded` counts consecutive same-text arms; >3 trips a 10s pause on resolution triggers with a loud `circuit breaker TRIPPED` log line. Backstop only — every known loop already has a targeted guard. |
+| #4 breaker must not trip on typing | Ported as designed: the counter resets the moment the armed text differs, and typing changes the text every keystroke — a true runaway (same text bouncing) still trips it. |
+| singleton (two daemons racing one buffer) | Already enforced since day one: pid lockfile + stale-lock recovery (`acquireLockOrExit`), duplicate daemons refuse to start. |
+
 Unrelated environmental note from the same session: Notes.app itself
 can time out plaintext fetches when busy (log: "plaintext fetch failed
 (timeout)"); the daemon rides it out and recovers on later polls —

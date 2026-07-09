@@ -79,15 +79,24 @@ export interface DaemonState {
   tracked: Map<string, TrackedNote>;
   activeId: string | null;
   /**
-   * id → hashes of RECENT plaintexts we wrote (intended + as-landed).
-   * A poll delivering content matching ANY of them is our own write
-   * echoing back → source 'runtime', never re-resolved. A single
-   * last-hash raced streaming animation writes: a poll reading the
-   * note between a CAS landing and its hash being recorded classified
-   * our own frame as a user edit, untracked the note, and aborted the
-   * in-flight LLM call. modificationDate can't discriminate (AN-4).
+   * id → hash → write timestamp for RECENT plaintexts we wrote
+   * (intended + as-landed). A poll delivering content matching a
+   * RECENT entry is our own write echoing back → source 'runtime',
+   * never re-resolved. A single last-hash raced streaming animation
+   * writes: a poll reading the note between a CAS landing and its
+   * hash being recorded classified our own frame as a user edit,
+   * untracked the note, and aborted the in-flight LLM call.
+   * modificationDate can't discriminate (AN-4).
+   *
+   * Entries EXPIRE (WRITE_HASH_TTL_MS): the animation rest frame
+   * writes the user's literal command text into this ring, so an
+   * unexpiring ring classified a LATER identical re-type of the same
+   * command as our own echo and silently swallowed the `_`
+   * (the Windows integration hit the same trap — its fix #2). A fill
+   * lifecycle is seconds; 30s keeps every legitimate echo while
+   * making a re-typed command structurally impossible to swallow.
    */
-  lastWriteHash: Map<string, Set<string>>;
+  lastWriteHash: Map<string, Map<string, number>>;
   lastActivityAt: number;
 }
 
@@ -115,19 +124,28 @@ export function ensureTrailingNewline(s: string): string {
   return s.endsWith('\n') ? s : s + '\n';
 }
 
+export const WRITE_HASH_TTL_MS = 30_000;
+
 /**
- * Record a write hash for echo classification (capped ring per note).
- * Accepted residual: a CAS-conflicted fill leaves its intended-text
- * hash in the ring (entries only leave by cap eviction or untrack), so
- * a user later producing byte-identical text would be misclassified as
- * our echo. Requires reproducing one of ≤16 exact full-note plaintexts
- * — vanishingly unlikely; not worth per-write conflict bookkeeping.
+ * Record a write hash for echo classification (capped + TTL'd ring per
+ * note). Residual after the TTL fix: a byte-identical re-type WITHIN
+ * 30s of our own write of the same text is still classified as echo —
+ * requires clearing an answer and re-typing the exact command inside
+ * one fill lifecycle; accepted.
  */
-export function recordWriteHash(state: DaemonState, id: string, h: string): void {
-  let set = state.lastWriteHash.get(id);
-  if (!set) { set = new Set(); state.lastWriteHash.set(id, set); }
-  set.add(h);
-  while (set.size > 16) set.delete(set.values().next().value as string);
+export function recordWriteHash(state: DaemonState, id: string, h: string, now: number): void {
+  let ring = state.lastWriteHash.get(id);
+  if (!ring) { ring = new Map(); state.lastWriteHash.set(id, ring); }
+  ring.delete(h);
+  ring.set(h, now);
+  for (const [k, ts] of ring) if (now - ts > WRITE_HASH_TTL_MS) ring.delete(k);
+  while (ring.size > 16) ring.delete(ring.keys().next().value as string);
+}
+
+/** Is `h` a hash of something WE wrote recently (within the TTL)? */
+export function isRecentWrite(state: DaemonState, id: string, h: string, now: number): boolean {
+  const ts = state.lastWriteHash.get(id)?.get(h);
+  return ts !== undefined && now - ts <= WRITE_HASH_TTL_MS;
 }
 
 /** A standalone `_` (the blank marker), not snake_case underscores. */
@@ -295,7 +313,7 @@ export function applyPoll(
       // one character and the swap read as deletion, freezing the frame
       // in the note forever (observed live 2026-07-09 13:44). The
       // write-hash ring already holds every text we wrote or intended.
-      if (state.lastWriteHash.get(oldId)?.has(hash(t))) return true;
+      if (isRecentWrite(state, oldId, hash(t), now)) return true;
       // Prefix comparison ignores the canonical trailing '\n' — typing
       // appends BEFORE it ("q _\n" grows to "q _ more\n", which is not
       // a string-prefix of the old text without stripping it).
@@ -347,7 +365,7 @@ export function applyPoll(
 
     // Election stamp: a USER-sourced content change bumps userEditAt;
     // echoes of our own writes and mod-only bumps carry the prior stamp.
-    const isEcho = state.lastWriteHash.get(f.id)?.has(hash(text)) === true;
+    const isEcho = isRecentWrite(state, f.id, hash(text), now);
     const noteChanged = prev === undefined || prev.plaintext !== text;
     const userEditAt = noteChanged && !isEcho ? now : (prev?.userEditAt ?? 0);
 
@@ -395,7 +413,7 @@ export function applyPoll(
   }
 
   const source: 'user' | 'runtime' =
-    state.lastWriteHash.get(best.id)?.has(hash(best.plaintext)) ? 'runtime' : 'user';
+    isRecentWrite(state, best.id, hash(best.plaintext), now) ? 'runtime' : 'user';
 
   const prevText = prevTexts.get(best.id);
   const cursor = synthCursorNear(best.plaintext, prevText);
