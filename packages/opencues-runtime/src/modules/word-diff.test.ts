@@ -346,6 +346,37 @@ describe('threeWayMerge', () => {
     expect(m.droppedLlmHunks.length).toBe(0);
   });
 
+  it('authoritative mode: an untouched buffer returns the rewrite VERBATIM (translation regression)', () => {
+    // Live failure 2026-07-09: agent-mode's paragraph-break heuristic
+    // dropped a translation hunk whose word-diff boundaries sliced a
+    // \n\n run asymmetrically, stitching original English into the
+    // German output — with live === snapshot, where nothing needed
+    // protecting. Two different LLMs produced the identical artifact.
+    const A = 'Subject: Q3 Planning\n\nHi team,\n\nOur Q3 planning session is next Thursday at 2pm in the main conference room. Please bring your project updates and headcount requests. Lunch will be provided.\n\nBest, Sam\n';
+    const B = 'Betreff: Q3-Planung\n\nHallo Team,\n\nunsere Q3-Planungssitzung findet nächsten Donnerstag um 14 Uhr im Hauptkonferenzraum statt. Bitte bringt eure Projekt-Updates und Personalbedarfsanfragen mit. Für Mittagessen ist gesorgt.\n\nViele Grüße, Sam\n';
+    const m = threeWayMerge(A, B, A, { mode: 'authoritative' });
+    expect(m.newText).toBe(B);
+    expect(m.droppedLlmHunks.length).toBe(0);
+  });
+
+  it('authoritative mode: user typing during the call still survives (rule 1 kept)', () => {
+    const A = 'make this formal _\n';
+    const B = 'I would appreciate your consideration.\n';
+    const C = 'make this formal _ plus my new words\n';
+    const m = threeWayMerge(A, B, C, { mode: 'authoritative' });
+    expect(m.newText).toContain('plus my new words');
+  });
+
+  it('agent mode (default) keeps the paragraph-break heuristic', () => {
+    // The background rewriter must NOT canonicalise user structure —
+    // a hunk collapsing the user's \n\n is still dropped by default.
+    const A = 'line one\n\nline two';
+    const B = 'line one line two';
+    const m = threeWayMerge(A, B, A);
+    expect(m.newText).toBe(A);
+    expect(m.droppedLlmHunks.length).toBeGreaterThan(0);
+  });
+
   it('user typed past LLM\'s region: LLM\'s edit applies cleanly', () => {
     // A: "I rite", B: "I write" (LLM fix). C: "I rite stuff" (user added "stuff" past LLM hunk).
     const A = 'I rite';

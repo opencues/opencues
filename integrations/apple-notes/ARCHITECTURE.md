@@ -228,6 +228,28 @@ c) Paragraph scoping — tried, retired (§ 5.8): wrong for multi-
 
 Secondary quality note: `gemma-4-31b` (current blanks/cues/auditors
 model) was never bench-validated for this pipeline; it occasionally
-answers imperative drafts as sentence completions and mangles long
-verbatim reproductions. `gpt-oss-120b` is the bench-validated,
-~2× faster option on Cerebras.
+answers imperative drafts as sentence completions. `gpt-oss-120b` is
+the bench-validated, ~2× faster option on Cerebras.
+
+## 8. Correction (2026-07-09, after this doc was first written)
+
+The "mangled transform output" attributed above to model reproduction
+weakness was in fact a **cross-host runtime bug in `threeWayMerge`**
+(`packages/opencues-runtime/src/modules/word-diff.ts`), proven by:
+(a) two different models producing the byte-identical artifact, and
+(b) a pure-code reproduction with `live === snapshot`, where the merge
+must return the rewrite verbatim and instead stitched original English
+into a German translation. Cause: the merge's paragraph-break survival
+heuristic (built for AgentRewrite's conservative background edits)
+dropped translation hunks whose word-diff boundaries sliced a `\n\n`
+run asymmetrically. Fix: an `authoritative` merge mode for
+user-COMMANDED rewrites (TransformBlank) — untouched buffer → rewrite
+verbatim; typing during the call still wins. AgentRewrite's
+conservative mode is unchanged. Every host benefits; Notes surfaced it
+first because notes exercise whole-document transforms (translations)
+constantly while input boxes rarely do. Pinned by regression tests in
+`word-diff.test.ts`. The same investigation also fixed the loading
+animation's real frame characters tripping the transform race guard
+(`resolver.ts` — animations now stop before the guard reads the live
+buffer), which was discarding ~half of completed transform answers on
+non-ZWS hosts.

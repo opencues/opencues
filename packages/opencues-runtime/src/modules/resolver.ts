@@ -1900,6 +1900,21 @@ export class Resolver {
       if (isTransformBlank && r.alternatives.length >= 2) {
         const originalText = r.alternatives[0];
         const rewrittenText = r.alternatives[1];
+        // Restore animated `_` slots BEFORE reading the live buffer.
+        // On hosts whose loading animation writes REAL frame chars into
+        // the buffer (apple-notes, and any host without CC's ZWS-toggle
+        // spinner), a mid-cycle frame makes liveText differ from
+        // originalText by one real character: the race guard below then
+        // discards the completed answer (~50% of attempts, animation-
+        // phase dependent), and when it passes, threeWayMerge treats
+        // the frame char as a user edit, drops the LLM hunks around it,
+        // and stitches ORIGINAL lines into the rewrite (observed live
+        // 2026-07-09: identical mangled tails from two different
+        // models). stop() restores each slot to `_`, making live ==
+        // original modulo genuine user edits — which is exactly what
+        // the guard and the merge are meant to see. ZWS toggles are
+        // handled separately below (they survive stop()).
+        stopAllAnimations();
         const liveText = this.adapter.getText();
 
         // Race guard — if the live text no longer matches what we
@@ -2098,7 +2113,11 @@ export class Resolver {
             const liveTrig = locateTrigger(liveText, transformInstruction!, 0, 0);
             if (liveTrig) liveForMerge = stripZw(removeRange(liveText, liveTrig));
           }
-          const merge = threeWayMerge(originalForMerge, rewrittenText, liveForMerge);
+          // `authoritative`: the user COMMANDED this rewrite — only the
+          // user-typing-overlap rule applies; the agent-mode structural
+          // heuristics stitch original text into translations (see
+          // threeWayMerge's mode doc for the live failure this fixes).
+          const merge = threeWayMerge(originalForMerge, rewrittenText, liveForMerge, { mode: 'authoritative' });
           sub = applyMarkdownAwareSubstitution(
             this.adapter, merge.newText, { cursor: Number.MAX_SAFE_INTEGER },
           );
