@@ -59,8 +59,13 @@ describe('label-steering prompt invariants', () => {
 
     it('rule #10 includes concrete handle + URL examples', () => {
       const block = renderIdentityContextCatalog(sampleCtx, 'safe');
-      assert.match(block, /danielsunderland.*linkedin\.com\/in\/danielsunderland/);
-      assert.match(block, /wkasekende.*github\.com\/wkasekende/);
+      // Example values are SYNTHETIC by design (issue #279): the earlier
+      // examples used a real person's handle, which collided with that
+      // user's actual catalog values and got corrupted by the outbound
+      // dehydration floor. Pin the handle→URL derivation SHAPE, not any
+      // specific realistic identity.
+      assert.match(block, /casey-hollis-dev.*linkedin\.com\/in\/casey-hollis-dev/);
+      assert.match(block, /jt-sample-eng.*github\.com\/jt-sample-eng/);
     });
 
     it('rule #10 explains the catalog-fallback condition', () => {

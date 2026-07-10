@@ -1955,18 +1955,43 @@ export function applyOutboundDehydrationFloor<T extends {
   } catch { return req; }
   if (!guard || guard.size === 0) return req;
   let caught = 0;
+  let systemHits = 0;
   const messages = req.messages.map(m => {
     const d = guard!.dehydrate(m.content);
     if (!d.changed) return m;
+    // SYSTEM messages are scanned but NEVER rewritten (issue #279). By the
+    // prefix-cache invariant (docs/architecture/cerebras.md) every source
+    // puts per-call user-derived content in the USER message; the system
+    // message is static prompt text + safe-mode catalogs (token names, no
+    // values). A dehydrator hit on system text is therefore either
+    //   (a) a STATIC-PROMPT COLLISION — a hardcoded example value in the
+    //       prompt happens to equal one of the user's real catalog values
+    //       (#279: the catalog RULES' own example `github.com/<handle>`
+    //       matched the user's real GitHub URL; common values like
+    //       "United Kingdom" collide for many users) — rewriting it turns
+    //       an instruction example into a self-contradiction
+    //       (`→ "[GITHUB]" (NOT [GITHUB])`) that tips gpt-oss-120b into
+    //       SPAN=NONE on every identity lookup; or
+    //   (b) a source violating the system/user invariant by composing user
+    //       text into system — a real bug that ALSO breaks prefix caching,
+    //       surfaced by the loud warn below rather than silently patched.
+    // Scrubbing stays on for every non-system channel (user, assistant,
+    // prediction), which by design covers all user-content paths.
+    if (m.role === 'system') { systemHits += d.spans.length; return m; }
     caught += d.spans.length;
     return { ...m, content: d.text };
   });
   const dPred = req.prediction !== undefined ? guard.dehydrate(req.prediction) : undefined;
   if (dPred?.changed) caught += dPred.spans.length;
+  const emit = (msg: string): void => {
+    if (warn) warn(msg);
+    else if (typeof console !== 'undefined') console.warn(msg);
+  };
+  if (systemHits > 0) {
+    emit(`[opencues] outbound PII floor: ${systemHits} catalog value(s) matched inside the SYSTEM message — left untouched (static-prompt collision, or a source is composing user text into system; if the latter, fix the source — it also breaks prefix caching)`);
+  }
   if (caught === 0) return req;
-  const msg = `[opencues] outbound PII floor caught ${caught} residual value(s) — a source is missing dehydration (scrubbed before dispatch)`;
-  if (warn) warn(msg);
-  else if (typeof console !== 'undefined') console.warn(msg);
+  emit(`[opencues] outbound PII floor caught ${caught} residual value(s) — a source is missing dehydration (scrubbed before dispatch)`);
   return {
     ...req,
     messages,
