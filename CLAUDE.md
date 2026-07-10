@@ -28,7 +28,7 @@ host and the runtime.
 
 
 **Current Integrations**:
-- **Claude Code** (`integrations/claude-code/`) — patches Claude Code 2.1.x (current pin 2.1.170 native binary; tested versions in `integrations/claude-code/compat.json`) via tweakcc 4.0.13+
+- **Claude Code** (`integrations/claude-code/`) — patches Claude Code 2.1.x (current pin 2.1.206 native binary; tested versions in `integrations/claude-code/compat.json`) via tweakcc 4.0.13+
 - **OpenCode** (`integrations/opencode/`) — patches OpenCode 1.14.x (current pin 1.14.17, see `integrations/opencode/pin.json`); runtime loaded inline
 - **Chrome** (`integrations/chrome/`) — MV3 extension; CSS Custom Highlight API for in-page rendering
 - **Gemini CLI** (`integrations/gemini-cli/`) — patches Gemini CLI 0.41.x; React/Ink host with a render-kick + ZWS-toggle pull model. See its CLAUDE.md for the React quirks (it's the first React/Ink host so the integration was non-trivial).
@@ -46,7 +46,7 @@ Two Claude Code installs exist on this machine. **OpenCues work targets `claude-
 
 | Command | Location | Version | Purpose |
 |---|---|---|---|
-| `claude-cues` | `~/claude-code-cues` (local npm) | 2.1.170 (native bun-binary, pegged via `compat.json:current-pin`) | OpenCues patches applied here |
+| `claude-cues` | `~/claude-code-cues` (local npm) | 2.1.206 (native bun-binary, pegged via `compat.json:current-pin`) | OpenCues patches applied here |
 | `claude` | `~/.local/bin/claude` (native) | latest | Clean/unpatched — development use |
 
 - `claude-cues` is the only patched instance. The 2.1.113+ native bun-binary shape is patched via tweakcc 4.0.13+'s `.bun` ELF section extract/repack (the pre-2.1.113 cli.js shape used a direct minified-JS patch — same `setup.sh` auto-detects which shape is present).
@@ -243,7 +243,7 @@ export GROQ_API_KEY="your-key"
    compile (WSL only).
 2. **`integrations/claude-code/patches/setup.sh`** — strictly CC-specific.
    Default behavior: nuke + rebuild from scratch. Pinned `@anthropic-ai/claude-code`
-   (version from `integrations/claude-code/compat.json:current-pin`, today 2.1.170)
+   (version from `integrations/claude-code/compat.json:current-pin`, today 2.1.206)
    reinstalled + cloned tweakcc inside `<CC_FORK>/.cues/tweakcc/` +
    `@opencues/{core,runtime}` built and installed into `<CC_FORK>/node_modules/@opencues/`
    + statusline.sh into `<CC_FORK>/.cues/` + tweakcc patched (only

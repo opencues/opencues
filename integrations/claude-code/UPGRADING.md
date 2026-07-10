@@ -58,7 +58,7 @@ text-level patch surface is identical; only the install pipeline differs.
 The compat manifest at `integrations/claude-code/compat.json` is the source of
 truth for what we've tested.
 
-## The seam inventory (current as of 2.1.170)
+## The seam inventory (current as of 2.1.206)
 
 The patch is **anchored on five seams** in cli.js. Same-patch and same-minor
 bumps usually leave all five intact; cross-minor refactors can move any of
@@ -352,6 +352,17 @@ our statusline / theme patches have produced dead-boot TUIs.
 - **tweakcc requires its own update for some CC versions**: if a tweakcc
   internal anchor (not ours) misses on a new CC release, the build itself
   fails before our patches apply. Sync tweakcc to upstream main first.
+
+- **The patched binary can die at PARSE time with all five seams green**:
+  tweakcc's system-prompt writeback (`applySystemPrompts`) runs
+  unconditionally and re-embeds every extracted prompt; its backtick
+  re-escaper corrupts prompts containing nested templates inside `${...}`
+  interpolations (first hit on 2.1.206's memory prompt — symptom:
+  `SyntaxError ... Expected ':' in ternary operator` on any launch,
+  including `--version`). setup.sh § 4e now skips the writeback entirely
+  (empty `patchFilter`). If a future tweakcc refactor moves that callsite,
+  § 4e's anchor regex fails loudly at install. Post-mortem:
+  `adapters/cc/REPAIR.md` § 15.
 
 - **S6 isn't critical, S7 isn't critical, S1/S2/S3 are**: don't waste
   half a day porting an S6 regex. The Statusline module falls back to

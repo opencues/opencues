@@ -4,13 +4,13 @@
 #
 # Scope: handles BOTH install shapes structurally — the npm **cli.js**
 # shape (Claude Code 2.1.111 and earlier) and the **native bun-binary**
-# shape (2.1.113+, including today's pinned 2.1.170). Same script,
+# shape (2.1.113+, including today's pinned 2.1.206). Same script,
 # same patch source; `setup.sh` auto-detects which artifact is present
 # under the fork's `node_modules/@anthropic-ai/claude-code/` and hands
 # the right path to tweakcc — tweakcc 4.0.13+ patches cli.js directly,
 # or for native binaries extracts cli.js from the `.bun` ELF section,
 # patches the text, and repacks. The version pin lives in
-# `integrations/claude-code/compat.json:current-pin` (today 2.1.170);
+# `integrations/claude-code/compat.json:current-pin` (today 2.1.206);
 # see `integrations/claude-code/UPGRADING.md` for the version-bump
 # runbook.
 #
@@ -24,7 +24,7 @@
 # State that gets nuked + rebuilt every install (default):
 #   ~/claude-code-cues/.cues/                            recreated (incl. tweakcc clone)
 #   ~/claude-code-cues/node_modules/@opencues/{core,runtime}/  rebuilt + recopied
-#   ~/claude-code-cues/node_modules/@anthropic-ai/       reinstalled (pin from compat.json:current-pin, today 2.1.170 native bun-binary)
+#   ~/claude-code-cues/node_modules/@anthropic-ai/       reinstalled (pin from compat.json:current-pin, today 2.1.206 native bun-binary)
 #
 # State that survives every install:
 #   ~/.cues/  (incl. OPENCUES.md)                        user content (your CUE.md / BLANK.md edits etc.)
@@ -166,7 +166,7 @@ fi
 # invocation against a side fork doesn't hard-fail.
 COMPAT_JSON="$(dirname "$0")/../compat.json"
 CC_PIN=$(node -e "try{process.stdout.write(JSON.parse(require('fs').readFileSync('$COMPAT_JSON','utf8'))['current-pin']||'')}catch{}" 2>/dev/null || true)
-[ -z "$CC_PIN" ] && CC_PIN="2.1.170"
+[ -z "$CC_PIN" ] && CC_PIN="2.1.206"
 
 if [ ! -f "$CC_FORK_DIR/package.json" ]; then
   echo "Error: $CC_FORK_DIR/package.json missing." >&4
@@ -357,6 +357,31 @@ const insertPos = m.index + m[1].length;
 content = content.slice(0, insertPos) + insertion + content.slice(insertPos);
 fs.writeFileSync('$INDEX_FILE', content);
 console.log('Disabled stock tweakcc patches');
+"
+
+# 4e. Skip tweakcc's system-prompt writeback entirely.
+#
+# applySystemPrompts runs UNCONDITIONALLY in tweakcc's apply path —
+# BEFORE the patchImplementations map that 4d disables — and re-embeds
+# every extracted system prompt back into cli.js even when the user
+# customized nothing. Its backtick re-escaper doubles backslashes
+# across the whole prompt including inside preserved \${...}
+# interpolations (systemPrompts.ts:176), so a prompt containing a
+# nested template like \${l?\`\\\`\${y}\\\`\`:y} — first shipped in CC
+# 2.1.206's memory prompt — corrupts to \\\\\` and the patched binary
+# dies at parse time ("Expected ':' in ternary operator"). We don't
+# customize system prompts, so pass an empty patchFilter to
+# applySystemPrompts: [] is truthy and includes no promptId, so every
+# prompt is marked skipped and the content is never rewritten. The
+# stock-patch filter at applyPatchImplementations is untouched.
+node -e "
+const fs = require('fs');
+let content = fs.readFileSync('$INDEX_FILE', 'utf8');
+const m = content.match(/(const systemPromptsResult = await applySystemPrompts\(\s*content,\s*ccInstInfo\.version,\s*undefined,[^,)]*\r?\n\s*)(patchFilter)(\r?\n\s*\);)/);
+if (!m) { console.error('Error: could not find applySystemPrompts callsite in index.ts'); process.exit(1); }
+content = content.slice(0, m.index) + m[1] + '[] /* OpenCues: never rewrite system prompts */' + m[3] + content.slice(m.index + m[0].length);
+fs.writeFileSync('$INDEX_FILE', content);
+console.log('Disabled tweakcc system-prompt writeback');
 "
 end_step
 
