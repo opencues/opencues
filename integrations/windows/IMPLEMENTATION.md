@@ -306,14 +306,45 @@ history). We chose to leave it.
 
 ### MSAA (Discord) — the anchored exception
 
-Discord's focused element is an empty shell; there's no `ValuePattern`
-to `SetValue` and no Edit HWND for `EM_*`. So it keeps the **relative**
-backspace micro-frame path (`TryTypeMsaaMicroEdit`: `SendInput`
-Backspace×del + `KEYEVENTF_UNICODE`), which is safe there because the
-**final** write is an absolute select-all **paste** — any frame drift is
-wiped when the result lands. Relative writes are acceptable *only* when
-anchored to an absolute checkpoint like this. Kill switch:
-`OPENCUES_TYPE_ANIMATE=0` (legacy `OPENCUES_MSAA_ANIMATE=0`).
+Discord's focused element is an empty shell *to the managed UIA client*;
+there's no `ValuePattern` to `SetValue` and no Edit HWND for `EM_*`. So
+it keeps the **relative** backspace micro-frame path
+(`TryTypeMsaaMicroEdit`: `SendInput` Backspace×del +
+`KEYEVENTF_UNICODE`), which is safe there because the **final** write is
+an absolute select-all **paste** — any frame drift is wiped when the
+result lands. Relative writes are acceptable *only* when anchored to an
+absolute checkpoint like this. Kill switch: `OPENCUES_TYPE_ANIMATE=0`
+(legacy `OPENCUES_MSAA_ANIMATE=0`).
+
+### Native UIA on Electron — reads yes, writes NO (the Slate ghost)
+
+A July 2026 probe pass (`uia-native-probe.ps1`, `uia-native-drive-probe.ps1`)
+overturned the "Electron is a black box" assumption: Chromium serves its
+**modern native UIA provider** (`IUIAutomation` COM — what Narrator uses)
+even though the legacy managed API sees an empty shell. On Discord that
+surface is complete: writable `ValuePattern`, `TextPattern.GetText`,
+`TextPattern2.GetCaretRange` (a real caret read!), and collapsed-range
+`Select()` caret positioning — all verified live. Slack (older Electron)
+serves `ValuePattern` + `TextPattern` but no `TextPattern2`, and reports
+no selection, so its caret is unreadable by any route.
+
+**But the write half is a trap.** `SetValue` into Discord passed the
+a11y round-trip ("TEXT CHANGED", read-back correct) and **still
+corrupted the editor**: Discord's composer is **Slate, a model-first
+React editor** — `SetValue` writes the DOM/a11y layer behind the model,
+leaving **ghost text the user cannot delete** (Backspace edits the
+model; the ghost isn't in it) and breaking subsequent input synthesis
+until the renderer reloads (`Ctrl+R`). Slack's **Quill** composer syncs
+its model *from* DOM mutations, so `SetValue` is safe there — it is the
+live Slack write path. A read-back verify **cannot** catch the Slate
+desync: the a11y layer reports the new text while the model disagrees.
+
+**The rule this fixes in stone:** on Electron, native UIA is for
+*observation* — text reads and caret — never mutation. Writes go through
+the app's real input pipeline (keystrokes / paste), unless the editor
+framework is *verified* SetValue-safe (Quill yes, Slate no). The upgrade
+this enables: Discord can gain a genuine caret model (`GetCaretRange`)
+and cleaner reads without touching its proven write path.
 
 ### The lesson: relative accumulates, absolute converges
 

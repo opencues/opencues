@@ -18,11 +18,28 @@
   replaced by absolute SetValue writes + real caret control - Electron
   apps become first-class citizens like Notepad.
 
+  !!! FINDING (2026-07-10) - do NOT re-learn this the hard way: the a11y
+  round-trip PASSED on Discord (SetValue "TEXT CHANGED") and the editor was
+  STILL corrupted. Discord's composer is Slate (model-first): SetValue lands
+  in the DOM/a11y layer BEHIND the model, leaving GHOST TEXT the user cannot
+  delete (Backspace edits the model; the ghost is not in it) and breaking
+  all subsequent input synthesis until the renderer reloads (Ctrl+R fixes).
+  Slack's composer is Quill, which syncs its model FROM DOM mutations, so
+  SetValue is safe there. RULE: on Electron, native UIA is safe for READS
+  and caret; WRITES must go through the app's input pipeline (keys/paste)
+  unless the editor framework is verified SetValue-safe. A read-back verify
+  cannot catch this - the a11y layer reports the new text while the model
+  disagrees.
+
+  Run this probe's write test (5) ONLY on a scratch message, and expect to
+  Ctrl+R a Slate-based app afterwards.
+
   Run in Windows PowerShell 5.1:
     powershell -ExecutionPolicy Bypass -File <this>
   Click into the DISCORD (or Slack) message box, type "hello world", STAY.
   Results -> \\wsl.localhost\Ubuntu\tmp\oc-uia-drive-probe.log
 #>
+param([switch] $CaretVisual)
 $ErrorActionPreference = 'Continue'
 
 Add-Type @"
@@ -106,6 +123,19 @@ interface IUIAutomationTextPattern {
   [PreserveSig] int get_SupportedTextSelection(out int supportedTextSelection);
 }
 
+// Same GUID as IUIAutomationTextPattern, but with GetSelection marshaled as a
+// real SAFEARRAY(IUnknown) -> object[] so we can extract the selection ranges.
+// (Two [ComImport] interfaces may share a GUID; casting QIs by GUID either way.)
+[ComImport, Guid("32eba289-3583-42c9-9c59-3b6d9a1e9b6a"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IUIAutomationTextPatternSel {
+  [PreserveSig] int RangeFromPoint(tagPOINT pt, out IUIAutomationTextRange range);
+  [PreserveSig] int RangeFromChild(IUIAutomationElement child, out IUIAutomationTextRange range);
+  [PreserveSig] int GetSelection([MarshalAs(UnmanagedType.SafeArray, SafeArraySubType = VarEnum.VT_UNKNOWN)] out object[] ranges);
+  [PreserveSig] int GetVisibleRanges(out IntPtr ranges);
+  [PreserveSig] int get_DocumentRange(out IUIAutomationTextRange range);
+  [PreserveSig] int get_SupportedTextSelection(out int supportedTextSelection);
+}
+
 [ComImport, Guid("506a921a-fcc9-409f-b23b-37eb74106872"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 interface IUIAutomationTextPattern2 {
   [PreserveSig] int RangeFromPoint(tagPOINT pt, out IUIAutomationTextRange range);
@@ -155,6 +185,29 @@ public static class UiaDrive {
     return s.Length > m ? s.Substring(0, m) + "..." : s;
   }
 
+  // Caret offset via TextPattern2.GetCaretRange when served; otherwise via
+  // GetSelection (after a collapsed Select, the selection IS the caret) - the
+  // fallback that makes the caret-move verifiable on Slack (no TextPattern2).
+  static int CaretOffset(IUIAutomationTextPattern tp, IUIAutomationTextPattern2 tp2, out string how) {
+    how = "";
+    if (tp2 != null) {
+      int a; IUIAutomationTextRange c;
+      if (tp2.GetCaretRange(out a, out c) == 0 && c != null) { how = "caretRange"; return OffsetOf(tp, c); }
+    }
+    try {
+      var sel = tp as IUIAutomationTextPatternSel;
+      if (sel != null) {
+        object[] ranges;
+        if (sel.GetSelection(out ranges) == 0 && ranges != null && ranges.Length > 0) {
+          var r = ranges[0] as IUIAutomationTextRange;
+          if (r != null) { how = "selection"; return OffsetOf(tp, r); }
+        }
+      }
+    } catch { }
+    how = "none";
+    return -1;
+  }
+
   // Caret offset = length of (docRange with End moved to caret's Start).
   static int OffsetOf(IUIAutomationTextPattern tp, IUIAutomationTextRange target) {
     try {
@@ -167,6 +220,31 @@ public static class UiaDrive {
       if (r.GetText(-1, out t) != 0 || t == null) return -1;
       return t.Length;
     } catch { return -1; }
+  }
+
+  // Visual caret test: move the caret to offset 0 and DO NOT restore, so a
+  // human can report where the cursor visibly landed. For providers (Slack)
+  // where the caret is unreadable by any API route.
+  public static string CaretToStart() {
+    IUIAutomationElement el;
+    int hr = Uia().GetFocusedElement(out el);
+    if (hr != 0 || el == null) return "GetFocusedElement hr=0x" + hr.ToString("x8");
+    string procName = "";
+    try {
+      int pid = 0; int.TryParse(PropS(el, 30002), out pid);
+      if (pid > 0) procName = System.Diagnostics.Process.GetProcessById(pid).ProcessName;
+    } catch { }
+    object po;
+    hr = el.GetCurrentPattern(UIA_TextPatternId, out po);
+    var tp = (hr == 0 && po != null) ? po as IUIAutomationTextPattern : null;
+    if (tp == null) return "proc=" + procName + " no TextPattern";
+    IUIAutomationTextRange doc;
+    if (tp.get_DocumentRange(out doc) != 0 || doc == null) return "proc=" + procName + " no DocumentRange";
+    IUIAutomationTextRange startR;
+    if (doc.Clone(out startR) != 0 || startR == null) return "proc=" + procName + " clone failed";
+    startR.MoveEndpointByRange(EP_End, doc, EP_Start);
+    hr = startR.Select();
+    return "proc=" + procName + " Select(collapsed@START) hr=0x" + hr.ToString("x8") + " - NOT restored: look at the field. Is the cursor now BEFORE the first character?";
   }
 
   public static string Run(bool tryWrite) {
@@ -218,19 +296,12 @@ public static class UiaDrive {
     IUIAutomationTextPattern2 tp2 = null;
     hr = el.GetCurrentPattern(UIA_TextPattern2Id, out po);
     if (hr == 0 && po != null) tp2 = po as IUIAutomationTextPattern2;
-    int caretBefore = -1;
     if (tp2 == null) {
-      sb.AppendLine("TextPattern2: NOT SERVED (hr=0x" + hr.ToString("x8") + ")");
-    } else {
-      int active; IUIAutomationTextRange caret;
-      hr = tp2.GetCaretRange(out active, out caret);
-      if (hr == 0 && caret != null) {
-        caretBefore = OffsetOf(tp, caret);
-        sb.AppendLine("TextPattern2: GetCaretRange active=" + (active != 0) + " caretOffset=" + caretBefore);
-      } else {
-        sb.AppendLine("TextPattern2: GetCaretRange hr=0x" + hr.ToString("x8"));
-      }
+      sb.AppendLine("TextPattern2: NOT SERVED (caret read falls back to GetSelection)");
     }
+    string howB;
+    int caretBefore = CaretOffset(tp, tp2, out howB);
+    sb.AppendLine("caret before: offset=" + caretBefore + " (via " + howB + ")");
 
     // 4. CARET MOVE: move caret to offset 0 via collapsed start-range Select(),
     //    then back to end. (Start, not end - if the caret is already at the
@@ -241,12 +312,9 @@ public static class UiaDrive {
         startR.MoveEndpointByRange(EP_End, doc, EP_Start);   // collapse to START
         hr = startR.Select();
         System.Threading.Thread.Sleep(120);
-        int after = -1;
-        if (tp2 != null) {
-          int a2; IUIAutomationTextRange c2;
-          if (tp2.GetCaretRange(out a2, out c2) == 0 && c2 != null) after = OffsetOf(tp, c2);
-        }
-        sb.AppendLine("CaretMove: Select(collapsed@0) hr=0x" + hr.ToString("x8") + " caretAfter=" + after + ((after == 0) ? "  -> MOVED (control confirmed)" : "  -> did not land at 0"));
+        string howA;
+        int after = CaretOffset(tp, tp2, out howA);
+        sb.AppendLine("CaretMove: Select(collapsed@0) hr=0x" + hr.ToString("x8") + " caretAfter=" + after + " (via " + howA + ")" + ((after == 0) ? "  -> MOVED (control confirmed)" : "  -> did not land at 0"));
         // restore to end
         IUIAutomationTextRange endR;
         if (doc.Clone(out endR) == 0 && endR != null) {
@@ -299,7 +367,11 @@ for ($c = 10; $c -gt 0; $c--) {
 }
 
 Say ("native-UIA drive probe at " + (Get-Date -Format HH:mm:ss))
-try { Say ([UiaDrive]::Run($true)) } catch { Say ("Run threw: " + $_.Exception.Message) }
+if ($CaretVisual) {
+  try { Say ([UiaDrive]::CaretToStart()) } catch { Say ("CaretToStart threw: " + $_.Exception.Message) }
+} else {
+  try { Say ([UiaDrive]::Run($true)) } catch { Say ("Run threw: " + $_.Exception.Message) }
+}
 Say ("done at " + (Get-Date -Format HH:mm:ss))
 Write-Host ""
 Write-Host "Done. Results -> /tmp/oc-uia-drive-probe.log"
