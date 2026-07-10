@@ -31,12 +31,16 @@ two scripts:
    sync + 0-byte OPENCUES.md self-heal.
 2. **`patches/setup.sh`** — strictly CC-specific. Default: nuke +
    rebuild. Pinned `@anthropic-ai/claude-code` reinstalled into
-   `~/claude-code-cues/` + cloned tweakcc inside
-   `<CC_FORK>/.cues/tweakcc/` + `@opencues/{core,runtime}` built
+   `~/claude-code-cues/` + tweakcc cloned AND checked out at the exact
+   commit in `compat.json:tweakcc-pin` inside `<CC_FORK>/.cues/tweakcc/`
+   (never unpinned — issue #276) + `@opencues/{core,runtime}` built
    and installed under `<CC_FORK>/node_modules/@opencues/` + statusline
    into `<CC_FORK>/.cues/` + tweakcc patched (only the OpenCues v2
-   wiring; every stock tweakcc patch disabled) + verified at build AND
-   apply time. ~1m 5s warm install.
+   wiring; every stock tweakcc patch disabled AND the separate
+   system-prompt pipeline disabled, § 4e) + verified at build, apply,
+   AND runtime (fatal `node --check` on the cli.js shape + `--version`
+   execution smoke on the patched artifact, both shapes). ~1m 5s warm
+   install.
 
 **Compact footprint**: everything CC-specific lives inside
 `~/claude-code-cues/`. Uninstall is `rm -rf ~/claude-code-cues` +
@@ -144,7 +148,17 @@ order:
 
 The verification step skips `node --check` on native-binary shapes.
 Don't add JS-only validations after the apply step without gating them
-on `[ "$CC_SHAPE" = "cli.js" ]`.
+on `[ "$CC_SHAPE" = "cli.js" ]` — and don't be tempted to `node --check`
+the native post-patch **extract** either: the embedded JS runs under Bun
+and legitimately uses syntax Node's parser rejects (CC 2.1.170's `using`
+declarations fail node 22 `--check` on a PRISTINE extract). The native
+shape is verified by the § 9 runtime smoke instead: the patched binary
+itself is executed with `--version` and the install hard-fails if it
+doesn't run (issue #276 — a corrupted repack used to ship as "Done.").
+`bin/install.cjs:validateFork` mirrors both probes, so a corrupted
+artifact can neither install NOR skip as "already installed + healthy"
+later. `scripts/check-tweakcc-pin.sh` (pre-pr + CI) pins all of this
+in place.
 
 > **Failure mode this gate prevents:** running setup.sh against the 150
 > fork used to abort at step 2 with "cli.js still missing" — the script
@@ -226,16 +240,18 @@ When `@anthropic-ai/claude-code` ships a new version (full runbook:
    checks out — normally upstream's `Prompts for <new-version>` commit;
    wait for it to land before validating). tweakcc is the patch engine
    *and* a per-CC-version prompt-regex catalogue — bumping one pin
-   without re-validating the other is not a validation.
+   without re-validating the other is not a validation. Follow
+   UPGRADING.md § "Bumping the tweakcc pin" (§ 4e anchor check +
+   both-shapes install), then `bash scripts/check-tweakcc-pin.sh`.
 2. Run `setup.sh` against the new version — it'll fail at the apply
    step if a tweakcc anchor moved.
 3. Fix the anchor in `patches/opencuesRuntime.ts` (search for the
    obfuscated identifier in the new `cli.js` and update the regex).
-4. **Launch the patched binary** (`claude.exe --version` at minimum) —
-   apply-step verification greps for markers and misses parse-time
-   death. The 2.1.206 bump shipped a binary every seam check passed on
-   that died on ANY launch (tweakcc prompt-writeback corruption, now
-   disabled by setup.sh § 4e — see REPAIR.md § 15).
+4. **Launch the patched binary** — setup.sh § 9's runtime smoke does
+   this automatically now (`--version`, both shapes), and
+   `validateFork` mirrors it; do not weaken either. The 2.1.206 bump
+   shipped a binary every marker-grep check passed on that died on ANY
+   launch (tweakcc prompt corruption — REPAIR.md § 15, issue #276).
 5. Run the agentic harness suite (`tests/agentic/run-parallel
    claude-code 4`, private repo) before shipping the pin.
 6. Add a "What broke" note to `REPAIR.md` with the fix.

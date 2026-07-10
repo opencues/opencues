@@ -336,10 +336,14 @@ inside an interpolation (`` ${l?`\`${y}\``:y} ``); the `\`` doubled to
 `` \\\` `` and the repacked binary no longer parsed. 2.1.170 worked only
 because no prompt contained that shape — the escaper bug was latent.
 
-**Fix:** setup.sh § 4e patches the `applySystemPrompts` callsite in
-tweakcc's `patches/index.ts` to pass an empty `patchFilter` (`[]` is truthy
-and includes no promptId → every prompt marked skipped, content never
-rewritten). We use tweakcc as a patcher tool only; prompt customization was
+**Fix:** setup.sh § 4e disables tweakcc's system-prompt pipeline by
+dropping the `content = systemPromptsResult.newContent;` assignment in
+tweakcc's `patches/index.ts` (anchor-verified — install aborts if the
+anchor moves; the diff-report side stays, it never mutates cli.js). Same
+mechanism also covers the issue-#276 variant of this class (prompt-DB
+version mismatch double-escaping ~5000 segments on BOTH shapes), and the
+§ 9 runtime smoke executes the patched artifact so no variant can ship
+silently. We use tweakcc as a patcher tool only; prompt customization was
 never part of the OpenCues install.
 
 **Diagnostic that found it:** `bun build --no-bundle` against

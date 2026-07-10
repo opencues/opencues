@@ -4,7 +4,7 @@
   "host-package": "@anthropic-ai/claude-code",
   "current-pin": "2.1.206",
   "tweakcc-pin": "1545ff83379b410199029c623a42df3f3f057cdc",
-  "//tweakcc-pin": "Commit of Piebald-AI/tweakcc that setup.sh checks out after clone (validated against current-pin — 1545ff8 = 'Prompts for 2.1.206', v4.3.0+20). tweakcc ships per-CC-version prompt regexes AND is the patch engine, so an unpinned clone drifts independently of the CC pin: a future tweakcc main could move the applySystemPrompts callsite (breaking setup.sh § 4e's anchor) or regress the .bun repack. Bump this TOGETHER with current-pin after re-running the UPGRADING.md dance — tweakcc main needs a 'Prompts for <new-version>' commit before a CC bump can be validated.",
+  "//tweakcc-pin": "Exact commit of Piebald-AI/tweakcc that setup.sh clones + checks out (1545ff8 = 'Prompts for 2.1.206', v4.3.0+20 — the commit the 2.1.206 agentic-suite validation ran against; the module-graph repack regression PR #272 bisected on the 4.3.1-era commits is fixed by this point, and the 2.1.206 bump validated the repacked binary end-to-end). NEVER clone unpinned: issue #276 (July 2026) — an unpinned clone pulled a tweakcc main whose system-prompt pipeline corrupted BOTH shapes (2.1.110 cli.js SyntaxError; 2.1.170 native repack → Bun 'Expected CommonJS module to have a function wrapper'), reproduced on Linux x64. The CC pin and this pin move TOGETHER: bump only after re-running the UPGRADING.md verification against current-pin (upstream lands a 'Prompts for <version>' commit per CC release — wait for it).",
   "pin-location": {
     "kind": "npm-package-json",
     "path-from-fork": "package.json",
