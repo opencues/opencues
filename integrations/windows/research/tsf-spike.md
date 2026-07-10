@@ -42,6 +42,38 @@ So "no flashing + better APIs" is accurate — TSF could subsume the write path,
 the read path, the caret model, AND chord interception. It is the natural
 phase-2 architecture *if the kill-questions pass*.
 
+## RESULT (2026-07-10) — Q2 passed live on Discord
+
+The probe TIP was built, installed (one UAC via `register-tsf.ps1`), and
+fired on Discord's Slate composer. **It worked, cleanly:**
+
+```
+Activate tid=30
+PreserveKey Ctrl+Alt+J hr=0x00000000
+OnPreservedKey: replacing focused document
+edit: SetText hr=0x00000000 shiftedEnd=13
+RequestEditSession hr=0x00000000 sessionHr=0x00000000
+```
+
+Confirmed against all three signals:
+- **Q2 (the headline) — PASS.** `ITfRange::SetText` replaced the whole Slate
+  document **flash-free** (no select-all highlight) **and with no ghost** —
+  the composer stayed fully typeable/deletable afterward. This is the exact
+  write `ValuePattern.SetValue` could not do (the ghost) and that the paste
+  path cannot do without the flash. TSF's trusted edit session sails through
+  where every other channel failed.
+- **Q1 (activation) — PASS (basic).** `register-tsf.ps1` registered it; the
+  profile appeared in Win+Space and switching to it worked. (Still open: the
+  non-keyboard-category variant to avoid the IME slot for CJK users — a
+  refinement, not a blocker.)
+- **Q3 (daemon latency) — untested** by the local-key probe; the socket-driven
+  edit-session design remains the one unknown before a production build.
+
+**Verdict flips: TSF's flash-free write path is PROVEN on the hardest editor
+we have.** It is no longer a theoretical phase-2 contender — the capability is
+demonstrated. What remains is entirely cost/architecture (install invasiveness,
+the socket-driven design, non-keyboard category), not "does it work."
+
 ## The three kill-questions (what the probe TIP tests)
 
 Built in `../native/tsf/` (see its README to run). Priority order — each can
@@ -103,17 +135,24 @@ Three moves make it palatable, none free:
    `TFCAT_TIP_KEYBOARD`, to avoid the IME slot and the switcher. This is Q1's
    follow-up — plausible but under-documented; only a prototype settles it.
 
-## Verdict
+## Verdict (updated after the live PASS)
 
-- **Not for phase 1.** The only phase-1 gain is deleting one ~100ms flash on
-  Discord, against a UAC prompt + in-proc-everywhere + signing + a whole new
-  install surface. Wildly disproportionate. Discord's flash is documented as
-  the floor and accepted.
-- **A legitimate phase-2 contender.** Phase 2 wants overlay positioning, chord
-  interception, and event-driven reads *anyway* — TSF delivers all three plus
-  the flash-free write, potentially cleaner than LL-hook + overlay + polling.
-  The gate is the kill-questions, which this spike exists to answer before any
-  real investment.
+- **Still not for phase 1.** The capability is proven, but the *cost* hasn't
+  changed: a UAC prompt + our DLL in-proc in every focused app + a signing
+  cert + a whole new install surface, to delete one ~100ms flash on Discord.
+  Disproportionate for phase 1. The shipped shim stays exactly as-is; Discord's
+  flash remains the accepted floor *for the current architecture*.
+- **The lead phase-2 architecture, now de-risked.** Phase 2 wants overlay
+  positioning, chord interception, and event-driven reads *anyway* — TSF
+  delivers all three PLUS the flash-free write, and its headline risk (does the
+  write even work on a model-first editor?) is now retired with a live PASS on
+  Slate. What's left before committing is cost/design, not feasibility:
+  1. **Q3** — socket-driven edit-session latency (animation frames at ~13/sec
+     over the WSL socket, cross-thread edit-session requests).
+  2. **Non-keyboard category** — coexist with real IMEs (CJK users).
+  3. **Thin-proxy + optional-layer + signing** — the install-seamlessness work.
+  When phase 2 starts, this spike is the foundation to build the real
+  thin-proxy TIP on — not a research question anymore, an engineering one.
 
 ## Revert
 
