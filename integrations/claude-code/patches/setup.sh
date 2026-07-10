@@ -256,6 +256,25 @@ if $KEEP_STATE && [ -d "$TWEAKCC_DIR/.git" ]; then
   (cd "$TWEAKCC_DIR" && git checkout HEAD -- src/types.ts src/defaultSettings.ts src/patches/index.ts 2>/dev/null || true)
 else
   git clone https://github.com/Piebald-AI/tweakcc "$TWEAKCC_DIR"
+  # Pin tweakcc to the commit validated against compat.json:current-pin.
+  # tweakcc is both the patch engine and the per-CC-version prompt-regex
+  # catalogue; an unpinned clone drifts independently of the CC pin (a
+  # future main could move the applySystemPrompts callsite § 4e anchors
+  # on, or regress the .bun repack). Missing tweakcc-pin field = float
+  # on main (pre-pin behaviour) so side forks with an older compat.json
+  # keep working.
+  TWEAKCC_PIN=$(node -e "try{process.stdout.write(JSON.parse(require('fs').readFileSync('$COMPAT_JSON','utf8'))['tweakcc-pin']||'')}catch{}" 2>/dev/null || true)
+  if [ -n "$TWEAKCC_PIN" ]; then
+    if ! (cd "$TWEAKCC_DIR" && git checkout --quiet "$TWEAKCC_PIN"); then
+      echo "FATAL: tweakcc pin $TWEAKCC_PIN not found in the clone." >&4
+      echo "  compat.json:tweakcc-pin references a commit that upstream" >&4
+      echo "  Piebald-AI/tweakcc no longer serves (force-push / GC?)." >&4
+      echo "  Fix: re-validate a current tweakcc commit via the UPGRADING.md" >&4
+      echo "  dance and update compat.json:tweakcc-pin." >&4
+      exit 1
+    fi
+    echo "  tweakcc pinned at $TWEAKCC_PIN"
+  fi
   (cd "$TWEAKCC_DIR" && npm install --legacy-peer-deps --no-audit --no-fund 2>&1 | tail -3)
   # Belt-and-braces — pipefail (top of file) already aborts on a
   # failing `npm install`, but a flake of "exited 0 + node_modules

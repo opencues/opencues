@@ -83,9 +83,13 @@ older behavior.
   unrelated work-in-progress.
 - The CC fork at `~/claude-code-cues/` (or `~/claude-code-cues-150/` for the
   native-binary install). If neither exists, the install will create it.
-- Tweakcc dist at `integrations/claude-code/tweakcc/` is fast-forwardable to
-  upstream Piebald-AI/tweakcc — version 4.0.13+ is required for bun-binary
-  repack. (`git pull` inside that dir if you've been pinning.)
+- tweakcc is cloned fresh into `<fork>/.cues/tweakcc/` on every from-scratch
+  install and **checked out at `compat.json:tweakcc-pin`** — the upstream
+  Piebald-AI/tweakcc commit validated against `current-pin`. 4.0.13+ is the
+  hard floor for bun-binary repack. When validating a NEW CC version, first
+  check upstream tweakcc main for a `Prompts for <new-version>` commit (they
+  land one per CC release); that commit is your candidate for the new
+  `tweakcc-pin`.
 
 ## The dance
 
@@ -158,6 +162,13 @@ Edits required:
 - **`integrations/claude-code/compat.json`** — append the new version to
   `tested:` AND update `current-pin:` if you want it to become the default.
   Don't replace existing entries; the array is the historical record.
+- **`integrations/claude-code/compat.json` → `tweakcc-pin:`** — bump to the
+  upstream tweakcc commit you validated the new CC version against (normally
+  the `Prompts for <new-version>` commit on tweakcc main). The CC pin and the
+  tweakcc pin move TOGETHER — tweakcc carries per-CC-version prompt regexes
+  and is the patch engine, so validating one against a stale other is not a
+  validation. setup.sh checks the pin out after clone and fails loudly if the
+  commit is gone.
 - **`integrations/claude-code/README.md`** — `Compatible with` row in the
   header table.
 - **`integrations/claude-code/patches/setup.sh`** — the version pin in the
@@ -351,7 +362,9 @@ our statusline / theme patches have produced dead-boot TUIs.
 
 - **tweakcc requires its own update for some CC versions**: if a tweakcc
   internal anchor (not ours) misses on a new CC release, the build itself
-  fails before our patches apply. Sync tweakcc to upstream main first.
+  fails before our patches apply. Validate against a newer upstream commit
+  (usually the `Prompts for <new-version>` one) and bump
+  `compat.json:tweakcc-pin` in the same PR as the CC pin.
 
 - **The patched binary can die at PARSE time with all five seams green**:
   tweakcc's system-prompt writeback (`applySystemPrompts`) runs
