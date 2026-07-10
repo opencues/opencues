@@ -83,9 +83,17 @@ older behavior.
   unrelated work-in-progress.
 - The CC fork at `~/claude-code-cues/` (or `~/claude-code-cues-150/` for the
   native-binary install). If neither exists, the install will create it.
-- Tweakcc dist at `integrations/claude-code/tweakcc/` is fast-forwardable to
-  upstream Piebald-AI/tweakcc — version 4.0.13+ is required for bun-binary
-  repack. (`git pull` inside that dir if you've been pinning.)
+- tweakcc is pinned to an **exact commit** in `compat.json:tweakcc-pin`
+  (currently v4.3.0 / `76e1fea`); setup.sh clones + checks out that
+  commit and refuses to run unpinned. Never "just `git pull`" a tweakcc
+  clone into service — issue #276 (July 2026) was an unpinned clone
+  pulling a tweakcc main whose system-prompt pipeline corrupted BOTH
+  install shapes while the installer reported success. Bumping the
+  tweakcc pin is a deliberate runbook step: validate the new commit
+  against `current-pin` on both shapes (the install now hard-fails on a
+  corrupted artifact — fatal `node --check` + `--version` runtime
+  smoke), then update `compat.json:tweakcc-pin` in the same commit as
+  the validation notes.
 
 ## The dance
 
@@ -190,12 +198,16 @@ Default behavior is nuke + rebuild:
 
 - `npm install @anthropic-ai/claude-code@<pinned>` (pre-cutover) **OR**
 - Download `@anthropic-ai/claude-code-<platform>` (post-cutover, native binary)
-- `git clone Piebald-AI/tweakcc` (pinned at 4.0.13+) into `<fork>/.cues/tweakcc/`
+- `git clone Piebald-AI/tweakcc` + `git checkout --detach <compat.json:tweakcc-pin>` into `<fork>/.cues/tweakcc/`
 - Build + install `@opencues/{core,runtime}` into `<fork>/node_modules/@opencues/`
 - Install `statusline.sh` to `<fork>/.cues/statusline.sh`
 - Patch tweakcc to wire OpenCues v2 + disable every stock patch
 - Apply tweakcc to the cli.js (or native binary)
 - Verify the boot landed (greps the patched output for our markers)
+- Verify the patched artifact is intact: fatal `node --check` on the
+  cli.js shape, then a `--version` **runtime smoke on the patched
+  artifact itself** (both shapes). A corrupted patch output can no
+  longer ship as "Done." — issue #276.
 
 Use `--keep-state` for dev iteration on patch sources (skips the nuke, ~39s
 warm vs ~1m5s full).
@@ -207,9 +219,23 @@ If patch application fails:
   already applied. Should be impossible after a clean uninstall — if you see
   this, the restore-from-backup didn't actually restore. `rm -rf` and retry.
 - **Native binary repack error** (post-cutover only): usually a tweakcc
-  version mismatch. Upgrade tweakcc to upstream 4.0.13+ — PR #730 ("Fix
-  native binary patching on Linux") is required for the modern .bun section
-  layout.
+  version mismatch against the CC version's .bun section layout. Fix by
+  moving `compat.json:tweakcc-pin` to a commit that supports the layout
+  (upstream PR #730 "Fix native binary patching on Linux" was the fix
+  for the modern layout on Linux) and re-validating both shapes.
+- **Patched binary launches but Bun errors with "Expected CommonJS
+  module to have a function wrapper"**: the repacked module blob is
+  corrupted — the patched JS text was mangled before repack, or the
+  repack itself broke. Issue #276's instance was tweakcc's
+  system-prompt pipeline (which setup.sh § 4e now disables)
+  double-escaping prompt template literals when the CC version's
+  prompts don't match tweakcc's bundled prompt DB. The install's
+  `--version` runtime smoke now catches this class at install time; if
+  a user reports it from an old install, have them re-run
+  `opencues install claude-code --rebuild` on current master.
+- **`SyntaxError: Invalid or unexpected token` launching a patched
+  cli.js**: same corruption class as above on the cli.js shape (the
+  fatal post-patch `node --check` now blocks it at install time).
 
 ### 6. Smoke check
 
@@ -341,6 +367,60 @@ writes to `/tmp/opencues.log` via `fs.appendFileSync`.
 orchestrator. We use tweakcc as a **patcher tool**, not a feature suite.
 Don't re-enable stock patches "to get free features" — interactions with
 our statusline / theme patches have produced dead-boot TUIs.
+
+### tweakcc's system-prompt pipeline is disabled (separate from stock patches)
+
+`applySystemPrompts()` runs unconditionally in tweakcc's orchestrator
+**before** the `patchImplementations` map that section 4d disables — it
+is a separate mechanism and needs its own disable (setup.sh § 4e drops
+the `content = systemPromptsResult.newContent` assignment). When the CC
+version's prompts don't hash-match tweakcc's bundled prompt DB, that
+pipeline rewrites CC's prompt template literals; issue #276 (July 2026)
+hit a tweakcc-main revision whose rewrite double-escaped backslashes
+across ~5000 prompt segments, corrupting both install shapes. We ship
+zero prompt customizations, so the pipeline has nothing to legitimately
+do for us. `scripts/check-tweakcc-pin.sh` (pre-pr + CI) asserts the
+disable stays in place.
+
+## Bumping the tweakcc pin
+
+`compat.json:tweakcc-pin` is an exact upstream commit. To move it
+(e.g. a new CC pin needs newer seam prompts or repack support):
+
+1. Pick the upstream commit; read its changelog since the current pin —
+   pay attention to `src/nativeInstallation.ts` (repack) and
+   `src/patches/systemPrompts*` (the § 4e disable anchor).
+2. Verify the § 4e anchor still exists at that commit:
+   `git show <commit>:src/patches/index.ts | grep 'content = systemPromptsResult.newContent'`.
+   If it moved, update setup.sh § 4e in the same PR.
+3. Update `compat.json:tweakcc-pin`, then run a full install against
+   `current-pin` on **both shapes** (see the isolated-fork recipe below) —
+   the install now hard-fails on a corrupted artifact, so a bad pin
+   can't ship silently.
+4. `bash scripts/check-tweakcc-pin.sh` + `bash scripts/pre-pr.sh`.
+
+Isolated-fork validation recipe (never touches `~/claude-code-cues`):
+
+```bash
+mkdir -p /tmp/cc-pin-test && cd /tmp/cc-pin-test
+echo '{"dependencies":{"@anthropic-ai/claude-code":"<version>"}}' > package.json
+OPENCUES_CC_TARGET=/tmp/cc-pin-test/node_modules/@anthropic-ai/claude-code/bin/claude.exe \
+  <repo>/integrations/claude-code/patches/setup.sh
+# (use .../claude-code/cli.js as the target for a pre-2.1.113 version)
+```
+
+## Platform support status
+
+Maintainer validation runs on **Linux x64 (incl. WSL)** only — every
+entry in `compat.json:tested` was validated there. macOS arm64 has no
+maintainer coverage (issue #276 was reported there; both its failures
+turned out to be the unpinned-tweakcc regression, reproducible on
+Linux, but the Mach-O repack path itself remains community-tested only
+— upstream tweakcc issue #683 tracks a known macOS ARM64 repack
+unfaithfulness). The install-time verification (fatal `node --check` +
+`--version` runtime smoke) is the structural guard: a platform-specific
+patch/repack failure aborts the install loudly on the user's machine
+instead of shipping a broken fork that claims success.
 
 ## Common upgrade gotchas
 
