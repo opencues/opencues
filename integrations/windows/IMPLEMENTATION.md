@@ -346,6 +346,50 @@ framework is *verified* SetValue-safe (Quill yes, Slate no). The upgrade
 this enables: Discord can gain a genuine caret model (`GetCaretRange`)
 and cleaner reads without touching its proven write path.
 
+### The write-privilege ladder — why Discord's flash is the floor
+
+Researched (July 2026) after every flash-free write into Discord failed;
+each rung verified against docs/community, not just our experiments:
+
+1. **In-page JavaScript** (browser extensions; Grammarly's extension +
+   [Text Editor SDK](https://developer.grammarly.com/) with per-editor
+   adapters) — full access, the editor is driven on its own terms.
+   *Our analog: the OpenCues Chrome extension. Discord-in-a-browser is
+   its territory; Discord desktop is this host's.*
+2. **TSF** (Text Services Framework — the OS input-method plumbing that
+   IMEs / handwriting / Windows text-suggestions ride). A registered
+   text service can replace ranges *through the input pipeline*;
+   Chromium converts TSF edits into **trusted** composition /
+   `insertReplacementText` events, which Slate handles — this is why
+   the OS's own autocorrect replaces words in Discord with no flash.
+   Price: shipping a TIP — an in-proc COM DLL **loaded into every
+   application's input stack**. Rejected at research time for
+   invasiveness; see the TSF capability notes below before revisiting.
+3. **Trusted input simulation** (keystrokes + clipboard) — *us, and
+   Grammarly Desktop*, whose own docs require fields to support the
+   [UIA Text Pattern](https://support.grammarly.com/hc/en-us/articles/10139846131213-How-do-I-integrate-Grammarly-with-my-website-or-application)
+   and which falls back to a floating widget + paste-back on hostile
+   fields (the same flash-class write). Whole-field replace on this
+   rung requires a momentary selection — the flash.
+4. **Accessibility writes** (`SetValue`) — broken on model-first
+   editors (the Slate ghost, above).
+
+Slate specifics that close rungs 3½ and 4 permanently: Slate handles
+`insertReplacementText`/`insertFromPaste` via `beforeinput`
+([editable.tsx](https://github.com/ianstormtaylor/slate/blob/main/packages/slate-react/src/components/editable.tsx))
+but only from **browser-generated** input; the maintainers' own
+discussion ([#5003](https://github.com/ianstormtaylor/slate/discussions/5003))
+confirms both direct DOM mutation ("editor reverts … incorrect cursor" —
+the ghost, verbatim) AND synthetically dispatched `InputEvent`s fail to
+sync its model. `TextEditPattern` (which Discord advertises) is
+read-only — composition observation + notifications, no write methods
+([MS Learn](https://learn.microsoft.com/en-us/windows/win32/winauto/textedit-control-pattern)).
+Empirical additions from our tests: a 354-backspace burst drops/mangles
+in Slate (the chomp experiment), and typing result text triggers
+Discord's `:`/`@`/`#` popups. **Trusted input is the only writable
+channel from outside, and whole-field-replace-by-input needs a
+selection: the flash is structural, not a bug.**
+
 **First shipped consumer (July 2026): the Slack caret fix.** Slack's
 caret used to bounce during the animation because every spinner frame
 was a whole-value `SetValue` (caret invalidated → parked at start →

@@ -899,10 +899,12 @@ namespace OpenCues
         // never sees it (Slack: TextPattern False managed / True native —
         // probed 2026-07-10 with uia-native-drive-probe.ps1).
         //
-        // HARD RULE: this surface is for READS and CARET only. Writing through
-        // it (ValuePattern.SetValue) DESYNCED Discord's Slate editor — ghost
-        // text the user cannot delete, broken input until Ctrl+R. See
-        // IMPLEMENTATION.md §5 "the Slate ghost". Do not add a write here.
+        // HARD RULE: this surface is for READS and SELECTION/CARET only —
+        // selection ops (collapsed caret moves, select-all) sync into the
+        // editor's model and are safe. CONTENT mutation is banned: writing
+        // through it (ValuePattern.SetValue) DESYNCED Discord's Slate editor —
+        // ghost text the user cannot delete, broken input until Ctrl+R. See
+        // IMPLEMENTATION.md §5 "the Slate ghost". Do not add a content write.
         //
         // The client is created LAZILY on the first non-Edit caret restore
         // (i.e. only when a Slack-class composer is actually being written),
@@ -976,6 +978,21 @@ namespace OpenCues
             [PreserveSig] int get_SupportedTextSelection(out int supportedTextSelection);
         }
 
+        // Same GUID as IUIAutomationTextPatternN, with GetSelection marshaled
+        // as a real SAFEARRAY(IUnknown) -> object[] so the live selection can
+        // be READ BACK (the verification half of the verified select-all).
+        // Two [ComImport] interfaces may share a GUID; 'as' QIs by GUID.
+        [ComImport, Guid("32eba289-3583-42c9-9c59-3b6d9a1e9b6a"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        interface IUIAutomationTextPatternSelN
+        {
+            [PreserveSig] int RangeFromPoint(UiaPt pt, out IUIAutomationTextRangeN range);
+            [PreserveSig] int RangeFromChild(IUIAutomationElementN child, out IUIAutomationTextRangeN range);
+            [PreserveSig] int GetSelection([MarshalAs(UnmanagedType.SafeArray, SafeArraySubType = VarEnum.VT_UNKNOWN)] out object[] ranges);
+            [PreserveSig] int GetVisibleRanges(out IntPtr ranges);
+            [PreserveSig] int get_DocumentRange(out IUIAutomationTextRangeN range);
+            [PreserveSig] int get_SupportedTextSelection(out int supportedTextSelection);
+        }
+
         const int UIA_TextPatternId_N = 10014;
         const int EPT_Start = 0;   // TextPatternRangeEndpoint_Start
         const int EPT_End = 1;     // TextPatternRangeEndpoint_End
@@ -1021,6 +1038,74 @@ namespace OpenCues
                 return endR.Select() == 0;
             }
             catch { return false; }
+        }
+
+        // Select the ENTIRE document of the focused composer via the native
+        // TextPattern and VERIFY it took: read the selection back and compare
+        // endpoints against the document range. A verified selection lets the
+        // paste path skip the blind keystroke sequence (Ctrl+A + commit gaps +
+        // Delete-to-empty): one Ctrl+V over a selection we KNOW is committed.
+        // This is a selection op — the safe half of native UIA on Slate (the
+        // ghost came from content mutation). Returns false -> caller falls
+        // back to the legacy gap-timed sequence.
+        // Logged once per session: WHY the verified select-all path declined,
+        // so a fallback-to-legacy-flash is diagnosable from the log without a
+        // debug build. (It failed silently on Discord on first ship — never
+        // let this path decline silently again.)
+        static bool _selAllDiagLogged;
+        static bool SelAllFail(string why)
+        {
+            if (!_selAllDiagLogged)
+            {
+                _selAllDiagLogged = true;
+                Log("debug", "native select-all: falling back to keystroke sequence (" + why + ")");
+            }
+            return false;
+        }
+
+        static bool TryNativeUiaSelectAllVerified()
+        {
+            try
+            {
+                var uia = NativeUia();
+                if (uia == null) return SelAllFail("no native UIA client");
+                IUIAutomationElementN el;
+                int hr = uia.GetFocusedElement(out el);
+                if (hr != 0 || el == null) return SelAllFail("GetFocusedElement hr=0x" + hr.ToString("x8"));
+                object po;
+                hr = el.GetCurrentPattern(UIA_TextPatternId_N, out po);
+                if (hr != 0 || po == null) return SelAllFail("no TextPattern hr=0x" + hr.ToString("x8"));
+                var tp = po as IUIAutomationTextPatternN;
+                var tps = po as IUIAutomationTextPatternSelN;
+                if (tp == null) return SelAllFail("TextPattern QI null");
+                if (tps == null) return SelAllFail("GetSelection variant QI null");
+                IUIAutomationTextRangeN doc;
+                hr = tp.get_DocumentRange(out doc);
+                if (hr != 0 || doc == null) return SelAllFail("DocumentRange hr=0x" + hr.ToString("x8"));
+                hr = doc.Select();
+                if (hr != 0) return SelAllFail("Select hr=0x" + hr.ToString("x8"));
+                // Verify (up to 3 x 20ms): the provider's reported selection
+                // must span the document exactly. This replaces the blind 90ms
+                // commit gap with knowledge.
+                string last = "no selection reported";
+                for (int attempt = 0; attempt < 3; attempt++)
+                {
+                    Thread.Sleep(20);
+                    object[] ranges;
+                    hr = tps.GetSelection(out ranges);
+                    if (hr != 0) { last = "GetSelection hr=0x" + hr.ToString("x8"); continue; }
+                    if (ranges == null || ranges.Length == 0) { last = "GetSelection empty"; continue; }
+                    var sel = ranges[0] as IUIAutomationTextRangeN;
+                    if (sel == null) { last = "selection range QI null"; continue; }
+                    int cs, ce;
+                    if (sel.CompareEndpoints(EPT_Start, doc, EPT_Start, out cs) == 0 && cs == 0
+                        && sel.CompareEndpoints(EPT_End, doc, EPT_End, out ce) == 0 && ce == 0)
+                        return true;
+                    last = "selection != document (endpoints off)";
+                }
+                return SelAllFail("verify failed: " + last);
+            }
+            catch (Exception ex) { return SelAllFail("threw: " + ex.Message); }
         }
 
         // Chromium applies SetValue (and its caret-to-start reset) on its own
@@ -1556,16 +1641,32 @@ namespace OpenCues
         // Replace the field via a PREFIX DIFF instead of clearing the whole
         // field. Keep the unchanged common HEAD of old vs new; the cursor is at
         // the end, so backspace only the CHANGED SUFFIX and paste only the new
-        // tail. OpenCues edits are almost always tail-localized (the command +
-        // result sit at the cursor), so the change is small even in a HUGE field
-        // -> a tiny backspace burst, no selection, no flash, and it scales.
-        // BACKSPACE_MAX now bounds the CHANGED SUFFIX, not the whole field. Only
-        // a genuine whole-field rewrite (small common prefix -> large changed
-        // suffix) falls back to Ctrl+A + full paste, costing one highlight frame.
-        // No margin on the backspace count: the common prefix must be preserved
-        // exactly (an extra backspace would eat unchanged head text).
+        // tail. No selection -> NOTHING to flash, and both halves (backspaces +
+        // paste) go through the real input pipeline, so it is editor-framework-
+        // safe (the same mechanism as the per-frame typed animation, in one
+        // atomic burst). The ceiling bounds the CHANGED SUFFIX, not the whole
+        // field; only a rewrite bigger than it falls to the select-all path.
+        // CEILING = 40, and this is EMPIRICAL — do not raise it casually: a
+        // 2026-07-10 live test at 600 sent a 354-backspace burst into
+        // Discord/Slate and it failed outright ("doesn't work at all" —
+        // dropped/coalesced under load, mangled result), while the small
+        // bursts this path has always used (<=40, and the 1-2-char animation
+        // frames) are reliable. Large rewrites take the select-all path and
+        // pay one highlight flash — on Slate that is the floor, since every
+        // flash-free alternative is closed: SetValue desyncs the model (the
+        // ghost), typing the result triggers Discord's :/@/# popups, and big
+        // backspace bursts drop. No margin on the count: the common prefix
+        // must be preserved exactly (an extra backspace would eat unchanged
+        // head text). Tunable for experiments: OPENCUES_BACKSPACE_MAX.
         // `oldText` is the field's current content the shim last read.
-        const int BACKSPACE_MAX = 40;
+        static readonly int _backspaceMax = ReadBackspaceMax();
+        static int ReadBackspaceMax()
+        {
+            var v = Environment.GetEnvironmentVariable("OPENCUES_BACKSPACE_MAX");
+            int m;
+            if (!string.IsNullOrEmpty(v) && int.TryParse(v, out m) && m >= 0 && m <= 4000) return m;
+            return 40;
+        }
         static void PasteReplace(string text, string oldText)
         {
             string saved = null;
@@ -1576,9 +1677,9 @@ namespace OpenCues
             int changed = oldLen - p;                 // suffix chars to delete (cursor is at end)
 
             Log("debug", "diff-paste: prefix=" + p + " changed=" + changed + "/" + oldLen + " newLen=" + text.Length
-                + (changed <= BACKSPACE_MAX ? " -> backspace (no flash)" : " -> Ctrl+A (flash)"));
+                + (changed <= _backspaceMax ? " -> backspace (no flash)" : " -> Ctrl+A (flash)"));
 
-            if (changed <= BACKSPACE_MAX)
+            if (changed <= _backspaceMax)
             {
                 // Small tail edit (append / truncate / trailing replace): delete
                 // the changed suffix, paste only the new tail. No selection ->
@@ -1590,24 +1691,40 @@ namespace OpenCues
             }
             else
             {
-                // Whole-field rewrite (no small tail to exploit): select-all,
-                // DELETE the selection to empty the field, then paste into the
-                // empty field. Pasting into a guaranteed-empty field CANNOT
-                // append old content — the failure mode on slow Electron
-                // composers (Discord), where a fast Ctrl+A->Ctrl+V pasted
-                // before the selection committed, leaving old text + new
-                // appended. Each step is its own burst with a commit gap so the
-                // slow composer processes the selection before the delete, and
-                // the delete before the paste. 90ms default (Discord needs
-                // ~50ms+; OPENCUES_PASTE_GAP_MS overrides for slower machines).
+                // Whole-field rewrite (no small tail to exploit).
                 SetClipboardText(text);
                 Thread.Sleep(15);
-                int commitMs = _pasteGapMs > 0 ? _pasteGapMs : 90;
-                KeyChord(VK_CONTROL, VK_A);
-                Thread.Sleep(commitMs);
-                KeyTap(VK_DELETE);            // clear the selection -> field now empty
-                Thread.Sleep(commitMs);
-                KeyChord(VK_CONTROL, VK_V);   // paste into the empty field
+                // Preferred: native-UIA VERIFIED select-all -> immediate paste.
+                // The selection is set by API (no keystroke race) and read back
+                // from the provider, so we KNOW it is committed before Ctrl+V —
+                // the append bug (paste landing before an uncommitted Ctrl+A)
+                // cannot happen, which also makes the Delete-to-empty step and
+                // its blank-field frame unnecessary. Flash shrinks from
+                // blue->empty->text (~200ms of gaps) to one blue->text swap.
+                if (TryNativeUiaSelectAllVerified())
+                {
+                    Log("debug", "diff-paste: native-UIA verified select-all -> paste");
+                    KeyChord(VK_CONTROL, VK_V);   // paste over the verified selection
+                }
+                else
+                {
+                    // Legacy sequence: select-all, DELETE the selection to empty
+                    // the field, then paste into the empty field. Pasting into a
+                    // guaranteed-empty field CANNOT append old content — the
+                    // failure mode on slow Electron composers (Discord), where a
+                    // fast Ctrl+A->Ctrl+V pasted before the selection committed,
+                    // leaving old text + new appended. Each step is its own
+                    // burst with a commit gap so the slow composer processes the
+                    // selection before the delete, and the delete before the
+                    // paste. 90ms default (Discord needs ~50ms+;
+                    // OPENCUES_PASTE_GAP_MS overrides for slower machines).
+                    int commitMs = _pasteGapMs > 0 ? _pasteGapMs : 90;
+                    KeyChord(VK_CONTROL, VK_A);
+                    Thread.Sleep(commitMs);
+                    KeyTap(VK_DELETE);            // clear the selection -> field now empty
+                    Thread.Sleep(commitMs);
+                    KeyChord(VK_CONTROL, VK_V);   // paste into the empty field
+                }
             }
             // Electron reads the clipboard ASYNCHRONOUSLY after Ctrl+V; 300ms
             // clears that read before we restore the user's previous clipboard.
