@@ -31,12 +31,16 @@ two scripts:
    sync + 0-byte OPENCUES.md self-heal.
 2. **`patches/setup.sh`** — strictly CC-specific. Default: nuke +
    rebuild. Pinned `@anthropic-ai/claude-code` reinstalled into
-   `~/claude-code-cues/` + cloned tweakcc inside
-   `<CC_FORK>/.cues/tweakcc/` + `@opencues/{core,runtime}` built
+   `~/claude-code-cues/` + tweakcc cloned AND checked out at the exact
+   commit in `compat.json:tweakcc-pin` inside `<CC_FORK>/.cues/tweakcc/`
+   (never unpinned — issue #276) + `@opencues/{core,runtime}` built
    and installed under `<CC_FORK>/node_modules/@opencues/` + statusline
    into `<CC_FORK>/.cues/` + tweakcc patched (only the OpenCues v2
-   wiring; every stock tweakcc patch disabled) + verified at build AND
-   apply time. ~1m 5s warm install.
+   wiring; every stock tweakcc patch disabled AND the separate
+   system-prompt pipeline disabled, § 4e) + verified at build, apply,
+   AND runtime (fatal `node --check` on the cli.js shape + `--version`
+   execution smoke on the patched artifact, both shapes). ~1m 5s warm
+   install.
 
 **Compact footprint**: everything CC-specific lives inside
 `~/claude-code-cues/`. Uninstall is `rm -rf ~/claude-code-cues` +
@@ -144,7 +148,17 @@ order:
 
 The verification step skips `node --check` on native-binary shapes.
 Don't add JS-only validations after the apply step without gating them
-on `[ "$CC_SHAPE" = "cli.js" ]`.
+on `[ "$CC_SHAPE" = "cli.js" ]` — and don't be tempted to `node --check`
+the native post-patch **extract** either: the embedded JS runs under Bun
+and legitimately uses syntax Node's parser rejects (CC 2.1.170's `using`
+declarations fail node 22 `--check` on a PRISTINE extract). The native
+shape is verified by the § 9 runtime smoke instead: the patched binary
+itself is executed with `--version` and the install hard-fails if it
+doesn't run (issue #276 — a corrupted repack used to ship as "Done.").
+`bin/install.cjs:validateFork` mirrors both probes, so a corrupted
+artifact can neither install NOR skip as "already installed + healthy"
+later. `scripts/check-tweakcc-pin.sh` (pre-pr + CI) pins all of this
+in place.
 
 > **Failure mode this gate prevents:** running setup.sh against the 150
 > fork used to abort at step 2 with "cli.js still missing" — the script

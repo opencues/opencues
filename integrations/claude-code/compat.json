@@ -3,6 +3,8 @@
   "host-kind": "npm",
   "host-package": "@anthropic-ai/claude-code",
   "current-pin": "2.1.170",
+  "tweakcc-pin": "76e1fea0492e21048bcc0349dd42bdabd0ec0119",
+  "//tweakcc-pin": "Exact commit of Piebald-AI/tweakcc that setup.sh clones + checks out (v4.3.0). NEVER clone unpinned: issue #276 (July 2026) — an unpinned clone pulled a tweakcc main whose system-prompt pipeline corrupted BOTH shapes (2.1.110 cli.js SyntaxError; 2.1.170 native repack → Bun 'Expected CommonJS module to have a function wrapper'), reproduced on Linux x64. Bump this pin only after re-running the UPGRADING.md verification against current-pin.",
   "pin-location": {
     "kind": "npm-package-json",
     "path-from-fork": "package.json",

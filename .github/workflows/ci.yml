@@ -156,6 +156,27 @@ jobs:
       - name: Run CC patch boot smoke
         run: node scripts/check-cc-patch-boot.cjs
 
+  tweakcc-pin-gate:
+    name: tweakcc pin + CC install verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    # Bug class (issue #276, July 2026): setup.sh cloned tweakcc
+    # UNPINNED from upstream main; a HEAD regression (system-prompt
+    # pipeline double-escaping prompt template literals) corrupted
+    # BOTH CC install shapes — 2.1.110 cli.js SyntaxError, 2.1.170
+    # native repack → Bun "Expected CommonJS module to have a function
+    # wrapper" — and the installer still reported success because the
+    # post-patch syntax check was a warning and nothing executed the
+    # patched artifact. This gate asserts the closures stay in place:
+    # exact-sha tweakcc pin + checkout verification, the system-prompt
+    # pipeline disable, fatal node --check, --version runtime smoke.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Check tweakcc pin + install-verification invariants
+        run: bash scripts/check-tweakcc-pin.sh
+
   runtime-bun-load:
     name: runtime loads on bun
     runs-on: ubuntu-latest
