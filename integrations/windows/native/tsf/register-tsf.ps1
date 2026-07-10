@@ -30,7 +30,12 @@ if (-not (Test-Path $srcDll)) { throw "opencues-tsf.dll not found next to this s
 
 $destDir = Join-Path $env:LOCALAPPDATA 'OpenCues\tsf'
 New-Item -ItemType Directory -Force -Path $destDir | Out-Null
-$destDll = Join-Path $destDir 'opencues-tsf.dll'
+# Versioned filename: a running app holds the old DLL locked, so each install
+# lands under a fresh name. regsvr32's DllRegisterServer registers whatever
+# path it is loaded from, so COM auto-points at this new copy. Old copies are
+# harmless orphans (freed on app restart / reboot); unregister sweeps them.
+$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+$destDll = Join-Path $destDir "opencues-tsf-$stamp.dll"
 Copy-Item $srcDll $destDll -Force
 Write-Host "  copied DLL -> $destDll"
 
