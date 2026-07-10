@@ -592,6 +592,12 @@ export async function main(): Promise<void> {
     spawnProcess: makeSpawnProcess(),
     blankInvoke,
     blanks: registry,
+    // 150ms resolver debounce (default 500): on this POLLED channel the
+    // typing stream is already quantized to poll cadence and armMarker
+    // fires once per fresh marker — the standard keystroke debounce is
+    // redundant and sat directly between `_` and the first animation
+    // frame (the user waits it out in full, since typing stops at `_`).
+    llmDebounceMs: 150,
     log,
     statusFilePath: `/tmp/opencues-status-${process.pid}.json`,
     llmApiKey: process.env['GROQ_API_KEY'],
