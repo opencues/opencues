@@ -232,11 +232,26 @@ non-zero values directly point at the render-kick traffic.
 
 ## Version bumps
 
-When `@anthropic-ai/claude-code` ships a new version:
+When `@anthropic-ai/claude-code` ships a new version (full runbook:
+[UPGRADING.md](UPGRADING.md) — this is the short form):
 
-1. Bump `compat.json` to declare the new range.
+1. Bump **both pins together** in `compat.json`: `current-pin` (the CC
+   version) AND `tweakcc-pin` (the Piebald-AI/tweakcc commit setup.sh
+   checks out — normally upstream's `Prompts for <new-version>` commit;
+   wait for it to land before validating). tweakcc is the patch engine
+   *and* a per-CC-version prompt-regex catalogue — bumping one pin
+   without re-validating the other is not a validation. Follow
+   UPGRADING.md § "Bumping the tweakcc pin" (§ 4e anchor check +
+   both-shapes install), then `bash scripts/check-tweakcc-pin.sh`.
 2. Run `setup.sh` against the new version — it'll fail at the apply
    step if a tweakcc anchor moved.
 3. Fix the anchor in `patches/opencuesRuntime.ts` (search for the
    obfuscated identifier in the new `cli.js` and update the regex).
-4. Add a "What broke" note to `REPAIR.md` with the fix.
+4. **Launch the patched binary** — setup.sh § 9's runtime smoke does
+   this automatically now (`--version`, both shapes), and
+   `validateFork` mirrors it; do not weaken either. The 2.1.206 bump
+   shipped a binary every marker-grep check passed on that died on ANY
+   launch (tweakcc prompt corruption — REPAIR.md § 15, issue #276).
+5. Run the agentic harness suite (`tests/agentic/run-parallel
+   claude-code 4`, private repo) before shipping the pin.
+6. Add a "What broke" note to `REPAIR.md` with the fix.

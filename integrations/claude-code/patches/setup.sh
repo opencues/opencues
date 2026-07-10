@@ -4,14 +4,14 @@
 #
 # Scope: handles BOTH install shapes structurally — the npm **cli.js**
 # shape (Claude Code 2.1.111 and earlier) and the **native bun-binary**
-# shape (2.1.113+, including today's pinned 2.1.170). Same script,
+# shape (2.1.113+, including today's pinned 2.1.206). Same script,
 # same patch source; `setup.sh` auto-detects which artifact is present
 # under the fork's `node_modules/@anthropic-ai/claude-code/` and hands
 # the right path to tweakcc — tweakcc patches cli.js directly, or for
 # native binaries extracts cli.js from the `.bun` section (ELF on
 # Linux, Mach-O on macOS, PE on Windows), patches the text, and
 # repacks. The CC version pin lives in
-# `integrations/claude-code/compat.json:current-pin` (today 2.1.170)
+# `integrations/claude-code/compat.json:current-pin` (today 2.1.206)
 # and the tweakcc commit pin in `compat.json:tweakcc-pin`; see
 # `integrations/claude-code/UPGRADING.md` for the version-bump runbook.
 #
@@ -31,7 +31,7 @@
 # State that gets nuked + rebuilt every install (default):
 #   ~/claude-code-cues/.cues/                            recreated (incl. tweakcc clone)
 #   ~/claude-code-cues/node_modules/@opencues/{core,runtime}/  rebuilt + recopied
-#   ~/claude-code-cues/node_modules/@anthropic-ai/       reinstalled (pin from compat.json:current-pin, today 2.1.170 native bun-binary)
+#   ~/claude-code-cues/node_modules/@anthropic-ai/       reinstalled (pin from compat.json:current-pin, today 2.1.206 native bun-binary)
 #
 # State that survives every install:
 #   ~/.cues/  (incl. OPENCUES.md)                        user content (your CUE.md / BLANK.md edits etc.)
@@ -173,7 +173,7 @@ fi
 # invocation against a side fork doesn't hard-fail.
 COMPAT_JSON="$(dirname "$0")/../compat.json"
 CC_PIN=$(node -e "try{process.stdout.write(JSON.parse(require('fs').readFileSync('$COMPAT_JSON','utf8'))['current-pin']||'')}catch{}" 2>/dev/null || true)
-[ -z "$CC_PIN" ] && CC_PIN="2.1.170"
+[ -z "$CC_PIN" ] && CC_PIN="2.1.206"
 # tweakcc is pinned to an exact commit (compat.json:tweakcc-pin) — an
 # unpinned clone means every install gets whatever tweakcc main is that
 # day. Issue #276 (July 2026): an unpinned clone pulled a main whose
