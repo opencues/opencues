@@ -699,7 +699,7 @@ namespace OpenCues
                 // the loading animation live instead of one coalesced paste.
                 // Anything bigger (the final result) stays on the deferred
                 // paste path below. Kill switch: OPENCUES_MSAA_ANIMATE=0.
-                if (TryTypeMsaaMicroEdit(text)) return;
+                if (TryTypeMicroEdit(text)) return;
                 _pendingMsaaText = text;
                 _pendingMsaaAtTick = Environment.TickCount;
                 return;
@@ -717,10 +717,25 @@ namespace OpenCues
                 {
                     string prevSent = _lastSentText;
                     bool streamStart = !_bracketOpen;
+                    string editCls; IntPtr editHwnd = IntPtr.Zero;
+                    try { editHwnd = new IntPtr(el.Current.NativeWindowHandle); } catch { }
+                    bool isEditHwnd = IsEditClassHwnd(editHwnd, out editCls);
+                    // Non-Edit UIA composers (Slack): SetValue is a whole-value
+                    // replace, so writing every ANIMATION FRAME that way resets
+                    // the caret ~13x/sec — the visible bouncing. Type the
+                    // spinner frames through the real input pipeline instead
+                    // (Discord's model): relative typed frames anchored by the
+                    // absolute SetValue FINAL below, and editor-safe by
+                    // construction (input events, not DOM mutation — see the
+                    // Slate-ghost finding). Must run BEFORE NoteSelfWrite: the
+                    // micro-edit diffs against _lastSentText. Edit-family HWNDs
+                    // (Notepad/WordPad) skip this — their convergent EM path is
+                    // strictly better (positioned writes, no caret reset at all).
+                    if (!isEditHwnd && TryTypeMicroEdit(text)) return;
                     NoteSelfWrite(text);
                     // Convergent EM path (Edit/RichEdit HWNDs): absolute writes
                     // computed against the real buffer (no drift) + native undo.
-                    if (TryEmConvergentWrite(el, (ValuePattern)vp, text, streamStart)) return;
+                    if (isEditHwnd && TryEmConvergentWrite(el, (ValuePattern)vp, text, streamStart)) return;
                     // Non-Edit UIA composer (Slack etc.) or an EM verify-fail →
                     // absolute SetValue. SetValue resets the caret to the START,
                     // so skip the restore on animation frames (same-length 1-2
@@ -843,6 +858,17 @@ namespace OpenCues
                 // reset ASYNCHRONOUSLY after this runs, so ApplySetText arms
                 // a short reassert window (MaybeReassertCaret) that re-runs
                 // this on following ticks to win that race.
+                // Native-UIA restore FIRST: Chromium serves TextPattern + a
+                // working collapsed-range Select() only to a NATIVE IUIAutomation
+                // client (the managed client below sees TextPattern=False on
+                // Slack — probed 2026-07-10). Silent — no key synthesis, no
+                // focus dependency quirks. Falls through to the managed attempt
+                // + Ctrl+End when unavailable.
+                if (TryNativeUiaCaretToEnd())
+                {
+                    if (!quiet) Log("debug", "caret restore: native-UIA select-at-end");
+                    return;
+                }
                 object tpObj;
                 if (el.TryGetCurrentPattern(TextPattern.Pattern, out tpObj))
                 {
@@ -863,6 +889,138 @@ namespace OpenCues
                 KeyChord(VK_CONTROL, VK_END);
             }
             catch { }   // caret restore is best-effort; the text write already landed
+        }
+
+        // ── Native IUIAutomation (COM) — OBSERVATION ONLY ─────────────────
+        // Chromium/Electron serves its modern UIA provider (TextPattern with a
+        // working collapsed-range Select(), i.e. real caret positioning) ONLY
+        // to a native IUIAutomation client — what Narrator uses. The managed
+        // System.Windows.Automation client used everywhere else in this shim
+        // never sees it (Slack: TextPattern False managed / True native —
+        // probed 2026-07-10 with uia-native-drive-probe.ps1).
+        //
+        // HARD RULE: this surface is for READS and CARET only. Writing through
+        // it (ValuePattern.SetValue) DESYNCED Discord's Slate editor — ghost
+        // text the user cannot delete, broken input until Ctrl+R. See
+        // IMPLEMENTATION.md §5 "the Slate ghost". Do not add a write here.
+        //
+        // The client is created LAZILY on the first non-Edit caret restore
+        // (i.e. only when a Slack-class composer is actually being written),
+        // so sessions that never touch such a composer never flip Chromium
+        // apps into UIA mode. Interfaces are PARTIAL vtables — methods are
+        // declared in IDL order up to the last slot we call; do not reorder.
+        [StructLayout(LayoutKind.Sequential)]
+        struct UiaPt { public int x; public int y; }
+
+        [ComImport, Guid("30cbe57d-d9d0-452a-ab13-7ac5ac4825ee"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        interface IUIAutomationN
+        {
+            [PreserveSig] int CompareElements(IntPtr a, IntPtr b, out int same);
+            [PreserveSig] int CompareRuntimeIds(IntPtr a, IntPtr b, out int same);
+            [PreserveSig] int GetRootElement(out IUIAutomationElementN root);
+            [PreserveSig] int ElementFromHandle(IntPtr hwnd, out IUIAutomationElementN element);
+            [PreserveSig] int ElementFromPoint(UiaPt pt, out IUIAutomationElementN element);
+            [PreserveSig] int GetFocusedElement(out IUIAutomationElementN element);
+        }
+
+        [ComImport, Guid("d22108aa-8ac5-49a5-837b-37bbb3d7591e"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        interface IUIAutomationElementN
+        {
+            [PreserveSig] int SetFocus();
+            [PreserveSig] int GetRuntimeId(out IntPtr rid);
+            [PreserveSig] int FindFirst(int scope, IntPtr cond, out IUIAutomationElementN found);
+            [PreserveSig] int FindAll(int scope, IntPtr cond, out IntPtr found);
+            [PreserveSig] int FindFirstBuildCache(int scope, IntPtr cond, IntPtr req, out IUIAutomationElementN found);
+            [PreserveSig] int FindAllBuildCache(int scope, IntPtr cond, IntPtr req, out IntPtr found);
+            [PreserveSig] int BuildUpdatedCache(IntPtr req, out IUIAutomationElementN updated);
+            [PreserveSig] int GetCurrentPropertyValue(int propertyId, [MarshalAs(UnmanagedType.Struct)] out object retVal);
+            [PreserveSig] int GetCurrentPropertyValueEx(int propertyId, int ignoreDefault, [MarshalAs(UnmanagedType.Struct)] out object retVal);
+            [PreserveSig] int GetCachedPropertyValue(int propertyId, [MarshalAs(UnmanagedType.Struct)] out object retVal);
+            [PreserveSig] int GetCachedPropertyValueEx(int propertyId, int ignoreDefault, [MarshalAs(UnmanagedType.Struct)] out object retVal);
+            [PreserveSig] int GetCurrentPatternAs(int patternId, ref Guid riid, out IntPtr pat);
+            [PreserveSig] int GetCachedPatternAs(int patternId, ref Guid riid, out IntPtr pat);
+            [PreserveSig] int GetCurrentPattern(int patternId, [MarshalAs(UnmanagedType.IUnknown)] out object pat);
+        }
+
+        [ComImport, Guid("a543cc6a-f4ae-494b-8239-c814481187a8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        interface IUIAutomationTextRangeN
+        {
+            [PreserveSig] int Clone(out IUIAutomationTextRangeN clonedRange);
+            [PreserveSig] int Compare(IUIAutomationTextRangeN range, out int areSame);
+            [PreserveSig] int CompareEndpoints(int srcEndpoint, IUIAutomationTextRangeN range, int targetEndpoint, out int compValue);
+            [PreserveSig] int ExpandToEnclosingUnit(int textUnit);
+            [PreserveSig] int FindAttribute(int attr, [MarshalAs(UnmanagedType.Struct)] object val, int backward, out IUIAutomationTextRangeN found);
+            [PreserveSig] int FindText([MarshalAs(UnmanagedType.BStr)] string text, int backward, int ignoreCase, out IUIAutomationTextRangeN found);
+            [PreserveSig] int GetAttributeValue(int attr, [MarshalAs(UnmanagedType.Struct)] out object value);
+            [PreserveSig] int GetBoundingRectangles(out IntPtr boundingRects);
+            [PreserveSig] int GetEnclosingElement(out IUIAutomationElementN enclosingElement);
+            [PreserveSig] int GetText(int maxLength, [MarshalAs(UnmanagedType.BStr)] out string text);
+            [PreserveSig] int Move(int unit, int count, out int moved);
+            [PreserveSig] int MoveEndpointByUnit(int endpoint, int unit, int count, out int moved);
+            [PreserveSig] int MoveEndpointByRange(int srcEndpoint, IUIAutomationTextRangeN range, int targetEndpoint);
+            [PreserveSig] int Select();
+            [PreserveSig] int AddToSelection();
+            [PreserveSig] int RemoveFromSelection();
+            [PreserveSig] int ScrollIntoView(int alignToTop);
+            [PreserveSig] int GetChildren(out IntPtr children);
+        }
+
+        [ComImport, Guid("32eba289-3583-42c9-9c59-3b6d9a1e9b6a"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        interface IUIAutomationTextPatternN
+        {
+            [PreserveSig] int RangeFromPoint(UiaPt pt, out IUIAutomationTextRangeN range);
+            [PreserveSig] int RangeFromChild(IUIAutomationElementN child, out IUIAutomationTextRangeN range);
+            [PreserveSig] int GetSelection(out IntPtr ranges);
+            [PreserveSig] int GetVisibleRanges(out IntPtr ranges);
+            [PreserveSig] int get_DocumentRange(out IUIAutomationTextRangeN range);
+            [PreserveSig] int get_SupportedTextSelection(out int supportedTextSelection);
+        }
+
+        const int UIA_TextPatternId_N = 10014;
+        const int EPT_Start = 0;   // TextPatternRangeEndpoint_Start
+        const int EPT_End = 1;     // TextPatternRangeEndpoint_End
+
+        static IUIAutomationN _nativeUia;
+        static bool _nativeUiaFailed;
+        static IUIAutomationN NativeUia()
+        {
+            if (_nativeUia != null || _nativeUiaFailed) return _nativeUia;
+            try
+            {
+                object o = null;
+                Type t8 = Type.GetTypeFromCLSID(new Guid("E22AD333-B25F-460C-83D0-0581107395C9"), false);   // CUIAutomation8
+                if (t8 != null) { try { o = Activator.CreateInstance(t8); } catch { } }
+                if (o == null) o = Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("FF48DBA4-60EF-4201-AA87-54103EEF594E"), true));   // CUIAutomation
+                _nativeUia = (IUIAutomationN)o;
+            }
+            catch (Exception ex) { _nativeUiaFailed = true; Log("debug", "native UIA client unavailable: " + ex.Message); }
+            return _nativeUia;
+        }
+
+        // Move the caret to end-of-content on the FOCUSED element via the
+        // native TextPattern: collapse the document range to its END and
+        // Select() it (a degenerate selection IS a caret). Returns false when
+        // the provider doesn't serve the surface — the caller's ladder
+        // (managed TextPattern, then Ctrl+End) takes over.
+        static bool TryNativeUiaCaretToEnd()
+        {
+            try
+            {
+                var uia = NativeUia();
+                if (uia == null) return false;
+                IUIAutomationElementN el;
+                if (uia.GetFocusedElement(out el) != 0 || el == null) return false;
+                object po;
+                if (el.GetCurrentPattern(UIA_TextPatternId_N, out po) != 0 || po == null) return false;
+                var tp = po as IUIAutomationTextPatternN;
+                if (tp == null) return false;
+                IUIAutomationTextRangeN doc, endR;
+                if (tp.get_DocumentRange(out doc) != 0 || doc == null) return false;
+                if (doc.Clone(out endR) != 0 || endR == null) return false;
+                if (endR.MoveEndpointByRange(EPT_Start, doc, EPT_End) != 0) return false;
+                return endR.Select() == 0;
+            }
+            catch { return false; }
         }
 
         // Chromium applies SetValue (and its caret-to-start reset) on its own
@@ -1311,17 +1469,30 @@ namespace OpenCues
             };
         }
 
-        // The typed micro-frame tier of the MSAA write ladder (below the
-        // backspace+paste tier and the Ctrl+A+paste tier): only for edits
-        // small enough to be indistinguishable from a human typing. Assumes
-        // the caret sits at the end of the field (phase-1 cursor model, and
-        // the state every prior write path leaves behind).
+        // The typed micro-frame path for LOADING-ANIMATION frames, shared by
+        // the two attach modes where the app has no positioned-write API:
+        //   * MSAA/Electron (Discord)  — below the deferred Ctrl+A+paste tier
+        //   * non-Edit UIA  (Slack)    — below the whole-value SetValue final
+        // Only for edits small enough to be indistinguishable from a human
+        // typing; goes through the real input pipeline (SendInput), so it is
+        // editor-framework-safe (Slate/Quill process it as genuine input) and
+        // never resets the caret. Relative — acceptable ONLY because the final
+        // write on both paths is an absolute anchor (paste / SetValue) that
+        // wipes any frame drift. NOT used on Edit-family HWNDs
+        // (Notepad/WordPad): their convergent EM path is positioned AND
+        // absolute, strictly better (the 63be937f revert is the history).
+        // Assumes the caret sits at the end of the field (phase-1 cursor
+        // model, and the state every prior write path leaves behind).
         const int MSAA_TYPE_MAX = 6;
-        static readonly bool _msaaAnimate = Environment.GetEnvironmentVariable("OPENCUES_MSAA_ANIMATE") != "0";
+        // Kill switch: OPENCUES_TYPE_ANIMATE=0 (legacy OPENCUES_MSAA_ANIMATE=0
+        // still honoured) → animation falls back to deferred-paste / SetValue.
+        static readonly bool _typeAnimate =
+            Environment.GetEnvironmentVariable("OPENCUES_TYPE_ANIMATE") != "0" &&
+            Environment.GetEnvironmentVariable("OPENCUES_MSAA_ANIMATE") != "0";
 
-        static bool TryTypeMsaaMicroEdit(string text)
+        static bool TryTypeMicroEdit(string text)
         {
-            if (!_msaaAnimate) return false;
+            if (!_typeAnimate) return false;
             if (_pendingMsaaText != null) return false;   // a big write is queued; field state mid-flight - defer
             string cur = _lastSentText;
             if (cur == null) return false;                // unknown baseline - defer to the paste path
@@ -1347,7 +1518,7 @@ namespace OpenCues
             }
             if (inputs.Length > 0)
                 SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
-            Log("debug", "applied substitution (" + text.Length + " chars, MSAA/typed micro-frame: -" + del + " +" + tail.Length + ")");
+            Log("debug", "applied substitution (" + text.Length + " chars, typed micro-frame [" + (_attachMode == AttachMode.Msaa ? "msaa" : "uia") + "]: -" + del + " +" + tail.Length + ")");
             return true;
         }
 

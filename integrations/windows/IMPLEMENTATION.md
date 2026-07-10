@@ -220,8 +220,8 @@ mechanism by how the focused field exposes itself:
 | Surface | Apps | Write primitive | Undo | Drift |
 |---|---|---|---|---|
 | **Edit-family HWND** (`IsEditClassHwnd`) | Notepad `RichEditD2DPT`, WordPad `RICHEDIT50W`, WinForms, classic `Edit` | `EM_SETSEL` + `EM_REPLACESEL` per write (`TryEmConvergentWrite`) | **native Ctrl+Z** | none — absolute |
-| **Non-Edit UIA** (writable `ValuePattern`, no Edit HWND) | Slack, other Chromium-UIA composers | `ValuePattern.SetValue` (absolute; app owns its own undo) | app's own | none |
-| **MSAA** (read-only UIA shell, text in the MSAA/IA2 tree) | Discord/Electron | relative backspace micro-frames (`TryTypeMsaaMicroEdit`) **anchored** by an absolute deferred paste | app's own | bounded by the paste anchor |
+| **Non-Edit UIA** (writable `ValuePattern`, no Edit HWND) | Slack, other Chromium-UIA composers | typed micro-frames for the animation (`TryTypeMicroEdit`) + `ValuePattern.SetValue` **final**; caret repaired via **native-UIA** collapsed `Select()` | app's own | bounded by the SetValue anchor |
+| **MSAA** (read-only UIA shell, text in the MSAA/IA2 tree) | Discord/Electron | relative backspace micro-frames (`TryTypeMicroEdit`) **anchored** by an absolute deferred paste | app's own | bounded by the paste anchor |
 
 ### The convergent principle
 
@@ -345,6 +345,20 @@ the app's real input pipeline (keystrokes / paste), unless the editor
 framework is *verified* SetValue-safe (Quill yes, Slate no). The upgrade
 this enables: Discord can gain a genuine caret model (`GetCaretRange`)
 and cleaner reads without touching its proven write path.
+
+**First shipped consumer (July 2026): the Slack caret fix.** Slack's
+caret used to bounce during the animation because every spinner frame
+was a whole-value `SetValue` (caret invalidated → parked at start →
+synthetic `Ctrl+End` repair, ~13×/sec). Two changes killed it: (1) the
+animation frames now go through `TryTypeMicroEdit` (typed keystrokes —
+caret rides naturally, editor-safe), leaving only the FINAL substitution
+as a `SetValue`; (2) that one remaining caret repair is a **native-UIA
+collapsed-range `Select()`** (`TryNativeUiaCaretToEnd`) — silent, no key
+synthesis — falling back to the managed attempt + `Ctrl+End` when the
+provider doesn't serve it. The native client lives in the shim as
+partial-vtable COM interop (`IUIAutomationN` etc.), created lazily on
+the first non-Edit caret restore so sessions that never write a
+Slack-class composer never flip Chromium apps into UIA mode.
 
 ### The lesson: relative accumulates, absolute converges
 
