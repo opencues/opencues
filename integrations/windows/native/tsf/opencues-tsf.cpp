@@ -32,6 +32,7 @@
 #include <msctf.h>
 #include <olectl.h>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <cwchar>
 
@@ -50,7 +51,20 @@ static const WCHAR* kProfileDesc = L"OpenCues TSF";
 static const LANGID kLangId = 0x0409;
 static const WCHAR* kMarker = L"[OpenCues TSF replaced this text]";
 
-#define WM_OC_SETTEXT (WM_APP + 11)
+#define WM_OC_CMD (WM_APP + 11)
+
+// A command marshaled from the pipe thread onto the UI thread. The UI thread
+// fills out* / hr and signals completion (SendMessage is synchronous).
+enum OcOp { OP_SETTEXT, OP_GETTEXT, OP_GETCARET, OP_SETCARET };
+struct OcCmd {
+    OcOp op;
+    const wchar_t* inText;   // SETTEXT: text to write
+    LONG inNum;              // SETCARET: offset (-1 = end)
+    wchar_t* outText;        // GETTEXT: heap result (caller frees)
+    LONG outNum;             // GETCARET: caret offset
+    HRESULT hr;
+    OcCmd() : op(OP_GETTEXT), inText(nullptr), inNum(-1), outText(nullptr), outNum(-1), hr(E_FAIL) {}
+};
 
 static HINSTANCE g_hInst = nullptr;
 static LONG g_cRefModule = 0;
@@ -73,11 +87,11 @@ static void Log(const wchar_t* fmt, ...) {
     CloseHandle(h);
 }
 
-// ── Edit session: replace the whole document with a given string ────────────
+// ── Edit session: runs one OcCmd against the focused context ────────────────
 class CEditSession : public ITfEditSession {
 public:
-    CEditSession(ITfContext* pCtx, const wchar_t* text)
-        : m_cRef(1), m_pCtx(pCtx), m_text(text) { m_pCtx->AddRef(); }
+    CEditSession(ITfContext* pCtx, OcCmd* cmd)
+        : m_cRef(1), m_pCtx(pCtx), m_cmd(cmd) { m_pCtx->AddRef(); }
     STDMETHODIMP QueryInterface(REFIID riid, void** ppv) {
         if (!ppv) return E_POINTER;
         if (IsEqualIID(riid, IID_IUnknown) || IsEqualIID(riid, IID_ITfEditSession)) {
@@ -87,28 +101,99 @@ public:
     }
     STDMETHODIMP_(ULONG) AddRef()  { return InterlockedIncrement(&m_cRef); }
     STDMETHODIMP_(ULONG) Release() { LONG c = InterlockedDecrement(&m_cRef); if (!c) delete this; return c; }
+
     STDMETHODIMP DoEditSession(TfEditCookie ec) {
-        ITfRange* pRange = nullptr;
-        if (FAILED(m_pCtx->GetStart(ec, &pRange)) || !pRange) { m_hr = E_FAIL; return S_OK; }
-        LONG shifted = 0;
-        pRange->ShiftEnd(ec, 0x7fffffff, &shifted, nullptr);
-        m_hr = pRange->SetText(ec, 0, m_text, (LONG)wcslen(m_text));
-        ITfRange* pEnd = nullptr;
-        if (SUCCEEDED(pRange->Clone(&pEnd)) && pEnd) {
-            pEnd->Collapse(ec, TF_ANCHOR_END);
-            TF_SELECTION sel; sel.range = pEnd; sel.style.ase = TF_AE_END; sel.style.fInterimChar = FALSE;
-            m_pCtx->SetSelection(ec, 1, &sel);
-            pEnd->Release();
+        switch (m_cmd->op) {
+            case OP_SETTEXT:  m_cmd->hr = DoSetText(ec);  break;
+            case OP_GETTEXT:  m_cmd->hr = DoGetText(ec);  break;
+            case OP_GETCARET: m_cmd->hr = DoGetCaret(ec); break;
+            case OP_SETCARET: m_cmd->hr = DoSetCaret(ec); break;
         }
-        pRange->Release();
         return S_OK;
     }
-    HRESULT m_hr = S_OK;
 private:
     ~CEditSession() { m_pCtx->Release(); }
+
+    // Whole-document range: degenerate at start, shifted to cover to the end.
+    HRESULT WholeRange(TfEditCookie ec, ITfRange** pp) {
+        *pp = nullptr;
+        ITfRange* r = nullptr;
+        if (FAILED(m_pCtx->GetStart(ec, &r)) || !r) return E_FAIL;
+        LONG shifted = 0;
+        r->ShiftEnd(ec, 0x7fffffff, &shifted, nullptr);
+        *pp = r;
+        return S_OK;
+    }
+
+    HRESULT DoSetText(TfEditCookie ec) {
+        ITfRange* r = nullptr;
+        HRESULT hr = WholeRange(ec, &r);
+        if (FAILED(hr) || !r) return hr;
+        hr = r->SetText(ec, 0, m_cmd->inText, (LONG)wcslen(m_cmd->inText));
+        ITfRange* e = nullptr;
+        if (SUCCEEDED(r->Clone(&e)) && e) {
+            e->Collapse(ec, TF_ANCHOR_END);
+            TF_SELECTION sel; sel.range = e; sel.style.ase = TF_AE_END; sel.style.fInterimChar = FALSE;
+            m_pCtx->SetSelection(ec, 1, &sel);
+            e->Release();
+        }
+        r->Release();
+        return hr;
+    }
+
+    HRESULT DoGetText(TfEditCookie ec) {
+        ITfRange* r = nullptr;
+        HRESULT hr = WholeRange(ec, &r);
+        if (FAILED(hr) || !r) return hr;
+        const ULONG cap = 1 << 16;   // 64K wchars — plenty for a composer field
+        wchar_t* buf = (wchar_t*)malloc(cap * sizeof(wchar_t));
+        ULONG total = 0;
+        // GetText with TF_TF_MOVESTART advances the range start past what's read,
+        // so repeated calls drain the range.
+        while (total < cap - 1) {
+            ULONG got = 0;
+            HRESULT g = r->GetText(ec, TF_TF_MOVESTART, buf + total, cap - 1 - total, &got);
+            if (FAILED(g) || got == 0) break;
+            total += got;
+        }
+        buf[total] = 0;
+        m_cmd->outText = buf;   // caller frees
+        r->Release();
+        return S_OK;
+    }
+
+    HRESULT DoGetCaret(TfEditCookie ec) {
+        TF_SELECTION sel; ULONG fetched = 0;
+        HRESULT hr = m_pCtx->GetSelection(ec, TF_DEFAULT_SELECTION, 1, &sel, &fetched);
+        if (FAILED(hr) || fetched == 0 || !sel.range) { m_cmd->outNum = -1; return hr; }
+        LONG off = -1;
+        ITfRangeACP* acp = nullptr;
+        if (SUCCEEDED(sel.range->QueryInterface(IID_ITfRangeACP, (void**)&acp)) && acp) {
+            LONG anchor = 0, cch = 0;
+            if (SUCCEEDED(acp->GetExtent(&anchor, &cch))) off = anchor;   // selection start / caret
+            acp->Release();
+        }
+        sel.range->Release();
+        m_cmd->outNum = off;
+        return S_OK;
+    }
+
+    HRESULT DoSetCaret(TfEditCookie ec) {
+        ITfRange* r = nullptr;
+        if (FAILED(m_pCtx->GetStart(ec, &r)) || !r) return E_FAIL;
+        LONG shifted = 0;
+        if (m_cmd->inNum < 0) r->ShiftEnd(ec, 0x7fffffff, &shifted, nullptr);   // END
+        else                  r->ShiftEnd(ec, m_cmd->inNum, &shifted, nullptr); // offset N
+        r->Collapse(ec, TF_ANCHOR_END);
+        TF_SELECTION sel; sel.range = r; sel.style.ase = TF_AE_END; sel.style.fInterimChar = FALSE;
+        HRESULT hr = m_pCtx->SetSelection(ec, 1, &sel);
+        r->Release();
+        return hr;
+    }
+
     LONG m_cRef;
     ITfContext* m_pCtx;
-    const wchar_t* m_text;
+    OcCmd* m_cmd;
 };
 
 // ── The text service ────────────────────────────────────────────────────────
@@ -198,28 +283,32 @@ public:
         if (!IsEqualGUID(rguid, GUID_OpenCuesKey)) return S_OK;
         if (pfEaten) *pfEaten = TRUE;
         Log(L"OnPreservedKey (manual): replacing with marker");
-        HRESULT hr = ReplaceFocusedDocument(kMarker);
-        Log(L"  manual replace hr=0x%08x", (unsigned)hr);
+        OcCmd c; c.op = OP_SETTEXT; c.inText = kMarker;
+        RunCommand(&c);
+        Log(L"  manual replace hr=0x%08x", (unsigned)c.hr);
         return S_OK;
     }
 
-    // Runs on the UI thread. Replace the focused document with `text`.
-    HRESULT ReplaceFocusedDocument(const wchar_t* text) {
-        if (!m_pThreadMgr) return E_FAIL;
+    // Runs on the UI thread. Executes one command against the focused context.
+    HRESULT RunCommand(OcCmd* cmd) {
+        if (!m_pThreadMgr) return (cmd->hr = E_FAIL);
         ITfDocumentMgr* pDim = nullptr;
-        if (FAILED(m_pThreadMgr->GetFocus(&pDim)) || !pDim) return E_FAIL;
+        if (FAILED(m_pThreadMgr->GetFocus(&pDim)) || !pDim) return (cmd->hr = E_FAIL);
         ITfContext* pCtx = nullptr;
         HRESULT hr = E_FAIL;
         if (SUCCEEDED(pDim->GetTop(&pCtx)) && pCtx) {
-            CEditSession* pes = new CEditSession(pCtx, text);
+            bool write = (cmd->op == OP_SETTEXT || cmd->op == OP_SETCARET);
+            DWORD flags = TF_ES_SYNC | (write ? TF_ES_READWRITE : TF_ES_READ);
+            CEditSession* pes = new CEditSession(pCtx, cmd);
             HRESULT hrSession = S_OK;
-            hr = pCtx->RequestEditSession(m_tid, pes, TF_ES_SYNC | TF_ES_READWRITE, &hrSession);
-            if (SUCCEEDED(hr)) hr = pes->m_hr;
+            hr = pCtx->RequestEditSession(m_tid, pes, flags, &hrSession);
+            if (FAILED(hr)) cmd->hr = hr;              // request itself failed
+            else if (FAILED(hrSession)) cmd->hr = hrSession;  // session couldn't be granted
             pes->Release();
             pCtx->Release();
-        }
+        } else cmd->hr = E_FAIL;
         pDim->Release();
-        return hr;
+        return cmd->hr;
     }
 
 private:
@@ -227,9 +316,9 @@ private:
 
     void PipeName(wchar_t* out) { swprintf(out, 128, L"\\\\.\\pipe\\opencues-tsf-%lu", GetCurrentProcessId()); }
 
-    // Window proc: WM_OC_SETTEXT carries a heap wchar_t* (lParam) to write; we
-    // run the edit session here (UI thread) and stash the HRESULT in a slot the
-    // pipe thread reads after its PostMessage returns (SendMessage is sync).
+    // Window proc: WM_OC_CMD carries an OcCmd* (lParam); we run it here (UI
+    // thread, where edit sessions must run) and the pipe thread reads the
+    // filled struct after its synchronous SendMessage returns.
     static LRESULT CALLBACK WndProcThunk(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         if (msg == WM_NCCREATE) {
             CREATESTRUCTW* cs = (CREATESTRUCTW*)lp;
@@ -237,9 +326,9 @@ private:
             return DefWindowProcW(h, msg, wp, lp);
         }
         CTextService* self = (CTextService*)GetWindowLongPtrW(h, GWLP_USERDATA);
-        if (self && msg == WM_OC_SETTEXT) {
-            const wchar_t* text = (const wchar_t*)lp;
-            return (LRESULT)self->ReplaceFocusedDocument(text);   // HRESULT back to SendMessage
+        if (self && msg == WM_OC_CMD) {
+            self->RunCommand((OcCmd*)lp);
+            return 0;
         }
         return DefWindowProcW(h, msg, wp, lp);
     }
@@ -278,25 +367,55 @@ private:
             if (!PeekNamedPipe(pipe, nullptr, 0, nullptr, &avail, nullptr) || avail == 0) break;
         }
         buf[total] = 0;
-        HRESULT hr = E_FAIL;
+        // Parse "OP\n<payload>". Ops: SETTEXT (payload=text), GETTEXT,
+        // GETCARET, SETCARET (payload=offset decimal, or "end").
         const char* nl = (const char*)memchr(buf, '\n', total);
-        if (nl) {
-            size_t opLen = nl - buf;
-            if (opLen == 7 && memcmp(buf, "SETTEXT", 7) == 0) {
-                const char* payload = nl + 1;
-                int wlen = MultiByteToWideChar(CP_UTF8, 0, payload, -1, nullptr, 0);
-                wchar_t* wtext = (wchar_t*)malloc((wlen + 1) * sizeof(wchar_t));
-                MultiByteToWideChar(CP_UTF8, 0, payload, -1, wtext, wlen);
-                Log(L"pipe: SETTEXT %d chars", wlen - 1);
-                // Hand to the UI thread synchronously; SendMessage returns the HRESULT.
-                if (m_msgWnd) hr = (HRESULT)SendMessageW(m_msgWnd, WM_OC_SETTEXT, 0, (LPARAM)wtext);
-                free(wtext);
+        size_t opLen = nl ? (size_t)(nl - buf) : total;
+        const char* payload = nl ? nl + 1 : "";
+        OcCmd cmd;
+        bool known = true;
+        wchar_t* wtext = nullptr;
+        if (opLen == 7 && memcmp(buf, "SETTEXT", 7) == 0) {
+            cmd.op = OP_SETTEXT;
+            int wlen = MultiByteToWideChar(CP_UTF8, 0, payload, -1, nullptr, 0);
+            wtext = (wchar_t*)malloc((wlen + 1) * sizeof(wchar_t));
+            MultiByteToWideChar(CP_UTF8, 0, payload, -1, wtext, wlen);
+            cmd.inText = wtext;
+            Log(L"pipe: SETTEXT %d chars", wlen - 1);
+        } else if (opLen == 7 && memcmp(buf, "GETTEXT", 7) == 0) {
+            cmd.op = OP_GETTEXT;
+        } else if (opLen == 8 && memcmp(buf, "GETCARET", 8) == 0) {
+            cmd.op = OP_GETCARET;
+        } else if (opLen == 8 && memcmp(buf, "SETCARET", 8) == 0) {
+            cmd.op = OP_SETCARET;
+            cmd.inNum = (payload[0] == 'e' || payload[0] == 'E') ? -1 : atol(payload);
+        } else {
+            known = false;
+        }
+
+        char* resp = nullptr; int rl = 0;
+        if (!known) {
+            resp = (char*)malloc(32); rl = sprintf(resp, "ERR unknown op\n");
+        } else {
+            if (m_msgWnd) SendMessageW(m_msgWnd, WM_OC_CMD, 0, (LPARAM)&cmd);   // sync, runs on UI thread
+            if (cmd.op == OP_GETTEXT && SUCCEEDED(cmd.hr) && cmd.outText) {
+                int u8 = WideCharToMultiByte(CP_UTF8, 0, cmd.outText, -1, nullptr, 0, nullptr, nullptr);
+                resp = (char*)malloc(u8 + 32);
+                int hn = sprintf(resp, "OK len=%d\n", u8 - 1);
+                int wn = WideCharToMultiByte(CP_UTF8, 0, cmd.outText, -1, resp + hn, u8, nullptr, nullptr);
+                rl = hn + (wn > 0 ? wn - 1 : 0);   // drop the trailing NUL from the wire
+            } else if (cmd.op == OP_GETCARET && SUCCEEDED(cmd.hr)) {
+                resp = (char*)malloc(48); rl = sprintf(resp, "OK caret=%ld\n", cmd.outNum);
+            } else {
+                resp = (char*)malloc(48); rl = sprintf(resp, "OK hr=0x%08x\n", (unsigned)cmd.hr);
             }
         }
-        char resp[64]; int rl = sprintf(resp, "OK hr=0x%08x\n", (unsigned)hr);
         DWORD w; WriteFile(pipe, resp, rl, &w, nullptr);
         FlushFileBuffers(pipe);
         DisconnectNamedPipe(pipe);
+        if (cmd.outText) free(cmd.outText);
+        if (wtext) free(wtext);
+        if (resp) free(resp);
         free(buf);
     }
 

@@ -12,10 +12,31 @@
     powershell -ExecutionPolicy Bypass -File tsf-drive.ps1 -Repeat 20   # latency sample
 #>
 param(
-  [string] $Text = "",
-  [int]    $Repeat = 1
+  [ValidateSet('SETTEXT','GETTEXT','GETCARET','SETCARET')]
+  [string] $Op = 'SETTEXT',
+  [string] $Text = "",      # SETTEXT body
+  [string] $Caret = "end",  # SETCARET target: "end" or an integer offset
+  [int]    $Repeat = 1,
+  [int]    $DelaySec = 0     # wait before reading the foreground window, so the
+                             # driver can be launched hidden while you focus the
+                             # target app (a terminal would otherwise be foreground)
 )
 $ErrorActionPreference = 'Stop'
+if ($DelaySec -gt 0) { Start-Sleep -Seconds $DelaySec }
+
+function Send-OcCommand($pipeName, $bytes) {
+  $client = New-Object System.IO.Pipes.NamedPipeClientStream('.', $pipeName, [System.IO.Pipes.PipeDirection]::InOut)
+  try { $client.Connect(1000) }
+  catch { return @{ ok = $false; err = $_.Exception.Message } }
+  $sw = [System.Diagnostics.Stopwatch]::StartNew()
+  $client.Write($bytes, 0, $bytes.Length)
+  $client.Flush()
+  $buf = New-Object byte[] 70000
+  $read = $client.Read($buf, 0, $buf.Length)
+  $sw.Stop()
+  $client.Dispose()
+  return @{ ok = $true; reply = [System.Text.Encoding]::UTF8.GetString($buf, 0, $read); ms = $sw.ElapsedMilliseconds }
+}
 
 Add-Type @"
 using System; using System.Runtime.InteropServices;
@@ -34,21 +55,25 @@ Write-Host "foreground: $proc (pid $tpid) -> pipe \\.\pipe\$pipeName"
 
 $times = @()
 for ($i = 0; $i -lt $Repeat; $i++) {
-  $msg = if ($Text) { $Text } else { "[OpenCues TSF via pipe #$i @ $(Get-Date -Format HH:mm:ss.fff)]" }
-  $client = New-Object System.IO.Pipes.NamedPipeClientStream('.', $pipeName, [System.IO.Pipes.PipeDirection]::InOut)
-  try { $client.Connect(1000) }
-  catch { Write-Host "  connect failed - is 'OpenCues TSF' the ACTIVE input method in this app? ($($_.Exception.Message))"; $client.Dispose(); return }
-  $payload = [System.Text.Encoding]::UTF8.GetBytes("SETTEXT`n$msg")
-  $sw = [System.Diagnostics.Stopwatch]::StartNew()
-  $client.Write($payload, 0, $payload.Length)
-  $client.Flush()
-  $buf = New-Object byte[] 128
-  $read = $client.Read($buf, 0, $buf.Length)
-  $sw.Stop()
-  $reply = [System.Text.Encoding]::ASCII.GetString($buf, 0, $read).Trim()
-  $times += $sw.ElapsedMilliseconds
-  Write-Host ("  #{0} reply='{1}' round-trip={2}ms" -f $i, $reply, $sw.ElapsedMilliseconds)
-  $client.Dispose()
+  switch ($Op) {
+    'SETTEXT'  { $body = if ($Text) { $Text } else { "[OpenCues TSF via pipe #$i @ $(Get-Date -Format HH:mm:ss.fff)]" }
+                 $frame = "SETTEXT`n$body" }
+    'GETTEXT'  { $frame = "GETTEXT`n" }
+    'GETCARET' { $frame = "GETCARET`n" }
+    'SETCARET' { $frame = "SETCARET`n$Caret" }
+  }
+  $bytes = [System.Text.Encoding]::UTF8.GetBytes($frame)
+  $r = Send-OcCommand $pipeName $bytes
+  if (-not $r.ok) { Write-Host "  connect failed - is 'OpenCues TSF' the ACTIVE input method in this app? ($($r.err))"; return }
+  $reply = ($r.reply -replace "`r", '')
+  $first = ($reply -split "`n")[0]
+  $times += $r.ms
+  if ($Op -eq 'GETTEXT') {
+    $text = $reply.Substring($reply.IndexOf("`n") + 1)
+    Write-Host ("  #{0} {1}  round-trip={2}ms  text='{3}'" -f $i, $first, $r.ms, ($text -replace "`n", ' '))
+  } else {
+    Write-Host ("  #{0} reply='{1}' round-trip={2}ms" -f $i, $first, $r.ms)
+  }
   if ($Repeat -gt 1) { Start-Sleep -Milliseconds 120 }   # ~animation cadence
 }
 if ($Repeat -gt 1) {
@@ -57,4 +82,4 @@ if ($Repeat -gt 1) {
   Write-Host ("latency over {0}: avg={1:N1}ms max={2}ms  (animation frame budget is ~75ms)" -f $Repeat, $avg, $max)
 }
 Write-Host ""
-Write-Host "Look at the field: was it replaced FLASH-FREE, editor still healthy? That + the latency answers Q3."
+Write-Host "For SETTEXT: was the field replaced FLASH-FREE, editor healthy? That + latency answers Q3."
