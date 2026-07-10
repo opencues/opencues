@@ -71,6 +71,53 @@ static LONG g_cRefModule = 0;
 static void DllAddRef()  { InterlockedIncrement(&g_cRefModule); }
 static void DllRelease() { InterlockedDecrement(&g_cRefModule); }
 
+// ── Event push channel (M3) ─────────────────────────────────────────────────
+// A subscriber (the daemon) sends SUBSCRIBE and the TIP holds that pipe open,
+// streaming events to it: "<TYPE>:<byteLen>\n<utf8 bytes>" frames (length-
+// prefixed so text with newlines is safe). Written from the UI thread (the TSF
+// sinks) under a lock; a failed write means the subscriber dropped -> clear.
+static CRITICAL_SECTION g_evtLock;
+static HANDLE g_evtPipe = INVALID_HANDLE_VALUE;
+static void PushEvent(const char* type, const wchar_t* body) {
+    EnterCriticalSection(&g_evtLock);
+    if (g_evtPipe != INVALID_HANDLE_VALUE) {
+        int u8 = body ? WideCharToMultiByte(CP_UTF8, 0, body, -1, nullptr, 0, nullptr, nullptr) : 1;
+        int bytes = (u8 > 0) ? u8 - 1 : 0;   // exclude the terminating NUL
+        char hdr[64]; int hl = sprintf(hdr, "%s:%d\n", type, bytes);
+        DWORD w; BOOL ok = WriteFile(g_evtPipe, hdr, hl, &w, nullptr);
+        if (ok && bytes > 0) {
+            char* b = (char*)malloc(bytes + 1);
+            WideCharToMultiByte(CP_UTF8, 0, body, -1, b, bytes + 1, nullptr, nullptr);
+            ok = WriteFile(g_evtPipe, b, bytes, &w, nullptr);
+            free(b);
+        }
+        if (ok) FlushFileBuffers(g_evtPipe);
+        else { CloseHandle(g_evtPipe); g_evtPipe = INVALID_HANDLE_VALUE; }
+    }
+    LeaveCriticalSection(&g_evtLock);
+}
+
+// Read the whole document at a read cookie into a heap buffer (caller frees).
+static HRESULT ReadWholeText(ITfContext* ctx, TfEditCookie ec, wchar_t** out) {
+    *out = nullptr;
+    ITfRange* r = nullptr;
+    if (FAILED(ctx->GetStart(ec, &r)) || !r) return E_FAIL;
+    LONG sh = 0; r->ShiftEnd(ec, 0x7fffffff, &sh, nullptr);
+    const ULONG cap = 1 << 16;
+    wchar_t* buf = (wchar_t*)malloc(cap * sizeof(wchar_t));
+    ULONG total = 0;
+    while (total < cap - 1) {
+        ULONG got = 0;
+        HRESULT g = r->GetText(ec, TF_TF_MOVESTART, buf + total, cap - 1 - total, &got);
+        if (FAILED(g) || got == 0) break;
+        total += got;
+    }
+    buf[total] = 0;
+    *out = buf;
+    r->Release();
+    return S_OK;
+}
+
 static void Log(const wchar_t* fmt, ...) {
     wchar_t buf[1024];
     va_list ap; va_start(ap, fmt);
@@ -142,24 +189,7 @@ private:
     }
 
     HRESULT DoGetText(TfEditCookie ec) {
-        ITfRange* r = nullptr;
-        HRESULT hr = WholeRange(ec, &r);
-        if (FAILED(hr) || !r) return hr;
-        const ULONG cap = 1 << 16;   // 64K wchars — plenty for a composer field
-        wchar_t* buf = (wchar_t*)malloc(cap * sizeof(wchar_t));
-        ULONG total = 0;
-        // GetText with TF_TF_MOVESTART advances the range start past what's read,
-        // so repeated calls drain the range.
-        while (total < cap - 1) {
-            ULONG got = 0;
-            HRESULT g = r->GetText(ec, TF_TF_MOVESTART, buf + total, cap - 1 - total, &got);
-            if (FAILED(g) || got == 0) break;
-            total += got;
-        }
-        buf[total] = 0;
-        m_cmd->outText = buf;   // caller frees
-        r->Release();
-        return S_OK;
+        return ReadWholeText(m_pCtx, ec, &m_cmd->outText);   // caller frees outText
     }
 
     HRESULT DoGetCaret(TfEditCookie ec) {
@@ -197,19 +227,26 @@ private:
 };
 
 // ── The text service ────────────────────────────────────────────────────────
-class CTextService : public ITfTextInputProcessor, public ITfKeyEventSink {
+class CTextService : public ITfTextInputProcessor, public ITfKeyEventSink,
+                     public ITfThreadMgrEventSink, public ITfTextEditSink {
 public:
     CTextService() : m_cRef(1), m_pThreadMgr(nullptr), m_tid(0),
-                     m_msgWnd(nullptr), m_pipeThread(nullptr), m_stop(nullptr) {
+                     m_msgWnd(nullptr), m_pipeThread(nullptr), m_stop(nullptr),
+                     m_dwThreadMgrCookie(TF_INVALID_COOKIE),
+                     m_pEditCtx(nullptr), m_dwEditCookie(TF_INVALID_COOKIE) {
         DllAddRef();
     }
 
     STDMETHODIMP QueryInterface(REFIID riid, void** ppv) {
         if (!ppv) return E_POINTER;
         if (IsEqualIID(riid, IID_IUnknown) || IsEqualIID(riid, IID_ITfTextInputProcessor))
-            *ppv = (ITfTextInputProcessor*)this;
+            *ppv = static_cast<ITfTextInputProcessor*>(this);
         else if (IsEqualIID(riid, IID_ITfKeyEventSink))
-            *ppv = (ITfKeyEventSink*)this;
+            *ppv = static_cast<ITfKeyEventSink*>(this);
+        else if (IsEqualIID(riid, IID_ITfThreadMgrEventSink))
+            *ppv = static_cast<ITfThreadMgrEventSink*>(this);
+        else if (IsEqualIID(riid, IID_ITfTextEditSink))
+            *ppv = static_cast<ITfTextEditSink*>(this);
         else { *ppv = nullptr; return E_NOINTERFACE; }
         AddRef(); return S_OK;
     }
@@ -230,6 +267,18 @@ public:
             pKs->Release();
         }
 
+        // Advise the thread-manager event sink (focus changes -> we (re)advise
+        // the text-edit sink on the focused context, and push FOCUS events).
+        ITfSource* pSrc = nullptr;
+        if (SUCCEEDED(m_pThreadMgr->QueryInterface(IID_ITfSource, (void**)&pSrc)) && pSrc) {
+            pSrc->AdviseSink(IID_ITfThreadMgrEventSink,
+                             static_cast<ITfThreadMgrEventSink*>(this), &m_dwThreadMgrCookie);
+            pSrc->Release();
+        }
+        // Advise the text-edit sink on whatever's already focused.
+        ITfDocumentMgr* pDim = nullptr;
+        if (SUCCEEDED(m_pThreadMgr->GetFocus(&pDim)) && pDim) { AdviseEditSink(pDim); pDim->Release(); }
+
         // Message-only window on THIS (UI) thread — the landing pad for pipe
         // commands, so edit sessions run on the TSF thread.
         WNDCLASSW wc = {};
@@ -247,6 +296,19 @@ public:
     }
     STDMETHODIMP Deactivate() {
         Log(L"Deactivate pid=%lu", GetCurrentProcessId());
+        UnadviseEditSink();
+        if (m_pThreadMgr && m_dwThreadMgrCookie != TF_INVALID_COOKIE) {
+            ITfSource* pSrc = nullptr;
+            if (SUCCEEDED(m_pThreadMgr->QueryInterface(IID_ITfSource, (void**)&pSrc)) && pSrc) {
+                pSrc->UnadviseSink(m_dwThreadMgrCookie);
+                pSrc->Release();
+            }
+            m_dwThreadMgrCookie = TF_INVALID_COOKIE;
+        }
+        // Drop any event subscriber owned by this process.
+        EnterCriticalSection(&g_evtLock);
+        if (g_evtPipe != INVALID_HANDLE_VALUE) { CloseHandle(g_evtPipe); g_evtPipe = INVALID_HANDLE_VALUE; }
+        LeaveCriticalSection(&g_evtLock);
         // Stop the pipe thread: signal + self-connect to unblock ConnectNamedPipe.
         if (m_stop) SetEvent(m_stop);
         if (m_pipeThread) {
@@ -287,6 +349,53 @@ public:
         RunCommand(&c);
         Log(L"  manual replace hr=0x%08x", (unsigned)c.hr);
         return S_OK;
+    }
+
+    // ── ITfThreadMgrEventSink ── focus moves between documents/apps.
+    STDMETHODIMP OnInitDocumentMgr(ITfDocumentMgr*) { return S_OK; }
+    STDMETHODIMP OnUninitDocumentMgr(ITfDocumentMgr*) { return S_OK; }
+    STDMETHODIMP OnSetFocus(ITfDocumentMgr* pdimFocus, ITfDocumentMgr* /*pdimPrev*/) {
+        UnadviseEditSink();
+        if (pdimFocus) AdviseEditSink(pdimFocus);
+        PushEvent("FOCUS", nullptr);
+        return S_OK;
+    }
+    STDMETHODIMP OnPushContext(ITfContext*) { return S_OK; }
+    STDMETHODIMP OnPopContext(ITfContext*) { return S_OK; }
+
+    // ── ITfTextEditSink ── fires after every edit to the watched context.
+    STDMETHODIMP OnEndEdit(ITfContext* pic, TfEditCookie ecReadOnly, ITfEditRecord* /*pRec*/) {
+        wchar_t* text = nullptr;
+        if (SUCCEEDED(ReadWholeText(pic, ecReadOnly, &text)) && text) {
+            PushEvent("TEXTCHANGED", text);
+            free(text);
+        }
+        return S_OK;
+    }
+
+    void AdviseEditSink(ITfDocumentMgr* pdim) {
+        ITfContext* pCtx = nullptr;
+        if (FAILED(pdim->GetTop(&pCtx)) || !pCtx) return;
+        ITfSource* pSrc = nullptr;
+        if (SUCCEEDED(pCtx->QueryInterface(IID_ITfSource, (void**)&pSrc)) && pSrc) {
+            if (SUCCEEDED(pSrc->AdviseSink(IID_ITfTextEditSink,
+                          static_cast<ITfTextEditSink*>(this), &m_dwEditCookie))) {
+                m_pEditCtx = pCtx; m_pEditCtx->AddRef();
+            }
+            pSrc->Release();
+        }
+        pCtx->Release();
+    }
+    void UnadviseEditSink() {
+        if (m_pEditCtx && m_dwEditCookie != TF_INVALID_COOKIE) {
+            ITfSource* pSrc = nullptr;
+            if (SUCCEEDED(m_pEditCtx->QueryInterface(IID_ITfSource, (void**)&pSrc)) && pSrc) {
+                pSrc->UnadviseSink(m_dwEditCookie);
+                pSrc->Release();
+            }
+        }
+        if (m_pEditCtx) { m_pEditCtx->Release(); m_pEditCtx = nullptr; }
+        m_dwEditCookie = TF_INVALID_COOKIE;
     }
 
     // Runs on the UI thread. Executes one command against the focused context.
@@ -344,14 +453,16 @@ private:
             if (pipe == INVALID_HANDLE_VALUE) { Sleep(200); continue; }
             BOOL ok = ConnectNamedPipe(pipe, nullptr) ? TRUE : (GetLastError() == ERROR_PIPE_CONNECTED);
             if (WaitForSingleObject(m_stop, 0) == WAIT_OBJECT_0) { CloseHandle(pipe); break; }
-            if (ok) HandleConnection(pipe);
-            CloseHandle(pipe);
+            bool keepOpen = false;
+            if (ok) keepOpen = HandleConnection(pipe);
+            if (!keepOpen) CloseHandle(pipe);   // SUBSCRIBE transfers ownership to g_evtPipe
         }
         Log(L"pipe: stopped");
         return 0;
     }
 
-    void HandleConnection(HANDLE pipe) {
+    // Returns true if the pipe was transferred (kept open) — SUBSCRIBE.
+    bool HandleConnection(HANDLE pipe) {
         // Read until we have a full "OP\n<payload>" (payload may be empty).
         char* buf = (char*)malloc(1 << 16);
         DWORD total = 0, n = 0;
@@ -389,6 +500,18 @@ private:
         } else if (opLen == 8 && memcmp(buf, "SETCARET", 8) == 0) {
             cmd.op = OP_SETCARET;
             cmd.inNum = (payload[0] == 'e' || payload[0] == 'E') ? -1 : atol(payload);
+        } else if (opLen == 9 && memcmp(buf, "SUBSCRIBE", 9) == 0) {
+            // Long-lived event stream: reply OK, transfer the pipe to g_evtPipe,
+            // keep it open. The UI-thread sinks write events to it.
+            const char* okmsg = "OK subscribed\n";
+            DWORD w; WriteFile(pipe, okmsg, (DWORD)strlen(okmsg), &w, nullptr); FlushFileBuffers(pipe);
+            EnterCriticalSection(&g_evtLock);
+            if (g_evtPipe != INVALID_HANDLE_VALUE) CloseHandle(g_evtPipe);   // replace prior subscriber
+            g_evtPipe = pipe;
+            LeaveCriticalSection(&g_evtLock);
+            Log(L"pipe: SUBSCRIBE — streaming events");
+            free(buf);
+            return true;   // keepOpen
         } else {
             known = false;
         }
@@ -417,6 +540,7 @@ private:
         if (wtext) free(wtext);
         if (resp) free(resp);
         free(buf);
+        return false;   // one-shot command connection; PipeThread closes it
     }
 
     LONG m_cRef;
@@ -425,6 +549,9 @@ private:
     HWND m_msgWnd;
     HANDLE m_pipeThread;
     HANDLE m_stop;
+    DWORD m_dwThreadMgrCookie;   // ITfThreadMgrEventSink advise cookie
+    ITfContext* m_pEditCtx;      // context the text-edit sink is advised on
+    DWORD m_dwEditCookie;        // ITfTextEditSink advise cookie
 };
 
 // ── Class factory ───────────────────────────────────────────────────────────
@@ -537,6 +664,12 @@ STDAPI DllUnregisterServer() {
 }
 
 BOOL WINAPI DllMain(HINSTANCE hInst, DWORD reason, LPVOID) {
-    if (reason == DLL_PROCESS_ATTACH) { g_hInst = hInst; DisableThreadLibraryCalls(hInst); }
+    if (reason == DLL_PROCESS_ATTACH) {
+        g_hInst = hInst;
+        DisableThreadLibraryCalls(hInst);
+        InitializeCriticalSection(&g_evtLock);
+    } else if (reason == DLL_PROCESS_DETACH) {
+        DeleteCriticalSection(&g_evtLock);
+    }
     return TRUE;
 }
