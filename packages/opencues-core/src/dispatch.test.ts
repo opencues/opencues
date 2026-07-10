@@ -298,6 +298,44 @@ describe('dispatchChat — outbound PII floor', () => {
     });
   });
 
+  it('SYSTEM messages are scanned but never rewritten — static-prompt collisions must not corrupt instructions (issue #279)', async () => {
+    await withGuard(async () => {
+      const warns: string[] = [];
+      const req: ChatRequest = {
+        model: 'm',
+        messages: [
+          // Static prompt text whose example value happens to equal a real
+          // catalog value — the #279 shape. Rewriting it would produce a
+          // self-contradictory instruction ("→ [WORK CITY] (NOT [WORK CITY])").
+          { role: 'system', content: 'example: buffer "IS _" + label "City" → "Reykjavik" (NOT [WORK CITY])' },
+          { role: 'user', content: 'Zorbath Quillfeather asked' },
+        ],
+      };
+      const out = applyOutboundDehydrationFloor(req, (m) => warns.push(m));
+      // System untouched; user still scrubbed.
+      assert.strictEqual(out.messages[0].content, req.messages[0].content);
+      assert.strictEqual(out.messages[1].content, '[FULL NAME] asked');
+      // The system hit is surfaced loudly, distinct from the scrub warn.
+      assert.ok(warns.some(w => w.includes('SYSTEM message') && w.includes('left untouched')), `warns: ${warns.join(' | ')}`);
+    });
+  });
+
+  it('system-only hits: request passes through unchanged but still warns', async () => {
+    await withGuard(async () => {
+      const warns: string[] = [];
+      const req: ChatRequest = {
+        model: 'm',
+        messages: [
+          { role: 'system', content: 'the user lives in Reykjavik' },
+          { role: 'user', content: 'nothing personal here' },
+        ],
+      };
+      const out = applyOutboundDehydrationFloor(req, (m) => warns.push(m));
+      assert.strictEqual(out, req); // no non-system hits → zero-churn pass-through
+      assert.ok(warns.some(w => w.includes('SYSTEM message')));
+    });
+  });
+
   it('clean requests are not rewritten (no false-positive object churn)', async () => {
     await withGuard(async () => {
       const req: ChatRequest = {

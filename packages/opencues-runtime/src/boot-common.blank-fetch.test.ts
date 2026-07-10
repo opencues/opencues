@@ -76,6 +76,23 @@ describe('buildBlankFetchProvider — happy path', () => {
     expect(prov.getRenderedBlock()).toMatch(/\[STOCK\(ticker: string\): number\]/);
     expect(prov.getRenderedBlock()).toMatch(/LIVE FUNCTIONS/);
   });
+
+  it('getRenderedBlock presents itself as ADDITIVE to the catalogs (issue #279)', () => {
+    const prov = buildBlankFetchProvider(
+      makeLoader({ stocks: { name: 'stocks', aiCallable: true, signature: '(ticker: string)', returns: 'number' } }),
+      new Map([['stocks', realStocks()]]), noop,
+    )!;
+    // Load-bearing prompt clause: without "IN ADDITION to the catalog
+    // tokens above", gpt-oss-120b reads the fn block as REPLACING the
+    // identity/blank-context catalogs and bails identity lookups
+    // (`i work at _`) to SPAN=NONE on any host with an ai-callable
+    // blank registered. Repro + fix: issue #279. If this assertion
+    // fails you are editing the block wording — re-run
+    // tests/benchmarks/typed-sentinel-language/livefn-bench.ts (and
+    // keep its LIVE_FUNCTIONS mirror in sync) plus the #279 identity
+    // case before shipping.
+    expect(prov.getRenderedBlock()).toMatch(/LIVE FUNCTIONS — IN ADDITION to the catalog tokens above \(all catalog rules still apply\)/);
+  });
 });
 
 describe('buildBlankFetchProvider — CAPABILITY GATE (code-identity + user trust)', () => {
