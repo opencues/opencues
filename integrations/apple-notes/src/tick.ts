@@ -6,8 +6,16 @@
 // osascript. No imports from the runtime — plain data in, events out.
 
 export const MAX_NOTE_CHARS = 30000;
-export const FLUSH_SETTLE_MS = 50;
-export const FLUSH_MAX_WAIT_MS = 150;
+// Tuned 2026-07-10 for fastest-possible frame cadence: the settle
+// window is PURE added latency per flush (frames arrive one at a
+// time; there is rarely a burst to merge), so it is now just wide
+// enough to coalesce a setText+cursor micro-burst. The animator ticks
+// (blank-loading-interval-ms: 40) faster than the ~160-200ms osascript
+// CAS, so a fresh frame is always pending the instant the serialized
+// chain frees — the visible rate rides the CAS floor (~5-6fps), and
+// the FIRST frame reaches the note ~35ms sooner.
+export const FLUSH_SETTLE_MS = 15;
+export const FLUSH_MAX_WAIT_MS = 60;
 
 /**
  * Debounce-with-max-wait for the virtual-buffer flush, tuned for the
