@@ -299,7 +299,7 @@ function ensureCanonicalForkExists(forkRoot) {
   const pkgPath = path.join(forkRoot, 'package.json');
   if (!fs.existsSync(pkgPath)) {
     const compat = JSON.parse(fs.readFileSync(path.join(PKG_DIR, 'compat.json'), 'utf8'));
-    const pin = compat['current-pin'] || '2.1.170';
+    const pin = compat['current-pin'] || '2.1.206';
     fs.writeFileSync(pkgPath, JSON.stringify({
       private: true,
       dependencies: { '@anthropic-ai/claude-code': pin },
@@ -601,7 +601,7 @@ function tryAutoDetectCli() {
 // Lookup order:
 //   1. Standard `~/.claude/node_modules/...` (rare — pre-fork-era layout)
 //   2. `~/claude-code-cues/` (canonical fork; shape auto-detected — today's
-//      pin in compat.json:current-pin is 2.1.170 native bun-binary, older
+//      pin in compat.json:current-pin is 2.1.206 native bun-binary, older
 //      pins fell on the cli.js shape)
 //   3. Any other `~/claude-code-cues-*/` (user-named version-test forks
 //      — see CLAUDE.md § Claude Installs for the dev-fork retirement note)

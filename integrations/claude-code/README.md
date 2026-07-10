@@ -11,7 +11,7 @@
 | Field | Value |
 |---|---|
 | Version | 0.1.0 |
-| Compatible with | Claude Code 2.1.x — tested on 2.1.110 (cli.js shape) and 2.1.150 (native bun-binary shape, 2.1.113+ cutover). Patch source is the same for both; tweakcc 4.0.13+ handles `.bun` ELF extract/repack. |
+| Compatible with | Claude Code 2.1.x — tested on 2.1.110 (cli.js shape) and 2.1.150 / 2.1.158 / 2.1.170 / 2.1.206 (native bun-binary shape, 2.1.113+ cutover). Patch source is the same for both; tweakcc 4.0.13+ handles `.bun` ELF extract/repack. |
 | Source | `integrations/claude-code/` |
 | Runtime | `@opencues/core`, `@opencues/runtime` (installed to `~/claude-code-cues/node_modules/@opencues/`) |
 

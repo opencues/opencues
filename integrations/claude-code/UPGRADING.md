@@ -58,7 +58,7 @@ text-level patch surface is identical; only the install pipeline differs.
 The compat manifest at `integrations/claude-code/compat.json` is the source of
 truth for what we've tested.
 
-## The seam inventory (current as of 2.1.170)
+## The seam inventory (current as of 2.1.206)
 
 The patch is **anchored on five seams** in cli.js. Same-patch and same-minor
 bumps usually leave all five intact; cross-minor refactors can move any of
@@ -84,8 +84,8 @@ older behavior.
 - The CC fork at `~/claude-code-cues/` (or `~/claude-code-cues-150/` for the
   native-binary install). If neither exists, the install will create it.
 - tweakcc is pinned to an **exact commit** in `compat.json:tweakcc-pin`
-  (currently v4.3.0 / `76e1fea`); setup.sh clones + checks out that
-  commit and refuses to run unpinned. Never "just `git pull`" a tweakcc
+  (currently `1545ff8` — upstream's "Prompts for 2.1.206" commit);
+  setup.sh clones + checks out that commit and refuses to run unpinned. Never "just `git pull`" a tweakcc
   clone into service — issue #276 (July 2026) was an unpinned clone
   pulling a tweakcc main whose system-prompt pipeline corrupted BOTH
   install shapes while the installer reported success. Bumping the
@@ -166,6 +166,13 @@ Edits required:
 - **`integrations/claude-code/compat.json`** — append the new version to
   `tested:` AND update `current-pin:` if you want it to become the default.
   Don't replace existing entries; the array is the historical record.
+- **`integrations/claude-code/compat.json` → `tweakcc-pin:`** — bump to the
+  upstream tweakcc commit you validated the new CC version against (normally
+  the `Prompts for <new-version>` commit on tweakcc main). The CC pin and the
+  tweakcc pin move TOGETHER — tweakcc carries per-CC-version prompt regexes
+  and is the patch engine, so validating one against a stale other is not a
+  validation. Follow the "Bumping the tweakcc pin" runbook below (§ 4e anchor
+  check + both-shapes install) as part of the same PR.
 - **`integrations/claude-code/README.md`** — `Compatible with` row in the
   header table.
 - **`integrations/claude-code/patches/setup.sh`** — the version pin in the
@@ -431,7 +438,22 @@ instead of shipping a broken fork that claims success.
 
 - **tweakcc requires its own update for some CC versions**: if a tweakcc
   internal anchor (not ours) misses on a new CC release, the build itself
-  fails before our patches apply. Sync tweakcc to upstream main first.
+  fails before our patches apply. Validate a newer upstream commit
+  (usually the `Prompts for <new-version>` one) and bump
+  `compat.json:tweakcc-pin` per the "Bumping the tweakcc pin" runbook
+  above — never float back to unpinned main.
+
+- **The patched binary can die at PARSE time with all five seams green**:
+  tweakcc's system-prompt pipeline corrupts prompts containing nested
+  templates inside `${...}` interpolations when it re-embeds them (first
+  hit on 2.1.206's memory prompt — symptom: `SyntaxError ... Expected ':'
+  in ternary operator` on any launch, including `--version`). setup.sh
+  § 4e disables the pipeline (drops the `content =
+  systemPromptsResult.newContent` assignment — anchor-verified, install
+  aborts if it moves) and the § 9 runtime smoke executes the artifact so
+  this class can't ship silently again. Post-mortems:
+  `adapters/cc/REPAIR.md` § 15 (nested-template escaping, 2.1.206) and
+  issue #276 (version-mismatched prompt DB, both shapes).
 
 - **S6 isn't critical, S7 isn't critical, S1/S2/S3 are**: don't waste
   half a day porting an S6 regex. The Statusline module falls back to
