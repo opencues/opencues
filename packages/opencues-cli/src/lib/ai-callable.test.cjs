@@ -94,13 +94,13 @@ describe('trustedCount — edge cases', () => {
     assert.strictEqual(trustedCount(), 0);
   });
 
-  it('edge: legacy `param-safe-allow:` scalar is read as a fallback', () => {
-    writeOpenCues('---\nparam-safe-allow: legacyone, legacytwo\n---\n');
+  it('edge: legacy `param-safe-allow:` scalar is read as a fallback', () => { // LEGACY-NAME-ALLOW: pre-rename scalar
+    writeOpenCues('---\nparam-safe-allow: legacyone, legacytwo\n---\n'); // LEGACY-NAME-ALLOW: pre-rename scalar
     assert.strictEqual(trustedCount(), 2);
   });
 
-  it('edge: `ai-callable-allow:` takes priority over the legacy scalar when both are present', () => {
-    writeOpenCues('---\nai-callable-allow: new1\nparam-safe-allow: legacy1, legacy2\n---\n');
+  it('edge: `ai-callable-allow:` takes priority over the legacy scalar when both are present', () => { // LEGACY-NAME-ALLOW: pre-rename scalar
+    writeOpenCues('---\nai-callable-allow: new1\nparam-safe-allow: legacy1, legacy2\n---\n'); // LEGACY-NAME-ALLOW: pre-rename scalar
     assert.strictEqual(trustedCount(), 1);
   });
 
