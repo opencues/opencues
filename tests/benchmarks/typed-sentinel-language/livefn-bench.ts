@@ -58,7 +58,12 @@ const CASES: Array<{ id: string; input: string; fn: string; argName: string; arg
   { id: 'cairo',    input: "draft a one-liner about how the weather is in cairo today _",     fn: 'WEATHER', argName: 'city', arg: 'Cairo' },
   // crypto (pre-fetched: BTC/ETH)
   { id: 'solana',   input: "write a sentence about solana's current price _",                fn: 'CRYPTO', argName: 'symbol', arg: 'SOL' },
-  { id: 'dogecoin', input: 'one line: dogecoin is trading at _',                             fn: 'CRYPTO', argName: 'symbol', arg: 'DOGE' },
+  // "one line: dogecoin ..." (no imperative verb) was a mis-homed case: the
+  // transform classifier correctly cedes it (VERDICT: NONE) and in production
+  // FluidBlank serves it — verified emitting [CRYPTO(symbol=DOGE)] via the
+  // fluid path. This bench drives the TRANSFORM source, so the case must be a
+  // genuine generative-transform imperative like its solana/cardano siblings.
+  { id: 'dogecoin', input: 'write one line: dogecoin is trading at _',                       fn: 'CRYPTO', argName: 'symbol', arg: 'DOGE' },
   { id: 'cardano',  input: "mention cardano's price in a short sentence _",                   fn: 'CRYPTO', argName: 'symbol', arg: 'ADA' },
 ];
 
