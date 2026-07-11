@@ -109,13 +109,15 @@ describe('matchesRange', () => {
     assert.strictEqual(matchesRange('1.4.5', '1.4.0 - 1.5.0'), false);
   });
 
-  // BUG (see src/lib/found-bugs.vitest.test.mjs): a bounded range whose
-  // string literally ends in ".x" (the common authoring shape, e.g.
-  // "1.4.0 - 1.4.x") is swallowed by the `range.endsWith('.x')` branch,
-  // which fires on the WHOLE compound string before the ' - ' split ever
-  // runs — so `matchesRange('1.4.5', '1.4.0 - 1.4.x')` incorrectly
-  // returns false. Not asserted here; see the vitest file for the pinned
-  // repro via `it.fails`.
+  it('edge: bounded range with an ".x" upper bound matches within the window', () => {
+    // Regression: the ' - ' split now runs BEFORE the `endsWith('.x')`
+    // glob branch, so a compound range whose string literally ends in ".x"
+    // (the common authoring shape) is split into its bounds first instead
+    // of being treated as one un-matchable prefix.
+    assert.strictEqual(matchesRange('1.4.5', '1.4.0 - 1.4.x'), true);
+    assert.strictEqual(matchesRange('1.4.0', '1.4.0 - 1.4.x'), true); // lower bound (exact)
+    assert.strictEqual(matchesRange('1.5.0', '1.4.0 - 1.4.x'), false); // above the window
+  });
 
   it('invalid: empty/undefined range never matches', () => {
     assert.strictEqual(matchesRange('1.0.0', ''), false);
