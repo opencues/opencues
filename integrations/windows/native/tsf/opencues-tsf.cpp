@@ -97,6 +97,20 @@ static void PushEvent(const char* type, const wchar_t* body) {
     LeaveCriticalSection(&g_evtLock);
 }
 
+// This process's own executable basename (e.g. "Discord.exe"). The TIP loads
+// IN-PROCESS into the focused app, so GetCurrentProcessId() and the module path
+// name the host app directly — no cross-process lookup. Returned in a static
+// buffer (built on the UI thread in OnSetFocus; single-threaded use).
+static const wchar_t* CurrentAppBase() {
+    static wchar_t base[64];
+    wchar_t path[MAX_PATH];
+    DWORD n = GetModuleFileNameW(nullptr, path, MAX_PATH);
+    const wchar_t* b = path;
+    for (DWORD i = 0; i < n; i++) if (path[i] == L'\\' || path[i] == L'/') b = path + i + 1;
+    wcsncpy(base, b, 63); base[63] = 0;
+    return base;
+}
+
 // Read the whole document at a read cookie into a heap buffer (caller frees).
 static HRESULT ReadWholeText(ITfContext* ctx, TfEditCookie ec, wchar_t** out) {
     *out = nullptr;
@@ -356,8 +370,20 @@ public:
     STDMETHODIMP OnUninitDocumentMgr(ITfDocumentMgr*) { return S_OK; }
     STDMETHODIMP OnSetFocus(ITfDocumentMgr* pdimFocus, ITfDocumentMgr* /*pdimPrev*/) {
         UnadviseEditSink();
-        if (pdimFocus) AdviseEditSink(pdimFocus);
-        PushEvent("FOCUS", nullptr);
+        if (pdimFocus) {
+            AdviseEditSink(pdimFocus);
+            // M4 — focus coordination: announce "this per-PID pipe now holds the
+            // focused editable doc" so a subscriber (the daemon, via the shim)
+            // can route writes to THIS TIP. Body is "<pid>|<app>"; the pipe name
+            // is the deterministic \\.\pipe\opencues-tsf-<pid>.
+            wchar_t body[128];
+            swprintf(body, 128, L"%lu|%ls", GetCurrentProcessId(), CurrentAppBase());
+            PushEvent("FOCUS", body);
+        } else {
+            // Focused doc went away (app lost focus / no editable field). Tell
+            // the subscriber this PID no longer owns the write target.
+            PushEvent("BLUR", nullptr);
+        }
         return S_OK;
     }
     STDMETHODIMP OnPushContext(ITfContext*) { return S_OK; }

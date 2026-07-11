@@ -1,9 +1,11 @@
 <#
   Subscribe to the OpenCues TSF TIP's event stream (M3) and print events live.
   Connects to the FOREGROUND app's TIP pipe, sends SUBSCRIBE, then reads the
-  length-framed event stream: TEXTCHANGED (the buffer after every edit) and
-  FOCUS (focus moved). This is the event-driven read path that would let the
-  daemon retire the 150ms UIA poll for TSF apps.
+  length-framed event stream: TEXTCHANGED (the buffer after every edit),
+  FOCUS (this TIP gained the focused editable doc; body = "<pid>|<app>", so a
+  subscriber knows which \\.\pipe\opencues-tsf-<pid> to drive - M4 focus
+  coordination) and BLUR (it lost focus). This is the event-driven read path
+  that would let the daemon retire the 150ms UIA poll for TSF apps.
 
   Prereq: TIP installed + ACTIVE in the target app.
 
