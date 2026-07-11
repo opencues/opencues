@@ -16,10 +16,14 @@
     "darwin",
     "linux"
   ],
+  "type": "module",
   "scripts": {
     "dev-install": "node bin/install.cjs install",
     "dev-uninstall": "node bin/install.cjs uninstall",
     "seed-configs": "node bin/install.cjs seed-configs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:dev": "vitest",
     "prepublishOnly": "node ../../scripts/prepublish-guard.cjs"
   },
   "files": [
@@ -27,6 +31,17 @@
     "patches/",
     "README.md"
   ],
+  "dependencies": {
+    "@opencues/core": "workspace:*",
+    "@opencues/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.3.1",
+    "react": "^18.3.1",
+    "typescript": "^5.3.0",
+    "vitest": "^4.1.0"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/opencues/opencues",

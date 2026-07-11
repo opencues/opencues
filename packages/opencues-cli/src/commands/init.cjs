@@ -49,7 +49,13 @@ module.exports = function init(argv, ctx) {
   let created = 0, skipped = 0;
   for (const p of plan) {
     if (p.exists) { skipped++; continue; }
-    const content = minimal && p.name !== 'README.md' ? '' : fs.readFileSync(p.src, 'utf8');
+    // Defensive: a listed file whose template is missing falls back to an
+    // empty scaffold rather than throwing ENOENT mid-loop and leaving
+    // `.cues/` half-created. (AUDITORS.md now ships a template; this guard
+    // keeps a future added-to-`files`-but-no-template entry from crashing
+    // the whole command the same way.)
+    const useEmpty = (minimal && p.name !== 'README.md') || !fs.existsSync(p.src);
+    const content = useEmpty ? '' : fs.readFileSync(p.src, 'utf8');
     fs.writeFileSync(p.dst, content);
     created++;
     console.log(`  ${tag('ok')} created ${bold(p.name)}`);

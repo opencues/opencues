@@ -50,14 +50,14 @@ const CONTEXT_TURNS = parseInt(process.env["OPENCUES_CONTEXT_TURNS"] || "5", 10)
 // doesn't need deep reasoning; we want fast turnaround so the
 // editor's prediction matches what the user types in the next few
 // keystrokes. Override via OPENCUES_CUES_MODEL=provider/model.
-function parseModel(spec: string): { providerID: string; modelID: string } {
+export function parseModel(spec: string): { providerID: string; modelID: string } {
   const slash = spec.indexOf("/")
   if (slash < 0) return { providerID: "anthropic", modelID: spec }
   return { providerID: spec.slice(0, slash), modelID: spec.slice(slash + 1) }
 }
 const CUES_MODEL = parseModel(process.env["OPENCUES_CUES_MODEL"] || "anthropic/claude-haiku-4-5")
 
-function loadSkillText(): string | null {
+export function loadSkillText(): string | null {
   for (const loc of SKILL_LOCATIONS) {
     if (fs.existsSync(loc)) {
       try { return fs.readFileSync(loc, "utf8") } catch { /* keep trying */ }
@@ -66,7 +66,7 @@ function loadSkillText(): string | null {
   return null
 }
 
-function extractUserText(parts: any[]): string {
+export function extractUserText(parts: any[]): string {
   return parts
     .filter((p: any) => p?.type === "text" && typeof p.text === "string")
     .map((p: any) => p.text)
@@ -74,7 +74,7 @@ function extractUserText(parts: any[]): string {
     .trim()
 }
 
-function extractAssistantText(parts: any[]): string {
+export function extractAssistantText(parts: any[]): string {
   // Assistant messages can have text + tool-use + tool-result parts.
   // For context, we only want the text content the user actually saw.
   return parts
@@ -84,7 +84,7 @@ function extractAssistantText(parts: any[]): string {
     .trim()
 }
 
-async function buildContext(client: any, sessionID: string): Promise<string> {
+export async function buildContext(client: any, sessionID: string): Promise<string> {
   if (CONTEXT_TURNS <= 0) return ""
   try {
     // List recent messages. The SDK signature: client.session.messages(...) or
@@ -109,13 +109,13 @@ async function buildContext(client: any, sessionID: string): Promise<string> {
   }
 }
 
-function existingCuesMd(projectDir: string): string | null {
+export function existingCuesMd(projectDir: string): string | null {
   const p = path.join(projectDir, ".cues", "CUES.md")
   if (!fs.existsSync(p)) return null
   try { return fs.readFileSync(p, "utf8") } catch { return null }
 }
 
-function writeCuesMd(projectDir: string, content: string): void {
+export function writeCuesMd(projectDir: string, content: string): void {
   const dir = path.join(projectDir, ".cues")
   fs.mkdirSync(dir, { recursive: true })
   fs.writeFileSync(path.join(dir, "CUES.md"), content, "utf8")
@@ -125,7 +125,7 @@ function writeCuesMd(projectDir: string, content: string): void {
 // "no commentary" directive. Heuristic: if there's a "---" frontmatter
 // fence in the output, take from the first "---" to the last meaningful
 // line. If the model wraps in ```markdown ... ```, strip those fences.
-function extractCuesContent(text: string): string {
+export function extractCuesContent(text: string): string {
   let t = text.trim()
   // Strip outer markdown code fence if present.
   const fenceMatch = t.match(/^```(?:markdown|md)?\s*\n([\s\S]*?)\n```\s*$/)
