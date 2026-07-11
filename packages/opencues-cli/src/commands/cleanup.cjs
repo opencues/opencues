@@ -40,7 +40,10 @@ const HOST_MATCHERS = {
     'bun run --silent dev --project',
   ],
   'gemini-cli': [
-    'node .*gemini-cli',
+    // RegExp, not a string: the matcher does a literal `includes()` on
+    // string patterns, so `.*` here would never match a real process
+    // line — it has to be a real regex to span the fork path.
+    /node .*gemini-cli/,
   ],
   shell: [
     'bun .*integrations/shell/src/daemon.ts',

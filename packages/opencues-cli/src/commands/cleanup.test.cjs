@@ -202,9 +202,9 @@ test('invalid: --kill reports failures and returns exit code 1 when a signal can
 // realistic gemini-cli process line.
 // Proposed fix: store the entry as a RegExp literal (/node .*gemini-cli/)
 // in HOST_MATCHERS instead of the string "node .*gemini-cli".
-test('BUG: gemini-cli matcher is a literal string, so it never matches a real process line', { todo: true }, () => {
+test('gemini-cli matcher is a RegExp, so it matches a real process line', () => {
   fakePsOutput = psLine(20202, 1, '00:01', 'node /home/user/.opencues/gemini-cli/bundle/gemini.js') + '\n';
   const { ret, logs } = capture(() => cleanup(['--host', 'gemini-cli'], {}));
   assert.strictEqual(ret, 0);
-  assert.match(logs, /20202/); // currently fails: actual output is "no orphan host processes"
+  assert.match(logs, /20202/); // fixed: the regex spans the fork path
 });

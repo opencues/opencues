@@ -10,10 +10,11 @@
 // project dir, restored + removed afterward, so the real repo/cwd is
 // never touched).
 //
-// NOTE: a genuine bug in init.cjs (missing src/templates/AUDITORS.md
-// template — see the module's own `files` list) is pinned separately in
-// init.knownbug.test.mjs using vitest's `it.fails`, since node:test has
-// no built-in "expected failure" primitive.
+// NOTE: init.cjs used to throw ENOENT on the non-`--minimal` path because
+// its `files` list included AUDITORS.md but src/templates/ shipped no such
+// template. Fixed by shipping the template (+ a defensive empty-scaffold
+// fallback). The 'non-minimal scaffolds all four files' test below is the
+// regression pin; the former vitest `it.fails` knownbug file is retired.
 
 'use strict';
 
@@ -68,6 +69,18 @@ test('happy: --minimal creates all four files with empty .md bodies except READM
   assert.strictEqual(fs.readFileSync(path.join(dir, 'AUDITORS.md'), 'utf8'), '');
   // README is always the real template, even in --minimal (informational, not schema).
   assert.ok(fs.readFileSync(path.join(dir, 'README.md'), 'utf8').length > 0);
+});
+
+test('happy: no flags scaffolds all four files from real templates (non-minimal)', () => {
+  // Regression: the missing src/templates/AUDITORS.md template used to
+  // throw ENOENT mid-loop, leaving .cues/ half-scaffolded (CUES.md +
+  // BLANKS.md written, AUDITORS.md + README.md never reached).
+  silence(() => init([], ctx()));
+  const dir = path.join(projectDir, '.cues');
+  for (const f of ['CUES.md', 'BLANKS.md', 'AUDITORS.md', 'README.md']) {
+    assert.strictEqual(fs.existsSync(path.join(dir, f)), true, `${f} was scaffolded`);
+    assert.ok(fs.readFileSync(path.join(dir, f), 'utf8').length > 0, `${f} has template content`);
+  }
 });
 
 test('happy: --dry-run prints the plan and creates nothing', () => {
