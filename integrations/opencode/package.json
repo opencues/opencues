@@ -20,6 +20,9 @@
     "dev-install": "node bin/install.cjs install",
     "dev-uninstall": "node bin/install.cjs uninstall",
     "seed-configs": "node bin/install.cjs seed-configs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:dev": "vitest",
     "prepublishOnly": "node ../../scripts/prepublish-guard.cjs"
   },
   "files": [
@@ -27,6 +30,11 @@
     "patches/",
     "README.md"
   ],
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^4.1.0"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/opencues/opencues",
