@@ -209,10 +209,10 @@ test('invalid: unknown subcommand errors + prints usage, exit code 2', () => {
 // Proposed fix: swap the two arguments at the call site in
 // discoverBlanks() to `parseSingleCueMd(content, path.join(BLANKS_DIR,
 // e.name), e.name)`.
-test('BUG: a blank with no explicit name: is silently dropped from context list', { todo: true }, () => {
+test('a blank with no explicit name: is keyed by its folder name in context list', () => {
   writeOpenCues('---\nblank-context-mode: safe\n---\n');
   writeBlank('teststock', '---\ntype: blank\nas-context: safe\n---\n'); // no `name:` field
   const { json } = captureJson(() => context(['list', '--json'], {}));
-  assert.strictEqual(json.blanks.length, 1); // currently fails: json.blanks is []
+  assert.strictEqual(json.blanks.length, 1); // fixed: folder name is the nameOverride key
   assert.strictEqual(json.blanks[0].name, 'teststock');
 });

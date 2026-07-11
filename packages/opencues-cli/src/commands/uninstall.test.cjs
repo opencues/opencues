@@ -306,9 +306,11 @@ describe('uninstall skill', () => {
 
 // ─── uninstall plugin <name> ────────────────────────────────────────────────
 //
-// Note: the config.json de-registration branch has a real bug (undefined
-// `pluginFile` — see uninstall.knownbug.test.mjs). These tests cover only
-// the file-removal behavior, which works correctly independent of that bug.
+// The config.json de-registration branch used to reference an undefined
+// `pluginFile`, so the ReferenceError was swallowed and the entry left
+// registered forever. Fixed by defining `pluginFile`; the
+// 'de-registers the plugin entry' test below is the regression pin (the
+// former vitest `it.fails` knownbug file is retired).
 
 describe('uninstall plugin', () => {
   it('happy: removes the plugin .ts file + its .ts.bak and .SKILL.md companions', async () => {
@@ -327,6 +329,25 @@ describe('uninstall plugin', () => {
 
   it('edge: no plugin files present at all — no-op, still exits 0, no crash', async () => {
     await assert.rejects(() => uninstall(['plugin', 'never-installed'], ctx()), /__EXIT_0__/);
+  });
+
+  it('de-registers the plugin file:// entry from opencode config.json', async () => {
+    // Regression: the de-registration used an undefined `pluginFile`, so a
+    // swallowed ReferenceError left the entry registered (misreported as
+    // "could not parse config.json" even though the JSON was valid).
+    const pluginDir = path.join(tmpHome, '.config', 'opencode', 'plugins');
+    fs.mkdirSync(pluginDir, { recursive: true });
+    const target = path.join(pluginDir, 'cues.ts');
+    fs.writeFileSync(target, '// plugin\n');
+    const fileUrl = `file://${target}`;
+    const cfgPath = path.join(tmpHome, '.config', 'opencode', 'config.json');
+    fs.writeFileSync(cfgPath, JSON.stringify({ plugin: [fileUrl, 'file:///keep/other.ts'] }));
+
+    await assert.rejects(() => uninstall(['plugin', 'cues'], ctx()), /__EXIT_0__/);
+
+    const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+    assert.ok(!cfg.plugin.includes(fileUrl), 'our entry removed');
+    assert.ok(cfg.plugin.includes('file:///keep/other.ts'), 'unrelated entries preserved');
   });
 
   it('edge: a config.json with no `plugin` array at all is left alone without crashing', async () => {

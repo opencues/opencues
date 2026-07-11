@@ -84,14 +84,17 @@ function matchesRange(version, range) {
   // ">=N" handling for chrome-style ranges.
   const ge = range.match(/^>=\s*(\d+)/);
   if (ge) return semverCompare(v, ge[1]) >= 0;
+  // Range like "X.Y.Z - X.Y.x" — accept either bound's prefix. This MUST
+  // come before the `.x` glob check: a compound range ending in ".x"
+  // (e.g. "1.4.0 - 1.4.x") itself ends with ".x", so the glob branch
+  // would otherwise treat the whole string as one prefix and never match.
+  if (range.includes(' - ')) {
+    return range.split(' - ').some(b => matchesRange(version, b));
+  }
   // "X.Y.x" / "X.x" handling.
   if (range.endsWith('.x')) {
     const prefix = range.slice(0, -1);
     return v.startsWith(prefix);
-  }
-  // Range like "X.Y.Z - X.Y.x" — accept either bound's prefix.
-  if (range.includes(' - ')) {
-    return range.split(' - ').some(b => matchesRange(version, b));
   }
   // Exact.
   return v === range;
