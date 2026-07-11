@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Docs — document `opencues init`'s `AUDITORS.md` scaffold (`opencues` CLI 0.2.41 → 0.2.42)
+
+Follows the CLI-bugfix PR that made `opencues init` scaffold `AUDITORS.md`. The scaffolded project `README.md` template now lists `AUDITORS.md` in its file table (it was creating the file without explaining it); `docs/guides/cli-reference.md`'s `init` section now names the four files it actually writes (`CUES.md`/`BLANKS.md`/`AUDITORS.md`/`README.md`) instead of the inaccurate "`cues/` and `blanks/` folder layout"; and `docs/guides/adding-an-auditor.md` §6 notes that `init` scaffolds a starter `AUDITORS.md`. Template-file (`src/templates/README.md`) change → patch bump.
+
 ### Fixed — outbound PII floor corrupted the prompt's own instruction examples, killing identity fills on real hosts (`@opencues/core` 0.18.0 → 0.18.1, `@opencues/runtime` 0.13.3 → 0.13.4, issues #279 + #280)
 
 **Root cause (found via byte-diffing the live wire body against a passing repro):** in `identity-context-mode: safe`, the `dispatchChat` outbound-dehydration floor scrubbed catalog values from EVERY message — including the SYSTEM message, whose static instruction examples can legitimately contain text equal to a user's real catalog values. The catalog RULES' own rule-10 examples hardcoded `https://github.com/wkasekende` (a real handle) and the Ofcom dummy phone; for any user whose stored values matched, the floor rewrote the prompt's examples into self-contradictions (`buffer "wkasekende _" + label "GitHub URL" → "[GITHUB]" (NOT [GITHUB])`), and gpt-oss-120b answered `SPAN: NONE` to every identity lookup (`i work at _` → nothing). The floor's warning fired but went to `console.warn`, which the CC TUI swallows. Scenario 54 failed on every host while every bench passed — the benches never register the floor guard.
