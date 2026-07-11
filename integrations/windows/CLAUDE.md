@@ -173,6 +173,24 @@ declines and falls through to the whole-value path — where
 big, non-tail write) always takes a whole-value path — typing is only
 for the small frames.
 
+### Opt-in flash-free TSF transport (above all three)
+
+When the OpenCues **TSF TIP** (`native/tsf/`) is installed AND opted-in
+(`OPENCUES_TSF=1` on the daemon → `welcome tsf:true`, or the shim's own
+env), the **real substitution** routes through the TIP's
+`ITfRange::SetText` over its per-PID pipe — flash-free, no Slate ghost,
+no select-all churn — instead of the UIA/MSAA whole-value path.
+`ApplySetText` probes the focused app's TIP (`TsfAvailable`, cached per
+field) and, for a non-animation write, calls `TsfSetText`; **any pipe
+failure falls straight through to the legacy path**, so nothing
+regresses when the TIP isn't installed. Animation frames stay on the
+typed micro-edit path above (per-frame pipe round-trips aren't worth
+it). The daemon can't drive the pipe itself (WSL2 can't open a Windows
+named pipe) — it owns the opt-in policy; the shim is the pipe client.
+Full design: `protocol.md` § "TSF write transport" + `native/tsf/README.md`.
+This is a `wip/windows-integration` spike, off by default, revertable
+to the branch's spike-anchor commit.
+
 ## Multi-buffer state — MUST reset on focus change
 
 The Windows host attaches to **many** independent fields across apps in

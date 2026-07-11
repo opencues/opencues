@@ -163,6 +163,24 @@ namespace OpenCues
         static int _pendingMsaaAtTick = 0;
         const int MSAA_PASTE_QUIET_MS = 120;
 
+        // --- TSF flash-free write transport (opt-in, M5) ----------------
+        // The OpenCues TSF TIP (native/tsf/) loads IN-PROCESS into the focused
+        // app and serves a per-PID command pipe \\.\pipe\opencues-tsf-<pid>.
+        // WSL2 can't open a Windows named pipe, so the daemon can't drive it
+        // directly - the shim (this process, on Windows) is the pipe client and
+        // the daemon owns the opt-in policy (advertised in `welcome`, or the
+        // OPENCUES_TSF=1 env here). When a live TIP answers for the focused
+        // app's PID, the REAL substitution is written through ITfRange::SetText
+        // - flash-free, no Slate ghost, no select-all churn - instead of the
+        // UIA/paste path. Animation micro-frames stay on the typed path (already
+        // flash-free; per-frame pipe round-trips aren't worth it). ANY pipe
+        // failure falls straight through to the legacy path, so nothing
+        // regresses when the TIP isn't installed.
+        static bool _tsfPreferred = false;    // daemon opt-in (welcome tsf:true) OR env
+        static int _focusedPid = 0;           // PID of the focused field's process
+        static int _tsfProbedPid = 0;         // PID last probed (cache key; reset on new field)
+        static bool _tsfProbedAvail = false;  // was a live TIP present for it?
+
         static int _port;
         static string _host;
         static int _pollMs = 150;
@@ -188,6 +206,7 @@ namespace OpenCues
             var envPoll = Environment.GetEnvironmentVariable("OPENCUES_WIN_POLL_MS");
             int p;
             if (!string.IsNullOrEmpty(envPoll) && int.TryParse(envPoll, out p) && p >= 30) _pollMs = p;
+            if (Environment.GetEnvironmentVariable("OPENCUES_TSF") == "1") _tsfPreferred = true;
             Console.WriteLine("OpenCues Windows shim starting -> " + _host + ":" + _port);
             _pollThreadRef = new Thread(PollThread);
             _pollThreadRef.IsBackground = true;
@@ -403,9 +422,13 @@ namespace OpenCues
                             string lw = Str(map, "logFileWin");
                             if (!string.IsNullOrEmpty(cw)) ConfigPathWin = cw;
                             if (!string.IsNullOrEmpty(lw)) LogPathWin = lw;
+                            // Daemon opt-in for the TSF flash-free write path.
+                            // OR with the env flag - either side may enable it.
+                            object tv;
+                            if (map.TryGetValue("tsf", out tv) && tv is bool && (bool)tv) _tsfPreferred = true;
                             StatusLine = "connected";
                             Log("info", "daemon ready (host=" + Str(map, "host") + " v" + Str(map, "hostVersion")
-                                + " config=" + ConfigPathWin + ")");
+                                + " config=" + ConfigPathWin + " tsf=" + _tsfPreferred + ")");
                         }
                         break;
                     case "set-text":
@@ -426,7 +449,7 @@ namespace OpenCues
             AutomationElement el = null;
             try { el = AutomationElement.FocusedElement; } catch { el = null; }
 
-            if (el == null) { LeaveAttached(null); return; }
+            if (el == null) { _focusedPid = 0; LeaveAttached(null); return; }
 
             int elId;
             string app;
@@ -434,6 +457,7 @@ namespace OpenCues
             {
                 elId = el.GetRuntimeId() != null ? RuntimeIdHash(el.GetRuntimeId()) : el.GetHashCode();
                 app = ProcessName(el);
+                try { _focusedPid = el.Current.ProcessId; } catch { _focusedPid = 0; }
             }
             catch { return; }
 
@@ -496,12 +520,15 @@ namespace OpenCues
                 _recentWrites.Clear();
                 _bracketOpen = false;
                 _attached = true;
-                StatusLine = "on: " + (app ?? "text field");
+                _tsfProbedPid = 0;   // re-probe TIP availability for this new field
+                bool tsf = _tsfPreferred && TsfAvailable(_focusedPid);
+                StatusLine = "on: " + (app ?? "text field") + (tsf ? " (TSF)" : "");
                 Log("info", "attached: " + (app ?? "text field") + " ("
                     + (readText == null ? 0 : readText.Length) + " chars, "
-                    + (mode == AttachMode.Msaa ? "MSAA" : "UIA") + ")");
+                    + (mode == AttachMode.Msaa ? "MSAA" : "UIA") + (tsf ? ", TSF" : "") + ")");
                 SendRaw("{\"t\":\"focus\",\"app\":" + JStr(app) + ",\"text\":" + JStr(readText)
-                    + ",\"cursor\":" + (readText == null ? 0 : readText.Length).ToString(CultureInfo.InvariantCulture) + "}");
+                    + ",\"cursor\":" + (readText == null ? 0 : readText.Length).ToString(CultureInfo.InvariantCulture)
+                    + ",\"tsf\":" + (tsf ? "true" : "false") + "}");
                 return;
             }
 
@@ -675,10 +702,71 @@ namespace OpenCues
             return norm;
         }
 
+        // --- TSF pipe client (M5) ---------------------------------------
+        // Connect to the focused app's in-proc TIP, send one framed command,
+        // read the reply. Returns null on any failure (no TIP for this PID,
+        // pipe busy, timeout) so the caller falls back to the legacy path.
+        static string TsfCommand(int pid, string frame, int connectMs)
+        {
+            if (pid <= 0) return null;
+            try
+            {
+                using (var pipe = new System.IO.Pipes.NamedPipeClientStream(
+                           ".", "opencues-tsf-" + pid, System.IO.Pipes.PipeDirection.InOut))
+                {
+                    pipe.Connect(connectMs);
+                    byte[] outb = Encoding.UTF8.GetBytes(frame);
+                    pipe.Write(outb, 0, outb.Length);
+                    pipe.Flush();
+                    byte[] buf = new byte[70000];
+                    int n = pipe.Read(buf, 0, buf.Length);
+                    return n > 0 ? Encoding.UTF8.GetString(buf, 0, n) : "";
+                }
+            }
+            catch { return null; }
+        }
+
+        // Is a live OpenCues TIP present for this app? Cheap GETCARET probe,
+        // cached per focused field (reset in StreamAttachment on element change)
+        // so a substitution stream costs one probe, not one per frame.
+        static bool TsfAvailable(int pid)
+        {
+            if (pid <= 0) return false;
+            if (pid == _tsfProbedPid) return _tsfProbedAvail;
+            string r = TsfCommand(pid, "GETCARET\n", 150);
+            _tsfProbedPid = pid;
+            _tsfProbedAvail = (r != null && r.StartsWith("OK", StringComparison.Ordinal));
+            return _tsfProbedAvail;
+        }
+
+        // Replace the focused field's whole value flash-free via the TIP's
+        // ITfRange::SetText. True only on a confirmed OK reply.
+        static bool TsfSetText(int pid, string text)
+        {
+            string r = TsfCommand(pid, "SETTEXT\n" + text, 500);
+            return (r != null && r.StartsWith("OK", StringComparison.Ordinal));
+        }
+
         static void ApplySetText(string text)
         {
             if (text == null) return;
             text = NormalizeNewlinesForApp(text);
+
+            // TSF flash-free path (opt-in): route the REAL substitution through
+            // the in-proc TIP when one is live for the focused app. Animation
+            // frames (small tail swaps) are left to the typed micro-edit path
+            // below - they don't flash and per-frame pipe round-trips aren't
+            // worth it. On any pipe failure this is a no-op and we fall straight
+            // through to the legacy UIA/MSAA paths - nothing regresses.
+            if (_tsfPreferred && _focusedPid > 0
+                && !LooksLikeAnimationFrame(_lastSentText, text)
+                && TsfAvailable(_focusedPid)
+                && TsfSetText(_focusedPid, text))
+            {
+                NoteSelfWrite(text);
+                Log("debug", "applied substitution (" + text.Length + " chars, TSF flash-free)");
+                return;
+            }
 
             // MSAA-attached (Chromium/Electron): the focused UIA element is an
             // empty shell with no writable pattern, so writes go through the

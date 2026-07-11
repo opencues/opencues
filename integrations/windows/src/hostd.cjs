@@ -214,6 +214,14 @@ let mirrorCursor = 0;
 let attached = false;          // is an attachable field currently focused
 let currentApp = null;         // foreground process name, for presence
 let expectedEcho = null;       // text we just wrote; swallow its echo
+let currentTsf = false;        // is a live TSF TIP driving the focused field
+
+// Opt-in for the TSF flash-free write path (native/tsf/). The daemon owns
+// the policy; the SHIM is the pipe client (WSL2 can't open a Windows named
+// pipe). Advertised to the shim in `welcome`; the shim also honours its own
+// OPENCUES_TSF=1 env, so either side can enable it. Off by default — the TIP
+// is an opt-in install, and the shim's UIA/paste path is the shipped default.
+const TSF_PREFERRED = process.env.OPENCUES_TSF === '1';
 
 function send(obj) {
   if (!sock || sock.destroyed) return;
@@ -452,6 +460,7 @@ function handleMessage(msg) {
         t: 'welcome', host: 'windows', hostVersion: '0.1.0', protocol: 1,
         cuesHome: CUES_HOME, cuesHomeWin: toWinPath(CUES_HOME),
         logFile: LOG_FILE, logFileWin: toWinPath(LOG_FILE),
+        tsf: TSF_PREFERRED,
       });
       return;
     }
@@ -464,10 +473,12 @@ function handleMessage(msg) {
       bootResult.resetBufferState();
       attached = true;
       currentApp = msg.app || null;
+      currentTsf = msg.tsf === true;
       mirrorText = typeof msg.text === 'string' ? msg.text : '';
       mirrorCursor = typeof msg.cursor === 'number' ? msg.cursor : mirrorText.length;
       expectedEcho = null;
-      updatePresence({ app: currentApp, attached: true });
+      if (currentTsf) log('info', 'focused field is TSF-driven (flash-free writes)', { app: currentApp });
+      updatePresence({ app: currentApp, attached: true, tsf: currentTsf });
       // Seed the runtime with the field's current contents (source=user,
       // no `_` synth — focusing a field is not typing an underscore).
       bootResult.notifyTextChange(mirrorText, mirrorCursor, 'user');
@@ -479,10 +490,11 @@ function handleMessage(msg) {
       if (attached) bootResult.resetBufferState();
       attached = false;
       currentApp = msg.app || null;
+      currentTsf = false;
       mirrorText = '';
       mirrorCursor = 0;
       expectedEcho = null;
-      updatePresence({ app: currentApp, attached: false });
+      updatePresence({ app: currentApp, attached: false, tsf: false });
       return;
     }
     case 'text': {
