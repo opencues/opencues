@@ -171,9 +171,10 @@ whether the key or the network is the problem.
 
 ### `init` — scaffold `<cwd>/.cues/`
 
-Creates the directory + starter folder layout (`cues/` and `blanks/`)
-with comments explaining each block. Idempotent — won't clobber
-existing files.
+Creates the directory with four starter files — `CUES.md`, `BLANKS.md`,
+`AUDITORS.md`, and a `README.md` explaining the layout — each with
+comments describing its blocks (`--minimal` writes empty `.md` files
+instead). Idempotent — won't clobber existing files.
 
 ```bash
 cd ~/my-project

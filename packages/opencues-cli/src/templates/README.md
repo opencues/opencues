@@ -8,6 +8,7 @@ project (`cd <project> && claude-cues` or equivalent).
 |---|---|
 | `CUES.md` | LLM cue sources (word alternatives) |
 | `BLANKS.md` | Blank declarations (typed `_` triggers a fill, scripted blanks, etc.) |
+| `AUDITORS.md` | Auditor surface config — the `disable:` list scopes which auditors run in this project |
 | `cues/<name>/CUE.md` | Folder-based cue sources |
 | `blanks/<name>/BLANK.md` + `<name>.sh` | Folder-based blanks (with optional colocated script) |
 
