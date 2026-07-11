@@ -29,7 +29,7 @@ of that same surface, one socket hop away.
 
 | `t` | Fields | Meaning |
 |---|---|---|
-| `welcome` | `host`, `hostVersion`, `protocol`, `cuesHome`, `cuesHomeWin`, `logFile`, `logFileWin`, `tsf` | Reply to `hello`. The `*Win` variants are Windows-openable paths (a `\\wsl.localhost\...` UNC path when the daemon runs in WSL) so the tray's "Open config folder" / "View log" resolve to the right place. `tsf:true` opts the shim into the flash-free TSF write path (§ TSF write transport). |
+| `welcome` | `host`, `hostVersion`, `protocol`, `cuesHome`, `cuesHomeWin`, `logFile`, `logFileWin`, `tsf` | Reply to `hello`. The `*Win` variants are Windows-openable paths (a `\\wsl.localhost\...` UNC path when the daemon runs in WSL) so the tray's "Open config folder" / "View log" resolve to the right place. `tsf` is the flash-free-path **kill switch** — `true` (default) lets the shim auto-use a live TIP; `false` forces the legacy path (§ TSF write transport). |
 | `set-text` | `text`, `cursor` | Replace the focused field's whole value (an LLM substitution, blank fill, or a loading-spinner frame). Shim applies via UIA `ValuePattern.SetValue` and suppresses the resulting echo. |
 | `set-cursor` | `cursor` | Move the caret. (Phase 1: no-op — caret assumed at end.) |
 | `key-result` | `id`, `consumed` | Whether the runtime consumed a `key` (phase 2). If `false`, the shim lets the chord through. |
@@ -64,7 +64,7 @@ The shim only sends `focus` for fields where **all** hold:
 Everything else → `blur` (daemon detaches). This keeps credentials and
 non-editable surfaces out of the LLM pipeline by construction.
 
-## TSF write transport (opt-in — flash-free writes)
+## TSF write transport (flash-free writes — automatic when installed)
 
 The default write path (`set-text` → UIA `ValuePattern.SetValue` / MSAA
 paste) has an irreducible cosmetic cost on some editors: a select-all
@@ -73,27 +73,31 @@ flash (Discord's Slate, Slack) or undo-granularity loss. The
 COM DLL that replaces the focused document via `ITfRange::SetText`
 through the input pipeline (flash-free, no Slate ghost).
 
+**It engages automatically — no mode to turn on.** Installing the TIP
+is a deliberate, UAC-gated act, so a live TIP for the focused app is
+itself the signal; a separate opt-in flag would be redundant friction.
+
 **The daemon can't drive the TIP directly.** The TIP serves a Windows
 named pipe (`\\.\pipe\opencues-tsf-<pid>`), and the daemon runs in WSL2,
 which can't open a Windows named pipe. So the split is:
 
-- **Daemon owns the policy.** `OPENCUES_TSF=1` in the daemon's env →
-  `welcome` carries `tsf:true`. Off by default (the TIP is an opt-in
-  install; the UIA/paste path is the shipped default).
-- **Shim is the pipe client.** On enable, the shim probes the focused
-  app's TIP (a `GETCARET` on its pipe, cached per field) and reports
+- **Shim is the pipe client.** On each focus it checks whether a TIP
+  pipe exists for the app (`File.Exists(\\.\pipe\opencues-tsf-<pid>)` —
+  O(1), so no probe stall when nothing's installed) and, if so,
+  confirms it with a `GETCARET` (cached per field), reporting
   `tsf:true/false` on the `focus` event. On a `set-text` for the **real
-  substitution** (not a loading-animation frame), if a live TIP is
-  present it writes via `SETTEXT` over the pipe instead of UIA/paste.
+  substitution** (not a loading-animation frame), a live TIP → it writes
+  via `SETTEXT` over the pipe instead of UIA/paste.
 - **Fallback is automatic.** Any pipe failure (no TIP installed, pipe
   busy, timeout) falls straight through to the existing UIA/MSAA path.
   Nothing regresses when the TIP isn't there. Animation frames always
   stay on the shim's typed micro-edit path (already flash-free;
   per-frame pipe round-trips aren't worth it).
+- **Kill switch.** `OPENCUES_TSF=0` — on the daemon (→ `welcome
+  tsf:false`) or on the shim itself — forces the legacy path if the
+  spike write path ever misbehaves.
 
-The pipe command/event protocol is documented in
-`native/tsf/README.md`. Either side may enable the path (daemon env OR
-the shim's own `OPENCUES_TSF=1`); the shim ORs the two.
+The pipe command/event protocol is documented in `native/tsf/README.md`.
 
 ## Config HTTP server (separate from this socket)
 

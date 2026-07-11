@@ -169,14 +169,17 @@ namespace OpenCues
         // WSL2 can't open a Windows named pipe, so the daemon can't drive it
         // directly - the shim (this process, on Windows) is the pipe client and
         // the daemon owns the opt-in policy (advertised in `welcome`, or the
-        // OPENCUES_TSF=1 env here). When a live TIP answers for the focused
-        // app's PID, the REAL substitution is written through ITfRange::SetText
-        // - flash-free, no Slate ghost, no select-all churn - instead of the
+        // OPENCUES_TSF=0 kill switch). TSF engages AUTOMATICALLY whenever a
+        // live TIP answers for the focused app's PID - installing the TIP is
+        // the deliberate, UAC-gated opt-in, so a second flag would be redundant.
+        // The REAL substitution is then written through ITfRange::SetText -
+        // flash-free, no Slate ghost, no select-all churn - instead of the
         // UIA/paste path. Animation micro-frames stay on the typed path (already
         // flash-free; per-frame pipe round-trips aren't worth it). ANY pipe
         // failure falls straight through to the legacy path, so nothing
-        // regresses when the TIP isn't installed.
-        static bool _tsfPreferred = false;    // daemon opt-in (welcome tsf:true) OR env
+        // regresses when the TIP isn't installed. Kill switch: OPENCUES_TSF=0
+        // (here or on the daemon -> welcome tsf:false) forces the legacy path.
+        static bool _tsfDisabled = false;     // kill switch (env OPENCUES_TSF=0 OR welcome tsf:false)
         static int _focusedPid = 0;           // PID of the focused field's process
         static int _tsfProbedPid = 0;         // PID last probed (cache key; reset on new field)
         static bool _tsfProbedAvail = false;  // was a live TIP present for it?
@@ -206,7 +209,7 @@ namespace OpenCues
             var envPoll = Environment.GetEnvironmentVariable("OPENCUES_WIN_POLL_MS");
             int p;
             if (!string.IsNullOrEmpty(envPoll) && int.TryParse(envPoll, out p) && p >= 30) _pollMs = p;
-            if (Environment.GetEnvironmentVariable("OPENCUES_TSF") == "1") _tsfPreferred = true;
+            if (Environment.GetEnvironmentVariable("OPENCUES_TSF") == "0") _tsfDisabled = true;
             Console.WriteLine("OpenCues Windows shim starting -> " + _host + ":" + _port);
             _pollThreadRef = new Thread(PollThread);
             _pollThreadRef.IsBackground = true;
@@ -422,13 +425,14 @@ namespace OpenCues
                             string lw = Str(map, "logFileWin");
                             if (!string.IsNullOrEmpty(cw)) ConfigPathWin = cw;
                             if (!string.IsNullOrEmpty(lw)) LogPathWin = lw;
-                            // Daemon opt-in for the TSF flash-free write path.
-                            // OR with the env flag - either side may enable it.
+                            // Daemon kill switch for the TSF flash-free path:
+                            // welcome tsf:false disables it (default is true /
+                            // auto). Either side may force it off.
                             object tv;
-                            if (map.TryGetValue("tsf", out tv) && tv is bool && (bool)tv) _tsfPreferred = true;
+                            if (map.TryGetValue("tsf", out tv) && tv is bool && !(bool)tv) _tsfDisabled = true;
                             StatusLine = "connected";
                             Log("info", "daemon ready (host=" + Str(map, "host") + " v" + Str(map, "hostVersion")
-                                + " config=" + ConfigPathWin + " tsf=" + _tsfPreferred + ")");
+                                + " config=" + ConfigPathWin + " tsf=" + (_tsfDisabled ? "off" : "auto") + ")");
                         }
                         break;
                     case "set-text":
@@ -521,7 +525,7 @@ namespace OpenCues
                 _bracketOpen = false;
                 _attached = true;
                 _tsfProbedPid = 0;   // re-probe TIP availability for this new field
-                bool tsf = _tsfPreferred && TsfAvailable(_focusedPid);
+                bool tsf = !_tsfDisabled && TsfAvailable(_focusedPid);
                 StatusLine = "on: " + (app ?? "text field") + (tsf ? " (TSF)" : "");
                 Log("info", "attached: " + (app ?? "text field") + " ("
                     + (readText == null ? 0 : readText.Length) + " chars, "
@@ -733,9 +737,17 @@ namespace OpenCues
         {
             if (pid <= 0) return false;
             if (pid == _tsfProbedPid) return _tsfProbedAvail;
-            string r = TsfCommand(pid, "GETCARET\n", 150);
             _tsfProbedPid = pid;
-            _tsfProbedAvail = (r != null && r.StartsWith("OK", StringComparison.Ordinal));
+            _tsfProbedAvail = false;
+            // O(1) existence check FIRST. NamedPipeClientStream.Connect polls
+            // for the full timeout on a non-existent pipe (a per-focus stall
+            // for the common no-TIP case); File.Exists on \\.\pipe\ returns
+            // instantly. Only round-trip when the pipe is actually present.
+            if (System.IO.File.Exists(@"\\.\pipe\opencues-tsf-" + pid))
+            {
+                string r = TsfCommand(pid, "GETCARET\n", 150);
+                _tsfProbedAvail = (r != null && r.StartsWith("OK", StringComparison.Ordinal));
+            }
             return _tsfProbedAvail;
         }
 
@@ -758,7 +770,7 @@ namespace OpenCues
             // below - they don't flash and per-frame pipe round-trips aren't
             // worth it. On any pipe failure this is a no-op and we fall straight
             // through to the legacy UIA/MSAA paths - nothing regresses.
-            if (_tsfPreferred && _focusedPid > 0
+            if (!_tsfDisabled && _focusedPid > 0
                 && !LooksLikeAnimationFrame(_lastSentText, text)
                 && TsfAvailable(_focusedPid)
                 && TsfSetText(_focusedPid, text))

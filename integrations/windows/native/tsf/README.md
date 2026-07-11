@@ -8,8 +8,10 @@ Slate editor with no flash and no ghost?** (**answered: yes**, see
 Windows shim) over a per-process named pipe. It's the flash-free write path plus
 event-driven reads/caret/text-change that unlock phase 2.
 
-**Status: opt-in spike on `wip/windows-integration`. Built but not yet shipped;
-the whole subtree reverts to the branch's spike-anchor commit.**
+**Status: spike on `wip/windows-integration`. Once the TIP is installed the
+shim uses it automatically (no mode to enable — installing it IS the opt-in;
+kill switch `OPENCUES_TSF=0`). Not yet shipped; the whole subtree reverts to
+the branch's spike-anchor commit.**
 
 ## Files
 

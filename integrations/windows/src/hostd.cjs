@@ -216,12 +216,13 @@ let currentApp = null;         // foreground process name, for presence
 let expectedEcho = null;       // text we just wrote; swallow its echo
 let currentTsf = false;        // is a live TSF TIP driving the focused field
 
-// Opt-in for the TSF flash-free write path (native/tsf/). The daemon owns
-// the policy; the SHIM is the pipe client (WSL2 can't open a Windows named
-// pipe). Advertised to the shim in `welcome`; the shim also honours its own
-// OPENCUES_TSF=1 env, so either side can enable it. Off by default — the TIP
-// is an opt-in install, and the shim's UIA/paste path is the shipped default.
-const TSF_PREFERRED = process.env.OPENCUES_TSF === '1';
+// The TSF flash-free write path (native/tsf/) engages AUTOMATICALLY whenever
+// a live TIP is present for the focused app — installing the TIP (UAC) is the
+// deliberate opt-in, so no extra flag is needed. The SHIM is the pipe client
+// (WSL2 can't open a Windows named pipe) and does the actual availability
+// probe + write; the daemon just advertises the kill switch. OPENCUES_TSF=0
+// (here or on the shim) forces the legacy UIA/paste path.
+const TSF_ENABLED = process.env.OPENCUES_TSF !== '0';
 
 function send(obj) {
   if (!sock || sock.destroyed) return;
@@ -460,7 +461,7 @@ function handleMessage(msg) {
         t: 'welcome', host: 'windows', hostVersion: '0.1.0', protocol: 1,
         cuesHome: CUES_HOME, cuesHomeWin: toWinPath(CUES_HOME),
         logFile: LOG_FILE, logFileWin: toWinPath(LOG_FILE),
-        tsf: TSF_PREFERRED,
+        tsf: TSF_ENABLED,
       });
       return;
     }
