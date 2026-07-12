@@ -169,10 +169,28 @@ belt-and-braces at the single transport gateway
   (`boot-common.buildSharedRuntime`; CC's inline band registers it
   explicitly in `adapters/cc/v2.1/boot.ts`) with a thunk that
   re-reads config per dispatch — mode flips hot-reload.
-- `applyOutboundDehydrationFloor(req)` scrubs every
+- `applyOutboundDehydrationFloor(req)` scrubs every **non-system**
   `messages[i].content` + `prediction`. A hit means **a source is
   missing dehydration** — the request is scrubbed (never thrown; the
   floor must not break a feature) and a loud warning fires.
+- **SYSTEM messages are scanned but never rewritten** (issue #279).
+  By the prefix-cache invariant (`docs/architecture/cerebras.md`)
+  per-call user-derived content lives in the USER message; the system
+  message is static prompt text + safe-mode catalogs (token names, no
+  values). A dehydrator hit on system text is therefore either a
+  **static-prompt collision** — a hardcoded example value in the
+  prompt equals one of the user's real catalog values (the #279 case:
+  the catalog RULES' own `github.com/<handle>` example matched the
+  user's real GitHub URL; common values like "United Kingdom" collide
+  for many users) — or a source violating the system/user invariant
+  (a real bug that also breaks prefix caching). Rewriting the former
+  turns an instruction example into a self-contradiction
+  (`→ "[GITHUB]" (NOT [GITHUB])`) that tipped gpt-oss-120b into
+  `SPAN=NONE` on every identity lookup; the floor now leaves system
+  bytes untouched and fires a distinct loud warning naming the two
+  possible causes. When adding a source, keep user-derived content
+  out of system messages — the floor no longer papers over that
+  mistake.
 - **The one dispatchChat bypass** — AgentRewrite's HTTP branch
   (`buildRequest` + `postWithFallback` direct) — applies the same
   exported floor before `buildRequest`.

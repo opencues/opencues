@@ -35,12 +35,12 @@ const SNAPSHOT = {
 
 // LIVE FUNCTIONS block — mirror of boot-common.getRenderedBlock (keep in sync),
 // with all three ai-callable functions (stocks + weather + crypto).
-const LIVE_FUNCTIONS = `\n\nLIVE FUNCTIONS — these fetch live data for ANY argument, not only the values pre-listed above. When the content names an entity one of these can fetch (a stock ticker, a city's weather, …), emit the function CALL with that entity as the argument; the runtime fetches the live value and substitutes it.
+const LIVE_FUNCTIONS = `\n\nLIVE FUNCTIONS — IN ADDITION to the catalog tokens above (all catalog rules still apply), these fetch live data for ANY argument, not only the values pre-listed above. When the content names an entity one of these can fetch (a stock ticker, a city's weather, …), emit the function CALL with that entity as the argument; the runtime fetches the live value and substitutes it.
 This OVERRIDES the "write a natural placeholder" rule for any entity a function covers: prefer the CALL [STOCK(ticker=AMZN)] over a generic placeholder like [Amazon Stock Price] or [Today's Price]. Use the ticker symbol / city / id as the argument; if the prose names a company, use its ticker (Amazon→AMZN, Netflix→NFLX, Reddit→RDDT).
 - [STOCK(ticker: string): number] — Stock price
 - [WEATHER(city: string): string] — Current weather for a city
 - [CRYPTO(symbol: string): number] — Crypto price (USD)
-Examples: "Amazon's share price" → [STOCK(ticker=AMZN)] · "how's Netflix doing" → [STOCK(ticker=NFLX)] · "weather in Berlin" → [WEATHER(city=Berlin)] · "solana's price" → [CRYPTO(symbol=SOL)].`;
+Examples: "Amazon's share price" → [STOCK(ticker=AMZN)] · "how's Netflix doing" → [STOCK(ticker=NFLX)] · "weather in Berlin" → [WEATHER(city=Berlin)] · "solana's price" → [CRYPTO(symbol=SOL)] · queries about the USER's own data still take the catalog token above: "i work at _" → [COMPANY] · "my email _" → [EMAIL].`;
 
 const SYSTEM = `${FUSED_SYSTEM}${renderBlankCtx(SNAPSHOT, 'safe', 'typed')}${LIVE_FUNCTIONS}`;
 
@@ -58,7 +58,12 @@ const CASES: Array<{ id: string; input: string; fn: string; argName: string; arg
   { id: 'cairo',    input: "draft a one-liner about how the weather is in cairo today _",     fn: 'WEATHER', argName: 'city', arg: 'Cairo' },
   // crypto (pre-fetched: BTC/ETH)
   { id: 'solana',   input: "write a sentence about solana's current price _",                fn: 'CRYPTO', argName: 'symbol', arg: 'SOL' },
-  { id: 'dogecoin', input: 'one line: dogecoin is trading at _',                             fn: 'CRYPTO', argName: 'symbol', arg: 'DOGE' },
+  // "one line: dogecoin ..." (no imperative verb) was a mis-homed case: the
+  // transform classifier correctly cedes it (VERDICT: NONE) and in production
+  // FluidBlank serves it — verified emitting [CRYPTO(symbol=DOGE)] via the
+  // fluid path. This bench drives the TRANSFORM source, so the case must be a
+  // genuine generative-transform imperative like its solana/cardano siblings.
+  { id: 'dogecoin', input: 'write one line: dogecoin is trading at _',                       fn: 'CRYPTO', argName: 'symbol', arg: 'DOGE' },
   { id: 'cardano',  input: "mention cardano's price in a short sentence _",                   fn: 'CRYPTO', argName: 'symbol', arg: 'ADA' },
 ];
 

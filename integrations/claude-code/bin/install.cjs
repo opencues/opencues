@@ -33,16 +33,22 @@ const pkg = JSON.parse(fs.readFileSync(path.join(PKG_DIR, 'package.json'), 'utf8
 // Delegates to the canonical version-markers.cjs in opencues-cli.
 // Returns { fresh: boolean, reason: string } — fresh: true when the
 // install marker's srcHash matches the current source's srcHash (no
-// rebuild needed); fresh: false when they differ (rebuild) or when
-// no marker exists yet (treat as fresh — first install just wrote
-// it). Errors swallowed silently and treated as fresh so a bad probe
-// can't trigger spurious rebuilds.
+// rebuild needed); fresh: false when they differ (rebuild) OR when
+// no marker exists (a marker is only ever written AFTER a fully
+// validated install, so "missing" means "never completed an install"
+// — issue #276 hit exactly this: a fork with artefacts from a partial
+// run skipped as "already installed + healthy" because missing was
+// treated as fresh). Errors swallowed silently and treated as fresh
+// so a bad probe can't trigger spurious rebuilds.
 function checkSrcHashDrift(markerDir) {
   try {
     const { checkDrift } = require(path.join(REPO_ROOT, 'packages/opencues-cli/src/lib/version-markers.cjs'));
     const drift = checkDrift(markerDir, { pkg, REPO_ROOT });
-    if (drift.status === 'fresh' || drift.status === 'missing') {
+    if (drift.status === 'fresh') {
       return { fresh: true, reason: drift.reason };
+    }
+    if (drift.status === 'missing') {
+      return { fresh: false, reason: 'no install marker — install never completed on this fork' };
     }
     return { fresh: false, reason: drift.reason };
   } catch {
@@ -293,7 +299,7 @@ function ensureCanonicalForkExists(forkRoot) {
   const pkgPath = path.join(forkRoot, 'package.json');
   if (!fs.existsSync(pkgPath)) {
     const compat = JSON.parse(fs.readFileSync(path.join(PKG_DIR, 'compat.json'), 'utf8'));
-    const pin = compat['current-pin'] || '2.1.170';
+    const pin = compat['current-pin'] || '2.1.206';
     fs.writeFileSync(pkgPath, JSON.stringify({
       private: true,
       dependencies: { '@anthropic-ai/claude-code': pin },
@@ -595,7 +601,7 @@ function tryAutoDetectCli() {
 // Lookup order:
 //   1. Standard `~/.claude/node_modules/...` (rare — pre-fork-era layout)
 //   2. `~/claude-code-cues/` (canonical fork; shape auto-detected — today's
-//      pin in compat.json:current-pin is 2.1.170 native bun-binary, older
+//      pin in compat.json:current-pin is 2.1.206 native bun-binary, older
 //      pins fell on the cli.js shape)
 //   3. Any other `~/claude-code-cues-*/` (user-named version-test forks
 //      — see CLAUDE.md § Claude Installs for the dev-fork retirement note)
@@ -702,6 +708,52 @@ function validateFork(fork) {
   // Update caller's view so success log + version marker match reality.
   fork.shape = liveShape;
   fork.target = liveShape === 'cli.js' ? cliJs : nativeBin;
+
+  // Patched-artefact integrity (issue #276, July 2026). The marker
+  // greps above prove our bootstrap TEXT landed — not that the
+  // artefact still RUNS. Two corrupted installs shipped as "installed
+  // + validated": (a) tweakcc's system-prompt pipeline double-escaped
+  // template literals in a 2.1.110 cli.js (node --check caught it but
+  // setup.sh only warned); (b) a macOS arm64 native repack produced a
+  // binary Bun refuses to load ("Expected CommonJS module to have a
+  // function wrapper"). Neither is detectable by grepping for markers.
+  //
+  // Two probes, both fatal:
+  //   1. cli.js shape only: `node --check` on the patched cli.js —
+  //      catches text-level corruption. The file must parse under the
+  //      user's Node to run at all, so this can't false-positive.
+  //      (Do NOT node --check the native extract: the native binary's
+  //      JS runs under Bun and uses syntax Node may not parse — CC
+  //      2.1.170's `using` declarations fail node 22's parser even on
+  //      a pristine extract.)
+  //   2. Execute the artefact with `--version` — catches repack-level
+  //      corruption that only the real loader (Bun) sees, on the exact
+  //      machine that will run it. OPENCUES_SKIP_CC_RUNTIME_SMOKE=1
+  //      skips this one probe for sandboxes that can't exec the host.
+  if (liveShape === 'cli.js') {
+    const syntaxProbe = spawnSync(process.execPath, ['--check', cliJs], { env: process.env });
+    if (syntaxProbe.status !== 0) {
+      const stderr = (syntaxProbe.stderr || '').toString().split('\n').slice(0, 4).join('\n');
+      return {
+        ok: false,
+        reason: `patched cli.js is not valid JavaScript (node --check failed). ` +
+                `The patch pipeline corrupted the file — restore from .cues/patch-state/cli.js.backup and re-run install.\n  ${stderr.replace(/\n/g, '\n  ')}`,
+      };
+    }
+  }
+  if (process.env.OPENCUES_SKIP_CC_RUNTIME_SMOKE !== '1') {
+    const smoke = liveShape === 'cli.js'
+      ? spawnSync(process.execPath, [cliJs, '--version'], { env: process.env, timeout: 60000 })
+      : spawnSync(nativeBin, ['--version'], { env: process.env, timeout: 60000 });
+    if (smoke.status !== 0) {
+      const out = ((smoke.stderr || '') + (smoke.stdout || '')).toString().split('\n').slice(0, 4).join('\n');
+      return {
+        ok: false,
+        reason: `patched ${liveShape === 'cli.js' ? 'cli.js' : 'binary'} failed to execute (\`--version\` exited ${smoke.status === null ? 'timeout/signal' : smoke.status}). ` +
+                `The ${liveShape === 'cli.js' ? 'patch' : 'binary repack'} corrupted the artefact.\n  ${out.replace(/\n/g, '\n  ')}`,
+      };
+    }
+  }
 
   // Boot-smoke: actually `require` the runtime + the exact paths the
   // patch's bootstrap pulls. Catches the bug class where files exist

@@ -5,20 +5,20 @@
      then "use their svgs for now" per explicit instruction. -->
 
 <div align="right">
-  <a href="#"><img width="180" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/OpenCues_logo.svg"></a>
+  <a href="#"><img width="180" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@05be775041f9211c444ec0f642812ab7379a13d3/assets/OpenCues_logo.svg"></a>
 </div>
 
 <br><br>
 
 <div align="center">
-  <a href="#"><img width="600" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Hero.svg"></a>
+  <a href="#"><img width="600" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@05be775041f9211c444ec0f642812ab7379a13d3/assets/Hero.svg"></a>
 </div>
 
 <br><br>
 
 #
 
-<p align="left"><a href="#"><img width="109" alt="Associations:" src="assets/associations.svg"></a><a href="https://www.reddit.com/user/inventor_black/" target="_blank" rel="noopener noreferrer"><img width="177" alt="Mod of r/ClaudeAI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-02.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://www.reddit.com/user/ClaudeAI-mod-bot/" target="_blank" rel="noopener noreferrer"><img width="168" alt="Bot at r/ClaudeAI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-02.1.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://luma.com/OpenSourceIRL" target="_blank" rel="noopener noreferrer"><img width="161" alt="OpenSourceIRL" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Associations-03.svg"></a></p>
+<p align="left"><a href="#"><img width="120" alt="Associations:" src="assets/associations.svg"></a><a href="https://www.reddit.com/user/inventor_black/" target="_blank" rel="noopener noreferrer"><img width="177" alt="Mod of r/ClaudeAI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@05be775041f9211c444ec0f642812ab7379a13d3/assets/Associations-02.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@05be775041f9211c444ec0f642812ab7379a13d3/assets/spacer.svg"><a href="https://www.reddit.com/user/ClaudeAI-mod-bot/" target="_blank" rel="noopener noreferrer"><img width="168" alt="Bot at r/ClaudeAI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@05be775041f9211c444ec0f642812ab7379a13d3/assets/Associations-02.1.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@05be775041f9211c444ec0f642812ab7379a13d3/assets/spacer.svg"><a href="https://luma.com/OpenSourceIRL" target="_blank" rel="noopener noreferrer"><img width="161" alt="OpenSourceIRL" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@05be775041f9211c444ec0f642812ab7379a13d3/assets/Associations-03.svg"></a></p>
 
 <br><br><br>
 
@@ -35,7 +35,7 @@ Rather than navigating to a chat interface or AI-enabled input box, define a que
      GitHub-hosted asset (renders inline): ![demo](https://github.com/opencues/opencues/assets/.../demo.mp4)
      YouTube (GitHub won't inline-embed it — link a thumbnail instead):
      [![Demo](assets/hero-thumb.png)](https://youtu.be/VIDEO_ID) -->
-<a href="#"><img width="100%" alt="Video placeholder — hero demo" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Video_placeholder_1200x300.svg"></a>
+<a href="#"><img width="100%" alt="Video placeholder — hero demo" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@05be775041f9211c444ec0f642812ab7379a13d3/assets/Video_placeholder_1200x300.svg"></a>
 
 OpenCues is platform, model, and provider agnostic, engineered from the ground up to enable native inline AI.
 
@@ -49,7 +49,7 @@ OpenCues is platform, model, and provider agnostic, engineered from the ground u
 
 #
 
-<p align="left"><a href="LICENSE"><img width="216" alt="Apache-2.0 License" src="assets/license.svg"></a><a href="spec/README.md"><img width="157" alt="Open Standard" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-05.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="spec/blank-spec.md"><img width="121" alt="Blanks.md" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-06.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="spec/cue-spec.md"><img width="112" alt="Cues.md" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Ownership-07.svg"></a></p>
+<p align="left"><a href="LICENSE"><img width="216" alt="Apache-2.0 License" src="assets/license.svg"></a><a href="spec/README.md"><img width="157" alt="Open Standard" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@05be775041f9211c444ec0f642812ab7379a13d3/assets/Ownership-05.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@05be775041f9211c444ec0f642812ab7379a13d3/assets/spacer.svg"><a href="spec/blank-spec.md"><img width="121" alt="Blanks.md" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@05be775041f9211c444ec0f642812ab7379a13d3/assets/Ownership-06.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@05be775041f9211c444ec0f642812ab7379a13d3/assets/spacer.svg"><a href="spec/cue-spec.md"><img width="112" alt="Cues.md" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@05be775041f9211c444ec0f642812ab7379a13d3/assets/Ownership-07.svg"></a></p>
 
 <br><br><br><br>
 
@@ -68,7 +68,7 @@ Full walkthrough, prerequisites, and per-host detail: [`docs/install.md`](docs/i
 
 <!-- VIDEO: quickstart walkthrough (~30-45s), replace this comment with the
      real embed once available. -->
-<a href="#"><img width="100%" alt="Video placeholder — quickstart walkthrough" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Video_placeholder_1200x300.svg"></a>
+<a href="#"><img width="100%" alt="Video placeholder — quickstart walkthrough" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@05be775041f9211c444ec0f642812ab7379a13d3/assets/Video_placeholder_1200x300.svg"></a>
 
 #
 
@@ -92,7 +92,7 @@ Each pins its own upstream fork and never touches your native host install.
 
 #
 
-<p align="left"><a href="#integrations"><img width="91" alt="Supports:" src="assets/supports.svg"></a><a href="integrations/opencode/README.md"><img width="129" alt="OpenCode" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-09.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="integrations/claude-code/README.md"><img width="144" alt="Claude Code" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-10.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="integrations/gemini-cli/README.md"><img width="126" alt="Gemini CLI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Supports-11.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="integrations/chrome/README.md"><img width="130" alt="Chrome" src="assets/chrome.svg"></a><a href="integrations/shell/README.md"><img width="82" alt="Shell" src="assets/shell.svg"></a></p>
+<p align="left"><a href="#integrations"><img width="91" alt="Supports:" src="assets/supports.svg"></a><a href="integrations/opencode/README.md"><img width="129" alt="OpenCode" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@05be775041f9211c444ec0f642812ab7379a13d3/assets/Supports-09.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@05be775041f9211c444ec0f642812ab7379a13d3/assets/spacer.svg"><a href="integrations/claude-code/README.md"><img width="144" alt="Claude Code" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@05be775041f9211c444ec0f642812ab7379a13d3/assets/Supports-10.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@05be775041f9211c444ec0f642812ab7379a13d3/assets/spacer.svg"><a href="integrations/gemini-cli/README.md"><img width="126" alt="Gemini CLI" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@05be775041f9211c444ec0f642812ab7379a13d3/assets/Supports-11.svg"></a><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@05be775041f9211c444ec0f642812ab7379a13d3/assets/spacer.svg"><a href="integrations/chrome/README.md"><img width="130" alt="Chrome" src="assets/chrome.svg"></a><a href="integrations/shell/README.md"><img width="82" alt="Shell" src="assets/shell.svg"></a></p>
 
 <br><br><br><br>
 
@@ -110,14 +110,14 @@ Full feature catalogue (44 concepts): [`docs/features/README.md`](docs/features/
 
 <!-- VIDEO: feature tour (~30s of cues + blanks in action), replace this
      comment with the real embed once available. -->
-<a href="#"><img width="100%" alt="Video placeholder — feature tour" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Video_placeholder_1200x300.svg"></a>
+<a href="#"><img width="100%" alt="Video placeholder — feature tour" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@05be775041f9211c444ec0f642812ab7379a13d3/assets/Video_placeholder_1200x300.svg"></a>
 
 <br><br><br><br>
 
 # Configuration & LLM providers
 
 <div align="center">
-  <a href="#"><img width="600" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Hero-2.svg"></a>
+  <a href="#"><img width="600" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@05be775041f9211c444ec0f642812ab7379a13d3/assets/Hero-2.svg"></a>
 </div>
 
 <br>
@@ -158,7 +158,7 @@ Full threat model: [`docs/architecture/security-audit.md`](docs/architecture/sec
 # Contributing
 
 <div align="center">
-  <a href="#"><img width="600" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Hero-3.svg"></a>
+  <a href="#"><img width="600" alt="OpenCues" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@05be775041f9211c444ec0f642812ab7379a13d3/assets/Hero-3.svg"></a>
 </div>
 
 <br>
@@ -174,7 +174,7 @@ Join the community — questions, feedback, and the people building alongside yo
 
 #
 
-<p align="left"><img width="85" alt="Community:" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/Community-12.svg"><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@main/assets/spacer.svg"><a href="https://github.com/opencues/opencues/graphs/contributors"><img width="161" alt="Contributors" src="assets/contributors.svg"></a><a href="https://x.com/openCues_" target="_blank" rel="noopener noreferrer"><img width="142" alt="X / Twitter" src="assets/x-twitter.svg"></a><a href="https://www.reddit.com/r/OpenCues/" target="_blank" rel="noopener noreferrer"><img width="118" alt="Reddit" src="assets/reddit.svg"></a><a href="https://www.instagram.com/opencues/" target="_blank" rel="noopener noreferrer"><img width="117" alt="Instagram" src="assets/instagram.svg"></a></p>
+<p align="left"><img width="85" alt="Community:" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@05be775041f9211c444ec0f642812ab7379a13d3/assets/Community-12.svg"><img width="24" alt="" src="https://cdn.jsdelivr.net/gh/a1rtight/tester@05be775041f9211c444ec0f642812ab7379a13d3/assets/spacer.svg"><a href="https://github.com/opencues/opencues/graphs/contributors"><img width="161" alt="Contributors" src="assets/contributors.svg"></a><a href="https://x.com/openCues_" target="_blank" rel="noopener noreferrer"><img width="142" alt="X / Twitter" src="assets/x-twitter.svg"></a><a href="https://www.reddit.com/r/OpenCues/" target="_blank" rel="noopener noreferrer"><img width="118" alt="Reddit" src="assets/reddit.svg"></a><a href="https://www.instagram.com/opencues/" target="_blank" rel="noopener noreferrer"><img width="117" alt="Instagram" src="assets/instagram.svg"></a></p>
 
 <!-- TODO[community]: add Discord + GitHub Discussions once live (tracked in .internal/pre-launch-readme.md) -->
 

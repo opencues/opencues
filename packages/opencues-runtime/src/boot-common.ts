@@ -764,7 +764,25 @@ export function buildBlankFetchProvider(
       const desc = cfg?.tip ?? `live ${blankName} value for the argument`;
       lines.push(`- [${tokenPrefix}${sig}: ${ret}] — ${desc}`);
     }
-    return `\n\nLIVE FUNCTIONS — these fetch live data for ANY argument, not only the values pre-listed above. When the content names an entity one of these can fetch (a stock ticker, a city's weather, …), emit the function CALL with that entity as the argument; the runtime fetches the live value and substitutes it.\nThis OVERRIDES the "write a natural placeholder" rule for any entity a function covers: prefer the CALL [STOCK(ticker=AMZN)] over a generic placeholder like [Amazon Stock Price] or [Today's Price]. Use the ticker symbol / city / id as the argument; if the prose names a company, use its ticker (Amazon→AMZN, Netflix→NFLX, Reddit→RDDT).\n${lines.join('\n')}\nExamples: "Amazon's share price" → [STOCK(ticker=AMZN)] · "weather in Berlin" → [WEATHER(city=Berlin)] · "solana's price" → [CRYPTO(symbol=SOL)].`;
+    // Two clauses here are load-bearing (issue #279): the "IN ADDITION to
+    // the catalog tokens above" opener AND the trailing catalog-guard
+    // examples ("i work at _" → [COMPANY]). Without them gpt-oss-120b
+    // treats this block as REPLACING the identity/blank-context catalogs
+    // above it — identity lookups like `i work at _` flip from
+    // `ANSWER: [COMPANY]` to `SPAN: NONE` the moment any ai-callable blank
+    // is registered (i.e. on every real host, which is why the bench — no
+    // fn block — kept passing while agentic scenario 54 failed on every
+    // host). The decision is knife-edge sensitive (even fn-line ORDER
+    // flipped it with the opener alone), so both nudges ship together;
+    // the concrete examples are what hold it robust. No-catalog safety:
+    // with no USER CONTEXT block present the model does NOT hallucinate
+    // the example tokens (verified — emits generic prose instead), and a
+    // token for an unlisted field is stripped by the post-processor
+    // (agentic scenario 56). Repro'd + fixed deterministically (temp=0,
+    // seed=42); fn-call emission verified unregressed at the old baseline
+    // (9/10) via tests/benchmarks/typed-sentinel-language/livefn-bench.ts,
+    // whose LIVE_FUNCTIONS mirror must be kept in sync with this string.
+    return `\n\nLIVE FUNCTIONS — IN ADDITION to the catalog tokens above (all catalog rules still apply), these fetch live data for ANY argument, not only the values pre-listed above. When the content names an entity one of these can fetch (a stock ticker, a city's weather, …), emit the function CALL with that entity as the argument; the runtime fetches the live value and substitutes it.\nThis OVERRIDES the "write a natural placeholder" rule for any entity a function covers: prefer the CALL [STOCK(ticker=AMZN)] over a generic placeholder like [Amazon Stock Price] or [Today's Price]. Use the ticker symbol / city / id as the argument; if the prose names a company, use its ticker (Amazon→AMZN, Netflix→NFLX, Reddit→RDDT).\n${lines.join('\n')}\nExamples: "Amazon's share price" → [STOCK(ticker=AMZN)] · "weather in Berlin" → [WEATHER(city=Berlin)] · "solana's price" → [CRYPTO(symbol=SOL)] · queries about the USER's own data still take the catalog token above: "i work at _" → [COMPANY] · "my email _" → [EMAIL].`;
   };
 
   return { getAiCallableFns, getRenderedBlock, blankFetch };

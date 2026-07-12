@@ -4,15 +4,22 @@
 #
 # Scope: handles BOTH install shapes structurally — the npm **cli.js**
 # shape (Claude Code 2.1.111 and earlier) and the **native bun-binary**
-# shape (2.1.113+, including today's pinned 2.1.170). Same script,
+# shape (2.1.113+, including today's pinned 2.1.206). Same script,
 # same patch source; `setup.sh` auto-detects which artifact is present
 # under the fork's `node_modules/@anthropic-ai/claude-code/` and hands
-# the right path to tweakcc — tweakcc 4.0.13+ patches cli.js directly,
-# or for native binaries extracts cli.js from the `.bun` ELF section,
-# patches the text, and repacks. The version pin lives in
-# `integrations/claude-code/compat.json:current-pin` (today 2.1.170);
-# see `integrations/claude-code/UPGRADING.md` for the version-bump
-# runbook.
+# the right path to tweakcc — tweakcc patches cli.js directly, or for
+# native binaries extracts cli.js from the `.bun` section (ELF on
+# Linux, Mach-O on macOS, PE on Windows), patches the text, and
+# repacks. The CC version pin lives in
+# `integrations/claude-code/compat.json:current-pin` (today 2.1.206)
+# and the tweakcc commit pin in `compat.json:tweakcc-pin`; see
+# `integrations/claude-code/UPGRADING.md` for the version-bump runbook.
+#
+# NOTE (issue #276): only Linux x64 (incl. WSL) is maintainer-validated
+# today. The install now verifies the patched artifact on the machine
+# it runs on (fatal node --check + --version runtime smoke), so a
+# platform-specific patch/repack failure aborts loudly instead of
+# shipping a broken fork.
 #
 # Always-from-scratch by default: every install nukes prior state and
 # rebuilds deterministically. The ONLY way to drift is to opt in via
@@ -24,7 +31,7 @@
 # State that gets nuked + rebuilt every install (default):
 #   ~/claude-code-cues/.cues/                            recreated (incl. tweakcc clone)
 #   ~/claude-code-cues/node_modules/@opencues/{core,runtime}/  rebuilt + recopied
-#   ~/claude-code-cues/node_modules/@anthropic-ai/       reinstalled (pin from compat.json:current-pin, today 2.1.170 native bun-binary)
+#   ~/claude-code-cues/node_modules/@anthropic-ai/       reinstalled (pin from compat.json:current-pin, today 2.1.206 native bun-binary)
 #
 # State that survives every install:
 #   ~/.cues/  (incl. OPENCUES.md)                        user content (your CUE.md / BLANK.md edits etc.)
@@ -166,7 +173,19 @@ fi
 # invocation against a side fork doesn't hard-fail.
 COMPAT_JSON="$(dirname "$0")/../compat.json"
 CC_PIN=$(node -e "try{process.stdout.write(JSON.parse(require('fs').readFileSync('$COMPAT_JSON','utf8'))['current-pin']||'')}catch{}" 2>/dev/null || true)
-[ -z "$CC_PIN" ] && CC_PIN="2.1.170"
+[ -z "$CC_PIN" ] && CC_PIN="2.1.206"
+# tweakcc is pinned to an exact commit (compat.json:tweakcc-pin) — an
+# unpinned clone means every install gets whatever tweakcc main is that
+# day. Issue #276 (July 2026): an unpinned clone pulled a main whose
+# system-prompt pipeline corrupted both install shapes (reproduced on
+# Linux x64, reported on macOS arm64). No fallback default on purpose:
+# if compat.json is unreadable we fail loudly rather than drift.
+TWEAKCC_PIN=$(node -e "try{process.stdout.write(JSON.parse(require('fs').readFileSync('$COMPAT_JSON','utf8'))['tweakcc-pin']||'')}catch{}" 2>/dev/null || true)
+if [ -z "$TWEAKCC_PIN" ]; then
+  echo "Error: compat.json:tweakcc-pin missing or unreadable ($COMPAT_JSON)." >&4
+  echo "  setup.sh refuses to clone tweakcc unpinned — see issue #276." >&4
+  exit 1
+fi
 
 if [ ! -f "$CC_FORK_DIR/package.json" ]; then
   echo "Error: $CC_FORK_DIR/package.json missing." >&4
@@ -216,10 +235,11 @@ end_step
 #
 # CC ships two distribution shapes within the 2.1.x line:
 #   - 2.1.111 and earlier → package/cli.js   (minified JS bundle)
-#   - 2.1.113 and later   → bin/claude.exe   (bun-compile ELF binary
-#                                             with the JS embedded in
-#                                             a .bun ELF section that
-#                                             tweakcc 4.0.13+ extracts +
+#   - 2.1.113 and later   → bin/claude.exe   (bun-compile native binary
+#                                             — ELF/Mach-O/PE by platform
+#                                             — with the JS embedded in
+#                                             a .bun section that the
+#                                             pinned tweakcc extracts +
 #                                             repacks)
 # CLI_JS is the path we hand to tweakcc; for native installs, point at
 # the binary and tweakcc handles the extract/patch/repack transparently.
@@ -249,13 +269,33 @@ else
 fi
 end_step
 
-# ─── 3. Clone tweakcc + install its deps ──────────────────────────────
-begin_step "Cloning tweakcc"
+# ─── 3. Clone tweakcc (pinned) + install its deps ─────────────────────
+begin_step "Cloning tweakcc (pin $TWEAKCC_PIN)"
 if $KEEP_STATE && [ -d "$TWEAKCC_DIR/.git" ]; then
   echo "  --keep-state: $TWEAKCC_DIR exists, resetting source files we patch"
   (cd "$TWEAKCC_DIR" && git checkout HEAD -- src/types.ts src/defaultSettings.ts src/patches/index.ts 2>/dev/null || true)
+  # Even under --keep-state the clone must sit at the pin — a dev clone
+  # left on an arbitrary commit is exactly the drift the pin exists to
+  # prevent. Fetch only if the pin isn't present locally.
+  KEPT_HEAD=$(cd "$TWEAKCC_DIR" && git rev-parse HEAD)
+  if [ "$KEPT_HEAD" != "$TWEAKCC_PIN" ]; then
+    echo "  --keep-state clone is at $KEPT_HEAD, not the pin — checking out $TWEAKCC_PIN"
+    (cd "$TWEAKCC_DIR" \
+      && { git cat-file -e "$TWEAKCC_PIN^{commit}" 2>/dev/null || git fetch origin; } \
+      && git checkout --detach "$TWEAKCC_PIN")
+  fi
 else
   git clone https://github.com/Piebald-AI/tweakcc "$TWEAKCC_DIR"
+  (cd "$TWEAKCC_DIR" && git checkout --detach "$TWEAKCC_PIN")
+  # VERIFICATION: the checkout must actually land on the pin. A typo'd
+  # pin or a force-pushed upstream would otherwise silently leave us on
+  # main — the exact failure mode this pin exists to prevent.
+  ACTUAL_HEAD=$(cd "$TWEAKCC_DIR" && git rev-parse HEAD)
+  if [ "$ACTUAL_HEAD" != "$TWEAKCC_PIN" ]; then
+    echo "FATAL: tweakcc checkout landed on $ACTUAL_HEAD, expected pin $TWEAKCC_PIN." >&4
+    echo "  compat.json:tweakcc-pin may be invalid, or upstream history was rewritten." >&4
+    exit 1
+  fi
   (cd "$TWEAKCC_DIR" && npm install --legacy-peer-deps --no-audit --no-fund 2>&1 | tail -3)
   # Belt-and-braces — pipefail (top of file) already aborts on a
   # failing `npm install`, but a flake of "exited 0 + node_modules
@@ -357,6 +397,34 @@ const insertPos = m.index + m[1].length;
 content = content.slice(0, insertPos) + insertion + content.slice(insertPos);
 fs.writeFileSync('$INDEX_FILE', content);
 console.log('Disabled stock tweakcc patches');
+"
+
+# 4e. Disable tweakcc's SYSTEM-PROMPT pipeline. This is separate from
+# patchImplementations (section 4d) — applySystemPrompts() runs
+# unconditionally in the orchestrator BEFORE the patch map, and
+# rewrites CC's prompt template literals whenever the CC version's
+# prompts don't hash-match tweakcc's bundled prompt DB. Issue #276
+# (July 2026): against a CC version older than the DB, that rewrite
+# double-escaped backslashes (\\\` → \\\\\`) across ~5000 prompt
+# segments — cli.js shape died with a SyntaxError at CC's own nested
+# template literals; native shape repacked the corrupted JS and Bun
+# refused to load it ("Expected CommonJS module to have a function
+# wrapper"). We ship zero prompt customizations, so the pipeline has
+# nothing to do for us — drop only the content assignment (the
+# diff-report side stays; it never mutates cli.js).
+node -e "
+const fs = require('fs');
+let content = fs.readFileSync('$INDEX_FILE', 'utf8');
+const anchor = 'content = systemPromptsResult.newContent;';
+if (!content.includes(anchor)) {
+  console.error('Error: could not find the applySystemPrompts content assignment in index.ts.');
+  console.error('tweakcc pin may have moved — re-verify section 4e against the pinned commit.');
+  process.exit(1);
+}
+content = content.replace(anchor,
+  '/* OpenCues: system-prompt writes disabled — we ship no prompt customizations and the rewrite corrupts version-mismatched cli.js (issue #276). */');
+fs.writeFileSync('$INDEX_FILE', content);
+console.log('Disabled tweakcc system-prompt pipeline');
 "
 end_step
 
@@ -461,9 +529,25 @@ end_step
 # ─── 8. Apply tweakcc to cli.js / native binary + verify v2 boot ─────
 begin_step "Applying patches to $CC_SHAPE"
 (cd "$TWEAKCC_DIR" && TWEAKCC_CC_INSTALLATION_PATH="$CLI_JS" node dist/index.mjs --apply 2>&1 | tail -10)
-# `node --check` is JS-only — skip on native binary.
+# VERIFICATION (fatal): the patched cli.js must still parse. Issue #276
+# shipped a cli.js with double-escaped template literals because this
+# used to be a WARNING — the user's install said "Done." and cli.js
+# died at launch with a SyntaxError. Never warn on corruption.
+#
+# cli.js shape only: the native binary's embedded JS runs under Bun and
+# legitimately uses syntax Node can't parse (`using` declarations in CC
+# 2.1.170 fail node 22's parser even on a PRISTINE extract) — the
+# native shape is verified by actually executing the binary below.
 if [ "$CC_SHAPE" = "cli.js" ]; then
-  node --check "$CLI_JS" 2>/dev/null || echo "Warning: syntax check failed on $CLI_JS" >&4
+  if ! node --check "$CLI_JS" 2>>"$LOG"; then
+    end_step
+    echo "" >&4
+    echo "FATAL: patched cli.js is not valid JavaScript (node --check failed)." >&4
+    echo "  The patch pipeline corrupted $CLI_JS" >&4
+    echo "  Restore: cp $TWEAKCC_CONFIG_DIR/cli.js.backup $CLI_JS" >&4
+    echo "  Then report this at https://github.com/opencues/opencues/issues with the log: $LOG" >&4
+    exit 1
+  fi
 fi
 # VERIFICATION: tweakcc's --apply prints "Customizations applied with some
 # failures" even when individual patches miss seams. Confirm the v2 boot
@@ -471,7 +555,7 @@ fi
 # leave cli.js unpatched but the installer would report success.
 #
 # For native-binary installs, the patched cli.js is repacked into the .bun
-# ELF section but tweakcc also writes the post-patch extract to
+# section but tweakcc also writes the post-patch extract to
 # $TWEAKCC_CONFIG_DIR/native-claudejs-patched.js — grep that, not the binary
 # (the section is compressed so the binary itself isn't ASCII-greppable).
 if [ "$CC_SHAPE" = "cli.js" ]; then
@@ -490,6 +574,54 @@ if ! grep -q "@opencues/runtime" "$VERIFY_TARGET" 2>/dev/null; then
   exit 1
 fi
 end_step
+
+# ─── 9. Runtime smoke: the patched artifact must actually RUN ─────────
+# Markers prove our bootstrap TEXT landed; they say nothing about
+# whether the artifact still loads. Issue #276 (July 2026): a native
+# repack shipped a binary Bun refuses to load ("Expected CommonJS
+# module to have a function wrapper") while every text-level check
+# passed and the installer reported success. Executing `--version` on
+# the exact machine that will run the fork is the only gate that
+# catches loader-level corruption — including platform-specific repack
+# bugs (the issue was reported on macOS arm64) that no CI on our side
+# can exercise. Timeout via Node's spawnSync (GNU `timeout` doesn't
+# exist on macOS — see CLAUDE.md § Cross-platform shell scripts).
+#
+# OPENCUES_SKIP_CC_RUNTIME_SMOKE=1 skips this step (sandboxes that
+# can't exec the host binary).
+if [ "${OPENCUES_SKIP_CC_RUNTIME_SMOKE:-0}" != "1" ]; then
+  begin_step "Verifying patched $CC_SHAPE runs (--version)"
+  if [ "$CC_SHAPE" = "cli.js" ]; then
+    SMOKE_CMD="$(command -v node)"; SMOKE_ARG="$CLI_JS"
+  else
+    SMOKE_CMD="$CLI_JS"; SMOKE_ARG=""
+  fi
+  if ! node -e '
+    const { spawnSync } = require("child_process");
+    const [cmd, arg] = [process.argv[1], process.argv[2]];
+    const args = arg ? [arg, "--version"] : ["--version"];
+    const r = spawnSync(cmd, args, { timeout: 60000, encoding: "utf8" });
+    if (r.status !== 0) {
+      console.error((r.stderr || "") + (r.stdout || ""));
+      console.error(`--version exited ${r.status === null ? "timeout/signal" : r.status}`);
+      process.exit(1);
+    }
+    process.stdout.write((r.stdout || "").trim() + "\n");
+  ' "$SMOKE_CMD" "$SMOKE_ARG"; then
+    end_step
+    echo "" >&4
+    echo "FATAL: patched $CC_SHAPE failed to execute (--version)." >&4
+    if [ "$CC_SHAPE" = "cli.js" ]; then
+      echo "  Restore: cp $TWEAKCC_CONFIG_DIR/cli.js.backup $CLI_JS" >&4
+    else
+      echo "  The binary repack corrupted the executable." >&4
+      echo "  Restore: cp $TWEAKCC_CONFIG_DIR/native-binary.backup $CLI_JS" >&4
+    fi
+    echo "  Then report this at https://github.com/opencues/opencues/issues with the log: $LOG" >&4
+    exit 1
+  fi
+  end_step
+fi
 
 echo "" >&3
 echo "Done. Restart Claude Code to activate." >&3

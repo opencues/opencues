@@ -91,7 +91,12 @@ function discoverBlanks(core) {
     const content = readFileOrNull(blankMdPath);
     if (!content) continue;
     try {
-      const parsed = core.cuesMd.parseSingleCueMd(content, e.name, path.join(BLANKS_DIR, e.name));
+      // Signature is (content, folderPath, nameOverride?) — folderPath is
+      // the blank's directory (used for relative script resolution),
+      // nameOverride is the folder name used as the blank key when the
+      // frontmatter omits `name:`. Passing these swapped keyed unnamed
+      // blanks under their full path, so `parsed.blanks[e.name]` missed.
+      const parsed = core.cuesMd.parseSingleCueMd(content, path.join(BLANKS_DIR, e.name), e.name);
       const cfg = parsed.blanks && parsed.blanks[e.name];
       if (cfg) out.push({ name: e.name, config: cfg, path: blankMdPath });
     } catch {}
