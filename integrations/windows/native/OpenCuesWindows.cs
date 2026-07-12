@@ -764,14 +764,19 @@ namespace OpenCues
             if (text == null) return;
             text = NormalizeNewlinesForApp(text);
 
-            // TSF flash-free path (opt-in): route the REAL substitution through
-            // the in-proc TIP when one is live for the focused app. Animation
-            // frames (small tail swaps) are left to the typed micro-edit path
-            // below - they don't flash and per-frame pipe round-trips aren't
-            // worth it. On any pipe failure this is a no-op and we fall straight
-            // through to the legacy UIA/MSAA paths - nothing regresses.
+            // TSF flash-free path: when a live TIP is present for the focused
+            // app, route the ENTIRE write flow — loading-animation frames AND
+            // the final substitution — through TSF SetText. TSF MUST be the
+            // SOLE write mechanism on a TSF field: mixing typed spinner frames
+            // (SendInput, in TryTypeMicroEdit below) with a TSF final SetText
+            // corrupts Slate's model (Discord) — the two go through different
+            // input layers, so the typed text and the TSF text co-exist as
+            // DOUBLE, undeletable ghost text. One consistent mechanism = the
+            // proven-clean single-SetText behaviour on every frame. (Per-frame
+            // pipe round-trips are the cost; correctness beats the micro-opt.)
+            // On any pipe failure this is a no-op and we fall straight through
+            // to the legacy UIA/MSAA paths - nothing regresses.
             if (!_tsfDisabled && _focusedPid > 0
-                && !LooksLikeAnimationFrame(_lastSentText, text)
                 && TsfAvailable(_focusedPid)
                 && TsfSetText(_focusedPid, text))
             {

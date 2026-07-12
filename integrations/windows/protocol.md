@@ -85,14 +85,16 @@ which can't open a Windows named pipe. So the split is:
   pipe exists for the app (`File.Exists(\\.\pipe\opencues-tsf-<pid>)` —
   O(1), so no probe stall when nothing's installed) and, if so,
   confirms it with a `GETCARET` (cached per field), reporting
-  `tsf:true/false` on the `focus` event. On a `set-text` for the **real
-  substitution** (not a loading-animation frame), a live TIP → it writes
-  via `SETTEXT` over the pipe instead of UIA/paste.
+  `tsf:true/false` on the `focus` event. When a TIP is live it writes
+  **every** `set-text` — loading-animation frames AND the final
+  substitution — via `SETTEXT` over the pipe. TSF must be the SOLE
+  writer on a TSF field: mixing the shim's typed spinner frames
+  (`SendInput`) with a TSF final `SetText` corrupts Slate's model
+  (Discord double / undeletable ghost — different input layers), so on a
+  TSF field the typed micro-edit path is bypassed entirely.
 - **Fallback is automatic.** Any pipe failure (no TIP installed, pipe
   busy, timeout) falls straight through to the existing UIA/MSAA path.
-  Nothing regresses when the TIP isn't there. Animation frames always
-  stay on the shim's typed micro-edit path (already flash-free;
-  per-frame pipe round-trips aren't worth it).
+  Nothing regresses when the TIP isn't there.
 - **Kill switch.** `OPENCUES_TSF=0` — on the daemon (→ `welcome
   tsf:false`) or on the shim itself — forces the legacy path if the
   spike write path ever misbehaves.

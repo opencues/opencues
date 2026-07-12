@@ -182,11 +182,14 @@ instead of the UIA/MSAA whole-value path. **No mode to turn on:**
 installing the TIP is the deliberate (UAC-gated) opt-in, so a live TIP
 for the focused app is itself the signal. `ApplySetText` checks
 `TsfAvailable` (an O(1) `File.Exists` on the pipe path — no probe stall
-when nothing's installed — then a cached `GETCARET`) and, for a
-non-animation write, calls `TsfSetText`; **any pipe failure falls
+when nothing's installed — then a cached `GETCARET`) and, when live,
+routes **every** write through `TsfSetText`; **any pipe failure falls
 straight through to the legacy path**, so nothing regresses when the
-TIP isn't there. Animation frames stay on the typed micro-edit path
-above (per-frame pipe round-trips aren't worth it). The daemon can't
+TIP isn't there. TSF must be the **sole** writer on a TSF field —
+loading-animation frames go through it too, NOT the typed micro-edit
+path: mixing `SendInput` spinner frames with a TSF final `SetText`
+corrupts Slate's model (Discord double/undeletable ghost text — the two
+are different input layers). The daemon can't
 drive the pipe itself (WSL2 can't open a Windows named pipe) — the shim
 is the pipe client; the daemon just carries the kill switch. Kill
 switch: `OPENCUES_TSF=0` (daemon → `welcome tsf:false`, or the shim's
