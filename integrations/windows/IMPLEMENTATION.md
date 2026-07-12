@@ -363,8 +363,17 @@ each rung verified against docs/community, not just our experiments:
    `insertReplacementText` events, which Slate handles — this is why
    the OS's own autocorrect replaces words in Discord with no flash.
    Price: shipping a TIP — an in-proc COM DLL **loaded into every
-   application's input stack**. Rejected at research time for
-   invasiveness; see the TSF capability notes below before revisiting.
+   application's input stack**. **Built and tested, then removed
+   (July 2026 spike, `wip/windows-integration`, reverted in `be2005ab`):
+   a single one-shot `ITfRange::SetText` IS flash-free on Discord/Slate
+   — verified live (the M0 Ctrl+Alt+J test) — but driving Slate in the
+   continuous resolve loop (read → resolve → write → read-back, many
+   times/sec) desyncs its text store: content balloons, writes revert,
+   double + undeletable ghost text. Coalescing frames into one write and
+   reading back through the TIP (GETTEXT) both helped but did not fully
+   tame it. Conclusion: the one-shot works, the live loop does not, so
+   the flash-class trusted-input path (rung 3) stays the floor. The full
+   diagnosis is in the spike's git history (M1–M5 → `be2005ab`).**
 3. **Trusted input simulation** (keystrokes + clipboard) — *us, and
    Grammarly Desktop*, whose own docs require fields to support the
    [UIA Text Pattern](https://support.grammarly.com/hc/en-us/articles/10139846131213-How-do-I-integrate-Grammarly-with-my-website-or-application)
