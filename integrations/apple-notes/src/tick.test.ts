@@ -7,13 +7,21 @@ import {
   POLL_HOT_MS,
   POLL_IDLE_MS,
   POLL_PAUSED_MS,
+  RESTART_COOLDOWN_MS,
+  RESTART_QUIESCENT_MS,
+  WEDGE_WINDOW_MS,
   applyPoll,
   containsBlankMarker,
   diffLines,
   initialState,
+  initialWedgeState,
+  isWedged,
+  noteRestartPerformed,
   pollDelayMs,
+  recordBridgeTimeout,
   recordWriteHash,
   selectChanged,
+  shouldRestartNotes,
   synthCursor,
 } from './tick';
 
@@ -472,6 +480,60 @@ describe('transient fetch errors (id-swap third face, harness S3 catch)', () => 
     const events = applyPoll(s, [meta('a', 'm5')], [{ id: 'a', error: 'x' }], hash, T0 + 2000);
     expect(events.find(e => e.type === 'untracked')).toBeUndefined();
     expect(s.tracked.has('a')).toBe(true);
+  });
+});
+
+describe('Notes-wedge detection + auto-restart policy (ledger row 26)', () => {
+  const QUIET = T0 - 100_000; // FSEvents long silent
+
+  it('a single timeout is not a wedge (stress backoff territory)', () => {
+    const w = initialWedgeState();
+    recordBridgeTimeout(w, T0);
+    expect(isWedged(w, T0)).toBe(false);
+    expect(shouldRestartNotes(w, T0, QUIET)).toBe(false);
+  });
+
+  it('two timeouts inside the window confirm a wedge', () => {
+    const w = initialWedgeState();
+    recordBridgeTimeout(w, T0);
+    recordBridgeTimeout(w, T0 + 10_000);
+    expect(isWedged(w, T0 + 10_000)).toBe(true);
+    expect(shouldRestartNotes(w, T0 + 10_000, QUIET)).toBe(true);
+  });
+
+  it('two timeouts further apart than the window are NOT a wedge', () => {
+    const w = initialWedgeState();
+    recordBridgeTimeout(w, T0);
+    const later = T0 + WEDGE_WINDOW_MS + 1_000;
+    recordBridgeTimeout(w, later);
+    expect(isWedged(w, later)).toBe(false);
+  });
+
+  it('recent FSEvents activity (user mid-keystroke) defers the restart', () => {
+    const w = initialWedgeState();
+    recordBridgeTimeout(w, T0);
+    recordBridgeTimeout(w, T0 + 5_000);
+    const now = T0 + 5_000;
+    expect(shouldRestartNotes(w, now, now - RESTART_QUIESCENT_MS + 500)).toBe(false);
+    expect(shouldRestartNotes(w, now, now - RESTART_QUIESCENT_MS - 500)).toBe(true);
+  });
+
+  it('the cooldown blocks a second restart (anti-thrash), then re-allows', () => {
+    const w = initialWedgeState();
+    recordBridgeTimeout(w, T0);
+    recordBridgeTimeout(w, T0 + 1_000);
+    expect(shouldRestartNotes(w, T0 + 1_000, QUIET)).toBe(true);
+    noteRestartPerformed(w, T0 + 1_000);
+    // evidence cleared — fresh timeouts must re-accumulate
+    expect(isWedged(w, T0 + 2_000)).toBe(false);
+    recordBridgeTimeout(w, T0 + 60_000);
+    recordBridgeTimeout(w, T0 + 61_000);
+    expect(isWedged(w, T0 + 61_000)).toBe(true);
+    expect(shouldRestartNotes(w, T0 + 61_000, QUIET)).toBe(false); // inside cooldown
+    const past = T0 + 1_000 + RESTART_COOLDOWN_MS + 1;
+    recordBridgeTimeout(w, past);
+    recordBridgeTimeout(w, past + 1_000);
+    expect(shouldRestartNotes(w, past + 1_000, QUIET)).toBe(true);
   });
 });
 

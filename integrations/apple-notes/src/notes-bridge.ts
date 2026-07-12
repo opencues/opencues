@@ -82,14 +82,25 @@ export class NotesBridge {
   constructor(
     private readonly jxaDir: string,
     private readonly runner: Runner = defaultRunner,
-    private readonly timeoutMs = 15000,
+    // 6s (was 15s): a wedged osascript BLOCKS the whole poll loop for
+    // the full timeout — during a Notes stall the animation freezes for
+    // exactly this long. Normal ops are 30-830ms; 6s is still deeply
+    // abnormal, and recovery is 2.5x faster.
+    private readonly timeoutMs = 6000,
+    // Central wedge-evidence hook: EVERY bridge call rides the same
+    // Apple Events queue, so any timeout — status, enumeration, fetch,
+    // read, or fill — is evidence for the daemon's wedge detector
+    // (tick.ts). One hook here beats per-call-site bookkeeping.
+    private readonly onTimeout?: () => void,
   ) {}
 
   private async run<T>(script: string, args: readonly string[] = [], stdinData?: string): Promise<BridgeResult<T>> {
     const scriptPath = path.join(this.jxaDir, script);
     const outcome = await this.runner(scriptPath, args, stdinData, this.timeoutMs);
     if (outcome.code !== 0 || outcome.timedOut) {
-      return { ok: false, kind: classifyError(outcome), detail: outcome.stderr.trim() || `exit ${outcome.code}` };
+      const kind = classifyError(outcome);
+      if (kind === 'timeout') this.onTimeout?.();
+      return { ok: false, kind, detail: outcome.stderr.trim() || `exit ${outcome.code}` };
     }
     try {
       return { ok: true, value: JSON.parse(outcome.stdout.trim()) as T };
@@ -101,13 +112,12 @@ export class NotesBridge {
   status(): Promise<BridgeResult<{ running: boolean }>> {
     return this.run('status.js');
   }
-  listNotes(): Promise<BridgeResult<{ notes: NoteMeta[] }>> {
+  /** `notes` = LIVE notes only — Recently Deleted is excluded at the
+   *  source, inside the same osascript call (see jxa/list-notes.js).
+   *  `deleted` is returned solely for the daemon's changed-while-
+   *  deleted visibility warn; nothing downstream tracks those ids. */
+  listNotes(): Promise<BridgeResult<{ notes: NoteMeta[]; deleted?: NoteMeta[] }>> {
     return this.run('list-notes.js');
-  }
-  /** Ids in every account's "Recently Deleted" folder — the exclusion
-   *  set for enumeration (see jxa/deleted-ids.js for why). */
-  listDeletedIds(): Promise<BridgeResult<{ ids: string[] }>> {
-    return this.run('deleted-ids.js');
   }
   fetchPlaintexts(ids: readonly string[]): Promise<BridgeResult<{ notes: FetchedNote[] }>> {
     return this.run('fetch-plaintexts.js', [JSON.stringify(ids)]);

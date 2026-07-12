@@ -14,7 +14,8 @@ opencues run apple-notes
        │            selection, adaptive cadence, skip guards, line diff)
        ├─ host-support.ts — blanks registry + sandboxed spawnProcess
        │            (adapted from integrations/shell/src/bootstrap.ts)
-       └─ boot() from @opencues/runtime/dist/adapters/apple-notes/v1/boot
+       └─ boot() from @opencues/runtime/dist/adapters/universal/v1/boot
+            (shared universal/no-cycling band; hostName: 'apple-notes')
 ```
 
 Key invariants (all pinned by tests in `src/tick.test.ts` +
@@ -82,12 +83,13 @@ node integrations/apple-notes/dist/daemon.js   # run directly
 # src drift ONLY. The daemon's own src/ and the adapter band are OUTSIDE
 # srcHash (BUNDLED_SOURCE_DIRS is a single global hash — adding them
 # would rebuild every other host on daemon-only edits), so after editing
-# tick.ts/daemon.ts or adapters/apple-notes/v1/* you MUST run the
+# tick.ts/daemon.ts, adapters/universal/v1/*, or the Notes-specific
+# adapters/apple-notes/v1/html-text.ts you MUST run the
 # builds above yourself; `opencues run` will happily launch stale dist.
 ```
 
 Tests: `pnpm --filter @opencues/apple-notes test` (pure logic — no
-osascript in CI) and `npx vitest run adapters/apple-notes` in
+osascript in CI) and `npx vitest run adapters/universal adapters/apple-notes` in
 packages/opencues-runtime (band + html-text).
 
 Spike tooling: `scripts/spike.mjs` measures real Notes round-trips;
@@ -116,7 +118,11 @@ Spike tooling: `scripts/spike.mjs` measures real Notes round-trips;
    locked note → invisible, no crash; delete the note mid-fill → no
    crash, tracking entry dropped.
 5. **Pause**: quit Notes while the daemon runs → polling pauses and
-   Notes does NOT relaunch; reopen Notes → resumes.
+   Notes does NOT relaunch; reopen Notes → resumes. (Sole exception:
+   the wedge auto-restart, notes.md row 26 — the daemon quits and
+   reopens a RUNNING Notes after ≥2 bridge timeouts in 60s, gated by a
+   5-min cooldown and 2s FSEvents quiescence. A user-quit Notes is
+   never relaunched: the restart path checks `pgrep -qx Notes` first.)
 6. **iCloud conflict**: edit the same note on another device during a
    pending fill → fill dropped (CAS conflict logged), no corruption.
 7. **Self-heal**: edit any file under packages/opencues-runtime/src,

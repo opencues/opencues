@@ -38,7 +38,7 @@ Signatures are grep-able against `/tmp/opencues.log`.
 | 5 | Animation REST frame re-triggered the multi-cue re-dispatch as a fake user event | `unanswered cue remains` mid-animation + aborted resolutions | dedupe map seeded at every arm site |
 | 6 | Virtual buffer normalized the trailing `\n` BEFORE getText → runtime discarded its own answers | `skipping — live len=N+1, original len=N` | byte-identity: canonical forms on the WRITE path only |
 | 7 | Active-note election by modificationDate → sync/echo/ghosts stole the buffer mid-resolution | `active note switched` flapping between ids | election by `userEditAt` (the note the user last typed in) |
-| 8 | Recently-Deleted notes stay enumerated ~30 days and competed for election | flapping to previously-deleted ids | exclusion set (deleted-ids.js, 10s refresh) |
+| 8 | Recently-Deleted notes stay enumerated ~30 days and competed for election | flapping to previously-deleted ids | exclusion set (deleted-ids.js, 10s refresh). SUPERSEDED 2026-07-12: exclusion moved INTO list-notes.js — enumeration returns only live notes, deleted-ids.js removed, and the 10s stale window (a just-deleted note kept competing until the next refresh) is structurally gone |
 | 9 | Temp→permanent id swap read as delete+create → fills failed, resolution reset | `switched {t…}` then `untracked (deleted)` + CAS `-1728` | id continuity (`id-remapped`: content, prefix, or write-hash match) |
 | 10 | A fill's CAS can LAND while its osascript errors (id swapped mid-script) → new id holds our FRAME, content match failed by 1 char | frozen `•` in the note, marker gone | remap accepts the write-hash ring as identity proof |
 | 11 | modificationDate is 1-SECOND resolution: a same-second keystroke is invisible to change detection forever → snapshot permanently stale | repeated `fill dropped` with `firstDiff` at a 1-char tail | doFill self-resyncs from the text it just read; user edit → re-dispatch |
@@ -59,6 +59,8 @@ All three were caught by the UI-grounded harness (PLAN.md 1.1) on its
 FIRST run — each invisible to every scripted test, visible within
 minutes of driving the real ⌘N + live-typing flow.
 | 24 | Windows-integration review round 2 (their implementation notes): our echo ring's 30s re-type residual; breaker counted identical arms across unlimited time with a 10s user-hostile cooldown; stale frame echoes fed into the runtime's event stream | re-typed identical command within 30s ignored; breaker risk on repeated identical commands | underscore-count echo guard (ring-hit that ADDS a `_` vs the virtual mirror = user, never echo); breaker: 5s repeat window, 2s cooldown, typography-folded compare; "only the newest write may echo" — stale runtime echoes update tracked but never notify the runtime |
+| 25 | "Animation freezes while the model thinks": Notes.app periodically wedges; ONE wedged osascript blocked the whole poll loop for the full 15s bridge timeout, and frames (same Apple Events channel) piled up unsent. Aggravated by self-inflicted pressure: a status() spawn EVERY 150ms tick, and the excluded-note warn writing 30+ synchronous log lines in one poll during a sync batch | `plaintext fetch failed (timeout)` + a 10-15s gap with only heartbeat/reload lines; `readMs`/`casMs` 5-8× baseline | bridge timeout 15s→6s; stress backoff (any timeout → 1s polls for 3s — hammering a wedged Notes extends the stall); status() cached 5s; excluded-note warn aggregated + rate-limited |
+| 26 | Row 25's remedy ("restart Notes.app") was MANUAL — a wedge left blanks silently unresolved until the user diagnosed it from the log. Worse: a wedged `status()` timeout read as "Notes not running", parking the loop at the 10s paused cadence mid-wedge | `enumeration failed (timeout)` / `fill CAS failed (timeout)` ×2 within 60s; blanks sit unanswered; log otherwise quiet | wedge detector + AUTO-RESTART (user decision 2026-07-12): every bridge timeout feeds `WedgeState` via the bridge's central `onTimeout` hook; ≥2 timeouts in 60s = wedged → daemon drains the fill chain, quits Notes (AppleScript → SIGTERM → SIGKILL escalation), reopens with `open -g` (no focus steal), re-flushes any retained un-landed answer. Gates: 5-min cooldown (anti-thrash), 2s FSEvents quiescence (never mid-keystroke), Notes-already-quit skips (user quit wins). Restart check runs BEFORE the status gate so a wedged status() can't park the loop |
 
 Model-quality issues (NOT pipeline; `cerebras/gemma-4-31b` was never
 bench-validated for this pipeline):
@@ -70,7 +72,18 @@ bench-validated for this pipeline):
 
 Environmental (not code):
 - Notes.app can time out plaintext fetches when busy
-  (`plaintext fetch failed (timeout)`) — the daemon rides it out.
+  (`plaintext fetch failed (timeout)`) — the daemon rides it out
+  (≤6s per stall + stress backoff since row 25).
+- **Notes.app DEGRADATION is measurable in the phase logs**: when
+  `readMs`/`casMs` run 5-8× baseline (1.5s reads vs ~180ms, 0.8-1.3s
+  CAS vs ~160ms), Notes itself is wedged — no daemon setting can paint
+  frames faster than its Apple Events queue. Remedies: restart
+  Notes.app — **now automated** (row 26: ≥2 bridge timeouts in 60s →
+  the daemon restarts Notes itself, gated by cooldown + FSEvents
+  quiescence); keep Recently Deleted small (every entry enlarges the
+  exclusion scan and sync churn). The animator is never the freeze:
+  it generates frames at blank-loading-interval-ms regardless; frames
+  freeze only when DELIVERY stalls.
 - Prompts typed on ANOTHER DEVICE reach this daemon only after iCloud
   sync; a note created+edited+deleted remotely can arrive already dead.
 - Every daemon restart re-seeds the baseline: a `_` typed DURING a
@@ -119,3 +132,7 @@ reproduction fidelity degrade as a note accumulates content.
   blaming the daemon.
 - **`circuit breaker TRIPPED`** → a genuine same-text loop; the log
   names the note; 2s self-heal, then diagnose from the preceding arms.
+- **`Notes.app wedged … restarting it`** → row 26 fired: the daemon
+  confirmed a wedge and auto-restarted Notes. One line is the system
+  working; repeated lines an hour apart mean Notes keeps wedging —
+  check Recently Deleted size and account sync health.

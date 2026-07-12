@@ -21,7 +21,8 @@ not context.
 
 **The difference is what "the buffer" is.** All hosts run the SAME
 runtime, byte-for-byte (`@opencues/{core,runtime}`; this host's boot is
-`packages/opencues-runtime/adapters/apple-notes/v1/boot.ts`, wired
+`packages/opencues-runtime/adapters/universal/v1/boot.ts` (the shared
+universal/no-cycling band — apple-notes declares `hostName`), wired
 through the same `buildSharedRuntime`/`buildBlankContextProvider`
 helpers in `boot-common.ts` as OC/shell/gemini). TransformBlank's
 contract on every host is: *buffer in → rewritten buffer out*
@@ -59,8 +60,9 @@ opencues run apple-notes  (aliases: notes, applenotes)
        │
        ├─ NotesBridge (src/notes-bridge.ts)             ← one osascript spawn per op, JSON over stdout
        │    ├─ jxa/status.js            Notes running?                    (~30ms)
-       │    ├─ jxa/list-notes.js        bulk id+mod enumeration           (~90ms @ 343 notes)
-       │    ├─ jxa/deleted-ids.js       Recently-Deleted exclusion set    (~90ms, refreshed 10s)
+       │    ├─ jxa/list-notes.js        bulk id+mod enumeration, LIVE notes only —
+       │    │                           Recently Deleted subtracted at the source,
+       │    │                           same osascript call                (~220ms @ 342+63 notes)
        │    ├─ jxa/fetch-plaintexts.js  plaintext for CHANGED notes only  (~200ms)
        │    ├─ jxa/read-note.js         plaintext+body of one note        (~200ms)
        │    └─ jxa/fill-note.js         CAS write: re-read, byte-compare,
@@ -77,7 +79,7 @@ opencues run apple-notes  (aliases: notes, applenotes)
        │    └─ line diff              diffLines → minimal changed region
        │
        ├─ daemon.ts — I/O glue
-       │    ├─ poll loop              status → deleted-ids → enumerate → fetch
+       │    ├─ poll loop              status → enumerate (live-only) → fetch
        │    │                          → applyPoll(events) → dispatch to runtime
        │    ├─ FSEvents wake          fs.watch on Notes' group container:
        │    │                          any note write → immediate poll (no sleep)
@@ -92,7 +94,7 @@ opencues run apple-notes  (aliases: notes, applenotes)
        │    └─ redispatch             multi-cue notes: after a fill, remaining `_`
        │                               re-dispatched once (dedupe-guarded)
        │
-       └─ boot() — packages/opencues-runtime/adapters/apple-notes/v1/
+       └─ boot() — packages/opencues-runtime/adapters/universal/v1/
             └─ THE STANDARD RUNTIME, unmodified:
                  Resolver [config-intent, fluid-blank, transform-blank]
                  + BlankFill (keyword/script blanks: stocks, weather, countries…)
@@ -196,7 +198,8 @@ Full narratives in `notes.md`; one line each here:
 
 - `tick.ts` is pure: 49 unit tests, no osascript (echo, election,
   id-remap, cadence, diff).
-- Band tests: 44 (`packages/opencues-runtime/adapters/apple-notes/`,
+- Band tests: 44 (`packages/opencues-runtime/adapters/universal/` +
+  the Notes-specific `adapters/apple-notes/v1/html-text`,
   incl. html-text splice + scenario tests).
 - **Mandatory e2e rule** (learned the hard way, `notes.md`): any
   verification MUST include a UI-created note (⌘N + typing). Notes

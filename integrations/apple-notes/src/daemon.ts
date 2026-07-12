@@ -22,10 +22,13 @@ import type { LogLevel } from '@opencues/runtime/dist/src/adapter';
 import { NotesBridge } from './notes-bridge';
 import {
   applyPoll, canonicalizeForEcho, containsBlankMarker, diffLines, ensureTrailingNewline, flushDelayMs,
-  freshMarkerIndex, initialState, isRecentWrite, markerCursors, pollDelayMs, recordWriteHash, seedBaseline, selectChanged, synthCursor, synthCursorNear,
+  freshMarkerIndex, initialState, initialWedgeState, isRecentWrite, markerCursors, noteRestartPerformed,
+  pollDelayMs, recordBridgeTimeout, recordWriteHash, seedBaseline, selectChanged, shouldRestartNotes,
+  synthCursor, synthCursorNear,
   type DaemonState,
 } from './tick';
 import { buildBlanks, makeSpawnProcess } from './host-support';
+import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { appendFileSync, watch as fsWatch } from 'node:fs';
 import * as fs from 'node:fs/promises';
@@ -102,7 +105,11 @@ function acquireLockOrExit(): void {
 export async function main(): Promise<void> {
   acquireLockOrExit();
   const jxaDir = path.join(__dirname, '..', 'jxa');
-  const bridge = new NotesBridge(jxaDir);
+  // Wedge evidence accumulates from EVERY bridge timeout via the
+  // bridge's central onTimeout hook (see tick.ts wedge policy).
+  const wedge = initialWedgeState();
+  const bridge = new NotesBridge(jxaDir, undefined, undefined,
+    () => recordBridgeTimeout(wedge, Date.now()));
   const state: DaemonState = initialState(Date.now());
 
   // Pre-flight: surface the silent-deny trap before booting anything.
@@ -135,7 +142,7 @@ export async function main(): Promise<void> {
   // Synthetic standalone-`_` arm for the resolver/BlankFill explicit-`_`
   // gate. Keystroke shape: `text` WITHOUT the marker char, cursor at the
   // marker's index — onUnderscoreKey re-inserts and standalone-checks it.
-  // Pinned by adapters/apple-notes/v1/apple-notes.scenarios.test.ts.
+  // Pinned by adapters/universal/v1/universal.scenarios.test.ts.
   const armMarker = (text: string, markerIdx: number): void => {
     bootResult.dispatchKey({
       key: '_',
@@ -638,9 +645,13 @@ export async function main(): Promise<void> {
       wakeResolve = (): void => { clearTimeout(t); r(); };
     });
   };
+  // Quiescence signal for the wedge-restart gate: container events mean
+  // someone is writing (user autosave, iCloud) — during a wedge our own
+  // writes fail, so a recent event ≈ the user may be mid-keystroke.
+  let lastFsEventAt = 0;
   const notesContainer = path.join(os.homedir(), 'Library', 'Group Containers', 'group.com.apple.notes');
   try {
-    const watcher = fsWatch(notesContainer, { persistent: false }, () => wakeNow());
+    const watcher = fsWatch(notesContainer, { persistent: false }, () => { lastFsEventAt = Date.now(); wakeNow(); });
     process.on('exit', () => watcher.close());
     log('info', 'FSEvents wake enabled — note edits trigger an immediate poll', { dir: notesContainer });
   } catch (err) {
@@ -651,17 +662,28 @@ export async function main(): Promise<void> {
 
   let permissionLost = false;
   let baselineSeeded = false;
-  // Recently-Deleted exclusion set — deleted notes stay in the bulk
-  // enumeration for ~30 days and (if tracked) keep competing for the
-  // active slot whenever sync bumps their modificationDate, resetting
-  // the buffer mid-resolution (observed live 2026-07-08: a deleted
-  // note stole the active buffer and the pending answer was lost).
-  // Refreshed every DELETED_REFRESH_MS (~90ms osascript, ~1% duty);
-  // filtered notes read as "gone" so applyPoll untracks them cleanly.
-  const DELETED_REFRESH_MS = 10_000;
-  let deletedIds = new Set<string>();
-  let deletedRefreshedAt = 0;
+  // Recently-Deleted notes are excluded AT THE SOURCE: list-notes.js
+  // subtracts every account's Recently Deleted folder inside the same
+  // osascript call and returns only live notes (user decision
+  // 2026-07-12 — opencues only focuses on notes that exist). Deleted
+  // notes stayed in the app-wide enumeration for ~30 days and used to
+  // compete for the active slot whenever sync bumped their
+  // modificationDate (observed live 2026-07-08, ledger row 8); the old
+  // separate 10s exclusion refresh also left a JUST-deleted note
+  // enumerated for up to 10s — both classes are structurally gone.
+  // `excludedMods` survives only for the visibility warn: typing into
+  // a deleted note is otherwise invisible silence (PLAN.md § 1.3).
   const excludedMods = new Map<string, string>();
+  let lastExcludedWarnAt = 0;
+  // Notes-stress backoff: any osascript timeout means Notes.app is
+  // wedged — hammering it at hot cadence makes the stall WORSE (frames
+  // ride the same Apple Events queue). Back off to 1s polls briefly.
+  let stressedUntil = 0;
+  // status() costs a ~30ms osascript EVERY tick; Notes' running state
+  // changes rarely. Check every 5s (rechecked immediately after any
+  // bridge failure via lastStatusAt reset).
+  let lastStatusAt = 0;
+  let lastRunning = false;
   // Poll heartbeat — one info line per HEARTBEAT_MS proving the loop is
   // alive and what it sees (a silent log otherwise can't distinguish
   // "nothing changed" from "poll loop wedged" — that ambiguity cost a
@@ -670,30 +692,70 @@ export async function main(): Promise<void> {
   let heartbeatAt = Date.now();
   let ticks = 0;
   for (;;) {
-    const status = await bridge.status();
-    const running = status.ok && status.value.running;
-    if (running) {
-      if (Date.now() - deletedRefreshedAt > DELETED_REFRESH_MS) {
-        deletedRefreshedAt = Date.now();
-        const del = await bridge.listDeletedIds();
-        if (del.ok) deletedIds = new Set(del.value.ids);
+    // Wedge auto-restart (ledger row 26): repeated bridge timeouts mean
+    // Notes' Apple Events queue is stuck and nothing the daemon does can
+    // outrun it — the only remedy is restarting Notes, which the daemon
+    // now performs itself (user decision 2026-07-12). Checked BEFORE the
+    // status gate: a wedged status() reads as "not running" and would
+    // otherwise park the loop at the paused cadence forever.
+    if (shouldRestartNotes(wedge, Date.now(), lastFsEventAt)) {
+      noteRestartPerformed(wedge, Date.now()); // cooldown starts even if the restart fails
+      // Never sever an osascript write mid-CAS — drain the fill chain first.
+      await fillChain.catch(() => { /* logged at the chain */ });
+      await restartNotesApp();
+      lastStatusAt = 0;    // re-probe running state immediately
+      stressedUntil = 0;
+      flushRetries = 0;    // a retained un-landed answer gets a fresh budget
+      if (virtualText !== null && flushTimer === null) {
+        // A pending write (typically the computed answer whose fills all
+        // timed out against the wedged Notes) is exactly what the user
+        // is waiting on — re-flush it against the fresh Notes.
+        firstPendingAt = firstPendingAt ?? Date.now();
+        flushTimer = setTimeout(() => {
+          const timing = { firstPendingAt: firstPendingAt ?? Date.now(), timerFiredAt: Date.now() };
+          flushTimer = null;
+          firstPendingAt = null;
+          fillChain = fillChain.then(() => flushVirtual(timing)).catch(err => {
+            log('error', 'post-restart fill failed', String(err));
+          });
+        }, 1_000); // give the relaunched Notes a moment to finish booting
       }
+      continue;
+    }
+    if (Date.now() - lastStatusAt > 5_000) {
+      const status = await bridge.status();
+      lastRunning = status.ok && status.value.running;
+      lastStatusAt = Date.now();
+    }
+    const running = lastRunning;
+    if (running) {
       const list = await bridge.listNotes();
-      if (list.ok && deletedIds.size > 0) {
-        // Visibility before filtering: an edit inside a Recently-Deleted
-        // note is otherwise INVISIBLE silence — the user types into a
-        // note they deleted earlier (or a recovered one mid-refresh) and
-        // nothing happens with no trace (PLAN.md § 1.3).
-        for (const n of list.value.notes) {
-          if (n.mod !== null && deletedIds.has(n.id) && excludedMods.get(n.id) !== n.mod) {
-            if (excludedMods.has(n.id)) {
-              log('warn', 'edit detected in a Recently-Deleted note — ignored (recover the note to use cues in it)', { id: n.id });
-            }
+      // `notes` is already live-only; `deleted` feeds ONLY this warn.
+      const deleted = list.ok ? (list.value.deleted ?? []) : [];
+      if (deleted.length > 0) {
+        // Visibility: an edit inside a Recently-Deleted note is
+        // otherwise INVISIBLE silence — the user types into a note they
+        // deleted earlier and nothing happens with no trace (PLAN.md
+        // § 1.3).
+        let changedExcluded = 0;
+        for (const n of deleted) {
+          if (n.mod !== null && excludedMods.get(n.id) !== n.mod) {
+            if (excludedMods.has(n.id)) changedExcluded++;
             excludedMods.set(n.id, n.mod);
           }
         }
-        for (const id of [...excludedMods.keys()]) if (!deletedIds.has(id)) excludedMods.delete(id);
-        list.value.notes = list.value.notes.filter(n => !deletedIds.has(n.id));
+        // Aggregated + rate-limited: the per-note form wrote 30+
+        // SYNCHRONOUS log lines in one poll during an iCloud sync batch
+        // (2026-07-10 09:34), adding I/O stalls to an already-stressed
+        // tick. One line per 10s carries the same signal.
+        if (changedExcluded > 0 && Date.now() - lastExcludedWarnAt > 10_000) {
+          lastExcludedWarnAt = Date.now();
+          log('warn', `${changedExcluded} Recently-Deleted note(s) changed — ignored (recover a note to use cues in it)`);
+        }
+      }
+      if (list.ok) {
+        const deletedIdSet = new Set(deleted.map(n => n.id));
+        for (const id of [...excludedMods.keys()]) if (!deletedIdSet.has(id)) excludedMods.delete(id);
       }
       ticks++;
       if (Date.now() - heartbeatAt >= HEARTBEAT_MS) {
@@ -701,7 +763,7 @@ export async function main(): Promise<void> {
         log('info', 'poll heartbeat', {
           ticks,
           notes: list.ok ? list.value.notes.length : -1,
-          excluded: deletedIds.size,
+          excluded: deleted.length,
           tracked: state.tracked.size,
           active: state.activeId !== null,
         });
@@ -717,6 +779,7 @@ export async function main(): Promise<void> {
         continue;
       }
       if (!list.ok) {
+        if (list.kind === 'timeout') { stressedUntil = Date.now() + 3_000; lastStatusAt = 0; }
         if (list.kind === 'permission-denied') {
           if (!permissionLost) {
             permissionLost = true;
@@ -736,7 +799,10 @@ export async function main(): Promise<void> {
         if (changed.length > 0) {
           const res = await bridge.fetchPlaintexts(changed);
           if (res.ok) fetched = res.value.notes;
-          else log('warn', `plaintext fetch failed (${res.kind})`, res.detail);
+          else {
+            if (res.kind === 'timeout') { stressedUntil = Date.now() + 3_000; lastStatusAt = 0; }
+            log('warn', `plaintext fetch failed (${res.kind})`, res.detail);
+          }
         }
         // The underscore-count echo guard (marker-add vs mirror) may
         // only judge when the PIPELINE IS QUIET: during an active fill
@@ -841,12 +907,68 @@ export async function main(): Promise<void> {
         }
       }
     }
-    await sleepOrWake(pollDelayMs(state, running, Date.now()));
+    await sleepOrWake(Math.max(pollDelayMs(state, running, Date.now()), Date.now() < stressedUntil ? 1_000 : 0));
   }
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms));
+}
+
+/** true = the command ran and exited 0 within the timeout. */
+function execOk(cmd: string, args: readonly string[], timeoutMs: number): Promise<boolean> {
+  return new Promise(resolve => {
+    execFile(cmd, [...args], { timeout: timeoutMs }, err => resolve(!err));
+  });
+}
+
+const notesProcessAlive = (): Promise<boolean> => execOk('pgrep', ['-qx', 'Notes'], 2_000);
+
+/**
+ * The wedge remedy (ledger row 26): quit + reopen Notes.app — exactly
+ * the documented manual fix, automated. Escalation ladder: polite
+ * AppleScript quit (a wedged Notes may ignore it) → SIGTERM → SIGKILL.
+ * Notes persists every edit to CoreData within moments of typing, and
+ * the caller's quiescence gate means the user isn't mid-keystroke, so
+ * the kill path risks nothing durable. Reopen uses `open -g` so the
+ * relaunch never steals focus. If Notes is ALREADY gone the restart is
+ * skipped — a user-quit Notes stays quit (the daemon's long-standing
+ * pause contract; this function is the sole, wedge-only exception).
+ */
+async function restartNotesApp(): Promise<void> {
+  if (!(await notesProcessAlive())) {
+    log('info', 'wedge restart skipped — Notes is not running (user quit wins)');
+    return;
+  }
+  log('warn', 'Notes.app wedged (repeated osascript timeouts) — restarting it');
+  await execOk('osascript', ['-e', 'tell application "Notes" to quit'], 4_000);
+  const waitGone = async (ms: number): Promise<boolean> => {
+    const deadline = Date.now() + ms;
+    while (Date.now() < deadline) {
+      if (!(await notesProcessAlive())) return true;
+      await sleep(250);
+    }
+    return !(await notesProcessAlive());
+  };
+  let gone = await waitGone(3_000);
+  if (!gone) {
+    log('warn', 'Notes ignored the quit — escalating (SIGTERM)');
+    await execOk('killall', ['Notes'], 2_000);
+    gone = await waitGone(2_000);
+  }
+  if (!gone) {
+    log('warn', 'Notes ignored SIGTERM — force-killing (SIGKILL)');
+    await execOk('killall', ['-9', 'Notes'], 2_000);
+    gone = await waitGone(2_000);
+  }
+  if (!gone) {
+    log('error', 'could not stop Notes.app — giving up on this restart (will not retry inside the cooldown)');
+    return;
+  }
+  await sleep(500); // let the store settle before relaunching
+  const opened = await execOk('open', ['-g', '-a', 'Notes'], 5_000);
+  if (opened) log('info', 'Notes.app restarted after wedge — resuming');
+  else log('error', 'Notes.app stopped but failed to reopen — open it manually');
 }
 
 /* istanbul ignore next -- entrypoint */

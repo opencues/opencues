@@ -307,7 +307,7 @@ export type PollEvent =
  * or null. The resolver's explicit-`_` gate needs keystroke-shaped
  * evidence that a `_` is fresh; on a polled channel the daemon supplies
  * it by dispatching a synthetic standalone-`_` KeyEvent (see
- * adapters/apple-notes/v1/apple-notes.scenarios.test.ts). Fresh means:
+ * adapters/universal/v1/universal.scenarios.test.ts). Fresh means:
  * the marker sits inside the region that changed vs `prevText` (a user
  * edit elsewhere must NOT re-arm a stale cue). With no prior snapshot,
  * the last marker is fresh by definition (newly tracked note).
@@ -515,6 +515,69 @@ export function pollDelayMs(state: DaemonState, notesRunning: boolean, now: numb
   const sinceActivity = now - state.lastActivityAt;
   if (sinceActivity < HOT_WINDOW_MS) return POLL_HOT_MS;
   return sinceActivity < ACTIVE_WINDOW_MS ? POLL_ACTIVE_MS : POLL_IDLE_MS;
+}
+
+// ── Notes-wedge detection + auto-restart policy ──────────────────────
+// Notes.app periodically wedges its Apple Events queue (ledger row 25):
+// every bridge call rides that one queue, so a wedge means timeouts and
+// 5-8× phase times until Notes is restarted — the documented manual
+// remedy. The daemon automates it (user decision 2026-07-12): repeated
+// bridge timeouts inside a short window confirm a wedge, and the daemon
+// quits + reopens Notes itself, gated so it can never thrash or yank
+// the app mid-keystroke. Detection/policy is pure and lives here; the
+// actual quit/reopen I/O is daemon.ts restartNotesApp().
+export const WEDGE_WINDOW_MS = 60_000;
+export const WEDGE_TIMEOUT_THRESHOLD = 2;
+export const RESTART_COOLDOWN_MS = 300_000;
+/** No FSEvents activity for this long ≈ the user isn't mid-keystroke
+ *  (typing autosaves fire container events; a wedge silences our own
+ *  writes, so lingering events are the user's or iCloud's). */
+export const RESTART_QUIESCENT_MS = 2_000;
+
+export interface WedgeState {
+  /** Recent bridge-timeout timestamps (pruned to WEDGE_WINDOW_MS). */
+  timeoutsAt: number[];
+  /** 0 = never restarted. */
+  lastRestartAt: number;
+}
+
+export function initialWedgeState(): WedgeState {
+  return { timeoutsAt: [], lastRestartAt: 0 };
+}
+
+export function recordBridgeTimeout(w: WedgeState, now: number): void {
+  w.timeoutsAt.push(now);
+  while (w.timeoutsAt.length > 0 && now - w.timeoutsAt[0] > WEDGE_WINDOW_MS) w.timeoutsAt.shift();
+}
+
+/** ≥2 timeouts within the window. A single timeout is routine (the
+ *  stress backoff already rides those out); a second one inside a
+ *  minute means Notes is not recovering on its own. */
+export function isWedged(w: WedgeState, now: number): boolean {
+  let n = 0;
+  for (const t of w.timeoutsAt) if (now - t <= WEDGE_WINDOW_MS) n++;
+  return n >= WEDGE_TIMEOUT_THRESHOLD;
+}
+
+/**
+ * Restart-eligibility gate. `lastFsEventAt` is the daemon's last
+ * container-watch event (user typing / iCloud sync activity). The
+ * cooldown is the anti-thrash backstop: if Notes re-wedges within 5
+ * minutes of a restart, restarting again clearly isn't the remedy and
+ * the daemon must not bounce the app in a loop.
+ */
+export function shouldRestartNotes(w: WedgeState, now: number, lastFsEventAt: number): boolean {
+  if (!isWedged(w, now)) return false;
+  if (w.lastRestartAt !== 0 && now - w.lastRestartAt < RESTART_COOLDOWN_MS) return false;
+  if (now - lastFsEventAt < RESTART_QUIESCENT_MS) return false;
+  return true;
+}
+
+/** Stamp a performed (or attempted) restart: starts the cooldown and
+ *  clears the evidence so post-restart timeouts are judged fresh. */
+export function noteRestartPerformed(w: WedgeState, now: number): void {
+  w.lastRestartAt = now;
+  w.timeoutsAt = [];
 }
 
 export interface LineDiff {
