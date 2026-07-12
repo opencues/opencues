@@ -45,7 +45,7 @@ defaults/
     │   └── BrightCtl.cs
     ├── stocks/BLANK.md
     ├── weather/BLANK.md
-    ├── location/BLANK.md        # place/address/POI lookup via OSM Nominatim
+    ├── location/BLANK.md        # place/address/POI lookup via OSM Nominatim (map keyword → rich card)
     ├── note/BLANK.md            # keyword add/recall/delete (PROTOTYPE, issue #210)
     ├── hackernews/BLANK.md
     ├── countries/BLANK.md
