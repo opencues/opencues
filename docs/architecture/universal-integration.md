@@ -9,7 +9,8 @@ registration time.
 Hosts running in this profile today: chrome's normal `<input>`
 / `<textarea>` attach mode, and the **apple-notes** integration (a
 polled JXA channel with no key, cursor, or render surface at all —
-`adapters/apple-notes/v1/` advertises `supportsCycling(): false`
+`adapters/universal/v1/` (the shared band — each daemon declares its
+`hostName`) advertises `supportsCycling(): false`
 statically). The design extends to future read-only contexts, embedded
 inline widgets, accessibility-driven attach modes, and anywhere else
 the user can produce text but not navigate alternatives.

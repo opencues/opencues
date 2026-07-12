@@ -1,12 +1,14 @@
-// Apple Notes v1 HostAdapter.
+// Universal v1 HostAdapter — the no-cycling profile.
 //
-// Unlike every other band, the "buffer" is a note in Notes.app that the
-// daemon polls over JXA (osascript). There is no cursor, no key events,
-// and no render surface — the universal/no-cycling profile
-// (docs/architecture/universal-integration.md). The daemon synthesizes
-// cursorOffset (at the `_` marker) and fires onTextChange per poll tick;
-// write-back goes through pushText → a compare-and-swap HTML splice in
-// a single osascript invocation (see integrations/apple-notes).
+// Unlike the editor bands, the "buffer" is whatever text channel the
+// hosting daemon serves: a polled Notes.app note (apple-notes), the
+// focused AX text element of any app (mac), …. There may be no real
+// key events and no render surface — the universal/no-cycling profile
+// (docs/architecture/universal-integration.md). The daemon supplies
+// text + cursor (real or synthesized at the `_` marker), fires
+// onTextChange per buffer change, and owns the write-back mechanics
+// (CAS HTML splice, AX range replace, …). Host identity comes from
+// bindings.hostName — never hard-coded here.
 //
 // Bindings shape mirrors ShellBindings minus the key/cursor/render
 // registration so band drift against shell/v1 stays easy to audit.
@@ -30,7 +32,13 @@ import type {
 } from '../../../src/adapter';
 import { HOST_ADAPTER_INTERFACE_VERSION } from '../../../src/adapter';
 
-export interface AppleNotesBindings {
+export interface UniversalBindings {
+  /** Canonical host name reported to on-host routing and logs —
+   *  'apple-notes', 'mac', … The band is host-generic; identity is
+   *  the ONE thing each daemon must declare (a hard-coded name here
+   *  made the mac host masquerade as apple-notes for `on-host:`
+   *  scoping — caught in the 2026-07-12 rename). */
+  hostName: string;
   hostVersion: string;
   cwd: string;
   getText(): string;
@@ -43,7 +51,7 @@ export interface AppleNotesBindings {
    * synthetic standalone-`_` arms the daemon dispatches when a poll
    * shows a fresh marker in the edited region. They feed the resolver/
    * BlankFill explicit-`_` gate through the same onUnderscoreKey path
-   * real keyboards use (see apple-notes.scenarios.test.ts).
+   * real keyboards use (see universal.scenarios.test.ts).
    */
   registerKeyHandler(cb: (e: KeyEvent) => boolean): Unsubscribe;
   registerTextChangeHandler(cb: (e: TextChangeEvent) => void): Unsubscribe;
@@ -66,16 +74,17 @@ export const APPLE_NOTES_V1_CAPABILITIES: readonly Capability[] = [
   'force-render',
 ];
 
-export class AppleNotesV1Adapter implements HostAdapter {
+export class UniversalV1Adapter implements HostAdapter {
   readonly interfaceVersion = HOST_ADAPTER_INTERFACE_VERSION;
-  readonly hostName = 'apple-notes';
+  readonly hostName: string;
   readonly hostVersion: string;
   readonly cwd: string;
   readonly capabilities: readonly Capability[];
 
   private _disposed = false;
 
-  constructor(private bindings: AppleNotesBindings) {
+  constructor(private bindings: UniversalBindings) {
+    this.hostName = bindings.hostName;
     this.hostVersion = bindings.hostVersion;
     this.cwd = bindings.cwd;
     const caps: Capability[] = [...APPLE_NOTES_V1_CAPABILITIES];
@@ -117,7 +126,7 @@ export class AppleNotesV1Adapter implements HostAdapter {
 
   onKey(filter: KeyFilter | null, handler: (e: KeyEvent) => boolean): Unsubscribe {
     // Carries ONLY the daemon's synthetic `_` arm events (see the
-    // AppleNotesBindings.registerKeyHandler doc). Filter logic mirrors
+    // UniversalBindings.registerKeyHandler doc). Filter logic mirrors
     // shell/v1 so the resolver's `{ keys: ['_'] }` subscription works.
     if (!filter) return this.bindings.registerKeyHandler(handler);
     const wrapped = (e: KeyEvent): boolean => {

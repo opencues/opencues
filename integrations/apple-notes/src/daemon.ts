@@ -13,7 +13,7 @@
 // bearing notes are skipped, writes are splice-only (never a body
 // rebuild), and every write is CAS-verified inside one osascript call.
 
-import { boot, type BootResult } from '@opencues/runtime/dist/adapters/apple-notes/v1/boot';
+import { boot, type BootResult } from '@opencues/runtime/dist/adapters/universal/v1/boot';
 import {
   spliceLinesIntoBody,
   bodyLooksAttachmentBearing,
@@ -578,6 +578,7 @@ export async function main(): Promise<void> {
   }
 
   bootResult = boot({
+    hostName: 'apple-notes',
     hostVersion: require('../package.json').version as string,
     cwd: process.cwd(),
     getText: () => virtualText ?? activeText(),

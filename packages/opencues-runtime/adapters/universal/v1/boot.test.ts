@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { boot } from './boot';
-import { AppleNotesV1Adapter } from './adapter';
+import { UniversalV1Adapter } from './adapter';
 import type { KeyEvent } from '../../../src/adapter';
 
-describe('Apple Notes v1 boot()', () => {
+describe('universal v1 boot()', () => {
   const minimalHost = {
+    hostName: 'apple-notes',
     hostVersion: '0.1.0',
     cwd: '/proj',
     getText: () => '',
@@ -32,12 +33,12 @@ describe('Apple Notes v1 boot()', () => {
     expect(result.dispatchKey(evt)).toBe(false);
   });
 
-  it('logs "OpenCues runtime starting (Apple Notes v1)" with host=apple-notes', () => {
+  it('logs "OpenCues runtime starting (universal v1)" with the declared hostName', () => {
     const log = vi.fn();
     boot({ ...minimalHost, log });
     expect(log).toHaveBeenCalledWith(
       'info',
-      expect.stringContaining('Apple Notes v1'),
+      expect.stringContaining('universal v1, host: apple-notes'),
       expect.objectContaining({ host: 'apple-notes' }),
     );
   });
@@ -45,7 +46,7 @@ describe('Apple Notes v1 boot()', () => {
   it('reports the no-render capability set (no dim/rgb/spawn by default)', () => {
     const log = vi.fn();
     boot({ ...minimalHost, log });
-    const startupCall = log.mock.calls.find(c => String(c[1]).includes('Apple Notes v1'));
+    const startupCall = log.mock.calls.find(c => String(c[1]).includes('universal v1'));
     const caps = (startupCall?.[2] as { capabilities?: string[] } | undefined)?.capabilities ?? [];
     expect(caps).toContain('file-read');
     expect(caps).toContain('file-write');
@@ -59,13 +60,14 @@ describe('Apple Notes v1 boot()', () => {
   it('opt-in spawn-process when host supplies spawnProcess', () => {
     const log = vi.fn();
     boot({ ...minimalHost, spawnProcess: () => ({} as any), log });
-    const startupCall = log.mock.calls.find(c => String(c[1]).includes('Apple Notes v1'));
+    const startupCall = log.mock.calls.find(c => String(c[1]).includes('universal v1'));
     const caps = (startupCall?.[2] as { capabilities?: string[] } | undefined)?.capabilities ?? [];
     expect(caps).toContain('spawn-process');
   });
 
   // ─── universal/no-cycling profile pins ──────────────────────────────────
   const minimalBindings = {
+    hostName: 'apple-notes',
     hostVersion: '0.1.0',
     cwd: '/proj',
     getText: () => '',
@@ -78,13 +80,13 @@ describe('Apple Notes v1 boot()', () => {
   };
 
   it('adapter advertises supportsCycling() === false', () => {
-    const adapter = new AppleNotesV1Adapter(minimalBindings);
+    const adapter = new UniversalV1Adapter(minimalBindings);
     expect(adapter.supportsCycling()).toBe(false);
     expect(adapter.supportsAgentRewrite()).toBe(false);
   });
 
   it('adapter onKey/onCursorChange/onRender return unsubscribes', () => {
-    const adapter = new AppleNotesV1Adapter(minimalBindings);
+    const adapter = new UniversalV1Adapter(minimalBindings);
     expect(() => {
       adapter.onKey(null, () => true)();
       adapter.onKey({ keys: ['_'] }, () => true)();

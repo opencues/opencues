@@ -29,7 +29,7 @@ import { boot, type BootResult } from './boot';
 // errors after dispatch, which is fine — dispatch is the assertion).
 const DISPATCHED = /(FluidBlank|TransformBlank): starting/;
 
-describe('apple-notes polled blank-trigger scenarios', () => {
+describe('universal-band (polled-host) blank-trigger scenarios', () => {
   let tmpHome: string;
   let prevHome: string | undefined;
   let prevOpencuesHome: string | undefined;
@@ -83,6 +83,7 @@ describe('apple-notes polled blank-trigger scenarios', () => {
     const logs: string[] = [];
     const session: Session = { result: undefined as unknown as BootResult, logs, text: '' };
     session.result = boot({
+      hostName: 'apple-notes',
       hostVersion: '0.0.0-test',
       cwd: tmpHome,
       getText: () => session.text,

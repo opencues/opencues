@@ -1,15 +1,15 @@
-// Apple Notes v1 host bootstrap.
+// Universal v1 host bootstrap — the no-cycling profile shared by every
+// daemon-shaped host without a key/render channel (apple-notes, mac).
 //
-// The daemon (integrations/apple-notes) is the "host app":
-//   1. Build an AppleNotesBindings-shaped HostInfo from its poll loop
-//      (getText from the in-memory note snapshot, pushText → CAS fill
-//      via osascript).
+// The daemon is the "host app":
+//   1. Build a UniversalBindings-shaped HostInfo around its text
+//      channel (poll snapshots, AX events, …) and declare hostName.
 //   2. Call boot(host) once per process.
-//   3. On each poll tick where the tracked note's text changed, call
+//   3. On every buffer change, call
 //      BootResult.notifyTextChange(text, cursor, source) — source is
-//      'runtime' when the change hash-matches the daemon's own last
-//      write (echo suppression), else 'user'.
-//   4. On active-note switch, call resetBufferState().
+//      'runtime' for the daemon's own write echoes, else 'user'.
+//   4. On buffer switch (active note / focused element), call
+//      resetBufferState().
 //
 // Structurally a slimmed clone of adapters/shell/v1/boot.ts: no key
 // channel, no cursor channel, no render directives, no TTS, no
@@ -24,7 +24,7 @@
 // docs/architecture/universal-integration.md.
 
 import { Runtime } from '../../../src/runtime';
-import { AppleNotesV1Adapter, type AppleNotesBindings } from './adapter';
+import { UniversalV1Adapter, type UniversalBindings } from './adapter';
 import { startEventBridge } from '../../../src/event-bridge';
 import { Statusline } from '../../../src/modules/statusline';
 import { Resolver } from '../../../src/modules/resolver';
@@ -39,6 +39,9 @@ import type {
 } from '../../../src/adapter';
 
 export interface HostInfo extends CommonHostInfo {
+  /** Canonical host name ('apple-notes', 'mac', …) — reported to
+   *  on-host routing and every log line. */
+  hostName: string;
   spawnProcess?(spec: unknown): unknown;
   blankInvoke?(spec: import('../../../src/adapter').BlankInvokeSpec):
     import('../../../src/adapter').ProcessHandle | null;
@@ -86,7 +89,8 @@ export function boot(host: HostInfo): BootResult {
     lastSeenText = text;
   };
 
-  const bindings: AppleNotesBindings = {
+  const bindings: UniversalBindings = {
+    hostName: host.hostName,
     hostVersion: host.hostVersion,
     cwd: host.cwd,
     getText: host.getText,
@@ -99,7 +103,7 @@ export function boot(host: HostInfo): BootResult {
     readFile: host.readFile,
     readDir: host.readDir,
     writeFile: host.writeFile,
-    spawnProcess: host.spawnProcess as AppleNotesBindings['spawnProcess'],
+    spawnProcess: host.spawnProcess as UniversalBindings['spawnProcess'],
     blankInvoke: host.blankInvoke,
     pushText: host.pushText,
     log,
@@ -110,7 +114,7 @@ export function boot(host: HostInfo): BootResult {
     registerEventHandler: cb => moduleEvents.subscribe(({ type, body }) => cb(type, body)),
   };
 
-  const adapter = new AppleNotesV1Adapter(bindings);
+  const adapter = new UniversalV1Adapter(bindings);
   Runtime.create(adapter).catch(err => log('error', 'Runtime.create failed', err));
 
   const HOME = process.env.HOME ?? '~';
@@ -165,8 +169,8 @@ export function boot(host: HostInfo): BootResult {
   buildBlankFetchProvider(configLoader, host.blanks, log));
   configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
 
-  log('info', 'OpenCues runtime starting (Apple Notes v1)', {
-    host: 'apple-notes',
+  log('info', `OpenCues runtime starting (universal v1, host: ${host.hostName})`, {
+    host: host.hostName,
     hostVersion: host.hostVersion,
     capabilities: adapter.capabilities,
   });

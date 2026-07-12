@@ -122,7 +122,7 @@ Before touching code:
    - **Built-artifact patches** (claude-code via tweakcc): host ships minified `cli.js`. Use regex anchors against the minified structure.
    - **Inline runtime** (chrome): we own the build — runtime is bundled into the extension at build time, no host fork.
    - **Self-owned app** (terminal): there is no upstream host to patch. The integration ships its own TUI app (Bun + OpenTUI + SolidJS, invoked as `oc-edit`). Adapter band lives in the runtime as usual; the integration directory holds the Solid app + a bootstrap that hands the textarea ref directly to `boot()`. See `integrations/shell/` for the worked example.
-   - **Polled external app** (apple-notes): no patch AND no owned UI — a daemon polls the host app over an automation channel (JXA/osascript), synthesizes text-change + cursor events from diffs, and writes back via CAS splice. The worked example for the universal/no-cycling profile and for hosts with no key channel (synthetic `_` arm KeyEvents). See `integrations/apple-notes/` + `adapters/apple-notes/v1/`.
+   - **Polled external app** (apple-notes): no patch AND no owned UI — a daemon polls the host app over an automation channel (JXA/osascript), synthesizes text-change + cursor events from diffs, and writes back via CAS splice. The worked example for the universal/no-cycling profile and for hosts with no key channel (synthetic `_` arm KeyEvents). See `integrations/apple-notes/` + the shared `adapters/universal/v1/` band (Notes-specific HTML-splice helpers stay in `adapters/apple-notes/v1/html-text.ts`).
 
 The Gemini recipe below is the **source-patch** flavour. CC's REPAIR.md covers the built-artifact flavour.
 
