@@ -703,7 +703,7 @@ describe('FluidBlankSource with ambient context', () => {
     assert.doesNotMatch(answer, /14°C/);
   });
 
-  it('post-processes: hallucinated unlisted token is stripped before reaching the buffer', async () => {
+  it('post-processes: hallucinated unlisted token is stripped — an entirely-hallucinated answer BAILS', async () => {
     // Claude-style hallucination case: LLM invents `[DATE OF BIRTH]`
     // which isn't in the catalog. The post-processor must strip it
     // so the literal bracket-string never lands in the user's text.
@@ -720,11 +720,12 @@ describe('FluidBlankSource with ambient context', () => {
         mode: 'safe',
       },
     });
-    // Empty string means the LLM's invented bracket was stripped —
-    // FluidBlank still treats it as a successful substitution (the
-    // span IS replaced; with empty in this case).
-    assert.strictEqual(result.results.length, 1);
-    assert.deepStrictEqual(result.results[0]!.alternatives, ['_', '']);
+    // The strip left NOTHING — since the raw-token-leak fixes, a
+    // fully-hallucinated answer bails (no result) rather than
+    // substituting emptiness: the `_` stays armed and the next
+    // text-change retries. Substituting '' would silently consume the
+    // user's cue with no visible answer.
+    assert.strictEqual(result.results.length, 0);
   });
 
   it('post-processes: tolerant match recovers Claude format drift', async () => {
