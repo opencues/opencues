@@ -163,38 +163,6 @@ namespace OpenCues
         static int _pendingMsaaAtTick = 0;
         const int MSAA_PASTE_QUIET_MS = 120;
 
-        // Deferred TSF write (mirror of the MSAA deferred paste). On a TSF-live
-        // field the daemon's rapid loading-animation frames must NOT each hit
-        // the pipe: Slate (Discord) can't commit a whole-doc SetText at spinner
-        // speed, the text store desyncs, and content BALLOONS (16→253→3101→7172
-        // chars) + writes revert. So stash the latest set-text and let
-        // MaybeFlushTsf() apply it as ONE SETTEXT once the stream goes quiet —
-        // collapsing frames+final into the single clean write M0 proved works.
-        static string _pendingTsfText = null;
-        static int _pendingTsfAtTick = 0;
-        const int TSF_FLUSH_QUIET_MS = 120;
-
-        // --- TSF flash-free write transport (opt-in, M5) ----------------
-        // The OpenCues TSF TIP (native/tsf/) loads IN-PROCESS into the focused
-        // app and serves a per-PID command pipe \\.\pipe\opencues-tsf-<pid>.
-        // WSL2 can't open a Windows named pipe, so the daemon can't drive it
-        // directly - the shim (this process, on Windows) is the pipe client and
-        // the daemon owns the opt-in policy (advertised in `welcome`, or the
-        // OPENCUES_TSF=0 kill switch). TSF engages AUTOMATICALLY whenever a
-        // live TIP answers for the focused app's PID - installing the TIP is
-        // the deliberate, UAC-gated opt-in, so a second flag would be redundant.
-        // The REAL substitution is then written through ITfRange::SetText -
-        // flash-free, no Slate ghost, no select-all churn - instead of the
-        // UIA/paste path. Animation micro-frames stay on the typed path (already
-        // flash-free; per-frame pipe round-trips aren't worth it). ANY pipe
-        // failure falls straight through to the legacy path, so nothing
-        // regresses when the TIP isn't installed. Kill switch: OPENCUES_TSF=0
-        // (here or on the daemon -> welcome tsf:false) forces the legacy path.
-        static bool _tsfDisabled = false;     // kill switch (env OPENCUES_TSF=0 OR welcome tsf:false)
-        static int _focusedPid = 0;           // PID of the focused field's process
-        static int _tsfProbedPid = 0;         // PID last probed (cache key; reset on new field)
-        static bool _tsfProbedAvail = false;  // was a live TIP present for it?
-
         static int _port;
         static string _host;
         static int _pollMs = 150;
@@ -220,7 +188,6 @@ namespace OpenCues
             var envPoll = Environment.GetEnvironmentVariable("OPENCUES_WIN_POLL_MS");
             int p;
             if (!string.IsNullOrEmpty(envPoll) && int.TryParse(envPoll, out p) && p >= 30) _pollMs = p;
-            if (Environment.GetEnvironmentVariable("OPENCUES_TSF") == "0") _tsfDisabled = true;
             Console.WriteLine("OpenCues Windows shim starting -> " + _host + ":" + _port);
             _pollThreadRef = new Thread(PollThread);
             _pollThreadRef.IsBackground = true;
@@ -334,7 +301,6 @@ namespace OpenCues
                 {
                     DrainCommands();
                     MaybeFlushMsaaPaste();   // apply any deferred Electron paste once the stream settles
-                    MaybeFlushTsf();         // apply the coalesced TSF write once the stream settles
                     MaybeReassertCaret();    // win Chromium's async caret-reset race after UIA writes
                     if (_enabled)
                     {
@@ -437,14 +403,9 @@ namespace OpenCues
                             string lw = Str(map, "logFileWin");
                             if (!string.IsNullOrEmpty(cw)) ConfigPathWin = cw;
                             if (!string.IsNullOrEmpty(lw)) LogPathWin = lw;
-                            // Daemon kill switch for the TSF flash-free path:
-                            // welcome tsf:false disables it (default is true /
-                            // auto). Either side may force it off.
-                            object tv;
-                            if (map.TryGetValue("tsf", out tv) && tv is bool && !(bool)tv) _tsfDisabled = true;
                             StatusLine = "connected";
                             Log("info", "daemon ready (host=" + Str(map, "host") + " v" + Str(map, "hostVersion")
-                                + " config=" + ConfigPathWin + " tsf=" + (_tsfDisabled ? "off" : "auto") + ")");
+                                + " config=" + ConfigPathWin + ")");
                         }
                         break;
                     case "set-text":
@@ -465,7 +426,7 @@ namespace OpenCues
             AutomationElement el = null;
             try { el = AutomationElement.FocusedElement; } catch { el = null; }
 
-            if (el == null) { _focusedPid = 0; LeaveAttached(null); return; }
+            if (el == null) { LeaveAttached(null); return; }
 
             int elId;
             string app;
@@ -473,7 +434,6 @@ namespace OpenCues
             {
                 elId = el.GetRuntimeId() != null ? RuntimeIdHash(el.GetRuntimeId()) : el.GetHashCode();
                 app = ProcessName(el);
-                try { _focusedPid = el.Current.ProcessId; } catch { _focusedPid = 0; }
             }
             catch { return; }
 
@@ -491,31 +451,10 @@ namespace OpenCues
                 return;
             }
 
-            // 1.5 TSF read path - a Chromium/Electron editor (no writable UIA
-            //     pattern) whose app has a LIVE TIP. Read the focused editable
-            //     doc through the TIP (GETTEXT) instead of walking the MSAA tree:
-            //     on Discord the MSAA walk grabs the WRONG element (the message
-            //     list) and oscillates (24↔233↔3101 chars), which is what fed the
-            //     runaway re-resolve loop. GETTEXT returns the same store the TSF
-            //     write targets, so the read-back matches the write and
-            //     attribution can't loop. Gated by the same deny-list as MSAA
-            //     (never a browser/terminal). elId = pid: the composer is stable
-            //     per app window, immune to the UIA focus-element flicker.
-            if (!_tsfDisabled && _focusedPid > 0 && app != null && !DenyApps.Contains(app)
-                && TsfAvailable(_focusedPid))
-            {
-                string ttext;
-                if (TsfTryGetText(_focusedPid, out ttext))
-                {
-                    StreamAttachment(_focusedPid, app, ttext, AttachMode.Msaa);
-                    return;
-                }
-            }
-
             // 2. MSAA/IA2 fallback - non-browser Chromium/Electron editors
-            //    (Discord, Slack, Obsidian, ...) with no live TIP. UIA sees only
-            //    an empty read-only Document shell; the editable text lives in the
-            //    MSAA tree behind the Chrome_RenderWidgetHostHWND child. Browsers +
+            //    (Discord, Slack, Obsidian, ...). UIA sees only an empty
+            //    read-only Document shell; the editable text lives in the MSAA
+            //    tree behind the Chrome_RenderWidgetHostHWND child. Browsers +
             //    terminals stay deny-listed (the chrome extension owns browser
             //    content, so this never becomes an unfiltered web-page reader).
             //    TryReadFocusedElectron only returns a genuine editable text
@@ -557,15 +496,12 @@ namespace OpenCues
                 _recentWrites.Clear();
                 _bracketOpen = false;
                 _attached = true;
-                _tsfProbedPid = 0;   // re-probe TIP availability for this new field
-                bool tsf = !_tsfDisabled && TsfAvailable(_focusedPid);
-                StatusLine = "on: " + (app ?? "text field") + (tsf ? " (TSF)" : "");
+                StatusLine = "on: " + (app ?? "text field");
                 Log("info", "attached: " + (app ?? "text field") + " ("
                     + (readText == null ? 0 : readText.Length) + " chars, "
-                    + (mode == AttachMode.Msaa ? "MSAA" : "UIA") + (tsf ? ", TSF" : "") + ")");
+                    + (mode == AttachMode.Msaa ? "MSAA" : "UIA") + ")");
                 SendRaw("{\"t\":\"focus\",\"app\":" + JStr(app) + ",\"text\":" + JStr(readText)
-                    + ",\"cursor\":" + (readText == null ? 0 : readText.Length).ToString(CultureInfo.InvariantCulture)
-                    + ",\"tsf\":" + (tsf ? "true" : "false") + "}");
+                    + ",\"cursor\":" + (readText == null ? 0 : readText.Length).ToString(CultureInfo.InvariantCulture) + "}");
                 return;
             }
 
@@ -639,7 +575,6 @@ namespace OpenCues
             UnhookElementEvents();
             _attachMode = AttachMode.None;
             _pendingMsaaText = null;
-            _pendingTsfText = null;
             if (_enabled) StatusLine = "idle";
             Log("debug", "detached" + (app != null ? " (now on " + app + ", not attachable)" : ""));
             SendRaw("{\"t\":\"blur\",\"app\":" + JStr(app) + "}");
@@ -740,98 +675,10 @@ namespace OpenCues
             return norm;
         }
 
-        // --- TSF pipe client (M5) ---------------------------------------
-        // Connect to the focused app's in-proc TIP, send one framed command,
-        // read the reply. Returns null on any failure (no TIP for this PID,
-        // pipe busy, timeout) so the caller falls back to the legacy path.
-        static string TsfCommand(int pid, string frame, int connectMs)
-        {
-            if (pid <= 0) return null;
-            try
-            {
-                using (var pipe = new System.IO.Pipes.NamedPipeClientStream(
-                           ".", "opencues-tsf-" + pid, System.IO.Pipes.PipeDirection.InOut))
-                {
-                    pipe.Connect(connectMs);
-                    byte[] outb = Encoding.UTF8.GetBytes(frame);
-                    pipe.Write(outb, 0, outb.Length);
-                    pipe.Flush();
-                    byte[] buf = new byte[70000];
-                    int n = pipe.Read(buf, 0, buf.Length);
-                    return n > 0 ? Encoding.UTF8.GetString(buf, 0, n) : "";
-                }
-            }
-            catch { return null; }
-        }
-
-        // Is a live OpenCues TIP present for this app? Cheap GETCARET probe,
-        // cached per focused field (reset in StreamAttachment on element change)
-        // so a substitution stream costs one probe, not one per frame.
-        static bool TsfAvailable(int pid)
-        {
-            if (pid <= 0) return false;
-            if (pid == _tsfProbedPid) return _tsfProbedAvail;
-            _tsfProbedPid = pid;
-            _tsfProbedAvail = false;
-            // O(1) existence check FIRST. NamedPipeClientStream.Connect polls
-            // for the full timeout on a non-existent pipe (a per-focus stall
-            // for the common no-TIP case); File.Exists on \\.\pipe\ returns
-            // instantly. Only round-trip when the pipe is actually present.
-            if (System.IO.File.Exists(@"\\.\pipe\opencues-tsf-" + pid))
-            {
-                string r = TsfCommand(pid, "GETCARET\n", 150);
-                _tsfProbedAvail = (r != null && r.StartsWith("OK", StringComparison.Ordinal));
-            }
-            return _tsfProbedAvail;
-        }
-
-        // Replace the focused field's whole value flash-free via the TIP's
-        // ITfRange::SetText. True only on a confirmed OK reply.
-        static bool TsfSetText(int pid, string text)
-        {
-            string r = TsfCommand(pid, "SETTEXT\n" + text, 500);
-            return (r != null && r.StartsWith("OK", StringComparison.Ordinal));
-        }
-
-        // Read the focused editable doc via the TIP (GETTEXT). Reply is
-        // "OK len=N\n<utf-8 text>". Reading through the SAME store the TSF write
-        // targets is what eliminates the MSAA/TSF split-brain on Discord (the
-        // MSAA walk grabs the wrong element and oscillates); the read-back then
-        // matches the write, so attribution can't loop into a re-resolve.
-        static bool TsfTryGetText(int pid, out string text)
-        {
-            text = null;
-            string r = TsfCommand(pid, "GETTEXT\n", 300);
-            if (r == null || !r.StartsWith("OK", StringComparison.Ordinal)) return false;
-            int nl = r.IndexOf('\n');
-            text = (nl < 0) ? "" : r.Substring(nl + 1);
-            return true;
-        }
-
         static void ApplySetText(string text)
         {
             if (text == null) return;
             text = NormalizeNewlinesForApp(text);
-
-            // TSF flash-free path: when a live TIP owns the focused editable
-            // doc, DEFER the write (stash the latest) — MaybeFlushTsf() applies
-            // it as ONE SETTEXT once the set-text stream goes quiet. Two hard
-            // requirements this satisfies, both learned on Discord/Slate:
-            //   * TSF must be the SOLE writer on a TSF field — never the typed
-            //     micro-edit path below (SendInput). Mixing the two input layers
-            //     leaves double, undeletable ghost text.
-            //   * It must be ONE write per resolve, not per frame — a burst of
-            //     whole-doc SetTexts at spinner speed desyncs Slate's store
-            //     (content balloons, writes revert). M0 was clean precisely
-            //     because it was a single write; coalescing reproduces that.
-            // On flush failure MaybeFlushTsf logs; the field simply keeps the
-            // user's input (nothing regresses).
-            if (!_tsfDisabled && _focusedPid > 0 && TsfAvailable(_focusedPid))
-            {
-                _pendingTsfText = text;
-                _pendingTsfAtTick = Environment.TickCount;
-                return;
-            }
 
             // MSAA-attached (Chromium/Electron): the focused UIA element is an
             // empty shell with no writable pattern, so writes go through the
@@ -1294,25 +1141,6 @@ namespace OpenCues
             NoteSelfWrite(text);
             PasteReplace(text, oldText);
             Log("debug", "applied substitution (" + text.Length + " chars, MSAA/paste)");
-        }
-
-        // Apply a deferred TSF write once the set-text stream has been quiet for
-        // TSF_FLUSH_QUIET_MS. Spinner frames keep resetting _pendingTsfAtTick, so
-        // only the LAST text (the final result) survives the quiet window and is
-        // written — ONE ITfRange::SetText per resolve, the proven-clean shape. If
-        // focus left the field meanwhile, the pending write is dropped.
-        static void MaybeFlushTsf()
-        {
-            if (_pendingTsfText == null) return;
-            if (_tsfDisabled || _focusedPid <= 0 || !_enabled) { _pendingTsfText = null; return; }
-            if (unchecked(Environment.TickCount - _pendingTsfAtTick) < TSF_FLUSH_QUIET_MS) return;
-            string text = _pendingTsfText;
-            _pendingTsfText = null;
-            NoteSelfWrite(text);
-            if (TsfSetText(_focusedPid, text))
-                Log("debug", "applied substitution (" + text.Length + " chars, TSF flash-free)");
-            else
-                Log("warn", "TSF write failed on flush (" + text.Length + " chars) - field kept user input");
         }
 
         // --- Attachability gate -----------------------------------------

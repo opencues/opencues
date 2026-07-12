@@ -173,30 +173,6 @@ declines and falls through to the whole-value path — where
 big, non-tail write) always takes a whole-value path — typing is only
 for the small frames.
 
-### Flash-free TSF transport (above all three) — automatic when installed
-
-When the OpenCues **TSF TIP** (`native/tsf/`) is installed, the **real
-substitution** routes through the TIP's `ITfRange::SetText` over its
-per-PID pipe — flash-free, no Slate ghost, no select-all churn —
-instead of the UIA/MSAA whole-value path. **No mode to turn on:**
-installing the TIP is the deliberate (UAC-gated) opt-in, so a live TIP
-for the focused app is itself the signal. `ApplySetText` checks
-`TsfAvailable` (an O(1) `File.Exists` on the pipe path — no probe stall
-when nothing's installed — then a cached `GETCARET`) and, when live,
-routes **every** write through `TsfSetText`; **any pipe failure falls
-straight through to the legacy path**, so nothing regresses when the
-TIP isn't there. TSF must be the **sole** writer on a TSF field —
-loading-animation frames go through it too, NOT the typed micro-edit
-path: mixing `SendInput` spinner frames with a TSF final `SetText`
-corrupts Slate's model (Discord double/undeletable ghost text — the two
-are different input layers). The daemon can't
-drive the pipe itself (WSL2 can't open a Windows named pipe) — the shim
-is the pipe client; the daemon just carries the kill switch. Kill
-switch: `OPENCUES_TSF=0` (daemon → `welcome tsf:false`, or the shim's
-own env). Full design: `protocol.md` § "TSF write transport" +
-`native/tsf/README.md`. This is a `wip/windows-integration` spike,
-revertable to the branch's spike-anchor commit.
-
 ## Multi-buffer state — MUST reset on focus change
 
 The Windows host attaches to **many** independent fields across apps in

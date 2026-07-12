@@ -214,15 +214,6 @@ let mirrorCursor = 0;
 let attached = false;          // is an attachable field currently focused
 let currentApp = null;         // foreground process name, for presence
 let expectedEcho = null;       // text we just wrote; swallow its echo
-let currentTsf = false;        // is a live TSF TIP driving the focused field
-
-// The TSF flash-free write path (native/tsf/) is a spike that did NOT hold up
-// on Discord/Slate in the live resolve loop (runaway store desync even after
-// coalescing + TSF-read — see git log), so it is **OFF by default**: the shim
-// ignores any registered TIP and every app uses the legacy UIA/MSAA path.
-// Opt back in for experimentation with OPENCUES_TSF=1. The TSF code stays on
-// the branch as a dormant, revertable spike.
-const TSF_ENABLED = process.env.OPENCUES_TSF === '1';
 
 function send(obj) {
   if (!sock || sock.destroyed) return;
@@ -461,7 +452,6 @@ function handleMessage(msg) {
         t: 'welcome', host: 'windows', hostVersion: '0.1.0', protocol: 1,
         cuesHome: CUES_HOME, cuesHomeWin: toWinPath(CUES_HOME),
         logFile: LOG_FILE, logFileWin: toWinPath(LOG_FILE),
-        tsf: TSF_ENABLED,
       });
       return;
     }
@@ -474,12 +464,10 @@ function handleMessage(msg) {
       bootResult.resetBufferState();
       attached = true;
       currentApp = msg.app || null;
-      currentTsf = msg.tsf === true;
       mirrorText = typeof msg.text === 'string' ? msg.text : '';
       mirrorCursor = typeof msg.cursor === 'number' ? msg.cursor : mirrorText.length;
       expectedEcho = null;
-      if (currentTsf) log('info', 'focused field is TSF-driven (flash-free writes)', { app: currentApp });
-      updatePresence({ app: currentApp, attached: true, tsf: currentTsf });
+      updatePresence({ app: currentApp, attached: true });
       // Seed the runtime with the field's current contents (source=user,
       // no `_` synth — focusing a field is not typing an underscore).
       bootResult.notifyTextChange(mirrorText, mirrorCursor, 'user');
@@ -491,11 +479,10 @@ function handleMessage(msg) {
       if (attached) bootResult.resetBufferState();
       attached = false;
       currentApp = msg.app || null;
-      currentTsf = false;
       mirrorText = '';
       mirrorCursor = 0;
       expectedEcho = null;
-      updatePresence({ app: currentApp, attached: false, tsf: false });
+      updatePresence({ app: currentApp, attached: false });
       return;
     }
     case 'text': {
