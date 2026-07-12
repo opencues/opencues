@@ -55,6 +55,15 @@ step "shell-portability lint" bash scripts/lint-shell-portability.sh
 # tray. Keep the native launchers + Add-Type'd .cs pure ASCII.
 step "windows native ASCII guard" bash scripts/check-windows-native-ascii.sh
 
+# ─── 1a2. Windows newline-rendering invariants ─────────────────────
+# The shim's per-app newline handling is Add-Type C# whose effect is visual
+# rendering inside WordPad/Slack — unreachable by automated tests. This source
+# guard pins the SILENT-failure invariants (no \n\n collapse, EolNorm folds
+# VT/U+2028, case-insensitive richedit check, \n→VT / Slack-paste routing) so a
+# refactor can't break the feature with no error. See
+# integrations/windows/IMPLEMENTATION.md § "Newline rendering".
+step "windows newline-rendering invariants" node integrations/windows/tests/newline-invariants.mjs
+
 # ─── 1b. Legacy-names lint ─────────────────────────────────────────
 # Catches the rename-drift class — old feature names lingering in    # LEGACY-NAME-ALLOW: aggregator comment
 # shipping code after a rename. Banned identifiers live in           # LEGACY-NAME-ALLOW: aggregator comment
