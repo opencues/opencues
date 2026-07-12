@@ -435,6 +435,50 @@ absolute write exists (MSAA), and anchor them to an absolute checkpoint.
 
 ---
 
+### Newline rendering — every editor renders `\n` differently (matching Notepad)
+
+The runtime emits plain text with `\n` (line) and `\n\n` (blank line) —
+e.g. `draft an email _` yields sectioned prose with a signature block
+whose lines are single-`\n` adjacent. **Notepad is the reference**: `\n`
+= a line directly below, `\n\n` = one blank line. But each editor's
+write surface renders a bare `\n` its *own* way, and left alone they all
+diverge from Notepad:
+
+| Editor (class) | Write path | A bare `\n` renders as… | Fix to match Notepad |
+|---|---|---|---|
+| **Notepad** (`RichEditD2DPT`) | `EM_REPLACESEL` | adjacent line (no margin) | — (the reference) |
+| **WordPad** (`RICHEDIT50W`) | `EM_REPLACESEL` | a **paragraph** break (`\r`), which carries inter-paragraph **margin** → double-spaced | convert every `\n` → **VT** (`\x0B`, the soft break Shift+Enter inserts; no margin) |
+| **Slack** (Quill/Chromium) | `ValuePattern.SetValue` | a **paragraph block** — a blank-line gap **even for a single `\n`** (the signature lines that should be adjacent get spaced out) | route the final write through **paste** — Slack's paste handler treats `\n` as a soft break |
+
+Two rules fall out of this, both load-bearing:
+
+1. **Don't collapse `\n\n`.** An earlier fix (`d10579ff`) collapsed
+   blank-line runs to a single `\n` to fight WordPad/Slack double-
+   spacing. That *erased* the paragraph structure (every section ran
+   together). Once each editor renders a single `\n` correctly (soft
+   break / paste), `\n\n` naturally becomes exactly one blank line — so
+   the collapse is retired; paragraph-apps now **preserve** `\n\n`
+   (`NormalizeNewlinesForApp` only folds CRLF→LF). The per-app sets are
+   `RichEditParagraphApps` (`wordpad` → VT soft break in the EM path)
+   and `PastePreferredApps` (`slack` → paste). Both env-overridable
+   (`OPENCUES_PARA_APPS`, `OPENCUES_PASTE_APPS`).
+2. **`EolNorm` must be break-form-blind.** We now write CR (paragraph),
+   VT (soft break) and read back whatever the control stores (CR / CRLF
+   / VT / U+2028). `EolNorm` folds *all* of them to `\n` so the write-
+   verify (`TryEmConvergentWrite`) and the self-write attribution
+   (§7) still compare equal — otherwise a soft-break write reads back
+   "different" and loops.
+
+Gotchas that cost real time here: `IsEditClassHwnd` returns the **raw**
+class (`RICHEDIT50W`), so the richedit test must be case-**insensitive**
+(a `Contains("richedit")` silently never fired); and a literal U+2028 in
+a C# char literal is a **compile error** (U+2028 is a source line
+terminator) — use the `'\u2028'` escape. The paste path for Slack pays
+one select-all highlight on the *final* write only; the spinner frames
+stay flash-free on the typed micro-edit path.
+
+---
+
 ## 6. Cursor positioning
 
 Phase 1 has no real caret API (that's phase-2 `TextPattern2.GetCaretRange`).
@@ -548,6 +592,8 @@ every row above deterministically and proves the result.
 | `OPENCUES_TYPE_ANIMATE` | on | `=0` disables the typed micro-frame animation (falls back to `SetValue`/paste) |
 | `OPENCUES_MSAA_ANIMATE` | on | legacy alias for the above; `=0` also disables |
 | `OPENCUES_PASTE_GAP_MS` | `0`→15ms | select-all→paste commit gap on the big-field paste path |
+| `OPENCUES_PARA_APPS` | `slack,wordpad` | apps that render newlines as paragraphs (get the Notepad-matching newline handling; empty to disable) |
+| `OPENCUES_PASTE_APPS` | `slack` | Chromium/Quill composers whose final write goes through paste so `\n` renders as a soft break (empty to disable) |
 | `OPENCUES_HEARTBEAT_FILE` / `_TIMEOUT_MS` | set by tray | daemon liveness binding to the tray (8s) |
 | `OPENCUES_HOME` | WSL `~/.cues` | config source (tray "Windows" mode points it at `%USERPROFILE%\.cues` via `/mnt/c`) |
 

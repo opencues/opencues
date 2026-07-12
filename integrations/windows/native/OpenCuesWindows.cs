@@ -677,16 +677,37 @@ namespace OpenCues
         static readonly HashSet<string> RichEditParagraphApps =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "wordpad" };
 
+        // Chromium/Quill composers whose ValuePattern.SetValue turns every \n
+        // into a paragraph block (blank-line gap even for single \n). Their PASTE
+        // handler treats \n as a soft break, so we route the final write through
+        // paste for these to render newlines like Notepad. Override with
+        // OPENCUES_PASTE_APPS (comma-separated process names; empty to disable).
+        static readonly HashSet<string> PastePreferredApps = ReadPasteApps();
+        static HashSet<string> ReadPasteApps()
+        {
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var v = Environment.GetEnvironmentVariable("OPENCUES_PASTE_APPS");
+            if (v == null) { set.Add("slack"); return set; }
+            foreach (var part in v.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var t = part.Trim();
+                if (t.Length > 0) set.Add(t);
+            }
+            return set;
+        }
+
         static string NormalizeNewlinesForApp(string text)
         {
+            // Paragraph-apps (Slack, WordPad) now PRESERVE blank lines so they
+            // render like Notepad (\n = adjacent line, \n\n = blank line).
+            // WordPad soft-breaks each \n via the EM path (VT, no paragraph
+            // margin); Slack takes the raw text via SetValue. We only fold
+            // CRLF -> LF here and NEVER collapse \n\n (that was flattening the
+            // paragraph separation). Kept behind the app gate so it never
+            // touches Notepad/Discord/etc.
             if (text == null || _lastApp == null || !ParagraphBreakApps.Contains(_lastApp)) return text;
-            if (RichEditParagraphApps.Contains(_lastApp)) return text;   // soft-break path keeps \n\n
-            if (text.IndexOf('\n') < 0 && text.IndexOf('\r') < 0) return text;
-            string norm = text.Replace("\r\n", "\n").Replace('\r', '\n');
-            while (norm.Contains("\n\n")) norm = norm.Replace("\n\n", "\n");
-            if (norm != text)
-                Log("debug", "paragraph-app newline collapse for " + _lastApp + " (" + text.Length + " -> " + norm.Length + " chars)");
-            return norm;
+            if (text.IndexOf('\r') < 0) return text;
+            return text.Replace("\r\n", "\n").Replace('\r', '\n');
         }
 
         static void ApplySetText(string text)
@@ -750,11 +771,25 @@ namespace OpenCues
                     // Convergent EM path (Edit/RichEdit HWNDs): absolute writes
                     // computed against the real buffer (no drift) + native undo.
                     if (isEditHwnd && TryEmConvergentWrite(el, (ValuePattern)vp, text, streamStart)) return;
-                    // Non-Edit UIA composer (Slack etc.) or an EM verify-fail →
-                    // absolute SetValue. SetValue resets the caret to the START,
-                    // so skip the restore on animation frames (same-length 1-2
-                    // char swap) and only restore on the real substitution — no
-                    // per-frame caret churn.
+                    // Slack (Quill/Chromium): SetValue makes EVERY \n a paragraph
+                    // block — even a single \n renders with a blank-line gap, so
+                    // the signature lines that should be adjacent get spaced out.
+                    // Slack's PASTE handler instead treats \n as a SOFT line break
+                    // (adjacent) and \n\n as a blank line — i.e. it renders like
+                    // Notepad. Route the FINAL substitution through paste (the
+                    // spinner frames already took the typed micro-edit path above,
+                    // so only this one write pays the select-all highlight).
+                    if (PastePreferredApps.Contains(_lastApp))
+                    {
+                        PasteReplace(text, prevSent);
+                        Log("debug", "applied substitution (" + text.Length + " chars, paste [Slack soft-break])");
+                        return;
+                    }
+                    // Non-Edit UIA composer or an EM verify-fail → absolute
+                    // SetValue. SetValue resets the caret to the START, so skip
+                    // the restore on animation frames (same-length 1-2 char swap)
+                    // and only restore on the real substitution — no per-frame
+                    // caret churn.
                     ((ValuePattern)vp).SetValue(text);
                     if (!LooksLikeAnimationFrame(prevSent, text))
                     {
