@@ -449,6 +449,7 @@ diverge from Notepad:
 | **Notepad** (`RichEditD2DPT`) | `EM_REPLACESEL` | adjacent line (no margin) | — (the reference) |
 | **WordPad** (`RICHEDIT50W`) | `EM_REPLACESEL` | a **paragraph** break (`\r`), which carries inter-paragraph **margin** → double-spaced | convert every `\n` → **VT** (`\x0B`, the soft break Shift+Enter inserts; no margin) |
 | **Slack** (Quill/Chromium) | `ValuePattern.SetValue` | a **paragraph block** — a blank-line gap **even for a single `\n`** (the signature lines that should be adjacent get spaced out) | route the final write through **paste** — Slack's paste handler treats `\n` as a soft break |
+| **Discord** (MSAA/Slate) | deferred `Ctrl+A`+`Ctrl+V` paste | **soft break (adjacent)** — already correct | — (already on the paste path; this is *why* the Slack fix is to join it) |
 
 Two rules fall out of this, both load-bearing:
 
