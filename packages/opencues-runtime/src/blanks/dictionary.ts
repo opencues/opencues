@@ -2,10 +2,10 @@
 // dictionaryapi.dev (no auth, no rate limit beyond reasonable).
 // Read-only. 24h cache per word (definitions don't change often).
 //
-// Trigger: keyword "define" or "definition" or just the word in
-// context — the BLANK.md decides which keywords route here. The
-// keyword itself is the lookup target after stripping the trigger
-// word ("define ephemeral" → look up "ephemeral").
+// Trigger: `keyword` is the matched trigger PHRASE ("define",
+// "what is", "meaning of", …) — never the lookup target. The word to
+// define comes from `context` (the words between the keyword and the
+// `_`): "define ephemeral _" → keyword "define", context ["ephemeral"].
 
 import type { Blank } from './types';
 
@@ -74,13 +74,30 @@ export class DictionaryBlank implements Blank {
 }
 
 /** Pick a word to look up from the keyword + surrounding context.
- *  Skips trigger words ("define", "meaning of", etc.) and pronouns. */
+ *  Skips trigger words and pronouns.
+ *
+ *  The matched trigger PHRASE arrives in `keyword` (e.g. "what is",
+ *  "meaning of") — every word of it is excluded, so whatever phrase
+ *  routed here can never be picked as the lookup target. This is the
+ *  drift-proof half: extending `blankKeywords` (which added "what is" /
+ *  "what does") never needs a matching edit here. `TRIGGER_WORDS` is the
+ *  static belt-and-braces for trigger words that leak into `context`
+ *  from the highlighted-word path (issue #282). */
 function pickWord(keyword?: string, context?: string[]): string {
-  // Combine keyword + context, split on whitespace, filter triggers.
-  const all = [keyword, ...(context ?? [])]
+  // Words of the matched trigger phrase — never lookup candidates.
+  const triggerParts = new Set(
+    (keyword ?? '').toLowerCase().split(/\s+/).filter(Boolean),
+  );
+  const all = (context ?? [])
     .filter(Boolean)
-    .flatMap(s => s!.toLowerCase().split(/\s+/))
-    .filter(w => w && !TRIGGER_WORDS.has(w) && !/^(of|the|a|an|is|_)$/.test(w));
+    .flatMap(s => s.toLowerCase().split(/\s+/))
+    .filter(
+      w =>
+        w &&
+        !triggerParts.has(w) &&
+        !TRIGGER_WORDS.has(w) &&
+        !/^(of|the|a|an|is|what|does|_)$/.test(w),
+    );
   // Take the longest remaining word — usually the most distinctive content word.
   return all.sort((a, b) => b.length - a.length)[0] || '';
 }
