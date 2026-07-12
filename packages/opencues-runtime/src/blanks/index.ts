@@ -20,6 +20,7 @@ export { WeatherBlank, type WeatherBlankOptions } from './weather';
 export { OpenCuesSettingsBlank, type OpenCuesSettingsBlankOptions } from './opencues-settings';
 export { SentinelBlank, type SentinelBlankOptions } from './sentinel';
 export { DictionaryBlank, type DictionaryBlankOptions } from './dictionary';
+export { LocationBlank, type LocationBlankOptions } from './location';
 export { CryptoBlank, type CryptoBlankOptions } from './crypto';
 export { CountriesBlank, type CountriesBlankOptions } from './countries';
 export { ClaudeStatusBlank, type ClaudeStatusBlankOptions } from './claude-status';
@@ -34,6 +35,7 @@ import { WeatherBlank } from './weather';
 import { OpenCuesSettingsBlank } from './opencues-settings';
 import { SentinelBlank } from './sentinel';
 import { DictionaryBlank } from './dictionary';
+import { LocationBlank } from './location';
 import { CryptoBlank } from './crypto';
 import { CountriesBlank } from './countries';
 import { ClaudeStatusBlank } from './claude-status';
@@ -160,6 +162,7 @@ export const BUILTIN_BLANKS: readonly BuiltinBlankSpec[] = [
   // without FINNHUB_API_KEY in env — same behaviour.
   { name: 'stocks',        factory: ctx => ctx.finnhubApiKey ? new StocksBlank({ apiKey: ctx.finnhubApiKey, customTickers: ctx.customTickers }) : null },
   { name: 'weather',       factory: () => new WeatherBlank() },
+  { name: 'location',      factory: () => new LocationBlank() },
   { name: 'claude-status', factory: () => new ClaudeStatusBlank() },
 
   // ── Static lookups (offline / cached) ────────────────────────────

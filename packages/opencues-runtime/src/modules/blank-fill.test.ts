@@ -704,6 +704,84 @@ blankScript: ./weather.sh
     expect(adapter.getText()).toBe('weather 15°C cloudy');
   });
 
+  // ─── Trailing-keyword shapes (location-style grammar) ────────────────
+  //
+  // An authored shape may put the captured arg BEFORE the keyword
+  // ("east finchley iceland location _"). Two things must hold that the
+  // positional (keyword→`_`) machinery can't provide: (a) the dispatch
+  // receives the shape's captured arg as context, and (b) the clear span
+  // covers the whole matched command SEGMENT (commandStart), not just
+  // keyword→`_`. Journey tests, per the scenario-test rule.
+  const LOCATION_CTRL = `---
+type: blank
+name: location
+blankKeywords: location, address
+blankScript: ./location.sh
+blankShapes: [{"pattern":"^(?:location|address)\\\\s+(.+?)\\\\s*_$","action":"get","valueGroup":1},{"pattern":"^(.+?)\\\\s+(?:location|address)\\\\s*_$","action":"get","valueGroup":1},{"pattern":"^(?:location|address)\\\\s*_$","action":"get"}]
+---
+`;
+  const ICELAND_OUT = 'Iceland, High Road, Finchley, N2 8AQ, United Kingdom';
+
+  async function locationSetup(stdout: string) {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/blanks/location/BLANK.md': LOCATION_CTRL },
+    });
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    const spawnSpy = vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout, stderr: '', timedOut: false }),
+      kill: () => {},
+    }));
+    return { adapter, spawnSpy };
+  }
+
+  it('trailing-keyword shape: captured arg reaches the get as context words', async () => {
+    const { adapter, spawnSpy } = await locationSetup(ICELAND_OUT);
+    adapter.pushText('east finchley iceland location _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+    const args = spawnSpy.mock.calls[0][0].args;
+    // [script, 'get', keyword, ...arg] — the arg PRECEDES the keyword in
+    // the buffer; the positional walk would have found nothing.
+    expect(args.slice(2)).toEqual(['location', 'east', 'finchley', 'iceland']);
+  });
+
+  it('trailing-keyword shape: whole command span consumed, output self-contained', async () => {
+    const { adapter } = await locationSetup(ICELAND_OUT);
+    adapter.pushText('east finchley iceland location _');
+    await new Promise(r => setTimeout(r, 0));
+    // The output embeds the place; the typed query + trigger are consumed.
+    expect(adapter.getText()).toBe(ICELAND_OUT);
+  });
+
+  it('trailing-keyword shape after a prior sentence: only its segment is consumed', async () => {
+    const { adapter } = await locationSetup(ICELAND_OUT);
+    adapter.pushText('hii world. east finchley iceland location _');
+    await new Promise(r => setTimeout(r, 0));
+    // The shape matched its own SEGMENT — the prior sentence survives.
+    expect(adapter.getText()).toBe(`hii world. ${ICELAND_OUT}`);
+  });
+
+  it('leading authored shape behaves like the synthesized grammar (regression guard)', async () => {
+    const { adapter, spawnSpy } = await locationSetup(ICELAND_OUT);
+    adapter.pushText('location east finchley iceland _');
+    await new Promise(r => setTimeout(r, 0));
+    const args = spawnSpy.mock.calls[0][0].args;
+    expect(args.slice(2)).toEqual(['location', 'east', 'finchley', 'iceland']);
+    expect(adapter.getText()).toBe(ICELAND_OUT);
+  });
+
+  it('trailing-keyword shape: [err] output fills only the `_`, command survives', async () => {
+    const { adapter } = await locationSetup('[err] location: no match for "xyzzy"');
+    adapter.pushText('xyzzy location _');
+    await new Promise(r => setTimeout(r, 0));
+    // Feedback result — the typed query is preserved for correction.
+    expect(adapter.getText()).toBe('xyzzy location [err] location: no match for "xyzzy"');
+  });
+
   it('sync path: blankClearKeywords drops the keyword on a list blank', async () => {
     const BOTH = `---
 type: blank
@@ -1513,13 +1591,16 @@ blankScript: ./weather.sh
     await new Promise(r => setTimeout(r, 0));
     expect(spawnSpy).toHaveBeenCalledTimes(1);
     const args = spawnSpy.mock.calls[0][0].args;
-    // matchKeyword scans BACKWARD from `_` and claims the NEAREST
-    // preceding keyword occurrence — the second "weather" is the actual
-    // command; the first is inert prior text (same "prior prose doesn't
-    // flood context" rule the countries-blank regression test pins).
-    // So this is a BARE get (no captured arg) using the nearer occurrence.
-    expect(args.slice(2)).toEqual(['weather']);
-    expect(adapter.getText()).toBe('weather sunny');
+    // The synthesized get-with-arg shape reads `weather weather _` as
+    // keyword + captured arg "weather" — and dispatch and clearing BOTH
+    // follow the shape verdict (they used to disagree: clearing treated
+    // this as captured-arg while dispatch treated it as a bare get; the
+    // trailing-keyword shape work unified them on the shape's reading).
+    // The guarded property is unchanged: ONE spawn, deterministic args,
+    // no double-match, no span corruption.
+    expect(args.slice(2)).toEqual(['weather', 'weather']);
+    // Captured-arg rule: the whole command span is consumed.
+    expect(adapter.getText()).toBe('sunny');
   });
 
   // BUG FOUND (documented, not fixed — see instructions). Expected:
