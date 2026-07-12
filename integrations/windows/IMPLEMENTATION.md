@@ -478,6 +478,14 @@ terminator) — use the `'\u2028'` escape. The paste path for Slack pays
 one select-all highlight on the *final* write only; the spinner frames
 stay flash-free on the typed micro-edit path.
 
+**Tests.** The behavior is visual and app-specific, so it's split:
+`tests/newline-invariants.mjs` is a source guard (runs anywhere, no
+Windows) pinning the silent-failure invariants above — the collapse
+staying retired, `EolNorm` folding VT/U+2028, the case-insensitive
+richedit check, the VT/paste routing. `tests/newline-rendering.manual.md`
+is the human checklist that verifies the actual `draft email _` render
+against Notepad in Notepad/WordPad/Slack/Discord.
+
 ---
 
 ## 6. Cursor positioning
