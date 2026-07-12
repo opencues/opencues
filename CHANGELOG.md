@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — `location` blank: place / address / POI lookup via OSM Nominatim, incl. trailing-keyword shape grammar (`@opencues/runtime` 0.13.3 → 0.14.0, `@opencues/core` 0.18.0 → 0.18.1)
+
+New shipped default blank `location` (`defaults/blanks/location/BLANK.md` + built-in `LocationBlank` in `@opencues/runtime`, registered via `BUILTIN_BLANKS` so every host picks it up). Free-form place / address / POI search against OpenStreetMap's Nominatim — no API key, no signup; the first hit's `display_name` fills the `_` (`east finchley iceland location _` → `Iceland, High Road, Finchley, …, N2 8AQ, United Kingdom`). 24h per-query cache (Nominatim usage policy), identifying User-Agent on native hosts, misses/failures return `[err] …` feedback so the typed query survives for correction. Read-only (no cycling) so it also runs on no-cycling hosts.
+
+The headline phrasing — query BEFORE the trigger word — needed the shape machinery to honour **trailing-keyword shapes**, which fixed two positional assumptions in `BlankFill`:
+
+1. **Dispatch args**: a shaped `get` now dispatches the shape's `valueGroup` capture as the context words instead of re-deriving them positionally from keyword→`_` (which is empty when the arg precedes the keyword). For keyword-leading shapes the two are identical, so synthesized-grammar blanks are unaffected — with one deliberate exception: a repeated-keyword input (`weather weather _`) is now consistently read as get-with-arg per the shape verdict; previously dispatch (bare get) and clearing (captured arg) disagreed about it.
+2. **Command-span clearing**: `clearsCommandSpan` fills now clear from the start of the shape's MATCHED SEGMENT (`BlankSlot.commandStart`, derived from the shared `segmentStart` boundary) instead of `keywordStart` — so `hii world. east finchley iceland location _` consumes only its own sentence and the captured arg isn't stranded next to an output that already embeds it.
+
+Journey tests in `blank-fill.test.ts` (trailing-keyword describe block) + unit tests in `location.test.ts`. Spec wording clarified editorially (`spec/blank-spec.md` § Flag obligations + `blankClearKeywords` row; see `spec/CHANGELOG.md` `[Unreleased]`) — authored shapes were already arbitrary anchored regexes, so no `SPEC_VERSION` bump.
 ### Docs — document `opencues init`'s `AUDITORS.md` scaffold (`opencues` CLI 0.2.41 → 0.2.42)
 
 Follows the CLI-bugfix PR that made `opencues init` scaffold `AUDITORS.md`. The scaffolded project `README.md` template now lists `AUDITORS.md` in its file table (it was creating the file without explaining it); `docs/guides/cli-reference.md`'s `init` section now names the four files it actually writes (`CUES.md`/`BLANKS.md`/`AUDITORS.md`/`README.md`) instead of the inaccurate "`cues/` and `blanks/` folder layout"; and `docs/guides/adding-an-auditor.md` §6 notes that `init` scaffolds a starter `AUDITORS.md`. Template-file (`src/templates/README.md`) change → patch bump.

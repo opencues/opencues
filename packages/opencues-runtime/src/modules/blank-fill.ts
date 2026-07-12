@@ -9,7 +9,7 @@
 import type { HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../adapter';
 import type { ConfigLoader } from './config-loader';
 import { splitWords } from './navigation';
-import { isBlankConfigCycleable, keywordInWindow, lineOfWords, matchBlankShape } from '@opencues/core';
+import { isBlankConfigCycleable, keywordInWindow, lineOfWords, matchBlankShape, segmentStart } from '@opencues/core';
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
@@ -36,6 +36,12 @@ export interface BlankSlot {
    *  runs with ZERO LLM. `shapeValue` holds the set value or step direction. */
   readonly shapeAction?: 'get' | 'set' | 'step';
   readonly shapeValue?: string;
+  /** Word index where the shape-matched command SEGMENT begins (shape slots
+   *  only). Shapes match the sentence containing `_`, so this may PRECEDE
+   *  keywordStart for trailing-keyword shapes ("east finchley iceland
+   *  location _") — clearing the command span starts here, not at the
+   *  keyword. */
+  readonly commandStart?: number;
 }
 
 export class BlankFill {
@@ -229,17 +235,25 @@ export class BlankFill {
             if (parts.every((p, j) => words[i + j]?.toLowerCase() === p)) { kwStart = i; kwEnd = i + parts.length - 1; break outer; }
           }
         }
+        // Word index where the shape-matched SEGMENT begins. matchBlankShape
+        // anchors on the segment containing the last `_` (lineWithBlank), so
+        // the command span the shape owns starts here — which may precede the
+        // keyword for trailing-keyword shapes ("east finchley iceland
+        // location _"). segmentStart boundaries fall between words (terminator
+        // + whitespace, or newline), so the word count before it is exact.
+        const segChar = segmentStart(cleanText, cleanText.lastIndexOf('_'));
+        const commandStart = cleanText.slice(0, segChar).split(/\s+/).filter(Boolean).length;
         const existing = slots.find(s => s.index === usIdx && s.blankName === shape.blankName);
         if (existing) {
           // Keyword scan already made the slot — just attach the shape verdict.
-          slots[slots.indexOf(existing)] = { ...existing, shapeAction: shape.action, shapeValue: shape.value };
+          slots[slots.indexOf(existing)] = { ...existing, shapeAction: shape.action, shapeValue: shape.value, commandStart };
         } else {
           // Proximity missed it — create the slot (the bypass that fixes
           // `volume 30 _` / `brightness 50 _`).
           slots.push({
             index: usIdx, keyword: kws[0] ?? shape.blankName, blankName: shape.blankName,
             keywordStart: kwStart, keywordEnd: kwEnd, proximity: Math.max(0, usIdx - kwEnd - 1),
-            shapeAction: shape.action, shapeValue: shape.value,
+            shapeAction: shape.action, shapeValue: shape.value, commandStart,
           });
         }
       }
@@ -446,8 +460,16 @@ export class BlankFill {
       // 495-char garbage fill. Bounding context to (keywordEnd, `_`) keeps it
       // to the actual argument; prior lines and any trailing text are excluded.
       const contextWords: string[] = [];
-      for (let wi = slot.keywordEnd + 1; wi < slot.index; wi += 1) {
-        contextWords.push(words[wi]);
+      if (slot.shapeAction === 'get' && slot.shapeValue) {
+        // Shaped get: the shape's valueGroup capture IS the arg. For
+        // keyword-first shapes this equals the positional walk below; for
+        // trailing-keyword shapes ("east finchley iceland location _") the
+        // arg PRECEDES the keyword and the positional walk finds nothing.
+        contextWords.push(...slot.shapeValue.split(/\s+/).filter(Boolean));
+      } else {
+        for (let wi = slot.keywordEnd + 1; wi < slot.index; wi += 1) {
+          contextWords.push(words[wi]);
+        }
       }
 
       // Expand ~ in script path. Empty when the blank is
@@ -903,6 +925,11 @@ export class BlankFill {
     const shapeCapturedArg = slot.shapeValue !== undefined && slot.shapeValue.length > 0;
     const clearsCommandSpan = !isErrResult
       && (typedAction !== undefined || hasIntegration || shapeCapturedArg);
+    // Shaped slots clear from the start of the matched command SEGMENT
+    // (commandStart) — for trailing-keyword shapes the captured arg precedes
+    // the keyword, and clearing from keywordStart would strand the arg next
+    // to an output that already embeds it.
+    const clearStart = clearsCommandSpan ? (slot.commandStart ?? slot.keywordStart) : slot.keywordStart;
     const { clearEnd } = clearsCommandSpan
       ? { clearEnd: slot.index - 1 }
       : (isErrResult ? { clearEnd: undefined } : computeFillRange(blank ?? {}, slot));
@@ -923,7 +950,7 @@ export class BlankFill {
     });
 
     const { newText, newCursor } = clearEnd !== undefined
-      ? buildClearKeywordText(cleaned, slot, primaryFill, clearEnd)
+      ? buildClearKeywordText(cleaned, { ...slot, keywordStart: clearStart }, primaryFill, clearEnd)
       : { newText: cleaned.slice(0, target.start) + primaryFill + cleaned.slice(target.end),
           newCursor: target.start + primaryFill.length };
 
@@ -937,7 +964,7 @@ export class BlankFill {
       // fill, multiple lines, blankDismissible, or clearOnEdit.
       const newWords = splitWords(newText);
       const startWord = newWords.find(w => w.start === fillStart);
-      const kwStartChar = newWords[slot.keywordStart]?.start ?? fillStart;
+      const kwStartChar = newWords[clearStart]?.start ?? fillStart;
       const wantsClearOnEdit = blank?.blankClearOnEdit === true;
       if (this.spanFillState) {
         const fillWordCount = primaryFill.split(/\s+/).filter(Boolean).length;

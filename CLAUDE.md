@@ -147,7 +147,7 @@ opencues/
 │   │   ├── more-formal/CUE.md     # scope: sentence — the shipped sentence-cue
 │   │   ├── spelling/CUE.md        # Lowest priority (10) — catch-all spell-check
 │   │   └── tips-{claude-code,gemini-cli,opencode,shell}/CUE.md  # Per-host static tip groups
-│   └── blanks/                    # Folder-based cue-blanks (colocated scripts + state) — 14 shipped folders
+│   └── blanks/                    # Folder-based cue-blanks (colocated scripts + state) — 15 shipped folders
 │       ├── volume/
 │       │   ├── BLANK.md           # type: blank, blankKeywords: volume, blankScript: ./volume-blank.sh
 │       │   ├── volume-blank.sh    # Blank script: get/set system volume
@@ -158,7 +158,7 @@ opencues/
 │       │   └── BrightCtl.cs
 │       ├── example/                # blankScript: ./time-blank.sh — reference/template script blank
 │       ├── gh-issues/              # impl: ./blank.js — reference/template user-shipped JS blank
-│       ├── claude-status/, countries/, crypto/, dictionary/, hackernews/, stocks/, weather/  # impl-by-name (no explicit `impl:`) — resolve to <PascalCase(name)>Blank in @opencues/runtime
+│       ├── claude-status/, countries/, crypto/, dictionary/, hackernews/, location/, stocks/, weather/  # impl-by-name (no explicit `impl:`) — resolve to <PascalCase(name)>Blank in @opencues/runtime
 │       ├── sentinel/                # Reserved built-in — mutates ~/.cues/IDENTITY.md (opencues identity)
 │       ├── note/                    # impl: NoteBlank — runtime-only (needs injected notesMdIO); keyword add/recall/delete over ~/.cues/NOTES.md (PROTOTYPE, issue #210)
 │       └── opencues/BLANK.md       # impl: OpenCuesSettingsBlank (selector+satellite)

@@ -75,7 +75,7 @@ A blank source MUST also declare **exactly one** binding profile (see § Binding
 | `integration` | string | none | Additive output template with a `{value}` slot (`"volume is now {value}"`). The runtime renders the blank's output through it, weaving connective text around the value. Add-only — it only shapes the inserted value, never surrounding text. |
 | `blankSatellite` | boolean | `false` | Two-word selector + value pattern. See § Flag obligations. |
 | `blankDismissible` | boolean | `false` | `_` becomes the last cycling option. |
-| `blankClearKeywords` | boolean | `false` | After a non-shaped fill, strip the blank's own keyword from the resulting text (e.g. a bare `keyword _` whose script returns a self-contained value). Shaped blanks clear their command span automatically (a captured arg / typed set-step / `integration:` template consumes `keyword … _`), so this is only for the legacy keyword path. |
+| `blankClearKeywords` | boolean | `false` | After a non-shaped fill, strip the blank's own keyword from the resulting text (e.g. a bare `keyword _` whose script returns a self-contained value). Shaped blanks clear their command span automatically (a captured arg / typed set-step / `integration:` template consumes the whole MATCHED SEGMENT — `keyword … _` for keyword-leading shapes, `… keyword _` for trailing-keyword shapes), so this is only for the legacy keyword path. |
 | `stepValues` | YAML list | none | Binding profile — declarative rotation. |
 | `blankScript` | string (relative path) | none | Binding profile — shell script. |
 | `impl` | string | implicit from `name` | Binding profile — in-process class name. |
@@ -292,7 +292,7 @@ All methods are async. The `keyword` argument carries which `blankKeywords` entr
 
 - **`blankSatellite: true`** — `get` MAY return `<selector>\t<satellite>` (tab-separated). The runtime MUST splice both as adjacent words. Cycling targets the selector; satellite is updated via `set <selector> <value>`.
 - **`blankDismissible: true`** — runtime MUST append `_` to the cycling list. Selecting it sets a "dismissed" flag for that slot; runtime MUST NOT re-populate until the user explicitly cycles away.
-- **`blankShapes`** — each `{pattern, action, valueGroup?}` is matched (case-insensitive) against the SENTENCE containing `_` (the segment after the last sentence terminator / newline before `_`); the first match claims it. `valueGroup` (1-based) extracts the `set`/`step` value. A blank with shapes is routed solely by them; the keyword window does not apply.
+- **`blankShapes`** — each `{pattern, action, valueGroup?}` is matched (case-insensitive) against the SENTENCE containing `_` (the segment after the last sentence terminator / newline before `_`); the first match claims it. `valueGroup` (1-based) extracts the `set`/`step` value, or — on a `get` shape — the captured **arg** passed to the blank's `get`. Because the pattern is an arbitrary anchored regex, the arg may precede the keyword (a trailing-keyword shape like `^(.+?)\s+location\s*_$` supports `east finchley iceland location _`); the runtime MUST dispatch the shape-captured arg rather than re-deriving it positionally from keyword→`_`. A blank with shapes is routed solely by them; the keyword window does not apply.
 - **`blankStep`, `blankSuffix`** — numeric step size + display unit. Runtime MUST honor for numeric blanks.
 
 ---

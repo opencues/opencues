@@ -157,7 +157,10 @@ export interface BlankShape {
   pattern: string;
   /** Action implied by a match. */
   action: 'get' | 'set' | 'step';
-  /** 1-based capture group carrying the value (for set/step). Omit for get. */
+  /** 1-based capture group carrying the set/step value — or, on a `get`
+   *  shape, the captured ARG dispatched to the blank's `get`. The arg may
+   *  precede the keyword (trailing-keyword shapes like
+   *  `^(.+?)\s+location\s*_$`). Omit for bare gets. */
   valueGroup?: number;
 }
 

@@ -14,6 +14,18 @@ breaking.
 
 ## [Unreleased]
 
+### Changed (editorial)
+
+- `blank-spec.md` § Flag obligations — clarified that a `get` shape's
+  `valueGroup` captures the **arg** dispatched to the blank's `get`, that the
+  arg may precede the keyword (trailing-keyword shapes like
+  `^(.+?)\s+location\s*_$`), and that runtimes MUST dispatch the
+  shape-captured arg rather than re-deriving it positionally from
+  keyword→`_`. Shaped command-span clearing wording updated to "the whole
+  matched segment" (covers trailing-keyword shapes; identical behaviour for
+  keyword-leading shapes). Authored shapes were already arbitrary anchored
+  regexes, so no wire-format change — `SPEC_VERSION` unchanged.
+
 ---
 
 ## [0.7.0-alpha] — 2026-07-07
