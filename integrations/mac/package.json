@@ -1,0 +1,27 @@
+{
+  "name": "@opencues/mac",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenCues universal macOS host — answers `_`-gated blanks in the focused text element of ANY app via the Accessibility API. No polling, no app-specific automation.",
+  "main": "dist/daemon.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "os": [
+    "darwin"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && swiftc -O ax-bridge.swift -o dist/ax-bridge",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@opencues/core": "workspace:*",
+    "@opencues/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^4.0.0"
+  }
+}

@@ -33,7 +33,8 @@ host and the runtime.
 - **Chrome** (`integrations/chrome/`) — MV3 extension; CSS Custom Highlight API for in-page rendering
 - **Gemini CLI** (`integrations/gemini-cli/`) — patches Gemini CLI 0.41.x; React/Ink host with a render-kick + ZWS-toggle pull model. See its CLAUDE.md for the React quirks (it's the first React/Ink host so the integration was non-trivial).
 - **Shell** (`integrations/shell/`) — standalone Bun + OpenTUI + SolidJS app. User-facing entry point is `oc-shell` (wraps the user's interactive shell in a private tmux session with an Alt+Shift+↑ input box); `oc-edit` is the internal Bun host lazy-spawned inside that session and is not directly user-invokable. **Self-owned host** — no upstream fork to patch. Built on the same OpenTUI primitives as OpenCode, so the adapter band (`adapters/shell/v1/`) is structurally a near-clone of `adapters/oc/v1.14/`. Canonical host name: `shell` (alias `terminal` kept for back-compat in `on-host:` directives).
-- **Apple Notes** (`integrations/apple-notes/`) — macOS-only Node daemon that polls Notes.app over JXA (`osascript`), feeds the most recently modified cue-bearing note into the runtime as its buffer, and writes `_`-blank answers back via a compare-and-swap HTML splice. **Self-owned host**, universal/no-cycling profile (no key/cursor/render channel — `supportsCycling()` false). Adapter band: `adapters/apple-notes/v1/`. Scope: any unlocked note containing a standalone `_`; attachment-bearing + oversized notes are skipped, and writes are splice-only (never a body rebuild). Platform quirks + measurements: `integrations/apple-notes/NOTES-PLATFORM.md`; band repair log: `adapters/apple-notes/REPAIR.md`. Aliases: `notes`, `applenotes`.
+- **Apple Notes** (`integrations/apple-notes/`) — macOS-only Node daemon that polls Notes.app over JXA (`osascript`), feeds the most recently modified cue-bearing note into the runtime as its buffer, and writes `_`-blank answers back via a compare-and-swap HTML splice. **Self-owned host**, universal/no-cycling profile (no key/cursor/render channel — `supportsCycling()` false). Adapter band: the shared `adapters/universal/v1/` (declares `hostName: 'apple-notes'`; Notes-specific HTML-splice helpers remain in `adapters/apple-notes/v1/html-text.ts`). Scope: any unlocked note containing a standalone `_`; attachment-bearing + oversized notes are skipped, and writes are splice-only (never a body rebuild). Platform quirks + measurements: `integrations/apple-notes/NOTES-PLATFORM.md`; band repair log: `adapters/apple-notes/REPAIR.md`. Aliases: `notes`, `applenotes`.
+- **mac** (`integrations/mac/`) — macOS-only universal host: answers `_` blanks in the **focused text element of ANY app** via the Accessibility API. A persistent Swift bridge (`ax-bridge.swift`) pushes focus/per-keystroke-change/cursor events (AXObserver — no polling) and applies ~1ms in-place range writes (atomic selection-free `AXReplaceRangeWithText` where the element honours it — its return value LIES, verified by re-read — else a select→replace→restore transaction). **Self-owned host**, universal/no-cycling profile; shares the `adapters/universal/v1` band with apple-notes (declares `hostName: 'mac'` for `on-host:` routing). The buffer IS the element's value, the cursor IS the real caret; host state is three unit-tested pieces in `src/ax-host.ts`. Requires the Accessibility TCC grant (distinct from Automation), probed at install. Secure fields never leave the bridge; terminals denied by default. Channel evidence: `integrations/mac/AX-SPIKE.md`. Aliases: `macos`, `ax`.
 
 > Re-org in progress — folders rename to `cc/`, `oc/`, `chrome/` in Stage 4 of
 > the repo restructure. See `docs/architecture/repo-structure.md` for the
@@ -670,11 +671,12 @@ done
 |---|---|---|---|
 | `SPEC.md` (open-standard) | `cues-spec` | 0.7 (draft) | exported as `SPEC_VERSION` from `@opencues/core` |
 | `package.json` (monorepo root) | `opencues` | 0.1.0 | private |
-| `packages/opencues-core/` | `@opencues/core` | 0.18.0 | private |
+| `packages/opencues-core/` | `@opencues/core` | 0.19.0 | private |
 | `packages/opencues-runtime/` | `@opencues/runtime` | 0.13.3 | private |
-| `packages/opencues-cli/` | `opencues` (real CLI) | 0.2.40 | private |
+| `packages/opencues-cli/` | `opencues` (real CLI) | 0.2.41 | private |
 | `packages/opencues-park/` | `opencues` (placeholder) | 0.0.1 | **PUBLISHED on npm** |
 | `integrations/claude-code/` | `@opencues/claude-code` | 0.2.7 | private |
+| `integrations/mac/` | `@opencues/mac` | 0.1.0 | private |
 | `integrations/opencode/` | `@opencues/opencode` | 0.2.6 | private |
 | `integrations/chrome/` | `@opencues/chrome` | 0.2.65 | private |
 | `integrations/gemini-cli/` | `@opencues/gemini-cli` | 0.2.6 | private |

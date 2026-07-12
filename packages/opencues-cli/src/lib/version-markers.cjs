@@ -210,6 +210,7 @@ function enumerateInstalledHosts(ctx) {
     { host: 'gemini-cli',        root: path.join(HOME, 'gemini-cli-cues', '.opencues') },
     { host: 'shell',             root: path.join(ctx.REPO_ROOT, 'integrations/shell/node_modules/@opencues') },
     { host: 'apple-notes',       root: path.join(ctx.REPO_ROOT, 'integrations/apple-notes/node_modules/@opencues') },
+    { host: 'mac',               root: path.join(ctx.REPO_ROOT, 'integrations/mac/node_modules/@opencues') },
     { host: 'chrome',            root: path.join(ctx.REPO_ROOT, 'integrations/chrome/dist') },
   ];
   const results = [];

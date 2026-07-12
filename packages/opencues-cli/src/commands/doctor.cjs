@@ -855,6 +855,44 @@ module.exports = async function doctor(argv, ctx) {
     s.render();
   }
 
+  // ── mac (universal AX host) install ───────────────────────────────────
+  // Self-owned Accessibility daemon (macOS only). The load-bearing check
+  // is the Accessibility TCC grant — a DIFFERENT permission class from
+  // apple-notes' Automation grant; `ax-bridge status` checks it without
+  // firing the system prompt (doctor must never pop dialogs).
+  {
+    const s = section('mac (universal AX host)', 'answers `_` cues in the focused text element of any app (macOS only)');
+    if (process.platform !== 'darwin') {
+      s.info('platform', 'not macOS — mac integration unavailable here');
+    } else {
+      const macDir = path.join(ctx.REPO_ROOT, 'integrations/mac');
+      const macDaemon = path.join(macDir, 'dist/daemon.js');
+      const macBridge = path.join(macDir, 'dist/ax-bridge');
+      const macRt = path.join(macDir, 'node_modules/@opencues/runtime/dist');
+      s.ok(`integration dir at ${macDir}`, fs.existsSync(macDir));
+      s.ok('dist/daemon.js (built)', fs.existsSync(macDaemon));
+      s.ok('dist/ax-bridge (built)', fs.existsSync(macBridge));
+      s.ok('node_modules/@opencues/runtime (staged)', fs.existsSync(macRt));
+      if (!fs.existsSync(macDaemon) || !fs.existsSync(macBridge)) {
+        findings.push({ sev: 'info', msg: 'mac integration not installed', fix: 'opencues install mac' });
+      } else {
+        const probe = spawnSync(macBridge, ['status'], { encoding: 'utf8', timeout: 5000 });
+        if ((probe.stdout || '').trim() === 'trusted') {
+          s.ok('Accessibility permission (TCC)', true);
+        } else {
+          s.bad('Accessibility permission (TCC)', false);
+          findings.push({
+            sev: 'warn',
+            msg: 'Accessibility permission NOT granted — the mac daemon cannot see or edit any text element',
+            fix: 'System Settings → Privacy & Security → Accessibility → enable the app that launches the daemon;\n' +
+                 '        then restart it: opencues run mac',
+          });
+        }
+      }
+    }
+    s.render();
+  }
+
   // ── OS-level sandbox ──────────────────────────────────────────────────
   // Per-platform confiner used to wrap `sandbox: strict` user-blank
   // script invocations. Mechanism:
