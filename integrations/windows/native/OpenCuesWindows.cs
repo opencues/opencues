@@ -101,8 +101,12 @@ namespace OpenCues
         // and that must still count as our echo, not user typing.
         static string EolNorm(string s)
         {
-            if (s == null || (s.IndexOf('\r') < 0)) return s;
-            return s.Replace("\r\n", "\n").Replace('\r', '\n');
+            if (s == null) return s;
+            // Fold every line-break dress to LF: CRLF/CR (RichEdit paragraph +
+            // echo), VT (RichEdit soft break we WRITE), and U+2028 (some RichEdit
+            // read-backs). Keeps write-verify + self-write attribution EOL-blind.
+            if (s.IndexOf('\r') < 0 && s.IndexOf('\v') < 0 && s.IndexOf('\u2028') < 0) return s;
+            return s.Replace("\r\n", "\n").Replace('\r', '\n').Replace('\v', '\n').Replace('\u2028', '\n');
         }
 
         // Write bracket - knowledge-based attribution. Every write enters the
@@ -664,9 +668,19 @@ namespace OpenCues
             return set;
         }
 
+        // WordPad (RichEdit) renders newlines via the EM write path as SOFT
+        // breaks (VT — no paragraph margin), so a single \n comes out adjacent
+        // and \n\n comes out as a blank line, EXACTLY like Notepad. It must
+        // therefore KEEP its blank lines, so it's excluded from the collapse
+        // below (collapsing \n\n would erase the paragraph separation). Slack's
+        // Quill has no soft break, so it still gets the collapse.
+        static readonly HashSet<string> RichEditParagraphApps =
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "wordpad" };
+
         static string NormalizeNewlinesForApp(string text)
         {
             if (text == null || _lastApp == null || !ParagraphBreakApps.Contains(_lastApp)) return text;
+            if (RichEditParagraphApps.Contains(_lastApp)) return text;   // soft-break path keeps \n\n
             if (text.IndexOf('\n') < 0 && text.IndexOf('\r') < 0) return text;
             string norm = text.Replace("\r\n", "\n").Replace('\r', '\n');
             while (norm.Contains("\n\n")) norm = norm.Replace("\n\n", "\n");
@@ -1806,11 +1820,29 @@ namespace OpenCues
                 IntPtr hwnd = new IntPtr(el.Current.NativeWindowHandle);
                 if (!IsEditClassHwnd(hwnd, out className)) return false;   // non-Edit → SetValue
 
+                // In RichEdit a bare LF via EM_REPLACESEL becomes a PARAGRAPH
+                // break (CR), and paragraphs carry inter-paragraph spacing — so a
+                // multi-line fill renders double-spaced (the WordPad gap). What we
+                // want is a SOFT line break (what Shift+Enter inserts): lines sit
+                // directly adjacent, no paragraph spacing. RichEdit's soft-break
+                // char is VT (\x0B). Convert every newline to VT. EolNorm folds
+                // VT/U+2028/CR/CRLF/LF together, so the verify + the daemon's
+                // mirror still compare equal. Plain "edit" controls have no soft
+                // break, so scope this to richedit only.
+                // Scope to paragraph-spacing apps (wordpad) — NOT Notepad's
+                // RichEditD2DPT, which has no inter-paragraph gap. Case-insensitive:
+                // IsEditClassHwnd returns the RAW class ("RICHEDIT50W").
+                string emText = text;
+                if (_lastApp != null && RichEditParagraphApps.Contains(_lastApp)
+                    && className != null && className.ToLowerInvariant().Contains("richedit")
+                    && text.IndexOf('\n') >= 0)
+                    emText = text.Replace("\r\n", "\v").Replace('\r', '\v').Replace('\n', '\v');
+
                 string cur;
                 try { cur = StripPhantomTrailingSeparator(el, vp.Current.Value ?? ""); }
                 catch { return false; }                                    // can't read reality → SetValue
                 if (streamStart) _emUndoBaseline = cur;                     // the `_` command, pre-animation
-                if (cur == text) return true;                              // already there
+                if (EolNorm(cur) == EolNorm(text)) return true;            // already there (any EOL dress)
 
                 IntPtr res;
                 if (IsSmallDelta(cur, text))
@@ -1823,7 +1855,7 @@ namespace OpenCues
                     try
                     {
                         SendMessageTimeoutW(hwnd, EM_SETSEL, IntPtr.Zero, new IntPtr(-1), SMTO_ABORTIFHUNG, 1500, out res);
-                        SendMessageTimeoutText(hwnd, EM_REPLACESEL, IntPtr.Zero /* fUndo=FALSE */, text, SMTO_ABORTIFHUNG, 1500, out res);
+                        SendMessageTimeoutText(hwnd, EM_REPLACESEL, IntPtr.Zero /* fUndo=FALSE */, emText, SMTO_ABORTIFHUNG, 1500, out res);
                     }
                     finally
                     {
@@ -1846,7 +1878,7 @@ namespace OpenCues
                         SendMessageTimeoutText(hwnd, EM_REPLACESEL, IntPtr.Zero /* fUndo=FALSE */, _emUndoBaseline, SMTO_ABORTIFHUNG, 1500, out res);
                     }
                     SendMessageTimeoutW(hwnd, EM_SETSEL, IntPtr.Zero, new IntPtr(-1), SMTO_ABORTIFHUNG, 1500, out res);
-                    SendMessageTimeoutText(hwnd, EM_REPLACESEL, new IntPtr(1) /* fUndo=TRUE */, text, SMTO_ABORTIFHUNG, 1500, out res);
+                    SendMessageTimeoutText(hwnd, EM_REPLACESEL, new IntPtr(1) /* fUndo=TRUE */, emText, SMTO_ABORTIFHUNG, 1500, out res);
                     SendMessageTimeoutW(hwnd, EM_SCROLLCARET, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out res);
                 }
                 finally
