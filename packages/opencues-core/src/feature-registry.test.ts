@@ -216,7 +216,6 @@ describe('feature-registry — the canonical features must exist', () => {
   // removed from FEATURES, ConfigLoader / FluidBlankSource / chrome-host
   // wiring breaks silently. This test pins the floor.
   const canonical = [
-    'fluid-blank-mode',
     'word-cues-mode',
     'tips-mode',
     'voice-mode',

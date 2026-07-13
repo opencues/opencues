@@ -200,25 +200,21 @@ Unlike a stateless per-call design, the runtime keeps a **module-level variant p
 
 The cache key deliberately OMITS identity/blank-context VALUES (in `safe` mode the LLM only ever sees token names; values substitute post-LLM), so a cached answer carrying `[FIRST NAME]` re-substitutes against whatever the identity value currently is on each hit. Ambient context IS part of the key — the same lookup phrase in different field contexts must not collide.
 
-### FILL vs WIPE
+### Always FILL
 
-The `MODE:` line above is now **LLM-emitted**, not runtime-computed — there is no `determineReplaceMode()` function; the fused prompt's rule is "WIPE if the whole input is a terse lookup phrase the ANSWER replaces; FILL if the ANSWER fills a gap in a sentence and the surrounding words stay":
+The fused prompt still asks the model for a `MODE:` line (`FILL`/`WIPE`) for
+wire-format compatibility, but the runtime **ignores it** — fluid resolution
+is statically always-FILL (see the note under § Feature gates above: the
+WIPE machinery was retired with the static-resolution design). The answer
+substitutes only the `_` token; every surrounding word the user typed stays.
 
-- **FILL** — the input ends with a copula/equation/question marker immediately before `_` (`is _`, `= _`, `? _`). The answer substitutes only the `_` token; the surrounding sentence is preserved.
+```
+the capital of france is _   →   the capital of france is Paris
+4 * 12 = _                   →   4 * 12 = 48
+capital of france _          →   capital of france Paris
+```
 
-  ```
-  the capital of france is _   →   the capital of france is Paris
-  4 * 12 = _                   →   4 * 12 = 48
-  ```
-
-- **WIPE** — the input is a bare lookup phrase. The entire span (lookup phrase + `_`) is wiped and replaced with the answer alone.
-
-  ```
-  capital of france _          →   Paris
-  weather in london _          →   13°C Partly cloudy
-  ```
-
-The runtime emits character-offset `spanStart`/`spanEnd` on the resulting `CueResult` so the editor knows how much to replace.
+Fluid results carry no `spanStart`/`spanEnd`; only the `_` is ever replaced.
 
 ### Task-trigger guard
 

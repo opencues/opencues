@@ -14,6 +14,10 @@ breaking.
 
 ## [Unreleased]
 
+### Removed — `fluid-blank-mode` from the `OPENCUES.md` schema (`0.7-alpha → 0.8-alpha`)
+
+`spec/schemas/opencues.schema.json` no longer documents the `fluid-blank-mode` key, and the valid-masters conformance fixture no longer carries it. The reference runtime retired the gate when static resolution made the fluid blank the always-on base layer; the schema had lagged. Third-party impact: fluid-blank enablement is not configurable via `OPENCUES.md` — a conformant runtime treats the fluid surface as always available (files that still carry the key are preserved-but-ignored under the unknown-frontmatter rule). Per-feature routing keys (`fluid-blank-provider` / `fluid-blank-model` / `fluid-blank-endpoint`) are unchanged.
+
 ### Changed (editorial)
 
 - `blank-spec.md` § Flag obligations — clarified that a `get` shape's

@@ -58,7 +58,7 @@ SETTING: <kebab-case scalar from the list above, OR the literal word NONE>
 VALUE: <one of the listed values for that scalar; empty when SETTING is NONE>
 CONFIDENCE: <a number between 0.0 and 1.0>
 
-ALWAYS emit all three lines, even when SETTING is NONE. NEVER truncate after the SETTING line. NEVER drop the -mode suffix from a setting name ('voice-mode' NOT 'voice'; 'debug-mode' NOT 'debug'; 'tips-mode' NOT 'tips'; 'word-cues-mode' NOT 'word-cues'; 'fluid-blank-mode' NOT 'fluid-blank'; 'transform-blank-mode' NOT 'transform-blank'; 'blank-trigger-mode' NOT 'blank-trigger'; 'ambient-context-mode' NOT 'ambient-context'; 'user-context-mode' NOT 'user-context'). The only setting without '-mode' is 'cursor-navigate'.
+ALWAYS emit all three lines, even when SETTING is NONE. NEVER truncate after the SETTING line. NEVER drop the -mode suffix from a setting name ('voice-mode' NOT 'voice'; 'debug-mode' NOT 'debug'; 'tips-mode' NOT 'tips'; 'word-cues-mode' NOT 'word-cues'; 'transform-blank-mode' NOT 'transform-blank'; 'blank-trigger-mode' NOT 'blank-trigger'; 'ambient-context-mode' NOT 'ambient-context'; 'user-context-mode' NOT 'user-context'). The only setting without '-mode' is 'cursor-navigate'.
 
 ROUTE TO A SETTING when:
   - The user names a setting either directly ("debug mode", "tips", "voice mode", "cursor navigate") or describes the SYMPTOM/BEHAVIOR clearly enough to identify exactly ONE setting from the list above ("read the tips aloud" → voice-mode; "I keep typing _italic_ and the blank fires early" → blank-trigger-mode; "let it use my personal info" → user-context-mode).

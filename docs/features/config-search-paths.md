@@ -79,7 +79,7 @@ The merge is implemented in `discoverFolderConfigs` and
 ## Special case: `OPENCUES.md` system settings
 
 The frontmatter of `OPENCUES.md` holds **system-wide settings**
-owned by the runtime — voice-mode, fluid-blank-mode, word-cues-mode,
+owned by the runtime — voice-mode, word-cues-mode,
 tips-mode, debug-mode, cursor-navigate, blank-trigger-mode,
 ambient-context-mode, identity-context-mode, plus numeric tunables
 (agent-debounce-ms, max-concurrent-auditors, blank-loading-*)

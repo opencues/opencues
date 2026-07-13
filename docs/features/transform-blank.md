@@ -32,7 +32,6 @@ You probably also want:
 
 ```yaml
 debug-mode: on        # see the pipeline trace per substitution
-fluid-blank-mode: on  # both blank handlers can coexist; instructions go to
                       # transform-blank, lookups go to fluid-blank
 ```
 

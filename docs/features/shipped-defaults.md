@@ -17,7 +17,7 @@ There is no top-level `CUES.md`/`BLANKS.md` in `defaults/` today — only the al
 
 ```
 defaults/
-├── OPENCUES.md          # Runtime system settings (voice-mode, fluid-blank-mode,
+├── OPENCUES.md          # Runtime system settings (voice-mode, word-cues-mode,
 │                        # llm-provider, agent-debounce-ms, ...) — frontmatter only.
 │                        # User-level only at runtime; schema declared in @opencues/core
 │                        # via FEATURES + MENU_TUNABLES.

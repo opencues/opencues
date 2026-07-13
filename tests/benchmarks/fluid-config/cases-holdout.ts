@@ -74,19 +74,6 @@ export const CASES_HOLDOUT: FluidConfigCase[] = [
     expected: { setting: 'voice-mode', value: 'inactive' },
   },
 
-  // fluid-blank-mode
-  {
-    id: 'ho-fluid-on',
-    category: 'hit-fuzzy',
-    input: 'I want underscores to do free-form LLM lookups _',
-    expected: { setting: 'fluid-blank-mode', value: 'on' },
-  },
-  {
-    id: 'ho-fluid-off',
-    category: 'hit-fuzzy',
-    input: 'only fire blanks on explicit keywords, no semantic lookups _',
-    expected: { setting: 'fluid-blank-mode', value: 'off' },
-  },
 
   // word-cues-mode
   {
