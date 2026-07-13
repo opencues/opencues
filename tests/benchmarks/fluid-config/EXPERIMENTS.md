@@ -263,4 +263,50 @@ recoverable by design (fluid-blank answers), untouched by this change.
 rule) validated on cerebras + groq; bench structurally cannot drift
 from production again.
 
-*Last updated: 2026-07-14.*
+## Experiment — v2.2: ACTION intent (undo/redo) added to the PRODUCTION prompt (2026-07-13)
+
+The July 2026 undo feature adds a fourth verdict kind (ACTION —
+undo/redo + count) to the production `SYSTEM_PROMPT` in
+`@opencues/core`'s `config-intent-source.ts`. The existing `fused.ts`
+bench drives its own settings-only prompt, so it cannot certify a
+production-prompt edit — this experiment introduces **`prod.ts`**,
+which drives the production `SYSTEM_PROMPT` + `parseConfigIntentOutput`
++ `validateAgainstRegistry` verbatim, plus **`cases-undo.ts`** (21
+ACTION cases: 15 multilingual positives incl. digit + number-word
+counts, 6 negatives pinning the outside-the-buffer boundary).
+
+**Method** (phantom-regression discipline): same-session baseline
+first, `--parallel 4`, cerebras-gpt-oss (the production default).
+Baseline prompt = `origin/master`'s file snapshot imported via
+`--prompt-module`; the tuned few-shot examples in the new prompt are
+byte-identical to baseline (the ACTION change is purely additive).
+
+**Results — settings suites (regression check):**
+
+| Suite | Baseline (pre-ACTION) | New (with ACTION) |
+|---|---|---|
+| in-prompt (61) | precision 28/28 = 100%, recall 28/33 = 84.8%, pass 56/61 | precision 28/28 = 100%, recall 28/33 = 84.8%, pass 56/61 |
+| holdout (34) | precision 14/14 = 100%, recall 12/20 = 60.0%, pass 26/34 | precision 14/14 = 100%, recall 13/20 = 65.0%, pass 27/34 |
+
+No settings regression: headline numbers identical on the in-prompt
+suite (the fail set shuffled by one case among the already-stale
+`user-context-mode` cases, which predate the identity-context rename);
+holdout moved +1 (noise-level, in the new prompt's favour). The
+overloaded-prompt regression the SUMMON experiment hit (recall
+~85% → ~60% when a second JOB was added) did not recur — classifying
+a fourth intent KIND is the same job shape, not a second job.
+
+**Results — undo suite (new):** precision 6/6 = 100%, recall
+14/15 = 93.3% (pass 20/21). The one miss is `ua-redo-that`
+("redo that _" → NONE, an FN — recoverable). Multilingual positives
+all passed: ja (incl. `3回元に戻して` → count 3), zh, es, de, fr
+(incl. `annuler les trois derniers` → count 3), ru.
+
+**Status:** ACTION intent certified — settings precision gate intact
+(100%), undo recall 93.3% ≥ the 80% target. `prod.ts` is now the
+canonical runner for any future production-prompt edit; `fused.ts`
+stays for continuity with the v2.x settings-only history.
+
+---
+
+*Last updated: 2026-07-15.*
