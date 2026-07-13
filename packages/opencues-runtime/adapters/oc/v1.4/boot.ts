@@ -203,6 +203,7 @@ export function boot(host: HostInfo): BootResult {
       onSnapshot: host.statusSnapshotHook
         ? (payload) => host.statusSnapshotHook!(payload)
         : undefined,
+      undoStatus: () => shared.undoJournal.recentApplyReport(8000),
     }, configLoader, spanFillState, selectorSatelliteState, agentTaskState);
     statusline.subscribe();
   }

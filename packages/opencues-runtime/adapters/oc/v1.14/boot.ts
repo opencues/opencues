@@ -247,6 +247,7 @@ export function boot(host: HostInfo): BootResult {
         ? (payload) => host.statusSnapshotHook!(payload)
         : undefined,
       kataStatus: () => kataCoach.status(),
+      undoStatus: () => shared.undoJournal.recentApplyReport(8000),
     }, configLoader, spanFillState, selectorSatelliteState, agentTaskState);
     statusline.subscribe();
   }

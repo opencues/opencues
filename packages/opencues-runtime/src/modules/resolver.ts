@@ -1,4 +1,4 @@
-// Resolver — debounced LLM-backed cycle population.
+// Resolver â debounced LLM-backed cycle population.
 //
 // Subscribes onTextChange (user-source only). After a quiet period
 // (debounceMs, default 500), builds a CueContext from the current text
@@ -8,7 +8,7 @@
 //
 // In-flight cancellation: a generation counter is bumped on every
 // scheduleResolve. Resolved batches whose generation no longer matches
-// the latest are dropped — prevents stale alts overwriting newer state.
+// the latest are dropped â prevents stale alts overwriting newer state.
 //
 // User mid-cycle protection: if a DynDef entry has currentIndex > 0
 // (user has cycled past the original), the resolver leaves it alone.
@@ -28,6 +28,7 @@ import { applyMarkdownAwareSplice, applyMarkdownAwareSubstitution } from './mark
 import { threeWayMerge } from './word-diff';
 import { applyScalarAndPersist } from '../util/apply-scalar';
 import { diffSplice, type PendingTransaction, type UndoJournal } from '../state/undo-journal';
+import { UndoApplier } from './undo';
 
 /** Minimal interface MarkdownRender exposes for rich-text injection.
  *  Keeps Resolver from importing MarkdownRender directly (would create
@@ -54,7 +55,7 @@ export interface ResolverOptions {
   /**
    * Provider override from a host-level UI (chrome popup's Provider
    * dropdown). When set, takes precedence over the `llm-provider:`
-   * scalar in OPENCUES.md. Empty / undefined → no override and the
+   * scalar in OPENCUES.md. Empty / undefined â no override and the
    * settings scalar (or auto-route) wins.
    */
   readonly providerOverride?: string;
@@ -79,12 +80,12 @@ export interface ResolverOptions {
    * non-Groq provider without rebuilding the patch.
    */
   readonly apiKeys?: Readonly<Record<string, string | undefined>>;
-  /** Default 500ms — same as v1's auto-submit debounce. */
+  /** Default 500ms â same as v1's auto-submit debounce. */
   readonly debounceMs?: number;
   /** Optional injection seam for tests. When set, runtime uses this instead
    *  of constructing a NodeHttpAdapter. Should expose at least .post(). */
   readonly httpAdapter?: unknown;
-  /** Same — inject the resolver build directly (mostly for testing). */
+  /** Same â inject the resolver build directly (mostly for testing). */
   readonly resolverFactory?: (cuesConfig: unknown, blanksConfig: unknown, opts: unknown) => unknown;
   /**
    * Host-specific in-buffer message shown when no LLM source could be
@@ -97,7 +98,7 @@ export interface ResolverOptions {
    * Host-specific formatter for user-actionable LLM call failures
    * (401/404/429/network). Wired into FluidBlankSource so the buffer
    * shows a useful message instead of silent no-op. Host decides the
-   * wording (chrome → "open the extension popup", native → "edit
+   * wording (chrome â "open the extension popup", native â "edit
    * ~/.cues/.env"). Omit to keep the silent failure.
    */
   readonly formatLLMErrorAsSubstitute?: (
@@ -108,7 +109,7 @@ export interface ResolverOptions {
    * Word-indices of `_` slots claimed by keyword-bound BlankFill blanks
    * (volume / brightness / weather / stocks-ticker / etc.) for the given
    * text. When every `_` in the buffer is in this set, the resolver
-   * skips the `blankContextProvider()` fetch — none of the sources that
+   * skips the `blankContextProvider()` fetch â none of the sources that
    * consume the catalog (FluidBlank, TransformBlank) will fire because
    * they all cede to keyword-bound BlankFill. Wired in `boot-common`
    * from `BlankFill.scan(text)`. Omitting it leaves the catalog fetch
@@ -119,7 +120,7 @@ export interface ResolverOptions {
   /**
    * Modal-override gate. When this returns true for the incoming text,
    * the resolver skips the entire dispatch (no cue/blank/LLM work) for
-   * that change — pending debounce is cancelled too. Wired by boots
+   * that change â pending debounce is cancelled too. Wired by boots
    * that mount a modal module (KataCoach today): while a kata
    * is active, tutorial mode overrides all normal cue/blank behaviour,
    * and control phrases (`start kata 1 _`) must never race
@@ -139,10 +140,10 @@ interface CueResultLike {
   alternatives: string[];
   cueTip?: string;
   altCueTips?: Record<string, string>;
-  /** Multi-word span in CHARACTER offsets — set by FluidBlankSource WIPE mode. */
+  /** Multi-word span in CHARACTER offsets â set by FluidBlankSource WIPE mode. */
   spanStart?: number;
   spanEnd?: number;
-  /** Source id — used to detect fluid-blank for auto-substitute. */
+  /** Source id â used to detect fluid-blank for auto-substitute. */
   source?: string;
   /** Source-specific metadata. TransformBlank uses taskAction for agent
    *  task commands (TASK_ARM/ADD/STOP/SHOW). */
@@ -150,11 +151,11 @@ interface CueResultLike {
 }
 
 /** Duck-typed view of RoutedWordSourceGroup. We don't import the
- *  class — the runtime treats core sources as opaque — but we do
+ *  class â the runtime treats core sources as opaque â but we do
  *  reach in for the public `classify(word)` helper to surface
  *  per-word routing decisions on `resolver.completed`. The only
  *  shape we care about: `id === 'word-cues'` + `classify(word)
- *  → { id: string } | null`. */
+ *  â { id: string } | null`. */
 interface RoutedWordSourceGroupLike {
   readonly id: string;
   classify(word: string): { id?: string } | null;
@@ -188,7 +189,7 @@ function featureLLM(settings: { get(k: string): string | undefined }, prefix: st
  * Translate a `*-llm-model` scalar's raw value into a model id or
  * undefined. The literal `default` (used as the first cycleable
  * value in the `*-llm-model` FEATURES entries) means "fall through
- * to the provider's defaultModel" — semantically identical to the
+ * to the provider's defaultModel" â semantically identical to the
  * scalar being absent. Keeping `default` as an explicit value (rather
  * than deleting the line from OPENCUES.md) lets the cycling menu
  * express "reset to provider default" without a delete-scalar code
@@ -219,9 +220,9 @@ function isRoutedWordGroup(s: unknown): s is RoutedWordSourceGroupLike {
 }
 
 /** True when no `_` slot will be available to a catalog-consuming source.
- *  Two cases collapse: (1) buffer has no `_` at all — neither FluidBlank
+ *  Two cases collapse: (1) buffer has no `_` at all â neither FluidBlank
  *  nor TransformBlank fires (both need `_`); (2) every `_` is claimed by
- *  a keyword-bound BlankFill slot — both sources cede in that case. In
+ *  a keyword-bound BlankFill slot â both sources cede in that case. In
  *  either case the per-resolve blank-context provider fetch (N sequential
  *  script/network calls) is pure waste. */
 function noBlankContextConsumer(
@@ -233,18 +234,18 @@ function noBlankContextConsumer(
   for (let i = 0; i < cleanWords.length; i++) {
     if (cleanWords[i] !== '_') continue;
     sawBlank = true;
-    if (!claimedSet.has(i)) return false;  // free `_` — fluid/transform may consume
+    if (!claimedSet.has(i)) return false;  // free `_` â fluid/transform may consume
   }
-  // Either no `_` at all, or every `_` was keyword-bound — either way no
+  // Either no `_` at all, or every `_` was keyword-bound â either way no
   // catalog-consuming source will fire.
   return true;
 }
 
 /**
  * Synthetic DynDefs key base for sentence-cues that collide on a whitespace
- * word (spaceless CJK: two `。`-separated sentences share one word). The
+ * word (spaceless CJK: two `ã`-separated sentences share one word). The
  * word-keyed DynDefs map can't hold two cues at the natural index, so the
- * later sentence registers at `BASE + spanStart` — far out of the real
+ * later sentence registers at `BASE + spanStart` â far out of the real
  * word-index range (a buffer would need 2M+ chars to reach it), unique per
  * sentence, and stable across re-resolves. Synthetic-keyed defs are invisible
  * to the word-iterating consumers (dim word-loop, navigation), so DimRender
@@ -261,14 +262,14 @@ export class Resolver {
   private _unsubKey: Unsubscribe | null = null;
   /** One-shot flag: set TRUE when a plain `_` keystroke arrives, cleared
    *  at the END of the next `onTextChange`. Gates blank activation on
-   *  EXPLICIT user intent — a `_` that appears in the buffer without a
+   *  EXPLICIT user intent â a `_` that appears in the buffer without a
    *  corresponding keystroke (paste, programmatic setText, cursor-
    *  relocation exposing an attached `_`, e.g. typing `monologue_` then
    *  splitting to `monologue _`) MUST NOT fire FluidBlank /
    *  TransformBlank / ConfigIntent.
    *
    *  Why one-shot (not a time window): a 1500ms timestamp window leaves a
-   *  hole for fast cursor-splits — type `monologue_`, move cursor and
+   *  hole for fast cursor-splits â type `monologue_`, move cursor and
    *  press space in <1500ms, and the gate still reads "fresh". One-shot
    *  ties freshness to the SPECIFIC onTextChange that paired with the
    *  keystroke; the cursor-split's onTextChange happens AFTER the flag
@@ -286,48 +287,48 @@ export class Resolver {
    *  mismatch. Drops provider $$$ + rate-limit pressure during
    *  fast typing. Null between resolves. */
   private _inFlightController: AbortController | null = null;
-  /** Last user-typed text — used to detect when `_` was just added so we
+  /** Last user-typed text â used to detect when `_` was just added so we
    *  can bypass the debounce and fire fluid-blank resolution immediately. */
   private _lastInputText = '';
   /** Timestamp of the most recent TASK_STOP dispatch. Used to suppress
-   *  TASK_ARM verdicts that arrive shortly after a stop — they're almost
+   *  TASK_ARM verdicts that arrive shortly after a stop â they're almost
    *  certainly stale in-flight TransformBlank responses (the LLM call was
    *  issued when the task was armed, returned after the user disarmed).
    *  Without this guard, the stale ARM re-arms the task and the agent
-   *  starts rewriting subsequent text — observed in scenarios that run
+   *  starts rewriting subsequent text â observed in scenarios that run
    *  AFTER agent-rewrite tests inadvertently see their buffer rewritten.
-   *  Window: 3s — covers typical LLM round-trip (cerebras ~300ms,
+   *  Window: 3s â covers typical LLM round-trip (cerebras ~300ms,
    *  generous slack). A user who intentionally re-arms an identical
    *  prompt within 3s of stopping is the only false-positive case;
    *  acceptable trade for blocking the silent task leak. */
   private _lastTaskStopAt = 0;
-  /** Prompt of the task that was last stopped — paired with
+  /** Prompt of the task that was last stopped â paired with
    *  _lastTaskStopAt to make the stale-arm guard PRECISE. A TASK_ARM
    *  within the stale window whose prompt MATCHES the just-stopped
    *  task's prompt is the in-flight LLM response we want to drop. A
    *  TASK_ARM with a DIFFERENT prompt is a fresh user action and
    *  must be allowed. Pre-prompt-comparison the guard was too
-   *  aggressive — back-to-back agent-rewrite scenarios with a fast
+   *  aggressive â back-to-back agent-rewrite scenarios with a fast
    *  provider (claude-cli) would drop the second scenario's ARM. */
   private _lastTaskStopPrompt = '';
 
   /** Snapshot of the opt-in settings the resolver was last built with.
-   *  Re-computed on every resolve; mismatch → rebuildResolver before
+   *  Re-computed on every resolve; mismatch â rebuildResolver before
    *  running so `OPENCUES.md` flag flips take effect on the next
    *  keystroke (no host restart required). */
   private _lastBuildKey: string | null = null;
 
-  /** Full state reset — wipes every per-buffer / per-keystroke piece
+  /** Full state reset â wipes every per-buffer / per-keystroke piece
    *  of internal state so the next resolve runs from a clean slate.
    *  Called by hosts that reuse a single runtime instance across
-   *  buffer lifecycle boundaries — chrome's panel close+reopen,
+   *  buffer lifecycle boundaries â chrome's panel close+reopen,
    *  shell's `oc-edit --keep-alive` mode where one Bun process
-   *  handles multiple Alt+Shift+↑ sessions (see
-   *  integrations/shell/CLAUDE.md § Per-buffer state reset). Without
+   *  handles multiple Alt+Shift+â sessions (see
+   *  integrations/shell/CLAUDE.md Â§ Per-buffer state reset). Without
    *  this, _lastInputText / _lastBuildKey / in-flight controllers
    *  carry across the boundary and the next session sees stale
    *  state. Also reachable via the event bridge's `reset` command
-   *  for off-process drivers. NOT a substitute for dispose — wraps
+   *  for off-process drivers. NOT a substitute for dispose â wraps
    *  neither unsubscribe nor source teardown. After resetState() the
    *  resolver is still wired and ready; it just thinks it's brand
    *  new. _httpAdapter + _resolver + _sources are kept because
@@ -352,32 +353,32 @@ export class Resolver {
     // primings, _rewriteCache, etc.) which we can't reach through
     // module-level reset. Re-instantiating the whole resolver via
     // rebuildResolver gives us fresh source instances with empty
-    // caches — at the cost of one extra rebuild on the next resolve.
+    // caches â at the cost of one extra rebuild on the next resolve.
     // _lastBuildKey=null guarantees the buildKey-equality short-circuit
     // can't skip the rebuild.
     this._lastBuildKey = null;
     // Clear TransformBlankSource's STATIC variant pool. It survives
     // instance rebuilds by design (production wants cache survival
     // across resolver rebuilds on hosts where the resolver re-creates
-    // sources on every focused-target flip — e.g. chrome's universal
+    // sources on every focused-target flip â e.g. chrome's universal
     // integration). But a full resetState is meant to leave NO stale
     // state behind: a user who reloads OPENCUES.md mid-session (provider
     // change, mode toggle) triggers a source rebuild via resetState,
     // and without this clear the pool keeps returning stale rewrites
     // for the previous provider/model until LRU eviction cycles them
     // out. A keep-alive host crossing a session boundary has the
-    // same need — the next session's first identical-buffer trigger
+    // same need â the next session's first identical-buffer trigger
     // shouldn't reuse rewrites the previous session generated.
-    // Best-effort import — production reset paths don't import @opencues/core.
+    // Best-effort import â production reset paths don't import @opencues/core.
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { TransformBlankSource } = require('@opencues/core') as { TransformBlankSource?: { resetVariantPoolForTest?: () => void } };
       TransformBlankSource?.resetVariantPoolForTest?.();
-    } catch { /* swallow — production paths without core lib still work */ }
-    this.adapter.log('info', 'Resolver: resetState — rebuilding sources');
+    } catch { /* swallow â production paths without core lib still work */ }
+    this.adapter.log('info', 'Resolver: resetState â rebuilding sources');
     if (this._resolver) this.rebuildResolver();
-    else this.adapter.log('warn', 'Resolver: resetState — _resolver was null, skipping rebuild');
-    // _generation is monotonic by design — bumping it just discards
+    else this.adapter.log('warn', 'Resolver: resetState â _resolver was null, skipping rebuild');
+    // _generation is monotonic by design â bumping it just discards
     // any in-flight results without changing semantics on the next
     // resolve. Leave it alone; the controller-abort above is what
     // actually cancels in-flight LLM calls.
@@ -393,31 +394,31 @@ export class Resolver {
     private agentTaskState?: AgentTaskState,
     /** Shared loading-animator from boot-common. Drives the per-slot
      *  glyph progression while Fluid/Transform pipelines are in flight.
-     *  Optional — when omitted, slots stay static during resolution
+     *  Optional â when omitted, slots stay static during resolution
      *  (legacy behaviour pre-2026-05-13). */
     private blankLoading?: BlankLoadingAnimator,
-    /** Shared MarkdownRender — exposes the last styled-text payload so
+    /** Shared MarkdownRender â exposes the last styled-text payload so
      *  the resolver can re-inject markdown markers (`**bold**`,
      *  `*italic*`, etc.) into EXTRACT/APPLY input. Without this, an
      *  LLM rewrite asked to "make it caps" loses any prior bold the
-     *  user had on a word — markers were stripped from the buffer at
+     *  user had on a word â markers were stripped from the buffer at
      *  write time and the LLM never sees them on the next pass.
-     *  Optional — when omitted, no rich-text view is built. */
+     *  Optional â when omitted, no rich-text view is built. */
     private markdownRender?: MarkdownStylesProvider,
-    /** Shared SelectorSatelliteState — needed by the config-intent
+    /** Shared SelectorSatelliteState â needed by the config-intent
      *  substitution branch to register the same cycling state that
      *  BlankFill registers for the keyword-bound `opencues settings _`
      *  path. Without this, ConfigIntent can paint the satellite shape
-     *  but cycling won't act on it. Optional — when omitted, the
+     *  but cycling won't act on it. Optional â when omitted, the
      *  config-intent branch falls back to inline paint only (no
      *  cycling). */
     private selectorSatelliteState?: SelectorSatelliteStateRef,
-    /** Blank-as-context provider — called at every resolve to produce
+    /** Blank-as-context provider â called at every resolve to produce
      *  the ambient-blank snapshot the FluidBlank source consumes.
      *  Hosts that haven't opted into the feature can omit this; the
      *  resolver then passes `undefined` for `context.blankContext` and
      *  blank-context is inert. Implementations are expected to be
-     *  cheap (cache-backed) — invoked on every keystroke that fires a
+     *  cheap (cache-backed) â invoked on every keystroke that fires a
      *  resolve. */
     private blankContextProvider?: () => Promise<
       | { fields: ReadonlyArray<{ token: string; description: string; value: string }>;
@@ -425,7 +426,7 @@ export class Resolver {
           mode: 'safe' | 'raw' }
       | undefined
     >,
-    /** Phase 4 — capability-gated on-demand blank fetch for the typed-sentinel
+    /** Phase 4 â capability-gated on-demand blank fetch for the typed-sentinel
      *  parameterized tier. Built by `buildBlankFetchProvider`; undefined when
      *  no blank opts into `ai-callable`. */
     private blankFetchProvider?: {
@@ -433,19 +434,22 @@ export class Resolver {
       getRenderedBlock: () => string;
       blankFetch: (blankName: string, arg: string) => Promise<string | undefined>;
     },
-    /** Undo journal — every substitute the resolver applies records a
+    /** Undo journal â every substitute the resolver applies records a
      *  transaction so `undo _` can revert it; also enables the ACTION
      *  branch (undo/redo application) itself. Omit to disable both. */
     private undoJournal?: UndoJournal,
   ) {}
 
-  /** Pending config-intent transaction — opened lazily by the wrapped
+  /** Pending config-intent transaction â opened lazily by the wrapped
    *  applyOpencuesScalar (scalar writes land at EMIT time inside core's
    *  getCues), closed by the config-intent substitute branch (which
    *  adds the buffer entry) or, on a race-bail, by resolveAndApply's
-   *  end-of-pass commit — the scalar DID change, so a scalar-only
+   *  end-of-pass commit â the scalar DID change, so a scalar-only
    *  transaction is correct. */
   private _pendingConfigIntentTx: PendingTransaction | null = null;
+
+  /** Lazily-constructed applier for the ACTION (undo/redo) branch. */
+  private _undoApplier: UndoApplier | null = null;
 
   /** Commit + clear any open config-intent transaction (scalar-only
    *  when the buffer splice never landed). */
@@ -470,14 +474,14 @@ export class Resolver {
   }
 
   /** Arm the one-shot keystroke flag on plain `_` presses (no
-   *  ctrl/alt/meta) — but ONLY when the simulated insertion would
+   *  ctrl/alt/meta) â but ONLY when the simulated insertion would
    *  produce a standalone `_` word. A `_` typed adjacent to existing
-   *  letters (`monologue` + `_` → `monologue_`, or inside a word like
+   *  letters (`monologue` + `_` â `monologue_`, or inside a word like
    *  `monolog_ue`) is structurally NOT a blank trigger; arming on those
    *  would re-open the cursor-split bug (the keystroke happens BEFORE
    *  the split, so a time-window approach can't distinguish them).
    *  Mirrors the same standalone check BlankFill's `onUnderscoreKey`
-   *  uses (line ~880). Returns false unconditionally — host inserts
+   *  uses (line ~880). Returns false unconditionally â host inserts
    *  the `_` normally. The flag is cleared at the end of the next
    *  onTextChange dispatch (or kept across a spaced-mode unconfirmed
    *  `_` so the confirming-space's text-change can still see it). */
@@ -498,16 +502,16 @@ export class Resolver {
   }
 
   /**
-   * Handle a TASK_* command from EXTRACT — mutate AgentTaskState and
+   * Handle a TASK_* command from EXTRACT â mutate AgentTaskState and
    * substitute new buffer content. Only the trailing trigger phrase
    * (`agentically <X> _`, `add task <X> _`, `stop task _`, `current task
    * _`) is stripped from the buffer; any prose the user typed before
    * the trigger is preserved so the agent can act on it.
    *
-   * - TASK_ARM   → arm a fresh task; strip trigger fragment
-   * - TASK_ADD   → append to existing task prompt; strip trigger fragment
-   * - TASK_STOP  → clear task; strip trigger fragment
-   * - TASK_SHOW  → strip trigger fragment, append current task prompt
+   * - TASK_ARM   â arm a fresh task; strip trigger fragment
+   * - TASK_ADD   â append to existing task prompt; strip trigger fragment
+   * - TASK_STOP  â clear task; strip trigger fragment
+   * - TASK_SHOW  â strip trigger fragment, append current task prompt
    */
   private handleTaskCommand(action: string, payload: string, originalText: string, _liveText: string): void {
     if (!this.agentTaskState) return;
@@ -540,19 +544,19 @@ export class Resolver {
     if ((action === 'TASK_ARM' || action === 'TASK_ADD') && this._lastTaskStopAt > 0) {
       const sinceStopMs = Date.now() - this._lastTaskStopAt;
       // Only drop if WITHIN the stale window AND the prompt matches the
-      // task we just stopped — that's the in-flight-LLM-response case.
+      // task we just stopped â that's the in-flight-LLM-response case.
       // A different prompt within the window is a fresh user action
       // (e.g. running scenario 31 right after scenario 21's cleanup) and
       // must be allowed through; the original guard was too aggressive.
       if (sinceStopMs < 3000 && payload === this._lastTaskStopPrompt) {
-        this.adapter.log('info', `AgentTask: dropping stale ${action} (arrived ${sinceStopMs}ms after TASK_STOP, prompt matches just-stopped task — likely in-flight LLM response, prompt="${payload}")`);
+        this.adapter.log('info', `AgentTask: dropping stale ${action} (arrived ${sinceStopMs}ms after TASK_STOP, prompt matches just-stopped task â likely in-flight LLM response, prompt="${payload}")`);
         return;
       }
     }
 
     // Host opt-out gate for agentic flows. Hosts whose currently-focused
-    // target can't support background agent rewrites (chrome on Quill —
-    // see adapter.ts § supportsAgentRewrite) silently drop ARM/ADD
+    // target can't support background agent rewrites (chrome on Quill â
+    // see adapter.ts Â§ supportsAgentRewrite) silently drop ARM/ADD
     // verdicts here by rewriting them to a no-op that still trims the
     // trigger phrase from the buffer (clean feedback), but doesn't arm
     // the task. STOP is still honored so users can disarm tasks armed
@@ -563,7 +567,7 @@ export class Resolver {
       ? 'TASK_SUPPRESSED'
       : action;
     if (effectiveAction === 'TASK_SUPPRESSED') {
-      this.adapter.log('info', `AgentTask: arm/add suppressed — current target does not support agent-rewrite (supportsAgentRewrite=false)`);
+      this.adapter.log('info', `AgentTask: arm/add suppressed â current target does not support agent-rewrite (supportsAgentRewrite=false)`);
     }
     switch (effectiveAction) {
       case 'TASK_SUPPRESSED':
@@ -572,7 +576,7 @@ export class Resolver {
         break;
       case 'TASK_ARM':
         state.arm(payload);
-        this.adapter.log('info', `AgentTask: ARM (taskId=${state.taskId?.slice(0, 8)}…, prompt="${payload}")`);
+        this.adapter.log('info', `AgentTask: ARM (taskId=${state.taskId?.slice(0, 8)}â¦, prompt="${payload}")`);
         newText = prefix;
         newCursor = newText.length;
         break;
@@ -580,10 +584,10 @@ export class Resolver {
         if (!state.armed) {
           // Treat add-without-prior-arm as an arm
           state.arm(payload);
-          this.adapter.log('info', `AgentTask: ADD-as-ARM (no prior task; taskId=${state.taskId?.slice(0, 8)}…, prompt="${payload}")`);
+          this.adapter.log('info', `AgentTask: ADD-as-ARM (no prior task; taskId=${state.taskId?.slice(0, 8)}â¦, prompt="${payload}")`);
         } else {
           state.appendToPrompt(payload);
-          this.adapter.log('info', `AgentTask: ADD (taskId=${state.taskId?.slice(0, 8)}…, prompt="${state.prompt}")`);
+          this.adapter.log('info', `AgentTask: ADD (taskId=${state.taskId?.slice(0, 8)}â¦, prompt="${state.prompt}")`);
         }
         newText = prefix;
         newCursor = newText.length;
@@ -606,7 +610,7 @@ export class Resolver {
         break;
       }
       default:
-        return;  // unknown action — defensive no-op
+        return;  // unknown action â defensive no-op
     }
 
     if (this.adapter.pushText) {
@@ -617,7 +621,7 @@ export class Resolver {
       this.adapter.forceRender();
     }
 
-    // TASK_SHOW emits the substituted prompt as a DynDef span — same
+    // TASK_SHOW emits the substituted prompt as a DynDef span â same
     // mechanic fluid-blank uses for WIPE substitutions. Press
     // Ctrl+Alt+Down on the inserted prompt to cycle back to empty
     // (deletes the whole substitution as a single unit, leaving any
@@ -640,7 +644,7 @@ export class Resolver {
           currentIndex: 1,
           spanStart,
           spanEnd,
-          // Lock against re-resolution by other LLM-driven sources —
+          // Lock against re-resolution by other LLM-driven sources â
           // same flag fluid-blank's substitutions use.
           blankName: 'task-show',
         });
@@ -674,7 +678,7 @@ export class Resolver {
           // Lazy require so tests without opencues-core/node-http-adapter still load.
           // eslint-disable-next-line @typescript-eslint/no-var-requires
           const { NodeHttpAdapter } = require('@opencues/core/node-http-adapter');
-          this._httpAdapter = new NodeHttpAdapter({ maxSockets: 2, timeout: 30000 }); // BROWSER-SAFE-ALLOW: native-host fallback only — reached when this.options.httpAdapter is unset (chrome always passes it)
+          this._httpAdapter = new NodeHttpAdapter({ maxSockets: 2, timeout: 30000 }); // BROWSER-SAFE-ALLOW: native-host fallback only â reached when this.options.httpAdapter is unset (chrome always passes it)
         } catch (err) {
           this.adapter.log('error', 'Resolver: NodeHttpAdapter load failed', err);
           return;
@@ -695,9 +699,9 @@ export class Resolver {
     // `llm-model:` > host-supplied default. Lets users switch providers
     // without re-applying the patch.
     //
-    // Per-feature settings (resolution order, most → least specific):
+    // Per-feature settings (resolution order, most â least specific):
     //   per-cue/blank frontmatter (`provider:` / `model:`)
-    //     > per-feature (`agent-provider:`, `fluid-blank-model:`, …)
+    //     > per-feature (`agent-provider:`, `fluid-blank-model:`, â¦)
     //       > global (`llm-provider:` / `llm-model:`)
     //         > built-in default (cerebras / gpt-oss-120b)
     //
@@ -725,22 +729,22 @@ export class Resolver {
       // Global tier (read once per build). Prose-bearing sources
       // (word-cues, sentence-cues, auditors, agent-rewrite) refuse to
       // dispatch through providers with `trainsOnInput: true` (today
-      // only opencode-zen) — that guard is enforced at source-build
+      // only opencode-zen) â that guard is enforced at source-build
       // time downstream, not here, because we still need to surface
       // the user's choice to blank sources (which CAN use it via
       // explicit `<feature>-llm-provider: opencode-zen` + `model: free`).
       globalProvider: this.options.providerOverride ?? settings.get('llm-provider'),
-      // Global MODEL tier: ONLY an explicit choice — host-UI modelOverride
+      // Global MODEL tier: ONLY an explicit choice â host-UI modelOverride
       // (chrome popup) or the `llm-model:` scalar in OPENCUES.md. We
       // deliberately do NOT fall back to `this.options.defaultModel` here.
       //
       // That host default is provider-BLIND (the legacy Groq-namespaced
       // `openai/gpt-oss-120b`). When the provider auto-routes to a
-      // provider with a different model namespace — e.g. Cerebras serves
-      // the same weights as bare `gpt-oss-120b` — injecting the host
+      // provider with a different model namespace â e.g. Cerebras serves
+      // the same weights as bare `gpt-oss-120b` â injecting the host
       // default as the global model overrides the provider's own correct
       // `defaultModel` and ships an INVALID (provider, model) pair
-      // (`cerebras` + `openai/gpt-oss-120b` → provider `model_not_found`).
+      // (`cerebras` + `openai/gpt-oss-120b` â provider `model_not_found`).
       // With no explicit model, resolveLLM falls through to the resolved
       // provider's `defaultModel`, which is valid by construction for
       // whatever provider auto-route (or an explicit `llm-provider:`)
@@ -751,14 +755,14 @@ export class Resolver {
       globalEndpoint: (this.options.endpointOverride && this.options.endpointOverride.length > 0
         ? this.options.endpointOverride
         : settings.get('llm-endpoint') ?? this.options.endpoint),
-      // Per-bucket override tiers — the three-bucket simplification.
+      // Per-bucket override tiers â the three-bucket simplification.
       // Sits BETWEEN per-feature and global at the resolveFor layer.
       // `inherit` collapses to undefined in build-sources so the
       // bucket effectively disappears and global takes over. Auditors
       // resolve through boot-common's buildAgentLLMResolver and never
       // touch this path.
       cuesBucketProvider: this.configLoader.opencuesState.cuesLlmProvider,
-      // `default` means "use the provider's defaultModel" — translate
+      // `default` means "use the provider's defaultModel" â translate
       // to undefined so the resolver's fallback chain kicks in. Same
       // semantics as the scalar being absent, but keeping `default` as
       // an explicit cycleable value lets `config _` cycling express
@@ -776,15 +780,15 @@ export class Resolver {
       sentenceCues: featureLLM(settings, 'sentence-cues'),
       // Spelling is a regular config-driven cue now (defaults/cues/
       // spelling.md). It inherits per-cue / `word-cues-*` / global LLM
-      // routing through the standard ConfigSource path — no per-feature
+      // routing through the standard ConfigSource path â no per-feature
       // wiring needed here.
       blanks: this.configLoader.folderConfigs?.blankOverrides ?? {},
       // disable lists from CUES.md / BLANKS.md. Each is the union across
-      // every search-path layer — ConfigLoader merged them in load().
+      // every search-path layer â ConfigLoader merged them in load().
       disableCues: this.configLoader.folderConfigs?.cuesConfig?.disableCues ?? [],
       disableBlanks: this.configLoader.folderConfigs?.blanksConfig?.disableBlanks ?? [],
       // ALL opt-in: every cue surface defaults to OFF. User flips on via
-      // OPENCUES.md. Missing settings → off. Explicit "on" → on.
+      // OPENCUES.md. Missing settings â off. Explicit "on" â on.
       // See packages/opencues-core/src/sources/build-sources.ts for what
       // each flag gates.
       // Fluid is the ALWAYS-ON base layer: every `_` not claimed by a blank
@@ -793,24 +797,27 @@ export class Resolver {
       enableFluidBlank: true,
       enableTransformBlank: settings.get('transform-blank-mode') === 'on',
       enableConfigIntent: settings.get('fluid-config-mode') === 'on',
+      // Deliberate `!== 'off'` polarity: undo-mode defaults ON even on
+      // installs whose OPENCUES.md pre-dates the scalar (no line at all).
+      enableUndoActions: settings.get('undo-mode') !== 'off',
       enableSentenceCues: settings.get('sentence-cues-mode') === 'on',
       enableWordCues: settings.get('word-cues-mode') === 'on',
       // `max-thinking` (default on). Threaded into every LLM source's
       // dispatch ctx; @opencues/core/model-thinking.ts resolves the
       // per-model reasoning ceiling (on) vs reduced level (off). Only
-      // `off` changes anything — `on` reproduces the prior behaviour.
+      // `off` changes anything â `on` reproduces the prior behaviour.
       maxThinking: (settings.get('max-thinking') ?? 'on') !== 'off',
-      // applyOpencuesScalar — ConfigIntentSource's side-effect callback.
+      // applyOpencuesScalar â ConfigIntentSource's side-effect callback.
       //
       // Does TWO things, matching the pair that satellite cycling
       // always does together (cycling.ts:cycleSelectorSatellite):
-      //   1. ConfigLoader.applyOpenCuesScalar — updates in-memory
+      //   1. ConfigLoader.applyOpenCuesScalar â updates in-memory
       //      state + arms 2.5s reload suppression.
       //   2. invokeOrSpawn opencues blank with `set <setting> <value>`
-      //      — actually writes the file. Without this the in-memory
+      //      â actually writes the file. Without this the in-memory
       //      flip reverts the next time reload-suppression expires and
       //      ConfigLoader reads the un-modified file (caught 2026-05-19
-      //      via the agentic harness — `turn on voice mode _` showed
+      //      via the agentic harness â `turn on voice mode _` showed
       //      `voice-mode active` for ~2.5s then snapped back to
       //      inactive). Cycling's path always pairs the in-memory
       //      update with a `set` invocation; ConfigIntent was missing
@@ -831,11 +838,11 @@ export class Resolver {
             newValue: value,
           });
         }
-        // Shared in-memory + persist pair — see util/apply-scalar.ts
+        // Shared in-memory + persist pair â see util/apply-scalar.ts
         // (also used by the UndoApplier's scalar-write inversion).
         await applyScalarAndPersist(this.adapter, this.configLoader, setting, value);
       },
-      // Debug log sink — surfaces TransformBlankSource pipeline traces
+      // Debug log sink â surfaces TransformBlankSource pipeline traces
       // when OPENCUES.md `debug-mode: on`. The adapter.log gates 'debug'
       // level via isDebugEnabled (set up in boot-common.ts), so off-mode
       // users get no log spam.
@@ -850,12 +857,12 @@ export class Resolver {
       // adapter.emitEvent. Silent when emitEvent is undefined (no
       // event-bridge subscribed). Each source's event union is
       // imported dynamically because cuesCore is type-erased at the
-      // seam (see CuesCoreLike) — the explicit parameter types keep
+      // seam (see CuesCoreLike) â the explicit parameter types keep
       // strict-mode happy without re-importing the whole core surface.
       // TransformBlank + FluidBlank lifecycle events go through the
       // event-bridge for runtime consumers (debug-mode visualisers,
       // event-stream taps, etc.). The `started` events ALSO get an
-      // info-level log line — they carry the resolved provider/model
+      // info-level log line â they carry the resolved provider/model
       // (and mode, for transform-blank), and surfacing that without
       // requiring "Verbose" console filter is worth the once-per-
       // substitution noise. Per-pass diagnostic logs from the source
@@ -879,17 +886,17 @@ export class Resolver {
       // `<input>` branch, future read-only contexts), prune every
       // cycleable source + cycleable BlankConfig entry. See
       // build-sources.ts for the full filter contract. Adapters that
-      // don't implement supportsCycling default to true — every
+      // don't implement supportsCycling default to true â every
       // pre-existing host has cycling.
       supportsCycling: this.adapter.supportsCycling?.() ?? true,
-      // Host id — host-scopes the config-intent classifier's feature list
+      // Host id â host-scopes the config-intent classifier's feature list
       // (chrome-only FEATURES like statusbar-position stay off other hosts).
       hostName: this.adapter.hostName,
       // Host-specific in-buffer message shown when NO LLM source could
       // be built (zero working keys). Hosts pass this via ResolverOptions
-      // — chrome sets "open the extension popup", native hosts (CC/OC)
+      // â chrome sets "open the extension popup", native hosts (CC/OC)
       // mention `~/.cues/.env`. Empty/undefined disables the fallback
-      // (regresses to silent no-op — only do this if the host surfaces
+      // (regresses to silent no-op â only do this if the host surfaces
       // the warning some other way, e.g. statusline).
       missingKeyFallbackMessage: this.options.missingKeyFallbackMessage,
       formatLLMErrorAsSubstitute: this.options.formatLLMErrorAsSubstitute,
@@ -914,7 +921,7 @@ export class Resolver {
       continueOnError: true,
     });
     this._lastBuildKey = this.computeBuildKey();
-    // BlankSource isn't in this list — keyword-bound blanks dispatch
+    // BlankSource isn't in this list â keyword-bound blanks dispatch
     // synchronously through BlankFill, separate from the resolver.
     const ids = sources.map(s => (s as { id?: string }).id ?? '?').join(', ');
     this.adapter.log('info', `Resolver: built with ${sources.length} sources [${ids}]`);
@@ -930,6 +937,7 @@ export class Resolver {
       s.get('fluid-blank-mode') ?? '',
       s.get('transform-blank-mode') ?? '',
       s.get('fluid-config-mode') ?? '',
+      s.get('undo-mode') ?? '',
       s.get('sentence-cues-mode') ?? '',
       s.get('word-cues-mode') ?? '',
       s.get('llm-endpoint') ?? '',
@@ -937,7 +945,7 @@ export class Resolver {
       s.get('llm-provider') ?? '',
       // Bucket scalars (three-bucket simplification). Auditors live in
       // boot-common's resolveLLM thunk so its scalars are NOT keyed
-      // here — agent-rewrite resolves at tick time, not build time.
+      // here â agent-rewrite resolves at tick time, not build time.
       s.get('cues-llm-provider') ?? '', s.get('cues-llm-model') ?? '', s.get('cues-llm-endpoint') ?? '',
       s.get('blanks-llm-provider') ?? s.get('blank-llm-provider') ?? '',
       s.get('blanks-llm-model') ?? s.get('blank-llm-model') ?? '',
@@ -950,13 +958,13 @@ export class Resolver {
       // Universal-Integration: chrome's adapter answers per-current-target.
       // When focus moves between a contenteditable (cycling) and a normal
       // input (no cycling), the build key flips and sources rebuild on
-      // the next text-change — pruning/restoring cycleable sources without
+      // the next text-change â pruning/restoring cycleable sources without
       // an explicit reload.
       this.adapter.supportsCycling?.() ?? true ? '1' : '0',
     ].join('|');
   }
 
-  // ─── Internals ─────────────────────────────────────────────────────────
+  // âââ Internals âââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
   private onTextChange(e: TextChangeEvent): void {
     if (e.source !== 'user') return; // ignore our own setText echoes
@@ -967,18 +975,18 @@ export class Resolver {
     // buffer the modal module owns.
     if (this.options.externallySuppressed?.(e.text)) {
       if (this._debounceTimer) { clearTimeout(this._debounceTimer); this._debounceTimer = null; }
-      this.adapter.log('debug', 'Resolver: externally suppressed (modal mode) — skipping dispatch');
+      this.adapter.log('debug', 'Resolver: externally suppressed (modal mode) â skipping dispatch');
       return;
     }
 
     // If OPENCUES.md flags changed since last build, rebuild before
     // dispatching. ConfigLoader hot-reloads opencuesState on text-change
     // but doesn't notify Resolver, so without this check a flag flip
-    // (`fluid-blank-mode: off → on`, `word-cues-mode: off → on`, …)
+    // (`fluid-blank-mode: off â on`, `word-cues-mode: off â on`, â¦)
     // would only take effect on next host restart.
     const currentKey = this.computeBuildKey();
     if (currentKey !== this._lastBuildKey) {
-      this.adapter.log('info', `Resolver: OPENCUES.md flags changed — rebuilding sources`);
+      this.adapter.log('info', `Resolver: OPENCUES.md flags changed â rebuilding sources`);
       this.rebuildResolver();
     }
 
@@ -989,14 +997,14 @@ export class Resolver {
     // mid-word typing.
     const text = e.text;
     const prev = this._lastInputText;
-    // Same-text dedupe — some hosts (notably OpenCode's Solid prompt)
+    // Same-text dedupe â some hosts (notably OpenCode's Solid prompt)
     // re-emit `onContentChange` for the same buffer content after the
     // initial change event. Without this guard, the second event falls
     // through to scheduleResolve() (it's not a fresh `_` trigger), which
     // fires a redundant resolveAndApply ~500ms later. For a `_`-trigger,
-    // that meant two parallel LLM calls on the same text → two
-    // substitutions → duplicated body content the user sees. Same text
-    // in, same text out, nothing for the resolver to do — early return.
+    // that meant two parallel LLM calls on the same text â two
+    // substitutions â duplicated body content the user sees. Same text
+    // in, same text out, nothing for the resolver to do â early return.
     if (text === prev) return;
     this._lastInputText = text;
     // Gate-comparison baseline: use the adapter's `e.previousText`, NOT
@@ -1006,14 +1014,14 @@ export class Resolver {
     // TransformBlank writing the substitute via setText) leaves
     // _lastInputText stale. The gate then sees the stale prior buffer,
     // miscomputes freshness, and routes the new `_` to scheduleResolve
-    // with allowBlanks=false — masking it from every blank source and
+    // with allowBlanks=false â masking it from every blank source and
     // producing the "stacked-blank after substitute silently no-ops"
     // bug. `e.previousText` is the adapter's actual prior buffer state
     // (updated regardless of source), so it reflects what the user saw
     // before this change. _lastInputText stays as the dedupe baseline
     // for the early-return above.
     const gatePrev = e.previousText;
-    // Trigger detection — gated by blank-trigger-mode.
+    // Trigger detection â gated by blank-trigger-mode.
     //
     // - `immediate` (default): bypass debounce the instant `_` becomes
     //   the buffer's last non-whitespace char (current behaviour since v0.1).
@@ -1032,14 +1040,14 @@ export class Resolver {
     }
     // Explicit-`_` gate: the trailing `_` only counts as a blank trigger
     // when it was placed by an explicit `_` keystroke. A `_` that appeared
-    // via cursor-relocation exposing an attached `_` (`monologue_` → cursor
-    // inside → space → `monologue _`) must NOT fire. The keystroke handler
+    // via cursor-relocation exposing an attached `_` (`monologue_` â cursor
+    // inside â space â `monologue _`) must NOT fire. The keystroke handler
     // (`onUnderscoreKey`) arms the one-shot flag; this gate reads it
     // BEFORE the flag is cleared in the finally block below.
     //
     // Diff-based fallback: some host adapters route keydowns through a
-    // path that can drop `_` events (chrome's focus-trap modals — LinkedIn
-    // share composer, Reddit's <shreddit-composer> — clear `currentTarget`
+    // path that can drop `_` events (chrome's focus-trap modals â LinkedIn
+    // share composer, Reddit's <shreddit-composer> â clear `currentTarget`
     // during focus shuffle, so the document-level keydown listener
     // early-returns before reaching `onUnderscoreKey`). For these cases
     // we accept "underscore count just went UP AND the new `_` is in a
@@ -1051,7 +1059,7 @@ export class Resolver {
     // writes) keep this safe for non-user origins.
     const prevUnderscoreCount = (gatePrev.match(/_/g) || []).length;
     const newUnderscoreCount = (text.match(/_/g) || []).length;
-    // Count-delta alone is sufficient — `blankJustTyped` (computed
+    // Count-delta alone is sufficient â `blankJustTyped` (computed
     // above) already proves a standalone `_` exists at the trailing
     // edge. The cursor-split bug doesn't change the count (just
     // exposes an existing `_` via whitespace insertion), so any
@@ -1060,7 +1068,7 @@ export class Resolver {
     if (blankJustTyped && !this.explicitUnderscoreRecent() && !freshUnderscoreInserted) {
       // Observability: this suppression is otherwise completely silent on
       // the resolver path (fluid/transform/config-intent blanks just never
-      // dispatch — no `starting` line ever appears). Mirror BlankFill's
+      // dispatch â no `starting` line ever appears). Mirror BlankFill's
       // `explicit-_ gate BLOCKED` debug line so `DEBUG=cues*` can explain a
       // `_` that "did nothing". The most common cause: the trailing `_`
       // was NOT placed by a fresh standalone `_` keystroke (exposed
@@ -1069,7 +1077,7 @@ export class Resolver {
       this.adapter.log('debug', `Resolver: explicit-_ gate BLOCKED blank trigger (trailing _ present but no recent standalone _ keystroke; mode=${triggerMode})`);
       blankJustTyped = false;
     } else if (blankJustTyped && !this.explicitUnderscoreRecent() && freshUnderscoreInserted) {
-      // Implicit arm via text diff — host adapter likely missed the
+      // Implicit arm via text diff â host adapter likely missed the
       // keydown but the buffer state unambiguously shows a fresh insert.
       this.adapter.log('debug', `Resolver: explicit-_ gate auto-armed via diff (fresh _ at cursor; host adapter may have missed keydown; mode=${triggerMode})`);
     }
@@ -1077,13 +1085,13 @@ export class Resolver {
     try {
       if (blankJustTyped) {
         if (this._debounceTimer) { clearTimeout(this._debounceTimer); this._debounceTimer = null; }
-        this.adapter.log('debug', `Resolver: _ trigger — bypassing debounce (mode=${triggerMode})`);
+        this.adapter.log('debug', `Resolver: _ trigger â bypassing debounce (mode=${triggerMode})`);
         void this.resolveAndApply(text, { allowBlanks: true });
         return;
       }
 
       // In spaced mode, an unconfirmed lone `_` at end of buffer should
-      // never fire blanks — not via bypass (handled above) AND not via
+      // never fire blanks â not via bypass (handled above) AND not via
       // the debounced fall-through (handled here). Skip scheduling so a
       // user pausing after `_` doesn't end up substituted. The next
       // text-change (typing more or the confirming space) re-evaluates.
@@ -1099,7 +1107,7 @@ export class Resolver {
 
       // Pass the diff-based freshness signal through so the debounced
       // resolve also unblocks blank sources when the `_` is mid-buffer
-      // (e.g. `make this formal _ hey can u send me that report` — TransformBlank-
+      // (e.g. `make this formal _ hey can u send me that report` â TransformBlank-
       // style "instruction _ target"). Without this, only trailing-`_`
       // patterns would arm via the diff fallback; middle-`_` patterns
       // would silently no-op because the explicit-keystroke arm path
@@ -1109,7 +1117,7 @@ export class Resolver {
       // One-shot: clear armed flag at the END of this onTextChange so the
       // NEXT text-change (one not paired with a `_` keystroke) doesn't
       // inherit the freshness. Exception: spaced-mode unconfirmed `_`
-      // (see `keepArmed`) — the user explicitly typed `_` and is waiting
+      // (see `keepArmed`) â the user explicitly typed `_` and is waiting
       // for the confirming space; we MUST keep the flag through one extra
       // dispatch. `scheduleResolve` above captures the flag INTO its
       // closure BEFORE this clear runs, so the debounced fire still sees
@@ -1122,11 +1130,11 @@ export class Resolver {
     if (this._debounceTimer) clearTimeout(this._debounceTimer);
     const delay = this.options.debounceMs ?? 500;
     // Capture the freshness now so the gate reflects when the change
-    // happened — not when the debounce fires `delay` ms later (by which
+    // happened â not when the debounce fires `delay` ms later (by which
     // time the keystroke window may have lapsed even though the user
     // genuinely just typed `_`). Accept either the keystroke arm flag
     // OR a positive underscore-count delta as proof of fresh user
-    // intent — see callsite comment for the middle-`_` rationale.
+    // intent â see callsite comment for the middle-`_` rationale.
     const allowBlanks = this.explicitUnderscoreRecent() || freshUnderscoreInserted;
     this._debounceTimer = setTimeout(() => {
       void this.resolveAndApply(text, { allowBlanks });
@@ -1137,16 +1145,16 @@ export class Resolver {
    *  @param opts.allowBlanks Default true. When false, `_` slots in the
    *    buffer are masked from blank sources (FluidBlank / TransformBlank /
    *    ConfigIntent). Production callers in `onTextChange` set this based
-   *    on `explicitUnderscoreRecent()` — see the explicit-`_` gate above. */
+   *    on `explicitUnderscoreRecent()` â see the explicit-`_` gate above. */
   async resolveAndApply(text: string, opts: { allowBlanks?: boolean } = {}): Promise<void> {
     const allowBlanks = opts.allowBlanks ?? true;
     if (!this._resolver) return;
     // A pending config-intent transaction left over from a superseded/
-    // early-returned pass holds real scalar writes — commit it (scalar-
+    // early-returned pass holds real scalar writes â commit it (scalar-
     // only) rather than let it dangle and mis-attach to this pass.
     this.commitPendingConfigIntentTx();
     // Abort the previous resolve's in-flight HTTP calls (if any). The
-    // resolve is being superseded by this newer one — its results would
+    // resolve is being superseded by this newer one â its results would
     // be dropped on generation mismatch downstream, so the LLM round-
     // trip is pure waste (provider $$$ + rate-limit pressure).
     if (this._inFlightController) {
@@ -1165,26 +1173,26 @@ export class Resolver {
 
     const wordSpans = splitWords(text);
     // Skip words we've already resolved. Empty strings get filtered out
-    // by RoutedWordSourceGroup + every other CueSource — no LLM call.
+    // by RoutedWordSourceGroup + every other CueSource â no LLM call.
     // Rules:
-    //   - Blanks (`_`) always re-resolve — their context determines the
+    //   - Blanks (`_`) always re-resolve â their context determines the
     //     answer and may have changed.
     //   - Words inside an active blank-fill (SpanFillState) are owned
     //     by cycling; re-querying would waste tokens.
     //   - Words inside ANY multi-word static-alt span (DynDefs-derived)
-    //     are owned by cycling — origin OR inner positions.
+    //     are owned by cycling â origin OR inner positions.
     //   - A DynDef at this index already claims the position. The word
     //     might be:
     //         (a) the def's originalWord (untouched after resolve)
     //         (b) the def's currentAlt (user cycled to a single-word alt)
     //     Both cases mean cycling owns this word and the resolver must
-    //     not second-guess it. Without this, cycling attorney → lawyer
+    //     not second-guess it. Without this, cycling attorney â lawyer
     //     would let the resolver re-evaluate "lawyer" as a fresh word
-    //     and drift the alt track (lawyer → client → customer → ...).
+    //     and drift the alt track (lawyer â client â customer â ...).
     const span = this.spanFillState?.current;
     const cleanWords = wordSpans.map((w, i) => {
       const cleaned = w.word.replace(/[\u200B\u200C]/g, '');
-      // Blanks normally always re-resolve — context may have changed —
+      // Blanks normally always re-resolve â context may have changed â
       // BUT if the `_` is inside an existing DynDef's span the answer
       // is already cached (typical case: user cycled the def back to
       // currentIndex=0 to view the original query, then nudged the
@@ -1204,8 +1212,8 @@ export class Resolver {
         // `monologue _` from `monologue_`). The flag is wired from
         // onTextChange (which reads `explicitUnderscoreRecent()`); direct
         // unit-test calls to resolveAndApply default to allowBlanks=true
-        // so the existing test suite — which exercises the resolver in
-        // isolation, with no keystroke surface — keeps working. Word-cues
+        // so the existing test suite â which exercises the resolver in
+        // isolation, with no keystroke surface â keeps working. Word-cues
         // / sentence-cues continue to run on the other words; only the
         // `_` slot is masked.
         if (!allowBlanks) return '';
@@ -1225,7 +1233,7 @@ export class Resolver {
     // "As-typed" reconstruction: visible buffer with every agent-edited
     // word reverted to its originalWord. transform-blank's EXTRACT
     // uses this to detect TASK_* triggers against what the user TYPED,
-    // not what the agent rendered — so commands work even if the agent
+    // not what the agent rendered â so commands work even if the agent
     // edited some of their constituent words.
     //
     // Only build it when there's at least one DynDef (the typical case
@@ -1239,13 +1247,13 @@ export class Resolver {
     // Rich-text view: re-inject any markdown markers MarkdownRender has
     // cached. The LLM sees this when EXTRACT runs and can preserve
     // markers on its rewrite. Without it, asking "make it caps" on a
-    // word that's already bold loses the bold — markers don't exist
+    // word that's already bold loses the bold â markers don't exist
     // in the visible buffer (stripped at write time).
     //
     // Cache-prefix match is TRAILING-WHITESPACE-TOLERANT: the cached
     // text often carries preserved separators (newlines after a
     // substitution) that the user has since typed over. We compare on
-    // the body — everything up to and including the last styled range —
+    // the body â everything up to and including the last styled range â
     // and accept the user's new typing as suffix.
     let richText: string | undefined;
     if (this.markdownRender) {
@@ -1260,7 +1268,7 @@ export class Resolver {
           : Math.max(...allRanges.map(r => r.end));
         const cachedBody = cached.text.slice(0, bodyEnd);
         if (text.startsWith(cachedBody)) {
-          // Markers index into cached.text — re-inject them into
+          // Markers index into cached.text â re-inject them into
           // cachedBody (a prefix), then append whatever the user has
           // typed past that point.
           richText = injectMarkdownMarkers(cachedBody, cached) + text.slice(cachedBody.length);
@@ -1270,7 +1278,7 @@ export class Resolver {
 
     // Loading animation: start animating every `_` slot before dispatch
     // and release the resolver's claim after the pipeline returns
-    // (success, error, or empty result). Refcounted by owner — when a
+    // (success, error, or empty result). Refcounted by owner â when a
     // keyword-bound `_` (stocks, weather, volume) is also being filled
     // by BlankFill, both modules call start/stop with their own owner
     // ID and the slot keeps animating until BOTH release. Without that,
@@ -1313,7 +1321,7 @@ export class Resolver {
         // RoutedWordSourceGroup) ignore it. -1 means "no info".
         cursor: this.adapter.getCursorOffset?.() ?? -1,
         // Optional ambient field/page context. Gated FIRST by the
-        // `ambient-context-mode` scalar (off by default) — when off,
+        // `ambient-context-mode` scalar (off by default) â when off,
         // the host adapter is not even consulted, so a misbehaving
         // host can't accidentally leak metadata.
         //
@@ -1321,7 +1329,7 @@ export class Resolver {
         // can't gather (e.g. CC/OC native hosts have no DOM) OR when
         // the focused field is sensitive (password/CC/OTP).
         //
-        // Only FluidBlankSource consumes this — see AmbientContext
+        // Only FluidBlankSource consumes this â see AmbientContext
         // for the full security contract. The runtime is intentionally
         // not plugged into any tool-handling or exec layer for fluid-
         // blank prompts, so the ambient block can only land in text
@@ -1337,11 +1345,11 @@ export class Resolver {
         // NO `noBlankContextConsumer` gate here (dropped for the buffer-
         // dehydration feature): in `safe` mode EVERY LLM-bound source
         // (word-cues, sentence-cues, config-intent, config-source raw)
-        // now consumes the catalog to dehydrate its outbound text — not
+        // now consumes the catalog to dehydrate its outbound text â not
         // just FluidBlank/TransformBlank. The identity catalog is an
         // in-memory Map at the ConfigLoader (no IO), so forwarding it
         // unconditionally costs nothing. blankContext below KEEPS the
-        // gate — that one is a network/script fetch.
+        // gate â that one is a network/script fetch.
         identityContext: this.configLoader.opencuesState.identityContextMode !== 'off'
           ? {
               fields: this.configLoader.identity.fields,
@@ -1353,7 +1361,7 @@ export class Resolver {
         // on every resolve so OPENCUES.md flips are picked up without
         // host restart. When mode is off the provider returns
         // undefined. ALSO skipped when every `_` in the buffer is
-        // already claimed by a keyword-bound BlankFill slot — the only
+        // already claimed by a keyword-bound BlankFill slot â the only
         // sources that consume the catalog (FluidBlank, TransformBlank)
         // both cede in that case, so the fetch would be 5 sequential
         // script/network calls whose result is thrown away.
@@ -1366,7 +1374,7 @@ export class Resolver {
         // catalog renderer + post-LLM resolver in TransformBlank/FluidBlank
         // pick the typed-sentinel engine path when enabled.
         sentinelLanguage: this.configLoader.opencuesState.sentinelLanguage,
-        // Phase 4 — ai-callable fn registry + capability-gated on-demand fetch.
+        // Phase 4 â ai-callable fn registry + capability-gated on-demand fetch.
         // Only populated when the gate is wired (a blank opted into ai-callable)
         // AND sentinel-language is typed; otherwise both are undefined and the
         // core resolver's on-demand path is a no-op.
@@ -1379,10 +1387,10 @@ export class Resolver {
         blankFetch: this.blankFetchProvider?.blankFetch,
         // Subscription-routing policy for anthropic-class `with`
         // overrides. Default 'prefer' is set on the OpenCuesState
-        // shape itself, so passing it through verbatim is correct —
+        // shape itself, so passing it through verbatim is correct â
         // FluidBlank + TransformBlank fall back to 'prefer' if the
         // AbortSignal for in-flight LLM cancellation. Each source's
-        // getCues forwards this to its callLLM → httpAdapter.post.
+        // getCues forwards this to its callLLM â httpAdapter.post.
         // When a newer resolveAndApply preempts this one, the
         // controller above aborts, killing pending HTTP calls instead
         // of letting them run to completion just to have their results
@@ -1391,7 +1399,7 @@ export class Resolver {
       });
     } catch (err) {
       stopAllAnimations();
-      // AbortError on supersede is expected — don't surface as a logical
+      // AbortError on supersede is expected â don't surface as a logical
       // failure. Anything else is a real fault and gets logged.
       if (!isAbortError(err)) {
         this.adapter.log('error', 'Resolver.resolve threw', err);
@@ -1406,12 +1414,12 @@ export class Resolver {
 
     this.adapter.log('debug', `Resolver.resolve: got ${result.results.length} result(s) for ${cleanWords.length} cleanWords`);
     // Per-word routing/skipped surfaces which ConfigSource claimed each
-    // word — the structural property RoutedWordSourceGroup enforces for
+    // word â the structural property RoutedWordSourceGroup enforces for
     // prompt-injection isolation. Empty-string entries in cleanWords
     // mean a span/dyndef already owns the position; they're not surfaced
     // here (internal optimisation, not a routing decision). `_` tokens
     // route through the blank handlers, also out of scope. Words with
-    // no claiming source land in `skipped` — useful for catching cue
+    // no claiming source land in `skipped` â useful for catching cue
     // configurations with unintended coverage gaps.
     const routing: Array<{ wordIndex: number; word: string; sourceId: string }> = [];
     const skipped: Array<{ wordIndex: number; word: string }> = [];
@@ -1436,7 +1444,7 @@ export class Resolver {
       skipped,
     });
 
-    // Stale check — a newer scheduleResolve might have run in between.
+    // Stale check â a newer scheduleResolve might have run in between.
     if (generation !== this._generation) return;
 
     let wrote = 0;
@@ -1446,30 +1454,116 @@ export class Resolver {
     // sentence wins outright).
     //
     // Multi-sentence-cue (lifted the v1 one-per-resolve cap, June 2026):
-    // sentence-cue registration is PASSIVE — the def lands at
+    // sentence-cue registration is PASSIVE â the def lands at
     // currentIndex=0 against the UNMODIFIED buffer, no splice. The old
     // cap existed to avoid a word-index shift cascade when MULTIPLE
     // sentences spliced in the same pass; since nothing splices at
     // registration time, every sentence-cue's spanStart/spanEnd stays
     // valid and they can all register together. This is what makes a
     // multi-paragraph (or multi-sentence) buffer cue EVERY sentence
-    // instead of only the first — the user-visible symptom was that in
+    // instead of only the first â the user-visible symptom was that in
     // spaceless CJK, later paragraphs/sentences weren't highlighted at
     // all because only the first got a DynDef. Same-word collisions
-    // (multiple 。-separated sentences inside ONE whitespace-word) are
+    // (multiple ã-separated sentences inside ONE whitespace-word) are
     // still resolved first-wins by the existing blankName guard below;
     // post-cycle span shifts self-heal on the re-resolve the splice
     // triggers.
     const sentenceClaims: Array<{ start: number; end: number }> = [];
     for (const r of result.results) {
+      // ââ ACTION (undo/redo). Classified by the config-intent source
+      //    (metadata.undoAction), APPLIED here â the journal + applier
+      //    live runtime-side. Runs FIRST in the loop: the result's
+      //    alternatives carry the action verb (not a substitute), so
+      //    none of the generic guards/filters below apply to it.
+      const undoAction = (r.metadata as { undoAction?: { action: 'undo' | 'redo'; count: number } } | undefined)?.undoAction;
+      if (r.source === 'config-intent' && undoAction && this.undoJournal) {
+        const liveText = this.adapter.getText().replace(/[ââ]/g, '');
+        const start = r.spanStart ?? 0;
+        const end = Math.min(r.spanEnd ?? text.length, liveText.length);
+        // Race guards â same pair the config-intent settings branch uses.
+        if (!liveText.includes('_')) {
+          this.adapter.log('info', 'Undo: skipping â _ no longer in live text');
+          continue;
+        }
+        if (liveText.slice(start, end) !== text.slice(start, end)) {
+          this.adapter.log('info', 'Undo: skipping â command span no longer matches analyzed text');
+          continue;
+        }
+        // Splice out the command span, swallowing whitespace before it
+        // so no dangling blank line / trailing space remains (same idea
+        // as transform's trigger removal).
+        let cmdStart = start;
+        while (cmdStart > 0 && (liveText[cmdStart - 1] === '\n' || liveText[cmdStart - 1] === ' ' || liveText[cmdStart - 1] === '\t')) cmdStart--;
+        const working = liveText.slice(0, cmdStart) + liveText.slice(end);
+
+        this._undoApplier ??= new UndoApplier(this.adapter, this.configLoader, this.undoJournal);
+        const { text: finalText, report } = await this._undoApplier.apply(undoAction.action, undoAction.count, working);
+
+        // State cleanup BEFORE the buffer write: reverted splices
+        // invalidate every span-bound offset (a surviving
+        // SelectorSatelliteEntry would point into removed text), and
+        // clearing first also stops clearOnEdit watchers reacting to
+        // our own write. Deliberately NOT resetSharedBufferState â
+        // that bumps the journal epoch and would stale the remaining
+        // entries. Cues repopulate on the next keystroke.
+        this.dynDefs.clear();
+        this.spanFillState?.clear();
+        this.selectorSatelliteState?.clear();
+        this.hlState.deactivate();
+
+        if (report.appliedEntries === 0) {
+          // Nothing applied â splice a visible note instead of silently
+          // eating the command (error-substitute pattern, clearOnEdit
+          // so one backspace clears it).
+          const why = report.skipped.length > 0 ? ` (${report.skipped[0].reason})` : '';
+          const note = report.requested === 0
+            ? `[OpenCues: nothing to ${undoAction.action}]`
+            : `[OpenCues: could not ${undoAction.action}${why}]`;
+          // Note replaces only the command span (not the swallowed
+          // whitespace — the note keeps its separating space).
+          const noted = liveText.slice(0, start) + note + liveText.slice(end);
+          const noteStart = start;
+          if (this.adapter.pushText) this.adapter.pushText(noted, noteStart + note.length);
+          else { this.adapter.setText(noted); this.adapter.setCursorOffset(noteStart + note.length); this.adapter.forceRender(); }
+          if (this.spanFillState) {
+            const notedWords = splitWords(noted);
+            const noteWord = notedWords.find(w => w.start === noteStart);
+            if (noteWord) {
+              this.spanFillState.set({
+                index: noteWord.index,
+                alternatives: ['_', note],
+                currentAltIndex: 1,
+                spanLength: Math.max(1, note.split(/\s+/).filter(Boolean).length),
+                clearOnEdit: true,
+                pairCharStart: noteStart,
+                pairCharEnd: noteStart + note.length,
+              }, noted);
+            }
+          }
+          this.adapter.emitEvent?.('undo.applied', { ...report });
+          this.adapter.log('info', `Undo: ${undoAction.action} Ã${undoAction.count} â nothing applied (${report.skipped.map(s => s.reason).join(', ') || 'empty journal'})`);
+          wrote++;
+          continue;
+        }
+
+        // ONE buffer write for the whole application (one host history
+        // entry), cursor parked where the command was.
+        const newCursor = Math.min(cmdStart, finalText.length);
+        if (this.adapter.pushText) this.adapter.pushText(finalText, newCursor);
+        else { this.adapter.setText(finalText); this.adapter.setCursorOffset(newCursor); this.adapter.forceRender(); }
+        this.adapter.emitEvent?.('undo.applied', { ...report });
+        this.adapter.log('info', `Undo: ${undoAction.action} Ã${report.requested} applied â ${report.appliedTransactions} transaction(s), ${report.appliedEntries} entr(ies), ${report.skipped.length} skipped${report.skipped.length > 0 ? ` [${report.skipped.map(s => s.reason).join(', ')}]` : ''}`);
+        wrote++;
+        continue;
+      }
       const isSentenceCue = typeof r.source === 'string' && r.source.startsWith('sentence-cue:');
-      // ── Suppression check: word-cue (or any non-LLM-blank result)
+      // ââ Suppression check: word-cue (or any non-LLM-blank result)
       //    inside an applied sentence's word range is dropped.
       const isLlmBlank = r.source === 'fluid-blank' || r.source === 'transform-blank' || r.source === 'config-intent';
       if (sentenceClaims.length > 0 && !isSentenceCue && !isLlmBlank) {
         const claimed = sentenceClaims.find(c => r.wordIndex >= c.start && r.wordIndex <= c.end);
         if (claimed) {
-          this.adapter.log('debug', `Resolver: suppressing word-cue at wordIndex=${r.wordIndex} — inside sentence-cue span [${claimed.start},${claimed.end}]`);
+          this.adapter.log('debug', `Resolver: suppressing word-cue at wordIndex=${r.wordIndex} â inside sentence-cue span [${claimed.start},${claimed.end}]`);
           continue;
         }
       }
@@ -1477,18 +1571,18 @@ export class Resolver {
       if (!target) continue;
       const existing = this.dynDefs.get(r.wordIndex);
       // Chainable LLM-blank substitutes (fluid-blank / transform-blank)
-      // are EXEMPT from the mid-cycle and blankName guards below — they
+      // are EXEMPT from the mid-cycle and blankName guards below â they
       // explicitly extend an existing same-class chain at this position
       // via findChainableLlmDef, instead of clobbering it. A blocked
       // skip here would prevent the chain branch from ever running, so
-      // sequential "translate to japanese → translate to chinese" calls
+      // sequential "translate to japanese â translate to chinese" calls
       // would silently no-op after the first.
       const isChainableLlmSource = r.source === 'fluid-blank' || r.source === 'transform-blank';
       const sameClassChainable = isChainableLlmSource
         && !!existing?.blankName
         && existing.blankName === r.source;
       // Same-word sentence-cue collision: two sentences segmented from ONE
-      // whitespace-word (spaceless CJK — a 。 with no following space fuses
+      // whitespace-word (spaceless CJK â a ã with no following space fuses
       // the next sentence's start into the prior word). They share a natural
       // word index, so the SECOND would be dropped by the blankName guard
       // below and never cued/dimmed (the long-second-sentence bug). Exempt
@@ -1501,15 +1595,15 @@ export class Resolver {
       // Don't clobber a user mid-cycle on this word.
       if (existing && existing.currentIndex > 0 && !sameClassChainable && !sameWordSentenceCueCollision) continue;
       // Don't clobber blank-attributed entries (volume/brightness blank
-      // fills, satellite cycles, etc.) — those route through their own
+      // fills, satellite cycles, etc.) â those route through their own
       // cycling path and have a script set/get protocol the LLM alts
       // would silently break.
       if (existing && existing.blankName && !sameClassChainable && !sameWordSentenceCueCollision) continue;
-      // Already resolved — same word at the same index, fresh from a
+      // Already resolved â same word at the same index, fresh from a
       // prior LLM pass. Without this, every subsequent text-change
       // (typing the next word, adding a space) clobbers the existing
       // DynDef with a new LLM result. Alts can differ slightly across
-      // runs, and each write triggers a forceRender → repaint flash.
+      // runs, and each write triggers a forceRender â repaint flash.
       // Only re-resolve if the word at this index actually changed
       // (user deleted/replaced the word).
       if (existing && existing.originalWord === target.word) continue;
@@ -1526,12 +1620,12 @@ export class Resolver {
       // cue-engine's `skipFn: word => tipsMap.has(word)` filter on the
       // LLM source.
       //
-      // ⚠ LLM blank sources (transform-blank / fluid-blank /
+      // â  LLM blank sources (transform-blank / fluid-blank /
       // config-intent) are EXEMPT. They target `_`; if a user (or a
-      // shipped pack) has a tip entry for `_` — tips-shell/CUE.md once
-      // had `{ "_": { alts: ["blank","fill","underscore"] } }` — the
+      // shipped pack) has a tip entry for `_` â tips-shell/CUE.md once
+      // had `{ "_": { alts: ["blank","fill","underscore"] } }` â the
       // tip-vs-LLM rule would silently block every blank substitution.
-      // Pinned by `transform-blank.scenarios.test.ts` § "tip entry
+      // Pinned by `transform-blank.scenarios.test.ts` Â§ "tip entry
       // for `_` must not block substitution" (2026-05-28 regression).
       const cueMapEntry = this.configLoader.lookup(target.word);
       const isLlmBlankSource = r.source === 'fluid-blank' || r.source === 'transform-blank' || r.source === 'config-intent';
@@ -1546,13 +1640,13 @@ export class Resolver {
         && typeof r.spanEnd === 'number'
         && r.spanEnd > r.spanStart;
       // MissingKeyFallback emits the same shape as a fluid-blank
-      // substitute (alternatives = ['_', errorMessage]) — route through
+      // substitute (alternatives = ['_', errorMessage]) â route through
       // the fluid-blank applicator so the error text lands in the
       // buffer (otherwise the user only sees it via cycling).
       //
-      // Error substitutes — any LLM-driven blank source that classified
+      // Error substitutes â any LLM-driven blank source that classified
       // a user-actionable HTTP failure (transform-blank + config-intent
-      // gained this in June 2026; fluid-blank had it earlier) — also
+      // gained this in June 2026; fluid-blank had it earlier) â also
       // get routed through the substitute splice so the user sees the
       // inline `[OpenCues: ...]` message regardless of which source
       // emitted it.
@@ -1561,13 +1655,13 @@ export class Resolver {
       const isFluidBlank = r.source === 'fluid-blank' || r.source === 'missing-key-fallback' || isErrorSubstitute;
       const isTransformBlank = r.source === 'transform-blank' && !isErrorSubstitute;
       // ConfigIntent emits the same FluidBlank-style shape
-      // (alternatives = ['_', confirmation]) — splice the
+      // (alternatives = ['_', confirmation]) â splice the
       // confirmation in at the `_`, register a DynDef for
       // cycling-Down revert. blankName below differs so the def
       // isn't re-resolved as a fluid-blank lookup.
       const isConfigIntent = r.source === 'config-intent' && !isErrorSubstitute;
       // Fluid-blank substitutes inline (BlankFill-style). For WIPE mode the
-      // text shrinks so the wordIndex shifts — we have to compute the def's
+      // text shrinks so the wordIndex shifts â we have to compute the def's
       // FINAL position in the new text and key the def there, not at the
       // resolver's r.wordIndex (which referred to the pre-substitute text).
       // Without this the def is orphaned at an out-of-bounds index and the
@@ -1576,18 +1670,18 @@ export class Resolver {
         // Race guard: BlankFill runs synchronously after
         // its blankScript returns and can populate the `_` BEFORE this
         // LLM-driven path completes. If `_` is no longer in the live text
-        // at the expected position, BlankFill already won — skip our
+        // at the expected position, BlankFill already won â skip our
         // substitute so we don't overwrite "nvidia $209.25" with "NVDA".
         const liveText = this.adapter.getText();
         const start = isMultiWordSpan ? r.spanStart! : target.start;
         const end = isMultiWordSpan ? r.spanEnd! : target.end;
         if (liveText.charAt(start) !== '_' && !liveText.includes('_')) {
-          this.adapter.log('info', 'FluidBlank: skipping — _ already substituted by another module');
+          this.adapter.log('info', 'FluidBlank: skipping â _ already substituted by another module');
           continue;
         }
         // Fail-safe (mirrors the ConfigIntent / TransformBlank splice
-        // guards): for WIPE mode — which overwrites the whole lookup
-        // PHRASE, not just `_` — the range we're about to replace must
+        // guards): for WIPE mode â which overwrites the whole lookup
+        // PHRASE, not just `_` â the range we're about to replace must
         // still match the analyzed snapshot byte-for-byte in the live
         // buffer. If the user typed into it during the async LLM call
         // (or the span now runs past the buffer end), abort rather than
@@ -1595,10 +1689,10 @@ export class Resolver {
         // site guard the WIPE path was missing; until now it relied
         // solely on the source emitting a parser-bounded span.
         if (isMultiWordSpan && (end > liveText.length || liveText.slice(start, end) !== text.slice(start, end))) {
-          this.adapter.log('info', 'FluidBlank: skipping WIPE — splice range drifted from the analyzed buffer');
+          this.adapter.log('info', 'FluidBlank: skipping WIPE â splice range drifted from the analyzed buffer');
           continue;
         }
-        // Splice the answer into [start, end) — the canonical
+        // Splice the answer into [start, end) â the canonical
         // FluidBlank shape. applyMarkdownAwareSplice handles strip +
         // write + markdown.styled emit with ranges shifted into
         // final-buffer coords. Same primitive TransformBlank uses
@@ -1622,24 +1716,24 @@ export class Resolver {
         // "Shakespeare". Pinned by `fluid-blank-multiword-span.test.ts`.
         const newSpanEnd = start + answer.length;
 
-        // The "question" — the buffer slice we're replacing. For WIPE
+        // The "question" â the buffer slice we're replacing. For WIPE
         // mode this is the user's full prompt phrase (e.g. "translate
         // hello to japanese _"); for FILL mode it's just "_". Captured
         // as alts[0] so cycling Down restores what the user typed before
-        // the LLM ran — they can edit the prompt and re-summon.
+        // the LLM ran â they can edit the prompt and re-summon.
         const question = text.slice(start, end);
 
         // Chain extension: if a prior fluid-blank def sits inside the
         // new span and is still verbatim at its recorded position, the
         // user is doing a sequence of substitutions on the same content
-        // (translate to japanese → translate to chinese). Extend the
-        // existing alternatives in REVERSE chronological order — newest
-        // at index 0 — so Up walks back through history one step at a
+        // (translate to japanese â translate to chinese). Extend the
+        // existing alternatives in REVERSE chronological order â newest
+        // at index 0 â so Up walks back through history one step at a
         // time (matching the convention every other blank type uses:
         // alts[0] = current, Up = +1 = next in cycle).
         // Truncate-on-branch: if the user cycled back mid-chain before
         // re-summoning, discard the abandoned tail (now the items at
-        // indices BELOW currentIndex — newer than where the user landed).
+        // indices BELOW currentIndex â newer than where the user landed).
         const existingChain = this.dynDefs.findChainableLlmDef(
           text, start, end, ['fluid-blank'],
         );
@@ -1667,7 +1761,7 @@ export class Resolver {
             currentIndex: 0,
             spanStart: start,
             spanEnd: newSpanEnd,
-            // blankName locks this def against re-resolution by the LLM —
+            // blankName locks this def against re-resolution by the LLM â
             // same mechanism blank-bound entries use to prevent the answer
             // from being clobbered by RoutedWordSourceGroup synonyms.
             blankName: 'fluid-blank',
@@ -1678,7 +1772,7 @@ export class Resolver {
 
         // Error substitutes wipe-on-edit. Register a spanFillState
         // entry with clearOnEdit:true at the substituted range; the
-        // existing BlankFill.onTextChange → applyClearOnEdit
+        // existing BlankFill.onTextChange â applyClearOnEdit
         // pipeline handles the wipe when the user types or deletes
         // inside the message. Mirrors ConfigIntent's pattern below.
         if (isErrorSubstitute && this.spanFillState) {
@@ -1693,20 +1787,20 @@ export class Resolver {
           }, newText);
         }
 
-        this.adapter.log('info', `FluidBlank: substituting "${text.slice(start, end)}" → "${answer}" (mode=${isMultiWordSpan ? 'WIPE' : 'FILL'}, range=[${start},${end}), defAt=${newWordIndex}, errorSub=${isErrorSubstitute}, totalMs=${Date.now() - __resolveStart})`);
+        this.adapter.log('info', `FluidBlank: substituting "${text.slice(start, end)}" â "${answer}" (mode=${isMultiWordSpan ? 'WIPE' : 'FILL'}, range=[${start},${end}), defAt=${newWordIndex}, errorSub=${isErrorSubstitute}, totalMs=${Date.now() - __resolveStart})`);
 
         // Emit `fluid-blank.completed` AFTER the buffer commit so
         // observers (statusline, agentic tests) can rely on the event
-        // marking a final, user-visible buffer state — never an
+        // marking a final, user-visible buffer state â never an
         // intermediate loading-animation frame. The source carries the
         // completion payload via `metadata.fluidBlankCompletion`; this
         // structurally closes the race that allowed the braille
-        // loading char (· • ●) to be caught between completion of the
+        // loading char (Â· â¢ â) to be caught between completion of the
         // LLM call and the resolver's substitute commit. Mirrors the
         // `transform-blank.completed` pattern below. Error substitutes
         // don't carry the metadata field (they bail before recording
         // the success payload), so the optional-chain naturally
-        // suppresses the event in that path — error events ride
+        // suppresses the event in that path â error events ride
         // through `fluid-blank.bailed` instead.
         const fbCompletion = r.metadata?.fluidBlankCompletion as
           | { span: string; answer: string; mode: string; latencyMs: number }
@@ -1732,17 +1826,17 @@ export class Resolver {
         // longer in the live buffer. ConfigIntent's wipe is more
         // aggressive than FluidBlank's localized splice (we wipe
         // [0, text.length)), so any sign the user moved past or
-        // typed away from the original prompt should abort —
+        // typed away from the original prompt should abort â
         // otherwise unrelated edits silently get destroyed.
         if (!liveText.includes('_')) {
-          this.adapter.log('info', `ConfigIntent: skipping — _ no longer in live text (len=${liveText.length})`);
+          this.adapter.log('info', `ConfigIntent: skipping â _ no longer in live text (len=${liveText.length})`);
           continue;
         }
         // Stricter check: the range we're about to wipe must still
         // match the analyzed text byte-for-byte. If the user typed in
         // the prefix, we'd otherwise wipe their edit.
         if (liveText.slice(r.spanStart!, r.spanEnd!) !== text.slice(r.spanStart!, r.spanEnd!)) {
-          this.adapter.log('info', `ConfigIntent: skipping — wipe range no longer matches analyzed text`);
+          this.adapter.log('info', `ConfigIntent: skipping â wipe range no longer matches analyzed text`);
           continue;
         }
         const selector = alts[0];
@@ -1751,7 +1845,7 @@ export class Resolver {
         // When satelliteCyclingValue is set, it's stored as the
         // cycling state's currentValue while `satellite` is used for
         // the buffer splice. The two differ for PROVIDER verdicts that
-        // included a model — buffer shows `anthropic:claude-opus-4-7`,
+        // included a model â buffer shows `anthropic:claude-opus-4-7`,
         // cycling state stores `anthropic`. Falls back to `satellite`
         // when absent (every other case behaves unchanged).
         const cyclingValue = meta && typeof meta.satelliteCyclingValue === 'string' && meta.satelliteCyclingValue
@@ -1760,7 +1854,7 @@ export class Resolver {
         const sep = String(meta?.displaySeparator ?? ' ');
         const blankName = String(meta?.blankName ?? 'opencues');
         if (!satellite) {
-          this.adapter.log('info', 'ConfigIntent: skipping — metadata.satelliteValue missing');
+          this.adapter.log('info', 'ConfigIntent: skipping â metadata.satelliteValue missing');
           continue;
         }
         const start = r.spanStart!;
@@ -1801,7 +1895,7 @@ export class Resolver {
               // each provider cycle, keeping the pair invariant.
               currentValue: cyclingValue,
               separator: sep,
-              // clearOnEdit: true — backspacing into either word wipes
+              // clearOnEdit: true â backspacing into either word wipes
               // the whole pair in one go via applyClearOnEdit. The
               // user typed a natural-language summon ("enable debug
               // logging _"); the satellite pair is just the
@@ -1817,7 +1911,7 @@ export class Resolver {
 
         // Close the pending config-intent transaction (opened by the
         // wrapped applyOpencuesScalar at emit time) with the buffer
-        // entry — scalar writes + pair splice revert as ONE undo.
+        // entry â scalar writes + pair splice revert as ONE undo.
         if (this.undoJournal) {
           const tx = this._pendingConfigIntentTx ?? this.undoJournal.begin('settings change');
           this._pendingConfigIntentTx = null;
@@ -1827,7 +1921,7 @@ export class Resolver {
         }
 
         wrote++;
-        this.adapter.log('info', `ConfigIntent: substituting "${text.slice(start, end)}" → "${pair}" (range=[${start},${end}), totalMs=${Date.now() - __resolveStart})`);
+        this.adapter.log('info', `ConfigIntent: substituting "${text.slice(start, end)}" â "${pair}" (range=[${start},${end}), totalMs=${Date.now() - __resolveStart})`);
         continue;
       }
 
@@ -1841,10 +1935,10 @@ export class Resolver {
       // DynDef is registered at currentIndex=0 so the existing cycling
       // path (Ctrl+Alt+Up) swaps in alts[1+] on user keystroke. The
       // sentence's word range is "claimed" so subsequent word-cue
-      // results inside it are suppressed (design 4a — sentence wins).
+      // results inside it are suppressed (design 4a â sentence wins).
       //
       // Earlier versions auto-spliced alts[1] the moment the LLM
-      // returned (TransformBlank-style). That was agent-like — the
+      // returned (TransformBlank-style). That was agent-like â the
       // user's prose was rewritten in the background without any
       // keystroke. Sentence-cues are CUES, not agents; the user must
       // explicitly cycle to apply.
@@ -1855,9 +1949,9 @@ export class Resolver {
         const end = r.spanEnd!;
         // Race guard: the sentence span we're about to claim must still
         // match what we analyzed. If the user typed elsewhere or edited
-        // this sentence, abandon — the cue would point at stale chars.
+        // this sentence, abandon â the cue would point at stale chars.
         if (liveText.slice(start, end) !== originalSentence) {
-          this.adapter.log('info', `SentenceCue[${r.source}]: skipping — buffer edit at [${start},${end}) changed the sentence since resolve`);
+          this.adapter.log('info', `SentenceCue[${r.source}]: skipping â buffer edit at [${start},${end}) changed the sentence since resolve`);
           continue;
         }
         // Registration key. Normally the sentence's first word index. But
@@ -1865,7 +1959,7 @@ export class Resolver {
         // sentences in one spaceless-CJK word), re-key the later one to a
         // synthetic, collision-free index so BOTH survive (the long-second-
         // sentence "not highlighted" bug). Stable across re-resolves (same
-        // span → same key), so it isn't duplicated.
+        // span â same key), so it isn't duplicated.
         const atNatural = this.dynDefs.get(r.wordIndex);
         const collides = !!atNatural && typeof atNatural.blankName === 'string'
           && atNatural.blankName.startsWith('sentence-cue:')
@@ -1876,7 +1970,7 @@ export class Resolver {
         // WHOLE buffer regardless of any active selector/satellite pair
         // or other span-bound DynDef (fluid-blank substitute, transform
         // rewrite). A sentence-cue cycling Up across one of those would
-        // mid-overwrite the span — refuse to register the def at all if
+        // mid-overwrite the span â refuse to register the def at all if
         // there's overlap.
         const sat = this.selectorSatelliteState?.current;
         const overlapsSatellite = sat ? (start < sat.pairCharEnd && sat.pairCharStart < end) : false;
@@ -1885,14 +1979,14 @@ export class Resolver {
           if (!def.blankName) continue;
           if (typeof def.spanStart !== 'number' || typeof def.spanEnd !== 'number') continue;
           if (def.spanEnd <= def.spanStart) continue;
-          // Refreshing OUR OWN def (same sentence span, any key) is fine —
+          // Refreshing OUR OWN def (same sentence span, any key) is fine â
           // exempt the exact span so re-resolution doesn't self-collide.
           if (typeof def.blankName === 'string' && def.blankName.startsWith('sentence-cue:')
             && def.spanStart === start && def.spanEnd === end) continue;
           if (start < def.spanEnd && def.spanStart < end) { overlapsDynDef = true; break; }
         }
         if (overlapsSatellite || overlapsDynDef) {
-          this.adapter.log('info', `SentenceCue[${r.source}]: skipping — sentence span [${start},${end}) overlaps an active managed span (satellite=${overlapsSatellite}, dyndef=${overlapsDynDef})`);
+          this.adapter.log('info', `SentenceCue[${r.source}]: skipping â sentence span [${start},${end}) overlaps an active managed span (satellite=${overlapsSatellite}, dyndef=${overlapsDynDef})`);
           continue;
         }
 
@@ -1903,7 +1997,7 @@ export class Resolver {
         this.dynDefs.set(regKey, {
           originalWord: originalSentence,
           alternatives: r.alternatives, // [original, ...rewrites]
-          currentIndex: 0, // passive — buffer shows alts[0] (the original)
+          currentIndex: 0, // passive â buffer shows alts[0] (the original)
           spanStart: start,
           spanEnd: end,
           // blankName uses the source id (sentence-cue:<name>) so the
@@ -1916,13 +2010,13 @@ export class Resolver {
         // Record claim for downstream word-cue suppression. Uses the
         // ORIGINAL word indices (the result list is in original-buffer
         // coords since we didn't splice). One entry per applied
-        // sentence-cue — every claimed range suppresses word-cues inside
+        // sentence-cue â every claimed range suppresses word-cues inside
         // it (multi-sentence-cue lift, June 2026).
         const claimStart = r.wordIndex;
         const claimEnd = r.wordIndex + originalSentence.split(/\s+/).filter(Boolean).length - 1;
         sentenceClaims.push({ start: claimStart, end: claimEnd });
 
-        this.adapter.log('info', `SentenceCue[${r.source}]: cue ready [${start},${end}) "${originalSentence.slice(0, 50)}…" (alts=${r.alternatives.length - 1}, defAt=${r.wordIndex}, claimWords=[${claimStart},${claimEnd}])`);
+        this.adapter.log('info', `SentenceCue[${r.source}]: cue ready [${start},${end}) "${originalSentence.slice(0, 50)}â¦" (alts=${r.alternatives.length - 1}, defAt=${r.wordIndex}, claimWords=[${claimStart},${claimEnd}])`);
         continue;
       }
 
@@ -1938,18 +2032,18 @@ export class Resolver {
         const rewrittenText = r.alternatives[1];
         const liveText = this.adapter.getText();
 
-        // Race guard — if the live text no longer matches what we
+        // Race guard â if the live text no longer matches what we
         // analyzed, another module already touched it. Skip.
         // Compare ZWS-stripped to ignore runtime-internal toggles (e.g.
         // BlankLoading spinner ticks via pushText flip ZWS every frame on
         // CC 2.1.x to force a repaint; those toggles aren't user edits).
         const stripZw = (s: string): string => s.replace(/[\u200B\u200C]/g, '');
         if (stripZw(liveText) !== stripZw(originalText)) {
-          this.adapter.log('info', `TransformBlank: skipping — live text changed since resolve (live len=${liveText.length}, original len=${originalText.length})`);
+          this.adapter.log('info', `TransformBlank: skipping â live text changed since resolve (live len=${liveText.length}, original len=${originalText.length})`);
           continue;
         }
 
-        // TASK COMMAND ROUTING — TASK_ARM/TASK_ADD/TASK_STOP/TASK_SHOW
+        // TASK COMMAND ROUTING â TASK_ARM/TASK_ADD/TASK_STOP/TASK_SHOW
         // mutate AgentTaskState instead of running the normal substitute
         // path. The rewrittenText is computed from the live state.
         const taskAction = r.metadata?.taskAction as string | undefined;
@@ -1981,7 +2075,7 @@ export class Resolver {
         // transformTarget may contain markdown markers when EXTRACT
         // ran against the rich-text view (re-injected markers from
         // MarkdownRender's cache). Strip them before locating the
-        // target in originalText (the unmarked visible buffer) —
+        // target in originalText (the unmarked visible buffer) â
         // otherwise indexOf finds nothing and we drop to whole-body
         // fallback even on a clean target match.
         const transformTargetRaw = r.metadata?.transformTarget as string | undefined;
@@ -2001,7 +2095,7 @@ export class Resolver {
             const targetEnd = targetIdx + transformTarget.length;
             const trigger = locateTrigger(originalText, transformInstruction, targetIdx, targetEnd);
             if (trigger) {
-              // Span from earliest-of(target, trigger) → latest-of(target, trigger).
+              // Span from earliest-of(target, trigger) â latest-of(target, trigger).
               spliceStart = Math.min(targetIdx, trigger.start);
               spliceEnd = Math.max(targetEnd, trigger.end);
               // Separator = anything between target and trigger that
@@ -2017,7 +2111,7 @@ export class Resolver {
             } else {
               // Trigger not located via instruction phrase. Conservative
               // fallback: splice from target onward, preserving leading
-              // whitespace as separator. Splice covers target end → EOL.
+              // whitespace as separator. Splice covers target end â EOL.
               spliceStart = targetIdx;
               const remainder = originalText.slice(targetEnd);
               const separator = (remainder.match(/^\s*/)?.[0] ?? '').replace(/[ \t]+$/, '');
@@ -2025,10 +2119,10 @@ export class Resolver {
               rewriteWithSeparator = rewrittenText + separator;
             }
           } else {
-            // Sandwiched target — EXTRACT joined two halves with "\n"
+            // Sandwiched target â EXTRACT joined two halves with "\n"
             // but in originalText they're separated by the trigger
             // phrase. We replace ONLY the trigger phrase with "" and
-            // each half with its modified rewrite — surrounding
+            // each half with its modified rewrite â surrounding
             // structural whitespace (paragraph breaks) is preserved
             // exactly, including the now-empty trigger LINE itself.
             // Compose the final buffer here and splice it as one
@@ -2037,7 +2131,7 @@ export class Resolver {
             if (sandwich) {
               spliceStart = sandwich.pt1Start;
               spliceEnd = sandwich.pt2End;
-              // Split the LLM rewrite on its first `\n` — EXTRACT
+              // Split the LLM rewrite on its first `\n` â EXTRACT
               // joined pt1+pt2 with a single newline, APPLY preserves
               // that join. Falls back to "whole rewrite is pt1, pt2
               // unchanged" when the rewrite has no \n.
@@ -2051,7 +2145,7 @@ export class Resolver {
               const sepBeforeTrigger = originalText.slice(sandwich.pt1End, sandwich.triggerStart);
               const sepAfterTrigger = originalText.slice(sandwich.triggerEnd, sandwich.pt2Start);
               // Compose: pt1_mod + sep_before + (trigger consumed: empty) + sep_after + pt2_mod.
-              // The trigger LINE remains structurally — its surrounding
+              // The trigger LINE remains structurally â its surrounding
               // whitespace is intact and its text is just empty now.
               rewriteWithSeparator = pt1Mod + sepBeforeTrigger + sepAfterTrigger + pt2Mod;
             }
@@ -2060,21 +2154,21 @@ export class Resolver {
         }
 
 
-        // ── Two substitute paths ───────────────────────────────────────
+        // ââ Two substitute paths âââââââââââââââââââââââââââââââââââââââ
         //
         // Bounded-target (transformTarget set): the source rewrote ONLY
         // the target span, so the runtime splices [spliceStart, spliceEnd)
         // computed above. Structurally safe because the LLM only saw the
-        // target as input — it can't produce content outside that span.
-        // (TransformBlank's fused path does NOT set transformTarget — it
-        // emits the whole buffer — so it always takes the merge path
+        // target as input â it can't produce content outside that span.
+        // (TransformBlank's fused path does NOT set transformTarget â it
+        // emits the whole buffer â so it always takes the merge path
         // below; this branch remains for any future bounded-span source.)
         //
         // Fused / whole-buffer (transformTarget empty/undefined): the
         // LLM emitted the WHOLE final buffer in FULL_REWRITE. We diff
-        // (originalText → rewrittenText) and three-way-merge against
+        // (originalText â rewrittenText) and three-way-merge against
         // the live buffer so any in-flight user typing past the trigger
-        // survives. No splice-scope ambiguity → duplication bug class
+        // survives. No splice-scope ambiguity â duplication bug class
         // is structurally impossible (no concat tail to overrun).
         let bufferText: string;
         let sub: { newText: string; hadMarkdown: boolean };
@@ -2092,7 +2186,7 @@ export class Resolver {
           // this fix) was worse: it made liveText differ from originalText
           // by 1 char (the ZWS), which the merge counted as a real user edit
           // at the trigger's last char position. The LLM's trigger-removal
-          // hunk overlapped that fake edit → got dropped → the trigger
+          // hunk overlapped that fake edit â got dropped â the trigger
           // survived in the merged result. Stripping both inputs equally
           // lets the merge see the buffers as actually-equal modulo ZWS,
           // so no fake user-edits arise.
@@ -2105,12 +2199,12 @@ export class Resolver {
           // (`...email body\n\ndraft an email _`), the surrounding
           // paragraph-break gap tokens straddle the trigger and the merge
           // emits multi-fragment hunks whose boundaries don't cleanly
-          // wrap the trigger phrase — leaving parts of the summon text
+          // wrap the trigger phrase â leaving parts of the summon text
           // ("draft an email" or just the `_`) parked in the merged
           // result. User-visible: "my summon text doesn't get deleted
           // when on another line". Pre-removing the trigger from both
           // merge inputs guarantees the merge never has to delete it on
-          // its own — the trigger is simply absent from both sides.
+          // its own â the trigger is simply absent from both sides.
           const trig = transformInstruction
             ? locateTrigger(originalText, transformInstruction, 0, 0)
             : null;
@@ -2119,7 +2213,7 @@ export class Resolver {
           if (trig) {
             const removeRange = (text: string, t: { start: number; end: number }): string => {
               // Also swallow a leading newline gap if the trigger occupies
-              // its own line — otherwise the paragraph break before the
+              // its own line â otherwise the paragraph break before the
               // trigger is left dangling as a stray blank line in the
               // rewritten buffer.
               let start = t.start;
@@ -2141,10 +2235,10 @@ export class Resolver {
           bufferText = sub.newText;
           spliceStart = 0;
         }
-        // Undo journal: what the user SAW (live buffer) → what landed.
+        // Undo journal: what the user SAW (live buffer) â what landed.
         // diffSplice trims to the changed region, so even this whole-
         // buffer path records a relocatable hunk, not the full text.
-        this.recordUndo('rewrite', liveText.replace(/[​‌]/g, ''), bufferText);
+        this.recordUndo('rewrite', liveText.replace(/[ââ]/g, ''), bufferText);
 
         // Find which word the rewrite's first word lands at in the new
         // text (for keying the def). Defaults to wherever the splice
@@ -2153,27 +2247,27 @@ export class Resolver {
         const newWords = splitWords(bufferText);
         const firstSpliceWord = newWords.find(w => w.start >= spliceStart);
         const newWordIndex = firstSpliceWord ? firstSpliceWord.index : 0;
-        // spanEnd MUST be the full bufferText length — the def's alternatives[0]
+        // spanEnd MUST be the full bufferText length â the def's alternatives[0]
         // IS bufferText, so the span and the stored text have to agree. Using
         // the last WHITESPACE-word's end (the old behaviour) fell short whenever
         // the rewrite ended in trailing whitespace/newline, leaving the def
-        // span shorter than its own text — the dim/highlight then stopped a
+        // span shorter than its own text â the dim/highlight then stopped a
         // generation-dependent char or two before the real end (the trailing
-        // 。 / last chars not highlighted). Whole-buffer transform → spanStart 0,
+        // ã / last chars not highlighted). Whole-buffer transform â spanStart 0,
         // spanEnd = full length.
         const newSpanEnd = bufferText.length;
 
         // Chain extension: if a prior transform-blank def's current alt
         // is still verbatim inside the pre-substitute buffer, the user
         // is doing a sequence of rewrites on the same content
-        // (translate to japanese → translate to chinese). Extend the
-        // existing chain in REVERSE chronological order — newest at
-        // index 0 — so Up walks back through history one step at a
+        // (translate to japanese â translate to chinese). Extend the
+        // existing chain in REVERSE chronological order â newest at
+        // index 0 â so Up walks back through history one step at a
         // time (matching the convention every other blank type uses:
         // alts[0] = current visible, Up = +1 = next in cycle).
         // Truncate-on-branch: if the user cycled back mid-chain before
         // re-summoning, discard the abandoned head (items NEWER than
-        // where the user landed — indices BELOW currentIndex in the
+        // where the user landed â indices BELOW currentIndex in the
         // new reverse-chronological layout).
         const existingChain = this.dynDefs.findChainableLlmDef(
           originalText, 0, originalText.length, ['transform-blank'],
@@ -2206,7 +2300,7 @@ export class Resolver {
             currentIndex: 0,
             spanStart: 0,
             spanEnd: newSpanEnd,
-            // blankName locks this def from re-resolution by the LLM —
+            // blankName locks this def from re-resolution by the LLM â
             // same mechanism fluid-blank uses.
             blankName: 'transform-blank',
           };
@@ -2214,9 +2308,9 @@ export class Resolver {
         // Prune stale defs the substitute invalidated.
         // (a) Sentence-cue defs were resolved against pre-substitute text;
         //     their spanStart/spanEnd indices now point at unrelated content
-        //     in the new buffer → the dim ranges paint nonsense overlay.
+        //     in the new buffer â the dim ranges paint nonsense overlay.
         // (b) Any other def whose spanEnd > bufferText.length is out-of-range
-        //     in the new buffer → keeping it is structurally meaningless.
+        //     in the new buffer â keeping it is structurally meaningless.
         // Navigation's onTextChange short-circuits on runtime events, so it
         // doesn't run pruneStale for us. Substitute is the right place.
         let prunedCount = 0;
@@ -2238,18 +2332,18 @@ export class Resolver {
         wrote++;
 
         const previewLen = 60;
-        const origPreview = originalText.length > previewLen ? originalText.slice(0, previewLen) + '…' : originalText;
-        const rewritePreview = bufferText.length > previewLen ? bufferText.slice(0, previewLen) + '…' : bufferText;
+        const origPreview = originalText.length > previewLen ? originalText.slice(0, previewLen) + 'â¦' : originalText;
+        const rewritePreview = bufferText.length > previewLen ? bufferText.slice(0, previewLen) + 'â¦' : bufferText;
         const markerNote = sub.hadMarkdown ? ', markdown stripped' : '';
-        this.adapter.log('info', `TransformBlank: substituting "${origPreview}" → "${rewritePreview}" (origLen=${originalText.length}, rewriteLen=${bufferText.length}${markerNote}, defAt=${newWordIndex}, totalMs=${Date.now() - __resolveStart})`);
+        this.adapter.log('info', `TransformBlank: substituting "${origPreview}" â "${rewritePreview}" (origLen=${originalText.length}, rewriteLen=${bufferText.length}${markerNote}, defAt=${newWordIndex}, totalMs=${Date.now() - __resolveStart})`);
 
         // Fire `transform-blank.completed` AFTER the buffer commit so
         // that observers (statusline, agentic tests) can rely on the
-        // event marking a final, user-visible buffer state — never an
+        // event marking a final, user-visible buffer state â never an
         // intermediate loading-animation frame. The source's pipeline
         // latency rides through via metadata.pipelineLatencyMs; this
         // structurally closes the race that allowed the braille
-        // loading char (⠁/⠈/…) to be caught between completion of the
+        // loading char (â /â /â¦) to be caught between completion of the
         // LLM call and the resolver's substitute commit.
         const pipelineLatencyMs = (r.metadata?.pipelineLatencyMs as number | undefined) ?? (Date.now() - __resolveStart);
         this.adapter.emitEvent?.('transform-blank.completed', {
@@ -2278,10 +2372,10 @@ export class Resolver {
       // fluid/config-intent/sentence-cue/blank) is REJECTED, so it can't fight
       // the owner on re-resolve/cycle ("the blank span breaks when I edit", and
       // word-cues claiming inner words of a persisted sentence-cue span). The
-      // owner can sit at a different word index — span-overlap, not index, is
+      // owner can sit at a different word index â span-overlap, not index, is
       // the test. set() returns false when it rejects.
       if (!this.dynDefs.set(r.wordIndex, def)) {
-        this.adapter.log('debug', `Resolver: word-cue at [${def.spanStart},${def.spanEnd}) rejected — inside an active managed span`);
+        this.adapter.log('debug', `Resolver: word-cue at [${def.spanStart},${def.spanEnd}) rejected â inside an active managed span`);
         continue;
       }
       wrote++;
@@ -2294,7 +2388,7 @@ export class Resolver {
     // Close any config-intent transaction whose buffer splice never
     // landed (race-bail path, or the result was dropped downstream).
     // The scalar DID change at emit time, so a scalar-only transaction
-    // is correct — undo still reverts the setting.
+    // is correct â undo still reverts the setting.
     this.commitPendingConfigIntentTx();
   }
 }
@@ -2307,7 +2401,7 @@ export class Resolver {
 //
 // Exported as the canonical trigger map; agent-rewrite uses its
 // presence in the prompt's task instructions but doesn't need explicit
-// "protection" — its full-rewrite + three-way-merge architecture
+// "protection" â its full-rewrite + three-way-merge architecture
 // can't accidentally translate these keywords mid-stream the way the
 // legacy per-keystroke AgentLoop could.
 export const TASK_TRIGGER_KEYWORDS: Record<string, string> = {
@@ -2424,7 +2518,7 @@ function locateTrigger(
 }
 
 /**
- * Locate a sandwiched target — two halves joined by "\n" in EXTRACT's
+ * Locate a sandwiched target â two halves joined by "\n" in EXTRACT's
  * output, but in originalText separated by the trigger phrase. Returns
  * the [pt1Start, pt2End) span the splice should replace, or null when
  * the pattern doesn't fit.
@@ -2483,8 +2577,8 @@ function trimTriggerFromText(
   if (!kw) return '';
 
   // Locate the trigger keyword. Prefer the as-typed view when one is
-  // supplied — it's robust to agent-edited trigger words (e.g. agent
-  // translated `agentically` → `agentisch` in the visible buffer; the
+  // supplied â it's robust to agent-edited trigger words (e.g. agent
+  // translated `agentically` â `agentisch` in the visible buffer; the
   // user's typed `agentically` is still in `asTyped`). When the user's
   // trigger keyword survives in visible (the typical case), the visible
   // search succeeds the same way it always did.
@@ -2515,7 +2609,7 @@ function trimTriggerFromText(
     return visibleText.slice(0, start).replace(/ +$/, '');
   }
   // Strip [start, blankIdx+1] from visible. Trim ONLY space chars on
-  // each flank — preserving newlines so paragraph structure
+  // each flank â preserving newlines so paragraph structure
   // ("para1\n\nstop task _\n\npara2") survives. Insert ONE space at the
   // join only when both sides end up non-whitespace (mid-sentence
   // trigger) so we don't run words together.

@@ -351,6 +351,7 @@ export function boot(host: HostInfo): BootResult {
       exportPath: '',
       onSnapshot: (payload) => host.statusSnapshotHook!(payload),
       kataStatus: () => kataCoach.status(),
+      undoStatus: () => shared.undoJournal.recentApplyReport(8000),
     }, configLoader, spanFillState, selectorSatelliteState, agentTaskState);
     statusline.subscribe();
   }

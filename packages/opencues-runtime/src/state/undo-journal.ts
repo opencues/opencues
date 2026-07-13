@@ -108,6 +108,26 @@ export interface PendingTransaction {
   abort(): void;
 }
 
+/** Why an entry (or a whole transaction) was skipped during apply. */
+export type UndoSkipReason =
+  | 'not-found'       // buffer anchor no longer present (user edited it away / stale)
+  | 'ambiguous'       // anchor appears more than once — refuse to guess
+  | 'stale-epoch'     // buffer entry from a previous message/buffer
+  | 'value-drifted'   // scalar/OS value changed since (hand edit, other app)
+  | 'no-prior-value'  // scalar had no pre-write value and no registry default
+  | 'external'        // Tier-4: user-pack side effect the runtime can't reverse
+  | 'exec-failed';    // inversion invocation failed ([err], exit != 0, timeout)
+
+export interface UndoApplyReport {
+  readonly action: 'undo' | 'redo';
+  /** Post-clamp count actually attempted. */
+  readonly requested: number;
+  readonly appliedTransactions: number;
+  readonly appliedEntries: number;
+  readonly skipped: ReadonlyArray<{ readonly label: string; readonly reason: UndoSkipReason; readonly detail?: string }>;
+  readonly at: number;
+}
+
 export class UndoJournal {
   static readonly MAX_DEPTH = 50;
 
@@ -115,6 +135,7 @@ export class UndoJournal {
   private _redo: UndoTransaction[] = [];
   private _epoch = 0;
   private _applying = false;
+  private _lastApplyReport: UndoApplyReport | null = null;
 
   // ── epoch ──────────────────────────────────────────────────────────
 
@@ -242,10 +263,26 @@ export class UndoJournal {
     this._undo.push(tx);
   }
 
+  // ── apply report (statusline feed) ─────────────────────────────────
+
+  noteApplyReport(report: UndoApplyReport): void {
+    this._lastApplyReport = report;
+  }
+
+  /** The last apply's report if it's newer than `ttlMs`, else null.
+   *  Statusline thunks read this so a skip summary shows briefly and
+   *  then ages out on its own. */
+  recentApplyReport(ttlMs: number): UndoApplyReport | null {
+    const r = this._lastApplyReport;
+    if (!r) return null;
+    return Date.now() - r.at <= ttlMs ? r : null;
+  }
+
   /** Session teardown only — NOT wired into resetSharedBufferState. */
   clear(): void {
     this._undo = [];
     this._redo = [];
+    this._lastApplyReport = null;
   }
 }
 

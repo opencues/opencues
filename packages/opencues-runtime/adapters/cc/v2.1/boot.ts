@@ -661,6 +661,7 @@ export function boot(host: HostInfo): BootResult {
       exportPath: host.statusFilePath,
       refreshHook: host.refreshStatusline,
       kataStatus: () => kataCoach.status(),
+      undoStatus: () => undoJournal.recentApplyReport(8000),
     }, configLoader, spanFillState, selectorSatelliteState, agentTaskState);
     statusline.subscribe();
   }
