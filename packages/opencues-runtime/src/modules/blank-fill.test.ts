@@ -2011,3 +2011,87 @@ blankProximity: 10
     );
   });
 });
+
+// ─── loading-animation blank routing — shapes from the SHIPPED BLANK.md ───
+//
+// Same drift-pin idea as the model-blank block above: load the real
+// defaults/blanks/loading-animation/BLANK.md so shape edits that break
+// routing fail here. The load-bearing cases: (1) the full inline
+// definition routes with the whole command captured; (2) there is NO
+// bare shape — typing `loading animation _` en route to a frame list
+// that STARTS with `_` must not fire; (3) leading-phrase gate: prose
+// that merely CONTAINS the phrase never routes.
+describe('loading-animation blank routing (shapes from defaults/blanks/loading-animation/BLANK.md)', () => {
+  const REPO_ROOT2 = resolvePath(__dirname, '../../../..');
+  const LOADING_MD = readFileSync(resolvePath(REPO_ROOT2, 'defaults/blanks/loading-animation/BLANK.md'), 'utf8');
+
+  async function loadingSetup(stdout = '[loading animation: custom · 4 frames]') {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/blanks/loading-animation/BLANK.md': LOADING_MD },
+      capabilities: [
+        'render-override', 'dim-ranges', 'highlight-range',
+        'file-read', 'file-write', 'force-render', 'change-source',
+        'blank-invoke',
+      ],
+    });
+    adapter.stubBlankInvoke('loading-animation:get', stdout);
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    return { adapter };
+  }
+
+  it('full inline definition routes with frames + colours + interval as context', async () => {
+    const { adapter } = await loadingSetup();
+    adapter.pushText('loading animation _,-,‾,- red,orange,yellow 75 _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.blankInvokeCalls.length).toBe(1);
+    expect(adapter.blankInvokeCalls[0]).toMatchObject({ blankName: 'loading-animation', action: 'get' });
+    expect(adapter.blankInvokeCalls[0].args.slice(1)).toEqual(['_,-,‾,-', 'red,orange,yellow', '75']);
+    // Captured command consumed — the confirmation stands alone.
+    expect(adapter.getText()).toBe('[loading animation: custom · 4 frames]');
+  });
+
+  it('typing the keyword then the first frame underscore does NOT fire (no bare shape)', async () => {
+    const { adapter } = await loadingSetup();
+    // The user is en route to `loading animation _,-,‾,- _` — the first
+    // `_` they type is frame 0, not the trigger.
+    adapter.pushText('loading animation _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.blankInvokeCalls.length).toBe(0);
+    expect(adapter.getText()).toBe('loading animation _');
+  });
+
+  it('preset switch routes', async () => {
+    const { adapter } = await loadingSetup('[loading animation: bounce]');
+    adapter.pushText('loading animation bounce _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.blankInvokeCalls.length).toBe(1);
+    expect(adapter.blankInvokeCalls[0].args.slice(1)).toEqual(['bounce']);
+  });
+
+  it('show routes', async () => {
+    const { adapter } = await loadingSetup('custom · frames _,-,‾,- · 150ms');
+    adapter.pushText('loading animation show _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.blankInvokeCalls.length).toBe(1);
+    expect(adapter.blankInvokeCalls[0].args.slice(1)).toEqual(['show']);
+  });
+
+  it('prose containing the phrase mid-sentence does NOT route (leading-phrase gate)', async () => {
+    const { adapter } = await loadingSetup();
+    adapter.pushText('the loading animation is slow _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.blankInvokeCalls.length).toBe(0);
+    expect(adapter.getText()).toBe('the loading animation is slow _');
+  });
+
+  it('prior sentence survives: only the definition segment is consumed', async () => {
+    const { adapter } = await loadingSetup();
+    adapter.pushText('hii world. loading animation _,-,‾,- _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.getText()).toBe('hii world. [loading animation: custom · 4 frames]');
+  });
+});

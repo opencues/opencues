@@ -26,6 +26,7 @@ export { CountriesBlank, type CountriesBlankOptions } from './countries';
 export { ClaudeStatusBlank, type ClaudeStatusBlankOptions } from './claude-status';
 export { NoteBlank, type NoteBlankOptions, type NoteCaps } from './note';
 export { ModelBlank, type ModelBlankOptions } from './model';
+export { LoadingAnimationBlank, type LoadingAnimationBlankOptions } from './loading-animation';
 
 // Imports for the BUILTIN_BLANKS registry below. The above `export`
 // lines re-publish them; these `import` lines bring them into scope
@@ -42,6 +43,7 @@ import { CountriesBlank } from './countries';
 import { ClaudeStatusBlank } from './claude-status';
 import { NoteBlank } from './note';
 import { ModelBlank } from './model';
+import { LoadingAnimationBlank } from './loading-animation';
 
 // ──────────────────────────────────────────────────────────────────────
 // Built-in blanks registry — single source of truth across hosts.
@@ -210,6 +212,12 @@ export const BUILTIN_BLANKS: readonly BuiltinBlankSpec[] = [
   //    add/recall/delete over ~/.cues/NOTES.md; every write goes
   //    through validateNoteWrite. Skips when no IO supplied.
   { name: 'note',          factory: ctx => ctx.notesMdIO ? new NoteBlank(ctx.notesMdIO) : null },
+
+  // ── Inline loading-animation definition (`loading animation _,-,‾,- red,orange _`).
+  //    Deterministic parser over the four blank-loading-* scalars —
+  //    writes OPENCUES.md via the same rewriteSetting path the
+  //    settings blank uses. Skips when no IO supplied.
+  { name: 'loading-animation', factory: ctx => ctx.opencuesMdIO ? new LoadingAnimationBlank(ctx.opencuesMdIO) : null },
 ];
 
 /**

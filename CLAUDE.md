@@ -147,7 +147,7 @@ opencues/
 │   │   ├── more-formal/CUE.md     # scope: sentence — the shipped sentence-cue
 │   │   ├── spelling/CUE.md        # Lowest priority (10) — catch-all spell-check
 │   │   └── tips-{claude-code,gemini-cli,opencode,shell}/CUE.md  # Per-host static tip groups
-│   └── blanks/                    # Folder-based cue-blanks (colocated scripts + state) — 16 shipped folders
+│   └── blanks/                    # Folder-based cue-blanks (colocated scripts + state) — 17 shipped folders
 │       ├── volume/
 │       │   ├── BLANK.md           # type: blank, blankKeywords: volume, blankScript: ./volume-blank.sh
 │       │   ├── volume-blank.sh    # Blank script: get/set system volume

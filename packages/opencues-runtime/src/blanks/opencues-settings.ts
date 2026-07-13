@@ -137,7 +137,7 @@ function firstSettingName(text: string): string | null {
  *  text was unchanged, write was skipped, and 2.5s later ConfigLoader
  *  hot-reloaded and reverted the in-memory state to the default.
  *  Symptom: cycling appears to work momentarily then snaps back. */
-function rewriteSetting(text: string, name: string, value: string): string {
+export function rewriteSetting(text: string, name: string, value: string): string {
   const re = new RegExp(`^(${escapeRegex(name)}:)[^\\n]*$`, 'm');
   if (re.test(text)) {
     return text.replace(re, `$1 ${value}`);
