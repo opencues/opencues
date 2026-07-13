@@ -422,6 +422,17 @@ export const FEATURES: readonly FeatureSpec[] = [
     ],
   },
   {
+    scalar: 'undo-mode',
+    group: 'Cues',
+    camelCase: 'undoMode',
+    description: 'Natural-language undo/redo of OpenCues changes ("undo _", "undo 3 _", "redo _")',
+    menuTip: 'Revert what OpenCues did — fills, rewrites, settings writes, volume/brightness sets. Language-invariant (routed via the config-intent classifier); count supported ("undo 3 _").',
+    values: [
+      { id: 'on',  description: 'Enabled (default) — `undo _` / `redo _` revert OpenCues-applied changes from the session journal' },
+      { id: 'off', description: 'Disabled — undo/redo verdicts cede; `_` falls through to the other blank sources' },
+    ],
+  },
+  {
     scalar: 'integration-weave-mode',
     group: 'Blanks',
     camelCase: 'integrationWeaveMode',

@@ -76,6 +76,20 @@ identity-context-mode: safe
 # See docs/architecture/fluid-config.md.
 fluid-config-mode: on
 
+# undo-mode — natural-language undo/redo of OpenCues-applied changes.
+# "undo _" reverts the last change OpenCues made (a blank fill, a
+# transform rewrite, a settings write, a volume/brightness set);
+# "redo _" re-applies it; "undo 3 _" reverts three. Language-invariant
+# (classified by the same config-intent LLM call as fluid-config, so
+# "元に戻して _" and "deshacer _" work too). Reverts are exact-match-
+# or-refuse: if you've edited the text since, the stale part is
+# skipped and reported, never guessed at. External effects of user-
+# pack blanks (fetch/exec) are NOT reversible and are reported as such.
+#   on (default) : `undo _` / `redo _` revert from the session journal.
+#   off          : undo/redo verdicts cede; `_` falls through.
+# See docs/architecture/undo.md.
+undo-mode: on
+
 # blank-context-mode — blanks expose their current values as ambient
 # tokens for fluid-blank, so a `_` lookup can reach stock prices,
 # weather, crypto rates etc. WITHOUT typing the keyword. e.g. "buy
