@@ -335,9 +335,18 @@ export function notifyExternalReplaceUndo(): void {
  *  keys at all); that case requires a tab reload to wire the
  *  resolver up fresh, and we surface a warn via the runtime side. */
 export function updateRuntimeApiKeys(newKeys: Readonly<Record<string, string>>): void {
+  // Keep the model blank's live key ref in step with the resolver —
+  // assigned BEFORE the boot guard so a pre-boot push still lands.
+  _liveLlmKeys = newKeys;
   if (!bootResult) return;
   bootResult.updateApiKeys(newKeys);
 }
+
+/** Live LLM key bag for the `model` blank's effective-routing walk.
+ *  Seeded from boot opts in startOpenCues; replaced wholesale by
+ *  updateRuntimeApiKeys on every host-push / popup-save so the blank
+ *  answers from current credentials without a tab reload. */
+let _liveLlmKeys: Readonly<Record<string, string | undefined>> | null = null;
 
 /** Real-time provider/model/endpoint update — called by content.ts
  *  when the popup saves a change to those fields. Mirrors
@@ -2624,6 +2633,16 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     // NOTES.md (same situation as IDENTITY.md writes).
     notesMdReadFile: () => readFile(`${ROOT}/.cues/NOTES.md`),
     notesMdWriteFile: (content) => writeFile(`${ROOT}/.cues/NOTES.md`, content),
+    // Model-visibility blank ("whats my model _") — thunk over the
+    // LIVE key ref (kept current by updateRuntimeApiKeys), not a boot
+    // snapshot: chrome keys arrive async post-boot and rotate live
+    // (docs/architecture/chrome-llm-keys.md). Seeded here with the
+    // boot bag, incl. the legacy single-key popup field as
+    // GROQ_API_KEY — mirrors the resolver's own bag construction.
+    getLlmApiKeys: () => _liveLlmKeys ?? {
+      ...(opts.llmApiKey ? { GROQ_API_KEY: opts.llmApiKey } : {}),
+      ...(opts.llmApiKeys ?? {}),
+    },
   });
   blankInvoke = createBlankInvoke(blanks);
 

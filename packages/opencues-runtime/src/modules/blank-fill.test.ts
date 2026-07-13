@@ -1777,3 +1777,114 @@ blankScript: ./demo.sh
     expect(adapter.getText()).toBe('demo GOOD');
   });
 });
+
+// ─── Model blank routing — shapes drift-pinned to the SHIPPED BLANK.md ────
+//
+// The `model` blank's trigger grammar lives in defaults/blanks/model/BLANK.md
+// (`blankShapes`). These journeys load that REAL file (not an inline copy),
+// so editing the shipped shapes and forgetting the routing contract fails
+// here — the same drift-pin idea as the registry tests. "model" is a common
+// English word, so the negative case (prose mentioning "model" must NOT
+// claim `_`) is as load-bearing as the positives.
+import { readFileSync } from 'node:fs';
+import { resolve as resolvePath } from 'node:path';
+
+describe('model blank routing (shapes from defaults/blanks/model/BLANK.md)', () => {
+  const REPO_ROOT = resolvePath(__dirname, '../../../..');
+  const MODEL_MD = readFileSync(resolvePath(REPO_ROOT, 'defaults/blanks/model/BLANK.md'), 'utf8');
+  const DICTIONARY_MD = readFileSync(resolvePath(REPO_ROOT, 'defaults/blanks/dictionary/BLANK.md'), 'utf8');
+
+  async function modelSetup(opts: { stdout?: string; withDictionary?: boolean } = {}) {
+    const files: Record<string, string> = {
+      '/mock/CUES.md': TIPS,
+      '/proj/blanks/model/BLANK.md': MODEL_MD,
+    };
+    if (opts.withDictionary) files['/proj/blanks/dictionary/BLANK.md'] = DICTIONARY_MD;
+    // 'blank-invoke' capability: both blanks are runtime-hoisted
+    // (no blankScript) — the registry IS the implementation.
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files,
+      capabilities: [
+        'render-override', 'dim-ranges', 'highlight-range',
+        'file-read', 'file-write', 'force-render', 'change-source',
+        'blank-invoke',
+      ],
+    });
+    adapter.stubBlankInvoke('model:get', opts.stdout ?? 'cerebras · gpt-oss-120b');
+    if (opts.withDictionary) adapter.stubBlankInvoke('dictionary:get', 'model: a system or thing used as an example');
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    return { adapter };
+  }
+
+  it('"whats my model _" routes to the model blank with keyword `model`', async () => {
+    const { adapter } = await modelSetup();
+    adapter.pushText('whats my model _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.blankInvokeCalls.length).toBe(1);
+    expect(adapter.blankInvokeCalls[0]).toMatchObject({ blankName: 'model', action: 'get' });
+    expect(adapter.blankInvokeCalls[0].args[0]).toBe('model');
+    // Full question captured → span consumed → the answer stands alone.
+    expect(adapter.getText()).toBe('cerebras · gpt-oss-120b');
+  });
+
+  it('"model _" bare trigger routes', async () => {
+    const { adapter } = await modelSetup();
+    adapter.pushText('model _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.blankInvokeCalls.length).toBe(1);
+    expect(adapter.blankInvokeCalls[0]).toMatchObject({ blankName: 'model', action: 'get' });
+  });
+
+  it('"list models _" dispatches keyword `models` (catalog mode)', async () => {
+    const { adapter } = await modelSetup({ stdout: 'cerebras (current): gpt-oss-120b*' });
+    adapter.pushText('list models _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.blankInvokeCalls.length).toBe(1);
+    expect(adapter.blankInvokeCalls[0]).toMatchObject({ blankName: 'model', action: 'get' });
+    // Mode discrimination: the MATCHED keyword is `models`, not `model`.
+    expect(adapter.blankInvokeCalls[0].args[0]).toBe('models');
+  });
+
+  it('"model for cues _" captures the bucket as context', async () => {
+    const { adapter } = await modelSetup({ stdout: 'cues: groq · openai/gpt-oss-120b' });
+    adapter.pushText('model for cues _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.blankInvokeCalls.length).toBe(1);
+    expect(adapter.blankInvokeCalls[0]).toMatchObject({ blankName: 'model', action: 'get', args: ['model', 'cues'] });
+  });
+
+  it('prose mentioning "model" does NOT claim the blank (shape-gated)', async () => {
+    const { adapter } = await modelSetup();
+    adapter.pushText('the model returned garbage _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.blankInvokeCalls.length).toBe(0);
+    expect(adapter.getText()).toBe('the model returned garbage _');
+  });
+
+  it('prior sentence survives: only the question segment is consumed', async () => {
+    const { adapter } = await modelSetup();
+    adapter.pushText('hii world. whats my model _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.getText()).toBe('hii world. cerebras · gpt-oss-120b');
+  });
+
+  it('"what is my model _" routes to model, not the dictionary "what is" keyword', async () => {
+    const { adapter } = await modelSetup({ withDictionary: true });
+    adapter.pushText('what is my model _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.blankInvokeCalls.length).toBe(1);
+    expect(adapter.blankInvokeCalls[0]).toMatchObject({ blankName: 'model' });
+  });
+
+  it('dictionary keeps ordinary "what is" lookups when both are registered', async () => {
+    const { adapter } = await modelSetup({ withDictionary: true });
+    adapter.pushText('what is serendipity _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.blankInvokeCalls.length).toBe(1);
+    expect(adapter.blankInvokeCalls[0]).toMatchObject({ blankName: 'dictionary' });
+  });
+});
