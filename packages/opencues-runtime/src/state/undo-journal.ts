@@ -179,12 +179,17 @@ export class UndoJournal {
 
     // Coalesce: same key as the TOP undo transaction → merge in place.
     // First before-state wins, after-state overwritten, so one undo
-    // reverts the whole burst back to its origin.
+    // reverts the whole burst back to its origin. FRAME GUARD: the
+    // overwrite-merge is only sound when the new entry's before-state
+    // is literally the prior entry's after-state (same span frame) —
+    // recording sites uphold this by passing exact replaced-range
+    // slices, but a frame break (user edit mid-burst, inconsistent
+    // tap) must APPEND instead of merge, or undo splices garbage.
     const top = this._undo[this._undo.length - 1];
     if (tx.coalesceKey !== undefined && top?.coalesceKey === tx.coalesceKey) {
       for (const entry of tx.entries) {
         const prior = top.entries.find(e => e.kind === entry.kind && sameIdentity(e, entry));
-        if (prior) {
+        if (prior && framesCompose(prior, entry)) {
           overwriteAfterState(prior, entry);
         } else {
           top.entries.push(entry);
@@ -339,6 +344,21 @@ function sameIdentity(a: UndoEntry, b: UndoEntry): boolean {
     case 'external':
       return false;
   }
+}
+
+/** The overwrite-merge composes only when the newer entry starts where
+ *  the prior one ended — prior.after === next.before (same frame). */
+function framesCompose(prior: UndoEntry, next: UndoEntry): boolean {
+  if (prior.kind === 'buffer-splice' && next.kind === 'buffer-splice') {
+    return prior.afterSlice === next.beforeSlice;
+  }
+  if (prior.kind === 'scalar-write' && next.kind === 'scalar-write') {
+    return prior.newValue === next.prevValue;
+  }
+  if (prior.kind === 'os-set' && next.kind === 'os-set') {
+    return prior.newValue === next.prevValue;
+  }
+  return false;
 }
 
 /** Merge a newer entry's after-state into a coalesced prior entry,

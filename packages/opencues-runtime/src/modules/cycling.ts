@@ -21,7 +21,7 @@ import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
 import { isProviderValueCyclable, getProvider } from '@opencues/core';
 import { invokeOrSpawnBlank } from '../util/blank-invoke';
-import { diffSplice, type UndoJournal, type UndoEntry } from '../state/undo-journal';
+import type { UndoJournal, UndoEntry } from '../state/undo-journal';
 
 /** Sentence-cue defs cycle over a SENTENCE whose char span (spanStart/
  *  spanEnd) is the source of truth — whitespace words don't bound it in
@@ -123,15 +123,26 @@ export class Cycling {
   }
 
   /** Record a cycle into the undo journal (no-op without a journal).
-   *  Buffer entry derived by diffing pre/post text; `extra` carries
-   *  side-effect entries (scalar-write, os-set). Every cycle path
-   *  passes a coalesceKey so a rapid burst on the same target merges
-   *  into ONE transaction — `undo _` reverts the burst to its origin. */
-  private recordUndo(label: string, coalesceKey: string, before: string, after: string, extra?: readonly UndoEntry[]): void {
+   *
+   *  Takes the EXACT replaced-range slices, not full pre/post texts:
+   *  coalescing overwrite-merges successive entries (keep first
+   *  before-state, take last after-state), which is only sound when
+   *  entry N's beforeSlice is literally entry N-1's afterSlice — the
+   *  full replaced span gives that invariant for free, while a
+   *  diff-trimmed slice does NOT (cycling attorney → lawyer → legal
+   *  eagle trims to 'awyer' → 'egal eagle' on the second step because
+   *  the alts share a leading 'l', and merging across the two frames
+   *  splices garbage). ZWS is stripped so relocation at apply time —
+   *  which runs against a ZWS-stripped live buffer — always matches. */
+  private recordUndo(label: string, coalesceKey: string, beforeSlice: string, afterSlice: string, extra?: readonly UndoEntry[]): void {
     if (!this.undoJournal) return;
+    const strip = (s: string): string => s.replace(/[​‌]/g, '');
+    const before = strip(beforeSlice);
+    const after = strip(afterSlice);
     const entries: UndoEntry[] = [];
-    const buf = diffSplice(before, after, this.undoJournal.currentEpoch);
-    if (buf) entries.push(buf);
+    if (before !== after) {
+      entries.push({ kind: 'buffer-splice', beforeSlice: before, afterSlice: after, bufferEpoch: this.undoJournal.currentEpoch });
+    }
     if (extra) entries.push(...extra);
     this.undoJournal.record({ label, coalesceKey, entries });
   }
@@ -308,8 +319,12 @@ export class Cycling {
       // One coalesce key for the whole selector+satellite pair: a
       // settings-menu excursion (browse selectors, cycle values) is ONE
       // undoable gesture — undo restores the original pair AND every
-      // scalar it touched.
-      this.recordUndo('settings menu', `sel-sat:${entry.selectorIndex}`, event.text, newText);
+      // scalar it touched. Slices = the pair's replaced range.
+      this.recordUndo(
+        'settings menu', `sel-sat:${entry.selectorIndex}`,
+        event.text.slice(selStartWord.start, satEndWord.end),
+        `${nextSetting}${entry.separator}${provisionalValue}`,
+      );
 
       this.adapter.emitEvent?.('cycling.cycled', {
         wordIndex,
@@ -334,6 +349,11 @@ export class Cycling {
           const te = curWords[newSatEnd];
           if (!ts || !te) return;
           const replaced = cleaned.slice(0, ts.start) + fetched + cleaned.slice(te.end);
+          // Pair range BEFORE this update (frame-consistent with the
+          // synchronous selector tap above — its afterSlice is exactly
+          // this beforeSlice, so the coalesce merge composes).
+          const prevPairStart = entry.pairCharStart;
+          const prevPairSlice = cleaned.slice(prevPairStart, entry.pairCharEnd);
           entry.currentValue = fetched;
           entry.satelliteLength = Math.max(1, fetched.split(/\s+/).filter(Boolean).length);
           entry.pairCharEnd = ts.start + fetched.length;
@@ -345,7 +365,11 @@ export class Cycling {
           // Same coalesce key as the synchronous selector cycle above,
           // so the fetched-value refresh folds into the same journal
           // transaction (keeps undo's relocation anchor = the LIVE pair).
-          this.recordUndo('settings menu', `sel-sat:${entry.selectorIndex}`, cleaned, replaced);
+          this.recordUndo(
+            'settings menu', `sel-sat:${entry.selectorIndex}`,
+            prevPairSlice,
+            replaced.slice(prevPairStart, entry.pairCharEnd),
+          );
         }).catch(err => {
           this.adapter.log('error', `Cycling: selector get failed for ${entry.blankName}`, err);
         });
@@ -424,7 +448,12 @@ export class Cycling {
           newValue: siblingDefaultModel,
         });
       }
-      this.recordUndo('settings menu', `sel-sat:${entry.selectorIndex}`, event.text, newText, scalarEntries);
+      this.recordUndo(
+        'settings menu', `sel-sat:${entry.selectorIndex}`,
+        event.text.slice(selStartWord.start, satEndWord.end),
+        `${entry.currentSetting}${entry.separator}${nextValue}`,
+        scalarEntries,
+      );
     }
 
     this.adapter.log('debug', `Cycling: satellite set ${entry.blankName}`, {
@@ -532,7 +561,11 @@ export class Cycling {
     this.adapter.setText(newText);
     this.adapter.setCursorOffset(newCursor);
     this.adapter.forceRender();
-    this.recordUndo('cycle', `span-fill:${entry.index}`, event.text, newText);
+    this.recordUndo(
+      'cycle', `span-fill:${entry.index}`,
+      event.text.slice(spanStartWord.start, spanEndWord.end),
+      nextAlt,
+    );
     this.adapter.emitEvent?.('cycling.cycled', {
       wordIndex,
       direction,
@@ -651,13 +684,14 @@ export class Cycling {
     // the buffer IS the source of truth for this path, so it's the
     // get-before-set capture. Coalescing keeps the FIRST step's origin
     // across a burst.
-    this.recordUndo(`${blankName} step`, `blank-step:${blankName}:${target.index}`, event.text, newText, [{
-      kind: 'os-set',
-      blankName,
-      scriptPath,
-      prevValue: numStr,
-      newValue: formatted,
-    }]);
+    this.recordUndo(`${blankName} step`, `blank-step:${blankName}:${target.index}`,
+      event.text.slice(target.start, target.end), nextWord, [{
+        kind: 'os-set',
+        blankName,
+        scriptPath,
+        prevValue: numStr,
+        newValue: formatted,
+      }]);
     this.adapter.emitEvent?.('cycling.cycled', {
       wordIndex: target.index,
       direction,
@@ -831,7 +865,7 @@ export class Cycling {
     }
 
     this.adapter.forceRender();
-    this.recordUndo('cycle', `alt-cycle:${wordIndex}`, event.text, newText);
+    this.recordUndo('cycle', `alt-cycle:${wordIndex}`, event.text.slice(rangeStart, rangeEnd), nextWord);
     this.adapter.emitEvent?.('cycling.cycled', {
       wordIndex,
       direction,

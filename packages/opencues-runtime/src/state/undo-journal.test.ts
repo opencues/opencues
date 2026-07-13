@@ -221,3 +221,39 @@ describe('UndoJournal — two-phase begin/commit', () => {
     expect(j.undoDepth).toBe(0);
   });
 });
+
+describe('UndoJournal — coalesce frame guard', () => {
+  it('merges only frame-consistent buffer entries (prior.after === next.before)', () => {
+    const j = new UndoJournal();
+    j.record({ label: 'c', coalesceKey: 'k', entries: [bufferEntry('attorney', 'lawyer')] });
+    j.record({ label: 'c', coalesceKey: 'k', entries: [bufferEntry('lawyer', 'legal eagle')] });
+    const [tx] = j.peekUndo(1);
+    expect(tx!.entries).toHaveLength(1);
+    expect(tx!.entries[0]).toMatchObject({ beforeSlice: 'attorney', afterSlice: 'legal eagle' });
+  });
+
+  it('APPENDS instead of merging when frames break (the diff-trim corruption class)', () => {
+    const j = new UndoJournal();
+    // Simulates the bug this guard exists for: a second entry recorded
+    // in a DIFFERENT frame ('awyer' is a trimmed fragment of 'lawyer').
+    // Overwrite-merging would produce {before: 'attorney', after:
+    // 'egal eagle'} — anchoring inside 'legal eagle' and splicing
+    // 'attorney' over a partial word. Appending keeps both reversible.
+    j.record({ label: 'c', coalesceKey: 'k', entries: [bufferEntry('attorney', 'lawyer')] });
+    j.record({ label: 'c', coalesceKey: 'k', entries: [bufferEntry('awyer', 'egal eagle')] });
+    const [tx] = j.peekUndo(1);
+    expect(j.undoDepth).toBe(1);
+    expect(tx!.entries).toHaveLength(2);
+    expect(tx!.entries[0]).toMatchObject({ beforeSlice: 'attorney', afterSlice: 'lawyer' });
+    expect(tx!.entries[1]).toMatchObject({ beforeSlice: 'awyer', afterSlice: 'egal eagle' });
+  });
+
+  it('scalar frame guard: prior.newValue must equal next.prevValue', () => {
+    const j = new UndoJournal();
+    j.record({ label: 'c', coalesceKey: 'k', entries: [scalarEntry('voice-mode', 'inactive', 'active')] });
+    // Frame break: something else changed the scalar mid-burst.
+    j.record({ label: 'c', coalesceKey: 'k', entries: [scalarEntry('voice-mode', 'muted', 'inactive')] });
+    const [tx] = j.peekUndo(1);
+    expect(tx!.entries).toHaveLength(2);
+  });
+});
