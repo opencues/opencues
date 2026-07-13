@@ -488,3 +488,41 @@ describe('undo — config-intent settings splice records via the real tap', () =
     expect(s.adapter.getText()).toBe('voice mode off _');
   });
 });
+
+describe('undo — over-wide summon span (live agentic-scenario 109 regression)', () => {
+  // The summon resolver can claim the WHOLE buffer as the command when
+  // unpunctuated prior content precedes the verb ('debug-mode on
+  // undo _' → spanStart 0). The branch must tighten the span so the
+  // pending transaction's relocation anchor is never swallowed —
+  // un-tightened, the splice emptied the buffer and every buffer entry
+  // skipped as not-found.
+
+  it('fill answer before the verb survives a whole-buffer span and reverts', async () => {
+    const s = setup('Paris undo _');
+    s.journal.record({
+      label: 'fluid-blank fill',
+      entries: [{ kind: 'buffer-splice', beforeSlice: 'capital of france _', afterSlice: 'Paris', bufferEpoch: s.journal.currentEpoch }],
+    });
+    // Whole-buffer command span — exactly what the summon model returned live.
+    s.script([undoResult('undo', 1, 0, 'Paris undo _'.length)]);
+    await s.resolver.resolveAndApply(s.adapter.getText());
+    expect(s.adapter.getText()).toBe('capital of france _');
+  });
+
+  it('settings pair before the verb survives a whole-buffer span; scalar reverts; buffer never empties', async () => {
+    const s = setup('debug-mode on undo _');
+    await s.loader.load();
+    s.loader.applyOpenCuesScalar('debug-mode', 'on');
+    s.journal.record({
+      label: 'settings change',
+      entries: [
+        { kind: 'scalar-write', key: 'debug-mode', prevValue: 'off', newValue: 'on' },
+        { kind: 'buffer-splice', beforeSlice: 'enable debug logging _', afterSlice: 'debug-mode on', bufferEpoch: s.journal.currentEpoch },
+      ],
+    });
+    s.script([undoResult('undo', 1, 0, 'debug-mode on undo _'.length)]);
+    await s.resolver.resolveAndApply(s.adapter.getText());
+    expect(s.adapter.getText()).toBe('enable debug logging _');
+    expect(s.loader.opencuesState.settings.get('debug-mode')).toBe('off');
+  });
+});

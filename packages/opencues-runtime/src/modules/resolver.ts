@@ -1489,11 +1489,45 @@ export class Resolver {
           this.adapter.log('info', 'Undo: skipping â command span no longer matches analyzed text');
           continue;
         }
-        // Splice out the command span, swallowing whitespace before it
-        // so no dangling blank line / trailing space remains (same idea
-        // as transform's trigger removal).
+        // Tighten the wipe span before splicing. The summon resolver
+        // can claim the WHOLE buffer as the command ('debug-mode on
+        // undo _' → start 0): unpunctuated prior content gives the
+        // regex floor no boundary, and the summon model reads the pair
+        // as part of the phrase. But for ACTION verdicts the pre-verb
+        // content is typically the CONFIRMATION of the very change
+        // being undone — i.e. exactly the relocation anchor the
+        // applier needs. NEVER swallow a pending transaction's anchor:
+        // shrink the span to start after the last unique anchor
+        // occurrence inside it. (Live-caught by agentic scenario 109 —
+        // the un-tightened splice emptied the buffer and every buffer
+        // entry skipped as not-found.)
         let cmdStart = start;
-        while (cmdStart > 0 && (liveText[cmdStart - 1] === '\n' || liveText[cmdStart - 1] === ' ' || liveText[cmdStart - 1] === '\t')) cmdStart--;
+        {
+          const pending = undoAction.action === 'undo'
+            ? this.undoJournal.peekUndo(undoAction.count)
+            : this.undoJournal.peekRedo(undoAction.count);
+          for (const tx of pending) {
+            for (const e of tx.entries) {
+              if (e.kind !== 'buffer-splice') continue;
+              const anchor = undoAction.action === 'undo' ? e.afterSlice : e.beforeSlice;
+              if (!anchor) continue;
+              const idx = liveText.indexOf(anchor);
+              if (idx >= 0 && idx === liveText.lastIndexOf(anchor)
+                  && idx >= cmdStart && idx + anchor.length <= end
+                  && idx + anchor.length > cmdStart) {
+                cmdStart = idx + anchor.length;
+              }
+            }
+          }
+        }
+        if (cmdStart === start) {
+          // Untightened — swallow whitespace before the command so no
+          // dangling blank line / trailing space remains (same idea as
+          // transform's trigger removal). Skipped when tightened: the
+          // position sits right after an anchor, and walking back
+          // would eat into it.
+          while (cmdStart > 0 && (liveText[cmdStart - 1] === '\n' || liveText[cmdStart - 1] === ' ' || liveText[cmdStart - 1] === '\t')) cmdStart--;
+        }
         const working = liveText.slice(0, cmdStart) + liveText.slice(end);
 
         this._undoApplier ??= new UndoApplier(this.adapter, this.configLoader, this.undoJournal);
