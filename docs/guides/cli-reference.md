@@ -165,6 +165,20 @@ Hits each configured provider's lightest endpoint and reports
 success/failure. Useful when "the LLM isn't responding" — confirms
 whether the key or the network is the problem.
 
+### `models` — effective LLM routing + provider catalog
+
+Shows, per bucket (cues / auditors / blanks), the provider · model a
+real dispatch would use — the same shared resolution the runtime,
+`opencues doctor`, and the in-editor `whats my model _` blank sit on —
+then each provider's curated `knownModels` catalog with key state
+(current provider first, active model starred). `--json` for
+scripting.
+
+```bash
+opencues models
+opencues models --json | jq .routing.blanks
+```
+
 ---
 
 ## Authoring
