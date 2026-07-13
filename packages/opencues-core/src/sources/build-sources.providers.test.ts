@@ -201,3 +201,62 @@ describe('buildSourcesFromConfig — per-feature provider routing', () => {
   });
 });
 
+describe('buildSourcesFromConfig — bucket-tier collapse (shared with effective-routing)', () => {
+  const GRAMMAR_CONFIG: CuesMdConfig = {
+    frontmatter: {},
+    sections: {},
+    promptConfig: {
+      sources: {
+        grammar: { name: 'grammar', promptText: 'G.', priority: 50, match: '.*' },
+      },
+    },
+  };
+
+  it('Case A: pinned bucket does NOT inherit the global llm-model', async () => {
+    const { adapter, calls } = captureAdapter();
+    const sources = buildSourcesFromConfig(GRAMMAR_CONFIG, undefined, {
+      httpAdapter: adapter,
+      apiKeys: { ...apiKeys, CEREBRAS_API_KEY: 'cb_k' },
+      globalProvider: 'groq',
+      globalModel: 'llama-groq-only-model',
+      cuesBucketProvider: 'cerebras',
+      enableWordCues: true,
+    });
+    await sources[0].getCues({ text: 'hi', words: ['hi'] });
+    const body = JSON.parse(calls[0].body);
+    // The stale global model must not leak into the pinned bucket —
+    // cerebras dispatches with its own default.
+    assert.strictEqual(body.model, 'gpt-oss-120b');
+    assert.match(calls[0].url, /cerebras/);
+  });
+
+  it('Case B: bucket model on an inherited provider is honored (menu-pick fix)', async () => {
+    const { adapter, calls } = captureAdapter();
+    const sources = buildSourcesFromConfig(GRAMMAR_CONFIG, undefined, {
+      httpAdapter: adapter,
+      apiKeys,
+      globalProvider: 'groq',
+      cuesBucketModel: 'openai/gpt-oss-20b', // written by the config menu with cues-llm-provider: inherit
+      enableWordCues: true,
+    });
+    await sources[0].getCues({ text: 'hi', words: ['hi'] });
+    const body = JSON.parse(calls[0].body);
+    assert.strictEqual(body.model, 'openai/gpt-oss-20b', 'bucket model must not be silently inert');
+    assert.match(calls[0].url, /api\.groq\.com/);
+  });
+
+  it('bucket model sentinels (default/inherit) fall through to the provider default', async () => {
+    const { adapter, calls } = captureAdapter();
+    const sources = buildSourcesFromConfig(GRAMMAR_CONFIG, undefined, {
+      httpAdapter: adapter,
+      apiKeys: { ...apiKeys, CEREBRAS_API_KEY: 'cb_k' },
+      cuesBucketProvider: 'cerebras',
+      cuesBucketModel: 'default',
+      enableWordCues: true,
+    });
+    await sources[0].getCues({ text: 'hi', words: ['hi'] });
+    const body = JSON.parse(calls[0].body);
+    assert.strictEqual(body.model, 'gpt-oss-120b', 'literal "default" must never ship as a model name');
+  });
+});
+

@@ -162,6 +162,7 @@ export {
   getOutboundDehydrationGuard,
   applyOutboundDehydrationFloor,
   resolveLLM,
+  resolveLLMTuple,
   validateEndpoint,
   withFallback,
   useStrictJson,
@@ -174,9 +175,30 @@ export {
   type BuiltRequest,
   type ResolveLLMOptions,
   type ResolvedLLM,
+  type ResolvedLLMTuple,
   type HttpAdapterShape,
   type ResponseFormat,
 } from './llm-provider';
+
+// Effective LLM routing — the shared bucket→global→auto precedence walk
+// used by dispatch (build-sources / boot-common via collapseBucketTier)
+// AND every "what's my model?" display surface (doctor, the `model`
+// blank, `opencues models`). See effective-routing.ts header.
+export {
+  LLM_BUCKETS,
+  collapseBucketTier,
+  normalizeBucketProviderScalar,
+  normalizeModelScalar,
+  resolveEffectiveRouting,
+  type CollapseBucketTierOptions,
+  type CollapsedBucketTier,
+  type EffectiveBucketRouting,
+  type EffectiveModelSource,
+  type EffectiveProviderSource,
+  type EffectiveRouting,
+  type LlmBucket,
+  type ResolveEffectiveRoutingOptions,
+} from './effective-routing';
 
 // Existing-key detection — boot-time API-key bag construction from
 // host-passed keys + shell env + ~/.cues/.env (see env-keys.ts header)

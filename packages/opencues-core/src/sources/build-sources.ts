@@ -29,6 +29,7 @@ import { TransformBlankSource, type TransformBlankSourceConfig } from './transfo
 import { ConfigIntentSource, type ConfigIntentSourceConfig } from './config-intent-source';
 import { SentenceCueSource, type SentenceCueSourceConfig } from './sentence-cue-source';
 import { resolveLLM, getProvider, withFallback, withFreePool, type ResolvedLLM } from '../llm-provider';
+import { collapseBucketTier } from '../effective-routing';
 
 /**
  * Per-feature provider/model/endpoint trio. Each LLM-driven source
@@ -341,19 +342,25 @@ export function buildSourcesFromConfig(
   const apiKeys = options.apiKeys ?? {};
   const globalProvider = options.globalProvider;
   const globalModel = options.globalModel;
-  // Bucket override tiers. `inherit` from any bucket scalar has already
-  // been collapsed to undefined by the runtime; only concrete provider
-  // ids reach us. Defensive: empty/inherit are treated as undefined
-  // here too so a `cues-llm-provider: inherit` written by hand doesn't
-  // pin every cue to a literal provider named "inherit".
-  const normaliseBucket = (raw?: string): string | undefined => {
-    const lc = raw?.toLowerCase();
-    return (!lc || lc === 'inherit') ? undefined : lc;
-  };
-  const cuesBucketProvider = normaliseBucket(options.cuesBucketProvider);
-  const cuesBucketModel = options.cuesBucketModel;
-  const blanksBucketProvider = normaliseBucket(options.blanksBucketProvider);
-  const blanksBucketModel = options.blanksBucketModel;
+  // Bucket override tiers, collapsed onto resolveLLM's global tier by
+  // the SHARED walk (effective-routing.ts) — the same collapse doctor
+  // and the `model` blank display, so dispatch and "what's my model?"
+  // cannot drift. Handles inherit/empty/unknown bucket scalars, model
+  // sentinels (`default`/`inherit`), the pinned-bucket unpairing of the
+  // global llm-model, AND honors a bucket model against an inherited
+  // provider (the July 2026 silently-inert menu-pick fix).
+  const cuesTier = collapseBucketTier({
+    bucketProvider: options.cuesBucketProvider,
+    bucketModel: options.cuesBucketModel,
+    globalProvider,
+    globalModel,
+  });
+  const blanksTier = collapseBucketTier({
+    bucketProvider: options.blanksBucketProvider,
+    bucketModel: options.blanksBucketModel,
+    globalProvider,
+    globalModel,
+  });
   // Universal-Integration profile: when the host can't cycle (chrome's
   // normal `<input>` / `<textarea>` branch), drop everything that
   // presents alternatives the user picks between. Default true keeps
@@ -374,28 +381,17 @@ export function buildSourcesFromConfig(
    * this path.
    */
   function resolveFor(featureSetting: FeatureLLMSetting | undefined, perSource?: SourceConfig, isBlankClass?: boolean): ResolvedLLM | null {
-    // Pick the bucket scalar this source belongs to. When the bucket
-    // sets a provider, the matching bucket-model is paired with it —
-    // otherwise the bucket falls through to globalProvider (and
-    // globalModel rides along). The bucket-model has to be unpaired
-    // from globalProvider for the same reason the legacy
-    // blank-class path did it: a stale global `llm-model:
-    // openai/gpt-oss-120b` would otherwise leak into a bucket pinned
-    // to, say, opencode-zen — a model that doesn't exist there.
-    const bucketProvider = isBlankClass ? blanksBucketProvider : cuesBucketProvider;
-    const bucketModel = isBlankClass ? blanksBucketModel : cuesBucketModel;
-    const effectiveGlobalProvider = bucketProvider ?? globalProvider;
-    const effectiveGlobalModel = bucketProvider
-      ? (bucketModel ?? undefined)
-      : globalModel;
+    // Pick the collapsed bucket tier this source belongs to (pairing
+    // rules live in collapseBucketTier — see its doc comment).
+    const tier = isBlankClass ? blanksTier : cuesTier;
     const resolved = resolveLLM({
       providerOverride: perSource?.provider,
       modelOverride: perSource?.model,
       endpointOverride: perSource?.endpoint,
       featureProvider: featureSetting?.provider,
       featureModel: featureSetting?.model,
-      globalProvider: effectiveGlobalProvider,
-      globalModel: effectiveGlobalModel,
+      globalProvider: tier.globalProvider,
+      globalModel: tier.globalModel,
       apiKeys,
     });
 
@@ -605,7 +601,7 @@ export function buildSourcesFromConfig(
   if (options.enableConfigIntent) {
     const resolved = resolveFor(options.configIntent, undefined, true);
     if (!resolved) {
-      fallbackForLog('config-intent', options.configIntent?.provider || blanksBucketProvider || globalProvider || 'groq');
+      fallbackForLog('config-intent', options.configIntent?.provider || blanksTier.globalProvider || 'groq');
     } else if (!options.applyOpencuesScalar) {
       options.log?.('buildSources: skipping config-intent — no applyOpencuesScalar callback provided');
     } else {
@@ -633,7 +629,7 @@ export function buildSourcesFromConfig(
   if (options.enableFluidBlank) {
     const resolved = resolveFor(options.fluidBlank, undefined, true);
     if (!resolved) {
-      fallbackForLog('fluid-blank', options.fluidBlank?.provider || blanksBucketProvider || globalProvider || 'groq');
+      fallbackForLog('fluid-blank', options.fluidBlank?.provider || blanksTier.globalProvider || 'groq');
     } else {
       sources.push(new FluidBlankSource({
         httpAdapter: wrapAdapterForBlank(resolved),
@@ -662,7 +658,7 @@ export function buildSourcesFromConfig(
   if (options.enableTransformBlank) {
     const resolved = resolveFor(options.transformBlank, undefined, true);
     if (!resolved) {
-      fallbackForLog('transform-blank', options.transformBlank?.provider || blanksBucketProvider || globalProvider || 'groq');
+      fallbackForLog('transform-blank', options.transformBlank?.provider || blanksTier.globalProvider || 'groq');
     } else {
       sources.push(new TransformBlankSource({
         httpAdapter: wrapAdapterForBlank(resolved),
