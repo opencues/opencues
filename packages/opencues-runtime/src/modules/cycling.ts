@@ -20,6 +20,7 @@ import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
 import { isProviderValueCyclable, getProvider } from '@opencues/core';
+import { invokeOrSpawnBlank } from '../util/blank-invoke';
 
 /** Sentence-cue defs cycle over a SENTENCE whose char span (spanStart/
  *  spanEnd) is the source of truth — whitespace words don't bound it in
@@ -117,11 +118,8 @@ export class Cycling {
   }
 
   /**
-   * Try host-native blank invocation first; fall back to spawning
-   * the configured script. Sandboxed hosts (Chrome) implement
-   * blankInvoke; CLI hosts (OpenCode, CC) typically don't and rely
-   * on the spawn path. Returns null when neither path is viable
-   * (no blankInvoke + no spawn capability + no scriptPath).
+   * Shared blank get/set dispatch — see util/blank-invoke.ts (also
+   * used by the UndoApplier for os-set/file-write inversions).
    */
   private invokeOrSpawn(
     blankName: string,
@@ -130,21 +128,7 @@ export class Cycling {
     scriptPath: string | undefined,
     options: { detached?: boolean; timeoutMs?: number } = {},
   ): ProcessHandle | null {
-    const native = this.adapter.blankInvoke?.({
-      blankName,
-      action,
-      args,
-      timeoutMs: options.timeoutMs,
-    });
-    if (native) return native;
-    if (!scriptPath) return null;
-    if (!this.adapter.capabilities.includes('spawn-process')) return null;
-    return this.adapter.spawnProcess({
-      command: 'bash',
-      args: [scriptPath, action, ...args],
-      detached: options.detached,
-      timeoutMs: options.timeoutMs,
-    });
+    return invokeOrSpawnBlank(this.adapter, blankName, action, args, scriptPath, options);
   }
 
   subscribe(): void {

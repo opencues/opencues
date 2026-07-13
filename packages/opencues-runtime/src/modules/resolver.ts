@@ -26,6 +26,7 @@ import type { BlankLoadingAnimator } from './blank-loading';
 import { findUnderscoreAtChar } from './blank-fill';
 import { applyMarkdownAwareSplice, applyMarkdownAwareSubstitution } from './markdown-substitute';
 import { threeWayMerge } from './word-diff';
+import { applyScalarAndPersist } from '../util/apply-scalar';
 
 /** Minimal interface MarkdownRender exposes for rich-text injection.
  *  Keeps Resolver from importing MarkdownRender directly (would create
@@ -786,40 +787,9 @@ export class Resolver {
       //      update with a `set` invocation; ConfigIntent was missing
       //      the second half.
       applyOpencuesScalar: async (setting: string, value: string) => {
-        this.configLoader.applyOpenCuesScalar(setting, value);
-        // Await the file write so back-to-back applyScalar calls (e.g.
-        // ConfigIntent's provider-verdict apply path that writes
-        // `<scope>-llm-provider` AND `<scope>-llm-model` sequentially)
-        // serialise on disk. Pre-2026-05 this was fire-and-forget,
-        // which caused a race where the SECOND apply's read-modify-
-        // write would see the file BEFORE the FIRST apply's write
-        // landed — final file had only one of the two scalars.
-        // Looked up at call time so a missing blank entry (degraded
-        // install) degrades gracefully — the in-memory flip still
-        // takes effect, just without persistence.
-        const oc = this.configLoader.lookupBlank('opencues');
-        const scriptPath = oc?.blank.blankScript;
-        if (!scriptPath && !this.adapter.blankInvoke) return;
-        try {
-          const native = this.adapter.blankInvoke?.({
-            blankName: 'opencues',
-            action: 'set',
-            args: [setting, value],
-            timeoutMs: 4000,
-          });
-          if (native) { await native.result; return; }
-          if (!scriptPath) return;
-          if (!this.adapter.capabilities.includes('spawn-process')) return;
-          const proc = this.adapter.spawnProcess({
-            command: 'bash',
-            args: [scriptPath, 'set', setting, value],
-            detached: true,
-            timeoutMs: 4000,
-          });
-          if (proc) await proc.result;
-        } catch (err) {
-          this.adapter.log('error', `ConfigIntent: file write failed for ${setting}=${value}`, err);
-        }
+        // Shared in-memory + persist pair — see util/apply-scalar.ts
+        // (also used by the UndoApplier's scalar-write inversion).
+        await applyScalarAndPersist(this.adapter, this.configLoader, setting, value);
       },
       // Debug log sink — surfaces TransformBlankSource pipeline traces
       // when OPENCUES.md `debug-mode: on`. The adapter.log gates 'debug'
