@@ -195,7 +195,13 @@ function featureLLM(settings: { get(k: string): string | undefined }, prefix: st
 function normalizeModelScalar(raw: string | undefined): string | undefined {
   if (raw === undefined) return undefined;
   const t = raw.trim();
-  if (t === '' || t.toLowerCase() === 'default') return undefined;
+  const lc = t.toLowerCase();
+  // `inherit` accepted alongside `default` (July 2026): doctor already
+  // read a hand-written `*-llm-model: inherit` as fall-through while
+  // this path shipped the literal string as a model name — keep the
+  // sentinel set identical to core's normalizeModelScalar
+  // (effective-routing.ts), which is the canonical definition.
+  if (t === '' || lc === 'default' || lc === 'inherit') return undefined;
   return t;
 }
 
