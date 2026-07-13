@@ -53,3 +53,16 @@ export const UNDO_CASES: UndoActionCase[] = [
   { id: 'ur-redo-hw',     category: 'reject-action', input: 'redo my homework _',           expected: { action: null } },
   { id: 'ur-prose',       category: 'reject-action', input: 'the undo button in figma is broken _', expected: { action: null } },
 ];
+
+/** Post-confirmation context — the buffer holds the visible pair/answer
+ *  of the change being undone (the MOST COMMON live undo context; found
+ *  via agentic scenario 109 misclassifying `debug-mode on undo _` as a
+ *  SETTING re-apply). Appended after the v2.2 run; part of v2.3. */
+export const UNDO_CONTEXT_CASES: UndoActionCase[] = [
+  { id: 'ua-after-pair',      category: 'hit-action', input: 'debug-mode on undo _',           expected: { action: 'undo', count: 1 } },  // [in-prompt]
+  { id: 'ua-after-pair-2',    category: 'hit-action', input: 'voice-mode inactive undo _',     expected: { action: 'undo', count: 1 } },
+  { id: 'ua-after-pair-redo', category: 'hit-action', input: 'tips-mode off redo _',           expected: { action: 'redo', count: 1 } },
+  { id: 'ua-after-answer',    category: 'hit-action', input: 'Paris undo _',                   expected: { action: 'undo', count: 1 } },
+  { id: 'ua-after-pair-ja',   category: 'hit-action', input: 'voice-mode active 元に戻して _',   expected: { action: 'undo', count: 1 } },
+];
+UNDO_CASES.push(...UNDO_CONTEXT_CASES);

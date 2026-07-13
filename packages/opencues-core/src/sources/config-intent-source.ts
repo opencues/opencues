@@ -356,6 +356,7 @@ Native runtime actions. Exactly two exist:
 ROUTE TO ACTION when:
   - The user asks to undo / revert / take back "that" / "the last change" — in ANY language (undo, deshacer, annuler, rückgängig, desfazer, 元に戻して, 撤销, 실행 취소, отменить, เลิกทำ, تراجع, ...). The bare verb alone ("undo _") is a complete command.
   - An optional count says how many changes to revert ("undo 3 _", "undo the last two _", "3回元に戻して _") → COUNT: <n>. Number words in any language count ("trois", "两次", "twice"). No count given → COUNT: 1.
+  - The text BEFORE the verb is often the visible CONFIRMATION of the very change being undone — a settings pair, a filled answer ("debug-mode on undo _", "voice-mode inactive undo _", "Paris undo _"). The trailing undo/redo verb IS the command; do NOT re-read that earlier text as a SETTING command.
 
 DO NOT route to ACTION when:
   - The undo/revert targets something OUTSIDE this text buffer and the OpenCues runtime ("undo my last commit _", "revert the deploy _", "undo the migration _") — that is a task request → NONE.
@@ -649,6 +650,17 @@ SCOPE:
 PROVIDER:
 MODEL:
 CONFIDENCE: 0.96
+
+INPUT: debug-mode on undo _
+INTENT: ACTION
+ACTION: undo
+COUNT: 1
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.94
 
 INPUT: undo my last commit _
 INTENT: NONE

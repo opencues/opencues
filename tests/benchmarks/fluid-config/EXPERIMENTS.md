@@ -309,4 +309,43 @@ stays for continuity with the v2.x settings-only history.
 
 ---
 
+## Experiment — v2.3: post-confirmation undo context (agentic finding) (2026-07-13)
+
+Live agentic scenario 109 caught what the bench couldn't: after ANY
+config-intent settings flip, the confirmation pair sits in the buffer,
+so the very next `undo _` reads `debug-mode on undo _` — and the v2.2
+prompt classified that as **SETTING debug-mode=on** (conf 0.92),
+RE-APPLYING the change instead of undoing it. This is the most common
+live undo context (undoing the change you just made), and it was
+invisible to the bench because every v2.2 case was a bare command.
+Same lesson class as PR #195: context-induced classification bugs need
+the agentic host.
+
+**Fix (additive):** one rule line in INTENT C ("the text BEFORE the
+verb is often the visible confirmation of the change being undone —
+do NOT re-read it as a SETTING command") + one few-shot
+(`debug-mode on undo _` → ACTION undo). Five new bench cases
+(`UNDO_CONTEXT_CASES`): pair+undo ×2, answer+undo, pair+redo,
+pair+元に戻して.
+
+**Results (cerebras, --parallel 4):**
+
+- undo suite: precision 6/6 = 100%, recall 18/20 = 90% — all four
+  undo-after-context cases now pass (incl. the Japanese pair case).
+  Two redo FNs remain (`redo that _`, `tips-mode off redo _`) —
+  recoverable, known limitation (bare `redo _` passes).
+- settings (in-prompt): precision 28/28 = 100%, recall 27/33 = 81.8%
+  (stable across 3 runs). One case down vs v2.2's 84.8%: the two
+  symptom-phrased debug cases (`hf-debug-want-logs`,
+  `hf-debug-too-noisy`) now both FN where one used to flap — the new
+  conservatism rule slightly dampens symptom-phrased settings reads.
+  FNs are recoverable (fluid-blank answers); precision gate intact;
+  recall ≥ 80% target holds. Accepted trade for fixing an
+  apply-the-wrong-thing bug in the dominant undo flow.
+
+**Status:** shipped in the same PR as v2.2. Scenario 109 in the
+agentic harness is the standing gate for this context class.
+
+---
+
 *Last updated: 2026-07-15.*
