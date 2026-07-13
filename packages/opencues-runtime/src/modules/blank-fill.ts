@@ -67,6 +67,9 @@ export class BlankFill {
   /** INFOSEC F9: blank names we've already warned about for missing
    *  `sandbox:` declaration. One warn per name per process. */
   private _warnedMissingSandboxBlanks = new Set<string>();
+  /** Once-per-blank warn dedup for the config-without-implementation
+   *  case (registry miss + no blankScript). */
+  private _warnedUnavailableBlanks = new Set<string>();
 
   /**
    * Per-blank result cache. Keyed by `<blankName>::<argsKey>` where
@@ -563,12 +566,38 @@ export class BlankFill {
       if (!handle) {
         if (!script) {
           // blankInvoke didn't recognise the blank AND there's no
-          // shell fallback. Drop the dedup so a later state change can
-          // retry, and skip cleanly. Release the loading claim we
-          // just took — without this, the slot would animate forever
-          // (no .then/.catch ever fires to stop it).
+          // shell fallback: the CONFIG for this blank exists (a
+          // BLANK.md matched and formed the slot) but the host has no
+          // IMPLEMENTATION — either the installed bundle predates the
+          // blank (shared ~/.cues is seeded by ANY host's install, so
+          // configs can legitimately run ahead of another host's
+          // bundle), or the blank's factory skipped registration over
+          // a missing prerequisite (e.g. stocks without a Finnhub
+          // key). This used to skip in TOTAL SILENCE — no log, no
+          // fill — and read as "OpenCues is broken" (July 2026, the
+          // loading-animation blank on a stale CC fork). Name it:
+          // an [err] fill replaces only the `_` (the typed command
+          // survives) and a once-per-blank warn carries the detail.
+          // Drop the dedup so a later state change can retry, and
+          // release the loading claim we just took — without this,
+          // the slot would animate forever (no .then/.catch ever
+          // fires to stop it).
           this._pendingScripts.delete(dedupKey);
           this._loadingAnimator().stop(slot.index, 'blank-fill');
+          if (!this._warnedUnavailableBlanks.has(slot.blankName)) {
+            this._warnedUnavailableBlanks.add(slot.blankName);
+            this.adapter.log('warn',
+              `BlankFill: "${slot.blankName}" has config but no implementation on this host — ` +
+              `blankInvoke doesn't know it and its BLANK.md declares no blankScript. ` +
+              `Stale bundle (config newer than the installed runtime) or an unmet ` +
+              `registration prerequisite. Fix: \`opencues install ${this.adapter.hostName}\`.`,
+            );
+          }
+          this.applyAsyncFill(
+            slot,
+            `[err] ${slot.blankName}: not available on this host — stale bundle or missing prerequisite. Try \`opencues install ${this.adapter.hostName}\``,
+            typedAction,
+          );
           return;
         }
         // OS-level sandbox config — populated when the blank's

@@ -1888,3 +1888,80 @@ describe('model blank routing (shapes from defaults/blanks/model/BLANK.md)', () 
     expect(adapter.blankInvokeCalls[0]).toMatchObject({ blankName: 'dictionary' });
   });
 });
+
+// ─── Registry miss — config present, implementation absent ────────────────
+//
+// ~/.cues is shared across hosts but bundles are per-host, so a BLANK.md
+// can legitimately run AHEAD of a host's installed runtime (any host's
+// install seeds the shared config). Pre-fix this dispatched the invoke
+// and then skipped in total silence — no log, no fill — reading as
+// "OpenCues is broken" (July 2026: the loading-animation blank on a
+// stale CC fork). The contract now: a named [err] fill that replaces
+// only the `_` (command survives), plus a once-per-blank warn.
+describe('BlankFill registry miss (blankInvoke null + no blankScript)', () => {
+  const SCRIPTLESS = `---
+type: blank
+name: newblank
+blankKeywords: newblank
+blankProximity: 10
+---
+`;
+
+  async function missSetup() {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/blanks/newblank/BLANK.md': SCRIPTLESS },
+      capabilities: [
+        'render-override', 'dim-ranges', 'highlight-range',
+        'file-read', 'file-write', 'force-render', 'change-source',
+        'blank-invoke',
+      ],
+    });
+    // NO stub for 'newblank' — blankInvoke returns null, simulating a
+    // bundle that predates the blank (or a factory that skipped
+    // registration over a missing prerequisite).
+    adapter.stubBlankInvoke('someother:get', 'x');
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    return { adapter };
+  }
+
+  it('fills a named [err] instead of silent nothing; command text survives', async () => {
+    const { adapter } = await missSetup();
+    adapter.pushText('newblank _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.blankInvokeCalls.length).toBe(1);
+    // [err] feedback: only the `_` is replaced — keyword + any typed
+    // command remain for the user to see what failed.
+    expect(adapter.getText()).toBe(
+      'newblank [err] newblank: not available on this host — stale bundle or missing prerequisite. Try `opencues install mock`',
+    );
+  });
+
+  it('warns once per blank with the diagnostic; repeat fires do not re-warn', async () => {
+    const { adapter } = await missSetup();
+    adapter.pushText('newblank _');
+    await new Promise(r => setTimeout(r, 0));
+    const warns = () => adapter.logs.filter(l =>
+      l.level === 'warn' && String(l.msg).includes('has config but no implementation'));
+    expect(warns()).toHaveLength(1);
+    expect(warns()[0].msg).toContain('opencues install mock');
+    // Re-fire: fresh buffer, same miss — fill happens again, warn doesn't.
+    adapter.pushText('');
+    adapter.pushText('newblank _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(warns()).toHaveLength(1);
+  });
+
+  it('does not release the loading animation into a forever-spin (stop is called)', async () => {
+    const { adapter } = await missSetup();
+    adapter.pushText('newblank _');
+    await new Promise(r => setTimeout(r, 0));
+    // The [err] fill landed, which means applyAsyncFill ran AFTER the
+    // animator release — if the claim leaked, the staleness guard
+    // would have seen a frame char and dropped the fill.
+    expect(adapter.getText()).toContain('[err] newblank');
+  });
+});
