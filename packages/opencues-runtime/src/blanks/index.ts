@@ -279,7 +279,13 @@ export function createBlankInvoke(
             break;
           }
         }
-        return { stdout, stderr: '', exitCode: 0, timedOut: false };
+        // File-writing blanks (sentinel, note) expose the inverse of
+        // the write this invocation just performed — attach it so the
+        // caller (BlankFill) can journal it for `undo _`.
+        const writeInverse = blk.consumeLastWriteInverse?.() ?? undefined;
+        return writeInverse
+          ? { stdout, stderr: '', exitCode: 0, timedOut: false, writeInverse }
+          : { stdout, stderr: '', exitCode: 0, timedOut: false };
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         return { stdout: '', stderr: msg, exitCode: 1, timedOut: false };

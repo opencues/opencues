@@ -76,7 +76,7 @@ export type UndoEntry =
   | {
       kind: 'file-write';
       file: 'IDENTITY.md' | 'NOTES.md';
-      blankName: 'sentinel' | 'note';
+      blankName: string;
       /** Replaying this through the blank path reverts the write —
        *  and re-runs the blank's validator by construction. */
       inverseOp: BlankOp;
@@ -247,6 +247,45 @@ export class UndoJournal {
     this._undo = [];
     this._redo = [];
   }
+}
+
+/**
+ * Build a buffer-splice entry from the pre/post text of a runtime
+ * write. Trims to the changed region (common prefix/suffix), so tap
+ * sites never do range bookkeeping — and whole-buffer merges
+ * (transform fused, agent-rewrite) shrink to their actual hunk,
+ * which maximises relocation robustness when the user types
+ * elsewhere afterwards.
+ *
+ * Pure deletions widen by one char of shared context so `afterSlice`
+ * (the relocation anchor) stays non-empty. Returns null when nothing
+ * changed.
+ */
+export function diffSplice(before: string, after: string, epoch: number): UndoEntry | null {
+  if (before === after) return null;
+  let p = 0;
+  const maxP = Math.min(before.length, after.length);
+  while (p < maxP && before[p] === after[p]) p++;
+  let s = 0;
+  const maxS = maxP - p;
+  while (s < maxS && before[before.length - 1 - s] === after[after.length - 1 - s]) s++;
+  let bStart = p;
+  let bEnd = before.length - s;
+  let aStart = p;
+  let aEnd = after.length - s;
+  if (aStart === aEnd) {
+    // Pure deletion — widen so the anchor is non-empty. An entirely
+    // empty `after` stays empty: the applier treats an empty anchor as
+    // "the working text must itself be empty".
+    if (aStart > 0) { aStart--; bStart--; }
+    else if (aEnd < after.length) { aEnd++; bEnd++; }
+  }
+  return {
+    kind: 'buffer-splice',
+    beforeSlice: before.slice(bStart, bEnd),
+    afterSlice: after.slice(aStart, aEnd),
+    bufferEpoch: epoch,
+  };
 }
 
 /** Two entries describe the same underlying target (for coalescing). */

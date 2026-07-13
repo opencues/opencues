@@ -27,6 +27,7 @@ import { findUnderscoreAtChar } from './blank-fill';
 import { applyMarkdownAwareSplice, applyMarkdownAwareSubstitution } from './markdown-substitute';
 import { threeWayMerge } from './word-diff';
 import { applyScalarAndPersist } from '../util/apply-scalar';
+import { diffSplice, type PendingTransaction, type UndoJournal } from '../state/undo-journal';
 
 /** Minimal interface MarkdownRender exposes for rich-text injection.
  *  Keeps Resolver from importing MarkdownRender directly (would create
@@ -432,7 +433,35 @@ export class Resolver {
       getRenderedBlock: () => string;
       blankFetch: (blankName: string, arg: string) => Promise<string | undefined>;
     },
+    /** Undo journal — every substitute the resolver applies records a
+     *  transaction so `undo _` can revert it; also enables the ACTION
+     *  branch (undo/redo application) itself. Omit to disable both. */
+    private undoJournal?: UndoJournal,
   ) {}
+
+  /** Pending config-intent transaction — opened lazily by the wrapped
+   *  applyOpencuesScalar (scalar writes land at EMIT time inside core's
+   *  getCues), closed by the config-intent substitute branch (which
+   *  adds the buffer entry) or, on a race-bail, by resolveAndApply's
+   *  end-of-pass commit — the scalar DID change, so a scalar-only
+   *  transaction is correct. */
+  private _pendingConfigIntentTx: PendingTransaction | null = null;
+
+  /** Commit + clear any open config-intent transaction (scalar-only
+   *  when the buffer splice never landed). */
+  private commitPendingConfigIntentTx(): void {
+    const tx: PendingTransaction | null = this._pendingConfigIntentTx;
+    this._pendingConfigIntentTx = null;
+    if (tx) tx.commit();
+  }
+
+  /** Record a substitute into the undo journal (no-op without one). */
+  private recordUndo(label: string, before: string, after: string): void {
+    if (!this.undoJournal) return;
+    const buf = diffSplice(before, after, this.undoJournal.currentEpoch);
+    if (!buf) return;
+    this.undoJournal.record({ label, entries: [buf] });
+  }
 
   subscribe(): void {
     this.rebuildResolver();
@@ -787,6 +816,21 @@ export class Resolver {
       //      update with a `set` invocation; ConfigIntent was missing
       //      the second half.
       applyOpencuesScalar: async (setting: string, value: string) => {
+        // Undo journal: config-intent scalar writes land HERE at emit
+        // time (inside core's getCues), before the pair splice. Open a
+        // pending transaction lazily; the config-intent substitute
+        // branch adds the buffer entry and commits. Prev value read
+        // BEFORE the apply. Skipped while an undo/redo is itself
+        // applying (runApply reentrancy).
+        if (this.undoJournal && !this.undoJournal.applying) {
+          this._pendingConfigIntentTx ??= this.undoJournal.begin('settings change');
+          this._pendingConfigIntentTx.add({
+            kind: 'scalar-write',
+            key: setting,
+            prevValue: this.configLoader.opencuesState.settings.get(setting),
+            newValue: value,
+          });
+        }
         // Shared in-memory + persist pair — see util/apply-scalar.ts
         // (also used by the UndoApplier's scalar-write inversion).
         await applyScalarAndPersist(this.adapter, this.configLoader, setting, value);
@@ -1097,6 +1141,10 @@ export class Resolver {
   async resolveAndApply(text: string, opts: { allowBlanks?: boolean } = {}): Promise<void> {
     const allowBlanks = opts.allowBlanks ?? true;
     if (!this._resolver) return;
+    // A pending config-intent transaction left over from a superseded/
+    // early-returned pass holds real scalar writes — commit it (scalar-
+    // only) rather than let it dangle and mis-attach to this pass.
+    this.commitPendingConfigIntentTx();
     // Abort the previous resolve's in-flight HTTP calls (if any). The
     // resolve is being superseded by this newer one — its results would
     // be dropped on generation mismatch downstream, so the LLM round-
@@ -1558,6 +1606,7 @@ export class Resolver {
         const sub = applyMarkdownAwareSplice(this.adapter, text, start, end, alts[0]);
         const newText = sub.newText;
         const answer = sub.stripped;
+        this.recordUndo('fluid-blank fill', text, newText);
 
         // Find which word in the new text the answer sits at.
         const newWords = splitWords(newText);
@@ -1764,6 +1813,17 @@ export class Resolver {
               pairCharEnd: start + pair.length,
             }, newText);
           }
+        }
+
+        // Close the pending config-intent transaction (opened by the
+        // wrapped applyOpencuesScalar at emit time) with the buffer
+        // entry — scalar writes + pair splice revert as ONE undo.
+        if (this.undoJournal) {
+          const tx = this._pendingConfigIntentTx ?? this.undoJournal.begin('settings change');
+          this._pendingConfigIntentTx = null;
+          const buf = diffSplice(liveText, newText, this.undoJournal.currentEpoch);
+          if (buf) tx.add(buf);
+          tx.commit();
         }
 
         wrote++;
@@ -2081,6 +2141,10 @@ export class Resolver {
           bufferText = sub.newText;
           spliceStart = 0;
         }
+        // Undo journal: what the user SAW (live buffer) → what landed.
+        // diffSplice trims to the changed region, so even this whole-
+        // buffer path records a relocatable hunk, not the full text.
+        this.recordUndo('rewrite', liveText.replace(/[​‌]/g, ''), bufferText);
 
         // Find which word the rewrite's first word lands at in the new
         // text (for keying the def). Defaults to wherever the splice
@@ -2226,6 +2290,12 @@ export class Resolver {
     // waiting for the user's next keystroke. Hosts with no idle render
     // loop (e.g. OpenCode's onContentChange-only path) need this.
     if (wrote > 0) this.adapter.forceRender();
+
+    // Close any config-intent transaction whose buffer splice never
+    // landed (race-bail path, or the result was dropped downstream).
+    // The scalar DID change at emit time, so a scalar-only transaction
+    // is correct — undo still reverts the setting.
+    this.commitPendingConfigIntentTx();
   }
 }
 

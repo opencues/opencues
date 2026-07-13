@@ -21,6 +21,7 @@ import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
 import { isProviderValueCyclable, getProvider } from '@opencues/core';
 import { invokeOrSpawnBlank } from '../util/blank-invoke';
+import { diffSplice, type UndoJournal, type UndoEntry } from '../state/undo-journal';
 
 /** Sentence-cue defs cycle over a SENTENCE whose char span (spanStart/
  *  spanEnd) is the source of truth — whitespace words don't bound it in
@@ -97,6 +98,10 @@ export class Cycling {
     /** Optional probe for `transport: 'cli'` providers (claude-code-cli,
      *  openai-subscription) — true iff the CLI binary is on PATH. */
     private isCliProviderAvailable?: (providerId: string) => boolean,
+    /** Undo journal — every cycle records a coalescing transaction so
+     *  `undo _` can revert a whole burst (volume ×6 → one undo). Omit
+     *  to disable recording (back-compat default). */
+    private undoJournal?: UndoJournal,
   ) {}
 
   /** Filter a setting's value list to those eligible for cycling
@@ -115,6 +120,20 @@ export class Cycling {
     // surfaces the resulting LLM-call failure inline rather than
     // freezing the menu.
     return filtered.length > 0 ? filtered : values;
+  }
+
+  /** Record a cycle into the undo journal (no-op without a journal).
+   *  Buffer entry derived by diffing pre/post text; `extra` carries
+   *  side-effect entries (scalar-write, os-set). Every cycle path
+   *  passes a coalesceKey so a rapid burst on the same target merges
+   *  into ONE transaction — `undo _` reverts the burst to its origin. */
+  private recordUndo(label: string, coalesceKey: string, before: string, after: string, extra?: readonly UndoEntry[]): void {
+    if (!this.undoJournal) return;
+    const entries: UndoEntry[] = [];
+    const buf = diffSplice(before, after, this.undoJournal.currentEpoch);
+    if (buf) entries.push(buf);
+    if (extra) entries.push(...extra);
+    this.undoJournal.record({ label, coalesceKey, entries });
   }
 
   /**
@@ -286,6 +305,11 @@ export class Cycling {
       this.adapter.setText(newText);
       this.adapter.setCursorOffset(newCursor);
       this.adapter.forceRender();
+      // One coalesce key for the whole selector+satellite pair: a
+      // settings-menu excursion (browse selectors, cycle values) is ONE
+      // undoable gesture — undo restores the original pair AND every
+      // scalar it touched.
+      this.recordUndo('settings menu', `sel-sat:${entry.selectorIndex}`, event.text, newText);
 
       this.adapter.emitEvent?.('cycling.cycled', {
         wordIndex,
@@ -318,6 +342,10 @@ export class Cycling {
           // synchronously; this is a background update.
           if (this.adapter.pushText) this.adapter.pushText(replaced);
           else { this.adapter.setText(replaced); this.adapter.forceRender(); }
+          // Same coalesce key as the synchronous selector cycle above,
+          // so the fetched-value refresh folds into the same journal
+          // transaction (keeps undo's relocation anchor = the LIVE pair).
+          this.recordUndo('settings menu', `sel-sat:${entry.selectorIndex}`, cleaned, replaced);
         }).catch(err => {
           this.adapter.log('error', `Cycling: selector get failed for ${entry.blankName}`, err);
         });
@@ -351,6 +379,11 @@ export class Cycling {
     // bleed onto neighbour words.
     const newCursor = Math.min(newRegionEnd, newText.length);
 
+    // Snapshot the pre-write settings map (applyOpenCuesScalar swaps in
+    // a NEW map, so this reference keeps the prior values) — the undo
+    // journal records prev → next per scalar below.
+    const settingsBefore = this.configLoader.opencuesState.settings;
+
     entry.currentValue = nextValue;
     entry.satelliteLength = Math.max(1, nextValue.split(/\s+/).filter(Boolean).length);
     entry.pairCharEnd = newRegionEnd;
@@ -376,6 +409,23 @@ export class Cycling {
     this.adapter.setText(newText);
     this.adapter.setCursorOffset(newCursor);
     this.adapter.forceRender();
+    {
+      const scalarEntries: UndoEntry[] = [{
+        kind: 'scalar-write',
+        key: entry.currentSetting,
+        prevValue: settingsBefore.get(entry.currentSetting),
+        newValue: nextValue,
+      }];
+      if (siblingModelScalar && siblingDefaultModel) {
+        scalarEntries.push({
+          kind: 'scalar-write',
+          key: siblingModelScalar,
+          prevValue: settingsBefore.get(siblingModelScalar),
+          newValue: siblingDefaultModel,
+        });
+      }
+      this.recordUndo('settings menu', `sel-sat:${entry.selectorIndex}`, event.text, newText, scalarEntries);
+    }
 
     this.adapter.log('debug', `Cycling: satellite set ${entry.blankName}`, {
       script: entry.scriptPath, setting: entry.currentSetting, value: nextValue,
@@ -482,6 +532,7 @@ export class Cycling {
     this.adapter.setText(newText);
     this.adapter.setCursorOffset(newCursor);
     this.adapter.forceRender();
+    this.recordUndo('cycle', `span-fill:${entry.index}`, event.text, newText);
     this.adapter.emitEvent?.('cycling.cycled', {
       wordIndex,
       direction,
@@ -596,6 +647,17 @@ export class Cycling {
     } catch (err) {
       this.adapter.log('error', `Cycling: blankScript set failed for ${blankName}`, err);
     }
+    // prevValue = the pre-step buffer token (bare number, no suffix) —
+    // the buffer IS the source of truth for this path, so it's the
+    // get-before-set capture. Coalescing keeps the FIRST step's origin
+    // across a burst.
+    this.recordUndo(`${blankName} step`, `blank-step:${blankName}:${target.index}`, event.text, newText, [{
+      kind: 'os-set',
+      blankName,
+      scriptPath,
+      prevValue: numStr,
+      newValue: formatted,
+    }]);
     this.adapter.emitEvent?.('cycling.cycled', {
       wordIndex: target.index,
       direction,
@@ -769,6 +831,7 @@ export class Cycling {
     }
 
     this.adapter.forceRender();
+    this.recordUndo('cycle', `alt-cycle:${wordIndex}`, event.text, newText);
     this.adapter.emitEvent?.('cycling.cycled', {
       wordIndex,
       direction,

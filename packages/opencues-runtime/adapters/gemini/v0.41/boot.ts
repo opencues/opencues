@@ -441,7 +441,8 @@ export function boot(host: HostInfo): BootResult {
     externallySuppressed: (text: string) => kataCoach.shouldSuppressResolve(text),
   }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState,
   buildBlankContextProvider(configLoader, host.blanks, log),
-  buildBlankFetchProvider(configLoader, host.blanks, log));
+  buildBlankFetchProvider(configLoader, host.blanks, log),
+  shared.undoJournal);
   // Subscribe AFTER ConfigLoader.load — otherwise rebuildResolver sees
   // no cuesConfig/blanksConfig and bails.
   configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
@@ -449,6 +450,7 @@ export function boot(host: HostInfo): BootResult {
   if (hasAnyKey) {
 
     const agentRewrite = new AgentRewrite(adapter, dynDefs, agentTaskState, {
+      undoJournal: shared.undoJournal,
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
       apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',

@@ -44,6 +44,7 @@
 //      validateSentinelWrite is an audit-row-worthy regression.
 
 import type { Blank } from './types';
+import type { BlankWriteInverse } from '../adapter';
 import {
   parseIdentityMd,
   validateSentinelWrite,
@@ -68,11 +69,20 @@ export class SentinelBlank implements Blank {
   private readonly _read: () => Promise<string | null>;
   private readonly _write: (content: string) => Promise<void>;
   private readonly _caps: SentinelCaps;
+  /** One-shot inverse of the last successful write — undo-journal feed
+   *  (drained by createBlankInvoke via consumeLastWriteInverse). */
+  private _lastWriteInverse: BlankWriteInverse | null = null;
 
   constructor(opts: SentinelBlankOptions) {
     this._read = opts.readFile;
     this._write = opts.writeFile;
     this._caps = opts.caps ?? DEFAULT_SENTINEL_CAPS;
+  }
+
+  consumeLastWriteInverse(): BlankWriteInverse | null {
+    const inv = this._lastWriteInverse;
+    this._lastWriteInverse = null;
+    return inv;
   }
 
   /**
@@ -105,7 +115,16 @@ export class SentinelBlank implements Blank {
       if (!key) return formatError('remove sentinel: usage is `remove sentinel <key> _`');
       const r = validateSentinelWrite(currentFields, { op: 'remove', key }, this._caps);
       if (!r.ok) return formatError(r.detail);
+      const removedValue = currentFields.find(f => f.key === key)?.value;
       await this._write(serialiseFrontmatter(r.fields, text));
+      // Inverse: re-set the removed value. Value words round-trip through
+      // the same context-word join the forward op used.
+      this._lastWriteInverse = removedValue !== undefined ? {
+        file: 'IDENTITY.md',
+        blankName: this.name,
+        inverseOp: { keyword: 'set sentinel', args: [key, ...removedValue.split(' ')] },
+        forwardOp: { keyword: 'remove sentinel', args: [key] },
+      } : null;
       return `[removed ${key}]`;
     }
 
@@ -120,7 +139,17 @@ export class SentinelBlank implements Blank {
       // Same key, same value — no write, but show confirmation.
       return `${key} = ${value}`;
     }
+    const prevValue = currentFields.find(f => f.key === key)?.value;
     await this._write(serialiseFrontmatter(r.fields, text));
+    // Inverse: restore the prior value, or remove the key if it's new.
+    this._lastWriteInverse = {
+      file: 'IDENTITY.md',
+      blankName: this.name,
+      inverseOp: prevValue !== undefined
+        ? { keyword: 'set sentinel', args: [key, ...prevValue.split(' ')] }
+        : { keyword: 'remove sentinel', args: [key] },
+      forwardOp: { keyword: 'set sentinel', args: [key, ...value.split(' ')] },
+    };
     // Visual confirmation: derived token + value so the user sees what
     // the LLM will substitute later.
     const token = deriveToken(key);
