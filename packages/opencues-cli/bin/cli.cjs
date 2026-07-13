@@ -40,6 +40,7 @@ const COMMANDS = {
   config:         () => require('../src/commands/config.cjs'),
   cleanup:        () => require('../src/commands/cleanup.cjs'),
   'check-keys':   () => require('../src/commands/check-keys.cjs'),
+  models:         () => require('../src/commands/models.cjs'),
   update:         () => require('../src/commands/update.cjs'),
   statusline:     () => require('../src/commands/statusline.cjs'),
   debug:          () => require('../src/commands/debug.cjs'),
