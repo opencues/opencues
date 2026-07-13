@@ -52,6 +52,7 @@ defaults/
     ├── crypto/BLANK.md
     ├── dictionary/BLANK.md
     ├── claude-status/BLANK.md
+    ├── model/BLANK.md           # "whats my model _" / "list models _" — effective LLM routing, shape-gated
     ├── gh-issues/{BLANK.md,blank.js}
     ├── sentinel/BLANK.md
     ├── opencues/BLANK.md        # the settings selector+satellite blank

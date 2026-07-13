@@ -47,6 +47,15 @@ export function createBlanks(options?: {
    */
   notesMdReadFile?: () => Promise<string | null>;
   notesMdWriteFile?: (content: string) => Promise<void>;
+  /**
+   * Live LLM API-key bag thunk (keyed by env-var name) for the `model`
+   * blank's effective-routing walk. Chrome keys arrive async post-boot
+   * and mutate live (docs/architecture/chrome-llm-keys.md), so this is
+   * a thunk over the bootstrap's bag, never a snapshot. Without it the
+   * blank still answers for explicitly-configured providers but can't
+   * see auto-routed keys.
+   */
+  getLlmApiKeys?: () => Readonly<Record<string, string | undefined>>;
 }): Map<string, BrowserBlank> {
   const opencuesMdIO = (options?.opencuesMdReadFile && options.opencuesMdWriteFile)
     ? { readFile: options.opencuesMdReadFile, writeFile: options.opencuesMdWriteFile }
@@ -64,5 +73,6 @@ export function createBlanks(options?: {
     identityMdIO,
     notesMdIO,
     hostName: 'chrome',
+    getLlmApiKeys: options?.getLlmApiKeys,
   }) as Map<string, BrowserBlank>;
 }

@@ -25,6 +25,7 @@ export { CryptoBlank, type CryptoBlankOptions } from './crypto';
 export { CountriesBlank, type CountriesBlankOptions } from './countries';
 export { ClaudeStatusBlank, type ClaudeStatusBlankOptions } from './claude-status';
 export { NoteBlank, type NoteBlankOptions, type NoteCaps } from './note';
+export { ModelBlank, type ModelBlankOptions } from './model';
 
 // Imports for the BUILTIN_BLANKS registry below. The above `export`
 // lines re-publish them; these `import` lines bring them into scope
@@ -40,6 +41,7 @@ import { CryptoBlank } from './crypto';
 import { CountriesBlank } from './countries';
 import { ClaudeStatusBlank } from './claude-status';
 import { NoteBlank } from './note';
+import { ModelBlank } from './model';
 
 // ──────────────────────────────────────────────────────────────────────
 // Built-in blanks registry — single source of truth across hosts.
@@ -129,6 +131,16 @@ export interface BuiltinBlankContext {
    * surface in the cycling menu on their target host.
    */
   readonly hostName?: string;
+  /**
+   * Live LLM API-key bag (keyed by env-var name) for the `model`
+   * blank's effective-routing walk. A THUNK, not a snapshot — chrome's
+   * keys arrive async post-boot and mutate live (see
+   * docs/architecture/chrome-llm-keys.md), so the blank re-reads on
+   * every invocation. Native hosts can omit it: the blank falls back
+   * to the same shell-env + ~/.cues/.env bag the boot path builds
+   * (`buildBootApiKeys`).
+   */
+  readonly getLlmApiKeys?: () => Readonly<Record<string, string | undefined>>;
 }
 
 /** One entry in BUILTIN_BLANKS. */
@@ -179,6 +191,12 @@ export const BUILTIN_BLANKS: readonly BuiltinBlankSpec[] = [
 
   // ── Settings / selector-satellite (skip when no IO supplied) ─────
   { name: 'opencues',      factory: ctx => ctx.opencuesMdIO ? new OpenCuesSettingsBlank({ ...ctx.opencuesMdIO, hostName: ctx.hostName }) : null },
+
+  // ── Model visibility ("what's my model _" / "list models _").
+  //    Read-only view over the SAME effective-routing walk dispatch
+  //    uses (core's resolveEffectiveRouting) — needs the settings file
+  //    to read the routing scalars, so it skips when no IO supplied.
+  { name: 'model',         factory: ctx => ctx.opencuesMdIO ? new ModelBlank({ readSettingsFile: ctx.opencuesMdIO.readFile, getApiKeys: ctx.getLlmApiKeys }) : null },
 
   // ── IdentityField-write (keyword-bound `set sentinel <k> <v> _` /
   //    `remove sentinel <k> _`). Skips when no IO supplied (host
