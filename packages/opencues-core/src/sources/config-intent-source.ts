@@ -309,6 +309,7 @@ ROUTE TO NONE when:
   - Pronoun ambiguous ("turn it off", "switch to the other one", "fix this").
   - Greeting / how-something-works / task request.
   - Setting change for something NOT in INTENT A's list ("change the theme", "use a bigger font") — even if it sounds setting-shaped.
+  - REWRITE IMPERATIVE — an instruction to rewrite or restyle the user's own TEXT: "make (it/this/more) professional/formal/polished", "make the tone X", "shorten this", "translate to X", "add emojis", "fix the wording". These are one-off transform requests handled by a different pipeline. They are NEVER a settings change — in particular they are NOT sentence-cues-mode, even though that feature also concerns rewriting. The tell: a rewrite imperative asks to change THE TEXT ONCE; a setting asks to change how OpenCues BEHAVES from now on. Ongoing/habitual phrasings ("as I write", "while I type", "always", "from now on") applied to sentence improvement ARE feature requests → sentence-cues-mode; so is an explicit reference to the feature itself ("sentence cues", "sentence suggestions"). A bare one-off imperative with no ongoing marker is the rewrite case → NONE.
 
 ═════════════════════════════════════════════════════════════════
 OUTPUT FORMAT
@@ -569,7 +570,49 @@ VALUE:
 SCOPE:
 PROVIDER:
 MODEL:
-CONFIDENCE: 0.96`;
+CONFIDENCE: 0.96
+
+═════════════════════════════════════════════════════════════════
+NEGATIVE EXAMPLES — rewrite imperatives are TRANSFORM requests
+(another pipeline's job), NOT sentence-cues-mode. "Make my text X"
+changes the TEXT once; a setting changes BEHAVIOUR from now on.
+═════════════════════════════════════════════════════════════════
+
+INPUT: hey squad make this sound more corporate _
+INTENT: NONE
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.95
+
+INPUT: thanks so much make it more formal _
+INTENT: NONE
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.95
+
+INPUT: turn on sentence rewrite suggestions _
+INTENT: SETTING
+SETTING: sentence-cues-mode
+VALUE: on
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.92
+
+INPUT: give me better phrasings for whole sentences while i write _
+INTENT: SETTING
+SETTING: sentence-cues-mode
+VALUE: on
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.85`;
 
 // ============================================================================
 // SUMMON extraction — a SEPARATE, single-purpose LLM call
