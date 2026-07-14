@@ -1,8 +1,8 @@
 {
   "name": "@opencues/windows",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
-  "description": "OpenCues for Windows — a system-wide host. A WSL-side daemon runs the OpenCues runtime against your existing ~/.cues config + keys; a thin Windows-native UI Automation shim mirrors whatever text field you're typing in. Type `_` in Notepad / WordPad / a dialog and it fills. Phase 1: single-answer surface (fluid-blank / transform-blank / compute blanks), no cycling overlay yet.",
+  "description": "OpenCues for Windows \u2014 a system-wide host. A WSL-side daemon runs the OpenCues runtime against your existing ~/.cues config + keys; a thin Windows-native UI Automation shim mirrors whatever text field you're typing in. Type `_` in Notepad / WordPad / a dialog and it fills. Phase 1: single-answer surface (fluid-blank / transform-blank / compute blanks), no cycling overlay yet.",
   "type": "commonjs",
   "bin": {
     "oc-windows": "./bin/oc-windows"
@@ -13,7 +13,7 @@
   "os": [
     "linux"
   ],
-  "//comment-on-os": "The daemon runs in WSL/Linux. The native shim (native/OpenCuesWindows.cs) runs on Windows and is compiled on-demand by OpenCuesWindows.ps1 — it is not an npm-built artifact, so this package's `os` is linux (where the daemon lives).",
+  "//comment-on-os": "The daemon runs in WSL/Linux. The native shim (native/OpenCuesWindows.cs) runs on Windows and is compiled on-demand by OpenCuesWindows.ps1 \u2014 it is not an npm-built artifact, so this package's `os` is linux (where the daemon lives).",
   "scripts": {
     "build": "echo '@opencues/windows: no build (hostd.cjs runs the staged @opencues/runtime dist directly; the Windows shim is Add-Type-compiled on Windows)'"
   },

@@ -1637,6 +1637,24 @@ namespace OpenCues
             if (del > MSAA_TYPE_MAX || add > MSAA_TYPE_MAX) return false;
             string tail = text.Substring(p);
             if (tail.IndexOf('\n') >= 0 || tail.IndexOf('\r') >= 0) return false;
+            // Read-before-write: the diff above is computed against
+            // `_lastSentText` — the shim's MODEL of the field, which goes
+            // stale the instant the USER types (phase 1 has no keyboard
+            // hook, so user keystrokes are invisible until the next event
+            // read). Sending backspaces against a stale model deletes user
+            // content — live incident 2026-07-14: an animation frame burst
+            // ate the leading chars of "congratulations" mid-typing. Verify
+            // the field still matches the model; on divergence DROP the
+            // frame (animation is cosmetic — the final substitution write
+            // is an absolute anchor that never depends on frames landing).
+            // Read failure keeps the prior trust-the-model behaviour.
+            string live;
+            if (TryReadCurrentField(out live) && live != null && EolNorm(live) != EolNorm(cur))
+            {
+                Log("debug", "micro-frame skipped: field diverged from model ("
+                    + cur.Length + " -> " + live.Length + " chars; user typing?)");
+                return true;   // swallow the frame; never write against a stale model
+            }
             NoteSelfWrite(text);
             var inputs = new INPUT[del * 2 + tail.Length * 2];
             int k = 0;
@@ -1716,10 +1734,64 @@ namespace OpenCues
             if (!string.IsNullOrEmpty(v) && int.TryParse(v, out m) && m >= 0 && m <= 4000) return m;
             return 40;
         }
+        // Read the attached field's CURRENT text on demand, mode-aware.
+        // Used by the write paths to verify their model of the field
+        // (`oldText` / `_lastSentText`) against reality IMMEDIATELY before
+        // acting, and by PasteReplace to verify paste consumption before
+        // restoring the user's clipboard. Returns false when no readable
+        // field is attached (write paths then fall back to their prior
+        // trust-the-model behaviour).
+        static bool TryReadCurrentField(out string cur)
+        {
+            cur = null;
+            try
+            {
+                if (_attachMode == AttachMode.Msaa)
+                {
+                    int nodeId;
+                    return TryReadFocusedElectron(out cur, out nodeId) && cur != null;
+                }
+                var el = _hookedEl;
+                if (el == null) return false;
+                cur = ReadValue(el);
+                return cur != null;
+            }
+            catch { return false; }
+        }
+
+        // How long PasteReplace waits for the target app to CONSUME the
+        // paste before restoring the user's previous clipboard. Discord
+        // under load was observed consuming >1.1s after Ctrl+V; the old
+        // fixed 300ms restore raced it and the paste delivered the
+        // RESTORED (user's) clipboard into the field — live incident
+        // 2026-07-14: a copied email address replaced the substitution.
+        static readonly int _clipRestoreMaxMs = ReadClipRestoreMaxMs();
+        static int ReadClipRestoreMaxMs()
+        {
+            var v = Environment.GetEnvironmentVariable("OPENCUES_CLIPBOARD_RESTORE_MAX_MS");
+            int m;
+            if (!string.IsNullOrEmpty(v) && int.TryParse(v, out m) && m >= 300 && m <= 15000) return m;
+            return 3000;
+        }
+
         static void PasteReplace(string text, string oldText)
         {
             string saved = null;
             try { saved = GetClipboardText(); } catch { }
+
+            // Verify the field model against reality before computing the
+            // diff. `oldText` is the daemon's last read — if the user typed
+            // (or the app edited) since, backspacing `oldLen - p` chars
+            // deletes USER content (the 2026-07-14 "congratulations" →
+            // "gratulations" class). A fresh read supersedes the parameter;
+            // read failure keeps the prior trust-the-model behaviour.
+            string fresh;
+            if (TryReadCurrentField(out fresh) && fresh != oldText)
+            {
+                Log("debug", "diff-paste: field diverged from model (" + (oldText != null ? oldText.Length : 0)
+                    + " -> " + fresh.Length + " chars), rebasing diff on fresh read");
+                oldText = fresh;
+            }
 
             int oldLen = oldText != null ? oldText.Length : 0;
             int p = CommonPrefixLen(oldText, text);   // unchanged head we keep
@@ -1775,10 +1847,50 @@ namespace OpenCues
                     KeyChord(VK_CONTROL, VK_V);   // paste into the empty field
                 }
             }
-            // Electron reads the clipboard ASYNCHRONOUSLY after Ctrl+V; 300ms
-            // clears that read before we restore the user's previous clipboard.
-            Thread.Sleep(300);
-            if (saved != null) { try { SetClipboardText(saved); } catch { } }
+            // Electron reads the clipboard ASYNCHRONOUSLY after Ctrl+V — and
+            // NOT on a bounded schedule: Discord under load was observed
+            // consuming >1.1s later. Restoring the user's clipboard on a
+            // fixed timer therefore RACES the read; when the restore wins,
+            // the paste delivers the user's OLD clipboard into the focused
+            // app (live incident 2026-07-14: a copied email address landed
+            // in a Discord input instead of the substitution — a clipboard
+            // LEAK into whatever app is focused, not just a wrong render).
+            //
+            // Verify consumption instead: poll the field until it reflects
+            // the pasted text (EolNorm both sides — apps re-render newlines,
+            // see the newline-rendering table), THEN restore. On timeout or
+            // an unreadable field, FAIL SAFE: skip the restore entirely —
+            // losing the user's old clipboard contents is an annoyance;
+            // pasting them into the foreground app is a leak. Window is
+            // tunable via OPENCUES_CLIPBOARD_RESTORE_MAX_MS (default 3000).
+            if (saved != null)
+            {
+                bool consumed = false;
+                int deadline = unchecked(Environment.TickCount + _clipRestoreMaxMs);
+                string want = EolNorm(text);
+                while (unchecked(deadline - Environment.TickCount) > 0)
+                {
+                    Thread.Sleep(50);
+                    string now;
+                    if (TryReadCurrentField(out now) && now != null && EolNorm(now) == want)
+                    {
+                        consumed = true;
+                        break;
+                    }
+                }
+                if (consumed)
+                {
+                    try { SetClipboardText(saved); } catch { }
+                    Log("debug", "clipboard restored after verified paste consumption");
+                }
+                else
+                {
+                    Log("warn", "clipboard NOT restored: paste consumption unverified after "
+                        + _clipRestoreMaxMs + "ms — refusing to race the app's async clipboard read"
+                        + " (restoring early can paste the user's old clipboard into the field)."
+                        + " Previous clipboard contents were replaced by the substitution text.");
+                }
+            }
         }
 
         // Length of the longest common prefix of a and b (the unchanged head).
