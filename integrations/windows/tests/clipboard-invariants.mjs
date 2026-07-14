@@ -79,5 +79,16 @@ check('verify comparisons are EolNorm-folded',
   /EolNorm\(now\) == want/.test(pasteReplace) && /EolNorm\(live\) != EolNorm\(cur\)/.test(tryType),
   'both verify sites must compare through EolNorm');
 
+// 7. Consumption matching must have the fold-tolerant fallback: apps
+//    re-dress pasted text in readbacks (Discord/Slate emoji + markdown
+//    dress), so exact-equality-only verification times out on pastes
+//    that plainly landed — and the fail-safe then eats the user's
+//    clipboard restore on EVERY big substitution (observed live
+//    2026-07-14 18:35). The fallback must also have a minimum-length
+//    gate so short generic pastes can't false-match pre-existing text.
+check('consumption verify has the AlnumFold fallback with a min-length gate',
+  /wantFold\.Length >= 12/.test(pasteReplace) && /AlnumFold\(now, \d+\)\.Contains\(wantFold\)/.test(pasteReplace),
+  'PasteReplace verify loop must fall back to fold-contains with a >=12 fold-char gate');
+
 console.log(failures === 0 ? '\nall clipboard/stale-model invariants hold' : `\n${failures} invariant(s) FAILED`);
 process.exit(failures === 0 ? 0 : 1);

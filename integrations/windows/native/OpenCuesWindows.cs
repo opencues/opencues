@@ -1774,6 +1774,29 @@ namespace OpenCues
             return 3000;
         }
 
+        // Lowercased-alphanumeric fold for paste-consumption matching.
+        // Discord/Slate re-dress pasted text in accValue readbacks (emoji
+        // as object chars, markdown handling, trailing dress), so byte
+        // equality — even EolNorm-folded — can fail on a paste that
+        // plainly landed, and the fail-safe would then eat the user's
+        // clipboard restore on EVERY big substitution (observed live
+        // 2026-07-14 18:35: paste landed, bracket reconciled, verify
+        // still timed out). Folding both sides to [a-z0-9] and checking
+        // the readback CONTAINS a prefix window of the pasted text
+        // survives any dress the app applies to punctuation/emoji/EOLs.
+        static string AlnumFold(string s, int max)
+        {
+            if (s == null) return "";
+            var sb = new StringBuilder(Math.Min(s.Length, max));
+            for (int i = 0; i < s.Length && sb.Length < max; i++)
+            {
+                char c = s[i];
+                if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) sb.Append(c);
+                else if (c >= 'A' && c <= 'Z') sb.Append((char)(c + 32));
+            }
+            return sb.ToString();
+        }
+
         static void PasteReplace(string text, string oldText)
         {
             string saved = null;
@@ -1868,15 +1891,19 @@ namespace OpenCues
                 bool consumed = false;
                 int deadline = unchecked(Environment.TickCount + _clipRestoreMaxMs);
                 string want = EolNorm(text);
+                // Fold-tolerant fallback: >=12 fold chars required so a
+                // short/generic paste ("ok") can't false-match text that
+                // was already in the field; shorter pastes verify by the
+                // exact path only.
+                string wantFold = AlnumFold(text, 24);
+                bool foldUsable = wantFold.Length >= 12;
                 while (unchecked(deadline - Environment.TickCount) > 0)
                 {
                     Thread.Sleep(50);
                     string now;
-                    if (TryReadCurrentField(out now) && now != null && EolNorm(now) == want)
-                    {
-                        consumed = true;
-                        break;
-                    }
+                    if (!TryReadCurrentField(out now) || now == null) continue;
+                    if (EolNorm(now) == want) { consumed = true; break; }
+                    if (foldUsable && AlnumFold(now, 4000).Contains(wantFold)) { consumed = true; break; }
                 }
                 if (consumed)
                 {
