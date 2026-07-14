@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — a blank with config but no host implementation now says so instead of doing nothing (`@opencues/runtime` 0.16.0 → 0.16.1)
+
+`~/.cues` is shared across hosts but runtime bundles are per-host, and ANY host's install seeds the shared config — so a BLANK.md can legitimately run ahead of another host's installed bundle. When that happened on a blankInvoke-capable host with a runtime-served (scriptless) blank, the dispatch hit the registry miss and skipped in TOTAL silence: no log, no fill, slot dead. Live case (July 2026): the loading-animation blank's config seeded by an opencode install while the CC fork was still one runtime behind — "it didn't seem to do anything". The same silent shape covers factories that skip registration over a missing prerequisite (e.g. stocks without a Finnhub key).
+
+Now: a named `[err] <blank>: not available on this host — stale bundle or missing prerequisite. Try \`opencues install <host>\`` fill (the `[err]` path replaces only the `_`, so the typed command survives), plus a once-per-blank warn in the log with the fuller diagnostic. Loading-animation claim released correctly (no forever-spin). Pinned by three journeys in `blank-fill.test.ts`: named fill + command survival, once-per-blank warn dedup across re-fires, and animator release.
+
 ### Fixed — launch-time self-heal no longer rebuilds forks BACKWARD from a stale clone (`opencues` CLI 0.2.44 → 0.2.45)
 
 The `opencues run <host>` srcHash self-heal treated ANY marker/source mismatch as "stale" — but srcHash is direction-blind. A second clone, a git worktree, or an old branch checked out in the same clone would silently rebuild every fork it launched back to its own older source; and because installers copy without deleting, the result was a MIXED bundle (new files present, `blanks/index.js` + package.json stale) — the dual-clone variant of the May 2026 drift class. Hit live July 2026: `opencues run` from a wip-branch checkout (runtime 0.13.5) clobbered a fork freshly installed from master (0.16.0) minutes earlier.
