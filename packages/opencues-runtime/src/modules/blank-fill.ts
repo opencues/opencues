@@ -593,11 +593,27 @@ export class BlankFill {
               `registration prerequisite. Fix: \`opencues install ${this.adapter.hostName}\`.`,
             );
           }
-          this.applyAsyncFill(
-            slot,
-            `[err] ${slot.blankName}: not available on this host — stale bundle or missing prerequisite. Try \`opencues install ${this.adapter.hostName}\``,
-            typedAction,
-          );
+          // DEFER the [err] fill — this branch is the only fill that
+          // would otherwise run SYNCHRONOUSLY inside the text-change
+          // dispatch. On live CC (found 2026-07-15) adapter.getText()
+          // is still one keystroke stale at that instant (the host's
+          // buffer state catches up after the handler returns), so
+          // `words[slot.index]` missed and applyAsyncFill's staleness
+          // guard silently dropped the fill — warn logged, buffer
+          // untouched, and the MockAdapter's synchronous text state
+          // hid it from the unit journeys. Every OTHER fill path is
+          // naturally deferred past the state update by script/LLM
+          // latency; match that timing. One guarded retry covers hosts
+          // whose state settles later than a tick — if the buffer
+          // legitimately moved on instead, the retry is dropped by the
+          // same staleness guard that protects late script callbacks.
+          {
+            const errFill = `[err] ${slot.blankName}: not available on this host — stale bundle or missing prerequisite. Try \`opencues install ${this.adapter.hostName}\``;
+            setTimeout(() => {
+              if (this.tryErrFill(slot, errFill, typedAction)) return;
+              setTimeout(() => { this.tryErrFill(slot, errFill, typedAction); }, 50);
+            }, 0);
+          }
           return;
         }
         // OS-level sandbox config — populated when the blank's
@@ -839,6 +855,21 @@ export class BlankFill {
    * adapter.pushText (calls onChange), since this runs outside any
    * dispatch.
    */
+  /** Attempt an [err] feedback fill; returns true when the slot's `_`
+   *  (or its animation frame char) is present in the CURRENT buffer —
+   *  i.e. the fill had a target and applyAsyncFill ran its course.
+   *  False = the adapter's text state hasn't caught up with the
+   *  keystroke that formed the slot (live-CC timing, 2026-07-15) and
+   *  the caller may retry once. */
+  private tryErrFill(slot: BlankSlot, errFill: string, typedAction?: 'set' | 'step'): boolean {
+    const cleaned = this.adapter.getText().replace(/[\u200B\u200C]/g, '');
+    const target = splitWords(cleaned)[slot.index];
+    const present = !!target
+      && (target.word === '_' || (this._loading?.isOurSlotChar(slot.index, target.word) ?? false));
+    if (present) this.applyAsyncFill(slot, errFill, typedAction);
+    return present;
+  }
+
   private applyAsyncFill(slot: BlankSlot, fillValue: string, typedAction?: 'set' | 'step'): void {
     const currentText = this.adapter.getText();
     const cleaned = currentText.replace(/[\u200B\u200C]/g, '');
