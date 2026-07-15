@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed — dead `fluid-blank-mode` scalar, end to end + spec bump `0.7-alpha → 0.8-alpha` (`@opencues/core` 0.20.3 → 0.21.0, `@opencues/runtime` 0.18.5 → 0.18.6, `opencues` CLI 0.2.45 → 0.2.46, `SPEC_VERSION` 0.7 → 0.8)
+
+The scalar has been a no-op since the static-resolution design made fluid the always-on base layer (`enableFluidBlank: true` hardcoded; runtime SPEC.md already said "don't look for it") — but it still shipped in `defaults/OPENCUES.md`, appeared in the settings menu and the fluid-config classifier's choice space via the `FEATURES` registry, sat in the resolver's rebuild cache key, and was documented as a live gate across ~15 docs. Removed everywhere: registry entry (menu + classifier + doctor wiring), resolver cache-key read, shipped defaults, `spec/schemas/opencues.schema.json`, the conformance fixture, three fluid-config bench cases that expected the classifier to emit it, and the docs. Test fixtures that used it as a representative scalar now use `word-cues-mode`. Old user files carrying the key keep working (unknown frontmatter is preserved by design). **Spec side:** removing a documented `OPENCUES.md` key bumps `SPEC_VERSION` per the versioning policy; see `spec/CHANGELOG.md` `[Unreleased]`.
+
+Also sweeps staleness the removal audit surfaced: runtime `SPEC.md`'s contradictory "FILL vs WIPE" section rewritten to always-FILL (it described the retired WIPE path and a `spanStart`/`spanEnd` emission fluid no longer does); `identity-validator.ts` header no longer calls the shipped sentinel blank a "future call site"; `cli-reference.md` documents `doctor --strict`; the chrome styling matrix moves LinkedIn from ProseMirror to Quill, matching the whole-text replacement tables.
 ### Added — **Undo / Redo**: language-invariant `undo _` / `redo _` reverts anything OpenCues did (`@opencues/core` 0.19.2 → 0.20.3, `@opencues/runtime` 0.17.0 → 0.18.5, `@opencues/claude-code` 0.2.9 → 0.2.10)
 
 Typing `undo _` reverts the last change the runtime made — a blank fill, a fluid/transform substitution, an agent-rewrite round, a cycling step, a settings write, a volume/brightness set, an IDENTITY.md/NOTES.md write; `redo _` re-applies it; `undo 3 _` (or "undo the last two changes", "3回元に戻して") reverts deeper. ON by default via the new `undo-mode` registry scalar.
@@ -63,7 +68,7 @@ Fix: defer the `[err]` fill one tick with one guarded retry (`tryErrFill` probes
 
 Now: a named `[err] <blank>: not available on this host — stale bundle or missing prerequisite. Try \`opencues install <host>\`` fill (the `[err]` path replaces only the `_`, so the typed command survives), plus a once-per-blank warn in the log with the fuller diagnostic. Loading-animation claim released correctly (no forever-spin). Pinned by three journeys in `blank-fill.test.ts`: named fill + command survival, once-per-blank warn dedup across re-fires, and animator release.
 
-### Fixed — launch-time self-heal no longer rebuilds forks BACKWARD from a stale clone (`opencues` CLI 0.2.44 → 0.2.45)
+### Fixed — launch-time self-heal no longer rebuilds forks BACKWARD from a stale clone (`opencues` CLI 0.2.45 → 0.2.46)
 
 The `opencues run <host>` srcHash self-heal treated ANY marker/source mismatch as "stale" — but srcHash is direction-blind. A second clone, a git worktree, or an old branch checked out in the same clone would silently rebuild every fork it launched back to its own older source; and because installers copy without deleting, the result was a MIXED bundle (new files present, `blanks/index.js` + package.json stale) — the dual-clone variant of the May 2026 drift class. Hit live July 2026: `opencues run` from a wip-branch checkout (runtime 0.13.5) clobbered a fork freshly installed from master (0.16.0) minutes earlier.
 

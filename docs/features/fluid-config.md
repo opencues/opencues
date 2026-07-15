@@ -69,7 +69,7 @@ Off again is the same with `off`.
 **Targets:** every scalar in the FEATURES registry
 (`packages/opencues-core/src/feature-registry.ts`). Today that's:
 
-- `fluid-blank-mode`, `word-cues-mode`, `transform-blank-mode`,
+- `word-cues-mode`, `transform-blank-mode`,
   `blank-trigger-mode`, `tips-mode`, `voice-mode`, `cursor-navigate`,
   `debug-mode`, `ambient-context-mode`, `identity-context-mode`,
   `fluid-config-mode` itself.

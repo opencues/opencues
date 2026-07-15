@@ -2,7 +2,6 @@
 voice-mode: inactive
 tips-mode: on
 debug-mode: off
-fluid-blank-mode: on
 word-cues-mode: on
 blank-trigger-mode: immediate
 llm-provider: groq

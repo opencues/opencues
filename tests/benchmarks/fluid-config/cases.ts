@@ -98,18 +98,6 @@ export const CASES: FluidConfigCase[] = [
     expected: { setting: 'voice-mode', value: 'inactive' },
   },
   {
-    id: 'hc-fluid-off',
-    category: 'hit-clean',
-    input: 'disable fluid blank _',
-    expected: { setting: 'fluid-blank-mode', value: 'off' },
-  },
-  {
-    id: 'hc-fluid-on',
-    category: 'hit-clean',
-    input: 'enable fluid blank lookups _',
-    expected: { setting: 'fluid-blank-mode', value: 'on' },
-  },
-  {
     id: 'hc-trigger-spaced',
     category: 'hit-clean',
     input: 'use spaced blank trigger mode _',
@@ -254,12 +242,6 @@ export const CASES: FluidConfigCase[] = [
     category: 'hit-fuzzy',
     input: "I don't want word alternative suggestions on every word _",
     expected: { setting: 'word-cues-mode', value: 'off' },
-  },
-  {
-    id: 'hf-fluid-off-only-keyword',
-    category: 'hit-fuzzy',
-    input: "I only want blanks to fire on explicit keywords, no free-form lookups _",
-    expected: { setting: 'fluid-blank-mode', value: 'off' },
   },
 
   // ── REJECT — USER-BLANK TERRITORY (volume/brightness/etc.) ───────────

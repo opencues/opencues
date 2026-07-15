@@ -20,7 +20,6 @@ Manual sanity checks for the OpenCues system. Run after any code change + restar
 
 ## Fluid blank (free-form `_` lookup)
 
-(Requires `fluid-blank-mode: on`.)
 
 - [ ] `2 + 2 = _` — fills with `4`
 - [ ] `capital of France is _` — fills with `Paris`

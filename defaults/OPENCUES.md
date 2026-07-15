@@ -110,7 +110,6 @@ blank-context-mode: safe
 # state — e.g. is an agent task armed — is per-buffer runtime state and
 # orthogonal to these flags.
 # See packages/opencues-core/src/sources/build-sources.ts for what each gates.
-fluid-blank-mode: on
 word-cues-mode: on
 transform-blank-mode: on
 

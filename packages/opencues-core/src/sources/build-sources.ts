@@ -339,7 +339,7 @@ export function combineWordSources(srcs: SourceConfig[]): SourceConfig {
  * - CUES.md other ### sections (non-default scope/parser) → individual
  *   ConfigSource instances (not routed; called directly by the resolver).
  * - blanks: keyword-bound entries → BlankSource. Free-form `_` →
- *   FluidBlankSource (opt-in via `fluid-blank-mode: on`).
+ *   FluidBlankSource (always-on base layer; no mode scalar).
  */
 export function buildSourcesFromConfig(
   cuesConfig: CuesMdConfig | undefined,

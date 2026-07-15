@@ -936,7 +936,6 @@ export class Resolver {
   private computeBuildKey(): string {
     const s = this.configLoader.opencuesState.settings;
     return [
-      s.get('fluid-blank-mode') ?? '',
       s.get('transform-blank-mode') ?? '',
       s.get('fluid-config-mode') ?? '',
       s.get('undo-mode') ?? '',
@@ -984,7 +983,7 @@ export class Resolver {
     // If OPENCUES.md flags changed since last build, rebuild before
     // dispatching. ConfigLoader hot-reloads opencuesState on text-change
     // but doesn't notify Resolver, so without this check a flag flip
-    // (`fluid-blank-mode: off â on`, `word-cues-mode: off â on`, â¦)
+    // (`transform-blank-mode: off → on`, `word-cues-mode: off → on`, …)
     // would only take effect on next host restart.
     const currentKey = this.computeBuildKey();
     if (currentKey !== this._lastBuildKey) {

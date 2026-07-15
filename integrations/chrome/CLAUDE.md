@@ -591,7 +591,8 @@ page is up to the host editor**, and editors differ wildly:
 |---|---|---|
 | **Generic contenteditable** (Gmail, plain `<div contenteditable>`) | ✅ works | `execCommand('bold')` wraps the browser-Selection range in `<b>` / `<i>` / `<strike>` natively — no editor framework intercepting |
 | **Lexical** (Reddit) | ⚠ depends on schema | Lexical has its own selection model. Sites that disable rich-text formatting in their schema reject the mark; sites with formatting enabled accept |
-| **ProseMirror** (LinkedIn / ChatGPT / claude.ai / Luma) | ❌ usually no-ops | PM intercepts `beforeinput` against its INTERNAL selection model. When the site's PM config is plain-text-only (no `bold` / `em` marks in schema), the `formatBold` input gets dropped. claude.ai / ChatGPT compose boxes are typically configured this way |
+| **ProseMirror** (ChatGPT / claude.ai / Luma) | ❌ usually no-ops | PM intercepts `beforeinput` against its INTERNAL selection model. When the site's PM config is plain-text-only (no `bold` / `em` marks in schema), the `formatBold` input gets dropped. claude.ai / ChatGPT compose boxes are typically configured this way |
+| **Quill** (LinkedIn share composer) | ❌ usually no-ops | Quill's MutationObserver reverts external DOM mutations on the next microtask; formatting depends on its Delta model accepting the mark (see § whole-text replacement table — LinkedIn migrated here from PM) |
 | **Draft.js** (Twitter/X) | ❌ no | Draft.js compose is plain-text-only |
 | **Slate** (untested) | ⚠ unknown | Likely similar to PM — depends on the schema |
 

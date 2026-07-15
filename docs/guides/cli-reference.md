@@ -37,7 +37,7 @@ status + command list `--help` prints, so scripting is unaffected.
 | `opencues install <host>` | One-time setup for an editor/host |
 | `opencues run <host>` | Launch it |
 | `opencues set-key <provider> <key>` | Add an LLM API key |
-| `opencues doctor` | Something's wrong — diagnostics |
+| `opencues doctor` | Something's wrong — diagnostics (`--strict` turns info-level findings into a failing exit code, for CI gating) |
 | `opencues update` | Pull latest + rebuild everything |
 
 Everything below is the full reference. For every command sorted by

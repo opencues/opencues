@@ -45,8 +45,8 @@ const noopHttpAdapter: HttpAdapter = {
 };
 
 // Equivalent of the chrome boot's option set when the runtime reads
-// the shipped OPENCUES.md defaults (fluid-blank-mode: on,
-// word-cues-mode: on, transform-blank-mode: on).
+// the shipped OPENCUES.md defaults (word-cues-mode: on,
+// transform-blank-mode: on; fluid is the always-on base layer).
 function defaultChromeBuildOpts(apiKeys: Record<string, string>): Parameters<typeof buildSourcesFromConfig>[2] {
   return {
     httpAdapter: noopHttpAdapter,
@@ -98,7 +98,6 @@ describe('Chrome extension — dead-on-arrival guard (Cerebras-only key)', () =>
     const opencuesMd = loadOpencuesMd();
     expect(opencuesMd.length).toBeGreaterThan(0);
     // Critical scalars the chrome boot relies on must be present.
-    expect(opencuesMd).toContain('fluid-blank-mode:');
     expect(opencuesMd).toContain('transform-blank-mode:');
   });
 
@@ -149,7 +148,7 @@ describe('Chrome extension — dead-on-arrival guard (Cerebras-only key)', () =>
     }
   });
 
-  it('FluidBlankSource is constructed when fluid-blank-mode is on (default) + Cerebras key set', () => {
+  it('FluidBlankSource is constructed by default (always-on base layer) + Cerebras key set', () => {
     const cuesMd = loadCombinedCuesMd();
     const cuesConfig = parseCuesMd(cuesMd, undefined);
     const sources = buildSourcesFromConfig(cuesConfig, undefined, defaultChromeBuildOpts({ CEREBRAS_API_KEY: 'csk-test' }));

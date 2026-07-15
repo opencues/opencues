@@ -250,7 +250,7 @@ module.exports = function seedConfigs(argv, ctx) {
   // If we skipped anything, surface the gotcha. SEED is first-time-only by
   // design (preserves user customisations), but that means new fields added
   // to shipped defaults DON'T flow into existing user files. Common bite:
-  // OPENCUES.md gets new opt-in flags (fluid-blank-mode, etc.)
+  // OPENCUES.md gets new opt-in flags (transform-blank-mode, etc.)
   // and the user's existing OPENCUES.md silently lacks them →
   // surfaces as "feature off" with no error.
   if (skipped > 0 && !silent) {

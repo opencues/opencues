@@ -9,7 +9,7 @@ Your user-level OpenCues config lives at `~/.cues/`:
 ```
 ~/.cues/
 ├── OPENCUES.md                 # Runtime settings (voice-mode, tips-mode,
-│                               # debug-mode, cursor-navigate, fluid-blank-mode,
+│                               # debug-mode, cursor-navigate, word-cues-mode,
 │                               # transform-blank-mode, word-cues-mode,
 │                               # agent-debounce-ms, llm-provider + per-feature
 │                               # LLM keys). User-level only; project layer
@@ -62,7 +62,6 @@ Frontmatter keys at the top of `~/.cues/OPENCUES.md`. The same scalars are cycla
 | `debug-mode` | `on` / `off` | `off` | Verbose logging in the host's debug surface. |
 | `cursor-navigate` | `active` / `inactive` | `inactive` | Highlight follows cursor to navigable words. |
 | `word-cues-mode` | `on` / `off` | `on` | LLM word-cue surface (legal, medical, ...) registered. |
-| `fluid-blank-mode` | `on` / `off` | `on` | Free-form `_` lookup pipeline registered. |
 | `transform-blank-mode` | `on` / `off` | `on` | Imperative `_` + agent-task lifecycle (`agentically X _`) registered. |
 | `sentence-cues-mode` | `on` / `off` | `off` | Cues with `scope: sentence` (whole-sentence rewrites) registered. |
 | `fluid-config-mode` | `on` / `off` | `off` | Natural-language settings phrases (`enable debug logging _` → flips `debug-mode`). FEATURES-only scope; never routes to user blanks. |

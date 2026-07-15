@@ -204,7 +204,7 @@ export const CORE_CONFIG_FILES: readonly string[] = [
  * Canonical filename for the user-level RUNTIME SETTINGS file —
  * lives at `~/.cues/OPENCUES.md` (or `$OPENCUES_HOME/OPENCUES.md`).
  * Carries all OPENCUES.md scalars (voice-mode, debug-mode,
- * fluid-blank-mode, llm-provider, etc.).
+ * word-cues-mode, llm-provider, etc.).
  *
  * NOT to be confused with `CUES.md` — that's the cue master
  * config (cue source declarations, project metadata, optional
@@ -377,17 +377,6 @@ const BLANKS_PROVIDER_VALUES: readonly ValueSpec[] = [
  */
 export const FEATURES: readonly FeatureSpec[] = [
   // ── Surface availability ─────────────────────────────────────────
-  {
-    scalar: 'fluid-blank-mode',
-    group: 'Blanks',
-    camelCase: 'fluidBlankMode',
-    description: 'Free-form `_` lookups (LLM pipeline)',
-    menuTip: 'Free-form `_` lookups (P1+P3 LLM pipeline)',
-    values: [
-      { id: 'on',  description: 'Enabled — `_` next to a lookup phrase auto-substitutes the answer' },
-      { id: 'off', description: 'Disabled — fluid-blank ignored' },
-    ],
-  },
   {
     scalar: 'word-cues-mode',
     group: 'Cues',
