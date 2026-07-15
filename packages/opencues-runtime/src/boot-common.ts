@@ -239,11 +239,25 @@ export interface SourceReclassifier {
 }
 
 /** Time window in which subsequent matching input events are still
- *  reclassified to 'runtime'. 250ms covers the typical DOM-echo
- *  window (50-200ms on Gmail/Lexical/PM) with margin, while staying
- *  well under any realistic gap between a runtime substitute and a
- *  user typing the identical text manually. */
-export const RUNTIME_WRITE_TTL_MS = 250;
+ *  reclassified to 'runtime'. Covers the DOM-echo window (50-200ms on
+ *  Gmail/Lexical/PM) AND the host event-pipeline lag under load.
+ *
+ *  Was 250ms; raised to 1500ms after issue #306: the loading animator
+ *  writes a frame every ~75ms, and on opencode (SolidJS `onContentChange`)
+ *  a frame's echo can arrive >250ms late when the host is busy — past the
+ *  old TTL, the mark was pruned, so a legitimate runtime write got
+ *  classified `user` → the resolver re-triggered → the frame char lingered
+ *  in the slot (intermittent, opencode-only, cosmetic). Deterministically
+ *  repro'd + pinned in boot-common.test.ts § "echo delayed under load".
+ *
+ *  This only extends how long a legit runtime write is REMEMBERED — the
+ *  match stays exact-full-buffer-text, so no leniency is introduced. The
+ *  reclassify direction is user→runtime (= resolver skips); exploiting a
+ *  longer window would require producing the exact same full buffer a
+ *  runtime write just produced, at which point the buffer is already what
+ *  we wrote — no new trigger surface. (Distinct from chrome's credit-based
+ *  trust-gate in trust-gate.ts, which this does not touch.) */
+export const RUNTIME_WRITE_TTL_MS = 1500;
 
 export function createSourceReclassifier(now: () => number = Date.now): SourceReclassifier {
   const recent: Array<{ text: string; addedAt: number }> = [];
