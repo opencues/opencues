@@ -1,5 +1,33 @@
 import { describe, it, expect, vi } from 'vitest';
-import { OpenCuesSettingsBlank } from './opencues-settings';
+import { OpenCuesSettingsBlank, rewriteSetting } from './opencues-settings';
+
+describe('rewriteSetting — EOL handling', () => {
+  it('replaces an existing scalar (LF and CRLF)', () => {
+    expect(rewriteSetting('---\nvoice-mode: active\n---\n', 'voice-mode', 'inactive'))
+      .toBe('---\nvoice-mode: inactive\n---\n');
+    expect(rewriteSetting('---\r\nvoice-mode: active\r\n---\r\n', 'voice-mode', 'inactive'))
+      .toContain('voice-mode: inactive\r\n');
+  });
+
+  it('appends a new scalar inside the frontmatter (LF)', () => {
+    const out = rewriteSetting('---\nvoice-mode: active\n---\n', 'blank-loading-frames', '_,a,b');
+    expect(out).toMatch(/^blank-loading-frames: _,a,b$/m);
+    expect(out).not.toContain('\r');
+  });
+
+  it('appends a new scalar for a CRLF file WITHOUT bailing (issue: loading-animation on Windows)', () => {
+    // The old `\n`-only frontmatter match silently bailed on `\r\n`, so a
+    // new key (e.g. blank-loading-frames) was never written — the blank
+    // reported success but the setting vanished.
+    const out = rewriteSetting('---\r\nvoice-mode: active\r\n---\r\n', 'blank-loading-frames', '▖,▘,▝,▗');
+    expect(out).toContain('blank-loading-frames: ▖,▘,▝,▗\r\n'); // written, CRLF preserved
+    expect(out).not.toMatch(/[^\r]\n/);                          // no mixed LF
+  });
+
+  it('leaves a file with no frontmatter untouched (never corrupt malformed content)', () => {
+    expect(rewriteSetting('voice-mode: active\n', 'x', 'y')).toBe('voice-mode: active\n');
+  });
+});
 
 const SAMPLE_MD = `---
 version: 1
