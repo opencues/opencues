@@ -177,6 +177,60 @@ describe('undo — fluid-blank fill journeys (real recording tap)', () => {
     expect(s.adapter.getText()).toBe('capital of france Paris');
   });
 
+  it('WHOLE-buffer fill (countries-style rephrase) → undo drops the trigger; redo restores', async () => {
+    // The live case (2026-07-15): `capital of france _` is the `countries`
+    // blank, which rephrases the WHOLE line to `France capital: Paris`. The
+    // reverted region is NOT a lone `_`, but undo must still drop the
+    // trailing trigger so it doesn't re-arm (fillSplice whole-buffer path).
+    const s = setup('capital of france _');
+    s.script([fluidResult('France capital: Paris', 0, 'capital of france _'.length)]);
+    await s.resolver.resolveAndApply(s.adapter.getText());
+    expect(s.adapter.getText()).toBe('France capital: Paris');
+
+    s.adapter.pushText('France capital: Paris undo _');
+    s.script([undoResult('undo', 1, 'France capital: Paris '.length, 'France capital: Paris undo _'.length)]);
+    await s.resolver.resolveAndApply(s.adapter.getText());
+    expect(s.adapter.getText()).toBe('capital of france'); // no `_`
+    expect(s.adapter.getText()).not.toContain('_');
+
+    s.adapter.pushText('capital of france redo _');
+    s.script([undoResult('redo', 1, 'capital of france '.length, 'capital of france redo _'.length)]);
+    await s.resolver.resolveAndApply(s.adapter.getText());
+    expect(s.adapter.getText()).toBe('France capital: Paris');
+  });
+
+  it('interleaved fills (fluid → keyword) → undo → undo each drop their own trigger', async () => {
+    // Two different blank fills back-to-back; each undo must revert its own
+    // fill and drop that fill's trigger — no cross-contamination, no `_` left.
+    const s = setup('capital of france _');
+    s.script([fluidResult('France capital: Paris', 0, 'capital of france _'.length)]);
+    await s.resolver.resolveAndApply(s.adapter.getText());
+    expect(s.adapter.getText()).toBe('France capital: Paris');
+
+    // Second, unrelated fill appended on a new line.
+    s.adapter.pushText('France capital: Paris\nvolume _');
+    const secondStart = 'France capital: Paris\n'.length;
+    s.script([fluidResult('volume is now 40%', secondStart, secondStart + 'volume _'.length)]);
+    await s.resolver.resolveAndApply(s.adapter.getText());
+    expect(s.adapter.getText()).toBe('France capital: Paris\nvolume is now 40%');
+    expect(s.journal.undoDepth).toBe(2);
+
+    // Undo #1 reverts the SECOND fill (newest-first), dropping its `_`.
+    s.adapter.pushText('France capital: Paris\nvolume is now 40% undo _');
+    s.script([undoResult('undo', 1, 'France capital: Paris\nvolume is now 40% '.length, 'France capital: Paris\nvolume is now 40% undo _'.length)]);
+    await s.resolver.resolveAndApply(s.adapter.getText());
+    expect(s.adapter.getText()).toBe('France capital: Paris\nvolume');
+    expect(s.adapter.getText()).not.toContain('_');
+
+    // Undo #2 reverts the FIRST fill, dropping its `_` too.
+    s.adapter.pushText('France capital: Paris\nvolume undo _');
+    s.script([undoResult('undo', 1, 'France capital: Paris\nvolume '.length, 'France capital: Paris\nvolume undo _'.length)]);
+    await s.resolver.resolveAndApply(s.adapter.getText());
+    expect(s.adapter.getText()).toBe('capital of france\nvolume');
+    expect(s.adapter.getText()).not.toContain('_');
+    expect(s.journal.undoDepth).toBe(0);
+  });
+
   it('fill → user types elsewhere → undo _ relocates by unique match, prose preserved', async () => {
     const s = setup('capital of france _');
     await fillParis(s);

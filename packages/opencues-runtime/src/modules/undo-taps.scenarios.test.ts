@@ -234,6 +234,28 @@ describe('undo taps — volume fill + step burst (real registry, real os-set cap
     expect(s.journal.undoDepth).toBe(0);
   });
 
+  it('trailing `undo _` after a real fill is NOT re-claimed by the blank (cedes to ACTION)', async () => {
+    // The live `france undo: not found` bug: after a fill, the user types a
+    // trailing undo command. The blank keyword is present, but "undo" is the
+    // command — BlankFill must cede (with a journal wired) so it never
+    // re-fills, leaving the `_` for the ACTION path.
+    const s = await setupVolume(40);
+    s.adapter.pushText('volume _');
+    await flush();
+    expect(s.adapter.getText()).toBe('volume 40%'); // the blank filled
+
+    // Trailing undo command — must NOT be swallowed as a volume query.
+    s.adapter.pushText('volume undo _');
+    await flush();
+    expect(s.adapter.getText()).toBe('volume undo _'); // untouched — no re-fill
+    // redo too.
+    s.adapter.pushText('volume redo _');
+    await flush();
+    expect(s.adapter.getText()).toBe('volume redo _');
+    // (A plain `volume _` still fills — pinned in blank-fill.test.ts; not
+    // repeated here to avoid the fill-dedup cache on the same text.)
+  });
+
   it('OS value drifted between step and undo → os-set skipped, buffer still reverts', async () => {
     const s = await setupVolume(40);
     s.adapter.pushText('volume _');
