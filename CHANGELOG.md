@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the registry-miss `[err]` fill was dropped on hosts whose text state lags the dispatch (`@opencues/runtime` 0.16.1 → 0.16.2)
+
+Live-CC follow-up to the previous entry, caught during slot-2 validation: the warn fired but the `[err]` never appeared. The miss branch was the ONLY fill running synchronously inside the text-change dispatch, and CC's `adapter.getText()` is one keystroke stale at that instant — `words[slot.index]` missed and `applyAsyncFill`'s staleness guard silently dropped the fill. Every other fill path is naturally deferred past the state update by script/LLM latency, and the MockAdapter commits text BEFORE dispatch, which hid the class from the unit journeys.
+
+Fix: defer the `[err]` fill one tick with one guarded retry (`tryErrFill` probes for the slot's `_`/frame char before filling; a buffer that legitimately moved on drops the retry via the same staleness guard as any late script callback). Harness gap closed structurally: `MockAdapter` gains `staleTextDuringDispatch` (dispatch first with the pre-change buffer in place, commit after — the live-CC shape), and a new journey pins the fill landing on such a host; mutation-checked to fail against the synchronous code.
+
 ### Fixed — a blank with config but no host implementation now says so instead of doing nothing (`@opencues/runtime` 0.16.0 → 0.16.1)
 
 `~/.cues` is shared across hosts but runtime bundles are per-host, and ANY host's install seeds the shared config — so a BLANK.md can legitimately run ahead of another host's installed bundle. When that happened on a blankInvoke-capable host with a runtime-served (scriptless) blank, the dispatch hit the registry miss and skipped in TOTAL silence: no log, no fill, slot dead. Live case (July 2026): the loading-animation blank's config seeded by an opencode install while the CC fork was still one runtime behind — "it didn't seem to do anything". The same silent shape covers factories that skip registration over a missing prerequisite (e.g. stocks without a Finnhub key).

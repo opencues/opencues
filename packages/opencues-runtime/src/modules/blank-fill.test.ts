@@ -1965,3 +1965,49 @@ blankProximity: 10
     expect(adapter.getText()).toContain('[err] newblank');
   });
 });
+
+// ─── Registry-miss [err] on a STALE-TEXT host (the live-CC timing) ────────
+//
+// 2026-07-15: on live CC the #300 [err] fill silently vanished — warn
+// logged, buffer untouched. The miss branch was the only fill running
+// SYNCHRONOUSLY inside the text-change dispatch, and CC's
+// adapter.getText() is one keystroke stale at that instant, so
+// applyAsyncFill's staleness guard dropped it. The default MockAdapter
+// commits text BEFORE dispatch, which hid the class; this journey uses
+// `staleTextDuringDispatch` to model the real host. The fix defers the
+// fill a tick (+ one guarded retry), matching every other fill path's
+// natural post-latency timing.
+describe('BlankFill registry miss on a stale-text-during-dispatch host', () => {
+  const SCRIPTLESS = `---
+type: blank
+name: newblank
+blankKeywords: newblank
+blankProximity: 10
+---
+`;
+
+  it('the [err] fill still lands (deferred past the state catch-up)', async () => {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/blanks/newblank/BLANK.md': SCRIPTLESS },
+      capabilities: [
+        'render-override', 'dim-ranges', 'highlight-range',
+        'file-read', 'file-write', 'force-render', 'change-source',
+        'blank-invoke',
+      ],
+      staleTextDuringDispatch: true,
+    });
+    adapter.stubBlankInvoke('someother:get', 'x');
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    adapter.pushText('newblank _');
+    // Pre-fix, the synchronous fill saw the pre-keystroke buffer and was
+    // dropped here in total silence. Give the deferred fill + retry room.
+    await new Promise(r => setTimeout(r, 80));
+    expect(adapter.getText()).toBe(
+      'newblank [err] newblank: not available on this host — stale bundle or missing prerequisite. Try `opencues install mock`',
+    );
+  });
+});
