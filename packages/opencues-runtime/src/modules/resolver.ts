@@ -1616,9 +1616,14 @@ export class Resolver {
         // (live-caught 2026-07-15: cursor jumped around after undo/redo).
         // Scalar-only undos (no buffer splice) carry no hint - park at
         // end of buffer, the deterministic sensible default.
-        const newCursor = Math.min(cursorHint ?? finalText.length, finalText.length);
-        if (this.adapter.pushText) this.adapter.pushText(finalText, newCursor);
-        else { this.adapter.setText(finalText); this.adapter.setCursorOffset(newCursor); this.adapter.forceRender(); }
+        // Trim trailing horizontal whitespace the command-span wipe can
+        // leave (`… Paris undo _` → the separator before the command
+        // survives as a dangling space). A reverted buffer never
+        // meaningfully ends in spaces/tabs; newlines are preserved.
+        const trimmedText = finalText.replace(/[ \t]+$/, '');
+        const newCursor = Math.min(cursorHint ?? trimmedText.length, trimmedText.length);
+        if (this.adapter.pushText) this.adapter.pushText(trimmedText, newCursor);
+        else { this.adapter.setText(trimmedText); this.adapter.setCursorOffset(newCursor); this.adapter.forceRender(); }
         this.adapter.emitEvent?.('undo.applied', { ...report });
         this.adapter.log('info', `Undo: ${undoAction.action} Ã${report.requested} applied â ${report.appliedTransactions} transaction(s), ${report.appliedEntries} entr(ies), ${report.skipped.length} skipped${report.skipped.length > 0 ? ` [${report.skipped.map(s => s.reason).join(', ')}]` : ''}`);
         wrote++;

@@ -17,7 +17,7 @@ import type { SpanFillState } from '../state/span-fill';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
 import type { AgentTaskState } from '../state/agent-task';
 import type { ProviderHealth, ProviderHealthEvent } from './provider-health';
-import type { UndoApplyReport } from '../state/undo-journal';
+import { formatUndoReport, type UndoApplyReport } from '../state/undo-journal';
 import { splitWords } from './navigation';
 
 export interface StatuslineOptions {
@@ -119,6 +119,13 @@ export interface StatuslinePayload {
    * reasons so hosts can render partial-failure honesty out-of-band.
    */
   undo?: UndoApplyReport | null;
+  /**
+   * Pre-formatted one-line undo/redo confirmation (`↶ undid: …`), derived
+   * from `undo` via `formatUndoReport`. Present for the same TTL. Hosts
+   * render this string verbatim — the universal feedback surface, since an
+   * invisible revert (scalar / OS value) has no on-screen affordance.
+   */
+  undoConfirmation?: string | null;
 }
 
 export class Statusline {
@@ -404,7 +411,8 @@ export class Statusline {
     // Undo block — same orthogonal-merge treatment (TTL lives in the
     // journal's recentApplyReport, so it ages out on its own).
     if (this.options.undoStatus) {
-      payload = { ...payload, undo: this.options.undoStatus() };
+      const undo = this.options.undoStatus();
+      payload = { ...payload, undo, undoConfirmation: undo ? formatUndoReport(undo) : null };
     }
     // Strip timestamp before content-comparison so identical-state renders
     // don't trigger writes purely because of clock change.

@@ -124,8 +124,37 @@ export interface UndoApplyReport {
   readonly requested: number;
   readonly appliedTransactions: number;
   readonly appliedEntries: number;
+  /** Labels of the transactions that applied (newest-first), for a
+   *  human-readable confirmation ("undid: fluid-blank fill"). Empty when
+   *  nothing applied. */
+  readonly appliedLabels: readonly string[];
   readonly skipped: ReadonlyArray<{ readonly label: string; readonly reason: UndoSkipReason; readonly detail?: string }>;
   readonly at: number;
+}
+
+/**
+ * One-line, host-agnostic confirmation of an undo/redo apply — the
+ * universal feedback surface (undo/redo has no visible affordance for
+ * invisible reverts like a scalar or OS-value change). Consumers render
+ * this string verbatim in the status line.
+ *
+ *   ↶ undid: fluid-blank fill
+ *   ↷ redid: volume step, settings change
+ *   ↶ undid: settings change (1 skipped)
+ *   ↶ nothing to undo (stale-epoch)
+ */
+export function formatUndoReport(r: UndoApplyReport): string {
+  const icon = r.action === 'undo' ? '↶' : '↷';
+  if (r.appliedTransactions === 0) {
+    const why = r.skipped[0]?.reason;
+    return `${icon} nothing to ${r.action}${why ? ` (${why})` : ''}`;
+  }
+  const verb = r.action === 'undo' ? 'undid' : 'redid';
+  // De-dupe labels while preserving order (a coalesced burst can repeat).
+  const seen = new Set<string>();
+  const labels = r.appliedLabels.filter(l => (seen.has(l) ? false : (seen.add(l), true)));
+  const partial = r.skipped.length > 0 ? ` (${r.skipped.length} skipped)` : '';
+  return `${icon} ${verb}: ${labels.join(', ')}${partial}`;
 }
 
 export class UndoJournal {

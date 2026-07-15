@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { UndoJournal, diffSplice, fillSplice, type UndoEntry } from './undo-journal';
+import { UndoJournal, diffSplice, fillSplice, formatUndoReport, type UndoApplyReport, type UndoEntry } from './undo-journal';
 
 /** Simulate the applier's anchor relocation for a buffer-splice entry.
  *  undo: find afterSlice, swap in beforeSlice. redo: the reverse. */
@@ -337,5 +337,34 @@ describe('fillSplice — undo of a fill drops the re-firing trigger `_`', () => 
     expect(entry.beforeSlice).toBe('weather');
     const undone = applyBufferSplice(entry, 'undo', after);
     expect(undone).toBe('capital of france _ weather'); // leading `_` preserved, weather `_` gone
+  });
+});
+
+describe('formatUndoReport — universal one-line confirmation', () => {
+  const base = (o: Partial<UndoApplyReport>): UndoApplyReport => ({
+    action: 'undo', requested: 1, appliedTransactions: 1, appliedEntries: 1,
+    appliedLabels: ['fluid-blank fill'], skipped: [], at: 0, ...o,
+  });
+
+  it('names what was undone / redone', () => {
+    expect(formatUndoReport(base({}))).toBe('↶ undid: fluid-blank fill');
+    expect(formatUndoReport(base({ action: 'redo', appliedLabels: ['volume step'] }))).toBe('↷ redid: volume step');
+  });
+
+  it('de-dupes repeated labels and joins multiple', () => {
+    expect(formatUndoReport(base({ appliedTransactions: 3, appliedLabels: ['volume step', 'volume step', 'settings change'] })))
+      .toBe('↶ undid: volume step, settings change');
+  });
+
+  it('surfaces partial-skip honesty', () => {
+    expect(formatUndoReport(base({ skipped: [{ label: 'x', reason: 'value-drifted' }] })))
+      .toBe('↶ undid: fluid-blank fill (1 skipped)');
+  });
+
+  it('reports nothing-applied with the reason', () => {
+    expect(formatUndoReport(base({ appliedTransactions: 0, appliedEntries: 0, appliedLabels: [], skipped: [{ label: 'x', reason: 'stale-epoch' }] })))
+      .toBe('↶ nothing to undo (stale-epoch)');
+    expect(formatUndoReport(base({ action: 'redo', appliedTransactions: 0, appliedEntries: 0, appliedLabels: [], skipped: [] })))
+      .toBe('↷ nothing to redo');
   });
 });

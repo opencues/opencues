@@ -55,6 +55,7 @@ export class UndoApplier {
       let cursorHint: number | undefined;
       let appliedTransactions = 0;
       let appliedEntries = 0;
+      const appliedLabels: string[] = [];
       const skipped: Array<{ label: string; reason: UndoSkipReason; detail?: string }> = [];
 
       for (const tx of txs) {
@@ -73,7 +74,7 @@ export class UndoApplier {
             skipped.push({ label: tx.label, reason: outcome.reason, detail: outcome.detail });
           }
         }
-        if (anyApplied) appliedTransactions++;
+        if (anyApplied) { appliedTransactions++; appliedLabels.push(tx.label); }
         // Pop regardless of skips — the transaction is consumed either
         // way; leaving a dead one on the stack would wedge `undo _`.
         if (action === 'undo') this.journal.confirmUndo(tx);
@@ -85,6 +86,7 @@ export class UndoApplier {
         requested: txs.length,
         appliedTransactions,
         appliedEntries,
+        appliedLabels,
         skipped,
         at: Date.now(),
       };
