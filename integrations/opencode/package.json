@@ -1,8 +1,8 @@
 {
   "name": "@opencues/opencode",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "private": true,
-  "description": "OpenCues for OpenCode \u2014 native AI integration anywhere you type. Model agnostic and fully open source. Inline agents and prompting.",
+  "description": "OpenCues for OpenCode — native AI integration anywhere you type. Model agnostic and fully open source. Inline agents and prompting.",
   "compatibility": {
     "opencode": "1.4.x"
   },
