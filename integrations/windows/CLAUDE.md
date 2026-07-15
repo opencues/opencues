@@ -173,6 +173,39 @@ declines and falls through to the whole-value path — where
 big, non-tail write) always takes a whole-value path — typing is only
 for the small frames.
 
+## Verify-before-write + verify-before-restore (2026-07-14 incident pair)
+
+Two silent races shipped in the write paths and both fired live on the
+same day; the fixes share one primitive, `TryReadCurrentField` (an
+on-demand, mode-aware read of the attached field), and are pinned by
+`tests/clipboard-invariants.mjs` (in pre-pr):
+
+1. **Clipboard restore raced the app's async paste read.** `PasteReplace`
+   saved the user's clipboard, set the substitution, sent Ctrl+V, slept
+   a fixed 300ms, restored. Electron consumes the clipboard
+   asynchronously — Discord under load was observed reading >1.1s after
+   Ctrl+V — so when the restore won, the paste delivered the USER'S OLD
+   CLIPBOARD into the focused app (live: a copied email address landed
+   in a Discord input instead of the substitution). That is a clipboard
+   LEAK into whatever app is focused. Now: poll the field until it
+   reflects the pasted text (EolNorm-folded), THEN restore; on timeout
+   (`OPENCUES_CLIPBOARD_RESTORE_MAX_MS`, default 3000) FAIL SAFE — skip
+   the restore and warn. Losing old clipboard contents is an annoyance;
+   pasting them into the foreground app is a leak.
+
+2. **Write diffs computed against a stale field model.** Both
+   `TryTypeMicroEdit` (animation frames) and `PasteReplace`'s backspace
+   path diffed against the shim's belief (`_lastSentText` / the
+   daemon's `oldText`). Phase 1 has no keyboard hook, so USER keystrokes
+   are invisible between reads — a stale model turns the backspace burst
+   into user-content deletion (live: "congratulations" typed mid-
+   animation lost its leading "con"). Now: read the field immediately
+   before acting; micro-frames DROP on divergence (cosmetic — the final
+   write is the absolute anchor), PasteReplace REBASES its diff on the
+   fresh read. Known trade: on very slow editors a frame whose
+   predecessor hasn't rendered yet reads as divergence and gets dropped
+   — the animation stalls a frame; never a wrong write.
+
 ## Multi-buffer state — MUST reset on focus change
 
 The Windows host attaches to **many** independent fields across apps in
