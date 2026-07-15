@@ -52,6 +52,22 @@ describe('createSourceReclassifier', () => {
     expect(r.reclassify('rewrite', 'user')).toBe('user');
   });
 
+  it('echo delayed under load past the OLD 250ms window still reclassifies (issue #306)', () => {
+    // The loading animator writes a frame every ~75ms; on opencode the
+    // onContentChange echo can lag under load. With the old 250ms TTL a
+    // frame's echo arriving ~300ms late was pruned → misclassified `user`
+    // → the resolver re-triggered and the frame char lingered. The raised
+    // TTL keeps the mark alive long enough for the delayed echo to match.
+    let now = 1_000_000;
+    const r = createSourceReclassifier(() => now);
+    const frame = 'capital of france ▖';
+    r.markRuntimeWrite(frame);
+    now += 300;  // > old 250ms window; the exact failure point of #306
+    expect(r.reclassify(frame, 'user')).toBe('runtime');
+    // Sanity: the TTL is genuinely wider than the old window.
+    expect(RUNTIME_WRITE_TTL_MS).toBeGreaterThan(300);
+  });
+
   it('keeps proposed source when text does not match any marked write', () => {
     const r = createSourceReclassifier();
     r.markRuntimeWrite('runtime wrote this');
