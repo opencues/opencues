@@ -1468,8 +1468,34 @@ export class Resolver {
     // still resolved first-wins by the existing blankName guard below;
     // post-cycle span shifts self-heal on the re-resolve the splice
     // triggers.
+    // ACTION-exclusivity gate. When ANY result in this pass is an
+    // undo/redo ACTION, it is the user's SOLE intent for the keystroke
+    // that triggered it: the `_` they just typed is the action. Other
+    // `_`s in the buffer are LEFTOVERS - most commonly the reverted
+    // command an undo just restored (e.g. `... make it formal _`), which
+    // still has a live `_`. Without this filter, that leftover `_` gets
+    // re-evaluated by TransformBlank/FluidBlank IN THE SAME PASS -
+    // spending an LLM call to re-run a command the user just undid and
+    // splicing its result on top of the undo (live-caught 2026-07-15:
+    // `... formal _ redo _` fired BOTH the redo AND a 1972ms re-transform
+    // of the old command). Applying an action and a fresh substitution
+    // in one pass is never the intent. Drop everything but the ACTION
+    // result(s). (The parallel LLM call still fires - the core resolve
+    // awaits all sources - but its result is discarded, so the buffer is
+    // never double-mutated. Aborting the in-flight call on first-ACTION
+    // is a latency follow-up, not a correctness one.)
+    const isActionResult = (r: { source?: string; metadata?: unknown }): boolean =>
+      r.source === 'config-intent'
+      && !!(r.metadata as { undoAction?: unknown } | undefined)?.undoAction;
+    const hasAction = result.results.some(isActionResult);
+    const applicableResults = hasAction ? result.results.filter(isActionResult) : result.results;
+    if (hasAction && applicableResults.length !== result.results.length) {
+      this.adapter.log('debug',
+        `Resolver: ACTION verdict present - suppressing ${result.results.length - applicableResults.length} other result(s) this pass (undo/redo is the sole intent)`);
+    }
+
     const sentenceClaims: Array<{ start: number; end: number }> = [];
-    for (const r of result.results) {
+    for (const r of applicableResults) {
       // ââ ACTION (undo/redo). Classified by the config-intent source
       //    (metadata.undoAction), APPLIED here â the journal + applier
       //    live runtime-side. Runs FIRST in the loop: the result's
@@ -1531,7 +1557,7 @@ export class Resolver {
         const working = liveText.slice(0, cmdStart) + liveText.slice(end);
 
         this._undoApplier ??= new UndoApplier(this.adapter, this.configLoader, this.undoJournal);
-        const { text: finalText, report } = await this._undoApplier.apply(undoAction.action, undoAction.count, working);
+        const { text: finalText, report, cursorHint } = await this._undoApplier.apply(undoAction.action, undoAction.count, working);
 
         // State cleanup BEFORE the buffer write: reverted splices
         // invalidate every span-bound offset (a surviving
@@ -1581,8 +1607,14 @@ export class Resolver {
         }
 
         // ONE buffer write for the whole application (one host history
-        // entry), cursor parked where the command was.
-        const newCursor = Math.min(cmdStart, finalText.length);
+        // entry). Cursor lands at the END of the restored content
+        // (`cursorHint` from the applier's last buffer-splice), NOT the
+        // stale pre-undo command offset - `cmdStart` indexes the OLD
+        // buffer and lands in an undetermined spot in the reverted text
+        // (live-caught 2026-07-15: cursor jumped around after undo/redo).
+        // Scalar-only undos (no buffer splice) carry no hint - park at
+        // end of buffer, the deterministic sensible default.
+        const newCursor = Math.min(cursorHint ?? finalText.length, finalText.length);
         if (this.adapter.pushText) this.adapter.pushText(finalText, newCursor);
         else { this.adapter.setText(finalText); this.adapter.setCursorOffset(newCursor); this.adapter.forceRender(); }
         this.adapter.emitEvent?.('undo.applied', { ...report });

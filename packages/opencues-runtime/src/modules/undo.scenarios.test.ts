@@ -526,3 +526,66 @@ describe('undo — over-wide summon span (live agentic-scenario 109 regression)'
     expect(s.loader.opencuesState.settings.get('debug-mode')).toBe('off');
   });
 });
+
+// ── Regression: bugs found in live CC testing (2026-07-15) ────────────────
+function transformResult(rewrite: string, spanStart: number, spanEnd: number): ScriptedResult {
+  return { wordIndex: 0, word: '_', alternatives: [rewrite], spanStart, spanEnd, source: 'transform-blank', priority: 93, metadata: {} };
+}
+
+describe('undo — ACTION exclusivity + deterministic cursor (live-CC regressions)', () => {
+  async function fillParis(s: ReturnType<typeof setup>): Promise<void> {
+    s.script([fluidResult('Paris', 0, 'capital of france _'.length)]);
+    await s.resolver.resolveAndApply(s.adapter.getText());
+    expect(s.adapter.getText()).toBe('Paris');
+  }
+
+  it('redo _ alongside a LEFTOVER command `_` applies ONLY the redo — no re-transform double-fire', async () => {
+    // The live bug: after undo restored `... formal _`, the user typed
+    // ` redo _`. The buffer then had TWO `_`s; TransformBlank fired on
+    // the stale command `_` in the SAME pass as the redo, splicing a
+    // fresh rewrite on top of the undo. The ACTION-exclusivity gate must
+    // drop the transform result: undo/redo is the sole intent.
+    const s = setup('capital of france _');
+    await fillParis(s);                      // buffer = 'Paris'
+    s.adapter.pushText('Paris undo _');
+    s.script([undoResult('undo', 1, 'Paris '.length, 'Paris undo _'.length)]);
+    await s.resolver.resolveAndApply(s.adapter.getText());
+    expect(s.adapter.getText()).toBe('capital of france _');
+
+    // Now redo, but ALSO script a competing transform on the leftover
+    // `... france _` (what the live resolver did). Only the redo applies.
+    s.adapter.pushText('capital of france _ redo _');
+    const buf = s.adapter.getText();
+    s.script([
+      // Transform FIRST in the pass — the real double-apply risk: without
+      // the ACTION-exclusivity gate this splices onto the buffer BEFORE
+      // the redo runs, corrupting it (and then the redo's span guard
+      // fails on the mutated buffer). With the gate, it's dropped.
+      transformResult('France is a country in Europe', 0, 'capital of france _'.length),
+      undoResult('redo', 1, 'capital of france _ '.length, buf.length),
+    ]);
+    await s.resolver.resolveAndApply(buf);
+    // Redo restored the Paris fill; the transform's rewrite is NOWHERE.
+    expect(s.adapter.getText()).toBe('Paris');
+    expect(s.adapter.getText()).not.toContain('France is a country in Europe');
+  });
+
+  it('undo parks the cursor at the END of the restored content (not a stale offset)', async () => {
+    const s = setup('capital of france _');
+    await fillParis(s);
+    s.adapter.pushText('Paris undo _');
+    // Capture the cursor arg the undo application commits.
+    let committedCursor = -1;
+    const origPush = s.adapter.pushText.bind(s.adapter);
+    (s.adapter as unknown as { pushText: typeof origPush }).pushText = (t: string, c?: number) => { committedCursor = c ?? -1; origPush(t, c); };
+    s.script([undoResult('undo', 1, 'Paris '.length, 'Paris undo _'.length)]);
+    await s.resolver.resolveAndApply(s.adapter.getText());
+    const finalText = s.adapter.getText();
+    expect(finalText).toBe('capital of france _');
+    // cursorHint = end of the restored `capital of france _` splice —
+    // i.e. the end of the buffer here. Deterministic, never a stale
+    // pre-undo command offset.
+    expect(committedCursor).toBe(finalText.length);
+  });
+});
+

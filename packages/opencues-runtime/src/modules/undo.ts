@@ -33,7 +33,7 @@ import { applyScalarAndPersist } from '../util/apply-scalar';
 import { findFeature } from '@opencues/core';
 
 type EntryOutcome =
-  | { applied: true; text: string }
+  | { applied: true; text: string; cursorHint?: number }
   | { applied: false; reason: UndoSkipReason; detail?: string };
 
 export class UndoApplier {
@@ -48,10 +48,11 @@ export class UndoApplier {
    * executing side-effect inversions as it goes. Returns the final text
    * + report; the CALLER does the single buffer commit.
    */
-  async apply(action: 'undo' | 'redo', count: number, workingText: string): Promise<{ text: string; report: UndoApplyReport }> {
+  async apply(action: 'undo' | 'redo', count: number, workingText: string): Promise<{ text: string; report: UndoApplyReport; cursorHint?: number }> {
     return this.journal.runApply(async () => {
       const txs = action === 'undo' ? this.journal.peekUndo(count) : this.journal.peekRedo(count);
       let text = workingText;
+      let cursorHint: number | undefined;
       let appliedTransactions = 0;
       let appliedEntries = 0;
       const skipped: Array<{ label: string; reason: UndoSkipReason; detail?: string }> = [];
@@ -65,6 +66,7 @@ export class UndoApplier {
           const outcome = await this.applyEntry(action, entry, text);
           if (outcome.applied) {
             text = outcome.text;
+            if (outcome.cursorHint !== undefined) cursorHint = outcome.cursorHint;
             anyApplied = true;
             appliedEntries++;
           } else {
@@ -87,7 +89,7 @@ export class UndoApplier {
         at: Date.now(),
       };
       this.journal.noteApplyReport(report);
-      return { text, report };
+      return { text, report, cursorHint };
     });
   }
 
@@ -102,13 +104,13 @@ export class UndoApplier {
         if (anchor === '') {
           // Empty anchor = the recorded change replaced everything with
           // nothing; it re-applies only onto an (effectively) empty buffer.
-          if (text.trim() === '') return { applied: true, text: replacement };
+          if (text.trim() === '') return { applied: true, text: replacement, cursorHint: replacement.length };
           return { applied: false, reason: 'not-found' };
         }
         const i = text.indexOf(anchor);
         if (i < 0) return { applied: false, reason: 'not-found' };
         if (text.indexOf(anchor, i + 1) >= 0) return { applied: false, reason: 'ambiguous' };
-        return { applied: true, text: text.slice(0, i) + replacement + text.slice(i + anchor.length) };
+        return { applied: true, text: text.slice(0, i) + replacement + text.slice(i + anchor.length), cursorHint: i + replacement.length };
       }
 
       case 'scalar-write': {
