@@ -155,6 +155,15 @@ export interface BuildSourcesOptions {
    */
   enableConfigIntent?: boolean;
   /**
+   * Enable ACTION (undo/redo) verdicts on the config-intent classifier
+   * (`undo-mode`). Independent of `enableConfigIntent`: either flag
+   * constructs the source, and each gates its own verdict kinds
+   * (verdict-level gating — the prompt stays byte-stable for prefix
+   * caching). Action verdicts carry NO emit-time side effect; the
+   * runtime's undo journal applies them. Defaults to false.
+   */
+  enableUndoActions?: boolean;
+  /**
    * Side-effect callback invoked by ConfigIntentSource to write the
    * inferred (setting, value) into OPENCUES.md. Runtime wires
    * `ConfigLoader.applyOpenCuesScalar` here — it writes the file AND
@@ -598,13 +607,21 @@ export function buildSourcesFromConfig(
   // keyword-bound BlankSource when a registered blank would claim
   // the slot. See config-intent-source.ts for the bench-validated
   // prompt + trust boundary.
-  if (options.enableConfigIntent) {
+  if (options.enableConfigIntent || options.enableUndoActions) {
     const resolved = resolveFor(options.configIntent, undefined, true);
+    // Settings verdicts need the applyOpencuesScalar callback; action
+    // verdicts don't (no emit-time side effect — the runtime's undo
+    // journal applies them). Construct the source whenever at least
+    // one verdict kind can actually be honoured; each kind is gated
+    // verdict-level inside the source (prompt stays byte-stable).
+    const allowConfigVerdicts = !!options.enableConfigIntent && !!options.applyOpencuesScalar;
+    const allowActionVerdicts = !!options.enableUndoActions;
+    if (options.enableConfigIntent && !options.applyOpencuesScalar) {
+      options.log?.('buildSources: config-intent settings verdicts disabled — no applyOpencuesScalar callback provided');
+    }
     if (!resolved) {
       fallbackForLog('config-intent', options.configIntent?.provider || blanksTier.globalProvider || 'groq');
-    } else if (!options.applyOpencuesScalar) {
-      options.log?.('buildSources: skipping config-intent — no applyOpencuesScalar callback provided');
-    } else {
+    } else if (allowConfigVerdicts || allowActionVerdicts) {
       sources.push(new ConfigIntentSource({
         httpAdapter: wrapAdapterForBlank(resolved),
         provider: resolved.provider,
@@ -613,12 +630,14 @@ export function buildSourcesFromConfig(
         model: resolved.model,
         maxTokens: options.configIntent?.maxTokens,
         temperature: options.configIntent?.temperature,
-        applyScalar: options.applyOpencuesScalar,
+        applyScalar: options.applyOpencuesScalar ?? (() => { /* settings verdicts gated off */ }),
         blanks: options.blanks ?? {},
         log: options.log,
         onEvent: options.onConfigIntentEvent,
         formatErrorAsSubstitute: options.formatLLMErrorAsSubstitute,
         hostName: options.hostName,
+        allowConfigVerdicts,
+        allowActionVerdicts,
       }));
     }
   }

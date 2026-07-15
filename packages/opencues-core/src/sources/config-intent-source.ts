@@ -151,14 +151,19 @@ const BUCKET_LIST: string = BUCKET_SCOPES.join(', ');
 // curated list of model/provider alias keys, every bucket scope word,
 // and a curated list of action verbs / symptom hints from the SYSTEM_PROMPT.
 //
-// Language scope: ConfigIntent is inherently English-centric (the
-// system prompt and the FEATURES registry are English). The pre-
-// filter makes the existing language coverage explicit — it doesn't
-// narrow what ConfigIntent recognises, only what it dispatches for.
-// Non-English buffers fall through the gate and either match the
-// catch-all keywords (provider names are language-neutral) or skip
-// the LLM call entirely (which produces the same NONE outcome a
-// non-English buffer would have gotten anyway).
+// Language scope: the SETTINGS/PROVIDER intents are inherently
+// English-centric (the system prompt and the FEATURES registry are
+// English). The pre-filter makes the existing language coverage
+// explicit — it doesn't narrow what ConfigIntent recognises, only
+// what it dispatches for. Non-English buffers fall through the gate
+// and either match the catch-all keywords (provider names are
+// language-neutral) or skip the LLM call entirely (which produces
+// the same NONE outcome a non-English buffer would have gotten
+// anyway). The ACTION intent (undo/redo) is the exception: it is
+// language-invariant by design, so the gate carries a curated
+// multilingual alias list for it (see undoRedoAliases below) —
+// unlisted languages are the residual gap, and extending coverage
+// is one alias line, not a prompt change.
 
 const LIKELY_INTENT_KEYWORDS: ReadonlySet<string> = (() => {
   const set = new Set<string>();
@@ -220,6 +225,41 @@ const LIKELY_INTENT_KEYWORDS: ReadonlySet<string> = (() => {
   ];
   for (const k of curated) addToken(k);
 
+  // Undo/redo ACTION aliases — multilingual by necessity. The ACTION
+  // intent is language-invariant at the classifier, so this gate must
+  // not English-filter it away; a curated alias list is a recall
+  // PREFILTER only (the LLM still decides — a false positive costs one
+  // classifier call, a miss means undo doesn't fire in that language).
+  // Non-ASCII tokens are substring-matched in hasLikelyIntent (`\b` is
+  // \w-based and never matches outside [A-Za-z0-9_]); stems are used
+  // for inflected forms (元に戻 covers 戻す/戻して; 되돌리 covers
+  // 되돌리기/되돌려줘).
+  const undoRedoAliases = [
+    'undo', 'redo', 'revert',
+    'deshacer', 'rehacer',                    // es
+    'annuler', 'rétablir',                    // fr
+    'rückgängig', 'wiederholen',              // de
+    'desfazer', 'refazer',                    // pt
+    'annulla', 'ripristina',                  // it
+    'ongedaan', 'opnieuw',                    // nl
+    'отменить', 'отмени', 'вернуть', 'повторить', // ru
+    'скасувати', 'повернути',                 // uk
+    '元に戻', '取り消', 'やり直',                 // ja (stems)
+    '撤销', '撤消', '复原', '還原', '重做', '恢复',  // zh (simpl + trad)
+    '되돌리', '실행 취소', '다시 실행',            // ko
+    'เลิกทำ', 'ทำซ้ำ',                          // th
+    'تراجع', 'إعادة',                          // ar
+    'पूर्ववत', 'फिर से करें',                     // hi
+    'geri al', 'yinele',                      // tr
+    'cofnij', 'cofnąć', 'ponów',              // pl
+    'ångra', 'gör om',                        // sv
+    'hoàn tác', 'làm lại',                    // vi
+    'urungkan', 'ulangi',                     // id
+    'בטל', 'בצע שוב',                          // he
+    'αναίρεση', 'επανάληψη',                  // el
+  ];
+  for (const k of undoRedoAliases) addToken(k);
+
   return set;
 })();
 
@@ -235,12 +275,16 @@ const LIKELY_INTENT_KEYWORDS: ReadonlySet<string> = (() => {
 export function hasLikelyIntent(text: string): boolean {
   const lower = text.toLowerCase();
   for (const kw of LIKELY_INTENT_KEYWORDS) {
-    if (kw.includes(' ') || kw.includes('-')) {
-      // Multi-word or hyphenated keyword — substring match is fine.
+    if (kw.includes(' ') || kw.includes('-') || !/^[\x00-\x7F]+$/.test(kw)) {
+      // Multi-word, hyphenated, or non-ASCII keyword — substring match.
+      // Non-ASCII MUST take this branch: JS `\b` is `\w`-based
+      // ([A-Za-z0-9_] only), so a boundary regex around a CJK/Cyrillic/
+      // Thai token can never match and would silently gate the token
+      // out (元に戻す in a Japanese buffer would never pass).
       if (lower.includes(kw)) return true;
     } else {
-      // Single word — require word boundary so "blank" doesn't match
-      // "blanket" and "cues" doesn't match "cuesman".
+      // Single ASCII word — require word boundary so "blank" doesn't
+      // match "blanket" and "cues" doesn't match "cuesman".
       const re = new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
       if (re.test(lower)) return true;
     }
@@ -248,13 +292,76 @@ export function hasLikelyIntent(text: string): boolean {
   return false;
 }
 
+/**
+ * Deterministic undo/redo command matcher — the Ctrl+Z path.
+ *
+ * undo/redo has exactly one meaning; routing it through the LLM
+ * classifier only introduces latency and a way to cede (a leading
+ * factual-lookup query like `capital of france _ redo _` biased the
+ * classifier to NONE, dropping the redo). This is a pure string match
+ * on the token(s) immediately before the trigger `_`: a bare undo/redo
+ * alias, optionally followed by an integer count. No model call, no
+ * way to misfire into a task (a `redo <object>` request has a non-alias
+ * trailing token and never matches here — it falls through to the LLM).
+ *
+ * Scope is deliberately the unambiguous space-delimited Latin-script
+ * aliases + integer counts. CJK stems (元に戻して), number-words
+ * ("undo twice"), and verbose phrasings ("undo the last two changes",
+ * "take that back") don't string-match cleanly and remain the LLM
+ * classifier's job — see `undoRedoAliases` (the recall prefilter) and
+ * INTENT C in SYSTEM_PROMPT.
+ */
+const DETERMINISTIC_ACTION_ALIASES: Record<string, 'undo' | 'redo'> = {
+  undo: 'undo', revert: 'undo',
+  redo: 'redo',
+  deshacer: 'undo', rehacer: 'redo',           // es
+  annuler: 'undo', rétablir: 'redo',           // fr
+  rückgängig: 'undo', wiederholen: 'redo',     // de
+  desfazer: 'undo', refazer: 'redo',           // pt
+  annulla: 'undo', ripristina: 'redo',         // it
+  opnieuw: 'redo',                             // nl (undo = "ongedaan maken", multi-word → LLM)
+  cofnij: 'undo', ponów: 'redo',               // pl
+  yinele: 'redo',                              // tr ("geri al" undo is multi-word → LLM)
+  urungkan: 'undo', ulangi: 'redo',            // id
+};
+
+export interface DeterministicActionMatch {
+  action: 'undo' | 'redo';
+  /** Repeat count; 1 when no explicit integer count was given. */
+  count: number;
+  /** Offset in the ORIGINAL buffer where the command token begins. */
+  commandStart: number;
+}
+
+/**
+ * Match a bare undo/redo command as the trailing token(s) of `before`
+ * (the buffer text up to — not including — the trigger `_`). Returns
+ * null for anything that isn't an unambiguous deterministic command.
+ */
+export function matchDeterministicAction(before: string): DeterministicActionMatch | null {
+  // Anchored at end: an alias word, then an OPTIONAL integer count.
+  // `\p{L}+` stops at the earlier `_` (underscore is not a letter), so a
+  // preceding `capital of france _ ` query never bleeds into the match.
+  const m = /(?:^|\s)(\p{L}+)(?:[ \t]+(\d+))?[ \t]*$/u.exec(before);
+  if (!m) return null;
+  const action = DETERMINISTIC_ACTION_ALIASES[m[1].toLowerCase()];
+  if (!action) return null;
+  const count = m[2] ? parseInt(m[2], 10) : 1;
+  if (count < 1) return null;
+  // Skip any leading whitespace the `(?:^|\s)` group consumed so the span
+  // starts exactly at the alias — wiping the command leaves prior content.
+  const leadingWs = m[0].length - m[0].replace(/^\s+/, '').length;
+  return { action, count, commandStart: m.index + leadingWs };
+}
+
 export const SYSTEM_PROMPT = `You are a CONFIGURATION INTENT CLASSIFIER for the OpenCues runtime.
 
-You read a sentence containing _ and decide which of three intents the user has:
+You read a sentence containing _ and decide which of four intents the user has:
 
   (A) SETTING change — flip one named OpenCues setting to a specific value.
   (B) PROVIDER routing — switch which LLM provider (and optionally model) runs on one of three buckets (${BUCKET_LIST}).
-  (C) NONE — the request is a factual lookup, a non-config action, or too ambiguous.
+  (C) ACTION — undo or redo changes the OpenCues runtime itself just made.
+  (D) NONE — the request is a factual lookup, a non-config action, or too ambiguous.
 
 ═════════════════════════════════════════════════════════════════
 INTENT A — SETTING
@@ -300,7 +407,25 @@ MODEL rules:
   - NEVER emit a model that isn't listed under that provider above. If the user names an unrecognised model, emit MODEL empty (the provider switch still applies; user can edit OPENCUES.md for the exact model).
 
 ═════════════════════════════════════════════════════════════════
-INTENT C — NONE
+INTENT C — ACTION
+═════════════════════════════════════════════════════════════════
+
+Native runtime actions. Exactly two exist:
+
+  - undo : revert the last change(s) the OpenCues runtime itself made — a blank fill, a rewrite, a settings change, a volume/brightness set.
+  - redo : re-apply change(s) that were just undone.
+
+ROUTE TO ACTION when:
+  - The user asks to undo / revert / take back "that" / "the last change" — in ANY language (undo, deshacer, annuler, rückgängig, desfazer, 元に戻して, 撤销, 실행 취소, отменить, เลิกทำ, تراجع, ...). The bare verb alone ("undo _") is a complete command.
+  - An optional count says how many changes to revert ("undo 3 _", "undo the last two _", "3回元に戻して _") → COUNT: <n>. Number words in any language count ("trois", "两次", "twice"). No count given → COUNT: 1.
+  - The text BEFORE the verb is often the visible CONFIRMATION of the very change being undone — a settings pair, a filled answer ("debug-mode on undo _", "voice-mode inactive undo _", "Paris undo _"). The trailing undo/redo verb IS the command; do NOT re-read that earlier text as a SETTING command.
+
+DO NOT route to ACTION when:
+  - The undo/revert targets something OUTSIDE this text buffer and the OpenCues runtime ("undo my last commit _", "revert the deploy _", "undo the migration _") — that is a task request → NONE.
+  - "redo X" names an object and means "do X over / rewrite X" ("redo the report _", "redo my homework _") — that is a task → NONE. Bare "redo" with no object is the ACTION.
+
+═════════════════════════════════════════════════════════════════
+INTENT D — NONE
 ═════════════════════════════════════════════════════════════════
 
 ROUTE TO NONE when:
@@ -333,6 +458,17 @@ VALUE:
 SCOPE: <one of: ${BUCKET_LIST}>
 PROVIDER: <provider id from INTENT B list>
 MODEL: <model id from that provider's list, OR empty>
+CONFIDENCE: <0.0..1.0>
+
+When INTENT is ACTION:
+INTENT: ACTION
+ACTION: <undo | redo>
+COUNT: <positive integer; 1 when the user gave no count>
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
 CONFIDENCE: <0.0..1.0>
 
 When INTENT is NONE:
@@ -510,6 +646,101 @@ SCOPE:
 PROVIDER:
 MODEL:
 CONFIDENCE: 0.88
+
+INPUT: undo _
+INTENT: ACTION
+ACTION: undo
+COUNT: 1
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.97
+
+INPUT: undo 3 _
+INTENT: ACTION
+ACTION: undo
+COUNT: 3
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.96
+
+INPUT: undo the last two changes _
+INTENT: ACTION
+ACTION: undo
+COUNT: 2
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.94
+
+INPUT: 元に戻して _
+INTENT: ACTION
+ACTION: undo
+COUNT: 1
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.95
+
+INPUT: deshacer _
+INTENT: ACTION
+ACTION: undo
+COUNT: 1
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.95
+
+INPUT: redo _
+INTENT: ACTION
+ACTION: redo
+COUNT: 1
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.96
+
+INPUT: debug-mode on undo _
+INTENT: ACTION
+ACTION: undo
+COUNT: 1
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.94
+
+INPUT: undo my last commit _
+INTENT: NONE
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.9
+
+INPUT: redo the report _
+INTENT: NONE
+SETTING:
+VALUE:
+SCOPE:
+PROVIDER:
+MODEL:
+CONFIDENCE: 0.9
 
 ═════════════════════════════════════════════════════════════════
 NEGATIVE EXAMPLES — questions about the user's own identity are
@@ -719,12 +950,24 @@ export interface ProviderVerdict {
   readonly confidence: number | null;
 }
 
+export type ConfigIntentAction = 'undo' | 'redo';
+
+export interface ActionVerdict {
+  readonly kind: 'action';
+  readonly action: ConfigIntentAction;
+  /** How many journal transactions to revert/re-apply. Parse floors
+   *  this at 1; clamping to the journal's actual depth is the
+   *  runtime's job (the classifier can't know the depth). */
+  readonly count: number;
+  readonly confidence: number | null;
+}
+
 export interface NoneVerdict {
   readonly kind: 'none';
   readonly confidence: number | null;
 }
 
-export type ConfigIntentVerdict = SettingVerdict | ProviderVerdict | NoneVerdict;
+export type ConfigIntentVerdict = SettingVerdict | ProviderVerdict | ActionVerdict | NoneVerdict;
 
 /**
  * Parse the classifier's raw text output. Tolerant of:
@@ -744,6 +987,8 @@ export function parseConfigIntentOutput(raw: string): ConfigIntentVerdict {
   const scopeMatch = raw.match(/^SCOPE:[ \t]*(.*?)[ \t]*$/im);
   const providerMatch = raw.match(/^PROVIDER:[ \t]*(.*?)[ \t]*$/im);
   const modelMatch = raw.match(/^MODEL:[ \t]*(.*?)[ \t]*$/im);
+  const actionMatch = raw.match(/^ACTION:[ \t]*(.*?)[ \t]*$/im);
+  const countMatch = raw.match(/^COUNT:[ \t]*([0-9]+)/im);
   const confidenceMatch = raw.match(/^CONFIDENCE:[ \t]*([0-9.]+)/im);
 
   const intentRaw = intentMatch ? intentMatch[1].trim().toUpperCase() : '';
@@ -752,6 +997,7 @@ export function parseConfigIntentOutput(raw: string): ConfigIntentVerdict {
   const scopeRaw = scopeMatch ? scopeMatch[1].trim().toLowerCase() : '';
   const providerRaw = providerMatch ? providerMatch[1].trim().toLowerCase() : '';
   const modelRaw = modelMatch ? modelMatch[1].trim() : '';
+  const actionRaw = actionMatch ? actionMatch[1].trim().toLowerCase() : '';
   const confidence = confidenceMatch ? Number(confidenceMatch[1]) : null;
 
   // Infer kind. Explicit INTENT line wins; otherwise fall back to
@@ -760,11 +1006,21 @@ export function parseConfigIntentOutput(raw: string): ConfigIntentVerdict {
   let kind: ConfigIntentVerdict['kind'];
   if (intentRaw === 'SETTING') kind = 'setting';
   else if (intentRaw === 'PROVIDER') kind = 'provider';
+  else if (intentRaw === 'ACTION') kind = 'action';
   else if (intentRaw === 'NONE') kind = 'none';
+  else if (actionRaw && actionRaw.toUpperCase() !== 'NONE') kind = 'action';
   else if (providerRaw && scopeRaw) kind = 'provider';
   else if (settingRaw && settingRaw.toUpperCase() !== 'NONE') kind = 'setting';
   else kind = 'none';
 
+  if (kind === 'action') {
+    if (actionRaw !== 'undo' && actionRaw !== 'redo') {
+      return { kind: 'none', confidence };
+    }
+    const parsedCount = countMatch ? Number(countMatch[1]) : NaN;
+    const count = Number.isInteger(parsedCount) && parsedCount >= 1 ? parsedCount : 1;
+    return { kind: 'action', action: actionRaw, count, confidence };
+  }
   if (kind === 'setting') {
     if (!settingRaw || settingRaw.toUpperCase() === 'NONE' || !valueRaw) {
       return { kind: 'none', confidence };
@@ -810,6 +1066,18 @@ export function parseConfigIntentOutput(raw: string): ConfigIntentVerdict {
  */
 export function validateAgainstRegistry(verdict: ConfigIntentVerdict, hostName?: string): { ok: boolean; reason?: string } {
   if (verdict.kind === 'none') return { ok: true };
+
+  if (verdict.kind === 'action') {
+    // Bounded native-action codomain: exactly two verbs, positive
+    // integer count. Depth clamping is the runtime's job.
+    if (verdict.action !== 'undo' && verdict.action !== 'redo') {
+      return { ok: false, reason: `unknown action '${String(verdict.action)}' (allowed: undo, redo)` };
+    }
+    if (!Number.isInteger(verdict.count) || verdict.count < 1) {
+      return { ok: false, reason: `count '${String(verdict.count)}' is not a positive integer` };
+    }
+    return { ok: true };
+  }
 
   if (verdict.kind === 'setting') {
     const feature = FEATURES.find(f => f.scalar === verdict.setting);
@@ -905,6 +1173,24 @@ export interface ConfigIntentSourceConfig {
    * features excluded). Runtime wires `adapter.hostName` here.
    */
   hostName?: string;
+  /**
+   * Verdict-level gates. The SYSTEM_PROMPT is ONE byte-stable string
+   * that always describes all four intents (cerebras prefix caching —
+   * see docs/architecture/cerebras.md); which verdict kinds are ACTED
+   * on is decided here, post-classification. A verdict of a disabled
+   * kind is treated exactly like NONE (cede, no side effects).
+   *
+   * allowConfigVerdicts — SETTING + PROVIDER kinds (`fluid-config-mode`).
+   * Default true (matches the source's original single-purpose shape).
+   */
+  allowConfigVerdicts?: boolean;
+  /**
+   * allowActionVerdicts — ACTION kind, i.e. undo/redo (`undo-mode`).
+   * Default false: action verdicts are emitted as results for the
+   * RUNTIME to apply (the undo journal lives there), so a consumer
+   * that doesn't handle `metadata.undoAction` must not receive them.
+   */
+  allowActionVerdicts?: boolean;
 }
 
 /**
@@ -962,6 +1248,9 @@ export class ConfigIntentSource implements CueSource {
   private formatErrorAsSubstitute: ((reason: FluidBlankErrorReason, err?: Error, ctx?: { provider?: string; model?: string; endpoint?: string }) => string) | undefined;
   /** Host id (chrome/claude-code/…), used to host-scope the feature list. */
   private hostName: string | undefined;
+  /** Verdict-level gates (see ConfigIntentSourceConfig). */
+  private allowConfigVerdicts: boolean;
+  private allowActionVerdicts: boolean;
   /** System prompt with the host-scoped feature block swapped in. */
   private systemPrompt: string;
 
@@ -1011,6 +1300,8 @@ export class ConfigIntentSource implements CueSource {
     this.emit = config.onEvent ?? (() => { /* silent */ });
     this.formatErrorAsSubstitute = config.formatErrorAsSubstitute;
     this.hostName = config.hostName;
+    this.allowConfigVerdicts = config.allowConfigVerdicts ?? true;
+    this.allowActionVerdicts = config.allowActionVerdicts ?? false;
     // Swap the universal feature block for this host's — includes any
     // host-scoped features (e.g. chrome's statusbar-position) ONLY on the
     // owning host. No hostName → the universal default (host-scoped
@@ -1024,6 +1315,17 @@ export class ConfigIntentSource implements CueSource {
     const lower = context.words.map(w => w.toLowerCase());
     const blankIndex = lower.indexOf('_');
     if (blankIndex === -1) return false;
+
+    // ACTION preempts a blank claim. A trailing bare `undo`/`redo` before
+    // the `_` is a universal runtime command — do NOT cede it to a blank
+    // shape/keyword that happens to also match (`capital of france undo _`
+    // matches the `countries` shape, but "undo" is the command, not part of
+    // the country). The deterministic gate in getCues then emits the ACTION.
+    // BlankFill.scan cedes symmetrically, so exactly one of us claims.
+    if (this.allowActionVerdicts) {
+      const trigIdx = context.text.lastIndexOf('_');
+      if (trigIdx >= 0 && matchDeterministicAction(context.text.slice(0, trigIdx))) return true;
+    }
 
     // Cede when a keyword/shaped blank claims this `_` (shape match, or a
     // non-shaped blank's keyword on the same line). SHARED predicate —
@@ -1041,6 +1343,43 @@ export class ConfigIntentSource implements CueSource {
     const t0 = Date.now();
     const blankIdx = context.words.indexOf('_');
     if (blankIdx === -1) return { results: [] };
+
+    // DETERMINISTIC ACTION gate (the Ctrl+Z path) — before ANY LLM work.
+    // A bare undo/redo (+ optional integer count) immediately before the
+    // trigger `_` is an unambiguous command: match it by string, emit the
+    // ACTION verdict instantly, no classifier round-trip and no way to
+    // cede. Keys off the LAST `_` (the just-typed trigger) so a leading
+    // `capital of france _ redo _` wipes only `redo _` and leaves the
+    // prior query. `redo <object>` and multilingual/verbose phrasings
+    // don't match here and fall through to the LLM classifier below.
+    if (this.allowActionVerdicts) {
+      const triggerCharIdx = context.text.lastIndexOf('_');
+      const det = matchDeterministicAction(context.text.slice(0, triggerCharIdx));
+      if (det) {
+        const detWordIdx = context.words.lastIndexOf('_');
+        const verdict: ConfigIntentVerdict = { kind: 'action', action: det.action, count: det.count, confidence: 1 };
+        this.log(`ConfigIntent: ACTION ${det.action} ×${det.count} (deterministic, no LLM) — emitting for runtime apply`);
+        this.emit({ type: 'started', textLen: context.text.length, blankIdx, llm: 'deterministic (no LLM)' });
+        this.emit({ type: 'completed', verdict, applied: false, latencyMs: Date.now() - t0 });
+        return {
+          results: [{
+            wordIndex: detWordIdx,
+            word: '_',
+            alternatives: [det.action],
+            source: this.id,
+            priority: this.priority,
+            spanStart: det.commandStart,
+            spanEnd: context.text.length,
+            cueTip: det.count > 1 ? `${det.action} ×${det.count}` : det.action,
+            metadata: {
+              undoAction: { action: det.action, count: det.count, confidence: 1 },
+            },
+          }],
+          timing: Date.now() - t0,
+          model: this.model,
+        };
+      }
+    }
 
     // Likely-intent gate — skip the LLM dispatch when the buffer has
     // zero settings/provider keywords. Saves ~280ms per cold trigger
@@ -1149,11 +1488,57 @@ export class ConfigIntentSource implements CueSource {
       return { results: [], timing: Date.now() - t0, model: this.model };
     }
 
+    // Verdict-level gates — the prompt always classifies all four
+    // intents (byte-stable for prefix caching); which kinds are ACTED
+    // on is decided here. A disabled kind cedes exactly like NONE.
+    if (verdict.kind === 'action' && !this.allowActionVerdicts) {
+      this.log(`ConfigIntent: ACTION verdict but undo-mode is off — ceding`);
+      this.emit({ type: 'completed', verdict, applied: false, latencyMs: Date.now() - t0 });
+      return { results: [], timing: Date.now() - t0, model: this.model };
+    }
+    if ((verdict.kind === 'setting' || verdict.kind === 'provider') && !this.allowConfigVerdicts) {
+      this.log(`ConfigIntent: ${verdict.kind.toUpperCase()} verdict but fluid-config-mode is off — ceding`);
+      this.emit({ type: 'completed', verdict, applied: false, latencyMs: Date.now() - t0 });
+      return { results: [], timing: Date.now() - t0, model: this.model };
+    }
+
     const check = validateAgainstRegistry(verdict, this.hostName);
     if (!check.ok) {
       this.log(`ConfigIntent: rejecting invalid verdict — ${check.reason}; raw="${raw.replace(/\n/g, ' / ').slice(0, 200)}"`);
       this.emit({ type: 'bailed', reason: `invalid-verdict: ${check.reason}`, latencyMs: Date.now() - t0 });
       return { results: [], timing: Date.now() - t0, model: this.model };
+    }
+
+    // ACTION verdicts (undo/redo) carry NO emit-time side effect — the
+    // undo journal lives in the runtime, so the source only classifies
+    // and hands the verdict over via metadata.undoAction. The resolver's
+    // ACTION branch splices out the command span and applies the
+    // journal transactions. Wipe span = the summon phrase, same
+    // machinery as settings verdicts.
+    if (verdict.kind === 'action') {
+      this.log(`ConfigIntent: ACTION ${verdict.action} ×${verdict.count} (${Date.now() - t0}ms, conf=${verdict.confidence ?? 'n/a'}) — emitting for runtime apply`);
+      this.emit({ type: 'completed', verdict, applied: false, latencyMs: Date.now() - t0 });
+      const actionSpanStart = await spanStartPromise;
+      return {
+        results: [{
+          wordIndex: blankIdx,
+          word: '_',
+          // Non-'_' alternative: belt-and-braces against generic
+          // alternatives-filter paths; the resolver's ACTION branch
+          // consumes this result before any splice logic runs.
+          alternatives: [verdict.action],
+          source: this.id,
+          priority: this.priority,
+          spanStart: actionSpanStart,
+          spanEnd: context.text.length,
+          cueTip: verdict.count > 1 ? `${verdict.action} ×${verdict.count}` : verdict.action,
+          metadata: {
+            undoAction: { action: verdict.action, count: verdict.count, confidence: verdict.confidence },
+          },
+        }],
+        timing: Date.now() - t0,
+        model: this.model,
+      };
     }
 
     // Apply BEFORE building the CueResult. If a write fails, bail

@@ -6,6 +6,7 @@ import { SpanFillState } from '../state/span-fill';
 import { DismissedBlanks } from '../state/dismissed-blanks';
 import { SelectorSatelliteState } from '../state/selector-satellite';
 import { DynDefs } from '../state/dyn-defs';
+import { UndoJournal } from '../state/undo-journal';
 
 const TIPS = wrapTipsAsCuesMd({ concepts: [] });
 
@@ -115,6 +116,30 @@ describe('BlankFill detection', () => {
   it('case-insensitive keyword matching', async () => {
     const { bf } = await setup('Volume _');
     expect(bf.scan('Volume _')[0]?.blankName).toBe('volume');
+  });
+
+  it('a trailing bare undo/redo cedes the `_` to ACTION when undo is wired (no blank claim)', async () => {
+    // `volume undo _` matches the volume keyword, but "undo" is the command,
+    // not a blank argument. With a journal present (undo active), BlankFill
+    // must cede so ConfigIntent's ACTION gate can fire (live-caught: the
+    // countries shape ate the undo as "france undo: not found").
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/blanks/volume/BLANK.md': VOLUME_CUE },
+    });
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    // Without a journal (undo off) — the blank still claims as before.
+    const bfNoUndo = new BlankFill(adapter, loader);
+    expect(bfNoUndo.scan('volume undo _')).toHaveLength(1);
+    // With a journal (undo on) — cede.
+    const bfUndo = new BlankFill(adapter, loader, undefined, undefined, undefined, undefined, undefined, undefined, new UndoJournal());
+    expect(bfUndo.scan('volume undo _')).toHaveLength(0);
+    expect(bfUndo.scan('volume redo _')).toHaveLength(0);
+    // A plain volume query (no trailing action) still claims.
+    expect(bfUndo.scan('volume _')).toHaveLength(1);
+    // "undo" mid-buffer (not the trailing command) does NOT cede.
+    expect(bfUndo.scan('volume undo now _')).toHaveLength(1);
   });
 
   it('subscribe re-scans on text change', async () => {

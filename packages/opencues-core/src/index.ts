@@ -55,9 +55,13 @@ export {
   ConfigIntentSource,
   parseConfigIntentOutput,
   validateAgainstRegistry,
+  matchDeterministicAction,
+  type DeterministicActionMatch,
   type ConfigIntentSourceConfig,
   type ConfigIntentEvent,
   type ConfigIntentVerdict,
+  type ConfigIntentAction,
+  type ActionVerdict,
 } from './sources/config-intent-source';
 
 export {

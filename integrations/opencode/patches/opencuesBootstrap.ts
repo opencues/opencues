@@ -524,10 +524,16 @@ export function startOpenCues(opts: {
         }
       }
 
+      // Undo/redo confirmation is a transient notification the user just
+      // triggered — dominant over the word/tip + agent badge for its TTL.
+      // The universal feedback surface for invisible reverts (scalar / OS).
+      const undoConf = payload?.undoConfirmation as string | null | undefined
       // Combine — agent badge always wins a slot when present.
-      const combined = wordPart && agentBadge
-        ? `${wordPart} | ${agentBadge}`
-        : (agentBadge ?? wordPart ?? null)
+      const combined = undoConf
+        ? undoConf
+        : (wordPart && agentBadge
+            ? `${wordPart} | ${agentBadge}`
+            : (agentBadge ?? wordPart ?? null))
       setOpencuesTip(combined)
     },
     // Resolve TTS script across all known install layouts. OpenCode

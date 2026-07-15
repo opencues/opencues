@@ -351,6 +351,7 @@ export function boot(host: HostInfo): BootResult {
       exportPath: '',
       onSnapshot: (payload) => host.statusSnapshotHook!(payload),
       kataStatus: () => kataCoach.status(),
+      undoStatus: () => shared.undoJournal.recentApplyReport(8000),
     }, configLoader, spanFillState, selectorSatelliteState, agentTaskState);
     statusline.subscribe();
   }
@@ -452,13 +453,15 @@ export function boot(host: HostInfo): BootResult {
       },
       keywordBoundSlotIndices: (text: string) => shared.blankFill.scan(text).map(s => s.index),
       externallySuppressed: (text: string) => kataCoach.shouldSuppressResolve(text),
-    }), spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState);
+    }), spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState,
+    undefined, undefined, shared.undoJournal);
     configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
     liveResolver = resolver;
 
     if (hasAnyKey) {
       const httpAdapter = host.httpAdapter as { post(url: string, body: string, headers: Record<string, string>): Promise<string> };
       const agentRewrite = new AgentRewrite(adapter, dynDefs, agentTaskState, {
+      undoJournal: shared.undoJournal,
         endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
         apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
         defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',

@@ -1,8 +1,8 @@
 {
   "name": "@opencues/gemini-cli",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "private": true,
-  "description": "OpenCues for Gemini CLI \u2014 native AI integration anywhere you type. Model agnostic and fully open source. Inline agents and prompting.",
+  "description": "OpenCues for Gemini CLI — native AI integration anywhere you type. Model agnostic and fully open source. Inline agents and prompting.",
   "compatibility": {
     "gemini-cli": "0.41.x"
   },

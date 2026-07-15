@@ -17,6 +17,7 @@ import type { SpanFillState } from '../state/span-fill';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
 import type { AgentTaskState } from '../state/agent-task';
 import type { ProviderHealth, ProviderHealthEvent } from './provider-health';
+import { formatUndoReport, type UndoApplyReport } from '../state/undo-journal';
 import { splitWords } from './navigation';
 
 export interface StatuslineOptions {
@@ -56,6 +57,14 @@ export interface StatuslineOptions {
     readonly coachSegments: ReadonlyArray<{ readonly text: string; readonly command: boolean }> | null;
     readonly offTrack: boolean;
   } | null;
+  /**
+   * Optional. Recent undo/redo apply report (UndoJournal.recentApply-
+   * Report thunk, TTL-gated by the journal). Non-null → the payload
+   * carries an `undo` block so consumers can surface partial-skip
+   * honesty ("undid text; volume couldn't be restored") without the
+   * buffer carrying the detail.
+   */
+  readonly undoStatus?: () => UndoApplyReport | null;
 }
 
 export interface StatuslinePayload {
@@ -104,6 +113,19 @@ export interface StatuslinePayload {
     readonly coachSegments: ReadonlyArray<{ readonly text: string; readonly command: boolean }> | null;
     readonly offTrack: boolean;
   } | null;
+  /**
+   * Recent undo/redo apply report — non-null for a short TTL after an
+   * `undo _` / `redo _` fires. Carries applied/skipped counts + skip
+   * reasons so hosts can render partial-failure honesty out-of-band.
+   */
+  undo?: UndoApplyReport | null;
+  /**
+   * Pre-formatted one-line undo/redo confirmation (`↶ undid: …`), derived
+   * from `undo` via `formatUndoReport`. Present for the same TTL. Hosts
+   * render this string verbatim — the universal feedback surface, since an
+   * invisible revert (scalar / OS value) has no on-screen affordance.
+   */
+  undoConfirmation?: string | null;
 }
 
 export class Statusline {
@@ -385,6 +407,12 @@ export class Statusline {
     // — merge here so it survives the `active: false` early branch too.
     if (this.options.kataStatus) {
       payload = { ...payload, kata: this.options.kataStatus() };
+    }
+    // Undo block — same orthogonal-merge treatment (TTL lives in the
+    // journal's recentApplyReport, so it ages out on its own).
+    if (this.options.undoStatus) {
+      const undo = this.options.undoStatus();
+      payload = { ...payload, undo, undoConfirmation: undo ? formatUndoReport(undo) : null };
     }
     // Strip timestamp before content-comparison so identical-state renders
     // don't trigger writes purely because of clock change.

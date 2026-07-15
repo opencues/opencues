@@ -412,3 +412,52 @@ describe('buildSourcesFromConfig — Universal-Integration filter', () => {
     assert.ok(droppedLogs.some(m => m.includes("legal")), 'legal word-cue logged as pruned');
   });
 });
+
+// ---------------------------------------------------------------------------
+// ConfigIntentSource construction gating — fluid-config vs undo-mode flags
+// ---------------------------------------------------------------------------
+
+describe('buildSourcesFromConfig — config-intent construction gating', () => {
+  const emptyConfig = mkConfig({ sources: {} });
+  const hasConfigIntent = (sources: readonly unknown[]): boolean =>
+    sources.some(s => (s as { id?: string }).id === 'config-intent');
+
+  it('neither flag → no config-intent source', () => {
+    const sources = buildSourcesFromConfig(emptyConfig, undefined, { ...defaultOptions });
+    assert.strictEqual(hasConfigIntent(sources), false);
+  });
+
+  it('enableConfigIntent + applyOpencuesScalar → constructed', () => {
+    const sources = buildSourcesFromConfig(emptyConfig, undefined, {
+      ...defaultOptions,
+      enableConfigIntent: true,
+      applyOpencuesScalar: () => { /* noop */ },
+    });
+    assert.strictEqual(hasConfigIntent(sources), true);
+  });
+
+  it('enableUndoActions alone (fluid-config off) → constructed for action verdicts', () => {
+    const sources = buildSourcesFromConfig(emptyConfig, undefined, {
+      ...defaultOptions,
+      enableUndoActions: true,
+    });
+    assert.strictEqual(hasConfigIntent(sources), true);
+  });
+
+  it('enableConfigIntent WITHOUT applyOpencuesScalar and no undo → skipped', () => {
+    const sources = buildSourcesFromConfig(emptyConfig, undefined, {
+      ...defaultOptions,
+      enableConfigIntent: true,
+    });
+    assert.strictEqual(hasConfigIntent(sources), false);
+  });
+
+  it('enableConfigIntent without callback BUT undo on → constructed (settings gated off)', () => {
+    const sources = buildSourcesFromConfig(emptyConfig, undefined, {
+      ...defaultOptions,
+      enableConfigIntent: true,
+      enableUndoActions: true,
+    });
+    assert.strictEqual(hasConfigIntent(sources), true);
+  });
+});

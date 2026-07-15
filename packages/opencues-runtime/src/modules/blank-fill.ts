@@ -6,10 +6,11 @@
 // with the blank name + match positions for downstream consumers
 // (auto-populate, blank-script fetch, span tracking, dismiss, etc.).
 
-import type { HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../adapter';
+import type { BlankWriteInverse, HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../adapter';
+import { fillSplice, type UndoEntry, type UndoJournal } from '../state/undo-journal';
 import type { ConfigLoader } from './config-loader';
 import { splitWords } from './navigation';
-import { isBlankConfigCycleable, keywordInWindow, lineOfWords, matchBlankShape, segmentStart } from '@opencues/core';
+import { isBlankConfigCycleable, keywordInWindow, lineOfWords, matchBlankShape, matchDeterministicAction, segmentStart } from '@opencues/core';
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
@@ -128,8 +129,25 @@ export class BlankFill {
      *  blanks-bucket key. When absent, `integration:` stays a static template.
      *  The real value is never passed to it — see `blank-weave.ts`. */
     private weave?: BlankWeaver | null,
+    /** Undo journal — every fill commit records a transaction (buffer
+     *  diff + any os-set / file-write side-effect entries) so `undo _`
+     *  can revert it. Omit to disable recording. */
+    private undoJournal?: UndoJournal,
   ) {
     if (blankLoading) this._loading = blankLoading;
+  }
+
+  /** Record a fill into the undo journal (no-op without a journal).
+   *  Uses fillSplice so undoing a `_`-triggered fill restores the user's
+   *  text without re-arming the trigger; fillSplice self-guards to plain
+   *  diffSplice for any change that isn't a lone-`_` fill. */
+  private recordUndo(label: string, before: string, after: string, extra?: readonly UndoEntry[]): void {
+    if (!this.undoJournal) return;
+    const entries: UndoEntry[] = [];
+    const buf = fillSplice(before, after, this.undoJournal.currentEpoch);
+    if (buf) entries.push(buf);
+    if (extra) entries.push(...extra);
+    this.undoJournal.record({ label, entries });
   }
 
   private _loadingAnimator(): BlankLoadingAnimator {
@@ -199,6 +217,20 @@ export class BlankFill {
   /** Pure scanner — exposed for unit tests. */
   scan(text: string): readonly BlankSlot[] {
     const cleanText = text.replace(/[\u200B\u200C]/g, '');
+    // ACTION preempts any blank claim. A trailing bare `undo`/`redo` before
+    // the `_` is a universal runtime command \u2014 it must NOT be swallowable as
+    // a blank argument (live-caught 2026-07-15: `capital of france undo _`
+    // matched the `countries` shape with arg "france undo" \u2192 "france undo:
+    // not found", eating the undo). BlankSource outranks ConfigIntent
+    // (95 > 94), so without this the ACTION gate never gets to run. Only
+    // cede when undo is actually wired (a journal is present).
+    if (this.undoJournal) {
+      const trigIdx = cleanText.lastIndexOf('_');
+      if (trigIdx >= 0 && matchDeterministicAction(cleanText.slice(0, trigIdx))) {
+        this._slots = [];
+        return this._slots;
+      }
+    }
     const words = cleanText.split(/\s+/).filter(Boolean);
     // Per-word line numbers (same order as the flat split) for the shared
     // line-scoped keyword window.
@@ -448,7 +480,10 @@ export class BlankFill {
       // is already reserved above, so a re-scan during the gate's latency
       // won't double-dispatch. (`continue` inside this closure becomes
       // `return` — it's a function body now, not the loop.)
-      const doDispatch = (typedAction?: 'set' | 'step'): void => {
+      // `undoExtras` carries side-effect journal entries the shaped
+      // set/step path captured (os-set with the prior value) so the
+      // eventual fill transaction reverts BOTH the text and the OS state.
+      const doDispatch = (typedAction?: 'set' | 'step', undoExtras?: readonly UndoEntry[]): void => {
 
       // Context words: ONLY the words between the keyword and the `_` — the
       // captured arg region (e.g. ["france"] in `capital of france _`). This
@@ -531,7 +566,7 @@ export class BlankFill {
           // user moved on.
           const cachedOutput = entry.output;
           setTimeout(() => {
-            this.applyAsyncFill(slot, cachedOutput, typedAction);
+            this.applyAsyncFill(slot, cachedOutput, typedAction, undoExtras);
             // End the gate-window loader (started before the gate on the
             // gated path). No-op on the ungated path, where it was never started.
             this._loadingAnimator().stop(slot.index, 'blank-fill');
@@ -701,7 +736,20 @@ export class BlankFill {
             this._resultCache.delete(oldest);
           }
         }
-        this.applyAsyncFill(slot, stdout, typedAction);
+        // A file-writing blank (sentinel, note) attaches the inverse of
+        // the write this invocation performed — journal it alongside the
+        // fill so `undo _` reverts the file through the blank's own
+        // validator path.
+        const inverseEntries: UndoEntry[] = res.writeInverse
+          ? [...(undoExtras ?? []), {
+              kind: 'file-write',
+              file: res.writeInverse.file,
+              blankName: res.writeInverse.blankName,
+              inverseOp: res.writeInverse.inverseOp,
+              forwardOp: res.writeInverse.forwardOp,
+            }]
+          : [...(undoExtras ?? [])];
+        this.applyAsyncFill(slot, stdout, typedAction, inverseEntries.length > 0 ? inverseEntries : undefined);
       }).catch(err => {
         this._pendingScripts.delete(dedupKey);
         this._loadingAnimator().stop(slot.index, 'blank-fill');
@@ -725,10 +773,24 @@ export class BlankFill {
         void (async () => {
           this._loadingAnimator().start(slot.index, 'blank-fill');
           let typedAction: 'set' | 'step' | undefined;
+          // Undo capture (get-before-set): the OS value BEFORE the set,
+          // so `undo _` can restore it. When the prior read fails the
+          // set still proceeds — journaled as a non-invertible external
+          // effect so the undo report stays honest instead of guessing.
+          let undoExtras: UndoEntry[] | undefined;
+          const scriptForUndo = (blank as { blankScript?: string }).blankScript;
+          const undoScriptPath = scriptForUndo
+            ? (scriptForUndo.startsWith('~') ? home + scriptForUndo.slice(1) : scriptForUndo)
+            : undefined;
           if (slot.shapeAction === 'set' && slot.shapeValue && /^\d+$/.test(slot.shapeValue) && settable0) {
+            const prior = await this.runBlankGetValue(slot.blankName, blank as Record<string, unknown>);
+            if (this._lastInputText !== shapeText) { this._loadingAnimator().stop(slot.index, 'blank-fill'); this._pendingScripts.delete(dedupKey); return; }
             await this.runBlankSet(slot.blankName, slot.shapeValue, blank as Record<string, unknown>);
             if (this._lastInputText !== shapeText) { this._loadingAnimator().stop(slot.index, 'blank-fill'); this._pendingScripts.delete(dedupKey); return; }
             typedAction = 'set';
+            undoExtras = prior !== null
+              ? [{ kind: 'os-set', blankName: slot.blankName, scriptPath: undoScriptPath, prevValue: String(prior), newValue: slot.shapeValue }]
+              : [{ kind: 'external', label: `${slot.blankName} set ${slot.shapeValue} (prior value unreadable)` }];
           } else if (slot.shapeAction === 'step' && (slot.shapeValue === 'up' || slot.shapeValue === 'down') && settable0) {
             const current = await this.runBlankGetValue(slot.blankName, blank as Record<string, unknown>);
             if (this._lastInputText !== shapeText) { this._loadingAnimator().stop(slot.index, 'blank-fill'); this._pendingScripts.delete(dedupKey); return; }
@@ -737,9 +799,10 @@ export class BlankFill {
               await this.runBlankSet(slot.blankName, String(next), blank as Record<string, unknown>);
               if (this._lastInputText !== shapeText) { this._loadingAnimator().stop(slot.index, 'blank-fill'); this._pendingScripts.delete(dedupKey); return; }
               typedAction = 'step';
+              undoExtras = [{ kind: 'os-set', blankName: slot.blankName, scriptPath: undoScriptPath, prevValue: String(current), newValue: String(next) }];
             }
           }
-          doDispatch(typedAction);
+          doDispatch(typedAction, undoExtras);
         })();
         continue;
       }
@@ -870,7 +933,7 @@ export class BlankFill {
     return present;
   }
 
-  private applyAsyncFill(slot: BlankSlot, fillValue: string, typedAction?: 'set' | 'step'): void {
+  private applyAsyncFill(slot: BlankSlot, fillValue: string, typedAction?: 'set' | 'step', undoExtras?: readonly UndoEntry[]): void {
     const currentText = this.adapter.getText();
     const cleaned = currentText.replace(/[\u200B\u200C]/g, '');
     const words = splitWords(cleaned);
@@ -910,7 +973,7 @@ export class BlankFill {
     // (default ' ') and stash the pair so cycling can write back via
     // `script set` / `script get`.
     if (blank?.blankSatellite === true && fillValue.includes('\t')) {
-      this.applySatelliteFill(slot, blank, fillValue, cleaned, target);
+      this.applySatelliteFill(slot, blank, fillValue, cleaned, target, undoExtras);
       return;
     }
 
@@ -1058,6 +1121,9 @@ export class BlankFill {
         });
       }
       this.commitText(newText, newCursor);
+      // `[err]` fills are feedback, not changes worth journaling — the
+      // command is still in the buffer for the user to fix.
+      if (!isErrResult) this.recordUndo(`${slot.blankName} fill`, cleaned, newText, undoExtras);
     };
 
     // ── LLM contextual weave (optional, opt-in, off by default) ──────────
@@ -1115,6 +1181,7 @@ export class BlankFill {
         this.spanFillState?.clear();
         this.adapter.log('info', `BlankFill: woven integration → "${preview(swapped, 60)}"`);
         this.commitText(finalText, finalCursor);
+        this.recordUndo(`${slot.blankName} fill`, cleaned, finalText, undoExtras);
         this.adapter.emitEvent?.('blank.woven', { blankName: String(blank?.name ?? ''), output: swapped });
       } else {
         // Weave failed / ceded / timed out — land the static fill (one change).
@@ -1340,6 +1407,7 @@ export class BlankFill {
     fillValue: string,
     cleaned: string,
     target: { start: number; end: number; word: string; index: number },
+    undoExtras?: readonly UndoEntry[],
   ): void {
     const tabIdx = fillValue.indexOf('\t');
     const selectorRaw = fillValue.slice(0, tabIdx).trim();
@@ -1390,6 +1458,7 @@ export class BlankFill {
       this.adapter.setCursorOffset(newCursor);
       this.adapter.forceRender();
     }
+    this.recordUndo(`${slot.blankName} fill`, cleaned, newText, undoExtras);
   }
 
   /**

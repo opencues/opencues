@@ -461,6 +461,7 @@ import { SpanFillState } from './state/span-fill';
 import { DismissedBlanks } from './state/dismissed-blanks';
 import { SelectorSatelliteState } from './state/selector-satellite';
 import { AgentTaskState } from './state/agent-task';
+import { UndoJournal } from './state/undo-journal';
 
 /** State + ConfigLoader the optional modules (Statusline / TTS / Resolver
  *  / CursorStateExport) and the host's BootResult need access to. */
@@ -472,6 +473,11 @@ export interface SharedRuntime {
   readonly dismissedBlanks: DismissedBlanks;
   readonly selectorSatelliteState: SelectorSatelliteState;
   readonly agentTaskState: AgentTaskState;
+  /** Session-scoped undo/redo transaction log. Wired into Cycling +
+   *  BlankFill here; band boots pass it to their Resolver and
+   *  AgentRewrite constructions and to resetSharedBufferState (epoch
+   *  bump on buffer boundaries). */
+  readonly undoJournal: UndoJournal;
   /** Shared loading-glyph animator for in-flight `_` slots. Passed to
    *  BlankFill (keyword-bound slots) and to Resolver (Fluid/Transform
    *  slots) so both code paths share state and don't race. */
@@ -925,6 +931,10 @@ export function buildSharedRuntime(
   const dismissedBlanks = new DismissedBlanks();
   const selectorSatelliteState = new SelectorSatelliteState();
   const agentTaskState = new AgentTaskState();
+  // Session-scoped (survives buffer resets via the epoch mechanism —
+  // see resetSharedBufferState). Threaded into every mutating module;
+  // band boots pass it to their Resolver/AgentRewrite constructions.
+  const undoJournal = new UndoJournal();
 
   // Universal modules — wired identically on every host.
   const navigation = new Navigation(
@@ -940,7 +950,7 @@ export function buildSharedRuntime(
   const cycling = new Cycling(
     adapter, hlState, dynDefs, configLoader,
     spanFillState, dismissedBlanks, selectorSatelliteState,
-    getApiKeys, isCliProviderAvailable,
+    getApiKeys, isCliProviderAvailable, undoJournal,
   );
   cycling.subscribe();
 
@@ -1002,7 +1012,7 @@ export function buildSharedRuntime(
     : null;
   const blankFill = new BlankFill(
     adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading,
-    blankWeaver,
+    blankWeaver, undoJournal,
   );
   configLoader.load()
     .then(() => blankFill.subscribe())
@@ -1023,6 +1033,7 @@ export function buildSharedRuntime(
     dismissedBlanks,
     selectorSatelliteState,
     agentTaskState,
+    undoJournal,
     blankLoading,
     markdownRender,
     blankFill,
@@ -1095,6 +1106,12 @@ export function resetSharedBufferState(state: {
    *  reset surface stays one-shot for callers. */
   readonly resolver?: { resetState(): void };
   readonly agentRewrite?: { resetState(): void };
+  /** Optional: undo journal. NOT wiped — deliberately session-scoped
+   *  (a settings/volume change from the previous message should stay
+   *  undoable). The epoch bump marks buffer-splice entries recorded
+   *  before this reset as stale, so the applier skips them with a
+   *  report instead of relocating text into the wrong buffer. */
+  readonly undoJournal?: { noteBufferReset(): void };
 }): void {
   state.dynDefs.clear();
   state.hlState.deactivate();
@@ -1111,4 +1128,5 @@ export function resetSharedBufferState(state: {
   if (typeof state.markdownRender?.resetState === 'function') state.markdownRender.resetState();
   if (typeof state.resolver?.resetState === 'function') state.resolver.resetState();
   if (typeof state.agentRewrite?.resetState === 'function') state.agentRewrite.resetState();
+  if (typeof state.undoJournal?.noteBufferReset === 'function') state.undoJournal.noteBufferReset();
 }

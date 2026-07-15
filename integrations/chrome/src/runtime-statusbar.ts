@@ -18,6 +18,7 @@ interface StatuslinePayload {
     coachSegments?: ReadonlyArray<{ text: string; command: boolean }> | null;
     offTrack?: boolean;
   } | null;
+  undoConfirmation?: string | null;
 }
 
 type Pos = 'right' | 'bottom' | 'top';
@@ -147,6 +148,14 @@ export function applyStatuslinePayload(payload: StatuslinePayload): void {
     const body = kata.coach
       ?? (kata.coachSegments ? kata.coachSegments.map(s => s.text).join('') : '');
     showKata(head, body);
+    return;
+  }
+
+  // Undo/redo confirmation is a transient notification the user just
+  // triggered — dominant for its TTL (universal feedback for invisible
+  // reverts: a scalar / OS value that doesn't change the buffer).
+  if (payload.undoConfirmation) {
+    show(payload.undoConfirmation);
     return;
   }
 
