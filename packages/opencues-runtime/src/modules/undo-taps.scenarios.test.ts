@@ -372,7 +372,10 @@ describe('undo taps — note add round-trips through the real registry', () => {
     const report = await applyUndo(s, 'undo');
     expect(report.appliedEntries).toBe(2);
     expect(s.notes()).not.toContain('standup');
-    expect(s.adapter.getText()).toBe('note add standup: 9am tuesdays _');
+    // Command restored WITHOUT the trigger `_` — a restored `note add … _`
+    // would re-fire on the next keystroke and re-add the note (fillSplice).
+    expect(s.adapter.getText()).toBe('note add standup: 9am tuesdays');
+    expect(s.adapter.getText()).not.toContain('_');
   });
 });
 
@@ -417,7 +420,10 @@ describe('undo taps — sentinel set round-trips through the real registry', () 
 
     await applyUndo(s, 'undo');
     expect(s.identity()).not.toContain('oslo');
-    expect(s.adapter.getText()).toBe('set sentinel city oslo _');
+    // Command restored WITHOUT the trigger `_` (a restored `set sentinel … _`
+    // would re-fire and re-write the key on the next keystroke — fillSplice).
+    expect(s.adapter.getText()).toBe('set sentinel city oslo');
+    expect(s.adapter.getText()).not.toContain('_');
   });
 
   it('overwrite: undo restores the PRIOR value, not deletion', async () => {

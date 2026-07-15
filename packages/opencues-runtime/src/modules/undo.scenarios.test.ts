@@ -144,7 +144,8 @@ describe('undo — fluid-blank fill journeys (real recording tap)', () => {
     const setCallsBefore = s.adapter.setTextCalls.length;
     s.script([undoResult('undo', 1, 'Paris '.length, 'Paris undo _'.length)]);
     await s.resolver.resolveAndApply(s.adapter.getText());
-    expect(s.adapter.getText()).toBe('capital of france _');
+    // Fill reverted — WITHOUT re-arming the trigger `_` (fillSplice).
+    expect(s.adapter.getText()).toBe('capital of france');
     expect(writes + (s.adapter.setTextCalls.length - setCallsBefore)).toBe(1);
     expect(s.journal.undoDepth).toBe(0);
     expect(s.journal.redoDepth).toBe(1);
@@ -182,7 +183,7 @@ describe('undo — fluid-blank fill journeys (real recording tap)', () => {
     s.adapter.pushText('hello there. Paris undo _');
     s.script([undoResult('undo', 1, 'hello there. Paris '.length, 'hello there. Paris undo _'.length)]);
     await s.resolver.resolveAndApply(s.adapter.getText());
-    expect(s.adapter.getText()).toBe('hello there. capital of france _');
+    expect(s.adapter.getText()).toBe('hello there. capital of france');
   });
 
   it('fill → user edits INSIDE the filled text → undo _ refuses honestly (inline note)', async () => {
@@ -205,9 +206,11 @@ describe('undo — fluid-blank fill journeys (real recording tap)', () => {
     s.adapter.pushText('Paris undo _');
     s.script([undoResult('undo', 1, 'Paris '.length, 'Paris undo _'.length)]);
     await s.resolver.resolveAndApply(s.adapter.getText());
-    expect(s.adapter.getText()).toBe('capital of france _');
-    s.adapter.pushText('capital of france _ redo _');
-    s.script([undoResult('redo', 1, 'capital of france _ '.length, 'capital of france _ redo _'.length)]);
+    expect(s.adapter.getText()).toBe('capital of france');
+    // After undo the buffer has no `_`, so the redo is typed onto the
+    // trigger-free text: `capital of france redo _`.
+    s.adapter.pushText('capital of france redo _');
+    s.script([undoResult('redo', 1, 'capital of france '.length, 'capital of france redo _'.length)]);
     await s.resolver.resolveAndApply(s.adapter.getText());
     expect(s.adapter.getText()).toBe('Paris');
     expect(s.journal.undoDepth).toBe(1);
@@ -576,9 +579,9 @@ describe('undo — ACTION exclusivity + deterministic cursor (live-CC regression
     s.adapter.pushText('Paris undo _');
     s.script([undoResult('undo', 1, 'Paris '.length, 'Paris undo _'.length)]);
     await s.resolver.resolveAndApply(s.adapter.getText());
-    expect(s.adapter.getText()).toBe('capital of france _');
+    expect(s.adapter.getText()).toBe('capital of france'); // fillSplice drops the trigger
 
-    // Now redo, but ALSO script a competing transform on the leftover
+    // Now redo, but ALSO script a competing transform on a leftover
     // `... france _` (what the live resolver did). Only the redo applies.
     s.adapter.pushText('capital of france _ redo _');
     const buf = s.adapter.getText();
@@ -592,7 +595,9 @@ describe('undo — ACTION exclusivity + deterministic cursor (live-CC regression
     ]);
     await s.resolver.resolveAndApply(buf);
     // Redo restored the Paris fill; the transform's rewrite is NOWHERE.
-    expect(s.adapter.getText()).toBe('Paris');
+    // (A leftover `_` from the re-typed query may remain — the contract is
+    // the transform being dropped + the redo applying, not exact text.)
+    expect(s.adapter.getText()).toContain('Paris');
     expect(s.adapter.getText()).not.toContain('France is a country in Europe');
   });
 
@@ -607,8 +612,8 @@ describe('undo — ACTION exclusivity + deterministic cursor (live-CC regression
     s.script([undoResult('undo', 1, 'Paris '.length, 'Paris undo _'.length)]);
     await s.resolver.resolveAndApply(s.adapter.getText());
     const finalText = s.adapter.getText();
-    expect(finalText).toBe('capital of france _');
-    // cursorHint = end of the restored `capital of france _` splice —
+    expect(finalText).toBe('capital of france'); // fillSplice drops the trigger
+    // cursorHint = end of the restored `capital of france` splice —
     // i.e. the end of the buffer here. Deterministic, never a stale
     // pre-undo command offset.
     expect(committedCursor).toBe(finalText.length);

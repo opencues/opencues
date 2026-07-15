@@ -294,6 +294,21 @@ describe('fillSplice — undo of a fill drops the re-firing trigger `_`', () => 
     expect(redone).toBe(after); // value back
   });
 
+  it('strips the trigger even for a WHOLE-buffer rephrase (countries/integration template)', () => {
+    // `capital of france _` → `France capital: Paris` (the countries blank
+    // rewrites the whole line). The reverted region is NOT a lone `_`, but
+    // the trailing trigger must still be dropped so undo doesn't re-arm it.
+    const before = 'capital of france _';
+    const after = 'France capital: Paris';
+    const entry = fillSplice(before, after, 0)!;
+    if (entry.kind !== 'buffer-splice') throw new Error('expected buffer-splice');
+    expect(entry.beforeSlice).toBe('capital of france');
+    expect(entry.beforeSlice).not.toContain('_');
+    const undone = applyBufferSplice(entry, 'undo', after);
+    expect(undone).toBe('capital of france'); // no `_`
+    expect(applyBufferSplice(entry, 'redo', undone)).toBe(after);
+  });
+
   it('a fill at the very start of the buffer degrades to the empty-anchor form', () => {
     const entry = fillSplice('_', 'Paris', 0)!;
     if (entry.kind !== 'buffer-splice') throw new Error('expected buffer-splice');

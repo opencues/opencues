@@ -347,31 +347,43 @@ export function diffSplice(before: string, after: string, epoch: number): UndoEn
  */
 export function fillSplice(before: string, after: string, epoch: number): UndoEntry | null {
   if (before === after) return null;
+  // A blank fill's `before` is the user's command, ending in the trigger
+  // `_` — whether the fill replaced only that `_` (fluid-blank splice) or
+  // rephrased the whole line (countries/integration template). Restoring
+  // it verbatim re-arms the trigger. Strip the trailing `_` (and its
+  // separating whitespace) so undo gives back the command WITHOUT the
+  // re-firing `_`; the diff below is against that stripped form.
+  const trig = /\s*_\s*$/.exec(before);
+  if (!trig) return diffSplice(before, after, epoch); // not a trigger-ending fill
+  const strippedBefore = before.slice(0, trig.index);
+  if (strippedBefore === after) return null; // fill produced nothing new
   let p = 0;
-  const maxP = Math.min(before.length, after.length);
-  while (p < maxP && before[p] === after[p]) p++;
+  const maxP = Math.min(strippedBefore.length, after.length);
+  while (p < maxP && strippedBefore[p] === after[p]) p++;
   let s = 0;
   const maxS = maxP - p;
-  while (s < maxS && before[before.length - 1 - s] === after[after.length - 1 - s]) s++;
-  const bChanged = before.slice(p, before.length - s);
-  const aChanged = after.slice(p, after.length - s);
-  // Only strip when the reverted region is exactly the lone trigger.
-  if (bChanged !== '_') return diffSplice(before, after, epoch);
-  // Anchor on the preceding WORD only — NOT its trailing separator. The
-  // command-span wipe eats whitespace before `redo _`, so a `"france "`
-  // (trailing-space) anchor wouldn't be found at redo time; `"france"` is
-  // whitespace-eating-proof. The separator + value ride the value side,
-  // so undo also drops the dangling separator (no `capital of france ▯`).
-  let wordEnd = p;
-  while (wordEnd > 0 && /\s/.test(before[wordEnd - 1]!)) wordEnd--;
-  let wordStart = wordEnd;
-  while (wordStart > 0 && !/\s/.test(before[wordStart - 1]!)) wordStart--;
-  const word = before.slice(wordStart, wordEnd);      // "france" ('' at buffer start)
-  const sep = before.slice(wordEnd, p);               // " " (separator before the trigger)
+  while (s < maxS && strippedBefore[strippedBefore.length - 1 - s] === after[after.length - 1 - s]) s++;
+  let bStart = p, bEnd = strippedBefore.length - s;
+  let aStart = p, aEnd = after.length - s;
+  // Pure INSERTION (the value has no counterpart in the stripped before):
+  // widen LEFT over the preceding word so redo's anchor (beforeSlice) is
+  // non-empty. Word-only — NOT its trailing whitespace, which the
+  // command-span wipe eats before `redo _` (a `"france "` anchor wouldn't
+  // relocate at redo time; `"france"` is whitespace-eating-proof).
+  if (bStart === bEnd) {
+    let w = bStart;
+    while (w > 0 && /\s/.test(strippedBefore[w - 1]!)) w--;
+    while (w > 0 && !/\s/.test(strippedBefore[w - 1]!)) w--;
+    bStart = w; aStart = w;
+  } else if (aStart === aEnd) {
+    // Pure deletion — widen so afterSlice (undo's anchor) is non-empty.
+    if (aStart > 0) { aStart--; bStart--; }
+    else if (aEnd < after.length) { aEnd++; bEnd++; }
+  }
   return {
     kind: 'buffer-splice',
-    beforeSlice: word,                                // undo restores this — no `_`, no dangling separator
-    afterSlice: word + sep + aChanged,                // redo re-applies separator + value
+    beforeSlice: strippedBefore.slice(bStart, bEnd), // undo restores this — no trigger `_`
+    afterSlice: after.slice(aStart, aEnd),           // redo re-applies the value
     bufferEpoch: epoch,
   };
 }
