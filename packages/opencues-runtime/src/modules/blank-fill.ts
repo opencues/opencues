@@ -7,7 +7,7 @@
 // (auto-populate, blank-script fetch, span tracking, dismiss, etc.).
 
 import type { BlankWriteInverse, HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../adapter';
-import { diffSplice, type UndoEntry, type UndoJournal } from '../state/undo-journal';
+import { fillSplice, type UndoEntry, type UndoJournal } from '../state/undo-journal';
 import type { ConfigLoader } from './config-loader';
 import { splitWords } from './navigation';
 import { isBlankConfigCycleable, keywordInWindow, lineOfWords, matchBlankShape, segmentStart } from '@opencues/core';
@@ -137,11 +137,14 @@ export class BlankFill {
     if (blankLoading) this._loading = blankLoading;
   }
 
-  /** Record a fill into the undo journal (no-op without a journal). */
+  /** Record a fill into the undo journal (no-op without a journal).
+   *  Uses fillSplice so undoing a `_`-triggered fill restores the user's
+   *  text without re-arming the trigger; fillSplice self-guards to plain
+   *  diffSplice for any change that isn't a lone-`_` fill. */
   private recordUndo(label: string, before: string, after: string, extra?: readonly UndoEntry[]): void {
     if (!this.undoJournal) return;
     const entries: UndoEntry[] = [];
-    const buf = diffSplice(before, after, this.undoJournal.currentEpoch);
+    const buf = fillSplice(before, after, this.undoJournal.currentEpoch);
     if (buf) entries.push(buf);
     if (extra) entries.push(...extra);
     this.undoJournal.record({ label, entries });

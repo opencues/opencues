@@ -330,6 +330,52 @@ export function diffSplice(before: string, after: string, epoch: number): UndoEn
   };
 }
 
+/**
+ * diffSplice for a blank FILL, where `before` still holds the trigger `_`
+ * that the fill replaced with a value. A plain diffSplice would record
+ * `beforeSlice: '_'`, so undo restores the `_` verbatim — a live trigger
+ * that re-fires the fill on the next keystroke (the re-fire loop). This
+ * variant records the UNDO direction WITHOUT the trigger: reverting a
+ * fill gives back the user's text, not a re-arming `_`.
+ *
+ * To keep both relocation anchors non-empty AND unique, the changed
+ * region is expanded LEFT to include the preceding word (a bare space
+ * would be ambiguous for redo). Only a lone-`_` changed region gets this
+ * treatment; anything else (a multi-char span, a whole-buffer rewrite)
+ * falls back to plain diffSplice, so callers can route every fill through
+ * here safely.
+ */
+export function fillSplice(before: string, after: string, epoch: number): UndoEntry | null {
+  if (before === after) return null;
+  let p = 0;
+  const maxP = Math.min(before.length, after.length);
+  while (p < maxP && before[p] === after[p]) p++;
+  let s = 0;
+  const maxS = maxP - p;
+  while (s < maxS && before[before.length - 1 - s] === after[after.length - 1 - s]) s++;
+  const bChanged = before.slice(p, before.length - s);
+  const aChanged = after.slice(p, after.length - s);
+  // Only strip when the reverted region is exactly the lone trigger.
+  if (bChanged !== '_') return diffSplice(before, after, epoch);
+  // Anchor on the preceding WORD only — NOT its trailing separator. The
+  // command-span wipe eats whitespace before `redo _`, so a `"france "`
+  // (trailing-space) anchor wouldn't be found at redo time; `"france"` is
+  // whitespace-eating-proof. The separator + value ride the value side,
+  // so undo also drops the dangling separator (no `capital of france ▯`).
+  let wordEnd = p;
+  while (wordEnd > 0 && /\s/.test(before[wordEnd - 1]!)) wordEnd--;
+  let wordStart = wordEnd;
+  while (wordStart > 0 && !/\s/.test(before[wordStart - 1]!)) wordStart--;
+  const word = before.slice(wordStart, wordEnd);      // "france" ('' at buffer start)
+  const sep = before.slice(wordEnd, p);               // " " (separator before the trigger)
+  return {
+    kind: 'buffer-splice',
+    beforeSlice: word,                                // undo restores this — no `_`, no dangling separator
+    afterSlice: word + sep + aChanged,                // redo re-applies separator + value
+    bufferEpoch: epoch,
+  };
+}
+
 /** Two entries describe the same underlying target (for coalescing). */
 function sameIdentity(a: UndoEntry, b: UndoEntry): boolean {
   switch (a.kind) {

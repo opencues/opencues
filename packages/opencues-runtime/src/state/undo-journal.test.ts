@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { UndoJournal, type UndoEntry } from './undo-journal';
+import { UndoJournal, diffSplice, fillSplice, type UndoEntry } from './undo-journal';
+
+/** Simulate the applier's anchor relocation for a buffer-splice entry.
+ *  undo: find afterSlice, swap in beforeSlice. redo: the reverse. */
+function applyBufferSplice(entry: UndoEntry, dir: 'undo' | 'redo', text: string): string {
+  if (entry.kind !== 'buffer-splice') throw new Error('not a buffer-splice');
+  const anchor = dir === 'undo' ? entry.afterSlice : entry.beforeSlice;
+  const replacement = dir === 'undo' ? entry.beforeSlice : entry.afterSlice;
+  if (anchor === '') return text.trim() === '' ? replacement : text;
+  const i = text.indexOf(anchor);
+  if (i < 0 || text.indexOf(anchor, i + 1) >= 0) return text; // not-found / ambiguous
+  return text.slice(0, i) + replacement + text.slice(i + anchor.length);
+}
 
 function bufferEntry(before: string, after: string, epoch = 0): UndoEntry {
   return { kind: 'buffer-splice', beforeSlice: before, afterSlice: after, bufferEpoch: epoch };
@@ -255,5 +267,60 @@ describe('UndoJournal — coalesce frame guard', () => {
     j.record({ label: 'c', coalesceKey: 'k', entries: [scalarEntry('voice-mode', 'muted', 'inactive')] });
     const [tx] = j.peekUndo(1);
     expect(tx!.entries).toHaveLength(2);
+  });
+});
+
+describe('fillSplice — undo of a fill drops the re-firing trigger `_`', () => {
+  it('records the undo direction WITHOUT the `_` (no re-fire loop)', () => {
+    const entry = fillSplice('capital of france _', 'capital of france Paris', 0)!;
+    expect(entry.kind).toBe('buffer-splice');
+    if (entry.kind !== 'buffer-splice') return;
+    // Anchor is the preceding WORD only (no trailing separator — the
+    // command-wipe eats trailing whitespace, so it must not be load-bearing).
+    expect(entry.beforeSlice).toBe('france');
+    expect(entry.afterSlice).toBe('france Paris');
+    // The restored (undo) text must NOT contain the trigger.
+    expect(entry.beforeSlice).not.toContain('_');
+  });
+
+  it('round-trips: undo gives back the query text with no `_`, redo re-applies the value', () => {
+    const before = 'capital of france _';
+    const after = 'capital of france Paris';
+    const entry = fillSplice(before, after, 0)!;
+    const undone = applyBufferSplice(entry, 'undo', after);
+    expect(undone).toBe('capital of france'); // trigger + dangling separator gone
+    expect(undone).not.toContain('_');
+    const redone = applyBufferSplice(entry, 'redo', undone);
+    expect(redone).toBe(after); // value back
+  });
+
+  it('a fill at the very start of the buffer degrades to the empty-anchor form', () => {
+    const entry = fillSplice('_', 'Paris', 0)!;
+    if (entry.kind !== 'buffer-splice') throw new Error('expected buffer-splice');
+    expect(entry.beforeSlice).toBe('');       // no preceding word to anchor on
+    expect(entry.afterSlice).toBe('Paris');
+    // undo empties the buffer; redo restores onto the (now empty) buffer.
+    const undone = applyBufferSplice(entry, 'undo', 'Paris');
+    expect(undone).toBe('');
+    expect(applyBufferSplice(entry, 'redo', undone)).toBe('Paris');
+  });
+
+  it('falls back to plain diffSplice when the changed region is NOT a lone `_`', () => {
+    // A word-cue swap (attorney → lawyer) has no trigger to strip.
+    const before = 'the attorney filed';
+    const after = 'the lawyer filed';
+    expect(fillSplice(before, after, 0)).toEqual(diffSplice(before, after, 0));
+  });
+
+  it('preserves a leading pending query when a later `_` is filled', () => {
+    // `capital of france _ weather _` → the weather `_` fills; undo must
+    // not touch (or re-arm) the earlier `capital of france _`.
+    const before = 'capital of france _ weather _';
+    const after = 'capital of france _ weather sunny';
+    const entry = fillSplice(before, after, 0)!;
+    if (entry.kind !== 'buffer-splice') throw new Error('expected buffer-splice');
+    expect(entry.beforeSlice).toBe('weather');
+    const undone = applyBufferSplice(entry, 'undo', after);
+    expect(undone).toBe('capital of france _ weather'); // leading `_` preserved, weather `_` gone
   });
 });

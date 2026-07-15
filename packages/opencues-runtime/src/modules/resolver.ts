@@ -27,7 +27,7 @@ import { findUnderscoreAtChar } from './blank-fill';
 import { applyMarkdownAwareSplice, applyMarkdownAwareSubstitution } from './markdown-substitute';
 import { threeWayMerge } from './word-diff';
 import { applyScalarAndPersist } from '../util/apply-scalar';
-import { diffSplice, type PendingTransaction, type UndoJournal } from '../state/undo-journal';
+import { diffSplice, fillSplice, type PendingTransaction, type UndoJournal } from '../state/undo-journal';
 import { UndoApplier } from './undo';
 
 /** Minimal interface MarkdownRender exposes for rich-text injection.
@@ -459,10 +459,12 @@ export class Resolver {
     if (tx) tx.commit();
   }
 
-  /** Record a substitute into the undo journal (no-op without one). */
-  private recordUndo(label: string, before: string, after: string): void {
+  /** Record a substitute into the undo journal (no-op without one).
+   *  `fill: true` uses fillSplice so undoing a `_`-triggered fill restores
+   *  the user's text WITHOUT re-arming the trigger (the re-fire loop). */
+  private recordUndo(label: string, before: string, after: string, opts?: { fill?: boolean }): void {
     if (!this.undoJournal) return;
-    const buf = diffSplice(before, after, this.undoJournal.currentEpoch);
+    const buf = (opts?.fill ? fillSplice : diffSplice)(before, after, this.undoJournal.currentEpoch);
     if (!buf) return;
     this.undoJournal.record({ label, entries: [buf] });
   }
@@ -1766,7 +1768,7 @@ export class Resolver {
         const sub = applyMarkdownAwareSplice(this.adapter, text, start, end, alts[0]);
         const newText = sub.newText;
         const answer = sub.stripped;
-        this.recordUndo('fluid-blank fill', text, newText);
+        this.recordUndo('fluid-blank fill', text, newText, { fill: true });
 
         // Find which word in the new text the answer sits at.
         const newWords = splitWords(newText);

@@ -191,7 +191,7 @@ describe('undo taps — volume fill + step burst (real registry, real os-set cap
     return { adapter, loader, hlState, dynDefs, journal, os: () => osValue };
   }
 
-  it('fill tx + coalesced step tx; undo restores value via verify-then-set; second undo restores the `_`', async () => {
+  it('fill tx + coalesced step tx; undo restores value via verify-then-set; second undo drops the trigger `_`', async () => {
     const s = await setupVolume(40);
     s.adapter.pushText('volume _');
     await flush();
@@ -225,9 +225,12 @@ describe('undo taps — volume fill + step burst (real registry, real os-set cap
     expect(s.adapter.getText()).toBe('volume 40%');
     expect(s.os()).toBe(40);
 
-    // Undo the fill itself: back to the typed command.
+    // Undo the fill itself: back to the typed command WITHOUT re-arming
+    // the trigger `_` (fillSplice — a restored `volume _` would re-fire the
+    // blank on the next keystroke).
     await applyUndo(s, 'undo');
-    expect(s.adapter.getText()).toBe('volume _');
+    expect(s.adapter.getText()).toBe('volume');
+    expect(s.adapter.getText()).not.toContain('_');
     expect(s.journal.undoDepth).toBe(0);
   });
 

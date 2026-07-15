@@ -150,6 +150,32 @@ describe('undo — fluid-blank fill journeys (real recording tap)', () => {
     expect(s.journal.redoDepth).toBe(1);
   });
 
+  it('lone-`_` fill → undo _ restores the query WITHOUT re-arming the trigger', async () => {
+    // Models the real runtime: FluidBlank splices only the `_` (log:
+    // `range=[18,19)`), so undo drops the trigger instead of restoring a
+    // live `_` that re-fires on the next keystroke (Wilfred, 2026-07-15).
+    const s = setup('capital of france _');
+    const uPos = 'capital of france '.length; // 18 — the `_`
+    s.script([fluidResult('Paris', uPos, uPos + 1)]);
+    await s.resolver.resolveAndApply(s.adapter.getText());
+    expect(s.adapter.getText()).toBe('capital of france Paris');
+    expect(s.journal.undoDepth).toBe(1);
+
+    s.adapter.pushText('capital of france Paris undo _');
+    s.script([undoResult('undo', 1, 'capital of france Paris '.length, 'capital of france Paris undo _'.length)]);
+    await s.resolver.resolveAndApply(s.adapter.getText());
+    // The `_` is GONE — the whole point of the fix (dangling separator too).
+    expect(s.adapter.getText()).toBe('capital of france');
+    expect(s.adapter.getText()).not.toContain('_');
+
+    // …and redo re-applies the value — the word-only anchor survives the
+    // command-wipe's whitespace eating.
+    s.adapter.pushText('capital of france redo _');
+    s.script([undoResult('redo', 1, 'capital of france '.length, 'capital of france redo _'.length)]);
+    await s.resolver.resolveAndApply(s.adapter.getText());
+    expect(s.adapter.getText()).toBe('capital of france Paris');
+  });
+
   it('fill → user types elsewhere → undo _ relocates by unique match, prose preserved', async () => {
     const s = setup('capital of france _');
     await fillParis(s);
