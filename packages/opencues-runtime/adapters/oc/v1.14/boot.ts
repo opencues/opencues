@@ -247,6 +247,7 @@ export function boot(host: HostInfo): BootResult {
         ? (payload) => host.statusSnapshotHook!(payload)
         : undefined,
       kataStatus: () => kataCoach.status(),
+      undoStatus: () => shared.undoJournal.recentApplyReport(8000),
     }, configLoader, spanFillState, selectorSatelliteState, agentTaskState);
     statusline.subscribe();
   }
@@ -295,7 +296,8 @@ export function boot(host: HostInfo): BootResult {
   // blank-context-mode is on. Reads host's blanks registry to fetch
   // live values for slots planned from BLANK.md `as-context:` opt-ins.
   buildBlankContextProvider(configLoader, host.blanks, log),
-  buildBlankFetchProvider(configLoader, host.blanks, log));
+  buildBlankFetchProvider(configLoader, host.blanks, log),
+  shared.undoJournal);
   configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
 
   if (hasAnyKey) {
@@ -305,6 +307,7 @@ export function boot(host: HostInfo): BootResult {
     // removed once AgentRewrite proved its merge layer made the
     // per-edit guards structurally unnecessary.
     const agentRewrite = new AgentRewrite(adapter, dynDefs, agentTaskState, {
+      undoJournal: shared.undoJournal,
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
       apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',

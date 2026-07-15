@@ -22,6 +22,7 @@
 
 import type { HostAdapter, Unsubscribe } from '../adapter';
 import {
+  FEATURES,
   buildLookupMap,
   discoverFolderConfigs,
   mergeConfigs,
@@ -433,19 +434,46 @@ function overlayDynamicDefinitions(
   const fresh = getMenuDefinitions(undefined, settings);
   for (const f of FEATURES_WITH_VALUES_PROVIDER) {
     const freshDef = fresh.get(f);
-    if (freshDef) out.set(f, freshDef);
+    if (!freshDef) continue;
+    const existingDef = out.get(f);
+    if (!existingDef) { out.set(f, freshDef); continue; }
+    // File-override-wins contract: a user's `settings:` block replaces
+    // a scalar's whole definition, including its value LIST + order —
+    // the overlay must not clobber it back to the registry shape (a
+    // July 2026 regression did exactly that for the provider scalars:
+    // the satellite walk order changed mid-cycle after the first
+    // write). Replace wholesale only when the existing list is
+    // registry-shaped (same ids, same order) — for `*-llm-model`
+    // that's also the case where the provider changed and the list
+    // legitimately reshapes, because a reshape starts from a
+    // registry-shaped list. For a file-driven list, keep the user's
+    // ids/order and refresh only the descriptions of ids both sides
+    // know (so live text like the `inherit` resolution still updates).
+    const modelScalar = /-llm-model$/.test(f);
+    const sameIds = existingDef.valueOrder.length === freshDef.valueOrder.length
+      && existingDef.valueOrder.every((id, i) => id === freshDef.valueOrder[i]);
+    if (sameIds || modelScalar) {
+      out.set(f, freshDef);
+    } else {
+      const tips = new Map(existingDef.valueTips);
+      for (const [id, tip] of freshDef.valueTips) {
+        if (tips.has(id)) tips.set(id, tip);
+      }
+      out.set(f, { ...existingDef, valueTips: tips });
+    }
   }
   return out;
 }
 
-// Scalars whose value list is dynamic (valuesProvider-backed). Kept in
-// sync with feature-registry.ts. A drift test in feature-registry-menu.drift
-// would catch additions silently — for now this is a tiny hardcoded list.
-const FEATURES_WITH_VALUES_PROVIDER: readonly string[] = [
-  'cues-llm-model',
-  'auditors-llm-model',
-  'blanks-llm-model',
-];
+// Scalars whose value list is dynamic (valuesProvider-backed). Derived
+// from the registry (July 2026) instead of the previous hardcoded
+// list — adding a valuesProvider to a FEATURE now auto-propagates to
+// the post-applyOpenCuesScalar overlay with no edit here. (The
+// hardcoded copy went stale the first time a valuesProvider was added
+// outside the *-llm-model trio: the provider scalars' live `inherit`
+// resolution.)
+const FEATURES_WITH_VALUES_PROVIDER: readonly string[] =
+  FEATURES.filter(f => f.valuesProvider).map(f => f.scalar);
 
 /**
  * Walk the indented `settings:` block and pull out each setting's tip +

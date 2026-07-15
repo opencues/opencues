@@ -20,6 +20,9 @@ tests/benchmarks/fluid-blank/cases-generated.jsonl
 # Internal harness — lives in its own private repo, cloned into this path.
 tests/agentic/
 
+# Android integration — lives in its own private repo, cloned into this path.
+integrations/android/
+
 # Internal docs — strategy, handoffs, audits not for public consumption.
 .internal/
 

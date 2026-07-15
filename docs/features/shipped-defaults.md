@@ -17,7 +17,7 @@ There is no top-level `CUES.md`/`BLANKS.md` in `defaults/` today — only the al
 
 ```
 defaults/
-├── OPENCUES.md          # Runtime system settings (voice-mode, fluid-blank-mode,
+├── OPENCUES.md          # Runtime system settings (voice-mode, word-cues-mode,
 │                        # llm-provider, agent-debounce-ms, ...) — frontmatter only.
 │                        # User-level only at runtime; schema declared in @opencues/core
 │                        # via FEATURES + MENU_TUNABLES.
@@ -45,13 +45,17 @@ defaults/
     │   └── BrightCtl.cs
     ├── stocks/BLANK.md
     ├── weather/BLANK.md
+    ├── location/BLANK.md        # place/address/POI lookup via OSM Nominatim (map keyword → rich card)
+    ├── note/BLANK.md            # keyword add/recall/delete (PROTOTYPE, issue #210)
     ├── hackernews/BLANK.md
     ├── countries/BLANK.md
     ├── crypto/BLANK.md
     ├── dictionary/BLANK.md
     ├── claude-status/BLANK.md
+    ├── model/BLANK.md           # "whats my model _" / "list models _" — effective LLM routing, shape-gated
     ├── gh-issues/{BLANK.md,blank.js}
     ├── sentinel/BLANK.md
+    ├── loading-animation/BLANK.md # inline loading-animation definition (writes blank-loading-* scalars)
     ├── opencues/BLANK.md        # the settings selector+satellite blank
     └── example/{BLANK.md,time-blank.sh}
 ```

@@ -181,15 +181,39 @@ function checkDrift(markerDir, ctx) {
   const sourceHash = computeSourceHash(ctx.REPO_ROOT);
   if (!marker) return { status: 'missing', marker: null, source, sourceHash, reason: 'no-marker' };
   if (sourceHash && marker.srcHash && marker.srcHash !== sourceHash) {
-    return { status: 'stale', marker, source, sourceHash, reason: 'srcHash' };
+    return { status: 'stale', marker, source, sourceHash, reason: 'srcHash', downgrade: markerIsNewer(marker, source) };
   }
   if (source.runtime && marker.runtime && marker.runtime !== source.runtime) {
-    return { status: 'stale', marker, source, sourceHash, reason: 'runtime' };
+    return { status: 'stale', marker, source, sourceHash, reason: 'runtime', downgrade: markerIsNewer(marker, source) };
   }
   if (source.core && marker.core && marker.core !== source.core) {
-    return { status: 'stale', marker, source, sourceHash, reason: 'core' };
+    return { status: 'stale', marker, source, sourceHash, reason: 'core', downgrade: markerIsNewer(marker, source) };
   }
   return { status: 'fresh', marker, source, sourceHash, reason: 'match' };
+}
+
+// True when the installed bundle's package versions are NEWER than the
+// invoking clone's source — i.e. a "stale" verdict that would actually
+// be a DOWNGRADE if acted on. srcHash is direction-blind (any byte
+// difference reads as stale), so without this signal a second clone,
+// a git worktree, or an old branch checked out in the same clone
+// silently rebuilds every fork BACKWARD at launch time. First hit
+// live July 2026: `opencues run` from a wip-branch checkout (runtime
+// 0.13.5) "healed" a fork freshly installed from master (0.16.0) —
+// and because installs copy without deleting, the result was a MIXED
+// bundle (new files present, registry/index stale). The launch-time
+// self-heal refuses to rebuild when this is true; an explicit
+// `opencues install <host>` remains the override (deliberate installs
+// may downgrade — e.g. bisecting).
+//
+// Conservative on missing data: any absent version on either side
+// contributes nothing, so pre-marker-era installs and unreadable
+// source keep the old rebuild behaviour.
+function markerIsNewer(marker, source) {
+  const { semverCompare } = require('./compat.cjs');
+  const newer = (a, b) => !!a && !!b && semverCompare(a, b) > 0;
+  return newer(marker && marker.runtime, source && source.runtime)
+    || newer(marker && marker.core, source && source.core);
 }
 
 // Walk every standard install root and return drift status for each.
@@ -289,6 +313,7 @@ module.exports = {
   writeMarker,
   readMarker,
   checkDrift,
+  markerIsNewer,
   enumerateInstalledHosts,
   detectExtraCCForks,
   enumerateCCForks,

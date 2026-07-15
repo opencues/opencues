@@ -260,6 +260,56 @@ describe('CueResolver: parallel mode — higher-priority claims suppress lower-p
     assert.strictEqual(lowAborted, true, 'low source signal should fire when high source emits a whole-buffer claim');
   });
 
+  it('ACTION claim (undo/redo) aborts lower-priority siblings EVEN with a non-zero span', async () => {
+    // Mirrors `Paris undo _`: the ACTION span starts AFTER prior content
+    // ("Paris "), so spanStart !== 0 and it can't ride the wholeBufferClaim
+    // path. The undoAction marker must still abort the slow TransformBlank/
+    // FluidBlank sibling — otherwise the resolve blocks ~1.5s awaiting a
+    // sibling LLM call whose fill would double-apply alongside the undo.
+    let lowAborted = false;
+
+    const high: CueSource = {
+      id: 'config-intent',
+      priority: 94,
+      isCycleable: false,
+      supports: () => true,
+      async getCues(ctx) {
+        return {
+          results: [{
+            wordIndex: 3, word: '_', alternatives: ['undo'],
+            source: 'config-intent', priority: 94,
+            // Non-zero start — the summon phrase, not the whole buffer.
+            spanStart: 6, spanEnd: ctx.text.length,
+            metadata: { undoAction: { action: 'undo', count: 1 } },
+          }],
+        };
+      },
+    };
+    const low: CueSource = {
+      id: 'transform-blank',
+      priority: 93,
+      isCycleable: false,
+      supports: () => true,
+      async getCues(ctx) {
+        // Slow LLM call — resolves to nothing if aborted mid-flight.
+        await new Promise<void>(resolve => {
+          const t = setTimeout(resolve, 200);
+          ctx.signal?.addEventListener('abort', () => {
+            clearTimeout(t);
+            lowAborted = true;
+            resolve();
+          });
+        });
+        return { results: [] };
+      },
+    };
+
+    const resolver = new CueResolver([high, low], { parallel: true });
+    await resolver.resolve(makeContext('Paris undo _'));
+
+    assert.strictEqual(lowAborted, true, 'lower-priority sibling should abort the moment an ACTION verdict lands, regardless of span');
+  });
+
   it('non-whole-buffer claim does NOT abort lower-priority siblings (point-wise filter still wins)', async () => {
     let lowAborted = false;
 

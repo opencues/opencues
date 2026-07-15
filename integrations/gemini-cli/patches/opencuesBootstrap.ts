@@ -499,9 +499,15 @@ export function startOpenCues(opts: {
         }
       }
 
-      const combined = wordPart && agentBadge
-        ? `${wordPart} | ${agentBadge}`
-        : (agentBadge ?? wordPart ?? null);
+      // Undo/redo confirmation is a transient notification the user just
+      // triggered — dominant over the word/tip + agent badge for its TTL
+      // (universal feedback for invisible reverts: scalar / OS value).
+      const undoConf = payload?.undoConfirmation as string | null | undefined;
+      const combined = undoConf
+        ? undoConf
+        : (wordPart && agentBadge
+            ? `${wordPart} | ${agentBadge}`
+            : (agentBadge ?? wordPart ?? null));
       setOpenCuesTip(combined);
     },
     ttsScriptPath: resolveTtsScript(),

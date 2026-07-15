@@ -403,6 +403,47 @@ describe('ConfigLoader hot-reload', () => {
     expect(loader.opencuesState.voiceMode).toBe('active');
   });
 
+  it('overlay after applyOpenCuesScalar keeps a file-driven value list but refreshes live descriptions', async () => {
+    // Two contracts on the post-apply overlay (July 2026 regression pin):
+    //   1. File-override-wins: a `settings:` block's value LIST + order
+    //      for a valuesProvider-backed scalar survives the overlay —
+    //      clobbering it back to the registry shape changed the
+    //      satellite walk order mid-cycle.
+    //   2. Live text still refreshes on the user's list: the `inherit`
+    //      entry's description names the current global llm-provider.
+    const FILE = `---
+llm-provider: cerebras
+blanks-llm-provider: inherit
+settings:
+  blanks-llm-provider:
+    tip: Provider for blank-class sources.
+    values:
+      inherit: Default
+      groq: Groq
+      cerebras: Cerebras
+---
+`;
+    const adapter = new MockAdapter({
+      files: { '/tips.json': '{"concepts":[]}', '/proj/.cues/OPENCUES.md': FILE },
+      cwd: '/proj',
+    });
+    const loader = new ConfigLoader(adapter, {
+      reloadDebounceMs: 0,
+      settingsFile: '/proj/.cues/OPENCUES.md',
+    });
+    await loader.load();
+    const fileOrder = ['inherit', 'groq', 'cerebras'];
+    expect([...loader.opencuesState.definitions.get('blanks-llm-provider')!.valueOrder]).toEqual(fileOrder);
+
+    loader.applyOpenCuesScalar('blanks-llm-provider', 'groq');
+    const def = loader.opencuesState.definitions.get('blanks-llm-provider')!;
+    // 1. The user's list + order survives (NOT the registry's
+    //    inherit/opencode-zen/cerebras/... shape).
+    expect([...def.valueOrder]).toEqual(fileOrder);
+    // 2. The inherit description was refreshed with the live resolution.
+    expect(def.valueTips.get('inherit')).toContain('currently cerebras');
+  });
+
   it('applyOpenCuesScalar preserves identity-context two-tier defaults (no silent downgrade)', async () => {
     // SECURITY-LOAD-BEARING pin: the inline re-parse inside
     // applyOpenCuesScalar used to default identity-context-mode /

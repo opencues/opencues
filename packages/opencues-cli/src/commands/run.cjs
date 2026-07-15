@@ -304,6 +304,24 @@ function ensureFreshBundle(host, ctx) {
   if (drift.status === 'fresh') return;
   if (drift.status === 'missing') return; // pre-marker install — let it be; user can `opencues update <host>` if curious
 
+  // Downgrade guard: "stale" is direction-blind (srcHash mismatch says
+  // DIFFERENT, not OLDER). When the installed bundle's packages are
+  // NEWER than this clone's source — a second clone / git worktree /
+  // an old branch checked out here — the transparent rebuild would
+  // destroy the newer install, and (because installs copy without
+  // deleting) leave a MIXED bundle. Refuse, launch the existing
+  // bundle, and name the escape hatch. Explicit `opencues install`
+  // still rebuilds from anywhere — deliberate downgrades stay possible.
+  if (drift.downgrade) {
+    const from = drift.marker && drift.marker.repoRoot && path.resolve(drift.marker.repoRoot) !== path.resolve(ctx.REPO_ROOT)
+      ? ` (installed from ${drift.marker.repoRoot})`
+      : '';
+    console.log(`${style.tag('warn')} ${style.bold(host)} bundle is NEWER than this clone's source (runtime ${drift.marker.runtime || '?'} vs ${drift.source.runtime || '?'}, core ${drift.marker.core || '?'} vs ${drift.source.core || '?'})${from}.`);
+    console.log(`${style.tag('warn')} Refusing the automatic downgrade — launching the installed bundle. To rebuild from THIS clone anyway: ${style.bold(`opencues install ${host}`)}`);
+    console.log('');
+    return;
+  }
+
   // status === 'stale' — re-install transparently so the next launch
   // picks up the source changes. Message is one line so it doesn't
   // dominate the banner above.

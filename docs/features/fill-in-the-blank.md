@@ -21,7 +21,7 @@ Every `_` slot routes through the same priority chain. The three sources race; t
 
    See [Transform Blanks](transform-blank.md) and the canonical reference at `docs/architecture/transform-blank.md`. Opt-in via `transform-blank-mode: on`.
 
-3. **`FluidBlankSource` (priority 92)** — free-form lookup. A single fused LLM call segments the lookup span around `_` (handling ambient phrasing, embedded WH-questions, compact factual claims) and produces the canonical short answer. Fill is **always additive**: only the `_` is replaced with the answer; the surrounding words are never overwritten. (The fused prompt still emits a `MODE` line for cross-provider prompt-cache stability, but the runtime ignores it — the destructive WIPE path was retired in the June 2026 slim-down so a failed or surprising classification can never collapse the user's buffer.) See [docs/architecture/blank-sources.md](../architecture/blank-sources.md). Opt-in via `fluid-blank-mode: on`.
+3. **`FluidBlankSource` (priority 92)** — free-form lookup. A single fused LLM call segments the lookup span around `_` (handling ambient phrasing, embedded WH-questions, compact factual claims) and produces the canonical short answer. Fill is **always additive**: only the `_` is replaced with the answer; the surrounding words are never overwritten. (The fused prompt still emits a `MODE` line for cross-provider prompt-cache stability, but the runtime ignores it — the destructive WIPE path was retired in the June 2026 slim-down so a failed or surprising classification can never collapse the user's buffer.) See [docs/architecture/blank-sources.md](../architecture/blank-sources.md). Always on — the base layer every unclaimed `_` falls through to (no mode scalar).
 
 ---
 

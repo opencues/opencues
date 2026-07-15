@@ -134,9 +134,26 @@ install_into_fork() {
   cp -r "$OPENCUES_ROOT/packages/opencues-core/dist" "$core_dest/"
   cp "$OPENCUES_ROOT/packages/opencues-core/package.json" "$core_dest/"
   # node-http-adapter.js isn't compiled by tsc but Resolver requires it
-  # at runtime; copy explicitly so LLM resolution doesn't silently die.
+  # at runtime via the PACKAGE-ROOT specifier `@opencues/core/node-http-adapter`
+  # (no exports map, so `pkg/subpath` resolves at the package root — see
+  # the file's own header + REPAIR.md LF-7). The copy MUST land at the
+  # root: when the un-flattening fix (dist/ subdir layout, DEP0128) kept
+  # this copy pointed at dist/, the specifier silently died and every
+  # LLM dispatch on the host went dark — found 2026-07-14 when the full
+  # agentic suite ran 27 scenarios into 5s timeouts. dist/ copy kept as
+  # belt-and-braces for anything resolving relative to main.
   if [[ -f "$OPENCUES_ROOT/packages/opencues-core/node-http-adapter.js" ]]; then
+    cp "$OPENCUES_ROOT/packages/opencues-core/node-http-adapter.js" "$core_dest/"
     cp "$OPENCUES_ROOT/packages/opencues-core/node-http-adapter.js" "$core_dest/dist/"
+  fi
+  # Probe the resolve the way the runtime will (LF-7 verify): a copy
+  # that lands in the wrong layer must FAIL the install here, not
+  # surface as silent dead LLM dispatch at first use.
+  if command -v node >/dev/null 2>&1; then
+    if ! (cd "$GEMINI_DIR" && node -e "require('@opencues/core/node-http-adapter')" >/dev/null 2>&1); then
+      echo "setup.sh: FATAL — @opencues/core/node-http-adapter does not resolve from the fork root (LF-7)." >&2
+      exit 1
+    fi
   fi
 }
 

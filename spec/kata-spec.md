@@ -1,6 +1,6 @@
 # kata-spec — the `KATA.md` file format & guided-scenario contract
 
-> **Status:** `0.7-alpha`. Expect changes.
+> **Status:** `0.8-alpha`. Expect changes.
 
 A **kata** is a guided, in-editor scenario: an ordered script a user
 works through in their real editor while a runtime observes their
@@ -159,7 +159,7 @@ Whether a runtime enables the kata surface by default or gates it
 behind a feature toggle is a **runtime choice** (the reference impl
 uses a `katas-mode` scalar in `OPENCUES.md`, default on). Feature
 enable/disable toggles are runtime knobs, not spec-mandated scalars —
-consistent with `word-cues-mode`, `fluid-blank-mode`, etc. There is no
+consistent with `word-cues-mode`, `transform-blank-mode`, etc. There is no
 spec-mandated kata scalar.
 
 ---

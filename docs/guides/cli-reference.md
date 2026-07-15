@@ -37,7 +37,7 @@ status + command list `--help` prints, so scripting is unaffected.
 | `opencues install <host>` | One-time setup for an editor/host |
 | `opencues run <host>` | Launch it |
 | `opencues set-key <provider> <key>` | Add an LLM API key |
-| `opencues doctor` | Something's wrong — diagnostics |
+| `opencues doctor` | Something's wrong — diagnostics (`--strict` turns info-level findings into a failing exit code, for CI gating) |
 | `opencues update` | Pull latest + rebuild everything |
 
 Everything below is the full reference. For every command sorted by
@@ -164,6 +164,20 @@ opencues set-key openai sk-...
 Hits each configured provider's lightest endpoint and reports
 success/failure. Useful when "the LLM isn't responding" — confirms
 whether the key or the network is the problem.
+
+### `models` — effective LLM routing + provider catalog
+
+Shows, per bucket (cues / auditors / blanks), the provider · model a
+real dispatch would use — the same shared resolution the runtime,
+`opencues doctor`, and the in-editor `whats my model _` blank sit on —
+then each provider's curated `knownModels` catalog with key state
+(current provider first, active model starred). `--json` for
+scripting.
+
+```bash
+opencues models
+opencues models --json | jq .routing.blanks
+```
 
 ---
 

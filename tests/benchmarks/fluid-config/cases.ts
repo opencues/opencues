@@ -40,7 +40,8 @@ export interface FluidConfigCase {
     | 'reject-user-blank'
     | 'reject-fluid'
     | 'reject-ambiguous'
-    | 'reject-out-of-scope';
+    | 'reject-out-of-scope'
+    | 'reject-transform';
   input: string;
   expected: {
     /** kebab-case scalar from FEATURES, or null when the case is a reject. */
@@ -95,18 +96,6 @@ export const CASES: FluidConfigCase[] = [
     category: 'hit-clean',
     input: 'turn off voice mode _',
     expected: { setting: 'voice-mode', value: 'inactive' },
-  },
-  {
-    id: 'hc-fluid-off',
-    category: 'hit-clean',
-    input: 'disable fluid blank _',
-    expected: { setting: 'fluid-blank-mode', value: 'off' },
-  },
-  {
-    id: 'hc-fluid-on',
-    category: 'hit-clean',
-    input: 'enable fluid blank lookups _',
-    expected: { setting: 'fluid-blank-mode', value: 'on' },
   },
   {
     id: 'hc-trigger-spaced',
@@ -253,12 +242,6 @@ export const CASES: FluidConfigCase[] = [
     category: 'hit-fuzzy',
     input: "I don't want word alternative suggestions on every word _",
     expected: { setting: 'word-cues-mode', value: 'off' },
-  },
-  {
-    id: 'hf-fluid-off-only-keyword',
-    category: 'hit-fuzzy',
-    input: "I only want blanks to fire on explicit keywords, no free-form lookups _",
-    expected: { setting: 'fluid-blank-mode', value: 'off' },
   },
 
   // ── REJECT — USER-BLANK TERRITORY (volume/brightness/etc.) ───────────
@@ -411,10 +394,16 @@ export const CASES: FluidConfigCase[] = [
     expected: { setting: null, value: null },
   },
   {
-    id: 'ro-keybind',
-    category: 'reject-out-of-scope',
+    // Written as out-of-scope BEFORE the nav-keymap feature existed;
+    // the registry grew `nav-keymap` (ctrl-alt / ctrl-shift), so a
+    // shift-flavoured rebind request now has a real setting to route
+    // to. Reclassified July 2026 when the bench was re-pointed at the
+    // production prompt (the stale bench prompt predated nav-keymap
+    // too, which is why this passed as a reject for so long).
+    id: 'hf-keybind',
+    category: 'hit-fuzzy',
     input: 'rebind the cycle key to shift-arrow _',
-    expected: { setting: null, value: null },
+    expected: { setting: 'nav-keymap', value: 'ctrl-shift' },
   },
   {
     id: 'ro-debounce',
@@ -441,5 +430,58 @@ export const CASES: FluidConfigCase[] = [
     category: 'reject-out-of-scope',
     input: 'reset all my settings to defaults _',
     expected: { setting: null, value: null },
+  },
+
+  // ── REJECT: rewrite imperatives — TransformBlank territory ─────────
+  //
+  // July 2026 live bug: `congratz make more professional _` routed to
+  // `sentence-cues-mode on` (and WROTE the scalar) instead of ceding to
+  // TransformBlank. "Make my text X" changes the TEXT once; a setting
+  // changes BEHAVIOUR from now on. These must all be NONE — the shipped
+  // `more-formal` sentence-cue makes formality words the semantic trap.
+  {
+    id: 'rt-make-more-professional',
+    category: 'reject-transform',
+    input: 'make more professional _',
+    expected: { setting: null, value: null },
+  },
+  {
+    id: 'rt-make-it-professional',
+    category: 'reject-transform',
+    input: 'make it professional _',
+    expected: { setting: null, value: null },
+  },
+  {
+    id: 'rt-body-formal',
+    category: 'reject-transform',
+    input: 'hey team make more formal _',
+    expected: { setting: null, value: null },
+  },
+  {
+    id: 'rt-translate',
+    category: 'reject-transform',
+    input: 'this draft is ok translate to spanish _',
+    expected: { setting: null, value: null },
+  },
+  {
+    id: 'rt-tone',
+    category: 'reject-transform',
+    input: 'nice work make the tone friendlier _',
+    expected: { setting: null, value: null },
+  },
+
+  // The recall guard for the delicate boundary: an explicit reference
+  // to the FEATURE still routes.
+  {
+    id: 'hc-sentence-cues-on',
+    category: 'hit-clean',
+    input: 'enable sentence cues _',
+    expected: { setting: 'sentence-cues-mode', value: 'on' },
+  },
+  {
+    id: 'hc-sentence-cues-off',
+    category: 'hit-clean',
+    input: 'turn off the sentence cues _',
+    expected: { setting: 'sentence-cues-mode', value: 'off' },
   },
 ];

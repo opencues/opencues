@@ -326,27 +326,49 @@ import { BlankContextCache } from './modules/blank-context-cache';
  * Re-resolves on every tick (callers wrap this in an arrow), so
  * OPENCUES.md hot-reload propagates without an integration restart.
  */
+/** Shape of the dynamically-require()d @opencues/core surface the two
+ *  auditors-bucket resolvers use. `collapseBucketTier` is the shared
+ *  bucket→global collapse from core's effective-routing.ts — both
+ *  fields optional because the require is version-agnostic; a bundle
+ *  missing either degrades to the same null the missing-core path
+ *  takes (runtime falls back to its built-in Groq-shaped path). */
+interface CoreRoutingModule {
+  resolveLLM?: (opts: unknown) => unknown;
+  collapseBucketTier?: (opts: {
+    bucketProvider?: string | null;
+    bucketModel?: string | null;
+    globalProvider?: string | null;
+    globalModel?: string | null;
+  }) => { globalProvider?: string; globalModel?: string; bucketPinned: boolean };
+}
+
 export function buildAgentLLMResolver(
   configLoader: ConfigLoader,
   apiKeys: Readonly<Record<string, string | undefined>>,
 ): ResolvedAgentLLM | null {
-  let core: { resolveLLM?: (opts: unknown) => unknown } | null = null;
+  let core: CoreRoutingModule | null = null;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     core = require('@opencues/core');
   } catch {
     return null;
   }
-  if (!core?.resolveLLM) return null;
+  if (!core?.resolveLLM || !core.collapseBucketTier) return null;
   const s = configLoader.opencuesState.settings;
   // Auditors bucket override sits BETWEEN per-feature (agent-provider /
-  // agent-model) and the global llm-provider tier. `inherit` collapses
-  // to undefined so the bucket disappears and global takes over —
-  // mirrors the cues/blanks bucket collapse in build-sources.ts.
-  const auditorsBucket = configLoader.opencuesState.auditorsLlmProvider;
-  const auditorsBucketProvider = auditorsBucket === 'inherit' ? undefined : auditorsBucket;
-  const auditorsBucketModel = auditorsBucketProvider ? s.get('auditors-llm-model') : undefined;
-  const auditorsBucketEndpoint = auditorsBucketProvider ? s.get('auditors-llm-endpoint') : undefined;
+  // agent-model) and the global llm-provider tier. The collapse is the
+  // SHARED walk (core's collapseBucketTier) so agent-rewrite's route
+  // agrees with build-sources dispatch and the display surfaces
+  // (doctor / the `model` blank). It also normalizes model sentinels —
+  // cycling `auditors-llm-model` to `default` previously shipped the
+  // literal string "default" as the model name from this path.
+  const tier = core.collapseBucketTier({
+    bucketProvider: configLoader.opencuesState.auditorsLlmProvider,
+    bucketModel: s.get('auditors-llm-model'),
+    globalProvider: s.get('llm-provider'),
+    globalModel: s.get('llm-model'),
+  });
+  const auditorsBucketEndpoint = tier.bucketPinned ? s.get('auditors-llm-endpoint') : undefined;
   const out = core.resolveLLM({
     featureProvider: s.get('agent-provider'),
     featureModel: s.get('agent-model'),
@@ -355,10 +377,8 @@ export function buildAgentLLMResolver(
     // `auditors-llm-provider: cerebras` it wins over the global
     // `llm-provider`; per-feature `agent-provider:` still wins above
     // both.
-    globalProvider: auditorsBucketProvider ?? s.get('llm-provider'),
-    globalModel: auditorsBucketProvider
-      ? (auditorsBucketModel ?? undefined)
-      : s.get('llm-model'),
+    globalProvider: tier.globalProvider,
+    globalModel: tier.globalModel,
     apiKeys,
   }) as ResolvedAgentLLM | null;
   if (!out) return null;
@@ -402,23 +422,27 @@ export function buildKataLLMResolver(
   configLoader: ConfigLoader,
   apiKeys: Readonly<Record<string, string | undefined>>,
 ): ResolvedAgentLLM | null {
-  let core: { resolveLLM?: (opts: unknown) => unknown } | null = null;
+  let core: CoreRoutingModule | null = null;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     core = require('@opencues/core');
   } catch { return null; }
-  if (!core?.resolveLLM) return null;
+  if (!core?.resolveLLM || !core.collapseBucketTier) return null;
   const s = configLoader.opencuesState.settings;
-  const auditorsBucket = configLoader.opencuesState.auditorsLlmProvider;
-  const auditorsBucketProvider = auditorsBucket === 'inherit' ? undefined : auditorsBucket;
-  const auditorsBucketModel = auditorsBucketProvider ? s.get('auditors-llm-model') : undefined;
-  const auditorsBucketEndpoint = auditorsBucketProvider ? s.get('auditors-llm-endpoint') : undefined;
+  // Same shared collapse as buildAgentLLMResolver — see the comment there.
+  const tier = core.collapseBucketTier({
+    bucketProvider: configLoader.opencuesState.auditorsLlmProvider,
+    bucketModel: s.get('auditors-llm-model'),
+    globalProvider: s.get('llm-provider'),
+    globalModel: s.get('llm-model'),
+  });
+  const auditorsBucketEndpoint = tier.bucketPinned ? s.get('auditors-llm-endpoint') : undefined;
   const out = core.resolveLLM({
     featureProvider: s.get('kata-llm-provider'),
     featureModel: s.get('kata-llm-model'),
     endpointOverride: s.get('kata-llm-endpoint') ?? auditorsBucketEndpoint ?? s.get('llm-endpoint'),
-    globalProvider: auditorsBucketProvider ?? s.get('llm-provider'),
-    globalModel: auditorsBucketProvider ? (auditorsBucketModel ?? undefined) : s.get('llm-model'),
+    globalProvider: tier.globalProvider,
+    globalModel: tier.globalModel,
     apiKeys,
   }) as ResolvedAgentLLM | null;
   if (!out) return null;
@@ -437,6 +461,7 @@ import { SpanFillState } from './state/span-fill';
 import { DismissedBlanks } from './state/dismissed-blanks';
 import { SelectorSatelliteState } from './state/selector-satellite';
 import { AgentTaskState } from './state/agent-task';
+import { UndoJournal } from './state/undo-journal';
 
 /** State + ConfigLoader the optional modules (Statusline / TTS / Resolver
  *  / CursorStateExport) and the host's BootResult need access to. */
@@ -448,6 +473,11 @@ export interface SharedRuntime {
   readonly dismissedBlanks: DismissedBlanks;
   readonly selectorSatelliteState: SelectorSatelliteState;
   readonly agentTaskState: AgentTaskState;
+  /** Session-scoped undo/redo transaction log. Wired into Cycling +
+   *  BlankFill here; band boots pass it to their Resolver and
+   *  AgentRewrite constructions and to resetSharedBufferState (epoch
+   *  bump on buffer boundaries). */
+  readonly undoJournal: UndoJournal;
   /** Shared loading-glyph animator for in-flight `_` slots. Passed to
    *  BlankFill (keyword-bound slots) and to Resolver (Fluid/Transform
    *  slots) so both code paths share state and don't race. */
@@ -901,6 +931,10 @@ export function buildSharedRuntime(
   const dismissedBlanks = new DismissedBlanks();
   const selectorSatelliteState = new SelectorSatelliteState();
   const agentTaskState = new AgentTaskState();
+  // Session-scoped (survives buffer resets via the epoch mechanism —
+  // see resetSharedBufferState). Threaded into every mutating module;
+  // band boots pass it to their Resolver/AgentRewrite constructions.
+  const undoJournal = new UndoJournal();
 
   // Universal modules — wired identically on every host.
   const navigation = new Navigation(
@@ -916,7 +950,7 @@ export function buildSharedRuntime(
   const cycling = new Cycling(
     adapter, hlState, dynDefs, configLoader,
     spanFillState, dismissedBlanks, selectorSatelliteState,
-    getApiKeys, isCliProviderAvailable,
+    getApiKeys, isCliProviderAvailable, undoJournal,
   );
   cycling.subscribe();
 
@@ -978,7 +1012,7 @@ export function buildSharedRuntime(
     : null;
   const blankFill = new BlankFill(
     adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading,
-    blankWeaver,
+    blankWeaver, undoJournal,
   );
   configLoader.load()
     .then(() => blankFill.subscribe())
@@ -999,6 +1033,7 @@ export function buildSharedRuntime(
     dismissedBlanks,
     selectorSatelliteState,
     agentTaskState,
+    undoJournal,
     blankLoading,
     markdownRender,
     blankFill,
@@ -1071,6 +1106,12 @@ export function resetSharedBufferState(state: {
    *  reset surface stays one-shot for callers. */
   readonly resolver?: { resetState(): void };
   readonly agentRewrite?: { resetState(): void };
+  /** Optional: undo journal. NOT wiped — deliberately session-scoped
+   *  (a settings/volume change from the previous message should stay
+   *  undoable). The epoch bump marks buffer-splice entries recorded
+   *  before this reset as stale, so the applier skips them with a
+   *  report instead of relocating text into the wrong buffer. */
+  readonly undoJournal?: { noteBufferReset(): void };
 }): void {
   state.dynDefs.clear();
   state.hlState.deactivate();
@@ -1087,4 +1128,5 @@ export function resetSharedBufferState(state: {
   if (typeof state.markdownRender?.resetState === 'function') state.markdownRender.resetState();
   if (typeof state.resolver?.resetState === 'function') state.resolver.resetState();
   if (typeof state.agentRewrite?.resetState === 'function') state.agentRewrite.resetState();
+  if (typeof state.undoJournal?.noteBufferReset === 'function') state.undoJournal.noteBufferReset();
 }

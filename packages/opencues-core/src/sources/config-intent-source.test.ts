@@ -14,6 +14,7 @@ import {
   resolveSummonStart,
   parseSummonOutput,
   hasLikelyIntent,
+  matchDeterministicAction,
 } from './config-intent-source';
 import type { CueContext, HttpAdapter } from '../types';
 import { getProvider } from '../llm-provider';
@@ -335,6 +336,27 @@ describe('ConfigIntentSource', () => {
     assert.strictEqual(src.supports(ctxFromText('change volume because we hate quiet music _')), false);
     // Keyword on a PREVIOUS line → ConfigIntent stays in.
     assert.strictEqual(src.supports(ctxFromText('change volume settings\nturn it down _')), true);
+  });
+
+  it('a trailing bare undo/redo preempts a blank claim (ACTION wins over the shape)', () => {
+    const blanks = {
+      volume: { name: 'volume', blankKeywords: ['volume'] },
+    };
+    // undo-mode ON — the trailing command must reach the ACTION gate even
+    // though the `volume` keyword would otherwise claim the `_`.
+    const on = new ConfigIntentSource({
+      ...baseConfig, httpAdapter: makeMockAdapter([]), applyScalar: noopApply().fn,
+      blanks, allowActionVerdicts: true,
+    });
+    assert.strictEqual(on.supports(ctxFromText('volume undo _')), true);
+    assert.strictEqual(on.supports(ctxFromText('volume redo _')), true);
+    // A plain blank query still cedes (no trailing action).
+    assert.strictEqual(on.supports(ctxFromText('volume _')), false);
+    // undo-mode OFF — no preempt; the blank claim stands.
+    const off = new ConfigIntentSource({
+      ...baseConfig, httpAdapter: makeMockAdapter([]), applyScalar: noopApply().fn, blanks,
+    });
+    assert.strictEqual(off.supports(ctxFromText('volume undo _')), false);
   });
 
   it('priority defaults to 94 (above transform-blank 93, below BlankSource 95)', () => {
@@ -846,5 +868,295 @@ describe('hasLikelyIntent — model-alias parity (gemma ↔ haiku)', () => {
     assert.strictEqual(hasLikelyIntent('the capital of france _'), false);
     assert.strictEqual(hasLikelyIntent('translate to spanish _ hola'), false);
     assert.strictEqual(hasLikelyIntent('fix typos _ teh cat'), false);
+  });
+});
+
+// ============================================================================
+// ACTION verdict (undo/redo) — the fourth intent kind. The source only
+// CLASSIFIES actions; the apply lives runtime-side (undo journal), so
+// every test here pins "no side effect at emit time" alongside the shape.
+// ============================================================================
+
+describe('parseConfigIntentOutput — ACTION verdicts', () => {
+  it('parses a clean undo with count', () => {
+    const v = parseConfigIntentOutput(
+      'INTENT: ACTION\nACTION: undo\nCOUNT: 3\nSETTING:\nVALUE:\nSCOPE:\nPROVIDER:\nMODEL:\nCONFIDENCE: 0.96',
+    );
+    assert.strictEqual(v.kind, 'action');
+    if (v.kind === 'action') {
+      assert.strictEqual(v.action, 'undo');
+      assert.strictEqual(v.count, 3);
+      assert.strictEqual(v.confidence, 0.96);
+    }
+  });
+
+  it('parses redo; missing COUNT defaults to 1', () => {
+    const v = parseConfigIntentOutput('INTENT: ACTION\nACTION: redo\nCONFIDENCE: 0.9');
+    assert.strictEqual(v.kind, 'action');
+    if (v.kind === 'action') {
+      assert.strictEqual(v.action, 'redo');
+      assert.strictEqual(v.count, 1);
+    }
+  });
+
+  it('garbage COUNT floors to 1 (regex only matches digits; "COUNT: some" is a miss)', () => {
+    const v = parseConfigIntentOutput('INTENT: ACTION\nACTION: undo\nCOUNT: some\nCONFIDENCE: 0.9');
+    assert.strictEqual(v.kind, 'action');
+    if (v.kind === 'action') assert.strictEqual(v.count, 1);
+  });
+
+  it('COUNT: 0 floors to 1', () => {
+    const v = parseConfigIntentOutput('INTENT: ACTION\nACTION: undo\nCOUNT: 0\nCONFIDENCE: 0.9');
+    assert.strictEqual(v.kind, 'action');
+    if (v.kind === 'action') assert.strictEqual(v.count, 1);
+  });
+
+  it('unknown ACTION value collapses to NONE', () => {
+    const v = parseConfigIntentOutput('INTENT: ACTION\nACTION: rollback\nCOUNT: 1\nCONFIDENCE: 0.9');
+    assert.strictEqual(v.kind, 'none');
+  });
+
+  it('infers action kind from a populated ACTION line when INTENT is missing', () => {
+    const v = parseConfigIntentOutput('ACTION: undo\nCOUNT: 2\nCONFIDENCE: 0.9');
+    assert.strictEqual(v.kind, 'action');
+    if (v.kind === 'action') assert.strictEqual(v.count, 2);
+  });
+
+  it('empty ACTION line does not hijack a setting verdict', () => {
+    const v = parseConfigIntentOutput(
+      'INTENT: SETTING\nSETTING: debug-mode\nVALUE: on\nACTION:\nCOUNT:\nCONFIDENCE: 0.95',
+    );
+    assert.strictEqual(v.kind, 'setting');
+  });
+});
+
+describe('validateAgainstRegistry — ACTION verdicts', () => {
+  it('accepts undo and redo with positive integer counts', () => {
+    assert.strictEqual(validateAgainstRegistry({ kind: 'action', action: 'undo', count: 1, confidence: 0.9 }).ok, true);
+    assert.strictEqual(validateAgainstRegistry({ kind: 'action', action: 'redo', count: 5, confidence: 0.9 }).ok, true);
+  });
+
+  it('rejects a non-integer or sub-1 count (defence in depth — parse already floors)', () => {
+    assert.strictEqual(validateAgainstRegistry({ kind: 'action', action: 'undo', count: 1.5, confidence: null }).ok, false);
+    assert.strictEqual(validateAgainstRegistry({ kind: 'action', action: 'undo', count: 0, confidence: null }).ok, false);
+  });
+
+  it('rejects an unknown action verb (type-confused input)', () => {
+    const v = { kind: 'action', action: 'rollback', count: 1, confidence: null } as unknown as Parameters<typeof validateAgainstRegistry>[0];
+    assert.strictEqual(validateAgainstRegistry(v).ok, false);
+  });
+});
+
+describe('ConfigIntentSource — ACTION verdict gating + emission', () => {
+  const baseConfig = {
+    provider: getProvider('groq')!,
+    endpoint: 'https://example.test/v1/chat/completions',
+    apiKey: 'test-key',
+    model: 'test-model',
+  };
+  const ACTION_RESPONSE = 'INTENT: ACTION\nACTION: undo\nCOUNT: 2\nSETTING:\nVALUE:\nSCOPE:\nPROVIDER:\nMODEL:\nCONFIDENCE: 0.95';
+
+  it('action verdict cedes by default (allowActionVerdicts unset) with no side effect', async () => {
+    const calls: Array<[string, string]> = [];
+    const src = new ConfigIntentSource({
+      ...baseConfig,
+      httpAdapter: makeMockAdapter([ACTION_RESPONSE]),
+      applyScalar: (s, v) => { calls.push([s, v]); },
+    });
+    // Unique input — the variant pool is module-static, keyed by text.
+    const result = await src.getCues(ctxFromText('undo that gated default _'));
+    assert.strictEqual(result.results.length, 0, 'expected cede when action verdicts are disabled');
+    assert.deepStrictEqual(calls, [], 'no applyScalar side effect for a gated action verdict');
+  });
+
+  it('action verdict emits metadata.undoAction when allowed — and NEVER calls applyScalar', async () => {
+    const calls: Array<[string, string]> = [];
+    const src = new ConfigIntentSource({
+      ...baseConfig,
+      httpAdapter: makeMockAdapter([ACTION_RESPONSE]),
+      applyScalar: (s, v) => { calls.push([s, v]); },
+      allowActionVerdicts: true,
+    });
+    const input = 'undo the last two allowed _';
+    const result = await src.getCues(ctxFromText(input));
+    assert.strictEqual(result.results.length, 1, 'expected one CueResult');
+    assert.deepStrictEqual(calls, [], 'action verdicts must carry no emit-time side effect');
+    const r = result.results[0]!;
+    assert.strictEqual(r.source, 'config-intent');
+    assert.deepStrictEqual(r.alternatives, ['undo']);
+    // Wipe span covers the whole summon phrase (bare command → 0..len).
+    assert.strictEqual(r.spanStart, 0);
+    assert.strictEqual(r.spanEnd, input.length);
+    assert.strictEqual(r.cueTip, 'undo ×2');
+    assert.deepStrictEqual(r.metadata?.undoAction, { action: 'undo', count: 2, confidence: 0.95 });
+    // No selector-satellite fields — the resolver must not route this
+    // through the settings splice path.
+    assert.strictEqual(r.metadata?.selectorBlank, undefined);
+    assert.strictEqual(r.metadata?.satelliteValue, undefined);
+  });
+
+  it('setting verdict cedes when allowConfigVerdicts=false (undo-only construction)', async () => {
+    const calls: Array<[string, string]> = [];
+    const src = new ConfigIntentSource({
+      ...baseConfig,
+      httpAdapter: makeMockAdapter(['SETTING: debug-mode\nVALUE: on\nCONFIDENCE: 0.97']),
+      applyScalar: (s, v) => { calls.push([s, v]); },
+      allowConfigVerdicts: false,
+      allowActionVerdicts: true,
+    });
+    const result = await src.getCues(ctxFromText('enable debug logging config-gated _'));
+    assert.strictEqual(result.results.length, 0, 'setting verdict must cede when config verdicts are disabled');
+    assert.deepStrictEqual(calls, [], 'no applyScalar when config verdicts are disabled');
+  });
+
+  it('action verdict preserves prior content: spanStart lands after the sentence boundary', async () => {
+    const src = new ConfigIntentSource({
+      ...baseConfig,
+      httpAdapter: makeMockAdapter([ACTION_RESPONSE]),
+      applyScalar: () => {},
+      allowActionVerdicts: true,
+    });
+    const input = 'hii world. undo that boundary case _';
+    const result = await src.getCues(ctxFromText(input));
+    assert.strictEqual(result.results.length, 1);
+    const r = result.results[0]!;
+    assert.strictEqual(r.spanStart, 'hii world.'.length + 1, 'wipe must start after the sentence boundary, preserving prior prose');
+  });
+});
+
+describe('matchDeterministicAction — the Ctrl+Z string path', () => {
+  it('matches a bare undo/redo at the start (commandStart 0, count 1)', () => {
+    assert.deepStrictEqual(matchDeterministicAction('undo'), { action: 'undo', count: 1, commandStart: 0 });
+    assert.deepStrictEqual(matchDeterministicAction('redo'), { action: 'redo', count: 1, commandStart: 0 });
+    assert.deepStrictEqual(matchDeterministicAction('revert'), { action: 'undo', count: 1, commandStart: 0 });
+  });
+
+  it('is case-insensitive', () => {
+    assert.strictEqual(matchDeterministicAction('REDO')?.action, 'redo');
+    assert.strictEqual(matchDeterministicAction('Undo')?.action, 'undo');
+  });
+
+  it('parses an integer count after the alias', () => {
+    assert.deepStrictEqual(matchDeterministicAction('undo 3'), { action: 'undo', count: 3, commandStart: 0 });
+    assert.deepStrictEqual(matchDeterministicAction('redo 12'), { action: 'redo', count: 12, commandStart: 0 });
+  });
+
+  it('locates the command AFTER a leading `_` query — the logged bug', () => {
+    // `capital of france _ redo` → wipe span begins at "redo" (offset 20),
+    // so the prior `capital of france _` query survives the wipe.
+    assert.deepStrictEqual(
+      matchDeterministicAction('capital of france _ redo'),
+      { action: 'redo', count: 1, commandStart: 20 },
+    );
+  });
+
+  it('locates the command after a confirmation word (`Paris undo`)', () => {
+    assert.deepStrictEqual(matchDeterministicAction('Paris undo'), { action: 'undo', count: 1, commandStart: 6 });
+  });
+
+  it('does NOT match `redo <object>` — the alias is not the trailing token', () => {
+    assert.strictEqual(matchDeterministicAction('redo the report'), null);
+    assert.strictEqual(matchDeterministicAction('undo my last commit'), null);
+    assert.strictEqual(matchDeterministicAction('revert the deploy'), null);
+  });
+
+  it('does NOT match prose without an alias, or a non-positive count', () => {
+    assert.strictEqual(matchDeterministicAction('capital of france'), null);
+    assert.strictEqual(matchDeterministicAction('hello world'), null);
+    assert.strictEqual(matchDeterministicAction(''), null);
+    assert.strictEqual(matchDeterministicAction('undo 0'), null);
+  });
+
+  it('matches common Latin-script aliases', () => {
+    assert.strictEqual(matchDeterministicAction('deshacer')?.action, 'undo');
+    assert.strictEqual(matchDeterministicAction('rehacer')?.action, 'redo');
+    assert.strictEqual(matchDeterministicAction('annuler')?.action, 'undo');
+    assert.strictEqual(matchDeterministicAction('rückgängig')?.action, 'undo');
+  });
+});
+
+describe('ConfigIntentSource — deterministic ACTION gate (no LLM)', () => {
+  const baseConfig = {
+    provider: getProvider('groq')!,
+    endpoint: 'https://example.test/v1/chat/completions',
+    apiKey: 'test-key',
+    model: 'test-model',
+  };
+  // A mock adapter that FAILS the test if the LLM is ever dispatched.
+  const throwingAdapter: HttpAdapter = {
+    post: async () => { throw new Error('LLM must not be called on the deterministic ACTION path'); },
+  };
+
+  it('emits ACTION redo for `capital of france _ redo _` with NO LLM call, wiping only `redo _`', async () => {
+    const input = 'capital of france _ redo _';
+    const src = new ConfigIntentSource({
+      ...baseConfig,
+      httpAdapter: throwingAdapter,
+      applyScalar: () => {},
+      allowActionVerdicts: true,
+    });
+    const result = await src.getCues(ctxFromText(input));
+    assert.strictEqual(result.results.length, 1, 'expected one deterministic ACTION result');
+    const r = result.results[0]!;
+    assert.deepStrictEqual(r.metadata?.undoAction, { action: 'redo', count: 1, confidence: 1 });
+    assert.strictEqual(r.spanStart, 20, 'wipe starts at "redo", preserving the leading `capital of france _`');
+    assert.strictEqual(r.spanEnd, input.length);
+  });
+
+  it('emits ACTION undo with a count for `undo 3 _` — no LLM call', async () => {
+    const src = new ConfigIntentSource({
+      ...baseConfig,
+      httpAdapter: throwingAdapter,
+      applyScalar: () => {},
+      allowActionVerdicts: true,
+    });
+    const result = await src.getCues(ctxFromText('undo 3 _'));
+    assert.strictEqual(result.results.length, 1);
+    assert.deepStrictEqual(result.results[0]!.metadata?.undoAction, { action: 'undo', count: 3, confidence: 1 });
+    assert.strictEqual(result.results[0]!.cueTip, 'undo ×3');
+  });
+
+  it('does NOT fire the deterministic gate when undo-mode is off', async () => {
+    // allowActionVerdicts unset → the gate is skipped; `redo _` then flows
+    // to the LLM path, which here returns NONE and cedes.
+    const src = new ConfigIntentSource({
+      ...baseConfig,
+      httpAdapter: makeMockAdapter(['INTENT: NONE\nCONFIDENCE: 0.9']),
+      applyScalar: () => {},
+    });
+    const result = await src.getCues(ctxFromText('redo _'));
+    assert.strictEqual(result.results.length, 0, 'no ACTION result when undo-mode is off');
+  });
+});
+
+describe('hasLikelyIntent — multilingual undo/redo aliases', () => {
+  it('trips on English undo/redo forms', () => {
+    assert.strictEqual(hasLikelyIntent('undo _'), true);
+    assert.strictEqual(hasLikelyIntent('undo 3 _'), true);
+    assert.strictEqual(hasLikelyIntent('redo _'), true);
+    assert.strictEqual(hasLikelyIntent('revert that _'), true);
+  });
+
+  it('trips on CJK aliases via substring matching (\\b never matches CJK)', () => {
+    assert.strictEqual(hasLikelyIntent('元に戻して _'), true);
+    assert.strictEqual(hasLikelyIntent('さっきのを取り消してください _'), true);
+    assert.strictEqual(hasLikelyIntent('撤销 _'), true);
+    assert.strictEqual(hasLikelyIntent('되돌리기 _'), true);
+  });
+
+  it('trips on Cyrillic / Thai / Arabic aliases (also non-\\w scripts)', () => {
+    assert.strictEqual(hasLikelyIntent('отменить _'), true);
+    assert.strictEqual(hasLikelyIntent('เลิกทำ _'), true);
+    assert.strictEqual(hasLikelyIntent('تراجع _'), true);
+  });
+
+  it('trips on Latin-script aliases with word boundaries', () => {
+    assert.strictEqual(hasLikelyIntent('deshacer _'), true);
+    assert.strictEqual(hasLikelyIntent('rückgängig machen _'), true);
+    assert.strictEqual(hasLikelyIntent('cofnij _'), true);
+  });
+
+  it('still rejects plain prose with no alias', () => {
+    assert.strictEqual(hasLikelyIntent('the quick brown fox _'), false);
   });
 });

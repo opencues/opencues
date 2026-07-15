@@ -1,6 +1,6 @@
 # identity-context-spec — the `IDENTITY.md` file format & sentinel token contract
 
-> **Status:** `0.7-alpha`. Expect changes.
+> **Status:** `0.8-alpha`. Expect changes.
 
 `IDENTITY.md` is the **user's personal-data catalog**. Each frontmatter
 field derives a canonical bracket-token (a *sentinel*) the LLM can

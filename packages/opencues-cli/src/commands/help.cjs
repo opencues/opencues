@@ -334,6 +334,7 @@ module.exports = function help(argv, ctx) {
       ['config [get|set]',   'Browse + change OpenCues settings (interactive or scriptable)'],
       ['identity',           'Manage IDENTITY.md personal-data fields (interactive or scriptable)'],
       ['check-keys',         'Verify configured API keys against provider endpoints'],
+      ['models',             'Effective LLM routing per bucket + provider/model catalog'],
     ]},
     { title: 'Authoring', description: 'create, validate, and import cues/blanks/packs', rows: [
       ['init',                  'Scaffold <cwd>/.cues/ with templates'],

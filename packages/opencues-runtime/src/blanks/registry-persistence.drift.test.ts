@@ -24,7 +24,7 @@ import { OpenCuesSettingsBlank } from './opencues-settings';
 // A bare-minimum OPENCUES.md: frontmatter delimiters + one unrelated
 // scalar to anchor parsing. NO settings: block, NO pre-existing
 // lines for the scalars we cycle.
-const BARE_OPENCUES_MD = '---\nfluid-blank-mode: on\n---\n\nbody\n';
+const BARE_OPENCUES_MD = '---\nword-cues-mode: on\n---\n\nbody\n';
 
 interface Ctx {
   ctl: OpenCuesSettingsBlank;

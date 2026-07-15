@@ -30,10 +30,10 @@ import { DEFAULT_OPENCUES_STATE } from './config-loader';
 // need narrow types because their consumer treats them as a plain
 // on/off toggle and the read site is concentrated (resolver.ts).
 const SETTINGS_MAP_ONLY: ReadonlySet<string> = new Set([
-  'fluidBlankMode',     // consumed in resolver.ts:enableFluidBlank
   'wordCuesMode',       // consumed in resolver.ts:enableWordCues
   'transformBlankMode', // consumed by transform-blank pipeline gate
   'fluidConfigMode',    // consumed in resolver.ts:enableConfigIntent
+  'undoMode',           // consumed in resolver.ts:enableUndoActions
   'sentenceCuesMode',   // consumed in resolver.ts:enableSentenceCues
   'integrationWeaveMode', // consumed in blank-fill.ts applyAsyncFill weave gate
                           // (read from settings map; no resolver/typed field)
