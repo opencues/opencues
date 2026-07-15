@@ -55,6 +55,8 @@ export {
   ConfigIntentSource,
   parseConfigIntentOutput,
   validateAgainstRegistry,
+  matchDeterministicAction,
+  type DeterministicActionMatch,
   type ConfigIntentSourceConfig,
   type ConfigIntentEvent,
   type ConfigIntentVerdict,

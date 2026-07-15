@@ -10,7 +10,7 @@ import type { BlankWriteInverse, HostAdapter, KeyEvent, TextChangeEvent, Unsubsc
 import { fillSplice, type UndoEntry, type UndoJournal } from '../state/undo-journal';
 import type { ConfigLoader } from './config-loader';
 import { splitWords } from './navigation';
-import { isBlankConfigCycleable, keywordInWindow, lineOfWords, matchBlankShape, segmentStart } from '@opencues/core';
+import { isBlankConfigCycleable, keywordInWindow, lineOfWords, matchBlankShape, matchDeterministicAction, segmentStart } from '@opencues/core';
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
@@ -217,6 +217,20 @@ export class BlankFill {
   /** Pure scanner — exposed for unit tests. */
   scan(text: string): readonly BlankSlot[] {
     const cleanText = text.replace(/[\u200B\u200C]/g, '');
+    // ACTION preempts any blank claim. A trailing bare `undo`/`redo` before
+    // the `_` is a universal runtime command \u2014 it must NOT be swallowable as
+    // a blank argument (live-caught 2026-07-15: `capital of france undo _`
+    // matched the `countries` shape with arg "france undo" \u2192 "france undo:
+    // not found", eating the undo). BlankSource outranks ConfigIntent
+    // (95 > 94), so without this the ACTION gate never gets to run. Only
+    // cede when undo is actually wired (a journal is present).
+    if (this.undoJournal) {
+      const trigIdx = cleanText.lastIndexOf('_');
+      if (trigIdx >= 0 && matchDeterministicAction(cleanText.slice(0, trigIdx))) {
+        this._slots = [];
+        return this._slots;
+      }
+    }
     const words = cleanText.split(/\s+/).filter(Boolean);
     // Per-word line numbers (same order as the flat split) for the shared
     // line-scoped keyword window.

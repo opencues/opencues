@@ -338,6 +338,27 @@ describe('ConfigIntentSource', () => {
     assert.strictEqual(src.supports(ctxFromText('change volume settings\nturn it down _')), true);
   });
 
+  it('a trailing bare undo/redo preempts a blank claim (ACTION wins over the shape)', () => {
+    const blanks = {
+      volume: { name: 'volume', blankKeywords: ['volume'] },
+    };
+    // undo-mode ON — the trailing command must reach the ACTION gate even
+    // though the `volume` keyword would otherwise claim the `_`.
+    const on = new ConfigIntentSource({
+      ...baseConfig, httpAdapter: makeMockAdapter([]), applyScalar: noopApply().fn,
+      blanks, allowActionVerdicts: true,
+    });
+    assert.strictEqual(on.supports(ctxFromText('volume undo _')), true);
+    assert.strictEqual(on.supports(ctxFromText('volume redo _')), true);
+    // A plain blank query still cedes (no trailing action).
+    assert.strictEqual(on.supports(ctxFromText('volume _')), false);
+    // undo-mode OFF — no preempt; the blank claim stands.
+    const off = new ConfigIntentSource({
+      ...baseConfig, httpAdapter: makeMockAdapter([]), applyScalar: noopApply().fn, blanks,
+    });
+    assert.strictEqual(off.supports(ctxFromText('volume undo _')), false);
+  });
+
   it('priority defaults to 94 (above transform-blank 93, below BlankSource 95)', () => {
     const src = new ConfigIntentSource({
       ...baseConfig,

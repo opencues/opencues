@@ -1316,6 +1316,17 @@ export class ConfigIntentSource implements CueSource {
     const blankIndex = lower.indexOf('_');
     if (blankIndex === -1) return false;
 
+    // ACTION preempts a blank claim. A trailing bare `undo`/`redo` before
+    // the `_` is a universal runtime command — do NOT cede it to a blank
+    // shape/keyword that happens to also match (`capital of france undo _`
+    // matches the `countries` shape, but "undo" is the command, not part of
+    // the country). The deterministic gate in getCues then emits the ACTION.
+    // BlankFill.scan cedes symmetrically, so exactly one of us claims.
+    if (this.allowActionVerdicts) {
+      const trigIdx = context.text.lastIndexOf('_');
+      if (trigIdx >= 0 && matchDeterministicAction(context.text.slice(0, trigIdx))) return true;
+    }
+
     // Cede when a keyword/shaped blank claims this `_` (shape match, or a
     // non-shaped blank's keyword on the same line). SHARED predicate —
     // identical for FluidBlank / TransformBlank / ConfigIntent so they can't
