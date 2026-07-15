@@ -126,6 +126,21 @@ lives at the opencues-core package root, NOT under `dist/`. The OpenCode
 setup only copied `dist/*` + `package.json`. CC's setup explicitly
 handles this standalone file (its setup.sh line ~254-255).
 
+**RECURRENCE (2026-07-14):** the un-flattening layout fix (keep a
+`dist/` subdir so `main: dist/index.js` resolves without DEP0128)
+left the explicit copy pointed at `$core_dest/dist/` — but the
+runtime's specifier `@opencues/core/node-http-adapter` resolves at the
+PACKAGE ROOT (no exports map), so the copy landed one layer too deep
+and every LLM dispatch went dark again: sources built fine, every
+scenario's `*.started` event just never fired (27 agentic failures,
+all 5s timeouts). Same silent shape on gemini-cli. Fix: copy to the
+package ROOT (+ dist/ as belt-and-braces) AND a fatal post-copy
+resolve probe in both setup.sh files — `bun`/`node -e
+"require('@opencues/core/node-http-adapter')"` from the fork root —
+so a wrong-layer copy fails the INSTALL instead of surfacing as dead
+dispatch at first use. Shell's installer was already correct (root);
+CC flattens dist into the package root, so its layout is immune.
+
 **Fix:** add an explicit copy of `node-http-adapter.js` after the
 `dist/*` cp. Idempotent guard with `[ -f ... ] && cp`.
 

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — OC + gemini installers copied `node-http-adapter.js` one layer too deep; every LLM dispatch on those hosts was silently dead (`@opencues/opencode` 0.2.6 → 0.2.7, `@opencues/gemini-cli` 0.2.6 → 0.2.7)
+
+Found by the full agentic-suite validation pass (2026-07-14): 27 scenarios failed with `*.started` events never firing — the resolver's fallback `require('@opencues/core/node-http-adapter')` (a package-ROOT specifier; core has no exports map) could not resolve because both setup.sh files copied the hand-written CJS into `$core_dest/dist/`. History: the copy USED to land at the root because the old installer flattened `dist/*` into the package root; the un-flattening fix (dist/ subdir layout, DEP0128) kept the explicit copy pointed at dist/ — reintroducing REPAIR.md LF-7 through the back door with no probe to catch it. Sources still built, so nothing logged until first dispatch, and every prior host check this week happened to exercise only deterministic blanks. Shell's installer was already correct (root); CC flattens, so it was immune.
+
+Fix: copy to the package ROOT (+ dist/ belt-and-braces) in both installers, plus a FATAL post-copy resolve probe (`bun`/`node -e "require('@opencues/core/node-http-adapter')"` from the fork root) so a wrong-layer copy fails the install instead of shipping dead dispatch. REPAIR.md § LF-7 updated with the recurrence.
+
 ### Fixed — the registry-miss `[err]` fill was dropped on hosts whose text state lags the dispatch (`@opencues/runtime` 0.16.1 → 0.16.2)
 
 Live-CC follow-up to the previous entry, caught during slot-2 validation: the warn fired but the `[err]` never appeared. The miss branch was the ONLY fill running synchronously inside the text-change dispatch, and CC's `adapter.getText()` is one keystroke stale at that instant — `words[slot.index]` missed and `applyAsyncFill`'s staleness guard silently dropped the fill. Every other fill path is naturally deferred past the state update by script/LLM latency, and the MockAdapter commits text BEFORE dispatch, which hid the class from the unit journeys.
