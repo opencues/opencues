@@ -117,3 +117,29 @@ To add a new mode (e.g. `pulse`):
 1. Add the frame array constant + a `framesFor()` case in `blank-loading.ts`.
 2. Add a literal-type branch in the `mode` thunk's switch (e.g. `if (raw === 'pulse') return raw;`).
 3. Add the entry under `settings.blank-loading-animation.values:` in both OPENCUES.md files.
+
+## Inline definition — the `loading animation` blank (July 2026)
+
+The four scalars above stay the single source of truth, but you no
+longer have to hand-edit them: a shipped deterministic blank parses an
+inline definition and upserts them for you.
+
+```
+loading animation _,-,‾,- _                       frames → custom
+loading animation _,-,‾,- red,orange,yellow _     colour i paints frame i
+loading animation ▖,▘,▝,▗ #ff5f5f,#ffd75f 75 _    + interval (ms)
+loading animation red,blue _                      recolour, frames untouched
+loading animation 300 _                           interval only
+loading animation bounce _                        preset switch (+ optional colours/interval)
+loading animation show _                          current config summary
+```
+
+Comma-separated lists (no spaces inside a list); token order free —
+classification is by shape (preset word / all-colour CSV / bare number
+= interval / anything else = frames). Colour vocabulary: ANSI names,
+everyday names (orange, purple, pink, teal, lime, gold, violet —
+`EXTENDED_COLOR_NAMES`), 0-255 indices, `#hex`. One list feeds BOTH
+parallel colour scalars. Every floor (frame truncation, interval
+clamp, unused colours, one-sided colour lists) is named in the
+confirmation. Grammar + examples: `defaults/blanks/loading-animation/BLANK.md`;
+implementation: `packages/opencues-runtime/src/blanks/loading-animation.ts`.
