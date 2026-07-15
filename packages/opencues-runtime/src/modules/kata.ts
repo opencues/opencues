@@ -263,10 +263,12 @@ export class KataCoach {
   private _tickSnapshot = '';
   private _lastText = '';
   /** Our own consume-writes, so their echo isn't recorded as user
-   *  activity. TTL-pruned (250ms — mirrors boot-common's
-   *  RUNTIME_WRITE_TTL_MS): a stale entry must never swallow a LATER
-   *  legitimate user event with identical text. The empty string is the
-   *  dangerous case — every consume writes '', and every user submit
+   *  activity. TTL-pruned at 250ms: a stale entry must never swallow a
+   *  LATER legitimate user event with identical text. Deliberately SHORTER
+   *  than boot-common's RUNTIME_WRITE_TTL_MS (raised to 1500ms for #306) —
+   *  kata's consume cadence is slow and the danger runs the other way:
+   *  a wide window here would swallow a real user submit. The empty string
+   *  is the dangerous case — every consume writes '', and every user submit
    *  produces '' — which is exactly how a lingering entry ate the
    *  submit-detection signal (caught by kata.scenarios.test.ts). */
   private _selfWrites: Array<{ text: string; addedAt: number }> = [];
