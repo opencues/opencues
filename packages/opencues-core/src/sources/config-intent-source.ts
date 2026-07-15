@@ -292,6 +292,68 @@ export function hasLikelyIntent(text: string): boolean {
   return false;
 }
 
+/**
+ * Deterministic undo/redo command matcher — the Ctrl+Z path.
+ *
+ * undo/redo has exactly one meaning; routing it through the LLM
+ * classifier only introduces latency and a way to cede (a leading
+ * factual-lookup query like `capital of france _ redo _` biased the
+ * classifier to NONE, dropping the redo). This is a pure string match
+ * on the token(s) immediately before the trigger `_`: a bare undo/redo
+ * alias, optionally followed by an integer count. No model call, no
+ * way to misfire into a task (a `redo <object>` request has a non-alias
+ * trailing token and never matches here — it falls through to the LLM).
+ *
+ * Scope is deliberately the unambiguous space-delimited Latin-script
+ * aliases + integer counts. CJK stems (元に戻して), number-words
+ * ("undo twice"), and verbose phrasings ("undo the last two changes",
+ * "take that back") don't string-match cleanly and remain the LLM
+ * classifier's job — see `undoRedoAliases` (the recall prefilter) and
+ * INTENT C in SYSTEM_PROMPT.
+ */
+const DETERMINISTIC_ACTION_ALIASES: Record<string, 'undo' | 'redo'> = {
+  undo: 'undo', revert: 'undo',
+  redo: 'redo',
+  deshacer: 'undo', rehacer: 'redo',           // es
+  annuler: 'undo', rétablir: 'redo',           // fr
+  rückgängig: 'undo', wiederholen: 'redo',     // de
+  desfazer: 'undo', refazer: 'redo',           // pt
+  annulla: 'undo', ripristina: 'redo',         // it
+  opnieuw: 'redo',                             // nl (undo = "ongedaan maken", multi-word → LLM)
+  cofnij: 'undo', ponów: 'redo',               // pl
+  yinele: 'redo',                              // tr ("geri al" undo is multi-word → LLM)
+  urungkan: 'undo', ulangi: 'redo',            // id
+};
+
+export interface DeterministicActionMatch {
+  action: 'undo' | 'redo';
+  /** Repeat count; 1 when no explicit integer count was given. */
+  count: number;
+  /** Offset in the ORIGINAL buffer where the command token begins. */
+  commandStart: number;
+}
+
+/**
+ * Match a bare undo/redo command as the trailing token(s) of `before`
+ * (the buffer text up to — not including — the trigger `_`). Returns
+ * null for anything that isn't an unambiguous deterministic command.
+ */
+export function matchDeterministicAction(before: string): DeterministicActionMatch | null {
+  // Anchored at end: an alias word, then an OPTIONAL integer count.
+  // `\p{L}+` stops at the earlier `_` (underscore is not a letter), so a
+  // preceding `capital of france _ ` query never bleeds into the match.
+  const m = /(?:^|\s)(\p{L}+)(?:[ \t]+(\d+))?[ \t]*$/u.exec(before);
+  if (!m) return null;
+  const action = DETERMINISTIC_ACTION_ALIASES[m[1].toLowerCase()];
+  if (!action) return null;
+  const count = m[2] ? parseInt(m[2], 10) : 1;
+  if (count < 1) return null;
+  // Skip any leading whitespace the `(?:^|\s)` group consumed so the span
+  // starts exactly at the alias — wiping the command leaves prior content.
+  const leadingWs = m[0].length - m[0].replace(/^\s+/, '').length;
+  return { action, count, commandStart: m.index + leadingWs };
+}
+
 export const SYSTEM_PROMPT = `You are a CONFIGURATION INTENT CLASSIFIER for the OpenCues runtime.
 
 You read a sentence containing _ and decide which of four intents the user has:
@@ -1270,6 +1332,43 @@ export class ConfigIntentSource implements CueSource {
     const t0 = Date.now();
     const blankIdx = context.words.indexOf('_');
     if (blankIdx === -1) return { results: [] };
+
+    // DETERMINISTIC ACTION gate (the Ctrl+Z path) — before ANY LLM work.
+    // A bare undo/redo (+ optional integer count) immediately before the
+    // trigger `_` is an unambiguous command: match it by string, emit the
+    // ACTION verdict instantly, no classifier round-trip and no way to
+    // cede. Keys off the LAST `_` (the just-typed trigger) so a leading
+    // `capital of france _ redo _` wipes only `redo _` and leaves the
+    // prior query. `redo <object>` and multilingual/verbose phrasings
+    // don't match here and fall through to the LLM classifier below.
+    if (this.allowActionVerdicts) {
+      const triggerCharIdx = context.text.lastIndexOf('_');
+      const det = matchDeterministicAction(context.text.slice(0, triggerCharIdx));
+      if (det) {
+        const detWordIdx = context.words.lastIndexOf('_');
+        const verdict: ConfigIntentVerdict = { kind: 'action', action: det.action, count: det.count, confidence: 1 };
+        this.log(`ConfigIntent: ACTION ${det.action} ×${det.count} (deterministic, no LLM) — emitting for runtime apply`);
+        this.emit({ type: 'started', textLen: context.text.length, blankIdx, llm: 'deterministic (no LLM)' });
+        this.emit({ type: 'completed', verdict, applied: false, latencyMs: Date.now() - t0 });
+        return {
+          results: [{
+            wordIndex: detWordIdx,
+            word: '_',
+            alternatives: [det.action],
+            source: this.id,
+            priority: this.priority,
+            spanStart: det.commandStart,
+            spanEnd: context.text.length,
+            cueTip: det.count > 1 ? `${det.action} ×${det.count}` : det.action,
+            metadata: {
+              undoAction: { action: det.action, count: det.count, confidence: 1 },
+            },
+          }],
+          timing: Date.now() - t0,
+          model: this.model,
+        };
+      }
+    }
 
     // Likely-intent gate — skip the LLM dispatch when the buffer has
     // zero settings/provider keywords. Saves ~280ms per cold trigger

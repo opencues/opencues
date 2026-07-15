@@ -14,6 +14,7 @@ import {
   resolveSummonStart,
   parseSummonOutput,
   hasLikelyIntent,
+  matchDeterministicAction,
 } from './config-intent-source';
 import type { CueContext, HttpAdapter } from '../types';
 import { getProvider } from '../llm-provider';
@@ -999,6 +1000,111 @@ describe('ConfigIntentSource — ACTION verdict gating + emission', () => {
     assert.strictEqual(result.results.length, 1);
     const r = result.results[0]!;
     assert.strictEqual(r.spanStart, 'hii world.'.length + 1, 'wipe must start after the sentence boundary, preserving prior prose');
+  });
+});
+
+describe('matchDeterministicAction — the Ctrl+Z string path', () => {
+  it('matches a bare undo/redo at the start (commandStart 0, count 1)', () => {
+    assert.deepStrictEqual(matchDeterministicAction('undo'), { action: 'undo', count: 1, commandStart: 0 });
+    assert.deepStrictEqual(matchDeterministicAction('redo'), { action: 'redo', count: 1, commandStart: 0 });
+    assert.deepStrictEqual(matchDeterministicAction('revert'), { action: 'undo', count: 1, commandStart: 0 });
+  });
+
+  it('is case-insensitive', () => {
+    assert.strictEqual(matchDeterministicAction('REDO')?.action, 'redo');
+    assert.strictEqual(matchDeterministicAction('Undo')?.action, 'undo');
+  });
+
+  it('parses an integer count after the alias', () => {
+    assert.deepStrictEqual(matchDeterministicAction('undo 3'), { action: 'undo', count: 3, commandStart: 0 });
+    assert.deepStrictEqual(matchDeterministicAction('redo 12'), { action: 'redo', count: 12, commandStart: 0 });
+  });
+
+  it('locates the command AFTER a leading `_` query — the logged bug', () => {
+    // `capital of france _ redo` → wipe span begins at "redo" (offset 20),
+    // so the prior `capital of france _` query survives the wipe.
+    assert.deepStrictEqual(
+      matchDeterministicAction('capital of france _ redo'),
+      { action: 'redo', count: 1, commandStart: 20 },
+    );
+  });
+
+  it('locates the command after a confirmation word (`Paris undo`)', () => {
+    assert.deepStrictEqual(matchDeterministicAction('Paris undo'), { action: 'undo', count: 1, commandStart: 6 });
+  });
+
+  it('does NOT match `redo <object>` — the alias is not the trailing token', () => {
+    assert.strictEqual(matchDeterministicAction('redo the report'), null);
+    assert.strictEqual(matchDeterministicAction('undo my last commit'), null);
+    assert.strictEqual(matchDeterministicAction('revert the deploy'), null);
+  });
+
+  it('does NOT match prose without an alias, or a non-positive count', () => {
+    assert.strictEqual(matchDeterministicAction('capital of france'), null);
+    assert.strictEqual(matchDeterministicAction('hello world'), null);
+    assert.strictEqual(matchDeterministicAction(''), null);
+    assert.strictEqual(matchDeterministicAction('undo 0'), null);
+  });
+
+  it('matches common Latin-script aliases', () => {
+    assert.strictEqual(matchDeterministicAction('deshacer')?.action, 'undo');
+    assert.strictEqual(matchDeterministicAction('rehacer')?.action, 'redo');
+    assert.strictEqual(matchDeterministicAction('annuler')?.action, 'undo');
+    assert.strictEqual(matchDeterministicAction('rückgängig')?.action, 'undo');
+  });
+});
+
+describe('ConfigIntentSource — deterministic ACTION gate (no LLM)', () => {
+  const baseConfig = {
+    provider: getProvider('groq')!,
+    endpoint: 'https://example.test/v1/chat/completions',
+    apiKey: 'test-key',
+    model: 'test-model',
+  };
+  // A mock adapter that FAILS the test if the LLM is ever dispatched.
+  const throwingAdapter: HttpAdapter = {
+    post: async () => { throw new Error('LLM must not be called on the deterministic ACTION path'); },
+  };
+
+  it('emits ACTION redo for `capital of france _ redo _` with NO LLM call, wiping only `redo _`', async () => {
+    const input = 'capital of france _ redo _';
+    const src = new ConfigIntentSource({
+      ...baseConfig,
+      httpAdapter: throwingAdapter,
+      applyScalar: () => {},
+      allowActionVerdicts: true,
+    });
+    const result = await src.getCues(ctxFromText(input));
+    assert.strictEqual(result.results.length, 1, 'expected one deterministic ACTION result');
+    const r = result.results[0]!;
+    assert.deepStrictEqual(r.metadata?.undoAction, { action: 'redo', count: 1, confidence: 1 });
+    assert.strictEqual(r.spanStart, 20, 'wipe starts at "redo", preserving the leading `capital of france _`');
+    assert.strictEqual(r.spanEnd, input.length);
+  });
+
+  it('emits ACTION undo with a count for `undo 3 _` — no LLM call', async () => {
+    const src = new ConfigIntentSource({
+      ...baseConfig,
+      httpAdapter: throwingAdapter,
+      applyScalar: () => {},
+      allowActionVerdicts: true,
+    });
+    const result = await src.getCues(ctxFromText('undo 3 _'));
+    assert.strictEqual(result.results.length, 1);
+    assert.deepStrictEqual(result.results[0]!.metadata?.undoAction, { action: 'undo', count: 3, confidence: 1 });
+    assert.strictEqual(result.results[0]!.cueTip, 'undo ×3');
+  });
+
+  it('does NOT fire the deterministic gate when undo-mode is off', async () => {
+    // allowActionVerdicts unset → the gate is skipped; `redo _` then flows
+    // to the LLM path, which here returns NONE and cedes.
+    const src = new ConfigIntentSource({
+      ...baseConfig,
+      httpAdapter: makeMockAdapter(['INTENT: NONE\nCONFIDENCE: 0.9']),
+      applyScalar: () => {},
+    });
+    const result = await src.getCues(ctxFromText('redo _'));
+    assert.strictEqual(result.results.length, 0, 'no ACTION result when undo-mode is off');
   });
 });
 
