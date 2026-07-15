@@ -90,7 +90,7 @@ VALUE: <one of the listed values for that scalar; empty when NONE>
 CONFIDENCE: <0.0-1.0>
 ```
 
-Three structural rules in the prompt that map to bench failures we
+Four structural rules in the prompt that map to bench failures we
 fixed during validation:
 
 - **Emit all three lines.** Empty `VALUE:` is fine, but truncating
@@ -101,11 +101,25 @@ fixed during validation:
   `voice-mode`.
 - **Confidence below 0.5 → emit NONE.** Uncertainty IS the signal to
   reject; better to fall through to FluidBlank than mis-route.
+- **Rewrite imperatives → NONE.** "make (it/this/more)
+  professional/formal", "shorten this", "translate to X" are one-off
+  TRANSFORM requests (TransformBlank's job), NOT sentence-cues-mode —
+  even though that feature also concerns rewriting. The tell taught to
+  the model: a rewrite imperative changes THE TEXT ONCE; a setting
+  changes BEHAVIOUR from now on; ongoing markers ("as I write", "while
+  I type") applied to sentence improvement ARE feature requests.
+  Caught live (July 2026): `congratz make more professional _` flipped
+  `sentence-cues-mode on` and wrote the scalar. Gated by the
+  `reject-transform` bucket in both suites.
 
-Bench provenance: `tests/benchmarks/fluid-config/` —
-v2.1 prompt validated across 5 providers (Groq, Cerebras, Gemini Flash
-Lite, Claude Haiku, OpenAI nano). See `EXPERIMENTS.md` in that folder
-for the full evolution and per-provider sweep table.
+Bench provenance: `tests/benchmarks/fluid-config/` — since July 2026
+the bench imports the PRODUCTION `SYSTEM_PROMPT` + parser directly
+(`fused.ts` previously carried its own copy, which silently drifted
+when the prompt grew the PROVIDER intent — every pre-July number
+measured a prompt that no longer shipped). Current numbers
+(production prompt, cerebras + groq): precision 100% on both suites
+incl. the adversarial `reject-transform` bucket; recall 86-89% main /
+81% holdout. See `EXPERIMENTS.md` § Experiment 6.
 
 **Don't edit `SYSTEM_PROMPT` without re-running the bench against both
 suites** (in-prompt + holdout). The prompt is the only thing standing

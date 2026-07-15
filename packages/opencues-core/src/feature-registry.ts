@@ -264,6 +264,35 @@ export function seedableOptionalFiles(): SeedableFile[] {
 }
 
 /**
+ * Decorate a `*-llm-provider` scalar's `inherit` entry with what
+ * inheriting RESOLVES TO right now. The menu is the moment of choice —
+ * "inherit" is only a meaningful option when it names the inherited
+ * provider (July 2026: "the inherit ask doesn't say what you're
+ * inheriting"). Resolution mirrors the effective-routing walk's global
+ * tier: the `llm-provider` scalar when set — named even when it's an
+ * unknown id, so a typo'd global is visible at the menu instead of
+ * discovered at dispatch — otherwise the auto-route over available API
+ * keys, which the registry cannot see (no key bag here), so it is
+ * named as auto-routing rather than guessed. Non-`inherit` entries
+ * pass through untouched.
+ */
+function withInheritResolution(
+  values: readonly ValueSpec[],
+  settings: ReadonlyMap<string, string>,
+): readonly ValueSpec[] {
+  const raw = settings.get('llm-provider')?.trim().toLowerCase();
+  const adapter = raw ? getProvider(raw) : null;
+  const resolved = raw
+    ? adapter
+      ? `currently ${adapter.id}`
+      : `llm-provider is "${raw}" — unknown provider, calls disabled`
+    : 'unset — auto-routes from your available API keys';
+  return values.map(v => v.id === 'inherit'
+    ? { ...v, description: `Default — inherit the global llm-provider (${resolved})` }
+    : v);
+}
+
+/**
  * Build the model-value list for a `*-llm-model` scalar from the
  * sibling provider's catalogue. Returns `default` followed by the
  * provider's `knownModels`. When the provider is unset / `inherit` /
@@ -282,7 +311,7 @@ function buildModelValues(
       id: 'default',
       description: adapter
         ? `Use ${adapter.id}'s default model (${adapter.defaultModel})`
-        : 'Use the provider\'s default model',
+        : 'Use the auto-routed provider\'s default model (no provider pinned — set llm-provider or an API key)',
     },
   ];
   const models = adapter?.knownModels ?? (adapter ? [adapter.defaultModel] : []);
@@ -295,6 +324,49 @@ function buildModelValues(
   }
   return out;
 }
+
+/**
+ * Static value lists for the three `*-llm-provider` bucket scalars.
+ * Hoisted so each feature can reference its list twice: as the static
+ * `values` fallback AND inside its `valuesProvider`, where
+ * `withInheritResolution` decorates the `inherit` entry with the live
+ * resolution. cues/auditors are prose-bearing (no opencode-zen);
+ * blanks exposes the free pool behind the user's `_` consent gate.
+ */
+const CUES_PROVIDER_VALUES: readonly ValueSpec[] = [
+  { id: 'inherit',   description: 'Default — cues use the global llm-provider (auto-routed when unset)' },
+  { id: 'cerebras',  description: 'Cerebras — fastest gpt-oss-120b host (recommended)' },
+  { id: 'groq',      description: 'Groq — gpt-oss-120b, accuracy ceiling on long-form' },
+  { id: 'gemini',    description: 'Gemini — stable across the matrix' },
+  { id: 'anthropic', description: 'Anthropic — pricier, parity accuracy' },
+  { id: 'openai',    description: 'OpenAI — gpt-5.4-mini default' },
+  { id: 'openrouter', description: 'OpenRouter (multi-model router)', exposeInMenu: false },
+  { id: 'claude-code-cli', description: 'claude-code-cli (subprocess)', exposeInMenu: false },
+  { id: 'ollama',     description: 'Ollama (local) — private, free, needs a running Ollama server', exposeInMenu: false },
+];
+const AUDITORS_PROVIDER_VALUES: readonly ValueSpec[] = [
+  { id: 'inherit',   description: 'Default — auditors use the global llm-provider (auto-routed when unset)' },
+  { id: 'cerebras',  description: 'Cerebras — fastest gpt-oss-120b host (recommended)' },
+  { id: 'groq',      description: 'Groq — gpt-oss-120b, accuracy ceiling on long-form' },
+  { id: 'gemini',    description: 'Gemini — stable across the matrix' },
+  { id: 'anthropic', description: 'Anthropic — pricier, parity accuracy' },
+  { id: 'openai',    description: 'OpenAI — gpt-5.4-mini default' },
+  { id: 'openrouter', description: 'OpenRouter (multi-model router)', exposeInMenu: false },
+  { id: 'claude-code-cli', description: 'claude-code-cli (subprocess)', exposeInMenu: false },
+  { id: 'ollama',     description: 'Ollama (local) — private, free, needs a running Ollama server', exposeInMenu: false },
+];
+const BLANKS_PROVIDER_VALUES: readonly ValueSpec[] = [
+  { id: 'inherit',      description: 'Default — blanks use the global llm-provider' },
+  { id: 'opencode-zen', description: 'OpenCode Zen free pool — pair with `blanks-llm-model: free` (provider trains on input)' },
+  { id: 'cerebras',     description: 'Cerebras — fastest gpt-oss-120b host (recommended)' },
+  { id: 'groq',         description: 'Groq — gpt-oss-120b, accuracy ceiling on long-form' },
+  { id: 'gemini',       description: 'Gemini — stable across the matrix' },
+  { id: 'anthropic',    description: 'Anthropic — pricier, parity accuracy' },
+  { id: 'openai',       description: 'OpenAI — gpt-5.4-mini default' },
+  { id: 'openrouter',   description: 'OpenRouter (multi-model router)', exposeInMenu: false },
+  { id: 'claude-code-cli', description: 'claude-code-cli (subprocess)', exposeInMenu: false },
+  { id: 'ollama',     description: 'Ollama (local) — private, free, needs a running Ollama server', exposeInMenu: false },
+];
 
 /**
  * Every optional feature OpenCues exposes via an OPENCUES.md scalar.
@@ -336,6 +408,17 @@ export const FEATURES: readonly FeatureSpec[] = [
     values: [
       { id: 'off', description: 'Disabled — `_` falls through to fluid-blank as a lookup' },
       { id: 'on',  description: 'Enabled (default) — one LLM call classifies the surrounding text against the FEATURES registry; on hit, the matched setting is applied' },
+    ],
+  },
+  {
+    scalar: 'undo-mode',
+    group: 'Cues',
+    camelCase: 'undoMode',
+    description: 'Natural-language undo/redo of OpenCues changes ("undo _", "undo 3 _", "redo _")',
+    menuTip: 'Revert what OpenCues did — fills, rewrites, settings writes, volume/brightness sets. Language-invariant (routed via the config-intent classifier); count supported ("undo 3 _").',
+    values: [
+      { id: 'on',  description: 'Enabled (default) — `undo _` / `redo _` revert OpenCues-applied changes from the session journal' },
+      { id: 'off', description: 'Disabled — undo/redo verdicts cede; `_` falls through to the other blank sources' },
     ],
   },
   {
@@ -459,17 +542,11 @@ export const FEATURES: readonly FeatureSpec[] = [
     camelCase: 'cuesLlmProvider',
     description: 'LLM provider for cue sources (word-cues, sentence-cues). Inherits llm-provider by default.',
     menuTip: 'Pick the provider for cue sources (word-cues, sentence-cues). Refuses training-pool providers (opencode-zen) — prose surface.',
-    values: [
-      { id: 'inherit',   description: 'Default — cues use the global llm-provider (auto-routed when unset)' },
-      { id: 'cerebras',  description: 'Cerebras — fastest gpt-oss-120b host (recommended)' },
-      { id: 'groq',      description: 'Groq — gpt-oss-120b, accuracy ceiling on long-form' },
-      { id: 'gemini',    description: 'Gemini — stable across the matrix' },
-      { id: 'anthropic', description: 'Anthropic — pricier, parity accuracy' },
-      { id: 'openai',    description: 'OpenAI — gpt-5.4-mini default' },
-      { id: 'openrouter', description: 'OpenRouter (multi-model router)', exposeInMenu: false },
-      { id: 'claude-code-cli', description: 'claude-code-cli (subprocess)', exposeInMenu: false },
-      { id: 'ollama',     description: 'Ollama (local) — private, free, needs a running Ollama server', exposeInMenu: false },
-    ],
+    values: CUES_PROVIDER_VALUES,
+    // Live settings decorate `inherit` with what it resolves to right
+    // now — see withInheritResolution. Static `values` stay as the
+    // settings-less fallback.
+    valuesProvider: (settings) => withInheritResolution(CUES_PROVIDER_VALUES, settings),
   },
   {
     scalar: 'auditors-llm-provider',
@@ -477,17 +554,8 @@ export const FEATURES: readonly FeatureSpec[] = [
     camelCase: 'auditorsLlmProvider',
     description: 'LLM provider for auditor sources + agent-rewrite. Inherits llm-provider by default.',
     menuTip: 'Pick the provider for auditors + agent-rewrite (background prose rewriters). Refuses training-pool providers (opencode-zen).',
-    values: [
-      { id: 'inherit',   description: 'Default — auditors use the global llm-provider (auto-routed when unset)' },
-      { id: 'cerebras',  description: 'Cerebras — fastest gpt-oss-120b host (recommended)' },
-      { id: 'groq',      description: 'Groq — gpt-oss-120b, accuracy ceiling on long-form' },
-      { id: 'gemini',    description: 'Gemini — stable across the matrix' },
-      { id: 'anthropic', description: 'Anthropic — pricier, parity accuracy' },
-      { id: 'openai',    description: 'OpenAI — gpt-5.4-mini default' },
-      { id: 'openrouter', description: 'OpenRouter (multi-model router)', exposeInMenu: false },
-      { id: 'claude-code-cli', description: 'claude-code-cli (subprocess)', exposeInMenu: false },
-      { id: 'ollama',     description: 'Ollama (local) — private, free, needs a running Ollama server', exposeInMenu: false },
-    ],
+    values: AUDITORS_PROVIDER_VALUES,
+    valuesProvider: (settings) => withInheritResolution(AUDITORS_PROVIDER_VALUES, settings),
   },
   {
     scalar: 'blanks-llm-provider',
@@ -495,18 +563,8 @@ export const FEATURES: readonly FeatureSpec[] = [
     camelCase: 'blanksLlmProvider',
     description: 'LLM provider for blank-class sources (fluid-blank, transform-blank, fluid-config, keyword blanks). Inherits llm-provider by default.',
     menuTip: 'Pick the provider for blanks (the opt-in `_` surface). `opencode-zen` + `blanks-llm-model: free` routes blanks through OpenCode Zen\'s free pool (no API key; provider trains on blank inputs).',
-    values: [
-      { id: 'inherit',      description: 'Default — blanks use the global llm-provider' },
-      { id: 'opencode-zen', description: 'OpenCode Zen free pool — pair with `blanks-llm-model: free` (provider trains on input)' },
-      { id: 'cerebras',     description: 'Cerebras — fastest gpt-oss-120b host (recommended)' },
-      { id: 'groq',         description: 'Groq — gpt-oss-120b, accuracy ceiling on long-form' },
-      { id: 'gemini',       description: 'Gemini — stable across the matrix' },
-      { id: 'anthropic',    description: 'Anthropic — pricier, parity accuracy' },
-      { id: 'openai',       description: 'OpenAI — gpt-5.4-mini default' },
-      { id: 'openrouter',   description: 'OpenRouter (multi-model router)', exposeInMenu: false },
-      { id: 'claude-code-cli', description: 'claude-code-cli (subprocess)', exposeInMenu: false },
-      { id: 'ollama',     description: 'Ollama (local) — private, free, needs a running Ollama server', exposeInMenu: false },
-    ],
+    values: BLANKS_PROVIDER_VALUES,
+    valuesProvider: (settings) => withInheritResolution(BLANKS_PROVIDER_VALUES, settings),
   },
 
   // ── Provider routing — model selection ───────────────────────────

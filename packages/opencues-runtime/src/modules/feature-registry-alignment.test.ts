@@ -33,6 +33,7 @@ const SETTINGS_MAP_ONLY: ReadonlySet<string> = new Set([
   'wordCuesMode',       // consumed in resolver.ts:enableWordCues
   'transformBlankMode', // consumed by transform-blank pipeline gate
   'fluidConfigMode',    // consumed in resolver.ts:enableConfigIntent
+  'undoMode',           // consumed in resolver.ts:enableUndoActions
   'sentenceCuesMode',   // consumed in resolver.ts:enableSentenceCues
   'integrationWeaveMode', // consumed in blank-fill.ts applyAsyncFill weave gate
                           // (read from settings map; no resolver/typed field)

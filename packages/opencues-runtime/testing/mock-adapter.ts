@@ -24,6 +24,16 @@ export interface MockAdapterOptions {
   capabilities?: readonly Capability[];
   /** If set, setText fires onTextChange synchronously (before returning). Default true. */
   syncTextChange?: boolean;
+  /**
+   * Model hosts whose adapter TEXT STATE lags the text-change dispatch
+   * by one tick (live CC, 2026-07-15): handlers receive the NEW text in
+   * the event, but adapter.getText() still returns the PRE-change
+   * buffer until the dispatch returns. Any fill that runs
+   * SYNCHRONOUSLY inside the handler sees a stale buffer and gets
+   * dropped by staleness guards — the exact class the default
+   * (state-first) mock cannot reproduce. Default false.
+   */
+  staleTextDuringDispatch?: boolean;
   cwd?: string;
   /** Seed filesystem (path -> content). Writes go here too. */
   files?: Record<string, string>;
@@ -73,6 +83,7 @@ export class MockAdapter implements HostAdapter {
   private _files = new Map<string, string>();
   private _disposed = false;
   private _syncTextChange: boolean;
+  private _staleTextDuringDispatch: boolean;
 
   private _keySubs: KeySub[] = [];
   private _textSubs: TextSub[] = [];
@@ -97,6 +108,7 @@ export class MockAdapter implements HostAdapter {
     this.capabilities = opts.capabilities ?? DEFAULT_CAPS;
     this.cwd = opts.cwd ?? '/mock';
     this._syncTextChange = opts.syncTextChange ?? true;
+    this._staleTextDuringDispatch = opts.staleTextDuringDispatch ?? false;
     for (const [path, content] of Object.entries(opts.files ?? {})) {
       this._files.set(path, content);
     }
@@ -307,6 +319,24 @@ export class MockAdapter implements HostAdapter {
    *  the test specifically wants to simulate paste / programmatic insertion. */
   pushTextNoKeystroke(text: string, cursorOffset?: number): void {
     const prev = this._text;
+    if (this._staleTextDuringDispatch) {
+      // Dispatch FIRST with the pre-change buffer still in place (the
+      // event carries the new text), then commit — mirrors hosts where
+      // getText() catches up only after the handler returns.
+      const offset = cursorOffset !== undefined
+        ? Math.max(0, Math.min(cursorOffset, text.length))
+        : Math.min(this._offset > text.length ? text.length : this._offset, text.length);
+      const event: TextChangeEvent = {
+        text,
+        cursorOffset: offset,
+        previousText: prev,
+        source: this.capabilities.includes('change-source') ? 'user' : 'unknown',
+      };
+      this._dispatchTextChange(event);
+      this._text = text;
+      this._offset = offset;
+      return;
+    }
     this._text = text;
     if (cursorOffset !== undefined) this._offset = Math.max(0, Math.min(cursorOffset, text.length));
     else if (this._offset > text.length) this._offset = text.length;

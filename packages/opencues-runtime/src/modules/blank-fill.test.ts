@@ -6,6 +6,7 @@ import { SpanFillState } from '../state/span-fill';
 import { DismissedBlanks } from '../state/dismissed-blanks';
 import { SelectorSatelliteState } from '../state/selector-satellite';
 import { DynDefs } from '../state/dyn-defs';
+import { UndoJournal } from '../state/undo-journal';
 
 const TIPS = wrapTipsAsCuesMd({ concepts: [] });
 
@@ -115,6 +116,30 @@ describe('BlankFill detection', () => {
   it('case-insensitive keyword matching', async () => {
     const { bf } = await setup('Volume _');
     expect(bf.scan('Volume _')[0]?.blankName).toBe('volume');
+  });
+
+  it('a trailing bare undo/redo cedes the `_` to ACTION when undo is wired (no blank claim)', async () => {
+    // `volume undo _` matches the volume keyword, but "undo" is the command,
+    // not a blank argument. With a journal present (undo active), BlankFill
+    // must cede so ConfigIntent's ACTION gate can fire (live-caught: the
+    // countries shape ate the undo as "france undo: not found").
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/blanks/volume/BLANK.md': VOLUME_CUE },
+    });
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    // Without a journal (undo off) — the blank still claims as before.
+    const bfNoUndo = new BlankFill(adapter, loader);
+    expect(bfNoUndo.scan('volume undo _')).toHaveLength(1);
+    // With a journal (undo on) — cede.
+    const bfUndo = new BlankFill(adapter, loader, undefined, undefined, undefined, undefined, undefined, undefined, new UndoJournal());
+    expect(bfUndo.scan('volume undo _')).toHaveLength(0);
+    expect(bfUndo.scan('volume redo _')).toHaveLength(0);
+    // A plain volume query (no trailing action) still claims.
+    expect(bfUndo.scan('volume _')).toHaveLength(1);
+    // "undo" mid-buffer (not the trailing command) does NOT cede.
+    expect(bfUndo.scan('volume undo now _')).toHaveLength(1);
   });
 
   it('subscribe re-scans on text change', async () => {
@@ -1886,5 +1911,212 @@ describe('model blank routing (shapes from defaults/blanks/model/BLANK.md)', () 
     await new Promise(r => setTimeout(r, 0));
     expect(adapter.blankInvokeCalls.length).toBe(1);
     expect(adapter.blankInvokeCalls[0]).toMatchObject({ blankName: 'dictionary' });
+  });
+});
+
+// ─── Registry miss — config present, implementation absent ────────────────
+//
+// ~/.cues is shared across hosts but bundles are per-host, so a BLANK.md
+// can legitimately run AHEAD of a host's installed runtime (any host's
+// install seeds the shared config). Pre-fix this dispatched the invoke
+// and then skipped in total silence — no log, no fill — reading as
+// "OpenCues is broken" (July 2026: the loading-animation blank on a
+// stale CC fork). The contract now: a named [err] fill that replaces
+// only the `_` (command survives), plus a once-per-blank warn.
+describe('BlankFill registry miss (blankInvoke null + no blankScript)', () => {
+  const SCRIPTLESS = `---
+type: blank
+name: newblank
+blankKeywords: newblank
+blankProximity: 10
+---
+`;
+
+  async function missSetup() {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/blanks/newblank/BLANK.md': SCRIPTLESS },
+      capabilities: [
+        'render-override', 'dim-ranges', 'highlight-range',
+        'file-read', 'file-write', 'force-render', 'change-source',
+        'blank-invoke',
+      ],
+    });
+    // NO stub for 'newblank' — blankInvoke returns null, simulating a
+    // bundle that predates the blank (or a factory that skipped
+    // registration over a missing prerequisite).
+    adapter.stubBlankInvoke('someother:get', 'x');
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    return { adapter };
+  }
+
+  it('fills a named [err] instead of silent nothing; command text survives', async () => {
+    const { adapter } = await missSetup();
+    adapter.pushText('newblank _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.blankInvokeCalls.length).toBe(1);
+    // [err] feedback: only the `_` is replaced — keyword + any typed
+    // command remain for the user to see what failed.
+    expect(adapter.getText()).toBe(
+      'newblank [err] newblank: not available on this host — stale bundle or missing prerequisite. Try `opencues install mock`',
+    );
+  });
+
+  it('warns once per blank with the diagnostic; repeat fires do not re-warn', async () => {
+    const { adapter } = await missSetup();
+    adapter.pushText('newblank _');
+    await new Promise(r => setTimeout(r, 0));
+    const warns = () => adapter.logs.filter(l =>
+      l.level === 'warn' && String(l.msg).includes('has config but no implementation'));
+    expect(warns()).toHaveLength(1);
+    expect(warns()[0].msg).toContain('opencues install mock');
+    // Re-fire: fresh buffer, same miss — fill happens again, warn doesn't.
+    adapter.pushText('');
+    adapter.pushText('newblank _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(warns()).toHaveLength(1);
+  });
+
+  it('does not release the loading animation into a forever-spin (stop is called)', async () => {
+    const { adapter } = await missSetup();
+    adapter.pushText('newblank _');
+    await new Promise(r => setTimeout(r, 0));
+    // The [err] fill landed, which means applyAsyncFill ran AFTER the
+    // animator release — if the claim leaked, the staleness guard
+    // would have seen a frame char and dropped the fill.
+    expect(adapter.getText()).toContain('[err] newblank');
+  });
+});
+
+// ─── Registry-miss [err] on a STALE-TEXT host (the live-CC timing) ────────
+//
+// 2026-07-15: on live CC the #300 [err] fill silently vanished — warn
+// logged, buffer untouched. The miss branch was the only fill running
+// SYNCHRONOUSLY inside the text-change dispatch, and CC's
+// adapter.getText() is one keystroke stale at that instant, so
+// applyAsyncFill's staleness guard dropped it. The default MockAdapter
+// commits text BEFORE dispatch, which hid the class; this journey uses
+// `staleTextDuringDispatch` to model the real host. The fix defers the
+// fill a tick (+ one guarded retry), matching every other fill path's
+// natural post-latency timing.
+describe('BlankFill registry miss on a stale-text-during-dispatch host', () => {
+  const SCRIPTLESS = `---
+type: blank
+name: newblank
+blankKeywords: newblank
+blankProximity: 10
+---
+`;
+
+  it('the [err] fill still lands (deferred past the state catch-up)', async () => {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/blanks/newblank/BLANK.md': SCRIPTLESS },
+      capabilities: [
+        'render-override', 'dim-ranges', 'highlight-range',
+        'file-read', 'file-write', 'force-render', 'change-source',
+        'blank-invoke',
+      ],
+      staleTextDuringDispatch: true,
+    });
+    adapter.stubBlankInvoke('someother:get', 'x');
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    adapter.pushText('newblank _');
+    // Pre-fix, the synchronous fill saw the pre-keystroke buffer and was
+    // dropped here in total silence. Give the deferred fill + retry room.
+    await new Promise(r => setTimeout(r, 80));
+    expect(adapter.getText()).toBe(
+      'newblank [err] newblank: not available on this host — stale bundle or missing prerequisite. Try `opencues install mock`',
+    );
+  });
+});
+
+// ─── loading-animation blank routing — shapes from the SHIPPED BLANK.md ───
+//
+// Same drift-pin idea as the model-blank block above: load the real
+// defaults/blanks/loading-animation/BLANK.md so shape edits that break
+// routing fail here. The load-bearing cases: (1) the full inline
+// definition routes with the whole command captured; (2) there is NO
+// bare shape — typing `loading animation _` en route to a frame list
+// that STARTS with `_` must not fire; (3) leading-phrase gate: prose
+// that merely CONTAINS the phrase never routes.
+describe('loading-animation blank routing (shapes from defaults/blanks/loading-animation/BLANK.md)', () => {
+  const REPO_ROOT2 = resolvePath(__dirname, '../../../..');
+  const LOADING_MD = readFileSync(resolvePath(REPO_ROOT2, 'defaults/blanks/loading-animation/BLANK.md'), 'utf8');
+
+  async function loadingSetup(stdout = '[loading animation: custom · 4 frames]') {
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, '/proj/blanks/loading-animation/BLANK.md': LOADING_MD },
+      capabilities: [
+        'render-override', 'dim-ranges', 'highlight-range',
+        'file-read', 'file-write', 'force-render', 'change-source',
+        'blank-invoke',
+      ],
+    });
+    adapter.stubBlankInvoke('loading-animation:get', stdout);
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const bf = new BlankFill(adapter, loader);
+    bf.subscribe();
+    return { adapter };
+  }
+
+  it('full inline definition routes with frames + colours + interval as context', async () => {
+    const { adapter } = await loadingSetup();
+    adapter.pushText('loading animation _,-,‾,- red,orange,yellow 75 _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.blankInvokeCalls.length).toBe(1);
+    expect(adapter.blankInvokeCalls[0]).toMatchObject({ blankName: 'loading-animation', action: 'get' });
+    expect(adapter.blankInvokeCalls[0].args.slice(1)).toEqual(['_,-,‾,-', 'red,orange,yellow', '75']);
+    // Captured command consumed — the confirmation stands alone.
+    expect(adapter.getText()).toBe('[loading animation: custom · 4 frames]');
+  });
+
+  it('typing the keyword then the first frame underscore does NOT fire (no bare shape)', async () => {
+    const { adapter } = await loadingSetup();
+    // The user is en route to `loading animation _,-,‾,- _` — the first
+    // `_` they type is frame 0, not the trigger.
+    adapter.pushText('loading animation _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.blankInvokeCalls.length).toBe(0);
+    expect(adapter.getText()).toBe('loading animation _');
+  });
+
+  it('preset switch routes', async () => {
+    const { adapter } = await loadingSetup('[loading animation: bounce]');
+    adapter.pushText('loading animation bounce _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.blankInvokeCalls.length).toBe(1);
+    expect(adapter.blankInvokeCalls[0].args.slice(1)).toEqual(['bounce']);
+  });
+
+  it('show routes', async () => {
+    const { adapter } = await loadingSetup('custom · frames _,-,‾,- · 150ms');
+    adapter.pushText('loading animation show _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.blankInvokeCalls.length).toBe(1);
+    expect(adapter.blankInvokeCalls[0].args.slice(1)).toEqual(['show']);
+  });
+
+  it('prose containing the phrase mid-sentence does NOT route (leading-phrase gate)', async () => {
+    const { adapter } = await loadingSetup();
+    adapter.pushText('the loading animation is slow _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.blankInvokeCalls.length).toBe(0);
+    expect(adapter.getText()).toBe('the loading animation is slow _');
+  });
+
+  it('prior sentence survives: only the definition segment is consumed', async () => {
+    const { adapter } = await loadingSetup();
+    adapter.pushText('hii world. loading animation _,-,‾,- _');
+    await new Promise(r => setTimeout(r, 0));
+    expect(adapter.getText()).toBe('hii world. [loading animation: custom · 4 frames]');
   });
 });

@@ -80,6 +80,16 @@ if [ -f "$HIGHLIGHT_FILE" ]; then
     exit 0
   fi
 
+  # Undo/redo confirmation — transient (present for the journal's TTL after
+  # an `undo _` / `redo _`). The universal feedback surface: an invisible
+  # revert (a scalar or OS-value change) has no on-screen affordance, so we
+  # echo what was undone. Dominant when present.
+  undo_conf=$(echo "$content" | sed -n 's/.*"undoConfirmation":"\([^"]*\)".*/\1/p')
+  if [ -n "$undo_conf" ]; then
+    printf ' %s|%s %s%s%s\n' "$YELLOW" "$RESET" "$DIM" "$undo_conf" "$RESET"
+    exit 0
+  fi
+
   # Agent-task indicator. Renders even when no word is highlighted —
   # the agent ticks across the whole session, not per-word. Stable
   # display: no in-flight spinner toggle (would jitter on every tick).

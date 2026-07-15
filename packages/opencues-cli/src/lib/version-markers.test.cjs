@@ -20,7 +20,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
-const { writeMarker, readMarker, checkDrift } = require('./version-markers.cjs');
+const { writeMarker, readMarker, checkDrift, markerIsNewer } = require('./version-markers.cjs');
 
 // Set up a fake REPO_ROOT with packages/opencues-{runtime,core}/package.json
 // at known versions, so the source-comparison tests are deterministic.
@@ -105,6 +105,62 @@ test('checkDrift: stale when core version differs', () => {
   assert.strictEqual(drift.status, 'stale');
   assert.strictEqual(drift.marker.core, '0.1.0');
   assert.strictEqual(drift.source.core, '0.2.0');
+});
+
+// ─── Downgrade guard (July 2026 dual-clone clobber) ────────────────────
+// "Stale" is direction-blind; the `downgrade` field is the direction
+// signal the launch-time self-heal uses to refuse rebuilding a fork
+// BACKWARD when the invoking clone (second clone / worktree / old
+// branch) is behind the clone that installed the bundle.
+
+test('checkDrift: stale + downgrade when the marker is NEWER than source', () => {
+  // Marker written by a clone at runtime/core 0.2.0...
+  const repoRoot = makeFakeRepoRoot('downgrade', '0.2.0', '0.2.0');
+  const markerDir = freshMarkerDir('downgrade');
+  const ctx = { pkg: { version: '0.1.0' }, REPO_ROOT: repoRoot };
+  writeMarker('claude-code', markerDir, ctx);
+
+  // ...then the invoking clone regresses to 0.1.0 (old branch / stale clone).
+  fs.writeFileSync(
+    path.join(repoRoot, 'packages/opencues-runtime/package.json'),
+    JSON.stringify({ name: '@opencues/runtime', version: '0.1.0' }),
+  );
+  fs.writeFileSync(
+    path.join(repoRoot, 'packages/opencues-core/package.json'),
+    JSON.stringify({ name: '@opencues/core', version: '0.1.0' }),
+  );
+
+  const drift = checkDrift(markerDir, ctx);
+  assert.strictEqual(drift.status, 'stale');
+  assert.strictEqual(drift.downgrade, true);
+});
+
+test('checkDrift: stale WITHOUT downgrade when source moved ahead (the normal upgrade path)', () => {
+  const repoRoot = makeFakeRepoRoot('upgrade', '0.1.0', '0.1.0');
+  const markerDir = freshMarkerDir('upgrade');
+  const ctx = { pkg: { version: '0.1.0' }, REPO_ROOT: repoRoot };
+  writeMarker('claude-code', markerDir, ctx);
+
+  fs.writeFileSync(
+    path.join(repoRoot, 'packages/opencues-runtime/package.json'),
+    JSON.stringify({ name: '@opencues/runtime', version: '0.2.0' }),
+  );
+
+  const drift = checkDrift(markerDir, ctx);
+  assert.strictEqual(drift.status, 'stale');
+  assert.strictEqual(drift.downgrade, false);
+});
+
+test('markerIsNewer: either package newer trips it; missing fields never do', () => {
+  assert.strictEqual(markerIsNewer({ runtime: '0.16.0', core: '0.19.0' }, { runtime: '0.13.5', core: '0.18.1' }), true);
+  assert.strictEqual(markerIsNewer({ runtime: '0.13.5', core: '0.19.0' }, { runtime: '0.13.5', core: '0.18.1' }), true);
+  assert.strictEqual(markerIsNewer({ runtime: '0.13.5', core: '0.18.1' }, { runtime: '0.16.0', core: '0.19.0' }), false);
+  assert.strictEqual(markerIsNewer({ runtime: '0.16.0' }, { runtime: '0.16.0', core: '0.19.0' }), false);
+  // Conservative on missing data — pre-marker-era / unreadable source
+  // keeps the old rebuild behaviour.
+  assert.strictEqual(markerIsNewer({}, { runtime: '0.1.0', core: '0.1.0' }), false);
+  assert.strictEqual(markerIsNewer(null, null), false);
+  assert.strictEqual(markerIsNewer({ runtime: '0.16.0' }, {}), false);
 });
 
 test('checkDrift: missing when no marker', () => {

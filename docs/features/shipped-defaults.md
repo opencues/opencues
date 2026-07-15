@@ -55,6 +55,7 @@ defaults/
     ├── model/BLANK.md           # "whats my model _" / "list models _" — effective LLM routing, shape-gated
     ├── gh-issues/{BLANK.md,blank.js}
     ├── sentinel/BLANK.md
+    ├── loading-animation/BLANK.md # inline loading-animation definition (writes blank-loading-* scalars)
     ├── opencues/BLANK.md        # the settings selector+satellite blank
     └── example/{BLANK.md,time-blank.sh}
 ```
