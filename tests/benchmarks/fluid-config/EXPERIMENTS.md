@@ -203,4 +203,64 @@ on `StatuslinePayload`.
 
 ---
 
-*Last updated: 2026-05-18.*
+## Experiment 6 — rewrite-imperative precision hole + bench re-pointed at the PRODUCTION prompt (July 2026)
+
+**Trigger (live bug):** `congratz make more professional _` routed to
+`sentence-cues-mode on` — and WROTE the scalar — instead of ceding to
+TransformBlank. Reproduced twice on the user's host (gemma-4-31b) and
+then on cerebras gpt-oss-120b.
+
+**Discovery #1 — the bench was validating a phantom prompt.** fused.ts
+carried its own copy of the v2.1 settings-only prompt; production's
+`SYSTEM_PROMPT` (config-intent-source.ts) had since become the
+three-intent classifier (SETTING/PROVIDER/NONE) and nobody re-pointed
+the bench. Every number above this line measures a prompt that no
+longer ships. Fix: fused.ts now imports the production `SYSTEM_PROMPT`
++ `parseConfigIntentOutput` directly (PROVIDER verdicts map to a
+synthetic `provider:<scope>` setting for the judge). Same lesson as
+transform-blank's archive/ — bench-local prompts drift; drive the
+production artifact.
+
+**Discovery #2 — the precision hole.** 10-case ad-hoc probe of rewrite
+imperatives against the production prompt: **5/10 false positives**,
+all → `sentence-cues-mode on` (`make (it/more) professional/formal`
+pattern; the shipped `more-formal` sentence-cue is the semantic trap).
+The stale bench prompt scored 4/10 on the same probe. The existing
+suites had NO rewrite-imperative reject cases, hence the 100%-precision
+headline.
+
+**Fix:** INTENT-C rule — a rewrite imperative changes THE TEXT ONCE
+(→ NONE, TransformBlank's job); a setting changes BEHAVIOUR from now
+on; ongoing markers ("as I write", "while I type") applied to sentence
+improvement ARE feature requests → sentence-cues-mode. Plus 2 NONE
+few-shots + 2 sentence-cues positive contrasts. New `reject-transform`
+bucket: 5 cases in the main suite, 5 in holdout (incl. the exact live
+utterance; no phrasing overlap with the few-shots). `ro-keybind`
+reclassified to `hf-keybind` (hit → nav-keymap ctrl-shift): it was
+authored before nav-keymap existed and only survived as a reject
+because the stale bench prompt predated the feature too.
+
+**Results (production prompt, post-fix):**
+
+| Run | Precision (gate ≥98%) | Recall (≥80%) | reject-transform |
+|---|---|---|---|
+| cerebras main (68) | **32/32 = 100%** | 32/36 = 88.9% | 5/5 TN |
+| cerebras holdout (40) | **19/19 = 100%** | 17/21 = 81.0% | 5/5 TN |
+| groq main (68) | **32/32 = 100%** | 31/36 = 86.1% | 5/5 TN |
+| groq holdout (40) | **19/19 = 100%** | 17/21 = 81.0% | 5/5 TN |
+
+Ad-hoc probe post-fix: **20/20 NONE** (10 utterances × gpt-oss-120b +
+gemma-4-31b — the live model). Sentence-cues boundary intact:
+`enable sentence cues _` / `turn off the sentence cues _` /
+`suggest better versions of my sentences as i write _` all route
+correctly.
+
+Remaining recall tail (~4 cases per suite) is the pre-existing
+identity-context phrasing cluster (`hc-user-*`, `ho-user-*`) — FN =
+recoverable by design (fluid-blank answers), untouched by this change.
+
+**Status:** production prompt v3 (three-intent + rewrite-imperative
+rule) validated on cerebras + groq; bench structurally cannot drift
+from production again.
+
+*Last updated: 2026-07-14.*
