@@ -213,11 +213,32 @@ let mirrorText = '';           // local copy of the remote field's text
 let mirrorCursor = 0;
 let attached = false;          // is an attachable field currently focused
 let currentApp = null;         // foreground process name, for presence
+let currentAmbient = null;     // ambient field context for the attached field (or null)
 let expectedEcho = null;       // text we just wrote; swallow its echo
 
 function send(obj) {
   if (!sock || sock.destroyed) return;
   try { sock.write(JSON.stringify(obj) + '\n'); } catch (err) { log('warn', 'send failed', err); }
+}
+
+// Build the ambient-context object from a `focus` event's UIA metadata.
+// The shim already excludes password/sensitive fields before ever
+// sending `focus`, so anything here is the field the user chose to type
+// in. We forward the field's OWN metadata only — never a sibling
+// control's value — and let @opencues/core sanitize + length-cap before
+// it touches a prompt (renderAmbientBlock). Returns null if the shim
+// sent no usable metadata (older shim, or nothing readable).
+function ambientStr(v) {
+  return typeof v === 'string' && v.trim() ? v.trim() : undefined;
+}
+function buildAmbientFromFocus(msg) {
+  const ctx = {
+    label: ambientStr(msg.ctrlName),   // UIA control Name → field label
+    placeholder: ambientStr(msg.help), // UIA HelpText → placeholder hint
+    pageTitle: ambientStr(msg.winTitle), // foreground window title
+    app: ambientStr(msg.app),          // focused process name (steers format)
+  };
+  return Object.values(ctx).some(Boolean) ? ctx : null;
 }
 
 function countUnderscores(s) {
@@ -416,6 +437,7 @@ const bootResult = boot({
   blanks: blanksRegistry,
   supportsCycling: () => false,      // phase 1 — Universal-Integration profile
   markdownPassthrough: () => attached && mdPassthroughApps.has(String(currentApp || '').toLowerCase()),
+  getAmbientContext: () => (attached ? currentAmbient : null),
   statusFilePath: `/tmp/opencues-status-windows-${process.pid}.json`,
   statusSnapshotHook: (payload) => { updatePresence({ status: summariseStatus(payload) }); },
   log,
@@ -464,6 +486,7 @@ function handleMessage(msg) {
       bootResult.resetBufferState();
       attached = true;
       currentApp = msg.app || null;
+      currentAmbient = buildAmbientFromFocus(msg);
       mirrorText = typeof msg.text === 'string' ? msg.text : '';
       mirrorCursor = typeof msg.cursor === 'number' ? msg.cursor : mirrorText.length;
       expectedEcho = null;
@@ -479,6 +502,7 @@ function handleMessage(msg) {
       if (attached) bootResult.resetBufferState();
       attached = false;
       currentApp = msg.app || null;
+      currentAmbient = null;
       mirrorText = '';
       mirrorCursor = 0;
       expectedEcho = null;

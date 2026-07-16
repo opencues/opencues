@@ -53,6 +53,8 @@ export interface HostInfo extends CommonHostInfo {
   /** Dynamic cycling answer. Phase 1 leaves it undefined → false. */
   supportsCycling?(): boolean;
   markdownPassthrough?(): boolean;
+  /** Ambient context for the attached field (see WindowsBindings). */
+  getAmbientContext?(): import('../../../src/adapter').AmbientContext | null;
 }
 
 export interface BootResult {
@@ -118,6 +120,7 @@ export function boot(host: HostInfo): BootResult {
     forceRender: host.forceRender,
     supportsCycling: host.supportsCycling,
     markdownPassthrough: host.markdownPassthrough,
+    getAmbientContext: host.getAmbientContext,
     registerKeyHandler: cb => keyEvents.subscribe(cb),
     registerTextChangeHandler: cb => textEvents.subscribe(cb),
     registerCursorChangeHandler: cb => cursorEvents.subscribe(cb),

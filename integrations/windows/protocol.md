@@ -18,7 +18,7 @@ of that same surface, one socket hop away.
 | `t` | Fields | Meaning |
 |---|---|---|
 | `hello` | `version`, `os` | First message on connect. |
-| `focus` | `app`, `text`, `cursor` | An **attachable** field gained focus (already passed the shim's editable + non-sensitive + not-deny-listed checks). Carries the field's current contents. The daemon treats this as a hard buffer boundary → `resetBufferState()` then seeds the mirror. |
+| `focus` | `app`, `text`, `cursor`, `ctrlName`?, `help`?, `winTitle`? | An **attachable** field gained focus (already passed the shim's editable + non-sensitive + not-deny-listed checks). Carries the field's current contents. The daemon treats this as a hard buffer boundary → `resetBufferState()` then seeds the mirror. The optional `ctrlName` (UIA control `Name`), `help` (UIA `HelpText`), and `winTitle` (foreground window title) are the field's OWN ambient metadata — the daemon maps them to `AmbientContext` (label / placeholder / pageTitle; `app` → app) for fluid-blank disambiguation + app-aware output steering when `ambient-context-mode: on`. **Field-only: never a sibling control's value.** Absent on an older shim → the daemon degrades to no ambient context. |
 | `blur` | `app` | Focus moved to something we don't touch (browser, terminal, password box, non-editable). Daemon detaches + resets. |
 | `text` | `text`, `cursor` | The focused field's text changed (user typed / pasted). Daemon updates its mirror; if `_` count increased it synthesises a `_` keystroke first (explicit-`_` gate) then fires `notifyTextChange`. |
 | `cursor` | `cursor` | Caret moved without a text change. (Phase 1 sends caret = text length; real caret tracking is phase 2.) |

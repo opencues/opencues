@@ -450,7 +450,7 @@ namespace OpenCues
             //    writable ValuePattern (or an editable TextPattern).
             if (IsAttachable(el, app))
             {
-                StreamAttachment(elId, app, ReadValue(el), AttachMode.Uia);
+                StreamAttachment(elId, app, ReadValue(el), AttachMode.Uia, el);
                 HookElementEvents(el, elId);
                 return;
             }
@@ -468,7 +468,7 @@ namespace OpenCues
                 string mtext; int mnode;
                 if (TryReadFocusedElectron(out mtext, out mnode))
                 {
-                    StreamAttachment(mnode, app, mtext, AttachMode.Msaa);
+                    StreamAttachment(mnode, app, mtext, AttachMode.Msaa, el);
                     return;
                 }
             }
@@ -488,7 +488,7 @@ namespace OpenCues
         // buffer boundary: it fires a focus event so the daemon resets buffer
         // state (the canonical multi-buffer trigger - see the integration
         // CLAUDE.md "Multi-buffer state" note).
-        static void StreamAttachment(int elId, string app, string readText, AttachMode mode)
+        static void StreamAttachment(int elId, string app, string readText, AttachMode mode, AutomationElement el)
         {
             _lastApp = app;
             if (elId != _lastElementId)
@@ -504,8 +504,16 @@ namespace OpenCues
                 Log("info", "attached: " + (app ?? "text field") + " ("
                     + (readText == null ? 0 : readText.Length) + " chars, "
                     + (mode == AttachMode.Msaa ? "MSAA" : "UIA") + ")");
+                // Ambient field context (opt-in, gated OFF by default on the
+                // WSL side via ambient-context-mode). We forward only the
+                // FOCUSED field's own UIA metadata + the foreground window
+                // title - never a sibling control's value. Sanitized +
+                // length-capped in @opencues/core before it reaches a prompt.
                 SendRaw("{\"t\":\"focus\",\"app\":" + JStr(app) + ",\"text\":" + JStr(readText)
-                    + ",\"cursor\":" + (readText == null ? 0 : readText.Length).ToString(CultureInfo.InvariantCulture) + "}");
+                    + ",\"cursor\":" + (readText == null ? 0 : readText.Length).ToString(CultureInfo.InvariantCulture)
+                    + ",\"ctrlName\":" + JStr(SafeName(el))
+                    + ",\"help\":" + JStr(SafeHelp(el))
+                    + ",\"winTitle\":" + JStr(ForegroundWindowTitle()) + "}");
                 return;
             }
 
@@ -1488,6 +1496,38 @@ namespace OpenCues
                     return proc.ProcessName;
             }
             catch { return null; }
+        }
+
+        // --- Ambient field metadata (opt-in, disambiguation + format steer) --
+        // The focused field's OWN UIA properties only. IsAttachable already
+        // rejected password/sensitive fields, so Name/HelpText here belong to
+        // a field the user chose to type in. We never read a sibling control's
+        // value (e.g. Explorer's address bar) - that would widen the read
+        // surface past the ambient-context threat model. Length-capped here as
+        // a first cut; @opencues/core sanitizes + re-caps before any prompt.
+        static string SafeName(AutomationElement el)
+        {
+            if (el == null) return "";
+            try { return Trunc(el.Current.Name ?? "", 200); } catch { return ""; }
+        }
+        static string SafeHelp(AutomationElement el)
+        {
+            if (el == null) return "";
+            try { return Trunc(el.Current.HelpText ?? "", 200); } catch { return ""; }
+        }
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+        static string ForegroundWindowTitle()
+        {
+            try
+            {
+                IntPtr h = GetForegroundWindow();
+                if (h == IntPtr.Zero) return "";
+                var sb = new StringBuilder(512);
+                int n = GetWindowText(h, sb, sb.Capacity);
+                return n > 0 ? Trunc(sb.ToString(), 200) : "";
+            }
+            catch { return ""; }
         }
 
         static int RuntimeIdHash(int[] rid)

@@ -256,12 +256,28 @@ export interface AmbientContext {
   readonly ariaDescription?: string;
   /** input type (text / email / search / url / textarea / contenteditable). */
   readonly inputType?: string;
-  /** document.title. */
+  /** document.title (chrome), or the focused top-level WINDOW TITLE
+   *  (native hosts, e.g. Windows "Documents - File Explorer"). */
   readonly pageTitle?: string;
   /** location.origin + location.pathname — query + fragment stripped. */
   readonly pageUrl?: string;
   /** `<meta name="description">` content. */
   readonly pageDescription?: string;
+  /**
+   * The APP the user is typing in — the native equivalent of chrome's
+   * page/site. Populated by system-wide hosts that attach across many
+   * apps (Windows: the focused foreground process name, e.g.
+   * `explorer.exe`, `notepad.exe`). Undefined on chrome (the page URL
+   * plays this role there) and on single-surface hosts (CC/OC/gemini).
+   *
+   * Used to STEER OUTPUT FORMAT: a `_` lookup in File Explorer's search
+   * box should be shaped as a filesystem path / file-search query, not a
+   * prose answer. Like every ambient field it is UNTRUSTED and sanitized
+   * before it touches a prompt; it is the app the user is already looking
+   * at, never OS/env/cwd data (see the single-field, no-system-data
+   * invariant in docs/architecture/ambient-context.md).
+   */
+  readonly app?: string;
 }
 
 export type Unsubscribe = () => void;
