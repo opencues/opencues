@@ -6,6 +6,8 @@ interface ProxiedFetchResponse {
   status: number;
   statusText: string;
   text: string;
+  /** SW-side raw fetch duration (ms), for the latency-split instrumentation. */
+  fetchMs?: number;
 }
 
 /**
@@ -63,6 +65,9 @@ export class FetchHttpAdapter implements HttpAdapter {
     // no per-message abort yet) — its response is silently discarded
     // by the SW-side requestId tracker. v1 saves runtime work but
     // not provider $$$ for chrome; full SW plumbing is a follow-up.
+    // Instrumentation: time the whole content-script → SW → fetch → back
+    // round-trip so we can split it into SW-fetch vs IPC + (cold) SW-wake.
+    const rtStart = Date.now();
     const fetchP = chrome.runtime.sendMessage<unknown, ProxiedFetchResponse>({
       type: 'opencues:fetch',
       method: 'POST',
@@ -82,6 +87,18 @@ export class FetchHttpAdapter implements HttpAdapter {
           }),
         ])
       : await fetchP;
+    // Latency split (debug-mode only): total round-trip vs the SW's raw fetch.
+    // The gap ≈ IPC hops + a COLD service-worker wake-up (MV3 kills the SW
+    // after ~30s idle; the first call after that pays the wake cost). A big gap
+    // with a small fetchMs points at SW-wake, not the model or network.
+    const roundTripMs = Date.now() - rtStart;
+    const swFetchMs = response?.fetchMs;
+    if (typeof swFetchMs === 'number') {
+      log.debug(`[opencues] LLM latency split: round-trip ${roundTripMs}ms = SW-fetch ${swFetchMs}ms + IPC/SW-wake ${roundTripMs - swFetchMs}ms`);
+    } else {
+      log.debug(`[opencues] LLM latency: round-trip ${roundTripMs}ms (no SW fetch timing)`);
+    }
+
     if (!response || !response.ok) {
       const status = response?.status ?? 0;
       const statusText = response?.statusText ?? 'sendMessage failed';

@@ -692,6 +692,23 @@ export const FEATURES: readonly FeatureSpec[] = [
     ],
   },
   {
+    scalar: 'life-context-mode',
+    group: 'Context & identity',
+    camelCase: 'lifeContextMode',
+    description: 'Ingest a bounded calendar snapshot so fluid-blank can answer availability/scheduling questions',
+    menuTip: 'Let fluid-blank reason over your upcoming calendar — `am i free thursday _` answers from an ingested (bounded, periodic) calendar-feed snapshot. Event times reach the LLM; titles are dehydrated tokens the runtime hydrates locally. OFF by default (carries calendar PII). See docs/architecture/life-context.md.',
+    values: [
+      { id: 'off', description: 'Disabled (default) — no calendar ingestion' },
+      { id: 'on',  description: 'Enabled — ingest a bounded calendar snapshot; times in the clear, titles dehydrated to tokens hydrated locally' },
+    ],
+    // The shared calendar snapshot, produced OpenCues-side by `opencues
+    // calendar sync`. No `template` (it's generated, not seeded). `pushedBy`
+    // makes the chrome-host + `opencues sync chrome` carry it into the bundle
+    // so the chrome extension consumes the same file native hosts read directly.
+    prereqFile: { basename: 'life-context.json' },
+    pushedBy: ['chrome-host'],
+  },
+  {
     scalar: 'statusbar-position',
     group: 'Appearance',
     camelCase: 'statusbarPosition',

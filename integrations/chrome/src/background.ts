@@ -35,6 +35,8 @@ interface FetchResponse {
   status: number;
   statusText: string;
   text: string;
+  /** SW-side raw fetch duration (ms) — instrumentation for the latency split. */
+  fetchMs?: number;
 }
 
 // Sender authentication + fetch-origin allow-list live in sw-auth.ts so
@@ -146,17 +148,22 @@ chrome.runtime.onMessage.addListener((message: FetchRequest, _sender, sendRespon
 
   (async (): Promise<FetchResponse> => {
     try {
+      // Instrumentation: time the raw fetch (SW side) so the content-script
+      // adapter can split total round-trip into SW-fetch vs IPC/SW-wake.
+      const fetchStart = Date.now();
       const response = await fetch(message.url, {
         method: message.method,
         headers: message.headers,
         body: message.body,
       });
       const text = await response.text();
+      const fetchMs = Date.now() - fetchStart;
       return {
         ok: response.ok,
         status: response.status,
         statusText: response.statusText,
         text,
+        fetchMs,
       };
     } catch (err) {
       return {

@@ -1,0 +1,26 @@
+# life-context calendar feeds — one .ics / webcal URL per line.
+# Lines starting with # are ignored. The daemon fetches these every ~15 min,
+# parses them, and feeds your upcoming events to fluid-blank (`am i free … _`)
+# and the calendar-conflict cue. Requires `life-context-mode: on` in OPENCUES.md.
+#
+# Any .ics or webcal feed works — Luma, Google, Outlook/M365, Apple iCloud, etc.
+# webcal:// URLs are fine (auto-converted to https://).
+#
+# Poll cadence: `life-context-poll-minutes:` in OPENCUES.md (default 30; Google
+# caches its ICS ~hourly, so faster is wasted). Force a fresh pull any time with
+# `opencues calendar refresh`.
+#
+# ── Luma ──────────────────────────────────────────────────────────────
+#   It's in your account settings, not on the calendar page:
+#   Profile/Account (top-right avatar) → "Account Syncing" section →
+#   "Calendar Syncing" → click "Copy URL". Paste that URL below — it looks
+#   (it carries a secret key, so keep this file private).
+#
+# ── Google Calendar ───────────────────────────────────────────────────
+#   Calendar settings → "Integrate calendar" → "Secret address in iCal format".
+#
+# ── Outlook / Microsoft 365 ───────────────────────────────────────────
+#   Calendar → Share → Publish → copy the ICS link.
+#
+# Add your feed URL(s) below this line:
+

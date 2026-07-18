@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
   saveUserKeys: vi.fn(),
   resetConfig: vi.fn(),
   clearChromeHostState: vi.fn(),
+  onConfigChange: vi.fn(),
 }));
 
 vi.mock('../adapters/chrome-storage-adapter', () => mocks);

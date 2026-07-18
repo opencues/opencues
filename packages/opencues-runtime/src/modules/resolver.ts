@@ -68,6 +68,21 @@ export interface ResolverOptions {
    */
   readonly endpointOverride?: string;
   /**
+  /**
+   * Host-ingested life-context snapshot (calendar events). Written on a
+   * cadence by the host's background poller (or a fixture); the resolver
+   * reads it fresh each pass so a re-ingest propagates without restart —
+   * the ingest-on-a-timer model (NOT a network fetch in the keystroke path).
+   * Forwarded to fluid-blank only when `life-context-mode: on`. Structurally
+   * mirrors `@opencues/core`'s LifeContextSnapshot. Event times are in the
+   * clear; titles are `[EVENT N]` tokens hydrated locally.
+   */
+  readonly lifeContext?: {
+    readonly events: ReadonlyArray<{ token: string; title: string; start: string; end: string; allDay?: boolean; location?: string }>;
+    readonly catalog: ReadonlyMap<string, string>;
+    readonly ingestedAt?: string;
+  };
+  /**
    * Default-model override from a host-level UI (chrome popup's Model
    * dropdown). When non-empty, takes precedence over OPENCUES.md's
    * `llm-model:` scalar AND the legacy `defaultModel` fallback.
@@ -1371,6 +1386,20 @@ export class Resolver {
           && !noBlankContextConsumer(cleanWords, this.options.keywordBoundSlotIndices?.(text) ?? [])
           ? await this.blankContextProvider()
           : undefined,
+        // Life-context (ingested calendar). Host writes the snapshot on a
+        // cadence (values/times local + dehydrated titles); read fresh here so
+        // a re-ingest applies without restart. Gated by `life-context-mode`
+        // (off by default — carries calendar PII).
+        lifeContext: this.configLoader.opencuesState.lifeContextMode !== 'off'
+          && this.options.lifeContext
+          && this.options.lifeContext.events.length > 0
+          ? {
+              events: this.options.lifeContext.events,
+              catalog: this.options.lifeContext.catalog,
+              ingestedAt: this.options.lifeContext.ingestedAt,
+              mode: 'on' as const,
+            }
+          : undefined,
         // Sentinel grammar (bare default / typed opt-in). Threaded so the
         // catalog renderer + post-LLM resolver in TransformBlank/FluidBlank
         // pick the typed-sentinel engine path when enabled.
@@ -2076,6 +2105,9 @@ export class Resolver {
           // entry is locked against re-resolution AND distinguishable
           // from other span-bearing defs in logs / event traces.
           blankName: r.source,
+          // Dynamic advisory (e.g. calendar-conflict heads-up) → surfaced in
+          // the status line when the cursor sits in the span, no cycling.
+          cueTip: r.cueTip,
         });
         wrote++;
 

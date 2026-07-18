@@ -73,6 +73,19 @@ export interface HostInfo extends CommonHostInfo {
    */
   httpAdapter?: unknown;
   /**
+   * Ingested life-context snapshot (calendar). The bootstrap reads the shared
+   * `~/.cues/life-context.json` (produced OpenCues-side by `opencues calendar
+   * sync`) from the synced config bundle and builds this via
+   * `@opencues/core`'s buildLifeContextSnapshot. Chrome does NOT fetch feeds —
+   * refresh happens OpenCues-side; chrome only consumes. Forwarded to the
+   * resolver only when `life-context-mode: on`. See docs/architecture/life-context.md.
+   */
+  lifeContext?: {
+    readonly events: ReadonlyArray<{ token: string; title: string; start: string; end: string; allDay?: boolean; location?: string }>;
+    readonly catalog: ReadonlyMap<string, string>;
+    readonly ingestedAt?: string;
+  };
+  /**
    * Per-current-target capability — does the currently focused
    * element support cycling (Ctrl+Alt+arrow + visual band)?
    * Returns true for contenteditables, false for normal `<input>`
@@ -408,6 +421,7 @@ export function boot(host: HostInfo): BootResult {
     apiKeys: Record<string, string | undefined>;
     debounceMs: number;
     httpAdapter: unknown;
+    lifeContext?: HostInfo['lifeContext'];
     missingKeyFallbackMessage?: string;
     formatLLMErrorAsSubstitute?: (reason: 'invalid-api-key' | 'network' | 'rate-limit' | 'endpoint-not-found' | 'model-not-found' | 'insufficient-credits' | 'bad-request', err?: Error) => string;
   } = {
@@ -423,6 +437,7 @@ export function boot(host: HostInfo): BootResult {
     apiKeys,
     debounceMs: host.llmDebounceMs ?? 500,
     httpAdapter: host.httpAdapter,
+    lifeContext: host.lifeContext,
   };
   if (true) {
     // Pass resolverOpts by reference (NOT spread) so updateLlmConfig's

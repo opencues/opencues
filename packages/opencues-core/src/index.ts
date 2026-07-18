@@ -281,6 +281,27 @@ export type {
   PlanResult as BlankContextPlanResult,
 } from './blank-context';
 
+// Life-context — ingested life-data (calendar first) as a REASONING catalog
+// for fluid-blank. Unlike the substitution catalogs (identity/blank/system),
+// the model reasons over the event times; only titles are dehydrated tokens.
+// Ingest-on-a-timer, never invoke-per-keystroke. See docs/architecture/life-context.md.
+export {
+  buildLifeContextSnapshot,
+  renderLifeContextCatalog,
+  renderLifeContextForCue,
+} from './life-context';
+export type {
+  LifeContextMode,
+  LifeContextEvent,
+  LifeContextSnapshot,
+} from './life-context';
+
+// iCalendar (.ics / webcal) parser — the first real life-context producer.
+// Pure (no network); the host poller fetches the feed and passes the text.
+// One parser covers Luma / Google / Outlook / Apple / any .ics feed.
+export { parseIcs } from './ics';
+export type { IcsEvent, ParseIcsOptions } from './ics';
+
 // IDENTITY.md write-validator — load-bearing safety check for any path
 // that mutates `~/.cues/IDENTITY.md`. Used by the CLI's `identity` command
 // today; will be used by a future keyword-bound sentinel blank.
