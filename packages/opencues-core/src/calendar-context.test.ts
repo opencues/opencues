@@ -10,7 +10,7 @@
 
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert';
-import { buildCalendarContextSnapshot, renderCalendarContextCatalog } from './calendar-context';
+import { buildCalendarContextSnapshot, renderCalendarContextCatalog, matchCalendarTitles, renderCalendarTitleHints } from './calendar-context';
 import { postProcessContext } from './identity-context';
 
 const EVENTS = [
@@ -18,6 +18,57 @@ const EVENTS = [
   { title: 'Team standup',   start: '2026-07-17T16:00', end: '2026-07-17T16:30' },
   { title: 'Conference',     start: '2026-07-22T00:00', end: '2026-07-22T23:59', allDay: true },
 ];
+
+describe('matchCalendarTitles — safe-mode local title→token pre-match', () => {
+  const snap = buildCalendarContextSnapshot(EVENTS);
+  const resolve = (input: string) => matchCalendarTitles(input, snap).map((m) => `${m.phrase}=${m.token}`);
+
+  it('resolves a distinctive title word to its token (exact)', () => {
+    assert.deepEqual(resolve('where is the dentist appointment'), ['dentist=[EVENT 1]']);
+  });
+
+  it('is case-insensitive', () => {
+    assert.deepEqual(resolve('WHERE IS THE DENTIST'), ['dentist=[EVENT 1]']);
+  });
+
+  it('tolerates a typo (bounded Levenshtein)', () => {
+    assert.deepEqual(resolve('when is the dentst'), ['dentst=[EVENT 1]']); // dentst→Dentist, edit-distance 1
+  });
+
+  it('resolves a multi-word title, joining the matched user words', () => {
+    assert.deepEqual(resolve('where is the team standup'), ['team standup=[EVENT 2]']);
+  });
+
+  it('echoes the USER word, never the rest of the title (PII invariant)', () => {
+    const s = buildCalendarContextSnapshot([{ title: 'Supabase Q3 Planning with Legal', start: '2026-07-20T09:00', end: '2026-07-20T10:00' }]);
+    const m = matchCalendarTitles('when is the supabase thing', s);
+    assert.deepEqual(m, [{ token: '[EVENT 1]', phrase: 'supabase' }]); // only "supabase" — never "Q3 Planning with Legal"
+  });
+
+  it('resolves NOTHING for a word shared by two events (ambiguous → no misleading hint)', () => {
+    const s = buildCalendarContextSnapshot([
+      { title: 'Design review', start: '2026-07-20T09:00', end: '2026-07-20T10:00' },
+      { title: 'Design sync',   start: '2026-07-21T09:00', end: '2026-07-21T10:00' },
+    ]);
+    // "design" hits both → skipped; "review" is unique → resolves E1 alone.
+    assert.deepEqual(matchCalendarTitles('the design review', s).map((x) => `${x.phrase}=${x.token}`), ['review=[EVENT 1]']);
+    // A query with ONLY the shared word resolves nothing.
+    assert.deepEqual(matchCalendarTitles('where is the design', s), []);
+  });
+
+  it('resolves nothing on stopword-only or no-match queries', () => {
+    assert.deepEqual(matchCalendarTitles('where is my next event', snap), []);      // all stopwords
+    assert.deepEqual(matchCalendarTitles('where is the pizza party', snap), []);    // no title overlap
+    assert.deepEqual(matchCalendarTitles('am i free at 3pm today', snap), []);      // availability words only
+  });
+
+  it('renderCalendarTitleHints formats the block, or empty when none', () => {
+    assert.equal(renderCalendarTitleHints([]), '');
+    const block = renderCalendarTitleHints([{ token: '[EVENT 1]', phrase: 'dentist' }]);
+    assert.match(block, /RESOLVED REFERENCES/);
+    assert.match(block, /- "dentist" → \[EVENT 1\]/);
+  });
+});
 
 describe('buildCalendarContextSnapshot', () => {
   it('assigns sequential [EVENT N] tokens and builds a token→title catalog', () => {
