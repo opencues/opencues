@@ -26,7 +26,7 @@ import type {
 import { createSourceReclassifier } from '@opencues/runtime/dist/src/boot-common';
 import { createTrustGate } from './trust-gate';
 import { applySiteCompatFilter as siteFilter } from './site-filter';
-import { parseSingleCueMd, listProviders, buildLifeContextSnapshot } from '@opencues/core';
+import { parseSingleCueMd, listProviders, buildCalendarContextSnapshot } from '@opencues/core';
 import { ChromeUserBlank } from './user-blank-loader';
 import { createBlankInvoke } from '@opencues/runtime/dist/src/blanks';
 import { wordDiff } from '@opencues/runtime/dist/src/modules/word-diff';
@@ -2671,12 +2671,12 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     }
   })();
 
-  // Life-context (calendar) — a MUTABLE holder passed by reference so the
+  // Calendar-context (calendar) — a MUTABLE holder passed by reference so the
   // resolver reads it fresh each resolve. Chrome does NOT fetch feeds; the
-  // shared `~/.cues/life-context.json` is produced OpenCues-side by
-  // `opencues calendar sync` and pushed here by the chrome-host. loadLifeContext()
+  // shared `~/.cues/calendar.json` is produced OpenCues-side by
+  // `opencues calendar sync` and pushed here by the chrome-host. loadCalendarContext()
   // (below, after boot + on storage change) refills this holder in place.
-  const lifeContextHolder: { events: Array<{ token: string; title: string; start: string; end: string; allDay?: boolean; location?: string }>; catalog: Map<string, string>; ingestedAt?: string } =
+  const calendarContextHolder: { events: Array<{ token: string; title: string; start: string; end: string; allDay?: boolean; location?: string }>; catalog: Map<string, string>; ingestedAt?: string } =
     { events: [], catalog: new Map(), ingestedAt: undefined };
 
   // No seed step — readFile() resolves bake-time constants directly
@@ -2685,7 +2685,7 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
   bootResult = boot({
     hostVersion: '0.1.0',
     cwd: ROOT,
-    lifeContext: lifeContextHolder,
+    calendarContext: calendarContextHolder,
     getText: () => currentTarget ? readTargetText(currentTarget) : '',
     getCursorOffset: readCursorOffset,
     // Both setText and pushText route through diffWriteText so the
@@ -2858,35 +2858,35 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
   // bootResult.reloadConfig().
   void refreshReadTraceFromStorage();
 
-  // Load the shared calendar snapshot into the life-context holder, and
+  // Load the shared calendar snapshot into the calendar-context holder, and
   // re-load whenever the pushed bundle changes (OpenCues-side `calendar sync`
   // → chrome-host push → storage.onChanged). Chrome consumes; it never fetches.
-  const loadLifeContext = async (): Promise<void> => {
+  const loadCalendarContext = async (): Promise<void> => {
     try {
-      let raw = await readFile(ROOT + '/.cues/life-context.json');
-      // The live storage bundle (chrome-host) may not carry life-context.json
+      let raw = await readFile(ROOT + '/.cues/calendar.json');
+      // The live storage bundle (chrome-host) may not carry calendar.json
       // (a host predating this feature, or a different clone). Fall back to the
       // packaged, `opencues sync chrome`-produced copy so the calendar still
       // loads. The chrome-host path takes over once it pushes the file.
       if (!raw) {
         try {
-          const r = await fetch(chrome.runtime.getURL('dist/configs/life-context.json'));
+          const r = await fetch(chrome.runtime.getURL('dist/configs/calendar.json'));
           if (r.ok) raw = await r.text();
         } catch { /* ignore */ }
       }
       const parsed = raw ? JSON.parse(raw) : null;
       const events = (parsed && Array.isArray(parsed.events)) ? parsed.events : [];
-      const snap = buildLifeContextSnapshot(events, parsed?.ingestedAt);
-      lifeContextHolder.events.length = 0;
-      for (const e of snap.events) lifeContextHolder.events.push({ token: e.token, title: e.title, start: e.start, end: e.end, allDay: e.allDay, location: e.location });
-      lifeContextHolder.catalog.clear();
-      for (const [k, v] of snap.catalog) lifeContextHolder.catalog.set(k, v);
-      lifeContextHolder.ingestedAt = snap.ingestedAt;
-      if (snap.events.length > 0) log('info', `[opencues] life-context: ${snap.events.length} calendar event(s) loaded`);
-    } catch (err) { log('warn', '[opencues] life-context load failed', err); }
+      const snap = buildCalendarContextSnapshot(events, parsed?.ingestedAt);
+      calendarContextHolder.events.length = 0;
+      for (const e of snap.events) calendarContextHolder.events.push({ token: e.token, title: e.title, start: e.start, end: e.end, allDay: e.allDay, location: e.location });
+      calendarContextHolder.catalog.clear();
+      for (const [k, v] of snap.catalog) calendarContextHolder.catalog.set(k, v);
+      calendarContextHolder.ingestedAt = snap.ingestedAt;
+      if (snap.events.length > 0) log('info', `[opencues] calendar-context: ${snap.events.length} calendar event(s) loaded`);
+    } catch (err) { log('warn', '[opencues] calendar-context load failed', err); }
   };
-  void loadLifeContext();
-  chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes['opencues_bundle']) void loadLifeContext(); });
+  void loadCalendarContext();
+  chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes['opencues_bundle']) void loadCalendarContext(); });
 
   // Mirror `opencues check-keys` — ping the LLM provider at boot
   // so users find out about missing/invalid keys without having to

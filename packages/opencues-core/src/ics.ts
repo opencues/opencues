@@ -1,14 +1,14 @@
 /**
- * iCalendar (.ics / webcal) parser → life-context event shape.
+ * iCalendar (.ics / webcal) parser → calendar-context event shape.
  *
- * The FIRST real life-context producer (docs/architecture/life-context.md
+ * The FIRST real calendar-context producer (docs/architecture/calendar-context.md
  * Phase 1b). An `.ics` feed is the near-universal calendar export — Luma,
  * Google, Outlook/M365, Apple iCloud, Fastmail, Meetup, university timetables,
  * etc. all publish one — so a single parser makes almost any calendar a
  * drop-in producer. This module is PURE (no network): the host poller fetches
  * the feed text and hands it here.
  *
- * Output events match `buildLifeContextSnapshot`'s input: `{ title, start,
+ * Output events match `buildCalendarContextSnapshot`'s input: `{ title, start,
  * end, allDay?, location? }` with start/end as LOCAL wall-clock ISO
  * `YYYY-MM-DDTHH:MM` (the shape the minute-of-day math + "today" anchor use).
  *
@@ -161,7 +161,7 @@ interface RawEvent {
 const WEEKDAY_CODES = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
 
 /**
- * Parse iCalendar text into life-context events (local wall-clock).
+ * Parse iCalendar text into calendar-context events (local wall-clock).
  * Never throws on malformed content — unparseable VEVENTs are skipped.
  */
 export function parseIcs(text: string, opts: ParseIcsOptions = {}): IcsEvent[] {

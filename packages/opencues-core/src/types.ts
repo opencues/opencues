@@ -151,16 +151,15 @@ export interface CueContext {
   };
 
   /**
-  /**
-   * Ingested life-context (calendar). Populated by the runtime when
-   * `life-context-mode: on` (off by default). Unlike systemContext, this is
-   * a REASONING catalog: the model reasons over the event TIMES (in the clear)
-   * to answer availability questions, and emits `[EVENT N]` tokens for titles
-   * which `postProcessContext` hydrates locally. Mirror of
-   * `@opencues/core/life-context.ts` LifeContextSnapshot. `mode: 'on'` is the
-   * only populated state.
+   * Ingested calendar-context. Populated by the runtime when
+   * `calendar-context-mode: on` (off by default). A REASONING catalog: the
+   * model reasons over the event TIMES (in the clear) to answer availability
+   * questions, and emits `[EVENT N]` / `[EVENT N LOCATION]` tokens for titles
+   * and locations which `postProcessContext` hydrates locally. Mirror of
+   * `@opencues/core/calendar-context.ts` CalendarContextSnapshot. `mode: 'on'`
+   * is the only populated state.
    */
-  lifeContext?: {
+  calendarContext?: {
     events: ReadonlyArray<{ token: string; title: string; start: string; end: string; allDay?: boolean; location?: string }>;
     catalog: ReadonlyMap<string, string>;
     ingestedAt?: string;

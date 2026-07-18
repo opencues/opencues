@@ -73,14 +73,14 @@ export interface HostInfo extends CommonHostInfo {
    */
   httpAdapter?: unknown;
   /**
-   * Ingested life-context snapshot (calendar). The bootstrap reads the shared
-   * `~/.cues/life-context.json` (produced OpenCues-side by `opencues calendar
+   * Ingested calendar-context snapshot (calendar). The bootstrap reads the shared
+   * `~/.cues/calendar.json` (produced OpenCues-side by `opencues calendar
    * sync`) from the synced config bundle and builds this via
-   * `@opencues/core`'s buildLifeContextSnapshot. Chrome does NOT fetch feeds —
+   * `@opencues/core`'s buildCalendarContextSnapshot. Chrome does NOT fetch feeds —
    * refresh happens OpenCues-side; chrome only consumes. Forwarded to the
-   * resolver only when `life-context-mode: on`. See docs/architecture/life-context.md.
+   * resolver only when `calendar-context-mode: on`. See docs/architecture/calendar-context.md.
    */
-  lifeContext?: {
+  calendarContext?: {
     readonly events: ReadonlyArray<{ token: string; title: string; start: string; end: string; allDay?: boolean; location?: string }>;
     readonly catalog: ReadonlyMap<string, string>;
     readonly ingestedAt?: string;
@@ -421,7 +421,7 @@ export function boot(host: HostInfo): BootResult {
     apiKeys: Record<string, string | undefined>;
     debounceMs: number;
     httpAdapter: unknown;
-    lifeContext?: HostInfo['lifeContext'];
+    calendarContext?: HostInfo['calendarContext'];
     missingKeyFallbackMessage?: string;
     formatLLMErrorAsSubstitute?: (reason: 'invalid-api-key' | 'network' | 'rate-limit' | 'endpoint-not-found' | 'model-not-found' | 'insufficient-credits' | 'bad-request', err?: Error) => string;
   } = {
@@ -437,7 +437,7 @@ export function boot(host: HostInfo): BootResult {
     apiKeys,
     debounceMs: host.llmDebounceMs ?? 500,
     httpAdapter: host.httpAdapter,
-    lifeContext: host.lifeContext,
+    calendarContext: host.calendarContext,
   };
   if (true) {
     // Pass resolverOpts by reference (NOT spread) so updateLlmConfig's

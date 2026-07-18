@@ -1,7 +1,7 @@
 ---
 name: calendar
 scope: sentence
-uses-life-context: true
+uses-calendar-context: true
 # Priority 90 — clearly above the default prose cues (more-formal / formalizer
 # is 85, word-cues 60–80) with headroom. The resolver processes sources
 # priority-descending and drops a lower-priority result whose sentence a

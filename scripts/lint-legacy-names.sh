@@ -66,6 +66,24 @@ BANNED_PATTERNS=(
   '\bsentinels-mode\b'
   '\buser-context-mode\b'
   '\bopencues sentinels\b'
+  # ── July 2026 life-context → calendar-context rename (shipped feature) ──
+  # The umbrella CONCEPT keeps the name "life-context" in
+  # docs/research/life-context-concepts/ — so bare "life-context" is NOT
+  # banned. Only the shipped SCALAR / IDENTIFIERS / DATA-FILE names are.
+  # The one legit back-reference (calendar.cjs's rename migration) carries
+  # per-line LEGACY-NAME-ALLOW markers.
+  '\blife-context-mode\b'
+  '\blifeContextMode\b'
+  '\brenderLifeContext'
+  '\bbuildLifeContextSnapshot\b'
+  '\bLifeContextSnapshot\b'
+  '\bLifeContextEvent\b'
+  '\bLifeContextMode\b'
+  '\buses-life-context\b'
+  '\busesLifeContext\b'
+  'life-context\.json'
+  '\blife-context-feeds\b'
+  '\blife-context-poll-minutes\b'
   # ── June 2026 blank-API slim-down — removed scalar + gate identifiers ──
   # These are clean code-level removals with no successor and no
   # legitimate remaining reference in shipping code.
