@@ -14,7 +14,7 @@ import { buildLifeContextSnapshot, renderLifeContextCatalog } from './life-conte
 import { postProcessContext } from './identity-context';
 
 const EVENTS = [
-  { title: 'Dentist',        start: '2026-07-17T14:00', end: '2026-07-17T15:00' },
+  { title: 'Dentist',        start: '2026-07-17T14:00', end: '2026-07-17T15:00', location: '5 High St Clinic' },
   { title: 'Team standup',   start: '2026-07-17T16:00', end: '2026-07-17T16:30' },
   { title: 'Conference',     start: '2026-07-22T00:00', end: '2026-07-22T23:59', allDay: true },
 ];
@@ -44,6 +44,16 @@ describe('buildLifeContextSnapshot', () => {
     assert.equal(snap.events[0].token, '[MEETING]');
     assert.equal(snap.catalog.get('[MEETING]'), 'X');
   });
+
+  it('tokenizes LOCATION into [EVENT N LOCATION] + catalog when present, none otherwise', () => {
+    const snap = buildLifeContextSnapshot(EVENTS);
+    // Dentist (event 1) has a location → its own token, in the catalog.
+    assert.equal(snap.events[0].locationToken, '[EVENT 1 LOCATION]');
+    assert.equal(snap.catalog.get('[EVENT 1 LOCATION]'), '5 High St Clinic');
+    // Events without a location get no location token (and none in the catalog).
+    assert.equal(snap.events[1].locationToken, undefined);
+    assert.equal(snap.catalog.has('[EVENT 2 LOCATION]'), false);
+  });
 });
 
 describe('renderLifeContextCatalog', () => {
@@ -63,6 +73,15 @@ describe('renderLifeContextCatalog', () => {
     assert.match(block, /\[EVENT 3\]: Wed 2026-07-22, all day \(mins 0–1439\)/);
     // The real titles NEVER appear in the prompt block (they're behind tokens).
     assert.doesNotMatch(block, /Dentist|Team standup|Conference/);
+  });
+
+  it('renders LOCATION as its token (never the raw address) — PII stays local', () => {
+    const block = renderLifeContextCatalog(buildLifeContextSnapshot(EVENTS), 'on');
+    // Event 1's location is shown as a token after `@`, not the real place.
+    assert.match(block, /\[EVENT 1\]: Fri 2026-07-17, mins 840–900 \(2:00pm–3:00pm\) @ \[EVENT 1 LOCATION\]/);
+    assert.doesNotMatch(block, /5 High St Clinic/);
+    // Events with no location carry no `@` location clause.
+    assert.match(block, /\[EVENT 2\]: Fri 2026-07-17, mins 960–990 \(4:00pm–4:30pm\)\n/);
   });
 
   it('surfaces ingestedAt as a refresh marker when provided', () => {
@@ -99,5 +118,11 @@ describe('hydration round-trip', () => {
     const snap = buildLifeContextSnapshot(EVENTS);
     const out = postProcessContext('Busy 2–3pm ([EVENT 1])', { catalog: snap.catalog, originalBody: 'am i free at 2pm _' }).output;
     assert.equal(out, 'Busy 2–3pm (Dentist)');
+  });
+
+  it('hydrates [EVENT N LOCATION] → the real location (where-is lookup)', () => {
+    const snap = buildLifeContextSnapshot(EVENTS);
+    const out = postProcessContext('[EVENT 1] — at [EVENT 1 LOCATION]', { catalog: snap.catalog, originalBody: 'where is my next event _' }).output;
+    assert.equal(out, 'Dentist — at 5 High St Clinic');
   });
 });
