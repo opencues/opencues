@@ -26,7 +26,7 @@ const N = parseInt(process.env.N ?? '3', 10);
 // NOW is pinned so the CURRENT MOMENT anchor is deterministic.
 const NOW = '2026-07-17T09:00';
 const EVENTS = [
-  { title: 'Dentist',          start: '2026-07-17T14:00', end: '2026-07-17T15:00' },
+  { title: 'Dentist',          start: '2026-07-17T14:00', end: '2026-07-17T15:00', location: '5 High St Clinic, Bristol' },
   { title: 'Team standup',     start: '2026-07-17T16:00', end: '2026-07-17T16:30' },
   { title: '1:1 with Sarah',   start: '2026-07-20T09:00', end: '2026-07-20T10:00' },
   { title: 'Lunch with Alex',  start: '2026-07-21T12:00', end: '2026-07-21T13:00' },
@@ -90,6 +90,21 @@ const LOOKUPS = [
 const hasTime = (a: string): boolean => /\d{1,2}:\d{2}|\d{1,2}\s*[ap]m|all day/i.test(a);
 const hasToken = (a: string): boolean => /\[EVENT/i.test(a);
 
+// WHERE — a POSITIONAL "where is X" lookup (next/soonest — resolvable from
+// times alone) must emit the event's LOCATION token ([EVENT N LOCATION]),
+// never the raw address (dehydrated). Two fail-safe cases: an event with no
+// location must not invent one, and a TITLE-based where-lookup ("the dentist")
+// can't resolve in safe mode (titles are tokens — the model can't see [EVENT 1]
+// IS "Dentist"; the deferred local-pre-match limitation), so it must decline
+// cleanly — no invented place, no raw leak.
+const WHERES = [
+  { id: 'where-next',    input: 'where is my next event _',    want: 'loc'  as const }, // positional → token
+  { id: 'where-standup', input: 'where is the team standup _', want: 'none' as const }, // no location → don't invent
+  { id: 'where-title',   input: 'where is the dentist _',      want: 'none' as const }, // safe-mode title-match gap → decline, don't leak
+];
+const hasLocationToken = (a: string): boolean => /\[EVENT \d+ LOCATION\]/i.test(a);
+const leaksRawAddress = (a: string): boolean => /5 High St Clinic/i.test(a);
+
 async function main(): Promise<void> {
   console.log(`\n${BOLD}Life-context CORRECTNESS${RESET}   model: ${MODEL}   N=${N}   (today = Fri 2026-07-17)\n`);
   console.log(`${DIM}${renderLifeContextCatalog(SNAP, 'on').trim().split('\n').slice(0, 8).join('\n')}${RESET}\n`);
@@ -137,6 +152,18 @@ async function main(): Promise<void> {
     console.log(`${hits === N ? GREEN + 'PASS' : (hits === 0 ? RED + 'FAIL' : YELLOW + 'PART')}${RESET} ${c.id.padEnd(11)} ${hits}/${N}  ${DIM}${[...new Set(ans)].slice(0, 2).map((a) => JSON.stringify(a)).join(' ')}${RESET}`);
   }
 
+  console.log(`\n${BOLD}WHERE — location lookup emits [EVENT N LOCATION], never the raw address${RESET}`);
+  let wOk = 0, wTot = 0;
+  for (const c of WHERES) {
+    const ans = await Promise.all(Array.from({ length: N }, () => ask(c.input)));
+    const hits = ans.filter((a) => {
+      if (leaksRawAddress(a)) return false;                       // never leak the raw address
+      return c.want === 'loc' ? hasLocationToken(a) : !hasLocationToken(a);
+    }).length;
+    wOk += hits; wTot += N;
+    console.log(`${hits === N ? GREEN + 'PASS' : (hits === 0 ? RED + 'FAIL' : YELLOW + 'PART')}${RESET} ${c.id.padEnd(13)} want=${c.want.padEnd(4)} ${hits}/${N}  ${DIM}${[...new Set(ans)].slice(0, 2).map((a) => JSON.stringify(a)).join(' ')}${RESET}`);
+  }
+
   // HYDRATION — the runtime substitution (mirrors fluid-blank's postProcessContext call).
   console.log(`\n${BOLD}HYDRATION — [EVENT N] → real title via postProcessContext${RESET}`);
   let hOk = 0;
@@ -147,6 +174,6 @@ async function main(): Promise<void> {
     console.log(`${ok ? GREEN + 'PASS' : RED + 'FAIL'}${RESET} ${e.token.padEnd(10)} → ${JSON.stringify(out)}`);
   }
 
-  console.log(`\n${BOLD}SUMMARY${RESET}  availability ${aOk}/${aTot} · controls-clean ${cOk}/${cTot} · lookup ${lOk}/${lTot} · recall ${rOk}/${rTot} · hydration ${hOk}/${SNAP.events.length}\n`);
+  console.log(`\n${BOLD}SUMMARY${RESET}  availability ${aOk}/${aTot} · controls-clean ${cOk}/${cTot} · lookup ${lOk}/${lTot} · where ${wOk}/${wTot} · recall ${rOk}/${rTot} · hydration ${hOk}/${SNAP.events.length}\n`);
 }
 main().catch((e) => { console.error(e); process.exit(1); });
