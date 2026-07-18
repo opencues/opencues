@@ -71,14 +71,14 @@ export interface SourceConfig {
   promptText?: string;
 
   /**
-   * When true (frontmatter `uses-life-context: true`), a `scope: sentence`
-   * cue receives the ingested calendar catalog (life-context) in each
+   * When true (frontmatter `uses-calendar-context: true`), a `scope: sentence`
+   * cue receives the ingested calendar catalog (calendar-context) in each
    * per-sentence LLM call, and `[EVENT N]` tokens in its alternatives are
    * hydrated locally. Powers the calendar-conflict cue (Phase 2 of
-   * docs/architecture/life-context.md). Self-inert when `life-context-mode`
+   * docs/architecture/calendar-context.md). Self-inert when `calendar-context-mode`
    * is off (no catalog → the source cedes). Only meaningful with `scope: sentence`.
    */
-  usesLifeContext?: boolean;
+  usesCalendarContext?: boolean;
 
   /** Model override for this source */
   model?: string;
@@ -970,9 +970,9 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   match?: string;
   keywords?: string;
   classify?: string;
-  /** `uses-life-context: true` — feed the ingested calendar to this
-   *  sentence-cue. See SourceConfig.usesLifeContext. */
-  usesLifeContext?: boolean;
+  /** `uses-calendar-context: true` — feed the ingested calendar to this
+   *  sentence-cue. See SourceConfig.usesCalendarContext. */
+  usesCalendarContext?: boolean;
   model?: string;
   /** Per-cue provider override (groq | openrouter | gemini | openai). */
   provider?: string;
@@ -1078,7 +1078,7 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'version': fm.version = parseInt(value, 10) || undefined; break;
       case 'type': fm.type = value as SingleCueFrontmatter['type']; break;
       case 'scope': fm.scope = value as SourceConfig['scope']; break;
-      case 'uses-life-context': case 'usesLifeContext': fm.usesLifeContext = value === 'true'; break;
+      case 'uses-calendar-context': case 'usesCalendarContext': fm.usesCalendarContext = value === 'true'; break;
       case 'parser': fm.parser = value as BlankParser; break;
       case 'priority': fm.priority = parseInt(value, 10) || undefined; break;
       case 'match': fm.match = value; break;
@@ -1386,7 +1386,7 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
       if (frontmatter.endpoint) source.endpoint = frontmatter.endpoint;
       if (frontmatter.parser) source.parser = frontmatter.parser;
       if (frontmatter.scope) source.scope = frontmatter.scope;
-      if (frontmatter.usesLifeContext) source.usesLifeContext = true;
+      if (frontmatter.usesCalendarContext) source.usesCalendarContext = true;
       if (frontmatter.maxTokens !== undefined) source.maxTokens = frontmatter.maxTokens;
       if (frontmatter.temperature !== undefined) source.temperature = frontmatter.temperature;
 

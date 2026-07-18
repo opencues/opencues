@@ -1,4 +1,4 @@
-# Life-context
+# Calendar-context
 
 Let OpenCues **reason over your calendar** while you type. When it's on, the LLM
 that answers a `_` lookup — and a proactive cue — can see your upcoming events,
@@ -60,7 +60,7 @@ Where to get the URL:
 **2. Flip the scalar** in `~/.cues/OPENCUES.md`:
 
 ```
-life-context-mode: on
+calendar-context-mode: on
 ```
 
 (or cycle to it via `opencues settings _` in any editor.)
@@ -80,11 +80,11 @@ opencues calendar list              # your feeds + live event counts
 opencues calendar list --json       # scriptable
 opencues calendar add <url>         # add (verifies it fetches + parses)
 opencues calendar remove <url|N>    # remove by URL or 1-based number
-opencues calendar sync              # fetch feeds → ~/.cues/life-context.json now
+opencues calendar sync              # fetch feeds → ~/.cues/calendar.json now
 opencues calendar refresh           # ask a running host to re-poll (cache-busted)
 ```
 
-Feeds live one-per-line in `~/.cues/life-context-feeds.txt`. Add as many as you
+Feeds live one-per-line in `~/.cues/calendar-feeds.txt`. Add as many as you
 like — they're merged, deduped, and windowed to the next ~60 days.
 
 ---
@@ -92,12 +92,12 @@ like — they're merged, deduped, and windowed to the next ~60 days.
 ## How it stays fresh
 
 - A running editor re-polls your feeds every ~30 minutes
-  (`life-context-poll-minutes`, min 5), picking up new events and any feed you
+  (`calendar-poll-minutes`, min 5), picking up new events and any feed you
   add without a restart.
 - `opencues calendar sync` rebuilds the snapshot on demand.
 - `opencues calendar refresh` forces a fresh, cache-busting pull within ~20s.
 
-Every host reads one shared file (`~/.cues/life-context.json`) — no per-editor
+Every host reads one shared file (`~/.cues/calendar.json`) — no per-editor
 calendar setup. On Chrome it arrives through the config sync you already run.
 
 ---
@@ -125,4 +125,4 @@ calendar setup. On Chrome it arrives through the config sync you already run.
 - It's a **suggestion**, never an edit — the cue appends a heads-up you can
   ignore; nothing in your calendar is ever changed.
 
-Design + internals: [`docs/architecture/life-context.md`](../architecture/life-context.md).
+Design + internals: [`docs/architecture/calendar-context.md`](../architecture/calendar-context.md).

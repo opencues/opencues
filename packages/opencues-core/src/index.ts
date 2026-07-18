@@ -281,22 +281,22 @@ export type {
   PlanResult as BlankContextPlanResult,
 } from './blank-context';
 
-// Life-context — ingested life-data (calendar first) as a REASONING catalog
+// Calendar-context — ingested life-data (calendar first) as a REASONING catalog
 // for fluid-blank. Unlike the substitution catalogs (identity/blank/system),
 // the model reasons over the event times; only titles are dehydrated tokens.
-// Ingest-on-a-timer, never invoke-per-keystroke. See docs/architecture/life-context.md.
+// Ingest-on-a-timer, never invoke-per-keystroke. See docs/architecture/calendar-context.md.
 export {
-  buildLifeContextSnapshot,
-  renderLifeContextCatalog,
-  renderLifeContextForCue,
-} from './life-context';
+  buildCalendarContextSnapshot,
+  renderCalendarContextCatalog,
+  renderCalendarContextForCue,
+} from './calendar-context';
 export type {
-  LifeContextMode,
-  LifeContextEvent,
-  LifeContextSnapshot,
-} from './life-context';
+  CalendarContextMode,
+  CalendarContextEvent,
+  CalendarContextSnapshot,
+} from './calendar-context';
 
-// iCalendar (.ics / webcal) parser — the first real life-context producer.
+// iCalendar (.ics / webcal) parser — the first real calendar-context producer.
 // Pure (no network); the host poller fetches the feed and passes the text.
 // One parser covers Luma / Google / Outlook / Apple / any .ics feed.
 export { parseIcs } from './ics';

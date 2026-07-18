@@ -24,7 +24,7 @@ after(() => {
 
 beforeEach(() => { try { fs.rmSync(path.join(tmpHome, '.cues'), { recursive: true, force: true }); } catch {} });
 
-const feedsPath = () => path.join(tmpHome, '.cues', 'life-context-feeds.txt');
+const feedsPath = () => path.join(tmpHome, '.cues', 'calendar-feeds.txt');
 const feedsText = () => { try { return fs.readFileSync(feedsPath(), 'utf8'); } catch { return null; } };
 
 async function run(argv) {
@@ -104,14 +104,14 @@ test('refresh writes the trigger file when feeds exist', async () => {
   await run(['add', URL_A, '--no-verify']);
   const r = await run(['refresh']);
   assert.equal(r.code, 0);
-  assert.ok(fs.existsSync(path.join(tmpHome, '.cues', '.life-context-refresh')), 'trigger written');
+  assert.ok(fs.existsSync(path.join(tmpHome, '.cues', '.calendar-refresh')), 'trigger written');
   assert.ok(/refresh requested/.test(r.out));
 });
 
 test('refresh is a no-op (no trigger) when there are no feeds', async () => {
   const r = await run(['refresh']);
   assert.equal(r.code, 0);
-  assert.ok(!fs.existsSync(path.join(tmpHome, '.cues', '.life-context-refresh')), 'no trigger without feeds');
+  assert.ok(!fs.existsSync(path.join(tmpHome, '.cues', '.calendar-refresh')), 'no trigger without feeds');
 });
 
 test('unknown subcommand exits 2', async () => {

@@ -1,6 +1,6 @@
-# Life-context — proactive steering from ingested life-data
+# Calendar-context — proactive steering from ingested life-data
 
-*Status: prototype, shipping behind `life-context-mode: off` (default). Phase 1a
+*Status: prototype, shipping behind `calendar-context-mode: off` (default). Phase 1a
 (fluid-blank reasoning) + Phase 2 (conflict cue) are built; the ingest producer
 is calendar-feed (`.ics` / webcal) based. See the phasing table below.*
 
@@ -34,7 +34,7 @@ write it to a file."
 
 ```
 ┌─ calendar feeds (.ics / webcal — Luma, Google, Outlook, Apple, any) ─┐
-│   listed one-per-line in ~/.cues/life-context-feeds.txt              │
+│   listed one-per-line in ~/.cues/calendar-feeds.txt              │
 └───────────────▲──────────────────────────────────────────────────────┘
                 │  bounded fetch (next ~60 days), parse, dedup, sort
        ┌────────┴─────────┐
@@ -42,7 +42,7 @@ write it to a file."
        │ (ics.ts parser)   │   poller — fetch → parseIcs → snapshot
        └────────┬─────────┘
                 ▼
-     ~/.cues/life-context.json   ← the ONE shared snapshot (times in the clear,
+     ~/.cues/calendar.json   ← the ONE shared snapshot (times in the clear,
                 │                   titles as [EVENT N] tokens hydrated locally)
      ┌──────────┴───────────────────────────┐
      ▼ (native hosts read the file directly) ▼ (chrome via the config bundle)
@@ -50,22 +50,22 @@ write it to a file."
   calendar-conflict flag + statusline       `am i free thursday _`, `next event _`
 ```
 
-- **Feeds** — `~/.cues/life-context-feeds.txt`, one `.ics`/`webcal` URL per line,
+- **Feeds** — `~/.cues/calendar-feeds.txt`, one `.ics`/`webcal` URL per line,
   edited by `opencues calendar add/remove`. Any iCalendar feed works; one parser
   (`packages/opencues-core/src/ics.ts`) covers Luma, Google, Outlook/M365, Apple.
 - **Producer** — fetches every feed, parses to normalized events, dedups, sorts,
-  windows to the next ~60 days, and writes `~/.cues/life-context.json`. Two
+  windows to the next ~60 days, and writes `~/.cues/calendar.json`. Two
   triggers: the `opencues calendar sync` CLI command, and a host-side poller (see
   § Freshness / cadence). **No per-host poller duplication** — one file, produced
   once, consumed everywhere.
-- **Consumption** — the resolver loads the snapshot into a `LifeContextSnapshot`
-  (`packages/opencues-core/src/life-context.ts`) and feeds it to cues + blanks
+- **Consumption** — the resolver loads the snapshot into a `CalendarContextSnapshot`
+  (`packages/opencues-core/src/calendar-context.ts`) and feeds it to cues + blanks
   exactly like the other context catalogs. Sources *reference* it in the
   keystroke path; nothing fetches per `_`.
 
 ## The snapshot — PII boundary
 
-`life-context.ts:buildLifeContextSnapshot` builds the in-memory shape:
+`calendar-context.ts:buildCalendarContextSnapshot` builds the in-memory shape:
 
 ```ts
 { events: [{ token: '[EVENT 1]', title, start, end, allDay?, location? }, …],
@@ -73,7 +73,7 @@ write it to a file."
   ingestedAt }
 ```
 
-Life-context is a **reasoning** catalog, unlike the *substitution* catalogs
+Calendar-context is a **reasoning** catalog, unlike the *substitution* catalogs
 (identity/blank/system-context), and it splits its data by sensitivity:
 
 - **Event TIMES reach the LLM in the clear.** A busy interval is not PII, and the
@@ -86,12 +86,12 @@ Life-context is a **reasoning** catalog, unlike the *substitution* catalogs
   identity-context safe mode uses. A hostile calendar invite title never reaches
   the provider's logs.
 
-Two render paths, both in `life-context.ts`:
+Two render paths, both in `calendar-context.ts`:
 
 | Path | Used by | Emits |
 |---|---|---|
-| `renderLifeContextCatalog` | fluid-blank (BLANK) | events + CURRENT-MOMENT anchor + the availability/lookup RULES (answer free/busy, name the event with day+time) |
-| `renderLifeContextForCue` | sentence-cue (CUE) | the same events + anchor, WITHOUT the answer rules — the CUE.md body owns the task (flag a scheduling contradiction) |
+| `renderCalendarContextCatalog` | fluid-blank (BLANK) | events + CURRENT-MOMENT anchor + the availability/lookup RULES (answer free/busy, name the event with day+time) |
+| `renderCalendarContextForCue` | sentence-cue (CUE) | the same events + anchor, WITHOUT the answer rules — the CUE.md body owns the task (flag a scheduling contradiction) |
 
 The CURRENT-MOMENT anchor is computed **live at resolve time**, never from the
 snapshot's `ingestedAt` — otherwise a snapshot pulled yesterday makes yesterday's
@@ -104,7 +104,7 @@ events read as "today" after midnight.
   3:00–3:45pm`). `next event _` / `whats on today _` → the event's title token
   PLUS its day + time (`[EVENT 1] — Sat Aug 23, all day`), never the bare title.
 - **Cue (proactive):** the shipped `defaults/cues/calendar/CUE.md`
-  (`scope: sentence`, `uses-life-context: true`, `priority: 90`) reads each
+  (`scope: sentence`, `uses-calendar-context: true`, `priority: 90`) reads each
   sentence; if it claims availability that contradicts the calendar it flags a
   heads-up appended to the sentence — `I'm free at 3pm today` → *"— heads up:
   Dentist is 3:00pm–3:45pm"* — and surfaces the same advisory on the **status
@@ -120,7 +120,7 @@ job — it routes through the **cues / auditors bucket** (a capable model), not 
 fast blanks bucket. This is the existing three-bucket routing
 (`docs/architecture/llm-routing.md`); no new mechanism. The isolated latency of
 the conflict-cue LLM call is benched at `tests/benchmarks/fluid-blank-ambient/
-life-context-cue-latency.ts` (median ~319ms on groq gpt-oss-120b; a rare tail
+calendar-context-cue-latency.ts` (median ~319ms on groq gpt-oss-120b; a rare tail
 spike is the provider, not the pipeline — the whole context is in the prompt, no
 extra call).
 
@@ -140,9 +140,9 @@ threat model.
 4. **No action channel.** Output is a *cue* (a suggestion you see) or a *blank
    fill* (text you review). Worst-case prompt-injection from a malicious invite
    title = a bad *suggestion*, never an action — the ambient-context invariant.
-   **Do not wire life-context output into any side-effect layer** without
+   **Do not wire calendar-context output into any side-effect layer** without
    re-reviewing `security-audit.md` row #21.
-5. **Off by default.** `life-context-mode: off` in OPENCUES.md — the feature
+5. **Off by default.** `calendar-context-mode: off` in OPENCUES.md — the feature
    carries calendar PII, so the user opts in explicitly.
 
 ## Freshness / cadence
@@ -150,10 +150,10 @@ threat model.
 - **CLI sync** — `opencues calendar sync` fetches every feed and rewrites the
   snapshot on demand (also run with `--silent` from install/cron).
 - **Host-side poller** — a running host re-polls the feeds on a cadence
-  (`life-context-poll-minutes`, default 30, clamped [5, 1440]) and re-reads the
+  (`calendar-poll-minutes`, default 30, clamped [5, 1440]) and re-reads the
   feeds file each poll, so `add`/`remove` are picked up without a restart.
 - **On-demand refresh** — `opencues calendar refresh` drops a
-  `~/.cues/.life-context-refresh` trigger; a running host re-polls (cache-busted)
+  `~/.cues/.calendar-refresh` trigger; a running host re-polls (cache-busted)
   within ~20s.
 - **No network in the keystroke path.** A `_` that references the calendar reads
   the cached snapshot file — that's what keeps it fast.
@@ -161,13 +161,13 @@ threat model.
 ## CLI — `opencues calendar`
 
 The user-facing surface (full walk-through in
-`docs/features/life-context.md`):
+`docs/features/calendar-context.md`):
 
 ```
 opencues calendar add <url>        add a feed (fetches + parses to verify)
 opencues calendar list [--json]    list feeds + live event counts
 opencues calendar remove <url|N>   remove a feed by URL or 1-based index
-opencues calendar sync             fetch feeds → ~/.cues/life-context.json
+opencues calendar sync             fetch feeds → ~/.cues/calendar.json
 opencues calendar refresh          force a fresh (cache-busting) poll now
 ```
 
@@ -201,7 +201,7 @@ offers it exactly when your typing needs it** — a gentle cue, or a `_` answer.
 ## Future ingest sources
 
 The producer/consumer seam (feeds → snapshot file → catalog) is deliberately
-ingest-agnostic. Anything that can write a `life-context.json`-shaped snapshot
+ingest-agnostic. Anything that can write a `calendar.json`-shaped snapshot
 plugs in without touching the runtime:
 
 - **More feed types** — email (subjects + snippets), task lists, reminders.
@@ -229,14 +229,14 @@ calendar producer; solve them per source.
   tolerant matching, applied OUTBOUND (query term → token). The `raw`-mode
   alternative (inline titles) is rejected by default — it sends PII.
 - **The conflict cue also requires `sentence-cues-mode: on`** today (it rides the
-  sentence-cue build gate). Decoupling it so `life-context-mode: on` is sufficient
+  sentence-cue build gate). Decoupling it so `calendar-context-mode: on` is sufficient
   is a follow-up.
 - **Segmenter / RRULE** — simple daily/weekly recurrence is handled; exotic
   RRULEs are approximated.
 
 ## See also
 
-- `docs/features/life-context.md` — user-facing summary + the `opencues calendar` walk-through
+- `docs/features/calendar-context.md` — user-facing summary + the `opencues calendar` walk-through
 - `docs/architecture/blank-context.md` — the catalog shape this reuses
 - `docs/architecture/identity-context.md` + `hydration-dehydration.md` — the safe-mode PII boundary
 - `docs/architecture/ambient-context.md` — the no-action-channel invariant this depends on

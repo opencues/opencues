@@ -1,9 +1,9 @@
 /**
- * Life-context CUE correctness (Phase 2 — the cue path). Proves the calendar
+ * Calendar-context CUE correctness (Phase 2 — the cue path). Proves the calendar
  * sentence-cue detects a scheduling contradiction in prose and flags it (naming
  * the clashing event by its hydrated title), and cedes (ALT: NONE) when there's
  * no conflict. Drives the SAME prompt assembly SentenceCueSource uses:
- *   CUE.md body + SINGLE_SENTENCE_FORMAT_SPEC + renderLifeContextForCue.
+ *   CUE.md body + SINGLE_SENTENCE_FORMAT_SPEC + renderCalendarContextForCue.
  *
  * Reference "now" pinned to Fri 2026-07-17 09:00 for determinism. Providers:
  *   (default) groq gpt-oss-120b (the cues-bucket capable model — where this routes)
@@ -12,7 +12,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { SINGLE_SENTENCE_FORMAT_SPEC, parseSingleSentenceAlts } from '../../../packages/opencues-core/src/sources/sentence-cue-source';
-import { renderLifeContextForCue, buildLifeContextSnapshot } from '../../../packages/opencues-core/src/life-context';
+import { renderCalendarContextForCue, buildCalendarContextSnapshot } from '../../../packages/opencues-core/src/calendar-context';
 import { postProcessContext } from '../../../packages/opencues-core/src/identity-context';
 import { chat, sysUser, MODEL } from '../fluid-blank/groq';
 
@@ -26,12 +26,12 @@ const EVENTS = [
   { title: '1:1 with Sarah', start: '2026-07-20T09:00', end: '2026-07-20T10:00' },                 // [EVENT 3] Mon 9–10am
   { title: 'Conference',     start: '2026-07-22T00:00', end: '2026-07-22T23:59', allDay: true },   // [EVENT 4] Wed all-day
 ];
-const SNAP = buildLifeContextSnapshot(EVENTS);
+const SNAP = buildCalendarContextSnapshot(EVENTS);
 // Extract the CUE.md prompt body (text outside frontmatter), mirroring what the
 // parser hands SentenceCueSource as promptText.
 const cueMd = readFileSync(join(__dirname, '../../../defaults/cues/calendar/CUE.md'), 'utf8');
 const promptBody = cueMd.replace(/^---[\s\S]*?---\n/, '').trim();
-const SYSTEM = `${promptBody}\n\n${SINGLE_SENTENCE_FORMAT_SPEC}${renderLifeContextForCue(SNAP, 'on', NOW)}`;
+const SYSTEM = `${promptBody}\n\n${SINGLE_SENTENCE_FORMAT_SPEC}${renderCalendarContextForCue(SNAP, 'on', NOW)}`;
 
 async function cueFor(sentence: string): Promise<{ flagged: boolean; text: string; ceded: boolean }> {
   const r = await chat(sysUser(SYSTEM, `SENTENCE: ${sentence}`), { maxTokens: 300, temperature: 0.3 });
@@ -58,7 +58,7 @@ const CASES: Case[] = [
 ];
 
 async function main(): Promise<void> {
-  console.log(`\n${BOLD}Life-context CUE (calendar-conflict)${RESET}   model: ${MODEL}   N=${N}   (now = Fri 2026-07-17 9am)\n`);
+  console.log(`\n${BOLD}Calendar-context CUE (calendar-conflict)${RESET}   model: ${MODEL}   N=${N}   (now = Fri 2026-07-17 9am)\n`);
   console.log(`${DIM}Calendar: [EVENT 1] Dentist Fri 3:00–3:45pm · [EVENT 2] 1:1 Mon 9–10am${RESET}\n`);
   let ok = 0, tot = 0;
   for (const c of CASES) {

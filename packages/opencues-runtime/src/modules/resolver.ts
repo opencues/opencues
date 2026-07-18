@@ -69,15 +69,15 @@ export interface ResolverOptions {
   readonly endpointOverride?: string;
   /**
   /**
-   * Host-ingested life-context snapshot (calendar events). Written on a
+   * Host-ingested calendar-context snapshot (calendar events). Written on a
    * cadence by the host's background poller (or a fixture); the resolver
    * reads it fresh each pass so a re-ingest propagates without restart —
    * the ingest-on-a-timer model (NOT a network fetch in the keystroke path).
-   * Forwarded to fluid-blank only when `life-context-mode: on`. Structurally
-   * mirrors `@opencues/core`'s LifeContextSnapshot. Event times are in the
+   * Forwarded to fluid-blank only when `calendar-context-mode: on`. Structurally
+   * mirrors `@opencues/core`'s CalendarContextSnapshot. Event times are in the
    * clear; titles are `[EVENT N]` tokens hydrated locally.
    */
-  readonly lifeContext?: {
+  readonly calendarContext?: {
     readonly events: ReadonlyArray<{ token: string; title: string; start: string; end: string; allDay?: boolean; location?: string }>;
     readonly catalog: ReadonlyMap<string, string>;
     readonly ingestedAt?: string;
@@ -1386,17 +1386,17 @@ export class Resolver {
           && !noBlankContextConsumer(cleanWords, this.options.keywordBoundSlotIndices?.(text) ?? [])
           ? await this.blankContextProvider()
           : undefined,
-        // Life-context (ingested calendar). Host writes the snapshot on a
+        // Calendar-context (ingested calendar). Host writes the snapshot on a
         // cadence (values/times local + dehydrated titles); read fresh here so
-        // a re-ingest applies without restart. Gated by `life-context-mode`
+        // a re-ingest applies without restart. Gated by `calendar-context-mode`
         // (off by default — carries calendar PII).
-        lifeContext: this.configLoader.opencuesState.lifeContextMode !== 'off'
-          && this.options.lifeContext
-          && this.options.lifeContext.events.length > 0
+        calendarContext: this.configLoader.opencuesState.calendarContextMode !== 'off'
+          && this.options.calendarContext
+          && this.options.calendarContext.events.length > 0
           ? {
-              events: this.options.lifeContext.events,
-              catalog: this.options.lifeContext.catalog,
-              ingestedAt: this.options.lifeContext.ingestedAt,
+              events: this.options.calendarContext.events,
+              catalog: this.options.calendarContext.catalog,
+              ingestedAt: this.options.calendarContext.ingestedAt,
               mode: 'on' as const,
             }
           : undefined,

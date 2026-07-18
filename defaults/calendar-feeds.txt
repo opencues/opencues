@@ -1,12 +1,12 @@
-# life-context calendar feeds — one .ics / webcal URL per line.
+# calendar-context calendar feeds — one .ics / webcal URL per line.
 # Lines starting with # are ignored. The daemon fetches these every ~15 min,
 # parses them, and feeds your upcoming events to fluid-blank (`am i free … _`)
-# and the calendar-conflict cue. Requires `life-context-mode: on` in OPENCUES.md.
+# and the calendar-conflict cue. Requires `calendar-context-mode: on` in OPENCUES.md.
 #
 # Any .ics or webcal feed works — Luma, Google, Outlook/M365, Apple iCloud, etc.
 # webcal:// URLs are fine (auto-converted to https://).
 #
-# Poll cadence: `life-context-poll-minutes:` in OPENCUES.md (default 30; Google
+# Poll cadence: `calendar-poll-minutes:` in OPENCUES.md (default 30; Google
 # caches its ICS ~hourly, so faster is wasted). Force a fresh pull any time with
 # `opencues calendar refresh`.
 #

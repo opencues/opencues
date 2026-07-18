@@ -1,8 +1,8 @@
-// `opencues calendar` — manage life-context calendar feeds.
+// `opencues calendar` — manage calendar-context calendar feeds.
 //
-// Life-context ingests iCalendar (.ics / webcal) feeds so fluid-blank can
+// Calendar-context ingests iCalendar (.ics / webcal) feeds so fluid-blank can
 // answer availability (`am i free thursday _`) and the calendar-conflict cue
-// can fire. Feeds live one-per-line in ~/.cues/life-context-feeds.txt; this
+// can fire. Feeds live one-per-line in ~/.cues/calendar-feeds.txt; this
 // command edits that file (and verifies a feed fetches + parses on `add`).
 //
 // One .ics parser covers Luma, Google, Outlook/M365, Apple iCloud, any feed.
@@ -15,7 +15,7 @@
 //   opencues calendar remove <url|N>   remove a feed by URL or 1-based index
 //   opencues calendar --help           this help
 //
-// See: docs/architecture/life-context.md, docs/features/life-context.md
+// See: docs/architecture/calendar-context.md, docs/features/calendar-context.md
 
 const path = require('node:path');
 const fs = require('node:fs');
@@ -25,14 +25,31 @@ const { bold, dim, green, yellow, red, fileLink, banner, cliVersion, G } = requi
 const HOME = os.homedir();
 const tilde = p => (p && p.startsWith(HOME) ? '~' + p.slice(HOME.length) : p);
 const CUES_DIR = path.join(HOME, '.cues');
-const FEEDS_PATH = path.join(CUES_DIR, 'life-context-feeds.txt');
+const FEEDS_PATH = path.join(CUES_DIR, 'calendar-feeds.txt');
 const OPENCUES_PATH = path.join(CUES_DIR, 'OPENCUES.md');
 
+// Self-heal the July-2026 life-context → calendar-context rename: move a user's
+// existing feed list + snapshot to the new names so their calendars keep working
+// without re-adding. One-shot, idempotent (only fires when the OLD file exists
+// and the NEW one doesn't). The .life-context-refresh trigger is ephemeral, so
+// it needs no migration. See docs/features/calendar-context.md.
+function migrateLegacyPaths() {
+  const moves = [
+    [path.join(CUES_DIR, 'life-context-feeds.txt'), FEEDS_PATH], // LEGACY-NAME-ALLOW: rename migration source
+    [path.join(CUES_DIR, 'life-context.json'), path.join(CUES_DIR, 'calendar.json')], // LEGACY-NAME-ALLOW: rename migration source
+  ];
+  for (const [oldP, newP] of moves) {
+    try {
+      if (fs.existsSync(oldP) && !fs.existsSync(newP)) fs.renameSync(oldP, newP);
+    } catch { /* best-effort — a failed migration must not break the command */ }
+  }
+}
+
 const HEADER = [
-  '# life-context calendar feeds — one .ics / webcal URL per line.',
+  '# calendar-context calendar feeds — one .ics / webcal URL per line.',
   '# Lines starting with # are ignored. Managed by `opencues calendar`.',
   '# Any .ics/webcal feed works (Luma, Google, Outlook, Apple, …).',
-  '# Requires `life-context-mode: on` in OPENCUES.md.',
+  '# Requires `calendar-context-mode: on` in OPENCUES.md.',
   '',
 ].join('\n');
 
@@ -56,7 +73,7 @@ function activeUrls(lines) {
 function isFeedUrl(u) { return /^(https?|webcal):\/\//i.test(u); }
 function toHttp(u) { return u.replace(/^webcal:\/\//i, 'https://'); }
 
-function lifeContextModeOn() {
+function calendarContextModeOn() {
   try {
     const md = fs.readFileSync(OPENCUES_PATH, 'utf8');
     const fm = md.match(/^---\n([\s\S]*?)\n---/);
@@ -64,7 +81,7 @@ function lifeContextModeOn() {
     // last-wins, matching the runtime parser
     let on = false;
     for (const line of fm[1].split('\n')) {
-      const m = line.match(/^life-context-mode:\s*([^\n#]*)/);
+      const m = line.match(/^calendar-context-mode:\s*([^\n#]*)/);
       if (m) on = m[1].trim().toLowerCase() === 'on';
     }
     return on;
@@ -94,11 +111,11 @@ async function verifyFeed(url) {
   } catch (e) { return { ok: false, reason: (e && e.message) || String(e) }; }
 }
 
-// The PRODUCER. Fetch every feed → write ~/.cues/life-context.json, the ONE
+// The PRODUCER. Fetch every feed → write ~/.cues/calendar.json, the ONE
 // shared snapshot every host reads (native hosts load it directly; chrome gets
 // it through the config-bundle it already syncs from ~/.cues). No per-host
 // poller — one file, produced here, consumed everywhere.
-const SNAPSHOT_PATH = path.join(CUES_DIR, 'life-context.json');
+const SNAPSHOT_PATH = path.join(CUES_DIR, 'calendar.json');
 const WINDOW_DAYS = 60;
 
 async function buildSnapshot() {
@@ -173,8 +190,8 @@ async function add(argv) {
   fs.mkdirSync(CUES_DIR, { recursive: true });
   fs.writeFileSync(FEEDS_PATH, base + url + '\n');
   console.log(`${green(G.ringOn)} added ${bold(url)}  ${dim('→ ' + tilde(FEEDS_PATH))}`);
-  if (!lifeContextModeOn()) {
-    console.log(`  ${yellow('note')} ${dim('life-context-mode is off — set')} ${bold('life-context-mode: on')} ${dim('in OPENCUES.md to use it')}`);
+  if (!calendarContextModeOn()) {
+    console.log(`  ${yellow('note')} ${dim('calendar-context-mode is off — set')} ${bold('calendar-context-mode: on')} ${dim('in OPENCUES.md to use it')}`);
   }
   console.log(`  ${dim('picked up on the next poll — or')} ${bold('opencues calendar refresh')} ${dim('to load it now')}`);
   console.log(`  ${dim('(first feed + a host already running? restart it once to start the poller)')}`);
@@ -188,7 +205,7 @@ async function list(argv) {
   const urls = activeUrls(lines);
 
   if (json) {
-    const out = { path: FEEDS_PATH, present: lines !== null, lifeContextMode: lifeContextModeOn() ? 'on' : 'off', feeds: urls };
+    const out = { path: FEEDS_PATH, present: lines !== null, calendarContextMode: calendarContextModeOn() ? 'on' : 'off', feeds: urls };
     if (withCounts) {
       out.feeds = [];
       for (const u of urls) { const v = await verifyFeed(u); out.feeds.push({ url: u, ...v }); }
@@ -199,8 +216,8 @@ async function list(argv) {
 
   console.log(banner({ version: cliVersion(), tagline: 'calendar feeds' }));
   console.log('');
-  const modeOn = lifeContextModeOn();
-  console.log(bold('life-context') + '  ' + (modeOn ? green('on') : dim('off')) + (modeOn ? '' : dim('  · set life-context-mode: on in OPENCUES.md')));
+  const modeOn = calendarContextModeOn();
+  console.log(bold('calendar-context') + '  ' + (modeOn ? green('on') : dim('off')) + (modeOn ? '' : dim('  · set calendar-context-mode: on in OPENCUES.md')));
   console.log(bold('feeds') + dim('  · ' + fileLink(tilde(FEEDS_PATH), FEEDS_PATH)));
   if (urls.length === 0) {
     console.log(`  ${dim('none — add one with')} ${bold('opencues calendar add <url>')}`);
@@ -245,7 +262,7 @@ function refresh() {
     console.log(`${dim('no feeds to refresh — add one with')} ${bold('opencues calendar add <url>')}`);
     return 0;
   }
-  const trigger = path.join(CUES_DIR, '.life-context-refresh');
+  const trigger = path.join(CUES_DIR, '.calendar-refresh');
   try {
     fs.mkdirSync(CUES_DIR, { recursive: true });
     fs.writeFileSync(trigger, String(Date.now()) + '\n');
@@ -260,7 +277,7 @@ function refresh() {
 }
 
 function usage() {
-  console.log('opencues calendar — manage life-context calendar feeds (.ics / webcal).');
+  console.log('opencues calendar — manage calendar-context calendar feeds (.ics / webcal).');
   console.log('');
   console.log('USAGE');
   console.log('  opencues calendar add <url>          add a feed (verifies it fetches + parses)');
@@ -268,7 +285,7 @@ function usage() {
   console.log('  opencues calendar list               list feeds + live event counts');
   console.log('  opencues calendar list --json        JSON (scriptable)');
   console.log('  opencues calendar remove <url|N>     remove a feed by URL or 1-based index');
-  console.log('  opencues calendar sync               fetch feeds → ~/.cues/life-context.json (every host reads it)');
+  console.log('  opencues calendar sync               fetch feeds → ~/.cues/calendar.json (every host reads it)');
   console.log('  opencues calendar refresh            force a fresh (cache-busting) poll now');
   console.log('  opencues calendar --help             this help');
   console.log('');
@@ -277,6 +294,7 @@ function usage() {
 }
 
 module.exports = function calendar(argv, _ctx) {
+  migrateLegacyPaths();
   const sub = argv[0];
   if (!sub || sub === '--help' || sub === '-h' || sub === 'help') { usage(); return 0; }
   if (sub === 'add') return add(argv.slice(1));

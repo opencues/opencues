@@ -1,12 +1,12 @@
 /**
- * Life-context — ingested life-data (calendar first) as reasoning context
+ * Calendar-context — ingested life-data (calendar first) as reasoning context
  * for fluid-blank.
  *
  * The FOURTH catalog (after identity-context, blank-context, system-context),
  * but a different SHAPE from the other three. The first three are
  * *substitution* catalogs: the LLM emits a token verbatim ([DOCUMENTS],
  * [STOCK AAPL]) and the runtime swaps in a value — the model never reasons
- * over the value. Life-context is a *reasoning* catalog: the model reads the
+ * over the value. Calendar-context is a *reasoning* catalog: the model reads the
  * upcoming calendar (event TIMES in the clear — a busy interval is not PII)
  * and answers availability/scheduling questions. Only the event TITLES are
  * PII, so those are dehydrated to tokens ([EVENT 1], [EVENT 2]) and hydrated
@@ -17,15 +17,15 @@
  * cadence. Sources only REFERENCE it in the keystroke path; nothing fetches
  * per `_`.
  *
- * Design: docs/architecture/life-context.md.
+ * Design: docs/architecture/calendar-context.md.
  */
 
-export type LifeContextMode = 'off' | 'on';
+export type CalendarContextMode = 'off' | 'on';
 
 /** One ingested calendar event. Times reach the LLM (busy intervals are not
  *  PII and are the reasoning substrate); the title + location stay local
  *  behind `token` / `locationToken`. */
-export interface LifeContextEvent {
+export interface CalendarContextEvent {
   /** Verbatim token the LLM emits when it names this event, e.g. `[EVENT 1]`. */
   readonly token: string;
   /** The real event title — stays local; hydrated after the response. */
@@ -45,8 +45,8 @@ export interface LifeContextEvent {
   readonly locationToken?: string;
 }
 
-export interface LifeContextSnapshot {
-  readonly events: readonly LifeContextEvent[];
+export interface CalendarContextSnapshot {
+  readonly events: readonly CalendarContextEvent[];
   /** token → real value, for postProcessContext substitution. Holds BOTH the
    *  title tokens (`[EVENT N]` → title) and the location tokens
    *  (`[EVENT N LOCATION]` → location) — all event PII hydrated from here. */
@@ -63,13 +63,13 @@ export interface LifeContextSnapshot {
  * hydration — titles AND locations, so both are dehydrated on the wire and
  * hydrated locally.
  */
-export function buildLifeContextSnapshot(
-  events: ReadonlyArray<Omit<LifeContextEvent, 'token' | 'locationToken'> & { token?: string }>,
+export function buildCalendarContextSnapshot(
+  events: ReadonlyArray<Omit<CalendarContextEvent, 'token' | 'locationToken'> & { token?: string }>,
   ingestedAt?: string,
-): LifeContextSnapshot {
+): CalendarContextSnapshot {
   const kept = events.filter((e) => e.start && e.title);
   const catalog = new Map<string, string>();
-  const withTokens: LifeContextEvent[] = kept.map((e, i) => {
+  const withTokens: CalendarContextEvent[] = kept.map((e, i) => {
     const token = e.token ?? `[EVENT ${i + 1}]`;
     catalog.set(token, e.title);
     // Location is PII too (can be a home / precise address). Give it its own
@@ -86,15 +86,15 @@ export function buildLifeContextSnapshot(
 }
 
 /**
- * Render the LIFE CONTEXT prompt block — event times in the clear, titles as
+ * Render the calendar-context prompt block — event times in the clear, titles as
  * tokens. Unlike the substitution catalogs, this asks the model to REASON over
  * the times (answer free/busy, name the conflicting event by its token).
  *
  * Returns '' when off or empty (no-op) so callers append verbatim.
  */
-export function renderLifeContextCatalog(
-  snapshot: LifeContextSnapshot | undefined,
-  mode: LifeContextMode,
+export function renderCalendarContextCatalog(
+  snapshot: CalendarContextSnapshot | undefined,
+  mode: CalendarContextMode,
   nowIso?: string,
 ): string {
   if (mode === 'off' || !snapshot || snapshot.events.length === 0) return '';
@@ -120,12 +120,12 @@ export function renderLifeContextCatalog(
     const loc = e.locationToken ? ` @ ${e.locationToken}` : '';
     return `- ${e.token}: ${day}, ${when}${loc}`;
   });
-  return `\n\nLIFE CONTEXT — your upcoming calendar${fresh}.${nowBlock}
+  return `\n\nYOUR CALENDAR${fresh}.${nowBlock}
 
 Reason over these events to answer availability / scheduling / "when is X" / "where is X" questions. Each event is given as a DATE plus a NUMERIC time interval in MINUTES-SINCE-MIDNIGHT (0–1439) so availability is a pure arithmetic check; a human clock time rides in parentheses. Each event's TITLE is a bracket token ([EVENT 1], [EVENT 2], …), and — when it has one — its LOCATION is a second token after "@" ([EVENT 1 LOCATION], …); the runtime substitutes the real title / location locally before the answer reaches the user's buffer:
 ${lines.join('\n')}
 
-RULES for LIFE CONTEXT — treat availability as ARITHMETIC, not clock reading:
+RULES for YOUR CALENDAR — treat availability as ARITHMETIC, not clock reading:
 1. AVAILABILITY is DATE-SCOPED. Resolve the target day against CURRENT MOMENT: "today" = now's date, "tomorrow" = the next day, a weekday name = the next such weekday. ONLY events whose DATE equals the resolved day affect that day's availability — an event on any OTHER date (earlier or later) is simply not on that day, so it neither makes you busy nor needs mentioning for a "free?" question. (No separate "past" rule is needed: a yesterday event isn't today's date, so it never counts for "today".)
 2. To check "am i free at TIME on that day": (a) convert TIME to minutes-since-midnight M — hours×60 + minutes, where PM adds 12 to the hour (1pm→13, 3:15pm→15×60+15 = 915, 9:30am→570). (b) For each event ON THAT DAY with interval [start,end], it is BUSY iff start ≤ M ≤ end. (c) If no event's interval contains M → FREE.
    WORKED EXAMPLE: event "mins 900–945 (3:00pm–3:45pm)". Query "free at 3:15pm?" (same day) → M = 15×60+15 = 915. Is 900 ≤ 915 ≤ 945? YES → BUSY.
@@ -145,9 +145,9 @@ RULES for LIFE CONTEXT — treat availability as ARITHMETIC, not clock reading:
  * flag it). Titles stay `[EVENT N]` tokens; the runtime hydrates them in the
  * emitted alternative. Returns '' when off/empty so callers append verbatim.
  */
-export function renderLifeContextForCue(
-  snapshot: LifeContextSnapshot | undefined,
-  mode: LifeContextMode,
+export function renderCalendarContextForCue(
+  snapshot: CalendarContextSnapshot | undefined,
+  mode: CalendarContextMode,
   nowIso?: string,
 ): string {
   if (mode === 'off' || !snapshot || snapshot.events.length === 0) return '';

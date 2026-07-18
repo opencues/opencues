@@ -1,5 +1,5 @@
 /**
- * Life-context CORRECTNESS — the Phase 1a proof that ingest → catalog →
+ * Calendar-context CORRECTNESS — the Phase 1a proof that ingest → catalog →
  * reason → hydrate works with a real LLM, zero network (fixture calendar).
  *
  * Three suites:
@@ -15,7 +15,7 @@
  *                                                → the fast fills model (does it handle free/busy?)
  */
 import { FUSED_SYSTEM_PROMPT, MODE_RULES } from '../../../packages/opencues-core/src/sources/fluid-blank-source';
-import { renderLifeContextCatalog, buildLifeContextSnapshot } from '../../../packages/opencues-core/src/life-context';
+import { renderCalendarContextCatalog, buildCalendarContextSnapshot } from '../../../packages/opencues-core/src/calendar-context';
 import { postProcessContext } from '../../../packages/opencues-core/src/identity-context';
 import { chat, sysUser, MODEL } from '../fluid-blank/groq';
 
@@ -34,8 +34,8 @@ const EVENTS = [
   // A PAST event (yesterday) — must NOT make "today" busy (the post-midnight bug).
   { title: 'Yesterday call',   start: '2026-07-16T11:00', end: '2026-07-16T12:00' },
 ];
-const SNAP = buildLifeContextSnapshot(EVENTS, '2026-07-17T08:55');
-const SYSTEM = `${FUSED_SYSTEM_PROMPT}${renderLifeContextCatalog(SNAP, 'on', NOW)}\n\n${MODE_RULES}`;
+const SNAP = buildCalendarContextSnapshot(EVENTS, '2026-07-17T08:55');
+const SYSTEM = `${FUSED_SYSTEM_PROMPT}${renderCalendarContextCatalog(SNAP, 'on', NOW)}\n\n${MODE_RULES}`;
 const ALL_TOKENS = SNAP.events.map((e) => e.token);
 
 function answerOf(text: string): string { const m = text.match(/^ANSWER:[ \t]*(.*)$/im); return (m ? m[1] : text).trim(); }
@@ -106,8 +106,8 @@ const hasLocationToken = (a: string): boolean => /\[EVENT \d+ LOCATION\]/i.test(
 const leaksRawAddress = (a: string): boolean => /5 High St Clinic/i.test(a);
 
 async function main(): Promise<void> {
-  console.log(`\n${BOLD}Life-context CORRECTNESS${RESET}   model: ${MODEL}   N=${N}   (today = Fri 2026-07-17)\n`);
-  console.log(`${DIM}${renderLifeContextCatalog(SNAP, 'on').trim().split('\n').slice(0, 8).join('\n')}${RESET}\n`);
+  console.log(`\n${BOLD}Calendar-context CORRECTNESS${RESET}   model: ${MODEL}   N=${N}   (today = Fri 2026-07-17)\n`);
+  console.log(`${DIM}${renderCalendarContextCatalog(SNAP, 'on').trim().split('\n').slice(0, 8).join('\n')}${RESET}\n`);
 
   console.log(`${BOLD}AVAILABILITY — free/busy reasoning must match the event times${RESET}`);
   let aOk = 0, aTot = 0;

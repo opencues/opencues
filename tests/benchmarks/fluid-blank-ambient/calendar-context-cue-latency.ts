@@ -1,7 +1,7 @@
 /**
  * Latency of the calendar-conflict CUE's LLM call, in ISOLATION. Runs the exact
  * prompt SentenceCueSource sends (CUE.md body + SINGLE_SENTENCE_FORMAT_SPEC +
- * renderLifeContextForCue) against the provider and reports the per-call latency
+ * renderCalendarContextForCue) against the provider and reports the per-call latency
  * distribution — to see whether a ~2.8s spike (seen live) is typical or an
  * outlier, and how big the prompt is.
  *
@@ -10,7 +10,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { SINGLE_SENTENCE_FORMAT_SPEC } from '../../../packages/opencues-core/src/sources/sentence-cue-source';
-import { renderLifeContextForCue, buildLifeContextSnapshot } from '../../../packages/opencues-core/src/life-context';
+import { renderCalendarContextForCue, buildCalendarContextSnapshot } from '../../../packages/opencues-core/src/calendar-context';
 import { chat, sysUser, MODEL } from '../fluid-blank/groq';
 
 const BOLD = '\x1b[1m'; const DIM = '\x1b[2m'; const GREEN = '\x1b[32m'; const YELLOW = '\x1b[33m'; const RED = '\x1b[31m'; const RESET = '\x1b[0m';
@@ -21,10 +21,10 @@ const EVENTS = [
   { title: 'Dentist',     start: '2026-07-17T15:00', end: '2026-07-17T15:45' },
   { title: 'Conference',  start: '2026-08-23T00:00', end: '2026-08-23T23:59', allDay: true },
 ];
-const SNAP = buildLifeContextSnapshot(EVENTS);
+const SNAP = buildCalendarContextSnapshot(EVENTS);
 const cueMd = readFileSync(join(__dirname, '../../../defaults/cues/calendar/CUE.md'), 'utf8');
 const promptBody = cueMd.replace(/^---[\s\S]*?---\n/, '').trim();
-const SYSTEM = `${promptBody}\n\n${SINGLE_SENTENCE_FORMAT_SPEC}${renderLifeContextForCue(SNAP, 'on', NOW)}`;
+const SYSTEM = `${promptBody}\n\n${SINGLE_SENTENCE_FORMAT_SPEC}${renderCalendarContextForCue(SNAP, 'on', NOW)}`;
 
 const approxTokens = Math.round(SYSTEM.length / 4);
 
