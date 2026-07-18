@@ -124,6 +124,91 @@ identity (safe-mode tokens), never send propositions (this).
 - The coreference store must be curable (user can unlink a wrong
   M3 binding) - the cycle gesture is the natural UI.
 
+## The ledger lifecycle (added 19 Jul 2026)
+
+### Write path - when a sentence becomes an entry
+
+Extraction hooks the same buffer stream the cue engine watches, with
+one extra discipline: commitment requires commitment. Entries are
+born twice:
+
+    gated sentence   -> entry created, status DRAFTED
+    buffer submitted -> status COMMITTED (the clock starts)
+    buffer abandoned -> entry deleted (this deletion stream is the
+                        drafted-but-never-sent cue's data, free)
+
+Dehydration applies at the MODEL BOUNDARY, not at rest: locally the
+ledger keeps full fidelity (resolved dates, vault pointers) because
+local is where rehydration happens anyway; tokens exist for whatever
+crosses to a provider. Entry shape:
+
+    #411  force=COMMISSIVE firm=high pol=+
+          TRANSFER(SELF -> P7, M3, by D1)
+          D1 => 2026-07-24 (local)   thread=whatsapp:P7
+          status: OPEN
+
+### Read path - three triggers
+
+1. New-utterance trigger (real time): every newly gated sentence is
+   checked against OPEN entries before becoming one itself. Match
+   key = (binding overlap, force relation): ASSERTIVE(neg) over same
+   bindings -> contradiction cue; a second COMMISSIVE binding the
+   same D-token to a different P-token -> double-promise cue.
+   Scoped by thread/recipient first: O(handful), not O(ledger).
+2. Clock trigger (background): timer scan over open entries; a
+   passed deadline moves OPEN -> OVERDUE but NEVER pops a
+   notification. Overdue entries wait in ambush and surface only
+   contextually - next time the user types to that person or
+   touches those bindings. The passive layer never initiates; that
+   is what keeps a promise ledger from becoming a guilt engine.
+3. Evidence trigger (later, with integrations): calendar-context,
+   payment feeds, sent mail can CLOSE entries silently (a matching
+   transfer clears -> fulfilled). V1 is linguistic evidence only.
+
+### State machine - how entries are invalidated
+
+- FULFILLED: ASSERTIVE(+, past) over same bindings ("just sent
+  it!") -> close silently. Self-reports are trusted; we never
+  fact-check the user's own completion claim (precision rule).
+- SUPERSEDED: new COMMISSIVE, same bindings, new D-token ("make it
+  Sunday") -> old closed, child entry opened; chain kept.
+- BROKEN: polarity clash, or overdue + ASSERTIVE(neg) -> cue fires
+  ONCE; accepted or dismissed, entry goes DORMANT. Never nag twice.
+- WITHDRAWN: release over the bindings ("forget the 60, honestly")
+  -> close silently.
+- EXPIRED: deadline-less promises decay after ~4-6 weeks; stop
+  matching, no cue. Bounds the ledger, prevents ancient false
+  positives.
+- CURED: dismiss -> dormant; the cycle gesture unlinks a wrong
+  coreference binding (the curable store).
+
+Every transition input is itself an F(p) extraction: fulfillment is
+an assertive, renegotiation a commissive, withdrawal a release. The
+state machine consumes the same algebra it is built from - no second
+NLP system.
+
+### The hard part: binding across weeks
+
+"The money I owe you" must find M3 from twelve days ago. Resolver
+order: thread/recipient scope (promise-talk recurs with the same
+person) -> slot-type compatibility (MONEY) -> local embedding
+similarity over the vault -> confidence threshold below which NO
+match happens. Missed binding = missed cue (cheap); wrong binding =
+wrong accusation (fatal). Silence over error, as everywhere; a
+mis-bind is cured with one cycle gesture.
+
+### Lifecycle worked example
+
+    Mon  "I'll Venmo you the 60 Friday"    -> #411 OPEN (D1=Fri)
+    Wed  "actually, make it Sunday x"      -> #411 SUPERSEDED
+                                              -> #412 OPEN (D2=Sun)
+    Sun  D2 passes silently                -> #412 OVERDUE (waiting)
+    Tue  to Sarah: "I definitely paid..."  -> ASSERTIVE(+) candidate
+         "...wait, did I?"                 -> hedge detected, no close
+    Wed  "ugh, I never sent it, sorry"     -> ASSERTIVE(neg) + overdue
+                                              -> cue fired once
+                                              -> DORMANT
+
 ## Rules extracted
 
 - Force and skeleton are sufficient for contradiction; content is
@@ -134,3 +219,10 @@ identity (safe-mode tokens), never send propositions (this).
 - Matching is deterministic local algebra; models only extract.
 - Granularity of generalization is the privacy dial, chosen per
   slot type.
+- Commitment requires commitment: entries bind on buffer submit,
+  not draft; the abandoned-draft stream is itself cue data.
+- The ledger never initiates: overdue entries surface only when the
+  cursor returns to relevant context. One cue per entry, ever.
+- Self-reported fulfillment is trusted; evidence integrations may
+  tighten later.
+- Below-threshold bindings do not match: silence over error.
