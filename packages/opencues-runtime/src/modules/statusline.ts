@@ -328,7 +328,11 @@ export class Statusline {
         highlightedWord: cleanHighlighted,
         currentAltIndex: 0,
         alts: [cleanHighlighted],
-        cueTip: null,
+        // Blank fills suppress the tip (value already visible). A sentence-cue
+        // def (also blankName-attributed) instead carries a dynamic advisory
+        // on def.cueTip — surface it so the status line shows the heads-up
+        // passively, no cycling.
+        cueTip: (!tipsHidden && def.cueTip) ? def.cueTip : null,
         altCueTips: null,
         cueBlank: true,
         wordCount: words.filter(w => clean(w.word).length > 0).length,
@@ -341,12 +345,16 @@ export class Statusline {
     // primary cueTip — mirrors v1's behaviour where each alt can have its
     // own tip text.
     const lookupKey = clean(def?.originalWord ?? highlightedWord);
-    const lookup = this.configLoader?.lookup(lookupKey) ?? null;
     let cueTip: string | null = null;
     let altCueTips: Record<string, string> | null = null;
+    // Dynamic per-resolve advisory (e.g. a sentence-cue's calendar-conflict
+    // heads-up) wins over the static word-cue tip map — it shows passively
+    // whenever the cursor sits in the def's span, no cycling required.
+    if (!tipsHidden && def?.cueTip) cueTip = def.cueTip;
+    const lookup = this.configLoader?.lookup(lookupKey) ?? null;
     if (lookup && !tipsHidden) {
       altCueTips = lookup.altCueTips ?? null;
-      cueTip = lookup.altCueTips?.[cleanHighlighted] ?? lookup.cueTip ?? null;
+      if (cueTip === null) cueTip = lookup.altCueTips?.[cleanHighlighted] ?? lookup.cueTip ?? null;
     }
 
     // When the highlighted word is a blank or blankKeyword (volume,

@@ -15,6 +15,15 @@ export interface WordDef {
    * blank's blankStep / blankScript.
    */
   readonly blankName?: string;
+  /**
+   * Optional dynamic tip for the status line. Unlike static word-cue tips
+   * (which the statusline reads from the config-loader by word), this carries
+   * a per-result advisory computed at resolve time — e.g. a sentence-cue's
+   * calendar-conflict heads-up ("⚠ Dentist today, 3:00–3:45pm"). The statusline
+   * surfaces it when the cursor is on the def's span, so the advisory shows
+   * passively without cycling.
+   */
+  readonly cueTip?: string;
 }
 
 /**

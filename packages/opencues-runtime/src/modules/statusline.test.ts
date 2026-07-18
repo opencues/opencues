@@ -155,6 +155,40 @@ describe('Statusline cue-tip plumbing', () => {
     expect(p.altCueTips).toBeDefined();
   });
 
+  it('surfaces a def cueTip (dynamic advisory) passively — currentIndex 0, no cycling', async () => {
+    const { hlState, dynDefs, statusline } = await setupWithTips('xyz');
+    hlState.activate(0, 'xyz');
+    // A passive sentence-cue def (calendar-conflict): buffer keeps the original
+    // (currentIndex 0), and the advisory rides on def.cueTip.
+    dynDefs.set(0, {
+      originalWord: 'xyz',
+      alternatives: ['xyz', 'xyz — heads up: Conference all day'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: 3,
+      blankName: 'sentence-cue:calendar',
+      cueTip: '⚠ Conference Sat Aug 23, all day',
+    });
+    const p = statusline.buildPayload({ text: 'xyz', cursor: 0, externalHighlights: [] });
+    // 'xyz' isn't in the static cue map, so this can ONLY come from def.cueTip.
+    expect(p.cueTip).toBe('⚠ Conference Sat Aug 23, all day');
+  });
+
+  it('def cueTip is suppressed when tips-mode: off', async () => {
+    const adapter = new MockAdapter({ files: { '/mock/CUES.md': '---\ntips-mode: off\n---\n' } });
+    adapter.pushText('xyz');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const loader = new ConfigLoader(adapter, { settingsFile: '/mock/CUES.md' });
+    await loader.load();
+    const statusline = new Statusline(adapter, hlState, dynDefs, { exportPath: '/tmp/t2.json' }, loader);
+    statusline.subscribe();
+    hlState.activate(0, 'xyz');
+    dynDefs.set(0, { originalWord: 'xyz', alternatives: ['xyz'], currentIndex: 0, spanStart: 0, spanEnd: 3, blankName: 'sentence-cue:calendar', cueTip: '⚠ x' });
+    const p = statusline.buildPayload({ text: 'xyz', cursor: 0, externalHighlights: [] });
+    expect(p.cueTip).toBeNull();
+  });
+
   it('cueTip is null for words not in the cue map', async () => {
     const { hlState, statusline } = await setupWithTips('xyz');
     hlState.activate(0, 'xyz');

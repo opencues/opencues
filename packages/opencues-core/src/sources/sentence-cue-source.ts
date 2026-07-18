@@ -64,6 +64,14 @@ import { SourceConfig } from '../cues-md';
 import { describeLLMCall, dispatchChat, type ProviderAdapter } from '../llm-provider';
 import { getDehydrator } from '../dehydrate';
 import { postProcessContext } from '../identity-context';
+import { renderLifeContextForCue, type LifeContextSnapshot } from '../life-context';
+
+/** Local wall-clock ISO `YYYY-MM-DDTHH:MM` — for the calendar cue's live
+ *  now-anchor (mirrors fluid-blank-source's helper). */
+function localWallClockIso(d: Date): string {
+  const p = (n: number): string => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
 
 // ============================================================================
 // Sentence segmenter — regex-based, robust over linguistic perfection
@@ -330,6 +338,12 @@ export class SentenceCueSource implements CueSource {
     // source is going to claim. Sentence-cues are prose-time, not
     // blank-time.
     if (context.words.some(w => w === '_')) return false;
+    // A calendar-aware cue (uses-life-context) is SELF-INERT when there's no
+    // ingested calendar — `life-context-mode: off` (or an empty snapshot)
+    // means the resolver forwards no `lifeContext`, so there's nothing to
+    // check against. Cede rather than spend an LLM call per sentence.
+    if (this.sourceConfig.usesLifeContext
+      && (!context.lifeContext || context.lifeContext.events.length === 0)) return false;
     // Need at least one sentence-shaped chunk. The segmenter is
     // tolerant — anything with a subject+verb shape will emit at
     // least one span; the LLM cedes per-sentence if the content is
@@ -370,9 +384,24 @@ export class SentenceCueSource implements CueSource {
     // calls cost barely more than one on TTFT); only the one sentence varies
     // in the user message. Calls run through a small concurrency cap so a
     // long buffer doesn't hammer the provider.
-    const system = hasFormatSpec(promptText)
+    // Calendar-aware cue (uses-life-context): append the ingested calendar
+    // (events + times as [EVENT N] tokens + a live now-anchor) to the STABLE
+    // system message so the LLM can detect a scheduling contradiction in the
+    // user's sentence. The cue's promptText owns the task; this adds the data.
+    const lifeSnapshot: LifeContextSnapshot | undefined =
+      this.sourceConfig.usesLifeContext && context.lifeContext
+        ? { events: context.lifeContext.events, catalog: context.lifeContext.catalog, ingestedAt: context.lifeContext.ingestedAt }
+        : undefined;
+    const lifeBlock = lifeSnapshot
+      ? renderLifeContextForCue(lifeSnapshot, 'on', localWallClockIso(new Date()))
+      : '';
+    if (lifeBlock) {
+      this.log(`SentenceCue[${this.sourceConfig.name}]: life-context injected (${lifeSnapshot!.events.length} event${lifeSnapshot!.events.length === 1 ? '' : 's'})`);
+    }
+    const basePrompt = hasFormatSpec(promptText)
       ? promptText.trimEnd()
       : `${promptText.trimEnd()}\n\n${SINGLE_SENTENCE_FORMAT_SPEC}`;
+    const system = `${basePrompt}${lifeBlock}`;
 
     // DEHYDRATION (outbound PII scrub) — in identity-context `safe`
     // mode, catalog values inside each sentence are replaced with
@@ -400,13 +429,18 @@ export class SentenceCueSource implements CueSource {
           const parsed = parseSingleSentenceAlts(raw);
           if (parsed.ceded) return 'ceded';
           if (parsed.alts.length === 0) return null;
-          if (!idCtx || idCtx.catalog.size === 0) return parsed.alts;
-          // Hydrate echoed tokens back to values. Failure keeps the raw
-          // alternative (visible token, revertable via alternatives[0]).
+          // Hydration catalog = identity sentinels (safe mode) PLUS the
+          // calendar's [EVENT N] → title map (uses-life-context). The
+          // conflict alternative names the clashing event by token; hydrate
+          // it to the real title locally. Failure keeps the raw alternative
+          // (visible token, revertable via alternatives[0]).
+          const hydrationCatalog = new Map<string, string>(idCtx?.catalog ?? []);
+          if (lifeSnapshot) for (const [t, v] of lifeSnapshot.catalog) hydrationCatalog.set(t, v);
+          if (hydrationCatalog.size === 0) return parsed.alts;
           return parsed.alts.map(alt => {
             try {
               return postProcessContext(alt, {
-                catalog: idCtx.catalog,
+                catalog: hydrationCatalog,
                 originalBody: span.text, // TRUE pre-dehydration sentence
                 preserveUnknown: true,
                 introducedTokens: dSpan?.introduced,
@@ -427,6 +461,16 @@ export class SentenceCueSource implements CueSource {
       const alts = matched[si];
       if (alts === 'ceded') { cededCount++; continue; }
       if (!alts || alts.length === 0) continue;
+      // For a life-context (calendar-conflict) cue the ADVISORY belongs in the
+      // status line, not buried in a cycleable alternative — the user shouldn't
+      // have to Ctrl+Alt+Up to read a heads-up. Extract the flag the LLM
+      // appended (`… — heads up: <conflict>`) and surface it as the cueTip; the
+      // status bar renders it passively when the cursor is on the sentence.
+      let tip: string = this.sourceConfig.name;
+      if (this.sourceConfig.usesLifeContext) {
+        const m = alts[0]?.match(/heads up:\s*(.+)$/i) ?? alts[0]?.match(/—\s*(.+)$/);
+        if (m && m[1]) tip = `⚠ ${m[1].trim().replace(/[.\s]+$/, '')}`;
+      }
       results.push({
         wordIndex: span.firstWordIndex,
         word: context.words[span.firstWordIndex] ?? span.text.split(/\s+/)[0],
@@ -439,7 +483,7 @@ export class SentenceCueSource implements CueSource {
         priority: this.priority,
         spanStart: span.start,
         spanEnd: span.end,
-        cueTip: this.sourceConfig.name,
+        cueTip: tip,
         metadata: {
           sentenceCue: {
             cueName: this.sourceConfig.name,

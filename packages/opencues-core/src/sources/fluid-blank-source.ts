@@ -28,6 +28,7 @@ import { BlankConfig } from '../cues-md';
 import { useStrictJson, buildJsonResponseFormat, describeLLMCall, dispatchChat, getProvider, type ProviderAdapter } from '../llm-provider';
 import { renderIdentityContextCatalog, postProcessContext, type Identity, type ContextMode } from '../identity-context';
 import { renderBlankContextCatalog, mergeCatalogs, type BlankContextSnapshot, type BlankContextMode } from '../blank-context';
+import { renderLifeContextCatalog, type LifeContextSnapshot, type LifeContextMode } from '../life-context';
 import { resolveTypedSentinels, catalogScalarLookup, instanceTokenFnBridge, jsonFieldAccessor, collectAiCallableFetches } from '../typed-sentinel';
 import { getDehydrator } from '../dehydrate';
 import { blankClaimsUnderscore } from '../blank-shapes';
@@ -105,6 +106,15 @@ function sanitizeAmbientField(raw: string, cap: number): string {
  *   OPENCUES_BENCH_PROVIDER=cerebras-gpt-oss \
  *     npx tsx tests/benchmarks/fluid-blank-ambient/run.ts --variant E_minimal --holdout
  */
+/** Local wall-clock ISO `YYYY-MM-DDTHH:MM` (no TZ suffix) — the shape
+ *  life-context's renderer expects for its CURRENT MOMENT anchor. Uses local
+ *  getters (not toISOString, which is UTC) so "today"/"3pm" match the user's
+ *  wall clock. */
+function localWallClockIso(d: Date): string {
+  const p = (n: number): string => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 export function renderAmbientBlock(ambient: AmbientContext | undefined): string {
   if (!ambient) return '';
   const fields: Array<[string, string]> = [];
@@ -920,6 +930,25 @@ export class FluidBlankSource implements CueSource {
         this.logInfo(`FluidBlank: blank-context: injected (mode=${bcMode}, ${bcSnapshot.fields.length} token${bcSnapshot.fields.length === 1 ? '' : 's'})`);
       }
 
+      // Life-context (ingested calendar) — a REASONING catalog, not a
+      // substitution one: event times reach the LLM in the clear so it can
+      // compute free/busy; titles are `[EVENT N]` tokens hydrated locally.
+      // Ingest-on-a-timer; the resolver forwards the cached snapshot only
+      // when `life-context-mode: on`. See docs/architecture/life-context.md.
+      const lifeSnapshot: LifeContextSnapshot | undefined = context.lifeContext
+        ? { events: context.lifeContext.events, catalog: context.lifeContext.catalog, ingestedAt: context.lifeContext.ingestedAt }
+        : undefined;
+      const lifeMode: LifeContextMode = context.lifeContext?.mode ?? 'off';
+      const lifeContextActive = lifeMode === 'on' && !!lifeSnapshot && lifeSnapshot.events.length > 0;
+      // Live current-moment anchor (local wall-clock ISO `YYYY-MM-DDTHH:MM`),
+      // computed fresh EVERY resolve — so "today"/"tomorrow" ground to the real
+      // now, not the snapshot's (possibly stale) ingest time.
+      const lifeNowIso = lifeContextActive ? localWallClockIso(new Date()) : undefined;
+      const lifeContextBlock = renderLifeContextCatalog(lifeSnapshot, lifeMode, lifeNowIso);
+      if (lifeContextActive && lifeContextBlock) {
+        this.logInfo(`FluidBlank: life-context: injected (${lifeSnapshot!.events.length} event${lifeSnapshot!.events.length === 1 ? '' : 's'})`);
+      }
+
       // Cerebras prefix-cache optimisation (PR June 2026): move the
       // STABLE catalog blocks (identity catalog, blank-context catalog)
       // from the user message into the SYSTEM message. Cerebras's
@@ -947,7 +976,7 @@ export class FluidBlankSource implements CueSource {
       // resolves. Mirrors TransformBlank's prompt wiring.
       const liveFnBlock = (context.sentinelLanguage === 'typed' && context.aiCallableFnsBlock)
         ? context.aiCallableFnsBlock : '';
-      const fullSystem = `${FUSED_SYSTEM_PROMPT}${userCatalogBlock}${blankContextBlock}${liveFnBlock}\n\n${MODE_RULES}`;
+      const fullSystem = `${FUSED_SYSTEM_PROMPT}${userCatalogBlock}${blankContextBlock}${lifeContextBlock}${liveFnBlock}\n\n${MODE_RULES}`;
       // DEHYDRATION (outbound PII scrub) — in `safe` mode, real identity
       // values the user TYPED are replaced with their [TOKEN]s before
       // the text ships to the provider; the post-processor below
@@ -959,8 +988,19 @@ export class FluidBlankSource implements CueSource {
       let outboundText = effectiveText;
       let outboundAmbient = ambientBlock;
       let introducedTokens: ReadonlySet<string> = new Set<string>();
-      if (userMode === 'safe' && userCtx && userCtx.catalog.size > 0) {
-        const dehydrator = getDehydrator(userCtx.catalog, (m) => this.logInfo(`FluidBlank: ${m}`));
+      // Outbound dehydration catalog = identity sentinels (safe mode) PLUS
+      // life-context event-title sentinels. A real value the user TYPED (an
+      // identity field, or an event title) is scrubbed to its [TOKEN] before
+      // dispatch so it never reaches the provider; postProcessContext hydrates
+      // it back from mergedCatalog.
+      const dehydrationCatalog = new Map<string, string>();
+      if (userMode === 'safe' && userCtx) for (const [t, v] of userCtx.catalog) dehydrationCatalog.set(t, v);
+      // Life-context titles are PII (event names) — dehydrate any that the user
+      // TYPED into the buffer to their [EVENT N] tokens before dispatch; the
+      // post-processor hydrates them back from mergedCatalog.
+      if (lifeContextActive && lifeSnapshot) for (const [t, v] of lifeSnapshot.catalog) dehydrationCatalog.set(t, v);
+      if (dehydrationCatalog.size > 0) {
+        const dehydrator = getDehydrator(dehydrationCatalog, (m) => this.logInfo(`FluidBlank: ${m}`));
         const dText = dehydrator.dehydrate(effectiveText);
         const dAmb = ambientBlock ? dehydrator.dehydrate(ambientBlock) : undefined;
         outboundText = dText.text;
@@ -1004,7 +1044,11 @@ export class FluidBlankSource implements CueSource {
       // neither catalog is present this is a no-op.
       const sentinelCatalog = userCtx?.catalog ?? new Map<string, string>();
       const blankCtxCatalog = bcSnapshot?.catalog ?? new Map<string, string>();
-      const mergedCatalog = mergeCatalogs(sentinelCatalog, blankCtxCatalog);
+      const lifeCtxCatalog = (lifeContextActive && lifeSnapshot) ? lifeSnapshot.catalog : new Map<string, string>();
+      // Merge all catalogs. Identity wins on collision, then blank-context,
+      // then life-context ([EVENT N] tokens are disjoint from the others so
+      // ordering only matters for the substitution pass).
+      const mergedCatalog = mergeCatalogs(mergeCatalogs(sentinelCatalog, blankCtxCatalog), lifeCtxCatalog);
       // Phase 4 — on-demand ai-callable fetch can resolve a `[STOCK(ticker=AMD)]`
       // the LLM emitted even with NO pre-fetched catalog, so don't short-circuit
       // when the gate is live (typed + a fetchable fn registry + blankFetch).

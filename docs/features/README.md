@@ -95,6 +95,7 @@ Optional information the FluidBlank LLM call receives in addition to the user's 
 | 33 | [Identity Context](identity-context.md) | The user's own personal data (`~/.cues/IDENTITY.md` frontmatter) as identity-context tokens so `_` lookups and rewrites personalise without re-typing. `safe` mode (the default) is bidirectional — the catalog ships token-only AND typed values are dehydrated from outbound buffer text, hydrated back locally; `raw` opts in to inlining. Catalog wired for fluid-blank + transform-blank. |
 | 39 | [Blank as Context](blank-as-context.md) | Local blanks (weather, stocks, calendar, …) surfaced as ambient catalog context for fluid-blank/transform-blank — same security model as identity-context, for parameterised dynamic data instead of static personal fields. |
 | 40 | [Max Thinking](max-thinking.md) | `max-thinking` scalar trades reasoning depth for speed on reasoning-capable models (Groq / Cerebras / OpenAI gpt-oss + gpt-5 families). |
+| 46 | [Life Context](life-context.md) | Ingests your calendar (`.ics` / webcal feeds via `opencues calendar`) as a **reasoning** catalog so fluid-blank answers availability (`am i free thursday _`, `next event _`) and a cue flags prose that contradicts your schedule. Event times reach the LLM; titles are dehydrated `[EVENT N]` tokens hydrated locally. OFF by default. **No MCP** — plain calendar feeds. |
 
 ## Surfacing
 
