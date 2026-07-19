@@ -160,6 +160,8 @@ interface CueResultLike {
   spanEnd?: number;
   /** Source id â used to detect fluid-blank for auto-substitute. */
   source?: string;
+  /** Source priority — deterministic overlap resolution for passive sentence-cues. */
+  priority?: number;
   /** Source-specific metadata. TransformBlank uses taskAction for agent
    *  task commands (TASK_ARM/ADD/STOP/SHOW). */
   metadata?: Record<string, unknown>;
@@ -818,6 +820,7 @@ export class Resolver {
       // installs whose OPENCUES.md pre-dates the scalar (no line at all).
       enableUndoActions: settings.get('undo-mode') !== 'off',
       enableSentenceCues: settings.get('sentence-cues-mode') === 'on',
+      enableContradictionCues: settings.get('contradiction-cues-mode') === 'on',
       enableWordCues: settings.get('word-cues-mode') === 'on',
       // `max-thinking` (default on). Threaded into every LLM source's
       // dispatch ctx; @opencues/core/model-thinking.ts resolves the
@@ -2076,7 +2079,10 @@ export class Resolver {
         const sat = this.selectorSatelliteState?.current;
         const overlapsSatellite = sat ? (start < sat.pairCharEnd && sat.pairCharStart < end) : false;
         let overlapsDynDef = false;
-        for (const [, def] of this.dynDefs.entries()) {
+        // Lower-priority PASSIVE sentence-cues this higher-priority one evicts —
+        // deterministic overlap resolution (priority wins, not registration order).
+        const evictKeys: number[] = [];
+        for (const [key, def] of this.dynDefs.entries()) {
           if (!def.blankName) continue;
           if (typeof def.spanStart !== 'number' || typeof def.spanEnd !== 'number') continue;
           if (def.spanEnd <= def.spanStart) continue;
@@ -2084,11 +2090,34 @@ export class Resolver {
           // exempt the exact span so re-resolution doesn't self-collide.
           if (typeof def.blankName === 'string' && def.blankName.startsWith('sentence-cue:')
             && def.spanStart === start && def.spanEnd === end) continue;
-          if (start < def.spanEnd && def.spanStart < end) { overlapsDynDef = true; break; }
+          if (start < def.spanEnd && def.spanStart < end) {
+            // Overlap. A PASSIVE (not mid-cycle) sentence-cue of strictly lower
+            // priority yields to us — evict it (deterministic overlap resolution,
+            // priority wins). This is how contradiction (87) and more-formal (85)
+            // compete for a single span. Anything else (satellite, active blank,
+            // cycled cue, higher/equal-priority cue) stands, and WE yield.
+            const isPassiveSentenceCue = typeof def.blankName === 'string'
+              && def.blankName.startsWith('sentence-cue:') && def.currentIndex === 0;
+            if (isPassiveSentenceCue && (def.priority ?? 0) < (r.priority ?? 0)) {
+              evictKeys.push(key);
+            } else {
+              overlapsDynDef = true;
+              break;
+            }
+          }
         }
         if (overlapsSatellite || overlapsDynDef) {
           this.adapter.log('info', `SentenceCue[${r.source}]: skipping â sentence span [${start},${end}) overlaps an active managed span (satellite=${overlapsSatellite}, dyndef=${overlapsDynDef})`);
           continue;
+        }
+
+        // We won the priority contest — evict the lower-priority passive
+        // sentence-cues we overlap so the higher-priority cue owns the span
+        // (deterministic: this holds whichever cue registered first).
+        for (const k of evictKeys) {
+          const ev = this.dynDefs.get(k);
+          this.dynDefs.delete(k);
+          this.adapter.log('info', `SentenceCue[${r.source}]: evicted lower-priority ${ev?.blankName} (prio ${ev?.priority ?? 0} < ${r.priority}) on overlapping span`);
         }
 
         // Register the DynDef passively. No splice; the buffer keeps
@@ -2108,6 +2137,8 @@ export class Resolver {
           // Dynamic advisory (e.g. calendar-conflict heads-up) → surfaced in
           // the status line when the cursor sits in the span, no cycling.
           cueTip: r.cueTip,
+          // Carried so a later higher-priority overlapping cue can evict this one.
+          priority: r.priority,
         });
         wrote++;
 

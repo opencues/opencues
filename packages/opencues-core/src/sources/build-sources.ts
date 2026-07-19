@@ -28,6 +28,7 @@ import { MissingKeyFallbackSource } from './missing-key-fallback-source';
 import { TransformBlankSource, type TransformBlankSourceConfig } from './transform-blank-source';
 import { ConfigIntentSource, type ConfigIntentSourceConfig } from './config-intent-source';
 import { SentenceCueSource, type SentenceCueSourceConfig } from './sentence-cue-source';
+import { ContradictionLlmSource } from '../contradiction/contradiction-llm-source';
 import { resolveLLM, getProvider, withFallback, withFreePool, type ResolvedLLM } from '../llm-provider';
 import { collapseBucketTier } from '../effective-routing';
 
@@ -180,6 +181,10 @@ export interface BuildSourcesOptions {
    * shape — global kill-switch on top of per-cue declaration.
    */
   enableSentenceCues?: boolean;
+  /** Enable the deterministic contradiction-cue layer (Tier 0: weekday-date
+   *  mismatch, split-the-bill math — buffer + clock only, no LLM/network).
+   *  Defaults to false; flip on via OPENCUES.md `contradiction-cues-mode: on`. */
+  enableContradictionCues?: boolean;
   /** Enable RoutedWordSourceGroup (word-cues on plain text). When false,
    * NO word-cue LLM calls fire — words are not navigable as alternatives.
    * Domain blanks/fluid-blank still work. Defaults to false;
@@ -423,6 +428,37 @@ export function buildSourcesFromConfig(
       return null;
     }
     return resolved;
+  }
+
+  // Contradiction cues (validator class) — a built-in source, not driven by any
+  // CUE.md. Robust engine: the LLM PARSES each sentence into a grounded claim;
+  // the deterministic verifiers JUDGE it (checks.ts). LLM-ONLY — like every
+  // other cue. The old pure-regex ContradictionCueSource fallback was removed
+  // (July 2026): it silently ran a dumb checker that needed a literal `$` + an
+  // explicit headcount, so "250 between 4 that's 55 each" produced nothing and
+  // masked the fact that the LLM engine wasn't wired. If no LLM resolves (only
+  // the trainsOnInput-refusal / no-provider edge — resolveLLM otherwise
+  // hardcodes cerebras) the cue simply doesn't run, exactly like more-formal.
+  //
+  // MUST come after apiKeys / cuesTier / blanksTier / resolveFor are defined —
+  // resolveFor closes over cuesTier, so calling it earlier hits a temporal-dead-
+  // zone (ReferenceError in native Node; a silent null under esbuild's const→var
+  // lowering in chrome). See resolveFor + the tier block above.
+  if (options.enableContradictionCues) {
+    const cxLlm = resolveFor(options.sentenceCues);
+    if (cxLlm) {
+      options.log?.(`buildSources: contradiction-cues → LLM engine (${cxLlm.provider.id}/${cxLlm.model})`);
+      sources.push(new ContradictionLlmSource({
+        httpAdapter: withFallback(options.httpAdapter, cxLlm.fallback),
+        provider: cxLlm.provider,
+        endpoint: cxLlm.endpoint,
+        apiKey: cxLlm.apiKey,
+        model: cxLlm.model,
+        log: (m) => options.log?.(m),
+      }));
+    } else {
+      options.log?.('buildSources: contradiction-cues → SKIPPED (no LLM resolvable — no key / trainsOnInput provider)');
+    }
   }
 
   /**

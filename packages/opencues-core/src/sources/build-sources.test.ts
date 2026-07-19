@@ -461,3 +461,56 @@ describe('buildSourcesFromConfig — config-intent construction gating', () => {
     assert.strictEqual(hasConfigIntent(sources), true);
   });
 });
+
+describe('buildSourcesFromConfig — contradiction-cues engine selection (TDZ ordering regression)', () => {
+  const emptyConfig = mkConfig({ sources: {} });
+  const cx = (sources: readonly unknown[]) =>
+    sources.find(s => (s as { id?: string }).id === 'contradiction-cues') as { constructor: { name: string } } | undefined;
+
+  it('picks the LLM engine when a provider/key resolves (must NOT throw or fall back)', () => {
+    // Regression: the contradiction block once ran BEFORE apiKeys/cuesTier were
+    // initialized, so resolveFor() hit a temporal-dead-zone — a ReferenceError
+    // in native Node, and a silent null → deterministic fallback under esbuild's
+    // const→var lowering (chrome). Both are wrong: with a key present the robust
+    // LLM engine MUST be chosen. This pins the block's ordering after the tiers.
+    const sources = buildSourcesFromConfig(emptyConfig, undefined, {
+      ...defaultOptions,
+      enableContradictionCues: true,
+    });
+    assert.equal(cx(sources)?.constructor.name, 'ContradictionLlmSource');
+  });
+
+  it('never throws even with no keys (cerebras is the ultimate resolveLLM fallback → still LLM engine)', () => {
+    // The TDZ bug threw here regardless of keys. With the ordering fixed the
+    // build always completes; because resolveLLM hardcodes cerebras as the last-
+    // resort provider, a keyless config still gets the LLM engine (its with
+    // Fallback adapter degrades at dispatch, not at construction).
+    let sources: readonly unknown[] = [];
+    assert.doesNotThrow(() => {
+      sources = buildSourcesFromConfig(emptyConfig, undefined, {
+        httpAdapter: stubAdapter,
+        apiKeys: {},
+        enableContradictionCues: true,
+      });
+    });
+    assert.ok(cx(sources), 'a contradiction source is present');
+  });
+
+  it('is SKIPPED (not deterministic) when the cue provider trains on input (opencode-zen refused)', () => {
+    // resolveFor refuses a cue-class source routed through a trainsOnInput
+    // provider → returns null → the cue simply does not run (LLM-only; the
+    // deterministic fallback was removed July 2026).
+    const sources = buildSourcesFromConfig(emptyConfig, undefined, {
+      ...defaultOptions,
+      globalProvider: 'opencode-zen',
+      apiKeys: { OPENCODE_ZEN_API_KEY: 'k' },
+      enableContradictionCues: true,
+    });
+    assert.equal(cx(sources), undefined);
+  });
+
+  it('is absent when the feature is off', () => {
+    const sources = buildSourcesFromConfig(emptyConfig, undefined, { ...defaultOptions });
+    assert.equal(cx(sources), undefined);
+  });
+});
