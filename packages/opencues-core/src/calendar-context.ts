@@ -75,9 +75,12 @@ export function buildCalendarContextSnapshot(
     // Location is PII too (can be a home / precise address). Give it its own
     // token so a "where is X" lookup can surface it while only the token — never
     // the address — reaches the provider. postProcessContext hydrates it back.
+    // Derive the token from `token` (not the index i) so a rebuild from
+    // reconstructed events — the host boundary drops the derived locationToken
+    // but keeps token+location — re-produces the SAME token deterministically.
     let locationToken: string | undefined;
     if (e.location) {
-      locationToken = `[EVENT ${i + 1} LOCATION]`;
+      locationToken = token.replace(/\]\s*$/, ' LOCATION]');
       catalog.set(locationToken, e.location);
     }
     return { ...e, token, ...(locationToken ? { locationToken } : {}) };

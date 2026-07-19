@@ -28,7 +28,7 @@ import { BlankConfig } from '../cues-md';
 import { useStrictJson, buildJsonResponseFormat, describeLLMCall, dispatchChat, getProvider, type ProviderAdapter } from '../llm-provider';
 import { renderIdentityContextCatalog, postProcessContext, type Identity, type ContextMode } from '../identity-context';
 import { renderBlankContextCatalog, mergeCatalogs, type BlankContextSnapshot, type BlankContextMode } from '../blank-context';
-import { renderCalendarContextCatalog, matchCalendarTitles, renderCalendarTitleHints, type CalendarContextSnapshot, type CalendarContextMode } from '../calendar-context';
+import { renderCalendarContextCatalog, buildCalendarContextSnapshot, matchCalendarTitles, renderCalendarTitleHints, type CalendarContextSnapshot, type CalendarContextMode } from '../calendar-context';
 import { resolveTypedSentinels, catalogScalarLookup, instanceTokenFnBridge, jsonFieldAccessor, collectAiCallableFetches } from '../typed-sentinel';
 import { getDehydrator } from '../dehydrate';
 import { blankClaimsUnderscore } from '../blank-shapes';
@@ -935,8 +935,16 @@ export class FluidBlankSource implements CueSource {
       // compute free/busy; titles are `[EVENT N]` tokens hydrated locally.
       // Ingest-on-a-timer; the resolver forwards the cached snapshot only
       // when `calendar-context-mode: on`. See docs/architecture/calendar-context.md.
+      // REBUILD from the raw events rather than trusting the passed-through
+      // catalog/tokens. The host boundary (chrome holder, resolver options)
+      // reconstructs event objects field-by-field and drops the DERIVED
+      // `locationToken` (keeping `token` + `location`), which silently killed
+      // "where is X" — the render read `e.locationToken`, saw nothing, and the
+      // LLM answered "no location listed". Re-deriving here re-produces
+      // locationToken + the catalog deterministically, so no boundary can drop
+      // the location again. See docs/architecture/calendar-context.md.
       const calendarSnapshot: CalendarContextSnapshot | undefined = context.calendarContext
-        ? { events: context.calendarContext.events, catalog: context.calendarContext.catalog, ingestedAt: context.calendarContext.ingestedAt }
+        ? buildCalendarContextSnapshot(context.calendarContext.events, context.calendarContext.ingestedAt)
         : undefined;
       const calendarMode: CalendarContextMode = context.calendarContext?.mode ?? 'off';
       const calendarContextActive = calendarMode === 'on' && !!calendarSnapshot && calendarSnapshot.events.length > 0;

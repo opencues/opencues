@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — calendar-context "where is X" answered "no location listed" on live hosts (`@opencues/core` 0.24→0.24.1)
+
+The location render was correct in the bench but broke on every live host (found on chrome). The hosts reconstruct event objects field-by-field across the boundary (chrome holder / resolver options) and dropped the DERIVED `locationToken` while keeping `token` + `location`, so by the time `renderCalendarContextCatalog` ran, `e.locationToken` was undefined → no `@ [EVENT N LOCATION]` in the prompt → the LLM correctly answered "no location listed" for an event that HAD a location. Classic bench-invisible boundary drift (the bench calls build→render directly). Fix: **re-derive** the token at the point of use — FluidBlank rebuilds the snapshot via `buildCalendarContextSnapshot` from the threaded raw events (which keep `location`), so no boundary can drop it again; and `locationToken` is now derived from the event's `token` (not its index) so a rebuild is always self-consistent, even with custom tokens. Two round-trip regression tests pin it (`calendar-context` unit 23/23).
+
 ### Added — calendar-context: local title→token pre-match closes the safe-mode "where is the dentist" gap (`@opencues/core` 0.23→0.24)
 
 Title-based calendar lookups now resolve in safe mode. Before, `where is the dentist _` / `when is the supabase sync _` declined — the LLM sees `[EVENT N]` with the title dehydrated, so it couldn't tie your typed word to the right event. `matchCalendarTitles` now does that tie **on-machine**: it fuzzy-matches the distinctive words you typed against the real (local) titles and hands the LLM the resolved `[EVENT N]` token via a USER-message hint. The title never leaves the box — the hint carries only **your own matched words** (`"dentist" → [EVENT 1]`, never the rest of the title), so there's no new PII on the wire, and it rides the USER message (not the cached system prompt) so cerebras' prefix cache stays warm.

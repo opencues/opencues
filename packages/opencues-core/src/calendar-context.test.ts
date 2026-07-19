@@ -19,6 +19,32 @@ const EVENTS = [
   { title: 'Conference',     start: '2026-07-22T00:00', end: '2026-07-22T23:59', allDay: true },
 ];
 
+describe('host-boundary round-trip — locationToken survives reconstruction', () => {
+  // The live hosts (chrome holder, resolver options) reconstruct event objects
+  // field-by-field across the boundary and drop the DERIVED locationToken while
+  // keeping token + location. Rebuilding at the point of use must re-derive it —
+  // otherwise the render loses `@ [EVENT N LOCATION]` and "where is X" answers
+  // "no location listed" (the live chrome bug the bench couldn't see).
+  it('a rebuild from boundary-reconstructed events re-derives locationToken + catalog', () => {
+    const built = buildCalendarContextSnapshot(EVENTS);
+    // Simulate the boundary: keep token + location, DROP locationToken.
+    const crossed = built.events.map((e) => ({ token: e.token, title: e.title, start: e.start, end: e.end, allDay: e.allDay, location: e.location }));
+    assert.equal((crossed[0] as { locationToken?: string }).locationToken, undefined); // dropped in transit
+    const rebuilt = buildCalendarContextSnapshot(crossed, built.ingestedAt);
+    // locationToken re-derived, matching the (possibly custom) token.
+    assert.equal(rebuilt.events[0].locationToken, '[EVENT 1 LOCATION]');
+    assert.equal(rebuilt.catalog.get('[EVENT 1 LOCATION]'), '5 High St Clinic');
+    // …and the render shows it again.
+    assert.match(renderCalendarContextCatalog(rebuilt, 'on'), /@ \[EVENT 1 LOCATION\]/);
+  });
+
+  it('locationToken is derived from the token (not the index), so custom tokens stay consistent', () => {
+    const snap = buildCalendarContextSnapshot([{ token: '[MEETING]', title: 'X', start: '2026-07-17T09:00', end: '2026-07-17T10:00', location: 'Room 4' }]);
+    assert.equal(snap.events[0].locationToken, '[MEETING LOCATION]');
+    assert.equal(snap.catalog.get('[MEETING LOCATION]'), 'Room 4');
+  });
+});
+
 describe('matchCalendarTitles — safe-mode local title→token pre-match', () => {
   const snap = buildCalendarContextSnapshot(EVENTS);
   const resolve = (input: string) => matchCalendarTitles(input, snap).map((m) => `${m.phrase}=${m.token}`);
