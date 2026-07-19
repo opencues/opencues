@@ -6,7 +6,6 @@ import { DynDefs } from '../state/dyn-defs';
 import { SpanFillState } from '../state/span-fill';
 import { AgentTaskState } from '../state/agent-task';
 import { SelectorSatelliteState } from '../state/selector-satellite';
-import { AdvisoryState } from '../state/advisory-state';
 import { MockAdapter } from '../../testing/mock-adapter';
 
 const TIPS = JSON.stringify({ concepts: [] });
@@ -2141,78 +2140,102 @@ async function captureBuildOpts(opts: {
   return captured;
 }
 
-describe('Resolver advisory channel — contradiction coexists with more-formal (no fight)', () => {
-  // Validator-class results (contradiction) land on AdvisoryState (statusline
-  // annotation) and leave the overlapping more-formal cycle-cue DynDef intact.
-  const BUF = 'see you Thursday the 24th';   // 'Thursday the 24th' = [8,25)
+describe('Resolver validator-class supersede (contradiction re-checks a cycled more-formal result)', () => {
+  // The user journey the feature exists for: more-formal (transformer, prio 85)
+  // is CYCLED (currentIndex=1 → formal text in the buffer). A validator-class
+  // cue (contradiction, prio 87) then fact-checks that APPLIED text and must be
+  // able to supersede the ACTIVE more-formal def — where an ordinary higher-
+  // priority cue only evicts a PASSIVE (un-cycled) one. History is not merged
+  // into the validator's ring; it lives on the undo stack (the cycle that
+  // produced the formal text was already journalled).
 
-  function setup(scripted: unknown[]) {
+  // Buffer = the formal text more-formal already cycled in.
+  const BUF = 'See you Thursday the 24th.';
+  //           0123456789...      ^8            ^25 (".")
+  const QUOTE = 'Thursday the 24th'; // BUF.slice(8, 25)
+
+  function setup(scriptedResults: unknown[]) {
     const adapter = new MockAdapter({ cwd: '/proj', files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': CUES_MD } });
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
     const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
     const selectorSatelliteState = new SelectorSatelliteState();
-    const advisoryState = new AdvisoryState();
     const resolver = new Resolver(adapter, hlState, dynDefs, loader, {
       endpoint: 'http://test', apiKey: 'x', defaultModel: 'm', debounceMs: 10, httpAdapter: {},
-    }, undefined, undefined, undefined, undefined, selectorSatelliteState,
-      undefined, undefined, undefined, advisoryState);
+    }, undefined, undefined, undefined, undefined, selectorSatelliteState);
     (resolver as unknown as { _resolver: { resolve(ctx: unknown): Promise<{ results: unknown[] }> } })._resolver = {
-      resolve: async () => ({ results: scripted }),
+      resolve: async () => ({ results: scriptedResults }),
     };
-    return { adapter, dynDefs, advisoryState, resolver };
+    return { adapter, dynDefs, resolver };
   }
 
-  const moreFormal = {
-    wordIndex: 0, word: 'see', alternatives: [BUF, 'I shall see you on Thursday the 24th.'],
-    source: 'sentence-cue:more-formal', priority: 85, spanStart: 0, spanEnd: BUF.length,
-    cueTip: 'more formal', metadata: { sentenceCue: { cueName: 'more-formal' } },
-  };
-  const contradiction = {
-    wordIndex: 2, word: 'Thursday', alternatives: ['Thursday the 24th', 'Friday the 24th'],
-    source: 'sentence-cue:contradiction-weekday-date', priority: 87, validator: true,
-    spanStart: 8, spanEnd: 25, cueTip: '⚠ the 24th is a Friday, not Thursday',
+  // Seed an ACTIVE more-formal def: currentIndex=1, its current alt equal to the
+  // live buffer so pruneStale keeps it up to the eviction decision.
+  const seedActiveMoreFormal = (dynDefs: DynDefs) => dynDefs.set(0, {
+    originalWord: 'see ya thursday the 24th',
+    alternatives: ['see ya thursday the 24th', BUF],
+    currentIndex: 1,
+    spanStart: 0,
+    spanEnd: BUF.length,
+    blankName: 'sentence-cue:more-formal',
+    priority: 85,
+  });
+
+  const contradiction = (validator: boolean) => ({
+    wordIndex: 2, // "Thursday"
+    word: 'Thursday',
+    alternatives: [QUOTE, 'Friday the 24th'],
+    source: 'sentence-cue:contradiction-weekday-date',
+    priority: 87,
+    ...(validator ? { validator: true } : {}),
+    spanStart: 8,
+    spanEnd: 25,
+    cueTip: '⚠ the 24th is a Friday, not Thursday',
     metadata: { sentenceCue: { cueName: 'contradiction-weekday-date' } },
-  };
-
-  it('more-formal keeps its cycle DynDef AND contradiction lands as an advisory', async () => {
-    const { adapter, dynDefs, advisoryState, resolver } = setup([moreFormal, contradiction]);
-    adapter.pushText(BUF);
-    await resolver.resolveAndApply(BUF);
-
-    expect(dynDefs.get(0)?.blankName).toBe('sentence-cue:more-formal');
-    const defs = Array.from({ length: 6 }, (_, i) => dynDefs.get(i)).filter(Boolean);
-    expect(defs.some(d => d!.blankName?.includes('contradiction'))).toBe(false);
-    expect(advisoryState.size).toBe(1);
-    const adv = advisoryState.all()[0];
-    expect(adv.message).toBe('⚠ the 24th is a Friday, not Thursday');
-    expect(adv.spanStart).toBe(8);
-    expect(adv.spanEnd).toBe(25);
-    expect(adapter.getText()).toBe(BUF);   // display-only
   });
 
-  it('the advisory self-clears when the contradiction is gone next pass', async () => {
-    const { adapter, advisoryState, resolver } = setup([moreFormal, contradiction]);
+  it('a VALIDATOR result supersedes the active more-formal def and takes over the span', async () => {
+    const { adapter, dynDefs, resolver } = setup([contradiction(true)]);
     adapter.pushText(BUF);
+    seedActiveMoreFormal(dynDefs);
     await resolver.resolveAndApply(BUF);
-    expect(advisoryState.size).toBe(1);
-    (resolver as unknown as { _resolver: { resolve(c: unknown): Promise<{ results: unknown[] }> } })._resolver = {
-      resolve: async () => ({ results: [moreFormal] }),
-    };
-    await resolver.resolveAndApply(BUF);
-    expect(advisoryState.size).toBe(0);
+
+    // more-formal (active, lower priority) was evicted.
+    expect(dynDefs.get(0)?.blankName).not.toBe('sentence-cue:more-formal');
+    // contradiction now owns its span, PASSIVELY (buffer unchanged — cue, not agent).
+    const cx = dynDefs.get(2);
+    expect(cx?.blankName).toBe('sentence-cue:contradiction-weekday-date');
+    expect(cx?.currentIndex).toBe(0);
+    expect(cx?.alternatives).toEqual([QUOTE, 'Friday the 24th']);
+    expect(adapter.getText()).toBe(BUF); // no auto-apply
   });
 
-  it('nearestTo picks the closest advisory to the cursor', () => {
-    const a = new AdvisoryState();
-    a.setAll([
-      { spanStart: 0, spanEnd: 5, message: 'A', source: 's' },
-      { spanStart: 40, spanEnd: 50, message: 'B', source: 's' },
-    ]);
-    expect(a.nearestTo(2)?.message).toBe('A');   // inside A
-    expect(a.nearestTo(44)?.message).toBe('B');  // inside B
-    expect(a.nearestTo(30)?.message).toBe('B');  // closer to B (10) than A (25)
-    expect(a.nearestTo(20)?.message).toBe('A');  // closer to A (15) than B (20)
+  it('a NON-validator higher-priority cue does NOT supersede an active def (it yields)', async () => {
+    // Same priority (87) and overlap, but validator flag OFF → the active
+    // more-formal def stands and the new cue is skipped. This is the guard
+    // that keeps the supersede scoped to the validator class only.
+    const { adapter, dynDefs, resolver } = setup([contradiction(false)]);
+    adapter.pushText(BUF);
+    seedActiveMoreFormal(dynDefs);
+    await resolver.resolveAndApply(BUF);
+
+    expect(dynDefs.get(0)?.blankName).toBe('sentence-cue:more-formal'); // survives
+    expect(dynDefs.get(2)?.blankName).not.toBe('sentence-cue:contradiction-weekday-date'); // skipped
+    expect(adapter.getText()).toBe(BUF);
+  });
+
+  it('a validator still evicts a PASSIVE lower-priority cue (existing behaviour preserved)', async () => {
+    // Passive more-formal (currentIndex=0) + validator contradiction → evicted,
+    // exactly as an ordinary higher-priority passive-vs-passive contest would.
+    const { dynDefs, resolver, adapter } = setup([contradiction(true)]);
+    adapter.pushText(BUF);
+    dynDefs.set(0, {
+      originalWord: BUF, alternatives: [BUF, 'a formal variant.'], currentIndex: 0,
+      spanStart: 0, spanEnd: BUF.length, blankName: 'sentence-cue:more-formal', priority: 85,
+    });
+    await resolver.resolveAndApply(BUF);
+    expect(dynDefs.get(0)?.blankName).not.toBe('sentence-cue:more-formal');
+    expect(dynDefs.get(2)?.blankName).toBe('sentence-cue:contradiction-weekday-date');
   });
 });
 

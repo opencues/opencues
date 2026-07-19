@@ -50,18 +50,6 @@ describe('applyStatuslinePayload — happy paths', () => {
     expect(bar()!.textContent).toBe('Blank tip');
   });
 
-  it('advisory renders as an ADDITIONAL line beneath the cue', () => {
-    applyStatuslinePayload({ active: true, cueTip: 'more formal', advisory: '⚠ the 24th is a Friday, not Thursday' });
-    expect(bar()!.querySelector('.oc-status-line')?.textContent).toBe('more formal');
-    expect(bar()!.querySelector('.oc-advisory')?.textContent).toBe('⚠ the 24th is a Friday, not Thursday');
-  });
-
-  it('advisory shows on its own with no active cue', () => {
-    applyStatuslinePayload({ active: false, advisory: '⚠ 250 ÷ 4 = $62.50, not $55' });
-    expect(bar()!.querySelector('.oc-status-line')).toBeNull();
-    expect(bar()!.querySelector('.oc-advisory')?.textContent).toBe('⚠ 250 ÷ 4 = $62.50, not $55');
-  });
-
   it('cycling with >1 alt renders "<word> (N/M) - <tip>"', () => {
     applyStatuslinePayload({
       active: true,

@@ -16,7 +16,6 @@ import type { ConfigLoader } from './config-loader';
 import type { SpanFillState } from '../state/span-fill';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
 import type { AgentTaskState } from '../state/agent-task';
-import type { Advisory } from '../state/advisory-state';
 import type { ProviderHealth, ProviderHealthEvent } from './provider-health';
 import { formatUndoReport, type UndoApplyReport } from '../state/undo-journal';
 import { splitWords } from './navigation';
@@ -66,14 +65,6 @@ export interface StatuslineOptions {
    * buffer carrying the detail.
    */
   readonly undoStatus?: () => UndoApplyReport | null;
-  /**
-   * Optional. The fluid ADVISORY channel (AdvisoryState.all). When it returns
-   * advisories, the payload carries `advisory` — the single ⚠-prefixed line for
-   * the one NEAREST the cursor — which consumers render as an ADDITIONAL
-   * statusline line beneath the cue/tip (the advisory's only surface: no in-text
-   * marker). Orthogonal to highlight state (like the kata block).
-   */
-  readonly advisories?: () => readonly Advisory[];
 }
 
 export interface StatuslinePayload {
@@ -127,12 +118,6 @@ export interface StatuslinePayload {
    * `undo _` / `redo _` fires. Carries applied/skipped counts + skip
    * reasons so hosts can render partial-failure honesty out-of-band.
    */
-  /**
-   * The fluid ADVISORY channel — the ⚠-prefixed line for the advisory NEAREST
-   * the cursor (contradiction, …). Consumers render it as an ADDITIONAL line
-   * beneath the cue/tip, never replacing it. null/absent when there are none.
-   */
-  advisory?: string | null;
   undo?: UndoApplyReport | null;
   /**
    * Pre-formatted one-line undo/redo confirmation (`↶ undid: …`), derived
@@ -436,24 +421,6 @@ export class Statusline {
     if (this.options.undoStatus) {
       const undo = this.options.undoStatus();
       payload = { ...payload, undo, undoConfirmation: undo ? formatUndoReport(undo) : null };
-    }
-    // Advisory line — the fluid channel, orthogonal to highlight state and the
-    // cue/tip. Show ONLY the advisory NEAREST the cursor (its only surface — no
-    // in-text marker), as an additional line beneath the cue. The message is
-    // already ⚠-prefixed by the source.
-    if (this.options.advisories) {
-      const list = this.options.advisories();
-      let nearest: Advisory | null = null;
-      if (list.length > 0) {
-        const cur = typeof ctx.cursor === 'number' ? ctx.cursor : 0;
-        let bestDist = Infinity;
-        for (const a of list) {
-          const dist = cur < a.spanStart ? a.spanStart - cur
-            : cur >= a.spanEnd ? cur - a.spanEnd + 1 : 0;
-          if (dist < bestDist) { nearest = a; bestDist = dist; }
-        }
-      }
-      payload = { ...payload, advisory: nearest ? nearest.message : null };
     }
     // Strip timestamp before content-comparison so identical-state renders
     // don't trigger writes purely because of clock change.

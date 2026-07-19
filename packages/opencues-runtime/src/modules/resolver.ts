@@ -28,7 +28,6 @@ import { applyMarkdownAwareSplice, applyMarkdownAwareSubstitution } from './mark
 import { threeWayMerge } from './word-diff';
 import { applyScalarAndPersist } from '../util/apply-scalar';
 import { diffSplice, fillSplice, type PendingTransaction, type UndoJournal } from '../state/undo-journal';
-import type { Advisory, AdvisoryState } from '../state/advisory-state';
 import { UndoApplier } from './undo';
 
 /** Minimal interface MarkdownRender exposes for rich-text injection.
@@ -459,11 +458,6 @@ export class Resolver {
      *  transaction so `undo _` can revert it; also enables the ACTION
      *  branch (undo/redo application) itself. Omit to disable both. */
     private undoJournal?: UndoJournal,
-    /** Fluid advisory channel. Validator-class results (contradiction) are
-     *  routed here as passive statusline annotations instead of registering
-     *  cycle-cue DynDefs, so they coexist with the cue that owns the span.
-     *  Rebuilt every resolve pass (self-clearing). Omit to disable. */
-    private advisoryState?: AdvisoryState,
   ) {}
 
   /** Pending config-intent transaction â opened lazily by the wrapped
@@ -1537,10 +1531,6 @@ export class Resolver {
     }
 
     const sentenceClaims: Array<{ start: number; end: number }> = [];
-    // Fluid advisory channel — validator-class results (contradiction) collect
-    // here and land on AdvisoryState after the pass, instead of DynDefs.
-    // Rebuilt every pass so advisories self-clear.
-    const advisories: Advisory[] = [];
     for (const r of applicableResults) {
       // ââ ACTION (undo/redo). Classified by the config-intent source
       //    (metadata.undoAction), APPLIED here â the journal + applier
@@ -2071,25 +2061,6 @@ export class Resolver {
           this.adapter.log('info', `SentenceCue[${r.source}]: skipping â buffer edit at [${start},${end}) changed the sentence since resolve`);
           continue;
         }
-        // ADVISORY (validator-class, e.g. contradiction). Route to the fluid
-        // advisory channel — a passive statusline annotation that coexists with
-        // whatever cue owns this span — instead of registering a cycle-cue
-        // DynDef. No eviction, no span ownership, no cycling. The race guard
-        // above already re-grounded the span, so the advisory points at real
-        // text. `alternatives = [flaggedQuote, correction]`; cueTip carries the
-        // ⚠-prefixed message the statusline shows.
-        if (r.validator) {
-          const correction = r.alternatives[1] !== originalSentence ? r.alternatives[1] : undefined;
-          advisories.push({
-            spanStart: start,
-            spanEnd: end,
-            message: r.cueTip ?? originalSentence,
-            source: r.source ?? 'advisory',
-            correction,
-          });
-          this.adapter.log('info', `Advisory[${r.source}]: [${start},${end}) "${r.cueTip ?? ''}"`);
-          continue;
-        }
         // Registration key. Normally the sentence's first word index. But
         // when a DIFFERENT sentence-cue already holds that word (two
         // sentences in one spaceless-CJK word), re-key the later one to a
@@ -2123,14 +2094,24 @@ export class Resolver {
           if (typeof def.blankName === 'string' && def.blankName.startsWith('sentence-cue:')
             && def.spanStart === start && def.spanEnd === end) continue;
           if (start < def.spanEnd && def.spanStart < end) {
-            // Overlap. A PASSIVE (not mid-cycle) sentence-cue of strictly lower
-            // priority yields to us — evict it. Anything else (satellite, active
-            // blank, cycled cue, higher/equal-priority cue) stands, and WE yield.
-            // (Validator-class results never reach here — they route to the
-            // advisory channel above and never register a DynDef.)
-            const isPassiveSentenceCue = typeof def.blankName === 'string'
-              && def.blankName.startsWith('sentence-cue:') && def.currentIndex === 0;
-            if (isPassiveSentenceCue && (def.priority ?? 0) < (r.priority ?? 0)) {
+            // Overlap. Two eviction rules, both strictly by lower priority:
+            //  1. A PASSIVE (not mid-cycle) lower-priority sentence-cue always
+            //     yields — the existing deterministic overlap resolution.
+            //  2. A VALIDATOR-class result (r.validator, e.g. contradiction) may
+            //     ALSO supersede an ACTIVE (cycled) lower-priority sentence-cue —
+            //     it re-checks the text the transformer (more-formal) cycled in
+            //     and takes over the span to offer its correction. The superseded
+            //     transformer's cycle history is NOT merged into the validator's
+            //     ring; it lives on the undo stack (the cycle that produced the
+            //     transformed text was journalled), so `undo _` walks correction
+            //     → transformed → original.
+            // Anything else (satellite, active blank, higher/equal-priority cue)
+            // stands, and WE yield.
+            const isSentenceCueDef = typeof def.blankName === 'string'
+              && def.blankName.startsWith('sentence-cue:');
+            const isPassive = isSentenceCueDef && def.currentIndex === 0;
+            const lowerPriority = (def.priority ?? 0) < (r.priority ?? 0);
+            if (isSentenceCueDef && lowerPriority && (isPassive || r.validator)) {
               evictKeys.push(key);
             } else {
               overlapsDynDef = true;
@@ -2546,14 +2527,6 @@ export class Resolver {
         continue;
       }
       wrote++;
-    }
-    // Publish the fluid advisory set for this pass. An empty array clears stale
-    // advisories (the self-clear). Force a paint when the set is or was non-empty
-    // so the statusline's advisory line updates even if no DynDef was written.
-    if (this.advisoryState) {
-      const hadAdvisories = this.advisoryState.size > 0;
-      this.advisoryState.setAll(advisories);
-      if (advisories.length > 0 || hadAdvisories) this.adapter.forceRender();
     }
     // Force a paint so DimRender/Statusline pick up the new alts without
     // waiting for the user's next keystroke. Hosts with no idle render
