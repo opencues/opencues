@@ -47,6 +47,7 @@ export const FETCH_ALLOWED_ORIGINS: readonly string[] = [
   'https://status.claude.com',
   'https://api.github.com',
   'https://www.gov.uk',
+  'https://api.tfl.gov.uk',
 ];
 
 export function isFetchOriginAllowed(url: string): boolean {

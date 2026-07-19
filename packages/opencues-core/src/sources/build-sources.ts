@@ -31,6 +31,7 @@ import { SentenceCueSource, type SentenceCueSourceConfig } from './sentence-cue-
 import { ContradictionLlmSource } from '../contradiction/contradiction-llm-source';
 import { BankHolidayProvider } from '../contradiction/bank-holidays';
 import { WeatherProvider } from '../contradiction/weather';
+import { TflProvider } from '../contradiction/tfl';
 
 // World-data caches for contradiction cues, PERSISTED across resolver rebuilds
 // (buildSourcesFromConfig is called on every config reload; a fresh provider
@@ -39,11 +40,13 @@ import { WeatherProvider } from '../contradiction/weather';
 // independent (one singleton); weather providers are keyed by location scalar.
 let _bankHolidayProvider: BankHolidayProvider | null = null;
 const _weatherProviders = new Map<string, WeatherProvider>();
+let _tflProvider: TflProvider | null = null;
 
 /** Test hook — drop the persisted world-data providers so a suite starts clean. */
 export function _resetContradictionProvidersForTesting(): void {
   _bankHolidayProvider = null;
   _weatherProviders.clear();
+  _tflProvider = null;
 }
 import { resolveLLM, getProvider, withFallback, withFreePool, type ResolvedLLM } from '../llm-provider';
 import { collapseBucketTier } from '../effective-routing';
@@ -499,6 +502,8 @@ export function buildSourcesFromConfig(
         });
         _weatherProviders.set(wlKey, weather);
       }
+      // Tier 5b — TfL line-disruption status (London; location-independent).
+      const tfl = (_tflProvider ??= new TflProvider({ fetchImpl: options.worldDataFetch, log: (m) => options.log?.(m) }));
       sources.push(new ContradictionLlmSource({
         httpAdapter: withFallback(options.httpAdapter, cxLlm.fallback),
         provider: cxLlm.provider,
@@ -507,6 +512,7 @@ export function buildSourcesFromConfig(
         model: cxLlm.model,
         bankHolidays,
         weather,
+        tfl,
         log: (m) => options.log?.(m),
       }));
     } else {

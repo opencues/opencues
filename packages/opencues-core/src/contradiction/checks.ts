@@ -16,6 +16,8 @@
  *    arithmetic; we never ask a model to).
  */
 
+import { normalizeLine } from './tfl';
+
 export interface Contradiction {
   /** Word index of the first flagged word (inclusive). */
   readonly startWord: number;
@@ -289,7 +291,15 @@ export interface OutdoorPlanWeatherClaim {
   readonly month?: string | null;
   readonly quote: string;
 }
-export type Claim = WeekdayDateClaim | BillSplitClaim | ArithmeticClaim | WorkdayOnHolidayClaim | OutdoorPlanWeatherClaim;
+/** Tier 5b — the writer plans to travel on a named London transit line. The
+ *  verifier checks that line against the cached TfL disruption status. */
+export interface TubeLinePlanClaim {
+  readonly type: 'tube_line_plan';
+  /** The line name as stated ("Victoria", "the Central line", "Piccadilly"). */
+  readonly line: string;
+  readonly quote: string;
+}
+export type Claim = WeekdayDateClaim | BillSplitClaim | ArithmeticClaim | WorkdayOnHolidayClaim | OutdoorPlanWeatherClaim | TubeLinePlanClaim;
 
 /** Extra data a verifier may consult beyond the clock — background-refreshed
  *  caches read synchronously (never fetched in the keystroke path). */
@@ -298,6 +308,8 @@ export interface VerifyContext {
   readonly bankHolidays?: ReadonlyMap<string, string>;
   /** ISO-date → max precipitation probability % (WeatherProvider.current()). */
   readonly precipByDate?: ReadonlyMap<string, number>;
+  /** Normalized line name → disruption status (TflProvider.current()). */
+  readonly disruptedLines?: ReadonlyMap<string, string>;
 }
 
 /** Max-precipitation-probability at or above which an outdoor plan is flagged as
@@ -403,6 +415,23 @@ export function verifyClaim(claim: Claim, sentence: string, now: Date, ctx?: Ver
         quote: claim.quote,
         tip: `${dayName}'s forecast is rain (${p}% chance)`,
         check: 'weather',
+      };
+    }
+    case 'tube_line_plan': {
+      if (!present(claim.quote) || !claim.line) return null;
+      const disrupted = ctx?.disruptedLines;
+      if (!disrupted || disrupted.size === 0) return null;   // no data → silent
+      const key = normalizeLine(claim.line);
+      const status = disrupted.get(key);
+      if (!status) return null;   // line in Good Service → no contradiction
+      const line = claim.line.replace(/\bline\b/gi, '').replace(/^the\s+/i, '').trim();
+      // DLR is "the DLR", not "the DLR line" (it's the Docklands Light Railway);
+      // Tube + Overground routes ARE named lines ("the Victoria line").
+      const label = key === 'dlr' ? 'the DLR' : `the ${cap(line)} line`;
+      return {
+        quote: claim.quote,
+        tip: `${label} has ${status} right now`,
+        check: 'tube-status',
       };
     }
     default:

@@ -43,6 +43,10 @@ Claim types:
    {"type":"outdoor_plan_weather","weekday":"Saturday","day":null,"month":null,"quote":"lunch on the patio Saturday"}
    Give "weekday" and/or "day". Extract ONLY when the activity is UNAMBIGUOUSLY outdoors AND weather-sensitive. Do NOT extract indoor plans (a meeting, dinner at a restaurant, a call) or activities where weather is irrelevant.
 
+6. tube_line_plan — the writer plans to TRAVEL on a named LONDON transit line (a Tube/Underground line, DLR, Overground, or the Elizabeth line).
+   {"type":"tube_line_plan","line":"Victoria","quote":"take the Victoria line"}
+   "line" is the line NAME only, from: Bakerloo, Central, Circle, District, Hammersmith & City, Jubilee, Metropolitan, Northern, Piccadilly, Victoria, Waterloo & City, Elizabeth, DLR, Overground, Liberty, Lioness, Mildmay, Suffragette, Weaver, Windrush. Extract ONLY when a specific line is NAMED and the writer plans to USE it (take/get/catch/ride/change onto it). Do NOT extract a station name (e.g. "Oxford Circus"), a bus, a train that isn't a named line, or any sentence with no line named.
+
 RULES (precision over recall — a wrong flag is worse than a missed one):
 - ONLY explicit, fully-stated claims. If ANY part is missing, implied, or ambiguous, do NOT extract it.
 - Every "quote" MUST be an exact substring of the SENTENCE, copied character-for-character.
@@ -65,6 +69,9 @@ export interface ContradictionLlmSourceConfig {
   /** Tier 5 — precipitation-forecast cache. Same fire-and-forget refresh + sync
    *  read; feeds the outdoor_plan_weather verifier. Absent → that type stays silent. */
   readonly weather?: { refresh(): Promise<void>; current(): ReadonlyMap<string, number> };
+  /** Tier 5b — TfL line-disruption cache. Same fire-and-forget refresh + sync
+   *  read; feeds the tube_line_plan verifier. Absent → that type stays silent. */
+  readonly tfl?: { refresh(): Promise<void>; current(): ReadonlyMap<string, string> };
   readonly log?: (msg: string) => void;
 }
 
@@ -104,9 +111,11 @@ export class ContradictionLlmSource implements CueSource {
     // last-good map synchronously — never a fetch in the keystroke path.
     this.cfg.bankHolidays?.refresh().catch(() => { /* keeps last-good */ });
     this.cfg.weather?.refresh().catch(() => { /* keeps last-good */ });
+    this.cfg.tfl?.refresh().catch(() => { /* keeps last-good */ });
     const verifyCtx = {
       bankHolidays: this.cfg.bankHolidays?.current(),
       precipByDate: this.cfg.weather?.current(),
+      disruptedLines: this.cfg.tfl?.current(),
     };
     const perSentence = await mapWithConcurrency(
       sentences,

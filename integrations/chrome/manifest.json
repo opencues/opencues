@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OpenCues",
-  "version": "0.2.85",
+  "version": "0.2.87",
   "description": "OpenCues enables native AI integration anywhere you type. Model agnostic and fully open source. Inline agents and prompting.",
   "permissions": [
     "storage",
@@ -24,7 +24,8 @@
     "https://api.dictionaryapi.dev/*",
     "https://status.claude.com/*",
     "https://api.github.com/*",
-    "https://www.gov.uk/*"
+    "https://www.gov.uk/*",
+    "https://api.tfl.gov.uk/*"
   ],
   "background": {
     "service_worker": "dist/background.js",
