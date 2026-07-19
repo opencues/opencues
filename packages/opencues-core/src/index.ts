@@ -88,6 +88,7 @@ export {
 export { ContradictionCueSource, type ContradictionCueSourceOptions } from './contradiction/contradiction-cue-source';
 export { ContradictionLlmSource, parseClaims, CONTRADICTION_EXTRACT_SYSTEM, type ContradictionLlmSourceConfig } from './contradiction/contradiction-llm-source';
 export { BankHolidayProvider, type BankHolidayProviderOptions, type BankHolidayRegion } from './contradiction/bank-holidays';
+export { WeatherProvider, type WeatherProviderOptions } from './contradiction/weather';
 export {
   weekdayDateCheck,
   splitBillCheck,
@@ -96,6 +97,7 @@ export {
   safeEvalArithmetic,
   type Claim,
   type WorkdayOnHolidayClaim,
+  type OutdoorPlanWeatherClaim,
   type VerifyContext,
   type VerifiedContradiction,
   type Contradiction,

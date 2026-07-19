@@ -2762,10 +2762,11 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     llmProvider: opts.llmProvider,
     llmDebounceMs: opts.llmDebounceMs,
     httpAdapter: new FetchHttpAdapter(),
-    // Tier 0.5 — SW-routed GET for the GOV.UK bank-holiday cache. A
-    // content-script fetch to gov.uk is blocked by the host page's CSP; hopping
-    // through the SW (opencues:fetch, gov.uk in host_permissions) bypasses it.
-    bankHolidayFetch: async (url: string) => {
+    // SW-routed GET for contradiction world-data caches (GOV.UK bank holidays,
+    // open-meteo weather). A content-script fetch to those origins is blocked by
+    // the host page's CSP; hopping through the SW (opencues:fetch; both origins
+    // in host_permissions + the SW allow-list) bypasses it.
+    worldDataFetch: async (url: string) => {
       const reply = await chrome.runtime.sendMessage<unknown, { ok?: boolean; text?: string }>({
         type: 'opencues:fetch', method: 'GET', url,
       });

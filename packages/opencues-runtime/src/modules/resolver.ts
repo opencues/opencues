@@ -100,10 +100,10 @@ export interface ResolverOptions {
   /** Optional injection seam for tests. When set, runtime uses this instead
    *  of constructing a NodeHttpAdapter. Should expose at least .post(). */
   readonly httpAdapter?: unknown;
-  /** Tier 0.5 — host-provided fetch for the GOV.UK bank-holiday cache. Chrome
-   *  passes a service-worker-routed fetch (page-CSP blocks a content-script
-   *  one); native hosts omit it → the provider uses global fetch. */
-  readonly bankHolidayFetch?: (url: string) => Promise<{ ok: boolean; json: () => Promise<unknown> }>;
+  /** Host-provided GET for the contradiction world-data caches (bank holidays,
+   *  weather). Chrome passes a service-worker-routed fetch (page-CSP blocks a
+   *  content-script one); native hosts omit it → the provider uses global fetch. */
+  readonly worldDataFetch?: (url: string) => Promise<{ ok: boolean; json: () => Promise<unknown> }>;
   /** Same â inject the resolver build directly (mostly for testing). */
   readonly resolverFactory?: (cuesConfig: unknown, blanksConfig: unknown, opts: unknown) => unknown;
   /**
@@ -231,6 +231,18 @@ function normalizeModelScalar(raw: string | undefined): string | undefined {
 
 function isAbortError(err: unknown): boolean {
   return !!err && typeof err === 'object' && (err as { name?: string }).name === 'AbortError';
+}
+
+/** Parse a `weather-location: lat,lon` scalar (Tier 5) into coordinates.
+ *  Returns undefined for absent / malformed / out-of-range input (the weather
+ *  provider then uses its default anchor). */
+function parseWeatherLocation(raw: string | undefined): { lat: number; lon: number } | undefined {
+  if (!raw) return undefined;
+  const m = raw.split(',').map(s => Number(s.trim()));
+  if (m.length !== 2 || !Number.isFinite(m[0]) || !Number.isFinite(m[1])) return undefined;
+  const [lat, lon] = m;
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return undefined;
+  return { lat, lon };
 }
 
 function isRoutedWordGroup(s: unknown): s is RoutedWordSourceGroupLike {
@@ -825,7 +837,8 @@ export class Resolver {
       enableUndoActions: settings.get('undo-mode') !== 'off',
       enableSentenceCues: settings.get('sentence-cues-mode') === 'on',
       enableContradictionCues: settings.get('contradiction-cues-mode') === 'on',
-      bankHolidayFetch: this.options.bankHolidayFetch,
+      worldDataFetch: this.options.worldDataFetch,
+      weatherLocation: parseWeatherLocation(settings.get('weather-location')),
       enableWordCues: settings.get('word-cues-mode') === 'on',
       // `max-thinking` (default on). Threaded into every LLM source's
       // dispatch ctx; @opencues/core/model-thinking.ts resolves the

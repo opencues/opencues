@@ -73,12 +73,12 @@ export interface HostInfo extends CommonHostInfo {
    */
   httpAdapter?: unknown;
   /**
-   * Tier 0.5 — service-worker-routed GET for the GOV.UK bank-holiday cache.
-   * A content-script fetch to gov.uk is blocked by the host page's CSP, so the
-   * bootstrap supplies a fetch that hops through the SW (`opencues:fetch`).
-   * Absent → the provider falls back to global fetch (works only on CSP-lax pages).
+   * Service-worker-routed GET for the contradiction world-data caches (bank
+   * holidays, weather). A content-script fetch to those origins is blocked by
+   * the host page's CSP, so the bootstrap supplies a fetch that hops through the
+   * SW (`opencues:fetch`). Absent → the provider falls back to global fetch.
    */
-  bankHolidayFetch?(url: string): Promise<{ ok: boolean; json(): Promise<unknown> }>;
+  worldDataFetch?(url: string): Promise<{ ok: boolean; json(): Promise<unknown> }>;
   /**
    * Ingested calendar-context snapshot (calendar). The bootstrap reads the shared
    * `~/.cues/calendar.json` (produced OpenCues-side by `opencues calendar
@@ -452,9 +452,9 @@ export function boot(host: HostInfo): BootResult {
     // Final two fields are inline because they're host-specific and
     // never change after boot.
     const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, Object.assign(resolverOpts, {
-      // Tier 0.5 — SW-routed GOV.UK bank-holiday fetch (page CSP blocks a
-      // content-script one). Absent host binding → provider uses global fetch.
-      bankHolidayFetch: host.bankHolidayFetch,
+      // SW-routed GET for contradiction world-data (bank holidays, weather) —
+      // page CSP blocks a content-script one. Absent → provider uses global fetch.
+      worldDataFetch: host.worldDataFetch,
       // Chrome-specific user-facing message — points the user at the
       // extension popup, where the API-key inputs live.
       missingKeyFallbackMessage: hasAnyKey ? undefined : '[OpenCues: no API key — open the extension popup]',
