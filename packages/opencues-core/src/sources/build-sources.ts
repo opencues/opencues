@@ -29,6 +29,7 @@ import { TransformBlankSource, type TransformBlankSourceConfig } from './transfo
 import { ConfigIntentSource, type ConfigIntentSourceConfig } from './config-intent-source';
 import { SentenceCueSource, type SentenceCueSourceConfig } from './sentence-cue-source';
 import { ContradictionCueSource } from '../contradiction/contradiction-cue-source';
+import { ContradictionLlmSource } from '../contradiction/contradiction-llm-source';
 import { resolveLLM, getProvider, withFallback, withFreePool, type ResolvedLLM } from '../llm-provider';
 import { collapseBucketTier } from '../effective-routing';
 
@@ -356,7 +357,23 @@ export function buildSourcesFromConfig(
   // Deterministic contradiction cues (Tier 0) — a built-in source, not driven
   // by any CUE.md. No LLM/network, so it's cheap to always include when enabled.
   if (options.enableContradictionCues) {
-    sources.push(new ContradictionCueSource({ log: (m) => options.log?.(m) }));
+    // Robust engine: the LLM PARSES each sentence into a grounded claim; the
+    // deterministic verifiers JUDGE it (checks.ts). Uses the cues bucket LLM.
+    // Falls back to the pure-regex checks only when no LLM is resolvable
+    // (offline / no key) so the feature still does SOMETHING.
+    const cxLlm = resolveFor(options.sentenceCues);
+    if (cxLlm) {
+      sources.push(new ContradictionLlmSource({
+        httpAdapter: withFallback(options.httpAdapter, cxLlm.fallback),
+        provider: cxLlm.provider,
+        endpoint: cxLlm.endpoint,
+        apiKey: cxLlm.apiKey,
+        model: cxLlm.model,
+        log: (m) => options.log?.(m),
+      }));
+    } else {
+      sources.push(new ContradictionCueSource({ log: (m) => options.log?.(m) }));
+    }
   }
 
   const apiKeys = options.apiKeys ?? {};

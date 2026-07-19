@@ -86,10 +86,15 @@ export {
 } from './sources/sentence-cue-source';
 
 export { ContradictionCueSource, type ContradictionCueSourceOptions } from './contradiction/contradiction-cue-source';
+export { ContradictionLlmSource, parseClaims, CONTRADICTION_EXTRACT_SYSTEM, type ContradictionLlmSourceConfig } from './contradiction/contradiction-llm-source';
 export {
   weekdayDateCheck,
   splitBillCheck,
   TIER0_CHECKS,
+  verifyClaim,
+  safeEvalArithmetic,
+  type Claim,
+  type VerifiedContradiction,
   type Contradiction,
   type ContradictionCheck,
   type ContradictionEnv,

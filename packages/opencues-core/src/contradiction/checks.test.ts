@@ -116,3 +116,64 @@ describe('ContradictionCueSource', () => {
     assert.equal(results.length, 1);
   });
 });
+
+// ── LLM-extract → code-verify (the robust engine) ─────────────────────────────
+import { verifyClaim, safeEvalArithmetic } from './checks';
+import { parseClaims } from './contradiction-llm-source';
+
+describe('verifyClaim — grounding + deterministic judge (anti-misfire)', () => {
+  const S = 'see you Thursday the 24th';
+  it('flags a weekday_date mismatch (24th is a Friday)', () => {
+    const v = verifyClaim({ type: 'weekday_date', weekday: 'Thursday', day: 24, month: null, quote: 'Thursday the 24th' }, S, NOW);
+    assert.ok(v); assert.match(v!.tip, /the 24th is a Friday, not Thursday/); assert.equal(v!.correction, 'Friday the 24th');
+  });
+  it('GROUNDING: rejects a claim whose quote is not in the sentence (model cannot hallucinate a cue)', () => {
+    // The model invented "$25 each" but the sentence never said it → no cue.
+    assert.equal(verifyClaim({ type: 'weekday_date', weekday: 'Thursday', day: 24, quote: 'Friday the 30th' }, S, NOW), null);
+    assert.equal(verifyClaim({ type: 'bill_split', total: 120, count: 4, perPerson: 25, quotes: { total: '$120', count: '4', perPerson: '$25 each' } }, 'the bill was $120', NOW), null);
+  });
+  it('flags a bill_split only when grounded + wrong', () => {
+    const s = 'we split the $120 four ways, $25 a head';
+    const v = verifyClaim({ type: 'bill_split', total: 120, count: 4, perPerson: 25, quotes: { total: '$120', count: 'four', perPerson: '$25 a head' } }, s, NOW);
+    assert.ok(v); assert.match(v!.tip, /\$120 ÷ 4 = \$30 each, not \$25/);
+  });
+  it('is SILENT when the split math is right', () => {
+    assert.equal(verifyClaim({ type: 'bill_split', total: 120, count: 4, perPerson: 30, quotes: { total: '$120', count: '4', perPerson: '$30' } }, '$120 / 4 = $30', NOW), null);
+  });
+  it('flags an arithmetic error', () => {
+    // 100*1.08 = 108, but the writer stated $110 → flag.
+    const v = verifyClaim({ type: 'arithmetic', expression: '100*1.08', statedResult: 110, quote: '$110' }, 'with tax so 100*1.08 is $110', NOW);
+    assert.ok(v); assert.match(v!.tip, /100\*1\.08 = 108, not 110/);
+  });
+  it('is SILENT when the arithmetic is right', () => {
+    // 100*1.08 = 108 → correct → no cue.
+    assert.equal(verifyClaim({ type: 'arithmetic', expression: '100*1.08', statedResult: 108, quote: '$108' }, 'so 100*1.08 is $108', NOW), null);
+  });
+});
+
+describe('safeEvalArithmetic (no code execution)', () => {
+  it('evaluates with precedence + parens', () => {
+    assert.equal(safeEvalArithmetic('100*1.08'), 108);
+    assert.equal(safeEvalArithmetic('2+3*4'), 14);
+    assert.equal(safeEvalArithmetic('(2+3)*4'), 20);
+    assert.equal(safeEvalArithmetic('120/4'), 30);
+  });
+  it('rejects anything non-arithmetic (never runs JS)', () => {
+    assert.equal(safeEvalArithmetic('process.exit(1)'), null);
+    assert.equal(safeEvalArithmetic('1;alert(1)'), null);
+    assert.equal(safeEvalArithmetic(''), null);
+  });
+});
+
+describe('parseClaims', () => {
+  it('parses a bare JSON array', () => {
+    assert.equal(parseClaims('[{"type":"bill_split","total":120}]').length, 1);
+  });
+  it('strips markdown fences / prose around the array', () => {
+    assert.equal(parseClaims('Here:\n```json\n[{"type":"weekday_date"}]\n```').length, 1);
+  });
+  it('returns [] on no array / garbage', () => {
+    assert.deepEqual(parseClaims('no claims'), []);
+    assert.deepEqual(parseClaims('[]'), []);
+  });
+});

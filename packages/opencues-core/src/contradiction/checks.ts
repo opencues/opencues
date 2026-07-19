@@ -107,6 +107,18 @@ function swapWeekday(token: string, newWeekday: string): string {
   return newWeekday + trailing;
 }
 
+/** Swap the weekday name inside a multi-word phrase ("Thursday the 24th" →
+ *  "Friday the 24th"), preserving spacing + the rest of the phrase. Replaces the
+ *  first token that IS a weekday (via the per-token swapWeekday, so "Monday,"
+ *  keeps its comma). If no weekday token is found the phrase is returned as-is. */
+function swapWeekdayInPhrase(phrase: string, newWeekday: string): string {
+  const parts = phrase.split(/(\s+)/);   // keep the whitespace separators
+  for (let k = 0; k < parts.length; k++) {
+    if (weekdayIndex(parts[k]) !== null) { parts[k] = swapWeekday(parts[k], newWeekday); break; }
+  }
+  return parts.join('');
+}
+
 const ordinalSuffix = (d: number): string => {
   if (d >= 11 && d <= 13) return 'th';
   return (['th', 'st', 'nd', 'rd'][d % 10] ?? 'th');
@@ -208,4 +220,120 @@ export const splitBillCheck: ContradictionCheck = (words) => {
 };
 
 /** The Tier-0 check set (buffer + clock only — no data, no LLM). */
+// ── LLM-extracted, code-verified claims ───────────────────────────────────────
+//
+// The LLM's ONLY job is to parse the sentence into a structured, GROUNDED claim
+// (every value quoted verbatim). It never judges correctness. These verifiers
+// are the judge: they (1) re-check every quote is literally present in the
+// sentence — so the model cannot hallucinate a value into a false cue — and
+// (2) compute the truth deterministically and compare. A cue fires ONLY when
+// grounding passes AND the math/date disagrees.
+
+export interface WeekdayDateClaim {
+  readonly type: 'weekday_date';
+  readonly weekday: string;
+  readonly day: number;
+  readonly month?: string | null;
+  readonly quote: string;
+}
+export interface BillSplitClaim {
+  readonly type: 'bill_split';
+  readonly total: number;
+  readonly count: number;
+  readonly perPerson: number;
+  readonly quotes: { readonly total: string; readonly count: string; readonly perPerson: string };
+}
+export interface ArithmeticClaim {
+  readonly type: 'arithmetic';
+  readonly expression: string;
+  readonly statedResult: number;
+  readonly quote: string;
+}
+export type Claim = WeekdayDateClaim | BillSplitClaim | ArithmeticClaim;
+
+export interface VerifiedContradiction {
+  readonly quote: string;
+  readonly tip: string;
+  readonly correction?: string;
+  readonly check: string;
+}
+
+const near = (a: number, b: number, eps = 0.01) => Math.abs(a - b) <= eps;
+
+/** Verify a grounded claim: contradiction only when every quote is literally
+ *  present AND the computed truth disagrees. This is the anti-misfire backstop. */
+export function verifyClaim(claim: Claim, sentence: string, now: Date): VerifiedContradiction | null {
+  const present = (q: string) => typeof q === 'string' && q.length > 0 && sentence.includes(q);
+  switch (claim.type) {
+    case 'weekday_date': {
+      if (!present(claim.quote)) return null;
+      const wd = weekdayIndex(claim.weekday);
+      if (wd === null || !(claim.day >= 1 && claim.day <= 31)) return null;
+      const monthIdx = claim.month ? monthIndex(claim.month) : null;
+      const resolved = resolveDate(claim.day, monthIdx, now);
+      if (!resolved) return null;
+      const actual = weekdayOf(resolved.year, resolved.monthIdx, resolved.day);
+      if (actual === wd) return null;
+      return {
+        quote: claim.quote,
+        tip: `the ${claim.day}${ordinalSuffix(claim.day)} is a ${cap(WEEKDAYS[actual])}, not ${cap(WEEKDAYS[wd])}`,
+        // Swap ONLY the weekday word inside the verbatim quote (the quote is a
+        // phrase — "Thursday the 24th" — so swapWeekday, which is per-token, must
+        // run on the weekday token alone, not the whole string).
+        correction: swapWeekdayInPhrase(claim.quote, cap(WEEKDAYS[actual])),
+        check: 'weekday-date',
+      };
+    }
+    case 'bill_split': {
+      const { total, count, perPerson, quotes } = claim;
+      if (!quotes || !present(quotes.total) || !present(quotes.count) || !present(quotes.perPerson)) return null;
+      if (!(count >= 2 && count <= 1000) || total <= 0 || perPerson <= 0 || total <= perPerson) return null;
+      const correct = total / count;
+      if (near(correct, perPerson)) return null;
+      const fmt = (n: number) => (Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`);
+      return {
+        quote: quotes.perPerson,
+        tip: `${fmt(total)} ÷ ${count} = ${fmt(correct)} each, not ${fmt(perPerson)}`,
+        correction: `${fmt(correct)} each`,
+        check: 'bill-split',
+      };
+    }
+    case 'arithmetic': {
+      if (!present(claim.quote)) return null;
+      const value = safeEvalArithmetic(claim.expression);
+      if (value === null || near(value, claim.statedResult)) return null;
+      const fmtN = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
+      return { quote: claim.quote, tip: `${claim.expression} = ${fmtN(value)}, not ${fmtN(claim.statedResult)}`, check: 'arithmetic' };
+    }
+    default:
+      return null;
+  }
+}
+
+/** Evaluate a simple arithmetic expression (+ - * / % and parens) with NO code
+ *  execution (a tiny shunting-yard) — the LLM's `expression` can never run JS. */
+export function safeEvalArithmetic(expr: string): number | null {
+  if (typeof expr !== 'string' || !/^[\d\s.+\-*/%()]+$/.test(expr)) return null;
+  const toks = expr.match(/\d+\.?\d*|[+\-*/%()]/g);
+  if (!toks) return null;
+  const out: number[] = [], ops: string[] = [];
+  const prec: Record<string, number> = { '+': 1, '-': 1, '*': 2, '/': 2, '%': 2 };
+  const apply = () => {
+    const op = ops.pop()!; const b = out.pop(); const a = out.pop();
+    if (typeof a !== 'number' || typeof b !== 'number') throw new Error('bad');
+    out.push(op === '+' ? a + b : op === '-' ? a - b : op === '*' ? a * b : op === '/' ? a / b : a % b);
+  };
+  try {
+    for (const t of toks) {
+      if (/^\d/.test(t)) out.push(parseFloat(t));
+      else if (t === '(') ops.push(t);
+      else if (t === ')') { while (ops.length && ops[ops.length - 1] !== '(') apply(); ops.pop(); }
+      else { while (ops.length && prec[ops[ops.length - 1]] >= prec[t]) apply(); ops.push(t); }
+    }
+    while (ops.length) apply();
+    const r = out.pop();
+    return typeof r === 'number' && isFinite(r) && out.length === 0 ? r : null;
+  } catch { return null; }
+}
+
 export const TIER0_CHECKS: readonly ContradictionCheck[] = [weekdayDateCheck, splitBillCheck];
