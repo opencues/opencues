@@ -15,7 +15,7 @@
  *                                                → the fast fills model (does it handle free/busy?)
  */
 import { FUSED_SYSTEM_PROMPT, MODE_RULES } from '../../../packages/opencues-core/src/sources/fluid-blank-source';
-import { renderCalendarContextCatalog, buildCalendarContextSnapshot } from '../../../packages/opencues-core/src/calendar-context';
+import { renderCalendarContextCatalog, buildCalendarContextSnapshot, matchCalendarTitles, renderCalendarTitleHints } from '../../../packages/opencues-core/src/calendar-context';
 import { postProcessContext } from '../../../packages/opencues-core/src/identity-context';
 import { chat, sysUser, MODEL } from '../fluid-blank/groq';
 
@@ -40,7 +40,10 @@ const ALL_TOKENS = SNAP.events.map((e) => e.token);
 
 function answerOf(text: string): string { const m = text.match(/^ANSWER:[ \t]*(.*)$/im); return (m ? m[1] : text).trim(); }
 async function ask(input: string): Promise<string> {
-  const r = await chat(sysUser(SYSTEM, `INPUT: ${input}`), { maxTokens: 512, temperature: 0.4 });
+  // Mirror FluidBlank: the local title→token pre-match hint rides the USER
+  // message (input-dependent), NOT the cached system prompt.
+  const hints = renderCalendarTitleHints(matchCalendarTitles(input, SNAP));
+  const r = await chat(sysUser(SYSTEM, `INPUT: ${input}${hints}`), { maxTokens: 512, temperature: 0.4 });
   return answerOf(r.text);
 }
 const hasAnyToken = (a: string): string | null => { const u = a.toUpperCase(); return ALL_TOKENS.find((t) => u.includes(t)) ?? null; };
@@ -86,21 +89,20 @@ const LOOKUPS = [
   { id: 'next-event', input: 'next event _' },
   { id: 'next-mtg',   input: 'when is my next meeting _' },
   { id: 'whats-today', input: 'whats on today _' },
+  { id: 'by-title',   input: 'when is the dentist _' },   // TITLE-based — resolves via the local pre-match
 ];
 const hasTime = (a: string): boolean => /\d{1,2}:\d{2}|\d{1,2}\s*[ap]m|all day/i.test(a);
 const hasToken = (a: string): boolean => /\[EVENT/i.test(a);
 
-// WHERE — a POSITIONAL "where is X" lookup (next/soonest — resolvable from
-// times alone) must emit the event's LOCATION token ([EVENT N LOCATION]),
-// never the raw address (dehydrated). Two fail-safe cases: an event with no
-// location must not invent one, and a TITLE-based where-lookup ("the dentist")
-// can't resolve in safe mode (titles are tokens — the model can't see [EVENT 1]
-// IS "Dentist"; the deferred local-pre-match limitation), so it must decline
-// cleanly — no invented place, no raw leak.
+// WHERE — must emit the event's LOCATION token ([EVENT N LOCATION]), never the
+// raw address (dehydrated). Positional ("my next event") resolves from times;
+// TITLE-based ("the dentist") now resolves via the local pre-match (the LLM is
+// handed [EVENT 1] on-machine, no title on the wire). Fail-safe: a matched event
+// with NO location must not invent one.
 const WHERES = [
   { id: 'where-next',    input: 'where is my next event _',    want: 'loc'  as const }, // positional → token
-  { id: 'where-standup', input: 'where is the team standup _', want: 'none' as const }, // no location → don't invent
-  { id: 'where-title',   input: 'where is the dentist _',      want: 'none' as const }, // safe-mode title-match gap → decline, don't leak
+  { id: 'where-standup', input: 'where is the team standup _', want: 'none' as const }, // resolves to [EVENT 2] but it has no location → don't invent
+  { id: 'where-title',   input: 'where is the dentist _',      want: 'loc'  as const }, // title pre-match → [EVENT 1] has a location → emit its token
 ];
 const hasLocationToken = (a: string): boolean => /\[EVENT \d+ LOCATION\]/i.test(a);
 const leaksRawAddress = (a: string): boolean => /5 High St Clinic/i.test(a);

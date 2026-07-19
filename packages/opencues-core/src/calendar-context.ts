@@ -75,9 +75,12 @@ export function buildCalendarContextSnapshot(
     // Location is PII too (can be a home / precise address). Give it its own
     // token so a "where is X" lookup can surface it while only the token — never
     // the address — reaches the provider. postProcessContext hydrates it back.
+    // Derive the token from `token` (not the index i) so a rebuild from
+    // reconstructed events — the host boundary drops the derived locationToken
+    // but keeps token+location — re-produces the SAME token deterministically.
     let locationToken: string | undefined;
     if (e.location) {
-      locationToken = `[EVENT ${i + 1} LOCATION]`;
+      locationToken = token.replace(/\]\s*$/, ' LOCATION]');
       catalog.set(locationToken, e.location);
     }
     return { ...e, token, ...(locationToken ? { locationToken } : {}) };
@@ -163,6 +166,126 @@ export function renderCalendarContextForCue(
   });
   return `\n\nYOUR CALENDAR (each event's title is a bracket token [EVENT N]; emit the token verbatim when you name an event — the runtime substitutes the real title locally):${nowBlock}
 ${lines.join('\n')}`;
+}
+
+/**
+ * A word (or short phrase) the user TYPED, resolved on-machine to a specific
+ * event token via a fuzzy match against the (local) real titles. Only the
+ * user's own matched words are carried in `phrase` — never the rest of the
+ * title — so nothing new about the title crosses the wire.
+ */
+export interface CalendarTitleMatch {
+  /** The event token this phrase resolves to, e.g. `[EVENT 1]`. */
+  readonly token: string;
+  /** The exact fragment the USER typed that matched (echoed to the LLM). */
+  readonly phrase: string;
+}
+
+// Generic query / calendar / availability words that must NOT drive a title
+// match — they're shared across titles and queries, so matching on them would
+// be ambiguous or wrong. DISTINCTIVE words (names, specific nouns) drive the
+// match; everything here is filtered out first.
+const TITLE_MATCH_STOPWORDS = new Set<string>([
+  'the','and','for','with','from','about','you','your','our','are','was','were',
+  'has','have','had','did','does','not','out','off','get','got','into',
+  'where','when','what','whats','which','who','how','why','next','last','this',
+  'that','these','those','now','then','here','there','any','some','all',
+  'event','events','meeting','meetings','appointment','appointments','schedule',
+  'calendar','plan','plans','call','calls','session','sessions','thing','stuff',
+  'free','busy','available','today','tomorrow','tonight','yesterday','morning',
+  'afternoon','evening','night','weekend','week','day','days','time','times',
+  'monday','tuesday','wednesday','thursday','friday','saturday','sunday',
+  'mon','tue','wed','thu','fri','sat','sun','jan','feb','mar','apr','jun','jul',
+  'aug','sep','oct','nov','dec',
+]);
+
+/** Lowercased significant tokens: ≥3 chars, alphanumeric, not a stopword. */
+function significantTitleTokens(s: string): string[] {
+  return s.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3 && !TITLE_MATCH_STOPWORDS.has(w));
+}
+
+/** Bounded Levenshtein — true iff edit distance ≤ max (early-exits per row). */
+function withinEditDistance(a: string, b: string, max: number): boolean {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > max) return false;
+  let dp = Array.from({ length: a.length + 1 }, (_, i) => i);
+  for (let j = 1; j <= b.length; j++) {
+    const next = new Array<number>(a.length + 1);
+    next[0] = j;
+    let rowMin = j;
+    for (let i = 1; i <= a.length; i++) {
+      next[i] = Math.min(dp[i] + 1, next[i - 1] + 1, dp[i - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (next[i] < rowMin) rowMin = next[i];
+    }
+    if (rowMin > max) return false;
+    dp = next;
+  }
+  return dp[a.length] <= max;
+}
+
+/** Does an input token match a title token? exact / substring(≥4) / typo-fuzzy. */
+function titleTokenMatches(inputTok: string, titleTok: string): boolean {
+  if (inputTok === titleTok) return true;
+  const shorter = Math.min(inputTok.length, titleTok.length);
+  if (shorter >= 4 && (inputTok.includes(titleTok) || titleTok.includes(inputTok))) return true;
+  if (inputTok.length >= 4 && titleTok.length >= 4) {
+    return withinEditDistance(inputTok, titleTok, shorter >= 7 ? 2 : 1);
+  }
+  return false;
+}
+
+/**
+ * Resolve words the user TYPED to specific event tokens, on-machine, via a
+ * fuzzy match against the real (local) titles — the safe-mode title-lookup
+ * bridge. In safe mode the LLM sees `[EVENT N]` with NO title, so it can't tie
+ * "dentist" to the right event; this does that tie locally and hands the LLM the
+ * token, so `where is the dentist _` resolves without any title leaving the box.
+ *
+ * CONSERVATIVE by construction: an input token resolves ONLY when it matches
+ * EXACTLY ONE event's title. A word shared by two events, or matching none,
+ * resolves to nothing — so a wrong/misleading hint can never be produced (a
+ * bad hint is worse than no hint). `phrase` carries only the user's OWN matched
+ * words, never the rest of the title, so nothing new about the title ships.
+ */
+export function matchCalendarTitles(
+  input: string,
+  snapshot: CalendarContextSnapshot | undefined,
+): CalendarTitleMatch[] {
+  if (!input || !snapshot || snapshot.events.length === 0) return [];
+  const inputToks = significantTitleTokens(input);
+  if (inputToks.length === 0) return [];
+  const eventToks = snapshot.events.map((e) => significantTitleTokens(e.title));
+  const perEvent = new Map<number, string[]>(); // eventIdx → user phrases (input order)
+  const seen = new Set<string>();
+  for (const it of inputToks) {
+    if (seen.has(it)) continue;
+    seen.add(it);
+    const hits: number[] = [];
+    for (let ei = 0; ei < eventToks.length; ei++) {
+      if (eventToks[ei].some((tt) => titleTokenMatches(it, tt))) hits.push(ei);
+    }
+    if (hits.length === 1) {                 // unique → confident
+      const arr = perEvent.get(hits[0]) ?? [];
+      arr.push(it);
+      perEvent.set(hits[0], arr);
+    }
+    // 0 (no event) or >1 (ambiguous) → resolve to nothing
+  }
+  return [...perEvent.entries()].map(([ei, phrases]) => ({
+    token: snapshot.events[ei].token,
+    phrase: phrases.join(' '),
+  }));
+}
+
+/**
+ * USER-message hint block for pre-matched references. Belongs in the USER
+ * message (per-call, input-dependent) NOT the cached system prompt — same rule
+ * as ambient (see docs/architecture/cerebras.md). '' when there are no matches.
+ */
+export function renderCalendarTitleHints(matches: readonly CalendarTitleMatch[]): string {
+  if (matches.length === 0) return '';
+  const lines = matches.map((m) => `- "${m.phrase}" → ${m.token}`);
+  return `\n\nRESOLVED REFERENCES — the runtime matched these words you typed to specific calendar events; treat them as authoritative when answering "which"/"where"/"when" about them (emit that token, never pick a different event):\n${lines.join('\n')}`;
 }
 
 function isoDate(iso: string): string {
