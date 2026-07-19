@@ -31,6 +31,20 @@ import { SentenceCueSource, type SentenceCueSourceConfig } from './sentence-cue-
 import { ContradictionLlmSource } from '../contradiction/contradiction-llm-source';
 import { BankHolidayProvider } from '../contradiction/bank-holidays';
 import { WeatherProvider } from '../contradiction/weather';
+
+// World-data caches for contradiction cues, PERSISTED across resolver rebuilds
+// (buildSourcesFromConfig is called on every config reload; a fresh provider
+// per call would reset the async-fetched cache before the verify ever reads it,
+// so the data-backed cues could never fire). Bank holidays are location-
+// independent (one singleton); weather providers are keyed by location scalar.
+let _bankHolidayProvider: BankHolidayProvider | null = null;
+const _weatherProviders = new Map<string, WeatherProvider>();
+
+/** Test hook — drop the persisted world-data providers so a suite starts clean. */
+export function _resetContradictionProvidersForTesting(): void {
+  _bankHolidayProvider = null;
+  _weatherProviders.clear();
+}
 import { resolveLLM, getProvider, withFallback, withFreePool, type ResolvedLLM } from '../llm-provider';
 import { collapseBucketTier } from '../effective-routing';
 
@@ -458,24 +472,33 @@ export function buildSourcesFromConfig(
     const cxLlm = resolveFor(options.sentenceCues);
     if (cxLlm) {
       options.log?.(`buildSources: contradiction-cues → LLM engine (${cxLlm.provider.id}/${cxLlm.model})`);
-      // Keyless world-data caches, refreshed fire-and-forget by the source
-      // (TTL-gated), read synchronously by the verifiers. `worldDataFetch` is the
-      // host's GET (chrome routes it through the SW to dodge page CSP; native
-      // hosts omit it → global fetch). Constructed per rebuild.
-      // Tier 0.5 — GOV.UK bank holidays.
-      const bankHolidays = new BankHolidayProvider({ fetchImpl: options.worldDataFetch, log: (m) => options.log?.(m) });
+      // Keyless world-data caches, refreshed fire-and-forget by the source, read
+      // synchronously by the verifiers. `worldDataFetch` is the host's GET
+      // (chrome routes it through the SW to dodge page CSP; native hosts omit it
+      // → global fetch). PERSISTED across rebuilds (module singletons) — the
+      // resolver rebuilds sources on every config reload, and a fresh provider
+      // would reset the cache to empty every time, so the async-fetched forecast
+      // would never survive to the verify (the weather cue would never fire).
+      // Tier 0.5 — GOV.UK bank holidays (location-independent → one singleton).
+      const bankHolidays = (_bankHolidayProvider ??= new BankHolidayProvider({ fetchImpl: options.worldDataFetch, log: (m) => options.log?.(m) }));
       // Tier 5 — open-meteo forecast. Location auto-detected from the host
       // timezone; the `weather-location` override is a city name OR "lat,lon".
+      // Keyed by location so changing the scalar makes a fresh provider.
       const wl = options.weatherLocation?.trim();
-      const latlon = wl && /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(wl)
-        ? wl.split(',').map(s => Number(s.trim())) : null;
-      const weather = new WeatherProvider({
-        latitude: latlon ? latlon[0] : undefined,
-        longitude: latlon ? latlon[1] : undefined,
-        locationName: latlon ? undefined : (wl || undefined),
-        fetchImpl: options.worldDataFetch,
-        log: (m) => options.log?.(m),
-      });
+      const wlKey = wl || 'auto';
+      let weather = _weatherProviders.get(wlKey);
+      if (!weather) {
+        const latlon = wl && /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(wl)
+          ? wl.split(',').map(s => Number(s.trim())) : null;
+        weather = new WeatherProvider({
+          latitude: latlon ? latlon[0] : undefined,
+          longitude: latlon ? latlon[1] : undefined,
+          locationName: latlon ? undefined : (wl || undefined),
+          fetchImpl: options.worldDataFetch,
+          log: (m) => options.log?.(m),
+        });
+        _weatherProviders.set(wlKey, weather);
+      }
       sources.push(new ContradictionLlmSource({
         httpAdapter: withFallback(options.httpAdapter, cxLlm.fallback),
         provider: cxLlm.provider,
