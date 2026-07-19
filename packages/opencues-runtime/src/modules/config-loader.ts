@@ -261,7 +261,7 @@ export const DEFAULT_OPENCUES_STATE: OpenCuesState = {
   ambientContextMode: 'off',
   identityContextMode: 'safe',
   blankContextMode: 'safe',
-  calendarContextMode: 'off',
+  calendarContextMode: 'on',
   sentinelLanguage: 'bare',
   aiCallableAllow: [],
   blankTriggerMode: 'immediate',
@@ -359,8 +359,12 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   // OFF by default: it carries real calendar PII (event titles), so it's opt-in
   // unlike system-context. Times reach the LLM in the clear; titles dehydrate to
   // [EVENT N] tokens hydrated locally. No-op on hosts with no ingester (empty snapshot).
+  // ON by default: it's INERT until the user adds a calendar feed (empty
+  // snapshot → nothing sent), so adding a feed is the opt-in; only anonymized
+  // busy-interval times reach the LLM (titles + locations are dehydrated).
+  // Explicit `off` is the only value that disables a configured feed.
   const calendarContextMode: 'off' | 'on' =
-    get('calendar-context-mode', 'off').toLowerCase() === 'on' ? 'on' : 'off';
+    get('calendar-context-mode', 'on').toLowerCase() === 'off' ? 'off' : 'on';
   // Sentinel grammar — `bare` default keeps every existing user on the
   // flat [TOKEN] path; only an explicit `typed` opts into the richer
   // grammar. Unrecognised value → `bare` (fail-safe, no behavioural diff).
@@ -776,7 +780,7 @@ export class ConfigLoader {
       ambientContextMode: (get('ambient-context-mode', 'off') === 'on' ? 'on' : 'off') as 'on' | 'off',
       identityContextMode,
       blankContextMode,
-      calendarContextMode: (get('calendar-context-mode', 'off').toLowerCase() === 'on' ? 'on' : 'off') as 'off' | 'on',
+      calendarContextMode: (get('calendar-context-mode', 'on').toLowerCase() === 'off' ? 'off' : 'on') as 'off' | 'on',
       sentinelLanguage: (get('sentinel-language', 'bare').toLowerCase() === 'typed' ? 'typed' : 'bare') as 'bare' | 'typed',
       aiCallableAllow: (get('ai-callable-allow', '') || get('param-safe-allow', '')) // LEGACY-NAME-ALLOW: pre-rename scalar
         .split(',').map(s => s.trim()).filter(s => s && !/^-+$/.test(s)),

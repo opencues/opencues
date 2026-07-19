@@ -21,7 +21,11 @@ to see it.
 **This feature does not use MCP.** It reads plain iCalendar (`.ics` / webcal)
 feeds — the same "subscribe" URL your calendar app already exports.
 
-**OFF by default** — it carries calendar PII, so you opt in explicitly.
+**ON by default — but inert until you add a feed.** With no calendar feed
+configured, nothing is sent, ever; running `opencues calendar add <feed>` is the
+real opt-in. Titles + locations stay on your machine (tokens hydrated locally);
+only anonymized busy-interval times reach the LLM. Set `calendar-context-mode: off`
+to disable even with a feed configured.
 
 ---
 
