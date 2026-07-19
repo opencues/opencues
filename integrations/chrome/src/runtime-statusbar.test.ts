@@ -50,6 +50,16 @@ describe('applyStatuslinePayload — happy paths', () => {
     expect(bar()!.textContent).toBe('Blank tip');
   });
 
+  it('advisory shows ALONGSIDE the cue tip (coexists, not replaces)', () => {
+    applyStatuslinePayload({ active: true, cueTip: 'more formal', advisory: '⚠ the 24th is a Friday, not Thursday' });
+    expect(bar()!.textContent).toBe('more formal | ⚠ the 24th is a Friday, not Thursday');
+  });
+
+  it('advisory shows even with no active cue (contradiction on its own)', () => {
+    applyStatuslinePayload({ active: false, advisory: '⚠ 250 ÷ 4 = $62.50, not $55' });
+    expect(bar()!.textContent).toBe('⚠ 250 ÷ 4 = $62.50, not $55');
+  });
+
   it('cycling with >1 alt renders "<word> (N/M) - <tip>"', () => {
     applyStatuslinePayload({
       active: true,

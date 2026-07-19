@@ -10,6 +10,9 @@ interface StatuslinePayload {
   alts?: readonly string[];
   cueTip?: string | null;
   cueBlank?: boolean;
+  /** Fluid advisory channel (contradiction, …) — shown ALONGSIDE the cue,
+   *  not instead of it. Already glyph-prefixed (e.g. "⚠ …"). */
+  advisory?: string | null;
   agentTask?: string | null;
   kata?: {
     step: number;
@@ -175,9 +178,13 @@ export function applyStatuslinePayload(payload: StatuslinePayload): void {
     }
   }
 
-  const combined = wordPart && agentBadge
-    ? `${wordPart} | ${agentBadge}`
-    : (agentBadge ?? wordPart ?? null);
+  // Advisory (contradiction, …) shows ALONGSIDE the cue/tip — it's the fluid
+  // channel, so it coexists rather than replacing. Independent of `active`: a
+  // contradiction surfaces even when no cue owns the cursor's span.
+  const advisory = payload.advisory ?? null;
+
+  const parts = [wordPart, advisory, agentBadge].filter((p): p is string => !!p);
+  const combined = parts.length ? parts.join(' | ') : null;
 
   if (combined) { show(combined); } else { hide(); }
 }
