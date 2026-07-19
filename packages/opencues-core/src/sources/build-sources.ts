@@ -354,28 +354,6 @@ export function buildSourcesFromConfig(
 ): CueSource[] {
   const sources: CueSource[] = [];
 
-  // Deterministic contradiction cues (Tier 0) — a built-in source, not driven
-  // by any CUE.md. No LLM/network, so it's cheap to always include when enabled.
-  if (options.enableContradictionCues) {
-    // Robust engine: the LLM PARSES each sentence into a grounded claim; the
-    // deterministic verifiers JUDGE it (checks.ts). Uses the cues bucket LLM.
-    // Falls back to the pure-regex checks only when no LLM is resolvable
-    // (offline / no key) so the feature still does SOMETHING.
-    const cxLlm = resolveFor(options.sentenceCues);
-    if (cxLlm) {
-      sources.push(new ContradictionLlmSource({
-        httpAdapter: withFallback(options.httpAdapter, cxLlm.fallback),
-        provider: cxLlm.provider,
-        endpoint: cxLlm.endpoint,
-        apiKey: cxLlm.apiKey,
-        model: cxLlm.model,
-        log: (m) => options.log?.(m),
-      }));
-    } else {
-      sources.push(new ContradictionCueSource({ log: (m) => options.log?.(m) }));
-    }
-  }
-
   const apiKeys = options.apiKeys ?? {};
   const globalProvider = options.globalProvider;
   const globalModel = options.globalModel;
@@ -451,6 +429,35 @@ export function buildSourcesFromConfig(
       return null;
     }
     return resolved;
+  }
+
+  // Contradiction cues (validator class) — a built-in source, not driven by any
+  // CUE.md. Robust engine: the LLM PARSES each sentence into a grounded claim;
+  // the deterministic verifiers JUDGE it (checks.ts). Falls back to the pure-
+  // regex ContradictionCueSource only when no LLM is resolvable (offline / no
+  // key) so the feature still does SOMETHING.
+  //
+  // MUST come after apiKeys / cuesTier / blanksTier / resolveFor are defined —
+  // resolveFor closes over cuesTier, so calling it earlier hits a temporal-dead-
+  // zone (ReferenceError in native Node; a silent null → deterministic fallback
+  // under esbuild's const→var lowering in chrome). See resolveFor + the tier
+  // block above; the contradiction-resolution test pins this ordering.
+  if (options.enableContradictionCues) {
+    const cxLlm = resolveFor(options.sentenceCues);
+    if (cxLlm) {
+      options.log?.(`buildSources: contradiction-cues → LLM engine (${cxLlm.provider.id}/${cxLlm.model})`);
+      sources.push(new ContradictionLlmSource({
+        httpAdapter: withFallback(options.httpAdapter, cxLlm.fallback),
+        provider: cxLlm.provider,
+        endpoint: cxLlm.endpoint,
+        apiKey: cxLlm.apiKey,
+        model: cxLlm.model,
+        log: (m) => options.log?.(m),
+      }));
+    } else {
+      options.log?.('buildSources: contradiction-cues → deterministic engine (no LLM resolvable)');
+      sources.push(new ContradictionCueSource({ log: (m) => options.log?.(m) }));
+    }
   }
 
   /**
