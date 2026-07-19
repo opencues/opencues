@@ -28,6 +28,7 @@ import { MissingKeyFallbackSource } from './missing-key-fallback-source';
 import { TransformBlankSource, type TransformBlankSourceConfig } from './transform-blank-source';
 import { ConfigIntentSource, type ConfigIntentSourceConfig } from './config-intent-source';
 import { SentenceCueSource, type SentenceCueSourceConfig } from './sentence-cue-source';
+import { ContradictionCueSource } from '../contradiction/contradiction-cue-source';
 import { resolveLLM, getProvider, withFallback, withFreePool, type ResolvedLLM } from '../llm-provider';
 import { collapseBucketTier } from '../effective-routing';
 
@@ -180,6 +181,10 @@ export interface BuildSourcesOptions {
    * shape — global kill-switch on top of per-cue declaration.
    */
   enableSentenceCues?: boolean;
+  /** Enable the deterministic contradiction-cue layer (Tier 0: weekday-date
+   *  mismatch, split-the-bill math — buffer + clock only, no LLM/network).
+   *  Defaults to false; flip on via OPENCUES.md `contradiction-cues-mode: on`. */
+  enableContradictionCues?: boolean;
   /** Enable RoutedWordSourceGroup (word-cues on plain text). When false,
    * NO word-cue LLM calls fire — words are not navigable as alternatives.
    * Domain blanks/fluid-blank still work. Defaults to false;
@@ -347,6 +352,12 @@ export function buildSourcesFromConfig(
   options: BuildSourcesOptions,
 ): CueSource[] {
   const sources: CueSource[] = [];
+
+  // Deterministic contradiction cues (Tier 0) — a built-in source, not driven
+  // by any CUE.md. No LLM/network, so it's cheap to always include when enabled.
+  if (options.enableContradictionCues) {
+    sources.push(new ContradictionCueSource({ log: (m) => options.log?.(m) }));
+  }
 
   const apiKeys = options.apiKeys ?? {};
   const globalProvider = options.globalProvider;

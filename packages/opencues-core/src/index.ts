@@ -85,6 +85,16 @@ export {
   type SingleSentenceAlts,
 } from './sources/sentence-cue-source';
 
+export { ContradictionCueSource, type ContradictionCueSourceOptions } from './contradiction/contradiction-cue-source';
+export {
+  weekdayDateCheck,
+  splitBillCheck,
+  TIER0_CHECKS,
+  type Contradiction,
+  type ContradictionCheck,
+  type ContradictionEnv,
+} from './contradiction/checks';
+
 export {
   buildSourcesFromConfig,
   type BuildSourcesOptions,

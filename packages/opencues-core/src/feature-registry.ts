@@ -444,6 +444,17 @@ export const FEATURES: readonly FeatureSpec[] = [
     ],
   },
   {
+    scalar: 'contradiction-cues-mode',
+    group: 'Cues',
+    camelCase: 'contradictionCuesMode',
+    description: 'Deterministic fact-check cues — flags a stale/wrong claim you typed against the buffer + clock (weekday-date mismatch, split-the-bill math)',
+    menuTip: 'Catch your own mistakes as you type: "Thursday the 24th" when the 24th is a Friday; "$120 among 4, $25 each" when it\'s $30. No LLM, no network — pure date/number arithmetic. Tier 0 of the contradiction-cue layer. OFF by default.',
+    values: [
+      { id: 'off', description: 'Disabled (default) — no contradiction fact-checking' },
+      { id: 'on',  description: 'Enabled — buffer + clock contradiction cues fire on prose (weekday-date, split-the-bill)' },
+    ],
+  },
+  {
     scalar: 'blank-trigger-mode',
     group: 'Blanks',
     camelCase: 'blankTriggerMode',
