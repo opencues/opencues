@@ -172,13 +172,18 @@ export const splitBillCheck: ContradictionCheck = (words) => {
   const perMatch = text.match(/\$?\s?(\d[\d,]*(?:\.\d{1,2})?)\s*(?:each|apiece|per person|per head|pp\b|a head)/i);
   if (!perMatch) return [];
   const per = parseFloat(perMatch[1].replace(/,/g, ''));
-  // headcount: "<N> people/persons/…" or "among/between/for <N>" or "split <N>".
-  const countMatch = text.match(/\b(\d{1,3})\s*(?:people|persons?|of us|ways|friends|guests|folks|attendees?|individuals?)\b/i)
-    ?? text.match(/\b(?:among|between|split(?:\s+\w+)?|share(?:d)?\s+(?:with|between)|for)\s+(\d{1,3})\b/i)
-    ?? text.match(/\b(\d{1,3})[\s-]?way\b/i);
+  // headcount: a digit OR a spelled-out number ("four") — the formalizer often
+  // rewrites "4" → "four", so both must count. "<N> people/…", "among/for <N>",
+  // "<N> ways/way".
+  const NUM = '(\\d{1,3}|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)';
+  const countMatch = text.match(new RegExp(`\\b${NUM}\\s*(?:people|persons?|of us|ways|friends|guests|folks|attendees?|individuals?)\\b`, 'i'))
+    ?? text.match(new RegExp(`\\b(?:among|between|split(?:\\s+\\w+)?|share(?:d)?\\s+(?:with|between)|for)\\s+${NUM}\\b`, 'i'))
+    ?? text.match(new RegExp(`\\b${NUM}[\\s-]?way\\b`, 'i'));
   if (!countMatch) return [];
-  const count = parseInt(countMatch[1], 10);
-  if (count < 2 || count > 100) return [];
+  const raw = countMatch[1].toLowerCase();
+  const count = /^\d+$/.test(raw) ? parseInt(raw, 10)
+    : ({ two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 } as Record<string, number>)[raw] ?? NaN;
+  if (!(count >= 2 && count <= 100)) return [];
   // total = the largest $-marked figure that isn't the per-person figure.
   const allMoney = [...text.matchAll(/\$\s?(\d[\d,]*(?:\.\d{1,2})?)/g)].map((m) => parseFloat(m[1].replace(/,/g, '')));
   const total = Math.max(...allMoney.filter((v) => v !== per));

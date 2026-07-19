@@ -24,6 +24,14 @@ export interface WordDef {
    * passively without cycling.
    */
   readonly cueTip?: string;
+  /**
+   * Source priority of the cue that registered this def (for passive
+   * sentence-cues). Used to resolve an overlap DETERMINISTICALLY by priority:
+   * a higher-priority sentence-cue evicts a lower-priority one on the same span,
+   * regardless of which registered first (so a contradiction cue at 87 always
+   * beats a formalizer at 85, not by timing). Absent → treated as 0.
+   */
+  readonly priority?: number;
 }
 
 /**

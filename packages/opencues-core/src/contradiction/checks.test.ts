@@ -75,6 +75,12 @@ describe('split-the-bill math', () => {
     assert.match(c.tip, /\$120 ÷ 4 = \$30 each, not \$25/);
   });
 
+  it('reads a spelled-out headcount (the formalizer rewrites 4 -> four)', () => {
+    const [c] = run(splitBillCheck, 'The dinner cost $120 for four individuals so $25 each');
+    assert.ok(c);
+    assert.match(c.tip, /\$120 ÷ 4 = \$30 each, not \$25/);
+  });
+
   it('bails without a headcount or a per-person figure (no guess)', () => {
     assert.deepEqual(run(splitBillCheck, 'the bill was $120'), []);
     assert.deepEqual(run(splitBillCheck, "we'll split it evenly"), []);
