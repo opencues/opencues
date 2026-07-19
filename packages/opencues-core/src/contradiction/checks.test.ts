@@ -69,6 +69,12 @@ describe('split-the-bill math', () => {
     assert.match(c.tip, /\$33\.33 each, not \$33/);
   });
 
+  it('accepts a bare per-person figure (no $ on the second number)', () => {
+    const [c] = run(splitBillCheck, 'dinner was $120 among 4 so 25 each');
+    assert.ok(c);
+    assert.match(c.tip, /\$120 ÷ 4 = \$30 each, not \$25/);
+  });
+
   it('bails without a headcount or a per-person figure (no guess)', () => {
     assert.deepEqual(run(splitBillCheck, 'the bill was $120'), []);
     assert.deepEqual(run(splitBillCheck, "we'll split it evenly"), []);
@@ -78,15 +84,19 @@ describe('split-the-bill math', () => {
 describe('ContradictionCueSource', () => {
   const src = new ContradictionCueSource({ now: () => NOW });
 
-  it('emits a passive sentence-cue-shaped result with the tip', async () => {
-    const { results } = await src.getCues({ text: 'see you Thursday the 24th', words: words('see you Thursday the 24th') } as never);
+  it('emits a passive sentence-cue-shaped result with the tip + CHAR-offset span', async () => {
+    const text = 'see you Thursday the 24th';
+    const { results } = await src.getCues({ text, words: words(text) } as never);
     assert.equal(results.length, 1);
     const r = results[0];
     assert.match(r.source, /^sentence-cue:contradiction-weekday-date$/);
     assert.equal(r.cueTip, '⚠ the 24th is a Friday, not Thursday');
     assert.deepEqual(r.alternatives, ['Thursday the 24th', 'Friday the 24th']);
-    assert.equal(r.spanStart, 2);
-    assert.equal(r.spanEnd, 5);
+    // Char offsets (not word indices) — the resolver slices liveText by these.
+    assert.equal(r.spanStart, 8);
+    assert.equal(r.spanEnd, 25);
+    // The invariant the resolver's race-guard checks:
+    assert.equal(text.slice(r.spanStart!, r.spanEnd!), r.alternatives[0]);
   });
 
   it('returns nothing on clean text', async () => {

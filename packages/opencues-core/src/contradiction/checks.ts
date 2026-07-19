@@ -165,29 +165,33 @@ export const weekdayDateCheck: ContradictionCheck = (words, env) => {
  */
 export const splitBillCheck: ContradictionCheck = (words) => {
   const text = words.join(' ');
-  // total: the first "$N" that isn't the "each" figure; per: "$N each/apiece/pp".
-  const money = [...text.matchAll(/\$\s?(\d[\d,]*(?:\.\d{1,2})?)/g)].map(m => ({ val: parseFloat(m[1].replace(/,/g, '')), idx: m.index ?? 0 }));
-  if (money.length < 2) return [];
-  const perMatch = text.match(/\$\s?(\d[\d,]*(?:\.\d{1,2})?)\s*(?:each|apiece|per person|pp\b|a head)/i);
+  // The bill total must carry a currency mark; the per-person figure may be bare
+  // ("$120 among 4 so 25 each") — people drop the $ on the second number.
+  const totalMatch = text.match(/\$\s?(\d[\d,]*(?:\.\d{1,2})?)/);
+  if (!totalMatch) return [];
+  const perMatch = text.match(/\$?\s?(\d[\d,]*(?:\.\d{1,2})?)\s*(?:each|apiece|per person|per head|pp\b|a head)/i);
   if (!perMatch) return [];
   const per = parseFloat(perMatch[1].replace(/,/g, ''));
-  // headcount: "<N> people/of us/ways" or "among/between <N>" or "split <N>".
-  const countMatch = text.match(/\b(\d{1,3})\s*(?:people|of us|ways|friends|guests|folks)\b/i)
-    ?? text.match(/\b(?:among|between|split(?:\s+\w+)?|share(?:d)?\s+(?:with|between))\s+(\d{1,3})\b/i)
+  // headcount: "<N> people/persons/…" or "among/between/for <N>" or "split <N>".
+  const countMatch = text.match(/\b(\d{1,3})\s*(?:people|persons?|of us|ways|friends|guests|folks|attendees?|individuals?)\b/i)
+    ?? text.match(/\b(?:among|between|split(?:\s+\w+)?|share(?:d)?\s+(?:with|between)|for)\s+(\d{1,3})\b/i)
     ?? text.match(/\b(\d{1,3})[\s-]?way\b/i);
   if (!countMatch) return [];
   const count = parseInt(countMatch[1], 10);
   if (count < 2 || count > 100) return [];
-  // total = the largest money figure that isn't the per-person one.
-  const total = Math.max(...money.filter(m => m.val !== per || money.length > 2).map(m => m.val));
+  // total = the largest $-marked figure that isn't the per-person figure.
+  const allMoney = [...text.matchAll(/\$\s?(\d[\d,]*(?:\.\d{1,2})?)/g)].map((m) => parseFloat(m[1].replace(/,/g, '')));
+  const total = Math.max(...allMoney.filter((v) => v !== per));
   if (!isFinite(total) || total <= per) return [];
   const correct = total / count;
   // round to cents; flag only a real discrepancy (> 1 cent).
   if (Math.abs(correct - per) <= 0.01) return [];
-  const perIdx = perMatch.index ?? 0;
-  // anchor the flag on the word containing the stated per-person figure.
-  let charAcc = 0, startWord = 0;
-  for (let k = 0; k < words.length; k++) { if (charAcc >= perIdx) { startWord = k; break; } charAcc += words[k].length + 1; startWord = k; }
+  // anchor on the per-person number token (the one followed by "each"/…).
+  let startWord = words.length - 1;
+  const perNum = perMatch[1].replace(/,/g, '');
+  for (let k = 0; k < words.length; k++) {
+    if (words[k].replace(/[^0-9.]/g, '') === perNum && /each|apiece|person|head|pp/i.test(`${words[k + 1] ?? ''} ${words[k + 2] ?? ''}`)) { startWord = k; break; }
+  }
   const fmt = (n: number) => (Number.isInteger(n) ? `$${n}` : `$${n.toFixed(2)}`);
   return [{
     startWord,
