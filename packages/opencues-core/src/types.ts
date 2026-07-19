@@ -36,6 +36,18 @@ export interface CueResult {
   /** For multi-word alternatives: end index of span (exclusive) */
   spanEnd?: number;
 
+  /**
+   * Set by validator-class sources (see `CueSource.isValidator`). Marks
+   * this result as a VALIDATION of the CURRENT buffer text rather than a
+   * competing alternative. At registration a validator result may
+   * supersede an ACTIVE lower-priority overlapping sentence-cue def — it
+   * re-checks whatever a transformer (e.g. more-formal) cycled in and
+   * takes over the span to offer its correction. The transformer's cycle
+   * chain is NOT merged into the validator's ring; that history lives on
+   * the undo stack (`undo _`). Absent / false on ordinary cues.
+   */
+  validator?: boolean;
+
   /** Arbitrary metadata */
   metadata?: Record<string, unknown>;
 }
@@ -307,6 +319,25 @@ export interface CueSource {
    * universal hosts; explicit opt-in with `cycleable: false`).
    */
   isCycleable: boolean;
+
+  /**
+   * VALIDATOR CLASS — a first-class distinction from ordinary
+   * (transformer / competitor) cues. A validator does not compete with
+   * lower-priority cues for a span; it VALIDATES whatever text they
+   * settle on. Concretely, a validator-class source's results may
+   * supersede an ACTIVE lower-priority overlapping sentence-cue def (the
+   * result a transformer cycled into the buffer), re-check that applied
+   * text, and take over the span to offer a correction — where an
+   * ordinary higher-priority cue only ever evicts a PASSIVE (un-cycled)
+   * lower-priority def. The superseded transformer's cycle history is not
+   * folded into the validator's ring; it stays on the undo stack, so
+   * `undo _` walks correction → transformed → original.
+   *
+   * The runtime reads this to stamp `validator: true` on every result the
+   * source emits (see `CueResult.validator`). Contradiction cues are the
+   * first validator class. Defaults to false / undefined (a normal cue).
+   */
+  isValidator?: boolean;
 
   /** Check if this source can handle the given context */
   supports(context: CueContext): boolean;

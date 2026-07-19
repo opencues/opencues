@@ -162,6 +162,9 @@ interface CueResultLike {
   source?: string;
   /** Source priority — deterministic overlap resolution for passive sentence-cues. */
   priority?: number;
+  /** Validator-class result (see CueResult.validator) — may supersede an ACTIVE
+   *  lower-priority overlapping sentence-cue, not just a passive one. */
+  validator?: boolean;
   /** Source-specific metadata. TransformBlank uses taskAction for agent
    *  task commands (TASK_ARM/ADD/STOP/SHOW). */
   metadata?: Record<string, unknown>;
@@ -2091,12 +2094,24 @@ export class Resolver {
           if (typeof def.blankName === 'string' && def.blankName.startsWith('sentence-cue:')
             && def.spanStart === start && def.spanEnd === end) continue;
           if (start < def.spanEnd && def.spanStart < end) {
-            // Overlap. A PASSIVE (not mid-cycle) sentence-cue of strictly lower
-            // priority yields to us — evict it. Anything else (satellite, active
-            // blank, cycled cue, higher/equal-priority cue) stands, and WE yield.
-            const isPassiveSentenceCue = typeof def.blankName === 'string'
-              && def.blankName.startsWith('sentence-cue:') && def.currentIndex === 0;
-            if (isPassiveSentenceCue && (def.priority ?? 0) < (r.priority ?? 0)) {
+            // Overlap. Two eviction rules, both strictly by lower priority:
+            //  1. A PASSIVE (not mid-cycle) lower-priority sentence-cue always
+            //     yields — the existing deterministic overlap resolution.
+            //  2. A VALIDATOR-class result (r.validator, e.g. contradiction) may
+            //     ALSO supersede an ACTIVE (cycled) lower-priority sentence-cue —
+            //     it re-checks the text the transformer (more-formal) cycled in
+            //     and takes over the span to offer its correction. The superseded
+            //     transformer's cycle history is NOT merged into the validator's
+            //     ring; it lives on the undo stack (the cycle that produced the
+            //     transformed text was journalled), so `undo _` walks correction
+            //     → transformed → original.
+            // Anything else (satellite, active blank, higher/equal-priority cue)
+            // stands, and WE yield.
+            const isSentenceCueDef = typeof def.blankName === 'string'
+              && def.blankName.startsWith('sentence-cue:');
+            const isPassive = isSentenceCueDef && def.currentIndex === 0;
+            const lowerPriority = (def.priority ?? 0) < (r.priority ?? 0);
+            if (isSentenceCueDef && lowerPriority && (isPassive || r.validator)) {
               evictKeys.push(key);
             } else {
               overlapsDynDef = true;

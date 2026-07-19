@@ -30,6 +30,9 @@ export class ContradictionCueSource implements CueSource {
   // Emits a cycleable correction (alt[1]) — pruned on no-cycling hosts, but its
   // TIP still surfaces on the status bar (same as the calendar-conflict cue).
   readonly isCycleable = true;
+  // Validator class — see CueSource.isValidator + ContradictionLlmSource. Lets a
+  // deterministic flag supersede an active more-formal rewrite to fact-check it.
+  readonly isValidator = true;
 
   private readonly checks: readonly ContradictionCheck[];
   private readonly nowFn: () => Date;
@@ -84,6 +87,7 @@ export class ContradictionCueSource implements CueSource {
           alternatives: [exact, c.correction ?? exact],
           source: `sentence-cue:contradiction-${c.check}`,
           priority: this.priority,
+          validator: true,
           spanStart: so,
           spanEnd: eo,
           cueTip: `⚠ ${c.tip}`,

@@ -56,6 +56,12 @@ export class ContradictionLlmSource implements CueSource {
   readonly id = 'contradiction-cues';
   readonly priority = 87;   // above the formalizer (85); its passive cue evicts it on overlap
   readonly isCycleable = true;
+  // Validator class: contradiction VALIDATES the applied result of a
+  // lower-priority transformer (more-formal) rather than competing for the
+  // span. Lets its result supersede an ACTIVE more-formal def so the formal
+  // rewrite gets fact-checked; history lives on the undo stack. See
+  // CueSource.isValidator + the resolver's sentence-cue eviction block.
+  readonly isValidator = true;
 
   private readonly cfg: ContradictionLlmSourceConfig;
   private readonly nowFn: () => Date;
@@ -105,6 +111,7 @@ export class ContradictionLlmSource implements CueSource {
             alternatives: [v.quote, v.correction ?? v.quote],
             source: `sentence-cue:contradiction-${v.check}`,
             priority: this.priority,
+            validator: true,
             spanStart: so,
             spanEnd: eo,
             cueTip: `⚠ ${v.tip}`,
