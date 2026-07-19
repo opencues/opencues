@@ -14,7 +14,9 @@
 import type { CueContext, CueResult, CueSource, CueSourceResult, HttpAdapter } from '../types';
 import { dispatchChat, type ProviderAdapter } from '../llm-provider';
 import { segmentSentences, mapWithConcurrency } from '../sources/sentence-cue-source';
-import { verifyClaim, type Claim } from './checks';
+import { verifyClaim, verifyJourneyClaim, type Claim } from './checks';
+import { geocodePlace } from './journey';
+import { cityFromTimeZone } from './weather';
 
 export const CONTRADICTION_EXTRACT_SYSTEM = `You extract EXPLICITLY-STATED, checkable factual claims from ONE sentence so a separate program can verify them. You do NOT judge correctness and you do NOT compute anything. Output ONLY a JSON array (no prose, no markdown). Output [] when there is no explicit, fully-stated claim.
 
@@ -47,6 +49,10 @@ Claim types:
    {"type":"tube_line_plan","line":"Victoria","quote":"take the Victoria line"}
    "line" is the line NAME only, from: Bakerloo, Central, Circle, District, Hammersmith & City, Jubilee, Metropolitan, Northern, Piccadilly, Victoria, Waterloo & City, Elizabeth, DLR, Overground, Liberty, Lioness, Mildmay, Suffragette, Weaver, Windrush. Extract ONLY when a specific line is NAMED and the writer plans to USE it (take/get/catch/ride/change onto it). Do NOT extract a station name (e.g. "Oxford Circus"), a bus, a train that isn't a named line, or any sentence with no line named.
 
+7. journey_underestimate — the writer states a travel TIME between TWO NAMED places.
+   {"type":"journey_underestimate","origin":"King's Cross","destination":"Camden","statedMinutes":5,"mode":"walk","quote":"5 minute walk from King's Cross to Camden"}
+   "origin" and "destination" are both PLACE NAMES (a city, area, station, or landmark) — copy them verbatim. "statedMinutes" is the number the writer gives. "mode" is "walk", "cycle", or "drive" (guess "walk" if a distance is described on foot, "drive" for a car). Extract ONLY when BOTH endpoints are named places AND a specific minute figure is stated. Do NOT extract when only one place is named, no time is given, or it's public transit (tube/bus/train).
+
 RULES (precision over recall — a wrong flag is worse than a missed one):
 - ONLY explicit, fully-stated claims. If ANY part is missing, implied, or ambiguous, do NOT extract it.
 - Every "quote" MUST be an exact substring of the SENTENCE, copied character-for-character.
@@ -72,6 +78,10 @@ export interface ContradictionLlmSourceConfig {
   /** Tier 5b — TfL line-disruption cache. Same fire-and-forget refresh + sync
    *  read; feeds the tube_line_plan verifier. Absent → that type stays silent. */
   readonly tfl?: { refresh(): Promise<void>; current(): ReadonlyMap<string, string> };
+  /** Tier 5c — host GET for per-query journey geocoding (open-meteo). Chrome
+   *  passes the SW-routed fetch; native hosts use global fetch. Absent → the
+   *  journey_underestimate claim stays silent. */
+  readonly worldDataFetch?: (url: string) => Promise<{ ok: boolean; json(): Promise<unknown> }>;
   readonly log?: (msg: string) => void;
 }
 
@@ -83,11 +93,24 @@ export class ContradictionLlmSource implements CueSource {
   private readonly cfg: ContradictionLlmSourceConfig;
   private readonly nowFn: () => Date;
   private readonly log: (msg: string) => void;
+  /** Tier 5c — the user's approximate home coords (from the host timezone city),
+   *  computed once, used to disambiguate journey place names ("Camden" → the
+   *  Camden near the user, not Camden NJ). */
+  private _homeBias: Promise<{ lat: number; lon: number } | null> | undefined;
 
   constructor(cfg: ContradictionLlmSourceConfig) {
     this.cfg = cfg;
     this.nowFn = cfg.now ?? (() => new Date());
     this.log = cfg.log ?? (() => {});
+  }
+
+  private homeBias(): Promise<{ lat: number; lon: number } | null> {
+    return this._homeBias ??= (async () => {
+      let tz: string | undefined;
+      try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { tz = undefined; }
+      const city = cityFromTimeZone(tz);
+      return city ? geocodePlace(city, this.cfg.worldDataFetch) : null;
+    })();
   }
 
   supports(context: CueContext): boolean {
@@ -126,7 +149,11 @@ export class ContradictionLlmSource implements CueSource {
         catch (e) { this.log(`ContradictionLlm: extract failed for "${sent.text.slice(0, 30)}…" — ${(e as Error).message}`); return []; }
         const out: CueResult[] = [];
         for (const claim of claims) {
-          const v = verifyClaim(claim, sent.text, now, verifyCtx);   // grounding + deterministic judge
+          // Journey claims are per-query → verified async (geocode + distance);
+          // all other claim types use the sync cached-data judge.
+          const v = claim.type === 'journey_underestimate'
+            ? await verifyJourneyClaim(claim, sent.text, this.cfg.worldDataFetch, await this.homeBias())
+            : verifyClaim(claim, sent.text, now, verifyCtx);   // grounding + deterministic judge
           if (!v) continue;
           const local = sent.text.indexOf(v.quote);        // second grounding: locate in the LIVE sentence
           if (local < 0) continue;

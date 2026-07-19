@@ -498,3 +498,68 @@ describe('TflProvider', () => {
     assert.equal(p.current().size, 2);
   });
 });
+
+// ── Tier 5c — journey underestimation ─────────────────────────────────────────
+import { verifyJourneyClaim } from './checks';
+import { haversineKm, estimateJourneyMinutes, _resetGeoCacheForTesting } from './journey';
+
+describe('journey estimation (Tier 5c)', () => {
+  it('haversineKm — London→Paris is ~340km', () => {
+    const d = haversineKm({ lat: 51.5074, lon: -0.1278 }, { lat: 48.8566, lon: 2.3522 });
+    assert.ok(d > 330 && d < 350, `got ${d}`);
+  });
+
+  it('estimateJourneyMinutes — 2km walk ~30 min, 20km drive ~70', () => {
+    assert.ok(Math.abs(estimateJourneyMinutes(2, 'walk') - 32) <= 3);
+    assert.ok(Math.abs(estimateJourneyMinutes(20, 'drive') - 70) <= 5);
+  });
+});
+
+describe('verifyJourneyClaim (Tier 5c, async geocode)', () => {
+  // Stub geocoder: A and B are ~5.5km apart (a gross walk underestimate, within
+  // the 20km walk sanity cap); C is ~0.9km from A (a reasonable 10-min walk).
+  const coords = {
+    'a place': { latitude: 51.50, longitude: -0.10 },
+    'b place': { latitude: 51.50, longitude: -0.02 },
+    'c place': { latitude: 51.50, longitude: -0.087 },
+  };
+  const fetchImpl = async (url: string) => {
+    const name = decodeURIComponent(new URL(url).searchParams.get('name') ?? '').toLowerCase();
+    const hit = (coords as Record<string, { latitude: number; longitude: number }>)[name];
+    return { ok: true, json: async () => ({ results: hit ? [hit] : [] }) };
+  };
+  const beforeEachClear = () => _resetGeoCacheForTesting();
+
+  it('flags a gross underestimate (5-min walk that is ~20km)', async () => {
+    beforeEachClear();
+    const v = await verifyJourneyClaim(
+      { type: 'journey_underestimate', origin: 'A place', destination: 'B place', statedMinutes: 5, mode: 'walk', quote: '5 minute walk from A place to B place' },
+      'its a 5 minute walk from A place to B place', fetchImpl);
+    assert.ok(v);
+    assert.match(v.tip, /minute walk, not 5/);
+  });
+
+  it('is SILENT when the stated time is reasonable (~0.9km walk stated 10 min)', async () => {
+    beforeEachClear();
+    const v = await verifyJourneyClaim(
+      { type: 'journey_underestimate', origin: 'A place', destination: 'C place', statedMinutes: 10, mode: 'walk', quote: '10 min walk from A place to C place' },
+      '10 min walk from A place to C place', fetchImpl);
+    assert.equal(v, null);
+  });
+
+  it('is SILENT when a place cannot be geocoded', async () => {
+    beforeEachClear();
+    const v = await verifyJourneyClaim(
+      { type: 'journey_underestimate', origin: 'A place', destination: 'Nowhere', statedMinutes: 2, mode: 'walk', quote: '2 min from A place to Nowhere' },
+      '2 min from A place to Nowhere', fetchImpl);
+    assert.equal(v, null);
+  });
+
+  it('GROUNDING: rejects a quote not in the sentence', async () => {
+    beforeEachClear();
+    const v = await verifyJourneyClaim(
+      { type: 'journey_underestimate', origin: 'A place', destination: 'B place', statedMinutes: 5, mode: 'walk', quote: 'not present' },
+      'unrelated sentence', fetchImpl);
+    assert.equal(v, null);
+  });
+});

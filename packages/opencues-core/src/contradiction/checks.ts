@@ -17,6 +17,7 @@
  */
 
 import { normalizeLine } from './tfl';
+import { geocodePlace, haversineKm, estimateJourneyMinutes, type JourneyMode, type FetchLike } from './journey';
 
 export interface Contradiction {
   /** Word index of the first flagged word (inclusive). */
@@ -299,7 +300,18 @@ export interface TubeLinePlanClaim {
   readonly line: string;
   readonly quote: string;
 }
-export type Claim = WeekdayDateClaim | BillSplitClaim | ArithmeticClaim | WorkdayOnHolidayClaim | OutdoorPlanWeatherClaim | TubeLinePlanClaim;
+/** Tier 5c — the writer states a travel time between two NAMED places that
+ *  grossly underestimates the real journey. Verified async (geocode + distance)
+ *  because it's per-query, not a cached dataset. */
+export interface JourneyUnderestimateClaim {
+  readonly type: 'journey_underestimate';
+  readonly origin: string;
+  readonly destination: string;
+  readonly statedMinutes: number;
+  readonly mode: JourneyMode;
+  readonly quote: string;
+}
+export type Claim = WeekdayDateClaim | BillSplitClaim | ArithmeticClaim | WorkdayOnHolidayClaim | OutdoorPlanWeatherClaim | TubeLinePlanClaim | JourneyUnderestimateClaim;
 
 /** Extra data a verifier may consult beyond the clock — background-refreshed
  *  caches read synchronously (never fetched in the keystroke path). */
@@ -434,9 +446,44 @@ export function verifyClaim(claim: Claim, sentence: string, now: Date, ctx?: Ver
         check: 'tube-status',
       };
     }
+    case 'journey_underestimate':
+      return null;   // per-query → resolved async in verifyJourneyClaim, not here
     default:
       return null;
   }
+}
+
+/** Async verifier for Tier 5c journey claims (per-query: geocodes both endpoints
+ *  + estimates the real time). Fires ONLY on gross underestimation — real is at
+ *  least 1.6× the stated time AND at least 10 min over — never a tight call. */
+/** Plausible upper bound (km) per mode — beyond this the two names almost
+ *  certainly geocoded to different cities/countries (ambiguity), not a real
+ *  local journey, so we bail rather than emit a nonsense "90000-minute walk". */
+const MODE_MAX_KM: Record<JourneyMode, number> = { walk: 20, cycle: 60, drive: 300 };
+
+export async function verifyJourneyClaim(
+  claim: JourneyUnderestimateClaim,
+  sentence: string,
+  fetchImpl: FetchLike | undefined,
+  homeBias?: { lat: number; lon: number } | null,
+): Promise<VerifiedContradiction | null> {
+  if (!sentence.includes(claim.quote)) return null;   // grounding
+  if (!claim.origin || !claim.destination || !(claim.statedMinutes > 0)) return null;
+  const mode: JourneyMode = (['walk', 'cycle', 'drive'] as const).includes(claim.mode) ? claim.mode : 'walk';
+  const [a, b] = await Promise.all([
+    geocodePlace(claim.origin, fetchImpl, homeBias),
+    geocodePlace(claim.destination, fetchImpl, homeBias),
+  ]);
+  if (!a || !b) return null;   // couldn't locate one end → can't verify
+  const km = haversineKm(a, b);
+  if (km > MODE_MAX_KM[mode]) return null;   // implausibly far → geocode ambiguity, bail
+  const est = estimateJourneyMinutes(km, mode);
+  if (est < claim.statedMinutes * 1.6 || est - claim.statedMinutes < 10) return null;   // not a gross underestimate
+  return {
+    quote: claim.quote,
+    tip: `that's about a ${est}-minute ${mode}, not ${claim.statedMinutes}`,
+    check: 'journey',
+  };
 }
 
 /** Evaluate a simple arithmetic expression (+ - * / % and parens) with NO code
