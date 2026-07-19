@@ -209,6 +209,84 @@ mis-bind is cured with one cycle gesture.
                                               -> cue fired once
                                               -> DORMANT
 
+## Scoping and disambiguation across many promises (added 19 Jul 2026)
+
+Two distinct problems needing different machinery: "is this
+utterance about an existing promise?" (coreference) and "do two
+promises collide?" (conflict).
+
+### One ledger, many scopes - scope comes free
+
+Single local DB across all hosts (a WhatsApp promise can surface in
+Gmail), but every entry is stamped at write time with a scope key
+the host adapter already knows: Chrome sees the tab and thread
+(WhatsApp active chat, Gmail To: field, Slack channel); terminals
+see the session. Entry = frame + (host, thread, recipient). Where a
+promise lives is never inferred, always recorded.
+
+### Two match modes, two indexes
+
+- Coreference (scope-narrow): cascade same thread -> same person on
+  other channels (needs identity link) -> global (rare, very high
+  threshold only). Promise-talk overwhelmingly recurs where it
+  started.
+- Conflict (resource-wide): must IGNORE scope - the double-promise
+  cue is precisely cross-thread (Alice in one chat, Bob in
+  another). Second index keyed by contended resource (D-tokens /
+  time slots; later amounts, objects). A new commissive binding a
+  slot = one lookup in the resource index across all scopes.
+
+Same table, two access paths: coreference is scope-first, conflict
+is resource-first.
+
+### Discrimination cascade (several open promises, same person)
+
+Candidates scored on stacked evidence, single threshold:
+
+- slot-type compatibility ("sent it" + transfer verb -> MONEY/OBJECT
+  entries; the dinner promise is excluded)
+- predicate class (send ~ TRANSFER, not RETURN - money over drill)
+- lexical echo (definite NPs naming a slot - "the 60", "the drill",
+  "Thursday" - near-decisive)
+- recency prior (ties break to most recent open entry)
+- temporal echo (date ladder position)
+
+Best above threshold -> match; nothing above -> silence. No
+interrogation dialogs; the passive layer never asks.
+
+### Transparency + cycle as the disambiguation UI
+
+The rehydrated cue NAMES the promise it matched ("you told Sarah
+you'd send the 60 by Friday"), so a wrong match is visible
+instantly; cycling rotates through the other candidate promises.
+Cycle-away is negative evidence, cycle-to is a confirmed link - the
+binding store learns from the core gesture. Transparency plus
+curability beats attempted infallibility.
+
+### Cross-channel identity: conservative by default
+
+WhatsApp-Sarah vs sarah.k@gmail: a wrong merge produces a
+cross-person false accusation, the most fatal error available. v1
+treats channels as separate people unless linked via the local
+contacts vault (phone + email on one card) or explicit config.
+Unlinked = a missed cross-channel cue (the cheap failure). Identity
+merging is opt-in; identity splitting is the default.
+
+### Scale
+
+5-20 ledger-worthy promises per week per human; low hundreds open
+at steady state. With both indexes every match is a scoped lookup
+over a handful of rows - microseconds. The real scale problem is
+noise, and write-path gating (committed + gated + commissive/
+assertive only) keeps the ledger small enough to stay precise.
+
+### Structural boundary
+
+The ledger only contains the USER'S OWN promises: OpenCues reads
+the buffer being typed, not incoming messages. "Sarah promised ME
+the 60" is invisible to it. A real limitation and a clean privacy
+line: track what you said, never surveil what others say.
+
 ## Rules extracted
 
 - Force and skeleton are sufficient for contradiction; content is
@@ -226,3 +304,10 @@ mis-bind is cured with one cycle gesture.
 - Self-reported fulfillment is trusted; evidence integrations may
   tighten later.
 - Below-threshold bindings do not match: silence over error.
+- Coreference matches scope-first; conflict matches resource-first.
+  Two indexes, one table.
+- Cues name the promise they matched; cycling rotates candidates
+  and teaches the binding store.
+- Identity merging across channels is opt-in; splitting is the
+  default (a wrong merge = cross-person false accusation).
+- The ledger tracks what the user said, never what others said.
