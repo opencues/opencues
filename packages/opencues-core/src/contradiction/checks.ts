@@ -98,6 +98,23 @@ function resolveDate(day: number, monthIdx: number | null, now: Date): { year: n
   return isRealDate(year, month, day) ? { year, monthIdx: month, day } : null;
 }
 
+/** Format a resolved Y/M/D as an ISO date (`YYYY-MM-DD`) — GOV.UK's key shape. */
+function isoDate(d: { year: number; monthIdx: number; day: number }): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.year}-${p(d.monthIdx + 1)}-${p(d.day)}`;
+}
+
+/** The next STRICTLY-FUTURE date whose weekday is `weekdayIdx` (0=Sun). "see you
+ *  Monday" → the upcoming Monday (never today, even said on a Monday). */
+function nextWeekdayDate(weekdayIdx: number, now: Date): { year: number; monthIdx: number; day: number } {
+  const base = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayWd = new Date(base).getUTCDay();
+  let delta = (weekdayIdx - todayWd + 7) % 7;
+  if (delta === 0) delta = 7;
+  const d = new Date(base + delta * 86400000);
+  return { year: d.getUTCFullYear(), monthIdx: d.getUTCMonth(), day: d.getUTCDate() };
+}
+
 /** Replace the weekday name at the start of a token, keeping trailing punctuation
  *  ("Monday," → "Sunday,"). */
 function swapWeekday(token: string, newWeekday: string): string {
@@ -249,7 +266,27 @@ export interface ArithmeticClaim {
   readonly statedResult: number;
   readonly quote: string;
 }
-export type Claim = WeekdayDateClaim | BillSplitClaim | ArithmeticClaim;
+/** Tier 0.5 — the writer schedules normal work / a meeting / office presence /
+ *  availability on a specific upcoming date, treating it as an ordinary working
+ *  day. The verifier checks that date against the cached bank-holiday table. */
+export interface WorkdayOnHolidayClaim {
+  readonly type: 'workday_on_holiday';
+  /** Weekday if given ("Monday"). Resolves to the NEXT such weekday. `null` when
+   *  the sentence gives only a day-of-month (matches the LLM's JSON null). */
+  readonly weekday?: string | null;
+  /** Day-of-month if given (25). Preferred over weekday when both present. */
+  readonly day?: number | null;
+  readonly month?: string | null;
+  readonly quote: string;
+}
+export type Claim = WeekdayDateClaim | BillSplitClaim | ArithmeticClaim | WorkdayOnHolidayClaim;
+
+/** Extra data a verifier may consult beyond the clock — background-refreshed
+ *  caches read synchronously (never fetched in the keystroke path). */
+export interface VerifyContext {
+  /** ISO-date → holiday title (BankHolidayProvider.current()). */
+  readonly bankHolidays?: ReadonlyMap<string, string>;
+}
 
 export interface VerifiedContradiction {
   readonly quote: string;
@@ -262,7 +299,7 @@ const near = (a: number, b: number, eps = 0.01) => Math.abs(a - b) <= eps;
 
 /** Verify a grounded claim: contradiction only when every quote is literally
  *  present AND the computed truth disagrees. This is the anti-misfire backstop. */
-export function verifyClaim(claim: Claim, sentence: string, now: Date): VerifiedContradiction | null {
+export function verifyClaim(claim: Claim, sentence: string, now: Date, ctx?: VerifyContext): VerifiedContradiction | null {
   const present = (q: string) => typeof q === 'string' && q.length > 0 && sentence.includes(q);
   switch (claim.type) {
     case 'weekday_date': {
@@ -304,6 +341,29 @@ export function verifyClaim(claim: Claim, sentence: string, now: Date): Verified
       if (value === null || near(value, claim.statedResult)) return null;
       const fmtN = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
       return { quote: claim.quote, tip: `${claim.expression} = ${fmtN(value)}, not ${fmtN(claim.statedResult)}`, check: 'arithmetic' };
+    }
+    case 'workday_on_holiday': {
+      if (!present(claim.quote)) return null;
+      const holidays = ctx?.bankHolidays;
+      if (!holidays || holidays.size === 0) return null;   // no data → can't verify, stay silent
+      // Resolve the concrete date the writer means: a day-of-month is
+      // unambiguous; else a bare weekday → its next occurrence.
+      let resolved: { year: number; monthIdx: number; day: number } | null = null;
+      if (typeof claim.day === 'number' && claim.day >= 1 && claim.day <= 31) {
+        resolved = resolveDate(claim.day, claim.month ? monthIndex(claim.month) : null, now);
+      } else if (claim.weekday) {
+        const wd = weekdayIndex(claim.weekday);
+        if (wd !== null) resolved = nextWeekdayDate(wd, now);
+      }
+      if (!resolved) return null;
+      const title = holidays.get(isoDate(resolved));
+      if (!title) return null;   // not a holiday → no contradiction
+      const dayName = cap(WEEKDAYS[weekdayOf(resolved.year, resolved.monthIdx, resolved.day)]);
+      return {
+        quote: claim.quote,
+        tip: `${dayName} the ${resolved.day}${ordinalSuffix(resolved.day)} is a bank holiday (${title})`,
+        check: 'bank-holiday',
+      };
     }
     default:
       return null;

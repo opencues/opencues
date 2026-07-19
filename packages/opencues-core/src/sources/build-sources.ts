@@ -29,6 +29,7 @@ import { TransformBlankSource, type TransformBlankSourceConfig } from './transfo
 import { ConfigIntentSource, type ConfigIntentSourceConfig } from './config-intent-source';
 import { SentenceCueSource, type SentenceCueSourceConfig } from './sentence-cue-source';
 import { ContradictionLlmSource } from '../contradiction/contradiction-llm-source';
+import { BankHolidayProvider } from '../contradiction/bank-holidays';
 import { resolveLLM, getProvider, withFallback, withFreePool, type ResolvedLLM } from '../llm-provider';
 import { collapseBucketTier } from '../effective-routing';
 
@@ -448,12 +449,18 @@ export function buildSourcesFromConfig(
     const cxLlm = resolveFor(options.sentenceCues);
     if (cxLlm) {
       options.log?.(`buildSources: contradiction-cues → LLM engine (${cxLlm.provider.id}/${cxLlm.model})`);
+      // Tier 0.5 — keyless GOV.UK bank-holiday cache, refreshed fire-and-forget
+      // by the source (TTL-gated), read synchronously by the workday_on_holiday
+      // verifier. Uses global fetch (present on every host: Node 18+, Bun,
+      // chrome). Constructed per rebuild — the daily TTL keeps re-fetches rare.
+      const bankHolidays = new BankHolidayProvider({ log: (m) => options.log?.(m) });
       sources.push(new ContradictionLlmSource({
         httpAdapter: withFallback(options.httpAdapter, cxLlm.fallback),
         provider: cxLlm.provider,
         endpoint: cxLlm.endpoint,
         apiKey: cxLlm.apiKey,
         model: cxLlm.model,
+        bankHolidays,
         log: (m) => options.log?.(m),
       }));
     } else {
