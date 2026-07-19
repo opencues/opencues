@@ -496,17 +496,17 @@ describe('buildSourcesFromConfig — contradiction-cues engine selection (TDZ or
     assert.ok(cx(sources), 'a contradiction source is present');
   });
 
-  it('falls back to the deterministic engine when the cue provider trains on input (opencode-zen refused)', () => {
+  it('is SKIPPED (not deterministic) when the cue provider trains on input (opencode-zen refused)', () => {
     // resolveFor refuses a cue-class source routed through a trainsOnInput
-    // provider → returns null → deterministic engine. This is the one path that
-    // reaches the pure-regex fallback in practice.
+    // provider → returns null → the cue simply does not run (LLM-only; the
+    // deterministic fallback was removed July 2026).
     const sources = buildSourcesFromConfig(emptyConfig, undefined, {
       ...defaultOptions,
       globalProvider: 'opencode-zen',
       apiKeys: { OPENCODE_ZEN_API_KEY: 'k' },
       enableContradictionCues: true,
     });
-    assert.equal(cx(sources)?.constructor.name, 'ContradictionCueSource');
+    assert.equal(cx(sources), undefined);
   });
 
   it('is absent when the feature is off', () => {

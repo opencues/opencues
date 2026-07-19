@@ -28,7 +28,6 @@ import { MissingKeyFallbackSource } from './missing-key-fallback-source';
 import { TransformBlankSource, type TransformBlankSourceConfig } from './transform-blank-source';
 import { ConfigIntentSource, type ConfigIntentSourceConfig } from './config-intent-source';
 import { SentenceCueSource, type SentenceCueSourceConfig } from './sentence-cue-source';
-import { ContradictionCueSource } from '../contradiction/contradiction-cue-source';
 import { ContradictionLlmSource } from '../contradiction/contradiction-llm-source';
 import { resolveLLM, getProvider, withFallback, withFreePool, type ResolvedLLM } from '../llm-provider';
 import { collapseBucketTier } from '../effective-routing';
@@ -433,15 +432,18 @@ export function buildSourcesFromConfig(
 
   // Contradiction cues (validator class) — a built-in source, not driven by any
   // CUE.md. Robust engine: the LLM PARSES each sentence into a grounded claim;
-  // the deterministic verifiers JUDGE it (checks.ts). Falls back to the pure-
-  // regex ContradictionCueSource only when no LLM is resolvable (offline / no
-  // key) so the feature still does SOMETHING.
+  // the deterministic verifiers JUDGE it (checks.ts). LLM-ONLY — like every
+  // other cue. The old pure-regex ContradictionCueSource fallback was removed
+  // (July 2026): it silently ran a dumb checker that needed a literal `$` + an
+  // explicit headcount, so "250 between 4 that's 55 each" produced nothing and
+  // masked the fact that the LLM engine wasn't wired. If no LLM resolves (only
+  // the trainsOnInput-refusal / no-provider edge — resolveLLM otherwise
+  // hardcodes cerebras) the cue simply doesn't run, exactly like more-formal.
   //
   // MUST come after apiKeys / cuesTier / blanksTier / resolveFor are defined —
   // resolveFor closes over cuesTier, so calling it earlier hits a temporal-dead-
-  // zone (ReferenceError in native Node; a silent null → deterministic fallback
-  // under esbuild's const→var lowering in chrome). See resolveFor + the tier
-  // block above; the contradiction-resolution test pins this ordering.
+  // zone (ReferenceError in native Node; a silent null under esbuild's const→var
+  // lowering in chrome). See resolveFor + the tier block above.
   if (options.enableContradictionCues) {
     const cxLlm = resolveFor(options.sentenceCues);
     if (cxLlm) {
@@ -455,8 +457,7 @@ export function buildSourcesFromConfig(
         log: (m) => options.log?.(m),
       }));
     } else {
-      options.log?.('buildSources: contradiction-cues → deterministic engine (no LLM resolvable)');
-      sources.push(new ContradictionCueSource({ log: (m) => options.log?.(m) }));
+      options.log?.('buildSources: contradiction-cues → SKIPPED (no LLM resolvable — no key / trainsOnInput provider)');
     }
   }
 
