@@ -10,6 +10,10 @@ interface StatuslinePayload {
   alts?: readonly string[];
   cueTip?: string | null;
   cueBlank?: boolean;
+  /** Fluid advisory channel (contradiction, …) — the ⚠-prefixed line for the
+   *  advisory nearest the cursor. Rendered as an ADDITIONAL line beneath the
+   *  cue, plain text (no marker/decoration). */
+  advisory?: string | null;
   agentTask?: string | null;
   kata?: {
     step: number;
@@ -101,6 +105,26 @@ function show(text: string): void {
   div.classList.add('oc-status-bar--visible');
 }
 
+/** Show the cue line plus an ADDITIONAL advisory line beneath it — two block
+ *  rows (like kata's head/body), plain text with no decoration. `cueLine` may
+ *  be null (advisory alone). The advisory message is already ⚠-prefixed. */
+function showLines(cueLine: string | null, advisory: string): void {
+  const div = ensureEl();
+  div.classList.remove('oc-status-bar--kata');
+  div.textContent = '';
+  if (cueLine) {
+    const row = document.createElement('div');
+    row.className = 'oc-status-line';
+    row.textContent = cueLine;
+    div.appendChild(row);
+  }
+  const advRow = document.createElement('div');
+  advRow.className = 'oc-advisory';
+  advRow.textContent = advisory;
+  div.appendChild(advRow);
+  div.classList.add('oc-status-bar--visible');
+}
+
 /** Show the bar in kata mode — a bold head row (badge + counter) over a
  *  word-wrapped coach body. Wider + multi-line via the `--kata` modifier. */
 function showKata(head: string, body: string): void {
@@ -175,11 +199,18 @@ export function applyStatuslinePayload(payload: StatuslinePayload): void {
     }
   }
 
-  const combined = wordPart && agentBadge
+  const cueLine = wordPart && agentBadge
     ? `${wordPart} | ${agentBadge}`
     : (agentBadge ?? wordPart ?? null);
 
-  if (combined) { show(combined); } else { hide(); }
+  // Advisory (contradiction, …) — the fluid channel. Rendered as an ADDITIONAL
+  // line beneath the cue, plain text (⚠ already in the message). Shows even
+  // with no active cue (advisory alone).
+  const advisory = payload.advisory ?? null;
+
+  if (!cueLine && !advisory) { hide(); return; }
+  if (advisory) { showLines(cueLine, advisory); return; }
+  show(cueLine!);
 }
 
 /** Tear down the floating div — called when extension detaches. */

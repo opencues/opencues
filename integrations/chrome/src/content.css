@@ -116,3 +116,11 @@
   font-weight: 400;
   opacity: 0.92;
 }
+
+/* Advisory line — the fluid advisory channel (contradiction, …), rendered as an
+ * additional line beneath the cue. Structural only: a small gap so the two
+ * lines read as separate. No colour, border, or decoration — the ⚠ in the
+ * message text is the only signal. */
+.oc-status-bar .oc-status-line + .oc-advisory {
+  margin-top: 2px;
+}

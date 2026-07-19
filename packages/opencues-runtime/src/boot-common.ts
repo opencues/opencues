@@ -475,6 +475,7 @@ import { SpanFillState } from './state/span-fill';
 import { DismissedBlanks } from './state/dismissed-blanks';
 import { SelectorSatelliteState } from './state/selector-satellite';
 import { AgentTaskState } from './state/agent-task';
+import { AdvisoryState } from './state/advisory-state';
 import { UndoJournal } from './state/undo-journal';
 
 /** State + ConfigLoader the optional modules (Statusline / TTS / Resolver
@@ -487,6 +488,10 @@ export interface SharedRuntime {
   readonly dismissedBlanks: DismissedBlanks;
   readonly selectorSatelliteState: SelectorSatelliteState;
   readonly agentTaskState: AgentTaskState;
+  /** Fluid advisory channel (contradiction, …). Band boots pass it to their
+   *  Resolver (writes each pass) and Statusline (`advisories` option). Does
+   *  NOT participate in cycling or span ownership. */
+  readonly advisoryState: AdvisoryState;
   /** Session-scoped undo/redo transaction log. Wired into Cycling +
    *  BlankFill here; band boots pass it to their Resolver and
    *  AgentRewrite constructions and to resetSharedBufferState (epoch
@@ -945,6 +950,9 @@ export function buildSharedRuntime(
   const dismissedBlanks = new DismissedBlanks();
   const selectorSatelliteState = new SelectorSatelliteState();
   const agentTaskState = new AgentTaskState();
+  // Fluid advisory channel (contradiction, …) — shared between the Resolver
+  // (writes each pass) and the Statusline (reads for the advisory line).
+  const advisoryState = new AdvisoryState();
   // Session-scoped (survives buffer resets via the epoch mechanism —
   // see resetSharedBufferState). Threaded into every mutating module;
   // band boots pass it to their Resolver/AgentRewrite constructions.
@@ -1047,6 +1055,7 @@ export function buildSharedRuntime(
     dismissedBlanks,
     selectorSatelliteState,
     agentTaskState,
+    advisoryState,
     undoJournal,
     blankLoading,
     markdownRender,
