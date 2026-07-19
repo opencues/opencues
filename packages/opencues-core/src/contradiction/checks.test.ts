@@ -450,6 +450,11 @@ describe('verifyClaim — tube_line_plan (Tier 5b, TfL disruption)', () => {
     assert.match(v!.tip, /the Piccadilly line has Part Closure, Part Suspended right now/);
   });
 
+  it('says "the DLR" not "the DLR line"', () => {
+    const v = verifyClaim({ type: 'tube_line_plan', line: 'DLR', quote: 'take the DLR' }, 'take the DLR', NOW, { disruptedLines: new Map([['dlr', 'Part Closure']]) });
+    assert.ok(v); assert.match(v!.tip, /the DLR has Part Closure right now/);
+  });
+
   it('is SILENT for a line in Good Service (not in the map)', () => {
     assert.equal(verifyClaim({ type: 'tube_line_plan', line: 'Jubilee', quote: 'the Jubilee line' }, 'the Jubilee line', NOW, ctx), null);
   });

@@ -421,12 +421,16 @@ export function verifyClaim(claim: Claim, sentence: string, now: Date, ctx?: Ver
       if (!present(claim.quote) || !claim.line) return null;
       const disrupted = ctx?.disruptedLines;
       if (!disrupted || disrupted.size === 0) return null;   // no data → silent
-      const status = disrupted.get(normalizeLine(claim.line));
+      const key = normalizeLine(claim.line);
+      const status = disrupted.get(key);
       if (!status) return null;   // line in Good Service → no contradiction
       const line = claim.line.replace(/\bline\b/gi, '').replace(/^the\s+/i, '').trim();
+      // DLR is "the DLR", not "the DLR line" (it's the Docklands Light Railway);
+      // Tube + Overground routes ARE named lines ("the Victoria line").
+      const label = key === 'dlr' ? 'the DLR' : `the ${cap(line)} line`;
       return {
         quote: claim.quote,
-        tip: `the ${cap(line)} line has ${status} right now`,
+        tip: `${label} has ${status} right now`,
         check: 'tube-status',
       };
     }
