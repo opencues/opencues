@@ -100,6 +100,10 @@ export interface ResolverOptions {
   /** Optional injection seam for tests. When set, runtime uses this instead
    *  of constructing a NodeHttpAdapter. Should expose at least .post(). */
   readonly httpAdapter?: unknown;
+  /** Tier 0.5 — host-provided fetch for the GOV.UK bank-holiday cache. Chrome
+   *  passes a service-worker-routed fetch (page-CSP blocks a content-script
+   *  one); native hosts omit it → the provider uses global fetch. */
+  readonly bankHolidayFetch?: (url: string) => Promise<{ ok: boolean; json: () => Promise<unknown> }>;
   /** Same â inject the resolver build directly (mostly for testing). */
   readonly resolverFactory?: (cuesConfig: unknown, blanksConfig: unknown, opts: unknown) => unknown;
   /**
@@ -821,6 +825,7 @@ export class Resolver {
       enableUndoActions: settings.get('undo-mode') !== 'off',
       enableSentenceCues: settings.get('sentence-cues-mode') === 'on',
       enableContradictionCues: settings.get('contradiction-cues-mode') === 'on',
+      bankHolidayFetch: this.options.bankHolidayFetch,
       enableWordCues: settings.get('word-cues-mode') === 'on',
       // `max-thinking` (default on). Threaded into every LLM source's
       // dispatch ctx; @opencues/core/model-thinking.ts resolves the

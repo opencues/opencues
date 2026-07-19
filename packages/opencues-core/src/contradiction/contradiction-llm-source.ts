@@ -34,6 +34,11 @@ Claim types:
    {"type":"arithmetic","expression":"100*1.08","statedResult":108,"quote":"$108"}
    "expression" uses only digits and + - * / % and parentheses.
 
+4. workday_on_holiday — the writer schedules ORDINARY WORK on a specific upcoming date, treating it as a normal working day: an office day, a meeting, a call, a delivery, a deadline, "see you", "let's meet", "I'll be in", "back in the office".
+   {"type":"workday_on_holiday","weekday":"Monday","day":null,"month":null,"quote":"in the office Monday"}
+   {"type":"workday_on_holiday","weekday":"Monday","day":25,"month":"December","quote":"the meeting on Monday the 25th"}
+   Give "weekday" and/or "day" (day-of-month) — whichever the sentence states; null the other. Extract ONLY when the date is treated as a working day. Do NOT extract when the writer ALREADY frames it as a holiday, day off, closure, or non-work ("enjoy the bank holiday Monday", "we're closed Monday", "off on the 25th").
+
 RULES (precision over recall — a wrong flag is worse than a missed one):
 - ONLY explicit, fully-stated claims. If ANY part is missing, implied, or ambiguous, do NOT extract it.
 - Every "quote" MUST be an exact substring of the SENTENCE, copied character-for-character.
@@ -49,6 +54,10 @@ export interface ContradictionLlmSourceConfig {
   readonly maxThinking?: boolean;
   readonly maxConcurrent?: number;
   readonly now?: () => Date;
+  /** Tier 0.5 — bank-holiday cache. When present, its `refresh()` is kicked
+   *  (fire-and-forget, TTL-gated) each getCues and `current()` feeds the
+   *  workday_on_holiday verifier. Absent → that claim type stays silent. */
+  readonly bankHolidays?: { refresh(): Promise<void>; current(): ReadonlyMap<string, string> };
   readonly log?: (msg: string) => void;
 }
 
@@ -84,6 +93,10 @@ export class ContradictionLlmSource implements CueSource {
     };
 
     const now = this.nowFn();
+    // Kick a background refresh (fire-and-forget, TTL-gated) and read the
+    // last-good map synchronously — never a fetch in the keystroke path.
+    this.cfg.bankHolidays?.refresh().catch(() => { /* keeps last-good */ });
+    const verifyCtx = { bankHolidays: this.cfg.bankHolidays?.current() };
     const perSentence = await mapWithConcurrency(
       sentences,
       this.cfg.maxConcurrent ?? 4,
@@ -93,7 +106,7 @@ export class ContradictionLlmSource implements CueSource {
         catch (e) { this.log(`ContradictionLlm: extract failed for "${sent.text.slice(0, 30)}…" — ${(e as Error).message}`); return []; }
         const out: CueResult[] = [];
         for (const claim of claims) {
-          const v = verifyClaim(claim, sent.text, now);   // grounding + deterministic judge
+          const v = verifyClaim(claim, sent.text, now, verifyCtx);   // grounding + deterministic judge
           if (!v) continue;
           const local = sent.text.indexOf(v.quote);        // second grounding: locate in the LIVE sentence
           if (local < 0) continue;

@@ -46,6 +46,7 @@ export const FETCH_ALLOWED_ORIGINS: readonly string[] = [
   'https://api.dictionaryapi.dev',
   'https://status.claude.com',
   'https://api.github.com',
+  'https://www.gov.uk',
 ];
 
 export function isFetchOriginAllowed(url: string): boolean {

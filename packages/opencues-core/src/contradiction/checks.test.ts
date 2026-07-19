@@ -177,3 +177,108 @@ describe('parseClaims', () => {
     assert.deepEqual(parseClaims('[]'), []);
   });
 });
+
+// ── Tier 0.5 — workday-on-bank-holiday ────────────────────────────────────────
+import { BankHolidayProvider } from './bank-holidays';
+
+describe('verifyClaim — workday_on_holiday (Tier 0.5, bank holidays)', () => {
+  // Pin now to Wed 2026-12-23. Upcoming: Fri 25th = Christmas Day; Mon 28th =
+  // Boxing Day substitute. Both are working days the writer might schedule onto.
+  const NOW05 = new Date(Date.UTC(2026, 11, 23, 9, 0));
+  const holidays = new Map([
+    ['2026-12-25', 'Christmas Day'],
+    ['2026-12-28', 'Boxing Day (substitute day)'],
+  ]);
+  const ctx = { bankHolidays: holidays };
+
+  it('flags a day-of-month that is a bank holiday', () => {
+    const v = verifyClaim(
+      { type: 'workday_on_holiday', weekday: null, day: 25, month: 'December', quote: 'the meeting on the 25th' },
+      'let\'s hold the meeting on the 25th', NOW05, ctx);
+    assert.ok(v);
+    assert.match(v!.tip, /the 25th is a bank holiday \(Christmas Day\)/);
+  });
+
+  it('flags a bare weekday whose NEXT occurrence is a bank holiday', () => {
+    // Next Friday from Wed 23rd → Fri 25th = Christmas Day.
+    const v = verifyClaim(
+      { type: 'workday_on_holiday', weekday: 'Friday', day: null, quote: 'see you in the office Friday' },
+      'see you in the office Friday', NOW05, ctx);
+    assert.ok(v);
+    assert.match(v!.tip, /bank holiday \(Christmas Day\)/);
+  });
+
+  it('flags a bare Monday whose next occurrence is a substitute holiday', () => {
+    // Next Monday from Wed 23rd → Mon 28th = Boxing Day substitute.
+    const v = verifyClaim(
+      { type: 'workday_on_holiday', weekday: 'Monday', day: null, quote: 'back in Monday' },
+      'back in Monday', NOW05, ctx);
+    assert.ok(v);
+    assert.match(v!.tip, /Boxing Day/);
+  });
+
+  it('is SILENT when the resolved date is not a holiday', () => {
+    // Next Tuesday from Wed 23rd → Tue 29th (not in the map).
+    assert.equal(verifyClaim(
+      { type: 'workday_on_holiday', weekday: 'Tuesday', day: null, quote: 'call me Tuesday' },
+      'call me Tuesday', NOW05, ctx), null);
+  });
+
+  it('is SILENT when no bank-holiday data is available (cannot verify)', () => {
+    assert.equal(verifyClaim(
+      { type: 'workday_on_holiday', weekday: 'Friday', day: null, quote: 'see you Friday' },
+      'see you Friday', NOW05, { bankHolidays: new Map() }), null);
+    assert.equal(verifyClaim(
+      { type: 'workday_on_holiday', weekday: 'Friday', day: null, quote: 'see you Friday' },
+      'see you Friday', NOW05), null);   // no ctx at all
+  });
+
+  it('GROUNDING: rejects a claim whose quote is not in the sentence', () => {
+    assert.equal(verifyClaim(
+      { type: 'workday_on_holiday', weekday: 'Friday', day: 25, quote: 'the 25th' },
+      'nothing about dates here', NOW05, ctx), null);
+  });
+});
+
+describe('BankHolidayProvider', () => {
+  const govUkJson = {
+    'england-and-wales': { events: [
+      { date: '2026-12-25', title: 'Christmas Day' },
+      { date: '2026-12-28', title: 'Boxing Day' },
+    ] },
+    'scotland': { events: [{ date: '2026-01-02', title: '2nd January' }] },
+  };
+  const stubFetch = (ok = true) => async () => ({ ok, json: async () => govUkJson });
+
+  it('caches the region map after refresh, read synchronously via current()', async () => {
+    const p = new BankHolidayProvider({ fetchImpl: stubFetch(), ttlMs: 1000 });
+    assert.equal(p.current().size, 0);          // empty before refresh
+    await p.refresh(1000);
+    assert.equal(p.current().get('2026-12-25'), 'Christmas Day');
+    assert.equal(p.current().size, 2);          // england-and-wales default
+  });
+
+  it('honours the region option', async () => {
+    const p = new BankHolidayProvider({ fetchImpl: stubFetch(), region: 'scotland' });
+    await p.refresh(1000);
+    assert.equal(p.current().get('2026-01-02'), '2nd January');
+  });
+
+  it('keeps last-good on a failed refresh', async () => {
+    let ok = true;
+    const p = new BankHolidayProvider({ fetchImpl: async () => ({ ok, json: async () => govUkJson }), ttlMs: 0 });
+    await p.refresh(1000);
+    assert.equal(p.current().size, 2);
+    ok = false;                                  // next fetch fails
+    await p.refresh(2000);
+    assert.equal(p.current().size, 2);           // still last-good
+  });
+
+  it('TTL-gates: no re-fetch within the window', async () => {
+    let calls = 0;
+    const p = new BankHolidayProvider({ fetchImpl: async () => { calls++; return { ok: true, json: async () => govUkJson }; }, ttlMs: 10000 });
+    await p.refresh(1000);
+    await p.refresh(2000);   // within TTL
+    assert.equal(calls, 1);
+  });
+});
