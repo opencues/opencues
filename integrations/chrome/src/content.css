@@ -116,3 +116,14 @@
   font-weight: 400;
   opacity: 0.92;
 }
+
+/* Advisory row — the fluid channel (contradiction, …). Sits on its own line
+ * beneath the cue line, tinted amber so it reads as a distinct warning. */
+.oc-status-bar .oc-advisory {
+  color: #ffcf5c;
+  margin-top: 3px;
+}
+.oc-status-bar .oc-status-line + .oc-advisory {
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  padding-top: 3px;
+}
