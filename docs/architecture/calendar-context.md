@@ -142,8 +142,17 @@ threat model.
    title = a bad *suggestion*, never an action — the ambient-context invariant.
    **Do not wire calendar-context output into any side-effect layer** without
    re-reviewing `security-audit.md` row #21.
-5. **Off by default.** `calendar-context-mode: off` in OPENCUES.md — the feature
-   carries calendar PII, so the user opts in explicitly.
+5. **On by default, but inert without a feed.** `calendar-context-mode: on` in
+   OPENCUES.md — yet with no feed configured the snapshot is empty, so
+   `renderCalendarContextCatalog` returns `''` and the resolver forwards nothing:
+   zero data leaves the machine until the user runs `opencues calendar add`. That
+   feed-add is the real consent gate — adding a calendar is the deliberate act, so
+   a redundant second mode-toggle isn't needed. The residual once a feed exists:
+   only anonymized busy-interval **times** cross the wire (titles + locations are
+   dehydrated); a reasoning catalog can't hide the times it reasons over. Explicit
+   `off` disables even a configured feed. (Contrast system-context, which is a
+   pure-substitution catalog — nothing sensitive ever crosses the wire — so its
+   on-by-default has no residual at all.)
 
 ## Freshness / cadence
 

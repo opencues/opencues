@@ -43,6 +43,15 @@ max-thinking: on
 # docs/architecture/ambient-context.md.
 ambient-context-mode: off
 
+# calendar-context-mode — let fluid-blank reason over your calendar
+# (`am i free thursday _`, `where is my next event _`). ON by default,
+# but INERT until you add a feed with `opencues calendar add <ics-url>`
+# — adding a calendar IS the opt-in. Titles + locations are dehydrated
+# to tokens hydrated locally; only anonymized busy-interval times reach
+# the LLM. Set to `off` to disable even with a feed configured.
+# See docs/architecture/calendar-context.md.
+calendar-context-mode: on
+
 # identity-context-mode — personal-data injection for fluid-blank.
 # Pulls field data from ~/.cues/IDENTITY.md (your first name, email,
 # work city, etc.) and offers it to FluidBlankSource so `_` lookups

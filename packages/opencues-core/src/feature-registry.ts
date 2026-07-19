@@ -696,10 +696,10 @@ export const FEATURES: readonly FeatureSpec[] = [
     group: 'Context & identity',
     camelCase: 'calendarContextMode',
     description: 'Ingest a bounded calendar snapshot so fluid-blank can answer availability/scheduling questions',
-    menuTip: 'Let fluid-blank reason over your upcoming calendar — `am i free thursday _` answers from an ingested (bounded, periodic) calendar-feed snapshot. Event times reach the LLM; titles are dehydrated tokens the runtime hydrates locally. OFF by default (carries calendar PII). See docs/architecture/calendar-context.md.',
+    menuTip: 'Let fluid-blank reason over your upcoming calendar — `am i free thursday _` answers from an ingested (bounded, periodic) calendar-feed snapshot. Titles + locations are dehydrated tokens the runtime hydrates locally; only anonymized busy-interval times reach the LLM. ON by default, but INERT until you add a feed with `opencues calendar add` — adding a calendar is the opt-in. See docs/architecture/calendar-context.md.',
     values: [
-      { id: 'off', description: 'Disabled (default) — no calendar ingestion' },
-      { id: 'on',  description: 'Enabled — ingest a bounded calendar snapshot; times in the clear, titles dehydrated to tokens hydrated locally' },
+      { id: 'on',  description: 'Enabled (default) — ingest a bounded calendar snapshot; titles + locations dehydrated to tokens hydrated locally, only busy-interval times sent. Inert until you add a feed.' },
+      { id: 'off', description: 'Disabled — no calendar ingestion even if a feed is configured' },
     ],
     // The shared calendar snapshot, produced OpenCues-side by `opencues
     // calendar sync`. No `template` (it's generated, not seeded). `pushedBy`
