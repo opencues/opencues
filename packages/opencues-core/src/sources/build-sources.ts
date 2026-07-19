@@ -30,6 +30,21 @@ import { ConfigIntentSource, type ConfigIntentSourceConfig } from './config-inte
 import { SentenceCueSource, type SentenceCueSourceConfig } from './sentence-cue-source';
 import { ContradictionLlmSource } from '../contradiction/contradiction-llm-source';
 import { BankHolidayProvider } from '../contradiction/bank-holidays';
+import { WeatherProvider } from '../contradiction/weather';
+
+// World-data caches for contradiction cues, PERSISTED across resolver rebuilds
+// (buildSourcesFromConfig is called on every config reload; a fresh provider
+// per call would reset the async-fetched cache before the verify ever reads it,
+// so the data-backed cues could never fire). Bank holidays are location-
+// independent (one singleton); weather providers are keyed by location scalar.
+let _bankHolidayProvider: BankHolidayProvider | null = null;
+const _weatherProviders = new Map<string, WeatherProvider>();
+
+/** Test hook — drop the persisted world-data providers so a suite starts clean. */
+export function _resetContradictionProvidersForTesting(): void {
+  _bankHolidayProvider = null;
+  _weatherProviders.clear();
+}
 import { resolveLLM, getProvider, withFallback, withFreePool, type ResolvedLLM } from '../llm-provider';
 import { collapseBucketTier } from '../effective-routing';
 
@@ -186,10 +201,14 @@ export interface BuildSourcesOptions {
    *  mismatch, split-the-bill math — buffer + clock only, no LLM/network).
    *  Defaults to false; flip on via OPENCUES.md `contradiction-cues-mode: on`. */
   enableContradictionCues?: boolean;
-  /** Tier 0.5 — host-provided fetch for the GOV.UK bank-holiday cache. Chrome
-   *  passes a service-worker-routed fetch (a content-script fetch is blocked by
-   *  the host page's CSP); native hosts omit it → global fetch. */
-  bankHolidayFetch?: (url: string) => Promise<{ ok: boolean; json: () => Promise<unknown> }>;
+  /** Host-provided GET for the contradiction world-data caches (bank holidays,
+   *  weather). Chrome passes a service-worker-routed fetch (a content-script
+   *  fetch is blocked by the host page's CSP); native hosts omit it → global fetch. */
+  worldDataFetch?: (url: string) => Promise<{ ok: boolean; json: () => Promise<unknown> }>;
+  /** Tier 5 — optional weather-location override (the `weather-location` scalar):
+   *  a city name ("Manchester") OR "lat,lon". Omitted → auto-detected from the
+   *  host timezone. A city name is geocoded by the provider. */
+  weatherLocation?: string;
   /** Enable RoutedWordSourceGroup (word-cues on plain text). When false,
    * NO word-cue LLM calls fire — words are not navigable as alternatives.
    * Domain blanks/fluid-blank still work. Defaults to false;
@@ -453,11 +472,33 @@ export function buildSourcesFromConfig(
     const cxLlm = resolveFor(options.sentenceCues);
     if (cxLlm) {
       options.log?.(`buildSources: contradiction-cues → LLM engine (${cxLlm.provider.id}/${cxLlm.model})`);
-      // Tier 0.5 — keyless GOV.UK bank-holiday cache, refreshed fire-and-forget
-      // by the source (TTL-gated), read synchronously by the workday_on_holiday
-      // verifier. Uses global fetch (present on every host: Node 18+, Bun,
-      // chrome). Constructed per rebuild — the daily TTL keeps re-fetches rare.
-      const bankHolidays = new BankHolidayProvider({ fetchImpl: options.bankHolidayFetch, log: (m) => options.log?.(m) });
+      // Keyless world-data caches, refreshed fire-and-forget by the source, read
+      // synchronously by the verifiers. `worldDataFetch` is the host's GET
+      // (chrome routes it through the SW to dodge page CSP; native hosts omit it
+      // → global fetch). PERSISTED across rebuilds (module singletons) — the
+      // resolver rebuilds sources on every config reload, and a fresh provider
+      // would reset the cache to empty every time, so the async-fetched forecast
+      // would never survive to the verify (the weather cue would never fire).
+      // Tier 0.5 — GOV.UK bank holidays (location-independent → one singleton).
+      const bankHolidays = (_bankHolidayProvider ??= new BankHolidayProvider({ fetchImpl: options.worldDataFetch, log: (m) => options.log?.(m) }));
+      // Tier 5 — open-meteo forecast. Location auto-detected from the host
+      // timezone; the `weather-location` override is a city name OR "lat,lon".
+      // Keyed by location so changing the scalar makes a fresh provider.
+      const wl = options.weatherLocation?.trim();
+      const wlKey = wl || 'auto';
+      let weather = _weatherProviders.get(wlKey);
+      if (!weather) {
+        const latlon = wl && /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(wl)
+          ? wl.split(',').map(s => Number(s.trim())) : null;
+        weather = new WeatherProvider({
+          latitude: latlon ? latlon[0] : undefined,
+          longitude: latlon ? latlon[1] : undefined,
+          locationName: latlon ? undefined : (wl || undefined),
+          fetchImpl: options.worldDataFetch,
+          log: (m) => options.log?.(m),
+        });
+        _weatherProviders.set(wlKey, weather);
+      }
       sources.push(new ContradictionLlmSource({
         httpAdapter: withFallback(options.httpAdapter, cxLlm.fallback),
         provider: cxLlm.provider,
@@ -465,6 +506,7 @@ export function buildSourcesFromConfig(
         apiKey: cxLlm.apiKey,
         model: cxLlm.model,
         bankHolidays,
+        weather,
         log: (m) => options.log?.(m),
       }));
     } else {

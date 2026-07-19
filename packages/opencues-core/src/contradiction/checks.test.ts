@@ -282,3 +282,145 @@ describe('BankHolidayProvider', () => {
     assert.equal(calls, 1);
   });
 });
+
+// ── Tier 5 — outdoor-plan vs weather forecast ─────────────────────────────────
+import { WeatherProvider } from './weather';
+
+describe('verifyClaim — outdoor_plan_weather (Tier 5, precipitation)', () => {
+  // now = Wed 2026-07-15. resolveDate(18, July) → 2026-07-18 (this month).
+  const NOW5 = new Date(Date.UTC(2026, 6, 15, 9, 0));
+  const precip = new Map([
+    ['2026-07-18', 80],   // wet
+    ['2026-07-19', 20],   // dry
+    ['2026-07-20', 60],   // exactly at threshold
+    ['2026-07-21', 59],   // just under
+  ]);
+  const ctx = { precipByDate: precip };
+  const claim = (day: number, quote: string) =>
+    ({ type: 'outdoor_plan_weather', weekday: null, day, month: 'July', quote } as const);
+
+  it('flags an outdoor plan on a wet day', () => {
+    const v = verifyClaim(claim(18, 'BBQ on the 18th'), 'lets have a BBQ on the 18th', NOW5, ctx);
+    assert.ok(v);
+    assert.match(v!.tip, /forecast is rain \(80% chance\)/);
+  });
+
+  it('is SILENT on a dry day', () => {
+    assert.equal(verifyClaim(claim(19, 'picnic on the 19th'), 'picnic on the 19th', NOW5, ctx), null);
+  });
+
+  it('flags at the threshold (>=60) and is silent just under', () => {
+    assert.ok(verifyClaim(claim(20, 'walk on the 20th'), 'walk on the 20th', NOW5, ctx));
+    assert.equal(verifyClaim(claim(21, 'run on the 21st'), 'run on the 21st', NOW5, ctx), null);
+  });
+
+  it('is SILENT beyond the forecast window (date not in the map)', () => {
+    assert.equal(verifyClaim(
+      { type: 'outdoor_plan_weather', weekday: null, day: 25, month: 'December', quote: 'hike on the 25th' },
+      'hike on the 25th', NOW5, ctx), null);
+  });
+
+  it('is SILENT when no forecast data is available', () => {
+    assert.equal(verifyClaim(claim(18, 'BBQ on the 18th'), 'BBQ on the 18th', NOW5, { precipByDate: new Map() }), null);
+    assert.equal(verifyClaim(claim(18, 'BBQ on the 18th'), 'BBQ on the 18th', NOW5), null);
+  });
+
+  it('GROUNDING: rejects a claim whose quote is not in the sentence', () => {
+    assert.equal(verifyClaim(claim(18, 'on the 18th'), 'no dates mentioned', NOW5, ctx), null);
+  });
+});
+
+describe('WeatherProvider', () => {
+  const forecastJson = {
+    daily: {
+      time: ['2026-07-15', '2026-07-16', '2026-07-17'],
+      precipitation_probability_max: [10, 80, null],
+    },
+  };
+  const stubFetch = (ok = true) => async () => ({ ok, json: async () => forecastJson });
+
+  it('caches precip-by-date after refresh, read via current()', async () => {
+    const p = new WeatherProvider({ fetchImpl: stubFetch(), ttlMs: 1000 });
+    assert.equal(p.current().size, 0);
+    await p.refresh(1000);
+    assert.equal(p.current().get('2026-07-16'), 80);
+    assert.equal(p.current().has('2026-07-17'), false);   // null value skipped
+    assert.equal(p.current().size, 2);
+  });
+
+  it('puts the configured location in the request URL', async () => {
+    let seen = '';
+    const p = new WeatherProvider({ latitude: 40.7, longitude: -74, fetchImpl: async (url) => { seen = url; return { ok: true, json: async () => forecastJson }; } });
+    await p.refresh(1000);
+    assert.match(seen, /latitude=40\.7&longitude=-74/);
+  });
+
+  it('keeps last-good on a failed refresh', async () => {
+    let ok = true;
+    const p = new WeatherProvider({ fetchImpl: async () => ({ ok, json: async () => forecastJson }), ttlMs: 0 });
+    await p.refresh(1000);
+    assert.equal(p.current().size, 2);
+    ok = false;
+    await p.refresh(2000);
+    assert.equal(p.current().size, 2);
+  });
+});
+
+// ── Tier 5 — smart location (timezone auto-detect + city geocode) ─────────────
+import { cityFromTimeZone } from './weather';
+
+describe('WeatherProvider — smart location', () => {
+  it('cityFromTimeZone derives a geocodable city', () => {
+    assert.equal(cityFromTimeZone('Europe/London'), 'London');
+    assert.equal(cityFromTimeZone('America/New_York'), 'New York');
+    assert.equal(cityFromTimeZone('America/Argentina/Buenos_Aires'), 'Buenos Aires');
+    assert.equal(cityFromTimeZone('UTC'), null);
+    assert.equal(cityFromTimeZone('Etc/GMT+5'), null);
+    assert.equal(cityFromTimeZone(undefined), null);
+  });
+
+  it('geocodes an explicit city name (locationName override) then forecasts there', async () => {
+    let forecastUrl = '';
+    const fetchImpl = async (url: string) => {
+      if (url.includes('geocoding-api')) { assert.match(url, /name=Manchester/); return { ok: true, json: async () => ({ results: [{ latitude: 53.48, longitude: -2.24, name: 'Manchester', country: 'UK' }] }) }; }
+      forecastUrl = url; return { ok: true, json: async () => ({ daily: { time: ['2026-07-16'], precipitation_probability_max: [70] } }) };
+    };
+    const p = new WeatherProvider({ locationName: 'Manchester', fetchImpl });
+    await p.refresh(1000);
+    assert.match(forecastUrl, /latitude=53\.48&longitude=-2\.24/);
+    assert.equal(p.current().get('2026-07-16'), 70);
+  });
+
+  it('auto-detects from the timezone when no override is given', async () => {
+    let geoName = '';
+    const fetchImpl = async (url: string) => {
+      if (url.includes('geocoding-api')) { geoName = new URL(url).searchParams.get('name') ?? ''; return { ok: true, json: async () => ({ results: [{ latitude: 1, longitude: 2, name: geoName }] }) }; }
+      return { ok: true, json: async () => ({ daily: { time: ['2026-07-16'], precipitation_probability_max: [50] } }) };
+    };
+    const p = new WeatherProvider({ timeZone: 'America/New_York', fetchImpl });
+    await p.refresh(1000);
+    assert.equal(geoName, 'New York');   // derived from the timezone
+  });
+
+  it('explicit lat/lon skips geocoding entirely', async () => {
+    let geocoded = false;
+    const fetchImpl = async (url: string) => {
+      if (url.includes('geocoding-api')) { geocoded = true; return { ok: true, json: async () => ({ results: [] }) }; }
+      return { ok: true, json: async () => ({ daily: { time: ['2026-07-16'], precipitation_probability_max: [30] } }) };
+    };
+    const p = new WeatherProvider({ latitude: 10, longitude: 20, fetchImpl });
+    await p.refresh(1000);
+    assert.equal(geocoded, false);
+  });
+
+  it('falls back to London when geocoding finds nothing', async () => {
+    let forecastUrl = '';
+    const fetchImpl = async (url: string) => {
+      if (url.includes('geocoding-api')) return { ok: true, json: async () => ({ results: [] }) };
+      forecastUrl = url; return { ok: true, json: async () => ({ daily: { time: ['2026-07-16'], precipitation_probability_max: [40] } }) };
+    };
+    const p = new WeatherProvider({ locationName: 'Nowheresville', timeZone: 'UTC', fetchImpl });
+    await p.refresh(1000);
+    assert.match(forecastUrl, /latitude=51\.51&longitude=-0\.13/);
+  });
+});

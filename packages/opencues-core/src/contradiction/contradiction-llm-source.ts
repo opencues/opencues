@@ -39,6 +39,10 @@ Claim types:
    {"type":"workday_on_holiday","weekday":"Monday","day":25,"month":"December","quote":"the meeting on Monday the 25th"}
    Give "weekday" and/or "day" (day-of-month) — whichever the sentence states; null the other. Extract ONLY when the date is treated as a working day. Do NOT extract when the writer ALREADY frames it as a holiday, day off, closure, or non-work ("enjoy the bank holiday Monday", "we're closed Monday", "off on the 25th").
 
+5. outdoor_plan_weather — the writer plans a clearly OUTDOOR, weather-dependent activity on a specific upcoming date: patio/garden/park/beach/rooftop lunch or drinks, BBQ, picnic, hike, cycle, outdoor run, "outside", "al fresco", a walk.
+   {"type":"outdoor_plan_weather","weekday":"Saturday","day":null,"month":null,"quote":"lunch on the patio Saturday"}
+   Give "weekday" and/or "day". Extract ONLY when the activity is UNAMBIGUOUSLY outdoors AND weather-sensitive. Do NOT extract indoor plans (a meeting, dinner at a restaurant, a call) or activities where weather is irrelevant.
+
 RULES (precision over recall — a wrong flag is worse than a missed one):
 - ONLY explicit, fully-stated claims. If ANY part is missing, implied, or ambiguous, do NOT extract it.
 - Every "quote" MUST be an exact substring of the SENTENCE, copied character-for-character.
@@ -58,6 +62,9 @@ export interface ContradictionLlmSourceConfig {
    *  (fire-and-forget, TTL-gated) each getCues and `current()` feeds the
    *  workday_on_holiday verifier. Absent → that claim type stays silent. */
   readonly bankHolidays?: { refresh(): Promise<void>; current(): ReadonlyMap<string, string> };
+  /** Tier 5 — precipitation-forecast cache. Same fire-and-forget refresh + sync
+   *  read; feeds the outdoor_plan_weather verifier. Absent → that type stays silent. */
+  readonly weather?: { refresh(): Promise<void>; current(): ReadonlyMap<string, number> };
   readonly log?: (msg: string) => void;
 }
 
@@ -96,7 +103,11 @@ export class ContradictionLlmSource implements CueSource {
     // Kick a background refresh (fire-and-forget, TTL-gated) and read the
     // last-good map synchronously — never a fetch in the keystroke path.
     this.cfg.bankHolidays?.refresh().catch(() => { /* keeps last-good */ });
-    const verifyCtx = { bankHolidays: this.cfg.bankHolidays?.current() };
+    this.cfg.weather?.refresh().catch(() => { /* keeps last-good */ });
+    const verifyCtx = {
+      bankHolidays: this.cfg.bankHolidays?.current(),
+      precipByDate: this.cfg.weather?.current(),
+    };
     const perSentence = await mapWithConcurrency(
       sentences,
       this.cfg.maxConcurrent ?? 4,

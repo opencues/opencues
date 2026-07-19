@@ -279,13 +279,46 @@ export interface WorkdayOnHolidayClaim {
   readonly month?: string | null;
   readonly quote: string;
 }
-export type Claim = WeekdayDateClaim | BillSplitClaim | ArithmeticClaim | WorkdayOnHolidayClaim;
+/** Tier 5 — the writer plans a clearly OUTDOOR, weather-dependent activity on a
+ *  specific upcoming date. The verifier checks that date against the cached
+ *  precipitation forecast for the anchored location. */
+export interface OutdoorPlanWeatherClaim {
+  readonly type: 'outdoor_plan_weather';
+  readonly weekday?: string | null;
+  readonly day?: number | null;
+  readonly month?: string | null;
+  readonly quote: string;
+}
+export type Claim = WeekdayDateClaim | BillSplitClaim | ArithmeticClaim | WorkdayOnHolidayClaim | OutdoorPlanWeatherClaim;
 
 /** Extra data a verifier may consult beyond the clock — background-refreshed
  *  caches read synchronously (never fetched in the keystroke path). */
 export interface VerifyContext {
   /** ISO-date → holiday title (BankHolidayProvider.current()). */
   readonly bankHolidays?: ReadonlyMap<string, string>;
+  /** ISO-date → max precipitation probability % (WeatherProvider.current()). */
+  readonly precipByDate?: ReadonlyMap<string, number>;
+}
+
+/** Max-precipitation-probability at or above which an outdoor plan is flagged as
+ *  likely-rained-out. Precision-first: only a clearly wet forecast fires. */
+const RAIN_THRESHOLD = 60;
+
+/** Resolve the concrete upcoming date a claim refers to: a day-of-month is
+ *  unambiguous; else a bare weekday → its next occurrence. Shared by the
+ *  date-anchored data tiers (holiday, weather). */
+function resolveDateRef(
+  ref: { weekday?: string | null; day?: number | null; month?: string | null },
+  now: Date,
+): { year: number; monthIdx: number; day: number } | null {
+  if (typeof ref.day === 'number' && ref.day >= 1 && ref.day <= 31) {
+    return resolveDate(ref.day, ref.month ? monthIndex(ref.month) : null, now);
+  }
+  if (ref.weekday) {
+    const wd = weekdayIndex(ref.weekday);
+    if (wd !== null) return nextWeekdayDate(wd, now);
+  }
+  return null;
 }
 
 export interface VerifiedContradiction {
@@ -346,15 +379,7 @@ export function verifyClaim(claim: Claim, sentence: string, now: Date, ctx?: Ver
       if (!present(claim.quote)) return null;
       const holidays = ctx?.bankHolidays;
       if (!holidays || holidays.size === 0) return null;   // no data → can't verify, stay silent
-      // Resolve the concrete date the writer means: a day-of-month is
-      // unambiguous; else a bare weekday → its next occurrence.
-      let resolved: { year: number; monthIdx: number; day: number } | null = null;
-      if (typeof claim.day === 'number' && claim.day >= 1 && claim.day <= 31) {
-        resolved = resolveDate(claim.day, claim.month ? monthIndex(claim.month) : null, now);
-      } else if (claim.weekday) {
-        const wd = weekdayIndex(claim.weekday);
-        if (wd !== null) resolved = nextWeekdayDate(wd, now);
-      }
+      const resolved = resolveDateRef(claim, now);
       if (!resolved) return null;
       const title = holidays.get(isoDate(resolved));
       if (!title) return null;   // not a holiday → no contradiction
@@ -363,6 +388,21 @@ export function verifyClaim(claim: Claim, sentence: string, now: Date, ctx?: Ver
         quote: claim.quote,
         tip: `${dayName} the ${resolved.day}${ordinalSuffix(resolved.day)} is a bank holiday (${title})`,
         check: 'bank-holiday',
+      };
+    }
+    case 'outdoor_plan_weather': {
+      if (!present(claim.quote)) return null;
+      const precip = ctx?.precipByDate;
+      if (!precip || precip.size === 0) return null;   // no forecast → can't verify
+      const resolved = resolveDateRef(claim, now);
+      if (!resolved) return null;
+      const p = precip.get(isoDate(resolved));
+      if (typeof p !== 'number' || p < RAIN_THRESHOLD) return null;   // dry / beyond forecast → silent
+      const dayName = cap(WEEKDAYS[weekdayOf(resolved.year, resolved.monthIdx, resolved.day)]);
+      return {
+        quote: claim.quote,
+        tip: `${dayName}'s forecast is rain (${p}% chance)`,
+        check: 'weather',
       };
     }
     default:
