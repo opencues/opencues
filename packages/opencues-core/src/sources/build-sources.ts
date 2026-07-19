@@ -191,9 +191,10 @@ export interface BuildSourcesOptions {
    *  weather). Chrome passes a service-worker-routed fetch (a content-script
    *  fetch is blocked by the host page's CSP); native hosts omit it → global fetch. */
   worldDataFetch?: (url: string) => Promise<{ ok: boolean; json: () => Promise<unknown> }>;
-  /** Tier 5 — anchor location for the weather forecast. Omitted → the provider's
-   *  default (central London). Parsed from the `weather-location: lat,lon` scalar. */
-  weatherLocation?: { lat: number; lon: number };
+  /** Tier 5 — optional weather-location override (the `weather-location` scalar):
+   *  a city name ("Manchester") OR "lat,lon". Omitted → auto-detected from the
+   *  host timezone. A city name is geocoded by the provider. */
+  weatherLocation?: string;
   /** Enable RoutedWordSourceGroup (word-cues on plain text). When false,
    * NO word-cue LLM calls fire — words are not navigable as alternatives.
    * Domain blanks/fluid-blank still work. Defaults to false;
@@ -463,10 +464,15 @@ export function buildSourcesFromConfig(
       // hosts omit it → global fetch). Constructed per rebuild.
       // Tier 0.5 — GOV.UK bank holidays.
       const bankHolidays = new BankHolidayProvider({ fetchImpl: options.worldDataFetch, log: (m) => options.log?.(m) });
-      // Tier 5 — open-meteo precipitation forecast for the anchored location.
+      // Tier 5 — open-meteo forecast. Location auto-detected from the host
+      // timezone; the `weather-location` override is a city name OR "lat,lon".
+      const wl = options.weatherLocation?.trim();
+      const latlon = wl && /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(wl)
+        ? wl.split(',').map(s => Number(s.trim())) : null;
       const weather = new WeatherProvider({
-        latitude: options.weatherLocation?.lat,
-        longitude: options.weatherLocation?.lon,
+        latitude: latlon ? latlon[0] : undefined,
+        longitude: latlon ? latlon[1] : undefined,
+        locationName: latlon ? undefined : (wl || undefined),
         fetchImpl: options.worldDataFetch,
         log: (m) => options.log?.(m),
       });

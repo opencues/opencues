@@ -337,6 +337,16 @@ agent-provider: cerebras
 agent-model:    gpt-oss-120b
 ```
 
+**`weather-location` (Tier 5 contradiction cues)** — the outdoor-plan-vs-rain
+check auto-detects your location from the host timezone (e.g. `Europe/London`
+→ London), so nothing is needed by default. To override, set a **city name**
+(geocoded automatically) or `lat,lon`:
+
+```yaml
+weather-location: Manchester
+# weather-location: 53.48,-2.24
+```
+
 Spelling has no dedicated provider key — it's a regular word-scope
 cue at `defaults/cues/spelling/CUE.md`
 post-rename). It inherits per-cue frontmatter `provider:` / `model:`

@@ -233,18 +233,6 @@ function isAbortError(err: unknown): boolean {
   return !!err && typeof err === 'object' && (err as { name?: string }).name === 'AbortError';
 }
 
-/** Parse a `weather-location: lat,lon` scalar (Tier 5) into coordinates.
- *  Returns undefined for absent / malformed / out-of-range input (the weather
- *  provider then uses its default anchor). */
-function parseWeatherLocation(raw: string | undefined): { lat: number; lon: number } | undefined {
-  if (!raw) return undefined;
-  const m = raw.split(',').map(s => Number(s.trim()));
-  if (m.length !== 2 || !Number.isFinite(m[0]) || !Number.isFinite(m[1])) return undefined;
-  const [lat, lon] = m;
-  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return undefined;
-  return { lat, lon };
-}
-
 function isRoutedWordGroup(s: unknown): s is RoutedWordSourceGroupLike {
   return !!s
     && typeof s === 'object'
@@ -838,7 +826,7 @@ export class Resolver {
       enableSentenceCues: settings.get('sentence-cues-mode') === 'on',
       enableContradictionCues: settings.get('contradiction-cues-mode') === 'on',
       worldDataFetch: this.options.worldDataFetch,
-      weatherLocation: parseWeatherLocation(settings.get('weather-location')),
+      weatherLocation: settings.get('weather-location'),
       enableWordCues: settings.get('word-cues-mode') === 'on',
       // `max-thinking` (default on). Threaded into every LLM source's
       // dispatch ctx; @opencues/core/model-thinking.ts resolves the

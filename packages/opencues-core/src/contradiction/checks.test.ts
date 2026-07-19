@@ -365,3 +365,62 @@ describe('WeatherProvider', () => {
     assert.equal(p.current().size, 2);
   });
 });
+
+// ── Tier 5 — smart location (timezone auto-detect + city geocode) ─────────────
+import { cityFromTimeZone } from './weather';
+
+describe('WeatherProvider — smart location', () => {
+  it('cityFromTimeZone derives a geocodable city', () => {
+    assert.equal(cityFromTimeZone('Europe/London'), 'London');
+    assert.equal(cityFromTimeZone('America/New_York'), 'New York');
+    assert.equal(cityFromTimeZone('America/Argentina/Buenos_Aires'), 'Buenos Aires');
+    assert.equal(cityFromTimeZone('UTC'), null);
+    assert.equal(cityFromTimeZone('Etc/GMT+5'), null);
+    assert.equal(cityFromTimeZone(undefined), null);
+  });
+
+  it('geocodes an explicit city name (locationName override) then forecasts there', async () => {
+    let forecastUrl = '';
+    const fetchImpl = async (url: string) => {
+      if (url.includes('geocoding-api')) { assert.match(url, /name=Manchester/); return { ok: true, json: async () => ({ results: [{ latitude: 53.48, longitude: -2.24, name: 'Manchester', country: 'UK' }] }) }; }
+      forecastUrl = url; return { ok: true, json: async () => ({ daily: { time: ['2026-07-16'], precipitation_probability_max: [70] } }) };
+    };
+    const p = new WeatherProvider({ locationName: 'Manchester', fetchImpl });
+    await p.refresh(1000);
+    assert.match(forecastUrl, /latitude=53\.48&longitude=-2\.24/);
+    assert.equal(p.current().get('2026-07-16'), 70);
+  });
+
+  it('auto-detects from the timezone when no override is given', async () => {
+    let geoName = '';
+    const fetchImpl = async (url: string) => {
+      if (url.includes('geocoding-api')) { geoName = new URL(url).searchParams.get('name') ?? ''; return { ok: true, json: async () => ({ results: [{ latitude: 1, longitude: 2, name: geoName }] }) }; }
+      return { ok: true, json: async () => ({ daily: { time: ['2026-07-16'], precipitation_probability_max: [50] } }) };
+    };
+    const p = new WeatherProvider({ timeZone: 'America/New_York', fetchImpl });
+    await p.refresh(1000);
+    assert.equal(geoName, 'New York');   // derived from the timezone
+  });
+
+  it('explicit lat/lon skips geocoding entirely', async () => {
+    let geocoded = false;
+    const fetchImpl = async (url: string) => {
+      if (url.includes('geocoding-api')) { geocoded = true; return { ok: true, json: async () => ({ results: [] }) }; }
+      return { ok: true, json: async () => ({ daily: { time: ['2026-07-16'], precipitation_probability_max: [30] } }) };
+    };
+    const p = new WeatherProvider({ latitude: 10, longitude: 20, fetchImpl });
+    await p.refresh(1000);
+    assert.equal(geocoded, false);
+  });
+
+  it('falls back to London when geocoding finds nothing', async () => {
+    let forecastUrl = '';
+    const fetchImpl = async (url: string) => {
+      if (url.includes('geocoding-api')) return { ok: true, json: async () => ({ results: [] }) };
+      forecastUrl = url; return { ok: true, json: async () => ({ daily: { time: ['2026-07-16'], precipitation_probability_max: [40] } }) };
+    };
+    const p = new WeatherProvider({ locationName: 'Nowheresville', timeZone: 'UTC', fetchImpl });
+    await p.refresh(1000);
+    assert.match(forecastUrl, /latitude=51\.51&longitude=-0\.13/);
+  });
+});
