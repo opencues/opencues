@@ -16,7 +16,6 @@ import type { ConfigLoader } from './config-loader';
 import type { SpanFillState } from '../state/span-fill';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
 import type { AgentTaskState } from '../state/agent-task';
-import type { Advisory } from '../state/advisory-state';
 import type { ProviderHealth, ProviderHealthEvent } from './provider-health';
 import { formatUndoReport, type UndoApplyReport } from '../state/undo-journal';
 import { splitWords } from './navigation';
@@ -66,14 +65,6 @@ export interface StatuslineOptions {
    * buffer carrying the detail.
    */
   readonly undoStatus?: () => UndoApplyReport | null;
-  /**
-   * Optional. The fluid ADVISORY channel (AdvisoryState.all). When it
-   * returns a non-empty list, the payload carries an `advisories` block —
-   * passive, non-cycleable annotations (contradiction, …) that consumers
-   * render ALONGSIDE the normal cue/tip, not instead of it. Orthogonal to
-   * highlight state (like the kata block); merged in `maybeWrite`.
-   */
-  readonly advisories?: () => readonly Advisory[];
 }
 
 export interface StatuslinePayload {
@@ -127,15 +118,6 @@ export interface StatuslinePayload {
    * `undo _` / `redo _` fires. Carries applied/skipped counts + skip
    * reasons so hosts can render partial-failure honesty out-of-band.
    */
-  /**
-   * The fluid ADVISORY channel — passive, non-cycleable annotations
-   * (contradiction, …) surfaced ALONGSIDE the cue/tip, not instead of it.
-   * `advisory` is the single line for the advisory at the cursor (or the
-   * first, if the cursor isn't in any span) for simple consumers; `advisories`
-   * is the full list for rich consumers. null/absent when there are none.
-   */
-  advisory?: string | null;
-  advisories?: readonly Advisory[] | null;
   undo?: UndoApplyReport | null;
   /**
    * Pre-formatted one-line undo/redo confirmation (`↶ undid: …`), derived
@@ -439,27 +421,6 @@ export class Statusline {
     if (this.options.undoStatus) {
       const undo = this.options.undoStatus();
       payload = { ...payload, undo, undoConfirmation: undo ? formatUndoReport(undo) : null };
-    }
-    // Advisory block — the fluid channel, orthogonal to highlight state and to
-    // the cue/tip. `advisory` is the single line for the advisory under the
-    // cursor (or the first, when the cursor is elsewhere); `advisories` is the
-    // full list. Renders ALONGSIDE cueTip, never replacing it.
-    if (this.options.advisories) {
-      const list = this.options.advisories();
-      if (list.length > 0) {
-        // Show the advisory AT the cursor; if the cursor isn't in any span,
-        // fall back to the first. When several exist, prefix a `k/N` counter so
-        // the user knows there are more (their spans are all marked in-place —
-        // the counter is the statusline's "and there are others" signal).
-        const curIdx = typeof ctx.cursor === 'number'
-          ? list.findIndex(a => ctx.cursor! >= a.spanStart && ctx.cursor! < a.spanEnd)
-          : -1;
-        const idx = curIdx >= 0 ? curIdx : 0;
-        const prefix = list.length > 1 ? `${idx + 1}/${list.length} · ` : '';
-        payload = { ...payload, advisories: list, advisory: prefix + list[idx].message };
-      } else {
-        payload = { ...payload, advisories: null, advisory: null };
-      }
     }
     // Strip timestamp before content-comparison so identical-state renders
     // don't trigger writes purely because of clock change.

@@ -30,17 +30,6 @@
  * on Chrome today; the italic rule is included as a forward-compat
  * hint and silently ignored when not supported. */
 
-/* Advisory marks — the fluid advisory channel (contradiction, …). Every
- * flagged span gets an amber wavy underline so ALL advisories are visible in
- * place at once (the statusline shows the detail for the one at the cursor).
- * Unlike oc-dim/oc-active, the colour is a fixed literal (safe on any
- * background), so it lives here statically rather than being derived per-page.
- * text-decoration IS in the Custom Highlight API's supported-properties list. */
-::highlight(oc-advisory) {
-  text-decoration: underline wavy #ffcf5c;
-  text-decoration-skip-ink: none;
-}
-
 /* Status bar — fixed floating box. Plain square box: no rounded corners,
  * no shadow, no glow. Placement + width come from a --pos-* modifier
  * (set from the chrome-only `statusbarPosition` setting). ALL content
@@ -126,15 +115,4 @@
 .oc-status-bar--kata .oc-kata-body {
   font-weight: 400;
   opacity: 0.92;
-}
-
-/* Advisory row — the fluid channel (contradiction, …). Sits on its own line
- * beneath the cue line, tinted amber so it reads as a distinct warning. */
-.oc-status-bar .oc-advisory {
-  color: #ffcf5c;
-  margin-top: 3px;
-}
-.oc-status-bar .oc-status-line + .oc-advisory {
-  border-top: 1px solid rgba(255, 255, 255, 0.15);
-  padding-top: 3px;
 }

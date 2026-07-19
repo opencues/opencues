@@ -10,9 +10,6 @@ interface StatuslinePayload {
   alts?: readonly string[];
   cueTip?: string | null;
   cueBlank?: boolean;
-  /** Fluid advisory channel (contradiction, …) — shown ALONGSIDE the cue,
-   *  not instead of it. Already glyph-prefixed (e.g. "⚠ …"). */
-  advisory?: string | null;
   agentTask?: string | null;
   kata?: {
     step: number;
@@ -104,29 +101,6 @@ function show(text: string): void {
   div.classList.add('oc-status-bar--visible');
 }
 
-/** Show the cue line and the advisory line as SEPARATE rows (block divs, like
- *  kata's head/body) — the advisory is the fluid channel, so it sits on its own
- *  line beneath the cue rather than being ` | `-joined onto it. Either may be
- *  null; at least one is non-null (the caller hides otherwise). */
-function showLines(cueLine: string | null, advisory: string | null): void {
-  const div = ensureEl();
-  div.classList.remove('oc-status-bar--kata');
-  div.textContent = '';
-  if (cueLine) {
-    const row = document.createElement('div');
-    row.className = 'oc-status-line';
-    row.textContent = cueLine;
-    div.appendChild(row);
-  }
-  if (advisory) {
-    const row = document.createElement('div');
-    row.className = 'oc-advisory';
-    row.textContent = advisory;
-    div.appendChild(row);
-  }
-  div.classList.add('oc-status-bar--visible');
-}
-
 /** Show the bar in kata mode — a bold head row (badge + counter) over a
  *  word-wrapped coach body. Wider + multi-line via the `--kata` modifier. */
 function showKata(head: string, body: string): void {
@@ -201,20 +175,11 @@ export function applyStatuslinePayload(payload: StatuslinePayload): void {
     }
   }
 
-  // Advisory (contradiction, …) — the fluid channel. Coexists with the cue but
-  // on its OWN line (like kata's head/body), so it reads as a distinct warning
-  // rather than being ` | `-joined onto the tip. Independent of `active`: a
-  // contradiction surfaces even when no cue owns the cursor's span.
-  const advisory = payload.advisory ?? null;
-
-  // The cue line keeps the existing ` | ` agent-badge composition.
-  const cueLine = wordPart && agentBadge
+  const combined = wordPart && agentBadge
     ? `${wordPart} | ${agentBadge}`
     : (agentBadge ?? wordPart ?? null);
 
-  if (!cueLine && !advisory) { hide(); return; }
-  if (advisory) { showLines(cueLine, advisory); return; }
-  show(cueLine!);
+  if (combined) { show(combined); } else { hide(); }
 }
 
 /** Tear down the floating div — called when extension detaches. */

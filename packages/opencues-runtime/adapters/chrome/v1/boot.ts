@@ -365,7 +365,6 @@ export function boot(host: HostInfo): BootResult {
       onSnapshot: (payload) => host.statusSnapshotHook!(payload),
       kataStatus: () => kataCoach.status(),
       undoStatus: () => shared.undoJournal.recentApplyReport(8000),
-      advisories: () => shared.advisoryState.all(),
     }, configLoader, spanFillState, selectorSatelliteState, agentTaskState);
     statusline.subscribe();
   }
@@ -470,7 +469,7 @@ export function boot(host: HostInfo): BootResult {
       keywordBoundSlotIndices: (text: string) => shared.blankFill.scan(text).map(s => s.index),
       externallySuppressed: (text: string) => kataCoach.shouldSuppressResolve(text),
     }), spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState,
-    undefined, undefined, shared.undoJournal, shared.advisoryState);
+    undefined, undefined, shared.undoJournal);
     configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
     liveResolver = resolver;
 
