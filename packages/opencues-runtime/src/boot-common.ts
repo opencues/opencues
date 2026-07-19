@@ -1023,6 +1023,15 @@ export function buildSharedRuntime(
     };
   });
 
+  // Advisory in-place marks — every active advisory span, so the host can
+  // mark ALL contradictions at once (the statusline shows only the one at the
+  // cursor). Derived from AdvisoryState, which the resolver rebuilds each pass.
+  adapter.onRender(() => {
+    const list = advisoryState.all();
+    if (list.length === 0) return null;
+    return { advisoryRanges: list.map(a => ({ start: a.spanStart, end: a.spanEnd })) };
+  });
+
   // BlankFill subscribes only after ConfigLoader.load resolves so its
   // initial scan sees the populated blanksByWord map. Same pattern
   // both hosts had inline. Routing is deterministic (blankShapes) — the

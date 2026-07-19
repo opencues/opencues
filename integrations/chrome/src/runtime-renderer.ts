@@ -68,6 +68,7 @@ export function applyDirectives(target: HTMLElement, directives: RenderDirective
 
   const dimOffsets: PlainRange[] = [];
   const highlightOffsets: PlainRange[] = [];
+  const advisoryOffsets: PlainRange[] = [];
   // Per-colour buckets — coloredRanges from BlankLoadingAnimator carry
   // an `rgb` field (chrome opts into 'render-rgb-color' capability so
   // boot-common picks the rgb path). Group by colour so we register one
@@ -76,6 +77,7 @@ export function applyDirectives(target: HTMLElement, directives: RenderDirective
   for (const d of directives) {
     if (d.dimRanges) for (const r of d.dimRanges) dimOffsets.push({ start: r.start, end: r.end });
     if (d.highlight) highlightOffsets.push({ start: d.highlight.start, end: d.highlight.end });
+    if (d.advisoryRanges) for (const r of d.advisoryRanges) advisoryOffsets.push({ start: r.start, end: r.end });
     if (d.coloredRanges) {
       for (const cr of d.coloredRanges) {
         if (!cr.rgb) continue;
@@ -90,6 +92,7 @@ export function applyDirectives(target: HTMLElement, directives: RenderDirective
   // Walk DOM once, distributing matches into the right buckets.
   const dimRanges = plainOffsetsToDomRanges(target, dimOffsets);
   const activeRanges = plainOffsetsToDomRanges(target, highlightOffsets);
+  const advisoryRanges = plainOffsetsToDomRanges(target, advisoryOffsets);
 
   // The default mid-tone colour comes from the .oc-attached CSS class
   // on the contenteditable itself (see content.css), NOT from an
@@ -100,6 +103,12 @@ export function applyDirectives(target: HTMLElement, directives: RenderDirective
   if (!Highlight) return;
   highlights.set('oc-dim', new Highlight(...dimRanges));
   highlights.set('oc-active', new Highlight(...activeRanges));
+  // Advisory marks — every flagged span (contradiction, …) gets an amber wavy
+  // underline via ::highlight(oc-advisory). All visible at once; the statusline
+  // shows the detail for the one at the cursor. Only register when non-empty
+  // (delete when empty) so the common no-advisory case adds no highlight.
+  if (advisoryRanges.length > 0) highlights.set('oc-advisory', new Highlight(...advisoryRanges));
+  else highlights.delete('oc-advisory');
 
   // Per-colour loading highlights. Each unique colour gets a Highlight
   // named `oc-load-RRGGBB` (the hex without `#`). The CSS rule for

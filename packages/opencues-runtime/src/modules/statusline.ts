@@ -447,10 +447,16 @@ export class Statusline {
     if (this.options.advisories) {
       const list = this.options.advisories();
       if (list.length > 0) {
-        const cur = typeof ctx.cursor === 'number'
-          ? list.find(a => ctx.cursor! >= a.spanStart && ctx.cursor! < a.spanEnd)
-          : undefined;
-        payload = { ...payload, advisories: list, advisory: (cur ?? list[0]).message };
+        // Show the advisory AT the cursor; if the cursor isn't in any span,
+        // fall back to the first. When several exist, prefix a `k/N` counter so
+        // the user knows there are more (their spans are all marked in-place —
+        // the counter is the statusline's "and there are others" signal).
+        const curIdx = typeof ctx.cursor === 'number'
+          ? list.findIndex(a => ctx.cursor! >= a.spanStart && ctx.cursor! < a.spanEnd)
+          : -1;
+        const idx = curIdx >= 0 ? curIdx : 0;
+        const prefix = list.length > 1 ? `${idx + 1}/${list.length} · ` : '';
+        payload = { ...payload, advisories: list, advisory: prefix + list[idx].message };
       } else {
         payload = { ...payload, advisories: null, advisory: null };
       }

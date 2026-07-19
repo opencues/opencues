@@ -79,6 +79,13 @@ export interface RenderDirectives {
   // index, or `bright_*`); chrome consumes `rgb` (a #rrggbb string).
   // Both can be set; the host picks the one it can render.
   coloredRanges?: readonly ColoredRange[];
+  // ─── Advisory ranges (fluid advisory channel) ──────────────────────
+  // Character ranges of active advisories (contradiction, …) so the host
+  // can MARK them in place — every flagged span visible at once, however
+  // many there are (the statusline only shows the one at the cursor). Chrome
+  // paints these as an amber wavy underline via the CSS Custom Highlight API
+  // (`::highlight(oc-advisory)`); native hosts may ignore or ANSI-underline.
+  advisoryRanges?: readonly Range[];
 }
 
 export interface ColoredRange extends Range {
