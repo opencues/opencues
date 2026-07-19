@@ -186,6 +186,10 @@ export interface BuildSourcesOptions {
    *  mismatch, split-the-bill math — buffer + clock only, no LLM/network).
    *  Defaults to false; flip on via OPENCUES.md `contradiction-cues-mode: on`. */
   enableContradictionCues?: boolean;
+  /** Tier 0.5 — host-provided fetch for the GOV.UK bank-holiday cache. Chrome
+   *  passes a service-worker-routed fetch (a content-script fetch is blocked by
+   *  the host page's CSP); native hosts omit it → global fetch. */
+  bankHolidayFetch?: (url: string) => Promise<{ ok: boolean; json: () => Promise<unknown> }>;
   /** Enable RoutedWordSourceGroup (word-cues on plain text). When false,
    * NO word-cue LLM calls fire — words are not navigable as alternatives.
    * Domain blanks/fluid-blank still work. Defaults to false;
@@ -453,7 +457,7 @@ export function buildSourcesFromConfig(
       // by the source (TTL-gated), read synchronously by the workday_on_holiday
       // verifier. Uses global fetch (present on every host: Node 18+, Bun,
       // chrome). Constructed per rebuild — the daily TTL keeps re-fetches rare.
-      const bankHolidays = new BankHolidayProvider({ log: (m) => options.log?.(m) });
+      const bankHolidays = new BankHolidayProvider({ fetchImpl: options.bankHolidayFetch, log: (m) => options.log?.(m) });
       sources.push(new ContradictionLlmSource({
         httpAdapter: withFallback(options.httpAdapter, cxLlm.fallback),
         provider: cxLlm.provider,
