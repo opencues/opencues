@@ -424,3 +424,72 @@ describe('WeatherProvider — smart location', () => {
     assert.match(forecastUrl, /latitude=51\.51&longitude=-0\.13/);
   });
 });
+
+// ── Tier 5b — TfL line disruption ─────────────────────────────────────────────
+import { TflProvider, normalizeLine } from './tfl';
+
+describe('verifyClaim — tube_line_plan (Tier 5b, TfL disruption)', () => {
+  const disrupted = new Map([['victoria', 'Severe Delays'], ['piccadilly', 'Part Closure, Part Suspended']]);
+  const ctx = { disruptedLines: disrupted };
+
+  it('normalizeLine strips "line"/"the" and lowercases', () => {
+    assert.equal(normalizeLine('Victoria'), 'victoria');
+    assert.equal(normalizeLine('the Central line'), 'central');
+    assert.equal(normalizeLine('Waterloo & City'), 'waterloo & city');
+  });
+
+  it('flags a plan on a disrupted line', () => {
+    const v = verifyClaim({ type: 'tube_line_plan', line: 'Victoria', quote: 'take the Victoria line' }, 'ill take the Victoria line', NOW, ctx);
+    assert.ok(v);
+    assert.match(v!.tip, /the Victoria line has Severe Delays right now/);
+  });
+
+  it('flags with the "the … line" phrasing normalized in the tip', () => {
+    const v = verifyClaim({ type: 'tube_line_plan', line: 'the Piccadilly line', quote: 'get the Piccadilly line' }, 'get the Piccadilly line', NOW, ctx);
+    assert.ok(v);
+    assert.match(v!.tip, /the Piccadilly line has Part Closure, Part Suspended right now/);
+  });
+
+  it('is SILENT for a line in Good Service (not in the map)', () => {
+    assert.equal(verifyClaim({ type: 'tube_line_plan', line: 'Jubilee', quote: 'the Jubilee line' }, 'the Jubilee line', NOW, ctx), null);
+  });
+
+  it('is SILENT when no TfL data is available', () => {
+    assert.equal(verifyClaim({ type: 'tube_line_plan', line: 'Victoria', quote: 'Victoria line' }, 'Victoria line', NOW, { disruptedLines: new Map() }), null);
+    assert.equal(verifyClaim({ type: 'tube_line_plan', line: 'Victoria', quote: 'Victoria line' }, 'Victoria line', NOW), null);
+  });
+
+  it('GROUNDING: rejects a claim whose quote is not in the sentence', () => {
+    assert.equal(verifyClaim({ type: 'tube_line_plan', line: 'Victoria', quote: 'Victoria line' }, 'no transit here', NOW, ctx), null);
+  });
+});
+
+describe('TflProvider', () => {
+  const statusJson = [
+    { name: 'Victoria', lineStatuses: [{ statusSeverity: 6, statusSeverityDescription: 'Severe Delays' }] },
+    { name: 'Jubilee', lineStatuses: [{ statusSeverity: 10, statusSeverityDescription: 'Good Service' }] },
+    { name: 'Piccadilly', lineStatuses: [{ statusSeverity: 4, statusSeverityDescription: 'Part Closure' }, { statusSeverity: 20, statusSeverityDescription: 'Part Suspended' }] },
+    { name: 'Central', lineStatuses: [{ statusSeverity: 9, statusSeverityDescription: 'Minor Delays' }] },
+  ];
+  const stubFetch = (ok = true) => async () => ({ ok, json: async () => statusJson });
+
+  it('caches only disrupted lines (Good Service excluded), deduped description', async () => {
+    const p = new TflProvider({ fetchImpl: stubFetch(), ttlMs: 1000 });
+    await p.refresh(1000);
+    assert.equal(p.current().get('victoria'), 'Severe Delays');
+    assert.equal(p.current().get('piccadilly'), 'Part Closure, Part Suspended');
+    assert.equal(p.current().has('jubilee'), false);   // Good Service
+    assert.equal(p.current().has('central'), false);   // Minor Delays excluded (noise)
+    assert.equal(p.current().size, 2);
+  });
+
+  it('keeps last-good on a failed refresh', async () => {
+    let ok = true;
+    const p = new TflProvider({ fetchImpl: async () => ({ ok, json: async () => statusJson }), ttlMs: 0 });
+    await p.refresh(1000);
+    assert.equal(p.current().size, 2);
+    ok = false;
+    await p.refresh(2000);
+    assert.equal(p.current().size, 2);
+  });
+});
