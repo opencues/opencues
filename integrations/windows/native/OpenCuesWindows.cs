@@ -189,6 +189,13 @@ namespace OpenCues
         [DllImport("user32.dll")] static extern bool RedrawWindow(IntPtr hwnd, IntPtr rectUpdate, IntPtr hrgnUpdate, uint flags);
         const uint RDW_UPDATENOW = 0x0100;
 
+        // Capture source for the overlay (perf/quality opt 1, 2026-07-21):
+        // the attached field's own HWND when it has one. PrintWindow on it
+        // reads the CONTROL's surface directly - no DWM composition wait,
+        // no occluding windows, no self-capture concern. Zero for fields
+        // without a per-field HWND (WPF, Chromium) -> screen fallback.
+        internal static IntPtr AttachedHwndForCapture() { return _attachedHwnd; }
+
         static void NudgeTargetPaint()
         {
             if (!_attachedIsEdit) return;
@@ -3511,55 +3518,118 @@ namespace OpenCues
             // frame) and the ink is hidden anyway; the settle path runs a
             // fresh UpdateOverlay that captures at the final position.
             if (WindowsShim._scrollHidden) return;
-            // Paint-settle guard: right after a runtime write the app hasn't
-            // repainted yet - a capture now grabs the OLD word's pixels.
-            // Skip this pass (rects are already correct; OnPaint's underline
-            // fallback covers the gap); the fast cadence retries within
-            // ~8-16ms of the app's paint.
-            if (unchecked(Environment.TickCount - WindowsShim._lastWriteAt) < WindowsShim.WRITE_SETTLE_MS) return;
+
+            // PREFERRED SOURCE: the field's own window surface, rendered
+            // once per batch via PrintWindow(PW_RENDERFULLCONTENT) and
+            // cropped per span. Reads the CONTROL's pixels, not the
+            // composited screen - so there is no DWM vblank wait (the new
+            // word is available the instant its layout exists, i.e.
+            // immediately after the paint nudge), no occluding windows in
+            // the grab, no self-capture concern, and NO paint-settle guard
+            // needed. Fields without a per-field HWND fall back to the
+            // legacy screen path below.
+            SD.Bitmap winBmp = null;
+            int winL = 0, winT = 0;
+            IntPtr srcHwnd = WindowsShim.AttachedHwndForCapture();
+            if (srcHwnd != IntPtr.Zero) winBmp = TryRenderWindow(srcHwnd, out winL, out winT);
+
             List<OverlaySpanRect> save = null;
-            if (!_captureExcluded)
+            if (winBmp == null)
             {
-                // Fallback (pre-2004 Win10): CopyFromScreen WOULD see our own
-                // ink, so hide it for one composited frame first. Racy - if
-                // DWM hasn't flushed the clear, we capture our own patch and
-                // re-dim it (compounding toward invisibility) - which is why
-                // the capture-exclusion path above is strongly preferred.
-                save = _rects;
-                _rects = new List<OverlaySpanRect>();
-                Invalidate();
-                Update();
-                Thread.Sleep(35);
+                // Screen fallback keeps its guards: the paint-settle wait
+                // (screen shows the OLD word until DWM composites the app's
+                // paint) and, pre-2004, the hide-our-own-ink dance.
+                if (unchecked(Environment.TickCount - WindowsShim._lastWriteAt) < WindowsShim.WRITE_SETTLE_MS) return;
+                if (!_captureExcluded)
+                {
+                    save = _rects;
+                    _rects = new List<OverlaySpanRect>();
+                    Invalidate();
+                    Update();
+                    Thread.Sleep(35);
+                }
             }
             int ok = 0, failed = 0;
             bool anyCold = false;
             foreach (var m in missing) if (!m.Hot) { anyCold = true; break; }
-            foreach (var r in missing)
+            try
             {
-                try
+                foreach (var r in missing)
                 {
-                    var bmp = new SD.Bitmap(Math.Max(2, (int)Math.Ceiling(r.W)), Math.Max(2, (int)Math.Ceiling(r.H)),
-                        SD.Imaging.PixelFormat.Format32bppArgb);
-                    using (var g = SD.Graphics.FromImage(bmp))
-                        g.CopyFromScreen((int)r.X, (int)r.Y, 0, 0, new SD.Size(bmp.Width, bmp.Height));
-                    DimBitmap(bmp, r.Active);
-                    if (_capCache.Count > 64) ClearCapCache();   // runaway backstop
-                    _capCache[CapKey(r)] = bmp;
-                    ok++;
-                }
-                catch (Exception ex)
-                {
-                    failed++;
-                    if (failed == 1) WindowsShim.OverlayLog("capture failed: " + ex.Message);
+                    try
+                    {
+                        int w = Math.Max(2, (int)Math.Ceiling(r.W));
+                        int h = Math.Max(2, (int)Math.Ceiling(r.H));
+                        SD.Bitmap bmp = null;
+                        if (winBmp != null)
+                        {
+                            int cx = (int)r.X - winL, cy = (int)r.Y - winT;
+                            if (cx >= 0 && cy >= 0 && cx + w <= winBmp.Width && cy + h <= winBmp.Height)
+                                bmp = winBmp.Clone(new SD.Rectangle(cx, cy, w, h), SD.Imaging.PixelFormat.Format32bppArgb);
+                        }
+                        if (bmp == null)
+                        {
+                            bmp = new SD.Bitmap(w, h, SD.Imaging.PixelFormat.Format32bppArgb);
+                            using (var g = SD.Graphics.FromImage(bmp))
+                                g.CopyFromScreen((int)r.X, (int)r.Y, 0, 0, new SD.Size(w, h));
+                        }
+                        DimBitmap(bmp, r.Active);
+                        if (_capCache.Count > 64) ClearCapCache();   // runaway backstop
+                        _capCache[CapKey(r)] = bmp;
+                        ok++;
+                    }
+                    catch (Exception ex)
+                    {
+                        failed++;
+                        if (failed == 1) WindowsShim.OverlayLog("capture failed: " + ex.Message);
+                    }
                 }
             }
-            if (save != null) _rects = save;
+            finally
+            {
+                if (winBmp != null) { try { winBmp.Dispose(); } catch { } }
+                if (save != null) _rects = save;
+            }
             // Hot-only batches recapture at ~3Hz while the caret sits in a
             // word - logging those would flood the daemon log. Cold batches
             // and failures are the diagnostic signal.
             if (failed > 0 || (ok > 0 && anyCold))
                 WindowsShim.OverlayLog("captured " + ok + " span(s)" + (failed > 0 ? (", " + failed + " failed") : "")
-                    + " (excl=" + _captureExcluded + ")");
+                    + " (src=" + (winBmp != null ? "window" : "screen") + ", excl=" + _captureExcluded + ")");
+        }
+
+        // Render the source window's CURRENT content into a bitmap via
+        // PrintWindow. PW_RENDERFULLCONTENT (Win 8.1+) makes D2D/DComp-
+        // drawn controls (Win11 Notepad's RichEditD2DPT) render too.
+        // Returns null on any failure -> caller uses the screen fallback.
+        [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr hwnd, IntPtr hdc, uint flags);
+        [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd, out WinRect rect);
+        const uint PW_RENDERFULLCONTENT = 0x00000002;
+        [StructLayout(LayoutKind.Sequential)]
+        struct WinRect { public int Left, Top, Right, Bottom; }
+
+        static SD.Bitmap TryRenderWindow(IntPtr hwnd, out int left, out int top)
+        {
+            left = 0; top = 0;
+            try
+            {
+                WinRect rc;
+                if (!GetWindowRect(hwnd, out rc)) return null;
+                int w = rc.Right - rc.Left, h = rc.Bottom - rc.Top;
+                if (w < 2 || h < 2 || w > 8192 || h > 8192) return null;
+                var bmp = new SD.Bitmap(w, h, SD.Imaging.PixelFormat.Format32bppArgb);
+                bool ok;
+                using (var g = SD.Graphics.FromImage(bmp))
+                {
+                    IntPtr hdc = g.GetHdc();
+                    try { ok = PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT); }
+                    finally { g.ReleaseHdc(hdc); }
+                }
+                if (!ok) { bmp.Dispose(); return null; }
+                left = rc.Left; top = rc.Top;
+                return bmp;
+            }
+            catch { return null; }
         }
 
         // Collapse every pixel to its luminance, then pull it toward the
