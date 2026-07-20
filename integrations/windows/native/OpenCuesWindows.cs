@@ -213,6 +213,44 @@ namespace OpenCues
         }
         static void BumpFastPoll() { _fastUntil = Environment.TickCount + FAST_WINDOW_MS; }
 
+        // Hide-on-keydown + fade-back-in (anti-flash steps 1+4, 2026-07-20).
+        // A text-mutating keydown into a marked field zeroes the overlay
+        // alpha IMMEDIATELY from the hook thread - before the app has even
+        // inserted the character - so stale ink is never visible during
+        // typing. ~TYPING_QUIET_MS after the last such keydown the poll
+        // loop fades the ink back in over ~150ms with freshly-resolved
+        // rects. Cycling chords / plain arrows / Escape never hide (the
+        // user needs visible marks to navigate them).
+        static volatile bool _inkHidden;
+        static int _typingQuietAt;
+        const int TYPING_QUIET_MS = 500;
+
+        static bool IsTextMutatingKey(uint vk)
+        {
+            if (vk >= 0x30 && vk <= 0x5A) return true;    // 0-9, A-Z
+            if (vk >= 0x60 && vk <= 0x6F) return true;    // numpad digits + operators
+            if (vk >= 0xBA && vk <= 0xE2) return true;    // OEM punctuation range
+            switch (vk)
+            {
+                case 0x08:   // Backspace
+                case 0x09:   // Tab
+                case 0x0D:   // Enter
+                case 0x20:   // Space
+                case 0x2E:   // Delete
+                    return true;
+            }
+            return false;
+        }
+
+        static void MaybeRestoreInk()
+        {
+            if (!_inkHidden) return;
+            if (unchecked(Environment.TickCount - _typingQuietAt) < 0) return;
+            _inkHidden = false;
+            var ov = _overlay;
+            if (ov != null) ov.FadeInInk();   // fades to the style's steady alpha
+        }
+
         // Sub-15ms waits need the system timer resolution raised - the
         // default ~15.6ms quantum silently rounds an 8ms WaitOne up to a
         // full quantum. Raised ONLY while the fast window is active (the
@@ -375,6 +413,7 @@ namespace OpenCues
                         PollFocus();
                         MaybePollCaret();      // phase 2: real caret -> daemon cursor events
                         MaybeRefreshOverlay(); // phase 2: track window moves/scrolls
+                        MaybeRestoreInk();     // phase 2: fade ink back in after typing quiets
                     }
                     else
                     {
@@ -2381,7 +2420,22 @@ namespace OpenCues
                     // the re-rects visually keep up with the reflow. This is
                     // the earliest possible signal - the hook sees the key
                     // BEFORE the app inserts the character.
-                    if (down && _attached && _enabled && _fieldCycling) BumpFastPoll();
+                    if (down && _attached && _enabled && _fieldCycling)
+                    {
+                        BumpFastPoll();
+                        // Text-mutating key: hide the ink NOW (instant, from
+                        // this thread), fade back in after the typing quiets.
+                        if (IsTextMutatingKey(vk))
+                        {
+                            _typingQuietAt = Environment.TickCount + TYPING_QUIET_MS;
+                            if (!_inkHidden)
+                            {
+                                _inkHidden = true;
+                                var ov = _overlay;
+                                if (ov != null) ov.HideInkNow();
+                            }
+                        }
+                    }
                     return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
                 }
                 if (!(_attached && _enabled && _fieldCycling && Connected))
@@ -3008,23 +3062,82 @@ namespace OpenCues
             }
         }
 
+        // Cached for cross-thread alpha writes (the keyboard hook thread
+        // calls HideInkNow; Control.Handle is UI-thread-affine).
+        IntPtr _hwnd = IntPtr.Zero;
+        // Ink hidden by the typing suppressor. Written from the hook thread,
+        // read on the UI thread - volatile.
+        volatile bool _inkSuppressed;
+        SWF.Timer _fadeTimer;
+        int _fadeAlpha;
+
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
+            _hwnd = Handle;
             ApplyLayered();
             try { _captureExcluded = SetWindowDisplayAffinity(Handle, WDA_EXCLUDEFROMCAPTURE); }
             catch { _captureExcluded = false; }
             WindowsShim.OverlayLog("created (capture-excluded=" + _captureExcluded + ")");
         }
 
+        byte SteadyAlpha()
+        {
+            // COLORREF alpha target per style: wash is translucent by design,
+            // the others paint at full opacity.
+            return _style == "wash" ? (byte)110 : (byte)255;
+        }
+
+        void SetInkAlpha(byte alpha)
+        {
+            uint key = (uint)(KeyColor.R | (KeyColor.G << 8) | (KeyColor.B << 16));
+            var h = _hwnd;
+            if (h == IntPtr.Zero) return;
+            try { SetLayeredWindowAttributes(h, key, alpha, LWA_COLORKEY | LWA_ALPHA); } catch { }
+        }
+
         void ApplyLayered()
         {
-            // COLORREF is 0x00BBGGRR. Wash rides the whole-window alpha (the
-            // keyed pixels stay fully transparent either way); the other two
-            // styles paint at full opacity.
-            byte alpha = _style == "wash" ? (byte)110 : (byte)255;
-            uint key = (uint)(KeyColor.R | (KeyColor.G << 8) | (KeyColor.B << 16));
-            try { SetLayeredWindowAttributes(Handle, key, alpha, LWA_COLORKEY | LWA_ALPHA); } catch { }
+            SetInkAlpha(_inkSuppressed ? (byte)0 : SteadyAlpha());
+        }
+
+        // INSTANT hide, callable from the keyboard-hook thread: alpha to 0 in
+        // one user32 call, no message-loop round trip. Rects/captures keep
+        // updating invisibly underneath so the fade-in shows CURRENT state.
+        public void HideInkNow()
+        {
+            _inkSuppressed = true;
+            SetInkAlpha(0);
+        }
+
+        // Fade the ink back to the style's steady alpha over ~150ms.
+        public void FadeInInk()
+        {
+            try
+            {
+                BeginInvoke((Action)(delegate
+                {
+                    _inkSuppressed = false;
+                    if (_fadeTimer == null)
+                    {
+                        _fadeTimer = new SWF.Timer();
+                        _fadeTimer.Interval = 25;
+                        _fadeTimer.Tick += FadeTick;
+                    }
+                    _fadeAlpha = 0;
+                    _fadeTimer.Start();
+                }));
+            }
+            catch { /* form closing - cosmetic */ }
+        }
+
+        void FadeTick(object sender, EventArgs e)
+        {
+            if (_inkSuppressed) { _fadeTimer.Stop(); return; }   // re-hidden mid-fade
+            int target = SteadyAlpha();
+            _fadeAlpha += 45;                                    // ~6 steps x 25ms
+            if (_fadeAlpha >= target) { _fadeAlpha = target; _fadeTimer.Stop(); }
+            SetInkAlpha((byte)_fadeAlpha);
         }
 
         // Called from the shim's poll thread. Null/empty rects hide the ink.
