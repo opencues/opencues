@@ -104,7 +104,7 @@ if (-not $Hostd -and $linuxIntDir) { $Hostd = "$linuxIntDir/src/hostd.cjs" }
 
 # Self-heal a stale persisted hostd path. tray.json outlives repo moves and
 # deleted worktrees, and a dead path makes the tray sit in the systray with
-# NO daemon and NO error — the icon must correlate with reality. If the
+# NO daemon and NO error - the icon must correlate with reality. If the
 # resolved path no longer exists inside WSL, fall back to the path derived
 # from THIS launch location (the .vbs/.ps1 the user actually ran).
 if ($Mode -ne 'spawn-win' -and $Hostd) {
@@ -132,7 +132,7 @@ $hbUnc = "\\wsl.localhost\$Distro\tmp\oc-win-hb-$Port"
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
-$refs = @('System', 'System.Core', 'UIAutomationClient', 'UIAutomationTypes', 'WindowsBase', 'Accessibility')
+$refs = @('System', 'System.Core', 'UIAutomationClient', 'UIAutomationTypes', 'WindowsBase', 'Accessibility', 'System.Windows.Forms', 'System.Drawing')
 try { Add-Type -Path $csPath -ReferencedAssemblies $refs -ErrorAction Stop }
 catch { [System.Windows.Forms.MessageBox]::Show("OpenCues shim failed to compile:`n$($_.Exception.Message)", 'OpenCues') | Out-Null; exit 1 }
 

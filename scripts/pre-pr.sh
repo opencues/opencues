@@ -64,6 +64,7 @@ step "windows native ASCII guard" bash scripts/check-windows-native-ascii.sh
 # integrations/windows/IMPLEMENTATION.md § "Newline rendering".
 step "windows newline-rendering invariants" node integrations/windows/tests/newline-invariants.mjs
 step "windows clipboard/stale-model invariants" node integrations/windows/tests/clipboard-invariants.mjs
+step "windows phase-2 render/hook/overlay invariants" node integrations/windows/tests/render-wire-invariants.mjs
 
 # ─── 1b. Legacy-names lint ─────────────────────────────────────────
 # Catches the rename-drift class — old feature names lingering in    # LEGACY-NAME-ALLOW: aggregator comment

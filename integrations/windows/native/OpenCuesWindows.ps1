@@ -53,7 +53,9 @@ $refs = @(
     'UIAutomationClient',
     'UIAutomationTypes',
     'WindowsBase',
-    'Accessibility'      # MSAA/IA2 IAccessible - the Chromium/Electron read path
+    'Accessibility',           # MSAA/IA2 IAccessible - the Chromium/Electron read path
+    'System.Windows.Forms',    # phase-2 overlay window (OverlayForm)
+    'System.Drawing'           # phase-2 overlay painting
 )
 
 try {

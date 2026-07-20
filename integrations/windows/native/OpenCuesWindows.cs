@@ -8,10 +8,23 @@
 //   3. Apply `set-text` commands the daemon sends back (LLM
 //      substitutions, blank fills) via UIA ValuePattern.SetValue.
 //
-// Phase 1: read/write only - no keyboard hook, no overlay. The daemon
-// runs the host as `supportsCycling:false`, so nothing needs chord
-// interception or colour. Phase 2 adds a WH_KEYBOARD_LL hook + a
-// layered click-through overlay here and flips supportsCycling.
+// Phase 2 (this build) adds, on top of the phase-1 read/write core:
+//   * a WH_KEYBOARD_LL hook that intercepts Ctrl+Alt+arrows while a
+//     cycling-capable field is attached and forwards them to the daemon
+//     (swallowed; re-injected with an extra-info mark if the runtime
+//     did not consume them),
+//   * a layered click-through overlay (OverlayForm) that paints the
+//     runtime's dim/highlight char ranges as screen rects resolved via
+//     UIA TextPattern GetBoundingRectangles - three switchable looks:
+//     underline / wash / repaint (style rides the `render` message,
+//     picked by the daemon's OPENCUES_WIN_OVERLAY_STYLE env),
+//   * real caret tracking via native IUIAutomationTextPattern2
+//     GetCaretRange (falls back to the phase-1 caret-at-end model).
+// Per-field: only UIA-attached fields with a managed TextPattern get
+// the phase-2 treatment ("cycling": true on the focus message); MSAA/
+// Electron fields keep the phase-1 no-cycling profile. Kill switches:
+// OPENCUES_WIN_HOOK=0 (no chord hook), OPENCUES_WIN_OVERLAY=0 (no
+// overlay paint), and daemon-side OPENCUES_WIN_PHASE2=0 (whole profile).
 //
 // Designed to compile two ways:
 //   * `Add-Type` inside Windows PowerShell 5.1 (.NET Framework) - the
@@ -35,6 +48,10 @@ using System.Threading;
 using System.Windows.Automation;
 using System.Windows.Automation.Text;   // TextPatternRange - caret restore on Chromium-UIA fields
 using Accessibility;   // MSAA/IA2 IAccessible - the Chromium/Electron read path
+// Aliased (not opened) to avoid name collisions with the UIA namespaces;
+// only the phase-2 overlay uses them.
+using SWF = System.Windows.Forms;
+using SD = System.Drawing;
 
 namespace OpenCues
 {
@@ -81,7 +98,11 @@ namespace OpenCues
         static string _lastSentText = null;
         static string _expectedEcho = null;   // value we just wrote; ignore its read-back
         static string _lastApp = null;        // process name of the attached field's app
-        static bool _attached = false;
+        static volatile bool _attached = false;
+        // Phase 2: the attached field can host the overlay + chord hook
+        // (UIA attach with a managed TextPattern). Written on the poll
+        // thread, read by the keyboard-hook thread - volatile.
+        static volatile bool _fieldCycling = false;
 
         // Ring of recent self-writes (value + tick). The loading animation
         // writes a frame every ~50ms but the poll reads every ~150ms, so a
@@ -193,6 +214,8 @@ namespace OpenCues
             int p;
             if (!string.IsNullOrEmpty(envPoll) && int.TryParse(envPoll, out p) && p >= 30) _pollMs = p;
             Console.WriteLine("OpenCues Windows shim starting -> " + _host + ":" + _port);
+            EnsureDpiAware();   // overlay rects are physical px; must run before any window exists
+            StartKeyHook();
             _pollThreadRef = new Thread(PollThread);
             _pollThreadRef.IsBackground = true;
             _pollThreadRef.SetApartmentState(ApartmentState.MTA);
@@ -209,6 +232,8 @@ namespace OpenCues
         public static void Stop()
         {
             _running = false;
+            try { StopKeyHook(); } catch { }
+            try { StopOverlay(); } catch { }
             try { UnhookElementEvents(); } catch { }
             try { if (_wakeHandler != null) { Automation.RemoveAutomationFocusChangedEventHandler(_wakeHandler); _wakeHandler = null; } } catch { }
             try { _wake.Set(); } catch { }   // release a loop parked in WaitOne
@@ -309,6 +334,8 @@ namespace OpenCues
                     if (_enabled)
                     {
                         PollFocus();
+                        MaybePollCaret();      // phase 2: real caret -> daemon cursor events
+                        MaybeRefreshOverlay(); // phase 2: track window moves/scrolls
                     }
                     else
                     {
@@ -416,7 +443,17 @@ namespace OpenCues
                         ApplySetText(Str(map, "text"));
                         break;
                     case "set-cursor":
-                        // Phase 1: caret is assumed at end; nothing to do.
+                        // Phase 2: position the caret (EM_SETSEL on Edit-family
+                        // HWNDs, native-UIA collapsed Select elsewhere).
+                        ApplySetCursor(Num(map, "cursor", -1));
+                        break;
+                    case "render":
+                        // Phase 2: dim/highlight char spans for the overlay.
+                        HandleRenderMsg(map);
+                        break;
+                    case "key-result":
+                        // Phase 2: the runtime's verdict on a chord we swallowed.
+                        HandleKeyResult(map);
                         break;
                     case "pong":
                         break;
@@ -450,7 +487,12 @@ namespace OpenCues
             //    writable ValuePattern (or an editable TextPattern).
             if (IsAttachable(el, app))
             {
-                StreamAttachment(elId, app, ReadValue(el), AttachMode.Uia);
+                // Phase 2 capability probe: a managed TextPattern is what the
+                // overlay needs for GetBoundingRectangles, so it decides the
+                // per-field cycling answer (Chromium-UIA composers like Slack
+                // expose TextPattern only to a NATIVE client -> stay phase 1).
+                bool cycling = HasManagedTextPattern(el);
+                StreamAttachment(elId, app, ReadValue(el), AttachMode.Uia, cycling);
                 HookElementEvents(el, elId);
                 return;
             }
@@ -468,7 +510,7 @@ namespace OpenCues
                 string mtext; int mnode;
                 if (TryReadFocusedElectron(out mtext, out mnode))
                 {
-                    StreamAttachment(mnode, app, mtext, AttachMode.Msaa);
+                    StreamAttachment(mnode, app, mtext, AttachMode.Msaa, false);
                     return;
                 }
             }
@@ -488,14 +530,16 @@ namespace OpenCues
         // buffer boundary: it fires a focus event so the daemon resets buffer
         // state (the canonical multi-buffer trigger - see the integration
         // CLAUDE.md "Multi-buffer state" note).
-        static void StreamAttachment(int elId, string app, string readText, AttachMode mode)
+        static void StreamAttachment(int elId, string app, string readText, AttachMode mode, bool cycling)
         {
             _lastApp = app;
             if (elId != _lastElementId)
             {
                 _lastElementId = elId;
                 _attachMode = mode;
+                _fieldCycling = cycling;
                 _lastSentText = readText;
+                _lastSentCaret = -1;
                 _expectedEcho = null;
                 _recentWrites.Clear();
                 _bracketOpen = false;
@@ -503,9 +547,11 @@ namespace OpenCues
                 StatusLine = "on: " + (app ?? "text field");
                 Log("info", "attached: " + (app ?? "text field") + " ("
                     + (readText == null ? 0 : readText.Length) + " chars, "
-                    + (mode == AttachMode.Msaa ? "MSAA" : "UIA") + ")");
+                    + (mode == AttachMode.Msaa ? "MSAA" : "UIA")
+                    + (cycling ? ", cycling" : "") + ")");
                 SendRaw("{\"t\":\"focus\",\"app\":" + JStr(app) + ",\"text\":" + JStr(readText)
-                    + ",\"cursor\":" + (readText == null ? 0 : readText.Length).ToString(CultureInfo.InvariantCulture) + "}");
+                    + ",\"cursor\":" + CaretOrEnd(readText).ToString(CultureInfo.InvariantCulture)
+                    + ",\"cycling\":" + (cycling ? "true" : "false") + "}");
                 return;
             }
 
@@ -563,13 +609,16 @@ namespace OpenCues
             _lastSentText = cur;
             _expectedEcho = null;
             SendRaw("{\"t\":\"text\",\"text\":" + JStr(cur)
-                + ",\"cursor\":" + cur.Length.ToString(CultureInfo.InvariantCulture) + "}");
+                + ",\"cursor\":" + CaretOrEnd(cur).ToString(CultureInfo.InvariantCulture) + "}");
         }
 
         static void LeaveAttached(string app)
         {
             if (!_attached) { _lastElementId = int.MinValue; if (_enabled) StatusLine = "idle"; return; }
             _attached = false;
+            _fieldCycling = false;
+            _lastSentCaret = -1;
+            ClearOverlaySpans();
             _lastElementId = int.MinValue;
             _lastSentText = null;
             _expectedEcho = null;
@@ -586,7 +635,7 @@ namespace OpenCues
 
         // --- UIA read/write ---------------------------------------------
 
-        // WordPad's RICHEDIT50W (via the MSAA→UIA proxy) includes RichEdit's
+        // WordPad's RICHEDIT50W (via the MSAA->UIA proxy) includes RichEdit's
         // phantom FINAL PARAGRAPH MARK in the ValuePattern value. Left alone
         // it leaks into the daemon's mirror as if the user typed a trailing
         // newline, round-trips through every write, and pushes "end of text"
@@ -669,7 +718,7 @@ namespace OpenCues
         }
 
         // WordPad (RichEdit) renders newlines via the EM write path as SOFT
-        // breaks (VT — no paragraph margin), so a single \n comes out adjacent
+        // breaks (VT - no paragraph margin), so a single \n comes out adjacent
         // and \n\n comes out as a blank line, EXACTLY like Notepad. It must
         // therefore KEEP its blank lines, so it's excluded from the collapse
         // below (collapsing \n\n would erase the paragraph separation). Slack's
@@ -757,14 +806,14 @@ namespace OpenCues
                     bool isEditHwnd = IsEditClassHwnd(editHwnd, out editCls);
                     // Non-Edit UIA composers (Slack): SetValue is a whole-value
                     // replace, so writing every ANIMATION FRAME that way resets
-                    // the caret ~13x/sec — the visible bouncing. Type the
+                    // the caret ~13x/sec - the visible bouncing. Type the
                     // spinner frames through the real input pipeline instead
                     // (Discord's model): relative typed frames anchored by the
                     // absolute SetValue FINAL below, and editor-safe by
-                    // construction (input events, not DOM mutation — see the
+                    // construction (input events, not DOM mutation - see the
                     // Slate-ghost finding). Must run BEFORE NoteSelfWrite: the
                     // micro-edit diffs against _lastSentText. Edit-family HWNDs
-                    // (Notepad/WordPad) skip this — their convergent EM path is
+                    // (Notepad/WordPad) skip this - their convergent EM path is
                     // strictly better (positioned writes, no caret reset at all).
                     if (!isEditHwnd && TryTypeMicroEdit(text)) return;
                     NoteSelfWrite(text);
@@ -772,10 +821,10 @@ namespace OpenCues
                     // computed against the real buffer (no drift) + native undo.
                     if (isEditHwnd && TryEmConvergentWrite(el, (ValuePattern)vp, text, streamStart)) return;
                     // Slack (Quill/Chromium): SetValue makes EVERY \n a paragraph
-                    // block — even a single \n renders with a blank-line gap, so
+                    // block - even a single \n renders with a blank-line gap, so
                     // the signature lines that should be adjacent get spaced out.
                     // Slack's PASTE handler instead treats \n as a SOFT line break
-                    // (adjacent) and \n\n as a blank line — i.e. it renders like
+                    // (adjacent) and \n\n as a blank line - i.e. it renders like
                     // Notepad. Route the FINAL substitution through paste (the
                     // spinner frames already took the typed micro-edit path above,
                     // so only this one write pays the select-all highlight).
@@ -785,10 +834,10 @@ namespace OpenCues
                         Log("debug", "applied substitution (" + text.Length + " chars, paste [Slack soft-break])");
                         return;
                     }
-                    // Non-Edit UIA composer or an EM verify-fail → absolute
+                    // Non-Edit UIA composer or an EM verify-fail -> absolute
                     // SetValue. SetValue resets the caret to the START, so skip
                     // the restore on animation frames (same-length 1-2 char swap)
-                    // and only restore on the real substitution — no per-frame
+                    // and only restore on the real substitution - no per-frame
                     // caret churn.
                     ((ValuePattern)vp).SetValue(text);
                     if (!LooksLikeAnimationFrame(prevSent, text))
@@ -822,8 +871,8 @@ namespace OpenCues
         // A genuine substitution changes many chars and/or the length. Used to
         // skip the per-frame caret restore so the caret doesn't jump during the
         // spinner. Never misfires on a real substitution (those differ widely
-        // or in length; even a rare same-length ≤2-char substitute only leaves
-        // the caret at the field start for one write — cosmetic, self-corrects).
+        // or in length; even a rare same-length <=2-char substitute only leaves
+        // the caret at the field start for one write - cosmetic, self-corrects).
         static bool LooksLikeAnimationFrame(string prev, string next)
         {
             if (prev == null || next == null || prev.Length != next.Length) return false;
@@ -854,11 +903,11 @@ namespace OpenCues
         [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true, EntryPoint = "SendMessageTimeoutW")]
         static extern IntPtr SendMessageTimeoutText(IntPtr hWnd, uint msg, IntPtr wParam, string lParam, uint flags, uint timeoutMs, out IntPtr result);
         // EM_HIDESELECTION (RichEdit) suppresses drawing the SELECTION
-        // highlight only — the text keeps painting live, but our transient
+        // highlight only - the text keeps painting live, but our transient
         // EM_SETSEL never flashes blue. RichEdit-only (WordPad RICHEDIT50W /
         // Notepad RichEditD2DPT); a harmless no-op on classic "Edit". Toggled
         // around each write (can't stay on, or the user's own selections would
-        // be invisible), but with no repaint churn — lighter than WM_SETREDRAW.
+        // be invisible), but with no repaint churn - lighter than WM_SETREDRAW.
         const uint EM_HIDESELECTION = 0x043F;   // WM_USER + 63
 
         static void RestoreCaretToEnd(AutomationElement el, bool quiet = false)
@@ -910,7 +959,7 @@ namespace OpenCues
                 // Native-UIA restore FIRST: Chromium serves TextPattern + a
                 // working collapsed-range Select() only to a NATIVE IUIAutomation
                 // client (the managed client below sees TextPattern=False on
-                // Slack — probed 2026-07-10). Silent — no key synthesis, no
+                // Slack - probed 2026-07-10). Silent - no key synthesis, no
                 // focus dependency quirks. Falls through to the managed attempt
                 // + Ctrl+End when unavailable.
                 if (TryNativeUiaCaretToEnd())
@@ -940,25 +989,25 @@ namespace OpenCues
             catch { }   // caret restore is best-effort; the text write already landed
         }
 
-        // ── Native IUIAutomation (COM) — OBSERVATION ONLY ─────────────────
+        // -- Native IUIAutomation (COM) - OBSERVATION ONLY -----------------
         // Chromium/Electron serves its modern UIA provider (TextPattern with a
         // working collapsed-range Select(), i.e. real caret positioning) ONLY
-        // to a native IUIAutomation client — what Narrator uses. The managed
+        // to a native IUIAutomation client - what Narrator uses. The managed
         // System.Windows.Automation client used everywhere else in this shim
-        // never sees it (Slack: TextPattern False managed / True native —
+        // never sees it (Slack: TextPattern False managed / True native -
         // probed 2026-07-10 with uia-native-drive-probe.ps1).
         //
-        // HARD RULE: this surface is for READS and SELECTION/CARET only —
+        // HARD RULE: this surface is for READS and SELECTION/CARET only -
         // selection ops (collapsed caret moves, select-all) sync into the
         // editor's model and are safe. CONTENT mutation is banned: writing
-        // through it (ValuePattern.SetValue) DESYNCED Discord's Slate editor —
+        // through it (ValuePattern.SetValue) DESYNCED Discord's Slate editor -
         // ghost text the user cannot delete, broken input until Ctrl+R. See
-        // IMPLEMENTATION.md §5 "the Slate ghost". Do not add a content write.
+        // IMPLEMENTATION.md sec.5 "the Slate ghost". Do not add a content write.
         //
         // The client is created LAZILY on the first non-Edit caret restore
         // (i.e. only when a Slack-class composer is actually being written),
         // so sessions that never touch such a composer never flip Chromium
-        // apps into UIA mode. Interfaces are PARTIAL vtables — methods are
+        // apps into UIA mode. Interfaces are PARTIAL vtables - methods are
         // declared in IDL order up to the last slot we call; do not reorder.
         [StructLayout(LayoutKind.Sequential)]
         struct UiaPt { public int x; public int y; }
@@ -1066,7 +1115,7 @@ namespace OpenCues
         // Move the caret to end-of-content on the FOCUSED element via the
         // native TextPattern: collapse the document range to its END and
         // Select() it (a degenerate selection IS a caret). Returns false when
-        // the provider doesn't serve the surface — the caller's ladder
+        // the provider doesn't serve the surface - the caller's ladder
         // (managed TextPattern, then Ctrl+End) takes over.
         static bool TryNativeUiaCaretToEnd()
         {
@@ -1094,12 +1143,12 @@ namespace OpenCues
         // endpoints against the document range. A verified selection lets the
         // paste path skip the blind keystroke sequence (Ctrl+A + commit gaps +
         // Delete-to-empty): one Ctrl+V over a selection we KNOW is committed.
-        // This is a selection op — the safe half of native UIA on Slate (the
+        // This is a selection op - the safe half of native UIA on Slate (the
         // ghost came from content mutation). Returns false -> caller falls
         // back to the legacy gap-timed sequence.
         // Logged once per session: WHY the verified select-all path declined,
         // so a fallback-to-legacy-flash is diagnosable from the log without a
-        // debug build. (It failed silently on Discord on first ship — never
+        // debug build. (It failed silently on Discord on first ship - never
         // let this path decline silently again.)
         static bool _selAllDiagLogged;
         static bool SelAllFail(string why)
@@ -1605,12 +1654,12 @@ namespace OpenCues
 
         // The typed micro-frame path for LOADING-ANIMATION frames, shared by
         // the two attach modes where the app has no positioned-write API:
-        //   * MSAA/Electron (Discord)  — below the deferred Ctrl+A+paste tier
-        //   * non-Edit UIA  (Slack)    — below the whole-value SetValue final
+        //   * MSAA/Electron (Discord)  - below the deferred Ctrl+A+paste tier
+        //   * non-Edit UIA  (Slack)    - below the whole-value SetValue final
         // Only for edits small enough to be indistinguishable from a human
         // typing; goes through the real input pipeline (SendInput), so it is
         // editor-framework-safe (Slate/Quill process it as genuine input) and
-        // never resets the caret. Relative — acceptable ONLY because the final
+        // never resets the caret. Relative - acceptable ONLY because the final
         // write on both paths is an absolute anchor (paste / SetValue) that
         // wipes any frame drift. NOT used on Edit-family HWNDs
         // (Notepad/WordPad): their convergent EM path is positioned AND
@@ -1619,7 +1668,7 @@ namespace OpenCues
         // model, and the state every prior write path leaves behind).
         const int MSAA_TYPE_MAX = 6;
         // Kill switch: OPENCUES_TYPE_ANIMATE=0 (legacy OPENCUES_MSAA_ANIMATE=0
-        // still honoured) → animation falls back to deferred-paste / SetValue.
+        // still honoured) -> animation falls back to deferred-paste / SetValue.
         static readonly bool _typeAnimate =
             Environment.GetEnvironmentVariable("OPENCUES_TYPE_ANIMATE") != "0" &&
             Environment.GetEnvironmentVariable("OPENCUES_MSAA_ANIMATE") != "0";
@@ -1638,14 +1687,14 @@ namespace OpenCues
             string tail = text.Substring(p);
             if (tail.IndexOf('\n') >= 0 || tail.IndexOf('\r') >= 0) return false;
             // Read-before-write: the diff above is computed against
-            // `_lastSentText` — the shim's MODEL of the field, which goes
+            // `_lastSentText` - the shim's MODEL of the field, which goes
             // stale the instant the USER types (phase 1 has no keyboard
             // hook, so user keystrokes are invisible until the next event
             // read). Sending backspaces against a stale model deletes user
-            // content — live incident 2026-07-14: an animation frame burst
+            // content - live incident 2026-07-14: an animation frame burst
             // ate the leading chars of "congratulations" mid-typing. Verify
             // the field still matches the model; on divergence DROP the
-            // frame (animation is cosmetic — the final substitution write
+            // frame (animation is cosmetic - the final substitution write
             // is an absolute anchor that never depends on frames landing).
             // Read failure keeps the prior trust-the-model behaviour.
             string live;
@@ -1713,13 +1762,13 @@ namespace OpenCues
         // safe (the same mechanism as the per-frame typed animation, in one
         // atomic burst). The ceiling bounds the CHANGED SUFFIX, not the whole
         // field; only a rewrite bigger than it falls to the select-all path.
-        // CEILING = 40, and this is EMPIRICAL — do not raise it casually: a
+        // CEILING = 40, and this is EMPIRICAL - do not raise it casually: a
         // 2026-07-10 live test at 600 sent a 354-backspace burst into
-        // Discord/Slate and it failed outright ("doesn't work at all" —
+        // Discord/Slate and it failed outright ("doesn't work at all" -
         // dropped/coalesced under load, mangled result), while the small
         // bursts this path has always used (<=40, and the 1-2-char animation
         // frames) are reliable. Large rewrites take the select-all path and
-        // pay one highlight flash — on Slate that is the floor, since every
+        // pay one highlight flash - on Slate that is the floor, since every
         // flash-free alternative is closed: SetValue desyncs the model (the
         // ghost), typing the result triggers Discord's :/@/# popups, and big
         // backspace bursts drop. No margin on the count: the common prefix
@@ -1763,7 +1812,7 @@ namespace OpenCues
         // paste before restoring the user's previous clipboard. Discord
         // under load was observed consuming >1.1s after Ctrl+V; the old
         // fixed 300ms restore raced it and the paste delivered the
-        // RESTORED (user's) clipboard into the field — live incident
+        // RESTORED (user's) clipboard into the field - live incident
         // 2026-07-14: a copied email address replaced the substitution.
         static readonly int _clipRestoreMaxMs = ReadClipRestoreMaxMs();
         static int ReadClipRestoreMaxMs()
@@ -1777,7 +1826,7 @@ namespace OpenCues
         // Lowercased-alphanumeric fold for paste-consumption matching.
         // Discord/Slate re-dress pasted text in accValue readbacks (emoji
         // as object chars, markdown handling, trailing dress), so byte
-        // equality — even EolNorm-folded — can fail on a paste that
+        // equality - even EolNorm-folded - can fail on a paste that
         // plainly landed, and the fail-safe would then eat the user's
         // clipboard restore on EVERY big substitution (observed live
         // 2026-07-14 18:35: paste landed, bracket reconciled, verify
@@ -1803,9 +1852,9 @@ namespace OpenCues
             try { saved = GetClipboardText(); } catch { }
 
             // Verify the field model against reality before computing the
-            // diff. `oldText` is the daemon's last read — if the user typed
+            // diff. `oldText` is the daemon's last read - if the user typed
             // (or the app edited) since, backspacing `oldLen - p` chars
-            // deletes USER content (the 2026-07-14 "congratulations" →
+            // deletes USER content (the 2026-07-14 "congratulations" ->
             // "gratulations" class). A fresh read supersedes the parameter;
             // read failure keeps the prior trust-the-model behaviour.
             string fresh;
@@ -1840,7 +1889,7 @@ namespace OpenCues
                 Thread.Sleep(15);
                 // Preferred: native-UIA VERIFIED select-all -> immediate paste.
                 // The selection is set by API (no keystroke race) and read back
-                // from the provider, so we KNOW it is committed before Ctrl+V —
+                // from the provider, so we KNOW it is committed before Ctrl+V -
                 // the append bug (paste landing before an uncommitted Ctrl+A)
                 // cannot happen, which also makes the Delete-to-empty step and
                 // its blank-field frame unnecessary. Flash shrinks from
@@ -1854,7 +1903,7 @@ namespace OpenCues
                 {
                     // Legacy sequence: select-all, DELETE the selection to empty
                     // the field, then paste into the empty field. Pasting into a
-                    // guaranteed-empty field CANNOT append old content — the
+                    // guaranteed-empty field CANNOT append old content - the
                     // failure mode on slow Electron composers (Discord), where a
                     // fast Ctrl+A->Ctrl+V pasted before the selection committed,
                     // leaving old text + new appended. Each step is its own
@@ -1870,19 +1919,19 @@ namespace OpenCues
                     KeyChord(VK_CONTROL, VK_V);   // paste into the empty field
                 }
             }
-            // Electron reads the clipboard ASYNCHRONOUSLY after Ctrl+V — and
+            // Electron reads the clipboard ASYNCHRONOUSLY after Ctrl+V - and
             // NOT on a bounded schedule: Discord under load was observed
             // consuming >1.1s later. Restoring the user's clipboard on a
             // fixed timer therefore RACES the read; when the restore wins,
             // the paste delivers the user's OLD clipboard into the focused
             // app (live incident 2026-07-14: a copied email address landed
-            // in a Discord input instead of the substitution — a clipboard
+            // in a Discord input instead of the substitution - a clipboard
             // LEAK into whatever app is focused, not just a wrong render).
             //
             // Verify consumption instead: poll the field until it reflects
-            // the pasted text (EolNorm both sides — apps re-render newlines,
+            // the pasted text (EolNorm both sides - apps re-render newlines,
             // see the newline-rendering table), THEN restore. On timeout or
-            // an unreadable field, FAIL SAFE: skip the restore entirely —
+            // an unreadable field, FAIL SAFE: skip the restore entirely -
             // losing the user's old clipboard contents is an annoyance;
             // pasting them into the foreground app is a leak. Window is
             // tunable via OPENCUES_CLIPBOARD_RESTORE_MAX_MS (default 3000).
@@ -1913,7 +1962,7 @@ namespace OpenCues
                 else
                 {
                     Log("warn", "clipboard NOT restored: paste consumption unverified after "
-                        + _clipRestoreMaxMs + "ms — refusing to race the app's async clipboard read"
+                        + _clipRestoreMaxMs + "ms - refusing to race the app's async clipboard read"
                         + " (restoring early can paste the user's old clipboard into the field)."
                         + " Previous clipboard contents were replaced by the substitution text.");
                 }
@@ -1969,21 +2018,21 @@ namespace OpenCues
         // Ctrl+Z land on it.
         static string _emUndoBaseline = null;
 
-        // ── The convergent write surface (Edit/RichEdit HWNDs) ──────────────
-        // Every write is ABSOLUTE (select-all → EM_REPLACESEL of the whole
+        // -- The convergent write surface (Edit/RichEdit HWNDs) --------------
+        // Every write is ABSOLUTE (select-all -> EM_REPLACESEL of the whole
         // value) and computed against the buffer's ACTUAL content (read back
-        // each call), so nothing drifts — the failure mode of the relative
-        // Backspace path (blind delete counts against an optimistic model →
+        // each call), so nothing drifts - the failure mode of the relative
+        // Backspace path (blind delete counts against an optimistic model ->
         // overshoot / double-delete / stray dot on a laggy buffer) cannot
         // happen here. EM_REPLACESEL also flows through the control's NATIVE
         // undo, so we keep Ctrl+Z:
-        //   • animation frames  → fUndo=FALSE  (cosmetic, no undo record)
-        //   • final result      → reset to baseline (fUndo=FALSE, wipes the
+        //   * animation frames  -> fUndo=FALSE  (cosmetic, no undo record)
+        //   * final result      -> reset to baseline (fUndo=FALSE, wipes the
         //     animation) then write undoably (fUndo=TRUE) = ONE undo unit, so
         //     one Ctrl+Z restores the pre-command text.
         // Read-back verify (EOL-normalised); any mismatch (a control whose EM
         // index model diverges from the UIA string) returns false and the
-        // caller repairs via absolute SetValue — worst case is exactly the
+        // caller repairs via absolute SetValue - worst case is exactly the
         // prior robust-but-no-undo behaviour. Message-based
         // (SendMessageTimeout ABORTIFHUNG): no focus theft, can't wedge.
         static bool TryEmConvergentWrite(AutomationElement el, ValuePattern vp, string text, bool streamStart)
@@ -1992,10 +2041,10 @@ namespace OpenCues
             {
                 string className;
                 IntPtr hwnd = new IntPtr(el.Current.NativeWindowHandle);
-                if (!IsEditClassHwnd(hwnd, out className)) return false;   // non-Edit → SetValue
+                if (!IsEditClassHwnd(hwnd, out className)) return false;   // non-Edit -> SetValue
 
                 // In RichEdit a bare LF via EM_REPLACESEL becomes a PARAGRAPH
-                // break (CR), and paragraphs carry inter-paragraph spacing — so a
+                // break (CR), and paragraphs carry inter-paragraph spacing - so a
                 // multi-line fill renders double-spaced (the WordPad gap). What we
                 // want is a SOFT line break (what Shift+Enter inserts): lines sit
                 // directly adjacent, no paragraph spacing. RichEdit's soft-break
@@ -2003,7 +2052,7 @@ namespace OpenCues
                 // VT/U+2028/CR/CRLF/LF together, so the verify + the daemon's
                 // mirror still compare equal. Plain "edit" controls have no soft
                 // break, so scope this to richedit only.
-                // Scope to paragraph-spacing apps (wordpad) — NOT Notepad's
+                // Scope to paragraph-spacing apps (wordpad) - NOT Notepad's
                 // RichEditD2DPT, which has no inter-paragraph gap. Case-insensitive:
                 // IsEditClassHwnd returns the RAW class ("RICHEDIT50W").
                 string emText = text;
@@ -2014,7 +2063,7 @@ namespace OpenCues
 
                 string cur;
                 try { cur = StripPhantomTrailingSeparator(el, vp.Current.Value ?? ""); }
-                catch { return false; }                                    // can't read reality → SetValue
+                catch { return false; }                                    // can't read reality -> SetValue
                 if (streamStart) _emUndoBaseline = cur;                     // the `_` command, pre-animation
                 if (EolNorm(cur) == EolNorm(text)) return true;            // already there (any EOL dress)
 
@@ -2023,7 +2072,7 @@ namespace OpenCues
                 {
                     // Animation frame: absolute whole-value replace with the
                     // SELECTION HIGHLIGHT hidden so our transient EM_SETSEL never
-                    // flashes blue. Absolute (0,-1) → no drift, no index math;
+                    // flashes blue. Absolute (0,-1) -> no drift, no index math;
                     // fUndo=FALSE keeps it out of undo.
                     SendMessageTimeoutW(hwnd, EM_HIDESELECTION, new IntPtr(1), IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out res);
                     try
@@ -2039,9 +2088,9 @@ namespace OpenCues
                 }
 
                 // Final substitution: a large whole-buffer change. Do it as an
-                // absolute select-all replace (skew-immune — only 0/-1), with the
+                // absolute select-all replace (skew-immune - only 0/-1), with the
                 // selection highlight hidden so it never flashes blue. Baseline-
-                // reset (fUndo=FALSE) then result (fUndo=TRUE) = ONE undo unit →
+                // reset (fUndo=FALSE) then result (fUndo=TRUE) = ONE undo unit ->
                 // one Ctrl+Z restores the pre-command text.
                 SendMessageTimeoutW(hwnd, EM_HIDESELECTION, new IntPtr(1), IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out res);
                 try
@@ -2102,6 +2151,559 @@ namespace OpenCues
             SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
         }
 
+        // ================= Phase 2 ======================================
+        // Keyboard-chord hook + overlay + real caret. Everything in this
+        // region is additive: with the kill switches on (or on a field
+        // that reports cycling=false) the shim behaves exactly like the
+        // phase-1 build.
+
+        // --- Small helpers ----------------------------------------------
+        static int Num(Dictionary<string, object> m, string k, int def)
+        {
+            object v;
+            if (m != null && m.TryGetValue(k, out v) && v is double) return (int)(double)v;
+            return def;
+        }
+
+        static bool HasManagedTextPattern(AutomationElement el)
+        {
+            try { object tp; return el.TryGetCurrentPattern(TextPattern.Pattern, out tp); }
+            catch { return false; }
+        }
+
+        // Map a char index in the shim's text model to UIA TextUnit.Character
+        // counts: UIA treats a CRLF pair as ONE character, the string as two.
+        static int MapStrToUiaChars(string text, int idx)
+        {
+            if (text == null) return idx < 0 ? 0 : idx;
+            int n = Math.Min(idx < 0 ? 0 : idx, text.Length), u = 0;
+            for (int i = 0; i < n; i++)
+            {
+                if (text[i] == '\r' && i + 1 < n && text[i + 1] == '\n') i++;
+                u++;
+            }
+            return u;
+        }
+
+        // --- DPI awareness ----------------------------------------------
+        // Overlay rects come from UIA in PHYSICAL screen pixels. If this
+        // process is DPI-virtualized (powershell.exe default), WinForms
+        // coordinates are scaled and every rect lands offset on HiDPI
+        // monitors. Per-Monitor-V2 when available, legacy aware otherwise.
+        // Must run before any window is created; a false return means the
+        // host (the tray) already set awareness - fine either way.
+        [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+        [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
+        static void EnsureDpiAware()
+        {
+            try
+            {
+                if (!SetProcessDpiAwarenessContext(new IntPtr(-4)))   // PER_MONITOR_AWARE_V2
+                    SetProcessDPIAware();
+            }
+            catch { try { SetProcessDPIAware(); } catch { } }
+        }
+
+        // --- WH_KEYBOARD_LL chord hook ----------------------------------
+        // Global low-level keyboard hook on its own message-pump thread.
+        // While a cycling-capable field is attached (and we're enabled +
+        // connected), Ctrl+Alt+Up/Down/Left/Right key-downs are SWALLOWED
+        // and forwarded to the daemon as `key` messages; the matching
+        // key-ups are swallowed too (no orphan key-up reaches the app).
+        // If the runtime reports consumed=false in `key-result`, the
+        // chord is re-injected with INJECT_MARK in dwExtraInfo so this
+        // hook passes it through (the user is still physically holding
+        // Ctrl+Alt, so the app sees the full chord). Escape is OBSERVED
+        // (forwarded, never swallowed) - the runtime uses it to drop the
+        // word highlight, the app keeps its own Escape behaviour.
+        // The hook callback stays minimal: state checks + enqueue; the
+        // socket write happens on the thread pool (a LL hook that blocks
+        // >~300ms gets silently removed by Windows).
+        const int WH_KEYBOARD_LL = 13;
+        const int WM_KEYDOWN = 0x0100, WM_KEYUP = 0x0101, WM_SYSKEYDOWN = 0x0104, WM_SYSKEYUP = 0x0105;
+        const ushort VK_SHIFT = 0x10, VK_MENU = 0x12, VK_ESCAPE = 0x1B;
+        const ushort VK_LEFT = 0x25, VK_UP = 0x26, VK_RIGHT = 0x27, VK_DOWN = 0x28;
+        const ushort VK_LWIN = 0x5B, VK_RWIN = 0x5C;
+        const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
+        static readonly IntPtr INJECT_MARK = new IntPtr(0x0C0E50C0);
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct KBDLLHOOKSTRUCT { public uint vkCode; public uint scanCode; public uint flags; public uint time; public IntPtr dwExtraInfo; }
+        [StructLayout(LayoutKind.Sequential)]
+        struct MSG { public IntPtr hwnd; public uint message; public IntPtr wParam; public IntPtr lParam; public uint time; public int ptX; public int ptY; }
+        delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
+        [DllImport("user32.dll", SetLastError = true)] static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
+        [DllImport("user32.dll")] static extern bool UnhookWindowsHookEx(IntPtr hhk);
+        [DllImport("user32.dll")] static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+        [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vKey);
+        [DllImport("user32.dll", EntryPoint = "GetMessageW")] static extern int GetMessageW(out MSG msg, IntPtr hWnd, uint min, uint max);
+        [DllImport("user32.dll")] static extern bool PostThreadMessage(uint idThread, uint msg, IntPtr wParam, IntPtr lParam);
+        [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern IntPtr GetModuleHandle(string name);
+        const uint WM_QUIT_MSG = 0x0012;
+
+        static readonly bool _hookEnabled = Environment.GetEnvironmentVariable("OPENCUES_WIN_HOOK") != "0";
+        static IntPtr _hookHandle = IntPtr.Zero;
+        static LowLevelKeyboardProc _hookProc;   // field ref = GC pin for the delegate
+        static Thread _hookThread;
+        static uint _hookThreadId;
+        static int _keyMsgId;
+        // Arrow vks we swallowed on key-down, so the matching key-up is
+        // swallowed too. Hook-thread-only - no lock.
+        static readonly HashSet<uint> _swallowedDown = new HashSet<uint>();
+        // key-msg id -> vk, for re-injection on consumed=false. Touched by
+        // the hook thread (add) and the poll thread (remove) - locked.
+        static readonly Dictionary<int, ushort> _pendingKeys = new Dictionary<int, ushort>();
+
+        static void StartKeyHook()
+        {
+            if (!_hookEnabled) { Console.WriteLine("keyboard hook disabled (OPENCUES_WIN_HOOK=0)"); return; }
+            if (_hookThread != null) return;
+            _hookThread = new Thread(KeyHookThread) { IsBackground = true };
+            _hookThread.Start();
+        }
+
+        static void StopKeyHook()
+        {
+            if (_hookThreadId != 0) PostThreadMessage(_hookThreadId, WM_QUIT_MSG, IntPtr.Zero, IntPtr.Zero);
+        }
+
+        static void KeyHookThread()
+        {
+            _hookThreadId = GetCurrentThreadId();
+            _hookProc = KeyHookCallback;
+            _hookHandle = SetWindowsHookEx(WH_KEYBOARD_LL, _hookProc, GetModuleHandle(null), 0);
+            if (_hookHandle == IntPtr.Zero)
+            {
+                Log("warn", "keyboard hook install failed (err=" + Marshal.GetLastWin32Error() + ") - chords disabled");
+                return;
+            }
+            Log("info", "keyboard hook installed (Ctrl+Alt+arrows -> runtime while a cycling field is attached)");
+            MSG msg;
+            while (_running && GetMessageW(out msg, IntPtr.Zero, 0, 0) > 0) { /* pump - LL hook is serviced here */ }
+            try { UnhookWindowsHookEx(_hookHandle); } catch { }
+            _hookHandle = IntPtr.Zero;
+        }
+
+        static IntPtr KeyHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            if (nCode < 0) return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
+            try
+            {
+                var info = (KBDLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(KBDLLHOOKSTRUCT));
+                if (info.dwExtraInfo == INJECT_MARK)   // our own re-injection - pass through untouched
+                    return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
+                int m = wParam.ToInt32();
+                bool down = m == WM_KEYDOWN || m == WM_SYSKEYDOWN;
+                bool up = m == WM_KEYUP || m == WM_SYSKEYUP;
+                uint vk = info.vkCode;
+                bool isArrow = vk == VK_UP || vk == VK_DOWN || vk == VK_LEFT || vk == VK_RIGHT;
+                if (!isArrow && vk != VK_ESCAPE) return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
+                if (!(_attached && _enabled && _fieldCycling && Connected))
+                    return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
+                if (vk == VK_ESCAPE)
+                {
+                    if (down) QueueKeyMessage("escape", 0, false);
+                    return CallNextHookEx(_hookHandle, nCode, wParam, lParam);   // observe-only
+                }
+                if (up)
+                {
+                    if (_swallowedDown.Remove(vk)) return new IntPtr(1);   // pair with the swallowed down
+                    return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
+                }
+                bool ctrl = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+                bool alt = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+                if (!(ctrl && alt)) return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
+                _swallowedDown.Add(vk);
+                QueueKeyMessage(KeyName(vk), (ushort)vk, true);
+                return new IntPtr(1);   // swallow - the app never sees the chord
+            }
+            catch { }
+            return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
+        }
+
+        static string KeyName(uint vk)
+        {
+            switch (vk)
+            {
+                case VK_UP: return "up";
+                case VK_DOWN: return "down";
+                case VK_LEFT: return "left";
+                case VK_RIGHT: return "right";
+                default: return "";
+            }
+        }
+
+        static void QueueKeyMessage(string key, ushort vk, bool track)
+        {
+            int id = Interlocked.Increment(ref _keyMsgId);
+            if (track)
+            {
+                lock (_pendingKeys)
+                {
+                    if (_pendingKeys.Count > 32) _pendingKeys.Clear();   // dropped-reply hygiene
+                    _pendingKeys[id] = vk;
+                }
+            }
+            bool ctrl = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+            bool alt = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+            bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+            bool meta = ((GetAsyncKeyState(VK_LWIN) & 0x8000) != 0) || ((GetAsyncKeyState(VK_RWIN) & 0x8000) != 0);
+            string json = "{\"t\":\"key\",\"id\":" + id.ToString(CultureInfo.InvariantCulture)
+                + ",\"key\":" + JStr(key)
+                + ",\"mods\":{\"ctrl\":" + (ctrl ? "true" : "false")
+                + ",\"alt\":" + (alt ? "true" : "false")
+                + ",\"shift\":" + (shift ? "true" : "false")
+                + ",\"meta\":" + (meta ? "true" : "false") + "}}";
+            ThreadPool.QueueUserWorkItem(delegate { SendRaw(json); });   // never block the LL hook
+        }
+
+        static void HandleKeyResult(Dictionary<string, object> map)
+        {
+            int id = Num(map, "id", -1);
+            object cv;
+            bool consumed = map.TryGetValue("consumed", out cv) && cv is bool && (bool)cv;
+            ushort vk = 0;
+            lock (_pendingKeys)
+            {
+                if (_pendingKeys.TryGetValue(id, out vk)) _pendingKeys.Remove(id);
+            }
+            if (!consumed && vk != 0) ReinjectChord(vk);
+        }
+
+        // The runtime declined the chord: give it back to the app. Only the
+        // arrow is injected (marked so the hook passes it); Ctrl+Alt are
+        // still physically held by the user, so the app sees the chord.
+        static void ReinjectChord(ushort vk)
+        {
+            var inputs = new INPUT[]
+            {
+                MarkedKeyInput(vk, false),
+                MarkedKeyInput(vk, true),
+            };
+            SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+        }
+
+        static INPUT MarkedKeyInput(ushort vk, bool upFlag)
+        {
+            return new INPUT
+            {
+                type = INPUT_KEYBOARD,
+                U = new InputUnion
+                {
+                    ki = new KEYBDINPUT
+                    {
+                        wVk = vk,
+                        wScan = 0,
+                        dwFlags = (upFlag ? KEYEVENTF_KEYUP : 0) | KEYEVENTF_EXTENDEDKEY,   // arrows are extended keys
+                        time = 0,
+                        dwExtraInfo = INJECT_MARK,
+                    },
+                },
+            };
+        }
+
+        // --- Real caret (native IUIAutomationTextPattern2) ---------------
+        // The managed UIA client has no TextPattern2, so GetCaretRange goes
+        // through the native COM client (same lazy singleton the caret
+        // restore uses). Offset = length of the text from document start to
+        // the caret - the same EOL dress ValuePattern reads use, so it maps
+        // straight onto the mirror string. Fields without TextPattern2 keep
+        // the phase-1 caret-at-end model.
+        [ComImport, Guid("506a921a-fcc9-409f-b23b-37eb74106872"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        interface IUIAutomationTextPattern2N
+        {
+            // Base TextPattern slots (IDL order - do not reorder).
+            [PreserveSig] int RangeFromPoint(UiaPt pt, out IUIAutomationTextRangeN range);
+            [PreserveSig] int RangeFromChild(IntPtr child, out IUIAutomationTextRangeN range);
+            [PreserveSig] int GetSelection(out IntPtr ranges);
+            [PreserveSig] int GetVisibleRanges(out IntPtr ranges);
+            [PreserveSig] int get_DocumentRange(out IUIAutomationTextRangeN range);
+            [PreserveSig] int get_SupportedTextSelection(out int sts);
+            // TextPattern2 additions.
+            [PreserveSig] int RangeFromAnnotation(IntPtr annotation, out IUIAutomationTextRangeN range);
+            [PreserveSig] int GetCaretRange(out int isActive, out IUIAutomationTextRangeN range);
+        }
+        const int UIA_TextPattern2Id_N = 10024;
+        const int TU_Character = 0;   // TextUnit_Character
+
+        static int _lastSentCaret = -1;
+
+        static bool TryGetCaretOffset(out int offset)
+        {
+            offset = -1;
+            try
+            {
+                var uia = NativeUia();
+                if (uia == null) return false;
+                IUIAutomationElementN el;
+                if (uia.GetFocusedElement(out el) != 0 || el == null) return false;
+                object po;
+                if (el.GetCurrentPattern(UIA_TextPattern2Id_N, out po) != 0 || po == null) return false;
+                var tp2 = po as IUIAutomationTextPattern2N;
+                if (tp2 == null) return false;
+                int active;
+                IUIAutomationTextRangeN caret;
+                if (tp2.GetCaretRange(out active, out caret) != 0 || caret == null) return false;
+                IUIAutomationTextRangeN doc, pre;
+                if (tp2.get_DocumentRange(out doc) != 0 || doc == null) return false;
+                if (doc.Clone(out pre) != 0 || pre == null) return false;
+                if (pre.MoveEndpointByRange(EPT_End, caret, EPT_Start) != 0) return false;
+                string t;
+                if (pre.GetText(-1, out t) != 0 || t == null) return false;
+                offset = t.Length;
+                return true;
+            }
+            catch { return false; }
+        }
+
+        // Caret for outbound focus/text messages: the real caret on a
+        // cycling UIA field, end-of-text everywhere else (phase-1 model).
+        static int CaretOrEnd(string text)
+        {
+            int len = text == null ? 0 : text.Length;
+            if (_attachMode == AttachMode.Uia && _fieldCycling)
+            {
+                int off;
+                if (TryGetCaretOffset(out off) && off >= 0) return Math.Min(off, len);
+            }
+            return len;
+        }
+
+        // Poll-tick caret watch: a caret move WITHOUT a text change becomes
+        // a `cursor` event (cursor-navigate mode + post-substitution caret
+        // bookkeeping on the daemon side). Skipped while the write bracket
+        // is open - mid-substitution caret churn is not user intent.
+        static void MaybePollCaret()
+        {
+            if (!_attached || _attachMode != AttachMode.Uia || !_fieldCycling || _bracketOpen) return;
+            int off;
+            if (!TryGetCaretOffset(out off) || off < 0) return;
+            int max = _lastSentText != null ? _lastSentText.Length : 0;
+            if (off > max) off = max;
+            if (off == _lastSentCaret) return;
+            _lastSentCaret = off;
+            SendRaw("{\"t\":\"cursor\",\"cursor\":" + off.ToString(CultureInfo.InvariantCulture) + "}");
+        }
+
+        // Apply the daemon's set-cursor. Edit-family HWNDs take EM_SETSEL
+        // (message-based, no focus theft); other UIA fields take a native
+        // collapsed-range Select at the mapped offset. Best-effort - a
+        // wrong caret self-corrects on the next user click/keystroke.
+        static void ApplySetCursor(int offset)
+        {
+            if (offset < 0 || !_attached || _attachMode != AttachMode.Uia) return;
+            AutomationElement el = null;
+            try { el = AutomationElement.FocusedElement; } catch { }
+            if (el == null) return;
+            try
+            {
+                IntPtr hwnd = new IntPtr(el.Current.NativeWindowHandle);
+                string cls;
+                if (IsEditClassHwnd(hwnd, out cls))
+                {
+                    IntPtr res;
+                    SendMessageTimeoutW(hwnd, EM_SETSEL, new IntPtr(offset), new IntPtr(offset), SMTO_ABORTIFHUNG, 1000, out res);
+                    SendMessageTimeoutW(hwnd, EM_SCROLLCARET, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out res);
+                    _lastSentCaret = offset;
+                    return;
+                }
+                if (TryNativeUiaCaretToOffset(offset)) _lastSentCaret = offset;
+            }
+            catch { }
+        }
+
+        static bool TryNativeUiaCaretToOffset(int offset)
+        {
+            try
+            {
+                var uia = NativeUia();
+                if (uia == null) return false;
+                IUIAutomationElementN el;
+                if (uia.GetFocusedElement(out el) != 0 || el == null) return false;
+                object po;
+                if (el.GetCurrentPattern(UIA_TextPatternId_N, out po) != 0 || po == null) return false;
+                var tp = po as IUIAutomationTextPatternN;
+                if (tp == null) return false;
+                IUIAutomationTextRangeN doc, r;
+                if (tp.get_DocumentRange(out doc) != 0 || doc == null) return false;
+                if (doc.Clone(out r) != 0 || r == null) return false;
+                if (r.MoveEndpointByRange(EPT_End, doc, EPT_Start) != 0) return false;   // collapse at doc start
+                int units = MapStrToUiaChars(_lastSentText, offset);
+                if (units > 0) { int moved; r.Move(TU_Character, units, out moved); }
+                return r.Select() == 0;
+            }
+            catch { return false; }
+        }
+
+        // --- Overlay (dim/highlight spans -> screen rects) ---------------
+        // The daemon ships char spans (`render` message); the shim resolves
+        // them to physical screen rects via the hooked element's managed
+        // TextPattern and hands them to OverlayForm (a layered, topmost,
+        // click-through window on its own STA thread). Spans are
+        // re-resolved on every render push AND every other poll tick, so
+        // the paint follows window moves/scrolls at ~300ms worst case.
+        static readonly bool _overlayEnabled = Environment.GetEnvironmentVariable("OPENCUES_WIN_OVERLAY") != "0";
+        static OverlayForm _overlay;
+        static Thread _overlayThread;
+        static readonly object _overlayLock = new object();
+        static List<int[]> _dimSpans = new List<int[]>();   // [start,end) into _lastSentText
+        static int[] _hlSpan = null;
+        static string _overlayStyle = "underline";
+        static int _overlayTickFlip;
+
+        static void HandleRenderMsg(Dictionary<string, object> map)
+        {
+            var dim = new List<int[]>();
+            object dv;
+            if (map.TryGetValue("dim", out dv))
+            {
+                var arr = dv as List<object>;
+                if (arr != null)
+                {
+                    foreach (var it in arr)
+                    {
+                        var pair = it as List<object>;
+                        if (pair != null && pair.Count >= 2 && pair[0] is double && pair[1] is double)
+                            dim.Add(new int[] { (int)(double)pair[0], (int)(double)pair[1] });
+                    }
+                }
+            }
+            int[] hl = null;
+            object hv;
+            if (map.TryGetValue("hl", out hv))
+            {
+                var pair = hv as List<object>;
+                if (pair != null && pair.Count >= 2 && pair[0] is double && pair[1] is double)
+                    hl = new int[] { (int)(double)pair[0], (int)(double)pair[1] };
+            }
+            string style = Str(map, "style");
+            if (!string.IsNullOrEmpty(style)) _overlayStyle = style;
+            _dimSpans = dim;
+            _hlSpan = hl;
+            UpdateOverlay();
+        }
+
+        static void ClearOverlaySpans()
+        {
+            _dimSpans = new List<int[]>();
+            _hlSpan = null;
+            var ov = _overlay;
+            if (ov != null) ov.Push(null, _overlayStyle);
+        }
+
+        static void UpdateOverlay()
+        {
+            if (!_overlayEnabled) return;
+            bool have = _attached && _attachMode == AttachMode.Uia && _fieldCycling
+                && (_dimSpans.Count > 0 || _hlSpan != null);
+            if (!have)
+            {
+                var ov = _overlay;
+                if (ov != null) ov.Push(null, _overlayStyle);
+                return;
+            }
+            EnsureOverlay();
+            var form = _overlay;
+            if (form == null) return;
+            form.Push(ComputeOverlayRects(), _overlayStyle);
+        }
+
+        static void MaybeRefreshOverlay()
+        {
+            if (!_overlayEnabled || _overlay == null) return;
+            if (_dimSpans.Count == 0 && _hlSpan == null) return;
+            if ((++_overlayTickFlip & 1) != 0) return;   // every other tick is plenty
+            UpdateOverlay();
+        }
+
+        static List<OverlaySpanRect> ComputeOverlayRects()
+        {
+            var list = new List<OverlaySpanRect>();
+            var el = _hookedEl;
+            var text = _lastSentText;
+            if (el == null || text == null) return list;
+            object tpo;
+            try { if (!el.TryGetCurrentPattern(TextPattern.Pattern, out tpo)) return list; }
+            catch { return list; }
+            TextPatternRange doc;
+            try { doc = ((TextPattern)tpo).DocumentRange; }
+            catch { return list; }
+            foreach (var span in _dimSpans) AddSpanRects(doc, text, span[0], span[1], false, list);
+            if (_hlSpan != null) AddSpanRects(doc, text, _hlSpan[0], _hlSpan[1], true, list);
+            return list;
+        }
+
+        static void AddSpanRects(TextPatternRange doc, string text, int s, int e, bool active, List<OverlaySpanRect> list)
+        {
+            try
+            {
+                if (s < 0 || e <= s || e > text.Length) return;
+                var r = doc.Clone();
+                r.MoveEndpointByRange(TextPatternRangeEndpoint.End, doc, TextPatternRangeEndpoint.Start);
+                int su = MapStrToUiaChars(text, s);
+                int eu = MapStrToUiaChars(text, e);
+                if (eu > 0) r.MoveEndpointByUnit(TextPatternRangeEndpoint.End, TextUnit.Character, eu);
+                if (su > 0) r.MoveEndpointByUnit(TextPatternRangeEndpoint.Start, TextUnit.Character, su);
+                var rects = r.GetBoundingRectangles();
+                if (rects == null) return;
+                string word = text.Substring(s, e - s);
+                foreach (System.Windows.Rect rc in rects)
+                {
+                    if (rc.IsEmpty || rc.Width <= 0 || rc.Height <= 0) continue;
+                    list.Add(new OverlaySpanRect
+                    {
+                        X = (float)rc.X,
+                        Y = (float)rc.Y,
+                        W = (float)rc.Width,
+                        H = (float)rc.Height,
+                        Active = active,
+                        Word = word,
+                    });
+                }
+            }
+            catch { /* span resolve is best-effort; a missing rect = no paint */ }
+        }
+
+        static void EnsureOverlay()
+        {
+            lock (_overlayLock)
+            {
+                if (_overlay != null || _overlayThread != null) return;
+                var ready = new ManualResetEvent(false);
+                _overlayThread = new Thread(delegate ()
+                {
+                    try
+                    {
+                        var form = new OverlayForm();
+                        var h = form.Handle;   // force handle creation before Push can race
+                        _overlay = form;
+                        ready.Set();
+                        SWF.Application.Run(form);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log("warn", "overlay unavailable: " + ex.Message);
+                        _overlay = null;
+                        ready.Set();
+                    }
+                });
+                _overlayThread.SetApartmentState(ApartmentState.STA);
+                _overlayThread.IsBackground = true;
+                _overlayThread.Start();
+                ready.WaitOne(3000);
+            }
+        }
+
+        static void StopOverlay()
+        {
+            var ov = _overlay;
+            _overlay = null;
+            if (ov == null) return;
+            try { ov.BeginInvoke((Action)(delegate { try { ov.Close(); } catch { } SWF.Application.ExitThread(); })); }
+            catch { }
+        }
+
         // --- Socket send ------------------------------------------------
         static void SendRaw(string json)
         {
@@ -2159,6 +2761,165 @@ namespace OpenCues
             }
             sb.Append('"');
             return sb.ToString();
+        }
+    }
+
+    // --- Phase-2 overlay window --------------------------------------------
+    // One rect the overlay paints: physical screen coordinates (the process
+    // is Per-Monitor-V2 DPI aware, so WinForms coords are physical too),
+    // plus the word text (repaint style re-draws it) and whether this is
+    // the actively-cycling span.
+    internal class OverlaySpanRect
+    {
+        public float X, Y, W, H;
+        public bool Active;
+        public string Word;
+    }
+
+    // A full-virtual-screen, topmost, LAYERED + TRANSPARENT (click-through)
+    // + NOACTIVATE window. Everything painted in the key colour is fully
+    // transparent; everything else is the overlay ink. Three dim looks,
+    // switchable per render push (daemon env OPENCUES_WIN_OVERLAY_STYLE):
+    //   underline - thin gray line under the word (active: thicker, blue)
+    //   wash      - whole-window alpha ~43% -> translucent tint over the word
+    //   repaint   - opaque patch in a sampled background colour + the word
+    //               re-drawn in gray (the terminal look; font matching is
+    //               approximate by design - this style is the experiment)
+    internal class OverlayForm : SWF.Form
+    {
+        const int WS_EX_LAYERED = 0x80000;
+        const int WS_EX_TRANSPARENT = 0x20;
+        const int WS_EX_TOOLWINDOW = 0x80;
+        const int WS_EX_NOACTIVATE = 0x8000000;
+        const uint LWA_COLORKEY = 1;
+        const uint LWA_ALPHA = 2;
+        [DllImport("user32.dll")] static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint key, byte alpha, uint flags);
+        [DllImport("user32.dll")] static extern IntPtr GetDC(IntPtr hwnd);
+        [DllImport("user32.dll")] static extern int ReleaseDC(IntPtr hwnd, IntPtr dc);
+        [DllImport("gdi32.dll")] static extern uint GetPixel(IntPtr dc, int x, int y);
+
+        static readonly SD.Color KeyColor = SD.Color.Magenta;
+        static readonly SD.Color DimColor = SD.Color.FromArgb(150, 150, 150);
+        static readonly SD.Color ActiveColor = SD.Color.FromArgb(30, 110, 220);
+
+        string _style = "underline";
+        List<OverlaySpanRect> _rects = new List<OverlaySpanRect>();
+
+        public OverlayForm()
+        {
+            FormBorderStyle = SWF.FormBorderStyle.None;
+            ShowInTaskbar = false;
+            StartPosition = SWF.FormStartPosition.Manual;
+            TopMost = true;
+            Bounds = SWF.SystemInformation.VirtualScreen;
+            BackColor = KeyColor;
+            SetStyle(SWF.ControlStyles.AllPaintingInWmPaint | SWF.ControlStyles.UserPaint
+                | SWF.ControlStyles.OptimizedDoubleBuffer, true);
+        }
+
+        protected override bool ShowWithoutActivation { get { return true; } }
+
+        protected override SWF.CreateParams CreateParams
+        {
+            get
+            {
+                var cp = base.CreateParams;
+                cp.ExStyle |= WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+                return cp;
+            }
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            ApplyLayered();
+        }
+
+        void ApplyLayered()
+        {
+            // COLORREF is 0x00BBGGRR. Wash rides the whole-window alpha (the
+            // keyed pixels stay fully transparent either way); the other two
+            // styles paint at full opacity.
+            byte alpha = _style == "wash" ? (byte)110 : (byte)255;
+            uint key = (uint)(KeyColor.R | (KeyColor.G << 8) | (KeyColor.B << 16));
+            try { SetLayeredWindowAttributes(Handle, key, alpha, LWA_COLORKEY | LWA_ALPHA); } catch { }
+        }
+
+        // Called from the shim's poll thread. Null/empty rects hide the ink.
+        public void Push(List<OverlaySpanRect> rects, string style)
+        {
+            try
+            {
+                BeginInvoke((Action)(delegate
+                {
+                    bool styleChanged = style != null && style != _style;
+                    if (style != null) _style = style;
+                    _rects = rects ?? new List<OverlaySpanRect>();
+                    if (styleChanged) ApplyLayered();
+                    Invalidate();
+                }));
+            }
+            catch { /* form closing / handle gone - overlay is cosmetic */ }
+        }
+
+        protected override void OnPaint(SWF.PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.Clear(KeyColor);
+            var rects = _rects;
+            if (rects == null || rects.Count == 0) return;
+            foreach (var r in rects)
+            {
+                float x = r.X - Bounds.X;   // screen -> client (virtual-screen origin can be negative)
+                float y = r.Y - Bounds.Y;
+                switch (_style)
+                {
+                    case "wash":
+                        {
+                            using (var b = new SD.SolidBrush(r.Active ? ActiveColor : DimColor))
+                                g.FillRectangle(b, x, y, r.W, r.H);
+                            break;
+                        }
+                    case "repaint":
+                        {
+                            SD.Color bg = SampleBackground(r);
+                            using (var b = new SD.SolidBrush(bg))
+                                g.FillRectangle(b, x, y, r.W, r.H);
+                            g.TextRenderingHint = SD.Text.TextRenderingHint.AntiAliasGridFit;
+                            using (var f = new SD.Font("Segoe UI", Math.Max(6f, r.H * 0.62f), SD.GraphicsUnit.Pixel))
+                            using (var fb = new SD.SolidBrush(r.Active ? ActiveColor : DimColor))
+                                g.DrawString(r.Word ?? "", f, fb, x - 2f, y + r.H * 0.06f, SD.StringFormat.GenericTypographic);
+                            break;
+                        }
+                    default:   // underline
+                        {
+                            float th = r.Active ? 3f : 2f;
+                            using (var p = new SD.Pen(r.Active ? ActiveColor : DimColor, th))
+                                g.DrawLine(p, x, y + r.H - 1f, x + r.W, y + r.H - 1f);
+                            break;
+                        }
+                }
+            }
+        }
+
+        // Sample the app's own background just LEFT of the word (a point our
+        // overlay has not painted - keyed pixels are transparent, so the
+        // screen shows the app there). White fallback on failure.
+        SD.Color SampleBackground(OverlaySpanRect r)
+        {
+            try
+            {
+                IntPtr dc = GetDC(IntPtr.Zero);
+                try
+                {
+                    uint px = GetPixel(dc, (int)r.X - 4, (int)(r.Y + r.H / 2f));
+                    if (px != 0xFFFFFFFF)
+                        return SD.Color.FromArgb((int)(px & 0xFF), (int)((px >> 8) & 0xFF), (int)((px >> 16) & 0xFF));
+                }
+                finally { ReleaseDC(IntPtr.Zero, dc); }
+            }
+            catch { }
+            return SD.Color.White;
         }
     }
 

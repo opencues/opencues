@@ -1,6 +1,6 @@
 {
   "name": "@opencues/windows",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "description": "OpenCues for Windows \u2014 a system-wide host. A WSL-side daemon runs the OpenCues runtime against your existing ~/.cues config + keys; a thin Windows-native UI Automation shim mirrors whatever text field you're typing in. Type `_` in Notepad / WordPad / a dialog and it fills. Phase 1: single-answer surface (fluid-blank / transform-blank / compute blanks), no cycling overlay yet.",
   "type": "commonjs",

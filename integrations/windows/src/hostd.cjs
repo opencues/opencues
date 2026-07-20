@@ -54,9 +54,21 @@ const {
 const { validateScriptPath, appendAuditLog } = rt('src/security/spawn-sandbox.js');
 const { wrapWithBwrap } = rt('src/security/sandbox-runner.js');
 const { startConfigServer, KEY_ENVS } = require('./config-server.cjs');
+const { mergeRenderDirectives } = require('./render-wire.cjs');
 
 // ─── Config ──────────────────────────────────────────────────────────────
 const PORT = parseInt(process.env.OPENCUES_WIN_PORT || '', 10) || 51789;
+// Phase 2 (cycling + overlay + real caret). ON by default on this branch;
+// OPENCUES_WIN_PHASE2=0 restores the phase-1 Universal-Integration profile.
+const PHASE2 = process.env.OPENCUES_WIN_PHASE2 !== '0';
+// Overlay dim treatment, shipped to the shim in every `render` message so
+// the three looks can be compared without a Windows-side rebuild:
+//   underline — thin gray line under cue words (Grammarly-style)
+//   wash      — translucent gray rectangle over the word
+//   repaint   — opaque bg patch + the word re-drawn in gray (terminal look)
+const OVERLAY_STYLES = ['underline', 'wash', 'repaint'];
+const OVERLAY_STYLE_RAW = String(process.env.OPENCUES_WIN_OVERLAY_STYLE || 'underline').toLowerCase();
+const OVERLAY_STYLE = OVERLAY_STYLES.includes(OVERLAY_STYLE_RAW) ? OVERLAY_STYLE_RAW : 'underline';
 // Config/UI HTTP server (shared popup + keys/settings API). Defaults to
 // the socket port + 1. Set OPENCUES_WIN_CONFIG_PORT=0 to disable.
 const CONFIG_PORT = process.env.OPENCUES_WIN_CONFIG_PORT !== undefined
@@ -214,6 +226,12 @@ let mirrorCursor = 0;
 let attached = false;          // is an attachable field currently focused
 let currentApp = null;         // foreground process name, for presence
 let expectedEcho = null;       // text we just wrote; swallow its echo
+// Phase 2: shim-reported per-field capability — true when the focused
+// field is UIA-attached with a TextPattern, i.e. the shim can intercept
+// Ctrl+Alt+arrows and paint the overlay from bounding rects. Feeds the
+// adapter's supportsCycling() (the resolver folds the answer into its
+// build key, so a flip rebuilds the source set automatically).
+let fieldCycling = false;
 
 function send(obj) {
   if (!sock || sock.destroyed) return;
@@ -363,6 +381,31 @@ function echoRuntimeWrite(text, cursor) {
   });
 }
 
+// ─── Phase 2: render push (overlay dim/highlight spans) ──────────────────
+// Collect the runtime's render directives against the current mirror and
+// ship the flattened dim/highlight char ranges to the shim, which maps
+// them to screen rects via UIA and paints the click-through overlay.
+// Debounced to one collect per tick: every user event handler AND the
+// adapter's forceRender (the runtime's render-kick after substitutions /
+// DynDef registration) funnel through here, exactly like the other
+// bands' repaint paths. On a non-cycling field the directives are empty
+// (no cycleable sources were built) and the shim clears the overlay.
+let renderQueued = false;
+function pushRender() {
+  if (!PHASE2 || renderQueued) return;
+  renderQueued = true;
+  setImmediate(() => {
+    renderQueued = false;
+    if (!sock || sock.destroyed) return;
+    if (!attached) { send({ t: 'render', dim: [], hl: null, style: OVERLAY_STYLE }); return; }
+    let dirs = [];
+    try { dirs = bootResult.collectRenderDirectives(mirrorText, mirrorCursor); }
+    catch (err) { log('warn', 'collectRenderDirectives failed', err); }
+    const wire = mergeRenderDirectives(dirs);
+    send({ t: 'render', dim: wire.dim, hl: wire.hl, style: OVERLAY_STYLE });
+  });
+}
+
 // Apps whose composer renders markdown markers itself at SEND time
 // (Discord shows **bold** styled). For those, the runtime writes LLM
 // markdown VERBATIM instead of stripping it — this host has no styling
@@ -402,7 +445,7 @@ const bootResult = boot({
     send({ t: 'set-text', text, cursor: mirrorCursor });
     echoRuntimeWrite(text, mirrorCursor);
   },
-  forceRender: () => { /* phase 1: no overlay surface to repaint */ },
+  forceRender: () => { pushRender(); },   // phase 2: repaint = re-collect + ship spans to the overlay
   readFile: async (p) => { try { return await fsp.readFile(p, 'utf8'); } catch { return null; } },
   readDir: async (p) => {
     try {
@@ -414,7 +457,10 @@ const bootResult = boot({
   spawnProcess,
   blankInvoke,
   blanks: blanksRegistry,
-  supportsCycling: () => false,      // phase 1 — Universal-Integration profile
+  // Phase 2: per-field dynamic — the shim reports whether the focused
+  // field can host the overlay + chord hook (UIA + TextPattern). MSAA/
+  // Electron fields stay on the Universal-Integration profile.
+  supportsCycling: () => PHASE2 && attached && fieldCycling,
   markdownPassthrough: () => attached && mdPassthroughApps.has(String(currentApp || '').toLowerCase()),
   statusFilePath: `/tmp/opencues-status-windows-${process.pid}.json`,
   statusSnapshotHook: (payload) => { updatePresence({ status: summariseStatus(payload) }); },
@@ -464,6 +510,11 @@ function handleMessage(msg) {
       bootResult.resetBufferState();
       attached = true;
       currentApp = msg.app || null;
+      // Phase 2: per-field cycling capability, decided by the shim at
+      // attach (UIA + TextPattern → overlay + chords possible). Must be
+      // set BEFORE notifyTextChange so the resolver's source (re)build
+      // sees the right supportsCycling answer for this field.
+      fieldCycling = msg.cycling === true;
       mirrorText = typeof msg.text === 'string' ? msg.text : '';
       mirrorCursor = typeof msg.cursor === 'number' ? msg.cursor : mirrorText.length;
       expectedEcho = null;
@@ -471,6 +522,7 @@ function handleMessage(msg) {
       // Seed the runtime with the field's current contents (source=user,
       // no `_` synth — focusing a field is not typing an underscore).
       bootResult.notifyTextChange(mirrorText, mirrorCursor, 'user');
+      pushRender();
       return;
     }
     case 'blur': {
@@ -478,11 +530,13 @@ function handleMessage(msg) {
       // terminal, password box, non-editable). Detach + reset.
       if (attached) bootResult.resetBufferState();
       attached = false;
+      fieldCycling = false;
       currentApp = msg.app || null;
       mirrorText = '';
       mirrorCursor = 0;
       expectedEcho = null;
       updatePresence({ app: currentApp, attached: false });
+      pushRender();   // clears the overlay (attached=false → empty spans)
       return;
     }
     case 'text': {
@@ -553,6 +607,7 @@ function handleMessage(msg) {
         }
       }
       bootResult.notifyTextChange(text, cursor, 'user');
+      pushRender();
       return;
     }
     case 'cursor': {
@@ -560,6 +615,7 @@ function handleMessage(msg) {
       const cursor = typeof msg.cursor === 'number' ? msg.cursor : mirrorCursor;
       mirrorCursor = cursor;
       bootResult.notifyCursorChange(mirrorText, cursor, 'user');
+      pushRender();   // cursor-navigate mode re-picks the word under the caret
       return;
     }
     case 'key': {
@@ -578,6 +634,7 @@ function handleMessage(msg) {
         cursorOffset: mirrorCursor,
       });
       send({ t: 'key-result', id: msg.id, consumed });
+      pushRender();   // navigation/cycling chords move the highlight
       return;
     }
     case 'ping': { send({ t: 'pong' }); return; }
@@ -698,6 +755,9 @@ server.listen(PORT, HOST_BIND, () => {
     || process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY || process.env.ANTHROPIC_API_KEY);
   console.log(`▸ OpenCues Windows daemon listening on ${HOST_BIND}:${PORT}`);
   console.log(`  config: ${CUES_HOME}   LLM key: ${hasKey ? 'present' : 'MISSING (set GROQ_API_KEY)'}`);
+  console.log(`  phase 2: ${PHASE2
+    ? `on — overlay style '${OVERLAY_STYLE}' (OPENCUES_WIN_OVERLAY_STYLE=underline|wash|repaint)`
+    : 'off (OPENCUES_WIN_PHASE2=0)'}`);
   console.log(`  now start the Windows shim (from Windows PowerShell):`);
   console.log(`      powershell -ExecutionPolicy Bypass -File <repo>\\integrations\\windows\\native\\OpenCuesWindows.ps1 -Port ${PORT}`);
   console.log(`  logs: tail -f /tmp/opencues.log | grep '\\[windows\\]'`);

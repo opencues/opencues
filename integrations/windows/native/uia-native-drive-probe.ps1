@@ -49,7 +49,7 @@ using System.Runtime.InteropServices;
 [StructLayout(LayoutKind.Sequential)]
 public struct tagPOINT { public int x; public int y; }
 
-// ── Partial IUIAutomation (vtable order per UIAutomationClient.idl) ──
+// -- Partial IUIAutomation (vtable order per UIAutomationClient.idl) --
 [ComImport, Guid("30cbe57d-d9d0-452a-ab13-7ac5ac4825ee"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 interface IUIAutomation {
   [PreserveSig] int CompareElements(IntPtr el1, IntPtr el2, out int areSame);
@@ -60,7 +60,7 @@ interface IUIAutomation {
   [PreserveSig] int GetFocusedElement(out IUIAutomationElement element);
 }
 
-// ── Partial IUIAutomationElement (through GetCurrentPattern, slot 14) ──
+// -- Partial IUIAutomationElement (through GetCurrentPattern, slot 14) --
 [ComImport, Guid("d22108aa-8ac5-49a5-837b-37bbb3d7591e"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 interface IUIAutomationElement {
   [PreserveSig] int SetFocus();
@@ -79,7 +79,7 @@ interface IUIAutomationElement {
   [PreserveSig] int GetCurrentPattern(int patternId, [MarshalAs(UnmanagedType.IUnknown)] out object patternObject);
 }
 
-// ── IUIAutomationValuePattern ──
+// -- IUIAutomationValuePattern --
 [ComImport, Guid("a94cd8b1-0844-4cd6-9d2d-640537ab39e9"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 interface IUIAutomationValuePattern {
   [PreserveSig] int SetValue([MarshalAs(UnmanagedType.BStr)] string val);
@@ -89,7 +89,7 @@ interface IUIAutomationValuePattern {
   [PreserveSig] int get_CachedIsReadOnly(out int retVal);
 }
 
-// ── IUIAutomationTextRange (18 slots; unused ones declared for layout) ──
+// -- IUIAutomationTextRange (18 slots; unused ones declared for layout) --
 [ComImport, Guid("a543cc6a-f4ae-494b-8239-c814481187a8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 interface IUIAutomationTextRange {
   [PreserveSig] int Clone(out IUIAutomationTextRange clonedRange);
@@ -112,7 +112,7 @@ interface IUIAutomationTextRange {
   [PreserveSig] int GetChildren(out IntPtr children);
 }
 
-// ── IUIAutomationTextPattern (+2 = TextPattern2) ──
+// -- IUIAutomationTextPattern (+2 = TextPattern2) --
 [ComImport, Guid("32eba289-3583-42c9-9c59-3b6d9a1e9b6a"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 interface IUIAutomationTextPattern {
   [PreserveSig] int RangeFromPoint(tagPOINT pt, out IUIAutomationTextRange range);

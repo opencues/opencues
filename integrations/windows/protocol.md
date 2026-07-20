@@ -18,11 +18,11 @@ of that same surface, one socket hop away.
 | `t` | Fields | Meaning |
 |---|---|---|
 | `hello` | `version`, `os` | First message on connect. |
-| `focus` | `app`, `text`, `cursor` | An **attachable** field gained focus (already passed the shim's editable + non-sensitive + not-deny-listed checks). Carries the field's current contents. The daemon treats this as a hard buffer boundary → `resetBufferState()` then seeds the mirror. |
+| `focus` | `app`, `text`, `cursor`, `cycling` | An **attachable** field gained focus (already passed the shim's editable + non-sensitive + not-deny-listed checks). Carries the field's current contents. `cycling` (phase 2): true when the field is UIA-attached with a managed TextPattern — the shim can hook chords + paint the overlay there; feeds the adapter's per-field `supportsCycling`. The daemon treats this as a hard buffer boundary → `resetBufferState()` then seeds the mirror. |
 | `blur` | `app` | Focus moved to something we don't touch (browser, terminal, password box, non-editable). Daemon detaches + resets. |
-| `text` | `text`, `cursor` | The focused field's text changed (user typed / pasted). Daemon updates its mirror; if `_` count increased it synthesises a `_` keystroke first (explicit-`_` gate) then fires `notifyTextChange`. |
-| `cursor` | `cursor` | Caret moved without a text change. (Phase 1 sends caret = text length; real caret tracking is phase 2.) |
-| `key` | `id`, `key`, `mods{ctrl,alt,shift,meta}` | A chord the shim intercepted (phase 2 — needs the keyboard hook). Daemon replies `key-result`. |
+| `text` | `text`, `cursor` | The focused field's text changed (user typed / pasted). Daemon updates its mirror; if `_` count increased it synthesises a `_` keystroke first (explicit-`_` gate) then fires `notifyTextChange`. `cursor` is the real caret on cycling fields (TextPattern2 GetCaretRange), text length elsewhere. |
+| `cursor` | `cursor` | Caret moved without a text change. Phase 2 sends the real caret on cycling UIA fields (polled per tick, suppressed while the write bracket is open); non-cycling fields never send it. |
+| `key` | `id`, `key`, `mods{ctrl,alt,shift,meta}` | A chord the WH_KEYBOARD_LL hook intercepted (Ctrl+Alt+arrows, swallowed; `escape` observe-only). Daemon replies `key-result`. |
 | `ping` | — | Liveness. Daemon replies `pong`. |
 
 ## Daemon → Shim (WSL → Windows)
@@ -31,8 +31,9 @@ of that same surface, one socket hop away.
 |---|---|---|
 | `welcome` | `host`, `hostVersion`, `protocol`, `cuesHome`, `cuesHomeWin`, `logFile`, `logFileWin` | Reply to `hello`. The `*Win` variants are Windows-openable paths (a `\\wsl.localhost\...` UNC path when the daemon runs in WSL) so the tray's "Open config folder" / "View log" resolve to the right place. |
 | `set-text` | `text`, `cursor` | Replace the focused field's whole value (an LLM substitution, blank fill, or a loading-spinner frame). Shim applies via UIA `ValuePattern.SetValue` and suppresses the resulting echo. |
-| `set-cursor` | `cursor` | Move the caret. (Phase 1: no-op — caret assumed at end.) |
-| `key-result` | `id`, `consumed` | Whether the runtime consumed a `key` (phase 2). If `false`, the shim lets the chord through. |
+| `set-cursor` | `cursor` | Move the caret. Phase 2: applied via `EM_SETSEL` on Edit-family HWNDs, native-UIA collapsed-range `Select()` elsewhere; best-effort. |
+| `render` | `dim` (array of `[start,end)` pairs), `hl` (`[start,end)` or null), `style` (`underline`\|`wash`\|`repaint`) | Phase 2: the runtime's dim ("has alternatives") spans + the single active/cycling span, as char offsets into the mirror text. The shim resolves them to physical screen rects via TextPattern `GetBoundingRectangles` and paints the click-through overlay. Empty `dim` + null `hl` clears the overlay. `style` comes from the daemon's `OPENCUES_WIN_OVERLAY_STYLE` env so the three dim looks can be compared without a Windows-side rebuild. |
+| `key-result` | `id`, `consumed` | Whether the runtime consumed a `key`. If `false`, the shim re-injects the chord marked with `INJECT_MARK` in `dwExtraInfo` so its own hook passes it through to the app. |
 | `pong` | — | Reply to `ping`. |
 
 ## Echo suppression

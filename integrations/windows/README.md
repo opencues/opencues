@@ -88,13 +88,28 @@ extension and the in-terminal hosts are the better surface there, and
 skipping avoids double-attaching. (Letting local OpenCues take
 precedence *inside* those is planned, not yet built.)
 
-## Phase 1 scope
+## Phase 2 (experimental): word-cues, cycling, the overlay
 
-This is the **no-cycling** profile: single-answer features only
-(`_` fluid-blank, transform-blank rewrites, compute blanks). Word
-alternatives and Ctrl+Alt+arrow **cycling** need a colour overlay +
-keyboard hook — that's **phase 2** (a click-through overlay painted from
-UIA bounding rectangles). See `CLAUDE.md`.
+On fields that expose enough UIA (Notepad, WordPad, most Win32/WinForms
+dialogs), the host now also runs **word-cues + Ctrl+Alt+arrow cycling**:
+cue words are marked by a click-through overlay painted over the app,
+Ctrl+Alt+Left/Right walks between them, Ctrl+Alt+Up/Down cycles the
+alternatives, and the caret is tracked for real. Fields that can't
+(Discord/Slack-class Electron editors) transparently stay on the
+single-answer profile (`_` fluid-blank, transform-blank, compute
+blanks) — the capability is decided per focused field.
+
+Try the three dim looks (restart the daemon to switch):
+
+```bash
+OPENCUES_WIN_OVERLAY_STYLE=underline oc-windows   # thin gray underline (default)
+OPENCUES_WIN_OVERLAY_STYLE=wash      oc-windows   # translucent gray tint over the word
+OPENCUES_WIN_OVERLAY_STYLE=repaint   oc-windows   # word re-drawn in gray (terminal look)
+```
+
+Opt out entirely with `OPENCUES_WIN_PHASE2=0` (daemon), or disable just
+the hook / overlay with `OPENCUES_WIN_HOOK=0` / `OPENCUES_WIN_OVERLAY=0`
+(Windows side). Details + limitations: `CLAUDE.md` § Phase 2.
 
 ## Tray app, settings & keys, and where config lives
 

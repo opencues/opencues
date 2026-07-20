@@ -99,19 +99,64 @@ Config lives at `%USERPROFILE%\.cues` by default (or `OPENCUES_HOME` →
 `\\wsl.localhost\...` to share WSL). Tray state in
 `%LOCALAPPDATA%\OpenCues\tray.json`; logs in `%TEMP%\opencues.log`.
 
-## Phase 1 (shipped) vs phase 2 (planned)
+## Phase 2 (EXPERIMENTAL, this branch) — cycling + overlay + real caret
 
-| | Phase 1 (this) | Phase 2 |
+| | Phase 1 | Phase 2 (shipped on this branch) |
 |---|---|---|
-| Profile | `supportsCycling:false` — Universal-Integration | per-field dynamic |
-| Surface | fluid-blank, transform-blank, compute blanks | + word-cues, cycling blanks |
-| Windows I/O | UIA read/write only | + WH_KEYBOARD_LL hook (Ctrl+Alt+arrows) + layered click-through overlay painted from UIA `GetBoundingRectangles` |
-| Cursor | assumed at end (text length) | real caret via `TextPattern2.GetCaretRange` |
+| Profile | `supportsCycling:false` — Universal-Integration | **per-field dynamic** — `focus.cycling` from the shim (UIA attach + managed TextPattern → true; MSAA/Electron → false) |
+| Surface | fluid-blank, transform-blank, compute blanks | + word-cues, selector/satellite, cycling blanks on cycling fields |
+| Windows I/O | UIA read/write only | + WH_KEYBOARD_LL hook (Ctrl+Alt+arrows swallowed → `key` msgs; Escape observe-only) + layered click-through overlay (`OverlayForm`) painted from TextPattern `GetBoundingRectangles` |
+| Cursor | assumed at end (text length) | real caret via native `IUIAutomationTextPattern2.GetCaretRange` (poll-tick `cursor` events; `set-cursor` applied via EM_SETSEL / native collapsed Select) |
+| Render | none | daemon collects `RenderDirectives` per event + forceRender, ships `render {dim, hl, style}`; adapter advertises `dim-ranges` + `highlight-range` + `render-rgb-color` |
 
-`supportsCycling:false` makes the resolver prune every cycleable source
-at build time (verified: a bare-config boot logs
-`Resolver: built with 1 sources [fluid-blank]`). Phase 2 flips the
-binding and the same filter restores them.
+The resolver folds `supportsCycling` into its build key, so focusing
+between a cycling and a non-cycling field rebuilds the source set
+automatically — no reboot, no band edits.
+
+**Overlay dim looks (all three implemented, for evaluation):** the
+daemon env `OPENCUES_WIN_OVERLAY_STYLE=underline|wash|repaint` picks the
+treatment and rides every `render` message — restart the daemon to
+switch, no Windows-side rebuild:
+
+- `underline` (default) — thin gray line under each cue word; the
+  active/cycling span gets a thicker blue line. Robust everywhere.
+- `wash` — translucent gray rectangle over the word (whole-window
+  alpha + color-key). Closest cheap approximation of the terminal dim.
+- `repaint` — opaque patch in a screen-sampled background colour + the
+  word re-drawn in gray (Segoe UI, height-fitted). The true terminal
+  look when aligned; font/metric mismatches are expected — this style
+  IS the experiment.
+
+**Kill switches:** `OPENCUES_WIN_PHASE2=0` (daemon — whole profile back
+to phase 1), `OPENCUES_WIN_HOOK=0` (shim — no keyboard hook),
+`OPENCUES_WIN_OVERLAY=0` (shim — no overlay paint).
+
+**Chord semantics:** while a cycling field is attached (and the shim is
+enabled + connected), Ctrl+Alt+Up/Down/Left/Right key-downs are
+swallowed system-wide and forwarded; the matching key-ups are swallowed
+too. `key-result consumed:false` re-injects the arrow with
+`INJECT_MARK` in `dwExtraInfo` (the hook passes marked events through —
+that mark check is what prevents an infinite self-hook loop). The LL
+hook callback never touches the socket inline (ThreadPool send) — a
+blocking LL hook gets silently removed by Windows after ~300ms.
+
+**Phase-2 known limitations:**
+- Cycling substitutions are whole-value writes — the app's native undo
+  granularity cost from phase 1 applies per cycle step on non-Edit
+  fields (Edit/RichEdit keep native undo via the EM convergent path).
+- The overlay repaints rects every other poll tick (~300ms), so fast
+  window drags/scrolls show transient lag of the ink.
+- `repaint` samples the background 4px left of the word — fails on
+  gradient/imagery backgrounds and words at the field's left edge.
+- Chromium-UIA composers (Slack) expose TextPattern only to native
+  clients → managed probe says no rects → they stay phase 1.
+- WPF fields (no Edit-class HWND, but TextPattern present → cycling on)
+  can route a small LAST-WORD cycle substitution through
+  `TryTypeMicroEdit`, which still assumes caret-at-end — a mid-word
+  caret there can misplace the backspace burst. Notepad/WordPad are
+  immune (EM convergent path); revisit if a WPF target misbehaves.
+- Pinned by `tests/render-wire-invariants.mjs` (wire mapping + hook/
+  overlay source guards) and the fake-shim smoke pattern (see Dev loop).
 
 ## Write attribution — the write bracket
 

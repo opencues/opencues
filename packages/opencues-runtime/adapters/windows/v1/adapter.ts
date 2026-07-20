@@ -17,16 +17,17 @@
 // mirrors it" contract every other band follows — the mirror just
 // happens to live one socket hop away from the real control.
 //
-// Phase 1 (this file): `supportsCycling` is pinned false. The host has
-// no colour-overlay surface and intercepts no Ctrl+Alt+arrow chords, so
-// the Universal-Integration profile prunes every cycleable cue/blank at
-// registration (word-cues, selector/satellite, list/step blanks). What
-// survives is the single-answer surface: `_` fluid-blank, transform-
-// blank, and compute blanks (weather/stocks/…). See
-// docs/architecture/universal-integration.md. Phase 2 will add a
-// click-through overlay (painted from UIA bounding rects) + a
-// low-level keyboard hook and flip `supportsCycling` to a per-field
-// dynamic answer.
+// Phase 2 (this file): `supportsCycling` is a PER-FIELD dynamic answer
+// delegated to the daemon — true when the focused field is UIA-attached
+// with a TextPattern (the shim can hook Ctrl+Alt+arrows and paint the
+// overlay from bounding rects), false on MSAA/Electron fields, where
+// the Universal-Integration profile still prunes every cycleable
+// cue/blank at registration (word-cues, selector/satellite, list/step
+// blanks) exactly as in phase 1. The resolver folds the answer into its
+// build key, so a focus change between a cycling and a non-cycling
+// field rebuilds the source set automatically. See
+// docs/architecture/universal-integration.md. Kill switch:
+// OPENCUES_WIN_PHASE2=0 on the daemon restores the phase-1 profile.
 //
 // Bindings shape is intentionally close to ShellBindings — the daemon
 // is a plain event pump around a socket, structurally the same job the
@@ -90,16 +91,21 @@ export interface WindowsBindings {
   markdownPassthrough?(): boolean;
 }
 
-// No render capabilities in phase 1 — there is no overlay yet, so the
-// runtime's dim/highlight/markdown directives have nowhere to paint.
-// They're still collected (harmless) but the host advertises no render
-// caps, and `supportsCycling: false` prunes the sources that would rely
-// on them. file-read/write + force-render are real (the daemon has a
-// Node fs + a socket flush).
+// Phase 2: the shim paints a click-through layered overlay from UIA
+// bounding rects, so dim/highlight char ranges now have a real surface —
+// advertising them is what makes DimRender emit non-empty directives
+// (it gates on these caps at compute time). `render-override` stays
+// absent: we cannot substitute the text a foreign app draws, only paint
+// above it. On fields where the overlay can't get rects (MSAA/Electron)
+// the daemon reports `supportsCycling: false` per-field, so no dim
+// spans exist to paint there — the caps being static is harmless.
 export const WINDOWS_V1_CAPABILITIES: readonly Capability[] = [
   'file-read',
   'file-write',
   'force-render',
+  'dim-ranges',
+  'highlight-range',
+  'render-rgb-color',
 ];
 
 export class WindowsV1Adapter implements HostAdapter {

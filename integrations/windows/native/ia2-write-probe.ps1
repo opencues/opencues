@@ -1,29 +1,29 @@
 <#
-  IA2 write/caret probe — can we drive Chromium/Electron editors (Discord,
+  IA2 write/caret probe - can we drive Chromium/Electron editors (Discord,
   Slack) via IAccessible2 the way we drive RichEdit via EM_* messages?
 
   RichEdit's win (EM_REPLACESEL / EM_HIDESELECTION) is Win32-Edit-control-
   specific. Chromium renders its own text, so there are no EM_* messages.
-  The Chromium-world analog is IAccessible2 — and unlike EM_GETOLEINTERFACE
+  The Chromium-world analog is IAccessible2 - and unlike EM_GETOLEINTERFACE
   (in-process-only pointer, unreachable from our out-of-process shim), IA2
   interfaces MARSHAL across processes. So they're reachable. The open
   question is what Chromium actually IMPLEMENTS:
 
-    • IAccessibleText  (get/setCaretOffset, get/setSelection, get_text)
-        — expected to work (screen readers rely on it). Would give exact
-          caret + text reads and caret positioning → convergent micro-frames
+    * IAccessibleText  (get/setCaretOffset, get/setSelection, get_text)
+        - expected to work (screen readers rely on it). Would give exact
+          caret + text reads and caret positioning -> convergent micro-frames
           + a clean fix for Slack's caret-jump.
-    • IAccessibleEditableText (insertText / replaceText / deleteText …)
-        — UNKNOWN. Blink implements IA2 for READING; the write side may be
+    * IAccessibleEditableText (insertText / replaceText / deleteText ...)
+        - UNKNOWN. Blink implements IA2 for READING; the write side may be
           E_NOTIMPL. If it works, it's the real EM_REPLACESEL analog:
           positioned writes, no clipboard, no select-all flash, no drift.
 
   This probe drills to the focused editable node (same algorithm the shim
   uses), obtains IAccessibleText + IAccessibleEditableText (both by direct
-  QI and via IServiceProvider→IA2), and exercises each — reporting the
+  QI and via IServiceProvider->IA2), and exercises each - reporting the
   HRESULT and, for writes, whether the buffer text ACTUALLY changed.
 
-  ⚠ This probe WILL try to insert/replace text in the focused field. Use a
+  ! This probe WILL try to insert/replace text in the focused field. Use a
   scratch message (don't send it); it attempts to undo its own edits, but
   clear the box afterwards to be safe.
 
@@ -42,8 +42,8 @@ using System.Text;
 using System.Runtime.InteropServices;
 using Accessibility;
 
-// ── IA2 COM interfaces (declared to the vtable slot we call; unused slots
-//    kept in order so the layout is correct). ─────────────────────────────
+// -- IA2 COM interfaces (declared to the vtable slot we call; unused slots
+//    kept in order so the layout is correct). -----------------------------
 [ComImport, Guid("6D5140C1-7436-11CE-8034-00AA006009FA"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 interface IServiceProvider {
   [PreserveSig] int QueryService(ref Guid guidService, ref Guid riid, out IntPtr ppvObject);
@@ -111,11 +111,11 @@ public static class Ia2Probe {
   static string Trunc(string s, int m) {
     if (s == null) return "<null>";
     s = s.Replace("\r"," ").Replace("\n"," ");
-    return s.Length > m ? s.Substring(0, m) + "…" : s;
+    return s.Length > m ? s.Substring(0, m) + "..." : s;
   }
 
   // DFS from a node collecting every descendant that exposes IAccessibleText
-  // (direct QI or via IServiceProvider→IA2), so we can find the text leaf even
+  // (direct QI or via IServiceProvider->IA2), so we can find the text leaf even
   // when accFocus lands on a container.
   static void FindTextNodes(IAccessible acc, int depth, System.Collections.Generic.List<IAccessible> hits, StringBuilder trace, int[] budget) {
     if (acc == null || depth > 14 || budget[0] <= 0) return;
@@ -157,8 +157,8 @@ public static class Ia2Probe {
     return bestFocused;
   }
 
-  // Obtain IAccessibleText / IAccessibleEditableText from a node — try a
-  // direct QI first, then the IServiceProvider→IA2 route.
+  // Obtain IAccessibleText / IAccessibleEditableText from a node - try a
+  // direct QI first, then the IServiceProvider->IA2 route.
   static object QI(object node, Type wanted, out string how) {
     how = "";
     bool wantText = (wanted == typeof(IAccessibleText));
@@ -201,19 +201,19 @@ public static class Ia2Probe {
     if (focused == null) return sb.ToString() + "no focused node (not a Chromium/Electron field, or a11y tree not woken)";
     sb.AppendLine("focused node: role=0x" + RoleOf(focused).ToString("x") + " name='" + Trunc(NameOf(focused), 28) + "'");
 
-    // The focused node is usually a container — hunt its subtree for the node
+    // The focused node is usually a container - hunt its subtree for the node
     // that actually exposes IAccessibleText, then test THAT one.
     var hits = new System.Collections.Generic.List<IAccessible>();
     var trace = new StringBuilder(); int[] budget = { 600 };
     FindTextNodes(focused, 0, hits, trace, budget);
     sb.AppendLine("nodes exposing IAccessibleText under focused: " + hits.Count);
     sb.Append(trace.ToString());
-    if (hits.Count == 0) { sb.AppendLine("→ no IAccessibleText anywhere under the focused node — Chromium doesn't hand us a driveable text interface here."); return sb.ToString(); }
+    if (hits.Count == 0) { sb.AppendLine("-> no IAccessibleText anywhere under the focused node - Chromium doesn't hand us a driveable text interface here."); return sb.ToString(); }
 
     // Pick the candidate with the most text (the editor body, not a label).
     IAccessible node = hits[0]; string nodeTxt = "";
     foreach (var h in hits) { var ht = (IAccessibleText)QI(h, typeof(IAccessibleText), out where); string tx = null; try { int nn; ht.get_nCharacters(out nn); ht.get_text(0, -1, out tx); } catch { } if (tx != null && tx.Length >= nodeTxt.Length) { node = h; nodeTxt = tx; } }
-    sb.AppendLine("→ testing node: role=0x" + RoleOf(node).ToString("x") + " text='" + Trunc(nodeTxt, 50) + "'");
+    sb.AppendLine("-> testing node: role=0x" + RoleOf(node).ToString("x") + " text='" + Trunc(nodeTxt, 50) + "'");
 
     string howT, howE;
     var t = (IAccessibleText)QI(node, typeof(IAccessibleText), out howT);
@@ -221,7 +221,7 @@ public static class Ia2Probe {
     sb.AppendLine("IAccessibleText:         " + (t != null ? "YES (" + howT + ")" : "no (" + howT + ")"));
     sb.AppendLine("IAccessibleEditableText: " + (e != null ? "YES (" + howE + ")" : "no (" + howE + ")"));
 
-    // ── IAccessibleText: read + caret control ──
+    // -- IAccessibleText: read + caret control --
     if (t != null) {
       int nChars = -1, caret = -1, hr;
       hr = t.get_nCharacters(out nChars); sb.AppendLine("  get_nCharacters -> hr=0x" + hr.ToString("x8") + " n=" + nChars);
@@ -232,31 +232,31 @@ public static class Ia2Probe {
         int target = Math.Max(0, nChars - 1);
         hr = t.setCaretOffset(target); sb.AppendLine("  setCaretOffset(" + target + ") -> hr=0x" + hr.ToString("x8"));
         int caret2 = -1; t.get_caretOffset(out caret2);
-        sb.AppendLine("    caret after set = " + caret2 + (caret2 == target ? "  ✓ MOVED" : "  ✗ (no move)"));
+        sb.AppendLine("    caret after set = " + caret2 + (caret2 == target ? "  OK MOVED" : "  x (no move)"));
       }
     }
 
-    // ── IAccessibleEditableText: the real question ──
+    // -- IAccessibleEditableText: the real question --
     if (e != null) {
       string before = null; if (t != null) t.get_text(0, -1, out before);
       int nb = (before == null ? 0 : before.Length);
       // insertText at end
-      string ins = "«IA2»"; int hr = e.insertText(nb, ref ins);
+      string ins = "<<IA2>>"; int hr = e.insertText(nb, ref ins);
       string afterI = null; if (t != null) t.get_text(0, -1, out afterI);
       bool changedI = (afterI != null && before != null && afterI != before);
-      sb.AppendLine("  insertText(end,'«IA2»') -> hr=0x" + hr.ToString("x8") + (changedI ? "  ✓ TEXT CHANGED" : "  ✗ (no change)"));
+      sb.AppendLine("  insertText(end,'<<IA2>>') -> hr=0x" + hr.ToString("x8") + (changedI ? "  OK TEXT CHANGED" : "  x (no change)"));
       sb.AppendLine("    after='" + Trunc(afterI, 70) + "'");
       // undo our insert if it took
       if (changedI) { try { e.deleteText(nb, (afterI == null ? nb : afterI.Length)); } catch {} }
       // replaceText whole buffer
-      string rep = "«IA2-REPLACED»"; hr = e.replaceText(0, (nb > 0 ? nb : -1), ref rep);
+      string rep = "<<IA2-REPLACED>>"; hr = e.replaceText(0, (nb > 0 ? nb : -1), ref rep);
       string afterR = null; if (t != null) t.get_text(0, -1, out afterR);
       bool changedR = (afterR != null && afterR.IndexOf("IA2-REPLACED") >= 0);
-      sb.AppendLine("  replaceText(all)        -> hr=0x" + hr.ToString("x8") + (changedR ? "  ✓ TEXT CHANGED" : "  ✗ (no change)"));
+      sb.AppendLine("  replaceText(all)        -> hr=0x" + hr.ToString("x8") + (changedR ? "  OK TEXT CHANGED" : "  x (no change)"));
       sb.AppendLine("    after='" + Trunc(afterR, 70) + "'");
       // restore original if replace took
       if (changedR && before != null) { try { string b2 = before; e.replaceText(0, (afterR == null ? 0 : afterR.Length), ref b2); } catch {} }
-      sb.AppendLine("  (probe attempted to undo its own edits — clear the box if anything is left)");
+      sb.AppendLine("  (probe attempted to undo its own edits - clear the box if anything is left)");
     }
     return sb.ToString();
   }

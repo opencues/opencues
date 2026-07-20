@@ -20,7 +20,8 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net48</TargetFramework>
-    <UseWindowsForms>false</UseWindowsForms>
+    <!-- Phase 2: the overlay window (OverlayForm) is WinForms + GDI+. -->
+    <UseWindowsForms>true</UseWindowsForms>
     <LangVersion>7.3</LangVersion>
     <AssemblyName>OpenCuesWindows</AssemblyName>
     <RootNamespace>OpenCues</RootNamespace>
@@ -32,6 +33,8 @@
     <Reference Include="UIAutomationTypes" />
     <Reference Include="WindowsBase" />
     <Reference Include="Accessibility" />   <!-- MSAA/IA2 IAccessible (Chromium/Electron read path) -->
+    <Reference Include="System.Windows.Forms" />   <!-- phase-2 overlay window -->
+    <Reference Include="System.Drawing" />         <!-- phase-2 overlay painting -->
   </ItemGroup>
 
   <ItemGroup>
