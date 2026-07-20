@@ -118,3 +118,40 @@ test('unknown subcommand exits 2', async () => {
   const r = await run(['frobnicate']);
   assert.equal(r.code, 2);
 });
+
+test('remove LAST feed clears the snapshot (no ghost calendar)', async () => {
+  await run(['add', URL_A, '--no-verify']);
+  // simulate a prior sync: snapshot with events from the feed
+  const snapPath = path.join(tmpHome, '.cues', 'calendar.json');
+  fs.writeFileSync(snapPath, JSON.stringify({ ingestedAt: '2026-07-01T00:00:00Z', events: [{ title: 'Ghost', start: '2026-08-01T10:00', end: '2026-08-01T11:00' }] }));
+  const r = await run(['remove', URL_A]);
+  assert.equal(r.code, 0);
+  assert.ok(/snapshot cleared/.test(r.out), r.out);
+  const snap = JSON.parse(fs.readFileSync(snapPath, 'utf8'));
+  assert.equal(snap.events.length, 0, 'events cleared — the deleted calendar must not ghost');
+  assert.ok(snap.ingestedAt > '2026-07-01', 'fresh ingestedAt so the due-check stays quiet');
+});
+
+test('remove with feeds REMAINING re-syncs immediately (removed events drop now, not on the next poll)', async () => {
+  await run(['add', URL_A, '--no-verify']);
+  await run(['add', URL_B, '--no-verify']);
+  const snapPath = path.join(tmpHome, '.cues', 'calendar.json');
+  fs.writeFileSync(snapPath, JSON.stringify({ ingestedAt: '2026-07-01T00:00:00Z', events: [{ title: 'FromA', start: '2026-08-01T10:00', end: '2026-08-01T11:00' }] }));
+  // stub global fetch so the immediate re-sync is hermetic: remaining feed (B) has one event
+  const savedFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true, status: 200,
+    headers: { get: () => 'text/calendar' },
+    text: async () => 'BEGIN:VCALENDAR\nBEGIN:VEVENT\nDTSTART:20260801T120000Z\nDTEND:20260801T130000Z\nSUMMARY:FromB\nEND:VEVENT\nEND:VCALENDAR\n',
+  });
+  try {
+    const r = await run(['remove', URL_A]);
+    assert.equal(r.code, 0);
+    assert.ok(/re-synced without it/.test(r.out), r.out);
+    const snap = JSON.parse(fs.readFileSync(snapPath, 'utf8'));
+    assert.equal(snap.events.length, 1);
+    assert.equal(snap.events[0].title, 'FromB', 'snapshot rebuilt from the remaining feed only');
+  } finally {
+    globalThis.fetch = savedFetch;
+  }
+});
