@@ -159,9 +159,19 @@ namespace OpenCues
             _bracketQuietAt = now + WRITE_QUIET_MS;
             _expectedEcho = text;
             _lastSentText = text;
+            _lastWriteAt = now;   // capture paint-settle guard (see EnsureCaptures)
             _recentWrites.Add(new KeyValuePair<string, int>(EolNorm(text), Environment.TickCount));
             if (_recentWrites.Count > RECENT_WRITE_CAP) _recentWrites.RemoveAt(0);
         }
+
+        // Tick of the most recent runtime write into the field. Captures
+        // within WRITE_SETTLE_MS of a write would CopyFromScreen pixels the
+        // app hasn't repainted yet (the write mutates the control's MODEL
+        // synchronously; the paint follows a frame later) - the patch would
+        // show the OLD word. Rects are exact immediately (they come from the
+        // model); only the pixel grab needs the settle.
+        internal static int _lastWriteAt;
+        internal const int WRITE_SETTLE_MS = 40;
 
         static bool IsRecentSelfWrite(string cur)
         {
@@ -626,6 +636,15 @@ namespace OpenCues
                         break;
                     case "set-text":
                         ApplySetText(Str(map, "text"));
+                        // Our OWN write is a known event - no need to wait for
+                        // the app's change event to re-rect. The render message
+                        // with the post-write spans is typically already queued
+                        // behind this one, so marking the overlay dirty makes
+                        // the same tick's MaybeRefreshOverlay re-rect with the
+                        // fresh spans immediately (cycling: the active box
+                        // expands to the new word on the spot).
+                        _overlayDirty = true;
+                        BumpFastPoll();
                         break;
                     case "set-cursor":
                         // Phase 2: position the caret (EM_SETSEL on Edit-family
@@ -3460,6 +3479,12 @@ namespace OpenCues
             // frame) and the ink is hidden anyway; the settle path runs a
             // fresh UpdateOverlay that captures at the final position.
             if (WindowsShim._scrollHidden) return;
+            // Paint-settle guard: right after a runtime write the app hasn't
+            // repainted yet - a capture now grabs the OLD word's pixels.
+            // Skip this pass (rects are already correct; OnPaint's underline
+            // fallback covers the gap); the fast cadence retries within
+            // ~8-16ms of the app's paint.
+            if (unchecked(Environment.TickCount - WindowsShim._lastWriteAt) < WindowsShim.WRITE_SETTLE_MS) return;
             List<OverlaySpanRect> save = null;
             if (!_captureExcluded)
             {
