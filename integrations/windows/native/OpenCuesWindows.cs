@@ -221,7 +221,7 @@ namespace OpenCues
         // loop fades the ink back in over ~150ms with freshly-resolved
         // rects. Cycling chords / plain arrows / Escape never hide (the
         // user needs visible marks to navigate them).
-        static volatile bool _inkHidden;
+        internal static volatile bool _inkHidden;   // read by OverlayForm to skip invisible hot recaptures
         static int _typingQuietAt;
         const int TYPING_QUIET_MS = 500;
 
@@ -249,6 +249,7 @@ namespace OpenCues
             _inkHidden = false;
             var ov = _overlayVol;
             if (ov != null) ov.FadeInInk();   // volatile spans fade back; stable never left
+            UpdateOverlay();                  // fresh rects + hot recaptures for what fades in
         }
 
         // Sub-15ms waits need the system timer resolution raised - the
@@ -2824,7 +2825,7 @@ namespace OpenCues
                 object tpo;
                 if (!el.TryGetCurrentPattern(TextPattern.Pattern, out tpo)) return false;
                 var probe = new List<OverlaySpanRect>();
-                AddSpanRects(((TextPattern)tpo).DocumentRange, text, span[0], span[1], false, -1, probe);
+                AddSpanRects(((TextPattern)tpo).DocumentRange, text, span[0], span[1], false, -1, -1, probe);
                 if (probe.Count == 0) return false;
                 return Math.Abs(probe[0].X - _lastFirstX) > 0.5f || Math.Abs(probe[0].Y - _lastFirstY) > 0.5f;
             }
@@ -2846,15 +2847,33 @@ namespace OpenCues
             // Caret position marks spans HOT: the capture style re-captures
             // hot spans on every refresh tick so the caret blink and live
             // edits under the patch stay visible ("re-apply when it is
-            // moving or in focus" - 2026-07-20 feedback).
+            // moving or in focus" - 2026-07-20 feedback). The PREVIOUS
+            // caret is considered too: when the caret LEAVES a span, that
+            // span gets one more recapture - otherwise a caret bar frozen
+            // into the last snapshot stays baked into the patch forever
+            // (the "stuck in the screenshot" report).
             int caret = -1;
             if (_fieldCycling) { int off; if (TryGetCaretOffset(out off)) caret = off; }
-            foreach (var span in _dimSpans) AddSpanRects(doc, text, span[0], span[1], false, caret, list);
-            if (_hlSpan != null) AddSpanRects(doc, text, _hlSpan[0], _hlSpan[1], true, caret, list);
+            int prevCaret = _prevOverlayCaret;
+            _prevOverlayCaret = caret;
+            foreach (var span in _dimSpans) AddSpanRects(doc, text, span[0], span[1], false, caret, prevCaret, list);
+            if (_hlSpan != null) AddSpanRects(doc, text, _hlSpan[0], _hlSpan[1], true, caret, prevCaret, list);
             return list;
         }
 
-        static void AddSpanRects(TextPatternRange doc, string text, int s, int e, bool active, int caret, List<OverlaySpanRect> list)
+        // Poll-thread only. Previous overlay caret - lets a span the caret
+        // just LEFT recapture once more (scrubs the baked-in caret bar).
+        static int _prevOverlayCaret = -1;
+
+        // Caret within the span's fringe [s-1, e+1]: inside the word OR
+        // sitting at either edge, where the app still draws the bar within
+        // (or touching) the span's rect.
+        static bool CaretInSpanFringe(int c, int s, int e)
+        {
+            return c >= 0 && c >= s - 1 && c <= e + 1;
+        }
+
+        static void AddSpanRects(TextPatternRange doc, string text, int s, int e, bool active, int caret, int prevCaret, List<OverlaySpanRect> list)
         {
             try
             {
@@ -2868,13 +2887,15 @@ namespace OpenCues
                 var rects = r.GetBoundingRectangles();
                 if (rects == null) return;
                 string word = text.Substring(s, e - s);
-                // STRICTLY inside: a caret parked at the span edge (the
-                // caret-at-end-of-buffer resting state, with a span that
-                // covers the whole buffer) must NOT count as hot - it made
-                // every substitution span permanently hot, re-capturing at
-                // 3Hz and compounding any self-capture race into the
-                // fade-to-nothing spiral (2026-07-20 "no grey" report).
-                bool hot = caret > s && caret < e;
+                // Hot = caret in the span's FRINGE now, or one refresh ago
+                // (the just-left recapture that scrubs a baked-in caret
+                // bar). Fringe-inclusive is safe again since the overlay is
+                // capture-excluded - the fade-to-nothing self-capture
+                // spiral that forced the earlier strictly-inside test is
+                // structurally impossible now; a redundant recapture of an
+                // unchanged word yields identical pixels (no flicker), it
+                // just costs a small screen grab.
+                bool hot = CaretInSpanFringe(caret, s, e) || CaretInSpanFringe(prevCaret, s, e);
                 // Typing at the caret can only move spans at/after it; spans
                 // that END before the caret keep their rects. Unknown caret
                 // -> treat as after (everything suppresses - the safe side).
@@ -3233,9 +3254,13 @@ namespace OpenCues
             {
                 string k = CapKey(r);
                 wanted.Add(k);
-                // Hot span (caret inside): force a fresh capture every
-                // refresh so the caret blink / live edits show through.
-                if (r.Hot && _capCache.ContainsKey(k))
+                // Hot span (caret in/at it now or one refresh ago): force a
+                // fresh capture so the caret blink / live edits / the
+                // just-left caret bar stay correct. Skipped while the ink is
+                // typing-suppressed - recapturing invisible patches at the
+                // 8ms fast cadence is pure waste; the fade-in path forces a
+                // fresh pass when the ink returns.
+                if (r.Hot && !WindowsShim._inkHidden && _capCache.ContainsKey(k))
                 {
                     try { _capCache[k].Dispose(); } catch { }
                     _capCache.Remove(k);
