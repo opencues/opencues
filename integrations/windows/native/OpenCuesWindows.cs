@@ -2604,6 +2604,12 @@ namespace OpenCues
                 bool ctrl = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
                 bool alt = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
                 if (!(ctrl && alt)) return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
+                // Cycling/navigation chord: the substitution + highlight move
+                // land within a few ms - ramp the fast cadence NOW so the
+                // overlay repaints at 8ms from the first frame (previously it
+                // only ramped when the downstream change event arrived).
+                BumpFastPoll();
+                _caretDirty = true;
                 _swallowedDown.Add(vk);
                 QueueKeyMessage(KeyName(vk), (ushort)vk, true);
                 return new IntPtr(1);   // swallow - the app never sees the chord
