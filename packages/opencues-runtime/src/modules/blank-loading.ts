@@ -35,9 +35,10 @@ export const BOUNCE_FRAMES: readonly string[] = ['_', '-', '‾', '-'];
 export const FLIPPER_FRAMES: readonly string[] = ['_', '\\', '|', '/'];
 
 /** Max frames allowed in a user-supplied custom animation. Larger
- *  values get silently truncated. Five is enough for any reasonable
- *  loading-glyph progression at 150ms/frame (750ms full cycle). */
-export const CUSTOM_FRAMES_MAX = 5;
+ *  values get silently truncated. Seven covers any reasonable
+ *  loading-glyph progression at 150ms/frame (~1s full cycle) — and
+ *  matches the longest built-in sequence (braille-rotate, 7 frames). */
+export const CUSTOM_FRAMES_MAX = 7;
 
 /** Normalize a raw `blank-loading-frames` setting (comma-separated
  *  string from OPENCUES.md) into a usable frame list. Trims whitespace

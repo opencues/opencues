@@ -15,9 +15,9 @@ All five scalars live in `~/.cues/OPENCUES.md` frontmatter (user-level only — 
 | Scalar | Type | Default | Effect |
 |---|---|---|---|
 | `blank-loading-animation` | enum | `bounce` | Glyph progression: `bounce` / `braille-rotate` / `flipper` / `custom` / `off` |
-| `blank-loading-frames` | csv | `·,•,●,•,·` | Custom-mode frames (up to 5). Each item is one frame glyph; only used when `blank-loading-animation: custom`. |
-| `blank-loading-colors-rgb` | csv hex | `#ef4444,…,#3b82f6` | Per-frame palette for hosts with `render-rgb-color` capability (chrome + OC). Up to 5 `#rrggbb` values. |
-| `blank-loading-colors-ansi` | csv names/indices | `red,…,blue` | Per-frame palette for terminal hosts (CC + gemini). Named (`red`, `bright_cyan`, `gray`) or 256-colour index (`0`-`255`). Up to 5 entries. |
+| `blank-loading-frames` | csv | `·,•,●,•,·` | Custom-mode frames (up to 7). Each item is one frame glyph; only used when `blank-loading-animation: custom`. |
+| `blank-loading-colors-rgb` | csv hex | `#ef4444,…,#3b82f6` | Per-frame palette for hosts with `render-rgb-color` capability (chrome + OC). Up to 7 `#rrggbb` values. |
+| `blank-loading-colors-ansi` | csv names/indices | `red,…,blue` | Per-frame palette for terminal hosts (CC + gemini). Named (`red`, `bright_cyan`, `gray`) or 256-colour index (`0`-`255`). Up to 7 entries. |
 | `blank-loading-interval-ms` | int | `150` | Per-frame duration. Clamped to `[30, 2000]`; invalid → 150. Selector preset values: `75` / `150` / `300`. |
 
 ## Capability-based RGB vs ANSI routing

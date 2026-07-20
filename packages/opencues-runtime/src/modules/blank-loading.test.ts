@@ -426,8 +426,8 @@ describe('parseCustomFrames', () => {
     expect(parseCustomFrames('a,,b')).toEqual(['a', 'b']);
   });
 
-  it('caps at CUSTOM_FRAMES_MAX (5)', () => {
-    expect(parseCustomFrames('1,2,3,4,5,6,7')).toEqual(['1', '2', '3', '4', '5']);
+  it('caps at CUSTOM_FRAMES_MAX (7)', () => {
+    expect(parseCustomFrames('1,2,3,4,5,6,7,8,9')).toEqual(['1', '2', '3', '4', '5', '6', '7']);
   });
 
   it('returns null when every item is empty after trim', () => {
@@ -572,9 +572,9 @@ describe('parseRgbColors', () => {
     expect(parseRgbColors('rgb(255,85,0)')).toBeNull();
   });
 
-  it('caps at 5 colours', () => {
-    expect(parseRgbColors('#000000,#111111,#222222,#333333,#444444,#555555'))
-      .toEqual(['#000000', '#111111', '#222222', '#333333', '#444444']);
+  it('caps at 7 colours', () => {
+    expect(parseRgbColors('#000000,#111111,#222222,#333333,#444444,#555555,#666666,#777777'))
+      .toEqual(['#000000', '#111111', '#222222', '#333333', '#444444', '#555555', '#666666']);
   });
 });
 
@@ -611,9 +611,9 @@ describe('parseAnsiColors', () => {
       .toEqual(['red', '42']);
   });
 
-  it('caps at 5 colours', () => {
-    expect(parseAnsiColors('red,green,blue,cyan,magenta,yellow,white'))
-      .toEqual(['red', 'green', 'blue', 'cyan', 'magenta']);
+  it('caps at 7 colours', () => {
+    expect(parseAnsiColors('red,green,blue,cyan,magenta,yellow,white,black,bright_red'))
+      .toEqual(['red', 'green', 'blue', 'cyan', 'magenta', 'yellow', 'white']);
   });
 });
 
