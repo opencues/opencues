@@ -281,13 +281,15 @@ namespace OpenCues
             UnhookElementEvents();
             try
             {
-                _valueChangedHandler = (s, e) => { try { _wake.Set(); } catch { } };
+                // Change events also mark the overlay dirty: a typing-induced
+                // reflow re-rects on the SAME wake (anti-flash step 2).
+                _valueChangedHandler = (s, e) => { try { _overlayDirty = true; _wake.Set(); } catch { } };
                 Automation.AddAutomationPropertyChangedEventHandler(el, TreeScope.Element, _valueChangedHandler, ValuePattern.ValueProperty);
             }
             catch { _valueChangedHandler = null; }
             try
             {
-                _textChangedHandler = (s, e) => { try { _wake.Set(); } catch { } };
+                _textChangedHandler = (s, e) => { try { _overlayDirty = true; _wake.Set(); } catch { } };
                 Automation.AddAutomationEventHandler(TextPattern.TextChangedEvent, el, TreeScope.Element, _textChangedHandler);
             }
             catch { _textChangedHandler = null; }
@@ -2576,6 +2578,10 @@ namespace OpenCues
         // re-resolved on every render push AND every other poll tick, so
         // the paint follows window moves/scrolls at ~300ms worst case.
         static readonly bool _overlayEnabled = Environment.GetEnvironmentVariable("OPENCUES_WIN_OVERLAY") != "0";
+        // Set by the UIA change-event handlers (any callback thread); the
+        // poll loop consumes it to re-rect immediately on the wake the
+        // event itself caused.
+        static volatile bool _overlayDirty;
         static OverlayForm _overlay;
         static Thread _overlayThread;
         static readonly object _overlayLock = new object();
@@ -2633,20 +2639,68 @@ namespace OpenCues
             {
                 var ov = _overlay;
                 if (ov != null) ov.Push(null, _overlayStyle);
+                _lastFirstX = float.MinValue;
+                _lastFirstY = float.MinValue;
                 return;
             }
             EnsureOverlay();
             var form = _overlay;
             if (form == null) return;
-            form.Push(ComputeOverlayRects(), _overlayStyle);
+            var rects = ComputeOverlayRects();
+            // Remember where the first rect landed - the per-tick movement
+            // probe compares against this to catch scroll/drag/zoom (which
+            // fire no UIA event we subscribe to).
+            if (rects.Count > 0) { _lastFirstX = rects[0].X; _lastFirstY = rects[0].Y; }
+            else { _lastFirstX = float.MinValue; _lastFirstY = float.MinValue; }
+            form.Push(rects, _overlayStyle);
         }
 
+        // Event-driven re-rect (anti-flash step 2, 2026-07-20). Three
+        // triggers, fastest first:
+        //   1. `_overlayDirty` - the UIA value/text change events already
+        //      wake the poll loop; they now also mark the overlay dirty, so
+        //      a typing-induced reflow re-rects on the SAME wake instead of
+        //      waiting out the tick cadence.
+        //   2. A cheap per-tick probe of the FIRST span's rect - scrolling,
+        //      window drags and zoom move rects without any subscribed
+        //      event; one UIA range call per tick catches them within a
+        //      single poll iteration (<=150ms) instead of ~300ms.
+        //   3. The every-other-tick baseline refresh, kept as the converging
+        //      fallback for anything the above miss.
         static void MaybeRefreshOverlay()
         {
             if (!_overlayEnabled || _overlay == null) return;
             if (_dimSpans.Count == 0 && _hlSpan == null) return;
-            if ((++_overlayTickFlip & 1) != 0) return;   // every other tick is plenty
+            bool force = _overlayDirty;
+            _overlayDirty = false;
+            if (!force) force = OverlayRectsMoved();
+            if (!force && (++_overlayTickFlip & 1) != 0) return;   // baseline cadence
             UpdateOverlay();
+        }
+
+        static float _lastFirstX = float.MinValue;
+        static float _lastFirstY = float.MinValue;
+
+        // Did the first span's on-screen rect move since the last push?
+        // One TextPattern range resolve - cheap enough to run every tick.
+        static bool OverlayRectsMoved()
+        {
+            if (_lastFirstX == float.MinValue) return false;
+            try
+            {
+                var el = _hookedEl;
+                var text = _lastSentText;
+                if (el == null || text == null) return false;
+                int[] span = _dimSpans.Count > 0 ? _dimSpans[0] : _hlSpan;
+                if (span == null) return false;
+                object tpo;
+                if (!el.TryGetCurrentPattern(TextPattern.Pattern, out tpo)) return false;
+                var probe = new List<OverlaySpanRect>();
+                AddSpanRects(((TextPattern)tpo).DocumentRange, text, span[0], span[1], false, -1, probe);
+                if (probe.Count == 0) return false;
+                return Math.Abs(probe[0].X - _lastFirstX) > 0.5f || Math.Abs(probe[0].Y - _lastFirstY) > 0.5f;
+            }
+            catch { return false; }
         }
 
         static List<OverlaySpanRect> ComputeOverlayRects()
