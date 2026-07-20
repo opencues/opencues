@@ -718,7 +718,7 @@ export function buildCalendarContextIngest(
   const os = require('node:os') as typeof import('node:os');
 
   const snapshotPath = (): string => {
-    const override = process.env['OPENCUES_HOME'];
+    const override = typeof process !== 'undefined' ? process.env['OPENCUES_HOME'] : undefined;
     if (override && override.trim().length > 0) return path.join(override, 'calendar.json');
     return path.join(os.homedir(), '.cues', 'calendar.json');
   };
@@ -783,7 +783,7 @@ export function buildCalendarContextIngest(
   };
   if (syncCore.calendarSyncDue && syncCore.syncCalendarFeeds) {
     const cuesDirOf = (): string => {
-      const override = process.env['OPENCUES_HOME'];
+      const override = typeof process !== 'undefined' ? process.env['OPENCUES_HOME'] : undefined;
       return override && override.trim().length > 0 ? override : path.join(os.homedir(), '.cues');
     };
     scheduler.register({
