@@ -3319,11 +3319,17 @@ namespace OpenCues
         }
 
         // Collapse every pixel to its luminance, then pull it toward the
-        // background (dim) or the accent (active). Background = average of
-        // the four corner pixels - corners of a word rect are almost always
-        // the field's background, so glyphs fade INTO their own field on
-        // both light and dark themes. Managed byte loop (no unsafe - this
-        // must compile under Add-Type); word rects are tiny.
+        // background (dim) or the accent (active). Background = the MODAL
+        // (most frequent) pixel colour of the rect - a text field's
+        // background is by far its dominant colour, so the estimate is
+        // immune to what the corners happen to contain. The earlier
+        // corner-average sampled the CARET BAR when the caret sat at the
+        // word's left edge: the estimate darkened on blink-on and
+        // recovered on blink-off, so the whole patch pumped between
+        // recaptures (2026-07-20 "whole box flashes" report). A few dozen
+        // bar/glyph pixels can never outvote the background. Managed byte
+        // loop (no unsafe - this must compile under Add-Type); word rects
+        // are tiny.
         static void DimBitmap(SD.Bitmap bmp, bool active)
         {
             var rect = new SD.Rectangle(0, 0, bmp.Width, bmp.Height);
@@ -3334,16 +3340,30 @@ namespace OpenCues
                 byte[] px = new byte[n];
                 Marshal.Copy(data.Scan0, px, 0, n);
                 int stride = data.Stride;
-                // Corner-average background estimate (BGRA layout).
-                int[] cx = { 0, bmp.Width - 1, 0, bmp.Width - 1 };
-                int[] cy = { 0, 0, bmp.Height - 1, bmp.Height - 1 };
-                int bgB = 0, bgG = 0, bgR = 0;
-                for (int i = 0; i < 4; i++)
+                // Modal background estimate (BGRA layout). Quantize to
+                // 5 bits/channel so antialiased background shades bucket
+                // together, then take the exact colour of the winning
+                // bucket's first hit.
+                var counts = new Dictionary<int, int>();
+                var samples = new Dictionary<int, int>();   // bucket -> raw offset of first sample
+                for (int y = 0; y < bmp.Height; y++)
                 {
-                    int o = cy[i] * stride + cx[i] * 4;
-                    bgB += px[o]; bgG += px[o + 1]; bgR += px[o + 2];
+                    int row = y * stride;
+                    for (int x = 0; x < bmp.Width; x++)
+                    {
+                        int o = row + x * 4;
+                        int bucket = ((px[o] >> 3) << 10) | ((px[o + 1] >> 3) << 5) | (px[o + 2] >> 3);
+                        int c;
+                        counts.TryGetValue(bucket, out c);
+                        counts[bucket] = c + 1;
+                        if (c == 0) samples[bucket] = o;
+                    }
                 }
-                bgB /= 4; bgG /= 4; bgR /= 4;
+                int best = -1, bestCount = -1;
+                foreach (var kv in counts)
+                    if (kv.Value > bestCount) { bestCount = kv.Value; best = kv.Key; }
+                int so = best >= 0 ? samples[best] : 0;
+                int bgB = px[so], bgG = px[so + 1], bgR = px[so + 2];
                 int tB = active ? ActiveColor.B : bgB;
                 int tG = active ? ActiveColor.G : bgG;
                 int tR = active ? ActiveColor.R : bgR;

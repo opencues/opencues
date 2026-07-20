@@ -152,10 +152,11 @@ blocking LL hook gets silently removed by Windows after ~300ms.
   fields (Edit/RichEdit keep native undo via the EM convergent path).
 - The overlay repaints rects every other poll tick (~300ms), so fast
   window drags/scrolls show transient lag of the ink.
-- `capture` estimates the background from the rect's four corner
-  pixels — a word tightly hugged by other glyphs or sitting on
-  gradient/imagery dims toward the wrong colour; and its cache-miss
-  self-clear (one frame + ~35ms) makes marks blink during scrolling.
+- `capture` estimates the background as the rect's MODAL pixel colour
+  (immune to the caret bar / neighbouring glyphs; the earlier
+  corner-average pumped the whole patch when the caret blinked at the
+  word edge) — still wrong on gradient/imagery backgrounds where no
+  colour dominates.
 - Chromium-UIA composers (Slack) expose TextPattern only to native
   clients → managed probe says no rects → they stay phase 1.
 - WPF fields (no Edit-class HWND, but TextPattern present → cycling on)
