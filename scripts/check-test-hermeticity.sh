@@ -69,16 +69,48 @@ echo ""
 # Run the test sweep. If pnpm test fails we still want to compare
 # hermeticity afterwards — capture the exit code, run the diff, then
 # propagate.
+#
+# Output policy (July 2026): the old `| tail -5` swallowed ALL failure
+# detail — seven consecutive red CI runs never showed WHICH test failed,
+# because the only surviving lines were pnpm's epilogue. On success we
+# still keep logs short (tail -5); on failure we print every TAP/vitest
+# failure marker plus the tail of the log so the failing test is named
+# in the CI log itself.
+TEST_LOG="$(mktemp -t opencues-test-output.XXXXXX)"
 TEST_EXIT=0
-HOME="$SANDBOX_HOME" pnpm -r test 2>&1 | tail -5 || TEST_EXIT=$?
+HOME="$SANDBOX_HOME" pnpm -r test > "$TEST_LOG" 2>&1 || TEST_EXIT=$?
+if [ "$TEST_EXIT" -ne 0 ]; then
+  echo "✗ pnpm -r test failed (exit $TEST_EXIT) — failure markers:"
+  grep -nE -A6 'not ok|✖|✗|FAIL |failureType|Error \[|AssertionError' "$TEST_LOG" | head -60 | sed 's/^/    /'
+  echo ""
+  echo "▸ last 120 lines of test output:"
+  tail -120 "$TEST_LOG" | sed 's/^/    /'
+else
+  tail -5 "$TEST_LOG"
+fi
+rm -f "$TEST_LOG"
 
-# CLI test target is invoked separately (mirrors ci.yml).
+# CLI test target is invoked separately (mirrors ci.yml). Same output
+# policy as above.
+CLI_LOG="$(mktemp -t opencues-cli-test-output.XXXXXX)"
+CLI_EXIT=0
 HOME="$SANDBOX_HOME" bash -c '
   cd packages/opencues-cli
   GROQ_API_KEY="" CEREBRAS_API_KEY="" OPENAI_API_KEY="" \
   ANTHROPIC_API_KEY="" GEMINI_API_KEY="" \
-  npm test 2>&1 | tail -3
-' || TEST_EXIT=$?
+  npm test
+' > "$CLI_LOG" 2>&1 || CLI_EXIT=$?
+if [ "$CLI_EXIT" -ne 0 ]; then
+  TEST_EXIT=$CLI_EXIT
+  echo "✗ CLI tests failed (exit $CLI_EXIT) — failure markers:"
+  grep -nE -A6 'not ok|✖|✗|FAIL |failureType|Error \[|AssertionError' "$CLI_LOG" | head -60 | sed 's/^/    /'
+  echo ""
+  echo "▸ last 120 lines of CLI test output:"
+  tail -120 "$CLI_LOG" | sed 's/^/    /'
+else
+  tail -3 "$CLI_LOG"
+fi
+rm -f "$CLI_LOG"
 
 echo ""
 HERMETICITY_FAIL=0
