@@ -208,10 +208,26 @@ namespace OpenCues
         {
             var v = Environment.GetEnvironmentVariable("OPENCUES_WIN_FAST_POLL_MS");
             int m;
-            if (!string.IsNullOrEmpty(v) && int.TryParse(v, out m) && m >= 15 && m <= 150) return m;
-            return 35;
+            if (!string.IsNullOrEmpty(v) && int.TryParse(v, out m) && m >= 8 && m <= 150) return m;
+            return 8;   // ~120Hz request = one update per frame on any display
         }
         static void BumpFastPoll() { _fastUntil = Environment.TickCount + FAST_WINDOW_MS; }
+
+        // Sub-15ms waits need the system timer resolution raised - the
+        // default ~15.6ms quantum silently rounds an 8ms WaitOne up to a
+        // full quantum. Raised ONLY while the fast window is active (the
+        // poll loop toggles it on fast-mode transitions), so the
+        // power-efficiency cost exists only while the user is actively
+        // typing/moving in a marked field.
+        [DllImport("winmm.dll")] static extern uint timeBeginPeriod(uint ms);
+        [DllImport("winmm.dll")] static extern uint timeEndPeriod(uint ms);
+        static bool _timerRaised;
+        static void SetTimerRaised(bool on)
+        {
+            if (on == _timerRaised) return;
+            _timerRaised = on;
+            try { if (on) timeBeginPeriod(1); else timeEndPeriod(1); } catch { }
+        }
 
         // Wakes the poll loop ahead of its tick. Set by: the socket reader
         // (inbound set-text frames apply at the runtime's real animation
@@ -382,6 +398,7 @@ namespace OpenCues
                 // visual sync; otherwise the normal tick is plenty.
                 bool fast = unchecked(Environment.TickCount - _fastUntil) < 0
                     && (_dimSpans.Count > 0 || _hlSpan != null);
+                SetTimerRaised(fast);   // 8ms waits need the 1ms timer quantum
                 _wake.WaitOne(fast ? _fastPollMs : _pollMs);
             }
         }
