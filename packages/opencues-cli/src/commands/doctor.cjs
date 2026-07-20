@@ -748,8 +748,23 @@ module.exports = async function doctor(argv, ctx) {
       if (hostScript && fs.existsSync(hostScript)) {
         const text = fs.readFileSync(hostScript, 'utf8');
         const required = registry.chromeHostFileList();
-        const missing = required.filter(f => !text.includes(f));
-        s.ok(`host pushes [${required.join(', ')}]`, missing.length === 0);
+        // A host script that derives its push list from the FEATURES
+        // registry (chromeHostFileList) structurally cannot drift — new
+        // pushed-by-host files are picked up with zero host.cjs changes,
+        // so their basenames never appear as literals in the script.
+        // Pre-derive host scripts hardcoded the names; for those (only)
+        // the literal grep below is the right parity check. Grepping a
+        // derived script for literals false-positived on NOTES.md +
+        // calendar.json (July 2026) purely because nobody had mentioned
+        // them in a comment.
+        const derivesFromRegistry = text.includes('chromeHostFileList');
+        const missing = derivesFromRegistry ? [] : required.filter(f => !text.includes(f));
+        s.ok(
+          derivesFromRegistry
+            ? 'host derives push list from FEATURES registry (chromeHostFileList)'
+            : `host pushes [${required.join(', ')}]`,
+          missing.length === 0,
+        );
         if (missing.length > 0) {
           findings.push({
             sev: 'warn',
