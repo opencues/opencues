@@ -21,6 +21,7 @@ import type { HostAdapter, LogLevel } from './adapter';
 import type { ResolvedAgentLLM } from './modules/agent-rewrite';
 import { buildBlankWeaver, type BlankWeaver } from './modules/blank-weave';
 import type { HttpAdapterShape } from '@opencues/core';
+import { createRefreshScheduler } from './refresh-scheduler';
 import { StocksBlank } from './blanks/stocks';
 import { WeatherBlank } from './blanks/weather';
 import { CryptoBlank } from './blanks/crypto';
@@ -722,15 +723,13 @@ export function buildCalendarContextIngest(
     return path.join(os.homedir(), '.cues', 'calendar.json');
   };
 
-  let timerHandle: ReturnType<typeof setTimeout> | null = null;
-  let stopped = false;
   let lastMtimeMs = -1;
   let lastPath = '';
   const holder: CalendarContextHolder = {
     events: [],
     catalog: new Map<string, string>(),
     ingestedAt: undefined,
-    stop() { stopped = true; if (timerHandle) { clearTimeout(timerHandle); timerHandle = null; } },
+    stop() { /* replaced below once the scheduler exists */ },
   };
 
   const load = (): void => {
@@ -766,14 +765,42 @@ export function buildCalendarContextIngest(
     }
   };
 
+  // ── Refresh scheduling — the SYSTEM owns cadence, resources declare
+  // due-ness (July 2026 inversion). Two resources:
+  //   snapshot-reread: is the file newer than what the holder carries?
+  //     (cheap mtime check inside load()) — every tick.
+  //   feed-sync: are feeds configured AND the snapshot's own ingestedAt
+  //     older than CALENDAR_SYNC_TTL_MS (15 min)? The shared file
+  //     timestamp is the cross-host clock, so N running hosts
+  //     self-deduplicate; jitter staggers the herd; core's pre-write
+  //     re-stat discards a fetch another producer superseded.
   const refreshMs = opts.refreshMs ?? 60_000;
-  const tick = (): void => {
-    if (stopped) return;
-    load();
-    timerHandle = setTimeout(tick, refreshMs);
-    (timerHandle as { unref?: () => void }).unref?.();
+  const scheduler = createRefreshScheduler((m) => log('info', m), { tickMs: refreshMs });
+  scheduler.register({ id: 'calendar-snapshot-reread', due: () => true, refresh: load });
+  const syncCore = core as unknown as {
+    calendarSyncDue?: (fsMod: unknown, dir: string) => boolean;
+    syncCalendarFeeds?: (deps: unknown) => Promise<unknown>;
   };
-  tick();
+  if (syncCore.calendarSyncDue && syncCore.syncCalendarFeeds) {
+    const cuesDirOf = (): string => {
+      const override = process.env['OPENCUES_HOME'];
+      return override && override.trim().length > 0 ? override : path.join(os.homedir(), '.cues');
+    };
+    scheduler.register({
+      id: 'calendar-feed-sync',
+      jitterMs: opts.refreshMs ? 0 : 30_000,
+      due: () => {
+        try { return syncCore.calendarSyncDue!(fs, cuesDirOf()); } catch { return false; }
+      },
+      refresh: async () => {
+        await syncCore.syncCalendarFeeds!({ fs, cuesDir: cuesDirOf(), log: (m: string) => log('info', m) });
+        load();   // fold the fresh snapshot into the holder immediately
+      },
+    });
+  }
+  load();               // boot read
+  scheduler.tickNow();  // boot due-check (a stale snapshot refreshes ~immediately)
+  (holder as { stop: () => void }).stop = () => scheduler.stop();
   return holder;
 }
 

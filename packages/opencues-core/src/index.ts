@@ -320,6 +320,17 @@ export type {
   CalendarContextEvent,
   CalendarContextSnapshot,
 } from './calendar-context';
+export {
+  syncCalendarFeeds,
+  calendarSyncDue,
+  readCalendarFeedUrls,
+  calendarSnapshotAgeAnchor,
+  CALENDAR_SYNC_TTL_MS,
+  CALENDAR_FEEDS_BASENAME,
+  CALENDAR_SNAPSHOT_BASENAME,
+  type CalendarSyncDeps,
+  type CalendarSyncResult,
+} from './calendar-sync';
 
 // iCalendar (.ics / webcal) parser — the first real calendar-context producer.
 // Pure (no network); the host poller fetches the feed and passes the text.

@@ -59,7 +59,14 @@ function tryLoadCore() {
     path.resolve(__dirname, '..', '..', '..', '..', 'node_modules', '@opencues', 'core', 'dist'),
   ];
   for (const c of candidates) {
-    try { return require(path.join(c, 'ics.js')); } catch {}
+    try {
+      const ics = require(path.join(c, 'ics.js'));
+      // calendar-sync.js carries the ONE feeds->snapshot implementation
+      // (shared with the runtime refresh scheduler + chrome-host).
+      let sync = {};
+      try { sync = require(path.join(c, 'calendar-sync.js')); } catch {}
+      return Object.assign({}, ics, sync);
+    } catch {}
   }
   return null;
 }
@@ -121,30 +128,17 @@ const WINDOW_DAYS = 60;
 async function buildSnapshot() {
   const core = tryLoadCore();
   if (!core || typeof core.parseIcs !== 'function') return { ok: false, reason: '@opencues/core not built' };
-  const urls = activeUrls(readLines());
-  if (urls.length === 0) return { ok: false, reason: 'no feeds' };
+  // ONE implementation — core's syncCalendarFeeds (also driven by the
+  // runtime refresh scheduler + chrome-host). Older cores without it
+  // cannot occur here (same repo), but guard anyway.
+  if (typeof core.syncCalendarFeeds !== 'function') return { ok: false, reason: '@opencues/core too old (no syncCalendarFeeds)' };
+  const r = await core.syncCalendarFeeds({ fs, cuesDir: CUES_DIR, windowDays: WINDOW_DAYS, log: (m) => { if (process.env.OPENCUES_DEBUG) console.error(m); } });
+  if (!r.ok) return r;
+  let snap = { events: [] };
+  try { snap = JSON.parse(fs.readFileSync(SNAPSHOT_PATH, 'utf8')); } catch { /* just synced; unlikely */ }
   const now = Date.now();
-  const winStartMs = now - 3600e3, winEndMs = now + WINDOW_DAYS * 24 * 3600e3;
-  const all = []; let okCount = 0;
-  for (const url of urls) {
-    try {
-      const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 15000);
-      const res = await fetch(toHttp(url), { headers: { 'User-Agent': 'opencues-cli/1.0' }, redirect: 'follow', signal: ctl.signal });
-      clearTimeout(to);
-      if (!res.ok) { console.log(`  ${red(G.ringOn)} ${dim(`HTTP ${res.status} — ${url.slice(0, 50)}`)}`); continue; }
-      const text = await res.text();
-      if (!/BEGIN:VCALENDAR/i.test(text)) { console.log(`  ${red(G.ringOn)} ${dim(`not iCalendar — ${url.slice(0, 50)}`)}`); continue; }
-      all.push(...core.parseIcs(text, { windowStartMs: winStartMs, windowEndMs: winEndMs, maxEvents: 200 }));
-      okCount++;
-    } catch (e) { console.log(`  ${red(G.ringOn)} ${dim(`${(e && e.message) || e} — ${url.slice(0, 50)}`)}`); }
-  }
-  if (okCount === 0) return { ok: false, reason: 'all feeds failed — snapshot NOT overwritten' };
-  const seen = new Set();
-  const events = all.filter(e => { const k = `${e.start}|${e.title}`; if (seen.has(k)) return false; seen.add(k); return true; })
-    .sort((a, b) => a.start.localeCompare(b.start)).slice(0, 50);
-  fs.mkdirSync(CUES_DIR, { recursive: true });
-  fs.writeFileSync(SNAPSHOT_PATH, JSON.stringify({ source: 'opencues calendar sync', ingestedAt: new Date().toISOString(), events }, null, 2) + '\n');
-  return { ok: true, okCount, feeds: urls.length, events: events.length, next: events.find(e => new Date(e.start).getTime() >= now) };
+  return { ok: true, okCount: r.okCount, feeds: r.feeds, events: r.events,
+           next: (snap.events || []).find(e => new Date(e.start).getTime() >= now) };
 }
 
 async function sync(silent) {
