@@ -2686,7 +2686,13 @@ namespace OpenCues
                 var rects = r.GetBoundingRectangles();
                 if (rects == null) return;
                 string word = text.Substring(s, e - s);
-                bool hot = caret >= s && caret <= e;   // caret inside (or at the edge of) the span
+                // STRICTLY inside: a caret parked at the span edge (the
+                // caret-at-end-of-buffer resting state, with a span that
+                // covers the whole buffer) must NOT count as hot - it made
+                // every substitution span permanently hot, re-capturing at
+                // 3Hz and compounding any self-capture race into the
+                // fade-to-nothing spiral (2026-07-20 "no grey" report).
+                bool hot = caret > s && caret < e;
                 foreach (System.Windows.Rect rc in rects)
                 {
                     if (rc.IsEmpty || rc.Width <= 0 || rc.Height <= 0) continue;
@@ -2762,6 +2768,11 @@ namespace OpenCues
         // tagged [windows][shim] - even when the tray launched us hidden.
         // Pre-connect lines only reach the console (no socket yet); that's
         // fine - the daemon's absent "shim connected" already flags that.
+        // Overlay diagnostics funnel - OverlayForm lives outside this class
+        // but its failures must land in the same daemon log (silent paint
+        // problems are undiagnosable from WSL otherwise).
+        internal static void OverlayLog(string msg) { Log("debug", "[overlay] " + msg); }
+
         static void Log(string level, string msg)
         {
             Console.WriteLine(msg);
@@ -2847,7 +2858,9 @@ namespace OpenCues
         const int WS_EX_NOACTIVATE = 0x8000000;
         const uint LWA_COLORKEY = 1;
         const uint LWA_ALPHA = 2;
+        const uint WDA_EXCLUDEFROMCAPTURE = 0x11;   // Win10 2004+
         [DllImport("user32.dll")] static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint key, byte alpha, uint flags);
+        [DllImport("user32.dll")] static extern bool SetWindowDisplayAffinity(IntPtr hwnd, uint affinity);
 
         static readonly SD.Color KeyColor = SD.Color.Magenta;
         static readonly SD.Color DimColor = SD.Color.FromArgb(150, 150, 150);
@@ -2857,6 +2870,12 @@ namespace OpenCues
         List<OverlaySpanRect> _rects = new List<OverlaySpanRect>();
         // capture-style bitmap cache: span key -> dimmed screen pixels.
         readonly Dictionary<string, SD.Bitmap> _capCache = new Dictionary<string, SD.Bitmap>();
+        // This window is excluded from screen capture (WDA_EXCLUDEFROMCAPTURE
+        // succeeded): CopyFromScreen never sees our own ink, so captures need
+        // no hide-and-wait dance and CANNOT self-capture (the re-dim
+        // fade-to-nothing spiral is structurally impossible). False on
+        // pre-2004 Windows 10 - the one-frame self-clear fallback runs there.
+        bool _captureExcluded;
 
         public OverlayForm()
         {
@@ -2886,6 +2905,9 @@ namespace OpenCues
         {
             base.OnHandleCreated(e);
             ApplyLayered();
+            try { _captureExcluded = SetWindowDisplayAffinity(Handle, WDA_EXCLUDEFROMCAPTURE); }
+            catch { _captureExcluded = false; }
+            WindowsShim.OverlayLog("created (capture-excluded=" + _captureExcluded + ")");
         }
 
         void ApplyLayered()
@@ -2960,11 +2982,23 @@ namespace OpenCues
             foreach (var k in stale) { try { _capCache[k].Dispose(); } catch { } _capCache.Remove(k); }
 
             if (missing.Count == 0) return;
-            var save = _rects;
-            _rects = new List<OverlaySpanRect>();   // hide all ink
-            Invalidate();
-            Update();                                // paint the cleared frame now
-            Thread.Sleep(35);                        // let DWM composite it to the screen
+            List<OverlaySpanRect> save = null;
+            if (!_captureExcluded)
+            {
+                // Fallback (pre-2004 Win10): CopyFromScreen WOULD see our own
+                // ink, so hide it for one composited frame first. Racy - if
+                // DWM hasn't flushed the clear, we capture our own patch and
+                // re-dim it (compounding toward invisibility) - which is why
+                // the capture-exclusion path above is strongly preferred.
+                save = _rects;
+                _rects = new List<OverlaySpanRect>();
+                Invalidate();
+                Update();
+                Thread.Sleep(35);
+            }
+            int ok = 0, failed = 0;
+            bool anyCold = false;
+            foreach (var m in missing) if (!m.Hot) { anyCold = true; break; }
             foreach (var r in missing)
             {
                 try
@@ -2976,10 +3010,21 @@ namespace OpenCues
                     DimBitmap(bmp, r.Active);
                     if (_capCache.Count > 64) ClearCapCache();   // runaway backstop
                     _capCache[CapKey(r)] = bmp;
+                    ok++;
                 }
-                catch { /* capture is best-effort; OnPaint falls back to underline */ }
+                catch (Exception ex)
+                {
+                    failed++;
+                    if (failed == 1) WindowsShim.OverlayLog("capture failed: " + ex.Message);
+                }
             }
-            _rects = save;
+            if (save != null) _rects = save;
+            // Hot-only batches recapture at ~3Hz while the caret sits in a
+            // word - logging those would flood the daemon log. Cold batches
+            // and failures are the diagnostic signal.
+            if (failed > 0 || (ok > 0 && anyCold))
+                WindowsShim.OverlayLog("captured " + ok + " span(s)" + (failed > 0 ? (", " + failed + " failed") : "")
+                    + " (excl=" + _captureExcluded + ")");
         }
 
         // Collapse every pixel to its luminance, then pull it toward the
@@ -3030,7 +3075,19 @@ namespace OpenCues
             finally { bmp.UnlockBits(data); }
         }
 
+        static bool _paintErrorLogged;
         protected override void OnPaint(SWF.PaintEventArgs e)
+        {
+            try { PaintCore(e); }
+            catch (Exception ex)
+            {
+                // A paint exception must never kill the overlay thread
+                // silently - that reads as "marks just stopped appearing".
+                if (!_paintErrorLogged) { _paintErrorLogged = true; WindowsShim.OverlayLog("paint failed: " + ex.Message); }
+            }
+        }
+
+        void PaintCore(SWF.PaintEventArgs e)
         {
             var g = e.Graphics;
             g.Clear(KeyColor);
