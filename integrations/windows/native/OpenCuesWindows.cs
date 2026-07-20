@@ -247,8 +247,8 @@ namespace OpenCues
             if (!_inkHidden) return;
             if (unchecked(Environment.TickCount - _typingQuietAt) < 0) return;
             _inkHidden = false;
-            var ov = _overlay;
-            if (ov != null) ov.FadeInInk();   // fades to the style's steady alpha
+            var ov = _overlayVol;
+            if (ov != null) ov.FadeInInk();   // volatile spans fade back; stable never left
         }
 
         // Sub-15ms waits need the system timer resolution raised - the
@@ -2431,7 +2431,9 @@ namespace OpenCues
                             if (!_inkHidden)
                             {
                                 _inkHidden = true;
-                                var ov = _overlay;
+                                // Only the VOLATILE window (at/after-caret
+                                // spans) hides; before-caret marks stay lit.
+                                var ov = _overlayVol;
                                 if (ov != null) ov.HideInkNow();
                             }
                         }
@@ -2687,7 +2689,15 @@ namespace OpenCues
         // poll loop consumes it to re-rect immediately on the wake the
         // event itself caused.
         static volatile bool _overlayDirty;
+        // Two overlay windows, same STA thread (anti-flash step 4b):
+        // `_overlay` (STABLE) paints spans BEFORE the caret - typing cannot
+        // move them, so they stay visible through a typing burst.
+        // `_overlayVol` (VOLATILE) paints spans at/after the caret - the
+        // ones a keystroke reflows - and is the only window the
+        // hide-on-keydown / fade-back-in machinery touches. The split is
+        // re-routed on every push as the caret moves.
         static OverlayForm _overlay;
+        static OverlayForm _overlayVol;
         static Thread _overlayThread;
         static readonly object _overlayLock = new object();
         static List<int[]> _dimSpans = new List<int[]>();   // [start,end) into _lastSentText
@@ -2734,6 +2744,8 @@ namespace OpenCues
             _hlSpan = null;
             var ov = _overlay;
             if (ov != null) ov.Push(null, _overlayStyle);
+            var ovv = _overlayVol;
+            if (ovv != null) ovv.Push(null, _overlayStyle);
         }
 
         static void UpdateOverlay()
@@ -2745,20 +2757,29 @@ namespace OpenCues
             {
                 var ov = _overlay;
                 if (ov != null) ov.Push(null, _overlayStyle);
+                var ovv = _overlayVol;
+                if (ovv != null) ovv.Push(null, _overlayStyle);
                 _lastFirstX = float.MinValue;
                 _lastFirstY = float.MinValue;
                 return;
             }
             EnsureOverlay();
             var form = _overlay;
-            if (form == null) return;
+            var formVol = _overlayVol;
+            if (form == null || formVol == null) return;
             var rects = ComputeOverlayRects();
             // Remember where the first rect landed - the per-tick movement
             // probe compares against this to catch scroll/drag/zoom (which
             // fire no UIA event we subscribe to).
             if (rects.Count > 0) { _lastFirstX = rects[0].X; _lastFirstY = rects[0].Y; }
             else { _lastFirstX = float.MinValue; _lastFirstY = float.MinValue; }
-            form.Push(rects, _overlayStyle);
+            // Route: before-caret spans -> stable window (never blinks);
+            // at/after-caret spans -> volatile window (hide/fade target).
+            var stable = new List<OverlaySpanRect>();
+            var vol = new List<OverlaySpanRect>();
+            foreach (var r in rects) { if (r.AfterCaret) vol.Add(r); else stable.Add(r); }
+            form.Push(stable, _overlayStyle);
+            formVol.Push(vol, _overlayStyle);
         }
 
         // Event-driven re-rect (anti-flash step 2, 2026-07-20). Three
@@ -2854,6 +2875,10 @@ namespace OpenCues
                 // 3Hz and compounding any self-capture race into the
                 // fade-to-nothing spiral (2026-07-20 "no grey" report).
                 bool hot = caret > s && caret < e;
+                // Typing at the caret can only move spans at/after it; spans
+                // that END before the caret keep their rects. Unknown caret
+                // -> treat as after (everything suppresses - the safe side).
+                bool afterCaret = caret < 0 || e >= caret;
                 foreach (System.Windows.Rect rc in rects)
                 {
                     if (rc.IsEmpty || rc.Width <= 0 || rc.Height <= 0) continue;
@@ -2866,6 +2891,7 @@ namespace OpenCues
                         Active = active,
                         Word = word,
                         Hot = hot,
+                        AfterCaret = afterCaret,
                     });
                 }
             }
@@ -2884,7 +2910,11 @@ namespace OpenCues
                     {
                         var form = new OverlayForm();
                         var h = form.Handle;   // force handle creation before Push can race
+                        var formVol = new OverlayForm();
+                        var h2 = formVol.Handle;
+                        formVol.Show();        // second form on the same message loop
                         _overlay = form;
+                        _overlayVol = formVol;
                         ready.Set();
                         SWF.Application.Run(form);
                     }
@@ -2892,6 +2922,7 @@ namespace OpenCues
                     {
                         Log("warn", "overlay unavailable: " + ex.Message);
                         _overlay = null;
+                        _overlayVol = null;
                         ready.Set();
                     }
                 });
@@ -2905,9 +2936,19 @@ namespace OpenCues
         static void StopOverlay()
         {
             var ov = _overlay;
+            var ovv = _overlayVol;
             _overlay = null;
+            _overlayVol = null;
             if (ov == null) return;
-            try { ov.BeginInvoke((Action)(delegate { try { ov.Close(); } catch { } SWF.Application.ExitThread(); })); }
+            try
+            {
+                ov.BeginInvoke((Action)(delegate
+                {
+                    try { if (ovv != null) ovv.Close(); } catch { }
+                    try { ov.Close(); } catch { }
+                    SWF.Application.ExitThread();
+                }));
+            }
             catch { }
         }
 
@@ -2991,6 +3032,11 @@ namespace OpenCues
         // tick, ~300ms) so the caret blink and live edits under the
         // patch stay visible; cold spans repaint from cache untouched.
         public bool Hot;
+        // The span sits at/after the caret, so typing can move it. Routed to
+        // the VOLATILE overlay window (hidden instantly on keydown, faded
+        // back on idle); before-caret spans go to the STABLE window and
+        // never blink. Unknown caret -> true (safe: everything suppresses).
+        public bool AfterCaret;
     }
 
     // A full-virtual-screen, topmost, LAYERED + TRANSPARENT (click-through)
