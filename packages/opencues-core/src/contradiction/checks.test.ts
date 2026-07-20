@@ -501,7 +501,7 @@ describe('TflProvider', () => {
 
 // ── Tier 5c — journey underestimation ─────────────────────────────────────────
 import { verifyJourneyClaim } from './checks';
-import { haversineKm, estimateJourneyMinutes, _resetGeoCacheForTesting } from './journey';
+import { haversineKm, estimateJourneyMinutes, _resetGeoCacheForTesting, geocodePlace } from './journey';
 
 describe('journey estimation (Tier 5c)', () => {
   it('haversineKm — London→Paris is ~340km', () => {
@@ -512,6 +512,27 @@ describe('journey estimation (Tier 5c)', () => {
   it('estimateJourneyMinutes — 2km walk ~30 min, 20km drive ~70', () => {
     assert.ok(Math.abs(estimateJourneyMinutes(2, 'walk') - 32) <= 3);
     assert.ok(Math.abs(estimateJourneyMinutes(20, 'drive') - 70) <= 5);
+  });
+});
+
+describe('geocodePlace — ambient-fetch default (native hosts omit worldDataFetch)', () => {
+  it('falls back to globalThis.fetch when fetchImpl is undefined', async () => {
+    _resetGeoCacheForTesting();
+    const g = globalThis as { fetch?: unknown };
+    const saved = g.fetch;
+    let hit = '';
+    g.fetch = async (url: string) => {
+      hit = url;
+      return { ok: true, json: async () => ({ features: [{ geometry: { coordinates: [-0.165, 51.587] } }] }) };
+    };
+    try {
+      const r = await geocodePlace('east finchley', undefined);
+      assert.ok(hit.includes('photon.komoot.io'), 'ambient fetch was used');
+      assert.ok(r && Math.abs(r.lat - 51.587) < 1e-6, 'GeoJSON [lon,lat] parsed');
+    } finally {
+      g.fetch = saved;
+      _resetGeoCacheForTesting();
+    }
   });
 });
 

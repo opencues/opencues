@@ -50,10 +50,16 @@ export async function geocodePlace(
 ): Promise<{ lat: number; lon: number } | null> {
   const key = `${name.trim().toLowerCase()}@${near ? `${near.lat.toFixed(1)},${near.lon.toFixed(1)}` : ''}`;
   if (_geoCache.has(key)) return _geoCache.get(key)!;
-  if (!fetchImpl || !name.trim()) return null;
+  // Default to the ambient fetch when the host supplies no worldDataFetch —
+  // native hosts omit it (chrome routes through its SW). Mirrors
+  // BankHolidayProvider/WeatherProvider/TflProvider; without this default the
+  // whole Tier 5c was silently inert on CC/OC/gemini/shell (unit tests never
+  // saw it — they all inject stubs; the agentic suite caught it).
+  const f = fetchImpl ?? (typeof fetch !== 'undefined' ? (fetch as unknown as FetchLike) : undefined);
+  if (!f || !name.trim()) return null;
   try {
     const bias = near ? `&lat=${near.lat}&lon=${near.lon}` : '';
-    const res = await fetchImpl(`https://photon.komoot.io/api/?q=${encodeURIComponent(name)}&limit=10${bias}`);
+    const res = await f(`https://photon.komoot.io/api/?q=${encodeURIComponent(name)}&limit=10${bias}`);
     if (res.ok) {
       const json = (await res.json()) as { features?: Array<{ geometry?: { coordinates?: [number, number] } }> };
       // Photon returns GeoJSON: coordinates are [lon, lat].
