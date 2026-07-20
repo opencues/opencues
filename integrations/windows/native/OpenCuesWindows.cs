@@ -213,6 +213,47 @@ namespace OpenCues
         }
         static void BumpFastPoll() { _fastUntil = Environment.TickCount + FAST_WINDOW_MS; }
 
+        // Perf opt 1 (2026-07-21): the full-text ValuePattern read is a
+        // cross-process COM call that materializes the ENTIRE field text -
+        // O(document) per call. It used to run every tick (120Hz in fast
+        // mode = re-copying a large document continuously). Now it runs
+        // only when a UIA change event marked the text dirty, when the
+        // write bracket needs reconcile reads, on element/attach changes,
+        // for elements whose event hooks failed (correctness first), or on
+        // a slow watchdog for events the provider dropped.
+        static volatile bool _textDirty;
+        static int _lastTextReadAt;
+        const int TEXT_WATCHDOG_MS = 500;
+        static bool _elementEventsWorking;
+
+        // Perf opt 2 (2026-07-21): caret reads. The TextPattern2 path
+        // materializes the document PREFIX (O(caret position)) per read -
+        // fine occasionally, not at 120Hz. Edit-class HWNDs (Notepad,
+        // WordPad, dialogs) get an O(1) EM_GETSEL instead; non-Edit fields
+        // keep TextPattern2 but gated on a caret-dirty signal (any keydown
+        // or mouse click - both hooks already see them) + a watchdog.
+        static IntPtr _attachedHwnd = IntPtr.Zero;
+        static bool _attachedIsEdit;
+        static volatile bool _caretDirty;
+        static int _lastCaretReadAt;
+        const int CARET_WATCHDOG_MS = 250;
+        // Cached unmanaged out-params for EM_GETSEL (poll thread only).
+        static IntPtr _selBufA = IntPtr.Zero;
+        static IntPtr _selBufB = IntPtr.Zero;
+
+        static bool TryGetCaretViaEmGetSel(out int offset)
+        {
+            offset = -1;
+            IntPtr hwnd = _attachedHwnd;
+            if (hwnd == IntPtr.Zero) return false;
+            if (_selBufA == IntPtr.Zero) { _selBufA = Marshal.AllocHGlobal(4); _selBufB = Marshal.AllocHGlobal(4); }
+            IntPtr res;
+            IntPtr ok = SendMessageTimeoutW(hwnd, EM_GETSEL, _selBufA, _selBufB, SMTO_ABORTIFHUNG, 200, out res);
+            if (ok == IntPtr.Zero) return false;
+            offset = Marshal.ReadInt32(_selBufB);   // selection END = the caret in our end-anchored model
+            return offset >= 0;
+        }
+
         // Hide-on-keydown + fade-back-in (anti-flash steps 1+4, 2026-07-20).
         // A text-mutating keydown into a marked field zeroes the overlay
         // alpha IMMEDIATELY from the hook thread - before the app has even
@@ -397,21 +438,37 @@ namespace OpenCues
             UnhookElementEvents();
             try
             {
-                // Change events also mark the overlay dirty: a typing-induced
-                // reflow re-rects on the SAME wake (anti-flash step 2).
-                _valueChangedHandler = (s, e) => { try { _overlayDirty = true; BumpFastPoll(); _wake.Set(); } catch { } };
+                // Change events mark the overlay dirty (re-rect on the SAME
+                // wake) AND the text dirty (perf opt 1: the O(n) full-text
+                // COM read only runs when something actually changed).
+                _valueChangedHandler = (s, e) => { try { _overlayDirty = true; _textDirty = true; BumpFastPoll(); _wake.Set(); } catch { } };
                 Automation.AddAutomationPropertyChangedEventHandler(el, TreeScope.Element, _valueChangedHandler, ValuePattern.ValueProperty);
             }
             catch { _valueChangedHandler = null; }
             try
             {
-                _textChangedHandler = (s, e) => { try { _overlayDirty = true; BumpFastPoll(); _wake.Set(); } catch { } };
+                _textChangedHandler = (s, e) => { try { _overlayDirty = true; _textDirty = true; BumpFastPoll(); _wake.Set(); } catch { } };
                 Automation.AddAutomationEventHandler(TextPattern.TextChangedEvent, el, TreeScope.Element, _textChangedHandler);
             }
             catch { _textChangedHandler = null; }
+            // Perf opt 1/2 support state, captured once per attach:
+            //   - events working -> text reads can be event-gated; broken
+            //     providers fall back to per-tick reads (correctness first).
+            //   - Edit-class HWND -> caret reads take the O(1) EM_GETSEL
+            //     path instead of the O(prefix) TextPattern2 walk.
+            _elementEventsWorking = _valueChangedHandler != null || _textChangedHandler != null;
+            try
+            {
+                IntPtr h = new IntPtr(el.Current.NativeWindowHandle);
+                string cls;
+                _attachedIsEdit = IsEditClassHwnd(h, out cls);
+                _attachedHwnd = h;
+            }
+            catch { _attachedHwnd = IntPtr.Zero; _attachedIsEdit = false; }
             _hookedEl = el;
             _hookedElId = elId;
-            Log("debug", "change events hooked (value=" + (_valueChangedHandler != null) + " text=" + (_textChangedHandler != null) + ")");
+            Log("debug", "change events hooked (value=" + (_valueChangedHandler != null) + " text=" + (_textChangedHandler != null)
+                + " editHwnd=" + _attachedIsEdit + ")");
         }
 
         static void UnhookElementEvents()
@@ -423,6 +480,9 @@ namespace OpenCues
             _textChangedHandler = null;
             _hookedEl = null;
             _hookedElId = int.MinValue;
+            _elementEventsWorking = false;
+            _attachedHwnd = IntPtr.Zero;
+            _attachedIsEdit = false;
         }
 
         // Pause/resume attaching. When disabled the shim detaches from every
@@ -612,6 +672,18 @@ namespace OpenCues
             //    writable ValuePattern (or an editable TextPattern).
             if (IsAttachable(el, app))
             {
+                // Perf opt 1: skip the O(document) full-text read when the
+                // element is unchanged and nothing signalled a change. See
+                // the _textDirty comment block for the exact triggers.
+                bool sameEl = elId == _lastElementId && _attached;
+                bool mustRead = !sameEl
+                    || _textDirty
+                    || _bracketOpen                     // reconcile needs fresh reads
+                    || !_elementEventsWorking           // no events -> per-tick reads
+                    || unchecked(Environment.TickCount - _lastTextReadAt) > TEXT_WATCHDOG_MS;
+                if (!mustRead) return;
+                _textDirty = false;
+                _lastTextReadAt = Environment.TickCount;
                 // Phase 2 capability probe: a managed TextPattern is what the
                 // overlay needs for GetBoundingRectangles, so it decides the
                 // per-field cycling answer (Chromium-UIA composers like Slack
@@ -2466,6 +2538,8 @@ namespace OpenCues
                     if ((m == WM_MOUSEWHEEL || m == WM_MOUSEHWHEEL)
                         && _attached && _enabled && _fieldCycling && Connected)
                         ScrollHideNow();
+                    else if (m == 0x0201 && _attached && _fieldCycling)   // WM_LBUTTONDOWN - click moves the caret
+                        _caretDirty = true;
                 }
                 catch { }
             }
@@ -2495,6 +2569,7 @@ namespace OpenCues
                     if (down && _attached && _enabled && _fieldCycling)
                     {
                         BumpFastPoll();
+                        _caretDirty = true;   // any key can move the caret (perf opt 2)
                         // Keyboard scrolls move every mark - scroll suppression.
                         if (vk == 0x21 || vk == 0x22) ScrollHideNow();   // PgUp / PgDn
                         // Text-mutating key: hide the ink NOW (instant, from
@@ -2647,6 +2722,9 @@ namespace OpenCues
         static bool TryGetCaretOffset(out int offset)
         {
             offset = -1;
+            // Perf opt 2 fast path: one O(1) window message on Edit-class
+            // HWNDs instead of the O(prefix) TextPattern2 walk below.
+            if (_attachedIsEdit && TryGetCaretViaEmGetSel(out offset)) return true;
             try
             {
                 var uia = NativeUia();
@@ -2692,6 +2770,18 @@ namespace OpenCues
         static void MaybePollCaret()
         {
             if (!_attached || _attachMode != AttachMode.Uia || !_fieldCycling || _bracketOpen) return;
+            // Perf opt 2: the non-Edit (TextPattern2) caret read is
+            // O(prefix) - only run it when something could have moved the
+            // caret (any keydown / mouse click, flagged by the hooks) or on
+            // the watchdog. The Edit-HWND path is O(1) and runs every tick.
+            if (!_attachedIsEdit)
+            {
+                bool due = _caretDirty
+                    || unchecked(Environment.TickCount - _lastCaretReadAt) > CARET_WATCHDOG_MS;
+                if (!due) return;
+            }
+            _caretDirty = false;
+            _lastCaretReadAt = Environment.TickCount;
             int off;
             if (!TryGetCaretOffset(out off) || off < 0) return;
             int max = _lastSentText != null ? _lastSentText.Length : 0;
@@ -2931,8 +3021,16 @@ namespace OpenCues
             // span gets one more recapture - otherwise a caret bar frozen
             // into the last snapshot stays baked into the patch forever
             // (the "stuck in the screenshot" report).
+            // Perf opt 2: fresh read only on the O(1) Edit path; non-Edit
+            // fields reuse the caret MaybePollCaret last tracked (O(1)
+            // state) instead of paying the O(prefix) TextPattern2 walk on
+            // every overlay refresh.
             int caret = -1;
-            if (_fieldCycling) { int off; if (TryGetCaretOffset(out off)) caret = off; }
+            if (_fieldCycling)
+            {
+                if (_attachedIsEdit) { int off; if (TryGetCaretOffset(out off)) caret = off; }
+                else caret = _lastSentCaret;
+            }
             int prevCaret = _prevOverlayCaret;
             _prevOverlayCaret = caret;
             foreach (var span in _dimSpans) AddSpanRects(doc, text, span[0], span[1], false, caret, prevCaret, list);
