@@ -192,6 +192,27 @@ namespace OpenCues
         static string _host;
         static int _pollMs = 150;
 
+        // Adaptive fast-poll (anti-flash step 2b, 2026-07-20): while the
+        // user is typing or the marks are moving, the poll loop runs at
+        // FAST cadence so overlay re-rects keep visual pace with the app's
+        // own reflow ("see it move when I type"). Any typing/motion signal
+        // (LL-hook keydown, UIA change event, inbound render push, observed
+        // rect movement) extends the window; it decays ~700ms after the
+        // last signal back to the normal tick. Written from several threads
+        // (hook, UIA callbacks, reader) - a torn read just mistimes one
+        // tick, so a plain int is fine.
+        static int _fastUntil;
+        const int FAST_WINDOW_MS = 700;
+        static readonly int _fastPollMs = ReadFastPollMs();
+        static int ReadFastPollMs()
+        {
+            var v = Environment.GetEnvironmentVariable("OPENCUES_WIN_FAST_POLL_MS");
+            int m;
+            if (!string.IsNullOrEmpty(v) && int.TryParse(v, out m) && m >= 15 && m <= 150) return m;
+            return 35;
+        }
+        static void BumpFastPoll() { _fastUntil = Environment.TickCount + FAST_WINDOW_MS; }
+
         // Wakes the poll loop ahead of its tick. Set by: the socket reader
         // (inbound set-text frames apply at the runtime's real animation
         // frame rate instead of tick granularity), the global focus-changed
@@ -283,13 +304,13 @@ namespace OpenCues
             {
                 // Change events also mark the overlay dirty: a typing-induced
                 // reflow re-rects on the SAME wake (anti-flash step 2).
-                _valueChangedHandler = (s, e) => { try { _overlayDirty = true; _wake.Set(); } catch { } };
+                _valueChangedHandler = (s, e) => { try { _overlayDirty = true; BumpFastPoll(); _wake.Set(); } catch { } };
                 Automation.AddAutomationPropertyChangedEventHandler(el, TreeScope.Element, _valueChangedHandler, ValuePattern.ValueProperty);
             }
             catch { _valueChangedHandler = null; }
             try
             {
-                _textChangedHandler = (s, e) => { try { _overlayDirty = true; _wake.Set(); } catch { } };
+                _textChangedHandler = (s, e) => { try { _overlayDirty = true; BumpFastPoll(); _wake.Set(); } catch { } };
                 Automation.AddAutomationEventHandler(TextPattern.TextChangedEvent, el, TreeScope.Element, _textChangedHandler);
             }
             catch { _textChangedHandler = null; }
@@ -357,7 +378,11 @@ namespace OpenCues
                 // timeout keeps the classic poll as the fallback for apps
                 // whose UIA event providers are broken or absent (MSAA-
                 // attached Electron fields have no reliable UIA events).
-                _wake.WaitOne(_pollMs);
+                // Fast cadence only matters while marks exist to keep in
+                // visual sync; otherwise the normal tick is plenty.
+                bool fast = unchecked(Environment.TickCount - _fastUntil) < 0
+                    && (_dimSpans.Count > 0 || _hlSpan != null);
+                _wake.WaitOne(fast ? _fastPollMs : _pollMs);
             }
         }
 
@@ -2332,7 +2357,16 @@ namespace OpenCues
                 bool up = m == WM_KEYUP || m == WM_SYSKEYUP;
                 uint vk = info.vkCode;
                 bool isArrow = vk == VK_UP || vk == VK_DOWN || vk == VK_LEFT || vk == VK_RIGHT;
-                if (!isArrow && vk != VK_ESCAPE) return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
+                if (!isArrow && vk != VK_ESCAPE)
+                {
+                    // Any keystroke into an attached cycling field = the marks
+                    // are about to move; run the poll loop at fast cadence so
+                    // the re-rects visually keep up with the reflow. This is
+                    // the earliest possible signal - the hook sees the key
+                    // BEFORE the app inserts the character.
+                    if (down && _attached && _enabled && _fieldCycling) BumpFastPoll();
+                    return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
+                }
                 if (!(_attached && _enabled && _fieldCycling && Connected))
                     return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
                 if (vk == VK_ESCAPE)
@@ -2619,6 +2653,7 @@ namespace OpenCues
             if (!string.IsNullOrEmpty(style)) _overlayStyle = style;
             _dimSpans = dim;
             _hlSpan = hl;
+            if (dim.Count > 0 || hl != null) BumpFastPoll();   // spans changed - keep re-rects snappy
             UpdateOverlay();
         }
 
@@ -2675,6 +2710,7 @@ namespace OpenCues
             _overlayDirty = false;
             if (!force) force = OverlayRectsMoved();
             if (!force && (++_overlayTickFlip & 1) != 0) return;   // baseline cadence
+            if (force) BumpFastPoll();   // motion observed - stay fast until it settles
             UpdateOverlay();
         }
 
