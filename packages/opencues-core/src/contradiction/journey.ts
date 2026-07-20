@@ -38,10 +38,11 @@ export function estimateJourneyMinutes(km: number, mode: JourneyMode): number {
 
 const _geoCache = new Map<string, { lat: number; lon: number } | null>();
 
-/** Geocode a place name → coords via open-meteo (keyless), cached per session.
- *  When `near` is given, disambiguates by picking the candidate NEAREST it — the
- *  fix for bare names like "Camden" resolving to Camden, New Jersey instead of
- *  the user's Camden. null when nothing is found. */
+/** Geocode a place name → coords via Photon (Komoot's keyless OSM geocoder —
+ *  POI + station + street + landmark coverage, unlike a towns-only DB), cached
+ *  per session. `near` biases the search (Photon `lat`/`lon`) AND picks the
+ *  candidate nearest it — so "Waterloo" / "Camden" resolve to the user's region,
+ *  not Waterloo, Iowa. null when nothing is found. */
 export async function geocodePlace(
   name: string,
   fetchImpl: FetchLike | undefined,
@@ -51,11 +52,15 @@ export async function geocodePlace(
   if (_geoCache.has(key)) return _geoCache.get(key)!;
   if (!fetchImpl || !name.trim()) return null;
   try {
-    const res = await fetchImpl(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=10`);
+    const bias = near ? `&lat=${near.lat}&lon=${near.lon}` : '';
+    const res = await fetchImpl(`https://photon.komoot.io/api/?q=${encodeURIComponent(name)}&limit=10${bias}`);
     if (res.ok) {
-      const json = (await res.json()) as { results?: Array<{ latitude?: number; longitude?: number }> };
-      const cands = (json?.results ?? []).filter(r => typeof r.latitude === 'number' && typeof r.longitude === 'number')
-        .map(r => ({ lat: r.latitude as number, lon: r.longitude as number }));
+      const json = (await res.json()) as { features?: Array<{ geometry?: { coordinates?: [number, number] } }> };
+      // Photon returns GeoJSON: coordinates are [lon, lat].
+      const cands = (json?.features ?? [])
+        .map(f => f.geometry?.coordinates)
+        .filter((c): c is [number, number] => Array.isArray(c) && typeof c[0] === 'number' && typeof c[1] === 'number')
+        .map(([lon, lat]) => ({ lat, lon }));
       if (cands.length > 0) {
         const pick = near ? cands.slice().sort((a, b) => haversineKm(a, near) - haversineKm(b, near))[0] : cands[0];
         _geoCache.set(key, pick);

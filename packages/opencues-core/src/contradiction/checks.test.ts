@@ -524,9 +524,10 @@ describe('verifyJourneyClaim (Tier 5c, async geocode)', () => {
     'c place': { latitude: 51.50, longitude: -0.087 },
   };
   const fetchImpl = async (url: string) => {
-    const name = decodeURIComponent(new URL(url).searchParams.get('name') ?? '').toLowerCase();
+    // Photon: ?q=<name> → GeoJSON features with [lon, lat] coordinates.
+    const name = decodeURIComponent(new URL(url).searchParams.get('q') ?? '').toLowerCase();
     const hit = (coords as Record<string, { latitude: number; longitude: number }>)[name];
-    return { ok: true, json: async () => ({ results: hit ? [hit] : [] }) };
+    return { ok: true, json: async () => ({ features: hit ? [{ geometry: { coordinates: [hit.longitude, hit.latitude] } }] : [] }) };
   };
   const beforeEachClear = () => _resetGeoCacheForTesting();
 
