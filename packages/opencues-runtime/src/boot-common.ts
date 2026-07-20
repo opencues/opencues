@@ -669,6 +669,114 @@ export function buildBlankContextProvider(
 /** Max length of an LLM-provided `ai-callable` fetch argument. A single
  *  data-lookup value (ticker / crypto id / city name) is short; anything
  *  longer is abuse, not a lookup. */
+/**
+ * Calendar-context ingest for NATIVE hosts — read the shared
+ * `calendar.json` snapshot (produced by `opencues calendar sync` or any
+ * external producer) into a live holder the resolver reads fresh each
+ * pass. Mirrors chrome's bootstrap loader (opencues-bootstrap.ts
+ * `loadCalendarContext`): parse events → `buildCalendarContextSnapshot`
+ * (assigns `[EVENT N]` tokens + hydration catalog) → mutate the holder
+ * in place so a re-ingest propagates without a host restart.
+ *
+ * Search order matches the producer/consumer seam + config precedence:
+ * `$OPENCUES_HOME/calendar.json` first (also what gives test shards an
+ * isolated calendar), then `~/.cues/calendar.json`.
+ *
+ * Refresh: mtime-gated re-read on a timer (default 60s, unref'd — never
+ * keeps the host process alive). Missing file → holder empties (the
+ * documented inert mode). Returns undefined in non-Node environments or
+ * when @opencues/core is unavailable — hosts pass the result straight
+ * through as `ResolverOptions.calendarContext`.
+ */
+export interface CalendarContextHolder {
+  readonly events: Array<{ token: string; title: string; start: string; end: string; allDay?: boolean; location?: string }>;
+  readonly catalog: Map<string, string>;
+  ingestedAt?: string;
+  /** Stop the refresh timer (harness teardown / tests). */
+  stop(): void;
+}
+
+export function buildCalendarContextIngest(
+  log: (level: LogLevel, msg: string) => void,
+  opts: { refreshMs?: number } = {},
+): CalendarContextHolder | undefined {
+  if (typeof process === 'undefined' || !process.versions?.node) return undefined;
+  let core: { buildCalendarContextSnapshot?: (events: ReadonlyArray<unknown>, ingestedAt?: string) => { events: ReadonlyArray<{ token: string; title: string; start: string; end: string; allDay?: boolean; location?: string }>; catalog: ReadonlyMap<string, string>; ingestedAt?: string } } | null = null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    core = require('@opencues/core');
+  } catch {
+    return undefined;
+  }
+  if (!core?.buildCalendarContextSnapshot) return undefined;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fs = require('node:fs') as typeof import('node:fs');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const path = require('node:path') as typeof import('node:path');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const os = require('node:os') as typeof import('node:os');
+
+  const snapshotPath = (): string => {
+    const override = process.env['OPENCUES_HOME'];
+    if (override && override.trim().length > 0) return path.join(override, 'calendar.json');
+    return path.join(os.homedir(), '.cues', 'calendar.json');
+  };
+
+  let timerHandle: ReturnType<typeof setTimeout> | null = null;
+  let stopped = false;
+  let lastMtimeMs = -1;
+  let lastPath = '';
+  const holder: CalendarContextHolder = {
+    events: [],
+    catalog: new Map<string, string>(),
+    ingestedAt: undefined,
+    stop() { stopped = true; if (timerHandle) { clearTimeout(timerHandle); timerHandle = null; } },
+  };
+
+  const load = (): void => {
+    const file = snapshotPath();
+    try {
+      const st = fs.statSync(file, { throwIfNoEntry: false });
+      if (!st) {
+        // Missing snapshot = inert mode. Clear once (not every tick).
+        if (holder.events.length > 0) {
+          holder.events.length = 0;
+          holder.catalog.clear();
+          holder.ingestedAt = undefined;
+          log('info', 'calendar-context: snapshot removed — calendar context now empty');
+        }
+        lastMtimeMs = -1; lastPath = file;
+        return;
+      }
+      if (file === lastPath && st.mtimeMs === lastMtimeMs) return;   // unchanged
+      const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as { events?: unknown; ingestedAt?: string } | null;
+      const events = parsed && Array.isArray(parsed.events) ? parsed.events : [];
+      const snap = core!.buildCalendarContextSnapshot!(events, parsed?.ingestedAt);
+      holder.events.length = 0;
+      for (const e of snap.events) holder.events.push({ token: e.token, title: e.title, start: e.start, end: e.end, allDay: e.allDay, location: e.location });
+      holder.catalog.clear();
+      for (const [k, v] of snap.catalog) holder.catalog.set(k, v);
+      holder.ingestedAt = snap.ingestedAt;
+      lastMtimeMs = st.mtimeMs; lastPath = file;
+      log('info', `calendar-context: ${holder.events.length} calendar event(s) loaded from ${file}`);
+    } catch (err) {
+      // Malformed snapshot must never take the host down; keep the last
+      // good holder contents and say why.
+      log('warn', `calendar-context: load failed (${(err as Error)?.message ?? err})`);
+    }
+  };
+
+  const refreshMs = opts.refreshMs ?? 60_000;
+  const tick = (): void => {
+    if (stopped) return;
+    load();
+    timerHandle = setTimeout(tick, refreshMs);
+    (timerHandle as { unref?: () => void }).unref?.();
+  };
+  tick();
+  return holder;
+}
+
 export const AI_CALLABLE_ARG_MAX = 200;
 
 /**
