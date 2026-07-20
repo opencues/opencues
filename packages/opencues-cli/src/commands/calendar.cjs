@@ -246,8 +246,31 @@ function remove(argv) {
   const kept = lines.filter(l => l.trim() !== urlToRemove);
   fs.writeFileSync(FEEDS_PATH, kept.join('\n').replace(/\n*$/, '\n'));
   console.log(`${green(G.ringOn)} removed ${bold(urlToRemove)}`);
-  console.log(`  ${dim('applied on the next poll — or')} ${bold('opencues calendar refresh')} ${dim('now')}`);
-  return 0;
+
+  // Reconcile the snapshot NOW — removal must clear cleanly, not on a
+  // future poll that may never come:
+  //   - feeds remain → immediate re-sync drops the removed calendar's
+  //     events (instead of ghosting for up to a 15-min TTL window);
+  //   - LAST feed removed → write an EMPTY snapshot. Without this the
+  //     old events ghost FOREVER (syncCalendarFeeds refuses on 'no
+  //     feeds' and the scheduler's due-check never fires again).
+  //     Empty beats deleting the file: chrome's loader falls back to
+  //     the BAKE-TIME bundled snapshot when the file is missing, which
+  //     would resurrect even older events. External producers that
+  //     write calendar.json without a feeds file are unaffected — this
+  //     path only runs when the USER removes a feed.
+  const remaining = activeUrls(kept);
+  if (remaining.length === 0) {
+    fs.mkdirSync(CUES_DIR, { recursive: true });
+    fs.writeFileSync(SNAPSHOT_PATH, JSON.stringify({ source: 'opencues calendar remove', ingestedAt: new Date().toISOString(), events: [] }, null, 2) + '\n');
+    console.log(`  ${dim('last feed removed — calendar snapshot cleared (hosts pick it up within ~60s)')}`);
+    return 0;
+  }
+  return buildSnapshot().then((r) => {
+    if (r.ok) console.log(`  ${dim(`snapshot re-synced without it — ${r.events} event(s) from ${r.okCount}/${r.feeds} feed(s)`)}`);
+    else console.log(`  ${dim(`re-sync deferred (${r.reason}) — applied on the next 15-min poll`)}`);
+    return 0;
+  });
 }
 
 function refresh() {
