@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — browser-safe guards on the calendar-ingest OPENCUES_HOME reads (`@opencues/runtime` 0.25.1)
+
+The two ingest closures read `process.env` unguarded — the runtime-browser-safe lint had been red since #322 (masked by a broken CI-watch pipe; five PRs merged over the single failing job). Guards added; semantics unchanged (the ingest already early-returns in browsers).
+
 ### Fixed — `opencues calendar remove` now clears cleanly (no ghost calendar) (CLI 0.2.54)
 
 Removing a feed only edited `calendar-feeds.txt`; the snapshot reconciled on "the next poll" — which, for the LAST feed, never comes (`syncCalendarFeeds` refuses on no-feeds and the scheduler's due-check goes permanently quiet), so the deleted calendar's events ghosted forever: stale PII still firing conflict cues and answering availability. Now `remove` reconciles immediately: with feeds remaining it re-syncs on the spot (removed events drop now, not within the 15-min TTL); removing the last feed writes an EMPTY snapshot — empty beats deleting the file, because chrome's loader falls back to the bake-time bundled snapshot when the file is missing, which would resurrect even older events. External producers that write `calendar.json` without a feeds file are unaffected (the clear only runs on user-initiated remove). Hosts pick up the cleared snapshot within ~60s via the ingest. Two hermetic regression tests.
