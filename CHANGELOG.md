@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — chrome bundle: `node:os` external for the calendar-ingest helper (`@opencues/chrome` 0.2.89)
+
+`buildCalendarContextIngest` (0.24.0) lazy-requires `node:os`; chrome's esbuild external list had only `node:fs`/`node:path`/`node:child_process`, so the chrome build hard-failed at install time. The helper self-disables in the browser (chrome has its own loader), so external-as-is is correct. The PR #49-class gate didn't fire on #322 because the chrome build task cache-hit; `opencues install chrome` caught it.
+
 ### Fixed — Tier 5c journey geocode was silently inert on native hosts (`@opencues/core` 0.30.1)
 
 `geocodePlace` bailed when `fetchImpl` was undefined — but native hosts (CC/OC/gemini/shell) omit `worldDataFetch` (only chrome supplies one, routed through its service worker), so the whole journey-underestimate tier never fired outside chrome. Unit tests never saw it (they inject stub fetches); the agentic suite caught it on a live OpenCode host. Now defaults to the ambient `fetch`, mirroring BankHolidayProvider/WeatherProvider/TflProvider. Regression pinned with an ambient-fetch unit test.

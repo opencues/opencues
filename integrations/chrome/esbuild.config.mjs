@@ -112,7 +112,7 @@ const common = {
   // (~/.cues/.env read + the zero-key subscription-CLI probe). Both are
   // typeof-process-guarded so the require is unreachable in a content
   // script — external for the same emit-as-is reason.
-  external: ['node:fs', 'node:path', 'node:child_process'],
+  external: ['node:fs', 'node:path', 'node:os', 'node:child_process'],
 };
 
 // The three bundles. content + popup are IIFEs (injected into page
