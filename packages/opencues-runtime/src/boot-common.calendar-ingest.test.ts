@@ -116,4 +116,30 @@ describe('buildCalendarContextIngest', () => {
     expectEq(h.events.length, 2, 're-ingest applied without restart');
     expectEq(h.catalog.get('[EVENT 2]'), 'Two');
   });
+
+  it('feed-sync resource: stale snapshot + feeds file → scheduler refreshes from the feed', async () => {
+    // stale snapshot (older than the 15-min TTL) + a configured feed
+    fs.writeFileSync(path.join(tmpHome, 'calendar.json'),
+      JSON.stringify({ ingestedAt: new Date(Date.now() - 60 * 60_000).toISOString(), events: [] }));
+    fs.writeFileSync(path.join(tmpHome, 'calendar-feeds.txt'), 'https://example.test/feed.ics\n');
+    const d = new Date(Date.now() + 24 * 3600e3);
+    const f = (x: Date): string => x.toISOString().replace(/[-:]/g, '').slice(0, 15) + 'Z';
+    const end = new Date(d.getTime() + 3600e3);
+    const g = globalThis as { fetch?: unknown };
+    const saved = g.fetch;
+    g.fetch = async () => ({
+      ok: true, status: 200,
+      text: async () => `BEGIN:VCALENDAR\nBEGIN:VEVENT\nDTSTART:${f(d)}\nDTEND:${f(end)}\nSUMMARY:Fed Event\nEND:VEVENT\nEND:VCALENDAR\n`,
+    });
+    try {
+      const h = build(50);           // refreshMs set → jitter 0 → deterministic
+      await new Promise(r => setTimeout(r, 400));
+      expectEq(h.events.length, 1, 'holder refreshed from the feed via the scheduler');
+      expectEq(h.events[0].title, 'Fed Event');
+      const snap = JSON.parse(fs.readFileSync(path.join(tmpHome, 'calendar.json'), 'utf8'));
+      expect(Date.now() - Date.parse(snap.ingestedAt)).toBeLessThan(60_000);
+    } finally {
+      g.fetch = saved;
+    }
+  });
 });

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — refresh scheduler: calendar feeds self-sync every 15 minutes (`@opencues/core` 0.31.0, `@opencues/runtime` 0.25.0, CLI 0.2.53)
+
+The system now owns refresh cadence: a `RefreshScheduler` (runtime) ticks every 30s and asks registered resources "are you due?" — nothing "calls" a sync. Calendar feeds are the first resource: due when the shared snapshot's own `ingestedAt` is older than 15 minutes, so any number of concurrently-running hosts self-deduplicate off the same file clock (plus per-process jitter and a pre-write re-stat in core that discards a fetch another producer superseded). The feeds→snapshot sync itself moved to `@opencues/core` (`syncCalendarFeeds` — atomic tmp+rename write, VCALENDAR sniff, last-good posture on failure) with THREE callers sharing the one implementation: the CLI (`opencues calendar sync`), the runtime scheduler inside `buildCalendarContextIngest`, and chrome-host (5-min due-check on its watch loop; the resulting write trips its existing fs.watch → bundle push). User journey collapses to `opencues calendar add <url>` — feeds are at most ~15 min stale while any host runs, file→runtime stays ≤60s. In-flight guards, contained failures, unref'd timers (never in the keystroke path, never keeping a process alive). 5 scheduler + 8 core-sync + 1 end-to-end ingest tests, all hermetic.
+
 ### Fixed — doctor: chrome-host push-list check false-positived on registry-derived scripts (`opencues` CLI 0.2.52)
 
 `host.cjs` derives its push list from `chromeHostFileList()` at runtime — structurally drift-proof — but doctor verified parity by grepping the script TEXT for literal basenames. Older names passed only because they happen to appear in comments/filter code; NOTES.md and calendar.json (the two newest pushed files) "failed" despite being pushed correctly. Doctor now recognises a registry-derived script (`chromeHostFileList` present) and reports that as the check; the literal grep remains only for pre-derive host scripts that hardcoded the names.
