@@ -90,16 +90,19 @@ export { ContradictionLlmSource, parseClaims, CONTRADICTION_EXTRACT_SYSTEM, type
 export { BankHolidayProvider, type BankHolidayProviderOptions, type BankHolidayRegion } from './contradiction/bank-holidays';
 export { WeatherProvider, type WeatherProviderOptions } from './contradiction/weather';
 export { TflProvider, type TflProviderOptions, normalizeLine } from './contradiction/tfl';
+export { geocodePlace, haversineKm, estimateJourneyMinutes, type JourneyMode } from './contradiction/journey';
 export {
   weekdayDateCheck,
   splitBillCheck,
   TIER0_CHECKS,
   verifyClaim,
+  verifyJourneyClaim,
   safeEvalArithmetic,
   type Claim,
   type WorkdayOnHolidayClaim,
   type OutdoorPlanWeatherClaim,
   type TubeLinePlanClaim,
+  type JourneyUnderestimateClaim,
   type VerifyContext,
   type VerifiedContradiction,
   type Contradiction,

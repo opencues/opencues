@@ -513,6 +513,7 @@ export function buildSourcesFromConfig(
         bankHolidays,
         weather,
         tfl,
+        worldDataFetch: options.worldDataFetch,   // Tier 5c — per-query journey geocoding
         log: (m) => options.log?.(m),
       }));
     } else {
