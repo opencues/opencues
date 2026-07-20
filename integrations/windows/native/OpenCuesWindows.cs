@@ -245,11 +245,51 @@ namespace OpenCues
         static void MaybeRestoreInk()
         {
             if (!_inkHidden) return;
+            if (_scrollHidden) return;   // scroll suppression owns visibility right now
             if (unchecked(Environment.TickCount - _typingQuietAt) < 0) return;
             _inkHidden = false;
             var ov = _overlayVol;
             if (ov != null) ov.FadeInInk();   // volatile spans fade back; stable never left
             UpdateOverlay();                  // fresh rects + hot recaptures for what fades in
+        }
+
+        // Scroll suppression (anti-flash step 6, 2026-07-20): scrolling
+        // moves EVERY mark at once, so all ink (both windows) hides
+        // instantly and fades back once the view settles. Three detectors
+        // feed it: the WH_MOUSE_LL hook (wheel/touchpad - instant),
+        // PgUp/PgDn on the keyboard hook, and the rect-moved probe
+        // (scrollbar drags + window drags, which emit no input event we
+        // hook). Each detection extends the quiet deadline.
+        internal static volatile bool _scrollHidden;
+        static int _scrollQuietAt;
+        const int SCROLL_QUIET_MS = 350;
+
+        static void ScrollHideNow()
+        {
+            _scrollQuietAt = Environment.TickCount + SCROLL_QUIET_MS;
+            BumpFastPoll();
+            if (_scrollHidden) return;
+            _scrollHidden = true;
+            var ov = _overlay;
+            if (ov != null) ov.HideInkNow();
+            var ovv = _overlayVol;
+            if (ovv != null) ovv.HideInkNow();
+        }
+
+        static void MaybeRestoreScroll()
+        {
+            if (!_scrollHidden) return;
+            if (unchecked(Environment.TickCount - _scrollQuietAt) < 0) return;
+            _scrollHidden = false;
+            UpdateOverlay();                  // fresh rects + captures at the settled position
+            var ov = _overlay;
+            if (ov != null) ov.FadeInInk();
+            // Volatile only returns if the typing suppressor isn't holding it.
+            if (!_inkHidden)
+            {
+                var ovv = _overlayVol;
+                if (ovv != null) ovv.FadeInInk();
+            }
         }
 
         // Sub-15ms waits need the system timer resolution raised - the
@@ -415,6 +455,7 @@ namespace OpenCues
                         MaybePollCaret();      // phase 2: real caret -> daemon cursor events
                         MaybeRefreshOverlay(); // phase 2: track window moves/scrolls
                         MaybeRestoreInk();     // phase 2: fade ink back in after typing quiets
+                        MaybeRestoreScroll();  // phase 2: fade all ink back once scrolling settles
                     }
                     else
                     {
@@ -2394,11 +2435,41 @@ namespace OpenCues
                 Log("warn", "keyboard hook install failed (err=" + Marshal.GetLastWin32Error() + ") - chords disabled");
                 return;
             }
-            Log("info", "keyboard hook installed (Ctrl+Alt+arrows -> runtime while a cycling field is attached)");
+            // Observe-only mouse hook on the same pump: wheel/touchpad scroll
+            // events trigger the scroll suppression the instant they happen.
+            _mouseProc = MouseHookCallback;
+            _mouseHookHandle = SetWindowsHookEx(WH_MOUSE_LL, _mouseProc, GetModuleHandle(null), 0);
+            Log("info", "keyboard hook installed (Ctrl+Alt+arrows -> runtime while a cycling field is attached"
+                + (_mouseHookHandle != IntPtr.Zero ? "; scroll detection on" : "; mouse hook failed") + ")");
             MSG msg;
-            while (_running && GetMessageW(out msg, IntPtr.Zero, 0, 0) > 0) { /* pump - LL hook is serviced here */ }
+            while (_running && GetMessageW(out msg, IntPtr.Zero, 0, 0) > 0) { /* pump - LL hooks are serviced here */ }
             try { UnhookWindowsHookEx(_hookHandle); } catch { }
             _hookHandle = IntPtr.Zero;
+            try { if (_mouseHookHandle != IntPtr.Zero) UnhookWindowsHookEx(_mouseHookHandle); } catch { }
+            _mouseHookHandle = IntPtr.Zero;
+        }
+
+        // --- WH_MOUSE_LL: scroll detection (observe-only, never swallows) --
+        const int WH_MOUSE_LL = 14;
+        const int WM_MOUSEWHEEL = 0x020A;
+        const int WM_MOUSEHWHEEL = 0x020E;
+        static IntPtr _mouseHookHandle = IntPtr.Zero;
+        static LowLevelKeyboardProc _mouseProc;   // same delegate shape (int, IntPtr, IntPtr)
+
+        static IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            if (nCode >= 0)
+            {
+                try
+                {
+                    int m = wParam.ToInt32();
+                    if ((m == WM_MOUSEWHEEL || m == WM_MOUSEHWHEEL)
+                        && _attached && _enabled && _fieldCycling && Connected)
+                        ScrollHideNow();
+                }
+                catch { }
+            }
+            return CallNextHookEx(_mouseHookHandle, nCode, wParam, lParam);
         }
 
         static IntPtr KeyHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
@@ -2424,6 +2495,8 @@ namespace OpenCues
                     if (down && _attached && _enabled && _fieldCycling)
                     {
                         BumpFastPoll();
+                        // Keyboard scrolls move every mark - scroll suppression.
+                        if (vk == 0x21 || vk == 0x22) ScrollHideNow();   // PgUp / PgDn
                         // Text-mutating key: hide the ink NOW (instant, from
                         // this thread), fade back in after the typing quiets.
                         if (IsTextMutatingKey(vk))
@@ -2801,7 +2874,13 @@ namespace OpenCues
             if (_dimSpans.Count == 0 && _hlSpan == null) return;
             bool force = _overlayDirty;
             _overlayDirty = false;
-            if (!force) force = OverlayRectsMoved();
+            if (!force && OverlayRectsMoved())
+            {
+                force = true;
+                // Rects moved with no typing signal: scrollbar drag, window
+                // drag, or momentum scroll - hide everything until it settles.
+                ScrollHideNow();
+            }
             if (!force && (++_overlayTickFlip & 1) != 0) return;   // baseline cadence
             if (force) BumpFastPoll();   // motion observed - stay fast until it settles
             UpdateOverlay();
@@ -3273,6 +3352,10 @@ namespace OpenCues
             foreach (var k in stale) { try { _capCache[k].Dispose(); } catch { } _capCache.Remove(k); }
 
             if (missing.Count == 0) return;
+            // Mid-scroll captures are wasted (positions go stale within a
+            // frame) and the ink is hidden anyway; the settle path runs a
+            // fresh UpdateOverlay that captures at the final position.
+            if (WindowsShim._scrollHidden) return;
             List<OverlaySpanRect> save = null;
             if (!_captureExcluded)
             {
