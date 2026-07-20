@@ -251,15 +251,32 @@ on-demand, mode-aware read of the attached field), and are pinned by
    predecessor hasn't rendered yet reads as divergence and gets dropped
    — the animation stalls a frame; never a wrong write.
 
-## Multi-buffer state — MUST reset on focus change
+## Multi-buffer state — reset on field change, RESUME on same-field refocus
 
 The Windows host attaches to **many** independent fields across apps in
 one runtime instance. That's the canonical multi-buffer trigger from
-`docs/architecture/universal-integration.md`: the daemon fires
-`bootResult.resetBufferState()` on every `focus` and `blur`. Without it,
+`docs/architecture/universal-integration.md`: adopting a DIFFERENT
+buffer must be preceded by `bootResult.resetBufferState()`. Without it,
 a DynDef with `blankName` set from the previous field silently blocks the
 next field's first blank (the "bare `_` returns nothing" bug). If you add
 a new boundary (e.g. external paste detection), wire a reset there too.
+
+**Phase 2 refinement — the reset is deferred from blur to the next
+focus.** Clicking away and straight back to the SAME field with
+unchanged text is a RESUME: no reset, no re-seed, no re-resolve — the
+spans (word-cue dims, substitution DynDefs, satellite pairs) survive
+and the overlay repaints from the preserved state. This fixes the
+"marks vanish on every focus flicker" UX (substitution spans are
+unrecoverable by re-resolve, so a blanket reset destroyed them). The
+invariant is preserved three ways: (1) the next focus performs the
+full reset whenever the field id OR the text differs; (2) while
+detached, inbound text/key events are ignored and outbound
+setText/pushText are DROPPED (a late in-flight LLM result must never
+ship with no attached field — and a drop poisons the resume so stale
+runtime state can't survive into it); (3) the shim independently
+verifies the focused element IS the attached one (UIA runtime-id
+match) before any write path runs. A→B→A does NOT resume — adopting B
+reset A's state; per-field snapshots are a possible later extension.
 
 ## Security posture (phase 1)
 

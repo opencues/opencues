@@ -232,6 +232,18 @@ let expectedEcho = null;       // text we just wrote; swallow its echo
 // adapter's supportsCycling() (the resolver folds the answer into its
 // build key, so a flip rebuilds the source set automatically).
 let fieldCycling = false;
+// Same-field resume across a blur (phase 2). The buffer-state reset is
+// DEFERRED from blur to the next focus: if the user clicks away and
+// straight back to the SAME field with UNCHANGED text, the runtime's
+// spans (word-cue dims, substitution DynDefs, satellite pairs) survive
+// and the overlay repaints instantly — no reset, no re-resolve, no
+// LLM round-trip. Any different field or changed text on the next
+// focus performs the full reset there instead. A→B→A does NOT resume
+// (B's adoption reset A's state) — per-field snapshots are a possible
+// later extension.
+let attachedFieldId = null;    // shim-reported stable field id while attached
+let lastBlurFieldId = null;    // field we were on when focus left
+let lastBlurTextNorm = null;   // its text at blur (normBuf'd)
 
 function send(obj) {
   if (!sock || sock.destroyed) return;
@@ -402,6 +414,14 @@ function pushRender() {
     try { dirs = bootResult.collectRenderDirectives(mirrorText, mirrorCursor); }
     catch (err) { log('warn', 'collectRenderDirectives failed', err); }
     const wire = mergeRenderDirectives(dirs);
+    // Debug-level wire trace — one line per push with span counts, so
+    // "marks didn't (re)appear" is diagnosable from the log alone: a
+    // missing push means the runtime never re-registered (resolver
+    // side); a push with dim>0 means the spans left the daemon and the
+    // failure is shim-side (rect resolve / paint).
+    if (wire.dim.length > 0 || wire.hl) {
+      log('debug', `render push: dim=${wire.dim.length} hl=${wire.hl ? 1 : 0} textLen=${mirrorText.length}`);
+    }
     send({ t: 'render', dim: wire.dim, hl: wire.hl, style: OVERLAY_STYLE });
   });
 }
@@ -426,6 +446,18 @@ const bootResult = boot({
   getText: () => mirrorText,
   getCursorOffset: () => mirrorCursor,
   setText: (text) => {
+    // Never ship a write with no attached field — an in-flight LLM
+    // result completing after a blur would otherwise land in whatever
+    // the user focused next (the shim guards its end too; this is the
+    // braces half). The dropped write leaves runtime span state out of
+    // sync with the real field, so poison the same-field resume — the
+    // next focus does a full reset instead.
+    if (!attached) {
+      lastBlurFieldId = null;
+      lastBlurTextNorm = null;
+      log('debug', `setText dropped — no attached field (${text.length} chars; late in-flight result)`);
+      return;
+    }
     mirrorText = text;
     mirrorCursor = text.length;
     expectedEcho = text;
@@ -438,6 +470,12 @@ const bootResult = boot({
     send({ t: 'set-cursor', cursor: offset });
   },
   pushText: (text, cursor) => {
+    if (!attached) {   // same drop-and-poison contract as setText above
+      lastBlurFieldId = null;
+      lastBlurTextNorm = null;
+      log('debug', `pushText dropped — no attached field (${text.length} chars; late in-flight result)`);
+      return;
+    }
     mirrorText = text;
     mirrorCursor = typeof cursor === 'number' ? cursor : text.length;
     expectedEcho = text;
@@ -503,33 +541,61 @@ function handleMessage(msg) {
     }
     case 'focus': {
       // Shim reports a newly-focused ATTACHABLE field (already passed
-      // its editable + sensitive + deny-list checks). Focus change is a
-      // hard buffer boundary — wipe per-buffer state before adopting the
-      // new field, or DynDefs from the prior field silently block the
-      // new one (universal-integration.md canonical bug).
-      bootResult.resetBufferState();
+      // its editable + sensitive + deny-list checks).
+      const text = typeof msg.text === 'string' ? msg.text : '';
+      const fieldId = typeof msg.fieldId === 'number' ? msg.fieldId : null;
+      // Same-field RESUME (phase 2): the blur deferred its reset; if
+      // focus returned to the exact field with unchanged text, keep the
+      // runtime state (spans, satellite pairs, undo epoch) and just
+      // repaint. See the lastBlurFieldId comment block.
+      const resume = fieldId !== null && fieldId === lastBlurFieldId
+        && lastBlurTextNorm !== null && normBuf(text) === lastBlurTextNorm;
+      lastBlurFieldId = null;
+      lastBlurTextNorm = null;
+      if (!resume) {
+        // Different field (or same field, changed text): hard buffer
+        // boundary — wipe per-buffer state before adopting it, or
+        // DynDefs from the prior field silently block the new one
+        // (universal-integration.md canonical bug). This is also the
+        // deferred half of the previous blur's reset.
+        bootResult.resetBufferState();
+      }
       attached = true;
+      attachedFieldId = fieldId;
       currentApp = msg.app || null;
       // Phase 2: per-field cycling capability, decided by the shim at
       // attach (UIA + TextPattern → overlay + chords possible). Must be
       // set BEFORE notifyTextChange so the resolver's source (re)build
       // sees the right supportsCycling answer for this field.
       fieldCycling = msg.cycling === true;
-      mirrorText = typeof msg.text === 'string' ? msg.text : '';
+      mirrorText = text;
       mirrorCursor = typeof msg.cursor === 'number' ? msg.cursor : mirrorText.length;
       expectedEcho = null;
       updatePresence({ app: currentApp, attached: true });
-      // Seed the runtime with the field's current contents (source=user,
-      // no `_` synth — focusing a field is not typing an underscore).
-      bootResult.notifyTextChange(mirrorText, mirrorCursor, 'user');
+      if (resume) {
+        log('debug', `focus resume — same field (${fieldId}) + unchanged text; spans preserved`);
+      } else {
+        // Seed the runtime with the field's current contents (source=user,
+        // no `_` synth — focusing a field is not typing an underscore).
+        bootResult.notifyTextChange(mirrorText, mirrorCursor, 'user');
+      }
       pushRender();
       return;
     }
     case 'blur': {
       // Left an attachable field for something we don't touch (browser,
-      // terminal, password box, non-editable). Detach + reset.
-      if (attached) bootResult.resetBufferState();
+      // terminal, password box, non-editable). Detach, but DEFER the
+      // buffer-state reset to the next focus so a click-away-and-back
+      // to the same field can resume with its spans intact. While
+      // detached, inbound text/key events are ignored (guards below)
+      // and outbound writes are dropped (setText/pushText guard), so
+      // the preserved state is inert until the resume/reset decision.
+      if (attached) {
+        lastBlurFieldId = attachedFieldId;
+        lastBlurTextNorm = normBuf(mirrorText);
+      }
       attached = false;
+      attachedFieldId = null;
       fieldCycling = false;
       currentApp = msg.app || null;
       mirrorText = '';

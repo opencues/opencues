@@ -106,8 +106,30 @@ check('focus handler sets fieldCycling BEFORE seeding the runtime',
   })(),
   "the resolver's source (re)build reads supportsCycling during the seeding notifyTextChange");
 
-check('blur clears fieldCycling', /case 'blur'[\s\S]{0,400}fieldCycling = false/.test(hostdSrc),
+check('blur clears fieldCycling', /case 'blur'[\s\S]{0,900}fieldCycling = false/.test(hostdSrc),
   'a stale true leaks cycling onto the next non-cycling field');
+
+// ── B3. same-field resume + late-write guards ───────────────────────────
+{
+  const blurCase = hostdSrc.slice(hostdSrc.indexOf("case 'blur'"), hostdSrc.indexOf("case 'text'"));
+  check('blur DEFERS the buffer reset (no resetBufferState in the blur case)',
+    !blurCase.includes('resetBufferState'),
+    'an immediate reset on blur destroys spans a same-field refocus should resume');
+}
+check('focus has the same-field resume branch',
+  /focus resume/.test(hostdSrc) && /fieldId === lastBlurFieldId/.test(hostdSrc),
+  'without resume, every focus flicker wipes the marks (the 2026-07-20 report)');
+check('daemon drops writes with no attached field AND poisons the resume',
+  /setText dropped/.test(hostdSrc) && /pushText dropped/.test(hostdSrc)
+    && (() => {
+      const g = hostdSrc.indexOf('setText dropped');
+      const around = hostdSrc.slice(Math.max(0, g - 400), g);
+      return around.includes('lastBlurFieldId = null');
+    })(),
+  'a late in-flight result must neither ship detached nor leave stale spans resumable');
+check('shim verifies the write target is the attached element',
+  /FocusedElementIsAttached/.test(shimSrc) && /set-text dropped/.test(shimSrc),
+  'a set-text after a focus change must never land in whatever the user focused next');
 
 if (failures > 0) {
   console.error(`\n${failures} invariant(s) violated.`);

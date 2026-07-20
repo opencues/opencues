@@ -551,7 +551,8 @@ namespace OpenCues
                     + (cycling ? ", cycling" : "") + ")");
                 SendRaw("{\"t\":\"focus\",\"app\":" + JStr(app) + ",\"text\":" + JStr(readText)
                     + ",\"cursor\":" + CaretOrEnd(readText).ToString(CultureInfo.InvariantCulture)
-                    + ",\"cycling\":" + (cycling ? "true" : "false") + "}");
+                    + ",\"cycling\":" + (cycling ? "true" : "false")
+                    + ",\"fieldId\":" + elId.ToString(CultureInfo.InvariantCulture) + "}");
                 return;
             }
 
@@ -759,9 +760,40 @@ namespace OpenCues
             return text.Replace("\r\n", "\n").Replace('\r', '\n');
         }
 
+        // A set-text may arrive AFTER focus moved (an in-flight LLM result
+        // outliving the field it was resolved for). Writing it into
+        // AutomationElement.FocusedElement would land it in whatever the
+        // user focused next - a wrong-field write, the worst failure class
+        // this host has. Verify the focused element IS the attached one
+        // (UIA runtime-id match) before any write path runs; MSAA mode has
+        // no comparable id, so it gates on _attached alone (its writes are
+        // also deferred + flushed only while the stream is quiet).
+        static bool FocusedElementIsAttached()
+        {
+            if (!_attached) return false;
+            try
+            {
+                AutomationElement el = AutomationElement.FocusedElement;
+                if (el == null) return false;
+                int id = el.GetRuntimeId() != null ? RuntimeIdHash(el.GetRuntimeId()) : el.GetHashCode();
+                return id == _lastElementId;
+            }
+            catch { return false; }
+        }
+
         static void ApplySetText(string text)
         {
             if (text == null) return;
+            if (_attachMode == AttachMode.Uia && !FocusedElementIsAttached())
+            {
+                Log("warn", "set-text dropped - focused field is not the attached field (late in-flight result)");
+                return;
+            }
+            if (_attachMode == AttachMode.Msaa && !_attached)
+            {
+                Log("warn", "set-text dropped - no attached field (late in-flight result)");
+                return;
+            }
             text = NormalizeNewlinesForApp(text);
 
             // MSAA-attached (Chromium/Electron): the focused UIA element is an
