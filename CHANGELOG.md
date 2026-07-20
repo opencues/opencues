@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — doctor: chrome-host push-list check false-positived on registry-derived scripts (`opencues` CLI 0.2.52)
+
+`host.cjs` derives its push list from `chromeHostFileList()` at runtime — structurally drift-proof — but doctor verified parity by grepping the script TEXT for literal basenames. Older names passed only because they happen to appear in comments/filter code; NOTES.md and calendar.json (the two newest pushed files) "failed" despite being pushed correctly. Doctor now recognises a registry-derived script (`chromeHostFileList` present) and reports that as the check; the literal grep remains only for pre-derive host scripts that hardcoded the names.
+
 ### Fixed — chrome bundle: `node:os` external for the calendar-ingest helper (`@opencues/chrome` 0.2.89)
 
 `buildCalendarContextIngest` (0.24.0) lazy-requires `node:os`; chrome's esbuild external list had only `node:fs`/`node:path`/`node:child_process`, so the chrome build hard-failed at install time. The helper self-disables in the browser (chrome has its own loader), so external-as-is is correct. The PR #49-class gate didn't fire on #322 because the chrome build task cache-hit; `opencues install chrome` caught it.
