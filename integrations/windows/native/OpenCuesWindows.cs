@@ -173,6 +173,35 @@ namespace OpenCues
         internal static int _lastWriteAt;
         internal const int WRITE_SETTLE_MS = 40;
 
+        // Post-write paint nudge (2026-07-21): growing a word is slower to
+        // rect-correct than shrinking it because GROWTH needs layout the
+        // app hasn't computed yet (shrink fits inside the old layout, so
+        // UIA answers instantly; growth reports rects clamped to the old
+        // extent until the app's paint pass runs). RedrawWindow(UPDATENOW)
+        // forces the control to process its pending layout+paint NOW, so
+        // the same-tick re-rect sees full-width rects in both directions -
+        // and since the paint has provably happened, the capture settle
+        // guard is released immediately instead of waiting out 40ms.
+        // Edit-family HWNDs only, straight after our own writes (an app
+        // that just processed our EM write synchronously is healthy enough
+        // to paint; note RedrawWindow has no timeout variant, unlike our
+        // SMTO calls - the blast radius is accepted for this narrow case).
+        [DllImport("user32.dll")] static extern bool RedrawWindow(IntPtr hwnd, IntPtr rectUpdate, IntPtr hrgnUpdate, uint flags);
+        const uint RDW_UPDATENOW = 0x0100;
+
+        static void NudgeTargetPaint()
+        {
+            if (!_attachedIsEdit) return;
+            IntPtr hwnd = _attachedHwnd;
+            if (hwnd == IntPtr.Zero) return;
+            try
+            {
+                if (RedrawWindow(hwnd, IntPtr.Zero, IntPtr.Zero, RDW_UPDATENOW))
+                    _lastWriteAt = Environment.TickCount - WRITE_SETTLE_MS;   // paint done - captures may proceed now
+            }
+            catch { }
+        }
+
         static bool IsRecentSelfWrite(string cur)
         {
             int now = Environment.TickCount;
@@ -642,7 +671,10 @@ namespace OpenCues
                         // behind this one, so marking the overlay dirty makes
                         // the same tick's MaybeRefreshOverlay re-rect with the
                         // fresh spans immediately (cycling: the active box
-                        // expands to the new word on the spot).
+                        // expands to the new word on the spot). The paint nudge
+                        // forces the app's layout+paint synchronously so GROWN
+                        // words rect-correct as fast as shrunk ones.
+                        NudgeTargetPaint();
                         _overlayDirty = true;
                         BumpFastPoll();
                         break;
