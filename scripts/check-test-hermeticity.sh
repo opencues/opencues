@@ -81,7 +81,7 @@ TEST_EXIT=0
 HOME="$SANDBOX_HOME" pnpm -r test > "$TEST_LOG" 2>&1 || TEST_EXIT=$?
 if [ "$TEST_EXIT" -ne 0 ]; then
   echo "✗ pnpm -r test failed (exit $TEST_EXIT) — failure markers:"
-  grep -nE 'not ok|✖|✗|FAIL |failureType|Error \[|AssertionError' "$TEST_LOG" | head -60 | sed 's/^/    /'
+  grep -nE -A6 'not ok|✖|✗|FAIL |failureType|Error \[|AssertionError' "$TEST_LOG" | head -60 | sed 's/^/    /'
   echo ""
   echo "▸ last 120 lines of test output:"
   tail -120 "$TEST_LOG" | sed 's/^/    /'
@@ -103,7 +103,7 @@ HOME="$SANDBOX_HOME" bash -c '
 if [ "$CLI_EXIT" -ne 0 ]; then
   TEST_EXIT=$CLI_EXIT
   echo "✗ CLI tests failed (exit $CLI_EXIT) — failure markers:"
-  grep -nE 'not ok|✖|✗|FAIL |failureType|Error \[|AssertionError' "$CLI_LOG" | head -60 | sed 's/^/    /'
+  grep -nE -A6 'not ok|✖|✗|FAIL |failureType|Error \[|AssertionError' "$CLI_LOG" | head -60 | sed 's/^/    /'
   echo ""
   echo "▸ last 120 lines of CLI test output:"
   tail -120 "$CLI_LOG" | sed 's/^/    /'
