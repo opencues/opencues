@@ -16,7 +16,7 @@
 //   * a layered click-through overlay (OverlayForm) that paints the
 //     runtime's dim/highlight char ranges as screen rects resolved via
 //     UIA TextPattern GetBoundingRectangles - three switchable looks:
-//     underline / wash / repaint (style rides the `render` message,
+//     underline / wash / capture (style rides the `render` message,
 //     picked by the daemon's OPENCUES_WIN_OVERLAY_STYLE env),
 //   * real caret tracking via native IUIAutomationTextPattern2
 //     GetCaretRange (falls back to the phase-1 caret-at-end model).
@@ -2661,12 +2661,18 @@ namespace OpenCues
             TextPatternRange doc;
             try { doc = ((TextPattern)tpo).DocumentRange; }
             catch { return list; }
-            foreach (var span in _dimSpans) AddSpanRects(doc, text, span[0], span[1], false, list);
-            if (_hlSpan != null) AddSpanRects(doc, text, _hlSpan[0], _hlSpan[1], true, list);
+            // Caret position marks spans HOT: the capture style re-captures
+            // hot spans on every refresh tick so the caret blink and live
+            // edits under the patch stay visible ("re-apply when it is
+            // moving or in focus" - 2026-07-20 feedback).
+            int caret = -1;
+            if (_fieldCycling) { int off; if (TryGetCaretOffset(out off)) caret = off; }
+            foreach (var span in _dimSpans) AddSpanRects(doc, text, span[0], span[1], false, caret, list);
+            if (_hlSpan != null) AddSpanRects(doc, text, _hlSpan[0], _hlSpan[1], true, caret, list);
             return list;
         }
 
-        static void AddSpanRects(TextPatternRange doc, string text, int s, int e, bool active, List<OverlaySpanRect> list)
+        static void AddSpanRects(TextPatternRange doc, string text, int s, int e, bool active, int caret, List<OverlaySpanRect> list)
         {
             try
             {
@@ -2680,6 +2686,7 @@ namespace OpenCues
                 var rects = r.GetBoundingRectangles();
                 if (rects == null) return;
                 string word = text.Substring(s, e - s);
+                bool hot = caret >= s && caret <= e;   // caret inside (or at the edge of) the span
                 foreach (System.Windows.Rect rc in rects)
                 {
                     if (rc.IsEmpty || rc.Width <= 0 || rc.Height <= 0) continue;
@@ -2691,6 +2698,7 @@ namespace OpenCues
                         H = (float)rc.Height,
                         Active = active,
                         Word = word,
+                        Hot = hot,
                     });
                 }
             }
@@ -2799,24 +2807,38 @@ namespace OpenCues
     // --- Phase-2 overlay window --------------------------------------------
     // One rect the overlay paints: physical screen coordinates (the process
     // is Per-Monitor-V2 DPI aware, so WinForms coords are physical too),
-    // plus the word text (repaint style re-draws it) and whether this is
+    // plus the word text (part of the capture-cache key) and whether this is
     // the actively-cycling span.
     internal class OverlaySpanRect
     {
         public float X, Y, W, H;
         public bool Active;
         public string Word;
+        // The caret currently sits inside this span. The capture style
+        // treats hot spans as always-stale (re-captured every refresh
+        // tick, ~300ms) so the caret blink and live edits under the
+        // patch stay visible; cold spans repaint from cache untouched.
+        public bool Hot;
     }
 
     // A full-virtual-screen, topmost, LAYERED + TRANSPARENT (click-through)
     // + NOACTIVATE window. Everything painted in the key colour is fully
-    // transparent; everything else is the overlay ink. Three dim looks,
+    // transparent; everything else is the overlay ink. Dim looks,
     // switchable per render push (daemon env OPENCUES_WIN_OVERLAY_STYLE):
     //   underline - thin gray line under the word (active: thicker, blue)
     //   wash      - whole-window alpha ~43% -> translucent tint over the word
-    //   repaint   - opaque patch in a sampled background colour + the word
-    //               re-drawn in gray (the terminal look; font matching is
-    //               approximate by design - this style is the experiment)
+    //   capture   - screen-capture the word rect and redraw the APP'S OWN
+    //               glyph pixels dimmed: every pixel is collapsed to its
+    //               luminance and pulled toward the rect's corner-sampled
+    //               background (active span pulls toward the accent
+    //               instead). True terminal gray - no fonts, no guessing.
+    //               CopyFromScreen would capture our OWN ink, so captures
+    //               happen behind a one-frame self-clear (hide ink ->
+    //               wait one composition -> capture) and land in a
+    //               per-span bitmap cache; steady state repaints from
+    //               cache with zero captures. Scroll/move invalidates the
+    //               cache -> the marks blink for a frame while they
+    //               re-capture (known v1 cost).
     internal class OverlayForm : SWF.Form
     {
         const int WS_EX_LAYERED = 0x80000;
@@ -2826,9 +2848,6 @@ namespace OpenCues
         const uint LWA_COLORKEY = 1;
         const uint LWA_ALPHA = 2;
         [DllImport("user32.dll")] static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint key, byte alpha, uint flags);
-        [DllImport("user32.dll")] static extern IntPtr GetDC(IntPtr hwnd);
-        [DllImport("user32.dll")] static extern int ReleaseDC(IntPtr hwnd, IntPtr dc);
-        [DllImport("gdi32.dll")] static extern uint GetPixel(IntPtr dc, int x, int y);
 
         static readonly SD.Color KeyColor = SD.Color.Magenta;
         static readonly SD.Color DimColor = SD.Color.FromArgb(150, 150, 150);
@@ -2836,6 +2855,8 @@ namespace OpenCues
 
         string _style = "underline";
         List<OverlaySpanRect> _rects = new List<OverlaySpanRect>();
+        // capture-style bitmap cache: span key -> dimmed screen pixels.
+        readonly Dictionary<string, SD.Bitmap> _capCache = new Dictionary<string, SD.Bitmap>();
 
         public OverlayForm()
         {
@@ -2886,12 +2907,127 @@ namespace OpenCues
                 {
                     bool styleChanged = style != null && style != _style;
                     if (style != null) _style = style;
-                    _rects = rects ?? new List<OverlaySpanRect>();
-                    if (styleChanged) ApplyLayered();
+                    var next = rects ?? new List<OverlaySpanRect>();
+                    if (styleChanged) { ApplyLayered(); ClearCapCache(); }
+                    if (_style == "capture") EnsureCaptures(next);
+                    else if (_capCache.Count > 0) ClearCapCache();
+                    _rects = next;
                     Invalidate();
                 }));
             }
             catch { /* form closing / handle gone - overlay is cosmetic */ }
+        }
+
+        // ---- capture style ------------------------------------------------
+        static string CapKey(OverlaySpanRect r)
+        {
+            return ((int)r.X) + "," + ((int)r.Y) + "," + ((int)r.W) + "," + ((int)r.H)
+                + "," + (r.Active ? "a" : "d") + "," + (r.Word ?? "");
+        }
+
+        void ClearCapCache()
+        {
+            foreach (var b in _capCache.Values) { try { b.Dispose(); } catch { } }
+            _capCache.Clear();
+        }
+
+        // Capture any span rects missing from the cache. CopyFromScreen sees
+        // the composited desktop INCLUDING this window, so before capturing
+        // we hide all ink for one composition frame (paint nothing, flush,
+        // give DWM a beat) - then the captured pixels are the app's own.
+        // Runs on the UI thread inside Push; the ~35ms pause only happens on
+        // cache misses (new/changed spans), never in steady state.
+        void EnsureCaptures(List<OverlaySpanRect> next)
+        {
+            var wanted = new HashSet<string>();
+            var missing = new List<OverlaySpanRect>();
+            foreach (var r in next)
+            {
+                string k = CapKey(r);
+                wanted.Add(k);
+                // Hot span (caret inside): force a fresh capture every
+                // refresh so the caret blink / live edits show through.
+                if (r.Hot && _capCache.ContainsKey(k))
+                {
+                    try { _capCache[k].Dispose(); } catch { }
+                    _capCache.Remove(k);
+                }
+                if (!_capCache.ContainsKey(k) && r.W >= 2 && r.H >= 2) missing.Add(r);
+            }
+            // Drop cache entries for spans that no longer exist.
+            var stale = new List<string>();
+            foreach (var k in _capCache.Keys) if (!wanted.Contains(k)) stale.Add(k);
+            foreach (var k in stale) { try { _capCache[k].Dispose(); } catch { } _capCache.Remove(k); }
+
+            if (missing.Count == 0) return;
+            var save = _rects;
+            _rects = new List<OverlaySpanRect>();   // hide all ink
+            Invalidate();
+            Update();                                // paint the cleared frame now
+            Thread.Sleep(35);                        // let DWM composite it to the screen
+            foreach (var r in missing)
+            {
+                try
+                {
+                    var bmp = new SD.Bitmap(Math.Max(2, (int)Math.Ceiling(r.W)), Math.Max(2, (int)Math.Ceiling(r.H)),
+                        SD.Imaging.PixelFormat.Format32bppArgb);
+                    using (var g = SD.Graphics.FromImage(bmp))
+                        g.CopyFromScreen((int)r.X, (int)r.Y, 0, 0, new SD.Size(bmp.Width, bmp.Height));
+                    DimBitmap(bmp, r.Active);
+                    if (_capCache.Count > 64) ClearCapCache();   // runaway backstop
+                    _capCache[CapKey(r)] = bmp;
+                }
+                catch { /* capture is best-effort; OnPaint falls back to underline */ }
+            }
+            _rects = save;
+        }
+
+        // Collapse every pixel to its luminance, then pull it toward the
+        // background (dim) or the accent (active). Background = average of
+        // the four corner pixels - corners of a word rect are almost always
+        // the field's background, so glyphs fade INTO their own field on
+        // both light and dark themes. Managed byte loop (no unsafe - this
+        // must compile under Add-Type); word rects are tiny.
+        static void DimBitmap(SD.Bitmap bmp, bool active)
+        {
+            var rect = new SD.Rectangle(0, 0, bmp.Width, bmp.Height);
+            var data = bmp.LockBits(rect, SD.Imaging.ImageLockMode.ReadWrite, SD.Imaging.PixelFormat.Format32bppArgb);
+            try
+            {
+                int n = Math.Abs(data.Stride) * bmp.Height;
+                byte[] px = new byte[n];
+                Marshal.Copy(data.Scan0, px, 0, n);
+                int stride = data.Stride;
+                // Corner-average background estimate (BGRA layout).
+                int[] cx = { 0, bmp.Width - 1, 0, bmp.Width - 1 };
+                int[] cy = { 0, 0, bmp.Height - 1, bmp.Height - 1 };
+                int bgB = 0, bgG = 0, bgR = 0;
+                for (int i = 0; i < 4; i++)
+                {
+                    int o = cy[i] * stride + cx[i] * 4;
+                    bgB += px[o]; bgG += px[o + 1]; bgR += px[o + 2];
+                }
+                bgB /= 4; bgG /= 4; bgR /= 4;
+                int tB = active ? ActiveColor.B : bgB;
+                int tG = active ? ActiveColor.G : bgG;
+                int tR = active ? ActiveColor.R : bgR;
+                const int MIX = 45;   // % pulled toward the target
+                for (int y = 0; y < bmp.Height; y++)
+                {
+                    int row = y * stride;
+                    for (int x = 0; x < bmp.Width; x++)
+                    {
+                        int o = row + x * 4;
+                        int lum = (px[o + 2] * 299 + px[o + 1] * 587 + px[o] * 114) / 1000;
+                        px[o] = (byte)(lum + (tB - lum) * MIX / 100);
+                        px[o + 1] = (byte)(lum + (tG - lum) * MIX / 100);
+                        px[o + 2] = (byte)(lum + (tR - lum) * MIX / 100);
+                        px[o + 3] = 255;
+                    }
+                }
+                Marshal.Copy(px, 0, data.Scan0, n);
+            }
+            finally { bmp.UnlockBits(data); }
         }
 
         protected override void OnPaint(SWF.PaintEventArgs e)
@@ -2912,15 +3048,19 @@ namespace OpenCues
                                 g.FillRectangle(b, x, y, r.W, r.H);
                             break;
                         }
-                    case "repaint":
+                    case "capture":
                         {
-                            SD.Color bg = SampleBackground(r);
-                            using (var b = new SD.SolidBrush(bg))
-                                g.FillRectangle(b, x, y, r.W, r.H);
-                            g.TextRenderingHint = SD.Text.TextRenderingHint.AntiAliasGridFit;
-                            using (var f = new SD.Font("Segoe UI", Math.Max(6f, r.H * 0.62f), SD.GraphicsUnit.Pixel))
-                            using (var fb = new SD.SolidBrush(r.Active ? ActiveColor : DimColor))
-                                g.DrawString(r.Word ?? "", f, fb, x - 2f, y + r.H * 0.06f, SD.StringFormat.GenericTypographic);
+                            SD.Bitmap bmp;
+                            if (_capCache.TryGetValue(CapKey(r), out bmp))
+                            {
+                                g.DrawImageUnscaled(bmp, (int)x, (int)y);
+                            }
+                            else
+                            {
+                                // capture failed/pending - underline fallback
+                                using (var p = new SD.Pen(r.Active ? ActiveColor : DimColor, 2f))
+                                    g.DrawLine(p, x, y + r.H - 1f, x + r.W, y + r.H - 1f);
+                            }
                             break;
                         }
                     default:   // underline
@@ -2934,24 +3074,10 @@ namespace OpenCues
             }
         }
 
-        // Sample the app's own background just LEFT of the word (a point our
-        // overlay has not painted - keyed pixels are transparent, so the
-        // screen shows the app there). White fallback on failure.
-        SD.Color SampleBackground(OverlaySpanRect r)
+        protected override void Dispose(bool disposing)
         {
-            try
-            {
-                IntPtr dc = GetDC(IntPtr.Zero);
-                try
-                {
-                    uint px = GetPixel(dc, (int)r.X - 4, (int)(r.Y + r.H / 2f));
-                    if (px != 0xFFFFFFFF)
-                        return SD.Color.FromArgb((int)(px & 0xFF), (int)((px >> 8) & 0xFF), (int)((px >> 16) & 0xFF));
-                }
-                finally { ReleaseDC(IntPtr.Zero, dc); }
-            }
-            catch { }
-            return SD.Color.White;
+            if (disposing) ClearCapCache();
+            base.Dispose(disposing);
         }
     }
 

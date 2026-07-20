@@ -122,10 +122,16 @@ switch, no Windows-side rebuild:
   active/cycling span gets a thicker blue line. Robust everywhere.
 - `wash` — translucent gray rectangle over the word (whole-window
   alpha + color-key). Closest cheap approximation of the terminal dim.
-- `repaint` — opaque patch in a screen-sampled background colour + the
-  word re-drawn in gray (Segoe UI, height-fitted). The true terminal
-  look when aligned; font/metric mismatches are expected — this style
-  IS the experiment.
+- `capture` — screen-capture the word rect and redraw the APP'S OWN
+  glyph pixels dimmed: each pixel collapsed to luminance and pulled
+  45% toward the rect's corner-sampled background (active span pulls
+  toward the accent). True terminal gray with zero font guessing.
+  Mechanics: captures hide the overlay's own ink for one composited
+  frame, land in a per-span bitmap cache, and steady state repaints
+  from cache (no captures); scroll/move invalidates the cache so the
+  marks blink briefly while re-capturing. (The earlier `repaint`
+  style — re-drawing the word in our own font — was retired after the
+  live test showed exactly the misalignment it was predicted to have.)
 
 **Kill switches:** `OPENCUES_WIN_PHASE2=0` (daemon — whole profile back
 to phase 1), `OPENCUES_WIN_HOOK=0` (shim — no keyboard hook),
@@ -146,8 +152,10 @@ blocking LL hook gets silently removed by Windows after ~300ms.
   fields (Edit/RichEdit keep native undo via the EM convergent path).
 - The overlay repaints rects every other poll tick (~300ms), so fast
   window drags/scrolls show transient lag of the ink.
-- `repaint` samples the background 4px left of the word — fails on
-  gradient/imagery backgrounds and words at the field's left edge.
+- `capture` estimates the background from the rect's four corner
+  pixels — a word tightly hugged by other glyphs or sitting on
+  gradient/imagery dims toward the wrong colour; and its cache-miss
+  self-clear (one frame + ~35ms) makes marks blink during scrolling.
 - Chromium-UIA composers (Slack) expose TextPattern only to native
   clients → managed probe says no rects → they stay phase 1.
 - WPF fields (no Edit-class HWND, but TextPattern present → cycling on)

@@ -38,6 +38,11 @@ export interface RoutedWordSourceGroupConfig {
   id?: string;
   /** Child sources — one per ### alternatives section, scope: words. */
   sources: ConfigSource[];
+  /** Debug-log sink (wire to the host's debug log). Child dispatch
+   *  FAILURES are reported here — the resolver ignores per-source
+   *  `error` fields, so this line is the only failure signal a
+   *  misbehaving provider produces. */
+  log?: (msg: string) => void;
 }
 
 interface RouteEntry {
@@ -138,8 +143,11 @@ export class RoutedWordSourceGroup implements CueSource {
   private readonly _resultCache = new Map<ConfigSource, Map<string, ReadonlyArray<CueResult>>>();
   private static readonly CACHE_SIZE_PER_SOURCE = 64;
 
+  private readonly log?: (msg: string) => void;
+
   constructor(config: RoutedWordSourceGroupConfig) {
     this.id = config.id ?? 'word-cues';
+    this.log = config.log;
     this.priority = config.sources.reduce((m, s) => Math.max(m, s.priority), 0);
 
     const entries: RouteEntry[] = [];
@@ -256,6 +264,24 @@ export class RoutedWordSourceGroup implements CueSource {
         text: subContextText,
       };
       const result = await source.getCues(subContext);
+
+      // NEVER cache an error envelope. A transient dispatch failure
+      // (abort, 429, provider schema-validation flake) carries
+      // `results: []`; caching it would answer "no cues" for this
+      // exact word set until the next source rebuild — a permanent,
+      // SILENT poison, because the resolver ignores per-source
+      // `error` fields. Found live 2026-07-20: groq/gpt-oss
+      // intermittently fails its own JSON-schema enforcement on the
+      // spelling prompt (~1/3 of dispatches), and the cached empty
+      // read as "word-cues never fire" for the whole session. The
+      // log line below is the only failure signal — keep it.
+      if (result.error) {
+        this.log?.(`word-cues: source '${source.id}' dispatch failed (not cached): ${result.error}`);
+        return result.results.map<CueResult>(res => ({
+          ...res,
+          wordIndex: bucket[res.wordIndex]?.idx ?? res.wordIndex,
+        }));
+      }
 
       // Cache the SUB-CONTEXT-INDEXED results so the remap on hit
       // works against any future bucket order. Caches empty arrays

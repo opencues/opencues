@@ -565,7 +565,7 @@ export function buildSourcesFromConfig(
     }
 
     if (wordCueSources.length > 0) {
-      sources.push(new RoutedWordSourceGroup({ sources: wordCueSources }));
+      sources.push(new RoutedWordSourceGroup({ sources: wordCueSources, log: options.log }));
     }
   }
 

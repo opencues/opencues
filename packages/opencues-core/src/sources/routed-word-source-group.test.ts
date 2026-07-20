@@ -378,6 +378,45 @@ describe('RoutedWordSourceGroup: result cache', () => {
     await group.getCues(mkContext(['B']));
     assert.strictEqual(spelling.received.length, 66, 'B evicted → re-dispatched');
   });
+
+  it('error envelopes are NEVER cached — the next identical call re-dispatches', async () => {
+    // A transient provider failure (abort, 429, schema-validation flake —
+    // observed live on groq/gpt-oss 2026-07-20) returns `{error,
+    // results: []}`. Caching that would answer "no cues" for this word
+    // set until the next source rebuild, silently (the resolver ignores
+    // per-source error fields). First call fails → second call must
+    // dispatch again and succeed.
+    let calls = 0;
+    const flaky = {
+      id: 'spelling',
+      priority: 10,
+      sourceConfig: { name: 'spelling', promptText: 'p', match: '.*' } as SourceConfig,
+      supports() { return true; },
+      async getCues(context: CueContext): Promise<CueSourceResult> {
+        calls += 1;
+        if (calls === 1) return { results: [], error: 'provider error: schema mismatch', timing: 0 };
+        return {
+          results: [{ wordIndex: 0, word: context.words[0], alternatives: [context.words[0], 'fixed'], source: 'spelling', priority: 10 }],
+          timing: 0,
+        };
+      },
+    };
+    const logged: string[] = [];
+    const group = new RoutedWordSourceGroup({ sources: [flaky as any], log: m => logged.push(m) });
+
+    const first = await group.getCues(mkContext(['teh']));
+    assert.strictEqual(first.results.length, 0, 'failed dispatch yields no cues');
+    assert.strictEqual(logged.length, 1, 'the failure is logged — it is the only signal');
+    assert.match(logged[0], /dispatch failed \(not cached\)/);
+
+    const second = await group.getCues(mkContext(['teh']));
+    assert.strictEqual(calls, 2, 'error envelope was not cached — re-dispatched');
+    assert.strictEqual(second.results.length, 1, 'recovered result comes through');
+
+    const third = await group.getCues(mkContext(['teh']));
+    assert.strictEqual(calls, 2, 'successful result IS cached');
+    assert.strictEqual(third.results.length, 1);
+  });
 });
 
 // ---------------------------------------------------------------------------

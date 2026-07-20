@@ -62,11 +62,15 @@ const PORT = parseInt(process.env.OPENCUES_WIN_PORT || '', 10) || 51789;
 // OPENCUES_WIN_PHASE2=0 restores the phase-1 Universal-Integration profile.
 const PHASE2 = process.env.OPENCUES_WIN_PHASE2 !== '0';
 // Overlay dim treatment, shipped to the shim in every `render` message so
-// the three looks can be compared without a Windows-side rebuild:
+// the looks can be compared without a Windows-side rebuild:
 //   underline — thin gray line under cue words (Grammarly-style)
 //   wash      — translucent gray rectangle over the word
-//   repaint   — opaque bg patch + the word re-drawn in gray (terminal look)
-const OVERLAY_STYLES = ['underline', 'wash', 'repaint'];
+//   capture   — screen-capture the word and redraw the APP'S OWN glyph
+//               pixels dimmed (luminance pulled toward the local
+//               background) — the true terminal gray, no font guessing.
+//               (Replaces the retired `repaint` style, which re-drew the
+//               word in our own font and misaligned everywhere.)
+const OVERLAY_STYLES = ['underline', 'wash', 'capture'];
 const OVERLAY_STYLE_RAW = String(process.env.OPENCUES_WIN_OVERLAY_STYLE || 'underline').toLowerCase();
 const OVERLAY_STYLE = OVERLAY_STYLES.includes(OVERLAY_STYLE_RAW) ? OVERLAY_STYLE_RAW : 'underline';
 // Config/UI HTTP server (shared popup + keys/settings API). Defaults to
@@ -822,7 +826,7 @@ server.listen(PORT, HOST_BIND, () => {
   console.log(`▸ OpenCues Windows daemon listening on ${HOST_BIND}:${PORT}`);
   console.log(`  config: ${CUES_HOME}   LLM key: ${hasKey ? 'present' : 'MISSING (set GROQ_API_KEY)'}`);
   console.log(`  phase 2: ${PHASE2
-    ? `on — overlay style '${OVERLAY_STYLE}' (OPENCUES_WIN_OVERLAY_STYLE=underline|wash|repaint)`
+    ? `on — overlay style '${OVERLAY_STYLE}' (OPENCUES_WIN_OVERLAY_STYLE=underline|wash|capture)`
     : 'off (OPENCUES_WIN_PHASE2=0)'}`);
   console.log(`  now start the Windows shim (from Windows PowerShell):`);
   console.log(`      powershell -ExecutionPolicy Bypass -File <repo>\\integrations\\windows\\native\\OpenCuesWindows.ps1 -Port ${PORT}`);
