@@ -146,6 +146,26 @@ that mark check is what prevents an infinite self-hook loop). The LL
 hook callback never touches the socket inline (ThreadPool send) — a
 blocking LL hook gets silently removed by Windows after ~300ms.
 
+**The snapshot-overlay embodiment (final form, 2026-07-21).** The
+capture pipeline's full machinery, built out over the 07-20/21 live
+sessions — this is the practical ceiling of the "hold copies of the
+app's pixels" architecture (its successor, the composition
+BackdropBrush live-dim, lives on `spike/windows-composition-overlay`):
+
+- Capture source: PrintWindow(PW_RENDERFULLCONTENT) on the field's
+  HWND, batch-rendered + cropped per span (no DWM vblank wait, no
+  occluders); CopyFromScreen + WDA-exclusion + paint-settle guard as
+  the no-HWND fallback. Modal (most-frequent-colour) background
+  estimate; caret-fringe hot recapture incl. previous caret.
+- Freshness: event-gated O(1)-per-tick sensing (UIA change events +
+  EM_GETSEL caret + watchdogs), adaptive fast-poll (8ms +
+  timeBeginPeriod(1) in the fast window), chord/write-triggered
+  cadence ramps, post-write RedrawWindow(UPDATENOW) paint nudge.
+- Visibility policy: hide-on-keydown (volatile/stable window split by
+  caret position) + 150ms fade-in after 500ms quiet; scroll
+  suppression (WH_MOUSE_LL wheel + PgUp/PgDn + rect-moved probe →
+  hide all, settle 350ms, fade back).
+
 **Phase-2 known limitations:**
 - Cycling substitutions are whole-value writes — the app's native undo
   granularity cost from phase 1 applies per cycle step on non-Edit
