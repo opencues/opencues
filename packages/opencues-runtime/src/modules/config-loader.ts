@@ -43,6 +43,15 @@ export interface ConfigLoaderOptions {
   /** Hot-reload debounce in ms. Defaults to 2000 (matches v1). */
   readonly reloadDebounceMs?: number;
   /**
+   * Per-blank synchronous arg validators harvested from the host's
+   * blank-impl registry (`Blank.validArg`, e.g. countries' offline
+   * table check). Stamped onto the parsed configs as `argValidator`
+   * by the blanks accessors below — hot-reload safe because stamping
+   * happens at read time, not parse time. See
+   * `@opencues/core` BlankConfig.argValidator for what consumes it.
+   */
+  readonly blankArgValidators?: ReadonlyMap<string, (arg: string) => boolean>;
+  /**
    * Background-poll interval in ms. The poll calls `maybeReload`
    * (gated by `reloadDebounceMs`), so OPENCUES.md edits propagate
    * even when the user isn't typing in the host. Default 5000.
@@ -680,9 +689,33 @@ export class ConfigLoader {
   get blanks(): ReadonlyMap<string, BlankConfig> {
     const out = new Map<string, BlankConfig>();
     for (const entry of this._config.blanksByWord.values()) {
-      out.set(entry.name, entry.blank);
+      out.set(entry.name, this.withArgValidator(entry.name, entry.blank));
     }
     return out;
+  }
+
+  /**
+   * `folderConfigs.blankOverrides` with impl arg-validators stamped —
+   * the blanks map the Resolver hands to core sources (fluid/transform/
+   * config-intent cede + BlankSource claim). MUST be used instead of
+   * reading `folderConfigs.blankOverrides` raw, or the shape-match
+   * validation (miss → LLM release) silently applies on the BlankFill
+   * path but not the cede path and the two drift.
+   */
+  get blankOverridesWithValidators(): Readonly<Record<string, BlankConfig>> {
+    const raw = this._config.folderConfigs?.blankOverrides ?? {};
+    if (!this.options.blankArgValidators?.size) return raw;
+    const out: Record<string, BlankConfig> = {};
+    for (const [name, cfg] of Object.entries(raw)) {
+      out[name] = this.withArgValidator(name, cfg);
+    }
+    return out;
+  }
+
+  private withArgValidator(name: string, cfg: BlankConfig): BlankConfig {
+    const v = this.options.blankArgValidators?.get(name);
+    if (!v || cfg.argValidator === v) return cfg;
+    return { ...cfg, argValidator: v };
   }
 
   /**

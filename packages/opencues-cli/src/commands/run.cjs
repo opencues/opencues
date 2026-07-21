@@ -106,16 +106,21 @@ function printLaunchBanner(ctx, host, rows, opts = {}) {
   // to the bits the user has to type. Token-pad width is computed
   // dynamically because `combo` varies by host (Ctrl+Alt vs
   // Ctrl+Shift — 8 vs 10 chars).
+  // No-cycling hosts (universal profile — apple-notes) have no key
+  // channel at all: printing Ctrl+Alt+arrow rows would advertise
+  // chords that can never fire. Only the `<request> _` row applies.
   const combo = pickNavCombo(host);
   const navTok = `${combo}+←/→`;
   const cycleTok = `${combo}+↑/↓`;
   const blankTok = '<request> _';
   const tokWidth = Math.max(navTok.length, cycleTok.length, blankTok.length);
-  const keyEntries = [
-    [navTok, 'navigate cues'],
-    [cycleTok, 'cycle cues'],
-    [blankTok, 'send a request to AI'],
-  ];
+  const keyEntries = opts.noCycling
+    ? [[blankTok, 'send a request to AI']]
+    : [
+      [navTok, 'navigate cues'],
+      [cycleTok, 'cycle cues'],
+      [blankTok, 'send a request to AI'],
+    ];
   console.log(style.bold('Keys'));
   for (let i = 0; i < keyEntries.length; i++) {
     const last = i === keyEntries.length - 1;
@@ -183,8 +188,10 @@ function loadHostResolver(ctx) {
     return { HOSTS: core.HOSTS.slice().sort(), resolve: core.resolveHost };
   } catch {
     return {
-      HOSTS: ['chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell'],
+      HOSTS: ['apple-notes', 'chrome', 'claude-code', 'gemini-cli', 'mac', 'opencode', 'shell'],
       resolve: (n) => ({
+        'apple-notes': 'apple-notes', 'applenotes': 'apple-notes', 'notes': 'apple-notes',
+        'mac': 'mac', 'macos': 'mac', 'ax': 'mac',
         'claude-code': 'claude-code', 'claudecode': 'claude-code', 'claude': 'claude-code', 'cc': 'claude-code',
         'opencode': 'opencode', 'oc': 'opencode',
         'chrome': 'chrome',
@@ -271,6 +278,8 @@ module.exports = async function run(argv, ctx) {
   if (folder === 'chrome') return runChrome(ctx);
   if (folder === 'gemini-cli') return runGemini(passthrough, argv, ctx);
   if (folder === 'shell') return runShell(passthrough, ctx);
+  if (folder === 'apple-notes') return runAppleNotes(passthrough, ctx);
+  if (folder === 'mac') return runMac(passthrough, ctx);
 };
 
 /**
@@ -585,6 +594,57 @@ function runShell(passthrough, ctx) {
   exitFromSpawn(result, 'oc-shell');
 }
 
+function runAppleNotes(passthrough, ctx) {
+  // `opencues run apple-notes` launches the JXA polling daemon in the
+  // foreground. macOS-only (Notes.app + osascript). No key channel —
+  // the banner's noCycling mode prints only the `<request> _` row.
+  if (process.platform !== 'darwin') {
+    console.error(`${style.tag('err')} apple-notes is macOS-only (Notes.app + osascript).`);
+    process.exit(1);
+  }
+  const daemonJs = path.join(ctx.REPO_ROOT, 'integrations', 'apple-notes', 'dist', 'daemon.js');
+  if (!fs.existsSync(daemonJs)) {
+    console.error(`${style.tag('err')} apple-notes daemon not built at ${daemonJs}`);
+    console.error(`     Install first: ${style.bold('opencues install apple-notes')}`);
+    process.exit(1);
+  }
+  printLaunchBanner(ctx, 'apple-notes', [
+    ['host', 'apple-notes  ' + style.dim('(JXA polling daemon — answers `_` cues inline in any unlocked note)')],
+    ['command', `node ${path.basename(daemonJs)} ${passthrough.join(' ')}`.trim()],
+    ['bin', style.fileLink(daemonJs, daemonJs)],
+    ['logs', style.dim('tail -f /tmp/opencues.log | grep apple-notes')],
+  ], { noCycling: true });
+  clearScreenForHandoff();
+  const result = spawnSync('node', [daemonJs, ...passthrough], { stdio: 'inherit', env: process.env });
+  exitFromSpawn(result, 'apple-notes daemon');
+}
+
+function runMac(passthrough, ctx) {
+  // `opencues run mac` launches the universal Accessibility-API daemon
+  // in the foreground: answers `_` cues in the FOCUSED text element of
+  // any app. macOS-only. No key channel — universal/no-cycling profile.
+  if (process.platform !== 'darwin') {
+    console.error(`${style.tag('err')} mac is macOS-only (Accessibility API).`);
+    process.exit(1);
+  }
+  const daemonJs = path.join(ctx.REPO_ROOT, 'integrations', 'mac', 'dist', 'daemon.js');
+  const bridge = path.join(ctx.REPO_ROOT, 'integrations', 'mac', 'dist', 'ax-bridge');
+  if (!fs.existsSync(daemonJs) || !fs.existsSync(bridge)) {
+    console.error(`${style.tag('err')} mac daemon not built at ${daemonJs}`);
+    console.error(`     Install first: ${style.bold('opencues install mac')}`);
+    process.exit(1);
+  }
+  printLaunchBanner(ctx, 'mac', [
+    ['host', 'mac  ' + style.dim('(Accessibility daemon — answers `_` cues in the focused text element of any app)')],
+    ['command', `node ${path.basename(daemonJs)} ${passthrough.join(' ')}`.trim()],
+    ['bin', style.fileLink(daemonJs, daemonJs)],
+    ['logs', style.dim('tail -f /tmp/opencues.log | grep mac')],
+  ], { noCycling: true });
+  clearScreenForHandoff();
+  const result = spawnSync('node', [daemonJs, ...passthrough], { stdio: 'inherit', env: process.env });
+  exitFromSpawn(result, 'mac daemon');
+}
+
 function runChrome(ctx) {
   // Chrome's `run` doesn't spawn anything — we print instructions for
   // the user to load the unpacked extension in their browser. Use the
@@ -620,6 +680,8 @@ function printHelp() {
   console.log('  chrome        print Chrome reload instructions (no programmatic launch)');
   console.log('  gemini-cli    node packages/cli/dist/index.js inside the fork (default: $HOME/gemini-cli-cues)');
   console.log('  shell         integrations/shell/bin/oc-shell  (wraps $SHELL in tmux; Alt+Shift+↑ for the input box)');
+  console.log('  apple-notes   node integrations/apple-notes/dist/daemon.js  (macOS: answers `_` cues inline in Notes.app)');
+  console.log('  mac           node integrations/mac/dist/daemon.js          (macOS: answers `_` cues in the focused text element of ANY app)');
   console.log('');
   console.log('Opencues-owned flags (consumed by `opencues run`, NOT forwarded):');
   console.log('  --bin <name>      (claude-code only) override which binary to exec');

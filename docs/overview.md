@@ -43,7 +43,7 @@ Integrations (Claude Code, OpenCode, Chrome, Gemini CLI, Shell) are thin per-hos
 │              @opencues/runtime (host-agnostic)                  │
 │  - HostAdapter contract, ConfigLoader, Resolver                  │
 │  - Navigation / Cycling / BlankFill / DimRender modules          │
-│  - Per-host adapter bands: cc, oc, gemini, chrome, shell          │
+│  - Per-host adapter bands: cc, oc, gemini, chrome, shell, apple-notes          │
 └─────────────────────────────────────────────────────────────────┘
                               │
               ┌───────────────┼───────────────┬───────────────┐
@@ -66,7 +66,7 @@ pnpm build
 For end-user installation (host integrations):
 
 ```bash
-pnpm exec opencues install claude-code     # or: opencode | chrome | gemini-cli | shell | --all
+pnpm exec opencues install claude-code     # or: opencode | chrome | gemini-cli | shell | apple-notes | --all
 ```
 
 See the top-level [README.md](../README.md) for the full quickstart.
@@ -89,7 +89,7 @@ See the top-level [README.md](../README.md) for the full quickstart.
 │   │   └── dist/                       # Compiled output
 │   ├── opencues-runtime/            # Host-agnostic runtime — see docs/architecture/
 │   │   ├── src/                       # Navigation, Cycling, BlankFill, ConfigLoader, Resolver, ...
-│   │   ├── adapters/                   # Per-host adapter bands (cc, oc, gemini, chrome, shell)
+│   │   ├── adapters/                   # Per-host adapter bands (cc, oc, gemini, chrome, shell, apple-notes)
 │   │   └── dist/
 │   ├── opencues-cli/                # The `opencues` command
 │   └── opencues-park/               # npm-name placeholder (published; superseded on real-CLI launch)

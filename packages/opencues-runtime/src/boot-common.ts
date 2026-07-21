@@ -538,6 +538,25 @@ export interface BuildSharedRuntimeOptions {
    *  weaver lazily falls back to NodeHttpAdapter. When the feature is off
    *  (default) this is never consulted. */
   readonly httpAdapter?: HttpAdapterShape;
+  /** The host's blank-impl registry (`host.blanks`). Used ONLY to
+   *  harvest synchronous `validArg` capabilities into ConfigLoader's
+   *  `blankArgValidators` (shape-match arg validation — a countries
+   *  miss releases the `_` to fluid instead of substituting "not
+   *  found"). Omitting it just disables that release. */
+  readonly blanks?: ReadonlyMap<string, { validArg?(arg: string): boolean }>;
+}
+
+/** Harvest `validArg` impls from a blank registry into the map
+ *  ConfigLoader stamps onto parsed configs. */
+export function collectArgValidators(
+  blanks: BuildSharedRuntimeOptions['blanks'],
+): ReadonlyMap<string, (arg: string) => boolean> | undefined {
+  if (!blanks) return undefined;
+  const out = new Map<string, (arg: string) => boolean>();
+  for (const [name, impl] of blanks) {
+    if (typeof impl.validArg === 'function') out.set(name, impl.validArg.bind(impl));
+  }
+  return out.size > 0 ? out : undefined;
 }
 
 /**
@@ -1050,7 +1069,10 @@ export function buildSharedRuntime(
 
   // ConfigLoader first — every other module depends on it. load() runs
   // async; modules tolerate the empty pre-load window.
-  const configLoader = new ConfigLoader(adapter, { configSearchPaths, settingsFile });
+  const configLoader = new ConfigLoader(adapter, {
+    configSearchPaths, settingsFile,
+    blankArgValidators: collectArgValidators(opts.blanks),
+  });
   configLoader.subscribe();
   configLoader.load().catch(err => log('error', 'ConfigLoader.load failed', err));
 

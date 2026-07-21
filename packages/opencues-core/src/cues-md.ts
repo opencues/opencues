@@ -377,6 +377,19 @@ export interface BlankConfig {
    * See docs/architecture/blank-shapes.md.
    */
   blankShapes?: BlankShape[];
+  /**
+   * RUNTIME-INJECTED capability — never parsed from frontmatter. When a
+   * blank's impl can validate a shape-captured arg synchronously (e.g.
+   * countries: "is this arg in the offline table?"), the runtime stamps
+   * the bound impl method here (ConfigLoader, from `Blank.validArg`).
+   * `matchBlankShape` then refuses a shape whose captured arg fails
+   * validation — so a miss ("capital of istanbul") never CLAIMS the `_`
+   * anywhere: because every claim/cede site funnels through the shape
+   * predicates, the slot falls to fluid-blank and the LLM answers,
+   * instead of the blank substituting a not-found error. Pure +
+   * synchronous by contract (called on every keystroke).
+   */
+  argValidator?: (arg: string) => boolean;
   /** Additive integration template — how this blank's OUTPUT reads woven into
    *  text. `{value}` is replaced by the resolved output; the rest is connective
    *  "fluff". ADD-ONLY by construction (it only shapes the inserted value, never
@@ -996,6 +1009,8 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   blankDismissible?: boolean;
   blankSuffix?: string;
   blankShapes?: BlankShape[];
+  /** Runtime-injected arg validation — see BlankConfig.argValidator. */
+  argValidator?: (arg: string) => boolean;
   integration?: string;
   integrationWeave?: boolean;
   stepValues?: string[];

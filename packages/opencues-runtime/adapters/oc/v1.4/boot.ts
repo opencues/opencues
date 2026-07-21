@@ -186,6 +186,7 @@ export function boot(host: HostInfo): BootResult {
   const shared = buildSharedRuntime(adapter, {
     log, configSearchPaths, settingsFile,
     getApiKeys: () => apiKeys,
+    blanks: host.blanks,
   });
   configLoaderRef = shared.configLoader; // wires isDebugEnabled to OPENCUES.md
 
@@ -241,7 +242,7 @@ export function boot(host: HostInfo): BootResult {
     debounceMs: host.llmDebounceMs ?? 500,
     missingKeyFallbackMessage: hasAnyKey ? undefined : NATIVE_HOST_MISSING_KEY_MESSAGE,
     formatLLMErrorAsSubstitute: nativeHostFormatLLMError,
-    keywordBoundSlotIndices: (text: string) => shared.blankFill.scan(text).map(s => s.index),
+    keywordBoundSlotIndices: (text: string) => shared.blankFill.claimedSlotIndices(text),
   }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState,
   buildBlankContextProvider(configLoader, host.blanks, log),
   buildBlankFetchProvider(configLoader, host.blanks, log),

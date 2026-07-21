@@ -124,7 +124,7 @@ function readLastArgs(folder) {
   return JSON.parse(fs.readFileSync(p, 'utf8'));
 }
 
-const ALL_FOLDERS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'shell'];
+const ALL_FOLDERS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'shell', 'apple-notes', 'mac'];
 
 function ctx() {
   return { REPO_ROOT: fakeRepoRoot, pkg: { version: 'test' } };

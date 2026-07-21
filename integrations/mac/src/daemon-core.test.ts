@@ -1,0 +1,259 @@
+// DaemonCore scenario suite — the mac host's bridge-event grammar,
+// runnable on ANY platform (no macOS, no Accessibility grant, no
+// swiftc, no @opencues/runtime import). The maintainer has no mac:
+// this file is the mac integration's primary test surface and MUST
+// keep running everywhere. Events below are real bridge transcripts
+// (SPOTLIGHT-SPIKE.md live captures), replayed per the repo's
+// scenario-test discipline: multi-step journeys, asserting at every
+// step — not isolated function pokes.
+
+import { describe, expect, it } from 'vitest';
+import { DaemonCore, type RuntimeSurface } from './daemon-core';
+
+interface Recorded {
+  keys: Array<{ key: string; text: string; cursorOffset: number }>;
+  notifies: Array<{ text: string; cursor: number; source: 'user' | 'runtime' }>;
+  resets: number;
+}
+
+function makeRuntime(): { rt: RuntimeSurface; rec: Recorded } {
+  const rec: Recorded = { keys: [], notifies: [], resets: 0 };
+  const rt: RuntimeSurface = {
+    dispatchKey(e) { rec.keys.push({ key: e.key, text: e.text, cursorOffset: e.cursorOffset }); return true; },
+    notifyTextChange(text, cursor, source) { rec.notifies.push({ text, cursor, source }); },
+    resetBufferState() { rec.resets += 1; },
+  };
+  return { rt, rec };
+}
+
+interface Harness {
+  core: DaemonCore;
+  rec: Recorded;
+  sent: Array<Record<string, unknown>>;
+  logs: Array<{ level: string; msg: string }>;
+  untrusted: number;
+}
+
+function makeHarness(opts: { deny?: string[]; charBudgetEnv?: string } = {}): Harness {
+  const sent: Array<Record<string, unknown>> = [];
+  const logs: Array<{ level: string; msg: string }> = [];
+  const h: Partial<Harness> = { sent, logs, untrusted: 0 };
+  const core = new DaemonCore({
+    send: cmd => { sent.push(cmd); },
+    log: (level, msg) => { logs.push({ level, msg }); },
+    deniedBundles: () => new Set(opts.deny ?? ['com.googlecode.iterm2']),
+    charBudgetEnv: () => opts.charBudgetEnv,
+    onUntrusted: () => { h.untrusted! += 1; },
+  });
+  const { rt, rec } = makeRuntime();
+  core.attachRuntime(rt);
+  h.core = core; h.rec = rec;
+  return h as Harness;
+}
+
+const focusSpotlight = (value = '', cursor = 0): Record<string, unknown> => ({
+  type: 'focus', app: 'Spotlight', bundle: 'com.apple.Spotlight', role: 'AXTextField', value, cursor,
+});
+const focusTextEdit = (value = '', cursor = 0): Record<string, unknown> => ({
+  type: 'focus', app: 'TextEdit', bundle: 'com.apple.TextEdit', role: 'AXTextArea', value, cursor,
+});
+const change = (value: string, cursor: number): Record<string, unknown> => ({ type: 'change', value, cursor });
+
+describe('ready handshake', () => {
+  it('trusted → info log, daemon proceeds', () => {
+    const h = makeHarness();
+    h.core.handleEvent({ type: 'ready', trusted: true });
+    expect(h.untrusted).toBe(0);
+    expect(h.logs.some(l => l.msg.includes('ax-bridge ready'))).toBe(true);
+  });
+  it('untrusted → actionable error + onUntrusted (prod: exit 1)', () => {
+    const h = makeHarness();
+    h.core.handleEvent({ type: 'ready', trusted: false });
+    expect(h.untrusted).toBe(1);
+    expect(h.logs.some(l => l.level === 'error' && l.msg.includes('Accessibility permission missing'))).toBe(true);
+  });
+});
+
+describe('focus / blur', () => {
+  it('focus seeds the buffer as runtime-sourced context — a pre-existing `_` must NOT arm', () => {
+    const h = makeHarness();
+    h.core.handleEvent(focusTextEdit('draft with a hole _ already here', 5));
+    expect(h.rec.resets).toBe(1);
+    expect(h.rec.notifies).toEqual([{ text: 'draft with a hole _ already here', cursor: 5, source: 'runtime' }]);
+    expect(h.rec.keys).toHaveLength(0);
+  });
+
+  it('denied bundle (terminal) is ignored entirely — state reset, nothing seeded', () => {
+    const h = makeHarness();
+    h.core.handleEvent({ type: 'focus', app: 'iTerm2', bundle: 'com.googlecode.iterm2', value: 'ls -la _', cursor: 8 });
+    expect(h.core.focused).toBeNull();
+    expect(h.rec.resets).toBe(1);
+    expect(h.rec.notifies).toHaveLength(0);
+    expect(h.core.getText()).toBe('');
+  });
+
+  it('blur clears focus + resets; double blur is idempotent', () => {
+    const h = makeHarness();
+    h.core.handleEvent(focusTextEdit('hello', 5));
+    h.core.handleEvent({ type: 'blur' });
+    expect(h.core.focused).toBeNull();
+    expect(h.rec.resets).toBe(2);
+    h.core.handleEvent({ type: 'blur' });
+    expect(h.rec.resets).toBe(2);
+  });
+
+  it('change events with no focus are dropped (bridge blur races)', () => {
+    const h = makeHarness();
+    h.core.handleEvent(change('stray _', 7));
+    expect(h.rec.notifies).toHaveLength(0);
+    expect(h.rec.keys).toHaveLength(0);
+  });
+});
+
+describe('typing → arm → fill → echo (the full journey)', () => {
+  it('typed `_` arms exactly once, with marker-stripped text at the marker index', () => {
+    const h = makeHarness();
+    h.core.handleEvent(focusSpotlight());
+    h.core.handleEvent(change('capital of france', 17));
+    h.core.handleEvent(change('capital of france ', 18));
+    h.core.handleEvent(change('capital of france _', 19));
+    expect(h.rec.keys).toEqual([{ key: '_', text: 'capital of france ', cursorOffset: 18 }]);
+    const userNotifies = h.rec.notifies.filter(n => n.source === 'user');
+    expect(userNotifies).toHaveLength(3);
+  });
+
+  it('runtime write → one contiguous replace command + optimistic state + echo classified runtime-sourced', () => {
+    const h = makeHarness();
+    h.core.handleEvent(focusSpotlight());
+    h.core.handleEvent(change('capital of france _', 19));
+    h.core.requestWrite('capital of france France capital: Paris');
+    expect(h.sent).toHaveLength(1);
+    expect(h.sent[0]).toMatchObject({ cmd: 'replace', start: 18 });
+    // Optimistic: the runtime reads its own bytes back immediately.
+    expect(h.core.getText()).toBe('capital of france France capital: Paris');
+    // The bridge echoes our write as a change event → runtime-sourced,
+    // never an arm.
+    const before = h.rec.keys.length;
+    h.core.handleEvent(change('capital of france France capital: Paris', 39));
+    expect(h.rec.keys.length).toBe(before);
+    expect(h.rec.notifies.at(-1)).toMatchObject({ source: 'runtime' });
+  });
+
+  it('writeAck failure asks the bridge for a resync read', () => {
+    const h = makeHarness();
+    h.core.handleEvent(focusSpotlight('q _', 3));
+    h.core.handleEvent({ type: 'writeAck', id: 1, ok: false, err: 'no focus' });
+    expect(h.sent.at(-1)).toEqual({ cmd: 'read' });
+    expect(h.logs.some(l => l.level === 'warn' && l.msg.includes('AX write failed'))).toBe(true);
+  });
+
+  it('write-path method logged once per focus, re-logged after refocus', () => {
+    const h = makeHarness();
+    h.core.handleEvent(focusSpotlight());
+    h.core.handleEvent({ type: 'writeAck', id: 1, ok: true, method: 'replace-attr' });
+    h.core.handleEvent({ type: 'writeAck', id: 2, ok: true, method: 'replace-attr' });
+    expect(h.logs.filter(l => l.msg === 'write path')).toHaveLength(1);
+    h.core.handleEvent(focusTextEdit());
+    h.core.handleEvent({ type: 'writeAck', id: 3, ok: true, method: 'selection' });
+    expect(h.logs.filter(l => l.msg === 'write path')).toHaveLength(2);
+  });
+});
+
+describe('REGRESSION 2026-07-21 — Spotlight duplicate notifications', () => {
+  // Live transcript: Spotlight fires 2-3 byte-identical AXValueChanged
+  // per keystroke; the duplicate re-ran the fill pipeline and the
+  // buffer ended as "istanbul: not foundistanbul: not found".
+  it('a byte-identical duplicate user change is dropped — one arm, one user notify', () => {
+    const h = makeHarness();
+    h.core.handleEvent(focusSpotlight('capital of istanbul', 19));
+    h.core.handleEvent(change('capital of istanbul _', 21));
+    h.core.handleEvent(change('capital of istanbul _', 21)); // Spotlight duplicate
+    h.core.handleEvent(change('capital of istanbul _', 21)); // and a third
+    expect(h.rec.keys).toHaveLength(1);
+    expect(h.rec.notifies.filter(n => n.source === 'user')).toHaveLength(1);
+  });
+
+  it('echoes of our own write are NOT dropped as duplicates (span bookkeeping needs them)', () => {
+    const h = makeHarness();
+    h.core.handleEvent(focusSpotlight('capital of france _', 19));
+    h.core.requestWrite('France capital: Paris');
+    // Optimistic update already made state identical to the echo —
+    // exactly the shape the dedupe must exempt.
+    h.core.handleEvent(change('France capital: Paris', 21));
+    expect(h.rec.notifies.at(-1)).toMatchObject({ text: 'France capital: Paris', source: 'runtime' });
+  });
+
+  it('cursor-only movement is not swallowed by the dedupe (cursor differs)', () => {
+    const h = makeHarness();
+    h.core.handleEvent(focusSpotlight('abc', 3));
+    h.core.handleEvent(change('abc', 1)); // same value, moved cursor
+    expect(h.rec.notifies.filter(n => n.source === 'user')).toHaveLength(1);
+    expect(h.core.getCursorOffset()).toBe(1);
+  });
+});
+
+describe('Spotlight session transcript (SPOTLIGHT-SPIKE.md live capture)', () => {
+  it('open-with-restored-query → clear → type → arm → dismiss', () => {
+    const h = makeHarness();
+    h.core.handleEvent({ type: 'ready', trusted: true });
+    // Panel opens restoring the previous query, fully selected — this
+    // is pre-existing content: context, never a trigger.
+    h.core.handleEvent(focusSpotlight('setting', 7));
+    expect(h.rec.keys).toHaveLength(0);
+    // Esc clears (value → ''), duplicates included.
+    h.core.handleEvent(change('', 0));
+    h.core.handleEvent(change('', 0));
+    // Type a query char by char (bridge sends full value per keystroke).
+    for (const [v, c] of [['w', 1], ['we', 2], ['wea', 3], ['weather', 7], ['weather ', 8], ['weather _', 9]] as const) {
+      h.core.handleEvent(change(v, c));
+    }
+    expect(h.rec.keys).toEqual([{ key: '_', text: 'weather ', cursorOffset: 8 }]);
+    // Dismissal → blur → state cleared.
+    h.core.handleEvent({ type: 'blur' });
+    expect(h.core.focused).toBeNull();
+    expect(h.core.getAnswerCharBudget()).toBeNull();
+  });
+});
+
+describe('answer char budget accessor', () => {
+  it('Spotlight focused → 37; ordinary app → null; env override respected', () => {
+    const h = makeHarness();
+    h.core.handleEvent(focusSpotlight('q', 1));
+    expect(h.core.getAnswerCharBudget()).toBe(37);
+    h.core.handleEvent(focusTextEdit('doc', 3));
+    expect(h.core.getAnswerCharBudget()).toBeNull();
+
+    const h2 = makeHarness({ charBudgetEnv: 'com.apple.Spotlight=50' });
+    h2.core.handleEvent(focusSpotlight('q', 1));
+    expect(h2.core.getAnswerCharBudget()).toBe(50);
+  });
+});
+
+describe('line-protocol robustness', () => {
+  it('malformed / unknown lines never throw or mutate state', () => {
+    const h = makeHarness();
+    h.core.handleEvent(focusTextEdit('stable', 6));
+    const notifies = h.rec.notifies.length;
+    expect(() => {
+      h.core.handleLine('not json at all');
+      h.core.handleLine('{"type":"no-such-event"}');
+      h.core.handleLine('{"cmd":"replace"}'); // a COMMAND, not an event
+      h.core.handleLine('{}');
+    }).not.toThrow();
+    expect(h.core.getText()).toBe('stable');
+    expect(h.rec.notifies.length).toBe(notifies);
+  });
+
+  it('events before runtime attach are dropped with a warn, not a crash', () => {
+    const sent: Array<Record<string, unknown>> = [];
+    const logs: Array<{ level: string; msg: string }> = [];
+    const core = new DaemonCore({
+      send: c => { sent.push(c); },
+      log: (level, msg) => { logs.push({ level, msg }); },
+      deniedBundles: () => new Set(),
+      onUntrusted: () => {},
+    });
+    expect(() => core.handleEvent(focusSpotlight('x', 1))).not.toThrow();
+    expect(logs.some(l => l.level === 'warn' && l.msg.includes('before runtime attach'))).toBe(true);
+  });
+});

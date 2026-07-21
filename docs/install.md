@@ -62,6 +62,7 @@ brew install bash tmux brightness  # bash 4+ optional but recommended
 | `chrome`      | Chrome 121+ | `chrome://version` |
 | `gemini-cli`  | Node 22+ (installer clones a Gemini CLI 0.41.x fork itself) | `node --version` |
 | `shell`       | [bun](https://bun.sh/) (`oc-edit`/`oc-editd` are bun apps) + tmux 3.2+ (`oc-shell`'s display-popup). Preflight offers to vendor either into `~/.opencues/vendor/` if missing. | `bun --version`, `tmux -V` |
+| `apple-notes` | macOS with Notes.app (`osascript` ships with the OS). The installer fires the Automation permission prompt — click Allow. | `osascript -e 1` |
 
 A Claude-Code-only user never needs bun. An OpenCode user needs bun because OpenCode itself is a bun app, not because OpenCues requires it.
 
@@ -91,9 +92,10 @@ pnpm exec opencues install chrome-host \
   --extension-id <id-from-chrome-extensions>  # optional — live ~/.cues/ sync into Chrome
 pnpm exec opencues install gemini-cli      # patches a Gemini CLI 0.41.x fork
 pnpm exec opencues install shell           # standalone oc-shell/oc-edit (no upstream fork)
-pnpm exec opencues install --all           # all five (chrome-host is separate)
+pnpm exec opencues install apple-notes     # macOS only — Notes.app JXA daemon (no upstream fork)
+pnpm exec opencues install --all           # every host available on this OS (chrome-host is separate)
 
-# Launch (claude-code, opencode, gemini-cli, shell — chrome auto-loads in browser)
+# Launch (claude-code, opencode, gemini-cli, shell, apple-notes — chrome auto-loads in browser)
 pnpm exec opencues run claude-code
 pnpm exec opencues run opencode
 pnpm exec opencues run gemini-cli
@@ -107,6 +109,7 @@ pnpm exec opencues run shell
 | **Chrome** | `opencues install chrome` (+ `opencues install chrome-host` for live `~/.cues/` sync) | Chrome 121+ | Load unpacked at `chrome://extensions` (path printed by installer) |
 | **Gemini CLI** | `opencues install gemini-cli` | Gemini CLI 0.41.x | `opencues run gemini-cli` |
 | **Shell** | `opencues install shell` | No upstream fork — self-owned host | `opencues run shell` (or `oc-shell` once on PATH) |
+| **Apple Notes** | `opencues install apple-notes` (macOS only) | No upstream fork — self-owned JXA daemon | `opencues run apple-notes` |
 
 Per-host install detail, paths touched, uninstall flow: each integration's own README (linked above).
 
@@ -297,6 +300,7 @@ pnpm exec opencues uninstall opencode      # git checkout 4 patched files + remo
 pnpm exec opencues uninstall gemini-cli    # same shape as opencode
 pnpm exec opencues uninstall chrome        # removes integrations/chrome/dist + (if --target was used) the deploy
 pnpm exec opencues uninstall shell         # removes oc-shell/oc-edit/oc-editd (no fork to revert)
+pnpm exec opencues uninstall apple-notes   # removes the built daemon + staged @opencues/* (TCC grant persists)
 pnpm exec opencues uninstall --all
 ```
 

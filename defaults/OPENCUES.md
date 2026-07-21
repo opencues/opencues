@@ -169,7 +169,7 @@ max-concurrent-auditors: 0
 #   custom          →  user-defined frames, see `blank-loading-frames` below
 blank-loading-animation: bounce
 
-# Custom animation frames. Comma-separated, up to 5 items. Only used
+# Custom animation frames. Comma-separated, up to 7 items. Only used
 # when `blank-loading-animation: custom`. Each item is one frame —
 # typically a single character but multi-char frames are allowed
 # (e.g. for dot-walk style: `., .., ..., ...., .....`). Empty / invalid
@@ -186,11 +186,11 @@ blank-loading-frames: ·,•,●,•,·
 # one its terminal/UI can render:
 #   blank-loading-colors-rgb   for hosts that render full colour
 #                              (chrome). Accepts `#rrggbb`, `#rgb`, or
-#                              `rgb(r,g,b)`. Up to 5 colours.
+#                              `rgb(r,g,b)`. Up to 7 colours.
 #   blank-loading-colors-ansi  for terminal hosts (CC / OC / gemini).
 #                              Accepts named colours (`red`,
 #                              `bright_cyan`, …) or 256-colour indices
-#                              (`0`-`255`). Up to 5 colours.
+#                              (`0`-`255`). Up to 7 colours.
 # colour[i] is applied to frame[i]; frames past the colours-array length
 # render with the host default (no colour override). Empty / invalid
 # lists fall back to default rendering. Both lists can be set

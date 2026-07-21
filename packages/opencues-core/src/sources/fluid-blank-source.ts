@@ -143,6 +143,30 @@ export function renderAmbientBlock(ambient: AmbientContext | undefined): string 
 }
 
 /**
+ * Optional FIELD LIMIT instruction — appended to the USER message when
+ * the host declares a small visible field capacity
+ * (`CueContext.answerCharBudget`; e.g. the mac host sends 37 while
+ * Spotlight's search field is focused). Shared by FluidBlankSource and
+ * TransformBlankSource.
+ *
+ * USER-message placement is deliberate: per-call context must never
+ * salt the cached system prefix (docs/architecture/cerebras.md), and
+ * the bench suites never set a budget, so bench prompts stay
+ * byte-identical to shipped ones. Host-owned instruction — a number
+ * the host computed, nothing user- or page-controlled — so no
+ * untrusted-content wrapper.
+ *
+ * A soft aim, not a truncation: the runtime never cuts the answer;
+ * the model is told to prefer the shortest correct form and may
+ * exceed when correctness demands it.
+ */
+export function renderCharBudgetBlock(budget: number | undefined): string {
+  if (budget === undefined || !Number.isFinite(budget) || budget < 1) return '';
+  const n = Math.floor(budget);
+  return `\n\nFIELD LIMIT: the destination field shows only about ${n} characters. Prefer the shortest correct answer that fits (abbreviate, round, drop filler words). Exceed ${n} characters only when a correct answer cannot fit.`;
+}
+
+/**
  * FUSED system prompt — single LLM call that segments + answers in one
  * pass. Replaces the prior P1 SEGMENT → P3 ANSWER 2-pass.
  *
@@ -1031,7 +1055,7 @@ export class FluidBlankSource implements CueSource {
       if (titleHints) {
         this.logInfo(`FluidBlank: calendar-context: resolved ${titleMatches.length} title reference(s): ${titleMatches.map((m) => `"${m.phrase}"→${m.token}`).join(', ')}`);
       }
-      const fusedUser = `INPUT: ${outboundText}${outboundAmbient}${titleHints}`;
+      const fusedUser = `INPUT: ${outboundText}${outboundAmbient}${titleHints}${renderCharBudgetBlock(context.answerCharBudget)}`;
       // Per-feature override: `fluid-blank-max-tokens:` in OPENCUES.md.
       // 512 default is bench-tuned for short-factual answers.
       const fusedOut = await this.callLLM(fullSystem, fusedUser, this.maxTokensOverride ?? 512,
@@ -1073,7 +1097,19 @@ export class FluidBlankSource implements CueSource {
       // when the gate is live (typed + a fetchable fn registry + blankFetch).
       const hasOnDemand = context.sentinelLanguage === 'typed'
         && !!context.aiCallableFns && context.aiCallableFns.size > 0 && !!context.blankFetch;
-      if (mergedCatalog.size > 0 || hasOnDemand) {
+      // Run even with an EMPTY catalog when a context feature is on:
+      // the FUSED prompt's static examples teach the bracket-token form
+      // regardless of whether this dispatch injected a catalog (the
+      // resolver legitimately skips the blank-context fetch on some
+      // passes), so the model can emit a token with nothing to resolve
+      // it against. The strip contract ("catalog is EXHAUSTIVE; any
+      // unknown bracket is a hallucination") must hold on those
+      // dispatches too — observed live 2026-07-09: `[STOCKS NVDA]`
+      // landed raw in a note on a fetch-skipped pass. When BOTH
+      // context features are off, brackets in answers are legit
+      // content and stay untouched (unchanged).
+      const contextFeatureOn = !!context.identityContext || bcMode !== 'off';
+      if (mergedCatalog.size > 0 || hasOnDemand || contextFeatureOn) {
         if (context.sentinelLanguage === 'typed') {
           // Typed grammar (opt-in): resolve parameterized + nested + accessor
           // forms via the typed-sentinel engine. preserveUnknown:false mirrors
@@ -1136,6 +1172,15 @@ export class FluidBlankSource implements CueSource {
             this.logInfo(`FluidBlank: ctx-post-processed (resolved=${pp.report.resolved.length}, tolerant=${pp.report.tolerantMatches.length}, stripped=${pp.report.stripped.length})`);
           }
         }
+      }
+
+      // Post-process stripped the ENTIRE answer (pure hallucinated
+      // token, nothing else) — bail rather than substitute emptiness:
+      // the `_` stays in the buffer and the next text-change retries.
+      if (finalAnswer.trim() === '' && answer.trim() !== '') {
+        this.logInfo('FluidBlank: answer was entirely hallucinated context tokens — bailing (blank stays armed)');
+        this.emit({ type: 'bailed', reason: 'FUSED-answer-stripped-empty', latencyMs: Date.now() - startTime });
+        return { results: [], timing: Date.now() - startTime, model: this.model };
       }
 
       // ctx isn't separately produced in fused mode — the model sees the

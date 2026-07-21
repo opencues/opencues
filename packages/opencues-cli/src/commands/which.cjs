@@ -55,6 +55,12 @@ module.exports = function which(argv, ctx) {
       ['Bootstrap (copied)',         path.join(HOME, 'gemini-cli-cues', 'packages', 'cli', 'src', 'ui', 'opencues.ts')],
       ['(also: 4 patched source files in packages/cli/src/ui/ — AppContainer.tsx, components/InputPrompt.tsx, components/Footer.tsx, esbuild.config.js)', ''],
     ]],
+    ['Apple Notes install state (macOS only, self-owned daemon)', [
+      ['Built daemon',               path.join(ctx.REPO_ROOT, 'integrations', 'apple-notes', 'dist', 'daemon.js')],
+      ['Staged core',                path.join(ctx.REPO_ROOT, 'integrations', 'apple-notes', 'node_modules', '@opencues', 'core')],
+      ['Staged runtime',             path.join(ctx.REPO_ROOT, 'integrations', 'apple-notes', 'node_modules', '@opencues', 'runtime')],
+      ['(Automation permission lives in macOS TCC — System Settings → Privacy & Security → Automation)', ''],
+    ]],
     ['Runtime IPC files (created when CC/OC/Gemini actually runs)', [
       ['Debug log',                  '/tmp/opencues.log'],
       ['Statusline IPC',             '/tmp/opencues-status-<pid>.json'],

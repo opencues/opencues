@@ -1,7 +1,12 @@
 # Katas — modal guided scenarios with a live LLM coach
 
-**Status: experimental prototype, wired on all five host bands (OpenCode,
-Claude Code, Gemini CLI, Shell, Chrome). Read this before touching
+**Status: experimental prototype, wired on five host bands (OpenCode,
+Claude Code, Gemini CLI, Shell, Chrome). apple-notes is DELIBERATELY
+excluded, not deferred: the wiring contract below requires `observeKey`
+as the first key subscriber, and that host is a polled JXA channel
+whose only key events are synthetic `_` arms — no keyboard to observe,
+no Esc×3 hatch, no statusline to render the coach. Read this before
+touching
 `packages/opencues-runtime/src/modules/kata.ts`, the
 `externallySuppressed` seam in `resolver.ts`, or the `kata` block in
 `statusline.ts`.**

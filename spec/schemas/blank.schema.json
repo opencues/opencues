@@ -118,11 +118,11 @@
     },
     "on-host": {
       "type": "array",
-      "items": { "type": "string", "enum": ["chrome", "claude-code", "gemini-cli", "opencode", "shell", "terminal"] }
+      "items": { "type": "string", "enum": ["apple-notes", "chrome", "claude-code", "gemini-cli", "opencode", "shell", "terminal"] }
     },
     "not-on-host": {
       "type": "array",
-      "items": { "type": "string", "enum": ["chrome", "claude-code", "gemini-cli", "opencode", "shell", "terminal"] }
+      "items": { "type": "string", "enum": ["apple-notes", "chrome", "claude-code", "gemini-cli", "opencode", "shell", "terminal"] }
     },
     "spec": {
       "type": "string",

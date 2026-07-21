@@ -84,6 +84,21 @@ highlight; your `HostAdapter` supplies the primitive it calls:
 - **Highlight** — the runtime tells you which range is currently selected (bold/underline/color, your choice)
 - **Replace text** — the runtime calls your `setText` when cycling changes the buffer
 
+> **⚠️ getText/setText identity contract.** `getText()` must return
+> byte-for-byte what the runtime last wrote via `setText`/`pushText`.
+> The resolver's substitute-time race guards compare the live buffer
+> against the buffer they analyzed EXACTLY (modulo the guard's own ZWS
+> exemption) — any host-side normalization between write and read-back
+> (trimming, newline canonicalization, encoding fix-ups) makes the
+> runtime believe a foreign edit happened and silently discard its own
+> completed substitutions. Event-driven hosts satisfy this for free
+> (the adapter's buffer IS the runtime's buffer); hosts that interpose
+> a virtual buffer or write to an external document (apple-notes) must
+> apply document-side canonical forms on the WRITE path only, never on
+> what `getText` serves back. Live failure this pins: apple-notes'
+> trailing-newline normalization in its virtual buffer randomly killed
+> TransformBlank answers (2026-07-08).
+
 ### 4. Navigation (rules the runtime applies; useful to understand)
 
 Ctrl+Alt+Left/Right (or equivalent) moves between navigable words. The runtime's Navigation module decides a word is navigable if:

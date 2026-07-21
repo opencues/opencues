@@ -28,9 +28,12 @@ function loadHostResolver(ctx) {
   } catch {
     // Pre-build fallback — keep CLI usable.
     return {
-      HOSTS: ['chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell'],
+      HOSTS: ['apple-notes', 'chrome', 'claude-code', 'gemini-cli', 'mac', 'opencode', 'shell'],
       resolve: (name) => {
         const map = {
+          'apple-notes': 'apple-notes', 'applenotes': 'apple-notes',
+          'notes': 'apple-notes',
+          'mac': 'mac', 'macos': 'mac', 'ax': 'mac',
           'claude-code': 'claude-code', 'claudecode': 'claude-code',
           'claude': 'claude-code', 'cc': 'claude-code',
           'opencode': 'opencode', 'oc': 'opencode',
@@ -96,8 +99,10 @@ module.exports = async function install(argv, ctx) {
   }
 
   // Resolve descriptive name → folder code; --all expands to all folders.
+  // apple-notes is macOS-only — silently excluded from --all elsewhere
+  // (explicitly naming it on the wrong OS still errors, in its installer).
   const folders = target === '--all'
-    ? HOSTS.slice()
+    ? HOSTS.slice().filter(h => (h !== 'apple-notes' && h !== 'mac') || process.platform === 'darwin')
     : [resolve(target)];
   if (folders[0] === undefined || folders[0] === null) {
     console.error(`opencues install: unknown host "${target}". Known: ${HOSTS.join(', ')}, --all`);
@@ -1010,7 +1015,9 @@ function printHelp(ctx) {
   console.log('  chrome        Chrome MV3 extension');
   console.log('  gemini-cli    Patches a Gemini CLI 0.41.x fork               (aliases: geminicli, gemini)');
   console.log('  shell         Standalone Bun + OpenTUI shell wrapper        (aliases: term, terminal, oc-shell, oc-edit)');
-  console.log('  --all         Install all five');
+  console.log('  apple-notes   macOS Notes.app JXA polling daemon             (aliases: notes, applenotes; macOS only)');
+  console.log('  mac           universal macOS host — focused text element in any app via the Accessibility API (aliases: macos, ax; macOS only)');
+  console.log('  --all         Install every host available on this OS');
   console.log('');
   console.log('Special subcommands:');
   console.log('  skill <name>  Install a shipped Claude skill (see `opencues install skill --help`)');

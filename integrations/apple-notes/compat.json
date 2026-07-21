@@ -1,0 +1,12 @@
+{
+  "host-kind": "self",
+  "notes": "Self-owned daemon — no upstream fork to pin. Compatibility is against macOS Notes.app's AppleScript dictionary (stable since macOS 10.x) and its body HTML serialization (measured in NOTES-PLATFORM.md).",
+  "tested": [
+    {
+      "macos": "15 (Darwin 24.1.0)",
+      "arch": "arm64",
+      "date": "2026-07-06",
+      "notes-account": "iCloud, 335 notes"
+    }
+  ]
+}

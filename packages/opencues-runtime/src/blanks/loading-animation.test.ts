@@ -80,9 +80,9 @@ describe('parse — grammar classification', () => {
   });
 
   it('frames beyond CUSTOM_FRAMES_MAX are truncated and counted', () => {
-    const p = parse(['a,b,c,d,e,f,g']);
+    const p = parse(['a,b,c,d,e,f,g,h']);
     expect(p.frames).toHaveLength(CUSTOM_FRAMES_MAX);
-    expect(p.framesTruncated).toBe(7);
+    expect(p.framesTruncated).toBe(8);
   });
 
   it('named errors: empty input, doubled lists, non-glyph token', () => {
@@ -136,8 +136,8 @@ describe('LoadingAnimationBlank — write path', () => {
 
   it('floors are named in the confirmation, never silent', async () => {
     const { blank } = makeBlank();
-    const truncated = await blank.get('loading animation', ['a,b,c,d,e,f,g']);
-    expect(truncated).toContain(`truncated to ${CUSTOM_FRAMES_MAX} frames (got 7)`);
+    const truncated = await blank.get('loading animation', ['a,b,c,d,e,f,g,h']);
+    expect(truncated).toContain(`truncated to ${CUSTOM_FRAMES_MAX} frames (got 8)`);
     const clamped = await blank.get('loading animation', ['5']);
     expect(clamped).toContain('interval clamped');
     const extraColors = await blank.get('loading animation', ['_,-', 'red,green,blue']);

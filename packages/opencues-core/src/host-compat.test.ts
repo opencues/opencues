@@ -12,6 +12,7 @@ import {
   inferSiteCompat,
   unknownHostNames,
   formatHostList,
+  resolveHost,
   HOSTS,
   NATIVE_HOSTS,
 } from './host-compat';
@@ -133,13 +134,22 @@ describe('unknownHostNames', () => {
   });
 });
 
+describe('resolveHost: apple-notes aliases', () => {
+  it('canonical + aliases resolve to apple-notes', () => {
+    assert.strictEqual(resolveHost('apple-notes'), 'apple-notes');
+    assert.strictEqual(resolveHost('notes'), 'apple-notes');
+    assert.strictEqual(resolveHost('applenotes'), 'apple-notes');
+    assert.strictEqual(resolveHost('AppleNotes'), 'apple-notes');
+  });
+});
+
 describe('formatHostList', () => {
   it('all hosts → "all"', () => {
     assert.strictEqual(formatHostList(SORTED_HOSTS), 'all');
   });
 
   it('native hosts → comma-separated alphabetical', () => {
-    assert.strictEqual(formatHostList(SORTED_NATIVE), 'claude-code, gemini-cli, opencode, shell');
+    assert.strictEqual(formatHostList(SORTED_NATIVE), 'apple-notes, claude-code, gemini-cli, mac, opencode, shell');
   });
 
   it('single host → just the name', () => {

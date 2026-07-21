@@ -32,7 +32,7 @@
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
 import { BlankConfig } from '../cues-md';
 import { describeLLMCall, dispatchChat, getProvider, type ProviderAdapter } from '../llm-provider';
-import { classifyLlmError, type FluidBlankErrorReason } from './fluid-blank-source';
+import { classifyLlmError, renderCharBudgetBlock, type FluidBlankErrorReason } from './fluid-blank-source';
 import { detectPartialTransform } from './transform-partial-detector';
 import { translateBufferCursorToTargetCursor } from './transform-cursor-translate';
 import { injectCursorSentinel, stripCursorSentinel } from '../cursor-sentinel';
@@ -950,7 +950,10 @@ export class TransformBlankSource implements CueSource {
     // (b) the model's echo is in token space anyway, so speculation
     // acceptance is higher against the dehydrated bytes.
     const fusedPrediction = extractText.length >= PREDICTION_MIN_CHARS ? outboundText : undefined;
-    const fusedRaw = await this.callLLM(fusedSystem, `INPUT: ${inputForLLM}`, fusedTokens, undefined, context.signal, fusedPrediction);
+    // FIELD LIMIT rides the USER message (per-call context — never a
+    // system-prefix salt) when the host declared a small field
+    // capacity. Bench prompts unaffected: benches never set a budget.
+    const fusedRaw = await this.callLLM(fusedSystem, `INPUT: ${inputForLLM}${renderCharBudgetBlock(context.answerCharBudget)}`, fusedTokens, undefined, context.signal, fusedPrediction);
     const fParsedRaw = parseFused(fusedRaw);
     // Strip any [CURSOR] the model leaked into FULL_REWRITE — input-only
     // marker, must never reach the buffer.

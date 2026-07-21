@@ -824,6 +824,91 @@ module.exports = async function doctor(argv, ctx) {
     s.render();
   }
 
+  // ── Apple Notes install ───────────────────────────────────────────────
+  // Self-owned JXA polling daemon (macOS only). The one check that
+  // matters most is the Automation TCC permission: a cached deny fails
+  // INSTANTLY with -1743 and NO dialog (the silent-deny trap — see
+  // integrations/apple-notes/NOTES-PLATFORM.md § TCC), which from the
+  // user's side is indistinguishable from "OpenCues is broken".
+  {
+    const s = section('Apple Notes', 'JXA polling daemon for Notes.app (macOS only)');
+    if (process.platform !== 'darwin') {
+      s.info('platform', 'not macOS — apple-notes integration unavailable here');
+    } else {
+      const anDir = path.join(ctx.REPO_ROOT, 'integrations/apple-notes');
+      const anDaemon = path.join(anDir, 'dist/daemon.js');
+      const anRt = path.join(anDir, 'node_modules/@opencues/runtime/dist');
+      const anCore = path.join(anDir, 'node_modules/@opencues/core/dist');
+      s.ok(`integration dir at ${anDir}`, fs.existsSync(anDir));
+      s.ok('dist/daemon.js (built)', fs.existsSync(anDaemon));
+      s.ok('node_modules/@opencues/runtime (staged)', fs.existsSync(anRt));
+      s.ok('node_modules/@opencues/core (staged)', fs.existsSync(anCore));
+      s.ok('osascript on PATH', !!findOnPath('osascript'));
+      if (!fs.existsSync(anDaemon)) {
+        findings.push({ sev: 'info', msg: 'Apple Notes integration not installed', fix: 'opencues install apple-notes' });
+      } else {
+        // Automation permission probe — one Apple Event (folder count).
+        // 10s timeout: a first-ever probe may block on the TCC dialog;
+        // timing out is reported as "prompt pending", not a failure.
+        const probe = spawnSync('osascript', ['-l', 'JavaScript', path.join(anDir, 'jxa/probe-permission.js')], {
+          encoding: 'utf8', timeout: 10000,
+        });
+        if (probe.status === 0) {
+          s.ok('Notes automation permission (TCC)', true);
+        } else if ((probe.stderr || '').includes('-1743')) {
+          s.bad('Notes automation permission (TCC)', false);
+          findings.push({
+            sev: 'warn',
+            msg: 'Notes automation DENIED (TCC -1743) — a cached deny is silent: no prompt will ever appear',
+            fix: 'System Settings → Privacy & Security → Automation → your terminal → enable Notes;\n' +
+                 '        or re-arm the prompt: tccutil reset AppleEvents <terminal-bundle-id>  (e.g. com.apple.Terminal)',
+          });
+        } else {
+          s.raw('Notes automation permission (TCC)', '', tag('warn') + ' ' + dim('probe inconclusive (prompt pending or Notes unavailable)'));
+        }
+      }
+    }
+    s.render();
+  }
+
+  // ── mac (universal AX host) install ───────────────────────────────────
+  // Self-owned Accessibility daemon (macOS only). The load-bearing check
+  // is the Accessibility TCC grant — a DIFFERENT permission class from
+  // apple-notes' Automation grant; `ax-bridge status` checks it without
+  // firing the system prompt (doctor must never pop dialogs).
+  {
+    const s = section('mac (universal AX host)', 'answers `_` cues in the focused text element of any app (macOS only)');
+    if (process.platform !== 'darwin') {
+      s.info('platform', 'not macOS — mac integration unavailable here');
+    } else {
+      const macDir = path.join(ctx.REPO_ROOT, 'integrations/mac');
+      const macDaemon = path.join(macDir, 'dist/daemon.js');
+      const macBridge = path.join(macDir, 'dist/ax-bridge');
+      const macRt = path.join(macDir, 'node_modules/@opencues/runtime/dist');
+      s.ok(`integration dir at ${macDir}`, fs.existsSync(macDir));
+      s.ok('dist/daemon.js (built)', fs.existsSync(macDaemon));
+      s.ok('dist/ax-bridge (built)', fs.existsSync(macBridge));
+      s.ok('node_modules/@opencues/runtime (staged)', fs.existsSync(macRt));
+      if (!fs.existsSync(macDaemon) || !fs.existsSync(macBridge)) {
+        findings.push({ sev: 'info', msg: 'mac integration not installed', fix: 'opencues install mac' });
+      } else {
+        const probe = spawnSync(macBridge, ['status'], { encoding: 'utf8', timeout: 5000 });
+        if ((probe.stdout || '').trim() === 'trusted') {
+          s.ok('Accessibility permission (TCC)', true);
+        } else {
+          s.bad('Accessibility permission (TCC)', false);
+          findings.push({
+            sev: 'warn',
+            msg: 'Accessibility permission NOT granted — the mac daemon cannot see or edit any text element',
+            fix: 'System Settings → Privacy & Security → Accessibility → enable the app that launches the daemon;\n' +
+                 '        then restart it: opencues run mac',
+          });
+        }
+      }
+    }
+    s.render();
+  }
+
   // ── OS-level sandbox ──────────────────────────────────────────────────
   // Per-platform confiner used to wrap `sandbox: strict` user-blank
   // script invocations. Mechanism:

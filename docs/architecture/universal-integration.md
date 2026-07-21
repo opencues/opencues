@@ -6,11 +6,14 @@ on text** and **can't intercept keyboard cycling shortcuts**
 cues/blanks need cycling to be useful, and prunes the rest at
 registration time.
 
-Today's only host running in this profile: chrome's normal `<input>`
-/ `<textarea>` attach mode. The design extends to future read-only
-contexts, embedded inline widgets, accessibility-driven attach modes,
-and anywhere else the user can produce text but not navigate
-alternatives.
+Hosts running in this profile today: chrome's normal `<input>`
+/ `<textarea>` attach mode, and the **apple-notes** integration (a
+polled JXA channel with no key, cursor, or render surface at all —
+`adapters/universal/v1/` (the shared band — each daemon declares its
+`hostName`) advertises `supportsCycling(): false`
+statically). The design extends to future read-only contexts, embedded
+inline widgets, accessibility-driven attach modes, and anywhere else
+the user can produce text but not navigate alternatives.
 
 Read this before touching:
 

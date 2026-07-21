@@ -96,6 +96,7 @@ Optional information the FluidBlank LLM call receives in addition to the user's 
 | 39 | [Blank as Context](blank-as-context.md) | Local blanks (weather, stocks, calendar, …) surfaced as ambient catalog context for fluid-blank/transform-blank — same security model as identity-context, for parameterised dynamic data instead of static personal fields. |
 | 40 | [Max Thinking](max-thinking.md) | `max-thinking` scalar trades reasoning depth for speed on reasoning-capable models (Groq / Cerebras / OpenAI gpt-oss + gpt-5 families). |
 | 46 | [Calendar Context](calendar-context.md) | Ingests your calendar (`.ics` / webcal feeds via `opencues calendar`) as a **reasoning** catalog so fluid-blank answers availability (`am i free thursday _`, `next event _`) and a cue flags prose that contradicts your schedule. Event times reach the LLM; titles are dehydrated `[EVENT N]` tokens hydrated locally. OFF by default. **No MCP** — plain calendar feeds. |
+| 50 | [Answer Char Budget](answer-char-budget.md) | Host-declared soft answer-length budget for narrow fields — fluid/transform-blank ask the LLM for the shortest correct form that fits (mac host: Spotlight → ~37 chars). No scalar; structural per focused field. Aim, never truncation. |
 
 ## Surfacing
 

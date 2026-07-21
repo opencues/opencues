@@ -371,13 +371,47 @@ function overlaps(h1: DiffHunk, h2: DiffHunk): boolean {
  * The result is C with LLM's safe edits layered in. User-typed regions
  * survive verbatim.
  */
-export function threeWayMerge(snapshot: string, rewrite: string, live: string): ThreeWayMergeResult {
-  const llmHunks = wordDiff(snapshot, rewrite);
+export function threeWayMerge(
+  snapshot: string,
+  rewrite: string,
+  live: string,
+  opts?: {
+    /**
+     * `agent` (default): the conservative background-rewriter contract —
+     * all four survival heuristics apply (AgentRewrite must never
+     * canonicalise structure/whitespace the user typed).
+     *
+     * `authoritative`: the rewrite was EXPLICITLY COMMANDED (TransformBlank
+     * — "translate this", "make this one paragraph"). Only rule 1
+     * (user-region overlap; typing during the call survives) applies.
+     * The structural heuristics are actively wrong here: rule 2 drops
+     * word-diff hunks whose arbitrary boundaries slice a `\n\n` run
+     * asymmetrically, stitching ORIGINAL text into the commanded
+     * rewrite. Live failure 2026-07-09: an English→German email
+     * translation returned "…Für Mittagessen ist gesorgt.\n\nViele
+     * Lunch will be provided.\n\nBest, Sam" — reproduced with
+     * live === snapshot, where the merge must return the rewrite
+     * verbatim. Two different models produced the identical artifact
+     * (the merge is deterministic; the models were innocent).
+     */
+    mode?: 'agent' | 'authoritative';
+  },
+): ThreeWayMergeResult {
+  const mode = opts?.mode ?? 'agent';
   const userHunks = wordDiff(snapshot, live);
+  // Authoritative + untouched buffer: the commanded rewrite IS the
+  // result. No hunk arithmetic — hunk-boundary heuristics can only
+  // subtract correctness when there is nothing to protect.
+  if (mode === 'authoritative' && userHunks.length === 0) {
+    return { newText: rewrite, appliedLlmHunks: wordDiff(snapshot, rewrite), droppedLlmHunks: [], userHunks };
+  }
+  const llmHunks = wordDiff(snapshot, rewrite);
   const applied: DiffHunk[] = [];
   const dropped: DiffHunk[] = [];
   for (const raw of llmHunks) {
-    const verdict = surviveAndAdjustHunk(raw, snapshot, userHunks);
+    const verdict = mode === 'authoritative'
+      ? (userHunks.some(u => overlaps(raw, u)) ? { kind: 'drop' as const } : { kind: 'keep' as const, hunk: raw })
+      : surviveAndAdjustHunk(raw, snapshot, userHunks);
     if (verdict.kind === 'drop') dropped.push(raw);
     else applied.push(verdict.hunk);
   }
