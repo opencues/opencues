@@ -15,7 +15,7 @@
 // Spike evidence for every capability: ../AX-SPIKE.md.
 
 import { boot, type BootResult } from '@opencues/runtime/dist/adapters/universal/v1/boot';
-import { utf16Diff, freshMarkerAtCursor, WriteRing, charBudgetForBundle, shouldDropDuplicateChange } from './ax-host';
+import { DaemonCore } from './daemon-core';
 import { buildBlanks, makeSpawnProcess } from './host-support';
 import type { LogLevel } from '@opencues/runtime/dist/src/adapter';
 import { spawn } from 'node:child_process';
@@ -82,8 +82,6 @@ function acquireLockOrExit(): void {
   }
 }
 
-interface Focused { value: string; cursor: number; app: string; bundle: string }
-
 export async function main(): Promise<void> {
   acquireLockOrExit();
   const bridgePath = path.join(__dirname, 'ax-bridge');
@@ -94,44 +92,32 @@ export async function main(): Promise<void> {
   });
   bridge.stderr.on('data', (d: Buffer) => log('warn', 'ax-bridge stderr', d.toString().trim()));
 
-  let writeId = 0;
-  const send = (obj: unknown): void => {
-    bridge.stdin.write(JSON.stringify(obj) + '\n');
-  };
+  // All event/state logic lives in the platform-free DaemonCore (fully
+  // unit-tested on any OS — see daemon-core.test.ts); this function is
+  // only the process glue around it.
+  const core = new DaemonCore({
+    send: obj => { bridge.stdin.write(JSON.stringify(obj) + '\n'); },
+    log,
+    deniedBundles,
+    charBudgetEnv: () => process.env['OPENCUES_AX_CHAR_BUDGET'],
+    onUntrusted: () => process.exit(1),
+  });
 
-  let focused: Focused | null = null;
-  let lastAckMethod: string | null = null;
-  const ring = new WriteRing();
   const { registry, blankInvoke } = buildBlanks();
 
-  let bootResult: BootResult;
-
-  const requestWrite = (text: string): void => {
-    if (!focused) { log('warn', 'runtime write with no focused element — dropped'); return; }
-    const d = utf16Diff(focused.value, text);
-    if (!d) return;
-    ring.record(text);
-    // Optimistic: the AX replace is ~1ms and serialized by the bridge's
-    // main runloop; the runtime must read back its own bytes NOW.
-    focused.value = text;
-    focused.cursor = d.start + d.text.length;
-    send({ cmd: 'replace', id: ++writeId, start: d.start, length: d.length, text: d.text });
-  };
-
-  bootResult = boot({
+  const bootResult: BootResult = boot({
     hostName: 'mac',
     hostVersion: require('../package.json').version as string,
     cwd: process.cwd(),
-    getText: () => focused?.value ?? '',
-    getCursorOffset: () => focused?.cursor ?? 0,
-    setText: requestWrite,
-    pushText: requestWrite,
+    getText: () => core.getText(),
+    getCursorOffset: () => core.getCursorOffset(),
+    setText: text => core.requestWrite(text),
+    pushText: text => core.requestWrite(text),
     setCursorOffset: () => { /* caret follows the AX replace */ },
     forceRender: () => { /* host app renders itself */ },
     // Narrow fields (Spotlight ~37 visible chars) get a soft "keep it
     // short" instruction in the LLM prompt — see charBudgetForBundle.
-    getAnswerCharBudget: () =>
-      focused ? charBudgetForBundle(focused.bundle, process.env['OPENCUES_AX_CHAR_BUDGET']) : null,
+    getAnswerCharBudget: () => core.getAnswerCharBudget(),
     readFile: async (p: string) => {
       try { return await fs.readFile(p, 'utf8'); } catch { return null; }
     },
@@ -163,98 +149,10 @@ export async function main(): Promise<void> {
       CEREBRAS_API_KEY: process.env['CEREBRAS_API_KEY'],
     },
   });
+  core.attachRuntime(bootResult);
 
   const rl = readline.createInterface({ input: bridge.stdout });
-  rl.on('line', (line: string) => {
-    let ev: Record<string, unknown>;
-    try { ev = JSON.parse(line) as Record<string, unknown>; } catch { return; }
-    switch (ev['type']) {
-      case 'ready':
-        if (!ev['trusted']) {
-          log('error', 'Accessibility permission missing. Fix: System Settings → Privacy & Security → Accessibility → enable your terminal (or the app launching this daemon), then restart the daemon.');
-          process.exit(1);
-        }
-        log('info', 'ax-bridge ready — watching the focused text element in every app');
-        break;
-      case 'focus': {
-        const bundle = String(ev['bundle'] ?? '');
-        if (deniedBundles().has(bundle)) {
-          focused = null;
-          bootResult.resetBufferState();
-          break;
-        }
-        focused = {
-          value: String(ev['value'] ?? ''),
-          cursor: Number(ev['cursor'] ?? 0),
-          app: String(ev['app'] ?? '?'),
-          bundle,
-        };
-        ring.clear();
-        lastAckMethod = null;
-        bootResult.resetBufferState();
-        // Baseline: focus content is context, never a trigger — source
-        // 'runtime' seeds the buffer without waking the resolver (a
-        // 'user'-sourced focus with previousText='' reads as "a marker
-        // appeared" and auto-resolved a pre-existing `_` the moment the
-        // field was focused — observed live in TextEdit 2026-07-12).
-        // A `_` arms only when the user TYPES one (freshMarkerAtCursor).
-        bootResult.notifyTextChange(focused.value, focused.cursor, 'runtime');
-        log('info', 'focus', { app: focused.app, chars: focused.value.length });
-        break;
-      }
-      case 'blur':
-        if (focused) {
-          focused = null;
-          ring.clear();
-          bootResult.resetBufferState();
-        }
-        break;
-      case 'change': {
-        if (!focused) break;
-        const value = String(ev['value'] ?? '');
-        const cursor = Number(ev['cursor'] ?? 0);
-        // Duplicate-notification guard (Spotlight fires 2-3 identical
-        // AXValueChanged per keystroke) — see shouldDropDuplicateChange.
-        if (shouldDropDuplicateChange(value, cursor, focused, ring.isEcho(value))) break;
-        const prev = focused.value;
-        focused.value = value;
-        focused.cursor = cursor;
-        if (ring.isEcho(value)) {
-          bootResult.notifyTextChange(value, cursor, 'runtime');
-          break;
-        }
-        // Not our write → the user owns the buffer now; stale echoes of
-        // older frames must not masquerade as ours after this point.
-        ring.clear();
-        const arm = freshMarkerAtCursor(value, cursor, prev);
-        if (arm !== null) {
-          bootResult.dispatchKey({
-            key: '_',
-            modifiers: { ctrl: false, alt: false, shift: false, meta: false },
-            text: value.slice(0, arm) + value.slice(arm + 1),
-            cursorOffset: arm,
-          });
-        }
-        bootResult.notifyTextChange(value, cursor, 'user');
-        break;
-      }
-      case 'cursor':
-        if (focused) focused.cursor = Number(ev['cursor'] ?? 0);
-        break;
-      case 'writeAck':
-        if (!ev['ok']) {
-          log('warn', 'AX write failed — resyncing from the element', ev);
-          send({ cmd: 'read' });
-        } else if (ev['method'] !== lastAckMethod) {
-          // Once per focus: 'replace-attr' = atomic selection-free
-          // (WebKit/Electron); 'selection' = save/restore transaction.
-          lastAckMethod = String(ev['method'] ?? '?');
-          log('info', 'write path', { method: lastAckMethod, app: focused?.app });
-        }
-        break;
-      default: break;
-    }
-  });
+  rl.on('line', (line: string) => core.handleLine(line));
 
   log('info', 'daemon started — universal AX host (focused text element, any app)');
 }
