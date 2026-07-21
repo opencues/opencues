@@ -118,7 +118,19 @@ daemon env `OPENCUES_WIN_OVERLAY_STYLE=underline|wash|repaint` picks the
 treatment and rides every `render` message — restart the daemon to
 switch, no Windows-side rebuild:
 
-- `underline` (default) — thin gray line under each cue word; the
+- `live` (default) — per-span **DWM thumbnails**: a live, sharp,
+  GPU-composited mirror of the word itself (source-rect-cropped from
+  the field's top-level window) drawn 1:1 over the word at ~65%
+  opacity above a gray underlay (accent underlay for the active span).
+  Caret blink, selections and edits show through in real time — no
+  capture, no cache, no staleness by construction. Spike-proven
+  2026-07-21 (`native/composition-spike/`; the composition
+  BackdropBrush route was rejected there — host backdrop is pre-
+  blurred by design). Plain Win32 `dwmapi`, so it lives in the
+  Add-Type shim like everything else. NOTE: thumbnails ignore the
+  window's LWA alpha — the typing/scroll suppressors drive thumbnail
+  opacity explicitly alongside the window fade.
+- `underline` — thin gray line under each cue word; the
   active/cycling span gets a thicker blue line. Robust everywhere.
 - `wash` — translucent gray rectangle over the word (whole-window
   alpha + color-key). Closest cheap approximation of the terminal dim.

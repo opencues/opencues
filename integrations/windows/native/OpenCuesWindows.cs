@@ -196,6 +196,14 @@ namespace OpenCues
         // without a per-field HWND (WPF, Chromium) -> screen fallback.
         internal static IntPtr AttachedHwndForCapture() { return _attachedHwnd; }
 
+        // Live-style source (2026-07-21): DWM thumbnails require a TOP-LEVEL
+        // source window. Captured at attach: the field HWND's root ancestor,
+        // or the foreground window for HWND-less fields (WPF).
+        [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+        const uint GA_ROOT = 2;
+        internal static IntPtr _attachedTopHwnd = IntPtr.Zero;
+        internal static IntPtr AttachedTopLevelForLive() { return _attached ? _attachedTopHwnd : IntPtr.Zero; }
+
         static void NudgeTargetPaint()
         {
             if (!_attachedIsEdit) return;
@@ -509,8 +517,9 @@ namespace OpenCues
                 string cls;
                 _attachedIsEdit = IsEditClassHwnd(h, out cls);
                 _attachedHwnd = h;
+                _attachedTopHwnd = h != IntPtr.Zero ? GetAncestor(h, GA_ROOT) : GetForegroundWindow();
             }
-            catch { _attachedHwnd = IntPtr.Zero; _attachedIsEdit = false; }
+            catch { _attachedHwnd = IntPtr.Zero; _attachedIsEdit = false; _attachedTopHwnd = IntPtr.Zero; }
             _hookedEl = el;
             _hookedElId = elId;
             Log("debug", "change events hooked (value=" + (_valueChangedHandler != null) + " text=" + (_textChangedHandler != null)
@@ -528,6 +537,7 @@ namespace OpenCues
             _hookedElId = int.MinValue;
             _elementEventsWorking = false;
             _attachedHwnd = IntPtr.Zero;
+            _attachedTopHwnd = IntPtr.Zero;
             _attachedIsEdit = false;
         }
 
@@ -3416,6 +3426,7 @@ namespace OpenCues
         {
             _inkSuppressed = true;
             SetInkAlpha(0);
+            SetThumbOpacity(0);   // thumbnails ignore window alpha - hide them explicitly
         }
 
         // Fade the ink back to the style's steady alpha over ~150ms.
@@ -3446,6 +3457,9 @@ namespace OpenCues
             _fadeAlpha += 45;                                    // ~6 steps x 25ms
             if (_fadeAlpha >= target) { _fadeAlpha = target; _fadeTimer.Stop(); }
             SetInkAlpha((byte)_fadeAlpha);
+            // Live mirrors fade in step with the underlay.
+            if (_style == "live")
+                SetThumbOpacity((byte)(LIVE_MIRROR_OPACITY * _fadeAlpha / Math.Max(1, target)));
         }
 
         // Called from the shim's poll thread. Null/empty rects hide the ink.
@@ -3458,14 +3472,141 @@ namespace OpenCues
                     bool styleChanged = style != null && style != _style;
                     if (style != null) _style = style;
                     var next = rects ?? new List<OverlaySpanRect>();
-                    if (styleChanged) { ApplyLayered(); ClearCapCache(); }
+                    if (styleChanged) { ApplyLayered(); ClearCapCache(); ClearThumbnails(); }
                     if (_style == "capture") EnsureCaptures(next);
                     else if (_capCache.Count > 0) ClearCapCache();
+                    if (_style == "live") EnsureThumbnails(next);
+                    else ClearThumbnails();
                     _rects = next;
                     Invalidate();
                 }));
             }
             catch { /* form closing / handle gone - overlay is cosmetic */ }
+        }
+
+        // ---- live style (DWM thumbnails, spike-proven 2026-07-21) --------
+        // One thumbnail per span rect: a live, sharp, GPU-composited mirror
+        // of the word itself (source-rect-cropped from the field's TOP-LEVEL
+        // window), drawn 1:1 over the word at partial opacity. DWM paints
+        // thumbnails ABOVE the destination window's own content, so the
+        // OnPaint underlay (gray / accent) shows through the mirror = the
+        // dim. No capture, no cache, no staleness: caret blink, selections
+        // and edits show through in real time. NOTE: thumbnails ignore the
+        // window's LWA alpha, so the typing/scroll suppressors drive
+        // thumbnail OPACITY explicitly alongside the window fade.
+        [DllImport("dwmapi.dll")] static extern int DwmRegisterThumbnail(IntPtr dest, IntPtr src, out IntPtr thumb);
+        [DllImport("dwmapi.dll")] static extern int DwmUpdateThumbnailProperties(IntPtr thumb, ref DwmThumbProps props);
+        [DllImport("dwmapi.dll")] static extern int DwmUnregisterThumbnail(IntPtr thumb);
+        [DllImport("user32.dll")] static extern bool ClientToScreen(IntPtr hwnd, ref NPoint p);
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct NPoint { public int X, Y; }
+        [StructLayout(LayoutKind.Sequential)]
+        struct NRect { public int Left, Top, Right, Bottom; }
+        [StructLayout(LayoutKind.Sequential)]
+        struct DwmThumbProps
+        {
+            public uint dwFlags;
+            public NRect rcDestination;
+            public NRect rcSource;
+            public byte opacity;
+            [MarshalAs(UnmanagedType.Bool)] public bool fVisible;
+            [MarshalAs(UnmanagedType.Bool)] public bool fSourceClientAreaOnly;
+        }
+        const uint TNP_DEST = 0x1, TNP_SRC = 0x2, TNP_OPACITY = 0x4, TNP_VISIBLE = 0x8, TNP_SRCCLIENT = 0x10;
+        const byte LIVE_MIRROR_OPACITY = 166;   // ~65% live word over the underlay = the dim
+
+        // Guarded by _thumbLock: the UI thread reconciles; the hook thread
+        // zeroes opacity on instant-hide.
+        readonly object _thumbLock = new object();
+        readonly List<IntPtr> _thumbs = new List<IntPtr>();
+        byte _thumbCurOpacity = LIVE_MIRROR_OPACITY;
+
+        void ClearThumbnails()
+        {
+            lock (_thumbLock)
+            {
+                foreach (var t in _thumbs) { try { DwmUnregisterThumbnail(t); } catch { } }
+                if (_thumbs.Count > 0) WindowsShim.OverlayLog("live: cleared " + _thumbs.Count + " thumbnail(s)");
+                _thumbs.Clear();
+            }
+        }
+
+        void EnsureThumbnails(List<OverlaySpanRect> rects)
+        {
+            IntPtr srcTop = WindowsShim.AttachedTopLevelForLive();
+            if (srcTop == IntPtr.Zero || rects.Count == 0) { ClearThumbnails(); return; }
+            lock (_thumbLock)
+            {
+                int before = _thumbs.Count;
+                while (_thumbs.Count > rects.Count)
+                {
+                    try { DwmUnregisterThumbnail(_thumbs[_thumbs.Count - 1]); } catch { }
+                    _thumbs.RemoveAt(_thumbs.Count - 1);
+                }
+                while (_thumbs.Count < rects.Count)
+                {
+                    IntPtr t;
+                    int hr = DwmRegisterThumbnail(Handle, srcTop, out t);
+                    if (hr != 0 || t == IntPtr.Zero)
+                    {
+                        WindowsShim.OverlayLog("live: DwmRegisterThumbnail failed hr=0x" + hr.ToString("x8"));
+                        foreach (var th in _thumbs) { try { DwmUnregisterThumbnail(th); } catch { } }
+                        _thumbs.Clear();
+                        return;
+                    }
+                    _thumbs.Add(t);
+                }
+                // Source coords are the source window's CLIENT space.
+                var origin = new NPoint { X = 0, Y = 0 };
+                try { ClientToScreen(srcTop, ref origin); } catch { }
+                byte op = _inkSuppressed ? (byte)0 : _thumbCurOpacity;
+                for (int i = 0; i < rects.Count; i++)
+                {
+                    var r = rects[i];
+                    int w = Math.Max(1, (int)Math.Ceiling(r.W));
+                    int h = Math.Max(1, (int)Math.Ceiling(r.H));
+                    var props = new DwmThumbProps
+                    {
+                        dwFlags = TNP_DEST | TNP_SRC | TNP_OPACITY | TNP_VISIBLE | TNP_SRCCLIENT,
+                        rcDestination = new NRect
+                        {
+                            Left = (int)r.X - Bounds.X,
+                            Top = (int)r.Y - Bounds.Y,
+                            Right = (int)r.X - Bounds.X + w,
+                            Bottom = (int)r.Y - Bounds.Y + h,
+                        },
+                        rcSource = new NRect
+                        {
+                            Left = (int)r.X - origin.X,
+                            Top = (int)r.Y - origin.Y,
+                            Right = (int)r.X - origin.X + w,
+                            Bottom = (int)r.Y - origin.Y + h,
+                        },
+                        opacity = op,
+                        fVisible = true,
+                        fSourceClientAreaOnly = true,
+                    };
+                    try { DwmUpdateThumbnailProperties(_thumbs[i], ref props); } catch { }
+                }
+                if (before != _thumbs.Count)
+                    WindowsShim.OverlayLog("live: " + _thumbs.Count + " thumbnail(s) active");
+            }
+        }
+
+        // Instant/faded opacity for the live mirrors - callable from any
+        // thread (the hook thread on instant-hide, the fade timer on the
+        // UI thread).
+        void SetThumbOpacity(byte op)
+        {
+            lock (_thumbLock)
+            {
+                var props = new DwmThumbProps { dwFlags = TNP_OPACITY, opacity = op };
+                foreach (var t in _thumbs)
+                {
+                    try { DwmUpdateThumbnailProperties(t, ref props); } catch { }
+                }
+            }
         }
 
         // ---- capture style ------------------------------------------------
@@ -3724,6 +3865,14 @@ namespace OpenCues
                 float y = r.Y - Bounds.Y;
                 switch (_style)
                 {
+                    case "live":
+                        {
+                            // Underlay only - DWM paints the live mirror above
+                            // this at LIVE_MIRROR_OPACITY; the blend is the dim.
+                            using (var b = new SD.SolidBrush(r.Active ? ActiveColor : DimColor))
+                                g.FillRectangle(b, x, y, r.W, r.H);
+                            break;
+                        }
                     case "wash":
                         {
                             using (var b = new SD.SolidBrush(r.Active ? ActiveColor : DimColor))
@@ -3758,7 +3907,7 @@ namespace OpenCues
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) ClearCapCache();
+            if (disposing) { ClearCapCache(); ClearThumbnails(); }
             base.Dispose(disposing);
         }
     }

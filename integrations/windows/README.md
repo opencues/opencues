@@ -102,9 +102,10 @@ blanks) — the capability is decided per focused field.
 Try the three dim looks (restart the daemon to switch):
 
 ```bash
-OPENCUES_WIN_OVERLAY_STYLE=underline oc-windows   # thin gray underline (default)
+oc-windows                                        # default: live (DWM-thumbnail mirror, dimmed in real time)
+OPENCUES_WIN_OVERLAY_STYLE=capture   oc-windows   # snapshot of the app's own glyphs, dimmed
+OPENCUES_WIN_OVERLAY_STYLE=underline oc-windows   # thin gray underline
 OPENCUES_WIN_OVERLAY_STYLE=wash      oc-windows   # translucent gray tint over the word
-OPENCUES_WIN_OVERLAY_STYLE=capture   oc-windows   # the app's own glyphs, screen-captured and dimmed (terminal look)
 ```
 
 Opt out entirely with `OPENCUES_WIN_PHASE2=0` (daemon), or disable just

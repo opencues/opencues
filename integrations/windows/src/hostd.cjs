@@ -63,16 +63,18 @@ const PORT = parseInt(process.env.OPENCUES_WIN_PORT || '', 10) || 51789;
 const PHASE2 = process.env.OPENCUES_WIN_PHASE2 !== '0';
 // Overlay dim treatment, shipped to the shim in every `render` message so
 // the looks can be compared without a Windows-side rebuild:
+//   live      — DEFAULT. Per-span DWM thumbnails: a live, sharp, GPU-
+//               composited mirror of the word itself at partial opacity
+//               over a gray underlay. Caret blink / selections / edits
+//               show through in real time — no capture, no cache, no
+//               staleness by construction (spike-proven 2026-07-21).
+//   capture   — snapshot fallback: PrintWindow/screen-grab the word and
+//               redraw its pixels luminance-dimmed.
 //   underline — thin gray line under cue words (Grammarly-style)
 //   wash      — translucent gray rectangle over the word
-//   capture   — screen-capture the word and redraw the APP'S OWN glyph
-//               pixels dimmed (luminance pulled toward the local
-//               background) — the true terminal gray, no font guessing.
-//               (Replaces the retired `repaint` style, which re-drew the
-//               word in our own font and misaligned everywhere.)
-const OVERLAY_STYLES = ['underline', 'wash', 'capture'];
-const OVERLAY_STYLE_RAW = String(process.env.OPENCUES_WIN_OVERLAY_STYLE || 'underline').toLowerCase();
-const OVERLAY_STYLE = OVERLAY_STYLES.includes(OVERLAY_STYLE_RAW) ? OVERLAY_STYLE_RAW : 'underline';
+const OVERLAY_STYLES = ['live', 'capture', 'underline', 'wash'];
+const OVERLAY_STYLE_RAW = String(process.env.OPENCUES_WIN_OVERLAY_STYLE || 'live').toLowerCase();
+const OVERLAY_STYLE = OVERLAY_STYLES.includes(OVERLAY_STYLE_RAW) ? OVERLAY_STYLE_RAW : 'live';
 // Config/UI HTTP server (shared popup + keys/settings API). Defaults to
 // the socket port + 1. Set OPENCUES_WIN_CONFIG_PORT=0 to disable.
 const CONFIG_PORT = process.env.OPENCUES_WIN_CONFIG_PORT !== undefined
@@ -826,7 +828,7 @@ server.listen(PORT, HOST_BIND, () => {
   console.log(`▸ OpenCues Windows daemon listening on ${HOST_BIND}:${PORT}`);
   console.log(`  config: ${CUES_HOME}   LLM key: ${hasKey ? 'present' : 'MISSING (set GROQ_API_KEY)'}`);
   console.log(`  phase 2: ${PHASE2
-    ? `on — overlay style '${OVERLAY_STYLE}' (OPENCUES_WIN_OVERLAY_STYLE=underline|wash|capture)`
+    ? `on — overlay style '${OVERLAY_STYLE}' (OPENCUES_WIN_OVERLAY_STYLE=live|capture|underline|wash)`
     : 'off (OPENCUES_WIN_PHASE2=0)'}`);
   console.log(`  now start the Windows shim (from Windows PowerShell):`);
   console.log(`      powershell -ExecutionPolicy Bypass -File <repo>\\integrations\\windows\\native\\OpenCuesWindows.ps1 -Port ${PORT}`);
