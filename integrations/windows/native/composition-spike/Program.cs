@@ -16,9 +16,16 @@ namespace OpenCues.CompositionSpike
 {
     internal static class Program
     {
+        [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+
         [STAThread]
         static int Main()
         {
+            // Per-Monitor-V2 BEFORE any window exists: a DPI-unaware window
+            // on a scaled display is bitmap-stretched by Windows - the
+            // whole lens (and the backdrop sampled through it) renders
+            // blurry, which reads as a false FAIL on the sharpness check.
+            try { SetProcessDpiAwarenessContext(new IntPtr(-4)); } catch { }
             Console.WriteLine("[spike] composition backdrop spike starting");
             try
             {
