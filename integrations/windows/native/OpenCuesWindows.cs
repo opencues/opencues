@@ -744,7 +744,16 @@ namespace OpenCues
                 // element is unchanged and nothing signalled a change. See
                 // the _textDirty comment block for the exact triggers.
                 bool sameEl = elId == _lastElementId && _attached;
+                // During the FAST window (opened by the very keystroke, via
+                // the hook) read every tick unconditionally: RichEdit-class
+                // UIA providers coalesce their change events, so event-gated
+                // reads made the local span shift wait on the app's
+                // announcement of a change we already knew about ("waiting
+                // for something then moving", 2026-07-21). Event-gating
+                // still carries the idle cost to O(1).
+                bool fastNow = unchecked(Environment.TickCount - _fastUntil) < 0;
                 bool mustRead = !sameEl
+                    || fastNow
                     || _textDirty
                     || _bracketOpen                     // reconcile needs fresh reads
                     || !_elementEventsWorking           // no events -> per-tick reads
@@ -3593,7 +3602,12 @@ namespace OpenCues
 
         static string BgKey(OverlaySpanRect r)
         {
-            return ((int)r.X) + "," + ((int)r.Y) + "," + ((int)r.W) + "," + ((int)r.H) + "," + (r.Word ?? "");
+            // Deliberately POSITION-INDEPENDENT (word + line height only):
+            // a field's background colour doesn't change as a span slides,
+            // and keying on X/Y invalidated every span on every keystroke -
+            // one full-window PrintWindow per tick during typing, the
+            // "computation" weight in the 2026-07-21 lockstep report.
+            return (r.Word ?? "") + "|" + ((int)r.H) + (r.Active ? "|a" : "");
         }
 
         void EnsureSpanBackgrounds(List<OverlaySpanRect> rects, IntPtr srcTop)
