@@ -3592,12 +3592,6 @@ namespace OpenCues
         readonly object _thumbLock = new object();
         readonly List<IntPtr> _thumbs = new List<IntPtr>();
         readonly List<byte> _thumbTargets = new List<byte>();
-        // The active span's FIXED accent ring, painted OUTSIDE the word
-        // rect (2026-07-21 feedback: blending the accent with live pixels
-        // made its colour depend on whatever was sampled underneath - a
-        // subtractive change left a differently-coloured box. A painted
-        // ring is pure ink: one colour, always).
-        const int ACTIVE_RING_PX = 2;
 
         // Per-span underlay colours for the TEXT-ONLY live dim (2026-07-21
         // feedback: a gray underlay dims the background too - blend math:
@@ -3704,9 +3698,10 @@ namespace OpenCues
                     var r = rects[i];
                     int w = Math.Max(1, (int)Math.Ceiling(r.W));
                     int h = Math.Max(1, (int)Math.Ceiling(r.H));
-                    // Active span: PURE live word (no blend) inside a painted
-                    // fixed-colour ring; dim spans blend toward their bg.
-                    byte target = r.Active ? (byte)255 : LIVE_MIRROR_OPACITY;
+                    // Both span kinds blend at the same mirror opacity: dim
+                    // toward the estimated background, active over the solid
+                    // accent box.
+                    byte target = LIVE_MIRROR_OPACITY;
                     _thumbTargets[i] = target;
                     byte op = _inkSuppressed ? (byte)0 : target;
                     var props = new DwmThumbProps
@@ -4033,27 +4028,21 @@ namespace OpenCues
                 {
                     case "live":
                         {
-                            if (r.Active)
-                            {
-                                // Fixed-colour accent RING painted OUTSIDE the
-                                // word rect; the word itself shows as a pure
-                                // (100%-opacity) live mirror - no blend, so
-                                // the accent never shifts with sampled
-                                // content.
-                                using (var b = new SD.SolidBrush(ActiveColor))
-                                    g.FillRectangle(b, x - ACTIVE_RING_PX, y - ACTIVE_RING_PX,
-                                        r.W + 2 * ACTIVE_RING_PX, r.H + 2 * ACTIVE_RING_PX);
-                            }
-                            else
-                            {
-                                // Dim underlay = the span's estimated
-                                // BACKGROUND colour so only the TEXT dims
-                                // (background blends to itself).
-                                SD.Color u;
-                                if (!_bgCache.TryGetValue(BgKey(r), out u)) u = DimColor;
-                                using (var b = new SD.SolidBrush(u))
-                                    g.FillRectangle(b, x, y, r.W, r.H);
-                            }
+                            // Active: solid accent box under the live mirror at
+                            // LIVE_MIRROR_OPACITY. Note the blend palette is
+                            // CONSTANT per field (every bg pixel -> one pale
+                            // blue, every glyph pixel -> one dark blue); only
+                            // the perceived AVERAGE shifts with glyph density -
+                            // a mostly-empty box reads paler than a full one.
+                            // That's proportion, not colour drift (2026-07-21).
+                            // Dim: underlay = the span's estimated BACKGROUND
+                            // colour so only the TEXT dims (background blends
+                            // to itself).
+                            SD.Color u;
+                            if (r.Active) u = ActiveColor;
+                            else if (!_bgCache.TryGetValue(BgKey(r), out u)) u = DimColor;
+                            using (var b = new SD.SolidBrush(u))
+                                g.FillRectangle(b, x, y, r.W, r.H);
                             break;
                         }
                     case "wash":
