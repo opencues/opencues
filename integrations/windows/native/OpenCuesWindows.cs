@@ -188,6 +188,9 @@ namespace OpenCues
         // SMTO calls - the blast radius is accepted for this narrow case).
         [DllImport("user32.dll")] static extern bool RedrawWindow(IntPtr hwnd, IntPtr rectUpdate, IntPtr hrgnUpdate, uint flags);
         const uint RDW_UPDATENOW = 0x0100;
+        const uint RDW_INVALIDATE = 0x0001;
+        const uint RDW_ERASE = 0x0004;
+        const uint WM_SETREDRAW = 0x000B;
 
         // Capture source for the overlay (perf/quality opt 1, 2026-07-21):
         // the attached field's own HWND when it has one. PrintWindow on it
@@ -2406,6 +2409,16 @@ namespace OpenCues
                 // selection highlight hidden so it never flashes blue. Baseline-
                 // reset (fUndo=FALSE) then result (fUndo=TRUE) = ONE undo unit ->
                 // one Ctrl+Z restores the pre-command text.
+                //
+                // WM_SETREDRAW bracket (2026-07-21): the two-step rewrite has
+                // INTERMEDIATE model states (the baseline text; the emptied
+                // buffer inside each select-all replace). If DWM composites a
+                // frame mid-sequence, the field genuinely displays them - the
+                // capture style's settle guard hid that, but the LIVE mirror
+                // broadcasts every app frame ("flash with the empty letter").
+                // Suppressing redraw for the sequence means the screen (and
+                // the mirror) only ever receives the FINAL state.
+                SendMessageTimeoutW(hwnd, WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out res);
                 SendMessageTimeoutW(hwnd, EM_HIDESELECTION, new IntPtr(1), IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out res);
                 try
                 {
@@ -2421,6 +2434,9 @@ namespace OpenCues
                 finally
                 {
                     SendMessageTimeoutW(hwnd, EM_HIDESELECTION, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out res);
+                    // Redraw back on + ONE forced paint of the final state.
+                    SendMessageTimeoutW(hwnd, WM_SETREDRAW, new IntPtr(1), IntPtr.Zero, SMTO_ABORTIFHUNG, 1000, out res);
+                    try { RedrawWindow(hwnd, IntPtr.Zero, IntPtr.Zero, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW); } catch { }
                 }
 
                 string after;
