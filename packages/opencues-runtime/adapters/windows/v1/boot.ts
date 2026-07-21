@@ -56,6 +56,16 @@ export interface HostInfo extends CommonHostInfo {
 }
 
 export interface BootResult {
+  /** Runtime state objects — read-only diagnostics + the daemon's
+   *  local-alternation export (active span's alternatives shipped to
+   *  the shim per render push). Mirrors the event bridge's `state`. */
+  state: {
+    hlState: unknown;
+    dynDefs: unknown;
+    spanFillState: unknown;
+    selectorSatelliteState: unknown;
+    agentTaskState: unknown;
+  };
   dispatchKey(event: KeyEvent): boolean;
   notifyTextChange(text: string, cursorOffset: number, source: 'user' | 'runtime'): void;
   notifyCursorChange(text: string, cursorOffset: number, source: 'user' | 'runtime'): void;
@@ -230,6 +240,11 @@ export function boot(host: HostInfo): BootResult {
   }
 
   return {
+    // Runtime state, exposed for the daemon's local-alternation export
+    // (hostd ships the active span's alternatives to the shim with each
+    // render push) and for state-annotated push diagnostics. Same object
+    // set the OPENCUES_BRIDGE event bridge exposes.
+    state: { hlState, dynDefs, spanFillState, selectorSatelliteState, agentTaskState },
     dispatchKey(event) {
       return keyEvents.emitUntilConsumed(event, err => log('error', 'key handler threw', err));
     },

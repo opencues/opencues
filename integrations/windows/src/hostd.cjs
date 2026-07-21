@@ -426,9 +426,45 @@ function pushRender() {
     // side); a push with dim>0 means the spans left the daemon and the
     // failure is shim-side (rect resolve / paint).
     if (wire.dim.length > 0 || wire.hl) {
-      log('debug', `render push: dim=${wire.dim.length} hl=${wire.hl ? 1 : 0} textLen=${mirrorText.length}`);
+      let st = '';
+      try {
+        const s = bootResult.state;
+        st = ` hlActive=${s && s.hlState && s.hlState.active ? 1 : 0}`
+          + ` defs=${s && s.dynDefs ? s.dynDefs.size : -1}`
+          + ` spanFill=${s && s.spanFillState && s.spanFillState.active ? 1 : 0}`;
+      } catch { /* diagnostics only */ }
+      log('debug', `render push: dim=${wire.dim.length} hl=${wire.hl ? 1 : 0} textLen=${mirrorText.length}${st}`);
+    } else {
+      // Empty pushes CLEAR the overlay — log them too, or "marks
+      // disappeared" is indistinguishable from "no push happened".
+      log('debug', `render push: EMPTY textLen=${mirrorText.length}`);
     }
-    send({ t: 'render', dim: wire.dim, hl: wire.hl, style: OVERLAY_STYLE });
+    // Local alternation (2026-07-21): ship the ACTIVE span's alternatives
+    // with the push so the shim can apply the next one AT THE CHORD (one
+    // local TOM splice, ~20ms) instead of paying the chord→daemon→set-text
+    // round trip (~80ms). Only plain alternative cycles qualify — defs with
+    // a blankName (volume steps, list blanks, script-backed cycling) MUST
+    // keep the round trip because their side effects run here; sentence-cue
+    // defs are plain text cycles and qualify. The daemon stays
+    // authoritative: the shim still forwards the chord, this end applies
+    // the same deterministic step (same wrap math), and the resulting
+    // set-text reaches the shim as an identical no-op.
+    let alts = null;
+    try {
+      const dynDefs = bootResult.state && bootResult.state.dynDefs;
+      if (wire.hl && dynDefs && typeof dynDefs.entries === 'function') {
+        for (const [, def] of dynDefs.entries()) {
+          if (def.spanStart === wire.hl[0] && def.spanEnd === wire.hl[1]
+              && Array.isArray(def.alternatives) && def.alternatives.length > 1
+              && def.alternatives.length <= 32
+              && (!def.blankName || String(def.blankName).startsWith('sentence-cue:'))) {
+            alts = { s: def.spanStart, e: def.spanEnd, i: def.currentIndex, list: def.alternatives };
+            break;
+          }
+        }
+      }
+    } catch { /* alts are an optimization — never block the push */ }
+    send({ t: 'render', dim: wire.dim, hl: wire.hl, style: OVERLAY_STYLE, alts });
   });
 }
 

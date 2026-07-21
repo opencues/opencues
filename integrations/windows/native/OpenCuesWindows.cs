@@ -157,6 +157,20 @@ namespace OpenCues
             int now = Environment.TickCount;
             if (!_bracketOpen) { _bracketOpen = true; _bracketOpenedAt = now; _bracketBaseline = _lastSentText; }
             _bracketQuietAt = now + WRITE_QUIET_MS;
+            // Local span shift for OUR OWN writes (2026-07-21, glitchy
+            // cycling): the user-edit path has done this since the lockstep
+            // work, but self-writes left the overlay spans stale until the
+            // daemon's render push - a 100-250ms boxless/wrong-geometry gap
+            // per cycle step that no amount of clearing could make feel
+            // clean. The diff is knowable HERE; shift the spans and let the
+            // fast-window tick re-rect against the post-nudge layout, so
+            // the box reappears at TRUE new geometry ~1-2 ticks after the
+            // swap. The daemon's push still reconciles authoritatively.
+            ShiftLocalSpans(_lastSentText, text);
+            // With true geometry imminent, the chord-time blink only needs
+            // to outlive the nudge + one fast tick - not the whole push
+            // round trip.
+            if (_tomBlink && MirrorsBlinking) _mirrorRestoreAt = now + 30;
             _expectedEcho = text;
             _lastSentText = text;
             _lastWriteAt = now;   // capture paint-settle guard (see EnsureCaptures)
@@ -222,11 +236,36 @@ namespace OpenCues
             get { return _mirrorRestoreAt != 0 && unchecked(Environment.TickCount - _mirrorRestoreAt) < 0; }
         }
 
-        static void HideMirrorsForWrite()
+        // True while the current blink follows a TOM splice. A TOM write has
+        // NO selection churn to cover (document-model splice - no selection
+        // exists), so during ITS blink the active underlay may be skipped
+        // entirely: the accent box at STALE geometry over reflowing text is
+        // what reads as a selection highlight on compression cycles
+        // ("actually its our box", 2026-07-21). The whole-buffer select-all
+        // path keeps the underlay as the opaque cover - its churn is real.
+        internal static volatile bool _tomBlink;
+
+        static void HideMirrorsForWrite(bool tomNoChurn)
         {
-            _mirrorRestoreAt = Environment.TickCount + 60;
+            _tomBlink = tomNoChurn;
+            // The TOM blink must outlive the STALE-SPAN window: the render
+            // push carrying the post-write spans lands ~100-200ms after the
+            // write, and any tick repaint before it would re-draw the accent
+            // box at the old geometry (a fixed 60ms expired mid-gap - the
+            // ghost returned). The push handler ends the blink the moment
+            // real geometry arrives; 400ms is only the no-push safety cap.
+            _mirrorRestoreAt = Environment.TickCount + (tomNoChurn ? 400 : 60);
             var a = _overlay; if (a != null) a.SetThumbFraction(0);
             var b = _overlayVol; if (b != null) b.SetThumbFraction(0);
+            // The underlay is PAINTED content in a layered window - it stays
+            // on screen until something repaints. Zeroing the thumbnails is
+            // instant (DWM properties), but without this forced repaint the
+            // stale accent box survives the whole blink (the "blue ghost").
+            if (tomNoChurn)
+            {
+                if (a != null) a.RepaintNow();
+                if (b != null) b.RepaintNow();
+            }
         }
 
         static void MaybeRestoreMirrors()
@@ -376,11 +415,35 @@ namespace OpenCues
         {
             if (!_inkHidden) return;
             if (_scrollHidden) return;   // scroll suppression owns visibility right now
+            if (_bracketOpen) return;    // self-writes in flight - the mirror would show their transient states
             if (unchecked(Environment.TickCount - _typingQuietAt) < 0) return;
             _inkHidden = false;
+            Log("debug", "ink: restored (fade-in)");
             var ov = _overlayVol;
-            if (ov != null) ov.FadeInInk();   // volatile spans fade back; stable never left
+            if (ov != null) ov.FadeInInk();   // volatile spans fade back
+            var os = _overlay;
+            if (os != null) os.FadeInInk();   // stable window too - BlankInkForWrite hides BOTH
             UpdateOverlay();                  // fresh rects + hot recaptures for what fades in
+        }
+
+        // Blanket ink clear for text-REWRITING actions (2026-07-21: "the
+        // overlay MUST clear before the input reaches the app"). A cycling
+        // chord or a runtime write is about to reflow an arbitrary amount
+        // of text - worst case a Down-arrow revert of a whole drafted email
+        // back to 'draft email _' - and every painted mark is potentially
+        // at stale geometry the moment the change lands. Window alpha goes
+        // to 0 INSTANTLY (one user32 call, no repaint round trip); rects
+        // and captures keep updating invisibly underneath, and
+        // MaybeRestoreInk fades back in once the write bracket closes on
+        // settled text - so the fade-in shows CURRENT geometry by
+        // construction. Typing keeps its lighter volatile-only hide.
+        static void BlankInkForWrite()
+        {
+            Log("debug", "ink: blanked for write");
+            _inkHidden = true;
+            _typingQuietAt = Environment.TickCount + 100;
+            var a = _overlay; if (a != null) a.HideInkNow();
+            var b = _overlayVol; if (b != null) b.HideInkNow();
         }
 
         // Scroll suppression (anti-flash step 6, 2026-07-20): scrolling
@@ -400,6 +463,7 @@ namespace OpenCues
             BumpFastPoll();
             if (_scrollHidden) return;
             _scrollHidden = true;
+            Log("debug", "ink: scroll-hide ON");
             var ov = _overlay;
             if (ov != null) ov.HideInkNow();
             var ovv = _overlayVol;
@@ -411,6 +475,7 @@ namespace OpenCues
             if (!_scrollHidden) return;
             if (unchecked(Environment.TickCount - _scrollQuietAt) < 0) return;
             _scrollHidden = false;
+            Log("debug", "ink: scroll-hide OFF (settled)");
             UpdateOverlay();                  // fresh rects + captures at the settled position
             var ov = _overlay;
             if (ov != null) ov.FadeInInk();
@@ -717,7 +782,28 @@ namespace OpenCues
                         }
                         break;
                     case "set-text":
-                        ApplySetText(Str(map, "text"));
+                        {
+                            string stx = Str(map, "text");
+                            lock (_applyLock)
+                            {
+                                // Local alternation already applied this exact
+                                // text at chord time? The daemon's reconciling
+                                // write is a no-op - skip the splice + bracket.
+                                if (stx != null && _lastSentText != null && EolNorm(stx) == EolNorm(_lastSentText))
+                                    Log("debug", "set-text matches local state (" + stx.Length + " chars) - skipped");
+                                else
+                                {
+                                    // Rewrites reflow arbitrary text - ALL ink
+                                    // off before the app sees the change.
+                                    // Animation-frame-sized tail edits keep
+                                    // their ink (they can't move earlier marks).
+                                    if (stx != null && (_lastSentText == null
+                                        || Math.Abs(stx.Length - _lastSentText.Length) > 6))
+                                        BlankInkForWrite();
+                                    ApplySetText(stx);
+                                }
+                            }
+                        }
                         // Our OWN write is a known event - no need to wait for
                         // the app's change event to re-rect. The render message
                         // with the post-write spans is typically already queued
@@ -853,6 +939,7 @@ namespace OpenCues
                 _expectedEcho = null;
                 _recentWrites.Clear();
                 _bracketOpen = false;
+                lock (_applyLock) _altsList = null;   // new field - stale alternatives must not splice here
                 _attached = true;
                 StatusLine = "on: " + (app ?? "text field");
                 Log("info", "attached: " + (app ?? "text field") + " ("
@@ -943,6 +1030,7 @@ namespace OpenCues
             // daemon's render push reconciles (prunes edited-word defs)
             // ~100ms behind.
             ShiftLocalSpans(_lastSentText, cur);
+            lock (_applyLock) _altsList = null;   // user edited - span offsets stale; next push re-ships
             _lastSentText = cur;
             _expectedEcho = null;
             SendRaw("{\"t\":\"text\",\"text\":" + JStr(cur)
@@ -961,6 +1049,7 @@ namespace OpenCues
             _expectedEcho = null;
             _recentWrites.Clear();
             _bracketOpen = false;
+            lock (_applyLock) _altsList = null;   // local-alternation cache dies with the field
             _lastApp = null;
             UnhookElementEvents();
             _attachMode = AttachMode.None;
@@ -2465,6 +2554,12 @@ namespace OpenCues
                 int dsfx = CommonSuffixLen(cur, emText, dp);
                 int remA = dp, remB = cur.Length - dsfx;
                 string mid = emText.Substring(dp, emText.Length - dsfx - dp);
+                // Compression: blink BEFORE the splice. Blinking after it
+                // left one composited frame showing the old accent box over
+                // the already-reflowed text (the residual flash). The box is
+                // wiped first, then the text moves, then the render push
+                // ends the blink with true geometry.
+                if (!isFrame && mid.Length < remB - remA) HideMirrorsForWrite(true);
                 if (isFrame) TomInvokeUndo(doc, TOM_SUSPEND);
                 try
                 {
@@ -2593,7 +2688,7 @@ namespace OpenCues
                         && mid.IndexOf('\r') < 0 && mid.IndexOf('\n') < 0 && mid.IndexOf('\v') < 0;
                     if (breakFree && (remB - remA) + mid.Length < 2000)
                     {
-                        HideMirrorsForWrite();   // any residual word-sized highlight stays invisible
+                        HideMirrorsForWrite(false);   // any residual word-sized highlight stays invisible
                         SendMessageTimeoutW(hwnd, EM_SETSEL, new IntPtr(remA), new IntPtr(remB), SMTO_ABORTIFHUNG, 1500, out res);
                         SendMessageTimeoutText(hwnd, EM_REPLACESEL, new IntPtr(1) /* fUndo=TRUE */, mid, SMTO_ABORTIFHUNG, 1500, out res);
                         string spliced;
@@ -2613,7 +2708,7 @@ namespace OpenCues
                 // selection highlight hidden so it never flashes blue. Baseline-
                 // reset (fUndo=FALSE) then result (fUndo=TRUE) = ONE undo unit ->
                 // one Ctrl+Z restores the pre-command text.
-                HideMirrorsForWrite();   // live mirrors blink off for the churn (see MirrorsBlinking)
+                HideMirrorsForWrite(false);   // live mirrors blink off for the churn (see MirrorsBlinking)
                 //
                 // WM_SETREDRAW bracket (2026-07-21): the two-step rewrite has
                 // INTERMEDIATE model states (the baseline text; the emptied
@@ -2864,6 +2959,22 @@ namespace OpenCues
                 bool down = m == WM_KEYDOWN || m == WM_SYSKEYDOWN;
                 bool up = m == WM_KEYUP || m == WM_SYSKEYUP;
                 uint vk = info.vkCode;
+                // Alt-hold bookkeeping for the menu-bar mask (see
+                // InjectMaskedAltUp). LL hooks report the distinct L/R vks.
+                if (vk == 0xA4 || vk == 0xA5 || vk == VK_MENU)
+                {
+                    if (down && !_altPhysDown) { _altPhysDown = true; _altHoldMasked = false; }
+                    if (up)
+                    {
+                        _altPhysDown = false;
+                        if (_altHoldMasked)
+                        {
+                            _altHoldMasked = false;
+                            if (InjectMaskedAltUp(vk, (info.flags & 0x01) != 0))   // LLKHF_EXTENDED
+                                return new IntPtr(1);   // replaced by the injected [mask, Alt-up]
+                        }
+                    }
+                }
                 bool isArrow = vk == VK_UP || vk == VK_DOWN || vk == VK_LEFT || vk == VK_RIGHT;
                 if (!isArrow && vk != VK_ESCAPE)
                 {
@@ -2903,7 +3014,11 @@ namespace OpenCues
                     return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
                 if (vk == VK_ESCAPE)
                 {
-                    if (down) QueueKeyMessage("escape", 0, false);
+                    if (down)
+                    {
+                        lock (_applyLock) _altsList = null;   // Escape drops the highlight - local cycling with it
+                        QueueKeyMessage("escape", 0, false);
+                    }
                     return CallNextHookEx(_hookHandle, nCode, wParam, lParam);   // observe-only
                 }
                 if (up)
@@ -2922,6 +3037,22 @@ namespace OpenCues
                 _caretDirty = true;
                 _swallowedDown.Add(vk);
                 MaskAltTap();
+                _altHoldMasked = true;   // re-mask at Alt release too (autorepeat re-arms the menu state)
+                // Up/down = a substitution is coming that will REFLOW the
+                // text (unlike left/right, which only moves the highlight
+                // over unchanged geometry). Clear the active box at CHORD
+                // time - same instant nav's box-move happens - so it is
+                // never composited over reflowing text; the render push
+                // with true post-write geometry repaints it. And when the
+                // daemon pre-shipped the active span's alternatives, apply
+                // the next one locally NOW (off the hook thread - a LL
+                // hook that blocks gets removed by Windows).
+                if (vk == VK_UP || vk == VK_DOWN)
+                {
+                    BlankInkForWrite();   // ALL ink off before the rewrite reaches the app
+                    int dir = vk == VK_UP ? 1 : -1;
+                    ThreadPool.QueueUserWorkItem(delegate { TryLocalAltCycle(dir); });
+                }
                 QueueKeyMessage(KeyName(vk), (ushort)vk, true);
                 return new IntPtr(1);   // swallow - the app never sees the chord
             }
@@ -2960,6 +3091,33 @@ namespace OpenCues
                 new INPUT { type = INPUT_KEYBOARD, U = new InputUnion { ki = new KEYBDINPUT { wVk = VK_MASK_NOOP, wScan = 0, dwFlags = KEYEVENTF_KEYUP, time = 0, dwExtraInfo = INJECT_MARK } } },
             };
             SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+        }
+
+        // Release-time mask. The per-chord MaskAltTap alone was not enough:
+        // LL hooks see autorepeat as indistinguishable repeated keydowns,
+        // and an Alt AUTOREPEAT down AFTER the chord's mask re-arms the
+        // system's menu-activation state - pause while still holding
+        // Ctrl+Alt after the last arrow and the release popped the menu bar
+        // anyway. So when the physical Alt-up arrives after a hold in which
+        // we swallowed a chord, the hook swallows it and injects
+        // [mask-down, mask-up, Alt-up] instead: the last keydown the app
+        // sees before Alt-up is ALWAYS the mask key. Returns true when the
+        // injection was fully sent (caller then swallows the physical up);
+        // on a partial SendInput the physical event passes through so the
+        // app can never miss an Alt-up (a stuck-Alt is worse than a menu
+        // flash).
+        static bool _altPhysDown;      // hook-thread only
+        static bool _altHoldMasked;    // a chord was swallowed during this hold
+        static bool InjectMaskedAltUp(uint altVk, bool extended)
+        {
+            var inputs = new INPUT[]
+            {
+                new INPUT { type = INPUT_KEYBOARD, U = new InputUnion { ki = new KEYBDINPUT { wVk = VK_MASK_NOOP, wScan = 0, dwFlags = 0, time = 0, dwExtraInfo = INJECT_MARK } } },
+                new INPUT { type = INPUT_KEYBOARD, U = new InputUnion { ki = new KEYBDINPUT { wVk = VK_MASK_NOOP, wScan = 0, dwFlags = KEYEVENTF_KEYUP, time = 0, dwExtraInfo = INJECT_MARK } } },
+                new INPUT { type = INPUT_KEYBOARD, U = new InputUnion { ki = new KEYBDINPUT { wVk = (ushort)altVk, wScan = 0, dwFlags = KEYEVENTF_KEYUP | (extended ? KEYEVENTF_EXTENDEDKEY : 0u), time = 0, dwExtraInfo = INJECT_MARK } } },
+            };
+            uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+            return sent == inputs.Length;
         }
 
         static void QueueKeyMessage(string key, ushort vk, bool track)
@@ -3206,6 +3364,46 @@ namespace OpenCues
         static int[] _hlSpan = null;
         static string _overlayStyle = "underline";
 
+        // ─── Local alternation (2026-07-21) ─────────────────────────────
+        // The daemon ships the ACTIVE span's alternatives with each render
+        // push; an up/down chord applies the next one HERE (one TOM
+        // splice, ~20ms) instead of waiting out the chord→daemon→set-text
+        // round trip (~80ms). The chord is still forwarded — the daemon
+        // applies the same deterministic step (cycling.ts wrap math) and
+        // its reconciling set-text arrives as an identical no-op. Any
+        // disagreement (satellite active, stale cache) self-heals: the
+        // daemon's authoritative text simply differs and applies normally.
+        // Cleared on detach / user divergence / Escape; every render push
+        // overwrites it, so staleness is bounded by push cadence.
+        static readonly object _applyLock = new object();
+        static List<string> _altsList;
+        static int _altsIndex, _altsS, _altsE;
+
+        static void TryLocalAltCycle(int direction)
+        {
+            try
+            {
+                lock (_applyLock)
+                {
+                    var list = _altsList;
+                    if (list == null || !_attached || !_fieldCycling) return;
+                    string cur = _lastSentText;
+                    if (cur == null || _altsS < 0 || _altsE > cur.Length || _altsE <= _altsS) return;
+                    if (_altsIndex < 0 || _altsIndex >= list.Count) return;
+                    if (cur.Substring(_altsS, _altsE - _altsS) != list[_altsIndex]) return;   // stale — let the daemon handle it
+                    int n = list.Count;
+                    int next = ((_altsIndex + direction) % n + n) % n;
+                    string alt = list[next] ?? "";
+                    string newText = cur.Substring(0, _altsS) + alt + cur.Substring(_altsE);
+                    ApplySetText(newText);
+                    _altsIndex = next;
+                    _altsE = _altsS + alt.Length;
+                    Log("debug", "local alt cycle -> index " + next + " (" + alt.Length + " chars)");
+                }
+            }
+            catch (Exception ex) { Log("debug", "local alt cycle failed: " + ex.Message); }
+        }
+
         // Shift the local span model by a text edit's diff: spans before the
         // edit keep their offsets, spans after it slide by the delta, spans
         // CONTAINING the edit stretch/shrink at the end (an approximation -
@@ -3282,7 +3480,37 @@ namespace OpenCues
             if (!string.IsNullOrEmpty(style)) _overlayStyle = style;
             _dimSpans = dim;
             _hlSpan = hl;
+            // Local-alternation cache: parse the alts block riding the push
+            // (or clear it when absent — a push without alts means nothing
+            // locally cycleable is active).
+            lock (_applyLock)
+            {
+                _altsList = null;
+                object av;
+                var altsMap = map.TryGetValue("alts", out av) ? av as Dictionary<string, object> : null;
+                if (altsMap != null && altsMap.ContainsKey("list")
+                    && altsMap.ContainsKey("s") && altsMap["s"] is double
+                    && altsMap.ContainsKey("e") && altsMap["e"] is double
+                    && altsMap.ContainsKey("i") && altsMap["i"] is double)
+                {
+                    var lo = altsMap["list"] as List<object>;
+                    if (lo != null && lo.Count > 1)
+                    {
+                        var parsed = new List<string>();
+                        foreach (var o in lo) parsed.Add(o as string ?? "");
+                        _altsList = parsed;
+                        _altsS = (int)(double)altsMap["s"];
+                        _altsE = (int)(double)altsMap["e"];
+                        _altsIndex = (int)(double)altsMap["i"];
+                    }
+                }
+            }
             if (dim.Count > 0 || hl != null) BumpFastPoll();   // spans changed - keep re-rects snappy
+            // A render push carries the post-write spans - the TOM blink's
+            // job (hide the stale accent box until true geometry exists) is
+            // done; end it so THIS UpdateOverlay paints the box at the new
+            // rects and restores the mirrors.
+            if (_tomBlink) { _tomBlink = false; _mirrorRestoreAt = Environment.TickCount; }
             UpdateOverlay();
         }
 
@@ -3316,6 +3544,12 @@ namespace OpenCues
             var formVol = _overlayVol;
             if (form == null || formVol == null) return;
             var rects = ComputeOverlayRects();
+            if (rects.Count != _lastRectLogCount)
+            {
+                _lastRectLogCount = rects.Count;
+                Log("debug", "overlay rects: " + rects.Count + " (dim=" + _dimSpans.Count
+                    + " hl=" + (_hlSpan != null ? 1 : 0) + " textLen=" + (_lastSentText == null ? 0 : _lastSentText.Length) + ")");
+            }
             // Remember where the first rect landed - the per-tick movement
             // probe compares against this to catch scroll/drag/zoom (which
             // fire no UIA event we subscribe to).
@@ -3348,12 +3582,29 @@ namespace OpenCues
             if (_dimSpans.Count == 0 && _hlSpan == null) return;
             bool force = _overlayDirty;
             _overlayDirty = false;
-            if (!force && OverlayRectsMoved())
+            // Movement probe, wall-clock throttled: one span's rect resolve
+            // (~5 cross-process COM calls) per probe. Untrottled it ran on
+            // EVERY tick - ~125x/sec during the 8ms fast window - for a
+            // signal (scroll/drag/zoom) that 40ms granularity catches just
+            // as well; the wheel hook + PgUp/PgDn already detect the common
+            // scrolls instantly, this probe is the no-input-event fallback
+            // (scrollbar drags, window drags, momentum tails).
+            if (!force && unchecked(Environment.TickCount - _lastProbeAt) >= PROBE_INTERVAL_MS)
             {
-                force = true;
-                // Rects moved with no typing signal: scrollbar drag, window
-                // drag, or momentum scroll - hide everything until it settles.
-                ScrollHideNow();
+                _lastProbeAt = Environment.TickCount;
+                if (OverlayRectsMoved())
+                {
+                    force = true;
+                    // Rects moved with no typing signal: scrollbar drag, window
+                    // drag, or momentum scroll - hide everything until it settles.
+                    // EXCEPT right after our own write: a substitution's reflow
+                    // moves rects too, and treating that as scroll charged every
+                    // reflowing cycle the full hide+settle+fade (~500ms of
+                    // missing tint - the "cycle still a bit slow", 2026-07-21
+                    // log: apply 06.718 -> captured 07.254). Expected motion
+                    // re-rects immediately, no hide.
+                    if (unchecked(Environment.TickCount - WindowsShim._lastWriteAt) > 300) ScrollHideNow();
+                }
             }
             // Baseline fallback: wall-clock throttled, NOT tick-coupled. The
             // old every-other-tick baseline scaled with the fast cadence: at
@@ -3373,7 +3624,10 @@ namespace OpenCues
 
         static int _lastBaselineRectAt;
         const int BASELINE_RERECT_MS = 400;
+        static int _lastProbeAt;
+        const int PROBE_INTERVAL_MS = 40;
 
+        static int _lastRectLogCount = -1;
         static float _lastFirstX = float.MinValue;
         static float _lastFirstY = float.MinValue;
 
@@ -3469,6 +3723,15 @@ namespace OpenCues
                     int s = order[idx][0], e = order[idx][1];
                     bool active = order[idx][2] != 0;
                     if (s < 0 || e <= s || e > text.Length) continue;
+                    // Trim whitespace (incl. line breaks) off the span ends
+                    // before resolving. A range that ENDS on a newline gets
+                    // a pseudo-rect for the invisible break glyph (RichEdit
+                    // gives the \r its own ~half-char box at the line end)
+                    // and the underline faithfully dashes under every one
+                    // ("underline applying to every line break").
+                    while (s < e && char.IsWhiteSpace(text[s])) s++;
+                    while (e > s && char.IsWhiteSpace(text[e - 1])) e--;
+                    if (e <= s) continue;
                     int su = MapStrToUiaChars(text, s);
                     int eu = MapStrToUiaChars(text, e);
                     if (eu != posEnd)
@@ -3513,6 +3776,12 @@ namespace OpenCues
             try
             {
                 if (s < 0 || e <= s || e > text.Length) return;
+                // Same end-trim as the incremental resolver: never resolve
+                // the line-break chars (their pseudo-rects dash the underline
+                // at every break).
+                while (s < e && char.IsWhiteSpace(text[s])) s++;
+                while (e > s && char.IsWhiteSpace(text[e - 1])) e--;
+                if (e <= s) return;
                 var r = doc.Clone();
                 r.MoveEndpointByRange(TextPatternRangeEndpoint.End, doc, TextPatternRangeEndpoint.Start);
                 int su = MapStrToUiaChars(text, s);
@@ -3545,9 +3814,21 @@ namespace OpenCues
             // that END before the caret keep their rects. Unknown caret
             // -> treat as after (everything suppresses - the safe side).
             bool afterCaret = caret < 0 || e >= caret;
+            // Empty-line sliver rects can only occur inside MULTI-LINE spans
+            // (one rect per line in the range, blank lines included) - so
+            // the filter below must never run for single-line spans, where a
+            // lone narrow glyph ('_', 'i', 'l') is a legitimate rect of the
+            // same shape (the filter ate the reverted 'draft email _'
+            // underscore's mark, 2026-07-21).
+            bool multiLine = word.IndexOf('\n') >= 0 || word.IndexOf('\r') >= 0;
             foreach (System.Windows.Rect rc in rects)
             {
                 if (rc.IsEmpty || rc.Width <= 0 || rc.Height <= 0) continue;
+                // A multi-line span's EMPTY lines resolve to caret-width
+                // sliver rects - the underline drew a floating dash under
+                // each ("empty lines have underlines"). No real glyph LINE
+                // is narrower than ~60% of its own height; slivers are.
+                if (multiLine && rc.Width < rc.Height * 0.6) continue;
                 list.Add(new OverlaySpanRect
                 {
                     X = (float)rc.X,
@@ -3816,6 +4097,13 @@ namespace OpenCues
         void ApplyLayered()
         {
             SetInkAlpha(_inkSuppressed ? (byte)0 : SteadyAlpha());
+        }
+
+        // Cross-thread immediate repaint - used by the TOM-blink to purge a
+        // stale painted underlay the moment the blink starts.
+        public void RepaintNow()
+        {
+            try { BeginInvoke((Action)(delegate { Invalidate(); Update(); })); } catch { }
         }
 
         // INSTANT hide, callable from the keyboard-hook thread: alpha to 0 in
@@ -4427,6 +4715,10 @@ namespace OpenCues
                             // Dim: underlay = the span's estimated BACKGROUND
                             // colour so only the TEXT dims (background blends
                             // to itself).
+                            // TOM-blink: no churn to cover, and the accent box
+                            // at stale geometry IS the compression artifact -
+                            // skip the active underlay for the blink.
+                            if (r.Active && WindowsShim.MirrorsBlinking && WindowsShim._tomBlink) break;
                             SD.Color u;
                             if (r.Active) u = ActiveColor;
                             else if (!_bgCache.TryGetValue(BgKey(r), out u)) u = DimColor;
