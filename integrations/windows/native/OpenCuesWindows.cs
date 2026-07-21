@@ -3871,32 +3871,38 @@ namespace OpenCues
             EnsureSpanBackgrounds(rects, srcTop);   // text-only dim underlays
             lock (_thumbLock)
             {
-                int before = _thumbs.Count;
-                while (_thumbs.Count > rects.Count)
-                {
-                    try { DwmUnregisterThumbnail(_thumbs[_thumbs.Count - 1]); } catch { }
-                    _thumbs.RemoveAt(_thumbs.Count - 1);
-                    _thumbTargets.RemoveAt(_thumbTargets.Count - 1);
-                }
-                while (_thumbs.Count < rects.Count)
+                // POOL, don't churn (2026-07-21 lag report): a wrapped
+                // multi-line highlight is many per-line rects, and toggling
+                // between a big and a small span used to Unregister N then
+                // Register N again every step - DwmRegister/Unregister are
+                // the expensive DWM calls. Now the pool only GROWS; a shrink
+                // just hides the surplus thumbnails (fVisible=false). Only a
+                // style change / detach unregisters them (ClearThumbnails).
+                const int THUMB_POOL_MAX = 64;   // whole-buffer highlight of a huge doc: cap the pool
+                int registeredBefore = _thumbs.Count;
+                while (_thumbs.Count < rects.Count && _thumbs.Count < THUMB_POOL_MAX)
                 {
                     IntPtr t;
                     int hr = DwmRegisterThumbnail(Handle, srcTop, out t);
                     if (hr != 0 || t == IntPtr.Zero)
                     {
                         WindowsShim.OverlayLog("live: DwmRegisterThumbnail failed hr=0x" + hr.ToString("x8"));
-                        foreach (var th in _thumbs) { try { DwmUnregisterThumbnail(th); } catch { } }
-                        _thumbs.Clear();
-                        _thumbTargets.Clear();
-                        return;
+                        break;   // use whatever we already have; the rest stay unpainted
                     }
                     _thumbs.Add(t);
                     _thumbTargets.Add(LIVE_MIRROR_OPACITY);
                 }
+                int used = Math.Min(rects.Count, _thumbs.Count);
                 // Source coords are the source window's CLIENT space.
                 var origin = new NPoint { X = 0, Y = 0 };
                 try { ClientToScreen(srcTop, ref origin); } catch { }
-                for (int i = 0; i < rects.Count; i++)
+                // Surplus pooled thumbnails: hide (don't unregister).
+                for (int i = used; i < _thumbs.Count; i++)
+                {
+                    var hide = new DwmThumbProps { dwFlags = TNP_VISIBLE, fVisible = false };
+                    try { DwmUpdateThumbnailProperties(_thumbs[i], ref hide); } catch { }
+                }
+                for (int i = 0; i < used; i++)
                 {
                     var r = rects[i];
                     int w = Math.Max(1, (int)Math.Ceiling(r.W));
@@ -3930,8 +3936,8 @@ namespace OpenCues
                     };
                     try { DwmUpdateThumbnailProperties(_thumbs[i], ref props); } catch { }
                 }
-                if (before != _thumbs.Count)
-                    WindowsShim.OverlayLog("live: " + _thumbs.Count + " thumbnail(s) active");
+                if (registeredBefore != _thumbs.Count)
+                    WindowsShim.OverlayLog("live: pool grew to " + _thumbs.Count + " thumbnail(s)");
             }
         }
 
