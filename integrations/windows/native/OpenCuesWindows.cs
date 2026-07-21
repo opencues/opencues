@@ -3522,6 +3522,58 @@ namespace OpenCues
         readonly List<IntPtr> _thumbs = new List<IntPtr>();
         byte _thumbCurOpacity = LIVE_MIRROR_OPACITY;
 
+        // Per-span underlay colours for the TEXT-ONLY live dim (2026-07-21
+        // feedback: a gray underlay dims the background too - blend math:
+        // out = t*live + (1-t)*underlay applies uniformly. Setting the
+        // underlay to the FIELD'S BACKGROUND makes background pixels a
+        // no-op (t*bg + (1-t)*bg = bg) while glyphs get pulled (1-t)
+        // toward it - exactly the old capture dim formula, applied live).
+        // Sampled once per span via PrintWindow + the modal estimator;
+        // UI thread only.
+        readonly Dictionary<string, SD.Color> _bgCache = new Dictionary<string, SD.Color>();
+
+        static string BgKey(OverlaySpanRect r)
+        {
+            return ((int)r.X) + "," + ((int)r.Y) + "," + ((int)r.W) + "," + ((int)r.H) + "," + (r.Word ?? "");
+        }
+
+        void EnsureSpanBackgrounds(List<OverlaySpanRect> rects, IntPtr srcTop)
+        {
+            var wanted = new HashSet<string>();
+            var missing = new List<OverlaySpanRect>();
+            foreach (var r in rects)
+            {
+                string k = BgKey(r);
+                wanted.Add(k);
+                if (!_bgCache.ContainsKey(k) && r.W >= 2 && r.H >= 2) missing.Add(r);
+            }
+            var stale = new List<string>();
+            foreach (var k in _bgCache.Keys) if (!wanted.Contains(k)) stale.Add(k);
+            foreach (var k in stale) _bgCache.Remove(k);
+            if (missing.Count == 0) return;
+            if (_bgCache.Count > 128) _bgCache.Clear();   // runaway backstop
+            int wl, wt;
+            var winBmp = TryRenderWindow(srcTop, out wl, out wt);
+            if (winBmp == null) return;   // no estimate -> DimColor fallback at paint
+            try
+            {
+                foreach (var r in missing)
+                {
+                    try
+                    {
+                        int w = Math.Max(2, (int)Math.Ceiling(r.W));
+                        int h = Math.Max(2, (int)Math.Ceiling(r.H));
+                        int cx = (int)r.X - wl, cy = (int)r.Y - wt;
+                        if (cx < 0 || cy < 0 || cx + w > winBmp.Width || cy + h > winBmp.Height) continue;
+                        using (var crop = winBmp.Clone(new SD.Rectangle(cx, cy, w, h), SD.Imaging.PixelFormat.Format32bppArgb))
+                            _bgCache[BgKey(r)] = EstimateModalColor(crop);
+                    }
+                    catch { /* fall back to DimColor for this span */ }
+                }
+            }
+            finally { try { winBmp.Dispose(); } catch { } }
+        }
+
         void ClearThumbnails()
         {
             lock (_thumbLock)
@@ -3535,7 +3587,8 @@ namespace OpenCues
         void EnsureThumbnails(List<OverlaySpanRect> rects)
         {
             IntPtr srcTop = WindowsShim.AttachedTopLevelForLive();
-            if (srcTop == IntPtr.Zero || rects.Count == 0) { ClearThumbnails(); return; }
+            if (srcTop == IntPtr.Zero || rects.Count == 0) { ClearThumbnails(); _bgCache.Clear(); return; }
+            EnsureSpanBackgrounds(rects, srcTop);   // text-only dim underlays
             lock (_thumbLock)
             {
                 int before = _thumbs.Count;
@@ -3773,18 +3826,60 @@ namespace OpenCues
             catch { return null; }
         }
 
+        // MODAL (most frequent) colour of a BGRA pixel buffer - the shared
+        // background estimator for BOTH the capture dim and the live
+        // style's underlays. A text field's background is by far its
+        // dominant colour, so the estimate is immune to glyphs and the
+        // caret bar (the earlier corner-average pumped with caret blink -
+        // 2026-07-20). Quantized to 5 bits/channel so antialiased shades
+        // bucket together; returns the exact colour of the winning
+        // bucket's first hit.
+        static void ModalColor(byte[] px, int stride, int width, int height, out int bgB, out int bgG, out int bgR)
+        {
+            var counts = new Dictionary<int, int>();
+            var samples = new Dictionary<int, int>();   // bucket -> raw offset of first sample
+            for (int y = 0; y < height; y++)
+            {
+                int row = y * stride;
+                for (int x = 0; x < width; x++)
+                {
+                    int o = row + x * 4;
+                    int bucket = ((px[o] >> 3) << 10) | ((px[o + 1] >> 3) << 5) | (px[o + 2] >> 3);
+                    int c;
+                    counts.TryGetValue(bucket, out c);
+                    counts[bucket] = c + 1;
+                    if (c == 0) samples[bucket] = o;
+                }
+            }
+            int best = -1, bestCount = -1;
+            foreach (var kv in counts)
+                if (kv.Value > bestCount) { bestCount = kv.Value; best = kv.Key; }
+            int so = best >= 0 ? samples[best] : 0;
+            bgB = px[so]; bgG = px[so + 1]; bgR = px[so + 2];
+        }
+
+        // Modal colour of a whole bitmap (read-only pass) - used to pick
+        // the live style's per-span underlay.
+        static SD.Color EstimateModalColor(SD.Bitmap bmp)
+        {
+            var rect = new SD.Rectangle(0, 0, bmp.Width, bmp.Height);
+            var data = bmp.LockBits(rect, SD.Imaging.ImageLockMode.ReadOnly, SD.Imaging.PixelFormat.Format32bppArgb);
+            try
+            {
+                int n = Math.Abs(data.Stride) * bmp.Height;
+                byte[] px = new byte[n];
+                Marshal.Copy(data.Scan0, px, 0, n);
+                int b, g, r;
+                ModalColor(px, data.Stride, bmp.Width, bmp.Height, out b, out g, out r);
+                return SD.Color.FromArgb(r, g, b);
+            }
+            finally { bmp.UnlockBits(data); }
+        }
+
         // Collapse every pixel to its luminance, then pull it toward the
-        // background (dim) or the accent (active). Background = the MODAL
-        // (most frequent) pixel colour of the rect - a text field's
-        // background is by far its dominant colour, so the estimate is
-        // immune to what the corners happen to contain. The earlier
-        // corner-average sampled the CARET BAR when the caret sat at the
-        // word's left edge: the estimate darkened on blink-on and
-        // recovered on blink-off, so the whole patch pumped between
-        // recaptures (2026-07-20 "whole box flashes" report). A few dozen
-        // bar/glyph pixels can never outvote the background. Managed byte
-        // loop (no unsafe - this must compile under Add-Type); word rects
-        // are tiny.
+        // modal background (dim) or the accent (active). Managed byte loop
+        // (no unsafe - this must compile under Add-Type); word rects are
+        // tiny.
         static void DimBitmap(SD.Bitmap bmp, bool active)
         {
             var rect = new SD.Rectangle(0, 0, bmp.Width, bmp.Height);
@@ -3795,30 +3890,8 @@ namespace OpenCues
                 byte[] px = new byte[n];
                 Marshal.Copy(data.Scan0, px, 0, n);
                 int stride = data.Stride;
-                // Modal background estimate (BGRA layout). Quantize to
-                // 5 bits/channel so antialiased background shades bucket
-                // together, then take the exact colour of the winning
-                // bucket's first hit.
-                var counts = new Dictionary<int, int>();
-                var samples = new Dictionary<int, int>();   // bucket -> raw offset of first sample
-                for (int y = 0; y < bmp.Height; y++)
-                {
-                    int row = y * stride;
-                    for (int x = 0; x < bmp.Width; x++)
-                    {
-                        int o = row + x * 4;
-                        int bucket = ((px[o] >> 3) << 10) | ((px[o + 1] >> 3) << 5) | (px[o + 2] >> 3);
-                        int c;
-                        counts.TryGetValue(bucket, out c);
-                        counts[bucket] = c + 1;
-                        if (c == 0) samples[bucket] = o;
-                    }
-                }
-                int best = -1, bestCount = -1;
-                foreach (var kv in counts)
-                    if (kv.Value > bestCount) { bestCount = kv.Value; best = kv.Key; }
-                int so = best >= 0 ? samples[best] : 0;
-                int bgB = px[so], bgG = px[so + 1], bgR = px[so + 2];
+                int bgB, bgG, bgR;
+                ModalColor(px, stride, bmp.Width, bmp.Height, out bgB, out bgG, out bgR);
                 int tB = active ? ActiveColor.B : bgB;
                 int tG = active ? ActiveColor.G : bgG;
                 int tR = active ? ActiveColor.R : bgR;
@@ -3869,7 +3942,14 @@ namespace OpenCues
                         {
                             // Underlay only - DWM paints the live mirror above
                             // this at LIVE_MIRROR_OPACITY; the blend is the dim.
-                            using (var b = new SD.SolidBrush(r.Active ? ActiveColor : DimColor))
+                            // Dim spans use the span's estimated BACKGROUND
+                            // colour so only the TEXT dims (background blends
+                            // to itself); the active span keeps the visible
+                            // accent box.
+                            SD.Color u;
+                            if (r.Active) u = ActiveColor;
+                            else if (!_bgCache.TryGetValue(BgKey(r), out u)) u = DimColor;
+                            using (var b = new SD.SolidBrush(u))
                                 g.FillRectangle(b, x, y, r.W, r.H);
                             break;
                         }
