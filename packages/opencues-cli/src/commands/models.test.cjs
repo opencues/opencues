@@ -102,7 +102,7 @@ describe('opencues models — happy path', () => {
     process.env.CEREBRAS_API_KEY = 'k';
     models([], { REPO_ROOT });
     const blanksLine = logs.find((l) => l.includes('blanks:'));
-    assert.match(blanksLine, /gemini · gemini-3\.1-flash-lite/);
+    assert.match(blanksLine, /gemini · gemini-3\.5-flash-lite/);
     assert.match(blanksLine, /key missing/);
   });
 

@@ -677,7 +677,7 @@ describe('resolveLLM — settings-hierarchy precedence', () => {
       apiKeys,
     });
     assert.strictEqual(r?.provider.id, 'gemini');
-    assert.strictEqual(r?.model, 'gemini-3.1-flash-lite');
+    assert.strictEqual(r?.model, 'gemini-3.5-flash-lite');
   });
 
   it('returns null when the resolved provider has no api key', () => {
@@ -701,7 +701,7 @@ describe('resolveLLM — settings-hierarchy precedence', () => {
       apiKeys,
     });
     assert.strictEqual(r?.provider.id, 'gemini');
-    assert.strictEqual(r?.model, 'gemini-3.1-flash-lite');
+    assert.strictEqual(r?.model, 'gemini-3.5-flash-lite');
   });
 
   it('per-source modelOverride applies to globally-set provider (model-only override)', () => {
@@ -809,10 +809,10 @@ describe('resolveLLM — auto-route over present keys', () => {
     assert.strictEqual(r?.model, 'openai/gpt-oss-120b');
   });
 
-  it('picks gemini + gemini-3.1-flash-lite when only GEMINI_API_KEY is set', () => {
+  it('picks gemini + gemini-3.5-flash-lite when only GEMINI_API_KEY is set', () => {
     const r = resolveLLM({ apiKeys: { GEMINI_API_KEY: 'gm' } });
     assert.strictEqual(r?.provider.id, 'gemini');
-    assert.strictEqual(r?.model, 'gemini-3.1-flash-lite');
+    assert.strictEqual(r?.model, 'gemini-3.5-flash-lite');
   });
 
   it('picks anthropic + claude-haiku when only ANTHROPIC_API_KEY is set', () => {
@@ -836,7 +836,7 @@ describe('resolveLLM — auto-route over present keys', () => {
     const cases = [
       { keys: { CEREBRAS_API_KEY: 'c' }, want: { id: 'cerebras', model: 'gpt-oss-120b', endpoint: 'https://api.cerebras.ai/v1/chat/completions', apiKey: 'c' } },
       { keys: { GROQ_API_KEY: 'g' },     want: { id: 'groq',     model: 'openai/gpt-oss-120b', endpoint: 'https://api.groq.com/openai/v1/chat/completions', apiKey: 'g' } },
-      { keys: { GEMINI_API_KEY: 'gm' },  want: { id: 'gemini',   model: 'gemini-3.1-flash-lite', apiKey: 'gm' } }, // gemini endpoint includes model name — checked separately
+      { keys: { GEMINI_API_KEY: 'gm' },  want: { id: 'gemini',   model: 'gemini-3.5-flash-lite', apiKey: 'gm' } }, // gemini endpoint includes model name — checked separately
       { keys: { ANTHROPIC_API_KEY: 'a' }, want: { id: 'anthropic', model: 'claude-haiku-4-5-20251001', endpoint: 'https://api.anthropic.com/v1/messages', apiKey: 'a' } },
       { keys: { OPENAI_API_KEY: 'o' },   want: { id: 'openai',   model: 'gpt-5.4-mini', endpoint: 'https://api.openai.com/v1/chat/completions', apiKey: 'o' } },
     ];
@@ -858,7 +858,7 @@ describe('resolveLLM — auto-route over present keys', () => {
     const cases = [
       { feat: 'cerebras',  model: 'gpt-oss-120b' },
       { feat: 'groq',      model: 'openai/gpt-oss-120b' },
-      { feat: 'gemini',    model: 'gemini-3.1-flash-lite' },
+      { feat: 'gemini',    model: 'gemini-3.5-flash-lite' },
       { feat: 'anthropic', model: 'claude-haiku-4-5-20251001' },
       { feat: 'openai',    model: 'gpt-5.4-mini' },
     ];
