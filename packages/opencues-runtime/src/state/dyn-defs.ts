@@ -383,6 +383,59 @@ export class DynDefs {
     return this._defs.entries();
   }
 
+  /**
+   * Rebase MANAGED span defs (blankName set — transform/fluid/sentence-cue
+   * substitutes) across a user edit, so "tweak the substitution in place"
+   * keeps the def coherent instead of silently degrading it (2026-07-22:
+   * after typing inside a drafted email the def survived pruneStale but
+   * its recorded span/content were stale — the dim never re-rendered and
+   * a later cycle spliced at stale offsets, stomping the user's tweak).
+   *
+   * Per def whose span was LIVE against `oldText`:
+   *   - edit entirely BEFORE the span → slide both offsets by the delta
+   *   - edit entirely AFTER the span  → untouched
+   *   - edit INSIDE/overlapping       → stretch/shrink spanEnd and ADOPT
+   *     the tweaked buffer slice as the CURRENT alternative, so
+   *     defSpanLive holds again (dim persists), the next cycle splices
+   *     the true range, and index 0 still holds the pre-command original
+   *     for revert.
+   *
+   * Plain word-cue defs (no blankName) are deliberately excluded — their
+   * edit semantics belong to pruneStale (editing a cued word retires it).
+   */
+  rebaseSpans(oldText: string, newText: string): void {
+    if (oldText === newText || this._defs.size === 0) return;
+    const maxP = Math.min(oldText.length, newText.length);
+    let p = 0;
+    while (p < maxP && oldText[p] === newText[p]) p++;
+    let sfx = 0;
+    while (sfx < maxP - p
+      && oldText[oldText.length - 1 - sfx] === newText[newText.length - 1 - sfx]) sfx++;
+    const oldEditEnd = oldText.length - sfx;   // edit range in OLD text: [p, oldEditEnd)
+    const d = newText.length - oldText.length;
+    for (const def of this._defs.values()) {
+      if (typeof def.blankName !== 'string' || def.blankName.length === 0) continue;
+      if (def.spanEnd <= def.spanStart || def.spanEnd > oldText.length) continue;
+      // Only a span that was LIVE against the old text may be rebased —
+      // arithmetic must never resurrect an already-stale span.
+      const expected = def.alternatives[def.currentIndex];
+      if (typeof expected !== 'string'
+        || oldText.slice(def.spanStart, def.spanEnd) !== expected) continue;
+      if (oldEditEnd <= def.spanStart) {
+        def.spanStart += d;
+        def.spanEnd += d;
+      } else if (p >= def.spanEnd) {
+        // entirely after — untouched
+      } else {
+        const newEnd = def.spanEnd + d;
+        if (newEnd <= def.spanStart || newEnd > newText.length) continue;   // edit consumed the span — leave to pruneStale
+        def.spanEnd = newEnd;
+        // alternatives is readonly to consumers; the def owns its storage.
+        (def.alternatives as string[])[def.currentIndex] = newText.slice(def.spanStart, def.spanEnd);
+      }
+    }
+  }
+
   get size(): number {
     return this._defs.size;
   }
