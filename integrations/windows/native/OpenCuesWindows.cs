@@ -207,6 +207,38 @@ namespace OpenCues
         internal static IntPtr _attachedTopHwnd = IntPtr.Zero;
         internal static IntPtr AttachedTopLevelForLive() { return _attached ? _attachedTopHwnd : IntPtr.Zero; }
 
+        // Mirror blink (2026-07-21): RichEditD2DPT paints via Direct2D on
+        // its own schedule - EM_HIDESELECTION and WM_SETREDRAW are advisory
+        // to it, so the select-all highlight of our substitution writes
+        // still lands in the control's surface and the LIVE mirror
+        // rebroadcasts it. We cannot stop the app painting; we CAN stop
+        // showing it: zero the mirrors for the write instant (the box shows
+        // its clean solid underlay), restore ~60ms later once the churn has
+        // settled. EnsureThumbnails honours the blink so a mid-blink render
+        // push can't un-hide early.
+        static int _mirrorRestoreAt;
+        internal static bool MirrorsBlinking
+        {
+            get { return _mirrorRestoreAt != 0 && unchecked(Environment.TickCount - _mirrorRestoreAt) < 0; }
+        }
+
+        static void HideMirrorsForWrite()
+        {
+            _mirrorRestoreAt = Environment.TickCount + 60;
+            var a = _overlay; if (a != null) a.SetThumbFraction(0);
+            var b = _overlayVol; if (b != null) b.SetThumbFraction(0);
+        }
+
+        static void MaybeRestoreMirrors()
+        {
+            if (_mirrorRestoreAt == 0) return;
+            if (unchecked(Environment.TickCount - _mirrorRestoreAt) < 0) return;
+            _mirrorRestoreAt = 0;
+            if (_inkHidden || _scrollHidden) return;   // a suppressor owns visibility
+            var a = _overlay; if (a != null) a.SetThumbFraction(1);
+            var b = _overlayVol; if (b != null) b.SetThumbFraction(1);
+        }
+
         static void NudgeTargetPaint()
         {
             if (!_attachedIsEdit) return;
@@ -575,6 +607,7 @@ namespace OpenCues
                         MaybeRefreshOverlay(); // phase 2: track window moves/scrolls
                         MaybeRestoreInk();     // phase 2: fade ink back in after typing quiets
                         MaybeRestoreScroll();  // phase 2: fade all ink back once scrolling settles
+                        MaybeRestoreMirrors(); // phase 2: live mirrors back after a write blink
                     }
                     else
                     {
@@ -2409,6 +2442,7 @@ namespace OpenCues
                 // selection highlight hidden so it never flashes blue. Baseline-
                 // reset (fUndo=FALSE) then result (fUndo=TRUE) = ONE undo unit ->
                 // one Ctrl+Z restores the pre-command text.
+                HideMirrorsForWrite();   // live mirrors blink off for the churn (see MirrorsBlinking)
                 //
                 // WM_SETREDRAW bracket (2026-07-21): the two-step rewrite has
                 // INTERMEDIATE model states (the baseline text; the emptied
@@ -3719,7 +3753,7 @@ namespace OpenCues
                     // accent box.
                     byte target = LIVE_MIRROR_OPACITY;
                     _thumbTargets[i] = target;
-                    byte op = _inkSuppressed ? (byte)0 : target;
+                    byte op = (_inkSuppressed || WindowsShim.MirrorsBlinking) ? (byte)0 : target;
                     var props = new DwmThumbProps
                     {
                         dwFlags = TNP_DEST | TNP_SRC | TNP_OPACITY | TNP_VISIBLE | TNP_SRCCLIENT,
@@ -3752,7 +3786,7 @@ namespace OpenCues
         // thread (the hook thread on instant-hide, the fade timer on the
         // UI thread). Scales each thumbnail's own TARGET (255 active /
         // LIVE_MIRROR_OPACITY dim) by a 0..1 fraction.
-        void SetThumbFraction(double f)
+        public void SetThumbFraction(double f)
         {
             if (f < 0) f = 0; else if (f > 1) f = 1;
             lock (_thumbLock)
