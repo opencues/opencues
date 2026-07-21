@@ -2903,6 +2903,7 @@ namespace OpenCues
                 BumpFastPoll();
                 _caretDirty = true;
                 _swallowedDown.Add(vk);
+                MaskAltTap();
                 QueueKeyMessage(KeyName(vk), (ushort)vk, true);
                 return new IntPtr(1);   // swallow - the app never sees the chord
             }
@@ -2920,6 +2921,27 @@ namespace OpenCues
                 case VK_RIGHT: return "right";
                 default: return "";
             }
+        }
+
+        // Alt-tap menu-bar guard. Swallowing the arrow between the user's
+        // Alt-down and Alt-up leaves the app seeing a "pure" Alt tap - the
+        // system menu-activation gesture - so releasing the chord after
+        // cycling focused Notepad's menu bar and every mark died until the
+        // user clicked back into the field. Injecting one no-op key event
+        // (vk 0xE8, unassigned) while Alt is still held dirties the hold:
+        // the app sees an intervening key and the release stays inert.
+        // dwExtraInfo carries INJECT_MARK so our own hook passes it through
+        // untouched. Same masking technique AutoHotkey uses for hotkeys
+        // that swallow keys inside a modifier hold.
+        const ushort VK_MASK_NOOP = 0xE8;
+        static void MaskAltTap()
+        {
+            var inputs = new INPUT[]
+            {
+                new INPUT { type = INPUT_KEYBOARD, U = new InputUnion { ki = new KEYBDINPUT { wVk = VK_MASK_NOOP, wScan = 0, dwFlags = 0, time = 0, dwExtraInfo = INJECT_MARK } } },
+                new INPUT { type = INPUT_KEYBOARD, U = new InputUnion { ki = new KEYBDINPUT { wVk = VK_MASK_NOOP, wScan = 0, dwFlags = KEYEVENTF_KEYUP, time = 0, dwExtraInfo = INJECT_MARK } } },
+            };
+            SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
         }
 
         static void QueueKeyMessage(string key, ushort vk, bool track)
