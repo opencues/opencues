@@ -124,7 +124,7 @@ describe('run dispatch — --help / missing host / unknown host', () => {
     await assert.rejects(() => run([], { REPO_ROOT: fakeRepoRoot }), /__EXIT_2__/);
     const out = errs.join('\n');
     assert.match(out, /missing <host>/);
-    assert.match(out, /chrome, claude-code, gemini-cli, opencode, shell/);
+    assert.match(out, /apple-notes, chrome, claude-code, gemini-cli, mac, opencode, shell/);
   });
 
   it('unknown host name exits 2, naming the bad value', async () => {
