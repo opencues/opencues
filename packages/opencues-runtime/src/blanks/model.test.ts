@@ -73,7 +73,7 @@ describe('ModelBlank — current model', () => {
   it('configured provider with a missing key is flagged, never silent', async () => {
     const blank = makeBlank('llm-provider: gemini');
     const alts = (await blank.get('model')).split('\n');
-    expect(alts[0]).toBe('gemini · gemini-3.1-flash-lite (key missing)');
+    expect(alts[0]).toBe('gemini · gemini-3.5-flash-lite (key missing)');
   });
 
   it('unknown global provider id is named', async () => {

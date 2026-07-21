@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — Gemini default model → `gemini-3.5-flash-lite` + no-thinking bench knob (`@opencues/core` 0.32.0, CLI 0.2.55, `@opencues/chrome` 0.2.90)
+
+Google shipped `gemini-3.5-flash-lite` and `gemini-3.6-flash` (July 2026). The 2026-07-21 discovery sweep (`tests/results/gemini-3.6-3.5-discovery/REPORT.md`, same-session `gemini-3.1-flash-lite` baseline, all no-thinking) showed 3.5-flash-lite is a strict upgrade for the default slot: first perfect Gemini fluid-blank score (137/137 vs 134/137), fastest mean (431ms vs 511ms), and it eliminates the baseline's multi-second p99 tail (worst case 620ms vs 3632ms), with transform-blank at parity (86.0% vs 86.7%, n=487). `gemini-3.6-flash` benched +1.4pp transform accuracy at ~70% more latency (and its floor is slower than the lite tiers' p90) — documented as an accuracy-over-latency override, not the default. The GEMINI adapter's `defaultModel`/`knownModels`, CLI help/review defaults, chrome popup defaults, and all bench-adapter fallbacks moved together; 3.1-flash-lite stays reachable in `knownModels`. Also added an env-gated `thinkingConfig` hook to the GEMINI `buildRequest` (`OPENCUES_GEMINI_THINKING=none|minimal|low|high`; unset = provider default, unchanged) — needed because the 3.5/3.6 tiers reject the historical `thinkingBudget: 0` no-thinking config (400); `thinkingLevel: "minimal"` is their true floor (verified 0 thought tokens on hard prompts). 3.5-flash-lite does not think by default, so the production default path sends no thinkingConfig, exactly as before.
+
 ### Fixed — browser-safe guards on the calendar-ingest OPENCUES_HOME reads (`@opencues/runtime` 0.25.1)
 
 The two ingest closures read `process.env` unguarded — the runtime-browser-safe lint had been red since #322 (masked by a broken CI-watch pipe; five PRs merged over the single failing job). Guards added; semantics unchanged (the ingest already early-returns in browsers).

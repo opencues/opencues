@@ -105,7 +105,7 @@ const httpAdapter: HttpAdapter = {
 
 const CEREBRAS_MODEL = process.env.OPENCUES_CEREBRAS_MODEL ?? 'gpt-oss-120b';
 const GROQ_MODEL = process.env.OPENCUES_GROQ_MODEL ?? 'openai/gpt-oss-120b';
-const GEMINI_MODEL = process.env.OPENCUES_GEMINI_MODEL ?? 'gemini-3.1-flash-lite';
+const GEMINI_MODEL = process.env.OPENCUES_GEMINI_MODEL ?? 'gemini-3.5-flash-lite';
 // Local Ollama (native /api/chat, think:false). Key is a non-empty dummy —
 // the provider is optionalAuth; Ollama ignores the Authorization header.
 const OLLAMA_MODEL = process.env.OPENCUES_OLLAMA_MODEL ?? 'gemma4:e2b';
