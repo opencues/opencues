@@ -671,12 +671,12 @@ done
 |---|---|---|---|
 | `SPEC.md` (open-standard) | `cues-spec` | 0.7 (draft) | exported as `SPEC_VERSION` from `@opencues/core` |
 | `package.json` (monorepo root) | `opencues` | 0.1.0 | private |
-| `packages/opencues-core/` | `@opencues/core` | 0.19.0 | private |
-| `packages/opencues-runtime/` | `@opencues/runtime` | 0.13.3 | private |
+| `packages/opencues-core/` | `@opencues/core` | 0.20.0 | private |
+| `packages/opencues-runtime/` | `@opencues/runtime` | 0.15.0 | private |
 | `packages/opencues-cli/` | `opencues` (real CLI) | 0.2.41 | private |
 | `packages/opencues-park/` | `opencues` (placeholder) | 0.0.1 | **PUBLISHED on npm** |
 | `integrations/claude-code/` | `@opencues/claude-code` | 0.2.7 | private |
-| `integrations/mac/` | `@opencues/mac` | 0.2.0 | private |
+| `integrations/mac/` | `@opencues/mac` | 0.3.0 | private |
 | `integrations/opencode/` | `@opencues/opencode` | 0.2.6 | private |
 | `integrations/chrome/` | `@opencues/chrome` | 0.2.65 | private |
 | `integrations/gemini-cli/` | `@opencues/gemini-cli` | 0.2.6 | private |
@@ -685,6 +685,44 @@ done
 Two packages share the bare `opencues` name — the real CLI at `packages/opencues-cli/` (still private) and the parking placeholder at `packages/opencues-park/` (published as v0.0.1 to the public npm registry, owned by the `opencues` org via the `developers` team). Launch handover is described in the npm-name pre-launch checklist above; the real CLI's v0.1.0 cleanly supersedes the placeholder's v0.0.1 on first publish.
 
 Everything except the placeholder is currently `private: true`. Flipping a package to publishable requires removing `"private": true` AND repointing (or removing) its `publishConfig` block (most currently target `npm.pkg.github.com`).
+
+## Answer char budget — tuning the FIELD LIMIT firmness
+
+The narrow-field length aim (feature #49 — mac host sends 37 while
+Spotlight is focused) is a PROMPT-LEVEL request, so compliance is
+"usually short", not guaranteed. When a provider drifts long, tune the
+wording in ONE place: `renderCharBudgetBlock()` in
+`packages/opencues-core/src/sources/fluid-blank-source.ts` (shared by
+fluid-blank + transform-blank — never fork a per-source copy).
+
+The adjustment process:
+
+1. **Reproduce first.** `debug-mode: on`, then drive the failing
+   lookups in Spotlight and read the answers in `/tmp/opencues.log`.
+   Tune against the provider that actually drifts (cerebras default) —
+   wording that fixes gpt-oss can be redundant noise for others.
+2. **Escalate the wording one rung at a time** (ladder in
+   `docs/features/answer-char-budget.md` § Tuning firmness): soften/
+   harden verbs before adding rules; add a hard cap sentence ("NEVER
+   exceed N characters") only if the polite form measurably drifts.
+3. **Respect the two pinned contracts** (both enforced by
+   `answer-char-budget.test.ts`): the block rides the USER message
+   ONLY — moving it into the system prompt salts the cerebras prefix
+   cache; and `renderCharBudgetBlock(undefined)` MUST stay `''` — the
+   absent-by-default byte-identity is what keeps the fluid/transform
+   bench evidence valid without re-runs. Do NOT reach for
+   `FUSED_SYSTEM_PROMPT`/`FUSED_SYSTEM` to fix a length problem —
+   those edits trigger the full bench re-run obligation.
+4. **Update the wording-matching test regexes** in
+   `answer-char-budget.test.ts` in the same commit (they pin the
+   "FIELD LIMIT: …" phrasing), then `pnpm --filter @opencues/core
+   build && test`, restart via `opencues run mac` (self-heal
+   re-stages), and re-drive the step-1 lookups.
+5. **The NUMBER is not the knob.** Per-bundle budgets live in
+   `integrations/mac/src/ax-host.ts:DEFAULT_CHAR_BUDGETS` (user
+   override: `OPENCUES_AX_CHAR_BUDGET`). Lowering 37 to trick a
+   drifting model into shorter output punishes hosts that report
+   honest capacities — fix the wording, not the measurement.
 
 ## Cerebras-specific features
 

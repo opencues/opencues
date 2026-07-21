@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { WriteRing, countMarkers, freshMarkerAtCursor, utf16Diff } from './ax-host';
+import { WriteRing, charBudgetForBundle, countMarkers, freshMarkerAtCursor, utf16Diff } from './ax-host';
 
 describe('utf16Diff', () => {
   it('null on identical', () => {
@@ -42,6 +42,24 @@ describe('freshMarkerAtCursor', () => {
   });
   it('never arms when the typed char is not the marker', () => {
     expect(freshMarkerAtCursor('hello _x', 8, 'hello _')).toBeNull();
+  });
+});
+
+describe('charBudgetForBundle', () => {
+  it('Spotlight gets the built-in 37; unknown bundles get null', () => {
+    expect(charBudgetForBundle('com.apple.Spotlight')).toBe(37);
+    expect(charBudgetForBundle('com.apple.TextEdit')).toBe(null);
+  });
+  it('env overrides the default and adds new bundles', () => {
+    expect(charBudgetForBundle('com.apple.Spotlight', 'com.apple.Spotlight=50')).toBe(50);
+    expect(charBudgetForBundle('com.raycast.macos', 'com.raycast.macos=40')).toBe(40);
+    expect(charBudgetForBundle('com.apple.Spotlight', 'com.raycast.macos=40')).toBe(37);
+  });
+  it('a value < 1 removes the entry (opt-out)', () => {
+    expect(charBudgetForBundle('com.apple.Spotlight', 'com.apple.Spotlight=0')).toBe(null);
+  });
+  it('malformed env entries are ignored', () => {
+    expect(charBudgetForBundle('com.apple.Spotlight', 'garbage,=5,x=,com.apple.Spotlight=abc')).toBe(37);
   });
 });
 

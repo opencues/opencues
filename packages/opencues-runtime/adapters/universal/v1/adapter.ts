@@ -61,6 +61,12 @@ export interface UniversalBindings {
   spawnProcess?(spec: ProcessSpec): ProcessHandle;
   blankInvoke?(spec: BlankInvokeSpec): ProcessHandle | null;
   pushText?(text: string, cursor?: number): void;
+  /**
+   * Soft answer-length budget for the CURRENT target field, re-read
+   * per resolve (mac daemon: 37 while Spotlight's search field is
+   * focused, null elsewhere). See HostAdapter.getAnswerCharBudget.
+   */
+  getAnswerCharBudget?(): number | null;
   log?(level: LogLevel, msg: string, data?: unknown): void;
   emitEvent?(type: string, body?: Record<string, unknown>): void;
   registerEventHandler?(cb: (type: string, body?: Record<string, unknown>) => void): Unsubscribe;
@@ -96,6 +102,9 @@ export class UniversalV1Adapter implements HostAdapter {
   // Polled channel with no colour surface and no key interception:
   // every cycleable cue/blank must be pruned at registration.
   supportsCycling(): boolean { return false; }
+  getAnswerCharBudget(): number | null {
+    try { return this.bindings.getAnswerCharBudget?.() ?? null; } catch { return null; }
+  }
   // Background whole-note rewrites over a polled CAS channel are too
   // risky for v1 — a merge landing between polls would fight the user.
   supportsAgentRewrite(): boolean { return false; }

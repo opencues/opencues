@@ -413,6 +413,22 @@ export interface HostAdapter {
    */
   getAmbientContext?(): AmbientContext | null;
 
+  /**
+   * Optional — soft character budget for LLM-generated answers when
+   * the CURRENT target field has a small visible capacity (e.g. the
+   * mac host returns 37 while Spotlight's ~37-char search field is
+   * focused). Consumed by FluidBlank/TransformBlank as a FIELD LIMIT
+   * instruction in the user message — an aim, never a truncation.
+   *
+   * Null / omitted = no constraint. Unlike getAmbientContext this
+   * needs no mode-scalar gate: the value is a host-computed number
+   * (nothing user- or page-controlled), and the only thing it changes
+   * is how terse the answer is.
+   *
+   * Dynamic — re-evaluated per current target, like supportsCycling.
+   */
+  getAnswerCharBudget?(): number | null;
+
   getText(): string;
   getCursorOffset(): number;
   getSelection(): Range | null;

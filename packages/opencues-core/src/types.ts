@@ -122,6 +122,24 @@ export interface CueContext {
   ambient?: AmbientContext;
 
   /**
+   * Soft character budget for LLM-generated answers, supplied by the
+   * host when the destination field has a small visible capacity
+   * (e.g. Spotlight's search field shows ~37 characters). Consumed by
+   * FluidBlankSource + TransformBlankSource, which append a FIELD
+   * LIMIT instruction to the USER message (per-call context stays out
+   * of the system prompt — cerebras prefix-caching rule). A soft aim,
+   * not a truncation: the prompt asks for the shortest correct form
+   * and permits exceeding when correctness demands it. Ignored when
+   * undefined, non-finite, or < 1.
+   *
+   * Unlike `ambient`, this is a HOST-OWNED instruction (a number, not
+   * page-derived data), so it is not wrapped as untrusted content and
+   * needs no mode-scalar gate — nothing user- or page-controlled
+   * rides it.
+   */
+  answerCharBudget?: number;
+
+  /**
    * Identity-context catalog derived from `~/.cues/IDENTITY.md`. Only
    * consumed by FluidBlankSource and only when
    * `identity-context-mode: safe` or `: raw` is set in OPENCUES.md

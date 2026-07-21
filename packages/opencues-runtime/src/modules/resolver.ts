@@ -1305,6 +1305,11 @@ export class Resolver {
         ambient: this.configLoader.opencuesState.ambientContextMode === 'on'
           ? (this.adapter.getAmbientContext?.() ?? undefined)
           : undefined,
+        // Optional host-declared soft answer-length budget for the
+        // current target field (mac host: 37 while Spotlight is
+        // focused). No scalar gate — a host-computed number, nothing
+        // sensitive rides it. Sources ignore undefined.
+        answerCharBudget: this.adapter.getAnswerCharBudget?.() ?? undefined,
         // Optional identity context (identity-context-mode personal data). Gated by
         // `identity-context-mode` in OPENCUES.md (when `off` we don't
         // even forward the parsed catalog, so a future misconfigured

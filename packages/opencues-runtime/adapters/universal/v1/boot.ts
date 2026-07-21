@@ -45,6 +45,9 @@ export interface HostInfo extends CommonHostInfo {
   spawnProcess?(spec: unknown): unknown;
   blankInvoke?(spec: import('../../../src/adapter').BlankInvokeSpec):
     import('../../../src/adapter').ProcessHandle | null;
+  /** Soft answer-length budget for the current target field — see
+   *  HostAdapter.getAnswerCharBudget (mac: Spotlight → 37). */
+  getAnswerCharBudget?(): number | null;
 }
 
 export interface BootResult {
@@ -106,6 +109,7 @@ export function boot(host: HostInfo): BootResult {
     spawnProcess: host.spawnProcess as UniversalBindings['spawnProcess'],
     blankInvoke: host.blankInvoke,
     pushText: host.pushText,
+    getAnswerCharBudget: host.getAnswerCharBudget,
     log,
     emitEvent: (type, body) => moduleEvents.emit(
       { type, body },

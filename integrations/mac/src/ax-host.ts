@@ -47,6 +47,30 @@ export function countMarkers(text: string): number {
   return n;
 }
 
+/** Per-bundle soft answer-length budgets: fields with a small VISIBLE
+ *  capacity get a "keep it under ~N chars" instruction in the LLM
+ *  prompt (never a truncation). Spotlight's search field shows ~37
+ *  characters (measured 2026-07-21). Override / extend / disable via
+ *  OPENCUES_AX_CHAR_BUDGET="com.apple.Spotlight=50,other.bundle=40"
+ *  (a value < 1 removes the entry). */
+export const DEFAULT_CHAR_BUDGETS: Readonly<Record<string, number>> = {
+  'com.apple.Spotlight': 37,
+};
+
+export function charBudgetForBundle(bundle: string, env?: string): number | null {
+  const map: Record<string, number> = { ...DEFAULT_CHAR_BUDGETS };
+  for (const pair of (env ?? '').split(',')) {
+    const eq = pair.indexOf('=');
+    if (eq < 0) continue;
+    const b = pair.slice(0, eq).trim();
+    const n = parseInt(pair.slice(eq + 1).trim(), 10);
+    if (!b || Number.isNaN(n)) continue;
+    if (n < 1) delete map[b];
+    else map[b] = n;
+  }
+  return map[bundle] ?? null;
+}
+
 /** Recent-writes echo ring: the daemon's own AX writes come back as
  *  AXValueChanged like any user edit; a change matching one of the
  *  last few written values is our echo, everything else is the

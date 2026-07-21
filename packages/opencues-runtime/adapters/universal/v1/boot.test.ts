@@ -85,6 +85,16 @@ describe('universal v1 boot()', () => {
     expect(adapter.supportsAgentRewrite()).toBe(false);
   });
 
+  it('adapter passes getAnswerCharBudget through; null when absent or throwing', () => {
+    expect(new UniversalV1Adapter(minimalBindings).getAnswerCharBudget()).toBe(null);
+    expect(new UniversalV1Adapter({
+      ...minimalBindings, getAnswerCharBudget: () => 37,
+    }).getAnswerCharBudget()).toBe(37);
+    expect(new UniversalV1Adapter({
+      ...minimalBindings, getAnswerCharBudget: () => { throw new Error('boom'); },
+    }).getAnswerCharBudget()).toBe(null);
+  });
+
   it('adapter onKey/onCursorChange/onRender return unsubscribes', () => {
     const adapter = new UniversalV1Adapter(minimalBindings);
     expect(() => {

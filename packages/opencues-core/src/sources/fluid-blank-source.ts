@@ -133,6 +133,30 @@ export function renderAmbientBlock(ambient: AmbientContext | undefined): string 
 }
 
 /**
+ * Optional FIELD LIMIT instruction — appended to the USER message when
+ * the host declares a small visible field capacity
+ * (`CueContext.answerCharBudget`; e.g. the mac host sends 37 while
+ * Spotlight's search field is focused). Shared by FluidBlankSource and
+ * TransformBlankSource.
+ *
+ * USER-message placement is deliberate: per-call context must never
+ * salt the cached system prefix (docs/architecture/cerebras.md), and
+ * the bench suites never set a budget, so bench prompts stay
+ * byte-identical to shipped ones. Host-owned instruction — a number
+ * the host computed, nothing user- or page-controlled — so no
+ * untrusted-content wrapper.
+ *
+ * A soft aim, not a truncation: the runtime never cuts the answer;
+ * the model is told to prefer the shortest correct form and may
+ * exceed when correctness demands it.
+ */
+export function renderCharBudgetBlock(budget: number | undefined): string {
+  if (budget === undefined || !Number.isFinite(budget) || budget < 1) return '';
+  const n = Math.floor(budget);
+  return `\n\nFIELD LIMIT: the destination field shows only about ${n} characters. Prefer the shortest correct answer that fits (abbreviate, round, drop filler words). Exceed ${n} characters only when a correct answer cannot fit.`;
+}
+
+/**
  * FUSED system prompt — single LLM call that segments + answers in one
  * pass. Replaces the prior P1 SEGMENT → P3 ANSWER 2-pass.
  *
@@ -972,7 +996,7 @@ export class FluidBlankSource implements CueSource {
           this.emit({ type: 'dehydrated', count: dehydratedCount });
         }
       }
-      const fusedUser = `INPUT: ${outboundText}${outboundAmbient}`;
+      const fusedUser = `INPUT: ${outboundText}${outboundAmbient}${renderCharBudgetBlock(context.answerCharBudget)}`;
       // Per-feature override: `fluid-blank-max-tokens:` in OPENCUES.md.
       // 512 default is bench-tuned for short-factual answers.
       const fusedOut = await this.callLLM(fullSystem, fusedUser, this.maxTokensOverride ?? 512,

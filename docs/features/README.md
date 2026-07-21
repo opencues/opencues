@@ -94,6 +94,7 @@ Optional information the FluidBlank LLM call receives in addition to the user's 
 | 33 | [Identity Context](identity-context.md) | The user's own personal data (`~/.cues/IDENTITY.md` frontmatter) as identity-context tokens so `_` lookups and rewrites personalise without re-typing. `safe` mode (the default) is bidirectional — the catalog ships token-only AND typed values are dehydrated from outbound buffer text, hydrated back locally; `raw` opts in to inlining. Catalog wired for fluid-blank + transform-blank. |
 | 39 | [Blank as Context](blank-as-context.md) | Local blanks (weather, stocks, calendar, …) surfaced as ambient catalog context for fluid-blank/transform-blank — same security model as identity-context, for parameterised dynamic data instead of static personal fields. |
 | 40 | [Max Thinking](max-thinking.md) | `max-thinking` scalar trades reasoning depth for speed on reasoning-capable models (Groq / Cerebras / OpenAI gpt-oss + gpt-5 families). |
+| 49 | [Answer Char Budget](answer-char-budget.md) | Host-declared soft answer-length budget for narrow fields — fluid/transform-blank ask the LLM for the shortest correct form that fits (mac host: Spotlight → ~37 chars). No scalar; structural per focused field. Aim, never truncation. |
 
 ## Surfacing
 

@@ -15,7 +15,7 @@
 // Spike evidence for every capability: ../AX-SPIKE.md.
 
 import { boot, type BootResult } from '@opencues/runtime/dist/adapters/universal/v1/boot';
-import { utf16Diff, freshMarkerAtCursor, WriteRing } from './ax-host';
+import { utf16Diff, freshMarkerAtCursor, WriteRing, charBudgetForBundle } from './ax-host';
 import { buildBlanks, makeSpawnProcess } from './host-support';
 import type { LogLevel } from '@opencues/runtime/dist/src/adapter';
 import { spawn } from 'node:child_process';
@@ -128,6 +128,10 @@ export async function main(): Promise<void> {
     pushText: requestWrite,
     setCursorOffset: () => { /* caret follows the AX replace */ },
     forceRender: () => { /* host app renders itself */ },
+    // Narrow fields (Spotlight ~37 visible chars) get a soft "keep it
+    // short" instruction in the LLM prompt — see charBudgetForBundle.
+    getAnswerCharBudget: () =>
+      focused ? charBudgetForBundle(focused.bundle, process.env['OPENCUES_AX_CHAR_BUDGET']) : null,
     readFile: async (p: string) => {
       try { return await fs.readFile(p, 'utf8'); } catch { return null; }
     },
