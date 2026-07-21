@@ -872,6 +872,14 @@ namespace OpenCues
                 Log("debug", "adopted self-write echo (" + cur.Length + " chars)");
                 return;
             }
+            // Local span shift (anti-flash step 3, 2026-07-21): the daemon's
+            // authoritative span update takes a socket+resolve round trip;
+            // the DIFF is knowable right here. Shift the overlay spans by
+            // the edit delta and re-rect on THIS tick - with the live style
+            // the marks slide with the reflow instead of lagging it. The
+            // daemon's render push reconciles (prunes edited-word defs)
+            // ~100ms behind.
+            ShiftLocalSpans(_lastSentText, cur);
             _lastSentText = cur;
             _expectedEcho = null;
             SendRaw("{\"t\":\"text\",\"text\":" + JStr(cur)
@@ -2640,9 +2648,13 @@ namespace OpenCues
                         _caretDirty = true;   // any key can move the caret (perf opt 2)
                         // Keyboard scrolls move every mark - scroll suppression.
                         if (vk == 0x21 || vk == 0x22) ScrollHideNow();   // PgUp / PgDn
-                        // Text-mutating key: hide the ink NOW (instant, from
-                        // this thread), fade back in after the typing quiets.
-                        if (IsTextMutatingKey(vk))
+                        // Text-mutating key: for SNAPSHOT styles, hide the ink
+                        // NOW (instant, from this thread) and fade back after
+                        // the typing quiets - their pixels go stale on reflow.
+                        // The LIVE style skips the hide entirely: its pixels
+                        // cannot be stale and the local span shift keeps the
+                        // geometry sliding with the keystrokes ("see it move").
+                        if (IsTextMutatingKey(vk) && _overlayStyle != "live")
                         {
                             _typingQuietAt = Environment.TickCount + TYPING_QUIET_MS;
                             if (!_inkHidden)
@@ -2942,6 +2954,53 @@ namespace OpenCues
         static int[] _hlSpan = null;
         static string _overlayStyle = "underline";
         static int _overlayTickFlip;
+
+        // Shift the local span model by a text edit's diff: spans before the
+        // edit keep their offsets, spans after it slide by the delta, spans
+        // CONTAINING the edit stretch/shrink at the end (an approximation -
+        // the daemon's authoritative update, which also prunes edited-word
+        // defs, lands moments later and replaces all of this). Chars only,
+        // never pixels: the shifted offsets are re-resolved to rects
+        // through UIA, so geometry stays exact (the repaint lesson).
+        static void ShiftLocalSpans(string oldText, string newText)
+        {
+            if (oldText == null || newText == null || oldText == newText) return;
+            if (_dimSpans.Count == 0 && _hlSpan == null) return;
+            int p = CommonPrefixLen(oldText, newText);
+            int sfx = CommonSuffixLen(oldText, newText, p);
+            int oldEditEnd = oldText.Length - sfx;   // edit range in OLD text: [p, oldEditEnd)
+            int d = newText.Length - oldText.Length;
+            var shifted = new List<int[]>();
+            foreach (var span in _dimSpans)
+            {
+                var s2 = ShiftOneSpan(span, p, oldEditEnd, d, newText.Length);
+                if (s2 != null) shifted.Add(s2);
+            }
+            _dimSpans = shifted;
+            if (_hlSpan != null) _hlSpan = ShiftOneSpan(_hlSpan, p, oldEditEnd, d, newText.Length);
+            _overlayDirty = true;   // re-rect this very tick
+        }
+
+        static int[] ShiftOneSpan(int[] span, int editStart, int oldEditEnd, int d, int newLen)
+        {
+            int a = span[0], b = span[1];
+            if (b <= editStart)
+            {
+                // entirely before the edit - untouched
+            }
+            else if (a >= oldEditEnd)
+            {
+                a += d; b += d;      // entirely after - slides
+            }
+            else
+            {
+                b += d;              // edit inside - stretch/shrink the end
+            }
+            if (a < 0) a = 0;
+            if (b > newLen) b = newLen;
+            if (b - a < 1) return null;   // collapsed - drop until the daemon re-registers
+            return new int[] { a, b };
+        }
 
         static void HandleRenderMsg(Dictionary<string, object> map)
         {
