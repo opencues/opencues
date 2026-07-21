@@ -880,7 +880,25 @@ namespace OpenCues
                 int now = Environment.TickCount;
                 bool quiet = unchecked(now - _bracketQuietAt) >= 0;
                 bool capped = unchecked(now - _bracketOpenedAt) > BRACKET_MAX_MS;
-                if (!quiet && !capped) return;
+                if (!quiet && !capped)
+                {
+                    // Verified settle - early close. The field already reads
+                    // back as our LATEST write, so the stream has provably
+                    // landed; waiting out the rest of the quiet window only
+                    // freezes caret polling + daemon text-sync (the dimmed
+                    // look trailed every cycling step by ~400ms). Nothing to
+                    // report - the read IS our own write. Guarded to non-MSAA
+                    // attaches: async paste editors (Discord/Slack Quill) can
+                    // transiently hold the written text and then normalize
+                    // it, so they keep the full quiet-window reconcile.
+                    if (_attachMode != AttachMode.Msaa && EolNorm(cur) == EolNorm(_lastSentText))
+                    {
+                        _bracketOpen = false;
+                        _bracketBaseline = null;
+                        Log("debug", "bracket: verified-settle after " + unchecked(now - _bracketOpenedAt) + "ms");
+                    }
+                    return;
+                }
                 if (!capped && EolNorm(cur) != EolNorm(_lastSentText) && IsRecentSelfWrite(cur))
                 {
                     // Async editor still settling on a stale frame - hold the
