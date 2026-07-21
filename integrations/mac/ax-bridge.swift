@@ -22,6 +22,17 @@
 //  - Offsets are UTF-16 code units on both sides (AX native; matches
 //    JS string indexing).
 //
+// Panel agents (SPOTLIGHT-SPIKE.md, 2026-07-20): Spotlight-class apps
+// are LSUIElement agents whose NON-ACTIVATING panel takes key focus
+// without any app activation — the frontmost-app trigger above is
+// structurally blind to them. Each panel agent gets a PERSISTENT
+// observer armed at start (and on relaunch), listening on its app
+// element. Arbitration: a text-element focus event from a panel agent
+// wins (it holds real key focus); its release signal is
+// AXApplicationHidden / element-destroyed (dismissal fires nothing
+// else), which falls back to the primary observer — correct precisely
+// because the primary observer never moved.
+//
 // Build: swiftc -O ax-bridge.swift -o dist/ax-bridge
 
 import ApplicationServices
@@ -29,6 +40,20 @@ import AppKit
 
 let MAX_CHARS = 200_000
 let TEXT_ROLES: Set<String> = ["AXTextArea", "AXTextField", "AXComboBox"]
+
+// Non-activating-panel apps that need a persistent observer. Extend
+// via env (mirrors the daemon's OPENCUES_AX_DENY), e.g. for Raycast /
+// Alfred once probed: OPENCUES_AX_PANEL_AGENTS=com.raycast.macos
+let PANEL_AGENT_BUNDLES: Set<String> = {
+    var s: Set<String> = ["com.apple.Spotlight"]
+    if let extra = ProcessInfo.processInfo.environment["OPENCUES_AX_PANEL_AGENTS"] {
+        for b in extra.split(separator: ",") {
+            let t = b.trimmingCharacters(in: .whitespaces)
+            if !t.isEmpty { s.insert(t) }
+        }
+    }
+    return s
+}()
 
 func emit(_ obj: [String: Any]) {
     guard let data = try? JSONSerialization.data(withJSONObject: obj),
@@ -52,74 +77,153 @@ func cursorOf(_ el: AXUIElement) -> Int {
     return range.location + range.length
 }
 
+// Shared C-function-pointer callback for every observer (primary and
+// panel); the element's own pid disambiguates in handle().
+let axCallback: AXObserverCallback = { _, element, notification, refcon in
+    let bridge = Unmanaged<Bridge>.fromOpaque(refcon!).takeUnretainedValue()
+    bridge.handle(notification as String, element)
+}
+
 final class Bridge {
+    // Primary observer — follows app ACTIVATIONS (the frontmost app).
     var observer: AXObserver?
     var observedPid: pid_t = 0
+    // Panel agents — persistent observers keyed by pid, never re-armed
+    // by activations (none ever fire for these apps).
+    var panelObservers: [pid_t: AXObserver] = [:]
+    // The one focused element the daemon sees, and which pid owns it.
     var focusedElement: AXUIElement?
+    var focusedPid: pid_t = 0
+
+    func isPanelPid(_ pid: pid_t) -> Bool { panelObservers[pid] != nil }
+
+    func obsFor(_ pid: pid_t) -> AXObserver? {
+        pid == observedPid ? observer : panelObservers[pid]
+    }
 
     func start() {
         emit(["type": "ready", "trusted": AXIsProcessTrusted()])
         guard AXIsProcessTrusted() else { return }
-        NSWorkspace.shared.notificationCenter.addObserver(
+        let nc = NSWorkspace.shared.notificationCenter
+        nc.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
         ) { [weak self] note in
             guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
             self?.attachTo(pid: app.processIdentifier)
         }
+        // Panel agents can be killed/respawned (killall Spotlight) —
+        // re-arm on relaunch, drop on termination.
+        nc.addObserver(
+            forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  PANEL_AGENT_BUNDLES.contains(app.bundleIdentifier ?? "") else { return }
+            self?.attachPanel(pid: app.processIdentifier)
+        }
+        nc.addObserver(
+            forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  PANEL_AGENT_BUNDLES.contains(app.bundleIdentifier ?? "") else { return }
+            self?.detachPanel(pid: app.processIdentifier)
+        }
         if let front = NSWorkspace.shared.frontmostApplication {
             attachTo(pid: front.processIdentifier)
+        }
+        for bundle in PANEL_AGENT_BUNDLES {
+            for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundle) {
+                attachPanel(pid: app.processIdentifier)
+            }
         }
     }
 
     func attachTo(pid: pid_t) {
-        guard pid != getpid() else { return }
+        guard pid != getpid(), !isPanelPid(pid) else { return }
         if let obs = observer {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(obs), .defaultMode)
             observer = nil
         }
         observedPid = pid
         var obs: AXObserver?
-        let cb: AXObserverCallback = { _, element, notification, refcon in
-            let bridge = Unmanaged<Bridge>.fromOpaque(refcon!).takeUnretainedValue()
-            bridge.handle(notification as String, element)
-        }
-        guard AXObserverCreate(pid, cb, &obs) == .success, let o = obs else { return }
+        guard AXObserverCreate(pid, axCallback, &obs) == .success, let o = obs else { return }
         observer = o
         let refcon = Unmanaged.passUnretained(self).toOpaque()
         let appEl = AXUIElementCreateApplication(pid)
         AXObserverAddNotification(o, appEl, kAXFocusedUIElementChangedNotification as CFString, refcon)
         CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(o), .defaultMode)
-        refocus(appEl)
+        refocus(pid)
     }
 
-    /// Re-resolve the focused element and re-arm element observers.
-    func refocus(_ appEl: AXUIElement) {
-        guard let obs = observer else { return }
+    func attachPanel(pid: pid_t) {
+        guard pid != getpid(), panelObservers[pid] == nil else { return }
+        var obs: AXObserver?
+        guard AXObserverCreate(pid, axCallback, &obs) == .success, let o = obs else { return }
         let refcon = Unmanaged.passUnretained(self).toOpaque()
-        if let old = focusedElement {
+        let appEl = AXUIElementCreateApplication(pid)
+        // Panel lifecycle rides the APP element: the field alone gives
+        // NO dismissal signal (verified — SPOTLIGHT-SPIKE.md).
+        for n in [kAXFocusedUIElementChangedNotification,
+                  kAXApplicationHiddenNotification,
+                  kAXUIElementDestroyedNotification] {
+            AXObserverAddNotification(o, appEl, n as CFString, refcon)
+        }
+        CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(o), .defaultMode)
+        panelObservers[pid] = o
+        // Bridge started while the panel is already open + focused → adopt.
+        if let el = attr(appEl, kAXFocusedUIElementAttribute),
+           TEXT_ROLES.contains((attr(el as! AXUIElement, kAXRoleAttribute) as? String) ?? "") {
+            refocus(pid)
+        }
+    }
+
+    func detachPanel(pid: pid_t) {
+        guard let obs = panelObservers.removeValue(forKey: pid) else { return }
+        CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(obs), .defaultMode)
+        if focusedPid == pid { refocus(observedPid) }
+    }
+
+    /// Drop element-level observers from the current focused element
+    /// (via whichever observer owns its process).
+    func detachElement() {
+        if let old = focusedElement, let obs = obsFor(focusedPid) {
             AXObserverRemoveNotification(obs, old, kAXValueChangedNotification as CFString)
             AXObserverRemoveNotification(obs, old, kAXSelectedTextChangedNotification as CFString)
             AXObserverRemoveNotification(obs, old, kAXUIElementDestroyedNotification as CFString)
-            focusedElement = nil
         }
-        guard let el = attr(appEl, kAXFocusedUIElementAttribute) else { emit(["type": "blur"]); return }
+        focusedElement = nil
+    }
+
+    /// Re-resolve pid's focused element and re-arm element observers.
+    func refocus(_ pid: pid_t) {
+        guard let obs = obsFor(pid) else { return }
+        let refcon = Unmanaged.passUnretained(self).toOpaque()
+        detachElement()
+        let appEl = AXUIElementCreateApplication(pid)
+        guard let el = attr(appEl, kAXFocusedUIElementAttribute) else {
+            focusedPid = 0
+            emit(["type": "blur"])
+            return
+        }
         let element = el as! AXUIElement
         let role = (attr(element, kAXRoleAttribute) as? String) ?? ""
         let subrole = (attr(element, kAXSubroleAttribute) as? String) ?? ""
         guard TEXT_ROLES.contains(role), subrole != "AXSecureTextField" else {
+            focusedPid = 0
             emit(["type": "blur"])
             return
         }
         guard let value = attr(element, kAXValueAttribute) as? String, value.utf16.count <= MAX_CHARS else {
+            focusedPid = 0
             emit(["type": "blur"])
             return
         }
         focusedElement = element
+        focusedPid = pid
         replaceAttrWorks = nil // re-learn the write path per focused element
         AXObserverAddNotification(obs, element, kAXValueChangedNotification as CFString, refcon)
         AXObserverAddNotification(obs, element, kAXSelectedTextChangedNotification as CFString, refcon)
         AXObserverAddNotification(obs, element, kAXUIElementDestroyedNotification as CFString, refcon)
-        let app = NSRunningApplication(processIdentifier: observedPid)
+        let app = NSRunningApplication(processIdentifier: pid)
         emit([
             "type": "focus",
             "app": app?.localizedName ?? "?",
@@ -131,11 +235,28 @@ final class Bridge {
     }
 
     func handle(_ notification: String, _ element: AXUIElement) {
+        var pid: pid_t = 0
+        AXUIElementGetPid(element, &pid)
         switch notification {
         case kAXFocusedUIElementChangedNotification as String:
-            refocus(AXUIElementCreateApplication(observedPid))
+            // While a panel agent owns focus, primary-app focus churn
+            // must not steal it — the panel's release signal is
+            // AXApplicationHidden / destroyed, not a primary event.
+            if isPanelPid(focusedPid), !isPanelPid(pid) { return }
+            refocus(pid)
+        case kAXApplicationHiddenNotification as String:
+            // Panel dismissed — hand focus back to the primary app
+            // (no activation fires for this transition either).
+            if pid == focusedPid { refocus(observedPid) }
         case kAXUIElementDestroyedNotification as String:
-            if focusedElement != nil { focusedElement = nil; emit(["type": "blur"]) }
+            guard pid == focusedPid, focusedElement != nil else { return }
+            if isPanelPid(pid) {
+                refocus(observedPid)
+            } else {
+                focusedElement = nil
+                focusedPid = 0
+                emit(["type": "blur"])
+            }
         case kAXValueChangedNotification as String:
             guard let el = focusedElement,
                   let value = attr(el, kAXValueAttribute) as? String, value.utf16.count <= MAX_CHARS

@@ -147,8 +147,15 @@ case "watch":
     }
     let refcon = Unmanaged.passUnretained(ctx).toOpaque()
     let appEl = AXUIElementCreateApplication(pid)
-    let addErr = AXObserverAddNotification(o, appEl, kAXFocusedUIElementChangedNotification as CFString, refcon)
-    say("AddNotification(focus-changed) on Spotlight app element: \(addErr == .success ? "ok" : "err \(addErr.rawValue)")")
+    // App-level notifications — hunting for a DISMISSAL signal (the
+    // field emits nothing when the panel closes, verified 2026-07-20).
+    for n in [kAXFocusedUIElementChangedNotification, kAXApplicationActivatedNotification,
+              kAXApplicationDeactivatedNotification, kAXWindowCreatedNotification,
+              kAXFocusedWindowChangedNotification, kAXApplicationHiddenNotification,
+              kAXApplicationShownNotification, kAXUIElementDestroyedNotification] {
+        let e = AXObserverAddNotification(o, appEl, n as CFString, refcon)
+        say("AddNotification(\(n)) on app element: \(e == .success ? "ok" : "err \(e.rawValue)")")
+    }
     if let el = attr(appEl, kAXFocusedUIElementAttribute) {
         describeElement(el as! AXUIElement, label: "already-focused")
     } else {
@@ -191,13 +198,17 @@ case "write":
     let el = raw as! AXUIElement
     guard let value = attr(el, kAXValueAttribute) as? String else { say("no AXValue"); exit(1) }
     say("value before: \(value.debugDescription)")
+    // "@ALL" replaces the whole value — robust when the panel restored
+    // an unknown previous query.
     let u = Array(value.utf16), needle = Array(old.utf16)
-    var start = -1
-    if !needle.isEmpty && u.count >= needle.count {
+    var start = -1, length = needle.count
+    if old == "@ALL" {
+        start = 0; length = u.count
+    } else if !needle.isEmpty && u.count >= needle.count {
         for i in 0...(u.count - needle.count) where Array(u[i..<i+needle.count]) == needle { start = i; break }
     }
     guard start >= 0 else { say("\(old.debugDescription) not found in value"); exit(1) }
-    var range = CFRange(location: start, length: needle.count)
+    var range = CFRange(location: start, length: length)
     guard let axRange = AXValueCreate(.cfRange, &range) else { say("range create failed"); exit(1) }
 
     var res: CFTypeRef?
@@ -215,7 +226,111 @@ case "write":
     say("selection transaction: setRange=\(e1.rawValue) setText=\(e2.rawValue) value after: \(after2.debugDescription)")
     say(after2.contains(new) ? "→ selection path WORKS on Spotlight" : "→ NEITHER write path works")
 
+case "auto":
+    // Fully self-contained end-to-end test: no shell-step races. Opens
+    // the panel itself (CGEvent), writes, verifies, tests typing +
+    // autocompletion, dismisses. Requires Accessibility (both AX + CGEvent).
+    let src = CGEventSource(stateID: .hidSystemState)
+    func post(_ code: CGKeyCode, _ flags: CGEventFlags = []) {
+        guard let d = CGEvent(keyboardEventSource: src, virtualKey: code, keyDown: true),
+              let u = CGEvent(keyboardEventSource: src, virtualKey: code, keyDown: false) else { return }
+        d.flags = flags; d.post(tap: .cghidEventTap)
+        usleep(40_000)
+        u.flags = flags; u.post(tap: .cghidEventTap)
+        usleep(40_000)
+    }
+    func typeText(_ text: String) {
+        for scalar in text.unicodeScalars {
+            var units = Array(String(scalar).utf16)
+            guard let d = CGEvent(keyboardEventSource: src, virtualKey: 0, keyDown: true),
+                  let u = CGEvent(keyboardEventSource: src, virtualKey: 0, keyDown: false) else { return }
+            d.keyboardSetUnicodeString(stringLength: units.count, unicodeString: &units)
+            d.post(tap: .cghidEventTap)
+            usleep(60_000)
+            u.keyboardSetUnicodeString(stringLength: units.count, unicodeString: &units)
+            u.post(tap: .cghidEventTap)
+            usleep(30_000)
+        }
+    }
+    guard let pid = spotlightPid() else { say("Spotlight not running"); exit(1) }
+    let appEl = AXUIElementCreateApplication(pid)
+    func field() -> AXUIElement? {
+        guard let el = attr(appEl, kAXFocusedUIElementAttribute) else { return nil }
+        let e = el as! AXUIElement
+        return ((attr(e, kAXRoleAttribute) as? String) == "AXTextField") ? e : nil
+    }
+    func waitField(_ present: Bool, _ secs: Double) -> Bool {
+        let deadline = Date(timeIntervalSinceNow: secs)
+        while Date() < deadline {
+            if (field() != nil) == present { return true }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        return (field() != nil) == present
+    }
+    // 1 — ensure the panel is open.
+    if field() == nil {
+        say("panel closed — posting Cmd+Space")
+        post(49, .maskCommand)
+        guard waitField(true, 2.0) else { say("FAIL: no search field within 2s of Cmd+Space"); exit(1) }
+    } else {
+        say("panel already open")
+    }
+    guard var el = field() else { say("FAIL: field vanished"); exit(1) }
+    let v0 = (attr(el, kAXValueAttribute) as? String) ?? ""
+    let s0 = selRange(el)
+    say("field acquired: value=\(v0.debugDescription) sel=(\(s0?.location ?? -1),\(s0?.length ?? -1))")
+
+    // 2 — WRITE TEST: whole-value replace via the atomic path, verified.
+    var range = CFRange(location: 0, length: v0.utf16.count)
+    if let axRange = AXValueCreate(.cfRange, &range) {
+        var res: CFTypeRef?
+        let err = AXUIElementCopyParameterizedAttributeValue(
+            el, "AXReplaceRangeWithText" as CFString,
+            ["AXReplacementRange": axRange, "AXReplacementText": "BONJOUR" as CFString] as CFDictionary, &res)
+        Thread.sleep(forTimeInterval: 0.2)
+        let after = (attr(el, kAXValueAttribute) as? String) ?? ""
+        let sel = selRange(el)
+        say("WRITE atomic: err=\(err.rawValue) value=\(after.debugDescription) sel=(\(sel?.location ?? -1),\(sel?.length ?? -1))")
+        if after == "BONJOUR" {
+            say("→ atomic AXReplaceRangeWithText WORKS")
+        } else {
+            let v1 = (attr(el, kAXValueAttribute) as? String) ?? ""
+            var r1 = CFRange(location: 0, length: v1.utf16.count)
+            guard let axR1 = AXValueCreate(.cfRange, &r1) else { say("range create failed"); exit(1) }
+            let e1 = AXUIElementSetAttributeValue(el, kAXSelectedTextRangeAttribute as CFString, axR1)
+            let e2 = AXUIElementSetAttributeValue(el, kAXSelectedTextAttribute as CFString, "BONJOUR" as CFTypeRef)
+            Thread.sleep(forTimeInterval: 0.2)
+            let after2 = (attr(el, kAXValueAttribute) as? String) ?? ""
+            say("WRITE selection: setRange=\(e1.rawValue) setText=\(e2.rawValue) value=\(after2.debugDescription)")
+            say(after2 == "BONJOUR" ? "→ selection transaction WORKS" : "→ NEITHER write path works")
+        }
+    }
+
+    // 3 — TYPING TEST: clear (Esc once), type "saf", look for value +
+    // inline-autocompletion (selected suffix).
+    post(53) // Esc clears the query, panel stays open
+    Thread.sleep(forTimeInterval: 0.4)
+    guard let el2 = field() else { say("field gone after clear-Esc — panel dismissed early"); exit(0) }
+    el = el2
+    say("after clear: value=\(((attr(el, kAXValueAttribute) as? String) ?? "").debugDescription)")
+    typeText("saf")
+    Thread.sleep(forTimeInterval: 0.8)
+    let vt = (attr(el, kAXValueAttribute) as? String) ?? ""
+    let st = selRange(el)
+    say("TYPING: value=\(vt.debugDescription) sel=(\(st?.location ?? -1),\(st?.length ?? -1))")
+    if vt.isEmpty { say("→ synthetic typing did NOT register") }
+    else if vt == "saf" { say("→ typing works, no inline completion present") }
+    else if vt.hasPrefix("saf"), let s = st, s.length > 0 {
+        say("→ typing works; completion \(String(vt.dropFirst(3)).debugDescription) exposed as SELECTED SUFFIX (\(s.location),\(s.length))")
+    } else {
+        say("→ typing produced unexpected state — inspect above")
+    }
+
+    // 4 — DISMISS: Esc twice (clear, then close); verify field gone.
+    post(53); Thread.sleep(forTimeInterval: 0.3); post(53)
+    say(waitField(false, 2.0) ? "DISMISS: field gone — panel closed" : "DISMISS: field STILL present after Esc Esc")
+
 default:
-    say("unknown mode \(mode) — modes: activation | watch | focus | write")
+    say("unknown mode \(mode) — modes: activation | watch | focus | write | auto")
     exit(1)
 }
