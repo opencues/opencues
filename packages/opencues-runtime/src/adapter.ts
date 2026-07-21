@@ -169,6 +169,26 @@ export interface ProcessResult {
   readonly stderr: string;
   readonly exitCode: number;
   readonly timedOut: boolean;
+  /**
+   * The inverse of a file write the invoked blank performed (sentinel →
+   * IDENTITY.md, note → NOTES.md), attached by `createBlankInvoke` when
+   * the blank exposes one. BlankFill records it into the undo journal;
+   * replaying `inverseOp` through the blank path re-runs the blank's own
+   * validator by construction. Absent on the spawnProcess path and on
+   * hosts that wrap blankInvoke without forwarding extra fields —
+   * undo then simply can't revert that file write (degrades, never lies).
+   */
+  readonly writeInverse?: BlankWriteInverse;
+}
+
+/** A recorded blank-write inversion — both ops are ordinary blank
+ *  invocations ({keyword, args} as `blankInvoke`'s get-action speaks
+ *  them), never raw file bytes. */
+export interface BlankWriteInverse {
+  readonly file: 'IDENTITY.md' | 'NOTES.md';
+  readonly blankName: string;
+  readonly inverseOp: { readonly keyword: string; readonly args: readonly string[] };
+  readonly forwardOp: { readonly keyword: string; readonly args: readonly string[] };
 }
 
 export type Capability =

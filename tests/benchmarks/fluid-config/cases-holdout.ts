@@ -74,19 +74,6 @@ export const CASES_HOLDOUT: FluidConfigCase[] = [
     expected: { setting: 'voice-mode', value: 'inactive' },
   },
 
-  // fluid-blank-mode
-  {
-    id: 'ho-fluid-on',
-    category: 'hit-fuzzy',
-    input: 'I want underscores to do free-form LLM lookups _',
-    expected: { setting: 'fluid-blank-mode', value: 'on' },
-  },
-  {
-    id: 'ho-fluid-off',
-    category: 'hit-fuzzy',
-    input: 'only fire blanks on explicit keywords, no semantic lookups _',
-    expected: { setting: 'fluid-blank-mode', value: 'off' },
-  },
 
   // word-cues-mode
   {
@@ -266,5 +253,47 @@ export const CASES_HOLDOUT: FluidConfigCase[] = [
     // blank-loading-animation is a MENU_TUNABLE, not a FEATURE.
     input: 'use the spinner instead of the bounce glyph at the blank _',
     expected: { setting: null, value: null },
+  },
+
+  // ── REJECT: rewrite imperatives (held out — NO overlap with the
+  //    prompt's few-shots, which use "sound more corporate" /
+  //    "make it more formal") ────────────────────────────────────────
+  {
+    id: 'ho-rt-live-bug',
+    category: 'reject-transform',
+    // The exact July 2026 live utterance.
+    input: 'congratz make more professional _',
+    expected: { setting: null, value: null },
+  },
+  {
+    id: 'ho-rt-body-professional',
+    category: 'reject-transform',
+    input: 'thanks for everything make it more professional _',
+    expected: { setting: null, value: null },
+  },
+  {
+    id: 'ho-rt-polished',
+    category: 'reject-transform',
+    input: 'great job everyone make this more polished _',
+    expected: { setting: null, value: null },
+  },
+  {
+    id: 'ho-rt-emojis',
+    category: 'reject-transform',
+    input: 'im so happy for you make more formal and add emojis _',
+    expected: { setting: null, value: null },
+  },
+  {
+    id: 'ho-rt-shorten',
+    category: 'reject-transform',
+    input: 'sounds good shorten this _',
+    expected: { setting: null, value: null },
+  },
+  // Held-out recall guard: novel feature-reference phrasing.
+  {
+    id: 'ho-sentence-cues-on',
+    category: 'hit-fuzzy',
+    input: 'suggest better versions of my sentences as i write _',
+    expected: { setting: 'sentence-cues-mode', value: 'on' },
   },
 ];

@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "lib": ["ES2022"],
+    "types": ["node"]
+  },
+  // patches/opencuesBootstrap.ts is deliberately excluded: it is
+  // injection-glue copied into an installed OpenCode fork at a path
+  // where its `@opentui/*`, `@opencues/*/dist/...`, and `solid-js`
+  // imports resolve for real (see integrations/opencode/CLAUDE.md).
+  // In THIS repo location those specifiers (including the
+  // __OPENCUES_BAND__ template placeholder substituted at install
+  // time) don't exist, so it can't typecheck standalone — same
+  // treatment the claude-code/gemini-cli patch files get (no
+  // standalone tsconfig covers them either).
+  "include": ["plugin/**/*.ts"],
+  "exclude": ["**/*.test.ts", "node_modules"]
+}

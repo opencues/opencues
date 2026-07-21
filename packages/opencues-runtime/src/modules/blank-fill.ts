@@ -6,10 +6,11 @@
 // with the blank name + match positions for downstream consumers
 // (auto-populate, blank-script fetch, span tracking, dismiss, etc.).
 
-import type { HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../adapter';
+import type { BlankWriteInverse, HostAdapter, KeyEvent, TextChangeEvent, Unsubscribe } from '../adapter';
+import { fillSplice, type UndoEntry, type UndoJournal } from '../state/undo-journal';
 import type { ConfigLoader } from './config-loader';
 import { splitWords } from './navigation';
-import { isBlankConfigCycleable, keywordInWindow, lineOfWords, matchBlankShape } from '@opencues/core';
+import { isBlankConfigCycleable, keywordInWindow, lineOfWords, matchBlankShape, matchDeterministicAction, segmentStart } from '@opencues/core';
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
@@ -36,6 +37,12 @@ export interface BlankSlot {
    *  runs with ZERO LLM. `shapeValue` holds the set value or step direction. */
   readonly shapeAction?: 'get' | 'set' | 'step';
   readonly shapeValue?: string;
+  /** Word index where the shape-matched command SEGMENT begins (shape slots
+   *  only). Shapes match the sentence containing `_`, so this may PRECEDE
+   *  keywordStart for trailing-keyword shapes ("east finchley iceland
+   *  location _") — clearing the command span starts here, not at the
+   *  keyword. */
+  readonly commandStart?: number;
 }
 
 export class BlankFill {
@@ -61,6 +68,9 @@ export class BlankFill {
   /** INFOSEC F9: blank names we've already warned about for missing
    *  `sandbox:` declaration. One warn per name per process. */
   private _warnedMissingSandboxBlanks = new Set<string>();
+  /** Once-per-blank warn dedup for the config-without-implementation
+   *  case (registry miss + no blankScript). */
+  private _warnedUnavailableBlanks = new Set<string>();
 
   /**
    * Per-blank result cache. Keyed by `<blankName>::<argsKey>` where
@@ -119,8 +129,25 @@ export class BlankFill {
      *  blanks-bucket key. When absent, `integration:` stays a static template.
      *  The real value is never passed to it — see `blank-weave.ts`. */
     private weave?: BlankWeaver | null,
+    /** Undo journal — every fill commit records a transaction (buffer
+     *  diff + any os-set / file-write side-effect entries) so `undo _`
+     *  can revert it. Omit to disable recording. */
+    private undoJournal?: UndoJournal,
   ) {
     if (blankLoading) this._loading = blankLoading;
+  }
+
+  /** Record a fill into the undo journal (no-op without a journal).
+   *  Uses fillSplice so undoing a `_`-triggered fill restores the user's
+   *  text without re-arming the trigger; fillSplice self-guards to plain
+   *  diffSplice for any change that isn't a lone-`_` fill. */
+  private recordUndo(label: string, before: string, after: string, extra?: readonly UndoEntry[]): void {
+    if (!this.undoJournal) return;
+    const entries: UndoEntry[] = [];
+    const buf = fillSplice(before, after, this.undoJournal.currentEpoch);
+    if (buf) entries.push(buf);
+    if (extra) entries.push(...extra);
+    this.undoJournal.record({ label, entries });
   }
 
   private _loadingAnimator(): BlankLoadingAnimator {
@@ -190,6 +217,20 @@ export class BlankFill {
   /** Pure scanner — exposed for unit tests. */
   scan(text: string): readonly BlankSlot[] {
     const cleanText = text.replace(/[\u200B\u200C]/g, '');
+    // ACTION preempts any blank claim. A trailing bare `undo`/`redo` before
+    // the `_` is a universal runtime command \u2014 it must NOT be swallowable as
+    // a blank argument (live-caught 2026-07-15: `capital of france undo _`
+    // matched the `countries` shape with arg "france undo" \u2192 "france undo:
+    // not found", eating the undo). BlankSource outranks ConfigIntent
+    // (95 > 94), so without this the ACTION gate never gets to run. Only
+    // cede when undo is actually wired (a journal is present).
+    if (this.undoJournal) {
+      const trigIdx = cleanText.lastIndexOf('_');
+      if (trigIdx >= 0 && matchDeterministicAction(cleanText.slice(0, trigIdx))) {
+        this._slots = [];
+        return this._slots;
+      }
+    }
     const words = cleanText.split(/\s+/).filter(Boolean);
     // Per-word line numbers (same order as the flat split) for the shared
     // line-scoped keyword window.
@@ -229,17 +270,25 @@ export class BlankFill {
             if (parts.every((p, j) => words[i + j]?.toLowerCase() === p)) { kwStart = i; kwEnd = i + parts.length - 1; break outer; }
           }
         }
+        // Word index where the shape-matched SEGMENT begins. matchBlankShape
+        // anchors on the segment containing the last `_` (lineWithBlank), so
+        // the command span the shape owns starts here — which may precede the
+        // keyword for trailing-keyword shapes ("east finchley iceland
+        // location _"). segmentStart boundaries fall between words (terminator
+        // + whitespace, or newline), so the word count before it is exact.
+        const segChar = segmentStart(cleanText, cleanText.lastIndexOf('_'));
+        const commandStart = cleanText.slice(0, segChar).split(/\s+/).filter(Boolean).length;
         const existing = slots.find(s => s.index === usIdx && s.blankName === shape.blankName);
         if (existing) {
           // Keyword scan already made the slot — just attach the shape verdict.
-          slots[slots.indexOf(existing)] = { ...existing, shapeAction: shape.action, shapeValue: shape.value };
+          slots[slots.indexOf(existing)] = { ...existing, shapeAction: shape.action, shapeValue: shape.value, commandStart };
         } else {
           // Proximity missed it — create the slot (the bypass that fixes
           // `volume 30 _` / `brightness 50 _`).
           slots.push({
             index: usIdx, keyword: kws[0] ?? shape.blankName, blankName: shape.blankName,
             keywordStart: kwStart, keywordEnd: kwEnd, proximity: Math.max(0, usIdx - kwEnd - 1),
-            shapeAction: shape.action, shapeValue: shape.value,
+            shapeAction: shape.action, shapeValue: shape.value, commandStart,
           });
         }
       }
@@ -453,7 +502,10 @@ export class BlankFill {
       // is already reserved above, so a re-scan during the gate's latency
       // won't double-dispatch. (`continue` inside this closure becomes
       // `return` — it's a function body now, not the loop.)
-      const doDispatch = (typedAction?: 'set' | 'step'): void => {
+      // `undoExtras` carries side-effect journal entries the shaped
+      // set/step path captured (os-set with the prior value) so the
+      // eventual fill transaction reverts BOTH the text and the OS state.
+      const doDispatch = (typedAction?: 'set' | 'step', undoExtras?: readonly UndoEntry[]): void => {
 
       // Context words: ONLY the words between the keyword and the `_` — the
       // captured arg region (e.g. ["france"] in `capital of france _`). This
@@ -468,8 +520,16 @@ export class BlankFill {
       // 495-char garbage fill. Bounding context to (keywordEnd, `_`) keeps it
       // to the actual argument; prior lines and any trailing text are excluded.
       const contextWords: string[] = [];
-      for (let wi = slot.keywordEnd + 1; wi < slot.index; wi += 1) {
-        contextWords.push(words[wi]);
+      if (slot.shapeAction === 'get' && slot.shapeValue) {
+        // Shaped get: the shape's valueGroup capture IS the arg. For
+        // keyword-first shapes this equals the positional walk below; for
+        // trailing-keyword shapes ("east finchley iceland location _") the
+        // arg PRECEDES the keyword and the positional walk finds nothing.
+        contextWords.push(...slot.shapeValue.split(/\s+/).filter(Boolean));
+      } else {
+        for (let wi = slot.keywordEnd + 1; wi < slot.index; wi += 1) {
+          contextWords.push(words[wi]);
+        }
       }
 
       // Expand ~ in script path. Empty when the blank is
@@ -528,7 +588,7 @@ export class BlankFill {
           // user moved on.
           const cachedOutput = entry.output;
           setTimeout(() => {
-            this.applyAsyncFill(slot, cachedOutput, typedAction);
+            this.applyAsyncFill(slot, cachedOutput, typedAction, undoExtras);
             // End the gate-window loader (started before the gate on the
             // gated path). No-op on the ungated path, where it was never started.
             this._loadingAnimator().stop(slot.index, 'blank-fill');
@@ -563,12 +623,54 @@ export class BlankFill {
       if (!handle) {
         if (!script) {
           // blankInvoke didn't recognise the blank AND there's no
-          // shell fallback. Drop the dedup so a later state change can
-          // retry, and skip cleanly. Release the loading claim we
-          // just took — without this, the slot would animate forever
-          // (no .then/.catch ever fires to stop it).
+          // shell fallback: the CONFIG for this blank exists (a
+          // BLANK.md matched and formed the slot) but the host has no
+          // IMPLEMENTATION — either the installed bundle predates the
+          // blank (shared ~/.cues is seeded by ANY host's install, so
+          // configs can legitimately run ahead of another host's
+          // bundle), or the blank's factory skipped registration over
+          // a missing prerequisite (e.g. stocks without a Finnhub
+          // key). This used to skip in TOTAL SILENCE — no log, no
+          // fill — and read as "OpenCues is broken" (July 2026, the
+          // loading-animation blank on a stale CC fork). Name it:
+          // an [err] fill replaces only the `_` (the typed command
+          // survives) and a once-per-blank warn carries the detail.
+          // Drop the dedup so a later state change can retry, and
+          // release the loading claim we just took — without this,
+          // the slot would animate forever (no .then/.catch ever
+          // fires to stop it).
           this._pendingScripts.delete(dedupKey);
           this._loadingAnimator().stop(slot.index, 'blank-fill');
+          if (!this._warnedUnavailableBlanks.has(slot.blankName)) {
+            this._warnedUnavailableBlanks.add(slot.blankName);
+            this.adapter.log('warn',
+              `BlankFill: "${slot.blankName}" has config but no implementation on this host — ` +
+              `blankInvoke doesn't know it and its BLANK.md declares no blankScript. ` +
+              `Stale bundle (config newer than the installed runtime) or an unmet ` +
+              `registration prerequisite. Fix: \`opencues install ${this.adapter.hostName}\`.`,
+            );
+          }
+          // DEFER the [err] fill — this branch is the only fill that
+          // would otherwise run SYNCHRONOUSLY inside the text-change
+          // dispatch. On live CC (found 2026-07-15) adapter.getText()
+          // is still one keystroke stale at that instant (the host's
+          // buffer state catches up after the handler returns), so
+          // `words[slot.index]` missed and applyAsyncFill's staleness
+          // guard silently dropped the fill — warn logged, buffer
+          // untouched, and the MockAdapter's synchronous text state
+          // hid it from the unit journeys. Every OTHER fill path is
+          // naturally deferred past the state update by script/LLM
+          // latency; match that timing. One guarded retry covers hosts
+          // whose state settles later than a tick — if the buffer
+          // legitimately moved on instead, the retry is dropped by the
+          // same staleness guard that protects late script callbacks.
+          {
+            const errFill = `[err] ${slot.blankName}: not available on this host — stale bundle or missing prerequisite. Try \`opencues install ${this.adapter.hostName}\``;
+            setTimeout(() => {
+              if (this.tryErrFill(slot, errFill, typedAction)) return;
+              setTimeout(() => { this.tryErrFill(slot, errFill, typedAction); }, 50);
+            }, 0);
+          }
           return;
         }
         // OS-level sandbox config — populated when the blank's
@@ -656,7 +758,20 @@ export class BlankFill {
             this._resultCache.delete(oldest);
           }
         }
-        this.applyAsyncFill(slot, stdout, typedAction);
+        // A file-writing blank (sentinel, note) attaches the inverse of
+        // the write this invocation performed — journal it alongside the
+        // fill so `undo _` reverts the file through the blank's own
+        // validator path.
+        const inverseEntries: UndoEntry[] = res.writeInverse
+          ? [...(undoExtras ?? []), {
+              kind: 'file-write',
+              file: res.writeInverse.file,
+              blankName: res.writeInverse.blankName,
+              inverseOp: res.writeInverse.inverseOp,
+              forwardOp: res.writeInverse.forwardOp,
+            }]
+          : [...(undoExtras ?? [])];
+        this.applyAsyncFill(slot, stdout, typedAction, inverseEntries.length > 0 ? inverseEntries : undefined);
       }).catch(err => {
         this._pendingScripts.delete(dedupKey);
         this._loadingAnimator().stop(slot.index, 'blank-fill');
@@ -680,10 +795,24 @@ export class BlankFill {
         void (async () => {
           this._loadingAnimator().start(slot.index, 'blank-fill');
           let typedAction: 'set' | 'step' | undefined;
+          // Undo capture (get-before-set): the OS value BEFORE the set,
+          // so `undo _` can restore it. When the prior read fails the
+          // set still proceeds — journaled as a non-invertible external
+          // effect so the undo report stays honest instead of guessing.
+          let undoExtras: UndoEntry[] | undefined;
+          const scriptForUndo = (blank as { blankScript?: string }).blankScript;
+          const undoScriptPath = scriptForUndo
+            ? (scriptForUndo.startsWith('~') ? home + scriptForUndo.slice(1) : scriptForUndo)
+            : undefined;
           if (slot.shapeAction === 'set' && slot.shapeValue && /^\d+$/.test(slot.shapeValue) && settable0) {
+            const prior = await this.runBlankGetValue(slot.blankName, blank as Record<string, unknown>);
+            if (this._lastInputText !== shapeText) { this._loadingAnimator().stop(slot.index, 'blank-fill'); this._pendingScripts.delete(dedupKey); return; }
             await this.runBlankSet(slot.blankName, slot.shapeValue, blank as Record<string, unknown>);
             if (this._lastInputText !== shapeText) { this._loadingAnimator().stop(slot.index, 'blank-fill'); this._pendingScripts.delete(dedupKey); return; }
             typedAction = 'set';
+            undoExtras = prior !== null
+              ? [{ kind: 'os-set', blankName: slot.blankName, scriptPath: undoScriptPath, prevValue: String(prior), newValue: slot.shapeValue }]
+              : [{ kind: 'external', label: `${slot.blankName} set ${slot.shapeValue} (prior value unreadable)` }];
           } else if (slot.shapeAction === 'step' && (slot.shapeValue === 'up' || slot.shapeValue === 'down') && settable0) {
             const current = await this.runBlankGetValue(slot.blankName, blank as Record<string, unknown>);
             if (this._lastInputText !== shapeText) { this._loadingAnimator().stop(slot.index, 'blank-fill'); this._pendingScripts.delete(dedupKey); return; }
@@ -692,9 +821,10 @@ export class BlankFill {
               await this.runBlankSet(slot.blankName, String(next), blank as Record<string, unknown>);
               if (this._lastInputText !== shapeText) { this._loadingAnimator().stop(slot.index, 'blank-fill'); this._pendingScripts.delete(dedupKey); return; }
               typedAction = 'step';
+              undoExtras = [{ kind: 'os-set', blankName: slot.blankName, scriptPath: undoScriptPath, prevValue: String(current), newValue: String(next) }];
             }
           }
-          doDispatch(typedAction);
+          doDispatch(typedAction, undoExtras);
         })();
         continue;
       }
@@ -810,7 +940,22 @@ export class BlankFill {
    * adapter.pushText (calls onChange), since this runs outside any
    * dispatch.
    */
-  private applyAsyncFill(slot: BlankSlot, fillValue: string, typedAction?: 'set' | 'step'): void {
+  /** Attempt an [err] feedback fill; returns true when the slot's `_`
+   *  (or its animation frame char) is present in the CURRENT buffer —
+   *  i.e. the fill had a target and applyAsyncFill ran its course.
+   *  False = the adapter's text state hasn't caught up with the
+   *  keystroke that formed the slot (live-CC timing, 2026-07-15) and
+   *  the caller may retry once. */
+  private tryErrFill(slot: BlankSlot, errFill: string, typedAction?: 'set' | 'step'): boolean {
+    const cleaned = this.adapter.getText().replace(/[\u200B\u200C]/g, '');
+    const target = splitWords(cleaned)[slot.index];
+    const present = !!target
+      && (target.word === '_' || (this._loading?.isOurSlotChar(slot.index, target.word) ?? false));
+    if (present) this.applyAsyncFill(slot, errFill, typedAction);
+    return present;
+  }
+
+  private applyAsyncFill(slot: BlankSlot, fillValue: string, typedAction?: 'set' | 'step', undoExtras?: readonly UndoEntry[]): void {
     const currentText = this.adapter.getText();
     const cleaned = currentText.replace(/[\u200B\u200C]/g, '');
     const words = splitWords(cleaned);
@@ -850,7 +995,7 @@ export class BlankFill {
     // (default ' ') and stash the pair so cycling can write back via
     // `script set` / `script get`.
     if (blank?.blankSatellite === true && fillValue.includes('\t')) {
-      this.applySatelliteFill(slot, blank, fillValue, cleaned, target);
+      this.applySatelliteFill(slot, blank, fillValue, cleaned, target, undoExtras);
       return;
     }
 
@@ -925,6 +1070,11 @@ export class BlankFill {
     const shapeCapturedArg = slot.shapeValue !== undefined && slot.shapeValue.length > 0;
     const clearsCommandSpan = !isErrResult
       && (typedAction !== undefined || hasIntegration || shapeCapturedArg);
+    // Shaped slots clear from the start of the matched command SEGMENT
+    // (commandStart) — for trailing-keyword shapes the captured arg precedes
+    // the keyword, and clearing from keywordStart would strand the arg next
+    // to an output that already embeds it.
+    const clearStart = clearsCommandSpan ? (slot.commandStart ?? slot.keywordStart) : slot.keywordStart;
     const { clearEnd } = clearsCommandSpan
       ? { clearEnd: slot.index - 1 }
       : (isErrResult ? { clearEnd: undefined } : computeFillRange(blank ?? {}, slot));
@@ -945,7 +1095,7 @@ export class BlankFill {
     });
 
     const { newText, newCursor } = clearEnd !== undefined
-      ? buildClearKeywordText(cleaned, slot, primaryFill, clearEnd)
+      ? buildClearKeywordText(cleaned, { ...slot, keywordStart: clearStart }, primaryFill, clearEnd)
       : { newText: cleaned.slice(0, target.start) + primaryFill + cleaned.slice(target.end),
           newCursor: target.start + primaryFill.length };
 
@@ -959,7 +1109,7 @@ export class BlankFill {
       // fill, multiple lines, blankDismissible, or clearOnEdit.
       const newWords = splitWords(newText);
       const startWord = newWords.find(w => w.start === fillStart);
-      const kwStartChar = newWords[slot.keywordStart]?.start ?? fillStart;
+      const kwStartChar = newWords[clearStart]?.start ?? fillStart;
       const wantsClearOnEdit = blank?.blankClearOnEdit === true;
       if (this.spanFillState) {
         const fillWordCount = primaryFill.split(/\s+/).filter(Boolean).length;
@@ -993,6 +1143,9 @@ export class BlankFill {
         });
       }
       this.commitText(newText, newCursor);
+      // `[err]` fills are feedback, not changes worth journaling — the
+      // command is still in the buffer for the user to fix.
+      if (!isErrResult) this.recordUndo(`${slot.blankName} fill`, cleaned, newText, undoExtras);
     };
 
     // ── LLM contextual weave (optional, opt-in, off by default) ──────────
@@ -1050,6 +1203,7 @@ export class BlankFill {
         this.spanFillState?.clear();
         this.adapter.log('info', `BlankFill: woven integration → "${preview(swapped, 60)}"`);
         this.commitText(finalText, finalCursor);
+        this.recordUndo(`${slot.blankName} fill`, cleaned, finalText, undoExtras);
         this.adapter.emitEvent?.('blank.woven', { blankName: String(blank?.name ?? ''), output: swapped });
       } else {
         // Weave failed / ceded / timed out — land the static fill (one change).
@@ -1275,6 +1429,7 @@ export class BlankFill {
     fillValue: string,
     cleaned: string,
     target: { start: number; end: number; word: string; index: number },
+    undoExtras?: readonly UndoEntry[],
   ): void {
     const tabIdx = fillValue.indexOf('\t');
     const selectorRaw = fillValue.slice(0, tabIdx).trim();
@@ -1325,6 +1480,7 @@ export class BlankFill {
       this.adapter.setCursorOffset(newCursor);
       this.adapter.forceRender();
     }
+    this.recordUndo(`${slot.blankName} fill`, cleaned, newText, undoExtras);
   }
 
   /**

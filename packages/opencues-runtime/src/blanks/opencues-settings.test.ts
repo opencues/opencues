@@ -1,5 +1,33 @@
 import { describe, it, expect, vi } from 'vitest';
-import { OpenCuesSettingsBlank } from './opencues-settings';
+import { OpenCuesSettingsBlank, rewriteSetting } from './opencues-settings';
+
+describe('rewriteSetting — EOL handling', () => {
+  it('replaces an existing scalar (LF and CRLF)', () => {
+    expect(rewriteSetting('---\nvoice-mode: active\n---\n', 'voice-mode', 'inactive'))
+      .toBe('---\nvoice-mode: inactive\n---\n');
+    expect(rewriteSetting('---\r\nvoice-mode: active\r\n---\r\n', 'voice-mode', 'inactive'))
+      .toContain('voice-mode: inactive\r\n');
+  });
+
+  it('appends a new scalar inside the frontmatter (LF)', () => {
+    const out = rewriteSetting('---\nvoice-mode: active\n---\n', 'blank-loading-frames', '_,a,b');
+    expect(out).toMatch(/^blank-loading-frames: _,a,b$/m);
+    expect(out).not.toContain('\r');
+  });
+
+  it('appends a new scalar for a CRLF file WITHOUT bailing (issue: loading-animation on Windows)', () => {
+    // The old `\n`-only frontmatter match silently bailed on `\r\n`, so a
+    // new key (e.g. blank-loading-frames) was never written — the blank
+    // reported success but the setting vanished.
+    const out = rewriteSetting('---\r\nvoice-mode: active\r\n---\r\n', 'blank-loading-frames', '▖,▘,▝,▗');
+    expect(out).toContain('blank-loading-frames: ▖,▘,▝,▗\r\n'); // written, CRLF preserved
+    expect(out).not.toMatch(/[^\r]\n/);                          // no mixed LF
+  });
+
+  it('leaves a file with no frontmatter untouched (never corrupt malformed content)', () => {
+    expect(rewriteSetting('voice-mode: active\n', 'x', 'y')).toBe('voice-mode: active\n');
+  });
+});
 
 const SAMPLE_MD = `---
 version: 1
@@ -160,7 +188,7 @@ describe('OpenCuesSettingsBlank', () => {
   // cycling "blank-trigger-mode" to "spaced" appeared to work but
   // the next `_` trigger logged `mode=immediate` 5 seconds later.
   it('set(setting, value) APPENDS to frontmatter when no existing line', async () => {
-    const md = `---\nfluid-blank-mode: on\n---\n\nbody\n`;
+    const md = `---\nword-cues-mode: on\n---\n\nbody\n`;
     const writes: string[] = [];
     const ctl = new OpenCuesSettingsBlank({
       readFile: async () => md,
@@ -169,7 +197,7 @@ describe('OpenCuesSettingsBlank', () => {
     await ctl.set('blank-trigger-mode', 'spaced');
     expect(writes).toHaveLength(1);
     expect(writes[0]).toMatch(/^---\n/);
-    expect(writes[0]).toContain('fluid-blank-mode: on');
+    expect(writes[0]).toContain('word-cues-mode: on');
     expect(writes[0]).toMatch(/^blank-trigger-mode: spaced$/m);
     expect(writes[0]).toContain('\n---\n\nbody');  // body preserved
   });
@@ -177,7 +205,7 @@ describe('OpenCuesSettingsBlank', () => {
   it('set() append-path is idempotent — second set() rewrites the just-added line', async () => {
     // After the append-path runs once, the line exists; a subsequent
     // set() must REWRITE the value, not append a duplicate line.
-    let storage = `---\nfluid-blank-mode: on\n---\n`;
+    let storage = `---\nword-cues-mode: on\n---\n`;
     const ctl = new OpenCuesSettingsBlank({
       readFile: async () => storage,
       writeFile: async (s) => { storage = s; },
@@ -207,10 +235,10 @@ describe('OpenCuesSettingsBlank', () => {
   // cycling.ts:218 spliced into the satellite slot — producing
   // `<askedSetting> <other>\t<v>` in the buffer (tab renders as
   // multiple spaces in most hosts). Canonical symptom:
-  // "blank-trigger-mode fluid-blank-mode    on" after cycling the
+  // "blank-trigger-mode word-cues-mode    on" after cycling the
   // selector to a registry-only setting.
   it('get(keyword) returns registry default when keyword absent from file (no tab leak)', async () => {
-    const md = `---\nfluid-blank-mode: on\n---\n`;
+    const md = `---\nword-cues-mode: on\n---\n`;
     const ctl = new OpenCuesSettingsBlank({
       readFile: async () => md,
       writeFile: async () => { /* unused */ },
@@ -218,15 +246,15 @@ describe('OpenCuesSettingsBlank', () => {
     const got = await ctl.get('blank-trigger-mode');
     expect(got).toBe('immediate');
     expect(got).not.toContain('\t');
-    expect(got).not.toContain('fluid-blank-mode');
+    expect(got).not.toContain('word-cues-mode');
   });
 
   it('get(unknown-to-everything) falls through to registry first-setting init', async () => {
-    // File has only fluid-blank-mode. Registry knows many more. An
+    // File has only word-cues-mode. Registry knows many more. An
     // unknown-to-registry keyword falls through to satellite-init
     // shape, which finds the first cyclable setting in the registry
-    // (fluid-blank-mode) and returns it tab-delimited.
-    const md = `---\nfluid-blank-mode: on\n---\n`;
+    // (word-cues-mode) and returns it tab-delimited.
+    const md = `---\nword-cues-mode: on\n---\n`;
     const ctl = new OpenCuesSettingsBlank({
       readFile: async () => md,
       writeFile: async () => { /* unused */ },

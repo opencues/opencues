@@ -34,8 +34,9 @@ import { DismissedBlanks } from '../../../src/state/dismissed-blanks';
 import { createSourceReclassifier, resetSharedBufferState } from '../../../src/boot-common';
 import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import { AgentTaskState } from '../../../src/state/agent-task';
+import { UndoJournal } from '../../../src/state/undo-journal';
 import { applyDirectives } from '../../../src/render-directives';
-import { buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, buildCalendarContextIngest, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { buildBlankWeaver } from '../../../src/modules/blank-weave';
 import { startEventBridge } from '../../../src/event-bridge';
 import type {
@@ -517,6 +518,9 @@ export function boot(host: HostInfo): BootResult {
   const dismissedBlanks = new DismissedBlanks();
   const selectorSatelliteState = new SelectorSatelliteState();
   const agentTaskState = new AgentTaskState();
+  // Session-scoped undo/redo log — mirrors buildSharedRuntime's wiring
+  // (CC constructs its modules inline; keep the two in lockstep).
+  const undoJournal = new UndoJournal();
 
   // ConfigLoader: kick off load asynchronously. Cycling tolerates an empty
   // map (returns false from step) until load resolves.
@@ -570,7 +574,7 @@ export function boot(host: HostInfo): BootResult {
   const cycling = new Cycling(
     adapter, hlState, dynDefs, configLoader,
     spanFillState, dismissedBlanks, selectorSatelliteState,
-    () => apiKeys,
+    () => apiKeys, undefined, undoJournal,
   );
   cycling.subscribe();
 
@@ -630,7 +634,7 @@ export function boot(host: HostInfo): BootResult {
   // integration-weave LLM (blanks bucket, native NodeHttpAdapter fallback).
   // No-ops to static unless `integration-weave-mode: on` + a blank opts in.
   const blankWeaver = buildBlankWeaver(configLoader, () => apiKeys, undefined, (lvl, msg) => log(lvl, msg));
-  const blankFill = new BlankFill(adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading, blankWeaver);
+  const blankFill = new BlankFill(adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading, blankWeaver, undoJournal);
   configLoader.load().then(() => blankFill.subscribe()).catch(() => { /* logged */ });
   void blankFill; // silence unused — referenced by future phases
 
@@ -657,6 +661,7 @@ export function boot(host: HostInfo): BootResult {
       exportPath: host.statusFilePath,
       refreshHook: host.refreshStatusline,
       kataStatus: () => kataCoach.status(),
+      undoStatus: () => undoJournal.recentApplyReport(8000),
     }, configLoader, spanFillState, selectorSatelliteState, agentTaskState);
     statusline.subscribe();
   }
@@ -689,6 +694,7 @@ export function boot(host: HostInfo): BootResult {
   const hasAnyKey = Object.values(apiKeys).some(Boolean) || pickAutoProvider(apiKeys) !== null;
   // Resolver is constructed even with no keys so the MissingKeyFallbackSource
   // can substitute a visible in-buffer hint on `_` instead of silent no-op.
+  const calendarContextHolder = buildCalendarContextIngest(log);
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
     endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
     apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
@@ -697,14 +703,20 @@ export function boot(host: HostInfo): BootResult {
     debounceMs: host.llmDebounceMs ?? 500,
     missingKeyFallbackMessage: hasAnyKey ? undefined : NATIVE_HOST_MISSING_KEY_MESSAGE,
     formatLLMErrorAsSubstitute: nativeHostFormatLLMError,
-    keywordBoundSlotIndices: (text: string) => blankFill.claimedSlotIndices(text),
+    keywordBoundSlotIndices: (text: string) => blankFill.scan(text).map(s => s.index),
+    // Calendar-context: native read of the shared calendar.json snapshot
+    // ($OPENCUES_HOME first, then ~/.cues), refreshed on a timer. Live
+    // holder — the resolver reads it fresh each pass. See boot-common.
+    calendarContext: calendarContextHolder,
     externallySuppressed: (text: string) => kataCoach.shouldSuppressResolve(text),
   }, spanFillState, agentTaskState, blankLoading, markdownRender, selectorSatelliteState,
   buildBlankContextProvider(configLoader, host.blanks, log),
-  buildBlankFetchProvider(configLoader, host.blanks, log));
+  buildBlankFetchProvider(configLoader, host.blanks, log),
+  undoJournal);
   if (hasAnyKey) {
     // AgentRewrite — cadence-driven holistic rewrite with three-way merge.
     const agentRewrite = new AgentRewrite(adapter, dynDefs, agentTaskState, {
+      undoJournal,
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
       apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',
@@ -881,7 +893,7 @@ export function boot(host: HostInfo): BootResult {
     },
 
     resetBufferState() {
-      resetSharedBufferState({ dynDefs, hlState, spanFillState, selectorSatelliteState });
+      resetSharedBufferState({ dynDefs, hlState, spanFillState, selectorSatelliteState, undoJournal });
     },
 
     applyRender(rendered, text, cursorOffset) {

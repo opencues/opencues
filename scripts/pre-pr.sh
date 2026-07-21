@@ -85,6 +85,17 @@ step "chrome bundle assertion" bash scripts/check-chrome-bundle.sh
 # scope/reference error throws at smoke time, not on the user's machine.
 step "CC patch boot smoke (catches scope errors in emitted JS)" node scripts/check-cc-patch-boot.cjs
 
+# ─── 4b-bis. tweakcc pin + CC install-verification invariants ───────
+# Bug class (issue #276, July 2026): setup.sh cloned tweakcc UNPINNED
+# from upstream main; a HEAD regression (system-prompt pipeline)
+# corrupted both CC install shapes and the installer still reported
+# success, because the post-patch syntax check was a warning and
+# nothing ever executed the patched artifact. This gate pins the
+# closures: exact-sha tweakcc pin + checkout verification, the
+# system-prompt pipeline disable, fatal node --check, and the
+# --version runtime smoke.
+step "tweakcc pin + CC install verification (issue #276 class)" bash scripts/check-tweakcc-pin.sh
+
 # ─── 4b. Runtime loads on Bun (catches Node-only native imports) ────
 # Bug class: a Node-V8 native binding gets added as a top-level
 # import in @opencues/runtime; opencode + shell (Bun-based) then

@@ -31,7 +31,11 @@ beforeEach(() => {
   savedEnv.USERPROFILE = process.env.USERPROFILE;
   savedEnv.PATH = process.env.PATH;
   process.env.HOME = tmpHome;
-  delete process.env.USERPROFILE;
+  // os.homedir() reads %USERPROFILE% on Windows — and when that's absent
+  // it falls back to HOMEDRIVE+HOMEPATH (untouched here), landing back on
+  // the REAL user's profile rather than tmpHome. Deleting USERPROFILE was
+  // not hermetic on Windows; override it like HOME instead.
+  process.env.USERPROFILE = tmpHome;
   for (const k of ALL_ENV_KEYS) {
     savedEnv[k] = process.env[k];
     delete process.env[k];

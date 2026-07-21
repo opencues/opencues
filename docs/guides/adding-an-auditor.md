@@ -144,6 +144,8 @@ disable: [british-english]
 
 The auditor is filtered out at this layer's composition. cd out of the project, it fires again. Same `disable:` mechanic cues and blanks have, scoped per-surface.
 
+`opencues init` scaffolds a starter `AUDITORS.md` (with an empty `disable: []`) alongside `CUES.md`/`BLANKS.md`, so a project already has the file to edit.
+
 ## 7. Test it
 
 1. Drop your `AUDITOR.md` in `~/.cues/auditors/<name>/AUDITOR.md`.

@@ -731,3 +731,21 @@ try {
 } catch (e) {
   sendMessage({ type: 'error', message: 'watch failed: ' + (e && e.message || e) });
 }
+
+// ── Calendar feed refresh (resource-on-a-timer model) ─────────────────
+// chrome-only users have no native host running, so the chrome-host
+// process is their producer: every 5 min ask core's due-check whether
+// the shared snapshot is older than the 15-min TTL, and refresh via the
+// SAME core syncCalendarFeeds the CLI + runtime scheduler use (one
+// implementation — a hand-copied sync is the mirrored-guard drift
+// class). Writing calendar.json trips fs.watch above, which pushes the
+// fresh bundle to the extension — no extra plumbing.
+setInterval(() => {
+  try {
+    const core = loadCore();
+    if (!core || typeof core.calendarSyncDue !== 'function') return;
+    if (!core.calendarSyncDue(fs, CUE_ROOT)) return;
+    core.syncCalendarFeeds({ fs, cuesDir: CUE_ROOT, log: () => {} })
+      .catch(() => { /* keep last-good snapshot; retried when next due */ });
+  } catch { /* never take the host down over calendar freshness */ }
+}, 5 * 60_000).unref?.();

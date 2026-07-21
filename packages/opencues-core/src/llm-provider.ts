@@ -1955,18 +1955,43 @@ export function applyOutboundDehydrationFloor<T extends {
   } catch { return req; }
   if (!guard || guard.size === 0) return req;
   let caught = 0;
+  let systemHits = 0;
   const messages = req.messages.map(m => {
     const d = guard!.dehydrate(m.content);
     if (!d.changed) return m;
+    // SYSTEM messages are scanned but NEVER rewritten (issue #279). By the
+    // prefix-cache invariant (docs/architecture/cerebras.md) every source
+    // puts per-call user-derived content in the USER message; the system
+    // message is static prompt text + safe-mode catalogs (token names, no
+    // values). A dehydrator hit on system text is therefore either
+    //   (a) a STATIC-PROMPT COLLISION — a hardcoded example value in the
+    //       prompt happens to equal one of the user's real catalog values
+    //       (#279: the catalog RULES' own example `github.com/<handle>`
+    //       matched the user's real GitHub URL; common values like
+    //       "United Kingdom" collide for many users) — rewriting it turns
+    //       an instruction example into a self-contradiction
+    //       (`→ "[GITHUB]" (NOT [GITHUB])`) that tips gpt-oss-120b into
+    //       SPAN=NONE on every identity lookup; or
+    //   (b) a source violating the system/user invariant by composing user
+    //       text into system — a real bug that ALSO breaks prefix caching,
+    //       surfaced by the loud warn below rather than silently patched.
+    // Scrubbing stays on for every non-system channel (user, assistant,
+    // prediction), which by design covers all user-content paths.
+    if (m.role === 'system') { systemHits += d.spans.length; return m; }
     caught += d.spans.length;
     return { ...m, content: d.text };
   });
   const dPred = req.prediction !== undefined ? guard.dehydrate(req.prediction) : undefined;
   if (dPred?.changed) caught += dPred.spans.length;
+  const emit = (msg: string): void => {
+    if (warn) warn(msg);
+    else if (typeof console !== 'undefined') console.warn(msg);
+  };
+  if (systemHits > 0) {
+    emit(`[opencues] outbound PII floor: ${systemHits} catalog value(s) matched inside the SYSTEM message — left untouched (static-prompt collision, or a source is composing user text into system; if the latter, fix the source — it also breaks prefix caching)`);
+  }
   if (caught === 0) return req;
-  const msg = `[opencues] outbound PII floor caught ${caught} residual value(s) — a source is missing dehydration (scrubbed before dispatch)`;
-  if (warn) warn(msg);
-  else if (typeof console !== 'undefined') console.warn(msg);
+  emit(`[opencues] outbound PII floor caught ${caught} residual value(s) — a source is missing dehydration (scrubbed before dispatch)`);
   return {
     ...req,
     messages,
@@ -2366,7 +2391,32 @@ export function _resetWarnDedupForTesting(): void {
   _warnedUnknownProviders.clear();
 }
 
-export function resolveLLM(opts: ResolveLLMOptions): ResolvedLLM | null {
+/**
+ * The pure (provider, model) half of `resolveLLM` — the tier walk,
+ * auto-route, and model canonicalization WITHOUT the key check,
+ * endpoint pick, or fallback-peer wiring. Extracted (July 2026) so the
+ * display surfaces (doctor's LLM-routing section, the `model` built-in
+ * blank, `opencues models` — all via effective-routing.ts) run the
+ * EXACT code dispatch runs: "what's my model?" can never drift from
+ * what a dispatch would actually use.
+ *
+ * Side-effect note: emits the one-time unknown-provider warning (a
+ * misconfiguration signal wherever it's observed). The subscription-
+ * rung notice stays in `resolveLLM` — it announces actual dispatch
+ * routing, and must not fire from a mere display walk.
+ */
+export interface ResolvedLLMTuple {
+  readonly providerId: ProviderId;
+  readonly provider: ProviderAdapter;
+  readonly model: string;
+  /** Tier index that set the provider (0 = per-source override,
+   *  1 = per-feature, 2 = global); -1 = no tier (auto-route). */
+  readonly providerTierIdx: number;
+  /** Non-null when the zero-tier auto-route picked the provider. */
+  readonly autoPicked: ProviderId | null;
+}
+
+export function resolveLLMTuple(opts: ResolveLLMOptions): ResolvedLLMTuple | null {
   // Three tiers, most → least specific. The Map index doubles as a
   // specificity score (lower = more specific). Provider and model are
   // resolved INDEPENDENTLY but with one constraint: a model is only
@@ -2400,13 +2450,6 @@ export function resolveLLM(opts: ResolveLLMOptions): ResolvedLLM | null {
   // is suppressed when no tier picked it), so the literal here only
   // matters for "no keys, but we still need to emit a ProviderId".
   const autoPicked = providerTierIdx >= 0 ? null : pickAutoProvider(opts.apiKeys);
-  // The subscription-CLI rung fired (zero env keys, binary present):
-  // tell the user ONCE which route they're on and how to speed it up —
-  // an invisible provider switch would be undebuggable ("why are cues
-  // slow?") and an unannounced use of their subscription.
-  if (autoPicked && PROVIDERS[autoPicked]?.transport === 'cli') {
-    notifySubscriptionFallbackOnce(autoPicked);
-  }
   const providerId = canonicalizeProviderId(
     providerTierIdx >= 0
       ? tiers[providerTierIdx].p!.trim()
@@ -2435,6 +2478,20 @@ export function resolveLLM(opts: ResolveLLMOptions): ResolvedLLM | null {
   // and for any model we don't recognise; heals known cross-namespace
   // aliases (e.g. a stale `openai/gpt-oss-120b` paired with Cerebras).
   const resolvedModel = canonicalizeModelForProvider(providerId, (model ?? provider.defaultModel).trim());
+  return { providerId, provider, model: resolvedModel, providerTierIdx, autoPicked };
+}
+
+export function resolveLLM(opts: ResolveLLMOptions): ResolvedLLM | null {
+  const tuple = resolveLLMTuple(opts);
+  if (!tuple) return null;
+  const { providerId, provider, model: resolvedModel, providerTierIdx, autoPicked } = tuple;
+  // The subscription-CLI rung fired (zero env keys, binary present):
+  // tell the user ONCE which route they're on and how to speed it up —
+  // an invisible provider switch would be undebuggable ("why are cues
+  // slow?") and an unannounced use of their subscription.
+  if (autoPicked && PROVIDERS[autoPicked]?.transport === 'cli') {
+    notifySubscriptionFallbackOnce(autoPicked);
+  }
   const endpoint = opts.endpointOverride ?? provider.defaultEndpoint;
   // CLI-transport providers have external auth (e.g. claude-cli uses
   // the user's locally-installed `claude` session) — no API key in

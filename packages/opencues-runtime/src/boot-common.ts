@@ -21,6 +21,7 @@ import type { HostAdapter, LogLevel } from './adapter';
 import type { ResolvedAgentLLM } from './modules/agent-rewrite';
 import { buildBlankWeaver, type BlankWeaver } from './modules/blank-weave';
 import type { HttpAdapterShape } from '@opencues/core';
+import { createRefreshScheduler } from './refresh-scheduler';
 import { StocksBlank } from './blanks/stocks';
 import { WeatherBlank } from './blanks/weather';
 import { CryptoBlank } from './blanks/crypto';
@@ -239,11 +240,25 @@ export interface SourceReclassifier {
 }
 
 /** Time window in which subsequent matching input events are still
- *  reclassified to 'runtime'. 250ms covers the typical DOM-echo
- *  window (50-200ms on Gmail/Lexical/PM) with margin, while staying
- *  well under any realistic gap between a runtime substitute and a
- *  user typing the identical text manually. */
-export const RUNTIME_WRITE_TTL_MS = 250;
+ *  reclassified to 'runtime'. Covers the DOM-echo window (50-200ms on
+ *  Gmail/Lexical/PM) AND the host event-pipeline lag under load.
+ *
+ *  Was 250ms; raised to 1500ms after issue #306: the loading animator
+ *  writes a frame every ~75ms, and on opencode (SolidJS `onContentChange`)
+ *  a frame's echo can arrive >250ms late when the host is busy — past the
+ *  old TTL, the mark was pruned, so a legitimate runtime write got
+ *  classified `user` → the resolver re-triggered → the frame char lingered
+ *  in the slot (intermittent, opencode-only, cosmetic). Deterministically
+ *  repro'd + pinned in boot-common.test.ts § "echo delayed under load".
+ *
+ *  This only extends how long a legit runtime write is REMEMBERED — the
+ *  match stays exact-full-buffer-text, so no leniency is introduced. The
+ *  reclassify direction is user→runtime (= resolver skips); exploiting a
+ *  longer window would require producing the exact same full buffer a
+ *  runtime write just produced, at which point the buffer is already what
+ *  we wrote — no new trigger surface. (Distinct from chrome's credit-based
+ *  trust-gate in trust-gate.ts, which this does not touch.) */
+export const RUNTIME_WRITE_TTL_MS = 1500;
 
 export function createSourceReclassifier(now: () => number = Date.now): SourceReclassifier {
   const recent: Array<{ text: string; addedAt: number }> = [];
@@ -326,27 +341,49 @@ import { BlankContextCache } from './modules/blank-context-cache';
  * Re-resolves on every tick (callers wrap this in an arrow), so
  * OPENCUES.md hot-reload propagates without an integration restart.
  */
+/** Shape of the dynamically-require()d @opencues/core surface the two
+ *  auditors-bucket resolvers use. `collapseBucketTier` is the shared
+ *  bucket→global collapse from core's effective-routing.ts — both
+ *  fields optional because the require is version-agnostic; a bundle
+ *  missing either degrades to the same null the missing-core path
+ *  takes (runtime falls back to its built-in Groq-shaped path). */
+interface CoreRoutingModule {
+  resolveLLM?: (opts: unknown) => unknown;
+  collapseBucketTier?: (opts: {
+    bucketProvider?: string | null;
+    bucketModel?: string | null;
+    globalProvider?: string | null;
+    globalModel?: string | null;
+  }) => { globalProvider?: string; globalModel?: string; bucketPinned: boolean };
+}
+
 export function buildAgentLLMResolver(
   configLoader: ConfigLoader,
   apiKeys: Readonly<Record<string, string | undefined>>,
 ): ResolvedAgentLLM | null {
-  let core: { resolveLLM?: (opts: unknown) => unknown } | null = null;
+  let core: CoreRoutingModule | null = null;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     core = require('@opencues/core');
   } catch {
     return null;
   }
-  if (!core?.resolveLLM) return null;
+  if (!core?.resolveLLM || !core.collapseBucketTier) return null;
   const s = configLoader.opencuesState.settings;
   // Auditors bucket override sits BETWEEN per-feature (agent-provider /
-  // agent-model) and the global llm-provider tier. `inherit` collapses
-  // to undefined so the bucket disappears and global takes over —
-  // mirrors the cues/blanks bucket collapse in build-sources.ts.
-  const auditorsBucket = configLoader.opencuesState.auditorsLlmProvider;
-  const auditorsBucketProvider = auditorsBucket === 'inherit' ? undefined : auditorsBucket;
-  const auditorsBucketModel = auditorsBucketProvider ? s.get('auditors-llm-model') : undefined;
-  const auditorsBucketEndpoint = auditorsBucketProvider ? s.get('auditors-llm-endpoint') : undefined;
+  // agent-model) and the global llm-provider tier. The collapse is the
+  // SHARED walk (core's collapseBucketTier) so agent-rewrite's route
+  // agrees with build-sources dispatch and the display surfaces
+  // (doctor / the `model` blank). It also normalizes model sentinels —
+  // cycling `auditors-llm-model` to `default` previously shipped the
+  // literal string "default" as the model name from this path.
+  const tier = core.collapseBucketTier({
+    bucketProvider: configLoader.opencuesState.auditorsLlmProvider,
+    bucketModel: s.get('auditors-llm-model'),
+    globalProvider: s.get('llm-provider'),
+    globalModel: s.get('llm-model'),
+  });
+  const auditorsBucketEndpoint = tier.bucketPinned ? s.get('auditors-llm-endpoint') : undefined;
   const out = core.resolveLLM({
     featureProvider: s.get('agent-provider'),
     featureModel: s.get('agent-model'),
@@ -355,10 +392,8 @@ export function buildAgentLLMResolver(
     // `auditors-llm-provider: cerebras` it wins over the global
     // `llm-provider`; per-feature `agent-provider:` still wins above
     // both.
-    globalProvider: auditorsBucketProvider ?? s.get('llm-provider'),
-    globalModel: auditorsBucketProvider
-      ? (auditorsBucketModel ?? undefined)
-      : s.get('llm-model'),
+    globalProvider: tier.globalProvider,
+    globalModel: tier.globalModel,
     apiKeys,
   }) as ResolvedAgentLLM | null;
   if (!out) return null;
@@ -402,23 +437,27 @@ export function buildKataLLMResolver(
   configLoader: ConfigLoader,
   apiKeys: Readonly<Record<string, string | undefined>>,
 ): ResolvedAgentLLM | null {
-  let core: { resolveLLM?: (opts: unknown) => unknown } | null = null;
+  let core: CoreRoutingModule | null = null;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     core = require('@opencues/core');
   } catch { return null; }
-  if (!core?.resolveLLM) return null;
+  if (!core?.resolveLLM || !core.collapseBucketTier) return null;
   const s = configLoader.opencuesState.settings;
-  const auditorsBucket = configLoader.opencuesState.auditorsLlmProvider;
-  const auditorsBucketProvider = auditorsBucket === 'inherit' ? undefined : auditorsBucket;
-  const auditorsBucketModel = auditorsBucketProvider ? s.get('auditors-llm-model') : undefined;
-  const auditorsBucketEndpoint = auditorsBucketProvider ? s.get('auditors-llm-endpoint') : undefined;
+  // Same shared collapse as buildAgentLLMResolver — see the comment there.
+  const tier = core.collapseBucketTier({
+    bucketProvider: configLoader.opencuesState.auditorsLlmProvider,
+    bucketModel: s.get('auditors-llm-model'),
+    globalProvider: s.get('llm-provider'),
+    globalModel: s.get('llm-model'),
+  });
+  const auditorsBucketEndpoint = tier.bucketPinned ? s.get('auditors-llm-endpoint') : undefined;
   const out = core.resolveLLM({
     featureProvider: s.get('kata-llm-provider'),
     featureModel: s.get('kata-llm-model'),
     endpointOverride: s.get('kata-llm-endpoint') ?? auditorsBucketEndpoint ?? s.get('llm-endpoint'),
-    globalProvider: auditorsBucketProvider ?? s.get('llm-provider'),
-    globalModel: auditorsBucketProvider ? (auditorsBucketModel ?? undefined) : s.get('llm-model'),
+    globalProvider: tier.globalProvider,
+    globalModel: tier.globalModel,
     apiKeys,
   }) as ResolvedAgentLLM | null;
   if (!out) return null;
@@ -437,6 +476,7 @@ import { SpanFillState } from './state/span-fill';
 import { DismissedBlanks } from './state/dismissed-blanks';
 import { SelectorSatelliteState } from './state/selector-satellite';
 import { AgentTaskState } from './state/agent-task';
+import { UndoJournal } from './state/undo-journal';
 
 /** State + ConfigLoader the optional modules (Statusline / TTS / Resolver
  *  / CursorStateExport) and the host's BootResult need access to. */
@@ -448,6 +488,11 @@ export interface SharedRuntime {
   readonly dismissedBlanks: DismissedBlanks;
   readonly selectorSatelliteState: SelectorSatelliteState;
   readonly agentTaskState: AgentTaskState;
+  /** Session-scoped undo/redo transaction log. Wired into Cycling +
+   *  BlankFill here; band boots pass it to their Resolver and
+   *  AgentRewrite constructions and to resetSharedBufferState (epoch
+   *  bump on buffer boundaries). */
+  readonly undoJournal: UndoJournal;
   /** Shared loading-glyph animator for in-flight `_` slots. Passed to
    *  BlankFill (keyword-bound slots) and to Resolver (Fluid/Transform
    *  slots) so both code paths share state and don't race. */
@@ -644,6 +689,140 @@ export function buildBlankContextProvider(
 /** Max length of an LLM-provided `ai-callable` fetch argument. A single
  *  data-lookup value (ticker / crypto id / city name) is short; anything
  *  longer is abuse, not a lookup. */
+/**
+ * Calendar-context ingest for NATIVE hosts — read the shared
+ * `calendar.json` snapshot (produced by `opencues calendar sync` or any
+ * external producer) into a live holder the resolver reads fresh each
+ * pass. Mirrors chrome's bootstrap loader (opencues-bootstrap.ts
+ * `loadCalendarContext`): parse events → `buildCalendarContextSnapshot`
+ * (assigns `[EVENT N]` tokens + hydration catalog) → mutate the holder
+ * in place so a re-ingest propagates without a host restart.
+ *
+ * Search order matches the producer/consumer seam + config precedence:
+ * `$OPENCUES_HOME/calendar.json` first (also what gives test shards an
+ * isolated calendar), then `~/.cues/calendar.json`.
+ *
+ * Refresh: mtime-gated re-read on a timer (default 60s, unref'd — never
+ * keeps the host process alive). Missing file → holder empties (the
+ * documented inert mode). Returns undefined in non-Node environments or
+ * when @opencues/core is unavailable — hosts pass the result straight
+ * through as `ResolverOptions.calendarContext`.
+ */
+export interface CalendarContextHolder {
+  readonly events: Array<{ token: string; title: string; start: string; end: string; allDay?: boolean; location?: string }>;
+  readonly catalog: Map<string, string>;
+  ingestedAt?: string;
+  /** Stop the refresh timer (harness teardown / tests). */
+  stop(): void;
+}
+
+export function buildCalendarContextIngest(
+  log: (level: LogLevel, msg: string) => void,
+  opts: { refreshMs?: number } = {},
+): CalendarContextHolder | undefined {
+  if (typeof process === 'undefined' || !process.versions?.node) return undefined;
+  let core: { buildCalendarContextSnapshot?: (events: ReadonlyArray<unknown>, ingestedAt?: string) => { events: ReadonlyArray<{ token: string; title: string; start: string; end: string; allDay?: boolean; location?: string }>; catalog: ReadonlyMap<string, string>; ingestedAt?: string } } | null = null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    core = require('@opencues/core');
+  } catch {
+    return undefined;
+  }
+  if (!core?.buildCalendarContextSnapshot) return undefined;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fs = require('node:fs') as typeof import('node:fs');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const path = require('node:path') as typeof import('node:path');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const os = require('node:os') as typeof import('node:os');
+
+  const snapshotPath = (): string => {
+    const override = typeof process !== 'undefined' ? process.env['OPENCUES_HOME'] : undefined;
+    if (override && override.trim().length > 0) return path.join(override, 'calendar.json');
+    return path.join(os.homedir(), '.cues', 'calendar.json');
+  };
+
+  let lastMtimeMs = -1;
+  let lastPath = '';
+  const holder: CalendarContextHolder = {
+    events: [],
+    catalog: new Map<string, string>(),
+    ingestedAt: undefined,
+    stop() { /* replaced below once the scheduler exists */ },
+  };
+
+  const load = (): void => {
+    const file = snapshotPath();
+    try {
+      const st = fs.statSync(file, { throwIfNoEntry: false });
+      if (!st) {
+        // Missing snapshot = inert mode. Clear once (not every tick).
+        if (holder.events.length > 0) {
+          holder.events.length = 0;
+          holder.catalog.clear();
+          holder.ingestedAt = undefined;
+          log('info', 'calendar-context: snapshot removed — calendar context now empty');
+        }
+        lastMtimeMs = -1; lastPath = file;
+        return;
+      }
+      if (file === lastPath && st.mtimeMs === lastMtimeMs) return;   // unchanged
+      const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as { events?: unknown; ingestedAt?: string } | null;
+      const events = parsed && Array.isArray(parsed.events) ? parsed.events : [];
+      const snap = core!.buildCalendarContextSnapshot!(events, parsed?.ingestedAt);
+      holder.events.length = 0;
+      for (const e of snap.events) holder.events.push({ token: e.token, title: e.title, start: e.start, end: e.end, allDay: e.allDay, location: e.location });
+      holder.catalog.clear();
+      for (const [k, v] of snap.catalog) holder.catalog.set(k, v);
+      holder.ingestedAt = snap.ingestedAt;
+      lastMtimeMs = st.mtimeMs; lastPath = file;
+      log('info', `calendar-context: ${holder.events.length} calendar event(s) loaded from ${file}`);
+    } catch (err) {
+      // Malformed snapshot must never take the host down; keep the last
+      // good holder contents and say why.
+      log('warn', `calendar-context: load failed (${(err as Error)?.message ?? err})`);
+    }
+  };
+
+  // ── Refresh scheduling — the SYSTEM owns cadence, resources declare
+  // due-ness (July 2026 inversion). Two resources:
+  //   snapshot-reread: is the file newer than what the holder carries?
+  //     (cheap mtime check inside load()) — every tick.
+  //   feed-sync: are feeds configured AND the snapshot's own ingestedAt
+  //     older than CALENDAR_SYNC_TTL_MS (15 min)? The shared file
+  //     timestamp is the cross-host clock, so N running hosts
+  //     self-deduplicate; jitter staggers the herd; core's pre-write
+  //     re-stat discards a fetch another producer superseded.
+  const refreshMs = opts.refreshMs ?? 60_000;
+  const scheduler = createRefreshScheduler((m) => log('info', m), { tickMs: refreshMs });
+  scheduler.register({ id: 'calendar-snapshot-reread', due: () => true, refresh: load });
+  const syncCore = core as unknown as {
+    calendarSyncDue?: (fsMod: unknown, dir: string) => boolean;
+    syncCalendarFeeds?: (deps: unknown) => Promise<unknown>;
+  };
+  if (syncCore.calendarSyncDue && syncCore.syncCalendarFeeds) {
+    const cuesDirOf = (): string => {
+      const override = typeof process !== 'undefined' ? process.env['OPENCUES_HOME'] : undefined;
+      return override && override.trim().length > 0 ? override : path.join(os.homedir(), '.cues');
+    };
+    scheduler.register({
+      id: 'calendar-feed-sync',
+      jitterMs: opts.refreshMs ? 0 : 30_000,
+      due: () => {
+        try { return syncCore.calendarSyncDue!(fs, cuesDirOf()); } catch { return false; }
+      },
+      refresh: async () => {
+        await syncCore.syncCalendarFeeds!({ fs, cuesDir: cuesDirOf(), log: (m: string) => log('info', m) });
+        load();   // fold the fresh snapshot into the holder immediately
+      },
+    });
+  }
+  load();               // boot read
+  scheduler.tickNow();  // boot due-check (a stale snapshot refreshes ~immediately)
+  (holder as { stop: () => void }).stop = () => scheduler.stop();
+  return holder;
+}
+
 export const AI_CALLABLE_ARG_MAX = 200;
 
 /**
@@ -783,7 +962,25 @@ export function buildBlankFetchProvider(
       const desc = cfg?.tip ?? `live ${blankName} value for the argument`;
       lines.push(`- [${tokenPrefix}${sig}: ${ret}] — ${desc}`);
     }
-    return `\n\nLIVE FUNCTIONS — these fetch live data for ANY argument, not only the values pre-listed above. When the content names an entity one of these can fetch (a stock ticker, a city's weather, …), emit the function CALL with that entity as the argument; the runtime fetches the live value and substitutes it.\nThis OVERRIDES the "write a natural placeholder" rule for any entity a function covers: prefer the CALL [STOCK(ticker=AMZN)] over a generic placeholder like [Amazon Stock Price] or [Today's Price]. Use the ticker symbol / city / id as the argument; if the prose names a company, use its ticker (Amazon→AMZN, Netflix→NFLX, Reddit→RDDT).\n${lines.join('\n')}\nExamples: "Amazon's share price" → [STOCK(ticker=AMZN)] · "weather in Berlin" → [WEATHER(city=Berlin)] · "solana's price" → [CRYPTO(symbol=SOL)].`;
+    // Two clauses here are load-bearing (issue #279): the "IN ADDITION to
+    // the catalog tokens above" opener AND the trailing catalog-guard
+    // examples ("i work at _" → [COMPANY]). Without them gpt-oss-120b
+    // treats this block as REPLACING the identity/blank-context catalogs
+    // above it — identity lookups like `i work at _` flip from
+    // `ANSWER: [COMPANY]` to `SPAN: NONE` the moment any ai-callable blank
+    // is registered (i.e. on every real host, which is why the bench — no
+    // fn block — kept passing while agentic scenario 54 failed on every
+    // host). The decision is knife-edge sensitive (even fn-line ORDER
+    // flipped it with the opener alone), so both nudges ship together;
+    // the concrete examples are what hold it robust. No-catalog safety:
+    // with no USER CONTEXT block present the model does NOT hallucinate
+    // the example tokens (verified — emits generic prose instead), and a
+    // token for an unlisted field is stripped by the post-processor
+    // (agentic scenario 56). Repro'd + fixed deterministically (temp=0,
+    // seed=42); fn-call emission verified unregressed at the old baseline
+    // (9/10) via tests/benchmarks/typed-sentinel-language/livefn-bench.ts,
+    // whose LIVE_FUNCTIONS mirror must be kept in sync with this string.
+    return `\n\nLIVE FUNCTIONS — IN ADDITION to the catalog tokens above (all catalog rules still apply), these fetch live data for ANY argument, not only the values pre-listed above. When the content names an entity one of these can fetch (a stock ticker, a city's weather, …), emit the function CALL with that entity as the argument; the runtime fetches the live value and substitutes it.\nThis OVERRIDES the "write a natural placeholder" rule for any entity a function covers: prefer the CALL [STOCK(ticker=AMZN)] over a generic placeholder like [Amazon Stock Price] or [Today's Price]. Use the ticker symbol / city / id as the argument; if the prose names a company, use its ticker (Amazon→AMZN, Netflix→NFLX, Reddit→RDDT).\n${lines.join('\n')}\nExamples: "Amazon's share price" → [STOCK(ticker=AMZN)] · "weather in Berlin" → [WEATHER(city=Berlin)] · "solana's price" → [CRYPTO(symbol=SOL)] · queries about the USER's own data still take the catalog token above: "i work at _" → [COMPANY] · "my email _" → [EMAIL].`;
   };
 
   return { getAiCallableFns, getRenderedBlock, blankFetch };
@@ -905,6 +1102,10 @@ export function buildSharedRuntime(
   const dismissedBlanks = new DismissedBlanks();
   const selectorSatelliteState = new SelectorSatelliteState();
   const agentTaskState = new AgentTaskState();
+  // Session-scoped (survives buffer resets via the epoch mechanism —
+  // see resetSharedBufferState). Threaded into every mutating module;
+  // band boots pass it to their Resolver/AgentRewrite constructions.
+  const undoJournal = new UndoJournal();
 
   // Universal modules — wired identically on every host.
   const navigation = new Navigation(
@@ -920,7 +1121,7 @@ export function buildSharedRuntime(
   const cycling = new Cycling(
     adapter, hlState, dynDefs, configLoader,
     spanFillState, dismissedBlanks, selectorSatelliteState,
-    getApiKeys, isCliProviderAvailable,
+    getApiKeys, isCliProviderAvailable, undoJournal,
   );
   cycling.subscribe();
 
@@ -982,7 +1183,7 @@ export function buildSharedRuntime(
     : null;
   const blankFill = new BlankFill(
     adapter, configLoader, spanFillState, dismissedBlanks, selectorSatelliteState, dynDefs, blankLoading,
-    blankWeaver,
+    blankWeaver, undoJournal,
   );
   configLoader.load()
     .then(() => blankFill.subscribe())
@@ -1003,6 +1204,7 @@ export function buildSharedRuntime(
     dismissedBlanks,
     selectorSatelliteState,
     agentTaskState,
+    undoJournal,
     blankLoading,
     markdownRender,
     blankFill,
@@ -1075,6 +1277,12 @@ export function resetSharedBufferState(state: {
    *  reset surface stays one-shot for callers. */
   readonly resolver?: { resetState(): void };
   readonly agentRewrite?: { resetState(): void };
+  /** Optional: undo journal. NOT wiped — deliberately session-scoped
+   *  (a settings/volume change from the previous message should stay
+   *  undoable). The epoch bump marks buffer-splice entries recorded
+   *  before this reset as stale, so the applier skips them with a
+   *  report instead of relocating text into the wrong buffer. */
+  readonly undoJournal?: { noteBufferReset(): void };
 }): void {
   state.dynDefs.clear();
   state.hlState.deactivate();
@@ -1091,4 +1299,5 @@ export function resetSharedBufferState(state: {
   if (typeof state.markdownRender?.resetState === 'function') state.markdownRender.resetState();
   if (typeof state.resolver?.resetState === 'function') state.resolver.resetState();
   if (typeof state.agentRewrite?.resetState === 'function') state.agentRewrite.resetState();
+  if (typeof state.undoJournal?.noteBufferReset === 'function') state.undoJournal.noteBufferReset();
 }

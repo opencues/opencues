@@ -334,6 +334,7 @@ module.exports = function help(argv, ctx) {
       ['config [get|set]',   'Browse + change OpenCues settings (interactive or scriptable)'],
       ['identity',           'Manage IDENTITY.md personal-data fields (interactive or scriptable)'],
       ['check-keys',         'Verify configured API keys against provider endpoints'],
+      ['models',             'Effective LLM routing per bucket + provider/model catalog'],
     ]},
     { title: 'Authoring', description: 'create, validate, and import cues/blanks/packs', rows: [
       ['init',                  'Scaffold <cwd>/.cues/ with templates'],
@@ -351,6 +352,7 @@ module.exports = function help(argv, ctx) {
       ['list',               'List every defined cue / blank with source path'],
       ['show <name>',        'Print full config for one cue / blank by name'],
       ['context [list]',     'Show identity / blank / ambient context (what the LLM would see)'],
+      ['calendar add <url>', 'Add/list/remove calendar-context calendar feeds (.ics / webcal: Luma, Google, …)'],
       ['cleanup [--kill]',   'Find or kill orphan host processes from prior `opencues run`'],
       ['edit <file>',        'Open ~/.cues/<file>.md in $EDITOR'],
       ['logs [--tail]',      'Show /tmp/opencues.log (last 50 lines, or follow with --tail)'],

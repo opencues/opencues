@@ -171,7 +171,18 @@ export class CueResolver {
         const wholeBufferClaim = filteredResults.some(
           r => r.spanStart === 0 && typeof r.spanEnd === 'number' && r.spanEnd >= textLen,
         );
-        if (wholeBufferClaim) {
+        // An ACTION verdict (undo/redo) is the SOLE intent for this
+        // keystroke — the trailing `_` is the command, not a blank to
+        // fill. Any strictly-lower-priority sibling still racing on the
+        // same `_` (TransformBlank 93 / FluidBlank 92) is pure waste AND
+        // a double-apply hazard: its fill would land alongside the undo.
+        // Its span need not be whole-buffer (`Paris undo _` starts the
+        // span after "Paris "), so it can't ride the wholeBufferClaim
+        // path — trip the same abort on the undoAction marker instead.
+        const actionClaim = filteredResults.some(
+          r => (r.metadata as { undoAction?: unknown } | undefined)?.undoAction !== undefined,
+        );
+        if (wholeBufferClaim || actionClaim) {
           const claimingPriority = source.priority;
           for (let j = i + 1; j < applicableSources.length; j++) {
             if (applicableSources[j].priority < claimingPriority) {

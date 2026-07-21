@@ -1,6 +1,6 @@
 # Feature Registry
 
-OpenCues has ~13 optional runtime gates (`fluid-blank-mode`,
+OpenCues has ~13 optional runtime gates (`word-cues-mode`,
 `identity-context-mode`, `voice-mode`, …) plus a handful of numeric
 tunables (`agent-debounce-ms`, `max-concurrent-auditors`, …) that
 users can toggle through the selector-satellite menu (`opencues

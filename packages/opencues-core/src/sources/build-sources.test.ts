@@ -4,7 +4,7 @@
  * Run with: node --test dist/sources/build-sources.test.js
  */
 
-import { describe, it } from 'node:test';
+import { describe, it, before, after } from 'node:test';
 import * as assert from 'node:assert';
 import { buildSourcesFromConfig, combineWordSources } from './build-sources';
 import { ConfigSource } from './config-source';
@@ -12,7 +12,12 @@ import { isBlankConfigCycleable } from './blank-source';
 import { RoutedWordSourceGroup } from './routed-word-source-group';
 import { CuesMdConfig, SourceConfig, PromptConfig, BlankConfig } from '../cues-md';
 import { HttpAdapter } from '../types';
-import { getProvider } from '../llm-provider';
+import {
+  getProvider,
+  setCliAvailabilityForTests,
+  resetCliAvailabilityCacheForTests,
+  SUBSCRIPTION_AUTO_FALLBACK,
+} from '../llm-provider';
 
 // Stub HTTP adapter (never called in these tests)
 const stubAdapter: HttpAdapter = {
@@ -410,5 +415,141 @@ describe('buildSourcesFromConfig — Universal-Integration filter', () => {
     assert.ok(!ids.includes('legal'), 'word-cue source not registered');
     assert.ok(!ids.includes('word-cues'), 'RoutedWordSourceGroup not built (no sources to wrap)');
     assert.ok(droppedLogs.some(m => m.includes("legal")), 'legal word-cue logged as pruned');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ConfigIntentSource construction gating — fluid-config vs undo-mode flags
+// ---------------------------------------------------------------------------
+
+describe('buildSourcesFromConfig — config-intent construction gating', () => {
+  const emptyConfig = mkConfig({ sources: {} });
+  const hasConfigIntent = (sources: readonly unknown[]): boolean =>
+    sources.some(s => (s as { id?: string }).id === 'config-intent');
+
+  it('neither flag → no config-intent source', () => {
+    const sources = buildSourcesFromConfig(emptyConfig, undefined, { ...defaultOptions });
+    assert.strictEqual(hasConfigIntent(sources), false);
+  });
+
+  it('enableConfigIntent + applyOpencuesScalar → constructed', () => {
+    const sources = buildSourcesFromConfig(emptyConfig, undefined, {
+      ...defaultOptions,
+      enableConfigIntent: true,
+      applyOpencuesScalar: () => { /* noop */ },
+    });
+    assert.strictEqual(hasConfigIntent(sources), true);
+  });
+
+  it('enableUndoActions alone (fluid-config off) → constructed for action verdicts', () => {
+    const sources = buildSourcesFromConfig(emptyConfig, undefined, {
+      ...defaultOptions,
+      enableUndoActions: true,
+    });
+    assert.strictEqual(hasConfigIntent(sources), true);
+  });
+
+  it('enableConfigIntent WITHOUT applyOpencuesScalar and no undo → skipped', () => {
+    const sources = buildSourcesFromConfig(emptyConfig, undefined, {
+      ...defaultOptions,
+      enableConfigIntent: true,
+    });
+    assert.strictEqual(hasConfigIntent(sources), false);
+  });
+
+  it('enableConfigIntent without callback BUT undo on → constructed (settings gated off)', () => {
+    const sources = buildSourcesFromConfig(emptyConfig, undefined, {
+      ...defaultOptions,
+      enableConfigIntent: true,
+      enableUndoActions: true,
+    });
+    assert.strictEqual(hasConfigIntent(sources), true);
+  });
+});
+
+describe('buildSourcesFromConfig — contradiction-cues engine selection (TDZ ordering regression)', () => {
+  const emptyConfig = mkConfig({ sources: {} });
+  const cx = (sources: readonly unknown[]) =>
+    sources.find(s => (s as { id?: string }).id === 'contradiction-cues') as { constructor: { name: string } } | undefined;
+
+  // Zero-key expectations in this suite must model a SPECIFIC machine,
+  // not the developer's real PATH: pickAutoProvider's subscription-CLI
+  // rung (claude-code-cli) fires whenever a `claude` binary exists,
+  // which is true on every dev box and false on CI runners — the
+  // July 2026 "red on CI, green everywhere else" incident. Same
+  // pattern as llm-provider.test.ts.
+  before(() => {
+    for (const id of SUBSCRIPTION_AUTO_FALLBACK) setCliAvailabilityForTests(id, false);
+  });
+  after(() => {
+    resetCliAvailabilityCacheForTests();
+  });
+
+  it('picks the LLM engine when a provider/key resolves (must NOT throw or fall back)', () => {
+    // Regression: the contradiction block once ran BEFORE apiKeys/cuesTier were
+    // initialized, so resolveFor() hit a temporal-dead-zone — a ReferenceError
+    // in native Node, and a silent null → deterministic fallback under esbuild's
+    // const→var lowering (chrome). Both are wrong: with a key present the robust
+    // LLM engine MUST be chosen. This pins the block's ordering after the tiers.
+    const sources = buildSourcesFromConfig(emptyConfig, undefined, {
+      ...defaultOptions,
+      enableContradictionCues: true,
+    });
+    assert.equal(cx(sources)?.constructor.name, 'ContradictionLlmSource');
+  });
+
+  it('never throws with no keys and no subscription CLI (bare machine → cue silently absent)', () => {
+    // The TDZ bug threw here regardless of keys — doesNotThrow is the
+    // regression pin. On a truly bare machine (no API keys, no claude/
+    // codex binary) resolveLLM returns null for keyless cerebras, so the
+    // cue is silently absent: the documented "OpenCues without an LLM is
+    // fine" mode, same as more-formal. (The original version of this test
+    // asserted a source was ALWAYS present — true only on machines where
+    // the claude binary rescued it, which is why it was red on CI and
+    // green on every dev box for seven straight runs.)
+    let sources: readonly unknown[] = [];
+    assert.doesNotThrow(() => {
+      sources = buildSourcesFromConfig(emptyConfig, undefined, {
+        httpAdapter: stubAdapter,
+        apiKeys: {},
+        enableContradictionCues: true,
+      });
+    });
+    assert.equal(cx(sources), undefined, 'bare machine: cue absent, no throw');
+  });
+
+  it('keyless machine WITH an authenticated claude CLI → subscription rung rescues the cue', () => {
+    // Models the CC-fork user with zero API keys: pickAutoProvider's
+    // subscription-CLI rung resolves claude-code-cli (transport: cli,
+    // no key check) and the LLM engine is constructed.
+    setCliAvailabilityForTests('claude-code-cli', true);
+    try {
+      const sources = buildSourcesFromConfig(emptyConfig, undefined, {
+        httpAdapter: stubAdapter,
+        apiKeys: {},
+        enableContradictionCues: true,
+      });
+      assert.equal(cx(sources)?.constructor.name, 'ContradictionLlmSource');
+    } finally {
+      setCliAvailabilityForTests('claude-code-cli', false);
+    }
+  });
+
+  it('is SKIPPED (not deterministic) when the cue provider trains on input (opencode-zen refused)', () => {
+    // resolveFor refuses a cue-class source routed through a trainsOnInput
+    // provider → returns null → the cue simply does not run (LLM-only; the
+    // deterministic fallback was removed July 2026).
+    const sources = buildSourcesFromConfig(emptyConfig, undefined, {
+      ...defaultOptions,
+      globalProvider: 'opencode-zen',
+      apiKeys: { OPENCODE_ZEN_API_KEY: 'k' },
+      enableContradictionCues: true,
+    });
+    assert.equal(cx(sources), undefined);
+  });
+
+  it('is absent when the feature is off', () => {
+    const sources = buildSourcesFromConfig(emptyConfig, undefined, { ...defaultOptions });
+    assert.equal(cx(sources), undefined);
   });
 });

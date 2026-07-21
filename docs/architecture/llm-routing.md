@@ -77,17 +77,37 @@ cover the 90% case.
 
 ## How surfaces route at build time
 
+The bucket→global collapse lives in ONE place:
+`packages/opencues-core/src/effective-routing.ts:collapseBucketTier`
+(July 2026). Every dispatch site calls it, and the display surfaces
+(doctor's LLM-routing section, the `model` blank, `opencues models`)
+run the same walk via `resolveEffectiveRouting` — dispatch and
+"what's my model?" are structurally unable to disagree.
+
+Pairing rules (`collapseBucketTier`):
+
+- Bucket provider **pinned** → the bucket model rides with it; the
+  global `llm-model` NEVER leaks in (a stale global model would pair
+  with a provider it was never chosen for).
+- Bucket provider **inherit/unset** → the global provider is used, and
+  a set bucket model still WINS over the global model. The config menu
+  writes `<bucket>-llm-model` against the inherited provider's
+  knownModels; before July 2026 dispatch silently ignored that scalar.
+- Model sentinels (`default` / `inherit` / empty) and unknown bucket
+  provider ids (→ inherit, mirroring config-loader) are normalized
+  inside the collapse.
+
 **cues + blanks**: handled in
 `packages/opencues-core/src/sources/build-sources.ts` via
-`BuildSourcesOptions.{cuesBucket*, blanksBucket*}`. The resolver
-collapses `inherit` to undefined before passing values down; build-sources
-applies the ladder in `resolveFor()`.
+`BuildSourcesOptions.{cuesBucket*, blanksBucket*}`; `resolveFor()`
+collapses via `collapseBucketTier` then applies the ladder through
+`resolveLLM`.
 
 **auditors**: handled in
 `packages/opencues-runtime/src/boot-common.ts` via
-`buildAgentLLMResolver`. Reads `auditorsLlmProvider` from
-`OpenCuesState`, walks the same ladder, and returns the resolved tuple
-for `agent-rewrite.ts`'s per-tick LLM call.
+`buildAgentLLMResolver` (and `buildKataLLMResolver` for the kata
+coach). Both collapse through core's `collapseBucketTier` and return
+the resolved tuple for the per-tick LLM call.
 
 ## Migration from the legacy `blank-llm-*` scalars
 
@@ -173,12 +193,19 @@ previously set) stays put.
 `opencues doctor` shows the **LLM routing** section with the effective
 provider per bucket after precedence walks (bucket scalar > global
 > auto-fallback). The arrow notation `← llm-provider` indicates which
-tier provided the value when the bucket itself was `inherit`.
+tier provided the value when the bucket itself was `inherit`. Since
+July 2026 the section is rendered from
+`resolveEffectiveRouting` (the shared walk) and additionally warns on
+unknown bucket-provider ids, configured-but-keyless providers, and
+prose buckets routed to `trainsOnInput` providers.
 
 ## Related files
 
 - Single source of truth: `packages/opencues-core/src/feature-registry.ts`
   (`FEATURES` entries for the three bucket scalars).
+- Shared precedence walk: `packages/opencues-core/src/effective-routing.ts`
+  (`collapseBucketTier` for dispatch, `resolveEffectiveRouting` for
+  display; both sit on `resolveLLMTuple`, the pure half of `resolveLLM`).
 - Provider catalog: `packages/opencues-core/src/llm-provider.ts`
   (`ProviderId` union, `PROVIDER_AUTO_ORDER`, `PROVIDERS` adapters).
 - Resolver wiring: `packages/opencues-runtime/src/modules/resolver.ts`

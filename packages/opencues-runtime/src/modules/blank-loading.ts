@@ -103,6 +103,50 @@ const ANSI_NAMES = new Set([
   'gray', 'grey',
 ]);
 
+/** Named-colour → hex mapping for surfaces that accept ANSI colour
+ *  NAMES but must also feed the RGB scalar (the inline
+ *  `loading animation` blank writes both parallel colour lists from
+ *  one user-supplied list). Hues sit alongside DEFAULT_RGB_PALETTE's
+ *  tailwind-ish values so mixed named+default rendering doesn't clash. */
+export const ANSI_NAME_TO_HEX: Readonly<Record<string, string>> = {
+  black: '#111827', red: '#ef4444', green: '#10b981', yellow: '#f59e0b',
+  blue: '#3b82f6', magenta: '#d946ef', cyan: '#06b6d4', white: '#e5e7eb',
+  bright_black: '#6b7280', bright_red: '#f87171', bright_green: '#34d399',
+  bright_yellow: '#fbbf24', bright_blue: '#60a5fa', bright_magenta: '#e879f9',
+  bright_cyan: '#22d3ee', bright_white: '#f9fafb',
+  gray: '#6b7280', grey: '#6b7280',
+};
+
+/** Everyday colour names OUTSIDE the ANSI-8/16 set that inline
+ *  definitions should still accept ("red,orange,yellow" is the first
+ *  thing anyone types). Each maps to a hex (for the rgb scalar) and a
+ *  256-colour index (for the ansi scalar, which already accepts bare
+ *  indices) — so both parallel lists stay expressible from one name. */
+export const EXTENDED_COLOR_NAMES: Readonly<Record<string, { hex: string; ansi256: number }>> = {
+  orange: { hex: '#f97316', ansi256: 208 },
+  purple: { hex: '#a855f7', ansi256: 129 },
+  violet: { hex: '#8b5cf6', ansi256: 135 },
+  pink:   { hex: '#ec4899', ansi256: 205 },
+  teal:   { hex: '#14b8a6', ansi256: 37 },
+  lime:   { hex: '#84cc16', ansi256: 118 },
+  gold:   { hex: '#eab308', ansi256: 220 },
+};
+
+/** True when `token` is a single colour item in ANY accepted spelling —
+ *  ANSI name (incl. gray/grey aliases), extended everyday name
+ *  (orange/purple/…), 256-colour index, or #hex. Shared by the inline
+ *  `loading animation` blank's token classifier so its notion of
+ *  "a colour" can never drift from parseRgbColors / parseAnsiColors
+ *  above. */
+export function isColorItem(token: string): boolean {
+  const t = token.trim().toLowerCase();
+  if (t.length === 0) return false;
+  if (ANSI_NAMES.has(t)) return true;
+  if (t in EXTENDED_COLOR_NAMES) return true;
+  if (/^\d{1,3}$/.test(t) && Number(t) <= 255) return true;
+  return HEX_LONG.test(t) || HEX_SHORT.test(t);
+}
+
 /** Failover RGB palette when `blank-loading-colors-rgb` is unset, empty,
  *  or fails to parse. Mirrors the shipped defaults in `defaults/OPENCUES.md`
  *  so a misconfigured user sees the same colours as a fresh install

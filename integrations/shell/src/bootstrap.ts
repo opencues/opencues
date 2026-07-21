@@ -58,7 +58,7 @@ if (_ocSock) {
   } catch { /* fall through to direct fs */ }
 }
 
-function userCwd(): string {
+export function userCwd(): string {
   // `oc-edit` cd's into integrations/shell/ to find bunfig.toml
   // before launching bun, so process.cwd() is the integration dir,
   // not where the user actually invoked oc-edit. The shim captures
@@ -66,7 +66,7 @@ function userCwd(): string {
   return process.env['OPENCUES_USER_CWD'] || process.cwd();
 }
 
-function getCuesRoots(): string[] {
+export function getCuesRoots(): string[] {
   const roots: string[] = [];
   if (process.env['OPENCUES_HOME']) roots.push(process.env['OPENCUES_HOME']);
   roots.push(path.join(userCwd(), '.cues'));
@@ -74,28 +74,28 @@ function getCuesRoots(): string[] {
   return roots;
 }
 
-function findOpenCuesMdPath(): string {
+export function findOpenCuesMdPath(): string {
   if (process.env['OPENCUES_HOME']) {
     return path.join(process.env['OPENCUES_HOME'], 'OPENCUES.md');
   }
   return path.join(process.env['HOME'] ?? os.homedir(), '.cues', 'OPENCUES.md');
 }
 
-function findIdentityMdPath(): string {
+export function findIdentityMdPath(): string {
   if (process.env['OPENCUES_HOME']) {
     return path.join(process.env['OPENCUES_HOME'], 'IDENTITY.md');
   }
   return path.join(process.env['HOME'] ?? os.homedir(), '.cues', 'IDENTITY.md');
 }
 
-function findNotesMdPath(): string {
+export function findNotesMdPath(): string {
   if (process.env['OPENCUES_HOME']) {
     return path.join(process.env['OPENCUES_HOME'], 'NOTES.md');
   }
   return path.join(process.env['HOME'] ?? os.homedir(), '.cues', 'NOTES.md');
 }
 
-function resolveTtsScript(): string {
+export function resolveTtsScript(): string {
   const root = process.env['OPENCUES_HOME'] ?? path.join(process.env['HOME'] ?? os.homedir(), '.cues');
   return path.join(root, 'scripts/speak.sh');
 }
@@ -132,7 +132,7 @@ const blanksRegistry: Map<string, Blank> = createDefaultBlanksRegistry({
   },
 });
 
-function _discoverUserBlankConfigs(): BlankConfigLike[] {
+export function _discoverUserBlankConfigs(): BlankConfigLike[] {
   const rawRoots: string[] = [];
   if (process.env['OPENCUES_HOME']) rawRoots.push(process.env['OPENCUES_HOME']);
   rawRoots.push(path.join(userCwd(), '.cues'));
@@ -407,7 +407,13 @@ export function startOpenCues(opts: TerminalBootOpts): BootResult {
           wordPart = tip ?? null;
         }
       }
-      const combined = wordPart && agentBadge ? `${wordPart} | ${agentBadge}` : (agentBadge ?? wordPart ?? null);
+      // Undo/redo confirmation is a transient notification the user just
+      // triggered — dominant over the word/tip + agent badge for its TTL
+      // (universal feedback for invisible reverts: scalar / OS value).
+      const undoConf = payload?.undoConfirmation as string | null | undefined;
+      const combined = undoConf
+        ? undoConf
+        : (wordPart && agentBadge ? `${wordPart} | ${agentBadge}` : (agentBadge ?? wordPart ?? null));
       opts.onTipChange(combined);
     },
     ttsScriptPath: resolveTtsScript(),

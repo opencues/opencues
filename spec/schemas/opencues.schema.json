@@ -22,7 +22,6 @@
     "cursor-navigate": { "type": "string", "enum": ["active", "inactive", "on", "off"] },
     "cursor-preservation": { "type": "string", "enum": ["on", "off"] },
 
-    "fluid-blank-mode": { "type": "string", "enum": ["on", "off"] },
     "transform-blank-mode": { "type": "string", "enum": ["on", "off"] },
     "word-cues-mode": { "type": "string", "enum": ["on", "off"] },
 

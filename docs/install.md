@@ -57,7 +57,7 @@ brew install bash tmux brightness  # bash 4+ optional but recommended
 
 | Integration | What you need first | Check |
 |-------------|---------------------|-------|
-| `claude-code` | Claude Code 2.1.x on PATH (the installer reinstalls the pinned copy — current pin `2.1.170`, see `integrations/claude-code/compat.json` — locally; the on-PATH check just confirms you have the auth set up) | `claude --version` |
+| `claude-code` | Claude Code 2.1.x on PATH (the installer reinstalls the pinned copy — current pin `2.1.206`, see `integrations/claude-code/compat.json` — locally; the on-PATH check just confirms you have the auth set up) | `claude --version` |
 | `opencode`    | [bun](https://bun.sh/) (OpenCode is a bun app — the installer clones a fork itself) | `bun --version` |
 | `chrome`      | Chrome 121+ | `chrome://version` |
 | `gemini-cli`  | Node 22+ (installer clones a Gemini CLI 0.41.x fork itself) | `node --version` |
@@ -104,7 +104,7 @@ pnpm exec opencues run shell
 
 | Integration | Install | Compatible with | Launch |
 |---|---|---|---|
-| **Claude Code** | `opencues install claude-code` | Claude Code 2.1.x (pin 2.1.170) | `opencues run claude-code` (or just `claude-cues` once on PATH) |
+| **Claude Code** | `opencues install claude-code` | Claude Code 2.1.x (pin 2.1.206) | `opencues run claude-code` (or just `claude-cues` once on PATH) |
 | **OpenCode** | `opencues install opencode` | OpenCode 1.14.x | `opencues run opencode` |
 | **Chrome** | `opencues install chrome` (+ `opencues install chrome-host` for live `~/.cues/` sync) | Chrome 121+ | Load unpacked at `chrome://extensions` (path printed by installer) |
 | **Gemini CLI** | `opencues install gemini-cli` | Gemini CLI 0.41.x | `opencues run gemini-cli` |

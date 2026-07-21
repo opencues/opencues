@@ -20,6 +20,8 @@ import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
 import { isProviderValueCyclable, getProvider } from '@opencues/core';
+import { invokeOrSpawnBlank } from '../util/blank-invoke';
+import type { UndoJournal, UndoEntry } from '../state/undo-journal';
 
 /** Sentence-cue defs cycle over a SENTENCE whose char span (spanStart/
  *  spanEnd) is the source of truth — whitespace words don't bound it in
@@ -96,6 +98,10 @@ export class Cycling {
     /** Optional probe for `transport: 'cli'` providers (claude-code-cli,
      *  openai-subscription) — true iff the CLI binary is on PATH. */
     private isCliProviderAvailable?: (providerId: string) => boolean,
+    /** Undo journal — every cycle records a coalescing transaction so
+     *  `undo _` can revert a whole burst (volume ×6 → one undo). Omit
+     *  to disable recording (back-compat default). */
+    private undoJournal?: UndoJournal,
   ) {}
 
   /** Filter a setting's value list to those eligible for cycling
@@ -116,12 +122,34 @@ export class Cycling {
     return filtered.length > 0 ? filtered : values;
   }
 
+  /** Record a cycle into the undo journal (no-op without a journal).
+   *
+   *  Takes the EXACT replaced-range slices, not full pre/post texts:
+   *  coalescing overwrite-merges successive entries (keep first
+   *  before-state, take last after-state), which is only sound when
+   *  entry N's beforeSlice is literally entry N-1's afterSlice — the
+   *  full replaced span gives that invariant for free, while a
+   *  diff-trimmed slice does NOT (cycling attorney → lawyer → legal
+   *  eagle trims to 'awyer' → 'egal eagle' on the second step because
+   *  the alts share a leading 'l', and merging across the two frames
+   *  splices garbage). ZWS is stripped so relocation at apply time —
+   *  which runs against a ZWS-stripped live buffer — always matches. */
+  private recordUndo(label: string, coalesceKey: string, beforeSlice: string, afterSlice: string, extra?: readonly UndoEntry[]): void {
+    if (!this.undoJournal) return;
+    const strip = (s: string): string => s.replace(/[​‌]/g, '');
+    const before = strip(beforeSlice);
+    const after = strip(afterSlice);
+    const entries: UndoEntry[] = [];
+    if (before !== after) {
+      entries.push({ kind: 'buffer-splice', beforeSlice: before, afterSlice: after, bufferEpoch: this.undoJournal.currentEpoch });
+    }
+    if (extra) entries.push(...extra);
+    this.undoJournal.record({ label, coalesceKey, entries });
+  }
+
   /**
-   * Try host-native blank invocation first; fall back to spawning
-   * the configured script. Sandboxed hosts (Chrome) implement
-   * blankInvoke; CLI hosts (OpenCode, CC) typically don't and rely
-   * on the spawn path. Returns null when neither path is viable
-   * (no blankInvoke + no spawn capability + no scriptPath).
+   * Shared blank get/set dispatch — see util/blank-invoke.ts (also
+   * used by the UndoApplier for os-set/file-write inversions).
    */
   private invokeOrSpawn(
     blankName: string,
@@ -130,21 +158,7 @@ export class Cycling {
     scriptPath: string | undefined,
     options: { detached?: boolean; timeoutMs?: number } = {},
   ): ProcessHandle | null {
-    const native = this.adapter.blankInvoke?.({
-      blankName,
-      action,
-      args,
-      timeoutMs: options.timeoutMs,
-    });
-    if (native) return native;
-    if (!scriptPath) return null;
-    if (!this.adapter.capabilities.includes('spawn-process')) return null;
-    return this.adapter.spawnProcess({
-      command: 'bash',
-      args: [scriptPath, action, ...args],
-      detached: options.detached,
-      timeoutMs: options.timeoutMs,
-    });
+    return invokeOrSpawnBlank(this.adapter, blankName, action, args, scriptPath, options);
   }
 
   subscribe(): void {
@@ -302,6 +316,15 @@ export class Cycling {
       this.adapter.setText(newText);
       this.adapter.setCursorOffset(newCursor);
       this.adapter.forceRender();
+      // One coalesce key for the whole selector+satellite pair: a
+      // settings-menu excursion (browse selectors, cycle values) is ONE
+      // undoable gesture — undo restores the original pair AND every
+      // scalar it touched. Slices = the pair's replaced range.
+      this.recordUndo(
+        'settings menu', `sel-sat:${entry.selectorIndex}`,
+        event.text.slice(selStartWord.start, satEndWord.end),
+        `${nextSetting}${entry.separator}${provisionalValue}`,
+      );
 
       this.adapter.emitEvent?.('cycling.cycled', {
         wordIndex,
@@ -326,6 +349,11 @@ export class Cycling {
           const te = curWords[newSatEnd];
           if (!ts || !te) return;
           const replaced = cleaned.slice(0, ts.start) + fetched + cleaned.slice(te.end);
+          // Pair range BEFORE this update (frame-consistent with the
+          // synchronous selector tap above — its afterSlice is exactly
+          // this beforeSlice, so the coalesce merge composes).
+          const prevPairStart = entry.pairCharStart;
+          const prevPairSlice = cleaned.slice(prevPairStart, entry.pairCharEnd);
           entry.currentValue = fetched;
           entry.satelliteLength = Math.max(1, fetched.split(/\s+/).filter(Boolean).length);
           entry.pairCharEnd = ts.start + fetched.length;
@@ -334,6 +362,14 @@ export class Cycling {
           // synchronously; this is a background update.
           if (this.adapter.pushText) this.adapter.pushText(replaced);
           else { this.adapter.setText(replaced); this.adapter.forceRender(); }
+          // Same coalesce key as the synchronous selector cycle above,
+          // so the fetched-value refresh folds into the same journal
+          // transaction (keeps undo's relocation anchor = the LIVE pair).
+          this.recordUndo(
+            'settings menu', `sel-sat:${entry.selectorIndex}`,
+            prevPairSlice,
+            replaced.slice(prevPairStart, entry.pairCharEnd),
+          );
         }).catch(err => {
           this.adapter.log('error', `Cycling: selector get failed for ${entry.blankName}`, err);
         });
@@ -367,6 +403,11 @@ export class Cycling {
     // bleed onto neighbour words.
     const newCursor = Math.min(newRegionEnd, newText.length);
 
+    // Snapshot the pre-write settings map (applyOpenCuesScalar swaps in
+    // a NEW map, so this reference keeps the prior values) — the undo
+    // journal records prev → next per scalar below.
+    const settingsBefore = this.configLoader.opencuesState.settings;
+
     entry.currentValue = nextValue;
     entry.satelliteLength = Math.max(1, nextValue.split(/\s+/).filter(Boolean).length);
     entry.pairCharEnd = newRegionEnd;
@@ -392,6 +433,28 @@ export class Cycling {
     this.adapter.setText(newText);
     this.adapter.setCursorOffset(newCursor);
     this.adapter.forceRender();
+    {
+      const scalarEntries: UndoEntry[] = [{
+        kind: 'scalar-write',
+        key: entry.currentSetting,
+        prevValue: settingsBefore.get(entry.currentSetting),
+        newValue: nextValue,
+      }];
+      if (siblingModelScalar && siblingDefaultModel) {
+        scalarEntries.push({
+          kind: 'scalar-write',
+          key: siblingModelScalar,
+          prevValue: settingsBefore.get(siblingModelScalar),
+          newValue: siblingDefaultModel,
+        });
+      }
+      this.recordUndo(
+        'settings menu', `sel-sat:${entry.selectorIndex}`,
+        event.text.slice(selStartWord.start, satEndWord.end),
+        `${entry.currentSetting}${entry.separator}${nextValue}`,
+        scalarEntries,
+      );
+    }
 
     this.adapter.log('debug', `Cycling: satellite set ${entry.blankName}`, {
       script: entry.scriptPath, setting: entry.currentSetting, value: nextValue,
@@ -498,6 +561,11 @@ export class Cycling {
     this.adapter.setText(newText);
     this.adapter.setCursorOffset(newCursor);
     this.adapter.forceRender();
+    this.recordUndo(
+      'cycle', `span-fill:${entry.index}`,
+      event.text.slice(spanStartWord.start, spanEndWord.end),
+      nextAlt,
+    );
     this.adapter.emitEvent?.('cycling.cycled', {
       wordIndex,
       direction,
@@ -612,6 +680,18 @@ export class Cycling {
     } catch (err) {
       this.adapter.log('error', `Cycling: blankScript set failed for ${blankName}`, err);
     }
+    // prevValue = the pre-step buffer token (bare number, no suffix) —
+    // the buffer IS the source of truth for this path, so it's the
+    // get-before-set capture. Coalescing keeps the FIRST step's origin
+    // across a burst.
+    this.recordUndo(`${blankName} step`, `blank-step:${blankName}:${target.index}`,
+      event.text.slice(target.start, target.end), nextWord, [{
+        kind: 'os-set',
+        blankName,
+        scriptPath,
+        prevValue: numStr,
+        newValue: formatted,
+      }]);
     this.adapter.emitEvent?.('cycling.cycled', {
       wordIndex: target.index,
       direction,
@@ -785,6 +865,7 @@ export class Cycling {
     }
 
     this.adapter.forceRender();
+    this.recordUndo('cycle', `alt-cycle:${wordIndex}`, event.text.slice(rangeStart, rangeEnd), nextWord);
     this.adapter.emitEvent?.('cycling.cycled', {
       wordIndex,
       direction,

@@ -29,6 +29,7 @@ import type { AgentTaskState } from '../state/agent-task';
 import { hashWordText } from '../state/agent-task';
 import { splitWords } from './navigation';
 import { wordDiff, threeWayMerge, translateAToC, type DiffHunk } from './word-diff';
+import { diffSplice, type UndoJournal } from '../state/undo-journal';
 import { CURSOR_SENTINEL as CORE_CURSOR_SENTINEL, stripCursorSentinel, useStrictJson, buildJsonResponseFormat, dispatchChat, getDehydrator, postProcessContext, applyOutboundDehydrationFloor } from '@opencues/core';
 
 /**
@@ -100,6 +101,10 @@ export interface AgentRewriteOptions {
   readonly endpoint: string;
   readonly apiKey: string;
   readonly defaultModel: string;
+  /** Undo journal — each applied rewrite round records one transaction
+   *  so `undo _` can revert it wholesale (per-hunk revert stays on the
+   *  existing cycling-Down DynDefs). Omit to disable recording. */
+  readonly undoJournal?: UndoJournal;
   /**
    * Lazy resolver for the active provider/model/endpoint/key. Called
    * before each LLM tick so the user can flip `agent-provider:` /
@@ -490,6 +495,13 @@ export class AgentRewrite {
     const cursor = this.translateCursor(cursorBefore, newText, appliedLlmHunks, userHunks);
     this.pushBuffer(newText, cursor);
     this.placeDynDefs(newText, live, appliedLlmHunks, userHunks);
+    // Undo journal: one transaction per applied rewrite round (live →
+    // merged). diffSplice trims to the changed region.
+    const journal = this.options.undoJournal;
+    if (journal) {
+      const buf = diffSplice(live, newText, journal.currentEpoch);
+      if (buf) journal.record({ label: 'agent rewrite', entries: [buf] });
+    }
   }
 
   /**

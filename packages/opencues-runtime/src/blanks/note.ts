@@ -26,6 +26,7 @@
 // fill must never wipe it.
 
 import type { Blank } from './types';
+import type { BlankWriteInverse } from '../adapter';
 
 export interface NoteBlankOptions {
   /** Read NOTES.md content. Returns null when missing. */
@@ -191,11 +192,20 @@ export class NoteBlank implements Blank {
   private readonly _read: () => Promise<string | null>;
   private readonly _write: (content: string) => Promise<void>;
   private readonly _caps: NoteCaps;
+  /** One-shot inverse of the last successful write — undo-journal feed
+   *  (drained by createBlankInvoke via consumeLastWriteInverse). */
+  private _lastWriteInverse: BlankWriteInverse | null = null;
 
   constructor(opts: NoteBlankOptions) {
     this._read = opts.readFile;
     this._write = opts.writeFile;
     this._caps = opts.caps ?? DEFAULT_NOTE_CAPS;
+  }
+
+  consumeLastWriteInverse(): BlankWriteInverse | null {
+    const inv = this._lastWriteInverse;
+    this._lastWriteInverse = null;
+    return inv;
   }
 
   /**
@@ -221,7 +231,19 @@ export class NoteBlank implements Blank {
   private async doAdd(file: ParsedNotesFile, text: string): Promise<string> {
     const r = validateNoteWrite(file.entries, { op: 'add', text }, this._caps);
     if (!r.ok) return formatError(r.detail);
-    if (r.action === 'write') await this._write(appendNoteLine(file.content, text.trim()));
+    if (r.action === 'write') {
+      await this._write(appendNoteLine(file.content, text.trim()));
+      // Inverse: delete by the full saved text. If another note makes
+      // that query ambiguous at undo time, doDelete refuses with [err]
+      // and the applier reports the skip — never guesses.
+      const textWords = text.trim().split(/\s+/).filter(Boolean);
+      this._lastWriteInverse = {
+        file: 'NOTES.md',
+        blankName: this.name,
+        inverseOp: { keyword: 'note', args: ['delete', ...textWords] },
+        forwardOp: { keyword: 'note', args: ['add', ...textWords] },
+      };
+    }
     const saved = parseEntry(text.trim());
     const name = saved.label ?? preview(saved.body, 40);
     const n = r.entries.length;
@@ -241,6 +263,14 @@ export class NoteBlank implements Blank {
     const r = validateNoteWrite(file.entries, { op: 'remove', index: m.index }, this._caps);
     if (!r.ok) return formatError(r.detail);
     await this._write(removeNoteLine(file.content, m.entry.line ?? -1));
+    // Inverse: re-add the deleted entry's full text (label included).
+    const entryWords = m.entry.text.split(/\s+/).filter(Boolean);
+    this._lastWriteInverse = {
+      file: 'NOTES.md',
+      blankName: this.name,
+      inverseOp: { keyword: 'note', args: ['add', ...entryWords] },
+      forwardOp: { keyword: 'note', args: ['delete', ...entryWords] },
+    };
     return `[deleted: ${m.entry.label ?? preview(m.entry.body, 40)}]`;
   }
 

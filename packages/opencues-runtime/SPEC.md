@@ -145,7 +145,7 @@ These are wire-format quirks, not protocol features — they get encoded once in
 | `debug-mode` | Every runtime debugs differently. |
 | `cursor-navigate` | The cursor-cycling state machine isn't part of the file format spec. Cursor-offset preservation across a substitution (docs/features/cursor-preservation.md) is unconditional runtime behavior, not a setting — there is no toggle for it. |
 | `llm-provider`, `llm-model`, `llm-endpoint`, `<feature>-provider`, `<feature>-model`, `<feature>-endpoint`, `cues-llm-*`, `auditors-llm-*`, `blanks-llm-*` | LLM provider config is a per-runtime concern. The list of recognised providers, their wire formats, and their env-var conventions are runtime-specific; another runtime could ship a single provider with a hardcoded model and conform to the standard equally. |
-| `word-cues-mode`, `transform-blank-mode`, `sentence-cues-mode`, `fluid-config-mode`, `ambient-context-mode`, `max-thinking` | Per-feature enable gates + reasoning-effort budget are reference-runtime knobs — a second runtime could ship any subset always-on. |
+| `word-cues-mode`, `transform-blank-mode`, `sentence-cues-mode`, `fluid-config-mode`, `undo-mode`, `ambient-context-mode`, `max-thinking` | Per-feature enable gates + reasoning-effort budget are reference-runtime knobs — a second runtime could ship any subset always-on. |
 | `identity-context-mode`, `blank-context-mode` | Mode-gates for the sentinel-catalog machinery ARE spec-mandated (see [`core.md` § Spec-mandated scalars](../../spec/core.md#spec-mandated-scalars)) — listed here for completeness since they live in the same `OPENCUES.md` file as the runtime-only settings, not because they're runtime-specific. |
 
 Any of these could be promoted to the standard if multiple runtimes adopt them. See [`core.md`](../../spec/core.md) § Promotion path.
@@ -200,25 +200,21 @@ Unlike a stateless per-call design, the runtime keeps a **module-level variant p
 
 The cache key deliberately OMITS identity/blank-context VALUES (in `safe` mode the LLM only ever sees token names; values substitute post-LLM), so a cached answer carrying `[FIRST NAME]` re-substitutes against whatever the identity value currently is on each hit. Ambient context IS part of the key — the same lookup phrase in different field contexts must not collide.
 
-### FILL vs WIPE
+### Always FILL
 
-The `MODE:` line above is now **LLM-emitted**, not runtime-computed — there is no `determineReplaceMode()` function; the fused prompt's rule is "WIPE if the whole input is a terse lookup phrase the ANSWER replaces; FILL if the ANSWER fills a gap in a sentence and the surrounding words stay":
+The fused prompt still asks the model for a `MODE:` line (`FILL`/`WIPE`) for
+wire-format compatibility, but the runtime **ignores it** — fluid resolution
+is statically always-FILL (see the note under § Feature gates above: the
+WIPE machinery was retired with the static-resolution design). The answer
+substitutes only the `_` token; every surrounding word the user typed stays.
 
-- **FILL** — the input ends with a copula/equation/question marker immediately before `_` (`is _`, `= _`, `? _`). The answer substitutes only the `_` token; the surrounding sentence is preserved.
+```
+the capital of france is _   →   the capital of france is Paris
+4 * 12 = _                   →   4 * 12 = 48
+capital of france _          →   capital of france Paris
+```
 
-  ```
-  the capital of france is _   →   the capital of france is Paris
-  4 * 12 = _                   →   4 * 12 = 48
-  ```
-
-- **WIPE** — the input is a bare lookup phrase. The entire span (lookup phrase + `_`) is wiped and replaced with the answer alone.
-
-  ```
-  capital of france _          →   Paris
-  weather in london _          →   13°C Partly cloudy
-  ```
-
-The runtime emits character-offset `spanStart`/`spanEnd` on the resulting `CueResult` so the editor knows how much to replace.
+Fluid results carry no `spanStart`/`spanEnd`; only the `_` is ever replaced.
 
 ### Task-trigger guard
 

@@ -1,6 +1,6 @@
 {
   "name": "@opencues/shell",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "private": true,
   "description": "OpenCues for the shell — native AI integration anywhere you type. Model agnostic and fully open source. Inline agents and prompting.",
   "type": "module",
@@ -20,7 +20,10 @@
     "//comment-on-build": "Intentionally a no-op in CI. bin/oc-edit falls back to src/app.tsx when dist/app.js is absent (Bun handles TSX natively at run time), so a pre-bundled dist is purely a perf optimisation for warm starts — not required for correctness. CI runners don't have Bun installed; running `bun build` there fails. To produce a pre-bundled dist for a release, run `pnpm run bundle` locally with Bun on PATH.",
     "build": "echo '@opencues/shell: skipping bundle (bin/oc-edit runs src/app.tsx directly; bundle is an optional perf optimisation)'",
     "bundle": "bun run scripts/bundle.ts",
-    "dev": "bun --conditions=browser src/app.tsx"
+    "dev": "bun --conditions=browser src/app.tsx",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:dev": "vitest"
   },
   "dependencies": {
     "@opentui/core": "0.1.99",
@@ -28,10 +31,13 @@
     "solid-js": "1.9.10"
   },
   "//comment-on-opencues-deps": "@opencues/{core,runtime} are NOT npm-resolved deps here. setup.sh cp -r's the built dist into node_modules/@opencues/{core,runtime}/, mirroring the way integrations/opencode/patches/setup.sh wires the same packages into its fork. This keeps the install path identical across hosts and avoids workspace-resolution drift between pnpm (top-level) and bun (this integration).",
+  "//comment-on-test-infra": "Test/typecheck run under Node+vitest, NOT Bun (Bun isn't assumed to be on PATH in CI/dev). src/daemon.ts, src/daemon-client.ts don't import any Bun-only API so they run fine under vitest/Node. src/bootstrap.ts and src/app.tsx pull in @opentui/* + @opencues/* — those are mocked in tests rather than resolved for real, since @opencues/{core,runtime} aren't npm-linked here (see comment above).",
   "devDependencies": {
     "@tsconfig/bun": "1.0.9",
     "@types/bun": "1.3.11",
-    "typescript": "5.8.2"
+    "@types/node": "^22.0.0",
+    "typescript": "5.8.2",
+    "vitest": "^4.1.0"
   },
   "files": [
     "bin/",

@@ -204,7 +204,7 @@ export const CORE_CONFIG_FILES: readonly string[] = [
  * Canonical filename for the user-level RUNTIME SETTINGS file —
  * lives at `~/.cues/OPENCUES.md` (or `$OPENCUES_HOME/OPENCUES.md`).
  * Carries all OPENCUES.md scalars (voice-mode, debug-mode,
- * fluid-blank-mode, llm-provider, etc.).
+ * word-cues-mode, llm-provider, etc.).
  *
  * NOT to be confused with `CUES.md` — that's the cue master
  * config (cue source declarations, project metadata, optional
@@ -264,6 +264,35 @@ export function seedableOptionalFiles(): SeedableFile[] {
 }
 
 /**
+ * Decorate a `*-llm-provider` scalar's `inherit` entry with what
+ * inheriting RESOLVES TO right now. The menu is the moment of choice —
+ * "inherit" is only a meaningful option when it names the inherited
+ * provider (July 2026: "the inherit ask doesn't say what you're
+ * inheriting"). Resolution mirrors the effective-routing walk's global
+ * tier: the `llm-provider` scalar when set — named even when it's an
+ * unknown id, so a typo'd global is visible at the menu instead of
+ * discovered at dispatch — otherwise the auto-route over available API
+ * keys, which the registry cannot see (no key bag here), so it is
+ * named as auto-routing rather than guessed. Non-`inherit` entries
+ * pass through untouched.
+ */
+function withInheritResolution(
+  values: readonly ValueSpec[],
+  settings: ReadonlyMap<string, string>,
+): readonly ValueSpec[] {
+  const raw = settings.get('llm-provider')?.trim().toLowerCase();
+  const adapter = raw ? getProvider(raw) : null;
+  const resolved = raw
+    ? adapter
+      ? `currently ${adapter.id}`
+      : `llm-provider is "${raw}" — unknown provider, calls disabled`
+    : 'unset — auto-routes from your available API keys';
+  return values.map(v => v.id === 'inherit'
+    ? { ...v, description: `Default — inherit the global llm-provider (${resolved})` }
+    : v);
+}
+
+/**
  * Build the model-value list for a `*-llm-model` scalar from the
  * sibling provider's catalogue. Returns `default` followed by the
  * provider's `knownModels`. When the provider is unset / `inherit` /
@@ -282,7 +311,7 @@ function buildModelValues(
       id: 'default',
       description: adapter
         ? `Use ${adapter.id}'s default model (${adapter.defaultModel})`
-        : 'Use the provider\'s default model',
+        : 'Use the auto-routed provider\'s default model (no provider pinned — set llm-provider or an API key)',
     },
   ];
   const models = adapter?.knownModels ?? (adapter ? [adapter.defaultModel] : []);
@@ -297,6 +326,49 @@ function buildModelValues(
 }
 
 /**
+ * Static value lists for the three `*-llm-provider` bucket scalars.
+ * Hoisted so each feature can reference its list twice: as the static
+ * `values` fallback AND inside its `valuesProvider`, where
+ * `withInheritResolution` decorates the `inherit` entry with the live
+ * resolution. cues/auditors are prose-bearing (no opencode-zen);
+ * blanks exposes the free pool behind the user's `_` consent gate.
+ */
+const CUES_PROVIDER_VALUES: readonly ValueSpec[] = [
+  { id: 'inherit',   description: 'Default — cues use the global llm-provider (auto-routed when unset)' },
+  { id: 'cerebras',  description: 'Cerebras — fastest gpt-oss-120b host (recommended)' },
+  { id: 'groq',      description: 'Groq — gpt-oss-120b, accuracy ceiling on long-form' },
+  { id: 'gemini',    description: 'Gemini — stable across the matrix' },
+  { id: 'anthropic', description: 'Anthropic — pricier, parity accuracy' },
+  { id: 'openai',    description: 'OpenAI — gpt-5.4-mini default' },
+  { id: 'openrouter', description: 'OpenRouter (multi-model router)', exposeInMenu: false },
+  { id: 'claude-code-cli', description: 'claude-code-cli (subprocess)', exposeInMenu: false },
+  { id: 'ollama',     description: 'Ollama (local) — private, free, needs a running Ollama server', exposeInMenu: false },
+];
+const AUDITORS_PROVIDER_VALUES: readonly ValueSpec[] = [
+  { id: 'inherit',   description: 'Default — auditors use the global llm-provider (auto-routed when unset)' },
+  { id: 'cerebras',  description: 'Cerebras — fastest gpt-oss-120b host (recommended)' },
+  { id: 'groq',      description: 'Groq — gpt-oss-120b, accuracy ceiling on long-form' },
+  { id: 'gemini',    description: 'Gemini — stable across the matrix' },
+  { id: 'anthropic', description: 'Anthropic — pricier, parity accuracy' },
+  { id: 'openai',    description: 'OpenAI — gpt-5.4-mini default' },
+  { id: 'openrouter', description: 'OpenRouter (multi-model router)', exposeInMenu: false },
+  { id: 'claude-code-cli', description: 'claude-code-cli (subprocess)', exposeInMenu: false },
+  { id: 'ollama',     description: 'Ollama (local) — private, free, needs a running Ollama server', exposeInMenu: false },
+];
+const BLANKS_PROVIDER_VALUES: readonly ValueSpec[] = [
+  { id: 'inherit',      description: 'Default — blanks use the global llm-provider' },
+  { id: 'opencode-zen', description: 'OpenCode Zen free pool — pair with `blanks-llm-model: free` (provider trains on input)' },
+  { id: 'cerebras',     description: 'Cerebras — fastest gpt-oss-120b host (recommended)' },
+  { id: 'groq',         description: 'Groq — gpt-oss-120b, accuracy ceiling on long-form' },
+  { id: 'gemini',       description: 'Gemini — stable across the matrix' },
+  { id: 'anthropic',    description: 'Anthropic — pricier, parity accuracy' },
+  { id: 'openai',       description: 'OpenAI — gpt-5.4-mini default' },
+  { id: 'openrouter',   description: 'OpenRouter (multi-model router)', exposeInMenu: false },
+  { id: 'claude-code-cli', description: 'claude-code-cli (subprocess)', exposeInMenu: false },
+  { id: 'ollama',     description: 'Ollama (local) — private, free, needs a running Ollama server', exposeInMenu: false },
+];
+
+/**
  * Every optional feature OpenCues exposes via an OPENCUES.md scalar.
  *
  * Order matters only for the selector-satellite menu and doctor's
@@ -305,17 +377,6 @@ function buildModelValues(
  */
 export const FEATURES: readonly FeatureSpec[] = [
   // ── Surface availability ─────────────────────────────────────────
-  {
-    scalar: 'fluid-blank-mode',
-    group: 'Blanks',
-    camelCase: 'fluidBlankMode',
-    description: 'Free-form `_` lookups (LLM pipeline)',
-    menuTip: 'Free-form `_` lookups (P1+P3 LLM pipeline)',
-    values: [
-      { id: 'on',  description: 'Enabled — `_` next to a lookup phrase auto-substitutes the answer' },
-      { id: 'off', description: 'Disabled — fluid-blank ignored' },
-    ],
-  },
   {
     scalar: 'word-cues-mode',
     group: 'Cues',
@@ -350,6 +411,17 @@ export const FEATURES: readonly FeatureSpec[] = [
     ],
   },
   {
+    scalar: 'undo-mode',
+    group: 'Cues',
+    camelCase: 'undoMode',
+    description: 'Natural-language undo/redo of OpenCues changes ("undo _", "undo 3 _", "redo _")',
+    menuTip: 'Revert what OpenCues did — fills, rewrites, settings writes, volume/brightness sets. Language-invariant (routed via the config-intent classifier); count supported ("undo 3 _").',
+    values: [
+      { id: 'on',  description: 'Enabled (default) — `undo _` / `redo _` revert OpenCues-applied changes from the session journal' },
+      { id: 'off', description: 'Disabled — undo/redo verdicts cede; `_` falls through to the other blank sources' },
+    ],
+  },
+  {
     scalar: 'integration-weave-mode',
     group: 'Blanks',
     camelCase: 'integrationWeaveMode',
@@ -369,6 +441,17 @@ export const FEATURES: readonly FeatureSpec[] = [
     values: [
       { id: 'off', description: 'Disabled (default) — every `scope: sentence` cue is filtered at build time' },
       { id: 'on',  description: 'Enabled — sentence cues fire on prose buffers, suppressing any word-cues for words inside the sentence span' },
+    ],
+  },
+  {
+    scalar: 'contradiction-cues-mode',
+    group: 'Cues',
+    camelCase: 'contradictionCuesMode',
+    description: 'Deterministic fact-check cues — flags a stale/wrong claim you typed against the buffer + clock (weekday-date mismatch, split-the-bill math)',
+    menuTip: 'Catch your own mistakes as you type: "Thursday the 24th" when the 24th is a Friday; "$120 among 4, $25 each" when it\'s $30. No LLM, no network — pure date/number arithmetic. Tier 0 of the contradiction-cue layer. OFF by default.',
+    values: [
+      { id: 'off', description: 'Disabled (default) — no contradiction fact-checking' },
+      { id: 'on',  description: 'Enabled — buffer + clock contradiction cues fire on prose (weekday-date, split-the-bill)' },
     ],
   },
   {
@@ -470,17 +553,11 @@ export const FEATURES: readonly FeatureSpec[] = [
     camelCase: 'cuesLlmProvider',
     description: 'LLM provider for cue sources (word-cues, sentence-cues). Inherits llm-provider by default.',
     menuTip: 'Pick the provider for cue sources (word-cues, sentence-cues). Refuses training-pool providers (opencode-zen) — prose surface.',
-    values: [
-      { id: 'inherit',   description: 'Default — cues use the global llm-provider (auto-routed when unset)' },
-      { id: 'cerebras',  description: 'Cerebras — fastest gpt-oss-120b host (recommended)' },
-      { id: 'groq',      description: 'Groq — gpt-oss-120b, accuracy ceiling on long-form' },
-      { id: 'gemini',    description: 'Gemini — stable across the matrix' },
-      { id: 'anthropic', description: 'Anthropic — pricier, parity accuracy' },
-      { id: 'openai',    description: 'OpenAI — gpt-5.4-mini default' },
-      { id: 'openrouter', description: 'OpenRouter (multi-model router)', exposeInMenu: false },
-      { id: 'claude-code-cli', description: 'claude-code-cli (subprocess)', exposeInMenu: false },
-      { id: 'ollama',     description: 'Ollama (local) — private, free, needs a running Ollama server', exposeInMenu: false },
-    ],
+    values: CUES_PROVIDER_VALUES,
+    // Live settings decorate `inherit` with what it resolves to right
+    // now — see withInheritResolution. Static `values` stay as the
+    // settings-less fallback.
+    valuesProvider: (settings) => withInheritResolution(CUES_PROVIDER_VALUES, settings),
   },
   {
     scalar: 'auditors-llm-provider',
@@ -488,17 +565,8 @@ export const FEATURES: readonly FeatureSpec[] = [
     camelCase: 'auditorsLlmProvider',
     description: 'LLM provider for auditor sources + agent-rewrite. Inherits llm-provider by default.',
     menuTip: 'Pick the provider for auditors + agent-rewrite (background prose rewriters). Refuses training-pool providers (opencode-zen).',
-    values: [
-      { id: 'inherit',   description: 'Default — auditors use the global llm-provider (auto-routed when unset)' },
-      { id: 'cerebras',  description: 'Cerebras — fastest gpt-oss-120b host (recommended)' },
-      { id: 'groq',      description: 'Groq — gpt-oss-120b, accuracy ceiling on long-form' },
-      { id: 'gemini',    description: 'Gemini — stable across the matrix' },
-      { id: 'anthropic', description: 'Anthropic — pricier, parity accuracy' },
-      { id: 'openai',    description: 'OpenAI — gpt-5.4-mini default' },
-      { id: 'openrouter', description: 'OpenRouter (multi-model router)', exposeInMenu: false },
-      { id: 'claude-code-cli', description: 'claude-code-cli (subprocess)', exposeInMenu: false },
-      { id: 'ollama',     description: 'Ollama (local) — private, free, needs a running Ollama server', exposeInMenu: false },
-    ],
+    values: AUDITORS_PROVIDER_VALUES,
+    valuesProvider: (settings) => withInheritResolution(AUDITORS_PROVIDER_VALUES, settings),
   },
   {
     scalar: 'blanks-llm-provider',
@@ -506,18 +574,8 @@ export const FEATURES: readonly FeatureSpec[] = [
     camelCase: 'blanksLlmProvider',
     description: 'LLM provider for blank-class sources (fluid-blank, transform-blank, fluid-config, keyword blanks). Inherits llm-provider by default.',
     menuTip: 'Pick the provider for blanks (the opt-in `_` surface). `opencode-zen` + `blanks-llm-model: free` routes blanks through OpenCode Zen\'s free pool (no API key; provider trains on blank inputs).',
-    values: [
-      { id: 'inherit',      description: 'Default — blanks use the global llm-provider' },
-      { id: 'opencode-zen', description: 'OpenCode Zen free pool — pair with `blanks-llm-model: free` (provider trains on input)' },
-      { id: 'cerebras',     description: 'Cerebras — fastest gpt-oss-120b host (recommended)' },
-      { id: 'groq',         description: 'Groq — gpt-oss-120b, accuracy ceiling on long-form' },
-      { id: 'gemini',       description: 'Gemini — stable across the matrix' },
-      { id: 'anthropic',    description: 'Anthropic — pricier, parity accuracy' },
-      { id: 'openai',       description: 'OpenAI — gpt-5.4-mini default' },
-      { id: 'openrouter',   description: 'OpenRouter (multi-model router)', exposeInMenu: false },
-      { id: 'claude-code-cli', description: 'claude-code-cli (subprocess)', exposeInMenu: false },
-      { id: 'ollama',     description: 'Ollama (local) — private, free, needs a running Ollama server', exposeInMenu: false },
-    ],
+    values: BLANKS_PROVIDER_VALUES,
+    valuesProvider: (settings) => withInheritResolution(BLANKS_PROVIDER_VALUES, settings),
   },
 
   // ── Provider routing — model selection ───────────────────────────
@@ -643,6 +701,23 @@ export const FEATURES: readonly FeatureSpec[] = [
       // (mode-gate composition pinned in docs/architecture/blank-as-context.md).
       { id: 'raw',  description: 'Live values inlined into the prompt; values reach the LLM provider', exposeInMenu: false },
     ],
+  },
+  {
+    scalar: 'calendar-context-mode',
+    group: 'Context & identity',
+    camelCase: 'calendarContextMode',
+    description: 'Ingest a bounded calendar snapshot so fluid-blank can answer availability/scheduling questions',
+    menuTip: 'Let fluid-blank reason over your upcoming calendar — `am i free thursday _` answers from an ingested (bounded, periodic) calendar-feed snapshot. Titles + locations are dehydrated tokens the runtime hydrates locally; only anonymized busy-interval times reach the LLM. ON by default, but INERT until you add a feed with `opencues calendar add` — adding a calendar is the opt-in. See docs/architecture/calendar-context.md.',
+    values: [
+      { id: 'on',  description: 'Enabled (default) — ingest a bounded calendar snapshot; titles + locations dehydrated to tokens hydrated locally, only busy-interval times sent. Inert until you add a feed.' },
+      { id: 'off', description: 'Disabled — no calendar ingestion even if a feed is configured' },
+    ],
+    // The shared calendar snapshot, produced OpenCues-side by `opencues
+    // calendar sync`. No `template` (it's generated, not seeded). `pushedBy`
+    // makes the chrome-host + `opencues sync chrome` carry it into the bundle
+    // so the chrome extension consumes the same file native hosts read directly.
+    prereqFile: { basename: 'calendar.json' },
+    pushedBy: ['chrome-host'],
   },
   {
     scalar: 'statusbar-position',

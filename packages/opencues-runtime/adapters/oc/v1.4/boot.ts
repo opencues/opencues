@@ -204,6 +204,7 @@ export function boot(host: HostInfo): BootResult {
       onSnapshot: host.statusSnapshotHook
         ? (payload) => host.statusSnapshotHook!(payload)
         : undefined,
+      undoStatus: () => shared.undoJournal.recentApplyReport(8000),
     }, configLoader, spanFillState, selectorSatelliteState, agentTaskState);
     statusline.subscribe();
   }
@@ -244,7 +245,8 @@ export function boot(host: HostInfo): BootResult {
     keywordBoundSlotIndices: (text: string) => shared.blankFill.claimedSlotIndices(text),
   }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState,
   buildBlankContextProvider(configLoader, host.blanks, log),
-  buildBlankFetchProvider(configLoader, host.blanks, log));
+  buildBlankFetchProvider(configLoader, host.blanks, log),
+  shared.undoJournal);
   // Subscribe AFTER ConfigLoader.load — otherwise rebuildResolver sees
   // no cuesConfig/blanksConfig and bails. Mirrors CC v2.1 boot.
   configLoader.load().then(() => resolver.subscribe()).catch(() => { /* logged by ConfigLoader */ });
@@ -256,6 +258,7 @@ export function boot(host: HostInfo): BootResult {
     // removed once AgentRewrite proved its merge layer made the
     // per-edit guards structurally unnecessary.
     const agentRewrite = new AgentRewrite(adapter, dynDefs, agentTaskState, {
+      undoJournal: shared.undoJournal,
       endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
       apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
       defaultModel: host.llmDefaultModel ?? 'openai/gpt-oss-120b',

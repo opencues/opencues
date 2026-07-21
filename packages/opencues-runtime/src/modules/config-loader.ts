@@ -22,6 +22,7 @@
 
 import type { HostAdapter, Unsubscribe } from '../adapter';
 import {
+  FEATURES,
   buildLookupMap,
   discoverFolderConfigs,
   mergeConfigs,
@@ -153,6 +154,16 @@ export interface OpenCuesState {
    */
   readonly blankContextMode: 'off' | 'safe' | 'raw';
   /**
+  /**
+   * Calendar-context — ingest a bounded calendar snapshot so fluid-blank can
+   * REASON over upcoming events to answer availability/scheduling questions
+   * (`am i free thursday _`). `off` (default): no ingestion. `on`: a bounded,
+   * periodic snapshot; event times reach the LLM, titles are dehydrated to
+   * `[EVENT N]` tokens hydrated locally. Carries calendar PII, so opt-in.
+   * See docs/architecture/calendar-context.md.
+   */
+  readonly calendarContextMode: 'off' | 'on';
+  /**
    * Sentinel grammar for identity-/blank-context tokens.
    * `bare` (default): flat `[TOKEN]` form — byte-identical to pre-feature
    * behaviour for every existing user.
@@ -259,6 +270,7 @@ export const DEFAULT_OPENCUES_STATE: OpenCuesState = {
   ambientContextMode: 'off',
   identityContextMode: 'safe',
   blankContextMode: 'safe',
+  calendarContextMode: 'on',
   sentinelLanguage: 'bare',
   aiCallableAllow: [],
   blankTriggerMode: 'immediate',
@@ -352,6 +364,16 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
     : blankContextHasKey ? 'off' // explicit but unrecognised → fail-closed
     : 'safe';                    // absent → new default
   if (blankContextMode === 'raw' && identityContextMode !== 'raw') blankContextMode = 'safe';
+  // Calendar-context scalar — bounded calendar ingestion for fluid-blank reasoning.
+  // OFF by default: it carries real calendar PII (event titles), so it's opt-in
+  // unlike system-context. Times reach the LLM in the clear; titles dehydrate to
+  // [EVENT N] tokens hydrated locally. No-op on hosts with no ingester (empty snapshot).
+  // ON by default: it's INERT until the user adds a calendar feed (empty
+  // snapshot → nothing sent), so adding a feed is the opt-in; only anonymized
+  // busy-interval times reach the LLM (titles + locations are dehydrated).
+  // Explicit `off` is the only value that disables a configured feed.
+  const calendarContextMode: 'off' | 'on' =
+    get('calendar-context-mode', 'on').toLowerCase() === 'off' ? 'off' : 'on';
   // Sentinel grammar — `bare` default keeps every existing user on the
   // flat [TOKEN] path; only an explicit `typed` opts into the richer
   // grammar. Unrecognised value → `bare` (fail-safe, no behavioural diff).
@@ -400,7 +422,7 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   // Tests keep shipping mock `settings:` blocks; they get the
   // file-driven definitions, identical to the pre-refactor behaviour.
   const definitions = mergeDefinitions(getMenuDefinitions(undefined, settings), parseSettingsBlock(lines));
-  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, identityContextMode, blankContextMode, sentinelLanguage, aiCallableAllow, blankTriggerMode, navKeymap, cuesLlmProvider, auditorsLlmProvider, blanksLlmProvider, settings, definitions };
+  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, identityContextMode, blankContextMode, calendarContextMode, sentinelLanguage, aiCallableAllow, blankTriggerMode, navKeymap, cuesLlmProvider, auditorsLlmProvider, blanksLlmProvider, settings, definitions };
 }
 
 /**
@@ -442,19 +464,46 @@ function overlayDynamicDefinitions(
   const fresh = getMenuDefinitions(undefined, settings);
   for (const f of FEATURES_WITH_VALUES_PROVIDER) {
     const freshDef = fresh.get(f);
-    if (freshDef) out.set(f, freshDef);
+    if (!freshDef) continue;
+    const existingDef = out.get(f);
+    if (!existingDef) { out.set(f, freshDef); continue; }
+    // File-override-wins contract: a user's `settings:` block replaces
+    // a scalar's whole definition, including its value LIST + order —
+    // the overlay must not clobber it back to the registry shape (a
+    // July 2026 regression did exactly that for the provider scalars:
+    // the satellite walk order changed mid-cycle after the first
+    // write). Replace wholesale only when the existing list is
+    // registry-shaped (same ids, same order) — for `*-llm-model`
+    // that's also the case where the provider changed and the list
+    // legitimately reshapes, because a reshape starts from a
+    // registry-shaped list. For a file-driven list, keep the user's
+    // ids/order and refresh only the descriptions of ids both sides
+    // know (so live text like the `inherit` resolution still updates).
+    const modelScalar = /-llm-model$/.test(f);
+    const sameIds = existingDef.valueOrder.length === freshDef.valueOrder.length
+      && existingDef.valueOrder.every((id, i) => id === freshDef.valueOrder[i]);
+    if (sameIds || modelScalar) {
+      out.set(f, freshDef);
+    } else {
+      const tips = new Map(existingDef.valueTips);
+      for (const [id, tip] of freshDef.valueTips) {
+        if (tips.has(id)) tips.set(id, tip);
+      }
+      out.set(f, { ...existingDef, valueTips: tips });
+    }
   }
   return out;
 }
 
-// Scalars whose value list is dynamic (valuesProvider-backed). Kept in
-// sync with feature-registry.ts. A drift test in feature-registry-menu.drift
-// would catch additions silently — for now this is a tiny hardcoded list.
-const FEATURES_WITH_VALUES_PROVIDER: readonly string[] = [
-  'cues-llm-model',
-  'auditors-llm-model',
-  'blanks-llm-model',
-];
+// Scalars whose value list is dynamic (valuesProvider-backed). Derived
+// from the registry (July 2026) instead of the previous hardcoded
+// list — adding a valuesProvider to a FEATURE now auto-propagates to
+// the post-applyOpenCuesScalar overlay with no edit here. (The
+// hardcoded copy went stale the first time a valuesProvider was added
+// outside the *-llm-model trio: the provider scalars' live `inherit`
+// resolution.)
+const FEATURES_WITH_VALUES_PROVIDER: readonly string[] =
+  FEATURES.filter(f => f.valuesProvider).map(f => f.scalar);
 
 /**
  * Walk the indented `settings:` block and pull out each setting's tip +
@@ -764,6 +813,7 @@ export class ConfigLoader {
       ambientContextMode: (get('ambient-context-mode', 'off') === 'on' ? 'on' : 'off') as 'on' | 'off',
       identityContextMode,
       blankContextMode,
+      calendarContextMode: (get('calendar-context-mode', 'on').toLowerCase() === 'off' ? 'off' : 'on') as 'off' | 'on',
       sentinelLanguage: (get('sentinel-language', 'bare').toLowerCase() === 'typed' ? 'typed' : 'bare') as 'bare' | 'typed',
       aiCallableAllow: (get('ai-callable-allow', '') || get('param-safe-allow', '')) // LEGACY-NAME-ALLOW: pre-rename scalar
         .split(',').map(s => s.trim()).filter(s => s && !/^-+$/.test(s)),

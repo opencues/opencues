@@ -11,7 +11,7 @@ Analysis fires automatically as the user types, without requiring an explicit su
 ## How It Works
 
 1. **On every text change** (user-sourced only — the resolver ignores its own `setText` echoes), `Resolver.onTextChange` runs.
-2. **Config hot-reload check** — if `OPENCUES.md` scalars changed since the sources were last built, the resolver rebuilds before dispatching, so a flag flip (`fluid-blank-mode: off → on`, etc.) takes effect without a host restart.
+2. **Config hot-reload check** — if `OPENCUES.md` scalars changed since the sources were last built, the resolver rebuilds before dispatching, so a flag flip (`transform-blank-mode: off → on`, etc.) takes effect without a host restart.
 3. **Same-text dedupe** — if the incoming text is identical to the last user-sourced text seen, the change is a no-op echo (some hosts re-emit change events for unchanged content) and is dropped immediately.
 4. **Blank-trigger fast path**: if the buffer's trailing edge just gained a `_` (per `blank-trigger-mode` — `immediate`: the instant `_` becomes the last non-whitespace char; `spaced`: only once a confirming space follows), the debounce is bypassed entirely and the resolver dispatches right away. This is what cuts perceived `_` latency roughly in half versus waiting out the debounce.
 5. **Otherwise**, a single debounce timer (`debounceMs`, default **500ms**) is (re)armed. When it fires, the resolver dispatches the current text.

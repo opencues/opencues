@@ -319,6 +319,40 @@ arrow and the existing `ctrl-alt` matcher fires.
 - Tests: `src/modules/mac-keyboard.test.ts` (61 cases incl. a real-`Readable`
   scenario test mirroring Ink's `read()`-loop + `setEncoding('utf8')`).
 
+### 15. tweakcc's system-prompt writeback corrupts nested-template prompts (2.1.206 bump)
+
+**What broke (July 2026, 2.1.170 → 2.1.206):** the patched binary died at
+parse time with `SyntaxError: Unexpected identifier '$'. Expected ':' in
+ternary operator.` — before any CC code ran. All five OpenCues seams were
+fine; the corruption was in CC's OWN memory system prompt.
+
+**Root cause:** tweakcc's `applySystemPrompts` runs **unconditionally** in
+its apply path — before the `patchImplementations` map that setup.sh § 4d
+disables — and re-embeds every extracted prompt back into cli.js even when
+nothing was customized. For backtick-delimited prompts it doubles ALL
+backslashes (`systemPrompts.ts:176`), including inside preserved `${...}`
+interpolations. CC 2.1.206's memory prompt introduced a nested template
+inside an interpolation (`` ${l?`\`${y}\``:y} ``); the `\`` doubled to
+`` \\\` `` and the repacked binary no longer parsed. 2.1.170 worked only
+because no prompt contained that shape — the escaper bug was latent.
+
+**Fix:** setup.sh § 4e disables tweakcc's system-prompt pipeline by
+dropping the `content = systemPromptsResult.newContent;` assignment in
+tweakcc's `patches/index.ts` (anchor-verified — install aborts if the
+anchor moves; the diff-report side stays, it never mutates cli.js). Same
+mechanism also covers the issue-#276 variant of this class (prompt-DB
+version mismatch double-escaping ~5000 segments on BOTH shapes), and the
+§ 9 runtime smoke executes the patched artifact so no variant can ship
+silently. We use tweakcc as a patcher tool only; prompt customization was
+never part of the OpenCues install.
+
+**Diagnostic that found it:** `bun build --no-bundle` against
+`<fork>/.cues/patch-state/native-claudejs-patched.js` points at the exact
+offset (`node --check` is useless here — cli.js uses the `using` keyword,
+which Node ≤22 can't parse). Then byte-compare the region against
+`native-claudejs-orig.js` — doubled backslashes in text far from any
+`__oc` marker means the corruption is tweakcc's, not ours.
+
 ---
 
 ## Architecture in one paragraph

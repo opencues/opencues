@@ -25,7 +25,6 @@ export function opencuesMd(opts: OpencuesMdOpts = {}): string {
     'blanks-llm-provider': 'groq',
     'word-cues-provider': 'groq',
     'debug-mode': opts.debug ? 'on' : 'off',
-    'fluid-blank-mode': opts.fluidBlank === false ? 'off' : 'on',
     'word-cues-mode': opts.wordCues ? 'on' : 'off',
     'voice-mode': 'inactive',
     'tips-mode': 'off',

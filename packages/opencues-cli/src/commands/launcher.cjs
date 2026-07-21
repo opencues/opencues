@@ -21,6 +21,7 @@ const ACTIONS = [
   ['Run a host',            'launch a patched host',                './run.cjs',        []],
   ['Diagnostics',           'doctor — check the install',           './doctor.cjs',     []],
   ['Check API keys',        'verify keys against providers',        './check-keys.cjs', []],
+  ['Models',                'effective LLM routing + catalog',      './models.cjs',     []],
   ['All commands',          'the full reference',                   './help.cjs',       []],
 ];
 

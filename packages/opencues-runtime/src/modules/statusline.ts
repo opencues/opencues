@@ -17,6 +17,7 @@ import type { SpanFillState } from '../state/span-fill';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
 import type { AgentTaskState } from '../state/agent-task';
 import type { ProviderHealth, ProviderHealthEvent } from './provider-health';
+import { formatUndoReport, type UndoApplyReport } from '../state/undo-journal';
 import { splitWords } from './navigation';
 
 export interface StatuslineOptions {
@@ -56,6 +57,14 @@ export interface StatuslineOptions {
     readonly coachSegments: ReadonlyArray<{ readonly text: string; readonly command: boolean }> | null;
     readonly offTrack: boolean;
   } | null;
+  /**
+   * Optional. Recent undo/redo apply report (UndoJournal.recentApply-
+   * Report thunk, TTL-gated by the journal). Non-null → the payload
+   * carries an `undo` block so consumers can surface partial-skip
+   * honesty ("undid text; volume couldn't be restored") without the
+   * buffer carrying the detail.
+   */
+  readonly undoStatus?: () => UndoApplyReport | null;
 }
 
 export interface StatuslinePayload {
@@ -104,6 +113,19 @@ export interface StatuslinePayload {
     readonly coachSegments: ReadonlyArray<{ readonly text: string; readonly command: boolean }> | null;
     readonly offTrack: boolean;
   } | null;
+  /**
+   * Recent undo/redo apply report — non-null for a short TTL after an
+   * `undo _` / `redo _` fires. Carries applied/skipped counts + skip
+   * reasons so hosts can render partial-failure honesty out-of-band.
+   */
+  undo?: UndoApplyReport | null;
+  /**
+   * Pre-formatted one-line undo/redo confirmation (`↶ undid: …`), derived
+   * from `undo` via `formatUndoReport`. Present for the same TTL. Hosts
+   * render this string verbatim — the universal feedback surface, since an
+   * invisible revert (scalar / OS value) has no on-screen affordance.
+   */
+  undoConfirmation?: string | null;
 }
 
 export class Statusline {
@@ -306,7 +328,11 @@ export class Statusline {
         highlightedWord: cleanHighlighted,
         currentAltIndex: 0,
         alts: [cleanHighlighted],
-        cueTip: null,
+        // Blank fills suppress the tip (value already visible). A sentence-cue
+        // def (also blankName-attributed) instead carries a dynamic advisory
+        // on def.cueTip — surface it so the status line shows the heads-up
+        // passively, no cycling.
+        cueTip: (!tipsHidden && def.cueTip) ? def.cueTip : null,
         altCueTips: null,
         cueBlank: true,
         wordCount: words.filter(w => clean(w.word).length > 0).length,
@@ -319,12 +345,16 @@ export class Statusline {
     // primary cueTip — mirrors v1's behaviour where each alt can have its
     // own tip text.
     const lookupKey = clean(def?.originalWord ?? highlightedWord);
-    const lookup = this.configLoader?.lookup(lookupKey) ?? null;
     let cueTip: string | null = null;
     let altCueTips: Record<string, string> | null = null;
+    // Dynamic per-resolve advisory (e.g. a sentence-cue's calendar-conflict
+    // heads-up) wins over the static word-cue tip map — it shows passively
+    // whenever the cursor sits in the def's span, no cycling required.
+    if (!tipsHidden && def?.cueTip) cueTip = def.cueTip;
+    const lookup = this.configLoader?.lookup(lookupKey) ?? null;
     if (lookup && !tipsHidden) {
       altCueTips = lookup.altCueTips ?? null;
-      cueTip = lookup.altCueTips?.[cleanHighlighted] ?? lookup.cueTip ?? null;
+      if (cueTip === null) cueTip = lookup.altCueTips?.[cleanHighlighted] ?? lookup.cueTip ?? null;
     }
 
     // When the highlighted word is a blank or blankKeyword (volume,
@@ -385,6 +415,12 @@ export class Statusline {
     // — merge here so it survives the `active: false` early branch too.
     if (this.options.kataStatus) {
       payload = { ...payload, kata: this.options.kataStatus() };
+    }
+    // Undo block — same orthogonal-merge treatment (TTL lives in the
+    // journal's recentApplyReport, so it ages out on its own).
+    if (this.options.undoStatus) {
+      const undo = this.options.undoStatus();
+      payload = { ...payload, undo, undoConfirmation: undo ? formatUndoReport(undo) : null };
     }
     // Strip timestamp before content-comparison so identical-state renders
     // don't trigger writes purely because of clock change.

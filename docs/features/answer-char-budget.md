@@ -1,6 +1,6 @@
 # Answer Char Budget
 
-**Feature #49** · Host-supplied · No scalar (structural, per focused field)
+**Feature #50** · Host-supplied · No scalar (structural, per focused field)
 
 When the focused field has a small **visible capacity**, the host can
 declare a soft character budget for LLM-generated answers. FluidBlank

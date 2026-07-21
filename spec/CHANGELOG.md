@@ -14,6 +14,22 @@ breaking.
 
 ## [Unreleased]
 
+### Removed — `fluid-blank-mode` from the `OPENCUES.md` schema (`0.7-alpha → 0.8-alpha`)
+
+`spec/schemas/opencues.schema.json` no longer documents the `fluid-blank-mode` key, and the valid-masters conformance fixture no longer carries it. The reference runtime retired the gate when static resolution made the fluid blank the always-on base layer; the schema had lagged. Third-party impact: fluid-blank enablement is not configurable via `OPENCUES.md` — a conformant runtime treats the fluid surface as always available (files that still carry the key are preserved-but-ignored under the unknown-frontmatter rule). Per-feature routing keys (`fluid-blank-provider` / `fluid-blank-model` / `fluid-blank-endpoint`) are unchanged.
+
+### Changed (editorial)
+
+- `blank-spec.md` § Flag obligations — clarified that a `get` shape's
+  `valueGroup` captures the **arg** dispatched to the blank's `get`, that the
+  arg may precede the keyword (trailing-keyword shapes like
+  `^(.+?)\s+location\s*_$`), and that runtimes MUST dispatch the
+  shape-captured arg rather than re-deriving it positionally from
+  keyword→`_`. Shaped command-span clearing wording updated to "the whole
+  matched segment" (covers trailing-keyword shapes; identical behaviour for
+  keyword-leading shapes). Authored shapes were already arbitrary anchored
+  regexes, so no wire-format change — `SPEC_VERSION` unchanged.
+
 ---
 
 ## [0.7.0-alpha] — 2026-07-07

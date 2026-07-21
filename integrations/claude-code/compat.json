@@ -2,14 +2,16 @@
   "//": "OpenCues compatibility manifest for Claude Code. Read by `opencues update claude-code [--check|--to <version>]`. Keep in sync with manual testing — every time someone validates a new claude-code version, add it to `tested` (and bump `current-pin` if you want it to become the default).",
   "host-kind": "npm",
   "host-package": "@anthropic-ai/claude-code",
-  "current-pin": "2.1.170",
+  "current-pin": "2.1.206",
+  "tweakcc-pin": "1545ff83379b410199029c623a42df3f3f057cdc",
+  "//tweakcc-pin": "Exact commit of Piebald-AI/tweakcc that setup.sh clones + checks out (1545ff8 = 'Prompts for 2.1.206', v4.3.0+20 — the commit the 2.1.206 agentic-suite validation ran against; the module-graph repack regression PR #272 bisected on the 4.3.1-era commits is fixed by this point, and the 2.1.206 bump validated the repacked binary end-to-end). NEVER clone unpinned: issue #276 (July 2026) — an unpinned clone pulled a tweakcc main whose system-prompt pipeline corrupted BOTH shapes (2.1.110 cli.js SyntaxError; 2.1.170 native repack → Bun 'Expected CommonJS module to have a function wrapper'), reproduced on Linux x64. The CC pin and this pin move TOGETHER: bump only after re-running the UPGRADING.md verification against current-pin (upstream lands a 'Prompts for <version>' commit per CC release — wait for it).",
   "pin-location": {
     "kind": "npm-package-json",
     "path-from-fork": "package.json",
     "field": "dependencies.@anthropic-ai/claude-code",
     "fork-default": "~/claude-code-cues"
   },
-  "tested": ["2.1.110", "2.1.150", "2.1.158", "2.1.170"],
+  "tested": ["2.1.110", "2.1.150", "2.1.158", "2.1.170", "2.1.206"],
   "compat-range": "2.1.x",
   "//notes": {
     "binary-cutover": "2.1.113 (not 2.1.119 — that was an earlier guess). From 2.1.113 onward, @anthropic-ai/claude-code ships a thin Node wrapper + a bun-compile native binary in @anthropic-ai/claude-code-<platform>. Tweakcc 4.0.13+ extracts cli.js from the binary's .bun ELF section, patches the text, and repacks (handles ELF/MachO/PE). Same tweakcc anchor regexes work on both formats; the cli.js text inside the .bun section runs unchanged at startup (bun honours text over its own precompiled bytecode).",

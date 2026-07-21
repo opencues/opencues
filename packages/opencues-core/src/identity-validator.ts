@@ -6,9 +6,9 @@
  *   - `opencues identity set <key> <value>` (CLI)
  *   - The interactive interview in the same CLI command
  *
- * Future call site (under security review — see
- * docs/architecture/security-audit.md row #24):
- *   - A keyword-bound `set sentinel <key> <value> _` blank.
+ *   - The keyword-bound `set sentinel <key> <value> _` blank
+ *     (packages/opencues-runtime/src/blanks/sentinel.ts; threat model in
+ *     docs/architecture/security-audit.md row #24).
  *
  * Validator concerns — enforced uniformly across every site:
  *   1. KEY SHAPE — `[A-Za-z][A-Za-z0-9_-]*`. Anything else corrupts

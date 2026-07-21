@@ -43,6 +43,15 @@ max-thinking: on
 # docs/architecture/ambient-context.md.
 ambient-context-mode: off
 
+# calendar-context-mode — let fluid-blank reason over your calendar
+# (`am i free thursday _`, `where is my next event _`). ON by default,
+# but INERT until you add a feed with `opencues calendar add <ics-url>`
+# — adding a calendar IS the opt-in. Titles + locations are dehydrated
+# to tokens hydrated locally; only anonymized busy-interval times reach
+# the LLM. Set to `off` to disable even with a feed configured.
+# See docs/architecture/calendar-context.md.
+calendar-context-mode: on
+
 # identity-context-mode — personal-data injection for fluid-blank.
 # Pulls field data from ~/.cues/IDENTITY.md (your first name, email,
 # work city, etc.) and offers it to FluidBlankSource so `_` lookups
@@ -76,6 +85,20 @@ identity-context-mode: safe
 # See docs/architecture/fluid-config.md.
 fluid-config-mode: on
 
+# undo-mode — natural-language undo/redo of OpenCues-applied changes.
+# "undo _" reverts the last change OpenCues made (a blank fill, a
+# transform rewrite, a settings write, a volume/brightness set);
+# "redo _" re-applies it; "undo 3 _" reverts three. Language-invariant
+# (classified by the same config-intent LLM call as fluid-config, so
+# "元に戻して _" and "deshacer _" work too). Reverts are exact-match-
+# or-refuse: if you've edited the text since, the stale part is
+# skipped and reported, never guessed at. External effects of user-
+# pack blanks (fetch/exec) are NOT reversible and are reported as such.
+#   on (default) : `undo _` / `redo _` revert from the session journal.
+#   off          : undo/redo verdicts cede; `_` falls through.
+# See docs/architecture/undo.md.
+undo-mode: on
+
 # blank-context-mode — blanks expose their current values as ambient
 # tokens for fluid-blank, so a `_` lookup can reach stock prices,
 # weather, crypto rates etc. WITHOUT typing the keyword. e.g. "buy
@@ -96,7 +119,6 @@ blank-context-mode: safe
 # state — e.g. is an agent task armed — is per-buffer runtime state and
 # orthogonal to these flags.
 # See packages/opencues-core/src/sources/build-sources.ts for what each gates.
-fluid-blank-mode: on
 word-cues-mode: on
 transform-blank-mode: on
 
@@ -313,6 +335,16 @@ transform-blank-model:    openai/gpt-oss-120b
 
 agent-provider: cerebras
 agent-model:    gpt-oss-120b
+```
+
+**`weather-location` (Tier 5 contradiction cues)** — the outdoor-plan-vs-rain
+check auto-detects your location from the host timezone (e.g. `Europe/London`
+→ London), so nothing is needed by default. To override, set a **city name**
+(geocoded automatically) or `lat,lon`:
+
+```yaml
+weather-location: Manchester
+# weather-location: 53.48,-2.24
 ```
 
 Spelling has no dedicated provider key — it's a regular word-scope

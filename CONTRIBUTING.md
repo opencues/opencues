@@ -102,7 +102,7 @@ blankScript: ./<name>-blank.sh    # for shape 1
 ---
 ```
 
-`BlankSource` watches every `_` in the input. Routing is line-scoped: a `blankKeywords` phrase (which desugars to an anchored shape) must LEAD the line containing the `_`, with the `_` at the trailing edge of that line. Args may sit between the keyword and the `_` (e.g. `weather paris _`), but a keyword buried mid-line in prose never fires. When a blank's shape leads the line, it claims the slot. Otherwise the slot falls through to `FluidBlankSource` (free-form LLM lookup) when `fluid-blank-mode: on`.
+`BlankSource` watches every `_` in the input. Routing is line-scoped: a `blankKeywords` phrase (which desugars to an anchored shape) must LEAD the line containing the `_`, with the `_` at the trailing edge of that line. Args may sit between the keyword and the `_` (e.g. `weather paris _`), but a keyword buried mid-line in prose never fires. When a blank's shape leads the line, it claims the slot. Otherwise the slot falls through to `FluidBlankSource` (free-form LLM lookup, the always-on base layer).
 
 See [docs/guides/adding-a-cue-blank.md](docs/guides/adding-a-cue-blank.md) for the full step-by-step.
 
@@ -200,7 +200,7 @@ opencues-core has two dispatch strategies aligned with the dual-direction concep
 
 **Words (per-word routing — `RoutedWordSourceGroup`).** Each highlighted word goes to ONE child source: the first domain whose `match:` or `keywords:` claims the word wins; otherwise the highest-priority default catches it. Words destined for the same source batch into one parallel LLM call — request rate stays linear in source count, not exponential. Resolver runs with `parallel: true`.
 
-**Blanks (keyword binding — `BlankSource`).** Each `_` is bound to ONE blank: the first registered blank whose `blankKeywords` (desugared to an anchored shape) leads the line containing the `_` — with the `_` at the trailing edge — claims the slot. No classifier LLM call — the match is a line-scoped shape scan. Slots no blank claimed fall through to `FluidBlankSource` (FUSED single-call free-form lookups) when `fluid-blank-mode: on`.
+**Blanks (keyword binding — `BlankSource`).** Each `_` is bound to ONE blank: the first registered blank whose `blankKeywords` (desugared to an anchored shape) leads the line containing the `_` — with the `_` at the trailing edge — claims the slot. No classifier LLM call — the match is a line-scoped shape scan. Slots no blank claimed fall through to `FluidBlankSource` (FUSED single-call free-form lookups, the always-on base layer).
 
 **Why no combining.** Earlier OpenCues combined word sources into one prompt. That broke down past ~5 sources (LLM confused by overlapping instructions) and let one bad source poison every word. Per-word routing is isolation-safe and scales linearly.
 

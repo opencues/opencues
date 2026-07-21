@@ -112,6 +112,21 @@ module.exports = function seedConfigs(argv, ctx) {
     log(`Self-heal: migrated SENTINELS.md → IDENTITY.md (${identityFile})`);
   }
 
+  // Calendar-context rename (July 2026): life-context-* → calendar-*. The
+  // `opencues calendar` CLI also migrates these, but seed-configs covers the
+  // install path for users who never run that command. Idempotent — only when
+  // the old file exists and the new one doesn't.
+  for (const [oldN, newN] of [
+    ['life-context-feeds.txt', 'calendar-feeds.txt'],   // LEGACY-NAME-ALLOW: rename migration source
+    ['life-context.json', 'calendar.json'],             // LEGACY-NAME-ALLOW: rename migration source
+  ]) {
+    const oldP = path.join(targetDir, oldN), newP = path.join(targetDir, newN);
+    if (fs.existsSync(oldP) && !fs.existsSync(newP)) {
+      if (!dryRun) fs.renameSync(oldP, newP);
+      log(`Self-heal: migrated ${oldN} → ${newN} (${newP})`);
+    }
+  }
+
   // Remove deprecated blank configs. The bespoke `answer` + `prompt`
   // built-in blanks were retired (June 2026) — their intents are served
   // by the generalized semantic-`_` sources (FluidBlank / TransformBlank)
@@ -139,7 +154,10 @@ module.exports = function seedConfigs(argv, ctx) {
     const before = fs.readFileSync(opencuesMdFile, 'utf8');
     let after = before
       .replace(/^(\s*)sentinels-mode(\s*:)/gm, '$1identity-context-mode$2')
-      .replace(/^(\s*)user-context-mode(\s*:)/gm, '$1identity-context-mode$2');
+      .replace(/^(\s*)user-context-mode(\s*:)/gm, '$1identity-context-mode$2')
+      // Calendar-context rename (July 2026): the gate scalar + its poll cadence.
+      .replace(/^(\s*)life-context-mode(\s*:)/gm, '$1calendar-context-mode$2')          // LEGACY-NAME-ALLOW: rename migration source
+      .replace(/^(\s*)life-context-poll-minutes(\s*:)/gm, '$1calendar-poll-minutes$2'); // LEGACY-NAME-ALLOW: rename migration source
     // Drop duplicate identity-context-mode lines, keeping the LAST
     // occurrence — matches the runtime's last-write-wins parse and
     // preserves whatever the user most recently set (an explicit
@@ -250,7 +268,7 @@ module.exports = function seedConfigs(argv, ctx) {
   // If we skipped anything, surface the gotcha. SEED is first-time-only by
   // design (preserves user customisations), but that means new fields added
   // to shipped defaults DON'T flow into existing user files. Common bite:
-  // OPENCUES.md gets new opt-in flags (fluid-blank-mode, etc.)
+  // OPENCUES.md gets new opt-in flags (transform-blank-mode, etc.)
   // and the user's existing OPENCUES.md silently lacks them →
   // surfaces as "feature off" with no error.
   if (skipped > 0 && !silent) {

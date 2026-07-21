@@ -43,10 +43,11 @@ module.exports = async function doctor(argv, ctx) {
   // Single source of truth for what features + config files OpenCues
   // knows about. Load lazily so `opencues doctor --help` works even
   // when core isn't built yet.
-  let registry, providers;
+  let registry, providers, effectiveRouting;
   try {
     registry = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/feature-registry.js'));
     providers = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/llm-provider.js'));
+    effectiveRouting = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/effective-routing.js'));
   } catch (err) {
     console.error('opencues doctor: failed to load @opencues/core (run `pnpm build`):', err.message);
     return 1;
@@ -747,8 +748,23 @@ module.exports = async function doctor(argv, ctx) {
       if (hostScript && fs.existsSync(hostScript)) {
         const text = fs.readFileSync(hostScript, 'utf8');
         const required = registry.chromeHostFileList();
-        const missing = required.filter(f => !text.includes(f));
-        s.ok(`host pushes [${required.join(', ')}]`, missing.length === 0);
+        // A host script that derives its push list from the FEATURES
+        // registry (chromeHostFileList) structurally cannot drift — new
+        // pushed-by-host files are picked up with zero host.cjs changes,
+        // so their basenames never appear as literals in the script.
+        // Pre-derive host scripts hardcoded the names; for those (only)
+        // the literal grep below is the right parity check. Grepping a
+        // derived script for literals false-positived on NOTES.md +
+        // calendar.json (July 2026) purely because nobody had mentioned
+        // them in a comment.
+        const derivesFromRegistry = text.includes('chromeHostFileList');
+        const missing = derivesFromRegistry ? [] : required.filter(f => !text.includes(f));
+        s.ok(
+          derivesFromRegistry
+            ? 'host derives push list from FEATURES registry (chromeHostFileList)'
+            : `host pushes [${required.join(', ')}]`,
+          missing.length === 0,
+        );
         if (missing.length > 0) {
           findings.push({
             sev: 'warn',
@@ -1074,59 +1090,63 @@ module.exports = async function doctor(argv, ctx) {
         if (adapter.envKeyName) apiKeysFromEnv[adapter.envKeyName] = process.env[adapter.envKeyName];
       }
     }
-    const globalScalar = scalars['llm-provider'];
-    const autoPicked = providers.pickAutoProvider?.(apiKeysFromEnv) ?? null;
-    const resolveBucket = (bucketScalarName) => {
-      const raw = (scalars[bucketScalarName] || '').toLowerCase();
-      if (raw && raw !== 'inherit') return { provider: raw, source: bucketScalarName };
-      if (globalScalar) return { provider: globalScalar.toLowerCase(), source: 'llm-provider' };
-      if (autoPicked) {
-        const viaSubscription = providers.getProvider(autoPicked)?.transport === 'cli';
-        return { provider: autoPicked, source: viaSubscription ? 'auto (subscription CLI — no keys set)' : 'auto (env key)' };
-      }
-      return { provider: null, source: 'none' };
+    // Shared walk — the exact code dispatch runs (core's
+    // effective-routing.ts, also behind the `model` blank and `opencues
+    // models`). Doctor used to reimplement the precedence inline and
+    // drifted from dispatch three ways (July 2026: global-model leak
+    // into pinned buckets, inert bucket-model on inherit, raw auditors
+    // sentinels); requiring the shared module makes the display
+    // structurally unable to disagree with dispatch.
+    const routing = effectiveRouting.resolveEffectiveRouting({
+      scalars: (name) => scalars[name],
+      apiKeys: apiKeysFromEnv,
+    });
+    const SOURCE_TAGS = {
+      global: 'llm-provider',
+      'auto-key': 'auto (env key)',
+      'auto-subscription': 'auto (subscription CLI — no keys set)',
     };
-    // Mirror normalizeModelScalar in opencues-runtime/src/modules/resolver.ts:
-    // literal "default"/"inherit"/empty in a *-llm-model scalar means
-    // "fall through" — the runtime resolves to the provider's
-    // defaultModel. Doctor must apply the same normalization or the
-    // displayed model misleads the user (e.g. shows "default" as if it
-    // were a real model name, when the runtime actually dispatches with
-    // the provider's default).
-    const normalizeBucketModel = (raw) => {
-      if (!raw) return undefined;
-      const t = String(raw).trim().toLowerCase();
-      if (t === '' || t === 'default' || t === 'inherit') return undefined;
-      return String(raw).trim();
-    };
-    for (const bucketScalar of ['cues-llm-provider', 'auditors-llm-provider', 'blanks-llm-provider']) {
-      const { provider, source } = resolveBucket(bucketScalar);
-      const label = bucketScalar.replace('-llm-provider', '');
-      if (provider) {
-        const adapter = providers.getProvider(provider);
-        const modelScalarName = bucketScalar.replace('provider', 'model');
-        const modelScalarRaw = scalars[modelScalarName];
-        const normalized = normalizeBucketModel(modelScalarRaw);
-        // Global fallback chain mirrors the runtime (build-sources.ts:
-        // effectiveGlobalModel + resolveLLM): bucket-model > global
-        // llm-model > provider defaultModel.
-        const globalLlmModel = normalizeBucketModel(scalars['llm-model']);
-        const model = normalized || globalLlmModel || adapter?.defaultModel || '?';
-        const tag = source === bucketScalar ? '' : dim(` (← ${source})`);
-        s.info(`${label}:`, `${provider} · ${model}${tag}`);
-        // Warn if the user wrote a literal "default"/"inherit" — it
-        // works (runtime treats it as fall-through) but it's confusing
-        // and a sign the menu cycle wrote a sentinel into a scalar
-        // expecting a real model name. Surface it so the user can
-        // clean it up.
-        if (modelScalarRaw && normalizeBucketModel(modelScalarRaw) === undefined) {
+    for (const bucket of effectiveRouting.LLM_BUCKETS) {
+      const row = routing[bucket];
+      if (!row.provider) {
+        s.info(`${bucket}:`, row.providerId
+          ? `${row.providerId} ${dim('(unknown provider — LLM calls disabled for this bucket)')}`
+          : dim('(none — no key + no scalar set)'));
+      } else {
+        const srcTag = SOURCE_TAGS[row.providerSource] ? dim(` (← ${SOURCE_TAGS[row.providerSource]})`) : '';
+        const keyNote = row.keyPresent ? '' : '  ' + yellow('key missing');
+        s.info(`${bucket}:`, `${row.providerId} · ${row.model}${srcTag}${keyNote}`);
+        if (row.trainsOnInputBlocked) {
           findings.push({
-            sev: 'info',
-            msg: `${modelScalarName}: "${modelScalarRaw}" is a fall-through sentinel — runtime treats it as unset and dispatches with ${model}. Delete this line if you want the global llm-model + provider default, or replace it with a real model name.`,
+            sev: 'warn',
+            msg: `${bucket} bucket routes to ${row.providerId}, which trains on input — prose-bearing buckets refuse this provider, so every ${bucket}-bucket LLM call is disabled until another provider is picked.`,
           });
         }
-      } else {
-        s.info(`${label}:`, dim('(none — no key + no scalar set)'));
+        if (!row.keyPresent && (row.providerSource === 'bucket' || row.providerSource === 'global')) {
+          findings.push({
+            sev: 'warn',
+            msg: `${bucket}: provider ${row.providerId} is configured but its key/binary is unavailable — every ${bucket}-bucket LLM call silently no-ops. Fix: opencues set-key`,
+          });
+        }
+      }
+      if (row.ignoredBucketProviderScalar) {
+        findings.push({
+          sev: 'warn',
+          msg: `${bucket}-llm-provider: "${row.ignoredBucketProviderScalar}" is not a known provider id — runtime treats it as inherit. Known: ${providers.PROVIDER_IDS.join(', ')}.`,
+        });
+      }
+      // Warn if the user wrote a literal "default"/"inherit" — it
+      // works (runtime treats it as fall-through) but it's confusing
+      // and a sign the menu cycle wrote a sentinel into a scalar
+      // expecting a real model name. Surface it so the user can
+      // clean it up.
+      const modelScalarName = `${bucket}-llm-model`;
+      const modelScalarRaw = scalars[modelScalarName];
+      if (modelScalarRaw && effectiveRouting.normalizeModelScalar(modelScalarRaw) === undefined) {
+        findings.push({
+          sev: 'info',
+          msg: `${modelScalarName}: "${modelScalarRaw}" is a fall-through sentinel — runtime treats it as unset and dispatches with ${row.model || 'the provider default'}. Delete this line if you want the global llm-model + provider default, or replace it with a real model name.`,
+        });
       }
     }
     s.render();

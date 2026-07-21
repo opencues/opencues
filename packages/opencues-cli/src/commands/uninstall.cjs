@@ -177,11 +177,15 @@ function uninstallPlugin(argv, _ctx) {
     process.exit(2);
   }
   const pluginDir = path.join(os.homedir(), '.config', 'opencode', 'plugins');
+  // The plugin's absolute .ts path — the same value install.cjs registers
+  // as `file://<target>` in config.json. Used for both the file removal
+  // (companions[0]) and the config de-registration below.
+  const pluginFile = path.join(pluginDir, `${name}.ts`);
   // Remove the plugin file plus its companions: the .SKILL.md prompt
   // source we copy at install time, plus any .bak backup left by a
   // prior --force install.
   const companions = [
-    path.join(pluginDir, `${name}.ts`),
+    pluginFile,
     path.join(pluginDir, `${name}.ts.bak`),
     path.join(pluginDir, `${name}.SKILL.md`),
   ];

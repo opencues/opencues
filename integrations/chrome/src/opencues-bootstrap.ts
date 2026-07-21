@@ -26,7 +26,7 @@ import type {
 import { createSourceReclassifier } from '@opencues/runtime/dist/src/boot-common';
 import { createTrustGate } from './trust-gate';
 import { applySiteCompatFilter as siteFilter } from './site-filter';
-import { parseSingleCueMd, listProviders } from '@opencues/core';
+import { parseSingleCueMd, listProviders, buildCalendarContextSnapshot } from '@opencues/core';
 import { ChromeUserBlank } from './user-blank-loader';
 import { createBlankInvoke } from '@opencues/runtime/dist/src/blanks';
 import { wordDiff } from '@opencues/runtime/dist/src/modules/word-diff';
@@ -335,9 +335,18 @@ export function notifyExternalReplaceUndo(): void {
  *  keys at all); that case requires a tab reload to wire the
  *  resolver up fresh, and we surface a warn via the runtime side. */
 export function updateRuntimeApiKeys(newKeys: Readonly<Record<string, string>>): void {
+  // Keep the model blank's live key ref in step with the resolver —
+  // assigned BEFORE the boot guard so a pre-boot push still lands.
+  _liveLlmKeys = newKeys;
   if (!bootResult) return;
   bootResult.updateApiKeys(newKeys);
 }
+
+/** Live LLM key bag for the `model` blank's effective-routing walk.
+ *  Seeded from boot opts in startOpenCues; replaced wholesale by
+ *  updateRuntimeApiKeys on every host-push / popup-save so the blank
+ *  answers from current credentials without a tab reload. */
+let _liveLlmKeys: Readonly<Record<string, string | undefined>> | null = null;
 
 /** Real-time provider/model/endpoint update — called by content.ts
  *  when the popup saves a change to those fields. Mirrors
@@ -2624,6 +2633,16 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     // NOTES.md (same situation as IDENTITY.md writes).
     notesMdReadFile: () => readFile(`${ROOT}/.cues/NOTES.md`),
     notesMdWriteFile: (content) => writeFile(`${ROOT}/.cues/NOTES.md`, content),
+    // Model-visibility blank ("whats my model _") — thunk over the
+    // LIVE key ref (kept current by updateRuntimeApiKeys), not a boot
+    // snapshot: chrome keys arrive async post-boot and rotate live
+    // (docs/architecture/chrome-llm-keys.md). Seeded here with the
+    // boot bag, incl. the legacy single-key popup field as
+    // GROQ_API_KEY — mirrors the resolver's own bag construction.
+    getLlmApiKeys: () => _liveLlmKeys ?? {
+      ...(opts.llmApiKey ? { GROQ_API_KEY: opts.llmApiKey } : {}),
+      ...(opts.llmApiKeys ?? {}),
+    },
   });
   blankInvoke = createBlankInvoke(blanks);
 
@@ -2652,12 +2671,21 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     }
   })();
 
+  // Calendar-context (calendar) — a MUTABLE holder passed by reference so the
+  // resolver reads it fresh each resolve. Chrome does NOT fetch feeds; the
+  // shared `~/.cues/calendar.json` is produced OpenCues-side by
+  // `opencues calendar sync` and pushed here by the chrome-host. loadCalendarContext()
+  // (below, after boot + on storage change) refills this holder in place.
+  const calendarContextHolder: { events: Array<{ token: string; title: string; start: string; end: string; allDay?: boolean; location?: string }>; catalog: Map<string, string>; ingestedAt?: string } =
+    { events: [], catalog: new Map(), ingestedAt: undefined };
+
   // No seed step — readFile() resolves bake-time constants directly
   // for read-only paths, and writable paths (OPENCUES.md) persist
   // through chrome.storage only when they're actually written.
   bootResult = boot({
     hostVersion: '0.1.0',
     cwd: ROOT,
+    calendarContext: calendarContextHolder,
     getText: () => currentTarget ? readTargetText(currentTarget) : '',
     getCursorOffset: readCursorOffset,
     // Both setText and pushText route through diffWriteText so the
@@ -2734,6 +2762,16 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
     llmProvider: opts.llmProvider,
     llmDebounceMs: opts.llmDebounceMs,
     httpAdapter: new FetchHttpAdapter(),
+    // SW-routed GET for contradiction world-data caches (GOV.UK bank holidays,
+    // open-meteo weather). A content-script fetch to those origins is blocked by
+    // the host page's CSP; hopping through the SW (opencues:fetch; both origins
+    // in host_permissions + the SW allow-list) bypasses it.
+    worldDataFetch: async (url: string) => {
+      const reply = await chrome.runtime.sendMessage<unknown, { ok?: boolean; text?: string }>({
+        type: 'opencues:fetch', method: 'GET', url,
+      });
+      return { ok: !!reply?.ok, json: async () => JSON.parse(reply?.text ?? 'null') };
+    },
     // CE.8 — blankInvoke routes blank-fill + cycle script calls to
     // the chrome blanks registry above (volume / stocks / weather /
     // hackernews / prompt-improver). Returns null for unknown
@@ -2829,6 +2867,36 @@ export function startOpenCues(opts: RuntimeStartOptions = {}): BootResult {
   // listener above invalidates _bundleIndexPromise + calls
   // bootResult.reloadConfig().
   void refreshReadTraceFromStorage();
+
+  // Load the shared calendar snapshot into the calendar-context holder, and
+  // re-load whenever the pushed bundle changes (OpenCues-side `calendar sync`
+  // → chrome-host push → storage.onChanged). Chrome consumes; it never fetches.
+  const loadCalendarContext = async (): Promise<void> => {
+    try {
+      let raw = await readFile(ROOT + '/.cues/calendar.json');
+      // The live storage bundle (chrome-host) may not carry calendar.json
+      // (a host predating this feature, or a different clone). Fall back to the
+      // packaged, `opencues sync chrome`-produced copy so the calendar still
+      // loads. The chrome-host path takes over once it pushes the file.
+      if (!raw) {
+        try {
+          const r = await fetch(chrome.runtime.getURL('dist/configs/calendar.json'));
+          if (r.ok) raw = await r.text();
+        } catch { /* ignore */ }
+      }
+      const parsed = raw ? JSON.parse(raw) : null;
+      const events = (parsed && Array.isArray(parsed.events)) ? parsed.events : [];
+      const snap = buildCalendarContextSnapshot(events, parsed?.ingestedAt);
+      calendarContextHolder.events.length = 0;
+      for (const e of snap.events) calendarContextHolder.events.push({ token: e.token, title: e.title, start: e.start, end: e.end, allDay: e.allDay, location: e.location });
+      calendarContextHolder.catalog.clear();
+      for (const [k, v] of snap.catalog) calendarContextHolder.catalog.set(k, v);
+      calendarContextHolder.ingestedAt = snap.ingestedAt;
+      if (snap.events.length > 0) log('info', `[opencues] calendar-context: ${snap.events.length} calendar event(s) loaded`);
+    } catch (err) { log('warn', '[opencues] calendar-context load failed', err); }
+  };
+  void loadCalendarContext();
+  chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes['opencues_bundle']) void loadCalendarContext(); });
 
   // Mirror `opencues check-keys` — ping the LLM provider at boot
   // so users find out about missing/invalid keys without having to

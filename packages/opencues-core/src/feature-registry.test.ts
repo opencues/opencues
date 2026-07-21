@@ -113,7 +113,10 @@ describe('feature-registry — valuesProvider for *-llm-model scalars', () => {
   });
 
   it('default is always the first cyclable value (so reset-to-default is one Up press)', () => {
-    for (const f of FEATURES.filter(x => x.valuesProvider)) {
+    // Scoped to the model scalars — provider scalars also carry a
+    // valuesProvider now (live `inherit` resolution) and their first
+    // value is `inherit`, not `default`.
+    for (const f of FEATURES.filter(x => x.valuesProvider && /-llm-model$/.test(x.scalar))) {
       const values = f.valuesProvider!(new Map([['cues-llm-provider', 'anthropic'], ['auditors-llm-provider', 'anthropic'], ['blanks-llm-provider', 'anthropic']]));
       expect(values[0]?.id, `${f.scalar} first value should be 'default'`).toBe('default');
     }
@@ -169,6 +172,53 @@ describe('feature-registry — valuesProvider for *-llm-model scalars', () => {
   });
 });
 
+describe('feature-registry — *-llm-provider inherit names what it resolves to', () => {
+  // July 2026: "the inherit ask doesn't say what you're inheriting."
+  // The `inherit` menu entry must name the live resolution — the global
+  // llm-provider when set, the auto-route otherwise — on every provider
+  // bucket scalar. The id stays `inherit` (writes are unchanged); only
+  // the description is live.
+  const PROVIDER_SCALARS = ['cues-llm-provider', 'auditors-llm-provider', 'blanks-llm-provider'];
+
+  it('every provider bucket scalar has a valuesProvider', () => {
+    for (const scalar of PROVIDER_SCALARS) {
+      expect(findFeature(scalar)?.valuesProvider, `${scalar} must declare valuesProvider`).toBeDefined();
+    }
+  });
+
+  it('inherit names the global provider when llm-provider is set', () => {
+    for (const scalar of PROVIDER_SCALARS) {
+      const values = findFeature(scalar)!.valuesProvider!(new Map([['llm-provider', 'cerebras']]));
+      const inherit = values.find(v => v.id === 'inherit');
+      expect(inherit?.description, `${scalar} inherit`).toContain('currently cerebras');
+    }
+  });
+
+  it('inherit names the auto-route when llm-provider is unset', () => {
+    const values = findFeature('cues-llm-provider')!.valuesProvider!(new Map());
+    const inherit = values.find(v => v.id === 'inherit');
+    expect(inherit?.description).toContain('auto-routes');
+  });
+
+  it('inherit surfaces a typo\'d global instead of hiding it until dispatch', () => {
+    const values = findFeature('blanks-llm-provider')!.valuesProvider!(new Map([['llm-provider', 'nopeai']]));
+    const inherit = values.find(v => v.id === 'inherit');
+    expect(inherit?.description).toContain('"nopeai"');
+    expect(inherit?.description).toContain('unknown provider');
+  });
+
+  it('non-inherit entries and value order are untouched by the decoration', () => {
+    const feature = findFeature('blanks-llm-provider')!;
+    const decorated = feature.valuesProvider!(new Map([['llm-provider', 'cerebras']]));
+    expect(decorated.map(v => v.id)).toEqual(feature.values.map(v => v.id));
+    for (let i = 0; i < decorated.length; i++) {
+      if (decorated[i].id === 'inherit') continue;
+      expect(decorated[i].description).toBe(feature.values[i].description);
+      expect(decorated[i].exposeInMenu).toBe(feature.values[i].exposeInMenu);
+    }
+  });
+});
+
 describe('getMenuDefinitions — settings-aware', () => {
   it('with no settings argument, dynamic features fall back to default-only', () => {
     const menu = getMenuDefinitions();
@@ -216,7 +266,6 @@ describe('feature-registry — the canonical features must exist', () => {
   // removed from FEATURES, ConfigLoader / FluidBlankSource / chrome-host
   // wiring breaks silently. This test pins the floor.
   const canonical = [
-    'fluid-blank-mode',
     'word-cues-mode',
     'tips-mode',
     'voice-mode',

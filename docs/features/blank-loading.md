@@ -117,3 +117,66 @@ To add a new mode (e.g. `pulse`):
 1. Add the frame array constant + a `framesFor()` case in `blank-loading.ts`.
 2. Add a literal-type branch in the `mode` thunk's switch (e.g. `if (raw === 'pulse') return raw;`).
 3. Add the entry under `settings.blank-loading-animation.values:` in both OPENCUES.md files.
+
+## Inline definition — the `loading animation` blank (July 2026)
+
+The four scalars above stay the single source of truth, but you no
+longer have to hand-edit them: a shipped deterministic blank parses an
+inline definition and upserts them for you.
+
+```
+loading animation _,-,‾,- _                       frames → custom
+loading animation _,-,‾,- red,orange,yellow _     colour i paints frame i
+loading animation ▖,▘,▝,▗ #ff5f5f,#ffd75f 75 _    + interval (ms)
+loading animation red,blue _                      recolour, frames untouched
+loading animation 300 _                           interval only
+loading animation bounce _                        preset switch (+ optional colours/interval)
+loading animation show _                          current config summary
+```
+
+Comma-separated lists (no spaces inside a list); token order free —
+classification is by shape (preset word / all-colour CSV / bare number
+= interval / anything else = frames). Colour vocabulary: ANSI names,
+everyday names (orange, purple, pink, teal, lime, gold, violet —
+`EXTENDED_COLOR_NAMES`), 0-255 indices, `#hex`. One list feeds BOTH
+parallel colour scalars. Every floor (frame truncation, interval
+clamp, unused colours, one-sided colour lists) is named in the
+confirmation. Grammar + examples: `defaults/blanks/loading-animation/BLANK.md`;
+implementation: `packages/opencues-runtime/src/blanks/loading-animation.ts`.
+
+## Known limitation — custom frames without `_`, on opencode (2026-07-15)
+
+Every SHIPPED mode (`bounce`, `flipper`, `braille-rotate`) has `_` as
+its rest frame (frame[0]), so the animated slot passes through `_`
+each cycle. **Custom frames need not** — e.g. `▖,▘,▝,▗` never shows
+`_`. Combined with an opencode-specific quirk, that surfaces an
+intermittent cosmetic artifact:
+
+- **Symptom:** on **opencode only**, under load, a custom-frame char
+  (`▖`/`▘`/…) can linger in the `_` slot a beat longer than the
+  source took to resolve, instead of restoring to `_` promptly.
+  Self-heals — the buffer *does* return to `_`; it's a timing lag,
+  not a permanent stick.
+- **Root cause:** opencode attributes runtime writes vs user typing
+  via `sourceReclassifier` (see `adapters/oc/*/boot.ts`). A custom
+  animation ticks every `blank-loading-interval-ms` (default 75ms);
+  occasionally a frame `setText` is misclassified as `user`, which
+  re-triggers the resolver (`resolver.ts:onTextChange` gates on
+  `source === 'user'`) and keeps the slot animating. Shipped modes
+  mask this because a lingering frame is often `_`.
+- **Not affected:** Claude Code (its ZWS reclassifier attributes
+  animation writes correctly), and every host when using a shipped
+  mode.
+- **Repro:** set `blank-loading-animation: custom` +
+  `blank-loading-frames: ▖,▘,▝,▗`, run the agentic suite on opencode
+  (or fire `_`-triggering blanks repeatedly under load) — a fraction
+  of assertions catch a frame char at rest.
+
+Deliberately NOT fixed reactively: the proper fix touches the
+`sourceReclassifier`, which is load-bearing trust-gate code (credit
+accounting for the explicit-`_` security gate), so a change there
+carries real regression risk for an intermittent cosmetic artifact on
+a non-CC host. The safe host-agnostic alternative — give custom frame
+lists a `_` rest frame like the shipped modes — is queued as a
+follow-up (it slightly changes the custom animation's look by
+blinking through `_`).

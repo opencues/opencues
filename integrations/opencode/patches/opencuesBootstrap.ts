@@ -39,7 +39,7 @@ import { spawn as nodeSpawn } from "node:child_process"
 // CUES roots for the spawn-process path sandbox + audit log. Order:
 // $OPENCUES_HOME (if set), <cwd>/.cues (project), ~/.cues (user). First
 // existing root in the list is where the audit log lands.
-function getCuesRoots(): string[] {
+export function getCuesRoots(): string[] {
   const roots: string[] = []
   if (process.env['OPENCUES_HOME']) roots.push(process.env['OPENCUES_HOME'])
   roots.push(path.join(process.cwd(), ".cues"))
@@ -118,7 +118,7 @@ const sourceReclassifier = createSourceReclassifier()
 // OPENCUES.md holds system-wide settings (voice-mode, tips-mode, …)
 // whose schema is owned by the OpenCues runtime. User-level only;
 // projects cannot override.
-function findOpenCuesMdPath(): string {
+export function findOpenCuesMdPath(): string {
   // Explicit env override (CI / container deploys / tests).
   if (process.env['OPENCUES_HOME']) {
     return path.join(process.env['OPENCUES_HOME'], "OPENCUES.md")
@@ -126,14 +126,14 @@ function findOpenCuesMdPath(): string {
   return path.join(process.env['HOME'] ?? "~", ".cues", "OPENCUES.md")
 }
 
-function findIdentityMdPath(): string {
+export function findIdentityMdPath(): string {
   if (process.env['OPENCUES_HOME']) {
     return path.join(process.env['OPENCUES_HOME'], "IDENTITY.md")
   }
   return path.join(process.env['HOME'] ?? "~", ".cues", "IDENTITY.md")
 }
 
-function findNotesMdPath(): string {
+export function findNotesMdPath(): string {
   if (process.env['OPENCUES_HOME']) {
     return path.join(process.env['OPENCUES_HOME'], "NOTES.md")
   }
@@ -144,7 +144,7 @@ function findNotesMdPath(): string {
 // + kept current by `opencues seed-configs` (which all host installers
 // invoke). One canonical path, no walking, no integration coupling —
 // works whether CC is installed or not.
-function resolveTtsScript(): string {
+export function resolveTtsScript(): string {
   const root = process.env['OPENCUES_HOME'] ?? path.join(process.env['HOME'] ?? "~", ".cues")
   return path.join(root, "scripts/speak.sh")
 }
@@ -179,7 +179,7 @@ const blanksRegistry: Map<string, Blank> = createDefaultBlanksRegistry({
 // the runtime would see, parse it, and register the impl-pointed
 // blank if it declares `impl: ./<file>.js`. Each runs in a fresh
 // vm.Context with only the capabilities its frontmatter declared.
-function _discoverUserBlankConfigs(): BlankConfigLike[] {
+export function _discoverUserBlankConfigs(): BlankConfigLike[] {
   // Dedupe by resolved absolute path — when cwd equals $HOME (a
   // common launch case), `<cwd>/.cues` and `~/.cues` resolve to the
   // same directory. Without dedup, the loader walks the dir twice
@@ -524,10 +524,16 @@ export function startOpenCues(opts: {
         }
       }
 
+      // Undo/redo confirmation is a transient notification the user just
+      // triggered — dominant over the word/tip + agent badge for its TTL.
+      // The universal feedback surface for invisible reverts (scalar / OS).
+      const undoConf = payload?.undoConfirmation as string | null | undefined
       // Combine — agent badge always wins a slot when present.
-      const combined = wordPart && agentBadge
-        ? `${wordPart} | ${agentBadge}`
-        : (agentBadge ?? wordPart ?? null)
+      const combined = undoConf
+        ? undoConf
+        : (wordPart && agentBadge
+            ? `${wordPart} | ${agentBadge}`
+            : (agentBadge ?? wordPart ?? null))
       setOpencuesTip(combined)
     },
     // Resolve TTS script across all known install layouts. OpenCode

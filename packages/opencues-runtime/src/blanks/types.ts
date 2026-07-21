@@ -36,4 +36,13 @@ export interface Blank {
    * that needs I/O to know cannot implement this.
    */
   validArg?(arg: string): boolean;
+  /**
+   * Drain the inverse of the last successful FILE WRITE this blank
+   * performed (one-shot: returns it once, then null until the next
+   * write). Implemented by the file-writing blanks (sentinel, note) so
+   * `createBlankInvoke` can attach it to the ProcessResult and the
+   * undo journal can revert the write later — by replaying `inverseOp`
+   * through this same blank, i.e. back through its validator.
+   */
+  consumeLastWriteInverse?(): import('../adapter').BlankWriteInverse | null;
 }

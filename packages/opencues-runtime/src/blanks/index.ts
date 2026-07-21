@@ -20,10 +20,13 @@ export { WeatherBlank, type WeatherBlankOptions } from './weather';
 export { OpenCuesSettingsBlank, type OpenCuesSettingsBlankOptions } from './opencues-settings';
 export { SentinelBlank, type SentinelBlankOptions } from './sentinel';
 export { DictionaryBlank, type DictionaryBlankOptions } from './dictionary';
+export { LocationBlank, type LocationBlankOptions } from './location';
 export { CryptoBlank, type CryptoBlankOptions } from './crypto';
 export { CountriesBlank, type CountriesBlankOptions } from './countries';
 export { ClaudeStatusBlank, type ClaudeStatusBlankOptions } from './claude-status';
 export { NoteBlank, type NoteBlankOptions, type NoteCaps } from './note';
+export { ModelBlank, type ModelBlankOptions } from './model';
+export { LoadingAnimationBlank, type LoadingAnimationBlankOptions } from './loading-animation';
 
 // Imports for the BUILTIN_BLANKS registry below. The above `export`
 // lines re-publish them; these `import` lines bring them into scope
@@ -34,10 +37,13 @@ import { WeatherBlank } from './weather';
 import { OpenCuesSettingsBlank } from './opencues-settings';
 import { SentinelBlank } from './sentinel';
 import { DictionaryBlank } from './dictionary';
+import { LocationBlank } from './location';
 import { CryptoBlank } from './crypto';
 import { CountriesBlank } from './countries';
 import { ClaudeStatusBlank } from './claude-status';
 import { NoteBlank } from './note';
+import { ModelBlank } from './model';
+import { LoadingAnimationBlank } from './loading-animation';
 
 // ──────────────────────────────────────────────────────────────────────
 // Built-in blanks registry — single source of truth across hosts.
@@ -127,6 +133,16 @@ export interface BuiltinBlankContext {
    * surface in the cycling menu on their target host.
    */
   readonly hostName?: string;
+  /**
+   * Live LLM API-key bag (keyed by env-var name) for the `model`
+   * blank's effective-routing walk. A THUNK, not a snapshot — chrome's
+   * keys arrive async post-boot and mutate live (see
+   * docs/architecture/chrome-llm-keys.md), so the blank re-reads on
+   * every invocation. Native hosts can omit it: the blank falls back
+   * to the same shell-env + ~/.cues/.env bag the boot path builds
+   * (`buildBootApiKeys`).
+   */
+  readonly getLlmApiKeys?: () => Readonly<Record<string, string | undefined>>;
 }
 
 /** One entry in BUILTIN_BLANKS. */
@@ -160,6 +176,7 @@ export const BUILTIN_BLANKS: readonly BuiltinBlankSpec[] = [
   // without FINNHUB_API_KEY in env — same behaviour.
   { name: 'stocks',        factory: ctx => ctx.finnhubApiKey ? new StocksBlank({ apiKey: ctx.finnhubApiKey, customTickers: ctx.customTickers }) : null },
   { name: 'weather',       factory: () => new WeatherBlank() },
+  { name: 'location',      factory: () => new LocationBlank() },
   { name: 'claude-status', factory: () => new ClaudeStatusBlank() },
 
   // ── Static lookups (offline / cached) ────────────────────────────
@@ -177,6 +194,12 @@ export const BUILTIN_BLANKS: readonly BuiltinBlankSpec[] = [
   // ── Settings / selector-satellite (skip when no IO supplied) ─────
   { name: 'opencues',      factory: ctx => ctx.opencuesMdIO ? new OpenCuesSettingsBlank({ ...ctx.opencuesMdIO, hostName: ctx.hostName }) : null },
 
+  // ── Model visibility ("what's my model _" / "list models _").
+  //    Read-only view over the SAME effective-routing walk dispatch
+  //    uses (core's resolveEffectiveRouting) — needs the settings file
+  //    to read the routing scalars, so it skips when no IO supplied.
+  { name: 'model',         factory: ctx => ctx.opencuesMdIO ? new ModelBlank({ readSettingsFile: ctx.opencuesMdIO.readFile, getApiKeys: ctx.getLlmApiKeys }) : null },
+
   // ── IdentityField-write (keyword-bound `set sentinel <k> <v> _` /
   //    `remove sentinel <k> _`). Skips when no IO supplied (host
   //    can't write IDENTITY.md). Audit row #24 — every host that
@@ -189,6 +212,12 @@ export const BUILTIN_BLANKS: readonly BuiltinBlankSpec[] = [
   //    add/recall/delete over ~/.cues/NOTES.md; every write goes
   //    through validateNoteWrite. Skips when no IO supplied.
   { name: 'note',          factory: ctx => ctx.notesMdIO ? new NoteBlank(ctx.notesMdIO) : null },
+
+  // ── Inline loading-animation definition (`loading animation _,-,‾,- red,orange _`).
+  //    Deterministic parser over the four blank-loading-* scalars —
+  //    writes OPENCUES.md via the same rewriteSetting path the
+  //    settings blank uses. Skips when no IO supplied.
+  { name: 'loading-animation', factory: ctx => ctx.opencuesMdIO ? new LoadingAnimationBlank(ctx.opencuesMdIO) : null },
 ];
 
 /**
@@ -250,7 +279,13 @@ export function createBlankInvoke(
             break;
           }
         }
-        return { stdout, stderr: '', exitCode: 0, timedOut: false };
+        // File-writing blanks (sentinel, note) expose the inverse of
+        // the write this invocation just performed — attach it so the
+        // caller (BlankFill) can journal it for `undo _`.
+        const writeInverse = blk.consumeLastWriteInverse?.() ?? undefined;
+        return writeInverse
+          ? { stdout, stderr: '', exitCode: 0, timedOut: false, writeInverse }
+          : { stdout, stderr: '', exitCode: 0, timedOut: false };
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         return { stdout: '', stderr: msg, exitCode: 1, timedOut: false };

@@ -169,6 +169,22 @@ export interface CueContext {
   };
 
   /**
+   * Ingested calendar-context. Populated by the runtime when
+   * `calendar-context-mode: on` (off by default). A REASONING catalog: the
+   * model reasons over the event TIMES (in the clear) to answer availability
+   * questions, and emits `[EVENT N]` / `[EVENT N LOCATION]` tokens for titles
+   * and locations which `postProcessContext` hydrates locally. Mirror of
+   * `@opencues/core/calendar-context.ts` CalendarContextSnapshot. `mode: 'on'`
+   * is the only populated state.
+   */
+  calendarContext?: {
+    events: ReadonlyArray<{ token: string; title: string; start: string; end: string; allDay?: boolean; location?: string }>;
+    catalog: ReadonlyMap<string, string>;
+    ingestedAt?: string;
+    mode: 'on';
+  };
+
+  /**
    * Sentinel grammar for rendering + resolving identity-/blank-context
    * tokens. `undefined` / `'bare'` → flat `[TOKEN]` form (the default,
    * byte-identical to pre-feature behaviour). `'typed'` → the

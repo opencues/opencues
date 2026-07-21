@@ -137,27 +137,31 @@ function firstSettingName(text: string): string | null {
  *  text was unchanged, write was skipped, and 2.5s later ConfigLoader
  *  hot-reloaded and reverted the in-memory state to the default.
  *  Symptom: cycling appears to work momentarily then snaps back. */
-function rewriteSetting(text: string, name: string, value: string): string {
-  const re = new RegExp(`^(${escapeRegex(name)}:)[^\\n]*$`, 'm');
+export function rewriteSetting(text: string, name: string, value: string): string {
+  const re = new RegExp(`^(${escapeRegex(name)}:)[^\\r\\n]*$`, 'm');
   if (re.test(text)) {
     return text.replace(re, `$1 ${value}`);
   }
   // Line doesn't exist → append inside the closing frontmatter
-  // delimiter. Match the LAST `---` standalone line that closes a
-  // YAML frontmatter block (the first `---` opens it, the second
-  // closes it). Insert `name: value` on its own line just before.
-  // No frontmatter at all → bail (caller's set() already no-ops on
-  // empty file; for malformed content we leave untouched rather
-  // than risk corrupting it).
-  const fmMatch = text.match(/^---\n([\s\S]*?)\n---/);
+  // delimiter. Match the opening `---` and the closing `---` line,
+  // CRLF-TOLERANT: a Windows-authored OPENCUES.md uses `\r\n`, which
+  // the old `\n`-only match missed → the whole append silently BAILED
+  // and the setting was never written (found debugging the loading-
+  // animation blank, which appends `blank-loading-frames` — a key not
+  // in older files). Capture the file's own line ending and reuse it so
+  // we never mix EOL styles. No frontmatter at all → bail (leave
+  // malformed content untouched rather than risk corrupting it).
+  const fmMatch = text.match(/^(---\r?\n)([\s\S]*?)(\r?\n---)/m);
   if (!fmMatch) return text;
-  const fmEnd = (fmMatch.index ?? 0) + fmMatch[0].length;
-  const fmStart = (fmMatch.index ?? 0) + '---\n'.length;
-  const fmBody = text.slice(fmStart, fmEnd - '\n---'.length);
-  const inserted = fmBody.endsWith('\n') || fmBody.length === 0
-    ? `${fmBody}${name}: ${value}\n`
-    : `${fmBody}\n${name}: ${value}\n`;
-  return text.slice(0, fmStart) + inserted + text.slice(fmEnd - '\n---'.length);
+  const open = fmMatch[1];              // "---\n" or "---\r\n"
+  const body = fmMatch[2];
+  const eol = open.slice(3);            // "\n" or "\r\n" — the file's own
+  const fmStart = (fmMatch.index ?? 0) + open.length;
+  const closeStart = fmStart + body.length;
+  const inserted = body.length === 0 || body.endsWith(eol)
+    ? `${body}${name}: ${value}${eol}`
+    : `${body}${eol}${name}: ${value}${eol}`;
+  return text.slice(0, fmStart) + inserted + text.slice(closeStart);
 }
 
 function escapeRegex(s: string): string {
