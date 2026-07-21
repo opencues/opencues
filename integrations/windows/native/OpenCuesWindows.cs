@@ -2391,31 +2391,33 @@ namespace OpenCues
         // (Type.InvokeMember resolves "Range"/"Text"/"Undo" through
         // GetIDsOfNames) so no fragile hand-declared vtables. One splice
         // per substitution - late-binding overhead is irrelevant.
-        const uint EM_GETOLEINTERFACE = 0x043C;   // WM_USER + 60
         static readonly Guid IID_ITextDocument = new Guid("8CC497C0-A1DF-11CE-8098-00AA0047BE5D");
         const int TOM_SUSPEND = -9999995;   // tomSuspend - pause undo recording
         const int TOM_RESUME = -9999994;    // tomResume
+        const uint OBJID_NATIVEOM = 0xFFFFFFF0;
 
-        [DllImport("user32.dll", EntryPoint = "SendMessageW")]
-        static extern IntPtr SendMessageGetOle(IntPtr hwnd, uint msg, IntPtr wParam, out IntPtr ppUnk);
+        // CROSS-PROCESS door to TOM. EM_GETOLEINTERFACE is IN-PROCESS ONLY
+        // (the returned pointer is an address inside the TARGET's process;
+        // QI on it from here is a wild-pointer access violation - the
+        // 2026-07-21 shim crash, and a gotcha ia2-write-probe.ps1 had
+        // already flagged). AccessibleObjectFromWindow(OBJID_NATIVEOM)
+        // makes oleacc MARSHAL the document interface properly - the same
+        // route screen readers use to drive RichEdit TOM.
+        [DllImport("oleacc.dll", EntryPoint = "AccessibleObjectFromWindow")]
+        static extern int AccessibleObjectFromWindowObj(IntPtr hwnd, uint id, ref Guid iid,
+            [MarshalAs(UnmanagedType.IUnknown)] out object ppv);
 
         static object GetTomDocument(IntPtr hwnd)
         {
-            IntPtr punk = IntPtr.Zero, pdoc = IntPtr.Zero;
             try
             {
-                IntPtr ok = SendMessageGetOle(hwnd, EM_GETOLEINTERFACE, IntPtr.Zero, out punk);
-                if (ok == IntPtr.Zero || punk == IntPtr.Zero) return null;
                 Guid iid = IID_ITextDocument;
-                if (Marshal.QueryInterface(punk, ref iid, out pdoc) != 0 || pdoc == IntPtr.Zero) return null;
-                return Marshal.GetObjectForIUnknown(pdoc);
+                object doc;
+                int hr = AccessibleObjectFromWindowObj(hwnd, OBJID_NATIVEOM, ref iid, out doc);
+                if (hr != 0 || doc == null) return null;
+                return doc;
             }
             catch { return null; }
-            finally
-            {
-                if (pdoc != IntPtr.Zero) Marshal.Release(pdoc);
-                if (punk != IntPtr.Zero) Marshal.Release(punk);
-            }
         }
 
         static void TomInvokeUndo(object doc, int mode)
