@@ -3205,7 +3205,6 @@ namespace OpenCues
         static List<int[]> _dimSpans = new List<int[]>();   // [start,end) into _lastSentText
         static int[] _hlSpan = null;
         static string _overlayStyle = "underline";
-        static int _overlayTickFlip;
 
         // Shift the local span model by a text edit's diff: spans before the
         // edit keep their offsets, spans after it slide by the delta, spans
@@ -3356,10 +3355,24 @@ namespace OpenCues
                 // drag, or momentum scroll - hide everything until it settles.
                 ScrollHideNow();
             }
-            if (!force && (++_overlayTickFlip & 1) != 0) return;   // baseline cadence
+            // Baseline fallback: wall-clock throttled, NOT tick-coupled. The
+            // old every-other-tick baseline scaled with the fast cadence: at
+            // 8ms ticks it ran a full N-span COM resolve (~5 cross-process
+            // calls per span, answered by the app's UI thread) every 16ms -
+            // with several dims that pounded the app hard enough to make the
+            // whole interaction crawl ("1 word is fine, multiple is hell",
+            // 2026-07-21). Real changes are already caught by _overlayDirty
+            // (change events + our writes) and the one-span movement probe;
+            // the baseline only converges anything those miss, and 400ms is
+            // plenty for a fallback.
+            if (!force && unchecked(Environment.TickCount - _lastBaselineRectAt) < BASELINE_RERECT_MS) return;
             if (force) BumpFastPoll();   // motion observed - stay fast until it settles
+            _lastBaselineRectAt = Environment.TickCount;
             UpdateOverlay();
         }
+
+        static int _lastBaselineRectAt;
+        const int BASELINE_RERECT_MS = 400;
 
         static float _lastFirstX = float.MinValue;
         static float _lastFirstY = float.MinValue;
@@ -3660,6 +3673,13 @@ namespace OpenCues
         List<OverlaySpanRect> _rects = new List<OverlaySpanRect>();
         // capture-style bitmap cache: span key -> dimmed screen pixels.
         readonly Dictionary<string, SD.Bitmap> _capCache = new Dictionary<string, SD.Bitmap>();
+        // Raw (untinted) crops keyed WITHOUT the active/dim flag. Navigation
+        // flips two spans' Active state per step; before this cache each flip
+        // was a processed-cache miss -> full-window PrintWindow for pixels
+        // that hadn't changed. Now the raw pixels are kept once per rect+word
+        // and the gray-vs-accent tint is re-derived from them (word-sized
+        // DimBitmap pass, microseconds) - nav steps capture nothing.
+        readonly Dictionary<string, SD.Bitmap> _rawCache = new Dictionary<string, SD.Bitmap>();
         // This window is excluded from screen capture (WDA_EXCLUDEFROMCAPTURE
         // succeeded): CopyFromScreen never sees our own ink, so captures need
         // no hide-and-wait dance and CANNOT self-capture (the re-dim
@@ -4006,10 +4026,20 @@ namespace OpenCues
                 + "," + (r.Active ? "a" : "d") + "," + (r.Word ?? "");
         }
 
+        // Raw-crop key: position + word only. Deliberately excludes Active so
+        // a nav step (active flag flip) re-tints from the same raw pixels.
+        static string RawKey(OverlaySpanRect r)
+        {
+            return ((int)r.X) + "," + ((int)r.Y) + "," + ((int)r.W) + "," + ((int)r.H)
+                + "," + (r.Word ?? "");
+        }
+
         void ClearCapCache()
         {
             foreach (var b in _capCache.Values) { try { b.Dispose(); } catch { } }
             _capCache.Clear();
+            foreach (var b in _rawCache.Values) { try { b.Dispose(); } catch { } }
+            _rawCache.Clear();
         }
 
         // Capture any span rects missing from the cache. CopyFromScreen sees
@@ -4021,21 +4051,27 @@ namespace OpenCues
         void EnsureCaptures(List<OverlaySpanRect> next)
         {
             var wanted = new HashSet<string>();
+            var wantedRaw = new HashSet<string>();
             var missing = new List<OverlaySpanRect>();
             foreach (var r in next)
             {
                 string k = CapKey(r);
+                string rk = RawKey(r);
                 wanted.Add(k);
+                wantedRaw.Add(rk);
                 // Hot span (caret in/at it now or one refresh ago): force a
                 // fresh capture so the caret blink / live edits / the
                 // just-left caret bar stay correct. Skipped while the ink is
                 // typing-suppressed - recapturing invisible patches at the
                 // 8ms fast cadence is pure waste; the fade-in path forces a
-                // fresh pass when the ink returns.
-                if (r.Hot && !WindowsShim._inkHidden && _capCache.ContainsKey(k))
+                // fresh pass when the ink returns. The raw crop is evicted
+                // too - re-tinting stale pixels would resurrect exactly the
+                // baked-in-caret bug the hot test exists to prevent.
+                if (r.Hot && !WindowsShim._inkHidden)
                 {
-                    try { _capCache[k].Dispose(); } catch { }
-                    _capCache.Remove(k);
+                    SD.Bitmap old;
+                    if (_capCache.TryGetValue(k, out old)) { try { old.Dispose(); } catch { } _capCache.Remove(k); }
+                    if (_rawCache.TryGetValue(rk, out old)) { try { old.Dispose(); } catch { } _rawCache.Remove(rk); }
                 }
                 if (!_capCache.ContainsKey(k) && r.W >= 2 && r.H >= 2) missing.Add(r);
             }
@@ -4043,8 +4079,34 @@ namespace OpenCues
             var stale = new List<string>();
             foreach (var k in _capCache.Keys) if (!wanted.Contains(k)) stale.Add(k);
             foreach (var k in stale) { try { _capCache[k].Dispose(); } catch { } _capCache.Remove(k); }
+            stale.Clear();
+            foreach (var k in _rawCache.Keys) if (!wantedRaw.Contains(k)) stale.Add(k);
+            foreach (var k in stale) { try { _rawCache[k].Dispose(); } catch { } _rawCache.Remove(k); }
 
             if (missing.Count == 0) return;
+
+            // Tier 1: re-tint from cached raw pixels. A processed-cache miss
+            // whose raw crop survives (nav step - only the Active flag
+            // changed) never touches PrintWindow/CopyFromScreen.
+            var needPixels = new List<OverlaySpanRect>();
+            foreach (var r in missing)
+            {
+                SD.Bitmap raw;
+                if (_rawCache.TryGetValue(RawKey(r), out raw))
+                {
+                    try
+                    {
+                        var tinted = raw.Clone(new SD.Rectangle(0, 0, raw.Width, raw.Height), SD.Imaging.PixelFormat.Format32bppArgb);
+                        DimBitmap(tinted, r.Active);
+                        if (_capCache.Count > 64) ClearCapCache();   // runaway backstop
+                        _capCache[CapKey(r)] = tinted;
+                    }
+                    catch { needPixels.Add(r); }
+                }
+                else needPixels.Add(r);
+            }
+            if (needPixels.Count == 0) return;
+            missing = needPixels;
             // Mid-scroll captures are wasted (positions go stale within a
             // frame) and the ink is hidden anyway; the settle path runs a
             // fresh UpdateOverlay that captures at the final position.
@@ -4104,9 +4166,19 @@ namespace OpenCues
                             using (var g = SD.Graphics.FromImage(bmp))
                                 g.CopyFromScreen((int)r.X, (int)r.Y, 0, 0, new SD.Size(w, h));
                         }
+                        // Keep the untinted crop for tier-1 re-tints (nav
+                        // flips) before DimBitmap mutates it in place.
+                        SD.Bitmap rawKeep = null;
+                        try { rawKeep = bmp.Clone(new SD.Rectangle(0, 0, bmp.Width, bmp.Height), SD.Imaging.PixelFormat.Format32bppArgb); } catch { }
                         DimBitmap(bmp, r.Active);
                         if (_capCache.Count > 64) ClearCapCache();   // runaway backstop
                         _capCache[CapKey(r)] = bmp;
+                        if (rawKeep != null)
+                        {
+                            SD.Bitmap prevRaw;
+                            if (_rawCache.TryGetValue(RawKey(r), out prevRaw)) { try { prevRaw.Dispose(); } catch { } }
+                            _rawCache[RawKey(r)] = rawKeep;
+                        }
                         ok++;
                     }
                     catch (Exception ex)
