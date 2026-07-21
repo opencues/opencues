@@ -2437,6 +2437,45 @@ namespace OpenCues
                     return true;   // frame is cosmetic; the next write self-corrects
                 }
 
+                // DIFF-BOUNDED SPLICE first (2026-07-21): the select-all of
+                // the whole-buffer path highlights the ENTIRE document, and
+                // RichEditD2DPT paints that highlight via Direct2D no matter
+                // what we ask (EM_HIDESELECTION and WM_SETREDRAW are
+                // advisory to it) - a full-window flash nothing of ours can
+                // mask. A cycling step changes ONE region, so select and
+                // replace ONLY the changed region: any highlight the control
+                // insists on painting is confined to the word - which sits
+                // under the overlay box, which the mirror blink hides.
+                // Index-skew-safe because BOTH sides of the diff are in the
+                // CONTROL'S own text dress (cur is a control read; the
+                // daemon's mirror adopts control read-backs); any diff
+                // touching a line break falls back to the whole-buffer path
+                // (the a28d4ab0 CRLF lesson).
+                {
+                    int dp = CommonPrefixLen(cur, emText);
+                    int dsfx = CommonSuffixLen(cur, emText, dp);
+                    int remA = dp, remB = cur.Length - dsfx;
+                    string mid = emText.Substring(dp, emText.Length - dsfx - dp);
+                    string removed = cur.Substring(remA, remB - remA);
+                    bool breakFree = removed.IndexOf('\r') < 0 && removed.IndexOf('\n') < 0 && removed.IndexOf('\v') < 0
+                        && mid.IndexOf('\r') < 0 && mid.IndexOf('\n') < 0 && mid.IndexOf('\v') < 0;
+                    if (breakFree && (remB - remA) + mid.Length < 2000)
+                    {
+                        HideMirrorsForWrite();   // any residual word-sized highlight stays invisible
+                        SendMessageTimeoutW(hwnd, EM_SETSEL, new IntPtr(remA), new IntPtr(remB), SMTO_ABORTIFHUNG, 1500, out res);
+                        SendMessageTimeoutText(hwnd, EM_REPLACESEL, new IntPtr(1) /* fUndo=TRUE */, mid, SMTO_ABORTIFHUNG, 1500, out res);
+                        string spliced;
+                        try { spliced = StripPhantomTrailingSeparator(el, vp.Current.Value ?? ""); } catch { spliced = null; }
+                        if (spliced != null && EolNorm(spliced) == EolNorm(text))
+                        {
+                            _emUndoBaseline = null;
+                            Log("debug", "applied substitution (" + text.Length + " chars, EM diff-splice [" + (remB - remA) + " -> " + mid.Length + "], class " + className + ")");
+                            return true;
+                        }
+                        Log("debug", "EM diff-splice verify mismatch - falling back to whole-buffer replace");
+                    }
+                }
+
                 // Final substitution: a large whole-buffer change. Do it as an
                 // absolute select-all replace (skew-immune - only 0/-1), with the
                 // selection highlight hidden so it never flashes blue. Baseline-
