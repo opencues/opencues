@@ -3494,7 +3494,7 @@ namespace OpenCues
         {
             _inkSuppressed = true;
             SetInkAlpha(0);
-            SetThumbOpacity(0);   // thumbnails ignore window alpha - hide them explicitly
+            SetThumbFraction(0);   // thumbnails ignore window alpha - hide them explicitly
         }
 
         // Fade the ink back to the style's steady alpha over ~150ms.
@@ -3527,7 +3527,7 @@ namespace OpenCues
             SetInkAlpha((byte)_fadeAlpha);
             // Live mirrors fade in step with the underlay.
             if (_style == "live")
-                SetThumbOpacity((byte)(LIVE_MIRROR_OPACITY * _fadeAlpha / Math.Max(1, target)));
+                SetThumbFraction((double)_fadeAlpha / Math.Max(1, target));
         }
 
         // Called from the shim's poll thread. Null/empty rects hide the ink.
@@ -3585,10 +3585,19 @@ namespace OpenCues
         const byte LIVE_MIRROR_OPACITY = 166;   // ~65% live word over the underlay = the dim
 
         // Guarded by _thumbLock: the UI thread reconciles; the hook thread
-        // zeroes opacity on instant-hide.
+        // zeroes opacity on instant-hide. _thumbTargets holds each
+        // thumbnail's steady opacity (255 for the active span - pure
+        // unblended live word inside a painted border; LIVE_MIRROR_OPACITY
+        // for dim spans); suppress/fade scale the targets by a fraction.
         readonly object _thumbLock = new object();
         readonly List<IntPtr> _thumbs = new List<IntPtr>();
-        byte _thumbCurOpacity = LIVE_MIRROR_OPACITY;
+        readonly List<byte> _thumbTargets = new List<byte>();
+        // The active span's FIXED accent ring, painted OUTSIDE the word
+        // rect (2026-07-21 feedback: blending the accent with live pixels
+        // made its colour depend on whatever was sampled underneath - a
+        // subtractive change left a differently-coloured box. A painted
+        // ring is pure ink: one colour, always).
+        const int ACTIVE_RING_PX = 2;
 
         // Per-span underlay colours for the TEXT-ONLY live dim (2026-07-21
         // feedback: a gray underlay dims the background too - blend math:
@@ -3654,6 +3663,7 @@ namespace OpenCues
                 foreach (var t in _thumbs) { try { DwmUnregisterThumbnail(t); } catch { } }
                 if (_thumbs.Count > 0) WindowsShim.OverlayLog("live: cleared " + _thumbs.Count + " thumbnail(s)");
                 _thumbs.Clear();
+                _thumbTargets.Clear();
             }
         }
 
@@ -3669,6 +3679,7 @@ namespace OpenCues
                 {
                     try { DwmUnregisterThumbnail(_thumbs[_thumbs.Count - 1]); } catch { }
                     _thumbs.RemoveAt(_thumbs.Count - 1);
+                    _thumbTargets.RemoveAt(_thumbTargets.Count - 1);
                 }
                 while (_thumbs.Count < rects.Count)
                 {
@@ -3679,19 +3690,25 @@ namespace OpenCues
                         WindowsShim.OverlayLog("live: DwmRegisterThumbnail failed hr=0x" + hr.ToString("x8"));
                         foreach (var th in _thumbs) { try { DwmUnregisterThumbnail(th); } catch { } }
                         _thumbs.Clear();
+                        _thumbTargets.Clear();
                         return;
                     }
                     _thumbs.Add(t);
+                    _thumbTargets.Add(LIVE_MIRROR_OPACITY);
                 }
                 // Source coords are the source window's CLIENT space.
                 var origin = new NPoint { X = 0, Y = 0 };
                 try { ClientToScreen(srcTop, ref origin); } catch { }
-                byte op = _inkSuppressed ? (byte)0 : _thumbCurOpacity;
                 for (int i = 0; i < rects.Count; i++)
                 {
                     var r = rects[i];
                     int w = Math.Max(1, (int)Math.Ceiling(r.W));
                     int h = Math.Max(1, (int)Math.Ceiling(r.H));
+                    // Active span: PURE live word (no blend) inside a painted
+                    // fixed-colour ring; dim spans blend toward their bg.
+                    byte target = r.Active ? (byte)255 : LIVE_MIRROR_OPACITY;
+                    _thumbTargets[i] = target;
+                    byte op = _inkSuppressed ? (byte)0 : target;
                     var props = new DwmThumbProps
                     {
                         dwFlags = TNP_DEST | TNP_SRC | TNP_OPACITY | TNP_VISIBLE | TNP_SRCCLIENT,
@@ -3722,15 +3739,18 @@ namespace OpenCues
 
         // Instant/faded opacity for the live mirrors - callable from any
         // thread (the hook thread on instant-hide, the fade timer on the
-        // UI thread).
-        void SetThumbOpacity(byte op)
+        // UI thread). Scales each thumbnail's own TARGET (255 active /
+        // LIVE_MIRROR_OPACITY dim) by a 0..1 fraction.
+        void SetThumbFraction(double f)
         {
+            if (f < 0) f = 0; else if (f > 1) f = 1;
             lock (_thumbLock)
             {
-                var props = new DwmThumbProps { dwFlags = TNP_OPACITY, opacity = op };
-                foreach (var t in _thumbs)
+                for (int i = 0; i < _thumbs.Count; i++)
                 {
-                    try { DwmUpdateThumbnailProperties(t, ref props); } catch { }
+                    byte target = i < _thumbTargets.Count ? _thumbTargets[i] : LIVE_MIRROR_OPACITY;
+                    var props = new DwmThumbProps { dwFlags = TNP_OPACITY, opacity = (byte)(target * f) };
+                    try { DwmUpdateThumbnailProperties(_thumbs[i], ref props); } catch { }
                 }
             }
         }
@@ -4013,17 +4033,27 @@ namespace OpenCues
                 {
                     case "live":
                         {
-                            // Underlay only - DWM paints the live mirror above
-                            // this at LIVE_MIRROR_OPACITY; the blend is the dim.
-                            // Dim spans use the span's estimated BACKGROUND
-                            // colour so only the TEXT dims (background blends
-                            // to itself); the active span keeps the visible
-                            // accent box.
-                            SD.Color u;
-                            if (r.Active) u = ActiveColor;
-                            else if (!_bgCache.TryGetValue(BgKey(r), out u)) u = DimColor;
-                            using (var b = new SD.SolidBrush(u))
-                                g.FillRectangle(b, x, y, r.W, r.H);
+                            if (r.Active)
+                            {
+                                // Fixed-colour accent RING painted OUTSIDE the
+                                // word rect; the word itself shows as a pure
+                                // (100%-opacity) live mirror - no blend, so
+                                // the accent never shifts with sampled
+                                // content.
+                                using (var b = new SD.SolidBrush(ActiveColor))
+                                    g.FillRectangle(b, x - ACTIVE_RING_PX, y - ACTIVE_RING_PX,
+                                        r.W + 2 * ACTIVE_RING_PX, r.H + 2 * ACTIVE_RING_PX);
+                            }
+                            else
+                            {
+                                // Dim underlay = the span's estimated
+                                // BACKGROUND colour so only the TEXT dims
+                                // (background blends to itself).
+                                SD.Color u;
+                                if (!_bgCache.TryGetValue(BgKey(r), out u)) u = DimColor;
+                                using (var b = new SD.SolidBrush(u))
+                                    g.FillRectangle(b, x, y, r.W, r.H);
+                            }
                             break;
                         }
                     case "wash":
