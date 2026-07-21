@@ -3431,8 +3431,68 @@ namespace OpenCues
             }
             int prevCaret = _prevOverlayCaret;
             _prevOverlayCaret = caret;
-            foreach (var span in _dimSpans) AddSpanRects(doc, text, span[0], span[1], false, caret, prevCaret, list);
-            if (_hlSpan != null) AddSpanRects(doc, text, _hlSpan[0], _hlSpan[1], true, caret, prevCaret, list);
+            // Incremental single-range resolve. The legacy path cloned the
+            // document range and walked MoveEndpointByUnit from offset 0 for
+            // EVERY span - N spans cost N x O(text) character walks inside
+            // the target app's UIA provider. Resolving in ascending order
+            // with ONE running range moves each span's endpoints RELATIVE to
+            // the previous span's, making the whole pass O(text) total
+            // regardless of span count. End moves before Start each step, so
+            // with ascending starts neither endpoint can cross the other and
+            // the tracked offsets stay honest. Any provider hiccup (clamped
+            // move, COM error) falls back to the legacy per-span path for
+            // the spans the incremental pass didn't finish.
+            var spans = new List<int[]>();   // { s, e, activeFlag, emitOrder }
+            foreach (var span in _dimSpans) spans.Add(new int[] { span[0], span[1], 0, spans.Count });
+            if (_hlSpan != null) spans.Add(new int[] { _hlSpan[0], _hlSpan[1], 1, spans.Count });
+            // Rects are RESOLVED in ascending-start order (the running range
+            // moves forward), but EMITTED in the legacy order - dims in
+            // config order, hl LAST - via per-span buckets. Two contracts
+            // depend on emission order: paint z (the active tint must win
+            // where hl overlaps a dim) and the movement probe's identity
+            // (list[0] must be _dimSpans[0]'s rect - when a sorted hl landed
+            // first, the probe compared different spans, read "moved" every
+            // tick, and ScrollHideNow kept ALL ink hidden indefinitely: the
+            // "dims don't appear after refocus" report).
+            var buckets = new List<OverlaySpanRect>[spans.Count];
+            for (int i = 0; i < buckets.Length; i++) buckets[i] = new List<OverlaySpanRect>();
+            var order = new List<int[]>(spans);
+            order.Sort(delegate (int[] a, int[] b) { return a[0].CompareTo(b[0]); });
+            int idx = 0;
+            try
+            {
+                var run = doc.Clone();
+                run.MoveEndpointByRange(TextPatternRangeEndpoint.End, doc, TextPatternRangeEndpoint.Start);
+                int posStart = 0, posEnd = 0;
+                for (; idx < order.Count; idx++)
+                {
+                    int s = order[idx][0], e = order[idx][1];
+                    bool active = order[idx][2] != 0;
+                    if (s < 0 || e <= s || e > text.Length) continue;
+                    int su = MapStrToUiaChars(text, s);
+                    int eu = MapStrToUiaChars(text, e);
+                    if (eu != posEnd)
+                    {
+                        int moved = run.MoveEndpointByUnit(TextPatternRangeEndpoint.End, TextUnit.Character, eu - posEnd);
+                        if (moved != eu - posEnd) throw new InvalidOperationException("clamped End move");
+                        posEnd = eu;
+                    }
+                    if (su != posStart)
+                    {
+                        int moved = run.MoveEndpointByUnit(TextPatternRangeEndpoint.Start, TextUnit.Character, su - posStart);
+                        if (moved != su - posStart) throw new InvalidOperationException("clamped Start move");
+                        posStart = su;
+                    }
+                    var rects = run.GetBoundingRectangles();
+                    if (rects != null) EmitSpanRects(rects, text, s, e, active, caret, prevCaret, buckets[order[idx][3]]);
+                }
+            }
+            catch
+            {
+                for (; idx < order.Count; idx++)
+                    AddSpanRects(doc, text, order[idx][0], order[idx][1], order[idx][2] != 0, caret, prevCaret, buckets[order[idx][3]]);
+            }
+            foreach (var b in buckets) list.AddRange(b);
             return list;
         }
 
@@ -3461,37 +3521,45 @@ namespace OpenCues
                 if (su > 0) r.MoveEndpointByUnit(TextPatternRangeEndpoint.Start, TextUnit.Character, su);
                 var rects = r.GetBoundingRectangles();
                 if (rects == null) return;
-                string word = text.Substring(s, e - s);
-                // Hot = caret in the span's FRINGE now, or one refresh ago
-                // (the just-left recapture that scrubs a baked-in caret
-                // bar). Fringe-inclusive is safe again since the overlay is
-                // capture-excluded - the fade-to-nothing self-capture
-                // spiral that forced the earlier strictly-inside test is
-                // structurally impossible now; a redundant recapture of an
-                // unchanged word yields identical pixels (no flicker), it
-                // just costs a small screen grab.
-                bool hot = CaretInSpanFringe(caret, s, e) || CaretInSpanFringe(prevCaret, s, e);
-                // Typing at the caret can only move spans at/after it; spans
-                // that END before the caret keep their rects. Unknown caret
-                // -> treat as after (everything suppresses - the safe side).
-                bool afterCaret = caret < 0 || e >= caret;
-                foreach (System.Windows.Rect rc in rects)
-                {
-                    if (rc.IsEmpty || rc.Width <= 0 || rc.Height <= 0) continue;
-                    list.Add(new OverlaySpanRect
-                    {
-                        X = (float)rc.X,
-                        Y = (float)rc.Y,
-                        W = (float)rc.Width,
-                        H = (float)rc.Height,
-                        Active = active,
-                        Word = word,
-                        Hot = hot,
-                        AfterCaret = afterCaret,
-                    });
-                }
+                EmitSpanRects(rects, text, s, e, active, caret, prevCaret, list);
             }
             catch { /* span resolve is best-effort; a missing rect = no paint */ }
+        }
+
+        // Metadata + emit half of span resolution, shared by the legacy
+        // per-span path (AddSpanRects) and the incremental single-range
+        // resolver in ComputeOverlayRects.
+        static void EmitSpanRects(System.Windows.Rect[] rects, string text, int s, int e, bool active, int caret, int prevCaret, List<OverlaySpanRect> list)
+        {
+            string word = text.Substring(s, e - s);
+            // Hot = caret in the span's FRINGE now, or one refresh ago
+            // (the just-left recapture that scrubs a baked-in caret
+            // bar). Fringe-inclusive is safe again since the overlay is
+            // capture-excluded - the fade-to-nothing self-capture
+            // spiral that forced the earlier strictly-inside test is
+            // structurally impossible now; a redundant recapture of an
+            // unchanged word yields identical pixels (no flicker), it
+            // just costs a small screen grab.
+            bool hot = CaretInSpanFringe(caret, s, e) || CaretInSpanFringe(prevCaret, s, e);
+            // Typing at the caret can only move spans at/after it; spans
+            // that END before the caret keep their rects. Unknown caret
+            // -> treat as after (everything suppresses - the safe side).
+            bool afterCaret = caret < 0 || e >= caret;
+            foreach (System.Windows.Rect rc in rects)
+            {
+                if (rc.IsEmpty || rc.Width <= 0 || rc.Height <= 0) continue;
+                list.Add(new OverlaySpanRect
+                {
+                    X = (float)rc.X,
+                    Y = (float)rc.Y,
+                    W = (float)rc.Width,
+                    H = (float)rc.Height,
+                    Active = active,
+                    Word = word,
+                    Hot = hot,
+                    AfterCaret = afterCaret,
+                });
+            }
         }
 
         static void EnsureOverlay()
