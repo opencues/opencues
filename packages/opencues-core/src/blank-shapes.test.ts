@@ -181,3 +181,53 @@ describe('synthesizeKeywordShapes (keyword → shape desugaring)', () => {
     assert.deepStrictEqual(synthesizeKeywordShapes([], false), []);
   });
 });
+
+// ───────────────────────────────────────────────────────────────────────
+// argValidator — runtime-injected arg validation at the shape chokepoint.
+// A shape whose CAPTURED arg fails validation never matches, and because
+// every claim/cede site funnels through matchBlankShape, the miss
+// releases the `_` to fluid-blank everywhere at once (the LLM answers
+// "Istanbul is a city…" instead of the blank substituting a not-found
+// error — live Spotlight report 2026-07-21).
+// ───────────────────────────────────────────────────────────────────────
+
+describe('argValidator (shape-captured arg validation)', () => {
+  const countriesShapes = synthesizeKeywordShapes(['capital of', 'population of'], false);
+  const withValidator = (ok: (a: string) => boolean): ReadonlyMap<string, Pick<BlankConfig, 'blankShapes' | 'blankKeywords' | 'argValidator'>> =>
+    new Map([['countries', {
+      blankShapes: countriesShapes,
+      blankKeywords: ['capital of', 'population of'],
+      argValidator: ok,
+    }]]);
+
+  it('a captured arg that passes validation matches normally', () => {
+    const m = matchBlankShape('capital of france _', withValidator(a => a === 'france'));
+    assert.strictEqual(m?.blankName, 'countries');
+    assert.strictEqual(m?.value, 'france');
+  });
+
+  it('a captured arg that fails validation never matches — clean cede', () => {
+    assert.strictEqual(matchBlankShape('capital of istanbul _', withValidator(a => a === 'france')), null);
+  });
+
+  it('blankClaimsUnderscore releases the `_` on validation failure (fluid may claim the trick question)', () => {
+    const b = withValidator(a => a === 'france');
+    const t1 = 'capital of france _';
+    assert.strictEqual(blankClaimsUnderscore(t1, t1.split(' '), b), true);
+    const t2 = 'capital of istanbul _';
+    assert.strictEqual(blankClaimsUnderscore(t2, t2.split(' '), b), false);
+  });
+
+  it('no validator declared → behaviour unchanged (any captured arg matches)', () => {
+    const b = new Map([['countries', { blankShapes: countriesShapes }]]);
+    assert.strictEqual(matchBlankShape('capital of istanbul _', b)?.blankName, 'countries');
+  });
+
+  it('shapes with no captured value ignore the validator', () => {
+    const b = new Map([['volume', {
+      blankShapes: [{ pattern: '^volume\\s*_$', action: 'get' as const }],
+      argValidator: () => false,
+    }]]);
+    assert.strictEqual(matchBlankShape('volume _', b)?.blankName, 'volume');
+  });
+});

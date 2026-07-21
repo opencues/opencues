@@ -15,7 +15,7 @@
 // Spike evidence for every capability: ../AX-SPIKE.md.
 
 import { boot, type BootResult } from '@opencues/runtime/dist/adapters/universal/v1/boot';
-import { utf16Diff, freshMarkerAtCursor, WriteRing, charBudgetForBundle } from './ax-host';
+import { utf16Diff, freshMarkerAtCursor, WriteRing, charBudgetForBundle, shouldDropDuplicateChange } from './ax-host';
 import { buildBlanks, makeSpawnProcess } from './host-support';
 import type { LogLevel } from '@opencues/runtime/dist/src/adapter';
 import { spawn } from 'node:child_process';
@@ -213,6 +213,9 @@ export async function main(): Promise<void> {
         if (!focused) break;
         const value = String(ev['value'] ?? '');
         const cursor = Number(ev['cursor'] ?? 0);
+        // Duplicate-notification guard (Spotlight fires 2-3 identical
+        // AXValueChanged per keystroke) — see shouldDropDuplicateChange.
+        if (shouldDropDuplicateChange(value, cursor, focused, ring.isEcho(value))) break;
         const prev = focused.value;
         focused.value = value;
         focused.cursor = cursor;

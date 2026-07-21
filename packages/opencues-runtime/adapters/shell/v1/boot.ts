@@ -150,6 +150,7 @@ export function boot(host: HostInfo): BootResult {
   const shared = buildSharedRuntime(adapter, {
     log, configSearchPaths, settingsFile,
     getApiKeys: () => apiKeys,
+    blanks: host.blanks,
   });
   configLoaderRef = shared.configLoader;
 

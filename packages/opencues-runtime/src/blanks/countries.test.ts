@@ -12,8 +12,8 @@ const DATA: Record<string, CountryFacts> = {
 const fixture = () => new CountriesBlank({ data: DATA });
 
 describe('CountriesBlank (bundled dataset)', () => {
-  it('returns "<fact>: no country" when keyword has no country context', async () => {
-    expect(await fixture().get('population of', [])).toBe('population: no country');
+  it('returns [err] feedback when keyword has no country context', async () => {
+    expect(await fixture().get('population of', [])).toBe('[err] name a country');
   });
 
   it('extracts country from context + formats population in M', async () => {
@@ -36,8 +36,17 @@ describe('CountriesBlank (bundled dataset)', () => {
     expect(await fixture().get('languages of', ['india'])).toBe('India languages: Hindi, English, Tamil');
   });
 
-  it('returns "<country>: not found" for an unknown country', async () => {
-    expect(await fixture().get('population of', ['atlantis'])).toBe('atlantis: not found');
+  it('validArg mirrors get(): table hits pass, misses fail, skip-words stripped', () => {
+    const f = fixture();
+    expect(f.validArg('france')).toBe(true);
+    expect(f.validArg('istanbul')).toBe(false);
+    expect(f.validArg('atlantis')).toBe(false);
+    // Same skip-word normalisation as pickCountry.
+    expect(f.validArg('the france')).toBe(true);
+  });
+
+  it('returns [err] feedback for an unknown country (fills only the `_`, command stays editable)', async () => {
+    expect(await fixture().get('population of', ['atlantis'])).toBe('[err] "atlantis" is not a country I know');
   });
 
   it('handles multi-word country names ("united states")', async () => {

@@ -56,15 +56,31 @@ export class CountriesBlank implements Blank {
     this._data = opts.data ?? COUNTRIES;
   }
 
+  /** Shape-captured arg is answerable iff it's in the offline table.
+   *  Stamped as `argValidator` by ConfigLoader → a miss ("istanbul")
+   *  never claims the `_` and fluid-blank answers the trick question. */
+  validArg(arg: string): boolean {
+    // Same skip-word strip pickCountry applies, so "the netherlands"
+    // validates exactly when get() would have found it.
+    const words = arg.toLowerCase().split(/\s+/).filter(w => w && !SKIP_WORDS.has(w));
+    return normKey(words.join(' ')) in this._data;
+  }
+
   // Async to satisfy the Blank contract; the lookup itself is synchronous.
   async get(keyword?: string, context?: string[]): Promise<string> {
     const fact = pickFact(keyword);
     const country = pickCountry(keyword, context);
     if (!fact) return '';
-    if (!country) return `${fact}: no country`;
+    // Misses are FEEDBACK, not data — the `[err]` sentinel makes
+    // BlankFill fill only the `_` and keep the typed command editable
+    // (same convention as note/sentinel). The pre-`[err]` shape
+    // ("istanbul: not found") was substituted as if it were the answer
+    // — observed live in Spotlight 2026-07-21 on the trick question
+    // "capital of istanbul" (a city, not a country).
+    if (!country) return '[err] name a country';
 
     const entry = this._data[normKey(country)];
-    if (!entry) return `${country}: not found`;
+    if (!entry) return `[err] "${country}" is not a country I know`;
 
     return `${entry.name} ${fact}: ${formatFact(fact, entry)}`;
   }

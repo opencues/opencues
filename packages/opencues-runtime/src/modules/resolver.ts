@@ -742,7 +742,10 @@ export class Resolver {
       // spelling.md). It inherits per-cue / `word-cues-*` / global LLM
       // routing through the standard ConfigSource path — no per-feature
       // wiring needed here.
-      blanks: this.configLoader.folderConfigs?.blankOverrides ?? {},
+      // Validator-stamped view (NOT raw blankOverrides): impl arg-
+      // validators must reach the core cede predicates or a countries
+      // miss cedes here while BlankFill declines to fill — dead `_`.
+      blanks: this.configLoader.blankOverridesWithValidators,
       // disable lists from CUES.md / BLANKS.md. Each is the union across
       // every search-path layer — ConfigLoader merged them in load().
       disableCues: this.configLoader.folderConfigs?.cuesConfig?.disableCues ?? [],

@@ -22,4 +22,18 @@ export interface Blank {
   set?(value: string, keyword?: string): Promise<void>;
   up?(): Promise<string>;
   down?(): Promise<string>;
+
+  /**
+   * Optional SYNCHRONOUS validation of a shape-captured arg ("is this
+   * something I can actually answer?" — countries: arg is in the
+   * offline table). When declared, ConfigLoader stamps it onto the
+   * blank's config as `argValidator`, and `matchBlankShape` refuses a
+   * shape whose captured arg fails — the `_` is then never claimed by
+   * this blank and falls to fluid-blank (the LLM answers the flawed
+   * question instead of the blank substituting a not-found error).
+   * MUST be pure + fast: it runs inside per-keystroke shape matching.
+   * Only meaningful for blanks whose data is local/offline; a blank
+   * that needs I/O to know cannot implement this.
+   */
+  validArg?(arg: string): boolean;
 }

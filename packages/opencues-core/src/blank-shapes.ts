@@ -57,12 +57,12 @@ function lineWithBlank(text: string): string | null {
  */
 export function matchBlankShape(
   text: string,
-  blanks: ReadonlyMap<string, Pick<BlankConfig, 'blankShapes'>>
-    | Readonly<Record<string, Pick<BlankConfig, 'blankShapes'>>>,
+  blanks: ReadonlyMap<string, Pick<BlankConfig, 'blankShapes' | 'argValidator'>>
+    | Readonly<Record<string, Pick<BlankConfig, 'blankShapes' | 'argValidator'>>>,
 ): BlankShapeMatch | null {
   const t = lineWithBlank(text);
   if (t === null || !t.includes('_')) return null;
-  const entries: Iterable<[string, Pick<BlankConfig, 'blankShapes'>]> =
+  const entries: Iterable<[string, Pick<BlankConfig, 'blankShapes' | 'argValidator'>]> =
     blanks instanceof Map ? blanks.entries() : Object.entries(blanks);
   for (const [name, cfg] of entries) {
     const shapes = cfg.blankShapes;
@@ -87,13 +87,23 @@ export function matchBlankShape(
       // and this one falls to whichever shape/keyword genuinely leads
       // its segment. Clean cede, consistent with the module contract.
       if (value !== undefined && value.split(/\s+/).includes('_')) continue;
+      // Runtime-injected arg validation (BlankConfig.argValidator — e.g.
+      // countries checks its offline table). A shape whose captured arg
+      // fails validation NEVER matches: because this function is the
+      // single chokepoint every claim/cede site funnels through
+      // (BlankFill.scan + blankClaimsUnderscore below), the miss releases
+      // the `_` to fluid/transform EVERYWHERE at once — the LLM answers
+      // "Istanbul is a city, not a country" instead of the blank
+      // substituting a not-found error. Consistent with the module
+      // contract: a non-match is a clean cede.
+      if (value !== undefined && cfg.argValidator && !cfg.argValidator(value)) continue;
       return { blankName: name, action: shape.action, value };
     }
   }
   return null;
 }
 
-type ClaimBlank = Pick<BlankConfig, 'blankShapes' | 'blankKeywords'>;
+type ClaimBlank = Pick<BlankConfig, 'blankShapes' | 'blankKeywords' | 'argValidator'>;
 
 /**
  * Does some keyword/shaped blank CLAIM this `_`? The SINGLE shared cede

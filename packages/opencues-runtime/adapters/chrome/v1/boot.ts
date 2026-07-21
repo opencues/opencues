@@ -315,6 +315,7 @@ export function boot(host: HostInfo): BootResult {
     configSearchPaths: ['/chrome-storage/.cues'],
     settingsFile: '/chrome-storage/.cues/OPENCUES.md',
     getApiKeys: () => apiKeys,
+    blanks: host.blanks,
     // Chrome's fetch-based adapter for the integration-weave LLM call —
     // NodeHttpAdapter (node:https) is stubbed in the browser bundle, so the
     // weaver needs the host's adapter explicitly (mirrors the Resolver below).

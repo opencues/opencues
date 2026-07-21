@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { WriteRing, charBudgetForBundle, countMarkers, freshMarkerAtCursor, utf16Diff } from './ax-host';
+import { WriteRing, charBudgetForBundle, countMarkers, freshMarkerAtCursor, shouldDropDuplicateChange, utf16Diff } from './ax-host';
 
 describe('utf16Diff', () => {
   it('null on identical', () => {
@@ -42,6 +42,23 @@ describe('freshMarkerAtCursor', () => {
   });
   it('never arms when the typed char is not the marker', () => {
     expect(freshMarkerAtCursor('hello _x', 8, 'hello _')).toBeNull();
+  });
+});
+
+describe('shouldDropDuplicateChange', () => {
+  const state = { value: 'capital of istanbul _', cursor: 21 };
+  it('drops a byte-identical non-echo duplicate (Spotlight fires 2-3 per keystroke)', () => {
+    expect(shouldDropDuplicateChange('capital of istanbul _', 21, state, false)).toBe(true);
+  });
+  it('keeps an echo even when identical — the optimistic write makes echoes look like dups', () => {
+    expect(shouldDropDuplicateChange('capital of istanbul _', 21, state, true)).toBe(false);
+  });
+  it('keeps real changes (value or cursor differs)', () => {
+    expect(shouldDropDuplicateChange('capital of istanbul x', 21, state, false)).toBe(false);
+    expect(shouldDropDuplicateChange('capital of istanbul _', 20, state, false)).toBe(false);
+  });
+  it('keeps everything when nothing is focused', () => {
+    expect(shouldDropDuplicateChange('x', 1, null, false)).toBe(false);
   });
 });
 

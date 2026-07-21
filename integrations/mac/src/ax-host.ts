@@ -47,6 +47,23 @@ export function countMarkers(text: string): number {
   return n;
 }
 
+/** Spotlight fires 2–3 byte-identical AXValueChanged per keystroke
+ *  (SPOTLIGHT-SPIKE.md). A duplicate non-echo change event re-ran the
+ *  whole fill pipeline and double-substituted the answer
+ *  ("istanbul: not foundistanbul: not found" — observed 2026-07-21).
+ *  Drop a change whose value AND cursor already match our state —
+ *  UNLESS it's an echo of our own write: the optimistic update in
+ *  requestWrite makes the echo look identical, but the runtime still
+ *  needs its 'runtime'-sourced notify for span bookkeeping. */
+export function shouldDropDuplicateChange(
+  value: string,
+  cursor: number,
+  focused: { value: string; cursor: number } | null,
+  isEcho: boolean,
+): boolean {
+  return focused !== null && value === focused.value && cursor === focused.cursor && !isEcho;
+}
+
 /** Per-bundle soft answer-length budgets: fields with a small VISIBLE
  *  capacity get a "keep it under ~N chars" instruction in the LLM
  *  prompt (never a truncation). Spotlight's search field shows ~37
