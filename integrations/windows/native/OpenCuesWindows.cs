@@ -2385,6 +2385,105 @@ namespace OpenCues
         // caller repairs via absolute SetValue - worst case is exactly the
         // prior robust-but-no-undo behaviour. Message-based
         // (SendMessageTimeout ABORTIFHUNG): no focus theft, can't wedge.
+        // --- TOM (Text Object Model) write surface -----------------------
+        // The document-model API one COM call below the EM_* selection
+        // plumbing. Driven via name-based IDispatch late binding
+        // (Type.InvokeMember resolves "Range"/"Text"/"Undo" through
+        // GetIDsOfNames) so no fragile hand-declared vtables. One splice
+        // per substitution - late-binding overhead is irrelevant.
+        const uint EM_GETOLEINTERFACE = 0x043C;   // WM_USER + 60
+        static readonly Guid IID_ITextDocument = new Guid("8CC497C0-A1DF-11CE-8098-00AA0047BE5D");
+        const int TOM_SUSPEND = -9999995;   // tomSuspend - pause undo recording
+        const int TOM_RESUME = -9999994;    // tomResume
+
+        [DllImport("user32.dll", EntryPoint = "SendMessageW")]
+        static extern IntPtr SendMessageGetOle(IntPtr hwnd, uint msg, IntPtr wParam, out IntPtr ppUnk);
+
+        static object GetTomDocument(IntPtr hwnd)
+        {
+            IntPtr punk = IntPtr.Zero, pdoc = IntPtr.Zero;
+            try
+            {
+                IntPtr ok = SendMessageGetOle(hwnd, EM_GETOLEINTERFACE, IntPtr.Zero, out punk);
+                if (ok == IntPtr.Zero || punk == IntPtr.Zero) return null;
+                Guid iid = IID_ITextDocument;
+                if (Marshal.QueryInterface(punk, ref iid, out pdoc) != 0 || pdoc == IntPtr.Zero) return null;
+                return Marshal.GetObjectForIUnknown(pdoc);
+            }
+            catch { return null; }
+            finally
+            {
+                if (pdoc != IntPtr.Zero) Marshal.Release(pdoc);
+                if (punk != IntPtr.Zero) Marshal.Release(punk);
+            }
+        }
+
+        static void TomInvokeUndo(object doc, int mode)
+        {
+            // Best-effort: some RichEdit builds reject undo-mode control.
+            try
+            {
+                doc.GetType().InvokeMember("Undo", System.Reflection.BindingFlags.InvokeMethod,
+                    null, doc, new object[] { mode });
+            }
+            catch { }
+        }
+
+        // Replace the DIFFED region of the document via ITextRange.Text.
+        // No selection, no highlight, no caret disturbance; animation
+        // frames additionally suspend undo recording so the spinner never
+        // pollutes Ctrl+Z. Verified by read-back; false -> EM fallbacks.
+        static bool TryTomSplice(IntPtr hwnd, AutomationElement el, ValuePattern vp,
+            string cur, string emText, string text, bool isFrame, string className)
+        {
+            object doc = null, range = null;
+            try
+            {
+                doc = GetTomDocument(hwnd);
+                if (doc == null) return false;
+                int dp = CommonPrefixLen(cur, emText);
+                int dsfx = CommonSuffixLen(cur, emText, dp);
+                int remA = dp, remB = cur.Length - dsfx;
+                string mid = emText.Substring(dp, emText.Length - dsfx - dp);
+                if (isFrame) TomInvokeUndo(doc, TOM_SUSPEND);
+                try
+                {
+                    range = doc.GetType().InvokeMember("Range", System.Reflection.BindingFlags.InvokeMethod,
+                        null, doc, new object[] { remA, remB });
+                    if (range == null) return false;
+                    range.GetType().InvokeMember("Text", System.Reflection.BindingFlags.SetProperty,
+                        null, range, new object[] { mid });
+                }
+                finally
+                {
+                    if (isFrame) TomInvokeUndo(doc, TOM_RESUME);
+                }
+                string after;
+                try { after = StripPhantomTrailingSeparator(el, vp.Current.Value ?? ""); } catch { after = null; }
+                if (after == null || EolNorm(after) != EolNorm(text))
+                {
+                    Log("debug", "TOM splice verify mismatch (want=" + text.Length + " got=" + (after == null ? -1 : after.Length) + ") - EM fallback");
+                    return false;
+                }
+                if (!isFrame)
+                {
+                    _emUndoBaseline = null;
+                    Log("debug", "applied substitution (" + text.Length + " chars, TOM splice [" + (remB - remA) + " -> " + mid.Length + "], class " + className + ")");
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Log("debug", "TOM splice unavailable: " + ex.Message);
+                return false;
+            }
+            finally
+            {
+                if (range != null) { try { Marshal.ReleaseComObject(range); } catch { } }
+                if (doc != null) { try { Marshal.ReleaseComObject(doc); } catch { } }
+            }
+        }
+
         static bool TryEmConvergentWrite(AutomationElement el, ValuePattern vp, string text, bool streamStart)
         {
             try
@@ -2416,6 +2515,19 @@ namespace OpenCues
                 catch { return false; }                                    // can't read reality -> SetValue
                 if (streamStart) _emUndoBaseline = cur;                     // the `_` command, pre-animation
                 if (EolNorm(cur) == EolNorm(text)) return true;            // already there (any EOL dress)
+
+                // TOM FIRST (2026-07-21): RichEdit's Text Object Model
+                // (EM_GETOLEINTERFACE -> ITextDocument -> Range.Text)
+                // replaces a character range directly in the DOCUMENT MODEL -
+                // no selection is ever created, so the D2D select-all
+                // highlight that defeated EM_HIDESELECTION / WM_SETREDRAW /
+                // the mirror blink cannot exist. TOM character positions
+                // count each \r as one, exactly like the control's own read
+                // dress, so even multi-line diffs are index-safe (the CRLF
+                // skew that killed the a28d4ab0 EM splice does not apply).
+                // Classic Edit has no TOM -> returns false -> EM fallbacks.
+                bool isFrame = IsSmallDelta(cur, text);
+                if (TryTomSplice(hwnd, el, vp, cur, emText, text, isFrame, className)) return true;
 
                 IntPtr res;
                 if (IsSmallDelta(cur, text))
