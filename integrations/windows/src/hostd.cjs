@@ -73,8 +73,8 @@ const PHASE2 = process.env.OPENCUES_WIN_PHASE2 !== '0';
 //   underline — thin gray line under cue words (Grammarly-style)
 //   wash      — translucent gray rectangle over the word
 const OVERLAY_STYLES = ['live', 'capture', 'underline', 'wash'];
-const OVERLAY_STYLE_RAW = String(process.env.OPENCUES_WIN_OVERLAY_STYLE || 'live').toLowerCase();
-const OVERLAY_STYLE = OVERLAY_STYLES.includes(OVERLAY_STYLE_RAW) ? OVERLAY_STYLE_RAW : 'live';
+const OVERLAY_STYLE_RAW = String(process.env.OPENCUES_WIN_OVERLAY_STYLE || 'capture').toLowerCase();
+const OVERLAY_STYLE = OVERLAY_STYLES.includes(OVERLAY_STYLE_RAW) ? OVERLAY_STYLE_RAW : 'capture';
 // Config/UI HTTP server (shared popup + keys/settings API). Defaults to
 // the socket port + 1. Set OPENCUES_WIN_CONFIG_PORT=0 to disable.
 const CONFIG_PORT = process.env.OPENCUES_WIN_CONFIG_PORT !== undefined
