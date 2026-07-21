@@ -12,9 +12,15 @@
 // DwmRegisterThumbnail gives a live, SHARP, GPU-composited mirror of
 // another window's content, croppable to a SOURCE RECT and placed at a
 // destination rect with an opacity knob. Dim = gray underlay + the live
-// mirror at partial opacity: blended live glyphs over gray. If this is
-// sharp + live + dimmable, it replaces the capture pipeline AND is plain
-// Win32 (back-portable into the Add-Type shim, no compiled shim needed).
+// mirror at partial opacity: blended live glyphs over gray.
+//
+// ROUND 2 VERDICT (2026-07-21, live test): **PASS.** Sharp, dimmed,
+// caret blinking, edits appearing live in the lens. This is the
+// go-decision for the live-dim overlay: per-span DWM thumbnails
+// (source-rect = the word's rect, destination 1:1 on the overlay,
+// opacity as the dim knob over a per-span underlay) replace the whole
+// capture/cache/settle pipeline - and it is plain Win32 (dwmapi), so it
+// back-ports into the Add-Type shim with NO compiled-shim requirement.
 
 using System;
 using System.Runtime.InteropServices;
