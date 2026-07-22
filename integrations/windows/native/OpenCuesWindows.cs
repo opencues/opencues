@@ -3341,7 +3341,7 @@ namespace OpenCues
                     int dir = vk == VK_UP ? 1 : -1;
                     ThreadPool.QueueUserWorkItem(delegate { TryLocalAltCycle(dir); });
                 }
-                QueueKeyMessage(KeyName(vk), (ushort)vk, true);
+                QueueKeyMessage(KeyName(vk), (ushort)vk, true, true);
                 return new IntPtr(1);   // swallow - the app never sees the chord
             }
             catch { }
@@ -3410,6 +3410,11 @@ namespace OpenCues
 
         static void QueueKeyMessage(string key, ushort vk, bool track)
         {
+            QueueKeyMessage(key, vk, track, false);
+        }
+
+        static void QueueKeyMessage(string key, ushort vk, bool track, bool canonicalChord)
+        {
             int id = Interlocked.Increment(ref _keyMsgId);
             if (track)
             {
@@ -3419,10 +3424,16 @@ namespace OpenCues
                     _pendingKeys[id] = vk;
                 }
             }
-            bool ctrl = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
-            bool alt = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
-            bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
-            bool meta = ((GetAsyncKeyState(VK_LWIN) & 0x8000) != 0) || ((GetAsyncKeyState(VK_RWIN) & 0x8000) != 0);
+            // A CLAIMED chord ships canonical Ctrl+Alt regardless of the
+            // physical modifiers - per-app remaps (Alt+Shift in Slack) are
+            // a shim concern; the runtime only knows one chord. Shipping
+            // physical mods was the "alt+shift arrows aren't registering"
+            // bug: dispatchKey saw alt+shift, matched nothing, consumed
+            // nothing.
+            bool ctrl = canonicalChord || (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+            bool alt = canonicalChord || (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+            bool shift = !canonicalChord && (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+            bool meta = !canonicalChord && (((GetAsyncKeyState(VK_LWIN) & 0x8000) != 0) || ((GetAsyncKeyState(VK_RWIN) & 0x8000) != 0));
             string json = "{\"t\":\"key\",\"id\":" + id.ToString(CultureInfo.InvariantCulture)
                 + ",\"key\":" + JStr(key)
                 + ",\"mods\":{\"ctrl\":" + (ctrl ? "true" : "false")
