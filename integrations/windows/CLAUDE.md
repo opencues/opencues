@@ -187,7 +187,28 @@ seam; the frozen-stub rect is a reliable detector.
 **Chord semantics:** while a cycling field is attached (and the shim is
 enabled + connected), Ctrl+Alt+Up/Down/Left/Right key-downs are
 swallowed system-wide and forwarded; the matching key-ups are swallowed
-too. `key-result consumed:false` re-injects the arrow with
+too.
+
+**Per-app chord remap (2026-07-23):** apps that already bind
+Ctrl+Alt+arrows to their own commands (today: Slack, hardcoded in
+`ShiftChordApps`) get the OpenCues chord on **Ctrl+Shift+arrows**
+instead; Ctrl+Alt passes through to the app there. Because
+Ctrl+Shift+Left/Right is select-by-word in any text field, the shift
+chord only claims the keys **while marks are live** — no cues on
+screen means stock selection behaviour. The wire message stays
+canonical (`up`/`down`/`left`/`right`); daemon and runtime never know
+which physical chord fired.
+
+> **TODO (final Windows integration): per-app override UI.** The
+> chord remap above is the first entry in what will inevitably be a
+> per-app compatibility table (chord choice, write path preferences,
+> paragraph-break dress, paste timing — several such app lists are
+> already hardcoded in the shim: `ShiftChordApps`,
+> `PastePreferredApps`, `ParagraphBreakApps`, `RichEditParagraphApps`).
+> Before the integration ships, these need a user-facing override
+> surface (tray settings page backed by a config file) so users can
+> (a) see which well-known apps have overrides, (b) add their own for
+> apps we haven't met, without editing C#. Wilfred, 2026-07-23. `key-result consumed:false` re-injects the arrow with
 `INJECT_MARK` in `dwExtraInfo` (the hook passes marked events through —
 that mark check is what prevents an infinite self-hook loop). The LL
 hook callback never touches the socket inline (ThreadPool send) — a
