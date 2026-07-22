@@ -3283,9 +3283,12 @@ namespace OpenCues
                 bool alt = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
                 if (!(ctrl && alt)) return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
                 // Chord-sharing app (Slack binds Ctrl+Alt+arrows too): we
-                // capture first, but only claim the chord while marks are
-                // LIVE - no cues on screen, the app keeps its bindings.
-                if (ChordNeedsLiveMarks() && !HasLiveMarks())
+                // capture first. Up/Down (cycling) is ALWAYS ours while
+                // attached - the marks-live gate raced the render-push
+                // flap and could hand a cycle to the app. Left/Right
+                // (nav) stays shared: claimed only while marks are live,
+                // so the app keeps those bindings when no cues show.
+                if (ChordNeedsLiveMarks() && (vk == VK_LEFT || vk == VK_RIGHT) && !HasLiveMarks())
                     return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
                 // Cycling/navigation chord: the substitution + highlight move
                 // land within a few ms - ramp the fast cadence NOW so the

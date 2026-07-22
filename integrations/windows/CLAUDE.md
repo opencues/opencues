@@ -191,9 +191,11 @@ too.
 
 **Chord-sharing apps (2026-07-23):** apps that bind Ctrl+Alt+arrows to
 their own commands (today: Slack, hardcoded in `SharedChordApps`) keep
-the standard OpenCues chord — the LL hook captures first — but the
-chord is only claimed **while marks are live**; with no cues on
-screen, the app's own bindings work untouched. Two remap chords were
+the standard OpenCues chord — the LL hook captures first.
+**Up/Down (cycling) is always ours while attached** — gating it on
+marks raced the render-push flap and could hand a cycle to the app.
+**Left/Right (nav) is shared:** claimed only **while marks are live**;
+with no cues on screen, the app's own bindings work untouched. Two remap chords were
 tried and rejected before landing here: **Ctrl+Shift** (select-by-word
 + also bound in Slack) and **Alt+Shift** (the Windows input-language
 toggle — it fires on the modifiers alone and silently flipped
