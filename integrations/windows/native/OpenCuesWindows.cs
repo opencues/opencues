@@ -3723,31 +3723,52 @@ namespace OpenCues
                     int s = order[idx][0], e = order[idx][1];
                     bool active = order[idx][2] != 0;
                     if (s < 0 || e <= s || e > text.Length) continue;
-                    // Trim whitespace (incl. line breaks) off the span ends
-                    // before resolving. A range that ENDS on a newline gets
-                    // a pseudo-rect for the invisible break glyph (RichEdit
-                    // gives the \r its own ~half-char box at the line end)
-                    // and the underline faithfully dashes under every one
-                    // ("underline applying to every line break").
-                    while (s < e && char.IsWhiteSpace(text[s])) s++;
-                    while (e > s && char.IsWhiteSpace(text[e - 1])) e--;
-                    if (e <= s) continue;
-                    int su = MapStrToUiaChars(text, s);
-                    int eu = MapStrToUiaChars(text, e);
-                    if (eu != posEnd)
+                    // Resolve PER LINE SEGMENT, never across a break. A range
+                    // spanning a hard break gets per-row rects whose right
+                    // edges include the invisible break/paragraph-mark width
+                    // past the last glyph - the underline overshot the text
+                    // on every NON-final row of a multi-line span. Segments
+                    // exclude the break chars (and surrounding whitespace)
+                    // entirely, so each row's rect ends at its last glyph by
+                    // construction - and empty lines never resolve at all.
+                    // Segments ascend, so the running range keeps its
+                    // relative-move bookkeeping.
+                    int segS = s;
+                    while (segS < e)
                     {
-                        int moved = run.MoveEndpointByUnit(TextPatternRangeEndpoint.End, TextUnit.Character, eu - posEnd);
-                        if (moved != eu - posEnd) throw new InvalidOperationException("clamped End move");
-                        posEnd = eu;
+                        while (segS < e && char.IsWhiteSpace(text[segS])) segS++;
+                        if (segS >= e) break;
+                        int segScan = segS;
+                        while (segScan < e && text[segScan] != '\n' && text[segScan] != '\r') segScan++;
+                        int segEnd = segScan;
+                        while (segEnd > segS && char.IsWhiteSpace(text[segEnd - 1])) segEnd--;
+                        if (segEnd > segS)
+                        {
+                            int su = MapStrToUiaChars(text, segS);
+                            int eu = MapStrToUiaChars(text, segEnd);
+                            if (eu != posEnd)
+                            {
+                                int moved = run.MoveEndpointByUnit(TextPatternRangeEndpoint.End, TextUnit.Character, eu - posEnd);
+                                if (moved != eu - posEnd) throw new InvalidOperationException("clamped End move");
+                                posEnd = eu;
+                            }
+                            if (su != posStart)
+                            {
+                                int moved = run.MoveEndpointByUnit(TextPatternRangeEndpoint.Start, TextUnit.Character, su - posStart);
+                                if (moved != su - posStart) throw new InvalidOperationException("clamped Start move");
+                                posStart = su;
+                            }
+                            var rects = run.GetBoundingRectangles();
+                            if (rects != null)
+                            {
+                                var bucket = buckets[order[idx][3]];
+                                int emittedFrom = bucket.Count;
+                                EmitSpanRects(rects, text, segS, segEnd, active, caret, prevCaret, bucket);
+                                ClampTrailingMark(doc, text, segS, segEnd, bucket, emittedFrom);
+                            }
+                        }
+                        segS = segScan;
                     }
-                    if (su != posStart)
-                    {
-                        int moved = run.MoveEndpointByUnit(TextPatternRangeEndpoint.Start, TextUnit.Character, su - posStart);
-                        if (moved != su - posStart) throw new InvalidOperationException("clamped Start move");
-                        posStart = su;
-                    }
-                    var rects = run.GetBoundingRectangles();
-                    if (rects != null) EmitSpanRects(rects, text, s, e, active, caret, prevCaret, buckets[order[idx][3]]);
                 }
             }
             catch
@@ -3776,23 +3797,77 @@ namespace OpenCues
             try
             {
                 if (s < 0 || e <= s || e > text.Length) return;
-                // Same end-trim as the incremental resolver: never resolve
-                // the line-break chars (their pseudo-rects dash the underline
-                // at every break).
-                while (s < e && char.IsWhiteSpace(text[s])) s++;
-                while (e > s && char.IsWhiteSpace(text[e - 1])) e--;
-                if (e <= s) return;
+                // Same per-line segmentation as the incremental resolver:
+                // never resolve across a break (per-row rects include the
+                // invisible break/mark width past the last glyph).
+                int segS = s;
+                while (segS < e)
+                {
+                    while (segS < e && char.IsWhiteSpace(text[segS])) segS++;
+                    if (segS >= e) break;
+                    int segScan = segS;
+                    while (segScan < e && text[segScan] != '\n' && text[segScan] != '\r') segScan++;
+                    int segEnd = segScan;
+                    while (segEnd > segS && char.IsWhiteSpace(text[segEnd - 1])) segEnd--;
+                    if (segEnd > segS)
+                    {
+                        var r = doc.Clone();
+                        r.MoveEndpointByRange(TextPatternRangeEndpoint.End, doc, TextPatternRangeEndpoint.Start);
+                        int su = MapStrToUiaChars(text, segS);
+                        int eu = MapStrToUiaChars(text, segEnd);
+                        if (eu > 0) r.MoveEndpointByUnit(TextPatternRangeEndpoint.End, TextUnit.Character, eu);
+                        if (su > 0) r.MoveEndpointByUnit(TextPatternRangeEndpoint.Start, TextUnit.Character, su);
+                        var rects = r.GetBoundingRectangles();
+                        if (rects != null)
+                        {
+                            int emittedFrom = list.Count;
+                            EmitSpanRects(rects, text, segS, segEnd, active, caret, prevCaret, list);
+                            ClampTrailingMark(doc, text, segS, segEnd, list, emittedFrom);
+                        }
+                    }
+                    segS = segScan;
+                }
+            }
+            catch { /* span resolve is best-effort; a missing rect = no paint */ }
+        }
+
+        // The final row of a span whose END touches a line break (or the
+        // buffer end) includes the invisible paragraph mark's width in its
+        // UIA rect - RichEdit gives the mark ~half a character even though
+        // it has no glyph, so the underline visibly overhangs the last
+        // character of the last row. Resolve the LAST character's own rect
+        // and clamp the final row's right edge to it. One extra resolve,
+        // only for qualifying spans (mid-line word dims skip entirely).
+        static void ClampTrailingMark(TextPatternRange doc, string text, int s, int e, List<OverlaySpanRect> list, int emittedFrom)
+        {
+            try
+            {
+                if (list.Count <= emittedFrom) return;
+                if (e - 1 <= s) return;
+                if (e < text.Length && text[e] != '\n' && text[e] != '\r') return;
                 var r = doc.Clone();
                 r.MoveEndpointByRange(TextPatternRangeEndpoint.End, doc, TextPatternRangeEndpoint.Start);
-                int su = MapStrToUiaChars(text, s);
+                int su = MapStrToUiaChars(text, e - 1);
                 int eu = MapStrToUiaChars(text, e);
                 if (eu > 0) r.MoveEndpointByUnit(TextPatternRangeEndpoint.End, TextUnit.Character, eu);
                 if (su > 0) r.MoveEndpointByUnit(TextPatternRangeEndpoint.Start, TextUnit.Character, su);
                 var rects = r.GetBoundingRectangles();
-                if (rects == null) return;
-                EmitSpanRects(rects, text, s, e, active, caret, prevCaret, list);
+                if (rects == null || rects.Length == 0) return;
+                var lc = rects[rects.Length - 1];
+                if (lc.IsEmpty || lc.Width <= 0) return;
+                float right = (float)(lc.X + lc.Width);
+                var last = list[list.Count - 1];
+                bool clamped = right > last.X && right < last.X + last.W;
+                var rows = new System.Text.StringBuilder();
+                for (int i = Math.Max(0, list.Count - 4); i < list.Count; i++)
+                    rows.Append("[" + (int)list[i].X + "," + (int)list[i].Y + " w" + (int)list[i].W + "]");
+                Log("debug", "trailmark: rows" + rows
+                    + " lastChar[" + (int)lc.X + " w" + (int)lc.Width + "]"
+                    + " tail='" + text.Substring(Math.Max(s, e - 12), Math.Min(12, e - s)).Replace("\r", "|").Replace("\n", "|") + "'"
+                    + (clamped ? " -> clamped" : " (no clamp)"));
+                if (clamped) last.W = right - last.X;
             }
-            catch { /* span resolve is best-effort; a missing rect = no paint */ }
+            catch { /* cosmetic clamp - never fail the resolve */ }
         }
 
         // Metadata + emit half of span resolution, shared by the legacy
