@@ -3055,23 +3055,22 @@ namespace OpenCues
         const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
         static readonly IntPtr INJECT_MARK = new IntPtr(0x0C0E50C0);
 
-        // Per-app chord remap (2026-07-23): apps that already bind
-        // Ctrl+Alt+arrows to their own commands get the OpenCues chord on
-        // Alt+Shift+arrows instead; Ctrl+Alt passes through to the app
-        // there. (Ctrl+Shift was tried first and is taken in Slack too.)
-        // The LL hook sees the chord BEFORE the app, so Slack's own
-        // Alt+Shift bindings (unread-channel nav) are captured away while
-        // marks are live. Hardcoded well-known set for now - the FINAL
-        // integration needs a user-facing override UI for per-app
-        // chord/behaviour config (see CLAUDE.md note). The wire message
-        // stays canonical (up/down/left/right) - the daemon/runtime never
-        // know which physical chord fired.
-        static readonly HashSet<string> AltShiftChordApps =
+        // Chord-sharing apps (2026-07-23): apps that bind Ctrl+Alt+arrows
+        // to their own commands (Slack). The LL hook captures first, so we
+        // CAN just take the chord - but for these apps we only claim it
+        // while marks are LIVE; with no cues on screen the app keeps its
+        // own bindings. (Two remap chords were tried and rejected first:
+        // Ctrl+Shift is select-by-word + also bound in Slack; Alt+Shift is
+        // the Windows input-language toggle and silently flipped en-GB/
+        // en-US on every press.) Hardcoded well-known set for now - the
+        // FINAL integration needs a user-facing per-app override UI (see
+        // CLAUDE.md note).
+        static readonly HashSet<string> SharedChordApps =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "slack" };
-        static bool UseAltShiftChord()
+        static bool ChordNeedsLiveMarks()
         {
             var a = _lastApp;
-            return a != null && AltShiftChordApps.Contains(a);
+            return a != null && SharedChordApps.Contains(a);
         }
         static bool HasLiveMarks()
         {
@@ -3282,19 +3281,12 @@ namespace OpenCues
                 }
                 bool ctrl = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
                 bool alt = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
-                bool remapChord = UseAltShiftChord();
-                if (remapChord)
-                {
-                    // The attached app owns Ctrl+Alt+arrows (Slack) - our
-                    // chord moves to Alt+Shift there, captured here before
-                    // the app's own Alt+Shift bindings can fire. Claimed
-                    // only while marks are LIVE - no cues on screen, the
-                    // app keeps its shortcuts.
-                    bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
-                    if (!(alt && shift && !ctrl)) return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
-                    if (!HasLiveMarks()) return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
-                }
-                else if (!(ctrl && alt)) return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
+                if (!(ctrl && alt)) return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
+                // Chord-sharing app (Slack binds Ctrl+Alt+arrows too): we
+                // capture first, but only claim the chord while marks are
+                // LIVE - no cues on screen, the app keeps its bindings.
+                if (ChordNeedsLiveMarks() && !HasLiveMarks())
+                    return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
                 // Cycling/navigation chord: the substitution + highlight move
                 // land within a few ms - ramp the fast cadence NOW so the
                 // overlay repaints at 8ms from the first frame (previously it
@@ -3302,8 +3294,6 @@ namespace OpenCues
                 BumpFastPoll();
                 _caretDirty = true;
                 _swallowedDown.Add(vk);
-                // Both chords hold Alt - the menu-bar Alt-tap mask applies
-                // to the remap chord too.
                 MaskAltTap();
                 _altHoldMasked = true;   // re-mask at Alt release too (autorepeat re-arms the menu state)
                 // Up/down = a substitution is coming that will REFLOW the

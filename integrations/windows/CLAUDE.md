@@ -189,19 +189,18 @@ enabled + connected), Ctrl+Alt+Up/Down/Left/Right key-downs are
 swallowed system-wide and forwarded; the matching key-ups are swallowed
 too.
 
-**Per-app chord remap (2026-07-23):** apps that already bind
-Ctrl+Alt+arrows to their own commands (today: Slack, hardcoded in
-`AltShiftChordApps`) get the OpenCues chord on **Alt+Shift+arrows**
-instead; Ctrl+Alt passes through to the app there. (Ctrl+Shift was
-tried first — taken in Slack too.) The LL hook sees the chord before
-the app, so Slack's own Alt+Shift bindings (unread-channel nav) are
-captured away — but only **while marks are live**; no cues on screen
-means the app keeps all its shortcuts. Caveat: on multi-input-language
-systems Alt+Shift is the Windows layout-toggle hotkey, which fires on
-the modifiers alone before any arrow — remap users with >1 keyboard
-layout will want a different chord once the override UI exists. The
-wire message stays canonical (`up`/`down`/`left`/`right`); daemon and
-runtime never know which physical chord fired.
+**Chord-sharing apps (2026-07-23):** apps that bind Ctrl+Alt+arrows to
+their own commands (today: Slack, hardcoded in `SharedChordApps`) keep
+the standard OpenCues chord — the LL hook captures first — but the
+chord is only claimed **while marks are live**; with no cues on
+screen, the app's own bindings work untouched. Two remap chords were
+tried and rejected before landing here: **Ctrl+Shift** (select-by-word
++ also bound in Slack) and **Alt+Shift** (the Windows input-language
+toggle — it fires on the modifiers alone and silently flipped
+en-GB/en-US on every chord press, which presents as "the app is eating
+my input"). Lesson for the override UI: modifier pairs with system
+meanings (Alt+Shift, Win+anything) are traps; capture-first +
+marks-live gating on the standard chord beats remapping.
 
 > **TODO (final Windows integration): per-app override UI.** The
 > chord remap above is the first entry in what will inevitably be a
