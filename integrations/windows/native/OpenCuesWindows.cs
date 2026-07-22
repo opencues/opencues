@@ -3055,26 +3055,22 @@ namespace OpenCues
         const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
         static readonly IntPtr INJECT_MARK = new IntPtr(0x0C0E50C0);
 
-        // Chord-sharing apps (2026-07-23): apps that bind Ctrl+Alt+arrows
-        // to their own commands (Slack). The LL hook captures first, so we
-        // CAN just take the chord - but for these apps we only claim it
-        // while marks are LIVE; with no cues on screen the app keeps its
-        // own bindings. (Two remap chords were tried and rejected first:
-        // Ctrl+Shift is select-by-word + also bound in Slack; Alt+Shift is
-        // the Windows input-language toggle and silently flipped en-GB/
-        // en-US on every press.) Hardcoded well-known set for now - the
-        // FINAL integration needs a user-facing per-app override UI (see
-        // CLAUDE.md note).
-        static readonly HashSet<string> SharedChordApps =
+        // Per-app chord (2026-07-23, third design): apps that bind
+        // Ctrl+Alt+arrows to their own commands (Slack) get the OpenCues
+        // chord on Alt+Shift+arrows; Ctrl+Alt passes through untouched.
+        // Chord history: Ctrl+Shift rejected (select-by-word + bound in
+        // Slack); capture-first-on-Ctrl+Alt with a marks-live gate
+        // rejected (Wilfred wants Slack to keep Ctrl+Alt outright).
+        // Alt+Shift caveat: it is the Windows input-language toggle on
+        // multi-layout systems - disable that hotkey or run one layout.
+        // Hardcoded well-known set for now - the FINAL integration needs
+        // a user-facing per-app override UI (see CLAUDE.md note).
+        static readonly HashSet<string> AltShiftChordApps =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "slack" };
-        static bool ChordNeedsLiveMarks()
+        static bool UseAltShiftChord()
         {
             var a = _lastApp;
-            return a != null && SharedChordApps.Contains(a);
-        }
-        static bool HasLiveMarks()
-        {
-            try { return _hlSpan != null || _dimSpans.Count > 0; } catch { return false; }
+            return a != null && AltShiftChordApps.Contains(a);
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -3264,7 +3260,21 @@ namespace OpenCues
                     return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
                 }
                 if (!(_attached && _enabled && _fieldCycling && Connected))
+                {
+                    // Chord diagnostic (transient, 2026-07-23): why did an
+                    // arrow pass through? Only logs actual Ctrl+Alt chords.
+                    if (down && isArrow
+                        && (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0
+                        && (GetAsyncKeyState(VK_MENU) & 0x8000) != 0)
+                    {
+                        bool a2 = _attached, e2 = _enabled, f2 = _fieldCycling, c2 = Connected;
+                        ThreadPool.QueueUserWorkItem(delegate {
+                            Log("info", "chord PASSED gate: attached=" + a2 + " enabled=" + e2
+                                + " fieldCycling=" + f2 + " connected=" + c2 + " app=" + (_lastApp ?? "?"));
+                        });
+                    }
                     return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
+                }
                 if (vk == VK_ESCAPE)
                 {
                     if (down)
@@ -3281,15 +3291,24 @@ namespace OpenCues
                 }
                 bool ctrl = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
                 bool alt = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
-                if (!(ctrl && alt)) return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
-                // Chord-sharing app (Slack binds Ctrl+Alt+arrows too): we
-                // capture first. Up/Down (cycling) is ALWAYS ours while
-                // attached - the marks-live gate raced the render-push
-                // flap and could hand a cycle to the app. Left/Right
-                // (nav) stays shared: claimed only while marks are live,
-                // so the app keeps those bindings when no cues show.
-                if (ChordNeedsLiveMarks() && (vk == VK_LEFT || vk == VK_RIGHT) && !HasLiveMarks())
-                    return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
+                bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+                // Per-app chord: apps that own Ctrl+Alt+arrows (Slack) get
+                // the OpenCues chord on Alt+Shift+arrows instead - all four
+                // arrows, claimed unconditionally while attached-cycling;
+                // Ctrl+Alt passes through to the app untouched. CAVEAT: on
+                // multi-layout systems Alt+Shift is the Windows input-
+                // language toggle and the noop-key mask does NOT defuse it
+                // - usable only with that hotkey disabled or one layout.
+                bool chordHit = UseAltShiftChord()
+                    ? (alt && shift && !ctrl)
+                    : (ctrl && alt);
+                if (!chordHit) return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
+                {
+                    uint vkLog = vk;
+                    ThreadPool.QueueUserWorkItem(delegate {
+                        Log("info", "chord CLAIMED: " + KeyName(vkLog) + " app=" + (_lastApp ?? "?"));
+                    });
+                }
                 // Cycling/navigation chord: the substitution + highlight move
                 // land within a few ms - ramp the fast cadence NOW so the
                 // overlay repaints at 8ms from the first frame (previously it

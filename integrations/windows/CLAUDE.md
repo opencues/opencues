@@ -189,20 +189,21 @@ enabled + connected), Ctrl+Alt+Up/Down/Left/Right key-downs are
 swallowed system-wide and forwarded; the matching key-ups are swallowed
 too.
 
-**Chord-sharing apps (2026-07-23):** apps that bind Ctrl+Alt+arrows to
-their own commands (today: Slack, hardcoded in `SharedChordApps`) keep
-the standard OpenCues chord — the LL hook captures first.
-**Up/Down (cycling) is always ours while attached** — gating it on
-marks raced the render-push flap and could hand a cycle to the app.
-**Left/Right (nav) is shared:** claimed only **while marks are live**;
-with no cues on screen, the app's own bindings work untouched. Two remap chords were
-tried and rejected before landing here: **Ctrl+Shift** (select-by-word
-+ also bound in Slack) and **Alt+Shift** (the Windows input-language
-toggle — it fires on the modifiers alone and silently flipped
-en-GB/en-US on every chord press, which presents as "the app is eating
-my input"). Lesson for the override UI: modifier pairs with system
-meanings (Alt+Shift, Win+anything) are traps; capture-first +
-marks-live gating on the standard chord beats remapping.
+**Per-app chord (2026-07-23):** apps that bind Ctrl+Alt+arrows to
+their own commands (today: Slack, hardcoded in `AltShiftChordApps`)
+get the OpenCues chord on **Alt+Shift+arrows** — all four arrows,
+claimed unconditionally while attached-cycling; **Ctrl+Alt passes
+through to the app untouched**. Design history (for the override UI):
+Ctrl+Shift rejected (select-by-word + also bound in Slack);
+capture-first on Ctrl+Alt with a marks-live gate rejected (the app
+should keep its chord outright). **Alt+Shift caveat:** on
+multi-input-language systems it is the Windows layout-toggle hotkey,
+fires on the modifiers alone, and the noop-key mask does NOT defuse
+it — presents as "the app is eating my input" (silent en-GB/en-US
+flips). Usable only with that hotkey disabled (Settings → Typing →
+Advanced keyboard settings → Input language hot keys) or a single
+installed layout. The override UI must surface this trap; modifier
+pairs with system meanings (Alt+Shift, Win+anything) need a warning.
 
 > **TODO (final Windows integration): per-app override UI.** The
 > chord remap above is the first entry in what will inevitably be a
