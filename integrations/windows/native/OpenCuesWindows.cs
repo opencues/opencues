@@ -3052,6 +3052,7 @@ namespace OpenCues
         const ushort VK_SHIFT = 0x10, VK_MENU = 0x12, VK_ESCAPE = 0x1B;
         const ushort VK_LEFT = 0x25, VK_UP = 0x26, VK_RIGHT = 0x27, VK_DOWN = 0x28;
         const ushort VK_LWIN = 0x5B, VK_RWIN = 0x5C;
+        const ushort VK_OEM_MINUS = 0xBD;   // temp minus-chord experiment
         const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
         static readonly IntPtr INJECT_MARK = new IntPtr(0x0C0E50C0);
 
@@ -3199,6 +3200,37 @@ namespace OpenCues
                             _altHoldMasked = false;
                             if (InjectMaskedAltUp(vk, (info.flags & 0x01) != 0))   // LLKHF_EXTENDED
                                 return new IntPtr(1);   // replaced by the injected [mask, Alt-up]
+                        }
+                    }
+                }
+                // TEMP EXPERIMENT (2026-07-23, Wilfred): minus-key chords.
+                //   Ctrl+Shift+Minus            -> navigate (canonical right)
+                //   Shift+Minus on an active hl -> cycle (canonical up); the '_' is eaten
+                // Shift+Minus with NO active highlight falls through and
+                // types '_' as normal (the blank trigger key). Remove after
+                // the experiment concludes.
+                if (vk == VK_OEM_MINUS)
+                {
+                    if (up && _swallowedDown.Remove(vk)) return new IntPtr(1);
+                    if (down && _attached && _enabled && _fieldCycling && Connected)
+                    {
+                        bool mc = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+                        bool ms = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+                        if (mc && ms)
+                        {
+                            BumpFastPoll(); _caretDirty = true; _swallowedDown.Add(vk);
+                            QueueKeyMessage("right", (ushort)vk, true, true);
+                            ThreadPool.QueueUserWorkItem(delegate { Log("info", "minus-chord NAV (ctrl+shift+-) app=" + (_lastApp ?? "?")); });
+                            return new IntPtr(1);
+                        }
+                        if (ms && !mc && _hlSpan != null)
+                        {
+                            BumpFastPoll(); _caretDirty = true; _swallowedDown.Add(vk);
+                            if (_overlayStyle != "argb") BlankInkForWrite();
+                            ThreadPool.QueueUserWorkItem(delegate { TryLocalAltCycle(1); });
+                            QueueKeyMessage("up", (ushort)vk, true, true);
+                            ThreadPool.QueueUserWorkItem(delegate { Log("info", "minus-chord CYCLE (shift+- on hl) app=" + (_lastApp ?? "?")); });
+                            return new IntPtr(1);
                         }
                     }
                 }
