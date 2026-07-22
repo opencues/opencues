@@ -4084,6 +4084,7 @@ namespace OpenCues
         // Reconcile cache - owned by the pool's reconcile loop (UI thread).
         public int LastX, LastY, LastW = -1, LastH = -1;
         public bool LastActive;
+        public string RenderKey;   // render identity (size + state + row layout)
         public byte LastAlpha = 255;
         public SD.Bitmap Frame;      // last rendered content, re-pushable for fades
         public bool IsShown;
@@ -4584,40 +4585,73 @@ namespace OpenCues
             _argbPool.Clear();
         }
 
-        // Reconcile the pool against this push's rects: grow-only pool,
-        // reposition/re-render only what changed, hide the surplus. Runs on
-        // the UI thread inside Push (like EnsureThumbnails).
+        // Reconcile the pool against this push's ADORNMENT ITEMS: dim rows
+        // stay one window per row; the ACTIVE span's contiguous rows merge
+        // into ONE window drawing a single staircase outline around the
+        // whole block (one selected "thing", not a stack of rings). Rows
+        // separated by blank lines deliberately do NOT merge - the gap
+        // stays unhighlighted, which is what distinguishes the mark from a
+        // native selection. Grow-only pool, re-render only what changed,
+        // hide the surplus. Runs on the UI thread inside Push.
+        class ArgbItem
+        {
+            public int X, Y, W, H;
+            public bool Active;
+            public List<SD.RectangleF> RowsRel;
+            public string Key;
+        }
+
         void EnsureArgbAdornments(List<OverlaySpanRect> rects)
         {
             byte alpha = _inkSuppressed ? (byte)0 : _argbLevel;
-            int used = 0;
-            for (int i = 0; i < rects.Count; i++)
+            var items = new List<ArgbItem>();
+            var actives = new List<OverlaySpanRect>();
+            foreach (var r in rects)
             {
-                var r = rects[i];
-                int x = (int)r.X - ARGB_PAD, y = (int)r.Y - ARGB_PAD;
-                int w = (int)Math.Ceiling(r.W) + ARGB_PAD * 2, h = (int)Math.Ceiling(r.H) + ARGB_PAD * 2;
-                if (w < 4 || h < 4) continue;
+                if (r.W < 2 || r.H < 2) continue;
+                if (r.Active) { actives.Add(r); continue; }
+                items.Add(MakeItem(new List<OverlaySpanRect> { r }, false));
+            }
+            // Group the active span's rows into vertically-contiguous runs.
+            actives.Sort(delegate (OverlaySpanRect a, OverlaySpanRect b) { return a.Y.CompareTo(b.Y); });
+            var group = new List<OverlaySpanRect>();
+            foreach (var r in actives)
+            {
+                if (group.Count > 0 && r.Y > group[group.Count - 1].Y + group[group.Count - 1].H + 6)
+                {
+                    items.Add(MakeItem(group, true));
+                    group = new List<OverlaySpanRect>();
+                }
+                group.Add(r);
+            }
+            if (group.Count > 0) items.Add(MakeItem(group, true));
+
+            int used = 0;
+            foreach (var it in items)
+            {
+                if (it.W < 4 || it.H < 4) continue;
                 ArgbAdornment a;
                 if (used < _argbPool.Count) a = _argbPool[used];
                 else
                 {
                     a = new ArgbAdornment();
-                    var hh = a.Handle;   // force creation
+                    var hh = a.Handle;
                     _argbPool.Add(a);
                 }
-                bool geomChanged = a.LastW != w || a.LastH != h || a.LastActive != r.Active;
-                bool moved = a.LastX != x || a.LastY != y;
+                bool geomChanged = a.RenderKey != it.Key;
+                bool moved = a.LastX != it.X || a.LastY != it.Y;
                 if (geomChanged)
                 {
                     try { if (a.Frame != null) a.Frame.Dispose(); } catch { }
-                    a.Frame = RenderAdornment(w, h, r.Active);
-                    a.LastW = w; a.LastH = h; a.LastActive = r.Active;
+                    a.Frame = RenderAdornmentItem(it);
+                    a.RenderKey = it.Key;
+                    a.LastW = it.W; a.LastH = it.H; a.LastActive = it.Active;
                 }
                 if (geomChanged || moved || a.LastAlpha != alpha || !a.IsShown)
                 {
-                    a.LastX = x; a.LastY = y;
+                    a.LastX = it.X; a.LastY = it.Y;
                     if (!a.IsShown) { try { a.Show(); } catch { } a.IsShown = true; }
-                    a.PushFrame(a.Frame, x, y, alpha);
+                    a.PushFrame(a.Frame, it.X, it.Y, alpha);
                 }
                 used++;
             }
@@ -4631,6 +4665,109 @@ namespace OpenCues
             }
         }
 
+        static ArgbItem MakeItem(List<OverlaySpanRect> rows, bool active)
+        {
+            float l = float.MaxValue, t = float.MaxValue, rgt = float.MinValue, bot = float.MinValue;
+            foreach (var r in rows)
+            {
+                if (r.X < l) l = r.X;
+                if (r.Y < t) t = r.Y;
+                if (r.X + r.W > rgt) rgt = r.X + r.W;
+                if (r.Y + r.H > bot) bot = r.Y + r.H;
+            }
+            var it = new ArgbItem
+            {
+                X = (int)l - ARGB_PAD,
+                Y = (int)t - ARGB_PAD,
+                W = (int)Math.Ceiling(rgt - l) + ARGB_PAD * 2,
+                H = (int)Math.Ceiling(bot - t) + ARGB_PAD * 2,
+                Active = active,
+                RowsRel = new List<SD.RectangleF>(),
+            };
+            var key = new System.Text.StringBuilder(active ? "a" : "d");
+            key.Append(':').Append(it.W).Append('x').Append(it.H);
+            foreach (var r in rows)
+            {
+                var rel = new SD.RectangleF(r.X - l + ARGB_PAD, r.Y - t + ARGB_PAD, r.W, r.H);
+                it.RowsRel.Add(rel);
+                key.Append(';').Append((int)rel.X).Append(',').Append((int)rel.Y)
+                   .Append(',').Append((int)rel.Width).Append(',').Append((int)rel.Height);
+            }
+            it.Key = key.ToString();
+            return it;
+        }
+
+        // Dim = soft rounded translucent wash per row. Active single row =
+        // wash + rounded focus ring. Active multi-row = one staircase
+        // outline tracing the union of the rows + a wash fill of the same
+        // polygon - one selected "thing".
+        static SD.Bitmap RenderAdornmentItem(ArgbItem it)
+        {
+            var bmp = new SD.Bitmap(it.W, it.H, SD.Imaging.PixelFormat.Format32bppArgb);
+            using (var g = SD.Graphics.FromImage(bmp))
+            {
+                g.SmoothingMode = SD.Drawing2D.SmoothingMode.AntiAlias;
+                g.Clear(SD.Color.Transparent);
+                if (!it.Active)
+                {
+                    var rr = it.RowsRel[0];
+                    rr.Inflate(-0.5f, -0.5f);
+                    using (var path = RoundedPath(rr, 4f))
+                    using (var fill = new SD.SolidBrush(SD.Color.FromArgb(38, DimColor)))
+                        g.FillPath(fill, path);
+                }
+                else if (it.RowsRel.Count == 1)
+                {
+                    var rr = it.RowsRel[0];
+                    rr.Inflate(1f, 1f);
+                    using (var path = RoundedPath(rr, 4f))
+                    {
+                        using (var fill = new SD.SolidBrush(SD.Color.FromArgb(46, ActiveColor)))
+                            g.FillPath(fill, path);
+                        using (var pen = new SD.Pen(SD.Color.FromArgb(210, ActiveColor), 1.6f))
+                            g.DrawPath(pen, path);
+                    }
+                }
+                else
+                {
+                    using (var path = StaircasePath(it.RowsRel, 1.5f))
+                    {
+                        using (var fill = new SD.SolidBrush(SD.Color.FromArgb(46, ActiveColor)))
+                            g.FillPath(fill, path);
+                        using (var pen = new SD.Pen(SD.Color.FromArgb(210, ActiveColor), 1.6f))
+                            g.DrawPath(pen, path);
+                    }
+                }
+            }
+            return bmp;
+        }
+
+        // One polygon tracing the union of vertically-stacked row rects:
+        // down the right side stepping at each row boundary, back up the
+        // left. Rows are contiguous (the caller grouped them), so the
+        // steps are near-horizontal and AA smooths the joins.
+        static SD.Drawing2D.GraphicsPath StaircasePath(List<SD.RectangleF> rows, float inflate)
+        {
+            var pts = new List<SD.PointF>();
+            for (int i = 0; i < rows.Count; i++)
+            {
+                var r = rows[i];
+                r.Inflate(inflate, inflate);
+                pts.Add(new SD.PointF(r.Right, r.Top));
+                pts.Add(new SD.PointF(r.Right, r.Bottom));
+            }
+            for (int i = rows.Count - 1; i >= 0; i--)
+            {
+                var r = rows[i];
+                r.Inflate(inflate, inflate);
+                pts.Add(new SD.PointF(r.Left, r.Bottom));
+                pts.Add(new SD.PointF(r.Left, r.Top));
+            }
+            var p = new SD.Drawing2D.GraphicsPath();
+            p.AddPolygon(pts.ToArray());
+            return p;
+        }
+
         // Fade/suppression hook: re-push cached frames at a new constant
         // alpha (per-pixel alpha stays; SourceConstantAlpha multiplies).
         // Callable from the hook thread - PushFrame uses cached hwnds.
@@ -4641,35 +4778,6 @@ namespace OpenCues
             _argbLevel = a;
             foreach (var ad in _argbPool)
                 if (ad.IsShown && ad.Frame != null) ad.PushFrame(ad.Frame, ad.LastX, ad.LastY, a);
-        }
-
-        // The pretty treatments per-pixel alpha unlocks: dim = soft rounded
-        // translucent wash; active = accent wash + antialiased focus ring.
-        static SD.Bitmap RenderAdornment(int w, int h, bool active)
-        {
-            var bmp = new SD.Bitmap(w, h, SD.Imaging.PixelFormat.Format32bppArgb);
-            using (var g = SD.Graphics.FromImage(bmp))
-            {
-                g.SmoothingMode = SD.Drawing2D.SmoothingMode.AntiAlias;
-                g.Clear(SD.Color.Transparent);
-                var rect = new SD.RectangleF(1.5f, 1.5f, w - 3f, h - 3f);
-                using (var path = RoundedPath(rect, 4f))
-                {
-                    if (active)
-                    {
-                        using (var fill = new SD.SolidBrush(SD.Color.FromArgb(46, ActiveColor)))
-                            g.FillPath(fill, path);
-                        using (var pen = new SD.Pen(SD.Color.FromArgb(210, ActiveColor), 1.6f))
-                            g.DrawPath(pen, path);
-                    }
-                    else
-                    {
-                        using (var fill = new SD.SolidBrush(SD.Color.FromArgb(38, DimColor)))
-                            g.FillPath(fill, path);
-                    }
-                }
-            }
-            return bmp;
         }
 
         static SD.Drawing2D.GraphicsPath RoundedPath(SD.RectangleF r, float rad)
