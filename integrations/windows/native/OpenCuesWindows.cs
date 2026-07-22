@@ -2995,7 +2995,13 @@ namespace OpenCues
                         // The LIVE style skips the hide entirely: its pixels
                         // cannot be stale and the local span shift keeps the
                         // geometry sliding with the keystrokes ("see it move").
-                        if (IsTextMutatingKey(vk) && _overlayStyle != "live")
+                        // ARGB skips it too (2026-07-22): each mark is its own
+                        // window that SLIDES with the lockstep re-rects (an
+                        // atomic ULW move, no repaint) - typing that merely
+                        // shifts spans doesn't invalidate them, so they must
+                        // not blink. True rewrites still blank via the
+                        // clear-before-write invariant; scrolls still hide.
+                        if (IsTextMutatingKey(vk) && _overlayStyle != "live" && _overlayStyle != "argb")
                         {
                             _typingQuietAt = Environment.TickCount + TYPING_QUIET_MS;
                             if (!_inkHidden)
@@ -4085,6 +4091,7 @@ namespace OpenCues
         public int LastX, LastY, LastW = -1, LastH = -1;
         public bool LastActive;
         public string RenderKey;   // render identity (size + state + row layout)
+        public int AppearStart;    // TickCount when the appear-fade began; 0 = settled
         public byte LastAlpha = 255;
         public SD.Bitmap Frame;      // last rendered content, re-pushable for fades
         public bool IsShown;
@@ -4222,6 +4229,9 @@ namespace OpenCues
         // (appear -> disappear -> fade back). With the level tracked, a
         // mid-fade push joins the fade instead of fighting it.
         volatile byte _argbLevel = 255;
+        // Appear-fade: NEW marks fade up over ~300ms instead of popping in.
+        const int ARGB_APPEAR_MS = 300;
+        SWF.Timer _appearTimer;
         // This window is excluded from screen capture (WDA_EXCLUDEFROMCAPTURE
         // succeeded): CopyFromScreen never sees our own ink, so captures need
         // no hide-and-wait dance and CANNOT self-capture (the re-dim
@@ -4335,7 +4345,7 @@ namespace OpenCues
         {
             if (_inkSuppressed) { _fadeTimer.Stop(); return; }   // re-hidden mid-fade
             int target = SteadyAlpha();
-            _fadeAlpha += 45;                                    // ~6 steps x 25ms
+            _fadeAlpha += _style == "argb" ? 22 : 45;            // argb: ~12 steps x 25ms = 300ms; others ~150ms
             if (_fadeAlpha >= target) { _fadeAlpha = target; _fadeTimer.Stop(); }
             SetInkAlpha((byte)_fadeAlpha);
             // Live mirrors / ARGB adornments fade in step with the underlay.
@@ -4647,11 +4657,22 @@ namespace OpenCues
                     a.RenderKey = it.Key;
                     a.LastW = it.W; a.LastH = it.H; a.LastActive = it.Active;
                 }
-                if (geomChanged || moved || a.LastAlpha != alpha || !a.IsShown)
+                bool fresh = !a.IsShown;
+                if (fresh) { try { a.Show(); } catch { } a.IsShown = true; }
+                if (fresh && alpha > 0)
+                {
+                    // New mark: start invisible, fade up over ARGB_APPEAR_MS.
+                    a.LastX = it.X; a.LastY = it.Y;
+                    a.PushFrame(a.Frame, it.X, it.Y, 0);
+                    a.AppearStart = Environment.TickCount;
+                    StartAppearTimer();
+                }
+                else if (geomChanged || moved || a.LastAlpha != alpha || fresh)
                 {
                     a.LastX = it.X; a.LastY = it.Y;
-                    if (!a.IsShown) { try { a.Show(); } catch { } a.IsShown = true; }
-                    a.PushFrame(a.Frame, it.X, it.Y, alpha);
+                    // Mid-appear repositions keep the fade's current alpha -
+                    // the timer owns the climb.
+                    a.PushFrame(a.Frame, it.X, it.Y, a.AppearStart != 0 ? a.LastAlpha : alpha);
                 }
                 used++;
             }
@@ -4661,6 +4682,7 @@ namespace OpenCues
                 {
                     try { _argbPool[i].Hide(); } catch { }
                     _argbPool[i].IsShown = false;
+                    _argbPool[i].AppearStart = 0;
                 }
             }
         }
@@ -4766,6 +4788,38 @@ namespace OpenCues
             var p = new SD.Drawing2D.GraphicsPath();
             p.AddPolygon(pts.ToArray());
             return p;
+        }
+
+        void StartAppearTimer()
+        {
+            if (_appearTimer == null)
+            {
+                _appearTimer = new SWF.Timer();
+                _appearTimer.Interval = 25;
+                _appearTimer.Tick += AppearTick;
+            }
+            _appearTimer.Start();
+        }
+
+        void AppearTick(object sender, EventArgs e)
+        {
+            bool any = false;
+            int now = Environment.TickCount;
+            foreach (var ad in _argbPool)
+            {
+                if (ad.AppearStart == 0 || !ad.IsShown || ad.Frame == null) continue;
+                if (_inkSuppressed || _argbLevel == 0) { ad.AppearStart = 0; continue; }   // a suppressor owns alpha now
+                int el = unchecked(now - ad.AppearStart);
+                if (el >= ARGB_APPEAR_MS)
+                {
+                    ad.AppearStart = 0;
+                    ad.PushFrame(ad.Frame, ad.LastX, ad.LastY, _argbLevel);
+                    continue;
+                }
+                any = true;
+                ad.PushFrame(ad.Frame, ad.LastX, ad.LastY, (byte)((int)_argbLevel * el / ARGB_APPEAR_MS));
+            }
+            if (!any) _appearTimer.Stop();
         }
 
         // Fade/suppression hook: re-push cached frames at a new constant
