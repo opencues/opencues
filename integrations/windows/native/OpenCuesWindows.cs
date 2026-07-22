@@ -478,6 +478,90 @@ namespace OpenCues
         static int _scrollQuietAt;
         const int SCROLL_QUIET_MS = 350;
 
+        // Edge-aware scroll hide (2026-07-22, take 3 - the happy medium).
+        // Take 1 asked the app inside the mouse hook (wheel lag); take 2
+        // confirmed movement after the event (marks lingered at scroll
+        // start). Take 3 asks a question that needs NO post-event wait:
+        // "CAN the view move?" - answered from a cache the poll thread
+        // maintains every tick (first visible line, line count, visible
+        // rows; all O(1) messages, off the input path). At wheel time the
+        // decision is instant: scrolling INTO an edge -> skip, marks never
+        // flicker; otherwise -> hide immediately, unchanged from the
+        // approved behavior. Stale cache degrades gracefully (one spurious
+        // hide, or a probe-caught hide ~40ms late).
+        const uint EM_GETFIRSTVISIBLELINE = 0xCE;
+        const uint EM_GETLINECOUNT = 0xBA;
+        static volatile bool _atTop, _atBottom;
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct CRect { public int L, T, R, B; }
+        [DllImport("user32.dll")] static extern bool GetClientRect(IntPtr hwnd, out CRect r);
+
+        static int EditMsg(uint msg)
+        {
+            try
+            {
+                IntPtr hwnd = _attachedHwnd;
+                if (hwnd == IntPtr.Zero) return -1;
+                IntPtr res;
+                if (SendMessageTimeoutW(hwnd, msg, IntPtr.Zero, IntPtr.Zero, SMTO_ABORTIFHUNG, 50, out res) == IntPtr.Zero) return -1;
+                return unchecked((int)res.ToInt64());
+            }
+            catch { return -1; }
+        }
+
+        // Poll-thread: refresh the can-scroll edge state.
+        static void MaybeUpdateScrollEdges()
+        {
+            if (!_attached || !_attachedIsEdit || _attachMode != AttachMode.Uia)
+            {
+                _atTop = false; _atBottom = false; return;
+            }
+            int first = EditMsg(EM_GETFIRSTVISIBLELINE);
+            if (first < 0) { _atTop = false; _atBottom = false; return; }
+            _atTop = first == 0;
+            int count = EditMsg(EM_GETLINECOUNT);
+            bool atBottom = false;
+            if (count > 0)
+            {
+                int lineH = 16;
+                var ov = _overlay;
+                CRect cr;
+                if (GetClientRect(_attachedHwnd, out cr) && cr.B > cr.T)
+                {
+                    // Visible rows from client height / an estimated line
+                    // height (a mark's row height when one exists).
+                    lineH = Math.Max(10, EstimateLineHeight());
+                    int visible = Math.Max(1, (cr.B - cr.T) / lineH);
+                    atBottom = first + visible >= count;
+                }
+            }
+            _atBottom = atBottom;
+        }
+
+        static int EstimateLineHeight()
+        {
+            var f = _overlay;
+            if (f != null)
+            {
+                int h = f.FirstAdornmentRowHeight();
+                if (h > 0) return h;
+            }
+            return 16;
+        }
+
+        // Hook-side: instant, cache-only decision. dir: +1 wheel-up/PgUp,
+        // -1 wheel-down/PgDn, 0 unknown (always hide).
+        static void EdgeAwareScrollHide(int dir)
+        {
+            if (_attachedIsEdit)
+            {
+                if (dir > 0 && _atTop) return;      // can't scroll up - no flicker
+                if (dir < 0 && _atBottom) return;   // can't scroll down - no flicker
+            }
+            ScrollHideNow();
+        }
+
         static void ScrollHideNow()
         {
             // Scroll detection hides ALL ink IMMEDIATELY (2026-07-22 final
@@ -703,6 +787,7 @@ namespace OpenCues
                         MaybePollCaret();      // phase 2: real caret -> daemon cursor events
                         MaybeRefreshOverlay(); // phase 2: track window moves/scrolls
                         MaybeRestoreInk();     // phase 2: fade ink back in after typing quiets
+                        MaybeUpdateScrollEdges();   // can-scroll cache for edge-aware hide
                         MaybeRestoreScroll();  // phase 2: fade all ink back once scrolling settles
                         MaybeRestoreMirrors(); // phase 2: live mirrors back after a write blink
                     }
@@ -2961,6 +3046,9 @@ namespace OpenCues
         static IntPtr _mouseHookHandle = IntPtr.Zero;
         static LowLevelKeyboardProc _mouseProc;   // same delegate shape (int, IntPtr, IntPtr)
 
+        [StructLayout(LayoutKind.Sequential)]
+        struct MSLLHOOKSTRUCT { public int ptX, ptY; public uint mouseData; public uint flags; public uint time; public IntPtr dwExtraInfo; }
+
         static IntPtr MouseHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
         {
             if (nCode >= 0)
@@ -2971,7 +3059,13 @@ namespace OpenCues
                     if ((m == WM_MOUSEWHEEL || m == WM_MOUSEHWHEEL)
                         && _attached && _enabled && _fieldCycling && Connected)
                     {
-                        ScrollHideNow();
+                        int dir = 0;
+                        if (m == WM_MOUSEWHEEL)
+                        {
+                            var mi = (MSLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(MSLLHOOKSTRUCT));
+                            dir = unchecked((short)(mi.mouseData >> 16)) > 0 ? 1 : -1;
+                        }
+                        EdgeAwareScrollHide(dir);
                     }
                     else if (m == 0x0201 && _attached && _fieldCycling)   // WM_LBUTTONDOWN - click moves the caret
                         _caretDirty = true;
@@ -3022,7 +3116,8 @@ namespace OpenCues
                         BumpFastPoll();
                         _caretDirty = true;   // any key can move the caret (perf opt 2)
                         // Keyboard scrolls move every mark - scroll suppression.
-                        if (vk == 0x21 || vk == 0x22) ScrollHideNow();   // PgUp / PgDn
+                        if (vk == 0x21) EdgeAwareScrollHide(1);        // PgUp
+                        else if (vk == 0x22) EdgeAwareScrollHide(-1);  // PgDn
                         // Line-STRUCTURE edits (argb): Enter / line-joining
                         // Backspace/Delete move every mark below the caret -
                         // treat them like scrolling (2026-07-22 call, after
@@ -4944,6 +5039,14 @@ namespace OpenCues
                 ad.PushFrame(ad.Frame, ad.LastX, ad.LastY, (byte)((int)_argbLevel * el / ARGB_APPEAR_MS));
             }
             if (!any) _appearTimer.Stop();
+        }
+
+        // Line-height estimate source for the scroll edge cache.
+        public int FirstAdornmentRowHeight()
+        {
+            foreach (var ad in _argbPool)
+                if (ad.IsShown && ad.LastH > 0) return Math.Max(0, ad.LastH - ARGB_PAD * 2);
+            return 0;
         }
 
         // Fade/suppression hook: re-push cached frames at a new constant
