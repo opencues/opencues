@@ -21,10 +21,6 @@ export interface WordSpan {
 }
 
 export class Navigation {
-  /** Previous buffer text (any source) — the span-def rebase diffs user
-   *  edits against it. Defs are cleared on buffer resets, so a stale
-   *  value across a buffer switch rebases nothing. */
-  private _lastSeenText: string | null = null;
   private _unsubLeft: Unsubscribe | null = null;
   private _unsubRight: Unsubscribe | null = null;
   private _unsubLeftShift: Unsubscribe | null = null;
@@ -156,20 +152,7 @@ export class Navigation {
    * the span.
    */
   onTextChange(event: TextChangeEvent): void {
-    // Track the previous buffer for BOTH sources — the span-def rebase
-    // below diffs user edits against whatever the buffer held before,
-    // which is often a runtime substitution.
-    const prevText = this._lastSeenText;
-    this._lastSeenText = event.text;
     if (event.source === 'runtime') return;
-    // Rebase managed span defs (transform/fluid/sentence-cue substitutes)
-    // across this user edit BEFORE pruneStale judges them: tweaking a
-    // substitution in place keeps its def coherent (span offsets + the
-    // current alternative follow the edit), so the dim persists and a
-    // later cycle/revert splices the true range instead of stale offsets.
-    if (prevText !== null && this.dynDefs.size > 0) {
-      this.dynDefs.rebaseSpans(prevText, event.text);
-    }
     // Task-span atomic delete: when the user edits any character of an
     // agent-task span (TASK_SHOW prompt insertion today, future task-*
     // surfaces tomorrow), the whole span deletes as a unit. Scoped via
