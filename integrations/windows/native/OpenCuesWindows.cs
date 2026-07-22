@@ -140,11 +140,12 @@ namespace OpenCues
         // side moves - shim-internal reads stay raw.
         static string WireEol(string s)
         {
-            if (s == null || s.IndexOf('\r') < 0) return s;
+            if (s == null || (s.IndexOf('\r') < 0 && s.IndexOf('\v') < 0)) return s;
             var sb = new System.Text.StringBuilder(s.Length);
             for (int i = 0; i < s.Length; i++)
             {
                 if (s[i] == '\r' && (i + 1 >= s.Length || s[i + 1] != '\n')) sb.Append('\n');
+                else if (s[i] == '\v') sb.Append('\n');   // WordPad/Slack soft-break dress (our own VT writes echoing back)
                 else sb.Append(s[i]);
             }
             return sb.ToString();
@@ -3711,8 +3712,14 @@ namespace OpenCues
             if (rects.Count != _lastRectLogCount)
             {
                 _lastRectLogCount = rects.Count;
+                var geo = new System.Text.StringBuilder();
+                for (int i = 0; i < Math.Min(3, rects.Count); i++)
+                    geo.Append(" [").Append((int)rects[i].X).Append(',').Append((int)rects[i].Y)
+                       .Append(' ').Append((int)rects[i].W).Append('x').Append((int)rects[i].H)
+                       .Append(" '").Append(rects[i].Word != null && rects[i].Word.Length > 12 ? rects[i].Word.Substring(0, 12) : rects[i].Word).Append("']");
                 Log("debug", "overlay rects: " + rects.Count + " (dim=" + _dimSpans.Count
-                    + " hl=" + (_hlSpan != null ? 1 : 0) + " textLen=" + (_lastSentText == null ? 0 : _lastSentText.Length) + ")");
+                    + " hl=" + (_hlSpan != null ? 1 : 0) + " textLen=" + (_lastSentText == null ? 0 : _lastSentText.Length)
+                    + " app=" + (_lastApp ?? "?") + ")" + geo);
             }
             // Remember where the first rect landed - the per-tick movement
             // probe compares against this to catch scroll/drag/zoom (which
@@ -3940,12 +3947,23 @@ namespace OpenCues
                                 posStart = su;
                             }
                             var rects = run.GetBoundingRectangles();
-                            if (rects != null)
                             {
                                 var bucket = buckets[order[idx][3]];
                                 int emittedFrom = bucket.Count;
-                                EmitSpanRects(rects, text, segS, segEnd, active, caret, prevCaret, bucket);
-                                ClampTrailingMark(doc, text, segS, segEnd, bucket, emittedFrom);
+                                // Stubbed Chromium geometry: try NATIVE first
+                                // (real rects when the app serves native
+                                // clients); the managed emit (chip-degraded)
+                                // is the last resort.
+                                if (LooksStubbed(rects, text, segS, segEnd)
+                                    && EmitNativeSpanRects(text, segS, segEnd, active, caret, prevCaret, bucket))
+                                {
+                                    // native geometry emitted
+                                }
+                                else if (rects != null)
+                                {
+                                    EmitSpanRects(rects, text, segS, segEnd, active, caret, prevCaret, bucket);
+                                    ClampTrailingMark(doc, text, segS, segEnd, bucket, emittedFrom);
+                                }
                             }
                         }
                         segS = segScan;
@@ -3999,17 +4017,120 @@ namespace OpenCues
                         if (eu > 0) r.MoveEndpointByUnit(TextPatternRangeEndpoint.End, TextUnit.Character, eu);
                         if (su > 0) r.MoveEndpointByUnit(TextPatternRangeEndpoint.Start, TextUnit.Character, su);
                         var rects = r.GetBoundingRectangles();
-                        if (rects != null)
                         {
                             int emittedFrom = list.Count;
-                            EmitSpanRects(rects, text, segS, segEnd, active, caret, prevCaret, list);
-                            ClampTrailingMark(doc, text, segS, segEnd, list, emittedFrom);
+                            if (LooksStubbed(rects, text, segS, segEnd)
+                                && EmitNativeSpanRects(text, segS, segEnd, active, caret, prevCaret, list))
+                            {
+                                // native geometry emitted
+                            }
+                            else if (rects != null)
+                            {
+                                EmitSpanRects(rects, text, segS, segEnd, active, caret, prevCaret, list);
+                                ClampTrailingMark(doc, text, segS, segEnd, list, emittedFrom);
+                            }
                         }
                     }
                     segS = segScan;
                 }
             }
             catch { /* span resolve is best-effort; a missing rect = no paint */ }
+        }
+
+        // ─── Native-UIA rect fallback (2026-07-22) ─────────────────────
+        // Chromium serves REAL TextPattern geometry only to native COM
+        // clients - the managed wrapper gets a stubbed ~2px caret-slot rect
+        // for every range (omnibox; same family as the Slack finding). When
+        // the managed resolve yields nothing usable for a span, re-resolve
+        // it through the native IUIAutomation interop (already present for
+        // caret work). GetBoundingRectangles returns a SAFEARRAY of doubles
+        // (x,y,w,h screen-coord quads), decoded via oleaut32.
+        [DllImport("oleaut32.dll")] static extern int SafeArrayGetLBound(IntPtr psa, uint nDim, out int val);
+        [DllImport("oleaut32.dll")] static extern int SafeArrayGetUBound(IntPtr psa, uint nDim, out int val);
+        [DllImport("oleaut32.dll")] static extern int SafeArrayAccessData(IntPtr psa, out IntPtr data);
+        [DllImport("oleaut32.dll")] static extern int SafeArrayUnaccessData(IntPtr psa);
+        [DllImport("oleaut32.dll")] static extern int SafeArrayDestroy(IntPtr psa);
+
+        static bool TryNativeSpanRects(string text, int s, int e, List<double> quads)
+        {
+            try
+            {
+                var uia = NativeUia();
+                if (uia == null) return false;
+                IUIAutomationElementN el;
+                if (uia.GetFocusedElement(out el) != 0 || el == null) return false;
+                object po;
+                if (el.GetCurrentPattern(UIA_TextPatternId_N, out po) != 0 || po == null) return false;
+                var tp = po as IUIAutomationTextPatternN;
+                if (tp == null) return false;
+                IUIAutomationTextRangeN doc, r;
+                if (tp.get_DocumentRange(out doc) != 0 || doc == null) return false;
+                if (doc.Clone(out r) != 0 || r == null) return false;
+                if (r.MoveEndpointByRange(EPT_End, doc, EPT_Start) != 0) return false;
+                int su = MapStrToUiaChars(text, s);
+                int eu = MapStrToUiaChars(text, e);
+                int moved;
+                if (eu > 0) r.MoveEndpointByUnit(EPT_End, TU_Character, eu, out moved);
+                if (su > 0) r.MoveEndpointByUnit(EPT_Start, TU_Character, su, out moved);
+                IntPtr sa;
+                if (r.GetBoundingRectangles(out sa) != 0 || sa == IntPtr.Zero) return false;
+                try
+                {
+                    int lb, ub;
+                    if (SafeArrayGetLBound(sa, 1, out lb) != 0 || SafeArrayGetUBound(sa, 1, out ub) != 0) return false;
+                    int n = ub - lb + 1;
+                    if (n < 4 || (n % 4) != 0) return false;
+                    IntPtr data;
+                    if (SafeArrayAccessData(sa, out data) != 0) return false;
+                    try
+                    {
+                        var arr = new double[n];
+                        Marshal.Copy(data, arr, 0, n);
+                        foreach (var d in arr) quads.Add(d);
+                    }
+                    finally { SafeArrayUnaccessData(sa); }
+                    return true;
+                }
+                finally { SafeArrayDestroy(sa); }
+            }
+            catch { return false; }
+        }
+
+        // Does the managed resolve look like Chromium's stubbed geometry
+        // (one caret-slot-width rect for a multi-char span, or nothing)?
+        static bool LooksStubbed(System.Windows.Rect[] rects, string text, int s, int e)
+        {
+            if (rects == null || rects.Length == 0) return true;
+            if (rects.Length != 1 || rects[0].IsEmpty) return false;
+            int visChars = 0;
+            for (int i = s; i < e; i++) if (!char.IsWhiteSpace(text[i])) visChars++;
+            return visChars >= 2 && rects[0].Width < Math.Min(visChars, 6) * 2;
+        }
+
+        // Fallback entry: native-resolve a span and emit whatever plausible
+        // rects come back. Returns true if anything was emitted.
+        static bool EmitNativeSpanRects(string text, int s, int e, bool active, int caret, int prevCaret, List<OverlaySpanRect> list)
+        {
+            var quads = new List<double>();
+            if (!TryNativeSpanRects(text, s, e, quads))
+            {
+                OverlayLog("native rects: FAILED for span [" + s + "," + e + ")");
+                return false;
+            }
+            OverlayLog("native rects: " + (quads.Count / 4) + " quad(s), first=["
+                + (quads.Count >= 4 ? (int)quads[0] + "," + (int)quads[1] + " " + (int)quads[2] + "x" + (int)quads[3] : "-") + "]");
+            int n = quads.Count / 4;
+            var rects = new System.Windows.Rect[n];
+            for (int i = 0; i < n; i++)
+            {
+                double w = quads[i * 4 + 2], h = quads[i * 4 + 3];
+                rects[i] = (w > 0 && h > 0)
+                    ? new System.Windows.Rect(quads[i * 4], quads[i * 4 + 1], w, h)
+                    : System.Windows.Rect.Empty;
+            }
+            int before = list.Count;
+            EmitSpanRects(rects, text, s, e, active, caret, prevCaret, list);
+            return list.Count > before;
         }
 
         // The final row of a span whose END touches a line break (or the
@@ -4077,9 +4198,25 @@ namespace OpenCues
             // same shape (the filter ate the reverted 'draft email _'
             // underscore's mark, 2026-07-21).
             bool multiLine = word.IndexOf('\n') >= 0 || word.IndexOf('\r') >= 0;
-            foreach (System.Windows.Rect rc in rects)
+            // Plausibility: some Chromium fields (the omnibox) serve managed
+            // clients a stubbed GetBoundingRectangles - the same degenerate
+            // ~2px caret-slot rect for EVERY range. A single rect for a
+            // multi-char span narrower than ~2px/char is impossible glyph
+            // geometry: skip it (no mark beats a wrong 1px mark). Single
+            // narrow glyphs ('_') are exempt; real providers unaffected.
+            int visChars = 0;
+            foreach (var ch in word) if (!char.IsWhiteSpace(ch)) visChars++;
+            foreach (System.Windows.Rect rcRaw in rects)
             {
+                var rc = rcRaw;
                 if (rc.IsEmpty || rc.Width <= 0 || rc.Height <= 0) continue;
+                // Implausible width for a multi-char span (stubbed Chromium
+                // geometry: the ~2px caret-slot rect). The position is still
+                // real - degrade to a fixed-width CHIP there rather than
+                // showing nothing ("some indication beats geometric
+                // honesty"; invisible-but-cycleable was worse).
+                if (visChars >= 2 && rects.Length == 1 && rc.Width < Math.Min(visChars, 6) * 2)
+                    rc.Width = 20;
                 // A multi-line span's EMPTY lines resolve to caret-width
                 // sliver rects - the underline drew a floating dash under
                 // each ("empty lines have underlines"). No real glyph LINE
