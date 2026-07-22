@@ -4042,6 +4042,112 @@ namespace OpenCues
     // is Per-Monitor-V2 DPI aware, so WinForms coords are physical too),
     // plus the word text (part of the capture-cache key) and whether this is
     // the actively-cycling span.
+    // ─── ARGB adornment window (the "grammarly embodiment") ─────────────
+    // A tiny click-through window with PER-PIXEL alpha, one per span row.
+    // Unlike the colorkey OverlayForm (binary transparency + one global
+    // alpha, hard edges only), content is rendered into a premultiplied
+    // 32-bit ARGB bitmap and pushed via UpdateLayeredWindow - so the pool
+    // can draw antialiased rounded washes, focus rings and glows, and the
+    // update cost scales with INK AREA, not screen area (each window is
+    // word-row-sized; a push is a few KB). Pooled + reconciled per render
+    // push exactly like the live style's DWM thumbnails.
+    internal class ArgbAdornment : SWF.Form
+    {
+        const int WS_EX_LAYERED = 0x80000;
+        const int WS_EX_TRANSPARENT = 0x20;
+        const int WS_EX_TOOLWINDOW = 0x80;
+        const int WS_EX_NOACTIVATE = 0x8000000;
+        const int WS_EX_TOPMOST = 0x8;
+        const uint WDA_EXCLUDEFROMCAPTURE = 0x11;
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct W32Point { public int x, y; }
+        [StructLayout(LayoutKind.Sequential)]
+        struct W32Size { public int cx, cy; }
+        [StructLayout(LayoutKind.Sequential)]
+        struct BLENDFUNCTION { public byte BlendOp, BlendFlags, SourceConstantAlpha, AlphaFormat; }
+
+        [DllImport("user32.dll")] static extern bool UpdateLayeredWindow(IntPtr hwnd, IntPtr hdcDst,
+            ref W32Point pptDst, ref W32Size psize, IntPtr hdcSrc, ref W32Point pprSrc,
+            uint crKey, ref BLENDFUNCTION pblend, uint dwFlags);
+        [DllImport("user32.dll")] static extern IntPtr GetDC(IntPtr hwnd);
+        [DllImport("user32.dll")] static extern int ReleaseDC(IntPtr hwnd, IntPtr hdc);
+        [DllImport("gdi32.dll")] static extern IntPtr CreateCompatibleDC(IntPtr hdc);
+        [DllImport("gdi32.dll")] static extern bool DeleteDC(IntPtr hdc);
+        [DllImport("gdi32.dll")] static extern IntPtr SelectObject(IntPtr hdc, IntPtr h);
+        [DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr h);
+        [DllImport("user32.dll")] static extern bool SetWindowDisplayAffinity(IntPtr hwnd, uint affinity);
+        const uint ULW_ALPHA = 2;
+        const byte AC_SRC_OVER = 0;
+        const byte AC_SRC_ALPHA = 1;
+
+        // Reconcile cache - owned by the pool's reconcile loop (UI thread).
+        public int LastX, LastY, LastW = -1, LastH = -1;
+        public bool LastActive;
+        public byte LastAlpha = 255;
+        public SD.Bitmap Frame;      // last rendered content, re-pushable for fades
+        public bool IsShown;
+        public IntPtr Hwnd;          // cached for cross-thread fade pushes
+
+        public ArgbAdornment()
+        {
+            FormBorderStyle = SWF.FormBorderStyle.None;
+            ShowInTaskbar = false;
+            StartPosition = SWF.FormStartPosition.Manual;
+            SetBounds(-32000, -32000, 1, 1);
+        }
+
+        protected override bool ShowWithoutActivation { get { return true; } }
+
+        protected override SWF.CreateParams CreateParams
+        {
+            get
+            {
+                var cp = base.CreateParams;
+                cp.ExStyle |= WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST;
+                return cp;
+            }
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            Hwnd = Handle;
+            try { SetWindowDisplayAffinity(Handle, WDA_EXCLUDEFROMCAPTURE); } catch { }
+        }
+
+        // Push a full ARGB frame (canonical per-pixel-alpha layered-window
+        // dance). Also MOVES the window - position rides the same call, so
+        // reposition + content + alpha are one atomic update.
+        public void PushFrame(SD.Bitmap bmp, int x, int y, byte constantAlpha)
+        {
+            var h = Hwnd;
+            if (h == IntPtr.Zero || bmp == null) return;
+            IntPtr screenDc = GetDC(IntPtr.Zero);
+            IntPtr memDc = CreateCompatibleDC(screenDc);
+            IntPtr hBmp = IntPtr.Zero, old = IntPtr.Zero;
+            try
+            {
+                hBmp = bmp.GetHbitmap(SD.Color.FromArgb(0));
+                old = SelectObject(memDc, hBmp);
+                var size = new W32Size { cx = bmp.Width, cy = bmp.Height };
+                var src = new W32Point { x = 0, y = 0 };
+                var dst = new W32Point { x = x, y = y };
+                var blend = new BLENDFUNCTION { BlendOp = AC_SRC_OVER, BlendFlags = 0, SourceConstantAlpha = constantAlpha, AlphaFormat = AC_SRC_ALPHA };
+                UpdateLayeredWindow(h, screenDc, ref dst, ref size, memDc, ref src, 0, ref blend, ULW_ALPHA);
+                LastAlpha = constantAlpha;
+            }
+            catch { }
+            finally
+            {
+                if (old != IntPtr.Zero) SelectObject(memDc, old);
+                if (hBmp != IntPtr.Zero) DeleteObject(hBmp);
+                DeleteDC(memDc);
+                ReleaseDC(IntPtr.Zero, screenDc);
+            }
+        }
+    }
+
     internal class OverlaySpanRect
     {
         public float X, Y, W, H;
@@ -4104,6 +4210,17 @@ namespace OpenCues
         // and the gray-vs-accent tint is re-derived from them (word-sized
         // DimBitmap pass, microseconds) - nav steps capture nothing.
         readonly Dictionary<string, SD.Bitmap> _rawCache = new Dictionary<string, SD.Bitmap>();
+        // ARGB adornment pool ("argb" style): one per-pixel-alpha window per
+        // span row, pooled + reconciled like the DWM thumbnails.
+        const int ARGB_PAD = 3;   // ring + AA overhang beyond the word rect
+        readonly List<ArgbAdornment> _argbPool = new List<ArgbAdornment>();
+        // Current pool alpha (0-255), driven by SetArgbFraction (fades +
+        // suppressors). Ensure pushes use THIS, not a binary 0/255: a push
+        // landing just after un-suppression used to slam 255 while the
+        // fade timer was about to restart from 0 - the "flash in twice"
+        // (appear -> disappear -> fade back). With the level tracked, a
+        // mid-fade push joins the fade instead of fighting it.
+        volatile byte _argbLevel = 255;
         // This window is excluded from screen capture (WDA_EXCLUDEFROMCAPTURE
         // succeeded): CopyFromScreen never sees our own ink, so captures need
         // no hide-and-wait dance and CANNOT self-capture (the re-dim
@@ -4189,6 +4306,7 @@ namespace OpenCues
             _inkSuppressed = true;
             SetInkAlpha(0);
             SetThumbFraction(0);   // thumbnails ignore window alpha - hide them explicitly
+            SetArgbFraction(0);    // adornment windows have their own alpha too
         }
 
         // Fade the ink back to the style's steady alpha over ~150ms.
@@ -4219,9 +4337,11 @@ namespace OpenCues
             _fadeAlpha += 45;                                    // ~6 steps x 25ms
             if (_fadeAlpha >= target) { _fadeAlpha = target; _fadeTimer.Stop(); }
             SetInkAlpha((byte)_fadeAlpha);
-            // Live mirrors fade in step with the underlay.
+            // Live mirrors / ARGB adornments fade in step with the underlay.
             if (_style == "live")
                 SetThumbFraction((double)_fadeAlpha / Math.Max(1, target));
+            if (_style == "argb")
+                SetArgbFraction((double)_fadeAlpha / Math.Max(1, target));
         }
 
         // Called from the shim's poll thread. Null/empty rects hide the ink.
@@ -4234,11 +4354,13 @@ namespace OpenCues
                     bool styleChanged = style != null && style != _style;
                     if (style != null) _style = style;
                     var next = rects ?? new List<OverlaySpanRect>();
-                    if (styleChanged) { ApplyLayered(); ClearCapCache(); ClearThumbnails(); }
+                    if (styleChanged) { ApplyLayered(); ClearCapCache(); ClearThumbnails(); ClearArgbPool(); }
                     if (_style == "capture") EnsureCaptures(next);
                     else if (_capCache.Count > 0) ClearCapCache();
                     if (_style == "live") EnsureThumbnails(next);
                     else ClearThumbnails();
+                    if (_style == "argb") EnsureArgbAdornments(next);
+                    else if (_argbPool.Count > 0) ClearArgbPool();
                     _rects = next;
                     Invalidate();
                 }));
@@ -4448,6 +4570,118 @@ namespace OpenCues
                     try { DwmUpdateThumbnailProperties(_thumbs[i], ref props); } catch { }
                 }
             }
+        }
+
+        // ---- argb adornment pool ------------------------------------------
+        void ClearArgbPool()
+        {
+            foreach (var a in _argbPool)
+            {
+                try { if (a.Frame != null) a.Frame.Dispose(); } catch { }
+                try { a.Close(); a.Dispose(); } catch { }
+            }
+            if (_argbPool.Count > 0) WindowsShim.OverlayLog("argb: cleared " + _argbPool.Count + " adornment(s)");
+            _argbPool.Clear();
+        }
+
+        // Reconcile the pool against this push's rects: grow-only pool,
+        // reposition/re-render only what changed, hide the surplus. Runs on
+        // the UI thread inside Push (like EnsureThumbnails).
+        void EnsureArgbAdornments(List<OverlaySpanRect> rects)
+        {
+            byte alpha = _inkSuppressed ? (byte)0 : _argbLevel;
+            int used = 0;
+            for (int i = 0; i < rects.Count; i++)
+            {
+                var r = rects[i];
+                int x = (int)r.X - ARGB_PAD, y = (int)r.Y - ARGB_PAD;
+                int w = (int)Math.Ceiling(r.W) + ARGB_PAD * 2, h = (int)Math.Ceiling(r.H) + ARGB_PAD * 2;
+                if (w < 4 || h < 4) continue;
+                ArgbAdornment a;
+                if (used < _argbPool.Count) a = _argbPool[used];
+                else
+                {
+                    a = new ArgbAdornment();
+                    var hh = a.Handle;   // force creation
+                    _argbPool.Add(a);
+                }
+                bool geomChanged = a.LastW != w || a.LastH != h || a.LastActive != r.Active;
+                bool moved = a.LastX != x || a.LastY != y;
+                if (geomChanged)
+                {
+                    try { if (a.Frame != null) a.Frame.Dispose(); } catch { }
+                    a.Frame = RenderAdornment(w, h, r.Active);
+                    a.LastW = w; a.LastH = h; a.LastActive = r.Active;
+                }
+                if (geomChanged || moved || a.LastAlpha != alpha || !a.IsShown)
+                {
+                    a.LastX = x; a.LastY = y;
+                    if (!a.IsShown) { try { a.Show(); } catch { } a.IsShown = true; }
+                    a.PushFrame(a.Frame, x, y, alpha);
+                }
+                used++;
+            }
+            for (int i = used; i < _argbPool.Count; i++)
+            {
+                if (_argbPool[i].IsShown)
+                {
+                    try { _argbPool[i].Hide(); } catch { }
+                    _argbPool[i].IsShown = false;
+                }
+            }
+        }
+
+        // Fade/suppression hook: re-push cached frames at a new constant
+        // alpha (per-pixel alpha stays; SourceConstantAlpha multiplies).
+        // Callable from the hook thread - PushFrame uses cached hwnds.
+        public void SetArgbFraction(double f)
+        {
+            if (f < 0) f = 0; else if (f > 1) f = 1;
+            byte a = (byte)(255 * f);
+            _argbLevel = a;
+            foreach (var ad in _argbPool)
+                if (ad.IsShown && ad.Frame != null) ad.PushFrame(ad.Frame, ad.LastX, ad.LastY, a);
+        }
+
+        // The pretty treatments per-pixel alpha unlocks: dim = soft rounded
+        // translucent wash; active = accent wash + antialiased focus ring.
+        static SD.Bitmap RenderAdornment(int w, int h, bool active)
+        {
+            var bmp = new SD.Bitmap(w, h, SD.Imaging.PixelFormat.Format32bppArgb);
+            using (var g = SD.Graphics.FromImage(bmp))
+            {
+                g.SmoothingMode = SD.Drawing2D.SmoothingMode.AntiAlias;
+                g.Clear(SD.Color.Transparent);
+                var rect = new SD.RectangleF(1.5f, 1.5f, w - 3f, h - 3f);
+                using (var path = RoundedPath(rect, 4f))
+                {
+                    if (active)
+                    {
+                        using (var fill = new SD.SolidBrush(SD.Color.FromArgb(46, ActiveColor)))
+                            g.FillPath(fill, path);
+                        using (var pen = new SD.Pen(SD.Color.FromArgb(210, ActiveColor), 1.6f))
+                            g.DrawPath(pen, path);
+                    }
+                    else
+                    {
+                        using (var fill = new SD.SolidBrush(SD.Color.FromArgb(38, DimColor)))
+                            g.FillPath(fill, path);
+                    }
+                }
+            }
+            return bmp;
+        }
+
+        static SD.Drawing2D.GraphicsPath RoundedPath(SD.RectangleF r, float rad)
+        {
+            var p = new SD.Drawing2D.GraphicsPath();
+            float d = rad * 2;
+            p.AddArc(r.X, r.Y, d, d, 180, 90);
+            p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+            p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+            p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+            p.CloseFigure();
+            return p;
         }
 
         // ---- capture style ------------------------------------------------
@@ -4801,6 +5035,10 @@ namespace OpenCues
                                 g.FillRectangle(b, x, y, r.W, r.H);
                             break;
                         }
+                    case "argb":
+                        // Ink lives in the per-span ARGB adornment pool -
+                        // the colorkey window stays empty.
+                        break;
                     case "wash":
                         {
                             using (var b = new SD.SolidBrush(r.Active ? ActiveColor : DimColor))
@@ -4835,7 +5073,7 @@ namespace OpenCues
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) { ClearCapCache(); ClearThumbnails(); }
+            if (disposing) { ClearCapCache(); ClearThumbnails(); ClearArgbPool(); }
             base.Dispose(disposing);
         }
     }

@@ -72,7 +72,7 @@ const PHASE2 = process.env.OPENCUES_WIN_PHASE2 !== '0';
 //               redraw its pixels luminance-dimmed.
 //   underline — thin gray line under cue words (Grammarly-style)
 //   wash      — translucent gray rectangle over the word
-const OVERLAY_STYLES = ['live', 'capture', 'underline', 'wash'];
+const OVERLAY_STYLES = ['live', 'capture', 'underline', 'wash', 'argb'];
 const OVERLAY_STYLE_RAW = String(process.env.OPENCUES_WIN_OVERLAY_STYLE || 'capture').toLowerCase();
 const OVERLAY_STYLE = OVERLAY_STYLES.includes(OVERLAY_STYLE_RAW) ? OVERLAY_STYLE_RAW : 'capture';
 // Config/UI HTTP server (shared popup + keys/settings API). Defaults to
