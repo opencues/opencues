@@ -75,12 +75,11 @@ const PHASE2 = process.env.OPENCUES_WIN_PHASE2 !== '0';
 const OVERLAY_STYLES = ['live', 'capture', 'underline', 'wash', 'argb'];
 const OVERLAY_STYLE_RAW = String(process.env.OPENCUES_WIN_OVERLAY_STYLE || 'capture').toLowerCase();
 const OVERLAY_STYLE = OVERLAY_STYLES.includes(OVERLAY_STYLE_RAW) ? OVERLAY_STYLE_RAW : 'capture';
-// Scroll suppression: 'auto' (default) hides ink during scrolls for the
-// snapshot styles but lets argb marks CHASE the scroll (they're movable
-// windows with no pixels to go stale); '1' forces hide everywhere, '0'
-// forces chase everywhere.
-const SCROLL_HIDE_RAW = String(process.env.OPENCUES_WIN_SCROLL_HIDE || 'auto').toLowerCase();
-const SCROLL_HIDE = SCROLL_HIDE_RAW === '1' ? true : SCROLL_HIDE_RAW === '0' ? false : OVERLAY_STYLE !== 'argb';
+// Scroll suppression: scroll detection hides ALL ink immediately and
+// fades it back at settle (default). OPENCUES_WIN_SCROLL_HIDE=0 keeps
+// marks visible and just accelerates re-rects instead (degraded mode -
+// marks visibly trail the scroll).
+const SCROLL_HIDE = String(process.env.OPENCUES_WIN_SCROLL_HIDE || '1').toLowerCase() !== '0';
 // Config/UI HTTP server (shared popup + keys/settings API). Defaults to
 // the socket port + 1. Set OPENCUES_WIN_CONFIG_PORT=0 to disable.
 const CONFIG_PORT = process.env.OPENCUES_WIN_CONFIG_PORT !== undefined

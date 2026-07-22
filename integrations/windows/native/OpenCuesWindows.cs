@@ -233,6 +233,7 @@ namespace OpenCues
         // without a per-field HWND (WPF, Chromium) -> screen fallback.
         internal static IntPtr AttachedHwndForCapture() { return _attachedHwnd; }
 
+
         // Live-style source (2026-07-21): DWM thumbnails require a TOP-LEVEL
         // source window. Captured at attach: the field HWND's root ancestor,
         // or the foreground window for HWND-less fields (WPF).
@@ -479,11 +480,11 @@ namespace OpenCues
 
         static void ScrollHideNow()
         {
-            // Chase mode (OPENCUES_WIN_SCROLL_HIDE=auto/0): marks are kept
-            // visible and follow the scroll - argb windows are movable with
-            // no pixels to go stale (wheel scrolls are discrete line jumps,
-            // the same motion class as the Enter-above reflow that already
-            // slides seamlessly). Just accelerate the re-rects.
+            // Scroll detection hides ALL ink IMMEDIATELY (2026-07-22 final
+            // call after the chase experiments: marks trailing a scroll in
+            // any form reads worse than a clean disappear + 300ms fade-back
+            // at settle). OPENCUES_WIN_SCROLL_HIDE=0 keeps marks visible
+            // and just accelerates re-rects - the pre-chase degraded mode.
             if (!_scrollHidePref)
             {
                 BumpFastPoll();
@@ -2969,7 +2970,9 @@ namespace OpenCues
                     int m = wParam.ToInt32();
                     if ((m == WM_MOUSEWHEEL || m == WM_MOUSEHWHEEL)
                         && _attached && _enabled && _fieldCycling && Connected)
+                    {
                         ScrollHideNow();
+                    }
                     else if (m == 0x0201 && _attached && _fieldCycling)   // WM_LBUTTONDOWN - click moves the caret
                         _caretDirty = true;
                 }
@@ -3020,6 +3023,21 @@ namespace OpenCues
                         _caretDirty = true;   // any key can move the caret (perf opt 2)
                         // Keyboard scrolls move every mark - scroll suppression.
                         if (vk == 0x21 || vk == 0x22) ScrollHideNow();   // PgUp / PgDn
+                        // Line-STRUCTURE edits (argb): Enter / line-joining
+                        // Backspace/Delete move every mark below the caret -
+                        // treat them like scrolling (2026-07-22 call, after
+                        // prediction + glide still trailed rapid Enters):
+                        // hide instantly, keep hidden while the burst lasts,
+                        // fade back at settle. Bulk motion disappears; it
+                        // never chases.
+                        if (_overlayStyle == "argb")
+                        {
+                            bool lineEdit = vk == 0x0D;   // Enter
+                            var t = _lastSentText; var c = _lastSentCaret;
+                            if (!lineEdit && vk == 0x08 && t != null && c > 0 && c <= t.Length && (t[c - 1] == '\n' || t[c - 1] == '\r')) lineEdit = true;   // Backspace joins
+                            if (!lineEdit && vk == 0x2E && t != null && c >= 0 && c < t.Length && (t[c] == '\n' || t[c] == '\r')) lineEdit = true;           // Delete joins
+                            if (lineEdit) ScrollHideNow();
+                        }
                         // Text-mutating key: for SNAPSHOT styles, hide the ink
                         // NOW (instant, from this thread) and fade back after
                         // the typing quiets - their pixels go stale on reflow.
@@ -3086,7 +3104,15 @@ namespace OpenCues
                 // hook that blocks gets removed by Windows).
                 if (vk == VK_UP || vk == VK_DOWN)
                 {
-                    BlankInkForWrite();   // ALL ink off before the rewrite reaches the app
+                    // Snapshot styles blank ALL ink before the rewrite (their
+                    // pixels go stale). ARGB doesn't (2026-07-22, "the
+                    // rendering lag when we action"): the local splice +
+                    // span shift + re-rect land correct geometry within
+                    // ~20-30ms, so the mark simply moves/resizes through the
+                    // swap - the 300ms blank+fade read as lag, not polish.
+                    // Big rewrites (transforms/reverts, |delta|>6 set-texts)
+                    // still blank in every style.
+                    if (_overlayStyle != "argb") BlankInkForWrite();
                     int dir = vk == VK_UP ? 1 : -1;
                     ThreadPool.QueueUserWorkItem(delegate { TryLocalAltCycle(dir); });
                 }
@@ -3600,6 +3626,19 @@ namespace OpenCues
             else { _lastFirstX = float.MinValue; _lastFirstY = float.MinValue; }
             // Route: before-caret spans -> stable window (never blinks);
             // at/after-caret spans -> volatile window (hide/fade target).
+            // ARGB routes EVERYTHING to one pool (2026-07-22, "tracking is
+            // still not great"): argb never typing-hides, so the split
+            // serves nothing there - and it was actively harmful: every
+            // caret move RE-CLASSIFIED marks across the boundary, so a
+            // mark near the caret was destroyed in one pool and re-born
+            // (with the 300ms appear-fade) in the other on every Enter.
+            // One pool = stable identity = marks just MOVE.
+            if (_overlayStyle == "argb")
+            {
+                form.Push(rects, _overlayStyle);
+                formVol.Push(new List<OverlaySpanRect>(), _overlayStyle);
+                return;
+            }
             var stable = new List<OverlaySpanRect>();
             var vol = new List<OverlaySpanRect>();
             foreach (var r in rects) { if (r.AfterCaret) vol.Add(r); else stable.Add(r); }
@@ -3638,19 +3677,6 @@ namespace OpenCues
                 float pdx, pdy;
                 if (OverlayRectsMoved(out pdx, out pdy))
                 {
-                    // Chase mode: a probe-detected move is a pure TRANSLATION
-                    // (scroll/drag) - shift every mark instantly by the delta
-                    // (atomic window moves, zero COM) and defer the
-                    // authoritative re-rect to motion-settle. During the
-                    // burst this costs ONE probe resolve per interval.
-                    if (!_scrollHidePref && _overlayStyle == "argb")
-                    {
-                        TranslateAllAdornments(pdx, pdy);
-                        _lastFirstX += pdx; _lastFirstY += pdy;
-                        _chaseSettleAt = Environment.TickCount + 120;
-                        BumpFastPoll();
-                        return;   // no COM re-rect mid-motion
-                    }
                     force = true;
                     // Rects moved with no typing signal: scrollbar drag, window
                     // drag, or momentum scroll - hide everything until it settles.
@@ -3662,14 +3688,6 @@ namespace OpenCues
                     // re-rects immediately, no hide.
                     if (unchecked(Environment.TickCount - WindowsShim._lastWriteAt) > 300) ScrollHideNow();
                 }
-            }
-            // Chase settle: motion stopped - one authoritative re-rect trues
-            // up whatever the translations approximated.
-            if (_chaseSettleAt != 0 && unchecked(Environment.TickCount - _chaseSettleAt) >= 0)
-            {
-                _chaseSettleAt = 0;
-                _chaseResX = 0; _chaseResY = 0;
-                force = true;
             }
             // Baseline fallback: wall-clock throttled, NOT tick-coupled. The
             // old every-other-tick baseline scaled with the fast cadence: at
@@ -3691,39 +3709,6 @@ namespace OpenCues
         const int BASELINE_RERECT_MS = 400;
         static int _lastProbeAt;
         const int PROBE_INTERVAL_MS = 40;
-        static int _chaseSettleAt;   // chase-mode: authoritative re-rect due at this tick
-        // Chase-mode fractional-delta accumulators (probe deltas are float;
-        // window positions are int - keep the residue or slow scrolls drift).
-        static float _chaseResX, _chaseResY;
-
-        [DllImport("user32.dll")] static extern IntPtr BeginDeferWindowPos(int n);
-        [DllImport("user32.dll")] static extern IntPtr DeferWindowPos(IntPtr hdwp, IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
-        [DllImport("user32.dll")] static extern bool EndDeferWindowPos(IntPtr hdwp);
-        const uint SWP_NOSIZE = 0x1, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10;
-
-        // Translate EVERY shown adornment (both windows' pools) by the
-        // probe-measured delta in one DeferWindowPos transaction: all marks
-        // land in the SAME composition frame ("move as a unit"). Pure
-        // moves - a layered window's surface travels with it, no ULW push.
-        static void TranslateAllAdornments(float dx, float dy)
-        {
-            _chaseResX += dx; _chaseResY += dy;
-            int idx = (int)Math.Round(_chaseResX), idy = (int)Math.Round(_chaseResY);
-            if (idx == 0 && idy == 0) return;
-            _chaseResX -= idx; _chaseResY -= idy;
-            var list = new List<ArgbAdornment>();
-            var a = _overlay; if (a != null) a.CollectArgbAdornments(list);
-            var b = _overlayVol; if (b != null) b.CollectArgbAdornments(list);
-            if (list.Count == 0) return;
-            IntPtr h = BeginDeferWindowPos(list.Count);
-            foreach (var ad in list)
-            {
-                ad.LastX += idx; ad.LastY += idy;
-                if (h != IntPtr.Zero)
-                    h = DeferWindowPos(h, ad.Hwnd, IntPtr.Zero, ad.LastX, ad.LastY, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
-            }
-            if (h != IntPtr.Zero) EndDeferWindowPos(h);
-        }
 
         static int _lastRectLogCount = -1;
         static float _lastFirstX = float.MinValue;
@@ -4187,6 +4172,22 @@ namespace OpenCues
         public bool LastActive;
         public string RenderKey;   // render identity (size + state + row layout)
         public int AppearStart;    // TickCount when the appear-fade began; 0 = settled
+        // Line-reflow glide: when a re-rect moves this mark by a line-ish
+        // vertical delta, it EASES to the new spot instead of teleporting.
+        public int MoveStart;      // TickCount when the glide began; 0 = none
+        public int MoveFromX, MoveFromY, MoveToX, MoveToY;
+
+        [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+        const uint SWP_NOSIZE2 = 0x1, SWP_NOZORDER2 = 0x4, SWP_NOACTIVATE2 = 0x10;
+
+        // Position-only move - the layered surface travels with the window,
+        // no ULW re-upload needed.
+        public void MoveTo(int x, int y)
+        {
+            var h = Hwnd;
+            if (h == IntPtr.Zero) return;
+            try { SetWindowPos(h, IntPtr.Zero, x, y, 0, 0, SWP_NOSIZE2 | SWP_NOZORDER2 | SWP_NOACTIVATE2); } catch { }
+        }
         public byte LastAlpha = 255;
         public SD.Bitmap Frame;      // last rendered content, re-pushable for fades
         public bool IsShown;
@@ -4762,8 +4763,22 @@ namespace OpenCues
                     a.AppearStart = Environment.TickCount;
                     StartAppearTimer();
                 }
+                else if (!geomChanged && moved && a.LastAlpha == alpha
+                    && Math.Abs(it.Y - a.LastY) >= 6 && Math.Abs(it.X - a.LastX) < 4)
+                {
+                    // Line-magnitude vertical move (Enter/Delete reflow):
+                    // GLIDE there (~100ms ease-out) instead of teleporting.
+                    // Same content, same alpha - position is the only change,
+                    // so the anim timer steps SetWindowPos, no re-uploads.
+                    a.MoveFromX = a.LastX; a.MoveFromY = a.LastY;
+                    a.MoveToX = it.X; a.MoveToY = it.Y;
+                    a.MoveStart = Environment.TickCount;
+                    a.LastX = it.X; a.LastY = it.Y;   // bookkeeping = target
+                    StartAppearTimer();
+                }
                 else if (geomChanged || moved || a.LastAlpha != alpha || fresh)
                 {
+                    a.MoveStart = 0;   // geometry/alpha change supersedes any glide
                     a.LastX = it.X; a.LastY = it.Y;
                     // Mid-appear repositions keep the fade's current alpha -
                     // the timer owns the climb.
@@ -4778,6 +4793,7 @@ namespace OpenCues
                     try { _argbPool[i].Hide(); } catch { }
                     _argbPool[i].IsShown = false;
                     _argbPool[i].AppearStart = 0;
+                    _argbPool[i].MoveStart = 0;
                 }
             }
         }
@@ -4890,12 +4906,31 @@ namespace OpenCues
             _appearTimer.Start();
         }
 
+        const int ARGB_MOVE_MS = 100;
+
         void AppearTick(object sender, EventArgs e)
         {
             bool any = false;
             int now = Environment.TickCount;
             foreach (var ad in _argbPool)
             {
+                if (ad.MoveStart != 0 && ad.IsShown)
+                {
+                    int mel = unchecked(now - ad.MoveStart);
+                    if (mel >= ARGB_MOVE_MS)
+                    {
+                        ad.MoveStart = 0;
+                        ad.MoveTo(ad.MoveToX, ad.MoveToY);
+                    }
+                    else
+                    {
+                        any = true;
+                        float t = mel / (float)ARGB_MOVE_MS;
+                        t = 1f - (1f - t) * (1f - t);   // ease-out
+                        ad.MoveTo(ad.MoveFromX + (int)((ad.MoveToX - ad.MoveFromX) * t),
+                                  ad.MoveFromY + (int)((ad.MoveToY - ad.MoveFromY) * t));
+                    }
+                }
                 if (ad.AppearStart == 0 || !ad.IsShown || ad.Frame == null) continue;
                 if (_inkSuppressed || _argbLevel == 0) { ad.AppearStart = 0; continue; }   // a suppressor owns alpha now
                 int el = unchecked(now - ad.AppearStart);
@@ -4909,15 +4944,6 @@ namespace OpenCues
                 ad.PushFrame(ad.Frame, ad.LastX, ad.LastY, (byte)((int)_argbLevel * el / ARGB_APPEAR_MS));
             }
             if (!any) _appearTimer.Stop();
-        }
-
-        // Chase-mode support: expose the shown adornments so the shim can
-        // batch-move ALL of them (both forms' pools) in ONE DeferWindowPos
-        // transaction - same composition frame, the group moves as a unit.
-        public void CollectArgbAdornments(List<ArgbAdornment> into)
-        {
-            foreach (var ad in _argbPool)
-                if (ad.IsShown && ad.Frame != null) into.Add(ad);
         }
 
         // Fade/suppression hook: re-push cached frames at a new constant
