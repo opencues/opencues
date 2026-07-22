@@ -379,6 +379,44 @@ export class DynDefs {
     this._defs.clear();
   }
 
+  /**
+   * SLIDE char spans across a user edit that happened entirely BEFORE
+   * them — never stretch, never adopt. A user edit shifts every later
+   * char offset, but (unlike runtime cycles, which call
+   * shiftCharSpansAfter) nothing updated user-edit offsets, so an Enter
+   * typed above a span left the def alive (word indices unchanged) with
+   * a stale char span - the dim died while cycling kept working.
+   * Slide-only is deliberately the WHOLE fix: the reverted rebase's
+   * adopt/stretch step absorbed adjacent typing on ambiguous diff
+   * boundaries; with slide-only, a misjudged boundary at worst leaves
+   * the span stale (dim drops - the previous status quo), never wrong.
+   */
+  slideCharSpans(oldText: string, newText: string): void {
+    if (oldText === newText || this._defs.size === 0) return;
+    const maxP = Math.min(oldText.length, newText.length);
+    let p = 0;
+    while (p < maxP && oldText[p] === newText[p]) p++;
+    let sfx = 0;
+    while (sfx < maxP - p
+      && oldText[oldText.length - 1 - sfx] === newText[newText.length - 1 - sfx]) sfx++;
+    const oldEditEnd = oldText.length - sfx;   // edit range in OLD text: [p, oldEditEnd)
+    const d = newText.length - oldText.length;
+    if (d === 0 && p >= oldEditEnd) return;    // no-op change
+    for (const def of this._defs.values()) {
+      if (typeof def.spanStart !== 'number' || typeof def.spanEnd !== 'number') continue;
+      if (def.spanEnd <= def.spanStart || def.spanEnd > oldText.length) continue;
+      // Only spans LIVE against the old text may slide - arithmetic must
+      // never resurrect an already-stale span.
+      const expected = def.alternatives[def.currentIndex];
+      if (typeof expected !== 'string'
+        || oldText.slice(def.spanStart, def.spanEnd) !== expected) continue;
+      if (oldEditEnd <= def.spanStart) {
+        def.spanStart += d;
+        def.spanEnd += d;
+      }
+    }
+  }
+
   entries(): IterableIterator<[number, WordDef]> {
     return this._defs.entries();
   }
