@@ -178,6 +178,10 @@ namespace OpenCues
             int now = Environment.TickCount;
             if (!_bracketOpen) { _bracketOpen = true; _bracketOpenedAt = now; _bracketBaseline = _lastSentText; }
             _bracketQuietAt = now + WRITE_QUIET_MS;
+            // Self-writes park the caret at the end of a text we know
+            // exactly - a free calibration anchor for stub-field width
+            // synthesis (every cycle recalibrates the omnibox scale).
+            _appendCalibLen = text != null ? text.Length : -1;
             // Local span shift for OUR OWN writes (2026-07-21, glitchy
             // cycling): the user-edit path has done this since the lockstep
             // work, but self-writes left the overlay spans stale until the
@@ -643,6 +647,7 @@ namespace OpenCues
             if (!string.IsNullOrEmpty(envPoll) && int.TryParse(envPoll, out p) && p >= 30) _pollMs = p;
             Console.WriteLine("OpenCues Windows shim starting -> " + _host + ":" + _port);
             EnsureDpiAware();   // overlay rects are physical px; must run before any window exists
+            RaiseScreenReaderFlag();
             StartKeyHook();
             _pollThreadRef = new Thread(PollThread);
             _pollThreadRef.IsBackground = true;
@@ -660,6 +665,7 @@ namespace OpenCues
         public static void Stop()
         {
             _running = false;
+            try { RestoreScreenReaderFlag(); } catch { }
             try { StopKeyHook(); } catch { }
             try { StopOverlay(); } catch { }
             try { UnhookElementEvents(); } catch { }
@@ -673,10 +679,61 @@ namespace OpenCues
         // Registering a no-op UIA focus-changed handler makes this process a
         // live UIA event client - the lightweight, non-intrusive "an AT is
         // listening" signal. Combined with the per-renderer OBJID_CLIENT poke
-        // in TryReadFocusedElectron this reliably wakes the tree WITHOUT the
-        // global SPI_SETSCREENREADER flag (verified against Discord: the
-        // per-window poke reads identically with SPI off, so we never flip
-        // other apps into system-wide screen-reader mode).
+        // in TryReadFocusedElectron this reliably wakes the tree - enough for
+        // TEXT reads everywhere. It is NOT enough for text GEOMETRY on
+        // Chromium: real per-word bounding rects need the browser to start
+        // in full accessibility mode, which only the system screen-reader
+        // flag triggers - see RaiseScreenReaderFlag below (2026-07-22; this
+        // comment previously recorded the decision NOT to raise that flag,
+        // reversed once the omnibox probes proved geometry is gated on it).
+        // Screen-reader flag ownership (2026-07-22). Chromium decides its
+        // accessibility mode at PROCESS START by checking the system
+        // screen-reader flag; only full mode computes real per-word
+        // bounding rects (omnibox + Electron composers). Probe-proven:
+        // chrome restarted under the flag serves real geometry where it
+        // served a frozen 2px stub before (dead-end ladder recorded in
+        // native/ia2-extents-probe.ps1's header). Raising the flag is the
+        // OS-sanctioned "an assistive client is running" signal - the same
+        // class of mechanism assistive writing tools (Grammarly desktop)
+        // ship on, so the app-side effects (keyboard-friendly behaviours,
+        // extra a11y bookkeeping in browsers) are well-trodden ground.
+        //  - session-scoped (no SPIF_UPDATEINIFILE): a reboot self-heals
+        //    any crash that skipped the restore
+        //  - only raised if it wasn't already up (a real screen reader
+        //    owns it then); restored on Stop only if WE raised it
+        //  - kill switch: OPENCUES_WIN_SCREEN_READER_FLAG=0
+        //  - seam: a Chromium app already running when the flag goes up
+        //    stays stubbed until its next restart - the calibrated
+        //    synthesis path covers it (degraded marks) meanwhile.
+        static bool _srFlagWeSet;
+        [DllImport("user32.dll", SetLastError = true)]
+        static extern bool SystemParametersInfo(uint action, uint p, ref bool v, uint winIni);
+        const uint SPI_GETSCREENREADER = 0x0046, SPI_SETSCREENREADER = 0x0047, SPIF_SENDCHANGE = 0x2;
+
+        static void RaiseScreenReaderFlag()
+        {
+            if (Environment.GetEnvironmentVariable("OPENCUES_WIN_SCREEN_READER_FLAG") == "0") return;
+            try
+            {
+                bool cur = false;
+                SystemParametersInfo(SPI_GETSCREENREADER, 0, ref cur, 0);
+                if (cur) return;
+                bool v = true;
+                SystemParametersInfo(SPI_SETSCREENREADER, 1, ref v, SPIF_SENDCHANGE);
+                _srFlagWeSet = true;
+                try { AppDomain.CurrentDomain.ProcessExit += (s, e) => RestoreScreenReaderFlag(); } catch { }
+                Console.WriteLine("screen-reader flag raised (Chromium apps started from now on serve precise text geometry; restored on exit; OPENCUES_WIN_SCREEN_READER_FLAG=0 to disable)");
+            }
+            catch { }
+        }
+
+        static void RestoreScreenReaderFlag()
+        {
+            if (!_srFlagWeSet) return;
+            _srFlagWeSet = false;
+            try { bool v = false; SystemParametersInfo(SPI_SETSCREENREADER, 0, ref v, SPIF_SENDCHANGE); } catch { }
+        }
+
         static AutomationFocusChangedEventHandler _wakeHandler;
         static void EnsureWakeSignal()
         {
@@ -1148,6 +1205,12 @@ namespace OpenCues
             // daemon's render push reconciles (prunes edited-word defs)
             // ~100ms behind.
             ShiftLocalSpans(_lastSentText, cur);
+            // Append detection for stub-field calibration: an edit that
+            // EXTENDS the previous text means the caret sits at the end -
+            // a known char offset even on fields whose caret queries fail
+            // (the omnibox).
+            _appendCalibLen = (_lastSentText != null && cur.Length > _lastSentText.Length
+                && cur.StartsWith(_lastSentText, StringComparison.Ordinal)) ? cur.Length : -1;
             lock (_applyLock) _altsList = null;   // user edited - span offsets stale; next push re-ships
             _lastSentText = cur;
             _expectedEcho = null;
@@ -2278,6 +2341,23 @@ namespace OpenCues
                 Log("debug", "micro-frame skipped: field diverged from model ("
                     + cur.Length + " -> " + live.Length + " chars; user typing?)");
                 return true;   // swallow the frame; never write against a stale model
+            }
+            // Caret gate (2026-07-22, the omnibox nudge): the burst edits AT
+            // THE CARET, and this whole path assumes caret-at-end. On fields
+            // whose caret can't be READ (Chromium: offset queries fail) that
+            // assumption is unverifiable - and a mid-line caret silently
+            // relocates the diff (a cycled word's chars inserted at the
+            // user's caret position, "nudging" the URL - while the model
+            // records the INTENDED text, so spans don't even invalidate).
+            // Verified-at-end or bust: decline to the atomic whole-value
+            // path, which is caret-position-independent.
+            int caretOff;
+            bool caretKnown = TryGetCaretOffset(out caretOff);
+            if (!caretKnown || caretOff != cur.Length)
+            {
+                Log("debug", "micro-edit declined: caret " + (caretKnown ? caretOff.ToString() : "unknown")
+                    + " not verified at end (" + cur.Length + ")");
+                return false;
             }
             NoteSelfWrite(text);
             var inputs = new INPUT[del * 2 + tail.Length * 2];
@@ -3853,6 +3933,7 @@ namespace OpenCues
             TextPatternRange doc;
             try { doc = ((TextPattern)tpo).DocumentRange; }
             catch { return list; }
+            _synthTp = (TextPattern)tpo;   // for stub-field RangeFromPoint probing
             // Caret position marks spans HOT: the capture style re-captures
             // hot spans on every refresh tick so the caret blink and live
             // edits under the patch stay visible ("re-apply when it is
@@ -3954,10 +4035,15 @@ namespace OpenCues
                                 // (real rects when the app serves native
                                 // clients); the managed emit (chip-degraded)
                                 // is the last resort.
-                                if (LooksStubbed(rects, text, segS, segEnd)
-                                    && EmitNativeSpanRects(text, segS, segEnd, active, caret, prevCaret, bucket))
+                                bool stubbed = LooksStubbed(rects, text, segS, segEnd);
+                                if (stubbed && EmitNativeSpanRects(text, segS, segEnd, active, caret, prevCaret, bucket))
                                 {
-                                    // native geometry emitted
+                                    // real native geometry
+                                }
+                                else if (stubbed && rects != null && rects.Length == 1
+                                    && TrySynthCalibrated(text, segS, segEnd, rects[0], active, caret, prevCaret, bucket))
+                                {
+                                    // calibrated synthesis
                                 }
                                 else if (rects != null)
                                 {
@@ -4019,10 +4105,15 @@ namespace OpenCues
                         var rects = r.GetBoundingRectangles();
                         {
                             int emittedFrom = list.Count;
-                            if (LooksStubbed(rects, text, segS, segEnd)
-                                && EmitNativeSpanRects(text, segS, segEnd, active, caret, prevCaret, list))
+                            bool stubbed2 = LooksStubbed(rects, text, segS, segEnd);
+                            if (stubbed2 && EmitNativeSpanRects(text, segS, segEnd, active, caret, prevCaret, list))
                             {
-                                // native geometry emitted
+                                // real native geometry
+                            }
+                            else if (stubbed2 && rects != null && rects.Length == 1
+                                && TrySynthCalibrated(text, segS, segEnd, rects[0], active, caret, prevCaret, list))
+                            {
+                                // calibrated synthesis
                             }
                             else if (rects != null)
                             {
@@ -4128,9 +4219,218 @@ namespace OpenCues
                     ? new System.Windows.Rect(quads[i * 4], quads[i * 4 + 1], w, h)
                     : System.Windows.Rect.Empty;
             }
+            if (LooksStubbed(rects, text, s, e)) return false;   // native stub too - let calibration try
             int before = list.Count;
             EmitSpanRects(rects, text, s, e, active, caret, prevCaret, list);
             return list.Count > before;
+        }
+
+        // ─── Calibrated width synthesis (2026-07-22) ────────────────────
+        // For stub-geometry single-line fields (the omnibox) the width IS
+        // solvable: the stub rect's position is the real text origin, and
+        // the SYSTEM caret (GetGUIThreadInfo - Chromium maintains it for
+        // a11y) gives a real pixel X at a KNOWN char offset. Average char
+        // width falls out; span rects synthesize as x = origin + s*charW,
+        // w = len*charW. Proportional-font error is a few px - beats a
+        // fixed chip by miles. Chip stays the uncalibrated fallback.
+        [StructLayout(LayoutKind.Sequential)]
+        struct PixPoint { public int X, Y; }
+        [DllImport("user32.dll", EntryPoint = "ClientToScreen")] static extern bool ClientToScreenShim(IntPtr hwnd, ref PixPoint p);
+        [StructLayout(LayoutKind.Sequential)]
+        struct GUITHREADINFO
+        {
+            public uint cbSize, flags;
+            public IntPtr hwndActive, hwndFocus, hwndCapture, hwndMenuOwner, hwndMoveSize, hwndCaret;
+            public int rcL, rcT, rcR, rcB;
+        }
+        [DllImport("user32.dll")] static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO gui);
+
+        static bool TryGetSystemCaret(out int x, out int h)
+        {
+            x = 0; h = 0;
+            try
+            {
+                var g = new GUITHREADINFO();
+                g.cbSize = (uint)Marshal.SizeOf(typeof(GUITHREADINFO));
+                if (!GetGUIThreadInfo(0, ref g) || g.hwndCaret == IntPtr.Zero) return false;
+                var pt = new PixPoint { X = g.rcL, Y = g.rcT };
+                if (!ClientToScreenShim(g.hwndCaret, ref pt)) return false;
+                x = pt.X;
+                h = g.rcB - g.rcT;
+                return true;
+            }
+            catch { return false; }
+        }
+
+        // GDI text measurer for synthesized geometry: a real font model
+        // gives PROPORTIONAL per-string widths (position = measured prefix,
+        // width = measured span), sized from the system caret's height (the
+        // true text height - the stub rect is the PADDED field). The
+        // append-calibration then applies a global SCALE from a real pixel
+        // measurement, correcting the font guess + rendering differences.
+        static SD.Bitmap _measBmp;
+        static SD.Graphics _measG;
+        static SD.Font _measFont;
+        static float _measFontPx;
+
+        static float MeasureW(string s2)
+        {
+            if (string.IsNullOrEmpty(s2) || _measG == null || _measFont == null) return 0;
+            return _measG.MeasureString(s2, _measFont, System.Drawing.PointF.Empty, SD.StringFormat.GenericTypographic).Width;
+        }
+
+        static void EnsureMeasurer(float fontPx)
+        {
+            if (fontPx < 6f) fontPx = 6f; else if (fontPx > 72f) fontPx = 72f;
+            if (_measG != null && Math.Abs(fontPx - _measFontPx) < 1f) return;
+            if (_measBmp == null)
+            {
+                _measBmp = new SD.Bitmap(1, 1);
+                _measG = SD.Graphics.FromImage(_measBmp);
+            }
+            try { if (_measFont != null) _measFont.Dispose(); } catch { }
+            _measFont = new SD.Font("Segoe UI", fontPx, SD.GraphicsUnit.Pixel);
+            _measFontPx = fontPx;
+        }
+
+
+        static int _synthLogAt;
+        static int _appendCalibLen = -1;
+        static float _stubScale;              // 0 = uncalibrated
+        static int _stubScaleFor = int.MinValue;
+        // Two-anchor caret-free calibration (Chromium never exposes the
+        // system caret): the stub rect IS a caret slot, and right after
+        // an append/self-write the caret sits at the end of a KNOWN
+        // text - so the stub's X is a real pixel at a known measured
+        // width. Two anchors at different widths solve scale AND origin:
+        //   scale  = (x2-x1)/(M2-M1),  origin = x2 - M2*scale.
+        // Every cycle re-writes the text (new length) = a fresh anchor.
+        static float _calM1; static float _calX1; static float _calY1;
+        static int _calAnchorFor = int.MinValue;
+        static float _calOrigin; static float _calScale; static float _calOriginY;
+        static int _calFor = int.MinValue;
+
+        // RangeFromPoint diagnostic (2026-07-22): GetBoundingRectangles is
+        // stubbed on Chromium fields, but the REVERSE query - which char
+        // offset sits at pixel (x,y) - is a different code path. If it
+        // answers honestly, span boundaries are binary-searchable and the
+        // synthesis needs no font model at all. Log-only while we find out.
+        static TextPattern _synthTp;
+        static int _rfpLogAt;
+        static void ProbeRangeFromPoint(System.Windows.Rect stub, string text)
+        {
+            if (unchecked(Environment.TickCount - _rfpLogAt) < 2000) return;
+            _rfpLogAt = Environment.TickCount;
+            var tp = _synthTp; if (tp == null) return;
+            try
+            {
+                var doc = tp.DocumentRange;
+                double y = stub.Y + stub.Height / 2;
+                var sb = new StringBuilder("rfp: y=" + (int)y + " ");
+                for (int k = 0; k < 10; k++)
+                {
+                    double x = stub.X + 4 + k * 55;
+                    string cell;
+                    try
+                    {
+                        var r = tp.RangeFromPoint(new System.Windows.Point(x, y));
+                        if (r == null) cell = "null";
+                        else
+                        {
+                            var c = doc.Clone();
+                            c.MoveEndpointByRange(TextPatternRangeEndpoint.End, r, TextPatternRangeEndpoint.Start);
+                            cell = ((c.GetText(-1) ?? "").Length).ToString();
+                        }
+                    }
+                    catch (Exception ex) { cell = "x(" + ex.GetType().Name + ")"; }
+                    sb.Append((int)x).Append("->").Append(cell).Append(' ');
+                }
+                OverlayLog(sb.ToString());
+            }
+            catch (Exception ex) { OverlayLog("rfp probe failed: " + ex.Message); }
+        }
+
+        static bool TrySynthCalibrated(string text, int s, int e, System.Windows.Rect stub, bool active, int caret, int prevCaret, List<OverlaySpanRect> list)
+        {
+            try
+            {
+                if (text == null || e > text.Length || e <= s) return false;
+                ProbeRangeFromPoint(stub, text);
+                int cx, ch;
+                bool gotCaret = TryGetSystemCaret(out cx, out ch);
+                // Font size from the CARET height (true text height); the
+                // stub's field height only as a rough fallback.
+                float fontPx = gotCaret && ch >= 8 ? ch * 0.78f : (float)stub.Height * 0.42f;
+                EnsureMeasurer(fontPx);
+                // Solved origin is an ABSOLUTE screen X - a window drag
+                // strands it. The stub's Y is the move tell: on a shift,
+                // drop anchors + calibration and re-solve from the next
+                // two writes (degraded stub-origin marks in between).
+                if (_calAnchorFor == _lastElementId && Math.Abs((float)stub.Y - _calY1) > 3f)
+                    _calAnchorFor = int.MinValue;
+                if (_calFor == _lastElementId && Math.Abs((float)stub.Y - _calOriginY) > 3f)
+                    _calFor = int.MinValue;
+                // Anchor capture: consume the append arm on its FIRST synth
+                // frame (closest to the write - before the user can move
+                // the caret away from the end).
+                if (_appendCalibLen == text.Length && text.Length >= 3)
+                {
+                    _appendCalibLen = -2;
+                    float m = MeasureW(text);
+                    float ax = gotCaret ? cx : (float)stub.X;
+                    if (m > 8f)
+                    {
+                        if (_calAnchorFor == _lastElementId && Math.Abs(m - _calM1) > 12f)
+                        {
+                            float s2 = (ax - _calX1) / (m - _calM1);
+                            if (s2 > 0.3f && s2 < 3f)
+                            {
+                                _calScale = s2; _calOrigin = ax - m * s2;
+                                _calOriginY = (float)stub.Y; _calFor = _lastElementId;
+                                OverlayLog("synth-cal: scale=" + s2.ToString("0.00") + " origin=" + (int)_calOrigin
+                                    + " anchors=[" + (int)_calX1 + "@" + (int)_calM1 + " -> " + (int)ax + "@" + (int)m + "]");
+                            }
+                        }
+                        // Legacy single-anchor path (real system caret): the
+                        // stub X is the true origin, one anchor suffices.
+                        if (gotCaret)
+                        {
+                            float sc = (cx - (float)stub.X) / m;
+                            if (sc > 0.5f && sc < 2f) { _stubScale = sc; _stubScaleFor = _lastElementId; }
+                        }
+                        _calM1 = m; _calX1 = ax; _calY1 = (float)stub.Y; _calAnchorFor = _lastElementId;
+                    }
+                }
+                float x0, ww;
+                if (_calFor == _lastElementId && _calScale > 0)
+                {
+                    // Fully solved: origin is a CONSTANT (the live stub.X
+                    // tracks the caret, not the text start - never use it
+                    // once calibrated).
+                    x0 = _calOrigin + MeasureW(text.Substring(0, s)) * _calScale;
+                    ww = Math.Max(8f, MeasureW(text.Substring(s, e - s)) * _calScale);
+                }
+                else
+                {
+                    float scale = _stubScaleFor == _lastElementId && _stubScale > 0 ? _stubScale : 1f;
+                    x0 = (float)stub.X + MeasureW(text.Substring(0, s)) * scale;
+                    ww = Math.Max(8f, MeasureW(text.Substring(s, e - s)) * scale);
+                }
+                if (unchecked(Environment.TickCount - _synthLogAt) > 500)
+                {
+                    _synthLogAt = Environment.TickCount;
+                    OverlayLog("synth: fontPx=" + fontPx.ToString("0.0")
+                        + (_calFor == _lastElementId ? " cal[s=" + _calScale.ToString("0.00") + " o=" + (int)_calOrigin + "]" : " uncal")
+                        + (gotCaret ? " caretH=" + ch : " caret=NO")
+                        + " stub=[" + (int)stub.X + "," + (int)stub.Y + " " + (int)stub.Width + "x" + (int)stub.Height + "]"
+                        + " span=[" + (int)x0 + " w" + (int)ww + "]");
+                }
+                var rects = new System.Windows.Rect[] { new System.Windows.Rect(x0, stub.Y, ww, stub.Height) };
+                int before = list.Count;
+                EmitSpanRects(rects, text, s, e, active, caret, prevCaret, list);
+                return list.Count > before;
+            }
+            catch { return false; }
         }
 
         // The final row of a span whose END touches a line break (or the

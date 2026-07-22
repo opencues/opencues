@@ -147,7 +147,42 @@ switch, no Windows-side rebuild:
 
 **Kill switches:** `OPENCUES_WIN_PHASE2=0` (daemon — whole profile back
 to phase 1), `OPENCUES_WIN_HOOK=0` (shim — no keyboard hook),
-`OPENCUES_WIN_OVERLAY=0` (shim — no overlay paint).
+`OPENCUES_WIN_OVERLAY=0` (shim — no overlay paint),
+`OPENCUES_WIN_SCREEN_READER_FLAG=0` (shim — don't raise the system
+screen-reader flag; Chromium apps degrade to synthesized marks).
+
+**The screen-reader flag (Chromium geometry, 2026-07-22).** Chromium
+(Chrome, Edge, every Electron app) decides its accessibility mode at
+process start by checking the Windows screen-reader flag
+(`SPI_SETSCREENREADER`). Without it, text fields like the Chrome
+omnibox return one frozen 2px rect for every `GetBoundingRectangles`
+query — no real geometry exists for out-of-process clients through
+managed UIA, native UIA, `GetGUIThreadInfo`, or IA2 (the full
+dead-end ladder is recorded in `native/ia2-extents-probe.ps1`'s
+header; IA2 is refused with `E_NOINTERFACE` even under the flag).
+With the flag up at browser start, the same queries return real
+per-word rects and the overlay renders exactly as it does in Notepad.
+
+So the shim **owns the flag as part of its lifecycle**: raised at
+`Start()` (only if it wasn't already up — a real screen reader owns
+it then), restored at `Stop()`/process-exit only if we raised it,
+session-scoped (never persisted) so a reboot self-heals any crash
+that skipped the restore. This is the OS-sanctioned "an assistive
+client is running" signal and the same class of mechanism assistive
+writing tools such as Grammarly's desktop app ship on — the app-side
+effects (keyboard-friendly behaviours in Office, extra accessibility
+bookkeeping in browsers) are well-trodden ground. Websites cannot
+observe the flag.
+
+The one seam: a Chromium app **already running** when the flag goes
+up keeps its stubbed geometry until its next restart (the mode is
+sticky per process, in both directions — which also means a Chrome
+started under the flag keeps real geometry after the flag drops).
+Until that restart, stub-detected fields fall back to the calibrated
+width synthesis (`TrySynthCalibrated` — proportional GDI-measured
+marks on the stub origin; approximate by construction). A future
+tray notification "restart Chrome for precise marks" can close the
+seam; the frozen-stub rect is a reliable detector.
 
 **Chord semantics:** while a cycling field is attached (and the shim is
 enabled + connected), Ctrl+Alt+Up/Down/Left/Right key-downs are
