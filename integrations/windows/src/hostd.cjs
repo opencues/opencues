@@ -75,6 +75,12 @@ const PHASE2 = process.env.OPENCUES_WIN_PHASE2 !== '0';
 const OVERLAY_STYLES = ['live', 'capture', 'underline', 'wash', 'argb'];
 const OVERLAY_STYLE_RAW = String(process.env.OPENCUES_WIN_OVERLAY_STYLE || 'capture').toLowerCase();
 const OVERLAY_STYLE = OVERLAY_STYLES.includes(OVERLAY_STYLE_RAW) ? OVERLAY_STYLE_RAW : 'capture';
+// Scroll suppression: 'auto' (default) hides ink during scrolls for the
+// snapshot styles but lets argb marks CHASE the scroll (they're movable
+// windows with no pixels to go stale); '1' forces hide everywhere, '0'
+// forces chase everywhere.
+const SCROLL_HIDE_RAW = String(process.env.OPENCUES_WIN_SCROLL_HIDE || 'auto').toLowerCase();
+const SCROLL_HIDE = SCROLL_HIDE_RAW === '1' ? true : SCROLL_HIDE_RAW === '0' ? false : OVERLAY_STYLE !== 'argb';
 // Config/UI HTTP server (shared popup + keys/settings API). Defaults to
 // the socket port + 1. Set OPENCUES_WIN_CONFIG_PORT=0 to disable.
 const CONFIG_PORT = process.env.OPENCUES_WIN_CONFIG_PORT !== undefined
@@ -415,7 +421,7 @@ function pushRender() {
   setImmediate(() => {
     renderQueued = false;
     if (!sock || sock.destroyed) return;
-    if (!attached) { send({ t: 'render', dim: [], hl: null, style: OVERLAY_STYLE }); return; }
+    if (!attached) { send({ t: 'render', dim: [], hl: null, style: OVERLAY_STYLE, scrollHide: SCROLL_HIDE }); return; }
     let dirs = [];
     try { dirs = bootResult.collectRenderDirectives(mirrorText, mirrorCursor); }
     catch (err) { log('warn', 'collectRenderDirectives failed', err); }
@@ -464,7 +470,7 @@ function pushRender() {
         }
       }
     } catch { /* alts are an optimization — never block the push */ }
-    send({ t: 'render', dim: wire.dim, hl: wire.hl, style: OVERLAY_STYLE, alts });
+    send({ t: 'render', dim: wire.dim, hl: wire.hl, style: OVERLAY_STYLE, scrollHide: SCROLL_HIDE, alts });
   });
 }
 

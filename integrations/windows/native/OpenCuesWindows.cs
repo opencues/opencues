@@ -130,6 +130,26 @@ namespace OpenCues
             return s.Replace("\r\n", "\n").Replace('\r', '\n').Replace('\v', '\n').Replace('\u2028', '\n');
         }
 
+        // Wire EOL dress (2026-07-22): the runtime writes \n; RichEdit
+        // stores lone \r. Reporting raw field text flipped the daemon's
+        // whole buffer dress on the FIRST user keystroke - the runtime saw
+        // "every line break changed", and every span-bound def died at once
+        // (defSpanLive compares against the \n-dressed alternative). Swap
+        // lone \r -> \n at the WIRE so the daemon's model keeps one dress.
+        // Length-preserving (\r\n pairs untouched), so no offset on either
+        // side moves - shim-internal reads stay raw.
+        static string WireEol(string s)
+        {
+            if (s == null || s.IndexOf('\r') < 0) return s;
+            var sb = new System.Text.StringBuilder(s.Length);
+            for (int i = 0; i < s.Length; i++)
+            {
+                if (s[i] == '\r' && (i + 1 >= s.Length || s[i + 1] != '\n')) sb.Append('\n');
+                else sb.Append(s[i]);
+            }
+            return sb.ToString();
+        }
+
         // Write bracket - knowledge-based attribution. Every write enters the
         // field through NoteSelfWrite, so the shim KNOWS when a write stream
         // is in flight; it doesn't have to infer it from read-backs. While the
@@ -459,6 +479,17 @@ namespace OpenCues
 
         static void ScrollHideNow()
         {
+            // Chase mode (OPENCUES_WIN_SCROLL_HIDE=auto/0): marks are kept
+            // visible and follow the scroll - argb windows are movable with
+            // no pixels to go stale (wheel scrolls are discrete line jumps,
+            // the same motion class as the Enter-above reflow that already
+            // slides seamlessly). Just accelerate the re-rects.
+            if (!_scrollHidePref)
+            {
+                BumpFastPoll();
+                _overlayDirty = true;
+                return;
+            }
             _scrollQuietAt = Environment.TickCount + SCROLL_QUIET_MS;
             BumpFastPoll();
             if (_scrollHidden) return;
@@ -946,7 +977,7 @@ namespace OpenCues
                     + (readText == null ? 0 : readText.Length) + " chars, "
                     + (mode == AttachMode.Msaa ? "MSAA" : "UIA")
                     + (cycling ? ", cycling" : "") + ")");
-                SendRaw("{\"t\":\"focus\",\"app\":" + JStr(app) + ",\"text\":" + JStr(readText)
+                SendRaw("{\"t\":\"focus\",\"app\":" + JStr(app) + ",\"text\":" + JStr(WireEol(readText))
                     + ",\"cursor\":" + CaretOrEnd(readText).ToString(CultureInfo.InvariantCulture)
                     + ",\"cycling\":" + (cycling ? "true" : "false")
                     + ",\"fieldId\":" + elId.ToString(CultureInfo.InvariantCulture) + "}");
@@ -1033,7 +1064,7 @@ namespace OpenCues
             lock (_applyLock) _altsList = null;   // user edited - span offsets stale; next push re-ships
             _lastSentText = cur;
             _expectedEcho = null;
-            SendRaw("{\"t\":\"text\",\"text\":" + JStr(cur)
+            SendRaw("{\"t\":\"text\",\"text\":" + JStr(WireEol(cur))
                 + ",\"cursor\":" + CaretOrEnd(cur).ToString(CultureInfo.InvariantCulture) + "}");
         }
 
@@ -3369,6 +3400,10 @@ namespace OpenCues
         static List<int[]> _dimSpans = new List<int[]>();   // [start,end) into _lastSentText
         static int[] _hlSpan = null;
         static string _overlayStyle = "underline";
+        // Scroll behavior preference (daemon env OPENCUES_WIN_SCROLL_HIDE,
+        // rides every render push): true = hide ink during scrolls (the
+        // snapshot styles' default), false = marks CHASE the scroll.
+        static volatile bool _scrollHidePref = true;
 
         // ─── Local alternation (2026-07-21) ─────────────────────────────
         // The daemon ships the ACTIVE span's alternatives with each render
@@ -3484,6 +3519,8 @@ namespace OpenCues
             }
             string style = Str(map, "style");
             if (!string.IsNullOrEmpty(style)) _overlayStyle = style;
+            object shv;
+            if (map.TryGetValue("scrollHide", out shv) && shv is bool) _scrollHidePref = (bool)shv;
             _dimSpans = dim;
             _hlSpan = hl;
             // Local-alternation cache: parse the alts block riding the push
@@ -3598,8 +3635,22 @@ namespace OpenCues
             if (!force && unchecked(Environment.TickCount - _lastProbeAt) >= PROBE_INTERVAL_MS)
             {
                 _lastProbeAt = Environment.TickCount;
-                if (OverlayRectsMoved())
+                float pdx, pdy;
+                if (OverlayRectsMoved(out pdx, out pdy))
                 {
+                    // Chase mode: a probe-detected move is a pure TRANSLATION
+                    // (scroll/drag) - shift every mark instantly by the delta
+                    // (atomic window moves, zero COM) and defer the
+                    // authoritative re-rect to motion-settle. During the
+                    // burst this costs ONE probe resolve per interval.
+                    if (!_scrollHidePref && _overlayStyle == "argb")
+                    {
+                        TranslateAllAdornments(pdx, pdy);
+                        _lastFirstX += pdx; _lastFirstY += pdy;
+                        _chaseSettleAt = Environment.TickCount + 120;
+                        BumpFastPoll();
+                        return;   // no COM re-rect mid-motion
+                    }
                     force = true;
                     // Rects moved with no typing signal: scrollbar drag, window
                     // drag, or momentum scroll - hide everything until it settles.
@@ -3611,6 +3662,14 @@ namespace OpenCues
                     // re-rects immediately, no hide.
                     if (unchecked(Environment.TickCount - WindowsShim._lastWriteAt) > 300) ScrollHideNow();
                 }
+            }
+            // Chase settle: motion stopped - one authoritative re-rect trues
+            // up whatever the translations approximated.
+            if (_chaseSettleAt != 0 && unchecked(Environment.TickCount - _chaseSettleAt) >= 0)
+            {
+                _chaseSettleAt = 0;
+                _chaseResX = 0; _chaseResY = 0;
+                force = true;
             }
             // Baseline fallback: wall-clock throttled, NOT tick-coupled. The
             // old every-other-tick baseline scaled with the fast cadence: at
@@ -3632,6 +3691,39 @@ namespace OpenCues
         const int BASELINE_RERECT_MS = 400;
         static int _lastProbeAt;
         const int PROBE_INTERVAL_MS = 40;
+        static int _chaseSettleAt;   // chase-mode: authoritative re-rect due at this tick
+        // Chase-mode fractional-delta accumulators (probe deltas are float;
+        // window positions are int - keep the residue or slow scrolls drift).
+        static float _chaseResX, _chaseResY;
+
+        [DllImport("user32.dll")] static extern IntPtr BeginDeferWindowPos(int n);
+        [DllImport("user32.dll")] static extern IntPtr DeferWindowPos(IntPtr hdwp, IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+        [DllImport("user32.dll")] static extern bool EndDeferWindowPos(IntPtr hdwp);
+        const uint SWP_NOSIZE = 0x1, SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10;
+
+        // Translate EVERY shown adornment (both windows' pools) by the
+        // probe-measured delta in one DeferWindowPos transaction: all marks
+        // land in the SAME composition frame ("move as a unit"). Pure
+        // moves - a layered window's surface travels with it, no ULW push.
+        static void TranslateAllAdornments(float dx, float dy)
+        {
+            _chaseResX += dx; _chaseResY += dy;
+            int idx = (int)Math.Round(_chaseResX), idy = (int)Math.Round(_chaseResY);
+            if (idx == 0 && idy == 0) return;
+            _chaseResX -= idx; _chaseResY -= idy;
+            var list = new List<ArgbAdornment>();
+            var a = _overlay; if (a != null) a.CollectArgbAdornments(list);
+            var b = _overlayVol; if (b != null) b.CollectArgbAdornments(list);
+            if (list.Count == 0) return;
+            IntPtr h = BeginDeferWindowPos(list.Count);
+            foreach (var ad in list)
+            {
+                ad.LastX += idx; ad.LastY += idy;
+                if (h != IntPtr.Zero)
+                    h = DeferWindowPos(h, ad.Hwnd, IntPtr.Zero, ad.LastX, ad.LastY, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+            if (h != IntPtr.Zero) EndDeferWindowPos(h);
+        }
 
         static int _lastRectLogCount = -1;
         static float _lastFirstX = float.MinValue;
@@ -3639,8 +3731,9 @@ namespace OpenCues
 
         // Did the first span's on-screen rect move since the last push?
         // One TextPattern range resolve - cheap enough to run every tick.
-        static bool OverlayRectsMoved()
+        static bool OverlayRectsMoved(out float dx, out float dy)
         {
+            dx = 0; dy = 0;
             if (_lastFirstX == float.MinValue) return false;
             try
             {
@@ -3654,7 +3747,9 @@ namespace OpenCues
                 var probe = new List<OverlaySpanRect>();
                 AddSpanRects(((TextPattern)tpo).DocumentRange, text, span[0], span[1], false, -1, -1, probe);
                 if (probe.Count == 0) return false;
-                return Math.Abs(probe[0].X - _lastFirstX) > 0.5f || Math.Abs(probe[0].Y - _lastFirstY) > 0.5f;
+                dx = probe[0].X - _lastFirstX;
+                dy = probe[0].Y - _lastFirstY;
+                return Math.Abs(dx) > 0.5f || Math.Abs(dy) > 0.5f;
             }
             catch { return false; }
         }
@@ -4742,23 +4837,17 @@ namespace OpenCues
                 {
                     var rr = it.RowsRel[0];
                     rr.Inflate(1f, 1f);
+                    // Outline removed (2026-07-22 review) - the accent wash
+                    // alone marks the active span.
                     using (var path = RoundedPath(rr, 4f))
-                    {
-                        using (var fill = new SD.SolidBrush(SD.Color.FromArgb(46, ActiveColor)))
-                            g.FillPath(fill, path);
-                        using (var pen = new SD.Pen(SD.Color.FromArgb(210, ActiveColor), 1.6f))
-                            g.DrawPath(pen, path);
-                    }
+                    using (var fill = new SD.SolidBrush(SD.Color.FromArgb(56, ActiveColor)))
+                        g.FillPath(fill, path);
                 }
                 else
                 {
                     using (var path = StaircasePath(it.RowsRel, 1.5f))
-                    {
-                        using (var fill = new SD.SolidBrush(SD.Color.FromArgb(46, ActiveColor)))
-                            g.FillPath(fill, path);
-                        using (var pen = new SD.Pen(SD.Color.FromArgb(210, ActiveColor), 1.6f))
-                            g.DrawPath(pen, path);
-                    }
+                    using (var fill = new SD.SolidBrush(SD.Color.FromArgb(56, ActiveColor)))
+                        g.FillPath(fill, path);
                 }
             }
             return bmp;
@@ -4820,6 +4909,15 @@ namespace OpenCues
                 ad.PushFrame(ad.Frame, ad.LastX, ad.LastY, (byte)((int)_argbLevel * el / ARGB_APPEAR_MS));
             }
             if (!any) _appearTimer.Stop();
+        }
+
+        // Chase-mode support: expose the shown adornments so the shim can
+        // batch-move ALL of them (both forms' pools) in ONE DeferWindowPos
+        // transaction - same composition frame, the group moves as a unit.
+        public void CollectArgbAdornments(List<ArgbAdornment> into)
+        {
+            foreach (var ad in _argbPool)
+                if (ad.IsShown && ad.Frame != null) into.Add(ad);
         }
 
         // Fade/suppression hook: re-push cached frames at a new constant
