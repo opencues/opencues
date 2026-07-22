@@ -191,13 +191,17 @@ too.
 
 **Per-app chord remap (2026-07-23):** apps that already bind
 Ctrl+Alt+arrows to their own commands (today: Slack, hardcoded in
-`ShiftChordApps`) get the OpenCues chord on **Ctrl+Shift+arrows**
-instead; Ctrl+Alt passes through to the app there. Because
-Ctrl+Shift+Left/Right is select-by-word in any text field, the shift
-chord only claims the keys **while marks are live** — no cues on
-screen means stock selection behaviour. The wire message stays
-canonical (`up`/`down`/`left`/`right`); daemon and runtime never know
-which physical chord fired.
+`AltShiftChordApps`) get the OpenCues chord on **Alt+Shift+arrows**
+instead; Ctrl+Alt passes through to the app there. (Ctrl+Shift was
+tried first — taken in Slack too.) The LL hook sees the chord before
+the app, so Slack's own Alt+Shift bindings (unread-channel nav) are
+captured away — but only **while marks are live**; no cues on screen
+means the app keeps all its shortcuts. Caveat: on multi-input-language
+systems Alt+Shift is the Windows layout-toggle hotkey, which fires on
+the modifiers alone before any arrow — remap users with >1 keyboard
+layout will want a different chord once the override UI exists. The
+wire message stays canonical (`up`/`down`/`left`/`right`); daemon and
+runtime never know which physical chord fired.
 
 > **TODO (final Windows integration): per-app override UI.** The
 > chord remap above is the first entry in what will inevitably be a

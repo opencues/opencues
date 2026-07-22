@@ -3057,18 +3057,21 @@ namespace OpenCues
 
         // Per-app chord remap (2026-07-23): apps that already bind
         // Ctrl+Alt+arrows to their own commands get the OpenCues chord on
-        // Ctrl+Shift+arrows instead; Ctrl+Alt passes through to the app
-        // there. Hardcoded well-known set for now - the FINAL integration
-        // needs a user-facing override UI for per-app chord/behaviour
-        // config (see CLAUDE.md note). The wire message stays canonical
-        // (up/down/left/right) - the daemon/runtime never know which
-        // physical chord fired.
-        static readonly HashSet<string> ShiftChordApps =
+        // Alt+Shift+arrows instead; Ctrl+Alt passes through to the app
+        // there. (Ctrl+Shift was tried first and is taken in Slack too.)
+        // The LL hook sees the chord BEFORE the app, so Slack's own
+        // Alt+Shift bindings (unread-channel nav) are captured away while
+        // marks are live. Hardcoded well-known set for now - the FINAL
+        // integration needs a user-facing override UI for per-app
+        // chord/behaviour config (see CLAUDE.md note). The wire message
+        // stays canonical (up/down/left/right) - the daemon/runtime never
+        // know which physical chord fired.
+        static readonly HashSet<string> AltShiftChordApps =
             new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "slack" };
-        static bool UseShiftChord()
+        static bool UseAltShiftChord()
         {
             var a = _lastApp;
-            return a != null && ShiftChordApps.Contains(a);
+            return a != null && AltShiftChordApps.Contains(a);
         }
         static bool HasLiveMarks()
         {
@@ -3279,16 +3282,16 @@ namespace OpenCues
                 }
                 bool ctrl = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
                 bool alt = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
-                bool shiftChord = UseShiftChord();
-                if (shiftChord)
+                bool remapChord = UseAltShiftChord();
+                if (remapChord)
                 {
                     // The attached app owns Ctrl+Alt+arrows (Slack) - our
-                    // chord moves to Ctrl+Shift there. Ctrl+Shift+Left/Right
-                    // is select-by-word in any field, so the shift chord only
-                    // claims the keys while marks are LIVE - no cues on
-                    // screen, stock selection behaviour.
+                    // chord moves to Alt+Shift there, captured here before
+                    // the app's own Alt+Shift bindings can fire. Claimed
+                    // only while marks are LIVE - no cues on screen, the
+                    // app keeps its shortcuts.
                     bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
-                    if (!(ctrl && shift && !alt)) return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
+                    if (!(alt && shift && !ctrl)) return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
                     if (!HasLiveMarks()) return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
                 }
                 else if (!(ctrl && alt)) return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
@@ -3299,12 +3302,10 @@ namespace OpenCues
                 BumpFastPoll();
                 _caretDirty = true;
                 _swallowedDown.Add(vk);
-                if (!shiftChord)
-                {
-                    // Menu-bar Alt-tap masking is an Alt-chord problem only.
-                    MaskAltTap();
-                    _altHoldMasked = true;   // re-mask at Alt release too (autorepeat re-arms the menu state)
-                }
+                // Both chords hold Alt - the menu-bar Alt-tap mask applies
+                // to the remap chord too.
+                MaskAltTap();
+                _altHoldMasked = true;   // re-mask at Alt release too (autorepeat re-arms the menu state)
                 // Up/down = a substitution is coming that will REFLOW the
                 // text (unlike left/right, which only moves the highlight
                 // over unchanged geometry). Clear the active box at CHORD
