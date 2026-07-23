@@ -1469,21 +1469,27 @@ namespace OpenCues
                     // Notepad. Route the FINAL substitution through paste (the
                     // spinner frames already took the typed micro-edit path above,
                     // so only this one write pays the select-all highlight).
-                    // SINGLE-LINE writes bypass the paste route (2026-07-23):
-                    // the soft-break concern is literally about \n, so text
-                    // with no line break takes clean ValuePattern - no
-                    // clipboard, no injected Ctrl+A/Ctrl+V, and therefore no
-                    // collision with chord modifiers the user still holds
-                    // (the "unpredictable in Slack" class: paste bursts
-                    // waiting on WaitModifiersUp went late/timed-out while
-                    // marks had already moved). Cycling is single-line in
-                    // the overwhelming case, so Slack cycles become
-                    // injection-free; only multi-line substitutions pay the
-                    // paste path.
-                    if (PastePreferredApps.Contains(_lastApp)
-                        && (text.IndexOf('\n') >= 0 || text.IndexOf('\r') >= 0))
+                    // (2026-07-23 postscript: a single-line ValuePattern
+                    // bypass was tried and REVERTED the same night - Quill's
+                    // SetValue writes an accessibility-side value the real
+                    // editor doesn't fully honour: the bracket read-back
+                    // VERIFIED our text while the rendered buffer hadn't
+                    // replaced. A native select-all before it didn't fix
+                    // the semantics either. Paste is the only write Quill
+                    // honours end-to-end; WaitModifiersUp keeps its bursts
+                    // off the user's held chord, and the mapped caret is
+                    // re-asserted at bracket settle so paste doesn't park
+                    // the cursor at the end.)
+                    if (PastePreferredApps.Contains(_lastApp))
                     {
+                        int pasteCaretBefore = _lastSentCaret;
                         PasteReplace(text, prevSent);
+                        int mapped = MapCaretAcrossSplice(prevSent, text, pasteCaretBefore);
+                        if (mapped >= 0)
+                        {
+                            _pendingCaretTarget = mapped;
+                            _pendingCaretDeadline = Environment.TickCount + 2500;
+                        }
                         Log("debug", "applied substitution (" + text.Length + " chars, paste [Slack soft-break])");
                         return;
                     }
@@ -1493,13 +1499,6 @@ namespace OpenCues
                     // and only restore on the real substitution - no per-frame
                     // caret churn.
                     int caretBeforeWrite = _lastSentCaret;
-                    // Quill-class editors (paste-preferred apps on the
-                    // single-line bypass): SetValue replaces the SELECTION,
-                    // not the value - commit a native select-all first so
-                    // the replace covers the whole buffer. Native value
-                    // widgets (omnibox, Win32) ignore selection semantics
-                    // and are untouched.
-                    if (PastePreferredApps.Contains(_lastApp)) TryNativeSelectAll();
                     ((ValuePattern)vp).SetValue(text);
                     if (!LooksLikeAnimationFrame(prevSent, text))
                     {
@@ -1580,13 +1579,12 @@ namespace OpenCues
         // new span. Unknown pre-write caret falls back to the proven
         // to-end restore (chrome's caret poll returns unknown there, so
         // chrome's behaviour is unchanged by construction).
-        static void RestoreCaretMapped(AutomationElement el, string prev, string next, int prevCaret)
+        // Map a caret across a span splice: before the edit stays, after
+        // shifts by the length delta, inside lands at the new span's end.
+        // -1 = unmappable (unknown caret / null texts).
+        static int MapCaretAcrossSplice(string prev, string next, int prevCaret)
         {
-            if (prev == null || next == null || prevCaret < 0 || prevCaret > prev.Length)
-            {
-                RestoreCaretToEnd(el);
-                return;
-            }
+            if (prev == null || next == null || prevCaret < 0 || prevCaret > prev.Length) return -1;
             int pre = CommonPrefixLen(prev, next);
             int suf = 0;
             while (suf < prev.Length - pre && suf < next.Length - pre
@@ -1598,6 +1596,17 @@ namespace OpenCues
             else target = next.Length - suf;
             if (target < 0) target = 0;
             if (target > next.Length) target = next.Length;
+            return target;
+        }
+
+        static void RestoreCaretMapped(AutomationElement el, string prev, string next, int prevCaret)
+        {
+            int target = MapCaretAcrossSplice(prev, next, prevCaret);
+            if (target < 0)
+            {
+                RestoreCaretToEnd(el);
+                return;
+            }
             ApplySetCursor(target);
             // Async editors (Quill) apply the SetValue DOM replacement on
             // their own schedule; when this restore wins the race, the
@@ -1609,7 +1618,7 @@ namespace OpenCues
             _pendingCaretTarget = target;
             _pendingCaretDeadline = Environment.TickCount + 1500;
             Log("debug", "caret restore: mapped " + prevCaret + " -> " + target
-                + " (splice [" + pre + "," + oldEditEnd + ") delta " + (next.Length - prev.Length) + ")");
+                + " (delta " + (next.Length - prev.Length) + ")");
         }
 
         static int _pendingCaretTarget = -1;
@@ -3746,32 +3755,6 @@ namespace OpenCues
                 if (TryNativeUiaCaretToOffset(offset)) _lastSentCaret = offset;
             }
             catch { }
-        }
-
-        // Native select-all through the a11y API - a TextRange.Select() on
-        // the document range. No key injection, no clipboard, immune to
-        // held modifiers. Used before SetValue on Quill-class editors,
-        // whose SetValue replaces the CURRENT SELECTION: after a mapped
-        // caret restore leaves a collapsed mid-text selection, a bare
-        // SetValue INSERTS the whole new buffer at the caret ("the
-        // insertion method isn't replacing all the text", 2026-07-23).
-        static bool TryNativeSelectAll()
-        {
-            try
-            {
-                var uia = NativeUia();
-                if (uia == null) return false;
-                IUIAutomationElementN el;
-                if (uia.GetFocusedElement(out el) != 0 || el == null) return false;
-                object po;
-                if (el.GetCurrentPattern(UIA_TextPatternId_N, out po) != 0 || po == null) return false;
-                var tp = po as IUIAutomationTextPatternN;
-                if (tp == null) return false;
-                IUIAutomationTextRangeN doc;
-                if (tp.get_DocumentRange(out doc) != 0 || doc == null) return false;
-                return doc.Select() == 0;
-            }
-            catch { return false; }
         }
 
         static bool TryNativeUiaCaretToOffset(int offset)
