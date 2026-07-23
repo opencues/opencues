@@ -3195,6 +3195,12 @@ namespace OpenCues
         const ushort VK_SHIFT = 0x10, VK_MENU = 0x12, VK_ESCAPE = 0x1B;
         const ushort VK_LEFT = 0x25, VK_UP = 0x26, VK_RIGHT = 0x27, VK_DOWN = 0x28;
         const ushort VK_LWIN = 0x5B, VK_RWIN = 0x5C;
+
+        // Ink present = lockstep tracking is worth the fast cadence.
+        static bool HasMarks()
+        {
+            try { return _hlSpan != null || _dimSpans.Count > 0; } catch { return false; }
+        }
         const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
         static readonly IntPtr INJECT_MARK = new IntPtr(0x0C0E50C0);
 
@@ -3355,7 +3361,15 @@ namespace OpenCues
                     // BEFORE the app inserts the character.
                     if (down && _attached && _enabled && _fieldCycling)
                     {
-                        BumpFastPoll();
+                        // Fast-cadence ramp ONLY when there is ink to keep in
+                        // lockstep (2026-07-23). Plain typing with no marks
+                        // paid the 8ms window - and its cross-process UIA
+                        // reads land on the TARGET APP's UI thread between
+                        // the user's keystrokes, which a compositor-strained
+                        // setup (the 5K-attached lag) surfaces as typing
+                        // latency. No marks -> normal cadence; the moment
+                        // cues render, the next keystroke ramps as before.
+                        if (HasMarks()) BumpFastPoll();
                         _caretDirty = true;   // any key can move the caret (perf opt 2)
                         // Keyboard scrolls move every mark - scroll suppression.
                         if (vk == 0x21) EdgeAwareScrollHide(1);        // PgUp
