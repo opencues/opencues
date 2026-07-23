@@ -355,8 +355,23 @@ namespace OpenCues
         // last signal back to the normal tick. Written from several threads
         // (hook, UIA callbacks, reader) - a torn read just mistimes one
         // tick, so a plain int is fine.
-        static int _fastUntil;
+        // Two-tier fast cadence (2026-07-23). The single 8ms window was
+        // chosen during the lockstep firefight and never tiered; most of
+        // its consumers don't need 125Hz, and its cross-process reads land
+        // on the target app's UI thread (felt as typing latency on
+        // compositor-strained setups - the 5K-attached lag).
+        //   WRITE tier (8ms, 400ms window): around OUR writes - cycling
+        //     substitutions + animation frames, where a stale rect is a
+        //     visible ghost for its whole duration. Only this tier raises
+        //     the 1ms system timer quantum.
+        //   TRACK tier (35ms, 700ms window): marks sliding with typing /
+        //     scroll settle / motion probes. At ~10 keys/sec and a 60Hz
+        //     display, 35ms corrections are visually identical to 8ms.
+        static int _fastUntil;                 // TRACK tier deadline
         const int FAST_WINDOW_MS = 700;
+        static int _writeFastUntil;            // WRITE tier deadline
+        const int WRITE_FAST_WINDOW_MS = 400;
+        const int TRACK_POLL_MS = 35;
         static readonly int _fastPollMs = ReadFastPollMs();
         static int ReadFastPollMs()
         {
@@ -366,6 +381,12 @@ namespace OpenCues
             return 8;   // ~120Hz request = one update per frame on any display
         }
         static void BumpFastPoll() { _fastUntil = Environment.TickCount + FAST_WINDOW_MS; }
+        static void BumpWriteFast()
+        {
+            int now = Environment.TickCount;
+            _writeFastUntil = now + WRITE_FAST_WINDOW_MS;
+            _fastUntil = now + FAST_WINDOW_MS;   // track tier carries the settle after the burst
+        }
 
         // Perf opt 1 (2026-07-21): the full-text ValuePattern read is a
         // cross-process COM call that materializes the ENTIRE field text -
@@ -869,10 +890,12 @@ namespace OpenCues
                 // attached Electron fields have no reliable UIA events).
                 // Fast cadence only matters while marks exist to keep in
                 // visual sync; otherwise the normal tick is plenty.
-                bool fast = unchecked(Environment.TickCount - _fastUntil) < 0
+                int nowTick = Environment.TickCount;
+                bool writeFast = unchecked(nowTick - _writeFastUntil) < 0;
+                bool trackFast = unchecked(nowTick - _fastUntil) < 0
                     && (_dimSpans.Count > 0 || _hlSpan != null);
-                SetTimerRaised(fast);   // 8ms waits need the 1ms timer quantum
-                _wake.WaitOne(fast ? _fastPollMs : _pollMs);
+                SetTimerRaised(writeFast);   // only the 8ms tier needs the 1ms timer quantum
+                _wake.WaitOne(writeFast ? _fastPollMs : trackFast ? TRACK_POLL_MS : _pollMs);
             }
         }
 
@@ -990,7 +1013,7 @@ namespace OpenCues
                         // words rect-correct as fast as shrunk ones.
                         NudgeTargetPaint();
                         _overlayDirty = true;
-                        BumpFastPoll();
+                        BumpWriteFast();   // substitution landing - 8ms tier
                         break;
                     case "set-cursor":
                         // Phase 2: position the caret (EM_SETSEL on Edit-family
@@ -3447,10 +3470,10 @@ namespace OpenCues
                     : (ctrl && alt);
                 if (!chordHit) return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
                 // Cycling/navigation chord: the substitution + highlight move
-                // land within a few ms - ramp the fast cadence NOW so the
+                // land within a few ms - ramp the WRITE tier NOW so the
                 // overlay repaints at 8ms from the first frame (previously it
                 // only ramped when the downstream change event arrived).
-                BumpFastPoll();
+                BumpWriteFast();
                 _caretDirty = true;
                 _swallowedDown.Add(vk);
                 MaskAltTap();
