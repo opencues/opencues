@@ -1493,6 +1493,13 @@ namespace OpenCues
                     // and only restore on the real substitution - no per-frame
                     // caret churn.
                     int caretBeforeWrite = _lastSentCaret;
+                    // Quill-class editors (paste-preferred apps on the
+                    // single-line bypass): SetValue replaces the SELECTION,
+                    // not the value - commit a native select-all first so
+                    // the replace covers the whole buffer. Native value
+                    // widgets (omnibox, Win32) ignore selection semantics
+                    // and are untouched.
+                    if (PastePreferredApps.Contains(_lastApp)) TryNativeSelectAll();
                     ((ValuePattern)vp).SetValue(text);
                     if (!LooksLikeAnimationFrame(prevSent, text))
                     {
@@ -3739,6 +3746,32 @@ namespace OpenCues
                 if (TryNativeUiaCaretToOffset(offset)) _lastSentCaret = offset;
             }
             catch { }
+        }
+
+        // Native select-all through the a11y API - a TextRange.Select() on
+        // the document range. No key injection, no clipboard, immune to
+        // held modifiers. Used before SetValue on Quill-class editors,
+        // whose SetValue replaces the CURRENT SELECTION: after a mapped
+        // caret restore leaves a collapsed mid-text selection, a bare
+        // SetValue INSERTS the whole new buffer at the caret ("the
+        // insertion method isn't replacing all the text", 2026-07-23).
+        static bool TryNativeSelectAll()
+        {
+            try
+            {
+                var uia = NativeUia();
+                if (uia == null) return false;
+                IUIAutomationElementN el;
+                if (uia.GetFocusedElement(out el) != 0 || el == null) return false;
+                object po;
+                if (el.GetCurrentPattern(UIA_TextPatternId_N, out po) != 0 || po == null) return false;
+                var tp = po as IUIAutomationTextPatternN;
+                if (tp == null) return false;
+                IUIAutomationTextRangeN doc;
+                if (tp.get_DocumentRange(out doc) != 0 || doc == null) return false;
+                return doc.Select() == 0;
+            }
+            catch { return false; }
         }
 
         static bool TryNativeUiaCaretToOffset(int offset)
