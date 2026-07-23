@@ -2359,6 +2359,7 @@ namespace OpenCues
                     + " not verified at end (" + cur.Length + ")");
                 return false;
             }
+            WaitModifiersUp();   // held Ctrl turns Backspace into delete-word
             NoteSelfWrite(text);
             var inputs = new INPUT[del * 2 + tail.Length * 2];
             int k = 0;
@@ -2378,8 +2379,31 @@ namespace OpenCues
             return true;
         }
 
+        // Injected key bursts COMBINE with physically-held modifiers: a
+        // cycle chord leaves the user's Shift/Alt down for ~100-200ms, and
+        // an immediate Ctrl+A burst then reaches the app as Ctrl+Shift+A -
+        // in Slack that is "All Unreads" and focus leaves the composer
+        // (2026-07-23 live). Wait for the user's modifiers to lift before
+        // injecting; capped so a held key can't stall writes forever.
+        // (Restoring lifted modifiers was rejected: a re-injected down for
+        // a key the user released mid-burst is a STUCK modifier.)
+        static void WaitModifiersUp()
+        {
+            int deadline = Environment.TickCount + 600;
+            while (unchecked(deadline - Environment.TickCount) > 0)
+            {
+                bool held = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0
+                    || (GetAsyncKeyState(VK_MENU) & 0x8000) != 0
+                    || (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+                if (!held) return;
+                Thread.Sleep(10);
+            }
+            Log("warn", "key burst injected with user modifiers still held (600ms cap) - app may see a combined chord");
+        }
+
         static void KeyChord(ushort modifier, ushort key)
         {
+            WaitModifiersUp();
             var inputs = new INPUT[]
             {
                 KeyInput(modifier, false),
@@ -2394,6 +2418,7 @@ namespace OpenCues
         // selection on the MSAA whole-field paste path.
         static void KeyTap(ushort key)
         {
+            WaitModifiersUp();
             var inputs = new INPUT[] { KeyInput(key, false), KeyInput(key, true) };
             SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
         }
@@ -2963,6 +2988,7 @@ namespace OpenCues
         // so the paste reliably lands in the emptied field.
         static void ClearAndPaste(int n)
         {
+            WaitModifiersUp();   // held Shift/Ctrl corrupts the backspace+paste burst
             if (n < 0) n = 0;
             if (n > 4000) n = 4000;
             var inputs = new INPUT[n * 2 + 4];
