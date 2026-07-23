@@ -1,0 +1,118 @@
+/* OpenCues — CSS Custom Highlight API styles
+ *
+ * No element-wide colour override. The host page's text colour, link
+ * colour, list-marker colour, syntax highlighting, etc. all pass
+ * through untouched. Only words the runtime hands us as `oc-dim` /
+ * `oc-active` ranges get repainted.
+ *
+ * The two highlight colours are NOT hardcoded — they're read from
+ * CSS custom properties (`--oc-active`, `--oc-dim`) that content.ts
+ * sets on each attached contenteditable, derived from the host's own
+ * computed `color` and nearest opaque background. See derive-colours.ts.
+ *
+ * Why this avoids the "all-white flash" the old `.oc-attached` rule
+ * fixed: `--oc-active` is the contenteditable's own text colour, so
+ * when the editor's MutationObserver invalidates an active Range for
+ * one frame mid-cycle, the underlying text shows the same colour we
+ * were painting — the flash has nothing to flash to.
+ */
+
+/* The actual ::highlight(oc-dim) / ::highlight(oc-active) colour rules
+ * are injected dynamically by content.ts into a runtime <style> tag.
+ *
+ * Reason: CSS Custom Highlight pseudo-elements in current Chrome don't
+ * reliably inherit CSS custom properties from their originating
+ * element, so a `color: var(--oc-dim)` rule here would resolve to
+ * nothing. Instead, content.ts derives the colours per attachment and
+ * writes literal values into the injected stylesheet.
+ *
+ * font-style is NOT in the Highlight API's supported-properties list
+ * on Chrome today; the italic rule is included as a forward-compat
+ * hint and silently ignored when not supported. */
+
+/* Status bar — fixed floating box. Plain square box: no rounded corners,
+ * no shadow, no glow. Placement + width come from a --pos-* modifier
+ * (set from the chrome-only `statusbarPosition` setting). ALL content
+ * wraps to multiple lines rather than clipping — a long tip / setting /
+ * coach line grows the box instead of getting cut off with an ellipsis. */
+.oc-status-bar {
+  position: fixed;
+  padding: 6px 12px;
+  background: #000;
+  color: #fff;
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+  border-radius: 0;
+  box-shadow: none;
+  z-index: 99999;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.15s, transform 0.15s;
+  pointer-events: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+.oc-status-bar--visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ── Position modes (chrome-only `statusbarPosition` setting) ────────── */
+/* Compact panel, bottom-right — wraps within a narrow column. */
+.oc-status-bar--pos-right {
+  bottom: 16px;
+  right: 16px;
+  left: auto;
+  top: auto;
+  max-width: min(420px, 42vw);
+}
+/* Full-width band along the bottom. */
+.oc-status-bar--pos-bottom {
+  bottom: 16px;
+  left: 16px;
+  right: 16px;
+  top: auto;
+  max-width: none;
+}
+/* Full-width band along the top. */
+.oc-status-bar--pos-top {
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  bottom: auto;
+  max-width: none;
+}
+
+/* Peek-through: while the cursor is over the bar's box, hide it (opacity 0)
+ * so the user can read / click what's underneath. Toggled by JS geometry
+ * (installPeek in runtime-statusbar.ts), not :hover — the bar is always
+ * click-through (pointer-events:none). Comes after --visible / --kata in
+ * source so it wins the opacity cascade (same specificity). The base
+ * opacity transition makes it a smooth fade in/out. */
+.oc-status-bar--peek {
+  opacity: 0;
+}
+
+/* Kata mode — structured into a head row (badge + step counter) over a
+ * word-wrapped coach body. Placement/width/wrap come from the base +
+ * --pos-* rules above; --kata only adds the head/body structure. */
+.oc-status-bar--kata .oc-kata-head {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.oc-status-bar--kata .oc-kata-badge {
+  background: #fff;
+  color: #000;
+  padding: 0 3px;
+  margin-right: 6px;
+  font-weight: 700;
+}
+
+.oc-status-bar--kata .oc-kata-body {
+  font-weight: 400;
+  opacity: 0.92;
+}

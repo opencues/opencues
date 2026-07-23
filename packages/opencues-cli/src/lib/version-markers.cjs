@@ -234,6 +234,7 @@ function enumerateInstalledHosts(ctx) {
     { host: 'gemini-cli',        root: path.join(HOME, 'gemini-cli-cues', '.opencues') },
     { host: 'shell',             root: path.join(ctx.REPO_ROOT, 'integrations/shell/node_modules/@opencues') },
     { host: 'chrome',            root: path.join(ctx.REPO_ROOT, 'integrations/chrome/dist') },
+    { host: 'firefox',           root: path.join(ctx.REPO_ROOT, 'integrations/firefox/dist') },
   ];
   const results = [];
   for (const c of candidates) {

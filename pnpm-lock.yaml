@@ -130,6 +130,25 @@ importers:
         specifier: ^4.1.0
         version: 4.1.8(@types/node@22.19.20)(jsdom@29.1.1)(vite@6.4.3(@types/node@22.19.20))
 
+  integrations/firefox:
+    dependencies:
+      '@opencues/core':
+        specifier: workspace:*
+        version: link:../../packages/opencues-core
+      '@opencues/runtime':
+        specifier: workspace:*
+        version: link:../../packages/opencues-runtime
+    devDependencies:
+      '@types/firefox-webext-browser':
+        specifier: ^120.0.4
+        version: 120.0.5
+      esbuild:
+        specifier: ^0.25.0
+        version: 0.25.12
+      typescript:
+        specifier: ^5.4.0
+        version: 5.8.2
+
   integrations/gemini-cli:
     dependencies:
       '@opencues/core':
@@ -1038,6 +1057,9 @@ packages:
 
   '@types/filewriter@0.0.33':
     resolution: {integrity: sha512-xFU8ZXTw4gd358lb2jw25nxY9QAgqn2+bKKjKOYfNCzN4DKCFetK7sPtrlpg66Ywe3vWY9FNxprZawAh9wfJ3g==}
+
+  '@types/firefox-webext-browser@120.0.5':
+    resolution: {integrity: sha512-imn8ecga0HQWcOSvxy9i0lD+7vpHgkj1NVLvXS1lNHqHt03Z4QwazeEdoWe+C9JXpmVyKiRanb+z9D/w001tRg==}
 
   '@types/gensync@1.0.5':
     resolution: {integrity: sha512-MbsRCT7mTikHwKZ0X+LVUTLRrZZRLipTuXEO9qOYO+zmjMVk81axyClMROf6uoPD9MRVu46bx8zoR0Ad9q3NAg==}
@@ -2989,6 +3011,8 @@ snapshots:
       '@types/filewriter': 0.0.33
 
   '@types/filewriter@0.0.33': {}
+
+  '@types/firefox-webext-browser@120.0.5': {}
 
   '@types/gensync@1.0.5': {}
 

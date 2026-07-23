@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup">
+    <div class="banner">
+      <div class="banner-line">
+        <span class="brand-badge">C_</span>
+        <span class="wordmark">OpenCues_</span>
+        <span class="version" id="version"></span>
+      </div>
+      <div class="tagline">Native AI integration anywhere you type. Model agnostic and fully open source. Inline agents and prompting.</div>
+    </div>
+
+    <div class="banner-gap"></div>
+
+    <label class="section-label" for="key_GROQ_API_KEY">llm provider keys</label>
+    <div class="scroll-keys">
+      <p class="section-hint">
+        Leave blank if <code>opencues install chrome-host</code> is forwarding them from your shell env.
+        Pasted keys win on collision.
+      </p>
+
+      <label for="key_GROQ_API_KEY">groq</label>
+      <input type="password" id="key_GROQ_API_KEY" data-provider-key="GROQ_API_KEY" placeholder="gsk_...">
+
+      <label for="key_CEREBRAS_API_KEY">cerebras</label>
+      <input type="password" id="key_CEREBRAS_API_KEY" data-provider-key="CEREBRAS_API_KEY" placeholder="csk-...">
+
+      <label for="key_OPENAI_API_KEY">openai</label>
+      <input type="password" id="key_OPENAI_API_KEY" data-provider-key="OPENAI_API_KEY" placeholder="sk-...">
+
+      <label for="key_ANTHROPIC_API_KEY">anthropic</label>
+      <input type="password" id="key_ANTHROPIC_API_KEY" data-provider-key="ANTHROPIC_API_KEY" placeholder="sk-ant-...">
+
+      <label for="key_GEMINI_API_KEY">gemini</label>
+      <input type="password" id="key_GEMINI_API_KEY" data-provider-key="GEMINI_API_KEY" placeholder="AI...">
+
+      <label for="key_OPENROUTER_API_KEY">openrouter</label>
+      <input type="password" id="key_OPENROUTER_API_KEY" data-provider-key="OPENROUTER_API_KEY" placeholder="sk-or-...">
+    </div>
+
+    <label class="defer-toggle" title="When ON, the popup's Provider / Model / API URL fields are ignored — your ~/.cues/OPENCUES.md (pushed by `opencues install chrome-host`) drives config instead. Matches how CC / OC / gemini-cli work. Leave OFF unless you've installed chrome-host.">
+      <input type="checkbox" id="deferToChromeHost">
+      use ~/.cues/ config (chrome-host)
+    </label>
+
+    <label for="provider">provider</label>
+    <select id="provider" title="Hover for status. Only providers with a verified API key appear here.">
+      <option value="">— validating keys… —</option>
+    </select>
+    <!-- providerHint kept as an empty element so popup.ts's existing
+         getElementById call doesn't return null; the validation
+         message now lives on the <select>'s title attribute (hover). -->
+    <p id="providerHint" class="section-hint" style="display:none"></p>
+
+    <label for="modelSelect">model</label>
+    <select id="modelSelect" title="Bench-validated models only. Picking a provider shows that provider's tested options. Models that scored badly in benchmarks aren't listed.">
+      <option value="">— pick a provider first —</option>
+    </select>
+    <input type="hidden" id="model" value="">
+
+    <!-- TTS hidden — Web Speech isn't wired through chrome's substitution
+         pipeline yet. Kept in storage so back-compat doesn't lose the
+         field, but no longer rendered. -->
+    <input type="checkbox" id="ttsEnabled" style="display:none">
+    <input type="number" id="ttsRate" min="1" max="5" value="2" style="display:none">
+
+    <!-- Dim fade moved to `opencues settings _` → cycle to `dim-mix`.
+         Chrome-only feature so it lives in the registry's MENU_TUNABLES
+         with hostScope: ['chrome']. The hidden elements below keep the
+         storage shape intact for back-compat with older configs. -->
+    <input type="hidden" id="dimMix" value="45">
+    <span id="dimMixValue" style="display:none"></span>
+
+    <!-- status-bar position is set via `opencues settings _` → cycle to
+         `statusbar-position` (chrome-only FEATURE, also settable by the
+         fluid-config intent classifier), not the popup. -->
+
+    <button id="save">save</button>
+    <button id="reset">reset to defaults</button>
+    <div id="status"></div>
+
+    <details>
+      <summary>advanced</summary>
+      <label for="apiUrl" title="Override the provider's default endpoint. Must match the provider's request schema (OpenAI / Anthropic / Gemini). Wrong shape = silent 400s.">api url</label>
+      <input type="text" id="apiUrl" placeholder="https://api.groq.com/openai/v1/chat/completions" title="Override the provider's default endpoint. Must match the provider's request schema (OpenAI / Anthropic / Gemini). Wrong shape = silent 400s.">
+
+      <!-- Target Selector hidden — default `[contenteditable="true"]`
+           works for every site we attach to. A non-default selector
+           silently breaks attach with no error surface. -->
+      <input type="hidden" id="targetSelector" value="">
+    </details>
+
+    <label class="section-label">diagnostics</label>
+    <div class="diag-section-wrap">
+      <button id="diag-run">run self-check</button>
+      <button id="diag-probe">test api key</button>
+      <pre id="diag-out" style="display:none"></pre>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

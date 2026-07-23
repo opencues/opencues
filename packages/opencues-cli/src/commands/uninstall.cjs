@@ -19,6 +19,8 @@ const HOST_ALIASES = {
   'oc':          'opencode',
   'chrome':      'chrome',
   'chrome-host': 'chrome',          // native-messaging host (separate sub-action)
+  'firefox':      'firefox',
+  'firefox-host': 'firefox',        // native-messaging host (separate sub-action)
   'gemini-cli':  'gemini-cli',
   'geminicli':   'gemini-cli',
   'gemini':      'gemini-cli',
@@ -26,8 +28,8 @@ const HOST_ALIASES = {
   'term':        'shell',
   'oc-edit':     'shell',
 };
-const HOSTS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'shell'];
-const HOST_FOLDERS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'shell'];
+const HOSTS = ['claude-code', 'opencode', 'chrome', 'firefox', 'gemini-cli', 'shell'];
+const HOST_FOLDERS = ['claude-code', 'opencode', 'chrome', 'firefox', 'gemini-cli', 'shell'];
 
 module.exports = async function uninstall(argv, ctx) {
   // Symmetric to `opencues install skill / plugin` — dispatch before
@@ -66,7 +68,7 @@ module.exports = async function uninstall(argv, ctx) {
 
   // chrome-host uninstalls a separate sub-action (the native-messaging
   // host), not the extension itself. Dispatch the matching action.
-  const action = target === 'chrome-host' ? 'uninstall-host' : 'uninstall';
+  const action = (target === 'chrome-host' || target === 'firefox-host') ? 'uninstall-host' : 'uninstall';
 
   console.log(banner({ version: cliVersion(ctx) }));
   console.log('');

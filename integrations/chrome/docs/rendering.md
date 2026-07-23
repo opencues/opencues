@@ -141,7 +141,7 @@ Most modern web apps (Google Docs, Notion, Slack, ChatGPT, VS Code web) use `con
 - Chrome 105+ (September 2022)
 - Edge 105+
 - Safari 17.2+ (partial)
-- Firefox: Not supported (as of 2026)
+- Firefox 140+ (CSS Custom Highlight API shipped) — see `integrations/firefox/`
 
 ## Comparison with Claude Code
 

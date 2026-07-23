@@ -1,0 +1,47 @@
+{
+  "name": "@opencues/firefox",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenCues enables native AI integration anywhere you type. Model agnostic and fully open source. Inline agents and prompting.",
+  "compatibility": {
+    "firefox": ">=140"
+  },
+  "type": "module",
+  "bin": {
+    "opencues-firefox": "./bin/install.cjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "prebuild": "pnpm --filter @opencues/core --filter @opencues/runtime build",
+    "build": "npm run typecheck && node esbuild.config.mjs",
+    "watch": "node esbuild.config.mjs --watch",
+    "dev-install": "node bin/install.cjs install",
+    "dev-uninstall": "node bin/install.cjs uninstall",
+    "prepublishOnly": "node ../../scripts/prepublish-guard.cjs"
+  },
+  "dependencies": {
+    "@opencues/core": "workspace:*",
+    "@opencues/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/firefox-webext-browser": "^120.0.4",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.4.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/opencues/opencues",
+    "directory": "integrations/firefox"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  }
+}

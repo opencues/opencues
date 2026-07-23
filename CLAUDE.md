@@ -31,6 +31,7 @@ host and the runtime.
 - **Claude Code** (`integrations/claude-code/`) — patches Claude Code 2.1.x (current pin 2.1.206 native binary; tested versions in `integrations/claude-code/compat.json`) via tweakcc 4.0.13+
 - **OpenCode** (`integrations/opencode/`) — patches OpenCode 1.14.x (current pin 1.14.17, see `integrations/opencode/pin.json`); runtime loaded inline
 - **Chrome** (`integrations/chrome/`) — MV3 extension; CSS Custom Highlight API for in-page rendering
+- **Firefox** (`integrations/firefox/`) — MV3 add-on; fork of the Chrome integration's build/manifest/install/src layer (namespace `browser.*`, event-page background, gecko id, Mozilla native-host dirs), reusing the chrome v1 runtime adapter + native host. Requires Firefox 140+ (CSS Custom Highlight API). See its CLAUDE.md.
 - **Gemini CLI** (`integrations/gemini-cli/`) — patches Gemini CLI 0.41.x; React/Ink host with a render-kick + ZWS-toggle pull model. See its CLAUDE.md for the React quirks (it's the first React/Ink host so the integration was non-trivial).
 - **Shell** (`integrations/shell/`) — standalone Bun + OpenTUI + SolidJS app. User-facing entry point is `oc-shell` (wraps the user's interactive shell in a private tmux session with an Alt+Shift+↑ input box); `oc-edit` is the internal Bun host lazy-spawned inside that session and is not directly user-invokable. **Self-owned host** — no upstream fork to patch. Built on the same OpenTUI primitives as OpenCode, so the adapter band (`adapters/shell/v1/`) is structurally a near-clone of `adapters/oc/v1.14/`. Canonical host name: `shell` (alias `terminal` kept for back-compat in `on-host:` directives).
 
@@ -679,6 +680,7 @@ done
 | `integrations/claude-code/` | `@opencues/claude-code` | 0.2.7 | private |
 | `integrations/opencode/` | `@opencues/opencode` | 0.2.6 | private |
 | `integrations/chrome/` | `@opencues/chrome` | 0.2.65 | private |
+| `integrations/firefox/` | `@opencues/firefox` | 0.1.0 | private |
 | `integrations/gemini-cli/` | `@opencues/gemini-cli` | 0.2.6 | private |
 | `integrations/shell/` | `@opencues/shell` | 0.2.6 | private |
 

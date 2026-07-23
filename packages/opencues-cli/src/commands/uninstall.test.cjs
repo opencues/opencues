@@ -124,7 +124,7 @@ function readLastArgs(folder) {
   return JSON.parse(fs.readFileSync(p, 'utf8'));
 }
 
-const ALL_FOLDERS = ['claude-code', 'opencode', 'chrome', 'gemini-cli', 'shell'];
+const ALL_FOLDERS = ['claude-code', 'opencode', 'chrome', 'firefox', 'gemini-cli', 'shell'];
 
 function ctx() {
   return { REPO_ROOT: fakeRepoRoot, pkg: { version: 'test' } };
@@ -236,7 +236,7 @@ describe('uninstall dispatch — invalid input', () => {
   it('invalid: missing <host> in a non-interactive context exits 2, listing every known host', async () => {
     await assert.rejects(() => uninstall([], ctx()), /__EXIT_2__/);
     assert.match(errs.join('\n'), /missing <host>/);
-    assert.match(errs.join('\n'), /claude-code, opencode, chrome, gemini-cli, shell/);
+    assert.match(errs.join('\n'), /claude-code, opencode, chrome, firefox, gemini-cli, shell/);
   });
 
   it('invalid: unknown host name exits 2, naming the bad value', async () => {
