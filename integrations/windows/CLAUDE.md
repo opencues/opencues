@@ -240,6 +240,70 @@ BackdropBrush live-dim, lives on `spike/windows-composition-overlay`):
   suppression (WH_MOUSE_LL wheel + PgUp/PgDn + rect-moved probe →
   hide all, settle 350ms, fade back).
 
+## Per-app integration tiers (2026-07-23 plateau)
+
+Windows is not one integration — it is a per-app ladder of write
+fidelity, and each app's experience is exactly the quality of the best
+mechanism it honours. Shipping posture as of this plateau:
+
+| Tier | Apps (verified) | Same class (expected) | What works | Write mechanism |
+|---|---|---|---|---|
+| **Full** | Notepad, WordPad, Chrome/Edge omnibox, Explorer fields, Start-menu search | Win32 dialogs, WinForms, WPF, UWP/WinUI text boxes, Qt line-edits | everything — marks, cues, cycling, blanks, instant commits, native undo (EM/TOM path) | real APIs: EM messages / TOM ranges / honest `ValuePattern.SetValue` |
+| **Partial (Slack-class)** | Slack | most Electron/WebView2/CEF apps *after a restart under the screen-reader flag* | real geometry + cues + cycling, but commits land **on chord release** (deferred coalesced paste); caret mapped-restored at settle | clipboard paste only — Quill's `SetValue` is a **lying write** (passes a11y read-back, editor doesn't replace), IA2 editable-text refused |
+| **Phase 1** | Discord (as observed — not yet restarted under the flag) | any Chromium app started before the flag went up | blanks only; no marks, no cycling | MSAA deferred paste |
+
+Treat Slack/Discord-class as *phase-1-grade for quality commitments*:
+blanks are reliable; cycling in Slack works but sits below the
+full-tier bar by construction (paste physics). This is the same wall
+Grammarly tiers its own product on. Notepad-grade Slack would require
+an API Chromium does not grant out-of-process clients.
+
+## Integration-process lessons (July 2026 discovery arc)
+
+Hard-won rules for the next app family this host meets — each of
+these cost a live debugging session:
+
+1. **Chromium's accessibility mode is decided at process start** and
+   is sticky for the process lifetime, in both directions. The
+   screen-reader flag must be up before the browser starts (raise it
+   as early as possible at login); an app that lost the race stays
+   stubbed until restarted. The frozen ~2px stub rect is a reliable
+   detector for "restart this app" nudges.
+2. **Never trust a write API on read-back alone.** Quill's SetValue
+   passed the bracket's verify (a11y value = our text) while the
+   rendered editor showed otherwise. A write path whose read-back
+   lies is worse than a slow one — it desyncs the entire model.
+   Verify new write mechanisms by eye before trusting them.
+3. **Injected input combines with the user's physical modifiers.**
+   A paste burst during a held cycling chord reaches the app as
+   Ctrl+Shift+A ("All Unreads" — focus theft) or eats text via
+   Ctrl+Backspace. `WaitModifiersUp` guards every burst, and cycling
+   writes in paste apps must **defer + coalesce until the chord
+   lifts** (one commit on release) — per-step writes during a hold
+   are structurally impossible.
+4. **Caret assumptions are load-bearing and non-local.** The mapped
+   caret restore (parks caret mid-text) silently broke the
+   diff-paste's backspace variant (deletes backward from the caret,
+   assuming end) 40 minutes later. Any code that edits "at the
+   caret" must verify or establish the caret position first, by API.
+5. **Chord remaps are a minefield of system meanings.** Alt+Shift is
+   the input-language toggle (fires on the modifiers alone; the noop
+   mask does NOT defuse it; presents as "the app eats my input");
+   Ctrl+Shift+arrows is select-by-word. The wire chord must stay
+   canonical (ship ctrl+alt regardless of the physical chord — the
+   runtime knows one chord; shipping physical mods silently no-ops
+   dispatch).
+6. **Async editors settle on their own schedule.** Caret restores and
+   verifications must anchor to the write bracket's verified-settle,
+   not to the moment after the write call.
+7. **Wide one-line ranges legally return multiple side-by-side
+   rects** (Chromium splits at text-run boundaries). Renderers that
+   assume one-rect-per-row must coalesce same-line rects first.
+8. Ops: never pipe the shim launch through `head` (pipe close kills
+   it minutes later, silently); overlapping probe runs race the
+   screen-reader-flag restore; background-launched shims die with
+   the launching session — check the process, not the launch.
+
 **Phase-2 known limitations:**
 - Cycling substitutions are whole-value writes — the app's native undo
   granularity cost from phase 1 applies per cycle step on non-Edit

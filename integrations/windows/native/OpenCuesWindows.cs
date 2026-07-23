@@ -3195,7 +3195,6 @@ namespace OpenCues
         const ushort VK_SHIFT = 0x10, VK_MENU = 0x12, VK_ESCAPE = 0x1B;
         const ushort VK_LEFT = 0x25, VK_UP = 0x26, VK_RIGHT = 0x27, VK_DOWN = 0x28;
         const ushort VK_LWIN = 0x5B, VK_RWIN = 0x5C;
-        const ushort VK_OEM_MINUS = 0xBD;   // temp minus-chord experiment
         const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
         static readonly IntPtr INJECT_MARK = new IntPtr(0x0C0E50C0);
 
@@ -3346,37 +3345,6 @@ namespace OpenCues
                         }
                     }
                 }
-                // TEMP EXPERIMENT (2026-07-23, Wilfred): minus-key chords.
-                //   Ctrl+Shift+Minus            -> navigate (canonical right)
-                //   Shift+Minus on an active hl -> cycle (canonical up); the '_' is eaten
-                // Shift+Minus with NO active highlight falls through and
-                // types '_' as normal (the blank trigger key). Remove after
-                // the experiment concludes.
-                if (vk == VK_OEM_MINUS)
-                {
-                    if (up && _swallowedDown.Remove(vk)) return new IntPtr(1);
-                    if (down && _attached && _enabled && _fieldCycling && Connected)
-                    {
-                        bool mc = (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
-                        bool ms = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
-                        if (mc && ms)
-                        {
-                            BumpFastPoll(); _caretDirty = true; _swallowedDown.Add(vk);
-                            QueueKeyMessage("right", (ushort)vk, true, true);
-                            ThreadPool.QueueUserWorkItem(delegate { Log("info", "minus-chord NAV (ctrl+shift+-) app=" + (_lastApp ?? "?")); });
-                            return new IntPtr(1);
-                        }
-                        if (ms && !mc && _hlSpan != null)
-                        {
-                            BumpFastPoll(); _caretDirty = true; _swallowedDown.Add(vk);
-                            if (_overlayStyle != "argb") BlankInkForWrite();
-                            ThreadPool.QueueUserWorkItem(delegate { TryLocalAltCycle(1); });
-                            QueueKeyMessage("up", (ushort)vk, true, true);
-                            ThreadPool.QueueUserWorkItem(delegate { Log("info", "minus-chord CYCLE (shift+- on hl) app=" + (_lastApp ?? "?")); });
-                            return new IntPtr(1);
-                        }
-                    }
-                }
                 bool isArrow = vk == VK_UP || vk == VK_DOWN || vk == VK_LEFT || vk == VK_RIGHT;
                 if (!isArrow && vk != VK_ESCAPE)
                 {
@@ -3435,21 +3403,7 @@ namespace OpenCues
                     return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
                 }
                 if (!(_attached && _enabled && _fieldCycling && Connected))
-                {
-                    // Chord diagnostic (transient, 2026-07-23): why did an
-                    // arrow pass through? Only logs actual Ctrl+Alt chords.
-                    if (down && isArrow
-                        && (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0
-                        && (GetAsyncKeyState(VK_MENU) & 0x8000) != 0)
-                    {
-                        bool a2 = _attached, e2 = _enabled, f2 = _fieldCycling, c2 = Connected;
-                        ThreadPool.QueueUserWorkItem(delegate {
-                            Log("info", "chord PASSED gate: attached=" + a2 + " enabled=" + e2
-                                + " fieldCycling=" + f2 + " connected=" + c2 + " app=" + (_lastApp ?? "?"));
-                        });
-                    }
                     return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
-                }
                 if (vk == VK_ESCAPE)
                 {
                     if (down)
@@ -3478,12 +3432,6 @@ namespace OpenCues
                     ? (alt && shift && !ctrl)
                     : (ctrl && alt);
                 if (!chordHit) return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
-                {
-                    uint vkLog = vk;
-                    ThreadPool.QueueUserWorkItem(delegate {
-                        Log("info", "chord CLAIMED: " + KeyName(vkLog) + " app=" + (_lastApp ?? "?"));
-                    });
-                }
                 // Cycling/navigation chord: the substitution + highlight move
                 // land within a few ms - ramp the fast cadence NOW so the
                 // overlay repaints at 8ms from the first frame (previously it
@@ -4168,7 +4116,6 @@ namespace OpenCues
             TextPatternRange doc;
             try { doc = ((TextPattern)tpo).DocumentRange; }
             catch { return list; }
-            _synthTp = (TextPattern)tpo;   // for stub-field RangeFromPoint probing
             // Caret position marks spans HOT: the capture style re-captures
             // hot spans on every refresh tick so the caret blink and live
             // edits under the patch stay visible ("re-apply when it is
@@ -4545,52 +4492,11 @@ namespace OpenCues
         static float _calOrigin; static float _calScale; static float _calOriginY;
         static int _calFor = int.MinValue;
 
-        // RangeFromPoint diagnostic (2026-07-22): GetBoundingRectangles is
-        // stubbed on Chromium fields, but the REVERSE query - which char
-        // offset sits at pixel (x,y) - is a different code path. If it
-        // answers honestly, span boundaries are binary-searchable and the
-        // synthesis needs no font model at all. Log-only while we find out.
-        static TextPattern _synthTp;
-        static int _rfpLogAt;
-        static void ProbeRangeFromPoint(System.Windows.Rect stub, string text)
-        {
-            if (unchecked(Environment.TickCount - _rfpLogAt) < 2000) return;
-            _rfpLogAt = Environment.TickCount;
-            var tp = _synthTp; if (tp == null) return;
-            try
-            {
-                var doc = tp.DocumentRange;
-                double y = stub.Y + stub.Height / 2;
-                var sb = new StringBuilder("rfp: y=" + (int)y + " ");
-                for (int k = 0; k < 10; k++)
-                {
-                    double x = stub.X + 4 + k * 55;
-                    string cell;
-                    try
-                    {
-                        var r = tp.RangeFromPoint(new System.Windows.Point(x, y));
-                        if (r == null) cell = "null";
-                        else
-                        {
-                            var c = doc.Clone();
-                            c.MoveEndpointByRange(TextPatternRangeEndpoint.End, r, TextPatternRangeEndpoint.Start);
-                            cell = ((c.GetText(-1) ?? "").Length).ToString();
-                        }
-                    }
-                    catch (Exception ex) { cell = "x(" + ex.GetType().Name + ")"; }
-                    sb.Append((int)x).Append("->").Append(cell).Append(' ');
-                }
-                OverlayLog(sb.ToString());
-            }
-            catch (Exception ex) { OverlayLog("rfp probe failed: " + ex.Message); }
-        }
-
         static bool TrySynthCalibrated(string text, int s, int e, System.Windows.Rect stub, bool active, int caret, int prevCaret, List<OverlaySpanRect> list)
         {
             try
             {
                 if (text == null || e > text.Length || e <= s) return false;
-                ProbeRangeFromPoint(stub, text);
                 int cx, ch;
                 bool gotCaret = TryGetSystemCaret(out cx, out ch);
                 // Font size from the CARET height (true text height); the
