@@ -5382,8 +5382,36 @@ namespace OpenCues
             }
             // Group the active span's rows into vertically-contiguous runs.
             actives.Sort(delegate (OverlaySpanRect a, OverlaySpanRect b) { return a.Y.CompareTo(b.Y); });
-            var group = new List<OverlaySpanRect>();
+            // Coalesce SAME-LINE rects into one row first (2026-07-23,
+            // "blue bbox wrong on ~10 words in one row"): a wide one-line
+            // range legally comes back as several side-by-side rects
+            // (Chromium splits at text-run boundaries). The staircase path
+            // below assumes vertically-STACKED rows; same-Y siblings fed
+            // into it trace a degenerate self-intersecting polygon. One
+            // visual line must be ONE row rect (X-union, max height).
+            var lines = new List<OverlaySpanRect>();
             foreach (var r in actives)
+            {
+                OverlaySpanRect last = lines.Count > 0 ? lines[lines.Count - 1] : null;
+                if (last != null && r.Y < last.Y + last.H * 0.5f)
+                {
+                    float x0 = Math.Min(last.X, r.X);
+                    float x1 = Math.Max(last.X + last.W, r.X + r.W);
+                    float y0 = Math.Min(last.Y, r.Y);
+                    float y1 = Math.Max(last.Y + last.H, r.Y + r.H);
+                    last.X = x0; last.W = x1 - x0; last.Y = y0; last.H = y1 - y0;
+                    last.Hot = last.Hot || r.Hot;
+                    last.AfterCaret = last.AfterCaret || r.AfterCaret;
+                    continue;
+                }
+                lines.Add(new OverlaySpanRect
+                {
+                    X = r.X, Y = r.Y, W = r.W, H = r.H,
+                    Active = r.Active, Word = r.Word, Hot = r.Hot, AfterCaret = r.AfterCaret,
+                });
+            }
+            var group = new List<OverlaySpanRect>();
+            foreach (var r in lines)
             {
                 if (group.Count > 0 && r.Y > group[group.Count - 1].Y + group[group.Count - 1].H + 6)
                 {
