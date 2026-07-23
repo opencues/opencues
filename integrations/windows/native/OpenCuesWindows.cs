@@ -2661,6 +2661,19 @@ namespace OpenCues
                 // Small tail edit (append / truncate / trailing replace): delete
                 // the changed suffix, paste only the new tail. No selection ->
                 // no flash. Works regardless of total field size.
+                // The burst deletes BACKWARD FROM THE CARET - and the mapped
+                // caret restore (2026-07-23) parks the caret MID-TEXT after
+                // cycles, which turned this branch destructive: backspaces
+                // ate mid-text chars, the paste landed mid-text, verify
+                // failed ("clipboard NOT restored ... unverified"). Make the
+                // caret-at-end assumption TRUE first - an API caret-to-end,
+                // no injection; the mapped restore reapplies after.
+                try
+                {
+                    var fe = AutomationElement.FocusedElement;
+                    if (fe != null) RestoreCaretToEnd(fe, true);
+                }
+                catch { }
                 string tail = text.Substring(p);   // p <= min(oldLen, textLen) <= textLen
                 SetClipboardText(tail);
                 Thread.Sleep(15);
