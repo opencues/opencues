@@ -1466,7 +1466,19 @@ namespace OpenCues
                     // Notepad. Route the FINAL substitution through paste (the
                     // spinner frames already took the typed micro-edit path above,
                     // so only this one write pays the select-all highlight).
-                    if (PastePreferredApps.Contains(_lastApp))
+                    // SINGLE-LINE writes bypass the paste route (2026-07-23):
+                    // the soft-break concern is literally about \n, so text
+                    // with no line break takes clean ValuePattern - no
+                    // clipboard, no injected Ctrl+A/Ctrl+V, and therefore no
+                    // collision with chord modifiers the user still holds
+                    // (the "unpredictable in Slack" class: paste bursts
+                    // waiting on WaitModifiersUp went late/timed-out while
+                    // marks had already moved). Cycling is single-line in
+                    // the overwhelming case, so Slack cycles become
+                    // injection-free; only multi-line substitutions pay the
+                    // paste path.
+                    if (PastePreferredApps.Contains(_lastApp)
+                        && (text.IndexOf('\n') >= 0 || text.IndexOf('\r') >= 0))
                     {
                         PasteReplace(text, prevSent);
                         Log("debug", "applied substitution (" + text.Length + " chars, paste [Slack soft-break])");
