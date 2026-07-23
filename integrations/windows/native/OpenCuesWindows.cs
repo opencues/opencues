@@ -4975,6 +4975,7 @@ namespace OpenCues
         // (appear -> disappear -> fade back). With the level tracked, a
         // mid-fade push joins the fade instead of fighting it.
         volatile byte _argbLevel = 255;
+        int _argbBeatAt;   // transient heartbeat throttle (see EnsureArgbAdornments)
         // Appear-fade: NEW marks fade up over ~300ms instead of popping in.
         const int ARGB_APPEAR_MS = 300;
         SWF.Timer _appearTimer;
@@ -5360,6 +5361,17 @@ namespace OpenCues
         void EnsureArgbAdornments(List<OverlaySpanRect> rects)
         {
             byte alpha = _inkSuppressed ? (byte)0 : _argbLevel;
+            // Transient heartbeat (2026-07-23, "cannot see the highlights"):
+            // one throttled line proving frames reach the windows and at
+            // what alpha - separates state-machinery-fine/ink-invisible
+            // from rects-never-arriving.
+            if (unchecked(Environment.TickCount - _argbBeatAt) > 1500 && rects.Count > 0)
+            {
+                _argbBeatAt = Environment.TickCount;
+                WindowsShim.OverlayLog("argb: rects=" + rects.Count + " alpha=" + alpha
+                    + " suppressed=" + _inkSuppressed + " level=" + _argbLevel
+                    + " first=[" + (int)rects[0].X + "," + (int)rects[0].Y + " " + (int)rects[0].W + "x" + (int)rects[0].H + "]");
+            }
             var items = new List<ArgbItem>();
             var actives = new List<OverlaySpanRect>();
             foreach (var r in rects)
