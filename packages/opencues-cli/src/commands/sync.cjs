@@ -31,7 +31,11 @@ const os = require('node:os');
 const crypto = require('node:crypto');
 const { tag, bold, dim, fileLink, tree, banner, cliVersion } = require('../lib/style.cjs');
 
-const HOSTS = ['chrome'];   // sync is chrome-only today
+// Browser hosts that need a pushed config bundle. Firefox reuses the
+// chrome runtime adapter (hostName 'chrome'), so the bundle CONTENT +
+// host-compat filter are identical to chrome's — only the output dir
+// (integrations/<host>/dist/configs) and WSL mirror path differ.
+const HOSTS = ['chrome', 'firefox'];
 
 module.exports = function sync(argv, ctx) {
   if (argv.includes('--help') || argv.includes('-h')) return printHelp();
@@ -68,17 +72,17 @@ module.exports = function sync(argv, ctx) {
 
   const opts = { flags, includes, pack, source, target };
   if (flags.watch) {
-    syncChromeWatch(opts, ctx);
+    syncChromeWatch(opts, ctx, host);
     return;
   }
-  syncChrome(opts, ctx);
+  syncChrome(opts, ctx, host);
 };
 
 // Run an initial sync, then watch every source dir for changes and
 // re-sync on edits. Debounced to coalesce burst writes (e.g. editor
 // save). Exits cleanly on SIGINT.
-function syncChromeWatch(opts, ctx) {
-  syncChrome(opts, ctx);
+function syncChromeWatch(opts, ctx, host = 'chrome') {
+  syncChrome(opts, ctx, host);
   const sources = resolveSources(opts);
   if (sources.length === 0) process.exit(0);
 
@@ -101,9 +105,9 @@ function syncChromeWatch(opts, ctx) {
       process.stdout.write(`[${ts}] re-syncing (${reason}) ... `);
       try {
         // Re-resolve sources each time — handles new pack dirs etc.
-        const distConfigs = path.join(ctx.REPO_ROOT, 'integrations', 'chrome', 'dist', 'configs');
+        const distConfigs = path.join(ctx.REPO_ROOT, 'integrations', host, 'dist', 'configs');
         const before = readVersion(distConfigs);
-        syncChromeQuiet(opts, ctx);
+        syncChromeQuiet(opts, ctx, host);
         const after = readVersion(distConfigs);
         process.stdout.write(after !== before ? `version ${after}\n` : `no changes\n`);
       } catch (err) {
@@ -143,10 +147,10 @@ function syncChromeWatch(opts, ctx) {
 
 // Same as syncChrome but suppresses the per-file summary chatter —
 // for the watch loop where the per-event line is already concise.
-function syncChromeQuiet(opts, ctx) {
+function syncChromeQuiet(opts, ctx, host = 'chrome') {
   const orig = console.log;
   console.log = () => {};
-  try { syncChrome(opts, ctx); }
+  try { syncChrome(opts, ctx, host); }
   finally { console.log = orig; }
 }
 
@@ -155,31 +159,31 @@ function readVersion(distConfigs) {
   catch { return ''; }
 }
 
-function syncChrome({ flags, includes, pack, source, target }, ctx) {
+function syncChrome({ flags, includes, pack, source, target }, ctx, host = 'chrome') {
   const core = loadCore(ctx);
   const sources = resolveSources({ flags, includes, pack, source });
   if (sources.length === 0) {
-    console.error('opencues sync chrome: no sources resolved. ~/.cues/ doesn\'t exist.');
+    console.error(`opencues sync ${host}: no sources resolved. ~/.cues/ doesn\'t exist.`);
     console.error('Try --include <path>, --project, --pack <name>, or --source <path>.');
     process.exit(1);
   }
 
   // Resolve where to write. Order: --target > --wsl > in-repo dist.
-  const repoConfigs = path.join(ctx.REPO_ROOT, 'integrations', 'chrome', 'dist', 'configs');
+  const repoConfigs = path.join(ctx.REPO_ROOT, 'integrations', host, 'dist', 'configs');
   let extraTarget = null;
   if (target) extraTarget = path.resolve(target, 'dist', 'configs');
   else if (flags.wsl) {
-    const wslPath = resolveWslDeployPath();
+    const wslPath = resolveWslDeployPath(host);
     if (!wslPath) {
       console.error('--wsl requires running under WSL with /mnt/c/ accessible.');
-      console.error('Use --target <chrome-install-path> for a non-WSL chrome install.');
+      console.error(`Use --target <${host}-install-path> for a non-WSL ${host} install.`);
       process.exit(1);
     }
     extraTarget = path.join(wslPath, 'dist', 'configs');
   }
   const distConfigs = repoConfigs;
 
-  console.log(banner({ version: cliVersion(ctx), tagline: 'push configs to chrome' }));
+  console.log(banner({ version: cliVersion(ctx), tagline: `push configs to ${host}` }));
   console.log('');
   console.log(`${bold('Syncing to')} ${fileLink(distConfigs, distConfigs)}/`);
   console.log(tree({
@@ -273,13 +277,13 @@ function copyDirSync(src, dst) {
 
 // Same WSL detection + Windows username + path used by `opencues
 // install chrome --wsl` (integrations/chrome/bin/install.cjs).
-function resolveWslDeployPath() {
+function resolveWslDeployPath(host = 'chrome') {
   if (!isWsl()) return null;
   const probe = require('node:child_process').spawnSync('cmd.exe', ['/c', 'echo %USERNAME%'], { stdio: ['ignore', 'pipe', 'ignore'] });
   if (probe.status !== 0) return null;
   const winUser = String(probe.stdout).trim().replace(/\r$/, '');
   if (!winUser) return null;
-  return `/mnt/c/Users/${winUser}/AppData/Local/opencues-chrome`;
+  return `/mnt/c/Users/${winUser}/AppData/Local/opencues-${host}`;
 }
 function isWsl() {
   if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) return true;
@@ -521,11 +525,12 @@ function printHelp() {
   console.log('opencues sync <host> [options]');
   console.log('');
   console.log('Push your local .cues/ configs into a host that can\'t read the');
-  console.log('filesystem on its own (today: chrome). CC/OC hot-reload from');
-  console.log('~/.cues/ natively — no sync needed.');
+  console.log('filesystem on its own (today: chrome, firefox). CC/OC hot-reload');
+  console.log('from ~/.cues/ natively — no sync needed.');
   console.log('');
   console.log('Hosts:');
   console.log('  chrome      Bundle into integrations/chrome/dist/configs/');
+  console.log('  firefox     Bundle into integrations/firefox/dist/configs/');
   console.log('');
   console.log('Default source:  ~/.cues/ only.');
   console.log('Chrome is a global browser extension with no cwd, so the project-');

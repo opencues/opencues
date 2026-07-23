@@ -180,14 +180,20 @@ function clearScreenForHandoff() {
 function loadHostResolver(ctx) {
   try {
     const core = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/host-compat.js'));
-    return { HOSTS: core.HOSTS.slice().sort(), resolve: core.resolveHost };
+    // 'firefox' is a CLI-only target (reuses the chrome runtime adapter),
+    // so it lives outside core.HOSTS — add it here for `run` parity.
+    return {
+      HOSTS: [...core.HOSTS, 'firefox'].sort(),
+      resolve: (n) => (n?.toLowerCase?.() === 'firefox' ? 'firefox' : core.resolveHost(n)),
+    };
   } catch {
     return {
-      HOSTS: ['chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell'],
+      HOSTS: ['chrome', 'claude-code', 'firefox', 'gemini-cli', 'opencode', 'shell'],
       resolve: (n) => ({
         'claude-code': 'claude-code', 'claudecode': 'claude-code', 'claude': 'claude-code', 'cc': 'claude-code',
         'opencode': 'opencode', 'oc': 'opencode',
         'chrome': 'chrome',
+        'firefox': 'firefox',
         'gemini-cli': 'gemini-cli', 'geminicli': 'gemini-cli', 'gemini': 'gemini-cli',
         'shell': 'shell', 'term': 'shell', 'oc-edit': 'shell',
       })[n?.toLowerCase?.()] ?? null,
@@ -269,6 +275,7 @@ module.exports = async function run(argv, ctx) {
   if (folder === 'claude-code') return runCC(passthrough, ctx);
   if (folder === 'opencode')    return runOC(passthrough, argv, ctx);
   if (folder === 'chrome') return runChrome(ctx);
+  if (folder === 'firefox') return runFirefox(ctx);
   if (folder === 'gemini-cli') return runGemini(passthrough, argv, ctx);
   if (folder === 'shell') return runShell(passthrough, ctx);
 };
@@ -604,6 +611,23 @@ function runChrome(ctx) {
   console.log(style.dim('If already loaded, reload the page you want OpenCues active on.'));
 }
 
+function runFirefox(ctx) {
+  // Firefox's `run` doesn't spawn anything either — print instructions for
+  // loading the temporary add-on. Persistent banner so the steps stay
+  // visible after the command returns.
+  printLaunchBanner(ctx, 'firefox', [
+    ['host', 'firefox  ' + style.dim('(add-ons are loaded by firefox itself)')],
+  ], { persistent: true });
+  console.log(style.bold('Load the add-on in about:debugging:'));
+  console.log('');
+  console.log(`  ${style.dim('1.')} Open ${style.cyan('about:debugging#/runtime/this-firefox')}`);
+  console.log(`  ${style.dim('2.')} Click ${style.bold('Load Temporary Add-on…')}`);
+  console.log(`  ${style.dim('3.')} Select the ${style.bold('manifest.json')} in the path printed by ${style.bold('opencues install firefox')}`);
+  console.log('');
+  console.log(style.dim('Temporary add-ons are removed on Firefox restart — reload after each restart.'));
+  console.log(style.dim('If already loaded, reload the page you want OpenCues active on.'));
+}
+
 function printHelp() {
   console.log('opencues run <host> [opencues-flags] [-- host-flags]');
   console.log('');
@@ -618,6 +642,7 @@ function printHelp() {
   console.log('  claude-code   exec the patched CC binary (claude-cues or claude)');
   console.log('  opencode      cd into the fork dir + bun run dev');
   console.log('  chrome        print Chrome reload instructions (no programmatic launch)');
+  console.log('  firefox       print Firefox add-on load instructions (no programmatic launch)');
   console.log('  gemini-cli    node packages/cli/dist/index.js inside the fork (default: $HOME/gemini-cli-cues)');
   console.log('  shell         integrations/shell/bin/oc-shell  (wraps $SHELL in tmux; Alt+Shift+↑ for the input box)');
   console.log('');

@@ -777,6 +777,51 @@ module.exports = async function doctor(argv, ctx) {
     s.render();
   }
 
+  // ── Firefox native-messaging host ─────────────────────────────────────
+  // Firefox reuses the SAME host SCRIPT as chrome (integrations/chrome/
+  // host/host.cjs — pure stdio, browser-agnostic), but reads its manifest
+  // from the Mozilla NativeMessagingHosts dirs with `allowed_extensions`
+  // instead of `allowed_origins`. Only the manifest presence is checked
+  // here; the host-push parity check lives in the chrome section above
+  // (same script).
+  {
+    const s = section('Firefox native-messaging host', 'live ~/.cues/ sync + scripted-blank execution');
+    const wslEnv = !!process.env.WSL_DISTRO_NAME || (function () {
+      try { return fs.readFileSync('/proc/version', 'utf8').toLowerCase().includes('microsoft'); }
+      catch { return false; }
+    })();
+    let manifestPaths = [];
+    if (wslEnv) {
+      try {
+        const winUsers = fs.readdirSync('/mnt/c/Users', { withFileTypes: true })
+          .filter(e => e.isDirectory() && !e.name.startsWith('.') && !['Public', 'Default', 'Default User', 'All Users'].includes(e.name));
+        for (const u of winUsers) {
+          const m = `/mnt/c/Users/${u.name}/AppData/Local/opencues/com.opencues.sync.firefox.json`;
+          if (fs.existsSync(m)) manifestPaths.push(m);
+        }
+      } catch { /* /mnt/c not accessible */ }
+    } else if (process.platform === 'darwin') {
+      manifestPaths = [
+        `${HOME}/Library/Application Support/Mozilla/NativeMessagingHosts/com.opencues.sync.json`,
+      ].filter(p => fs.existsSync(p));
+    } else if (process.platform === 'linux') {
+      manifestPaths = [
+        `${HOME}/.mozilla/native-messaging-hosts/com.opencues.sync.json`,
+      ].filter(p => fs.existsSync(p));
+    }
+    if (manifestPaths.length === 0) {
+      s.info('native-messaging manifest', dim('(not installed)'));
+      findings.push({
+        sev: 'info',
+        msg: 'Firefox native-messaging host not installed — live ~/.cues/ sync + scripted blanks (volume/brightness) won\'t work in firefox tabs',
+        fix: 'opencues install firefox-host --extension-id <gecko-id>  (id from about:debugging → This Firefox → OpenCues card)',
+      });
+    } else {
+      for (const p of manifestPaths) s.ok(p, true);
+    }
+    s.render();
+  }
+
   // ── Terminal install (standalone Bun + OpenTUI app) ──────────────────
   // No upstream fork — staged @opencues/{core,runtime} live inside the
   // repo at integrations/shell/node_modules/. Bun is a hard prereq.

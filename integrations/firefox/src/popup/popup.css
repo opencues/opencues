@@ -1,0 +1,404 @@
+/* Chrome popup — styled to match the OpenCues CLI (oc-shell, oc-edit).
+ * Palette mirrors integrations/terminal/src/app.tsx:
+ *   bg          #1a1a1a
+ *   body text   #888 (gray)
+ *   emphasis    #ffffff (white)
+ *   accent      reverse-video white-on-bg for the brand badge
+ * Monospace throughout; scrollbars hidden.
+ */
+
+* {
+  box-sizing: border-box;
+  /* Hide scrollbar on Firefox + IE; webkit shim below */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+*::-webkit-scrollbar {
+  display: none;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #1a1a1a;
+  color: #888;
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Consolas, monospace;
+  font-size: 12px;
+}
+
+.popup {
+  width: 340px;
+  padding: 12px;
+  background: #1a1a1a;
+  color: #888;
+}
+
+h1 {
+  font-size: 13px;
+  margin: 0 0 12px;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: 0.5px;
+}
+
+/* Banner block — mirrors CLI `banner({ version, tagline })` */
+.banner {
+  margin: 0 0 4px;
+  line-height: 1.4;
+}
+
+.banner-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.brand-badge {
+  background: #ffffff;
+  color: #1a1a1a;
+  padding: 0 4px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.wordmark {
+  color: #ffffff;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+/* Version pushed to the far right of the banner row by margin-left:auto. */
+.version {
+  color: #555;
+  font-size: 11px;
+  margin-left: auto;
+}
+
+/* Breathing room between the logo row and the tagline (was 2px). */
+.tagline {
+  color: #888;
+  font-size: 11px;
+  margin-top: 8px;
+}
+
+/* Gap between banner and the keys section */
+.banner-gap {
+  height: 12px;
+}
+
+/* defer-to-chrome-host toggle — inline checkbox row with the label. */
+label.defer-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 0 4px;
+  font-size: 11px;
+  color: #888;
+  cursor: pointer;
+  user-select: none;
+}
+label.defer-toggle:hover {
+  color: #ffffff;
+}
+label.defer-toggle input[type="checkbox"] {
+  margin: 0;
+}
+
+/* Greyed-out variant — applied when chrome-host isn't connected.
+ * Toggle remains visible (so users discover the option) but inert. */
+label.defer-toggle.disconnected {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+label.defer-toggle.disconnected:hover {
+  color: #888;
+}
+
+/* Scrollable LLM-keys fieldset — height = ~3 visible key fields.
+ * Override the global "hide scrollbar" rules so the bar IS visible
+ * here (it's the affordance that tells the user "more keys below"). */
+.scroll-keys {
+  max-height: 175px;
+  overflow-y: auto;
+  scrollbar-width: thin;            /* Firefox */
+  -ms-overflow-style: auto;         /* old IE/Edge */
+  scrollbar-color: #555 #0d0d0d;    /* Firefox: thumb + track */
+}
+
+.scroll-keys::-webkit-scrollbar {
+  display: block;
+  width: 5px;
+}
+.scroll-keys::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-keys::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+.scroll-keys::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+
+label {
+  display: block;
+  margin: 10px 0 3px;
+  font-weight: normal;
+  font-size: 11px;
+  color: #888;
+  text-transform: lowercase;
+  letter-spacing: 0.3px;
+}
+
+/* Text-style inputs always sit inside a darker container (the keys
+ * fieldset or Advanced section) that shares their #0d0d0d bg — keep a
+ * thin border so the box edges remain visible. */
+input[type="text"],
+input[type="password"],
+input[type="number"],
+textarea {
+  width: 100%;
+  padding: 6px 8px;
+  background: #0d0d0d;
+  border: 1px solid #2a2a2a;
+  border-radius: 2px;
+  color: #ffffff;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="number"]:focus,
+textarea:focus {
+  border-color: #555;
+  background: #111;
+}
+
+/* Provider + Model selects sit on the popup's plain #1a1a1a bg; their
+ * own #0d0d0d fill provides enough contrast — no border needed. */
+select {
+  width: 100%;
+  padding: 6px 8px;
+  background: #0d0d0d;
+  border: none;
+  border-radius: 2px;
+  color: #ffffff;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+}
+
+select:focus {
+  background: #111;
+}
+
+input[type="number"] {
+  width: 5em;
+}
+
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, #888 50%),
+                    linear-gradient(135deg, #888 50%, transparent 50%);
+  background-position: calc(100% - 14px) 50%, calc(100% - 9px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 24px;
+}
+
+textarea {
+  resize: vertical;
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin: 8px 0;
+}
+
+button {
+  margin-top: 10px;
+  width: 100%;
+  padding: 7px;
+  background: #ffffff;
+  color: #1a1a1a;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+button:hover {
+  background: #e5e5e5;
+}
+
+button#reset {
+  background: #0d0d0d;
+  color: #888;
+  border: none;
+}
+
+button#reset:hover {
+  background: #0a0a0a;
+  color: #ffffff;
+}
+
+button#diag-run,
+button#diag-probe {
+  width: auto;
+  display: inline-block;
+  margin-top: 0;
+  padding: 5px 10px;
+  background: #1a1a1a;
+  color: #ffffff;
+  border: none;
+  font-size: 11px;
+}
+
+button#diag-run:hover,
+button#diag-probe:hover {
+  background: #0a0a0a;
+  color: #ffffff;
+}
+
+#status {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #ffffff;
+  text-align: center;
+}
+
+/* Section label — identical typography to <label for=""> so titles
+ * (llm provider keys, diagnostics) sit on the same row aesthetic as
+ * field labels (groq, cerebras, provider, model). */
+.section-label {
+  display: block;
+  margin: 10px 0 3px;
+  font-size: 11px;
+  color: #888;
+  text-transform: lowercase;
+  letter-spacing: 0.3px;
+}
+
+.section-hint {
+  font-size: 11px;
+  color: #555;
+  margin: 0 0 6px;
+}
+
+/* Wraps the keys block + the diagnostics buttons block — same sunken
+ * background the fieldset used to provide. */
+.scroll-keys,
+.diag-section-wrap {
+  background: #0d0d0d;
+  padding: 8px 10px;
+  border-radius: 2px;
+}
+
+p {
+  color: #888;
+  font-size: 11px;
+  margin: 8px 0 4px;
+}
+
+code {
+  color: #ffffff;
+  background: #0d0d0d;
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-size: 11px;
+}
+
+a {
+  color: #ffffff;
+  text-decoration: none;
+  border-bottom: 1px dashed #555;
+}
+
+a:hover {
+  color: #ffffff;
+  border-bottom-color: #ffffff;
+}
+
+details {
+  margin-top: 10px;
+  font-size: 11px;
+}
+
+details summary {
+  color: #888;
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 0;
+  text-transform: lowercase;
+  letter-spacing: 0.3px;
+  font-size: 11px;
+}
+
+details summary:hover {
+  color: #ffffff;
+}
+
+details[open] summary {
+  color: #ffffff;
+  margin-bottom: 6px;
+}
+
+#diag-out {
+  font-family: inherit !important;
+  font-size: 11px !important;
+  line-height: 1.5 !important;
+  background: #0a0a0a !important;
+  color: #888 !important;
+  border: none;
+  padding: 8px 10px !important;
+  border-radius: 2px !important;
+  margin-top: 8px !important;
+  max-height: 300px;
+  overflow: auto;
+}
+
+/* Each <div class="diag-*"> is one line. Preserve whitespace so leading
+ * spaces (continuation lines) keep their indent. */
+#diag-out > div {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Pass — green */
+#diag-out > div.diag-ok      { color: #5bf5a5; }
+/* Fail — red */
+#diag-out > div.diag-err     { color: #ff7676; }
+/* Warning — amber */
+#diag-out > div.diag-warn    { color: #f5c95b; }
+/* Informational (·) — neutral gray */
+#diag-out > div.diag-info    { color: #888; }
+/* Continuation / sub-detail line (indented in source) — dimmer + indented */
+#diag-out > div.diag-detail  { color: #666; padding-left: 18px; }
+/* Section markers ("Running self-check…", "— done —") — bright */
+#diag-out > div.diag-section { color: #ffffff; margin: 4px 0 2px; }
+/* Default / unprefixed line — neutral */
+#diag-out > div.diag-line    { color: #aaa; }
+
+/* Subtle dim-bar on the left edge of the output, ties it to the pane. */
+#diag-out {
+  border-left: 2px solid #2a2a2a !important;
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: #ffffff;
+}
+
+input[type="checkbox"] {
+  accent-color: #ffffff;
+}

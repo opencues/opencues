@@ -15,26 +15,38 @@ const prompt = require('../lib/prompt.cjs');
 const { pickHost } = require('../lib/pick-host.cjs');
 
 // Host name resolution comes from @opencues/core (HOSTS + HOST_ALIASES +
-// resolveHost). 'chrome-host' is the lone special case kept local — it's
-// a sub-action of chrome (the native-messaging host install), not a
-// distinct host. Caught here and routed in subcommand dispatch.
+// resolveHost). Two special cases are kept local:
+//   - 'chrome-host' / 'firefox-host' — sub-actions that install the
+//     native-messaging host, not distinct hosts. Routed in subcommand dispatch.
+//   - 'firefox' — an installable integration target that deliberately stays
+//     OUT of core's host-compat universe. The Firefox add-on reuses the chrome
+//     v1 runtime adapter (hostName 'chrome'), so `on-host:` / `not-on-host:`
+//     filtering treats it as chrome; only the CLI install/sync layer needs
+//     firefox as a discrete target. Wired here so core.HOSTS (and every
+//     host-compat test + runtime filter) stays unchanged.
 function loadHostResolver(ctx) {
   try {
     const core = require(path.join(ctx.REPO_ROOT, 'packages/opencues-core/dist/host-compat.js'));
     return {
-      HOSTS: core.HOSTS.slice().sort(),
-      resolve: (name) => name === 'chrome-host' ? 'chrome' : core.resolveHost(name),
+      HOSTS: [...core.HOSTS, 'firefox'].sort(),
+      resolve: (name) => {
+        if (name === 'chrome-host') return 'chrome';
+        if (name === 'firefox-host') return 'firefox';
+        if (name === 'firefox') return 'firefox';
+        return core.resolveHost(name);
+      },
     };
   } catch {
     // Pre-build fallback — keep CLI usable.
     return {
-      HOSTS: ['chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell'],
+      HOSTS: ['chrome', 'claude-code', 'firefox', 'gemini-cli', 'opencode', 'shell'],
       resolve: (name) => {
         const map = {
           'claude-code': 'claude-code', 'claudecode': 'claude-code',
           'claude': 'claude-code', 'cc': 'claude-code',
           'opencode': 'opencode', 'oc': 'opencode',
           'chrome': 'chrome', 'chrome-host': 'chrome',
+          'firefox': 'firefox', 'firefox-host': 'firefox',
           'gemini-cli': 'gemini-cli', 'geminicli': 'gemini-cli',
           'gemini': 'gemini-cli',
           'shell': 'shell', 'term': 'shell', 'oc-edit': 'shell',
@@ -104,12 +116,12 @@ module.exports = async function install(argv, ctx) {
     process.exit(2);
   }
 
-  // The chrome-host installer is a separate sub-action — it installs
-  // the local native-messaging host that pushes ~/.cues/ into the
-  // running extension. It does NOT need seed-configs (no writes to
-  // ~/.cues/) and shares no install steps with the extension itself.
-  const isChromeHost = target === 'chrome-host';
-  const action = isChromeHost ? 'install-host' : 'install';
+  // The chrome-host / firefox-host installers are separate sub-actions —
+  // they install the local native-messaging host that pushes ~/.cues/ into
+  // the running extension. They do NOT need seed-configs (no writes to
+  // ~/.cues/) and share no install steps with the extension itself.
+  const isHostInstall = target === 'chrome-host' || target === 'firefox-host';
+  const action = isHostInstall ? 'install-host' : 'install';
 
   // Preflight: surface platform-specific gotchas BEFORE the install runs
   // so the user isn't surprised by them after the install reports success.
@@ -139,7 +151,7 @@ module.exports = async function install(argv, ctx) {
   // first-time copy, library-script sync, OPENCUES.md self-heal, .cs compile.
   // Per-host installers then do strictly host-specific work (patches, etc.).
   // --dry-run flows through; --silent keeps the output focused on host steps.
-  if (!isChromeHost && !passthrough.includes('--dry-run')) {
+  if (!isHostInstall && !passthrough.includes('--dry-run')) {
     const seedConfigs = require('./seed-configs.cjs');
     seedConfigs(['--silent'], ctx);
   }
@@ -391,6 +403,23 @@ async function preflightChecks(folders) {
         item: 'WSL detected — Chrome is a Windows app',
         impact: 'loading the extension from the WSL filesystem (\\\\wsl.localhost\\…) is slow + flaky',
         fix: 're-run with: opencues install chrome -- --wsl  (mirrors dist/ to /mnt/c/Users/<you>/AppData/Local/opencues-chrome/)',
+      });
+    }
+  }
+
+  // ── WSL: warn about Firefox target path when installing firefox ─────
+  if (folders.includes('firefox')) {
+    const isWsl = (() => {
+      if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) return true;
+      try {
+        return /microsoft|wsl/i.test(fs.readFileSync('/proc/sys/kernel/osrelease', 'utf8'));
+      } catch { return false; }
+    })();
+    if (isWsl) {
+      warnings.push({
+        item: 'WSL detected — Firefox is a Windows app',
+        impact: 'loading the add-on from the WSL filesystem (\\\\wsl.localhost\\…) is slow + flaky',
+        fix: 're-run with: opencues install firefox -- --wsl  (mirrors dist/ to /mnt/c/Users/<you>/AppData/Local/opencues-firefox/)',
       });
     }
   }
@@ -1008,11 +1037,14 @@ function printHelp(ctx) {
   console.log('  claude-code   Patches Claude Code\'s cli.js via tweakcc       (aliases: claudecode, claude, cc)');
   console.log('  opencode      Patches an OpenCode 1.4.x fork                 (alias: oc)');
   console.log('  chrome        Chrome MV3 extension');
+  console.log('  firefox       Firefox MV3 add-on (about:debugging load)');
   console.log('  gemini-cli    Patches a Gemini CLI 0.41.x fork               (aliases: geminicli, gemini)');
   console.log('  shell         Standalone Bun + OpenTUI shell wrapper        (aliases: term, terminal, oc-shell, oc-edit)');
-  console.log('  --all         Install all five');
+  console.log('  --all         Install every host');
   console.log('');
   console.log('Special subcommands:');
+  console.log('  chrome-host   Register Chrome\'s native-messaging host (needs --extension-id)');
+  console.log('  firefox-host  Register Firefox\'s native-messaging host (needs --extension-id)');
   console.log('  skill <name>  Install a shipped Claude skill (see `opencues install skill --help`)');
   console.log('  plugin <name> Install an opencode plugin (see `opencues install plugin --help`)');
   console.log('');
@@ -1020,7 +1052,8 @@ function printHelp(ctx) {
   console.log('  --target <path>   Host install path (cli.js for claude-code, fork dir for opencode/gemini-cli)');
   console.log('  --dry-run         Print plan, do not execute');
   console.log('  --clean           (claude-code) wipe install dir before reinstalling; (gemini-cli) accepted as no-op alias');
-  console.log('  --no-build        (chrome only) skip build, use existing dist/');
+  console.log('  --no-build        (chrome/firefox only) skip build, use existing dist/');
+  console.log('  --wsl             (chrome/firefox only) mirror dist/ to a Windows-side path');
   console.log('');
   console.log('Examples:');
   console.log('  opencues install claude-code');

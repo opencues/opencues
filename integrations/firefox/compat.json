@@ -1,0 +1,16 @@
+{
+  "//": "OpenCues compatibility manifest for Firefox. Firefox auto-updates itself, so we don't pin a version — we declare the minimum required (driven by the CSS Custom Highlight API). Update.cjs --check on firefox is informational only (no auto-upgrade path).",
+  "host-kind": "browser",
+  "host-runtime": "firefox",
+  "current-pin": null,
+  "min-version": "140",
+  "min-version-reason": "CSS Custom Highlight API (Highlight, CSS.highlights) reached stable in Firefox 140.",
+  "tested": ["140", "141"],
+  "compat-range": ">=140",
+  "known-incompatible": [
+    {
+      "version": "<140",
+      "reason": "CSS Custom Highlight API not available — add-on renders no highlights."
+    }
+  ]
+}
