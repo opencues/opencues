@@ -1482,15 +1482,15 @@ namespace OpenCues
                     // the cursor at the end.)
                     if (PastePreferredApps.Contains(_lastApp))
                     {
-                        int pasteCaretBefore = _lastSentCaret;
-                        PasteReplace(text, prevSent);
-                        int mapped = MapCaretAcrossSplice(prevSent, text, pasteCaretBefore);
-                        if (mapped >= 0)
-                        {
-                            _pendingCaretTarget = mapped;
-                            _pendingCaretDeadline = Environment.TickCount + 2500;
-                        }
-                        Log("debug", "applied substitution (" + text.Length + " chars, paste [Slack soft-break])");
+                        // DEFERRED, like the MSAA path (2026-07-23): a paste
+                        // burst cannot land while the cycling chord is held
+                        // (WaitModifiersUp times out into a corrupted burst -
+                        // "cue selected but can't cycle": every step's write
+                        // REVERTED). Coalesce instead: marks + model advance
+                        // per chord step, only the LATEST text is kept, and
+                        // ONE paste commits after quiet + modifiers-up.
+                        _pendingMsaaText = text;
+                        _pendingMsaaAtTick = Environment.TickCount;
                         return;
                     }
                     // Non-Edit UIA composer or an EM verify-fail -> absolute
@@ -1955,14 +1955,32 @@ namespace OpenCues
         static void MaybeFlushMsaaPaste()
         {
             if (_pendingMsaaText == null) return;
-            if (_attachMode != AttachMode.Msaa || !_enabled) { _pendingMsaaText = null; return; }
+            // Serves BOTH deferred-paste consumers: MSAA composers (Discord)
+            // and UIA paste-preferred apps (Slack, 2026-07-23).
+            bool uiaPasteApp = _attachMode == AttachMode.Uia
+                && _lastApp != null && PastePreferredApps.Contains(_lastApp);
+            if ((_attachMode != AttachMode.Msaa && !uiaPasteApp) || !_enabled || !_attached)
+            { _pendingMsaaText = null; return; }
             if (unchecked(Environment.TickCount - _pendingMsaaAtTick) < MSAA_PASTE_QUIET_MS) return;
+            // Modifiers-up gate: the paste burst cannot land while the
+            // cycling chord is held. Don't reset the quiet clock - just
+            // hold the flush until the fingers lift.
+            if ((GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0
+                || (GetAsyncKeyState(VK_MENU) & 0x8000) != 0
+                || (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0) return;
             string text = _pendingMsaaText;
             string oldText = _lastSentText;   // field's current content -> backspace count
+            int caretBefore = _lastSentCaret;
             _pendingMsaaText = null;
             NoteSelfWrite(text);
             PasteReplace(text, oldText);
-            Log("debug", "applied substitution (" + text.Length + " chars, MSAA/paste)");
+            int mapped = MapCaretAcrossSplice(oldText, text, caretBefore);
+            if (mapped >= 0)
+            {
+                _pendingCaretTarget = mapped;
+                _pendingCaretDeadline = Environment.TickCount + 2500;
+            }
+            Log("debug", "applied substitution (" + text.Length + " chars, deferred paste)");
         }
 
         // --- Attachability gate -----------------------------------------
