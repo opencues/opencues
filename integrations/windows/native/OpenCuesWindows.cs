@@ -1158,6 +1158,7 @@ namespace OpenCues
                         _bracketOpen = false;
                         _bracketBaseline = null;
                         Log("debug", "bracket: verified-settle after " + unchecked(now - _bracketOpenedAt) + "ms");
+                        ApplyPendingCaret();
                     }
                     return;
                 }
@@ -1195,8 +1196,10 @@ namespace OpenCues
                 // field's representation so subsequent polls compare equal.
                 _lastSentText = cur;
                 Log("debug", "adopted self-write echo (" + cur.Length + " chars)");
+                ApplyPendingCaret();   // the app has settled on our write - re-assert the mapped caret
                 return;
             }
+            _pendingCaretTarget = -1;   // genuine user edit - never move their caret after the fact
             // Local span shift (anti-flash step 3, 2026-07-21): the daemon's
             // authoritative span update takes a socket+resolve round trip;
             // the DIFF is knowable right here. Shift the overlay spans by
@@ -1589,8 +1592,30 @@ namespace OpenCues
             if (target < 0) target = 0;
             if (target > next.Length) target = next.Length;
             ApplySetCursor(target);
+            // Async editors (Quill) apply the SetValue DOM replacement on
+            // their own schedule; when this restore wins the race, the
+            // editor's settle re-parks the caret at the START and it
+            // visibly stays there ("sometimes the cursor is at the start",
+            // 2026-07-23). Arm a pending re-assert - fired when the write
+            // bracket VERIFIES the field reflects our text (settle /
+            // echo-adopt), cleared on any genuine user edit.
+            _pendingCaretTarget = target;
+            _pendingCaretDeadline = Environment.TickCount + 1500;
             Log("debug", "caret restore: mapped " + prevCaret + " -> " + target
                 + " (splice [" + pre + "," + oldEditEnd + ") delta " + (next.Length - prev.Length) + ")");
+        }
+
+        static int _pendingCaretTarget = -1;
+        static int _pendingCaretDeadline;
+
+        static void ApplyPendingCaret()
+        {
+            int t = _pendingCaretTarget;
+            if (t < 0) return;
+            _pendingCaretTarget = -1;
+            if (unchecked(_pendingCaretDeadline - Environment.TickCount) <= 0) return;
+            ApplySetCursor(t);
+            Log("debug", "caret restore: re-asserted " + t + " at settle");
         }
 
         static void RestoreCaretToEnd(AutomationElement el, bool quiet = false)
