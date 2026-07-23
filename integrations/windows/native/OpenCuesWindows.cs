@@ -1489,10 +1489,11 @@ namespace OpenCues
                     // the restore on animation frames (same-length 1-2 char swap)
                     // and only restore on the real substitution - no per-frame
                     // caret churn.
+                    int caretBeforeWrite = _lastSentCaret;
                     ((ValuePattern)vp).SetValue(text);
                     if (!LooksLikeAnimationFrame(prevSent, text))
                     {
-                        RestoreCaretToEnd(el);
+                        RestoreCaretMapped(el, prevSent, text, caretBeforeWrite);
                         _caretRestoreUntil = Environment.TickCount + 600;
                     }
                     Log("debug", "applied substitution (" + text.Length + " chars, ValuePattern)");
@@ -1559,6 +1560,38 @@ namespace OpenCues
         // around each write (can't stay on, or the user's own selections would
         // be invisible), but with no repaint churn - lighter than WM_SETREDRAW.
         const uint EM_HIDESELECTION = 0x043F;   // WM_USER + 63
+
+        // Caret restore WITHOUT the jump (2026-07-23, "closer to chrome"):
+        // SetValue parks the caret at the field start; snapping it to END
+        // was fine for the short omnibox but reads as a cursor jump in a
+        // long Slack composer. The write is a span splice the shim can
+        // diff, so map the PRE-WRITE caret across it: before the edit ->
+        // stays; after -> shifts by the length delta; inside -> end of the
+        // new span. Unknown pre-write caret falls back to the proven
+        // to-end restore (chrome's caret poll returns unknown there, so
+        // chrome's behaviour is unchanged by construction).
+        static void RestoreCaretMapped(AutomationElement el, string prev, string next, int prevCaret)
+        {
+            if (prev == null || next == null || prevCaret < 0 || prevCaret > prev.Length)
+            {
+                RestoreCaretToEnd(el);
+                return;
+            }
+            int pre = CommonPrefixLen(prev, next);
+            int suf = 0;
+            while (suf < prev.Length - pre && suf < next.Length - pre
+                && prev[prev.Length - 1 - suf] == next[next.Length - 1 - suf]) suf++;
+            int oldEditEnd = prev.Length - suf;
+            int target;
+            if (prevCaret <= pre) target = prevCaret;
+            else if (prevCaret >= oldEditEnd) target = prevCaret + (next.Length - prev.Length);
+            else target = next.Length - suf;
+            if (target < 0) target = 0;
+            if (target > next.Length) target = next.Length;
+            ApplySetCursor(target);
+            Log("debug", "caret restore: mapped " + prevCaret + " -> " + target
+                + " (splice [" + pre + "," + oldEditEnd + ") delta " + (next.Length - prev.Length) + ")");
+        }
 
         static void RestoreCaretToEnd(AutomationElement el, bool quiet = false)
         {
