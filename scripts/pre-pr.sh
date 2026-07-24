@@ -64,6 +64,10 @@ step "windows native ASCII guard" bash scripts/check-windows-native-ascii.sh
 # integrations/windows/IMPLEMENTATION.md § "Newline rendering".
 step "windows newline-rendering invariants" node integrations/windows/tests/newline-invariants.mjs
 step "windows clipboard/stale-model invariants" node integrations/windows/tests/clipboard-invariants.mjs
+# The daemon's config server serves RAW LLM keys on a fixed loopback port.
+# This pins the same-origin trust gate (no CORS, Host + Origin allow-list) so a
+# regression can't re-open drive-by API-key theft by any visited web page.
+step "windows config-server security invariants" node integrations/windows/tests/config-server-security.mjs
 
 # ─── 1b. Legacy-names lint ─────────────────────────────────────────
 # Catches the rename-drift class — old feature names lingering in    # LEGACY-NAME-ALLOW: aggregator comment
