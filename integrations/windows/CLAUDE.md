@@ -87,7 +87,7 @@ HTTP server on the socket port + 1, 127.0.0.1-only):
 |---|---|
 | `GET /` + `/popup.{css,js}` | the staged popup assets (`ui/`, built from chrome) |
 | `GET /api/config` | provider/model from `OPENCUES.md`, key **fingerprints** from `.env` |
-| `GET /api/keys` | **real** key values (localhost + same-user — same trust as the `.env` file itself), for input pre-fill |
+| `GET /api/keys` | **real** key values, for input pre-fill. Reachable ONLY by the same-origin popup — the server sends **no CORS headers**, enforces a **loopback `Host` allow-list** (anti-DNS-rebinding), and **refuses any non-loopback `Origin`**. Without those a visited web page could `fetch` this fixed-port endpoint and steal every key; see `config-server.cjs` § SECURITY + `security-audit.md` #30. |
 | `POST /api/config` | writes keys → `.env`, provider → `llm-provider`, model → `{cues,blanks,auditors}-llm-model`, ttsRate → `tts-rate` |
 | `GET /api/status` | shim connection + attached app (drives the popup's "host connected" state) |
 
@@ -458,6 +458,21 @@ reset A's state; per-field snapshots are a possible later extension.
   script blanks are path-validated and (on Linux) bwrap-confined. The
   daemon runs in WSL, so bwrap is available — a genuine advantage over a
   hypothetical native-Windows host.
+- **Config server is same-origin-only** (`config-server.cjs`). It serves
+  raw LLM keys on a fixed loopback port, so a 127.0.0.1 bind alone is
+  NOT enough — any web page the user visits can fetch loopback. The gate:
+  no CORS headers (browser blocks cross-origin reads), a `Host` allow-list
+  (anti-DNS-rebinding), and refusal of any non-loopback `Origin` (anti
+  cross-site fetch/POST). Keys stay readable by same-user native processes
+  (same trust as `~/.cues/.env`), which is the intended boundary. Pinned
+  by `tests/config-server-security.mjs`. **If you add an endpoint that
+  returns secrets or mutates config, it inherits the gate automatically
+  (it fires before routing) — don't add per-route CORS to re-open it.**
+- **TCP shim socket has no auth** but is not web-reachable — it speaks
+  newline-JSON, not HTTP, and a new connection supersedes the old, so the
+  worst a malicious *native* local process can do is DoS the integration
+  or burn LLM quota (the keys never traverse the socket). Bounded to
+  same-user local processes; a per-connection token is a phase-2 option.
 
 ## Dev loop
 
