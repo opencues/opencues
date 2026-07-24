@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — cueMap word-cues leaked onto the no-cycling profile (`@opencues/runtime` 0.26.1)
+
+The universal-integration prune covered the source-build path but not the cueMap/tips path: `DimRender` and `Navigation` read `configLoader.navigableWords` directly, so tips-based word-cues dimmed (and targeted) on fields whose adapter reports `supportsCycling() === false` — a dim that IS the offer to cycle, on a field that can't. Same path-2 class the doc records for BlankFill; made visible by the windows per-field profile and caught by the new phase-2 wire e2e (journey D). Both consumers now consult `adapter.supportsCycling?.()` per pass (dynamic — windows shares one module set across cycling and non-cycling fields); Navigation's no-cueMap test-scaffold fallback is guarded so it can't fire on the suppressed profile. New `integrations/windows/tests/phase2-cycling.e2e.mjs` (in pre-pr): real daemon + fake shim over the wire protocol — focus/chord/render/set-text journeys incl. slideCharSpans and the deactivation kick, LLM-free via tips cues.
+
 ### Changed — windows-integration PR version reconciliation (`@opencues/core` 0.33.0, `@opencues/runtime` 0.26.0, CLI 0.2.56, `@opencues/windows` 0.2.2)
 
 Final version bumps for the windows-integration branch (PR #334) after merging `master`: the branch's earlier entries below cite the in-branch version numbers they were written against (core 0.21.x / runtime 0.18.x era); the shipping bumps are core 0.33.0 (RoutedWordSourceGroup never caches error envelopes + `log` sink; windows host-compat), runtime 0.26.0 (`DynDefs.slideCharSpans`, `HostAdapter.markdownPassthrough`, navigation deactivation render-kick), CLI 0.2.56 (windows host install/run wiring).

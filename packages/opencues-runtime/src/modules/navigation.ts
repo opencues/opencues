@@ -337,7 +337,14 @@ export class Navigation {
       //      no tips) → fall back to all words so the system isn't dead
       //      out of the box and unit tests without a wired ConfigLoader
       //      still navigate.
-      const navigable = this.configLoader?.navigableWords;
+      // No-cycling profile: cueMap words are not nav targets when the
+      // adapter reports supportsCycling() === false — same suppression
+      // as DimRender's cueMap dims (a target you can't cycle is dead
+      // weight; hosts on this profile don't forward chords anyway, but
+      // per-field hosts (windows) share one Navigation across cycling
+      // and non-cycling fields). DynDef targets are unaffected.
+      const cyclingOff = this.adapter.supportsCycling?.() === false;
+      const navigable = cyclingOff ? undefined : this.configLoader?.navigableWords;
       const filtered: number[] = [];
       for (const w of words) {
         // Skip inner positions of any multi-word static-alt span —
@@ -364,7 +371,10 @@ export class Navigation {
       const noDynDefs = this.dynDefs.size === 0;
       // Production path: cueMap is populated → silence.
       // Test scaffold path: no cueMap, no DynDefs → fall back.
-      if (cueMapEmpty && noDynDefs) return words.map(w => w.index);
+      // The fallback must NOT fire on the no-cycling profile — there
+      // `navigable` is suppressed by design, not missing, and falling
+      // back would make every plain word a nav target.
+      if (cueMapEmpty && noDynDefs && !cyclingOff) return words.map(w => w.index);
       return [];
     })();
 
