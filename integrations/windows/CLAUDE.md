@@ -6,6 +6,15 @@ patch. Unlike every other host, the text buffer it operates on isn't in
 its own process — it's whatever Windows app the user is currently typing
 in, reached over UI Automation.
 
+> **Current posture (2026-07-24 plateau):** the integration is
+> positioned on **the surfaces it works well** — native text surfaces
+> (Notepad, WordPad, browser omnibox, Explorer, Win32/WinForms/WPF
+> fields) carry the FULL experience: marks, cues, cycling, blanks, the
+> `argb` per-pixel overlay, real caret. Chromium-embedded apps are
+> tiered below that by construction, not by omission — see § Per-app
+> integration tiers for the table and § Integration-process lessons
+> for why the ladder is shaped this way.
+
 > **Implementation deep-dive:** [`IMPLEMENTATION.md`](IMPLEMENTATION.md) —
 > the problems we hit driving real apps (runaway self-transform loop, `_`
 > not resolving, cursor jump, process pollution, the CIM self-match
@@ -113,12 +122,21 @@ The resolver folds `supportsCycling` into its build key, so focusing
 between a cycling and a non-cycling field rebuilds the source set
 automatically — no reboot, no band edits.
 
-**Overlay dim looks (all three implemented, for evaluation):** the
-daemon env `OPENCUES_WIN_OVERLAY_STYLE=underline|wash|repaint` picks the
+**Overlay dim looks:** the daemon env
+`OPENCUES_WIN_OVERLAY_STYLE=argb|live|capture|underline|wash` picks the
 treatment and rides every `render` message — restart the daemon to
 switch, no Windows-side rebuild:
 
-- `live` (default) — per-span **DWM thumbnails**: a live, sharp,
+- `argb` — **the settled choice (2026-07-23)**: a pool of tiny
+  click-through per-pixel-alpha windows (`UpdateLayeredWindow`,
+  premultiplied 32bpp), one per mark — dim = rounded translucent gray
+  wash, active = accent wash (single row) / staircase polygon (multi-
+  row, same-line rects coalesced first). Capture-free, so it never
+  pays pixel-grab costs; motion model: knowable changes MOVE marks
+  (typing slide, cycling), bulk motion HIDES them (Enter/joins,
+  scrolling — instant hide, 300ms fade at settle); clear-before-write
+  for big rewrites. Fastest and most stable of the styles in live use.
+- `live` — per-span **DWM thumbnails**: a live, sharp,
   GPU-composited mirror of the word itself (source-rect-cropped from
   the field's top-level window) drawn 1:1 over the word at ~65%
   opacity above a gray underlay (accent underlay for the active span).
