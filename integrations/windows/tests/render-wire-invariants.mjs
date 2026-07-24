@@ -91,7 +91,18 @@ check('chord swallow is gated on the per-field cycling capability',
   'swallowing Ctrl+Alt+arrows without the _fieldCycling gate eats keys on non-cycling fields');
 
 check('escape is observe-only (forwarded, never swallowed)',
-  /VK_ESCAPE\)\s*\{\s*if \(down\) QueueKeyMessage\("escape", 0, false\);\s*return CallNextHookEx/.test(shimSrc),
+  (() => {
+    // Behavioural check, not byte-shape: the escape branch must forward
+    // the key to the daemon AND fall through to CallNextHookEx without
+    // any swallow (return new IntPtr(1)) before it. The branch body may
+    // carry extra state resets (the spike added a local-alts drop).
+    const i = shimSrc.indexOf('vk == VK_ESCAPE)');
+    if (i < 0) return false;
+    const block = shimSrc.slice(i, i + 800);
+    const fwd = block.indexOf('QueueKeyMessage("escape", 0, false)');
+    const next = block.indexOf('return CallNextHookEx');
+    return fwd >= 0 && next > fwd && !block.slice(0, next).includes('return new IntPtr(1)');
+  })(),
   'swallowing global Escape would break every app\'s own Escape behaviour');
 
 // ── B2. daemon source guards ────────────────────────────────────────────
