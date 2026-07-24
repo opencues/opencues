@@ -227,16 +227,22 @@ pairs with system meanings (Alt+Shift, Win+anything) need a warning.
 > chord remap above is the first entry in what will inevitably be a
 > per-app compatibility table (chord choice, write path preferences,
 > paragraph-break dress, paste timing — several such app lists are
-> already hardcoded in the shim: `ShiftChordApps`,
+> already hardcoded in the shim: `AltShiftChordApps`,
 > `PastePreferredApps`, `ParagraphBreakApps`, `RichEditParagraphApps`).
 > Before the integration ships, these need a user-facing override
 > surface (tray settings page backed by a config file) so users can
 > (a) see which well-known apps have overrides, (b) add their own for
-> apps we haven't met, without editing C#. Wilfred, 2026-07-23. `key-result consumed:false` re-injects the arrow with
-`INJECT_MARK` in `dwExtraInfo` (the hook passes marked events through —
-that mark check is what prevents an infinite self-hook loop). The LL
-hook callback never touches the socket inline (ThreadPool send) — a
-blocking LL hook gets silently removed by Windows after ~300ms.
+> apps we haven't met, without editing C#. Wilfred, 2026-07-23.
+
+**Unconsumed claimed chords are DROPPED (2026-07-24)** — the phase-2
+re-inject-on-`consumed:false` contract is retired: the re-injected
+arrow landed with the user's modifiers still held and apps interpreted
+it (Chrome's URL-suggestion list navigates on Down regardless of
+modifiers). While attached to a cycling field, the chord is ours;
+apps that own Ctrl+Alt get it via the per-app chord policy, never via
+re-injection. The LL hook callback never touches the socket inline
+(ThreadPool send) — a blocking LL hook gets silently removed by
+Windows after ~300ms.
 
 **The snapshot-overlay embodiment (final form, 2026-07-21).** The
 capture pipeline's full machinery, built out over the 07-20/21 live
