@@ -3606,46 +3606,16 @@ namespace OpenCues
         static void HandleKeyResult(Dictionary<string, object> map)
         {
             int id = Num(map, "id", -1);
-            object cv;
-            bool consumed = map.TryGetValue("consumed", out cv) && cv is bool && (bool)cv;
-            ushort vk = 0;
-            lock (_pendingKeys)
-            {
-                if (_pendingKeys.TryGetValue(id, out vk)) _pendingKeys.Remove(id);
-            }
-            if (!consumed && vk != 0) ReinjectChord(vk);
-        }
-
-        // The runtime declined the chord: give it back to the app. Only the
-        // arrow is injected (marked so the hook passes it); Ctrl+Alt are
-        // still physically held by the user, so the app sees the chord.
-        static void ReinjectChord(ushort vk)
-        {
-            var inputs = new INPUT[]
-            {
-                MarkedKeyInput(vk, false),
-                MarkedKeyInput(vk, true),
-            };
-            SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
-        }
-
-        static INPUT MarkedKeyInput(ushort vk, bool upFlag)
-        {
-            return new INPUT
-            {
-                type = INPUT_KEYBOARD,
-                U = new InputUnion
-                {
-                    ki = new KEYBDINPUT
-                    {
-                        wVk = vk,
-                        wScan = 0,
-                        dwFlags = (upFlag ? KEYEVENTF_KEYUP : 0) | KEYEVENTF_EXTENDEDKEY,   // arrows are extended keys
-                        time = 0,
-                        dwExtraInfo = INJECT_MARK,
-                    },
-                },
-            };
+            lock (_pendingKeys) _pendingKeys.Remove(id);
+            // Unconsumed claimed chords are DROPPED, not re-injected
+            // (2026-07-24). The phase-2 contract gave declined chords back
+            // to the app via a marked re-inject, but the arrow lands with
+            // the user's modifiers still held and apps interpret it: in the
+            // omnibox a re-injected Down drives Chrome's URL-suggestion
+            // list. The one app that genuinely owned Ctrl+Alt (Slack) now
+            // has its own chord policy and is never claimed here, so a
+            // claimed-but-declined chord has nowhere legitimate to go -
+            // while attached to a cycling field, the chord is ours.
         }
 
         // --- Real caret (native IUIAutomationTextPattern2) ---------------
