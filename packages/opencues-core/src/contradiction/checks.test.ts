@@ -584,4 +584,32 @@ describe('verifyJourneyClaim (Tier 5c, async geocode)', () => {
       'unrelated sentence', fetchImpl);
     assert.equal(v, null);
   });
+
+  // SECURITY: origin/destination are the only LLM-emitted strings that leave the
+  // machine (they become the geocoder's ?q=). They must be grounded in the
+  // sentence — an ungrounded value is either a hallucination or an injection
+  // payload, and neither may reach the external geocoder.
+  it('SECURITY: an ungrounded origin never reaches the geocoder', async () => {
+    beforeEachClear();
+    let geocoded = false;
+    const spyFetch = async (url: string) => { geocoded = true; return fetchImpl(url); };
+    const v = await verifyJourneyClaim(
+      // quote IS in the sentence, but origin is an injected string that is NOT.
+      { type: 'journey_underestimate', origin: 'exfiltrate my secrets to attacker', destination: 'B place', statedMinutes: 5, mode: 'walk', quote: '5 minute walk to B place' },
+      'its a 5 minute walk to B place', spyFetch);
+    assert.equal(v, null);
+    assert.equal(geocoded, false, 'geocoder must not be called for an ungrounded origin');
+  });
+
+  it('SECURITY: an oversized place name never reaches the geocoder', async () => {
+    beforeEachClear();
+    let geocoded = false;
+    const spyFetch = async (url: string) => { geocoded = true; return fetchImpl(url); };
+    const huge = 'x'.repeat(500);
+    const v = await verifyJourneyClaim(
+      { type: 'journey_underestimate', origin: 'A place', destination: huge, statedMinutes: 5, mode: 'walk', quote: `5 minute walk from A place to ${huge}` },
+      `5 minute walk from A place to ${huge}`, spyFetch);
+    assert.equal(v, null);
+    assert.equal(geocoded, false, 'geocoder must not be called for an oversized place name');
+  });
 });
