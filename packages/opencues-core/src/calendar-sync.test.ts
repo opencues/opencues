@@ -107,6 +107,19 @@ describe('syncCalendarFeeds', () => {
     assert.equal(r.ok, false);
   });
 
+  it('an oversized feed body is refused (size cap, not parsed)', async () => {
+    writeFeeds(['https://example.test/huge.ics']);
+    // A valid-looking VCALENDAR but larger than the cap — must be dropped
+    // before parseIcs, so the run has no successful feed.
+    const huge = 'BEGIN:VCALENDAR\n' + 'X-PADDING:' + 'a'.repeat(6 * 1024 * 1024) + '\nEND:VCALENDAR';
+    const r = await syncCalendarFeeds({
+      fs: fsDep as never, cuesDir: dir,
+      fetchImpl: async () => ({ ok: true, status: 200, text: async () => huge }),
+    });
+    assert.equal(r.ok, false);
+    assert.equal(r.okCount, 0);
+  });
+
   it('discards its own result when another producer refreshed concurrently', async () => {
     writeFeeds(['https://example.test/a.ics']);
     const { s, e } = inWindowStamp(24);
