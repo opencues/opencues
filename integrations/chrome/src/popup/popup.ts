@@ -34,7 +34,7 @@ const PROVIDER_DEFAULTS: Record<string, { endpoint: string; model: string; envKe
   cerebras:   { endpoint: 'https://api.cerebras.ai/v1/chat/completions',                                      model: 'gpt-oss-120b',              envKey: 'CEREBRAS_API_KEY',   models: ['gpt-oss-120b'] },
   openai:     { endpoint: 'https://api.openai.com/v1/chat/completions',                                       model: 'gpt-5.4-mini',              envKey: 'OPENAI_API_KEY',     models: ['gpt-5.4-mini', 'chat-latest'] },
   anthropic:  { endpoint: 'https://api.anthropic.com/v1/messages',                                            model: 'claude-haiku-4-5-20251001', envKey: 'ANTHROPIC_API_KEY',  models: ['claude-haiku-4-5-20251001', 'claude-sonnet-4-6-20250514'] },
-  gemini:     { endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent', model: 'gemini-3.1-flash-lite',     envKey: 'GEMINI_API_KEY',     models: ['gemini-3.1-flash-lite', 'gemini-2.5-flash'] },
+  gemini:     { endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent', model: 'gemini-3.5-flash-lite',     envKey: 'GEMINI_API_KEY',     models: ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'] },
   openrouter: { endpoint: 'https://openrouter.ai/api/v1/chat/completions',                                    model: 'openai/gpt-oss-120b:free',  envKey: 'OPENROUTER_API_KEY', models: ['openai/gpt-oss-120b:free'] },
 };
 

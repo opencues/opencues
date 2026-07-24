@@ -21,6 +21,7 @@ import type { HostAdapter, LogLevel } from './adapter';
 import type { ResolvedAgentLLM } from './modules/agent-rewrite';
 import { buildBlankWeaver, type BlankWeaver } from './modules/blank-weave';
 import type { HttpAdapterShape } from '@opencues/core';
+import { createRefreshScheduler } from './refresh-scheduler';
 import { StocksBlank } from './blanks/stocks';
 import { WeatherBlank } from './blanks/weather';
 import { CryptoBlank } from './blanks/crypto';
@@ -239,11 +240,25 @@ export interface SourceReclassifier {
 }
 
 /** Time window in which subsequent matching input events are still
- *  reclassified to 'runtime'. 250ms covers the typical DOM-echo
- *  window (50-200ms on Gmail/Lexical/PM) with margin, while staying
- *  well under any realistic gap between a runtime substitute and a
- *  user typing the identical text manually. */
-export const RUNTIME_WRITE_TTL_MS = 250;
+ *  reclassified to 'runtime'. Covers the DOM-echo window (50-200ms on
+ *  Gmail/Lexical/PM) AND the host event-pipeline lag under load.
+ *
+ *  Was 250ms; raised to 1500ms after issue #306: the loading animator
+ *  writes a frame every ~75ms, and on opencode (SolidJS `onContentChange`)
+ *  a frame's echo can arrive >250ms late when the host is busy — past the
+ *  old TTL, the mark was pruned, so a legitimate runtime write got
+ *  classified `user` → the resolver re-triggered → the frame char lingered
+ *  in the slot (intermittent, opencode-only, cosmetic). Deterministically
+ *  repro'd + pinned in boot-common.test.ts § "echo delayed under load".
+ *
+ *  This only extends how long a legit runtime write is REMEMBERED — the
+ *  match stays exact-full-buffer-text, so no leniency is introduced. The
+ *  reclassify direction is user→runtime (= resolver skips); exploiting a
+ *  longer window would require producing the exact same full buffer a
+ *  runtime write just produced, at which point the buffer is already what
+ *  we wrote — no new trigger surface. (Distinct from chrome's credit-based
+ *  trust-gate in trust-gate.ts, which this does not touch.) */
+export const RUNTIME_WRITE_TTL_MS = 1500;
 
 export function createSourceReclassifier(now: () => number = Date.now): SourceReclassifier {
   const recent: Array<{ text: string; addedAt: number }> = [];
@@ -655,6 +670,140 @@ export function buildBlankContextProvider(
 /** Max length of an LLM-provided `ai-callable` fetch argument. A single
  *  data-lookup value (ticker / crypto id / city name) is short; anything
  *  longer is abuse, not a lookup. */
+/**
+ * Calendar-context ingest for NATIVE hosts — read the shared
+ * `calendar.json` snapshot (produced by `opencues calendar sync` or any
+ * external producer) into a live holder the resolver reads fresh each
+ * pass. Mirrors chrome's bootstrap loader (opencues-bootstrap.ts
+ * `loadCalendarContext`): parse events → `buildCalendarContextSnapshot`
+ * (assigns `[EVENT N]` tokens + hydration catalog) → mutate the holder
+ * in place so a re-ingest propagates without a host restart.
+ *
+ * Search order matches the producer/consumer seam + config precedence:
+ * `$OPENCUES_HOME/calendar.json` first (also what gives test shards an
+ * isolated calendar), then `~/.cues/calendar.json`.
+ *
+ * Refresh: mtime-gated re-read on a timer (default 60s, unref'd — never
+ * keeps the host process alive). Missing file → holder empties (the
+ * documented inert mode). Returns undefined in non-Node environments or
+ * when @opencues/core is unavailable — hosts pass the result straight
+ * through as `ResolverOptions.calendarContext`.
+ */
+export interface CalendarContextHolder {
+  readonly events: Array<{ token: string; title: string; start: string; end: string; allDay?: boolean; location?: string }>;
+  readonly catalog: Map<string, string>;
+  ingestedAt?: string;
+  /** Stop the refresh timer (harness teardown / tests). */
+  stop(): void;
+}
+
+export function buildCalendarContextIngest(
+  log: (level: LogLevel, msg: string) => void,
+  opts: { refreshMs?: number } = {},
+): CalendarContextHolder | undefined {
+  if (typeof process === 'undefined' || !process.versions?.node) return undefined;
+  let core: { buildCalendarContextSnapshot?: (events: ReadonlyArray<unknown>, ingestedAt?: string) => { events: ReadonlyArray<{ token: string; title: string; start: string; end: string; allDay?: boolean; location?: string }>; catalog: ReadonlyMap<string, string>; ingestedAt?: string } } | null = null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    core = require('@opencues/core');
+  } catch {
+    return undefined;
+  }
+  if (!core?.buildCalendarContextSnapshot) return undefined;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fs = require('node:fs') as typeof import('node:fs');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const path = require('node:path') as typeof import('node:path');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const os = require('node:os') as typeof import('node:os');
+
+  const snapshotPath = (): string => {
+    const override = typeof process !== 'undefined' ? process.env['OPENCUES_HOME'] : undefined;
+    if (override && override.trim().length > 0) return path.join(override, 'calendar.json');
+    return path.join(os.homedir(), '.cues', 'calendar.json');
+  };
+
+  let lastMtimeMs = -1;
+  let lastPath = '';
+  const holder: CalendarContextHolder = {
+    events: [],
+    catalog: new Map<string, string>(),
+    ingestedAt: undefined,
+    stop() { /* replaced below once the scheduler exists */ },
+  };
+
+  const load = (): void => {
+    const file = snapshotPath();
+    try {
+      const st = fs.statSync(file, { throwIfNoEntry: false });
+      if (!st) {
+        // Missing snapshot = inert mode. Clear once (not every tick).
+        if (holder.events.length > 0) {
+          holder.events.length = 0;
+          holder.catalog.clear();
+          holder.ingestedAt = undefined;
+          log('info', 'calendar-context: snapshot removed — calendar context now empty');
+        }
+        lastMtimeMs = -1; lastPath = file;
+        return;
+      }
+      if (file === lastPath && st.mtimeMs === lastMtimeMs) return;   // unchanged
+      const parsed = JSON.parse(fs.readFileSync(file, 'utf8')) as { events?: unknown; ingestedAt?: string } | null;
+      const events = parsed && Array.isArray(parsed.events) ? parsed.events : [];
+      const snap = core!.buildCalendarContextSnapshot!(events, parsed?.ingestedAt);
+      holder.events.length = 0;
+      for (const e of snap.events) holder.events.push({ token: e.token, title: e.title, start: e.start, end: e.end, allDay: e.allDay, location: e.location });
+      holder.catalog.clear();
+      for (const [k, v] of snap.catalog) holder.catalog.set(k, v);
+      holder.ingestedAt = snap.ingestedAt;
+      lastMtimeMs = st.mtimeMs; lastPath = file;
+      log('info', `calendar-context: ${holder.events.length} calendar event(s) loaded from ${file}`);
+    } catch (err) {
+      // Malformed snapshot must never take the host down; keep the last
+      // good holder contents and say why.
+      log('warn', `calendar-context: load failed (${(err as Error)?.message ?? err})`);
+    }
+  };
+
+  // ── Refresh scheduling — the SYSTEM owns cadence, resources declare
+  // due-ness (July 2026 inversion). Two resources:
+  //   snapshot-reread: is the file newer than what the holder carries?
+  //     (cheap mtime check inside load()) — every tick.
+  //   feed-sync: are feeds configured AND the snapshot's own ingestedAt
+  //     older than CALENDAR_SYNC_TTL_MS (15 min)? The shared file
+  //     timestamp is the cross-host clock, so N running hosts
+  //     self-deduplicate; jitter staggers the herd; core's pre-write
+  //     re-stat discards a fetch another producer superseded.
+  const refreshMs = opts.refreshMs ?? 60_000;
+  const scheduler = createRefreshScheduler((m) => log('info', m), { tickMs: refreshMs });
+  scheduler.register({ id: 'calendar-snapshot-reread', due: () => true, refresh: load });
+  const syncCore = core as unknown as {
+    calendarSyncDue?: (fsMod: unknown, dir: string) => boolean;
+    syncCalendarFeeds?: (deps: unknown) => Promise<unknown>;
+  };
+  if (syncCore.calendarSyncDue && syncCore.syncCalendarFeeds) {
+    const cuesDirOf = (): string => {
+      const override = typeof process !== 'undefined' ? process.env['OPENCUES_HOME'] : undefined;
+      return override && override.trim().length > 0 ? override : path.join(os.homedir(), '.cues');
+    };
+    scheduler.register({
+      id: 'calendar-feed-sync',
+      jitterMs: opts.refreshMs ? 0 : 30_000,
+      due: () => {
+        try { return syncCore.calendarSyncDue!(fs, cuesDirOf()); } catch { return false; }
+      },
+      refresh: async () => {
+        await syncCore.syncCalendarFeeds!({ fs, cuesDir: cuesDirOf(), log: (m: string) => log('info', m) });
+        load();   // fold the fresh snapshot into the holder immediately
+      },
+    });
+  }
+  load();               // boot read
+  scheduler.tickNow();  // boot due-check (a stale snapshot refreshes ~immediately)
+  (holder as { stop: () => void }).stop = () => scheduler.stop();
+  return holder;
+}
+
 export const AI_CALLABLE_ARG_MAX = 200;
 
 /**

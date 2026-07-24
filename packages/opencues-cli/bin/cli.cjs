@@ -36,6 +36,7 @@ const COMMANDS = {
   'set-key':      () => require('../src/commands/set-key.cjs'),
   identity:       () => require('../src/commands/identity.cjs'),
   context:        () => require('../src/commands/context.cjs'),
+  calendar:       () => require('../src/commands/calendar.cjs'),
   launcher:       () => require('../src/commands/launcher.cjs'), // no-arg interactive menu
   config:         () => require('../src/commands/config.cjs'),
   cleanup:        () => require('../src/commands/cleanup.cjs'),

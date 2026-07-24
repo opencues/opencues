@@ -1,0 +1,205 @@
+/**
+ * Unit tests for the calendar-context module (Phase 1a). Runs under node:test
+ * (same convention as blank-context.test.ts / system-context consumers).
+ *
+ * Deterministic — no LLM. Pins:
+ *   - buildCalendarContextSnapshot — token assignment, probe-and-include, catalog
+ *   - renderCalendarContextCatalog — off/empty → '', on → times-in-clear + tokens
+ *   - the hydration round-trip via postProcessContext (token → real title)
+ */
+
+import { describe, it } from 'node:test';
+import * as assert from 'node:assert';
+import { buildCalendarContextSnapshot, renderCalendarContextCatalog, matchCalendarTitles, renderCalendarTitleHints } from './calendar-context';
+import { postProcessContext } from './identity-context';
+
+const EVENTS = [
+  { title: 'Dentist',        start: '2026-07-17T14:00', end: '2026-07-17T15:00', location: '5 High St Clinic' },
+  { title: 'Team standup',   start: '2026-07-17T16:00', end: '2026-07-17T16:30' },
+  { title: 'Conference',     start: '2026-07-22T00:00', end: '2026-07-22T23:59', allDay: true },
+];
+
+describe('host-boundary round-trip — locationToken survives reconstruction', () => {
+  // The live hosts (chrome holder, resolver options) reconstruct event objects
+  // field-by-field across the boundary and drop the DERIVED locationToken while
+  // keeping token + location. Rebuilding at the point of use must re-derive it —
+  // otherwise the render loses `@ [EVENT N LOCATION]` and "where is X" answers
+  // "no location listed" (the live chrome bug the bench couldn't see).
+  it('a rebuild from boundary-reconstructed events re-derives locationToken + catalog', () => {
+    const built = buildCalendarContextSnapshot(EVENTS);
+    // Simulate the boundary: keep token + location, DROP locationToken.
+    const crossed = built.events.map((e) => ({ token: e.token, title: e.title, start: e.start, end: e.end, allDay: e.allDay, location: e.location }));
+    assert.equal((crossed[0] as { locationToken?: string }).locationToken, undefined); // dropped in transit
+    const rebuilt = buildCalendarContextSnapshot(crossed, built.ingestedAt);
+    // locationToken re-derived, matching the (possibly custom) token.
+    assert.equal(rebuilt.events[0].locationToken, '[EVENT 1 LOCATION]');
+    assert.equal(rebuilt.catalog.get('[EVENT 1 LOCATION]'), '5 High St Clinic');
+    // …and the render shows it again.
+    assert.match(renderCalendarContextCatalog(rebuilt, 'on'), /@ \[EVENT 1 LOCATION\]/);
+  });
+
+  it('locationToken is derived from the token (not the index), so custom tokens stay consistent', () => {
+    const snap = buildCalendarContextSnapshot([{ token: '[MEETING]', title: 'X', start: '2026-07-17T09:00', end: '2026-07-17T10:00', location: 'Room 4' }]);
+    assert.equal(snap.events[0].locationToken, '[MEETING LOCATION]');
+    assert.equal(snap.catalog.get('[MEETING LOCATION]'), 'Room 4');
+  });
+});
+
+describe('matchCalendarTitles — safe-mode local title→token pre-match', () => {
+  const snap = buildCalendarContextSnapshot(EVENTS);
+  const resolve = (input: string) => matchCalendarTitles(input, snap).map((m) => `${m.phrase}=${m.token}`);
+
+  it('resolves a distinctive title word to its token (exact)', () => {
+    assert.deepEqual(resolve('where is the dentist appointment'), ['dentist=[EVENT 1]']);
+  });
+
+  it('is case-insensitive', () => {
+    assert.deepEqual(resolve('WHERE IS THE DENTIST'), ['dentist=[EVENT 1]']);
+  });
+
+  it('tolerates a typo (bounded Levenshtein)', () => {
+    assert.deepEqual(resolve('when is the dentst'), ['dentst=[EVENT 1]']); // dentst→Dentist, edit-distance 1
+  });
+
+  it('resolves a multi-word title, joining the matched user words', () => {
+    assert.deepEqual(resolve('where is the team standup'), ['team standup=[EVENT 2]']);
+  });
+
+  it('echoes the USER word, never the rest of the title (PII invariant)', () => {
+    const s = buildCalendarContextSnapshot([{ title: 'Supabase Q3 Planning with Legal', start: '2026-07-20T09:00', end: '2026-07-20T10:00' }]);
+    const m = matchCalendarTitles('when is the supabase thing', s);
+    assert.deepEqual(m, [{ token: '[EVENT 1]', phrase: 'supabase' }]); // only "supabase" — never "Q3 Planning with Legal"
+  });
+
+  it('resolves NOTHING for a word shared by two events (ambiguous → no misleading hint)', () => {
+    const s = buildCalendarContextSnapshot([
+      { title: 'Design review', start: '2026-07-20T09:00', end: '2026-07-20T10:00' },
+      { title: 'Design sync',   start: '2026-07-21T09:00', end: '2026-07-21T10:00' },
+    ]);
+    // "design" hits both → skipped; "review" is unique → resolves E1 alone.
+    assert.deepEqual(matchCalendarTitles('the design review', s).map((x) => `${x.phrase}=${x.token}`), ['review=[EVENT 1]']);
+    // A query with ONLY the shared word resolves nothing.
+    assert.deepEqual(matchCalendarTitles('where is the design', s), []);
+  });
+
+  it('resolves nothing on stopword-only or no-match queries', () => {
+    assert.deepEqual(matchCalendarTitles('where is my next event', snap), []);      // all stopwords
+    assert.deepEqual(matchCalendarTitles('where is the pizza party', snap), []);    // no title overlap
+    assert.deepEqual(matchCalendarTitles('am i free at 3pm today', snap), []);      // availability words only
+  });
+
+  it('renderCalendarTitleHints formats the block, or empty when none', () => {
+    assert.equal(renderCalendarTitleHints([]), '');
+    const block = renderCalendarTitleHints([{ token: '[EVENT 1]', phrase: 'dentist' }]);
+    assert.match(block, /RESOLVED REFERENCES/);
+    assert.match(block, /- "dentist" → \[EVENT 1\]/);
+  });
+});
+
+describe('buildCalendarContextSnapshot', () => {
+  it('assigns sequential [EVENT N] tokens and builds a token→title catalog', () => {
+    const snap = buildCalendarContextSnapshot(EVENTS);
+    assert.deepEqual(snap.events.map((e) => e.token), ['[EVENT 1]', '[EVENT 2]', '[EVENT 3]']);
+    assert.equal(snap.catalog.get('[EVENT 1]'), 'Dentist');
+    assert.equal(snap.catalog.get('[EVENT 2]'), 'Team standup');
+    assert.equal(snap.catalog.get('[EVENT 3]'), 'Conference');
+  });
+
+  it('drops events missing a start or a title (probe-and-include)', () => {
+    const snap = buildCalendarContextSnapshot([
+      { title: 'Real', start: '2026-07-17T09:00', end: '2026-07-17T10:00' },
+      { title: '', start: '2026-07-18T09:00', end: '2026-07-18T10:00' },
+      { title: 'NoStart', start: '', end: '2026-07-19T10:00' },
+    ]);
+    assert.equal(snap.events.length, 1);
+    assert.equal(snap.events[0].title, 'Real');
+    assert.equal(snap.events[0].token, '[EVENT 1]');
+  });
+
+  it('preserves a caller-supplied token when present', () => {
+    const snap = buildCalendarContextSnapshot([{ token: '[MEETING]', title: 'X', start: '2026-07-17T09:00', end: '2026-07-17T10:00' }]);
+    assert.equal(snap.events[0].token, '[MEETING]');
+    assert.equal(snap.catalog.get('[MEETING]'), 'X');
+  });
+
+  it('tokenizes LOCATION into [EVENT N LOCATION] + catalog when present, none otherwise', () => {
+    const snap = buildCalendarContextSnapshot(EVENTS);
+    // Dentist (event 1) has a location → its own token, in the catalog.
+    assert.equal(snap.events[0].locationToken, '[EVENT 1 LOCATION]');
+    assert.equal(snap.catalog.get('[EVENT 1 LOCATION]'), '5 High St Clinic');
+    // Events without a location get no location token (and none in the catalog).
+    assert.equal(snap.events[1].locationToken, undefined);
+    assert.equal(snap.catalog.has('[EVENT 2 LOCATION]'), false);
+  });
+});
+
+describe('renderCalendarContextCatalog', () => {
+  it('returns empty string when off or empty (no-op)', () => {
+    const snap = buildCalendarContextSnapshot(EVENTS);
+    assert.equal(renderCalendarContextCatalog(snap, 'off'), '');
+    assert.equal(renderCalendarContextCatalog(buildCalendarContextSnapshot([]), 'on'), '');
+    assert.equal(renderCalendarContextCatalog(undefined, 'on'), '');
+  });
+
+  it('renders times as numeric minute-intervals (the "maths" substrate) + a 12h gloss, titles as tokens', () => {
+    const block = renderCalendarContextCatalog(buildCalendarContextSnapshot(EVENTS), 'on');
+    // Numeric minutes-since-midnight interval + weekday + 12h gloss.
+    assert.match(block, /\[EVENT 1\]: Fri 2026-07-17, mins 840–900 \(2:00pm–3:00pm\)/);
+    assert.match(block, /\[EVENT 2\]: Fri 2026-07-17, mins 960–990 \(4:00pm–4:30pm\)/);
+    // All-day rendered as the full-day interval.
+    assert.match(block, /\[EVENT 3\]: Wed 2026-07-22, all day \(mins 0–1439\)/);
+    // The real titles NEVER appear in the prompt block (they're behind tokens).
+    assert.doesNotMatch(block, /Dentist|Team standup|Conference/);
+  });
+
+  it('renders LOCATION as its token (never the raw address) — PII stays local', () => {
+    const block = renderCalendarContextCatalog(buildCalendarContextSnapshot(EVENTS), 'on');
+    // Event 1's location is shown as a token after `@`, not the real place.
+    assert.match(block, /\[EVENT 1\]: Fri 2026-07-17, mins 840–900 \(2:00pm–3:00pm\) @ \[EVENT 1 LOCATION\]/);
+    assert.doesNotMatch(block, /5 High St Clinic/);
+    // Events with no location carry no `@` location clause.
+    assert.match(block, /\[EVENT 2\]: Fri 2026-07-17, mins 960–990 \(4:00pm–4:30pm\)\n/);
+  });
+
+  it('surfaces ingestedAt as a refresh marker when provided', () => {
+    const block = renderCalendarContextCatalog(buildCalendarContextSnapshot(EVENTS, '2026-07-17T09:00'), 'on');
+    assert.match(block, /last refreshed 2026-07-17T09:00/);
+  });
+
+  it('renders a live CURRENT MOMENT anchor when nowIso given', () => {
+    const block = renderCalendarContextCatalog(buildCalendarContextSnapshot(EVENTS), 'on', '2026-07-18T10:30');
+    assert.match(block, /CURRENT MOMENT/);
+    assert.match(block, /it is now Sat 2026-07-18, 10:30am \(minutes-since-midnight 630\)/);
+    // No "PASSED → drop" instruction — availability is date-scoped so it's
+    // redundant, and it used to suppress recall. Recall is folded into the
+    // LOOKUP rule (past OR future), which the lookup-fix reworded from the
+    // earlier standalone "RECALL / when was X" phrasing.
+    assert.doesNotMatch(block, /has already PASSED/);
+    assert.match(block, /LOOKUP questions ask you to NAME an event \(past OR future\)/);
+  });
+
+  it('omits the live now-anchor sentence when nowIso is absent', () => {
+    const block = renderCalendarContextCatalog(buildCalendarContextSnapshot(EVENTS), 'on');
+    assert.doesNotMatch(block, /it is now/);
+  });
+});
+
+describe('hydration round-trip', () => {
+  it('postProcessContext substitutes [EVENT N] → the real title', () => {
+    const snap = buildCalendarContextSnapshot(EVENTS);
+    const out = postProcessContext('[EVENT 1]', { catalog: snap.catalog, originalBody: 'am i free _' }).output;
+    assert.equal(out, 'Dentist');
+  });
+
+  it('hydrates a token embedded in prose', () => {
+    const snap = buildCalendarContextSnapshot(EVENTS);
+    const out = postProcessContext('Busy 2–3pm ([EVENT 1])', { catalog: snap.catalog, originalBody: 'am i free at 2pm _' }).output;
+    assert.equal(out, 'Busy 2–3pm (Dentist)');
+  });
+
+  it('hydrates [EVENT N LOCATION] → the real location (where-is lookup)', () => {
+    const snap = buildCalendarContextSnapshot(EVENTS);
+    const out = postProcessContext('[EVENT 1] — at [EVENT 1 LOCATION]', { catalog: snap.catalog, originalBody: 'where is my next event _' }).output;
+    assert.equal(out, 'Dentist — at 5 High St Clinic');
+  });
+});

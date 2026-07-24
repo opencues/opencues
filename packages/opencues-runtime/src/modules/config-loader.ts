@@ -145,6 +145,16 @@ export interface OpenCuesState {
    */
   readonly blankContextMode: 'off' | 'safe' | 'raw';
   /**
+  /**
+   * Calendar-context — ingest a bounded calendar snapshot so fluid-blank can
+   * REASON over upcoming events to answer availability/scheduling questions
+   * (`am i free thursday _`). `off` (default): no ingestion. `on`: a bounded,
+   * periodic snapshot; event times reach the LLM, titles are dehydrated to
+   * `[EVENT N]` tokens hydrated locally. Carries calendar PII, so opt-in.
+   * See docs/architecture/calendar-context.md.
+   */
+  readonly calendarContextMode: 'off' | 'on';
+  /**
    * Sentinel grammar for identity-/blank-context tokens.
    * `bare` (default): flat `[TOKEN]` form — byte-identical to pre-feature
    * behaviour for every existing user.
@@ -251,6 +261,7 @@ export const DEFAULT_OPENCUES_STATE: OpenCuesState = {
   ambientContextMode: 'off',
   identityContextMode: 'safe',
   blankContextMode: 'safe',
+  calendarContextMode: 'on',
   sentinelLanguage: 'bare',
   aiCallableAllow: [],
   blankTriggerMode: 'immediate',
@@ -344,6 +355,16 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
     : blankContextHasKey ? 'off' // explicit but unrecognised → fail-closed
     : 'safe';                    // absent → new default
   if (blankContextMode === 'raw' && identityContextMode !== 'raw') blankContextMode = 'safe';
+  // Calendar-context scalar — bounded calendar ingestion for fluid-blank reasoning.
+  // OFF by default: it carries real calendar PII (event titles), so it's opt-in
+  // unlike system-context. Times reach the LLM in the clear; titles dehydrate to
+  // [EVENT N] tokens hydrated locally. No-op on hosts with no ingester (empty snapshot).
+  // ON by default: it's INERT until the user adds a calendar feed (empty
+  // snapshot → nothing sent), so adding a feed is the opt-in; only anonymized
+  // busy-interval times reach the LLM (titles + locations are dehydrated).
+  // Explicit `off` is the only value that disables a configured feed.
+  const calendarContextMode: 'off' | 'on' =
+    get('calendar-context-mode', 'on').toLowerCase() === 'off' ? 'off' : 'on';
   // Sentinel grammar — `bare` default keeps every existing user on the
   // flat [TOKEN] path; only an explicit `typed` opts into the richer
   // grammar. Unrecognised value → `bare` (fail-safe, no behavioural diff).
@@ -392,7 +413,7 @@ export function parseOpenCuesMd(content: string): OpenCuesState {
   // Tests keep shipping mock `settings:` blocks; they get the
   // file-driven definitions, identical to the pre-refactor behaviour.
   const definitions = mergeDefinitions(getMenuDefinitions(undefined, settings), parseSettingsBlock(lines));
-  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, identityContextMode, blankContextMode, sentinelLanguage, aiCallableAllow, blankTriggerMode, navKeymap, cuesLlmProvider, auditorsLlmProvider, blanksLlmProvider, settings, definitions };
+  return { voiceMode, debugMode, tipsMode, cursorNavigate, ambientContextMode, identityContextMode, blankContextMode, calendarContextMode, sentinelLanguage, aiCallableAllow, blankTriggerMode, navKeymap, cuesLlmProvider, auditorsLlmProvider, blanksLlmProvider, settings, definitions };
 }
 
 /**
@@ -759,6 +780,7 @@ export class ConfigLoader {
       ambientContextMode: (get('ambient-context-mode', 'off') === 'on' ? 'on' : 'off') as 'on' | 'off',
       identityContextMode,
       blankContextMode,
+      calendarContextMode: (get('calendar-context-mode', 'on').toLowerCase() === 'off' ? 'off' : 'on') as 'off' | 'on',
       sentinelLanguage: (get('sentinel-language', 'bare').toLowerCase() === 'typed' ? 'typed' : 'bare') as 'bare' | 'typed',
       aiCallableAllow: (get('ai-callable-allow', '') || get('param-safe-allow', '')) // LEGACY-NAME-ALLOW: pre-rename scalar
         .split(',').map(s => s.trim()).filter(s => s && !/^-+$/.test(s)),

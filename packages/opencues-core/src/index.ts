@@ -85,6 +85,31 @@ export {
   type SingleSentenceAlts,
 } from './sources/sentence-cue-source';
 
+export { ContradictionCueSource, type ContradictionCueSourceOptions } from './contradiction/contradiction-cue-source';
+export { ContradictionLlmSource, parseClaims, CONTRADICTION_EXTRACT_SYSTEM, type ContradictionLlmSourceConfig } from './contradiction/contradiction-llm-source';
+export { BankHolidayProvider, type BankHolidayProviderOptions, type BankHolidayRegion } from './contradiction/bank-holidays';
+export { WeatherProvider, type WeatherProviderOptions } from './contradiction/weather';
+export { TflProvider, type TflProviderOptions, normalizeLine } from './contradiction/tfl';
+export { geocodePlace, haversineKm, estimateJourneyMinutes, type JourneyMode } from './contradiction/journey';
+export {
+  weekdayDateCheck,
+  splitBillCheck,
+  TIER0_CHECKS,
+  verifyClaim,
+  verifyJourneyClaim,
+  safeEvalArithmetic,
+  type Claim,
+  type WorkdayOnHolidayClaim,
+  type OutdoorPlanWeatherClaim,
+  type TubeLinePlanClaim,
+  type JourneyUnderestimateClaim,
+  type VerifyContext,
+  type VerifiedContradiction,
+  type Contradiction,
+  type ContradictionCheck,
+  type ContradictionEnv,
+} from './contradiction/checks';
+
 export {
   buildSourcesFromConfig,
   type BuildSourcesOptions,
@@ -280,6 +305,38 @@ export type {
   ResolvedBlankContextField,
   PlanResult as BlankContextPlanResult,
 } from './blank-context';
+
+// Calendar-context — ingested life-data (calendar first) as a REASONING catalog
+// for fluid-blank. Unlike the substitution catalogs (identity/blank/system),
+// the model reasons over the event times; only titles are dehydrated tokens.
+// Ingest-on-a-timer, never invoke-per-keystroke. See docs/architecture/calendar-context.md.
+export {
+  buildCalendarContextSnapshot,
+  renderCalendarContextCatalog,
+  renderCalendarContextForCue,
+} from './calendar-context';
+export type {
+  CalendarContextMode,
+  CalendarContextEvent,
+  CalendarContextSnapshot,
+} from './calendar-context';
+export {
+  syncCalendarFeeds,
+  calendarSyncDue,
+  readCalendarFeedUrls,
+  calendarSnapshotAgeAnchor,
+  CALENDAR_SYNC_TTL_MS,
+  CALENDAR_FEEDS_BASENAME,
+  CALENDAR_SNAPSHOT_BASENAME,
+  type CalendarSyncDeps,
+  type CalendarSyncResult,
+} from './calendar-sync';
+
+// iCalendar (.ics / webcal) parser — the first real calendar-context producer.
+// Pure (no network); the host poller fetches the feed and passes the text.
+// One parser covers Luma / Google / Outlook / Apple / any .ics feed.
+export { parseIcs } from './ics';
+export type { IcsEvent, ParseIcsOptions } from './ics';
 
 // IDENTITY.md write-validator — load-bearing safety check for any path
 // that mutates `~/.cues/IDENTITY.md`. Used by the CLI's `identity` command

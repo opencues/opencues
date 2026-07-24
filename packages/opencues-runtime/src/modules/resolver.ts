@@ -68,6 +68,21 @@ export interface ResolverOptions {
    */
   readonly endpointOverride?: string;
   /**
+  /**
+   * Host-ingested calendar-context snapshot (calendar events). Written on a
+   * cadence by the host's background poller (or a fixture); the resolver
+   * reads it fresh each pass so a re-ingest propagates without restart —
+   * the ingest-on-a-timer model (NOT a network fetch in the keystroke path).
+   * Forwarded to fluid-blank only when `calendar-context-mode: on`. Structurally
+   * mirrors `@opencues/core`'s CalendarContextSnapshot. Event times are in the
+   * clear; titles are `[EVENT N]` tokens hydrated locally.
+   */
+  readonly calendarContext?: {
+    readonly events: ReadonlyArray<{ token: string; title: string; start: string; end: string; allDay?: boolean; location?: string }>;
+    readonly catalog: ReadonlyMap<string, string>;
+    readonly ingestedAt?: string;
+  };
+  /**
    * Default-model override from a host-level UI (chrome popup's Model
    * dropdown). When non-empty, takes precedence over OPENCUES.md's
    * `llm-model:` scalar AND the legacy `defaultModel` fallback.
@@ -85,6 +100,10 @@ export interface ResolverOptions {
   /** Optional injection seam for tests. When set, runtime uses this instead
    *  of constructing a NodeHttpAdapter. Should expose at least .post(). */
   readonly httpAdapter?: unknown;
+  /** Host-provided GET for the contradiction world-data caches (bank holidays,
+   *  weather). Chrome passes a service-worker-routed fetch (page-CSP blocks a
+   *  content-script one); native hosts omit it → the provider uses global fetch. */
+  readonly worldDataFetch?: (url: string) => Promise<{ ok: boolean; json: () => Promise<unknown> }>;
   /** Same â inject the resolver build directly (mostly for testing). */
   readonly resolverFactory?: (cuesConfig: unknown, blanksConfig: unknown, opts: unknown) => unknown;
   /**
@@ -145,6 +164,8 @@ interface CueResultLike {
   spanEnd?: number;
   /** Source id â used to detect fluid-blank for auto-substitute. */
   source?: string;
+  /** Source priority — deterministic overlap resolution for passive sentence-cues. */
+  priority?: number;
   /** Source-specific metadata. TransformBlank uses taskAction for agent
    *  task commands (TASK_ARM/ADD/STOP/SHOW). */
   metadata?: Record<string, unknown>;
@@ -803,6 +824,9 @@ export class Resolver {
       // installs whose OPENCUES.md pre-dates the scalar (no line at all).
       enableUndoActions: settings.get('undo-mode') !== 'off',
       enableSentenceCues: settings.get('sentence-cues-mode') === 'on',
+      enableContradictionCues: settings.get('contradiction-cues-mode') === 'on',
+      worldDataFetch: this.options.worldDataFetch,
+      weatherLocation: settings.get('weather-location'),
       enableWordCues: settings.get('word-cues-mode') === 'on',
       // `max-thinking` (default on). Threaded into every LLM source's
       // dispatch ctx; @opencues/core/model-thinking.ts resolves the
@@ -1370,6 +1394,20 @@ export class Resolver {
           && this.blankContextProvider
           && !noBlankContextConsumer(cleanWords, this.options.keywordBoundSlotIndices?.(text) ?? [])
           ? await this.blankContextProvider()
+          : undefined,
+        // Calendar-context (ingested calendar). Host writes the snapshot on a
+        // cadence (values/times local + dehydrated titles); read fresh here so
+        // a re-ingest applies without restart. Gated by `calendar-context-mode`
+        // (off by default — carries calendar PII).
+        calendarContext: this.configLoader.opencuesState.calendarContextMode !== 'off'
+          && this.options.calendarContext
+          && this.options.calendarContext.events.length > 0
+          ? {
+              events: this.options.calendarContext.events,
+              catalog: this.options.calendarContext.catalog,
+              ingestedAt: this.options.calendarContext.ingestedAt,
+              mode: 'on' as const,
+            }
           : undefined,
         // Sentinel grammar (bare default / typed opt-in). Threaded so the
         // catalog renderer + post-LLM resolver in TransformBlank/FluidBlank
@@ -2047,7 +2085,10 @@ export class Resolver {
         const sat = this.selectorSatelliteState?.current;
         const overlapsSatellite = sat ? (start < sat.pairCharEnd && sat.pairCharStart < end) : false;
         let overlapsDynDef = false;
-        for (const [, def] of this.dynDefs.entries()) {
+        // Lower-priority PASSIVE sentence-cues this higher-priority one evicts —
+        // deterministic overlap resolution (priority wins, not registration order).
+        const evictKeys: number[] = [];
+        for (const [key, def] of this.dynDefs.entries()) {
           if (!def.blankName) continue;
           if (typeof def.spanStart !== 'number' || typeof def.spanEnd !== 'number') continue;
           if (def.spanEnd <= def.spanStart) continue;
@@ -2055,11 +2096,34 @@ export class Resolver {
           // exempt the exact span so re-resolution doesn't self-collide.
           if (typeof def.blankName === 'string' && def.blankName.startsWith('sentence-cue:')
             && def.spanStart === start && def.spanEnd === end) continue;
-          if (start < def.spanEnd && def.spanStart < end) { overlapsDynDef = true; break; }
+          if (start < def.spanEnd && def.spanStart < end) {
+            // Overlap. A PASSIVE (not mid-cycle) sentence-cue of strictly lower
+            // priority yields to us — evict it (deterministic overlap resolution,
+            // priority wins). This is how contradiction (87) and more-formal (85)
+            // compete for a single span. Anything else (satellite, active blank,
+            // cycled cue, higher/equal-priority cue) stands, and WE yield.
+            const isPassiveSentenceCue = typeof def.blankName === 'string'
+              && def.blankName.startsWith('sentence-cue:') && def.currentIndex === 0;
+            if (isPassiveSentenceCue && (def.priority ?? 0) < (r.priority ?? 0)) {
+              evictKeys.push(key);
+            } else {
+              overlapsDynDef = true;
+              break;
+            }
+          }
         }
         if (overlapsSatellite || overlapsDynDef) {
           this.adapter.log('info', `SentenceCue[${r.source}]: skipping â sentence span [${start},${end}) overlaps an active managed span (satellite=${overlapsSatellite}, dyndef=${overlapsDynDef})`);
           continue;
+        }
+
+        // We won the priority contest — evict the lower-priority passive
+        // sentence-cues we overlap so the higher-priority cue owns the span
+        // (deterministic: this holds whichever cue registered first).
+        for (const k of evictKeys) {
+          const ev = this.dynDefs.get(k);
+          this.dynDefs.delete(k);
+          this.adapter.log('info', `SentenceCue[${r.source}]: evicted lower-priority ${ev?.blankName} (prio ${ev?.priority ?? 0} < ${r.priority}) on overlapping span`);
         }
 
         // Register the DynDef passively. No splice; the buffer keeps
@@ -2076,6 +2140,11 @@ export class Resolver {
           // entry is locked against re-resolution AND distinguishable
           // from other span-bearing defs in logs / event traces.
           blankName: r.source,
+          // Dynamic advisory (e.g. calendar-conflict heads-up) → surfaced in
+          // the status line when the cursor sits in the span, no cycling.
+          cueTip: r.cueTip,
+          // Carried so a later higher-priority overlapping cue can evict this one.
+          priority: r.priority,
         });
         wrote++;
 

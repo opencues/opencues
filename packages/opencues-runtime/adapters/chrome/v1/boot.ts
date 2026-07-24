@@ -73,6 +73,26 @@ export interface HostInfo extends CommonHostInfo {
    */
   httpAdapter?: unknown;
   /**
+   * Service-worker-routed GET for the contradiction world-data caches (bank
+   * holidays, weather). A content-script fetch to those origins is blocked by
+   * the host page's CSP, so the bootstrap supplies a fetch that hops through the
+   * SW (`opencues:fetch`). Absent → the provider falls back to global fetch.
+   */
+  worldDataFetch?(url: string): Promise<{ ok: boolean; json(): Promise<unknown> }>;
+  /**
+   * Ingested calendar-context snapshot (calendar). The bootstrap reads the shared
+   * `~/.cues/calendar.json` (produced OpenCues-side by `opencues calendar
+   * sync`) from the synced config bundle and builds this via
+   * `@opencues/core`'s buildCalendarContextSnapshot. Chrome does NOT fetch feeds —
+   * refresh happens OpenCues-side; chrome only consumes. Forwarded to the
+   * resolver only when `calendar-context-mode: on`. See docs/architecture/calendar-context.md.
+   */
+  calendarContext?: {
+    readonly events: ReadonlyArray<{ token: string; title: string; start: string; end: string; allDay?: boolean; location?: string }>;
+    readonly catalog: ReadonlyMap<string, string>;
+    readonly ingestedAt?: string;
+  };
+  /**
    * Per-current-target capability — does the currently focused
    * element support cycling (Ctrl+Alt+arrow + visual band)?
    * Returns true for contenteditables, false for normal `<input>`
@@ -408,6 +428,7 @@ export function boot(host: HostInfo): BootResult {
     apiKeys: Record<string, string | undefined>;
     debounceMs: number;
     httpAdapter: unknown;
+    calendarContext?: HostInfo['calendarContext'];
     missingKeyFallbackMessage?: string;
     formatLLMErrorAsSubstitute?: (reason: 'invalid-api-key' | 'network' | 'rate-limit' | 'endpoint-not-found' | 'model-not-found' | 'insufficient-credits' | 'bad-request', err?: Error) => string;
   } = {
@@ -423,6 +444,7 @@ export function boot(host: HostInfo): BootResult {
     apiKeys,
     debounceMs: host.llmDebounceMs ?? 500,
     httpAdapter: host.httpAdapter,
+    calendarContext: host.calendarContext,
   };
   if (true) {
     // Pass resolverOpts by reference (NOT spread) so updateLlmConfig's
@@ -430,6 +452,9 @@ export function boot(host: HostInfo): BootResult {
     // Final two fields are inline because they're host-specific and
     // never change after boot.
     const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, Object.assign(resolverOpts, {
+      // SW-routed GET for contradiction world-data (bank holidays, weather) —
+      // page CSP blocks a content-script one. Absent → provider uses global fetch.
+      worldDataFetch: host.worldDataFetch,
       // Chrome-specific user-facing message — points the user at the
       // extension popup, where the API-key inputs live.
       missingKeyFallbackMessage: hasAnyKey ? undefined : '[OpenCues: no API key — open the extension popup]',

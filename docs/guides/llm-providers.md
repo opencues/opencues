@@ -15,7 +15,7 @@ different provider/model for each LLM-driven feature.
 |---|---|---|---|
 | **cerebras** *(auto-route default)* | `CEREBRAS_API_KEY` | `gpt-oss-120b` | OpenAI-compat HTTP. Also serves `zai-glm-4.7` and `gemma-4-31b` (see Cerebras models below) |
 | **groq** | `GROQ_API_KEY` | `openai/gpt-oss-120b` | OpenAI-compat HTTP |
-| **gemini** | `GEMINI_API_KEY` | `gemini-3.1-flash-lite` | Google `contents`/`parts` shape |
+| **gemini** | `GEMINI_API_KEY` | `gemini-3.5-flash-lite` | Google `contents`/`parts` shape |
 | **anthropic** | `ANTHROPIC_API_KEY` | `claude-haiku-4-5-20251001` | Messages API |
 | **openai** | `OPENAI_API_KEY` | `gpt-5.4-mini` | paid API, full model catalogue |
 | **openai-subscription** *(subscription)* | `codex login` | `gpt-5.4-mini` | OpenAI's Responses API via your ChatGPT plan |

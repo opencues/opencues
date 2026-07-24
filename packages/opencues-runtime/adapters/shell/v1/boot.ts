@@ -25,7 +25,7 @@ import { AgentRewrite } from '../../../src/modules/agent-rewrite';
 import { TTS } from '../../../src/modules/tts';
 import { CursorStateExport } from '../../../src/modules/cursor-state-export';
 import { ConfigLoader } from '../../../src/modules/config-loader';
-import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildSharedRuntime, createLogFunction, buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, buildCalendarContextIngest, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { EventEmitter } from '../../../src/lib/event-emitter';
 import type {
   CommonHostInfo,
@@ -219,6 +219,7 @@ export function boot(host: HostInfo): BootResult {
   const hasAnyKey = Object.values(apiKeys).some(Boolean) || pickAutoProvider(apiKeys) !== null;
   // Resolver constructed even with no keys so MissingKeyFallbackSource
   // surfaces a visible in-buffer hint on `_` instead of silent no-op.
+  const calendarContextHolder = buildCalendarContextIngest(log);
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
     endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
     apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
@@ -228,6 +229,10 @@ export function boot(host: HostInfo): BootResult {
     missingKeyFallbackMessage: hasAnyKey ? undefined : NATIVE_HOST_MISSING_KEY_MESSAGE,
     formatLLMErrorAsSubstitute: nativeHostFormatLLMError,
     keywordBoundSlotIndices: (text: string) => shared.blankFill.scan(text).map(s => s.index),
+    // Calendar-context: native read of the shared calendar.json snapshot
+    // ($OPENCUES_HOME first, then ~/.cues), refreshed on a timer. Live
+    // holder — the resolver reads it fresh each pass. See boot-common.
+    calendarContext: calendarContextHolder,
     externallySuppressed: (text: string) => kataCoach.shouldSuppressResolve(text),
   }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState,
   buildBlankContextProvider(configLoader, host.blanks, log),

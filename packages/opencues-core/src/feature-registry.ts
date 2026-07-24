@@ -444,6 +444,17 @@ export const FEATURES: readonly FeatureSpec[] = [
     ],
   },
   {
+    scalar: 'contradiction-cues-mode',
+    group: 'Cues',
+    camelCase: 'contradictionCuesMode',
+    description: 'Deterministic fact-check cues — flags a stale/wrong claim you typed against the buffer + clock (weekday-date mismatch, split-the-bill math)',
+    menuTip: 'Catch your own mistakes as you type: "Thursday the 24th" when the 24th is a Friday; "$120 among 4, $25 each" when it\'s $30. No LLM, no network — pure date/number arithmetic. Tier 0 of the contradiction-cue layer. OFF by default.',
+    values: [
+      { id: 'off', description: 'Disabled (default) — no contradiction fact-checking' },
+      { id: 'on',  description: 'Enabled — buffer + clock contradiction cues fire on prose (weekday-date, split-the-bill)' },
+    ],
+  },
+  {
     scalar: 'blank-trigger-mode',
     group: 'Blanks',
     camelCase: 'blankTriggerMode',
@@ -690,6 +701,23 @@ export const FEATURES: readonly FeatureSpec[] = [
       // (mode-gate composition pinned in docs/architecture/blank-as-context.md).
       { id: 'raw',  description: 'Live values inlined into the prompt; values reach the LLM provider', exposeInMenu: false },
     ],
+  },
+  {
+    scalar: 'calendar-context-mode',
+    group: 'Context & identity',
+    camelCase: 'calendarContextMode',
+    description: 'Ingest a bounded calendar snapshot so fluid-blank can answer availability/scheduling questions',
+    menuTip: 'Let fluid-blank reason over your upcoming calendar — `am i free thursday _` answers from an ingested (bounded, periodic) calendar-feed snapshot. Titles + locations are dehydrated tokens the runtime hydrates locally; only anonymized busy-interval times reach the LLM. ON by default, but INERT until you add a feed with `opencues calendar add` — adding a calendar is the opt-in. See docs/architecture/calendar-context.md.',
+    values: [
+      { id: 'on',  description: 'Enabled (default) — ingest a bounded calendar snapshot; titles + locations dehydrated to tokens hydrated locally, only busy-interval times sent. Inert until you add a feed.' },
+      { id: 'off', description: 'Disabled — no calendar ingestion even if a feed is configured' },
+    ],
+    // The shared calendar snapshot, produced OpenCues-side by `opencues
+    // calendar sync`. No `template` (it's generated, not seeded). `pushedBy`
+    // makes the chrome-host + `opencues sync chrome` carry it into the bundle
+    // so the chrome extension consumes the same file native hosts read directly.
+    prereqFile: { basename: 'calendar.json' },
+    pushedBy: ['chrome-host'],
   },
   {
     scalar: 'statusbar-position',

@@ -28,6 +28,7 @@ import { BlankConfig } from '../cues-md';
 import { useStrictJson, buildJsonResponseFormat, describeLLMCall, dispatchChat, getProvider, type ProviderAdapter } from '../llm-provider';
 import { renderIdentityContextCatalog, postProcessContext, type Identity, type ContextMode } from '../identity-context';
 import { renderBlankContextCatalog, mergeCatalogs, type BlankContextSnapshot, type BlankContextMode } from '../blank-context';
+import { renderCalendarContextCatalog, buildCalendarContextSnapshot, matchCalendarTitles, renderCalendarTitleHints, type CalendarContextSnapshot, type CalendarContextMode } from '../calendar-context';
 import { resolveTypedSentinels, catalogScalarLookup, instanceTokenFnBridge, jsonFieldAccessor, collectAiCallableFetches } from '../typed-sentinel';
 import { getDehydrator } from '../dehydrate';
 import { blankClaimsUnderscore } from '../blank-shapes';
@@ -105,6 +106,15 @@ function sanitizeAmbientField(raw: string, cap: number): string {
  *   OPENCUES_BENCH_PROVIDER=cerebras-gpt-oss \
  *     npx tsx tests/benchmarks/fluid-blank-ambient/run.ts --variant E_minimal --holdout
  */
+/** Local wall-clock ISO `YYYY-MM-DDTHH:MM` (no TZ suffix) — the shape
+ *  calendar-context's renderer expects for its CURRENT MOMENT anchor. Uses local
+ *  getters (not toISOString, which is UTC) so "today"/"3pm" match the user's
+ *  wall clock. */
+function localWallClockIso(d: Date): string {
+  const p = (n: number): string => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 export function renderAmbientBlock(ambient: AmbientContext | undefined): string {
   if (!ambient) return '';
   const fields: Array<[string, string]> = [];
@@ -920,6 +930,33 @@ export class FluidBlankSource implements CueSource {
         this.logInfo(`FluidBlank: blank-context: injected (mode=${bcMode}, ${bcSnapshot.fields.length} token${bcSnapshot.fields.length === 1 ? '' : 's'})`);
       }
 
+      // Calendar-context (ingested calendar) — a REASONING catalog, not a
+      // substitution one: event times reach the LLM in the clear so it can
+      // compute free/busy; titles are `[EVENT N]` tokens hydrated locally.
+      // Ingest-on-a-timer; the resolver forwards the cached snapshot only
+      // when `calendar-context-mode: on`. See docs/architecture/calendar-context.md.
+      // REBUILD from the raw events rather than trusting the passed-through
+      // catalog/tokens. The host boundary (chrome holder, resolver options)
+      // reconstructs event objects field-by-field and drops the DERIVED
+      // `locationToken` (keeping `token` + `location`), which silently killed
+      // "where is X" — the render read `e.locationToken`, saw nothing, and the
+      // LLM answered "no location listed". Re-deriving here re-produces
+      // locationToken + the catalog deterministically, so no boundary can drop
+      // the location again. See docs/architecture/calendar-context.md.
+      const calendarSnapshot: CalendarContextSnapshot | undefined = context.calendarContext
+        ? buildCalendarContextSnapshot(context.calendarContext.events, context.calendarContext.ingestedAt)
+        : undefined;
+      const calendarMode: CalendarContextMode = context.calendarContext?.mode ?? 'off';
+      const calendarContextActive = calendarMode === 'on' && !!calendarSnapshot && calendarSnapshot.events.length > 0;
+      // Live current-moment anchor (local wall-clock ISO `YYYY-MM-DDTHH:MM`),
+      // computed fresh EVERY resolve — so "today"/"tomorrow" ground to the real
+      // now, not the snapshot's (possibly stale) ingest time.
+      const calendarNowIso = calendarContextActive ? localWallClockIso(new Date()) : undefined;
+      const calendarContextBlock = renderCalendarContextCatalog(calendarSnapshot, calendarMode, calendarNowIso);
+      if (calendarContextActive && calendarContextBlock) {
+        this.logInfo(`FluidBlank: calendar-context: injected (${calendarSnapshot!.events.length} event${calendarSnapshot!.events.length === 1 ? '' : 's'})`);
+      }
+
       // Cerebras prefix-cache optimisation (PR June 2026): move the
       // STABLE catalog blocks (identity catalog, blank-context catalog)
       // from the user message into the SYSTEM message. Cerebras's
@@ -947,7 +984,7 @@ export class FluidBlankSource implements CueSource {
       // resolves. Mirrors TransformBlank's prompt wiring.
       const liveFnBlock = (context.sentinelLanguage === 'typed' && context.aiCallableFnsBlock)
         ? context.aiCallableFnsBlock : '';
-      const fullSystem = `${FUSED_SYSTEM_PROMPT}${userCatalogBlock}${blankContextBlock}${liveFnBlock}\n\n${MODE_RULES}`;
+      const fullSystem = `${FUSED_SYSTEM_PROMPT}${userCatalogBlock}${blankContextBlock}${calendarContextBlock}${liveFnBlock}\n\n${MODE_RULES}`;
       // DEHYDRATION (outbound PII scrub) — in `safe` mode, real identity
       // values the user TYPED are replaced with their [TOKEN]s before
       // the text ships to the provider; the post-processor below
@@ -959,8 +996,19 @@ export class FluidBlankSource implements CueSource {
       let outboundText = effectiveText;
       let outboundAmbient = ambientBlock;
       let introducedTokens: ReadonlySet<string> = new Set<string>();
-      if (userMode === 'safe' && userCtx && userCtx.catalog.size > 0) {
-        const dehydrator = getDehydrator(userCtx.catalog, (m) => this.logInfo(`FluidBlank: ${m}`));
+      // Outbound dehydration catalog = identity sentinels (safe mode) PLUS
+      // calendar-context event-title sentinels. A real value the user TYPED (an
+      // identity field, or an event title) is scrubbed to its [TOKEN] before
+      // dispatch so it never reaches the provider; postProcessContext hydrates
+      // it back from mergedCatalog.
+      const dehydrationCatalog = new Map<string, string>();
+      if (userMode === 'safe' && userCtx) for (const [t, v] of userCtx.catalog) dehydrationCatalog.set(t, v);
+      // Calendar-context titles are PII (event names) — dehydrate any that the user
+      // TYPED into the buffer to their [EVENT N] tokens before dispatch; the
+      // post-processor hydrates them back from mergedCatalog.
+      if (calendarContextActive && calendarSnapshot) for (const [t, v] of calendarSnapshot.catalog) dehydrationCatalog.set(t, v);
+      if (dehydrationCatalog.size > 0) {
+        const dehydrator = getDehydrator(dehydrationCatalog, (m) => this.logInfo(`FluidBlank: ${m}`));
         const dText = dehydrator.dehydrate(effectiveText);
         const dAmb = ambientBlock ? dehydrator.dehydrate(ambientBlock) : undefined;
         outboundText = dText.text;
@@ -972,7 +1020,18 @@ export class FluidBlankSource implements CueSource {
           this.emit({ type: 'dehydrated', count: dehydratedCount });
         }
       }
-      const fusedUser = `INPUT: ${outboundText}${outboundAmbient}`;
+      // Safe-mode title bridge: resolve words the user typed to specific event
+      // tokens on-machine (titles are dehydrated, so the LLM can't tie "dentist"
+      // to [EVENT 1] itself). The hint rides the USER message (input-dependent —
+      // keeps the system prompt prefix-cache stable) and carries only the user's
+      // own matched words, so no new title text ships. See calendar-context.ts.
+      const titleMatches = calendarContextActive && calendarSnapshot
+        ? matchCalendarTitles(effectiveText, calendarSnapshot) : [];
+      const titleHints = renderCalendarTitleHints(titleMatches);
+      if (titleHints) {
+        this.logInfo(`FluidBlank: calendar-context: resolved ${titleMatches.length} title reference(s): ${titleMatches.map((m) => `"${m.phrase}"→${m.token}`).join(', ')}`);
+      }
+      const fusedUser = `INPUT: ${outboundText}${outboundAmbient}${titleHints}`;
       // Per-feature override: `fluid-blank-max-tokens:` in OPENCUES.md.
       // 512 default is bench-tuned for short-factual answers.
       const fusedOut = await this.callLLM(fullSystem, fusedUser, this.maxTokensOverride ?? 512,
@@ -1004,7 +1063,11 @@ export class FluidBlankSource implements CueSource {
       // neither catalog is present this is a no-op.
       const sentinelCatalog = userCtx?.catalog ?? new Map<string, string>();
       const blankCtxCatalog = bcSnapshot?.catalog ?? new Map<string, string>();
-      const mergedCatalog = mergeCatalogs(sentinelCatalog, blankCtxCatalog);
+      const lifeCtxCatalog = (calendarContextActive && calendarSnapshot) ? calendarSnapshot.catalog : new Map<string, string>();
+      // Merge all catalogs. Identity wins on collision, then blank-context,
+      // then calendar-context ([EVENT N] tokens are disjoint from the others so
+      // ordering only matters for the substitution pass).
+      const mergedCatalog = mergeCatalogs(mergeCatalogs(sentinelCatalog, blankCtxCatalog), lifeCtxCatalog);
       // Phase 4 — on-demand ai-callable fetch can resolve a `[STOCK(ticker=AMD)]`
       // the LLM emitted even with NO pre-fetched catalog, so don't short-circuit
       // when the gate is live (typed + a fetchable fn registry + blankFetch).

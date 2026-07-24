@@ -113,7 +113,7 @@ by an environment variable. The shape is identical across pipelines:
 OPENCUES_BENCH_PROVIDER  Maps to file              Default model
 ─────────────────────────────────────────────────────────────────────
 (unset)                  groq-impl.ts              openai/gpt-oss-120b
-gemini-flash-lite        gemini.ts                 gemini-3.1-flash-lite
+gemini-flash-lite        gemini.ts                 gemini-3.5-flash-lite
 cerebras-gpt-oss         cerebras.ts               gpt-oss-120b
 claude-haiku             claude.ts                 claude-haiku-4-5
 openai-nano              openai.ts                 gpt-5.4-mini
@@ -393,8 +393,11 @@ and [`docs/architecture/ambient-context.md`](../../docs/architecture/ambient-con
    any provider except groq.
 
 6. **`gemini-2.5-flash` is deprecated.** All tests + defaults are on
-   `gemini-3.1-flash-lite`. Don't reintroduce the old name in test
-   placeholders — it'll confuse future readers.
+   `gemini-3.5-flash-lite` (switched from `gemini-3.1-flash-lite` after
+   the 2026-07-21 discovery sweep — see
+   `../results/gemini-3.6-3.5-discovery/REPORT.md`). Note the 3.5/3.6
+   tiers reject `thinkingBudget: 0`; `thinkingLevel: "minimal"` is the
+   no-thinking config (`OPENCUES_GEMINI_THINKING=minimal`).
 
 ---
 

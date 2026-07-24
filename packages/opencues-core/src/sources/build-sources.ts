@@ -28,6 +28,26 @@ import { MissingKeyFallbackSource } from './missing-key-fallback-source';
 import { TransformBlankSource, type TransformBlankSourceConfig } from './transform-blank-source';
 import { ConfigIntentSource, type ConfigIntentSourceConfig } from './config-intent-source';
 import { SentenceCueSource, type SentenceCueSourceConfig } from './sentence-cue-source';
+import { ContradictionLlmSource } from '../contradiction/contradiction-llm-source';
+import { BankHolidayProvider } from '../contradiction/bank-holidays';
+import { WeatherProvider } from '../contradiction/weather';
+import { TflProvider } from '../contradiction/tfl';
+
+// World-data caches for contradiction cues, PERSISTED across resolver rebuilds
+// (buildSourcesFromConfig is called on every config reload; a fresh provider
+// per call would reset the async-fetched cache before the verify ever reads it,
+// so the data-backed cues could never fire). Bank holidays are location-
+// independent (one singleton); weather providers are keyed by location scalar.
+let _bankHolidayProvider: BankHolidayProvider | null = null;
+const _weatherProviders = new Map<string, WeatherProvider>();
+let _tflProvider: TflProvider | null = null;
+
+/** Test hook — drop the persisted world-data providers so a suite starts clean. */
+export function _resetContradictionProvidersForTesting(): void {
+  _bankHolidayProvider = null;
+  _weatherProviders.clear();
+  _tflProvider = null;
+}
 import { resolveLLM, getProvider, withFallback, withFreePool, type ResolvedLLM } from '../llm-provider';
 import { collapseBucketTier } from '../effective-routing';
 
@@ -180,6 +200,18 @@ export interface BuildSourcesOptions {
    * shape — global kill-switch on top of per-cue declaration.
    */
   enableSentenceCues?: boolean;
+  /** Enable the deterministic contradiction-cue layer (Tier 0: weekday-date
+   *  mismatch, split-the-bill math — buffer + clock only, no LLM/network).
+   *  Defaults to false; flip on via OPENCUES.md `contradiction-cues-mode: on`. */
+  enableContradictionCues?: boolean;
+  /** Host-provided GET for the contradiction world-data caches (bank holidays,
+   *  weather). Chrome passes a service-worker-routed fetch (a content-script
+   *  fetch is blocked by the host page's CSP); native hosts omit it → global fetch. */
+  worldDataFetch?: (url: string) => Promise<{ ok: boolean; json: () => Promise<unknown> }>;
+  /** Tier 5 — optional weather-location override (the `weather-location` scalar):
+   *  a city name ("Manchester") OR "lat,lon". Omitted → auto-detected from the
+   *  host timezone. A city name is geocoded by the provider. */
+  weatherLocation?: string;
   /** Enable RoutedWordSourceGroup (word-cues on plain text). When false,
    * NO word-cue LLM calls fire — words are not navigable as alternatives.
    * Domain blanks/fluid-blank still work. Defaults to false;
@@ -423,6 +455,70 @@ export function buildSourcesFromConfig(
       return null;
     }
     return resolved;
+  }
+
+  // Contradiction cues (validator class) — a built-in source, not driven by any
+  // CUE.md. Robust engine: the LLM PARSES each sentence into a grounded claim;
+  // the deterministic verifiers JUDGE it (checks.ts). LLM-ONLY — like every
+  // other cue. The old pure-regex ContradictionCueSource fallback was removed
+  // (July 2026): it silently ran a dumb checker that needed a literal `$` + an
+  // explicit headcount, so "250 between 4 that's 55 each" produced nothing and
+  // masked the fact that the LLM engine wasn't wired. If no LLM resolves (only
+  // the trainsOnInput-refusal / no-provider edge — resolveLLM otherwise
+  // hardcodes cerebras) the cue simply doesn't run, exactly like more-formal.
+  //
+  // MUST come after apiKeys / cuesTier / blanksTier / resolveFor are defined —
+  // resolveFor closes over cuesTier, so calling it earlier hits a temporal-dead-
+  // zone (ReferenceError in native Node; a silent null under esbuild's const→var
+  // lowering in chrome). See resolveFor + the tier block above.
+  if (options.enableContradictionCues) {
+    const cxLlm = resolveFor(options.sentenceCues);
+    if (cxLlm) {
+      options.log?.(`buildSources: contradiction-cues → LLM engine (${cxLlm.provider.id}/${cxLlm.model})`);
+      // Keyless world-data caches, refreshed fire-and-forget by the source, read
+      // synchronously by the verifiers. `worldDataFetch` is the host's GET
+      // (chrome routes it through the SW to dodge page CSP; native hosts omit it
+      // → global fetch). PERSISTED across rebuilds (module singletons) — the
+      // resolver rebuilds sources on every config reload, and a fresh provider
+      // would reset the cache to empty every time, so the async-fetched forecast
+      // would never survive to the verify (the weather cue would never fire).
+      // Tier 0.5 — GOV.UK bank holidays (location-independent → one singleton).
+      const bankHolidays = (_bankHolidayProvider ??= new BankHolidayProvider({ fetchImpl: options.worldDataFetch, log: (m) => options.log?.(m) }));
+      // Tier 5 — open-meteo forecast. Location auto-detected from the host
+      // timezone; the `weather-location` override is a city name OR "lat,lon".
+      // Keyed by location so changing the scalar makes a fresh provider.
+      const wl = options.weatherLocation?.trim();
+      const wlKey = wl || 'auto';
+      let weather = _weatherProviders.get(wlKey);
+      if (!weather) {
+        const latlon = wl && /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(wl)
+          ? wl.split(',').map(s => Number(s.trim())) : null;
+        weather = new WeatherProvider({
+          latitude: latlon ? latlon[0] : undefined,
+          longitude: latlon ? latlon[1] : undefined,
+          locationName: latlon ? undefined : (wl || undefined),
+          fetchImpl: options.worldDataFetch,
+          log: (m) => options.log?.(m),
+        });
+        _weatherProviders.set(wlKey, weather);
+      }
+      // Tier 5b — TfL line-disruption status (London; location-independent).
+      const tfl = (_tflProvider ??= new TflProvider({ fetchImpl: options.worldDataFetch, log: (m) => options.log?.(m) }));
+      sources.push(new ContradictionLlmSource({
+        httpAdapter: withFallback(options.httpAdapter, cxLlm.fallback),
+        provider: cxLlm.provider,
+        endpoint: cxLlm.endpoint,
+        apiKey: cxLlm.apiKey,
+        model: cxLlm.model,
+        bankHolidays,
+        weather,
+        tfl,
+        worldDataFetch: options.worldDataFetch,   // Tier 5c — per-query journey geocoding
+        log: (m) => options.log?.(m),
+      }));
+    } else {
+      options.log?.('buildSources: contradiction-cues → SKIPPED (no LLM resolvable — no key / trainsOnInput provider)');
+    }
   }
 
   /**

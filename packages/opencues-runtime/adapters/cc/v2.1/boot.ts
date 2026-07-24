@@ -36,7 +36,7 @@ import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import { AgentTaskState } from '../../../src/state/agent-task';
 import { UndoJournal } from '../../../src/state/undo-journal';
 import { applyDirectives } from '../../../src/render-directives';
-import { buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, buildCalendarContextIngest, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { buildBlankWeaver } from '../../../src/modules/blank-weave';
 import { startEventBridge } from '../../../src/event-bridge';
 import type {
@@ -694,6 +694,7 @@ export function boot(host: HostInfo): BootResult {
   const hasAnyKey = Object.values(apiKeys).some(Boolean) || pickAutoProvider(apiKeys) !== null;
   // Resolver is constructed even with no keys so the MissingKeyFallbackSource
   // can substitute a visible in-buffer hint on `_` instead of silent no-op.
+  const calendarContextHolder = buildCalendarContextIngest(log);
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
     endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
     apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
@@ -703,6 +704,10 @@ export function boot(host: HostInfo): BootResult {
     missingKeyFallbackMessage: hasAnyKey ? undefined : NATIVE_HOST_MISSING_KEY_MESSAGE,
     formatLLMErrorAsSubstitute: nativeHostFormatLLMError,
     keywordBoundSlotIndices: (text: string) => blankFill.scan(text).map(s => s.index),
+    // Calendar-context: native read of the shared calendar.json snapshot
+    // ($OPENCUES_HOME first, then ~/.cues), refreshed on a timer. Live
+    // holder — the resolver reads it fresh each pass. See boot-common.
+    calendarContext: calendarContextHolder,
     externallySuppressed: (text: string) => kataCoach.shouldSuppressResolve(text),
   }, spanFillState, agentTaskState, blankLoading, markdownRender, selectorSatelliteState,
   buildBlankContextProvider(configLoader, host.blanks, log),

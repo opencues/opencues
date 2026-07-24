@@ -156,3 +156,33 @@ test('invalid: unrecognised flags are ignored rather than rejected (forwards-com
   assert.doesNotThrow(() => silence(() => seedConfigs(['--totally-not-a-real-flag'], { REPO_ROOT })));
   assert.strictEqual(fs.existsSync(path.join(tmpHome, '.cues', 'OPENCUES.md')), true, 'unknown flags must not block the normal seed run');
 });
+
+test('self-heal migrates calendar-context legacy files + OPENCUES.md scalars (July 2026 rename)', () => {
+  // Legacy names defined once (with markers) and referenced via variables so
+  // the usage lines below don't trip lint-legacy-names.
+  const L_FEEDS = 'life-context-feeds.txt';       // LEGACY-NAME-ALLOW: rename migration test
+  const L_JSON  = 'life-context.json';            // LEGACY-NAME-ALLOW: rename migration test
+  const L_MODE  = 'life-context-mode';            // LEGACY-NAME-ALLOW: rename migration test
+  const L_POLL  = 'life-context-poll-minutes';    // LEGACY-NAME-ALLOW: rename migration test
+
+  const cues = path.join(tmpHome, '.cues');
+  fs.mkdirSync(cues, { recursive: true });
+  fs.writeFileSync(path.join(cues, L_FEEDS), 'https://example.com/cal.ics\n');
+  fs.writeFileSync(path.join(cues, L_JSON), '{"events":[]}\n');
+  fs.writeFileSync(path.join(cues, 'OPENCUES.md'), `---\n${L_MODE}: on\n${L_POLL}: 30\n---\n`);
+
+  silence(() => seedConfigs(['--silent'], { REPO_ROOT }));
+
+  // Feed list + snapshot renamed; old names gone.
+  assert.ok(fs.existsSync(path.join(cues, 'calendar-feeds.txt')), 'feeds → calendar-feeds.txt');
+  assert.ok(!fs.existsSync(path.join(cues, L_FEEDS)), 'old feeds removed');
+  assert.ok(fs.existsSync(path.join(cues, 'calendar.json')), 'snapshot → calendar.json');
+  assert.ok(!fs.existsSync(path.join(cues, L_JSON)), 'old snapshot removed');
+
+  // Gate scalar + poll cadence rewritten in OPENCUES.md.
+  const md = fs.readFileSync(path.join(cues, 'OPENCUES.md'), 'utf8');
+  assert.match(md, /^calendar-context-mode: on$/m);
+  assert.match(md, /^calendar-poll-minutes: 30$/m);
+  assert.doesNotMatch(md, new RegExp(L_MODE));
+  assert.doesNotMatch(md, new RegExp(L_POLL));
+});
