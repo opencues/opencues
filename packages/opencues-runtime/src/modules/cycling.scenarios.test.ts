@@ -709,3 +709,84 @@ describe('cycling scenarios — invariants', () => {
     expect(adapter.forceRenderCalls).toBe(before + 1);
   });
 });
+
+// ===========================================================================
+// H. Edits BEFORE spans + deactivation rendering (windows-integration arc,
+//    2026-07). Two cross-host behaviours shipped for the windows overlay:
+//    DynDefs.slideCharSpans (char spans slide across edits entirely before
+//    them — Enter above a substitution used to kill its dim) and the
+//    Navigation legacy-branch deactivation render-kick (push-rendered hosts
+//    kept painting the active mark after a user edit).
+// ===========================================================================
+
+describe('cycling scenarios — edits before spans (slideCharSpans)', () => {
+  it('cycle → insert text BEFORE the span → char span slides by the delta', async () => {
+    const { adapter, hlState, dynDefs } = await setupScenario('the attorney filed today');
+    hlState.activate(1, 'the attorney filed today');
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    expect(adapter.setTextCalls.at(-1)).toBe('the lawyer filed today');
+    // The cycle's def holds a live char span over 'lawyer' [4,10).
+    const before = [...dynDefs.entries()].find(([, d]) => d.alternatives?.includes('lawyer'));
+    expect(before).toBeDefined();
+    const [, def] = before!;
+    expect(def.spanStart).toBe(4);
+    expect(def.spanEnd).toBe(10);
+    // User inserts 'xx ' at the very start — an edit entirely BEFORE the
+    // span. The span must slide +3, not go stale.
+    adapter.pushTextNoKeystroke('xx the lawyer filed today', 3);
+    expect(def.spanStart).toBe(7);
+    expect(def.spanEnd).toBe(13);
+    // And the slid span still frames the substituted word exactly.
+    expect('xx the lawyer filed today'.slice(def.spanStart, def.spanEnd)).toBe('lawyer');
+  });
+
+  it('edit AFTER the span leaves the span untouched (slide-only, never stretch)', async () => {
+    const { adapter, hlState, dynDefs } = await setupScenario('the attorney filed today');
+    hlState.activate(1, 'the attorney filed today');
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    const [, def] = [...dynDefs.entries()].find(([, d]) => d.alternatives?.includes('lawyer'))!;
+    expect([def.spanStart, def.spanEnd]).toEqual([4, 10]);
+    // Append at the end — entirely after the span: no movement.
+    adapter.pushTextNoKeystroke('the lawyer filed today now', 26);
+    expect([def.spanStart, def.spanEnd]).toEqual([4, 10]);
+  });
+
+  it('edit INSIDE the span does not slide or stretch it (stale beats wrong)', async () => {
+    const { adapter, hlState, dynDefs } = await setupScenario('the attorney filed today');
+    hlState.activate(1, 'the attorney filed today');
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    const [, def] = [...dynDefs.entries()].find(([, d]) => d.alternatives?.includes('lawyer'))!;
+    // User types inside the substituted word: 'lawyer' -> 'lawXyer'.
+    adapter.pushTextNoKeystroke('the lawXyer filed today', 8);
+    // Slide-only contract: the span must NOT adopt/stretch around the
+    // edit (the reverted rebase did, and absorbed adjacent typing).
+    // Whatever the span holds now, it must not claim the edited word as
+    // a live 'lawyer' span of the new length.
+    expect(def.spanEnd - def.spanStart).toBe(6);
+  });
+});
+
+describe('cycling scenarios — deactivation render-kick (legacy branch)', () => {
+  it('user edit with an active highlight deactivates AND force-renders', async () => {
+    const { adapter, hlState } = await setupScenario('the attorney filed');
+    // cursor-navigate defaults to inactive -> the legacy branch owns
+    // deactivation on user edits.
+    hlState.activate(1, 'the attorney filed');
+    expect(hlState.active).toBe(true);
+    const before = adapter.forceRenderCalls;
+    adapter.pushTextNoKeystroke('the attorneys filed', 13);
+    expect(hlState.active).toBe(false);
+    // The kick is what repaints push-rendered hosts (windows overlay):
+    // without it the active-blue mark stayed painted after the edit.
+    expect(adapter.forceRenderCalls).toBeGreaterThan(before);
+  });
+
+  it('user edit with NO active highlight does not force-render from navigation', async () => {
+    const { adapter } = await setupScenario('the attorney filed');
+    const before = adapter.forceRenderCalls;
+    adapter.pushTextNoKeystroke('the attorneys filed', 13);
+    // The legacy branch only kicks when it actually deactivated
+    // something — plain typing must not pay a render per keystroke.
+    expect(adapter.forceRenderCalls).toBe(before);
+  });
+});
