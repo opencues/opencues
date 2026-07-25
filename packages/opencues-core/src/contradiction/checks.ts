@@ -461,6 +461,28 @@ export function verifyClaim(claim: Claim, sentence: string, now: Date, ctx?: Ver
  *  local journey, so we bail rather than emit a nonsense "90000-minute walk". */
 const MODE_MAX_KM: Record<JourneyMode, number> = { walk: 20, cycle: 60, drive: 300 };
 
+/** Max length of a place name we will hand to the external geocoder. A real
+ *  origin/destination is short (a city / area / station / landmark); anything
+ *  longer is a hallucination or a prompt-injection payload, not a place. */
+const GEOCODE_NAME_MAX = 80;
+
+/** A place name is only geocodable if it is short AND literally present in the
+ *  sentence — the same grounding discipline every other claim value obeys
+ *  (checks.ts header: "every value quoted verbatim … the model cannot
+ *  hallucinate a value into a false cue"). Applied to `origin`/`destination`
+ *  specifically because they are the only LLM-emitted strings that leave the
+ *  machine — they become the `q=` of an external geocoder request. Without this
+ *  gate a prompt-injection could route arbitrary (or hallucinated) text to a
+ *  third party, and a hallucinated place would fire a false cue. Case-insensitive
+ *  containment (the LLM copies verbatim but may re-case) keeps false negatives
+ *  low while still bounding the value to buffer content. */
+function isGeocodableName(sentence: string, name: string): boolean {
+  if (typeof name !== 'string') return false;
+  const trimmed = name.trim();
+  if (!trimmed || trimmed.length > GEOCODE_NAME_MAX) return false;
+  return sentence.toLowerCase().includes(trimmed.toLowerCase());
+}
+
 export async function verifyJourneyClaim(
   claim: JourneyUnderestimateClaim,
   sentence: string,
@@ -469,6 +491,12 @@ export async function verifyJourneyClaim(
 ): Promise<VerifiedContradiction | null> {
   if (!sentence.includes(claim.quote)) return null;   // grounding
   if (!claim.origin || !claim.destination || !(claim.statedMinutes > 0)) return null;
+  // GROUNDING for the geocoder inputs: both endpoints must be short + literally
+  // present in the sentence before either reaches the external geocoding API.
+  // This keeps the "no LLM-output → side-effect channel" invariant intact
+  // (see docs/architecture/security-audit.md) — the only strings sent outward
+  // are ones already present in the buffer the LLM was given.
+  if (!isGeocodableName(sentence, claim.origin) || !isGeocodableName(sentence, claim.destination)) return null;
   const mode: JourneyMode = (['walk', 'cycle', 'drive'] as const).includes(claim.mode) ? claim.mode : 'walk';
   const [a, b] = await Promise.all([
     geocodePlace(claim.origin, fetchImpl, homeBias),

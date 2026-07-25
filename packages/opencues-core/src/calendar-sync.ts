@@ -55,6 +55,11 @@ export const CALENDAR_SNAPSHOT_BASENAME = 'calendar.json';
 /** Feed-refresh TTL — the scheduler treats the snapshot as due when its
  *  `ingestedAt` is older than this. */
 export const CALENDAR_SYNC_TTL_MS = 15 * 60_000;
+/** Upper bound on a single feed body we will parse. A real calendar export is
+ *  well under this; a larger response is a misconfigured/compromised/MITM'd feed
+ *  and is dropped rather than parsed (bounds memory + parse work on a
+ *  pathological body). 5 MB ≈ tens of thousands of events. */
+export const CALENDAR_FEED_MAX_CHARS = 5 * 1024 * 1024;
 
 function joinPath(dir: string, base: string): string {
   return dir.endsWith('/') || dir.endsWith('\\') ? dir + base : `${dir}/${base}`;
@@ -118,6 +123,7 @@ export async function syncCalendarFeeds(deps: CalendarSyncDeps): Promise<Calenda
       if (to) clearTimeout(to);
       if (!res.ok) { log(`calendar-sync: HTTP ${res.status} — ${url.slice(0, 50)}`); continue; }
       const text = await res.text();
+      if (text.length > CALENDAR_FEED_MAX_CHARS) { log(`calendar-sync: feed too large (${text.length} chars) — ${url.slice(0, 50)}`); continue; }
       if (!/BEGIN:VCALENDAR/i.test(text)) { log(`calendar-sync: not iCalendar — ${url.slice(0, 50)}`); continue; }
       all.push(...parseIcs(text, { windowStartMs: winStartMs, windowEndMs: winEndMs, maxEvents: 200 }));
       okCount++;

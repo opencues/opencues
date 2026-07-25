@@ -46,7 +46,7 @@ reach (they are capability-gated exactly like local input, and answers
 only ever land as visible note text — there is no exec channel). If
 that trade-off doesn't suit you, don't keep `_` markers in shared
 notes, or stop the daemon while collaborating. Threat-model detail:
-`docs/architecture/security-audit.md` row #28 (a shared-note skip /
+`docs/architecture/security-audit.md` row #30 (a shared-note skip /
 folder allow-list is a tracked follow-up).
 
 ## Install

@@ -90,7 +90,7 @@ const httpAdapter: HttpAdapter = {
 const PROVIDERS: Record<string, { endpoint: string; key: string | undefined; model: string }> = {
   cerebras: { endpoint: 'https://api.cerebras.ai/v1/chat/completions', key: process.env.CEREBRAS_API_KEY, model: process.env.OPENCUES_CEREBRAS_MODEL ?? 'gpt-oss-120b' },
   groq:     { endpoint: 'https://api.groq.com/openai/v1/chat/completions', key: process.env.GROQ_API_KEY, model: process.env.OPENCUES_GROQ_MODEL ?? 'openai/gpt-oss-120b' },
-  gemini:   { endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent', key: process.env.GEMINI_API_KEY, model: process.env.OPENCUES_GEMINI_MODEL ?? 'gemini-3.1-flash-lite' },
+  gemini:   { endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent', key: process.env.GEMINI_API_KEY, model: process.env.OPENCUES_GEMINI_MODEL ?? 'gemini-3.5-flash-lite' },
 };
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();

@@ -238,6 +238,15 @@ module.exports = async function run(argv, ctx) {
       skipRebuildCheck = true;
       continue;
     }
+    if (a === '--no-cleanup') {
+      // opencues-owned flag — consumed here, NOT forwarded to the
+      // spawned host. The predecessor-kill gate reads it from the
+      // ORIGINAL argv (runOC's fullArgv), so consuming it here only
+      // stops it leaking into the host's own CLI — opencode prints
+      // its help and EXITS on an unknown flag, which killed every
+      // agentic-harness pool shard silently ("0/N shards live").
+      continue;
+    }
     if (!a.startsWith('-') && !target) target = a;
     else passthrough.push(a);
   }

@@ -855,20 +855,24 @@ const GEMINI: ProviderAdapter = {
   displayName: 'Gemini',
   // Templated — model is substituted at buildRequest time.
   defaultEndpoint: 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent',
-  // gemini-3.1-flash-lite is Google's cheapest 3.x-class flash tier
-  // (released March 2026, GA May 7 2026 at $0.25/M input / $1.50/M
-  // output — see https://ai.google.dev/gemini-api/docs/pricing).
-  // Picked over the older 2.5-flash because (a) lower price, (b) the
-  // model that the May 2026 benchmark sweep actually measured
-  // (89-100% across our pipelines, see tests/benchmarks/BENCHMARKS.md).
-  // Override per-feature with `<feature>-model:` if you want the
-  // 3.1-pro tier for accuracy-critical surfaces.
-  defaultModel: 'gemini-3.1-flash-lite',
-  // Gemini 3.1 tier (verified May 2026). flash-lite is the default
-  // (fastest + cheapest); flash adds vision/audio + better reasoning;
-  // pro is the frontier model for deeper writing tasks. Older 2.0
-  // family stays reachable via direct file edit.
+  // gemini-3.5-flash-lite is Google's lightest 3.5-class flash tier
+  // (appeared on the API July 2026). Picked over 3.1-flash-lite after
+  // the 2026-07-21 discovery sweep: 100% fluid-blank (first perfect
+  // Gemini score, vs 97.8%), fastest mean (431ms vs 511ms), and it
+  // eliminates 3.1-lite's multi-second p99 tail (worst case 620ms vs
+  // 3632ms); transform-blank at parity. Does NOT think by default, so
+  // no thinkingConfig is needed for the default path. See
+  // tests/results/gemini-3.6-3.5-discovery/REPORT.md.
+  // Override per-feature with `<feature>-model:` for accuracy-critical
+  // surfaces (gemini-3.6-flash benched +1.4pp transform accuracy at
+  // ~70% more latency).
+  defaultModel: 'gemini-3.5-flash-lite',
+  // 3.5-flash-lite is the default (fastest + cheapest); 3.1-flash-lite
+  // kept reachable as the prior default; the -latest aliases track
+  // Google's current flash/pro tiers. Older 2.0 family stays reachable
+  // via direct file edit.
   knownModels: [
+    'gemini-3.5-flash-lite',
     'gemini-3.1-flash-lite',
     'gemini-flash-latest',
     'gemini-pro-latest',
@@ -904,6 +908,18 @@ const GEMINI: ProviderAdapter = {
     const generationConfig: Record<string, unknown> = {};
     if (req.maxTokens !== undefined) generationConfig.maxOutputTokens = req.maxTokens;
     if (req.temperature !== undefined) generationConfig.temperature = req.temperature;
+    // Bench-only knob: pin Gemini's thinking level so model sweeps can
+    // compare no-thinking configurations. Gemini 3.5/3.6 tiers reject
+    // `thinkingBudget: 0` — `thinkingLevel: 'minimal'` is their
+    // no-thinking equivalent; older tiers take `thinkingBudget: 0`.
+    // Unset (production) leaves the model's default behaviour untouched.
+    const thinkingEnv = typeof process !== 'undefined' ? process.env?.OPENCUES_GEMINI_THINKING : undefined;
+    if (thinkingEnv && thinkingEnv !== 'default') {
+      generationConfig.thinkingConfig =
+        thinkingEnv === 'none' || thinkingEnv === '0'
+          ? { thinkingBudget: 0 }
+          : { thinkingLevel: thinkingEnv };
+    }
     if (Object.keys(generationConfig).length > 0) body.generationConfig = generationConfig;
     return {
       // INFOSEC F8: key in header, not URL — keeps it out of access logs,
