@@ -2120,3 +2120,4 @@ describe('loading-animation blank routing (shapes from defaults/blanks/loading-a
     expect(adapter.getText()).toBe('hii world. [loading animation: custom · 4 frames]');
   });
 });
+

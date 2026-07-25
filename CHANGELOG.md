@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — spaced blank-trigger + integration-weave dropped the fill silently (`@opencues/runtime` 0.25.2)
+
+With `blank-trigger-mode: spaced` AND `integration-weave-mode: on` (both non-default), a script blank that weaves its `integration:` output (e.g. `volume _` → "volume is now 30%") emitted `blank.substituted` but never committed to the buffer — it stayed `volume _ `. Root cause: `spaced` fires BOTH BlankFill and the resolver on the confirming space, so the loading slot is co-owned and BlankFill's own `stop` doesn't restore the `_`. The weave's staleness check (`liveNow !== cleaned`, full-string) then read the transient loading-frame char at the slot as a user edit and dropped the fill. The earlier `ourSlot` guard already proves the slot was ours at dispatch, so the check now compares every word EXCEPT the slot word — a real edit elsewhere still drops (their edit wins), a transient slot char does not. Pinned by two new cases in `blank-weave-fill.scenarios.test.ts` (lingering slot char commits; real edit drops) + the agentic scenario 32. Found by the 2026-07-25 full agentic suite run (opencues #336); default-config users unaffected (both modes off by default).
+
 ### Fixed — `opencues run <host> --no-cleanup` leaked the flag into the host's own CLI (CLI 0.2.56)
 
 `--no-cleanup` gated the predecessor-kill correctly but was never consumed in the argv loop (unlike `--skip-banner` / `--no-rebuild-check`), so it rode `passthrough` into the spawned host's command line. opencode prints its help and EXITS on an unknown flag — which silently killed every agentic-harness pool shard ("0/N shards live"; without the flag, concurrent shard launches SIGTERM each other via the predecessor-kill instead, so parallel harness runs were broken both ways). The flag is now consumed opencues-side; the predecessor-kill gate still reads it from the original argv.
