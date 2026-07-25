@@ -21,6 +21,10 @@ export interface WordSpan {
 }
 
 export class Navigation {
+  /** Previous buffer text (any source) - slideCharSpans diffs user edits
+   *  against it. Defs are cleared on buffer resets, so a stale value
+   *  across a buffer switch slides nothing. */
+  private _lastSeenText: string | null = null;
   private _unsubLeft: Unsubscribe | null = null;
   private _unsubRight: Unsubscribe | null = null;
   private _unsubLeftShift: Unsubscribe | null = null;
@@ -152,7 +156,20 @@ export class Navigation {
    * the span.
    */
   onTextChange(event: TextChangeEvent): void {
+    // Track the previous buffer for BOTH sources - the slide below diffs
+    // user edits against whatever the buffer held before, which is often
+    // a runtime substitution.
+    const prevText = this._lastSeenText;
+    this._lastSeenText = event.text;
     if (event.source === 'runtime') return;
+    // Slide char spans across edits that happened entirely BEFORE them
+    // (Enter above a substitution shifted every later offset; the def
+    // survived by word index but its char span went stale and the dim
+    // died). Slide-only - see DynDefs.slideCharSpans for why the
+    // reverted rebase's stretch/adopt is deliberately NOT here.
+    if (prevText !== null && this.dynDefs.size > 0) {
+      this.dynDefs.slideCharSpans(prevText, event.text);
+    }
     // Task-span atomic delete: when the user edits any character of an
     // agent-task span (TASK_SHOW prompt insertion today, future task-*
     // surfaces tomorrow), the whole span deletes as a unit. Scoped via
@@ -204,7 +221,16 @@ export class Navigation {
       }
       this.adapter.forceRender();
     } else {
-      if (this.hlState.active) this.hlState.deactivate();
+      if (this.hlState.active) {
+        this.hlState.deactivate();
+        // Without this kick the deactivation never reaches hosts that
+        // render purely from pushed directives (windows overlay): the
+        // active-blue mark stayed painted after a user edit, and the
+        // def's gray dim never re-emitted ("gray marks never appear
+        // again after I press enter", 2026-07-21). The cursor-follow
+        // branch above always kicked; this legacy branch must too.
+        this.adapter.forceRender();
+      }
     }
   }
 
@@ -311,7 +337,14 @@ export class Navigation {
       //      no tips) → fall back to all words so the system isn't dead
       //      out of the box and unit tests without a wired ConfigLoader
       //      still navigate.
-      const navigable = this.configLoader?.navigableWords;
+      // No-cycling profile: cueMap words are not nav targets when the
+      // adapter reports supportsCycling() === false — same suppression
+      // as DimRender's cueMap dims (a target you can't cycle is dead
+      // weight; hosts on this profile don't forward chords anyway, but
+      // per-field hosts (windows) share one Navigation across cycling
+      // and non-cycling fields). DynDef targets are unaffected.
+      const cyclingOff = this.adapter.supportsCycling?.() === false;
+      const navigable = cyclingOff ? undefined : this.configLoader?.navigableWords;
       const filtered: number[] = [];
       for (const w of words) {
         // Skip inner positions of any multi-word static-alt span —
@@ -338,7 +371,10 @@ export class Navigation {
       const noDynDefs = this.dynDefs.size === 0;
       // Production path: cueMap is populated → silence.
       // Test scaffold path: no cueMap, no DynDefs → fall back.
-      if (cueMapEmpty && noDynDefs) return words.map(w => w.index);
+      // The fallback must NOT fire on the no-cycling profile — there
+      // `navigable` is suppressed by design, not missing, and falling
+      // back would make every plain word a nav target.
+      if (cueMapEmpty && noDynDefs && !cyclingOff) return words.map(w => w.index);
       return [];
     })();
 

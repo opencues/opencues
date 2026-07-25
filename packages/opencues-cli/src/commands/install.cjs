@@ -28,7 +28,7 @@ function loadHostResolver(ctx) {
   } catch {
     // Pre-build fallback — keep CLI usable.
     return {
-      HOSTS: ['chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell'],
+      HOSTS: ['chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell', 'windows'],
       resolve: (name) => {
         const map = {
           'claude-code': 'claude-code', 'claudecode': 'claude-code',
@@ -38,6 +38,7 @@ function loadHostResolver(ctx) {
           'gemini-cli': 'gemini-cli', 'geminicli': 'gemini-cli',
           'gemini': 'gemini-cli',
           'shell': 'shell', 'term': 'shell', 'oc-edit': 'shell',
+          'windows': 'windows', 'win': 'windows', 'oc-windows': 'windows',
         };
         return map[name?.toLowerCase?.()] ?? null;
       },

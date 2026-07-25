@@ -183,13 +183,14 @@ function loadHostResolver(ctx) {
     return { HOSTS: core.HOSTS.slice().sort(), resolve: core.resolveHost };
   } catch {
     return {
-      HOSTS: ['chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell'],
+      HOSTS: ['chrome', 'claude-code', 'gemini-cli', 'opencode', 'shell', 'windows'],
       resolve: (n) => ({
         'claude-code': 'claude-code', 'claudecode': 'claude-code', 'claude': 'claude-code', 'cc': 'claude-code',
         'opencode': 'opencode', 'oc': 'opencode',
         'chrome': 'chrome',
         'gemini-cli': 'gemini-cli', 'geminicli': 'gemini-cli', 'gemini': 'gemini-cli',
         'shell': 'shell', 'term': 'shell', 'oc-edit': 'shell',
+        'windows': 'windows', 'win': 'windows', 'oc-windows': 'windows',
       })[n?.toLowerCase?.()] ?? null,
     };
   }
@@ -280,6 +281,7 @@ module.exports = async function run(argv, ctx) {
   if (folder === 'chrome') return runChrome(ctx);
   if (folder === 'gemini-cli') return runGemini(passthrough, argv, ctx);
   if (folder === 'shell') return runShell(passthrough, ctx);
+  if (folder === 'windows') return runWindows(passthrough, ctx);
 };
 
 /**
@@ -592,6 +594,29 @@ function runShell(passthrough, ctx) {
   const env = { ...process.env, OPENCUES_USER_CWD: process.cwd() };
   const result = spawnSync(ocShell, passthrough, { stdio: 'inherit', env });
   exitFromSpawn(result, 'oc-shell');
+}
+
+function runWindows(passthrough, ctx) {
+  // `opencues run windows` launches `bin/oc-windows` — the WSL-side
+  // daemon that boots the runtime and prints the PowerShell command to
+  // run on Windows. The Windows-native shim is compiled + run separately
+  // by the user on Windows (see the printed command / integrations/
+  // windows/README.md), so this side is just the daemon.
+  const ocWindows = path.join(ctx.REPO_ROOT, 'integrations', 'windows', 'bin', 'oc-windows');
+  if (!fs.existsSync(ocWindows)) {
+    console.error(`${style.tag('err')} oc-windows not found at ${ocWindows}`);
+    console.error(`     Install first: ${style.bold('opencues install windows')}`);
+    process.exit(1);
+  }
+  printLaunchBanner(ctx, 'windows', [
+    ['host', 'windows  ' + style.dim('(WSL daemon + Windows UIA shim — type _ in any Windows text field)')],
+    ['command', `oc-windows ${passthrough.join(' ')}`.trim()],
+    ['bin', style.fileLink(ocWindows, ocWindows)],
+  ]);
+  clearScreenForHandoff();
+  const env = { ...process.env, OPENCUES_USER_CWD: process.cwd() };
+  const result = spawnSync(ocWindows, passthrough, { stdio: 'inherit', env });
+  exitFromSpawn(result, 'oc-windows');
 }
 
 function runChrome(ctx) {

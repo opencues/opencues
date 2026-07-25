@@ -1,0 +1,13 @@
+{
+  "host": "windows",
+  "host-kind": "self",
+  "//comment": "Self-owned host — no upstream editor to patch (like shell). The 'target' is Windows itself via UI Automation. The WSL daemon boots @opencues/runtime through the adapters/windows/v1 band; the Windows-native shim is compiled on-demand by Add-Type (no SDK).",
+  "runtime": {
+    "wsl-side": "node >=22 (runs hostd.cjs + @opencues/runtime)",
+    "windows-side": "Windows PowerShell 5.1 (powershell.exe) — Add-Type compiles OpenCuesWindows.cs; UIAutomationClient/UIAutomationTypes GAC assemblies"
+  },
+  "profile": "no-cycling (phase 1 — supportsCycling:false; single-answer surface only)",
+  "adapter-band": "packages/opencues-runtime/adapters/windows/v1",
+  "wire-protocol-version": 1,
+  "default-port": 51789
+}

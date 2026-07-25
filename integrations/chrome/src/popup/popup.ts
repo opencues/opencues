@@ -1,4 +1,11 @@
-import { loadConfig, loadUserKeys, saveConfig, saveUserKeys, resetConfig, clearChromeHostState } from '../adapters/chrome-storage-adapter';
+// Config/keys/status go through the host port — chrome.storage in the
+// extension, the daemon's localhost config API when the same popup is
+// served by a native host (Windows tray WebView2 / browser). See
+// adapters/host-port.ts.
+import {
+  loadConfig, loadUserKeys, saveConfig, saveUserKeys, resetConfig, clearChromeHostState,
+  getVersion, getHostStatus, PORT_KIND,
+} from '../adapters/host-port';
 
 // Popup = SETTINGS only. Cue / blank content lives in
 // ~/.cues/ on the host side and flows into the extension via
@@ -153,7 +160,7 @@ async function init(): Promise<void> {
   // Banner — mirrors the CLI's `banner({ version, tagline })` shape.
   // Version comes from manifest.json so a single source of truth.
   const versionEl = document.getElementById('version');
-  if (versionEl) versionEl.textContent = `v${chrome.runtime.getManifest().version}`;
+  if (versionEl) versionEl.textContent = `v${await getVersion()}`;
 
   const [config, userKeys] = await Promise.all([loadConfig(), loadUserKeys()]);
 
@@ -206,7 +213,7 @@ async function init(): Promise<void> {
   const deferLabel = document.querySelector('label.defer-toggle') as HTMLLabelElement;
   deferEl.checked = !!config.deferToChromeHost;
   deferLabel.style.display = 'none';
-  void chrome.runtime.sendMessage({ type: 'opencues:host-status' }).then((reply: unknown) => {
+  void getHostStatus().then((reply: unknown) => {
     const connected = !!(reply && (reply as { connected?: boolean }).connected);
     if (!connected) {
       deferLabel.style.display = 'none';
@@ -402,6 +409,25 @@ async function runDiagnostic(): Promise<void> {
   const log = (s: string): void => { lines.push(s); renderDiagLines(out, lines); };
 
   log('Running self-check…');
+
+  // Native host (Windows tray / browser served by the daemon): there's
+  // no active tab or content script to ping. Report the daemon's status
+  // + config instead, then stop before the chrome-only tab checks.
+  if (PORT_KIND !== 'chrome') {
+    const status = await getHostStatus();
+    if (!status || !status.connected) {
+      log('✗ OpenCues daemon not reachable — is the tray running / oc-windows started?');
+      return;
+    }
+    log(`● daemon connected${status.attached ? ` (attached: ${status.app ?? 'a text field'})` : ' (idle — focus a text field)'}`);
+    const [cfg, keys] = await Promise.all([loadConfig(), loadUserKeys()]);
+    const keyNames = Object.keys(keys).filter((k) => keys[k]);
+    if (keyNames.length === 0) log('✗ no LLM API keys set — paste one above and Save');
+    else log(`● API keys present: ${keyNames.join(', ')}`);
+    if (cfg.provider) log(`● provider: ${cfg.provider}${cfg.model ? `  model: ${cfg.model}` : ''}`);
+    else log('  provider: (none picked — paste a verified key, then pick one)');
+    return;
+  }
 
   // 1. Active tab.
   let tab: chrome.tabs.Tab | undefined;

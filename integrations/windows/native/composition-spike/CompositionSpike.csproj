@@ -1,0 +1,31 @@
+<!--
+  Composition spike (overlay option 3): proves/refutes per-region LIVE
+  backdrop sampling on a plain desktop HWND - the go/no-go for replacing
+  the snapshot-capture overlay with compositor-applied dimming.
+
+  Build (WSL cross-build; Windows only needs the runtime):
+      ~/.dotnet/dotnet build -c Release integrations/windows/native/composition-spike
+  Run (Windows):
+      bin/Release/net8.0-windows10.0.19041.0/CompositionSpike.exe
+
+  A 460x150 topmost click-through "lens" appears near the top of the
+  screen. Drag a Notepad window with text under it: if the lens shows
+  the text DIMMED and LIVE (caret blinking through the dim), the
+  composition route works and the full effect graph (saturation etc.)
+  is just engineering. If it shows black/frozen content, the findings
+  go in the spike log and the snapshot overlay stays the ceiling.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>disable</Nullable>
+    <AssemblyName>CompositionSpike</AssemblyName>
+    <RootNamespace>OpenCues.CompositionSpike</RootNamespace>
+    <SelfContained>false</SelfContained>
+  </PropertyGroup>
+
+</Project>

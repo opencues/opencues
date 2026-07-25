@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# oc-windows — the single seamless entry point (run from WSL).
+#
+# Default: launches the OpenCues TRAY on Windows (via WSL→Windows
+# interop). The tray then spawns the daemon back inside WSL, runs the
+# UIA shim, and serves the settings UI — so ONE command in WSL brings the
+# whole thing up on Windows. You can equally start it from Windows by
+# double-clicking native/OpenCuesTray.vbs (or via autostart).
+#
+# Usage:
+#   oc-windows              # launch the Windows tray (seamless; default)
+#   oc-windows --daemon     # run ONLY the WSL daemon in the foreground
+#                           #   (dev / manual: pair with the tray in
+#                           #    -Mode connect, or the bare shim)
+#
+# Ctrl+C stops --daemon. The tray is stopped from its own Quit menu.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+INT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+OPENCUES_ROOT="$(cd "$INT_DIR/../.." && pwd)"
+PORT="${OPENCUES_WIN_PORT:-51789}"
+
+MODE="launch"
+for a in "$@"; do
+  case "$a" in
+    --daemon|--daemon-only) MODE="daemon" ;;
+    -h|--help)
+      echo "oc-windows [--daemon]"
+      echo "  (no args)  launch the Windows tray (spawns daemon + shim + settings UI)"
+      echo "  --daemon   run only the WSL daemon in the foreground (dev)"
+      exit 0 ;;
+  esac
+done
+
+# ─── Ensure the runtime is built (both paths need it) ────────────────────
+RT_DIST="$OPENCUES_ROOT/packages/opencues-runtime/dist/adapters/windows/v1/boot.js"
+if [[ ! -f "$RT_DIST" ]]; then
+  echo "▸ runtime not built — building @opencues/core + @opencues/runtime…"
+  ( cd "$OPENCUES_ROOT" && pnpm --filter @opencues/core --filter @opencues/runtime build )
+fi
+
+# ─── --daemon: run the daemon in the foreground (dev/manual) ─────────────
+if [[ "$MODE" == "daemon" ]]; then
+  echo "▸ OpenCues daemon (foreground) on 127.0.0.1:$PORT — reads your WSL ~/.cues"
+  echo "  Pair with the tray in connect mode, or the bare shim, on Windows."
+  echo "  Logs: tail -f /tmp/opencues.log | grep '[windows]'"
+  exec node "$INT_DIR/src/hostd.cjs"
+fi
+
+# ─── launch (default): start the Windows tray via interop ────────────────
+DISTRO="${WSL_DISTRO_NAME:-}"
+if [[ -z "$DISTRO" ]]; then
+  echo "✗ Not running under WSL (WSL_DISTRO_NAME unset)."
+  echo "  Launch the tray on Windows directly (double-click native/OpenCuesTray.vbs),"
+  echo "  or run the daemon here with: oc-windows --daemon"
+  exit 1
+fi
+
+# Windows-visible paths (\\wsl.localhost\<distro>\<path with / → \>).
+to_win() { printf '\\\\wsl.localhost\\%s%s' "$DISTRO" "$(printf '%s' "$1" | sed 's#/#\\#g')"; }
+VBS_WIN="$(to_win "$INT_DIR/native/OpenCuesTray.vbs")"
+PS1_WIN="$(to_win "$INT_DIR/native/OpenCuesTray.ps1")"
+
+echo "▸ Launching the OpenCues tray on Windows…"
+
+# Prefer wscript + the .vbs (fully hidden, no flash). Fall back to a
+# hidden powershell.exe if wscript interop is unavailable.
+if command -v wscript.exe >/dev/null 2>&1; then
+  wscript.exe "$VBS_WIN" >/dev/null 2>&1 || true
+elif command -v powershell.exe >/dev/null 2>&1; then
+  powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File "$PS1_WIN" >/dev/null 2>&1 &
+else
+  echo "✗ Couldn't find wscript.exe / powershell.exe on the WSL PATH (interop disabled?)."
+  echo "  Launch the tray on Windows manually:"
+  echo "    wscript \"$VBS_WIN\""
+  exit 1
+fi
+
+echo "  ✓ Tray launching. Look for the OpenCues icon in the Windows system tray."
+echo "    Right-click it → Config source (WSL / Windows) · Settings & keys · Quit."
+echo "  Default config source: your WSL ~/.cues. Logs: tail -f /tmp/opencues.log | grep '[windows]'"

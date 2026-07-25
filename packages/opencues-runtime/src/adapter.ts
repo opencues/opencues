@@ -433,6 +433,21 @@ export interface HostAdapter {
    */
   getAmbientContext?(): AmbientContext | null;
 
+  /**
+   * Optional — when true, LLM-emitted markdown markers (`**bold**`,
+   * `*italic*`, …) are written to the buffer VERBATIM instead of the
+   * default strip-then-render-natively pipeline (markdown-substitute /
+   * MarkdownRender). For hosts with no styling surface whose current
+   * target is a markdown-native composer (Discord renders `**bold**`
+   * at send), stripping would silently destroy the user's requested
+   * styling with nowhere to re-render it.
+   *
+   * Dynamic — re-evaluated per substitution, like supportsCycling
+   * (the windows host varies it by the focused app). Hosts that omit
+   * the method keep the strip+render path unchanged.
+   */
+  markdownPassthrough?(): boolean;
+
   getText(): string;
   getCursorOffset(): number;
   getSelection(): Range | null;

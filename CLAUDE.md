@@ -38,6 +38,18 @@ host and the runtime.
 > the repo restructure. See `docs/architecture/repo-structure.md` for the
 > target layout + stage tracker.
 
+## Website sync - ping Wilfred
+
+opencues.com (repo: `~/opencues-website`) is maintained separately and distills
+this repo's CHANGELOG.md, feature docs, and FAQ.md into published pages
+(changelog, features, FAQs, comparison tables, llms.txt). When a change here is
+user-facing, **remind Wilfred to update the website**: new features,
+integrations, or providers; spec version bumps; feature removals or renames;
+release cuts; anything that alters install steps or the public capability
+story. Unpublished-on-site features (see the website repo's CLAUDE.md content
+rules) still apply there. The website repo tracks its last sync date against
+this repo in its own CLAUDE.md.
+
 ---
 
 ## Claude Installs

@@ -49,6 +49,31 @@ skip() {
 # ─── 1. Shell portability + strict-mode lint ────────────────────────
 step "shell-portability lint" bash scripts/lint-shell-portability.sh
 
+# ─── 1a. Windows native ASCII guard ────────────────────────────────
+# Windows PowerShell 5.1 reads .ps1/.vbs as ANSI, not UTF-8 — a non-ASCII
+# literal (—, …, →) mojibakes and can break parsing, silently killing the
+# tray. Keep the native launchers + Add-Type'd .cs pure ASCII.
+step "windows native ASCII guard" bash scripts/check-windows-native-ascii.sh
+
+# ─── 1a2. Windows newline-rendering invariants ─────────────────────
+# The shim's per-app newline handling is Add-Type C# whose effect is visual
+# rendering inside WordPad/Slack — unreachable by automated tests. This source
+# guard pins the SILENT-failure invariants (no \n\n collapse, EolNorm folds
+# VT/U+2028, case-insensitive richedit check, \n→VT / Slack-paste routing) so a
+# refactor can't break the feature with no error. See
+# integrations/windows/IMPLEMENTATION.md § "Newline rendering".
+step "windows newline-rendering invariants" node integrations/windows/tests/newline-invariants.mjs
+step "windows clipboard/stale-model invariants" node integrations/windows/tests/clipboard-invariants.mjs
+step "windows phase-2 render/hook/overlay invariants" node integrations/windows/tests/render-wire-invariants.mjs
+# Phase-2 WIRE e2e: real daemon + fake shim over the socket — cycling,
+# render pushes, slideCharSpans, deactivation kick, per-field no-cycling
+# profile. LLM-free (tips-based cues) so it runs everywhere.
+step "windows phase-2 wire e2e (fake shim)" node integrations/windows/tests/phase2-cycling.e2e.mjs
+# The daemon's config server serves RAW LLM keys on a fixed loopback port.
+# This pins the same-origin trust gate (no CORS, Host + Origin allow-list) so a
+# regression can't re-open drive-by API-key theft by any visited web page.
+step "windows config-server security invariants" node integrations/windows/tests/config-server-security.mjs
+
 # ─── 1b. Legacy-names lint ─────────────────────────────────────────
 # Catches the rename-drift class — old feature names lingering in    # LEGACY-NAME-ALLOW: aggregator comment
 # shipping code after a rename. Banned identifiers live in           # LEGACY-NAME-ALLOW: aggregator comment

@@ -40,6 +40,43 @@ function makeAdapter(initial = ''): TestAdapter {
   };
 }
 
+describe('markdown pass-through (adapter.markdownPassthrough)', () => {
+  function passthroughAdapter(initial = '') {
+    const t = makeAdapter(initial);
+    (t.adapter as { markdownPassthrough?: () => boolean }).markdownPassthrough = () => true;
+    return t;
+  }
+
+  it('writes markers VERBATIM and fires no markdown.styled event', () => {
+    const t = passthroughAdapter();
+    const r = applyMarkdownAwareSubstitution(t.adapter, 'hello **world**');
+    expect(t.getBuffer()).toBe('hello **world**');
+    expect(r.hadMarkdown).toBe(false);
+    expect(t.events.filter(e => e.type === 'markdown.styled')).toHaveLength(0);
+  });
+
+  it('cursor lands at end of the RAW (unstripped) insertion', () => {
+    const t = passthroughAdapter();
+    const r = applyMarkdownAwareSubstitution(t.adapter, '**bold**');
+    expect(r.newCursor).toBe('**bold**'.length);
+  });
+
+  it('hook returning false keeps the strip path byte-identical', () => {
+    const t = makeAdapter();
+    (t.adapter as { markdownPassthrough?: () => boolean }).markdownPassthrough = () => false;
+    const r = applyMarkdownAwareSubstitution(t.adapter, 'hello **world**');
+    expect(t.getBuffer()).toBe('hello world');
+    expect(r.hadMarkdown).toBe(true);
+  });
+
+  it('hook absent (every in-process host) keeps the strip path', () => {
+    const t = makeAdapter();
+    const r = applyMarkdownAwareSubstitution(t.adapter, 'hello **world**');
+    expect(t.getBuffer()).toBe('hello world');
+    expect(r.hadMarkdown).toBe(true);
+  });
+});
+
 describe('applyMarkdownAwareSubstitution — buffer write', () => {
   it('strips markers from rewriteText and writes the stripped form', () => {
     const t = makeAdapter();
