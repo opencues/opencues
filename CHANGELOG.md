@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — `opencues run <host> --no-cleanup` leaked the flag into the host's own CLI (CLI 0.2.56)
+
+`--no-cleanup` gated the predecessor-kill correctly but was never consumed in the argv loop (unlike `--skip-banner` / `--no-rebuild-check`), so it rode `passthrough` into the spawned host's command line. opencode prints its help and EXITS on an unknown flag — which silently killed every agentic-harness pool shard ("0/N shards live"; without the flag, concurrent shard launches SIGTERM each other via the predecessor-kill instead, so parallel harness runs were broken both ways). The flag is now consumed opencues-side; the predecessor-kill gate still reads it from the original argv.
+
 ### Security — ground the contradiction-cue geocoder inputs + cap calendar feed size (`@opencues/core` 0.33.0)
 
 Static security review of the July 2026 external-HTTP feature cluster (calendar ingest + Tier-0…5c contradiction cues). Two hardenings; both features are `contradiction-cues-mode` / calendar-feed opt-in, so neither is a live default-on exposure.
