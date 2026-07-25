@@ -1,6 +1,6 @@
 # OpenCues — Open Standard
 
-> **Status:** `0.8-alpha`. Expect changes.
+> **Status:** `0.9-alpha`. Expect changes.
 
 This directory holds open file-format standards — the three core intent surfaces **Cues**, **Blanks**, and **Auditors**, plus (as of `0.5`) the **Katas** guided-scenario surface — that any text editor, IDE, or LLM-pipeline can implement to interoperate. Each surface has its own spec file and its own conformance contract; a runtime can implement one and be conformant for that surface (you don't have to implement all of them). Licensed under the same terms as this repository (see [`LICENSE`](../LICENSE)).
 
