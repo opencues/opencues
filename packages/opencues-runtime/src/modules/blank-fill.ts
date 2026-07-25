@@ -13,6 +13,7 @@ import { splitWords } from './navigation';
 import { isBlankConfigCycleable, keywordInWindow, lineOfWords, matchBlankShape, matchDeterministicAction, segmentStart } from '@opencues/core';
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
+import { isSingleAnswerBlank } from '../blanks/single-answer-builtins';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
 import type { DynDefs } from '../state/dyn-defs';
 import { BlankLoadingAnimator, parseCustomFrames, parseRgbColors, parseAnsiColors, parseFrameIntervalMs, DEFAULT_RGB_PALETTE, DEFAULT_ANSI_PALETTE, type BlankLoadingMode } from './blank-loading';
@@ -984,14 +985,18 @@ export class BlankFill {
     // dismissible (so the user can cycle back to `_`).
     const rawLines = fillValue.split(/\n/).map(s => s.trim()).filter(Boolean);
     if (rawLines.length === 0) return;
-    // A blank that declares `blankMultilineIsAnswer` returns ONE answer whose
-    // lines together form a card (location's `map`, claude-status, model,
-    // note) — join them into a single fill instead of treating each line as a
-    // rival cycleable alternative. Without this, a 3-line card wrote only
-    // line[0] and silently dropped the rest — opencues #339 (`map _` never
-    // delivered its Google Maps URL). List blanks (hackernews) leave the flag
-    // off and keep the split-into-alternatives behaviour.
-    const lines = blank?.blankMultilineIsAnswer === true && rawLines.length > 1
+    // A single-answer blank returns ONE answer whose lines together form a
+    // card (location's `map`, claude-status, model, note) — join them into a
+    // single fill instead of treating each line as a rival cycleable
+    // alternative. Without this, a 3-line card wrote only line[0] and silently
+    // dropped the rest — opencues #339 (`map _` never delivered its Google
+    // Maps URL). A blank qualifies either by declaring the
+    // `blankMultilineIsAnswer` frontmatter flag (user script blanks) OR by
+    // being one of the shipped single-card built-ins (so existing users get
+    // the fix from the bundle alone — seed-configs never overwrites an
+    // upgrading user's BLANK.md, so the flag would otherwise never reach them).
+    // List blanks (hackernews) are neither and keep the split behaviour.
+    const lines = isSingleAnswerBlank(slot.blankName, blank?.blankMultilineIsAnswer) && rawLines.length > 1
       ? [rawLines.join('\n')]
       : rawLines;
     let primaryFill = lines[0];

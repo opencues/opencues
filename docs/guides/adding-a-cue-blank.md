@@ -231,6 +231,17 @@ first line lands and the rest is silently dropped (opencues #339). Set
 into one answer instead of truncating. The default (`false`) preserves
 the list-cycling behaviour, so existing list blanks are unaffected.
 
+The four shipped single-card **built-ins** (`location`, `claude-status`,
+`model`, `note`) additionally carry this behaviour in code — they're
+listed in `SINGLE_ANSWER_BUILTIN_BLANKS`
+(`packages/opencues-runtime/src/blanks/single-answer-builtins.ts`), so an
+upgrading user gets the joined card from the runtime bundle even if their
+on-disk `BLANK.md` predates the flag (`seed-configs` never overwrites an
+existing file). The frontmatter flag is the path for **your own** script
+blanks; the code set is only for the shipped built-ins. If you add a new
+built-in whose output is a single multi-line card, add its name to that
+set as well as the flag to its default `BLANK.md`.
+
 ### Span invalidation: only word changes kill the span
 
 For list blanks (`blankDismissible`, `stepValues`, multi-line output), the resolved value is stored as a span covering one or more word positions. The runtime only invalidates this span when the **words at those positions change** — it does not invalidate on trailing spaces, punctuation appended elsewhere, or other non-word edits. This is intentional so the user can keep typing around a resolved blank without losing it.
