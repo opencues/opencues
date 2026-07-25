@@ -300,6 +300,40 @@ describe('renderAmbientBlock', () => {
     assert.match(out, /Use it ONLY to disambiguate/);
   });
 
+  it('renders the app field when present (native hosts) and keeps it below page-title', () => {
+    // The `app` field is populated only by system-wide native hosts
+    // (Windows: the focused process name) to steer OUTPUT FORMAT — e.g.
+    // "explorer" → shape a file-search query. Chrome never sets it, so
+    // its prompt is byte-identical (regression-guarded by the standard
+    // fluid-blank-ambient bench). Any change here MUST re-run
+    // tests/benchmarks/fluid-blank-ambient/fused-bench.ts.
+    const out = renderAmbientBlock({
+      label: 'Search Box',
+      pageTitle: 'Documents - File Explorer',
+      app: 'explorer',
+    });
+    assert.match(out, /label: Search Box/);
+    assert.match(out, /page-title: Documents - File Explorer/);
+    assert.match(out, /app: explorer/);
+    // Steering-strength order: app is the last (broadest) signal line.
+    assert.ok(out.indexOf('page-title:') < out.indexOf('app:'), 'app renders after page-title');
+    // The app-aware steer is emitted (trusted framing, before the block).
+    assert.match(out, /shape the answer to be valid input for that app's field/);
+    assert.ok(
+      out.indexOf('valid input') < out.indexOf('<UNTRUSTED_FIELD_CONTEXT>'),
+      'steer is trusted framing, OUTSIDE the untrusted block',
+    );
+  });
+
+  it('omits the app field AND the steer when app is absent (chrome path — prompt byte-identical to baseline)', () => {
+    const out = renderAmbientBlock({ label: 'Destination', pageTitle: 'Book a flight' });
+    assert.doesNotMatch(out, /\napp:/);
+    // The whole point of keeping the steer out of the system prompt: an
+    // app-less prompt must be byte-identical to the pre-feature baseline
+    // so it can't regress chrome or the 176-case ambient bench.
+    assert.doesNotMatch(out, /shape the answer to be valid input/);
+  });
+
   it('drops fields outside the minimal-signal set (aria-*, input-type, page-url, page-description)', () => {
     // The May 2026 ambient-bench (fluid-blank-ambient/) showed these
     // fields acted as input-token noise that drowned out the cleaner

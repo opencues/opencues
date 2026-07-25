@@ -236,6 +236,7 @@ let mirrorText = '';           // local copy of the remote field's text
 let mirrorCursor = 0;
 let attached = false;          // is an attachable field currently focused
 let currentApp = null;         // foreground process name, for presence
+let currentAmbient = null;     // sanitized AmbientContext for the focused field (app-steer)
 let expectedEcho = null;       // text we just wrote; swallow its echo
 // Phase 2: shim-reported per-field capability — true when the focused
 // field is UIA-attached with a TextPattern, i.e. the shim can intercept
@@ -265,6 +266,29 @@ function countUnderscores(s) {
   let n = 0;
   for (let i = 0; i < s.length; i++) if (s[i] === '_') n += 1;
   return n;
+}
+
+// Ambient context for the focused field (app-aware `_` output steering).
+// Every field is UNTRUSTED and sanitized (trim, drop non-strings) before
+// it touches a prompt (renderAmbientBlock in @opencues/core). `app` (the
+// focused process name) is the load-bearing field — it steers OUTPUT
+// FORMAT (a `_` in Explorer's search box → a file-search token). The
+// richer UIA fields (control Name → label, HelpText → placeholder,
+// window title → pageTitle) enrich disambiguation when the shim forwards
+// them, and are simply absent otherwise. Returns null if the shim sent no
+// usable metadata at all. Field-only, never OS/env/cwd data — see the
+// single-field, no-system-data invariant in docs/architecture/ambient-context.md.
+function ambientStr(v) {
+  return typeof v === 'string' && v.trim() ? v.trim() : undefined;
+}
+function buildAmbientFromFocus(msg) {
+  const ctx = {
+    label: ambientStr(msg.ctrlName),   // UIA control Name → field label
+    placeholder: ambientStr(msg.help), // UIA HelpText → placeholder hint
+    pageTitle: ambientStr(msg.winTitle), // foreground window title
+    app: ambientStr(msg.app),          // focused process name (steers format)
+  };
+  return Object.values(ctx).some(Boolean) ? ctx : null;
 }
 
 // ─── Self-heal 1: recent-writes registry ─────────────────────────────────
@@ -547,6 +571,9 @@ const bootResult = boot({
   // Electron fields stay on the Universal-Integration profile.
   supportsCycling: () => PHASE2 && attached && fieldCycling,
   markdownPassthrough: () => attached && mdPassthroughApps.has(String(currentApp || '').toLowerCase()),
+  // app-aware `_` steering. Only consulted when `ambient-context-mode: on`;
+  // null while detached so a stale field's app can't leak into a later prompt.
+  getAmbientContext: () => (attached ? currentAmbient : null),
   statusFilePath: `/tmp/opencues-status-windows-${process.pid}.json`,
   statusSnapshotHook: (payload) => { updatePresence({ status: summariseStatus(payload) }); },
   log,
@@ -610,6 +637,7 @@ function handleMessage(msg) {
       attached = true;
       attachedFieldId = fieldId;
       currentApp = msg.app || null;
+      currentAmbient = buildAmbientFromFocus(msg);
       // Phase 2: per-field cycling capability, decided by the shim at
       // attach (UIA + TextPattern → overlay + chords possible). Must be
       // set BEFORE notifyTextChange so the resolver's source (re)build
@@ -644,6 +672,7 @@ function handleMessage(msg) {
       attached = false;
       attachedFieldId = null;
       fieldCycling = false;
+      currentAmbient = null;
       currentApp = msg.app || null;
       mirrorText = '';
       mirrorCursor = 0;

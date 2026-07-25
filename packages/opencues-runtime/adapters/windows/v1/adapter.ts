@@ -49,6 +49,7 @@ import type {
   DirEntry,
   LogLevel,
   Capability,
+  AmbientContext,
 } from '../../../src/adapter';
 import { HOST_ADAPTER_INTERFACE_VERSION } from '../../../src/adapter';
 
@@ -89,6 +90,15 @@ export interface WindowsBindings {
    * surface to re-render onto). Defaults to false when omitted.
    */
   markdownPassthrough?(): boolean;
+  /**
+   * Sanitized ambient context for the CURRENTLY-ATTACHED field —
+   * the daemon builds it from the focused field's UIA metadata (control
+   * Name → label, HelpText → placeholder, foreground window title →
+   * pageTitle, process name → app). Returns null when nothing is
+   * attached. Only consulted when `ambient-context-mode: on`; see
+   * docs/architecture/ambient-context.md.
+   */
+  getAmbientContext?(): AmbientContext | null;
 }
 
 // Phase 2: the shim paints a click-through layered overlay from UIA
@@ -136,6 +146,14 @@ export class WindowsV1Adapter implements HostAdapter {
   // the daemon, which knows the focused app.
   markdownPassthrough(): boolean {
     try { return this.bindings.markdownPassthrough?.() ?? false; } catch { return false; }
+  }
+
+  // app-aware output steering. Delegates to the daemon, which holds the
+  // focused field's metadata. The resolver only calls this when
+  // `ambient-context-mode: on`; a throw or missing binding degrades to
+  // null (ambient simply off), never crashing the keystroke path.
+  getAmbientContext(): AmbientContext | null {
+    try { return this.bindings.getAmbientContext?.() ?? null; } catch { return null; }
   }
 
   getText(): string {
