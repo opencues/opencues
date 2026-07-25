@@ -1,6 +1,6 @@
 # core — shared rules across cue-spec and blank-spec
 
-> **Status:** `0.8-alpha`. Expect changes.
+> **Status:** `0.9-alpha`. Expect changes.
 
 This document covers concerns shared by `cue-spec.md`, `blank-spec.md`, and `auditor-spec.md`: the project search-path, the master `CUES.md` / `BLANKS.md` / `AUDITORS.md` files at the root, host compatibility, hot-reload, routing, and the promotion path from runtime-specific knobs to standard fields.
 

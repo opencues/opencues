@@ -1,5 +1,8 @@
 ---
 name: model
+# Multi-line get() output is ONE answer (a card), not a list of
+# cycleable alternatives - join the lines into the buffer (opencues #339).
+blankMultilineIsAnswer: true
 type: blank
 tip: Which LLM you're routed to
 # `model` → the effective provider · model (what dispatch actually

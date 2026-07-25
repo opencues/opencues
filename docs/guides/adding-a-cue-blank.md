@@ -204,7 +204,7 @@ The blank cycling cascade has two paths, and a blank must route to the correct o
 1. **Numeric stepping** — parses the displayed value as a number, adds/subtracts `blankStep`, calls `blankInvoke set <value>`. Used by volume, brightness.
 2. **List cycling** — cycles through `alts[]` array by index. Used by hackernews, affirmations, and any blank with `blankDismissible: true`.
 
-**The routing rule:** if the blank's metadata has `listBlank: true` (auto-set when `blankDismissible: true` or `stepValues: [...]` or multi-line output), it uses the list path. Otherwise, if `blankStep` is declared, it uses the numeric path. A blank with neither is read-only (no cycling).
+**The routing rule:** if the blank's metadata has `listBlank: true` (auto-set when `blankDismissible: true` or `stepValues: [...]` or multi-line output that is NOT flagged `blankMultilineIsAnswer: true`), it uses the list path. Otherwise, if `blankStep` is declared, it uses the numeric path. A blank with neither is read-only (no cycling). Multi-line output flagged `blankMultilineIsAnswer: true` is committed as one joined answer (see the multi-line note below), so it is not split into a cycleable list.
 
 **The pitfall:** if a blank returns a value that *looks* like a number (e.g., `10.9°C`) but isn't meant to be stepped, declaring `blankStep` would make the numeric path parse and increment it (`10.9°C` → `11.9` → `12.9`). The fix is structural: don't declare `blankStep` on a non-numeric blank — without it the blank is read-only, and if it has multiple alts mark it dismissible/list so it routes to the list path.
 
@@ -216,8 +216,33 @@ The blank cycling cascade has two paths, and a blank must route to the correct o
 | `blankStep` declared | Numeric stepping | volume (`50%` → `56%`) |
 | `blankDismissible: true` | List cycling (automatic) | weather (`10°C Drizzle` ↔ `_`) |
 | `stepValues: [...]` | List cycling (automatic) | affirmations |
-| Multi-line script output | List cycling (automatic) | hackernews |
+| Multi-line script output | List cycling (each line is one alt) | hackernews |
+| Multi-line output + `blankMultilineIsAnswer: true` | Single joined answer (no split) | location `map` card, claude-status, model |
 | none of the above | No cycling (read-only, inferred) | stocks |
+
+**Multi-line: list vs single answer (`blankMultilineIsAnswer`).** By
+default a multi-line `get` result is split on `\n` into cycleable
+alternatives — correct for a top-N feed (hackernews) whose lines are
+genuinely separate choices. But a blank whose output is ONE indivisible
+card — the location `map` card (name / address / map link), a status
+block, the `model` catalog, note recall — must NOT be split, or only its
+first line lands and the rest is silently dropped (opencues #339). Set
+`blankMultilineIsAnswer: true` on the BLANK.md: the fill joins the lines
+into one answer instead of truncating. The default (`false`) preserves
+the list-cycling behaviour, so existing list blanks are unaffected.
+
+The three shipped single-card **built-ins** (`location`, `claude-status`,
+`model`) additionally carry this behaviour in code — they're listed in
+`SINGLE_ANSWER_BUILTIN_BLANKS`
+(`packages/opencues-runtime/src/blanks/single-answer-builtins.ts`), so an
+upgrading user gets the joined card from the runtime bundle even if their
+on-disk `BLANK.md` predates the flag (`seed-configs` never overwrites an
+existing file). The frontmatter flag is the path for **your own** script
+blanks; the code set is only for the shipped built-ins. If you add a new
+built-in whose output is a single multi-line card, add its name to that
+set as well as the flag to its default `BLANK.md`. (`note` is
+deliberately NOT in the set: its recall returns multiple matches the
+user cycles through, so it stays a list blank.)
 
 ### Span invalidation: only word changes kill the span
 

@@ -2121,3 +2121,74 @@ describe('loading-animation blank routing (shapes from defaults/blanks/loading-a
   });
 });
 
+
+describe('blankMultilineIsAnswer — multi-line card joins instead of truncating (#339)', () => {
+  const flush = async () => { for (let i = 0; i < 8; i++) await new Promise(r => setTimeout(r, 0)); };
+
+  async function setupCard(extraFrontmatter: string, name = 'card', keyword = 'card') {
+    const CARD = `---
+type: blank
+name: ${name}
+blankKeywords: ${keyword}
+blankScript: ./card.sh
+${extraFrontmatter}
+---
+`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/mock/CUES.md': TIPS, [`/proj/blanks/${name}/BLANK.md`]: CARD },
+    });
+    // A 3-line answer (name / address / URL) — one card, not three items.
+    adapter.stubBlankInvoke(`${name}:get`, 'East Finchley Station\nThe Causeway, London N2 0NW\nMap: https://maps.example/?q=51.58,-0.16\n');
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    const bf = new BlankFill(adapter, loader, new SpanFillState(), undefined, undefined, new DynDefs());
+    bf.subscribe();
+    return adapter;
+  }
+
+  it('with the flag: all three lines land in the buffer (URL survives)', async () => {
+    const adapter = await setupCard('blankMultilineIsAnswer: true');
+    adapter.pushText('card _');
+    await flush();
+    const text = adapter.getText();
+    expect(text).toContain('East Finchley Station');
+    expect(text).toContain('The Causeway');
+    expect(text).toContain('Map: https://maps.example/?q=51.58,-0.16');   // the URL is no longer dropped
+  });
+
+  it('without the flag: legacy split — only line[0] is written (the #339 behaviour)', async () => {
+    const adapter = await setupCard('');
+    adapter.pushText('card _');
+    await flush();
+    const text = adapter.getText();
+    expect(text).toContain('East Finchley Station');
+    expect(text).not.toContain('Map: https://maps.example');   // rest stashed as cycleable alts
+  });
+
+  // Option A (opencues #339 follow-up): the four shipped single-card
+  // built-ins carry the property in CODE (SINGLE_ANSWER_BUILTIN_BLANKS), so an
+  // upgrading user whose on-disk BLANK.md predates the flag — and which
+  // seed-configs will never overwrite — still gets the joined card from the
+  // runtime bundle alone. Here the blank is named `location` (a built-in) with
+  // NO frontmatter flag, and the join must still fire.
+  it('built-in name without the flag: joins anyway (code-side coverage)', async () => {
+    const adapter = await setupCard('', 'location', 'map');
+    adapter.pushText('map _');
+    await flush();
+    const text = adapter.getText();
+    expect(text).toContain('East Finchley Station');
+    expect(text).toContain('Map: https://maps.example/?q=51.58,-0.16');   // built-in joins with no flag
+  });
+
+  // Negative twin: a non-built-in, no-flag blank must still split (the code
+  // set must not accidentally widen to ordinary list blanks).
+  it('non-built-in name without the flag: still splits (set is not over-broad)', async () => {
+    const adapter = await setupCard('', 'feed', 'feed');
+    adapter.pushText('feed _');
+    await flush();
+    const text = adapter.getText();
+    expect(text).toContain('East Finchley Station');
+    expect(text).not.toContain('Map: https://maps.example');
+  });
+});
