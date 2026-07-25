@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — calendar-context was never wired into the `universal/v1` band — mac + apple-notes answered "I don't have access to your calendar" (`@opencues/runtime` 0.26.0 → 0.27.0)
+
+Every other adapter band (`cc`, `oc`, `gemini`, `shell`, `chrome`) constructed its `Resolver` with `calendarContext: buildCalendarContextIngest(log)`; `universal/v1` — the band shared by the **mac** and **apple-notes** hosts — did not. Both hosts therefore booted with no calendar catalog at all, and a `whats my next meeting _` lookup got the honest LLM answer *"I don't have access to your calendar to see your next meeting"* even with a fully synced `~/.cues/calendar.json` (128-event iCloud feed, verified present and loading correctly in chrome at the same moment). Reported live in Apple Notes, 2026-07-25.
+
+The fix is the shared helper the other five bands already use — no new machinery: `buildCalendarContextIngest(log)` before the `Resolver` construction, passed through as `calendarContext`, plus `calendarContextHolder?.stop()` in `dispose()` so a disposed boot doesn't leave the refresh interval alive (the other bands never call `stop()`; on a long-lived daemon host that leak matters more, and it keeps the test runner from hanging). Inert by construction when no feed is configured — the helper returns `undefined` with no `calendar.json`, so hosts that never run `opencues calendar add` are byte-identical to before.
+
+Two regression tests in `adapters/universal/v1/boot.test.ts` pin both directions (snapshot present → exactly one `calendar-context: N calendar event(s) loaded`; snapshot absent → no calendar log, boot still succeeds). Both are hermetic per `check-test-hermeticity.sh` — `OPENCUES_HOME` is redirected to a `mkdtemp` dir and restored in `afterEach`, so the real `~/.cues` is never read or written.
+
+**Scope note:** this restores the `_`-lookup direction on both hosts. The calendar **conflict cue** (`defaults/cues/calendar/CUE.md`, `scope: sentence`, priority 90) stays pruned on this band regardless — sentence-cues are cycleable and the universal profile advertises `supportsCycling(): false`, so conflict flagging remains a cycling-host feature.
+
 ### Fixed — `opencues run <host> --no-cleanup` leaked the flag into the host's own CLI (CLI 0.2.56)
 
 `--no-cleanup` gated the predecessor-kill correctly but was never consumed in the argv loop (unlike `--skip-banner` / `--no-rebuild-check`), so it rode `passthrough` into the spawned host's command line. opencode prints its help and EXITS on an unknown flag — which silently killed every agentic-harness pool shard ("0/N shards live"; without the flag, concurrent shard launches SIGTERM each other via the predecessor-kill instead, so parallel harness runs were broken both ways). The flag is now consumed opencues-side; the predecessor-kill gate still reads it from the original argv.

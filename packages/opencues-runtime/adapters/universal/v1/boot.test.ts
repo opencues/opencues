@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { boot } from './boot';
 import { UniversalV1Adapter } from './adapter';
 import type { KeyEvent } from '../../../src/adapter';
@@ -41,6 +44,54 @@ describe('universal v1 boot()', () => {
       expect.stringContaining('universal v1, host: apple-notes'),
       expect.objectContaining({ host: 'apple-notes' }),
     );
+  });
+
+  // REGRESSION (2026-07-25): this band was the ONLY one that never wired
+  // calendarContext — cc/oc/gemini/shell/chrome all did. Both hosts on the
+  // band (mac, apple-notes) answered "I don't have access to your calendar"
+  // for `whats my next meeting _` even with a synced ~/.cues/calendar.json,
+  // because the resolver was constructed without the holder. Reported live
+  // in Apple Notes. Hermetic: OPENCUES_HOME is redirected to a mkdtemp dir
+  // and restored, so this never reads or writes the real ~/.cues.
+  describe('calendar-context wiring', () => {
+    let tmp: string;
+    let prevHome: string | undefined;
+
+    beforeEach(() => {
+      tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'oc-universal-cal-'));
+      prevHome = process.env.OPENCUES_HOME;
+      process.env.OPENCUES_HOME = tmp;
+    });
+    afterEach(() => {
+      if (prevHome === undefined) delete process.env.OPENCUES_HOME;
+      else process.env.OPENCUES_HOME = prevHome;
+      fs.rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it('loads the calendar.json snapshot into the resolver at boot', () => {
+      fs.writeFileSync(path.join(tmp, 'calendar.json'), JSON.stringify({
+        source: 'test',
+        ingestedAt: '2026-07-25T19:00:00.000Z',
+        events: [{ title: 'Standup', start: '2026-07-31T09:00', end: '2026-07-31T10:00' }],
+      }));
+      const log = vi.fn();
+      const result = boot({ ...minimalHost, log });
+      // Match on the message only — log() carries a third meta arg
+      // (null here), so an exact toHaveBeenCalledWith(2-arg) never fits.
+      const loaded = log.mock.calls.filter(c =>
+        /calendar-context: 1 calendar event\(s\) loaded/.test(String(c[1])));
+      expect(loaded).toHaveLength(1);
+      result.dispose();
+    });
+
+    it('stays inert with no snapshot — no calendar log, boot still succeeds', () => {
+      const log = vi.fn();
+      const result = boot({ ...minimalHost, log });
+      const calls = log.mock.calls.filter(c => String(c[1]).includes('calendar event(s) loaded'));
+      expect(calls).toHaveLength(0);
+      expect(typeof result.dispose).toBe('function');
+      result.dispose();
+    });
   });
 
   it('reports the no-render capability set (no dim/rgb/spawn by default)', () => {

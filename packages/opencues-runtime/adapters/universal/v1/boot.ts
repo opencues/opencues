@@ -29,7 +29,7 @@ import { startEventBridge } from '../../../src/event-bridge';
 import { Statusline } from '../../../src/modules/statusline';
 import { Resolver } from '../../../src/modules/resolver';
 import { ConfigLoader } from '../../../src/modules/config-loader';
-import { buildSharedRuntime, createLogFunction, buildBlankContextProvider, buildBlankFetchProvider, resetSharedBufferState, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildSharedRuntime, createLogFunction, buildBlankContextProvider, buildBlankFetchProvider, resetSharedBufferState, buildCalendarContextIngest, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { buildBootApiKeys, pickAutoProvider } from '@opencues/core';
 import { EventEmitter } from '../../../src/lib/event-emitter';
 import type {
@@ -160,6 +160,12 @@ export function boot(host: HostInfo): BootResult {
   // (pickAutoProvider's last rung: claude/codex binary present) —
   // mirrors shell/v1 so a keyless subscription setup still dispatches.
   const hasAnyKey = Object.values(apiKeys).some(Boolean) || pickAutoProvider(apiKeys) !== null;
+  // Calendar-context: native read of the shared calendar.json snapshot
+  // ($OPENCUES_HOME first, then ~/.cues), refreshed on a timer. Live
+  // holder — the resolver reads it fresh each pass. Mirrors shell/v1:223.
+  // Inert (undefined) with no feed configured, so hosts on this band
+  // that never run `opencues calendar add` are byte-identical to before.
+  const calendarContextHolder = buildCalendarContextIngest(log);
   const resolver = new Resolver(adapter, hlState, dynDefs, configLoader, {
     endpoint: host.llmEndpoint ?? 'https://api.groq.com/openai/v1/chat/completions',
     apiKey: host.llmApiKey ?? apiKeys.GROQ_API_KEY ?? '',
@@ -169,6 +175,7 @@ export function boot(host: HostInfo): BootResult {
     missingKeyFallbackMessage: hasAnyKey ? undefined : NATIVE_HOST_MISSING_KEY_MESSAGE,
     formatLLMErrorAsSubstitute: nativeHostFormatLLMError,
     keywordBoundSlotIndices: (text: string) => shared.blankFill.scan(text).map(s => s.index),
+    calendarContext: calendarContextHolder,
   }, spanFillState, agentTaskState, shared.blankLoading, shared.markdownRender, selectorSatelliteState,
   buildBlankContextProvider(configLoader, host.blanks, log),
   buildBlankFetchProvider(configLoader, host.blanks, log));
@@ -203,6 +210,10 @@ export function boot(host: HostInfo): BootResult {
     },
     dispose() {
       adapter.dispose();
+      // Stop the calendar refresh timer — without this a disposed boot
+      // leaves an interval alive (hangs test runners, leaks on daemon
+      // re-boot). The holder is undefined when no feed is configured.
+      calendarContextHolder?.stop();
       keyEvents.clear();
       textEvents.clear();
       moduleEvents.clear();
