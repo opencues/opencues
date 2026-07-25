@@ -113,11 +113,29 @@ needed.
 - Registered in `@opencues/core/src/feature-registry.ts` as a
   cyclable feature with two `ValueSpec` entries
 
+## Interaction with `integration-weave-mode`
+
+`spaced` fires BOTH BlankFill and the resolver on the **confirming
+space** (unlike `immediate`, which fires on the `_` keystroke). That
+means the loading slot is briefly **co-owned**: BlankFill's own `stop`
+doesn't restore the `_`, so the slot can still carry a loading-frame
+char. A blank that also uses `integration-weave` (`integration-weave-mode:
+on` + `integration-weave: true`) waits for one LLM call before
+committing, and its staleness check must not mistake that transient slot
+char for a user edit. Until 2026-07-25 it did — `blank.substituted`
+fired but nothing committed on `<keyword> _ ` in spaced mode with weave
+on. Fixed by comparing every word except the slot word (see
+`docs/architecture/blank-integration.md` § weave staleness). Both modes
+are non-default, so default-config users were never affected.
+
 ## Tests
 
 - `packages/opencues-runtime/src/modules/resolver.test.ts` —
   4 gate-semantics tests (immediate fires; spaced doesn't;
   spaced + space fires; `_italic_` typing never fires)
+- `packages/opencues-runtime/src/modules/blank-weave-fill.scenarios.test.ts` —
+  the spaced + integration-weave regression: a lingering slot char must
+  not drop the fill; a real edit elsewhere still drops it
 - `packages/opencues-runtime/src/blanks/registry-persistence.drift.test.ts` —
   ensures cycling the scalar persists to OPENCUES.md (closes the
   May 17 silent-snap-back bug class)

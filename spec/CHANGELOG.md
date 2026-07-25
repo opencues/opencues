@@ -14,6 +14,14 @@ breaking.
 
 ## [Unreleased]
 
+---
+
+## [0.9.0-alpha] — 2026-07-25
+
+### Added — `blankMultilineIsAnswer` blank frontmatter key (`0.8-alpha → 0.9-alpha`)
+
+`blank-spec.md` § Frontmatter (optional) + § Flag obligations document a new optional boolean, `blankMultilineIsAnswer` (default `false`). When `true`, a runtime MUST commit a multi-line `get` result as ONE joined answer rather than splitting it into cycleable alternatives (the default list-blank behaviour). This lets a single-card blank — a location "map" card (name / address / map link), a status block — deliver its whole card at `_` instead of only its first line, while list blanks (top-N feeds) keep per-line cycling by omitting the key. Additive + optional with a behaviour-preserving default; `0.8` readers ignore the unknown key under the unknown-frontmatter rule (schema `additionalProperties: true`). `spec/schemas/blank.schema.json` documents the key. Closes opencues #339 (multi-line `map _` truncation).
+
 ### Removed — `fluid-blank-mode` from the `OPENCUES.md` schema (`0.7-alpha → 0.8-alpha`)
 
 `spec/schemas/opencues.schema.json` no longer documents the `fluid-blank-mode` key, and the valid-masters conformance fixture no longer carries it. The reference runtime retired the gate when static resolution made the fluid blank the always-on base layer; the schema had lagged. Third-party impact: fluid-blank enablement is not configurable via `OPENCUES.md` — a conformant runtime treats the fluid surface as always available (files that still carry the key are preserved-but-ignored under the unknown-frontmatter rule). Per-feature routing keys (`fluid-blank-provider` / `fluid-blank-model` / `fluid-blank-endpoint`) are unchanged.

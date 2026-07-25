@@ -355,6 +355,16 @@ export interface BlankConfig {
   aiCallable?: boolean;
   /** If true, `_` is appended as the last cycling option so the user can dismiss the value */
   blankDismissible?: boolean;
+  /**
+   * If true, a multi-line `get()` return is ONE answer (its lines joined into
+   * the buffer), not a list of cycleable alternatives. Default (false) keeps
+   * the legacy split-into-alternatives behaviour that suits list blanks like
+   * `hackernews`. Set on single-multi-line-answer blanks (location's `map`
+   * card, claude-status, model, note) whose lines together form one card — see
+   * opencues #339: without it, `map _` wrote only line[0] (the name) and
+   * silently dropped the address + Google Maps URL.
+   */
+  blankMultilineIsAnswer?: boolean;
   /** Suffix appended to the displayed value (e.g. "%" shows "50%"). Stripped before arithmetic, re-appended for display. */
   blankSuffix?: string;
   /** Ordered list of values to cycle through on a blank */
@@ -994,6 +1004,7 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   aiCallable?: boolean;
   blankScript?: string;
   blankDismissible?: boolean;
+  blankMultilineIsAnswer?: boolean;
   blankSuffix?: string;
   blankShapes?: BlankShape[];
   integration?: string;
@@ -1112,6 +1123,7 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'blankStep': fm.blankStep = parseInt(value, 10) || undefined; break;
       case 'blankScript': fm.blankScript = value; break;
       case 'blankDismissible': fm.blankDismissible = value === 'true'; break;
+      case 'blankMultilineIsAnswer': fm.blankMultilineIsAnswer = value === 'true'; break;
       case 'blankSuffix': fm.blankSuffix = value; break;
       case 'blankShapes': try { fm.blankShapes = JSON.parse(value); } catch { /* ignore malformed shapes */ } break;
       case 'integration': fm.integration = value; break;
@@ -1258,6 +1270,7 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
       }
       if (frontmatter.blankStep !== undefined) blank.blankStep = frontmatter.blankStep;
       if (frontmatter.blankDismissible !== undefined) blank.blankDismissible = frontmatter.blankDismissible;
+      if (frontmatter.blankMultilineIsAnswer !== undefined) blank.blankMultilineIsAnswer = frontmatter.blankMultilineIsAnswer;
       if (frontmatter.blankSuffix !== undefined) blank.blankSuffix = frontmatter.blankSuffix;
       if (frontmatter.blankShapes !== undefined) blank.blankShapes = frontmatter.blankShapes;
       // Desugar keywords → shapes (the single routing mechanism). Explicit

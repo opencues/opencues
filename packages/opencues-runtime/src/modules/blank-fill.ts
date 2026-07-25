@@ -13,6 +13,7 @@ import { splitWords } from './navigation';
 import { isBlankConfigCycleable, keywordInWindow, lineOfWords, matchBlankShape, matchDeterministicAction, segmentStart } from '@opencues/core';
 import type { SpanFillState } from '../state/span-fill';
 import type { DismissedBlanks } from '../state/dismissed-blanks';
+import { isSingleAnswerBlank } from '../blanks/single-answer-builtins';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
 import type { DynDefs } from '../state/dyn-defs';
 import { BlankLoadingAnimator, parseCustomFrames, parseRgbColors, parseAnsiColors, parseFrameIntervalMs, DEFAULT_RGB_PALETTE, DEFAULT_ANSI_PALETTE, type BlankLoadingMode } from './blank-loading';
@@ -947,6 +948,7 @@ export class BlankFill {
           blankClearOnEdit?: boolean;
           blankScript?: string;
           blankSuffix?: string;
+          blankMultilineIsAnswer?: boolean;
           tip?: string;
         })
       | undefined;
@@ -981,8 +983,22 @@ export class BlankFill {
     // splice paths use line[0] as the visible fill; alternates stash if
     // the script returned multiple lines (hackernews) or the blank is
     // dismissible (so the user can cycle back to `_`).
-    const lines = fillValue.split(/\n/).map(s => s.trim()).filter(Boolean);
-    if (lines.length === 0) return;
+    const rawLines = fillValue.split(/\n/).map(s => s.trim()).filter(Boolean);
+    if (rawLines.length === 0) return;
+    // A single-answer blank returns ONE answer whose lines together form a
+    // card (location's `map`, claude-status, model, note) — join them into a
+    // single fill instead of treating each line as a rival cycleable
+    // alternative. Without this, a 3-line card wrote only line[0] and silently
+    // dropped the rest — opencues #339 (`map _` never delivered its Google
+    // Maps URL). A blank qualifies either by declaring the
+    // `blankMultilineIsAnswer` frontmatter flag (user script blanks) OR by
+    // being one of the shipped single-card built-ins (so existing users get
+    // the fix from the bundle alone — seed-configs never overwrites an
+    // upgrading user's BLANK.md, so the flag would otherwise never reach them).
+    // List blanks (hackernews) are neither and keep the split behaviour.
+    const lines = isSingleAnswerBlank(slot.blankName, blank?.blankMultilineIsAnswer) && rawLines.length > 1
+      ? [rawLines.join('\n')]
+      : rawLines;
     let primaryFill = lines[0];
     const isDismissible = blank?.blankDismissible === true;
     // Append blankSuffix when the blank declares one and the primary
@@ -1165,9 +1181,33 @@ export class BlankFill {
       }
       this._loadingAnimator().stop(slot.index, 'blank-fill');
       // Staleness: if the user edited during the wait, the slot they were
-      // filling is gone — drop, don't clobber (matches the async-fill contract).
+      // filling is gone — drop, don't clobber (matches the async-fill
+      // contract). BUT the SLOT WORD ITSELF is transient during the weave:
+      // it may be `_`, or a loading-FRAME char, and it flips as the
+      // animation paints — AND the two sides of this compare see it at
+      // different instants. `cleaned` was captured at applyAsyncFill start
+      // (often mid-animation → a frame char); `liveNow` is read here after
+      // our own `stop` (→ `_`, unless a co-owner like the resolver still
+      // animates it). A naive full-string compare treats that transient
+      // slot char as a user edit and drops the fill — the spaced +
+      // integration-weave bug (opencues #336): `blank.substituted` fired
+      // but nothing committed (spaced mode fires BOTH BlankFill and the
+      // resolver on the confirming space, so the slot is co-owned and its
+      // char lingers). The earlier `ourSlot` guard (line ~967) already
+      // proved the slot was OURS at dispatch, so the only thing that
+      // matters now is whether the user edited ELSEWHERE — compare every
+      // word EXCEPT the slot word. `isOurSlotChar` can't help here: the
+      // animation is already stopped, so the frame set is gone.
       const liveNow = this.adapter.getText().replace(/[​‌]/g, '');
-      if (liveNow !== cleaned) {
+      const stripSlotWord = (t: string): string | null => {
+        const ws = splitWords(t);
+        if (slot.index >= ws.length) return null;   // slot vanished → real edit
+        const w = ws[slot.index];
+        return t.slice(0, w.start) + '' + t.slice(w.end);
+      };
+      const liveStripped = stripSlotWord(liveNow);
+      const cleanStripped = stripSlotWord(cleaned);
+      if (liveStripped === null || cleanStripped === null || liveStripped !== cleanStripped) {
         this.adapter.log('debug', 'BlankFill: weave fill dropped — buffer changed during the call');
         return;
       }

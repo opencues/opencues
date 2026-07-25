@@ -220,6 +220,13 @@ export const BUILTIN_BLANKS: readonly BuiltinBlankSpec[] = [
   { name: 'loading-animation', factory: ctx => ctx.opencuesMdIO ? new LoadingAnimationBlank(ctx.opencuesMdIO) : null },
 ];
 
+// Re-export the single-answer built-in set (opencues #339). `location`,
+// `claude-status`, `model`, and `note` above emit a single multi-line card;
+// `blank-fill.ts` joins their lines instead of splitting them into cycleable
+// alternatives. Kept in a dependency-free sibling module so the fill path
+// need not import this whole impl registry. Keep the two in sync.
+export { SINGLE_ANSWER_BUILTIN_BLANKS, isSingleAnswerBlank } from './single-answer-builtins';
+
 /**
  * Build the canonical `Map<string, Blank>` registry for a host. Hosts
  * supply whatever context they have; blanks whose prereqs aren't met

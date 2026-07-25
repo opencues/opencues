@@ -165,3 +165,57 @@ describe('integration-weave — wait-first, single-change contract', () => {
     expect(adapter.getText()).not.toContain('_');
   });
 });
+
+describe('integration-weave — lingering slot char must NOT drop the fill (#336)', () => {
+  // Spaced mode fires BOTH BlankFill and the resolver on the confirming
+  // space, so the loading slot is CO-OWNED: BlankFill's own `stop` doesn't
+  // restore `_`, and the slot still carries a loading-frame char when the
+  // weave staleness check runs. `cleaned` (captured at dispatch, often
+  // mid-animation) and `liveNow` (read after `stop`) then disagree ONLY at
+  // the transient slot char — a naive full-string compare read that as a
+  // user edit and dropped the fill (blank.substituted fired, buffer never
+  // committed). The check now compares every word EXCEPT the slot word.
+  it('a frame char lingering at the slot during the weave still commits', async () => {
+    let adapterRef: MockAdapter | null = null;
+    const FRAME = '▖';   // one of the loading frames ("▖")
+    // The weaver stands in for the wait; while it runs, a co-owner (the
+    // resolver) is still animating the slot, so we simulate the buffer
+    // carrying a frame char at the `_` position. Return null → the static
+    // fallback path runs and commits `set to 30%`.
+    const weaver = vi.fn(async () => {
+      const t = adapterRef!.getText();
+      adapterRef!.pushTextNoKeystroke(t.replace('_', FRAME));   // frame at the slot
+      return null;
+    });
+    const s = await setupWeave(weaver, 'on');
+    adapterRef = s.adapter;
+
+    s.adapter.pushText('dim _');
+    await flush();
+
+    // Before the fix: dropped → buffer stuck at 'dim ▖' (or 'dim _').
+    // After: the transient slot char is ignored, the static fill commits.
+    const finalText = s.adapter.getText();
+    expect(finalText).toContain('30%');
+    expect(finalText).not.toContain('_');
+    expect(finalText).not.toContain(FRAME);
+    expect(weaver).toHaveBeenCalledOnce();
+  });
+
+  it('a REAL user edit elsewhere during the weave still drops the fill', async () => {
+    let adapterRef: MockAdapter | null = null;
+    // Genuine edit to non-slot content — must still drop (don't clobber).
+    const weaver = vi.fn(async () => {
+      adapterRef!.pushTextNoKeystroke('lights on. dim _');   // prepended real text
+      return null;
+    });
+    const s = await setupWeave(weaver, 'on');
+    adapterRef = s.adapter;
+
+    s.adapter.pushText('dim _');
+    await flush();
+
+    // The user's edit is preserved; the stale fill did NOT overwrite it.
+    expect(s.adapter.getText()).toBe('lights on. dim _');
+  });
+});

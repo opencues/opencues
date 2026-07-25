@@ -106,7 +106,18 @@ integration-weave: true
    commit lands the **static template** instead (`…it's currently 22°C Clear`) —
    still one change, never blocked, never corrupted.
 6. If the user edits during the wait, the fill is dropped (their edit wins) —
-   the same staleness contract every async blank fill already honours.
+   the same staleness contract every async blank fill already honours. The
+   staleness check compares every word **except the slot word**: the slot
+   char is transient during the wait (it flips between `_` and a
+   loading-frame char as the animation paints, and a co-owner — the
+   resolver, in `blank-trigger-mode: spaced` where both BlankFill and the
+   resolver fire on the confirming space — can keep it a frame char after
+   BlankFill's own `stop`). Comparing the whole string once treated that
+   transient slot char as a user edit and silently dropped the fill —
+   `blank.substituted` fired but nothing committed (the spaced +
+   integration-weave bug, fixed 2026-07-25). The earlier `ourSlot` guard
+   in `applyAsyncFill` already proved the slot was ours at dispatch, so the
+   only thing the weave check must still catch is an edit **elsewhere**.
 
 ### Authoring + gating
 
