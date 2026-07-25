@@ -82,6 +82,11 @@
       "default": false,
       "description": "_ becomes the last cycling option."
     },
+    "blankMultilineIsAnswer": {
+      "type": "boolean",
+      "default": false,
+      "description": "Treat a multi-line get result as one joined answer instead of a cycleable list of alternatives. Set on single-card blanks (location map, status block); leave false for list blanks (top-N feeds)."
+    },
     "as-context": {
       "type": "string",
       "enum": ["off", "safe", "raw"],

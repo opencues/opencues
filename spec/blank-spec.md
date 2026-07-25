@@ -1,6 +1,6 @@
 # blank-spec — the Blank file format & runtime contract
 
-> **Status:** `0.8-alpha`. Expect changes.
+> **Status:** `0.9-alpha`. Expect changes.
 
 A **blank** is the user→system surface: when a user writes `_` (underscore) in their text, the runtime substitutes a value sourced from somewhere — a list, a shell script, an in-process function. Blanks are how text touches the world: volume, weather, stock prices, dictionary entries, settings toggles. This document specifies the `BLANK.md` file format and what a conformant runtime MUST do with one.
 
@@ -75,6 +75,7 @@ A blank source MUST also declare **exactly one** binding profile (see § Binding
 | `integration` | string | none | Additive output template with a `{value}` slot (`"volume is now {value}"`). The runtime renders the blank's output through it, weaving connective text around the value. Add-only — it only shapes the inserted value, never surrounding text. |
 | `blankSatellite` | boolean | `false` | Two-word selector + value pattern. See § Flag obligations. |
 | `blankDismissible` | boolean | `false` | `_` becomes the last cycling option. |
+| `blankMultilineIsAnswer` | boolean | `false` | Treat a multi-line `get` result as ONE answer (join the lines) rather than a cycleable list of alternatives. Set on blanks whose output is a single multi-line card (a location "map" card, a status block); leave `false` (default) for list blanks whose lines are genuinely separate choices (e.g. top-N feeds). See § Flag obligations. |
 | `blankClearKeywords` | boolean | `false` | After a non-shaped fill, strip the blank's own keyword from the resulting text (e.g. a bare `keyword _` whose script returns a self-contained value). Shaped blanks clear their command span automatically (a captured arg / typed set-step / `integration:` template consumes the whole MATCHED SEGMENT — `keyword … _` for keyword-leading shapes, `… keyword _` for trailing-keyword shapes), so this is only for the legacy keyword path. |
 | `stepValues` | YAML list | none | Binding profile — declarative rotation. |
 | `blankScript` | string (relative path) | none | Binding profile — shell script. |
@@ -294,6 +295,7 @@ All methods are async. The `keyword` argument carries which `blankKeywords` entr
 - **`blankDismissible: true`** — runtime MUST append `_` to the cycling list. Selecting it sets a "dismissed" flag for that slot; runtime MUST NOT re-populate until the user explicitly cycles away.
 - **`blankShapes`** — each `{pattern, action, valueGroup?}` is matched (case-insensitive) against the SENTENCE containing `_` (the segment after the last sentence terminator / newline before `_`); the first match claims it. `valueGroup` (1-based) extracts the `set`/`step` value, or — on a `get` shape — the captured **arg** passed to the blank's `get`. Because the pattern is an arbitrary anchored regex, the arg may precede the keyword (a trailing-keyword shape like `^(.+?)\s+location\s*_$` supports `east finchley iceland location _`); the runtime MUST dispatch the shape-captured arg rather than re-deriving it positionally from keyword→`_`. A blank with shapes is routed solely by them; the keyword window does not apply.
 - **`blankStep`, `blankSuffix`** — numeric step size + display unit. Runtime MUST honor for numeric blanks.
+- **`blankMultilineIsAnswer: true`** — a `get` result containing newlines MUST be committed as a single multi-line answer (lines joined with `\n`), NOT split into cycleable alternatives. Default (`false`) preserves the list-blank behaviour: each line of a multi-line result becomes one cycling option. A blank whose output is one indivisible card (address + hours + link) sets this; a blank whose lines are separate choices (top-N feed) leaves it unset.
 
 ---
 

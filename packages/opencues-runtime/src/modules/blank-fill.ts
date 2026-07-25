@@ -947,6 +947,7 @@ export class BlankFill {
           blankClearOnEdit?: boolean;
           blankScript?: string;
           blankSuffix?: string;
+          blankMultilineIsAnswer?: boolean;
           tip?: string;
         })
       | undefined;
@@ -981,8 +982,18 @@ export class BlankFill {
     // splice paths use line[0] as the visible fill; alternates stash if
     // the script returned multiple lines (hackernews) or the blank is
     // dismissible (so the user can cycle back to `_`).
-    const lines = fillValue.split(/\n/).map(s => s.trim()).filter(Boolean);
-    if (lines.length === 0) return;
+    const rawLines = fillValue.split(/\n/).map(s => s.trim()).filter(Boolean);
+    if (rawLines.length === 0) return;
+    // A blank that declares `blankMultilineIsAnswer` returns ONE answer whose
+    // lines together form a card (location's `map`, claude-status, model,
+    // note) — join them into a single fill instead of treating each line as a
+    // rival cycleable alternative. Without this, a 3-line card wrote only
+    // line[0] and silently dropped the rest — opencues #339 (`map _` never
+    // delivered its Google Maps URL). List blanks (hackernews) leave the flag
+    // off and keep the split-into-alternatives behaviour.
+    const lines = blank?.blankMultilineIsAnswer === true && rawLines.length > 1
+      ? [rawLines.join('\n')]
+      : rawLines;
     let primaryFill = lines[0];
     const isDismissible = blank?.blankDismissible === true;
     // Append blankSuffix when the blank declares one and the primary
