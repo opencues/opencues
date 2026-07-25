@@ -1,8 +1,5 @@
 ---
 name: note
-# Multi-line get() output is ONE answer (a card), not a list of
-# cycleable alternatives - join the lines into the buffer (opencues #339).
-blankMultilineIsAnswer: true
 type: blank
 blankKeywords: note
 blankFormat: string

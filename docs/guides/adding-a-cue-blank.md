@@ -217,7 +217,7 @@ The blank cycling cascade has two paths, and a blank must route to the correct o
 | `blankDismissible: true` | List cycling (automatic) | weather (`10°C Drizzle` ↔ `_`) |
 | `stepValues: [...]` | List cycling (automatic) | affirmations |
 | Multi-line script output | List cycling (each line is one alt) | hackernews |
-| Multi-line output + `blankMultilineIsAnswer: true` | Single joined answer (no split) | location `map` card, claude-status, model, note |
+| Multi-line output + `blankMultilineIsAnswer: true` | Single joined answer (no split) | location `map` card, claude-status, model |
 | none of the above | No cycling (read-only, inferred) | stocks |
 
 **Multi-line: list vs single answer (`blankMultilineIsAnswer`).** By
@@ -231,16 +231,18 @@ first line lands and the rest is silently dropped (opencues #339). Set
 into one answer instead of truncating. The default (`false`) preserves
 the list-cycling behaviour, so existing list blanks are unaffected.
 
-The four shipped single-card **built-ins** (`location`, `claude-status`,
-`model`, `note`) additionally carry this behaviour in code — they're
-listed in `SINGLE_ANSWER_BUILTIN_BLANKS`
+The three shipped single-card **built-ins** (`location`, `claude-status`,
+`model`) additionally carry this behaviour in code — they're listed in
+`SINGLE_ANSWER_BUILTIN_BLANKS`
 (`packages/opencues-runtime/src/blanks/single-answer-builtins.ts`), so an
 upgrading user gets the joined card from the runtime bundle even if their
 on-disk `BLANK.md` predates the flag (`seed-configs` never overwrites an
 existing file). The frontmatter flag is the path for **your own** script
 blanks; the code set is only for the shipped built-ins. If you add a new
 built-in whose output is a single multi-line card, add its name to that
-set as well as the flag to its default `BLANK.md`.
+set as well as the flag to its default `BLANK.md`. (`note` is
+deliberately NOT in the set: its recall returns multiple matches the
+user cycles through, so it stays a list blank.)
 
 ### Span invalidation: only word changes kill the span
 

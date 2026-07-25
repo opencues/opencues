@@ -16,18 +16,22 @@
  *   upgrading user).
  *
  * These are inherent-single-card built-ins: the location "map" card, the
- * claude-status block, the "model" catalog, and note recall. Their single
- * matching set lives here (a lightweight, dependency-free module) so
- * blank-fill.ts can consult it without importing the whole impl registry.
- * Keep it in sync with the built-ins registered in BUILTIN_BLANKS
- * (./index.ts) and the four defaults/blanks/<name>/BLANK.md that also declare
- * the frontmatter flag.
+ * claude-status block, and the "model" catalog. Their single matching set
+ * lives here (a lightweight, dependency-free module) so blank-fill.ts can
+ * consult it without importing the whole impl registry. Keep it in sync with
+ * the built-ins registered in BUILTIN_BLANKS (./index.ts) and the
+ * defaults/blanks/<name>/BLANK.md that also declare the frontmatter flag.
+ *
+ * NOT included: `note`. Its recall modes (`note recall X _`, bare `note _`
+ * browsing recent entries) return MULTIPLE matches that the user cycles
+ * through with Ctrl+Alt+Up — a genuine list, like `hackernews`. Joining its
+ * lines would collapse every match into one blob and break recall cycling
+ * (regressed note-blank.scenarios.test.ts before this was pulled back out).
  */
 export const SINGLE_ANSWER_BUILTIN_BLANKS: ReadonlySet<string> = new Set([
   'location',
   'claude-status',
   'model',
-  'note',
 ]);
 
 /**
