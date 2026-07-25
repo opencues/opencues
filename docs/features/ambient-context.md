@@ -5,8 +5,14 @@ answers a `_` lookup also sees the **field** the user is
 filling — its label, placeholder, and the page title — so the
 answer can be shaped by the field, not just by the buffer.
 
+On the **Windows** host it also sees the **app** you're typing in
+(e.g. File Explorer) and the window title (the current folder), so
+a `_` in Explorer's search box is reshaped into a file-search token
+(`my tax pdfs _` → `*.pdf`) instead of a prose answer. See
+[App-aware output steering](../architecture/ambient-context.md#app-aware-output-steering-native-hosts).
+
 OFF by default. Opt-in via `ambient-context-mode: on` in
-`~/.cues/CUES.md`.
+`~/.cues/OPENCUES.md`.
 
 ---
 
