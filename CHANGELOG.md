@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — EXPERIMENTAL: dim/highlight overlay on native mac apps (`@opencues/runtime` 0.31.0 → 0.32.0, `@opencues/mac` 0.7.1 → 0.8.0)
+
+Branch `feat/mac-dim-overlay`. Cycling worked but was **blind**: nothing marked which words had alternatives or which one was active, because the AX channel can't restyle another app's glyphs. This paints them from above.
+
+**Derisked before building**, the order that has now caught two defects on this host. `scripts/bounds-probe.swift`: `AXBoundsForRange` returns real per-range screen rects in TextEdit (`first5` at x=219 y=147 w=33 h=13, `mid5` at y=238 — wrapped lines resolve to their own line, not one blob). `scripts/overlay-probe.swift`: a plain CLI with no app bundle CAN paint over another app without stealing focus (`frontBefore == frontAfter`, clicks pass through) — and caught that `.nonactivatingPanel` is an `NSPanel`-only style mask, which `NSWindow` rejects outright.
+
+**Shared wire mapping, not a second copy.** `mergeRenderDirectives` moved from `integrations/windows/src/render-wire.cjs` into `packages/opencues-runtime/src/render-wire.ts`; windows keeps a thin re-export so `hostd` and its invariants suite are unchanged (that suite passes against the extracted module). Per CLAUDE.md, the second consumer is the moment to extract — two hand-maintained copies of "which spans does an overlay paint" would drift on the first edit. 6 new runtime tests pin the contract, including that junk input yields an empty wire rather than throwing (a throwing mapper would leave stale rects painted over the user's text).
+
+**Band:** `onRender` previously discarded its handlers on this band, so nothing ever subscribed. It now delegates to a `registerRenderHandler` binding, `BootResult` gains `collectRenderDirectives(text, cursor)` (mirroring the windows band), and `dim-ranges` + `highlight-range` are advertised only when the host sets `hasRenderSurface` — DimRender and Cycling gate on those caps at compute time, so a false claim produces directives nobody paints and an omission produces an overlay with nothing to draw. apple-notes omits it and is byte-identical to before.
+
+**Daemon:** a debounced pump (one collect per tick) fires on typing, focus, our own write echo, a consumed chord, and the runtime's `forceRender` kick. An empty push CLEARS the overlay and is logged either way — "the marks vanished" and "no push happened" are otherwise indistinguishable in a log, which is the lesson the windows pump records and which cost two rounds here already.
+
+**Bridge:** a `{"cmd":"render","dim":[[s,e]…],"hl":[s,e]|null}` command resolves ranges via `AXBoundsForRange` and paints an `NSPanel` (borderless, `.nonactivatingPanel`, `ignoresMouseEvents`, `.statusBar` level, `.accessory` policy). Ranges that resolve to no rect emit `overlayUnsupported` and clear rather than guessing — that's the graceful path for a field whose toolkit doesn't implement the attribute.
+
+67 platform-free `daemon-core.test.ts` cases (7 new for the pump: spans pushed, empty clears, blur clears, repaint after a consumed chord, one collect per tick, inert with no render surface, throwing collector degrades). **Not yet visually confirmed** — whether the rects land on the right glyphs is a thing only a human looking at a screen can verify.
+
 ### Fixed — mac cycling: real keypresses, surviving cue spans, and audible blurs (`@opencues/mac` 0.7.0 → 0.7.1)
 
 Three defects found by driving the live host, each of which alone made cycling look broken. Cycling now works end to end on a native app: `Monday` → `Sunday` in TextEdit from the contradiction cue, `chord up → runtime (consumed=true)`.

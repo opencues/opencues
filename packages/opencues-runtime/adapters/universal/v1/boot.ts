@@ -36,6 +36,8 @@ import type {
   CommonHostInfo,
   KeyEvent,
   TextChangeEvent,
+  RenderContext,
+  RenderDirectives,
 } from '../../../src/adapter';
 
 export interface HostInfo extends CommonHostInfo {
@@ -59,6 +61,9 @@ export interface HostInfo extends CommonHostInfo {
   /** Per-target cycling capability — omit for the no-cycling profile
    *  (apple-notes). See UniversalBindings.supportsCycling. */
   supportsCycling?(): boolean;
+  /** True when the host can paint dim/highlight spans (mac's AX overlay).
+   *  Omit for a host with no surface — see UniversalBindings.hasRenderSurface. */
+  hasRenderSurface?: boolean;
 }
 
 export interface BootResult {
@@ -72,6 +77,13 @@ export interface BootResult {
    */
   dispatchKey(event: KeyEvent): boolean;
   notifyTextChange(text: string, cursorOffset: number, source: 'user' | 'runtime'): void;
+  /**
+   * Collect every onRender subscriber's directives against the given buffer.
+   * The daemon flattens them with `mergeRenderDirectives` and ships the char
+   * ranges to its overlay. Returns an empty array on a host with no render
+   * surface (no caps ⇒ the modules compute nothing).
+   */
+  collectRenderDirectives(text: string, cursor: number): import('../../../src/adapter').RenderDirectives[];
   /**
    * Wipe per-buffer runtime state. The daemon MUST call this whenever
    * the active note switches — spans tracked against the previous
@@ -93,6 +105,9 @@ export function boot(host: HostInfo): BootResult {
   const keyEvents = new EventEmitter<KeyEvent, boolean>();
   const textEvents = new EventEmitter<TextChangeEvent>();
   const moduleEvents = new EventEmitter<{ type: string; body?: Record<string, unknown> }>();
+  // Render subscribers, collected on demand (never pushed): the daemon decides
+  // when to repaint, exactly as the windows band's hostd does.
+  const renderEvents = new EventEmitter<RenderContext, RenderDirectives | null>();
 
   let lastSeenText: string | null = null;
   const fireTextChange = (text: string, cursor: number, source: 'user' | 'runtime'): void => {
@@ -114,6 +129,7 @@ export function boot(host: HostInfo): BootResult {
     forceRender: host.forceRender,
     registerKeyHandler: cb => keyEvents.subscribe(cb),
     registerTextChangeHandler: cb => textEvents.subscribe(cb),
+    registerRenderHandler: host.hasRenderSurface ? (cb => renderEvents.subscribe(cb)) : undefined,
     readFile: host.readFile,
     readDir: host.readDir,
     writeFile: host.writeFile,
@@ -124,6 +140,7 @@ export function boot(host: HostInfo): BootResult {
     getAnswerReplacesQuery: host.getAnswerReplacesQuery,
     getAmbientContext: host.getAmbientContext,
     supportsCycling: host.supportsCycling,
+    hasRenderSurface: host.hasRenderSurface,
     log,
     emitEvent: (type, body) => moduleEvents.emit(
       { type, body },
@@ -218,6 +235,11 @@ export function boot(host: HostInfo): BootResult {
     },
     notifyTextChange(text, cursorOffset, source) {
       fireTextChange(text, cursorOffset, source);
+    },
+    collectRenderDirectives(text, cursor) {
+      // No externalHighlights: this band has no selection channel to report.
+      const ctx: RenderContext = { text, cursor, externalHighlights: [] };
+      return renderEvents.collect(ctx, err => log('error', 'render handler threw', err));
     },
     resetBufferState() {
       resetSharedBufferState({ ...shared, resolver });

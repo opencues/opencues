@@ -15,6 +15,9 @@
 // Spike evidence for every capability: ../AX-SPIKE.md.
 
 import { boot, type BootResult } from '@opencues/runtime/dist/adapters/universal/v1/boot';
+// Shared with the windows shim (packages/opencues-runtime/src/render-wire.ts) —
+// one flattening implementation, so the two overlays can't drift.
+import { mergeRenderDirectives } from '@opencues/runtime/dist/src/render-wire';
 import { DaemonCore } from './daemon-core';
 import { buildBlanks, makeSpawnProcess } from './host-support';
 import type { LogLevel } from '@opencues/runtime/dist/src/adapter';
@@ -102,6 +105,9 @@ export async function main(): Promise<void> {
     charBudgetEnv: () => process.env['OPENCUES_AX_CHAR_BUDGET'],
     replaceQueryEnv: () => process.env['OPENCUES_AX_REPLACE_QUERY'],
     cyclingEnv: () => process.env['OPENCUES_AX_CYCLING'],
+    // One collect per tick — every repaint trigger funnels through here.
+    scheduleRepaint: (fn) => { setImmediate(fn); },
+    mergeRender: (dirs) => mergeRenderDirectives(dirs as never),
     onUntrusted: () => process.exit(1),
   });
 
@@ -116,7 +122,9 @@ export async function main(): Promise<void> {
     setText: text => core.requestWrite(text),
     pushText: text => core.requestWrite(text),
     setCursorOffset: () => { /* caret follows the AX replace */ },
-    forceRender: () => { /* host app renders itself */ },
+    // The runtime's render-kick after a substitution / DynDef registration.
+    // The app draws its own text; what we repaint is the overlay.
+    forceRender: () => { core.pushRender(); },
     // Narrow fields (Spotlight ~37 visible chars) get a soft "keep it
     // short" instruction in the LLM prompt — see charBudgetForBundle.
     getAnswerCharBudget: () => core.getAnswerCharBudget(),
@@ -130,6 +138,11 @@ export async function main(): Promise<void> {
     // Cycling is live only where the bridge's chord tap is armed (attachable,
     // non-denied field). OPENCUES_AX_CYCLING=off restores the old profile.
     supportsCycling: () => core.supportsCycling(),
+    // The AX overlay can paint dim/highlight spans, so the band may advertise
+    // dim-ranges + highlight-range — without those caps DimRender and Cycling
+    // compute no directives at all. Tied to cycling: no chords, no cycling
+    // spans worth painting.
+    hasRenderSurface: (process.env['OPENCUES_AX_CYCLING'] ?? '').trim().toLowerCase() !== 'off',
     readFile: async (p: string) => {
       try { return await fs.readFile(p, 'utf8'); } catch { return null; }
     },

@@ -454,6 +454,125 @@ if CommandLine.arguments.count > 1 && (CommandLine.arguments[1] == "probe" || Co
     exit(trusted ? 0 : 1)
 }
 
+
+// ─── Dim/highlight overlay ───────────────────────────────────────────
+//
+// The runtime says "these char ranges have alternatives, this one is active";
+// AX turns char ranges into screen rects (AXBoundsForRange — measured per app
+// by scripts/bounds-probe.swift); a click-through panel paints them. Same
+// division of labour as the windows shim's overlay, which resolves rects via
+// UIA GetBoundingRectangles.
+//
+// Properties this MUST keep, all measured by scripts/overlay-probe.swift:
+//  - NSPanel with .nonactivatingPanel (NSWindow rejects that mask outright:
+//    "does not support nonactivating panel styleMask 0x80"),
+//  - ignoresMouseEvents so clicks reach the app underneath,
+//  - .accessory activation policy: no Dock icon, and showing it must NOT move
+//    the frontmost app — an overlay that steals the caret is worse than none,
+//  - orderFrontRegardless: appear without activating this process.
+//
+// An empty render CLEARS the panel. Anything else leaves stale rects painted
+// over text the user has already changed.
+final class OverlayView: NSView {
+    var dimRects: [NSRect] = []
+    var hlRect: NSRect?
+    override var isOpaque: Bool { false }
+    override func draw(_ dirtyRect: NSRect) {
+        // A wash, not an outline: "this word has alternatives" should be
+        // peripheral, the way the terminal hosts dim rather than box.
+        NSColor(calibratedWhite: 0.5, alpha: 0.22).setFill()
+        for r in dimRects { r.fill() }
+        if let h = hlRect {
+            NSColor(calibratedRed: 0.36, green: 0.61, blue: 0.96, alpha: 0.30).setFill()
+            h.fill()
+            NSColor(calibratedRed: 0.36, green: 0.61, blue: 0.96, alpha: 0.85).setStroke()
+            NSBezierPath(rect: h.insetBy(dx: 0.5, dy: 0.5)).stroke()
+        }
+    }
+}
+
+final class Overlay {
+    private var panel: NSPanel?
+    private var view: OverlayView?
+
+    /// AX rects are top-left origin (Quartz); NSWindow is bottom-left. Flip
+    /// against the screen CONTAINING the rect — flipping everything against the
+    /// main screen puts overlays on a second display in the wrong place.
+    private func flip(_ r: CGRect) -> NSRect {
+        let screens = NSScreen.screens
+        let primaryMaxY = screens.first?.frame.maxY ?? 0
+        let probe = CGPoint(x: r.midX, y: primaryMaxY - r.midY)
+        let screen = screens.first { $0.frame.contains(probe) } ?? NSScreen.main ?? screens.first
+        let maxY = screen?.frame.maxY ?? primaryMaxY
+        return NSRect(x: r.origin.x, y: maxY - r.origin.y - r.size.height,
+                      width: r.size.width, height: r.size.height)
+    }
+
+    private func ensurePanel() -> (NSPanel, OverlayView)? {
+        if let p = panel, let v = view { return (p, v) }
+        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return nil }
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        let p = NSPanel(contentRect: screen.frame,
+                        styleMask: [.borderless, .nonactivatingPanel],
+                        backing: .buffered, defer: false)
+        p.isOpaque = false
+        p.backgroundColor = .clear
+        p.hasShadow = false
+        p.ignoresMouseEvents = true
+        p.level = .statusBar
+        p.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
+        let v = OverlayView(frame: screen.frame)
+        p.contentView = v
+        panel = p
+        view = v
+        return (p, v)
+    }
+
+    /// Screen rect for [start, end) in `el`, or nil when the element does not
+    /// implement the attribute (many toolkits do not — the caller then paints
+    /// nothing rather than guessing).
+    private func rect(for el: AXUIElement, _ start: Int, _ end: Int) -> CGRect? {
+        var range = CFRange(location: start, length: end - start)
+        guard end > start, let rv = AXValueCreate(.cfRange, &range) else { return nil }
+        var result: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(
+                  el, kAXBoundsForRangeParameterizedAttribute as CFString, rv, &result) == .success,
+              let r = result, CFGetTypeID(r) == AXValueGetTypeID() else { return nil }
+        var out = CGRect.zero
+        AXValueGetValue(r as! AXValue, .cgRect, &out)
+        return out.isEmpty ? nil : out
+    }
+
+    func clear() {
+        guard let v = view else { return }
+        v.dimRects = []
+        v.hlRect = nil
+        v.needsDisplay = true
+        panel?.orderOut(nil)
+    }
+
+    func paint(element: AXUIElement?, dim: [[Int]], hl: [Int]?) {
+        guard let el = element, !(dim.isEmpty && hl == nil) else { clear(); return }
+        guard let (p, v) = ensurePanel() else { return }
+        v.dimRects = dim.compactMap { pair in
+            pair.count == 2 ? rect(for: el, pair[0], pair[1]).map(flip) : nil
+        }
+        v.hlRect = (hl?.count == 2) ? rect(for: el, hl![0], hl![1]).map(flip) : nil
+        if v.dimRects.isEmpty && v.hlRect == nil {
+            // Ranges existed but the element resolved none — an unsupported
+            // field. Report once per paint so "no marks" is diagnosable.
+            emit(["type": "overlayUnsupported", "spans": dim.count + (hl == nil ? 0 : 1)])
+            clear()
+            return
+        }
+        v.needsDisplay = true
+        p.orderFrontRegardless()
+    }
+}
+
+let overlay = Overlay()
+
 let bridge = Bridge()
 
 // stdin command reader (background thread → main runloop).
@@ -472,6 +591,11 @@ DispatchQueue.global().async {
                     text: obj["text"] as? String ?? ""
                 )
             case "read": bridge.snapshot()
+            case "render":
+                // Char ranges → rects → paint. Empty arrays clear the panel.
+                let dim = (obj["dim"] as? [[Int]]) ?? []
+                let hl = obj["hl"] as? [Int]
+                overlay.paint(element: bridge.focusedElement, dim: dim, hl: hl)
             case "capture":
                 // Daemon-gated chord consumption — see installChordTap.
                 captureEnabled = (obj["on"] as? Bool) ?? false

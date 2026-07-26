@@ -14,13 +14,17 @@ interface Recorded {
   keys: Array<{ key: string; text: string; cursorOffset: number }>;
   notifies: Array<{ text: string; cursor: number; source: 'user' | 'runtime' }>;
   resets: number;
+  /** Directives the fake runtime will hand back to the render pump. */
+  directives: unknown[];
+  collects: number;
 }
 
 function makeRuntime(): { rt: RuntimeSurface; rec: Recorded } {
-  const rec: Recorded = { keys: [], notifies: [], resets: 0 };
+  const rec: Recorded = { keys: [], notifies: [], resets: 0, directives: [], collects: 0 };
   const rt: RuntimeSurface = {
     dispatchKey(e) { rec.keys.push({ key: e.key, text: e.text, cursorOffset: e.cursorOffset }); return true; },
     notifyTextChange(text, cursor, source) { rec.notifies.push({ text, cursor, source }); },
+    collectRenderDirectives() { rec.collects += 1; return rec.directives; },
     resetBufferState() { rec.resets += 1; },
   };
   return { rt, rec };
@@ -34,7 +38,7 @@ interface Harness {
   untrusted: number;
 }
 
-function makeHarness(opts: { deny?: string[]; charBudgetEnv?: string; replaceQueryEnv?: string; cyclingEnv?: string } = {}): Harness {
+function makeHarness(opts: { deny?: string[]; charBudgetEnv?: string; replaceQueryEnv?: string; cyclingEnv?: string; noRender?: boolean } = {}): Harness {
   const sent: Array<Record<string, unknown>> = [];
   const logs: Array<{ level: string; msg: string }> = [];
   const h: Partial<Harness> = { sent, logs, untrusted: 0 };
@@ -45,6 +49,18 @@ function makeHarness(opts: { deny?: string[]; charBudgetEnv?: string; replaceQue
     charBudgetEnv: () => opts.charBudgetEnv,
     replaceQueryEnv: () => opts.replaceQueryEnv,
     cyclingEnv: () => opts.cyclingEnv,
+    // Synchronous scheduler: the debounce is exercised without timers.
+    scheduleRepaint: opts.noRender ? undefined : (fn => { fn(); }),
+    mergeRender: opts.noRender ? undefined : ((dirs: unknown[]) => {
+      // Stand-in for the shared mergeRenderDirectives (tested in the runtime).
+      const dim: Array<readonly [number, number]> = [];
+      let hl: readonly [number, number] | null = null;
+      for (const d of dirs as Array<{ dimRanges?: Array<{ start: number; end: number }>; highlight?: { start: number; end: number } }>) {
+        for (const r of d?.dimRanges ?? []) dim.push([r.start, r.end]);
+        if (d?.highlight) hl = [d.highlight.start, d.highlight.end];
+      }
+      return { dim, hl };
+    }),
     onUntrusted: () => { h.untrusted! += 1; },
   });
   const { rt, rec } = makeRuntime();
@@ -428,5 +444,86 @@ describe('same-field refocus (fieldId resume)', () => {
     h.core.handleEvent(focusTextEdit('has a hole _ here now', 21, 'el-9'));
     expect(h.rec.notifies).toHaveLength(notifies);
     expect(h.rec.keys).toHaveLength(0);
+  });
+});
+
+// ─── Overlay render pump ──────────────────────────────────────────────
+// The runtime says which char ranges have alternatives and which one is
+// active; the bridge turns those into screen rects (AXBoundsForRange) and
+// paints a click-through panel. These pin the DAEMON half: when it collects,
+// what it sends, and — the failure mode the windows pump documents — that an
+// empty push CLEARS rather than silently leaving stale rects on screen.
+describe('overlay render pump', () => {
+  const renders = (h: Harness) => h.sent.filter(c => c['cmd'] === 'render');
+
+  it('pushes dim + highlight spans after the user types', () => {
+    const h = makeHarness();
+    h.rec.directives = [{ dimRanges: [{ start: 0, end: 4 }, { start: 5, end: 12 }], highlight: { start: 5, end: 12 } }];
+    h.core.handleEvent(focusTextEdit('the attorney filed', 18, 'el-1'));
+    h.core.handleEvent(change('the attorney filed ', 19));
+    const last = renders(h).at(-1)!;
+    expect(last).toEqual({ cmd: 'render', dim: [[0, 4], [5, 12]], hl: [5, 12] });
+  });
+
+  it('an EMPTY push clears the overlay (never leaves stale rects)', () => {
+    const h = makeHarness();
+    h.rec.directives = [{ dimRanges: [{ start: 0, end: 4 }] }];
+    h.core.handleEvent(focusTextEdit('word', 4, 'el-1'));
+    expect(renders(h).at(-1)).toMatchObject({ dim: [[0, 4]] });
+    h.rec.directives = [];                       // cues gone (buffer changed)
+    h.core.handleEvent(change('wor', 3));
+    expect(renders(h).at(-1)).toEqual({ cmd: 'render', dim: [], hl: null });
+  });
+
+  it('blur clears the overlay even when nothing was focused', () => {
+    const h = makeHarness();
+    h.core.handleEvent({ type: 'blur', reason: 'element-destroyed' });
+    expect(renders(h).at(-1)).toEqual({ cmd: 'render', dim: [], hl: null });
+  });
+
+  it('repaints after a consumed chord (navigation moves the highlight)', () => {
+    const h = makeHarness();
+    h.core.handleEvent(focusTextEdit('the attorney filed', 4, 'el-1'));
+    const before = renders(h).length;
+    h.rec.directives = [{ highlight: { start: 4, end: 12 } }];
+    h.core.handleEvent({ type: 'key', key: 'right', modifiers: { ctrl: true, alt: true, shift: false, meta: false } });
+    expect(renders(h).length).toBe(before + 1);
+    expect(renders(h).at(-1)).toMatchObject({ hl: [4, 12] });
+  });
+
+  it('coalesces to ONE collect per tick', () => {
+    // The real daemon passes setImmediate; here the scheduler runs inline, so
+    // assert the queue flag by driving pushRender directly.
+    let queued: Array<() => void> = [];
+    const h = makeHarness();
+    (h.core as unknown as { deps: { scheduleRepaint: (fn: () => void) => void } }).deps.scheduleRepaint =
+      (fn) => { queued.push(fn); };
+    h.core.handleEvent(focusTextEdit('abc', 3, 'el-1'));
+    const collectsBefore = h.rec.collects;
+    h.core.pushRender();
+    h.core.pushRender();
+    h.core.pushRender();
+    expect(queued).toHaveLength(1);      // three asks, one scheduled repaint
+    queued.forEach(fn => fn());
+    expect(h.rec.collects).toBe(collectsBefore + 1);
+  });
+
+  it('is inert on a host with no render surface (apple-notes)', () => {
+    const h = makeHarness({ noRender: true });
+    h.core.handleEvent(focusTextEdit('word', 4, 'el-1'));
+    h.core.handleEvent(change('words', 5));
+    expect(renders(h)).toHaveLength(0);
+    expect(h.rec.collects).toBe(0);
+  });
+
+  it('a throwing collector degrades to an empty push, never a crash', () => {
+    const h = makeHarness();
+    h.core.handleEvent(focusTextEdit('word', 4, 'el-1'));
+    (h.rec as unknown as { directives: unknown[] }).directives = [];
+    const rt = (h.core as unknown as { runtime: { collectRenderDirectives: () => unknown[] } }).runtime;
+    rt.collectRenderDirectives = () => { throw new Error('boom'); };
+    expect(() => h.core.pushRender()).not.toThrow();
+    expect(renders(h).at(-1)).toEqual({ cmd: 'render', dim: [], hl: null });
+    expect(h.logs.some(l => l.level === 'warn' && /collectRenderDirectives failed/.test(l.msg))).toBe(true);
   });
 });

@@ -56,6 +56,13 @@ export interface UniversalBindings {
    */
   registerKeyHandler(cb: (e: KeyEvent) => boolean): Unsubscribe;
   registerTextChangeHandler(cb: (e: TextChangeEvent) => void): Unsubscribe;
+  /**
+   * Render subscribers (DimRender, Cycling, MarkdownRender, …). Present only
+   * on a host with a paint surface; boot collects from these on demand so the
+   * daemon can ship char ranges to its overlay. Omitted ⇒ onRender is a no-op
+   * and nothing subscribes, which is the historical apple-notes behaviour.
+   */
+  registerRenderHandler?(cb: (ctx: RenderContext) => RenderDirectives | null): Unsubscribe;
   readFile?(path: string): Promise<string | null>;
   readDir?(path: string): Promise<readonly DirEntry[] | null>;
   writeFile?(path: string, content: string): Promise<void>;
@@ -104,6 +111,17 @@ export interface UniversalBindings {
    * LLM calls on ordinary typing — a real cost, not just a capability claim.
    */
   supportsCycling?(): boolean;
+  /**
+   * Does this host have a surface that can paint dim/highlight spans?
+   *
+   * STATIC per host, unlike supportsCycling's per-target answer: the runtime's
+   * capability list is read at construction, and DimRender/Cycling gate on
+   * `dim-ranges` / `highlight-range` at COMPUTE time — without the caps they
+   * never produce directives at all, so there would be nothing for an overlay
+   * to paint. apple-notes omits this (a polled JXA note has no surface); mac
+   * sets it when its AX overlay is available.
+   */
+  hasRenderSurface?: boolean;
   log?(level: LogLevel, msg: string, data?: unknown): void;
   emitEvent?(type: string, body?: Record<string, unknown>): void;
   registerEventHandler?(cb: (type: string, body?: Record<string, unknown>) => void): Unsubscribe;
@@ -133,6 +151,11 @@ export class UniversalV1Adapter implements HostAdapter {
     const caps: Capability[] = [...APPLE_NOTES_V1_CAPABILITIES];
     if (bindings.spawnProcess) caps.push('spawn-process');
     if (bindings.blankInvoke) caps.push('blank-invoke');
+    // Only claim paintable spans when the host can actually paint them —
+    // DimRender/Cycling check these caps before computing anything, so a false
+    // claim yields directives nobody renders, and omitting them on a host that
+    // CAN paint yields an overlay with nothing to draw.
+    if (bindings.hasRenderSurface) { caps.push('dim-ranges', 'highlight-range'); }
     this.capabilities = caps;
   }
 
@@ -203,8 +226,8 @@ export class UniversalV1Adapter implements HostAdapter {
   onCursorChange(_handler: (e: CursorChangeEvent) => void): Unsubscribe {
     return () => {};
   }
-  onRender(_handler: (ctx: RenderContext) => RenderDirectives | null): Unsubscribe {
-    return () => {};
+  onRender(handler: (ctx: RenderContext) => RenderDirectives | null): Unsubscribe {
+    return this.bindings.registerRenderHandler?.(handler) ?? (() => {});
   }
 
   readFile(path: string): Promise<string | null> {

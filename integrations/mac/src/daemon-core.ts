@@ -32,6 +32,8 @@ export interface RuntimeSurface {
     cursorOffset: number;
   }): boolean;
   notifyTextChange(text: string, cursorOffset: number, source: 'user' | 'runtime'): void;
+  /** Present only on a host with a render surface; absent ⇒ no overlay pump. */
+  collectRenderDirectives?(text: string, cursor: number): unknown[];
   resetBufferState(): void;
 }
 
@@ -52,6 +54,13 @@ export interface DaemonCoreDeps {
    *  bridge never consumes Ctrl+Alt+arrows and every cycleable cue stays
    *  pruned, i.e. exactly the pre-cycling behaviour). Injected, not read. */
   cyclingEnv?(): string | undefined;
+  /** Coalesce a repaint to once per tick. Injected so tests can run it
+   *  synchronously — the real daemon passes setImmediate. */
+  scheduleRepaint?(fn: () => void): void;
+  /** Flatten RenderDirectives[] → { dim, hl }. Injected so the platform-free
+   *  core never imports @opencues/runtime (the daemon passes the shared
+   *  mergeRenderDirectives). */
+  mergeRender?(dirs: unknown[]): { dim: ReadonlyArray<readonly [number, number]>; hl: readonly [number, number] | null };
   /** Called when the bridge reports the Accessibility grant is missing
    *  (prod: log the fix instructions + process.exit(1)). */
   onUntrusted(): void;
@@ -66,6 +75,7 @@ export class DaemonCore {
   private readonly ring = new WriteRing();
   /** Mirrors the bridge's chord-consumption state (see setCapture). */
   private captureOn = false;
+  private repaintQueued = false;
   private runtime: RuntimeSurface | null = null;
 
   constructor(private readonly deps: DaemonCoreDeps) {}
@@ -145,6 +155,35 @@ export class DaemonCore {
     return app && app !== '?' ? { app } : null;
   }
 
+  /**
+   * Ship the runtime's dim/highlight spans to the bridge's overlay.
+   *
+   * Debounced to ONE collect per tick: every text change, focus, chord and the
+   * runtime's own forceRender kick funnels through here, exactly like the other
+   * bands' repaint paths. An EMPTY push clears the overlay — and is logged,
+   * because "the marks vanished" and "no push happened" are otherwise
+   * indistinguishable in the log (the lesson the windows pump records).
+   */
+  pushRender(): void {
+    const rt = this.runtime;
+    if (!rt?.collectRenderDirectives || !this.deps.mergeRender) return;
+    if (this.repaintQueued) return;
+    this.repaintQueued = true;
+    const run = (): void => {
+      this.repaintQueued = false;
+      if (!this.focused) { this.deps.send({ cmd: 'render', dim: [], hl: null }); return; }
+      let dirs: unknown[] = [];
+      try { dirs = rt.collectRenderDirectives!(this.focused.value, this.focused.cursor); }
+      catch (err) { this.deps.log('warn', `collectRenderDirectives failed: ${(err as Error).message}`); }
+      const wire = this.deps.mergeRender!(dirs);
+      this.deps.send({ cmd: 'render', dim: wire.dim.map(r => [r[0], r[1]]), hl: wire.hl ? [wire.hl[0], wire.hl[1]] : null });
+      this.deps.log('debug', wire.dim.length || wire.hl
+        ? `render push: dim=${wire.dim.length} hl=${wire.hl ? 1 : 0} textLen=${this.focused.value.length}`
+        : `render push: EMPTY textLen=${this.focused.value.length}`);
+    };
+    if (this.deps.scheduleRepaint) this.deps.scheduleRepaint(run); else run();
+  }
+
   /** Runtime → element. One contiguous AX replace per text change;
    *  optimistic local update (the bridge serializes the ~1ms write on
    *  the app's main runloop; the runtime must read back its own bytes
@@ -196,6 +235,9 @@ export class DaemonCore {
           cursorOffset: this.focused.cursor,
         });
         this.deps.log('debug', `chord ${key} → runtime (consumed=${consumed})`);
+        // Navigation moves the highlight and cycling swaps a word — both change
+        // what the overlay should show, and neither goes through setText.
+        if (consumed) this.pushRender();
         break;
       }
       case 'chordIgnored':
@@ -252,6 +294,7 @@ export class DaemonCore {
         // field was focused — observed live in TextEdit 2026-07-12).
         // A `_` arms only when the user TYPES one (freshMarkerAtCursor).
         rt.notifyTextChange(this.focused.value, this.focused.cursor, 'runtime');
+        this.pushRender();
         this.deps.log('info', 'focus', { app: this.focused.app, chars: this.focused.value.length });
         break;
       }
@@ -270,6 +313,9 @@ export class DaemonCore {
           this.ring.clear();
           rt.resetBufferState();
         }
+        // Clear unconditionally: stale rects over a field we no longer track are
+        // worse than no overlay at all.
+        this.pushRender();
         break;
       case 'change': {
         if (!this.focused) break;
@@ -283,6 +329,7 @@ export class DaemonCore {
         this.focused.cursor = cursor;
         if (this.ring.isEcho(value)) {
           rt.notifyTextChange(value, cursor, 'runtime');
+          this.pushRender();   // our own substitution moved every span
           break;
         }
         // Not our write → the user owns the buffer now; stale echoes of
@@ -298,6 +345,7 @@ export class DaemonCore {
           });
         }
         rt.notifyTextChange(value, cursor, 'user');
+        this.pushRender();
         break;
       }
       case 'cursor':
