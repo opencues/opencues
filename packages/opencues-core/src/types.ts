@@ -247,6 +247,20 @@ export interface AmbientContext {
    *  e.g. `explorer.exe`. Steers output FORMAT. See the runtime
    *  AmbientContext for the full contract. */
   readonly app?: string;
+  /** The host declares the focused field holds a SINGLE LINE (a search
+   *  box, an address bar, a one-line form field). Enables the
+   *  data-loss-free wipe: fluid-blank replaces the WHOLE field only when
+   *  it is exactly the throwaway lookup (`bufferIsExactlyTheLookup`), so
+   *  there is provably nothing but the query to remove. Never set for a
+   *  multi-line editor. See `fluid-blank-source.ts` § WIPE gate. */
+  readonly singleLine?: boolean;
+  /** The host declares the field's content is DISPOSABLE — a transient
+   *  query/command consumed on submit (an omnibox, a launcher), never
+   *  authored prose. Enables the UNCONDITIONAL wipe: the resolved value
+   *  replaces the whole field even when it holds more than the bare
+   *  query. Stronger + rarer than `singleLine`; the host takes
+   *  responsibility that nothing here is worth keeping. */
+  readonly disposable?: boolean;
 }
 
 /**

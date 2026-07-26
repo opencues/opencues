@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — field-declared WIPE: fluid-blank replaces the whole field for search/address boxes, data-loss-free (`@opencues/core` 0.36.1 → 0.37.0, `@opencues/runtime` 0.27.0 → 0.28.0, `@opencues/windows` 0.2.3 → 0.2.4)
+
+App-aware `_` steering (#341) reshaped the fluid-blank ANSWER to an app's field format but couldn't remove the query, so a Chrome omnibox `reddit com _` produced `reddit com https://www.reddit.com` — the URL appended, the query left behind ("formats without removing the question"). Root cause: fluid-blank is FILL-only — the FILL/WIPE machinery was deliberately retired in the July-2026 blank-API slim-down (commit `f62dcd28`) for buffer-safety, because the old WIPE guessed FILL/WIPE from sentence shape and destroyed content it couldn't prove was disposable (an English-anchored regex collapsed foreign-language sentences to a bare value; multi-paragraph buffers were flattened — the "2 paragraphs → 1" incident). A prompt-only fix is impossible: the runtime ignores the model's MODE line by design.
+
+The fix re-introduces WIPE the data-loss-free way, driven by the field's OWN declaration instead of a sentence-shape guess (the `a534a99e` "standalone-value WIPE" shape, generalised). Two new `AmbientContext` fields the host declares:
+
+- **`singleLine`** — the field holds a single line (a search box, an address bar, a one-line form field). Fluid replaces the whole field ONLY when the buffer is *exactly* the lookup — the new exported precedent `bufferIsExactlyTheLookup(buffer, span)` (trimmed buffer === trimmed span, no `\n\n`) — so there is provably nothing but the query to remove.
+- **`disposable`** — the field's content is a transient query/command (an omnibox, a launcher); replace it wholesale even when it holds more than the bare query. The `\n\n` paragraph floor stays absolute even here.
+
+`bufferIsExactlyTheLookup` is THE reusable gate: any future source that wants to replace beyond the `_` MUST route through it (or a host `disposable`), never a sentence-shape heuristic — a header comment + the runtime `SPEC.md` § "FILL by default; field-declared WIPE" say so, with pointers to `f62dcd28` (why the old form was retired) and `a534a99e` (the safe shape). Wiring: `singleLine`/`disposable` on both `AmbientContext` types → the WIPE branch in `fluid-blank-source.ts` (emits `spanStart=0`/`spanEnd=len`; the resolver's existing multi-word-span splice applies it) + a per-key wipe flag in the variant cache so repeat lookups stay consistent. The Windows shim declares `singleLine` from the UIA control shape (`ControlType.Edit` = one-line; `.Document` = multi-line prose); the daemon forwards it. FILL stays the default for every host that declares nothing — CC/OC/chrome web fields are byte-identical.
+
+Solves Chrome omnibox + Explorer search (`reddit com _` → `https://www.reddit.com`; `my tax pdfs _` → `*.pdf`, query gone). Pinned by 7 `fluid-blank-source.test.ts` cases (the precedent predicate; singleLine+buffer===query WIPES; buffer with other content FILLs; no-declaration FILLs; disposable WIPEs unconditionally; disposable multi-paragraph FILLs). Full core + runtime suites green; ambient bench unaffected (no-declaration prompts unchanged). Docs about the retired always-FILL machinery updated to the new reality (`fill-in-the-blank.md`, `blank-sources.md`, runtime `SPEC.md`) with the retirement/re-introduction commit pointers, per the "state deprecation + why, or remove" rule.
+
+Supersedes the ineffective prompt-only attempt (an earlier `appSteer` `MODE=WIPE` rule that the runtime ignored).
+
+
 ### Added — input-box context → app-aware `_` output steering on Windows (`@opencues/core` 0.35.0 → 0.36.0, `@opencues/runtime` 0.26.1 → 0.27.0, `@opencues/windows` 0.2.2 → 0.2.3)
 
 Extends `ambient-context-mode` to the Windows host: a `_` in a native input box is reshaped to that app's expected input. The daemon already tracked the focused foreground process name (`currentApp`); it now also builds a sanitized `AmbientContext` from the focus event (control Name → label, HelpText → placeholder, window title → pageTitle, process name → `app`), the `windows` adapter exposes it via a new `getAmbientContext()`, and `FluidBlankSource` receives it — chrome parity on Windows.
