@@ -92,6 +92,7 @@ namespace OpenCues
 
         // Focus + mirror state (touched only on the poll thread).
         static int _lastElementId = int.MinValue;
+        static bool _lastSingleLine = false;     // cached ControlType==Edit for the attached element (read once per element, not per poll tick)
         static int _lastDiagId = int.MinValue;   // last element we logged a skip diagnostic for
         static int _lastCatalogId = int.MinValue;   // last element we cataloged as a surface
         static readonly HashSet<string> _seenSurfaces = new HashSet<string>(StringComparer.Ordinal);
@@ -1093,8 +1094,17 @@ namespace OpenCues
                 // multi-line Edit is still safe: the runtime WIPEs only when the
                 // buffer is EXACTLY the query (bufferIsExactlyTheLookup), so a
                 // multi-line Edit with real content falls back to FILL.
-                bool singleLine = false;
-                try { singleLine = el.Current.ControlType == ControlType.Edit; } catch { }
+                //
+                // Read ControlType ONCE per element (cache it) — it never changes
+                // for a live element, and `el.Current.*` is a cross-process UIA
+                // call. `mustRead` is true every tick during the fast window /
+                // when UIA events aren't working, so reading it per tick added a
+                // per-poll UIA round-trip and a visible typing lag (2026-07-26).
+                if (!sameEl)
+                {
+                    try { _lastSingleLine = el.Current.ControlType == ControlType.Edit; } catch { _lastSingleLine = false; }
+                }
+                bool singleLine = _lastSingleLine;
                 StreamAttachment(elId, app, ReadValue(el), AttachMode.Uia, cycling, singleLine);
                 HookElementEvents(el, elId);
                 return;
