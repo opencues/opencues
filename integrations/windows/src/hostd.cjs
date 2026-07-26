@@ -287,8 +287,15 @@ function buildAmbientFromFocus(msg) {
     placeholder: ambientStr(msg.help), // UIA HelpText → placeholder hint
     pageTitle: ambientStr(msg.winTitle), // foreground window title
     app: ambientStr(msg.app),          // focused process name (steers format)
+    // The shim declares single-line from the UIA control shape (Edit =
+    // one-line value control; Document = multi-line prose). Enables the
+    // runtime's data-loss-free WIPE for the omnibox / Explorer search /
+    // one-line fields — replace the whole field only when it is exactly the
+    // query. Never set for a multi-line editor.
+    singleLine: msg.singleLine === true,
   };
-  return Object.values(ctx).some(Boolean) ? ctx : null;
+  // `app`/singleLine alone is enough signal to build the block.
+  return (ctx.app || ctx.label || ctx.placeholder || ctx.pageTitle || ctx.singleLine) ? ctx : null;
 }
 
 // ─── Self-heal 1: recent-writes registry ─────────────────────────────────

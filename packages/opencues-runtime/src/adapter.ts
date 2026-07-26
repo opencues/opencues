@@ -278,6 +278,26 @@ export interface AmbientContext {
    * invariant in docs/architecture/ambient-context.md).
    */
   readonly app?: string;
+  /**
+   * The host declares the focused field holds a SINGLE LINE (search box,
+   * address bar, one-line form field). Enables fluid-blank's data-loss-free
+   * wipe: the WHOLE field is replaced ONLY when it is exactly the throwaway
+   * lookup (`bufferIsExactlyTheLookup` — nothing but the query), so there is
+   * provably nothing else to remove. MUST be false/undefined for any
+   * multi-line editor (Notepad, textarea) — the field's own promise is the
+   * safety signal. Host-declared; on Windows the shim reports it from the
+   * UIA control shape.
+   */
+  readonly singleLine?: boolean;
+  /**
+   * The host declares the field's content is DISPOSABLE — a transient
+   * query/command consumed on submit (omnibox, launcher, command palette),
+   * never authored prose. Enables the UNCONDITIONAL wipe: the resolved value
+   * replaces the whole field even when it holds more than the bare query.
+   * Stronger and rarer than `singleLine` (which needs buffer===query); a host
+   * sets it only when certain nothing in the field is worth keeping.
+   */
+  readonly disposable?: boolean;
 }
 
 export type Unsubscribe = () => void;

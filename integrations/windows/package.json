@@ -1,6 +1,6 @@
 {
   "name": "@opencues/windows",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
   "description": "OpenCues for Windows \u2014 a system-wide host. A WSL-side daemon runs the OpenCues runtime against your existing ~/.cues config + keys; a thin Windows-native UI Automation shim mirrors whatever text field you're typing in. Full integration (marks, cues, cycling, blanks, per-pixel-alpha overlay, real caret) on native text surfaces \u2014 Notepad, WordPad, the browser omnibox, Explorer, Win32/WinForms/WPF fields. Chromium-embedded apps (Slack-class) get real geometry + cues under the screen-reader flag with commit-on-release writes; pre-flag Chromium and Discord-class apps run the phase-1 blanks-only profile. See CLAUDE.md for the per-app tier table.",
   "type": "commonjs",

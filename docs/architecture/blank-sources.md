@@ -33,7 +33,7 @@ result shape + a small metadata vocabulary.
 | Source | Trigger | LLM output | Substitute mechanism |
 |---|---|---|---|
 | **`BlankSource`** (`blank-source.ts`) | `<keyword> _` matches a folder under `blanks/` | None — runs a script / sync stepValues / built-in JS impl | Deterministic splice via `blank-fill.ts`. Slot bounds come from the parser (keyword + `_` positions), not from LLM. |
-| **`FluidBlankSource`** (`fluid-blank-source.ts`) | unbound `_` (no `BlankSource` match) | Short answer (e.g. "Paris") | Always-FILL: substitutes only the `_`, preserving surrounding prose. No replace modes. |
+| **`FluidBlankSource`** (`fluid-blank-source.ts`) | unbound `_` (no `BlankSource` match) | Short answer (e.g. "Paris") | FILL by default (substitutes only the `_`, preserving surrounding prose). WIPEs the whole field ONLY on a host `singleLine`/`disposable` declaration + the `bufferIsExactlyTheLookup` floor (buffer===query). See § WIPE gate. |
 | **`TransformBlankSource`** (`transform-blank-source.ts`) | imperative phrase next to `_` (e.g. "make past tense _") | The whole final buffer (`FULL_REWRITE`) from a single fused LLM call | **One path.** Always `threeWayMerge` against the live buffer. |
 | **`SentenceCueSource`** (`sentence-cue-source.ts`) | one cue per sentence at `scope: sentence` | Sentence alternatives | Passive — registers a DynDef; cycling swaps the sentence via the existing word-cue cycle path. Never touches the buffer until the user presses Ctrl+Alt+Up. |
 | **`ConfigIntentSource`** (`config-intent-source.ts`) | unbound `_` interpreted as a settings change ("make it louder _") | Setting + value classification | Selector-satellite shaped result with `clearOnEdit: true`; substitute wipes the summon phrase via `spanStart=summonPhraseStart(text), spanEnd=text.length` (the last sentence terminator / line break before `_`, or 0 if none) so prior user content before the settings command is preserved, then hands off to standard cycling. |
@@ -183,8 +183,17 @@ FluidBlank stays on the deterministic slot splice because:
    buffer. There's no span-vs-buffer scope ambiguity.
 2. The slot bounds (`target.start`, `target.end`) come from the
    parser's known `_` position. The LLM has no input into them.
-3. FluidBlank is always-FILL — it replaces only the `_`, never a wider
-   span, so it can never concat-tail content the answer covered.
+3. FluidBlank is FILL by default — it replaces only the `_`, never a wider
+   span. It WIPEs (replaces the whole field) ONLY when the host declares the
+   field `singleLine`/`disposable` AND `bufferIsExactlyTheLookup(buffer, span)`
+   holds (trimmed buffer === trimmed span, no `\n\n`). Because the WIPE span is
+   then exactly the buffer (0..len), it still can never concat-tail content the
+   answer didn't cover — there is nothing else in the buffer. Any future source
+   that replaces more than the slot MUST route its WIPE decision through
+   `bufferIsExactlyTheLookup` (or a host `disposable` declaration) — never a
+   sentence-shape heuristic (that heuristic collapsed foreign-language
+   sentences and was retired in commit `f62dcd28`; the field-declared successor
+   is the `a534a99e` "standalone-value WIPE" shape, generalised).
 
 ---
 
@@ -223,10 +232,11 @@ primitive already pays for.
   itself (the same one AgentRewrite uses; see [`agent-task.md`](agent-task.md)).
 - `packages/opencues-runtime/src/modules/blank-fill.ts` +
   `blank-fill.test.ts` — pins the deterministic slot splice path for
-  BlankSource + FluidBlankSource. Fill is always additive; clearing of
-  the command span is shape-derived (captured arg / typed set-step /
-  `integration:` template consumes the span; a bare keyword get keeps
-  its label).
+  BlankSource + FluidBlankSource. Fill is additive by default (FluidBlank's
+  field-declared WIPE is a separate resolver-side whole-span splice — see
+  § WIPE gate above); clearing of the command span is shape-derived (captured
+  arg / typed set-step / `integration:` template consumes the span; a bare
+  keyword get keeps its label).
 - `tests/benchmarks/transform-blank/` — `prod.ts` validates the LLM
   contract end-to-end (`--provider cerebras|groq`). The single fused
   pipeline runs on every provider; the old groq-only 3-pass path was

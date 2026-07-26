@@ -6,7 +6,7 @@
 
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert';
-import { FluidBlankSource, renderAmbientBlock } from './fluid-blank-source';
+import { FluidBlankSource, renderAmbientBlock, bufferIsExactlyTheLookup } from './fluid-blank-source';
 import { HttpAdapter, CueContext, AmbientContext } from '../types';
 import { getProvider } from '../llm-provider';
 
@@ -868,5 +868,66 @@ describe('FluidBlank fail-safe: multi-paragraph WIPE guard', () => {
     const text = 'Some notes here.\n\nMore notes. The capital of France is _';
     const out = await src.getCues(ctxFromText(text));
     assert.strictEqual(out.results.length, 1, 'FILL on multi-paragraph is safe and must proceed');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WIPE gate — the host declares the field's shape (singleLine / disposable),
+// the runtime replaces the whole field ONLY when it is provably nothing but
+// the query (bufferIsExactlyTheLookup). The precedent for any future WIPE.
+// ---------------------------------------------------------------------------
+describe('FluidBlankSource — WIPE gate (field-declared, buffer===lookup floor)', () => {
+  const baseConfig = {
+    provider: getProvider('groq')!,
+    endpoint: 'https://example.test/v1/chat/completions',
+    apiKey: 'test-key',
+    model: 'test-model',
+  };
+  const ctx = (text: string, ambient?: AmbientContext): CueContext => ({ text, words: text.split(/\s+/), ambient });
+  const srcWith = (answer: string) => new FluidBlankSource({ ...baseConfig, httpAdapter: makeMockAdapter([answer]) });
+
+  it('bufferIsExactlyTheLookup: true only when the trimmed buffer IS the span (no paragraph)', () => {
+    assert.strictEqual(bufferIsExactlyTheLookup('reddit com _', 'reddit com _'), true);
+    assert.strictEqual(bufferIsExactlyTheLookup('  reddit com _  ', 'reddit com _'), true);   // trim
+    assert.strictEqual(bufferIsExactlyTheLookup('John and reddit com _', 'reddit com _'), false); // extra content
+    assert.strictEqual(bufferIsExactlyTheLookup('a\n\nreddit com _', 'reddit com _'), false);  // paragraph floor
+    assert.strictEqual(bufferIsExactlyTheLookup('reddit com _', undefined), false);
+  });
+
+  it('singleLine + buffer===lookup → WIPE (whole field replaced)', async () => {
+    const src = srcWith('SPAN: reddit com _\nANSWER: https://www.reddit.com\nMODE: FILL');
+    const r = (await src.getCues(ctx('reddit com _', { app: 'chrome', singleLine: true }))).results[0]!;
+    assert.strictEqual(r.metadata?.fluidBlankMode, 'WIPE');
+    assert.strictEqual(r.spanStart, 0);
+    assert.strictEqual(r.spanEnd, 'reddit com _'.length);
+  });
+
+  it('singleLine but buffer has OTHER content (buffer≠lookup) → FILL (content preserved)', async () => {
+    const src = srcWith('SPAN: reddit com _\nANSWER: https://www.reddit.com\nMODE: WIPE');
+    const r = (await src.getCues(ctx('John and reddit com _', { app: 'chrome', singleLine: true }))).results[0]!;
+    assert.strictEqual(r.metadata?.fluidBlankMode, 'FILL');
+    assert.strictEqual(r.spanStart, undefined);
+  });
+
+  it('no singleLine / no disposable → FILL even on a bare lookup', async () => {
+    const src = srcWith('SPAN: reddit com _\nANSWER: https://www.reddit.com\nMODE: WIPE');
+    const r = (await src.getCues(ctx('reddit com _', { app: 'chrome' }))).results[0]!;
+    assert.strictEqual(r.metadata?.fluidBlankMode, 'FILL');
+    assert.strictEqual(r.spanStart, undefined);
+  });
+
+  it('disposable → WIPE even when the buffer holds more than the bare query', async () => {
+    const src = srcWith('SPAN: reddit com _\nANSWER: https://www.reddit.com\nMODE: FILL');
+    const r = (await src.getCues(ctx('go to reddit com _', { app: 'launcher', disposable: true }))).results[0]!;
+    assert.strictEqual(r.metadata?.fluidBlankMode, 'WIPE');
+    assert.strictEqual(r.spanStart, 0);
+    assert.strictEqual(r.spanEnd, 'go to reddit com _'.length);
+  });
+
+  it('disposable but MULTI-PARAGRAPH → FILL (the \\n\\n floor is absolute)', async () => {
+    const src = srcWith('SPAN: reddit com _\nANSWER: https://www.reddit.com\nMODE: WIPE');
+    const r = (await src.getCues(ctx('notes\n\ngo to reddit com _', { app: 'launcher', disposable: true }))).results[0]!;
+    assert.strictEqual(r.metadata?.fluidBlankMode, 'FILL');
+    assert.strictEqual(r.spanStart, undefined);
   });
 });

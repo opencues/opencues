@@ -200,21 +200,47 @@ Unlike a stateless per-call design, the runtime keeps a **module-level variant p
 
 The cache key deliberately OMITS identity/blank-context VALUES (in `safe` mode the LLM only ever sees token names; values substitute post-LLM), so a cached answer carrying `[FIRST NAME]` re-substitutes against whatever the identity value currently is on each hit. Ambient context IS part of the key — the same lookup phrase in different field contexts must not collide.
 
-### Always FILL
+### FILL by default; field-declared WIPE
 
-The fused prompt still asks the model for a `MODE:` line (`FILL`/`WIPE`) for
-wire-format compatibility, but the runtime **ignores it** — fluid resolution
-is statically always-FILL (see the note under § Feature gates above: the
-WIPE machinery was retired with the static-resolution design). The answer
-substitutes only the `_` token; every surrounding word the user typed stays.
+The fused prompt still asks the model for a `MODE:` line, but the runtime
+**ignores it** — the model does NOT get to decide whether to destroy the
+buffer. Fluid is **FILL by default**: the answer substitutes only the `_`
+token; every surrounding word the user typed stays.
 
 ```
 the capital of france is _   →   the capital of france is Paris
 4 * 12 = _                   →   4 * 12 = 48
-capital of france _          →   capital of france Paris
+capital of france _          →   capital of france Paris   (FILL — a CC prompt, no field declaration)
 ```
 
-Fluid results carry no `spanStart`/`spanEnd`; only the `_` is ever replaced.
+**WIPE — replace the whole field — fires in exactly two host-declared cases,
+both data-loss-free:**
+
+1. `AmbientContext.disposable` — the host declares the field's content is a
+   transient query/command (an omnibox, a launcher, a command palette);
+   replace it wholesale.
+2. `AmbientContext.singleLine` **and** the buffer is exactly the lookup
+   (`bufferIsExactlyTheLookup` — trimmed buffer === trimmed span, no
+   paragraph break); a single-line search box holding nothing but the query.
+
+```
+reddit com _   (omnibox, singleLine, buffer===query)   →   https://www.reddit.com   (WIPE)
+my tax pdfs _  (Explorer search, singleLine)           →   *.pdf                    (WIPE)
+```
+
+On WIPE the result carries `spanStart=0`/`spanEnd=len`; the resolver replaces
+the whole field. On FILL there is no span and only the `_` is replaced.
+
+> **History (do not re-introduce the retired form).** An earlier *unscoped*
+> WIPE — a heuristic that guessed FILL/WIPE from sentence shape — was retired
+> in the July-2026 blank-API slim-down (commit `f62dcd28`) because it
+> destroyed content it couldn't prove was disposable (an English-anchored
+> regex collapsed foreign-language sentences; multi-paragraph buffers were
+> flattened). The successor above never guesses: it acts only on the host's
+> explicit field declaration + the `buffer === span` proof (the shape first
+> shipped in `a534a99e`, "standalone-value WIPE"). Any future WIPE MUST route
+> through `bufferIsExactlyTheLookup` or a host `disposable` declaration — never
+> a sentence-shape heuristic.
 
 ### Task-trigger guard
 

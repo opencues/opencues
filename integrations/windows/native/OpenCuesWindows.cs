@@ -1086,7 +1086,16 @@ namespace OpenCues
                 // per-field cycling answer (Chromium-UIA composers like Slack
                 // expose TextPattern only to a NATIVE client -> stay phase 1).
                 bool cycling = HasManagedTextPattern(el);
-                StreamAttachment(elId, app, ReadValue(el), AttachMode.Uia, cycling);
+                // Single-line declaration for the runtime's data-loss-free WIPE
+                // (omnibox / Explorer search / one-line form fields). ControlType
+                // .Edit is a one-line value control; .Document (Notepad, WordPad,
+                // rich editors) is multi-line prose → never single-line. A rare
+                // multi-line Edit is still safe: the runtime WIPEs only when the
+                // buffer is EXACTLY the query (bufferIsExactlyTheLookup), so a
+                // multi-line Edit with real content falls back to FILL.
+                bool singleLine = false;
+                try { singleLine = el.Current.ControlType == ControlType.Edit; } catch { }
+                StreamAttachment(elId, app, ReadValue(el), AttachMode.Uia, cycling, singleLine);
                 HookElementEvents(el, elId);
                 return;
             }
@@ -1104,7 +1113,9 @@ namespace OpenCues
                 string mtext; int mnode;
                 if (TryReadFocusedElectron(out mtext, out mnode))
                 {
-                    StreamAttachment(mnode, app, mtext, AttachMode.Msaa, false);
+                    // MSAA composers (Discord, Slack, ...) are multi-line message
+                    // boxes → never single-line.
+                    StreamAttachment(mnode, app, mtext, AttachMode.Msaa, false, false);
                     return;
                 }
             }
@@ -1124,7 +1135,7 @@ namespace OpenCues
         // buffer boundary: it fires a focus event so the daemon resets buffer
         // state (the canonical multi-buffer trigger - see the integration
         // CLAUDE.md "Multi-buffer state" note).
-        static void StreamAttachment(int elId, string app, string readText, AttachMode mode, bool cycling)
+        static void StreamAttachment(int elId, string app, string readText, AttachMode mode, bool cycling, bool singleLine)
         {
             _lastApp = app;
             if (elId != _lastElementId)
@@ -1147,6 +1158,7 @@ namespace OpenCues
                 SendRaw("{\"t\":\"focus\",\"app\":" + JStr(app) + ",\"text\":" + JStr(WireEol(readText))
                     + ",\"cursor\":" + CaretOrEnd(readText).ToString(CultureInfo.InvariantCulture)
                     + ",\"cycling\":" + (cycling ? "true" : "false")
+                    + ",\"singleLine\":" + (singleLine ? "true" : "false")
                     + ",\"fieldId\":" + elId.ToString(CultureInfo.InvariantCulture) + "}");
                 return;
             }
