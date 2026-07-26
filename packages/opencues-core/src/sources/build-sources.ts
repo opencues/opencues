@@ -49,6 +49,7 @@ export function _resetContradictionProvidersForTesting(): void {
   _tflProvider = null;
 }
 import { resolveLLM, getProvider, withFallback, withFreePool, type ResolvedLLM } from '../llm-provider';
+import { probeProviderReachable } from '../provider-probe';
 import { collapseBucketTier } from '../effective-routing';
 
 /**
@@ -727,6 +728,14 @@ export function buildSourcesFromConfig(
         maxTokens: options.configIntent?.maxTokens,
         temperature: options.configIntent?.temperature,
         applyScalar: options.applyOpencuesScalar ?? (() => { /* settings verdicts gated off */ }),
+        // Pre-switch liveness gate — ping the TARGET provider before a
+        // provider verdict writes the scalar; stay put + inline-error on
+        // failure. Pings default endpoint + the live key bag; no cascade.
+        probeProvider: (providerId, model) =>
+          probeProviderReachable(providerId, model, {
+            apiKeys,
+            httpAdapter: options.httpAdapter,
+          }),
         blanks: options.blanks ?? {},
         log: options.log,
         onEvent: options.onConfigIntentEvent,

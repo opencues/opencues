@@ -209,6 +209,15 @@ export {
   type ResponseFormat,
 } from './llm-provider';
 
+// Pre-switch provider liveness probe — ping the provider a mode/provider
+// change is about to land on; stay put + inline-error on failure.
+export {
+  probeProviderReachable,
+  PROVIDER_PROBE_TIMEOUT_MS,
+  type ProviderProbeResult,
+  type ProviderProbeOptions,
+} from './provider-probe';
+
 // Effective LLM routing — the shared bucket→global→auto precedence walk
 // used by dispatch (build-sources / boot-common via collapseBucketTier)
 // AND every "what's my model?" display surface (doctor, the `model`
