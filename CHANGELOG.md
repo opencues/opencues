@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — app-steer now WIPES the whole field instead of appending the answer (`@opencues/core` 0.36.0 → 0.36.1)
+
+The app-aware `_` steering (opencues #341) reshaped the fluid-blank ANSWER to an app's field format but left the WIPE-vs-FILL decision to the general segmenter's per-input guess. That guessed WIPE for `my tax pdfs _` (Explorer → `*.pdf`, whole query replaced) but FILL for `reddit com _` (Chrome omnibox → the URL got APPENDED: `reddit com https://www.reddit.com`), so the query was never removed — "formats without removing the question". Root cause was NOT a lost merge: #341 re-applied #309 faithfully; the WIPE behavior was never built — Explorer's wipe was incidental. Added a WHOLE-FIELD rule to the `appSteer` block in `fluid-blank-source.ts`: when `app` is present (an omnibox / search box has no surrounding sentence — the entire field IS the query), MODE MUST be WIPE and SPAN the whole input, so the answer REPLACES the field. Also added an explicit browser-address-bar format hint (named site → destination URL, else a search query). Byte-identical for every non-app prompt (`appSteer` is empty without `app`), so the 176-case ambient bench is unaffected — verified 176/176 (cerebras). New pass/fail guard: `app-steer-smoke.ts` is now a real check asserting MODE=WIPE + SPAN=whole-input across 3 Explorer + 3 Chrome cases (was a print-only smoke); 6/6 on gemini-3.1-flash-lite.
+
+
 ### Added — input-box context → app-aware `_` output steering on Windows (`@opencues/core` 0.35.0 → 0.36.0, `@opencues/runtime` 0.26.1 → 0.27.0, `@opencues/windows` 0.2.2 → 0.2.3)
 
 Extends `ambient-context-mode` to the Windows host: a `_` in a native input box is reshaped to that app's expected input. The daemon already tracked the focused foreground process name (`currentApp`); it now also builds a sanitized `AmbientContext` from the focus event (control Name → label, HelpText → placeholder, window title → pageTitle, process name → `app`), the `windows` adapter exposes it via a new `getAmbientContext()`, and `FluidBlankSource` receives it — chrome parity on Windows.
