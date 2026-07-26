@@ -255,6 +255,9 @@ export {
 export {
   inferHostCompat,
   inferSiteCompat,
+  inferFieldCompat,
+  fieldKindOf,
+  FIELD_KINDS,
   unknownHostNames,
   formatHostList,
   HOSTS,

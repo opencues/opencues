@@ -1,6 +1,6 @@
 # blank-spec — the Blank file format & runtime contract
 
-> **Status:** `0.9-alpha`. Expect changes.
+> **Status:** `0.10-alpha`. Expect changes.
 
 A **blank** is the user→system surface: when a user writes `_` (underscore) in their text, the runtime substitutes a value sourced from somewhere — a list, a shell script, an in-process function. Blanks are how text touches the world: volume, weather, stock prices, dictionary entries, settings toggles. This document specifies the `BLANK.md` file format and what a conformant runtime MUST do with one.
 
@@ -81,6 +81,7 @@ A blank source MUST also declare **exactly one** binding profile (see § Binding
 | `blankScript` | string (relative path) | none | Binding profile — shell script. |
 | `impl` | string | implicit from `name` | Binding profile — in-process class name. |
 | `on-host` / `not-on-host` | list | auto-detected | Host filtering. See `core.md`. |
+| `on-field` / `not-on-field` | list | none | Field-kind scoping (`single-line` / `multi-line`), evaluated per-resolve against the focused field. See `core.md` § Field-kind scoping. |
 | `as-context` | `"off"` \| `"safe"` \| `"raw"` | `"off"` | Opt-in for **blank-as-context** — exposes the blank's current value as an ambient sentinel token (e.g. `[STOCKS]`, `[WEATHER]`) the LLM can reference without the user typing the keyword. Shares the catalog machinery defined in [`identity-context-spec.md`](./identity-context-spec.md). `safe` ships tokens-only (values substituted post-LLM); `raw` inlines values into the prompt. See § Sentinel aspects below. |
 | `contextTtl` | number (seconds) | runtime default | Cache lifetime for the blank-as-context snapshot before the runtime re-invokes `get()` on prompt-build. Only meaningful when `as-context` is `safe` or `raw`. |
 | `speak` | boolean | `false` | Per-blank TTS hint. Reserved here so authors have a portable place to declare intent; TTS itself is non-standard. |

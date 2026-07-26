@@ -186,6 +186,50 @@ export function resolveHost(input: string | null | undefined): Host | null {
   return HOST_ALIASES[key] ?? null;
 }
 
+/**
+ * The known field-kind vocabulary for `on-field:` / `not-on-field:` scoping.
+ * A host declares the focused field's shape (see `AmbientContext.singleLine`);
+ * the runtime maps it to one of these tokens for cue/blank scoping.
+ */
+export const FIELD_KINDS = ['single-line', 'multi-line'] as const;
+export type FieldKind = typeof FIELD_KINDS[number];
+
+/** Derive the field-kind token from the ambient field declaration, or null
+ *  when the host declared nothing (kind unknown). */
+export function fieldKindOf(ambient: { singleLine?: boolean } | undefined): FieldKind | null {
+  if (ambient?.singleLine === true) return 'single-line';
+  if (ambient?.singleLine === false) return 'multi-line';
+  return null;
+}
+
+/**
+ * True when the entry's `on-field:` / `not-on-field:` frontmatter permits the
+ * CURRENT field. Pure function; evaluated PER-RESOLVE (the field kind changes
+ * every focus), unlike `on-host` (evaluated once at load). Mirrors the
+ * on-site / not-on-site semantics:
+ *
+ *   No on-field, no not-on-field           → always true.
+ *   not-on-field matches the known kind    → false (excluded here).
+ *   on-field present                       → the known kind must match one.
+ *
+ * Graceful default: when the host declares NO field shape (kind unknown),
+ * `not-on-field` never excludes (we can't prove the field is that kind), and
+ * `on-field` never matches (an allow-list is opt-in to a known kind). So a cue
+ * with no field frontmatter, or a host that reports no field shape, behaves
+ * exactly as before this feature.
+ */
+export function inferFieldCompat(
+  input: { onField?: readonly string[]; notOnField?: readonly string[] },
+  ambient: { singleLine?: boolean } | undefined,
+): boolean {
+  const kind = fieldKindOf(ambient);
+  const allow = (input.onField ?? []).map(s => String(s).trim().toLowerCase()).filter(Boolean);
+  const deny = (input.notOnField ?? []).map(s => String(s).trim().toLowerCase()).filter(Boolean);
+  if (kind && deny.includes(kind)) return false;      // deny wins, only on a known matching kind
+  if (allow.length === 0) return true;
+  return kind !== null && allow.includes(kind);        // allow-list: needs a known matching kind
+}
+
 /** Site-compat evaluation context. */
 export interface SiteCompatContext {
   /** Canonical host name: 'chrome' | 'claude-code' | 'opencode' | 'gemini-cli'. */

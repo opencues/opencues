@@ -1,6 +1,6 @@
 # cue-spec — the Cue file format & runtime contract
 
-> **Status:** `0.9-alpha`. Expect changes.
+> **Status:** `0.10-alpha`. Expect changes.
 
 A **cue** is the LLM→user surface: while a user types plain text, a cue source proposes alternatives for words it recognises. The user can cycle through them with a keyboard input (or any runtime-defined trigger). This document specifies the `CUE.md` file format and what a conformant runtime MUST do with one.
 
@@ -77,6 +77,8 @@ A source with neither `match` nor `keywords` is unreachable. Validators MUST err
 | `classify` | string | none | Free-text classification hint surfaced to the LLM and validators (e.g. "Legal terminology, contract drafting"). |
 | `on-host` | list | auto-detected | Allow-list: which hosts may load this source. See `core.md`. |
 | `not-on-host` | list | none | Deny-list, applied after `on-host`. |
+| `on-field` | list | none | Field-kind allow-list (`single-line` / `multi-line`). Evaluated PER-RESOLVE against the focused field. See `core.md` § Field-kind scoping. |
+| `not-on-field` | list | none | Field-kind deny-list — e.g. `not-on-field: single-line` drops a prose cue in search boxes / the omnibox while keeping it in prose editors. |
 | `type` | string | inferred from path | Discriminator. `cues/` paths default to a cue source; explicit `type:` is rarely needed. |
 | `spec` | string | `"opencues/0.1-alpha"` | Spec version this file targets. Files that omit `spec:` MUST be treated as `opencues/0.1-alpha`. Runtimes MUST refuse files declaring a newer `spec:` than they support. |
 

@@ -1,6 +1,6 @@
 # auditor-spec — the Auditor file format & runtime contract
 
-> **Status:** `0.9-alpha`. Expect changes.
+> **Status:** `0.10-alpha`. Expect changes.
 
 An **auditor** is the third surface of the standard. Where a cue operates on one word and a blank operates on one `_` slot, an auditor operates on the **whole buffer**: it declares one concern (grammar, clarity, jargon flagging, PII redaction, tone) that an inline rewrite agent should attend to as the user types.
 
@@ -170,6 +170,7 @@ don't declare `expected-changes:` expecting it to do anything today.
 | `enabled` | boolean | `true` | Set `false` to keep the file but skip composition. |
 | `on-host` | array of strings | (auto-detected) | Host-compat allow-list (`chrome`, `claude-code`, `gemini-cli`, `opencode`). See [`core.md` § Host compatibility](./core.md#host-compatibility). |
 | `not-on-host` | array of strings | `[]` | Host-compat deny-list. |
+| `on-field` / `not-on-field` | array of strings | `[]` | Field-kind scoping (`single-line` / `multi-line`), evaluated per-resolve against the focused field. See [`core.md` § Field-kind scoping](./core.md#field-kind-scoping-on-field--not-on-field--since-spec-010). |
 | `expected-changes` | array of strings | `[]` | Reserved for a future output-validation scheme (content classes an auditor expects to introduce, e.g. `redaction-marker`). **Not consumed by the reference runtime today** — declaring it has no effect. See § Trust model. |
 
 ### Body

@@ -3,6 +3,11 @@ name: more-formal
 scope: sentence
 priority: 85
 description: Sentence-scope cue — rewrites each sentence to be more formal
+# Prose cue — belongs on prose surfaces, not value fields. Cede in
+# single-line fields (a browser omnibox / address bar, a search box), where
+# "make it more formal" is nonsensical. Runs everywhere else (multi-line
+# editors, comment boxes) unchanged. See on-field / not-on-field in the spec.
+not-on-field: single-line
 ---
 
 Rewrite each sentence in the buffer to be MORE FORMAL. Preserve

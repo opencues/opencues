@@ -61,6 +61,7 @@
 
 import { CueSource, CueContext, CueSourceResult, CueResult, HttpAdapter } from '../types';
 import { SourceConfig } from '../cues-md';
+import { inferFieldCompat } from '../host-compat';
 import { describeLLMCall, dispatchChat, type ProviderAdapter } from '../llm-provider';
 import { getDehydrator } from '../dehydrate';
 import { postProcessContext } from '../identity-context';
@@ -334,6 +335,11 @@ export class SentenceCueSource implements CueSource {
 
   supports(context: CueContext): boolean {
     if (!context.text || !context.text.trim()) return false;
+    // Field-kind scoping (`on-field:` / `not-on-field:`). A cue that declares
+    // `not-on-field: single-line` cedes in a single-line field (search box /
+    // omnibox) — evaluated per-resolve against the host's field declaration.
+    // No declaration, or a host that reports no field shape → runs as before.
+    if (!inferFieldCompat(this.sourceConfig, context.ambient)) return false;
     // Cede when the user is in blank-flow mode — `_` means a blank
     // source is going to claim. Sentence-cues are prose-time, not
     // blank-time.

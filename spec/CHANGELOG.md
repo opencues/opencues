@@ -16,7 +16,15 @@ breaking.
 
 ---
 
-## [0.9.0-alpha] — 2026-07-25
+## [0.10.0-alpha] — 2026-07-26
+
+### Added — `on-field:` / `not-on-field:` field-kind scoping (`0.9-alpha → 0.10-alpha`)
+
+A new per-cue / per-blank / per-auditor scoping axis, sibling to `on-host` and `on-site`: a source can declare which KIND of input field it may run in. `core.md` § Field-kind scoping defines the reserved vocabulary (`single-line` — a search box / address bar / one-line field; `multi-line` — a prose editor / textarea / comment box) and the semantics. Documented in `cue-spec.md` (+ `blank-spec.md` / `auditor-spec.md` for parity) and the three JSON schemas.
+
+Motivation: a single host (a system-wide integration like Windows) attaches to many different fields, so a prose cue — a formality rewriter, a grammar auditor — is nonsensical in a value field like a browser omnibox. `not-on-field: single-line` on such a cue drops it in search boxes while keeping it in prose surfaces, across every app and browser, with no per-app upkeep.
+
+**Key spec point — this axis is DYNAMIC.** Unlike `on-host` (host fixed for a session, evaluated once at load), the focused field changes on every focus, so a conformant runtime MUST re-evaluate `on-field` / `not-on-field` per resolution against the currently focused field. A host MAY declare the field's kind; a host that declares nothing leaves the kind unknown, and the graceful default (`not-on-field` never excludes an unknown kind, `on-field` never matches one) makes the key purely additive — a `0.9` reader and a host that reports no field shape both behave exactly as before.
 
 ### Added — `blankMultilineIsAnswer` blank frontmatter key (`0.8-alpha → 0.9-alpha`)
 

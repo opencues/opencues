@@ -83,6 +83,16 @@
       "items": { "type": "string", "enum": ["chrome", "claude-code", "gemini-cli", "opencode", "shell", "terminal"] },
       "description": "Deny-list, applied after on-host."
     },
+    "on-field": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["single-line", "multi-line"] },
+      "description": "Field-kind allow-list, evaluated per-resolve against the focused field's declared shape."
+    },
+    "not-on-field": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["single-line", "multi-line"] },
+      "description": "Field-kind deny-list, e.g. not-on-field: single-line drops a prose cue in search boxes / the omnibox."
+    },
     "spec": {
       "type": "string",
       "pattern": "^opencues/\\d+\\.\\d+(-[a-z]+)?$",

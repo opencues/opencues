@@ -10,6 +10,8 @@ import * as assert from 'node:assert';
 import {
   inferHostCompat,
   inferSiteCompat,
+  inferFieldCompat,
+  fieldKindOf,
   unknownHostNames,
   formatHostList,
   HOSTS,
@@ -209,5 +211,43 @@ describe('inferSiteCompat', () => {
       inferSiteCompat({ onSite: ['reddit.com', 'claude-code'] }, chromeOnClaudeAi),
       false,
     );
+  });
+});
+
+describe('inferFieldCompat: field-kind scoping (on-field / not-on-field)', () => {
+  it('fieldKindOf maps the ambient singleLine declaration', () => {
+    assert.strictEqual(fieldKindOf({ singleLine: true }), 'single-line');
+    assert.strictEqual(fieldKindOf({ singleLine: false }), 'multi-line');
+    assert.strictEqual(fieldKindOf({}), null);          // host declared nothing
+    assert.strictEqual(fieldKindOf(undefined), null);
+  });
+
+  it('no on-field/not-on-field → always available', () => {
+    assert.strictEqual(inferFieldCompat({}, { singleLine: true }), true);
+    assert.strictEqual(inferFieldCompat({}, undefined), true);
+  });
+
+  it('not-on-field: single-line → dropped in a single-line field, kept elsewhere', () => {
+    const cue = { notOnField: ['single-line'] };
+    assert.strictEqual(inferFieldCompat(cue, { singleLine: true }), false);   // omnibox: dropped
+    assert.strictEqual(inferFieldCompat(cue, { singleLine: false }), true);   // prose editor: kept
+    assert.strictEqual(inferFieldCompat(cue, undefined), true);              // unknown kind: kept (can't prove)
+    assert.strictEqual(inferFieldCompat(cue, {}), true);                     // host reports nothing: kept
+  });
+
+  it('on-field: single-line → available ONLY in a known single-line field', () => {
+    const cue = { onField: ['single-line'] };
+    assert.strictEqual(inferFieldCompat(cue, { singleLine: true }), true);
+    assert.strictEqual(inferFieldCompat(cue, { singleLine: false }), false);
+    assert.strictEqual(inferFieldCompat(cue, undefined), false);            // unknown: allow-list opt-in doesn't match
+  });
+
+  it('deny wins over allow', () => {
+    const cue = { onField: ['single-line'], notOnField: ['single-line'] };
+    assert.strictEqual(inferFieldCompat(cue, { singleLine: true }), false);
+  });
+
+  it('case + whitespace tolerant', () => {
+    assert.strictEqual(inferFieldCompat({ notOnField: [' Single-Line '] }, { singleLine: true }), false);
   });
 });

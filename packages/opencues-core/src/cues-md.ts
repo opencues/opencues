@@ -70,6 +70,13 @@ export interface SourceConfig {
   /** Inline prompt instructions (freeform markdown text outside code blocks) */
   promptText?: string;
 
+  /** Field-kind allow-list (`single-line` / `multi-line`). Evaluated per-resolve
+   *  against the focused field's declared shape; empty = every kind. */
+  onField?: string[];
+  /** Field-kind deny-list — e.g. `not-on-field: single-line` drops this cue in
+   *  search boxes / omnibox while keeping it in prose editors. */
+  notOnField?: string[];
+
   /**
    * When true (frontmatter `uses-calendar-context: true`), a `scope: sentence`
    * cue receives the ingested calendar catalog (calendar-context) in each
@@ -423,6 +430,10 @@ export interface BlankConfig {
   onSite?: string[];
   /** Scope deny-list. Same matching as on-site; entries that match are filtered out. */
   notOnSite?: string[];
+  /** Field-kind allow-list (`single-line` / `multi-line`), evaluated per-resolve. */
+  onField?: string[];
+  /** Field-kind deny-list — e.g. `not-on-field: single-line` drops the cue in search boxes. */
+  notOnField?: string[];
 }
 
 export interface CuesMdConfig {
@@ -500,6 +511,10 @@ export interface AuditorConfig {
   readonly onSite?: string[];
   /** Site-compat deny-list. */
   readonly notOnSite?: string[];
+  /** Field-kind allow-list (`single-line` / `multi-line`), evaluated per-resolve. */
+  readonly onField?: string[];
+  /** Field-kind deny-list — e.g. `not-on-field: single-line` drops the cue in search boxes. */
+  readonly notOnField?: string[];
 }
 
 // ============================================================================
@@ -1055,6 +1070,10 @@ export interface SingleCueFrontmatter extends CuesMdFrontmatter {
   onSite?: string[];
   /** Scope deny-list. Same matching as on-site; entries that match are filtered out. */
   notOnSite?: string[];
+  /** Field-kind allow-list (`single-line` / `multi-line`), evaluated per-resolve. */
+  onField?: string[];
+  /** Field-kind deny-list — e.g. `not-on-field: single-line` drops the cue in search boxes. */
+  notOnField?: string[];
 }
 
 /**
@@ -1139,6 +1158,8 @@ function parseExtendedFrontmatter(content: string): { frontmatter: SingleCueFron
       case 'not-on-host': case 'notOnHost': fm.notOnHost = parseHostList(value); break;
       case 'on-site': case 'onSite': fm.onSite = parseHostList(value); break;
       case 'not-on-site': case 'notOnSite': fm.notOnSite = parseHostList(value); break;
+      case 'on-field': case 'onField': fm.onField = parseHostList(value); break;
+      case 'not-on-field': case 'notOnField': fm.notOnField = parseHostList(value); break;
       case 'sandbox': fm.sandbox = value === 'strict' ? 'strict' : 'off'; break;
       case 'sandbox-net': case 'sandboxNet': fm.sandboxNet = value === 'allow' ? 'allow' : 'deny'; break;
       case 'sandbox-fs': case 'sandboxFs': fm.sandboxFs = value === 'rw' ? 'rw' : 'ro'; break;
@@ -1402,6 +1423,8 @@ export function parseSingleCueMd(content: string, folderPath: string, nameOverri
       if (frontmatter.usesCalendarContext) source.usesCalendarContext = true;
       if (frontmatter.maxTokens !== undefined) source.maxTokens = frontmatter.maxTokens;
       if (frontmatter.temperature !== undefined) source.temperature = frontmatter.temperature;
+      if (frontmatter.onField) source.onField = frontmatter.onField;
+      if (frontmatter.notOnField) source.notOnField = frontmatter.notOnField;
 
       // Resolve promptPath relative to folder
       if (frontmatter.promptPath) {
@@ -1458,6 +1481,8 @@ export function parseSingleAuditorMd(content: string, folderPath: string, nameOv
     notOnHost: frontmatter.notOnHost as string[] | undefined,
     onSite: frontmatter.onSite as string[] | undefined,
     notOnSite: frontmatter.notOnSite as string[] | undefined,
+    onField: frontmatter.onField as string[] | undefined,
+    notOnField: frontmatter.notOnField as string[] | undefined,
   };
   if (frontmatter.priority !== undefined) {
     (auditor as { priority?: number }).priority = frontmatter.priority;

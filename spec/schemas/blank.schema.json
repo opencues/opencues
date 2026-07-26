@@ -129,6 +129,16 @@
       "type": "array",
       "items": { "type": "string", "enum": ["chrome", "claude-code", "gemini-cli", "opencode", "shell", "terminal"] }
     },
+    "on-field": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["single-line", "multi-line"] },
+      "description": "Field-kind allow-list, evaluated per-resolve against the focused field's declared shape."
+    },
+    "not-on-field": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["single-line", "multi-line"] },
+      "description": "Field-kind deny-list, e.g. not-on-field: single-line drops the source in search boxes / the omnibox."
+    },
     "spec": {
       "type": "string",
       "pattern": "^opencues/\\d+\\.\\d+(-[a-z]+)?$",
