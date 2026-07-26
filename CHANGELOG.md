@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — JS user blanks were dead on every self-owned host (`@opencues/cli` 0.2.58 → 0.2.59, `@opencues/mac` 0.6.0 → 0.6.1)
+
+`gh-issues` (the shipped reference JS blank) failed to register on mac with `Cannot find module 'acorn'`, logged as a warn and otherwise invisible — built-in and `.sh` blanks kept working, so the host looked healthy. Three stacked causes, each hidden behind the one in front:
+
+1. **Dist-only staging.** mac / apple-notes / shell stage `@opencues/{core,runtime}` as dist + package.json with no `node_modules`, so the runtime's own `acorn` / `acorn-walk` (lazy-required by the user-blank loader) were unresolvable — pnpm keeps them in the store, not hoisted to the repo root.
+2. **The vendor dir was never populated.** The subprocess fallback runs `~/.opencues/vendor/user-blank-runner.cjs` with `NODE_PATH=<runner-dir>/node_modules`, and shell + opencode's `setup.sh` copied isolated-vm from `$OPENCUES_ROOT/node_modules/isolated-vm` — **a path a pnpm workspace never has**. The copy silently no-opped; that directory had been empty since 2026-07-06, so the fallback was dead on every host, not just mac.
+3. **Non-transitive copy.** Staging isolated-vm alone still failed with `Cannot find module 'node-gyp-build'` — it needs that to locate its prebuilt binary.
+
+New shared helper `packages/opencues-cli/src/lib/stage-runtime-deps.cjs` (`stageRuntimeDeps` + `vendorUserBlankRunner`) resolves deps by real resolution rather than an assumed layout, copies them **transitively** with `dereference` (a symlink into the pnpm store breaks when it's pruned), and is called from all three self-owned hosts — mac's `install.cjs` directly, apple-notes / shell / opencode's `setup.sh` via one `node -e` line each, replacing the broken hard-coded copies. One implementation, per CLAUDE.md's rule about guards hand-mirrored across parallel paths.
+
+Required deps (`acorn`, `acorn-walk`) throw if unresolvable — shipping a bundle whose JS user-blank loader is dead is worse than failing loudly; `isolated-vm` stays best-effort (the loader degrades to disabled JS blanks rather than crashing). Verified by boot-smoking the mac daemon: zero module errors, no user-blank warnings. Seven hermetic tests in `stage-runtime-deps.test.cjs`, including one that `require()`s from a synthesised dist-only bundle and one pinning the isolated-vm → node-gyp-build transitive case.
+
 ### Added — app-aware `_` output steering reaches the mac host (`@opencues/runtime` 0.29.0 → 0.30.0, `@opencues/mac` 0.5.0 → 0.6.0)
 
 Master's app-steering (a host names the focused application; fluid-blank then shapes the answer into valid input for *that* app) shipped wired for the windows band only — `getAmbientContext` existed on `adapters/windows/v1` and nowhere else, so merging master gave the mac host the prompt machinery with no way to feed it. The mac daemon already knows the owning application on every AX focus event, so this wires that through: `DaemonCore.getAmbientContext()` → `UniversalBindings.getAmbientContext` → the band adapter → `CueContext.ambient.app`.

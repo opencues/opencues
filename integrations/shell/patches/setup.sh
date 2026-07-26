@@ -69,6 +69,14 @@ if [[ -f "$OPENCUES_ROOT/packages/opencues-core/node-http-adapter.js" ]]; then
   cp "$OPENCUES_ROOT/packages/opencues-core/node-http-adapter.js" "$CORE_DEST/"
 fi
 
+# The staged copies above are dist-only, so @opencues/runtime's own deps
+# (acorn / acorn-walk — lazy-required by the JS user-blank loader) are
+# unresolvable from the staged bundle and EVERY JS user blank fails to
+# register with only a warn. ONE implementation, shared with mac +
+# apple-notes: packages/opencues-cli/src/lib/stage-runtime-deps.cjs.
+node -e "require('$OPENCUES_ROOT/packages/opencues-cli/src/lib/stage-runtime-deps.cjs').stageRuntimeDeps({REPO_ROOT:process.argv[1],destNodeModules:process.argv[2],log:m=>console.log(m)})" \
+  "$OPENCUES_ROOT" "$TERM_DIR/node_modules"
+
 # ─── User-blank subprocess runner (Bun-host fallback) ───────────────
 # Shell is Bun-based. `isolated-vm` (the in-process user-blank sandbox)
 # is a V8 native binding that doesn't load against JavaScriptCore, so
@@ -76,20 +84,13 @@ fi
 # The vendor dir is shared across hosts (one copy serves OC + shell).
 echo "  ▸ installing user-blank subprocess runner into ~/.opencues/vendor/"
 VENDOR_DIR="$HOME/.opencues/vendor"
-mkdir -p "$VENDOR_DIR/node_modules"
-RUNNER_SRC="$OPENCUES_ROOT/packages/opencues-runtime/dist/src/user-blanks/subprocess-runner.cjs"
-[[ ! -f "$RUNNER_SRC" ]] && RUNNER_SRC="$OPENCUES_ROOT/packages/opencues-runtime/src/user-blanks/subprocess-runner.cjs"
-if [[ -f "$RUNNER_SRC" ]]; then
-  cp "$RUNNER_SRC" "$VENDOR_DIR/user-blank-runner.cjs"
-fi
-IVM_SRC="$OPENCUES_ROOT/node_modules/isolated-vm"
-IVM_DST="$VENDOR_DIR/node_modules/isolated-vm"
-if [[ -d "$IVM_SRC" ]]; then
-  if [[ ! -e "$IVM_DST" ]] || ! diff -rq "$IVM_SRC" "$IVM_DST" &>/dev/null; then
-    rm -rf "$IVM_DST"
-    cp -RL "$IVM_SRC" "$IVM_DST"
-  fi
-fi
+# ONE implementation, shared with mac + opencode:
+# packages/opencues-cli/src/lib/stage-runtime-deps.cjs. The previous copy
+# sourced isolated-vm from "$OPENCUES_ROOT/node_modules/isolated-vm", which a
+# pnpm workspace never has — so the vendor dir stayed empty and the subprocess
+# user-blank path was dead. The helper resolves the real location.
+node -e "require('$OPENCUES_ROOT/packages/opencues-cli/src/lib/stage-runtime-deps.cjs').vendorUserBlankRunner({REPO_ROOT:process.argv[1],log:m=>console.log(m)})" \
+  "$OPENCUES_ROOT"
 
 # ─── Pre-bundle src/app.tsx → dist/app.js ───────────────────────────
 # oc-edit prefers dist/app.js when present (falls back to src/app.tsx

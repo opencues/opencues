@@ -97,6 +97,21 @@ function doInstall() {
     if (fs.existsSync(adapter)) fs.copyFileSync(adapter, path.join(dest, 'node-http-adapter.js'));
   }
 
+  // The staged copies are dist-only, so @opencues/runtime's own deps
+  // (acorn / acorn-walk, lazy-required by the JS user-blank loader) are
+  // unresolvable from here — every JS user blank would fail to register
+  // with a warn and nothing else. Shared with apple-notes + shell.
+  const { stageRuntimeDeps, vendorUserBlankRunner } = require(path.join(REPO_ROOT, 'packages/opencues-cli/src/lib/stage-runtime-deps.cjs'));
+  stageRuntimeDeps({
+    REPO_ROOT,
+    destNodeModules: path.join(PKG_DIR, 'node_modules'),
+    log: (m) => console.log(m),
+  });
+  // The subprocess fallback runs from ~/.opencues/vendor with its own
+  // NODE_PATH, so it needs its own isolated-vm — staging above doesn't
+  // reach a child process rooted elsewhere.
+  vendorUserBlankRunner({ REPO_ROOT, log: (m) => console.log(m) });
+
   // Daemon build AFTER staging: tsc resolves @opencues/{core,runtime}
   // types from the staged copies (building first would typecheck
   // against the previous install's runtime).

@@ -53,6 +53,14 @@ if [ -f "$OPENCUES_ROOT/packages/opencues-core/node-http-adapter.js" ]; then
   cp "$OPENCUES_ROOT/packages/opencues-core/node-http-adapter.js" "$CORE_DEST/"
 fi
 
+# The staged copies above are dist-only, so @opencues/runtime's own deps
+# (acorn / acorn-walk — lazy-required by the JS user-blank loader) are
+# unresolvable from the staged bundle and EVERY JS user blank fails to
+# register with only a warn. ONE implementation, shared with mac +
+# shell: packages/opencues-cli/src/lib/stage-runtime-deps.cjs.
+node -e "require('$OPENCUES_ROOT/packages/opencues-cli/src/lib/stage-runtime-deps.cjs').stageRuntimeDeps({REPO_ROOT:process.argv[1],destNodeModules:process.argv[2],log:m=>console.log(m)})" \
+  "$OPENCUES_ROOT" "$AN_DIR/node_modules"
+
 # ─── Build the daemon ────────────────────────────────────────────────
 # Runs AFTER staging: the daemon's tsc resolves @opencues/{core,runtime}
 # types from the local node_modules copies, so building first would

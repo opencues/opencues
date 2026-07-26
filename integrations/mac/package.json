@@ -1,6 +1,6 @@
 {
   "name": "@opencues/mac",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "description": "OpenCues universal macOS host — answers `_`-gated blanks in the focused text element of ANY app via the Accessibility API. No polling, no app-specific automation.",
   "main": "dist/daemon.js",

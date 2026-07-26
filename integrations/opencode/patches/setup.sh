@@ -176,37 +176,17 @@ install_into_fork() {
 # vendor dir is shared across hosts (only one copy needed even if the
 # user has CC + OC + shell all installed).
 install_user_blank_runner() {
-  local vendor_dir="$HOME/.opencues/vendor"
-  local runner_src="$OPENCUES_ROOT/packages/opencues-runtime/dist/src/user-blanks/subprocess-runner.cjs"
-  local runner_dst="$vendor_dir/user-blank-runner.cjs"
-  local ivm_dst="$vendor_dir/node_modules/isolated-vm"
-  local ivm_src="$OPENCUES_ROOT/node_modules/isolated-vm"
-
-  if [[ ! -f "$runner_src" ]]; then
-    # Source-build out-of-date copy fallback — runner is CJS, lives in src/.
-    runner_src="$OPENCUES_ROOT/packages/opencues-runtime/src/user-blanks/subprocess-runner.cjs"
-  fi
-  if [[ ! -f "$runner_src" ]]; then
-    echo "  ▸ subprocess-runner.cjs missing — skipping vendor install"
-    return 0
-  fi
-
-  mkdir -p "$vendor_dir"
-  cp "$runner_src" "$runner_dst"
-
-  # isolated-vm: copy from the source workspace's already-installed
-  # binding rather than re-running npm install (much faster, and
-  # guarantees the exact same version the in-process loader would have
-  # used on Node hosts).
-  if [[ -d "$ivm_src" ]]; then
-    mkdir -p "$vendor_dir/node_modules"
-    if [[ ! -e "$ivm_dst" ]] || ! diff -rq "$ivm_src" "$ivm_dst" &>/dev/null; then
-      rm -rf "$ivm_dst"
-      cp -RL "$ivm_src" "$ivm_dst"
-    fi
-  else
-    echo "  ▸ workspace isolated-vm not found at $ivm_src — vendor runner may fail at load time"
-  fi
+  # ONE implementation, shared with mac + shell:
+  # packages/opencues-cli/src/lib/stage-runtime-deps.cjs.
+  #
+  # This used to copy isolated-vm from "$OPENCUES_ROOT/node_modules/isolated-vm",
+  # a path that does NOT exist in a pnpm workspace (deps live in the store, not
+  # hoisted to the repo root). The copy silently no-opped, leaving
+  # ~/.opencues/vendor/node_modules empty, and every JS user blank that fell
+  # through to the subprocess path died with "Cannot find module 'isolated-vm'"
+  # (found on mac 2026-07-26). The helper resolves the real location instead.
+  node -e "require('$OPENCUES_ROOT/packages/opencues-cli/src/lib/stage-runtime-deps.cjs').vendorUserBlankRunner({REPO_ROOT:process.argv[1],log:m=>console.log(m)})" \
+    "$OPENCUES_ROOT"
 }
 
 patch_app_tsx() {
