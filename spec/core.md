@@ -1,6 +1,6 @@
 # core — shared rules across cue-spec and blank-spec
 
-> **Status:** `0.9-alpha`. Expect changes.
+> **Status:** `0.10-alpha`. Expect changes.
 
 This document covers concerns shared by `cue-spec.md`, `blank-spec.md`, and `auditor-spec.md`: the project search-path, the master `CUES.md` / `BLANKS.md` / `AUDITORS.md` files at the root, host compatibility, hot-reload, routing, and the promotion path from runtime-specific knobs to standard fields.
 
@@ -225,6 +225,32 @@ The standard reserves these host identifiers:
 Runtimes MAY define additional host names. Other implementations SHOULD ignore unknown host names rather than failing.
 
 The constants `HOSTS` and `NATIVE_HOSTS` in OpenCues' `@opencues/core` library (`packages/opencues-core/src/host-compat.ts`) are non-normative reference values that enumerate the above set; `shell`, `claude-code`, `gemini-cli`, and `opencode` are members of `NATIVE_HOSTS` (can spawn subprocesses and touch the filesystem without a bridge); `chrome` is the lone non-native host. Conformant runtimes MUST resolve the legacy `terminal` alias to `shell` for back-compat.
+
+### Field-kind scoping (`on-field:` / `not-on-field:`) — since spec 0.10
+
+Host scoping answers *which integration* may load a cue. **Field scoping** answers *which kind of input field a cue may run in* — because a single host (a system-wide integration like Windows) attaches to many different fields, and a prose cue (e.g. a formality rewriter) is out of place in a value field like a browser address bar or a search box.
+
+```yaml
+on-field: [multi-line]        # allow-list — only these field kinds
+not-on-field: [single-line]   # deny-list — every kind except these
+```
+
+The reserved field-kind vocabulary is:
+
+- `single-line` — the focused field holds one line (a search box, an address bar / omnibox, a one-line form field).
+- `multi-line` — the focused field is a multi-line prose surface (a document editor, a `<textarea>`, a comment box).
+
+Resolution mirrors `on-site` / `not-on-site`:
+
+1. `not-on-field:` matching the field's known kind → the cue is excluded here.
+2. If `on-field:` is present, the field's known kind must match one entry.
+3. Otherwise the cue is available.
+
+**Field scoping is DYNAMIC — evaluated per resolution, not once at load.** Unlike `on-host` (the host is fixed for a session), the focused field changes on every focus, so a conformant runtime MUST re-evaluate `on-field` / `not-on-field` against the *currently* focused field each time it resolves cues.
+
+**A host MAY declare the focused field's kind** (the OpenCues runtime's `AmbientContext.singleLine`). A host that declares nothing leaves the kind **unknown**, and the graceful default applies: `not-on-field:` never excludes on an unknown kind (the runtime cannot prove the field is that kind), and `on-field:` (an opt-in allow-list) never matches an unknown kind. So a cue with no field frontmatter, and any host that does not report field shape, behave exactly as before this feature — this key is purely additive.
+
+Runtimes MAY reserve additional field-kind names; other implementations SHOULD ignore unknown field-kind names rather than failing. The reference predicate is `inferFieldCompat` in `@opencues/core`.
 
 ---
 

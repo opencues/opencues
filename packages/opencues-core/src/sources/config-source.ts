@@ -14,6 +14,7 @@ import {
   HttpAdapter,
 } from '../types';
 import { SourceConfig, BlankParser } from '../cues-md';
+import { inferFieldCompat } from '../host-compat';
 import { parseAlternatives, parseRaw } from './parsers';
 import { useStrictJson, buildJsonResponseFormat, dispatchChat, type ProviderAdapter } from '../llm-provider';
 import { getDehydrator, type CompiledDehydrator } from '../dehydrate';
@@ -117,6 +118,9 @@ export class ConfigSource implements CueSource {
   }
 
   supports(context: CueContext): boolean {
+    // Field-kind scoping (`on-field:` / `not-on-field:`) — a word-cue that
+    // declares `not-on-field: single-line` cedes in search boxes / the omnibox.
+    if (!inferFieldCompat(this.sourceConfig, context.ambient)) return false;
     const hasBlanks = context.words.some(w => w === '_');
     if (this.scope === 'words') return !hasBlanks;
     if (this.scope === 'blanks') return hasBlanks;
