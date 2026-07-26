@@ -127,6 +127,42 @@ describe('verifyClaim — grounding + deterministic judge (anti-misfire)', () =>
     const v = verifyClaim({ type: 'weekday_date', weekday: 'Thursday', day: 24, month: null, quote: 'Thursday the 24th' }, S, NOW);
     assert.ok(v); assert.match(v!.tip, /the 24th is a Friday, not Thursday/); assert.equal(v!.correction, 'Friday the 24th');
   });
+  // FALSE-POSITIVE regression (found by the agentic negative-control scenario
+  // 117 on 2026-07-26): a day-of-month with no year resolves FORWARD, so a
+  // correct sentence about a date earlier this year was judged against NEXT
+  // year's weekday. Said on 26 July 2026, "Friday, 24 July 2026" resolved to
+  // 24 July 2027 (a Saturday) and produced "⚠ the 24th is a Saturday, not
+  // Friday" — a wrong cue, the worst failure mode for this feature.
+  it('is SILENT for a correct date earlier THIS year (forward-resolution false positive)', () => {
+    const sun26 = new Date(2026, 6, 26); // Sunday 26 July 2026
+    const sentence = 'see you on Friday, 24 July 2026 - dinner was 120 pounds';
+    // 24 July 2026 IS a Friday; 24 July 2027 is a Saturday. The past reading
+    // is correct, so no cue.
+    assert.equal(
+      verifyClaim({ type: 'weekday_date', weekday: 'Friday', day: 24, month: 'July', quote: 'Friday, 24 July 2026' }, sentence, sun26),
+      null,
+    );
+  });
+
+  it('still flags a pairing that is wrong under BOTH readings', () => {
+    const sun26 = new Date(2026, 6, 26);
+    // 24 July is a Friday (2026) / Saturday (2027) — "Tuesday" is neither.
+    const sentence = 'see you Tuesday, 24 July';
+    const v = verifyClaim({ type: 'weekday_date', weekday: 'Tuesday', day: 24, month: 'July', quote: 'Tuesday, 24 July' }, sentence, sun26);
+    assert.ok(v, 'a genuinely wrong pairing must still fire');
+    assert.match(v!.tip, /not Tuesday/);
+  });
+
+  it('a date still to come this month is judged on that date alone', () => {
+    // No forward bump happens, so there is no second reading to soften it:
+    // said on 26 July, "Monday the 30th" is judged against 30 July 2026 only.
+    const sun26 = new Date(2026, 6, 26);
+    const sentence = 'lets meet Monday the 30th';
+    const v = verifyClaim({ type: 'weekday_date', weekday: 'Monday', day: 30, month: null, quote: 'Monday the 30th' }, sentence, sun26);
+    assert.ok(v, '30 July 2026 is a Thursday, not a Monday');
+    assert.match(v!.tip, /the 30th is a Thursday, not Monday/);
+  });
+
   it('GROUNDING: rejects a claim whose quote is not in the sentence (model cannot hallucinate a cue)', () => {
     // The model invented "$25 each" but the sentence never said it → no cue.
     assert.equal(verifyClaim({ type: 'weekday_date', weekday: 'Thursday', day: 24, quote: 'Friday the 30th' }, S, NOW), null);

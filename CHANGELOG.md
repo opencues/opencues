@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — weekday-date contradiction cue fired a WRONG cue for correct dates earlier this year (`@opencues/core` 0.39.0 → 0.40.0)
+
+`see you on Friday, 24 July 2026` produced `⚠ the 24th is a Saturday, not Friday` — on 26 July 2026, when the 24th **was** a Friday. A day-of-month with no year resolves FORWARD (`resolveDate`: "that month already passed → next year"), so the claim was judged against 24 July **2027**, which is a Saturday. The claim schema carries no `year` field, so the one the writer stated was discarded before the verifier saw it. False-positive cues are the worst failure mode for this feature — the whole design is "the correction is DATA, never generation" precisely so a cue can't be wrong.
+
+Fixed precision-first: a bare day/month is judged against the two readings the phrase can actually denote — the next future occurrence AND the most recent past one (exactly what the forward bump skipped) — and fires only when the pairing is wrong under **both**. Deliberately NOT a ±1-year sweep: consecutive years put the same date on three different weekdays, so that would coincidentally match a genuinely wrong claim about a third of the time and silence real contradictions. A date still to come this month has no second reading and is judged on that date alone, unchanged.
+
+Found by the agentic harness's own negative-control scenario (117) — the suite now passes 6/6. Three new `checks.test.ts` cases pin the false positive, a pairing wrong under both readings (must still fire), and the unchanged single-reading path.
+
+Follow-up worth considering: teach the extractor to emit `year` when the writer states one (`24 July 2026`), which would make the stated year authoritative instead of inferred. Not needed for correctness now that both readings are checked, and it would mean a prompt change.
+
 ### Fixed — JS user blanks were dead on every self-owned host (`@opencues/cli` 0.2.58 → 0.2.59, `@opencues/mac` 0.6.0 → 0.6.1)
 
 `gh-issues` (the shipped reference JS blank) failed to register on mac with `Cannot find module 'acorn'`, logged as a warn and otherwise invisible — built-in and `.sh` blanks kept working, so the host looked healthy. Three stacked causes, each hidden behind the one in front:

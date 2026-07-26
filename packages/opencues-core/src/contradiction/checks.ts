@@ -366,6 +366,34 @@ export function verifyClaim(claim: Claim, sentence: string, now: Date, ctx?: Ver
       const monthIdx = claim.month ? monthIndex(claim.month) : null;
       const resolved = resolveDate(claim.day, monthIdx, now);
       if (!resolved) return null;
+      // A day-of-month with no year is AMBIGUOUS, and `resolveDate` always
+      // reads it FORWARD. Said on 26 July 2026, "Friday, 24 July 2026"
+      // resolves to 24 July *2027* — a Saturday — so a perfectly correct
+      // sentence about two days ago produced "⚠ the 24th is a Saturday, not
+      // Friday". (The claim schema carries no year, so the one the writer
+      // actually stated is discarded before we get here.)
+      //
+      // Precision-first rule: fire ONLY when the pairing is wrong under EVERY
+      // plausible reading. If the same day/month in a NEARBY year matches the
+      // claimed weekday, the writer was right and we stay silent. A genuinely
+      // wrong pairing disagrees with all of them, so real contradictions are
+      // unaffected — verified by the harness's negative-control scenario
+      // (117) plus the weekday cases in this file's suite.
+      // The two readings — and ONLY those two. A blanket ±1-year sweep would
+      // be far too loose: consecutive years put the same date on three
+      // different weekdays, so a wrong claim would coincidentally match a
+      // neighbour ~1/3 of the time and we'd silence real contradictions.
+      // These two are the dates the phrase can actually denote: the next
+      // future occurrence (resolveDate) and the most recent PAST one, which
+      // is exactly what resolveDate's forward bump skipped over.
+      const past = monthIdx !== null
+        ? { year: now.getFullYear(), monthIdx, day: claim.day }
+        : { year: now.getFullYear(), monthIdx: now.getMonth(), day: claim.day };
+      const skippedPast = isRealDate(past.year, past.monthIdx, past.day)
+        && (past.year !== resolved.year || past.monthIdx !== resolved.monthIdx)
+        ? past
+        : null;
+      if (skippedPast && weekdayOf(skippedPast.year, skippedPast.monthIdx, skippedPast.day) === wd) return null;
       const actual = weekdayOf(resolved.year, resolved.monthIdx, resolved.day);
       if (actual === wd) return null;
       return {
