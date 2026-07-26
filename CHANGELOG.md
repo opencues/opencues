@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — mac cycling: real keypresses, surviving cue spans, and audible blurs (`@opencues/mac` 0.7.0 → 0.7.1)
+
+Three defects found by driving the live host, each of which alone made cycling look broken. Cycling now works end to end on a native app: `Monday` → `Sunday` in TextEdit from the contradiction cue, `chord up → runtime (consumed=true)`.
+
+**1. The tap couldn't see real keys.** A `.cgSessionEventTap` sits *behind* WindowServer's own hotkey processing, so a chord the system claims (`Ctrl+↑` is Mission Control by default) never arrives — while synthetic `CGEventPost` events DO arrive, which is exactly why the session tap passed a synthetic-key test and still failed under real fingers. Now `.cghidEventTap`, ahead of that processing. Consequence for testing: session-level synthetic keys no longer reach it, so validation needs `CGEventPost(tap: .cghidEventTap)` — `scripts/hotkey-probe.swift` documents both levels.
+
+**2. Focus churn destroyed the cue spans.** TextEdit re-fires focus *while you type* (`focus chars:11`, then `chars:49`), and every focus called `resetBufferState`, wiping every DynDef — so a cue registered and was gone before it could be cycled, and cycling could never work in such an app. The bridge now sends `fieldId` (CFHash of the AX element) and an identical id means **same-field resume**: update value/cursor, leave runtime state alone. Same mechanism `integrations/windows/protocol.md` specifies for the same reason. A missing `fieldId` (older bridge) falls back to the old reset behaviour.
+
+**3. Blur was silent.** Five distinct causes in the bridge all emitted a bare `{"type":"blur"}`, and since blur wipes runtime state, "a blur happened" and "nothing happened" were indistinguishable in the log — that ambiguity cost two debugging rounds. Each site now names its cause (`no-focused-element`, `non-text-or-secure-role`, `unreadable-or-oversized-value`, `element-destroyed`, `snapshot-unreadable`) and the daemon logs it.
+
+Also: `supportsCycling` no longer flaps with focus (it's a host capability; a focus-scoped value rebuilt every source and discarded the caches on each blur/focus), and a `chordIgnored` event distinguishes "the tap never saw the chord" from "the capture gate was shut".
+
+**Usage note:** navigate first, then cycle. Ctrl+Option+←/→ moves OpenCues' highlight onto a word; Ctrl+Option+↑ cycles *that* word. Pressing ↑ without navigating is a no-op (`consumed=false`) — and with no visible highlight yet you are navigating blind. 60 platform-free `daemon-core.test.ts` cases cover the resume rule, the capture gate, and the chord path.
+
 ### Added — EXPERIMENTAL: cycling on native mac apps (`@opencues/runtime` 0.30.0 → 0.31.0, `@opencues/mac` 0.6.1 → 0.7.0)
 
 Branch `feat/mac-cycling`. The mac host advertised `supportsCycling: false` because AX is push-driven for focus/value/cursor but delivers **no keystrokes** — so Ctrl+Option+↑↓←→ never reached the runtime and every cycleable cue (word-cues, sentence-cues incl. more-formal and the calendar-conflict cue, list blanks, selector/satellite) was pruned at registration. This adds the missing key channel.

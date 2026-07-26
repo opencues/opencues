@@ -109,10 +109,16 @@ let chordTapCallback: CGEventTapCallBack = { _, type, event, _ in
         emit(["type": "tapReenabled"])
         return Unmanaged.passUnretained(event)
     }
-    guard captureEnabled else { return Unmanaged.passUnretained(event) }
     let code = event.getIntegerValueField(.keyboardEventKeycode)
     let flags = event.flags
     guard let key = CHORD_KEYCODES[code], flags.contains(.maskControl), flags.contains(.maskAlternate) else {
+        return Unmanaged.passUnretained(event)
+    }
+    // Diagnostic worth its bytes: "the tap never saw the chord" and "the gate
+    // was shut" look identical from the daemon's side otherwise, and that
+    // ambiguity cost a debugging round on 2026-07-26.
+    guard captureEnabled else {
+        emit(["type": "chordIgnored", "key": key])
         return Unmanaged.passUnretained(event)
     }
     emit([
@@ -131,8 +137,14 @@ let chordTapCallback: CGEventTapCallBack = { _, type, event, _ in
 /// pre-cycling behaviour (blank fills still work), so a tap failure must never
 /// take the bridge down.
 func installChordTap() {
+    // HID level, not session level. A session tap sits AFTER WindowServer's
+    // own hotkey processing, so a chord the system claims (Ctrl+↑ is Mission
+    // Control by default) never reaches it — and synthetic CGEventPost events
+    // DO reach it, which is how a session tap passed a synthetic-key test on
+    // 2026-07-26 while real keypresses were still being swallowed upstream.
+    // kCGHIDEventTap is closest to the hardware, ahead of that processing.
     guard let tap = CGEvent.tapCreate(
-        tap: .cgSessionEventTap,
+        tap: .cghidEventTap,
         place: .headInsertEventTap,
         options: .defaultTap,
         eventsOfInterest: CGEventMask(1 << CGEventType.keyDown.rawValue),
@@ -272,7 +284,7 @@ final class Bridge {
         let appEl = AXUIElementCreateApplication(pid)
         guard let el = attr(appEl, kAXFocusedUIElementAttribute) else {
             focusedPid = 0
-            emit(["type": "blur"])
+            emit(["type": "blur", "reason": "no-focused-element"])
             return
         }
         let element = el as! AXUIElement
@@ -280,12 +292,12 @@ final class Bridge {
         let subrole = (attr(element, kAXSubroleAttribute) as? String) ?? ""
         guard TEXT_ROLES.contains(role), subrole != "AXSecureTextField" else {
             focusedPid = 0
-            emit(["type": "blur"])
+            emit(["type": "blur", "reason": "non-text-or-secure-role"])
             return
         }
         guard let value = attr(element, kAXValueAttribute) as? String, value.utf16.count <= MAX_CHARS else {
             focusedPid = 0
-            emit(["type": "blur"])
+            emit(["type": "blur", "reason": "unreadable-or-oversized-value"])
             return
         }
         focusedElement = element
@@ -302,6 +314,13 @@ final class Bridge {
             "role": role,
             "value": value,
             "cursor": cursorOf(element),
+            // Stable-per-element id for SAME-FIELD RESUME (the mac analogue of
+            // the windows shim's fieldId). Some apps re-fire focus for the
+            // element you are already editing — TextEdit does it mid-typing —
+            // and treating that as a buffer switch resets runtime state, which
+            // destroys the cue spans cycling needs. With an id the daemon can
+            // tell "same field, keep the spans" from "different field, reset".
+            "fieldId": String(CFHash(element)),
         ])
     }
 
@@ -326,7 +345,7 @@ final class Bridge {
             } else {
                 focusedElement = nil
                 focusedPid = 0
-                emit(["type": "blur"])
+                emit(["type": "blur", "reason": "element-destroyed"])
             }
         case kAXValueChangedNotification as String:
             guard let el = focusedElement,
@@ -417,7 +436,7 @@ final class Bridge {
 
     func snapshot() {
         guard let el = focusedElement, let value = attr(el, kAXValueAttribute) as? String else {
-            emit(["type": "blur"]); return
+            emit(["type": "blur", "reason": "snapshot-unreadable"]); return
         }
         emit(["type": "change", "value": value, "cursor": cursorOf(el)])
     }

@@ -53,11 +53,11 @@ function makeHarness(opts: { deny?: string[]; charBudgetEnv?: string; replaceQue
   return h as Harness;
 }
 
-const focusSpotlight = (value = '', cursor = 0): Record<string, unknown> => ({
-  type: 'focus', app: 'Spotlight', bundle: 'com.apple.Spotlight', role: 'AXTextField', value, cursor,
+const focusSpotlight = (value = '', cursor = 0, fieldId = 'spotlight-1'): Record<string, unknown> => ({
+  type: 'focus', app: 'Spotlight', bundle: 'com.apple.Spotlight', role: 'AXTextField', value, cursor, fieldId,
 });
-const focusTextEdit = (value = '', cursor = 0): Record<string, unknown> => ({
-  type: 'focus', app: 'TextEdit', bundle: 'com.apple.TextEdit', role: 'AXTextArea', value, cursor,
+const focusTextEdit = (value = '', cursor = 0, fieldId = 'textedit-1'): Record<string, unknown> => ({
+  type: 'focus', app: 'TextEdit', bundle: 'com.apple.TextEdit', role: 'AXTextArea', value, cursor, fieldId,
 });
 const change = (value: string, cursor: number): Record<string, unknown> => ({ type: 'change', value, cursor });
 
@@ -385,5 +385,48 @@ describe('cycling chord capture', () => {
     expect(h.logs.some(l => l.level === 'warn' && /chord tap unavailable/.test(l.msg))).toBe(true);
     h.core.handleEvent(focusTextEdit('still works', 5));
     expect(h.core.getText()).toBe('still works');
+  });
+});
+
+// ─── Same-field resume ────────────────────────────────────────────────
+// TextEdit re-fires focus for the element you're already editing (observed
+// live 2026-07-26: focus at 11 chars, then at 49, mid-typing). Each one used
+// to resetBufferState and wipe every DynDef, so a cue registered and vanished
+// before it could be cycled — cycling could never work in such an app.
+describe('same-field refocus (fieldId resume)', () => {
+  it('preserves runtime state when the SAME element re-fires focus', () => {
+    const h = makeHarness();
+    h.core.handleEvent(focusTextEdit('lets meet on Mon', 16, 'el-42'));
+    const resetsAfterFirst = h.rec.resets;
+    h.core.handleEvent(focusTextEdit('lets meet on Monday the 26th', 28, 'el-42'));
+    expect(h.rec.resets).toBe(resetsAfterFirst);          // no wipe
+    expect(h.core.getText()).toBe('lets meet on Monday the 26th');  // value tracked
+    expect(h.core.getCursorOffset()).toBe(28);
+  });
+
+  it('RESETS when a DIFFERENT element takes focus (a real buffer switch)', () => {
+    const h = makeHarness();
+    h.core.handleEvent(focusTextEdit('draft', 5, 'el-1'));
+    const before = h.rec.resets;
+    h.core.handleEvent(focusTextEdit('other doc', 9, 'el-2'));
+    expect(h.rec.resets).toBe(before + 1);
+  });
+
+  it('RESETS when the bridge sends no fieldId (older bridge → old behaviour)', () => {
+    const h = makeHarness();
+    h.core.handleEvent({ type: 'focus', app: 'TextEdit', bundle: 'com.apple.TextEdit', role: 'AXTextArea', value: 'a', cursor: 1 });
+    const before = h.rec.resets;
+    h.core.handleEvent({ type: 'focus', app: 'TextEdit', bundle: 'com.apple.TextEdit', role: 'AXTextArea', value: 'ab', cursor: 2 });
+    expect(h.rec.resets).toBe(before + 1);
+  });
+
+  it('a resume does NOT re-seed the buffer as runtime-sourced context', () => {
+    // Re-seeding would re-run the focus baseline and could re-arm a `_`.
+    const h = makeHarness();
+    h.core.handleEvent(focusTextEdit('has a hole _ here', 5, 'el-9'));
+    const notifies = h.rec.notifies.length;
+    h.core.handleEvent(focusTextEdit('has a hole _ here now', 21, 'el-9'));
+    expect(h.rec.notifies).toHaveLength(notifies);
+    expect(h.rec.keys).toHaveLength(0);
   });
 });

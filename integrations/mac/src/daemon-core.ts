@@ -57,7 +57,7 @@ export interface DaemonCoreDeps {
   onUntrusted(): void;
 }
 
-export interface Focused { value: string; cursor: number; app: string; bundle: string }
+export interface Focused { value: string; cursor: number; app: string; bundle: string; fieldId: string }
 
 export class DaemonCore {
   focused: Focused | null = null;
@@ -198,6 +198,12 @@ export class DaemonCore {
         this.deps.log('debug', `chord ${key} → runtime (consumed=${consumed})`);
         break;
       }
+      case 'chordIgnored':
+        // The tap SAW the chord but capture was closed — so the key channel
+        // works and the gate is the thing to look at (focus lost? denied app?
+        // OPENCUES_AX_CYCLING=off?). Silence here means the tap never saw it.
+        this.deps.log('debug', `chord ${String(ev['key'] ?? '?')} seen but capture is off (focused=${this.focused !== null}, cyclingAllowed=${this.cyclingAllowed()})`);
+        break;
       case 'tapArmed':
         this.deps.log('info', 'chord tap armed — Ctrl+Alt+arrows reach the runtime on attachable fields');
         break;
@@ -212,15 +218,32 @@ export class DaemonCore {
           rt.resetBufferState();
           break;
         }
+        const fieldId = String(ev['fieldId'] ?? '');
+        // SAME-FIELD RESUME. Several apps re-fire focus for the element you are
+        // already editing (TextEdit does it mid-typing: focus at 11 chars, then
+        // at 49). Treating that as a buffer switch calls resetBufferState,
+        // which wipes every DynDef — so a cue would register and vanish before
+        // it could be cycled, and cycling could never work in those apps.
+        // Same element ⇒ same buffer: update value/cursor and leave runtime
+        // state alone. The runtime validates its own spans against the live
+        // text before applying, so a changed value needs no reset here.
+        // Mirrors the windows shim's fieldId resume (integrations/windows/protocol.md).
+        const resume = fieldId !== '' && this.focused !== null && this.focused.fieldId === fieldId;
         this.focused = {
           value: String(ev['value'] ?? ''),
           cursor: Number(ev['cursor'] ?? 0),
           app: String(ev['app'] ?? '?'),
           bundle,
+          fieldId,
         };
-        this.ring.clear();
         this.lastAckMethod = null;
         this.setCapture(true);
+        if (resume) {
+          // Echo ring stays: our own in-flight writes are still ours.
+          this.deps.log('debug', `same-field refocus (${this.focused.app}) — runtime state preserved`);
+          break;
+        }
+        this.ring.clear();
         rt.resetBufferState();
         // Baseline: focus content is context, never a trigger — source
         // 'runtime' seeds the buffer without waking the resolver (a
@@ -233,6 +256,11 @@ export class DaemonCore {
         break;
       }
       case 'blur':
+        // LOG IT. A silent blur is indistinguishable from "nothing happened",
+        // and since blur wipes runtime state (destroying cue spans) that
+        // silence sent two debugging rounds down the wrong path on
+        // 2026-07-26. The bridge names one of five causes.
+        this.deps.log('debug', `blur (${String(ev['reason'] ?? 'unspecified')}) — buffer state reset, capture off`);
         // Off even when we had no focused element: a tap left armed after a
         // missed focus event would eat the user's chords in an app we aren't
         // even attached to.

@@ -88,6 +88,9 @@ with the fix path when the grant is missing.
   Input Monitoring prompt) and consumes them ONLY while the daemon says a
   non-denied field is focused (`{"cmd":"capture","on":…}`). `supportsCycling`
   is therefore per-target rather than a constant false.
+  - **Navigate first, then cycle**: Ctrl+Option+←/→ moves OpenCues' highlight
+    onto a word, Ctrl+Option+↑ cycles THAT word. `↑` with no prior navigation
+    is a no-op (the log shows `consumed=false`).
   - **No visible highlight yet.** Cycling swaps the word in the buffer, but
     nothing paints the dim/active spans a cycling host normally shows —
     that needs an overlay window fed by `AXBoundsForRange` (the shape
