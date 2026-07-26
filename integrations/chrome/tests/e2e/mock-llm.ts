@@ -73,7 +73,7 @@ export class MockLlm {
     return this.calls.some((c) => re.test((c.messages ?? []).map((m) => m.content).join('\n')));
   }
 
-  async install(context: BrowserContext): Promise<void> {
+  async install(context: BrowserContext, opts: { delayMs?: number } = {}): Promise<void> {
     await context.route(PROVIDER_HOST_RE, async (route) => {
       let body: OpenAiRequest = {};
       try {
@@ -82,6 +82,15 @@ export class MockLlm {
         /* non-JSON body — leave empty */
       }
       this.calls.push(body);
+
+      // Optional latency — lets the runtime's in-buffer loading animation
+      // tick at least once (writing its `_` bounce frame as a runtime write)
+      // before the fill lands, which is required to exercise the
+      // reclassifier-poison regression. Playwright's fake timers aren't in
+      // play, so a real await here maps to real animation ticks.
+      if (opts.delayMs && opts.delayMs > 0) {
+        await new Promise<void>((r) => setTimeout(r, opts.delayMs));
+      }
 
       const content = (body.messages ?? [])
         .map((m) => m.content)

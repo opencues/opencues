@@ -59,7 +59,7 @@ close pages, clear `chrome.storage` after each test).
 | Milestone | Coverage | State |
 |---|---|---|
 | M0 harness | extension loads, SW registers, config seeds, runtime boots + attaches | ✅ |
-| M1 scenario | fluid-blank `_` lookup substitutes end-to-end | ✅ |
+| M1 scenario | fluid-blank `_` lookup substitutes end-to-end; **two consecutive bare-`_` fills on a normal `<input>` both land** (`reclassifier-poison.e2e.test.ts` — pins #348) | ✅ |
 | M2 security | trust-gate (synthetic-event refusal), sensitive-field password no-attach + mistyped-CC heuristic (residual #25), site-filter off-site cue never fires — each with a positive control | ✅ |
 | M3 host-dependent | scripted blanks / custom user-blanks (need a mock native-messaging host) | deferred |
 
@@ -67,6 +67,14 @@ All three security controls are mutation-verified: disabling the
 control in source (isTrusted+credit gate, isSensitiveField,
 applySiteCompatFilter) turns the corresponding test red, so each is a
 genuine degraded-open detector, not a false pass.
+
+`reclassifier-poison.e2e.test.ts` is mutation-verified the same way:
+restoring the removed `markRuntimeWrite(text)` call in
+`writeNormalInputValue` turns the second-fill assertion red. It forces the
+loading-animation frames to `_,-` at a 30ms interval + a 300ms mock-LLM
+delay so the animation's `_` frame is a real runtime write and its
+reclassifier entry is fresh when the second `_` is typed — otherwise a
+broken build could pass by timing luck.
 
 > Note on folder cues from a seeded bundle: word-cues are gated behind
 > `word-cues-mode: on` (resolver.ts) — a seeded folder-cue is discovered
