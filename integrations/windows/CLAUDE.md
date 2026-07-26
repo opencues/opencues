@@ -108,9 +108,9 @@ Config lives at `%USERPROFILE%\.cues` by default (or `OPENCUES_HOME` →
 `\\wsl.localhost\...` to share WSL). Tray state in
 `%LOCALAPPDATA%\OpenCues\tray.json`; logs in `%TEMP%\opencues.log`.
 
-## Phase 2 (EXPERIMENTAL, this branch) — cycling + overlay + real caret
+## Phase 2 — cycling + overlay + real caret
 
-| | Phase 1 | Phase 2 (shipped on this branch) |
+| | Phase 1 | Phase 2 (shipped) |
 |---|---|---|
 | Profile | `supportsCycling:false` — Universal-Integration | **per-field dynamic** — `focus.cycling` from the shim (UIA attach + managed TextPattern → true; MSAA/Electron → false) |
 | Surface | fluid-blank, transform-blank, compute blanks | + word-cues, selector/satellite, cycling blanks on cycling fields |

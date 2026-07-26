@@ -88,7 +88,7 @@ extension and the in-terminal hosts are the better surface there, and
 skipping avoids double-attaching. (Letting local OpenCues take
 precedence *inside* those is planned, not yet built.)
 
-## Phase 2 (experimental): word-cues, cycling, the overlay
+## Phase 2: word-cues, cycling, the overlay
 
 On fields that expose enough UIA (Notepad, WordPad, most Win32/WinForms
 dialogs), the host now also runs **word-cues + Ctrl+Alt+arrow cycling**:
