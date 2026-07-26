@@ -627,7 +627,22 @@ function writeNormalInputValue(el: HTMLInputElement | HTMLTextAreaElement, text:
   const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
   if (setter) setter.call(el, text);
   else el.value = text;
-  sourceReclassifier.markRuntimeWrite(text);
+  // NO `sourceReclassifier.markRuntimeWrite(text)` here — deliberately.
+  // The synthetic `input` event below is `isTrusted=false`, so content.ts's
+  // input listener drops it (the trust gate) and it NEVER round-trips to
+  // `notifyOpenCuesTextChange`. So on a normal `<input>`/`<textarea>` there
+  // is no runtime-write DOM echo to reclassify — marking here could only
+  // ever seed the reclassifier's `recent` list with short runtime-written
+  // strings that then FALSE-MATCH a later real keystroke. That is exactly
+  // what silently swallowed the user's `_`: the loading-animation blank
+  // writes its bounce frame `'_'` (BOUNCE_FRAMES[0]) as a runtime write, and
+  // within RUNTIME_WRITE_TTL_MS (1.5s) the next real `_` matched it, got
+  // reclassified `runtime`, and the resolver skipped the blank (runtime
+  // writes must never fire blanks). Delete+retype "fixed" it only because
+  // the stale frame had aged out. Managed editors (Gmail/Reddit/PM/Quill/
+  // Draft) write through different paths that DO fire trusted echoes and
+  // legitimately keep their own markRuntimeWrite — this omission is scoped
+  // to the normal-input path.
   el.dispatchEvent(new Event('input', { bubbles: true }));
   el.dispatchEvent(new Event('change', { bubbles: true }));
   log.info('[opencues][normal-input] writeValue: newLen=' + text.length);
