@@ -92,6 +92,18 @@ export interface UniversalBindings {
    * reaches a prompt).
    */
   getAmbientContext?(): AmbientContext | null;
+  /**
+   * Per-current-target cycling capability. OMITTED (or false) keeps the
+   * historical no-cycling profile: every cycleable cue/blank is pruned at
+   * registration. apple-notes omits it — a polled JXA channel has no way to
+   * receive Ctrl+Alt+arrows. mac supplies it: its bridge captures the chords
+   * with a CGEventTap and reports true only for an attachable, non-denied
+   * field with capture armed.
+   *
+   * Flipping this true un-prunes word-cues + sentence-cues, so the host pays
+   * LLM calls on ordinary typing — a real cost, not just a capability claim.
+   */
+  supportsCycling?(): boolean;
   log?(level: LogLevel, msg: string, data?: unknown): void;
   emitEvent?(type: string, body?: Record<string, unknown>): void;
   registerEventHandler?(cb: (type: string, body?: Record<string, unknown>) => void): Unsubscribe;
@@ -124,9 +136,13 @@ export class UniversalV1Adapter implements HostAdapter {
     this.capabilities = caps;
   }
 
-  // Polled channel with no colour surface and no key interception:
-  // every cycleable cue/blank must be pruned at registration.
-  supportsCycling(): boolean { return false; }
+  // Defaults to the no-cycling profile (apple-notes: polled channel, no key
+  // interception) and defers to the binding when a host on this band CAN
+  // deliver chords (mac). Throwing binding → false: claiming a surface we
+  // can't drive would register cues the user has no way to reach.
+  supportsCycling(): boolean {
+    try { return this.bindings.supportsCycling?.() === true; } catch { return false; }
+  }
   getAnswerCharBudget(): number | null {
     try { return this.bindings.getAnswerCharBudget?.() ?? null; } catch { return null; }
   }

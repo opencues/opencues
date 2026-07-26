@@ -101,6 +101,7 @@ export async function main(): Promise<void> {
     deniedBundles,
     charBudgetEnv: () => process.env['OPENCUES_AX_CHAR_BUDGET'],
     replaceQueryEnv: () => process.env['OPENCUES_AX_REPLACE_QUERY'],
+    cyclingEnv: () => process.env['OPENCUES_AX_CYCLING'],
     onUntrusted: () => process.exit(1),
   });
 
@@ -126,6 +127,9 @@ export async function main(): Promise<void> {
     // input for THAT app (Finder search box → `*.pdf`). Inert until
     // `ambient-context-mode: on` — the resolver doesn't ask otherwise.
     getAmbientContext: () => core.getAmbientContext(),
+    // Cycling is live only where the bridge's chord tap is armed (attachable,
+    // non-denied field). OPENCUES_AX_CYCLING=off restores the old profile.
+    supportsCycling: () => core.supportsCycling(),
     readFile: async (p: string) => {
       try { return await fs.readFile(p, 'utf8'); } catch { return null; }
     },

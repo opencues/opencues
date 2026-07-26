@@ -56,6 +56,9 @@ export interface HostInfo extends CommonHostInfo {
    *  output steering (mac: `{ app }` from the focused element's owning
    *  application). Gated by `ambient-context-mode`; inert while off. */
   getAmbientContext?(): import('../../../src/adapter').AmbientContext | null;
+  /** Per-target cycling capability — omit for the no-cycling profile
+   *  (apple-notes). See UniversalBindings.supportsCycling. */
+  supportsCycling?(): boolean;
 }
 
 export interface BootResult {
@@ -120,6 +123,7 @@ export function boot(host: HostInfo): BootResult {
     getAnswerCharBudget: host.getAnswerCharBudget,
     getAnswerReplacesQuery: host.getAnswerReplacesQuery,
     getAmbientContext: host.getAmbientContext,
+    supportsCycling: host.supportsCycling,
     log,
     emitEvent: (type, body) => moduleEvents.emit(
       { type, body },

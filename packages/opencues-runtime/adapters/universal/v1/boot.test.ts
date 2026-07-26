@@ -170,6 +170,23 @@ describe('universal v1 boot()', () => {
     }).getAmbientContext()).toBe(null);
   });
 
+  it('supportsCycling is binding-driven: absent → false (apple-notes), true → true (mac)', () => {
+    // The no-cycling profile is the DEFAULT, not a constant: apple-notes omits
+    // the binding (a polled JXA channel can't receive chords) while mac
+    // supplies it (CGEventTap). A throwing binding must read false — claiming
+    // a surface we can't drive would register cues the user can't reach.
+    expect(new UniversalV1Adapter(minimalBindings).supportsCycling()).toBe(false);
+    expect(new UniversalV1Adapter({
+      ...minimalBindings, supportsCycling: () => true,
+    }).supportsCycling()).toBe(true);
+    expect(new UniversalV1Adapter({
+      ...minimalBindings, supportsCycling: () => false,
+    }).supportsCycling()).toBe(false);
+    expect(new UniversalV1Adapter({
+      ...minimalBindings, supportsCycling: () => { throw new Error('boom'); },
+    }).supportsCycling()).toBe(false);
+  });
+
   it('adapter onKey/onCursorChange/onRender return unsubscribes', () => {
     const adapter = new UniversalV1Adapter(minimalBindings);
     expect(() => {

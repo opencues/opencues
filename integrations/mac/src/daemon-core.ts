@@ -48,6 +48,10 @@ export interface DaemonCoreDeps {
   charBudgetEnv?(): string | undefined;
   /** `OPENCUES_AX_REPLACE_QUERY` — injected so tests don't touch env. */
   replaceQueryEnv?(): string | undefined;
+  /** `OPENCUES_AX_CYCLING` — `off` disables chord capture entirely (the
+   *  bridge never consumes Ctrl+Alt+arrows and every cycleable cue stays
+   *  pruned, i.e. exactly the pre-cycling behaviour). Injected, not read. */
+  cyclingEnv?(): string | undefined;
   /** Called when the bridge reports the Accessibility grant is missing
    *  (prod: log the fix instructions + process.exit(1)). */
   onUntrusted(): void;
@@ -60,6 +64,8 @@ export class DaemonCore {
   private lastAckMethod: string | null = null;
   private writeId = 0;
   private readonly ring = new WriteRing();
+  /** Mirrors the bridge's chord-consumption state (see setCapture). */
+  private captureOn = false;
   private runtime: RuntimeSurface | null = null;
 
   constructor(private readonly deps: DaemonCoreDeps) {}
@@ -86,6 +92,28 @@ export class DaemonCore {
     return this.focused
       ? replaceQueryForBundle(this.focused.bundle, this.deps.replaceQueryEnv?.())
       : false;
+  }
+
+  /** Chord capture is only worth enabling where the runtime will act on it:
+   *  a live, non-denied text element. Off elsewhere so the bridge passes
+   *  Ctrl+Alt+arrows through to whatever app the user is in — the deny list
+   *  is daemon-side, so the tap cannot make this call itself. */
+  private setCapture(on: boolean): void {
+    const want = on && this.cyclingAllowed();
+    if (want === this.captureOn) return;
+    this.captureOn = want;
+    this.deps.send({ cmd: 'capture', on: want });
+  }
+
+  private cyclingAllowed(): boolean {
+    return (this.deps.cyclingEnv?.() ?? '').trim().toLowerCase() !== 'off';
+  }
+
+  /** Does the CURRENT target support cycling? True only with a focused
+   *  element AND capture armed — the runtime prunes every cycleable cue when
+   *  this is false, so it must never claim a surface we can't drive. */
+  supportsCycling(): boolean {
+    return this.focused !== null && this.captureOn;
   }
 
   /**
@@ -139,10 +167,37 @@ export class DaemonCore {
         }
         this.deps.log('info', 'ax-bridge ready — watching the focused text element in every app');
         break;
+      case 'key': {
+        // A cycling/nav chord the bridge captured and SWALLOWED for us. It
+        // carries no text of its own — the runtime needs the current buffer +
+        // caret to resolve which word the chord applies to.
+        if (!this.focused) { this.deps.log('debug', 'chord with no focused element — dropped'); break; }
+        const key = String(ev['key'] ?? '');
+        const m = (ev['modifiers'] ?? {}) as Record<string, unknown>;
+        if (!key) break;
+        const consumed = rt.dispatchKey({
+          key,
+          modifiers: {
+            ctrl: m['ctrl'] === true, alt: m['alt'] === true,
+            shift: m['shift'] === true, meta: m['meta'] === true,
+          },
+          text: this.focused.value,
+          cursorOffset: this.focused.cursor,
+        });
+        this.deps.log('debug', `chord ${key} → runtime (consumed=${consumed})`);
+        break;
+      }
+      case 'tapArmed':
+        this.deps.log('info', 'chord tap armed — Ctrl+Alt+arrows reach the runtime on attachable fields');
+        break;
+      case 'tapFailed':
+        this.deps.log('warn', `chord tap unavailable (${String(ev['reason'] ?? '?')}) — cycling stays off; blank fills unaffected`);
+        break;
       case 'focus': {
         const bundle = String(ev['bundle'] ?? '');
         if (this.deps.deniedBundles().has(bundle)) {
           this.focused = null;
+          this.setCapture(false);   // never swallow chords in a denied app
           rt.resetBufferState();
           break;
         }
@@ -154,6 +209,7 @@ export class DaemonCore {
         };
         this.ring.clear();
         this.lastAckMethod = null;
+        this.setCapture(true);
         rt.resetBufferState();
         // Baseline: focus content is context, never a trigger — source
         // 'runtime' seeds the buffer without waking the resolver (a
@@ -166,6 +222,10 @@ export class DaemonCore {
         break;
       }
       case 'blur':
+        // Off even when we had no focused element: a tap left armed after a
+        // missed focus event would eat the user's chords in an app we aren't
+        // even attached to.
+        this.setCapture(false);
         if (this.focused) {
           this.focused = null;
           this.ring.clear();

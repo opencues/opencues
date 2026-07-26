@@ -82,9 +82,20 @@ with the fix path when the grant is missing.
 - Fields whose app rewrites text (autocorrect, smart quotes) may
   misclassify our transformed echo as a user edit — the resolver's
   live-text guard absorbs this (worst case: one dropped resolution).
-- No cycling (universal profile): the AX channel has no key
-  interception, so cycleable cues/blanks are pruned at registration —
-  see docs/architecture/universal-integration.md.
+- **Cycling (experimental, `feat/mac-cycling`)**: AX itself delivers no
+  keystrokes, so the bridge captures Ctrl+Option+↑↓←→ with a session-level
+  `CGEventTap` (armed under the Accessibility grant it already needs — no
+  Input Monitoring prompt) and consumes them ONLY while the daemon says a
+  non-denied field is focused (`{"cmd":"capture","on":…}`). `supportsCycling`
+  is therefore per-target rather than a constant false.
+  - **No visible highlight yet.** Cycling swaps the word in the buffer, but
+    nothing paints the dim/active spans a cycling host normally shows —
+    that needs an overlay window fed by `AXBoundsForRange` (the shape
+    Windows phase-2 uses). Until then cycling is functional but blind.
+  - Turning it on un-prunes word-cues + sentence-cues, so ordinary typing
+    now costs LLM calls in every app. `OPENCUES_AX_CYCLING=off` restores
+    the previous no-cycling profile exactly.
+  - See docs/architecture/universal-integration.md.
 - **Spotlight-only field semantics.** Its search field is treated as a
   disposable question box: answers stay short (~37 chars,
   `OPENCUES_AX_CHAR_BUDGET`) and **replace** the typed query rather than

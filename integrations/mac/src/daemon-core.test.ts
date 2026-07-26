@@ -34,7 +34,7 @@ interface Harness {
   untrusted: number;
 }
 
-function makeHarness(opts: { deny?: string[]; charBudgetEnv?: string; replaceQueryEnv?: string } = {}): Harness {
+function makeHarness(opts: { deny?: string[]; charBudgetEnv?: string; replaceQueryEnv?: string; cyclingEnv?: string } = {}): Harness {
   const sent: Array<Record<string, unknown>> = [];
   const logs: Array<{ level: string; msg: string }> = [];
   const h: Partial<Harness> = { sent, logs, untrusted: 0 };
@@ -44,6 +44,7 @@ function makeHarness(opts: { deny?: string[]; charBudgetEnv?: string; replaceQue
     deniedBundles: () => new Set(opts.deny ?? ['com.googlecode.iterm2']),
     charBudgetEnv: () => opts.charBudgetEnv,
     replaceQueryEnv: () => opts.replaceQueryEnv,
+    cyclingEnv: () => opts.cyclingEnv,
     onUntrusted: () => { h.untrusted! += 1; },
   });
   const { rt, rec } = makeRuntime();
@@ -128,8 +129,11 @@ describe('typing → arm → fill → echo (the full journey)', () => {
     h.core.handleEvent(focusSpotlight());
     h.core.handleEvent(change('capital of france _', 19));
     h.core.requestWrite('capital of france France capital: Paris');
-    expect(h.sent).toHaveLength(1);
-    expect(h.sent[0]).toMatchObject({ cmd: 'replace', start: 18 });
+    // ONE contiguous replace — filtered by cmd because focus also arms the
+    // chord tap ({cmd:'capture'}) on this host now.
+    const replaces = h.sent.filter(c => c['cmd'] === 'replace');
+    expect(replaces).toHaveLength(1);
+    expect(replaces[0]).toMatchObject({ cmd: 'replace', start: 18 });
     // Optimistic: the runtime reads its own bytes back immediately.
     expect(h.core.getText()).toBe('capital of france France capital: Paris');
     // The bridge echoes our write as a change event → runtime-sourced,
@@ -309,5 +313,66 @@ describe('line-protocol robustness', () => {
     });
     expect(() => core.handleEvent(focusSpotlight('x', 1))).not.toThrow();
     expect(logs.some(l => l.level === 'warn' && l.msg.includes('before runtime attach'))).toBe(true);
+  });
+});
+
+// ─── Cycling chords (CGEventTap channel) ──────────────────────────────
+// The bridge captures Ctrl+Alt+arrows and SWALLOWS them, but only while the
+// daemon says so: the deny list lives here, so a tap left armed would eat the
+// user's own chords in iTerm. These replay the bridge's side of that contract.
+describe('cycling chord capture', () => {
+  const cmds = (h: Harness, cmd: string) => h.sent.filter(c => c['cmd'] === cmd);
+
+  it('arms capture on an attachable focus and disarms on blur', () => {
+    const h = makeHarness();
+    expect(cmds(h, 'capture')).toHaveLength(0);
+    h.core.handleEvent(focusTextEdit('draft', 5));
+    expect(cmds(h, 'capture')).toEqual([{ cmd: 'capture', on: true }]);
+    expect(h.core.supportsCycling()).toBe(true);
+    h.core.handleEvent({ type: 'blur' });
+    expect(cmds(h, 'capture').at(-1)).toEqual({ cmd: 'capture', on: false });
+    expect(h.core.supportsCycling()).toBe(false);
+  });
+
+  it('NEVER arms capture in a denied app (chords stay the terminal\'s)', () => {
+    const h = makeHarness({ deny: ['com.googlecode.iterm2'] });
+    h.core.handleEvent({ type: 'focus', app: 'iTerm2', bundle: 'com.googlecode.iterm2', role: 'AXTextArea', value: 'x', cursor: 1 });
+    expect(cmds(h, 'capture').filter(c => c['on'] === true)).toHaveLength(0);
+    expect(h.core.supportsCycling()).toBe(false);
+  });
+
+  it('OPENCUES_AX_CYCLING=off keeps the pre-cycling profile', () => {
+    const h = makeHarness({ cyclingEnv: 'off' });
+    h.core.handleEvent(focusTextEdit('draft', 5));
+    expect(cmds(h, 'capture').filter(c => c['on'] === true)).toHaveLength(0);
+    expect(h.core.supportsCycling()).toBe(false);
+  });
+
+  it('does not re-send an unchanged capture state (one command per transition)', () => {
+    const h = makeHarness();
+    h.core.handleEvent(focusTextEdit('a', 1));
+    h.core.handleEvent(focusSpotlight('b', 1));   // focus → focus, still armed
+    expect(cmds(h, 'capture')).toEqual([{ cmd: 'capture', on: true }]);
+  });
+
+  it('forwards a captured chord to the runtime with the live buffer + caret', () => {
+    const h = makeHarness();
+    h.core.handleEvent(focusTextEdit('the attorney filed', 4));
+    h.core.handleEvent({ type: 'key', key: 'up', modifiers: { ctrl: true, alt: true, shift: false, meta: false } });
+    expect(h.rec.keys.at(-1)).toEqual({ key: 'up', text: 'the attorney filed', cursorOffset: 4 });
+  });
+
+  it('drops a chord that arrives with no focused element', () => {
+    const h = makeHarness();
+    h.core.handleEvent({ type: 'key', key: 'down', modifiers: { ctrl: true, alt: true, shift: false, meta: false } });
+    expect(h.rec.keys).toHaveLength(0);
+  });
+
+  it('a tap failure is a warn, not a crash — blank fills keep working', () => {
+    const h = makeHarness();
+    expect(() => h.core.handleEvent({ type: 'tapFailed', reason: 'tapCreate returned nil' })).not.toThrow();
+    expect(h.logs.some(l => l.level === 'warn' && /chord tap unavailable/.test(l.msg))).toBe(true);
+    h.core.handleEvent(focusTextEdit('still works', 5));
+    expect(h.core.getText()).toBe('still works');
   });
 });

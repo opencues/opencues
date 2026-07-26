@@ -9,8 +9,11 @@
 //        {"type":"change","value":"…","cursor":13}            (AXValueChanged)
 //        {"type":"cursor","cursor":14}                        (AXSelectedTextChanged only)
 //        {"type":"writeAck","id":3,"ok":true}
+//        {"type":"key","key":"up","modifiers":{"ctrl":true,"alt":true,…}}  (chord tap)
+//        {"type":"tapArmed"} | {"type":"tapFailed",…} | {"type":"tapReenabled"}
 //   in:  {"cmd":"replace","id":3,"start":10,"length":1,"text":"…"}
 //        {"cmd":"read"}
+//        {"cmd":"capture","on":true}   enable/disable chord consumption
 //
 // Design constraints (AX-SPIKE.md, 2026-07-12):
 //  - Focused-element-only, push-driven: AXObserver per frontmost pid,
@@ -75,6 +78,74 @@ func cursorOf(_ el: AXUIElement) -> Int {
     // Caret = end of the selection: after typing, loc is already the
     // caret; after a selection, end is where typing would land.
     return range.location + range.length
+}
+
+// ─── Cycling chord capture (CGEventTap) ──────────────────────────────
+//
+// AX is push-driven for focus/value/cursor but delivers NO keystrokes, so
+// cycling (Ctrl+Option+↑/↓) and word navigation (←/→) have no channel on
+// native apps — which is why the universal band advertised
+// supportsCycling: false and every cycleable cue was pruned. A session-level
+// CGEventTap supplies that channel. Measured on macOS 15 arm64 (2026-07-26,
+// scripts/hotkey-probe.swift): the tap arms under the Accessibility grant the
+// bridge ALREADY requires — no Input Monitoring prompt — and an active tap can
+// return nil to consume the chord so the focused app never sees it.
+//
+// Consumption is GATED by the daemon, not decided here: `{"cmd":"capture",
+// "on":…}` toggles it on focus of an attachable field and off on blur. The
+// deny list (terminals, per OPENCUES_AX_DENY) lives daemon-side, so a tap that
+// swallowed chords whenever any text element was focused would eat the user's
+// own Ctrl+Alt+arrow bindings in iTerm. Off ⇒ every chord passes through
+// untouched, exactly as before this feature existed.
+let CHORD_KEYCODES: [Int64: String] = [126: "up", 125: "down", 123: "left", 124: "right"]
+var captureEnabled = false
+var eventTap: CFMachPort?
+
+let chordTapCallback: CGEventTapCallBack = { _, type, event, _ in
+    // The system disables a tap that runs too long or floods; re-enable rather
+    // than silently losing every subsequent chord.
+    if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+        if let t = eventTap { CGEvent.tapEnable(tap: t, enable: true) }
+        emit(["type": "tapReenabled"])
+        return Unmanaged.passUnretained(event)
+    }
+    guard captureEnabled else { return Unmanaged.passUnretained(event) }
+    let code = event.getIntegerValueField(.keyboardEventKeycode)
+    let flags = event.flags
+    guard let key = CHORD_KEYCODES[code], flags.contains(.maskControl), flags.contains(.maskAlternate) else {
+        return Unmanaged.passUnretained(event)
+    }
+    emit([
+        "type": "key",
+        "key": key,
+        "modifiers": [
+            "ctrl": true, "alt": true,
+            "shift": flags.contains(.maskShift),
+            "meta": flags.contains(.maskCommand),
+        ],
+    ])
+    return nil   // consumed — the focused app must not also act on it
+}
+
+/// Arm the chord tap. Non-fatal: without it the daemon simply keeps the
+/// pre-cycling behaviour (blank fills still work), so a tap failure must never
+/// take the bridge down.
+func installChordTap() {
+    guard let tap = CGEvent.tapCreate(
+        tap: .cgSessionEventTap,
+        place: .headInsertEventTap,
+        options: .defaultTap,
+        eventsOfInterest: CGEventMask(1 << CGEventType.keyDown.rawValue),
+        callback: chordTapCallback,
+        userInfo: nil
+    ) else {
+        emit(["type": "tapFailed", "reason": "tapCreate returned nil (Accessibility grant missing?)"])
+        return
+    }
+    eventTap = tap
+    CFRunLoopAddSource(CFRunLoopGetMain(), CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0), .commonModes)
+    CGEvent.tapEnable(tap: tap, enable: true)
+    emit(["type": "tapArmed"])
 }
 
 // Shared C-function-pointer callback for every observer (primary and
@@ -382,6 +453,9 @@ DispatchQueue.global().async {
                     text: obj["text"] as? String ?? ""
                 )
             case "read": bridge.snapshot()
+            case "capture":
+                // Daemon-gated chord consumption — see installChordTap.
+                captureEnabled = (obj["on"] as? Bool) ?? false
             default: break
             }
         }
@@ -390,5 +464,5 @@ DispatchQueue.global().async {
     exit(0)
 }
 
-DispatchQueue.main.async { bridge.start() }
+DispatchQueue.main.async { bridge.start(); installChordTap() }
 RunLoop.main.run()

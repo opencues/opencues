@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — EXPERIMENTAL: cycling on native mac apps (`@opencues/runtime` 0.30.0 → 0.31.0, `@opencues/mac` 0.6.1 → 0.7.0)
+
+Branch `feat/mac-cycling`. The mac host advertised `supportsCycling: false` because AX is push-driven for focus/value/cursor but delivers **no keystrokes** — so Ctrl+Option+↑↓←→ never reached the runtime and every cycleable cue (word-cues, sentence-cues incl. more-formal and the calendar-conflict cue, list blanks, selector/satellite) was pruned at registration. This adds the missing key channel.
+
+**How.** A session-level `CGEventTap` in `ax-bridge.swift`. Measured before building (`scripts/hotkey-probe.swift`, committed as evidence): the tap arms under the **Accessibility grant the bridge already requires** — no Input Monitoring prompt — and an active tap can return nil to consume the chord so the focused app never also acts on it.
+
+**Consumption is daemon-gated, not tap-decided.** The deny list (terminals) lives in `DaemonCore`, so a tap that swallowed chords whenever any text element was focused would eat the user's own Ctrl+Alt+arrow bindings in iTerm. New inbound command `{"cmd":"capture","on":…}` arms on attachable focus and disarms on blur / denied app / `OPENCUES_AX_CYCLING=off`. Off ⇒ every chord passes through untouched, byte-identical to the pre-feature behaviour.
+
+`UniversalBindings.supportsCycling` is now a binding rather than a hardcoded `false`: mac supplies it (true only for an attachable, non-denied field with capture armed), apple-notes omits it and keeps the no-cycling profile — a polled JXA channel has no way to receive chords.
+
+**Two things this does NOT do yet.** (1) **No visible highlight.** Cycling swaps the word in the buffer, but nothing paints the dim/active spans; `AX-SPIKE.md` notes AX selection gives no visible highlight, so this needs an overlay window fed by `AXBoundsForRange` — the shape master's Windows phase-2 uses (`render` command → `GetBoundingRectangles` → click-through overlay). Until then cycling is functional but blind. (2) Flipping cycling on **un-prunes word-cues and sentence-cues**, so ordinary typing now costs LLM calls in every app you type in — the env kill-switch exists for exactly that reason.
+
+**Verified:** the bridge in isolation — capture OFF, chord posted → 0 events (passes through); capture ON → correct `{"type":"key","key":"up",…}` per chord. Plus 7 platform-free `daemon-core.test.ts` cases (arm on focus, disarm on blur, never in a denied app, env off, one command per transition, chord → dispatchKey with the live buffer+caret, tap failure is a warn not a crash) and 4 band assertions. NOT yet verified end-to-end in a live app: AX focus events don't fire for apps activated from a tool shell, so the real focus → capture → chord → swap path needs a human at the keyboard.
+
 ### Fixed — weekday-date contradiction cue fired a WRONG cue for correct dates earlier this year (`@opencues/core` 0.39.0 → 0.40.0)
 
 `see you on Friday, 24 July 2026` produced `⚠ the 24th is a Saturday, not Friday` — on 26 July 2026, when the 24th **was** a Friday. A day-of-month with no year resolves FORWARD (`resolveDate`: "that month already passed → next year"), so the claim was judged against 24 July **2027**, which is a Saturday. The claim schema carries no `year` field, so the one the writer stated was discarded before the verifier saw it. False-positive cues are the worst failure mode for this feature — the whole design is "the correction is DATA, never generation" precisely so a cue can't be wrong.
