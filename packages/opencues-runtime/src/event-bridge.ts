@@ -76,7 +76,7 @@
 // changes.
 
 import * as fs from 'node:fs';
-import type { HostAdapter, KeyEvent } from './adapter';
+import type { HostAdapter, KeyEvent, AmbientContext } from './adapter';
 
 // ─── Public API types ────────────────────────────────────────────────────
 
@@ -98,6 +98,7 @@ export type BridgeEventBody =
   | { type: 'command.unknown'; line: string }
   | { type: 'text.injected'; text: string; source: 'user' | 'runtime'; cursor: number }
   | { type: 'cursor.injected'; cursor: number }
+  | { type: 'ambient.injected'; ambient: AmbientContext | null }
   | { type: 'cleared' }
   | { type: 'key.dispatched'; key: string; modifiers: KeyEvent['modifiers']; consumed: boolean }
   | { type: 'dump.written'; path: string }
@@ -433,6 +434,14 @@ class CommandRunner {
     private readonly writeDump: () => void,
   ) {}
 
+  /** Test-only synthetic ambient (set via the `ambient:` command). In
+   *  production a host supplies `AmbientContext` from the focused field;
+   *  the harness has no field-shape source, so it injects one to exercise
+   *  field-declared behaviour (the fluid-blank WIPE gate, `on-field:`
+   *  scoping). Null = no ambient, identical to the pre-injection default. */
+  private _injectedAmbient: AmbientContext | null = null;
+  private _ambientOverrideInstalled = false;
+
   /** Run a multi-line script. Lines processed sequentially; failures
    *  per-line do not abort the script. */
   runScript(text: string): void {
@@ -539,6 +548,32 @@ class CommandRunner {
         this.bindings.notifyTextChange?.('', 0, 'user');
         adapter.forceRender();
         this.stream.emit({ type: 'cleared' });
+        return;
+      }
+      case 'ambient': {
+        // Inject a synthetic AmbientContext the resolver reads via
+        // adapter.getAmbientContext. `ambient:{"singleLine":true,"app":"chrome"}`
+        // sets it; `ambient:null` (or empty) clears it. Requires
+        // `ambient-context-mode: on` for the resolver to consult it. Test-only:
+        // production hosts supply ambient from the real focused field.
+        try {
+          const t = arg.trim();
+          this._injectedAmbient = (t === '' || t === 'null') ? null : JSON.parse(t) as AmbientContext;
+        } catch (e) {
+          this.stream.emit({ type: 'command.error', cmd, arg, error: `ambient: bad JSON (${(e as Error).message})` });
+          return;
+        }
+        // Install the getAmbientContext override once: return the injected
+        // value, falling back to the adapter's own (if any) when nothing is
+        // injected — so a host that genuinely reports ambient is unaffected
+        // until the harness injects.
+        if (!this._ambientOverrideInstalled) {
+          const orig = adapter.getAmbientContext?.bind(adapter);
+          (adapter as { getAmbientContext?: () => AmbientContext | null }).getAmbientContext =
+            () => this._injectedAmbient ?? orig?.() ?? null;
+          this._ambientOverrideInstalled = true;
+        }
+        this.stream.emit({ type: 'ambient.injected', ambient: this._injectedAmbient });
         return;
       }
       case 'reset': {
