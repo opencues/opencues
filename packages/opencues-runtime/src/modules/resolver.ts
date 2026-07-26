@@ -151,6 +151,11 @@ export interface ResolverOptions {
 interface CuesCoreLike {
   buildSourcesFromConfig(c: unknown, b: unknown, o: unknown): unknown[];
   createResolver(sources: unknown[], opts: unknown): { resolve(ctx: unknown): Promise<{ results: CueResultLike[] }> };
+  /** Whitelist an ambient down to its privacy-safe SHAPE booleans
+   *  (`singleLine`/`disposable`) — forwarded unconditionally for field-kind
+   *  routing even when `ambient-context-mode` is off. Optional so an older
+   *  core bundle degrades to "no shape when off" (prior behaviour). */
+  structuralAmbientOnly?(a: unknown): { singleLine?: boolean; disposable?: boolean } | undefined;
 }
 
 interface CueResultLike {
@@ -279,6 +284,9 @@ export class Resolver {
   private _resolver: { resolve(ctx: unknown): Promise<{ results: CueResultLike[] }> } | null = null;
   private _sources: unknown[] = [];
   private _httpAdapter: unknown = null;
+  /** Cached `@opencues/core` module handle (loaded lazily in buildSources).
+   *  Used at resolve time for the pure `structuralAmbientOnly` whitelist. */
+  private _core: CuesCoreLike | null = null;
   private _unsubText: Unsubscribe | null = null;
   private _unsubKey: Unsubscribe | null = null;
   /** One-shot flag: set TRUE when a plain `_` keystroke arrives, cleared
@@ -717,6 +725,7 @@ export class Resolver {
       this.adapter.log('error', 'Resolver: opencues-core load failed', err);
       return;
     }
+    this._core = cuesCore;
 
     // Endpoint + model precedence: OPENCUES.md `llm-endpoint:` /
     // `llm-model:` > host-supplied default. Lets users switch providers
@@ -1345,23 +1354,33 @@ export class Resolver {
         // position. Sources that don't care about cursor (FluidBlank,
         // RoutedWordSourceGroup) ignore it. -1 means "no info".
         cursor: this.adapter.getCursorOffset?.() ?? -1,
-        // Optional ambient field/page context. Gated FIRST by the
-        // `ambient-context-mode` scalar (off by default) â when off,
-        // the host adapter is not even consulted, so a misbehaving
-        // host can't accidentally leak metadata.
+        // Optional ambient field/page context, split into two tiers by
+        // WHAT reaches the LLM:
         //
-        // When on: ask the host. The host still returns null when it
-        // can't gather (e.g. CC/OC native hosts have no DOM) OR when
-        // the focused field is sensitive (password/CC/OTP).
+        //   - Field METADATA (label / placeholder / pageTitle / app / url):
+        //     goes on the wire to disambiguate a fluid-blank lookup. This is
+        //     the privacy tradeoff `ambient-context-mode` exists to gate, so
+        //     it is forwarded ONLY when the mode is `on`.
+        //   - Field SHAPE (`singleLine` / `disposable`): on-machine booleans
+        //     that drive field-kind routing (`on-field:` scoping) and the
+        //     field-declared WIPE gate. They NEVER reach an LLM, so they are
+        //     structural routing (same category as on-host / on-site, not a
+        //     privacy opt-in) and are forwarded UNCONDITIONALLY.
         //
-        // Only FluidBlankSource consumes this â see AmbientContext
-        // for the full security contract. The runtime is intentionally
-        // not plugged into any tool-handling or exec layer for fluid-
-        // blank prompts, so the ambient block can only land in text
-        // the user sees before submitting.
+        // So when the mode is off we still ask the host, then WHITELIST the
+        // ambient down to its shape booleans via `structuralAmbientOnly`.
+        // This preserves "no field metadata to the LLM when off" BY
+        // CONSTRUCTION (a whitelist, stronger than the old "don't consult the
+        // host" blacklist, which broke field-shape awareness as collateral so
+        // prose cues reappeared in search boxes for privacy-conscious users).
+        // The host still returns null when it can't gather (CC/OC have no DOM)
+        // or the field is sensitive (password/CC/OTP), so a redacted-to-empty
+        // ambient becomes undefined (kind unknown). The runtime is not plugged
+        // into any tool/exec layer for fluid-blank prompts, so the metadata
+        // block can only land in text the user sees before submitting.
         ambient: this.configLoader.opencuesState.ambientContextMode === 'on'
           ? (this.adapter.getAmbientContext?.() ?? undefined)
-          : undefined,
+          : (this._core?.structuralAmbientOnly?.(this.adapter.getAmbientContext?.() ?? undefined) ?? undefined),
         // Optional identity context (identity-context-mode personal data). Gated by
         // `identity-context-mode` in OPENCUES.md (when `off` we don't
         // even forward the parsed catalog, so a future misconfigured

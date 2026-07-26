@@ -203,6 +203,37 @@ export function fieldKindOf(ambient: { singleLine?: boolean } | undefined): Fiel
 }
 
 /**
+ * The privacy-safe SHAPE subset of an AmbientContext: the on-machine
+ * structural booleans (`singleLine` / `disposable`) that drive field-kind
+ * routing (`on-field:` scoping) and the field-declared WIPE gate. These
+ * NEVER reach an LLM — unlike the text metadata (label / placeholder /
+ * pageTitle / app), which DOES go on the wire and is therefore gated by
+ * `ambient-context-mode`.
+ *
+ * The resolver forwards THIS subset unconditionally — field-kind scoping is
+ * structural routing, the same category as on-host / on-site, not a privacy
+ * opt-in — and forwards the FULL ambient only when `ambient-context-mode:
+ * on`. This is a WHITELIST: even a misbehaving host that stuffs PII into
+ * `label` has it dropped here before any source sees it, so the "no field
+ * metadata to the LLM when the mode is off" invariant is preserved BY
+ * CONSTRUCTION — strictly stronger than the old "don't consult the host at
+ * all" stance (a blacklist that broke field-shape awareness as collateral).
+ *
+ * Returns undefined when the host declared no shape at all (both booleans
+ * absent — e.g. a native host with no DOM, or a sensitive field the host
+ * refused to describe), so downstream `kind unknown` handling is unchanged.
+ */
+export function structuralAmbientOnly(
+  ambient: { singleLine?: boolean; disposable?: boolean; [k: string]: unknown } | undefined,
+): { singleLine?: boolean; disposable?: boolean } | undefined {
+  if (!ambient) return undefined;
+  const out: { singleLine?: boolean; disposable?: boolean } = {};
+  if (ambient.singleLine !== undefined) out.singleLine = ambient.singleLine;
+  if (ambient.disposable !== undefined) out.disposable = ambient.disposable;
+  return out.singleLine !== undefined || out.disposable !== undefined ? out : undefined;
+}
+
+/**
  * True when the entry's `on-field:` / `not-on-field:` frontmatter permits the
  * CURRENT field. Pure function; evaluated PER-RESOLVE (the field kind changes
  * every focus), unlike `on-host` (evaluated once at load). Mirrors the
