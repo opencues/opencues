@@ -30,6 +30,10 @@ Two things the wipe deliberately does NOT trust. The span is the runtime's (whol
 Pinned by `answer-replaces-query.test.ts` (core: span rule, guards, absent-by-default, model-vote-ignored, cache path) + `answer-replaces-query.scenarios.test.ts` (runtime: the Spotlight journey end-to-end, flag→context plumbing, and the FILL shapes the guards preserve) + `replaceQueryForBundle` / accessor cases in the mac suite. Feature doc: `docs/features/answer-replaces-query.md` (#51).
 
 
+### Changed — CLI 0.2.57 → 0.2.58 (host-list union after the master merge)
+
+`opencues install` / `opencues run` / `host-compat` now enumerate `apple-notes`, `mac` AND `windows` — the branch and master each added hosts to the same lists, and the merge unions them. `run.cjs` carries all three launchers. No behavioural change beyond the wider host list.
+
 ### Changed — `@opencues/core` → 0.39.0, `@opencues/runtime` → 0.29.0 (merge version-collision resolution)
 
 Master shipped core 0.36.0 / runtime 0.27.0; this branch had independently reached core 0.38.0 / runtime 0.28.0. The post-merge content differs from BOTH, so both bump past the higher side — one version string identifies one content set. Merge (not rebase): the branch has 51 commits already published to `origin/feat/apple-notes-integration` plus two prior merge commits, so replaying would rewrite published history and flatten those merges. Conflicts resolved as unions — `HOSTS`/`NATIVE_HOSTS` and the CLI host lists now carry `apple-notes`, `mac` AND `windows`; `HostAdapter` keeps this branch's `getAnswerCharBudget` / `getAnswerReplacesQuery` alongside master's `markdownPassthrough`; both new security-audit rows survive (master's Windows config-server row keeps its published number 30, the apple-notes shared-note row renumbers to 31).
