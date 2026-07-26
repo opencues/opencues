@@ -255,7 +255,15 @@ const sourceReclassifier = createSourceReclassifier();
 export function publishTarget(el: HTMLElement | null): void {
   if (el === currentTarget) return;
   currentTarget = el;
-  if (bootResult) bootResult.resetBufferState();
+  if (bootResult) {
+    bootResult.resetBufferState();
+    // Sync the runtime's buffer baseline (`previousText` for the explicit-`_`
+    // gate) to the NEWLY-focused field's actual content, so a `_` typed (or a
+    // failed fill) in the PRIOR field can't leave the baseline ending in `_`
+    // and silently swallow the FIRST `_` in this field. Empty field → '';
+    // a field with existing text → that text. Pure state sync, no events.
+    bootResult.noteBufferText(el ? readTargetText(el) : '', el ? readCursorOffset() : 0);
+  }
 }
 
 /** Called by content.ts when a `beforeinput` event signals the focused

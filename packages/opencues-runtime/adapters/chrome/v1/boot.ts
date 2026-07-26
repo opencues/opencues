@@ -232,6 +232,22 @@ export interface BootResult {
    * bursts during paste or IME composition).
    */
   resetBufferState(): void;
+  /**
+   * Sync the buffer baseline (`lastSeenText`/`lastSeenCursor` — the
+   * `previousText` the resolver's explicit-`_` gate compares each new `_`
+   * against) to the ACTUAL content of the field the host just focused.
+   * Pure state write — NO event emit, NO render — so it can't re-enter the
+   * resolver or fire a spurious change.
+   *
+   * The host calls this on every real focus change (paired with
+   * `resetBufferState`). Without it the baseline carries across fields: a
+   * `_` typed (or a failed fill) in the PRIOR field leaves the baseline
+   * ending in `_`, so the FIRST `_` in the newly-focused field is gated as
+   * "not a fresh trigger" and silently dropped — the user works around it
+   * by deleting and retyping (which resets the baseline). Empty field →
+   * pass `''` (fresh); a field with existing text → pass that text.
+   */
+  noteBufferText(text: string, cursor: number): void;
   dispose(): void;
 }
 
@@ -261,6 +277,15 @@ export function boot(host: HostInfo): BootResult {
 
   let lastSeenText: string | null = null;
   let lastSeenCursor = 0;
+  /** Keep the buffer baseline (`lastSeenText`/`lastSeenCursor`) in sync with
+   *  a RUNTIME write. Used by the setText/pushText wrappers below so the
+   *  resolver's explicit-`_` gate always compares the next user `_` against
+   *  the true post-fill buffer, not a stale pre-fill value. Pure state
+   *  update — no event emission, so it can't re-enter the resolver. */
+  const noteRuntimeWrite = (text: string, cursor: number): void => {
+    lastSeenText = text;
+    lastSeenCursor = cursor;
+  };
   const fireTextChange = (text: string, cursor: number, source: 'user' | 'runtime'): void => {
     textEvents.emit(
       { text, cursorOffset: cursor, previousText: lastSeenText ?? '', source },
@@ -285,24 +310,27 @@ export function boot(host: HostInfo): BootResult {
     cwd: host.cwd,
     getText: host.getText,
     getCursorOffset: host.getCursorOffset,
-    // Wrap setText so a runtime write keeps `lastSeenText` (the
-    // `previousText` baseline handed to the resolver's explicit-`_` gate)
-    // current. On non-cycling normal <input>/<textarea> fields the write
-    // path (`writeNormalInputValue`) dispatches an isTrusted=false input
-    // event that content.ts drops for security, and `runtimeRender()`
-    // early-returns for normal inputs — so NEITHER path that normally
-    // refreshes `lastSeenText` fires after a fill. Left unwrapped,
-    // `lastSeenText` freezes at the pre-fill value (the first `_`), so the
-    // NEXT `_` is gated against a stale prior buffer: `blankJustTyped`
-    // (endsWith `_` AND prev didn't) and the count-diff fallback both read
-    // false, and the `_` is silently dropped with no log — the
-    // "only the first `_` is accepted" stacked-blank regression. Updating
-    // the baseline here (a pure var write, no event emit → no re-entrancy)
-    // makes previousText correct for every host write path, cycling or not.
+    // Wrap EVERY runtime write path (setText AND pushText) so it keeps
+    // `lastSeenText` (the `previousText` baseline handed to the resolver's
+    // explicit-`_` gate) current. On non-cycling normal <input>/<textarea>
+    // fields the write path (`writeNormalInputValue`) dispatches an
+    // isTrusted=false input event that content.ts drops for security, and
+    // `runtimeRender()` early-returns for normal inputs — so NEITHER path
+    // that normally refreshes `lastSeenText` fires after a fill. Left
+    // unwrapped, `lastSeenText` freezes at the pre-fill value (typically the
+    // just-typed `_`), so the NEXT `_` — even the FIRST `_` in the next
+    // field, since the stale `_` carries across focus — is gated against a
+    // prior buffer that already "ends with `_`": `blankJustTyped`
+    // (endsWith `_` AND prev didn't) is false, the count-diff fallback
+    // (newU > prevU) is false, and the `_` is silently dropped with no log.
+    // Deleting + retyping clears the stale baseline, which is why a retry
+    // works. `pushText` is the ACTUAL fill path (resolver + BlankFill both
+    // prefer it when the adapter has it — chrome does); wrapping only
+    // setText missed every real fill. Pure var writes, no event emit → no
+    // re-entrancy; correct for every host write path, cycling or not.
     setText: (text: string) => {
       host.setText(text);
-      lastSeenText = text;
-      lastSeenCursor = text.length;
+      noteRuntimeWrite(text, text.length);
     },
     setCursorOffset: host.setCursorOffset,
     forceRender: host.forceRender,
@@ -313,7 +341,12 @@ export function boot(host: HostInfo): BootResult {
     readFile: host.readFile,
     readDir: host.readDir,
     writeFile: host.writeFile,
-    pushText: host.pushText,
+    pushText: host.pushText
+      ? (text: string, cursor?: number) => {
+          host.pushText!(text, cursor);
+          noteRuntimeWrite(text, cursor ?? text.length);
+        }
+      : undefined,
     blankInvoke: host.blankInvoke,
     spawnProcess: host.spawnProcess,
     supportsCycling: host.supportsCycling,
@@ -617,6 +650,9 @@ export function boot(host: HostInfo): BootResult {
     },
     onModuleEvent(handler) {
       return moduleEvents.subscribe(({ type, body }) => handler(type, body));
+    },
+    noteBufferText(text, cursor) {
+      noteRuntimeWrite(text, cursor);
     },
     resetBufferState() {
       // Wipe set + rationale lives in boot-common.ts's
