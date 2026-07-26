@@ -257,6 +257,7 @@ export {
   inferSiteCompat,
   inferFieldCompat,
   fieldKindOf,
+  structuralAmbientOnly,
   FIELD_KINDS,
   unknownHostNames,
   formatHostList,

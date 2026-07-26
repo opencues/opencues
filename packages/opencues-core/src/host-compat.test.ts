@@ -12,6 +12,7 @@ import {
   inferSiteCompat,
   inferFieldCompat,
   fieldKindOf,
+  structuralAmbientOnly,
   unknownHostNames,
   formatHostList,
   HOSTS,
@@ -249,5 +250,34 @@ describe('inferFieldCompat: field-kind scoping (on-field / not-on-field)', () =>
 
   it('case + whitespace tolerant', () => {
     assert.strictEqual(inferFieldCompat({ notOnField: [' Single-Line '] }, { singleLine: true }), false);
+  });
+});
+
+describe('structuralAmbientOnly: whitelist redaction', () => {
+  it('strips text metadata, keeps shape booleans', () => {
+    const full = {
+      label: 'Search', placeholder: 'type here', pageTitle: 'Google',
+      pageUrl: 'https://google.com', app: 'chrome.exe',
+      singleLine: true, disposable: true,
+    };
+    assert.deepStrictEqual(structuralAmbientOnly(full), { singleLine: true, disposable: true });
+  });
+
+  it('keeps singleLine:false (a known multi-line kind is a real signal)', () => {
+    assert.deepStrictEqual(structuralAmbientOnly({ singleLine: false, label: 'Body' }), { singleLine: false });
+  });
+
+  it('undefined in → undefined out', () => {
+    assert.strictEqual(structuralAmbientOnly(undefined), undefined);
+  });
+
+  it('metadata-only ambient (no shape declared) → undefined (kind unknown)', () => {
+    assert.strictEqual(structuralAmbientOnly({ label: 'X', app: 'chrome' }), undefined);
+  });
+
+  it('the whitelisted output still cedes a not-on-field cue (end-to-end shape)', () => {
+    // The whole point: a redacted (mode-off) ambient must still drive on-field.
+    const redacted = structuralAmbientOnly({ label: 'Search', singleLine: true });
+    assert.strictEqual(inferFieldCompat({ notOnField: ['single-line'] }, redacted), false);
   });
 });

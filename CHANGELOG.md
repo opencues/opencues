@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — field-kind scoping is ungated: `on-field:` / WIPE work independent of `ambient-context-mode` (`@opencues/core` 0.38.0 → 0.39.0, `@opencues/runtime` 0.28.1 → 0.28.2)
+
+`on-field:` scoping (#343) and the field-declared WIPE gate (#342) both read the field's SHAPE from `AmbientContext` (`singleLine` / `disposable`). But the resolver only populated `context.ambient` when `ambient-context-mode: on`, so both features silently rode a **privacy** toggle they have no business depending on: a user who turned ambient-context off (to keep field metadata off the wire) also lost on-field cede — the `more-formal` formalizer reappeared in their browser omnibox, and WIPE stopped firing.
+
+The fix splits the ambient object into two tiers by *what reaches the LLM*, at the single resolver chokepoint:
+
+- **Field METADATA** (`label` / `placeholder` / `pageTitle` / `app` / `pageUrl` — the wire payload that disambiguates a fluid-blank lookup) stays gated by `ambient-context-mode`. Unchanged.
+- **Field SHAPE** (`singleLine` / `disposable` — on-machine booleans that never reach an LLM) is now forwarded **unconditionally**. Field-kind scoping is structural routing, the same category as `on-host` / `on-site` — none of which have a master toggle — not a privacy opt-in.
+
+New `structuralAmbientOnly()` in `@opencues/core` whitelists an ambient down to its shape booleans; the resolver applies it when `ambient-context-mode` is off (and passes the full ambient when on). This is a **whitelist**, so it preserves "no field metadata to the LLM when the mode is off" *by construction* — strictly stronger than the old "don't consult the host at all" stance, which was a blacklist that broke field-shape awareness as collateral. The host still returns null for sensitive fields (password/CC/OTP) and native hosts with no DOM, so a redacted-to-empty ambient becomes `undefined` (kind unknown) exactly as before. Not a spec change — spec 0.10 already defines `on-field` as evaluated per-resolve from the field kind; it never mandated a mode gate, so this is purely more spec-compliant.
+
+5 `structuralAmbientOnly` unit tests (strip metadata / keep both shape booleans / undefined passthrough / metadata-only → undefined / end-to-end cede on a redacted ambient). Verified on the agentic host: `more-formal` cedes in a single-line field **with `ambient-context-mode: off`** (private harness scenario 121), alongside the existing WIPE (119) and on-field (120) scenarios.
+
 ### Added — agentic harness `ambient:` inject command for field-declared behaviour (`@opencues/runtime` 0.28.0 → 0.28.1)
 
 The event bridge gained an `ambient:` command that injects a synthetic `AmbientContext` the resolver reads via `adapter.getAmbientContext` (`ambient:{"singleLine":true,"app":"chrome"}` sets it; `ambient:null` clears it). Production hosts supply ambient from the real focused field, but the headless harness has no field, so field-declared behaviour — the field-declared WIPE gate (#342) and `on-field:` scoping (#343) — had no agentic coverage. The override installs once and falls through to the adapter's own `getAmbientContext` when nothing is injected, so a host that genuinely reports ambient is unaffected until injected. Test-only; requires `ambient-context-mode: on` for the resolver to consult it. Paired with two new scenarios: `119-fluid-blank-field-declared-wipe` (asserts the runtime's `mode` decision — WIPE under `singleLine`, FILL with no ambient — never LLM text) and `120-on-field-cede-single-line` (control-first: `more-formal` lands a passive def in a multi-line field, then cedes to an empty def list under the SAME budget in a single-line field, proving the gate not slowness).
