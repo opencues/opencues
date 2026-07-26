@@ -188,7 +188,7 @@ function loadHostResolver(ctx) {
     return { HOSTS: core.HOSTS.slice().sort(), resolve: core.resolveHost };
   } catch {
     return {
-      HOSTS: ['apple-notes', 'chrome', 'claude-code', 'gemini-cli', 'mac', 'opencode', 'shell'],
+      HOSTS: ['apple-notes', 'chrome', 'claude-code', 'gemini-cli', 'mac', 'opencode', 'shell', 'windows'],
       resolve: (n) => ({
         'apple-notes': 'apple-notes', 'applenotes': 'apple-notes', 'notes': 'apple-notes',
         'mac': 'mac', 'macos': 'mac', 'ax': 'mac',
@@ -197,6 +197,7 @@ function loadHostResolver(ctx) {
         'chrome': 'chrome',
         'gemini-cli': 'gemini-cli', 'geminicli': 'gemini-cli', 'gemini': 'gemini-cli',
         'shell': 'shell', 'term': 'shell', 'oc-edit': 'shell',
+        'windows': 'windows', 'win': 'windows', 'oc-windows': 'windows',
       })[n?.toLowerCase?.()] ?? null,
     };
   }
@@ -289,6 +290,7 @@ module.exports = async function run(argv, ctx) {
   if (folder === 'shell') return runShell(passthrough, ctx);
   if (folder === 'apple-notes') return runAppleNotes(passthrough, ctx);
   if (folder === 'mac') return runMac(passthrough, ctx);
+  if (folder === 'windows') return runWindows(passthrough, ctx);
 };
 
 /**
@@ -652,6 +654,29 @@ function runMac(passthrough, ctx) {
   clearScreenForHandoff();
   const result = spawnSync('node', [daemonJs, ...passthrough], { stdio: 'inherit', env: process.env });
   exitFromSpawn(result, 'mac daemon');
+}
+
+function runWindows(passthrough, ctx) {
+  // `opencues run windows` launches `bin/oc-windows` — the WSL-side
+  // daemon that boots the runtime and prints the PowerShell command to
+  // run on Windows. The Windows-native shim is compiled + run separately
+  // by the user on Windows (see the printed command / integrations/
+  // windows/README.md), so this side is just the daemon.
+  const ocWindows = path.join(ctx.REPO_ROOT, 'integrations', 'windows', 'bin', 'oc-windows');
+  if (!fs.existsSync(ocWindows)) {
+    console.error(`${style.tag('err')} oc-windows not found at ${ocWindows}`);
+    console.error(`     Install first: ${style.bold('opencues install windows')}`);
+    process.exit(1);
+  }
+  printLaunchBanner(ctx, 'windows', [
+    ['host', 'windows  ' + style.dim('(WSL daemon + Windows UIA shim — type _ in any Windows text field)')],
+    ['command', `oc-windows ${passthrough.join(' ')}`.trim()],
+    ['bin', style.fileLink(ocWindows, ocWindows)],
+  ]);
+  clearScreenForHandoff();
+  const env = { ...process.env, OPENCUES_USER_CWD: process.cwd() };
+  const result = spawnSync(ocWindows, passthrough, { stdio: 'inherit', env });
+  exitFromSpawn(result, 'oc-windows');
 }
 
 function runChrome(ctx) {

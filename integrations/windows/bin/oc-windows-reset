@@ -1,0 +1,165 @@
+#!/usr/bin/env bash
+# oc-windows-reset — tear EVERYTHING down and bring up exactly one clean,
+# verified OpenCues Windows instance.
+#
+# The Windows integration is a singleton by design: one tray process that
+# hosts one in-process UIA shim and spawns one WSL daemon (kept alive by a
+# heartbeat file, so it self-exits if the tray dies). Debug sessions and
+# crashes can leave orphans behind — standalone `-File OpenCuesWindows.ps1`
+# shims, bare `node hostd.cjs` daemons, watchdog loops, stale heartbeat /
+# presence files. Two shims writing the same foreign text field is
+# unwinnable (they fight over the buffer), so "reset" means: kill all of
+# it, then launch ONE the canonical way and PROVE it's a singleton.
+#
+# Usage:
+#   oc-windows-reset            # full reset: teardown + relaunch + verify
+#   oc-windows-reset --down     # teardown only (leave everything stopped)
+#   oc-windows-reset --no-launch # teardown + verify-clean, don't relaunch
+#
+# Run from WSL. Exits 0 only when the post-launch singleton check passes.
+
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+INT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PORT="${OPENCUES_WIN_PORT:-51789}"
+HB="/tmp/oc-win-hb-$PORT"
+REG_DIR="/tmp/opencues-hosts"
+LOG="/tmp/opencues.log"
+
+MODE="reset"
+for a in "$@"; do
+  case "$a" in
+    --down|--down-only)   MODE="down" ;;
+    --no-launch)          MODE="no-launch" ;;
+    -h|--help)
+      echo "oc-windows-reset [--down|--no-launch]"
+      echo "  (no args)    teardown + relaunch the tray + verify singleton"
+      echo "  --down       teardown only, leave stopped"
+      echo "  --no-launch  teardown + verify nothing is running"
+      exit 0 ;;
+  esac
+done
+
+# Locate Windows PowerShell 5.1 (never pwsh — the shim's Add-Type is a
+# .NET Framework/GAC path). Prefer PATH, fall back to the canonical spot.
+PSH_BIN="$(command -v powershell.exe 2>/dev/null || true)"
+[ -z "$PSH_BIN" ] && PSH_BIN="/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
+psh() { "$PSH_BIN" -NoProfile -Command "$1" 2>/dev/null; }
+
+# CIM regex matching every Windows-side OpenCues process we ever launch:
+# the standalone shim, the tray (.ps1), its hidden .vbs launcher, and a
+# spawn-win node.exe daemon.
+WIN_MATCH='OpenCuesWindows\.ps1|OpenCuesTray\.ps1|OpenCuesTray\.vbs|hostd\.cjs'
+
+# NOTE: a CIM `Where CommandLine -match/-like '...OpenCues...'` query MATCHES
+# ITS OWN command line — the query string literally contains the pattern.
+# That self-match cost a long debugging detour (a phantom "respawning shim"
+# that was only ever the counting query seeing itself). Every counter below
+# therefore excludes any process whose cmdline contains 'Get-CimInstance'
+# (i.e. the query itself). Do not remove that guard.
+count_win() {
+  psh "(Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -match '$WIN_MATCH' -and \$_.CommandLine -notmatch 'Get-CimInstance' } | Measure-Object).Count" | tr -d '\r\n '
+}
+kill_win() {
+  psh "Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -match '$WIN_MATCH' -and \$_.CommandLine -notmatch 'Get-CimInstance' } | ForEach-Object { try { Stop-Process -Id \$_.ProcessId -Force -ErrorAction SilentlyContinue } catch {} }" >/dev/null 2>&1
+}
+count_tray() {
+  psh "(Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -match 'OpenCuesTray\.(ps1|vbs)' -and \$_.CommandLine -notmatch 'Get-CimInstance' } | Measure-Object).Count" | tr -d '\r\n '
+}
+# Precise: real node daemons only — never the grep itself or a bash -c wrapper.
+count_daemon() { ps -eo pid,args 2>/dev/null | grep -E 'node .*windows/src/hostd\.cjs' | grep -vc grep ; }
+
+kill_wsl_watchdogs() {
+  # Leftover debug watchdog/monitor bash loops that reference the port,
+  # the daemon, or the shim launch. Never kill this script or its shell.
+  local self=$$ ppid pid c
+  ppid=$(awk '{print $4}' /proc/$$/stat 2>/dev/null)
+  for pid in $(pgrep bash 2>/dev/null); do
+    [ "$pid" = "$self" ] && continue
+    [ "$pid" = "$ppid" ] && continue
+    [ -r "/proc/$pid/cmdline" ] || continue   # raced-away pid
+    c=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null) || continue
+    case "$c" in
+      *"$PORT"*|*hostd.cjs*|*OpenCuesWindows*)
+        # only loops (until/while) or explicit shim/daemon launchers
+        case "$c" in
+          *until*|*while*|*"node "*hostd.cjs*|*OpenCuesWindows.ps1*)
+            kill -9 "$pid" 2>/dev/null && echo "  killed WSL watchdog bash $pid" ;;
+        esac ;;
+    esac
+  done
+}
+
+teardown() {
+  echo "▸ Teardown"
+  # Loop-kill to outpace any respawner still alive; converge to zero.
+  local i winc daec
+  for i in 1 2 3 4 5 6 7 8; do
+    kill_win
+    pkill -9 -f 'windows/src/hostd.cjs' 2>/dev/null || true
+    kill_wsl_watchdogs
+    sleep 0.4
+    winc=$(count_win); daec=$(count_daemon)
+    [ "${winc:-0}" = "0" ] && [ "${daec:-0}" = "0" ] && break
+  done
+  # Stale state files that make a fresh launch misbehave or a dead icon lie.
+  rm -f "$HB" 2>/dev/null || true
+  rm -f "$REG_DIR"/windows-*.json 2>/dev/null || true
+  winc=$(count_win); daec=$(count_daemon)
+  echo "  windows procs: ${winc:-?}   wsl daemons: ${daec:-?}   heartbeat/presence: cleared"
+  if [ "${winc:-0}" != "0" ] || [ "${daec:-0}" != "0" ]; then
+    echo "  ⚠ something is still respawning — run again, or find it:"
+    echo "    powershell.exe \"Get-CimInstance Win32_Process | ? { \\\$_.CommandLine -match '$WIN_MATCH' } | fl ProcessId,CommandLine\""
+    return 1
+  fi
+  echo "  ✓ clean"
+  return 0
+}
+
+verify() {
+  # Poll for a fully-up singleton: port listening, exactly one daemon,
+  # exactly one tray, and the shim's connect handshake in the log.
+  echo "▸ Verify (up to 30s)"
+  local base_lines i port daec trayc handshake
+  base_lines=$(wc -l < "$LOG" 2>/dev/null || echo 0)
+  handshake=0
+  for i in $(seq 1 30); do
+    sleep 1
+    port=$(ss -tln 2>/dev/null | grep -q ":$PORT " && echo up || echo down)
+    daec=$(count_daemon)
+    trayc=$(count_tray)
+    # new log lines since launch containing the shim handshake
+    if tail -n +"$((base_lines + 1))" "$LOG" 2>/dev/null | grep -q 'shim connected to daemon'; then handshake=1; fi
+    if [ "$port" = "up" ] && [ "${daec:-0}" = "1" ] && [ "${trayc:-0}" -ge 1 ] && [ "$handshake" = "1" ]; then
+      echo "  ✓ SINGLETON UP — port $PORT listening · daemon=1 · tray=$trayc · shim handshake seen"
+      # warn (don't fail) on >1 tray; the design is one, but a second
+      # hidden vbs+ps1 pair counts as 2 matches and is worth flagging.
+      [ "${trayc:-0}" -gt 2 ] && echo "  ⚠ tray match count $trayc (>2) — possible duplicate tray, check the systray"
+      return 0
+    fi
+  done
+  echo "  ✗ did not reach a verified singleton in 30s"
+  echo "    port=$port daemon=${daec:-?} tray=${trayc:-?} handshake=$handshake"
+  echo "    logs: tail -f $LOG | grep '\[windows\]'"
+  return 1
+}
+
+teardown || { [ "$MODE" = "reset" ] && exit 1; }
+
+if [ "$MODE" = "down" ]; then
+  echo "▸ Down. (relaunch with: oc-windows  — or oc-windows-reset)"
+  exit 0
+fi
+if [ "$MODE" = "no-launch" ]; then
+  echo "▸ Teardown-only. Nothing relaunched."
+  exit 0
+fi
+
+echo "▸ Launch (canonical: oc-windows → hidden tray → daemon-in-WSL + shim)"
+"$INT_DIR/bin/oc-windows" >/dev/null 2>&1 || {
+  echo "  ✗ oc-windows launch failed. Run it directly to see why: $INT_DIR/bin/oc-windows"
+  exit 1
+}
+
+verify

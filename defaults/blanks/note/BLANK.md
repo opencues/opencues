@@ -19,7 +19,7 @@ blankClearKeywords: true
 # blankScript:/sandbox: needed. Every write goes through the
 # validateNoteWrite chokepoint (entry cap 256, 1024 chars/entry,
 # control-char reject, duplicate idempotency).
-on-host: chrome, claude-code, gemini-cli, opencode, shell
+on-host: chrome, claude-code, gemini-cli, opencode, shell, windows
 # Blank-as-context: OFF — notes are the user's private store; they
 # must never ride ambiently into LLM prompts. Recall is fully local.
 as-context: off

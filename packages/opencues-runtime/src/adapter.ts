@@ -256,12 +256,28 @@ export interface AmbientContext {
   readonly ariaDescription?: string;
   /** input type (text / email / search / url / textarea / contenteditable). */
   readonly inputType?: string;
-  /** document.title. */
+  /** document.title (chrome), or the focused top-level WINDOW TITLE
+   *  (native hosts, e.g. Windows "Documents - File Explorer"). */
   readonly pageTitle?: string;
   /** location.origin + location.pathname — query + fragment stripped. */
   readonly pageUrl?: string;
   /** `<meta name="description">` content. */
   readonly pageDescription?: string;
+  /**
+   * The APP the user is typing in — the native equivalent of chrome's
+   * page/site. Populated by system-wide hosts that attach across many
+   * apps (Windows: the focused foreground process name, e.g.
+   * `explorer.exe`, `notepad.exe`). Undefined on chrome (the page URL
+   * plays this role there) and on single-surface hosts (CC/OC/gemini).
+   *
+   * Used to STEER OUTPUT FORMAT: a `_` lookup in File Explorer's search
+   * box should be shaped as a filesystem path / file-search query, not a
+   * prose answer. Like every ambient field it is UNTRUSTED and sanitized
+   * before it touches a prompt; it is the app the user is already looking
+   * at, never OS/env/cwd data (see the single-field, no-system-data
+   * invariant in docs/architecture/ambient-context.md).
+   */
+  readonly app?: string;
 }
 
 export type Unsubscribe = () => void;
@@ -469,6 +485,21 @@ export interface HostAdapter {
    * Dynamic — re-evaluated per current target, like supportsCycling.
    */
   getAnswerReplacesQuery?(): boolean;
+
+  /**
+   * Optional — when true, LLM-emitted markdown markers (`**bold**`,
+   * `*italic*`, …) are written to the buffer VERBATIM instead of the
+   * default strip-then-render-natively pipeline (markdown-substitute /
+   * MarkdownRender). For hosts with no styling surface whose current
+   * target is a markdown-native composer (Discord renders `**bold**`
+   * at send), stripping would silently destroy the user's requested
+   * styling with nowhere to re-render it.
+   *
+   * Dynamic — re-evaluated per substitution, like supportsCycling
+   * (the windows host varies it by the focused app). Hosts that omit
+   * the method keep the strip+render path unchanged.
+   */
+  markdownPassthrough?(): boolean;
 
   getText(): string;
   getCursorOffset(): number;

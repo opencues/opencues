@@ -149,7 +149,7 @@ describe('formatHostList', () => {
   });
 
   it('native hosts → comma-separated alphabetical', () => {
-    assert.strictEqual(formatHostList(SORTED_NATIVE), 'apple-notes, claude-code, gemini-cli, mac, opencode, shell');
+    assert.strictEqual(formatHostList(SORTED_NATIVE), 'apple-notes, claude-code, gemini-cli, mac, opencode, shell, windows');
   });
 
   it('single host → just the name', () => {

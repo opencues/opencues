@@ -23,7 +23,7 @@ blankClearOnEdit: true
 # blankScript: / sandbox: is needed. Every write still goes through
 # validateSentinelWrite (the chokepoint enforces key shape, value cap,
 # token collision, capacity — see security-audit.md row #24).
-on-host: chrome, claude-code, gemini-cli, opencode, shell
+on-host: chrome, claude-code, gemini-cli, opencode, shell, windows
 # Blank-as-context: deliberately OFF. SentinelBlank is the WRITE
 # surface for ~/.cues/IDENTITY.md — identity-context is a separate
 # READ surface served by IDENTITY.md frontmatter directly. Surfacing

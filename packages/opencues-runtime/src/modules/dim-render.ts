@@ -136,6 +136,17 @@ export class DimRender {
       ? this.dynDefs.findSpanContaining(activeIndex, words)
       : null;
     if (hasDimCap && this.configLoader) {
+      // No-cycling profile (universal-integration.md): a cueMap dim IS
+      // the offer that the word can be cycled — on a field whose adapter
+      // reports supportsCycling() === false that offer is false
+      // advertising, so cueMap-derived dims are suppressed. This is the
+      // same path-2 class the doc records for BlankFill: the source-build
+      // prune never covered the cueMap/tips path, which the windows
+      // per-field profile made visible (phase-2 wire e2e journey D).
+      // Consulted per render pass — supportsCycling is DYNAMIC on hosts
+      // with per-field capability (windows). DynDef-derived dims
+      // (substitution spans) are unaffected.
+      const cyclingOff = this.adapter.supportsCycling?.() === false;
       const navigable = this.configLoader.navigableWords;
       const seenStaticAltSpans = new Set<number>();
       for (const w of words) {
@@ -201,7 +212,7 @@ export class DimRender {
         // DynDefs entries (LLM-resolved alts) also count as
         // navigable, so they should dim too.
         if (
-          navigable.has(lc) ||
+          (!cyclingOff && navigable.has(lc)) ||
           defAtIdx
         ) {
           // Blank-keyword arm: a word that is ONLY a blank keyword

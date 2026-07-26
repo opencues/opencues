@@ -282,6 +282,10 @@ export interface AmbientContext {
   readonly pageTitle?: string;
   readonly pageUrl?: string;
   readonly pageDescription?: string;
+  /** The app the user is typing in (native equivalent of a site) —
+   *  e.g. `explorer.exe`. Steers output FORMAT. See the runtime
+   *  AmbientContext for the full contract. */
+  readonly app?: string;
 }
 
 /**

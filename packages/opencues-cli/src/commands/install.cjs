@@ -28,7 +28,7 @@ function loadHostResolver(ctx) {
   } catch {
     // Pre-build fallback — keep CLI usable.
     return {
-      HOSTS: ['apple-notes', 'chrome', 'claude-code', 'gemini-cli', 'mac', 'opencode', 'shell'],
+      HOSTS: ['apple-notes', 'chrome', 'claude-code', 'gemini-cli', 'mac', 'opencode', 'shell', 'windows'],
       resolve: (name) => {
         const map = {
           'apple-notes': 'apple-notes', 'applenotes': 'apple-notes',
@@ -41,6 +41,7 @@ function loadHostResolver(ctx) {
           'gemini-cli': 'gemini-cli', 'geminicli': 'gemini-cli',
           'gemini': 'gemini-cli',
           'shell': 'shell', 'term': 'shell', 'oc-edit': 'shell',
+          'windows': 'windows', 'win': 'windows', 'oc-windows': 'windows',
         };
         return map[name?.toLowerCase?.()] ?? null;
       },

@@ -1,0 +1,59 @@
+<!--
+  OpenCues tray — the compiled product shell (WinForms + WebView2).
+
+  Build (needs the .NET SDK; the WebView2 + Windows Desktop bits restore
+  from NuGet automatically):
+      dotnet build -c Release OpenCuesTray.csproj
+  Output: bin/Release/net8.0-windows/OpenCuesTray.exe  (windowless)
+
+  Ships the UIA shim (OpenCuesWindows.cs) + MiniJson in the same assembly.
+  The user launches OpenCuesTray.exe; Settings opens an embedded WebView2
+  window pointed at the daemon's config URL (the shared chrome popup).
+
+  For a no-SDK path use OpenCuesTray.ps1 instead (Settings → browser tab).
+
+  net8.0-windows is used (not net48) because the WebView2 WinForms
+  package + a clean SDK build are simplest there. The shim source stays
+  net48-compatible so OpenCuesWindows.csproj (the standalone shim exe)
+  and Add-Type both keep working.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- Exposes the WindowsDesktop UIAutomation + Accessibility reference
+         assemblies (System.Windows.Automation + MSAA/IA2 IAccessible) that
+         the shim's UIA + Chromium/Electron read paths compile against. -->
+    <UseWPF>true</UseWPF>
+    <AssemblyName>OpenCuesTray</AssemblyName>
+    <RootNamespace>OpenCues</RootNamespace>
+    <Nullable>disable</Nullable>
+    <!-- WinExe → no console window on launch. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="OpenCuesWindows.cs" />
+    <Compile Include="TrayProgram.cs" />
+    <!-- Program.cs (standalone shim entry) is EXCLUDED - this app has its
+         own [STAThread] Main in TrayProgram.cs. -->
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Brand icon shipped next to the exe (loaded by BrandIcon()) + the
+         exe's own icon. -->
+    <Content Include="opencues.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <PropertyGroup>
+    <ApplicationIcon>opencues.ico</ApplicationIcon>
+  </PropertyGroup>
+
+</Project>

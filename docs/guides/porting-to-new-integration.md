@@ -184,6 +184,22 @@ This avoids 200-500ms delays on every keystroke. The WordDef persists, keyed by 
 
 ## Pitfalls and edge cases
 
+### `on-host:` allowlists silently exclude your new host
+
+Some shipped configs declare an explicit host allowlist instead of the
+default-attempt model — today the sentinel / note / opencues blanks
+(`on-host: chrome, claude-code, gemini-cli, opencode, shell, windows`)
+and the per-host tips packs. Folder discovery drops any config whose
+allowlist doesn't name the running host, **with only a debug-level
+trace** — so on a new host the blank's keyword silently falls through
+to fluid-blank/transform-blank and the symptom looks like a routing or
+LLM bug, nowhere near the real cause. When adding a host:
+`grep -rn "on-host" defaults/` and add your host name to every
+allowlist whose dependencies your band actually wires (the three
+blanks above need `identityMdIO` / `notesMdIO` / `opencuesMdIO`).
+This bit the windows host in 2026-07 (sentinel/note dead for a full
+suite run; misdiagnosed as a no-cycling-profile defect).
+
 ### Parser format sensitivity
 
 Each blank mode has a `parser` type. The parser expects a specific LLM response format:

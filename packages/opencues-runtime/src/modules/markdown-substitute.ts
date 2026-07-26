@@ -81,6 +81,32 @@ export function applyMarkdownAwareSplice(
   rewriteText: string,
   opts: SubstituteOptions = {},
 ): SubstituteResult {
+  // Markdown pass-through: the host says the CURRENT target renders
+  // markers itself (Discord shows **bold** styled at send) and has no
+  // styling surface of its own — stripping would silently destroy the
+  // styling with nowhere to re-render it. Write the rewrite verbatim;
+  // no markdown.styled event fires (there is no receiver to paint it).
+  // Hosts without the hook — every in-process host — take the
+  // strip+render path below byte-identically.
+  if (adapter.markdownPassthrough?.()) {
+    const rawText = currentText.slice(0, start) + rewriteText + currentText.slice(end);
+    const rawCursor = Math.min(Math.max(0, opts.cursor ?? (start + rewriteText.length)), rawText.length);
+    if (adapter.pushText) {
+      adapter.pushText(rawText, rawCursor);
+    } else {
+      adapter.setText(rawText);
+      adapter.setCursorOffset(rawCursor);
+      adapter.forceRender();
+    }
+    return {
+      newText: rawText,
+      newCursor: rawCursor,
+      stripped: rewriteText,
+      hadMarkdown: false,
+      payload: { text: rawText, bold: [], italic: [], code: [], strike: [], heading: [], list: [] },
+    };
+  }
+
   const result = stripMarkdown(rewriteText, { suppressRanges: opts.suppressRanges });
   const newText = currentText.slice(0, start) + result.stripped + currentText.slice(end);
 
