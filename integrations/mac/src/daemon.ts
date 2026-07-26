@@ -122,6 +122,10 @@ export async function main(): Promise<void> {
     // …and in a query box that narrow, the answer REPLACES the typed
     // question rather than trailing after it — see replaceQueryForBundle.
     getAnswerReplacesQuery: () => core.getAnswerReplacesQuery(),
+    // Names the focused app so fluid-blank can shape the answer as valid
+    // input for THAT app (Finder search box → `*.pdf`). Inert until
+    // `ambient-context-mode: on` — the resolver doesn't ask otherwise.
+    getAmbientContext: () => core.getAmbientContext(),
     readFile: async (p: string) => {
       try { return await fs.readFile(p, 'utf8'); } catch { return null; }
     },

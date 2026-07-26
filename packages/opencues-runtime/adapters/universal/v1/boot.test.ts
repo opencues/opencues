@@ -146,6 +146,30 @@ describe('universal v1 boot()', () => {
     }).getAnswerCharBudget()).toBe(null);
   });
 
+  it('adapter passes getAnswerReplacesQuery through; false when absent or throwing', () => {
+    expect(new UniversalV1Adapter(minimalBindings).getAnswerReplacesQuery()).toBe(false);
+    expect(new UniversalV1Adapter({
+      ...minimalBindings, getAnswerReplacesQuery: () => true,
+    }).getAnswerReplacesQuery()).toBe(true);
+    // A wipe is unrecoverable on a no-cycling host, so a throwing binding
+    // MUST fall back to plain FILL rather than propagate.
+    expect(new UniversalV1Adapter({
+      ...minimalBindings, getAnswerReplacesQuery: () => { throw new Error('boom'); },
+    }).getAnswerReplacesQuery()).toBe(false);
+  });
+
+  it('adapter passes getAmbientContext through; null when absent or throwing', () => {
+    // apple-notes omits the binding entirely — a note is a document, not a
+    // field with a format — so the band must report null, not undefined.
+    expect(new UniversalV1Adapter(minimalBindings).getAmbientContext()).toBe(null);
+    expect(new UniversalV1Adapter({
+      ...minimalBindings, getAmbientContext: () => ({ app: 'Finder' }),
+    }).getAmbientContext()).toEqual({ app: 'Finder' });
+    expect(new UniversalV1Adapter({
+      ...minimalBindings, getAmbientContext: () => { throw new Error('boom'); },
+    }).getAmbientContext()).toBe(null);
+  });
+
   it('adapter onKey/onCursorChange/onRender return unsubscribes', () => {
     const adapter = new UniversalV1Adapter(minimalBindings);
     expect(() => {

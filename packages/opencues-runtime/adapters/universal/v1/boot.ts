@@ -52,6 +52,10 @@ export interface HostInfo extends CommonHostInfo {
    *  replaces the typed question — see HostAdapter.getAnswerReplacesQuery
    *  (mac: Spotlight → true). */
   getAnswerReplacesQuery?(): boolean;
+  /** Focused-field description for fluid-blank disambiguation + app-aware
+   *  output steering (mac: `{ app }` from the focused element's owning
+   *  application). Gated by `ambient-context-mode`; inert while off. */
+  getAmbientContext?(): import('../../../src/adapter').AmbientContext | null;
 }
 
 export interface BootResult {
@@ -115,6 +119,7 @@ export function boot(host: HostInfo): BootResult {
     pushText: host.pushText,
     getAnswerCharBudget: host.getAnswerCharBudget,
     getAnswerReplacesQuery: host.getAnswerReplacesQuery,
+    getAmbientContext: host.getAmbientContext,
     log,
     emitEvent: (type, body) => moduleEvents.emit(
       { type, body },

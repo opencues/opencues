@@ -29,6 +29,7 @@ import type {
   DirEntry,
   LogLevel,
   Capability,
+  AmbientContext,
 } from '../../../src/adapter';
 import { HOST_ADAPTER_INTERFACE_VERSION } from '../../../src/adapter';
 
@@ -75,6 +76,22 @@ export interface UniversalBindings {
    * HostAdapter.getAnswerReplacesQuery.
    */
   getAnswerReplacesQuery?(): boolean;
+  /**
+   * Sanitized description of the focused field, for fluid-blank
+   * disambiguation + master's app-aware output steering (an `app` value
+   * makes the prompt shape the answer as valid input for THAT app — a
+   * Finder search box turns "my tax pdfs" into `*.pdf`). The mac daemon
+   * supplies `{ app }` from the focused element's owning application;
+   * apple-notes omits the binding (a note is a document, not a field
+   * with a format).
+   *
+   * Gated upstream by `ambient-context-mode` — the resolver doesn't call
+   * this at all while the scalar is off, so the binding is inert until
+   * the user opts in. See HostAdapter.getAmbientContext for the full
+   * security contract (every field is UNTRUSTED and sanitized before it
+   * reaches a prompt).
+   */
+  getAmbientContext?(): AmbientContext | null;
   log?(level: LogLevel, msg: string, data?: unknown): void;
   emitEvent?(type: string, body?: Record<string, unknown>): void;
   registerEventHandler?(cb: (type: string, body?: Record<string, unknown>) => void): Unsubscribe;
@@ -117,6 +134,11 @@ export class UniversalV1Adapter implements HostAdapter {
   // binding that throws (or omits this) must fall back to plain FILL.
   getAnswerReplacesQuery(): boolean {
     try { return this.bindings.getAnswerReplacesQuery?.() === true; } catch { return false; }
+  }
+  // Mirrors the windows band: null on omit/throw, so a host that can't
+  // name its focused app degrades to app-blind answers.
+  getAmbientContext(): AmbientContext | null {
+    try { return this.bindings.getAmbientContext?.() ?? null; } catch { return null; }
   }
   // Background whole-note rewrites over a polled CAS channel are too
   // risky for v1 — a merge landing between polls would fight the user.

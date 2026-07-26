@@ -255,6 +255,26 @@ describe('answer-replaces-query accessor', () => {
     expect(off.core.getAnswerReplacesQuery()).toBe(false);
   });
 
+  it('names the focused app for master\'s app-aware output steering', () => {
+    const h = makeHarness();
+    expect(h.core.getAmbientContext()).toBeNull(); // nothing focused yet
+    h.core.handleEvent(focusSpotlight('my tax pdfs _', 13));
+    expect(h.core.getAmbientContext()).toEqual({ app: 'Spotlight' });
+    h.core.handleEvent(focusTextEdit('a draft', 7));
+    expect(h.core.getAmbientContext()).toEqual({ app: 'TextEdit' });
+    // Blur → no field → app-blind answers, never a stale app name.
+    h.core.handleEvent({ type: 'blur' });
+    expect(h.core.getAmbientContext()).toBeNull();
+  });
+
+  it('reports no ambient context when the bridge sends no app name', () => {
+    const h = makeHarness();
+    // The bridge's own fallback for an unnamed owner is '?' — that is not
+    // an app the steering can shape output for.
+    h.core.handleEvent({ type: 'focus', app: '?', bundle: 'com.example.thing', role: 'AXTextField', value: '', cursor: 0 });
+    expect(h.core.getAmbientContext()).toBeNull();
+  });
+
   it('a denied bundle never reports a focused field at all', () => {
     const h = makeHarness({ deny: ['com.apple.Spotlight'] });
     h.core.handleEvent(focusSpotlight('q _', 3));

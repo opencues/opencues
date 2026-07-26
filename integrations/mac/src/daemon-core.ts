@@ -88,6 +88,24 @@ export class DaemonCore {
       : false;
   }
 
+  /**
+   * Focused-field description for fluid-blank. We can name the owning
+   * APPLICATION (the AX channel gives it on every focus event), which is
+   * exactly what master's app-aware output steering consumes: with
+   * `app: 'Finder'` a request for "my tax pdfs" answers `*.pdf` — a valid
+   * file-search token — instead of prose. No label/placeholder: AX exposes
+   * them inconsistently across toolkits and the steering only needs the app.
+   *
+   * Returns null with nothing focused. Gated upstream by
+   * `ambient-context-mode`, so this is never called while that scalar is
+   * off — and the app name is sanitized by the core renderer before it
+   * reaches a prompt (it rides inside the UNTRUSTED block).
+   */
+  getAmbientContext(): { app: string } | null {
+    const app = this.focused?.app;
+    return app && app !== '?' ? { app } : null;
+  }
+
   /** Runtime → element. One contiguous AX replace per text change;
    *  optimistic local update (the bridge serializes the ~1ms write on
    *  the app's main runloop; the runtime must read back its own bytes

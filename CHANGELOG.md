@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — app-aware `_` output steering reaches the mac host (`@opencues/runtime` 0.29.0 → 0.30.0, `@opencues/mac` 0.5.0 → 0.6.0)
+
+Master's app-steering (a host names the focused application; fluid-blank then shapes the answer into valid input for *that* app) shipped wired for the windows band only — `getAmbientContext` existed on `adapters/windows/v1` and nowhere else, so merging master gave the mac host the prompt machinery with no way to feed it. The mac daemon already knows the owning application on every AX focus event, so this wires that through: `DaemonCore.getAmbientContext()` → `UniversalBindings.getAmbientContext` → the band adapter → `CueContext.ambient.app`.
+
+Verified live through the real `boot()` with the installed bundle: with `app: 'Finder'`, `my tax pdfs _` answers `*.pdf` and `the downloads folder _` answers `Downloads` (log: `FluidBlank: ambient: injected (871 chars; app="Finder")`); with no app supplied the answer stays app-blind.
+
+Gated by `ambient-context-mode`, which is **off by default** — the resolver never calls the host while it's off, so this is inert until the user opts in. apple-notes shares the band and deliberately omits the binding (a note is a document, not a field with a format), so it reports null. The band's accessor mirrors windows': null on omit or throw. New tests: two `daemon-core.test.ts` cases (named app per focus, `'?'` → null, null after blur) and two `boot.test.ts` cases (pass-through, and the throw/absent fallbacks for both this and `getAnswerReplacesQuery`).
+
 ### Fixed — journey contradiction cue (Tier 5c) was structurally silent on every short hop (`@opencues/core` 0.37.0 → 0.38.0)
 
 `i'm in east finchley i'll be in muswell hill in 3 minutes` never flagged, while `finchley → chelsea in 10 mins` did. Nothing was broken upstream of the verifier: the LLM extracted the claim correctly (`{"origin":"east finchley","destination":"muswell hill","statedMinutes":3,"mode":"drive","quote":"in 3 minutes"}`), both endpoints geocoded, and the estimate came back at 5 minutes for the home-biased 1.56 km. `verifyJourneyClaim` then discarded it on the second half of its gross-underestimate gate: `est - stated < 10` → 5 − 3 = 2 < 10.
