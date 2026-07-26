@@ -543,6 +543,11 @@ describe('verifyJourneyClaim (Tier 5c, async geocode)', () => {
     'a place': { latitude: 51.50, longitude: -0.10 },
     'b place': { latitude: 51.50, longitude: -0.02 },
     'c place': { latitude: 51.50, longitude: -0.087 },
+    // ~1.63km east of 'a place' — the east-finchley → muswell-hill geometry.
+    'd place': { latitude: 51.50, longitude: -0.0765 },
+    // ~1.45km east — the SAME pair as the home-biased geocode resolves it
+    // (5-minute drive estimate, a 2-minute gap against a stated 3).
+    'e place': { latitude: 51.50, longitude: -0.07907 },
   };
   const fetchImpl = async (url: string) => {
     // Photon: ?q=<name> → GeoJSON features with [lon, lat] coordinates.
@@ -559,6 +564,56 @@ describe('verifyJourneyClaim (Tier 5c, async geocode)', () => {
       'its a 5 minute walk from A place to B place', fetchImpl);
     assert.ok(v);
     assert.match(v.tip, /minute walk, not 5/);
+  });
+
+  // The short-hop regression: a flat 10-minute gap floor made every urban hop
+  // unflaggable. Real case (2026-07-26): "i'm in east finchley i'll be in
+  // muswell hill in 3 minutes" — parsed correctly as a 1.63km drive claim,
+  // estimated at 6 minutes, then discarded because 6 - 3 = 3 < 10. `D place`
+  // sits ~1.63km from `A place` to reproduce that geometry exactly.
+  it('flags a SHORT hop that is grossly out (~1.6km drive stated 3 min)', async () => {
+    beforeEachClear();
+    const v = await verifyJourneyClaim(
+      { type: 'journey_underestimate', origin: 'A place', destination: 'D place', statedMinutes: 3, mode: 'drive', quote: 'in 3 minutes' },
+      "i'm at A place, i'll be at D place in 3 minutes", fetchImpl);
+    assert.ok(v, 'a 2x-out short hop must flag — the old flat 10-min floor hid it');
+    assert.match(v.tip, /minute drive, not 3/);
+  });
+
+  // The same claim as above, but with the distance the HOME-BIASED geocode
+  // actually returns (the source biases photon by host timezone, so
+  // east-finchley → muswell-hill lands at 1.56km / 5 min, not 1.63km / 6 min).
+  // This is the case that must flag for the reported sentence to work.
+  it('flags the home-biased short hop (5-min drive stated 3, gap of 2)', async () => {
+    beforeEachClear();
+    const v = await verifyJourneyClaim(
+      { type: 'journey_underestimate', origin: 'A place', destination: 'E place', statedMinutes: 3, mode: 'drive', quote: 'in 3 minutes' },
+      "i'm at A place, i'll be at E place in 3 minutes", fetchImpl);
+    assert.ok(v, 'the reported east-finchley → muswell-hill geometry must flag');
+    assert.match(v.tip, /5-minute drive, not 3/);
+  });
+
+  // The ratio gate — not the floor — is what protects small numbers.
+  it('is SILENT when a short hop is only slightly out (4-min drive stated 3)', async () => {
+    beforeEachClear();
+    const v = await verifyJourneyClaim(
+      { type: 'journey_underestimate', origin: 'A place', destination: 'C place', statedMinutes: 3, mode: 'drive', quote: 'in 3 minutes' },
+      "i'm at A place, i'll be at C place in 3 minutes", fetchImpl);
+    assert.equal(v, null, '0.9km ≈ 3-min drive vs stated 3 is a tight call, not a contradiction');
+  });
+
+  it('is SILENT on a long journey inside the scaled floor (stated 60, est ~65)', async () => {
+    beforeEachClear();
+    // 26km drive ≈ 91 min, so pick a stated value the ratio gate lets through
+    // and let the scaled floor (max(3, stated/2)) do the suppressing: stated 60
+    // needs a 30-min gap. Uses B place (~5.5km → 19-min drive) with stated 12:
+    // ratio 19/12 = 1.58 < 1.6 already silences; the floor is belt-and-braces
+    // for the near-miss band, pinned here so a future ratio tweak can't make
+    // small absolute gaps noisy.
+    const v = await verifyJourneyClaim(
+      { type: 'journey_underestimate', origin: 'A place', destination: 'B place', statedMinutes: 12, mode: 'drive', quote: 'in 12 minutes' },
+      "i'm at A place, i'll be at B place in 12 minutes", fetchImpl);
+    assert.equal(v, null);
   });
 
   it('is SILENT when the stated time is reasonable (~0.9km walk stated 10 min)', async () => {

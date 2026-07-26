@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — journey contradiction cue (Tier 5c) was structurally silent on every short hop (`@opencues/core` 0.37.0 → 0.38.0)
+
+`i'm in east finchley i'll be in muswell hill in 3 minutes` never flagged, while `finchley → chelsea in 10 mins` did. Nothing was broken upstream of the verifier: the LLM extracted the claim correctly (`{"origin":"east finchley","destination":"muswell hill","statedMinutes":3,"mode":"drive","quote":"in 3 minutes"}`), both endpoints geocoded, and the estimate came back at 5 minutes for the home-biased 1.56 km. `verifyJourneyClaim` then discarded it on the second half of its gross-underestimate gate: `est - stated < 10` → 5 − 3 = 2 < 10.
+
+That flat 10-minute floor made **any journey whose real estimate is under stated+10 unflaggable** — i.e. every urban hop, which is precisely when "3 minutes" gets typed. A claim could be 2× out and still be silenced.
+
+The floor now scales: `max(2 min, stated × 0.5)`. The 1.6× ratio gate is unchanged and remains the primary quality bar — it's what keeps small numbers honest (stated 3 still needs a ≥5-minute reality, so a 4-minute drive stays silent), while the floor now only suppresses trivia and long-journey rounding (stated 60 vs est 65 is silenced by the ratio gate; stated 30 vs est 50 flags).
+
+Verified live end-to-end against the real `~/.cues` config, real cerebras, and the real photon geocode — the reported sentence now emits `⚠ that's about a 5-minute drive, not 3` and evicts the priority-85 formaliser on the overlapping span; the `finchley → chelsea` baseline (`⚠ 21-minute drive, not 10`) and the true-statement control are unchanged. Four new `checks.test.ts` cases pin both the unbiased (1.63 km / 6 min) and home-biased (1.56 km / 5 min) geometries of the reported pair, the tight-call silence (0.9 km vs stated 3), and the long-journey silence. Note the mode is the LLM's guess when the sentence states none, and it guesses the most forgiving one ("drive"); the same distance as a stated walk estimates at 26 minutes and flags loudly.
+
+Unrelated but confirmed in the same pass: `contradiction-cues-mode` is absent from any `~/.cues/OPENCUES.md` created before the feature shipped (it is off by default, and `seed-configs`' self-heal only backfills the two flipped-default scalars), so upgrading users have no key to flip and no sign the feature exists. Adding it to that self-heal list is a candidate follow-up.
+
 ### Added — Spotlight: the answer REPLACES the typed question (`@opencues/core` 0.36.0 → 0.37.0, `@opencues/runtime` 0.27.0 → 0.28.0, `@opencues/mac` 0.4.0 → 0.5.0)
 
 Spotlight's search field shows ~37 characters, so the default fill behaviour pushed answers out of view: `capital of france _` became `capital of france Paris`, with `Paris` off the visible end. The mac host now declares that field's content **disposable** and the answer replaces the whole query — `capital of france _` → `Paris`. Spotlight only; every other app on the mac host, and every other host, keeps the non-destructive fill.

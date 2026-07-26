@@ -455,7 +455,8 @@ export function verifyClaim(claim: Claim, sentence: string, now: Date, ctx?: Ver
 
 /** Async verifier for Tier 5c journey claims (per-query: geocodes both endpoints
  *  + estimates the real time). Fires ONLY on gross underestimation — real is at
- *  least 1.6× the stated time AND at least 10 min over — never a tight call. */
+ *  least 1.6× the stated time AND clear of the absolute gap floor below — never
+ *  a tight call. */
 /** Plausible upper bound (km) per mode — beyond this the two names almost
  *  certainly geocoded to different cities/countries (ambiguity), not a real
  *  local journey, so we bail rather than emit a nonsense "90000-minute walk". */
@@ -465,6 +466,41 @@ const MODE_MAX_KM: Record<JourneyMode, number> = { walk: 20, cycle: 60, drive: 3
  *  origin/destination is short (a city / area / station / landmark); anything
  *  longer is a hallucination or a prompt-injection payload, not a place. */
 const GEOCODE_NAME_MAX = 80;
+
+/**
+ * How far over the stated time the real estimate must be before we flag.
+ * SCALES with the claim, because a fixed floor silences exactly the case
+ * people write most often.
+ *
+ * The floor used to be a flat 10 minutes, which made every SHORT hop
+ * structurally unflaggable: "i'm in east finchley i'll be in muswell hill
+ * in 3 minutes" parses correctly (1.63 km, ~6-minute drive) and was then
+ * discarded because 6 − 3 = 3 < 10 — even though the claim is 2× out.
+ * Any journey whose true estimate is under stated+10 fell in that hole,
+ * i.e. every urban hop, which is when "3 minutes" gets typed at all.
+ *
+ * Now: max(2 min, half the stated time). The 1.6× ratio gate above stays
+ * the primary quality bar — it is what keeps this honest at small numbers
+ * (stated 3 still needs a ≥5-minute reality) — and the floor only
+ * suppresses trivia and long-journey rounding. Worked examples, using the
+ * geocode the source actually produces (home-biased by host timezone):
+ *   stated 3,  est 5  (drive, 1.56km) → floor 2  → FLAGS (1.7× out)
+ *   stated 10, est 21 (drive, 6.0km)  → floor 5  → FLAGS (2.1× out)
+ *   stated 3,  est 4  (drive, 1.1km)  → ratio gate silences it (4 < 4.8)
+ *   stated 60, est 65 (drive, 26km)   → ratio gate silences it
+ *   stated 30, est 50 (drive, 20km)   → floor 15 → FLAGS (1.7× out)
+ *
+ * Note the mode comes from the LLM's claim, and a sentence that states no
+ * mode ("i'll be in muswell hill in 3 minutes") gets a guess — usually
+ * "drive", the most forgiving. A walk claim over the same 1.56km estimates
+ * at 26 minutes and flags loudly. That asymmetry is deliberate: guessing
+ * the fastest plausible mode means we only flag what is wrong even under
+ * the writer's best case.
+ */
+const MIN_GAP_MINUTES = 2;
+function journeyGapFloor(statedMinutes: number): number {
+  return Math.max(MIN_GAP_MINUTES, statedMinutes * 0.5);
+}
 
 /** A place name is only geocodable if it is short AND literally present in the
  *  sentence — the same grounding discipline every other claim value obeys
@@ -506,7 +542,10 @@ export async function verifyJourneyClaim(
   const km = haversineKm(a, b);
   if (km > MODE_MAX_KM[mode]) return null;   // implausibly far → geocode ambiguity, bail
   const est = estimateJourneyMinutes(km, mode);
-  if (est < claim.statedMinutes * 1.6 || est - claim.statedMinutes < 10) return null;   // not a gross underestimate
+  // Not a gross underestimate: too close in relative terms, or inside the
+  // scaled absolute floor (see journeyGapFloor — a flat 10 min used to hide
+  // every short urban hop).
+  if (est < claim.statedMinutes * 1.6 || est - claim.statedMinutes < journeyGapFloor(claim.statedMinutes)) return null;
   return {
     quote: claim.quote,
     tip: `that's about a ${est}-minute ${mode}, not ${claim.statedMinutes}`,
