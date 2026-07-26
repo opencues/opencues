@@ -285,7 +285,25 @@ export function boot(host: HostInfo): BootResult {
     cwd: host.cwd,
     getText: host.getText,
     getCursorOffset: host.getCursorOffset,
-    setText: host.setText,
+    // Wrap setText so a runtime write keeps `lastSeenText` (the
+    // `previousText` baseline handed to the resolver's explicit-`_` gate)
+    // current. On non-cycling normal <input>/<textarea> fields the write
+    // path (`writeNormalInputValue`) dispatches an isTrusted=false input
+    // event that content.ts drops for security, and `runtimeRender()`
+    // early-returns for normal inputs — so NEITHER path that normally
+    // refreshes `lastSeenText` fires after a fill. Left unwrapped,
+    // `lastSeenText` freezes at the pre-fill value (the first `_`), so the
+    // NEXT `_` is gated against a stale prior buffer: `blankJustTyped`
+    // (endsWith `_` AND prev didn't) and the count-diff fallback both read
+    // false, and the `_` is silently dropped with no log — the
+    // "only the first `_` is accepted" stacked-blank regression. Updating
+    // the baseline here (a pure var write, no event emit → no re-entrancy)
+    // makes previousText correct for every host write path, cycling or not.
+    setText: (text: string) => {
+      host.setText(text);
+      lastSeenText = text;
+      lastSeenCursor = text.length;
+    },
     setCursorOffset: host.setCursorOffset,
     forceRender: host.forceRender,
     registerKeyHandler: cb => keyEvents.subscribe(cb),
