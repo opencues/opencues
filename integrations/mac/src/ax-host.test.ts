@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { WriteRing, charBudgetForBundle, countMarkers, freshMarkerAtCursor, shouldDropDuplicateChange, utf16Diff } from './ax-host';
+import { WriteRing, charBudgetForBundle, countMarkers, freshMarkerAtCursor, replaceQueryForBundle, shouldDropDuplicateChange, utf16Diff } from './ax-host';
 
 describe('utf16Diff', () => {
   it('null on identical', () => {
@@ -77,6 +77,29 @@ describe('charBudgetForBundle', () => {
   });
   it('malformed env entries are ignored', () => {
     expect(charBudgetForBundle('com.apple.Spotlight', 'garbage,=5,x=,com.apple.Spotlight=abc')).toBe(37);
+  });
+});
+
+describe('replaceQueryForBundle', () => {
+  it('Spotlight only by default — a real document keeps FILL', () => {
+    expect(replaceQueryForBundle('com.apple.Spotlight')).toBe(true);
+    expect(replaceQueryForBundle('com.apple.TextEdit')).toBe(false);
+    expect(replaceQueryForBundle('com.raycast.macos')).toBe(false);
+    expect(replaceQueryForBundle('')).toBe(false);
+  });
+  it('env is a whitelist that REPLACES the default set', () => {
+    expect(replaceQueryForBundle('com.raycast.macos', 'com.raycast.macos')).toBe(true);
+    // Spotlight is no longer listed → back to FILL there.
+    expect(replaceQueryForBundle('com.apple.Spotlight', 'com.raycast.macos')).toBe(false);
+    expect(replaceQueryForBundle('com.apple.Spotlight', 'com.raycast.macos, com.apple.Spotlight')).toBe(true);
+  });
+  it('"off" disables the feature entirely', () => {
+    expect(replaceQueryForBundle('com.apple.Spotlight', 'off')).toBe(false);
+    expect(replaceQueryForBundle('com.apple.Spotlight', 'OFF')).toBe(false);
+  });
+  it('empty / whitespace env falls back to the default set', () => {
+    expect(replaceQueryForBundle('com.apple.Spotlight', '')).toBe(true);
+    expect(replaceQueryForBundle('com.apple.Spotlight', '   ')).toBe(true);
   });
 });
 

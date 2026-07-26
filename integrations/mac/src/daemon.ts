@@ -100,6 +100,7 @@ export async function main(): Promise<void> {
     log,
     deniedBundles,
     charBudgetEnv: () => process.env['OPENCUES_AX_CHAR_BUDGET'],
+    replaceQueryEnv: () => process.env['OPENCUES_AX_REPLACE_QUERY'],
     onUntrusted: () => process.exit(1),
   });
 
@@ -118,6 +119,9 @@ export async function main(): Promise<void> {
     // Narrow fields (Spotlight ~37 visible chars) get a soft "keep it
     // short" instruction in the LLM prompt — see charBudgetForBundle.
     getAnswerCharBudget: () => core.getAnswerCharBudget(),
+    // …and in a query box that narrow, the answer REPLACES the typed
+    // question rather than trailing after it — see replaceQueryForBundle.
+    getAnswerReplacesQuery: () => core.getAnswerReplacesQuery(),
     readFile: async (p: string) => {
       try { return await fs.readFile(p, 'utf8'); } catch { return null; }
     },

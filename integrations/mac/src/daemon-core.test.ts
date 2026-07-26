@@ -34,7 +34,7 @@ interface Harness {
   untrusted: number;
 }
 
-function makeHarness(opts: { deny?: string[]; charBudgetEnv?: string } = {}): Harness {
+function makeHarness(opts: { deny?: string[]; charBudgetEnv?: string; replaceQueryEnv?: string } = {}): Harness {
   const sent: Array<Record<string, unknown>> = [];
   const logs: Array<{ level: string; msg: string }> = [];
   const h: Partial<Harness> = { sent, logs, untrusted: 0 };
@@ -43,6 +43,7 @@ function makeHarness(opts: { deny?: string[]; charBudgetEnv?: string } = {}): Ha
     log: (level, msg) => { logs.push({ level, msg }); },
     deniedBundles: () => new Set(opts.deny ?? ['com.googlecode.iterm2']),
     charBudgetEnv: () => opts.charBudgetEnv,
+    replaceQueryEnv: () => opts.replaceQueryEnv,
     onUntrusted: () => { h.untrusted! += 1; },
   });
   const { rt, rec } = makeRuntime();
@@ -226,6 +227,39 @@ describe('answer char budget accessor', () => {
     const h2 = makeHarness({ charBudgetEnv: 'com.apple.Spotlight=50' });
     h2.core.handleEvent(focusSpotlight('q', 1));
     expect(h2.core.getAnswerCharBudget()).toBe(50);
+  });
+});
+
+describe('answer-replaces-query accessor', () => {
+  it('Spotlight focused → true; ordinary app → false; nothing focused → false', () => {
+    const h = makeHarness();
+    expect(h.core.getAnswerReplacesQuery()).toBe(false); // no focus yet
+    h.core.handleEvent(focusSpotlight('capital of france _', 18));
+    expect(h.core.getAnswerReplacesQuery()).toBe(true);
+    // A real document is the user's own content — never wiped.
+    h.core.handleEvent(focusTextEdit('a draft _', 9));
+    expect(h.core.getAnswerReplacesQuery()).toBe(false);
+    // Dismissal clears focus → back to the safe default.
+    h.core.handleEvent(focusSpotlight('q', 1));
+    h.core.handleEvent({ type: 'blur' });
+    expect(h.core.getAnswerReplacesQuery()).toBe(false);
+  });
+
+  it('env opts a third-party launcher in (and Spotlight out)', () => {
+    const h = makeHarness({ replaceQueryEnv: 'com.raycast.macos' });
+    h.core.handleEvent(focusSpotlight('q _', 3));
+    expect(h.core.getAnswerReplacesQuery()).toBe(false);
+
+    const off = makeHarness({ replaceQueryEnv: 'off' });
+    off.core.handleEvent(focusSpotlight('q _', 3));
+    expect(off.core.getAnswerReplacesQuery()).toBe(false);
+  });
+
+  it('a denied bundle never reports a focused field at all', () => {
+    const h = makeHarness({ deny: ['com.apple.Spotlight'] });
+    h.core.handleEvent(focusSpotlight('q _', 3));
+    expect(h.core.focused).toBeNull();
+    expect(h.core.getAnswerReplacesQuery()).toBe(false);
   });
 });
 

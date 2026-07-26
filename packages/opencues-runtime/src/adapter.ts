@@ -449,6 +449,27 @@ export interface HostAdapter {
    */
   getAnswerCharBudget?(): number | null;
 
+  /**
+   * Optional — true when the CURRENT target field IS the question box:
+   * a transient one-line search field where the typed query and its
+   * answer cannot coexist (the mac host returns true while Spotlight is
+   * focused). FluidBlank then emits a whole-buffer WIPE span so the
+   * answer REPLACES the query (`capital of france _` → `Paris`) instead
+   * of trailing after it.
+   *
+   * False / omitted = the normal, non-destructive FILL behaviour (only
+   * the `_` is replaced). Like getAnswerCharBudget this needs no
+   * mode-scalar gate — it's a host-computed boolean about its own
+   * element, nothing user- or page-controlled rides it.
+   *
+   * Only return true for fields whose content is genuinely disposable.
+   * Hosts in the universal/no-cycling profile have no Ctrl+Alt+Down, so
+   * the user cannot cycle back to what was wiped.
+   *
+   * Dynamic — re-evaluated per current target, like supportsCycling.
+   */
+  getAnswerReplacesQuery?(): boolean;
+
   getText(): string;
   getCursorOffset(): number;
   getSelection(): Range | null;

@@ -15,6 +15,10 @@ Spotlight's search field is focused — the panel shows ~37 characters,
 so `distance to the moon in km _` answers as `384,400 km`, not a
 sentence that scrolls out of view.
 
+Sibling feature: [Answer Replaces Query](answer-replaces-query.md) (#51)
+— in a field this narrow the mac host also declares the typed question
+disposable, so the answer replaces it instead of trailing after it.
+
 ## How it flows
 
 ```

@@ -88,6 +88,34 @@ export function charBudgetForBundle(bundle: string, env?: string): number | null
   return map[bundle] ?? null;
 }
 
+/** Bundles whose focused field IS the question box: the query is
+ *  transient, one-line, and too narrow to hold the question AND its
+ *  answer, so a fluid-blank answer REPLACES what the user typed
+ *  (`capital of france _` → `Paris`). Spotlight only by default — a
+ *  real document (TextEdit, Mail, a browser textarea) is the user's own
+ *  content and keeps the non-destructive FILL behaviour.
+ *
+ *  Panel agents are the natural members of this set (SPOTLIGHT-SPIKE.md)
+ *  but the Swift-side PANEL_AGENT_BUNDLES list is about observer
+ *  lifetime, not field semantics — Raycast/Alfred users opt in
+ *  explicitly, alongside a char budget:
+ *    OPENCUES_AX_REPLACE_QUERY="com.raycast.macos,com.apple.Spotlight"
+ *    OPENCUES_AX_REPLACE_QUERY="off"   (disable entirely)
+ *  A non-empty value REPLACES the default set (it's a whitelist, not a
+ *  patch) — the same shape the deny list uses. */
+export const DEFAULT_REPLACE_QUERY_BUNDLES: readonly string[] = [
+  'com.apple.Spotlight',
+];
+
+export function replaceQueryForBundle(bundle: string, env?: string): boolean {
+  const raw = (env ?? '').trim();
+  if (raw.toLowerCase() === 'off') return false;
+  const set = raw
+    ? raw.split(',').map(b => b.trim()).filter(Boolean)
+    : DEFAULT_REPLACE_QUERY_BUNDLES;
+  return set.includes(bundle);
+}
+
 /** Recent-writes echo ring: the daemon's own AX writes come back as
  *  AXValueChanged like any user edit; a change matching one of the
  *  last few written values is our echo, everything else is the

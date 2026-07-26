@@ -18,6 +18,7 @@ import {
   freshMarkerAtCursor,
   WriteRing,
   charBudgetForBundle,
+  replaceQueryForBundle,
   shouldDropDuplicateChange,
 } from './ax-host';
 
@@ -45,6 +46,8 @@ export interface DaemonCoreDeps {
   deniedBundles(): ReadonlySet<string>;
   /** `OPENCUES_AX_CHAR_BUDGET` — injected so tests don't touch env. */
   charBudgetEnv?(): string | undefined;
+  /** `OPENCUES_AX_REPLACE_QUERY` — injected so tests don't touch env. */
+  replaceQueryEnv?(): string | undefined;
   /** Called when the bridge reports the Accessibility grant is missing
    *  (prod: log the fix instructions + process.exit(1)). */
   onUntrusted(): void;
@@ -76,6 +79,13 @@ export class DaemonCore {
     return this.focused
       ? charBudgetForBundle(this.focused.bundle, this.deps.charBudgetEnv?.())
       : null;
+  }
+  /** Spotlight-class fields hold a disposable query — the answer replaces
+   *  it (there is no room for both). Every other app keeps FILL. */
+  getAnswerReplacesQuery(): boolean {
+    return this.focused
+      ? replaceQueryForBundle(this.focused.bundle, this.deps.replaceQueryEnv?.())
+      : false;
   }
 
   /** Runtime → element. One contiguous AX replace per text change;

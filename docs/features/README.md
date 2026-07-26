@@ -100,6 +100,7 @@ Optional information the FluidBlank LLM call receives in addition to the user's 
 | 40 | [Max Thinking](max-thinking.md) | `max-thinking` scalar trades reasoning depth for speed on reasoning-capable models (Groq / Cerebras / OpenAI gpt-oss + gpt-5 families). |
 | 46 | [Calendar Context](calendar-context.md) | Ingests your calendar (`.ics` / webcal feeds via `opencues calendar`) as a **reasoning** catalog so fluid-blank answers availability (`am i free thursday _`, `next event _`) and a cue flags prose that contradicts your schedule. Event times reach the LLM; titles are dehydrated `[EVENT N]` tokens hydrated locally. OFF by default. **No MCP** — plain calendar feeds. |
 | 50 | [Answer Char Budget](answer-char-budget.md) | Host-declared soft answer-length budget for narrow fields — fluid/transform-blank ask the LLM for the shortest correct form that fits (mac host: Spotlight → ~37 chars). No scalar; structural per focused field. Aim, never truncation. |
+| 51 | [Answer Replaces Query](answer-replaces-query.md) | Host declares "this field IS the question box" and a fluid-blank answer REPLACES the typed query instead of trailing after it (`capital of france _` → `Paris`). mac host, Spotlight only. No scalar; structural per focused field. |
 
 ## Surfacing
 

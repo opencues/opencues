@@ -48,6 +48,10 @@ export interface HostInfo extends CommonHostInfo {
   /** Soft answer-length budget for the current target field — see
    *  HostAdapter.getAnswerCharBudget (mac: Spotlight → 37). */
   getAnswerCharBudget?(): number | null;
+  /** True when the current target field IS the query box, so the answer
+   *  replaces the typed question — see HostAdapter.getAnswerReplacesQuery
+   *  (mac: Spotlight → true). */
+  getAnswerReplacesQuery?(): boolean;
 }
 
 export interface BootResult {
@@ -110,6 +114,7 @@ export function boot(host: HostInfo): BootResult {
     blankInvoke: host.blankInvoke,
     pushText: host.pushText,
     getAnswerCharBudget: host.getAnswerCharBudget,
+    getAnswerReplacesQuery: host.getAnswerReplacesQuery,
     log,
     emitEvent: (type, body) => moduleEvents.emit(
       { type, body },

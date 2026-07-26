@@ -36,6 +36,10 @@ export {
 
 export {
   FluidBlankSource,
+  // The WIPE-span rule for hosts whose field IS the query box
+  // (`CueContext.answerReplacesQuery`) — exported so runtime scenario
+  // tests script the same span the source would emit.
+  replaceQuerySpan,
   type FluidBlankSourceConfig,
   type FluidBlankEvent,
 } from './sources/fluid-blank-source';

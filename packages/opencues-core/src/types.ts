@@ -140,6 +140,27 @@ export interface CueContext {
   answerCharBudget?: number;
 
   /**
+   * The destination field IS the question box — the typed query is
+   * disposable, so a fluid-blank answer REPLACES it instead of being
+   * appended after it (`capital of france _` → `Paris`, not
+   * `capital of france Paris`). Set by hosts whose target is a
+   * transient one-line search field with no room for both: today only
+   * the mac host, and only while a panel agent (Spotlight) is focused.
+   *
+   * Consumed by FluidBlankSource, which emits the deterministic
+   * whole-buffer `spanStart`/`spanEnd` WIPE span the resolver already
+   * knows how to splice (never an LLM-claimed span — see
+   * docs/architecture/blank-sources.md). The source keeps its own
+   * structural guards (single-line buffer, trailing `_`) so a wipe
+   * can't collapse content the flag didn't intend to cover.
+   *
+   * Like `answerCharBudget` this is HOST-OWNED (a boolean the host
+   * computes from the focused element), so it needs no mode-scalar
+   * gate. Ignored when undefined / false.
+   */
+  answerReplacesQuery?: boolean;
+
+  /**
    * Identity-context catalog derived from `~/.cues/IDENTITY.md`. Only
    * consumed by FluidBlankSource and only when
    * `identity-context-mode: safe` or `: raw` is set in OPENCUES.md

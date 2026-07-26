@@ -7,16 +7,16 @@
  *   P1 SEGMENT  →  identifies the lookup span (incl. `_`) within the input
  *   P3 ANSWER   →  produces the canonical short answer for the span
  *
- * Replacement mode (FILL vs WIPE) is decided deterministically from the
- * input shape — no extra LLM call:
+ * Replacement mode is FILL everywhere by default — substitute only the
+ * `_`, preserve every surrounding word. The model still votes FILL/WIPE
+ * on its MODE line (see MODE_RULES) but the runtime ignores that vote;
+ * a source that only fills the gap the user left cannot destroy prose.
  *
- *   FILL:  input ends with copula/equation/question marker before `_`
- *          ("the capital of france is _", "4 * 12 = _", "X? _")
- *          → substitute only `_`, preserve surrounding sentence
- *
- *   WIPE:  input ends with `_` after a bare lookup phrase
- *          ("capital of france _", "trivia tonight founder of microsoft _")
- *          → substitute the whole span, the lookup phrase disappears
+ * The one WIPE path is HOST-driven: when the host sets
+ * `CueContext.answerReplacesQuery` (the field IS the query box — mac
+ * host while Spotlight is focused), the answer replaces the whole typed
+ * question, because a ~37-char search field has no room for both. Span
+ * comes from `replaceQuerySpan()`, never from the model.
  *
  * History: developed via the tests/benchmarks/fluid-blank/ benchmark
  * harness. See BUILD-LOG.md in that directory for the iteration journal
@@ -519,6 +519,36 @@ function findSpanCharRange(span: string, text: string): [number, number] | null 
 }
 
 /**
+ * WIPE span for hosts that set `CueContext.answerReplacesQuery` — the
+ * destination field IS the question box (mac host while Spotlight is
+ * focused), so the typed question must be REPLACED by the answer rather
+ * than have it appended: there is no room for both.
+ *
+ * Returns the whole-buffer char range, or null when the buffer's shape
+ * makes a wipe unsafe. Two structural guards, because a no-cycling host
+ * (universal profile — Spotlight included) has NO Ctrl+Alt+Down to
+ * revert with, so an over-broad wipe is unrecoverable:
+ *
+ *   - single line only — a buffer with a newline is the user's own
+ *     content, not a one-line query;
+ *   - `_` must be the final token — the only shape where the answer is
+ *     known to stand alone. A mid-sentence `_` ("water boils at _
+ *     degrees") FILLs as before: whether the model returns the value or
+ *     the whole rewritten clause, splicing at the gap is correct either
+ *     way, whereas wiping is only correct for one of them.
+ *
+ * Deliberately NOT derived from the model's SPAN line: splice bounds
+ * for a slot-splice source come from the runtime, never from an
+ * LLM-claimed span (docs/architecture/blank-sources.md). The whole
+ * buffer is the one range the host has already told us is disposable.
+ */
+export function replaceQuerySpan(text: string): [number, number] | null {
+  if (text.includes('\n')) return null;
+  if (!/(?:^|\s)_[ \t]*$/.test(text)) return null;
+  return [0, text.length];
+}
+
+/**
  * Lifecycle events emitted by `FluidBlankSource` during the FUSED
  * single-call pipeline. Same pattern as `TransformBlankEvent` — core
  * owns the domain types; runtime consumers namespace them when
@@ -850,6 +880,13 @@ export class FluidBlankSource implements CueSource {
       const effectiveProvider = this.provider;
       const effectiveModel = this.model;
       const effectiveText = context.text;
+      // Host says the field IS the query box (mac/Spotlight): the answer
+      // REPLACES the typed question instead of following it. Null here
+      // (flag absent, or a buffer shape the guards refuse) keeps the
+      // universal FILL behaviour — the `_` gap only.
+      const wipeSpan = context.answerReplacesQuery === true
+        ? replaceQuerySpan(context.text)
+        : null;
       this.emit({
         type: 'started',
         textLen: context.text.length,
@@ -865,9 +902,10 @@ export class FluidBlankSource implements CueSource {
       const variantChoice = this._selectVariant(cacheKey);
       if (variantChoice.kind === 'cache') {
         this.log(`FluidBlank: variant-cache HIT — serving cached answer (pool size ${variantChoice.others.length + 1})`);
-        // Static resolution: always FILL (replace only the `_`); the cache
-        // result sets no span, so the runtime fills the gap.
-        const cachedMode = 'FILL' as const;
+        // Static resolution: FILL (replace only the `_`) unless the host
+        // declared the query disposable — then the cached answer wipes it
+        // exactly like a fresh one (same span, same buffer shape).
+        const cachedMode = wipeSpan ? 'WIPE' as const : 'FILL' as const;
         this.emit({
           type: 'completed',
           span: effectiveText,
@@ -882,6 +920,7 @@ export class FluidBlankSource implements CueSource {
             alternatives: ['_', variantChoice.rewrite],
             source: this.id,
             priority: this.priority,
+            ...(wipeSpan ? { spanStart: wipeSpan[0], spanEnd: wipeSpan[1] } : {}),
             metadata: {
               fluidBlankMode: cachedMode,
               variantCacheHit: true,
@@ -1188,14 +1227,20 @@ export class FluidBlankSource implements CueSource {
       // read result.metadata.context defensively).
       const ctx = '';
 
-      // STATIC RESOLUTION: fluid ALWAYS fills just the `_` (non-destructive).
-      // The old FILL/WIPE machinery — the deterministic heuristic, the model's
+      // STATIC RESOLUTION: fluid fills just the `_` (non-destructive). The
+      // old FILL/WIPE machinery — the deterministic heuristic, the model's
       // MODE vote, and the multi-paragraph data-loss guard — is all retired:
       // you cannot destroy the buffer if you only ever fill the gap the user
       // left. Weaving the value into surrounding prose is a separate,
       // user-invoked transform step (the REWRITE verb). The model still emits
       // a MODE line per FUSED_SYSTEM_PROMPT, but the runtime ignores it.
-      const mode: 'FILL' | 'WIPE' = 'FILL';
+      //
+      // The ONE exception is host-driven, not model-driven: when the host
+      // sets `answerReplacesQuery` (mac/Spotlight — the field IS the query
+      // box and shows ~37 chars, so question + answer cannot coexist) the
+      // answer wipes the deterministic whole-buffer span from
+      // replaceQuerySpan(). The model's MODE vote is still ignored.
+      const mode: 'FILL' | 'WIPE' = wipeSpan ? 'WIPE' : 'FILL';
 
       // Record the fresh answer into the variant pool — subsequent
       // identical-buffer triggers will cycle through cached variants
@@ -1208,6 +1253,7 @@ export class FluidBlankSource implements CueSource {
         alternatives: ['_', finalAnswer],
         source: this.id,
         priority: this.priority,
+        ...(wipeSpan ? { spanStart: wipeSpan[0], spanEnd: wipeSpan[1] } : {}),
         metadata: {
           fluidBlankMode: mode,
           span,
@@ -1217,13 +1263,12 @@ export class FluidBlankSource implements CueSource {
         },
       };
 
-      // For WIPE mode: mark the multi-word span so the runtime knows to
-      // wipe the lookup phrase, not just the `_` token. spanStart/spanEnd
-      // are CHARACTER offsets (matching WordDef in the runtime).
-      // Alternatives stay ['_', answer] — cycling back to `_` clears the
-      // lookup phrase to a bare blank rather than restoring the full
-      // queried text. The lookup phrase is consumed by the substitution.
-      // (Static resolution: no WIPE span — the runtime replaces only the `_`.)
+      // For WIPE mode the spanStart/spanEnd above marks the multi-word span
+      // so the runtime replaces the whole query, not just the `_` token.
+      // They are CHARACTER offsets (matching WordDef in the runtime).
+      // Alternatives stay ['_', answer]; the resolver captures the wiped
+      // slice as the def's alt[1] so a cycling-capable host can walk back
+      // to the question (Spotlight can't cycle — see replaceQuerySpan).
 
       // `fluid-blank.completed` is intentionally NOT emitted from here.
       // It's emitted from the RESOLVER's substitute branch AFTER the

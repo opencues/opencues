@@ -67,6 +67,14 @@ export interface UniversalBindings {
    * focused, null elsewhere). See HostAdapter.getAnswerCharBudget.
    */
   getAnswerCharBudget?(): number | null;
+  /**
+   * True when the CURRENT target field IS the query box, so a fluid-blank
+   * answer must REPLACE the typed question rather than trail after it
+   * (mac daemon: true while Spotlight is focused, false elsewhere;
+   * apple-notes never sets it — a note is the user's own content). See
+   * HostAdapter.getAnswerReplacesQuery.
+   */
+  getAnswerReplacesQuery?(): boolean;
   log?(level: LogLevel, msg: string, data?: unknown): void;
   emitEvent?(type: string, body?: Record<string, unknown>): void;
   registerEventHandler?(cb: (type: string, body?: Record<string, unknown>) => void): Unsubscribe;
@@ -104,6 +112,11 @@ export class UniversalV1Adapter implements HostAdapter {
   supportsCycling(): boolean { return false; }
   getAnswerCharBudget(): number | null {
     try { return this.bindings.getAnswerCharBudget?.() ?? null; } catch { return null; }
+  }
+  // Default false: a wipe is unrecoverable on a no-cycling host, so a
+  // binding that throws (or omits this) must fall back to plain FILL.
+  getAnswerReplacesQuery(): boolean {
+    try { return this.bindings.getAnswerReplacesQuery?.() === true; } catch { return false; }
   }
   // Background whole-note rewrites over a polled CAS channel are too
   // risky for v1 — a merge landing between polls would fight the user.

@@ -85,6 +85,13 @@ with the fix path when the grant is missing.
 - No cycling (universal profile): the AX channel has no key
   interception, so cycleable cues/blanks are pruned at registration —
   see docs/architecture/universal-integration.md.
+- **Spotlight-only field semantics.** Its search field is treated as a
+  disposable question box: answers stay short (~37 chars,
+  `OPENCUES_AX_CHAR_BUDGET`) and **replace** the typed query rather than
+  trailing after it (`capital of france _` → `Paris`,
+  `OPENCUES_AX_REPLACE_QUERY`). Every other app keeps the
+  fill-only-the-`_` behaviour — see
+  docs/features/answer-replaces-query.md.
 
 ## Debugging
 

@@ -1370,6 +1370,14 @@ export class Resolver {
         // focused). No scalar gate — a host-computed number, nothing
         // sensitive rides it. Sources ignore undefined.
         answerCharBudget: this.adapter.getAnswerCharBudget?.() ?? undefined,
+        // Optional host-declared "this field IS the query box" flag (mac
+        // host: true while Spotlight is focused). Makes fluid-blank emit a
+        // whole-buffer WIPE span so the answer replaces the typed question
+        // instead of trailing after it. No scalar gate — host-computed
+        // boolean. Sources ignore undefined/false.
+        answerReplacesQuery: this.adapter.getAnswerReplacesQuery?.() === true
+          ? true
+          : undefined,
         // Optional identity context (identity-context-mode personal data). Gated by
         // `identity-context-mode` in OPENCUES.md (when `off` we don't
         // even forward the parsed catalog, so a future misconfigured
