@@ -109,11 +109,22 @@ export class DaemonCore {
     return (this.deps.cyclingEnv?.() ?? '').trim().toLowerCase() !== 'off';
   }
 
-  /** Does the CURRENT target support cycling? True only with a focused
-   *  element AND capture armed — the runtime prunes every cycleable cue when
-   *  this is false, so it must never claim a surface we can't drive. */
+  /**
+   * Can this HOST deliver cycling chords at all? Deliberately NOT per-focus.
+   *
+   * The resolver's build key includes supportsCycling, so a value that
+   * flapped with focus rebuilt the entire source set on every blur/focus —
+   * observed live 2026-07-26: sentence-cues registered, were pruned 9s later
+   * as "no cycling surface", then re-registered, each rebuild discarding the
+   * variant pools and LRU caches the fresh source instances start empty.
+   *
+   * Chord DELIVERY is focus-scoped (setCapture, so we never swallow keys in
+   * an app we aren't attached to), but the host's CAPABILITY is not: the tap
+   * is armed for the process lifetime. With nothing focused the buffer is
+   * empty anyway, so advertising true costs nothing.
+   */
   supportsCycling(): boolean {
-    return this.focused !== null && this.captureOn;
+    return this.cyclingAllowed();
   }
 
   /**

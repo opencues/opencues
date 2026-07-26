@@ -328,17 +328,14 @@ describe('cycling chord capture', () => {
     expect(cmds(h, 'capture')).toHaveLength(0);
     h.core.handleEvent(focusTextEdit('draft', 5));
     expect(cmds(h, 'capture')).toEqual([{ cmd: 'capture', on: true }]);
-    expect(h.core.supportsCycling()).toBe(true);
     h.core.handleEvent({ type: 'blur' });
     expect(cmds(h, 'capture').at(-1)).toEqual({ cmd: 'capture', on: false });
-    expect(h.core.supportsCycling()).toBe(false);
   });
 
   it('NEVER arms capture in a denied app (chords stay the terminal\'s)', () => {
     const h = makeHarness({ deny: ['com.googlecode.iterm2'] });
     h.core.handleEvent({ type: 'focus', app: 'iTerm2', bundle: 'com.googlecode.iterm2', role: 'AXTextArea', value: 'x', cursor: 1 });
     expect(cmds(h, 'capture').filter(c => c['on'] === true)).toHaveLength(0);
-    expect(h.core.supportsCycling()).toBe(false);
   });
 
   it('OPENCUES_AX_CYCLING=off keeps the pre-cycling profile', () => {
@@ -346,6 +343,20 @@ describe('cycling chord capture', () => {
     h.core.handleEvent(focusTextEdit('draft', 5));
     expect(cmds(h, 'capture').filter(c => c['on'] === true)).toHaveLength(0);
     expect(h.core.supportsCycling()).toBe(false);
+  });
+
+  // supportsCycling is a HOST capability, not a per-focus one: the resolver's
+  // build key includes it, so a focus-scoped value rebuilt every source (and
+  // dropped every cache) on each blur/focus — seen live 2026-07-26.
+  it('supportsCycling does NOT flap with focus (no source-set churn)', () => {
+    const h = makeHarness();
+    expect(h.core.supportsCycling()).toBe(true);
+    h.core.handleEvent(focusTextEdit('draft', 5));
+    expect(h.core.supportsCycling()).toBe(true);
+    h.core.handleEvent({ type: 'blur' });
+    expect(h.core.supportsCycling()).toBe(true);   // capability, not state
+    // …but capture (what actually swallows keys) DID follow the focus.
+    expect(cmds(h, 'capture').at(-1)).toEqual({ cmd: 'capture', on: false });
   });
 
   it('does not re-send an unchanged capture state (one command per transition)', () => {
