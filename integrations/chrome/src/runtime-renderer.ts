@@ -13,6 +13,7 @@
 // back to DOM Range objects via a TreeWalker.
 
 import type { RenderDirectives } from '@opencues/runtime/dist/src/adapter';
+import { inlineNoteDisplayText } from '@opencues/runtime/dist/src/render-directives';
 import { walkPlainText } from './dom-walk';
 
 const hasHighlightAPI = typeof CSS !== 'undefined' && 'highlights' in CSS;
@@ -101,6 +102,16 @@ export function applyDirectives(target: HTMLElement, directives: RenderDirective
   highlights.set('oc-dim', new Highlight(...dimRanges));
   highlights.set('oc-active', new Highlight(...activeRanges));
 
+  // Inline cue note — the terminal splices a gray line under the span; CSS
+  // Highlight can't inject text, so chrome paints the SAME note text as a
+  // span-anchored overlay pinned just below the flagged span. Reuses the
+  // runtime's inlineNote directive + inlineNoteDisplayText so the text +
+  // cursor-gating are identical to the terminal.
+  let note: RenderDirectives['inlineNote'] | undefined;
+  for (const d of directives) { if (d.inlineNote) { note = d.inlineNote; break; } }
+  if (note && note.text) renderInlineNote(target, note);
+  else clearInlineNote();
+
   // Per-colour loading highlights. Each unique colour gets a Highlight
   // named `oc-load-RRGGBB` (the hex without `#`). The CSS rule for
   // that name is injected on demand via ensureLoadingColorStyle so the
@@ -146,8 +157,83 @@ function ensureLoadingColorStyle(hex: string): void {
   sheet.appendChild(document.createTextNode(rule + '\n'));
 }
 
+// ─── Inline cue note overlay ─────────────────────────────────────────────
+// A single reused, absolutely-positioned gray element pinned just below the
+// flagged span. Anchored to the span's DOM range (getBoundingClientRect) and
+// repositioned on scroll/resize, so it reads as text under the span rather
+// than a floating card. pointer-events:none so it never blocks the editor.
+// contenteditable only — normal inputs skip render entirely.
+const NOTE_EL_ID = 'oc-inline-note';
+let _noteEl: HTMLDivElement | null = null;
+let _noteRange: Range | null = null;
+let _repositionHooked = false;
+
+function repositionNote(): void {
+  if (!_noteEl || _noteEl.style.display === 'none' || !_noteRange) return;
+  try {
+    const rect = _noteRange.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) { _noteEl.style.display = 'none'; return; }
+    _noteEl.style.left = `${Math.round(rect.left)}px`;
+    _noteEl.style.top = `${Math.round(rect.bottom)}px`;
+  } catch { /* range detached by a DOM mutation — leave last position */ }
+}
+
+function ensureNoteEl(): HTMLDivElement {
+  if (_noteEl && _noteEl.isConnected) return _noteEl;
+  const el = document.createElement('div');
+  el.id = NOTE_EL_ID;
+  el.setAttribute('aria-hidden', 'true');
+  el.style.cssText = [
+    'position:fixed', 'z-index:2147483646', 'pointer-events:none',
+    'white-space:pre', 'background:transparent', 'margin:0', 'padding:0',
+    'color:#6b7280', 'opacity:0.7',
+  ].join(';');
+  (document.body || document.documentElement).appendChild(el);
+  _noteEl = el;
+  if (!_repositionHooked) {
+    _repositionHooked = true;
+    window.addEventListener('scroll', repositionNote, true);
+    window.addEventListener('resize', repositionNote, true);
+  }
+  return el;
+}
+
+function renderInlineNote(
+  target: HTMLElement,
+  note: { spanStart: number; spanEnd: number; text: string },
+): void {
+  const ranges = plainOffsetsToDomRanges(target, [{ start: note.spanStart, end: note.spanEnd }]);
+  if (ranges.length === 0) { clearInlineNote(); return; }
+  const range = ranges[0];
+  let rect: DOMRect;
+  try { rect = range.getBoundingClientRect(); } catch { clearInlineNote(); return; }
+  if (rect.width === 0 && rect.height === 0) { clearInlineNote(); return; }
+  const el = ensureNoteEl();
+  el.textContent = inlineNoteDisplayText(note.text);
+  // Inherit the field's typography so the note reads as part of the text line.
+  try {
+    const cs = getComputedStyle(target);
+    el.style.fontFamily = cs.fontFamily;
+    el.style.fontSize = cs.fontSize;
+    el.style.lineHeight = cs.lineHeight;
+  } catch { /* computed style unavailable — keep defaults */ }
+  el.style.left = `${Math.round(rect.left)}px`;
+  el.style.top = `${Math.round(rect.bottom)}px`;
+  el.style.display = 'block';
+  _noteRange = range;
+}
+
+/** Hide the inline note overlay (no flagged span under the caret, focus moved
+ *  to a non-paintable field, or detach). Exported for the bootstrap's
+ *  normal-input render short-circuit. */
+export function clearInlineNote(): void {
+  if (_noteEl) _noteEl.style.display = 'none';
+  _noteRange = null;
+}
+
 /** Tear down the runtime's highlights — called on detach/dispose. */
 export function clearDirectives(): void {
+  clearInlineNote();
   if (!hasHighlightAPI) return;
   const highlights = (CSS as unknown as { highlights: Map<string, unknown> }).highlights;
   highlights.delete('oc-dim');

@@ -182,6 +182,11 @@ export const CHROME_V1_CAPABILITIES: readonly Capability[] = [
   // RGB path of BlankLoadingAnimator.getActiveColoredRanges so the
   // loading frame colour comes from `blank-loading-colors-rgb`.
   'render-rgb-color',
+  // chrome paints the inline cue note as a span-anchored overlay (CSS
+  // Highlight can't inject text, so the runtime-renderer positions a gray
+  // element below the flagged span). Contenteditable only — normal inputs
+  // have no paint surface and degrade to the secondary display.
+  'inline-note',
 ];
 
 export class ChromeV1Adapter implements HostAdapter {

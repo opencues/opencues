@@ -84,6 +84,17 @@ function formatInlineNoteText(text: string): string {
 }
 
 /**
+ * The full inline-note display string — connector + formatted advisory, e.g.
+ * "↳ ⚠ - the 19th is a Friday". Exported so NON-terminal hosts (chrome's
+ * span-anchored overlay) paint the SAME text the terminal painter splices in,
+ * instead of re-deriving it and drifting. Terminal-side ANSI/indent is layered
+ * on separately in applyDirectives; this is the plain text only.
+ */
+export function inlineNoteDisplayText(cueTip: string): string {
+  return INLINE_NOTE_CONNECTOR + ' ' + formatInlineNoteText(cueTip);
+}
+
+/**
  * @param firstLineIndent Screen columns the host prepends to the buffer's
  *   FIRST line but NOT to continuation lines (e.g. Claude Code's `❯ ` input
  *   prompt). An inline note is always injected as a continuation line, so a

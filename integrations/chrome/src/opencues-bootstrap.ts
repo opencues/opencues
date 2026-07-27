@@ -30,7 +30,7 @@ import { parseSingleCueMd, listProviders, buildCalendarContextSnapshot } from '@
 import { ChromeUserBlank } from './user-blank-loader';
 import { createBlankInvoke } from '@opencues/runtime/dist/src/blanks';
 import { wordDiff } from '@opencues/runtime/dist/src/modules/word-diff';
-import { applyDirectives, clearDirectives } from './runtime-renderer';
+import { applyDirectives, clearDirectives, clearInlineNote } from './runtime-renderer';
 import { applyStatuslinePayload } from './runtime-statusbar';
 import { WebSpeechAdapter } from './adapters/web-speech-adapter';
 import { FetchHttpAdapter } from './adapters/fetch-http-adapter';
@@ -3215,7 +3215,7 @@ function runtimeRender(): void {
   // not from DOM text nodes Range can address. So we skip every render
   // tick. Cues are computed by the runtime but never painted; blank
   // fills still land via writeNormalInputValue.
-  if (isNormalInput(target)) return;
+  if (isNormalInput(target)) { clearInlineNote(); return; }
   const text = walkPlainText(target).text;
   const cursor = readCursorOffset();
   const directives = bootResult.collectRenderDirectives(text, cursor);
