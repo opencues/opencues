@@ -1614,11 +1614,19 @@ export class ConfigIntentSource implements CueSource {
                   cueTip: `Kept current provider — ${verdict.provider} is unavailable`,
                   metadata: { fluidBlankErrorReason: reason },
                 }],
+                // Claim the slot so a lower-priority sibling (FluidBlank) can't
+                // ALSO answer this "switch to X" phrase as a lookup and
+                // overwrite our tailored message with a generic one. Unlike a
+                // successful switch (whole-buffer claim → sibling-abort), the
+                // refusal only replaces `_`, so it needs the explicit claim.
+                consumedBlankSlots: [blankIdx],
                 timing: Date.now() - t0,
                 model: this.model,
               };
             }
-            return { results: [], timing: Date.now() - t0, model: this.model };
+            // Even with no formatter wired, still claim the slot so FluidBlank
+            // doesn't vandalise the refused command.
+            return { results: [], consumedBlankSlots: [blankIdx], timing: Date.now() - t0, model: this.model };
           }
         }
         await apply(providerScalar, verdict.provider);
@@ -1707,7 +1715,11 @@ export class ConfigIntentSource implements CueSource {
       },
     };
 
-    return { results: [result], timing: Date.now() - t0, model: this.model };
+    // Claim the slot for siblings processed after us (belt-and-braces
+    // alongside the whole-buffer sibling-abort a spanned result already
+    // triggers) — a valid switch must never race a stray FluidBlank fill on
+    // the same `_`.
+    return { results: [result], consumedBlankSlots: [blankIdx], timing: Date.now() - t0, model: this.model };
   }
 
   /**

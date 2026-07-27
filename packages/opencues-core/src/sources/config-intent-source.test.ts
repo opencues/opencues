@@ -1159,6 +1159,10 @@ describe('ConfigIntentSource — pre-switch provider liveness gate', () => {
     assert.match(String(r.alternatives[1]), /network/, 'inline text carries the reason');
     assert.match(String(r.alternatives[1]), /11434/, 'inline text names the concrete cause');
     assert.strictEqual(r.metadata?.fluidBlankErrorReason, 'network');
+    // Claims the `_` slot so the resolver filters FluidBlank's competing
+    // (generic) answer on the same word — the user sees ONLY this tailored
+    // "kept current provider" message, not a stray fluid-blank fill.
+    assert.deepStrictEqual(result.consumedBlankSlots, [3], 'refusal must claim the `_` slot (index 3 of "switch to ollama _")');
   });
 
   it('provider switch APPLIES when the target is reachable', async () => {
@@ -1175,6 +1179,7 @@ describe('ConfigIntentSource — pre-switch provider liveness gate', () => {
       'wrote the provider scalar after a passing probe',
     );
     assert.strictEqual(result.results.length, 1, 'emits the selector-satellite switch result');
+    assert.deepStrictEqual(result.consumedBlankSlots, [3], 'a successful switch also claims the slot (no stray fluid-blank race)');
   });
 
   it('no probeProvider callback → provider switch applies unconditionally (back-compat)', async () => {

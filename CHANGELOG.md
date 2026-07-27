@@ -13,7 +13,9 @@ A fluid-config provider switch (`"switch to ollama _"`, `"use anthropic for cues
 
 New `probeProviderReachable(providerId, model, { apiKeys, httpAdapter, … })` in `@opencues/core`: it pings the **target** provider directly (`getProvider(id)` → its default endpoint + the key from the bag), no `resolveLLM` cascade — the provider is already decided by the verdict. Tiers: CLI-transport providers (`claude-code-cli`) check the binary is on PATH; key-required providers with no key fast-fail with no network hop; `optionalAuth` providers (Ollama, keyless) are still pinged for real; everything else does a minimal `maxTokens: 1` completion (≤6s). A `429` counts as reachable (provider/key/model are valid, just throttled) so transient rate-limits don't block a switch. `ConfigIntentSource` runs the probe in its provider-verdict branch and, on failure, emits the inline error instead of applying.
 
-Scope: the fluid-config `"switch to X"` path. Satellite `Ctrl+Alt` cycling (which renders optimistically as you cycle) is unchanged for now. Pins: 9 `probeProviderReachable` unit tests + 3 `ConfigIntentSource` gate tests (refused → no write + inline error; reachable → applies; no callback → applies unconditionally).
+On both the applied and refused paths `ConfigIntentSource` now returns `consumedBlankSlots: [blankIdx]`, so the resolver filters a lower-priority FluidBlank answer on the same `_` — the user sees ONLY the tailored "kept current provider" message, never a stray generic fluid-blank fill overwriting it (a successful switch already aborted siblings via its whole-buffer claim; the refusal, which only replaces `_`, needed the explicit claim).
+
+Scope: the fluid-config `"switch to X"` path. Satellite `Ctrl+Alt` cycling (which renders optimistically as you cycle) is unchanged for now. Pins: 9 `probeProviderReachable` unit tests + 3 `ConfigIntentSource` gate tests (refused → no write + inline error + slot claimed; reachable → applies + slot claimed; no callback → applies unconditionally).
 
 ### Fixed — chrome: `_` silently ignored on normal `<input>`/`<textarea>` after a fill (loading-animation vs source-reclassifier) (`@opencues/chrome` 0.2.90 → 0.2.97)
 
