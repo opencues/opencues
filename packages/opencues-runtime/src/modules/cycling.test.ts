@@ -1572,6 +1572,8 @@ describe('_-cycle — bare `_` inside a painted cue note rotates the cue', () =>
     expect(adapter.fireKey('_')).toBe(true); // consumed
     expect(dynDefs.get(0)?.currentIndex).toBe(1);
     expect(adapter.setTextCalls.at(-1)).toBe('formal english');
+    // caret lands at the span END of the new alt ('formal english' = 14 chars).
+    expect(adapter.getCursorOffset()).toBe(14);
   });
 
   it('does NOT `_`-cycle a fluid/transform blank with a single alternative', async () => {

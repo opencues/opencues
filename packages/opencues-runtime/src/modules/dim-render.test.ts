@@ -627,6 +627,28 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     expect(visible).not.toContain('formal\n  ↳'); // NOT the 2-space code-point pad
   });
 
+  it('auto-selects a transform span when the caret is inside, and CLEARS when it leaves', () => {
+    // The selection is caret-in-span auto-select, NOT a persistent nav lock —
+    // so it shows while the caret is on the transform and vanishes the moment it
+    // moves off (the "selection didn't clear when I left" fix).
+    const buf = 'ありがとう bye'; // transform span [0,5], ' bye' after
+    const { dynDefs, dimRender } = setup(buf);
+    dynDefs.set(0, {
+      originalWord: 'thanks',
+      alternatives: ['ありがとう', 'thanks'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: 5,
+      blankName: 'transform-blank',
+    });
+    // caret inside [0,5] → the span auto-selects (highlight).
+    const inSpan = dimRender.compute({ text: buf, cursor: 2, externalHighlights: [] });
+    expect(inSpan?.highlight).toEqual({ start: 0, end: 5 });
+    // caret outside (in ' bye') → NO highlight (selection cleared).
+    const outSpan = dimRender.compute({ text: buf, cursor: 8, externalHighlights: [] });
+    expect(outSpan?.highlight).toBeUndefined();
+  });
+
   it('emits an inline note for a history-bearing transform-blank def (no cueTip)', () => {
     // A transform/fluid blank has no cueTip; its note comes from the shared
     // inlineNoteText predicate (history-bearing LLM blank with >1 alternative).
