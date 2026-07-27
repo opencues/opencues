@@ -65,29 +65,26 @@ interface Insertion {
   order: number;
 }
 
-// Inline cue note — rendered as a dim (gray) bracketed pill on its own line
-// below the buffer: `[⚠ - message]`. Display-only: the ANSI dim codes and the
-// note text live in the rendered string the host PAINTS, never in the logical
-// submit buffer (same channel as every other directive here). v1 placement is
-// end-of-render on its own line; span-anchored placement is a follow-up.
+// Inline cue note — a dim (gray) bracketed pill `[⚠ - message]` placed on the
+// line DIRECTLY BELOW the flagged span, indented to the span's column (not
+// below the whole buffer — that drifts far from the span in a long doc).
+// Display-only: the pill text + its ANSI live in the rendered string the host
+// PAINTS, never in the logical submit buffer (same channel as every other
+// directive here).
 //
 // The advisory (def.cueTip) arrives as "<icon> <message>" (e.g.
 // "⚠ the 19th is a Friday"); render it as "[<icon> - <message>]" so it reads
 // as a distinct pill, matching the `[OpenCues: …]` inline-notification shape.
-function renderInlineNote(text: string): string {
+function formatInlineNotePill(text: string): string {
   const trimmed = text.trim();
   const m = trimmed.match(/^(\S+)\s+([\s\S]*)$/);
   const body = m ? `${m[1]} - ${m[2]}` : trimmed;
-  return '\n' + ANSI_DIM_ON + '[' + body + ']' + ANSI_DIM_OFF;
+  return '[' + body + ']';
 }
 
 export function applyDirectives(rendered: string, directives: RenderDirectives | null | undefined): string {
   if (!directives) return rendered;
   if (directives.textOverride !== undefined) return directives.textOverride;
-
-  const noteSuffix = directives.inlineNote && directives.inlineNote.text
-    ? renderInlineNote(directives.inlineNote.text)
-    : '';
 
   // Coalesce overlapping/adjacent dim ranges into a flat list of "dim on"
   // / "dim off" boundary points. Without this, a cue-word dim ([29,40])
@@ -152,7 +149,30 @@ export function applyDirectives(rendered: string, directives: RenderDirectives |
     insertions.push({ visibleAt: cr.start, ansi: open, order: 0 });
     insertions.push({ visibleAt: cr.end, ansi: ANSI_FG_RESET, order: 1 });
   }
-  if (insertions.length === 0) return rendered + noteSuffix;
+  // Inline cue note — insert as a new indented line right after the visible
+  // line that contains the flagged span (span coords are in the same visible
+  // space as `rendered`). Placing it here rather than appending at the very
+  // end keeps the pill next to the span even in a long buffer. NOTE: this adds
+  // visible characters mid-string, so any LATER render handler's ranges (this
+  // fn is called once per handler) computed past the insertion point would
+  // shift — in practice only DimRender emits inlineNote and it carries its own
+  // dim/highlight in the same call, where all insertions are indexed against
+  // the same original `rendered`, so its own ranges are unaffected.
+  if (directives.inlineNote && directives.inlineNote.text) {
+    const note = directives.inlineNote;
+    const visible = rendered.replace(/\x1b\[[0-9;]*m/g, '');
+    const spanEnd = Math.min(Math.max(0, note.spanEnd), visible.length);
+    const spanStart = Math.min(Math.max(0, note.spanStart), visible.length);
+    const nl = visible.indexOf('\n', spanEnd);
+    const at = nl === -1 ? visible.length : nl;
+    const lineStart = visible.lastIndexOf('\n', Math.max(0, spanStart - 1)) + 1;
+    const indent = ' '.repeat(Math.max(0, spanStart - lineStart));
+    const pill = ANSI_DIM_ON + formatInlineNotePill(note.text) + ANSI_DIM_OFF;
+    // order 2 → fires after any dim/highlight close-codes at this boundary.
+    insertions.push({ visibleAt: at, ansi: '\n' + indent + pill, order: 2 });
+  }
+
+  if (insertions.length === 0) return rendered;
 
   insertions.sort((a, b) => a.visibleAt - b.visibleAt || a.order - b.order);
 
@@ -190,5 +210,5 @@ export function applyDirectives(rendered: string, directives: RenderDirectives |
     result += insertions[nextIns].ansi;
     nextIns += 1;
   }
-  return result + noteSuffix;
+  return result;
 }

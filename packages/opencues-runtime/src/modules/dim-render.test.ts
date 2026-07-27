@@ -659,17 +659,39 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     expect(out?.inlineNote).toBeUndefined();
   });
 
-  it('the terminal painter appends the note as a dim bracketed pill below the buffer', () => {
+  it('the terminal painter renders the note as a dim pill on the line under the span, indented to its column', () => {
     const { dynDefs, dimRender } = setup(BUFFER);
     seedContradictionDef(dynDefs);
     const directives = dimRender.compute({ text: BUFFER, cursor: 14, externalHighlights: [] });
     const painted = applyDirectives(BUFFER, directives);
-    // Display-only: the buffer text (minus the highlight ANSI inserted into it)
-    // reads unchanged at the front, and the note appears AFTER it on its own
-    // line as a dim bracketed pill "[⚠ - message]".
+    // Display-only: the buffer text (minus the ANSI inserted into it) reads
+    // unchanged at the front; the note is a dim bracketed pill on a new line,
+    // indented to the span's column (11 = start of "saturday").
     const visible = painted.replace(/\x1b\[[0-9;]*m/g, '');
     expect(visible.startsWith(BUFFER)).toBe(true);
-    expect(visible).toContain('\n[⚠ - the 19th is a Friday, not Saturday]');
-    expect(painted).toContain('\n\x1b[2m[⚠ - the 19th is a Friday, not Saturday]\x1b[22m');
+    expect(visible).toContain('\n' + ' '.repeat(11) + '[⚠ - the 19th is a Friday, not Saturday]');
+    expect(painted).toContain('\x1b[2m[⚠ - the 19th is a Friday, not Saturday]\x1b[22m');
+  });
+
+  it('places the pill under the SPAN\'s line, not below the whole buffer (long buffer)', () => {
+    // Span "saturday" is on line 1; the buffer has two more lines. The pill
+    // must land between line 1 and line 2 — right under the span — never after
+    // "even more".
+    const multiline = 'meet saturday\nmore text\neven more';
+    const { dynDefs, dimRender } = setup(multiline);
+    dynDefs.set(1, {
+      originalWord: 'saturday',
+      alternatives: ['saturday'],
+      currentIndex: 0,
+      spanStart: 5,
+      spanEnd: 13,
+      blankName: 'sentence-cue:contradiction-weekday-date',
+      cueTip: '⚠ the 19th is a Friday',
+    });
+    const directives = dimRender.compute({ text: multiline, cursor: 8, externalHighlights: [] });
+    const visible = applyDirectives(multiline, directives).replace(/\x1b\[[0-9;]*m/g, '');
+    expect(visible).toContain('saturday\n     [⚠ - the 19th is a Friday]\nmore text');
+    // Not dangling after the last line.
+    expect(visible.endsWith('even more')).toBe(true);
   });
 });

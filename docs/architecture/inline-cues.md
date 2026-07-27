@@ -84,9 +84,13 @@ characters** — they cannot *inject* text. Injecting text-not-in-the-buffer is:
 
 ## Open questions (before hardening)
 
-1. **Placement.** v1 appends the note below the whole buffer. Error-Lens
-   convention is end-of-line-of-span, or the line below the span indented to
-   its column. Needs the span's line/column computed in painted coords.
+1. **Placement.** ✅ The note renders on the line directly BELOW the span,
+   indented to the span's column (computed in painted coords in
+   `applyDirectives`). Below-the-whole-buffer was rejected — it drifts far from
+   the span in a long doc. Remaining nuance: a subsequent render handler's
+   ranges could shift because the pill adds visible chars mid-string (only
+   DimRender emits the note today, so its own ranges are safe — see the comment
+   in `applyDirectives`).
 2. **Reveal trigger fidelity.** Terminal hosts re-render on caret-only moves
    (arrow keys) via the key-dispatch → `applyRender` path, so `ctx.cursor` is
    fresh. Confirm no host paints a stale cursor.
