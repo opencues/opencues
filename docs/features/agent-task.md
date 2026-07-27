@@ -183,8 +183,6 @@ AgentRewrite):
 | british-english | 100% | `agentically use british english spelling` |
 | translation | 100% | `agentically translate english days to spanish` |
 | inclusive-language | 100% | `agentically use inclusive gender-neutral language` |
-| medical | 100% | `agentically use clinical terminology` |
-| lawyer | 100% | `agentically use precise legal terminology` |
 | linkedin-friendly | 100% | `agentically make wording linkedin friendly` |
 | twitter-concise | 100% | `agentically shorten verbose words` |
 | long-doc | 100% | (40–65 word docs, mixed tasks) |
