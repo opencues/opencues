@@ -12,7 +12,7 @@
 
 import type { HostAdapter, KeyEvent, ProcessHandle, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
-import { DynDefs, type WordDef } from '../state/dyn-defs';
+import { DynDefs, inlineNoteText, type WordDef } from '../state/dyn-defs';
 import type { ConfigLoader, BlankEntry } from './config-loader';
 import { splitWords } from './navigation';
 import { resolveNavKeymap } from './nav-keymap';
@@ -284,15 +284,23 @@ export class Cycling {
 
     const text = event.text;
     const cursor = event.cursorOffset;
-    for (const { def } of this.dynDefs.sentenceCueDefs()) {
-      if (!def.cueTip) continue;
+    for (const [, def] of this.dynDefs.entries()) {
+      // Note-bearing = cueTip advisory OR history-bearing LLM blank (transform /
+      // fluid). Same predicate DimRender paints on, so `_`-step fires exactly
+      // where a note is visible — for a blank, the alternatives ARE the walkable
+      // transform history.
+      if (inlineNoteText(def) === undefined) continue;
       if (def.alternatives.length <= 1) continue;
-      if (!sentenceCueSpanLive(def, text)) continue;
+      // Generic span-liveness (not sentence-cue-specific): the current alt is
+      // still verbatim at the recorded span. Stale → skip (user edited it).
+      if (def.spanEnd <= def.spanStart || def.spanEnd > text.length) continue;
+      if (text.slice(def.spanStart, def.spanEnd) !== def.alternatives[def.currentIndex]) continue;
       if (cursor < def.spanStart || cursor > def.spanEnd) continue; // inclusive, matches paint
       // Caret is inside a painted note → rotate forward, consume the `_`.
       // applyAltCycle needs a live word index for its startWord existence check;
-      // for a sentence-cue def the actual splice uses the char span, so any word
-      // that contains spanStart works (covers synthetic-key CJK defs too).
+      // for span-bound defs the actual splice uses the char span / word-derived
+      // range, so any word that contains spanStart works (covers whole-buffer
+      // transforms and synthetic-key CJK sentence-cues alike).
       const words = splitWords(text);
       let originIdx = words.findIndex(w => def.spanStart >= w.start && def.spanStart < w.end);
       if (originIdx < 0) originIdx = 0;

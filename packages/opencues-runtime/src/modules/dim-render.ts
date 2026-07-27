@@ -10,6 +10,7 @@
 import type { HostAdapter, InlineNote, Range, RenderContext, RenderDirectives, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
 import type { DynDefs, WordDef } from '../state/dyn-defs';
+import { inlineNoteText } from '../state/dyn-defs';
 import type { ConfigLoader } from './config-loader';
 import type { SpanFillState } from '../state/span-fill';
 import type { SelectorSatelliteState } from '../state/selector-satellite';
@@ -366,13 +367,23 @@ export class DimRender {
     ) {
       const toCtx = text !== ctx.text ? buildIndexMap(text, ctx.text) : null;
       for (const [, def] of this.dynDefs.entries()) {
-        if (!def.cueTip) continue;              // only passive advisory cues
+        // Note-bearing = a cueTip advisory (sentence-cue / contradiction) OR a
+        // history-bearing LLM blank (transform / fluid). Shared predicate with
+        // Cycling's `_`-step so paint + step never disagree on "has a note".
+        const noteText = inlineNoteText(def);
+        if (noteText === undefined) continue;
         if (!defSpanLive(def, text)) continue;  // stale span — skip
         const s = toCtx ? toCtx.start(def.spanStart) : def.spanStart;
         const e = toCtx ? toCtx.end(def.spanEnd) : def.spanEnd;
         if (ctx.cursor >= s && ctx.cursor <= e) {
-          inlineNote = { spanStart: s, spanEnd: e, text: def.cueTip };
-          cursorSpanLogical = { start: def.spanStart, end: def.spanEnd };
+          inlineNote = { spanStart: s, spanEnd: e, text: noteText };
+          // Auto-select (promote the span from dim → highlight) is for cueTip
+          // advisories ONLY. A history-bearing blank (transform / fluid) keeps
+          // its existing dim — flipping a whole-buffer transform to a bright
+          // highlight on cursor-in-span would be jarring (and it's typically the
+          // entire buffer). The note appears either way; only the highlight is
+          // scoped.
+          if (def.cueTip) cursorSpanLogical = { start: def.spanStart, end: def.spanEnd };
           break;
         }
       }

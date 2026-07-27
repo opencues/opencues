@@ -52,6 +52,26 @@ function isSentenceCueDef(def: WordDef): boolean {
   return typeof def.blankName === 'string' && def.blankName.startsWith('sentence-cue:');
 }
 
+/**
+ * The inline-note text for a def, or `undefined` if the def has no note. A def
+ * is NOTE-BEARING when it either:
+ *   - carries a `cueTip` (sentence-cue / contradiction — an advisory), OR
+ *   - is a history-bearing LLM blank (transform / fluid) with >1 alternative —
+ *     so its walkable transform history is discoverable + `_`-steppable.
+ *
+ * Shared SINGLE SOURCE OF TRUTH for "what gets a note", used by both DimRender
+ * (paints the note) and Cycling (`_`-cycle) so the two can't drift on which
+ * spans are note-bearing. The blank labels are PLACEHOLDERS — the indicator
+ * text/style is deliberately deferred (see docs/architecture/inline-cue-cycle.md).
+ */
+export function inlineNoteText(def: WordDef): string | undefined {
+  if (def.cueTip) return def.cueTip;
+  if (def.alternatives.length <= 1) return undefined;
+  if (def.blankName === 'transform-blank') return 'transform';
+  if (def.blankName === 'fluid-blank') return 'lookup';
+  return undefined;
+}
+
 function altWordsOf(def: WordDef): string[] {
   const cache = def as WordDef & { _altWordsCache?: { idx: number; words: string[] } };
   const idx = def.currentIndex;

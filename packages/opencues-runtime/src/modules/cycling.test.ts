@@ -1550,4 +1550,39 @@ describe('_-cycle — bare `_` inside a painted cue note rotates the cue', () =>
     expect(adapter.fireKey('_')).toBe(false);
     expect(adapter.setTextCalls).toEqual([]);
   });
+
+  it('`_` walks a transform-blank HISTORY (not just sentence-cues)', async () => {
+    // A transform/fluid blank accumulates a walkable history in `alternatives`
+    // (the findChainableLlmDef chain). It has NO cueTip — its note comes from
+    // inlineNoteText's transform-blank branch. `_` steps the history.
+    const { adapter, dynDefs } = await setup('日本語');
+    dynDefs.set(0, {
+      originalWord: 'thanks',
+      alternatives: ['日本語', 'formal english', 'thanks a lot'], // newest → older
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: 3, // '日本語' is 3 chars
+      blankName: 'transform-blank',
+      // no cueTip
+    });
+    adapter.setCursorOffset(1); // inside [0,3]
+    expect(adapter.fireKey('_')).toBe(true); // consumed
+    expect(dynDefs.get(0)?.currentIndex).toBe(1);
+    expect(adapter.setTextCalls.at(-1)).toBe('formal english');
+  });
+
+  it('does NOT `_`-cycle a fluid/transform blank with a single alternative', async () => {
+    const { adapter, dynDefs } = await setup('sunny');
+    dynDefs.set(0, {
+      originalWord: 'sunny',
+      alternatives: ['sunny'], // no history yet → nothing to step
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: 5,
+      blankName: 'fluid-blank',
+    });
+    adapter.setCursorOffset(2);
+    expect(adapter.fireKey('_')).toBe(false);
+    expect(adapter.setTextCalls).toEqual([]);
+  });
 });

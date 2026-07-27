@@ -605,6 +605,24 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     expect(out?.dimRanges ?? []).not.toContainEqual({ start: 11, end: 19 });
   });
 
+  it('emits an inline note for a history-bearing transform-blank def (no cueTip)', () => {
+    // A transform/fluid blank has no cueTip; its note comes from the shared
+    // inlineNoteText predicate (history-bearing LLM blank with >1 alternative).
+    const buf = '日本語です';
+    const { dynDefs, dimRender } = setup(buf);
+    dynDefs.set(0, {
+      originalWord: 'thanks',
+      alternatives: [buf, 'thanks a lot'], // result + one history step
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: buf.length,
+      blankName: 'transform-blank',
+    });
+    const out = dimRender.compute({ text: buf, cursor: 2, externalHighlights: [] });
+    expect(out?.inlineNote?.text).toBe('transform');
+    expect(out?.inlineNote?.spanStart).toBe(0);
+  });
+
   it('emits the note at the span boundary (cursor == spanEnd, inclusive)', () => {
     const { dynDefs, dimRender } = setup(BUFFER);
     seedContradictionDef(dynDefs);

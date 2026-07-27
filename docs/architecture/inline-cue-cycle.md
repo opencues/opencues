@@ -77,10 +77,10 @@ inputs are the one place it's fundamentally impossible.
 |---|---|---|---|
 | **Sentence-cue** | ✅ | ✅ (rotate rewrites) | ✅ |
 | **Contradiction cue** | ✅ | ✅ (**accept the fix**) | ✅ |
+| **Transform / fluid blank span** | ✅ (`↳ transform` / `↳ lookup`) | ✅ (**walks the transform HISTORY**) | ✅ |
 | **Word-cue** | ❌ (dim + statusline) | ❌ — arrows only | ✅ |
 | **Selector/satellite (settings)** | ❌ | ❌ — arrows only | ✅ |
 | **List / script blank (volume…)** | ❌ (`_` is its *trigger*) | ❌ | arrows cycle |
-| **Fluid / transform blank span** | ❌ | ❌ | down-arrow reverts |
 
 ### Where the old means (arrows) are *necessary* — the fallback set
 
@@ -114,8 +114,41 @@ mechanic is more than a convenience.
 2. **Scope boundary (settled).** v1 = note-bearing cues only (sentence +
    contradiction). Word-cues stay arrow-only until they get a note.
 
+## Generalized to any note-bearing span (built)
+
+The mechanic is no longer sentence-cue-specific. A single shared predicate,
+`inlineNoteText(def)` in `state/dyn-defs.ts`, is the SOLE source of truth for
+"does this def have a note", used by BOTH DimRender (paint) and Cycling
+(`_`-step) so they can't drift. A def is note-bearing when it either:
+
+- carries a `cueTip` (sentence-cue / contradiction — an advisory), **or**
+- is a **history-bearing LLM blank** (`transform-blank` / `fluid-blank`) with
+  >1 alternative. Those accumulate a **walkable history** in `alternatives` via
+  `findChainableLlmDef` (translate → 日本語, make formal → …), so `_` **steps
+  back through your transformations** — a rotation that GROWS with use, richer
+  than a cue's fixed set. Labels (`transform` / `lookup`) are placeholders;
+  indicator text still deferred.
+
+**Auto-select is `cueTip`-only.** A cue's span promotes dim→highlight on
+cursor-in-span; a transform/fluid **keeps its dim** (a whole-buffer transform
+flipping the entire buffer to a bright highlight would be jarring). The note
+appears either way; only the highlight is scoped.
+
+**Provisional until edited.** Editing a substitution invalidates its span
+(`defSpanLive` fails) → note vanishes, `_` frees back to a blank, AND the chain
+breaks (fresh def). So an edit both *commits* the result and *ends* the walkable
+history. One rule for cues and blanks alike; it also resolves the whole-buffer
+`_`-greediness (type past the span or edit it and `_` is a blank again).
+
+Verified on a live CC host: a real transform gets a `↳ transform` note and `_`
+walks its history.
+
 ## Parked
 
+- **State cache** *(ask Wilfred later-later)* — a cache so you can return to a
+  PREVIOUS OpenCues state when you land back on the same text (re-attach the
+  prior def/history to identical buffer content instead of it being gone). Not
+  designed yet.
 - **Horizontal note** — a future paint *variant* (note beside the span rather
   than under it). Since paint-presence is the gate, it simply becomes another
   surface where `_`-cycle turns on. To be designed later.
