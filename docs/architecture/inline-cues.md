@@ -88,7 +88,7 @@ characters** — they cannot *inject* text. Injecting text-not-in-the-buffer is:
    indented to the span's column (computed in painted coords in
    `applyDirectives`). Below-the-whole-buffer was rejected — it drifts far from
    the span in a long doc. Remaining nuance: a subsequent render handler's
-   ranges could shift because the pill adds visible chars mid-string (only
+   ranges could shift because the note adds visible chars mid-string (only
    DimRender emits the note today, so its own ranges are safe — see the comment
    in `applyDirectives`).
 2. **Reveal trigger fidelity.** Terminal hosts re-render on caret-only moves

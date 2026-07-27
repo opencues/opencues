@@ -65,21 +65,18 @@ interface Insertion {
   order: number;
 }
 
-// Inline cue note — a dim (gray) bracketed pill `[⚠ - message]` placed on the
-// line DIRECTLY BELOW the flagged span, indented to the span's column (not
-// below the whole buffer — that drifts far from the span in a long doc).
-// Display-only: the pill text + its ANSI live in the rendered string the host
-// PAINTS, never in the logical submit buffer (same channel as every other
-// directive here).
+// Inline cue note — dim (gray) text `⚠ - message` placed on the line DIRECTLY
+// BELOW the flagged span, indented to the span's column (not below the whole
+// buffer — that drifts far from the span in a long doc). Display-only: the
+// text + its ANSI live in the rendered string the host PAINTS, never in the
+// logical submit buffer (same channel as every other directive here).
 //
 // The advisory (def.cueTip) arrives as "<icon> <message>" (e.g.
-// "⚠ the 19th is a Friday"); render it as "[<icon> - <message>]" so it reads
-// as a distinct pill, matching the `[OpenCues: …]` inline-notification shape.
-function formatInlineNotePill(text: string): string {
+// "⚠ the 19th is a Friday"); render it as "<icon> - <message>".
+function formatInlineNoteText(text: string): string {
   const trimmed = text.trim();
   const m = trimmed.match(/^(\S+)\s+([\s\S]*)$/);
-  const body = m ? `${m[1]} - ${m[2]}` : trimmed;
-  return '[' + body + ']';
+  return m ? `${m[1]} - ${m[2]}` : trimmed;
 }
 
 export function applyDirectives(rendered: string, directives: RenderDirectives | null | undefined): string {
@@ -167,7 +164,7 @@ export function applyDirectives(rendered: string, directives: RenderDirectives |
     const at = nl === -1 ? visible.length : nl;
     const lineStart = visible.lastIndexOf('\n', Math.max(0, spanStart - 1)) + 1;
     const indent = ' '.repeat(Math.max(0, spanStart - lineStart));
-    const pill = ANSI_DIM_ON + formatInlineNotePill(note.text) + ANSI_DIM_OFF;
+    const pill = ANSI_DIM_ON + formatInlineNoteText(note.text) + ANSI_DIM_OFF;
     // order 2 → fires after any dim/highlight close-codes at this boundary.
     insertions.push({ visibleAt: at, ansi: '\n' + indent + pill, order: 2 });
   }
