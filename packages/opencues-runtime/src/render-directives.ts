@@ -72,7 +72,8 @@ interface Insertion {
 // logical submit buffer (same channel as every other directive here).
 //
 // The advisory (def.cueTip) arrives as "<icon> <message>" (e.g.
-// "⚠ the 19th is a Friday"); render it as "<icon> - <message>".
+// "⚠ the 19th is a Friday"); render it as "<icon> - <message>", led by a `└`
+// tree connector at the painter.
 function formatInlineNoteText(text: string): string {
   const trimmed = text.trim();
   const m = trimmed.match(/^(\S+)\s+([\s\S]*)$/);
@@ -164,9 +165,11 @@ export function applyDirectives(rendered: string, directives: RenderDirectives |
     const at = nl === -1 ? visible.length : nl;
     const lineStart = visible.lastIndexOf('\n', Math.max(0, spanStart - 1)) + 1;
     const indent = ' '.repeat(Math.max(0, spanStart - lineStart));
-    const pill = ANSI_DIM_ON + formatInlineNoteText(note.text) + ANSI_DIM_OFF;
+    // Lead with a `└` tree connector (at the span's column) so the note reads
+    // as hanging off the span on the line above it.
+    const body = ANSI_DIM_ON + '└ ' + formatInlineNoteText(note.text) + ANSI_DIM_OFF;
     // order 2 → fires after any dim/highlight close-codes at this boundary.
-    insertions.push({ visibleAt: at, ansi: '\n' + indent + pill, order: 2 });
+    insertions.push({ visibleAt: at, ansi: '\n' + indent + body, order: 2 });
   }
 
   if (insertions.length === 0) return rendered;
