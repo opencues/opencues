@@ -113,6 +113,7 @@ const V21_CAPABILITIES: readonly Capability[] = [
   'render-override',
   'dim-ranges',
   'highlight-range',
+  'inline-note',
 ];
 
 export class ClaudeCodeV21Adapter implements HostAdapter {

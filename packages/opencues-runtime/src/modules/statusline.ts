@@ -236,10 +236,11 @@ export class Statusline {
     // inline-cues-mode: inline → a passive cue's advisory (def.cueTip) is
     // painted INLINE by DimRender instead of the status line, so suppress the
     // redundant secondary copy here. Only when the host can actually paint it
-    // (dim-ranges cap); otherwise the advisory would vanish entirely, so we
-    // keep the status-line copy (automatic degradation to secondary).
+    // ('inline-note' cap — terminal ANSI hosts); on chrome (no such cap) the
+    // note can't be injected, so we keep the status-line copy (automatic
+    // degradation to the secondary display).
     const inlinePassiveCues = this.configLoader?.opencuesState.inlineCuesMode === 'inline'
-      && this.adapter.capabilities.includes('dim-ranges');
+      && this.adapter.capabilities.includes('inline-note');
     const wordIndex = this.hlState.wordIndex;
     // Direct lookup matches multi-word substitute DefAt the origin word
     // only. If the highlight is on word N>origin inside a multi-word span

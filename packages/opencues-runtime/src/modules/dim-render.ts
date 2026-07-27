@@ -356,7 +356,12 @@ export class DimRender {
     const inlineMode = this.configLoader?.opencuesState.inlineCuesMode ?? 'inline';
     if (
       inlineMode === 'inline'
-      && this.adapter.capabilities.includes('dim-ranges')
+      // 'inline-note' = host can actually paint the note text (terminal ANSI).
+      // Chrome lacks it (CSS Highlight can't inject text), so the whole inline
+      // path is skipped there and the advisory degrades to the secondary
+      // display — no half-state where the span auto-selects but the note can't
+      // appear. Statusline's suppression is gated on the SAME capability.
+      && this.adapter.capabilities.includes('inline-note')
       && typeof ctx.cursor === 'number' && ctx.cursor >= 0
     ) {
       const toCtx = text !== ctx.text ? buildIndexMap(text, ctx.text) : null;

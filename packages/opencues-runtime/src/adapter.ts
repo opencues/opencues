@@ -223,7 +223,15 @@ export type Capability =
   // Host can render true-colour (RGB/HEX) on directive ranges — chrome
   // sets this. Terminal hosts (CC / OC / gemini) leave it unset, which
   // routes through ANSI escapes instead.
-  | 'render-rgb-color';
+  | 'render-rgb-color'
+  // Host can render an inline cue note — display-only text placed near a
+  // flagged span (`RenderDirectives.inlineNote`, painted by the ANSI
+  // `applyDirectives`). Terminal hosts that own their painted string set this;
+  // chrome does NOT (CSS Custom Highlight styles ranges but can't inject text),
+  // so a passive cue's advisory degrades to the secondary display there. Gates
+  // both the note emission (DimRender) and the secondary-copy suppression
+  // (Statusline) so the advisory can never fall between the two surfaces.
+  | 'inline-note';
 
 /**
  * Sanitized, low-fan-out context describing the field a user is
