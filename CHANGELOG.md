@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — a config-command slot-claim now aborts racing lower-priority siblings (`@opencues/core` 0.40.0 → 0.40.1)
+
+Follow-up to the provider-liveness probe. When `ConfigIntentSource` claims the `_` (returns `consumedBlankSlots`) for a provider/settings command — applied **or refused** — the resolver now **aborts** any strictly-lower-priority sibling (FluidBlank / TransformBlank) still racing on that slot, cancelling its in-flight LLM call. Previously the claim only *filtered* the sibling's result after the fact, so on a refused provider switch FluidBlank still ran a full wasted round-trip (and it was that late result that used to overwrite the tailored message before the `consumedBlankSlots` filter landed). This generalises the existing abort — which fired only on a whole-buffer claim or an undo/redo ACTION — to any explicit slot-claim, so it works even for the refusal's `_`-only (or empty-results) shape that carries no spanning result. Scoped by construction: `ConfigIntentSource` is the only source that returns source-level `consumedBlankSlots`. Pinned by two resolver tests (claim → in-flight sibling aborted; no claim → sibling runs to completion).
+
 ### Added — provider switches ping the target before committing; stay put + inline error on failure (`@opencues/core` 0.39.0 → 0.40.0)
 
 A fluid-config provider switch (`"switch to ollama _"`, `"use anthropic for cues _"`) now **pings the provider it's about to change to** before writing the scalar. If the target can't answer — Ollama isn't running, a required key is missing, the provider rejects the model — OpenCues writes **nothing** (the current provider stays) and surfaces the reason **inline**, via the same `[err]`-style substitute every other blank LLM failure uses. Previously a switch to an unreachable provider applied blindly and then every subsequent call silently failed.

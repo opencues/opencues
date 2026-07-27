@@ -182,7 +182,19 @@ export class CueResolver {
         const actionClaim = filteredResults.some(
           r => (r.metadata as { undoAction?: unknown } | undefined)?.undoAction !== undefined,
         );
-        if (wholeBufferClaim || actionClaim) {
+        // EXPLICIT slot claim → abort racers. A source that returns
+        // `consumedBlankSlots` is declaring "the `_` is MY command, not a
+        // blank to fill" — same intent as the whole-buffer / undo claims
+        // above, but it needn't span the whole buffer (a ConfigIntent
+        // provider-switch REFUSAL only replaces `_`, and its empty-results
+        // shape carries no spanned result at all). Without this, a
+        // strictly-lower-priority sibling (FluidBlank) keeps its in-flight
+        // LLM call running to completion only to be filtered — pure waste,
+        // and on the refusal path it's the call that used to overwrite the
+        // tailored message. Only ConfigIntentSource returns source-level
+        // consumedBlankSlots today, so this is scoped to config commands.
+        const explicitSlotClaim = (result.consumedBlankSlots?.length ?? 0) > 0;
+        if (wholeBufferClaim || actionClaim || explicitSlotClaim) {
           const claimingPriority = source.priority;
           for (let j = i + 1; j < applicableSources.length; j++) {
             if (applicableSources[j].priority < claimingPriority) {

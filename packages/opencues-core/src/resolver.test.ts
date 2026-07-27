@@ -451,3 +451,62 @@ describe('CueResolver: same-word sentence-cues are NOT merged (spaceless CJK)', 
     assert.strictEqual(atOne.length, 1, 'non-sentence-cue duplicates still merge into one');
   });
 });
+
+describe('CueResolver: parallel mode — an explicit slot-claim aborts lower-priority siblings', () => {
+  it('a higher-priority source returning consumedBlankSlots cancels a still-in-flight lower-priority sibling', async () => {
+    // Mirrors the ConfigIntent provider-switch case: the classifier claims
+    // the `_` (consumedBlankSlots) — even with NO spanned result (a refusal
+    // only replaces `_`) — and a slower FluidBlank-style sibling on the same
+    // slot must have its in-flight LLM call aborted, not run to completion
+    // just to be filtered.
+    let lowAborted = false;
+    let lowRanToCompletion = false;
+
+    const high: CueSource = {
+      id: 'high', priority: 100, isCycleable: false, supports: () => true,
+      // Empty-results refusal shape — no spanned result, just the claim.
+      async getCues() { return { results: [], consumedBlankSlots: [3] }; },
+    };
+    const low: CueSource = {
+      id: 'low', priority: 50, isCycleable: false, supports: () => true,
+      async getCues(ctx) {
+        return await new Promise<CueSourceResult>((resolve) => {
+          const done = (aborted: boolean) => {
+            if (aborted) lowAborted = true; else lowRanToCompletion = true;
+            resolve({ results: [] });
+          };
+          if (ctx.signal?.aborted) { done(true); return; }
+          ctx.signal?.addEventListener('abort', () => done(true));
+          // Fallback so the test can't hang if the abort never fires.
+          setTimeout(() => done(false), 800);
+        });
+      },
+    };
+
+    const resolver = new CueResolver([high, low], { parallel: true });
+    await resolver.resolve(makeContext('switch to ollama _'));
+    assert.strictEqual(lowAborted, true, 'lower-priority sibling should be aborted by the slot-claim');
+    assert.strictEqual(lowRanToCompletion, false, 'lower-priority sibling must NOT run to completion');
+  });
+
+  it('no claim → lower-priority sibling runs to completion (abort is scoped to claims)', async () => {
+    let lowRanToCompletion = false;
+    const high: CueSource = {
+      id: 'high', priority: 100, isCycleable: false, supports: () => true,
+      async getCues() { return { results: [] }; }, // no consumedBlankSlots
+    };
+    const low: CueSource = {
+      id: 'low', priority: 50, isCycleable: false, supports: () => true,
+      async getCues(ctx) {
+        return await new Promise<CueSourceResult>((resolve) => {
+          if (ctx.signal?.aborted) { resolve({ results: [] }); return; }
+          ctx.signal?.addEventListener('abort', () => resolve({ results: [] }));
+          setTimeout(() => { lowRanToCompletion = true; resolve({ results: [] }); }, 50);
+        });
+      },
+    };
+    const resolver = new CueResolver([high, low], { parallel: true });
+    await resolver.resolve(makeContext('the sky today looks _'));
+    assert.strictEqual(lowRanToCompletion, true, 'without a claim, the sibling must finish normally');
+  });
+});
