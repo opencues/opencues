@@ -2440,6 +2440,10 @@ async function auditProvidersAgainstKeys(keys: Record<string, string>): Promise<
 
   const problems: string[] = [];
   for (const d of directives) {
+    // `inherit` is the fall-through sentinel (use the next tier down / the
+    // global) — a documented value for the bucket + per-feature provider
+    // scalars, NOT a real provider. Don't flag it as unknown.
+    if (d.provider === 'inherit') continue;
     if (!(d.provider in PROVIDER_ENV_KEY)) {
       problems.push(`  - "${d.feature === 'global' ? 'llm-provider' : d.feature + '-provider'}: ${d.provider}" — unknown provider`);
       continue;

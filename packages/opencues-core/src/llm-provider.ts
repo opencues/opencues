@@ -1754,6 +1754,11 @@ export function isProviderValueCyclable(
  */
 export function getProvider(id: string | undefined | null): ProviderAdapter | null {
   if (!id) return null;
+  // `inherit` is the fall-through sentinel (use the global provider), a
+  // documented value for the bucket + per-feature `*-provider` scalars — NOT
+  // a real provider. Return null WITHOUT warning; callers resolve the actual
+  // provider via resolveLLM's tier fall-through.
+  if (id.trim().toLowerCase() === 'inherit') return null;
   const canonical = (LEGACY_PROVIDER_ALIASES[id] ?? id) as ProviderId;
   const found = PROVIDERS[canonical];
   if (!found) {
@@ -2446,9 +2451,20 @@ export function resolveLLMTuple(opts: ResolveLLMOptions): ResolvedLLMTuple | nul
     { p: opts.featureProvider, m: opts.featureModel },
     { p: opts.globalProvider, m: opts.globalModel },
   ];
+  // `inherit` is the fall-through sentinel: it means "no override at this
+  // tier — use the next one down". It's a documented value for the bucket
+  // scalars (cues-llm-provider: inherit) and the per-feature ones
+  // (word-cues-provider: inherit, …). The bucket scalars get collapsed to
+  // the global upstream, but per-feature values arrive here verbatim, so we
+  // must skip an `inherit` tier here too — otherwise it was tried as a
+  // LITERAL provider ('inherit' → unknown → null → the source is dropped
+  // with "no API key for provider 'inherit'"). Treat it identically to an
+  // absent value at every tier.
+  const isOverride = (p?: string | null): p is string =>
+    typeof p === 'string' && p.trim() !== '' && p.trim().toLowerCase() !== 'inherit';
   let providerTierIdx = -1;
   for (let i = 0; i < tiers.length; i += 1) {
-    if (tiers[i].p) { providerTierIdx = i; break; }
+    if (isOverride(tiers[i].p)) { providerTierIdx = i; break; }
   }
   // No-tier-set path: AUTO-ROUTE over the user's available API keys.
   // Picks the first provider from PROVIDER_AUTO_ORDER whose env-var key
@@ -2480,7 +2496,7 @@ export function resolveLLMTuple(opts: ResolveLLMOptions): ResolvedLLMTuple | nul
   let model: string | null = null;
   for (let i = 0; i < tiers.length; i += 1) {
     const m = tiers[i].m;
-    if (!m) continue;
+    if (!isOverride(m)) continue;  // absent OR `inherit` → fall through
     // Only carry the model if it's at least as specific as the provider tier
     // (or no provider tier was set, in which case we fell back to groq and
     // any tier's model is fair game).
