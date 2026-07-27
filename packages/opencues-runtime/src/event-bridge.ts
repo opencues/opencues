@@ -220,6 +220,11 @@ export interface BridgeBindings {
    *  long-lived runtime instance that handles multiple buffer
    *  lifecycles (keep-alive hosts, off-process scripted consumers). */
   resetBufferState?(): void;
+  /** Compute the CURRENT render directives (dim/highlight/inlineNote/…) for the
+   *  live text + cursor, so the dump can expose what would be painted right now.
+   *  Optional — hosts that wire it make render-level features (e.g. the inline
+   *  cue note) observable to scenarios; hosts that don't leave `render` null. */
+  renderDirectives?(): unknown[];
   /** Runtime state classes — observed each tick for transition events,
    *  serialized into the dump on demand. */
   readonly state: BridgeState;
@@ -851,6 +856,7 @@ export function startEventBridge(b: BridgeBindings): EventBridgeHandle {
         dismissedBlanks: serializeOpaque(b.state.dismissedBlanks),
         selectorSatellite: serializeOpaque(b.state.selectorSatelliteState),
         agentTask: serializeOpaque(b.state.agentTaskState),
+        render: safeCall(() => (b.renderDirectives ? b.renderDirectives() : null)),
         capabilities: b.adapter.capabilities,
         pid,
         host: b.adapter.hostName,

@@ -783,6 +783,25 @@ export function boot(host: HostInfo): BootResult {
   if (process.env.OPENCUES_BRIDGE === '1') {
     startEventBridge({
       adapter,
+      // Compute the render directives (dim / highlight / inlineNote) for the
+      // live text + cursor so the dump exposes what would be painted now —
+      // makes the inline cue note observable to agentic scenarios. Mirrors
+      // applyRender's ctx construction; ZWS-stripped so DimRender's coords line
+      // up. Null returns (Statusline) are dropped.
+      renderDirectives: () => {
+        const ctxText = visible(adapter.getText());
+        const rctx: RenderContext = {
+          text: ctxText,
+          cursor: adapter.getCursorOffset(),
+          externalHighlights: [],
+        };
+        const out: RenderDirectives[] = [];
+        for (const handler of renderHandlers) {
+          try { const d = handler(rctx); if (d) out.push(d); }
+          catch { /* a broken handler must not break the dump */ }
+        }
+        return out;
+      },
       // Synthetic keys go through the same handler list real keystrokes
       // use, but sample text/cursor at dispatch time (the cli.js patch
       // does the same — InputZone closures are stale across React
