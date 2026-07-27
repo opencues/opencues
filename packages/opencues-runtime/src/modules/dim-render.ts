@@ -377,13 +377,10 @@ export class DimRender {
         const e = toCtx ? toCtx.end(def.spanEnd) : def.spanEnd;
         if (ctx.cursor >= s && ctx.cursor <= e) {
           inlineNote = { spanStart: s, spanEnd: e, text: noteText };
-          // Auto-select (promote the span from dim → highlight) is for cueTip
-          // advisories ONLY. A history-bearing blank (transform / fluid) keeps
-          // its existing dim — flipping a whole-buffer transform to a bright
-          // highlight on cursor-in-span would be jarring (and it's typically the
-          // entire buffer). The note appears either way; only the highlight is
-          // scoped.
-          if (def.cueTip) cursorSpanLogical = { start: def.spanStart, end: def.spanEnd };
+          // Auto-select: the note-bearing span the caret is in promotes from dim
+          // to the active highlight — the "you're on this, `_` engages it" state,
+          // for cues AND transform/fluid blanks alike (consistent affordance).
+          cursorSpanLogical = { start: def.spanStart, end: def.spanEnd };
           break;
         }
       }

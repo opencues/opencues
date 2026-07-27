@@ -86,9 +86,10 @@ describe('CJK scenarios — coordinate mapping (logical→painted)', () => {
     // Host paints with two space→\n wraps.
     const painted = buffer.replace('HTTPS を', 'HTTPS\nを').replace('CSP ヘッダー', 'CSP\nヘッダー');
     const out = dim.compute({ text: painted, cursor: 0, externalHighlights: [] });
-    expect(out?.dimRanges).toHaveLength(1);
-    expect(out!.dimRanges![0].start).toBe(0);
-    expect(out!.dimRanges![0].end).toBe(painted.length); // full painted coverage
+    // Caret inside the whole-buffer transform → it auto-selects, so the SPAN is
+    // the (coordinate-mapped) highlight covering the full painted text.
+    expect(out?.highlight?.start).toBe(0);
+    expect(out?.highlight?.end).toBe(painted.length); // full painted coverage
   });
 
   it('handles a bare mid-CJK-word \\n wrap (no space at the wrap column)', async () => {
@@ -98,7 +99,7 @@ describe('CJK scenarios — coordinate mapping (logical→painted)', () => {
     dynDefs.set(0, { originalWord: '_', alternatives: ['_', buffer], currentIndex: 1, spanStart: 0, spanEnd: buffer.length, blankName: 'transform-blank' });
     const painted = buffer.replace('認証メカニズ', '認証メカニズ\n'); // +1 insert mid-word
     const out = dim.compute({ text: painted, cursor: 0, externalHighlights: [] });
-    expect(out!.dimRanges![0]).toEqual({ start: 0, end: painted.length });
+    expect(out?.highlight).toEqual({ start: 0, end: painted.length });
   });
 
   it('tolerates a trailing ZWS render-kick in the painted text', async () => {
@@ -109,9 +110,9 @@ describe('CJK scenarios — coordinate mapping (logical→painted)', () => {
     const painted = buffer + '‌'; // CC render-kick appended
     const out = dim.compute({ text: painted, cursor: 0, externalHighlights: [] });
     // Covers the visible content; the trailing ZWS is layout, not content.
-    expect(out!.dimRanges![0].start).toBe(0);
-    expect(out!.dimRanges![0].end).toBeGreaterThanOrEqual(buffer.length);
-    expect(out!.dimRanges![0].end).toBeLessThanOrEqual(painted.length);
+    expect(out?.highlight?.start).toBe(0);
+    expect(out?.highlight?.end).toBeGreaterThanOrEqual(buffer.length);
+    expect(out?.highlight?.end).toBeLessThanOrEqual(painted.length);
   });
 
   it('an out-of-bounds index never escapes the painted length (lossy transient)', async () => {
@@ -128,6 +129,11 @@ describe('CJK scenarios — coordinate mapping (logical→painted)', () => {
         expect(r.start).toBeGreaterThanOrEqual(0);
         expect(r.end).toBeLessThanOrEqual(painted.length);
       }
+    }
+    // The span (now the auto-select highlight) must also never escape painted len.
+    if (out?.highlight) {
+      expect(out.highlight.start).toBeGreaterThanOrEqual(0);
+      expect(out.highlight.end).toBeLessThanOrEqual(painted.length);
     }
   });
 
