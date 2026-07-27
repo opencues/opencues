@@ -350,6 +350,9 @@ export class DimRender {
     // forward to ctx coords before the containment test and hand the note to
     // the painter already in painted coordinates.
     let inlineNote: InlineNote | undefined;
+    // The passive-cue span the caret is inside, in LOGICAL coords (mapped to
+    // ctx alongside the other ranges at the end). Used to auto-select the span.
+    let cursorSpanLogical: { start: number; end: number } | null = null;
     const inlineMode = this.configLoader?.opencuesState.inlineCuesMode ?? 'inline';
     if (
       inlineMode === 'inline'
@@ -364,9 +367,26 @@ export class DimRender {
         const e = toCtx ? toCtx.end(def.spanEnd) : def.spanEnd;
         if (ctx.cursor >= s && ctx.cursor <= e) {
           inlineNote = { spanStart: s, spanEnd: e, text: def.cueTip };
+          cursorSpanLogical = { start: def.spanStart, end: def.spanEnd };
           break;
         }
       }
+    }
+
+    // Auto-select: the passive-cue span the caret sits in renders in the
+    // active/selected colour (highlight), not dim — so the flagged region
+    // reads as "you're on it" the moment the caret enters it, without an
+    // explicit navigation keystroke. Drop it from the dim layer and promote to
+    // highlight, but only when nothing else (explicit Ctrl+Alt navigation) has
+    // already claimed the single highlight slot, and only where the host can
+    // paint a highlight (else leave it dimmed — graceful degradation).
+    if (cursorSpanLogical && hasHighlightCap && !highlight) {
+      for (let i = dimRanges.length - 1; i >= 0; i--) {
+        if (dimRanges[i].start === cursorSpanLogical.start && dimRanges[i].end === cursorSpanLogical.end) {
+          dimRanges.splice(i, 1);
+        }
+      }
+      highlight = { start: cursorSpanLogical.start, end: cursorSpanLogical.end };
     }
 
     if (!highlight && dimRanges.length === 0 && !inlineNote) return null;

@@ -65,13 +65,20 @@ interface Insertion {
   order: number;
 }
 
-// Inline cue note — rendered as a dim (gray) line appended below the buffer.
-// Display-only: the ANSI dim codes and the note text live in the rendered
-// string the host PAINTS, never in the logical submit buffer (same channel
-// as every other directive here). v1 placement is end-of-render on its own
-// line; span-anchored placement is a follow-up.
+// Inline cue note — rendered as a dim (gray) bracketed pill on its own line
+// below the buffer: `[⚠ - message]`. Display-only: the ANSI dim codes and the
+// note text live in the rendered string the host PAINTS, never in the logical
+// submit buffer (same channel as every other directive here). v1 placement is
+// end-of-render on its own line; span-anchored placement is a follow-up.
+//
+// The advisory (def.cueTip) arrives as "<icon> <message>" (e.g.
+// "⚠ the 19th is a Friday"); render it as "[<icon> - <message>]" so it reads
+// as a distinct pill, matching the `[OpenCues: …]` inline-notification shape.
 function renderInlineNote(text: string): string {
-  return '\n' + ANSI_DIM_ON + text + ANSI_DIM_OFF;
+  const trimmed = text.trim();
+  const m = trimmed.match(/^(\S+)\s+([\s\S]*)$/);
+  const body = m ? `${m[1]} - ${m[2]}` : trimmed;
+  return '\n' + ANSI_DIM_ON + '[' + body + ']' + ANSI_DIM_OFF;
 }
 
 export function applyDirectives(rendered: string, directives: RenderDirectives | null | undefined): string {

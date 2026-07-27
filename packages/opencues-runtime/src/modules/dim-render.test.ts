@@ -589,7 +589,7 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     });
   }
 
-  it('emits an inline note when the cursor is inside a passive cue span', () => {
+  it('emits an inline note AND auto-selects the span (highlight) when the cursor is inside it', () => {
     const { dynDefs, dimRender } = setup(BUFFER);
     seedContradictionDef(dynDefs);
     // caret at offset 14 — inside "saturday" [11,19)
@@ -599,6 +599,10 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
       spanEnd: 19,
       text: "⚠ the 19th is a Friday, not Saturday",
     });
+    // Auto-select: the span the caret is in renders in the selected/highlight
+    // colour, not dim.
+    expect(out?.highlight).toEqual({ start: 11, end: 19 });
+    expect(out?.dimRanges ?? []).not.toContainEqual({ start: 11, end: 19 });
   });
 
   it('emits the note at the span boundary (cursor == spanEnd, inclusive)', () => {
@@ -655,14 +659,17 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     expect(out?.inlineNote).toBeUndefined();
   });
 
-  it('the terminal painter appends the note as a dim line below the buffer', () => {
+  it('the terminal painter appends the note as a dim bracketed pill below the buffer', () => {
     const { dynDefs, dimRender } = setup(BUFFER);
     seedContradictionDef(dynDefs);
     const directives = dimRender.compute({ text: BUFFER, cursor: 14, externalHighlights: [] });
     const painted = applyDirectives(BUFFER, directives);
-    // Display-only: the note text appears AFTER the buffer on its own line,
-    // wrapped in dim codes; the buffer text itself is unchanged at the front.
-    expect(painted.startsWith(BUFFER)).toBe(true);
-    expect(painted).toContain('\n\x1b[2m⚠ the 19th is a Friday, not Saturday\x1b[22m');
+    // Display-only: the buffer text (minus the highlight ANSI inserted into it)
+    // reads unchanged at the front, and the note appears AFTER it on its own
+    // line as a dim bracketed pill "[⚠ - message]".
+    const visible = painted.replace(/\x1b\[[0-9;]*m/g, '');
+    expect(visible.startsWith(BUFFER)).toBe(true);
+    expect(visible).toContain('\n[⚠ - the 19th is a Friday, not Saturday]');
+    expect(painted).toContain('\n\x1b[2m[⚠ - the 19th is a Friday, not Saturday]\x1b[22m');
   });
 });
