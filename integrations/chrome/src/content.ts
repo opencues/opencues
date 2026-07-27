@@ -13,6 +13,7 @@ import { loadConfig, onConfigChange } from './adapters/chrome-storage-adapter';
 import {
   startOpenCues,
   publishTarget,
+  suspendTarget,
   clearRuntimeHighlights,
   log,
   isNormalInput,
@@ -228,8 +229,10 @@ async function init(): Promise<void> {
       if (currentTarget) {
         if (!isNormalInput(currentTarget)) clearDerivedColours(currentTarget);
         currentTarget = null;
-        publishTarget(null);
-        clearRuntimeHighlights();
+        // SUSPEND rather than reset: keep the buffer's DynDefs (cue spans) so
+        // refocusing the same field reuses the result instead of re-resolving.
+        // A focus change to a DIFFERENT field still resets via publishTarget.
+        suspendTarget();
         clearStatusbar();
       }
       // Wipe credits on real focus-out too. Same rationale as

@@ -252,20 +252,40 @@ const sourceReclassifier = createSourceReclassifier();
  *  — focusin can fire spuriously during typing in some sites and we
  *  don't want to clear state on those.
  */
+/** True between a blur (suspendTarget) and the next focus. While suspended the
+ *  buffer's per-buffer state (DynDefs = cue spans) is PRESERVED — we just hid
+ *  the paint — so refocusing the SAME element reuses the result. The guard
+ *  keeps a stray render from painting a blurred field. */
+let _suspended = false;
+
+/** Focus left the buffer but we are NOT dropping its state. Hide the paint and
+ *  mark suspended; the DynDefs survive so a refocus of the same element repaints
+ *  the already-computed spans instead of re-resolving. A focus change to a
+ *  DIFFERENT element still resets + re-resolves via publishTarget. */
+export function suspendTarget(): void {
+  _suspended = true;
+  clearDirectives();
+}
+
 export function publishTarget(el: HTMLElement | null): void {
-  if (el === currentTarget) return;
+  if (el === currentTarget) {
+    // Same buffer refocused after a suspend — its DynDefs (cue spans) were
+    // preserved, so un-suspend and repaint the existing result. No reset, no
+    // re-resolve: reuse what we already computed (no extra LLM calls).
+    if (el) { _suspended = false; runtimeRender(); }
+    return;
+  }
+  _suspended = false;
   currentTarget = el;
   if (bootResult) bootResult.resetBufferState();
-  // Re-resolve the newly-focused buffer so its cues (dim spans, passive
-  // advisories) re-register immediately. resetBufferState() above wiped the
-  // DynDefs (where spans live), and the resolver only runs on a text change —
-  // so without this, refocusing a field (or focusing one that already has
-  // content, e.g. a draft) showed NO spans even though the buffer is
-  // unchanged. resetBufferState() also zeroes the resolver's _lastInputText,
-  // so re-feeding the identical text is NOT deduped — it resolves fresh. The
-  // blank `_`-trigger only fires on a buffer that ENDS with `_` (and didn't
-  // before), so `_`-free prose (every passive cue) re-registers without side
-  // effects. Skipped for normal inputs (no paint surface) and empty buffers.
+  // Genuine change to a DIFFERENT (or first) buffer. resetBufferState() wiped
+  // the DynDefs and the resolver only runs on a text change, so re-feed the
+  // buffer to re-register cues immediately (also makes a pre-existing draft
+  // show cues without a keystroke). resetBufferState() zeroed the resolver's
+  // _lastInputText, so the identical text isn't deduped by `text === prev`.
+  // The blank `_`-trigger only fires on a buffer that ENDS with `_`, so `_`-
+  // free prose (every passive cue) re-registers with no side effect. Normal
+  // inputs (no paint surface) + empty buffers skip.
   if (el && bootResult && !isNormalInput(el)) {
     try {
       const text = walkPlainText(el).text;
@@ -3226,6 +3246,9 @@ export function notifyOpenCuesCursorChange(
  * change.
  */
 function runtimeRender(): void {
+  // Suspended = focus left this buffer but we kept its state. Don't repaint a
+  // blurred field; the next focus un-suspends and repaints.
+  if (_suspended) return;
   const target = currentTarget;
   if (!target || !bootResult) return;
   // Normal `<input>` / `<textarea>` can't host CSS Custom Highlights —
