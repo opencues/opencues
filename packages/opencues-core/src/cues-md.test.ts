@@ -838,7 +838,7 @@ describe('parseCuesMd: combined mode (static tips + LLM fallback)', () => {
     '}]',
     '```',
     '',
-    'For other matched terms, suggest 3 alternatives that preserve legal meaning.',
+    'For other matched terms, suggest 3 alternatives that preserve the meaning.',
     'Format: INDEX:alt1,alt2,alt3',
   ].join('\n');
 

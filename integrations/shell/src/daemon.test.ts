@@ -81,8 +81,8 @@ vi.mock('node:fs/promises', () => ({
 
 // Directory entries are named plainly (no trailing-slash marker —
 // path.join() on Windows PRESERVES a trailing slash, e.g.
-// path.join('a','legal/') -> 'a\\legal\\', which would silently
-// diverge from a same-looking 'a\\legal' dirs-map key). Instead,
+// path.join('a','notes/') -> 'a\\notes\\', which would silently
+// diverge from a same-looking 'a\\notes' dirs-map key). Instead,
 // `dirNames` explicitly lists which entries in a given directory are
 // themselves directories.
 type VirtualFs = { files: Record<string, string>; dirs: Record<string, string[]>; dirNames?: Set<string> };

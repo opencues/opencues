@@ -34,7 +34,7 @@ function buildWordSources(response: string) {
         },
         concise: {
           name: 'concise',
-          promptText: 'When the highlighted word is a legal term, suggest alternatives that preserve legal meaning.',
+          promptText: 'When the highlighted word is a formal term, suggest alternatives that preserve its meaning.',
           priority: 70,
           match: 'contract|agreement|clause|indemnify|warrant|liability|shall|herein|whereas|stipulate',
         },
@@ -157,11 +157,11 @@ describe('sentences: simple grammar', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Word alternatives: legal domain
+// Word alternatives: formal domain
 // ---------------------------------------------------------------------------
 
-describe.skip('sentences: legal domain', () => {
-  it('"the contract shall be terminated" → legal terms get alts', async () => {
+describe.skip('sentences: formal domain', () => {
+  it('"the contract shall be terminated" → formal terms get alts', async () => {
     const sources = buildWordSources(
       '1:agreement,pact,deal\n2:must,will,should\n4:ended,cancelled,voided'
     );
@@ -177,7 +177,7 @@ describe.skip('sentences: legal domain', () => {
     assert.ok(shallResult.alternatives.includes('will'));
   });
 
-  it('"the party shall indemnify and hold harmless" → complex legal', async () => {
+  it('"the party shall indemnify and hold harmless" → complex formal', async () => {
     const sources = buildWordSources(
       '1:parties,entity,company\n2:must,will,is obligated to\n3:compensate,protect,reimburse'
     );
@@ -188,7 +188,7 @@ describe.skip('sentences: legal domain', () => {
     assert.ok(result.results.find(r => r.word === 'indemnify'));
   });
 
-  it('"whereas the agreement stipulates liability" → multiple legal terms', async () => {
+  it('"whereas the agreement stipulates liability" → multiple formal terms', async () => {
     const sources = buildWordSources(
       '0:since,given that,considering\n2:contract,arrangement,understanding\n3:requires,mandates,specifies\n4:responsibility,obligation,exposure'
     );
@@ -202,10 +202,10 @@ describe.skip('sentences: legal domain', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Word alternatives: medical domain
+// Word alternatives: jargon domain
 // ---------------------------------------------------------------------------
 
-describe.skip('sentences: medical domain', () => {
+describe.skip('sentences: jargon domain', () => {
   it('"the diagnosis was confirmed" → clinical terms', async () => {
     const sources = buildWordSources(
       '1:clinical impression,assessment,finding\n3:verified,established,validated'
@@ -217,7 +217,7 @@ describe.skip('sentences: medical domain', () => {
     assert.ok(diagResult.alternatives.includes('clinical impression'));
   });
 
-  it('"the prognosis indicates comorbidity" → multiple medical terms', async () => {
+  it('"the prognosis indicates comorbidity" → multiple jargon terms', async () => {
     const sources = buildWordSources(
       '1:outlook,disease course,expected outcome\n2:suggests,shows,reveals\n3:coexisting condition,concurrent disease,multimorbidity'
     );
@@ -245,7 +245,7 @@ describe.skip('sentences: medical domain', () => {
 // ---------------------------------------------------------------------------
 
 describe.skip('sentences: mixed domain', () => {
-  it('"the contract covers the diagnosis" → legal + medical in one sentence', async () => {
+  it('"the contract covers the diagnosis" → two domains in one sentence', async () => {
     const sources = buildWordSources(
       '1:agreement,policy,document\n2:includes,addresses,details\n4:assessment,clinical finding,evaluation'
     );
@@ -256,7 +256,7 @@ describe.skip('sentences: mixed domain', () => {
     assert.ok(result.results.find(r => r.word === 'diagnosis'));
   });
 
-  it('"the liability for the etiology report" → legal + medical terms', async () => {
+  it('"the liability for the etiology report" → two-domain terms', async () => {
     const sources = buildWordSources(
       '1:responsibility,obligation,exposure\n4:causation,root cause,origin\n5:analysis,summary,document'
     );

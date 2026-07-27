@@ -260,7 +260,7 @@ describe('Word-cues — PII words withheld from dispatch (safe mode)', () => {
     const concise = new ConfigSource({
       sourceConfig: {
         name: 'concise',
-        promptText: 'suggest legal alternatives',
+        promptText: 'suggest formal alternatives',
         priority: 70,
         parser: 'alternatives' as const,
         scope: 'words' as const,
@@ -294,7 +294,7 @@ describe('Word-cues — PII words withheld from dispatch (safe mode)', () => {
     const concise = new ConfigSource({
       sourceConfig: {
         name: 'concise',
-        promptText: 'suggest legal alternatives',
+        promptText: 'suggest formal alternatives',
         priority: 70,
         parser: 'alternatives' as const,
         scope: 'words' as const,

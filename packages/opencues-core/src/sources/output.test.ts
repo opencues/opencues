@@ -137,13 +137,13 @@ describe('word output: numbers skipped', () => {
   });
 });
 
-describe.skip('word output: legal sentences', () => {
-  it('"shall" → legal alts', async () => {
+describe.skip('word output: formal sentences', () => {
+  it('"shall" → formal alts', async () => {
     const r = await wordResult('shall', '0:must,will,should');
     assert.deepStrictEqual(r.results[0].alternatives, ['shall', 'must', 'will', 'should']);
   });
 
-  it('"The agreement shall terminate upon breach" → multiple legal words', async () => {
+  it('"The agreement shall terminate upon breach" → multiple formal words', async () => {
     const r = await wordResult(
       'The agreement shall terminate upon breach',
       '1:contract,arrangement,understanding\n2:must,will,is required to\n3:end,expire,cease\n5:violation,default,infringement'
@@ -154,14 +154,14 @@ describe.skip('word output: legal sentences', () => {
     assert.ok(r.results.find(x => x.word === 'breach')!.alternatives.includes('violation'));
   });
 
-  it('"liability" single legal term', async () => {
+  it('"liability" single formal term', async () => {
     const r = await wordResult('liability', '0:responsibility,obligation,exposure');
     assert.strictEqual(r.results[0].alternatives[0], 'liability');
     assert.ok(r.results[0].alternatives.includes('obligation'));
   });
 });
 
-describe.skip('word output: medical sentences', () => {
+describe.skip('word output: jargon sentences', () => {
   it('"diagnosis confirmed" → clinical alts', async () => {
     const r = await wordResult('diagnosis confirmed', '0:assessment,finding,evaluation\n1:verified,validated,established');
     assert.strictEqual(r.results[0].alternatives[0], 'diagnosis');
@@ -169,7 +169,7 @@ describe.skip('word output: medical sentences', () => {
     assert.strictEqual(r.results[1].alternatives[0], 'confirmed');
   });
 
-  it('"The prognosis is poor due to comorbidity" → two medical terms', async () => {
+  it('"The prognosis is poor due to comorbidity" → two jargon terms', async () => {
     const r = await wordResult(
       'The prognosis is poor due to comorbidity',
       '1:outlook,disease course,expected outcome\n3:bad,grim,unfavorable\n6:coexisting condition,multimorbidity,concurrent illness'
@@ -180,7 +180,7 @@ describe.skip('word output: medical sentences', () => {
 });
 
 describe.skip('word output: mixed domain', () => {
-  it('"the contract covers the diagnosis" → legal + medical', async () => {
+  it('"the contract covers the diagnosis" → two domains', async () => {
     const r = await wordResult(
       'the contract covers the diagnosis',
       '1:agreement,policy\n2:includes,addresses\n4:assessment,evaluation'
