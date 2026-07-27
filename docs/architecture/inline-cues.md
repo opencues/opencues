@@ -2,6 +2,11 @@
 
 > **Status: exploration spike (branch `feat/inline-cues`).** Built to test the
 > UX feel on the cleanest surface first. Not shipped; not spec-affecting.
+>
+> **Related (proposed):** [`inline-cue-cycle.md`](inline-cue-cycle.md) — pressing
+> `_` inside a painted note rotates the cue (a discoverable complement to the
+> `Ctrl+Alt+arrow` power path). Gated on the note being painted; that doc holds
+> the host/target coverage map.
 
 ## The idea
 
