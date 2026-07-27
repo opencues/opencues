@@ -569,3 +569,100 @@ blankScript: ./vol.sh
     expect(directives[0].highlight).toEqual({ start: 8, end: 13 }); // "three"
   });
 });
+
+describe('DimRender inline cue notes (inline-cues-mode)', () => {
+  // A passive cue (sentence-cue / contradiction cue) registers a def with a
+  // `cueTip` advisory. In `inline` mode (default) DimRender surfaces that
+  // advisory as an InlineNote whenever the caret sits inside the def's span —
+  // the Error-Lens reveal. It's display-only and cursor-gated.
+  const BUFFER = 'we meet on saturday';
+  function seedContradictionDef(dynDefs: DynDefs) {
+    // Span covers "saturday" [11,19). cueTip is the passive advisory.
+    dynDefs.set(2, {
+      originalWord: 'saturday',
+      alternatives: ['saturday'], // currentIndex 0 → passive, buffer unchanged
+      currentIndex: 0,
+      spanStart: 11,
+      spanEnd: 19,
+      blankName: 'sentence-cue:contradiction-weekday-date',
+      cueTip: "⚠ the 19th is a Friday, not Saturday",
+    });
+  }
+
+  it('emits an inline note when the cursor is inside a passive cue span', () => {
+    const { dynDefs, dimRender } = setup(BUFFER);
+    seedContradictionDef(dynDefs);
+    // caret at offset 14 — inside "saturday" [11,19)
+    const out = dimRender.compute({ text: BUFFER, cursor: 14, externalHighlights: [] });
+    expect(out?.inlineNote).toEqual({
+      spanStart: 11,
+      spanEnd: 19,
+      text: "⚠ the 19th is a Friday, not Saturday",
+    });
+  });
+
+  it('emits the note at the span boundary (cursor == spanEnd, inclusive)', () => {
+    const { dynDefs, dimRender } = setup(BUFFER);
+    seedContradictionDef(dynDefs);
+    const out = dimRender.compute({ text: BUFFER, cursor: 19, externalHighlights: [] });
+    expect(out?.inlineNote?.text).toBe("⚠ the 19th is a Friday, not Saturday");
+  });
+
+  it('does NOT emit the note when the cursor is outside the span', () => {
+    const { dynDefs, dimRender } = setup(BUFFER);
+    seedContradictionDef(dynDefs);
+    // caret at offset 2 — well before the span
+    const out = dimRender.compute({ text: BUFFER, cursor: 2, externalHighlights: [] });
+    expect(out?.inlineNote).toBeUndefined();
+  });
+
+  it('does NOT emit a note for a def without a cueTip (plain static-alt)', () => {
+    const { dynDefs, dimRender } = setup('the attorney filed');
+    dynDefs.set(1, {
+      originalWord: 'attorney',
+      alternatives: ['attorney', 'lawyer'],
+      currentIndex: 0,
+      spanStart: 4,
+      spanEnd: 12,
+    });
+    const out = dimRender.compute({ text: 'the attorney filed', cursor: 6, externalHighlights: [] });
+    expect(out?.inlineNote).toBeUndefined();
+  });
+
+  it('does NOT emit when the stored span is stale (defSpanLive guard)', () => {
+    const { dynDefs, dimRender } = setup(BUFFER);
+    seedContradictionDef(dynDefs);
+    // The buffer no longer has "saturday" at [11,19) — user edited it.
+    const edited = 'we meet on sunday!!';
+    const out = dimRender.compute({ text: edited, cursor: 14, externalHighlights: [] });
+    expect(out?.inlineNote).toBeUndefined();
+  });
+
+  it('secondary mode suppresses the inline note', async () => {
+    const { ConfigLoader } = await import('./config-loader');
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/proj/.cues/OPENCUES.md': '---\ninline-cues-mode: secondary\n---\n' },
+    });
+    adapter.pushText(BUFFER);
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/.cues/OPENCUES.md' });
+    await loader.load();
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    seedContradictionDef(dynDefs);
+    const dim = new DimRender(adapter, hlState, dynDefs, loader);
+    const out = dim.compute({ text: BUFFER, cursor: 14, externalHighlights: [] });
+    expect(out?.inlineNote).toBeUndefined();
+  });
+
+  it('the terminal painter appends the note as a dim line below the buffer', () => {
+    const { dynDefs, dimRender } = setup(BUFFER);
+    seedContradictionDef(dynDefs);
+    const directives = dimRender.compute({ text: BUFFER, cursor: 14, externalHighlights: [] });
+    const painted = applyDirectives(BUFFER, directives);
+    // Display-only: the note text appears AFTER the buffer on its own line,
+    // wrapped in dim codes; the buffer text itself is unchanged at the front.
+    expect(painted.startsWith(BUFFER)).toBe(true);
+    expect(painted).toContain('\n\x1b[2m⚠ the 19th is a Friday, not Saturday\x1b[22m');
+  });
+});

@@ -7,7 +7,7 @@
 //
 // The host renders dim and highlight via applyDirectives in the bootstrap.
 
-import type { HostAdapter, Range, RenderContext, RenderDirectives, Unsubscribe } from '../adapter';
+import type { HostAdapter, InlineNote, Range, RenderContext, RenderDirectives, Unsubscribe } from '../adapter';
 import type { HighlightState } from '../state/highlight-state';
 import type { DynDefs, WordDef } from '../state/dyn-defs';
 import type { ConfigLoader } from './config-loader';
@@ -339,7 +339,37 @@ export class DimRender {
       }
     }
 
-    if (!highlight && dimRanges.length === 0) return null;
+    // Inline cue note (Error-Lens reveal). When `inline-cues-mode: inline`
+    // and the text cursor sits inside a passive cue's span (a def carrying
+    // `cueTip` — sentence-cue / contradiction cue), surface the advisory as
+    // a display-only inline note instead of the statusline. Cursor-gated on
+    // ctx.cursor directly, so it reveals just by moving the caret into the
+    // span — no navigation/highlight activation required (that's what makes
+    // it feel ambient). Coordinates: def spans live in `text` (logical)
+    // space while ctx.cursor is in ctx.text (painted) space, so map the span
+    // forward to ctx coords before the containment test and hand the note to
+    // the painter already in painted coordinates.
+    let inlineNote: InlineNote | undefined;
+    const inlineMode = this.configLoader?.opencuesState.inlineCuesMode ?? 'inline';
+    if (
+      inlineMode === 'inline'
+      && this.adapter.capabilities.includes('dim-ranges')
+      && typeof ctx.cursor === 'number' && ctx.cursor >= 0
+    ) {
+      const toCtx = text !== ctx.text ? buildIndexMap(text, ctx.text) : null;
+      for (const [, def] of this.dynDefs.entries()) {
+        if (!def.cueTip) continue;              // only passive advisory cues
+        if (!defSpanLive(def, text)) continue;  // stale span — skip
+        const s = toCtx ? toCtx.start(def.spanStart) : def.spanStart;
+        const e = toCtx ? toCtx.end(def.spanEnd) : def.spanEnd;
+        if (ctx.cursor >= s && ctx.cursor <= e) {
+          inlineNote = { spanStart: s, spanEnd: e, text: def.cueTip };
+          break;
+        }
+      }
+    }
+
+    if (!highlight && dimRanges.length === 0 && !inlineNote) return null;
 
     // Coordinate remap: all ranges above were computed in LOGICAL coordinates
     // (`text` === logicalText when we chose it for correct word/def logic), but
@@ -355,9 +385,11 @@ export class DimRender {
       const mapRange = (r: Range): Range => ({ start: toCtx.start(r.start), end: toCtx.end(r.end) });
       const mapped: RenderDirectives = { dimRanges: dimRanges.map(mapRange) };
       if (highlight) mapped.highlight = mapRange(highlight);
+      // inlineNote is already computed in ctx (painted) coords — attach as-is.
+      if (inlineNote) mapped.inlineNote = inlineNote;
       return mapped;
     }
-    return { highlight, dimRanges };
+    return { highlight, dimRanges, ...(inlineNote ? { inlineNote } : {}) };
   }
 
   /**

@@ -79,6 +79,23 @@ export interface RenderDirectives {
   // index, or `bright_*`); chrome consumes `rgb` (a #rrggbb string).
   // Both can be set; the host picks the one it can render.
   coloredRanges?: readonly ColoredRange[];
+  // ─── Inline cue note (Error-Lens-style passive reveal) ─────────────
+  // Emitted by DimRender when `inline-cues-mode: inline` and the text
+  // cursor sits inside a passive cue's span (a sentence-cue / contradiction
+  // cue carrying `def.cueTip`). The note text is display-only — terminal
+  // hosts splice it into the RENDERED string (never the submit buffer), so
+  // it can never be submitted. Cursor-gated: it appears only while the caret
+  // is in the span and vanishes on move/edit. `spanStart`/`spanEnd` are the
+  // flagged span in the SAME coordinate space the host paints (ctx.text), so
+  // a future painter can anchor the note to the span's line/column; the v1
+  // terminal painter appends it below the buffer.
+  inlineNote?: InlineNote | null;
+}
+
+export interface InlineNote {
+  readonly spanStart: number;
+  readonly spanEnd: number;
+  readonly text: string;
 }
 
 export interface ColoredRange extends Range {

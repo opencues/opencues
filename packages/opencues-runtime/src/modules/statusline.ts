@@ -233,6 +233,13 @@ export class Statusline {
     }
     // tips-mode: off → still expose word + alts but suppress tip text.
     const tipsHidden = this.configLoader?.opencuesState.tipsMode === 'off';
+    // inline-cues-mode: inline → a passive cue's advisory (def.cueTip) is
+    // painted INLINE by DimRender instead of the status line, so suppress the
+    // redundant secondary copy here. Only when the host can actually paint it
+    // (dim-ranges cap); otherwise the advisory would vanish entirely, so we
+    // keep the status-line copy (automatic degradation to secondary).
+    const inlinePassiveCues = this.configLoader?.opencuesState.inlineCuesMode === 'inline'
+      && this.adapter.capabilities.includes('dim-ranges');
     const wordIndex = this.hlState.wordIndex;
     // Direct lookup matches multi-word substitute DefAt the origin word
     // only. If the highlight is on word N>origin inside a multi-word span
@@ -332,7 +339,7 @@ export class Statusline {
         // def (also blankName-attributed) instead carries a dynamic advisory
         // on def.cueTip — surface it so the status line shows the heads-up
         // passively, no cycling.
-        cueTip: (!tipsHidden && def.cueTip) ? def.cueTip : null,
+        cueTip: (!tipsHidden && !inlinePassiveCues && def.cueTip) ? def.cueTip : null,
         altCueTips: null,
         cueBlank: true,
         wordCount: words.filter(w => clean(w.word).length > 0).length,
@@ -350,7 +357,7 @@ export class Statusline {
     // Dynamic per-resolve advisory (e.g. a sentence-cue's calendar-conflict
     // heads-up) wins over the static word-cue tip map — it shows passively
     // whenever the cursor sits in the def's span, no cycling required.
-    if (!tipsHidden && def?.cueTip) cueTip = def.cueTip;
+    if (!tipsHidden && !inlinePassiveCues && def?.cueTip) cueTip = def.cueTip;
     const lookup = this.configLoader?.lookup(lookupKey) ?? null;
     if (lookup && !tipsHidden) {
       altCueTips = lookup.altCueTips ?? null;

@@ -65,9 +65,22 @@ interface Insertion {
   order: number;
 }
 
+// Inline cue note — rendered as a dim (gray) line appended below the buffer.
+// Display-only: the ANSI dim codes and the note text live in the rendered
+// string the host PAINTS, never in the logical submit buffer (same channel
+// as every other directive here). v1 placement is end-of-render on its own
+// line; span-anchored placement is a follow-up.
+function renderInlineNote(text: string): string {
+  return '\n' + ANSI_DIM_ON + text + ANSI_DIM_OFF;
+}
+
 export function applyDirectives(rendered: string, directives: RenderDirectives | null | undefined): string {
   if (!directives) return rendered;
   if (directives.textOverride !== undefined) return directives.textOverride;
+
+  const noteSuffix = directives.inlineNote && directives.inlineNote.text
+    ? renderInlineNote(directives.inlineNote.text)
+    : '';
 
   // Coalesce overlapping/adjacent dim ranges into a flat list of "dim on"
   // / "dim off" boundary points. Without this, a cue-word dim ([29,40])
@@ -132,7 +145,7 @@ export function applyDirectives(rendered: string, directives: RenderDirectives |
     insertions.push({ visibleAt: cr.start, ansi: open, order: 0 });
     insertions.push({ visibleAt: cr.end, ansi: ANSI_FG_RESET, order: 1 });
   }
-  if (insertions.length === 0) return rendered;
+  if (insertions.length === 0) return rendered + noteSuffix;
 
   insertions.sort((a, b) => a.visibleAt - b.visibleAt || a.order - b.order);
 
@@ -170,5 +183,5 @@ export function applyDirectives(rendered: string, directives: RenderDirectives |
     result += insertions[nextIns].ansi;
     nextIns += 1;
   }
-  return result;
+  return result + noteSuffix;
 }

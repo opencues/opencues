@@ -155,8 +155,19 @@ describe('Statusline cue-tip plumbing', () => {
     expect(p.altCueTips).toBeDefined();
   });
 
-  it('surfaces a def cueTip (dynamic advisory) passively — currentIndex 0, no cycling', async () => {
-    const { hlState, dynDefs, statusline } = await setupWithTips('xyz');
+  it('surfaces a def cueTip (dynamic advisory) passively in the status line under inline-cues-mode: secondary', async () => {
+    // The passive advisory rides the status line when inline-cues-mode is
+    // `secondary` (or on a host that can't paint inline). Pin the secondary
+    // path explicitly — the DEFAULT (`inline`) routes it to DimRender's
+    // InlineNote instead (asserted in the next test).
+    const adapter = new MockAdapter({ files: { '/mock/OPENCUES.md': '---\ninline-cues-mode: secondary\n---\n' } });
+    adapter.pushText('xyz');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const loader = new ConfigLoader(adapter, { settingsFile: '/mock/OPENCUES.md' });
+    await loader.load();
+    const statusline = new Statusline(adapter, hlState, dynDefs, { exportPath: '/tmp/t-sec.json' }, loader);
+    statusline.subscribe();
     hlState.activate(0, 'xyz');
     // A passive sentence-cue def (calendar-conflict): buffer keeps the original
     // (currentIndex 0), and the advisory rides on def.cueTip.
@@ -172,6 +183,26 @@ describe('Statusline cue-tip plumbing', () => {
     const p = statusline.buildPayload({ text: 'xyz', cursor: 0, externalHighlights: [] });
     // 'xyz' isn't in the static cue map, so this can ONLY come from def.cueTip.
     expect(p.cueTip).toBe('⚠ Conference Sat Aug 23, all day');
+  });
+
+  it('inline-cues-mode: inline (default) suppresses the status-line copy on a dim-capable host — it goes inline instead', async () => {
+    // Default mode. MockAdapter reports `dim-ranges`, so the passive advisory
+    // is painted inline by DimRender and the redundant status-line copy is
+    // suppressed. This is the intended default behaviour change: the tip moves
+    // from the secondary display to the inline reveal.
+    const { hlState, dynDefs, statusline } = await setupWithTips('xyz');
+    hlState.activate(0, 'xyz');
+    dynDefs.set(0, {
+      originalWord: 'xyz',
+      alternatives: ['xyz'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: 3,
+      blankName: 'sentence-cue:calendar',
+      cueTip: '⚠ Conference Sat Aug 23, all day',
+    });
+    const p = statusline.buildPayload({ text: 'xyz', cursor: 0, externalHighlights: [] });
+    expect(p.cueTip).toBeNull();
   });
 
   it('def cueTip is suppressed when tips-mode: off', async () => {
