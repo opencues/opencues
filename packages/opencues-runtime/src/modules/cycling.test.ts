@@ -1489,8 +1489,9 @@ describe('_-cycle — bare `_` inside a painted cue note rotates the cue', () =>
     expect(adapter.fireKey('_')).toBe(true); // consumed → not inserted
     expect(adapter.setTextCalls.at(-1)).toBe('Thank you very much.');
     expect(dynDefs.get(0)?.currentIndex).toBe(1);
-    // `_`-step lands the caret at the span START (stable / CJK-unambiguous).
-    expect(adapter.getCursorOffset()).toBe(0);
+    // `_`-step lands the caret at the span END, tucked against the last char
+    // ('Thank you very much.' = 20 chars), ready to keep typing.
+    expect(adapter.getCursorOffset()).toBe(20);
   });
 
   it('successive `_` presses step forward and WRAP back to the original', async () => {

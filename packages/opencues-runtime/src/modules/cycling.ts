@@ -306,13 +306,17 @@ export class Cycling {
       if (originIdx < 0) originIdx = 0;
       const cycled = this.applyAltCycle(event, def, +1, originIdx, 'static-alts');
       if (cycled) {
-        // Land the caret at the span START on a `_`-step (applyAltCycle leaves it
-        // at the end). The start is stable across cycles and unambiguous under
-        // CJK double-width — a code-point offset at the span END renders mid-/
-        // past-glyph on wide text, which reads as "the caret is off the
-        // selection". Start = column 0 of the span, always in-span, so repeated
-        // `_` keeps the highlight + note anchored.
-        this.adapter.setCursorOffset(def.spanStart);
+        // Match Ctrl+Alt+arrow: engage the span as an ACTIVE navigation
+        // selection so the highlight is persistent (never blinks out on a
+        // `_`-step, and Ctrl+Alt+arrow keeps working on it) — instead of relying
+        // on caret-position auto-select. Then tuck the caret at the span END,
+        // against the last char, ready to keep typing / add another `_`.
+        const newText = this.adapter.getText();
+        const newWords = splitWords(newText);
+        let newOrigin = newWords.findIndex(w => def.spanStart >= w.start && def.spanStart < w.end);
+        if (newOrigin < 0) newOrigin = 0;
+        this.hlState.activate(newOrigin, newText);
+        this.adapter.setCursorOffset(def.spanEnd);
         this.adapter.forceRender();
       }
       return cycled;
