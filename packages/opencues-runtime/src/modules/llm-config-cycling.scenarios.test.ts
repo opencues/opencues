@@ -244,3 +244,88 @@ describe('LLM config cycling — invariant: no invalid (provider, model) pair la
     });
   }
 });
+
+// ---------------------------------------------------------------------------
+// Provider LIVENESS gate — cycling silently skips a provider a probe found
+// unreachable (the Ctrl+Alt analogue of the fluid-config "switch to X" gate).
+// Key presence alone can't catch a present-but-INVALID key or a down host;
+// the background probe does, and eligibleValues drops the dead value so the
+// cycle never stops on it. See docs/architecture/llm-routing.md.
+// ---------------------------------------------------------------------------
+async function setupLivenessCycle(
+  currentValue: string,
+  apiKeys: Record<string, string | undefined>,
+  probeProvider?: (providerId: string, model: string | null) => Promise<{ ok: boolean }>,
+) {
+  const initialText = `blanks-llm-provider ${currentValue}`;
+  const adapter = new MockAdapter({
+    cwd: '/proj',
+    files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': '---\nname: t\n---\n' },
+  });
+  adapter.pushText(initialText);
+  const hlState = new HighlightState();
+  const dynDefs = new DynDefs();
+  const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+  await loader.load();
+  const ss = new SelectorSatelliteState();
+  ss.set({
+    blankName: 'opencues', scriptPath: '', selectorIndex: 0, selectorLength: 1,
+    satelliteIndex: 1, satelliteLength: 1,
+    currentSetting: 'blanks-llm-provider', currentValue, separator: ' ', clearOnEdit: false,
+  }, initialText);
+  const cycling = new Cycling(
+    adapter, hlState, dynDefs, loader,
+    undefined, undefined, ss,
+    () => apiKeys, undefined, undefined, probeProvider,
+  );
+  cycling.subscribe();
+  return { adapter, hlState, loader };
+}
+
+const flush = () => new Promise((r) => setTimeout(r, 0));
+const ALL_PROVIDER_KEYS = {
+  CEREBRAS_API_KEY: 'k', GROQ_API_KEY: 'k', GEMINI_API_KEY: 'k',
+  ANTHROPIC_API_KEY: 'k', OPENAI_API_KEY: 'k',
+};
+
+describe('LLM config cycling — provider liveness gate', () => {
+  it('cycling skips a provider a probe found UNREACHABLE (present key, dead host)', async () => {
+    const probed: string[] = [];
+    const probe = async (id: string) => { probed.push(id); return { ok: id !== 'gemini' }; };
+    const { adapter, hlState, loader } = await setupLivenessCycle('cerebras', ALL_PROVIDER_KEYS, probe);
+    hlState.activate(1, 'blanks-llm-provider cerebras');
+
+    // First cycle warms the background probe cache; let the probes resolve.
+    adapter.fireKey('up', { ctrl: true, alt: true });
+    await flush(); await flush();
+    expect(probed, 'the warmer must probe the dead menu provider').toContain('gemini');
+
+    // A full lap post-warm: every LANDED value is chosen against the warm
+    // cache, so the dead provider never appears.
+    const landed: string[] = [];
+    for (let i = 0; i < 8; i++) {
+      adapter.fireKey('up', { ctrl: true, alt: true });
+      await flush();
+      landed.push(loader.opencuesState.settings.get('blanks-llm-provider')!);
+    }
+    expect(landed, 'dead provider must be skipped in the cycle').not.toContain('gemini');
+    expect(landed.some(v => v === 'groq' || v === 'anthropic' || v === 'openai'),
+      'reachable providers still cycle').toBe(true);
+    // Sentinel `inherit` is NOT a real provider — must never be probed or dropped.
+    expect(probed, 'inherit is a sentinel, never probed').not.toContain('inherit');
+  });
+
+  it('no probe wired → provider is NOT skipped (back-compat)', async () => {
+    // No probeProvider passed → liveness filtering disabled; the cycle walks
+    // every KEYED menu provider exactly as before this feature.
+    const { adapter, hlState, loader } = await setupLivenessCycle('cerebras', ALL_PROVIDER_KEYS);
+    hlState.activate(1, 'blanks-llm-provider cerebras');
+    const landed: string[] = [];
+    for (let i = 0; i < 8; i++) {
+      adapter.fireKey('up', { ctrl: true, alt: true });
+      await flush();
+      landed.push(loader.opencuesState.settings.get('blanks-llm-provider')!);
+    }
+    expect(landed, 'without a probe wired, every keyed menu provider stays in the cycle').toContain('gemini');
+  });
+});

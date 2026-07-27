@@ -433,6 +433,62 @@ export function identityDehydrationFor(
  *   kata-llm-provider/-model/-endpoint > auditors-llm-* > llm-*.
  * Re-resolved per tick so OPENCUES.md edits hot-reload.
  */
+/**
+ * Build the liveness-probe callback the Cycling module uses to silently
+ * skip a `*-llm-provider` value that can't answer right now (key rejected,
+ * host down, model gone) — the Ctrl+Alt analogue of the fluid-config
+ * "switch to X" gate. Shared by boot-common AND the CC band (which builds
+ * modules by hand) so the two can't drift.
+ *
+ * Transport: the host's `httpAdapter` when supplied (chrome's fetch-based
+ * adapter); otherwise a lazily-required NodeHttpAdapter (native hosts).
+ * Returns undefined when there's no key bag (probing is pointless). EVERY
+ * failure mode resolves `{ ok: true }` so a missing core export, an
+ * unloadable adapter, or a thrown probe can never freeze or distort the
+ * cycling menu — the gate only ever REMOVES a value it positively pinged
+ * as dead.
+ */
+export function buildCyclingProviderProbe(
+  getApiKeys: (() => Readonly<Record<string, string | undefined>>) | undefined,
+  httpAdapter: HttpAdapterShape | undefined,
+  isCliProviderAvailable: ((providerId: string) => boolean) | undefined,
+): ((providerId: string, model: string | null) => Promise<{ ok: boolean }>) | undefined {
+  if (!getApiKeys) return undefined;
+  let adapter: HttpAdapterShape | undefined = httpAdapter;
+  const resolveAdapter = (): HttpAdapterShape | undefined => {
+    if (adapter) return adapter;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { NodeHttpAdapter } = require('@opencues/core/node-http-adapter');
+      adapter = new NodeHttpAdapter({ maxSockets: 2, timeout: 8000 }) as HttpAdapterShape; // BROWSER-SAFE-ALLOW: native fallback only — reached only when no host httpAdapter (chrome always passes one)
+      return adapter;
+    } catch {
+      return undefined;
+    }
+  };
+  return async (providerId, model) => {
+    try {
+      const ad = resolveAdapter();
+      if (!ad) return { ok: true };
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const core = require('@opencues/core') as {
+        probeProviderReachable?: (
+          id: string, m: string | null,
+          o: { apiKeys: Readonly<Record<string, string | undefined>>; httpAdapter: HttpAdapterShape; isCliAvailable?: (id: string) => boolean },
+        ) => Promise<{ ok: boolean }>;
+      };
+      if (!core.probeProviderReachable) return { ok: true };
+      return await core.probeProviderReachable(providerId, model, {
+        apiKeys: getApiKeys(),
+        httpAdapter: ad,
+        isCliAvailable: isCliProviderAvailable,
+      });
+    } catch {
+      return { ok: true };
+    }
+  };
+}
+
 export function buildKataLLMResolver(
   configLoader: ConfigLoader,
   apiKeys: Readonly<Record<string, string | undefined>>,
@@ -1100,6 +1156,7 @@ export function buildSharedRuntime(
     adapter, hlState, dynDefs, configLoader,
     spanFillState, dismissedBlanks, selectorSatelliteState,
     getApiKeys, isCliProviderAvailable, undoJournal,
+    buildCyclingProviderProbe(getApiKeys, opts.httpAdapter, isCliProviderAvailable),
   );
   cycling.subscribe();
 
