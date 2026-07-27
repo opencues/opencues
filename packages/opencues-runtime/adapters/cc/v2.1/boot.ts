@@ -36,7 +36,7 @@ import { SelectorSatelliteState } from '../../../src/state/selector-satellite';
 import { AgentTaskState } from '../../../src/state/agent-task';
 import { UndoJournal } from '../../../src/state/undo-journal';
 import { applyDirectives } from '../../../src/render-directives';
-import { buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, buildCalendarContextIngest, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
+import { buildAgentLLMResolver, identityDehydrationFor, buildKataLLMResolver, buildBlankContextProvider, buildBlankFetchProvider, buildCalendarContextIngest, buildCyclingProviderProbe, checkRuntimeDrift, NATIVE_HOST_MISSING_KEY_MESSAGE, nativeHostFormatLLMError } from '../../../src/boot-common';
 import { buildBlankWeaver } from '../../../src/modules/blank-weave';
 import { startEventBridge } from '../../../src/event-bridge';
 import type {
@@ -575,6 +575,10 @@ export function boot(host: HostInfo): BootResult {
     adapter, hlState, dynDefs, configLoader,
     spanFillState, dismissedBlanks, selectorSatelliteState,
     () => apiKeys, undefined, undoJournal,
+    // Liveness gate for provider cycling — native transport (NodeHttpAdapter
+    // fallback, no host httpAdapter here). Shared with buildSharedRuntime so
+    // the two hand-wired module sets can't drift.
+    buildCyclingProviderProbe(() => apiKeys, undefined, undefined),
   );
   cycling.subscribe();
 

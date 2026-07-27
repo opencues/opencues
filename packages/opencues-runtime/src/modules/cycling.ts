@@ -102,7 +102,52 @@ export class Cycling {
      *  `undo _` can revert a whole burst (volume ×6 → one undo). Omit
      *  to disable recording (back-compat default). */
     private undoJournal?: UndoJournal,
+    /** Optional LIVENESS probe for `*-llm-provider` cycling — pings a
+     *  provider (its defaultModel) and reports reachability. When wired,
+     *  `eligibleValues` drops any provider a recent probe found UNREACHABLE
+     *  (Ollama not running, key rejected, model gone), so the cycle never
+     *  stops on one you can't dispatch with — the liveness analogue of the
+     *  key filter above. Results are cached (short TTL) and warmed in the
+     *  background, so cycling stays instant; a still-cold value stays in the
+     *  cycle (optimistic) and is resolved on the next step once the probe
+     *  lands. Omit to disable (back-compat: cycle through every keyed
+     *  provider, reachable or not). Wired to `probeProviderReachable` in
+     *  boot-common. */
+    private probeProvider?: (providerId: string, model: string | null) => Promise<{ ok: boolean }>,
   ) {}
+
+  /** Liveness-probe cache for provider cycling: providerId → last result +
+   *  expiry. Short TTL — liveness changes (Ollama can start/stop mid-session). */
+  private _probeCache = new Map<string, { ok: boolean; expiresAt: number }>();
+  /** Providers with an in-flight probe, so `warmProviderCache` never
+   *  double-pings the same value while its request is outstanding. */
+  private _probeInflight = new Set<string>();
+  private static readonly PROBE_TTL_MS = 15_000;
+
+  /** Kick background liveness probes for any provider value whose cache is
+   *  missing or stale. Fire-and-forget — `eligibleValues` reads whatever has
+   *  landed so far. A probe that throws leaves the value UNCACHED (stays in
+   *  the cycle — we only ever drop a value a probe positively found dead). */
+  private warmProviderCache(providerValues: readonly string[]): void {
+    if (!this.probeProvider) return;
+    const now = Date.now();
+    for (const v of providerValues) {
+      // Only probe REAL providers. Sentinel cycle values like `inherit`
+      // (getProvider → null) aren't dispatchable targets and must never be
+      // probed or dropped — they mean "use the global provider".
+      const adapter = getProvider(v);
+      if (!adapter) continue;
+      const cached = this._probeCache.get(v);
+      if (cached && cached.expiresAt > now) continue;
+      if (this._probeInflight.has(v)) continue;
+      this._probeInflight.add(v);
+      const model = adapter.defaultModel ?? null;
+      void this.probeProvider(v, model)
+        .then(r => { this._probeCache.set(v, { ok: r.ok, expiresAt: Date.now() + Cycling.PROBE_TTL_MS }); })
+        .catch(() => { /* probe threw — leave uncached so the value stays cyclable */ })
+        .finally(() => { this._probeInflight.delete(v); });
+    }
+  }
 
   /** Filter a setting's value list to those eligible for cycling
    *  given the current env. Today only `*-llm-provider` scalars are
@@ -111,15 +156,26 @@ export class Cycling {
     if (!PROVIDER_SCALARS.has(scalar)) return values;
     if (!this.getApiKeys) return values;
     const apiKeys = this.getApiKeys();
-    const filtered = values.filter(v =>
+    const keyed = values.filter(v =>
       isProviderValueCyclable(v, apiKeys, { isCliAvailable: this.isCliProviderAvailable }),
     );
-    // Safety: never collapse the list to empty. If the user has zero
-    // keys + zero CLI providers wired up, fall back to the unfiltered
-    // list so the cycle still steps SOMEWHERE — the runtime then
-    // surfaces the resulting LLM-call failure inline rather than
-    // freezing the menu.
-    return filtered.length > 0 ? filtered : values;
+    // Liveness filter: warm the probe cache for the keyed set (background,
+    // cached), then drop any provider a FRESH probe found UNREACHABLE. A
+    // cold/un-probed value stays in (optimistic — resolved next step once
+    // the background probe lands); we only ever remove a KNOWN-dead one.
+    this.warmProviderCache(keyed);
+    const now = Date.now();
+    const live = keyed.filter(v => {
+      const c = this._probeCache.get(v);
+      return !(c !== undefined && c.expiresAt > now && c.ok === false);
+    });
+    // Safety: never collapse the list to empty. Prefer the live set; if
+    // liveness knocked everything out, fall back to the keyed set; if the
+    // user has zero keys + zero CLI providers, fall back to the unfiltered
+    // list so the cycle still steps SOMEWHERE — the runtime then surfaces
+    // the resulting LLM-call failure inline rather than freezing the menu.
+    if (live.length > 0) return live;
+    return keyed.length > 0 ? keyed : values;
   }
 
   /** Record a cycle into the undo journal (no-op without a journal).
