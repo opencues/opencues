@@ -304,7 +304,18 @@ export class Cycling {
       const words = splitWords(text);
       let originIdx = words.findIndex(w => def.spanStart >= w.start && def.spanStart < w.end);
       if (originIdx < 0) originIdx = 0;
-      return this.applyAltCycle(event, def, +1, originIdx, 'static-alts');
+      const cycled = this.applyAltCycle(event, def, +1, originIdx, 'static-alts');
+      if (cycled) {
+        // Land the caret at the span START on a `_`-step (applyAltCycle leaves it
+        // at the end). The start is stable across cycles and unambiguous under
+        // CJK double-width — a code-point offset at the span END renders mid-/
+        // past-glyph on wide text, which reads as "the caret is off the
+        // selection". Start = column 0 of the span, always in-span, so repeated
+        // `_` keeps the highlight + note anchored.
+        this.adapter.setCursorOffset(def.spanStart);
+        this.adapter.forceRender();
+      }
+      return cycled;
     }
     return false;
   }
