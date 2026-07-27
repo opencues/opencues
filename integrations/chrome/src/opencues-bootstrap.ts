@@ -256,6 +256,24 @@ export function publishTarget(el: HTMLElement | null): void {
   if (el === currentTarget) return;
   currentTarget = el;
   if (bootResult) bootResult.resetBufferState();
+  // Re-resolve the newly-focused buffer so its cues (dim spans, passive
+  // advisories) re-register immediately. resetBufferState() above wiped the
+  // DynDefs (where spans live), and the resolver only runs on a text change —
+  // so without this, refocusing a field (or focusing one that already has
+  // content, e.g. a draft) showed NO spans even though the buffer is
+  // unchanged. resetBufferState() also zeroes the resolver's _lastInputText,
+  // so re-feeding the identical text is NOT deduped — it resolves fresh. The
+  // blank `_`-trigger only fires on a buffer that ENDS with `_` (and didn't
+  // before), so `_`-free prose (every passive cue) re-registers without side
+  // effects. Skipped for normal inputs (no paint surface) and empty buffers.
+  if (el && bootResult && !isNormalInput(el)) {
+    try {
+      const text = walkPlainText(el).text;
+      if (text.trim().length > 0) {
+        notifyOpenCuesTextChange(text, readCursorOffset(), 'user');
+      }
+    } catch { /* DOM not readable this tick — next text change resolves */ }
+  }
 }
 
 /** Called by content.ts when a `beforeinput` event signals the focused
