@@ -187,7 +187,11 @@ export function applyDirectives(
     // First-line span → add back the host prompt indent the note line (a
     // continuation line) doesn't inherit. lineStart === 0 ⟺ span on line 1.
     const promptPad = lineStart === 0 ? Math.max(0, firstLineIndent) : 0;
-    const pad = ' '.repeat(Math.max(0, col - prefix.length) + promptPad);
+    // Message target column = col + promptPad; the connector hangs prefix.length
+    // to its left. Fold both into ONE clamp so a span at (or near) column 0
+    // yields no leading indent — the arrow just sits at the left edge — instead
+    // of being pushed right by the prompt pad.
+    const pad = ' '.repeat(Math.max(0, col + promptPad - prefix.length));
     const body = ANSI_DIM_ON + prefix + formatInlineNoteText(note.text) + ANSI_DIM_OFF;
     // order 2 → fires after any dim/highlight close-codes at this boundary.
     insertions.push({ visibleAt: at, ansi: '\n' + pad + body, order: 2 });

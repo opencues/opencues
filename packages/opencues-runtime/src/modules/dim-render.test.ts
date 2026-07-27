@@ -675,6 +675,25 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     expect(painted).toContain('\x1b[2m↳ ⚠ - the 19th is a Friday, not Saturday\x1b[22m');
   });
 
+  it('no leading indent when the span starts at column 0 (even with a first-line indent)', () => {
+    const buf0 = 'saturday is soon';
+    const { dynDefs, dimRender } = setup(buf0);
+    dynDefs.set(0, {
+      originalWord: 'saturday',
+      alternatives: ['saturday'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: 8,
+      blankName: 'sentence-cue:contradiction-weekday-date',
+      cueTip: '⚠ the 19th is a Friday',
+    });
+    const directives = dimRender.compute({ text: buf0, cursor: 3, externalHighlights: [] });
+    // col 0 + promptPad 2 - "↳ "(2) = 0 → arrow sits at the left edge, no indent.
+    const visible = applyDirectives(buf0, directives, 2).replace(/\x1b\[[0-9;]*m/g, '');
+    expect(visible).toContain('\n↳ ⚠ - the 19th is a Friday');
+    expect(visible).not.toContain('\n ↳'); // no leading space before the arrow
+  });
+
   it('adds the host first-line indent when the span is on line 1 (CC prompt)', () => {
     const { dynDefs, dimRender } = setup(BUFFER);
     seedContradictionDef(dynDefs);
