@@ -101,16 +101,16 @@ created the universal-integration profile — so `_`-cycle is a path to cues on
 constrained hosts arrows can never reach. Not urgent; it's the reason the
 mechanic is more than a convenience.
 
-## Open questions (settle before build)
+## Open questions
 
-1. **Does the note advertise `_`, or is presence enough?** The one real UI call.
-   Options, lightest → loudest:
-   - **presence-only** — note stays `↳ more-formal`; teach it once in docs.
-   - **state counter** — `↳ more-formal (1/3)` — implies steppability, doubles as
-     post-press feedback (`1/3 → 2/3`) without naming a keycap. *(Current lean.)*
-   - **explicit hint** — `↳ more-formal · _` — names the key on the flag.
-2. **Scope boundary.** v1 = note-bearing cues only (sentence + contradiction).
-   Word-cues stay arrow-only until they get a note.
+1. **Indicator style — DEFERRED.** How (or whether) the note advertises `_` is
+   polish, not part of the mechanic. The prototype uses the note **as-is**
+   (`↳ <cueTip>`) as the affordance — the goal first is to build the mechanic
+   and feel it; the indicator (presence-only / state counter `(1/3)` / explicit
+   `· _` hint) gets decided after we know how the rotation feels. Current lean
+   remains the **state counter**, but it's not blocking.
+2. **Scope boundary (settled).** v1 = note-bearing cues only (sentence +
+   contradiction). Word-cues stay arrow-only until they get a note.
 
 ## Parked
 
