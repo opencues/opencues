@@ -71,9 +71,12 @@ interface Insertion {
 // text + its ANSI live in the rendered string the host PAINTS, never in the
 // logical submit buffer (same channel as every other directive here).
 //
+// Connector glyph that ties the note to the span above it.
+const INLINE_NOTE_CONNECTOR = '↳';
+
 // The advisory (def.cueTip) arrives as "<icon> <message>" (e.g.
-// "⚠ the 19th is a Friday"); render it as "<icon> - <message>", led by a `└`
-// tree connector at the painter.
+// "⚠ the 19th is a Friday"); render it as "<icon> - <message>", led by the
+// `↳` connector at the painter.
 function formatInlineNoteText(text: string): string {
   const trimmed = text.trim();
   const m = trimmed.match(/^(\S+)\s+([\s\S]*)$/);
@@ -164,12 +167,15 @@ export function applyDirectives(rendered: string, directives: RenderDirectives |
     const nl = visible.indexOf('\n', spanEnd);
     const at = nl === -1 ? visible.length : nl;
     const lineStart = visible.lastIndexOf('\n', Math.max(0, spanStart - 1)) + 1;
-    const indent = ' '.repeat(Math.max(0, spanStart - lineStart));
-    // Lead with a `└` tree connector (at the span's column) so the note reads
-    // as hanging off the span on the line above it.
-    const body = ANSI_DIM_ON + '└ ' + formatInlineNoteText(note.text) + ANSI_DIM_OFF;
+    const col = Math.max(0, spanStart - lineStart);
+    // The `↳ ` connector points up at the span; the MESSAGE aligns under the
+    // span's column, with the arrow hanging in the margin to its left. The
+    // connector prefix is 2 visible columns ("↳ "), so pad to col-2 before it.
+    const prefix = INLINE_NOTE_CONNECTOR + ' ';
+    const pad = ' '.repeat(Math.max(0, col - prefix.length));
+    const body = ANSI_DIM_ON + prefix + formatInlineNoteText(note.text) + ANSI_DIM_OFF;
     // order 2 → fires after any dim/highlight close-codes at this boundary.
-    insertions.push({ visibleAt: at, ansi: '\n' + indent + body, order: 2 });
+    insertions.push({ visibleAt: at, ansi: '\n' + pad + body, order: 2 });
   }
 
   if (insertions.length === 0) return rendered;

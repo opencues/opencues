@@ -669,8 +669,10 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     // indented to the span's column (11 = start of "saturday").
     const visible = painted.replace(/\x1b\[[0-9;]*m/g, '');
     expect(visible.startsWith(BUFFER)).toBe(true);
-    expect(visible).toContain('\n' + ' '.repeat(11) + '└ ⚠ - the 19th is a Friday, not Saturday');
-    expect(painted).toContain('\x1b[2m└ ⚠ - the 19th is a Friday, not Saturday\x1b[22m');
+    // Message aligns under the span (col 11); "↳ " (2 cols) hangs in the margin,
+    // so the line is padded to col-2 = 9 before the connector.
+    expect(visible).toContain('\n' + ' '.repeat(9) + '↳ ⚠ - the 19th is a Friday, not Saturday');
+    expect(painted).toContain('\x1b[2m↳ ⚠ - the 19th is a Friday, not Saturday\x1b[22m');
   });
 
   it('places the pill under the SPAN\'s line, not below the whole buffer (long buffer)', () => {
@@ -690,7 +692,8 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     });
     const directives = dimRender.compute({ text: multiline, cursor: 8, externalHighlights: [] });
     const visible = applyDirectives(multiline, directives).replace(/\x1b\[[0-9;]*m/g, '');
-    expect(visible).toContain('saturday\n     └ ⚠ - the 19th is a Friday\nmore text');
+    // span at col 5 → message aligns under it, "↳ " hangs left → pad = 3.
+    expect(visible).toContain('saturday\n   ↳ ⚠ - the 19th is a Friday\nmore text');
     // Not dangling after the last line.
     expect(visible.endsWith('even more')).toBe(true);
   });
