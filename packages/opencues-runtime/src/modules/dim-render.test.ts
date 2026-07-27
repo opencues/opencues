@@ -188,7 +188,7 @@ describe('DimRender + render pipeline (integration)', () => {
   // adjacency to fire. Without `_`, dimming the keyword is noise — it
   // implies interactivity when nothing will happen. The gate suppresses
   // the dim until `_` lands within `blankProximity`. Word-cue entries
-  // (legal/medical/financial/spelling, any CUES.md ## Tips) bypass the
+  // (concise/plain/tone/spelling, any CUES.md ## Tips) bypass the
   // gate because their dim IS the offer of prose alternatives.
   it('blank keyword without `_` adjacent does NOT dim', async () => {
     const { ConfigLoader } = await import('./config-loader');

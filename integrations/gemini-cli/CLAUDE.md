@@ -343,15 +343,14 @@ no slot, so `cycleBlankStep` has nothing to step.
 ### "Lawyer doesn't activate cycling"
 
 `navigableWords` (config-loader.ts:586) is built from EXPLICIT word
-entries in cueMap. The shipped LLM cue sources (legal/medical/financial)
-all use `match:` regexes that route specific words but don't
-enumerate them. `lawyer` isn't in any cueMap → not navigable.
+entries in cueMap. The shipped LLM cue source (`spelling`) uses a
+`match:` regex that routes words at cue time but doesn't enumerate
+them. `lawyer` isn't in any cueMap → not navigable.
 
 Test cycling with words that are explicitly in a tip group (e.g.
-`ci-cd` from `defaults/cues/tips/CUE.md`) or with words that match a cue
-source's regex (e.g. `clause`, `contract` for legal) AND are also in
-its keyword/word list. Or add a default-source (no `match:`) that
-catches everything.
+`ci-cd` from `defaults/cues/tips-<host>/CUE.md`) or with a misspelled
+word that the `spelling` cue flags (e.g. `mispelled`). Or add a
+default-source (no `match:`) that catches everything.
 
 ## Debug
 
@@ -377,7 +376,7 @@ re-applying). If you ever see weird patch state, just re-run setup.
 
 | What | Type | Expect |
 |---|---|---|
-| `we shall draft the contract clause` then ctrl+alt+left | Cycling (LLM) | Highlight on `clause` (legal cue), up/down rotates alts |
+| `this has a mispelled word` then ctrl+alt+left | Cycling (LLM) | Highlight on `mispelled` (spelling cue), up/down rotates corrections |
 | `volume _` | Cue-blank script | `_` auto-populates to e.g. `25%`; up/down on it adjusts system volume |
 | `weather _` | Cue-blank HTTP | `_` auto-populates with current temp |
 | `atomic number of oxygen _` | Fluid blank | LLM substitutes `8` |

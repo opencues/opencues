@@ -10,13 +10,13 @@ Fixtures ship as JSON (no YAML parser dependency required). Cue-routing scenario
 {
   "description": "Two sources, domain wins over default",
   "sources": [
-    { "name": "legal",    "priority": 70, "match": "contract|clause" },
+    { "name": "concise",  "priority": 70, "match": "contract|clause" },
     { "name": "catchall", "priority": 10, "match": ".*" }
   ],
   "expectations": [
-    { "word": "contract", "routesTo": "legal" },
+    { "word": "contract", "routesTo": "concise" },
     { "word": "hello",    "routesTo": "catchall" },
-    { "word": "clause",   "routesTo": "legal" }
+    { "word": "clause",   "routesTo": "concise" }
   ]
 }
 ```

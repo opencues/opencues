@@ -5,7 +5,7 @@ spec: opencues/0.1-alpha
 tips-mode: on
 word-cues-mode: on
 ignore: [TODO, FIXME, XXX]
-disable: [legal]
+disable: [concise]
 ---
 
 Optional Markdown body — human-readable project notes. Runtimes MUST ignore the body; only frontmatter contributes to configuration.

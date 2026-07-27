@@ -153,13 +153,13 @@ describe('parseCuesMd: ## Prompt subsections', () => {
       'priority: 50',
       '```',
       'Grammar prompt.',
-      '### legal',
+      '### concise',
       '```yaml',
       'priority: 70',
       'match: contract|clause',
       '```',
       'Legal prompt.',
-      '### medical',
+      '### plain',
       '```yaml',
       'priority: 75',
       'match: diagnosis|prognosis',
@@ -172,10 +172,10 @@ describe('parseCuesMd: ## Prompt subsections', () => {
     const sources = cfg.promptConfig.sources;
     assert.strictEqual(Object.keys(sources).length, 3);
     assert.strictEqual(sources.grammar.priority, 50);
-    assert.strictEqual(sources.legal.priority, 70);
-    assert.strictEqual(sources.legal.match, 'contract|clause');
-    assert.strictEqual(sources.medical.priority, 75);
-    assert.strictEqual(sources.medical.keywords, 'diagnosis, prognosis');
+    assert.strictEqual(sources.concise.priority, 70);
+    assert.strictEqual(sources.concise.match, 'contract|clause');
+    assert.strictEqual(sources.plain.priority, 75);
+    assert.strictEqual(sources.plain.keywords, 'diagnosis, prognosis');
   });
 
   it('should parse all yaml fields', () => {
@@ -289,12 +289,12 @@ describe('parseCuesMd: ## Prompt subsections', () => {
       '## Prompt',
       '### Grammar',
       'Prompt text.',
-      '### LEGAL',
+      '### CONCISE',
       'Legal text.',
     ].join('\n'));
 
     assert.ok(cfg.promptConfig!.sources.grammar);
-    assert.ok(cfg.promptConfig!.sources.legal);
+    assert.ok(cfg.promptConfig!.sources.concise);
   });
 });
 
@@ -422,7 +422,7 @@ describe('parseCuesMd: CUES.md structure', () => {
       'priority: 50',
       '```',
       'Grammar prompt.',
-      '### legal',
+      '### concise',
       '```yaml',
       'priority: 70',
       'match: contract',
@@ -822,16 +822,16 @@ describe('Phase 4 — typed-sentinel blank fields (signature/returns/ai-callable
 // ---------------------------------------------------------------------------
 
 describe('parseCuesMd: combined mode (static tips + LLM fallback)', () => {
-  const legalCue = [
+  const conciseCue = [
     '---',
-    'name: legal',
+    'name: concise',
     'description: Legal terminology',
     'match: contract|agreement|clause|herein|whereas',
     '---',
     '',
     '```json',
     '[{',
-    '  "id": "legal-overrides",',
+    '  "id": "concise-overrides",',
     '  "words": {',
     '    "herein": { "tip": "Avoid; replace with explicit reference", "alts": ["in this agreement", "above", "hereunder"] }',
     '  }',
@@ -843,9 +843,9 @@ describe('parseCuesMd: combined mode (static tips + LLM fallback)', () => {
   ].join('\n');
 
   it('builds both result.tips and result.promptConfig when frontmatter declares match:/keywords:', () => {
-    const cfg = parseSingleCueMd(legalCue, '/cues/legal');
+    const cfg = parseSingleCueMd(conciseCue, '/cues/concise');
     assert.ok(cfg.tips && cfg.tips.length > 0, 'static tips should still be populated');
-    const src = cfg.promptConfig?.sources?.['legal'];
+    const src = cfg.promptConfig?.sources?.['concise'];
     assert.ok(src, 'combined mode must also build an LLM source, not just the static block');
     assert.strictEqual(src?.match, 'contract|agreement|clause|herein|whereas');
     assert.match(src?.promptText ?? '', /suggest 3 alternatives/);

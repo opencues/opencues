@@ -26,13 +26,13 @@ function ctx(text: string): CueContext {
   return { text, words: text.split(/\s+/).filter(Boolean) };
 }
 
-/** Word source — one combined ConfigSource from grammar+legal+medical */
+/** Word source — one combined ConfigSource from grammar+concise+plain */
 async function wordResult(sentence: string, llm: string): Promise<CueSourceResult> {
   const src = buildSourcesFromConfig(
     mk({ sources: {
       grammar: { name: 'grammar', promptText: 'G.', priority: 50, match: '.*' },
-      legal:   { name: 'legal',   promptText: 'L.', priority: 70, match: 'contract|shall|liability|indemnify|warrant|clause|herein|whereas|stipulate|agreement' },
-      medical: { name: 'medical', promptText: 'M.', priority: 75, match: 'diagnosis|prognosis|etiology|contraindication|prophylaxis|comorbidity|pathology' },
+      concise: { name: 'concise', promptText: 'L.', priority: 70, match: 'contract|shall|liability|indemnify|warrant|clause|herein|whereas|stipulate|agreement' },
+      plain:   { name: 'plain',   promptText: 'M.', priority: 75, match: 'diagnosis|prognosis|etiology|contraindication|prophylaxis|comorbidity|pathology' },
     }}),
     undefined,
     { httpAdapter: { post: async () => json(llm) }, apiKeys: { GROQ_API_KEY: 'k' }, globalProvider: 'groq', globalModel: 'm', enableWordCues: true },

@@ -22,7 +22,7 @@ Remote cues are alternatives computed externally via an LLM or other system, typ
 
 Each `### alternatives` section in `CUES.md` (or `cues/<name>/CUE.md`) becomes its OWN `ConfigSource`. They are wrapped in a single `RoutedWordSourceGroup` that **dispatches each highlighted word to exactly one child source** based on the source's `match` / `keywords` / `priority` fields.
 
-Words destined for the same source are batched into one parallel LLM call; results are then index-remapped back to the original positions. So a sentence with one legal word + one medical word + three grammar words produces three parallel LLM calls, not five sequential ones and not one giant merged prompt.
+Words destined for the same source are batched into one parallel LLM call; results are then index-remapped back to the original positions. So a sentence with one word for source A + one for source B + three for a grammar source produces three parallel LLM calls, not five sequential ones and not one giant merged prompt.
 
 Why per-word dispatch (not the old "combine into one prompt"):
 

@@ -59,17 +59,17 @@ function mkContextTyping(words: string[]): CueContext {
 describe('RoutedWordSourceGroup: classification', () => {
   it('routes by regex match', () => {
     const sync = mkSource('sync', { match: '\\b(synced|bundled)\\b', priority: 80 });
-    const legal = mkSource('legal', { keywords: 'contract', priority: 70 });
-    const group = new RoutedWordSourceGroup({ sources: [sync, legal] });
+    const concise = mkSource('concise', { keywords: 'contract', priority: 70 });
+    const group = new RoutedWordSourceGroup({ sources: [sync, concise] });
     assert.strictEqual(group.classify('synced')?.id, 'sync');
-    assert.strictEqual(group.classify('contract')?.id, 'legal');
+    assert.strictEqual(group.classify('contract')?.id, 'concise');
   });
 
   it('routes by keywords (case-insensitive)', () => {
-    const legal = mkSource('legal', { keywords: 'Contract, Plaintiff' });
-    const group = new RoutedWordSourceGroup({ sources: [legal] });
-    assert.strictEqual(group.classify('contract')?.id, 'legal');
-    assert.strictEqual(group.classify('CONTRACT')?.id, 'legal');
+    const concise = mkSource('concise', { keywords: 'Contract, Plaintiff' });
+    const group = new RoutedWordSourceGroup({ sources: [concise] });
+    assert.strictEqual(group.classify('contract')?.id, 'concise');
+    assert.strictEqual(group.classify('CONTRACT')?.id, 'concise');
   });
 
   it('priority breaks ties between two matching sources', () => {
@@ -81,9 +81,9 @@ describe('RoutedWordSourceGroup: classification', () => {
   });
 
   it('returns null when no source matches', () => {
-    const legal = mkSource('legal', { keywords: 'contract' });
-    const group = new RoutedWordSourceGroup({ sources: [legal] });
-    assert.strictEqual(group.classify('contract')?.id, 'legal');
+    const concise = mkSource('concise', { keywords: 'contract' });
+    const group = new RoutedWordSourceGroup({ sources: [concise] });
+    assert.strictEqual(group.classify('contract')?.id, 'concise');
     assert.strictEqual(group.classify('happy'), null);
   });
 
@@ -98,20 +98,20 @@ describe('RoutedWordSourceGroup: classification', () => {
   it('drops sources with neither match: nor keywords:', () => {
     // Catch-all sources are no longer permitted — group rejects on construct.
     const catchAll = mkSource('catchAll', { priority: 50 });
-    const legal = mkSource('legal', { keywords: 'contract', priority: 70 });
-    const group = new RoutedWordSourceGroup({ sources: [catchAll, legal] });
+    const concise = mkSource('concise', { keywords: 'contract', priority: 70 });
+    const group = new RoutedWordSourceGroup({ sources: [catchAll, concise] });
     assert.strictEqual(group.routingStats.sources, 1);
-    assert.strictEqual(group.classify('contract')?.id, 'legal');
+    assert.strictEqual(group.classify('contract')?.id, 'concise');
     assert.strictEqual(group.classify('happy'), null);
   });
 
   it('handles malformed match regex gracefully (skips that entry)', () => {
     // Bad regex AND no keywords → entry has no usable rule, gets rejected.
     const bad = mkSource('bad', { match: '[invalid' });
-    const legal = mkSource('legal', { keywords: 'contract' });
-    const group = new RoutedWordSourceGroup({ sources: [bad, legal] });
+    const concise = mkSource('concise', { keywords: 'contract' });
+    const group = new RoutedWordSourceGroup({ sources: [bad, concise] });
     assert.strictEqual(group.routingStats.sources, 1);
-    assert.strictEqual(group.classify('contract')?.id, 'legal');
+    assert.strictEqual(group.classify('contract')?.id, 'concise');
   });
 });
 
@@ -120,7 +120,7 @@ describe('RoutedWordSourceGroup: classification', () => {
 // ---------------------------------------------------------------------------
 
 describe('RoutedWordSourceGroup: supports()', () => {
-  const group = new RoutedWordSourceGroup({ sources: [mkSource('legal', { keywords: 'contract' })] });
+  const group = new RoutedWordSourceGroup({ sources: [mkSource('concise', { keywords: 'contract' })] });
 
   it('supports a context with at least one cycleable word', () => {
     assert.strictEqual(group.supports(mkContext(['happy'])), true);
@@ -147,9 +147,9 @@ describe('RoutedWordSourceGroup: supports()', () => {
 describe('RoutedWordSourceGroup: routingStats', () => {
   it('counts the routed sources', () => {
     const sources = [
-      mkSource('legal', { keywords: 'contract' }),
-      mkSource('medical', { match: '\\b(diagnosis|prescription)\\b' }),
-      mkSource('financial', { keywords: 'stock,bond' }),
+      mkSource('concise', { keywords: 'contract' }),
+      mkSource('plain', { match: '\\b(diagnosis|prescription)\\b' }),
+      mkSource('tone', { keywords: 'stock,bond' }),
     ];
     const group = new RoutedWordSourceGroup({ sources });
     assert.deepStrictEqual(group.routingStats, { sources: 3 });
@@ -188,50 +188,50 @@ describe('RoutedWordSourceGroup: getCues()', () => {
   }
 
   it('groups words by routed source and dispatches one call per group', async () => {
-    const legal = new RecordingSource('legal', { keywords: 'contract, plaintiff' });
-    const medical = new RecordingSource('medical', { keywords: 'diagnosis' });
-    const group = new RoutedWordSourceGroup({ sources: [legal as any, medical as any] });
+    const concise = new RecordingSource('concise', { keywords: 'contract, plaintiff' });
+    const plain = new RecordingSource('plain', { keywords: 'diagnosis' });
+    const group = new RoutedWordSourceGroup({ sources: [concise as any, plain as any] });
 
     const ctx = mkContext(['happy', 'contract', 'diagnosis', 'plaintiff']);
     const out = await group.getCues(ctx);
 
-    assert.strictEqual(legal.received.length, 1, 'legal called once');
-    assert.strictEqual(medical.received.length, 1, 'medical called once');
-    assert.deepStrictEqual(legal.received[0].words, ['contract', 'plaintiff']);
-    assert.deepStrictEqual(medical.received[0].words, ['diagnosis']);
+    assert.strictEqual(concise.received.length, 1, 'concise called once');
+    assert.strictEqual(plain.received.length, 1, 'plain called once');
+    assert.deepStrictEqual(concise.received[0].words, ['contract', 'plaintiff']);
+    assert.deepStrictEqual(plain.received[0].words, ['diagnosis']);
 
     const byOriginal = new Map(out.results.map(r => [r.wordIndex, r.source]));
-    assert.strictEqual(byOriginal.get(1), 'legal');
-    assert.strictEqual(byOriginal.get(2), 'medical');
-    assert.strictEqual(byOriginal.get(3), 'legal');
+    assert.strictEqual(byOriginal.get(1), 'concise');
+    assert.strictEqual(byOriginal.get(2), 'plain');
+    assert.strictEqual(byOriginal.get(3), 'concise');
     assert.strictEqual(byOriginal.has(0), false); // happy → no source → dropped
   });
 
   it('skips blank ("_") words and zero-length entries', async () => {
-    const legal = new RecordingSource('legal', { keywords: 'contract,plaintiff,happy' });
-    const group = new RoutedWordSourceGroup({ sources: [legal as any] });
+    const concise = new RecordingSource('concise', { keywords: 'contract,plaintiff,happy' });
+    const group = new RoutedWordSourceGroup({ sources: [concise as any] });
     const out = await group.getCues(mkContext(['happy', '_', 'plaintiff', '']));
 
-    assert.strictEqual(legal.received.length, 1);
-    assert.deepStrictEqual(legal.received[0].words, ['happy', 'plaintiff']);
+    assert.strictEqual(concise.received.length, 1);
+    assert.deepStrictEqual(concise.received[0].words, ['happy', 'plaintiff']);
     assert.strictEqual(out.results.length, 2);
     assert.deepStrictEqual(out.results.map(r => r.wordIndex).sort(), [0, 2]);
   });
 
   it('returns no results when no source can handle any word', async () => {
-    const legal = new RecordingSource('legal', { keywords: 'contract' });
-    const group = new RoutedWordSourceGroup({ sources: [legal as any] });
+    const concise = new RecordingSource('concise', { keywords: 'contract' });
+    const group = new RoutedWordSourceGroup({ sources: [concise as any] });
     const out = await group.getCues(mkContext(['happy', 'sad', 'angry']));
     assert.strictEqual(out.results.length, 0);
-    assert.strictEqual(legal.received.length, 0);
+    assert.strictEqual(concise.received.length, 0);
   });
 
   it('partial routing: some words route, others drop', async () => {
-    const legal = new RecordingSource('legal', { keywords: 'contract' });
-    const group = new RoutedWordSourceGroup({ sources: [legal as any] });
+    const concise = new RecordingSource('concise', { keywords: 'contract' });
+    const group = new RoutedWordSourceGroup({ sources: [concise as any] });
     const out = await group.getCues(mkContext(['happy', 'contract', 'sad']));
-    assert.strictEqual(legal.received.length, 1);
-    assert.deepStrictEqual(legal.received[0].words, ['contract']);
+    assert.strictEqual(concise.received.length, 1);
+    assert.deepStrictEqual(concise.received[0].words, ['contract']);
     assert.strictEqual(out.results.length, 1);
     assert.strictEqual(out.results[0].wordIndex, 1);
   });
@@ -320,16 +320,16 @@ describe('RoutedWordSourceGroup: result cache', () => {
   });
 
   it('different sub-context per source — each source has its own cache', async () => {
-    const legal = new CountingSource('legal', { keywords: 'contract' });
+    const concise = new CountingSource('concise', { keywords: 'contract' });
     const spelling = new CountingSource('spelling', { match: '.*', priority: 10 });
-    const group = new RoutedWordSourceGroup({ sources: [legal as any, spelling as any] });
+    const group = new RoutedWordSourceGroup({ sources: [concise as any, spelling as any] });
 
     await group.getCues(mkContext(['the', 'contract', 'is']));
-    assert.strictEqual(legal.received.length, 1);
+    assert.strictEqual(concise.received.length, 1);
     assert.strictEqual(spelling.received.length, 1);
 
     await group.getCues(mkContext(['the', 'contract', 'is']));
-    assert.strictEqual(legal.received.length, 1, 'legal cache hit');
+    assert.strictEqual(concise.received.length, 1, 'concise cache hit');
     assert.strictEqual(spelling.received.length, 1, 'spelling cache hit');
   });
 

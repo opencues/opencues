@@ -25,32 +25,32 @@ For one highlighted word:
 1. **Try each source in priority-descending order.** First entry whose `match:` regex hits the word OR whose `keywords:` list contains the word (case-insensitive) wins.
 2. **If no source matched**, the word gets no cue and isn't navigable.
 
-Step 2 is intentional. It lets you build opt-in projects (e.g. "only legal terms get alternatives") without a catch-all needing to fire.
+Step 2 is intentional. It lets you build opt-in projects (e.g. "only a chosen vocabulary gets alternatives") without a catch-all needing to fire.
 
 ### Examples
 
 Given this config:
 
 ```yaml
-### legal       # keywords:                    → claims listed words
+### concise     # keywords:                    → claims listed words
 parser: alternatives
-keywords: contract, plaintiff, tort
+keywords: very, really, just
 priority: 70
 
-### medical     # match:                       → claims regex hits
+### plain       # match:                       → claims regex hits
 parser: alternatives
-match: \b(diagnosis|prescription|symptom)\b
+match: \b(utilize|leverage|synergy)\b
 priority: 70
 ```
 
 | Word | Routed to | Why |
 |---|---|---|
 | `happy` | (none) | no source claims it → no cue |
-| `contract` | legal | keyword hit |
-| `diagnosis` | medical | regex hit |
-| `plaintiff` | legal | keyword hit |
+| `very` | concise | keyword hit |
+| `utilize` | plain | regex hit |
+| `really` | concise | keyword hit |
 
-To make `happy` colour, add a source with `match: .*` (catch-all) or expand a domain's `keywords:` to include it.
+To make `happy` colour, add a source with `match: .*` (catch-all) or expand a cue's `keywords:` to include it.
 
 ---
 
@@ -63,11 +63,11 @@ For a text with N highlighted words:
 3. Dispatch **one LLM call per group, in parallel** (`Promise.all`). Each call sees a sub-context containing only its own words, renumbered 0..k.
 4. Map the results' indices back to the original word positions before returning.
 
-For "the contract shall indemnify the diagnosis", that's:
-- 1 call to `legal` for `[contract, indemnify]` (if legal's `match:` covers `indemnify`)
-- 1 call to `medical` for `[diagnosis]`
+For "this is very really rather utilized", that's:
+- 1 call to `concise` for `[very, really, rather]`
+- 1 call to `plain` for `[utilized]`
 
-…dispatched simultaneously. Latency is `max(calls)`, not `sum(calls)`. Words like `the`/`shall` get no cue (no source claims them).
+…dispatched simultaneously. Latency is `max(calls)`, not `sum(calls)`. Words like `this`/`is` get no cue (no source claims them).
 
 ---
 
@@ -102,13 +102,13 @@ import { RoutedWordSourceGroup, ConfigSource } from '@opencues/core';
 
 const group = new RoutedWordSourceGroup({
   id: 'word-cues',
-  sources: [legalConfig, medicalConfig],  // all ConfigSource
+  sources: [conciseConfig, plainConfig],  // all ConfigSource
 });
 
 // Route one word (used by validate for diagnostics):
-group.classify('contract');   // → legalConfig
+group.classify('very');       // → conciseConfig
 group.classify('happy');      // → null (no source claims it)
-group.classify('plaintiff');  // → legalConfig
+group.classify('really');     // → conciseConfig
 group.routingStats;           // → { sources: 2 }
 
 // Normal use: the resolver calls .getCues() with the full context.
@@ -148,18 +148,18 @@ The routing layer rejects sources lacking both at construction time — they wou
 `RoutedWordSourceGroup` walks every word in priority-descending order and claims it for the FIRST source whose `match:` regex hits or whose `keywords:` list contains the word. If no source claims the word, the word isn't navigable (no cue surfaces for it).
 
 ```yaml
-# Domain cue — claims specific terms, high priority
-name: legal
+# Vocabulary cue — claims specific terms, high priority
+name: concise
 priority: 70
-match: contract|agreement|clause|liability
+match: very|really|just|actually
 
-# Catch-all fallback — claims anything the domain cues didn't
+# Catch-all fallback — claims anything the narrow cues didn't
 name: spelling
 priority: 10
 match: .*
 ```
 
-With this layout: `contract` → legal (priority 70 > spelling 10); `hello` → spelling (no domain match, spelling's `.*` catches it). Flip the priorities and spelling would suppress every domain cue.
+With this layout: `very` → concise (priority 70 > spelling 10); `hello` → spelling (no narrow match, spelling's `.*` catches it). Flip the priorities and spelling would suppress every narrow cue.
 
 Words destined for the same source are batched into one parallel LLM call, then results are index-remapped back to the original positions.
 

@@ -32,14 +32,14 @@ function buildWordSources(response: string) {
           priority: 50,
           match: '.*',
         },
-        legal: {
-          name: 'legal',
+        concise: {
+          name: 'concise',
           promptText: 'When the highlighted word is a legal term, suggest alternatives that preserve legal meaning.',
           priority: 70,
           match: 'contract|agreement|clause|indemnify|warrant|liability|shall|herein|whereas|stipulate',
         },
-        medical: {
-          name: 'medical',
+        plain: {
+          name: 'plain',
           promptText: 'When suggesting alternatives for clinical terms, prefer ICD-10 standard terminology.',
           priority: 75,
           match: 'diagnosis|prognosis|etiology|contraindication|prophylaxis|anamnesis|comorbidity|pathology',

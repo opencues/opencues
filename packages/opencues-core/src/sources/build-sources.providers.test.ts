@@ -129,8 +129,8 @@ describe('buildSourcesFromConfig — per-feature provider routing', () => {
       promptConfig: {
         sources: {
           // Per-cue provider override on this one cue; everything else inherits wordCues feature default.
-          medical: {
-            name: 'medical', match: '.*', priority: 70, promptText: 'M.',
+          plain: {
+            name: 'plain', match: '.*', priority: 70, promptText: 'M.',
             provider: 'openrouter', model: 'deepseek/deepseek-chat-v3.1:free',
           },
         },
@@ -178,8 +178,8 @@ describe('buildSourcesFromConfig — per-feature provider routing', () => {
       promptConfig: {
         sources: {
           // Gemini override at the per-cue level — outranks word-cues feature default.
-          'medical': {
-            name: 'medical',
+          'plain': {
+            name: 'plain',
             promptText: 'M.',
             match: '.*',
             priority: 60,

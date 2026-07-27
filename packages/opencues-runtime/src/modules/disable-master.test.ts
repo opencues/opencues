@@ -16,12 +16,12 @@ describe('master-file disable: parity', () => {
       cwd: '/proj',
       files: {
         '/proj/.cues/CUES.md':
-          `---\nname: project\ndisable: [legal]\n---\n`,
+          `---\nname: project\ndisable: [concise]\n---\n`,
       },
     });
     const loader = new ConfigLoader(adapter, { configSearchPaths: ['/proj/.cues'] });
     await loader.load();
-    expect(loader.folderConfigs?.cuesConfig?.disableCues).toEqual(['legal']);
+    expect(loader.folderConfigs?.cuesConfig?.disableCues).toEqual(['concise']);
   });
 
   it('BLANKS.md disable: [<id>] surfaces as folderConfigs.blanksConfig.disableBlanks', async () => {
@@ -54,14 +54,14 @@ describe('master-file disable: parity', () => {
     const adapter = new MockAdapter({
       cwd: '/proj',
       files: {
-        '/proj/.cues/CUES.md':       `---\nname: p\ndisable: [legal]\n---\n`,
+        '/proj/.cues/CUES.md':       `---\nname: p\ndisable: [concise]\n---\n`,
         '/proj/.cues/BLANKS.md':     `---\nname: p\ndisable: [stocks]\n---\n`,
         '/proj/.cues/AUDITORS.md':   `---\nname: p\ndisable: [grammar]\n---\n`,
       },
     });
     const loader = new ConfigLoader(adapter, { configSearchPaths: ['/proj/.cues'] });
     await loader.load();
-    expect(loader.folderConfigs?.cuesConfig?.disableCues).toEqual(['legal']);
+    expect(loader.folderConfigs?.cuesConfig?.disableCues).toEqual(['concise']);
     expect(loader.folderConfigs?.blanksConfig?.disableBlanks).toEqual(['stocks']);
     expect(loader.folderConfigs?.auditorsConfig?.disableAuditors).toEqual(['grammar']);
   });

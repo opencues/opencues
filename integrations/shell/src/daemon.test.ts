@@ -213,23 +213,23 @@ describe('daemon.ts — HELLO / GET_SNAPSHOT / unknown-cmd protocol', () => {
 
   it('walks nested cues/ subdirectories into the snapshot', async () => {
     const cuesSubdir = path.join(openCuesHome, 'cues');
-    const packDir = path.join(cuesSubdir, 'legal');
+    const packDir = path.join(cuesSubdir, 'concise');
     const cueMdPath = path.join(packDir, 'CUE.md');
     const handler = await bootDaemon({
-      files: { [cueMdPath]: '---\nname: legal\n---\n' },
+      files: { [cueMdPath]: '---\nname: concise\n---\n' },
       dirs: {
-        [cuesSubdir]: ['legal'],
+        [cuesSubdir]: ['concise'],
         [packDir]: ['CUE.md'],
       },
-      dirNames: new Set(['legal']),
+      dirNames: new Set(['concise']),
     });
     const sock = new FakeSocket();
     handler(sock);
     sock.emit('data', frame({ cmd: 'GET_SNAPSHOT' }));
     await new Promise((r) => setTimeout(r, 20));
     const [reply] = sock.writtenObjects() as any[];
-    expect(reply.snapshot.files[cueMdPath]).toBe('---\nname: legal\n---\n');
-    expect(reply.snapshot.dirs[cuesSubdir]).toEqual([{ name: 'legal', isDirectory: true }]);
+    expect(reply.snapshot.files[cueMdPath]).toBe('---\nname: concise\n---\n');
+    expect(reply.snapshot.dirs[cuesSubdir]).toEqual([{ name: 'concise', isDirectory: true }]);
   });
 
   it('two concurrent connections both get correctly-framed independent replies', async () => {

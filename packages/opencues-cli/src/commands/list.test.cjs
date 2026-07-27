@@ -99,9 +99,9 @@ test('happy: no .cues/ anywhere prints empty sections without crashing', () => {
 });
 
 test('happy: a folder-based cue in the project .cues/ is listed with its source path', () => {
-  writeCueFolder(projectDir, 'legalish', '---\nname: legalish\nmatch: contract\n---\n\nSuggest alternatives.\n');
+  writeCueFolder(projectDir, 'concise', '---\nname: concise\nmatch: contract\n---\n\nSuggest alternatives.\n');
   const calls = silence(() => list([], ctx()));
-  assert.ok(calls.some(l => l.includes('legalish')));
+  assert.ok(calls.some(l => l.includes('concise')));
 });
 
 test('happy: a folder-based blank is listed', () => {

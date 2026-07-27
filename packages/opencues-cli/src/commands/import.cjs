@@ -385,6 +385,6 @@ function printHelp() {
   console.log('');
   console.log('Examples:');
   console.log('  opencues import gist:abc1234');
-  console.log('  opencues import github:user/legal-cues#v1.2');
+  console.log('  opencues import github:user/tone-cues#v1.2');
   console.log('  opencues import ./my-pack/ --project');
 }

@@ -6,7 +6,7 @@
 #
 # A folder-based cue source. The runtime merges this with the monolithic
 # CUES.md; folder wins on name conflicts. For a real reference, cat any
-# of the shipped sources in ~/.cues/cues/{legal,medical,financial}.md.
+# of the shipped sources in ~/.cues/cues/{more-formal,spelling}/CUE.md.
 
 # ─────────────────────────────────────────────────────────────────────
 # REQUIRED FIELDS
@@ -47,7 +47,7 @@ scope: words
 # keywords: (list). Sources without either are dropped at runtime.
 #
 #   match: regex             — only fires for words matching the regex.
-#                              See defaults/cues/legal/CUE.md for an
+#                              See defaults/cues/spelling/CUE.md for an
 #                              example.
 #   keywords: a, b, c        — case-insensitive word list.
 #   match: .*                — explicit catch-all. If you really want a
@@ -60,7 +60,7 @@ scope: words
 # `opencues validate` warns when a word-cue source declares neither
 # match: nor keywords:. See docs/features/word-cue-routing.md.
 
-# match: \b(contract|agreement|clause|indemnify|warrant|liability|shall|herein|whereas)\b
+# match: \b(utilize|leverage|facilitate|commence|terminate|endeavour)\b
 # keywords: therefore, however, moreover
 
 # ─────────────────────────────────────────────────────────────────────
@@ -70,8 +70,8 @@ scope: words
 # into the LLM prompt to keep responses tonally appropriate. Especially
 # helpful for narrow domains where generic synonyms would be wrong.
 #
-# Defaults/cues/legal/CUE.md:
-#   classify: Legal terminology, contract drafting, statutory definitions
+# Example:
+#   classify: Concise word choices, plain-language rewrites
 #
 # Skip for broad catch-all sources (`match: .*`) — the LLM doesn't need extra framing.
 

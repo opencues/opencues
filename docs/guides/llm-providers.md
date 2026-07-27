@@ -132,8 +132,8 @@ In any individual `CUE.md` / `BLANK.md` / `defaults/cues/<cue>.md` frontmatter:
 
 ```yaml
 ---
-name: legal
-match: contract|shall|liability
+name: concise
+match: very|really|just|actually
 provider: anthropic
 model: claude-haiku-4-5-20251001
 priority: 70
@@ -141,8 +141,8 @@ priority: 70
 ```
 
 This cue alone will use Anthropic; everything else inherits the
-bucket / global settings. Useful when one specialist domain benefits
-from a different model character.
+bucket / global settings. Useful when one cue benefits from a
+different model character.
 
 The shipped spelling cue lives at `defaults/cues/spelling/CUE.md` —
 add `provider:` / `model:` to its frontmatter (or to a project-level

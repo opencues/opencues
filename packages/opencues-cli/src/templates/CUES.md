@@ -129,8 +129,8 @@ version: 1
 #      the word wins. Claim the word for that source.
 #   3. If nothing matched → no cue. Word isn't navigable.
 #
-# Examples (with legal priority 70, spelling match: .* priority 10):
-#   "contract" → legal claims (priority 70, keyword hit)
+# Examples (with concise priority 70, spelling match: .* priority 10):
+#   "utilize" → concise claims (priority 70, keyword hit)
 #   "hello"    → spelling claims (priority 10, match: .* hits)
 #   "the"      → spelling claims (same; match: .* hits)
 #

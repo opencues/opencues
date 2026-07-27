@@ -120,17 +120,17 @@ Idempotent — copies any file that doesn't already exist at the destination, sk
 **Per-project example:**
 
 ```bash
-mkdir -p ~/projects/legal-review/.cues/cues/legal-doc
-cat > ~/projects/legal-review/.cues/cues/legal-doc/CUE.md <<'EOF'
+mkdir -p ~/projects/formal-docs/.cues/cues/formal
+cat > ~/projects/formal-docs/.cues/cues/formal/CUE.md <<'EOF'
 ---
-match: \b(plaintiff|defendant|tort|estoppel)\b
+match: \b(gonna|wanna|kinda|sorta)\b
 ---
-Suggest formal legal alternatives, prefer Latin terminology where appropriate.
+Suggest a more formal alternative for each casual word.
 EOF
 
-cd ~/projects/legal-review
+cd ~/projects/formal-docs
 claude-cues
-# .cues/cues/legal-doc/CUE.md is now active alongside ~/.cues defaults
+# .cues/cues/formal/CUE.md is now active alongside ~/.cues defaults
 ```
 
 The OpenCues Settings blank (`OPENCUES.md` → `voice-mode`, `tips-mode`, etc.) is **user-level only** — the runtime reads/writes `~/.cues/OPENCUES.md` (or `$OPENCUES_HOME/OPENCUES.md` when set), seeded from `defaults/OPENCUES.md` by `opencues seed-configs` and self-healed (re-seeded if empty) by every `opencues install <host>` run.

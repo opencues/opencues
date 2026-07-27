@@ -54,24 +54,24 @@ Give word alternatives.
 
   it('should resolve relative promptPath', () => {
     const content = `---
-name: legal
-promptPath: ./legal-terms.txt
+name: concise
+promptPath: ./concise-terms.txt
 ---
 `;
-    const config = parseSingleCueMd(content, '/project/cues/legal');
-    const source = config.promptConfig!.sources['legal'];
-    assert.strictEqual(source.promptPath, '/project/cues/legal/legal-terms.txt');
+    const config = parseSingleCueMd(content, '/project/cues/concise');
+    const source = config.promptConfig!.sources['concise'];
+    assert.strictEqual(source.promptPath, '/project/cues/concise/concise-terms.txt');
   });
 
   it('should keep absolute promptPath unchanged', () => {
     const content = `---
-name: legal
-promptPath: /opt/prompts/legal.txt
+name: concise
+promptPath: /opt/prompts/concise.txt
 ---
 `;
-    const config = parseSingleCueMd(content, '/project/cues/legal');
-    const source = config.promptConfig!.sources['legal'];
-    assert.strictEqual(source.promptPath, '/opt/prompts/legal.txt');
+    const config = parseSingleCueMd(content, '/project/cues/concise');
+    const source = config.promptConfig!.sources['concise'];
+    assert.strictEqual(source.promptPath, '/opt/prompts/concise.txt');
   });
 });
 
@@ -387,11 +387,11 @@ describe('mergeConfigs', () => {
       cuesConfig: { frontmatter: {}, sections: {}, promptConfig: { sources: { grammar: { name: 'grammar' } } } },
     };
     const folders: ReturnType<typeof discoverFolderConfigs> = {
-      cuesConfig: { frontmatter: {}, sections: {}, promptConfig: { sources: { legal: { name: 'legal' } } } },
+      cuesConfig: { frontmatter: {}, sections: {}, promptConfig: { sources: { concise: { name: 'concise' } } } },
     };
     const result = mergeConfigs(mono, folders);
     assert.ok(result.cuesConfig!.promptConfig!.sources['grammar']);
-    assert.ok(result.cuesConfig!.promptConfig!.sources['legal']);
+    assert.ok(result.cuesConfig!.promptConfig!.sources['concise']);
   });
 
   it('should concatenate tips from both', () => {

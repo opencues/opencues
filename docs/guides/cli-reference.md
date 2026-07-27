@@ -198,10 +198,10 @@ opencues init
 ### `new <kind> <name>` — scaffold one cue / blank
 
 ```bash
-opencues new cue legal-jargon            # → ~/.cues/cues/legal-jargon/CUE.md
+opencues new cue concise                 # → ~/.cues/cues/concise/CUE.md
 opencues new blank my-script             # → ~/.cues/blanks/my-script/BLANK.md
 opencues new blank physics               # → ~/.cues/blanks/physics/BLANK.md
-opencues new cue legal --project         # write under <cwd>/.cues/ instead
+opencues new cue concise --project       # write under <cwd>/.cues/ instead
 ```
 
 The template includes a `match:` regex placeholder, a sample prompt,
@@ -395,7 +395,7 @@ Dumps the resolved (post-merge) config for a single cue / blank
 by name, plus the file it came from:
 
 ```bash
-opencues show legal
+opencues show spelling
 opencues show volume
 opencues show math
 ```
@@ -404,7 +404,7 @@ opencues show math
 
 ```bash
 opencues edit cues               # opens ~/.cues/CUES.md (top-level settings)
-opencues edit cues/legal         # opens ~/.cues/cues/legal/CUE.md
+opencues edit cues/spelling      # opens ~/.cues/cues/spelling/CUE.md
 opencues edit blanks/volume      # opens ~/.cues/blanks/volume/BLANK.md
 ```
 
