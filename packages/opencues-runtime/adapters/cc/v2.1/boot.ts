@@ -52,6 +52,21 @@ import type {
   Unsubscribe,
 } from '../../../src/adapter';
 
+/**
+ * Columns Claude Code prepends to the input's FIRST line (the `❯ ` prompt +
+ * any box indent) but NOT to continuation lines. An inline cue note is injected
+ * as a continuation line, so a first-line span sits this far right of its
+ * buffer column on screen; `applyDirectives` adds it back so the note stays
+ * under the span. Tunable live via `OPENCUES_CC_NOTE_INDENT` (no rebuild —
+ * export it and restart) while we settle on the right value; default is the
+ * `❯ ` prompt width.
+ */
+const CC_INPUT_FIRST_LINE_INDENT: number = (() => {
+  const raw = typeof process !== 'undefined' ? process.env?.OPENCUES_CC_NOTE_INDENT : undefined;
+  const n = raw !== undefined ? Number(raw) : NaN;
+  return Number.isFinite(n) && n >= 0 ? n : 2;
+})();
+
 /** Minimal host info the patch supplies. boot() builds HostBindings from it. */
 export interface HostInfo {
   readonly hostVersion: string;
@@ -930,7 +945,7 @@ export function boot(host: HostInfo): BootResult {
           const directives = handler(ctx);
           if (directives) {
             debugDirectives.push(directives);
-            out = applyDirectives(out, directives);
+            out = applyDirectives(out, directives, CC_INPUT_FIRST_LINE_INDENT);
           }
         } catch (err) {
           log('error', 'render handler error', err);

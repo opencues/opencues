@@ -675,6 +675,36 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     expect(painted).toContain('\x1b[2m↳ ⚠ - the 19th is a Friday, not Saturday\x1b[22m');
   });
 
+  it('adds the host first-line indent when the span is on line 1 (CC prompt)', () => {
+    const { dynDefs, dimRender } = setup(BUFFER);
+    seedContradictionDef(dynDefs);
+    const directives = dimRender.compute({ text: BUFFER, cursor: 14, externalHighlights: [] });
+    // firstLineIndent = 4 → note pad = (col-2) + 4 = 9 + 4 = 13. The span is on
+    // line 1 (lineStart 0), so the prompt offset applies.
+    const visible = applyDirectives(BUFFER, directives, 4).replace(/\x1b\[[0-9;]*m/g, '');
+    expect(visible).toContain('\n' + ' '.repeat(13) + '↳ ⚠ - the 19th is a Friday, not Saturday');
+  });
+
+  it('does NOT add the first-line indent when the span is on a later line', () => {
+    const multiline = 'first line here\nmeet saturday now';
+    const { dynDefs, dimRender } = setup(multiline);
+    // "saturday" on line 2: 'first line here\n' = 16 chars, then 'meet ' = 5 → span [21,29].
+    dynDefs.set(3, {
+      originalWord: 'saturday',
+      alternatives: ['saturday'],
+      currentIndex: 0,
+      spanStart: 21,
+      spanEnd: 29,
+      blankName: 'sentence-cue:contradiction-weekday-date',
+      cueTip: '⚠ the 19th is a Friday',
+    });
+    const directives = dimRender.compute({ text: multiline, cursor: 24, externalHighlights: [] });
+    // Even with a large firstLineIndent, a line-2 span gets NO prompt pad:
+    // col = 21 - 16 = 5 → pad = col-2 = 3, unchanged.
+    const visible = applyDirectives(multiline, directives, 8).replace(/\x1b\[[0-9;]*m/g, '');
+    expect(visible).toContain('saturday now\n   ↳ ⚠ - the 19th is a Friday');
+  });
+
   it('places the pill under the SPAN\'s line, not below the whole buffer (long buffer)', () => {
     // Span "saturday" is on line 1; the buffer has two more lines. The pill
     // must land between line 1 and line 2 — right under the span — never after

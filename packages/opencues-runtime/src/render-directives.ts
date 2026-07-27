@@ -83,7 +83,19 @@ function formatInlineNoteText(text: string): string {
   return m ? `${m[1]} - ${m[2]}` : trimmed;
 }
 
-export function applyDirectives(rendered: string, directives: RenderDirectives | null | undefined): string {
+/**
+ * @param firstLineIndent Screen columns the host prepends to the buffer's
+ *   FIRST line but NOT to continuation lines (e.g. Claude Code's `❯ ` input
+ *   prompt). An inline note is always injected as a continuation line, so a
+ *   first-line span sits this many columns further right on screen than its
+ *   buffer column — added back so the note stays under the span. Hosts with a
+ *   uniform left margin pass 0 (the default).
+ */
+export function applyDirectives(
+  rendered: string,
+  directives: RenderDirectives | null | undefined,
+  firstLineIndent = 0,
+): string {
   if (!directives) return rendered;
   if (directives.textOverride !== undefined) return directives.textOverride;
 
@@ -172,7 +184,10 @@ export function applyDirectives(rendered: string, directives: RenderDirectives |
     // span's column, with the arrow hanging in the margin to its left. The
     // connector prefix is 2 visible columns ("↳ "), so pad to col-2 before it.
     const prefix = INLINE_NOTE_CONNECTOR + ' ';
-    const pad = ' '.repeat(Math.max(0, col - prefix.length));
+    // First-line span → add back the host prompt indent the note line (a
+    // continuation line) doesn't inherit. lineStart === 0 ⟺ span on line 1.
+    const promptPad = lineStart === 0 ? Math.max(0, firstLineIndent) : 0;
+    const pad = ' '.repeat(Math.max(0, col - prefix.length) + promptPad);
     const body = ANSI_DIM_ON + prefix + formatInlineNoteText(note.text) + ANSI_DIM_OFF;
     // order 2 → fires after any dim/highlight close-codes at this boundary.
     insertions.push({ visibleAt: at, ansi: '\n' + pad + body, order: 2 });
