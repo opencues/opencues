@@ -1465,3 +1465,89 @@ settings:
     expect(adapter.setTextCalls.at(-1)).toBe('voice-mode inactive');
   });
 });
+
+describe('_-cycle — bare `_` inside a painted cue note rotates the cue', () => {
+  // A passive cue (sentence-cue / contradiction) registers a def with a cueTip.
+  // When the note is painted (inline-cues-mode: inline + inline-note capability)
+  // and the caret is in the span, `_` rotates it forward and is CONSUMED.
+  function seedCueDef(dynDefs: DynDefs, spanEnd = 13) {
+    dynDefs.set(0, {
+      originalWord: 'thanks a lot.',
+      alternatives: ['thanks a lot.', 'Thank you very much.', 'Much appreciated.'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd,
+      blankName: 'sentence-cue:more-formal',
+      cueTip: 'more-formal',
+    });
+  }
+
+  it('bare `_` inside the span rotates forward AND consumes the key', async () => {
+    const { adapter, dynDefs } = await setup('thanks a lot.');
+    seedCueDef(dynDefs);
+    adapter.setCursorOffset(5); // inside [0,13]
+    expect(adapter.fireKey('_')).toBe(true); // consumed → not inserted
+    expect(adapter.setTextCalls.at(-1)).toBe('Thank you very much.');
+    expect(dynDefs.get(0)?.currentIndex).toBe(1);
+  });
+
+  it('successive `_` presses step forward and WRAP back to the original', async () => {
+    const { adapter, dynDefs } = await setup('thanks a lot.');
+    seedCueDef(dynDefs);
+    adapter.setCursorOffset(5);
+    adapter.fireKey('_'); // → alt1
+    adapter.fireKey('_'); // → alt2
+    expect(dynDefs.get(0)?.currentIndex).toBe(2);
+    adapter.fireKey('_'); // 3 alts → wrap to original
+    expect(dynDefs.get(0)?.currentIndex).toBe(0);
+    expect(adapter.setTextCalls.at(-1)).toBe('thanks a lot.');
+  });
+
+  it('does NOT consume `_` when the caret is OUTSIDE the span (blank path intact)', async () => {
+    const { adapter, dynDefs } = await setup('thanks a lot. bye');
+    seedCueDef(dynDefs); // span [0,13]
+    adapter.setCursorOffset(15); // past the span → in " bye"
+    expect(adapter.fireKey('_')).toBe(false); // falls through to the normal `_`
+    expect(adapter.setTextCalls).toEqual([]); // no cycle
+  });
+
+  it('does NOT consume `_` for a def without a cueTip (only note-bearing cues)', async () => {
+    const { adapter, dynDefs } = await setup('thanks a lot.');
+    dynDefs.set(0, {
+      originalWord: 'thanks a lot.',
+      alternatives: ['thanks a lot.', 'Thank you.'],
+      currentIndex: 0,
+      spanStart: 0,
+      spanEnd: 13,
+      blankName: 'sentence-cue:more-formal',
+      // no cueTip → no note → no `_`-cycle
+    });
+    adapter.setCursorOffset(5);
+    expect(adapter.fireKey('_')).toBe(false);
+    expect(adapter.setTextCalls).toEqual([]);
+  });
+
+  it('does NOT consume `_` when a modifier is held (bare `_` only)', async () => {
+    const { adapter, dynDefs } = await setup('thanks a lot.');
+    seedCueDef(dynDefs);
+    adapter.setCursorOffset(5);
+    expect(adapter.fireKey('_', { ctrl: true })).toBe(false);
+    expect(adapter.fireKey('_', { alt: true })).toBe(false);
+    expect(adapter.setTextCalls).toEqual([]);
+  });
+
+  it('does NOT consume `_` in secondary mode (note not painted → `_` stays a blank)', async () => {
+    const adapter = new MockAdapter({ files: { '/mock/OPENCUES.md': '---\ninline-cues-mode: secondary\n---\n' } });
+    adapter.pushText('thanks a lot.');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const loader = new ConfigLoader(adapter, { settingsFile: '/mock/OPENCUES.md' });
+    await loader.load();
+    const cycling = new Cycling(adapter, hlState, dynDefs, loader);
+    cycling.subscribe();
+    seedCueDef(dynDefs);
+    adapter.setCursorOffset(5);
+    expect(adapter.fireKey('_')).toBe(false);
+    expect(adapter.setTextCalls).toEqual([]);
+  });
+});

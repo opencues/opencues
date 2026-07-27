@@ -1,9 +1,11 @@
 # `_`-cycle — pressing `_` inside a painted cue note rotates it
 
-> **Status: proposed / design — NOT built.** Design captured on branch
-> `feat/inline-cues`. Companion to `docs/architecture/inline-cues.md` (the note
-> itself). Greenlight pending; this doc is the map + the locked decisions so the
-> build is unambiguous when it starts.
+> **Status: PROTOTYPE (built on CC).** Wired in `Cycling.stepUnderscore`
+> (`packages/opencues-runtime/src/modules/cycling.ts`) on branch
+> `feat/inline-cues`; verified on a live CC host (rotate forward + wrap +
+> consume; blank path intact off-cue). Chrome inherits it automatically
+> (same runtime, `inline-note` capability). Indicator style still deferred.
+> Companion to `docs/architecture/inline-cues.md` (the note itself).
 
 ## The mechanic
 

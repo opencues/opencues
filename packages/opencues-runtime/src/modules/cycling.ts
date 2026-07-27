@@ -78,6 +78,7 @@ export class Cycling {
   private _unsubDown: Unsubscribe | null = null;
   private _unsubUpShift: Unsubscribe | null = null;
   private _unsubDownShift: Unsubscribe | null = null;
+  private _unsubUnderscore: Unsubscribe | null = null;
 
   constructor(
     private adapter: HostAdapter,
@@ -240,6 +241,16 @@ export class Cycling {
         e => this.matchesKeymap('ctrl-shift') ? this.step(e, -1) : false,
       );
     }
+    // `_`-cycle — a bare `_` inside a PAINTED cue note rotates that cue forward,
+    // a discoverable complement to the Ctrl+Alt+arrow power path. Registered
+    // here (Cycling subscribes before both `_` handlers — BlankFill + Resolver)
+    // so it can claim the keystroke first and CONSUME it (suppress the insert)
+    // when the caret sits in a painted note; otherwise it falls through to the
+    // normal blank path. See docs/architecture/inline-cue-cycle.md.
+    this._unsubUnderscore = this.adapter.onKey(
+      { keys: ['_'] },
+      e => this.stepUnderscore(e),
+    );
   }
 
   unsubscribe(): void {
@@ -247,6 +258,47 @@ export class Cycling {
     if (this._unsubDown) { this._unsubDown(); this._unsubDown = null; }
     if (this._unsubUpShift) { this._unsubUpShift(); this._unsubUpShift = null; }
     if (this._unsubDownShift) { this._unsubDownShift(); this._unsubDownShift = null; }
+    if (this._unsubUnderscore) { this._unsubUnderscore(); this._unsubUnderscore = null; }
+  }
+
+  /**
+   * `_`-cycle handler. When a bare `_` is pressed while the caret sits inside a
+   * cue whose inline note is PAINTED, rotate that cue forward one step (wrapping)
+   * and CONSUME the keystroke (return true → the `_` is not inserted). Otherwise
+   * return false so `_` keeps its normal blank meaning.
+   *
+   * The gate mirrors DimRender's inlineNote condition exactly — that's the whole
+   * point: the note on screen IS the affordance, so `_`-cycle fires precisely
+   * where a note is visible. Conditions: no ctrl/alt/meta, the field is
+   * cycleable, `inline-cues-mode: inline`, the host advertises `inline-note`, and
+   * the caret is inside a LIVE `cueTip` span with >1 alternative. All `cueTip`
+   * defs are sentence-cue defs (sentence-cues + contradiction), so the splice
+   * reuses the sentence-cue char-span path in `applyAltCycle`.
+   */
+  stepUnderscore(event: KeyEvent): boolean {
+    const m = event.modifiers;
+    if (m.ctrl || m.alt || m.meta) return false;            // bare `_` only
+    if (this.adapter.supportsCycling?.() === false) return false; // no-paint field
+    if (this.configLoader.opencuesState.inlineCuesMode !== 'inline') return false;
+    if (!this.adapter.capabilities.includes('inline-note')) return false;
+
+    const text = event.text;
+    const cursor = event.cursorOffset;
+    for (const { def } of this.dynDefs.sentenceCueDefs()) {
+      if (!def.cueTip) continue;
+      if (def.alternatives.length <= 1) continue;
+      if (!sentenceCueSpanLive(def, text)) continue;
+      if (cursor < def.spanStart || cursor > def.spanEnd) continue; // inclusive, matches paint
+      // Caret is inside a painted note → rotate forward, consume the `_`.
+      // applyAltCycle needs a live word index for its startWord existence check;
+      // for a sentence-cue def the actual splice uses the char span, so any word
+      // that contains spanStart works (covers synthetic-key CJK defs too).
+      const words = splitWords(text);
+      let originIdx = words.findIndex(w => def.spanStart >= w.start && def.spanStart < w.end);
+      if (originIdx < 0) originIdx = 0;
+      return this.applyAltCycle(event, def, +1, originIdx, 'static-alts');
+    }
+    return false;
   }
 
   private matchesKeymap(combo: 'ctrl-alt' | 'ctrl-shift'): boolean {
