@@ -746,4 +746,54 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     // Not dangling after the last line.
     expect(visible.endsWith('even more')).toBe(true);
   });
+
+  // ── MID-LINE spans: text on BOTH sides of the flagged span ──────────────
+  // "meet on [saturday] at 6pm" — "saturday" starts at col 8; "at 6pm" is to
+  // its right. The note goes BELOW the whole line, indented so the message
+  // aligns under the span's column; the right-side text is untouched.
+  const MIDLINE = 'meet on saturday at 6pm'; // "saturday" = [8,16)
+  function seedMidlineDef(dynDefs: DynDefs, buffer = MIDLINE) {
+    dynDefs.set(2, {
+      originalWord: 'saturday',
+      alternatives: ['saturday'],
+      currentIndex: 0,
+      spanStart: 8,
+      spanEnd: 16,
+      blankName: 'sentence-cue:contradiction-weekday-date',
+      cueTip: '⚠ the 19th is a Friday',
+    });
+    return buffer;
+  }
+
+  it('aligns the note under a MID-LINE span (text on both sides), note below the line', () => {
+    const { dynDefs, dimRender } = setup(MIDLINE);
+    seedMidlineDef(dynDefs);
+    const directives = dimRender.compute({ text: MIDLINE, cursor: 12, externalHighlights: [] });
+    const visible = applyDirectives(MIDLINE, directives).replace(/\x1b\[[0-9;]*m/g, '');
+    // Right-side text preserved on the line; note below, message under col 8.
+    expect(visible.startsWith('meet on saturday at 6pm')).toBe(true);
+    // col 8 → pad = 8 - 2 = 6; "↳ " then message → ⚠ lands at col 8 (under 's').
+    expect(visible).toContain('at 6pm\n      ↳ ⚠ - the 19th is a Friday');
+  });
+
+  it('MID-LINE span with a following line — note inserts between, right-side text preserved', () => {
+    const buf = 'meet on saturday at 6pm\nsee you there';
+    const { dynDefs, dimRender } = setup(buf);
+    seedMidlineDef(dynDefs, buf);
+    const directives = dimRender.compute({ text: buf, cursor: 12, externalHighlights: [] });
+    const visible = applyDirectives(buf, directives).replace(/\x1b\[[0-9;]*m/g, '');
+    // Note lands between the span's line and the next; "at 6pm" stays on line 1,
+    // "see you there" stays on its own line, message aligned under col 8.
+    expect(visible).toContain('at 6pm\n      ↳ ⚠ - the 19th is a Friday\nsee you there');
+  });
+
+  it('MID-LINE span on the prompted first line — prompt indent + column both apply', () => {
+    const { dynDefs, dimRender } = setup(MIDLINE);
+    seedMidlineDef(dynDefs);
+    const directives = dimRender.compute({ text: MIDLINE, cursor: 12, externalHighlights: [] });
+    // firstLineIndent 2 (CC prompt) → pad = col 8 + 2 - "↳ "(2) = 8, so the
+    // message sits under the span's on-screen column (prompt 2 + col 8 = 10).
+    const visible = applyDirectives(MIDLINE, directives, 2).replace(/\x1b\[[0-9;]*m/g, '');
+    expect(visible).toContain('at 6pm\n        ↳ ⚠ - the 19th is a Friday');
+  });
 });
