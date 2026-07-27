@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — `inherit` is now a universal provider fall-through sentinel (`@opencues/core` 0.40.1 → 0.40.2, `@opencues/chrome` 0.2.101 → 0.2.102)
+
+`inherit` means "no override at this tier — use the one below" and is a documented value for BOTH the bucket scalars (`cues-llm-provider: inherit`) and the per-feature ones (`word-cues-provider: inherit`, `agent-provider: inherit`, …). But `resolveLLMTuple` only honored it for the bucket scalars (collapsed upstream); a per-feature `inherit` arrived verbatim and was looked up as a LITERAL provider → unknown → `null` → the source was silently dropped with `"no API key for provider 'inherit'"`. Symptom: setting every routing scalar to `inherit` (to make one global provider authoritative) silently disabled all word-cues / sentence-cues — most visible on chrome, where the whole cue set went dark.
+
+Fix: `resolveLLMTuple` now skips any tier whose provider OR model is `inherit` (treats it identically to absent), so it falls through to the global at every tier. `getProvider('inherit')` returns `null` WITHOUT the "unknown provider" warning (it's a sentinel, not a provider), and chrome's CUES.md provider audit no longer flags `inherit` as misconfigured. Pinned by two `resolveLLM` tests (feature-tier `inherit` → global; all-tiers `inherit` → auto-route) plus the full routing suite. No behaviour change for real provider values.
+
 ### Added — satellite provider cycling silently skips an unreachable provider (`@opencues/runtime` 0.28.2 → 0.28.3)
 
 Extends the provider-switch liveness gate to the `Ctrl+Alt` settings-cycle. `Cycling.eligibleValues` already dropped `*-llm-provider` values with no key set (you never land on a keyless provider); it now also drops any menu provider a recent liveness probe found UNREACHABLE — a present-but-invalid key, or a down host — so the cycle steps right over it, exactly like the keyless ones. Consistent with the "silently skip" model you picked: dead providers just aren't offered as a cycle stop; no flicker, no revert.

@@ -659,6 +659,34 @@ describe('resolveLLM — settings-hierarchy precedence', () => {
     assert.strictEqual(r?.apiKey, 'oai_k');
   });
 
+  it('`inherit` at the feature tier falls through to global (not treated as a literal provider)', () => {
+    // Regression: a per-feature scalar of `inherit` (e.g. word-cues-provider:
+    // inherit) used to be looked up as a literal provider → unknown → null →
+    // the source was silently dropped ("no API key for provider 'inherit'").
+    // It must mean "no override here" and fall through to the global.
+    const r = resolveLLM({
+      featureProvider: 'inherit',
+      featureModel: 'inherit',
+      globalProvider: 'cerebras',
+      globalModel: 'gemma-4-31b',
+      apiKeys,
+    });
+    assert.strictEqual(r?.provider.id, 'cerebras', 'feature `inherit` must fall through to the global provider');
+    assert.strictEqual(r?.model, 'gemma-4-31b', 'feature `inherit` model must fall through to the global model');
+    assert.strictEqual(r?.apiKey, 'cere_k');
+  });
+
+  it('`inherit` at every tier auto-routes over available keys (never a literal provider)', () => {
+    // All tiers `inherit` → equivalent to nothing set → auto-pick (cerebras
+    // is first in the auto order and has a key here).
+    const r = resolveLLM({
+      providerOverride: 'inherit', featureProvider: 'inherit', globalProvider: 'inherit',
+      apiKeys,
+    });
+    assert.strictEqual(r?.provider.id, 'cerebras');
+    assert.notStrictEqual(r?.provider.id, undefined);
+  });
+
   it('falls through to cerebras + provider default model when nothing set', () => {
     // Default flipped from groq → cerebras after May 2026 benchmark sweep
     // (see resolveLLM's inline note). Same gpt-oss-120b model, faster
