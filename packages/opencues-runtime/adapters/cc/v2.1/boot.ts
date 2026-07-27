@@ -802,6 +802,24 @@ export function boot(host: HostInfo): BootResult {
         }
         return out;
       },
+      // The PAINTED output (ANSI-stripped) for the current buffer, so scenarios
+      // can assert the inline note's aligned splice. Buffer space: firstLineIndent
+      // is 0 (the display prompt isn't part of the buffer), so the note aligns
+      // under the span's column in the text itself.
+      renderedText: () => {
+        const ctxText = visible(adapter.getText());
+        const rctx: RenderContext = {
+          text: ctxText,
+          cursor: adapter.getCursorOffset(),
+          externalHighlights: [],
+        };
+        let out = ctxText;
+        for (const handler of renderHandlers) {
+          try { const d = handler(rctx); if (d) out = applyDirectives(out, d, 0); }
+          catch { /* a broken handler must not break the dump */ }
+        }
+        return out.replace(/\x1b\[[0-9;]*m/g, '');
+      },
       // Synthetic keys go through the same handler list real keystrokes
       // use, but sample text/cursor at dispatch time (the cli.js patch
       // does the same — InputZone closures are stale across React
