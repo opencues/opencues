@@ -304,22 +304,13 @@ export class Cycling {
       const words = splitWords(text);
       let originIdx = words.findIndex(w => def.spanStart >= w.start && def.spanStart < w.end);
       if (originIdx < 0) originIdx = 0;
-      const cycled = this.applyAltCycle(event, def, +1, originIdx, 'static-alts');
-      if (cycled) {
-        // Match Ctrl+Alt+arrow: engage the span as an ACTIVE navigation
-        // selection so the highlight is persistent (never blinks out on a
-        // `_`-step, and Ctrl+Alt+arrow keeps working on it) — instead of relying
-        // on caret-position auto-select. Then tuck the caret at the span END,
-        // against the last char, ready to keep typing / add another `_`.
-        const newText = this.adapter.getText();
-        const newWords = splitWords(newText);
-        let newOrigin = newWords.findIndex(w => def.spanStart >= w.start && def.spanStart < w.end);
-        if (newOrigin < 0) newOrigin = 0;
-        this.hlState.activate(newOrigin, newText);
-        this.adapter.setCursorOffset(def.spanEnd);
-        this.adapter.forceRender();
-      }
-      return cycled;
+      // applyAltCycle lands the caret at the span END (against the last char,
+      // ready to keep typing / add another `_`). The selection is the
+      // caret-in-span AUTO-SELECT (DimRender), NOT a persistent hlState nav
+      // selection — so it shows while the caret is on the span (across cycles)
+      // and CLEARS the moment the caret leaves (moves to another line), which a
+      // persistent nav selection would not do.
+      return this.applyAltCycle(event, def, +1, originIdx, 'static-alts');
     }
     return false;
   }
