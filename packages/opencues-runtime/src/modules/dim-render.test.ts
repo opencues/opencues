@@ -605,6 +605,28 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     expect(out?.dimRanges ?? []).not.toContainEqual({ start: 11, end: 19 });
   });
 
+  it('aligns the note in VISUAL cells past double-width CJK, not code-points', () => {
+    // "日本語 formal" — the span "formal" is at code-point 4, but the three CJK
+    // glyphs are double-width (6 cells) + a space = 7 cells. The note pad must be
+    // 5 (col 7 − connector 2), NOT 2 (code-point col 4 − 2). Regression for the
+    // "spans misalign on Japanese" report.
+    const buf = '日本語 formal';
+    const { dynDefs, dimRender } = setup(buf);
+    dynDefs.set(1, {
+      originalWord: 'formal',
+      alternatives: ['formal', 'proper'],
+      currentIndex: 0,
+      spanStart: 4,
+      spanEnd: 10,
+      blankName: 'sentence-cue:more-formal',
+      cueTip: 'more-formal',
+    });
+    const directives = dimRender.compute({ text: buf, cursor: 5, externalHighlights: [] });
+    const visible = applyDirectives(buf, directives).replace(/\x1b\[[0-9;]*m/g, '');
+    expect(visible).toContain('formal\n     ↳ more-formal'); // 5 spaces (cells)
+    expect(visible).not.toContain('formal\n  ↳'); // NOT the 2-space code-point pad
+  });
+
   it('emits an inline note for a history-bearing transform-blank def (no cueTip)', () => {
     // A transform/fluid blank has no cueTip; its note comes from the shared
     // inlineNoteText predicate (history-bearing LLM blank with >1 alternative).

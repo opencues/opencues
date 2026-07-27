@@ -9,6 +9,7 @@
 
 import type { ColoredRange, Range, RenderDirectives } from './adapter';
 import { ansiColorToOpenEscape, ANSI_FG_RESET } from './modules/blank-loading';
+import { codeUnitsToCells } from './util/cell-width';
 
 /**
  * Sort + merge overlapping or touching ranges. Empty ranges (start >= end)
@@ -190,19 +191,24 @@ export function applyDirectives(
     const nl = visible.indexOf('\n', spanEnd);
     const at = nl === -1 ? visible.length : nl;
     const lineStart = visible.lastIndexOf('\n', Math.max(0, spanStart - 1)) + 1;
-    const col = Math.max(0, spanStart - lineStart);
+    // Column = VISUAL cells of the line's prefix, NOT code-point count. CJK /
+    // wide glyphs are double-width, so a code-point pad lands the note only
+    // halfway under a span preceded by Japanese etc. (the "spans misalign on
+    // Japanese" bug). Measure in terminal cells so the note tracks the span.
+    const lineText = visible.slice(lineStart, spanStart);
+    const col = codeUnitsToCells(lineText, lineText.length);
     // The `↳ ` connector points up at the span; the MESSAGE aligns under the
-    // span's column, with the arrow hanging in the margin to its left. The
-    // connector prefix is 2 visible columns ("↳ "), so pad to col-2 before it.
+    // span's column, with the arrow hanging in the margin to its left.
     const prefix = INLINE_NOTE_CONNECTOR + ' ';
+    const prefixCells = codeUnitsToCells(prefix, prefix.length);
     // First-line span → add back the host prompt indent the note line (a
     // continuation line) doesn't inherit. lineStart === 0 ⟺ span on line 1.
     const promptPad = lineStart === 0 ? Math.max(0, firstLineIndent) : 0;
-    // Message target column = col + promptPad; the connector hangs prefix.length
+    // Message target column = col + promptPad; the connector hangs prefixCells
     // to its left. Fold both into ONE clamp so a span at (or near) column 0
     // yields no leading indent — the arrow just sits at the left edge — instead
     // of being pushed right by the prompt pad.
-    const pad = ' '.repeat(Math.max(0, col + promptPad - prefix.length));
+    const pad = ' '.repeat(Math.max(0, col + promptPad - prefixCells));
     const body = ANSI_DIM_ON + prefix + formatInlineNoteText(note.text) + ANSI_DIM_OFF;
     // order 2 → fires after any dim/highlight close-codes at this boundary.
     insertions.push({ visibleAt: at, ansi: '\n' + pad + body, order: 2 });
