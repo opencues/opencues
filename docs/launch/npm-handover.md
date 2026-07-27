@@ -12,8 +12,26 @@ The `opencues` name on npmjs.com is currently held by `packages/opencues-park/` 
 
 1. In `packages/opencues-cli/package.json`:
    - Remove `"private": true`.
-   - Remove the `publishConfig` block (or repoint from GitHub Package Registry to public npm).
-   - Bump `version` to `0.1.0` (or higher — must be > 0.0.1 to supersede the placeholder).
+   - Remove the `publishConfig` block (currently `{ "registry": "https://npm.pkg.github.com", "access": "restricted" }`). With it gone, publish defaults to the public npmjs registry; the bare `opencues` name is unscoped, so it publishes public.
+   - **Version — no bump needed.** The CLI is already at `0.2.57` (well above the placeholder's `0.0.1`), so it becomes `latest` the moment it publishes. The earlier "bump to `0.1.0`" guidance is **stale** — it predated the CLI reaching 0.2.x, and `0.1.0 < 0.2.57` would not be `latest`. Just don't publish a version `≤ 0.0.1`. Optionally set a clean marketing version, but it must be `≥` the current one.
+
+   The net edit (two deletions, nothing else — leave `name`, `version`, `keywords`, `bin`, etc. as-is):
+   ```diff
+   {
+     "name": "opencues",
+     "version": "0.2.57",
+   -  "private": true,
+     "description": "...",
+     "keywords": [ ... ],
+     ...
+   -  "publishConfig": {
+   -    "registry": "https://npm.pkg.github.com",
+   -    "access": "restricted"
+   -  },
+     "dependencies": { "enquirer": "^2.4.1" }
+   }
+   ```
+   > Applied at launch time (not pre-staged) so it doesn't collide with other in-flight `package.json` edits. It's a two-line removal — trivial to make from whatever `master` is at launch.
 2. From `packages/opencues-cli/`:
    ```
    npm publish --access public
