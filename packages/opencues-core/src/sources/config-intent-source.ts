@@ -1148,6 +1148,15 @@ export interface ConfigIntentSourceConfig {
    */
   applyScalar: (setting: string, value: string) => void | Promise<void>;
   /**
+   * Pre-switch liveness check for a PROVIDER verdict. When set, the source
+   * pings the target (provider, model) BEFORE writing the provider/model
+   * scalars; on failure it writes nothing (the current provider stays) and
+   * emits the reason inline via `formatErrorAsSubstitute`. Runtime wires
+   * this to `probeProviderReachable` with the live key bag + httpAdapter.
+   * Absent → provider switches apply unconditionally (prior behaviour).
+   */
+  probeProvider?: (providerId: string, model: string | null) => Promise<{ ok: boolean; reason?: FluidBlankErrorReason; err?: Error }>;
+  /**
    * Registered blanks (so this source can cede the slot when a
    * keyword-bound blank would claim it — mirrors the cede logic in
    * FluidBlankSource and TransformBlankSource).
@@ -1242,6 +1251,7 @@ export class ConfigIntentSource implements CueSource {
   private maxTokensOverride: number | undefined;
   private temperatureOverride: number | undefined;
   private applyScalar: (setting: string, value: string) => void | Promise<void>;
+  private probeProvider: ((providerId: string, model: string | null) => Promise<{ ok: boolean; reason?: FluidBlankErrorReason; err?: Error }>) | undefined;
   private blanks: Record<string, BlankConfig>;
   private log: (msg: string) => void;
   private emit: (event: ConfigIntentEvent) => void;
@@ -1294,6 +1304,7 @@ export class ConfigIntentSource implements CueSource {
     this.maxTokensOverride = config.maxTokens;
     this.temperatureOverride = config.temperature;
     this.applyScalar = config.applyScalar;
+    this.probeProvider = config.probeProvider;
     this.blanks = config.blanks ?? {};
     this.priority = config.priority ?? 94;
     this.log = config.log ?? (() => { /* silent */ });
@@ -1579,6 +1590,45 @@ export class ConfigIntentSource implements CueSource {
         // never form by cycling alone.
         const providerScalar = `${verdict.scope}-llm-provider`;
         const modelScalar = `${verdict.scope}-llm-model`;
+        // PRE-SWITCH LIVENESS GATE — ping the provider we're about to
+        // change TO before writing anything. If it can't answer (Ollama not
+        // running, missing key, model the provider rejects), write NOTHING —
+        // the current provider stays — and surface the reason inline via the
+        // SAME error-substitute path every other blank LLM failure uses.
+        if (this.probeProvider) {
+          const targetModel = verdict.model ?? getProvider(verdict.provider)?.defaultModel ?? null;
+          const probe = await this.probeProvider(verdict.provider, targetModel);
+          if (!probe.ok) {
+            const reason = probe.reason ?? 'network';
+            this.log(`ConfigIntent: provider switch to ${verdict.provider}${targetModel ? ` · ${targetModel}` : ''} REFUSED (${reason}: ${probe.err?.message ?? 'unreachable'}) — keeping current provider`);
+            this.emit({ type: 'completed', verdict, applied: false, latencyMs: Date.now() - t0 });
+            const text = this.formatErrorAsSubstitute?.(reason, probe.err, { provider: verdict.provider, model: targetModel ?? undefined });
+            if (text && text.length > 0) {
+              return {
+                results: [{
+                  wordIndex: blankIdx,
+                  word: '_',
+                  alternatives: ['_', text],
+                  source: this.id,
+                  priority: this.priority,
+                  cueTip: `Kept current provider — ${verdict.provider} is unavailable`,
+                  metadata: { fluidBlankErrorReason: reason },
+                }],
+                // Claim the slot so a lower-priority sibling (FluidBlank) can't
+                // ALSO answer this "switch to X" phrase as a lookup and
+                // overwrite our tailored message with a generic one. Unlike a
+                // successful switch (whole-buffer claim → sibling-abort), the
+                // refusal only replaces `_`, so it needs the explicit claim.
+                consumedBlankSlots: [blankIdx],
+                timing: Date.now() - t0,
+                model: this.model,
+              };
+            }
+            // Even with no formatter wired, still claim the slot so FluidBlank
+            // doesn't vandalise the refused command.
+            return { results: [], consumedBlankSlots: [blankIdx], timing: Date.now() - t0, model: this.model };
+          }
+        }
         await apply(providerScalar, verdict.provider);
         if (verdict.model !== null) {
           await apply(modelScalar, verdict.model);
@@ -1665,7 +1715,11 @@ export class ConfigIntentSource implements CueSource {
       },
     };
 
-    return { results: [result], timing: Date.now() - t0, model: this.model };
+    // Claim the slot for siblings processed after us (belt-and-braces
+    // alongside the whole-buffer sibling-abort a spanned result already
+    // triggers) — a valid switch must never race a stray FluidBlank fill on
+    // the same `_`.
+    return { results: [result], consumedBlankSlots: [blankIdx], timing: Date.now() - t0, model: this.model };
   }
 
   /**

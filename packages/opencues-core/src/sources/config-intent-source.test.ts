@@ -1129,6 +1129,72 @@ describe('ConfigIntentSource — deterministic ACTION gate (no LLM)', () => {
   });
 });
 
+describe('ConfigIntentSource — pre-switch provider liveness gate', () => {
+  const baseConfig = {
+    provider: getProvider('groq')!,
+    endpoint: 'https://example.test/v1/chat/completions',
+    apiKey: 'test-key',
+    model: 'test-model',
+  };
+  function applyRec(): { calls: Array<[string, string]>; fn: (s: string, v: string) => void } {
+    const calls: Array<[string, string]> = [];
+    return { calls, fn: (s, v) => { calls.push([s, v]); } };
+  }
+  const PROVIDER_VERDICT = 'INTENT: PROVIDER\nSCOPE: blanks\nPROVIDER: ollama\nMODEL:\nCONFIDENCE: 0.9';
+
+  it('provider switch REFUSED when the target is unreachable — no apply, inline error', async () => {
+    const apply = applyRec();
+    const src = new ConfigIntentSource({
+      ...baseConfig,
+      httpAdapter: makeMockAdapter([PROVIDER_VERDICT]),
+      applyScalar: apply.fn,
+      formatErrorAsSubstitute: (reason, err) => `[err] ${reason}: ${err?.message ?? ''}`,
+      probeProvider: async () => ({ ok: false, reason: 'network' as const, err: new Error('fetch failed 127.0.0.1:11434') }),
+    });
+    const result = await src.getCues(ctxFromText('switch to ollama _'));
+    assert.strictEqual(apply.calls.length, 0, 'must NOT write any provider/model scalar when unreachable — stays on current');
+    assert.strictEqual(result.results.length, 1, 'emits the inline error result');
+    const r = result.results[0]!;
+    assert.strictEqual(r.alternatives[0], '_', 'cycling back dismisses the message');
+    assert.match(String(r.alternatives[1]), /network/, 'inline text carries the reason');
+    assert.match(String(r.alternatives[1]), /11434/, 'inline text names the concrete cause');
+    assert.strictEqual(r.metadata?.fluidBlankErrorReason, 'network');
+    // Claims the `_` slot so the resolver filters FluidBlank's competing
+    // (generic) answer on the same word — the user sees ONLY this tailored
+    // "kept current provider" message, not a stray fluid-blank fill.
+    assert.deepStrictEqual(result.consumedBlankSlots, [3], 'refusal must claim the `_` slot (index 3 of "switch to ollama _")');
+  });
+
+  it('provider switch APPLIES when the target is reachable', async () => {
+    const apply = applyRec();
+    const src = new ConfigIntentSource({
+      ...baseConfig,
+      httpAdapter: makeMockAdapter([PROVIDER_VERDICT]),
+      applyScalar: apply.fn,
+      probeProvider: async () => ({ ok: true }),
+    });
+    const result = await src.getCues(ctxFromText('switch to ollama _'));
+    assert.ok(
+      apply.calls.some(([k, v]: [string, string]) => k === 'blanks-llm-provider' && v === 'ollama'),
+      'wrote the provider scalar after a passing probe',
+    );
+    assert.strictEqual(result.results.length, 1, 'emits the selector-satellite switch result');
+    assert.deepStrictEqual(result.consumedBlankSlots, [3], 'a successful switch also claims the slot (no stray fluid-blank race)');
+  });
+
+  it('no probeProvider callback → provider switch applies unconditionally (back-compat)', async () => {
+    const apply = applyRec();
+    const src = new ConfigIntentSource({
+      ...baseConfig,
+      httpAdapter: makeMockAdapter([PROVIDER_VERDICT]),
+      applyScalar: apply.fn,
+      // no probeProvider wired
+    });
+    await src.getCues(ctxFromText('switch to ollama _'));
+    assert.ok(apply.calls.some(([k]: [string, string]) => k === 'blanks-llm-provider'), 'applies with no gate wired');
+  });
+});
+
 describe('hasLikelyIntent — multilingual undo/redo aliases', () => {
   it('trips on English undo/redo forms', () => {
     assert.strictEqual(hasLikelyIntent('undo _'), true);
