@@ -22,7 +22,6 @@ import { buildOpenTuiModifiers } from "@opencues/runtime/dist/src/modules/mac-ke
 import { createSourceReclassifier } from "@opencues/runtime/dist/src/boot-common"
 import { codeUnitsToCells } from "@opencues/runtime/dist/src/util/cell-width"
 import { inlineNoteDisplayText, inlineNoteBoxColumn } from "@opencues/runtime/dist/src/render-directives"
-import { openTuiPushRowsDown } from "@opencues/runtime/dist/src/util/opentui-framebuffer"
 import { createBlankInvoke, createDefaultBlanksRegistry, type Blank } from "@opencues/runtime/dist/src/blanks"
 import { validateScriptPath, appendAuditLog } from "@opencues/runtime/dist/src/security/spawn-sandbox"
 import { wrapWithBwrap } from "@opencues/runtime/dist/src/security/sandbox-runner"
@@ -78,47 +77,6 @@ const [opencuesInlineNote, setOpencuesInlineNote] = createSignal<{
   col: number
 } | null>(null)
 export { opencuesInlineNote }
-
-/**
- * Extend OpenTUI's textarea with a REAL inserted note line (push-down), the
- * same as the shell host. OpenTUI's textarea draws its buffer lines
- * contiguously in native (Zig/FFI) code with no virtual-text primitive, so we
- * hook `renderAfter` and operate on the exposed framebuffer cell arrays: after
- * the textarea draws normally, shift every row below the span DOWN by one and
- * draw the dim note in the freed row. The edit buffer is never touched (submit
- * text stays clean); the cursor/selection sit on the span line ABOVE the note
- * so the downward shift never disturbs them. The prompt patch calls this once
- * with the textarea ref. Degrades to no-note (never crashes the frame) on any
- * unexpected shape.
- */
-export function attachInlineNoteRenderer(textarea: unknown): void {
-  const ta = textarea as
-    | { renderAfter?: (buffer: unknown, dt: number) => void; _screenX?: number; _screenY?: number; width: number; height: number }
-    | null
-  if (!ta) return
-  ta.renderAfter = (bufferU: unknown): void => {
-    try {
-      const n = opencuesInlineNote()
-      if (!n) return
-      const buffer = bufferU as {
-        width: number; height: number
-        buffers: { char: Uint32Array; fg: Float32Array; bg: Float32Array; attributes: Uint32Array }
-        drawText: (t: string, x: number, y: number, fg: RGBA, bg?: RGBA, attrs?: number) => void
-      }
-      const sx = ta._screenX ?? 0
-      const sy = ta._screenY ?? 0
-      const tw = ta.width ?? 0
-      const th = ta.height ?? 0
-      const noteRow = sy + n.row
-      const bottom = sy + th - 1
-      if (n.row < 1 || noteRow > bottom || tw <= 0) return
-      // Shift rows below the span down + clear the freed note row (shared with
-      // shell so the fiddly cell math can't drift), then draw the dim note.
-      openTuiPushRowsDown(buffer, sx, tw, noteRow, bottom)
-      buffer.drawText(n.text, sx + n.col, noteRow, RGBA.fromValues(0.5, 0.5, 0.5, 1), undefined, 0)
-    } catch { /* swallow — degrade to no note rather than crash the frame */ }
-  }
-}
 
 export interface PromptInputAccess {
   /** Reads the current text from the SolidJS store. */

@@ -374,29 +374,27 @@ if 'onCursorChange={' not in src:
                 setStore("prompt", "input", value)
                 notifyOpenCuesTextChange'''
     )
-# Inline-cue note overlay. The note is a LINE directly under the flagged
-# span (like Claude Code) — OpenTUI can't splice a line into the textarea's
-# own render, so we float an absolute-positioned box over the input at the
-# span's { row, col } (viewport-relative visual row + 1, span column cells).
-# Cursor-gated by the runtime; rendered as a sibling of the textarea inside
-# the same padded wrapper so top/left are in the textarea's own cell space.
-# The note is drawn as a REAL inserted line (push-down) via the textarea's
-# renderAfter hook, extending OpenTUI's native renderer at the TS layer — same
-# mechanism as the shell host. attachInlineNoteRenderer(input) wires it once on
-# the textarea ref; there is no JSX overlay. Own marker so it's idempotent.
-if 'attachInlineNoteRenderer' not in src:
+# Inline-cue note — a REAL line under the input that pushes content down (like
+# Claude Code). OC's textarea is content-sized (minHeight=1/maxHeight=6), so it
+# has no spare row to draw into; a framebuffer overlay would land on a row that
+# doesn't exist or overwrite the line below. Instead we render the note as a
+# flow <text> sibling right after the textarea (before the toolbar): it reserves
+# its OWN row, growing the input by one and pushing everything below down — the
+# input-box-grows-by-one behaviour. Cursor-gated by the runtime via the
+# opencuesInlineNote signal ({text,col}; col pads the connector under the span
+# column). Own marker so it's idempotent.
+if 'opencuesInlineNoteLine' not in src:
     src = src.replace(
       'import { publishPromptAccess, notifyOpenCuesTextChange, notifyOpenCuesCursorChange, triggerOpenCuesRender } from "../../opencues"',
-      'import { publishPromptAccess, notifyOpenCuesTextChange, notifyOpenCuesCursorChange, triggerOpenCuesRender, attachInlineNoteRenderer } from "../../opencues"',
+      'import { publishPromptAccess, notifyOpenCuesTextChange, notifyOpenCuesCursorChange, triggerOpenCuesRender, opencuesInlineNote } from "../../opencues"',
     )
     src = src.replace(
-      '''                  textarea: input,
-                  syntax: useTheme().syntax() as any,
-                })''',
-      '''                  textarea: input,
-                  syntax: useTheme().syntax() as any,
-                })
-                attachInlineNoteRenderer(input)''',
+      '            <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} justifyContent="space-between">',
+      '''            {/* opencuesInlineNoteLine — flow row under the input; grows it by one */}
+            <Show when={opencuesInlineNote()}>
+              <text fg={theme.textMuted}>{" ".repeat(opencuesInlineNote()!.col) + opencuesInlineNote()!.text}</text>
+            </Show>
+            <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} justifyContent="space-between">''',
     )
 open(p, 'w').write(src)
 PY
