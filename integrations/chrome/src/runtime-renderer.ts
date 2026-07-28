@@ -228,20 +228,57 @@ function blockAncestorWithin(node: Node, root: HTMLElement): HTMLElement | null 
   return null;
 }
 
-function insertNoteSpacer(target: HTMLElement, range: Range, heightPx: number): boolean {
-  clearNoteSpacer();
-  const block = blockAncestorWithin(range.endContainer, target);
-  if (!block || !block.parentNode) return false;
+/** The first `<br>` or block-level element in document order strictly AFTER
+ *  `node`, within `root`. This is the boundary that terminates the span's
+ *  visual line when the line is direct text in the contenteditable root
+ *  (Gmail / YouTube leave the FIRST line unwrapped and only wrap later lines
+ *  in `<div>`s). querySelectorAll returns document order, so the first
+ *  candidate that FOLLOWS `node` is the nearest line boundary below the span.
+ *  Ancestors are excluded (they CONTAIN, not FOLLOW). Null → the span is on
+ *  the last line with nothing below it, so there's nothing to occlude. */
+function firstLineBreakAfter(node: Node, root: HTMLElement): HTMLElement | null {
+  const candidates = root.querySelectorAll('br, div, p, li');
+  for (const c of candidates) {
+    if (node.compareDocumentPosition(c) & Node.DOCUMENT_POSITION_FOLLOWING) {
+      return c as HTMLElement;
+    }
+  }
+  return null;
+}
+
+function makeSpacer(heightPx: number): HTMLElement {
   const spacer = document.createElement('div');
   spacer.setAttribute(NOTE_SPACER_ATTR, '1');
   spacer.setAttribute('contenteditable', 'false');
   spacer.setAttribute('aria-hidden', 'true');
   spacer.style.cssText =
-    `height:${Math.max(1, Math.round(heightPx))}px;margin:0;padding:0;border:0;` +
+    `display:block;height:${Math.max(1, Math.round(heightPx))}px;margin:0;padding:0;border:0;` +
     'user-select:none;pointer-events:none;background:transparent;';
-  try { block.after(spacer); } catch { return false; }
-  _noteSpacer = spacer;
-  return true;
+  return spacer;
+}
+
+function insertNoteSpacer(target: HTMLElement, range: Range, heightPx: number): boolean {
+  clearNoteSpacer();
+  const spacer = makeSpacer(heightPx);
+  // Shape B — the span's line IS a per-line block element (Gmail's wrapped
+  // lines, YouTube-with-blocks): insert the blank row right after it.
+  const block = blockAncestorWithin(range.endContainer, target);
+  if (block && block !== target && block.parentNode) {
+    try { block.after(spacer); _noteSpacer = spacer; return true; } catch { return false; }
+  }
+  // Shape A — the span's line is direct text in the contenteditable root
+  // (Gmail / YouTube first line). There's no wrapping block to insert after,
+  // so anchor to the line's terminating <br> (insert after it) or the next
+  // block (insert before it). Either way a blank block row lands directly
+  // below the span's line and pushes the rest down by one line.
+  const boundary = firstLineBreakAfter(range.endContainer, target);
+  if (!boundary || !boundary.parentNode) return false; // last line — nothing below
+  try {
+    if (boundary.tagName === 'BR') boundary.after(spacer);
+    else boundary.before(spacer);
+    _noteSpacer = spacer;
+    return true;
+  } catch { return false; }
 }
 
 function renderInlineNote(

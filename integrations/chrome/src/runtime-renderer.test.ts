@@ -12,7 +12,7 @@
 // Runs in jsdom; we shim the CSS Highlight API with a counting Map so
 // the test can assert how many .set calls actually fired.
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { applyDirectives, clearDirectives } from './runtime-renderer';
 import type { RenderDirectives } from '@opencues/runtime/dist/src/adapter';
 
@@ -140,5 +140,107 @@ describe('runtime-renderer applyDirectives', () => {
     clearDirectives();
     expect(highlights.has('oc-dim')).toBe(false);
     expect(highlights.has('oc-active')).toBe(false);
+  });
+});
+
+// ── Inline-note push-down spacer ─────────────────────────────────────────
+// The spacer is an empty contenteditable=false block inserted directly BELOW
+// the flagged span's line so real content moves down (no occlusion, CC-style)
+// on plain contenteditables. The Gmail/YouTube trap: the FIRST line is a
+// direct text node in the contenteditable root, only LATER lines get wrapped
+// in <div>s — so blockAncestorWithin finds no per-line block for the span and
+// the spacer used to bail, leaving the note overlapping the line below. These
+// pin both DOM shapes + the last-line (nothing-below) skip.
+describe('runtime-renderer inline-note push-down spacer', () => {
+  let origRangeRect: () => DOMRect;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    installHighlightShim();
+    clearDirectives();
+    // jsdom's Range.getBoundingClientRect returns an all-zero rect, which the
+    // note renderer treats as "off-screen" and bails before the spacer runs.
+    // Shim a real rect so the push-down path executes.
+    origRangeRect = Range.prototype.getBoundingClientRect;
+    Range.prototype.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, right: 100, bottom: 20, width: 100, height: 20, x: 0, y: 0, toJSON() { return this; } }) as DOMRect;
+  });
+
+  afterEach(() => {
+    Range.prototype.getBoundingClientRect = origRangeRect;
+    clearDirectives();
+  });
+
+  const NOTE = { text: 'more-formal', spanStart: 0, spanEnd: 8 };
+
+  it('Shape B — span line is a per-line <div>: spacer lands right after it', () => {
+    const target = document.createElement('div');
+    target.setAttribute('contenteditable', 'true');
+    target.innerHTML = '<div>line one</div><div>line two</div>';
+    document.body.appendChild(target);
+
+    applyDirectives(target, [{ inlineNote: NOTE }], true);
+
+    const spacer = document.querySelector('[data-oc-note-spacer]');
+    expect(spacer).not.toBeNull();
+    // Sits between the two line blocks.
+    expect((spacer!.previousElementSibling as HTMLElement)?.textContent).toBe('line one');
+    expect((spacer!.nextElementSibling as HTMLElement)?.textContent).toBe('line two');
+  });
+
+  it('Shape A — span line is DIRECT text in the root (Gmail/YouTube first line): spacer lands before the next block', () => {
+    const target = document.createElement('div');
+    target.setAttribute('contenteditable', 'true');
+    // First line unwrapped (direct text), second line wrapped — Gmail's shape.
+    target.appendChild(document.createTextNode('line one'));
+    const l2 = document.createElement('div');
+    l2.textContent = 'line two';
+    target.appendChild(l2);
+    document.body.appendChild(target);
+
+    applyDirectives(target, [{ inlineNote: NOTE }], true);
+
+    const spacer = document.querySelector('[data-oc-note-spacer]');
+    expect(spacer).not.toBeNull();
+    // Inserted immediately before line two's block, after the direct text.
+    expect(spacer!.nextElementSibling).toBe(l2);
+  });
+
+  it('Shape A with a <br> boundary: spacer lands after the <br>', () => {
+    const target = document.createElement('div');
+    target.setAttribute('contenteditable', 'true');
+    target.appendChild(document.createTextNode('line one'));
+    const br = document.createElement('br');
+    target.appendChild(br);
+    target.appendChild(document.createTextNode('line two'));
+    document.body.appendChild(target);
+
+    applyDirectives(target, [{ inlineNote: NOTE }], true);
+
+    const spacer = document.querySelector('[data-oc-note-spacer]');
+    expect(spacer).not.toBeNull();
+    expect(spacer!.previousElementSibling).toBe(br);
+  });
+
+  it('last line (nothing below the span) inserts NO spacer — no occlusion to fix', () => {
+    const target = document.createElement('div');
+    target.setAttribute('contenteditable', 'true');
+    target.textContent = 'line one';
+    document.body.appendChild(target);
+
+    applyDirectives(target, [{ inlineNote: NOTE }], true);
+
+    expect(document.querySelector('[data-oc-note-spacer]')).toBeNull();
+  });
+
+  it('canPushDown=false (managed editor) inserts NO spacer — note floats', () => {
+    const target = document.createElement('div');
+    target.setAttribute('contenteditable', 'true');
+    target.innerHTML = '<div>line one</div><div>line two</div>';
+    document.body.appendChild(target);
+
+    applyDirectives(target, [{ inlineNote: NOTE }], false);
+
+    expect(document.querySelector('[data-oc-note-spacer]')).toBeNull();
   });
 });
