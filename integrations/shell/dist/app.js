@@ -803,6 +803,7 @@ function triggerOpenCuesRender(text, cursor) {
 }
 
 // src/app.tsx
+import { openTuiPushRowsDown } from "@opencues/runtime/dist/src/util/opentui-framebuffer";
 process.on("SIGINT", () => {});
 function App(props) {
   const renderer = useRenderer();
@@ -926,28 +927,7 @@ function App(props) {
         const bottom = sy + th - 1;
         if (n.row < 1 || noteRow > bottom || tw <= 0)
           return;
-        const W = buffer.width;
-        const H = buffer.height;
-        const bufs = buffer.buffers;
-        const cells = W * H;
-        const fgS = bufs.fg.length / cells;
-        const bgS = bufs.bg.length / cells;
-        for (let y = bottom;y > noteRow; y--) {
-          const dst = y * W, src = (y - 1) * W;
-          bufs.char.copyWithin(dst, src, src + W);
-          bufs.attributes.copyWithin(dst, src, src + W);
-          bufs.fg.copyWithin(dst * fgS, src * fgS, (src + W) * fgS);
-          bufs.bg.copyWithin(dst * bgS, src * bgS, (src + W) * bgS);
-        }
-        for (let x = sx;x < sx + tw && x < W; x++) {
-          const i = noteRow * W + x;
-          bufs.char[i] = 32;
-          bufs.attributes[i] = 0;
-          for (let k = 0;k < fgS; k++)
-            bufs.fg[i * fgS + k] = 0;
-          for (let k = 0;k < bgS; k++)
-            bufs.bg[i * bgS + k] = 0;
-        }
+        openTuiPushRowsDown(buffer, sx, tw, noteRow, bottom);
         buffer.drawText(n.text, sx + n.col, noteRow, RGBA2.fromValues(0.5, 0.5, 0.5, 1), undefined, 0);
       } catch {}
     };

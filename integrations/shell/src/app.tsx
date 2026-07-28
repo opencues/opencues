@@ -23,6 +23,7 @@ import { createSignal, onMount } from 'solid-js';
 import type { TextareaRenderable } from '@opentui/core';
 import { SyntaxStyle, TextAttributes, RGBA } from '@opentui/core';
 import { startOpenCues, dispatchOpenCuesKey, resetOpenCuesBufferState } from './bootstrap';
+import { openTuiPushRowsDown } from '@opencues/runtime/dist/src/util/opentui-framebuffer';
 
 interface AppOpts {
   initialText: string;
@@ -161,31 +162,9 @@ function App(props: AppOpts) {
         const noteRow = sy + n.row;               // absolute framebuffer row for the note
         const bottom = sy + th - 1;               // last row the textarea owns
         if (n.row < 1 || noteRow > bottom || tw <= 0) return;
-        const W = buffer.width;
-        const H = buffer.height;
-        const bufs = buffer.buffers;
-        const cells = W * H;
-        const fgS = bufs.fg.length / cells;       // floats per cell (RGBA → 4)
-        const bgS = bufs.bg.length / cells;
-        // Shift rows [noteRow, bottom-1] DOWN by one (bottom-up so we don't
-        // clobber a source before it's copied). Full-row copy is fine: in
-        // both hosts the textarea owns the whole width of these rows.
-        for (let y = bottom; y > noteRow; y--) {
-          const dst = y * W, src = (y - 1) * W;
-          bufs.char.copyWithin(dst, src, src + W);
-          bufs.attributes.copyWithin(dst, src, src + W);
-          bufs.fg.copyWithin(dst * fgS, src * fgS, (src + W) * fgS);
-          bufs.bg.copyWithin(dst * bgS, src * bgS, (src + W) * bgS);
-        }
-        // Clear the freed note row (within the textarea's x-span) — the shift
-        // left the old line-1 cells sitting here — then draw the dim note.
-        for (let x = sx; x < sx + tw && x < W; x++) {
-          const i = noteRow * W + x;
-          bufs.char[i] = 32; // space
-          bufs.attributes[i] = 0;
-          for (let k = 0; k < fgS; k++) bufs.fg[i * fgS + k] = 0;
-          for (let k = 0; k < bgS; k++) bufs.bg[i * bgS + k] = 0;
-        }
+        // Shift rows below the span down + clear the freed note row (shared
+        // with OpenCode so the fiddly cell math can't drift), then draw it.
+        openTuiPushRowsDown(buffer, sx, tw, noteRow, bottom);
         buffer.drawText(n.text, sx + n.col, noteRow, RGBA.fromValues(0.5, 0.5, 0.5, 1), undefined, 0);
       } catch { /* swallow — degrade to no note rather than crash the frame */ }
     };

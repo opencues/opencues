@@ -380,26 +380,23 @@ if 'onCursorChange={' not in src:
 # span's { row, col } (viewport-relative visual row + 1, span column cells).
 # Cursor-gated by the runtime; rendered as a sibling of the textarea inside
 # the same padded wrapper so top/left are in the textarea's own cell space.
-# Own marker (opencuesInlineNote) so the block is idempotent.
-if 'opencuesInlineNote' not in src:
+# The note is drawn as a REAL inserted line (push-down) via the textarea's
+# renderAfter hook, extending OpenTUI's native renderer at the TS layer — same
+# mechanism as the shell host. attachInlineNoteRenderer(input) wires it once on
+# the textarea ref; there is no JSX overlay. Own marker so it's idempotent.
+if 'attachInlineNoteRenderer' not in src:
     src = src.replace(
       'import { publishPromptAccess, notifyOpenCuesTextChange, notifyOpenCuesCursorChange, triggerOpenCuesRender } from "../../opencues"',
-      'import { publishPromptAccess, notifyOpenCuesTextChange, notifyOpenCuesCursorChange, triggerOpenCuesRender, opencuesInlineNote } from "../../opencues"',
+      'import { publishPromptAccess, notifyOpenCuesTextChange, notifyOpenCuesCursorChange, triggerOpenCuesRender, attachInlineNoteRenderer } from "../../opencues"',
     )
     src = src.replace(
-      '            <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} justifyContent="space-between">',
-      '''            <Show when={opencuesInlineNote()}>
-              {/* top/left are relative to THIS padded wrapper's edge, but
-                  { row, col } are in the textarea's own cell space. The
-                  wrapper's paddingTop={1} / paddingLeft={2} (above) offset
-                  the textarea, so add them back or the note lands one row
-                  too high (on the span's own line) and two cols too far
-                  left. */}
-              <box style={{ position: "absolute", top: opencuesInlineNote()!.row + 1, left: opencuesInlineNote()!.col + 2, zIndex: 50 }}>
-                <text fg={theme.textMuted}>{opencuesInlineNote()!.text}</text>
-              </box>
-            </Show>
-            <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} justifyContent="space-between">''',
+      '''                  textarea: input,
+                  syntax: useTheme().syntax() as any,
+                })''',
+      '''                  textarea: input,
+                  syntax: useTheme().syntax() as any,
+                })
+                attachInlineNoteRenderer(input)''',
     )
 open(p, 'w').write(src)
 PY

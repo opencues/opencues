@@ -22,6 +22,7 @@ import { buildOpenTuiModifiers } from "@opencues/runtime/dist/src/modules/mac-ke
 import { createSourceReclassifier } from "@opencues/runtime/dist/src/boot-common"
 import { codeUnitsToCells } from "@opencues/runtime/dist/src/util/cell-width"
 import { inlineNoteDisplayText, inlineNoteBoxColumn } from "@opencues/runtime/dist/src/render-directives"
+import { openTuiPushRowsDown } from "@opencues/runtime/dist/src/util/opentui-framebuffer"
 import { createBlankInvoke, createDefaultBlanksRegistry, type Blank } from "@opencues/runtime/dist/src/blanks"
 import { validateScriptPath, appendAuditLog } from "@opencues/runtime/dist/src/security/spawn-sandbox"
 import { wrapWithBwrap } from "@opencues/runtime/dist/src/security/sandbox-runner"
@@ -77,6 +78,47 @@ const [opencuesInlineNote, setOpencuesInlineNote] = createSignal<{
   col: number
 } | null>(null)
 export { opencuesInlineNote }
+
+/**
+ * Extend OpenTUI's textarea with a REAL inserted note line (push-down), the
+ * same as the shell host. OpenTUI's textarea draws its buffer lines
+ * contiguously in native (Zig/FFI) code with no virtual-text primitive, so we
+ * hook `renderAfter` and operate on the exposed framebuffer cell arrays: after
+ * the textarea draws normally, shift every row below the span DOWN by one and
+ * draw the dim note in the freed row. The edit buffer is never touched (submit
+ * text stays clean); the cursor/selection sit on the span line ABOVE the note
+ * so the downward shift never disturbs them. The prompt patch calls this once
+ * with the textarea ref. Degrades to no-note (never crashes the frame) on any
+ * unexpected shape.
+ */
+export function attachInlineNoteRenderer(textarea: unknown): void {
+  const ta = textarea as
+    | { renderAfter?: (buffer: unknown, dt: number) => void; _screenX?: number; _screenY?: number; width: number; height: number }
+    | null
+  if (!ta) return
+  ta.renderAfter = (bufferU: unknown): void => {
+    try {
+      const n = opencuesInlineNote()
+      if (!n) return
+      const buffer = bufferU as {
+        width: number; height: number
+        buffers: { char: Uint32Array; fg: Float32Array; bg: Float32Array; attributes: Uint32Array }
+        drawText: (t: string, x: number, y: number, fg: RGBA, bg?: RGBA, attrs?: number) => void
+      }
+      const sx = ta._screenX ?? 0
+      const sy = ta._screenY ?? 0
+      const tw = ta.width ?? 0
+      const th = ta.height ?? 0
+      const noteRow = sy + n.row
+      const bottom = sy + th - 1
+      if (n.row < 1 || noteRow > bottom || tw <= 0) return
+      // Shift rows below the span down + clear the freed note row (shared with
+      // shell so the fiddly cell math can't drift), then draw the dim note.
+      openTuiPushRowsDown(buffer, sx, tw, noteRow, bottom)
+      buffer.drawText(n.text, sx + n.col, noteRow, RGBA.fromValues(0.5, 0.5, 0.5, 1), undefined, 0)
+    } catch { /* swallow — degrade to no note rather than crash the frame */ }
+  }
+}
 
 export interface PromptInputAccess {
   /** Reads the current text from the SolidJS store. */
@@ -832,37 +874,20 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
   // to the next without leaking stale extmarks.
   const desiredColored = new Map<OcExtmarkKey, { hex: string; start: number; end: number }>()
   // Inline-cue note. Cursor-gated by the runtime (only emitted while the
-  // caret is in the span). Rendered as an absolute overlay LINE under the
-  // span by the patched prompt (OpenTUI can't splice into the textarea's own
-  // render). ROW = the caret's viewport-relative visual row + 1 (caret is in
-  // the span, so this is the line just below it, wrap/scroll aware); COL =
-  // the span column (shared inlineNoteBoxColumn, same alignment as the
-  // terminal splice). Same `↳ <note>` text everywhere.
-  //
-  // OCCLUSION GUARD: the overlay FLOATS over the textarea — unlike Claude
-  // Code it can't push existing text down (OpenTUI has no display-line insert,
-  // and injecting a real newline would leak into the submitted prompt). So if
-  // the row the note would land on already holds buffer text, we hold the note
-  // back rather than paint over the user's text. It reveals whenever the row
-  // below is free — the normal typing position (caret on the last line).
+  // caret is in the span). Drawn by attachInlineNoteRenderer's renderAfter as
+  // a REAL inserted line that pushes text down (no occlusion — content moves
+  // rather than being covered). ROW = caret visual row + 1 (viewport-relative,
+  // wrap/scroll aware); COL = span column (shared inlineNoteBoxColumn).
   let noteAnchor: { text: string; row: number; col: number } | null = null
   const directiveSets = bootResult.collectRenderDirectives(text, cursor)
   for (const directives of directiveSets) {
     if (noteAnchor === null && directives.inlineNote && directives.inlineNote.text) {
       const vc: any = (textarea as any).visualCursor
       const visualRow = vc && typeof vc.visualRow === "number" ? vc.visualRow : 0
-      const scrollY = typeof (textarea as any).scrollY === "number" ? (textarea as any).scrollY : 0
-      const totalVisual = typeof (textarea as any).virtualLineCount === "number" ? (textarea as any).virtualLineCount : 0
-      // Document-absolute row the note would occupy. Occupied ⟺ a real visual
-      // line already sits there (index < total). Free ⟺ at/below the last line.
-      const targetDocRow = scrollY + visualRow + 1
-      const rowBelowOccupied = totalVisual > 0 && targetDocRow < totalVisual
-      if (!rowBelowOccupied) {
-        noteAnchor = {
-          text: inlineNoteDisplayText(directives.inlineNote.text),
-          row: visualRow + 1,
-          col: inlineNoteBoxColumn(text, directives.inlineNote.spanStart),
-        }
+      noteAnchor = {
+        text: inlineNoteDisplayText(directives.inlineNote.text),
+        row: visualRow + 1,
+        col: inlineNoteBoxColumn(text, directives.inlineNote.spanStart),
       }
     }
     addRanges(directives.dimRanges, "d")
