@@ -13,13 +13,13 @@ The `opencues` name on npmjs.com is currently held by `packages/opencues-park/` 
 1. In `packages/opencues-cli/package.json`:
    - Remove `"private": true`.
    - Remove the `publishConfig` block (currently `{ "registry": "https://npm.pkg.github.com", "access": "restricted" }`). With it gone, publish defaults to the public npmjs registry; the bare `opencues` name is unscoped, so it publishes public.
-   - **Version — no bump needed.** The CLI is already at `0.2.57` (well above the placeholder's `0.0.1`), so it becomes `latest` the moment it publishes. The earlier "bump to `0.1.0`" guidance is **stale** — it predated the CLI reaching 0.2.x, and `0.1.0 < 0.2.57` would not be `latest`. Just don't publish a version `≤ 0.0.1`. Optionally set a clean marketing version, but it must be `≥` the current one.
+   - **Version — set by the release cut, not here.** The product version = the CLI version (see [`versioning.md` § Releases & tagging](../architecture/versioning.md#releases--tagging)). The launch release (`LAUNCH.md` Step 4) sets the CLI to **`0.3.0`** and tags `v0.3.0`; this publish just ships whatever the tag says. It must be `> 0.0.1` to supersede the placeholder — `0.3.0` is. (The original "bump to `0.1.0`" line was stale: the CLI passed 0.2.x, and `0.1.0` sits below both the tag and the current version.)
 
    The net edit (two deletions, nothing else — leave `name`, `version`, `keywords`, `bin`, etc. as-is):
    ```diff
    {
      "name": "opencues",
-     "version": "0.2.57",
+     "version": "0.3.0",
    -  "private": true,
      "description": "...",
      "keywords": [ ... ],

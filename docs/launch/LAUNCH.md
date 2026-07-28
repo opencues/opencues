@@ -45,12 +45,20 @@ gh repo edit opencues/opencues --visibility public --accept-visibility-change-co
 GitHub only shows this control on a **public** repo:
 > Repo → **Settings** → **General** → scroll to **Social preview** → **Edit** → upload `opencues-og.jpg` (1200×630, on your desktop).
 
-### 4. Cut the `v0.1.0` GitHub Release
+### 4. Cut the first product release — `v0.3.0`
+This is the first real release; follow [`versioning.md` § How to cut a release](../architecture/versioning.md#releases--tagging). `0.3.0` is the recommended launch number (clean minor above the CLI's current `0.2.57`; adjust if you prefer).
 ```bash
-# Draft notes from CHANGELOG.md, then:
-gh release create v0.1.0 --repo opencues/opencues \
-  --title "OpenCues v0.1.0" --notes-file <notes.md>
+# 1. Set packages/opencues-cli/package.json "version" → 0.3.0
+# 2. In CHANGELOG.md: rename "## [Unreleased]" → "## [0.3.0] - <today>",
+#    add a fresh empty "## [Unreleased]" above it.
+# 3. Commit, tag, push the tag:
+git commit -am "chore(release): v0.3.0"
+git tag v0.3.0 && git push origin v0.3.0
+# 4. Cut the GitHub Release with CURATED notes (highlights, not the raw 800 lines):
+gh release create v0.3.0 --repo opencues/opencues \
+  --title "OpenCues v0.3.0" --notes-file <curated-notes.md>
 ```
+Draft highlights are staged in `.internal/launch-release-notes.md`.
 
 ### 5. README assets → jsDelivr-on-own-repo
 Now that the repo is public, jsDelivr can serve it. Swap the `a1rtight/tester`
@@ -58,9 +66,9 @@ jsDelivr URLs in `README.md` for your **own** repo (keeps CDN speed, drops the
 third-party dependency — see the memory/rationale: relative paths render slower
 on GitHub, so keep jsDelivr, just point it at us):
 ```
-https://cdn.jsdelivr.net/gh/opencues/opencues@v0.1.0/assets/<file>.svg
+https://cdn.jsdelivr.net/gh/opencues/opencues@v0.3.0/assets/<file>.svg
 ```
-(Do this after Step 4 so the `@v0.1.0` tag exists.) Ship as a small README PR.
+(Do this after Step 4 so the `@v0.3.0` tag exists.) Ship as a small README PR.
 
 ### 6. Deploy the full org-profile
 Swap the teaser for the full version (its repo/docs/spec links resolve now):
@@ -75,10 +83,10 @@ gh pr create --repo opencues/.github --base main --head launch/full-profile \
 Full detail + 2FA/security-key gotcha in [`npm-handover.md`](npm-handover.md).
 ```bash
 # In packages/opencues-cli/package.json: remove `"private": true` and the
-# `publishConfig` block. Version 0.2.57 stays (already > placeholder 0.0.1).
+# `publishConfig` block. Version is already 0.3.0 from the Step 4 release cut.
 cd packages/opencues-cli
 npm publish --access public          # logged in as an opencues npm-org member
-# Verify: https://www.npmjs.com/package/opencues shows 0.2.57 as latest
+# Verify: https://www.npmjs.com/package/opencues shows 0.3.0 as latest
 ```
 Then wire the **npm badge** in `README.md` (uncomment the badge line near the top).
 
