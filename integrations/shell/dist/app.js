@@ -817,15 +817,21 @@ function triggerOpenCuesRender(text, cursor) {
     }
   };
   const toCell = (offset) => codeUnitsToCells(text, offset);
+  const injMark = injMarkIndex(textarea.plainText);
+  const injAt = injMark === -1 ? -1 : injMark - 1;
   for (const [key, spec] of desired) {
     if (ownedExtmarks.has(key))
       continue;
     const styleId = styleFor(spec.kind);
     if (styleId === undefined)
       continue;
+    const startCell = toCell(spec.start);
+    let endCell = toCell(spec.end);
+    if (injAt >= 0 && spec.end === injAt)
+      endCell = Math.max(startCell, endCell - 1);
     const id = textarea.extmarks.create({
-      start: toCell(spec.start),
-      end: toCell(spec.end),
+      start: startCell,
+      end: endCell,
       styleId,
       typeId: styleIds.typeId
     });

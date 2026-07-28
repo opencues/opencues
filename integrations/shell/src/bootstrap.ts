@@ -792,13 +792,23 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
   // covering "日本語に翻訳" (6 code units) needs end=12 to cover the
   // 12 cells the glyphs actually paint to.
   const toCell = (offset: number): number => codeUnitsToCells(text, offset);
+  // Clean-space offset of the injected blank line, or -1. A dim/highlight range
+  // whose END lands exactly here ends at the span's line boundary; OpenTUI
+  // resolves that boundary onto the NEXT visible line — which, with the injected
+  // blank line in the way, is the line AFTER it (the "highlights the second
+  // line" bug). Ending such a range one cell short keeps it on the span's line.
+  const injMark = injMarkIndex(textarea.plainText);
+  const injAt = injMark === -1 ? -1 : injMark - 1;
   for (const [key, spec] of desired) {
     if (ownedExtmarks.has(key)) continue;
     const styleId = styleFor(spec.kind);
     if (styleId === undefined) continue;
+    const startCell = toCell(spec.start);
+    let endCell = toCell(spec.end);
+    if (injAt >= 0 && spec.end === injAt) endCell = Math.max(startCell, endCell - 1);
     const id = textarea.extmarks.create({
-      start: toCell(spec.start),
-      end: toCell(spec.end),
+      start: startCell,
+      end: endCell,
       styleId,
       typeId: styleIds.typeId,
     });
