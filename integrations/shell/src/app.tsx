@@ -47,10 +47,11 @@ interface AppOpts {
 function App(props: AppOpts) {
   const renderer = useRenderer();
   const [tip, setTip] = createSignal<string | null>(null);
-  // Inline-cue note — the advisory for the active note-bearing span. OpenTUI
-  // has no virtual text, so it renders below the input (mirrors the tip) with
-  // the `↳ <note>` connector pre-formatted by the runtime. null when absent.
-  const [note, setNote] = createSignal<string | null>(null);
+  // Inline-cue note — the advisory for the active note-bearing span. Rendered
+  // as an absolute overlay LINE directly under the span (like Claude Code),
+  // NOT docked at the bottom. Cursor-gated by the runtime; { row, col } come
+  // from the caret's visual row + the span's column. null when absent.
+  const [note, setNote] = createSignal<{ text: string; row: number; col: number } | null>(null);
   // Word-wrap the tip into up to 3 rows so long lines (kata coach,
   // completion recap, catalogue notices) GROW the bar instead of
   // clipping at the pane edge. Deterministic manual wrap — OpenTUI
@@ -268,6 +269,15 @@ function App(props: AppOpts) {
             style={{ width: '100%', height: '100%' }}
             wrapMode="word"
           />
+          {/* Inline-cue note — an absolute overlay LINE directly under the
+              span (like Claude Code), positioned in the textarea's own cell
+              space. Cursor-gated by the runtime; row = caret visual row + 1,
+              col = span column. zIndex floats it over the textarea. */}
+          {note() != null && (
+            <box style={{ position: 'absolute', top: note()!.row, left: note()!.col, zIndex: 10 }}>
+              <text attributes={TextAttributes.DIM}>{note()!.text}</text>
+            </box>
+          )}
         </box>
         {tip() != null && (
           <box style={{ height: (tipParts()?.head ? 1 : 0) + tipRows().length + 1, width: '100%', flexDirection: 'column' }}>
@@ -279,11 +289,6 @@ function App(props: AppOpts) {
             )}
             {tipRows().map((row) => <box style={{ flexDirection: 'row', height: 1 }}>{renderSpans(row)}</box>)}
             <text> </text>
-          </box>
-        )}
-        {note() != null && (
-          <box style={{ width: '100%', height: 1, flexDirection: 'row' }}>
-            <text attributes={TextAttributes.DIM}>{note()}</text>
           </box>
         )}
       </box>
@@ -312,8 +317,6 @@ function App(props: AppOpts) {
       >
         {tip() != null
           ? <text fg="#ffffff">{tip()}</text>
-          : note() != null
-          ? <text attributes={TextAttributes.DIM}>{note()}</text>
           : <box style={{ flexDirection: 'row' }}>
               <text fg="#ffffff" attributes={TextAttributes.INVERSE}>C_</text>
               <text fg="#ffffff"> OpenCues_  ·  Submit: Ctrl+Alt+S   ·   Cancel: Ctrl+Alt+Q</text>

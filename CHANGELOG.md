@@ -7,13 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added — inline-cue notes + `_`-cycle on OpenCode / shell (`@opencues/runtime` 0.28.3 → 0.28.4, `@opencues/opencode` 0.2.8 → 0.2.9, `@opencues/shell` 0.2.7 → 0.2.8)
+### Added — inline-cue notes + `_`-cycle on OpenCode / shell (`@opencues/runtime` 0.28.3 → 0.28.5, `@opencues/opencode` 0.2.8 → 0.2.9, `@opencues/shell` 0.2.7 → 0.2.8)
 
 Brings the inline-cue UX (already live on terminal/CC + chrome) to the OpenTUI hosts. The `oc/v1.14` and `shell/v1` adapters now advertise the `inline-note` capability, so note-bearing spans (sentence-cues, contradiction-cues, and history-bearing transform/fluid blanks) get their advisory painted and `_`-cycle lights up.
 
-OpenTUI has **no virtual text** — an extmark can only re-style real buffer content, it can't inject a note under a span's wrapped line the way the terminal ANSI painter splices one in. So the note degrades to a **below-input region**: each host's `triggerOpenCuesRender` reads the first active span's `directives.inlineNote`, formats it with the shared `inlineNoteDisplayText` (same `↳ <note>` text the terminal + chrome paths render), and surfaces it. On OpenCode it feeds a new `opencuesInlineNote` SolidJS signal that both patched footers (home + sidebar) subscribe to, rendered as a muted full-width row yielding to kata (mirrors the existing `opencuesTip` path). On shell it flows through a new `onInlineNoteChange` boot callback into a `note` signal rendered below the input in both the keep-alive and legacy layouts. The note reads correctly; it just sits under the whole input box rather than directly under the span's line — the OpenTUI limitation, called out for the eventual horizontal-note design.
+The note renders as a **line directly under the flagged span** — the same result Claude Code produces by splicing a continuation line, revealed when the caret enters the span. OpenTUI can't splice a line into the textarea's own render (extmarks only re-style existing buffer content), but it *does* support absolute-positioned boxes, so each host floats an overlay line over the input at the span's `{ row, col }`: `row` = the caret's viewport-relative visual row + 1 (the runtime emits the note cursor-gated, so the caret is always in the span), `col` = the span's column in cells via the new shared `inlineNoteBoxColumn` helper — the exact alignment the terminal splice uses, connector-hung and CJK-cell-aware. Same `↳ <note>` text (`inlineNoteDisplayText`) every host paints.
 
-Marker-drift note: both OpenCode footer patches now guard on the newest injected marker (`opencuesInlineNote`) rather than `opencuesKata`, so a fork left kata-only by a prior install re-patches to pick up the note block (the same guard-on-newest-marker rule the kata patch already documented).
+- OpenCode: patched `prompt/index.tsx` floats the overlay as a sibling of the textarea, driven by a new `opencuesInlineNote` signal set in `triggerOpenCuesRender`.
+- Shell: a new `onInlineNoteChange` boot callback feeds a `note` signal rendered as an absolute overlay in `app.tsx`'s keep-alive layout.
+
+Pinned by 5 `inlineNoteBoxColumn` unit tests (column-0 clamp, mid-line ASCII, CJK cells, multi-line line-prefix scoping, out-of-range clamp).
 
 ### Fixed — `inherit` is now a universal provider fall-through sentinel (`@opencues/core` 0.40.1 → 0.40.2, `@opencues/chrome` 0.2.101 → 0.2.102)
 

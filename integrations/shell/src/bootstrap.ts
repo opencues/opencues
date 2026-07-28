@@ -12,7 +12,7 @@ import type { KeyEvent, LogLevel } from '@opencues/runtime/dist/src/adapter';
 import { buildOpenTuiModifiers } from '@opencues/runtime/dist/src/modules/mac-keyboard';
 import { createSourceReclassifier } from '@opencues/runtime/dist/src/boot-common';
 import { codeUnitsToCells } from '@opencues/runtime/dist/src/util/cell-width';
-import { inlineNoteDisplayText } from '@opencues/runtime/dist/src/render-directives';
+import { inlineNoteDisplayText, inlineNoteBoxColumn } from '@opencues/runtime/dist/src/render-directives';
 import {
   createBlankInvoke,
   createDefaultBlanksRegistry,
@@ -221,16 +221,26 @@ export interface TerminalBootOpts {
   cwd: string;
   /** Live tip subscriber — the footer reads from this. */
   onTipChange?: (tip: string | null) => void;
-  /** Live inline-cue-note subscriber. OpenTUI has no virtual text, so a
-   *  note that would paint under a span's line in a terminal host instead
-   *  renders in a below-input region. null when no note-bearing span. */
-  onInlineNoteChange?: (note: string | null) => void;
+  /** Live inline-cue-note subscriber. The note is cursor-gated (the runtime
+   *  only emits it while the caret is in the span), and renders as an
+   *  absolute-positioned overlay LINE directly under the span — the same
+   *  result Claude Code produces by splicing a continuation line. OpenTUI
+   *  can't splice into the textarea's own render, so app.tsx floats a box
+   *  at { row, col }. null clears it. */
+  onInlineNoteChange?: (note: InlineNoteAnchor | null) => void;
+}
+
+/** Where the overlay note line sits: viewport-relative visual row + cell col. */
+export interface InlineNoteAnchor {
+  text: string;
+  row: number;
+  col: number;
 }
 
 const sourceReclassifier = createSourceReclassifier();
 let bootResult: BootResult | undefined;
 /** Set from startOpenCues opts; called by triggerOpenCuesRender. */
-let _onInlineNoteChange: ((note: string | null) => void) | undefined;
+let _onInlineNoteChange: ((note: InlineNoteAnchor | null) => void) | undefined;
 
 export function startOpenCues(opts: TerminalBootOpts): BootResult {
   if (bootResult) return bootResult;
@@ -579,15 +589,24 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
     }
   };
   const desiredColored = new Map<ExtmarkKey, { hex: string; start: number; end: number }>();
-  // OpenTUI has no virtual text, so a note-bearing span's advisory can't
-  // paint under its line; the first active one feeds a below-input region
-  // via _onInlineNoteChange (App renders it). Same `↳ <note>` text the
-  // terminal + chrome paths render, via the shared inlineNoteDisplayText.
-  let noteText: string | null = null;
+  // Inline-cue note. The runtime emits it cursor-gated (only while the caret
+  // is in the span). We can't splice a line into the textarea's own render
+  // the way Claude Code does, so App floats an absolute overlay LINE directly
+  // under the span: ROW = the caret's viewport-relative visual row + 1 (the
+  // caret is in the span, so this is the line just below it, wrap/scroll
+  // aware); COL = the span's column in cells (shared inlineNoteBoxColumn, the
+  // same alignment the terminal splice uses). Same `↳ <note>` text everywhere.
+  let noteAnchor: InlineNoteAnchor | null = null;
   const directiveSets = bootResult.collectRenderDirectives(text, cursor);
   for (const directives of directiveSets) {
-    if (noteText === null && directives.inlineNote && directives.inlineNote.text) {
-      noteText = inlineNoteDisplayText(directives.inlineNote.text);
+    if (noteAnchor === null && directives.inlineNote && directives.inlineNote.text) {
+      const vc: any = (textarea as any).visualCursor;
+      const row = (vc && typeof vc.visualRow === 'number' ? vc.visualRow : 0) + 1;
+      noteAnchor = {
+        text: inlineNoteDisplayText(directives.inlineNote.text),
+        row,
+        col: inlineNoteBoxColumn(text, directives.inlineNote.spanStart),
+      };
     }
     addRanges(directives.dimRanges, 'd');
     if (directives.highlight) {
@@ -667,6 +686,6 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
     ownedExtmarks.set(key, id);
   }
 
-  // Push the active note (or clear it) into the below-input region.
-  try { _onInlineNoteChange?.(noteText); } catch { /* swallow */ }
+  // Push the active note anchor (or clear it) to the overlay renderer.
+  try { _onInlineNoteChange?.(noteAnchor); } catch { /* swallow */ }
 }

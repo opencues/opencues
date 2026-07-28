@@ -21,7 +21,7 @@ import type { KeyEvent, LogLevel, RenderDirectives } from "@opencues/runtime/dis
 import { buildOpenTuiModifiers } from "@opencues/runtime/dist/src/modules/mac-keyboard"
 import { createSourceReclassifier } from "@opencues/runtime/dist/src/boot-common"
 import { codeUnitsToCells } from "@opencues/runtime/dist/src/util/cell-width"
-import { inlineNoteDisplayText } from "@opencues/runtime/dist/src/render-directives"
+import { inlineNoteDisplayText, inlineNoteBoxColumn } from "@opencues/runtime/dist/src/render-directives"
 import { createBlankInvoke, createDefaultBlanksRegistry, type Blank } from "@opencues/runtime/dist/src/blanks"
 import { validateScriptPath, appendAuditLog } from "@opencues/runtime/dist/src/security/spawn-sandbox"
 import { wrapWithBwrap } from "@opencues/runtime/dist/src/security/sandbox-runner"
@@ -63,12 +63,19 @@ const [opencuesKata, setOpencuesKata] = createSignal<{
   offTrack: boolean
 } | null>(null)
 export { opencuesKata }
-// Inline-cue note. OpenTUI has no virtual text, so a note that would
-// paint directly under a span's line in a terminal host instead renders
-// in a below-input region (the patched footer subscribes via
-// opencuesInlineNote()). null when no note-bearing span is active.
-// Mirrors the terminal `↳ <note>` connector shape via inlineNoteDisplayText.
-const [opencuesInlineNote, setOpencuesInlineNote] = createSignal<string | null>(null)
+// Inline-cue note — the advisory for the active note-bearing span. Rendered
+// as an absolute overlay LINE directly under the span (like Claude Code), NOT
+// docked at the bottom: OpenTUI can't splice a line into the textarea's own
+// render, so the patched prompt floats a box at { row, col } over the input.
+// Cursor-gated by the runtime (only emitted while the caret is in the span);
+// row = the caret's viewport-relative visual row + 1, col = the span column
+// (shared inlineNoteBoxColumn). Text via inlineNoteDisplayText — the same
+// `↳ <note>` every host paints. null when no note-bearing span is active.
+const [opencuesInlineNote, setOpencuesInlineNote] = createSignal<{
+  text: string
+  row: number
+  col: number
+} | null>(null)
 export { opencuesInlineNote }
 
 export interface PromptInputAccess {
@@ -792,16 +799,24 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
   // colour + offset so the same range can change colour from one tick
   // to the next without leaking stale extmarks.
   const desiredColored = new Map<OcExtmarkKey, { hex: string; start: number; end: number }>()
-  // OpenTUI has no virtual text, so the note can't paint under its span's
-  // line the way the terminal painter splices it. Instead the first
-  // active note-bearing span's advisory feeds a below-input region via the
-  // opencuesInlineNote signal (the patched footer subscribes). Same text
-  // the terminal `↳ <note>` connector renders, via inlineNoteDisplayText.
-  let noteText: string | null = null
+  // Inline-cue note. Cursor-gated by the runtime (only emitted while the
+  // caret is in the span). Rendered as an absolute overlay LINE under the
+  // span by the patched prompt (OpenTUI can't splice into the textarea's own
+  // render). ROW = the caret's viewport-relative visual row + 1 (caret is in
+  // the span, so this is the line just below it, wrap/scroll aware); COL =
+  // the span column (shared inlineNoteBoxColumn, same alignment as the
+  // terminal splice). Same `↳ <note>` text everywhere.
+  let noteAnchor: { text: string; row: number; col: number } | null = null
   const directiveSets = bootResult.collectRenderDirectives(text, cursor)
   for (const directives of directiveSets) {
-    if (noteText === null && directives.inlineNote && directives.inlineNote.text) {
-      noteText = inlineNoteDisplayText(directives.inlineNote.text)
+    if (noteAnchor === null && directives.inlineNote && directives.inlineNote.text) {
+      const vc: any = (textarea as any).visualCursor
+      const row = (vc && typeof vc.visualRow === "number" ? vc.visualRow : 0) + 1
+      noteAnchor = {
+        text: inlineNoteDisplayText(directives.inlineNote.text),
+        row,
+        col: inlineNoteBoxColumn(text, directives.inlineNote.spanStart),
+      }
     }
     addRanges(directives.dimRanges, "d")
     if (directives.highlight) {
@@ -897,7 +912,7 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
     ocOwnedExtmarks.set(key, id)
   }
 
-  // Push the active note (or clear it) into the below-input footer region.
-  // Deduped by the signal itself — footer re-renders only when the text flips.
-  setOpencuesInlineNote(noteText)
+  // Push the active note anchor (or clear it) to the overlay renderer.
+  // Deduped by the signal itself — the overlay re-renders only on change.
+  setOpencuesInlineNote(noteAnchor)
 }

@@ -374,6 +374,27 @@ if 'onCursorChange={' not in src:
                 setStore("prompt", "input", value)
                 notifyOpenCuesTextChange'''
     )
+# Inline-cue note overlay. The note is a LINE directly under the flagged
+# span (like Claude Code) — OpenTUI can't splice a line into the textarea's
+# own render, so we float an absolute-positioned box over the input at the
+# span's { row, col } (viewport-relative visual row + 1, span column cells).
+# Cursor-gated by the runtime; rendered as a sibling of the textarea inside
+# the same padded wrapper so top/left are in the textarea's own cell space.
+# Own marker (opencuesInlineNote) so the block is idempotent.
+if 'opencuesInlineNote' not in src:
+    src = src.replace(
+      'import { publishPromptAccess, notifyOpenCuesTextChange, notifyOpenCuesCursorChange, triggerOpenCuesRender } from "../../opencues"',
+      'import { publishPromptAccess, notifyOpenCuesTextChange, notifyOpenCuesCursorChange, triggerOpenCuesRender, opencuesInlineNote } from "../../opencues"',
+    )
+    src = src.replace(
+      '            <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} justifyContent="space-between">',
+      '''            <Show when={opencuesInlineNote()}>
+              <box style={{ position: "absolute", top: opencuesInlineNote()!.row, left: opencuesInlineNote()!.col, zIndex: 50 }}>
+                <text fg={theme.textMuted}>{opencuesInlineNote()!.text}</text>
+              </box>
+            </Show>
+            <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} justifyContent="space-between">''',
+    )
 open(p, 'w').write(src)
 PY
 }
@@ -396,19 +417,19 @@ patch_footer_tsx() {
   local footer="$OPENCODE_DIR/packages/opencode/src/cli/cmd/tui/feature-plugins/home/footer.tsx"
   # Older OpenCode layouts don't ship this file — skip silently.
   [[ -f "$footer" ]] || return 0
-  # Guard on the NEWEST marker this patch injects (opencuesInlineNote), not an
-  # older one (opencuesKata / opencuesTip) — else a fork left kata-only by a
-  # prior version is treated as "already patched" and never gets the note block.
-  if grep -q "opencuesInlineNote" "$footer"; then return 0; fi
+  # Guard on the NEWEST marker this patch injects (opencuesKata), not an
+  # older one (opencuesTip) — else a fork left tip-only by a prior version
+  # is treated as "already patched" and never gets the kata block.
+  if grep -q "opencuesKata" "$footer"; then return 0; fi
   restore_pristine "$footer"
   python3 - "$footer" <<'PY'
 import sys
 p = sys.argv[1]
 src = open(p).read()
-if 'opencuesInlineNote' in src: sys.exit(0)
+if 'opencuesKata' in src: sys.exit(0)
 src = src.replace(
   'import { Global } from "@/global"',
-  'import { Global } from "@/global"\nimport { opencuesTip, opencuesKata, opencuesInlineNote } from "../../opencues"',
+  'import { Global } from "@/global"\nimport { opencuesTip, opencuesKata } from "../../opencues"',
 )
 src = src.replace(
   '''function View(props: { api: TuiPluginApi }) {
@@ -418,20 +439,6 @@ src = src.replace(
   return (
     <Show when={!opencuesKata() && opencuesTip()}>
       <text fg={theme().textMuted}>{opencuesTip()}</text>
-    </Show>
-  )
-}
-
-// Inline-cue note — the advisory for the active note-bearing span. In a
-// terminal host this paints directly under the span's line; OpenTUI has no
-// virtual text, so it renders here as its own full-width row just above the
-// footer widgets. The `↳` connector text comes pre-formatted from
-// inlineNoteDisplayText via the opencuesInlineNote signal. Yields to kata.
-function OpencuesInlineNote(props: { api: TuiPluginApi }) {
-  const theme = () => props.api.theme.current
-  return (
-    <Show when={!opencuesKata() && opencuesInlineNote()}>
-      <text fg={theme().textMuted}>{opencuesInlineNote()}</text>
     </Show>
   )
 }
@@ -502,7 +509,6 @@ src = src.replace(
       <Version api={props.api} />''',
   '''      <box style={{ flexDirection: "column", width: "100%" }}>
         <OpencuesKataBlock api={props.api} />
-        <OpencuesInlineNote api={props.api} />
         <box style={{ flexDirection: "row", width: "100%", gap: 2 }}>
           <Directory api={props.api} />
           <Mcp api={props.api} />
@@ -529,18 +535,18 @@ patch_sidebar_footer_tsx() {
   local footer="$OPENCODE_DIR/packages/opencode/src/cli/cmd/tui/feature-plugins/sidebar/footer.tsx"
   [[ -f "$footer" ]] || return 0
   # Same marker-drift fix as patch_footer_tsx: guard on the NEWEST marker
-  # (opencuesInlineNote), not an older one (opencuesKata / opencuesTip), and
-  # restore pristine first so the anchors always match.
-  if grep -q "opencuesInlineNote" "$footer"; then return 0; fi
+  # (opencuesKata), not the older `opencuesTip`, and restore pristine first
+  # so the anchors always match.
+  if grep -q "opencuesKata" "$footer"; then return 0; fi
   restore_pristine "$footer"
   python3 - "$footer" <<'PY'
 import sys
 p = sys.argv[1]
 src = open(p).read()
-if 'opencuesInlineNote' in src: sys.exit(0)
+if 'opencuesKata' in src: sys.exit(0)
 src = src.replace(
   'import { Global } from "@/global"',
-  'import { Global } from "@/global"\nimport { opencuesTip, opencuesKata, opencuesInlineNote } from "../../opencues"',
+  'import { Global } from "@/global"\nimport { opencuesTip, opencuesKata } from "../../opencues"',
 )
 # Kata block + its wrap helper — same component as the home footer, so
 # the coach statusline survives once the user submits a prompt and moves
@@ -623,9 +629,6 @@ src = src.replace(
       </text>
       <Show when={!opencuesKata() && opencuesTip()}>
         <text fg={theme().textMuted}>{opencuesTip()}</text>
-      </Show>
-      <Show when={!opencuesKata() && opencuesInlineNote()}>
-        <text fg={theme().textMuted}>{opencuesInlineNote()}</text>
       </Show>
       <text fg={theme().textMuted}>
         <span style={{ fg: theme().success }}>•</span> <b>Open</b>''',

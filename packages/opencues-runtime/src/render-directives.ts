@@ -96,6 +96,30 @@ export function inlineNoteDisplayText(cueTip: string): string {
 }
 
 /**
+ * Screen COLUMN (in terminal cells) where an inline note's `↳ ` connector
+ * should start so the MESSAGE lands under the span's column — the same
+ * alignment `applyDirectives` computes for the terminal splice, factored out
+ * so the OpenTUI hosts (OpenCode / shell), which can't splice into the
+ * textarea's own render and instead float an absolute-positioned overlay
+ * line, land the note in the SAME place. The connector hangs to the left of
+ * the span column; clamped at 0 so a span at/near column 0 sits flush left.
+ *
+ * `text` is the painted plain-text buffer; `spanStart` is the note span's
+ * start offset in that same space. Wrap-unaware by design (matches the
+ * terminal path); the overlay's ROW comes from the host's wrap-aware
+ * visual-cursor, so only the column needs deriving here.
+ */
+export function inlineNoteBoxColumn(text: string, spanStart: number): number {
+  const s = Math.min(Math.max(0, spanStart), text.length);
+  const lineStart = text.lastIndexOf('\n', Math.max(0, s - 1)) + 1;
+  const lineText = text.slice(lineStart, s);
+  const col = codeUnitsToCells(lineText, lineText.length);
+  const prefix = INLINE_NOTE_CONNECTOR + ' ';
+  const prefixCells = codeUnitsToCells(prefix, prefix.length);
+  return Math.max(0, col - prefixCells);
+}
+
+/**
  * @param firstLineIndent Screen columns the host prepends to the buffer's
  *   FIRST line but NOT to continuation lines (e.g. Claude Code's `❯ ` input
  *   prompt). An inline note is always injected as a continuation line, so a

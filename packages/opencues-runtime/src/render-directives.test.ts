@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyDirectives } from './render-directives';
+import { applyDirectives, inlineNoteBoxColumn } from './render-directives';
 
 const INV_ON = '\x1b[97m';
 const INV_OFF = '\x1b[39m';
@@ -174,5 +174,35 @@ describe('applyDirectives — markdown ranges (Phase 1: terminals)', () => {
   it('omitted range fields: existing dim + highlight paths unaffected', () => {
     const out = applyDirectives('hello', {});
     expect(out).toBe('hello');
+  });
+});
+
+// The OpenTUI hosts (OpenCode / shell) can't splice a note line into the
+// textarea's own render, so they float an absolute overlay line at this
+// column. It must match the terminal splice's alignment: the MESSAGE lands
+// under the span column, the `↳ ` connector (2 cells) hanging to its left.
+describe('inlineNoteBoxColumn', () => {
+  it('span at column 0 → flush left (connector clamps, no negative pad)', () => {
+    expect(inlineNoteBoxColumn('attorney filed today', 0)).toBe(0);
+  });
+
+  it('mid-line ASCII span → span column minus the 2-cell connector', () => {
+    // "the " = 4 cells before the span; 4 - 2 (connector) = 2.
+    expect(inlineNoteBoxColumn('the attorney filed', 4)).toBe(2);
+  });
+
+  it('CJK prefix counted in visual cells, not code units', () => {
+    // "日本語" = 3 code units but 6 cells; 6 - 2 = 4 (not 3 - 2 = 1).
+    expect(inlineNoteBoxColumn('日本語x', 3)).toBe(4);
+  });
+
+  it('only the span line prefix counts (prior lines ignored)', () => {
+    // "line1\n" then "the cat"; span at 'cat' (offset 10). Line prefix
+    // "the " = 4 cells → 4 - 2 = 2, independent of line1's length.
+    expect(inlineNoteBoxColumn('line1\nthe cat', 10)).toBe(2);
+  });
+
+  it('out-of-range spanStart is clamped to the buffer length', () => {
+    expect(inlineNoteBoxColumn('hi', 999)).toBe(0);
   });
 });
