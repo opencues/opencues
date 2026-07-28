@@ -838,16 +838,31 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
   // the span, so this is the line just below it, wrap/scroll aware); COL =
   // the span column (shared inlineNoteBoxColumn, same alignment as the
   // terminal splice). Same `↳ <note>` text everywhere.
+  //
+  // OCCLUSION GUARD: the overlay FLOATS over the textarea — unlike Claude
+  // Code it can't push existing text down (OpenTUI has no display-line insert,
+  // and injecting a real newline would leak into the submitted prompt). So if
+  // the row the note would land on already holds buffer text, we hold the note
+  // back rather than paint over the user's text. It reveals whenever the row
+  // below is free — the normal typing position (caret on the last line).
   let noteAnchor: { text: string; row: number; col: number } | null = null
   const directiveSets = bootResult.collectRenderDirectives(text, cursor)
   for (const directives of directiveSets) {
     if (noteAnchor === null && directives.inlineNote && directives.inlineNote.text) {
       const vc: any = (textarea as any).visualCursor
-      const row = (vc && typeof vc.visualRow === "number" ? vc.visualRow : 0) + 1
-      noteAnchor = {
-        text: inlineNoteDisplayText(directives.inlineNote.text),
-        row,
-        col: inlineNoteBoxColumn(text, directives.inlineNote.spanStart),
+      const visualRow = vc && typeof vc.visualRow === "number" ? vc.visualRow : 0
+      const scrollY = typeof (textarea as any).scrollY === "number" ? (textarea as any).scrollY : 0
+      const totalVisual = typeof (textarea as any).virtualLineCount === "number" ? (textarea as any).virtualLineCount : 0
+      // Document-absolute row the note would occupy. Occupied ⟺ a real visual
+      // line already sits there (index < total). Free ⟺ at/below the last line.
+      const targetDocRow = scrollY + visualRow + 1
+      const rowBelowOccupied = totalVisual > 0 && targetDocRow < totalVisual
+      if (!rowBelowOccupied) {
+        noteAnchor = {
+          text: inlineNoteDisplayText(directives.inlineNote.text),
+          row: visualRow + 1,
+          col: inlineNoteBoxColumn(text, directives.inlineNote.spanStart),
+        }
       }
     }
     addRanges(directives.dimRanges, "d")

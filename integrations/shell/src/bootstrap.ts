@@ -616,17 +616,29 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
   // caret is in the span, so this is the line just below it, wrap/scroll
   // aware); COL = the span's column in cells (shared inlineNoteBoxColumn, the
   // same alignment the terminal splice uses). Same `↳ <note>` text everywhere.
+  //
+  // OCCLUSION GUARD: the overlay FLOATS — it can't push existing text down
+  // (OpenTUI has no display-line insert; injecting a real newline would leak
+  // into submitted text). So if the row the note would land on already holds
+  // buffer text, hold the note back rather than paint over it. It reveals
+  // whenever the row below is free — the normal typing position.
   let noteAnchor: InlineNoteAnchor | null = null;
   const directiveSets = bootResult.collectRenderDirectives(text, cursor);
   for (const directives of directiveSets) {
     if (noteAnchor === null && directives.inlineNote && directives.inlineNote.text) {
       const vc: any = (textarea as any).visualCursor;
-      const row = (vc && typeof vc.visualRow === 'number' ? vc.visualRow : 0) + 1;
-      noteAnchor = {
-        text: inlineNoteDisplayText(directives.inlineNote.text),
-        row,
-        col: inlineNoteBoxColumn(text, directives.inlineNote.spanStart),
-      };
+      const visualRow = vc && typeof vc.visualRow === 'number' ? vc.visualRow : 0;
+      const scrollY = typeof (textarea as any).scrollY === 'number' ? (textarea as any).scrollY : 0;
+      const totalVisual = typeof (textarea as any).virtualLineCount === 'number' ? (textarea as any).virtualLineCount : 0;
+      const targetDocRow = scrollY + visualRow + 1;
+      const rowBelowOccupied = totalVisual > 0 && targetDocRow < totalVisual;
+      if (!rowBelowOccupied) {
+        noteAnchor = {
+          text: inlineNoteDisplayText(directives.inlineNote.text),
+          row: visualRow + 1,
+          col: inlineNoteBoxColumn(text, directives.inlineNote.spanStart),
+        };
+      }
     }
     addRanges(directives.dimRanges, 'd');
     if (directives.highlight) {
