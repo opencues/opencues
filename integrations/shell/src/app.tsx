@@ -196,7 +196,21 @@ function App(props: AppOpts) {
     }
     // Forward to OpenCues first; only fall through to OpenTUI's own
     // textarea key handling if the runtime didn't consume it.
-    dispatchOpenCuesKey(evt);
+    //
+    // OpenTUI dispatches keypress to global listeners (this useKeyboard) BEFORE
+    // the focused textarea's own insert handler, and SKIPS that handler when a
+    // global listener called preventDefault() (InternalKeyHandler.emitWithPriority
+    // gates the renderable handlers on `!defaultPrevented`). So a consumed key
+    // MUST preventDefault, exactly like the OpenCode band does — otherwise the
+    // textarea ALSO inserts the character the runtime just handled. For `_`-cycle
+    // that stray insert pushes the caret one past the span end, so the NEXT `_`
+    // falls outside the cue span and inserts literally ("cycled then inserted /
+    // can't cycle twice"). The bridge harness can't see this — it calls
+    // bootResult.dispatchKey directly, never through this useKeyboard seam.
+    if (dispatchOpenCuesKey(evt)) {
+      evt.preventDefault?.();
+      evt.stopPropagation?.();
+    }
   });
 
   function finish(text: string, exitCode: number): void {

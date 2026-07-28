@@ -65,6 +65,25 @@ This is the OC LF-4 trap repeating — the OpenTUI primitive is identical betwee
 
 This is the same fix that landed in OC commit `9c09d9c` — the bootstrap source carries it forward.
 
+### LT-5. A consumed key MUST `evt.preventDefault()` or the focused textarea double-inserts it
+
+**File:** `integrations/shell/src/app.tsx` — the `useKeyboard` handler.
+
+**Symptom:** `_`-cycle inside a painted cue note "cycled then inserted my `_`" — the first `_` rotated the cue AND left a stray `_`, and the second `_` refused to cycle ("can't cycle twice"), instead inserting and killing the span. Normal `_`-blank fills (`translate _`) had the same latent stray-`_`-after-fill shape.
+
+**Why:** OpenTUI routes each keypress through `InternalKeyHandler.emitWithPriority` (core `index-*.js`): **global listeners fire first** (`renderer.keyInput.on("keypress", …)`, which is where `useKeyboard` registers), THEN the focused renderable's own insert handler — but *only if* `keyEvent.defaultPrevented` is still false (`if (keyEvent.defaultPrevented) return` gates the renderable set). `keyInput` and `_internalKeyInput` are the **same** `_keyHandler` instance, so a `preventDefault()` in `useKeyboard` crosses over and suppresses the textarea insert. The shell's handler called `dispatchOpenCuesKey(evt)` but **ignored its boolean return and never called `preventDefault`**, so the textarea inserted every character the runtime had already consumed. For `_`-cycle that stray insert pushes the caret one past `spanEnd`; `Cycling.stepUnderscore`'s gate (`cursor <= def.spanEnd`) then rejects the next `_`, which falls through and inserts literally.
+
+**Fix:** mirror the OpenCode band exactly —
+
+```tsx
+if (dispatchOpenCuesKey(evt)) {
+  evt.preventDefault?.();
+  evt.stopPropagation?.();
+}
+```
+
+**Why the harness can't catch it:** the event-bridge's `oc-inject key:` path calls `bootResult.dispatchKey` **directly**, never through app.tsx's `useKeyboard`, so the missing `preventDefault` seam is invisible to every headless test. The runtime's `cycling.test.ts` `_`-cycle suite uses `MockAdapter.fireKey`, which returns `consumed` with no textarea to double-insert — also green while the real app was broken. This is a structural gap: the useKeyboard→preventDefault contract lives only in app.tsx and only fires under real keystrokes. If you touch that handler, re-verify manually in a real `oc-shell` (restart it fully — `oc-edit --keep-alive` holds the old `dist/app.js`).
+
 ## Sketches we deliberately didn't ship — wait for the bug before adding
 
 - **Trace logging.** OC's bootstrap writes `/tmp/opencues-cursor-trace.log` per cursor touchpoint, gated on `OPENCUES_TRACE_CURSOR`. We dropped it from the terminal bootstrap because none of the cursor-jump bugs that motivated it have surfaced yet. Add it back the first time a cursor-jump bug bites here.

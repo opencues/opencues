@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — shell: a consumed key double-inserted into the textarea; `_`-cycle "cycled then inserted / can't cycle twice" (`@opencues/shell` 0.2.20 → 0.2.21)
+
+The shell's `useKeyboard` handler forwarded keys to `dispatchOpenCuesKey(evt)` but ignored its boolean return and never called `evt.preventDefault()`. OpenTUI runs global keypress listeners (this `useKeyboard`) BEFORE the focused textarea's own insert handler and skips that handler only when a global listener has called `preventDefault()` — so every key the runtime consumed was ALSO inserted by the textarea. For `_`-cycle inside a painted cue note, that stray `_` pushed the caret one past the span end, so `Cycling.stepUnderscore`'s `cursor <= spanEnd` gate rejected the next `_` and it inserted literally (killing the span). Fixed by mirroring the OpenCode band: `if (dispatchOpenCuesKey(evt)) { evt.preventDefault?.(); evt.stopPropagation?.(); }`. The bridge harness calls `bootResult.dispatchKey` directly, bypassing this seam, so no headless test saw it — documented as terminal REPAIR.md LT-5.
+
 ### Added — inline-cue note on Gemini CLI (`@opencues/runtime` 0.28.5 → 0.28.8, `@opencues/gemini-cli` 0.2.8 → 0.2.10)
 
 Gemini CLI (React/Ink) now gets the inline-cue note too. Its input renders each visual line as a **fixed-height (1-row) item** in a virtualized list, so a line can't grow to two rows (an embedded `\n` clips) — the note has to be its OWN list item. The `gemini/v0.41` adapter advertises `inline-note` and exposes `getInlineNote(text, cursor)`; the bootstrap's `getOpencuesInlineNote` formats it (`↳ …` + column), and the patched InputPrompt appends an `opencuesNote` item to `scrollableData` when a note is active. That grows the list height (`Math.min(viewportHeight, scrollableData.length)`) by one — a real extra row under the input, the same input-grows-by-one behaviour CC gets from the terminal. Cursor-gating is inherited from the runtime (the note only emits while the caret is in the span).

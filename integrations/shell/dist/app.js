@@ -685,17 +685,6 @@ function dispatchOpenCuesKey(evt) {
     cursorOffset: cursor
   };
   const consumed = bootResult.dispatchKey(e);
-  if (keyName === "_") {
-    try {
-      _termLog?.("debug", "underscoreDiag", {
-        consumed,
-        cursorIn: cursor,
-        textIn: JSON.stringify(text.slice(0, 50)),
-        rawAfter: JSON.stringify((_textareaRef?.plainText ?? "").slice(0, 50)),
-        cursorAfter: _textareaRef?.cursorOffset
-      });
-    } catch {}
-  }
   if (consumed) {
     triggerOpenCuesRender(stripInjection(_textareaRef?.plainText ?? text), stripCursor(_textareaRef?.cursorOffset ?? cursor));
   } else if (CURSOR_MOVING_KEYS.has(keyName)) {
@@ -1035,7 +1024,10 @@ function App(props) {
       } catch {}
       return;
     }
-    dispatchOpenCuesKey(evt);
+    if (dispatchOpenCuesKey(evt)) {
+      evt.preventDefault?.();
+      evt.stopPropagation?.();
+    }
   });
   function finish(text, exitCode) {
     if (props.keepAlive) {

@@ -617,16 +617,6 @@ export function dispatchOpenCuesKey(evt: any): boolean {
     cursorOffset: cursor,
   };
   const consumed = bootResult.dispatchKey(e);
-  if (keyName === '_') {
-    try {
-      _termLog?.('debug', 'underscoreDiag', {
-        consumed, cursorIn: cursor,
-        textIn: JSON.stringify(text.slice(0, 50)),
-        rawAfter: JSON.stringify((_textareaRef?.plainText ?? '').slice(0, 50)),
-        cursorAfter: _textareaRef?.cursorOffset,
-      });
-    } catch { /* swallow */ }
-  }
   if (consumed) {
     triggerOpenCuesRender(stripInjection(_textareaRef?.plainText ?? text), stripCursor(_textareaRef?.cursorOffset ?? cursor));
   } else if (CURSOR_MOVING_KEYS.has(keyName)) {
