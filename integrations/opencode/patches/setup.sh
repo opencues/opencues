@@ -389,7 +389,13 @@ if 'opencuesInlineNote' not in src:
     src = src.replace(
       '            <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} justifyContent="space-between">',
       '''            <Show when={opencuesInlineNote()}>
-              <box style={{ position: "absolute", top: opencuesInlineNote()!.row, left: opencuesInlineNote()!.col, zIndex: 50 }}>
+              {/* top/left are relative to THIS padded wrapper's edge, but
+                  { row, col } are in the textarea's own cell space. The
+                  wrapper's paddingTop={1} / paddingLeft={2} (above) offset
+                  the textarea, so add them back or the note lands one row
+                  too high (on the span's own line) and two cols too far
+                  left. */}
+              <box style={{ position: "absolute", top: opencuesInlineNote()!.row + 1, left: opencuesInlineNote()!.col + 2, zIndex: 50 }}>
                 <text fg={theme.textMuted}>{opencuesInlineNote()!.text}</text>
               </box>
             </Show>
