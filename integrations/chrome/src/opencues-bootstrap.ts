@@ -977,14 +977,26 @@ function readCursorOffset(): number {
         _cursorFallbackLoggedAt = now;
         const anchor = range.startContainer as Node & { getRootNode?: () => Node };
         const root = anchor.getRootNode ? anchor.getRootNode() : null;
+        const anchorEl = (anchor.nodeType === Node.TEXT_NODE ? anchor.parentElement : anchor) as HTMLElement | null;
+        // Identify the anchor: is the caret actually in a DIFFERENT editable we
+        // should have attached to? Capture its class/id, whether it's an
+        // ancestor/descendant of our target, its own contenteditable ancestor,
+        // and whether it lives under a SEPARATE .ql-editor.
+        const ceAncestor = anchorEl?.closest('[contenteditable="true"], [contenteditable=""]') as HTMLElement | null;
+        const otherQl = anchorEl?.closest('.ql-editor') as HTMLElement | null;
         log.debug('[chrome] cursorReadFallback', {
           anchorNode: (anchor as Node).nodeName,
+          anchorClass: (anchorEl?.className || '').slice(0, 60),
+          anchorId: (anchorEl?.id || '').slice(0, 40),
+          anchorContainsTarget: !!anchorEl && anchorEl.contains(target),
+          targetContainsAnchorEl: !!anchorEl && target.contains(anchorEl),
+          anchorCeClass: (ceAncestor?.className || '').slice(0, 60),
+          anchorCeIsTarget: ceAncestor === target,
+          anchorOtherQl: !!otherQl && otherQl !== target,
           anchorInShadow: typeof ShadowRoot !== 'undefined' && root instanceof ShadowRoot,
-          anchorInDoc: document.contains(anchor as Node),
           targetTag: target.tagName,
           targetClass: (target.className || '').slice(0, 60),
           quillReason: quillReason || null,
-          cached: _lastValidCursor.get(target) ?? null,
         });
       }
     } catch { /* diagnostic must never throw */ }
