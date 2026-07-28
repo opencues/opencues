@@ -206,3 +206,27 @@ describe('inlineNoteBoxColumn', () => {
     expect(inlineNoteBoxColumn('hi', 999)).toBe(0);
   });
 });
+
+// The gemini-cli host clips directives per visual line and calls
+// applyDirectives on the single line containing the span; the note must
+// splice in as a real extra line (`\n ↳ …`) so Ink renders a pushed-down
+// row. Same splice CC uses. Pins the mechanism gemini depends on.
+describe('applyDirectives — inlineNote splice (per-line, gemini/CC)', () => {
+  it('appends the note as a new line after a single-line span', () => {
+    const out = applyDirectives('the meeting is friday', {
+      dimRanges: [],
+      inlineNote: { spanStart: 0, spanEnd: 21, text: '⚠ the 19th is a Friday' },
+    });
+    // original line text is preserved verbatim at the front
+    expect(out.startsWith('the meeting is friday')).toBe(true);
+    // a real newline is introduced (the pushed-down row)
+    expect(out).toContain('\n');
+    // the connector + formatted advisory land on that new line
+    expect(out).toContain('↳');
+    expect(out).toContain('⚠ - the 19th is a Friday');
+  });
+
+  it('no inlineNote → line unchanged (no spurious newline)', () => {
+    expect(applyDirectives('plain line', { dimRanges: [] })).toBe('plain line');
+  });
+});

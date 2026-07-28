@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — inline-cue note on Gemini CLI (`@opencues/runtime` 0.28.5 → 0.28.6, `@opencues/gemini-cli` 0.2.8 → 0.2.9)
+
+Gemini CLI (React/Ink) now gets the inline-cue note too. Unlike the OpenTUI hosts, Ink renders each decorated line as a single `<Text>` that respects an embedded `\n` — so the note splices in as a real extra row that pushes the lines below it down, using the **same `applyDirectives` path as Claude Code**. The `gemini/v0.41` adapter advertises `inline-note`, and `decorateLine` now passes a line-clipped `inlineNote` (shifted to line-relative offsets) into `applyDirectives` for the visual line containing the span's start. Cursor-gating is inherited from the runtime (the note only emits while the caret is in the span). Pinned by 2 new `applyDirectives` inlineNote-splice tests.
+
 ### Added — inline-cue notes + `_`-cycle on OpenCode / shell (`@opencues/runtime` 0.28.3 → 0.28.5, `@opencues/opencode` 0.2.8 → 0.2.12, `@opencues/shell` 0.2.7 → 0.2.10)
 
 Brings the inline-cue UX (already live on terminal/CC + chrome) to the OpenTUI hosts. The `oc/v1.14` and `shell/v1` adapters now advertise the `inline-note` capability, so note-bearing spans (sentence-cues, contradiction-cues, and history-bearing transform/fluid blanks) get their advisory painted and `_`-cycle lights up.

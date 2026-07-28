@@ -591,6 +591,12 @@ export function boot(host: HostInfo): BootResult {
       // they can't share a single bucket. Clip independently and
       // hand the full list to applyDirectives.
       const colored: Array<{ start: number; end: number; ansi?: string; rgb?: string }> = [];
+      // Inline note for THIS line: applyDirectives appends `\n<pad>↳ note`
+      // after the line's text, and the InputPrompt patch renders the whole
+      // decorated line as one <Text>, so the embedded `\n` becomes a real
+      // extra row that pushes the lines below down. Only the line CONTAINING
+      // the span's start gets it; span offsets are shifted line-relative.
+      let noteForLine: { spanStart: number; spanEnd: number; text: string } | undefined;
       const clip = (ranges: readonly { start: number; end: number }[] | undefined, dest: { start: number; end: number }[]): void => {
         if (!ranges) return;
         for (const r of ranges) {
@@ -623,7 +629,16 @@ export function boot(host: HostInfo): BootResult {
             if (s < e) colored.push({ start: s - lineStart, end: e - lineStart, ansi: r.ansi, rgb: r.rgb });
           }
         }
+        if (!noteForLine && d.inlineNote && d.inlineNote.text
+          && d.inlineNote.spanStart >= lineStart && d.inlineNote.spanStart < lineEnd) {
+          noteForLine = {
+            spanStart: d.inlineNote.spanStart - lineStart,
+            spanEnd: Math.min(d.inlineNote.spanEnd, lineEnd) - lineStart,
+            text: d.inlineNote.text,
+          };
+        }
       }
+      if (noteForLine) clipped.inlineNote = noteForLine;
       clipped.dimRanges = dim;
       clipped.boldRanges = bold;
       clipped.italicRanges = italic;
@@ -639,7 +654,8 @@ export function boot(host: HostInfo): BootResult {
       if (
         dim.length === 0 && bold.length === 0 && italic.length === 0 &&
         code.length === 0 && strike.length === 0 && heading.length === 0 &&
-        list.length === 0 && colored.length === 0 && !clipped.highlight
+        list.length === 0 && colored.length === 0 && !clipped.highlight &&
+        !noteForLine
       ) return lineText;
 
       return applyDirectives(lineText, clipped);
