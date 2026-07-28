@@ -935,24 +935,30 @@ function readCursorOffset(): number {
     // Quill's index counts each char incl. `\n`, matching walkPlainText's plain
     // offset for prose. This is what lets the cursor-gated inline note track the
     // caret on LinkedIn Posts instead of reading a stale offset.
+    let quillReason = '';
     if (isQuillEditor(target)) {
       try {
         const q = findQuillInstance(target);
-        const qs = q?.getSelection?.();
-        if (qs && typeof qs.index === 'number' && qs.index >= 0) {
-          _lastValidCursor.set(target, qs.index);
-          const now = Date.now();
-          if (now - _cursorFallbackLoggedAt > 1000) {
-            _cursorFallbackLoggedAt = now;
-            log.debug('[chrome] cursorQuillNative', { index: qs.index });
+        if (!q) quillReason = 'no-instance';
+        else if (typeof q.getSelection !== 'function') quillReason = 'no-getSelection';
+        else {
+          const qs = q.getSelection();
+          if (qs && typeof qs.index === 'number' && qs.index >= 0) {
+            _lastValidCursor.set(target, qs.index);
+            const now = Date.now();
+            if (now - _cursorFallbackLoggedAt > 1000) {
+              _cursorFallbackLoggedAt = now;
+              log.debug('[chrome] cursorQuillNative', { index: qs.index });
+            }
+            return qs.index;
           }
-          return qs.index;
+          quillReason = 'qs-null';
         }
-      } catch { /* fall through to the cache */ }
+      } catch (e) { quillReason = 'threw:' + String((e as Error)?.message ?? e).slice(0, 40); }
     }
     // Still can't map the caret → fall back to the cache/0 (which makes
     // cursor-gated features mis-fire). Diagnose WHY: shadow DOM? a wrong attach
-    // target? Throttled so the hot path isn't spammed.
+    // target? Quill instance unreachable? Throttled so the hot path isn't spammed.
     try {
       const now = Date.now();
       if (now - _cursorFallbackLoggedAt > 1000) {
@@ -965,6 +971,7 @@ function readCursorOffset(): number {
           anchorInDoc: document.contains(anchor as Node),
           targetTag: target.tagName,
           targetClass: (target.className || '').slice(0, 60),
+          quillReason: quillReason || null,
           cached: _lastValidCursor.get(target) ?? null,
         });
       }
