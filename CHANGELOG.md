@@ -7,14 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added — inline-cue notes + `_`-cycle on OpenCode / shell (`@opencues/runtime` 0.28.3 → 0.28.5, `@opencues/opencode` 0.2.8 → 0.2.9, `@opencues/shell` 0.2.7 → 0.2.8)
+### Added — inline-cue notes + `_`-cycle on OpenCode / shell (`@opencues/runtime` 0.28.3 → 0.28.5, `@opencues/opencode` 0.2.8 → 0.2.12, `@opencues/shell` 0.2.7 → 0.2.10)
 
 Brings the inline-cue UX (already live on terminal/CC + chrome) to the OpenTUI hosts. The `oc/v1.14` and `shell/v1` adapters now advertise the `inline-note` capability, so note-bearing spans (sentence-cues, contradiction-cues, and history-bearing transform/fluid blanks) get their advisory painted and `_`-cycle lights up.
 
 The note renders as a **line directly under the flagged span** — the same result Claude Code produces by splicing a continuation line, revealed when the caret enters the span. OpenTUI can't splice a line into the textarea's own render (extmarks only re-style existing buffer content), but it *does* support absolute-positioned boxes, so each host floats an overlay line over the input at the span's `{ row, col }`: `row` = the caret's viewport-relative visual row + 1 (the runtime emits the note cursor-gated, so the caret is always in the span), `col` = the span's column in cells via the new shared `inlineNoteBoxColumn` helper — the exact alignment the terminal splice uses, connector-hung and CJK-cell-aware. Same `↳ <note>` text (`inlineNoteDisplayText`) every host paints.
 
-- OpenCode: patched `prompt/index.tsx` floats the overlay as a sibling of the textarea, driven by a new `opencuesInlineNote` signal set in `triggerOpenCuesRender`.
+- OpenCode: patched `prompt/index.tsx` floats the overlay as a sibling of the textarea, driven by a new `opencuesInlineNote` signal set in `triggerOpenCuesRender`. The overlay `top`/`left` add back the prompt wrapper's `paddingTop={1}`/`paddingLeft={2}` (absolute coords are wrapper-relative, `{row,col}` are textarea-relative).
 - Shell: a new `onInlineNoteChange` boot callback feeds a `note` signal rendered as an absolute overlay in `app.tsx`'s keep-alive layout.
+
+Two OpenTUI-specific behaviours the floating overlay required:
+
+- **Clears on vertical caret moves.** OpenTUI's `onCursorChange` fires on horizontal moves only, so `dispatchOpenCuesKey` — which re-rendered only on *consumed* keys — never re-evaluated the cursor gate on an unconsumed up/down, leaving the note (and auto-select highlight) on the line you left. Fixed by deferring a re-render one macrotask after any non-consumed cursor-moving key (`up`/`down`/`left`/`right`/`home`/`end`/`pageup`/`pagedown`) so it settles against the new caret.
+- **Never covers existing text (occlusion guard).** The overlay floats — it can't push text down like CC (OpenTUI has no display-line insert, and injecting a real newline would leak into the submitted prompt). So when the row the note would land on already holds buffer text (`scrollY + visualRow + 1 < virtualLineCount`), the note is held back; it reveals whenever the row below is free (the normal typing position). Verified live on headless OpenCode across single-line, occupied-row, last-line, and cursor-exit cases.
 
 Pinned by 5 `inlineNoteBoxColumn` unit tests (column-0 clamp, mid-line ASCII, CJK cells, multi-line line-prefix scoping, out-of-range clamp).
 
