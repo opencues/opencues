@@ -331,7 +331,13 @@ function insertMarginPush(target: HTMLElement, range: Range, heightPx: number): 
   clearPushDown();
   const px = Math.max(1, Math.round(heightPx));
   const block = blockAncestorWithin(range.endContainer, target);
-  if (block && block !== target && block.parentNode) {
+  // Only the block-margin path when there's a following sibling to PUSH: a
+  // bottom margin on the LAST child is swallowed (doesn't grow the parent's
+  // box), so it opens no visible row. When the caret's line is the last/only
+  // block — the usual case in a compose box you're actively typing in — grow
+  // the editor ROOT via padding-bottom instead, which reliably opens space and
+  // whose inline style PM is less apt to revert than a child node's.
+  if (block && block !== target && block.parentNode && block.nextElementSibling) {
     _nudgedBlock = block;
     _nudgedProp = 'marginBottom';
     _nudgedPrevValue = block.style.marginBottom; // '' if none — restored verbatim
@@ -339,11 +345,15 @@ function insertMarginPush(target: HTMLElement, range: Range, heightPx: number): 
     try { block.style.marginBottom = `${px}px`; return true; }
     catch { _nudgedBlock = null; _nudgedProp = null; return false; }
   }
-  // No per-line sub-block — grow the editor root itself.
+  // Last/only line, or no per-line sub-block — grow the editor root itself.
   _nudgedBlock = target;
   _nudgedProp = 'paddingBottom';
   _nudgedPrevValue = target.style.paddingBottom;
-  _pushDiag = { path: 'root-padding', tag: target.tagName, px, blockWasTarget: block === target, blockNull: !block };
+  _pushDiag = {
+    path: 'root-padding', tag: target.tagName, px,
+    blockTag: block ? block.tagName : null, blockWasTarget: block === target,
+    hadNextSibling: !!(block && block.nextElementSibling),
+  };
   try { target.style.paddingBottom = `${px}px`; return true; }
   catch { _nudgedBlock = null; _nudgedProp = null; return false; }
 }

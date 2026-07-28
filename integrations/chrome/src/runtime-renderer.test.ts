@@ -269,6 +269,22 @@ describe('runtime-renderer inline-note push-down spacer', () => {
     expect(p2.style.marginBottom).toBe('');
   });
 
+  it('Margin mode — single <p> with NO following sibling (claude.ai one-line shape): grows the EDITOR via padding, not the swallowed last-child margin', () => {
+    const target = document.createElement('div');
+    target.className = 'ProseMirror';
+    target.setAttribute('contenteditable', 'true');
+    target.innerHTML = '<p>thanks a bunch buddy</p>'; // sole paragraph, no sibling
+    document.body.appendChild(target);
+
+    applyDirectives(target, [{ inlineNote: NOTE }], 'margin');
+
+    const p = target.firstElementChild as HTMLElement;
+    // A bottom margin on the last child is swallowed → don't use it.
+    expect(p.style.marginBottom).toBe('');
+    // Editor root grew instead.
+    expect(target.style.paddingBottom).not.toBe('');
+  });
+
   it('Margin mode — no per-line sub-block (single paragraph = text in root): grows the EDITOR via padding-bottom', () => {
     // ProseMirror single-paragraph shape where the caret line has no block
     // ancestor distinct from the editor root — grow the root itself so a row
