@@ -755,6 +755,7 @@ type QuillInstance = {
   setText: (text: string, source?: string) => unknown;
   setContents?: (delta: unknown, source?: string) => unknown;
   getLength?: () => number;
+  getSelection?: (focus?: boolean) => { index: number; length: number } | null;
   root?: HTMLElement;
   clipboard?: { dangerouslyPasteHTML?: (html: string, source?: string) => unknown };
 };
@@ -927,10 +928,31 @@ function readCursorOffset(): number {
       _lastValidCursor.set(target, offset);
       return offset;
     }
-    // Selection landed OUTSIDE our target — we can't map the caret, so we fall
-    // back to the cache/0 (which makes cursor-gated features mis-fire, e.g. the
-    // inline note showing regardless of caret on LinkedIn Posts). Diagnose WHY:
-    // shadow DOM? a wrong attach target? Throttled so the hot path isn't spammed.
+    // Selection landed OUTSIDE our target. For Quill (LinkedIn's private bundle
+    // parks window.getSelection() outside .ql-editor between events) read
+    // Quill's OWN selection model — authoritative and real-time, unlike the
+    // lagging cache the browser-selection fallback would otherwise return.
+    // Quill's index counts each char incl. `\n`, matching walkPlainText's plain
+    // offset for prose. This is what lets the cursor-gated inline note track the
+    // caret on LinkedIn Posts instead of reading a stale offset.
+    if (isQuillEditor(target)) {
+      try {
+        const q = findQuillInstance(target);
+        const qs = q?.getSelection?.();
+        if (qs && typeof qs.index === 'number' && qs.index >= 0) {
+          _lastValidCursor.set(target, qs.index);
+          const now = Date.now();
+          if (now - _cursorFallbackLoggedAt > 1000) {
+            _cursorFallbackLoggedAt = now;
+            log.debug('[chrome] cursorQuillNative', { index: qs.index });
+          }
+          return qs.index;
+        }
+      } catch { /* fall through to the cache */ }
+    }
+    // Still can't map the caret → fall back to the cache/0 (which makes
+    // cursor-gated features mis-fire). Diagnose WHY: shadow DOM? a wrong attach
+    // target? Throttled so the hot path isn't spammed.
     try {
       const now = Date.now();
       if (now - _cursorFallbackLoggedAt > 1000) {
