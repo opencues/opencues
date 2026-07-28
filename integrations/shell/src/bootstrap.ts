@@ -325,6 +325,27 @@ function syncNoteInjection(noteActive: boolean, spanEnd: number): void {
   }
 }
 
+/** Pull the display-only injection OUT of the buffer (restoring the clean text +
+ *  caret). Called before any key is handled so edits, `_`-cycle writes, and the
+ *  textarea's own insertion all operate on the REAL buffer — never colliding
+ *  with the injected `\n`+NBSP. The next render re-adds it via syncNoteInjection. */
+function removeInjection(): void {
+  const ta = _textareaForInject;
+  if (!ta) return;
+  const raw = ta.plainText;
+  const clean = stripInjection(raw);
+  if (clean === raw) return; // nothing injected
+  const cleanCursor = stripCursor(ta.cursorOffset);
+  _syncingInjection = true;
+  try {
+    ta.setText(clean);
+    ta.cursorOffset = cleanCursor;
+    ownedExtmarks = new Map();
+  } finally {
+    _syncingInjection = false;
+  }
+}
+
 /** The clean (injection-free) buffer text — for the submit/paste path. */
 export function getCleanBufferText(raw: string): string {
   return stripInjection(raw);
@@ -571,10 +592,13 @@ export function startOpenCues(opts: TerminalBootOpts): BootResult {
 
 export function dispatchOpenCuesKey(evt: any): boolean {
   if (!bootResult) return false;
-  // Clean view — strip the display-only injected note-line so the runtime's
-  // key handling sees the real buffer + caret.
-  const text = stripInjection(_textareaRef?.plainText ?? '');
-  const cursor = stripCursor(_textareaRef?.cursorOffset ?? 0);
+  // Pull the display-only injection OUT before handling the key, so the key
+  // (a `_`-cycle, a character insert, backspace, …) and the textarea's own
+  // edit land on the REAL buffer at the REAL caret — never colliding with the
+  // injected `\n`+NBSP. The render right after re-adds it if a note still shows.
+  removeInjection();
+  const text = _textareaRef?.plainText ?? '';
+  const cursor = _textareaRef?.cursorOffset ?? 0;
   const keyName = normaliseKeyName(evt);
   // OpenTUI-shape → runtime Modifiers + Mac double-ESC Ctrl synth, all
   // pinned in `@opencues/runtime/src/modules/mac-keyboard.test.ts`.

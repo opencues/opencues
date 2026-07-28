@@ -405,6 +405,24 @@ function syncNoteInjection(noteActive, spanEnd) {
     _syncingInjection = false;
   }
 }
+function removeInjection() {
+  const ta = _textareaForInject;
+  if (!ta)
+    return;
+  const raw = ta.plainText;
+  const clean = stripInjection(raw);
+  if (clean === raw)
+    return;
+  const cleanCursor = stripCursor(ta.cursorOffset);
+  _syncingInjection = true;
+  try {
+    ta.setText(clean);
+    ta.cursorOffset = cleanCursor;
+    ownedExtmarks = new Map;
+  } finally {
+    _syncingInjection = false;
+  }
+}
 function getCleanBufferText(raw) {
   return stripInjection(raw);
 }
@@ -648,8 +666,9 @@ function startOpenCues(opts) {
 function dispatchOpenCuesKey(evt) {
   if (!bootResult)
     return false;
-  const text = stripInjection(_textareaRef?.plainText ?? "");
-  const cursor = stripCursor(_textareaRef?.cursorOffset ?? 0);
+  removeInjection();
+  const text = _textareaRef?.plainText ?? "";
+  const cursor = _textareaRef?.cursorOffset ?? 0;
   const keyName = normaliseKeyName(evt);
   const e = {
     key: keyName,
