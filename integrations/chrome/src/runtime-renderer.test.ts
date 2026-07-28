@@ -269,6 +269,25 @@ describe('runtime-renderer inline-note push-down spacer', () => {
     expect(p2.style.marginBottom).toBe('');
   });
 
+  it('Margin mode — no per-line sub-block (single paragraph = text in root): grows the EDITOR via padding-bottom', () => {
+    // ProseMirror single-paragraph shape where the caret line has no block
+    // ancestor distinct from the editor root — grow the root itself so a row
+    // opens below the (only / last) line.
+    const target = document.createElement('div');
+    target.className = 'ProseMirror';
+    target.setAttribute('contenteditable', 'true');
+    target.appendChild(document.createTextNode('thanks a bunch buddy')); // direct text, no <p>
+    document.body.appendChild(target);
+
+    applyDirectives(target, [{ inlineNote: NOTE }], 'margin');
+
+    expect(document.querySelector('[data-oc-note-spacer]')).toBeNull();
+    expect(target.style.paddingBottom).not.toBe(''); // editor grew
+    // Clearing restores it.
+    applyDirectives(target, [{}], 'margin');
+    expect(target.style.paddingBottom).toBe('');
+  });
+
   it('Margin mode — clearing the note restores the block\'s prior margin exactly', () => {
     const target = document.createElement('div');
     target.className = 'ProseMirror';

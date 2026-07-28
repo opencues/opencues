@@ -30,7 +30,7 @@ import { parseSingleCueMd, listProviders, buildCalendarContextSnapshot } from '@
 import { ChromeUserBlank } from './user-blank-loader';
 import { createBlankInvoke } from '@opencues/runtime/dist/src/blanks';
 import { wordDiff } from '@opencues/runtime/dist/src/modules/word-diff';
-import { applyDirectives, clearDirectives, clearInlineNote } from './runtime-renderer';
+import { applyDirectives, clearDirectives, clearInlineNote, consumePushDiag } from './runtime-renderer';
 import { applyStatuslinePayload } from './runtime-statusbar';
 import { WebSpeechAdapter } from './adapters/web-speech-adapter';
 import { FetchHttpAdapter } from './adapters/fetch-http-adapter';
@@ -3266,6 +3266,8 @@ function runtimeRender(): void {
   // send button, so there we nudge the containing block's bottom MARGIN via
   // inline style instead (layout only — can't ship, no undo entry).
   applyDirectives(target, directives, isManagedEditor(target) ? 'margin' : 'node');
+  const pushDiag = consumePushDiag();
+  if (pushDiag) log.debug('[chrome] marginPush', pushDiag);
 }
 
 /**

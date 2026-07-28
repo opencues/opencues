@@ -223,20 +223,30 @@ export type PushMode = 'node' | 'margin' | 'none';
 
 const NOTE_SPACER_ATTR = 'data-oc-note-spacer';
 let _noteSpacer: HTMLElement | null = null;
-// Margin-mode bookkeeping: the block we nudged + its prior inline margin-bottom,
-// so clear restores it EXACTLY (empty string if it had none).
+// Margin-mode bookkeeping: the element we nudged, WHICH style property, and its
+// prior inline value — so clear restores it EXACTLY (empty string if it had none).
 let _nudgedBlock: HTMLElement | null = null;
-let _nudgedPrevMargin = '';
+let _nudgedProp: 'marginBottom' | 'paddingBottom' | null = null;
+let _nudgedPrevValue = '';
 
-/** Undo any push-down currently in effect (node spacer OR margin nudge). */
+// Diagnostic for the margin path — the caller (bootstrap) logs it under
+// debug-mode so we can see, on a real managed editor, whether a per-line block
+// was found and whether the nudge held. Cleared on read.
+let _pushDiag: Record<string, unknown> | null = null;
+export function consumePushDiag(): Record<string, unknown> | null {
+  const d = _pushDiag; _pushDiag = null; return d;
+}
+
+/** Undo any push-down currently in effect (node spacer OR margin/padding nudge). */
 function clearPushDown(): void {
   if (_noteSpacer) { try { _noteSpacer.remove(); } catch { /* detached */ } }
   _noteSpacer = null;
-  if (_nudgedBlock) {
-    try { _nudgedBlock.style.marginBottom = _nudgedPrevMargin; } catch { /* detached */ }
+  if (_nudgedBlock && _nudgedProp) {
+    try { _nudgedBlock.style[_nudgedProp] = _nudgedPrevValue; } catch { /* detached */ }
   }
   _nudgedBlock = null;
-  _nudgedPrevMargin = '';
+  _nudgedProp = null;
+  _nudgedPrevValue = '';
 }
 
 /** Nearest block-level ancestor of `node` within `root` (the line's block). */
@@ -305,21 +315,37 @@ function insertNoteSpacer(target: HTMLElement, range: Range, heightPx: number): 
   } catch { return false; }
 }
 
-/** Managed-editor push-down: nudge the span's containing block's bottom margin
- *  so the next block moves DOWN, leaving a gap for the note. Inline STYLE only —
- *  no document content (can't ship, walkPlainText ignores styles) and no editor
- *  transaction (no undo entry). If the editor reverts the style it just doesn't
- *  hold; the note then floats. Returns true if a block was nudged. */
+/** Managed-editor push-down: open a row below the caret's line via inline STYLE
+ *  only — no document content (can't ship, walkPlainText ignores styles) and no
+ *  editor transaction (no undo entry). If the editor reverts the style it just
+ *  doesn't hold and the note floats — never unsafe.
+ *
+ *  Two paths: (1) when the caret's line has its OWN block ancestor inside the
+ *  editor, nudge THAT block's `margin-bottom` so everything after it moves down
+ *  (correct mid-buffer). (2) When the line has no sub-block — text sits directly
+ *  in the editor root, or the block IS the root (common on single-paragraph
+ *  ProseMirror) — grow the EDITOR itself via `padding-bottom` so a row opens
+ *  below the (single / last) line. Nudging the root's own style is also less
+ *  likely to be reverted than a child node's. */
 function insertMarginPush(target: HTMLElement, range: Range, heightPx: number): boolean {
   clearPushDown();
+  const px = Math.max(1, Math.round(heightPx));
   const block = blockAncestorWithin(range.endContainer, target);
-  if (!block || block === target || !block.parentNode) return false;
-  _nudgedBlock = block;
-  _nudgedPrevMargin = block.style.marginBottom; // '' if none — restored verbatim
-  try {
-    block.style.marginBottom = `${Math.max(1, Math.round(heightPx))}px`;
-    return true;
-  } catch { _nudgedBlock = null; return false; }
+  if (block && block !== target && block.parentNode) {
+    _nudgedBlock = block;
+    _nudgedProp = 'marginBottom';
+    _nudgedPrevValue = block.style.marginBottom; // '' if none — restored verbatim
+    _pushDiag = { path: 'block-margin', tag: block.tagName, px };
+    try { block.style.marginBottom = `${px}px`; return true; }
+    catch { _nudgedBlock = null; _nudgedProp = null; return false; }
+  }
+  // No per-line sub-block — grow the editor root itself.
+  _nudgedBlock = target;
+  _nudgedProp = 'paddingBottom';
+  _nudgedPrevValue = target.style.paddingBottom;
+  _pushDiag = { path: 'root-padding', tag: target.tagName, px, blockWasTarget: block === target, blockNull: !block };
+  try { target.style.paddingBottom = `${px}px`; return true; }
+  catch { _nudgedBlock = null; _nudgedProp = null; return false; }
 }
 
 function renderInlineNote(
