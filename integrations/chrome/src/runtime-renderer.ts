@@ -64,7 +64,7 @@ function plainOffsetsToDomRanges(target: HTMLElement, offsets: PlainRange[]): Ra
  * over a typical chat-input subtree), so always-rebuild is the right
  * trade.
  */
-export function applyDirectives(target: HTMLElement, directives: RenderDirectives[]): void {
+export function applyDirectives(target: HTMLElement, directives: RenderDirectives[], canPushDown = false): void {
   if (!hasHighlightAPI) return;
 
   const dimOffsets: PlainRange[] = [];
@@ -109,7 +109,7 @@ export function applyDirectives(target: HTMLElement, directives: RenderDirective
   // cursor-gating are identical to the terminal.
   let note: RenderDirectives['inlineNote'] | undefined;
   for (const d of directives) { if (d.inlineNote) { note = d.inlineNote; break; } }
-  if (note && note.text) renderInlineNote(target, note);
+  if (note && note.text) renderInlineNote(target, note, canPushDown);
   else clearInlineNote();
 
   // Per-colour loading highlights. Each unique colour gets a Highlight
@@ -198,9 +198,56 @@ function ensureNoteEl(): HTMLDivElement {
   return el;
 }
 
+// ── Push-down spacer (plain contenteditables only) ───────────────────────
+// On a plain contenteditable we insert an EMPTY, non-editable block right
+// after the span's line so the content below moves DOWN by a row — the note
+// overlay then sits in the freed gap instead of floating over the next line
+// (no occlusion, CC-style). The spacer carries no text, so it never reaches
+// what the user submits; walkPlainText skips it by its data attribute so it
+// can't shift buffer offsets. Managed editors (Lexical/PM/Quill) would revert
+// an external node and textareas have no per-line elements — for those we skip
+// the spacer and the note floats as before (caller passes canPushDown=false).
+const NOTE_SPACER_ATTR = 'data-oc-note-spacer';
+let _noteSpacer: HTMLElement | null = null;
+
+function clearNoteSpacer(): void {
+  if (_noteSpacer) { try { _noteSpacer.remove(); } catch { /* detached */ } }
+  _noteSpacer = null;
+}
+
+/** Nearest block-level ancestor of `node` within `root` (the line's block). */
+function blockAncestorWithin(node: Node, root: HTMLElement): HTMLElement | null {
+  let el: HTMLElement | null = node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as HTMLElement);
+  while (el && el !== root) {
+    try {
+      const disp = getComputedStyle(el).display;
+      if (disp === 'block' || disp === 'flex' || disp === 'list-item' || el.tagName === 'DIV' || el.tagName === 'P') return el;
+    } catch { /* ignore */ }
+    el = el.parentElement;
+  }
+  return null;
+}
+
+function insertNoteSpacer(target: HTMLElement, range: Range, heightPx: number): boolean {
+  clearNoteSpacer();
+  const block = blockAncestorWithin(range.endContainer, target);
+  if (!block || !block.parentNode) return false;
+  const spacer = document.createElement('div');
+  spacer.setAttribute(NOTE_SPACER_ATTR, '1');
+  spacer.setAttribute('contenteditable', 'false');
+  spacer.setAttribute('aria-hidden', 'true');
+  spacer.style.cssText =
+    `height:${Math.max(1, Math.round(heightPx))}px;margin:0;padding:0;border:0;` +
+    'user-select:none;pointer-events:none;background:transparent;';
+  try { block.after(spacer); } catch { return false; }
+  _noteSpacer = spacer;
+  return true;
+}
+
 function renderInlineNote(
   target: HTMLElement,
   note: { spanStart: number; spanEnd: number; text: string },
+  canPushDown: boolean,
 ): void {
   const ranges = plainOffsetsToDomRanges(target, [{ start: note.spanStart, end: note.spanEnd }]);
   if (ranges.length === 0) { clearInlineNote(); return; }
@@ -211,12 +258,22 @@ function renderInlineNote(
   const el = ensureNoteEl();
   el.textContent = inlineNoteDisplayText(note.text);
   // Inherit the field's typography so the note reads as part of the text line.
+  let lineHeightPx = rect.height;
   try {
     const cs = getComputedStyle(target);
     el.style.fontFamily = cs.fontFamily;
     el.style.fontSize = cs.fontSize;
     el.style.lineHeight = cs.lineHeight;
+    const lh = parseFloat(cs.lineHeight);
+    if (!Number.isNaN(lh) && lh > 0) lineHeightPx = lh;
   } catch { /* computed style unavailable — keep defaults */ }
+  // Plain contenteditable → reserve a real row so content moves down, then
+  // re-read the span rect (layout shifted) and drop the note in the gap.
+  if (canPushDown && insertNoteSpacer(target, range, lineHeightPx)) {
+    try { rect = range.getBoundingClientRect(); } catch { /* keep prior rect */ }
+  } else {
+    clearNoteSpacer();
+  }
   el.style.left = `${Math.round(rect.left)}px`;
   el.style.top = `${Math.round(rect.bottom)}px`;
   el.style.display = 'block';
@@ -229,6 +286,7 @@ function renderInlineNote(
 export function clearInlineNote(): void {
   if (_noteEl) _noteEl.style.display = 'none';
   _noteRange = null;
+  clearNoteSpacer();
 }
 
 /** Tear down the runtime's highlights — called on detach/dispose. */

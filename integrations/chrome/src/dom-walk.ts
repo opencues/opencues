@@ -82,6 +82,12 @@ export function walkPlainText(root: HTMLElement): WalkResult {
     }
     if (node.nodeType !== Node.ELEMENT_NODE) return;
     const el = node as Element;
+    // OpenCues' inline-note spacer (a non-editable, empty push-down row we
+    // insert on plain contenteditables) must be INVISIBLE to the plain-text
+    // view — otherwise its block boundary would inject a spurious `\n` and
+    // shift every offset after it. It carries no text, so skipping it whole
+    // is safe and correct.
+    if (el.hasAttribute('data-oc-note-spacer')) return;
     if (el.tagName === 'BR') {
       text += '\n';
       return;

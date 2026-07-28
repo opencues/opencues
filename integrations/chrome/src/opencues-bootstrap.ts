@@ -3260,7 +3260,10 @@ function runtimeRender(): void {
   const text = walkPlainText(target).text;
   const cursor = readCursorOffset();
   const directives = bootResult.collectRenderDirectives(text, cursor);
-  applyDirectives(target, directives);
+  // Plain (non-managed) contenteditables can host a real push-down spacer for
+  // the inline note (content moves down, no occlusion). Managed editors
+  // (Lexical/PM/Quill) revert external nodes, so the note floats there.
+  applyDirectives(target, directives, !isManagedEditor(target));
 }
 
 /**
