@@ -355,6 +355,59 @@ var bootResult;
 var _onInlineNoteChange;
 var _termLog;
 var _termLastNoteText = null;
+var INJ_MARK = "\u200B";
+var _syncingInjection = false;
+var _textareaForInject = null;
+function injMarkIndex(raw) {
+  const i = raw.indexOf(INJ_MARK);
+  return i > 0 && raw[i - 1] === `
+` ? i : -1;
+}
+function stripInjection(raw) {
+  const i = injMarkIndex(raw);
+  return i === -1 ? raw : raw.slice(0, i - 1) + raw.slice(i + 1);
+}
+function stripCursor(rawCursor) {
+  const raw = _textareaForInject?.plainText ?? "";
+  const i = injMarkIndex(raw);
+  if (i === -1)
+    return rawCursor;
+  if (rawCursor <= i - 1)
+    return rawCursor;
+  if (rawCursor >= i + 1)
+    return rawCursor - 2;
+  return i - 1;
+}
+function syncNoteInjection(noteActive, spanEnd) {
+  const ta = _textareaForInject;
+  if (!ta)
+    return;
+  const raw = ta.plainText;
+  const clean = stripInjection(raw);
+  let desired = null;
+  if (noteActive) {
+    const s = Math.max(0, Math.min(spanEnd, clean.length));
+    const nl = clean.indexOf(`
+`, s);
+    desired = nl === -1 ? clean.length : nl;
+  }
+  const newRaw = desired === null ? clean : clean.slice(0, desired) + `
+` + INJ_MARK + clean.slice(desired);
+  if (newRaw === raw)
+    return;
+  const cleanCursor = stripCursor(ta.cursorOffset);
+  _syncingInjection = true;
+  try {
+    ta.setText(newRaw);
+    ta.cursorOffset = desired !== null && cleanCursor > desired ? cleanCursor + 2 : cleanCursor;
+    ownedExtmarks = new Map;
+  } finally {
+    _syncingInjection = false;
+  }
+}
+function getCleanBufferText(raw) {
+  return stripInjection(raw);
+}
 function startOpenCues(opts) {
   if (bootResult)
     return bootResult;
@@ -379,8 +432,9 @@ function startOpenCues(opts) {
     } catch {}
   };
   _termLog = log;
-  const getText = () => opts.textarea.plainText;
-  const getCursor = () => opts.textarea.cursorOffset;
+  _textareaForInject = opts.textarea;
+  const getText = () => stripInjection(opts.textarea.plainText);
+  const getCursor = () => stripCursor(opts.textarea.cursorOffset);
   bootResult = boot({
     hostVersion: "0.1.0",
     cwd: opts.cwd || process.cwd(),
@@ -392,7 +446,8 @@ function startOpenCues(opts) {
       ownedExtmarks = new Map;
     },
     setCursorOffset: (offset) => {
-      opts.textarea.cursorOffset = offset;
+      const i = injMarkIndex(opts.textarea.plainText);
+      opts.textarea.cursorOffset = i !== -1 && offset > i - 1 ? offset + 2 : offset;
     },
     pushText: (text, cursor) => {
       sourceReclassifier.markRuntimeWrite(text);
@@ -573,6 +628,8 @@ function startOpenCues(opts) {
     }
   });
   opts.textarea.onContentChange = () => {
+    if (_syncingInjection)
+      return;
     const text = getText();
     const cursor = getCursor();
     const actualSource = sourceReclassifier.reclassify(text, "user");
@@ -580,6 +637,8 @@ function startOpenCues(opts) {
     triggerOpenCuesRender(text, cursor);
   };
   opts.textarea.onCursorChange = () => {
+    if (_syncingInjection)
+      return;
     bootResult.notifyCursorChange(getText(), getCursor(), "user");
   };
   _textareaRef = opts.textarea;
@@ -589,8 +648,8 @@ function startOpenCues(opts) {
 function dispatchOpenCuesKey(evt) {
   if (!bootResult)
     return false;
-  const text = _textareaRef?.plainText ?? "";
-  const cursor = _textareaRef?.cursorOffset ?? 0;
+  const text = stripInjection(_textareaRef?.plainText ?? "");
+  const cursor = stripCursor(_textareaRef?.cursorOffset ?? 0);
   const keyName = normaliseKeyName(evt);
   const e = {
     key: keyName,
@@ -608,11 +667,11 @@ function dispatchOpenCuesKey(evt) {
   };
   const consumed = bootResult.dispatchKey(e);
   if (consumed) {
-    triggerOpenCuesRender(_textareaRef?.plainText ?? text, _textareaRef?.cursorOffset ?? cursor);
+    triggerOpenCuesRender(stripInjection(_textareaRef?.plainText ?? text), stripCursor(_textareaRef?.cursorOffset ?? cursor));
   } else if (CURSOR_MOVING_KEYS.has(keyName)) {
     setTimeout(() => {
       try {
-        triggerOpenCuesRender(_textareaRef?.plainText ?? text, _textareaRef?.cursorOffset ?? cursor);
+        triggerOpenCuesRender(stripInjection(_textareaRef?.plainText ?? text), stripCursor(_textareaRef?.cursorOffset ?? cursor));
       } catch {}
     }, 0);
   }
@@ -694,6 +753,7 @@ function triggerOpenCuesRender(text, cursor) {
   };
   const desiredColored = new Map;
   let noteAnchor = null;
+  let noteSpanEnd = 0;
   const directiveSets = bootResult.collectRenderDirectives(text, cursor);
   for (const directives of directiveSets) {
     if (noteAnchor === null && directives.inlineNote && directives.inlineNote.text) {
@@ -704,6 +764,7 @@ function triggerOpenCuesRender(text, cursor) {
         row: visualRow + 1,
         col: inlineNoteBoxColumn(text, directives.inlineNote.spanStart)
       };
+      noteSpanEnd = directives.inlineNote.spanEnd;
     }
     addRanges(directives.dimRanges, "d");
     if (directives.highlight) {
@@ -726,6 +787,7 @@ function triggerOpenCuesRender(text, cursor) {
       }
     }
   }
+  syncNoteInjection(noteAnchor !== null, noteSpanEnd);
   for (const [key, id] of ownedExtmarks) {
     if (desired.has(key) || desiredColored.has(key))
       continue;
@@ -914,11 +976,11 @@ function App(props) {
   });
   useKeyboard((evt) => {
     if (evt.ctrl && evt.meta && evt.name === "s") {
-      finish(textarea?.plainText ?? "", 0);
+      finish(getCleanBufferText(textarea?.plainText ?? ""), 0);
       return;
     }
     if (evt.sequence === "\x1B\x13") {
-      finish(textarea?.plainText ?? "", 0);
+      finish(getCleanBufferText(textarea?.plainText ?? ""), 0);
       return;
     }
     if (evt.ctrl && evt.meta && evt.name === "q") {
@@ -997,97 +1059,109 @@ function App(props) {
       _$insertNode(_el$7, _el$8);
       _$setProp(_el$7, "style", {
         flexGrow: 1,
-        width: "100%",
-        flexDirection: "column"
+        width: "100%"
       });
       _$use((t) => {
         textarea = t;
       }, _el$8);
       _$setProp(_el$8, "style", {
-        width: "100%"
+        width: "100%",
+        height: "100%"
       });
-      _$setProp(_el$8, "minHeight", 1);
       _$setProp(_el$8, "wrapMode", "word");
       _$insert(_el$7, (() => {
         var _c$ = _$memo(() => note() != null);
         return () => _c$() && (() => {
-          var _el$9 = _$createElement("text");
-          _$insert(_el$9, () => " ".repeat(note().col) + note().text);
-          _$effect((_$p) => _$setProp(_el$9, "attributes", TextAttributes.DIM, _$p));
+          var _el$9 = _$createElement("box"), _el$0 = _$createElement("text");
+          _$insertNode(_el$9, _el$0);
+          _$insert(_el$0, () => note().text);
+          _$effect((_p$) => {
+            var _v$ = {
+              position: "absolute",
+              top: note().row,
+              left: note().col,
+              zIndex: 10
+            }, _v$2 = TextAttributes.DIM;
+            _v$ !== _p$.e && (_p$.e = _$setProp(_el$9, "style", _v$, _p$.e));
+            _v$2 !== _p$.t && (_p$.t = _$setProp(_el$0, "attributes", _v$2, _p$.t));
+            return _p$;
+          }, {
+            e: undefined,
+            t: undefined
+          });
           return _el$9;
         })();
       })(), null);
       _$insert(_el$6, (() => {
         var _c$2 = _$memo(() => tip() != null);
         return () => _c$2() && (() => {
-          var _el$0 = _$createElement("box"), _el$1 = _$createElement("text");
-          _$insertNode(_el$0, _el$1);
-          _$insert(_el$0, (() => {
+          var _el$1 = _$createElement("box"), _el$10 = _$createElement("text");
+          _$insertNode(_el$1, _el$10);
+          _$insert(_el$1, (() => {
             var _c$3 = _$memo(() => !!tipParts()?.head);
             return () => _c$3() && (() => {
-              var _el$11 = _$createElement("box"), _el$12 = _$createElement("text"), _el$14 = _$createElement("text"), _el$15 = _$createTextNode(` `);
-              _$insertNode(_el$11, _el$12);
-              _$insertNode(_el$11, _el$14);
-              _$setProp(_el$11, "style", {
+              var _el$12 = _$createElement("box"), _el$13 = _$createElement("text"), _el$15 = _$createElement("text"), _el$16 = _$createTextNode(` `);
+              _$insertNode(_el$12, _el$13);
+              _$insertNode(_el$12, _el$15);
+              _$setProp(_el$12, "style", {
                 flexDirection: "row",
                 height: 1
               });
-              _$insertNode(_el$12, _$createTextNode(`C_`));
-              _$setProp(_el$12, "fg", "#ffffff");
-              _$insertNode(_el$14, _el$15);
-              _$setProp(_el$14, "fg", "#ffffff");
-              _$insert(_el$14, () => tipParts().head, null);
-              _$effect((_$p) => _$setProp(_el$12, "attributes", TextAttributes.INVERSE, _$p));
-              return _el$11;
+              _$insertNode(_el$13, _$createTextNode(`C_`));
+              _$setProp(_el$13, "fg", "#ffffff");
+              _$insertNode(_el$15, _el$16);
+              _$setProp(_el$15, "fg", "#ffffff");
+              _$insert(_el$15, () => tipParts().head, null);
+              _$effect((_$p) => _$setProp(_el$13, "attributes", TextAttributes.INVERSE, _$p));
+              return _el$12;
             })();
-          })(), _el$1);
-          _$insert(_el$0, () => tipRows().map((row) => (() => {
-            var _el$16 = _$createElement("box");
-            _$setProp(_el$16, "style", {
+          })(), _el$10);
+          _$insert(_el$1, () => tipRows().map((row) => (() => {
+            var _el$17 = _$createElement("box");
+            _$setProp(_el$17, "style", {
               flexDirection: "row",
               height: 1
             });
-            _$insert(_el$16, () => renderSpans(row));
-            return _el$16;
-          })()), _el$1);
-          _$insertNode(_el$1, _$createTextNode(` `));
-          _$effect((_$p) => _$setProp(_el$0, "style", {
+            _$insert(_el$17, () => renderSpans(row));
+            return _el$17;
+          })()), _el$10);
+          _$insertNode(_el$10, _$createTextNode(` `));
+          _$effect((_$p) => _$setProp(_el$1, "style", {
             height: (tipParts()?.head ? 1 : 0) + tipRows().length + 1,
             width: "100%",
             flexDirection: "column"
           }, _$p));
-          return _el$0;
+          return _el$1;
         })();
       })(), null);
-      _$effect((_$p) => _$setProp(_el$8, "maxHeight", Math.max(3, (process.stdout.rows ?? 15) - 3), _$p));
       return _el$6;
     })();
   }
   return (() => {
-    var _el$17 = _$createElement("box"), _el$18 = _$createElement("box"), _el$19 = _$createElement("textarea"), _el$20 = _$createElement("box");
-    _$insertNode(_el$17, _el$18);
-    _$insertNode(_el$17, _el$20);
-    _$setProp(_el$17, "style", {
+    var _el$18 = _$createElement("box"), _el$19 = _$createElement("box"), _el$20 = _$createElement("textarea"), _el$21 = _$createElement("box");
+    _$insertNode(_el$18, _el$19);
+    _$insertNode(_el$18, _el$21);
+    _$setProp(_el$18, "style", {
       flexDirection: "column",
       width: "100%",
       height: "100%",
       paddingLeft: 1,
       paddingRight: 1
     });
-    _$insertNode(_el$18, _el$19);
-    _$setProp(_el$18, "style", {
+    _$insertNode(_el$19, _el$20);
+    _$setProp(_el$19, "style", {
       flexGrow: 1,
       width: "100%"
     });
     _$use((t) => {
       textarea = t;
-    }, _el$19);
-    _$setProp(_el$19, "style", {
+    }, _el$20);
+    _$setProp(_el$20, "style", {
       width: "100%",
       height: "100%"
     });
-    _$setProp(_el$19, "wrapMode", "word");
-    _$setProp(_el$20, "style", {
+    _$setProp(_el$20, "wrapMode", "word");
+    _$setProp(_el$21, "style", {
       height: 1,
       width: "100%",
       flexDirection: "row",
@@ -1095,29 +1169,29 @@ function App(props) {
       paddingLeft: 1,
       paddingRight: 1
     });
-    _$insert(_el$20, (() => {
+    _$insert(_el$21, (() => {
       var _c$4 = _$memo(() => tip() != null);
       return () => _c$4() ? (() => {
-        var _el$21 = _$createElement("text");
-        _$setProp(_el$21, "fg", "#ffffff");
-        _$insert(_el$21, tip);
-        return _el$21;
+        var _el$22 = _$createElement("text");
+        _$setProp(_el$22, "fg", "#ffffff");
+        _$insert(_el$22, tip);
+        return _el$22;
       })() : (() => {
-        var _el$22 = _$createElement("box"), _el$23 = _$createElement("text"), _el$25 = _$createElement("text");
-        _$insertNode(_el$22, _el$23);
-        _$insertNode(_el$22, _el$25);
-        _$setProp(_el$22, "style", {
+        var _el$23 = _$createElement("box"), _el$24 = _$createElement("text"), _el$26 = _$createElement("text");
+        _$insertNode(_el$23, _el$24);
+        _$insertNode(_el$23, _el$26);
+        _$setProp(_el$23, "style", {
           flexDirection: "row"
         });
-        _$insertNode(_el$23, _$createTextNode(`C_`));
-        _$setProp(_el$23, "fg", "#ffffff");
-        _$insertNode(_el$25, _$createTextNode(` OpenCues_ \xB7 Submit: Ctrl+Alt+S \xB7 Cancel: Ctrl+Alt+Q`));
-        _$setProp(_el$25, "fg", "#ffffff");
-        _$effect((_$p) => _$setProp(_el$23, "attributes", TextAttributes.INVERSE, _$p));
-        return _el$22;
+        _$insertNode(_el$24, _$createTextNode(`C_`));
+        _$setProp(_el$24, "fg", "#ffffff");
+        _$insertNode(_el$26, _$createTextNode(` OpenCues_ \xB7 Submit: Ctrl+Alt+S \xB7 Cancel: Ctrl+Alt+Q`));
+        _$setProp(_el$26, "fg", "#ffffff");
+        _$effect((_$p) => _$setProp(_el$24, "attributes", TextAttributes.INVERSE, _$p));
+        return _el$23;
       })();
     })());
-    return _el$17;
+    return _el$18;
   })();
 }
 function runTmux(tmuxBin, args) {

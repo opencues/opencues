@@ -22,7 +22,7 @@ import { render, useKeyboard, useRenderer } from '@opentui/solid';
 import { createSignal, onMount } from 'solid-js';
 import type { TextareaRenderable } from '@opentui/core';
 import { SyntaxStyle, TextAttributes, RGBA } from '@opentui/core';
-import { startOpenCues, dispatchOpenCuesKey, resetOpenCuesBufferState } from './bootstrap';
+import { startOpenCues, dispatchOpenCuesKey, resetOpenCuesBufferState, getCleanBufferText } from './bootstrap';
 
 interface AppOpts {
   initialText: string;
@@ -159,11 +159,11 @@ function App(props: AppOpts) {
     // (cancel) and re-open with Alt+Shift+↑. If you need a new
     // shortcut, add it AND announce it in the status bar.
     if (evt.ctrl && evt.meta && evt.name === 's') {
-      finish(textarea?.plainText ?? '', 0);
+      finish(getCleanBufferText(textarea?.plainText ?? ''), 0);
       return;
     }
     if (evt.sequence === '\x1b\x13') {  // ESC + Ctrl-S literal — Ctrl+Alt+S byte form
-      finish(textarea?.plainText ?? '', 0);
+      finish(getCleanBufferText(textarea?.plainText ?? ''), 0);
       return;
     }
     if (evt.ctrl && evt.meta && evt.name === 'q') {
@@ -269,28 +269,22 @@ function App(props: AppOpts) {
   if (props.keepAlive) {
     return (
       <box style={{ flexDirection: 'column', width: '100%', height: '100%', paddingLeft: 1, paddingRight: 1 }}>
-        <box style={{ flexGrow: 1, width: '100%', flexDirection: 'column' }}>
-          {/* Content-sized textarea (like Claude Code's + OpenCode's input,
-              which grow with content — NOT a full pane). This gives the note
-              below a real row to occupy: when it appears it PUSHES the rest
-              down instead of floating over the next line (no occlusion). The
-              maxHeight cap keeps the textarea from stretching to fill the pane
-              (which would shove the note to the bottom). */}
+        <box style={{ flexGrow: 1, width: '100%' }}>
+          {/* Full-pane input. The inline-cue note gets a REAL blank line
+              directly under the target span via a display-only `\n` the
+              bootstrap injects into the buffer (stripped from reads + submit),
+              so the lines below move down — no occlusion, mid-buffer, and the
+              input stays full-size. The note text itself paints as the absolute
+              overlay below, landing in that freed row. */}
           <textarea
             ref={(t: TextareaRenderable) => { textarea = t; }}
-            style={{ width: '100%' }}
-            minHeight={1}
-            maxHeight={Math.max(3, (process.stdout.rows ?? 15) - 3)}
+            style={{ width: '100%', height: '100%' }}
             wrapMode="word"
           />
-          {/* Inline-cue note — a real flow row directly under the input content
-              that grows the input by one (CC-style push-down, never occludes).
-              col pads the connector to the span column; no CC prompt-indent
-              padding (shell has no `❯ ` prefix). Cursor-gated by the runtime. */}
           {note() != null && (
-            <text attributes={TextAttributes.DIM}>
-              {' '.repeat(note()!.col) + note()!.text}
-            </text>
+            <box style={{ position: 'absolute', top: note()!.row, left: note()!.col, zIndex: 10 }}>
+              <text attributes={TextAttributes.DIM}>{note()!.text}</text>
+            </box>
           )}
         </box>
         {tip() != null && (
