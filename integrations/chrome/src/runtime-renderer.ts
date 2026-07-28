@@ -409,6 +409,7 @@ function renderInlineNote(
   if (rect.width === 0 && rect.height === 0) { clearInlineNote(); return; }
   const el = ensureNoteEl();
   el.textContent = inlineNoteDisplayText(note.text);
+  el.style.display = 'block'; // ensure it's laid out so we can measure it below
   // Inherit the field's typography so the note reads as part of the text line.
   let lineHeightPx = rect.height;
   try {
@@ -419,13 +420,25 @@ function renderInlineNote(
     const lh = parseFloat(cs.lineHeight);
     if (!Number.isNaN(lh) && lh > 0) lineHeightPx = lh;
   } catch { /* computed style unavailable — keep defaults */ }
+  // The gap must fit the NOTE, which is exactly one line in the field's font.
+  // Measure the note's OWN rendered height rather than trusting the field's
+  // line-height: robust to `line-height: normal` (parseFloat → NaN, where the
+  // fallback span rect over-counts a WRAPPED sentence's full height) and to any
+  // note/field metric mismatch. Fall back to the field line-height / span
+  // height when layout is unavailable (jsdom returns 0). One line only — a
+  // wrapped sentence still opens a single row below it, exactly like CC.
+  let pushPx = lineHeightPx;
+  try {
+    const noteH = el.getBoundingClientRect().height;
+    if (noteH > 0) pushPx = noteH;
+  } catch { /* keep lineHeightPx */ }
   // Reserve a real row so content moves down, then re-read the span rect
   // (layout shifted) and drop the note in the freed gap. 'node' for plain
   // contenteditables, 'margin' for managed editors; either falls back to a
   // floating note when it can't take effect.
   const pushed =
-    pushMode === 'node' ? insertNoteSpacer(target, range, lineHeightPx)
-    : pushMode === 'margin' ? insertMarginPush(target, range, lineHeightPx)
+    pushMode === 'node' ? insertNoteSpacer(target, range, pushPx)
+    : pushMode === 'margin' ? insertMarginPush(target, range, pushPx)
     : false;
   if (pushed) {
     try { rect = range.getBoundingClientRect(); } catch { /* keep prior rect */ }
