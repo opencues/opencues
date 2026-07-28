@@ -355,7 +355,7 @@ var bootResult;
 var _onInlineNoteChange;
 var _termLog;
 var _termLastNoteText = null;
-var INJ_MARK = "\u200B";
+var INJ_MARK = "\xA0";
 var _syncingInjection = false;
 var _textareaForInject = null;
 function injMarkIndex(raw) {

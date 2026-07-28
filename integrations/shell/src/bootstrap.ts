@@ -249,14 +249,20 @@ let _termLastNoteText: string | null = null;
 // To place the note on a REAL line directly under the target span (pushing the
 // lines below it down, like Claude Code), we insert a display-only blank line
 // into the textarea's own buffer at the end of the span's line: a `\n` followed
-// by a zero-width space (INJ_MARK). The ZWS renders as nothing (the line looks
-// blank) and is our robust MARKER — we find the injected line by searching for
-// the ZWS rather than tracking a fixed offset, so it survives the user editing
-// the span above it (which shifts the offset). getText/getCursor/the key path
-// strip it so the runtime never sees it, and submit (app.tsx finish) strips it
-// too — nothing extra reaches the shell. The note text paints as an absolute
-// overlay in the freed row.
-const INJ_MARK = '​';
+// by a NON-BREAKING SPACE (INJ_MARK). It's our robust MARKER — we find the
+// injected line by searching for it (not a fixed offset), so it survives the
+// user editing the span above. getText/getCursor/the key path strip it so the
+// runtime never sees it, and submit (app.tsx finish) strips it too — nothing
+// extra reaches the shell. The note text paints as an absolute overlay in the
+// freed row.
+//
+// Why NBSP and not a zero-width space: the auto-select highlight extmark ends
+// at the span's line boundary, and OpenTUI resolves that boundary cell to the
+// next VISIBLE content. A zero-width injected line has no cell, so the boundary
+// skipped PAST it onto the following line (the "highlights the second line"
+// bug). NBSP occupies a real cell on the injected line, so the boundary lands
+// there (hidden under the note overlay) instead of spilling.
+const INJ_MARK = '\u00A0'; // NBSP — a real cell, rare in prompt text
 let _syncingInjection = false;
 let _textareaForInject: TextareaRenderable | null = null;
 
