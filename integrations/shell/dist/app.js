@@ -816,22 +816,20 @@ function triggerOpenCuesRender(text, cursor) {
         return styleIds.list;
     }
   };
-  const toCell = (offset) => codeUnitsToCells(text, offset);
-  const injMark = injMarkIndex(textarea.plainText);
-  const injAt = injMark === -1 ? -1 : injMark - 1;
+  const _raw = textarea.plainText;
+  const _injMark = injMarkIndex(_raw);
+  const _injAt = _injMark === -1 ? -1 : _injMark - 1;
+  const toRaw = (offset) => _injAt >= 0 && offset > _injAt ? offset + 2 : offset;
+  const toCell = (offset) => codeUnitsToCells(_raw, toRaw(offset));
   for (const [key, spec] of desired) {
     if (ownedExtmarks.has(key))
       continue;
     const styleId = styleFor(spec.kind);
     if (styleId === undefined)
       continue;
-    const startCell = toCell(spec.start);
-    let endCell = toCell(spec.end);
-    if (injAt >= 0 && spec.end === injAt)
-      endCell = Math.max(startCell, endCell - 1);
     const id = textarea.extmarks.create({
-      start: startCell,
-      end: endCell,
+      start: toCell(spec.start),
+      end: toCell(spec.end),
       styleId,
       typeId: styleIds.typeId
     });

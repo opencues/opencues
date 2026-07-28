@@ -791,24 +791,24 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
   // Korean, fullwidth ASCII) each glyph occupies 2 cells, so a span
   // covering "日本語に翻訳" (6 code units) needs end=12 to cover the
   // 12 cells the glyphs actually paint to.
-  const toCell = (offset: number): number => codeUnitsToCells(text, offset);
-  // Clean-space offset of the injected blank line, or -1. A dim/highlight range
-  // whose END lands exactly here ends at the span's line boundary; OpenTUI
-  // resolves that boundary onto the NEXT visible line — which, with the injected
-  // blank line in the way, is the line AFTER it (the "highlights the second
-  // line" bug). Ending such a range one cell short keeps it on the span's line.
-  const injMark = injMarkIndex(textarea.plainText);
-  const injAt = injMark === -1 ? -1 : injMark - 1;
+  // Extmark offsets come from the runtime in CLEAN (injection-free) space, but
+  // the extmarks are applied to the RAW buffer that holds the injected note
+  // line. Map clean→raw: everything AFTER the injection point shifts by the
+  // injection length (`\n` + NBSP = 2), so a dim/highlight on a line below the
+  // note lands on the right characters instead of 2 cells early. Cells are then
+  // measured on the RAW buffer. Ranges before the injection are unchanged.
+  const _raw = textarea.plainText;
+  const _injMark = injMarkIndex(_raw);
+  const _injAt = _injMark === -1 ? -1 : _injMark - 1;
+  const toRaw = (offset: number): number => (_injAt >= 0 && offset > _injAt) ? offset + 2 : offset;
+  const toCell = (offset: number): number => codeUnitsToCells(_raw, toRaw(offset));
   for (const [key, spec] of desired) {
     if (ownedExtmarks.has(key)) continue;
     const styleId = styleFor(spec.kind);
     if (styleId === undefined) continue;
-    const startCell = toCell(spec.start);
-    let endCell = toCell(spec.end);
-    if (injAt >= 0 && spec.end === injAt) endCell = Math.max(startCell, endCell - 1);
     const id = textarea.extmarks.create({
-      start: startCell,
-      end: endCell,
+      start: toCell(spec.start),
+      end: toCell(spec.end),
       styleId,
       typeId: styleIds.typeId,
     });
