@@ -916,16 +916,27 @@ export function cacheValidCursor(target: HTMLElement, offset: number): void {
 }
 
 let _cursorFallbackLoggedAt = 0;
+// Was the LAST readCursorOffset a fresh, real read (true) or a fabricated
+// fallback because the caret couldn't be mapped (false)? runtimeRender reads
+// this immediately after to decide whether the cursor-gated note + auto-select
+// can be trusted. On LinkedIn Posts (Quill parks the browser selection outside
+// .ql-editor AND hides its instance) every read is a fallback, so the note is
+// suppressed rather than painted at a bogus offset. Assume reliable until a
+// read proves otherwise (default true keeps every well-behaved editor unchanged).
+let _lastCursorReliable = true;
+export function lastCursorReliable(): boolean { return _lastCursorReliable; }
+
 function readCursorOffset(): number {
   const target = currentTarget;
-  if (!target) return 0;
-  if (isNormalInput(target)) return target.selectionStart ?? 0;
+  if (!target) { _lastCursorReliable = false; return 0; }
+  if (isNormalInput(target)) { _lastCursorReliable = true; return target.selectionStart ?? 0; }
   const sel = window.getSelection();
   if (sel && sel.rangeCount > 0) {
     const range = sel.getRangeAt(0);
     if (target.contains(range.startContainer)) {
       const offset = plainOffsetOfPosition(target, range.startContainer, range.startOffset);
       _lastValidCursor.set(target, offset);
+      _lastCursorReliable = true;
       return offset;
     }
     // Selection landed OUTSIDE our target. For Quill (LinkedIn's private bundle
@@ -945,6 +956,7 @@ function readCursorOffset(): number {
           const qs = q.getSelection();
           if (qs && typeof qs.index === 'number' && qs.index >= 0) {
             _lastValidCursor.set(target, qs.index);
+            _lastCursorReliable = true;
             const now = Date.now();
             if (now - _cursorFallbackLoggedAt > 1000) {
               _cursorFallbackLoggedAt = now;
@@ -977,6 +989,8 @@ function readCursorOffset(): number {
       }
     } catch { /* diagnostic must never throw */ }
   }
+  // No fresh read was possible — the returned value is a fabricated fallback.
+  _lastCursorReliable = false;
   return _lastValidCursor.get(target) ?? 0;
 }
 
@@ -3310,6 +3324,17 @@ function runtimeRender(): void {
   const text = walkPlainText(target).text;
   const cursor = readCursorOffset();
   const directives = bootResult.collectRenderDirectives(text, cursor);
+  // If the caret couldn't be read (e.g. LinkedIn Posts: Quill parks the browser
+  // selection outside .ql-editor AND hides its instance), the cursor is a
+  // fabricated 0 — so the cursor-gated inline note + auto-select highlight would
+  // fire at a bogus position ("note auto-selects, ignores my cursor"). Strip
+  // them; the always-on dim still marks the flagged span. Better absent than wrong.
+  if (!lastCursorReliable()) {
+    for (const d of directives) {
+      (d as { inlineNote?: unknown }).inlineNote = undefined;
+      (d as { highlight?: unknown }).highlight = undefined;
+    }
+  }
   // Push-down mode for the inline note (make room so it doesn't occlude the
   // line below). Plain contenteditables host a real spacer NODE; managed
   // editors (Lexical/PM/Quill) revert external nodes AND we don't own their
