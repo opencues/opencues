@@ -17,13 +17,14 @@ Brings the inline-cue UX (already live on terminal/CC + chrome) to the OpenTUI h
 
 The note renders as a **real line directly under the flagged span that pushes existing text down** — the same result Claude Code produces — revealed when the caret enters the span. OpenTUI's textarea draws its buffer lines contiguously in a native (Zig/FFI) library with no virtual-text / display-line primitive, so we **extend OpenTUI at the TS layer** rather than a native rebuild: each host hooks the textarea's `renderAfter` and, after the textarea has drawn normally, shifts every rendered row below the span DOWN by one (operating on the exposed framebuffer cell arrays) and draws the dim note in the freed row. The edit buffer is never touched (submitted text stays clean); the cursor/selection sit on the span line ABOVE the note, so the downward shift never disturbs them. `row` = the caret's viewport-relative visual row + 1, `col` = the span's column via the shared `inlineNoteBoxColumn` (connector-hung, CJK-cell-aware). Same `↳ <note>` text (`inlineNoteDisplayText`) every host paints.
 
-- The row-shift itself (pure typed-array work, no `@opentui/core` dep) is extracted to a shared `openTuiPushRowsDown` helper both hosts call — the fiddly cell math can't drift between them, and it's unit-tested with a mock framebuffer (4 tests).
-- OpenCode: `attachInlineNoteRenderer(input)` wires the `renderAfter` in the patched `prompt/index.tsx`; the note anchor rides the `opencuesInlineNote` signal set in `triggerOpenCuesRender`.
-- Shell: the `renderAfter` lives in `app.tsx`'s `onMount`, fed by the `onInlineNoteChange` boot callback; a note change requests a frame so it appears/clears immediately.
+Both hosts render the note as a **flow element that reserves its own row** — growing the input by one — rather than a framebuffer draw. (An earlier framebuffer row-shift landed the note in native memory but OpenTUI's compositor never painted rows the editorView treats as empty content area, so it was abandoned.) This requires a content-sized textarea so the note sits directly under the content:
+
+- OpenCode: the note is a `<text>` sibling after the textarea in the patched `prompt/index.tsx` (its textarea is already content-sized, `minHeight=1/maxHeight=6`), driven by the `opencuesInlineNote` signal set in `triggerOpenCuesRender`.
+- Shell: `app.tsx`'s textarea switched from full-pane (`height:100%`) to content-sized (`minHeight=1`) so a `<text>` note below it sits under the content; fed by the `onInlineNoteChange` boot callback, a note change requests a frame so it appears/clears immediately.
 
 **Clears on vertical caret moves.** OpenTUI's `onCursorChange` fires on horizontal moves only, so `dispatchOpenCuesKey` — which re-rendered only on *consumed* keys — never re-evaluated the cursor gate on an unconsumed up/down, leaving the note on the line you left. Fixed by deferring a re-render one macrotask after any non-consumed cursor-moving key (`up`/`down`/`left`/`right`/`home`/`end`/`pageup`/`pagedown`) so it settles against the new caret.
 
-Pinned by 5 `inlineNoteBoxColumn` + 4 `openTuiPushRowsDown` unit tests. Verified live on headless OpenCode + shell (note emits + `renderAfter` runs without a frame crash across single-line, multi-line, and cursor-exit cases); the on-screen push-down itself is visually confirmed on a live host (the framebuffer isn't observable headlessly).
+Pinned by 5 `inlineNoteBoxColumn` unit tests. Verified live on headless OpenCode + shell (note emits, no crash); the on-screen row growth is confirmed on a live host.
 
 ### Fixed — `inherit` is now a universal provider fall-through sentinel (`@opencues/core` 0.40.1 → 0.40.2, `@opencues/chrome` 0.2.101 → 0.2.102)
 

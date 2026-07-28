@@ -23,7 +23,6 @@ import { createSignal, onMount } from 'solid-js';
 import type { TextareaRenderable } from '@opentui/core';
 import { SyntaxStyle, TextAttributes, RGBA } from '@opentui/core';
 import { startOpenCues, dispatchOpenCuesKey, resetOpenCuesBufferState } from './bootstrap';
-import { openTuiPushRowsDown } from '@opencues/runtime/dist/src/util/opentui-framebuffer';
 
 interface AppOpts {
   initialText: string;
@@ -131,43 +130,6 @@ function App(props: AppOpts) {
       },
     });
     textarea.focus();
-
-    // ── Inline-cue note: a REAL inserted line under the span (push-down) ──
-    // OpenTUI's textarea renders its buffer lines contiguously in native
-    // code — no virtual-text/decoration-line primitive. So we extend it at
-    // the TS layer via the `renderAfter` hook + the exposed framebuffer cell
-    // arrays: after the textarea has drawn normally, we shift every row below
-    // the span DOWN by one and draw the note in the freed row. Result: the
-    // note sits on its own line directly under the span and pushes existing
-    // text down — the same result Claude Code produces — without ever
-    // touching the edit buffer (submit text stays clean) and without a native
-    // rebuild. Cursor/selection are drawn (by native) on the span line ABOVE
-    // the note, so the downward shift never disturbs them.
-    (textarea as unknown as { renderAfter?: (buffer: unknown, dt: number) => void }).renderAfter = (
-      bufferU: unknown,
-    ): void => {
-      try {
-        const n = note();
-        if (!n) return;
-        const ta = textarea as unknown as { _screenX?: number; _screenY?: number; width: number; height: number };
-        const buffer = bufferU as {
-          width: number; height: number;
-          buffers: { char: Uint32Array; fg: Float32Array; bg: Float32Array; attributes: Uint32Array };
-          drawText: (t: string, x: number, y: number, fg: RGBA, bg?: RGBA, attrs?: number) => void;
-        };
-        const sx = ta._screenX ?? 0;
-        const sy = ta._screenY ?? 0;
-        const tw = ta.width ?? 0;
-        const th = ta.height ?? 0;
-        const noteRow = sy + n.row;               // absolute framebuffer row for the note
-        const bottom = sy + th - 1;               // last row the textarea owns
-        if (n.row < 1 || noteRow > bottom || tw <= 0) return;
-        // Shift rows below the span down + clear the freed note row (shared
-        // with OpenCode so the fiddly cell math can't drift), then draw it.
-        openTuiPushRowsDown(buffer, sx, tw, noteRow, bottom);
-        buffer.drawText(n.text, sx + n.col, noteRow, RGBA.fromValues(0.5, 0.5, 0.5, 1), undefined, 0);
-      } catch { /* swallow — degrade to no note rather than crash the frame */ }
-    };
 
     // oc-popup now hides the outer status bar BEFORE invoking
     // oc-edit (so the inner UI doesn't trigger a redraw cascade
@@ -307,15 +269,24 @@ function App(props: AppOpts) {
   if (props.keepAlive) {
     return (
       <box style={{ flexDirection: 'column', width: '100%', height: '100%', paddingLeft: 1, paddingRight: 1 }}>
-        <box style={{ flexGrow: 1, width: '100%' }}>
+        <box style={{ flexGrow: 1, width: '100%', flexDirection: 'column' }}>
+          {/* Content-sized (not height:100%) so the inline-cue note below can
+              sit directly under the input content — a real flow row that grows
+              the input and pushes the rest down (matches OpenCode). A full-pane
+              textarea would shove the note to the bottom, and a framebuffer
+              draw into empty rows below the content isn't composited by
+              OpenTUI's native renderer. */}
           <textarea
             ref={(t: TextareaRenderable) => { textarea = t; }}
-            style={{ width: '100%', height: '100%' }}
+            style={{ width: '100%' }}
+            minHeight={1}
             wrapMode="word"
           />
-          {/* The inline-cue note is drawn as a REAL inserted line via the
-              textarea's renderAfter hook (see onMount) — it pushes existing
-              text down instead of floating over it. No overlay box here. */}
+          {note() != null && (
+            <text attributes={TextAttributes.DIM}>
+              {' '.repeat(note()!.col) + note()!.text}
+            </text>
+          )}
         </box>
         {tip() != null && (
           <box style={{ height: (tipParts()?.head ? 1 : 0) + tipRows().length + 1, width: '100%', flexDirection: 'column' }}>
