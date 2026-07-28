@@ -277,14 +277,38 @@ function clearPushDown(): void {
   _markedEditor = null;
 }
 
+function isBlockEl(el: HTMLElement): boolean {
+  if (el.tagName === 'DIV' || el.tagName === 'P' || el.tagName === 'LI') return true;
+  try {
+    const disp = getComputedStyle(el).display;
+    return disp === 'block' || disp === 'flex' || disp === 'list-item';
+  } catch { return false; }
+}
+
 /** Nearest block-level ancestor of `node` within `root` (the line's block). */
 function blockAncestorWithin(node: Node, root: HTMLElement): HTMLElement | null {
   let el: HTMLElement | null = node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as HTMLElement);
   while (el && el !== root) {
-    try {
-      const disp = getComputedStyle(el).display;
-      if (disp === 'block' || disp === 'flex' || disp === 'list-item' || el.tagName === 'DIV' || el.tagName === 'P') return el;
-    } catch { /* ignore */ }
+    if (isBlockEl(el)) return el;
+    el = el.parentElement;
+  }
+  return null;
+}
+
+/** The block to nudge so the NEXT visual line moves down: walking UP from the
+ *  caret (within `root`), the FIRST block ancestor that has a following element
+ *  sibling (ignoring our own spacer). Editors nest the caret's line under
+ *  wrappers — Draft.js in particular makes the NEAREST block an only-child
+ *  content div (no sibling), while the real line block (with the next line as
+ *  its sibling) is one level up; ProseMirror's `<p>` has its sibling directly.
+ *  Null → no block ancestor has a sibling → the caret is on the last line. */
+function lineBlockWithSibling(node: Node, root: HTMLElement): HTMLElement | null {
+  let el: HTMLElement | null = node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as HTMLElement);
+  while (el && el !== root) {
+    if (isBlockEl(el)) {
+      const sib = el.nextElementSibling as HTMLElement | null;
+      if (sib && !sib.hasAttribute(NOTE_SPACER_ATTR)) return el;
+    }
     el = el.parentElement;
   }
   return null;
@@ -358,39 +382,41 @@ function insertNoteSpacer(target: HTMLElement, range: Range, heightPx: number): 
 function insertMarginPush(target: HTMLElement, range: Range, heightPx: number): boolean {
   clearPushDown();
   const px = Math.max(1, Math.round(heightPx));
-  const block = blockAncestorWithin(range.endContainer, target);
-  // Mid-buffer: the caret's line has its own block AND a following sibling to
-  // push. Apply the margin via a STYLESHEET RULE (targeting that paragraph by
-  // its position among the editor's children) rather than an inline style —
-  // PM reverts inline styles on child nodes it owns, but can't see a stylesheet.
-  // (A bottom margin on the LAST child is swallowed, so this path is gated on a
-  // next sibling; the last/only line falls through to root-padding below.)
-  if (block && block !== target && block.parentNode && block.nextElementSibling) {
-    const idx = Array.prototype.indexOf.call(target.children, block) + 1; // 1-based nth-child
+  // Mid-buffer: find the LINE block whose next sibling is the line below, then
+  // nudge its margin-bottom to push that sibling down. Apply via a STYLESHEET
+  // RULE targeting the block by position among ITS OWN parent's children —
+  // editors nest lines to varying depths (Draft.js wraps each line several
+  // divs deep), so we anchor the nth-child to the block's real parent, not the
+  // editor root. A stylesheet (not an inline style) because PM/Lexical/Quill
+  // revert inline styles on child nodes they own but can't see a stylesheet.
+  const lineBlock = lineBlockWithSibling(range.endContainer, target);
+  const container = lineBlock ? lineBlock.parentElement : null;
+  if (lineBlock && container) {
+    const idx = Array.prototype.indexOf.call(container.children, lineBlock) + 1; // 1-based nth-child
     if (idx >= 1) {
       try {
-        if (_markedEditor && _markedEditor !== target) _markedEditor.removeAttribute(EDITOR_MARK_ATTR);
-        target.setAttribute(EDITOR_MARK_ATTR, '1');
-        _markedEditor = target;
+        if (_markedEditor && _markedEditor !== container) _markedEditor.removeAttribute(EDITOR_MARK_ATTR);
+        container.setAttribute(EDITOR_MARK_ATTR, '1');
+        _markedEditor = container;
         const sheet = ensurePushStyleEl();
-        // Scope to the marked editor; !important so the editor's own inline
-        // margin (if any) doesn't out-specify us.
+        // Scope to the marked container; !important so the editor's own margin
+        // (if any) doesn't out-specify us.
         sheet.textContent =
           `[${EDITOR_MARK_ATTR}] > :nth-child(${idx}) { margin-bottom: ${px}px !important; }`;
-        _pushDiag = { path: 'sheet-margin', tag: block.tagName, nthChild: idx, px };
+        _pushDiag = { path: 'sheet-margin', tag: lineBlock.tagName, nthChild: idx, containerTag: container.tagName, px };
         return true;
       } catch { /* fall through to root-padding */ }
     }
   }
-  // Last/only line, or no per-line sub-block — grow the editor root itself via
-  // inline padding-bottom. PM doesn't reconcile its own root element's style.
+  // Last/only line, or no line block with a sibling — grow the editor root
+  // itself via inline padding-bottom. PM doesn't reconcile its own root style.
+  const nearest = blockAncestorWithin(range.endContainer, target);
   _nudgedBlock = target;
   _nudgedProp = 'paddingBottom';
   _nudgedPrevValue = target.style.paddingBottom;
   _pushDiag = {
     path: 'root-padding', tag: target.tagName, px,
-    blockTag: block ? block.tagName : null, blockWasTarget: block === target,
-    hadNextSibling: !!(block && block.nextElementSibling),
+    nearestBlockTag: nearest ? nearest.tagName : null, foundLineBlock: !!lineBlock,
   };
   try { target.style.paddingBottom = `${px}px`; return true; }
   catch { _nudgedBlock = null; _nudgedProp = null; return false; }

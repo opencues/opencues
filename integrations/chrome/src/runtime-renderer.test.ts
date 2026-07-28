@@ -308,6 +308,43 @@ describe('runtime-renderer inline-note push-down spacer', () => {
     expect(target.style.paddingBottom).toBe('');
   });
 
+  it('Margin mode mid-buffer NESTED (Draft.js shape) — nudges the line block whose sibling is the next line, anchored to its real parent', () => {
+    // Draft.js nests each line: content > div[data-block] > div > span > text.
+    // The NEAREST block to the caret is an only-child inner div (no sibling);
+    // the real line block (sibling = next line) is one level up. The rule must
+    // anchor nth-child to the line block's actual parent (the contents wrapper),
+    // NOT the editor root.
+    const target = document.createElement('div');
+    target.className = 'public-DraftEditor-content';
+    target.setAttribute('contenteditable', 'true');
+    const contents = document.createElement('div');
+    contents.setAttribute('data-contents', 'true');
+    target.appendChild(contents);
+    const mkLine = (txt: string): HTMLElement => {
+      const block = document.createElement('div'); block.setAttribute('data-block', 'true');
+      const inner = document.createElement('div');
+      const span = document.createElement('span');
+      span.appendChild(document.createTextNode(txt));
+      inner.appendChild(span); block.appendChild(inner);
+      return block;
+    };
+    contents.appendChild(mkLine('line one'));
+    contents.appendChild(mkLine('line two'));
+    document.body.appendChild(target);
+
+    applyDirectives(target, [{ inlineNote: NOTE }], 'margin');
+
+    expect(document.querySelector('[data-oc-note-spacer]')).toBeNull();
+    // The CONTENTS wrapper (line block's real parent) is marked — NOT the editor root.
+    expect(contents.getAttribute('data-oc-editor')).toBe('1');
+    expect(target.hasAttribute('data-oc-editor')).toBe(false);
+    // Root padding was NOT used (that's the bug this pins).
+    expect(target.style.paddingBottom).toBe('');
+    const sheet = document.getElementById('oc-push-style') as HTMLStyleElement;
+    expect(sheet.textContent).toContain(':nth-child(1)'); // line one is the 1st data-block
+    expect(sheet.textContent).toContain('margin-bottom');
+  });
+
   it('Margin mode mid-buffer — clearing empties the stylesheet rule AND unmarks the editor', () => {
     const target = document.createElement('div');
     target.className = 'ProseMirror';
