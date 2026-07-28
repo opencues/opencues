@@ -269,23 +269,23 @@ function App(props: AppOpts) {
   if (props.keepAlive) {
     return (
       <box style={{ flexDirection: 'column', width: '100%', height: '100%', paddingLeft: 1, paddingRight: 1 }}>
-        <box style={{ flexGrow: 1, width: '100%', flexDirection: 'column' }}>
-          {/* Content-sized (not height:100%) so the inline-cue note below can
-              sit directly under the input content — a real flow row that grows
-              the input and pushes the rest down (matches OpenCode). A full-pane
-              textarea would shove the note to the bottom, and a framebuffer
-              draw into empty rows below the content isn't composited by
-              OpenTUI's native renderer. */}
+        <box style={{ flexGrow: 1, width: '100%' }}>
           <textarea
             ref={(t: TextareaRenderable) => { textarea = t; }}
-            style={{ width: '100%' }}
-            minHeight={1}
+            style={{ width: '100%', height: '100%' }}
             wrapMode="word"
           />
+          {/* Inline-cue note — a real absolute-positioned <text> overlay on the
+              line directly UNDER the span (a composited renderable, unlike a
+              framebuffer draw). row = caret visual row + 1; col = span column
+              (no CC prompt-indent padding — shell has no `❯ ` prefix, so the
+              span's buffer column IS its screen column). For a short prompt the
+              row below is empty, so it reads as a clean note line under the
+              span. Cursor-gated by the runtime. */}
           {note() != null && (
-            <text attributes={TextAttributes.DIM}>
-              {' '.repeat(note()!.col) + note()!.text}
-            </text>
+            <box style={{ position: 'absolute', top: note()!.row, left: note()!.col, zIndex: 10 }}>
+              <text attributes={TextAttributes.DIM}>{note()!.text}</text>
+            </box>
           )}
         </box>
         {tip() != null && (

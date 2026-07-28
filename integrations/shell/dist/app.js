@@ -997,96 +997,109 @@ function App(props) {
       _$insertNode(_el$7, _el$8);
       _$setProp(_el$7, "style", {
         flexGrow: 1,
-        width: "100%",
-        flexDirection: "column"
+        width: "100%"
       });
       _$use((t) => {
         textarea = t;
       }, _el$8);
       _$setProp(_el$8, "style", {
-        width: "100%"
+        width: "100%",
+        height: "100%"
       });
-      _$setProp(_el$8, "minHeight", 1);
       _$setProp(_el$8, "wrapMode", "word");
       _$insert(_el$7, (() => {
         var _c$ = _$memo(() => note() != null);
         return () => _c$() && (() => {
-          var _el$9 = _$createElement("text");
-          _$insert(_el$9, () => " ".repeat(note().col) + note().text);
-          _$effect((_$p) => _$setProp(_el$9, "attributes", TextAttributes.DIM, _$p));
+          var _el$9 = _$createElement("box"), _el$0 = _$createElement("text");
+          _$insertNode(_el$9, _el$0);
+          _$insert(_el$0, () => note().text);
+          _$effect((_p$) => {
+            var _v$ = {
+              position: "absolute",
+              top: note().row,
+              left: note().col,
+              zIndex: 10
+            }, _v$2 = TextAttributes.DIM;
+            _v$ !== _p$.e && (_p$.e = _$setProp(_el$9, "style", _v$, _p$.e));
+            _v$2 !== _p$.t && (_p$.t = _$setProp(_el$0, "attributes", _v$2, _p$.t));
+            return _p$;
+          }, {
+            e: undefined,
+            t: undefined
+          });
           return _el$9;
         })();
       })(), null);
       _$insert(_el$6, (() => {
         var _c$2 = _$memo(() => tip() != null);
         return () => _c$2() && (() => {
-          var _el$0 = _$createElement("box"), _el$1 = _$createElement("text");
-          _$insertNode(_el$0, _el$1);
-          _$insert(_el$0, (() => {
+          var _el$1 = _$createElement("box"), _el$10 = _$createElement("text");
+          _$insertNode(_el$1, _el$10);
+          _$insert(_el$1, (() => {
             var _c$3 = _$memo(() => !!tipParts()?.head);
             return () => _c$3() && (() => {
-              var _el$11 = _$createElement("box"), _el$12 = _$createElement("text"), _el$14 = _$createElement("text"), _el$15 = _$createTextNode(` `);
-              _$insertNode(_el$11, _el$12);
-              _$insertNode(_el$11, _el$14);
-              _$setProp(_el$11, "style", {
+              var _el$12 = _$createElement("box"), _el$13 = _$createElement("text"), _el$15 = _$createElement("text"), _el$16 = _$createTextNode(` `);
+              _$insertNode(_el$12, _el$13);
+              _$insertNode(_el$12, _el$15);
+              _$setProp(_el$12, "style", {
                 flexDirection: "row",
                 height: 1
               });
-              _$insertNode(_el$12, _$createTextNode(`C_`));
-              _$setProp(_el$12, "fg", "#ffffff");
-              _$insertNode(_el$14, _el$15);
-              _$setProp(_el$14, "fg", "#ffffff");
-              _$insert(_el$14, () => tipParts().head, null);
-              _$effect((_$p) => _$setProp(_el$12, "attributes", TextAttributes.INVERSE, _$p));
-              return _el$11;
+              _$insertNode(_el$13, _$createTextNode(`C_`));
+              _$setProp(_el$13, "fg", "#ffffff");
+              _$insertNode(_el$15, _el$16);
+              _$setProp(_el$15, "fg", "#ffffff");
+              _$insert(_el$15, () => tipParts().head, null);
+              _$effect((_$p) => _$setProp(_el$13, "attributes", TextAttributes.INVERSE, _$p));
+              return _el$12;
             })();
-          })(), _el$1);
-          _$insert(_el$0, () => tipRows().map((row) => (() => {
-            var _el$16 = _$createElement("box");
-            _$setProp(_el$16, "style", {
+          })(), _el$10);
+          _$insert(_el$1, () => tipRows().map((row) => (() => {
+            var _el$17 = _$createElement("box");
+            _$setProp(_el$17, "style", {
               flexDirection: "row",
               height: 1
             });
-            _$insert(_el$16, () => renderSpans(row));
-            return _el$16;
-          })()), _el$1);
-          _$insertNode(_el$1, _$createTextNode(` `));
-          _$effect((_$p) => _$setProp(_el$0, "style", {
+            _$insert(_el$17, () => renderSpans(row));
+            return _el$17;
+          })()), _el$10);
+          _$insertNode(_el$10, _$createTextNode(` `));
+          _$effect((_$p) => _$setProp(_el$1, "style", {
             height: (tipParts()?.head ? 1 : 0) + tipRows().length + 1,
             width: "100%",
             flexDirection: "column"
           }, _$p));
-          return _el$0;
+          return _el$1;
         })();
       })(), null);
       return _el$6;
     })();
   }
   return (() => {
-    var _el$17 = _$createElement("box"), _el$18 = _$createElement("box"), _el$19 = _$createElement("textarea"), _el$20 = _$createElement("box");
-    _$insertNode(_el$17, _el$18);
-    _$insertNode(_el$17, _el$20);
-    _$setProp(_el$17, "style", {
+    var _el$18 = _$createElement("box"), _el$19 = _$createElement("box"), _el$20 = _$createElement("textarea"), _el$21 = _$createElement("box");
+    _$insertNode(_el$18, _el$19);
+    _$insertNode(_el$18, _el$21);
+    _$setProp(_el$18, "style", {
       flexDirection: "column",
       width: "100%",
       height: "100%",
       paddingLeft: 1,
       paddingRight: 1
     });
-    _$insertNode(_el$18, _el$19);
-    _$setProp(_el$18, "style", {
+    _$insertNode(_el$19, _el$20);
+    _$setProp(_el$19, "style", {
       flexGrow: 1,
       width: "100%"
     });
     _$use((t) => {
       textarea = t;
-    }, _el$19);
-    _$setProp(_el$19, "style", {
+    }, _el$20);
+    _$setProp(_el$20, "style", {
       width: "100%",
       height: "100%"
     });
-    _$setProp(_el$19, "wrapMode", "word");
-    _$setProp(_el$20, "style", {
+    _$setProp(_el$20, "wrapMode", "word");
+    _$setProp(_el$21, "style", {
       height: 1,
       width: "100%",
       flexDirection: "row",
@@ -1094,29 +1107,29 @@ function App(props) {
       paddingLeft: 1,
       paddingRight: 1
     });
-    _$insert(_el$20, (() => {
+    _$insert(_el$21, (() => {
       var _c$4 = _$memo(() => tip() != null);
       return () => _c$4() ? (() => {
-        var _el$21 = _$createElement("text");
-        _$setProp(_el$21, "fg", "#ffffff");
-        _$insert(_el$21, tip);
-        return _el$21;
+        var _el$22 = _$createElement("text");
+        _$setProp(_el$22, "fg", "#ffffff");
+        _$insert(_el$22, tip);
+        return _el$22;
       })() : (() => {
-        var _el$22 = _$createElement("box"), _el$23 = _$createElement("text"), _el$25 = _$createElement("text");
-        _$insertNode(_el$22, _el$23);
-        _$insertNode(_el$22, _el$25);
-        _$setProp(_el$22, "style", {
+        var _el$23 = _$createElement("box"), _el$24 = _$createElement("text"), _el$26 = _$createElement("text");
+        _$insertNode(_el$23, _el$24);
+        _$insertNode(_el$23, _el$26);
+        _$setProp(_el$23, "style", {
           flexDirection: "row"
         });
-        _$insertNode(_el$23, _$createTextNode(`C_`));
-        _$setProp(_el$23, "fg", "#ffffff");
-        _$insertNode(_el$25, _$createTextNode(` OpenCues_ \xB7 Submit: Ctrl+Alt+S \xB7 Cancel: Ctrl+Alt+Q`));
-        _$setProp(_el$25, "fg", "#ffffff");
-        _$effect((_$p) => _$setProp(_el$23, "attributes", TextAttributes.INVERSE, _$p));
-        return _el$22;
+        _$insertNode(_el$24, _$createTextNode(`C_`));
+        _$setProp(_el$24, "fg", "#ffffff");
+        _$insertNode(_el$26, _$createTextNode(` OpenCues_ \xB7 Submit: Ctrl+Alt+S \xB7 Cancel: Ctrl+Alt+Q`));
+        _$setProp(_el$26, "fg", "#ffffff");
+        _$effect((_$p) => _$setProp(_el$24, "attributes", TextAttributes.INVERSE, _$p));
+        return _el$23;
       })();
     })());
-    return _el$17;
+    return _el$18;
   })();
 }
 function runTmux(tmuxBin, args) {
