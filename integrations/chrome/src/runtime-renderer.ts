@@ -408,9 +408,25 @@ function insertMarginPush(target: HTMLElement, range: Range, heightPx: number): 
       } catch { /* fall through to root-padding */ }
     }
   }
-  // Last/only line, or no line block with a sibling — grow the editor root
-  // itself via inline padding-bottom. PM doesn't reconcile its own root style.
+  // No block with a following sibling. Two sub-cases:
+  //  (a) There's still a line BELOW the caret within the editor — a `<br>` soft
+  //      break inside the caret's block (managed editors like LinkedIn comments
+  //      use `<br>` between lines, not sibling blocks). No CSS can open a gap
+  //      between two `<br>` lines mid-block without inserting content (which
+  //      would ship), so we can't push here — float cleanly rather than grow the
+  //      editor bottom uselessly (which would leave the note over the next line
+  //      AND waste vertical space).
+  //  (b) The caret is on the LAST visual line — grow the editor ROOT via inline
+  //      padding-bottom so a row opens below it (PM doesn't reconcile its root).
   const nearest = blockAncestorWithin(range.endContainer, target);
+  const lineBelow = firstLineBreakAfter(range.endContainer, target); // <br>/block after the caret
+  if (lineBelow) {
+    _pushDiag = {
+      path: 'no-safe-push', reason: 'soft-break-midline', tag: target.tagName,
+      nearestBlockTag: nearest ? nearest.tagName : null, belowTag: lineBelow.tagName,
+    };
+    return false; // can't safely open a mid-block gap — note floats
+  }
   _nudgedBlock = target;
   _nudgedProp = 'paddingBottom';
   _nudgedPrevValue = target.style.paddingBottom;

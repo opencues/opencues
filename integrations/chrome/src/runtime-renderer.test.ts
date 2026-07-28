@@ -345,6 +345,24 @@ describe('runtime-renderer inline-note push-down spacer', () => {
     expect(sheet.textContent).toContain('margin-bottom');
   });
 
+  it('Margin mode — soft <br> line break below the caret (LinkedIn-comment shape): floats, does NOT root-pad', () => {
+    // Line 1 and line 2 are <br>-separated inside ONE block — no sibling block to
+    // push, and no CSS can open a gap mid-block. Must NOT root-pad (that grows
+    // the editor bottom and leaves the note over line 2); float instead.
+    const target = document.createElement('div');
+    target.className = 'ProseMirror';
+    target.setAttribute('contenteditable', 'true');
+    target.innerHTML = '<p>line one<br>hii</p>';
+    document.body.appendChild(target);
+
+    applyDirectives(target, [{ inlineNote: NOTE }], 'margin');
+
+    expect(document.querySelector('[data-oc-note-spacer]')).toBeNull();
+    expect(target.style.paddingBottom).toBe(''); // did NOT root-pad
+    const sheet = document.getElementById('oc-push-style') as HTMLStyleElement | null;
+    expect(sheet?.textContent ?? '').toBe(''); // no stylesheet rule either
+  });
+
   it('Margin mode mid-buffer — clearing empties the stylesheet rule AND unmarks the editor', () => {
     const target = document.createElement('div');
     target.className = 'ProseMirror';

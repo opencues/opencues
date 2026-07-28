@@ -116,6 +116,16 @@ it's visible there rather than a silent no-op.
   specific site's editor could still override them; the fallback is a floating
   (occluding) note. This is the surface the user is expected to spot-check per
   editor — the `marginPush` diagnostic is the check.
+- **Soft `<br>` line breaks inside one block (non-last line).** Some managed
+  editors (e.g. LinkedIn comments) put multiple lines in a SINGLE block
+  separated by `<br>`, not sibling blocks. There is no CSS that opens a gap
+  between two `<br>` lines mid-block, and inserting a node/content would ship in
+  the message — so when the caret is on such a line with another `<br>` line
+  below, the note floats (overlaps the next line). The runtime detects this
+  (`marginPush path: 'no-safe-push', reason: 'soft-break-midline'`) and declines
+  to push rather than mis-grow the editor. The last line of such a block still
+  gets `root-padding`. Would need an opaque-note fallback (occlude cleanly) or a
+  per-editor API to improve.
 - **Multiple overlapping advisories.** v1 reveals the first def whose span
   contains the caret; passive cues rarely overlap. Define precedence (priority?)
   if a real overlap case appears.
