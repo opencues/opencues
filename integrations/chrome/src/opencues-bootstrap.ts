@@ -926,6 +926,24 @@ let _cursorFallbackLoggedAt = 0;
 let _lastCursorReliable = true;
 export function lastCursorReliable(): boolean { return _lastCursorReliable; }
 
+// A "fully-controlled" editor (e.g. LinkedIn's Post composer) captures keystrokes
+// and manages its caret in an internal model, never surfacing a browser-readable
+// selection inside the contenteditable — window.getSelection() parks at the app
+// root and the editor instance is hidden. OpenCues can't track the caret there,
+// so cues/blanks/cycling can't function and even dim is pointless. We DISABLE
+// OpenCues for such a target once the caret has proven persistently unreadable:
+// never a single valid read across a streak of attempts. Well-behaved editors
+// (LinkedIn comments included — they DO surface a real caret) flip `readable`
+// true on their first valid read, long before the threshold, so they're never
+// disabled. Per-element + permanent (a controlled editor never becomes readable).
+const _caretReadable = new WeakSet<HTMLElement>();
+const _caretFallbackStreak = new WeakMap<HTMLElement, number>();
+const _caretDisabled = new WeakSet<HTMLElement>();
+const CARET_UNREADABLE_THRESHOLD = 8;
+export function isCaretDisabled(el: HTMLElement | null): boolean {
+  return !!el && _caretDisabled.has(el);
+}
+
 function readCursorOffset(): number {
   const target = currentTarget;
   if (!target) { _lastCursorReliable = false; return 0; }
@@ -937,6 +955,8 @@ function readCursorOffset(): number {
       const offset = plainOffsetOfPosition(target, range.startContainer, range.startOffset);
       _lastValidCursor.set(target, offset);
       _lastCursorReliable = true;
+      _caretReadable.add(target);
+      _caretFallbackStreak.set(target, 0);
       return offset;
     }
     // Selection landed OUTSIDE our target. For Quill (LinkedIn's private bundle
@@ -957,6 +977,8 @@ function readCursorOffset(): number {
           if (qs && typeof qs.index === 'number' && qs.index >= 0) {
             _lastValidCursor.set(target, qs.index);
             _lastCursorReliable = true;
+            _caretReadable.add(target);
+            _caretFallbackStreak.set(target, 0);
             const now = Date.now();
             if (now - _cursorFallbackLoggedAt > 1000) {
               _cursorFallbackLoggedAt = now;
@@ -1003,6 +1025,17 @@ function readCursorOffset(): number {
   }
   // No fresh read was possible — the returned value is a fabricated fallback.
   _lastCursorReliable = false;
+  // Streak-count consecutive unreadable reads. If the caret has NEVER been
+  // readable for this target and the streak crosses the threshold, it's a
+  // fully-controlled editor — disable OpenCues for it entirely.
+  if (!_caretReadable.has(target) && !_caretDisabled.has(target)) {
+    const streak = (_caretFallbackStreak.get(target) ?? 0) + 1;
+    _caretFallbackStreak.set(target, streak);
+    if (streak >= CARET_UNREADABLE_THRESHOLD) {
+      _caretDisabled.add(target);
+      try { log.debug('[chrome] caretUnreadable-disable', { targetClass: (target.className || '').slice(0, 60), streak }); } catch { /* noop */ }
+    }
+  }
   return _lastValidCursor.get(target) ?? 0;
 }
 
@@ -3335,12 +3368,16 @@ function runtimeRender(): void {
   if (isNormalInput(target)) { clearInlineNote(); return; }
   const text = walkPlainText(target).text;
   const cursor = readCursorOffset();
+  // Fully-controlled editor with no browser-readable caret (e.g. LinkedIn's Post
+  // composer): OpenCues can't track the caret, so disable it here entirely —
+  // clear any paint (incl. dim) and bail. readCursorOffset flips this on once the
+  // caret proves persistently unreadable; readable editors never trip it.
+  if (isCaretDisabled(target)) { clearInlineNote(); clearDirectives(); return; }
   const directives = bootResult.collectRenderDirectives(text, cursor);
-  // If the caret couldn't be read (e.g. LinkedIn Posts: Quill parks the browser
-  // selection outside .ql-editor AND hides its instance), the cursor is a
-  // fabricated 0 — so the cursor-gated inline note + auto-select highlight would
-  // fire at a bogus position ("note auto-selects, ignores my cursor"). Strip
-  // them; the always-on dim still marks the flagged span. Better absent than wrong.
+  // If the caret couldn't be read this tick (transient — the selection is
+  // momentarily outside the editor), the cursor is a fabricated 0, so the
+  // cursor-gated inline note + auto-select highlight would fire at a bogus
+  // position. Strip them; the always-on dim still marks the flagged span.
   if (!lastCursorReliable()) {
     for (const d of directives) {
       (d as { inlineNote?: unknown }).inlineNote = undefined;
