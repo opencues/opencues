@@ -249,9 +249,9 @@ describe('runtime-renderer inline-note push-down spacer', () => {
   // ── Margin push-down (managed editors — claude.ai/ProseMirror) ───────────
   // A node inserted into a managed editor gets reverted, and (crucially) we
   // don't own its send button so a real inserted line would ship in the
-  // message. Instead we nudge the containing block's bottom margin via inline
-  // style: layout only, never document content, never an undo entry.
-  it("Margin mode — nudges the span's containing block's margin-bottom, inserts NO node", () => {
+  // message. Mid-buffer we open the row with a STYLESHEET RULE (PM can't revert
+  // what it can't observe) rather than an inline child style (which it reverts).
+  it('Margin mode mid-buffer — opens the row via a stylesheet rule (NOT inline child style, NOT a node)', () => {
     const target = document.createElement('div');
     target.className = 'ProseMirror';
     target.setAttribute('contenteditable', 'true');
@@ -262,11 +262,15 @@ describe('runtime-renderer inline-note push-down spacer', () => {
 
     // No spacer node (would be reverted / could ship).
     expect(document.querySelector('[data-oc-note-spacer]')).toBeNull();
-    // Line one's <p> got a bottom-margin nudge; line two's did not.
+    // No inline margin on the child (PM would revert that).
     const p1 = target.children[0] as HTMLElement;
-    const p2 = target.children[1] as HTMLElement;
-    expect(p1.style.marginBottom).not.toBe('');
-    expect(p2.style.marginBottom).toBe('');
+    expect(p1.style.marginBottom).toBe('');
+    // The editor is marked and a scoped stylesheet rule targets line one (nth-child 1).
+    expect(target.getAttribute('data-oc-editor')).toBe('1');
+    const sheet = document.getElementById('oc-push-style') as HTMLStyleElement;
+    expect(sheet).not.toBeNull();
+    expect(sheet.textContent).toContain(':nth-child(1)');
+    expect(sheet.textContent).toContain('margin-bottom');
   });
 
   it('Margin mode — single <p> with NO following sibling (claude.ai one-line shape): grows the EDITOR via padding, not the swallowed last-child margin', () => {
@@ -304,20 +308,37 @@ describe('runtime-renderer inline-note push-down spacer', () => {
     expect(target.style.paddingBottom).toBe('');
   });
 
-  it('Margin mode — clearing the note restores the block\'s prior margin exactly', () => {
+  it('Margin mode mid-buffer — clearing empties the stylesheet rule AND unmarks the editor', () => {
     const target = document.createElement('div');
     target.className = 'ProseMirror';
     target.setAttribute('contenteditable', 'true');
-    target.innerHTML = '<p style="margin-bottom: 4px">line one</p><p>line two</p>';
+    target.innerHTML = '<p>line one</p><p>line two</p>';
     document.body.appendChild(target);
-    const p1 = target.children[0] as HTMLElement;
-    expect(p1.style.marginBottom).toBe('4px');
 
     applyDirectives(target, [{ inlineNote: NOTE }], 'margin');
-    expect(p1.style.marginBottom).not.toBe('4px'); // nudged
+    const sheet = document.getElementById('oc-push-style') as HTMLStyleElement;
+    expect(sheet.textContent).toContain('margin-bottom');
+    expect(target.hasAttribute('data-oc-editor')).toBe(true);
 
-    // Note gone (no directive) → prior margin restored verbatim.
+    // Note gone (no directive) → rule emptied, editor unmarked.
     applyDirectives(target, [{}], 'margin');
-    expect(p1.style.marginBottom).toBe('4px');
+    expect(sheet.textContent).toBe('');
+    expect(target.hasAttribute('data-oc-editor')).toBe(false);
+  });
+
+  it('Margin mode — clearing the root-padding path restores the editor style exactly', () => {
+    const target = document.createElement('div');
+    target.className = 'ProseMirror';
+    target.setAttribute('contenteditable', 'true');
+    target.style.paddingBottom = '4px';
+    target.innerHTML = '<p>only line</p>'; // no sibling → root-padding path
+    document.body.appendChild(target);
+    expect(target.style.paddingBottom).toBe('4px');
+
+    applyDirectives(target, [{ inlineNote: NOTE }], 'margin');
+    expect(target.style.paddingBottom).not.toBe('4px'); // grew
+
+    applyDirectives(target, [{}], 'margin');
+    expect(target.style.paddingBottom).toBe('4px'); // restored verbatim
   });
 });

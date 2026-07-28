@@ -210,34 +210,59 @@ function ensureNoteEl(): HTMLDivElement {
 //  'margin' — MANAGED editors (ProseMirror/Lexical/Quill — claude.ai, etc.).
 //             A node inserted into these gets REVERTED by their MutationObserver,
 //             AND — critically — we don't own their send button, so a real
-//             inserted line would SHIP in the user's message. Instead we nudge
-//             the span's containing block's `margin-bottom` via inline STYLE.
-//             A style is layout, not document content: it can never reach the
-//             submitted text (walkPlainText reads text, not styles) and it
-//             creates no editor transaction (no undo-stack entry). If the editor
-//             reverts the style on its next redraw the push-down simply doesn't
-//             hold and the note floats — no worse than before, never unsafe.
+//             inserted line would SHIP in the user's message. So we open the row
+//             with CSS layout only (never document content — can't ship, no undo
+//             entry). Two levers, both chosen to survive the editor's reconciler:
+//               • mid-buffer (caret line has a following sibling to push): a
+//                 STYLESHEET RULE targeting that paragraph by position. PM's
+//                 MutationObserver reverts inline styles on child nodes it owns,
+//                 but it can't see (or revert) an external stylesheet — so the
+//                 margin holds. (Inline child margin was tried first and PM
+//                 reverted it — see git history.)
+//               • last/only line (margin on a last child is swallowed anyway):
+//                 grow the editor ROOT via inline `padding-bottom`. PM doesn't
+//                 reconcile its own root element's style, so this holds.
+//             Either way, if a specific editor still reverts it the row just
+//             doesn't open and the note floats — never unsafe.
 //
 //  'none'   — textareas / normal inputs (render is skipped entirely upstream).
 export type PushMode = 'node' | 'margin' | 'none';
 
 const NOTE_SPACER_ATTR = 'data-oc-note-spacer';
+const EDITOR_MARK_ATTR = 'data-oc-editor';
+const PUSH_STYLE_ID = 'oc-push-style';
 let _noteSpacer: HTMLElement | null = null;
-// Margin-mode bookkeeping: the element we nudged, WHICH style property, and its
-// prior inline value — so clear restores it EXACTLY (empty string if it had none).
+// Inline-nudge bookkeeping (root-padding path): the element, WHICH style
+// property, and its prior inline value — so clear restores it EXACTLY.
 let _nudgedBlock: HTMLElement | null = null;
 let _nudgedProp: 'marginBottom' | 'paddingBottom' | null = null;
 let _nudgedPrevValue = '';
+// Stylesheet-rule bookkeeping (mid-buffer path): the <style> element carrying
+// the margin rule + the editor we marked, so clear empties the rule + unmarks.
+let _pushStyleEl: HTMLStyleElement | null = null;
+let _markedEditor: HTMLElement | null = null;
 
 // Diagnostic for the margin path — the caller (bootstrap) logs it under
-// debug-mode so we can see, on a real managed editor, whether a per-line block
-// was found and whether the nudge held. Cleared on read.
+// debug-mode so we can see, on a real managed editor, which lever ran.
 let _pushDiag: Record<string, unknown> | null = null;
 export function consumePushDiag(): Record<string, unknown> | null {
   const d = _pushDiag; _pushDiag = null; return d;
 }
 
-/** Undo any push-down currently in effect (node spacer OR margin/padding nudge). */
+function ensurePushStyleEl(): HTMLStyleElement {
+  if (_pushStyleEl && _pushStyleEl.isConnected) return _pushStyleEl;
+  let el = document.getElementById(PUSH_STYLE_ID) as HTMLStyleElement | null;
+  if (!el) {
+    el = document.createElement('style');
+    el.id = PUSH_STYLE_ID;
+    (document.head || document.documentElement).appendChild(el);
+  }
+  _pushStyleEl = el;
+  return el;
+}
+
+/** Undo any push-down currently in effect (node spacer, root-padding inline
+ *  nudge, OR the mid-buffer stylesheet rule). */
 function clearPushDown(): void {
   if (_noteSpacer) { try { _noteSpacer.remove(); } catch { /* detached */ } }
   _noteSpacer = null;
@@ -247,6 +272,9 @@ function clearPushDown(): void {
   _nudgedBlock = null;
   _nudgedProp = null;
   _nudgedPrevValue = '';
+  if (_pushStyleEl) { try { _pushStyleEl.textContent = ''; } catch { /* detached */ } }
+  if (_markedEditor) { try { _markedEditor.removeAttribute(EDITOR_MARK_ATTR); } catch { /* detached */ } }
+  _markedEditor = null;
 }
 
 /** Nearest block-level ancestor of `node` within `root` (the line's block). */
@@ -331,21 +359,31 @@ function insertMarginPush(target: HTMLElement, range: Range, heightPx: number): 
   clearPushDown();
   const px = Math.max(1, Math.round(heightPx));
   const block = blockAncestorWithin(range.endContainer, target);
-  // Only the block-margin path when there's a following sibling to PUSH: a
-  // bottom margin on the LAST child is swallowed (doesn't grow the parent's
-  // box), so it opens no visible row. When the caret's line is the last/only
-  // block — the usual case in a compose box you're actively typing in — grow
-  // the editor ROOT via padding-bottom instead, which reliably opens space and
-  // whose inline style PM is less apt to revert than a child node's.
+  // Mid-buffer: the caret's line has its own block AND a following sibling to
+  // push. Apply the margin via a STYLESHEET RULE (targeting that paragraph by
+  // its position among the editor's children) rather than an inline style —
+  // PM reverts inline styles on child nodes it owns, but can't see a stylesheet.
+  // (A bottom margin on the LAST child is swallowed, so this path is gated on a
+  // next sibling; the last/only line falls through to root-padding below.)
   if (block && block !== target && block.parentNode && block.nextElementSibling) {
-    _nudgedBlock = block;
-    _nudgedProp = 'marginBottom';
-    _nudgedPrevValue = block.style.marginBottom; // '' if none — restored verbatim
-    _pushDiag = { path: 'block-margin', tag: block.tagName, px };
-    try { block.style.marginBottom = `${px}px`; return true; }
-    catch { _nudgedBlock = null; _nudgedProp = null; return false; }
+    const idx = Array.prototype.indexOf.call(target.children, block) + 1; // 1-based nth-child
+    if (idx >= 1) {
+      try {
+        if (_markedEditor && _markedEditor !== target) _markedEditor.removeAttribute(EDITOR_MARK_ATTR);
+        target.setAttribute(EDITOR_MARK_ATTR, '1');
+        _markedEditor = target;
+        const sheet = ensurePushStyleEl();
+        // Scope to the marked editor; !important so the editor's own inline
+        // margin (if any) doesn't out-specify us.
+        sheet.textContent =
+          `[${EDITOR_MARK_ATTR}] > :nth-child(${idx}) { margin-bottom: ${px}px !important; }`;
+        _pushDiag = { path: 'sheet-margin', tag: block.tagName, nthChild: idx, px };
+        return true;
+      } catch { /* fall through to root-padding */ }
+    }
   }
-  // Last/only line, or no per-line sub-block — grow the editor root itself.
+  // Last/only line, or no per-line sub-block — grow the editor root itself via
+  // inline padding-bottom. PM doesn't reconcile its own root element's style.
   _nudgedBlock = target;
   _nudgedProp = 'paddingBottom';
   _nudgedPrevValue = target.style.paddingBottom;
