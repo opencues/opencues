@@ -3260,10 +3260,12 @@ function runtimeRender(): void {
   const text = walkPlainText(target).text;
   const cursor = readCursorOffset();
   const directives = bootResult.collectRenderDirectives(text, cursor);
-  // Plain (non-managed) contenteditables can host a real push-down spacer for
-  // the inline note (content moves down, no occlusion). Managed editors
-  // (Lexical/PM/Quill) revert external nodes, so the note floats there.
-  applyDirectives(target, directives, !isManagedEditor(target));
+  // Push-down mode for the inline note (make room so it doesn't occlude the
+  // line below). Plain contenteditables host a real spacer NODE; managed
+  // editors (Lexical/PM/Quill) revert external nodes AND we don't own their
+  // send button, so there we nudge the containing block's bottom MARGIN via
+  // inline style instead (layout only — can't ship, no undo entry).
+  applyDirectives(target, directives, isManagedEditor(target) ? 'margin' : 'node');
 }
 
 /**

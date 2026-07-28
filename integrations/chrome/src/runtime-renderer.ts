@@ -64,7 +64,7 @@ function plainOffsetsToDomRanges(target: HTMLElement, offsets: PlainRange[]): Ra
  * over a typical chat-input subtree), so always-rebuild is the right
  * trade.
  */
-export function applyDirectives(target: HTMLElement, directives: RenderDirectives[], canPushDown = false): void {
+export function applyDirectives(target: HTMLElement, directives: RenderDirectives[], pushMode: PushMode = 'none'): void {
   if (!hasHighlightAPI) return;
 
   const dimOffsets: PlainRange[] = [];
@@ -109,7 +109,7 @@ export function applyDirectives(target: HTMLElement, directives: RenderDirective
   // cursor-gating are identical to the terminal.
   let note: RenderDirectives['inlineNote'] | undefined;
   for (const d of directives) { if (d.inlineNote) { note = d.inlineNote; break; } }
-  if (note && note.text) renderInlineNote(target, note, canPushDown);
+  if (note && note.text) renderInlineNote(target, note, pushMode);
   else clearInlineNote();
 
   // Per-colour loading highlights. Each unique colour gets a Highlight
@@ -198,21 +198,45 @@ function ensureNoteEl(): HTMLDivElement {
   return el;
 }
 
-// ── Push-down spacer (plain contenteditables only) ───────────────────────
-// On a plain contenteditable we insert an EMPTY, non-editable block right
-// after the span's line so the content below moves DOWN by a row — the note
-// overlay then sits in the freed gap instead of floating over the next line
-// (no occlusion, CC-style). The spacer carries no text, so it never reaches
-// what the user submits; walkPlainText skips it by its data attribute so it
-// can't shift buffer offsets. Managed editors (Lexical/PM/Quill) would revert
-// an external node and textareas have no per-line elements — for those we skip
-// the spacer and the note floats as before (caller passes canPushDown=false).
+// ── Push-down (make room for the note so it doesn't occlude line 2) ───────
+// Two mechanisms, picked by the caller's push mode:
+//
+//  'node'   — PLAIN contenteditables (Gmail / YouTube). Insert an EMPTY,
+//             non-editable block right after the span's line so content below
+//             moves DOWN by a row. The spacer carries no text, so it never
+//             reaches the submitted buffer; walkPlainText skips it by its data
+//             attribute so it can't shift offsets.
+//
+//  'margin' — MANAGED editors (ProseMirror/Lexical/Quill — claude.ai, etc.).
+//             A node inserted into these gets REVERTED by their MutationObserver,
+//             AND — critically — we don't own their send button, so a real
+//             inserted line would SHIP in the user's message. Instead we nudge
+//             the span's containing block's `margin-bottom` via inline STYLE.
+//             A style is layout, not document content: it can never reach the
+//             submitted text (walkPlainText reads text, not styles) and it
+//             creates no editor transaction (no undo-stack entry). If the editor
+//             reverts the style on its next redraw the push-down simply doesn't
+//             hold and the note floats — no worse than before, never unsafe.
+//
+//  'none'   — textareas / normal inputs (render is skipped entirely upstream).
+export type PushMode = 'node' | 'margin' | 'none';
+
 const NOTE_SPACER_ATTR = 'data-oc-note-spacer';
 let _noteSpacer: HTMLElement | null = null;
+// Margin-mode bookkeeping: the block we nudged + its prior inline margin-bottom,
+// so clear restores it EXACTLY (empty string if it had none).
+let _nudgedBlock: HTMLElement | null = null;
+let _nudgedPrevMargin = '';
 
-function clearNoteSpacer(): void {
+/** Undo any push-down currently in effect (node spacer OR margin nudge). */
+function clearPushDown(): void {
   if (_noteSpacer) { try { _noteSpacer.remove(); } catch { /* detached */ } }
   _noteSpacer = null;
+  if (_nudgedBlock) {
+    try { _nudgedBlock.style.marginBottom = _nudgedPrevMargin; } catch { /* detached */ }
+  }
+  _nudgedBlock = null;
+  _nudgedPrevMargin = '';
 }
 
 /** Nearest block-level ancestor of `node` within `root` (the line's block). */
@@ -258,7 +282,7 @@ function makeSpacer(heightPx: number): HTMLElement {
 }
 
 function insertNoteSpacer(target: HTMLElement, range: Range, heightPx: number): boolean {
-  clearNoteSpacer();
+  clearPushDown();
   const spacer = makeSpacer(heightPx);
   // Shape B — the span's line IS a per-line block element (Gmail's wrapped
   // lines, YouTube-with-blocks): insert the blank row right after it.
@@ -281,10 +305,27 @@ function insertNoteSpacer(target: HTMLElement, range: Range, heightPx: number): 
   } catch { return false; }
 }
 
+/** Managed-editor push-down: nudge the span's containing block's bottom margin
+ *  so the next block moves DOWN, leaving a gap for the note. Inline STYLE only —
+ *  no document content (can't ship, walkPlainText ignores styles) and no editor
+ *  transaction (no undo entry). If the editor reverts the style it just doesn't
+ *  hold; the note then floats. Returns true if a block was nudged. */
+function insertMarginPush(target: HTMLElement, range: Range, heightPx: number): boolean {
+  clearPushDown();
+  const block = blockAncestorWithin(range.endContainer, target);
+  if (!block || block === target || !block.parentNode) return false;
+  _nudgedBlock = block;
+  _nudgedPrevMargin = block.style.marginBottom; // '' if none — restored verbatim
+  try {
+    block.style.marginBottom = `${Math.max(1, Math.round(heightPx))}px`;
+    return true;
+  } catch { _nudgedBlock = null; return false; }
+}
+
 function renderInlineNote(
   target: HTMLElement,
   note: { spanStart: number; spanEnd: number; text: string },
-  canPushDown: boolean,
+  pushMode: PushMode,
 ): void {
   const ranges = plainOffsetsToDomRanges(target, [{ start: note.spanStart, end: note.spanEnd }]);
   if (ranges.length === 0) { clearInlineNote(); return; }
@@ -304,12 +345,18 @@ function renderInlineNote(
     const lh = parseFloat(cs.lineHeight);
     if (!Number.isNaN(lh) && lh > 0) lineHeightPx = lh;
   } catch { /* computed style unavailable — keep defaults */ }
-  // Plain contenteditable → reserve a real row so content moves down, then
-  // re-read the span rect (layout shifted) and drop the note in the gap.
-  if (canPushDown && insertNoteSpacer(target, range, lineHeightPx)) {
+  // Reserve a real row so content moves down, then re-read the span rect
+  // (layout shifted) and drop the note in the freed gap. 'node' for plain
+  // contenteditables, 'margin' for managed editors; either falls back to a
+  // floating note when it can't take effect.
+  const pushed =
+    pushMode === 'node' ? insertNoteSpacer(target, range, lineHeightPx)
+    : pushMode === 'margin' ? insertMarginPush(target, range, lineHeightPx)
+    : false;
+  if (pushed) {
     try { rect = range.getBoundingClientRect(); } catch { /* keep prior rect */ }
   } else {
-    clearNoteSpacer();
+    clearPushDown();
   }
   el.style.left = `${Math.round(rect.left)}px`;
   el.style.top = `${Math.round(rect.bottom)}px`;
@@ -323,7 +370,7 @@ function renderInlineNote(
 export function clearInlineNote(): void {
   if (_noteEl) _noteEl.style.display = 'none';
   _noteRange = null;
-  clearNoteSpacer();
+  clearPushDown();
 }
 
 /** Tear down the runtime's highlights — called on detach/dispose. */

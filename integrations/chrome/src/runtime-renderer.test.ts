@@ -179,7 +179,7 @@ describe('runtime-renderer inline-note push-down spacer', () => {
     target.innerHTML = '<div>line one</div><div>line two</div>';
     document.body.appendChild(target);
 
-    applyDirectives(target, [{ inlineNote: NOTE }], true);
+    applyDirectives(target, [{ inlineNote: NOTE }], 'node');
 
     const spacer = document.querySelector('[data-oc-note-spacer]');
     expect(spacer).not.toBeNull();
@@ -198,7 +198,7 @@ describe('runtime-renderer inline-note push-down spacer', () => {
     target.appendChild(l2);
     document.body.appendChild(target);
 
-    applyDirectives(target, [{ inlineNote: NOTE }], true);
+    applyDirectives(target, [{ inlineNote: NOTE }], 'node');
 
     const spacer = document.querySelector('[data-oc-note-spacer]');
     expect(spacer).not.toBeNull();
@@ -215,7 +215,7 @@ describe('runtime-renderer inline-note push-down spacer', () => {
     target.appendChild(document.createTextNode('line two'));
     document.body.appendChild(target);
 
-    applyDirectives(target, [{ inlineNote: NOTE }], true);
+    applyDirectives(target, [{ inlineNote: NOTE }], 'node');
 
     const spacer = document.querySelector('[data-oc-note-spacer]');
     expect(spacer).not.toBeNull();
@@ -228,19 +228,61 @@ describe('runtime-renderer inline-note push-down spacer', () => {
     target.textContent = 'line one';
     document.body.appendChild(target);
 
-    applyDirectives(target, [{ inlineNote: NOTE }], true);
+    applyDirectives(target, [{ inlineNote: NOTE }], 'node');
 
     expect(document.querySelector('[data-oc-note-spacer]')).toBeNull();
   });
 
-  it('canPushDown=false (managed editor) inserts NO spacer — note floats', () => {
+  it("pushMode 'none' inserts NO spacer and no margin — note floats", () => {
     const target = document.createElement('div');
     target.setAttribute('contenteditable', 'true');
     target.innerHTML = '<div>line one</div><div>line two</div>';
     document.body.appendChild(target);
 
-    applyDirectives(target, [{ inlineNote: NOTE }], false);
+    applyDirectives(target, [{ inlineNote: NOTE }], 'none');
 
     expect(document.querySelector('[data-oc-note-spacer]')).toBeNull();
+    const l1 = target.firstElementChild as HTMLElement;
+    expect(l1.style.marginBottom).toBe(''); // no nudge
+  });
+
+  // ── Margin push-down (managed editors — claude.ai/ProseMirror) ───────────
+  // A node inserted into a managed editor gets reverted, and (crucially) we
+  // don't own its send button so a real inserted line would ship in the
+  // message. Instead we nudge the containing block's bottom margin via inline
+  // style: layout only, never document content, never an undo entry.
+  it("Margin mode — nudges the span's containing block's margin-bottom, inserts NO node", () => {
+    const target = document.createElement('div');
+    target.className = 'ProseMirror';
+    target.setAttribute('contenteditable', 'true');
+    target.innerHTML = '<p>line one</p><p>line two</p>';
+    document.body.appendChild(target);
+
+    applyDirectives(target, [{ inlineNote: NOTE }], 'margin');
+
+    // No spacer node (would be reverted / could ship).
+    expect(document.querySelector('[data-oc-note-spacer]')).toBeNull();
+    // Line one's <p> got a bottom-margin nudge; line two's did not.
+    const p1 = target.children[0] as HTMLElement;
+    const p2 = target.children[1] as HTMLElement;
+    expect(p1.style.marginBottom).not.toBe('');
+    expect(p2.style.marginBottom).toBe('');
+  });
+
+  it('Margin mode — clearing the note restores the block\'s prior margin exactly', () => {
+    const target = document.createElement('div');
+    target.className = 'ProseMirror';
+    target.setAttribute('contenteditable', 'true');
+    target.innerHTML = '<p style="margin-bottom: 4px">line one</p><p>line two</p>';
+    document.body.appendChild(target);
+    const p1 = target.children[0] as HTMLElement;
+    expect(p1.style.marginBottom).toBe('4px');
+
+    applyDirectives(target, [{ inlineNote: NOTE }], 'margin');
+    expect(p1.style.marginBottom).not.toBe('4px'); // nudged
+
+    // Note gone (no directive) → prior margin restored verbatim.
+    applyDirectives(target, [{}], 'margin');
+    expect(p1.style.marginBottom).toBe('4px');
   });
 });
