@@ -19,6 +19,7 @@ import { useEffect, useState } from 'react';
 // as .js, so the extension here is correct AND mandatory under
 // nodenext module resolution.
 import { boot, type BootResult } from '@opencues/runtime/dist/adapters/gemini/v0.41/boot.js';
+import { inlineNoteDisplayText, inlineNoteBoxColumn } from '@opencues/runtime/dist/src/render-directives.js';
 import type { KeyEvent, LogLevel } from '@opencues/runtime/dist/src/adapter.js';
 import { createSourceReclassifier } from '@opencues/runtime/dist/src/boot-common.js';
 import {
@@ -679,4 +680,26 @@ export function getOpenCuesDirectiveRanges(
 ): { dimRanges: { start: number; end: number }[]; highlight: { start: number; end: number } | null } {
   if (!bootResult) return { dimRanges: [], highlight: null };
   return bootResult.getDirectiveRangesForLine(fullText, cursor, lineStart, lineEnd);
+}
+
+/**
+ * The active inline-cue note for the current render (or null). Rendered by the
+ * InputPrompt patch as its OWN extra visual-line item — a real +1 row that
+ * grows the input (Gemini's list is fixed-item-height, so a line can't grow to
+ * two rows, and CC-style push-down comes from the extra ITEM). Returns the
+ * pre-formatted `↳ …` display string plus the column to pad it to (so the
+ * connector lands under the span). `cursor` arrives in Gemini code-point space.
+ */
+export function getOpencuesInlineNote(
+  fullText: string,
+  cursor: number,
+): { text: string; col: number } | null {
+  if (!bootResult) return null;
+  const cuCursor = codePointsToCodeUnits(fullText, cursor);
+  const note = bootResult.getInlineNote(fullText, cuCursor);
+  if (!note) return null;
+  return {
+    text: inlineNoteDisplayText(note.text),
+    col: inlineNoteBoxColumn(fullText, note.spanStart),
+  };
 }

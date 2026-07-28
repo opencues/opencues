@@ -7,9 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added — inline-cue note on Gemini CLI (`@opencues/runtime` 0.28.5 → 0.28.6, `@opencues/gemini-cli` 0.2.8 → 0.2.9)
+### Added — inline-cue note on Gemini CLI (`@opencues/runtime` 0.28.5 → 0.28.8, `@opencues/gemini-cli` 0.2.8 → 0.2.10)
 
-Gemini CLI (React/Ink) now gets the inline-cue note too. Unlike the OpenTUI hosts, Ink renders each decorated line as a single `<Text>` that respects an embedded `\n` — so the note splices in as a real extra row that pushes the lines below it down, using the **same `applyDirectives` path as Claude Code**. The `gemini/v0.41` adapter advertises `inline-note`, and `decorateLine` now passes a line-clipped `inlineNote` (shifted to line-relative offsets) into `applyDirectives` for the visual line containing the span's start. Cursor-gating is inherited from the runtime (the note only emits while the caret is in the span). Pinned by 2 new `applyDirectives` inlineNote-splice tests.
+Gemini CLI (React/Ink) now gets the inline-cue note too. Its input renders each visual line as a **fixed-height (1-row) item** in a virtualized list, so a line can't grow to two rows (an embedded `\n` clips) — the note has to be its OWN list item. The `gemini/v0.41` adapter advertises `inline-note` and exposes `getInlineNote(text, cursor)`; the bootstrap's `getOpencuesInlineNote` formats it (`↳ …` + column), and the patched InputPrompt appends an `opencuesNote` item to `scrollableData` when a note is active. That grows the list height (`Math.min(viewportHeight, scrollableData.length)`) by one — a real extra row under the input, the same input-grows-by-one behaviour CC gets from the terminal. Cursor-gating is inherited from the runtime (the note only emits while the caret is in the span).
 
 ### Added — inline-cue notes + `_`-cycle on OpenCode / shell, as a REAL inserted line (`@opencues/runtime` 0.28.3 → 0.28.7, `@opencues/opencode` 0.2.8 → 0.2.13, `@opencues/shell` 0.2.7 → 0.2.13)
 
