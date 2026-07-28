@@ -13,7 +13,7 @@ import { insert as _$insert } from "@opentui/solid";
 import { createElement as _$createElement } from "@opentui/solid";
 import { render, useKeyboard, useRenderer } from "@opentui/solid";
 import { createSignal, onMount } from "solid-js";
-import { SyntaxStyle as SyntaxStyle2, TextAttributes } from "@opentui/core";
+import { SyntaxStyle as SyntaxStyle2, TextAttributes, RGBA as RGBA2 } from "@opentui/core";
 
 // src/bootstrap.ts
 import { RGBA } from "@opentui/core";
@@ -699,17 +699,11 @@ function triggerOpenCuesRender(text, cursor) {
     if (noteAnchor === null && directives.inlineNote && directives.inlineNote.text) {
       const vc = textarea.visualCursor;
       const visualRow = vc && typeof vc.visualRow === "number" ? vc.visualRow : 0;
-      const scrollY = typeof textarea.scrollY === "number" ? textarea.scrollY : 0;
-      const totalVisual = typeof textarea.virtualLineCount === "number" ? textarea.virtualLineCount : 0;
-      const targetDocRow = scrollY + visualRow + 1;
-      const rowBelowOccupied = totalVisual > 0 && targetDocRow < totalVisual;
-      if (!rowBelowOccupied) {
-        noteAnchor = {
-          text: inlineNoteDisplayText(directives.inlineNote.text),
-          row: visualRow + 1,
-          col: inlineNoteBoxColumn(text, directives.inlineNote.spanStart)
-        };
-      }
+      noteAnchor = {
+        text: inlineNoteDisplayText(directives.inlineNote.text),
+        row: visualRow + 1,
+        col: inlineNoteBoxColumn(text, directives.inlineNote.spanStart)
+      };
     }
     addRanges(directives.dimRanges, "d");
     if (directives.highlight) {
@@ -909,9 +903,54 @@ function App(props) {
       syntax,
       cwd: process.env.OPENCUES_USER_CWD || process.cwd(),
       onTipChange: (t) => setTip(t),
-      onInlineNoteChange: (n) => setNote(n)
+      onInlineNoteChange: (n) => {
+        setNote(n);
+        try {
+          renderer.requestRender?.();
+        } catch {}
+      }
     });
     textarea.focus();
+    textarea.renderAfter = (bufferU) => {
+      try {
+        const n = note();
+        if (!n)
+          return;
+        const ta = textarea;
+        const buffer = bufferU;
+        const sx = ta._screenX ?? 0;
+        const sy = ta._screenY ?? 0;
+        const tw = ta.width ?? 0;
+        const th = ta.height ?? 0;
+        const noteRow = sy + n.row;
+        const bottom = sy + th - 1;
+        if (n.row < 1 || noteRow > bottom || tw <= 0)
+          return;
+        const W = buffer.width;
+        const H = buffer.height;
+        const bufs = buffer.buffers;
+        const cells = W * H;
+        const fgS = bufs.fg.length / cells;
+        const bgS = bufs.bg.length / cells;
+        for (let y = bottom;y > noteRow; y--) {
+          const dst = y * W, src = (y - 1) * W;
+          bufs.char.copyWithin(dst, src, src + W);
+          bufs.attributes.copyWithin(dst, src, src + W);
+          bufs.fg.copyWithin(dst * fgS, src * fgS, (src + W) * fgS);
+          bufs.bg.copyWithin(dst * bgS, src * bgS, (src + W) * bgS);
+        }
+        for (let x = sx;x < sx + tw && x < W; x++) {
+          const i = noteRow * W + x;
+          bufs.char[i] = 32;
+          bufs.attributes[i] = 0;
+          for (let k = 0;k < fgS; k++)
+            bufs.fg[i * fgS + k] = 0;
+          for (let k = 0;k < bgS; k++)
+            bufs.bg[i * bgS + k] = 0;
+        }
+        buffer.drawText(n.text, sx + n.col, noteRow, RGBA2.fromValues(0.5, 0.5, 0.5, 1), undefined, 0);
+      } catch {}
+    };
   });
   useKeyboard((evt) => {
     if (evt.ctrl && evt.meta && evt.name === "s") {
@@ -1008,99 +1047,76 @@ function App(props) {
         height: "100%"
       });
       _$setProp(_el$8, "wrapMode", "word");
-      _$insert(_el$7, (() => {
-        var _c$ = _$memo(() => note() != null);
+      _$insert(_el$6, (() => {
+        var _c$ = _$memo(() => tip() != null);
         return () => _c$() && (() => {
           var _el$9 = _$createElement("box"), _el$0 = _$createElement("text");
           _$insertNode(_el$9, _el$0);
-          _$insert(_el$0, () => note().text);
-          _$effect((_p$) => {
-            var _v$ = {
-              position: "absolute",
-              top: note().row,
-              left: note().col,
-              zIndex: 10
-            }, _v$2 = TextAttributes.DIM;
-            _v$ !== _p$.e && (_p$.e = _$setProp(_el$9, "style", _v$, _p$.e));
-            _v$2 !== _p$.t && (_p$.t = _$setProp(_el$0, "attributes", _v$2, _p$.t));
-            return _p$;
-          }, {
-            e: undefined,
-            t: undefined
-          });
-          return _el$9;
-        })();
-      })(), null);
-      _$insert(_el$6, (() => {
-        var _c$2 = _$memo(() => tip() != null);
-        return () => _c$2() && (() => {
-          var _el$1 = _$createElement("box"), _el$10 = _$createElement("text");
-          _$insertNode(_el$1, _el$10);
-          _$insert(_el$1, (() => {
-            var _c$3 = _$memo(() => !!tipParts()?.head);
-            return () => _c$3() && (() => {
-              var _el$12 = _$createElement("box"), _el$13 = _$createElement("text"), _el$15 = _$createElement("text"), _el$16 = _$createTextNode(` `);
-              _$insertNode(_el$12, _el$13);
-              _$insertNode(_el$12, _el$15);
-              _$setProp(_el$12, "style", {
+          _$insert(_el$9, (() => {
+            var _c$2 = _$memo(() => !!tipParts()?.head);
+            return () => _c$2() && (() => {
+              var _el$10 = _$createElement("box"), _el$11 = _$createElement("text"), _el$13 = _$createElement("text"), _el$14 = _$createTextNode(` `);
+              _$insertNode(_el$10, _el$11);
+              _$insertNode(_el$10, _el$13);
+              _$setProp(_el$10, "style", {
                 flexDirection: "row",
                 height: 1
               });
-              _$insertNode(_el$13, _$createTextNode(`C_`));
+              _$insertNode(_el$11, _$createTextNode(`C_`));
+              _$setProp(_el$11, "fg", "#ffffff");
+              _$insertNode(_el$13, _el$14);
               _$setProp(_el$13, "fg", "#ffffff");
-              _$insertNode(_el$15, _el$16);
-              _$setProp(_el$15, "fg", "#ffffff");
-              _$insert(_el$15, () => tipParts().head, null);
-              _$effect((_$p) => _$setProp(_el$13, "attributes", TextAttributes.INVERSE, _$p));
-              return _el$12;
+              _$insert(_el$13, () => tipParts().head, null);
+              _$effect((_$p) => _$setProp(_el$11, "attributes", TextAttributes.INVERSE, _$p));
+              return _el$10;
             })();
-          })(), _el$10);
-          _$insert(_el$1, () => tipRows().map((row) => (() => {
-            var _el$17 = _$createElement("box");
-            _$setProp(_el$17, "style", {
+          })(), _el$0);
+          _$insert(_el$9, () => tipRows().map((row) => (() => {
+            var _el$15 = _$createElement("box");
+            _$setProp(_el$15, "style", {
               flexDirection: "row",
               height: 1
             });
-            _$insert(_el$17, () => renderSpans(row));
-            return _el$17;
-          })()), _el$10);
-          _$insertNode(_el$10, _$createTextNode(` `));
-          _$effect((_$p) => _$setProp(_el$1, "style", {
+            _$insert(_el$15, () => renderSpans(row));
+            return _el$15;
+          })()), _el$0);
+          _$insertNode(_el$0, _$createTextNode(` `));
+          _$effect((_$p) => _$setProp(_el$9, "style", {
             height: (tipParts()?.head ? 1 : 0) + tipRows().length + 1,
             width: "100%",
             flexDirection: "column"
           }, _$p));
-          return _el$1;
+          return _el$9;
         })();
       })(), null);
       return _el$6;
     })();
   }
   return (() => {
-    var _el$18 = _$createElement("box"), _el$19 = _$createElement("box"), _el$20 = _$createElement("textarea"), _el$21 = _$createElement("box");
-    _$insertNode(_el$18, _el$19);
-    _$insertNode(_el$18, _el$21);
-    _$setProp(_el$18, "style", {
+    var _el$16 = _$createElement("box"), _el$17 = _$createElement("box"), _el$18 = _$createElement("textarea"), _el$19 = _$createElement("box");
+    _$insertNode(_el$16, _el$17);
+    _$insertNode(_el$16, _el$19);
+    _$setProp(_el$16, "style", {
       flexDirection: "column",
       width: "100%",
       height: "100%",
       paddingLeft: 1,
       paddingRight: 1
     });
-    _$insertNode(_el$19, _el$20);
-    _$setProp(_el$19, "style", {
+    _$insertNode(_el$17, _el$18);
+    _$setProp(_el$17, "style", {
       flexGrow: 1,
       width: "100%"
     });
     _$use((t) => {
       textarea = t;
-    }, _el$20);
-    _$setProp(_el$20, "style", {
+    }, _el$18);
+    _$setProp(_el$18, "style", {
       width: "100%",
       height: "100%"
     });
-    _$setProp(_el$20, "wrapMode", "word");
-    _$setProp(_el$21, "style", {
+    _$setProp(_el$18, "wrapMode", "word");
+    _$setProp(_el$19, "style", {
       height: 1,
       width: "100%",
       flexDirection: "row",
@@ -1108,29 +1124,29 @@ function App(props) {
       paddingLeft: 1,
       paddingRight: 1
     });
-    _$insert(_el$21, (() => {
-      var _c$4 = _$memo(() => tip() != null);
-      return () => _c$4() ? (() => {
-        var _el$22 = _$createElement("text");
-        _$setProp(_el$22, "fg", "#ffffff");
-        _$insert(_el$22, tip);
-        return _el$22;
+    _$insert(_el$19, (() => {
+      var _c$3 = _$memo(() => tip() != null);
+      return () => _c$3() ? (() => {
+        var _el$20 = _$createElement("text");
+        _$setProp(_el$20, "fg", "#ffffff");
+        _$insert(_el$20, tip);
+        return _el$20;
       })() : (() => {
-        var _el$23 = _$createElement("box"), _el$24 = _$createElement("text"), _el$26 = _$createElement("text");
-        _$insertNode(_el$23, _el$24);
-        _$insertNode(_el$23, _el$26);
-        _$setProp(_el$23, "style", {
+        var _el$21 = _$createElement("box"), _el$22 = _$createElement("text"), _el$24 = _$createElement("text");
+        _$insertNode(_el$21, _el$22);
+        _$insertNode(_el$21, _el$24);
+        _$setProp(_el$21, "style", {
           flexDirection: "row"
         });
-        _$insertNode(_el$24, _$createTextNode(`C_`));
+        _$insertNode(_el$22, _$createTextNode(`C_`));
+        _$setProp(_el$22, "fg", "#ffffff");
+        _$insertNode(_el$24, _$createTextNode(` OpenCues_ \xB7 Submit: Ctrl+Alt+S \xB7 Cancel: Ctrl+Alt+Q`));
         _$setProp(_el$24, "fg", "#ffffff");
-        _$insertNode(_el$26, _$createTextNode(` OpenCues_ \xB7 Submit: Ctrl+Alt+S \xB7 Cancel: Ctrl+Alt+Q`));
-        _$setProp(_el$26, "fg", "#ffffff");
-        _$effect((_$p) => _$setProp(_el$24, "attributes", TextAttributes.INVERSE, _$p));
-        return _el$23;
+        _$effect((_$p) => _$setProp(_el$22, "attributes", TextAttributes.INVERSE, _$p));
+        return _el$21;
       })();
     })());
-    return _el$18;
+    return _el$16;
   })();
 }
 function runTmux(tmuxBin, args) {

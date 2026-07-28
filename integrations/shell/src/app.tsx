@@ -21,7 +21,7 @@ process.on('SIGINT', () => { /* no-op — Ctrl+C must not kill the pane */ });
 import { render, useKeyboard, useRenderer } from '@opentui/solid';
 import { createSignal, onMount } from 'solid-js';
 import type { TextareaRenderable } from '@opentui/core';
-import { SyntaxStyle, TextAttributes } from '@opentui/core';
+import { SyntaxStyle, TextAttributes, RGBA } from '@opentui/core';
 import { startOpenCues, dispatchOpenCuesKey, resetOpenCuesBufferState } from './bootstrap';
 
 interface AppOpts {
@@ -121,9 +121,74 @@ function App(props: AppOpts) {
       // set, fall back to process.cwd() for in-repo dev runs.
       cwd: process.env.OPENCUES_USER_CWD || process.cwd(),
       onTipChange: (t) => setTip(t),
-      onInlineNoteChange: (n) => setNote(n),
+      onInlineNoteChange: (n) => {
+        setNote(n);
+        // The note is painted in renderAfter (read outside JSX reactivity), so
+        // a note change won't schedule a frame on its own — request one so the
+        // inserted line appears/clears immediately, not on the next keystroke.
+        try { (renderer as unknown as { requestRender?: () => void }).requestRender?.(); } catch { /* swallow */ }
+      },
     });
     textarea.focus();
+
+    // ── Inline-cue note: a REAL inserted line under the span (push-down) ──
+    // OpenTUI's textarea renders its buffer lines contiguously in native
+    // code — no virtual-text/decoration-line primitive. So we extend it at
+    // the TS layer via the `renderAfter` hook + the exposed framebuffer cell
+    // arrays: after the textarea has drawn normally, we shift every row below
+    // the span DOWN by one and draw the note in the freed row. Result: the
+    // note sits on its own line directly under the span and pushes existing
+    // text down — the same result Claude Code produces — without ever
+    // touching the edit buffer (submit text stays clean) and without a native
+    // rebuild. Cursor/selection are drawn (by native) on the span line ABOVE
+    // the note, so the downward shift never disturbs them.
+    (textarea as unknown as { renderAfter?: (buffer: unknown, dt: number) => void }).renderAfter = (
+      bufferU: unknown,
+    ): void => {
+      try {
+        const n = note();
+        if (!n) return;
+        const ta = textarea as unknown as { _screenX?: number; _screenY?: number; width: number; height: number };
+        const buffer = bufferU as {
+          width: number; height: number;
+          buffers: { char: Uint32Array; fg: Float32Array; bg: Float32Array; attributes: Uint32Array };
+          drawText: (t: string, x: number, y: number, fg: RGBA, bg?: RGBA, attrs?: number) => void;
+        };
+        const sx = ta._screenX ?? 0;
+        const sy = ta._screenY ?? 0;
+        const tw = ta.width ?? 0;
+        const th = ta.height ?? 0;
+        const noteRow = sy + n.row;               // absolute framebuffer row for the note
+        const bottom = sy + th - 1;               // last row the textarea owns
+        if (n.row < 1 || noteRow > bottom || tw <= 0) return;
+        const W = buffer.width;
+        const H = buffer.height;
+        const bufs = buffer.buffers;
+        const cells = W * H;
+        const fgS = bufs.fg.length / cells;       // floats per cell (RGBA → 4)
+        const bgS = bufs.bg.length / cells;
+        // Shift rows [noteRow, bottom-1] DOWN by one (bottom-up so we don't
+        // clobber a source before it's copied). Full-row copy is fine: in
+        // both hosts the textarea owns the whole width of these rows.
+        for (let y = bottom; y > noteRow; y--) {
+          const dst = y * W, src = (y - 1) * W;
+          bufs.char.copyWithin(dst, src, src + W);
+          bufs.attributes.copyWithin(dst, src, src + W);
+          bufs.fg.copyWithin(dst * fgS, src * fgS, (src + W) * fgS);
+          bufs.bg.copyWithin(dst * bgS, src * bgS, (src + W) * bgS);
+        }
+        // Clear the freed note row (within the textarea's x-span) — the shift
+        // left the old line-1 cells sitting here — then draw the dim note.
+        for (let x = sx; x < sx + tw && x < W; x++) {
+          const i = noteRow * W + x;
+          bufs.char[i] = 32; // space
+          bufs.attributes[i] = 0;
+          for (let k = 0; k < fgS; k++) bufs.fg[i * fgS + k] = 0;
+          for (let k = 0; k < bgS; k++) bufs.bg[i * bgS + k] = 0;
+        }
+        buffer.drawText(n.text, sx + n.col, noteRow, RGBA.fromValues(0.5, 0.5, 0.5, 1), undefined, 0);
+      } catch { /* swallow — degrade to no note rather than crash the frame */ }
+    };
 
     // oc-popup now hides the outer status bar BEFORE invoking
     // oc-edit (so the inner UI doesn't trigger a redraw cascade
@@ -269,15 +334,9 @@ function App(props: AppOpts) {
             style={{ width: '100%', height: '100%' }}
             wrapMode="word"
           />
-          {/* Inline-cue note — an absolute overlay LINE directly under the
-              span (like Claude Code), positioned in the textarea's own cell
-              space. Cursor-gated by the runtime; row = caret visual row + 1,
-              col = span column. zIndex floats it over the textarea. */}
-          {note() != null && (
-            <box style={{ position: 'absolute', top: note()!.row, left: note()!.col, zIndex: 10 }}>
-              <text attributes={TextAttributes.DIM}>{note()!.text}</text>
-            </box>
-          )}
+          {/* The inline-cue note is drawn as a REAL inserted line via the
+              textarea's renderAfter hook (see onMount) — it pushes existing
+              text down instead of floating over it. No overlay box here. */}
         </box>
         {tip() != null && (
           <box style={{ height: (tipParts()?.head ? 1 : 0) + tipRows().length + 1, width: '100%', flexDirection: 'column' }}>
