@@ -12,6 +12,7 @@ import type { KeyEvent, LogLevel } from '@opencues/runtime/dist/src/adapter';
 import { buildOpenTuiModifiers } from '@opencues/runtime/dist/src/modules/mac-keyboard';
 import { createSourceReclassifier } from '@opencues/runtime/dist/src/boot-common';
 import { codeUnitsToCells } from '@opencues/runtime/dist/src/util/cell-width';
+import { inlineNoteDisplayText } from '@opencues/runtime/dist/src/render-directives';
 import {
   createBlankInvoke,
   createDefaultBlanksRegistry,
@@ -220,13 +221,20 @@ export interface TerminalBootOpts {
   cwd: string;
   /** Live tip subscriber — the footer reads from this. */
   onTipChange?: (tip: string | null) => void;
+  /** Live inline-cue-note subscriber. OpenTUI has no virtual text, so a
+   *  note that would paint under a span's line in a terminal host instead
+   *  renders in a below-input region. null when no note-bearing span. */
+  onInlineNoteChange?: (note: string | null) => void;
 }
 
 const sourceReclassifier = createSourceReclassifier();
 let bootResult: BootResult | undefined;
+/** Set from startOpenCues opts; called by triggerOpenCuesRender. */
+let _onInlineNoteChange: ((note: string | null) => void) | undefined;
 
 export function startOpenCues(opts: TerminalBootOpts): BootResult {
   if (bootResult) return bootResult;
+  _onInlineNoteChange = opts.onInlineNoteChange;
 
   const log = (level: LogLevel, msg: string, data?: unknown): void => {
     try {
@@ -571,8 +579,16 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
     }
   };
   const desiredColored = new Map<ExtmarkKey, { hex: string; start: number; end: number }>();
+  // OpenTUI has no virtual text, so a note-bearing span's advisory can't
+  // paint under its line; the first active one feeds a below-input region
+  // via _onInlineNoteChange (App renders it). Same `↳ <note>` text the
+  // terminal + chrome paths render, via the shared inlineNoteDisplayText.
+  let noteText: string | null = null;
   const directiveSets = bootResult.collectRenderDirectives(text, cursor);
   for (const directives of directiveSets) {
+    if (noteText === null && directives.inlineNote && directives.inlineNote.text) {
+      noteText = inlineNoteDisplayText(directives.inlineNote.text);
+    }
     addRanges(directives.dimRanges, 'd');
     if (directives.highlight) {
       const h = directives.highlight;
@@ -650,4 +666,7 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
     });
     ownedExtmarks.set(key, id);
   }
+
+  // Push the active note (or clear it) into the below-input region.
+  try { _onInlineNoteChange?.(noteText); } catch { /* swallow */ }
 }

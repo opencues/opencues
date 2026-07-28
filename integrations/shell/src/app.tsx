@@ -47,6 +47,10 @@ interface AppOpts {
 function App(props: AppOpts) {
   const renderer = useRenderer();
   const [tip, setTip] = createSignal<string | null>(null);
+  // Inline-cue note — the advisory for the active note-bearing span. OpenTUI
+  // has no virtual text, so it renders below the input (mirrors the tip) with
+  // the `↳ <note>` connector pre-formatted by the runtime. null when absent.
+  const [note, setNote] = createSignal<string | null>(null);
   // Word-wrap the tip into up to 3 rows so long lines (kata coach,
   // completion recap, catalogue notices) GROW the bar instead of
   // clipping at the pane edge. Deterministic manual wrap — OpenTUI
@@ -116,6 +120,7 @@ function App(props: AppOpts) {
       // set, fall back to process.cwd() for in-repo dev runs.
       cwd: process.env.OPENCUES_USER_CWD || process.cwd(),
       onTipChange: (t) => setTip(t),
+      onInlineNoteChange: (n) => setNote(n),
     });
     textarea.focus();
 
@@ -276,6 +281,11 @@ function App(props: AppOpts) {
             <text> </text>
           </box>
         )}
+        {note() != null && (
+          <box style={{ width: '100%', height: 1, flexDirection: 'row' }}>
+            <text attributes={TextAttributes.DIM}>{note()}</text>
+          </box>
+        )}
       </box>
     );
   }
@@ -302,6 +312,8 @@ function App(props: AppOpts) {
       >
         {tip() != null
           ? <text fg="#ffffff">{tip()}</text>
+          : note() != null
+          ? <text attributes={TextAttributes.DIM}>{note()}</text>
           : <box style={{ flexDirection: 'row' }}>
               <text fg="#ffffff" attributes={TextAttributes.INVERSE}>C_</text>
               <text fg="#ffffff"> OpenCues_  ·  Submit: Ctrl+Alt+S   ·   Cancel: Ctrl+Alt+Q</text>

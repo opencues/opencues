@@ -21,6 +21,7 @@ import type { KeyEvent, LogLevel, RenderDirectives } from "@opencues/runtime/dis
 import { buildOpenTuiModifiers } from "@opencues/runtime/dist/src/modules/mac-keyboard"
 import { createSourceReclassifier } from "@opencues/runtime/dist/src/boot-common"
 import { codeUnitsToCells } from "@opencues/runtime/dist/src/util/cell-width"
+import { inlineNoteDisplayText } from "@opencues/runtime/dist/src/render-directives"
 import { createBlankInvoke, createDefaultBlanksRegistry, type Blank } from "@opencues/runtime/dist/src/blanks"
 import { validateScriptPath, appendAuditLog } from "@opencues/runtime/dist/src/security/spawn-sandbox"
 import { wrapWithBwrap } from "@opencues/runtime/dist/src/security/sandbox-runner"
@@ -62,6 +63,13 @@ const [opencuesKata, setOpencuesKata] = createSignal<{
   offTrack: boolean
 } | null>(null)
 export { opencuesKata }
+// Inline-cue note. OpenTUI has no virtual text, so a note that would
+// paint directly under a span's line in a terminal host instead renders
+// in a below-input region (the patched footer subscribes via
+// opencuesInlineNote()). null when no note-bearing span is active.
+// Mirrors the terminal `↳ <note>` connector shape via inlineNoteDisplayText.
+const [opencuesInlineNote, setOpencuesInlineNote] = createSignal<string | null>(null)
+export { opencuesInlineNote }
 
 export interface PromptInputAccess {
   /** Reads the current text from the SolidJS store. */
@@ -784,8 +792,17 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
   // colour + offset so the same range can change colour from one tick
   // to the next without leaking stale extmarks.
   const desiredColored = new Map<OcExtmarkKey, { hex: string; start: number; end: number }>()
+  // OpenTUI has no virtual text, so the note can't paint under its span's
+  // line the way the terminal painter splices it. Instead the first
+  // active note-bearing span's advisory feeds a below-input region via the
+  // opencuesInlineNote signal (the patched footer subscribes). Same text
+  // the terminal `↳ <note>` connector renders, via inlineNoteDisplayText.
+  let noteText: string | null = null
   const directiveSets = bootResult.collectRenderDirectives(text, cursor)
   for (const directives of directiveSets) {
+    if (noteText === null && directives.inlineNote && directives.inlineNote.text) {
+      noteText = inlineNoteDisplayText(directives.inlineNote.text)
+    }
     addRanges(directives.dimRanges, "d")
     if (directives.highlight) {
       const h = directives.highlight
@@ -879,4 +896,8 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
     })
     ocOwnedExtmarks.set(key, id)
   }
+
+  // Push the active note (or clear it) into the below-input footer region.
+  // Deduped by the signal itself — footer re-renders only when the text flips.
+  setOpencuesInlineNote(noteText)
 }

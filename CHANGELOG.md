@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — inline-cue notes + `_`-cycle on OpenCode / shell (`@opencues/runtime` 0.28.3 → 0.28.4, `@opencues/opencode` 0.2.8 → 0.2.9, `@opencues/shell` 0.2.7 → 0.2.8)
+
+Brings the inline-cue UX (already live on terminal/CC + chrome) to the OpenTUI hosts. The `oc/v1.14` and `shell/v1` adapters now advertise the `inline-note` capability, so note-bearing spans (sentence-cues, contradiction-cues, and history-bearing transform/fluid blanks) get their advisory painted and `_`-cycle lights up.
+
+OpenTUI has **no virtual text** — an extmark can only re-style real buffer content, it can't inject a note under a span's wrapped line the way the terminal ANSI painter splices one in. So the note degrades to a **below-input region**: each host's `triggerOpenCuesRender` reads the first active span's `directives.inlineNote`, formats it with the shared `inlineNoteDisplayText` (same `↳ <note>` text the terminal + chrome paths render), and surfaces it. On OpenCode it feeds a new `opencuesInlineNote` SolidJS signal that both patched footers (home + sidebar) subscribe to, rendered as a muted full-width row yielding to kata (mirrors the existing `opencuesTip` path). On shell it flows through a new `onInlineNoteChange` boot callback into a `note` signal rendered below the input in both the keep-alive and legacy layouts. The note reads correctly; it just sits under the whole input box rather than directly under the span's line — the OpenTUI limitation, called out for the eventual horizontal-note design.
+
+Marker-drift note: both OpenCode footer patches now guard on the newest injected marker (`opencuesInlineNote`) rather than `opencuesKata`, so a fork left kata-only by a prior install re-patches to pick up the note block (the same guard-on-newest-marker rule the kata patch already documented).
+
 ### Fixed — `inherit` is now a universal provider fall-through sentinel (`@opencues/core` 0.40.1 → 0.40.2, `@opencues/chrome` 0.2.101 → 0.2.102)
 
 `inherit` means "no override at this tier — use the one below" and is a documented value for BOTH the bucket scalars (`cues-llm-provider: inherit`) and the per-feature ones (`word-cues-provider: inherit`, `agent-provider: inherit`, …). But `resolveLLMTuple` only honored it for the bucket scalars (collapsed upstream); a per-feature `inherit` arrived verbatim and was looked up as a LITERAL provider → unknown → `null` → the source was silently dropped with `"no API key for provider 'inherit'"`. Symptom: setting every routing scalar to `inherit` (to make one global provider authoritative) silently disabled all word-cues / sentence-cues — most visible on chrome, where the whole cue set went dark.
