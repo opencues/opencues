@@ -914,6 +914,7 @@ export function cacheValidCursor(target: HTMLElement, offset: number): void {
   if (offset >= 0) _lastValidCursor.set(target, offset);
 }
 
+let _cursorFallbackLoggedAt = 0;
 function readCursorOffset(): number {
   const target = currentTarget;
   if (!target) return 0;
@@ -926,6 +927,26 @@ function readCursorOffset(): number {
       _lastValidCursor.set(target, offset);
       return offset;
     }
+    // Selection landed OUTSIDE our target — we can't map the caret, so we fall
+    // back to the cache/0 (which makes cursor-gated features mis-fire, e.g. the
+    // inline note showing regardless of caret on LinkedIn Posts). Diagnose WHY:
+    // shadow DOM? a wrong attach target? Throttled so the hot path isn't spammed.
+    try {
+      const now = Date.now();
+      if (now - _cursorFallbackLoggedAt > 1000) {
+        _cursorFallbackLoggedAt = now;
+        const anchor = range.startContainer as Node & { getRootNode?: () => Node };
+        const root = anchor.getRootNode ? anchor.getRootNode() : null;
+        log.debug('[chrome] cursorReadFallback', {
+          anchorNode: (anchor as Node).nodeName,
+          anchorInShadow: typeof ShadowRoot !== 'undefined' && root instanceof ShadowRoot,
+          anchorInDoc: document.contains(anchor as Node),
+          targetTag: target.tagName,
+          targetClass: (target.className || '').slice(0, 60),
+          cached: _lastValidCursor.get(target) ?? null,
+        });
+      }
+    } catch { /* diagnostic must never throw */ }
   }
   return _lastValidCursor.get(target) ?? 0;
 }
