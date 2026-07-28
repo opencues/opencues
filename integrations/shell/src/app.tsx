@@ -269,23 +269,28 @@ function App(props: AppOpts) {
   if (props.keepAlive) {
     return (
       <box style={{ flexDirection: 'column', width: '100%', height: '100%', paddingLeft: 1, paddingRight: 1 }}>
-        <box style={{ flexGrow: 1, width: '100%' }}>
+        <box style={{ flexGrow: 1, width: '100%', flexDirection: 'column' }}>
+          {/* Content-sized textarea (like Claude Code's + OpenCode's input,
+              which grow with content — NOT a full pane). This gives the note
+              below a real row to occupy: when it appears it PUSHES the rest
+              down instead of floating over the next line (no occlusion). The
+              maxHeight cap keeps the textarea from stretching to fill the pane
+              (which would shove the note to the bottom). */}
           <textarea
             ref={(t: TextareaRenderable) => { textarea = t; }}
-            style={{ width: '100%', height: '100%' }}
+            style={{ width: '100%' }}
+            minHeight={1}
+            maxHeight={Math.max(3, (process.stdout.rows ?? 15) - 3)}
             wrapMode="word"
           />
-          {/* Inline-cue note — a real absolute-positioned <text> overlay on the
-              line directly UNDER the span (a composited renderable, unlike a
-              framebuffer draw). row = caret visual row + 1; col = span column
-              (no CC prompt-indent padding — shell has no `❯ ` prefix, so the
-              span's buffer column IS its screen column). For a short prompt the
-              row below is empty, so it reads as a clean note line under the
-              span. Cursor-gated by the runtime. */}
+          {/* Inline-cue note — a real flow row directly under the input content
+              that grows the input by one (CC-style push-down, never occludes).
+              col pads the connector to the span column; no CC prompt-indent
+              padding (shell has no `❯ ` prefix). Cursor-gated by the runtime. */}
           {note() != null && (
-            <box style={{ position: 'absolute', top: note()!.row, left: note()!.col, zIndex: 10 }}>
-              <text attributes={TextAttributes.DIM}>{note()!.text}</text>
-            </box>
+            <text attributes={TextAttributes.DIM}>
+              {' '.repeat(note()!.col) + note()!.text}
+            </text>
           )}
         </box>
         {tip() != null && (
