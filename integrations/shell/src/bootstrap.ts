@@ -241,6 +241,9 @@ const sourceReclassifier = createSourceReclassifier();
 let bootResult: BootResult | undefined;
 /** Set from startOpenCues opts; called by triggerOpenCuesRender. */
 let _onInlineNoteChange: ((note: InlineNoteAnchor | null) => void) | undefined;
+/** Captured at boot so top-level triggerOpenCuesRender can trace note changes. */
+let _termLog: ((level: LogLevel, msg: string, data?: unknown) => void) | undefined;
+let _termLastNoteText: string | null = null;
 
 export function startOpenCues(opts: TerminalBootOpts): BootResult {
   if (bootResult) return bootResult;
@@ -264,6 +267,7 @@ export function startOpenCues(opts: TerminalBootOpts): BootResult {
       require('fs').appendFile('/tmp/opencues.log', line, () => {});
     } catch { /* swallow */ }
   };
+  _termLog = log;
 
   const getText = (): string => opts.textarea.plainText;
   const getCursor = (): number => opts.textarea.cursorOffset;
@@ -719,5 +723,10 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
   }
 
   // Push the active note anchor (or clear it) to the overlay renderer.
+  const nextNoteText = noteAnchor ? noteAnchor.text : null;
+  if (nextNoteText !== _termLastNoteText) {
+    try { _termLog?.('debug', 'inlineNote', { cursor, note: nextNoteText, row: noteAnchor?.row, col: noteAnchor?.col }); } catch { /* swallow */ }
+    _termLastNoteText = nextNoteText;
+  }
   try { _onInlineNoteChange?.(noteAnchor); } catch { /* swallow */ }
 }
