@@ -490,9 +490,29 @@ export function dispatchOpenCuesKey(evt: any): boolean {
     cursorOffset: cursor,
   };
   const consumed = bootResult.dispatchKey(e);
-  if (consumed) triggerOpenCuesRender(_textareaRef?.plainText ?? text, _textareaRef?.cursorOffset ?? cursor);
+  if (consumed) {
+    triggerOpenCuesRender(_textareaRef?.plainText ?? text, _textareaRef?.cursorOffset ?? cursor);
+  } else if (CURSOR_MOVING_KEYS.has(keyName)) {
+    // OpenTUI's onCursorChange fires on HORIZONTAL moves (left/right) but NOT
+    // vertical (up/down) or jumps (home/end/page). Those keys fall through to
+    // the textarea unconsumed, move the caret, and nothing re-evaluates the
+    // cursor gate — so the inline-cue note + auto-select highlight linger on
+    // the line we left. The textarea processes the key AFTER this handler
+    // returns, so defer one macrotask and re-render against the settled caret.
+    setTimeout(() => {
+      try { triggerOpenCuesRender(_textareaRef?.plainText ?? text, _textareaRef?.cursorOffset ?? cursor); }
+      catch { /* swallow */ }
+    }, 0);
+  }
   return consumed;
 }
+
+// Caret-moving keys OpenTUI doesn't surface via onCursorChange (vertical +
+// jumps). left/right are included defensively — a redundant deferred render
+// there is harmless (idempotent paint).
+const CURSOR_MOVING_KEYS = new Set<string>([
+  'up', 'down', 'left', 'right', 'home', 'end', 'pageup', 'pagedown',
+]);
 
 function normaliseKeyName(evt: any): string {
   if (evt.name) return String(evt.name).toLowerCase();

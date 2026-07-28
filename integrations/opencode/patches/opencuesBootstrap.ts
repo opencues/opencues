@@ -258,6 +258,8 @@ export function startOpenCues(opts: {
 }): BootResult {
   if (bootResult) return bootResult
 
+  _ocRenderer = opts.renderer
+
   const log = (level: LogLevel, msg: string, data?: unknown): void => {
     try {
       const ts = new Date().toISOString().slice(11, 23)
@@ -287,6 +289,7 @@ export function startOpenCues(opts: {
       // Swallow — TUI swallows stderr anyway.
     }
   }
+  _ocLog = log
   // Cursor tracer — diagnostic instrumentation for the cursor-jumps
   // class of bugs. Writes one line per cursor/text touchpoint so we
   // can reconstruct the full sequence when something goes wrong.
@@ -598,9 +601,31 @@ export function dispatchOpenCuesKey(evt: any): boolean {
   }
   const consumed = bootResult.dispatchKey(e)
   // Trigger render so nav-driven highlight changes paint.
-  if (consumed) triggerOpenCuesRender(access?.read() ?? text, access?.cursor() ?? cursor)
+  if (consumed) {
+    triggerOpenCuesRender(access?.read() ?? text, access?.cursor() ?? cursor)
+  } else if (CURSOR_MOVING_KEYS.has(keyName)) {
+    // OpenTUI's EditBufferRenderable.onCursorChange fires on HORIZONTAL
+    // moves (left/right) but NOT vertical (up/down) or jumps (home/end/
+    // page). Those keys fall through to the textarea unconsumed, move the
+    // caret, and nothing re-evaluates the cursor gate — so the inline-cue
+    // note + auto-select highlight linger on the line we left. The textarea
+    // processes the key AFTER this handler returns, so defer one macrotask
+    // and re-render against the settled caret. Cheap: only nav keys, and
+    // triggerOpenCuesRender no-ops the paint when nothing changed.
+    setTimeout(() => {
+      try { triggerOpenCuesRender(access?.read() ?? text, access?.cursor() ?? cursor) }
+      catch { /* swallow */ }
+    }, 0)
+  }
   return consumed
 }
+
+// Caret-moving keys OpenTUI doesn't surface via onCursorChange (vertical +
+// jumps). left/right are included defensively — a redundant deferred render
+// there is harmless (idempotent paint).
+const CURSOR_MOVING_KEYS = new Set<string>([
+  "up", "down", "left", "right", "home", "end", "pageup", "pagedown",
+])
 
 /** Notify runtime of text changes from the prompt component. */
 export function notifyOpenCuesTextChange(text: string, cursor: number, source: "user" | "runtime" = "user"): void {
@@ -708,6 +733,13 @@ let ocLoadingColorStyleIds = new Map<string, number>()
 // guard, the diff sees a "match" by key for an extmark whose ID is dead
 // in the new textarea — and skips the create, leaving the dim invisible.
 let ocLastTextarea: unknown = null
+// Renderer + logger captured at boot so the top-level triggerOpenCuesRender
+// (which runs outside startOpenCues' scope) can force a repaint + trace.
+let _ocRenderer: CliRenderer | undefined
+let _ocLog: ((level: LogLevel, msg: string, data?: unknown) => void) | undefined
+// Last note text pushed to the overlay signal — so we only force a repaint
+// (and trace) when it actually changes, incl. the → null clear on cursor exit.
+let _ocLastNoteText: string | null = null
 
 /**
  * Called by the patched Prompt component on every onContentChange
@@ -913,6 +945,24 @@ export function triggerOpenCuesRender(text: string, cursor: number): void {
   }
 
   // Push the active note anchor (or clear it) to the overlay renderer.
-  // Deduped by the signal itself — the overlay re-renders only on change.
+  const nextNoteText = noteAnchor ? noteAnchor.text : null
   setOpencuesInlineNote(noteAnchor)
+  if (nextNoteText !== _ocLastNoteText) {
+    // Trace so we can see whether the cursor-exit render actually clears
+    // the note (vs a stale-cursor render that keeps it). debug-gated caller.
+    try {
+      _ocLog?.("debug", "inlineNote", {
+        cursor,
+        note: nextNoteText,
+        row: noteAnchor?.row,
+        col: noteAnchor?.col,
+      })
+    } catch { /* swallow */ }
+    _ocLastNoteText = nextNoteText
+    // The overlay is an absolute-positioned box floated over the textarea.
+    // When it unmounts (note → null), the cells it painted must be redrawn;
+    // an explicit frame request composites the scene without the box so no
+    // ghost note lingers on the row it occupied.
+    try { _ocRenderer?.requestRender() } catch { /* swallow */ }
+  }
 }
