@@ -20,10 +20,18 @@ There is exactly one presentation, degrading gracefully:
 - **Always-on indicator.** The flagged span is dimmed gray. That gray is the
   signal that "there's more here" — no content, just presence. It works on
   every host that can paint a dim range.
-- **Cursor-gated reveal.** When the text cursor moves *into* the span, the
-  advisory text appears inline (gray). Move out, or edit, and it vanishes.
-  It is **display-only** — the note text is spliced into what the host
-  *paints*, never into the buffer you submit, so it can never be sent.
+- **Cursor-gated reveal.** When the text cursor moves *into* the span, its
+  note appears inline (gray). Move out, or edit, and it vanishes. The note is
+  **the useful reveal for that kind of span** — a passive cue shows its advisory,
+  a word-cue (incl. spelling) shows its suggestions, a filled blank shows its
+  tip, a settings selector-satellite shows the tip for the part the caret is on.
+  It is **display-only** — the note text is spliced into what the host *paints*,
+  never into the buffer you submit, so it can never be sent. A long note **wraps**
+  onto multiple lines and pushes the content below down to make room.
+- **Press `_` to cycle.** With the caret inside a revealed span, a plain `_`
+  rotates that span forward (the discoverable complement to Ctrl+Alt+↑). Move
+  past it (type a space) or edit it, and `_` goes back to its normal blank
+  meaning.
 
 Where a host has no inline paint surface (e.g. chrome's normal
 `<input>`/`<textarea>`, where CSS Custom Highlight can't reach), the advisory
@@ -46,10 +54,17 @@ inline-cues-mode: inline      # default
 
 ## What it applies to
 
-Any cue that registers a passive advisory (`def.cueTip`): today that's
-**sentence-cues** (`scope: sentence`, e.g. the calendar-conflict heads-up)
-and **contradiction cues**. Word-cue tips are unaffected (they already have
-their own status-line routing).
+**Every note-bearing gray span** (the uniform note model, July 2026):
+
+- **Passive cues** (`def.cueTip`) — **sentence-cues** (`scope: sentence`, e.g.
+  the calendar-conflict heads-up) and **contradiction cues** — show their advisory.
+- **Word-cues** (incl. spelling) show their suggestions.
+- **Filled list/script blanks** (volume, brightness, …) show their tip.
+- **Settings selector-satellite** (`opencues settings _`) shows a cursor-aware
+  tip: the setting's description on the selector, the value's tip on the satellite.
+
+A bare **blank keyword** before its `_` fires is the one gray-less exception —
+it's a pure trigger, no note.
 
 ## Host reach
 

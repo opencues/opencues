@@ -128,8 +128,14 @@ the AgentRewrite invariants:
 
 1. User content is never silently destroyed (LLM hunks that overlap
    user hunks drop).
-2. Paragraph breaks the user typed cannot be collapsed.
-3. Trailing whitespace at end-of-buffer survives.
+2. **Internal** paragraph breaks (`\n\n` between content) cannot be
+   collapsed. **Trailing** blank lines are NOT counted as a content
+   paragraph break, though — at end-of-buffer that rule excludes trailing
+   whitespace from its count, so a legitimate rewrite that drops the
+   editor's tail lines (e.g. a translation, whose output shares no words
+   with the input) is not mistaken for a paragraph collapse and dropped
+   wholesale (July 2026 translate-drop fix).
+3. Trailing whitespace at end-of-buffer survives (re-appended by rule 3).
 4. No surprise terminal punctuation appended at end-of-buffer.
 
 See `packages/opencues-runtime/src/modules/word-diff.ts` for the

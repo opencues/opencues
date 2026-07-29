@@ -187,9 +187,22 @@ and **strips the inline note + auto-select highlight** so they don't fire at the
 bogus position. The always-on dim still marks the span.
 
 Gap height on every chrome path is **measured from the note's own rendered
-height** (one line in the field's font), reset to natural size *before* measuring
-so an explicit cover/gap height can't compound. Robust to `line-height: normal`
-and wrapped sentences. Fallback: field line-height → span rect height → `1px`.
+height**, reset to natural size *before* measuring so an explicit cover/gap
+height can't compound. Robust to `line-height: normal`. Fallback: field
+line-height → span rect height → `1px`.
+
+**The note WRAPS** (July 2026). The overlay is `white-space: pre-wrap` +
+`overflow-wrap: anywhere` with a `max-width` bounded to the field's text column
+(span-left → field-right edge, floored to 160px so a span near the right edge
+still gets a usable width). So a long note (a wordy setting/value tip, multi-token
+word-cue suggestions) grows **downward into extra rows** instead of running off
+the right edge of the viewport. Because the push-down keys off the note's
+*measured* height and the wrap + max-width are set *before* that measurement, the
+opened gap auto-grows to the full multi-line height — a 3-line note opens a 3-row
+gap and the content below shifts down 3 rows. Short notes still measure one line.
+(Terminal hosts — CC/OC/shell/gemini — grow via the terminal's own soft-wrap of
+the inserted note line; aligned continuation-line indentation there would need the
+terminal width threaded into the painter, tracked separately.)
 
 ### Verified per editor (July 2026)
 

@@ -26,6 +26,11 @@ pauses for `agent-debounce-ms` (default 1000ms, OPENCUES.md-tunable):
      - diff A → B  (LLM's hunks: every region the LLM wants to change)
      - diff A → C  (user hunks; C is the live buffer at apply time)
      - drop any LLM hunk that overlaps a user hunk in A's char frame
+     - preserve INTERNAL `\n\n` breaks, but NOT the editor's trailing
+       blank lines — those are excluded from the paragraph-break count at
+       end-of-buffer (`atBufEnd`) so a rewrite that legitimately drops the
+       tail lines isn't dropped wholesale (July 2026 translate-drop fix,
+       shared with TransformBlank; see `blank-sources.md`)
      - splice surviving LLM hunks into C with cursor translation
 4. Place a DynDef per applied hunk (Down-arrow reverts it).
 ```
