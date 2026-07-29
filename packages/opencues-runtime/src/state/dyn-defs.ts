@@ -69,6 +69,15 @@ export function inlineNoteText(def: WordDef): string | undefined {
   if (def.alternatives.length <= 1) return undefined;
   if (def.blankName === 'transform-blank') return 'transform';
   if (def.blankName === 'fluid-blank') return 'lookup';
+  // Plain word-cue (no blankName, no cueTip) — this includes spelling. Its note
+  // IS its suggestions: the alternatives (excluding the original at index 0) the
+  // def ALREADY carries from resolve (`resolver.ts` word-cue registration). No
+  // fetch, no separate tip channel — the suggestions ARE the tip. Capped so a
+  // long list doesn't overflow the one-line note.
+  if (!def.blankName) {
+    const suggestions = def.alternatives.slice(1).filter(Boolean);
+    if (suggestions.length > 0) return suggestions.slice(0, 3).join(' · ');
+  }
   return undefined;
 }
 

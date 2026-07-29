@@ -67,25 +67,30 @@ shared source of truth used by BOTH `DimRender` (paints the note) and `Cycling`
 (the `_`-step), so they can never disagree on "has a note":
 
 ```
-def.cueTip present         → note = cueTip     (an advisory)
-transform-blank, >1 alt    → note = "transform" (walkable edit history)
-fluid-blank, >1 alt        → note = "lookup"    (walkable history)
-otherwise                  → undefined          (dim only, no note)
+def.cueTip present         → note = cueTip       (an advisory)
+transform-blank, >1 alt    → note = "transform"  (walkable edit history)
+fluid-blank, >1 alt        → note = "lookup"     (walkable history)
+plain word-cue, >1 alt     → note = suggestions  (alternatives[1..] joined — incl. spelling)
+otherwise                  → undefined           (dim only, no note)
 ```
 
 | Span type | Produced by / config | Dimmed? | Inline note? | Note text |
 |---|---|---|---|---|
-| **Word-cue** (per-word alternatives) | `### alternatives` sources | ✅ | ❌ | — (cycle only) |
+| **Word-cue** (incl. spelling) | `### alternatives` / spelling sources | ✅ | ✅ | its **suggestions** — `alternatives[1..]` (e.g. `receive`, or `lawyer · counsel`) |
 | **Sentence-cue** | `scope: sentence` cue + `sentence-cues-mode: on` | ✅ | ✅ | `cueTip` — the cue's advisory (e.g. `more-formal`) |
 | **Contradiction-cue** | `contradiction-cues-mode: on` | ✅ | ✅ | `cueTip` — the computed correction |
 | **Transform-blank** (after a rewrite, >1 alt) | `<body> fix typos _` | ✅ | ✅ | `transform` (its edit history) |
 | **Fluid-blank** (after a lookup, >1 alt) | `weather in paris _` | ✅ | ✅ | `lookup` (its history) |
-| **List / script blank, selector-satellite** | blanks | ✅ | ❌ | — (cycle only) |
+| **List / script blank, selector-satellite** | blanks | ✅ | ❌ (follow-up) | — (value's in the buffer; these are `SpanFillState`/`SelectorSatelliteState`, not DynDefs, so the note loop doesn't reach them) |
 
-So the note-bearing set is **passive cues (sentence + contradiction) and
-history-bearing `_` blanks (transform + fluid)**; everything else is dim-only.
-The `cueTip` is set when a passive cue registers its DynDef (`resolver.ts` — the
-sentence-cue path carries `r.cueTip` through; contradiction cues the same).
+So the rule is: **anything whose useful reveal is otherwise hidden gets a note** —
+passive cues show their advisory (`cueTip`, set at DynDef registration in
+`resolver.ts`), `_`-blanks show their history, and **word-cues (including
+spelling) show their suggestions** — the alternatives the resolver already
+registered on the def, read straight off it (no fetch, no separate tip channel).
+The lone gap is filled list/script blanks + selector-satellite: their value is
+already visible in the buffer and they live in different state objects the note
+loop doesn't iterate — a deliberate follow-up, not a missing reveal.
 
 **All of these must hold for the note to actually show** (`dim-render.ts`):
 1. `inline-cues-mode: inline` (default) — `secondary` sends the same advisory to

@@ -355,6 +355,14 @@ export function boot(host: HostInfo): BootResult {
       notifyTextChange: (text, cursor, source) => fireTextChange(text, cursor, source),
       notifyCursorChange: (text, cursor, source) => fireCursorChange(text, cursor, source),
       state: { hlState, dynDefs, spanFillState, selectorSatelliteState, agentTaskState },
+      // Compute the render directives (dim / highlight / inlineNote) for the
+      // live buffer so the dump exposes what would be painted now — makes the
+      // inline note observable to agentic scenarios (mirrors CC's boot). Same
+      // pipeline as collectRenderDirectives.
+      renderDirectives: () => renderEvents.collect(
+        { text: adapter.getText(), cursor: adapter.getCursorOffset(), externalHighlights: [] },
+        err => log('error', 'render handler threw', err),
+      ),
     });
   }
 

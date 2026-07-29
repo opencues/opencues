@@ -685,11 +685,26 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     expect(out?.inlineNote).toBeUndefined();
   });
 
-  it('does NOT emit a note for a def without a cueTip (plain static-alt)', () => {
+  it('emits a note for a plain word-cue = its suggestions (the alternatives it carries)', () => {
     const { dynDefs, dimRender } = setup('the attorney filed');
     dynDefs.set(1, {
       originalWord: 'attorney',
-      alternatives: ['attorney', 'lawyer'],
+      alternatives: ['attorney', 'lawyer', 'counsel'],
+      currentIndex: 0,
+      spanStart: 4,
+      spanEnd: 12,
+    });
+    const out = dimRender.compute({ text: 'the attorney filed', cursor: 6, externalHighlights: [] });
+    // A word-cue (incl. spelling) has no cueTip, but its note IS its suggestions
+    // (alternatives excluding the original) — no separate tip channel, no fetch.
+    expect(out?.inlineNote?.text).toBe('lawyer · counsel');
+  });
+
+  it('does NOT emit a note for a single-alternative def (nothing to suggest)', () => {
+    const { dynDefs, dimRender } = setup('the attorney filed');
+    dynDefs.set(1, {
+      originalWord: 'attorney',
+      alternatives: ['attorney'], // only the original → no suggestions
       currentIndex: 0,
       spanStart: 4,
       spanEnd: 12,
