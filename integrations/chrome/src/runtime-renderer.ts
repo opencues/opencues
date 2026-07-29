@@ -430,12 +430,27 @@ function insertMarginPush(target: HTMLElement, range: Range, heightPx: number): 
   _nudgedBlock = target;
   _nudgedProp = 'paddingBottom';
   _nudgedPrevValue = target.style.paddingBottom;
-  _pushDiag = {
-    path: 'root-padding', tag: target.tagName, px,
-    nearestBlockTag: nearest ? nearest.tagName : null, foundLineBlock: !!lineBlock,
-  };
-  try { target.style.paddingBottom = `${px}px`; return true; }
-  catch { _nudgedBlock = null; _nudgedProp = null; return false; }
+  let beforeH = 0, afterH = 0;
+  try { beforeH = target.offsetHeight; } catch { /* ignore */ }
+  try { target.style.paddingBottom = `${px}px`; } catch { _nudgedBlock = null; _nudgedProp = null; return false; }
+  // Diagnose whether the padding actually grew the editor's visible box — some
+  // hosts (ChatGPT?) size the input from a parent/scroll container so padding on
+  // the ProseMirror is absorbed and the box never opens into multiline.
+  try {
+    afterH = target.offsetHeight;
+    const cs = getComputedStyle(target);
+    const parent = target.parentElement;
+    _pushDiag = {
+      path: 'root-padding', tag: target.tagName, px,
+      grew: afterH - beforeH, beforeH, afterH,
+      overflowY: cs.overflowY, maxHeight: cs.maxHeight,
+      parentTag: parent?.tagName ?? null,
+      parentClass: (parent?.className || '').slice(0, 50),
+    };
+  } catch {
+    _pushDiag = { path: 'root-padding', tag: target.tagName, px };
+  }
+  return true;
 }
 
 function renderInlineNote(
