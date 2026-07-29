@@ -82,14 +82,16 @@ otherwise                  → undefined           (dim only, no note)
 | **Transform-blank** (after a rewrite, >1 alt) | `<body> fix typos _` | ✅ | ✅ | `transform` (its edit history) |
 | **Fluid-blank** (after a lookup, >1 alt) | `weather in paris _` | ✅ | ✅ | `lookup` (its history) |
 | **List / script blank** (filled) | blanks (`SpanFillState`) | ✅ | ✅ | its `tip` (e.g. `system volume`), else its cycle options (`alternatives[1..]`) |
-| **Selector-satellite** | settings blank (`SelectorSatelliteState`) | ✅ | ✅ | the current setting name (labels WHAT the span controls; its value is already in the buffer) |
+| **Selector-satellite** | settings blank (`SelectorSatelliteState`) | ✅ | ✅ | **cursor-position-aware** — caret on the selector (setting name) shows the setting's own `def.tip`; caret on the satellite (value) shows that value's `def.valueTips` entry (mirrors the statusline's per-part tip logic) |
 
 So the rule is: **anything whose useful reveal is otherwise hidden gets a note** —
 passive cues show their advisory (`cueTip`, set at DynDef registration in
 `resolver.ts`), `_`-blanks show their history, **word-cues (including spelling)
 show their suggestions** (the alternatives the resolver already registered on the
-def, read straight off it — no fetch, no separate tip channel), and **filled
-list/script blanks + selector-satellite** show their tip / setting name.
+def, read straight off it — no fetch, no separate tip channel), **filled
+list/script blanks** show their tip, and **selector-satellite** shows the tip for
+the part the caret is on (setting tip on the selector, value tip on the satellite —
+the same per-part split the statusline uses, `statusline.ts:282`).
 `SpanFillState` and `SelectorSatelliteState` aren't DynDefs, so the note loop
 handles them explicitly (after the DynDef pass) — no auto-select there, since
 those carry their own highlight/dim model. Every cyclable span now behaves

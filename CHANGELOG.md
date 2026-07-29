@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — uniform inline-note model: every cyclable span reveals what's behind it (`@opencues/runtime` 0.28.11 → 0.28.15, `@opencues/chrome` 0.2.140 → 0.2.144)
+
+The inline note is now "the useful reveal" for **every** cue/blank type, not just passive cues. Previously only `cueTip`-bearing spans (sentence/contradiction cues) and history-bearing `_`-blanks got a note; word-cues, filled blanks, and settings blanks dimmed but revealed nothing. Now:
+
+- **Word-cues (including spelling)** show their **suggestions** — `alternatives[1..]` (e.g. `lawyer · counsel`, or the spelling correction `receive`), capped at 3, `·`-joined. No fetch, no separate tip channel: word-cue results already register a DynDef carrying their alternatives on resolve (`resolver.ts`), so `inlineNoteText` just reads them off the def.
+- **Filled list/script blanks** (`SpanFillState`) show their `tip` (e.g. `system volume`), falling back to their cycle options when tip-less.
+- **Selector-satellite** (settings blanks) show a **cursor-position-aware** tip mirroring the statusline's per-part logic (`statusline.ts:282`): caret on the selector (setting name) → the setting's own `def.tip`; caret on the satellite (value) → that value's `def.valueTips` entry. So the note describes the part the focus is actually on, not just "what the span controls".
+
+`SpanFillState` and `SelectorSatelliteState` aren't DynDefs, so the note loop handles them explicitly after the DynDef pass — no auto-select there (they carry their own highlight/dim model). The OC agentic bridge also gained `renderDirectives` wiring (mirrors CC) so the note is observable in the dump — it was `render: null` before, which is why notes couldn't be harness-tested on opencode. Pinned by new `dim-render.test.ts` cases (word-cue suggestions, single-alt → no note, SpanFill tip + tip-less options, selector-satellite per-part cursor tip). Full runtime suite green.
+
 ### Changed — dim no longer marks bare blank keywords (removed the overloaded third meaning) (`@opencues/runtime` 0.28.9 → 0.28.10, `@opencues/chrome` 0.2.138 → 0.2.139)
 
 Dim (gray text) carries exactly two meanings: "cycle me (Ctrl+Alt)" and "select me → info in the statusline". A bare **blank keyword** (`volume`, `weather`, `translate`, …) is neither — it can't be cycled and shows no statusline tip until `_` fires the blank — yet it used to dim whenever a `_` landed within ~12 words (`shouldGateBlankKeywordDim`'s proximity exception). That was a third "you could trigger a blank here" meaning that overloaded dim. Removed: a word that is ONLY a blank keyword now **never dims**. Word-cue entries (CUES.md `## Tips`, folder/spelling cues) and filled-blank/passive-cue DynDef spans still dim — those are genuine cycle/statusline affordances. Dim-render test flipped to assert no dim with `_` adjacent. (Navigation + statusline are handled in the follow-up entry below so dim/nav/tip stay consistent.)

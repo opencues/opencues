@@ -404,13 +404,33 @@ export class DimRender {
           if (ctx.cursor >= s && ctx.cursor <= e) inlineNote = { spanStart: s, spanEnd: e, text: noteText };
         }
       }
-      if (!inlineNote && ss && ss.currentSetting) {
-        const sw = words[ss.selectorIndex];
-        const ew = words[ssSatEnd];
-        if (sw && ew) {
-          const s = toCtx ? toCtx.start(sw.start) : sw.start;
-          const e = toCtx ? toCtx.end(ew.end) : ew.end;
-          if (ctx.cursor >= s && ctx.cursor <= e) inlineNote = { spanStart: s, spanEnd: e, text: ss.currentSetting };
+      // Selector-satellite: the note is CURSOR-POSITION-AWARE, exactly like the
+      // statusline (statusline.ts) — the note is about the part the caret is on.
+      // On the SELECTOR (setting name) → the setting's tip; on the SATELLITE
+      // (value) → the tip for the CURRENT value (`valueTips`). Anchored to the
+      // part the caret is in, not the whole pair.
+      if (!inlineNote && ss) {
+        const def = this.configLoader?.opencuesState.definitions.get(ss.currentSetting);
+        if (def) {
+          const selStart = words[ss.selectorIndex]?.start;
+          const selEnd = words[ssSelEnd]?.end;
+          const satStart = words[ss.satelliteIndex]?.start;
+          const satEnd = words[ssSatEnd]?.end;
+          let ssTip: string | undefined;
+          let ns: number | undefined;
+          let ne: number | undefined;
+          if (selStart !== undefined && selEnd !== undefined && ctx.cursor >= selStart && ctx.cursor <= selEnd) {
+            ssTip = def.tip; ns = selStart; ne = selEnd;
+          } else if (satStart !== undefined && satEnd !== undefined && ctx.cursor >= satStart && ctx.cursor <= satEnd) {
+            ssTip = def.valueTips?.get(ss.currentValue); ns = satStart; ne = satEnd;
+          }
+          if (ssTip && ns !== undefined && ne !== undefined) {
+            inlineNote = {
+              spanStart: toCtx ? toCtx.start(ns) : ns,
+              spanEnd: toCtx ? toCtx.end(ne) : ne,
+              text: ssTip,
+            };
+          }
         }
       }
     }

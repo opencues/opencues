@@ -741,18 +741,45 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     expect(out?.inlineNote?.text).toBe('60% · 80%'); // alternatives[1..]
   });
 
-  it('SelectorSatelliteState emits a note = the current setting name', async () => {
+  it('SelectorSatelliteState note is cursor-aware: setting tip on the selector, value tip on the satellite', async () => {
+    const { ConfigLoader } = await import('./config-loader');
     const { SelectorSatelliteState } = await import('../state/selector-satellite');
-    const adapter = new MockAdapter();
-    const buf = 'voice-mode off'; // voice-mode(0)[0,10) off(1)[11,14)
+    // An OPENCUES.md file is required so definitions come from the registry
+    // (a bare adapter falls back to DEFAULT_OPENCUES_STATE with an empty map).
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/proj/.cues/OPENCUES.md': '---\nvoice-mode: off\n---\n' },
+    });
+    adapter.pushText('x');
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/.cues/OPENCUES.md' });
+    await loader.load();
+    // Pick any registry setting that has a tip (don't hardcode a scalar name).
+    const entry = [...loader.opencuesState.definitions.entries()].find(([, d]) => !!d.tip);
+    expect(entry).toBeDefined();
+    const [settingName, def] = entry!;
+    const value = def.valueOrder[0] ?? 'on';
+    const buf = `${settingName} ${value}`; // selector(0)[0,len) value(1)
     adapter.pushText(buf);
+    const selEnd = settingName.length; // one-word setting name (hyphens keep it whole)
     const hlState = new HighlightState();
     const dynDefs = new DynDefs();
     const ss = new SelectorSatelliteState();
-    ss.set({ selectorIndex: 0, selectorLength: 1, satelliteIndex: 1, satelliteLength: 1, currentSetting: 'voice-mode', currentValue: 'off' }, buf);
-    const dim = new DimRender(adapter, hlState, dynDefs, undefined, undefined, ss);
-    const out = dim.compute({ text: buf, cursor: 5, externalHighlights: [] }); // inside "voice-mode"
-    expect(out?.inlineNote?.text).toBe('voice-mode');
+    ss.set({ selectorIndex: 0, selectorLength: 1, satelliteIndex: 1, satelliteLength: 1, currentSetting: settingName, currentValue: value }, buf);
+    const dim = new DimRender(adapter, hlState, dynDefs, loader, undefined, ss);
+    // Caret on the SELECTOR (the setting name) → note = the setting's own tip,
+    // anchored to the selector part.
+    const onSel = dim.compute({ text: buf, cursor: 1, externalHighlights: [] });
+    expect(onSel?.inlineNote?.text).toBe(def.tip);
+    expect(onSel?.inlineNote?.spanStart).toBe(0);
+    expect(onSel?.inlineNote?.spanEnd).toBe(selEnd);
+    // Caret on the SATELLITE (the value) → note = the tip for THAT value (if the
+    // registry defines one), anchored to the satellite part.
+    const onSat = dim.compute({ text: buf, cursor: selEnd + 2, externalHighlights: [] });
+    const valueTip = def.valueTips.get(value);
+    if (valueTip) {
+      expect(onSat?.inlineNote?.text).toBe(valueTip);
+      expect(onSat?.inlineNote?.spanStart).toBe(selEnd + 1);
+    }
   });
 
   it('does NOT emit when the stored span is stale (defSpanLive guard)', () => {
