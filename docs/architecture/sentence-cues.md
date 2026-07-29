@@ -32,7 +32,7 @@ Read this before touching:
 93  TransformBlank           imperative rewrite via `_`
 92  FluidBlank               free-form `_` lookup
 85  SentenceCue (default)    whole-sentence alternatives — `scope: sentence` cue
-70  word cues (typical)      per-word synonyms (legal, medical, financial, ...)
+70  word cues (typical)      per-word synonyms (spelling, formal connectors, ...)
 ```
 
 Priority **85 by default** — higher than typical word cues from

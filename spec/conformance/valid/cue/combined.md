@@ -1,20 +1,20 @@
 ---
-name: legal
-description: Curated overrides for high-risk legal terms + LLM fallback for the long tail
-match: contract|agreement|clause|herein|whereas
+name: concise
+description: Curated overrides for common wordy phrases + LLM fallback for the long tail
+match: utilize|leverage|facilitate|aforementioned|hereto
 priority: 70
 spec: opencues/0.1-alpha
 ---
 
 ```json
 [{
-  "id": "legal-overrides",
+  "id": "concise-overrides",
   "words": {
-    "herein": { "tip": "Avoid; replace with explicit reference", "alts": ["in this agreement", "above", "hereunder"] }
+    "utilize": { "tip": "Prefer the plain verb", "alts": ["use", "apply", "employ"] }
   }
 }]
 ```
 
-For other matched terms, suggest 3 alternatives that preserve legal meaning.
+For other matched terms, suggest 3 alternatives that preserve meaning.
 
 Format: INDEX:alt1,alt2,alt3

@@ -167,7 +167,7 @@ describe('LocalCueSource', () => {
     const source = new LocalCueSource(sampleLocalCueData, { domain: 'claude-code' });
 
     assert.ok(source.supports({ text: 'test', words: ['test'], domain: 'claude-code' }));
-    assert.ok(!source.supports({ text: 'test', words: ['test'], domain: 'medical' }));
+    assert.ok(!source.supports({ text: 'test', words: ['test'], domain: 'gemini-cli' }));
   });
 });
 

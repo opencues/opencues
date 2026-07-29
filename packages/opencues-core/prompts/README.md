@@ -38,11 +38,11 @@ Create `cues/<name>/CUE.md`:
 
 ```markdown
 ---
-name: legal
+name: concise
 scope: words
 priority: 70
-match: contract|agreement|clause|indemnify
-classify: Legal terminology
+match: very|really|just|actually
+classify: Wordy or filler phrasing
 ---
 
 Your prompt instructions here...

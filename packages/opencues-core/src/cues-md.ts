@@ -46,7 +46,7 @@ export interface CuesMdFrontmatter {
 export type BlankParser = 'alternatives' | 'raw';
 
 export interface SourceConfig {
-  /** Source name (from ### heading, e.g. "grammar", "legal", "medical") */
+  /** Source name (from ### heading, e.g. "grammar", "spelling", "concise") */
   name: string;
 
   /** Pipe-separated regex pattern for fast pre-LLM classification (e.g. "factorial|sqrt|\d+%") */
@@ -758,12 +758,12 @@ function parseTipsSection(content: string): LocalCueData | undefined {
  *   ```
  *   Freeform prompt instructions...
  *
- *   ### legal
+ *   ### concise
  *   ```yaml
- *   match: contract|agreement|clause
- *   classify: Legal terminology
+ *   match: very|really|just|actually
+ *   classify: Wordy or filler phrasing
  *   priority: 70
- *   prompt: ./prompts/legal.txt
+ *   prompt: ./prompts/concise.txt
  *   ```
  *   Inline prompt text if no prompt path...
  */

@@ -95,9 +95,9 @@ function rulesOf(findings) {
 test('happy: valid cue + blank + auditor produce zero findings, exit 0', () => {
   const proj = freshProject('happy');
   try {
-    writeCue(proj, 'legalish', [
+    writeCue(proj, 'concise', [
       '---',
-      'name: legalish',
+      'name: concise',
       'scope: words',
       'priority: 70',
       'match: contract|agreement',

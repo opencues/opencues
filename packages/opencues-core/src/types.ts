@@ -73,7 +73,7 @@ export interface CueContext {
    */
   richText?: string;
 
-  /** Domain hint (e.g., 'claude-code', 'medical', 'legal') */
+  /** Domain hint (e.g., 'claude-code', 'gemini-cli') */
   domain?: string;
 
   /**

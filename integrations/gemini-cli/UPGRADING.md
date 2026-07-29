@@ -145,7 +145,7 @@ Then exercise the seven-row test pass from `integrations/gemini-cli/CLAUDE.md`'s
 
 | Test | What it checks |
 |---|---|
-| Type `we shall draft the contract clause`, ctrl+alt+left | Cycling on the LLM-routed `clause` (legal cue), Up/Down rotates alts |
+| Type `this has a mispelled word`, ctrl+alt+left | Cycling on the LLM-routed `mispelled` (spelling cue), Up/Down rotates corrections |
 | Type `volume _` | Cue-blank script auto-populate + system volume cycling |
 | Type `opencues settings _`, cycle Up | Selector/satellite via the runtime class |
 | Footer shows tip when a word is highlighted | `useOpenCuesTip()` React hook wiring |
@@ -218,12 +218,12 @@ findings from step 2's diff.
   settings. Keep `runGemini` launching WITHOUT forcing cwd into the
   fork so the user's `~/.gemini/settings.json` governs.
 
-- **`navigableWords` is built from EXPLICIT word entries.** Shipped LLM
-  cue sources (legal/medical/financial) use `match:` regexes that route
-  specific words but don't enumerate them, so a word like `lawyer` won't
-  be navigable even if the legal source claims it. Test cycling with
-  words that are either in a tip group's keyword list (e.g. `ultrathink`)
-  or with explicit match-list overlap.
+- **`navigableWords` is built from EXPLICIT word entries.** The shipped
+  LLM cue source (`spelling`) uses a `match:` regex that routes words at
+  cue time but doesn't enumerate them, so a word like `lawyer` won't be
+  in the static navigableWords list even though spelling's `.*` would
+  claim it. Test cycling with words that are either in a tip group's
+  keyword list (e.g. `ultrathink`) or a misspelled word `spelling` flags.
 
 ## Same-patch vs same-minor vs cross-minor
 

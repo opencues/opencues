@@ -78,13 +78,13 @@ test('happy: --help prints usage and creates nothing', async () => {
 });
 
 test('happy: `new cue <name>` (user scope) scaffolds CUE.md with {{NAME}} substituted', async () => {
-  const { threw, exitCode } = await run(['cue', 'my-legal-cue']);
+  const { threw, exitCode } = await run(['cue', 'my-cue']);
   assert.strictEqual(threw, false);
   assert.strictEqual(exitCode, null);
-  const file = path.join(tmpHome, '.cues', 'cues', 'my-legal-cue', 'CUE.md');
+  const file = path.join(tmpHome, '.cues', 'cues', 'my-cue', 'CUE.md');
   assert.strictEqual(fs.existsSync(file), true);
   const content = fs.readFileSync(file, 'utf8');
-  assert.ok(content.includes('name: my-legal-cue'));
+  assert.ok(content.includes('name: my-cue'));
   assert.ok(!content.includes('{{NAME}}'));
 });
 

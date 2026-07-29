@@ -394,7 +394,7 @@ describe('clearChromeHostState — toggle-OFF wipe', () => {
     const state = mockChromeStorage({
       'opencues_runtime:/chrome-storage/.cues/OPENCUES.md': 'voice-mode: active',
       'opencues_runtime:/chrome-storage/.cues/CUES.md': '---\nname: foo\n---',
-      'opencues_runtime:/chrome-storage/.cues/cues/legal/CUE.md': 'priority: 70',
+      'opencues_runtime:/chrome-storage/.cues/cues/concise/CUE.md': 'priority: 70',
       'opencues_runtime:/chrome-storage/.cues/blanks/volume/BLANK.md': 'blankKeywords: volume',
     });
 

@@ -102,12 +102,12 @@ function printHelp() {
   console.log('shape pre-filled. Refuses to overwrite existing files.');
   console.log('');
   console.log('  <kind>      cue | blank');
-  console.log('  <name>      lowercase, hyphens, no spaces (e.g. legal-doc)');
+  console.log('  <name>      lowercase, hyphens, no spaces (e.g. my-cue)');
   console.log('  --project   Scaffold under <cwd>/.cues/ (default: ~/.cues/)');
   console.log('  --dry-run   Print the plan; do not create anything');
   console.log('');
   console.log('Examples:');
-  console.log('  opencues new cue legal-doc');
+  console.log('  opencues new cue my-cue');
   console.log('  opencues new blank my-api --project');
   console.log('  opencues new blank custom-mode');
 }

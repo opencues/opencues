@@ -222,8 +222,8 @@ export class DimRender {
           // `apple` / `weather` etc. paints a phantom dim that
           // suggests "I'm interactive" \u2014 but the action only fires
           // when `_` lands adjacent. Words that are ALSO word-cue
-          // entries (legal/medical/financial when host-enabled, any
-          // CUES.md ## Tips entry) keep the unconditional dim
+          // entries (spelling or any custom word cue when host-enabled,
+          // any CUES.md ## Tips entry) keep the unconditional dim
           // because those genuinely offer prose alternatives the
           // user can cycle \u2014 the dim is the affordance.
           if (this.shouldGateBlankKeywordDim(lc, w.index, words)) continue;

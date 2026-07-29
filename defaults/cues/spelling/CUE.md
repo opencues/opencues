@@ -1,11 +1,10 @@
 ---
 name: spelling
 scope: words
-# Lowest priority among shipped sources so the domain-specific cues
-# (legal/medical/financial/etc.) win first. RoutedWordSourceGroup
-# walks priority-desc; spelling at 10 only claims words no other
-# source matched. `match: .*` is required — the routing layer rejects
-# sources without match/keywords entirely.
+# Lowest priority among shipped sources so any other cue claims its
+# words first. RoutedWordSourceGroup walks priority-desc; spelling at
+# 10 only claims words no other source matched. `match: .*` is required
+# — the routing layer rejects sources without match/keywords entirely.
 priority: 10
 match: .*
 classify: Inline spelling correction across all word inputs

@@ -74,7 +74,7 @@ A source with neither `match` nor `keywords` is unreachable. Validators MUST err
 | `endpoint` | string | provider default | Override the HTTP endpoint URL. Rare — only useful when pointing at a self-hosted gateway speaking the resolved provider's wire shape. |
 | `enabled` | boolean | `true` | `false` = source is disabled, kept on disk for documentation. |
 | `scope` | `"words"` \| `"blanks"` \| `"sentence"` \| `"all"` | inferred from path | Where this source applies. `words` (default for `cues/`) — per-word triggers via `match:` / `keywords:`. `blanks` (default for `blanks/`) — `_`-triggered. `sentence` — whole-sentence rewrites; needs neither `match:` nor `keywords:` and is gated by the runtime's `sentence-cues-mode` toggle (off by default). `all` — any of the above. Explicit only when overriding the path-inferred default. |
-| `classify` | string | none | Free-text classification hint surfaced to the LLM and validators (e.g. "Legal terminology, contract drafting"). |
+| `classify` | string | none | Free-text classification hint surfaced to the LLM and validators (e.g. "Wordy phrasing, verbose constructions"). |
 | `on-host` | list | auto-detected | Allow-list: which hosts may load this source. See `core.md`. |
 | `not-on-host` | list | none | Deny-list, applied after `on-host`. |
 | `on-field` | list | none | Field-kind allow-list (`single-line` / `multi-line`). Evaluated PER-RESOLVE against the focused field. See `core.md` § Field-kind scoping. |
@@ -142,25 +142,25 @@ A source MAY include both a JSON tip-group block AND prompt text — runtimes MU
 
 ```markdown
 ---
-name: legal
-description: Legal terminology
-match: contract|agreement|clause|herein|whereas
+name: concise
+description: Concise phrasing
+match: utilize|leverage|facilitate|aforementioned|hereto
 ---
 
 \`\`\`json
 [{
-  "id": "legal-overrides",
+  "id": "concise-overrides",
   "words": {
-    "herein": { "tip": "Avoid; replace with explicit reference", "alts": ["in this agreement", "above", "hereunder"] }
+    "utilize": { "tip": "Prefer the plain verb", "alts": ["use", "apply", "employ"] }
   }
 }]
 \`\`\`
 
-For other matched terms, suggest 3 alternatives that preserve legal meaning.
+For other matched terms, suggest 3 alternatives that preserve meaning.
 Format: INDEX:alt1,alt2,alt3
 ```
 
-`herein` is served by the static block (no LLM call); other matches like `contract` fall through to the prompt body.
+`utilize` is served by the static block (no LLM call); other matches like `facilitate` fall through to the prompt body.
 
 ---
 
@@ -171,10 +171,10 @@ Format: INDEX:alt1,alt2,alt3
 For plain-word cues, `CueResult.alternatives[0]` is the **original word** as it appears in the user's text; `alternatives[1..n]` are the proposed substitutions. This lets runtimes implement "back to original" by cycling to index 0 without a special case.
 
 ```
-text:           "the contract was signed"
-matched word:   contract  (wordIndex 1)
-alternatives:   ["contract", "agreement", "deal", "covenant"]
-                 ^^^^^^^^^^  original at [0]
+text:           "the response was quick"
+matched word:   quick  (wordIndex 3)
+alternatives:   ["quick", "fast", "rapid", "swift"]
+                 ^^^^^^^  original at [0]
 ```
 
 For `_`-blank cues, `alternatives[0]` is the first proposed value; the underscore is not a word that meaningfully cycles back to.
@@ -256,18 +256,18 @@ For the consolidated linting matrix (severity, rule names, what each rule checks
 
 ### Minimal LLM-mode source
 
-`cues/legal/CUE.md`:
+`cues/concise/CUE.md`:
 
 ```markdown
 ---
-name: legal
-description: Legal terminology — contract drafting, statutory definitions, compliance language
-match: contract|agreement|clause|indemnify|warrant|liability|shall
+name: concise
+description: Concise phrasing, trimming wordy and verbose constructions
+match: utilize|leverage|facilitate|aforementioned|endeavor|ascertain
 priority: 70
 ---
 
-Suggest 3 alternatives for each highlighted legal term that preserve
-legal meaning. Prefer standard contract-drafting terminology.
+Suggest 3 alternatives for each highlighted term that preserve
+meaning. Prefer plain, concise phrasing.
 
 Format: INDEX:alt1,alt2,alt3
 ```
@@ -304,10 +304,10 @@ priority: 60
 
 ```markdown
 ---
-name: medical
-description: Clinical terminology with synonym support
-match: \b(diagnos|prognos|sympt|patho)\w+\b
-keywords: patient, clinical, diagnosis
+name: plain
+description: Plain-language alternatives with synonym support
+match: \b(utiliz|facilitat|endeavor|ascertain)\w+\b
+keywords: verbose, wordy, formal
 priority: 75
 parser: alternatives
 model: claude-haiku-4-5
@@ -316,7 +316,7 @@ on-host: [chrome, claude-code, gemini-cli, opencode]
 spec: opencues/0.1-alpha
 ---
 
-Propose two clinical-vocabulary alternatives per matched term.
+Propose two plain-language alternatives per matched term.
 Format: INDEX:alt1,alt2
 ```
 
@@ -328,7 +328,7 @@ A cue source's `match:` is the only thing standing between "fires correctly" and
 
 1. **Write 5–10 realistic text snippets** the source SHOULD fire on (true positives). Verify the regex matches.
 2. **Write 5–10 snippets it should NOT fire on** (true negatives — common words, unrelated jargon). Verify no match.
-3. **Write 2–3 ambiguous edge cases.** A word like "shall" might be legal jargon OR everyday English; decide which side this source claims.
+3. **Write 2–3 ambiguous edge cases.** A word like "leverage" might be verbose jargon worth flagging OR a deliberate choice; decide which side this source claims.
 4. **Inspect declared triggers with `opencues list --cues`** (or equivalent) to see every source's `match:`/`keywords:`/`priority:` side by side, then reason through which one wins on a sample paragraph. The reference CLI does not ship a live match-tester flag today — a runtime MAY add one (e.g. `--match-test "<text>"`) as a nice-to-have; until then, this is a manual regex-tracing step.
 5. **Check for unintended substring matches.** `match: state` will fire on "statement," "estate," "statistics." If you mean the word, anchor with `\b`.
 

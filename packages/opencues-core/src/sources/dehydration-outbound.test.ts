@@ -257,10 +257,10 @@ describe('ConfigIntent — outbound dehydration (safe mode)', () => {
 describe('Word-cues — PII words withheld from dispatch (safe mode)', () => {
   it('a PII word is never dispatched; other words still are', async () => {
     const bodies: string[] = [];
-    const legal = new ConfigSource({
+    const concise = new ConfigSource({
       sourceConfig: {
-        name: 'legal',
-        promptText: 'suggest legal alternatives',
+        name: 'concise',
+        promptText: 'suggest formal alternatives',
         priority: 70,
         parser: 'alternatives' as const,
         scope: 'words' as const,
@@ -272,7 +272,7 @@ describe('Word-cues — PII words withheld from dispatch (safe mode)', () => {
       apiKey: 'k',
       model: 'm',
     });
-    const group = new RoutedWordSourceGroup({ sources: [legal] });
+    const group = new RoutedWordSourceGroup({ sources: [concise] });
     const uc = parseIdentityMd(USER_MD);
     const text = 'Zorbath hired an attorney yesterday';
     const words = text.split(/\s+/);
@@ -291,10 +291,10 @@ describe('Word-cues — PII words withheld from dispatch (safe mode)', () => {
 
   it('raw mode dispatches PII words unchanged', async () => {
     const bodies: string[] = [];
-    const legal = new ConfigSource({
+    const concise = new ConfigSource({
       sourceConfig: {
-        name: 'legal',
-        promptText: 'suggest legal alternatives',
+        name: 'concise',
+        promptText: 'suggest formal alternatives',
         priority: 70,
         parser: 'alternatives' as const,
         scope: 'words' as const,
@@ -306,7 +306,7 @@ describe('Word-cues — PII words withheld from dispatch (safe mode)', () => {
       apiKey: 'k',
       model: 'm',
     });
-    const group = new RoutedWordSourceGroup({ sources: [legal] });
+    const group = new RoutedWordSourceGroup({ sources: [concise] });
     const uc = parseIdentityMd(USER_MD);
     const text = 'Zorbath hired an attorney yesterday';
     const words = text.split(/\s+/);
