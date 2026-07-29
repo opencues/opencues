@@ -380,6 +380,8 @@ describe('Navigation span-fill filter', () => {
     const span = new SpanFillState();
     span.set({ index: 1, alternatives: ['bar baz', 'other text'], currentAltIndex: 0, spanLength: 2 }, 'foo bar baz qux');
     const nav = new Navigation(adapter, hlState, dynDefs, loader, span);
+    // Empty cueMap AND no blanks → genuinely-empty config → all-words fallback
+    // fires; the span (1,2) collapses to its origin → [0, 1, 3].
     expect(nav.computeTargets(splitWords('foo bar baz qux'))).toEqual([0, 1, 3]);
   });
 });

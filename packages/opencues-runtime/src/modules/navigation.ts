@@ -353,6 +353,10 @@ export class Navigation {
       // blank keywords) — matching this method's own "matched cueMap or has a
       // DynDef" contract above.
       const cueMap = cyclingOff ? undefined : this.configLoader?.cueMap;
+      // `navigableWords` (cueMap ∪ blank keywords) is used ONLY to detect a
+      // genuinely-empty config for the scaffold fallback below — NOT as targets
+      // (targets are cueMap words + DynDefs; a bare blank keyword is not one).
+      const navigable = cyclingOff ? undefined : this.configLoader?.navigableWords;
       const filtered: number[] = [];
       for (const w of words) {
         // Skip inner positions of any multi-word static-alt span —
@@ -375,14 +379,17 @@ export class Navigation {
         }
       }
       if (filtered.length > 0) return filtered;
-      const cueMapEmpty = !cueMap || cueMap.size === 0;
+      // Fall back to all words ONLY when the config is genuinely empty — no
+      // word-cues AND no blanks (a fresh/scaffold install), so navigation isn't
+      // dead out of the box. A config that HAS blanks (or cues) but no word-cue
+      // match stays SILENT rather than hopping plain words. `navigable`
+      // (cueMap ∪ blank keywords) is the "is there any config content" signal;
+      // keying this on cueMap alone wrongly made every word navigable in the
+      // very common blanks-but-no-word-cues setup. Never fall back on the
+      // no-cycling profile (target set suppressed by design, not missing).
+      const emptyConfig = !navigable || navigable.size === 0;
       const noDynDefs = this.dynDefs.size === 0;
-      // Production path: cueMap is populated → silence.
-      // Test scaffold path: no cueMap, no DynDefs → fall back.
-      // The fallback must NOT fire on the no-cycling profile — there
-      // `navigable` is suppressed by design, not missing, and falling
-      // back would make every plain word a nav target.
-      if (cueMapEmpty && noDynDefs && !cyclingOff) return words.map(w => w.index);
+      if (emptyConfig && noDynDefs && !cyclingOff) return words.map(w => w.index);
       return [];
     })();
 
