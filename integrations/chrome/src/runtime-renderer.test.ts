@@ -345,12 +345,10 @@ describe('runtime-renderer inline-note push-down spacer', () => {
     expect(sheet.textContent).toContain('margin-bottom');
   });
 
-  it('Margin mode — soft <br> line break below the caret (LinkedIn-comment shape): floats, does NOT root-pad', () => {
-    // Line 1 and line 2 are <br>-separated inside ONE block. Chrome's LayoutBR
-    // ignores display/height/margin so CSS can't open a gap at a <br>; a spacer
-    // node is reverted by the managed editor AND would ship. So there's no safe
-    // push here — float (note overlaps until the caller opaque-covers), and do
-    // NOT root-pad (that grows the editor bottom, leaving the note over line 2).
+  it('Margin mode — soft <br> line break below the caret (LinkedIn-comment shape): inserts a stripped spacer node after the <br>', () => {
+    // Line 1 and line 2 are <br>-separated inside ONE block. CSS can't give a
+    // <br> a box, so try a real inline-block spacer node right after the break.
+    // It carries data-oc-note-spacer so walkPlainText strips it from our reads.
     const target = document.createElement('div');
     target.className = 'ProseMirror';
     target.setAttribute('contenteditable', 'true');
@@ -359,10 +357,14 @@ describe('runtime-renderer inline-note push-down spacer', () => {
 
     applyDirectives(target, [{ inlineNote: NOTE }], 'margin');
 
-    expect(document.querySelector('[data-oc-note-spacer]')).toBeNull();
     expect(target.style.paddingBottom).toBe(''); // did NOT root-pad
-    const sheet = document.getElementById('oc-push-style') as HTMLStyleElement | null;
-    expect(sheet?.textContent ?? '').toBe(''); // no stylesheet rule
+    const spacer = document.querySelector('[data-oc-note-spacer]') as HTMLElement;
+    expect(spacer).not.toBeNull();
+    // Inserted immediately after the <br>, inside the <p>, as a block span.
+    const br = target.querySelector('br')!;
+    expect(spacer.previousSibling).toBe(br);
+    expect(spacer.tagName).toBe('SPAN');
+    expect(spacer.style.display).toBe('block');
   });
 
   it('Margin mode mid-buffer — clearing empties the stylesheet rule AND unmarks the editor', () => {

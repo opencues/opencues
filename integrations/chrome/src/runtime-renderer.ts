@@ -420,14 +420,29 @@ function insertMarginPush(target: HTMLElement, range: Range, heightPx: number): 
   //      sibling-block sheet-margin path uses a rule. Anonymous-block wrapping
   //      means the 0-height block <br> + margin adds exactly ONE gap (no doubled
   //      line); the note then sits in that gap at the span's rect.bottom.
-  //  (a) A line BELOW the caret we can't turn into a real gap. A soft `<br>`
-  //      break is the canonical case (LinkedIn comments): CSS can't give a
-  //      `<br>` a box (Chrome's LayoutBR ignores display/height/margin —
-  //      verified live), a spacer node is reverted by the managed editor's
-  //      reconciler, and even if it held it would ship in the submitted text.
-  //      So there is no SAFE way to push here — float, and let the caller decide
-  //      how to present the note (overlap vs opaque cover). Never mis-grow the
-  //      editor bottom (which would leave the note over line 2 anyway).
+  //  (a) A line BELOW the caret with no block to margin (soft `<br>` break —
+  //      LinkedIn comments). CSS can't give a `<br>` a box (verified), so try a
+  //      real inline-block SPACER NODE right after the break. It's an empty
+  //      `contenteditable=false` `<span>` carrying `data-oc-note-spacer`, so
+  //      walkPlainText strips it from OUR reads and clearPushDown removes it when
+  //      the note clears. Empirical: if the managed editor reverts it, no gap
+  //      appears (harmless float); if it holds, we get the pushdown. (Submit-time
+  //      ship-safety is handled by removing it on blur/clear.)
+  if (lineBelow && lineBelow.parentNode) {
+    const spacer = document.createElement('span');
+    spacer.setAttribute(NOTE_SPACER_ATTR, '1');
+    spacer.setAttribute('contenteditable', 'false');
+    spacer.setAttribute('aria-hidden', 'true');
+    spacer.style.cssText =
+      `display:block;height:${px}px;margin:0;padding:0;border:0;` +
+      'user-select:none;pointer-events:none;background:transparent;';
+    try {
+      lineBelow.after(spacer);
+      _noteSpacer = spacer;
+      _pushDiag = { path: 'br-spacer', belowTag: lineBelow.tagName, px };
+      return true;
+    } catch { /* fall through to float */ }
+  }
   if (lineBelow) {
     _pushDiag = {
       path: 'no-safe-push', reason: 'unpushable-line-below', tag: target.tagName,
