@@ -140,7 +140,7 @@ and wrapped sentences. Fallback: field line-height → span rect height → `1px
 | **LinkedIn comments — block lines** | Quill | ✅ real push-down (`sheet-margin` / `root-padding`) |
 | **LinkedIn comments — soft `<br>` lines** | Quill | ✅ opaque cover (no safe push — see sub-strategy 3) |
 | **LinkedIn Posts** | Quill (controlled) | ⚠ note + auto-select suppressed (no readable caret); dim only |
-| **Reddit** | Lexical | ⚠ not re-verified this pass; managed `'margin'` path applies |
+| **Reddit** | Lexical | ✅ opaque cover over the line below when one exists (same as LinkedIn `<br>` comments) |
 | **normal `<input>` / `<textarea>`** | — | render skipped (secondary display) |
 
 **Debug diagnostics** (`debug-mode: on`, throttled, in `/tmp/opencues.log`):
