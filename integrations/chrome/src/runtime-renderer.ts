@@ -469,6 +469,13 @@ function renderInlineNote(
   // note/field metric mismatch. Fall back to the field line-height / span
   // height when layout is unavailable (jsdom returns 0). One line only — a
   // wrapped sentence still opens a single row below it, exactly like CC.
+  // Reset to the note's NATURAL size before measuring — a previous render may
+  // have set an explicit height/width (cover mode), and measuring that back
+  // would compound (the cover grew taller every tick — the "2x" bug).
+  el.style.height = 'auto';
+  el.style.width = 'auto';
+  el.style.paddingLeft = '0';
+  el.style.boxSizing = 'content-box';
   let pushPx = lineHeightPx;
   try {
     const noteH = el.getBoundingClientRect().height;
