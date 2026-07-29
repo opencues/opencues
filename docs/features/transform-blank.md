@@ -90,7 +90,10 @@ Returns a single CueResult with:
 - `alternatives = [originalFullText, rewrittenText]`
 - `spanStart = 0, spanEnd = text.length`
 
-The runtime auto-substitutes the rewrite (currentIndex=1). Cycle Down
+The runtime auto-substitutes the rewrite and registers a def showing it
+(the def's `alternatives[0]` is the rewrite body, `currentIndex=0`;
+trailing whitespace stays outside the span so typing after the result
+never invalidates it). Cycle — bare `_` inside the span, or Ctrl+Alt+↑ —
 to revert to the original instruction-plus-target. The blank is locked
 against re-resolution (`blankName = 'transform-blank'`) so the LLM
 won't be re-triggered on the rewritten text.

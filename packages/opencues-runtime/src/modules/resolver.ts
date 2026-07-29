@@ -2407,14 +2407,6 @@ export class Resolver {
         const newWords = splitWords(bufferText);
         const firstSpliceWord = newWords.find(w => w.start >= spliceStart);
         const newWordIndex = firstSpliceWord ? firstSpliceWord.index : 0;
-        // spanEnd MUST be the full bufferText length â the def's alternatives[0]
-        // IS bufferText, so the span and the stored text have to agree. Using
-        // the last WHITESPACE-word's end (the old behaviour) fell short whenever
-        // the rewrite ended in trailing whitespace/newline, leaving the def
-        // span shorter than its own text â the dim/highlight then stopped a
-        // generation-dependent char or two before the real end (the trailing
-        // ã / last chars not highlighted). Whole-buffer transform â spanStart 0,
-        // spanEnd = full length.
         // Trim TRAILING whitespace (the editor's empty tail lines) out of the
         // span. The rewrite is the CONTENT; the blank lines after it are not.
         // Keeping them inside the span (the old `spanEnd = bufferText.length`)
