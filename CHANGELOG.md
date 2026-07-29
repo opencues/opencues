@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed — shipped niche word-cues `legal` / `medical` / `financial`
+
+Deleted the three professional-domain word-cue packs from `defaults/cues/`. Low value for a general audience, and because cues compete for the span via priority eviction they crowd out the genuinely useful cues (contradiction, sentence rewrites). The per-word cue **mechanism** (`RoutedWordSourceGroup`) and its docs are unchanged — only the shipped instances go. Docs, templates, and spec/conformance fixtures repointed to the remaining shipped cues (`spelling`, `more-formal`) or neutral examples. No package behaviour change (tests + comments only); the shipped-content change lands in the next release.
+
 ### Fixed — `inherit` is now a universal provider fall-through sentinel (`@opencues/core` 0.40.1 → 0.40.2, `@opencues/chrome` 0.2.101 → 0.2.102)
 
 `inherit` means "no override at this tier — use the one below" and is a documented value for BOTH the bucket scalars (`cues-llm-provider: inherit`) and the per-feature ones (`word-cues-provider: inherit`, `agent-provider: inherit`, …). But `resolveLLMTuple` only honored it for the bucket scalars (collapsed upstream); a per-feature `inherit` arrived verbatim and was looked up as a LITERAL provider → unknown → `null` → the source was silently dropped with `"no API key for provider 'inherit'"`. Symptom: setting every routing scalar to `inherit` (to make one global provider authoritative) silently disabled all word-cues / sentence-cues — most visible on chrome, where the whole cue set went dark.
