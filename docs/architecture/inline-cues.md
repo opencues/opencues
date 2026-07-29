@@ -83,19 +83,70 @@ mode is chosen in `opencues-bootstrap.ts`'s `runtimeRender` and passed to
 | Surface | Detect | Push-down | Safety |
 |---|---|---|---|
 | **Plain contenteditable** (Gmail, YouTube) | `!isManagedEditor` | `'node'` — insert an empty `contenteditable=false` **spacer block** (`data-oc-note-spacer`) right after the span's line so content below moves down. | The spacer carries no text and `walkPlainText` skips it by attribute, so it can't reach the submit buffer or shift offsets. Two DOM shapes handled: a per-line block → insert after it; a first line that's bare text in the root (Gmail/YouTube shape) → anchor to the line's terminating `<br>` / next block (`firstLineBreakAfter`). |
-| **Managed editor** (claude.ai / ChatGPT / Luma = ProseMirror, Reddit = Lexical, LinkedIn = Quill, Twitter = Draft) | `isManagedEditor` | `'margin'` — open the row with **CSS layout only**. Mid-buffer (caret line has a following sibling to push): an **injected stylesheet rule** `[data-oc-editor] > :nth-child(N) { margin-bottom }`. Last/only line: grow the editor **root** via inline `padding-bottom`. | A style is not document content, so it can never reach the submit buffer (`walkPlainText` reads text, not styles) and creates no editor transaction (no undo entry). The stylesheet rule is used because PM/Lexical/Quill **revert inline styles on child nodes they own** but cannot see or revert an external stylesheet. A real inserted line is refused outright here: we don't own these editors' send button, so it would ship in the user's message. If a given editor still reverts even the style, the row just doesn't open and the note floats — never unsafe. |
+| **Managed editor** (claude.ai / ChatGPT = ProseMirror, Reddit = Lexical, LinkedIn = Quill, Twitter = Draft) | `isManagedEditor` | `'margin'` — open the row with **CSS layout only** (never a DOM node — managed editors revert those and they can ship). Three sub-strategies below. | A style is not document content, so it can never reach the submit buffer (`walkPlainText` reads text, not styles) and creates no editor transaction (no undo entry). |
 | **Normal `<input>` / `<textarea>`** | `isNormalInput` | `'none'` — no push-down; render is skipped entirely (CSS Custom Highlight can't paint an input's internally-laid-out value). | Single-answer blanks still work via `.value` mutation. Cues aren't painted; with a cue advisory the degradation is to the secondary display. |
 
-Gap height on every chrome path is **measured from the note's own rendered
-height** (one line in the field's font), not the field's `line-height` — robust
-to `line-height: normal` and to a sentence that wraps across visual lines (which
-still opens exactly one row). Fallback: field line-height → span rect height →
-`1px` floor.
+### The `'margin'` path's three sub-strategies (`insertMarginPush`)
 
-**Debug diagnostic:** with `debug-mode: on`, the managed path logs
-`[chrome] marginPush {path, tag, …}` to `/tmp/opencues.log` — `sheet-margin`
-(mid-buffer), `root-padding` (last line). If a managed editor reverts the nudge,
-it's visible there rather than a silent no-op.
+Picked by what's below the caret's line. All CSS-only — no DOM node — because
+PM/Lexical/Quill **revert inline styles on child nodes they own AND revert
+inserted nodes**, but cannot see or revert an *external stylesheet* or a style on
+their *own root*.
+
+1. **`sheet-margin` — mid-buffer** (caret's line has a following sibling block
+   to push). An injected **stylesheet rule** gives that block `margin-bottom`.
+   The block is found by walking up to the first ancestor **with a following
+   sibling** (`lineBlockWithSibling` — Draft.js nests each line several divs
+   deep, so the nearest block is a sibling-less wrapper; the real line block is
+   higher up), and targeted by a **full `:nth-child` path from the editor root**
+   (`nthChildPathFrom` — the root carries `data-oc-editor`, nothing is marked on
+   a node the editor manages).
+2. **`root-padding` — last / only line.** Grow the editor **root** via inline
+   `padding-bottom`, **additively**: existing computed padding + one line
+   (ChatGPT's ProseMirror ships ~16px of its own; replacing it opened <1 line).
+   `clearPushDown()` restores the base padding before the computed read, so it
+   doesn't compound.
+3. **opaque cover — soft `<br>` line that can't be pushed.** Some managed
+   editors (LinkedIn **comments**) separate lines with a soft `<br>` inside one
+   block. Verified there is *no* safe push here — Chrome's LayoutBR ignores
+   `display`/`height`/`margin` so CSS can't box a `<br>`; a spacer node is
+   reconciled away by Quill (and resets the caret); and Quill's instance/API is
+   unreachable (`__quill` absent, no global `Quill`). So the note instead renders
+   as an **opaque cover**: the field's background colour (nearest non-transparent
+   ancestor bg, white fallback), one line tall, extended a few px left+bottom to
+   catch glyph bleed, opacity 1 — it cleanly *replaces* the line below while the
+   caret is in the span, and (cursor-gated) that line reappears the instant the
+   caret leaves.
+
+**Caret-unreadable suppression.** When the editor exposes no browser-readable
+caret (LinkedIn **Posts** — a fully-controlled Quill that parks
+`window.getSelection()` at the app root and hides its instance), `readCursorOffset`
+returns a fabricated `0`; `runtimeRender` detects this via `lastCursorReliable()`
+and **strips the inline note + auto-select highlight** so they don't fire at the
+bogus position. The always-on dim still marks the span.
+
+Gap height on every chrome path is **measured from the note's own rendered
+height** (one line in the field's font), reset to natural size *before* measuring
+so an explicit cover/gap height can't compound. Robust to `line-height: normal`
+and wrapped sentences. Fallback: field line-height → span rect height → `1px`.
+
+### Verified per editor (July 2026)
+
+| Editor | Engine | Behaviour |
+|---|---|---|
+| **Gmail, YouTube** | plain CE | ✅ real push-down (spacer node) |
+| **claude.ai, ChatGPT** | ProseMirror | ✅ real push-down (`sheet-margin` mid, additive `root-padding` last) |
+| **Twitter / X** | Draft.js (nested) | ✅ real push-down (`sheet-margin`, up-walk + nth-child path) |
+| **LinkedIn comments — block lines** | Quill | ✅ real push-down (`sheet-margin` / `root-padding`) |
+| **LinkedIn comments — soft `<br>` lines** | Quill | ✅ opaque cover (no safe push — see sub-strategy 3) |
+| **LinkedIn Posts** | Quill (controlled) | ⚠ note + auto-select suppressed (no readable caret); dim only |
+| **Reddit** | Lexical | ⚠ not re-verified this pass; managed `'margin'` path applies |
+| **normal `<input>` / `<textarea>`** | — | render skipped (secondary display) |
+
+**Debug diagnostics** (`debug-mode: on`, throttled, in `/tmp/opencues.log`):
+- `[chrome] marginPush {path, …}` — `sheet-margin` / `root-padding` (with `basePB`) / `no-safe-push` (opaque cover) per tick.
+- `[chrome] cursorReadFallback {quillReason, anchorId, …}` — the caret couldn't be mapped (why: `no-instance`, anchor at `#root`, …).
+- `[chrome] cursorQuillNative {index}` — a Quill editor's own selection model was read when the browser selection wandered.
 
 ## Cross-host consistency contract
 
@@ -111,21 +162,21 @@ it's visible there rather than a silent no-op.
 
 ## Known limits
 
-- **Managed-editor push-down can be reverted.** The stylesheet-rule / root-padding
-  levers are chosen to survive ProseMirror/Lexical/Quill reconciliation, but a
-  specific site's editor could still override them; the fallback is a floating
-  (occluding) note. This is the surface the user is expected to spot-check per
-  editor — the `marginPush` diagnostic is the check.
-- **Soft `<br>` line breaks inside one block (non-last line).** Some managed
-  editors (e.g. LinkedIn comments) put multiple lines in a SINGLE block
-  separated by `<br>`, not sibling blocks. There is no CSS that opens a gap
-  between two `<br>` lines mid-block, and inserting a node/content would ship in
-  the message — so when the caret is on such a line with another `<br>` line
-  below, the note floats (overlaps the next line). The runtime detects this
-  (`marginPush path: 'no-safe-push', reason: 'soft-break-midline'`) and declines
-  to push rather than mis-grow the editor. The last line of such a block still
-  gets `root-padding`. Would need an opaque-note fallback (occlude cleanly) or a
-  per-editor API to improve.
+- **Soft `<br>` lines get an opaque cover, not a real push-down.** When a managed
+  editor separates lines with a `<br>` inside one block (LinkedIn comments), there
+  is no safe way to open a real gap (see `'margin'` sub-strategy 3), so the note
+  *covers* the line below instead of pushing it down. It's clean (no overlap) and
+  cursor-gated, but the line below is momentarily hidden rather than moved. The
+  cover's background is the nearest solid ancestor colour — if a site's field bg
+  is an unusual gradient/image, the match can be imperfect.
+- **Fully-controlled editors get no note.** An editor that exposes no
+  browser-readable caret and hides its instance/API (LinkedIn Posts) can't be
+  cursor-tracked, so the note + auto-select are suppressed there (dim only). Not
+  fixable without the editor's cooperation.
+- **Managed-editor styles could still be reverted per-site.** The stylesheet-rule
+  / root-padding levers are chosen to survive PM/Lexical/Quill reconciliation and
+  are verified on the editors in the matrix above, but a new site could override
+  them; the `marginPush` diagnostic is the per-editor check.
 - **Multiple overlapping advisories.** v1 reveals the first def whose span
   contains the caret; passive cues rarely overlap. Define precedence (priority?)
   if a real overlap case appears.
