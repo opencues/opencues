@@ -27,7 +27,11 @@
   "pnpm": {
     "overrides": {
       "brace-expansion": ">=2.1.2",
-      "immutable": ">=5.1.8"
+      "immutable": ">=5.1.8",
+      "@babel/core": ">=7.29.6",
+      "diff": ">=8.0.3",
+      "file-type": ">=21.3.1",
+      "seroval": ">=1.5.3"
     }
   }
 }
