@@ -23,5 +23,11 @@
     "turbo": "^2.9.6",
     "typescript": "^5.3.0",
     "vitest": "^4.1.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "brace-expansion": ">=2.1.2",
+      "immutable": ">=5.1.8"
+    }
   }
 }
