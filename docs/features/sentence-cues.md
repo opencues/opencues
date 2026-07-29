@@ -23,8 +23,10 @@ Without sentence cues, you have:
   - Blanks (`_`) triggering fluid / config / transform pipelines.
 
 With sentence cues on, sentences in your buffer also get cued — each
-becomes a one-span highlight with cycling-Up/Down for alternative
-rewrites. The cycle is the same Ctrl+Alt+arrow you use for word cues.
+becomes a one-span highlight you cycle for alternative rewrites. With your
+caret in the sentence, a bare **`_`** steps to the next rewrite (the primary,
+discoverable gesture); `Ctrl+Alt+↑/↓` is the power path (and the only way to
+step **backward**). Same gestures you use for word cues.
 
 | You type (buffer stays as-is) | Ctrl+Alt+Up | Cycle Up again | Cycle Down |
 |---|---|---|---|
@@ -34,9 +36,9 @@ rewrites. The cycle is the same Ctrl+Alt+arrow you use for word cues.
 
 Sentence-cues are passive — your prose is **never** rewritten without
 your keystroke. The runtime keeps the original sentence in place and
-holds the rewrites in a cue you cycle through with Ctrl+Alt+Up at any
-word inside the sentence. Same gesture as word-cues, just at sentence
-granularity.
+holds the rewrites in a cue you cycle through with a bare `_` (or
+Ctrl+Alt+Up) at any word inside the sentence. Same gestures as word-cues,
+just at sentence granularity.
 
 ---
 
