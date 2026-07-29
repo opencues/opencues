@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-29
+
+First public release. Full highlights in the [GitHub Release](https://github.com/opencues/opencues/releases/tag/v0.3.0).
+
 ### Removed — shipped niche word-cues `legal` / `medical` / `financial`
 
 Deleted the three professional-domain word-cue packs from `defaults/cues/`. Low value for a general audience, and because cues compete for the span via priority eviction they crowd out the genuinely useful cues (contradiction, sentence rewrites). The per-word cue **mechanism** (`RoutedWordSourceGroup`) and its docs are unchanged — only the shipped instances go. Docs, templates, and spec/conformance fixtures repointed to the remaining shipped cues (`spelling`, `more-formal`) or neutral examples. No package behaviour change (tests + comments only); the shipped-content change lands in the next release.
