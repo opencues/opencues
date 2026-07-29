@@ -183,13 +183,14 @@ describe('DimRender + render pipeline (integration)', () => {
     expect(out?.dimRanges).toEqual([]);
   });
 
-  // Blank-keyword arm gating — June 2026 UX change.
-  // A blank keyword on its own is an *action trigger* that requires `_`
-  // adjacency to fire. Without `_`, dimming the keyword is noise — it
-  // implies interactivity when nothing will happen. The gate suppresses
-  // the dim until `_` lands within `blankProximity`. Word-cue entries
-  // (legal/medical/financial/spelling, any CUES.md ## Tips) bypass the
-  // gate because their dim IS the offer of prose alternatives.
+  // Blank-keyword dim — REMOVED July 2026. Dim carries exactly two meanings:
+  // "cycle me (Ctrl+Alt)" and "select me → statusline info". A bare blank
+  // keyword (`volume`, `weather`, …) is neither — it can't be cycled and shows
+  // no statusline tip until `_` fires the blank — so dimming it (previously when
+  // a `_` was within proximity) was a third "you could trigger a blank here"
+  // meaning that overloaded dim. A blank-keyword-only word now NEVER dims, `_`
+  // adjacent or not. Word-cue entries (CUES.md ## Tips, folder/spelling cues)
+  // still dim — their dim IS the cycle offer.
   it('blank keyword without `_` adjacent does NOT dim', async () => {
     const { ConfigLoader } = await import('./config-loader');
     const VOLUME_BLANK = `---
@@ -216,7 +217,7 @@ blankScript: ./vol.sh
     expect(out?.dimRanges ?? []).toEqual([]);
   });
 
-  it('blank keyword WITH `_` within proximity DOES dim', async () => {
+  it('blank keyword WITH `_` adjacent STILL does NOT dim (source-3 dim removed)', async () => {
     const { ConfigLoader } = await import('./config-loader');
     const VOLUME_BLANK = `---
 name: volume
@@ -238,8 +239,10 @@ blankScript: ./vol.sh
     const dynDefs = new DynDefs();
     const dim = new DimRender(adapter, hlState, dynDefs, loader);
     const out = dim.compute({ text: 'volume is _', cursor: 0, externalHighlights: [] });
-    // _ is at word 2, volume is at word 0; proximity 3 covers it → dim fires.
-    expect(out?.dimRanges?.some(r => r.start === 0 && r.end === 6)).toBe(true);
+    // A bare blank keyword no longer dims even with `_` adjacent — dim is
+    // reserved for cycle/statusline affordances. The blank still fires on `_`.
+    // (No dim at all → compute returns null, hence the `?? []`.)
+    expect((out?.dimRanges ?? []).some(r => r.start === 0 && r.end === 6)).toBe(false);
   });
 
   it('dims words that are only navigable via DynDefs (LLM-resolved)', async () => {
