@@ -55,6 +55,57 @@ in whatever way its surface allows:
   `Statusline.buildPayload` keeps the status-line copy of `def.cueTip`; in
   `inline` on a paint-capable host it suppresses that copy (no double display).
 
+## What gets a note vs. just dim
+
+Two layers, and they're not the same set. **Dim** ("there's more here") is
+painted on *any* span with something to cycle or reveal. The **inline note**
+(`↳ …`) is the cursor-gated reveal, and only a subset of dimmed spans are
+**note-bearing**.
+
+The single decider is **`inlineNoteText(def)`** (`state/dyn-defs.ts`) — the
+shared source of truth used by BOTH `DimRender` (paints the note) and `Cycling`
+(the `_`-step), so they can never disagree on "has a note":
+
+```
+def.cueTip present         → note = cueTip     (an advisory)
+transform-blank, >1 alt    → note = "transform" (walkable edit history)
+fluid-blank, >1 alt        → note = "lookup"    (walkable history)
+otherwise                  → undefined          (dim only, no note)
+```
+
+| Span type | Produced by / config | Dimmed? | Inline note? | Note text |
+|---|---|---|---|---|
+| **Word-cue** (per-word alternatives) | `### alternatives` sources | ✅ | ❌ | — (cycle only) |
+| **Sentence-cue** | `scope: sentence` cue + `sentence-cues-mode: on` | ✅ | ✅ | `cueTip` — the cue's advisory (e.g. `more-formal`) |
+| **Contradiction-cue** | `contradiction-cues-mode: on` | ✅ | ✅ | `cueTip` — the computed correction |
+| **Transform-blank** (after a rewrite, >1 alt) | `<body> fix typos _` | ✅ | ✅ | `transform` (its edit history) |
+| **Fluid-blank** (after a lookup, >1 alt) | `weather in paris _` | ✅ | ✅ | `lookup` (its history) |
+| **List / script blank, selector-satellite** | blanks | ✅ | ❌ | — (cycle only) |
+
+So the note-bearing set is **passive cues (sentence + contradiction) and
+history-bearing `_` blanks (transform + fluid)**; everything else is dim-only.
+The `cueTip` is set when a passive cue registers its DynDef (`resolver.ts` — the
+sentence-cue path carries `r.cueTip` through; contradiction cues the same).
+
+**All of these must hold for the note to actually show** (`dim-render.ts`):
+1. `inline-cues-mode: inline` (default) — `secondary` sends the same advisory to
+   the status line instead.
+2. Host advertises the `inline-note` capability — else it falls back to the
+   status line (no half-state where the span auto-selects but no note appears).
+3. Caret is inside the span (`ctx.cursor ∈ [spanStart, spanEnd]`) — cursor-gated.
+4. The span is still live (`defSpanLive` — buffer text at the span still matches
+   the def's current alt; stale spans are skipped).
+
+The **dim** layer has its own two gates: the host can paint dim (`dim-ranges`
+capability), and `supportsCycling()` isn't `false` (on a no-cycling field — a
+chrome plain `<input>` — cue-map dims are suppressed so dim never falsely
+advertises cyclability).
+
+> **Note text is still placeholder for `_` blanks.** `inlineNoteText` returns the
+> literal `"transform"` / `"lookup"` for history-bearing blanks (the indicator
+> text/style was deliberately deferred). Sentence/contradiction cues show a real
+> advisory. Improving the blank labels is an isolated change in that one function.
+
 ## The hard part — a real pushed-down line, not an overlay
 
 `dimRanges` / `highlight` can only **style existing buffer characters**; they
