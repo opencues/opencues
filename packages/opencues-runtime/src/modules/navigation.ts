@@ -162,6 +162,11 @@ export class Navigation {
     const prevText = this._lastSeenText;
     this._lastSeenText = event.text;
     if (event.source === 'runtime') return;
+    if (this.dynDefs.size > 0) {
+      // Correlator for the DynDefs slide/prune trace below — ties each
+      // lifecycle line to the keystroke + caret that triggered it.
+      this.adapter.log('debug', `Navigation.onTextChange: user edit defs=${this.dynDefs.size} cursor=${event.cursorOffset} len ${prevText?.length ?? '?'}→${event.text.length}`);
+    }
     // Slide char spans across edits that happened entirely BEFORE them
     // (Enter above a substitution shifted every later offset; the def
     // survived by word index but its char span went stale and the dim

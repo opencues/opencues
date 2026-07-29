@@ -529,6 +529,8 @@ export function boot(host: HostInfo): BootResult {
 
   const hlState = new HighlightState();
   const dynDefs = new DynDefs();
+  // Span-lifecycle trace (debug-mode gated at the sink) — see boot-common.
+  dynDefs.setDebugLog(msg => adapter.log('debug', `DynDefs: ${msg}`));
   const spanFillState = new SpanFillState();
   const dismissedBlanks = new DismissedBlanks();
   const selectorSatelliteState = new SelectorSatelliteState();
