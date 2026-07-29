@@ -448,7 +448,22 @@ function insertMarginPush(target: HTMLElement, range: Range, heightPx: number): 
     try {
       lineBelow.after(spacer);
       _noteSpacer = spacer;
-      _pushDiag = { path: 'br-spacer', belowTag: lineBelow.tagName, px };
+      // Probe Quill reachability: DOM insertion is being reconciled away, so the
+      // only cooperative line is via Quill's own API. Is its instance reachable
+      // on the COMMENT box (it wasn't on Posts)? __quill on the container, or the
+      // global Quill.find registry. This decides whether an API-based line is
+      // possible at all.
+      const qContainer = target.closest('.ql-container') as (Element & { __quill?: unknown }) | null;
+      const instByProp = qContainer?.__quill
+        ?? (target as unknown as { __quill?: unknown }).__quill
+        ?? (target.parentElement as unknown as { __quill?: unknown } | null)?.__quill;
+      const gQuill = (window as unknown as { Quill?: { find?: (n: Node, b?: boolean) => unknown } }).Quill;
+      let instByFind: unknown;
+      try { instByFind = gQuill?.find ? gQuill.find(target, true) : undefined; } catch { instByFind = undefined; }
+      _pushDiag = {
+        path: 'br-spacer', belowTag: lineBelow.tagName,
+        quillInstProp: !!instByProp, globalQuill: typeof gQuill, quillInstFind: !!instByFind,
+      };
       return true;
     } catch { /* fall through to float */ }
   }
