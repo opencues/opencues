@@ -380,19 +380,8 @@ function insertNoteSpacer(target: HTMLElement, range: Range, heightPx: number): 
  *  below the (single / last) line. Nudging the root's own style is also less
  *  likely to be reverted than a child node's. */
 function insertMarginPush(target: HTMLElement, range: Range, heightPx: number): boolean {
-  const px = Math.max(1, Math.round(heightPx));
-  // Idempotency for the spacer-node path: runtimeRender fires on every tick, so
-  // re-inserting the spacer each time churns the DOM right by the caret and the
-  // managed editor's reconciler resets the selection ("cursor jumps outside").
-  // If our spacer is already correctly placed right after the target <br>, do
-  // NOTHING — leave the DOM (and the caret) untouched.
-  {
-    const lb = firstLineBreakAfter(range.endContainer, target);
-    if (_noteSpacer && _noteSpacer.isConnected && lb && lb.tagName === 'BR' && _noteSpacer.previousSibling === lb) {
-      return true;
-    }
-  }
   clearPushDown();
+  const px = Math.max(1, Math.round(heightPx));
   // Mid-buffer: find the LINE block whose next sibling is the line below, then
   // nudge its margin-bottom to push that sibling down. Apply via a STYLESHEET
   // RULE targeting the block by position among ITS OWN parent's children —
@@ -422,51 +411,13 @@ function insertMarginPush(target: HTMLElement, range: Range, heightPx: number): 
   // No block with a following sibling. Look at what's below the caret:
   const nearest = blockAncestorWithin(range.endContainer, target);
   const lineBelow = firstLineBreakAfter(range.endContainer, target); // <br>/block after the caret
-  //  (a) SOFT `<br>` break inside the caret's block (LinkedIn comments etc.): the
-  //      "line below" is a <br>, not a sibling block, so there's nothing to give
-  //      margin-bottom. Open the gap by making THAT specific <br> a block with a
-  //      bottom margin, via a stylesheet rule targeting it by nth-of-type. This
-  //      is revert-proof (a stylesheet isn't a DOM node the editor can remove,
-  //      and isn't in its document model so it can't ship) — the same reason the
-  //      sibling-block sheet-margin path uses a rule. Anonymous-block wrapping
-  //      means the 0-height block <br> + margin adds exactly ONE gap (no doubled
-  //      line); the note then sits in that gap at the span's rect.bottom.
   //  (a) A line BELOW the caret with no block to margin (soft `<br>` break —
-  //      LinkedIn comments). CSS can't give a `<br>` a box, so ADD A REAL LINE:
-  //      insert a second `<br>` right after the break (a blank line, exactly
-  //      like pressing Enter). It carries `data-oc-note-spacer` so walkPlainText
-  //      strips it from OUR reads (no spurious `\n`) and clearPushDown removes it
-  //      when the note clears. A `<br>` is the editor's own line-break shape, so
-  //      Quill fights it far less than a foreign block node. NO caret-restore
-  //      here — touching the selection wakes Quill's reconciler and it drops the
-  //      line; the idempotency guard above (leave an already-placed spacer alone)
-  //      is what keeps the caret from being churned tick-to-tick.
-  if (lineBelow && lineBelow.parentNode) {
-    const spacer = document.createElement('br');
-    spacer.setAttribute(NOTE_SPACER_ATTR, '1');
-    spacer.setAttribute('aria-hidden', 'true');
-    try {
-      lineBelow.after(spacer);
-      _noteSpacer = spacer;
-      // Probe Quill reachability: DOM insertion is being reconciled away, so the
-      // only cooperative line is via Quill's own API. Is its instance reachable
-      // on the COMMENT box (it wasn't on Posts)? __quill on the container, or the
-      // global Quill.find registry. This decides whether an API-based line is
-      // possible at all.
-      const qContainer = target.closest('.ql-container') as (Element & { __quill?: unknown }) | null;
-      const instByProp = qContainer?.__quill
-        ?? (target as unknown as { __quill?: unknown }).__quill
-        ?? (target.parentElement as unknown as { __quill?: unknown } | null)?.__quill;
-      const gQuill = (window as unknown as { Quill?: { find?: (n: Node, b?: boolean) => unknown } }).Quill;
-      let instByFind: unknown;
-      try { instByFind = gQuill?.find ? gQuill.find(target, true) : undefined; } catch { instByFind = undefined; }
-      _pushDiag = {
-        path: 'br-spacer', belowTag: lineBelow.tagName,
-        quillInstProp: !!instByProp, globalQuill: typeof gQuill, quillInstFind: !!instByFind,
-      };
-      return true;
-    } catch { /* fall through to float */ }
-  }
+  //      LinkedIn comments). Verified live: CSS can't give a `<br>` a box, a
+  //      spacer/`<br>` node is reconciled away by Quill (resets the caret), and
+  //      Quill's instance/API is unreachable (no __quill, no global Quill). So
+  //      there is no way to open a real gap here. Return false → the caller
+  //      renders the note as an OPAQUE COVER over the line below instead of a
+  //      transparent overlay that mangles it.
   if (lineBelow) {
     _pushDiag = {
       path: 'no-safe-push', reason: 'unpushable-line-below', tag: target.tagName,
@@ -532,14 +483,60 @@ function renderInlineNote(
     : pushMode === 'margin' ? insertMarginPush(target, range, pushPx)
     : false;
   if (pushed) {
+    // A real row opened below the span — drop the note into it as a plain,
+    // transparent, content-width note.
     try { rect = range.getBoundingClientRect(); } catch { /* keep prior rect */ }
+    el.style.backgroundColor = 'transparent';
+    el.style.opacity = '0.7';
+    el.style.width = 'auto';
+    el.style.height = 'auto';
+    el.style.left = `${Math.round(rect.left)}px`;
   } else {
     clearPushDown();
+    const hasLineBelow = !!firstLineBreakAfter(range.endContainer, target);
+    if (hasLineBelow) {
+      // Couldn't open a gap but there IS a line right below (soft `<br>` in a
+      // managed editor with a hidden instance — verified no safe way to push).
+      // Render the note as an OPAQUE COVER over that line: same background colour
+      // as the field, one line tall, wide enough to hide line 2 — so it reads as
+      // the note replacing that line while the caret is in the span, not a
+      // garbled overlap. Cursor-gated, so line 2 reappears when the caret leaves.
+      let fieldRect: DOMRect | null = null;
+      try { fieldRect = target.getBoundingClientRect(); } catch { /* keep null */ }
+      el.style.backgroundColor = effectiveBackgroundColor(target);
+      el.style.opacity = '1';
+      el.style.height = `${Math.round(pushPx)}px`;
+      el.style.left = `${Math.round(rect.left)}px`;
+      // Extend to the field's right edge so the whole line below is covered.
+      el.style.width = (fieldRect && fieldRect.right > rect.left)
+        ? `${Math.round(fieldRect.right - rect.left)}px` : 'auto';
+    } else {
+      // Nothing below the span — no occlusion to fix; float transparently.
+      el.style.backgroundColor = 'transparent';
+      el.style.opacity = '0.7';
+      el.style.width = 'auto';
+      el.style.height = 'auto';
+      el.style.left = `${Math.round(rect.left)}px`;
+    }
   }
-  el.style.left = `${Math.round(rect.left)}px`;
   el.style.top = `${Math.round(rect.bottom)}px`;
   el.style.display = 'block';
   _noteRange = range;
+}
+
+/** The nearest non-transparent background colour up the ancestor chain from
+ *  `el` — used to make the inline note OPAQUE so it can cleanly cover the line
+ *  below on surfaces where a real push-down isn't possible. White fallback. */
+function effectiveBackgroundColor(el: HTMLElement): string {
+  let cur: HTMLElement | null = el;
+  while (cur) {
+    try {
+      const bg = getComputedStyle(cur).backgroundColor;
+      if (bg && bg !== 'transparent' && !bg.endsWith(', 0)')) return bg;
+    } catch { /* ignore */ }
+    cur = cur.parentElement;
+  }
+  return '#ffffff';
 }
 
 /** Hide the inline note overlay (no flagged span under the caret, focus moved

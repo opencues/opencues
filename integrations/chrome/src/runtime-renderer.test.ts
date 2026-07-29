@@ -345,10 +345,11 @@ describe('runtime-renderer inline-note push-down spacer', () => {
     expect(sheet.textContent).toContain('margin-bottom');
   });
 
-  it('Margin mode — soft <br> line break below the caret (LinkedIn-comment shape): adds a REAL second <br> (blank line) after the break', () => {
-    // Line 1 and line 2 are <br>-separated inside ONE block. CSS can't give a
-    // <br> a box, so add a real second <br> (a blank line, like pressing Enter).
-    // It carries data-oc-note-spacer so walkPlainText strips it from our reads.
+  it('Margin mode — soft <br> line below (LinkedIn comments): no push, note becomes an OPAQUE cover (no spacer, no fighting Quill)', () => {
+    // Line 1 and line 2 are <br>-separated in one block. Verified live: CSS can't
+    // give a <br> a box, a node is reconciled away by Quill (resets the caret),
+    // and Quill's instance is unreachable. So DON'T mutate the DOM — render the
+    // note opaque so it cleanly covers line 2 instead.
     const target = document.createElement('div');
     target.className = 'ProseMirror';
     target.setAttribute('contenteditable', 'true');
@@ -357,29 +358,31 @@ describe('runtime-renderer inline-note push-down spacer', () => {
 
     applyDirectives(target, [{ inlineNote: NOTE }], 'margin');
 
-    expect(target.style.paddingBottom).toBe(''); // did NOT root-pad
-    const spacer = document.querySelector('[data-oc-note-spacer]') as HTMLElement;
-    expect(spacer).not.toBeNull();
-    expect(spacer.tagName).toBe('BR'); // a real line break
-    // Inserted immediately after the original <br> → a double-<br> blank line.
-    const origBr = target.querySelector('br:not([data-oc-note-spacer])')!;
-    expect(spacer.previousSibling).toBe(origBr);
+    // No DOM mutation of the editor at all.
+    expect(document.querySelector('[data-oc-note-spacer]')).toBeNull();
+    expect(target.style.paddingBottom).toBe('');
+    expect(document.getElementById('oc-push-style')?.textContent ?? '').toBe('');
+    // The note went to OPAQUE cover mode.
+    const noteEl = document.getElementById('oc-inline-note') as HTMLElement;
+    expect(noteEl).not.toBeNull();
+    expect(noteEl.style.opacity).toBe('1');
+    expect(noteEl.style.backgroundColor).not.toBe('');
+    expect(noteEl.style.backgroundColor).not.toBe('transparent');
   });
 
-  it('Margin mode — soft <br>: the spacer <br> is idempotent (re-render does NOT churn it)', () => {
+  it('Margin mode — when a row DID open (last line, root-padding), the note stays TRANSPARENT (not a cover)', () => {
     const target = document.createElement('div');
     target.className = 'ProseMirror';
     target.setAttribute('contenteditable', 'true');
-    target.innerHTML = '<p>line one<br>hii</p>';
+    target.innerHTML = '<p>only line</p>'; // last line → root-padding pushes
     document.body.appendChild(target);
 
     applyDirectives(target, [{ inlineNote: NOTE }], 'margin');
-    const first = document.querySelector('[data-oc-note-spacer]');
-    applyDirectives(target, [{ inlineNote: NOTE }], 'margin'); // second render tick
-    const second = document.querySelector('[data-oc-note-spacer]');
-    // Same node — not removed + re-inserted (that churn resets the caret).
-    expect(second).toBe(first);
-    expect(document.querySelectorAll('[data-oc-note-spacer]').length).toBe(1);
+
+    expect(target.style.paddingBottom).not.toBe(''); // pushed
+    const noteEl = document.getElementById('oc-inline-note') as HTMLElement;
+    expect(noteEl.style.opacity).toBe('0.7');
+    expect(noteEl.style.backgroundColor).toBe('transparent');
   });
 
   it('Margin mode mid-buffer — clearing empties the stylesheet rule AND unmarks the editor', () => {
