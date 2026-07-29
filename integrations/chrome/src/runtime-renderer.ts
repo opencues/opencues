@@ -408,25 +408,46 @@ function insertMarginPush(target: HTMLElement, range: Range, heightPx: number): 
       } catch { /* fall through to root-padding */ }
     }
   }
-  // No block with a following sibling. Two sub-cases:
-  //  (a) There's still a line BELOW the caret within the editor — a `<br>` soft
-  //      break inside the caret's block (managed editors like LinkedIn comments
-  //      use `<br>` between lines, not sibling blocks). No CSS can open a gap
-  //      between two `<br>` lines mid-block without inserting content (which
-  //      would ship), so we can't push here — float cleanly rather than grow the
-  //      editor bottom uselessly (which would leave the note over the next line
-  //      AND waste vertical space).
-  //  (b) The caret is on the LAST visual line — grow the editor ROOT via inline
-  //      padding-bottom so a row opens below it (PM doesn't reconcile its root).
+  // No block with a following sibling. Look at what's below the caret:
   const nearest = blockAncestorWithin(range.endContainer, target);
   const lineBelow = firstLineBreakAfter(range.endContainer, target); // <br>/block after the caret
+  //  (a) SOFT `<br>` break inside the caret's block (LinkedIn comments etc.): the
+  //      "line below" is a <br>, not a sibling block, so there's nothing to give
+  //      margin-bottom. Open the gap by making THAT specific <br> a block with a
+  //      bottom margin, via a stylesheet rule targeting it by nth-of-type. This
+  //      is revert-proof (a stylesheet isn't a DOM node the editor can remove,
+  //      and isn't in its document model so it can't ship) — the same reason the
+  //      sibling-block sheet-margin path uses a rule. Anonymous-block wrapping
+  //      means the 0-height block <br> + margin adds exactly ONE gap (no doubled
+  //      line); the note then sits in that gap at the span's rect.bottom.
+  if (lineBelow && lineBelow.tagName === 'BR' && lineBelow.parentElement) {
+    const brContainer = lineBelow.parentElement;
+    const brs = Array.prototype.filter.call(brContainer.children, (c: Element) => c.tagName === 'BR') as Element[];
+    const nthBr = brs.indexOf(lineBelow) + 1; // 1-based nth-of-type among BRs
+    if (nthBr >= 1) {
+      try {
+        if (_markedEditor && _markedEditor !== brContainer) _markedEditor.removeAttribute(EDITOR_MARK_ATTR);
+        brContainer.setAttribute(EDITOR_MARK_ATTR, '1');
+        _markedEditor = brContainer;
+        const sheet = ensurePushStyleEl();
+        sheet.textContent =
+          `[${EDITOR_MARK_ATTR}] > br:nth-of-type(${nthBr}) { display: block !important; margin-bottom: ${px}px !important; }`;
+        _pushDiag = { path: 'br-margin', nthBr, containerTag: brContainer.tagName, px };
+        return true;
+      } catch { /* fall through */ }
+    }
+  }
+  //  (b) A non-<br> line below we couldn't turn into a gap — float rather than
+  //      mis-grow the editor bottom (which would leave the note over line 2).
   if (lineBelow) {
     _pushDiag = {
-      path: 'no-safe-push', reason: 'soft-break-midline', tag: target.tagName,
+      path: 'no-safe-push', reason: 'unpushable-line-below', tag: target.tagName,
       nearestBlockTag: nearest ? nearest.tagName : null, belowTag: lineBelow.tagName,
     };
-    return false; // can't safely open a mid-block gap — note floats
+    return false;
   }
+  //  (c) The caret is on the LAST visual line — grow the editor ROOT via inline
+  //      padding-bottom so a row opens below it (PM doesn't reconcile its root).
   _nudgedBlock = target;
   _nudgedProp = 'paddingBottom';
   _nudgedPrevValue = target.style.paddingBottom;
