@@ -490,6 +490,7 @@ function renderInlineNote(
     el.style.opacity = '0.7';
     el.style.width = 'auto';
     el.style.height = 'auto';
+    el.style.paddingLeft = '0';
     el.style.left = `${Math.round(rect.left)}px`;
   } else {
     clearPushDown();
@@ -503,19 +504,27 @@ function renderInlineNote(
       // garbled overlap. Cursor-gated, so line 2 reappears when the caret leaves.
       let fieldRect: DOMRect | null = null;
       try { fieldRect = target.getBoundingClientRect(); } catch { /* keep null */ }
+      // A few px of extra coverage on the LEFT and BOTTOM so glyphs of the line
+      // below (descenders, left-edge antialiasing) don't bleed out of the box.
+      // padding-left keeps the note TEXT at the span column while the box extends
+      // left; box-sizing:border-box folds it into the width/height.
+      const COVER_PAD = 3;
+      el.style.boxSizing = 'border-box';
       el.style.backgroundColor = effectiveBackgroundColor(target);
       el.style.opacity = '1';
-      el.style.height = `${Math.round(pushPx)}px`;
-      el.style.left = `${Math.round(rect.left)}px`;
-      // Extend to the field's right edge so the whole line below is covered.
+      el.style.paddingLeft = `${COVER_PAD}px`;
+      el.style.height = `${Math.round(pushPx + COVER_PAD)}px`;
+      el.style.left = `${Math.round(rect.left - COVER_PAD)}px`;
+      // Extend to the field's right edge (+ the left pad) so the whole line below is covered.
       el.style.width = (fieldRect && fieldRect.right > rect.left)
-        ? `${Math.round(fieldRect.right - rect.left)}px` : 'auto';
+        ? `${Math.round(fieldRect.right - rect.left + COVER_PAD)}px` : 'auto';
     } else {
       // Nothing below the span — no occlusion to fix; float transparently.
       el.style.backgroundColor = 'transparent';
       el.style.opacity = '0.7';
       el.style.width = 'auto';
       el.style.height = 'auto';
+      el.style.paddingLeft = '0';
       el.style.left = `${Math.round(rect.left)}px`;
     }
   }
