@@ -380,8 +380,19 @@ function insertNoteSpacer(target: HTMLElement, range: Range, heightPx: number): 
  *  below the (single / last) line. Nudging the root's own style is also less
  *  likely to be reverted than a child node's. */
 function insertMarginPush(target: HTMLElement, range: Range, heightPx: number): boolean {
-  clearPushDown();
   const px = Math.max(1, Math.round(heightPx));
+  // Idempotency for the spacer-node path: runtimeRender fires on every tick, so
+  // re-inserting the spacer each time churns the DOM right by the caret and the
+  // managed editor's reconciler resets the selection ("cursor jumps outside").
+  // If our spacer is already correctly placed right after the target <br>, do
+  // NOTHING — leave the DOM (and the caret) untouched.
+  {
+    const lb = firstLineBreakAfter(range.endContainer, target);
+    if (_noteSpacer && _noteSpacer.isConnected && lb && lb.tagName === 'BR' && _noteSpacer.previousSibling === lb) {
+      return true;
+    }
+  }
+  clearPushDown();
   // Mid-buffer: find the LINE block whose next sibling is the line below, then
   // nudge its margin-bottom to push that sibling down. Apply via a STYLESHEET
   // RULE targeting the block by position among ITS OWN parent's children —
@@ -436,9 +447,17 @@ function insertMarginPush(target: HTMLElement, range: Range, heightPx: number): 
     spacer.style.cssText =
       `display:block;height:${px}px;margin:0;padding:0;border:0;` +
       'user-select:none;pointer-events:none;background:transparent;';
+    // Save the caret (it's before the <br>, so unaffected by an insertion
+    // AFTER it) and restore it right after, in case the browser/editor nudges
+    // the selection when the node lands.
+    const sel = typeof window !== 'undefined' ? window.getSelection() : null;
+    const savedRange = sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
     try {
       lineBelow.after(spacer);
       _noteSpacer = spacer;
+      if (savedRange && sel) {
+        try { sel.removeAllRanges(); sel.addRange(savedRange); } catch { /* selection detached */ }
+      }
       _pushDiag = { path: 'br-spacer', belowTag: lineBelow.tagName, px };
       return true;
     } catch { /* fall through to float */ }
