@@ -713,6 +713,48 @@ describe('DimRender inline cue notes (inline-cues-mode)', () => {
     expect(out?.inlineNote).toBeUndefined();
   });
 
+  it('SpanFillState (filled list/script blank) emits a note = its tip', async () => {
+    const { SpanFillState } = await import('../state/span-fill');
+    const adapter = new MockAdapter();
+    const buf = 'set volume 40%'; // set(0) volume(1) 40%(2)[11,14)
+    adapter.pushText(buf);
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const spanFill = new SpanFillState();
+    spanFill.set({ index: 2, alternatives: ['40%', '60%', '80%'], currentAltIndex: 0, spanLength: 1, tip: 'system volume' }, buf);
+    const dim = new DimRender(adapter, hlState, dynDefs, undefined, spanFill);
+    const out = dim.compute({ text: buf, cursor: 12, externalHighlights: [] }); // inside "40%"
+    expect(out?.inlineNote?.text).toBe('system volume');
+  });
+
+  it('SpanFillState with NO tip emits a note = its cycle options', async () => {
+    const { SpanFillState } = await import('../state/span-fill');
+    const adapter = new MockAdapter();
+    const buf = 'set volume 40%';
+    adapter.pushText(buf);
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const spanFill = new SpanFillState();
+    spanFill.set({ index: 2, alternatives: ['40%', '60%', '80%'], currentAltIndex: 0, spanLength: 1 }, buf); // no tip
+    const dim = new DimRender(adapter, hlState, dynDefs, undefined, spanFill);
+    const out = dim.compute({ text: buf, cursor: 12, externalHighlights: [] });
+    expect(out?.inlineNote?.text).toBe('60% · 80%'); // alternatives[1..]
+  });
+
+  it('SelectorSatelliteState emits a note = the current setting name', async () => {
+    const { SelectorSatelliteState } = await import('../state/selector-satellite');
+    const adapter = new MockAdapter();
+    const buf = 'voice-mode off'; // voice-mode(0)[0,10) off(1)[11,14)
+    adapter.pushText(buf);
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const ss = new SelectorSatelliteState();
+    ss.set({ selectorIndex: 0, selectorLength: 1, satelliteIndex: 1, satelliteLength: 1, currentSetting: 'voice-mode', currentValue: 'off' }, buf);
+    const dim = new DimRender(adapter, hlState, dynDefs, undefined, undefined, ss);
+    const out = dim.compute({ text: buf, cursor: 5, externalHighlights: [] }); // inside "voice-mode"
+    expect(out?.inlineNote?.text).toBe('voice-mode');
+  });
+
   it('does NOT emit when the stored span is stale (defSpanLive guard)', () => {
     const { dynDefs, dimRender } = setup(BUFFER);
     seedContradictionDef(dynDefs);

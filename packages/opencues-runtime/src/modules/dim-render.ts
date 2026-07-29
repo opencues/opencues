@@ -379,6 +379,40 @@ export class DimRender {
           break;
         }
       }
+
+      // Filled list/script blanks (SpanFillState) + selector-satellite are NOT
+      // DynDefs, so the loop above never sees them. Extend the same note model
+      // to them so every cyclable span behaves consistently. Note text: the
+      // blank's `tip` if it has one (e.g. "system volume"), else its cycle
+      // options; for selector-satellite, the current setting name (its value is
+      // already in the buffer, so this labels WHAT the span controls). No
+      // auto-select here — these carry their own highlight/dim model.
+      const noteFromSpanText = (
+        tip: string | undefined, alts: readonly string[],
+      ): string | undefined => {
+        if (tip) return tip;
+        const sug = alts.slice(1).filter(Boolean);
+        return sug.length > 0 ? sug.slice(0, 3).join(' · ') : undefined;
+      };
+      if (!inlineNote && span) {
+        const sw = words[span.index];
+        const ew = words[span.index + spanLen - 1];
+        const noteText = noteFromSpanText(span.tip, span.alternatives);
+        if (sw && ew && noteText) {
+          const s = toCtx ? toCtx.start(sw.start) : sw.start;
+          const e = toCtx ? toCtx.end(ew.end) : ew.end;
+          if (ctx.cursor >= s && ctx.cursor <= e) inlineNote = { spanStart: s, spanEnd: e, text: noteText };
+        }
+      }
+      if (!inlineNote && ss && ss.currentSetting) {
+        const sw = words[ss.selectorIndex];
+        const ew = words[ssSatEnd];
+        if (sw && ew) {
+          const s = toCtx ? toCtx.start(sw.start) : sw.start;
+          const e = toCtx ? toCtx.end(ew.end) : ew.end;
+          if (ctx.cursor >= s && ctx.cursor <= e) inlineNote = { spanStart: s, spanEnd: e, text: ss.currentSetting };
+        }
+      }
     }
 
     // Auto-select: the passive-cue span the caret sits in renders in the

@@ -81,16 +81,19 @@ otherwise                  → undefined           (dim only, no note)
 | **Contradiction-cue** | `contradiction-cues-mode: on` | ✅ | ✅ | `cueTip` — the computed correction |
 | **Transform-blank** (after a rewrite, >1 alt) | `<body> fix typos _` | ✅ | ✅ | `transform` (its edit history) |
 | **Fluid-blank** (after a lookup, >1 alt) | `weather in paris _` | ✅ | ✅ | `lookup` (its history) |
-| **List / script blank, selector-satellite** | blanks | ✅ | ❌ (follow-up) | — (value's in the buffer; these are `SpanFillState`/`SelectorSatelliteState`, not DynDefs, so the note loop doesn't reach them) |
+| **List / script blank** (filled) | blanks (`SpanFillState`) | ✅ | ✅ | its `tip` (e.g. `system volume`), else its cycle options (`alternatives[1..]`) |
+| **Selector-satellite** | settings blank (`SelectorSatelliteState`) | ✅ | ✅ | the current setting name (labels WHAT the span controls; its value is already in the buffer) |
 
 So the rule is: **anything whose useful reveal is otherwise hidden gets a note** —
 passive cues show their advisory (`cueTip`, set at DynDef registration in
-`resolver.ts`), `_`-blanks show their history, and **word-cues (including
-spelling) show their suggestions** — the alternatives the resolver already
-registered on the def, read straight off it (no fetch, no separate tip channel).
-The lone gap is filled list/script blanks + selector-satellite: their value is
-already visible in the buffer and they live in different state objects the note
-loop doesn't iterate — a deliberate follow-up, not a missing reveal.
+`resolver.ts`), `_`-blanks show their history, **word-cues (including spelling)
+show their suggestions** (the alternatives the resolver already registered on the
+def, read straight off it — no fetch, no separate tip channel), and **filled
+list/script blanks + selector-satellite** show their tip / setting name.
+`SpanFillState` and `SelectorSatelliteState` aren't DynDefs, so the note loop
+handles them explicitly (after the DynDef pass) — no auto-select there, since
+those carry their own highlight/dim model. Every cyclable span now behaves
+consistently: it dims, and (in inline mode) reveals what's behind it.
 
 **All of these must hold for the note to actually show** (`dim-render.ts`):
 1. `inline-cues-mode: inline` (default) — `secondary` sends the same advisory to
