@@ -332,24 +332,6 @@ function firstLineBreakAfter(node: Node, root: HTMLElement): HTMLElement | null 
   return null;
 }
 
-/** CSS selector suffix (`> :nth-child(a) > :nth-child(b) …`) that walks from
- *  `root` down to `el`, so a stylesheet rule can target `el` precisely without
- *  putting an attribute on it or any intermediate node (which a managed editor
- *  may strip). Only `root` needs the marker attribute. Null if `el` isn't a
- *  descendant of `root`. */
-function nthChildPathFrom(root: HTMLElement, el: HTMLElement): string | null {
-  const parts: string[] = [];
-  let cur: HTMLElement | null = el;
-  while (cur && cur !== root) {
-    const parent: HTMLElement | null = cur.parentElement;
-    if (!parent) return null;
-    const idx = Array.prototype.indexOf.call(parent.children, cur) + 1;
-    parts.unshift(`> :nth-child(${idx})`);
-    cur = parent;
-  }
-  return cur === root ? parts.join(' ') : null;
-}
-
 function makeSpacer(heightPx: number): HTMLElement {
   const spacer = document.createElement('div');
   spacer.setAttribute(NOTE_SPACER_ATTR, '1');
@@ -438,28 +420,14 @@ function insertMarginPush(target: HTMLElement, range: Range, heightPx: number): 
   //      sibling-block sheet-margin path uses a rule. Anonymous-block wrapping
   //      means the 0-height block <br> + margin adds exactly ONE gap (no doubled
   //      line); the note then sits in that gap at the span's rect.bottom.
-  if (lineBelow && lineBelow.tagName === 'BR') {
-    // Mark the STABLE editor root (not the <br>'s <p> parent — a managed editor
-    // may strip an attribute off its own block) and target the <br> by a full
-    // nth-child path from the root. Give the <br> `display:block` + an explicit
-    // HEIGHT so it becomes a real empty block box occupying one line — more
-    // reliable than margin on a <br>, which browsers render inconsistently.
-    const path = nthChildPathFrom(target, lineBelow as HTMLElement);
-    if (path) {
-      try {
-        if (_markedEditor && _markedEditor !== target) _markedEditor.removeAttribute(EDITOR_MARK_ATTR);
-        target.setAttribute(EDITOR_MARK_ATTR, '1');
-        _markedEditor = target;
-        const sheet = ensurePushStyleEl();
-        sheet.textContent =
-          `[${EDITOR_MARK_ATTR}] ${path} { display: block !important; height: ${px}px !important; }`;
-        _pushDiag = { path: 'br-margin', sel: path, px };
-        return true;
-      } catch { /* fall through */ }
-    }
-  }
-  //  (b) A non-<br> line below we couldn't turn into a gap — float rather than
-  //      mis-grow the editor bottom (which would leave the note over line 2).
+  //  (a) A line BELOW the caret we can't turn into a real gap. A soft `<br>`
+  //      break is the canonical case (LinkedIn comments): CSS can't give a
+  //      `<br>` a box (Chrome's LayoutBR ignores display/height/margin —
+  //      verified live), a spacer node is reverted by the managed editor's
+  //      reconciler, and even if it held it would ship in the submitted text.
+  //      So there is no SAFE way to push here — float, and let the caller decide
+  //      how to present the note (overlap vs opaque cover). Never mis-grow the
+  //      editor bottom (which would leave the note over line 2 anyway).
   if (lineBelow) {
     _pushDiag = {
       path: 'no-safe-push', reason: 'unpushable-line-below', tag: target.tagName,

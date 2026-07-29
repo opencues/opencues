@@ -345,11 +345,12 @@ describe('runtime-renderer inline-note push-down spacer', () => {
     expect(sheet.textContent).toContain('margin-bottom');
   });
 
-  it('Margin mode — soft <br> line break below the caret (LinkedIn-comment shape): opens a gap by making THAT <br> a block with margin', () => {
-    // Line 1 and line 2 are <br>-separated inside ONE block — no sibling block to
-    // push. Open the gap via a stylesheet rule making the specific <br> a block
-    // with bottom margin (revert-proof, can't ship). Must NOT root-pad (that
-    // grows the editor bottom and leaves the note over line 2).
+  it('Margin mode — soft <br> line break below the caret (LinkedIn-comment shape): floats, does NOT root-pad', () => {
+    // Line 1 and line 2 are <br>-separated inside ONE block. Chrome's LayoutBR
+    // ignores display/height/margin so CSS can't open a gap at a <br>; a spacer
+    // node is reverted by the managed editor AND would ship. So there's no safe
+    // push here — float (note overlaps until the caller opaque-covers), and do
+    // NOT root-pad (that grows the editor bottom, leaving the note over line 2).
     const target = document.createElement('div');
     target.className = 'ProseMirror';
     target.setAttribute('contenteditable', 'true');
@@ -360,16 +361,8 @@ describe('runtime-renderer inline-note push-down spacer', () => {
 
     expect(document.querySelector('[data-oc-note-spacer]')).toBeNull();
     expect(target.style.paddingBottom).toBe(''); // did NOT root-pad
-    // The STABLE editor root is marked (not the <br>'s <p> parent, which a
-    // managed editor could strip).
-    expect(target.getAttribute('data-oc-editor')).toBe('1');
-    const p = target.firstElementChild as HTMLElement;
-    expect(p.hasAttribute('data-oc-editor')).toBe(false);
-    const sheet = document.getElementById('oc-push-style') as HTMLStyleElement;
-    // Full nth-child path from root down to the <br>, made a block with height.
-    expect(sheet.textContent).toContain(':nth-child(1)');
-    expect(sheet.textContent).toContain('display: block');
-    expect(sheet.textContent).toContain('height:');
+    const sheet = document.getElementById('oc-push-style') as HTMLStyleElement | null;
+    expect(sheet?.textContent ?? '').toBe(''); // no stylesheet rule
   });
 
   it('Margin mode mid-buffer — clearing empties the stylesheet rule AND unmarks the editor', () => {
