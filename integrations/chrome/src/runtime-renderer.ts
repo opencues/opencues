@@ -242,13 +242,6 @@ let _nudgedPrevValue = '';
 let _pushStyleEl: HTMLStyleElement | null = null;
 let _markedEditor: HTMLElement | null = null;
 
-// Diagnostic for the margin path — the caller (bootstrap) logs it under
-// debug-mode so we can see, on a real managed editor, which lever ran.
-let _pushDiag: Record<string, unknown> | null = null;
-export function consumePushDiag(): Record<string, unknown> | null {
-  const d = _pushDiag; _pushDiag = null; return d;
-}
-
 function ensurePushStyleEl(): HTMLStyleElement {
   if (_pushStyleEl && _pushStyleEl.isConnected) return _pushStyleEl;
   let el = document.getElementById(PUSH_STYLE_ID) as HTMLStyleElement | null;
@@ -403,13 +396,11 @@ function insertMarginPush(target: HTMLElement, range: Range, heightPx: number): 
         // (if any) doesn't out-specify us.
         sheet.textContent =
           `[${EDITOR_MARK_ATTR}] > :nth-child(${idx}) { margin-bottom: ${px}px !important; }`;
-        _pushDiag = { path: 'sheet-margin', tag: lineBlock.tagName, nthChild: idx, containerTag: container.tagName, px };
         return true;
       } catch { /* fall through to root-padding */ }
     }
   }
   // No block with a following sibling. Look at what's below the caret:
-  const nearest = blockAncestorWithin(range.endContainer, target);
   const lineBelow = firstLineBreakAfter(range.endContainer, target); // <br>/block after the caret
   //  (a) A line BELOW the caret with no block to margin (soft `<br>` break —
   //      LinkedIn comments). Verified live: CSS can't give a `<br>` a box, a
@@ -418,13 +409,7 @@ function insertMarginPush(target: HTMLElement, range: Range, heightPx: number): 
   //      there is no way to open a real gap here. Return false → the caller
   //      renders the note as an OPAQUE COVER over the line below instead of a
   //      transparent overlay that mangles it.
-  if (lineBelow) {
-    _pushDiag = {
-      path: 'no-safe-push', reason: 'unpushable-line-below', tag: target.tagName,
-      nearestBlockTag: nearest ? nearest.tagName : null, belowTag: lineBelow.tagName,
-    };
-    return false;
-  }
+  if (lineBelow) return false;
   //  (c) The caret is on the LAST visual line — grow the editor ROOT via inline
   //      padding-bottom so a row opens below it (PM doesn't reconcile its root).
   //      ADDITIVE: keep the editor's existing bottom padding (its normal
@@ -438,10 +423,6 @@ function insertMarginPush(target: HTMLElement, range: Range, heightPx: number): 
   _nudgedBlock = target;
   _nudgedProp = 'paddingBottom';
   _nudgedPrevValue = target.style.paddingBottom;
-  _pushDiag = {
-    path: 'root-padding', tag: target.tagName, px, basePB,
-    nearestBlockTag: nearest ? nearest.tagName : null, foundLineBlock: !!lineBlock,
-  };
   try { target.style.paddingBottom = `${Math.round(basePB + px)}px`; return true; }
   catch { _nudgedBlock = null; _nudgedProp = null; return false; }
 }

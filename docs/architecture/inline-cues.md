@@ -143,10 +143,79 @@ and wrapped sentences. Fallback: field line-height → span rect height → `1px
 | **Reddit** | Lexical | ✅ opaque cover over the line below when one exists (same as LinkedIn `<br>` comments) |
 | **normal `<input>` / `<textarea>`** | — | render skipped (secondary display) |
 
-**Debug diagnostics** (`debug-mode: on`, throttled, in `/tmp/opencues.log`):
-- `[chrome] marginPush {path, …}` — `sheet-margin` / `root-padding` (with `basePB`) / `no-safe-push` (opaque cover) per tick.
-- `[chrome] cursorReadFallback {quillReason, anchorId, …}` — the caret couldn't be mapped (why: `no-instance`, anchor at `#root`, …).
-- `[chrome] cursorQuillNative {index}` — a Quill editor's own selection model was read when the browser selection wandered.
+> The per-tick debug diagnostics that drove this whole investigation
+> (`[chrome] marginPush` / `cursorReadFallback` / `cursorQuillNative`) were
+> **removed** once every editor was verified — they'd served their purpose and
+> cost a hot-path branch per render. The findings they surfaced are captured in
+> **Implementation notes** below so we don't have to re-discover them. If a new
+> editor misbehaves, re-add a throttled `log.debug` at `insertMarginPush`'s
+> return points and at `readCursorOffset`'s fallback — that's exactly how each
+> case here was cracked.
+
+## Implementation notes — chrome gotchas (for our future selves)
+
+Everything in the chrome push-down is shaped by hard-won constraints. Read these
+before "simplifying" any of it — each was a real bug.
+
+1. **Managed editors revert BOTH inserted DOM nodes AND inline styles on their
+   own nodes**, and doing either **resets the caret** (their reconciler re-syncs
+   selection from the model). That's why the margin path is CSS-only via an
+   *external stylesheet* (unobservable to their MutationObserver) and only touches
+   the editor's *own root* (which PM doesn't reconcile). A spacer `<br>`/`<span>`
+   node *did* render on Quill but reset the caret every tick — abandoned.
+
+2. **A stylesheet rule can't put an attribute on a node the editor manages** —
+   Quill/PM may strip it. Mark the STABLE editor root with `data-oc-editor` and
+   reach the target block by a full `:nth-child` path from it (`nthChildPathFrom`).
+
+3. **Draft.js nests each line several `<div>`s deep.** The *nearest* block to the
+   caret is a sibling-less inner wrapper — margin on it does nothing. Walk UP to
+   the first ancestor that *has a following sibling* (`lineBlockWithSibling`) —
+   that's the real line block whose sibling is the next line.
+
+4. **A bottom margin on the LAST child is swallowed** (doesn't grow the parent).
+   So the sibling-margin path only applies mid-buffer; the last/only line grows
+   the editor root's `padding-bottom` instead.
+
+5. **`padding-bottom` must be ADDITIVE.** ChatGPT's ProseMirror ships ~16px of its
+   own bottom padding; replacing it with one line grew the box <1 line. Read the
+   computed padding and add a line. `clearPushDown()` restores the base first, so
+   `getComputedStyle` reads the editor's own value, not our prior nudge (else it
+   compounds).
+
+6. **Measuring the note's height to size a cover COMPOUNDS** if you've already set
+   an explicit height on it — next tick measures the inflated value and adds
+   again (the "cover grew to 2×" bug). Reset the note to natural size *before*
+   measuring.
+
+7. **Chrome's `<br>` (LayoutBR) ignores `display`/`height`/`margin`.** There is no
+   CSS that opens a gap at a `<br>`. Combined with (1), soft-`<br>` lines
+   (LinkedIn comments, Reddit) genuinely cannot be pushed — hence the **opaque
+   cover**: paint the note over the line below with the field's own background
+   colour (nearest non-transparent ancestor; walk up), one line tall, +3px
+   left/bottom to catch glyph bleed. Cursor-gated, so the covered line returns
+   when the caret leaves.
+
+8. **LinkedIn hides its Quill.** No `__quill` on the container, no global `Quill`,
+   so `Quill.find` is unavailable — the editor's API can't be used to insert a
+   cooperative line. Verified on both comments and Posts.
+
+9. **LinkedIn Posts is fully controlled** — it never surfaces a browser-readable
+   caret: `window.getSelection()` parks at `<div id="root">` (the app root,
+   outside any contenteditable). So `readCursorOffset` returns a fabricated `0`,
+   and the cursor-gated note would fire everywhere. `lastCursorReliable()` gates
+   this: on a fabricated read, `runtimeRender` strips the note + auto-select (dim
+   stays). Comments DO surface a caret, so they're unaffected.
+
+10. **Quill parks the browser selection outside `.ql-editor` between events** even
+    on the editors that work. `readCursorOffset` falls back to Quill's own
+    `getSelection().index` (when the instance is reachable) or the last cached
+    valid offset — see `_lastValidCursor` / `cacheValidCursor`.
+
+11. **Safe-by-construction submit guarantee.** The note NEVER enters submitted
+    text: node spacers carry `data-oc-note-spacer` (stripped by `walkPlainText`);
+    styles aren't content; real content insertion is refused on editors whose
+    send button we don't own. If you add a new push mechanism, preserve this.
 
 ## Cross-host consistency contract
 

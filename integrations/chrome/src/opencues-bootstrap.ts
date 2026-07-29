@@ -30,7 +30,7 @@ import { parseSingleCueMd, listProviders, buildCalendarContextSnapshot } from '@
 import { ChromeUserBlank } from './user-blank-loader';
 import { createBlankInvoke } from '@opencues/runtime/dist/src/blanks';
 import { wordDiff } from '@opencues/runtime/dist/src/modules/word-diff';
-import { applyDirectives, clearDirectives, clearInlineNote, consumePushDiag } from './runtime-renderer';
+import { applyDirectives, clearDirectives, clearInlineNote } from './runtime-renderer';
 import { applyStatuslinePayload } from './runtime-statusbar';
 import { WebSpeechAdapter } from './adapters/web-speech-adapter';
 import { FetchHttpAdapter } from './adapters/fetch-http-adapter';
@@ -915,18 +915,13 @@ export function cacheValidCursor(target: HTMLElement, offset: number): void {
   if (offset >= 0) _lastValidCursor.set(target, offset);
 }
 
-let _cursorFallbackLoggedAt = 0;
-// Was the LAST readCursorOffset a fresh, real read (true) or a fabricated
-// fallback because the caret couldn't be mapped (false)? runtimeRender reads
-// this immediately after to decide whether the cursor-gated note + auto-select
-// can be trusted. On LinkedIn Posts (Quill parks the browser selection outside
-// .ql-editor AND hides its instance) every read is a fallback, so the note is
-// suppressed rather than painted at a bogus offset. Assume reliable until a
-// read proves otherwise (default true keeps every well-behaved editor unchanged).
 // Whether the LAST readCursorOffset returned a fresh real read (true) or a
-// fabricated fallback because the caret couldn't be mapped (false). Kept as a
-// diagnostic signal; no rendering gate consumes it right now (the LinkedIn-Posts
-// note-suppression + caret-disable were removed 2026-07 to observe raw output).
+// fabricated fallback because the caret couldn't be mapped (false). runtimeRender
+// reads this immediately after to decide whether the cursor-gated note +
+// auto-select can be trusted — on a fully-controlled editor that exposes no
+// browser-readable caret (LinkedIn Posts) every read is a fallback, so those are
+// suppressed rather than painted at the bogus offset. Default true keeps every
+// well-behaved editor unchanged.
 let _lastCursorReliable = true;
 export function lastCursorReliable(): boolean { return _lastCursorReliable; }
 
@@ -944,66 +939,22 @@ function readCursorOffset(): number {
       return offset;
     }
     // Selection landed OUTSIDE our target. For Quill (LinkedIn's private bundle
-    // parks window.getSelection() outside .ql-editor between events) read
-    // Quill's OWN selection model — authoritative and real-time, unlike the
-    // lagging cache the browser-selection fallback would otherwise return.
-    // Quill's index counts each char incl. `\n`, matching walkPlainText's plain
-    // offset for prose. This is what lets the cursor-gated inline note track the
-    // caret on LinkedIn Posts instead of reading a stale offset.
-    let quillReason = '';
+    // parks window.getSelection() outside .ql-editor between events) read Quill's
+    // OWN selection model — authoritative and real-time, unlike the lagging
+    // cache. Its index counts each char incl. `\n`, matching walkPlainText's
+    // plain offset for prose. On LinkedIn Posts the instance is ALSO hidden
+    // (`no __quill`, no global `Quill`) so this fails and we fall through to the
+    // unreliable fallback, which the note-suppression gate then honours.
     if (isQuillEditor(target)) {
       try {
-        const q = findQuillInstance(target);
-        if (!q) quillReason = 'no-instance';
-        else if (typeof q.getSelection !== 'function') quillReason = 'no-getSelection';
-        else {
-          const qs = q.getSelection();
-          if (qs && typeof qs.index === 'number' && qs.index >= 0) {
-            _lastValidCursor.set(target, qs.index);
-            _lastCursorReliable = true;
-            const now = Date.now();
-            if (now - _cursorFallbackLoggedAt > 1000) {
-              _cursorFallbackLoggedAt = now;
-              log.debug('[chrome] cursorQuillNative', { index: qs.index });
-            }
-            return qs.index;
-          }
-          quillReason = 'qs-null';
+        const qs = findQuillInstance(target)?.getSelection?.();
+        if (qs && typeof qs.index === 'number' && qs.index >= 0) {
+          _lastValidCursor.set(target, qs.index);
+          _lastCursorReliable = true;
+          return qs.index;
         }
-      } catch (e) { quillReason = 'threw:' + String((e as Error)?.message ?? e).slice(0, 40); }
+      } catch { /* fall through to the fabricated fallback */ }
     }
-    // Still can't map the caret → fall back to the cache/0 (which makes
-    // cursor-gated features mis-fire). Diagnose WHY: shadow DOM? a wrong attach
-    // target? Quill instance unreachable? Throttled so the hot path isn't spammed.
-    try {
-      const now = Date.now();
-      if (now - _cursorFallbackLoggedAt > 1000) {
-        _cursorFallbackLoggedAt = now;
-        const anchor = range.startContainer as Node & { getRootNode?: () => Node };
-        const root = anchor.getRootNode ? anchor.getRootNode() : null;
-        const anchorEl = (anchor.nodeType === Node.TEXT_NODE ? anchor.parentElement : anchor) as HTMLElement | null;
-        // Identify the anchor: is the caret actually in a DIFFERENT editable we
-        // should have attached to? Capture its class/id, whether it's an
-        // ancestor/descendant of our target, its own contenteditable ancestor,
-        // and whether it lives under a SEPARATE .ql-editor.
-        const ceAncestor = anchorEl?.closest('[contenteditable="true"], [contenteditable=""]') as HTMLElement | null;
-        const otherQl = anchorEl?.closest('.ql-editor') as HTMLElement | null;
-        log.debug('[chrome] cursorReadFallback', {
-          anchorNode: (anchor as Node).nodeName,
-          anchorClass: (anchorEl?.className || '').slice(0, 60),
-          anchorId: (anchorEl?.id || '').slice(0, 40),
-          anchorContainsTarget: !!anchorEl && anchorEl.contains(target),
-          targetContainsAnchorEl: !!anchorEl && target.contains(anchorEl),
-          anchorCeClass: (ceAncestor?.className || '').slice(0, 60),
-          anchorCeIsTarget: ceAncestor === target,
-          anchorOtherQl: !!otherQl && otherQl !== target,
-          anchorInShadow: typeof ShadowRoot !== 'undefined' && root instanceof ShadowRoot,
-          targetTag: target.tagName,
-          targetClass: (target.className || '').slice(0, 60),
-          quillReason: quillReason || null,
-        });
-      }
-    } catch { /* diagnostic must never throw */ }
   }
   // No fresh read was possible — the returned value is a fabricated fallback.
   _lastCursorReliable = false;
@@ -3358,8 +3309,6 @@ function runtimeRender(): void {
   // send button, so there we nudge the containing block's bottom MARGIN via
   // inline style instead (layout only — can't ship, no undo entry).
   applyDirectives(target, directives, isManagedEditor(target) ? 'margin' : 'node');
-  const pushDiag = consumePushDiag();
-  if (pushDiag) log.debug('[chrome] marginPush', pushDiag);
 }
 
 /**
