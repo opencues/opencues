@@ -345,9 +345,9 @@ describe('runtime-renderer inline-note push-down spacer', () => {
     expect(sheet.textContent).toContain('margin-bottom');
   });
 
-  it('Margin mode — soft <br> line break below the caret (LinkedIn-comment shape): inserts a stripped spacer node after the <br>', () => {
+  it('Margin mode — soft <br> line break below the caret (LinkedIn-comment shape): adds a REAL second <br> (blank line) after the break', () => {
     // Line 1 and line 2 are <br>-separated inside ONE block. CSS can't give a
-    // <br> a box, so try a real inline-block spacer node right after the break.
+    // <br> a box, so add a real second <br> (a blank line, like pressing Enter).
     // It carries data-oc-note-spacer so walkPlainText strips it from our reads.
     const target = document.createElement('div');
     target.className = 'ProseMirror';
@@ -360,11 +360,26 @@ describe('runtime-renderer inline-note push-down spacer', () => {
     expect(target.style.paddingBottom).toBe(''); // did NOT root-pad
     const spacer = document.querySelector('[data-oc-note-spacer]') as HTMLElement;
     expect(spacer).not.toBeNull();
-    // Inserted immediately after the <br>, inside the <p>, as a block span.
-    const br = target.querySelector('br')!;
-    expect(spacer.previousSibling).toBe(br);
-    expect(spacer.tagName).toBe('SPAN');
-    expect(spacer.style.display).toBe('block');
+    expect(spacer.tagName).toBe('BR'); // a real line break
+    // Inserted immediately after the original <br> → a double-<br> blank line.
+    const origBr = target.querySelector('br:not([data-oc-note-spacer])')!;
+    expect(spacer.previousSibling).toBe(origBr);
+  });
+
+  it('Margin mode — soft <br>: the spacer <br> is idempotent (re-render does NOT churn it)', () => {
+    const target = document.createElement('div');
+    target.className = 'ProseMirror';
+    target.setAttribute('contenteditable', 'true');
+    target.innerHTML = '<p>line one<br>hii</p>';
+    document.body.appendChild(target);
+
+    applyDirectives(target, [{ inlineNote: NOTE }], 'margin');
+    const first = document.querySelector('[data-oc-note-spacer]');
+    applyDirectives(target, [{ inlineNote: NOTE }], 'margin'); // second render tick
+    const second = document.querySelector('[data-oc-note-spacer]');
+    // Same node — not removed + re-inserted (that churn resets the caret).
+    expect(second).toBe(first);
+    expect(document.querySelectorAll('[data-oc-note-spacer]').length).toBe(1);
   });
 
   it('Margin mode mid-buffer — clearing empties the stylesheet rule AND unmarks the editor', () => {

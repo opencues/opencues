@@ -432,32 +432,22 @@ function insertMarginPush(target: HTMLElement, range: Range, heightPx: number): 
   //      means the 0-height block <br> + margin adds exactly ONE gap (no doubled
   //      line); the note then sits in that gap at the span's rect.bottom.
   //  (a) A line BELOW the caret with no block to margin (soft `<br>` break —
-  //      LinkedIn comments). CSS can't give a `<br>` a box (verified), so try a
-  //      real inline-block SPACER NODE right after the break. It's an empty
-  //      `contenteditable=false` `<span>` carrying `data-oc-note-spacer`, so
-  //      walkPlainText strips it from OUR reads and clearPushDown removes it when
-  //      the note clears. Empirical: if the managed editor reverts it, no gap
-  //      appears (harmless float); if it holds, we get the pushdown. (Submit-time
-  //      ship-safety is handled by removing it on blur/clear.)
+  //      LinkedIn comments). CSS can't give a `<br>` a box, so ADD A REAL LINE:
+  //      insert a second `<br>` right after the break (a blank line, exactly
+  //      like pressing Enter). It carries `data-oc-note-spacer` so walkPlainText
+  //      strips it from OUR reads (no spurious `\n`) and clearPushDown removes it
+  //      when the note clears. A `<br>` is the editor's own line-break shape, so
+  //      Quill fights it far less than a foreign block node. NO caret-restore
+  //      here — touching the selection wakes Quill's reconciler and it drops the
+  //      line; the idempotency guard above (leave an already-placed spacer alone)
+  //      is what keeps the caret from being churned tick-to-tick.
   if (lineBelow && lineBelow.parentNode) {
-    const spacer = document.createElement('span');
+    const spacer = document.createElement('br');
     spacer.setAttribute(NOTE_SPACER_ATTR, '1');
-    spacer.setAttribute('contenteditable', 'false');
     spacer.setAttribute('aria-hidden', 'true');
-    spacer.style.cssText =
-      `display:block;height:${px}px;margin:0;padding:0;border:0;` +
-      'user-select:none;pointer-events:none;background:transparent;';
-    // Save the caret (it's before the <br>, so unaffected by an insertion
-    // AFTER it) and restore it right after, in case the browser/editor nudges
-    // the selection when the node lands.
-    const sel = typeof window !== 'undefined' ? window.getSelection() : null;
-    const savedRange = sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
     try {
       lineBelow.after(spacer);
       _noteSpacer = spacer;
-      if (savedRange && sel) {
-        try { sel.removeAllRanges(); sel.addRange(savedRange); } catch { /* selection detached */ }
-      }
       _pushDiag = { path: 'br-spacer', belowTag: lineBelow.tagName, px };
       return true;
     } catch { /* fall through to float */ }
