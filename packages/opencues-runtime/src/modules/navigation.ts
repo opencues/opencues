@@ -344,7 +344,15 @@ export class Navigation {
       // per-field hosts (windows) share one Navigation across cycling
       // and non-cycling fields). DynDef targets are unaffected.
       const cyclingOff = this.adapter.supportsCycling?.() === false;
-      const navigable = cyclingOff ? undefined : this.configLoader?.navigableWords;
+      // Nav targets are cueMap words (word-cues) + DynDefs — NOT bare blank
+      // keywords. A bare blank keyword (`volume`, `weather`, …) is a pure `_`
+      // trigger: nothing to cycle and no statusline tip until `_` fires the
+      // blank (which then registers a DynDef that IS navigable). Landing on one
+      // was an invisible dead target (dim was removed for the same reason). We
+      // read `cueMap` directly rather than `navigableWords` (which unions in
+      // blank keywords) — matching this method's own "matched cueMap or has a
+      // DynDef" contract above.
+      const cueMap = cyclingOff ? undefined : this.configLoader?.cueMap;
       const filtered: number[] = [];
       for (const w of words) {
         // Skip inner positions of any multi-word static-alt span —
@@ -360,14 +368,14 @@ export class Navigation {
         if (innerSpan && innerSpan.originIdx !== w.index) continue;
         const lc = w.word.toLowerCase().replace(/[\u200B\u200C]/g, '');
         if (lc.length === 0) continue;
-        if (navigable?.has(lc)) {
+        if (cueMap?.has(lc)) {
           filtered.push(w.index);
         } else if (this.dynDefs.get(w.index)) {
           filtered.push(w.index);
         }
       }
       if (filtered.length > 0) return filtered;
-      const cueMapEmpty = !navigable || navigable.size === 0;
+      const cueMapEmpty = !cueMap || cueMap.size === 0;
       const noDynDefs = this.dynDefs.size === 0;
       // Production path: cueMap is populated → silence.
       // Test scaffold path: no cueMap, no DynDefs → fall back.

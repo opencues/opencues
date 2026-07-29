@@ -249,6 +249,41 @@ describe('Navigation cue filtering', () => {
     adapter.fireKey('left', { ctrl: true, alt: true });
     expect(hlState.wordIndex).toBe(1); // unknown — DynDef makes it navigable
   });
+
+  it('a bare blank keyword is NOT a nav target — only cue words / DynDefs are (pure `_` trigger)', async () => {
+    // "volume" is a word-cue (cueMap); "translate" is ONLY a blank keyword.
+    const { ConfigLoader } = await import('./config-loader');
+    const CUES = wrapTipsAsCuesMd({
+      domain: 't', version: 1,
+      concepts: [{ id: 'a', words: { volume: { tip: 'V', alts: ['loudness'] } } }],
+    });
+    const TRANSLATE_BLANK = `---
+name: translate
+type: blank
+blankKeywords: translate
+tip: translate text
+blankScript: ./t.sh
+---`;
+    const adapter = new MockAdapter({
+      cwd: '/proj',
+      files: { '/proj/CUES.md': CUES, '/proj/blanks/translate/BLANK.md': TRANSLATE_BLANK },
+    });
+    adapter.pushText('please translate the volume now');
+    // words: please(0) translate(1) the(2) volume(3) now(4)
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const loader = new ConfigLoader(adapter);
+    await loader.load();
+    // Sanity: translate IS a blank keyword but NOT a cue word.
+    expect(loader.blanksByWord.has('translate')).toBe(true);
+    expect(loader.cueMap.has('translate')).toBe(false);
+    const nav = new Navigation(adapter, hlState, dynDefs, loader);
+    nav.subscribe();
+    adapter.fireKey('left', { ctrl: true, alt: true });
+    expect(hlState.wordIndex).toBe(3); // "volume" (cue) — NOT "translate" (blank kw)
+    adapter.fireKey('left', { ctrl: true, alt: true });
+    expect(hlState.wordIndex).toBe(3); // one target only; never lands on the blank keyword
+  });
 });
 
 describe('Navigation span-fill filter', () => {
