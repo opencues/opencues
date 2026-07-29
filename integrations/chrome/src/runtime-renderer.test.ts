@@ -360,12 +360,16 @@ describe('runtime-renderer inline-note push-down spacer', () => {
 
     expect(document.querySelector('[data-oc-note-spacer]')).toBeNull();
     expect(target.style.paddingBottom).toBe(''); // did NOT root-pad
+    // The STABLE editor root is marked (not the <br>'s <p> parent, which a
+    // managed editor could strip).
+    expect(target.getAttribute('data-oc-editor')).toBe('1');
     const p = target.firstElementChild as HTMLElement;
-    expect(p.getAttribute('data-oc-editor')).toBe('1'); // the <br>'s parent is marked
+    expect(p.hasAttribute('data-oc-editor')).toBe(false);
     const sheet = document.getElementById('oc-push-style') as HTMLStyleElement;
-    expect(sheet.textContent).toContain('br:nth-of-type(1)');
+    // Full nth-child path from root down to the <br>, made a block with height.
+    expect(sheet.textContent).toContain(':nth-child(1)');
     expect(sheet.textContent).toContain('display: block');
-    expect(sheet.textContent).toContain('margin-bottom');
+    expect(sheet.textContent).toContain('height:');
   });
 
   it('Margin mode mid-buffer — clearing empties the stylesheet rule AND unmarks the editor', () => {
