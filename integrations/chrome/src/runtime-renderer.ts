@@ -185,7 +185,13 @@ function ensureNoteEl(): HTMLDivElement {
   el.setAttribute('aria-hidden', 'true');
   el.style.cssText = [
     'position:fixed', 'z-index:2147483646', 'pointer-events:none',
-    'white-space:pre', 'background:transparent', 'margin:0', 'padding:0',
+    // pre-wrap (not pre): a long note WRAPS within its max-width and grows
+    // into extra rows instead of running off the right edge. overflow-wrap
+    // breaks a single over-long token so it can't overflow either. The
+    // per-render max-width (set in renderInlineNote) is what actually bounds
+    // the wrap; without it pre-wrap alone still lays out on one line.
+    'white-space:pre-wrap', 'overflow-wrap:anywhere',
+    'background:transparent', 'margin:0', 'padding:0',
     'color:#6b7280', 'opacity:0.7',
   ].join(';');
   (document.body || document.documentElement).appendChild(el);
@@ -451,13 +457,13 @@ function renderInlineNote(
     const lh = parseFloat(cs.lineHeight);
     if (!Number.isNaN(lh) && lh > 0) lineHeightPx = lh;
   } catch { /* computed style unavailable — keep defaults */ }
-  // The gap must fit the NOTE, which is exactly one line in the field's font.
-  // Measure the note's OWN rendered height rather than trusting the field's
-  // line-height: robust to `line-height: normal` (parseFloat → NaN, where the
-  // fallback span rect over-counts a WRAPPED sentence's full height) and to any
-  // note/field metric mismatch. Fall back to the field line-height / span
-  // height when layout is unavailable (jsdom returns 0). One line only — a
-  // wrapped sentence still opens a single row below it, exactly like CC.
+  // The gap must fit the NOTE — which is now however many rows the note wraps
+  // to within its max-width (set below), not a fixed single line. Measure the
+  // note's OWN rendered height rather than trusting the field's line-height:
+  // robust to `line-height: normal` (parseFloat → NaN) and to any note/field
+  // metric mismatch, and it naturally captures the multi-line height once the
+  // note wraps. Fall back to the field line-height / span height when layout
+  // is unavailable (jsdom returns 0 → a one-line estimate).
   // Reset to the note's NATURAL size before measuring — a previous render may
   // have set an explicit height/width (cover mode), and measuring that back
   // would compound (the cover grew taller every tick — the "2x" bug).
@@ -465,6 +471,19 @@ function renderInlineNote(
   el.style.width = 'auto';
   el.style.paddingLeft = '0';
   el.style.boxSizing = 'content-box';
+  // Bound the wrap to the field's text column: from the span's left edge to
+  // the field's right edge. A long note then wraps DOWNWARD into extra rows
+  // rather than running off the right of the viewport. Floored so a span near
+  // the right edge still gets a usable width (it may extend a little past the
+  // field edge, but never off-screen). Set BEFORE measuring so noteH already
+  // reflects the wrapped, multi-line height — the push-down keys off it, so the
+  // gap auto-grows to fit however many rows the note needs.
+  let maxNoteW = 0;
+  try {
+    const fr = target.getBoundingClientRect();
+    maxNoteW = Math.max(160, Math.round(fr.right - rect.left - 2));
+  } catch { /* no field rect — leave uncapped */ }
+  el.style.maxWidth = maxNoteW > 0 ? `${maxNoteW}px` : 'none';
   let pushPx = lineHeightPx;
   try {
     const noteH = el.getBoundingClientRect().height;

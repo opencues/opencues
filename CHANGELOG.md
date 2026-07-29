@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — chrome inline note wraps and grows into extra rows instead of running off-screen (`@opencues/chrome` 0.2.144 → 0.2.145)
+
+The chrome inline-note overlay was `white-space:pre` with no `max-width`, so a long note (a wordy setting description, multi-token word-cue suggestions) rendered on a single line and ran off the right edge of the viewport. Now the note **wraps within the field's text column** (`white-space:pre-wrap` + `overflow-wrap:anywhere`, `max-width` = span-left → field-right edge, floored to 160px so a span near the right edge still gets a usable width) and grows DOWNWARD into as many rows as it needs. The push-down that keeps the note from occluding the line below already keys off the note's *measured* height (`pushPx = noteH`), so setting the wrap + max-width BEFORE the measurement makes the opened gap auto-grow to the full multi-line height — a 3-line note opens a 3-row gap, content shifts down 3 rows, note sits in the freed space. No change to short notes (they still measure one line). Pinned by a new `runtime-renderer.test.ts` case (note element carries `pre-wrap` + a bounded `max-width`). (Terminal hosts — CC/OC/shell/gemini — already grow via the terminal's natural soft-wrap of the inserted note line; aligned continuation-line indentation there would need the terminal width plumbed into the painter, tracked separately.)
+
 ### Added — uniform inline-note model: every cyclable span reveals what's behind it (`@opencues/runtime` 0.28.11 → 0.28.15, `@opencues/chrome` 0.2.140 → 0.2.144)
 
 The inline note is now "the useful reveal" for **every** cue/blank type, not just passive cues. Previously only `cueTip`-bearing spans (sentence/contradiction cues) and history-bearing `_`-blanks got a note; word-cues, filled blanks, and settings blanks dimmed but revealed nothing. Now:

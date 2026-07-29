@@ -246,6 +246,25 @@ describe('runtime-renderer inline-note push-down spacer', () => {
     expect(l1.style.marginBottom).toBe(''); // no nudge
   });
 
+  it('the note wraps (pre-wrap + a bounded max-width) so a long note grows into extra rows, not off-screen', () => {
+    const target = document.createElement('div');
+    target.setAttribute('contenteditable', 'true');
+    target.innerHTML = '<div>line one</div><div>line two</div>';
+    document.body.appendChild(target);
+
+    const LONG = { text: 'a rather wordy setting description that would run off the right edge on one line', spanStart: 0, spanEnd: 8 };
+    applyDirectives(target, [{ inlineNote: LONG }], 'node');
+
+    const note = document.getElementById('oc-inline-note') as HTMLElement;
+    expect(note).not.toBeNull();
+    // pre-wrap enables wrapping; a max-width bounds it (floored to 160px when
+    // the field rect is unavailable, as in jsdom). Together they make a long
+    // note wrap DOWNWARD instead of overflowing horizontally.
+    expect(note.style.whiteSpace).toBe('pre-wrap');
+    expect(note.style.maxWidth).toMatch(/px$/);
+    expect(parseFloat(note.style.maxWidth)).toBeGreaterThanOrEqual(160);
+  });
+
   // ── Margin push-down (managed editors — claude.ai/ProseMirror) ───────────
   // A node inserted into a managed editor gets reverted, and (crucially) we
   // don't own its send button so a real inserted line would ship in the
