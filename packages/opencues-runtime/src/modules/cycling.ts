@@ -271,9 +271,17 @@ export class Cycling {
    * point: the note on screen IS the affordance, so `_`-cycle fires precisely
    * where a note is visible. Conditions: no ctrl/alt/meta, the field is
    * cycleable, `inline-cues-mode: inline`, the host advertises `inline-note`, and
-   * the caret is inside a LIVE `cueTip` span with >1 alternative. All `cueTip`
-   * defs are sentence-cue defs (sentence-cues + contradiction), so the splice
-   * reuses the sentence-cue char-span path in `applyAltCycle`.
+   * the caret is inside a LIVE note span with >1 alternative.
+   *
+   * Covers EVERY note-bearing gray span, matching the uniform note model:
+   *   - DynDefs (word-cues incl. spelling, sentence/contradiction `cueTip` cues,
+   *     transform/fluid history) — the loop below, via `applyAltCycle`.
+   *   - Filled list/script blanks (`SpanFillState`) — via `cycleSpanFill`.
+   *   - Settings selector-satellite (`SelectorSatelliteState`) — cursor-aware,
+   *     via `cycleSelectorSatellite`.
+   * The last two aren't DynDefs, so they're handled explicitly after the loop —
+   * the same shape as dim-render.ts's note computation. Ctrl+Alt+arrow remains
+   * the power path; `_`-on-note is the primary, discoverable one.
    */
   stepUnderscore(event: KeyEvent): boolean {
     const m = event.modifiers;
@@ -311,6 +319,42 @@ export class Cycling {
       // and CLEARS the moment the caret leaves (moves to another line), which a
       // persistent nav selection would not do.
       return this.applyAltCycle(event, def, +1, originIdx, 'static-alts');
+    }
+
+    // Filled list/script blanks (SpanFillState) and settings selector-satellite
+    // (SelectorSatelliteState) aren't DynDefs, so the loop above never reaches
+    // them — but they're note-bearing gray spans too (the uniform note model), so
+    // `_` must cycle them wherever their note shows. Same cursor-gate the note
+    // loop in dim-render.ts uses, so `_`-cycle fires exactly where a note is
+    // painted. Caret past the span (after a space) → no match → falls through to
+    // the normal blank meaning, exactly as intended.
+    const words = splitWords(text);
+    const caretWord = words.find(w => cursor >= w.start && cursor <= w.end);
+
+    // SpanFill — caret anywhere in the multi-word fill span rotates it forward.
+    const sf = this.spanFillState?.current;
+    if (sf) {
+      const spanLen = sf.spanLength || 1;
+      const sStart = words[sf.index]?.start;
+      const sEnd = words[sf.index + spanLen - 1]?.end;
+      if (sStart !== undefined && sEnd !== undefined && cursor >= sStart && cursor <= sEnd) {
+        if (this.cycleSpanFill(event, words, sf.index, +1)) return true;
+      }
+    }
+
+    // Selector-satellite — cursor-aware, mirroring the note: caret on the
+    // selector (setting name) cycles setting names; on the satellite (value)
+    // cycles that setting's values. cycleSelectorSatellite reads which part from
+    // the wordIndex, so passing the caret's word index gives the per-part cycle.
+    const ss = this.selectorSatelliteState?.current;
+    if (ss && caretWord) {
+      const selEnd = ss.selectorIndex + Math.max(1, ss.selectorLength) - 1;
+      const satEnd = ss.satelliteIndex + Math.max(1, ss.satelliteLength) - 1;
+      const inSel = caretWord.index >= ss.selectorIndex && caretWord.index <= selEnd;
+      const inSat = caretWord.index >= ss.satelliteIndex && caretWord.index <= satEnd;
+      if (inSel || inSat) {
+        if (this.cycleSelectorSatellite(event, words, caretWord.index, +1)) return true;
+      }
     }
     return false;
   }

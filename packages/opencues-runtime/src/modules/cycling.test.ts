@@ -1590,4 +1590,102 @@ describe('_-cycle — bare `_` inside a painted cue note rotates the cue', () =>
     expect(adapter.fireKey('_')).toBe(false);
     expect(adapter.setTextCalls).toEqual([]);
   });
+
+  // The uniform note model made filled blanks + selector-satellite note-bearing;
+  // `_`-cycle must reach them too (they're not DynDefs, so a separate branch).
+  it('bare `_` inside a filled list/script blank span rotates it forward (SpanFillState)', async () => {
+    const adapter = new MockAdapter({ files: { '/mock/CUES.md': TIPS } });
+    adapter.pushText('80%');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const spanFillState = new SpanFillState();
+    spanFillState.set({
+      index: 0,
+      alternatives: ['80%', '60%', '100%'],
+      currentAltIndex: 0,
+      spanLength: 1,
+      tip: 'system volume',
+      clearOnEdit: false,
+    }, '80%');
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    await loader.load();
+    const cycling = new Cycling(adapter, hlState, dynDefs, loader, spanFillState);
+    cycling.subscribe();
+    adapter.setCursorOffset(1); // inside the filled span [0,3]
+    expect(adapter.fireKey('_')).toBe(true); // consumed, not inserted
+    expect(adapter.setTextCalls.at(-1)).toBe('60%');
+    expect(spanFillState.current?.currentAltIndex).toBe(1);
+  });
+
+  it('bare `_` on the selector part cycles setting NAMES (SelectorSatelliteState, cursor-aware)', async () => {
+    const OPENCUES_MD = `---
+voice-mode: active
+debug-mode: off
+settings:
+  voice-mode:
+    tip: Gates TTS
+    values:
+      active: a
+      inactive: i
+  debug-mode:
+    tip: Debug
+    values:
+      on: emit
+      off: silent
+---`;
+    const adapter = new MockAdapter({ cwd: '/proj', files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': OPENCUES_MD } });
+    adapter.pushText('voice-mode active');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const ss = new SelectorSatelliteState();
+    ss.set({
+      blankName: 'opencues', scriptPath: '/tmp/oc.sh',
+      selectorIndex: 0, selectorLength: 1, satelliteIndex: 1, satelliteLength: 1,
+      currentSetting: 'voice-mode', currentValue: 'active', separator: ' ', clearOnEdit: false,
+    }, 'voice-mode active');
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    await loader.load();
+    const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
+    cycling.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: 'off\n', stderr: '', timedOut: false }), kill: () => {},
+    }));
+    adapter.setCursorOffset(3); // caret on the selector word 'voice-mode' [0,10]
+    expect(adapter.fireKey('_')).toBe(true); // consumed → not inserted
+    expect(ss.current?.currentSetting).toBe('debug-mode');
+    expect(adapter.setTextCalls.at(-1)).toBe('debug-mode on');
+  });
+
+  it('bare `_` on the satellite part cycles that setting\'s VALUES (SelectorSatelliteState, cursor-aware)', async () => {
+    const OPENCUES_MD = `---
+voice-mode: active
+settings:
+  voice-mode:
+    tip: Gates TTS
+    values:
+      active: a
+      inactive: i
+---`;
+    const adapter = new MockAdapter({ cwd: '/proj', files: { '/mock/CUES.md': TIPS, '/proj/CUES.md': OPENCUES_MD } });
+    adapter.pushText('voice-mode active');
+    const hlState = new HighlightState();
+    const dynDefs = new DynDefs();
+    const ss = new SelectorSatelliteState();
+    ss.set({
+      blankName: 'opencues', scriptPath: '/tmp/oc.sh',
+      selectorIndex: 0, selectorLength: 1, satelliteIndex: 1, satelliteLength: 1,
+      currentSetting: 'voice-mode', currentValue: 'active', separator: ' ', clearOnEdit: false,
+    }, 'voice-mode active');
+    const loader = new ConfigLoader(adapter, { settingsFile: '/proj/CUES.md' });
+    await loader.load();
+    const cycling = new Cycling(adapter, hlState, dynDefs, loader, undefined, undefined, ss);
+    cycling.subscribe();
+    vi.spyOn(adapter, 'spawnProcess').mockImplementation(() => ({
+      result: Promise.resolve({ exitCode: 0, stdout: '', stderr: '', timedOut: false }), kill: () => {},
+    }));
+    adapter.setCursorOffset('voice-mode active'.length - 2); // caret on the satellite word 'active'
+    expect(adapter.fireKey('_')).toBe(true); // consumed → not inserted
+    expect(ss.current?.currentValue).toBe('inactive');
+    expect(adapter.setTextCalls.at(-1)).toBe('voice-mode inactive');
+  });
 });

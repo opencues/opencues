@@ -73,20 +73,26 @@ inputs are the one place it's fundamentally impossible.
 
 ### By target type — does it have a note?
 
-| Target | Has inline note (`cueTip`)? | `_`-cycle eligible | Arrows |
+Since the uniform note model (July 2026) EVERY note-bearing gray span is
+`_`-cycle eligible — the gate is simply "does a note show here", so as targets
+gained notes they gained `_`-cycle for free:
+
+| Target | Has inline note? | `_`-cycle eligible | Arrows |
 |---|---|---|---|
-| **Sentence-cue** | ✅ | ✅ (rotate rewrites) | ✅ |
-| **Contradiction cue** | ✅ | ✅ (**accept the fix**) | ✅ |
+| **Sentence-cue** | ✅ `cueTip` | ✅ (rotate rewrites) | ✅ |
+| **Contradiction cue** | ✅ `cueTip` | ✅ (**accept the fix**) | ✅ |
 | **Transform / fluid blank span** | ✅ (`↳ transform` / `↳ lookup`) | ✅ (**walks the transform HISTORY**) | ✅ |
-| **Word-cue** | ❌ (dim + statusline) | ❌ — arrows only | ✅ |
-| **Selector/satellite (settings)** | ❌ | ❌ — arrows only | ✅ |
-| **List / script blank (volume…)** | ❌ (`_` is its *trigger*) | ❌ | arrows cycle |
+| **Word-cue (incl. spelling)** | ✅ (its suggestions) | ✅ (rotate suggestions) | ✅ |
+| **List / script blank (volume…), filled** | ✅ (its tip / options) | ✅ (rotate values, `SpanFillState`) | ✅ |
+| **Selector/satellite (settings)** | ✅ (cursor-aware tip) | ✅ (cursor-aware: names on selector, values on satellite) | ✅ |
+| **Bare blank keyword (before `_`)** | ❌ (pure trigger) | ❌ (`_` is its *trigger*) | ❌ |
 
 ### Where the old means (arrows) are *necessary* — the fallback set
 
 1. **Backward / precise stepping** — `_` only wraps forward. Always, every surface.
-2. **Note-less targets** — word-cues, settings, blanks. Arrows only, any host.
-   (v1 boundary; word-cues could gain a note later and join.)
+2. **Note-less targets** — only the bare blank keyword before its `_` fires (a
+   pure trigger, no note). Every other gray span now carries a note and so
+   `_`-cycles; arrows remain the backward/power path.
 3. **Note-less hosts** — OC/gemini/shell/windows until wired; and
    `inline-cues-mode: secondary` (note in statusline, not painted → `_` stays a
    blank).
@@ -111,15 +117,20 @@ mechanic is more than a convenience.
    and feel it; the indicator (presence-only / state counter `(1/3)` / explicit
    `· _` hint) gets decided after we know how the rotation feels. Current lean
    remains the **state counter**, but it's not blocking.
-2. **Scope boundary (settled).** v1 = note-bearing cues only (sentence +
-   contradiction). Word-cues stay arrow-only until they get a note.
+2. **Scope boundary (settled → widened July 2026).** The original v1 was
+   note-bearing cues only (sentence + contradiction). With the uniform note
+   model every gray span carries a note, so `_`-cycle now covers word-cues,
+   filled list/script blanks, and selector-satellite too — see below.
 
 ## Generalized to any note-bearing span (built)
 
-The mechanic is no longer sentence-cue-specific. A single shared predicate,
-`inlineNoteText(def)` in `state/dyn-defs.ts`, is the SOLE source of truth for
-"does this def have a note", used by BOTH DimRender (paint) and Cycling
-(`_`-step) so they can't drift. A def is note-bearing when it either:
+The mechanic is no longer sentence-cue-specific. The gate mirrors DimRender's
+note computation EXACTLY — the note on screen IS the affordance, so `_`-cycle
+fires precisely where a note is painted. Two families:
+
+**DynDef-backed** (the `stepUnderscore` loop) — `inlineNoteText(def)` in
+`state/dyn-defs.ts` is the SOLE predicate, shared with DimRender so they can't
+drift. A def is note-bearing when it:
 
 - carries a `cueTip` (sentence-cue / contradiction — an advisory), **or**
 - is a **history-bearing LLM blank** (`transform-blank` / `fluid-blank`) with
@@ -127,7 +138,23 @@ The mechanic is no longer sentence-cue-specific. A single shared predicate,
   `findChainableLlmDef` (translate → 日本語, make formal → …), so `_` **steps
   back through your transformations** — a rotation that GROWS with use, richer
   than a cue's fixed set. Labels (`transform` / `lookup`) are placeholders;
-  indicator text still deferred.
+  indicator text still deferred, **or**
+- is a **plain word-cue** (no blankName, no cueTip) with >1 alternative — `_`
+  rotates its suggestions (incl. spelling corrections).
+
+**Non-DynDef states** (handled after the loop, same cursor-gate as dim-render's
+note computation, since they aren't DynDefs the loop iterates):
+
+- **`SpanFillState`** (filled list/script blanks — volume, brightness,
+  affirmations): `_` anywhere in the fill span rotates its values
+  (`cycleSpanFill`).
+- **`SelectorSatelliteState`** (settings): **cursor-aware** — `_` on the
+  selector cycles setting names, on the satellite cycles that setting's values
+  (`cycleSelectorSatellite`, driven by the caret's word index) — matching the
+  cursor-aware note.
+
+Both reuse the SAME cycle helpers `Ctrl+Alt+↑` uses; `_` just derives the target
+index from the caret (the note gate) instead of from `hlState`.
 
 **Auto-select is `cueTip`-only.** A cue's span promotes dim→highlight on
 cursor-in-span; a transform/fluid **keeps its dim** (a whole-buffer transform
