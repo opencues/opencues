@@ -530,14 +530,23 @@ describe('TransformBlank surgical splice — DynDef shape', () => {
     await resolver.resolveAndApply(adapter.getText());
     expect(dynDefs.size).toBe(1);
     const def = [...dynDefs.entries()][0]?.[1];
-    // alts[0] = the post-substitution buffer (current visible).
-    // alts[1] = the original prompt (cycle Up reverts). Matches
-    // fluid-blank and every other blank type — alts[0] is the
-    // current visible, alts[1+] are forward-cycle targets.
-    expect(def!.alternatives[0]).toBe('hi my name is wilfred\n\n');
+    // alts[0] = the rewrite BODY (current visible), with TRAILING whitespace
+    // trimmed so the def's span doesn't cover the editor's empty tail lines —
+    // otherwise a trailing edit (space / newline / continuing to type) breaks
+    // slice(0,spanEnd)===alt[0] and the def is dropped then re-resolved (the
+    // "transform span dies on a trailing edit" flicker). alts[1] = the original
+    // prompt body (cycle Up reverts).
+    expect(def!.alternatives[0]).toBe('hi my name is wilfred');
     expect(def!.alternatives[1]).toBe('hi my name is wilfred\n\nmake wilfred bold _');
     expect(def!.currentIndex).toBe(0);
     expect(def!.blankName).toBe('transform-blank');
+    // The span ends at the body, NOT the buffer length — the trailing "\n\n"
+    // stays in the buffer but OUTSIDE the span (matches how sentence-cues trim).
+    expect(def!.spanEnd).toBe('hi my name is wilfred'.length);
+    expect(adapter.getText()).toBe('hi my name is wilfred\n\n');
+    // The invariant that makes the def robust: the buffer sliced to the span
+    // equals alt[0], so a trailing edit is "after the span" and doesn't break it.
+    expect(adapter.getText().slice(def!.spanStart, def!.spanEnd)).toBe(def!.alternatives[0]);
   });
 });
 
@@ -600,6 +609,41 @@ describe('TransformBlank fused / whole-buffer — duplication-bug structural fix
     const { adapter, resolver } = setupFusedWholeBuffer(originalText, fullRewrite);
     await resolver.resolveAndApply(originalText);
     expect(adapter.getText()).toBe(fullRewrite);
+  });
+
+  it('trailing whitespace is trimmed from the span, so a trailing edit does NOT drop the def', async () => {
+    // The live bug: an editor buffer ends in empty lines ("\n\n\n"). The
+    // whole-buffer transform used to set spanEnd = bufferText.length, so the
+    // span COVERED those newlines and alt[0] INCLUDED them. Then the user
+    // presses space / adds a line / keeps typing after the result → the chars
+    // inside the span change → slice(0,spanEnd) != alt[0] → STALE → the def is
+    // DROPPED then re-resolved (the "transform span dies on a trailing edit"
+    // flicker). Sentence-cues never had this because they trim to their
+    // sentence. This pins the matching trim on the transform def.
+    const originalText = 'make it formal _\n\n\n';
+    const fullRewrite = 'Good day to you.\n\n\n';
+    const { adapter, dynDefs, resolver } = setupFusedWholeBuffer(originalText, fullRewrite);
+    await resolver.resolveAndApply(originalText);
+    expect(dynDefs.size).toBe(1);
+    const def = [...dynDefs.entries()][0]?.[1];
+    expect(def!.blankName).toBe('transform-blank');
+    // Span + alt[0] exclude the trailing newlines (they stay in the buffer).
+    expect(def!.alternatives[0]).toBe('Good day to you.');
+    expect(def!.spanEnd).toBe('Good day to you.'.length);
+    const buffer = adapter.getText();
+    expect(buffer).toBe('Good day to you.\n\n\n');
+    expect(buffer.slice(def!.spanStart, def!.spanEnd)).toBe(def!.alternatives[0]);
+
+    // Now the actual repro: user types a trailing space (an edit AFTER the
+    // span). slideCharSpans must keep it, pruneStale must keep it — the def
+    // survives instead of dying + re-resolving.
+    const edited = buffer + ' ';
+    dynDefs.slideCharSpans(buffer, edited);
+    dynDefs.pruneStale(edited.split(/\s+/).filter(Boolean).map(word => ({ word })));
+    expect(dynDefs.size).toBe(1); // NOT dropped
+    const after = [...dynDefs.entries()][0]?.[1];
+    expect(after!.blankName).toBe('transform-blank');
+    expect(edited.slice(after!.spanStart, after!.spanEnd)).toBe(after!.alternatives[0]);
   });
 
   it('pathological LLM rewrite that contains duplicated body still produces the LLM output, not a concat', async () => {
