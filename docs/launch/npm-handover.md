@@ -12,8 +12,26 @@ The `opencues` name on npmjs.com is currently held by `packages/opencues-park/` 
 
 1. In `packages/opencues-cli/package.json`:
    - Remove `"private": true`.
-   - Remove the `publishConfig` block (or repoint from GitHub Package Registry to public npm).
-   - Bump `version` to `0.1.0` (or higher — must be > 0.0.1 to supersede the placeholder).
+   - Remove the `publishConfig` block (currently `{ "registry": "https://npm.pkg.github.com", "access": "restricted" }`). With it gone, publish defaults to the public npmjs registry; the bare `opencues` name is unscoped, so it publishes public.
+   - **Version — set by the release cut, not here.** The product version = the CLI version (see [`versioning.md` § Releases & tagging](../architecture/versioning.md#releases--tagging)). The launch release (`LAUNCH.md` Step 4) sets the CLI to **`0.3.0`** and tags `v0.3.0`; this publish just ships whatever the tag says. It must be `> 0.0.1` to supersede the placeholder — `0.3.0` is. (The original "bump to `0.1.0`" line was stale: the CLI passed 0.2.x, and `0.1.0` sits below both the tag and the current version.)
+
+   The net edit (two deletions, nothing else — leave `name`, `version`, `keywords`, `bin`, etc. as-is):
+   ```diff
+   {
+     "name": "opencues",
+     "version": "0.3.0",
+   -  "private": true,
+     "description": "...",
+     "keywords": [ ... ],
+     ...
+   -  "publishConfig": {
+   -    "registry": "https://npm.pkg.github.com",
+   -    "access": "restricted"
+   -  },
+     "dependencies": { "enquirer": "^2.4.1" }
+   }
+   ```
+   > Applied at launch time (not pre-staged) so it doesn't collide with other in-flight `package.json` edits. It's a two-line removal — trivial to make from whatever `master` is at launch.
 2. From `packages/opencues-cli/`:
    ```
    npm publish --access public
