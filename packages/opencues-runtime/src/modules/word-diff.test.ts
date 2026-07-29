@@ -434,4 +434,28 @@ describe('threeWayMerge', () => {
     expect(m.newText).toBe('hello there');
     expect(m.droppedLlmHunks.length).toBe(1);
   });
+
+  it('rewrite that drops the buffer\'s TRAILING blank lines still applies (translate bug)', () => {
+    // Live bug: a whole-buffer transform on a buffer that ends in the editor's
+    // empty tail lines. The rewrite (a translation) legitimately has no trailing
+    // newlines. The trailing "\n\n\n\n" counted as a paragraph break, so the
+    // paragraph-break-preservation rule saw 0 < 1 and DROPPED the entire hunk —
+    // the buffer kept the English. Trailing whitespace at end-of-buffer must NOT
+    // count as a content paragraph break (rule 3 re-appends it).
+    const A = 'whats up buddy \n\n\n\n';
+    const B = 'よぉ、元気か？';               // disjoint rewrite, no trailing newlines
+    const m = threeWayMerge(A, B, A);          // live === snapshot (no user edits)
+    expect(m.droppedLlmHunks.length).toBe(0);  // NOT dropped
+    expect(m.newText.startsWith('よぉ、元気か？')).toBe(true); // translation landed
+    expect(m.newText).not.toContain('whats up buddy');
+  });
+
+  it('but an INTERNAL paragraph-break collapse is STILL dropped (rule 2 preserved)', () => {
+    // The trailing-trim above must not weaken internal \n\n preservation.
+    const A = 'para one\n\npara two';
+    const B = 'para one para two';             // collapses the internal \n\n
+    const m = threeWayMerge(A, B, A);
+    expect(m.droppedLlmHunks.length).toBe(1);  // dropped — internal break kept
+    expect(m.newText).toBe('para one\n\npara two');
+  });
 });
