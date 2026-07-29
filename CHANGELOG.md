@@ -819,7 +819,7 @@ The countries blank moved to a bundled offline dataset (restcountries.com fully 
 
 ## [2026-06-25] — checkpoint
 
-Snapshot tag (`v2026.06.25`). Headline: **BlankIntent** ships behind `blank-intent-mode` (OFF by default) — an LLM invocation gate for keyword script-blanks with line-scoped Phase-1, typed get/set/step, and a single shared keyword-window predicate across all five claim/cede sites; plus the **countries** blank moving to a bundled offline dataset. Packages at this checkpoint: `@opencues/core` 0.5.1, `@opencues/runtime` 0.4.4. (All packages remain `private` — this is a source checkpoint, not an npm publish; the npm handover is tracked in `docs/launch/npm-handover.md`.)
+Snapshot tag (`v2026.06.25`). Headline: **BlankIntent** ships behind `blank-intent-mode` (OFF by default) — an LLM invocation gate for keyword script-blanks with line-scoped Phase-1, typed get/set/step, and a single shared keyword-window predicate across all five claim/cede sites; plus the **countries** blank moving to a bundled offline dataset. Packages at this checkpoint: `@opencues/core` 0.5.1, `@opencues/runtime` 0.4.4. (All packages remain `private` — this is a source checkpoint, not an npm publish; the npm handover is tracked internally.)
 
 ### Fixed — countries blank: bundled offline dataset (restcountries.com fully deprecated) (runtime 0.4.4)
 

@@ -90,7 +90,7 @@ product is at `0.3` is fine and expected). Don't try to sync them.
 4. `git commit -m "chore(release): vX.Y.Z"`, then
    `git tag vX.Y.Z && git push origin vX.Y.Z`.
 5. `npm publish` the CLI if the CLI changed (first publish: see
-   [`docs/launch/npm-handover.md`](../launch/npm-handover.md)).
+   the internal npm-handover runbook).
 6. `gh release create vX.Y.Z --title "OpenCues vX.Y.Z" --notes-file <notes>`.
 
 ### Release notes are curated, not dumped

@@ -1,0 +1,53 @@
+name: Bug report
+description: Something isn't working as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please include `opencues doctor` output — it carries the install-state detail that makes most bugs reproducible.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+      placeholder: e.g. Typed `weather london _` in Gmail; the `_` stayed instead of filling.
+    validations:
+      required: true
+  - type: dropdown
+    id: host
+    attributes:
+      label: Host
+      description: Which integration were you using?
+      options:
+        - Claude Code
+        - OpenCode
+        - Gemini CLI
+        - Chrome extension
+        - Shell (oc-shell)
+        - Other / not sure
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: LLM provider / model
+      description: Which provider and model (if relevant)?
+      placeholder: e.g. cerebras / gpt-oss-120b
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`opencues doctor` output"
+      description: Paste the full output (redact any keys).
+      render: shell
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: From `/tmp/opencues.log` (run with `debug-mode: on` for more detail). Redact secrets.
+      render: shell
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: e.g. macOS 15 (Apple Silicon) / Ubuntu 24 / Windows WSL2
