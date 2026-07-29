@@ -3339,12 +3339,19 @@ function runtimeRender(): void {
   if (isNormalInput(target)) { clearInlineNote(); return; }
   const text = walkPlainText(target).text;
   const cursor = readCursorOffset();
-  // NOTE: the caret-unreadable DISABLE gate and the unreliable-cursor note
-  // SUPPRESSION were removed (2026-07) so the raw rendering is observable while
-  // debugging LinkedIn. readCursorOffset still tracks reliability + logs
-  // diagnostics; nothing consumes them for rendering right now. Re-add a gate
-  // here if the LinkedIn-Posts mis-fire needs handling again.
   const directives = bootResult.collectRenderDirectives(text, cursor);
+  // If the caret couldn't be read (e.g. LinkedIn Posts / a Quill that parks the
+  // browser selection outside the editor), readCursorOffset returns a fabricated
+  // 0 — so the CURSOR-GATED inline note + auto-select highlight would fire at a
+  // bogus position (note showing regardless of caret). Strip those; the always-on
+  // dim still marks the flagged span. Better absent than wrong. Reliable editors
+  // are unaffected (their reads flip this true).
+  if (!lastCursorReliable()) {
+    for (const d of directives) {
+      (d as { inlineNote?: unknown }).inlineNote = undefined;
+      (d as { highlight?: unknown }).highlight = undefined;
+    }
+  }
   // Push-down mode for the inline note (make room so it doesn't occlude the
   // line below). Plain contenteditables host a real spacer NODE; managed
   // editors (Lexical/PM/Quill) revert external nodes AND we don't own their
