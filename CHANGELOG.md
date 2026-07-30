@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed — `packages/opencues-park/` (the npm parking placeholder)
+
+`opencues@0.4.0` (the real CLI) is published to public npm and superseded the placeholder's `0.0.1` as `latest`, so the park package's source is no longer needed (the published 0.0.1 stays on npm as history). README npm badge wired; CLAUDE.md version map updated.
+
+
 ## [0.4.0] - 2026-07-30
 
 First npm-published release (`npm install -g opencues`). Highlights in the [GitHub Release](https://github.com/opencues/opencues/releases/tag/v0.4.0).

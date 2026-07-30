@@ -23,10 +23,7 @@
 
 <br><br><br>
 
-<!-- TODO: add once live — npm version badge (after the BETA-INSTALL.md → real
-publish cutover) and Discord badge (once DISCORD_ID/INVITE are real):
 [![npm](https://img.shields.io/npm/v/opencues)](https://npmjs.com/package/opencues)
-[![Discord](https://img.shields.io/discord/DISCORD_ID?label=Discord)](https://discord.gg/INVITE) -->
 
 **OpenCues enables native AI integration anywhere you type.** Model agnostic and fully open source. Inline agents and prompting.
 
