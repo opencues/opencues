@@ -22,26 +22,44 @@ Extract only CONTRADICTABLE aspects from the new utterances: commitments
 factual claims. Skip questions, smalltalk, and anything with no future
 contradiction potential.
 
-Rules:
+Extraction rules:
 - Preserve polarity, modality/hedging, quantifiers, amounts, names and
   dates VERBATIM inside the claim text. "I'll try" stays hedged.
 - firmness: "firm" or "hedged".
 - One claim per aspect; do not merge unrelated aspects.
 - If a new utterance RESTATES an existing open claim, do not duplicate it.
-- If a new utterance REVISES an existing open claim (new deadline, changed
-  preference), mark the old claim status "superseded" and create a new one
-  with "supersedes": <old id>.
-- If a new utterance reports FULFILLING or WITHDRAWING an existing claim,
-  mark it status "closed" (do not create a claim for the report itself).
-- If a new utterance FLATLY CONTRADICTS an existing open claim without
-  revising it, keep BOTH open and add "conflict": <other id> to the new
-  claim. The dream pass records conflicts; it never adjudicates them.
+
+STATE MACHINE — when a new utterance touches an existing open claim,
+classify the transition explicitly. Apply the FIRST matching transition:
+
+1. SUPERSEDED — the user revised their own position: a new deadline, a
+   changed preference, a changed opinion or stance, a changed plan.
+   ANY first-person stance change is a supersession, NEVER a conflict —
+   people are allowed to change their mind; the newest stance is the
+   operative one. Mark the old claim "superseded", create the new claim
+   with "supersedes": <old id>.
+2. FULFILLED — the user reports having done a committed thing. Mark the
+   commitment "closed" AND create a NEW past-tense fact claim recording
+   the event (e.g. "I rebased the apple-notes PR on <date>"). Closing a
+   commitment must never delete the fact that it happened.
+3. WITHDRAWN — the user cancels or releases a commitment without doing
+   it ("skip it", "forget the 60"). Mark it "withdrawn". Do not create
+   a new claim. A withdrawal is a legitimate change of mind, not a
+   contradiction to keep litigating.
+4. CONFLICT — reserved for FACTUAL claims about the external world that
+   cannot both be true and where neither reads as a deliberate revision
+   (the user seems unaware of the earlier claim). Keep BOTH open, add
+   "conflict": <other id> to the new claim. This should be RARE; if the
+   utterance could be read as a first-person revision, prefer
+   SUPERSEDED.
+
 - Existing claims keep their ids and their order. New claims get ids
   continuing from the given next_id, appended at the end.
 
 Output ONLY a JSON object: {"claims": [ ...full updated store... ]}.
 Each claim: {"id": n, "claim": str, "type": "commitment|preference|opinion|fact|plan",
-"firmness": "firm|hedged", "source_ts": str, "status": "open|superseded|closed",
+"firmness": "firm|hedged", "source_ts": str,
+"status": "open|superseded|closed|withdrawn",
 "supersedes"?: n, "conflict"?: n}.`;
 
 const user = JSON.stringify({

@@ -193,6 +193,48 @@ rides the existing resolve cadence without a new cost class. The
 retrieval problem never appeared at this scale — it is real but not
 a v1 blocker.
 
+### Prompt v2: the state machine encoded (same day)
+
+Rewrote both prompts to encode the rules the v1 failures produced —
+dream got an explicit ordered transition list (SUPERSEDED for any
+first-person stance change / FULFILLED closes AND creates a
+past-tense fact / WITHDRAWN / CONFLICT reserved for external facts,
+rare), check got a code-side filter excluding both sides of any
+conflict pair plus the firmness-dampening rule — then replayed the
+identical two batches and probe set. Results:
+
+- BOTH STRUCTURAL HOLES CLOSED. The opinion revision now supersedes
+  instead of conflicting, and "agreed, ledger ships first" — the
+  both-ways nag trap — went from FLAG to SILENCE. Fulfillment now
+  closes the commitment AND writes the past-fact claim, so "I never
+  actually rebased that PR" went from SILENCE to a correct flag.
+- HEDGE CARRIED IN THE COPY: flagging the hedged opinion now reads
+  "you said you THOUGHT the tracker should ship first".
+- ONE RULE BACKFIRED BEFORE IT WORKED. The first firmness wording
+  ("hedged claims flag only on direct polarity flips") licensed a
+  flag v1's generic caution had correctly suppressed: "I've decided
+  against the retrieval layer" vs the stored "I might add one" read
+  as a polarity flip. Deciding a maybe is a RESOLUTION, not a
+  contradiction — one added sentence saying exactly that restored
+  silence. Lesson: naming an allowed-flag condition explicitly
+  WIDENS behaviour relative to blanket caution; every carve-out
+  needs its resolution counterpart stated in the same breath.
+- LIFECYCLE LINKING IS THE FLAKY PART. On the replay the dream pass
+  did not link "I'll port the check path to Bun" as superseding
+  "prototype in Node, not Bun" (v1 had linked them); both stayed
+  open and the stale commitment later drew a live flag. Same model,
+  same seed, slightly different store — supersession detection
+  across paraphrase is the least deterministic step and the obvious
+  candidate for the propositional tier's binding machinery.
+- VERBATIM STORAGE ROTS. The fulfillment fact was stored as
+  "rebased the apple-notes PR just now, done" — "just now" is
+  meaningless a week later. Dream should normalise deictic time to
+  the utterance timestamp when creating past-fact claims.
+
+Final tally on the 14-probe set: v1 12/14 with two structural
+holes; v2 (after the one-sentence hedge fix) 14/14, with the missed
+supersession link as the one remaining store-side defect.
+
 ### Net read
 
 The generalized loop works better out of the box than the concept
